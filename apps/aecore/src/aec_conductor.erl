@@ -451,8 +451,8 @@ preempt_if_new_top(#state{seen_top_block_hash = OldHash} = State, Publish) ->
         NewHash ->
             ok = aec_tx_pool:top_change(OldHash, NewHash),
             aec_events:publish(top_changed, NewHash),
-            maybe_publish_top(Publish, NewHash),
             {ok, NewBlock} = aec_chain:get_block(NewHash),
+            maybe_publish_top(Publish, NewBlock),
             aec_metrics:try_update([ae,epoch,aecore,chain,height],
                                    aec_blocks:height(NewBlock)),
             State1 = State#state{seen_top_block_hash = NewHash},
@@ -460,17 +460,17 @@ preempt_if_new_top(#state{seen_top_block_hash = OldHash} = State, Publish) ->
             {changed, State2#state{block_candidate = undefined}}
     end.
 
-maybe_publish_top(block_created,_TopHash) ->
+maybe_publish_top(block_created,_TopBlock) ->
     %% A new block we created is published unconditionally below.
     ok;
-maybe_publish_top(block_synced,_TopHash) ->
+maybe_publish_top(block_synced,_TopBlock) ->
     %% We don't publish blocks pulled from network. Otherwise on
     %% bootstrap the node would publish old blocks.
     ok;
-maybe_publish_top(block_received, TopHash) ->
+maybe_publish_top(block_received, TopBlock) ->
     %% The received block pushed by a network peer changed the
     %% top. Publish the new top.
-    aec_events:publish(block_to_publish, TopHash).
+    aec_events:publish(block_to_publish, TopBlock).
 
 maybe_publish_block(block_synced,_Block) ->
     %% We don't publish blocks pulled from network. Otherwise on
@@ -483,8 +483,7 @@ maybe_publish_block(block_received,_Block) ->
 maybe_publish_block(block_created = T, Block) ->
     aec_events:publish(T, Block),
     %% This is a block we created ourselves. Always publish.
-    {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
-    aec_events:publish(block_to_publish, BlockHash).
+    aec_events:publish(block_to_publish, Block).
 
 
 cleanup_after_worker(Info) ->

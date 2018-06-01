@@ -444,7 +444,8 @@ expect_publish_event_hashes([],_AllowMissing) ->
     ok;
 expect_publish_event_hashes(Expected, AllowMissing) ->
     receive
-        {gproc_ps_event, block_to_publish, #{info := Hash}} ->
+        {gproc_ps_event, block_to_publish, #{info := Block}} ->
+            Hash = block_hash(Block),
             NewExpected = Expected -- [Hash],
             case lists:member(Hash, Expected) of
                 true  -> expect_publish_event_hashes(NewExpected, AllowMissing);
