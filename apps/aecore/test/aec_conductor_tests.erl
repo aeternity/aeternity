@@ -32,13 +32,13 @@ setup_minimal() ->
 
 teardown_minimal(TmpKeysDir) ->
     ok = aec_tx_pool:stop(),
+    aec_block_generator:stop(),
     ok = application:stop(gproc),
     _  = flush_gproc(),
     ?assert(meck:validate(aec_governance)),
     meck:unload(aec_governance),
     aec_test_utils:unmock_genesis(),
     aec_test_utils:unmock_time(),
-    aec_block_generator:stop(),
     ok = aec_test_utils:stop_chain_db(),
     aec_test_utils:aec_keys_cleanup(TmpKeysDir),
     ok.
