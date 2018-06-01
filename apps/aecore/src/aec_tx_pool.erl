@@ -111,6 +111,7 @@ init([]) ->
                      ok
              end,
     ok = aec_db:ensure_transaction(fun() -> aec_db:fold_mempool(InitF, ok) end),
+    ets:delete(Handled),
     {ok, #state{db = Db}}.
 
 handle_call({get_max_nonce, Sender}, _From, #state{db = Mempool} = State) ->
