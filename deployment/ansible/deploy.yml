@@ -20,16 +20,6 @@
       with_items: "{{ groups[hosts_group] }}"
       # http://docs.ansible.com/ansible/latest/user_guide/playbooks_tags.html#special-tags
       tags: [always]
-    - name: Fetch node sync public key
-      command: "{{ ansible_env.HOME }}/node/bin/epoch peer_key"
-      ignore_errors: yes
-      register: key_command
-      tags: [always]
-    - name: Register sync public key as fact
-      set_fact:
-        sync_public_key: "{{ key_command.stdout }}"
-      when: key_command.rc == 0
-      tags: [always]
 
 - name: Deploy epoch package
   hosts: all
@@ -208,14 +198,8 @@
         connection: local
         tags: [health-check]
 
-      - name: Read app version
-        command: "cat {{ project_root }}/VERSION"
-        register: version_output
-        tags: [datadog-event]
-
-      - name: Read app revision
-        command: "cat {{ project_root }}/REVISION"
-        register: revision_output
+      - name: Refresh epoch facts
+        setup:
         tags: [datadog-event]
 
       - name: Send Datadog event
@@ -225,14 +209,14 @@
           title: Deploy
           text: |
             %%%
-            Revision: [{{ revision_output.stdout }}](https://github.com/aeternity/epoch/commit/{{ revision_output.stdout }})
+            Revision: [{{ ansible_local.epoch.revision }}](https://github.com/aeternity/epoch/commit/{{ ansible_local.epoch.revision }})
             Package: {{ package }}
             %%%
           api_key: "{{ vault_datadog_api_key }}"
           app_key: "{{ vault_datadog_app_key }}"
           tags:
             - "env:{{ env }}"
-            - "version:{{ version_output.stdout }}"
+            - "version:{{ ansible_local.epoch.version }}"
         connection: local
         tags: [datadog-event]
       rescue:
