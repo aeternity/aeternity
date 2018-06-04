@@ -13,6 +13,6 @@
 !hooks
 !data
 !docs
-!docker
+!docker/entrypoint.sh
 !README.md
 !LICENSE
