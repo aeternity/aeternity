@@ -110,6 +110,7 @@ oracle_register(AccountKey,_Sign, QueryFee, TTL, QuerySpec, ResponseSpec,
           query_spec    => BinaryQuerySpec,
           response_spec => BinaryResponseSpec,
           query_fee     => QueryFee,
+          oracle_ttl    => {delta, TTL},
           ttl           => {delta, TTL},
           fee           => 0},
 
@@ -146,7 +147,9 @@ oracle_query(Oracle, Q, Value, QTTL, RTTL,
                            query_fee     => Value,
                            query_ttl     => {delta, QTTL},
                            response_ttl  => {delta, RTTL},
-                           fee           => 0}),
+                           fee           => 0,
+                           ttl           => {delta, QTTL}
+                          }),
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
     case aetx:check_from_contract(Tx, Trees, Height, ConsensusVersion) of
         {ok, Trees1} ->
@@ -176,7 +179,9 @@ oracle_respond(Oracle, QueryId,_Sign, Response,
                    nonce    => Nonce,
                    query_id => QueryId,
                    response => aeso_data:to_binary(Response, 0),
-                   fee      => 0}),
+                   fee      => 0,
+                   ttl      => {delta, 1}
+                  }),
 
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
 
@@ -196,10 +201,12 @@ oracle_extend(Oracle,_Sign, Fee, TTL,
     {value, Account} = aec_accounts_trees:lookup(ContractKey, AT),
     Nonce = aec_accounts:nonce(Account) + 1,
     {ok, Tx} =
-        aeo_extend_tx:new(#{oracle => Oracle,
-                           nonce  => Nonce,
-                           ttl    => {delta, TTL},
-                           fee    => Fee}),
+        aeo_extend_tx:new(#{oracle    => Oracle,
+                            nonce      => Nonce,
+                            oracle_ttl => {delta, TTL},
+                            fee        => Fee,
+                            ttl        => {delta, TTL}
+                           }),
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
     case aetx:check_from_contract(Tx, Trees, Height, ConsensusVersion) of
         {ok, Trees1} ->
