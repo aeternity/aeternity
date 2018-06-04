@@ -120,12 +120,12 @@ check(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce,
                        fee = Fee} = QTx, Context, Trees, Height, _ConsensusVersion) ->
     Checks =
         [fun() -> aetx_utils:check_account(SenderPubKey, Trees, Nonce, Fee + QFee) end,
-         fun() -> check_oracle(OraclePubKey, Trees, QFee, Height, OTTL, RTTL) end,
+         fun() -> check_oracle(OraclePubKey, Trees, QFee, Height, QTTL, RTTL) end,
          fun() -> check_query(QTx, Trees, Height) end
          | case Context of
                aetx_contract -> [];
                _ ->
-                   [fun() -> aeo_utils:check_ttl_fee(Height, TTL, Fee - ?ORACLE_QUERY_TX_FEE) end]
+                   [fun() -> aeo_utils:check_ttl_fee(Height, QTTL, Fee - ?ORACLE_QUERY_TX_FEE) end]
            end
         ],
 
