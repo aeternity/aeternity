@@ -2,15 +2,23 @@
 
 -export([request/4]).
 -export([response/5]).
--export([validator/0]).
+-export([validator/0, validator/1]).
+-export([json_spec/0]).
 
-
--spec validator() -> jesse_state:state().
-
-validator() ->
+-spec json_spec() -> jsx:json_text().
+json_spec() ->
     {ok, AppName} = application:get_application(?MODULE),
     Filename = filename:join(code:priv_dir(AppName), "swagger.json"),
-    R = jsx:decode(element(2, file:read_file(Filename))),
+    {ok, Json} = file:read_file(Filename),
+    Json.
+
+-spec validator() -> jesse_state:state().
+validator() ->
+    validator(json_spec()).
+
+-spec validator(jsx:json_text()) -> jesse_state:state().
+validator(Json) ->
+    R = jsx:decode(Json),
     jesse_state:new(R, [{default_schema_ver, <<"http://json-schema.org/draft-04/schema#">>}]).
 
 -spec response(

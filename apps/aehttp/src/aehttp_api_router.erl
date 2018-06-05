@@ -17,7 +17,8 @@
 
 get_paths(Target, LogicHandler) ->
     {ok, EnabledGroups} = application:get_env(aehttp, enabled_endpoint_groups),
-    Validator = aehttp_api_validate:validator(),
+    JsonSpec = aehttp_api_validate:json_spec(),
+    Validator = aehttp_api_validate:validator(JsonSpec),
 
     Paths = [{path(Path), aehttp_api_handler,
         {OperationId, method(Method), LogicHandler, Validator}}
@@ -25,7 +26,10 @@ get_paths(Target, LogicHandler) ->
             {Method, #{path := Path, tags := Tags}} <- maps:to_list(Spec),
             is_enabled(Target, Tags, EnabledGroups)
     ],
-    lists:reverse(lists:sort(Paths)).
+  %% Dirty hack to make sure /tx is not matched before /tx/{hash} is evaluated:
+  %% sort it and reverse, such that longest part is matched first
+  lists:reverse(lists:sort(Paths)) ++
+    [{<<"/api">>, aehttp_spec_handler, {'Api', <<"GET">>, JsonSpec}}].
 
 path(Path0) ->
     Path1 = binary:replace(Path0, <<"}">>, <<"">>, [global]),
