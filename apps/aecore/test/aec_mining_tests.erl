@@ -59,7 +59,6 @@ mine_block_test_() ->
                  TopBlock = #block{height = ?GENESIS_HEIGHT,
                                    target = ?LOWEST_TARGET_SCI,
                                    version = ?GENESIS_VERSION},
-                 meck:expect(aec_pow, pick_nonce, 0, 18),
                  {BlockCandidate, _} = aec_block_candidate:create_with_state(TopBlock, ?TEST_PUB,
                                                                              [], aec_trees:new()),
                  Nonce = 18,
