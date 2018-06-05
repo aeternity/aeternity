@@ -8,7 +8,7 @@
 !apps
 !.git
 !otp_patches
-!test
+!test/ct_eunit_xform.erl
 !config
 !hooks
 !data
