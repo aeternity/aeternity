@@ -111,7 +111,7 @@ oracle_register(AccountKey,_Sign, QueryFee, TTL, QuerySpec, ResponseSpec,
           response_spec => BinaryResponseSpec,
           query_fee     => QueryFee,
           oracle_ttl    => {delta, TTL},
-          ttl           => TTL,
+          ttl           => 0, %% Not used.
           fee           => 0},
 
     %% TODO: To register an oracle for another account than the contract
@@ -148,7 +148,7 @@ oracle_query(Oracle, Q, Value, QTTL, RTTL,
                            query_ttl     => {delta, QTTL},
                            response_ttl  => {delta, RTTL},
                            fee           => 0,
-                           ttl           => QTTL
+                           ttl           => 0 %% Not used
                           }),
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
     case aetx:check_from_contract(Tx, Trees, Height, ConsensusVersion) of
@@ -180,7 +180,7 @@ oracle_respond(Oracle, QueryId,_Sign, Response,
                    query_id => QueryId,
                    response => aeso_data:to_binary(Response, 0),
                    fee      => 0,
-                   ttl      => 1
+                   ttl      => 0 %% Not used
                   }),
 
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
@@ -205,7 +205,7 @@ oracle_extend(Oracle,_Sign, Fee, TTL,
                             nonce      => Nonce,
                             oracle_ttl => {delta, TTL},
                             fee        => Fee,
-                            ttl        => TTL
+                            ttl        => 0 %% Not used
                            }),
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
     case aetx:check_from_contract(Tx, Trees, Height, ConsensusVersion) of
