@@ -398,9 +398,6 @@ handle_top_block_change(OldTopHash, NewTopDifficulty, State) ->
             end
     end.
 
-update_main_chain(undefined, NewTopHash, State) ->
-    add_locations(NewTopHash, get_genesis_hash(State)),
-    State;
 update_main_chain(OldTopHash, NewTopHash, State) ->
     case find_fork_point(OldTopHash, NewTopHash) of
         {ok, OldTopHash} ->
