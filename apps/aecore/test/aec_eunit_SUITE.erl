@@ -8,7 +8,6 @@
 -export([application_test/1]).
 
 -include_lib("common_test/include/ct.hrl").
--compile({parse_transform, ct_eunit_xform}).
 
 -define(STARTED_APPS_WHITELIST, [erlexec, runtime_tools]).
 -define(TO_BE_STOPPED_APPS_BLACKLIST, [erlexec]).
@@ -21,6 +20,7 @@
         ]).
 
 -ifdef(EUNIT_INCLUDED).
+-compile({parse_transform, ct_eunit_xform}).
 all() -> [ {group, eunit}, application_test ]. %%, aec_sync_test ].
 -else.
 all() -> [ application_test ]. %%, aec_sync_test ].

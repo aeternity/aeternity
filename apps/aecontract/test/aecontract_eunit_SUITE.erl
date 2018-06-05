@@ -8,13 +8,13 @@
 -export([]).
 
 -include_lib("common_test/include/ct.hrl").
--compile({parse_transform, ct_eunit_xform}).
 
 -define(REGISTERED_PROCS_WHITELIST,
         [cover_server, timer_server
         ]).
 
 -ifdef(EUNIT_INCLUDED).
+-compile({parse_transform, ct_eunit_xform}).
 all() -> [ {group, eunit} ].
 -else.
 all() -> [].
