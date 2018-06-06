@@ -146,9 +146,18 @@
 -define(        'INVALID', 16#fe).
 -define(        'SUICIDE', 16#ff).
 
--define(        'COMMENT', comment).
+-define(       COMMENT(X), {comment, X}).
 
 %% Transactions are implemented as contract calls to address zero, with the
 %% first argument encoding the transaction type according to the below.
 -define(PRIM_CALL_SPEND, 1).
+
+-define(PRIM_CALL_IN_ORACLE_RANGE(__TTYPE__), (((__TTYPE__) > 99) andalso ((__TTYPE__) < 200))).
+-define(PRIM_CALL_ORACLE_REGISTER,     100).
+-define(PRIM_CALL_ORACLE_QUERY,        101).
+-define(PRIM_CALL_ORACLE_RESPOND,      102).
+-define(PRIM_CALL_ORACLE_EXTEND,       103).
+-define(PRIM_CALL_ORACLE_GET_ANSWER,   104).
+-define(PRIM_CALL_ORACLE_GET_QUESTION, 105).
+-define(PRIM_CALL_ORACLE_QUERY_FEE,    106).
 

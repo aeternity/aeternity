@@ -1,0 +1,38 @@
+contract Oracles =
+
+  function registerOracle(acct : address,
+                          sign : int,   // Signed account address
+                          fee  : int,
+                          qfee : int,
+                          ttl  : int) : oracle(string, int) =
+     Oracle.register(acct, sign, fee, qfee, ttl)
+
+  function queryFee(o : oracle(string, int)) : int =
+    Oracle.query_fee(o)
+
+  function createQuery(o    : oracle(string, int),
+                       q    : string,
+                       fee  : int,
+                       qttl : int,
+                       rttl : int) : oracle_query(string, int) =
+    Oracle.query(o, q, fee, qttl, rttl)
+
+  function extendOracle(o    : oracle(string, int),
+                        sign : int,   // Signed oracle address
+                        fee  : int,
+                        ttl  : int) : () =
+    Oracle.extend(o, sign, fee, ttl)
+
+  function respond(o : oracle(string, int), q : oracle_query(string, int), sign : int, r : int) =
+    Oracle.respond(o, q, sign, r)
+
+  function getQuestion(o : oracle(string, int), q : oracle_query(string, int)) : string =
+    Oracle.get_question(o, q)
+
+  function hasAnswer(o : oracle(string, int), q : oracle_query(string, int)) =
+    switch(Oracle.get_answer(o, q))
+      None    => false
+      Some(_) => true
+
+  function getAnswer(o : oracle(string, int), q : oracle_query(string, int)) : option(int) =
+    Oracle.get_answer(o, q)

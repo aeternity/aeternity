@@ -93,19 +93,22 @@ origin(#oracle_response_tx{oracle = OraclePubKey}) ->
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_response_tx{oracle = OraclePubKey, nonce = Nonce,
-                          query_id = QId, fee = Fee}, _Context, Trees, Height, _ConsensusVersion) ->
+                          query_id = QId, fee = Fee}, Context, Trees, Height, _ConsensusVersion) ->
     case fetch_query(OraclePubKey, QId, Trees) of
         {value, I} ->
             ResponseTTL = aeo_query:response_ttl(I),
             QueryFee    = aeo_query:fee(I),
             Checks =
                 [fun() -> check_oracle(OraclePubKey, Trees) end,
-                 fun() -> check_query(I, OraclePubKey) end,
-                 fun() -> aetx_utils:check_account(OraclePubKey, Trees,
-                                                   Nonce, Fee - QueryFee) end,
-                 fun() -> aeo_utils:check_ttl_fee(Height, ResponseTTL,
-                                                  Fee - ?ORACLE_RESPONSE_TX_FEE) end
-                ],
+                 fun() -> check_query(I, OraclePubKey) end |
+                 case Context of
+                     aetx_contract -> []; %% TODO: Handle fees from contracts right.
+                     _ ->
+                         [fun() -> aetx_utils:check_account(OraclePubKey, Trees,
+                                                            Nonce, Fee - QueryFee) end,
+                          fun() -> aeo_utils:check_ttl_fee(Height, ResponseTTL,
+                                                           Fee - ?ORACLE_RESPONSE_TX_FEE) end]
+                 end],
             case aeu_validation:run(Checks) of
                 ok              -> {ok, Trees};
                 {error, Reason} -> {error, Reason}

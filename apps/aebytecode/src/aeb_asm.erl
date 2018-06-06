@@ -22,7 +22,7 @@
 %%%       3. 256-bit hash strings starting with #
 %%%          followed by up to 64 hex chars
 %%%          #00000deadbeef
-%%%       4. labels as descibed above. 
+%%%       4. labels as descibed above.
 %%%
 %%% @end
 %%% Created : 21 Dec 2017
@@ -40,10 +40,12 @@
 
 pp(Asm) ->
     Listing = format(Asm),
-    io:format("~p~n", [Listing]).
+    io:format("~s~n", [Listing]).
 
 format(Asm) -> format(Asm, 0).
 
+format([{comment, Comment} | Rest], Address) ->
+    ";; " ++ Comment ++ "\n" ++ format(Rest, Address);
 format([Mnemonic | Rest], Address) ->
     Op = aeb_opcodes:m_to_op(Mnemonic),
     case (Op >= ?PUSH1) andalso (Op =< ?PUSH32) of
@@ -51,10 +53,10 @@ format([Mnemonic | Rest], Address) ->
             Arity = aeb_opcodes:op_size(Op) - 1,
             {Args, Code} = get_args(Arity, Rest),
             "        " ++ atom_to_list(Mnemonic)
-                ++ "        " ++ Args ++"\n" 
+                ++ "        " ++ Args ++ "\n"
                 ++ format(Code, Address + Arity + 1);
         false ->
-            "        " ++ atom_to_list(Mnemonic)
+            "        " ++ atom_to_list(Mnemonic) ++ "\n"
                 ++ format(Rest, Address + 1)
     end;
 format([],_) -> [].

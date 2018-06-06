@@ -181,24 +181,14 @@ init_vm(State, Code, Mem, Store) ->
     end.
 
 call_contract(Caller, Target, CallGas, Value, Data, State) ->
-    ChainAPI   = chain_api(State),
-    ChainState = chain_state(State),
     case vm_version(State) of
         ?AEVM_01_Sophia_01 when Target == 0 ->  %% Primitive call
-            case Data of    %% TODO: use aeso_data:from_binary() (but it doesn't take a base address at the moment)
-                <<64:256, ?PRIM_CALL_SPEND:256, Recipient:256>> ->
-                    case ChainAPI:spend(<<Recipient:256>>, Value, ChainState) of
-                        {ok, ChainState1} ->
-                            UnitReturn = {ok, <<0:256>>}, %% spend returns unit
-                            GasSpent   = 0,         %% Already costs lots of gas
-                            {ok, UnitReturn, GasSpent, set_chain_state(ChainState1, State)};
-                        {error, _} = Err -> Err
-                    end;
-                _ -> {error, out_of_gas}
-            end;
+            aevm_ae_primops:call(Value, Data, State);
         _ ->
             CallStack  = [Caller | call_stack(State)],
             TargetKey  = <<Target:256>>,
+            ChainAPI   = chain_api(State),
+            ChainState = chain_state(State),
             try ChainAPI:call_contract(TargetKey, CallGas, Value, Data, CallStack, ChainState) of
                 {ok, Res, ChainState1} ->
                     GasSpent = aevm_chain_api:gas_spent(Res),
@@ -211,13 +201,6 @@ call_contract(Caller, Target, CallGas, Value, Data, State) ->
                 {error, Err}
             end
     end.
-
-
-%%get_code(Address, #{} = Pre) ->
-%%    case maps:get(Address, Pre, undefined) of
-%%        undefined -> <<>>;
-%%        #{code := Code} -> Code
-%%    end.
 
 
 get_ext_code_sizes(#{} = Pre) ->

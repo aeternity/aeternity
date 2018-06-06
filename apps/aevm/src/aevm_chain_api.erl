@@ -28,6 +28,8 @@
 
 %% -- Callback API -----------------------------------------------------------
 
+%% -- Accounts --
+
 %% Execute a spend transaction from the contract account.
 -callback spend(Recipient :: pubkey(),
                 Amount    :: non_neg_integer(),
@@ -36,6 +38,68 @@
 %% Get the current balance of an account.
 -callback get_balance(Account :: pubkey(), State :: chain_state()) ->
     non_neg_integer().
+
+%% -- Oracles --
+
+-callback oracle_register(Account :: pubkey(),
+                          Sign :: binary(),
+                          QueryFee :: non_neg_integer(),
+                          TTL :: non_neg_integer(),
+                          DecodedQType :: binary(),
+                          DecodedRType :: binary(),
+                          ChainState :: chain_state()) ->
+    {ok, OracleKey :: pubkey(), chain_state()} | {error, term()}.
+
+-callback oracle_query(Oracle :: pubkey(),
+                       Query :: term(),
+                       Value :: non_neg_integer(),
+                       QueryTTL :: non_neg_integer(),
+                       ResponseTTL :: non_neg_integer(),
+                       ChainState :: chain_state()) ->
+    {ok, QueryId :: pubkey(), chain_state()} | {error, term()}.
+
+-callback oracle_respond(Oracle :: pubkey(),
+                         Query :: pubkey(),
+                         Sign :: binary(),
+                         Response :: term(),
+                         ChainState :: chain_state()) ->
+    {ok, chain_state()} | {error, term()}.
+
+-callback oracle_extend(Oracle :: pubkey(),
+                        Sign :: binary(),
+                        Fee :: non_neg_integer(),
+                        TTL :: non_neg_integer(),
+                        ChainState :: chain_state()) ->
+    {ok, chain_state()} | {error, term()}.
+
+-callback oracle_get_answer(Oracle :: pubkey(),
+                            Query :: pubkey(),
+                            ChainState :: chain_state()) ->
+    {ok, none | {some, term()}} | {error, term()}.
+
+-callback oracle_get_question(Oracle :: pubkey(),
+                              Query :: pubkey(),
+                              ChainState :: chain_state()) ->
+    {ok, term()} | {error, term()}.
+
+
+%% TODO: not here
+-type type_spec() :: word | string
+                   | {option, type_spec()}
+                   | {list, type_spec()}
+                   | {tuple, [type_spec()]}.
+
+-callback oracle_query_spec(Oracle :: pubkey(),
+                            ChainState :: chain_state()) ->
+    {ok, type_spec()} | {error, term()}.
+
+-callback oracle_response_spec(Oracle :: pubkey(),
+                               ChainState :: chain_state()) ->
+    {ok, type_spec()} | {error, term()}.
+
+-callback oracle_query_fee(Oracle :: pubkey(),
+                           ChainState :: chain_state()) ->
+    {ok, non_neg_integer()} | {error, term()}.
 
 %% Make a call to another contract.
 -callback call_contract(Contract  :: pubkey(),

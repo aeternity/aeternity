@@ -219,7 +219,7 @@ assemble_expr(Funs, Stack, _, {lambda, Args, Body}) ->
     NoMatch  = make_ref(),
     FreeVars = free_vars({lambda, Args, Body}),
     {NewVars, MatchingCode} = assemble_pattern(FunBody, NoMatch, {tuple, [{var_ref, "_"}|FreeVars]}),
-    BodyCode = assemble_expr(Funs, NewVars++lists:reverse(Args), tail, Body),
+    BodyCode = assemble_expr(Funs, NewVars ++ lists:reverse([ {Arg#arg.name, Arg#arg.type} || Arg <- Args ]), tail, Body),
     [assemble_expr(Funs, Stack, nontail, {tuple, [{label, Function}|FreeVars]}),
      jump(Continue), %% will be optimized away
      jumpdest(Function),
@@ -403,7 +403,8 @@ assemble_expr(Funs, Stack, Tail,
                 %%       our EVM implementation doesn't actually need it.
     %% Note: assemble expressions first, since this may allocate memory.
     Exprs = [Value, Gas, To],                 %% Stack
-    [ assemble_exprs(Funs, Stack, Exprs)      %%  To Gas Value
+    [%% i(?COMMENT(io_lib:format("Call primop: To ~p, Value: ~p", [To, Value]))),
+      assemble_exprs(Funs, Stack, Exprs)      %%  To Gas Value
     , assemble_expr(Funs, [dummy, dummy, dummy | Stack],
             nontail, {encode, 32, ArgT, Arg}) %%  IOffset To Gas Value
     , i(?MSIZE)                               %%  OOffset IOffset To Gas Value
@@ -624,7 +625,7 @@ free_vars({switch, E, Cases}) ->
                  lists:umerge([free_vars(Body)--free_vars(Pattern)
                                || {Pattern, Body} <- Cases]));
 free_vars({lambda, Args, Body}) ->
-    free_vars(Body) -- [{var_ref, V} || {V, _} <- Args];
+    free_vars(Body) -- [{var_ref, Arg#arg.name} || Arg <- Args];
 free_vars(T) when is_tuple(T) ->
     free_vars(tuple_to_list(T));
 free_vars([H|T]) ->
@@ -665,6 +666,8 @@ all_type_reps([TR|InSource], Found) ->
             Nested = case TR of
                          {tuple, TRs} -> TRs;
                          {list, T}    -> [T];
+                         {option, T}  -> [T];
+                         typerep      -> [{list, typerep}]; %% tuple case has a list of typereps
                          _            -> []
                      end,
             all_type_reps(Nested ++ InSource, [TR|Found])
@@ -697,6 +700,19 @@ make_decoder(TR) ->
 
 make_encoder_body(word) ->
     {var_ref, "value"};
+make_encoder_body(typerep) ->
+    Con = fun(Tag, Args) -> {tuple, [{integer, Tag} | Args]} end,
+    Rel = fun(E) -> {binop, '-', E, {var_ref, "base"}} end,
+    Enc = fun(T, X) -> {funcall, {var_ref, encoder_name(T)}, [{var_ref, X}]} end,
+    {switch, {var_ref, "value"},
+        [{Con(?TYPEREP_WORD_TAG, []),   Rel(Con(?TYPEREP_WORD_TAG, []))},
+         {Con(?TYPEREP_STRING_TAG, []), Rel(Con(?TYPEREP_STRING_TAG, []))},
+         {Con(?TYPEREP_LIST_TAG, [{var_ref, "t"}]),
+            Rel(Con(?TYPEREP_LIST_TAG, [Enc(typerep, "t")]))},
+         {Con(?TYPEREP_OPTION_TAG, [{var_ref, "t"}]),
+            Rel(Con(?TYPEREP_OPTION_TAG, [Enc(typerep, "t")]))},
+         {Con(?TYPEREP_TUPLE_TAG, [{var_ref, "ts"}]),
+            Rel(Con(?TYPEREP_TUPLE_TAG, [Enc({list, typerep}, "ts")]))}]};
 make_encoder_body(string) ->
     %% matching against a singleton tuple reads an address
     {switch, {var_ref, "value"},
@@ -734,10 +750,20 @@ make_encoder_body({list, TR}) ->
                  [{var_ref, "base"}, {var_ref, "tail"}]}]},
         {var_ref, "base"}}}
      ]};
+make_encoder_body({option, TR}) ->
+    {switch, {var_ref, "value"},
+     [{{list, []}, {list, []}},
+      {{tuple, [{var_ref, "elem"}]},
+       {binop, '-',
+        {tuple, [{funcall, {var_ref, encoder_name(TR)},
+                 [{var_ref, "base"}, {var_ref, "elem"}]}]},
+        {var_ref, "base"}}}
+     ]};
 make_encoder_body(function) ->
     {integer, 33333333333333333}.
 
 %% TODO: update pointers in-place so save memory!
+%% Note: we never need to decode typereps.
 make_decoder_body(word) ->
     {var_ref, "value"};
 make_decoder_body({tuple, []}) ->
@@ -766,6 +792,19 @@ make_decoder_body({list, TR}) ->
          {{var_ref, "_"},
             {switch, Ptr, [{{tuple, [Head, Tail]},
                 {tuple, [Decode(TR, Head), Decode({list, TR}, Tail)]}}]}}]};
+make_decoder_body({option, TR}) ->
+    Ptr  = {binop, '+', {var_ref, "value"}, {var_ref, "base"}},
+    Elem = {var_ref, "elem"},
+    None = {list, []},
+    Decode = fun(T, V) ->
+                {funcall, {var_ref, decoder_name(T)},
+                          [{var_ref, "base"}, V]}
+             end,
+    {switch, {var_ref, "value"},
+        [{None, None},
+         {{var_ref, "_"},
+            {switch, Ptr, [{{tuple, [Elem]},
+                {tuple, [Decode(TR, Elem)]}}]}}]};
 make_decoder_body(function) ->
     error(cannot_decode_function_types).
 
@@ -972,9 +1011,9 @@ use_labels(_, I) ->
 %% The compilation of conditionals can introduce jumps depending on
 %% constants 1 and 0. These are removed by peep-hole optimization.
 
-peep_hole(['PUSH1', 0, {push_label, _}, 'JUMP1'|More]) ->
+peep_hole(['PUSH1', 0, {push_label, _}, 'JUMPI'|More]) ->
     peep_hole(More);
-peep_hole(['PUSH1', 1, {push_label, Lab}, 'JUMP1'|More]) ->
+peep_hole(['PUSH1', 1, {push_label, Lab}, 'JUMPI'|More]) ->
     [{push_label, Lab}, 'JUMP'|peep_hole(More)];
 peep_hole([{pop_args, M}, {pop_args, N}|More]) when M + N =< 16 ->
     peep_hole([{pop_args, M + N}|More]);

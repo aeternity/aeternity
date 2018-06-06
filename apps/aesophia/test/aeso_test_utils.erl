@@ -12,7 +12,7 @@
 
 -export([read_contract/1, contract_path/0, run_contract/4, pp/1, pp/2, dump_words/1]).
 
--export([spend/3, get_balance/2, call_contract/6]).
+-export([spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2]).
 
 contract_path() ->
     {ok, Cwd} = file:get_cwd(),
@@ -54,7 +54,7 @@ dummy_state(Code, Data) ->
            vm_version        => ?AEVM_01_Sophia_01
          }
      , exec =>
-        #{ gas        => 10000,
+        #{ gas        => 1000000,
            code       => Code,
            address    => 91919191,
            value      => 100,
@@ -74,11 +74,12 @@ run_contract(Name, Fun, Args, Type) ->
   ok = aeb_disassemble:pp(Code),
   %% Load the call
   Call = list_to_tuple([list_to_binary(atom_to_list(Fun))|Args]),
-  {0,Data} = aeso_data:to_binary(Call),
+  Data = aeso_data:to_binary(Call),
   io:format("Running:\n"),
   {ok, State} = aevm_eeevm:eval(dummy_state(Code, Data)),
 %%  io:format("\nFinal state:\n~p\n",[State]),
   io:format("\nFinal stack: ~p\n",[maps:get(stack,State)++[end_of_stack]]),
+  io:format("\nReturn data: ~p\n",[dump_words(maps:get(out,State))]),
   io:format("\nReturn value: ~p\n",[aeso_data:from_binary(Type,maps:get(out,State))]),
 %%    io:format("\nReturn value: ~p\n",[aeso_data:binary_to_words(maps:get(out,State))]),
   ok.
@@ -169,3 +170,5 @@ call_contract(Contract, Gas, Value, CallData, CallStack, S) ->
     io:format("+++ CALL(~p, ~p, ~p, ~p, ~p)\n", [Contract, Gas, Value, CallData, CallStack]),
     {ok, <<42:256>>, S}.
 
+get_store(_) -> #{}.
+set_store(_, _) -> ok.

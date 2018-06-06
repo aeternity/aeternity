@@ -18,10 +18,14 @@
    , stack/1
    , simple_storage/1
    , dutch_auction/1
+   , oracles/1
    ]).
 
 %% chain API exports
--export([ spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2 ]).
+-export([ spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2,
+          oracle_register/7, oracle_query/6, oracle_query_spec/2, oracle_response_spec/2,
+          oracle_query_oracle/2, oracle_respond/5, oracle_get_answer/3,
+          oracle_query_fee/2, oracle_get_question/3, oracle_extend/5]).
 
 -include("apps/aecontract/src/aecontract.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -37,14 +41,15 @@ all() -> [ execute_identity_fun_from_sophia_file,
            counter,
            stack,
            simple_storage,
-           dutch_auction ].
+           dutch_auction,
+           oracles].
 
 compile_contract(Name) ->
     CodeDir           = code:lib_dir(aesophia, test),
     FileName          = filename:join([CodeDir, "contracts", lists:concat([Name, ".aes"])]),
     {ok, ContractBin} = file:read_file(FileName),
     Options           = [],
-    %% Options           = [pp_ast, pp_icode, pp_bytecode],
+    %% Options           = [pp_ast, pp_icode, pp_assembler, pp_bytecode],
     Code = aeso_compiler:from_string(binary_to_list(ContractBin), Options),
     aeu_hex:hexstring_encode(Code).
 
@@ -110,7 +115,11 @@ successful_call(Contract, Type, Fun, Args, Env) ->
 
 successful_call(Contract, Type, Fun, Args, Env, Options) ->
     case make_call(Contract, Fun, Args, Env, Options) of
-        {ok, Result, Env1} -> {aeso_data:from_binary(Type, Result), Env1};
+        {ok, Result, Env1} ->
+            case aeso_data:from_binary(Type, Result) of
+                {ok, V} -> {V, Env1};
+                {error, _} = Err -> exit(Err)
+            end;
         {error, Err, S} ->
             io:format("S =\n  ~p\n", [S]),
             exit({error, Err})
@@ -185,6 +194,14 @@ complex_types(_Cfg) ->
     {<<"answer:">>, 21}     = successful_call_(101, {tuple, [string, word]}, remote_triangle, "(101,6)", Env),
     <<"string">>            = successful_call_(101, string, remote_string, "()", Env),
     {99, <<"luftballons">>} = successful_call_(101, {tuple, [word, string]}, remote_pair, "(99,\"luftballons\")", Env),
+    [1, 2, 3]               = successful_call_(101, {list, word}, filter_some, "[None, Some(1), Some(2), None, Some(3)]", Env),
+    [1, 2, 3]               = successful_call_(101, {list, word}, remote_filter_some, "[None, Some(1), Some(2), None, Some(3)]", Env),
+
+    {some, [1, 2, 3]}       = successful_call_(101, {option, {list, word}}, all_some, "[Some(1), Some(2), Some(3)]", Env),
+    none                    = successful_call_(101, {option, {list, word}}, all_some, "[Some(1), None, Some(3)]", Env),
+
+    {some, [1, 2, 3]}       = successful_call_(101, {option, {list, word}}, remote_all_some, "[Some(1), Some(2), Some(3)]", Env),
+    none                    = successful_call_(101, {option, {list, word}}, remote_all_some, "[Some(1), None, Some(3)]", Env),
 
     N       = 10,
     Squares = [ {I, I * I} || I <- lists:seq(1, N) ],
@@ -304,6 +321,39 @@ increment_account(Account, Value, Env) ->
                      end,
                      Env).
 
+
+oracles(_Cfg) ->
+    Code = compile_contract(oracles),
+    Env0 = initial_state(#{}),
+    Env1 = create_contract(101, Code, "()", Env0),
+    {101, Env2} = successful_call(101, word, registerOracle, "(101, 3, 4, 100, 10)", Env1),
+    {Q, Env3}   = successful_call(101, word, createQuery, "(101, \"why?\", 4, 10, 11)", Env2),
+    QArg        = integer_to_list(Q),
+    OandQArg    = "(101, "++ QArg ++")",
+    none        = successful_call_(101, {option, word}, getAnswer, OandQArg, Env3),
+    {{}, Env4}  = successful_call(101, {tuple, []}, respond, "(101," ++ QArg ++ ",111,42)", Env3),
+    {some, 42}  = successful_call_(101, {option, word}, getAnswer, OandQArg, Env4),
+    <<"why?">>  = successful_call_(101, string, getQuestion, OandQArg, Env4),
+    100         = successful_call_(101, word, queryFee, "101", Env4),
+    {{}, Env5}  = successful_call(101, {tuple, []}, extendOracle, "(101, 1111, 10, 100)", Env4),
+    #{oracles :=
+          #{101 := #{
+             nonce := 1,
+             query_spec := string,
+             response_spec := word,
+             sign := 3,
+             ttl := 100}},
+      oracle_queries :=
+          #{Q := #{ oracle := 101,
+                    query := <<"why?">>,
+                    q_ttl := 10,
+                    r_ttl := 11,
+                    answer := {some, 42} }}} = Env5,
+    ok.
+
+
+
+
 %% -- Chain API implementation -----------------------------------------------
 
 initial_state(Contracts) ->
@@ -337,8 +387,6 @@ set_store(Data, State = #{ running := Contract, store := Store }) ->
     State#{ store => Store#{ Contract => Data } }.
 
 call_contract(<<Contract:256>>, _Gas, Value, CallData, _, S = #{running := Caller}) ->
-    io:format("Calling contract ~p with args ~p\n",
-              [Contract, aeso_test_utils:dump_words(CallData)]),
     case maps:is_key(Contract, S) of
         true ->
             #{environment := Env0} = S,
@@ -346,7 +394,6 @@ call_contract(<<Contract:256>>, _Gas, Value, CallData, _, S = #{running := Calle
             Res = execute_call(Contract, CallData, S, Env),
             case Res of
                 {ok, Ret, #{ accounts := Accounts }} ->
-                    io:format("  result = ~p\n", [aeso_test_utils:dump_words(Ret)]),
                     {ok, aevm_chain_api:call_result(Ret, 0), S#{ accounts := Accounts }};
                 {error, out_of_gas, _} ->
                     io:format("  result = out_of_gas\n"),
@@ -355,5 +402,89 @@ call_contract(<<Contract:256>>, _Gas, Value, CallData, _, S = #{running := Calle
         false ->
             io:format("  oops, no such contract!\n"),
             {error, {no_such_contract, Contract}}
+    end.
+
+oracle_register(PubKey = <<Account:256>>, <<Sign:256>>, QueryFee, TTL, QuerySpec, ResponseSpec, State) ->
+    io:format("oracle_register(~p, ~p, ~p, ~p, ~p, ~p)\n", [Account, Sign, QueryFee, TTL, QuerySpec, ResponseSpec]),
+    Oracles = maps:get(oracles, State, #{}),
+    State1 = State#{ oracles => Oracles#{ Account =>
+                        #{sign          => Sign,
+                          nonce         => 1,
+                          query_fee     => QueryFee,
+                          query_spec    => QuerySpec,
+                          response_spec => ResponseSpec,
+                          ttl           => TTL} } },
+    {ok, PubKey, State1}.
+
+oracle_query(<<Oracle:256>>, Q, Value, QTTL, RTTL, State) ->
+    io:format("oracle_query(~p, ~p, ~p, ~p, ~p)\n", [Oracle, Q, Value, QTTL, RTTL]),
+    QueryKey = <<QueryId:256>> = crypto:hash(sha256, term_to_binary(make_ref())),
+    Queries = maps:get(oracle_queries, State, #{}),
+    State1  = State#{ oracle_queries =>
+                Queries#{ QueryId =>
+                    #{oracle => Oracle,
+                      query  => Q,
+                      q_ttl  => QTTL,
+                      r_ttl  => RTTL} } },
+    {ok, QueryKey, State1}.
+
+oracle_respond(<<_Oracle:256>>, <<Query:256>>, Sign, R, State) ->
+    io:format("oracle_respond(~p, ~p, ~p)\n", [Query, Sign, R]),
+    case maps:get(oracle_queries, State, #{}) of
+        #{Query := Q} = Queries ->
+            State1 = State#{ oracle_queries := Queries#{ Query := Q#{ answer => {some, R} } } },
+            {ok, State1};
+        _ -> {error, {no_such_query, Query}}
+    end.
+
+oracle_extend(<<Oracle:256>>,_Sign,_Fee, TTL, State) ->
+    io:format("oracle_extend(~p, ~p, ~p, ~p)\n", [Oracle,_Sign,_Fee, TTL]),
+    case maps:get(oracles, State, #{}) of
+        #{Oracle := O} = Oracles ->
+            State1 = State#{ oracles := Oracles#{ Oracle := O#{ ttl => TTL } } },
+            {ok, State1};
+        _ -> foo= Oracle, {error, {no_such_oracle, Oracle}}
+    end.
+
+oracle_get_answer(<<_Oracle:256>>, <<Query:256>>, State) ->
+    case maps:get(oracle_queries, State, #{}) of
+        #{Query := Q} ->
+            Answer = maps:get(answer, Q, none),
+            io:format("oracle_get_answer() -> ~p\n", [Answer]),
+            {ok, Answer};
+        _ -> {ok, none}
+    end.
+
+oracle_get_question(<<_Oracle:256>>, <<Query:256>>, State) ->
+    case maps:get(oracle_queries, State, #{}) of
+        #{Query := Q} ->
+            Question = maps:get(query, Q, none),
+            io:format("oracle_get_question() -> ~p\n", [Question]),
+            {ok, Question};
+        _             -> {ok, none}
+    end.
+
+oracle_query_fee(<<Oracle:256>>, State) ->
+    case maps:get(oracles, State, []) of
+        #{ Oracle := #{query_fee := Fee} } -> {ok, Fee};
+        _ -> {error, {no_such_oracle, Oracle}}
+    end.
+
+oracle_query_spec(<<Oracle:256>>, State) ->
+    case maps:get(oracles, State, []) of
+        #{ Oracle := #{query_spec := Spec} } -> {ok, Spec};
+        _ -> {error, {no_such_oracle, Oracle}}
+    end.
+
+oracle_response_spec(<<Oracle:256>>, State) ->
+    case maps:get(oracles, State, #{}) of
+        #{ Oracle := #{response_spec := Spec} } -> {ok, Spec};
+        _ -> {error, {no_such_oracle, Oracle}}
+    end.
+
+oracle_query_oracle(<<Query:256>>, State) ->
+    case maps:get(oracle_queries, State, #{}) of
+        #{ Query := #{oracle := Oracle} } -> {ok, <<Oracle:256>>};
+        _ -> {error, {no_such_oracle_query, Query}}
     end.
 
