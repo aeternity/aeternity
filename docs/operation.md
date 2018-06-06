@@ -48,8 +48,7 @@ less /tmp/node/log/epoch_mining.log
 
 If the node is mining, you shall read log entries like the following:
 ```
-... Creating block candidate
-... Created block candidate and nonce ...
+... New candidate generated
 ... Starting mining
 ... Starting mining
 ```
