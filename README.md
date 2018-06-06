@@ -18,20 +18,9 @@ Please see the latest [release notes][release-notes] if you want to run the soft
 What's on board?
 ===
 
-
-We keep our protocol, APIs and research spec in seprarate [protocol](https://github.com/aeternity/protocol) repository
-
-Restful APIs:
-[Usage](https://github.com/aeternity/protocol/blob/master/epoch/api/README.md#user-api---intended-usage)
-* Accounts
-* Oracles
-* Naming System
-
-Websocket APIs: [Overview](https://github.com/aeternity/protocol/blob/master/epoch/api/README.md#overview)
-
-
-* [Chain events](https://github.com/aeternity/protocol/blob/master/epoch/api/README.md#list-of-ws-apis)
-* [Oracle updates](https://github.com/aeternity/protocol/blob/master/epoch/api/README.md#list-of-ws-apis)
+We keep our protocol, APIs and research spec in separate [protocol](https://github.com/aeternity/protocol) repository
+* [Overview of the APIs](https://github.com/aeternity/protocol/blob/master/epoch/api/README.md#overview)
+* [Intended usage of the user API](https://github.com/aeternity/protocol/blob/master/epoch/api/README.md#user-api---intended-usage)
 
 How to start?
 ---
