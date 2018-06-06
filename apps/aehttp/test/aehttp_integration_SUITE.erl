@@ -4060,6 +4060,7 @@ swagger_validation_schema(_Config) ->
                    recipient_pubkey => <<"">>,
                    amount => 0,
                    fee => <<"wrong_fee_data">>,
+                   ttl => 100,
                    payload => <<"">>}),
     {ok, 400, #{
             <<"reason">> := <<"validation_error">>,
@@ -4071,6 +4072,7 @@ swagger_validation_schema(_Config) ->
         }}} = http_request(Host, post, "spend-tx", #{
                    amount => 0,
                    fee => <<"fee">>,
+                   ttl => 100,
                    payload => <<"">>}),
     {ok, 400, #{
             <<"reason">> := <<"validation_error">>,
@@ -4083,6 +4085,7 @@ swagger_validation_schema(_Config) ->
                    recipient_pubkey => <<"">>,
                    amount => -1,
                    fee => <<"fee">>,
+                   ttl => 100,
                    payload => <<"">>}).
 
 swagger_validation_types(_Config) ->
