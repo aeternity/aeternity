@@ -2,8 +2,10 @@ CORE = rel/epoch/bin/epoch
 VER := $(shell cat VERSION)
 
 EUNIT_VM_ARGS = $(CURDIR)/config/eunit.vm.args
-CT_TEST_FLAGS ?=
 EUNIT_TEST_FLAGS ?=
+
+CT_TEST_FLAGS ?=
+ST_CT_FLAGS = --dir system_test --logdir system_test/logs
 
 ifdef SUITE
 CT_TEST_FLAGS += --suite=$(SUITE)_SUITE
@@ -181,10 +183,10 @@ docker-clean:
 smoke-test: system-test-deps docker smoke-test-run
 
 smoke-test-run:
-	@./rebar3 as system_test do ct --dir system_test --logdir system_test/logs --config system_test/cfg --suite=aest_sync_SUITE,aest_commands_SUITE
+	@./rebar3 as system_test do ct $(ST_CT_FLAGS) --suite=aest_sync_SUITE,aest_commands_SUITE
 
 system-test:
-	@./rebar3 as system_test do ct --dir system_test --logdir system_test/logs --config system_test/cfg $(CT_TEST_FLAGS)
+	@./rebar3 as system_test do ct $(ST_CT_FLAGS) $(CT_TEST_FLAGS)
 
 system-test-deps:
 #	docker pull aeternity/epoch:latest
