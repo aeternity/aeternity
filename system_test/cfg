@@ -1,2 +1,0 @@
-{db_backup_tar, "db/mnesia_ae-uat-epoch_backup.tar"}.
-{db_backup_content, "mnesia_ae-uat-epoch_backup"}.
