@@ -2619,7 +2619,7 @@
     },
     "SpendTx" : {
       "type" : "object",
-      "required" : [ "amount", "fee", "payload", "recipient_pubkey" ],
+      "required" : [ "amount", "fee", "payload", "recipient_pubkey", "ttl" ],
       "properties" : {
         "recipient_pubkey" : {
           "$ref" : "#/definitions/EncodedHash"
