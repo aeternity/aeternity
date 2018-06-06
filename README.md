@@ -19,7 +19,7 @@ What's on board?
 ===
 
 
-We keep our protocol, APIs and research spec in seprarate [protocol](https://github.com/aeternity/protocol) repository
+We keep our protocol, APIs and research spec in separate [protocol](https://github.com/aeternity/protocol) repository
 
 Restful APIs:
 [Usage](https://github.com/aeternity/protocol/blob/master/epoch/api/README.md#user-api---intended-usage)
