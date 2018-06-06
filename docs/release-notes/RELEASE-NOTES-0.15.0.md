@@ -1,12 +1,12 @@
 # About this release
 
-[This release][this-release] is focused on TODOFILLMEIN.
+[This][this-release] is a maintenance release.
 It:
 * Enables retrieving via user API the contract call object for an on-chain transaction.
 * Changes the way the state root hash is calculated. This impacts consensus.
 * Adds time-to-live (TTL) to all transaction, a transaction can not be included in a block once the TTL has expired. This impacts consensus.
-* TODO Improves the stability of the testnet.
-* Provides an additional endpoint `/api`  that returns the JSON formatted HTTP api description
+* Provides an additional endpoint `/api`  that returns the JSON formatted HTTP api description.
+* Improves the stability of the testnet.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.15.0
 
