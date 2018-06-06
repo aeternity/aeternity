@@ -1,12 +1,12 @@
 # About this release
 
-[This release][this-release] is focused on TODOFILLMEIN.
+[This][this-release] is a maintenance release.
 It:
 * Enables retrieving via user API the contract call object for an on-chain transaction.
 * Changes the way the state root hash is calculated. This impacts consensus.
 * Adds time-to-live (TTL) to all transaction, a transaction can not be included in a block once the TTL has expired. This impacts consensus.
-* TODO Improves the stability of the testnet.
-* Provides an additional endpoint `/api`  that returns the JSON formatted HTTP api description
+* Provides an additional endpoint `/api`  that returns the JSON formatted HTTP api description.
+* Improves the stability of the testnet.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.15.0
 
@@ -37,8 +37,8 @@ For specifying configuration using the Docker image, please refer to [its docume
 
 The node user API is documented:
 * HTTP API endpoints are specified [online in swagger.yaml][swagger-yaml];
-* A JSON version of same specification is located in the node at path `lib/aehttp-0.1.0/priv/swagger.json`;
-* The JSON version can be obtained from a running node using the endpoint `/api`.
+  * A JSON version of the same specification is located in the node at path `lib/aehttp-0.1.0/priv/swagger.json`.
+  * The JSON version can be obtained from a running node using the endpoint `/api`.
   * An interactive visualization of the same specification is available [online][swagger-ui].
 * WebSocket API endpoints are [specified online][api-doc];
 * The intended usage of the user API (HTTP and WebSocket) is [documented online][api-doc].
