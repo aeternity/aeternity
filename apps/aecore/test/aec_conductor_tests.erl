@@ -310,15 +310,18 @@ test_block_publishing() ->
     [_B0, B1, B2, B3, B4, B5] = Chain = aec_test_utils:gen_blocks_only_chain(6),
     [_H0, H1, H2, H3, H4, H5] = [block_hash(B) || B <- Chain],
 
+    aec_events:subscribe(block_to_publish),
     aec_events:subscribe(top_changed),
     aec_events:subscribe(block_created),
 
     %% Seed the server with the first part of the chain
     ok = ?TEST_MODULE:post_block(B1),
     wait_for_top_block_hash(H1),
+    expect_publish_event_hashes([H1]),
     expect_top_event_hashes([H1]),
     ok = ?TEST_MODULE:post_block(B2),
     wait_for_top_block_hash(H2),
+    expect_publish_event_hashes([H2]),
     expect_top_event_hashes([H2]),
 
     %% Make sure there are no other messages waiting for us
@@ -326,11 +329,13 @@ test_block_publishing() ->
 
     %% Start mining and wait for two blocks.
     aec_conductor:start_mining(),
-    wait_for_block_created(),
-    wait_for_block_created(),
+    MinedH1 = block_hash(wait_for_block_created()),
+    MinedH2 = block_hash(wait_for_block_created()),
     aec_conductor:stop_mining(),
+    expect_publish_event_hashes([MinedH1, MinedH2]),
+    expect_top_event_hashes([MinedH1, MinedH2]),
 
-    %% We should not have a new top event since we got the block_created events
+    %% We should not have other events
     ?assertEqual([], flush_gproc()),
 
     %% Post the rest of the chain, which will take over eventually
@@ -338,9 +343,9 @@ test_block_publishing() ->
     wait_for_top_block_hash(H5),
 
     %% The first block cannot have taken over, so it should have no event
-    %% We should have top_changed events for at least the last block.
-    %% No top events should have been given for anything else than the headers
-    ok = expect_top_event_hashes([H3, H4, H5], [H3, H4]),
+    %% We should have block_to_publish and top_changed events for at least the last block.
+    expect_publish_event_hashes([H3, H4, H5], [H3, H4]),
+    expect_top_event_hashes([H3, H4, H5], [H3, H4]),
 
     %% And no other events should have been emitted.
     ?assertEqual([], flush_gproc()),
@@ -432,6 +437,28 @@ wait_for_stopped() ->
 wait_for_running() ->
     aec_test_utils:wait_for_it(fun ?TEST_MODULE:get_mining_state/0, running).
 
+expect_publish_event_hashes(Expected) ->
+    expect_publish_event_hashes(Expected, []).
+
+expect_publish_event_hashes([],_AllowMissing) ->
+    ok;
+expect_publish_event_hashes(Expected, AllowMissing) ->
+    receive
+        {gproc_ps_event, block_to_publish, #{info := Block}} ->
+            Hash = block_hash(Block),
+            NewExpected = Expected -- [Hash],
+            case lists:member(Hash, Expected) of
+                true  -> expect_publish_event_hashes(NewExpected, AllowMissing);
+                false -> error({unexpected, Hash})
+            end
+    after 1000 ->
+        case Expected -- AllowMissing of
+            [] -> ok;
+            Other -> error({missing, Other})
+        end
+    end.
+
+
 expect_top_event_hashes(Expected) ->
     expect_top_event_hashes(Expected, []).
 
@@ -458,8 +485,7 @@ wait_for_top_block_hash(Hash) ->
       Hash).
 
 wait_for_block_created() ->
-    _ = wait_for_gproc(block_created, 30000),
-    ok.
+    wait_for_gproc(block_created, 30000).
 
 wait_for_start_mining(Hash) ->
     Info = wait_for_gproc(start_mining, 1000),
@@ -471,7 +497,7 @@ wait_for_start_mining(Hash) ->
 wait_for_gproc(Event, Timeout) ->
     receive
         {gproc_ps_event, Event, #{info := Info}} -> Info
-    after Timeout -> error({timeout, block_created})
+    after Timeout -> error({timeout, Event})
     end.
 
 flush_gproc() ->

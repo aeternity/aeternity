@@ -90,8 +90,7 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 init([]) ->
-    aec_events:subscribe(block_created),
-    aec_events:subscribe(top_changed),
+    aec_events:subscribe(block_to_publish),
     aec_events:subscribe(tx_created),
 
     Peers = parse_peers(aeu_env:user_map_or_env(<<"peers">>, aecore, peers, [])),
@@ -163,9 +162,8 @@ handle_info({gproc_ps_event, Event, #{info := Info}}, State) ->
     PeerIds = [ aec_peers:peer_id(P) || P <- aec_peers:get_random(all) ],
     NonSyncingPeerIds = [ P || P <- PeerIds, not peer_in_sync(State, P) ],
     case Event of
-        block_created -> enqueue(block, Info, NonSyncingPeerIds);
-        top_changed   ->
-            {ok, Block} = aec_chain:get_block(Info),
+        block_to_publish ->
+            Block = Info,
             enqueue(block, Block, NonSyncingPeerIds);
         tx_created    -> enqueue(tx, Info, NonSyncingPeerIds);
         tx_received   -> enqueue(tx, Info, NonSyncingPeerIds);

@@ -80,9 +80,12 @@ handle_info({gproc_ps_event, Event = top_changed, #{ info := BlockHash }}, State
 handle_info({gproc_ps_event, Event = block_created, #{ info := Block }}, State) ->
     notify_subscribers(Event, Block, State).
 
-notify_subscribers(Event, Block, State = #state{ subscribed = Subs }) ->
+notify_subscribers(top_changed = Event, Block, State = #state{ subscribed = Subs }) ->
     notify_chain_subscribers(Event, Block, Subs),
     notify_tx_subscribers(aec_blocks:txs(Block), Subs),
+    {noreply, State};
+notify_subscribers(block_created = Event, Block, State = #state{ subscribed = Subs }) ->
+    notify_chain_subscribers(Event, Block, Subs),
     {noreply, State}.
 
 terminate(_Reason, _State) ->
@@ -136,16 +139,15 @@ notify_tx_subscribers([SignedTx | Rest], Sub) ->
     end,
     notify_tx_subscribers(Rest, Sub).
 
-notify_chain_subscribers(Event, Block, #sub{ chain = Cs }) ->
+notify_chain_subscribers(block_created, Block, #sub{ chain = Cs }) ->
     BlockHeight = aec_blocks:height(Block),
     {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
-    case Event of
-        block_created ->
-            [ Ws ! {event, mined_block, {BlockHeight, BlockHash}}
-              || {{ws, Ws}, mined_block} <- Cs ];
-        top_changed -> %% New block from another node
-            ok
-    end,
+    [ Ws ! {event, mined_block, {BlockHeight, BlockHash}}
+        || {{ws, Ws}, mined_block} <- Cs ],
+    ok;
+notify_chain_subscribers(top_changed, Block, #sub{ chain = Cs }) ->
+    BlockHeight = aec_blocks:height(Block),
+    {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
     [ Ws ! {event, new_block, {BlockHeight, BlockHash}}
       || {{ws, Ws}, new_block} <- Cs ],
     ok.

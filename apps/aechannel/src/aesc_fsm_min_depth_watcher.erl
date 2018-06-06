@@ -28,14 +28,11 @@ watch(Watcher, Type, TxHash, MinDepth) ->
 init(#{} = Arg) ->
     lager:debug("started min_depth watcher for ~p", [maps:get(fsm, Arg)]),
     true = aec_events:subscribe(top_changed),
-    true = aec_events:subscribe(block_created),
-    lager:debug("subscribed to top_changed & block_created", []),
+    lager:debug("subscribed to top_changed", []),
     self() ! check_status,
     {ok, Arg}.
 
 handle_info({gproc_ps_event, top_changed, _}, St) ->
-    check_status(St);
-handle_info({gproc_ps_event, block_created, _}, St) ->
     check_status(St);
 handle_info(check_status, St) ->
     check_status(St);
