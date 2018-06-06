@@ -3061,6 +3061,7 @@ definitions:
     - gas
     - gas_price
     - fee
+    - ttl
     - call_data
   ContractCallData:
     type: object

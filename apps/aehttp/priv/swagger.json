@@ -3913,7 +3913,7 @@
     },
     "ContractCreateData" : {
       "type" : "object",
-      "required" : [ "amount", "call_data", "code", "deposit", "fee", "gas", "gas_price", "owner", "vm_version" ],
+      "required" : [ "amount", "call_data", "code", "deposit", "fee", "gas", "gas_price", "owner", "ttl", "vm_version" ],
       "properties" : {
         "owner" : {
           "type" : "string",
