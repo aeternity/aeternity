@@ -9,7 +9,6 @@
 -export([ apply_block_txs/5
         , apply_block_txs_strict/5
         , calculate_fee/1
-        , calculate_total_fee/1
         , create/1
         , create_with_state/4
         ]).
@@ -80,12 +79,12 @@ calculate_fee(SignedTxs) ->
             TotalFee + Fee
         end, 0, SignedTxs).
 
+%% -- Internal functions -----------------------------------------------------
 -spec calculate_total_fee(list(aetx_sign:signed_tx())) -> non_neg_integer().
 calculate_total_fee(SignedTxs) ->
     TxsFee = calculate_fee(SignedTxs),
     aec_governance:block_mine_reward() + TxsFee.
 
-%% -- Internal functions -----------------------------------------------------
 int_create(BlockHash, Block) ->
     case aec_chain:get_block_state(BlockHash) of
         {ok, Trees} ->
