@@ -330,7 +330,6 @@ ok_response(Fun) ->
 unsigned_tx_response(NewTxFun) when is_function(NewTxFun, 1) ->
     RespFun =
         fun(State) ->
-            lager:debug("ZZZ ~p", [State]),
             {ok, Tx} = NewTxFun(State),
             #{tx => aec_base58c:encode(transaction,
                                        aetx:serialize_to_binary(Tx))

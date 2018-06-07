@@ -323,7 +323,6 @@ handle_request('PostSpend', #{'SpendTx' := Req}, _Context) ->
                                        {recipient_pubkey, recipient},
                                         amount, fee, payload]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 read_optional_params([{ttl, ttl, '$no_value'}]),
                  base58_decode([{sender, sender, account_pubkey},
                                 {recipient, recipient, account_pubkey}]),
                  get_nonce(sender),

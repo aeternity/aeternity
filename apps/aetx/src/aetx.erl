@@ -28,8 +28,6 @@
 -export([tx/1]).
 -endif.
 
--define(MAXINT, 16#FFFFffffFFFFffff).
-
 %% -- Types ------------------------------------------------------------------
 -record(aetx, { type :: tx_type()
               , cb   :: module()
@@ -85,10 +83,9 @@
 %% logic is different.
 
 -type tx_ttl() :: 0 | aec_blocks:height().
-%% A transaction TTL is either an absolute block height, or the
-%% transaction does not have a TTL. The latter is represented as 0
-%% internally to get a small serialization. `aetx:ttl/1' returns MAXINT
-%% (= 0xFFFFFFFFFFFFFFFF) in this case.
+%% A transaction TTL is either an absolute block height, or the transaction
+%% does not have a TTL. The latter is represented as 0 to get a small
+%% serialization. `aetx:ttl/1' returns `max_ttl' in this case.
 
 -export_type([ tx/0
              , tx_instance/0
@@ -178,13 +175,13 @@ accounts(#aetx{ cb = CB, tx = Tx }) ->
 signers(#aetx{ cb = CB, tx = Tx }, Trees) ->
     CB:signers(Tx, Trees).
 
-%% Internally we let 0 represent no TTL/infinity in order to keep the
-%% serialization as short as possible. Since there are no transactions in the
-%% genesis block there is little risk for confusion.
--spec ttl(Tx :: tx()) -> non_neg_integer().
+%% We let 0 represent no TTL/infinity in order to keep the serialization as
+%% short as possible. Since there are no transactions in the genesis block
+%% there is little risk for confusion.
+-spec ttl(Tx :: tx()) -> max_ttl | aec_blocks:height().
 ttl(#aetx{ cb = CB, tx = Tx }) ->
     case CB:ttl(Tx) of
-        0 -> ?MAXINT;
+        0 -> max_ttl;
         N -> N
     end.
 
