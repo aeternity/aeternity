@@ -51,13 +51,12 @@
 new(#{account    := AccountPubKey,
       nonce      := Nonce,
       commitment := Commitment,
-      fee        := Fee,
-      ttl        := TTL}) ->
+      fee        := Fee} = Args) ->
     Tx = #ns_preclaim_tx{account    = AccountPubKey,
                          nonce      = Nonce,
                          commitment = Commitment,
                          fee        = Fee,
-                         ttl        = TTL},
+                         ttl        = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -68,7 +67,7 @@ type() ->
 fee(#ns_preclaim_tx{fee = Fee}) ->
     Fee.
 
--spec ttl(tx()) -> aec_blocks:height().
+-spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#ns_preclaim_tx{ttl = TTL}) ->
     TTL.
 
@@ -80,7 +79,8 @@ nonce(#ns_preclaim_tx{nonce = Nonce}) ->
 origin(#ns_preclaim_tx{account = AccountPubKey}) ->
     AccountPubKey.
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()} | {error, term()}.
 check(#ns_preclaim_tx{account = AccountPubKey, nonce = Nonce,
                       fee = Fee, commitment = Commitment}, _Context, Trees, _Height, _ConsensusVersion) ->
     Checks =
@@ -92,7 +92,8 @@ check(#ns_preclaim_tx{account = AccountPubKey, nonce = Nonce,
         {error, Reason} -> {error, Reason}
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()}.
 process(#ns_preclaim_tx{account = AccountPubKey, fee = Fee,
                         nonce = Nonce} = PreclaimTx, _Context, Trees0, Height, _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees0),

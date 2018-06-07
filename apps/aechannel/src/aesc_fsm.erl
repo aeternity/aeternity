@@ -1144,8 +1144,9 @@ close_mutual_tx(Account, Nonce, LatestSignedTx,
     LatestTx = aetx_sign:tx(LatestSignedTx),
     IAmt = tx_initiator_amount(LatestTx),
     RAmt = tx_responder_amount(LatestTx),
-    {IAmt1, RAmt1} = pay_close_mutual_fee(maps:get(fee, Opts1), IAmt, RAmt),
-    #{ttl := TTL, fee := Fee} = Opts1,
+    Fee = maps:get(fee, Opts1),
+    TTL = maps:get(ttl, Opts1, 0), %% 0 means no TTL limit
+    {IAmt1, RAmt1} = pay_close_mutual_fee(Fee, IAmt, RAmt),
     aesc_close_mutual_tx:new(#{ channel_id       => ChanId
                               , initiator_amount => IAmt1
                               , responder_amount => RAmt1

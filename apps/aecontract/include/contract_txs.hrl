@@ -10,7 +10,7 @@
           gas        :: aect_contracts:amount(),
           gas_price  :: aect_contracts:amount(),
           call_data  :: binary(),
-          ttl        :: aec_blocks:height()
+          ttl        :: aetx:tx_ttl()
         }).
 
 -record(contract_call_tx, {
@@ -19,7 +19,7 @@
           contract   :: aec_keys:pubkey(),
           vm_version :: aect_contracts:vm_version(),
           fee        :: integer(),
-          ttl        :: aec_blocks:height(),
+          ttl        :: aetx:tx_ttl(),
           amount     :: aect_contracts:amount(),
           gas        :: aect_contracts:amount(),
           gas_price  :: aect_contracts:amount(),

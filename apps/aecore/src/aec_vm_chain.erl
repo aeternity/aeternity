@@ -312,7 +312,6 @@ call_contract(Target, Gas, Value, CallData, CallStack,
                                     contract   => Target,
                                     vm_version => VmVersion,
                                     fee        => 0,
-                                    ttl        => Height,
                                     amount     => Value,
                                     gas        => Gas,
                                     gas_price  => 0,
@@ -382,7 +381,6 @@ do_spend(Recipient, ContractKey, Amount, Trees, Height) ->
                                       , recipient => Recipient
                                       , amount => Amount
                                       , fee => 0
-                                      , ttl => Height
                                       , nonce => Nonce
                                       , payload => <<>>}),
     case aetx:check_from_contract(SpendTx, Trees, Height, ConsensusVersion) of

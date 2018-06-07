@@ -66,15 +66,14 @@ read_required_params(ParamNames) ->
 
 read_optional_params(Params) ->
     params_read_fun(Params,
-        fun({Name, DefaultValue}, Req, _) ->
-            Val =
-                %% swagger puts an 'undefined' value for missing not reqired
-                %% params
-                case maps:get(Name, Req, undefined) of
-                    undefined -> DefaultValue;
-                    V -> V
-                end,
-            {ok, Val}
+        fun({Name, Default}, Req, _) ->
+            %% swagger puts an 'undefined' value for missing not reqired
+            %% params
+            case maps:get(Name, Req, undefined) of
+                undefined when Default == '$no_value' -> no_value;
+                undefined                             -> {ok, Default};
+                V                                     -> {ok, V}
+            end
         end,
         "Not found").
 
@@ -105,20 +104,21 @@ params_read_fun(ParamNames, ReadFun, ErrMsg) ->
     fun(Req, State0) ->
         {Founds, NotFounds} =
             lists:foldl(
-                fun(Key0, {F, NotF}) -> 
-                    {ReqKey, Name, Props} = 
+                fun(Key0, {F, NotF}) ->
+                    {ReqKey, Name, Props} =
                         case Key0 of
-                            {K, N} -> {K, N, none};
+                            {K, N}    -> {K, N, none};
                             {K, N, P} -> {K, N, P};
-                            K -> {K, K, none}
+                            K         -> {K, K, none}
                         end,
                     CallParam =
                         case Props of
                             none -> ReqKey;
-                            _ -> {ReqKey, Props}
+                            _    -> {ReqKey, Props}
                         end,
                     case ReadFun(CallParam, Req, State0) of
-                        error -> {F, [ReqKey | NotF]};
+                        error     -> {F, [ReqKey | NotF]};
+                        no_value  -> {F, NotF};
                         {ok, Val} -> {maps:put(Name, Val, F), NotF}
                     end
                 end,
@@ -202,7 +202,7 @@ get_contract_call_object_from_tx(TxKey, CallKey) ->
 verify_oracle_existence(OracleKey) ->
     verify_key_in_state_tree(OracleKey, fun aec_trees:oracles/1,
                              fun aeo_state_tree:lookup_oracle/2,
-                             "Oracle address"). 
+                             "Oracle address").
 
 verify_oracle_query_existence(OracleKey, QueryKey) ->
     fun(Req, State) ->
@@ -330,6 +330,7 @@ ok_response(Fun) ->
 unsigned_tx_response(NewTxFun) when is_function(NewTxFun, 1) ->
     RespFun =
         fun(State) ->
+            lager:debug("ZZZ ~p", [State]),
             {ok, Tx} = NewTxFun(State),
             #{tx => aec_base58c:encode(transaction,
                                        aetx:serialize_to_binary(Tx))
@@ -393,7 +394,7 @@ encode_transaction(TxKey, TxEncodingKey, EncodedTxKey) ->
             case BlockHash of
                 mempool ->
                     aetx_sign:serialize_for_client_pending(TxEncoding, Tx);
-                _ when is_binary(BlockHash) -> 
+                _ when is_binary(BlockHash) ->
                     {ok, H} = aec_chain:get_header(BlockHash),
                     aetx_sign:serialize_for_client(TxEncoding, H, Tx)
             end,

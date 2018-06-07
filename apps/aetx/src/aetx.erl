@@ -28,6 +28,8 @@
 -export([tx/1]).
 -endif.
 
+-define(MAXINT, 16#FFFFffffFFFFffff).
+
 %% -- Types ------------------------------------------------------------------
 -record(aetx, { type :: tx_type()
               , cb   :: module()
@@ -77,14 +79,22 @@
                      | aesc_settle_tx:tx()
                      | aesc_offchain_tx:tx().
 
-%% @doc Where does this transaction come from? Is it a top level transaction or was it created by
-%%      smart contract. In the latter case the fee logic is different.
 -type tx_context() :: aetx_transaction | aetx_contract.
+%% Where does this transaction come from? Is it a top level transaction
+%% or was it created by a smart contract. In the latter case the fee
+%% logic is different.
+
+-type tx_ttl() :: 0 | aec_blocks:height().
+%% A transaction TTL is either an absolute block height, or the
+%% transaction does not have a TTL. The latter is represented as 0
+%% internally to get a small serialization. `aetx:ttl/1' returns MAXINT
+%% (= 0xFFFFFFFFFFFFFFFF) in this case.
 
 -export_type([ tx/0
              , tx_instance/0
              , tx_type/0
-             , tx_context/0 ]).
+             , tx_context/0
+             , tx_ttl/0 ]).
 
 %% -- Behaviour definition ---------------------------------------------------
 
@@ -151,7 +161,7 @@ tx_type(TxType) when is_atom(TxType) ->
 fee(#aetx{ cb = CB, tx = Tx }) ->
     CB:fee(Tx).
 
--spec nonce(Tx :: tx()) -> Nonce :: non_neg_integer() | undefined.
+-spec nonce(Tx :: tx()) -> Nonce :: non_neg_integer().
 nonce(#aetx{ cb = CB, tx = Tx }) ->
     CB:nonce(Tx).
 
@@ -168,11 +178,21 @@ accounts(#aetx{ cb = CB, tx = Tx }) ->
 signers(#aetx{ cb = CB, tx = Tx }, Trees) ->
     CB:signers(Tx, Trees).
 
+%% Internally we let 0 represent no TTL/infinity in order to keep the
+%% serialization as short as possible. Since there are no transactions in the
+%% genesis block there is little risk for confusion.
+-spec ttl(Tx :: tx()) -> non_neg_integer().
+ttl(#aetx{ cb = CB, tx = Tx }) ->
+    case CB:ttl(Tx) of
+        0 -> ?MAXINT;
+        N -> N
+    end.
+
 -spec check(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer(),
             ConsensusVersion :: non_neg_integer()) ->
     {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
-check(#aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion) ->
-    case {CB:fee(Tx) >= aec_governance:minimum_tx_fee(), CB:ttl(Tx) >= Height} of
+check(AeTx = #aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion) ->
+    case {CB:fee(Tx) >= aec_governance:minimum_tx_fee(), ttl(AeTx) >= Height} of
         {true, true} ->
             CB:check(Tx, aetx_transaction, Trees, Height, ConsensusVersion);
         {false, _} ->
@@ -202,8 +222,12 @@ process_from_contract(#aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion
 
 -spec serialize_for_client(Tx :: tx()) -> map().
 serialize_for_client(#aetx{ cb = CB, type = Type, tx = Tx }) ->
-    Res = CB:for_client(Tx),
-    Res#{ <<"type">> => tx_type(Type) }.
+    Res0 = CB:for_client(Tx),
+    Res1 = Res0#{ <<"type">> => tx_type(Type) },
+    case maps:get(<<"ttl">>, Res1, 0) of
+        0 -> maps:remove(<<"ttl">>, Res1);
+        _ -> Res1
+    end.
 
 -spec serialize_to_binary(Tx :: tx()) -> term().
 serialize_to_binary(#aetx{ cb = CB, type = Type, tx = Tx }) ->

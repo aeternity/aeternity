@@ -51,7 +51,6 @@ signatures_check_test_() ->
                       #{recipient => <<1:32/unit:8>>,
                         amount => 1,
                         fee => 1,
-                        ttl => 100,
                         nonce => 1,
                         payload => <<>>}),
             SignedTxs = [SignedSpend],
@@ -79,7 +78,6 @@ make_spend_tx(Sender, Recipient) ->
                                        recipient => Recipient,
                                        amount => 1,
                                        fee => 1,
-                                       ttl => 100,
                                        nonce => 1,
                                        payload => <<>>}),
     SpendTx.

@@ -94,8 +94,8 @@ register_oracle_negative(_Cfg) ->
     {error, too_low_fee} = aetx:check(RTx4, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test too low TTL
-    RTx5 = aeo_test_utils:register_tx(PubKey, #{ttl => 0}, S1),
-    {error, ttl_expired} = aetx:check(RTx5, Trees, CurrHeight, ?PROTOCOL_VERSION),
+    RTx5 = aeo_test_utils:register_tx(PubKey, #{ttl => 1}, S1),
+    {error, ttl_expired} = aetx:check(RTx5, Trees, 2, ?PROTOCOL_VERSION),
     ok.
 
 register_oracle(_Cfg) ->

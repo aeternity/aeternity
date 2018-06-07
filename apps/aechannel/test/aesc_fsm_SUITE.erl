@@ -294,7 +294,6 @@ create_channel_(Cfg, Debug) ->
              lock_period      => 10,
              channel_reserve  => 3,
              minimum_depth    => 3,
-             ttl              => 100,
              client           => self(),
              noise            => [{noise, Proto}],
              timeouts         => #{idle => 20000},

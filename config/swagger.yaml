@@ -2224,7 +2224,6 @@ definitions:
     - recipient_pubkey
     - amount
     - fee
-    - ttl
     - payload
   OracleRegisterTx:
     type: object
@@ -2255,7 +2254,6 @@ definitions:
     - query_fee
     - fee
     - oracle_ttl
-    - ttl
   OracleRegisterResponse:
     type: object
     properties:
@@ -2282,7 +2280,6 @@ definitions:
     required:
     - fee
     - oracle_ttl
-    - ttl
   OracleQueryTx:
     type: object
     properties:
@@ -2316,7 +2313,6 @@ definitions:
     - query_ttl
     - response_ttl
     - fee
-    - ttl
   OracleResponseTx:
     type: object
     properties:
@@ -2340,7 +2336,6 @@ definitions:
     - query_id
     - response
     - fee
-    - ttl
   OracleQueryResponse:
     type: object
     properties:
@@ -2399,7 +2394,6 @@ definitions:
     required:
     - commitment
     - fee
-    - ttl
   NameClaimTx:
     type: object
     properties:
@@ -2423,7 +2417,6 @@ definitions:
     - name
     - name_salt
     - fee
-    - ttl
   NameUpdateTx:
     type: object
     properties:
@@ -2453,7 +2446,6 @@ definitions:
     - name_ttl
     - client_ttl
     - pointers
-    - ttl
     - fee
   NameTransferTx:
     type: object
@@ -2477,7 +2469,6 @@ definitions:
     - name_hash
     - recipient_pubkey
     - fee
-    - ttl
   NameRevokeTx:
     type: object
     properties:
@@ -2497,7 +2488,6 @@ definitions:
     required:
     - name_hash
     - fee
-    - ttl
   NameCommitmentHash:
     type: object
     properties:
@@ -2555,7 +2545,6 @@ definitions:
     - push_amount
     - channel_reserve
     - lock_period
-    - ttl
     - fee
   ChannelDepositTx:
     type: object
@@ -2584,7 +2573,6 @@ definitions:
     - channel_id
     - from
     - amount
-    - ttl
     - fee
     - nonce
   ChannelWithdrawalTx:
@@ -2614,7 +2602,6 @@ definitions:
     - channel_id
     - to
     - amount
-    - ttl
     - fee
     - nonce
   ChannelCloseMutualTx:
@@ -2646,7 +2633,6 @@ definitions:
     - channel_id
     - initiator_amount
     - responder_amount
-    - ttl
     - fee
     - nonce
   ChannelCloseSoloTx:
@@ -2674,7 +2660,6 @@ definitions:
     - channel_id
     - from
     - payload
-    - ttl
     - fee
   ChannelSlashTx:
     type: object
@@ -2701,7 +2686,6 @@ definitions:
     - channel_id
     - from
     - payload
-    - ttl
     - fee
   ChannelSettleTx:
     type: object
@@ -2735,7 +2719,6 @@ definitions:
     - from
     - initiator_amount
     - participant_amount
-    - ttl
     - fee
     - nonce
   PubKey:
@@ -3061,7 +3044,6 @@ definitions:
     - gas
     - gas_price
     - fee
-    - ttl
     - call_data
   ContractCallData:
     type: object
@@ -3108,7 +3090,6 @@ definitions:
     - contract
     - vm_version
     - fee
-    - ttl
     - amount
     - gas
     - gas_price
@@ -3161,7 +3142,6 @@ definitions:
     - contract
     - vm_version
     - fee
-    - ttl
     - amount
     - gas
     - gas_price

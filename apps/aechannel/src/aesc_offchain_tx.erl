@@ -84,7 +84,7 @@ fee(#channel_offchain_tx{}) ->
     %% This tx should never hit the mempool or any block
     ?CHANNEL_OFFCHAIN_TX_FEE.
 
--spec ttl(tx()) -> aec_blocks:height().
+-spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#channel_offchain_tx{}) ->
     %% This tx should never hit the mempool or any block
     0.
@@ -97,7 +97,8 @@ nonce(#channel_offchain_tx{round = N}) ->
 origin(#channel_offchain_tx{initiator = Origin}) ->
     Origin.
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_offchain_tx{
          channel_id         = _ChannelId,
          initiator          = _InitiatorPubKey,
@@ -112,7 +113,8 @@ check(#channel_offchain_tx{
     %% TODO: implement checks relevant to off-chain
     {ok, Trees}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()}.
 process(#channel_offchain_tx{}, _Context, _Trees, _Height, _ConsensusVersion) ->
     error(off_chain_tx).
 

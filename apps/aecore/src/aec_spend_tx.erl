@@ -36,7 +36,7 @@
           recipient = <<>>          :: aec_keys:pubkey(),
           amount    = 0             :: non_neg_integer(),
           fee       = 0             :: non_neg_integer(),
-          ttl       = 0             :: aec_blocks:height(),
+          ttl       = 0             :: aetx:tx_ttl(),
           nonce     = 0             :: non_neg_integer(),
           payload   = <<>>          :: binary()}).
 
@@ -49,21 +49,18 @@ new(#{sender := SenderPubkey,
       recipient := RecipientPubkey,
       amount := Amount,
       fee := Fee,
-      ttl := TTL,
       nonce := Nonce,
-      payload := Payload}) when is_integer(Amount), Amount >= 0,
-                                is_integer(Nonce), Nonce >= 0,
-                                is_integer(Fee), Fee >= 0,
-                                is_integer(TTL), TTL >= 0,
-                                is_binary(SenderPubkey),
-                                is_binary(RecipientPubkey),
-                                is_binary(Payload)
-                                ->
+      payload := Payload} = Args) when is_integer(Amount), Amount >= 0,
+                                       is_integer(Nonce), Nonce >= 0,
+                                       is_integer(Fee), Fee >= 0,
+                                       is_binary(SenderPubkey),
+                                       is_binary(RecipientPubkey),
+                                       is_binary(Payload) ->
     Tx = #spend_tx{sender = SenderPubkey,
                    recipient = RecipientPubkey,
                    amount = Amount,
                    fee = Fee,
-                   ttl = TTL,
+                   ttl = maps:get(ttl, Args, 0),
                    nonce = Nonce,
                    payload = Payload},
     {ok, aetx:new(?MODULE, Tx)}.
@@ -76,7 +73,7 @@ type() ->
 fee(#spend_tx{fee = F}) ->
     F.
 
--spec ttl(tx()) -> aec_blocks:height().
+-spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#spend_tx{ttl = TTL}) ->
     TTL.
 

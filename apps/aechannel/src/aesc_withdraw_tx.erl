@@ -48,14 +48,13 @@
 new(#{channel_id := ChannelId,
       to         := ToPubKey,
       amount     := Amount,
-      ttl        := TTL,
       fee        := Fee,
-      nonce      := Nonce}) ->
+      nonce      := Nonce} = Args) ->
     Tx = #channel_withdraw_tx{
             channel_id = ChannelId,
             to         = ToPubKey,
             amount     = Amount,
-            ttl        = TTL,
+            ttl        = maps:get(ttl, Args, 0),
             fee        = Fee,
             nonce      = Nonce},
     {ok, aetx:new(?MODULE, Tx)}.
@@ -67,7 +66,7 @@ type() ->
 fee(#channel_withdraw_tx{fee = Fee}) ->
     Fee.
 
--spec ttl(tx()) -> aec_blocks:height().
+-spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#channel_withdraw_tx{ttl = TTL}) ->
     TTL.
 

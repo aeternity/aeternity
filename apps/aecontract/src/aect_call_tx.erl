@@ -52,12 +52,12 @@ new(#{caller     := CallerPubKey,
       contract   := Contract,
       vm_version := VmVersion,
       fee        := Fee,
-      ttl        := TTL,
       amount     := Amount,
       gas        := Gas,
       gas_price  := GasPrice,
       call_data  := CallData} = Args) ->
     CallStack = maps:get(call_stack, Args, []),
+    TTL = maps:get(ttl, Args, 0),
     Tx = #contract_call_tx{caller     = CallerPubKey,
                            nonce      = Nonce,
                            contract   = Contract,
@@ -79,7 +79,7 @@ type() ->
 fee(#contract_call_tx{fee = F}) ->
     F.
 
--spec ttl(tx()) -> aec_blocks:height().
+-spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#contract_call_tx{ttl = TTL}) ->
     TTL.
 
@@ -93,7 +93,8 @@ origin(#contract_call_tx{caller = CallerPubKey}) ->
 
 %% CallerAccount should exist, and have enough funds for the fee + gas cost
 %% Contract should exist and its vm_version should match the one in the call.
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()} | {error, term()}.
 check(#contract_call_tx{caller = CallerPubKey, nonce = Nonce,
                         fee = Fee, amount = Value,
                         gas = GasLimit, gas_price = GasPrice,
@@ -124,7 +125,8 @@ accounts(Tx) ->
 signers(Tx, _) ->
     {ok, [caller(Tx)]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()}.
 process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce = Nonce,
                           fee = Fee, gas =_Gas, gas_price = GasPrice, amount = Value
                          } = CallTx, Context, Trees1, Height, ConsensusVersion) ->
@@ -173,7 +175,6 @@ spend(CallerPubKey, CalleePubKey, Value, Nonce,_Context, Height, Trees,
                                 , recipient => CalleePubKey
                                 , amount => Value
                                 , fee => 0
-                                , ttl => Height
                                 , nonce => Nonce
                                 , payload => <<>>}),
     {ok, Trees1} =

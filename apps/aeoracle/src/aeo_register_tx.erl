@@ -66,7 +66,7 @@ oracle_ttl(#oracle_register_tx{oracle_ttl = TTL}) ->
 fee(#oracle_register_tx{fee = Fee}) ->
     Fee.
 
--spec ttl(tx()) -> aec_blocks:height().
+-spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#oracle_register_tx{ttl = TTL}) ->
     TTL.
 
@@ -77,8 +77,7 @@ new(#{account       := AccountPubKey,
       response_spec := ResponseSpec,
       query_fee     := QueryFee,
       oracle_ttl    := OracleTTL,
-      fee           := Fee,
-      ttl           := TTL}) ->
+      fee           := Fee} = Args) ->
     Tx = #oracle_register_tx{account       = AccountPubKey,
                              nonce         = Nonce,
                              query_spec    = QuerySpec,
@@ -86,7 +85,7 @@ new(#{account       := AccountPubKey,
                              query_fee     = QueryFee,
                              oracle_ttl    = OracleTTL,
                              fee           = Fee,
-                             ttl           = TTL},
+                             ttl           = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().

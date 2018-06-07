@@ -93,7 +93,7 @@ call_data(#contract_create_tx{call_data = X}) ->
 fee(#contract_create_tx{fee = Fee}) ->
     Fee.
 
--spec ttl(tx()) -> aec_blocks:height().
+-spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#contract_create_tx{ttl = TTL}) ->
     TTL.
 
@@ -107,8 +107,7 @@ new(#{owner      := OwnerPubKey,
       gas        := Gas,
       gas_price  := GasPrice,
       call_data  := CallData,
-      fee        := Fee,
-      ttl        := TTL}) ->
+      fee        := Fee} = Args) ->
     Tx = #contract_create_tx{owner      = OwnerPubKey,
                              nonce      = Nonce,
                              code       = Code,
@@ -119,7 +118,7 @@ new(#{owner      := OwnerPubKey,
                              gas_price  = GasPrice,
                              call_data  = CallData,
                              fee        = Fee,
-                             ttl        = TTL},
+                             ttl        = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -163,8 +162,8 @@ accounts(#contract_create_tx{owner = OwnerPubKey}) ->
 signers(#contract_create_tx{owner = OwnerPubKey}, _) ->
     {ok, [OwnerPubKey]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(),
-              aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()}.
 process(#contract_create_tx{owner      = OwnerPubKey,
                             nonce      = Nonce,
 			    vm_version = _VmVersion,

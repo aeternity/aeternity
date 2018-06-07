@@ -49,14 +49,13 @@
 new(#{channel_id        := ChannelId,
       initiator_amount  := InitiatorAmount,
       responder_amount  := ResponderAmount,
-      ttl               := TTL,
       fee               := Fee,
-      nonce             := Nonce}) ->
+      nonce             := Nonce} = Args) ->
     Tx = #channel_close_mutual_tx{
             channel_id        = ChannelId,
             initiator_amount  = InitiatorAmount,
             responder_amount  = ResponderAmount,
-            ttl               = TTL,
+            ttl               = maps:get(ttl, Args, 0),
             fee               = Fee,
             nonce             = Nonce},
     {ok, aetx:new(?MODULE, Tx)}.
@@ -68,7 +67,7 @@ type() ->
 fee(#channel_close_mutual_tx{fee = Fee}) ->
     Fee.
 
--spec ttl(tx()) -> aec_blocks:height().
+-spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#channel_close_mutual_tx{ttl = Ttl}) ->
     Ttl.
 

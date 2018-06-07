@@ -386,7 +386,7 @@ test_get_block_candidate() ->
             {ok, Tx} = aec_spend_tx:new(#{sender => MyAccount,
                                           recipient => MyAccount,
                                           amount => 0,
-                                          nonce => X, fee => 1, ttl => 100,
+                                          nonce => X, fee => 1,
                                           payload => <<"">>}),
             {ok, STx} = aec_keys:sign(Tx),
             ok = aec_tx_pool:push(STx, tx_received)

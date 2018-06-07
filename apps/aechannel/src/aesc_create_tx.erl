@@ -58,16 +58,15 @@ new(#{initiator          := InitiatorPubKey,
       responder_amount   := ResponderAmount,
       channel_reserve    := ChannelReserve,
       lock_period        := LockPeriod,
-      ttl                := TTL,
       fee                := Fee,
-      nonce              := Nonce}) ->
+      nonce              := Nonce} = Args) ->
     Tx = #channel_create_tx{initiator          = InitiatorPubKey,
                             responder          = ResponderPubKey,
                             initiator_amount   = InitiatorAmount,
                             responder_amount   = ResponderAmount,
                             channel_reserve    = ChannelReserve,
                             lock_period        = LockPeriod,
-                            ttl                = TTL,
+                            ttl                = maps:get(ttl, Args, 0),
                             fee                = Fee,
                             nonce              = Nonce},
     {ok, aetx:new(?MODULE, Tx)}.
@@ -79,7 +78,7 @@ type() ->
 fee(#channel_create_tx{fee = Fee}) ->
     Fee.
 
--spec ttl(tx()) -> aec_blocks:height().
+-spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#channel_create_tx{ttl = TTL}) ->
     TTL.
 

@@ -2619,7 +2619,7 @@
     },
     "SpendTx" : {
       "type" : "object",
-      "required" : [ "amount", "fee", "payload", "recipient_pubkey", "ttl" ],
+      "required" : [ "amount", "fee", "payload", "recipient_pubkey" ],
       "properties" : {
         "recipient_pubkey" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -2660,7 +2660,7 @@
     },
     "OracleRegisterTx" : {
       "type" : "object",
-      "required" : [ "fee", "oracle_ttl", "query_fee", "query_format", "response_format", "ttl" ],
+      "required" : [ "fee", "oracle_ttl", "query_fee", "query_format", "response_format" ],
       "properties" : {
         "query_format" : {
           "type" : "string"
@@ -2722,7 +2722,7 @@
     },
     "OracleExtendTx" : {
       "type" : "object",
-      "required" : [ "fee", "oracle_ttl", "ttl" ],
+      "required" : [ "fee", "oracle_ttl" ],
       "properties" : {
         "fee" : {
           "type" : "integer",
@@ -2756,7 +2756,7 @@
     },
     "OracleQueryTx" : {
       "type" : "object",
-      "required" : [ "fee", "oracle_pubkey", "query", "query_fee", "query_ttl", "response_ttl", "ttl" ],
+      "required" : [ "fee", "oracle_pubkey", "query", "query_fee", "query_ttl", "response_ttl" ],
       "properties" : {
         "oracle_pubkey" : {
           "type" : "string"
@@ -2811,7 +2811,7 @@
     },
     "OracleResponseTx" : {
       "type" : "object",
-      "required" : [ "fee", "query_id", "response", "ttl" ],
+      "required" : [ "fee", "query_id", "response" ],
       "properties" : {
         "query_id" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -2922,7 +2922,7 @@
     },
     "NamePreclaimTx" : {
       "type" : "object",
-      "required" : [ "commitment", "fee", "ttl" ],
+      "required" : [ "commitment", "fee" ],
       "properties" : {
         "commitment" : {
           "type" : "string"
@@ -2953,7 +2953,7 @@
     },
     "NameClaimTx" : {
       "type" : "object",
-      "required" : [ "fee", "name", "name_salt", "ttl" ],
+      "required" : [ "fee", "name", "name_salt" ],
       "properties" : {
         "name" : {
           "type" : "string"
@@ -2989,7 +2989,7 @@
     },
     "NameUpdateTx" : {
       "type" : "object",
-      "required" : [ "client_ttl", "fee", "name_hash", "name_ttl", "pointers", "ttl" ],
+      "required" : [ "client_ttl", "fee", "name_hash", "name_ttl", "pointers" ],
       "properties" : {
         "name_hash" : {
           "type" : "string"
@@ -3034,7 +3034,7 @@
     },
     "NameTransferTx" : {
       "type" : "object",
-      "required" : [ "fee", "name_hash", "recipient_pubkey", "ttl" ],
+      "required" : [ "fee", "name_hash", "recipient_pubkey" ],
       "properties" : {
         "name_hash" : {
           "type" : "string"
@@ -3069,7 +3069,7 @@
     },
     "NameRevokeTx" : {
       "type" : "object",
-      "required" : [ "fee", "name_hash", "ttl" ],
+      "required" : [ "fee", "name_hash" ],
       "properties" : {
         "name_hash" : {
           "type" : "string"
@@ -3122,7 +3122,7 @@
     },
     "ChannelCreateTx" : {
       "type" : "object",
-      "required" : [ "channel_reserve", "fee", "initiator", "initiator_amount", "lock_period", "push_amount", "responder", "responder_amount", "ttl" ],
+      "required" : [ "channel_reserve", "fee", "initiator", "initiator_amount", "lock_period", "push_amount", "responder", "responder_amount" ],
       "properties" : {
         "initiator" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -3186,7 +3186,7 @@
     },
     "ChannelDepositTx" : {
       "type" : "object",
-      "required" : [ "amount", "channel_id", "fee", "from", "nonce", "ttl" ],
+      "required" : [ "amount", "channel_id", "fee", "from", "nonce" ],
       "properties" : {
         "channel_id" : {
           "type" : "string"
@@ -3226,7 +3226,7 @@
     },
     "ChannelWithdrawalTx" : {
       "type" : "object",
-      "required" : [ "amount", "channel_id", "fee", "nonce", "to", "ttl" ],
+      "required" : [ "amount", "channel_id", "fee", "nonce", "to" ],
       "properties" : {
         "channel_id" : {
           "type" : "string"
@@ -3266,7 +3266,7 @@
     },
     "ChannelCloseMutualTx" : {
       "type" : "object",
-      "required" : [ "channel_id", "fee", "initiator_amount", "nonce", "responder_amount", "ttl" ],
+      "required" : [ "channel_id", "fee", "initiator_amount", "nonce", "responder_amount" ],
       "properties" : {
         "channel_id" : {
           "type" : "string"
@@ -3308,7 +3308,7 @@
     },
     "ChannelCloseSoloTx" : {
       "type" : "object",
-      "required" : [ "channel_id", "fee", "from", "payload", "ttl" ],
+      "required" : [ "channel_id", "fee", "from", "payload" ],
       "properties" : {
         "channel_id" : {
           "type" : "string"
@@ -3346,7 +3346,7 @@
     },
     "ChannelSlashTx" : {
       "type" : "object",
-      "required" : [ "channel_id", "fee", "from", "payload", "ttl" ],
+      "required" : [ "channel_id", "fee", "from", "payload" ],
       "properties" : {
         "channel_id" : {
           "type" : "string"
@@ -3384,7 +3384,7 @@
     },
     "ChannelSettleTx" : {
       "type" : "object",
-      "required" : [ "channel_id", "fee", "from", "initiator_amount", "nonce", "ttl" ],
+      "required" : [ "channel_id", "fee", "from", "initiator_amount", "nonce" ],
       "properties" : {
         "channel_id" : {
           "type" : "string"
@@ -3913,7 +3913,7 @@
     },
     "ContractCreateData" : {
       "type" : "object",
-      "required" : [ "amount", "call_data", "code", "deposit", "fee", "gas", "gas_price", "owner", "ttl", "vm_version" ],
+      "required" : [ "amount", "call_data", "code", "deposit", "fee", "gas", "gas_price", "owner", "vm_version" ],
       "properties" : {
         "owner" : {
           "type" : "string",
@@ -3984,7 +3984,7 @@
     },
     "ContractCallData" : {
       "type" : "object",
-      "required" : [ "amount", "call_data", "caller", "contract", "fee", "gas", "gas_price", "ttl", "vm_version" ],
+      "required" : [ "amount", "call_data", "caller", "contract", "fee", "gas", "gas_price", "vm_version" ],
       "properties" : {
         "caller" : {
           "type" : "string",
@@ -4049,7 +4049,7 @@
     },
     "ContractCallCompute" : {
       "type" : "object",
-      "required" : [ "amount", "arguments", "caller", "contract", "fee", "function", "gas", "gas_price", "ttl", "vm_version" ],
+      "required" : [ "amount", "arguments", "caller", "contract", "fee", "function", "gas", "gas_price", "vm_version" ],
       "properties" : {
         "caller" : {
           "type" : "string",

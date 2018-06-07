@@ -76,8 +76,7 @@ new(#{sender        := SenderPubKey,
       query_fee     := QueryFee,
       query_ttl     := QueryTTL,
       response_ttl  := ResponseTTL,
-      fee           := Fee,
-      ttl           := TTL}) ->
+      fee           := Fee} = Args) ->
     Tx = #oracle_query_tx{sender        = SenderPubKey,
                           nonce         = Nonce,
                           oracle        = Oracle,
@@ -86,7 +85,7 @@ new(#{sender        := SenderPubKey,
                           query_ttl     = QueryTTL,
                           response_ttl  = ResponseTTL,
                           fee           = Fee,
-                          ttl           = TTL},
+                          ttl           = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -97,7 +96,7 @@ type() ->
 fee(#oracle_query_tx{fee = F}) ->
     F.
 
--spec ttl(tx()) -> aec_blocks:height().
+-spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#oracle_query_tx{ttl = TTL}) ->
     TTL.
 
