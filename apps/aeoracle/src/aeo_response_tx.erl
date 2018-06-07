@@ -103,7 +103,7 @@ check(#oracle_response_tx{oracle = OraclePubKey, nonce = Nonce,
                  fun() -> check_query(I, OraclePubKey) end |
                  case Context of
                      aetx_contract -> []; %% TODO: Handle fees from contracts right.
-                     _ ->
+                     aetx_transaction ->
                          [fun() -> aetx_utils:check_account(OraclePubKey, Trees,
                                                             Nonce, Fee - QueryFee) end,
                           fun() -> aeo_utils:check_ttl_fee(Height, ResponseTTL,

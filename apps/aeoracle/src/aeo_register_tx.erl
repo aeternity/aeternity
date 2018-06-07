@@ -112,7 +112,7 @@ check(#oracle_register_tx{account = AccountPubKey, nonce = Nonce,
          | case Context of
                %% Contract is paying tx fee as gas.
                aetx_contract -> [];
-               _ ->
+               aetx_transaction ->
                    [fun() -> aeo_utils:check_ttl_fee(Height, OTTL, Fee - ?ORACLE_REGISTER_TX_FEE) end]
            end],
 
