@@ -1280,66 +1280,6 @@ paths:
           description: Block or account not found
           schema:
             $ref: '#/definitions/Error'
-  /account/{account_pubkey}/txs:
-    get:
-      tags:
-        - external
-        - transactions
-      operationId: GetAccountTransactions
-      description: 'Get accounts''s transactions included in blocks in the longest chain'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: account_pubkey
-          description: 'Account pubkey to show transactions for'
-          required: true
-          type: string
-        - in: query
-          name: limit
-          description: 'Maximum transactions count to show'
-          required: false
-          type: integer
-          default: 20
-          maximum: 100
-          minimum: 1
-        - in: query
-          name: offset
-          description: 'Offset to start transaction list from'
-          required: false
-          type: integer
-          default: 0
-          minimum: 0
-        - in: query
-          name: tx_types
-          description: 'Transactions types to show. Comma separated'
-          required: false
-          type : string
-        - in: query
-          name: exclude_tx_types
-          description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
-          required: false
-          type : string
-        - in: query
-          name: tx_encoding
-          description: 'Transactions encoding'
-          type: string
-          enum: [message_pack, json]
-          default: message_pack
-        - in: query
-          name: pending
-          description: 'Include currently pending transactions'
-          type: boolean
-          default: true
-      responses:
-        '200':
-          description: successful operation
-          schema:
-            $ref: '#/definitions/TxObjects'
-        '400':
-          description: Invalid account hash
-          schema:
-            $ref: '#/definitions/Error'
 
 ## CAUTION: debug endpoints, implementation may be inefficient
   /balances:
