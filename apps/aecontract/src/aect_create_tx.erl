@@ -20,7 +20,6 @@
          origin/1,
          check/5,
          process/5,
-         accounts/1,
          signers/2,
          serialization_template/1,
          serialize/1,
@@ -154,10 +153,6 @@ check(#contract_create_tx{owner = OwnerPubKey,
         ok              -> {ok, Trees};
         {error, Reason} -> {error, Reason}
     end.
-
--spec accounts(tx()) -> [aec_keys:pubkey()].
-accounts(#contract_create_tx{owner = OwnerPubKey}) ->
-    [OwnerPubKey].
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#contract_create_tx{owner = OwnerPubKey}, _) ->

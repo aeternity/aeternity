@@ -19,7 +19,6 @@
          origin/1,
          check/5,
          process/5,
-         accounts/1,
          signers/2,
          serialization_template/1,
          serialize/1,
@@ -115,10 +114,6 @@ check(#oracle_response_tx{oracle = OraclePubKey, nonce = Nonce,
             end;
         none -> {error, no_matching_oracle_query}
     end.
-
--spec accounts(tx()) -> [aec_keys:pubkey()].
-accounts(#oracle_response_tx{oracle = OraclePubKey}) ->
-    [OraclePubKey].
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#oracle_response_tx{oracle = OraclePubKey}, _) ->

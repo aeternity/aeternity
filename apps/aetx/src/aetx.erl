@@ -105,9 +105,6 @@
 -callback origin(Tx :: tx_instance()) ->
     Origin :: aec_keys:pubkey() | undefined.
 
--callback accounts(Tx :: tx_instance()) ->
-    [aec_keys:pubkey()].
-
 -callback signers(Tx :: tx_instance(), Trees :: aec_trees:trees()) ->
     {ok, [aec_keys:pubkey()]} | {error, atom()}.
 

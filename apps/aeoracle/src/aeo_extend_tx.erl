@@ -19,7 +19,6 @@
          origin/1,
          check/5,
          process/5,
-         accounts/1,
          signers/2,
          serialize/1,
          serialization_template/1,
@@ -95,10 +94,6 @@ check(#oracle_extend_tx{oracle = OraclePK, nonce = Nonce,
         ok              -> {ok, Trees};
         {error, Reason} -> {error, Reason}
     end.
-
--spec accounts(tx()) -> [aec_keys:pubkey()].
-accounts(#oracle_extend_tx{oracle = OraclePK}) ->
-    [OraclePK].
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#oracle_extend_tx{oracle = OraclePK}, _) ->
