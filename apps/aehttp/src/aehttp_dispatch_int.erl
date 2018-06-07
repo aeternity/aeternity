@@ -23,7 +23,8 @@ handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
       <<"ttl">>              := TTL,
       <<"payload">>          := Payload} = SpendTxObj,
     case aehttp_int_tx_logic:spend(EncodedRecipientPubkey, Amount, Fee, TTL, Payload) of
-        {ok, _} -> {200, [], #{}};
+        {ok, STx} ->
+            {200, [], #{<<"tx_hash">> => aec_base58c:encode(tx_hash, aetx_sign:hash(STx))}};
         {error, invalid_key} ->
             {404, [], #{reason => <<"Invalid key">>}};
         {error, account_not_found} ->

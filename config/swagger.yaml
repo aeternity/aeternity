@@ -879,6 +879,7 @@ paths:
       responses:
         '200':
           description: successful operation
+          schema: '#/definitions/SpendTxResponse'
         '404':
           description: Spend transaction validation error
           schema:
@@ -2166,6 +2167,11 @@ definitions:
     - fee
     - ttl
     - payload
+  SpendTxResponse:
+    type: object
+    properties:
+      tx_hash:
+        $ref: '#/definitions/EncodedHash'
   OracleRegisterTx:
     type: object
     properties:
