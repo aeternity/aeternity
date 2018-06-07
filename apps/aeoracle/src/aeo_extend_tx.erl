@@ -51,7 +51,7 @@ oracle_ttl(#oracle_extend_tx{oracle_ttl = OTTL}) ->
 fee(#oracle_extend_tx{fee = Fee}) ->
     Fee.
 
--spec ttl(tx()) -> aec_blocks:height().
+-spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#oracle_extend_tx{ttl = TTL}) ->
     TTL.
 
@@ -59,13 +59,12 @@ ttl(#oracle_extend_tx{ttl = TTL}) ->
 new(#{oracle     := OraclePK,
       nonce      := Nonce,
       oracle_ttl := OracleTTL,
-      fee        := Fee,
-      ttl        := TTL}) ->
+      fee        := Fee} = Args) ->
     Tx = #oracle_extend_tx{oracle     = OraclePK,
                            nonce      = Nonce,
                            oracle_ttl = OracleTTL,
                            fee        = Fee,
-                           ttl        = TTL},
+                           ttl        = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().

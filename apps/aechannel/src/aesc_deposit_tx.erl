@@ -48,14 +48,13 @@
 new(#{channel_id  := ChannelId,
       from        := FromPubKey,
       amount      := Amount,
-      ttl         := TTL,
       fee         := Fee,
-      nonce       := Nonce}) ->
+      nonce       := Nonce} = Args) ->
     try Tx = #channel_deposit_tx{
                 channel_id  = ChannelId,
                 from        = FromPubKey,
                 amount      = Amount,
-                ttl         = TTL,
+                ttl         = maps:get(ttl, Args, 0),
                 fee         = Fee,
                 nonce       = Nonce},
          {ok, aetx:new(?MODULE, Tx)}
@@ -71,7 +70,7 @@ type() ->
 fee(#channel_deposit_tx{fee = Fee}) ->
     Fee.
 
--spec ttl(tx()) -> aec_blocks:height().
+-spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#channel_deposit_tx{ttl = TTL}) ->
     TTL.
 

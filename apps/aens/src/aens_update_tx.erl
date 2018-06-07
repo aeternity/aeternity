@@ -55,8 +55,7 @@ new(#{account    := AccountPubKey,
       name_ttl   := NameTTL,
       pointers   := Pointers,
       client_ttl := ClientTTL,
-      fee        := Fee,
-      ttl        := TTL}) ->
+      fee        := Fee} = Args) ->
     Tx = #ns_update_tx{account    = AccountPubKey,
                        nonce      = Nonce,
                        name_hash  = NameHash,
@@ -64,7 +63,7 @@ new(#{account    := AccountPubKey,
                        pointers   = Pointers,
                        client_ttl = ClientTTL,
                        fee        = Fee,
-                       ttl        = TTL},
+                       ttl        = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -75,7 +74,7 @@ type() ->
 fee(#ns_update_tx{fee = Fee}) ->
     Fee.
 
--spec ttl(tx()) -> aec_blocks:height().
+-spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#ns_update_tx{ttl = TTL}) ->
     TTL.
 

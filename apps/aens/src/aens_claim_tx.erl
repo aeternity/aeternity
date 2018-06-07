@@ -52,14 +52,13 @@ new(#{account   := AccountPubKey,
       nonce     := Nonce,
       name      := Name,
       name_salt := NameSalt,
-      fee       := Fee,
-      ttl       := TTL}) ->
+      fee       := Fee} = Args) ->
     Tx = #ns_claim_tx{account   = AccountPubKey,
                       nonce     = Nonce,
                       name      = Name,
                       name_salt = NameSalt,
                       fee       = Fee,
-                      ttl       = TTL},
+                      ttl       = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -70,7 +69,7 @@ type() ->
 fee(#ns_claim_tx{fee = Fee}) ->
     Fee.
 
--spec ttl(tx()) -> aec_blocks:height().
+-spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#ns_claim_tx{ttl = TTL}) ->
     TTL.
 
@@ -82,7 +81,8 @@ nonce(#ns_claim_tx{nonce = Nonce}) ->
 origin(#ns_claim_tx{account = AccountPubKey}) ->
     AccountPubKey.
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()} | {error, term()}.
 check(#ns_claim_tx{account = AccountPubKey, nonce = Nonce,
                    fee = Fee, name = Name, name_salt = NameSalt}, _Context, Trees, Height, _ConsensusVersion) ->
     case aens_utils:to_ascii(Name) of
@@ -105,7 +105,8 @@ check(#ns_claim_tx{account = AccountPubKey, nonce = Nonce,
             {error, Reason}
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()}.
 process(#ns_claim_tx{account = AccountPubKey, nonce = Nonce, fee = Fee,
                      name = PlainName, name_salt = NameSalt} = ClaimTx, _Context, Trees0, Height, _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees0),

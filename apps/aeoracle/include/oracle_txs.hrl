@@ -11,7 +11,7 @@
           query_fee                                   :: integer(),
           oracle_ttl                                  :: aeo_oracles:ttl(),
           fee                                         :: integer(),
-          ttl                                         :: aec_blocks:height()
+          ttl                                         :: aetx:tx_ttl()
           }).
 
 -record(oracle_extend_tx, {
@@ -19,7 +19,7 @@
           nonce      :: integer(),
           oracle_ttl :: aeo_oracles:relative_ttl(),
           fee        :: integer(),
-          ttl        :: aec_blocks:height()
+          ttl        :: aetx:tx_ttl()
           }).
 
 -record(oracle_query_tx, {
@@ -31,7 +31,7 @@
           query_ttl    :: aeo_oracles:ttl(),
           response_ttl :: aeo_oracles:relative_ttl(),
           fee          :: integer(),
-          ttl          :: aec_blocks:height()
+          ttl          :: aetx:tx_ttl()
           }).
 
 -record(oracle_response_tx, {
@@ -40,5 +40,5 @@
           query_id :: aeo_query:id(),
           response :: aeo_oracles:response(),
           fee      :: integer(),
-          ttl      :: aec_blocks:height()
+          ttl      :: aetx:tx_ttl()
           }).

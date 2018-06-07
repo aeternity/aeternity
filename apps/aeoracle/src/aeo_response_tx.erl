@@ -58,14 +58,13 @@ new(#{oracle   := Oracle,
       nonce    := Nonce,
       query_id := QId,
       response := Response,
-      fee      := Fee,
-      ttl      := TTL}) ->
+      fee      := Fee} = Args) ->
     Tx = #oracle_response_tx{oracle   = Oracle,
                              nonce    = Nonce,
                              query_id = QId,
                              response = Response,
                              fee      = Fee,
-                             ttl      = TTL},
+                             ttl      = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -76,7 +75,7 @@ type() ->
 fee(#oracle_response_tx{fee = F}) ->
     F.
 
--spec ttl(tx()) -> aec_blocks:height().
+-spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#oracle_response_tx{ttl = TTL}) ->
     TTL.
 

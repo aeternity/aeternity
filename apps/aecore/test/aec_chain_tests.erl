@@ -277,7 +277,6 @@ broken_chain_invalid_transaction() ->
     BogusSpendTx = aec_test_utils:signed_spend_tx(#{recipient => <<>>,
                                                     amount => 0,
                                                     fee => 1,
-                                                    ttl => 100,
                                                     nonce => 10,
                                                     payload => <<"">>}),
     BogusTxs = [BogusSpendTx | Txs],
@@ -899,7 +898,6 @@ make_spend_tx(Sender, SenderNonce, Recipient) ->
                                        recipient => Recipient,
                                        amount => 1,
                                        fee => 1,
-                                       ttl => 100,
                                        nonce => SenderNonce,
                                        payload => <<>>}),
     SpendTx.

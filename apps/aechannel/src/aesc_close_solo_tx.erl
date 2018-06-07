@@ -47,14 +47,13 @@
 new(#{channel_id := ChannelId,
       from       := FromPubKey,
       payload    := Payload,
-      ttl        := TTL,
       fee        := Fee,
-      nonce      := Nonce}) ->
+      nonce      := Nonce} = Args) ->
     Tx = #channel_close_solo_tx{
             channel_id = ChannelId,
             from       = FromPubKey,
             payload    = Payload,
-            ttl        = TTL,
+            ttl        = maps:get(ttl, Args, 0),
             fee        = Fee,
             nonce      = Nonce},
     {ok, aetx:new(?MODULE, Tx)}.
@@ -66,7 +65,7 @@ type() ->
 fee(#channel_close_solo_tx{fee = Fee}) ->
     Fee.
 
--spec ttl(tx()) -> aec_blocks:height().
+-spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#channel_close_solo_tx{ttl = TTL}) ->
     TTL.
 
@@ -84,7 +83,7 @@ check(#channel_close_solo_tx{channel_id = ChannelId,
                              from       = FromPubKey,
                              payload    = Payload,
                              fee        = Fee,
-                             nonce        = Nonce}, _Context, Trees, _Height, _ConsensusVersion) ->
+                             nonce      = Nonce}, _Context, Trees, _Height, _ConsensusVersion) ->
     Checks =
         [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee) end,
          fun() -> check_payload(ChannelId, FromPubKey, Payload, Trees) end],
@@ -107,7 +106,7 @@ process(#channel_close_solo_tx{channel_id = ChannelId,
 
     FromAccount0       = aec_accounts_trees:get(FromPubKey, AccountsTree0),
     {ok, FromAccount1} = aec_accounts:spend(FromAccount0, Fee, Nonce),
-    AccountsTree1           = aec_accounts_trees:enter(FromAccount1, AccountsTree0),
+    AccountsTree1      = aec_accounts_trees:enter(FromAccount1, AccountsTree0),
 
     {ok, _SignedTx, StateTx} = deserialize_from_binary(Payload),
     Channel0                 = aesc_state_tree:get(ChannelId, ChannelsTree0),
@@ -141,7 +140,7 @@ serialize(#channel_close_solo_tx{channel_id = ChannelId,
                                  nonce      = Nonce}) ->
     {version(),
      [ {channel_id, ChannelId}
-     , {from   , FromPubKey}
+     , {from      , FromPubKey}
      , {payload   , Payload}
      , {ttl       , TTL}
      , {fee       , Fee}
@@ -170,14 +169,14 @@ for_client(#channel_close_solo_tx{channel_id = ChannelId,
                                   ttl        = TTL,
                                   fee        = Fee,
                                   nonce      = Nonce}) ->
-    #{<<"data_schema">>=> <<"ChannelCloseSoloTxJSON">>, % swagger schema name
-      <<"vsn">>        => version(),
-      <<"channel_id">> => aec_base58c:encode(channel, ChannelId),
-      <<"from">>    => aec_base58c:encode(account_pubkey, FromPubKey),
-      <<"payload">>    => Payload,
-      <<"ttl">>        => TTL,
-      <<"fee">>        => Fee,
-      <<"nonce">>      => Nonce}.
+    #{<<"data_schema">> => <<"ChannelCloseSoloTxJSON">>, % swagger schema name
+      <<"vsn">>         => version(),
+      <<"channel_id">>  => aec_base58c:encode(channel, ChannelId),
+      <<"from">>        => aec_base58c:encode(account_pubkey, FromPubKey),
+      <<"payload">>     => Payload,
+      <<"ttl">>         => TTL,
+      <<"fee">>         => Fee,
+      <<"nonce">>       => Nonce}.
 
 serialization_template(?CHANNEL_CLOSE_SOLO_TX_VSN) ->
     [ {channel_id, binary}

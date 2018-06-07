@@ -20,8 +20,8 @@ handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
     #{<<"recipient_pubkey">> := EncodedRecipientPubkey,
       <<"amount">>           := Amount,
       <<"fee">>              := Fee,
-      <<"ttl">>              := TTL,
       <<"payload">>          := Payload} = SpendTxObj,
+    TTL = maps:get(<<"ttl">>, SpendTxObj, 0),
     case aehttp_int_tx_logic:spend(EncodedRecipientPubkey, Amount, Fee, TTL, Payload) of
         {ok, _} -> {200, [], #{}};
         {error, invalid_key} ->
@@ -37,8 +37,8 @@ handle_request('PostOracleRegisterTx', #{'OracleRegisterTx' := OracleRegisterTxO
       <<"response_format">> := ResponseFormat,
       <<"query_fee">>       := QueryFee,
       <<"oracle_ttl">>      := OracleTTL,
-      <<"fee">>             := Fee,
-      <<"ttl">>             := TTL} = OracleRegisterTxObj,
+      <<"fee">>             := Fee} = OracleRegisterTxObj,
+    TTL = maps:get(<<"ttl">>, OracleRegisterTxObj, 0),
     TTLType = binary_to_existing_atom(maps:get(<<"type">>, OracleTTL), utf8),
     TTLValue = maps:get(<<"value">>, OracleTTL),
     case aehttp_int_tx_logic:oracle_register(QueryFormat, ResponseFormat,
@@ -55,8 +55,8 @@ handle_request('PostOracleRegisterTx', #{'OracleRegisterTx' := OracleRegisterTxO
 
 handle_request('PostOracleExtendTx', #{'OracleExtendTx' := OracleExtendTxObj}, _Context) ->
     #{<<"oracle_ttl">> := OracleTTL,
-      <<"fee">>        := Fee,
-      <<"ttl">>        := TTL} = OracleExtendTxObj,
+      <<"fee">>        := Fee} = OracleExtendTxObj,
+    TTL = maps:get(<<"ttl">>, OracleExtendTxObj, 0),
     TTLType = delta,
     TTLValue = maps:get(<<"value">>, OracleTTL),
     case aehttp_int_tx_logic:oracle_extend(Fee, TTLType, TTLValue, TTL) of
@@ -78,8 +78,8 @@ handle_request('PostOracleQueryTx', #{'OracleQueryTx' := OracleQueryTxObj}, _Con
       <<"response_ttl">>  :=
           #{<<"type">>    := <<"delta">>,
             <<"value">>   := ResponseTTLValue},
-      <<"fee">>           := Fee,
-      <<"ttl">>           := TTL} = OracleQueryTxObj,
+      <<"fee">>           := Fee} = OracleQueryTxObj,
+    TTL = maps:get(<<"ttl">>, OracleQueryTxObj, 0),
     QueryTTLType = binary_to_existing_atom(maps:get(<<"type">>, QueryTTL), utf8),
     QueryTTLValue= maps:get(<<"value">>, QueryTTL),
     case aehttp_int_tx_logic:oracle_query(EncodedOraclePubkey, Query, QueryFee, QueryTTLType,
@@ -99,8 +99,8 @@ handle_request('PostOracleQueryTx', #{'OracleQueryTx' := OracleQueryTxObj}, _Con
 handle_request('PostOracleResponseTx', #{'OracleResponseTx' := OracleResponseTxObj}, _Context) ->
     #{<<"query_id">> := EncodedQueryId,
       <<"response">> := Response,
-      <<"fee">>      := Fee,
-      <<"ttl">>      := TTL} = OracleResponseTxObj,
+      <<"fee">>      := Fee} = OracleResponseTxObj,
+    TTL = maps:get(<<"ttl">>, OracleResponseTxObj, 0),
     case aec_base58c:safe_decode(oracle_query_id, EncodedQueryId) of
         {ok, DecodedQueryId} ->
             case aehttp_int_tx_logic:oracle_response(DecodedQueryId, Response,
@@ -157,9 +157,9 @@ handle_request('GetOracleQuestions', Req, _Context) ->
 
 handle_request('PostNamePreclaimTx', #{'NamePreclaimTx' := NamePreclaimTxObj}, _Context) ->
     #{<<"commitment">> := Commitment,
-      <<"fee">>        := Fee,
-      <<"ttl">>        := TTL} = NamePreclaimTxObj,
-    case aec_base58c:safe_decode(commitment, Commitment) of
+      <<"fee">>        := Fee} = NamePreclaimTxObj,
+    TTL = maps:get(<<"ttl">>, NamePreclaimTxObj, 0),
+     case aec_base58c:safe_decode(commitment, Commitment) of
         {ok, DecodedCommitment} ->
             case aehttp_int_tx_logic:name_preclaim(DecodedCommitment,
                                                    Fee, TTL) of
@@ -177,8 +177,8 @@ handle_request('PostNamePreclaimTx', #{'NamePreclaimTx' := NamePreclaimTxObj}, _
 handle_request('PostNameClaimTx', #{'NameClaimTx' := NameClaimTxObj}, _Context) ->
     #{<<"name">>      := Name,
       <<"name_salt">> := NameSalt,
-      <<"fee">>       := Fee,
-      <<"ttl">>       := TTL} = NameClaimTxObj,
+      <<"fee">>       := Fee} = NameClaimTxObj,
+    TTL = maps:get(<<"ttl">>, NameClaimTxObj, 0),
     case aehttp_int_tx_logic:name_claim(Name, NameSalt, Fee, TTL) of
         {ok, _Tx, NameHash} ->
             {200, [], #{name_hash => aec_base58c:encode(name, NameHash)}};
@@ -196,8 +196,8 @@ handle_request('PostNameUpdateTx', #{'NameUpdateTx' := NameUpdateTxObj}, _Contex
       <<"name_ttl">>   := NameTTL,
       <<"pointers">>   := Pointers,
       <<"client_ttl">> := ClientTTL,
-      <<"fee">>        := Fee,
-      <<"ttl">>        := TTL} = NameUpdateTxObj,
+      <<"fee">>        := Fee} = NameUpdateTxObj,
+    TTL = maps:get(<<"ttl">>, NameUpdateTxObj, 0),
     case aec_base58c:safe_decode(name, NameHash) of
         {ok, DecodedNameHash} ->
             case aehttp_int_tx_logic:name_update(DecodedNameHash, NameTTL,
@@ -216,8 +216,8 @@ handle_request('PostNameUpdateTx', #{'NameUpdateTx' := NameUpdateTxObj}, _Contex
 handle_request('PostNameTransferTx', #{'NameTransferTx' := NameTransferTxObj}, _Context) ->
     #{<<"name_hash">>        := NameHash,
       <<"recipient_pubkey">> := RecipientPubKey,
-      <<"fee">>              := Fee,
-      <<"ttl">>              := TTL} = NameTransferTxObj,
+      <<"fee">>              := Fee} = NameTransferTxObj,
+    TTL = maps:get(<<"ttl">>, NameTransferTxObj, 0),
     case {aec_base58c:safe_decode(name, NameHash),
           aec_base58c:safe_decode(account_pubkey, RecipientPubKey)} of
         {{ok, DecodedNameHash}, {ok, DecodedRecipientPubKey}} ->
@@ -239,8 +239,8 @@ handle_request('PostNameTransferTx', #{'NameTransferTx' := NameTransferTxObj}, _
 
 handle_request('PostNameRevokeTx', #{'NameRevokeTx' := NameRevokeTxObj}, _Context) ->
     #{<<"name_hash">> := NameHash,
-      <<"fee">>       := Fee,
-      <<"ttl">>       := TTL} = NameRevokeTxObj,
+      <<"fee">>       := Fee} = NameRevokeTxObj,
+    TTL = maps:get(<<"ttl">>, NameRevokeTxObj, 0),
     case aec_base58c:safe_decode(name, NameHash) of
         {ok, DecodedNameHash} ->
             case aehttp_int_tx_logic:name_revoke(DecodedNameHash, Fee, TTL) of

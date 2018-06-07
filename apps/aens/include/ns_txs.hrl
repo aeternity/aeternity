@@ -10,7 +10,7 @@
           nonce      :: integer(),
           commitment :: binary(),
           fee        :: integer(),
-          ttl        :: aec_blocks:height()
+          ttl        :: aetx:tx_ttl()
          }).
 
 -record(ns_claim_tx, {
@@ -19,7 +19,7 @@
           name      :: binary(),
           name_salt :: integer(),
           fee       :: integer(),
-          ttl       :: aec_blocks:height()
+          ttl       :: aetx:tx_ttl()
          }).
 
 -record(ns_update_tx, {
@@ -30,7 +30,7 @@
           pointers   :: [{binary(),binary()}],
           client_ttl :: integer(),
           fee        :: integer(),
-          ttl        :: aec_blocks:height()
+          ttl        :: aetx:tx_ttl()
          }).
 
 -record(ns_transfer_tx, {
@@ -39,7 +39,7 @@
           name_hash         :: binary(),
           recipient_account :: aec_keys:pubkey(),
           fee               :: integer(),
-          ttl               :: aec_blocks:height()
+          ttl               :: aetx:tx_ttl()
          }).
 
 -record(ns_revoke_tx, {
@@ -47,5 +47,5 @@
           nonce     :: integer(),
           name_hash :: binary(),
           fee       :: integer(),
-          ttl       :: aec_blocks:height()
+          ttl       :: aetx:tx_ttl()
          }).

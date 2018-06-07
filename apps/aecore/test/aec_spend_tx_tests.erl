@@ -87,7 +87,6 @@ process_test_() ->
                                                  recipient => ?RECIPIENT_PUBKEY,
                                                  amount => 50,
                                                  fee => 10,
-                                                 ttl => 100,
                                                  nonce => 11,
                                                  payload => <<"foo">>}),
               <<"foo">> = aec_spend_tx:payload(aetx:tx(SpendTx)),
@@ -112,7 +111,6 @@ process_test_() ->
                                                  recipient => ?SENDER_PUBKEY,
                                                  amount => 50,
                                                  fee => 10,
-                                                 ttl => 100,
                                                  nonce => 11,
                                                  payload => <<"foo">>}),
               {ok, StateTree0} = aetx:check(SpendTx, StateTree0, 20, ?PROTOCOL_VERSION),
@@ -130,7 +128,6 @@ spend_tx(Data) ->
                     recipient => ?RECIPIENT_PUBKEY,
                     amount => 0,
                     fee => 0,
-                    ttl => 100,
                     nonce => 0},
     aec_spend_tx:new(maps:merge(DefaultData, Data)).
 

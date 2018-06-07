@@ -252,7 +252,6 @@ a_signed_tx(Sender, Recipient, Nonce, Fee) ->
                                   recipient => acct(Recipient),
                                   amount => 1,
                                   nonce => Nonce, fee => Fee,
-                                  ttl => 100,
                                   payload => <<"">>}),
     {ok, STx} = sign(Sender, Tx),
     STx.

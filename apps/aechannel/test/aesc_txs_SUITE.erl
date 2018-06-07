@@ -952,8 +952,7 @@ settle_negative(Cfg) ->
     %% Test bad from account key
     BadPubKey = <<42:32/unit:8>>,
     TxSpec1 = aesc_test_utils:settle_tx_spec(ChannelId, BadPubKey,
-                                                   #{nonce => 2,
-                                                    ttl => ClosesAt + 1}, S),
+                                                   #{nonce => 2}, S),
     {ok, Tx1} = aesc_settle_tx:new(TxSpec1),
     {error, account_not_found} =
         aetx:check(Tx1, Trees, ClosesAt, ?PROTOCOL_VERSION),
@@ -963,7 +962,6 @@ settle_negative(Cfg) ->
                 ChannelId, PubKey1,
                 #{initiator_amount => 1,
                   responder_amount => ChannelAmount - 1,
-                  ttl    => ClosesAt + 1,
                   fee    => 2}, S),
     {ok, Tx2} = aesc_settle_tx:new(TxSpec2),
     {error, wrong_amt} =
@@ -971,14 +969,13 @@ settle_negative(Cfg) ->
 
     %% Test too high from account nonce
     TxSpec3 = aesc_test_utils:settle_tx_spec(ChannelId, PubKey1,
-                                                   #{nonce => 0, ttl => 1000}, S),
+                                                   #{nonce => 0}, S),
     {ok, Tx3} = aesc_settle_tx:new(TxSpec3),
     {error, account_nonce_too_high} =
         aetx:check(Tx3, Trees, ClosesAt, ?PROTOCOL_VERSION),
 
     %% Test too low TTL
-    TxSpec4 = aesc_test_utils:settle_tx_spec(ChannelId, PubKey1,
-                                                   #{ttl => ClosesAt - 1}, S),
+    TxSpec4 = aesc_test_utils:settle_tx_spec(ChannelId, PubKey1, #{ttl => ClosesAt - 1}, S),
     {ok, Tx4} = aesc_settle_tx:new(TxSpec4),
     {error, ttl_expired} =
         aetx:check(Tx4, Trees, ClosesAt, ?PROTOCOL_VERSION),
@@ -999,7 +996,6 @@ settle_negative(Cfg) ->
 
     TxSpec6 = aesc_test_utils:settle_tx_spec(ChannelId, PubKey1,
                                       #{initiator_amount => ChannelAmount,
-                                        ttl => ClosesAt + 2,
                                         responder_amount => 0}, S5),
     {ok, Tx6} = aesc_close_mutual_tx:new(TxSpec6),
     {error, channel_does_not_exist} =

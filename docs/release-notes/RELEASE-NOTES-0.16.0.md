@@ -2,6 +2,7 @@
 
 [This release][this-release] is focused on TODOFILLMEIN.
 It:
+* Makes the transaction TTL optional (giving no TTL means the transaction is valid "forever").
 * TODO Improves the stability of the testnet.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.16.0

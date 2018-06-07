@@ -166,7 +166,7 @@ create_tx_spec(InitiatorPubKey, ResponderPubKey, Spec0, State) ->
       responder_amount   => maps:get(responder_amount, Spec),
       channel_reserve    => maps:get(channel_reserve, Spec),
       lock_period        => maps:get(lock_period, Spec),
-      ttl                => maps:get(ttl, Spec),
+      ttl                => maps:get(ttl, Spec, 0),
       fee                => maps:get(fee, Spec),
       nonce              => maps:get(nonce, Spec)}.
 
@@ -175,7 +175,6 @@ create_tx_default_spec(InitiatorPubKey, State) ->
       responder_amount   => 50,
       channel_reserve    => 20,
       lock_period        => 100,
-      ttl                => 100,
       fee                => 3,
       nonce              => try next_nonce(InitiatorPubKey, State) catch _:_ -> 0 end}.
 
@@ -189,14 +188,13 @@ close_mutual_tx_spec(ChannelId, Spec0, State) ->
     #{channel_id        => ChannelId,
       initiator_amount  => maps:get(initiator_amount, Spec),
       responder_amount  => maps:get(responder_amount, Spec),
-      ttl               => maps:get(ttl, Spec),
+      ttl               => maps:get(ttl, Spec, 0),
       fee               => maps:get(fee, Spec),
       nonce             => maps:get(nonce, Spec)}.
 
 close_mutual_tx_default_spec(Initiator, State) ->
     #{initiator_amount => 10,
       responder_amount => 10,
-      ttl              => 100,
       fee              => 3,
       nonce            => try next_nonce(Initiator, State) catch _:_ -> 0 end}.
 
@@ -212,14 +210,13 @@ close_solo_tx_spec(ChannelId, FromPubKey, Payload, Spec0, State) ->
     #{channel_id  => ChannelId,
       from        => FromPubKey,
       payload     => Payload,
-      ttl         => maps:get(ttl, Spec),
+      ttl         => maps:get(ttl, Spec, 0),
       fee         => maps:get(fee, Spec),
       nonce       => maps:get(nonce, Spec)}.
 
 close_solo_tx_default_spec(FromPubKey, State) ->
-    #{ttl     => 100,
-      fee     => 3,
-      nonce   => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
+    #{ fee     => 3,
+       nonce   => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
 
 %%%===================================================================
 %%% Deposit tx
@@ -233,13 +230,12 @@ deposit_tx_spec(ChannelId, FromPubKey, Spec0, State) ->
     #{channel_id => ChannelId,
       from       => FromPubKey,
       amount     => maps:get(amount, Spec),
-      ttl        => maps:get(ttl, Spec),
+      ttl        => maps:get(ttl, Spec, 0),
       fee        => maps:get(fee, Spec),
       nonce      => maps:get(nonce, Spec)}.
 
 deposit_tx_default_spec(FromPubKey, State) ->
     #{amount => 10,
-      ttl    => 100,
       fee    => 3,
       nonce  => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
 
@@ -255,13 +251,12 @@ withdraw_tx_spec(ChannelId, ToPubKey, Spec0, State) ->
     #{channel_id => ChannelId,
       to         => ToPubKey,
       amount     => maps:get(amount, Spec),
-      ttl        => maps:get(ttl, Spec),
+      ttl        => maps:get(ttl, Spec, 0),
       fee        => maps:get(fee, Spec),
       nonce      => maps:get(nonce, Spec)}.
 
 withdraw_tx_spec(ToPubKey, State) ->
     #{amount => 10,
-      ttl    => 100,
       fee    => 3,
       nonce  => try next_nonce(ToPubKey, State) catch _:_ -> 0 end}.
 
@@ -277,14 +272,13 @@ slash_tx_spec(ChannelId, FromPubKey, Payload, Spec0, State) ->
     #{channel_id  => ChannelId,
       from        => FromPubKey,
       payload     => Payload,
-      ttl         => maps:get(ttl, Spec),
+      ttl         => maps:get(ttl, Spec, 0),
       fee         => maps:get(fee, Spec),
       nonce       => maps:get(nonce, Spec)}.
 
 slash_tx_default_spec(FromPubKey, State) ->
-    #{ttl     => 100,
-      fee     => 3,
-      nonce   => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
+    #{ fee     => 3,
+       nonce   => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
 
 %%%===================================================================
 %%% Settle tx
@@ -299,20 +293,15 @@ settle_tx_spec(ChannelId, FromPubKey, Spec0, State) ->
       from              => FromPubKey,
       initiator_amount  => maps:get(initiator_amount, Spec),
       responder_amount  => maps:get(responder_amount, Spec),
-      ttl               => maps:get(ttl, Spec),
+      ttl               => maps:get(ttl, Spec, 0),
       fee               => maps:get(fee, Spec),
       nonce             => maps:get(nonce, Spec)}.
 
 settle_tx_default_spec(FromPubKey, State) ->
     #{initiator_amount => 10,
       responder_amount => 10,
-      ttl              => 100,
       fee              => 3,
       nonce            => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
-
-
-state_tx(ChannelId, Initiator, Responder) ->
-    state_tx(ChannelId, Initiator, Responder, #{}).
 
 state_tx(ChannelId, Initiator, Responder, Spec0) ->
     Spec = maps:merge(state_tx_spec(), Spec0),

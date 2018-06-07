@@ -311,7 +311,7 @@ process_fsm(#{type := report,
             {info, _} when is_atom(Event) -> #{event => atom_to_binary(Event, utf8)};
             {on_chain_tx, Tx} ->
                 EncodedTx = aec_base58c:encode(transaction,
-                                               aetx_sign:serialize_to_binary(Tx)), 
+                                               aetx_sign:serialize_to_binary(Tx)),
                 #{tx => EncodedTx};
             {update, NewState} ->
                 Bin = aec_base58c:encode(transaction,
@@ -419,7 +419,7 @@ read_channel_options(Params) ->
          Read(<<"initiator_amount">>, initiator_amount, #{type => integer}),
          Read(<<"responder_amount">>, responder_amount, #{type => integer}),
          Read(<<"channel_reserve">>, channel_reserve, #{type => integer}),
-         Read(<<"ttl">>, ttl, #{type => integer}),
+         Read(<<"ttl">>, ttl, #{type => integer, mandatory => false}),
          Put(noise, [{noise, <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>}])
         ] ++ lists:map(ReadTimeout, aesc_fsm:timeouts() ++ [awaiting_open,
                                                             initialized])

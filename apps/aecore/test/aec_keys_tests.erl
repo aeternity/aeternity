@@ -31,7 +31,6 @@ all_test_() ->
                                                recipient => RecipientPubkey,
                                                amount => 10,
                                                fee => 2,
-                                               ttl => 100,
                                                nonce => 3,
                                                payload => <<"">>}),
                         {ok, SignedTx} = aec_keys:sign(Tx),
