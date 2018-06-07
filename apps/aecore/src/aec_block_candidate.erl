@@ -8,16 +8,27 @@
 
 -export([ apply_block_txs/5
         , apply_block_txs_strict/5
-        , calculate_fee/1
         , create/1
         , create_with_state/4
+        , update/3
         ]).
 
+-ifdef(TEST).
 -export([adjust_target/2]).
+-endif.
+
+-export_type([block_info/0]).
+
+-include("blocks.hrl").
+
+-opaque block_info() :: #{trees := aec_trees:trees(),
+                          tot_fee := non_neg_integer(),
+                          txs_tree := aec_txs_trees:txs_tree(),
+                          adj_chain := [aec_headers:header()]}.
 
 %% -- API functions ----------------------------------------------------------
 -spec create(aec_blocks:block() | aec_blocks:block_header_hash()) ->
-        {ok, aec_blocks:block(), term()} | {error, term()}.
+        {ok, aec_blocks:block(), block_info()} | {error, term()}.
 create(BlockHash) when is_binary(BlockHash) ->
     case aec_chain:get_block(BlockHash) of
         {ok, Block} ->
@@ -71,6 +82,31 @@ adjust_target(Block, AdjHeaders) ->
             {error, {wrong_headers_for_target_adjustment, DeltaHeight, length(AdjHeaders)}}
     end.
 
+-spec update(aec_blocks:block(), nonempty_list(aetx_sign:signed_tx()),
+             block_info()) ->
+                    {ok, aec_blocks:block(), block_info()} | {error, no_change}.
+update(Block, Txs, BlockInfo = #{ adj_chain := AdjChain }) ->
+    NTxs = length(aec_blocks:txs(Block)),
+    MaxTxs = aec_governance:max_txs_in_block(),
+    case NTxs < MaxTxs of
+        false ->
+            {error, block_is_full};
+        true  ->
+            SortedTxs = sort_txs(Txs),
+            case int_update(MaxTxs - NTxs, Block, SortedTxs, BlockInfo) of
+                {ok, NewBlock, NewBlockInfo} ->
+                    case adjust_target(NewBlock, AdjChain) of
+                        {ok, AdjBlock} ->
+                            {ok, AdjBlock, NewBlockInfo};
+                        {error, Reason} ->
+                            {error, {failed_to_adjust_target, Reason}}
+                    end;
+                {error, no_change} ->
+                    {error, no_update_to_block_candidate}
+            end
+    end.
+
+%% -- Internal functions -----------------------------------------------------
 -spec calculate_fee(list(aetx_sign:signed_tx())) -> non_neg_integer().
 calculate_fee(SignedTxs) ->
     lists:foldl(
@@ -79,7 +115,6 @@ calculate_fee(SignedTxs) ->
             TotalFee + Fee
         end, 0, SignedTxs).
 
-%% -- Internal functions -----------------------------------------------------
 -spec calculate_total_fee(list(aetx_sign:signed_tx())) -> non_neg_integer().
 calculate_total_fee(SignedTxs) ->
     TxsFee = calculate_fee(SignedTxs),
@@ -171,3 +206,50 @@ int_apply_block_txs(Txs, Miner, Trees, Height, Version, true) ->
             Err
     end.
 
+int_update(MaxNTxs, Block, Txs, BlockInfo) ->
+    #{ trees := Trees, tot_fee := TotFee, txs_tree := TxsTree } = BlockInfo,
+    case add_txs_to_trees(MaxNTxs, Trees, Txs,
+                          aec_blocks:height(Block), aec_blocks:version(Block)) of
+        {[], _Trees} ->
+            {error, no_change};
+        {Txs1, Trees1} ->
+            Txs0 = aec_blocks:txs(Block),
+            Fee = calculate_fee(Txs1),
+            Trees2 = aec_trees:grant_fee_to_miner(aec_blocks:miner(Block), Trees1, Fee),
+            TxsTree1 = aec_txs_trees:add_txs(Txs1, length(Txs0), TxsTree),
+            {ok, TxsRootHash} = aec_txs_trees:root_hash(TxsTree1),
+            NewBlock = Block#block{ txs_hash = TxsRootHash
+                                  , root_hash = aec_trees:hash(Trees2)
+                                  , txs =  Txs0 ++ Txs1
+                                  , time = aeu_time:now_in_msecs() },
+            NewBlockInfo = BlockInfo#{ trees => Trees2, tot_fee => TotFee + Fee,
+                                       txs_tree => TxsTree1 },
+            {ok, NewBlock, NewBlockInfo}
+    end.
+
+add_txs_to_trees(MaxN, Trees, Txs, Height, Version) ->
+    add_txs_to_trees(MaxN, Trees, Txs, [], Height, Version).
+
+add_txs_to_trees(0, Trees, _Txs, Acc, _Height, _Version) ->
+    {lists:reverse(Acc), Trees};
+add_txs_to_trees(_N, Trees, [], Acc, _Height, _Version) ->
+    {lists:reverse(Acc), Trees};
+add_txs_to_trees(N, Trees, [Tx | Txs], Acc, Height, Version) ->
+    case aec_trees:apply_txs_on_state_trees([Tx], Trees, Height, Version) of
+        {ok, [], _} ->
+            add_txs_to_trees(N, Trees, Txs, Acc, Height, Version);
+        {ok, [Tx], Trees1} ->
+            add_txs_to_trees(N+1, Trees1, Txs, [Tx | Acc], Height, Version)
+    end.
+
+%% Respect nonces order
+sort_txs(Txs) ->
+    Cmp =
+        fun(STx1, STx2) ->
+            Tx1 = aetx_sign:tx(STx1),
+            Tx2 = aetx_sign:tx(STx2),
+            {O1, N1} = {aetx:origin(Tx1), aetx:nonce(Tx1)},
+            {O2, N2} = {aetx:origin(Tx2), aetx:nonce(Tx2)},
+            {O1, N1} =< {O2, N2}
+        end,
+    lists:sort(Cmp, Txs).
