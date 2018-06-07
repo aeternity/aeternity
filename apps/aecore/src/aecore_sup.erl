@@ -6,21 +6,23 @@
 %%%
 %%%  Full supervision tree is
 %%%```
-%%%       aecore_sup  (one_for_one)
+%%%       aecore_sup
+%%%     (one_for_one)
 %%%           |
 %%%           --------------------------------------------------
 %%%           |         |         |           |       |        |
 %%%           |   aec_metrics  aec_keys  aec_tx_pool  |  aec_subscribe
 %%%           |                                       |
-%%%   aec_connection_sup  (one_for_all)         aec_conductor_sup (rest_for_one)
+%%%   aec_connection_sup                      aec_conductor_sup
+%%%     (one_for_all)                          (rest_for_one)
 %%%           |                                       |
 %%%           |                                       ---------------------
 %%%           |                                       |                   |
 %%%           |                                 aec_block_generator  aec_conductor
 %%%           |
-%%%           ---------------------------------------------------
-%%%           |                     |          |                |
-%%%   aec_peer_connection_sup   aec_peers   aec_sync  aec_connection_listener
+%%%           -------------------------------------------------------------------
+%%%           |                    |         |            |                     |
+%%%   aec_peer_connection_sup  aec_peers  aec_sync  aec_tx_pool_sync  aec_connection_listener
 %%%     (simple_one_for_one)
 %%%           |
 %%%           --------------------

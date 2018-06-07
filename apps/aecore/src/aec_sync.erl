@@ -165,8 +165,8 @@ handle_info({gproc_ps_event, Event, #{info := Info}}, State) ->
         block_to_publish ->
             Block = Info,
             enqueue(block, Block, NonSyncingPeerIds);
-        tx_created    -> enqueue(tx, Info, NonSyncingPeerIds);
-        tx_received   -> enqueue(tx, Info, NonSyncingPeerIds);
+        tx_created    -> enqueue(tx, Info, PeerIds);
+        tx_received   -> enqueue(tx, Info, PeerIds);
         _             -> ignore
     end,
     {noreply, State};

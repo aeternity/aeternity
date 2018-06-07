@@ -62,9 +62,20 @@ serialize(get_block, GetBlock, Vsn = ?GET_BLOCK_VSN) ->
 serialize(block, Block, Vsn = ?BLOCK_VSN) ->
     #{ block := Blk } = Block,
     serialize_flds(block, Vsn, [{block, Blk}]);
-serialize(tx, TxMap, Vsn = ?TX_VSN) ->
-    #{ tx := Tx } = TxMap,
-    serialize_flds(tx, Vsn, [{tx, Tx}]);
+serialize(txs, TxMap, Vsn = ?TXS_VSN) ->
+    #{ txs := Txs } = TxMap,
+    serialize_flds(txs, Vsn, [{txs, Txs}]);
+serialize(txps_init, _TxpsInit, Vsn = ?TX_POOL_SYNC_INIT_VSN) ->
+    serialize_flds(txps_init, Vsn, []);
+serialize(txps_unfold, TxpsUnfold, Vsn = ?TX_POOL_SYNC_UNFOLD_VSN) ->
+    #{ unfolds := Unfolds } = TxpsUnfold,
+    serialize_flds(txps_unfold, Vsn, [{unfolds, Unfolds}]);
+serialize(txps_get, TxpsGet, Vsn = ?TX_POOL_SYNC_GET_VSN) ->
+    #{ tx_hashes := TxHashes } = TxpsGet,
+    serialize_flds(txps_get, Vsn, [{tx_hashes, TxHashes}]);
+serialize(txps_finish, TxpsFinish, Vsn = ?TX_POOL_SYNC_FINISH_VSN) ->
+    #{ done := Done } = TxpsFinish,
+    serialize_flds(txps_finish, Vsn, [{done, Done}]);
 serialize(double, D, ?VSN_1) ->
     float_to_binary(D);
 serialize(peers, Peers, Vsn = ?VSN_1) ->
@@ -107,8 +118,12 @@ tag(get_n_successors)     -> ?MSG_GET_N_SUCCESSORS;
 tag(header_hashes)        -> ?MSG_HEADER_HASHES;
 tag(get_block)            -> ?MSG_GET_BLOCK;
 tag(block)                -> ?MSG_BLOCK;
-tag(tx)                   -> ?MSG_TX;
-tag(response)             -> ?MSG_P2P_RESPONSE.
+tag(txs)                  -> ?MSG_TXS;
+tag(response)             -> ?MSG_P2P_RESPONSE;
+tag(txps_init)            -> ?MSG_TX_POOL_SYNC_INIT;
+tag(txps_unfold)          -> ?MSG_TX_POOL_SYNC_UNFOLD;
+tag(txps_get)             -> ?MSG_TX_POOL_SYNC_GET;
+tag(txps_finish)          -> ?MSG_TX_POOL_SYNC_FINISH.
 
 rev_tag(?MSG_PING)                 -> ping;
 rev_tag(?MSG_GET_MEMPOOL)          -> get_mempool;
@@ -120,8 +135,12 @@ rev_tag(?MSG_GET_N_SUCCESSORS)     -> get_n_successors;
 rev_tag(?MSG_HEADER_HASHES)        -> header_hashes;
 rev_tag(?MSG_GET_BLOCK)            -> get_block;
 rev_tag(?MSG_BLOCK)                -> block;
-rev_tag(?MSG_TX)                   -> tx;
-rev_tag(?MSG_P2P_RESPONSE)         -> response.
+rev_tag(?MSG_TXS)                  -> txs;
+rev_tag(?MSG_P2P_RESPONSE)         -> response;
+rev_tag(?MSG_TX_POOL_SYNC_INIT)    -> txps_init;
+rev_tag(?MSG_TX_POOL_SYNC_UNFOLD)  -> txps_unfold;
+rev_tag(?MSG_TX_POOL_SYNC_GET)     -> txps_get;
+rev_tag(?MSG_TX_POOL_SYNC_FINISH)  -> txps_finish.
 
 latest_vsn(ping)                 -> ?PING_VSN;
 latest_vsn(get_mempool)          -> ?GET_MEMPOOL_VSN;
@@ -133,8 +152,12 @@ latest_vsn(get_n_successors)     -> ?GET_N_SUCCESSORS_VSN;
 latest_vsn(header_hashes)        -> ?HEADER_HASHES_VSN;
 latest_vsn(get_block)            -> ?GET_BLOCK_VSN;
 latest_vsn(block)                -> ?BLOCK_VSN;
-latest_vsn(tx)                   -> ?TX_VSN;
-latest_vsn(response)             -> ?RESPONSE_VSN.
+latest_vsn(txs)                  -> ?TXS_VSN;
+latest_vsn(response)             -> ?RESPONSE_VSN;
+latest_vsn(txps_init)            -> ?TX_POOL_SYNC_INIT_VSN;
+latest_vsn(txps_unfold)          -> ?TX_POOL_SYNC_UNFOLD_VSN;
+latest_vsn(txps_get)             -> ?TX_POOL_SYNC_GET_VSN;
+latest_vsn(txps_finish)          -> ?TX_POOL_SYNC_FINISH_VSN.
 
 deserialize(ping, Vsn, PingFlds) when Vsn == ?PING_VSN ->
     PingData =
@@ -200,10 +223,26 @@ deserialize(block, Vsn, BlockFlds) when Vsn == ?BLOCK_VSN ->
     [{block, Block}] =  aec_serialization:decode_fields(
                          serialization_template(block, Vsn), BlockFlds),
     {block, Vsn, #{ block => Block }};
-deserialize(tx, Vsn, TxFlds) when Vsn == ?TX_VSN ->
-    [{tx, Tx}] =  aec_serialization:decode_fields(
-                         serialization_template(tx, Vsn), TxFlds),
-    {tx, Vsn, #{ tx => Tx }};
+deserialize(txs, Vsn, TxsFlds) when Vsn == ?TXS_VSN ->
+    [{txs, Txs}] = aec_serialization:decode_fields(
+                       serialization_template(txs, Vsn), TxsFlds),
+    {txs, Vsn, #{ txs => Txs }};
+deserialize(txps_init, Vsn, TxpsInitFlds) when Vsn == ?TX_POOL_SYNC_INIT_VSN ->
+    [] = aec_serialization:decode_fields(
+             serialization_template(txps_init, Vsn), TxpsInitFlds),
+    {txps_init, Vsn, #{}};
+deserialize(txps_unfold, Vsn, TxpsUnfoldFlds) when Vsn == ?TX_POOL_SYNC_UNFOLD_VSN ->
+    [{unfolds, Unfolds}] = aec_serialization:decode_fields(
+                               serialization_template(txps_unfold, Vsn), TxpsUnfoldFlds),
+    {txps_unfold, Vsn, #{ unfolds => Unfolds }};
+deserialize(txps_get, Vsn, TxpsGetFlds) when Vsn == ?TX_POOL_SYNC_GET_VSN ->
+    [{tx_hashes, TxHashes}] = aec_serialization:decode_fields(
+                               serialization_template(txps_get, Vsn), TxpsGetFlds),
+    {txps_get, Vsn, #{ tx_hashes => TxHashes }};
+deserialize(txps_finish, Vsn, TxpsFinishFlds) when Vsn == ?TX_POOL_SYNC_FINISH_VSN ->
+    [{done, Done}] = aec_serialization:decode_fields(
+                         serialization_template(txps_finish, Vsn), TxpsFinishFlds),
+    {txps_finish, Vsn, #{ done => Done }};
 deserialize(peers, Vsn, PeerBins) ->
     [ deserialize(peer, Vsn, aeu_rlp:decode(PeerBin)) || PeerBin <- PeerBins ];
 deserialize(peer, Vsn, PeerFlds) ->
@@ -258,8 +297,16 @@ serialization_template(get_block, ?GET_BLOCK_VSN) ->
     [{hash, binary}];
 serialization_template(block, ?BLOCK_VSN) ->
     [{block, binary}];
-serialization_template(tx, ?TX_VSN) ->
-    [{tx, binary}];
+serialization_template(txs, ?TXS_VSN) ->
+    [{txs, [binary]}];
+serialization_template(txps_init, ?TX_POOL_SYNC_INIT_VSN) ->
+    [];
+serialization_template(txps_unfold, ?TX_POOL_SYNC_UNFOLD_VSN) ->
+    [{unfolds, [binary]}];
+serialization_template(txps_get, ?TX_POOL_SYNC_GET_VSN) ->
+    [{tx_hashes, [binary]}];
+serialization_template(txps_finish, ?TX_POOL_SYNC_FINISH_VSN) ->
+    [{done, bool}];
 serialization_template(peer, ?PEER_VSN) ->
     [ {host, binary}
     , {port, int}

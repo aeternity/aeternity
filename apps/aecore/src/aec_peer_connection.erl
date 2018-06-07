@@ -31,6 +31,13 @@
         , stop/1
         ]).
 
+%% API Mempool sync
+-export([ tx_pool_sync_finish/2
+        , tx_pool_sync_get/2
+        , tx_pool_sync_init/1
+        , tx_pool_sync_unfold/2
+        ]).
+
 -include("aec_peer_messages.hrl").
 
 -behaviour(gen_server).
@@ -84,6 +91,18 @@ get_block(PeerId, Hash) ->
 
 get_mempool(PeerId) ->
     call(PeerId, {get_mempool, []}).
+
+tx_pool_sync_init(PeerId) ->
+    call(PeerId, {tx_pool, [sync_init]}).
+
+tx_pool_sync_unfold(PeerId, Unfolds) ->
+    call(PeerId, {tx_pool, [sync_unfold, Unfolds]}).
+
+tx_pool_sync_get(PeerId, TxHashes) ->
+    call(PeerId, {tx_pool, [sync_get, TxHashes]}).
+
+tx_pool_sync_finish(PeerId, Done) ->
+    call(PeerId, {tx_pool, [sync_finish, Done]}).
 
 send_tx(PeerId, Tx) ->
     cast(PeerId, {send_tx, Tx}).
@@ -328,6 +347,10 @@ map_request(get_header_by_height) -> get_header;
 map_request(header)               -> get_header;
 map_request(header_hashes)        -> get_n_successors;
 map_request(block)                -> get_block;
+map_request(txps_init)            -> tx_pool;
+map_request(txps_unfold)          -> tx_pool;
+map_request(txs)                  -> tx_pool;
+map_request(txps_finish)          -> tx_pool;
 map_request(Request)              -> Request.
 
 try_connect(Parent, Host, Port, Timeout) when is_binary(Host) ->
@@ -420,15 +443,24 @@ handle_msg(S, MsgType, false, Request, {ok, Vsn, Msg}) ->
         get_n_successors     -> handle_get_n_successors(S, Vsn, Msg);
         get_block            -> handle_get_block(S, Msg);
         block                -> handle_new_block(S, Msg);
-        tx                   -> handle_new_tx(S, Msg)
+        txs                  -> handle_new_txs(S, Msg);
+        txps_init            -> handle_tx_pool_sync_init(S, Msg);
+        txps_unfold          -> handle_tx_pool_sync_unfold(S, Msg);
+        txps_get             -> handle_tx_pool_sync_get(S, Msg);
+        txps_finish          -> handle_tx_pool_sync_finish(S, Msg)
     end;
 handle_msg(S, MsgType, true, Request, {ok, _Vsn, Msg}) ->
     case MsgType of
-        ping    -> handle_ping_rsp(S, Request, Msg);
-        mempool -> handle_get_mempool_rsp(S, Request, Msg);
-        header  -> handle_header_rsp(S, Request, Msg);
+        ping          -> handle_ping_rsp(S, Request, Msg);
+        mempool       -> handle_get_mempool_rsp(S, Request, Msg);
+        header        -> handle_header_rsp(S, Request, Msg);
         header_hashes -> handle_header_hashes_rsp(S, Request, Msg);
-        block   -> handle_get_block_rsp(S, Request, Msg)
+        block         -> handle_get_block_rsp(S, Request, Msg);
+        txps_init     -> handle_tx_pool_sync_rsp(S, init, Request, Msg);
+        txps_unfold   -> handle_tx_pool_sync_rsp(S, unfold, Request, Msg);
+        txs           -> handle_tx_pool_sync_rsp(S, get, Request, Msg);
+        txps_finish   -> handle_tx_pool_sync_rsp(S, finish, Request, Msg)
+
     end.
 
 handle_request(S, {Request, Args}, From) ->
@@ -442,6 +474,8 @@ handle_request(S, {Request, Args}, From) ->
 
 handle_request(S = #{ status := error }, _Req, _Args, _From) ->
     {reply, {error, disconnected}, S};
+handle_request(S, tx_pool, TxPoolArgs, From) ->
+    handle_tx_pool(S, TxPoolArgs, From);
 handle_request(S, Request, Args, From) ->
     ReqData = prepare_request_data(S, Request, Args),
     send_msg(S, Request, aec_peer_messages:serialize(Request, ReqData)),
@@ -459,6 +493,21 @@ prepare_request_data(_S, get_block, [Hash]) ->
     #{ hash => Hash };
 prepare_request_data(_S, get_mempool, []) ->
     #{}.
+
+handle_tx_pool(S, Args, From) ->
+    {Msg, MsgData} =
+        case Args of
+            [sync_init] ->
+                {txps_init, #{}};
+            [sync_unfold, Unfolds] ->
+                {txps_unfold, #{ unfolds => Unfolds }};
+            [sync_get, TxHashes] ->
+                {txps_get, #{ tx_hashes => TxHashes }};
+            [sync_finish, Done] ->
+                {txps_finish, #{ done => Done }}
+        end,
+    send_msg(S, Msg, aec_peer_messages:serialize(Msg, MsgData)),
+    {noreply, set_request(S#{ tx_pool => Msg }, tx_pool, From)}.
 
 %% -- Ping message -----------------------------------------------------------
 
@@ -538,7 +587,7 @@ handle_ping_msg(S, RemotePingObj) ->
                     aec_sync:start_sync(PeerId, RTHash, DR)
             end,
             ok = aec_peers:add_and_ping_peers(RPeers),
-            ok = aec_sync:fetch_mempool(PeerId),
+            aec_tx_pool_sync:connect(PeerId, self()),
             ok;
         {ok, _RGHash, _RTHash, _RDiff, _RPeers} ->
             {error, wrong_genesis_hash};
@@ -729,6 +778,58 @@ handle_get_mempool_rsp(S, {get_mempool, From, _TRef}, MsgObj) ->
     end,
     remove_request_fld(S, get_mempool).
 
+%% -- TX Pool ----------------------------------------------------------------
+
+handle_tx_pool_sync_init(S, _MsgObj) ->
+    case aec_tx_pool_sync:accept(peer_id(S), self()) of
+        ok ->
+            send_response(S, txps_init, {ok, #{}});
+        Err = {error, _} ->
+            send_response(S, txps_init, Err)
+    end,
+    S.
+
+handle_tx_pool_sync_unfold(S, MsgObj) ->
+    Unfolds = maps:get(unfolds, MsgObj, []),
+    case aec_tx_pool_sync:sync_unfold(peer_id(S), Unfolds) of
+        {ok, NewUnfolds} ->
+            send_response(S, txps_unfold, {ok, #{ unfolds => NewUnfolds }});
+        Err = {error, _} ->
+            send_response(S, txps_unfold, Err)
+    end,
+    S.
+
+handle_tx_pool_sync_get(S, MsgObj) ->
+    TxHashes = maps:get(tx_hashes, MsgObj, []),
+    case aec_tx_pool_sync:sync_get(peer_id(S), TxHashes) of
+        {ok, Txs} ->
+            SerTxs = [ aetx_sign:serialize_to_binary(Tx) || Tx <- Txs ],
+            send_response(S, txs, {ok, #{ txs => SerTxs }});
+        Err = {error, _} ->
+            send_response(S, txs, Err)
+    end,
+    S.
+
+handle_tx_pool_sync_finish(S, MsgObj) ->
+    aec_tx_pool_sync:sync_finish(peer_id(S), {done, maps:get(done, MsgObj, false)}),
+    send_response(S, txps_finish, {ok, #{ done => maps:get(done, MsgObj, false) }}),
+    S.
+
+handle_tx_pool_sync_rsp(S, Action, {tx_pool, From, _TRef}, MsgObj) ->
+    case Action of
+        init ->
+            gen_server:reply(From, ok);
+        unfold ->
+            gen_server:reply(From, {ok, maps:get(unfolds, MsgObj, [])});
+        get ->
+            Txs = [ aetx_sign:deserialize_from_binary(SerTx)
+                    || SerTx <- maps:get(txs, MsgObj, []) ],
+            gen_server:reply(From, {ok, Txs});
+        finish ->
+            gen_server:reply(From, {ok, maps:get(done, MsgObj, false)})
+    end,
+    remove_request_fld(S, tx_pool).
+
 %% -- Send Block --------------------------------------------------------------
 
 send_send_block(#{ status := error }, _Block) ->
@@ -756,14 +857,14 @@ send_send_tx(#{ status := error }, _Tx) ->
     ok;
 send_send_tx(S = #{ status := {connected, _ESock} }, Tx) ->
     TxSerialized = aetx_sign:serialize_to_binary(Tx),
-    Msg = aec_peer_messages:serialize(tx, #{ tx => TxSerialized }),
-    send_msg(S, tx, Msg).
+    Msg = aec_peer_messages:serialize(txs, #{ txs => [TxSerialized] }),
+    send_msg(S, txs, Msg).
 
-handle_new_tx(S, Msg) ->
+handle_new_txs(S, Msg) ->
     try
-        #{ tx := EncSignedTx } = Msg,
-        SignedTx = aetx_sign:deserialize_from_binary(EncSignedTx),
-        aec_tx_pool:push(SignedTx, tx_received)
+        #{ txs := EncSignedTxs } = Msg,
+        SignedTxs = [ aetx_sign:deserialize_from_binary(Tx) || Tx <- EncSignedTxs ],
+        [ aec_tx_pool:push(SignedTx, tx_received) || SignedTx <- SignedTxs ]
     catch _:_ ->
         ok
     end,
