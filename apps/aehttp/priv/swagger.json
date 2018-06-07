@@ -2585,6 +2585,14 @@
         "nonce" : 5
       }
     },
+    "SpendTxResponse" : {
+      "type" : "object",
+      "properties" : {
+        "tx_hash" : {
+          "$ref" : "#/definitions/EncodedHash"
+        }
+      }
+    },
     "OracleRegisterTx" : {
       "type" : "object",
       "required" : [ "fee", "oracle_ttl", "query_fee", "query_format", "response_format", "ttl" ],
