@@ -17,7 +17,7 @@
             , val
             }).
 
--type tag() :: 'account' | 'name' | 'commitment'.
+-type tag() :: 'account' | 'oracle' | 'name' | 'commitment'.
 -type val() :: <<_:256>>.
 -opaque(id() :: #id{}).
 
@@ -28,6 +28,7 @@
 
 -define(PUB_SIZE, 32).
 -define(IS_TAG(___TAG___), ___TAG___ =:= account;
+                           ___TAG___ =:= oracle;
                            ___TAG___ =:= name;
                            ___TAG___ =:= commitment
        ).
