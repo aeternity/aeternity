@@ -21,8 +21,10 @@
 
 -include("blocks.hrl").
 
+-type fees_info() :: #{txs := non_neg_integer(),
+                       gas := non_neg_integer()}.
 -opaque block_info() :: #{trees := aec_trees:trees(),
-                          tot_fee := non_neg_integer(),
+                          fees := fees_info(),
                           txs_tree := aec_txs_trees:txs_tree(),
                           adj_chain := [aec_headers:header()]}.
 
@@ -107,18 +109,26 @@ update(Block, Txs, BlockInfo = #{ adj_chain := AdjChain }) ->
     end.
 
 %% -- Internal functions -----------------------------------------------------
--spec calculate_fee(list(aetx_sign:signed_tx())) -> non_neg_integer().
-calculate_fee(SignedTxs) ->
+-spec calculate_txs_fee(list(aetx_sign:signed_tx())) -> non_neg_integer().
+calculate_txs_fee(SignedTxs) ->
     lists:foldl(
         fun(SignedTx, TotalFee) ->
             Fee = aetx:fee(aetx_sign:tx(SignedTx)),
             TotalFee + Fee
         end, 0, SignedTxs).
 
--spec calculate_total_fee(list(aetx_sign:signed_tx())) -> non_neg_integer().
-calculate_total_fee(SignedTxs) ->
-    TxsFee = calculate_fee(SignedTxs),
-    aec_governance:block_mine_reward() + TxsFee.
+-spec calculate_gas_fee(aect_call_state_tree:tree()) -> non_neg_integer().
+calculate_gas_fee(Calls) ->
+    F = fun(_, SerCall, GasFeeIn) ->
+                Call = aect_call:deserialize(SerCall),
+                GasFee = aect_call:gas_used(Call) * aect_call:gas_price(Call),
+                GasFee + GasFeeIn
+        end,
+    aeu_mtrees:fold(F, 0, aect_call_state_tree:iterator(Calls)).
+
+-spec calculate_total_fee(fees_info()) -> non_neg_integer().
+calculate_total_fee(#{txs := TxsFee, gas := GasFee}) ->
+    aec_governance:block_mine_reward() + TxsFee + GasFee.
 
 int_create(BlockHash, Block) ->
     case aec_chain:get_block_state(BlockHash) of
@@ -173,7 +183,7 @@ int_create_block(PrevBlockHash, PrevBlock, Trees, Miner, Txs) ->
     Height = PrevBlockHeight + 1,
     Version = aec_hard_forks:protocol_effective_at_height(Height),
 
-    {ok, Txs1, Trees2, TotFee} =
+    {ok, Txs1, Trees2, Fees} =
         int_apply_block_txs(Txs, Miner, Trees, Height, Version, false),
 
     TxsTree = aec_txs_trees:from_txs(Txs1),
@@ -183,7 +193,7 @@ int_create_block(PrevBlockHash, PrevBlock, Trees, Miner, Txs) ->
                               TxsRootHash, Txs1, aec_blocks:target(PrevBlock),
                               0, aeu_time:now_in_msecs(), Version, Miner),
 
-    BlockInfo = #{ trees => Trees2, tot_fee => TotFee, txs_tree => TxsTree },
+    BlockInfo = #{ trees => Trees2, fees => Fees, txs_tree => TxsTree },
     {ok, NewBlock, BlockInfo}.
 
 %% Non-strict
@@ -191,38 +201,53 @@ int_apply_block_txs(Txs, Miner, Trees, Height, Version, false) ->
     Trees0 = aec_trees:perform_pre_transformations(Trees, Height),
     {ok, Txs1, Trees1} =
         aec_trees:apply_txs_on_state_trees(Txs, Trees0, Height, Version),
-    TotFee = calculate_total_fee(Txs1),
-    Trees2 = aec_trees:grant_fee_to_miner(Miner, Trees1, TotFee),
-    {ok, Txs1, Trees2, TotFee};
+    {Fees, Trees2} = calculate_and_grant_fees(Txs1, Miner, Trees1),
+    {ok, Txs1, Trees2, Fees};
 %% strict
 int_apply_block_txs(Txs, Miner, Trees, Height, Version, true) ->
     Trees0 = aec_trees:perform_pre_transformations(Trees, Height),
     case aec_trees:apply_txs_on_state_trees_strict(Txs, Trees0, Height, Version) of
         {ok, Txs1, Trees1} ->
-            TotFee = calculate_total_fee(Txs1),
-            Trees2 = aec_trees:grant_fee_to_miner(Miner, Trees1, TotFee),
-            {ok, Txs1, Trees2, TotFee};
+            {Fees, Trees2} = calculate_and_grant_fees(Txs1, Miner, Trees1),
+            {ok, Txs1, Trees2, Fees};
         Err = {error, _} ->
             Err
     end.
 
+-spec calculate_and_grant_fees(list(aetx_sign:signed_tx()), aec_keys:pubkey(),
+                               aec_trees:trees()) ->
+                                      {fees_info(), aec_trees:trees()}.
+calculate_and_grant_fees(Txs, Miner, Trees) ->
+    FeesInfo = #{txs => calculate_txs_fee(Txs),
+                 gas => calculate_gas_fee(aec_trees:calls(Trees))},
+    NewTrees = aec_trees:grant_fee_to_miner(Miner, Trees,
+                                            calculate_total_fee(FeesInfo)),
+    {FeesInfo, NewTrees}.
+
 int_update(MaxNTxs, Block, Txs, BlockInfo) ->
-    #{ trees := Trees, tot_fee := TotFee, txs_tree := TxsTree } = BlockInfo,
-    case add_txs_to_trees(MaxNTxs, Trees, Txs,
+    case add_txs_to_trees(MaxNTxs, maps:get(trees, BlockInfo), Txs,
                           aec_blocks:height(Block), aec_blocks:version(Block)) of
-        {[], _Trees} ->
+        {[], _} ->
             {error, no_change};
         {Txs1, Trees1} ->
             Txs0 = aec_blocks:txs(Block),
-            Fee = calculate_fee(Txs1),
-            Trees2 = aec_trees:grant_fee_to_miner(aec_blocks:miner(Block), Trees1, Fee),
-            TxsTree1 = aec_txs_trees:add_txs(Txs1, length(Txs0), TxsTree),
+            Txs1Fee = calculate_txs_fee(Txs1),
+            %% Re-calculate whole new gas fee, as computing gas fee
+            %% only for added txs is complex.
+            NewGasFee = calculate_gas_fee(aec_trees:calls(Trees1)),
+            FeesInfo = maps:get(fees, BlockInfo),
+            AddGasFee = case NewGasFee - maps:get(gas, FeesInfo) of X when X >= 0 -> X end,
+            AddFee = Txs1Fee + AddGasFee,
+            Trees2 = aec_trees:grant_fee_to_miner(aec_blocks:miner(Block), Trees1, AddFee),
+            TxsTree1 = aec_txs_trees:add_txs(Txs1, length(Txs0), maps:get(txs_tree, BlockInfo)),
             {ok, TxsRootHash} = aec_txs_trees:root_hash(TxsTree1),
             NewBlock = Block#block{ txs_hash = TxsRootHash
                                   , root_hash = aec_trees:hash(Trees2)
                                   , txs =  Txs0 ++ Txs1
                                   , time = aeu_time:now_in_msecs() },
-            NewBlockInfo = BlockInfo#{ trees => Trees2, tot_fee => TotFee + Fee,
+            NewFeesInfo = FeesInfo#{txs := maps:get(txs, FeesInfo) + Txs1Fee,
+                                    gas := NewGasFee},
+            NewBlockInfo = BlockInfo#{ trees => Trees2, fees => NewFeesInfo,
                                        txs_tree => TxsTree1 },
             {ok, NewBlock, NewBlockInfo}
     end.

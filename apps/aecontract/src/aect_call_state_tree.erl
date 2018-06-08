@@ -14,6 +14,7 @@
         , get_call/3
         , insert_call/2
         , lookup_call/3
+        , iterator/1
         , prune/2
         , root_hash/1]).
 
@@ -70,6 +71,10 @@ lookup_call(CtId, CallId, Tree) ->
         {value, Val} -> {value, aect_call:deserialize(Val)};
         none         -> none
     end.
+
+-spec iterator(tree()) -> aeu_mtrees:iterator().
+iterator(Tree) ->
+    aeu_mtrees:iterator(Tree#call_tree.calls).
 
 -spec get_call(aect_contracts:id(), aect_call:id(), tree()) -> aect_call:call().
 get_call(CtId, CallId, #call_tree{ calls = CtTree }) ->
