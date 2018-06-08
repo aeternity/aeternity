@@ -4213,7 +4213,7 @@ random_hash() ->
     HList =
         lists:map(
             fun(_) -> rand:uniform(255) end,
-            lists:seq(1, 65)),
+            lists:seq(1, 32)),
     list_to_binary(HList).
 
 prepare_for_spending(BlocksToMine) ->

@@ -14,11 +14,9 @@
 
 -define(TEST_MODULE, aec_mining).
 -define(LOWEST_TARGET_SCI, 16#01010000).
--define(TEST_PUB, <<4,176,10,241,172,223,229,80,244,222,165,8,198,46,
+-define(TEST_PUB, <<176,10,241,172,223,229,80,244,222,165,8,198,46,
                     167,128,25,34,151,180,162,192,72,103,185,62,161,12,
-                    117,147,72,68,194,188,89,248,81,212,197,21,193,74,
-                    115,216,210,123,239,69,164,128,164,122,116,151,23,
-                    22,56,146,73,13,29,198,110,162,145>>).
+                    117,147,72,68,194>>).
 
 mine_block_test_() ->
     {foreach,
@@ -37,7 +35,7 @@ mine_block_test_() ->
                  % in order to find a proper nonce for your
                  % block uncomment the line below
                  %let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
-                 Nonce = 3650718748619880306,
+                 Nonce = 3423109202401735919,
 
                  {BlockCandidate, _} = aec_block_candidate:create_with_state(TopBlock, ?TEST_PUB,
                                                                              [], aec_trees:new()),
@@ -110,7 +108,9 @@ cleanup(_) ->
 generate_valid_test_data(_TopBlock, Tries) when Tries < 1 ->
     could_not_find_nonce;
 generate_valid_test_data(TopBlock, Tries) ->
-    {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), []),
+    Nonce = aec_pow:pick_nonce(),
+    {BlockCandidate, _} = aec_block_candidate:create_with_state(TopBlock, ?TEST_PUB,
+                                                                [], aec_trees:new()),
     HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
     Target = aec_blocks:target(BlockCandidate),
     case ?TEST_MODULE:mine(HeaderBin, Target, Nonce) of

@@ -6,7 +6,7 @@
 
 -define(TEST_MODULE, aec_next_nonce).
 
--define(PUBKEY, <<"BAAggMEhrC3ODBqlYeQ6dk00F87AKMkV6kkyhgfJ/luOzGUC+4APxFkVgAYPai3TjSyLRObv0GeDACg1ZxwnfHY=">>).
+-define(PUBKEY, <<"BAAggMEhrC3ODBqlYeQ6dk00F87AKMkV">>).
 
 pick_for_account_test_() ->
     {foreach,

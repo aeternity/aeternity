@@ -15,7 +15,7 @@ ensure_account_test_() ->
     [{"Not existing account is created with 0 balance",
       fun() ->
               Trees0 = aec_test_utils:create_state_tree(),
-              AccountPubkey = <<"account_pubkey">>,
+              AccountPubkey = <<"_________account_pubkey_________">>,
 
               Trees = ?TEST_MODULE:ensure_account(AccountPubkey, Trees0),
 
@@ -25,7 +25,7 @@ ensure_account_test_() ->
       end},
      {"Same unmodified state tree is returned when account is present",
       fun() ->
-              AccountPubkey = <<"account_pubkey">>,
+              AccountPubkey = <<"_________account_pubkey_________">>,
               Account = aec_accounts:new(AccountPubkey, 777),
               Trees = aec_test_utils:create_state_tree_with_account(Account),
 

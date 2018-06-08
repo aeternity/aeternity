@@ -56,7 +56,7 @@
 -define(ifDebugFmt(Str, Args), ok).
 -endif.
 
--define(PRESET_ACCOUNTS, [{<<"my_public_key">>, 100}]).
+-define(PRESET_ACCOUNTS, [{<<"_________my_public_key__________">>, 100}]).
 
 preset_accounts() ->
   ?PRESET_ACCOUNTS.

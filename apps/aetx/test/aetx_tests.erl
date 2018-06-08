@@ -10,7 +10,7 @@
 
 -define(TEST_MODULE, aetx).
 
--define(RECIPIENT_PUBKEY, <<"recipient_pubkey">>).
+-define(RECIPIENT_PUBKEY, <<"_________recipient_pubkey_______">>).
 
 %% Probably to be moved to common tests
 apply_signed_txs_test_() ->
