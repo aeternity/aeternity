@@ -14,7 +14,6 @@
          recipient/1,
          check/5,
          process/5,
-         accounts/1,
          signers/2,
          serialization_template/1,
          serialize/1,
@@ -104,10 +103,6 @@ check(#spend_tx{} = SpendTx, _Context, Trees, Height, _ConsensusVersion) ->
         {error, _Reason} = Error ->
             Error
     end.
-
--spec accounts(tx()) -> [aec_keys:pubkey()].
-accounts(#spend_tx{sender = SenderPubKey, recipient = RecipientPubKey}) ->
-    [SenderPubKey, RecipientPubKey].
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#spend_tx{sender = SenderPubKey}, _) -> {ok, [SenderPubKey]}.

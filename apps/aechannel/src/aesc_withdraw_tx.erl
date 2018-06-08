@@ -20,7 +20,6 @@
          amount/1,
          check/5,
          process/5,
-         accounts/1,
          signers/2,
          serialization_template/1,
          serialize/1,
@@ -122,10 +121,6 @@ process(#channel_withdraw_tx{channel_id = ChannelId,
     Trees1 = aec_trees:set_accounts(Trees, AccountsTree1),
     Trees2 = aec_trees:set_channels(Trees1, ChannelsTree1),
     {ok, Trees2}.
-
--spec accounts(tx()) -> list(aec_keys:pubkey()).
-accounts(#channel_withdraw_tx{to = ToPubKey}) ->
-    [ToPubKey].
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}
                                         | {error, channel_not_found}.

@@ -4,6 +4,8 @@
 It:
 * Makes the transaction TTL optional (giving no TTL means the transaction is valid "forever").
 * TODO Improves the stability of the testnet.
+* Improves memory footprint by removing an in-memory index. This affects the persisted DB.
+* Removes the `/account/{account_pubkey}/txs` endpoint since it is non-essential for the node's operation, is hard to maintain, and consumes unnecessary resources.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.16.0
 

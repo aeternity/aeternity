@@ -80,13 +80,6 @@
         , find_block_state_and_data/1
         ]).
 
-%% API for finding transactions related to account key
--export([transactions_by_account/3]).
-
-%% indexing callbacks
--export([ ix_acct2tx/3
-        ]).
-
 -include("blocks.hrl").
 -include("aec_db.hrl").
 
@@ -127,7 +120,7 @@ tables(Mode) ->
    , ?TAB(aec_channel_state)
    , ?TAB(aec_name_service_cache)
    , ?TAB(aec_name_service_state)
-   , ?TAB(aec_signed_tx, [{index, [{acct2tx}]}])
+   , ?TAB(aec_signed_tx)
    , ?TAB(aec_tx_location)
    , ?TAB(aec_tx_pool)
     ].
@@ -472,23 +465,6 @@ fold_mempool(FunIn, InitAcc) ->
           end,
     ?t(mnesia:foldl(Fun, InitAcc, aec_tx_pool)).
 
--dialyzer({nowarn_function, transactions_by_account/3}). %% For mnesia patches.
-transactions_by_account(AcctPubKey, Filter, false =_ShowPending) ->
-    ?t([{STxHash, T}
-        || #aec_signed_tx{value = T, key = STxHash}
-               <- mnesia:index_read(aec_signed_tx, AcctPubKey, {acct2tx}),
-           mnesia:read(aec_tx_location, STxHash) =/= [],
-           Filter(T)
-       ]);
-transactions_by_account(AcctPubKey, Filter, true =_ShowPending) ->
-    ?t([{STxHash, T}
-        || #aec_signed_tx{key = STxHash, value = T}
-               <- mnesia:index_read(aec_signed_tx, AcctPubKey, {acct2tx}),
-           (mnesia:read(aec_tx_location, STxHash) =/= [])
-               orelse is_in_tx_pool(STxHash),
-           Filter(T)
-       ]).
-
 %% start phase hook to load the database
 
 load_database() ->
@@ -524,17 +500,6 @@ wait_for_tables(Tabs, Sofar, Period, Max) when Sofar < Max ->
     end;
 wait_for_tables(Tabs, Sofar, _, _) ->
     {timeout, Sofar, Tabs}.
-
-%% Index callbacks
-
-ix_acct2tx(aec_signed_tx, _Ix, #aec_signed_tx{value = SignedTx}) ->
-    try aetx_sign:tx(SignedTx) of
-        Tx ->
-            aetx:accounts(Tx)
-    catch
-        error:_ ->
-            []
-    end.
 
 %% Initialization routines
 
@@ -581,7 +546,7 @@ add_backend_plugins(_) ->
     ok.
 
 add_index_plugins() ->
-    mnesia_schema:add_index_plugin({acct2tx}, aec_db, ix_acct2tx).
+    ok.
 
 ensure_mnesia_tables(Mode, Storage) ->
     Tables = tables(Mode),
