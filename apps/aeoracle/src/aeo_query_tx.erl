@@ -122,7 +122,7 @@ check(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce,
          fun() -> check_query(QTx, Trees, Height) end
          | case Context of
                aetx_contract -> [];
-               _ ->
+               aetx_transaction ->
                    [fun() -> aeo_utils:check_ttl_fee(Height, QTTL, Fee - ?ORACLE_QUERY_TX_FEE) end]
            end
         ],
