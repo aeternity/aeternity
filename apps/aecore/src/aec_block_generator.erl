@@ -213,7 +213,7 @@ update_block_candidate(Block, BlockInfo = #{ adj_chain := AdjChain }, Txs) ->
                         {error, _} ->
                             failed_attempt(failed_to_adjust_target)
                     end;
-                {error, _} ->
+                {error, no_change} ->
                     failed_attempt(no_update_to_block_candidate)
             end
     end.
