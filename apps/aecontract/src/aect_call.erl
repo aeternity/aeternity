@@ -11,13 +11,14 @@
 -export([ deserialize/1
         , id/1
         , id/3
-        , new/4
+        , new/5
         , contract_address/1
         , caller_address/1
         , caller_nonce/1
         , height/1
         , return_type/1
         , return_value/1
+        , gas_price/1
         , gas_used/1
         , serialize/1
         , serialize_for_client/1
@@ -41,6 +42,7 @@
               , caller_nonce     :: integer()
               , height           :: aec_blocks:height()
               , contract_address :: aec_keys:pubkey()
+              , gas_price        :: amount()
               , gas_used         :: amount()
               , return_value     :: binary()
 	      , return_type      :: ok | error | revert
@@ -64,12 +66,13 @@
 %%%===================================================================
 
 -spec new(Caller::aec_keys:pubkey(), Nonce::non_neg_integer(), Address::aec_keys:pubkey(),
-	  aec_blocks:height()) -> call().
-new(Caller, Nonce, Address, BlockHeight) ->
+	  aec_blocks:height(), amount()) -> call().
+new(Caller, Nonce, Address, BlockHeight, GasPrice) ->
     C = #call{ caller_address   = Caller
              , caller_nonce     = Nonce
              , height           = BlockHeight
              , contract_address = Address
+             , gas_price        = GasPrice
              , gas_used         = 0     %% These are filled later
              , return_value     = <<>>  %% in aect_call_tx:process()
              , return_type      = ok
@@ -99,6 +102,7 @@ serialize(#call{} = I) ->
       , {caller_nonce, caller_nonce(I)}
       , {height, height(I)}
       , {contract_address, contract_address(I)}
+      , {gas_price, gas_price(I)}
       , {gas_used, gas_used(I)}
       , {return_value, return_value(I)}
       , {return_type, serialize_return_type(return_type(I))}
@@ -110,6 +114,7 @@ deserialize(B) ->
     , {caller_nonce, CallerNonce}
     , {height, Height}
     , {contract_address, ContractAddress}
+    , {gas_price, GasPrice}
     , {gas_used, GasUsed}
     , {return_value, ReturnValue}
     , {return_type, ReturnType}
@@ -122,6 +127,7 @@ deserialize(B) ->
          , caller_nonce     = CallerNonce
          , height           = Height
          , contract_address = ContractAddress
+         , gas_price        = GasPrice
          , gas_used         = GasUsed
          , return_value     = ReturnValue
          , return_type      = deserialize_return_type(ReturnType)
@@ -132,6 +138,7 @@ serialization_template(?CONTRACT_INTERACTION_VSN) ->
     , {caller_nonce, int}
     , {height, int}
     , {contract_address, binary}
+    , {gas_price, int}
     , {gas_used, int}
     , {return_value, binary}
     , {return_type, int}
@@ -150,6 +157,7 @@ serialize_for_client(#call{} = I) ->
      , <<"caller_nonce">>     => caller_nonce(I)
      , <<"height">>           => height(I)
      , <<"contract_address">> => aec_base58c:encode(contract_pubkey, contract_address(I))
+     , <<"gas_price">>        => gas_price(I)
      , <<"gas_used">>         => gas_used(I)
      , <<"return_value">>     => list_to_binary(aect_utils:hex_bytes(return_value(I)))
      , <<"return_type">>      => atom_to_binary(return_type(I), utf8)
@@ -176,6 +184,9 @@ return_type(I) -> I#call.return_type.
 
 -spec return_value(call()) -> binary().
 return_value(I) -> I#call.return_value.
+
+-spec gas_price(call()) -> amount().
+gas_price(I) -> I#call.gas_price.
 
 -spec gas_used(call()) -> amount().
 gas_used(I) -> I#call.gas_used.
@@ -223,6 +234,7 @@ assert_fields(I) ->
            , {height,           I#call.height}
            , {contract_address, I#call.contract_address}
            , {return_value,     I#call.return_value}
+           , {gas_price,        I#call.gas_price}
            , {gas_used,         I#call.gas_used}
            ],
     List1 = [try assert_field(X, Y), [] catch _:X -> X end
@@ -237,5 +249,6 @@ assert_field(caller_nonce,     X) when is_integer(X), X >= 0 -> X;
 assert_field(height,           X) when is_integer(X), X > 0 -> X;
 assert_field(contract_address, <<_:?PUB_SIZE/binary>> = X) -> X;
 assert_field(return_value,     X) when is_binary(X) -> X;
+assert_field(gas_price,        X) when is_integer(X), X >= 0 -> X;
 assert_field(gas_used,         X) when is_integer(X), X >= 0 -> X;
 assert_field(Field,            X) -> error({illegal, Field, X}).

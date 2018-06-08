@@ -155,7 +155,8 @@ process(#contract_call_tx{nonce = Nonce,
     Call0 = aect_call:new(caller(CallTx),
 			  nonce(CallTx),
 			  contract(CallTx),
-			  Height),
+			  Height,
+                          aect_call_tx:gas_price(CallTx)),
 
     %% Run the contract code. Also computes the amount of gas left and updates
     %% the call object.

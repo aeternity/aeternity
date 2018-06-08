@@ -3704,7 +3704,7 @@
     },
     "ContractCallObject" : {
       "type" : "object",
-      "required" : [ "caller_address", "caller_nonce", "contract_address", "gas_used", "height", "return_type", "return_value" ],
+      "required" : [ "caller_address", "caller_nonce", "contract_address", "gas_price", "gas_used", "height", "return_type", "return_value" ],
       "properties" : {
         "caller_address" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -3717,6 +3717,9 @@
         },
         "contract_address" : {
           "$ref" : "#/definitions/EncodedHash"
+        },
+        "gas_price" : {
+          "type" : "integer"
         },
         "gas_used" : {
           "type" : "integer"
@@ -3731,10 +3734,11 @@
         }
       },
       "example" : {
+        "gas_price" : 1,
         "return_type" : "return_type",
         "caller_address" : { },
         "return_value" : "return_value",
-        "gas_used" : 1,
+        "gas_used" : 5,
         "caller_nonce" : 0,
         "contract_address" : null,
         "height" : 6

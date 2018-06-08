@@ -11,10 +11,11 @@
 
 -import(aect_call, [ deserialize/1
                    , return_value/1
+                   , gas_price/1
                    , gas_used/1
                    , height/1
                    , id/1
-                   , new/4
+                   , new/5
                    , contract_address/1
                    , caller_address/1
                    , caller_nonce/1
@@ -46,6 +47,7 @@ basic_getters() ->
     ?assert(is_integer(caller_nonce(I))),
     ?assert(is_integer(height(I))),
     ?assert(is_binary(return_value(I))),
+    ?assert(is_integer(gas_price(I))),
     ?assert(is_integer(gas_used(I))),
     ok.
 
@@ -69,7 +71,8 @@ new_call(Tx, Height) ->
     Caller = aect_call_tx:caller(Tx),
     Nonce  = aect_call_tx:nonce(Tx),
     Address = aect_call_tx:contract(Tx),
-    new(Caller, Nonce, Address, Height).
+    GasPrice = aect_call_tx:gas_price(Tx),
+    new(Caller, Nonce, Address, Height, GasPrice).
 
 call_tx() ->
     call_tx(#{}).
