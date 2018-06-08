@@ -39,7 +39,7 @@ sign_txs_test_() ->
       {"Broken pub key does not validate signatures",
        fun() ->
                #{ public := _Pubkey, secret := Privkey } = enacl:sign_keypair(),
-               {ok, SpendTx} = make_spend_tx(<<0:42/unit:8>>),
+               {ok, SpendTx} = make_spend_tx(<<0:32/unit:8>>),
                Signed = ?TEST_MODULE:sign(SpendTx, Privkey),
                ?assertEqual({error, signature_check_failed},
                             ?TEST_MODULE:verify(Signed, aec_trees:new())),
@@ -47,7 +47,7 @@ sign_txs_test_() ->
       end},
       {"Broken priv key does not produce signatures",
        fun() ->
-               BrokenKey = <<0:42/unit:8>>,
+               BrokenKey = <<0:32/unit:8>>,
                {ok, SpendTx} = make_spend_tx(BrokenKey),
                ?_assertException(error, {invalid_priv_key, [BrokenKey]},
                                  ?TEST_MODULE:sign(SpendTx, <<0:42/unit:8>>)),
