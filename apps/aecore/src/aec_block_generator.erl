@@ -26,7 +26,7 @@
         , worker = undefined    :: undefined | {pid(), term()}
         , candidate = undefined :: undefined | aec_blocks:block()
         , candidate_state = undefined :: undefined | term()
-        , new_txs = []          :: list(term())
+        , new_txs = []          :: list(aetx_sign:signed_tx())
         }).
 
 -include("blocks.hrl").
