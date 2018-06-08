@@ -6,6 +6,7 @@ It:
 * TODO Improves the stability of the testnet.
 * Improves memory footprint by removing an in-memory index. This affects the persisted DB.
 * Removes the `/account/{account_pubkey}/txs` endpoint since it is non-essential for the node's operation, is hard to maintain, and consumes unnecessary resources.
+* Reduces memory usage in case of node starting with large number of mempool transactions in persisted DB. This is achieved by deletion of temporary table after usage in mempool initialization.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.16.0
 
