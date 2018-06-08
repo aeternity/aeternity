@@ -32,7 +32,6 @@
 -include_lib("apps/aecore/include/blocks.hrl").
 
 -include_lib("apps/aens/include/ns_txs.hrl").
--include_lib("apps/aens/include/aens.hrl").
 
 %% Distinct miner keys for working around account height check.
 -define(MINER_PUBKEY_PRECLAIM, <<12301:?MINER_PUB_BYTES/unit:8>>).

@@ -17,7 +17,7 @@
             , val
             }).
 
--type tag() :: 'account'.
+-type tag() :: 'account' | 'name' | 'commitment'.
 -type val() :: <<_:256>>.
 -opaque(id() :: #id{}).
 
@@ -27,7 +27,10 @@
              ]).
 
 -define(PUB_SIZE, 32).
--define(IS_TAG(___TAG___), ___TAG___ =:= account).
+-define(IS_TAG(___TAG___), ___TAG___ =:= account;
+                           ___TAG___ =:= name;
+                           ___TAG___ =:= commitment
+       ).
 -define(IS_VAL(___VAL___), byte_size(___VAL___) =:= 32).
 
 %%%===================================================================

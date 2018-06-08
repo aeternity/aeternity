@@ -7,8 +7,6 @@
 
 -module(aens_state_tree).
 
--include("aens.hrl").
-
 %% API
 -export([commit_to_db/1,
          delete_commitment/2,
@@ -83,9 +81,13 @@ prune(NextBlockHeight, #ns_tree{} = Tree) ->
 
 run_elapsed([], Tree, _) ->
     Tree;
-run_elapsed([{Mod, Serialized}|Expired], Tree, Height) ->
-    Entity = Mod:deserialize(Serialized),
-    {ok, Tree1} = do_run_elapsed(Entity, Tree, Height),
+run_elapsed([{aens_names, Serialized}|Expired], Tree, Height) ->
+    Name = aens_names:deserialize(Serialized),
+    {ok, Tree1} = run_elapsed_name(Name, Tree, Height),
+    run_elapsed(Expired, Tree1, Height);
+run_elapsed([{aens_commitments, Serialized}|Expired], Tree, Height) ->
+    Commitment = aens_commitments:deserialize(Serialized),
+    {ok, Tree1} = run_elapsed_commitment(Commitment, Tree),
     run_elapsed(Expired, Tree1, Height).
 
 -spec enter_commitment(commitment(), tree()) -> tree().
@@ -177,7 +179,7 @@ int_prune({HeightLower, Id, Mod}, NextBlockHeight, Cache, MTree, ExpiredAcc) ->
             int_prune(cache_safe_peek(Cache1), NextBlockHeight, Cache1, MTree, ExpiredAcc)
     end.
 
-%% INFO: do_run_elapsed/3 implements 'expire' driven transitions:
+%% INFO: run_elapsed_name/3 and run_elapsed_commitment/2 implements 'expire' driven transitions:
 %%
 %%                   expire
 %%       unclaimed <-------- revoked
@@ -194,24 +196,29 @@ int_prune({HeightLower, Id, Mod}, NextBlockHeight, Cache, MTree, ExpiredAcc) ->
 %%                           update
 %%
 
-do_run_elapsed(#name{expires = ExpirationBlockHeight}, NamesTree0, NextBlockHeight)
-    when ExpirationBlockHeight /= NextBlockHeight-1 ->
-    %% INFO: Do nothing. Name was updated and we triggered old cache event.
-    {ok, NamesTree0};
-do_run_elapsed(#name{hash = NameHash, status = claimed, expires = ExpirationBlockHeight},
-               NamesTree0, NextBlockHeight) when ExpirationBlockHeight == NextBlockHeight-1 ->
-    Name0 = aens_state_tree:get_name(NameHash, NamesTree0),
-    TTL = aec_governance:name_protection_period(),
-    Name1 = aens_names:revoke(Name0, TTL, ExpirationBlockHeight),
-    NamesTree1 = aens_state_tree:enter_name(Name1, NamesTree0),
-    {ok, NamesTree1};
-do_run_elapsed(#name{hash = NameHash, status = revoked, expires = ExpirationBlockHeight},
-    NamesTree0, NextBlockHeight) when ExpirationBlockHeight == NextBlockHeight-1  ->
-    NamesTree1 = aens_state_tree:delete_name(NameHash, NamesTree0),
-    {ok, NamesTree1};
-do_run_elapsed(#commitment{hash = Hash}, NamesTree0, _Height) ->
+run_elapsed_name(Name, NamesTree0, NextBlockHeight) ->
+    ExpirationBlockHeight = aens_names:expires(Name),
+    Status = aens_names:status(Name),
+    case ExpirationBlockHeight =:= (NextBlockHeight - 1) of
+        false ->
+            %% INFO: Do nothing.
+            %%       Name was updated and we triggered old cache event.
+            {ok, NamesTree0};
+        true when Status =:= claimed ->
+            NameHash = aens_names:id(Name),
+            Name0    = aens_state_tree:get_name(NameHash, NamesTree0),
+            TTL      = aec_governance:name_protection_period(),
+            Name1    = aens_names:revoke(Name0, TTL, ExpirationBlockHeight),
+            {ok, aens_state_tree:enter_name(Name1, NamesTree0)};
+        true when Status =:= revoked ->
+            NameHash = aens_names:id(Name),
+            {ok, aens_state_tree:delete_name(NameHash, NamesTree0)}
+    end.
+
+run_elapsed_commitment(Commitment, NamesTree0) ->
     %% INFO: We delete in both cases when name is claimed or not claimed
     %%       when it expires
+    Hash = aens_commitments:id(Commitment),
     NamesTree1 = aens_state_tree:delete_commitment(Hash, NamesTree0),
     {ok, NamesTree1}.
 
