@@ -121,7 +121,7 @@ int_create(PrevBlockHash, PrevBlock, Trees, Miner, Txs, AdjChain) ->
     {ok, Block, BlockInfo} = int_create_block(PrevBlockHash, PrevBlock, Trees, Miner, Txs),
     case adjust_target(Block, AdjChain) of
         {ok, AdjBlock} -> {ok, AdjBlock, BlockInfo#{ adj_chain => AdjChain }};
-        {error, _}     -> {error, failed_to_adjust_target}
+        {error, Reason} -> {error, {failed_to_adjust_target, Reason}}
     end.
 
 int_create_block(PrevBlockHash, PrevBlock, Trees, Miner, Txs) ->

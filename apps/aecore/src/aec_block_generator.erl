@@ -210,8 +210,8 @@ update_block_candidate(Block, BlockInfo = #{ adj_chain := AdjChain }, Txs) ->
                     case aec_block_candidate:adjust_target(NewBlock, AdjChain) of
                         {ok, AdjBlock} ->
                             gen_server:cast(?MODULE, {new_candidate, AdjBlock, NewBlockInfo});
-                        {error, _} ->
-                            failed_attempt(failed_to_adjust_target)
+                        {error, Reason} ->
+                            failed_attempt({failed_to_adjust_target, Reason})
                     end;
                 {error, no_change} ->
                     failed_attempt(no_update_to_block_candidate)
