@@ -224,8 +224,9 @@ def decode_unsigned_tx(encoded_tx):
     tag, vsn, fields = decoded[0], decoded[1], decoded[2:]
     # This is minimally what we need for now
     if (tag == bytes(bytearray([42])) and vsn == bytes(bytearray([1]))):
+        ownerid = decode_id(fields[0])
         return {'type': 'contract_create_tx',
-                'owner': fields[0],
+                'owner': ownerid['pubkey'],
                 'nonce': bytes_to_int(fields[1]),
                 'code': fields[2],
                 'vm_version': bytes_to_int(fields[3]),
@@ -237,6 +238,11 @@ def decode_unsigned_tx(encoded_tx):
                 'gas_price': bytes_to_int(fields[9]),
                 'call_data': fields[10]
         }
+
+def decode_id(encoded):
+    return { 'type': encoded[0],
+             'pubkey': encoded[1:]
+    }
 
 def bytes_to_int(x):
     return int(x.encode('hex'), 16)
