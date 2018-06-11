@@ -74,7 +74,7 @@ run_contract(Name, Fun, Args, Type) ->
   Code = compile(Name),
 %%  io:format("\nCompiled code:\n"),
 %%  io:format("~p\n\n",[Code]),
-  ok = aeb_disassemble:pp(Code),
+  %% ok = aeb_disassemble:pp(Code),
   %% Load the call
   Call = list_to_tuple([list_to_binary(atom_to_list(Fun))|Args]),
   Data = aeso_data:to_binary(Call),

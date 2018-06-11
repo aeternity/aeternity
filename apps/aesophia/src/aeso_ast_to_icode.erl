@@ -29,7 +29,7 @@ code([{contract, _Attribs, {con, _, Name}, Code}|Rest], Icode) ->
     NewIcode = contract_to_icode(Code, set_name(Name, Icode)),
     code(Rest, NewIcode);
 code([], Icode) ->
-    add_default_init_function(Icode).
+    add_default_init_function(add_builtins(Icode)).
 
 %% Create default init function (only if state is unit).
 add_default_init_function(Icode = #{functions := Funs, state_type := State}) ->
@@ -92,6 +92,7 @@ ast_type(T) ->
 -define(oracle_t(Q, R), {app_t, _, {id, _, "oracle"}, [Q, R]}).
 -define(query_t(Q, R),  {app_t, _, {id, _, "oracle_query"}, [Q, R]}).
 -define(option_t(A),    {app_t, _, {id, _, "option"}, [A]}).
+-define(map_t(K, V),    {app_t, _, {id, _, "map"}, [K, V]}).
 
 ast_body(?id_app("raw_call", [To, Fun, Gas, Value, {typed, _, Arg, ArgT}], _, OutT)) ->
     %% TODO: temp hack before we have contract calls properly in the type checker
@@ -185,6 +186,21 @@ ast_body({qid, _, ["Oracle", "respond"]})      -> error({underapplied_primitive,
 ast_body({qid, _, ["Oracle", "query_fee"]})    -> error({underapplied_primitive, 'Oracle.query_fee'});
 ast_body({qid, _, ["Oracle", "get_answer"]})   -> error({underapplied_primitive, 'Oracle.get_answer'});
 ast_body({qid, _, ["Oracle", "get_question"]}) -> error({underapplied_primitive, 'Oracle.get_question'});
+
+%% Maps
+ast_body({map_get, _, Map, {typed, _, Key, KeyType}}) ->
+    Fun =
+        case ast_typerep(KeyType) of
+            word   -> {map_get, word};
+            string -> {map_get, string};
+            _      -> error({unsupported_key_type, KeyType})
+        end,
+    #funcall{ function = #var_ref{name = {builtin, Fun}},
+              args     = [ast_body(Map), ast_body(Key)] };
+ast_body(?qid_app(["Map", "from_list"], [List], _, _)) ->
+    ast_body(List);
+ast_body({qid, _, ["Map", "from_list"]}) ->
+    error({underapplied_primitive, 'Map.from_list'});
 
 %% Other terms
 ast_body({id, _, Name}) ->
@@ -309,6 +325,8 @@ ast_typerep(?query_t(_, _)) ->
     word;
 ast_typerep(?option_t(A)) ->
     {option, ast_typerep(A)};   %% For now, but needs to be generalised to arbitrary datatypes later.
+ast_typerep(?map_t(K, V)) ->
+    map_typerep(ast_typerep(K), ast_typerep(V));
 ast_typerep({tvar,_,_}) ->
     %% We serialize type variables just as addresses in the originating VM.
     word;
@@ -320,6 +338,9 @@ ast_typerep({app_t,_,{id,_,"list"},[Elem]}) ->
     {list, ast_typerep(Elem)};
 ast_typerep({fun_t,_,_,_}) ->
     function.
+
+map_typerep(K, V) ->
+    {list, {tuple, [K, V]}}.  %% Lists of key-value pairs for now
 
 ast_type_value(T) ->
     type_value(ast_type(T)).
@@ -351,3 +372,55 @@ set_name(Name, Icode) ->
 
 set_functions(NewFuns, Icode) ->
     maps:put(functions, NewFuns, Icode).
+
+%% -------------------------------------------------------------------
+%% Builtins
+%% -------------------------------------------------------------------
+
+builtin_deps({map_get, string}) -> [str_equal];
+builtin_deps(_) -> [].
+
+used_builtins(#funcall{ function = #var_ref{ name = {builtin, Builtin} } }) ->
+    [Builtin | builtin_deps(Builtin)];
+used_builtins([H|T]) ->
+  lists:umerge(used_builtins(H), used_builtins(T));
+used_builtins(T) when is_tuple(T) ->
+  used_builtins(tuple_to_list(T));
+used_builtins(M) when is_map(M) ->
+  used_builtins(maps:to_list(M));
+used_builtins(_) -> [].
+
+builtin_function(Builtin = {map_get, Type}) ->
+    Eq = fun(A, B) ->
+            case Type of
+                word   -> {binop, '==', A, B};
+                string -> {funcall, {var_ref, {builtin, str_equal}}, [A, B]}
+            end end,
+    Name = {builtin, Builtin},
+    {Name,
+        [{"m", map_typerep(Type, word)}, {"k", Type}],
+        {switch, {var_ref, "m"},
+            [{{binop, '::',
+                {tuple, [{var_ref, "k'"}, {var_ref, "v"}]},
+                {var_ref, "m'"}},
+              {ifte, Eq({var_ref, "k"}, {var_ref, "k'"}),
+                {var_ref, "v"},
+                {funcall, {var_ref, Name},
+                    [{var_ref, "m'"}, {var_ref, "k"}]}}}]},
+        word};
+builtin_function(str_equal) ->
+    V = fun(X) -> {var_ref, atom_to_list(X)} end,
+    P = fun(A, B) -> {tuple, [A, B]} end,
+    {{builtin, str_equal},
+        [{"s1", string}, {"s2", string}],
+        {switch, P(V(s1), V(s2)),
+        [{P(P(V(n1), V(w1)), P(V(n2), V(w2))),
+            {binop, '&&',
+                {binop, '==', V(n1), V(n2)},
+                {binop, '==', V(w1), V(w2)}}}]},  %% TODO: only compares first 32 bytes!
+        word}.
+
+add_builtins(Icode = #{functions := Funs}) ->
+    Builtins = used_builtins(Funs),
+    Icode#{functions := [ builtin_function(B) || B <- Builtins ] ++ Funs}.
+

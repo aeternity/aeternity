@@ -20,6 +20,9 @@ i(Code) -> aeb_opcodes:mnemonic(Code).
 is_pure({FName, _, _, _})     -> FName == "init".
 is_stateful({FName, _, _, _}) -> FName /= "init".
 
+is_public({{builtin, _}, _, _, _}) -> false;
+is_public(_) -> true.
+
 convert(#{ contract_name := _ContractName
          , state_type := StateType
          , functions := Functions
@@ -32,7 +35,7 @@ convert(#{ contract_name := _ContractName
                       icode_seq([ hack_return_address(Fun, length(Args) + 1) ] ++
                                 [ {funcall, {var_ref, "_copy_state"}, [prim_state]} || not is_pure(Fun) ] ++
                                 [{encode, 0, TypeRep, {funcall, {var_ref, FName}, make_args(Args)}}])}
-                     || Fun={FName, Args, _, TypeRep} <- Functions]},
+                     || Fun={FName, Args, _, TypeRep} <- Functions, is_public(Fun) ]},
                    word},
     %% Find the type-reps we need encoders for
     {InTypes, OutTypes} = remote_call_type_reps(Functions),

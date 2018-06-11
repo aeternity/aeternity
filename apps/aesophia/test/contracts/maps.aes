@@ -1,17 +1,9 @@
 contract Maps =
 
-  type map('a, 'b) = list(('a, 'b))
+  function lookup(m : map(string, string), k) =
+    m[k]
 
-  function new() = []
+  function test() : string =
+    let m = Map.from_list([("foo", "1004"), ("bar", "1005")])
+    lookup(m, "bar")
 
-  function mput(k:'a, v:'b, m:list(('a, 'b))) =
-    switch(m)
-      []             => [(k, v)]
-      (k, _) :: rest => [(k, v) :: rest]
-      e :: rest      => e :: mput(k, v, rest)
-
-  function mget(k:'a, m:list(('a, 'b))) : option('b) =
-    switch(m)
-      []             => None
-      (k, v) :: rest => Some(v)
-      e :: rest      => mget(k, rest)

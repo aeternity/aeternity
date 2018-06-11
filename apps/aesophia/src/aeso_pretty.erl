@@ -173,7 +173,8 @@ name({id, _,   Name})  -> text(Name);
 name({con, _,  Name})  -> text(Name);
 name({qid, _,  Names}) -> text(string:join(Names, "."));
 name({qcon, _, Names}) -> text(string:join(Names, "."));
-name({tvar, _, Name})  -> text(Name).
+name({tvar, _, Name})  -> text(Name);
+name({typed, _, Name, _}) -> name(Name).
 
 -spec letdecl(string(), aeso_syntax:letbind()) -> doc().
 letdecl(Let, {letval, _, F, T, E}) ->

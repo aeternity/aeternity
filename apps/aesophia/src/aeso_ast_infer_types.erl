@@ -19,6 +19,9 @@ global_env() ->
     Oracle  = fun(Q, R) -> {app_t, Ann, {id, Ann, "oracle"}, [Q, R]} end,
     Query   = fun(Q, R) -> {app_t, Ann, {id, Ann, "oracle_query"}, [Q, R]} end,
     Unit    = {tuple_t, Ann, []},
+    List    = fun(T) -> {app_t, Ann, {id, Ann, "list"}, [T]} end,
+    Map     = fun(A, B) -> {app_t, Ann, {id, Ann, "map"}, [A, B]} end,
+    Pair    = fun(A, B) -> {tuple_t, Ann, [A, B]} end,
     Fun     = fun(Ts, T) -> {type_sig, Ts, T} end,
     Fun1    = fun(S, T) -> Fun([S], T) end,
     TVar    = fun(X) -> {tvar, Ann, "'" ++ X} end,
@@ -56,7 +59,9 @@ global_env() ->
      {["Oracle", "get_question"], Fun([Oracle(Q, R), Query(Q, R)], Q)},
      {["Oracle", "respond"],      Fun([Oracle(Q, R), Query(Q, R), Signature, R], Unit)},
      {["Oracle", "extend"],       Fun([Oracle(Q, R), Signature, Fee, TTL], Unit)},
-     {["Oracle", "get_answer"],   Fun([Oracle(Q, R), Query(Q, R)], option_t(Ann, R))}
+     {["Oracle", "get_answer"],   Fun([Oracle(Q, R), Query(Q, R)], option_t(Ann, R))},
+     %% Maps
+     {["Map", "from_list"], Fun1(List(Pair(A, B)), Map(A, B))}
     ].
 
 option_t(As, T) -> {app_t, As, {id, As, "option"}, [T]}.
@@ -160,7 +165,6 @@ lookup_name(Env, As, Name) ->
 
 check_expr(Env, Expr, Type) ->
     E = {typed, _, _, Type1} = infer_expr(Env, Expr),
-    io:format("Unifying\n  expected type: ~p\n  inferred type: ~p\n", [Type, Type1]),
     unify(Type1, Type),
     E.
 
