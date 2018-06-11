@@ -11,7 +11,8 @@
 -export([id/1,
          new/3,
          serialize/1,
-         deserialize/1]).
+         deserialize/2
+        ]).
 
 %% Getters
 -export([expires/1,
@@ -65,15 +66,13 @@ serialize(#commitment{} = C) ->
       ?COMMITMENT_TYPE,
       ?COMMITMENT_VSN,
       serialization_template(?COMMITMENT_VSN),
-      [ {hash, hash(C)}
-      , {owner, owner(C)}
+      [ {owner, owner(C)}
       , {created, created(C)}
       , {expires, expires(C)}]).
 
--spec deserialize(binary()) -> commitment().
-deserialize(Bin) ->
-    [ {hash, Hash}
-    , {owner, Owner}
+-spec deserialize(aens_hash:commitment_hash(), binary()) -> commitment().
+deserialize(Hash, Bin) ->
+    [ {owner, Owner}
     , {created, Created}
     , {expires, Expires}
     ] = aec_object_serialization:deserialize(
@@ -87,8 +86,7 @@ deserialize(Bin) ->
                 expires = Expires}.
 
 serialization_template(?COMMITMENT_VSN) ->
-    [ {hash, binary}
-    , {owner, binary}
+    [ {owner, binary}
     , {created, int}
     , {expires, int}
     ].

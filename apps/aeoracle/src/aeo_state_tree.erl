@@ -333,8 +333,8 @@ find_oracles(_Iterator, 0) -> [];
 find_oracles(Iterator, N) ->
     case aeu_mtrees:iterator_next(Iterator) of
         '$end_of_table' -> [];
-        {_Key, Value, NextIterator} ->
-            [aeo_oracles:deserialize(Value) | find_oracles(NextIterator, N-1)]
+        {Key, Value, NextIterator} ->
+            [aeo_oracles:deserialize(Key, Value) | find_oracles(NextIterator, N-1)]
     end.
 
 find_oracle_query_ids(OracleId, #oracle_tree{otree = T}, Type) ->

@@ -81,12 +81,12 @@ prune(NextBlockHeight, #ns_tree{} = Tree) ->
 
 run_elapsed([], Tree, _) ->
     Tree;
-run_elapsed([{aens_names, Serialized}|Expired], Tree, Height) ->
-    Name = aens_names:deserialize(Serialized),
+run_elapsed([{aens_names, Id, Serialized}|Expired], Tree, Height) ->
+    Name = aens_names:deserialize(Id, Serialized),
     {ok, Tree1} = run_elapsed_name(Name, Tree, Height),
     run_elapsed(Expired, Tree1, Height);
-run_elapsed([{aens_commitments, Serialized}|Expired], Tree, Height) ->
-    Commitment = aens_commitments:deserialize(Serialized),
+run_elapsed([{aens_commitments, Id, Serialized}|Expired], Tree, Height) ->
+    Commitment = aens_commitments:deserialize(Id, Serialized),
     {ok, Tree1} = run_elapsed_commitment(Commitment, Tree),
     run_elapsed(Expired, Tree1, Height).
 
@@ -111,19 +111,19 @@ enter_name(Name, Tree) ->
 
 -spec get_name(binary(), tree()) -> name().
 get_name(Id, Tree) ->
-    aens_names:deserialize(aeu_mtrees:get(Id, Tree#ns_tree.mtree)).
+    aens_names:deserialize(Id, aeu_mtrees:get(Id, Tree#ns_tree.mtree)).
 
 -spec lookup_commitment(binary(), tree()) -> {value, commitment()} | none.
 lookup_commitment(Id, Tree) ->
     case aeu_mtrees:lookup(Id, Tree#ns_tree.mtree) of
-        {value, Val} -> {value, aens_commitments:deserialize(Val)};
+        {value, Val} -> {value, aens_commitments:deserialize(Id, Val)};
         none -> none
     end.
 
 -spec lookup_name(binary(), tree()) -> {value, name()} | none.
 lookup_name(Id, Tree) ->
     case aeu_mtrees:lookup(Id, Tree#ns_tree.mtree) of
-        {value, Val} -> {value, aens_names:deserialize(Val)};
+        {value, Val} -> {value, aens_names:deserialize(Id, Val)};
         none -> none
     end.
 
@@ -140,21 +140,21 @@ commit_to_db(#ns_tree{mtree = MTree, cache = Cache} = Tree) ->
 -ifdef(TEST).
 -spec commitment_list(tree()) -> list(commitment()).
 commitment_list(#ns_tree{mtree = Tree}) ->
-    IsCommitment = fun(MaybeC) ->
-                       try [aens_commitments:deserialize(MaybeC)]
+    IsCommitment = fun(Id, MaybeC) ->
+                       try [aens_commitments:deserialize(Id, MaybeC)]
                        catch _:_ -> [] end
                    end,
-    [ C || {_, Val} <- aeu_mtrees:to_list(Tree),
-           C <- IsCommitment(Val) ].
+    [ C || {Id, Val} <- aeu_mtrees:to_list(Tree),
+           C <- IsCommitment(Id, Val) ].
 
 -spec name_list(tree()) -> list(name()).
 name_list(#ns_tree{mtree = Tree}) ->
-    IsName = fun(MaybeC) ->
-                 try [aens_names:deserialize(MaybeC)]
+    IsName = fun(Id, MaybeC) ->
+                 try [aens_names:deserialize(Id, MaybeC)]
                  catch _:_ -> [] end
              end,
-    [ C || {_, Val} <- aeu_mtrees:to_list(Tree),
-           C <- IsName(Val) ].
+    [ C || {Id, Val} <- aeu_mtrees:to_list(Tree),
+           C <- IsName(Id, Val) ].
 -endif.
 
 
@@ -174,7 +174,7 @@ int_prune({HeightLower, Id, Mod}, NextBlockHeight, Cache, MTree, ExpiredAcc) ->
     {{HeightLower, Id, Mod}, Cache1} = cache_pop(Cache),
     case aeu_mtrees:lookup(Id, MTree) of
         {value, ExpiredAction} ->
-            int_prune(cache_safe_peek(Cache1), NextBlockHeight, Cache1, MTree, [{Mod, ExpiredAction}|ExpiredAcc]);
+            int_prune(cache_safe_peek(Cache1), NextBlockHeight, Cache1, MTree, [{Mod, Id, ExpiredAction}|ExpiredAcc]);
         none ->
             int_prune(cache_safe_peek(Cache1), NextBlockHeight, Cache1, MTree, ExpiredAcc)
     end.
