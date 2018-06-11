@@ -216,7 +216,7 @@ make_contract(PubKey = <<_:32, Rest/binary>>, Code, S) ->
     aect_contracts:new(ContractKey, CTx).
 
 make_call(PubKey, ContractKey,_Call,_S) ->
-    aect_call:new(PubKey, 0, ContractKey, 1).
+    aect_call:new(PubKey, 0, ContractKey, 1, 1).
 
 state()  -> get(the_state).
 state(S) -> put(the_state, S).

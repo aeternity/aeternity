@@ -179,7 +179,7 @@ process(#contract_create_tx{owner      = OwnerPubKey,
               Nonce, Context, Height, Trees1, ConsensusVersion),
 
     %% Create the init call.
-    Call0 = aect_call:new(OwnerPubKey, Nonce, ContractPubKey, Height),
+    Call0 = aect_call:new(OwnerPubKey, Nonce, ContractPubKey, Height, GasPrice),
     %% Execute init calQl to get the contract state and return value
     {CallRes, Trees3} =
         run_contract(CreateTx, Call0, Height, Trees2, Contract, ContractPubKey),
