@@ -185,7 +185,7 @@ elim() ->
     ?LAZY_P(
     choice(
     [ {proj, keyword('.'), id()}
-    , ?RULE(paren_list(expr()), {app, get_ann(_1), _1})
+    , ?RULE(paren_list(expr()), {app, [], _1})
     , ?RULE(keyword('{'), comma_sep(field_assignment()), tok('}'), {rec_upd, _1, _2})
     , ?RULE(keyword('['), expr(), keyword(']'), {map_get, _1, _2})
     ])).
