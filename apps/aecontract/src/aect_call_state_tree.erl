@@ -14,8 +14,13 @@
         , get_call/3
         , insert_call/2
         , lookup_call/3
+        , iterator/1
         , prune/2
         , root_hash/1]).
+
+-ifdef(TEST).
+-export([to_list/1]).
+-endif.
 
 -export_type([tree/0]).
 
@@ -71,10 +76,22 @@ lookup_call(CtId, CallId, Tree) ->
         none         -> none
     end.
 
+-spec iterator(tree()) -> aeu_mtrees:iterator().
+iterator(Tree) ->
+    aeu_mtrees:iterator(Tree#call_tree.calls).
+
 -spec get_call(aect_contracts:id(), aect_call:id(), tree()) -> aect_call:call().
 get_call(CtId, CallId, #call_tree{ calls = CtTree }) ->
     CallTreeId = call_tree_id(CtId, CallId),
     aect_call:deserialize(aeu_mtrees:get(CallTreeId, CtTree)).
+
+-ifdef(TEST).
+to_list(Tree) ->
+    F = fun(K, SerCall, CallsIn) ->
+                [{K, aect_call:deserialize(SerCall)} | CallsIn]
+        end,
+    aeu_mtrees:fold(F, [], iterator(Tree)).
+-endif.
 
 %% -- Hashing --
 

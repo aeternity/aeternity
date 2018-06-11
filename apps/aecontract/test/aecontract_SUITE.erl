@@ -29,6 +29,7 @@
         ]).
 
 -include_lib("common_test/include/ct.hrl").
+-include_lib("stdlib/include/assert.hrl").
 
 -include_lib("apps/aecore/include/blocks.hrl").
 -include_lib("apps/aecontract/include/contract_txs.hrl").
@@ -123,8 +124,47 @@ create_contract(_Cfg) ->
     Tx           = aect_test_utils:create_tx(PubKey, Overrides, S1),
 
     %% Test that the create transaction is accepted
-    {ok, S2}   = sign_and_apply_transaction(Tx, PrivKey, S1, ?MINER_PUBKEY),
-    {{value, _}, _} = lookup_contract_by_id(aect_contracts:compute_contract_pubkey(PubKey, aetx:nonce(Tx)), S2),
+    {ok, S2} = sign_and_apply_transaction(Tx, PrivKey, S1, ?MINER_PUBKEY),
+    %% Check that the contract is created
+    ContractKey = aect_contracts:compute_contract_pubkey(PubKey, aetx:nonce(Tx)),
+    {{value, Contract}, _} = lookup_contract_by_id(ContractKey, S2),
+    %% Check that the created contract has the correct details from the contract create tx
+    ?assertEqual(PubKey, aect_contracts:owner(Contract)),
+    ?assertEqual(aect_create_tx:vm_version(aetx:tx(Tx)), aect_contracts:vm_version(Contract)),
+    ?assertEqual(aect_create_tx:code(aetx:tx(Tx)), aect_contracts:code(Contract)),
+    ?assertEqual(aect_create_tx:deposit(aetx:tx(Tx)), aect_contracts:deposit(Contract)),
+    %% Check that the created contract has the correct details not from the contract create tx
+    _ = aect_contracts:log(Contract),
+    ?assert(aect_contracts:active(Contract)),
+    ?assertEqual([], aect_contracts:referers(Contract)),
+    %% Check that the contract init call is created
+    ?assertEqual([], aect_call_state_tree:to_list(aect_test_utils:calls(S1))),
+    ?assertMatch([_], aect_call_state_tree:to_list(aect_test_utils:calls(S2))),
+    InitCallId = aect_call:id(PubKey, aetx:nonce(Tx), ContractKey),
+    {value, InitCall} = aect_call_state_tree:lookup_call(ContractKey, InitCallId, aect_test_utils:calls(S2)),
+    %% Check that the created init call has the correct details from the contract create tx
+    ?assertEqual(PubKey, aect_call:caller_address(InitCall)),
+    ?assertEqual(aetx:nonce(Tx), aect_call:caller_nonce(InitCall)),
+    %% Check that the created init call has the correct details not from the contract create tx
+    ?assertEqual(ContractKey, aect_call:contract_address(InitCall)),
+    _ = aect_call:height(InitCall), %% Unclear if this needed.
+    _ = aect_call:gas_used(InitCall), %% No init in contract - shall value be zero?
+    ?assertEqual(ok, aect_call:return_type(InitCall)),
+    _ = aect_call:return_value(InitCall), %% No init in contract - what shall value be?
+
+    %% Check that contract create transaction sender got charged correctly.
+    ?assertEqual(aec_accounts:balance(aect_test_utils:get_account(PubKey, S1))
+                 - aect_create_tx:fee(aetx:tx(Tx))
+                 - aect_create_tx:deposit(aetx:tx(Tx))
+                 - aect_create_tx:amount(aetx:tx(Tx))
+                 - aect_create_tx:gas_price(aetx:tx(Tx)) * aect_call:gas_used(InitCall),
+                 aec_accounts:balance(aect_test_utils:get_account(PubKey, S2))),
+    %% Check that created contract account got credited correctly.
+    ?assertEqual(aect_create_tx:amount(aetx:tx(Tx)),
+                 aec_accounts:balance(aect_test_utils:get_account(ContractKey, S2))),
+    %% Check that the miner got credited correctly.
+    ?assertEqual(aec_governance:block_mine_reward() + aect_create_tx:fee(aetx:tx(Tx)),
+                 aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S2))),
 
     ok.
 
@@ -195,13 +235,30 @@ call_contract(_Cfg) ->
     CallId = aect_call:id(Caller, aetx:nonce(CallTx), ContractKey),
 
     %% Check that it got stored and that we got the right return value
+    ?assertMatch([_], aect_call_state_tree:to_list(aect_test_utils:calls(S4))),
     Call = aect_call_state_tree:get_call(ContractKey, CallId, aect_test_utils:calls(S4)),
+    ok = aect_call:return_type(Call),
     <<42:256>> = aect_call:return_value(Call),
+    %% Check that the stored call has the correct rest of the details
+    ?assertEqual(Caller, aect_call:caller_address(Call)),
+    ?assertEqual(aetx:nonce(CallTx), aect_call:caller_nonce(Call)),
+    _ = aect_call:height(Call), %% Unclear if this needed.
+    ?assertEqual(ContractKey, aect_call:contract_address(Call)),
+    _ = aect_call:gas_used(Call),
 
-    %% ...and that we got charged the right amount for gas and fee.
+    %% Check that contract call transaction sender got charged the right amount for gas and fee.
     {NewCallerBalance, NewCallerBalance} =
         {aec_accounts:balance(aect_test_utils:get_account(Caller, S4)),
          CallerBalance - Fee - GasPrice * aect_call:gas_used(Call) - Value},
+    %% Check that called account got credited correctly.
+    ?assertEqual(aec_accounts:balance(aect_test_utils:get_account(ContractKey, S3))
+                 + aect_call_tx:amount(aetx:tx(CallTx)),
+                 aec_accounts:balance(aect_test_utils:get_account(ContractKey, S4))),
+    %% Check that the miner got credited correctly.
+    ?assertEqual(aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S3))
+                 + aec_governance:block_mine_reward()
+                 + aect_call_tx:fee(aetx:tx(CallTx)),
+                 aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S4))),
 
     {ok, S4}.
 
