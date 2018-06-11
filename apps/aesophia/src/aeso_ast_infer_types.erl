@@ -60,6 +60,7 @@ global_env() ->
     ].
 
 option_t(As, T) -> {app_t, As, {id, As, "option"}, [T]}.
+map_t(As, K, V) -> {app_t, As, {id, As, "map"}, [K, V]}.
 
 infer([{contract, Attribs, ConName, Code}|Rest]) ->
     %% do type inference on each contract independently.
@@ -250,6 +251,14 @@ infer_expr(Env, {proj, Attrs, Record, FieldName}) ->
     FieldType = fresh_uvar(Attrs),
     constrain({RecordType, FieldName, FieldType}),
     {typed, Attrs, {proj, Attrs, NewRecord, FieldName}, FieldType};
+%% Maps
+infer_expr(Env, {map_get, Attrs, Map, Key}) ->
+    KeyType = fresh_uvar(Attrs),
+    ValType = fresh_uvar(Attrs),
+    MapType = map_t(Attrs, KeyType, ValType),
+    Map1 = check_expr(Env, Map, MapType),
+    Key1 = check_expr(Env, Key, KeyType),
+    {typed, Attrs, {map_get, Attrs, Map1, Key1}, ValType};
 infer_expr(Env, {block, Attrs, Stmts}) ->
     BlockType = fresh_uvar(Attrs),
     NewStmts = infer_block(Env, Attrs, Stmts, BlockType),
