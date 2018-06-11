@@ -88,7 +88,7 @@ block_extension_test_() ->
           {ok, Block1B0, BInfo} = aec_block_candidate:create(Block0),
 
           {ok, Block1B, #{ trees := _Trees1B }} =
-                aec_block_generator:update_block_candidate(5, Block1B0, [STx], BInfo),
+                aec_block_candidate:update(Block1B0, [STx], BInfo),
 
           ?assertEqual(Block1A, Block1B)
         end}

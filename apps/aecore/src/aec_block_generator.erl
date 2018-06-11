@@ -17,19 +17,14 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--ifdef(TEST).
--export([update_block_candidate/4]).
--endif.
-
 -record(state,
         { generating = false    :: boolean()
         , worker = undefined    :: undefined | {pid(), term()}
         , candidate = undefined :: undefined | aec_blocks:block()
-        , candidate_state = undefined :: undefined | term()
-        , new_txs = []          :: list(term())
+        , candidate_state = undefined :: undefined
+                                       | aec_block_candidate:block_info()
+        , new_txs = []          :: list(aetx_sign:signed_tx())
         }).
-
--include("blocks.hrl").
 
 %% -- API --------------------------------------------------------------------
 start_link() ->
@@ -198,60 +193,12 @@ create_block_candidate(BlockOrBlockHash) ->
             failed_attempt(Reason)
     end.
 
-update_block_candidate(Block, BlockInfo = #{ adj_chain := AdjChain }, Txs) ->
-    NTxs = length(aec_blocks:txs(Block)),
-    MaxTxs = aec_governance:max_txs_in_block(),
-    case NTxs < MaxTxs of
-        false -> failed_attempt(block_is_full);
-        true  ->
-            SortedTxs = sort_txs(Txs),
-            case update_block_candidate(MaxTxs - NTxs, Block, SortedTxs, BlockInfo) of
-                {ok, NewBlock, NewBlockInfo} ->
-                    case aec_block_candidate:adjust_target(NewBlock, AdjChain) of
-                        {ok, AdjBlock} ->
-                            gen_server:cast(?MODULE, {new_candidate, AdjBlock, NewBlockInfo});
-                        {error, _} ->
-                            failed_attempt(failed_to_adjust_target)
-                    end;
-                {error, _} ->
-                    failed_attempt(no_update_to_block_candidate)
-            end
-    end.
-
-update_block_candidate(MaxNTxs, Block, Txs, BlockInfo) ->
-    #{ trees := Trees, tot_fee := TotFee, txs_tree := TxsTree } = BlockInfo,
-    case add_txs_to_trees(MaxNTxs, Trees, Txs,
-                          aec_blocks:height(Block), aec_blocks:version(Block)) of
-        {[], _Trees} ->
-            {error, no_change};
-        {Txs1, Trees1} ->
-        Txs0 = aec_blocks:txs(Block),
-            Fee = aec_block_candidate:calculate_fee(Txs1),
-            Trees2 = aec_trees:grant_fee_to_miner(aec_blocks:miner(Block), Trees1, Fee),
-            TxsTree1 = aec_txs_trees:add_txs(Txs1, length(Txs0), TxsTree),
-            {ok, TxsRootHash} = aec_txs_trees:root_hash(TxsTree1),
-            NewBlock = Block#block{ txs_hash = TxsRootHash
-                                  , root_hash = aec_trees:hash(Trees2)
-                                  , txs =  Txs0 ++ Txs1
-                                  , time = aeu_time:now_in_msecs() },
-            NewBlockInfo = BlockInfo#{ trees => Trees2, tot_fee => TotFee + Fee,
-                                       txs_tree => TxsTree1 },
-            {ok, NewBlock, NewBlockInfo}
-    end.
-
-add_txs_to_trees(MaxN, Trees, Txs, Height, Version) ->
-    add_txs_to_trees(MaxN, Trees, Txs, [], Height, Version).
-
-add_txs_to_trees(0, Trees, _Txs, Acc, _Height, _Version) ->
-    {lists:reverse(Acc), Trees};
-add_txs_to_trees(_N, Trees, [], Acc, _Height, _Version) ->
-    {lists:reverse(Acc), Trees};
-add_txs_to_trees(N, Trees, [Tx | Txs], Acc, Height, Version) ->
-    case aec_trees:apply_txs_on_state_trees([Tx], Trees, Height, Version) of
-        {ok, [], _} ->
-            add_txs_to_trees(N, Trees, Txs, Acc, Height, Version);
-        {ok, [Tx], Trees1} ->
-            add_txs_to_trees(N+1, Trees1, Txs, [Tx | Acc], Height, Version)
+update_block_candidate(Block, BlockInfo, Txs) ->
+    case aec_block_candidate:update(Block, Txs, BlockInfo) of
+        {error, Reason} ->
+            failed_attempt(Reason);
+        {ok, AdjBlock, NewBlockInfo} ->
+            gen_server:cast(?MODULE, {new_candidate, AdjBlock, NewBlockInfo})
     end.
 
 failed_attempt(Reason) ->
@@ -259,15 +206,3 @@ failed_attempt(Reason) ->
 
 publish_candidate(_Block) ->
     aec_events:publish(candidate_block, new_candidate).
-
-%% Respect nonces order
-sort_txs(Txs) ->
-    Cmp =
-        fun(STx1, STx2) ->
-            Tx1 = aetx_sign:tx(STx1),
-            Tx2 = aetx_sign:tx(STx2),
-            {O1, N1} = {aetx:origin(Tx1), aetx:nonce(Tx1)},
-            {O2, N2} = {aetx:origin(Tx2), aetx:nonce(Tx2)},
-            {O1, N1} =< {O2, N2}
-        end,
-    lists:sort(Cmp, Txs).
