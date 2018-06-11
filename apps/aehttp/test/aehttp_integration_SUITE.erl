@@ -934,7 +934,7 @@ nameservice_transactions(_Config) ->
     ok.
 
 nameservice_transaction_preclaim(MinerAddress, MinerPubkey) ->
-    Commitment = <<"abcd">>,
+    Commitment = random_hash(),
     Encoded = #{account => MinerAddress,
                 commitment => aec_base58c:encode(commitment, Commitment),
                 fee => 1},
@@ -1007,7 +1007,7 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
     ok.
 
 nameservice_transaction_update(MinerAddress, MinerPubkey) ->
-    NameHash = <<"name">>,
+    NameHash = random_hash(),
     Pointers = [{}],
     Encoded = #{account => MinerAddress,
                 name_hash => aec_base58c:encode(name, NameHash),
@@ -1037,7 +1037,7 @@ nameservice_transaction_update(MinerAddress, MinerPubkey) ->
 
 nameservice_transaction_transfer(MinerAddress, MinerPubkey) ->
     RandAddress = random_hash(),
-    NameHash = <<"name">>,
+    NameHash = random_hash(),
     Encoded = #{account => MinerAddress,
                 name_hash => aec_base58c:encode(name, NameHash),
                 recipient_pubkey => aec_base58c:encode(account_pubkey,
@@ -1057,7 +1057,7 @@ nameservice_transaction_transfer(MinerAddress, MinerPubkey) ->
     ok.
 
 nameservice_transaction_revoke(MinerAddress, MinerPubkey) ->
-    NameHash = <<"name">>,
+    NameHash = random_hash(),
     Encoded = #{account => MinerAddress,
                 name_hash => aec_base58c:encode(name, NameHash),
                 fee => 1},

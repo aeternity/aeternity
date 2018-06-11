@@ -7,8 +7,6 @@
 
 -module(aens_preclaim_tx).
 
--include("ns_txs.hrl").
-
 -behavior(aetx).
 
 %% Behavior API
@@ -38,6 +36,14 @@
 -define(NAME_PRECLAIM_TX_VSN, 1).
 -define(NAME_PRECLAIM_TX_TYPE, name_preclaim_tx).
 
+-record(ns_preclaim_tx, {
+          account    :: aec_id:id(),
+          nonce      :: integer(),
+          commitment :: aec_id:id(),
+          fee        :: integer(),
+          ttl        :: aetx:tx_ttl()
+         }).
+
 -opaque tx() :: #ns_preclaim_tx{}.
 
 -export_type([tx/0]).
@@ -51,9 +57,9 @@ new(#{account    := AccountPubKey,
       nonce      := Nonce,
       commitment := Commitment,
       fee        := Fee} = Args) ->
-    Tx = #ns_preclaim_tx{account    = AccountPubKey,
+    Tx = #ns_preclaim_tx{account    = aec_id:create(account, AccountPubKey),
                          nonce      = Nonce,
-                         commitment = Commitment,
+                         commitment = aec_id:create(commitment, Commitment),
                          fee        = Fee,
                          ttl        = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.
@@ -75,13 +81,15 @@ nonce(#ns_preclaim_tx{nonce = Nonce}) ->
     Nonce.
 
 -spec origin(tx()) -> aec_keys:pubkey().
-origin(#ns_preclaim_tx{account = AccountPubKey}) ->
-    AccountPubKey.
+origin(#ns_preclaim_tx{} = Tx) ->
+    account(Tx).
 
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()} | {error, term()}.
-check(#ns_preclaim_tx{account = AccountPubKey, nonce = Nonce,
-                      fee = Fee, commitment = Commitment}, _Context, Trees, _Height, _ConsensusVersion) ->
+check(#ns_preclaim_tx{nonce = Nonce, fee = Fee} = Tx,
+      _Context, Trees, _Height, _ConsensusVersion) ->
+    AccountPubKey = account(Tx),
+    Commitment = commitment(Tx),
     Checks =
         [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee) end,
          fun() -> check_not_commitment(Commitment, Trees) end],
@@ -93,8 +101,9 @@ check(#ns_preclaim_tx{account = AccountPubKey, nonce = Nonce,
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()}.
-process(#ns_preclaim_tx{account = AccountPubKey, fee = Fee,
-                        nonce = Nonce} = PreclaimTx, _Context, Trees0, Height, _ConsensusVersion) ->
+process(#ns_preclaim_tx{fee = Fee, nonce = Nonce} = PreclaimTx,
+        _Context, Trees0, Height, _ConsensusVersion) ->
+    AccountPubKey = account(PreclaimTx),
     AccountsTree0 = aec_trees:accounts(Trees0),
     NSTree0 = aec_trees:ns(Trees0),
 
@@ -112,54 +121,54 @@ process(#ns_preclaim_tx{account = AccountPubKey, fee = Fee,
     {ok, Trees2}.
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
-signers(#ns_preclaim_tx{account = AccountPubKey}, _) ->
-    {ok, [AccountPubKey]}.
+signers(#ns_preclaim_tx{} = Tx, _) ->
+    {ok, [account(Tx)]}.
 
 -spec serialize(tx()) -> {integer(), [{atom(), term()}]}.
-serialize(#ns_preclaim_tx{account    = AccountPubKey,
+serialize(#ns_preclaim_tx{account    = AccountId,
                           nonce      = Nonce,
-                          commitment = Commitment,
+                          commitment = CommitmentId,
                           fee        = Fee,
                           ttl        = TTL}) ->
     {version(),
-     [ {account, AccountPubKey}
+     [ {account, AccountId}
      , {nonce, Nonce}
-     , {commitment, Commitment}
+     , {commitment, CommitmentId}
      , {fee, Fee}
      , {ttl, TTL}
      ]}.
 
 -spec deserialize(Vsn :: integer(), list({atom(), term()})) -> tx().
 deserialize(?NAME_PRECLAIM_TX_VSN,
-            [ {account, AccountPubKey}
+            [ {account, AccountId}
             , {nonce, Nonce}
-            , {commitment, Commitment}
+            , {commitment, CommitmentId}
             , {fee, Fee}
             , {ttl, TTL}]) ->
-    #ns_preclaim_tx{account    = AccountPubKey,
+    {account, _} = aec_id:specialize(AccountId),
+    {commitment, _} = aec_id:specialize(CommitmentId),
+    #ns_preclaim_tx{account    = AccountId,
                     nonce      = Nonce,
-                    commitment = Commitment,
+                    commitment = CommitmentId,
                     fee        = Fee,
                     ttl        = TTL}.
 
 serialization_template(?NAME_PRECLAIM_TX_VSN) ->
-    [ {account, binary}
+    [ {account, id}
     , {nonce, int}
-    , {commitment, binary}
+    , {commitment, id}
     , {fee, int}
     , {ttl, int}
     ].
 
 -spec for_client(tx()) -> map().
-for_client(#ns_preclaim_tx{account    = AccountPubKey,
-                           nonce      = Nonce,
-                           commitment = Commitment,
+for_client(#ns_preclaim_tx{nonce      = Nonce,
                            fee        = Fee,
-                           ttl        = TTL}) ->
+                           ttl        = TTL} = Tx) ->
     #{<<"vsn">>        => version(),
-      <<"account">>    => aec_base58c:encode(account_pubkey, AccountPubKey),
+      <<"account">>    => aec_base58c:encode(account_pubkey, account(Tx)),
       <<"nonce">>      => Nonce,
-      <<"commitment">> => aec_base58c:encode(commitment, Commitment),
+      <<"commitment">> => aec_base58c:encode(commitment, commitment(Tx)),
       <<"fee">>        => Fee,
       <<"ttl">>        => TTL}.
 
@@ -169,11 +178,11 @@ for_client(#ns_preclaim_tx{account    = AccountPubKey,
 
 -spec account(tx()) -> aec_keys:pubkey().
 account(#ns_preclaim_tx{account = AccountPubKey}) ->
-    AccountPubKey.
+    aec_id:specialize(AccountPubKey, account).
 
 -spec commitment(tx()) -> binary().
 commitment(#ns_preclaim_tx{commitment = Commitment}) ->
-    Commitment.
+    aec_id:specialize(Commitment, commitment).
 
 %%%===================================================================
 %%% Internal functions
