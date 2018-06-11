@@ -8,7 +8,7 @@
 -module(aeo_oracles).
 
 %% API
--export([ deserialize/1
+-export([ deserialize/2
         , expires/1
         , id/1
         , new/2
@@ -94,17 +94,15 @@ serialize(#oracle{} = O) ->
       ?ORACLE_TYPE,
       ?ORACLE_VSN,
       serialization_template(?ORACLE_VSN),
-      [ {owner, owner(O)}
-      , {query_format, query_format(O)}
+      [ {query_format, query_format(O)}
       , {response_format, response_format(O)}
       , {query_fee, query_fee(O)}
       , {expires, expires(O)}
       ]).
 
--spec deserialize(binary()) -> oracle().
-deserialize(Bin) ->
-      [ {owner, Owner}
-      , {query_format, QueryFormat}
+-spec deserialize(aec_keys:pubkey(), binary()) -> oracle().
+deserialize(Owner, Bin) ->
+      [ {query_format, QueryFormat}
       , {response_format, ResponseFormat}
       , {query_fee, QueryFee}
       , {expires, Expires}
@@ -123,8 +121,7 @@ deserialize(Bin) ->
            }.
 
 serialization_template(?ORACLE_VSN) ->
-    [ {owner, binary}
-    , {query_format, binary}
+    [ {query_format, binary}
     , {response_format, binary}
     , {query_fee, int}
     , {expires, int}
