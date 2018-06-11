@@ -157,6 +157,12 @@ lookup_name(Env, As, Name) ->
             Type
     end.
 
+check_expr(Env, Expr, Type) ->
+    E = {typed, _, _, Type1} = infer_expr(Env, Expr),
+    io:format("Unifying\n  expected type: ~p\n  inferred type: ~p\n", [Type, Type1]),
+    unify(Type1, Type),
+    E.
+
 infer_expr(_Env, Body={bool, As, _}) ->
     {typed, As, Body, {id, As, "bool"}};
 infer_expr(_Env, Body={int, As, _}) ->
@@ -216,9 +222,8 @@ infer_expr(Env, {app, As, Fun, Args}) ->
 infer_expr(Env, {'if', Attrs, Cond, Then, Else}) ->
     NewCond={typed, _, _, CondType} = infer_expr(Env, Cond),
     unify(CondType, {id, Attrs, "bool"}),
-    NewThen={typed, _, _, ThenType} = infer_expr(Env, Then),
-    NewElse={typed, _, _, ElseType} = infer_expr(Env, Else),
-    unify(ThenType, ElseType),
+    NewThen = {typed, _, _, ThenType} = infer_expr(Env, Then),
+    NewElse = check_expr(Env, Else, ThenType),
     {typed, Attrs, {'if', Attrs, NewCond, NewThen, NewElse}, ThenType};
 infer_expr(Env, {switch, Attrs, Expr, Cases}) ->
     NewExpr = {typed, _, _, ExprType} = infer_expr(Env, Expr),
