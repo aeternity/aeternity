@@ -44,7 +44,7 @@ empty_with_backend() ->
 
 -spec get(aec_keys:pubkey(), tree()) -> aec_accounts:account().
 get(Pubkey, Tree) ->
-    Account = aec_accounts:deserialize(aeu_mtrees:get(Pubkey, Tree)),
+    Account = aec_accounts:deserialize(Pubkey, aeu_mtrees:get(Pubkey, Tree)),
     Pubkey  = aec_accounts:pubkey(Account), %% Hardcoded expectation.
     Account.
 
@@ -54,7 +54,7 @@ lookup(Pubkey, Tree) ->
         none ->
             none;
         {value, SerializedAccount} ->
-            Account = aec_accounts:deserialize(SerializedAccount),
+            Account = aec_accounts:deserialize(Pubkey, SerializedAccount),
             Pubkey  = aec_accounts:pubkey(Account), %% Hardcoded expectation.
             {value, Account}
     end.
@@ -95,7 +95,7 @@ get_all_accounts_balances(AccountsTree) ->
     AccountsDump = aeu_mtrees:to_list(AccountsTree),
     lists:foldl(
       fun({Pubkey, SerializedAccount}, Acc) ->
-              Account = aec_accounts:deserialize(SerializedAccount),
+              Account = aec_accounts:deserialize(Pubkey, SerializedAccount),
               [{Pubkey, aec_accounts:balance(Account)} | Acc]
       end, [], AccountsDump).
 
