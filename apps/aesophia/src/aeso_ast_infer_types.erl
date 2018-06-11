@@ -610,6 +610,7 @@ unify1({uvar, A, R}, T) ->
     end;
 unify1(T, {uvar, A, R}) ->
     unify1({uvar, A, R}, T);
+unify1({tvar, _, X}, {tvar, _, X}) -> true; %% Rigid type variables
 unify1([A|B], [C|D]) ->
     unify(A, C) andalso unify(B, D);
 unify1(X, X) ->
@@ -650,6 +651,7 @@ occurs_check(R, T) ->
 
 occurs_check1(R, {uvar, _, R1}) -> R == R1;
 occurs_check1(_, {id, _, _}) -> false;
+occurs_check1(_, {tvar, _, _}) -> false;
 occurs_check1(R, {fun_t, _, Args, Res}) ->
     occurs_check(R, [Res | Args]);
 occurs_check1(R, {app_t, _, T, Ts}) ->
