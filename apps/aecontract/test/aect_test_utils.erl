@@ -27,8 +27,6 @@
         , assert_state_equal/2
         ]).
 
--include_lib("apps/aecontract/include/contract_txs.hrl").
-
 %%%===================================================================
 %%% Test state
 %%%===================================================================
@@ -98,22 +96,12 @@ create_tx(PubKey, State) ->
 
 create_tx(PubKey, Spec0, State) ->
     Spec = maps:merge(create_tx_default_spec(PubKey, State), Spec0),
-    aetx:new(aect_create_tx,
-             #contract_create_tx{ owner      = PubKey
-                                , nonce      = maps:get(nonce, Spec)
-                                , fee        = maps:get(fee, Spec)
-                                , ttl        = maps:get(ttl, Spec, 0)
-                                , code       = maps:get(code, Spec)
-                                , vm_version = maps:get(vm_version, Spec)
-                                , deposit    = maps:get(deposit, Spec)
-                                , amount     = maps:get(amount, Spec)
-                                , gas        = maps:get(gas, Spec)
-                                , gas_price  = maps:get(gas_price, Spec)
-                                , call_data  = maps:get(call_data, Spec)
-                                }).
+    {ok, Tx} = aect_create_tx:new(Spec),
+    Tx.
 
 create_tx_default_spec(PubKey, State) ->
     #{ fee        => 5
+     , owner      => PubKey
      , nonce      => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , code       => <<"NOT PROPER BYTE CODE">>
      , vm_version => 1
@@ -122,6 +110,7 @@ create_tx_default_spec(PubKey, State) ->
      , gas        => 10
      , gas_price  => 1
      , call_data  => <<"NOT ENCODED ACCORDING TO ABI">>
+     , ttl        => 0
      }.
 
 %%%===================================================================
@@ -132,28 +121,21 @@ call_tx(PubKey, ContractKey, State) ->
     call_tx(PubKey, ContractKey, #{}, State).
 
 call_tx(PubKey, ContractKey, Spec0, State) ->
-    Spec = maps:merge(call_tx_default_spec(PubKey, State), Spec0),
-    aetx:new(aect_call_tx,
-             #contract_call_tx{ caller     = PubKey
-                              , nonce      = maps:get(nonce, Spec)
-                              , contract   = ContractKey
-                              , vm_version = maps:get(vm_version, Spec)
-                              , fee        = maps:get(fee, Spec)
-                              , ttl        = maps:get(ttl, Spec, 0)
-                              , amount     = maps:get(amount, Spec)
-                              , gas        = maps:get(gas, Spec)
-                              , gas_price  = maps:get(gas_price, Spec)
-                              , call_data  = maps:get(call_data, Spec)
-                              }).
+    Spec = maps:merge(call_tx_default_spec(PubKey, ContractKey, State), Spec0),
+    {ok, Tx} = aect_call_tx:new(Spec),
+    Tx.
 
-call_tx_default_spec(PubKey, State) ->
+call_tx_default_spec(PubKey, ContractKey, State) ->
     #{ fee         => 5
+     , contract    => ContractKey
+     , caller      => PubKey
      , nonce       => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , vm_version  => 1
      , amount      => 100
      , gas         => 10000
      , gas_price   => 1
      , call_data   => <<"CALL DATA">>
+     , ttl         => 0
      }.
 
 %%%===================================================================

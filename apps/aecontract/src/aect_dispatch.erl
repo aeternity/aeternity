@@ -7,8 +7,6 @@
 -module(aect_dispatch).
 
 -include("aecontract.hrl").
--include("contract_txs.hrl").
-
 
 %% API
 -export([ call/4
