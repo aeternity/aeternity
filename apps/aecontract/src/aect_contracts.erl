@@ -11,7 +11,7 @@
 -export([ deserialize/2
         , id/1
         , store_id/1
-        , new/2
+        , new/1
         , new/5 %% For use without transaction
         , serialize/1
         , compute_contract_pubkey/2
@@ -46,7 +46,7 @@
 
 -record(contract, {
         %% Normal account fields
-        pubkey     :: aec_keys:pubkey(),
+        id         :: aec_id:id(),
         owner      :: aec_keys:pubkey(),
         vm_version :: vm_version(),
         code       :: binary(),     %% The byte code
@@ -92,18 +92,19 @@ store_id(C) ->
     %% all storage nodes in one subtree under the contract tree.
     << CId/binary, ?STORE_PREFIX>>.
 
--spec new(aec_keys:pubkey(), aect_create_tx:tx()) -> contract().
-new(ContractPubKey, RTx) ->
-    new(ContractPubKey,
-        aect_create_tx:owner(RTx),
+-spec new(aect_create_tx:tx()) -> contract().
+new(RTx) ->
+    new(aect_create_tx:owner(RTx),
+        aect_create_tx:nonce(RTx),
         aect_create_tx:vm_version(RTx),
         aect_create_tx:code(RTx),
         aect_create_tx:deposit(RTx)).
 
--spec new(aec_keys:pubkey(), aec_keys:pubkey(), integer(), binary(), amount()) -> contract().
+-spec new(aec_keys:pubkey(), integer(), integer(), binary(), amount()) -> contract().
 %% NOTE: Should only be used for contract execution without transaction
-new(ContractPubKey, Owner, VmVersion, Code, Deposit) ->
-    C = #contract{ pubkey     = ContractPubKey,
+new(Owner, Nonce, VmVersion, Code, Deposit) ->
+    Pubkey = compute_contract_pubkey(Owner, Nonce),
+    C = #contract{ id         = aec_id:create(contract, Pubkey),
                    owner      = Owner,
                    vm_version = VmVersion,
                    code       = Code,
@@ -132,7 +133,7 @@ serialize(#contract{} = C) ->
       ]).
 
 -spec deserialize(aec_keys:pubkey(), serialized()) -> contract().
-deserialize(Id, Bin) ->
+deserialize(Pubkey, Bin) ->
     [ {owner, Owner}
     , {vm_version, VmVersion}
     , {code, Code}
@@ -146,7 +147,7 @@ deserialize(Id, Bin) ->
           serialization_template(?CONTRACT_VSN),
           Bin
           ),
-    #contract{ pubkey     = Id
+    #contract{ id         = aec_id:create(contract, Pubkey)
              , owner      = Owner
              , vm_version = VmVersion
              , code       = Code
@@ -168,19 +169,16 @@ serialization_template(?CONTRACT_VSN) ->
     ].
 
 -spec compute_contract_pubkey(aec_keys:pubkey(), non_neg_integer()) -> aec_keys:pubkey().
-compute_contract_pubkey(Owner, Nonce) ->
-    %% TODO: do this in a less ad-hoc way?
-    Hash = aec_hash:hash(pubkey, <<Nonce:64, Owner/binary>>),
-    <<"0x", HexHash/binary>> = list_to_binary(aect_utils:hex_bytes(Hash)),
-    <<PubKey:?PUB_SIZE/binary, _/binary>> = <<"C0DE", HexHash/binary>>,
-    PubKey.
+compute_contract_pubkey(<<_:?PUB_SIZE/binary>> = Owner, Nonce) when Nonce >= 0  ->
+    NonceBin = binary:encode_unsigned(Nonce),
+    aec_hash:hash(pubkey, <<Owner/binary, NonceBin/binary>>).
 
 %%%===================================================================
 %%% Getters
 
 %% The address of the contract account.
 -spec pubkey(contract()) -> aec_keys:pubkey().
-pubkey(C) -> C#contract.pubkey.
+pubkey(C) -> aec_id:specialize(C#contract.id, contract).
 
 %% The owner of the contract is (initially) the account that created it.
 -spec owner(contract()) -> aec_keys:pubkey().
@@ -219,7 +217,7 @@ deposit(C) -> C#contract.deposit.
 
 -spec set_pubkey(aec_keys:pubkey(), contract()) -> contract().
 set_pubkey(X, C) ->
-    C#contract{pubkey = assert_field(pubkey, X)}.
+    C#contract{id = aec_id:create(contract, assert_field(pubkey, X))}.
 
 -spec set_owner(aec_keys:pubkey(), contract()) -> contract().
 set_owner(X, C) ->
@@ -258,7 +256,7 @@ set_deposit(X, C) ->
 %%%===================================================================
 
 assert_fields(C) ->
-    List = [ {pubkey,     C#contract.pubkey}
+    List = [ {pubkey,     pubkey(C)}
            , {owner,      C#contract.owner}
            , {vm_version, C#contract.vm_version}
            , {code,       C#contract.code}

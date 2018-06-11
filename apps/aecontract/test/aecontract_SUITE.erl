@@ -266,11 +266,10 @@ call_contract(_Cfg) ->
 %%% State trees
 %%%===================================================================
 
-make_contract(PubKey = <<_:32, Rest/binary>>, Code, S) ->
+make_contract(PubKey, Code, S) ->
     Tx = aect_test_utils:create_tx(PubKey, #{ code => Code }, S),
-    ContractKey = <<"CODE", Rest/binary>>,
     {contract_create_tx, CTx} = aetx:specialize_type(Tx),
-    aect_contracts:new(ContractKey, CTx).
+    aect_contracts:new(CTx).
 
 make_call(PubKey, ContractKey,_Call,_S) ->
     aect_call:new(PubKey, 0, ContractKey, 1).

@@ -169,8 +169,7 @@ process(#contract_create_tx{owner      = OwnerPubKey,
                             fee        = Fee} = CreateTx,
         Context, Trees0, Height, ConsensusVersion) ->
 
-    {ContractPubKey, Contract, Trees1} =
-        create_contract(OwnerPubKey, Nonce, CreateTx, Trees0),
+    {ContractPubKey, Contract, Trees1} = create_contract(CreateTx, Trees0),
 
     %% Charge the fee to the contract owner (caller)
     %% and transfer the funds (amount) to the contract account.
@@ -203,12 +202,12 @@ process(#contract_create_tx{owner      = OwnerPubKey,
     end.
 
 
-create_contract(OwnerPubKey, Nonce, CreateTx, Trees0) ->
+create_contract(CreateTx, Trees0) ->
     %% Create the contract and insert it into the contract state tree
     %%   The public key for the contract is generated from the owners pubkey
     %%   and the nonce, so that no one has the private key.
-    ContractPubKey  = aect_contracts:compute_contract_pubkey(OwnerPubKey, Nonce),
-    Contract        = aect_contracts:new(ContractPubKey, CreateTx),
+    Contract        = aect_contracts:new(CreateTx),
+    ContractPubKey  = aect_contracts:pubkey(Contract),
     ContractsTree0  = aec_trees:contracts(Trees0),
     ContractsTree1  = aect_state_tree:insert_contract(Contract, ContractsTree0),
     Trees1          = aec_trees:set_contracts(Trees0, ContractsTree1),

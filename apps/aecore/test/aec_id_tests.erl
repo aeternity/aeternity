@@ -47,5 +47,6 @@ all_tags() ->
     [ account
     , name
     , commitment
+    , contract
     , oracle
     ].
