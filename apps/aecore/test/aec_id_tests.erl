@@ -49,4 +49,5 @@ all_tags() ->
     , commitment
     , contract
     , oracle
+    , channel
     ].

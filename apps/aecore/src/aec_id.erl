@@ -22,7 +22,8 @@
             , val
             }).
 
--type tag() :: 'account' | 'oracle' | 'name' | 'commitment' | 'contract'.
+-type tag() :: 'account' | 'oracle' | 'name'
+             | 'commitment' | 'contract' | 'channel'.
 -type val() :: <<_:256>>.
 -opaque(id() :: #id{}).
 
@@ -39,7 +40,8 @@
                            ___TAG___ =:= oracle;
                            ___TAG___ =:= name;
                            ___TAG___ =:= commitment;
-                           ___TAG___ =:= contract
+                           ___TAG___ =:= contract;
+                           ___TAG___ =:= channel
        ).
 -define(IS_VAL(___VAL___), byte_size(___VAL___) =:= 32).
 
@@ -85,6 +87,7 @@ encode_tag(name)       -> 2;
 encode_tag(commitment) -> 3;
 encode_tag(oracle)     -> 4;
 encode_tag(contract)   -> 5;
+encode_tag(channel)    -> 6;
 encode_tag(Other)      -> error({illegal_id_tag_name, Other}).
 
 decode_tag(1) -> account;
@@ -92,4 +95,5 @@ decode_tag(2) -> name;
 decode_tag(3) -> commitment;
 decode_tag(4) -> oracle;
 decode_tag(5) -> contract;
+decode_tag(6) -> channel;
 decode_tag(X) -> error({illegal_id_tag, X}).

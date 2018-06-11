@@ -7,7 +7,7 @@
 -module(aesc_channels).
 
 %% API
--export([deserialize/1,
+-export([deserialize/2,
          deposit/2,
          is_active/1,
          is_solo_closed/2,
@@ -37,13 +37,13 @@
 %%% Types
 %%%===================================================================
 
--type id()     :: binary().
+-type id()     :: <<_:256>>.
 -type amount() :: non_neg_integer().
 -type seq_number() :: non_neg_integer().
 
--record(channel, {id               :: id(),
-                  initiator        :: aec_keys:pubkey(),
-                  responder        :: aec_keys:pubkey(),
+-record(channel, {id               :: aec_id:id(),
+                  initiator        :: aec_id:id(),
+                  responder        :: aec_id:id(),
                   total_amount     :: amount(),
                   initiator_amount :: amount(),
                   channel_reserve  :: amount(),
@@ -83,11 +83,10 @@ close_solo(#channel{lock_period = LockPeriod} = Ch, State, Height) ->
 deposit(#channel{total_amount = TotalAmount} = Ch, Amount) ->
     Ch#channel{total_amount = TotalAmount + Amount}.
 
--spec deserialize(binary()) -> channel().
-deserialize(Bin) ->
-    [ {id               , Id}
-    , {initiator        , InitiatorPubKey}
-    , {responder        , ResponderPubKey}
+-spec deserialize(id(), binary()) -> channel().
+deserialize(IdBin, Bin) ->
+    [ {initiator        , InitiatorId}
+    , {responder        , ResponderId}
     , {total_amount     , TotalAmount}
     , {initiator_amount , InitiatorAmount}
     , {channel_reserve  , ChannelReserve}
@@ -99,9 +98,11 @@ deserialize(Bin) ->
           ?CHANNEL_VSN,
           serialization_template(?CHANNEL_VSN),
           Bin),
-    #channel{id               = Id,
-             initiator        = InitiatorPubKey,
-             responder        = ResponderPubKey,
+    {account, _} = aec_id:specialize(InitiatorId),
+    {account, _} = aec_id:specialize(ResponderId),
+    #channel{id               = aec_id:create(channel, IdBin),
+             initiator        = InitiatorId,
+             responder        = ResponderId,
              total_amount     = TotalAmount,
              initiator_amount = InitiatorAmount,
              channel_reserve  = ChannelReserve,
@@ -122,7 +123,8 @@ is_solo_closing(#channel{closes_at = ClosesAt}, Height) ->
     ClosesAt > Height.
 
 -spec id(aec_keys:pubkey(), non_neg_integer(), aec_keys:pubkey()) -> aec_keys:pubkey().
-id(InitiatorPubKey, Nonce, ResponderPubKey) ->
+id(<<_:?PUB_SIZE/binary>> = InitiatorPubKey, Nonce,
+   <<_:?PUB_SIZE/binary>> = ResponderPubKey) ->
     Bin = <<InitiatorPubKey:?PUB_SIZE/binary,
             Nonce:?NONCE_SIZE,
             ResponderPubKey:?PUB_SIZE/binary>>,
@@ -135,9 +137,9 @@ new(ChCTx) ->
             aesc_create_tx:responder(ChCTx)),
     InitiatorAmount   = aesc_create_tx:initiator_amount(ChCTx),
     ResponderAmount = aesc_create_tx:responder_amount(ChCTx),
-    #channel{id               = Id,
-             initiator        = aesc_create_tx:initiator(ChCTx),
-             responder        = aesc_create_tx:responder(ChCTx),
+    #channel{id               = aec_id:create(channel, Id),
+             initiator        = aec_id:create(account, aesc_create_tx:initiator(ChCTx)),
+             responder        = aec_id:create(account, aesc_create_tx:responder(ChCTx)),
              total_amount     = InitiatorAmount + ResponderAmount,
              initiator_amount = InitiatorAmount,
              channel_reserve  = aesc_create_tx:channel_reserve(ChCTx),
@@ -150,13 +152,12 @@ peers(#channel{} = Ch) ->
     [initiator(Ch), responder(Ch)].
 
 -spec serialize(channel()) -> binary().
-serialize(#channel{} = Ch) ->
+serialize(#channel{initiator = InitiatorId, responder = ResponderId} = Ch) ->
     aec_object_serialization:serialize(
       ?CHANNEL_TYPE, ?CHANNEL_VSN,
       serialization_template(?CHANNEL_VSN),
-      [ {id               , id(Ch)}
-      , {initiator        , initiator(Ch)}
-      , {responder        , responder(Ch)}
+      [ {initiator        , InitiatorId}
+      , {responder        , ResponderId}
       , {total_amount     , total_amount(Ch)}
       , {initiator_amount , initiator_amount(Ch)}
       , {channel_reserve  , channel_reserve(Ch)}
@@ -166,9 +167,8 @@ serialize(#channel{} = Ch) ->
       ]).
 
 serialization_template(?CHANNEL_VSN) ->
-    [ {id               , binary}
-    , {initiator        , binary}
-    , {responder        , binary}
+    [ {initiator        , id}
+    , {responder        , id}
     , {total_amount     , int}
     , {initiator_amount , int}
     , {channel_reserve  , int}
@@ -198,15 +198,15 @@ closes_at(#channel{closes_at = ClosesAt}) ->
 
 -spec id(channel()) -> aec_keys:pubkey().
 id(#channel{id = Id}) ->
-    Id.
+    aec_id:specialize(Id, channel).
 
 -spec initiator(channel()) -> aec_keys:pubkey().
 initiator(#channel{initiator = InitiatorPubKey}) ->
-    InitiatorPubKey.
+    aec_id:specialize(InitiatorPubKey, account).
 
 -spec responder(channel()) -> aec_keys:pubkey().
 responder(#channel{responder = ResponderPubKey}) ->
-    ResponderPubKey.
+    aec_id:specialize(ResponderPubKey, account).
 
 -spec total_amount(channel()) -> amount().
 total_amount(#channel{total_amount = TotalAmount}) ->
