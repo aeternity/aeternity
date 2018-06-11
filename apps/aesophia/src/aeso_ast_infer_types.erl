@@ -112,14 +112,18 @@ check_fundecl(_, {fun_decl, _Attrib, {id, _, Name}, Type}) ->
 %%     print_typesig(TypeSig),
 %%     Result.
 
+typesig_to_fun_t({type_sig, Args, Res}) -> {fun_t, [], Args, Res}.
+
 infer_letrec(Env, {letrec, Attrs, Defs}) ->
     ets:new(type_vars, [set, named_table, public]),
     create_unification_errors(),
     create_field_constraints(),
-    ExtendEnv = [{Name, fresh_uvar(A)}
-		 || {letfun, _, {id, A, Name}, _, _, _} <- Defs]
-	++ Env,
+    Env1 = [{Name, fresh_uvar(A)}
+		 || {letfun, _, {id, A, Name}, _, _, _} <- Defs],
+    ExtendEnv = Env1 ++ Env,
     Inferred = [infer_letfun(ExtendEnv, LF) || LF <- Defs],
+    [ unify(proplists:get_value(Name, Env1), typesig_to_fun_t(TypeSig))
+        || {{Name, TypeSig}, _} <- Inferred ],
     solve_field_constraints(),
     TypeSigs = instantiate([Sig || {Sig, _} <- Inferred]),
     NewDefs = instantiate([D || {_, D} <- Inferred]),

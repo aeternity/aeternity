@@ -3,7 +3,7 @@ contract Maps =
   function lookup(m : map(string, string), k) =
     m[k]
 
-  function test() : string =
+  function test() =
     let m = Map.from_list([("foo", "1004"), ("bar", "1005")])
     lookup(m, "bar")
 
