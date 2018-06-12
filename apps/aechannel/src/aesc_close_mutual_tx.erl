@@ -6,8 +6,6 @@
 %%%=============================================================================
 -module(aesc_close_mutual_tx).
 
--include("channel_txs.hrl").
-
 -behavior(aetx).
 
 %% Behavior API
@@ -32,9 +30,20 @@
 %%% Types
 %%%===================================================================
 
+-type vsn() :: non_neg_integer().
+
 -define(CHANNEL_CLOSE_MUTUAL_TX_VSN, 1).
 -define(CHANNEL_CLOSE_MUTUAL_TX_TYPE, channel_close_mutual_tx).
 -define(CHANNEL_CLOSE_MUTUAL_TX_FEE, 4).
+
+-record(channel_close_mutual_tx, {
+          channel_id        :: aec_id:id(),
+          initiator_amount  :: non_neg_integer(),
+          responder_amount  :: non_neg_integer(),
+          ttl               :: aetx:tx_ttl(),
+          fee               :: non_neg_integer(),
+          nonce             :: non_neg_integer()
+         }).
 
 -opaque tx() :: #channel_close_mutual_tx{}.
 
@@ -45,13 +54,13 @@
 %%%===================================================================
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{channel_id        := ChannelId,
+new(#{channel_id        := ChannelIdBin,
       initiator_amount  := InitiatorAmount,
       responder_amount  := ResponderAmount,
       fee               := Fee,
       nonce             := Nonce} = Args) ->
     Tx = #channel_close_mutual_tx{
-            channel_id        = ChannelId,
+            channel_id        = aec_id:create(channel, ChannelIdBin),
             initiator_amount  = InitiatorAmount,
             responder_amount  = ResponderAmount,
             ttl               = maps:get(ttl, Args, 0),
@@ -75,20 +84,25 @@ nonce(#channel_close_mutual_tx{nonce = Nonce}) ->
     Nonce.
 
 -spec origin(tx()) -> aec_keys:pubkey() | undefined.
-origin(#channel_close_mutual_tx{channel_id = ChannelId}) ->
+origin(#channel_close_mutual_tx{} = Tx) ->
+    ChannelId = channel(Tx),
     case aec_chain:get_channel(ChannelId) of
         {ok, Channel} ->
             aesc_channels:initiator(Channel);
         {error, not_found} -> undefined
     end.
 
+channel(#channel_close_mutual_tx{channel_id = ChannelId}) ->
+    aec_id:specialize(ChannelId, channel).
+
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()} | {error, term()}.
-check(#channel_close_mutual_tx{channel_id       = ChannelId,
-                               initiator_amount = InitiatorAmount,
+check(#channel_close_mutual_tx{initiator_amount = InitiatorAmount,
                                responder_amount = ResponderAmount,
                                fee              = Fee,
-                               nonce            = Nonce}, _Context, Trees, _Height, _ConsensusVersion) ->
+                               nonce            = Nonce} = Tx,
+      _Context, Trees, _Height, _ConsensusVersion) ->
+    ChannelId = channel(Tx),
     case aesc_state_tree:lookup(ChannelId, aec_trees:channels(Trees)) of
         none ->
             {error, channel_does_not_exist};
@@ -123,13 +137,13 @@ check(#channel_close_mutual_tx{channel_id       = ChannelId,
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()}.
-process(#channel_close_mutual_tx{channel_id       = ChannelId,
-                                 initiator_amount = InitiatorAmount,
+process(#channel_close_mutual_tx{initiator_amount = InitiatorAmount,
                                  responder_amount = ResponderAmount,
                                  ttl              = _TTL,
                                  fee              = _Fee,
-                                 nonce            = Nonce}, _Context, Trees, _Height,
-                                                  _ConsensusVersion) ->
+                                 nonce            = Nonce} = Tx,
+        _Context, Trees, _Height, _ConsensusVersion) ->
+    ChannelId     = channel(Tx),
     AccountsTree0 = aec_trees:accounts(Trees),
     ChannelsTree0 = aec_trees:channels(Trees),
 
@@ -156,8 +170,8 @@ process(#channel_close_mutual_tx{channel_id       = ChannelId,
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}
                                         | {error, channel_not_found}.
-signers(#channel_close_mutual_tx{channel_id = ChannelId}, Trees) ->
-    case aec_chain:get_channel(ChannelId, Trees) of
+signers(#channel_close_mutual_tx{} = Tx, Trees) ->
+    case aec_chain:get_channel(channel(Tx), Trees) of
         {ok, Channel} ->
             {ok, [aesc_channels:initiator(Channel), aesc_channels:responder(Channel)]};
         {error, not_found} -> {error, channel_not_found}
@@ -187,6 +201,7 @@ deserialize(?CHANNEL_CLOSE_MUTUAL_TX_VSN,
             , {ttl              , TTL}
             , {fee              , Fee}
             , {nonce            , Nonce}]) ->
+    channel = aec_id:specialize_type(ChannelId),
     #channel_close_mutual_tx{channel_id       = ChannelId,
                              initiator_amount = InitiatorAmount,
                              responder_amount = ResponderAmount,
@@ -195,15 +210,14 @@ deserialize(?CHANNEL_CLOSE_MUTUAL_TX_VSN,
                              nonce            = Nonce}.
 
 -spec for_client(tx()) -> map().
-for_client(#channel_close_mutual_tx{channel_id  = ChannelId,
-                                    initiator_amount = InitiatorAmount,
+for_client(#channel_close_mutual_tx{initiator_amount = InitiatorAmount,
                                     responder_amount = ResponderAmount,
                                     ttl              = TTL,
                                     fee         = Fee,
-                                    nonce       = Nonce}) ->
+                                    nonce       = Nonce} = Tx) ->
     #{<<"data_schema">> => <<"ChannelCloseMutualTxJSON">>, % swagger schema name
       <<"vsn">>               => version(),
-      <<"channel_id">>        => aec_base58c:encode(channel, ChannelId),
+      <<"channel_id">>        => aec_base58c:encode(channel, channel(Tx)),
       <<"initiator_amount">>  => InitiatorAmount,
       <<"responder_amount">>  => ResponderAmount,
       <<"ttl">>               => TTL,
@@ -211,7 +225,7 @@ for_client(#channel_close_mutual_tx{channel_id  = ChannelId,
       <<"nonce">>             => Nonce}.
 
 serialization_template(?CHANNEL_CLOSE_MUTUAL_TX_VSN) ->
-    [ {channel_id       , binary}
+    [ {channel_id       , id}
     , {initiator_amount , int}
     , {responder_amount , int}
     , {ttl              , int}

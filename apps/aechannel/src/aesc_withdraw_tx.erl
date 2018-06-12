@@ -6,8 +6,6 @@
 %%%=============================================================================
 -module(aesc_withdraw_tx).
 
--include("channel_txs.hrl").
-
 -behavior(aetx).
 
 %% Behavior API
@@ -35,6 +33,18 @@
 -define(CHANNEL_WITHDRAW_TX_TYPE, channel_withdraw_tx).
 -define(CHANNEL_WITHDRAW_TX_FEE, 4).
 
+-type vsn() :: non_neg_integer().
+
+%% HERE
+-record(channel_withdraw_tx, {
+          channel_id  :: aec_id:id(),
+          to          :: aec_id:id(),
+          amount      :: non_neg_integer(),
+          ttl         :: aetx:tx_ttl(),
+          fee         :: non_neg_integer(),
+          nonce       :: non_neg_integer()
+         }).
+
 -opaque tx() :: #channel_withdraw_tx{}.
 
 -export_type([tx/0]).
@@ -44,14 +54,14 @@
 %%%===================================================================
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{channel_id := ChannelId,
+new(#{channel_id := ChannelIdBin,
       to         := ToPubKey,
       amount     := Amount,
       fee        := Fee,
       nonce      := Nonce} = Args) ->
     Tx = #channel_withdraw_tx{
-            channel_id = ChannelId,
-            to         = ToPubKey,
+            channel_id = aec_id:create(channel, ChannelIdBin),
+            to         = aec_id:create(account, ToPubKey),
             amount     = Amount,
             ttl        = maps:get(ttl, Args, 0),
             fee        = Fee,
@@ -74,8 +84,14 @@ nonce(#channel_withdraw_tx{nonce = Nonce}) ->
     Nonce.
 
 -spec origin(tx()) -> aec_keys:pubkey().
-origin(#channel_withdraw_tx{to = ToPubKey}) ->
-    ToPubKey.
+origin(#channel_withdraw_tx{} = Tx) ->
+    to(Tx).
+
+to(#channel_withdraw_tx{to = ToId}) ->
+    aec_id:specialize(ToId, account).
+
+channel(#channel_withdraw_tx{channel_id = ChannelId}) ->
+    aec_id:specialize(ChannelId, channel).
 
 -spec amount(tx()) -> non_neg_integer().
 amount(#channel_withdraw_tx{amount = Amt}) ->
@@ -83,11 +99,11 @@ amount(#channel_withdraw_tx{amount = Amt}) ->
 
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()} | {error, term()}.
-check(#channel_withdraw_tx{channel_id = ChannelId,
-                           to         = ToPubKey,
-                           amount     = Amount,
+check(#channel_withdraw_tx{amount     = Amount,
                            fee        = Fee,
-                           nonce      = Nonce}, _Context, Trees, _Height, _ConsensusVersion) ->
+                           nonce      = Nonce} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
+    ChannelId = channel(Tx),
+    ToPubKey = to(Tx),
     Checks =
         [fun() -> aetx_utils:check_account(ToPubKey, Trees, Nonce, Fee) end,
          fun() -> check_channel(ChannelId, Amount, ToPubKey, Trees) end],
@@ -100,11 +116,11 @@ check(#channel_withdraw_tx{channel_id = ChannelId,
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()}.
-process(#channel_withdraw_tx{channel_id = ChannelId,
-                             to         = ToPubKey,
-                             amount     = Amount,
+process(#channel_withdraw_tx{amount     = Amount,
                              fee        = Fee,
-                             nonce      = Nonce}, _Context, Trees, _Height, _ConsensusVersion) ->
+                             nonce      = Nonce} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
+    ChannelId = channel(Tx),
+    ToPubKey = to(Tx),
     AccountsTree0 = aec_trees:accounts(Trees),
     ChannelsTree0 = aec_trees:channels(Trees),
 
@@ -124,7 +140,8 @@ process(#channel_withdraw_tx{channel_id = ChannelId,
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}
                                         | {error, channel_not_found}.
-signers(#channel_withdraw_tx{channel_id = ChannelId}, Trees) ->
+signers(#channel_withdraw_tx{} = Tx, Trees) ->
+    ChannelId = channel(Tx),
     case aec_chain:get_channel(ChannelId, Trees) of
         {ok, Channel} ->
             {ok, [aesc_channels:initiator(Channel),
@@ -134,14 +151,14 @@ signers(#channel_withdraw_tx{channel_id = ChannelId}, Trees) ->
 
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_withdraw_tx{channel_id = ChannelId,
-                               to         = ToPubKey,
+                               to         = ToId,
                                amount     = Amount,
                                ttl        = TTL,
                                fee        = Fee,
                                nonce      = Nonce}) ->
     {version(),
      [ {channel_id , ChannelId}
-     , {to         , ToPubKey}
+     , {to         , ToId}
      , {amount     , Amount}
      , {ttl        , TTL}
      , {fee        , Fee}
@@ -151,37 +168,37 @@ serialize(#channel_withdraw_tx{channel_id = ChannelId,
 -spec deserialize(vsn(), list()) -> tx().
 deserialize(?CHANNEL_WITHDRAW_TX_VSN,
             [ {channel_id , ChannelId}
-            , {to         , ToPubKey}
+            , {to         , ToId}
             , {amount     , Amount}
             , {ttl        , TTL}
             , {fee        , Fee}
             , {nonce      , Nonce}]) ->
+    channel = aec_id:specialize_type(ChannelId),
+    account = aec_id:specialize_type(ToId),
     #channel_withdraw_tx{channel_id = ChannelId,
-                         to         = ToPubKey,
+                         to         = ToId,
                          amount     = Amount,
                          ttl        = TTL,
                          fee        = Fee,
                          nonce      = Nonce}.
 
 -spec for_client(tx()) -> map().
-for_client(#channel_withdraw_tx{channel_id = ChannelId,
-                                to         = ToPubKey,
-                                amount     = Amount,
+for_client(#channel_withdraw_tx{amount     = Amount,
                                 ttl        = TTL,
                                 fee        = Fee,
-                                nonce      = Nonce}) ->
+                                nonce      = Nonce} = Tx) ->
     #{<<"data_schema">> => <<"ChannelWithdrawalTxJSON">>, % swagger schema name
       <<"vsn">>         => version(),
-      <<"channel_id">>  => aec_base58c:encode(channel, ChannelId),
-      <<"to">>          => aec_base58c:encode(account_pubkey, ToPubKey),
+      <<"channel_id">>  => aec_base58c:encode(channel, channel(Tx)),
+      <<"to">>          => aec_base58c:encode(account_pubkey, to(Tx)),
       <<"amount">>      => Amount,
       <<"ttl">>         => TTL,
       <<"fee">>         => Fee,
       <<"nonce">>       => Nonce}.
 
 serialization_template(?CHANNEL_WITHDRAW_TX_VSN) ->
-    [ {channel_id , binary}
-    , {to         , binary}
+    [ {channel_id , id}
+    , {to         , id}
     , {amount     , int}
     , {ttl        , int}
     , {fee        , int}

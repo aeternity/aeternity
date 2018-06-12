@@ -32,7 +32,7 @@
 -include_lib("stdlib/include/assert.hrl").
 
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
-
+-define(BOGUS_CHANNEL, <<0:?MINER_PUB_BYTES/unit:8>>).
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
@@ -290,14 +290,14 @@ close_solo_negative(Cfg) ->
         aetx:check(TxWrongNonce, Trees, Height, ?PROTOCOL_VERSION),
 
     %% Test payload has different channelId
-    TxSpecDiffChanId = aesc_test_utils:close_solo_tx_spec(<<"abcdefghi">>, PubKey1,
+    TxSpecDiffChanId = aesc_test_utils:close_solo_tx_spec(?BOGUS_CHANNEL, PubKey1,
                                                           Payload, S),
     {ok, TxDiffChanId} = aesc_close_solo_tx:new(TxSpecDiffChanId),
     {error, bad_state_channel_id} =
         aetx:check(TxDiffChanId, Trees, Height, ?PROTOCOL_VERSION),
 
     %% Test channel missing
-    MissingChannelId = <<"abcdefghi">>,
+    MissingChannelId = ?BOGUS_CHANNEL,
     PayloadMissingChanId = aesc_test_utils:payload(MissingChannelId, PubKey1, PubKey2,
                                                   [PrivKey1, PrivKey2], PayloadSpec),
     TxSpecNoChan = aesc_test_utils:close_solo_tx_spec(MissingChannelId, PubKey1,
@@ -450,7 +450,7 @@ close_mutual_negative(Cfg) ->
 
     %% Test channel does not exist
     TxSpec4 = aesc_test_utils:close_mutual_tx_spec(
-                <<"abcdefghi">>,
+                ?BOGUS_CHANNEL,
                 #{initiator_account => PubKey1},
                 S),
     {ok, Tx4} = aesc_close_mutual_tx:new(TxSpec4),
@@ -536,7 +536,7 @@ deposit_negative(Cfg) ->
         aetx:check(Tx3, Trees, Height, ?PROTOCOL_VERSION),
 
     %% Test channel does not exist
-    TxSpec4 = aesc_test_utils:deposit_tx_spec(<<"abcdefghi">>, PubKey1, S),
+    TxSpec4 = aesc_test_utils:deposit_tx_spec(?BOGUS_CHANNEL, PubKey1, S),
     {ok, Tx4} = aesc_deposit_tx:new(TxSpec4),
     {error, channel_does_not_exist} =
         aetx:check(Tx4, Trees, Height, ?PROTOCOL_VERSION),
@@ -627,7 +627,7 @@ withdraw_negative(Cfg) ->
         aetx:check(Tx3, Trees, Height, ?PROTOCOL_VERSION),
 
     %% Test channel does not exist
-    TxSpec4 = aesc_test_utils:withdraw_tx_spec(<<"abcdefghi">>, PubKey1, S),
+    TxSpec4 = aesc_test_utils:withdraw_tx_spec(?BOGUS_CHANNEL, PubKey1, S),
     {ok, Tx4} = aesc_withdraw_tx:new(TxSpec4),
     {error, channel_does_not_exist} =
         aetx:check(Tx4, Trees, Height, ?PROTOCOL_VERSION),
@@ -796,14 +796,14 @@ slash_negative(Cfg) ->
         aetx:check(TxWrongNonce, Trees, Height, ?PROTOCOL_VERSION),
 
     %% Test payload has different channelId
-    TxSpecDiffChanId = aesc_test_utils:slash_tx_spec(<<"abcdefghi">>, PubKey1,
+    TxSpecDiffChanId = aesc_test_utils:slash_tx_spec(?BOGUS_CHANNEL, PubKey1,
                                                           Payload, S),
     {ok, TxDiffChanId} = aesc_slash_tx:new(TxSpecDiffChanId),
     {error, bad_state_channel_id} =
         aetx:check(TxDiffChanId, Trees, Height, ?PROTOCOL_VERSION),
 
     %% Test channel missing
-    MissingChannelId = <<"abcdefghi">>,
+    MissingChannelId = ?BOGUS_CHANNEL,
     PayloadMissingChanId = aesc_test_utils:payload(MissingChannelId, PubKey1, PubKey2,
                                                   [PrivKey1, PrivKey2], PayloadSpec),
     TxSpecNoChan = aesc_test_utils:slash_tx_spec(MissingChannelId, PubKey1,
@@ -981,7 +981,7 @@ settle_negative(Cfg) ->
         aetx:check(Tx4, Trees, ClosesAt, ?PROTOCOL_VERSION),
 
     %% Test channel does not exist
-    TxSpec5 = aesc_test_utils:settle_tx_spec(<<"abcdefghi">>, PubKey1,
+    TxSpec5 = aesc_test_utils:settle_tx_spec(?BOGUS_CHANNEL, PubKey1,
                                              #{ttl => ClosesAt}, S),
     {ok, Tx5} = aesc_settle_tx:new(TxSpec5),
     {error, channel_does_not_exist} =

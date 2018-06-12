@@ -29,8 +29,6 @@
 
 -include_lib("common_test/include/ct.hrl").
 
--include_lib("apps/aechannel/include/channel_txs.hrl").
-
 -define(TIMEOUT, 10000).
 -define(LONG_TIMEOUT, 30000).
 

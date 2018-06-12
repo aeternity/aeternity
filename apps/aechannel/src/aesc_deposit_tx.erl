@@ -6,8 +6,6 @@
 %%%=============================================================================
 -module(aesc_deposit_tx).
 
--include("channel_txs.hrl").
-
 -behavior(aetx).
 
 %% Behavior API
@@ -35,6 +33,17 @@
 -define(CHANNEL_DEPOSIT_TX_TYPE, channel_deposit_tx).
 -define(CHANNEL_DEPOSIT_TX_FEE, 4).
 
+-type vsn() :: non_neg_integer().
+
+-record(channel_deposit_tx, {
+          channel_id  :: aec_id:id(),
+          from        :: aec_id:id(),
+          amount      :: non_neg_integer(),
+          ttl         :: aetx:tx_ttl(),
+          fee         :: non_neg_integer(),
+          nonce       :: non_neg_integer()
+         }).
+
 -opaque tx() :: #channel_deposit_tx{}.
 
 -export_type([tx/0]).
@@ -44,14 +53,14 @@
 %%%===================================================================
 
 -spec new(map()) -> {ok, aetx:tx()} | {error, any()}.
-new(#{channel_id  := ChannelId,
+new(#{channel_id  := ChannelIdBin,
       from        := FromPubKey,
       amount      := Amount,
       fee         := Fee,
       nonce       := Nonce} = Args) ->
     try Tx = #channel_deposit_tx{
-                channel_id  = ChannelId,
-                from        = FromPubKey,
+                channel_id  = aec_id:create(channel, ChannelIdBin),
+                from        = aec_id:create(account, FromPubKey),
                 amount      = Amount,
                 ttl         = maps:get(ttl, Args, 0),
                 fee         = Fee,
@@ -78,20 +87,26 @@ nonce(#channel_deposit_tx{nonce = Nonce}) ->
     Nonce.
 
 -spec origin(tx()) -> aec_keys:pubkey().
-origin(#channel_deposit_tx{from = FromPubKey}) ->
-    FromPubKey.
+origin(#channel_deposit_tx{} = Tx) ->
+    from(Tx).
+
+from(#channel_deposit_tx{from = From}) ->
+    aec_id:specialize(From, account).
 
 -spec amount(tx()) -> non_neg_integer().
 amount(#channel_deposit_tx{amount = Amount}) ->
     Amount.
 
+channel(#channel_deposit_tx{channel_id = ChannelId}) ->
+    aec_id:specialize(ChannelId, channel).
+
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()} | {error, term()}.
-check(#channel_deposit_tx{channel_id = ChannelId,
-                          from       = FromPubKey,
-                          amount     = Amount,
+check(#channel_deposit_tx{amount     = Amount,
                           fee        = Fee,
-                          nonce      = Nonce}, _Context, Trees, _Height, _ConsensusVersion) ->
+                          nonce      = Nonce} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
+    ChannelId = channel(Tx),
+    FromPubKey = from(Tx),
     Checks =
         [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Amount + Fee) end,
          fun() -> check_channel(ChannelId, FromPubKey, Trees) end],
@@ -104,11 +119,11 @@ check(#channel_deposit_tx{channel_id = ChannelId,
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()}.
-process(#channel_deposit_tx{channel_id = ChannelId,
-                            from       = FromPubKey,
-                            amount     = Amount,
+process(#channel_deposit_tx{amount     = Amount,
                             fee        = Fee,
-                            nonce      = Nonce}, _Context, Trees, _Height, _ConsensusVersion) ->
+                            nonce      = Nonce} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
+    ChannelId = channel(Tx),
+    FromPubKey = from(Tx),
     AccountsTree0 = aec_trees:accounts(Trees),
     ChannelsTree0 = aec_trees:channels(Trees),
 
@@ -126,7 +141,8 @@ process(#channel_deposit_tx{channel_id = ChannelId,
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}
                                         | {error, channel_not_found}.
-signers(#channel_deposit_tx{channel_id = ChannelId}, Trees) ->
+signers(#channel_deposit_tx{} = Tx, Trees) ->
+    ChannelId = channel(Tx),
     case aec_chain:get_channel(ChannelId, Trees) of
         {ok, Channel} ->
             {ok, [aesc_channels:initiator(Channel),
@@ -136,14 +152,14 @@ signers(#channel_deposit_tx{channel_id = ChannelId}, Trees) ->
 
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_deposit_tx{channel_id  = ChannelId,
-                              from        = FromPubKey,
+                              from        = FromId,
                               amount      = Amount,
                               ttl         = TTL,
                               fee         = Fee,
                               nonce       = Nonce}) ->
     {version(),
      [ {channel_id  , ChannelId}
-     , {from        , FromPubKey}
+     , {from        , FromId}
      , {amount      , Amount}
      , {ttl         , TTL}
      , {fee         , Fee}
@@ -153,37 +169,37 @@ serialize(#channel_deposit_tx{channel_id  = ChannelId,
 -spec deserialize(vsn(), list()) -> tx().
 deserialize(?CHANNEL_DEPOSIT_TX_VSN,
             [ {channel_id  , ChannelId}
-            , {from        , FromPubKey}
+            , {from        , FromId}
             , {amount      , Amount}
             , {ttl         , TTL}
             , {fee         , Fee}
             , {nonce       , Nonce}]) ->
+    channel = aec_id:specialize_type(ChannelId),
+    account = aec_id:specialize_type(FromId),
     #channel_deposit_tx{channel_id  = ChannelId,
-                        from        = FromPubKey,
+                        from        = FromId,
                         amount      = Amount,
                         ttl         = TTL,
                         fee         = Fee,
                         nonce       = Nonce}.
 
 -spec for_client(tx()) -> map().
-for_client(#channel_deposit_tx{channel_id   = ChannelId,
-                               from        = FromPubKey,
-                               amount       = Amount,
+for_client(#channel_deposit_tx{amount       = Amount,
                                ttl          = TTL,
                                fee          = Fee,
-                               nonce        = Nonce}) ->
+                               nonce        = Nonce} = Tx) ->
     #{<<"data_schema">>  => <<"ChannelDepositTxJSON">>, % swagger schema name
       <<"vsn">>          => version(),
-      <<"channel">>      => aec_base58c:encode(channel, ChannelId),
-      <<"from">>         => aec_base58c:encode(account_pubkey, FromPubKey),
+      <<"channel">>      => aec_base58c:encode(channel, channel(Tx)),
+      <<"from">>         => aec_base58c:encode(account_pubkey, from(Tx)),
       <<"amount">>       => Amount,
       <<"ttl">>          => TTL,
       <<"fee">>          => Fee,
       <<"nonce">>        => Nonce}.
 
 serialization_template(?CHANNEL_DEPOSIT_TX_VSN) ->
-    [ {channel_id  , binary}
-    , {from        , binary}
+    [ {channel_id  , id}
+    , {from        , id}
     , {amount      , int}
     , {ttl         , int}
     , {fee         , int}
