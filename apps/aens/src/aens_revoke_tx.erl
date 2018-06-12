@@ -148,7 +148,7 @@ deserialize(?NAME_REVOKE_TX_VSN,
             , {hash, NameId}
             , {fee, Fee}
             , {ttl, TTL}]) ->
-    {account, _} = aec_id:specialize(AccountId),
+    account = aec_id:specialize_type(AccountId),
     {name, _}    = aec_id:specialize(NameId),
     #ns_revoke_tx{account   = AccountId,
                   nonce     = Nonce,

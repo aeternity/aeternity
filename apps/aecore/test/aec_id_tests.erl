@@ -27,6 +27,7 @@ test_create(Type) ->
             Id  = aec_id:create(Type, Bin),
             ?assertEqual({Type, Bin}, aec_id:specialize(Id)),
             ?assertEqual(Bin, aec_id:specialize(Id, Type)),
+            ?assertEqual(Type, aec_id:specialize_type(Id)),
             ?assertError(_, aec_id:specialize(Id, foo))
     end.
 

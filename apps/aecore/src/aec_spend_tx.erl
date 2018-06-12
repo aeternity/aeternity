@@ -157,8 +157,8 @@ deserialize(?SPEND_TX_VSN,
             , {nonce, Nonce}
             , {payload, Payload}]) ->
     %% Asserts
-    {account, _} = aec_id:specialize(Sender),
-    {account, _} = aec_id:specialize(Recipient),
+    account = aec_id:specialize_type(Sender),
+    account = aec_id:specialize_type(Recipient),
     #spend_tx{sender = Sender,
               recipient = Recipient,
               amount = Amount,

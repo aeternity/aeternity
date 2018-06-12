@@ -167,7 +167,7 @@ deserialize(?NAME_CLAIM_TX_VSN,
             , {name_salt, NameSalt}
             , {fee, Fee}
             , {ttl, TTL}]) ->
-    {account, _} = aec_id:specialize(AccountId),
+    account = aec_id:specialize_type(AccountId),
     #ns_claim_tx{account   = AccountId,
                  nonce     = Nonce,
                  name      = Name,

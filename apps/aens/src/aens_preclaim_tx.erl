@@ -145,8 +145,8 @@ deserialize(?NAME_PRECLAIM_TX_VSN,
             , {commitment, CommitmentId}
             , {fee, Fee}
             , {ttl, TTL}]) ->
-    {account, _} = aec_id:specialize(AccountId),
-    {commitment, _} = aec_id:specialize(CommitmentId),
+    account = aec_id:specialize_type(AccountId),
+    commitment = aec_id:specialize_type(CommitmentId),
     #ns_preclaim_tx{account    = AccountId,
                     nonce      = Nonce,
                     commitment = CommitmentId,

@@ -212,8 +212,8 @@ deserialize(?ORACLE_QUERY_TX_VSN,
                        ?ttl_delta_int -> ?ttl_delta_atom;
                        ?ttl_block_int -> ?ttl_block_atom
                    end,
-    {account, _} = aec_id:specialize(SenderId),
-    {oracle, _} = aec_id:specialize(OracleId),
+    account = aec_id:specialize_type(SenderId),
+    oracle = aec_id:specialize_type(OracleId),
     #oracle_query_tx{sender        = SenderId,
                      nonce         = Nonce,
                      oracle        = OracleId,

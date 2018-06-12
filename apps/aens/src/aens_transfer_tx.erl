@@ -157,9 +157,9 @@ deserialize(?NAME_TRANSFER_TX_VSN,
             , {recipient, RecipientAccountId}
             , {fee, Fee}
             , {ttl, TTL}]) ->
-    {account, _} = aec_id:specialize(AccountId),
+    account = aec_id:specialize_type(AccountId),
     {name, _}    = aec_id:specialize(NameId),
-    {account, _} = aec_id:specialize(RecipientAccountId),
+    account = aec_id:specialize_type(RecipientAccountId),
     #ns_transfer_tx{account           = AccountId,
                     nonce             = Nonce,
                     name_hash         = NameId,

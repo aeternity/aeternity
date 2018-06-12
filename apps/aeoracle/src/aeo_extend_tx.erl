@@ -150,7 +150,7 @@ deserialize(?ORACLE_EXTEND_TX_VSN,
            , {oracle_ttl_value, TTLValue}
            , {fee, Fee}
            , {ttl, TTL}]) ->
-    {oracle, _} = aec_id:specialize(OracleId),
+    oracle = aec_id:specialize_type(OracleId),
     #oracle_extend_tx{oracle     = OracleId,
                       nonce      = Nonce,
                       oracle_ttl = {?ttl_delta_atom, TTLValue},

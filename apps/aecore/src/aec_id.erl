@@ -11,6 +11,7 @@
 -export([ create/2
         , specialize/1
         , specialize/2
+        , specialize_type/1
         ]).
 
 %% For aec_serialization
@@ -66,6 +67,10 @@ specialize(#id{tag = Tag, val = Val}) ->
 -spec specialize(id(), tag()) -> val().
 specialize(#id{tag = Tag, val = Val}, Tag) when ?IS_TAG(Tag), ?IS_VAL(Val) ->
     Val.
+
+-spec specialize_type(id()) -> tag().
+specialize_type(#id{tag = Tag}) when ?IS_TAG(Tag) ->
+    Tag.
 
 -spec encode(id()) -> binary().
 encode(#id{tag = Tag, val = Val}) ->

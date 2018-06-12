@@ -172,8 +172,8 @@ deserialize(?NAME_UPDATE_TX_VSN,
             , {client_ttl, ClientTTL}
             , {fee, Fee}
             , {ttl, TTL}]) ->
-    {account, _} = aec_id:specialize(AccountId),
-    {name, _} = aec_id:specialize(NameId),
+    account = aec_id:specialize_type(AccountId),
+    name = aec_id:specialize_type(NameId),
     #ns_update_tx{account    = AccountId,
                   nonce      = Nonce,
                   name_hash  = NameId,

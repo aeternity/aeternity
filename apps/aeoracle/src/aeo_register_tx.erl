@@ -193,7 +193,7 @@ deserialize(?ORACLE_REGISTER_TX_VSN,
                   ?ttl_delta_int -> ?ttl_delta_atom;
                   ?ttl_block_int -> ?ttl_block_atom
               end,
-    {account, _} = aec_id:specialize(AccountId),
+    account = aec_id:specialize_type(AccountId),
     #oracle_register_tx{account       = AccountId,
                         nonce         = Nonce,
                         query_spec    = QuerySpec,

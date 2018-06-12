@@ -174,7 +174,7 @@ deserialize(?ORACLE_RESPONSE_TX_VSN,
             , {response, Response}
             , {fee, Fee}
             , {ttl, TTL}]) ->
-    {oracle, _} = aec_id:specialize(OracleId),
+    oracle = aec_id:specialize_type(OracleId),
     #oracle_response_tx{oracle   = OracleId,
                         nonce    = Nonce,
                         query_id = QId,

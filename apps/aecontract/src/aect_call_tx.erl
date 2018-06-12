@@ -263,8 +263,8 @@ deserialize(?CONTRACT_CALL_TX_VSN,
             , {gas, Gas}
             , {gas_price, GasPrice}
             , {call_data, CallData}]) ->
-    {account, _} = aec_id:specialize(CallerId),
-    {contract, _} = aec_id:specialize(ContractId),
+    account = aec_id:specialize_type(CallerId),
+    contract = aec_id:specialize_type(ContractId),
     #contract_call_tx{caller     = CallerId,
                       nonce      = Nonce,
                       contract   = ContractId,

@@ -361,7 +361,7 @@ deserialize(?CONTRACT_CREATE_TX_VSN,
             , {gas, Gas}
             , {gas_price, GasPrice}
             , {call_data, CallData}]) ->
-    {account, _} = aec_id:specialize(OwnerId),
+    account = aec_id:specialize_type(OwnerId),
     #contract_create_tx{owner      = OwnerId,
                         nonce      = Nonce,
                         code       = Code,
