@@ -3089,8 +3089,6 @@ definitions:
     properties:
       data:
         type: object
-    required:
-    - data
   Peer:
     type: string
     description: 'Aeternity node'

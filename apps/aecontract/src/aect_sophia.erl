@@ -156,7 +156,6 @@ prepare_for_json(T, R) ->
     Error = << <<B>> || B <- "Invalid Sophia type: " ++ lists:flatten(String) >>,
     throw({error, Error}).
 
-
 -spec create_call(binary(), binary(), binary()) -> binary() | {error, binary()}.
 create_call(Contract, Function, Argument) ->
     Res = aeso_abi:create_calldata(Contract,
