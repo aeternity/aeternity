@@ -9,6 +9,7 @@ It:
 * Reduces the db size by removing redundant identifiers stored in the state trees. This affects consensus and the persisted DB.
 * Introduces type tags for identifiers in the serialization to make it possible to distinguish between different types of identifiers that can be used in the same position (e.g., names and account pubkeys). This affects consensus and the persisted DB.
 * Makes the system more resistant against mistakes by checking sizes of identifiers as a side effect of introducing the typed identifiers.
+* Creates contract call object in calls state tree even if contract create transaction init fails. This impacts consensus.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.16.0
 

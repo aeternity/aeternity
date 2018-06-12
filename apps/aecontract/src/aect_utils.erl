@@ -7,7 +7,8 @@
 
 -module(aect_utils).
 
--export([hex_bytes/1, hex_byte/1, check_balance/3, check/2]).
+-export([hex_bytes/1, hex_byte/1, check_balance/3, check/2,
+         insert_call_in_trees/2]).
 
 -spec hex_byte(byte()) -> string().
 hex_byte(N) ->
@@ -30,3 +31,7 @@ check_balance(ContractKey, Trees, Amount) ->
 check(true, _) -> ok;
 check(false, Err) -> {error, Err}.
 
+insert_call_in_trees(Call, Trees) ->
+    CallsTree0 = aec_trees:calls(Trees),
+    CallsTree1 = aect_call_state_tree:insert_call(Call, CallsTree0),
+    aec_trees:set_calls(Trees, CallsTree1).

@@ -207,11 +207,12 @@ process(#contract_create_tx{nonce      = Nonce,
             %% Go back to state trees without contract or any account changes
             %% Spend gas + fee
             %% (The VM will decide how much gas is used: 0, some, all.)
+            Trees5 = aect_utils:insert_call_in_trees(CallRes, Trees0),
             GasCost = aect_call:gas_used(CallRes) * GasPrice,
-            Trees5 =
+            Trees6 =
                 spend(OwnerPubKey, ContractPubKey, 0, Fee+GasCost, Nonce,
-                      Context, Height, Trees0, ConsensusVersion),
-            {ok, Trees5}
+                      Context, Height, Trees5, ConsensusVersion),
+            {ok, Trees6}
     end.
 
 
@@ -287,13 +288,12 @@ initialize_contract(#contract_create_tx{nonce      = Nonce,
                                         fee   =_Fee} = Tx,
                     ContractPubKey, Contract,
                     CallRes,  Context, Trees, Height, ConsensusVersion) ->
+    OwnerPubKey = owner(Tx),
+
     %% Insert the call into the state tree for one block.
     %% This is mainly to make the return value accessible.
     %% Each block starts with an empty calls tree.
-    OwnerPubKey = owner(Tx),
-    CallsTree0 = aec_trees:calls(Trees),
-    CallsTree1 = aect_call_state_tree:insert_call(CallRes, CallsTree0),
-    Trees1     = aec_trees:set_calls(Trees, CallsTree1),
+    Trees1 = aect_utils:insert_call_in_trees(CallRes, Trees),
 
     %% Spend Gas and burn
     %% Deposit (the deposit is stored in the contract.)

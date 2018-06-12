@@ -14,6 +14,7 @@
 -export([ call_contract/1
         , call_contract_negative/1
         , create_contract/1
+        , create_contract_init_error/1
         , create_contract_negative/1
         , state_tree/1
         , sophia_identity/1
@@ -51,6 +52,7 @@ groups() ->
                               , {group, store}
                               ]}
     , {transactions, [sequence], [ create_contract
+                                 , create_contract_init_error
                                  , create_contract_negative
                                  , call_contract
                                  , call_contract_negative
@@ -103,10 +105,40 @@ create_contract_negative(_Cfg) ->
     aect_test_utils:assert_state_equal(S1Mined, MaybeS1Mined2),
     {error, account_nonce_too_high} = aetx:check(RTx3, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
-    %% Test contract init failure
-    RTx4 = aect_test_utils:create_tx(PubKey, S1),
-    {ok, S4} = sign_and_apply_transaction(RTx4, PrivKey, S1, ?MINER_PUBKEY),
-    {none, _} = lookup_contract_by_id(aect_contracts:compute_contract_pubkey(PubKey, aetx:nonce(RTx4)), S4),
+    ok.
+
+create_contract_init_error(_Cfg) ->
+    {PubKey, S1} = aect_test_utils:setup_new_account(aect_test_utils:new_state()),
+    PrivKey      = aect_test_utils:priv_key(PubKey, S1),
+
+    Tx = aect_test_utils:create_tx(PubKey, S1),
+
+    %% Test that the create transaction is accepted
+    {ok, S2} = sign_and_apply_transaction(Tx, PrivKey, S1, ?MINER_PUBKEY),
+    %% Check that the contract is not created
+    ContractKey = aect_contracts:compute_contract_pubkey(PubKey, aetx:nonce(Tx)),
+    {none, _} = lookup_contract_by_id(ContractKey, S2),
+    %% Check that the contract init call is created
+    ?assertMatch([_], aect_call_state_tree:to_list(aect_test_utils:calls(S2))),
+    InitCallId = aect_call:id(PubKey, aetx:nonce(Tx), ContractKey),
+    {value, InitCall} = aect_call_state_tree:lookup_call(ContractKey, InitCallId, aect_test_utils:calls(S2)),
+    %% Check that the created init call has the correct details from the contract create tx
+    ?assertEqual(PubKey, aect_call:caller_address(InitCall)),
+    ?assertEqual(aetx:nonce(Tx), aect_call:caller_nonce(InitCall)),
+    %% Check that the created init call has the correct details not from the contract create tx
+    ?assertEqual(ContractKey, aect_call:contract_address(InitCall)), %% Contract not created.
+    ?assertEqual(0, aect_call:gas_used(InitCall)),
+    ?assertEqual(error, aect_call:return_type(InitCall)),
+    _ = aect_call:return_value(InitCall),
+
+    %% Check that contract create transaction sender got charged correctly.
+    ?assertEqual(aec_accounts:balance(aect_test_utils:get_account(PubKey, S1))
+                 - aect_create_tx:fee(aetx:tx(Tx))
+                 - aect_create_tx:gas_price(aetx:tx(Tx)) * aect_call:gas_used(InitCall),
+                 aec_accounts:balance(aect_test_utils:get_account(PubKey, S2))),
+    %% Check that the miner got credited correctly.
+    ?assertEqual(aec_governance:block_mine_reward() + aect_create_tx:fee(aetx:tx(Tx)),
+                 aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S2))),
 
     ok.
 
