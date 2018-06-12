@@ -2399,6 +2399,38 @@
         }
       }
     },
+    "/contract/decode-data" : {
+      "post" : {
+        "tags" : [ "external", "dev" ],
+        "description" : "Decode Sophia data encoded according to Sophia ABI.",
+        "operationId" : "DecodeData",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "Binary data in Sophia ABI format",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/SophiaBinaryData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Json ecoded data",
+            "schema" : {
+              "$ref" : "#/definitions/SophiaJsonData"
+            }
+          },
+          "403" : {
+            "description" : "Invalid data",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/contract/encode-calldata" : {
       "post" : {
         "tags" : [ "external", "dev" ],
@@ -3977,6 +4009,33 @@
       },
       "example" : {
         "calldata" : "calldata"
+      }
+    },
+    "SophiaBinaryData" : {
+      "type" : "object",
+      "properties" : {
+        "type" : {
+          "type" : "string"
+        },
+        "data" : {
+          "type" : "string"
+        }
+      },
+      "example" : {
+        "data" : "data",
+        "type" : "type"
+      }
+    },
+    "SophiaJsonData" : {
+      "type" : "object",
+      "properties" : {
+        "data" : {
+          "type" : "object",
+          "properties" : { }
+        }
+      },
+      "example" : {
+        "data" : "{}"
       }
     },
     "Peer" : {

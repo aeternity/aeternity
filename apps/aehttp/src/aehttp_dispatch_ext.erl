@@ -611,6 +611,21 @@ handle_request('EncodeCalldata', Req, _Context) ->
         _ -> {403, [], #{reason => <<"Bad request">>}}
     end;
 
+handle_request('DecodeData', Req, _Context) ->
+    case Req of
+        #{'SophiaBinaryData' :=
+              #{ <<"type">>  := Type
+	       , <<"data">>  := Data
+               }} ->
+            case aehttp_logic:contract_decode_data(Type, Data) of
+                {ok, Result} ->
+                    {200, [], #{ data => Result}};
+                {error, ErrorMsg} ->
+                    {403, [], #{reason => ErrorMsg}}
+            end;
+        _ -> {403, [], #{reason => <<"Bad request">>}}
+    end;
+
 handle_request('GetTx', Req, _Context) ->
     ParseFuns = [read_required_params([tx_hash]),
                  read_optional_params([{tx_encoding, tx_encoding, message_pack}]),

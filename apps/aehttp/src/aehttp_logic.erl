@@ -28,6 +28,7 @@
 
 -export([ contract_compile/2
         , contract_call/4
+        , contract_decode_data/2
         , contract_encode_call_data/4
         ]).
 
@@ -200,6 +201,12 @@ contract_call(ABI, Code, Function, Argument) ->
             end;
         _ ->
             Call(Code)
+    end.
+
+contract_decode_data(Type, Data) ->
+    case aect_sophia:decode_data(Type, Data) of
+        {ok, _Result} = OK -> OK;
+        {error, _ErrorMsg} = Err -> Err
     end.
 
 contract_encode_call_data(ABI, Code, Function, Argument) ->

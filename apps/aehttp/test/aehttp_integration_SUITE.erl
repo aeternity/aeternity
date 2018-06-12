@@ -584,11 +584,13 @@ contract_transactions(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+    SophiaCode = <<"contract Identity = function main (x:int) = x">>,
+    {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
 
     % contract_create_tx positive test
-    Code = <<"0x600035807f00000000000000000000000000000000000000000000000000000"
-	     "00000000000146200002c57005b6020356200003a9062000043565b6000526020"
-	     "6000f35b8090509056">>,
+    %% Code = <<"0x600035807f00000000000000000000000000000000000000000000000000000"
+    %%          "00000000000146200002c57005b6020356200003a9062000043565b6000526020"
+    %%          "6000f35b8090509056">>,
 
     InitFunction = <<"init">>,
     InitArgument = <<"()">>,
@@ -596,6 +598,7 @@ contract_transactions(_Config) ->
         aect_sophia:encode_call_data(Code,
                                      InitFunction,
                                      InitArgument),
+
     ValidEncoded = #{ owner => MinerAddress,
                       code => Code,
                       vm_version => 1,
@@ -605,6 +608,7 @@ contract_transactions(_Config) ->
                       gas_price => 1,
                       fee => 1,
                       call_data => EncodedInitCallData},
+
     ValidDecoded = maps:merge(ValidEncoded,
                               #{owner => MinerPubkey,
                                 code => aeu_hex:hexstring_decode(Code),
@@ -717,6 +721,8 @@ contract_transactions(_Config) ->
                                  <<"arg">> => Argument}),
 
     ?assertEqual(maps:get(<<"return_value">>, CallObject), DirectCallResult),
+    #{<<"return_value">> := Value } = CallObject,
+    42 = Value,
 
     ComputeCCallEncoded = #{ caller => MinerAddress,
                              contract => EncodedContractPubKey,
@@ -3595,6 +3601,12 @@ get_top() ->
 get_contract_create(Data) ->
     Host = external_address(),
     http_request(Host, post, "tx/contract/create", Data).
+
+
+get_contract_bytecode(SourceCode) ->
+    Host = external_address(),
+    http_request(Host, post, "contract/compile", #{ <<"code">> => SourceCode
+                                                  , <<"options">> => <<>>}).
 
 call_contract_directly(Data) ->
     Host = external_address(),

@@ -1,7 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%% @doc
-%%% API functions for compiling and encoding Sophia contracts.
+%%% API functions for compiling and encoding Sophia contracts and data.
 %%% @end
 %%%-------------------------------------------------------------------
 
@@ -11,6 +11,7 @@
 
 -export([ compile/2
         , create_call/3
+        , decode_data/2
         , encode_call_data/3
         , simple_call/3
         , on_chain_call/3
@@ -103,6 +104,14 @@ encode_call_data(Contract, Function, Argument) ->
         Error -> Error
     catch _:_ -> {error, <<"bad argument">>}
     end.
+
+
+decode_data(Type, Data) ->
+    try aeso_data:from_binary(Type, aeu_hex:hexstring_decode(Data)) of
+        Term -> {ok, Term}
+    catch _:_ -> {error, <<"bad argument">>}
+    end.
+
 
 -spec create_call(binary(), binary(), binary()) -> binary() | {error, binary()}.
 create_call(Contract, Function, Argument) ->
