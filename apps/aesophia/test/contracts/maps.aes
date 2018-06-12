@@ -28,3 +28,10 @@ contract Maps =
   type mem = { m : map(int, int), next : int }
 
   function skip(mem) : mem = mem{ next @ x = x + 1 }
+
+  function alloc(mem, val) : (mem, int) =
+    let p = mem.next
+    (mem{ m[p] = val, next = p + 1 }, p)
+
+  function nested() =
+    alloc({ m = {}, next = 0 }, 42)
