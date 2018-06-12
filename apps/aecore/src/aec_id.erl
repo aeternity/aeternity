@@ -57,7 +57,9 @@ create(Tag, Val) when ?IS_TAG(Tag), ?IS_VAL(Val) ->
 create(Tag, Val) when ?IS_VAL(Val) ->
     error({illegal_tag, Tag});
 create(Tag, Val) when ?IS_TAG(Tag)->
-    error({illegal_val, Val}).
+    error({illegal_val, Val});
+create(Tag, Val) ->
+    error({illegal_tag_and_val, Tag, Val}).
 
 
 -spec specialize(id()) -> {tag(), val()}.
