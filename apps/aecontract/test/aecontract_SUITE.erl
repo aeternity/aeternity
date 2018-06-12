@@ -149,7 +149,7 @@ create_contract(_Cfg) ->
     _ = aect_call:height(InitCall), %% Unclear if this needed.
     ?assertMatch(X when X > 0, aect_call:gas_used(InitCall)),
     ?assertEqual(ok, aect_call:return_type(InitCall)),
-    _ = aect_call:return_value(InitCall), %% No init in contract - what shall value be?
+    _ = aect_call:return_value(InitCall), %% Value shall be the unit value.
 
     %% Check that contract create transaction sender got charged correctly.
     ?assertEqual(aec_accounts:balance(aect_test_utils:get_account(PubKey, S1))
