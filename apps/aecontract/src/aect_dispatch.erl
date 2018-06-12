@@ -154,12 +154,19 @@ call_common(#{ caller     := Caller
 			 error,
 			 aect_call:set_return_value(error_to_binary(Error), Call))), Trees}
 	    catch T:E ->
-		    lager:debug("Return error ~p:~p~n", [T,E]),
-		    {aect_call:set_return_type(error, Call), Trees}
+                    lager:debug("Return error ~p:~p~n", [T,E]),
+                    {aect_call:set_gas_used(
+                       Gas,
+                       aect_call:set_return_type(error, Call)),
+                     Trees}
 	    end
     catch T:E ->
-	    lager:debug("Init error ~p:~p~n", [T,E]),
-	    {aect_call:set_return_type(error, Call), Trees}
+            %% TODO: Clarify whether this case can be reached with valid chain state and sanitized input transaction.
+            lager:debug("Init error ~p:~p~n", [T,E]),
+            {aect_call:set_gas_used(
+               Gas,
+               aect_call:set_return_type(error, Call)),
+             Trees}
     end.
 
 error_to_binary(out_of_gas) -> <<"out_of_gas">>;

@@ -180,10 +180,7 @@ process(#contract_call_tx{nonce = Nonce,
     %% Insert the call into the state tree. This is mainly to remember what the
     %% return value was so that the caller can access it easily.
     %% Each block starts with an empty calls tree.
-    CallsTree0 = aec_trees:calls(Trees4),
-    CallsTree1 = aect_call_state_tree:insert_call(Call, CallsTree0),
-    Trees5 = aec_trees:set_calls(Trees4, CallsTree1),
-    {ok, Trees5}.
+    {ok, aect_utils:insert_call_in_trees(Call, Trees4)}.
 
 spend(CallerPubKey, CalleePubKey, Value, Nonce,_Context, Height, Trees,
       ConsensusVersion) ->
