@@ -588,10 +588,12 @@ contract_transactions(_Config) ->
 	     "00000000000146200002c57005b6020356200003a9062000043565b6000526020"
 	     "6000f35b8090509056">>,
 
-    Function = <<"main">>,
-    Argument = <<"42">>,
-    {ok, EncodedCallData} = aect_sophia:encode_call_data(Code, Function,
-                                                       Argument),
+    InitFunction = <<"init">>,
+    InitArgument = <<"()">>,
+    {ok, EncodedInitCallData} =
+        aect_sophia:encode_call_data(Code,
+                                     InitFunction,
+                                     InitArgument),
     ValidEncoded = #{ owner => MinerAddress,
                       code => Code,
                       vm_version => 1,
@@ -600,11 +602,11 @@ contract_transactions(_Config) ->
                       gas => 30,
                       gas_price => 1,
                       fee => 1,
-                      call_data => EncodedCallData},
+                      call_data => EncodedInitCallData},
     ValidDecoded = maps:merge(ValidEncoded,
                               #{owner => MinerPubkey,
                                 code => aeu_hex:hexstring_decode(Code),
-                                call_data => aeu_hex:hexstring_decode(EncodedCallData)}),
+                                call_data => aeu_hex:hexstring_decode(EncodedInitCallData)}),
 
     unsigned_tx_positive_test(ValidDecoded, ValidEncoded, fun get_contract_create/1,
                                fun aect_create_tx:new/1, MinerPubkey),
@@ -619,6 +621,15 @@ contract_transactions(_Config) ->
     % mine a block
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
     ?assert(tx_in_chain(ContractCreateTxHash)),
+
+
+    Function = <<"main">>,
+    Argument = <<"42">>,
+    {ok, EncodedCallData} =
+        aect_sophia:encode_call_data(Code,
+                                     Function,
+                                     Argument),
+
 
     ContractCallEncoded = #{ caller => MinerAddress,
                              contract => EncodedContractPubKey,

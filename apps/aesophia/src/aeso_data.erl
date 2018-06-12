@@ -1,6 +1,12 @@
 -module(aeso_data).
 
--export([to_binary/1,to_binary/2,binary_to_words/1,from_binary/2,from_binary/3]).
+-export([ to_binary/1
+        , to_binary/2
+        , binary_to_words/1
+        , from_binary/2
+        , from_binary/3
+        , get_function_from_calldata/1
+        ]).
 
 -include("aeso_icode.hrl").
 
@@ -124,3 +130,13 @@ heap_word(Heap,Addr) ->
     BitSize = 8*Addr,
     <<_:BitSize,W:256,_/binary>> = Heap,
     W.
+
+
+-spec get_function_from_calldata(Calldata::binary()) ->
+                                        {ok, term()} | {error, term()}.
+get_function_from_calldata(Calldata) ->
+    case from_binary(32, {tuple, [string]}, Calldata) of
+        {ok, {FunctionName}} ->
+            {ok, FunctionName};
+        {error, _} = Error -> Error
+    end.

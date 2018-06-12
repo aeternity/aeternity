@@ -38,11 +38,11 @@ hex_to_bin([X,Y|T], Acc) ->
 
 -spec hexstring_encode(binary()) -> binary().
 hexstring_encode(Binary) ->
-    BinaryAsHexString = 
+    BinaryAsHexString =
         << << (hex_nibble(X)):8, (hex_nibble(Y)):8 >>
            || <<X:4, Y:4>> <= Binary >>,
     <<"0x", BinaryAsHexString/binary >>.
-    
+
 -spec hexstring_decode(binary()) -> binary() .
 hexstring_decode(Binary) ->
     case Binary of
