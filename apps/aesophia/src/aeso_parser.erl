@@ -174,7 +174,7 @@ exprAtom() ->
         , ?RULE(token(hex), set_ann(format, hex, setelement(1, _1, int)))
         , {bool, keyword(true), true}
         , {bool, keyword(false), false}
-        , {record, [], brace_list(?LAZY_P(field_assignment()))}
+        , ?RULE(brace_list(?LAZY_P(field_assignment())), record(_1))
         , {list, [], bracket_list(Expr)}
         , ?RULE(tok('['), Expr, binop('..'), Expr, tok(']'), _3(_2, _4))
         , ?RULE(keyword('('), comma_sep(Expr), tok(')'), tuple_e(_1, _2))
@@ -196,19 +196,33 @@ elim(E, [{app, Ann, Args} | Es])     -> elim({app, Ann, E, Args}, Es);
 elim(E, [{rec_upd, Ann, Flds} | Es]) -> elim({record, Ann, E, Flds}, Es);
 elim(E, [{map_get, Ann, Key} | Es])  -> elim({map_get, Ann, E, Key}, Es).
 
+record([]) -> {map, [], []};
+record(Fs) ->
+    Kind = fun({field, _, [{proj, _, _}    | _], _}) -> proj;
+              ({field, _, [{map_get, _, _} | _], _}) -> map_get
+           end,
+    case lists:usort(lists:map(Kind, Fs)) of
+        [proj]    -> {record, [], Fs};
+        [map_get] ->
+            KV = fun({field, _, [{map_get, _, Key}], Val}) -> {Key, Val};
+                    ({field, _, LV, _}) -> bad_expr_err("Cannot use nested fields or keys in map construction", LV) end,
+            {map, [], lists:map(KV, Fs)};
+        _         -> bad_expr_err("Mixed record fields and map keys in", {record, [], Fs})
+    end.
 
 field_assignment() ->
-    ?RULE(lvalue(), tok('='), expr(), {field, get_ann(_1), _1, _3}).
+    ?RULE(lvalue(), tok('='), expr(), {field, get_ann(_2), _1, _3}).
 
 
 lvalue() ->
-    ?LET_P(E, expr900(),
-    case E of
-        E = {proj, _, _, _}    -> E;
-        E = {id, _, _}         -> E;
-        E = {map_get, _, _, _} -> E;
-        E -> bad_expr_err("Not a valid lvalue", E)
-    end).
+    ?LET_P(E, expr900(), lvalue(E)).
+
+lvalue(E) -> lvalue(E, []).
+lvalue({id, Ann, X}, LV)         -> lists:reverse([{proj, Ann, X} | LV]);
+lvalue({list, Ann, [K]}, LV)     -> lists:reverse([{map_get, Ann, K} | LV]);
+lvalue({proj, Ann, E, P}, LV)    -> lvalue(E, [{proj, Ann, P} | LV]);
+lvalue({map_get, Ann, E, K}, LV) -> lvalue(E, [{map_get, Ann, K} | LV]);
+lvalue(E, _)                     -> bad_expr_err("Not a valid lvalue", E).
 
 infix(E, Op) ->
     ?RULE(E, optional({Op, E}),

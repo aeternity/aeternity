@@ -87,6 +87,7 @@
      | {record, ann(), [field(expr())]}
      | {record, ann(), expr(), [field(expr())]} %% record update
      | {map_get, ann(), expr()}
+     | {map, ann(), [{expr(), expr()}]}
      | {block, ann(), [stmt()]}
      | {op(), ann()}
      | id() | qid() | con() | qcon()
@@ -105,8 +106,10 @@
 
 -type alt() :: {'case', ann(), pat(), expr()}.
 
--type lvalue() :: {proj, ann(), lvalue(), id()} | id()
-                | {map_get, ann(), expr()}.
+-type lvalue() :: nonempty_list(elim()).
+
+-type elim() :: {proj, ann(), id()}
+              | {map_get, ann(), expr()}.
 
 -type pat() :: {app, ann(), con() | op(), [pat()]}
              | {tuple, ann(), [pat()]}

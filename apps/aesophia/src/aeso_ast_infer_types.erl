@@ -240,6 +240,12 @@ infer_expr(Env, {switch, Attrs, Expr, Cases}) ->
     NewCases = [infer_case(Env, As, Pattern, ExprType, Branch, SwitchType)
 		|| {'case', As, Pattern, Branch} <- Cases],
     {typed, Attrs, {switch, Attrs, NewExpr, NewCases}, SwitchType};
+infer_expr(Env, {map, Attrs, KVs}) ->
+    KeyType = fresh_uvar(Attrs),
+    ValType = fresh_uvar(Attrs),
+    KVs1 = [ {check_expr(Env, K, KeyType), check_expr(Env, V, ValType)}
+             || {K, V} <- KVs ],
+    {typed, Attrs, {map, Attrs, KVs1}, map_t(Attrs, KeyType, ValType)};
 infer_expr(Env, {record, Attrs, Fields}) ->
     RecordType = fresh_uvar(Attrs),
     NewFields = [{field, A, FieldName, infer_expr(Env, Expr)}

@@ -7,3 +7,7 @@ contract Maps =
     let m = Map.from_list([("foo", "1004"), ("bar", "1005")])
     lookup(m, "bar")
 
+  function empty() : map(string, string) = {}
+
+  function singleton(k, v) : map(string, string) = {[k] = v}
+

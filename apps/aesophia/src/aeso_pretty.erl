@@ -246,6 +246,8 @@ expr_p(_, {list, _, Es}) ->
     list(lists:map(fun expr/1, Es));
 expr_p(_, {record, _, Fs}) ->
     record(lists:map(fun field/1, Fs));
+expr_p(_, {map, Ann, KVs}) ->
+    record([ field({field, Ann, {list, [], [K]}, V}) || {K, V} <- KVs ]);
 expr_p(P, {record, Ann, E, Fs}) ->
     paren(P > 900, hsep(expr_p(900, E), expr({record, Ann, Fs})));
 expr_p(_, {block, _, Ss}) ->

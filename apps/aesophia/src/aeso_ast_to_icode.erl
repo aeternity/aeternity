@@ -202,6 +202,9 @@ ast_body(?qid_app(["Map", "from_list"], [List], _, _)) ->
 ast_body({qid, _, ["Map", "from_list"]}) ->
     error({underapplied_primitive, 'Map.from_list'});
 
+ast_body({map, Ann, KVs}) ->
+    ast_body({list, Ann, [{tuple, Ann, [K, V]} || {K, V} <- KVs]});
+
 %% Other terms
 ast_body({id, _, Name}) ->
     %% TODO Look up id in env
