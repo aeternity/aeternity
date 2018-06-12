@@ -53,7 +53,7 @@
         store      :: store(),      %% The current state/store (stored in a subtree in mpt)
         log        :: binary(),     %% The current event log
         active     :: boolean(),    %% false when disabled, but don't remove unless referers == []
-        referers   :: [aec_keys:pubkey()],   %% List of contracts depending on this contract
+        referers   :: [aec_id:id()],%% List of contracts depending on this contract
         deposit    :: amount()
     }).
 
