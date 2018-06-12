@@ -8,6 +8,7 @@
          block_mine_reward/0,
          max_txs_in_block/0,
          minimum_tx_fee/0,
+         minimum_gas_price/0,
          name_preclaim_expiration/0,
          name_claim_burned_fee/0,
          name_claim_max_expiration/0,
@@ -65,6 +66,9 @@ max_txs_in_block() ->
 
 minimum_tx_fee() ->
     1.
+
+minimum_gas_price() ->
+    0.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Naming system variables

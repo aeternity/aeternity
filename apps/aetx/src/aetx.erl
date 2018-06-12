@@ -9,6 +9,7 @@
         , check_from_contract/4
         , deserialize_from_binary/1
         , fee/1
+        , lookup_gas_price/1
         , is_tx_type/1
         , new/2
         , nonce/1
@@ -103,6 +104,9 @@
 -callback fee(Tx :: tx_instance()) ->
     Fee :: integer().
 
+-callback gas_price(Tx :: tx_instance()) ->
+    GasPrice :: aect_contracts:amount().
+
 -callback ttl(Tx :: tx_instance()) ->
     TTL :: aec_blocks:height().
 
@@ -137,6 +141,8 @@
 -callback for_client(Tx :: tx_instance()) ->
     map().
 
+-optional_callbacks([gas_price/1]).
+
 %% -- ADT Implementation -----------------------------------------------------
 
 -spec new(CallbackModule :: module(),  Tx :: tx_instance()) ->
@@ -154,6 +160,15 @@ tx_type(TxType) when is_atom(TxType) ->
 -spec fee(Tx :: tx()) -> Fee :: integer().
 fee(#aetx{ cb = CB, tx = Tx }) ->
     CB:fee(Tx).
+
+-spec lookup_gas_price(Tx :: tx()) -> none | {value, GasPrice} when
+      GasPrice :: aect_contracts:amount().
+lookup_gas_price(#aetx{ cb = aect_create_tx, tx = Tx }) ->
+    {value, aect_create_tx:gas_price(Tx)};
+lookup_gas_price(#aetx{ cb = aect_call_tx, tx = Tx }) ->
+    {value, aect_call_tx:gas_price(Tx)};
+lookup_gas_price(#aetx{}) ->
+    none.
 
 -spec nonce(Tx :: tx()) -> Nonce :: non_neg_integer().
 nonce(#aetx{ cb = CB, tx = Tx }) ->

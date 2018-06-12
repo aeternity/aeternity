@@ -288,6 +288,7 @@ pool_db_put(Mempool, Key, Tx, Event) ->
             Checks = [ fun check_signature/2
                      , fun check_nonce/2
                      , fun check_minimum_fee/2
+                     , fun check_minimum_gas_price/2
                      ],
             case aeu_validation:run(Checks, [Tx, Hash]) of
                 {error, _} = E ->
@@ -357,3 +358,15 @@ check_minimum_fee(Tx,_Hash) ->
         false -> {error, too_low_fee}
     end.
 
+check_minimum_gas_price(Tx,_Hash) ->
+    case aetx:lookup_gas_price(aetx_sign:tx(Tx)) of
+        none -> ok;
+        {value, GasPrice} -> int_check_minimum_gas_price(GasPrice)
+    end.
+
+-dialyzer({no_match, int_check_minimum_gas_price/1}).
+int_check_minimum_gas_price(GasPrice) ->
+    case GasPrice >= aec_governance:minimum_gas_price() of
+        true  -> ok;
+        false -> {error, too_low_gas_price}
+    end.

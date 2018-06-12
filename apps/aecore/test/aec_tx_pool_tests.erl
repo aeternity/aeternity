@@ -19,7 +19,7 @@ tx_pool_test_() ->
              aec_test_utils:mock_genesis(),
              GB = aec_test_utils:genesis_block(),
              aec_chain_state:insert_block(GB),
-             aec_test_utils:mock_block_target_validation(),
+             aec_test_utils:mock_block_target_validation(), %% Mocks aec_governance.
              {ok, _} = aec_tx_pool:start_link(),
              %% Start `aec_keys` merely for generating realistic test
              %% signed txs - as a node would do.
@@ -32,7 +32,7 @@ tx_pool_test_() ->
              ets:delete(?TAB),
              aec_test_utils:stop_chain_db(),
              aec_test_utils:unmock_genesis(),
-             aec_test_utils:unmock_block_target_validation(),
+             aec_test_utils:unmock_block_target_validation(), %% Unloads aec_governance mock.
              ok = aec_tx_pool:stop(),
              ok
      end,
@@ -240,9 +240,26 @@ tx_pool_test_() ->
                STx3 = a_signed_tx(PubKey1, new_pubkey(), 5, 1),
                ?assertEqual(ok, aec_tx_pool:push(STx3)),
 
+               %% A transaction with too low fee should be rejected
                STx4 = a_signed_tx(PubKey1, new_pubkey(), 6,
                                   aec_governance:minimum_tx_fee() - 1),
                ?assertEqual({error, too_low_fee}, aec_tx_pool:push(STx4)),
+
+               %% A transaction with too low gas price should be rejected
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 10, 100, 0))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 20, 100, 0))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 11, 100, 1))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 21, 100, 1))),
+               meck:expect(aec_governance, minimum_gas_price, 0, 2),
+               ?assertEqual({error, too_low_gas_price}, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 12, 100, 0))),
+               ?assertEqual({error, too_low_gas_price}, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 22, 100, 0))),
+               ?assertEqual({error, too_low_gas_price}, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 13, 100, 1))),
+               ?assertEqual({error, too_low_gas_price}, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 23, 100, 1))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 14, 100, 2))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 24, 100, 2))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 15, 100, 3))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 25, 100, 3))),
+
                ok
        end}
      ]}.
@@ -253,6 +270,41 @@ a_signed_tx(Sender, Recipient, Nonce, Fee) ->
                                   amount => 1,
                                   nonce => Nonce, fee => Fee,
                                   payload => <<"">>}),
+    {ok, STx} = sign(Sender, Tx),
+    STx.
+
+signed_ct_create_tx(Sender, Nonce, Fee, GasPrice) ->
+    Spec =
+        #{ fee        => Fee
+         , owner      => Sender
+         , nonce      => Nonce
+         , code       => <<"NOT PROPER BYTE CODE">>
+         , vm_version => 1
+         , deposit    => 10
+         , amount     => 200
+         , gas        => 10
+         , gas_price  => GasPrice
+         , call_data  => <<"NOT ENCODED ACCORDING TO ABI">>
+         , ttl        => 0
+         },
+    {ok, Tx} = aect_create_tx:new(Spec),
+    {ok, STx} = sign(Sender, Tx),
+    STx.
+
+signed_ct_call_tx(Sender, Nonce, Fee, GasPrice) ->
+    Spec =
+        #{ fee         => Fee
+         , contract    => <<"contract_address......(32 bytes)">>
+         , caller      => Sender
+         , nonce       => Nonce
+         , vm_version  => 1
+         , amount      => 100
+         , gas         => 10000
+         , gas_price   => GasPrice
+         , call_data   => <<"CALL DATA">>
+         , ttl         => 0
+         },
+    {ok, Tx} = aect_call_tx:new(Spec),
     {ok, STx} = sign(Sender, Tx),
     STx.
 
