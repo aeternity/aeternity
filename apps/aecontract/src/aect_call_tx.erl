@@ -40,6 +40,8 @@
 -define(CONTRACT_CALL_TX_TYPE, contract_call_tx).
 -define(CONTRACT_CALL_TX_FEE, 2).
 
+-define(is_non_neg_integer(X), (is_integer(X) andalso (X >= 0))).
+
 -record(contract_call_tx, {
           caller     :: aec_id:id(),
           nonce      :: integer(),
@@ -116,7 +118,8 @@ check(#contract_call_tx{nonce = Nonce,
                         fee = Fee, amount = Value,
                         gas = GasLimit, gas_price = GasPrice,
                         call_stack = CallStack
-                       } = CallTx, Context, Trees, Height, _ConsensusVersion) ->
+                       } = CallTx, Context, Trees, Height, _ConsensusVersion
+     ) when ?is_non_neg_integer(GasPrice) ->
     CallerPubKey = caller(CallTx),
     Checks =
         case Context of

@@ -43,6 +43,8 @@
 %% Should this be in a header file somewhere?
 -define(PUB_SIZE, 32).
 
+-define(is_non_neg_integer(X), (is_integer(X) andalso (X >= 0))).
+
 -record(contract_create_tx, {
           owner      :: aec_id:id(),
           nonce      :: non_neg_integer(),
@@ -156,7 +158,8 @@ check(#contract_create_tx{nonce = Nonce,
                           gas        = Gas,
                           gas_price  = GasPrice,
                           deposit    = Deposit,
-                          fee = Fee} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
+                          fee = Fee} = Tx, _Context, Trees, _Height, _ConsensusVersion
+     ) when ?is_non_neg_integer(GasPrice) ->
     OwnerPubKey = owner(Tx),
     TotalAmount = Fee + Amount + Deposit + Gas * GasPrice,
     Checks =
