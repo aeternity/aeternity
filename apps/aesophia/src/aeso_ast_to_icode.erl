@@ -278,10 +278,12 @@ ast_body({lam,_,Args,Body}) ->
 	    body=ast_body(Body)};
 ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}) ->
     %% Compile as a tuple with the fields in the order they appear in the definition.
-    NamedFields = [{Name,E} || {field,_,{id,_,Name},E} <- Fields],
+    NamedField = fun({field, _, [{proj, _, {id, _, Name}}], E}) -> {Name, E} end,
+    NamedFields = lists:map(NamedField, Fields),
     #tuple{cpts =
 	       [case proplists:get_value(Name,NamedFields) of
 		    undefined ->
+                        io:format("~p not in ~p\n", [Name, NamedFields]),
 			Line = aeso_syntax:get_ann(line, Attrs),
 			#missing_field{format = "Missing field in record: ~s (on line ~p)\n",
 				       args = [Name,Line]};
@@ -297,19 +299,27 @@ ast_body({proj,_,{typed,_,Record,{record_t,Fields}},{id,_,FieldName}}) ->
 		      lists:zip(lists:seq(1,length(Fields)),Fields),
 		  Name==FieldName],
     #binop{op = '!', left = #integer{value = 32*(Index-1)}, right = ast_body(Record)};
-ast_body({record,Attrs,{typed,_,Record,RecType={record_t,Fields}},Update}) ->
-    UpdatedNames = [Name || {field,_,{id,_,Name},_} <- Update],
+ast_body({record, Attrs, {typed, _, Record, RecType={record_t, Fields}}, Update}) ->
+    UpdatedName = fun({field, _,     [{proj, _, {id, _, Name}}], _}) -> Name;
+                     ({field_upd, _, [{proj, _, {id, _, Name}}], _}) -> Name
+                  end,
+    UpdatedNames = lists:map(UpdatedName, Update),
+    Rec = {typed, Attrs, {id, Attrs, "_record"}, RecType},
+    CompileUpdate =
+        fun(Fld={field, _, _, _}) -> Fld;
+           ({field_upd, Ann, LV=[{proj, Ann1, P}], Fun}) ->
+            {field, Ann, LV, {app, Ann, Fun, [{proj, Ann1, Rec, P}]}}
+        end,
+
     #switch{expr=ast_body(Record),
 	    cases=[{#var_ref{name = "_record"},
-		    ast_body({typed,Attrs,
-			      {record,Attrs,
-			       Update ++
-				   [{field,Attrs,{id,Attrs,Name},
-				     {proj,Attrs,
-				      {typed,Attrs,{id,Attrs,"_record"},RecType},
-				      {id,Attrs,Name}}}
-				    || {field_t,_,_,{id,_,Name},_} <- Fields,
-				       not lists:member(Name,UpdatedNames)]},
+		    ast_body({typed, Attrs,
+			      {record, Attrs,
+			       lists:map(CompileUpdate, Update) ++
+				[{field, Attrs, [{proj, Attrs, {id, Attrs, Name}}],
+				     {proj, Attrs, Rec, {id, Attrs, Name}}}
+				    || {field_t, _, _, {id, _, Name}, _} <- Fields,
+				       not lists:member(Name, UpdatedNames)]},
 			      RecType})}
 		   ]};
 ast_body({typed, _, Body, _}) ->

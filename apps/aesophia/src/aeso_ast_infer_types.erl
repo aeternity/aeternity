@@ -244,15 +244,13 @@ infer_expr(Env, {record, Attrs, Fields}) ->
     RecordType = fresh_uvar(Attrs),
     NewFields = [{field, A, FieldName, infer_expr(Env, Expr)}
 		 || {field, A, FieldName, Expr} <- Fields],
-    constrain([{RecordType, FieldName, T}
-	       || {field, _, FieldName, {typed, _, _, T}} <- NewFields]),
+    constrain([case LV of
+                [{proj, _, FieldName}] -> {RecordType, FieldName, T}
+	       end || {field, _, LV, {typed, _, _, T}} <- NewFields]),
     {typed, Attrs, {record, Attrs, NewFields}, RecordType};
 infer_expr(Env, {record, Attrs, Record, Update}) ->
     NewRecord = {typed, _, _, RecordType} = infer_expr(Env, Record),
-    NewUpdate = [{field, A, FieldName, infer_expr(Env, Expr)}
-		 || {field, A, FieldName, Expr} <- Update],
-    constrain([{RecordType, FieldName, T}
-	       || {field, _, FieldName, {typed, _, _, T}} <- NewUpdate]),
+    NewUpdate = [ check_record_update(Env, RecordType, Fld) || Fld <- Update ],
     {typed, Attrs, {record, Attrs, NewRecord, NewUpdate}, RecordType};
 infer_expr(Env, {proj, Attrs, Record, FieldName}) ->
     NewRecord = {typed, _, _, RecordType} = infer_expr(Env, Record),
@@ -304,6 +302,20 @@ check_map_update(Env, {field, Ann, [{map_get, Ann1, Key}], Id, Val}, KeyType, Va
     {field_upd, Ann, [{map_get, Ann1, Key1}], Fun};
 check_map_update(_, {field, Ann, Flds, _}, _, _) ->
     error({nested_map_updates_not_implemented, Ann, Flds}).
+
+check_record_update(Env, RecordType, Fld) ->
+    [field, Ann, LV = [{proj, Ann1, FieldName}] | Val] = tuple_to_list(Fld),
+    FldType = fresh_uvar(Ann),
+    Fld1 = case Val of
+            [Expr] ->
+                {field, Ann, LV, check_expr(Env, Expr, FldType)};
+            [Id, Expr] ->
+                Fun     = {lam, Ann1, [{arg, Ann1, Id, FldType}], Expr},
+                FunType = {fun_t, Ann1, [FldType], FldType},
+                {field_upd, Ann, LV, check_expr(Env, Fun, FunType)}
+        end,
+    constrain([{RecordType, FieldName, FldType}]),
+    Fld1.
 
 infer_op(Env, As, Op, Args, InferOp) ->
     TypedArgs = [infer_expr(Env, A) || A <- Args],
@@ -586,6 +598,10 @@ lowest_scores([]) ->
 %% definition. This enables the code generator to see the fields.
 unfold_record_types({typed, Attr, E, Type}) ->
     {typed, Attr, unfold_record_types(E), unfold_record_types_in_type(Type)};
+unfold_record_types({arg, Attr, Id, Type}) ->
+    {arg, Attr, Id, unfold_record_types_in_type(Type)};
+unfold_record_types({type_sig, Args, Ret}) ->
+    {type_sig, unfold_record_types_in_type(Args), unfold_record_types_in_type(Ret)};
 unfold_record_types(T) when is_tuple(T) ->
     list_to_tuple(unfold_record_types(tuple_to_list(T)));
 unfold_record_types([H|T]) ->

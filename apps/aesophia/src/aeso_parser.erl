@@ -239,8 +239,8 @@ lvalue() ->
 
 lvalue(E) -> lvalue(E, []).
 
-lvalue({id, Ann, X}, LV)         -> lists:reverse([{proj, Ann, X} | LV]);
-lvalue({list, Ann, [K]}, LV)     -> lists:reverse([{map_get, Ann, K} | LV]);
+lvalue(X = {id, Ann, _}, LV)     -> [{proj, Ann, X} | LV];
+lvalue({list, Ann, [K]}, LV)     -> [{map_get, Ann, K} | LV];
 lvalue({proj, Ann, E, P}, LV)    -> lvalue(E, [{proj, Ann, P} | LV]);
 lvalue({map_get, Ann, E, K}, LV) -> lvalue(E, [{map_get, Ann, K} | LV]);
 lvalue(E, _)                     -> bad_expr_err("Not a valid lvalue", E).
@@ -401,8 +401,8 @@ parse_pattern(E) -> bad_expr_err("Not a valid pattern", E).
 parse_field_pattern({field, Ann, F, E}) ->
     {field, Ann, F, parse_pattern(E)}.
 
-return_error(Pos, Err) ->
-    fail({parse_error, Pos, Err}).
+return_error({L, C}, Err) ->
+    fail(io_lib:format("~p:~p:\n~s", [L, C, Err])).
 
 -spec ret_doc_err(ann(), prettypr:document()) -> no_return().
 ret_doc_err(Ann, Doc) ->

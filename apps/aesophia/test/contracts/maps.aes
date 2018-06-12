@@ -24,3 +24,7 @@ contract Maps =
 
   function modify(m, k, f) : map(string, int) =
     m{ [k] @ x = f(x) }
+
+  type mem = { m : map(int, int), next : int }
+
+  function skip(mem) : mem = mem{ next @ x = x + 1 }

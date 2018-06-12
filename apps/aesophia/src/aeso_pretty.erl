@@ -213,6 +213,7 @@ type({app_t, _, Type, Args}) ->
     beside(type(Type), tuple_type(Args));
 type({tuple_t, _, Args}) ->
     tuple_type(Args);
+type(R = {record_t, _}) -> typedef(R);
 type(T = {id, _, _})   -> name(T);
 type(T = {qid, _, _})  -> name(T);
 type(T = {con, _, _})  -> name(T);
