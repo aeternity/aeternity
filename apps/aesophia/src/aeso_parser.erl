@@ -193,31 +193,43 @@ elim() ->
 elim(E, [])                          -> E;
 elim(E, [{proj, Ann, P} | Es])       -> elim({proj, Ann, E, P}, Es);
 elim(E, [{app, Ann, Args} | Es])     -> elim({app, Ann, E, Args}, Es);
-elim(E, [{rec_upd, Ann, Flds} | Es]) -> elim({record, Ann, E, Flds}, Es);
+elim(E, [{rec_upd, Ann, Flds} | Es]) -> elim(record_update(Ann, E, Flds), Es);
 elim(E, [{map_get, Ann, Key} | Es])  -> elim({map_get, Ann, E, Key}, Es).
+
+record_update(Ann, E, Flds) ->
+    {record_or_map(Flds), Ann, E, Flds}.
 
 record([]) -> {map, [], []};
 record(Fs) ->
+    case record_or_map(Fs) of
+        record -> {record, get_ann(hd(Fs)), Fs};
+        map    ->
+            Ann = get_ann(hd(Fs ++ [{empty, []}])), %% TODO: source location for empty maps
+            KV = fun({field, _, [{map_get, _, Key}], Val}) -> {Key, Val};
+                    ({field, _, LV, _}) -> bad_expr_err("Cannot use nested fields or keys in map construction", LV) end,
+            {map, Ann, lists:map(KV, Fs)}
+    end.
+
+record_or_map(Fields) ->
     Kind = fun({field, _, [{proj, _, _}    | _], _}) -> proj;
               ({field, _, [{map_get, _, _} | _], _}) -> map_get
            end,
-    case lists:usort(lists:map(Kind, Fs)) of
-        [proj]    -> {record, [], Fs};
-        [map_get] ->
-            KV = fun({field, _, [{map_get, _, Key}], Val}) -> {Key, Val};
-                    ({field, _, LV, _}) -> bad_expr_err("Cannot use nested fields or keys in map construction", LV) end,
-            {map, [], lists:map(KV, Fs)};
-        _         -> bad_expr_err("Mixed record fields and map keys in", {record, [], Fs})
+    case lists:usort(lists:map(Kind, Fields)) of
+        [proj]    -> record;
+        [map_get] -> map;
+        _         ->
+            [{field, Ann, _, _} | _] = Fields,
+            bad_expr_err("Mixed record fields and map keys in", {record, Ann, Fields})
     end.
 
 field_assignment() ->
     ?RULE(lvalue(), tok('='), expr(), {field, get_ann(_2), _1, _3}).
 
-
 lvalue() ->
     ?LET_P(E, expr900(), lvalue(E)).
 
 lvalue(E) -> lvalue(E, []).
+
 lvalue({id, Ann, X}, LV)         -> lists:reverse([{proj, Ann, X} | LV]);
 lvalue({list, Ann, [K]}, LV)     -> lists:reverse([{map_get, Ann, K} | LV]);
 lvalue({proj, Ann, E, P}, LV)    -> lvalue(E, [{proj, Ann, P} | LV]);

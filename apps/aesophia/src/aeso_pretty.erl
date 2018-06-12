@@ -247,7 +247,9 @@ expr_p(_, {list, _, Es}) ->
 expr_p(_, {record, _, Fs}) ->
     record(lists:map(fun field/1, Fs));
 expr_p(_, {map, Ann, KVs}) ->
-    record([ field({field, Ann, {list, [], [K]}, V}) || {K, V} <- KVs ]);
+    record([ field({field, Ann, [{map_get, [], K}], V}) || {K, V} <- KVs ]);
+expr_p(P, {map, Ann, E, Flds}) ->
+    expr_p(P, {record, Ann, E, Flds});
 expr_p(P, {record, Ann, E, Fs}) ->
     paren(P > 900, hsep(expr_p(900, E), expr({record, Ann, Fs})));
 expr_p(_, {block, _, Ss}) ->
@@ -351,7 +353,13 @@ app(P, F, Args) ->
            tuple(lists:map(fun expr/1, Args)))).
 
 field({field, _, LV, E}) ->
-    follow(hsep(expr_p(900, LV), text("=")), expr(E)).
+    follow(hsep(lvalue(LV), text("=")), expr(E)).
+
+lvalue(LV) ->
+    beside(lists:map(fun elim/1, LV)).
+
+elim({proj, _, X})      -> name(X);
+elim({map_get, Ann, K}) -> expr_p(0, {list, Ann, [K]}).
 
 alt({'case', _, Pat, Body}) ->
     block_expr(0, hsep(expr_p(500, Pat), text("=>")), Body).

@@ -86,8 +86,9 @@
      | {typed, ann(), expr(), type()}
      | {record, ann(), [field(expr())]}
      | {record, ann(), expr(), [field(expr())]} %% record update
-     | {map_get, ann(), expr()}
+     | {map, ann(), expr(), [field(expr())]}    %% map update
      | {map, ann(), [{expr(), expr()}]}
+     | {map_get, ann(), expr()}
      | {block, ann(), [stmt()]}
      | {op(), ann()}
      | id() | qid() | con() | qcon()

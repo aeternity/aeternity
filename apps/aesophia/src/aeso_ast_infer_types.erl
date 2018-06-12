@@ -240,12 +240,6 @@ infer_expr(Env, {switch, Attrs, Expr, Cases}) ->
     NewCases = [infer_case(Env, As, Pattern, ExprType, Branch, SwitchType)
 		|| {'case', As, Pattern, Branch} <- Cases],
     {typed, Attrs, {switch, Attrs, NewExpr, NewCases}, SwitchType};
-infer_expr(Env, {map, Attrs, KVs}) ->
-    KeyType = fresh_uvar(Attrs),
-    ValType = fresh_uvar(Attrs),
-    KVs1 = [ {check_expr(Env, K, KeyType), check_expr(Env, V, ValType)}
-             || {K, V} <- KVs ],
-    {typed, Attrs, {map, Attrs, KVs1}, map_t(Attrs, KeyType, ValType)};
 infer_expr(Env, {record, Attrs, Fields}) ->
     RecordType = fresh_uvar(Attrs),
     NewFields = [{field, A, FieldName, infer_expr(Env, Expr)}
@@ -266,13 +260,26 @@ infer_expr(Env, {proj, Attrs, Record, FieldName}) ->
     constrain({RecordType, FieldName, FieldType}),
     {typed, Attrs, {proj, Attrs, NewRecord, FieldName}, FieldType};
 %% Maps
-infer_expr(Env, {map_get, Attrs, Map, Key}) ->
+infer_expr(Env, {map_get, Attrs, Map, Key}) ->  %% map lookup
     KeyType = fresh_uvar(Attrs),
     ValType = fresh_uvar(Attrs),
     MapType = map_t(Attrs, KeyType, ValType),
     Map1 = check_expr(Env, Map, MapType),
     Key1 = check_expr(Env, Key, KeyType),
     {typed, Attrs, {map_get, Attrs, Map1, Key1}, ValType};
+infer_expr(Env, {map, Attrs, KVs}) ->   %% map construction
+    KeyType = fresh_uvar(Attrs),
+    ValType = fresh_uvar(Attrs),
+    KVs1 = [ {check_expr(Env, K, KeyType), check_expr(Env, V, ValType)}
+             || {K, V} <- KVs ],
+    {typed, Attrs, {map, Attrs, KVs1}, map_t(Attrs, KeyType, ValType)};
+infer_expr(Env, {map, Attrs, Map, Updates}) -> %% map update
+    KeyType  = fresh_uvar(Attrs),
+    ValType  = fresh_uvar(Attrs),
+    MapType  = map_t(Attrs, KeyType, ValType),
+    Map1     = check_expr(Env, Map, MapType),
+    Updates1 = [ check_map_update(Env, Upd, KeyType, ValType) || Upd <- Updates ],
+    {typed, Attrs, {map, Attrs, Map1, Updates1}, MapType};
 infer_expr(Env, {block, Attrs, Stmts}) ->
     BlockType = fresh_uvar(Attrs),
     NewStmts = infer_block(Env, Attrs, Stmts, BlockType),
@@ -285,6 +292,13 @@ infer_expr(Env, {lam, Attrs, Args, Body}) ->
 	infer_case(Env, Attrs, {tuple, Attrs, ArgPatterns}, {tuple_t, Attrs, ArgTypes}, Body, ResultType),
     NewArgs = [{arg, As, NewPat, NewT} || {typed, As, NewPat, NewT} <- NewArgPatterns],
     {typed, Attrs, {lam, Attrs, NewArgs, NewBody}, {fun_t, Attrs, ArgTypes, ResultType}}.
+
+check_map_update(Env, {field, Ann, [{map_get, Ann1, Key}], Val}, KeyType, ValType) ->
+    Key1 = check_expr(Env, Key, KeyType),
+    Val1 = check_expr(Env, Val, ValType),
+    {field, Ann, [{map_get, Ann1, Key1}], Val1};
+check_map_update(_, {field, Ann, Flds, _}, _, _) ->
+    error({nested_map_updates_not_implemented, Ann, Flds}).
 
 infer_op(Env, As, Op, Args, InferOp) ->
     TypedArgs = [infer_expr(Env, A) || A <- Args],
@@ -488,7 +502,7 @@ solve_known_record_types(Constraints) ->
 	     RecId = {id, Attrs, RecName} = record_type_name(RecType),
 	     case ets:lookup(record_types, RecName) of
 		 [] ->
-		     io:format("Undefined record type: ~s\n", RecName),
+		     io:format("Undefined record type: ~s\n", [RecName]),
 		     error({undefined_record_type, RecName});
 		 [{RecName, Formals, Fields}] ->
 		     FieldTypes = [{Name, Type} || {field_t, _, _, {id, _, Name}, Type} <- Fields],

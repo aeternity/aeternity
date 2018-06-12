@@ -189,12 +189,7 @@ ast_body({qid, _, ["Oracle", "get_question"]}) -> error({underapplied_primitive,
 
 %% Maps
 ast_body({map_get, _, Map, {typed, _, Key, KeyType}}) ->
-    Fun =
-        case ast_typerep(KeyType) of
-            word   -> {map_get, word};
-            string -> {map_get, string};
-            _      -> error({unsupported_key_type, KeyType})
-        end,
+    Fun = {map_get, key_type(KeyType)},
     #funcall{ function = #var_ref{name = {builtin, Fun}},
               args     = [ast_body(Map), ast_body(Key)] };
 ast_body(?qid_app(["Map", "from_list"], [List], _, _)) ->
@@ -204,6 +199,15 @@ ast_body({qid, _, ["Map", "from_list"]}) ->
 
 ast_body({map, Ann, KVs}) ->
     ast_body({list, Ann, [{tuple, Ann, [K, V]} || {K, V} <- KVs]});
+
+ast_body({map, _, Map, []}) -> ast_body(Map);
+ast_body({map, _, Map, [Upd]}) ->
+    {field, _, [{map_get, _, {typed, _, Key, KeyType}}], Val} = Upd, %% TODO: nested updates
+    Fun = {map_put, key_type(KeyType)},
+    #funcall{ function = #var_ref{name = {builtin, Fun}},
+              args     = [ast_body(Map), ast_body(Key), ast_body(Val)] };
+ast_body({map, Ann, Map, [Upd | Upds]}) ->
+    ast_body({map, Ann, {map, Ann, Map, [Upd]}, Upds});
 
 %% Other terms
 ast_body({id, _, Name}) ->
@@ -380,11 +384,19 @@ set_functions(NewFuns, Icode) ->
 %% Builtins
 %% -------------------------------------------------------------------
 
+key_type(Type) ->
+    case ast_typerep(Type) of
+        word   -> word;
+        string -> string;
+        _      -> error({unsupported_key_type, Type})
+    end.
+
 builtin_deps({map_get, string}) -> [str_equal];
+builtin_deps({map_put, string}) -> [str_equal];
 builtin_deps(_) -> [].
 
 used_builtins(#funcall{ function = #var_ref{ name = {builtin, Builtin} } }) ->
-    [Builtin | builtin_deps(Builtin)];
+    lists:umerge([Builtin], builtin_deps(Builtin));
 used_builtins([H|T]) ->
   lists:umerge(used_builtins(H), used_builtins(T));
 used_builtins(T) when is_tuple(T) ->
@@ -393,12 +405,11 @@ used_builtins(M) when is_map(M) ->
   used_builtins(maps:to_list(M));
 used_builtins(_) -> [].
 
+builtin_eq(word, A, B)   -> {binop, '==', A, B};
+builtin_eq(string, A, B) -> {funcall, {var_ref, {builtin, str_equal}}, [A, B]}.
+
 builtin_function(Builtin = {map_get, Type}) ->
-    Eq = fun(A, B) ->
-            case Type of
-                word   -> {binop, '==', A, B};
-                string -> {funcall, {var_ref, {builtin, str_equal}}, [A, B]}
-            end end,
+    Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
     Name = {builtin, Builtin},
     {Name,
         [{"m", map_typerep(Type, word)}, {"k", Type}],
@@ -411,6 +422,32 @@ builtin_function(Builtin = {map_get, Type}) ->
                 {funcall, {var_ref, Name},
                     [{var_ref, "m'"}, {var_ref, "k"}]}}}]},
         word};
+
+builtin_function(Builtin = {map_put, Type}) ->
+    Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
+    Name = {builtin, Builtin},
+    {Name,
+     [{"map", {list, {tuple, [word, word]}}}, {"key", word}, {"val", word}],
+     {switch,
+         {var_ref, "map"},
+         [{{list, []}, {list, [{tuple, [{var_ref, "key"}, {var_ref, "val"}]}]}},
+          {{binop, '::',
+               {tuple, [{var_ref, "k"}, {var_ref, "v"}]},
+               {var_ref, "m"}},
+           {ifte,
+               Eq({var_ref, "k"}, {var_ref, "key"}),
+               {binop, '::',
+                   {tuple, [{var_ref, "k"}, {var_ref, "val"}]},
+                   {var_ref, "m"}},
+               {binop, '::',
+                   {tuple, [{var_ref, "k"}, {var_ref, "v"}]},
+                   {funcall,
+                       {var_ref, Name},
+                       [{var_ref, "m"},
+                        {var_ref, "key"},
+                        {var_ref, "val"}]}}}}]},
+     {list, {tuple, [Type, word]}}};
+
 builtin_function(str_equal) ->
     V = fun(X) -> {var_ref, atom_to_list(X)} end,
     P = fun(A, B) -> {tuple, [A, B]} end,

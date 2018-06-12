@@ -68,7 +68,7 @@ dummy_state(Code, Data) ->
      }, #{ trace => true }).
 
 compile(Name) ->
-  aeso_compiler:from_string(read_contract(Name), [pp_ring_code, pp_typed, pp_icode]).
+  aeso_compiler:from_string(read_contract(Name), [pp_sophia_code, pp_typed, pp_icode]).
 
 run_contract(Name, Fun, Args, Type) ->
   Code = compile(Name),
