@@ -103,7 +103,7 @@ def make_no_mining_user_config(root_dir, file_name):
 ---
 chain:
     hard_forks:
-        "14": 0
+        "15": 0
 
 mining:
     autostart: false
@@ -121,7 +121,7 @@ def make_mining_user_config(root_dir, file_name):
 ---
 chain:
     hard_forks:
-        "14": 0
+        "15": 0
 
 mining:
     autostart: true
