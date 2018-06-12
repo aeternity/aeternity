@@ -127,7 +127,7 @@ create_contract_init_error(_Cfg) ->
     ?assertEqual(aetx:nonce(Tx), aect_call:caller_nonce(InitCall)),
     %% Check that the created init call has the correct details not from the contract create tx
     ?assertEqual(ContractKey, aect_call:contract_address(InitCall)), %% Contract not created.
-    ?assertEqual(0, aect_call:gas_used(InitCall)),
+    ?assertMatch(X when X > 0, aect_call:gas_used(InitCall)),
     ?assertEqual(error, aect_call:return_type(InitCall)),
     _ = aect_call:return_value(InitCall),
 
