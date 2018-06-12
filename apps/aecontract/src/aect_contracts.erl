@@ -47,7 +47,7 @@
 -record(contract, {
         %% Normal account fields
         id         :: aec_id:id(),
-        owner      :: aec_keys:pubkey(),
+        owner      :: aec_id:id(),
         vm_version :: vm_version(),
         code       :: binary(),     %% The byte code
         store      :: store(),      %% The current state/store (stored in a subtree in mpt)
@@ -105,7 +105,7 @@ new(RTx) ->
 new(Owner, Nonce, VmVersion, Code, Deposit) ->
     Pubkey = compute_contract_pubkey(Owner, Nonce),
     C = #contract{ id         = aec_id:create(contract, Pubkey),
-                   owner      = Owner,
+                   owner      = aec_id:create(account, Owner),
                    vm_version = VmVersion,
                    code       = Code,
                    store      = #{},
@@ -118,28 +118,28 @@ new(Owner, Nonce, VmVersion, Code, Deposit) ->
     C.
 
 -spec serialize(contract()) -> serialized().
-serialize(#contract{} = C) ->
+serialize(#contract{owner = OwnerId, referers = RefererIds} = C) ->
     aec_object_serialization:serialize(
       ?CONTRACT_TYPE,
       ?CONTRACT_VSN,
       serialization_template(?CONTRACT_VSN),
-      [ {owner, owner(C)}
+      [ {owner, OwnerId}
       , {vm_version, vm_version(C)}
       , {code, code(C)}
       , {log, log(C)}
       , {active, active(C)}
-      , {referers, referers(C)}
+      , {referers, RefererIds}
       , {deposit, deposit(C)}
       ]).
 
 -spec deserialize(aec_keys:pubkey(), serialized()) -> contract().
 deserialize(Pubkey, Bin) ->
-    [ {owner, Owner}
+    [ {owner, OwnerId}
     , {vm_version, VmVersion}
     , {code, Code}
     , {log, Log}
     , {active, Active}
-    , {referers, Referers}
+    , {referers, RefererIds}
     , {deposit, Deposit}
     ] = aec_object_serialization:deserialize(
           ?CONTRACT_TYPE,
@@ -147,24 +147,26 @@ deserialize(Pubkey, Bin) ->
           serialization_template(?CONTRACT_VSN),
           Bin
           ),
+    [contract = aec_id:specialize_type(R) || R <- RefererIds],
+    account = aec_id:specialize_type(OwnerId),
     #contract{ id         = aec_id:create(contract, Pubkey)
-             , owner      = Owner
+             , owner      = OwnerId
              , vm_version = VmVersion
              , code       = Code
              , store      = #{}
              , log        = Log
              , active     = Active
-             , referers   = Referers
+             , referers   = RefererIds
              , deposit    = Deposit
              }.
 
 serialization_template(?CONTRACT_VSN) ->
-    [ {owner, binary}
+    [ {owner, id}
     , {vm_version, int}
     , {code, binary}
     , {log, binary}
     , {active, bool}
-    , {referers, [binary]}
+    , {referers, [id]}
     , {deposit, int}
     ].
 
@@ -182,7 +184,7 @@ pubkey(C) -> aec_id:specialize(C#contract.id, contract).
 
 %% The owner of the contract is (initially) the account that created it.
 -spec owner(contract()) -> aec_keys:pubkey().
-owner(C) -> C#contract.owner.
+owner(C) -> aec_id:specialize(C#contract.owner, account).
 
 %% The VM version used by the contract.
 -spec vm_version(contract()) -> vm_version().
@@ -206,7 +208,7 @@ active(C) -> C#contract.active.
 
 %% A list of other contracts referring to this contract.
 -spec referers(contract()) -> [aec_keys:pubkey()].
-referers(C) -> C#contract.referers.
+referers(C) -> [aec_id:specialize(X, contract) || X <- C#contract.referers].
 
 %% The amount deposited at contract creation.
 -spec deposit(contract()) -> amount().
@@ -221,7 +223,7 @@ set_pubkey(X, C) ->
 
 -spec set_owner(aec_keys:pubkey(), contract()) -> contract().
 set_owner(X, C) ->
-    C#contract{owner = assert_field(owner, X)}.
+    C#contract{owner = aec_id:create(account, assert_field(pubkey, X))}.
 
 -spec set_vm_version(vm_version(), contract()) -> contract().
 set_vm_version(X, C) ->
@@ -245,7 +247,8 @@ set_active(X, C) ->
 
 -spec set_referers([aec_keys:pubkey()], contract()) -> contract().
 set_referers(X, C) ->
-    C#contract{referers = assert_field(referers, X)}.
+    C#contract{referers = [aec_id:create(contract, Y)
+                           || Y <- assert_field(referers, X)]}.
 
 -spec set_deposit(amount(), contract()) -> contract().
 set_deposit(X, C) ->
@@ -257,13 +260,13 @@ set_deposit(X, C) ->
 
 assert_fields(C) ->
     List = [ {pubkey,     pubkey(C)}
-           , {owner,      C#contract.owner}
+           , {owner,      owner(C)}
            , {vm_version, C#contract.vm_version}
            , {code,       C#contract.code}
            , {store,      C#contract.store}
            , {log,        C#contract.log}
            , {active,     C#contract.active}
-           , {referers,   C#contract.referers}
+           , {referers,   referers(C)}
            , {deposit,    C#contract.deposit}
            ],
     List1 = [try assert_field(X, Y), [] catch _:X -> X end
