@@ -243,7 +243,7 @@ call_contract(_Cfg) ->
     ?assertEqual(aetx:nonce(CallTx), aect_call:caller_nonce(Call)),
     _ = aect_call:height(Call), %% Unclear if this needed.
     ?assertEqual(ContractKey, aect_call:contract_address(Call)),
-    _ = aect_call:gas_used(Call),
+    ?assertMatch(X when X > 0, aect_call:gas_used(Call)),
 
     %% Check that contract call transaction sender got charged the right amount for gas and fee.
     {NewCallerBalance, NewCallerBalance} =
