@@ -206,14 +206,18 @@ record(Fs) ->
         map    ->
             Ann = get_ann(hd(Fs ++ [{empty, []}])), %% TODO: source location for empty maps
             KV = fun({field, _, [{map_get, _, Key}], Val}) -> {Key, Val};
-                    ({field, _, LV, _}) -> bad_expr_err("Cannot use nested fields or keys in map construction", LV) end,
+                    ({field, _, LV, Id, _}) ->
+                        bad_expr_err("Cannot use '@' in map construction", infix(LV, {op, Ann, '@'}, Id));
+                    ({field, _, LV, _}) ->
+                        bad_expr_err("Cannot use nested fields or keys in map construction", LV) end,
             {map, Ann, lists:map(KV, Fs)}
     end.
 
 record_or_map(Fields) ->
-    Kind = fun({field, _, [{proj, _, _}    | _], _}) -> proj;
-              ({field, _, [{map_get, _, _} | _], _}) -> map_get
-           end,
+    Kind = fun(Fld) -> case element(3, Fld) of
+                [{proj, _, _}    | _] -> proj;
+                [{map_get, _, _} | _] -> map_get
+           end end,
     case lists:usort(lists:map(Kind, Fields)) of
         [proj]    -> record;
         [map_get] -> map;
@@ -223,7 +227,12 @@ record_or_map(Fields) ->
     end.
 
 field_assignment() ->
-    ?RULE(lvalue(), tok('='), expr(), {field, get_ann(_2), _1, _3}).
+    ?RULE(lvalue(), optional({tok('@'), id()}), tok('='), expr(), field_assignment(get_ann(_3), _1, _2, _4)).
+
+field_assignment(Ann, LV, none, E) ->
+    {field, Ann, LV, E};
+field_assignment(Ann, LV, {ok, {_, Id}}, E) ->
+    {field, Ann, LV, Id, E}.
 
 lvalue() ->
     ?LET_P(E, expr900(), lvalue(E)).

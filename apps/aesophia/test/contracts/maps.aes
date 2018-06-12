@@ -1,21 +1,26 @@
 contract Maps =
 
-  function lookup(m : map(string, string), k) =
+  function lookup(m : map(string, int), k) =
     m[k]
 
   function map1() =
-    Map.from_list([("foo", "1004"), ("bar", "1005")])
+    Map.from_list([("foo", 1004), ("bar", 1005)])
 
   function map2() =
-    { ["foo"] = "1004",
-      ["bar"] = "1005" }
+    { ["foo"] = 1004,
+      ["bar"] = 1005 }
 
   function test() =
-    (lookup(update(map1(), "bar", "1006"), "bar"), lookup(map2(), "foo"))
+    [ lookup(update(map1(), "bar", 1006), "bar"),
+      lookup(map2(), "foo"),
+      map2() { ["bar"] @ x = x * 2 } ["bar"] ]
 
-  function empty() : map(string, string) = {}
+  function empty() : map(string, int) = {}
 
-  function singleton(k, v) : map(string, string) = {[k] = v}
+  function singleton(k, v) : map(string, int) = {[k] = v}
 
-  function update(m, k, v) : map(string, string) =
+  function update(m, k, v) : map(string, int) =
     m{ [k] = v }
+
+  function modify(m, k, f) : map(string, int) =
+    m{ [k] @ x = f(x) }

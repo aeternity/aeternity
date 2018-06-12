@@ -99,7 +99,8 @@
 %%    r { x.y: 5 }
 %% is the same as
 %%    r { x: r.x { y: 5 } }
--type field(E) :: {field, ann(), lvalue(), E}.
+-type field(E) :: {field, ann(), lvalue(), E}
+                | {field, ann(), lvalue(), id(), E}.  %% modifying a field (id is previous value)
 
 -type stmt() :: {assign, ann(), lvalue(), expr()}
               | letbind()

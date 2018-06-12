@@ -202,10 +202,16 @@ ast_body({map, Ann, KVs}) ->
 
 ast_body({map, _, Map, []}) -> ast_body(Map);
 ast_body({map, _, Map, [Upd]}) ->
-    {field, _, [{map_get, _, {typed, _, Key, KeyType}}], Val} = Upd, %% TODO: nested updates
-    Fun = {map_put, key_type(KeyType)},
+    %% TODO: nested updates (desugar those earlier?)
+    {Fun, Args} = case Upd of
+            {field, _, [{map_get, _, {typed, _, Key, KeyType}}], Val} ->
+                {{map_put, key_type(KeyType)}, [ast_body(Key), ast_body(Val)]};
+            {field_upd, _, [{map_get, _, {typed, _, Key, KeyType}}], ValFun} ->
+                {{map_upd, key_type(KeyType)}, [ast_body(Key), ast_body(ValFun)]}
+        end,
     #funcall{ function = #var_ref{name = {builtin, Fun}},
-              args     = [ast_body(Map), ast_body(Key), ast_body(Val)] };
+              args     = [ast_body(Map) | Args] };
+
 ast_body({map, Ann, Map, [Upd | Upds]}) ->
     ast_body({map, Ann, {map, Ann, Map, [Upd]}, Upds});
 
@@ -393,6 +399,7 @@ key_type(Type) ->
 
 builtin_deps({map_get, string}) -> [str_equal];
 builtin_deps({map_put, string}) -> [str_equal];
+builtin_deps({map_upd, string}) -> [str_equal];
 builtin_deps(_) -> [].
 
 used_builtins(#funcall{ function = #var_ref{ name = {builtin, Builtin} } }) ->
@@ -446,6 +453,30 @@ builtin_function(Builtin = {map_put, Type}) ->
                        [{var_ref, "m"},
                         {var_ref, "key"},
                         {var_ref, "val"}]}}}}]},
+     {list, {tuple, [Type, word]}}};
+
+builtin_function(Builtin = {map_upd, Type}) ->
+    Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
+    Name = {builtin, Builtin},
+    {Name,
+     [{"map", {list, {tuple, [word, word]}}}, {"key", word}, {"fun", word}],
+     {switch,
+         {var_ref, "map"},
+         [{{binop, '::',
+               {tuple, [{var_ref, "k"}, {var_ref, "v"}]},
+               {var_ref, "m"}},
+           {ifte,
+               Eq({var_ref, "k"}, {var_ref, "key"}),
+               {binop, '::',
+                   {tuple, [{var_ref, "k"}, {funcall, {var_ref, "fun"}, [{var_ref, "v"}]}]},
+                   {var_ref, "m"}},
+               {binop, '::',
+                   {tuple, [{var_ref, "k"}, {var_ref, "v"}]},
+                   {funcall,
+                       {var_ref, Name},
+                       [{var_ref, "m"},
+                        {var_ref, "key"},
+                        {var_ref, "fun"}]}}}}]},
      {list, {tuple, [Type, word]}}};
 
 builtin_function(str_equal) ->

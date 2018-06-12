@@ -297,6 +297,11 @@ check_map_update(Env, {field, Ann, [{map_get, Ann1, Key}], Val}, KeyType, ValTyp
     Key1 = check_expr(Env, Key, KeyType),
     Val1 = check_expr(Env, Val, ValType),
     {field, Ann, [{map_get, Ann1, Key1}], Val1};
+check_map_update(Env, {field, Ann, [{map_get, Ann1, Key}], Id, Val}, KeyType, ValType) ->
+    FunType = {fun_t, Ann, [ValType], ValType},
+    Key1    = check_expr(Env, Key, KeyType),
+    Fun     = check_expr(Env, {lam, Ann1, [{arg, Ann1, Id, ValType}], Val}, FunType),
+    {field_upd, Ann, [{map_get, Ann1, Key1}], Fun};
 check_map_update(_, {field, Ann, Flds, _}, _, _) ->
     error({nested_map_updates_not_implemented, Ann, Flds}).
 

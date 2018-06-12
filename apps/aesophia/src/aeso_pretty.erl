@@ -353,7 +353,11 @@ app(P, F, Args) ->
            tuple(lists:map(fun expr/1, Args)))).
 
 field({field, _, LV, E}) ->
-    follow(hsep(lvalue(LV), text("=")), expr(E)).
+    follow(hsep(lvalue(LV), text("=")), expr(E));
+field({field, _, LV, Id, E}) ->
+    follow(hsep([lvalue(LV), text("@"), name(Id), text("=")]), expr(E));
+field({field_upd, _, LV, Fun}) ->
+    follow(hsep(lvalue(LV), text("~")), expr(Fun)). %% Not valid syntax
 
 lvalue(LV) ->
     beside(lists:map(fun elim/1, LV)).
