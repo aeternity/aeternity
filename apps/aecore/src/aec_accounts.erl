@@ -15,14 +15,14 @@
          spend_without_nonce_bump/2,
          set_nonce/2,
          serialize/1,
-         deserialize/1]).
+         deserialize/2]).
 
 
 -define(ACCOUNT_VSN, 1).
 -define(ACCOUNT_TYPE, account).
 
 -record(account, {
-          pubkey = <<>>  :: <<>> | aec_keys:pubkey(),
+          id             :: aec_id:id(),
           balance = 0    :: non_neg_integer(),
           nonce = 0      :: non_neg_integer()}).
 
@@ -33,11 +33,12 @@
 
 -spec new(aec_keys:pubkey(), non_neg_integer()) -> account().
 new(Pubkey, Balance) ->
-    #account{pubkey = Pubkey, balance = Balance}.
+    Id = aec_id:create(account, Pubkey),
+    #account{id = Id, balance = Balance}.
 
 -spec pubkey(account()) -> aec_keys:pubkey().
-pubkey(#account{pubkey = Pubkey}) ->
-    Pubkey.
+pubkey(#account{id = Id}) ->
+    aec_id:specialize(Id, account).
 
 -spec balance(account()) -> non_neg_integer().
 balance(#account{balance = Balance}) ->
@@ -72,28 +73,25 @@ serialize(Account) ->
     aec_object_serialization:serialize(
       ?ACCOUNT_TYPE, ?ACCOUNT_VSN,
       serialization_template(?ACCOUNT_VSN),
-      [ {pubkey, pubkey(Account)}
-      , {nonce, nonce(Account)}
+      [ {nonce, nonce(Account)}
       , {balance, balance(Account)}
       ]).
 
--spec deserialize(binary()) -> account().
-deserialize(SerializedAccount) ->
-    [ {pubkey, Pubkey}
-    , {nonce, Nonce}
+-spec deserialize(aec_keys:pubkey(), binary()) -> account().
+deserialize(Pubkey, SerializedAccount) ->
+    [ {nonce, Nonce}
     , {balance, Balance}
     ] = aec_object_serialization:deserialize(
           ?ACCOUNT_TYPE,
           ?ACCOUNT_VSN,
           serialization_template(?ACCOUNT_VSN),
           SerializedAccount),
-    #account{ pubkey = Pubkey
+    #account{ id = aec_id:create(account, Pubkey)
             , balance = Balance
             , nonce = Nonce
             }.
 
 serialization_template(?ACCOUNT_VSN) ->
-    [ {pubkey, binary}
-    , {nonce, int}
+    [ {nonce, int}
     , {balance, int}
     ].

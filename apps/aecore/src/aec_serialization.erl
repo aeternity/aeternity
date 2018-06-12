@@ -14,15 +14,44 @@
         , serialize/4 ]).
 
 %%%===================================================================
+%%% Types
+%%%===================================================================
+
+-export_type([ template/0
+             , fields/0
+             ]).
+
+-type template() :: [{field_name(), type()}].
+-type field_name() :: atom().
+-type type() :: 'int'
+              | 'bool'
+              | 'binary'
+              | 'id'     %% As defined in aec_id.erl
+              | [type()] %% Length one in the type. This means a list of any length.
+              | tuple(). %% Any arity, containing type(). This means a static size array.
+
+-type encodable_term() :: non_neg_integer()
+                        | binary()
+                        | boolean()
+                        | [encodable_term()] %% Of any length
+                        | tuple()  %% Any arity, containing encodable_term().
+                        | aec_id:id().
+
+-type fields() :: [{field_name(), encodable_term()}].
+
+%%%===================================================================
 %%% API
 %%%===================================================================
 
+-spec serialize(non_neg_integer(), non_neg_integer(), template(), fields()) -> binary().
 serialize(Tag, Vsn, Template, Fields) ->
     List = encode_fields([{tag, int}, {vsn, int}|Template],
                          [{tag, Tag}, {vsn, Vsn}|Fields]),
     aeu_rlp:encode(List).
 
 %% Type isn't strictly necessary, but will give a better error reason
+-spec deserialize(atom(), non_neg_integer(), non_neg_integer(),
+                  template(), binary()) -> fields().
 deserialize(Type, Tag, Vsn, Template0, Binary) ->
     Decoded = aeu_rlp:decode(Binary),
     Template = [{tag, int}, {vsn, int}|Template0],
@@ -34,6 +63,8 @@ deserialize(Type, Tag, Vsn, Template0, Binary) ->
                    Other, Binary, Decoded, Template})
     end.
 
+-spec deserialize_tag_and_vsn(binary()) ->
+               {non_neg_integer(), non_neg_integer(), fields()}.
 deserialize_tag_and_vsn(Binary) ->
     [TagBin, VsnBin|Fields] = aeu_rlp:decode(Binary),
     Template = [{tag, int}, {vsn, int}],
@@ -78,6 +109,10 @@ encode_field(int, X) when is_integer(X), X >= 0 ->
 encode_field(binary, X) when is_binary(X) -> X;
 encode_field(bool, true) -> <<1:8>>;
 encode_field(bool, false) -> <<0:8>>;
+encode_field(id, Val) ->
+    try aec_id:encode(Val)
+    catch _:_ -> error({illegal, id, Val})
+    end;
 encode_field(Type, Val) -> error({illegal, Type, Val}).
 
 decode_field([Type], List) when is_list(List) ->
@@ -91,5 +126,9 @@ decode_field(int, X) when is_binary(X) -> binary:decode_unsigned(X);
 decode_field(binary, X) when is_binary(X) -> X;
 decode_field(bool, <<1:8>>) -> true;
 decode_field(bool, <<0:8>>) -> false;
+decode_field(id, Val) ->
+    try aec_id:decode(Val)
+    catch _:_ -> error({illegal, id, Val})
+    end;
 decode_field(Type, X) -> error({illegal, Type, X}).
 

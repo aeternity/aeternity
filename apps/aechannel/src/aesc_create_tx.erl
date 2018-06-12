@@ -6,8 +6,6 @@
 %%%=============================================================================
 -module(aesc_create_tx).
 
--include("channel_txs.hrl").
-
 -behavior(aetx).
 
 %% Behavior API
@@ -42,6 +40,20 @@
 -define(CHANNEL_CREATE_TX_TYPE, channel_create_tx).
 -define(CHANNEL_CREATE_TX_FEE, 4).
 
+-type vsn() :: non_neg_integer().
+
+-record(channel_create_tx, {
+          initiator          :: aec_id:id(),
+          initiator_amount   :: non_neg_integer(),
+          responder          :: aec_id:id(),
+          responder_amount   :: non_neg_integer(),
+          channel_reserve    :: non_neg_integer(),
+          lock_period        :: non_neg_integer(),
+          ttl                :: aetx:tx_ttl(),
+          fee                :: non_neg_integer(),
+          nonce              :: non_neg_integer()
+         }).
+
 -opaque tx() :: #channel_create_tx{}.
 
 -export_type([tx/0]).
@@ -59,8 +71,8 @@ new(#{initiator          := InitiatorPubKey,
       lock_period        := LockPeriod,
       fee                := Fee,
       nonce              := Nonce} = Args) ->
-    Tx = #channel_create_tx{initiator          = InitiatorPubKey,
-                            responder          = ResponderPubKey,
+    Tx = #channel_create_tx{initiator          = aec_id:create(account, InitiatorPubKey),
+                            responder          = aec_id:create(account, ResponderPubKey),
                             initiator_amount   = InitiatorAmount,
                             responder_amount   = ResponderAmount,
                             channel_reserve    = ChannelReserve,
@@ -86,18 +98,18 @@ nonce(#channel_create_tx{nonce = Nonce}) ->
     Nonce.
 
 -spec origin(tx()) -> aec_keys:pubkey().
-origin(#channel_create_tx{initiator = InitiatorPubKey}) ->
-    InitiatorPubKey.
+origin(#channel_create_tx{} = Tx) ->
+    initiator(Tx).
 
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()} | {error, term()}.
-check(#channel_create_tx{initiator          = InitiatorPubKey,
-                         initiator_amount   = InitiatorAmount,
-                         responder          = ResponderPubKey,
+check(#channel_create_tx{initiator_amount   = InitiatorAmount,
                          responder_amount   = ResponderAmount,
                          channel_reserve    = ChannelReserve,
                          nonce              = Nonce,
-                         fee                = Fee}, _Context, Trees, _Height, _ConsensusVersion) ->
+                         fee                = Fee} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
+    InitiatorPubKey = initiator(Tx),
+    ResponderPubKey = responder(Tx),
     Checks =
         [fun() -> aetx_utils:check_account(InitiatorPubKey, Trees, Nonce, InitiatorAmount + Fee) end,
          fun() -> aetx_utils:check_account(ResponderPubKey, Trees, ResponderAmount) end,
@@ -112,13 +124,14 @@ check(#channel_create_tx{initiator          = InitiatorPubKey,
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()}.
-process(#channel_create_tx{initiator          = InitiatorPubKey,
-                           initiator_amount   = InitiatorAmount,
-                           responder          = ResponderPubKey,
+process(#channel_create_tx{initiator_amount   = InitiatorAmount,
                            responder_amount   = ResponderAmount,
                            fee                = Fee,
                            nonce              = Nonce} = CreateTx, _Context, Trees0, _Height,
                                                   _ConsensusVersion) ->
+    InitiatorPubKey = initiator(CreateTx),
+    ResponderPubKey = responder(CreateTx),
+
     AccountsTree0 = aec_trees:accounts(Trees0),
     ChannelsTree0 = aec_trees:channels(Trees0),
 
@@ -139,14 +152,13 @@ process(#channel_create_tx{initiator          = InitiatorPubKey,
     {ok, Trees2}.
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
-signers(#channel_create_tx{initiator   = InitiatorPubKey,
-                           responder   = ResponderPubKey}, _) ->
-    {ok, [InitiatorPubKey, ResponderPubKey]}.
+signers(#channel_create_tx{} = Tx, _) ->
+    {ok, [initiator(Tx), responder(Tx)]}.
 
 -spec serialize(tx()) -> {vsn(), list()}.
-serialize(#channel_create_tx{initiator          = InitiatorPubKey,
+serialize(#channel_create_tx{initiator          = InitiatorId,
                              initiator_amount   = InitiatorAmount,
-                             responder          = ResponderPubKey,
+                             responder          = ResponderId,
                              responder_amount   = ResponderAmount,
                              channel_reserve    = ChannelReserve,
                              lock_period        = LockPeriod,
@@ -154,9 +166,9 @@ serialize(#channel_create_tx{initiator          = InitiatorPubKey,
                              fee                = Fee,
                              nonce              = Nonce}) ->
     {version(),
-     [ {initiator         , InitiatorPubKey}
+     [ {initiator         , InitiatorId}
      , {initiator_amount  , InitiatorAmount}
-     , {responder         , ResponderPubKey}
+     , {responder         , ResponderId}
      , {responder_amount  , ResponderAmount}
      , {channel_reserve   , ChannelReserve}
      , {lock_period       , LockPeriod}
@@ -167,18 +179,20 @@ serialize(#channel_create_tx{initiator          = InitiatorPubKey,
 
 -spec deserialize(vsn(), list()) -> tx().
 deserialize(?CHANNEL_CREATE_TX_VSN,
-            [ {initiator         , InitiatorPubKey}
+            [ {initiator         , InitiatorId}
             , {initiator_amount  , InitiatorAmount}
-            , {responder         , ResponderPubKey}
+            , {responder         , ResponderId}
             , {responder_amount  , ResponderAmount}
             , {channel_reserve   , ChannelReserve}
             , {lock_period       , LockPeriod}
             , {ttl               , TTL}
             , {fee               , Fee}
             , {nonce             , Nonce}]) ->
-    #channel_create_tx{initiator          = InitiatorPubKey,
+    account = aec_id:specialize_type(InitiatorId),
+    account = aec_id:specialize_type(ResponderId),
+    #channel_create_tx{initiator          = InitiatorId,
                        initiator_amount   = InitiatorAmount,
-                       responder          = ResponderPubKey,
+                       responder          = ResponderId,
                        responder_amount   = ResponderAmount,
                        channel_reserve    = ChannelReserve,
                        lock_period        = LockPeriod,
@@ -187,20 +201,18 @@ deserialize(?CHANNEL_CREATE_TX_VSN,
                        nonce              = Nonce}.
 
 -spec for_client(tx()) -> map().
-for_client(#channel_create_tx{initiator          = Initiator,
-                              initiator_amount   = InitiatorAmount,
-                              responder          = Responder,
+for_client(#channel_create_tx{initiator_amount   = InitiatorAmount,
                               responder_amount   = ResponderAmount,
                               channel_reserve    = ChannelReserve,
                               lock_period        = LockPeriod,
                               nonce              = Nonce,
                               ttl                = TTL,
-                              fee                = Fee}) ->
+                              fee                = Fee} = Tx) ->
     #{<<"data_schema">>        => <<"ChannelCreateTxJSON">>, % swagger schema name
       <<"vsn">>                => version(),
-      <<"initiator">>          => aec_base58c:encode(account_pubkey, Initiator),
+      <<"initiator">>          => aec_base58c:encode(account_pubkey, initiator(Tx)),
       <<"initiator_amount">>   => InitiatorAmount,
-      <<"responder">>          => aec_base58c:encode(account_pubkey, Responder),
+      <<"responder">>          => aec_base58c:encode(account_pubkey, responder(Tx)),
       <<"responder_amount">>   => ResponderAmount,
       <<"channel_reserve">>    => ChannelReserve,
       <<"lock_period">>        => LockPeriod,
@@ -209,9 +221,9 @@ for_client(#channel_create_tx{initiator          = Initiator,
       <<"fee">>                => Fee}.
 
 serialization_template(?CHANNEL_CREATE_TX_VSN) ->
-    [ {initiator         , binary}
+    [ {initiator         , id}
     , {initiator_amount  , int}
-    , {responder         , binary}
+    , {responder         , id}
     , {responder_amount  , int}
     , {channel_reserve   , int}
     , {lock_period       , int}
@@ -225,8 +237,8 @@ serialization_template(?CHANNEL_CREATE_TX_VSN) ->
 %%%===================================================================
 
 -spec initiator(tx()) -> aec_keys:pubkey().
-initiator(#channel_create_tx{initiator = InitiatorPubKey}) ->
-    InitiatorPubKey.
+initiator(#channel_create_tx{initiator = InitiatorId}) ->
+    aec_id:specialize(InitiatorId, account).
 
 -spec initiator_amount(tx()) -> non_neg_integer().
 initiator_amount(#channel_create_tx{initiator_amount = InitiatorAmount}) ->
@@ -241,8 +253,8 @@ lock_period(#channel_create_tx{lock_period = LockPeriod}) ->
     LockPeriod.
 
 -spec responder(tx()) -> aec_keys:pubkey().
-responder(#channel_create_tx{responder = ResponderPubKey}) ->
-    ResponderPubKey.
+responder(#channel_create_tx{responder = ResponderId}) ->
+    aec_id:specialize(ResponderId, account).
 
 -spec responder_amount(tx()) -> non_neg_integer().
 responder_amount(#channel_create_tx{responder_amount = ResponderAmount}) ->

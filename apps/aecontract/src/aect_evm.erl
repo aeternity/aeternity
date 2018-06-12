@@ -26,13 +26,13 @@ call(Code, CallData) ->
 
     %% TODO: proper setup of chain state!
     Owner = <<123456:32/unit:8>>,
-    DummyPubKey = aect_contracts:compute_contract_pubkey(Owner, 1),
     {Block, Trees} = aec_chain:top_block_with_state(),
     BlockHeight = aec_blocks:height(Block) + 1,
     Amount = 0,
     VmVersion = ?AEVM_01_Solidity_01,
     Deposit = 0,
-    Contract = aect_contracts:new(DummyPubKey, Owner, VmVersion, Code, Deposit),
+    Contract = aect_contracts:new(Owner, 1, VmVersion, Code, Deposit),
+    DummyPubKey = aect_contracts:pubkey(Contract),
     Trees1 = insert_contract(Contract, Trees),
     ChainState  = aec_vm_chain:new_state(Trees1, BlockHeight, DummyPubKey),
     Spec = #{ code => Code

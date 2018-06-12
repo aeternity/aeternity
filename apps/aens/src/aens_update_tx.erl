@@ -7,8 +7,6 @@
 
 -module(aens_update_tx).
 
--include("ns_txs.hrl").
-
 -behavior(aetx).
 
 %% Behavior API
@@ -39,6 +37,17 @@
 -define(NAME_UPDATE_TX_VSN, 1).
 -define(NAME_UPDATE_TX_TYPE, name_update_tx).
 
+-record(ns_update_tx, {
+          account    :: aec_id:id(),
+          nonce      :: integer(),
+          name_hash  :: aec_id:id(),
+          name_ttl   :: integer(),
+          pointers   :: [{binary(),binary()}],
+          client_ttl :: integer(),
+          fee        :: integer(),
+          ttl        :: aetx:tx_ttl()
+         }).
+
 -opaque tx() :: #ns_update_tx{}.
 
 -export_type([tx/0]).
@@ -55,9 +64,9 @@ new(#{account    := AccountPubKey,
       pointers   := Pointers,
       client_ttl := ClientTTL,
       fee        := Fee} = Args) ->
-    Tx = #ns_update_tx{account    = AccountPubKey,
+    Tx = #ns_update_tx{account    = aec_id:create(account, AccountPubKey),
                        nonce      = Nonce,
-                       name_hash  = NameHash,
+                       name_hash  = aec_id:create(name, NameHash),
                        name_ttl   = NameTTL,
                        pointers   = Pointers,
                        client_ttl = ClientTTL,
@@ -82,13 +91,21 @@ nonce(#ns_update_tx{nonce = Nonce}) ->
     Nonce.
 
 -spec origin(tx()) -> aec_keys:pubkey().
-origin(#ns_update_tx{account = AccountPubKey}) ->
-    AccountPubKey.
+origin(#ns_update_tx{} = Tx) ->
+    account(Tx).
+
+account(#ns_update_tx{account = Account}) ->
+    aec_id:specialize(Account, account).
+
+name_hash(#ns_update_tx{name_hash = NameId}) ->
+    aec_id:specialize(NameId, name).
 
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()} | {error, term()}.
-check(#ns_update_tx{account = AccountPubKey, nonce = Nonce, fee = Fee, name_hash = NameHash,
-                    name_ttl = NTTL}, _Context, Trees, _Height, _ConsensusVersion) ->
+check(#ns_update_tx{nonce = Nonce, fee = Fee, name_ttl = NTTL} = Tx,
+      _Context, Trees, _Height, _ConsensusVersion) ->
+    AccountPubKey = account(Tx),
+    NameHash = name_hash(Tx),
     Checks =
         [fun() -> check_ttl(NTTL) end,
          fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee) end,
@@ -101,8 +118,10 @@ check(#ns_update_tx{account = AccountPubKey, nonce = Nonce, fee = Fee, name_hash
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()}.
-process(#ns_update_tx{account = AccountPubKey, nonce = Nonce, fee = Fee,
-                      name_hash = NameHash} = UpdateTx, _Context, Trees0, Height, _ConsensusVersion) ->
+process(#ns_update_tx{nonce = Nonce, fee = Fee} = UpdateTx,
+        _Context, Trees0, Height, _ConsensusVersion) ->
+    AccountPubKey = account(UpdateTx),
+    NameHash = name_hash(UpdateTx),
     AccountsTree0 = aec_trees:accounts(Trees0),
     NSTree0 = aec_trees:ns(Trees0),
 
@@ -120,22 +139,22 @@ process(#ns_update_tx{account = AccountPubKey, nonce = Nonce, fee = Fee,
     {ok, Trees2}.
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
-signers(#ns_update_tx{account = AccountPubKey}, _) ->
-    {ok, [AccountPubKey]}.
+signers(#ns_update_tx{} = Tx, _) ->
+    {ok, [account(Tx)]}.
 
 -spec serialize(tx()) -> {integer(), [{atom(), term()}]}.
-serialize(#ns_update_tx{account    = AccountPubKey,
+serialize(#ns_update_tx{account    = AccountId,
                         nonce      = Nonce,
-                        name_hash  = NameHash,
+                        name_hash  = NameId,
                         name_ttl   = NameTTL,
                         pointers   = Pointers,
                         client_ttl = ClientTTL,
                         fee        = Fee,
                         ttl        = TTL}) ->
     {version(),
-     [ {account, AccountPubKey}
+     [ {account, AccountId}
      , {nonce, Nonce}
-     , {hash, NameHash}
+     , {name_hash, NameId}
      , {name_ttl, NameTTL}
      , {pointers, jsx:encode(Pointers)} %% TODO: This might be ambigous
      , {client_ttl, ClientTTL}
@@ -145,17 +164,19 @@ serialize(#ns_update_tx{account    = AccountPubKey,
 
 -spec deserialize(Vsn :: integer(), list({atom(), term()})) -> tx().
 deserialize(?NAME_UPDATE_TX_VSN,
-            [ {account, AccountPubKey}
+            [ {account, AccountId}
             , {nonce, Nonce}
-            , {hash, NameHash}
+            , {name_hash, NameId}
             , {name_ttl, NameTTL}
             , {pointers, Pointers}
             , {client_ttl, ClientTTL}
             , {fee, Fee}
             , {ttl, TTL}]) ->
-    #ns_update_tx{account    = AccountPubKey,
+    account = aec_id:specialize_type(AccountId),
+    name = aec_id:specialize_type(NameId),
+    #ns_update_tx{account    = AccountId,
                   nonce      = Nonce,
-                  name_hash  = NameHash,
+                  name_hash  = NameId,
                   name_ttl   = NameTTL,
                   pointers   = jsx:decode(Pointers),
                   client_ttl = ClientTTL,
@@ -163,9 +184,9 @@ deserialize(?NAME_UPDATE_TX_VSN,
                   ttl        = TTL}.
 
 serialization_template(?NAME_UPDATE_TX_VSN) ->
-    [ {account, binary}
+    [ {account, id}
     , {nonce, int}
-    , {hash, binary}
+    , {name_hash, id}
     , {name_ttl, int}
     , {pointers, binary} %% TODO: This might be ambigous
     , {client_ttl, int}
@@ -175,18 +196,16 @@ serialization_template(?NAME_UPDATE_TX_VSN) ->
 
 
 -spec for_client(tx()) -> map().
-for_client(#ns_update_tx{account    = AccountPubKey,
-                         nonce      = Nonce,
-                         name_hash  = NameHash,
+for_client(#ns_update_tx{nonce      = Nonce,
                          name_ttl   = NameTTL,
                          pointers   = Pointers,
                          client_ttl = ClientTTL,
                          fee        = Fee,
-                         ttl        = TTL}) ->
+                         ttl        = TTL} = Tx) ->
     #{<<"vsn">>        => version(),
-      <<"account">>    => aec_base58c:encode(account_pubkey, AccountPubKey),
+      <<"account">>    => aec_base58c:encode(account_pubkey, account(Tx)),
       <<"nonce">>      => Nonce,
-      <<"name_hash">>  => aec_base58c:encode(name, NameHash),
+      <<"name_hash">>  => aec_base58c:encode(name, name_hash(Tx)),
       <<"name_ttl">>   => NameTTL,
       <<"pointers">>   => Pointers,
       <<"client_ttl">> => ClientTTL,

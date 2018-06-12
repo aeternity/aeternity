@@ -7,8 +7,6 @@
 
 -module(aens_names).
 
--include("aens.hrl").
-
 %% API
 -export([id/1,
          new/3,
@@ -16,7 +14,8 @@
          revoke/3,
          transfer/2,
          serialize/1,
-         deserialize/1]).
+         deserialize/2
+        ]).
 
 %% Getters
 -export([owner/1,
@@ -28,6 +27,17 @@
 %%%===================================================================
 %%% Types
 %%%===================================================================
+
+-type name_status() :: claimed | revoked.
+
+-record(name,
+        {id              :: aec_id:id(),
+         owner           :: aec_keys:pubkey(),
+         expires         :: aec_blocks:height(),
+         status          :: name_status(),
+         client_ttl = 0  :: integer(),
+         pointers   = [] :: list()}).
+
 -opaque name() :: #name{}.
 
 -type id() :: binary().
@@ -54,7 +64,7 @@ new(ClaimTx, Expiration, BlockHeight) ->
     Name       = aens_claim_tx:name(ClaimTx),
     {ok, Hash} = aens:get_name_hash(Name),
     %% TODO: add assertions on fields, similarily to what is done in aeo_oracles:new/2
-    #name{hash    = Hash,
+    #name{id      = aec_id:create(name, Hash),
           owner   = aens_claim_tx:account(ClaimTx),
           expires = Expires,
           status  = claimed}.
@@ -82,17 +92,15 @@ serialize(#name{} = N) ->
       ?NAME_TYPE,
       ?NAME_VSN,
       serialization_template(?NAME_VSN),
-      [ {hash, hash(N)}
-      , {owner, owner(N)}
+      [ {owner, owner(N)}
       , {expires, expires(N)}
       , {status, atom_to_binary(status(N), utf8)}
       , {client_ttl, client_ttl(N)}
       , {pointers, jsx:encode(pointers(N))}]). %% TODO: This might be ambigous
 
--spec deserialize(binary()) -> name().
-deserialize(Bin) ->
-    [ {hash, Hash}
-    , {owner, Owner}
+-spec deserialize(aens_hash:name_hash(), binary()) -> name().
+deserialize(Hash, Bin) ->
+    [ {owner, Owner}
     , {expires, Expires}
     , {status, Status}
     , {client_ttl, CTTL}
@@ -102,7 +110,7 @@ deserialize(Bin) ->
           ?NAME_VSN,
           serialization_template(?NAME_VSN),
           Bin),
-    #name{hash       = Hash,
+    #name{id         = aec_id:create(name, Hash),
           owner      = Owner,
           expires    = Expires,
           status     = binary_to_existing_atom(Status, utf8),
@@ -110,8 +118,7 @@ deserialize(Bin) ->
           pointers   = jsx:decode(Pointers)}. %% TODO: This might be ambigous
 
 serialization_template(?NAME_VSN) ->
-    [ {hash, binary}
-    , {owner, binary}
+    [ {owner, binary}
     , {expires, int}
     , {status, binary}
     , {client_ttl, int}
@@ -142,4 +149,5 @@ client_ttl(N) -> N#name.client_ttl.
 %%%===================================================================
 
 -spec hash(name()) -> aens_hash:name_hash().
-hash(N) -> N#name.hash.
+hash(N) ->
+    aec_id:specialize(N#name.id, name).

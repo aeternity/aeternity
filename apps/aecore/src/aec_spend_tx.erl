@@ -31,8 +31,8 @@
 -define(SPEND_TX_TYPE, spend_tx).
 
 -record(spend_tx, {
-          sender    = <<>>          :: aec_keys:pubkey(),
-          recipient = <<>>          :: aec_keys:pubkey(),
+          sender    = <<>>          :: aec_id:id(),
+          recipient = <<>>          :: aec_id:id(),
           amount    = 0             :: non_neg_integer(),
           fee       = 0             :: non_neg_integer(),
           ttl       = 0             :: aetx:tx_ttl(),
@@ -55,8 +55,8 @@ new(#{sender := SenderPubkey,
                                        is_binary(SenderPubkey),
                                        is_binary(RecipientPubkey),
                                        is_binary(Payload) ->
-    Tx = #spend_tx{sender = SenderPubkey,
-                   recipient = RecipientPubkey,
+    Tx = #spend_tx{sender = aec_id:create(account, SenderPubkey),
+                   recipient = aec_id:create(account, RecipientPubkey),
                    amount = Amount,
                    fee = Fee,
                    ttl = maps:get(ttl, Args, 0),
@@ -81,12 +81,16 @@ nonce(#spend_tx{nonce = Nonce}) ->
     Nonce.
 
 -spec origin(tx()) -> aec_keys:pubkey().
-origin(#spend_tx{sender = Sender}) ->
-    Sender.
+origin(#spend_tx{} = Tx) ->
+    sender(Tx).
+
+-spec sender(tx()) -> aec_keys:pubkey().
+sender(#spend_tx{sender = Sender}) ->
+    aec_id:specialize(Sender, account).
 
 -spec recipient(tx()) -> aec_keys:pubkey().
 recipient(#spend_tx{recipient = Recipient}) ->
-    Recipient.
+    aec_id:specialize(Recipient, account).
 
 -spec payload(tx()) -> binary().
 payload(#spend_tx{payload = Payload}) ->
@@ -105,14 +109,15 @@ check(#spend_tx{} = SpendTx, _Context, Trees, Height, _ConsensusVersion) ->
     end.
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
-signers(#spend_tx{sender = SenderPubKey}, _) -> {ok, [SenderPubKey]}.
+signers(#spend_tx{} = Tx, _) -> {ok, [sender(Tx)]}.
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
-process(#spend_tx{sender = SenderPubkey,
-                  recipient = RecipientPubkey,
-                  amount = Amount,
+process(#spend_tx{amount = Amount,
                   fee = Fee,
-                  nonce = Nonce}, _Context, Trees0, _Height, _ConsensusVersion) ->
+                  nonce = Nonce} = Tx, _Context, Trees0, _Height, _ConsensusVersion) ->
+    SenderPubkey = sender(Tx),
+    RecipientPubkey = recipient(Tx),
+
     AccountsTrees0 = aec_trees:accounts(Trees0),
 
     {value, SenderAccount0} = aec_accounts_trees:lookup(SenderPubkey, AccountsTrees0),
@@ -151,6 +156,9 @@ deserialize(?SPEND_TX_VSN,
             , {ttl, TTL}
             , {nonce, Nonce}
             , {payload, Payload}]) ->
+    %% Asserts
+    account = aec_id:specialize_type(Sender),
+    account = aec_id:specialize_type(Recipient),
     #spend_tx{sender = Sender,
               recipient = Recipient,
               amount = Amount,
@@ -160,8 +168,8 @@ deserialize(?SPEND_TX_VSN,
               payload = Payload}.
 
 serialization_template(?SPEND_TX_VSN) ->
-    [ {sender, binary}
-    , {recipient, binary}
+    [ {sender, id}
+    , {recipient, id}
     , {amount, int}
     , {fee, int}
     , {ttl, int}
@@ -169,16 +177,14 @@ serialization_template(?SPEND_TX_VSN) ->
     , {payload, binary}
     ].
 
-for_client(#spend_tx{sender = Sender,
-                     recipient = Recipient,
-                     amount = Amount,
+for_client(#spend_tx{amount = Amount,
                      fee = Fee,
                      ttl = TTL,
                      nonce = Nonce,
-                     payload = Payload}) ->
-    #{<<"sender">> => aec_base58c:encode(account_pubkey, Sender),
+                     payload = Payload} = Tx) ->
+    #{<<"sender">> => aec_base58c:encode(account_pubkey, sender(Tx)),
       <<"data_schema">> => <<"SpendTxJSON">>, % swagger schema name
-      <<"recipient">> => aec_base58c:encode(account_pubkey, Recipient),
+      <<"recipient">> => aec_base58c:encode(account_pubkey, recipient(Tx)),
       <<"amount">> => Amount,
       <<"fee">> => Fee,
       <<"ttl">> => TTL,
@@ -190,8 +196,9 @@ for_client(#spend_tx{sender = Sender,
 
 -spec check_sender_account(tx(), aec_trees:trees(), aec_blocks:height()) ->
                                   ok | {error, term()}.
-check_sender_account(#spend_tx{sender = SenderPubkey, amount = Amount,
-                               fee = Fee, nonce = TxNonce }, Trees, _Height) ->
+check_sender_account(#spend_tx{amount = Amount,
+                               fee = Fee, nonce = TxNonce } = Tx, Trees, _Height) ->
+    SenderPubkey = sender(Tx),
     aetx_utils:check_account(SenderPubkey, Trees, TxNonce, Fee + Amount).
 
 version() ->

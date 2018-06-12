@@ -13,21 +13,8 @@
         , deserialize_type_and_vsn/1
         ]).
 
--type template() :: [{field_name(), type()}].
--type field_name() :: atom().
--type type() :: 'int'
-              | 'bool'
-              | 'binary'
-              | [type()] %% Length one in the type. This means a list of any length.
-              | tuple(). %% Any arity, containing type(). This means a static size array.
-
--type encodable_term() :: non_neg_integer()
-                        | binary()
-                        | boolean()
-                        | [encodable_term()] %% Of any length
-                        | tuple().  %% Any arity, containing encodable_term().
-
--type fields() :: [{field_name(), encodable_term()}].
+-type template() :: aec_serialization:template().
+-type fields()   :: aec_serialization:fields().
 
 %%%===================================================================
 %%% API

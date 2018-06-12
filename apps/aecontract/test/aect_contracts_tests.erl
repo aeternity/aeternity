@@ -25,22 +25,20 @@ basic_test_() ->
     ].
 
 basic_serialize() ->
-    ContractPubKey = <<12345:32/unit:8>>,
-    C = aect_contracts:new(ContractPubKey, create_tx()),
+    C = aect_contracts:new(create_tx()),
+    ContractPubKey = aect_contracts:pubkey(C),
     ?assertEqual(C, deserialize(ContractPubKey, serialize(C))),
     ok.
 
 basic_getters() ->
-    ContractPubKey = <<12345:32/unit:8>>,
-    C = aect_contracts:new(ContractPubKey, create_tx()),
+    C = aect_contracts:new(create_tx()),
     ?assert(is_binary(id(C))),
     ?assert(is_binary(owner(C))),
     ?assert(is_binary(pubkey(C))),
     ok.
 
 basic_setters() ->
-    ContractPubKey = <<12345:32/unit:8>>,
-    C = aect_contracts:new(ContractPubKey, create_tx()),
+    C = aect_contracts:new(create_tx()),
     ?assertError({illegal, _, _}, set_owner(<<4711:64/unit:8>>, C)),
     _ = set_owner(<<42:32/unit:8>>, C),
     ok.

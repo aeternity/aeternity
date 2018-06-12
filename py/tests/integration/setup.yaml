@@ -77,7 +77,7 @@ tests: # test specific settings
         bob: dev1
       blocks_to_mine: 3
       spend_tx:
-        alice_pubkey: ak$v6kQV2Z6uXv2PsUJdv955gE
+        alice_pubkey: ak$juZ2L9zGwFnBAzTWjaix65QifTRjKa5uxpuffRN3Zn2BVyddB
         amount: 1000000000000000000000
         fee: 20
     test_send_by_name:
@@ -148,4 +148,4 @@ tests: # test specific settings
       spend_tx:
         amount: 13
         fee: 1
-        recipient: ak$3WkBeo6uZn
+        recipient: ak$kMPkyaK7Wqcwz2VFXaSzUREpNTnypUBXYz8mDL1BRGUFjYoZa

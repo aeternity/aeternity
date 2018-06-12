@@ -8,7 +8,7 @@
 -module(aeo_oracles).
 
 %% API
--export([ deserialize/1
+-export([ deserialize/2
         , expires/1
         , id/1
         , new/2
@@ -39,7 +39,7 @@
 -type query()    :: binary().             %% Don't use native types for queries
 -type response() :: binary(). %% Don't use native types for responses
 
--record(oracle, { owner           :: aec_keys:pubkey()
+-record(oracle, { id              :: aec_id:id()
                 , query_format    :: type_spec()
                 , response_format :: type_spec()
                 , query_fee       :: amount()
@@ -79,7 +79,8 @@ id(O) ->
 -spec new(aeo_register_tx:tx(), aec_blocks:height()) -> oracle().
 new(RTx, BlockHeight) ->
     Expires = aeo_utils:ttl_expiry(BlockHeight, aeo_register_tx:oracle_ttl(RTx)),
-    O = #oracle{ owner = aeo_register_tx:account(RTx)
+    Id = aec_id:create(oracle, aeo_register_tx:account(RTx)),
+    O = #oracle{ id = Id
                , query_format = aeo_register_tx:query_spec(RTx)
                , response_format = aeo_register_tx:response_spec(RTx)
                , query_fee = aeo_register_tx:query_fee(RTx)
@@ -93,17 +94,15 @@ serialize(#oracle{} = O) ->
       ?ORACLE_TYPE,
       ?ORACLE_VSN,
       serialization_template(?ORACLE_VSN),
-      [ {owner, owner(O)}
-      , {query_format, query_format(O)}
+      [ {query_format, query_format(O)}
       , {response_format, response_format(O)}
       , {query_fee, query_fee(O)}
       , {expires, expires(O)}
       ]).
 
--spec deserialize(binary()) -> oracle().
-deserialize(Bin) ->
-      [ {owner, Owner}
-      , {query_format, QueryFormat}
+-spec deserialize(aec_keys:pubkey(), binary()) -> oracle().
+deserialize(Owner, Bin) ->
+      [ {query_format, QueryFormat}
       , {response_format, ResponseFormat}
       , {query_fee, QueryFee}
       , {expires, Expires}
@@ -114,7 +113,7 @@ deserialize(Bin) ->
           serialization_template(?ORACLE_VSN),
           Bin
          ),
-    #oracle{ owner           = Owner
+    #oracle{ id              = aec_id:create(oracle, Owner)
            , query_format    = QueryFormat
            , response_format = ResponseFormat
            , query_fee       = QueryFee
@@ -122,8 +121,7 @@ deserialize(Bin) ->
            }.
 
 serialization_template(?ORACLE_VSN) ->
-    [ {owner, binary}
-    , {query_format, binary}
+    [ {query_format, binary}
     , {response_format, binary}
     , {query_fee, int}
     , {expires, int}
@@ -134,7 +132,7 @@ serialization_template(?ORACLE_VSN) ->
 %%% Getters
 
 -spec owner(oracle()) -> aec_keys:pubkey().
-owner(O) -> O#oracle.owner.
+owner(O) -> aec_id:specialize(O#oracle.id, oracle).
 
 -spec query_format(oracle()) -> type_spec().
 query_format(O) -> O#oracle.query_format.
@@ -153,7 +151,7 @@ expires(O) -> O#oracle.expires.
 
 -spec set_owner(aec_keys:pubkey(), oracle()) -> oracle().
 set_owner(X, O) ->
-    O#oracle{owner = assert_field(owner, X)}.
+    O#oracle{id = aec_id:create(oracle, assert_field(owner, X))}.
 
 -spec set_query_format(type_spec(), oracle()) -> oracle().
 set_query_format(X, O) ->
@@ -176,7 +174,7 @@ set_expires(X, O) ->
 %%%===================================================================
 
 assert_fields(O) ->
-    List = [ {owner          , O#oracle.owner}
+    List = [ {owner          , owner(O)}
            , {query_format   , O#oracle.query_format}
            , {response_format, O#oracle.response_format}
            , {query_fee      , O#oracle.query_fee}

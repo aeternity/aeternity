@@ -1,7 +1,5 @@
 -module(aesc_offchain_tx).
 
--include("channel_txs.hrl").
-
 -behaviour(aetx).
 
 
@@ -15,7 +13,6 @@
          origin/1,
          check/5,
          process/5,
-         accounts/1,
          signers/2,
          serialization_template/1,
          serialize/1,
@@ -46,6 +43,23 @@
 -define(CHANNEL_OFFCHAIN_TX_TYPE, channel_offchain_tx).
 -define(CHANNEL_OFFCHAIN_TX_FEE, 0).   % off-chain
 
+-type vsn() :: non_neg_integer().
+-type from() :: aec_keys:pubkey().
+-type to()   :: aec_keys:pubkey().
+-type offchain_update() :: {from(), to(), aesc_channels:amount()}.
+
+-record(channel_offchain_tx, {
+          channel_id         :: aec_id:id(),
+          initiator          :: aec_id:id(),
+          responder          :: aec_id:id(),
+          initiator_amount   :: aesc_channels:amount(),
+          responder_amount   :: aesc_channels:amount(),
+          updates            :: [offchain_update()],
+          state_hash         :: binary(),
+          previous_round     :: non_neg_integer(),
+          round              :: non_neg_integer()
+         }).
+
 -opaque tx() :: #channel_offchain_tx{}.
 
 -export_type([tx/0]).
@@ -55,7 +69,7 @@
 %%%===================================================================
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{channel_id         := ChannelId,
+new(#{channel_id         := ChannelIdBin,
       initiator          := InitiatorPubKey,
       responder          := ResponderPubKey,
       initiator_amount   := InitiatorAmount,
@@ -65,9 +79,9 @@ new(#{channel_id         := ChannelId,
       previous_round     := Prev,
       round              := Round}) ->
     Tx = #channel_offchain_tx{
-            channel_id         = ChannelId,
-            initiator          = InitiatorPubKey,
-            responder          = ResponderPubKey,
+            channel_id         = aec_id:create(channel, ChannelIdBin),
+            initiator          = aec_id:create(account, InitiatorPubKey),
+            responder          = aec_id:create(account, ResponderPubKey),
             initiator_amount   = InitiatorAmount,
             responder_amount   = ResponderAmount,
             updates            = Updates,
@@ -94,8 +108,8 @@ nonce(#channel_offchain_tx{round = N}) ->
     N.
 
 -spec origin(tx()) -> aec_keys:pubkey().
-origin(#channel_offchain_tx{initiator = Origin}) ->
-    Origin.
+origin(#channel_offchain_tx{} = Tx) ->
+    initiator(Tx).
 
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()} | {error, term()}.
@@ -118,23 +132,15 @@ check(#channel_offchain_tx{
 process(#channel_offchain_tx{}, _Context, _Trees, _Height, _ConsensusVersion) ->
     error(off_chain_tx).
 
--spec accounts(tx()) -> list(aec_keys:pubkey()).
-accounts(#channel_offchain_tx{
-            initiator   = InitiatorPubKey,
-            responder   = ResponderPubKey}) ->
-    [InitiatorPubKey, ResponderPubKey].
-
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
-signers(#channel_offchain_tx{
-           initiator   = InitiatorPubKey,
-           responder   = ResponderPubKey}, _) ->
-    {ok, [InitiatorPubKey, ResponderPubKey]}.
+signers(#channel_offchain_tx{} = Tx,_Trees) ->
+    {ok, [initiator(Tx), responder(Tx)]}.
 
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_offchain_tx{
              channel_id         = ChannelId,
-             initiator          = InitiatorPubKey,
-             responder          = ResponderPubKey,
+             initiator          = InitiatorId,
+             responder          = ResponderId,
              initiator_amount   = InitiatorAmount,
              responder_amount   = ResponderAmount,
              updates            = Updates,
@@ -145,8 +151,8 @@ serialize(#channel_offchain_tx{
      [ {channel_id        , ChannelId}
      , {previous_round    , Prev}
      , {round             , Round}
-     , {initiator         , InitiatorPubKey}
-     , {responder         , ResponderPubKey}
+     , {initiator         , InitiatorId}
+     , {responder         , ResponderId}
      , {initiator_amount  , InitiatorAmount}
      , {responder_amount  , ResponderAmount}
      , {updates           , Updates}
@@ -158,16 +164,19 @@ deserialize(?CHANNEL_OFFCHAIN_TX_VSN,
             [ {channel_id        , ChannelId}
             , {previous_round    , Prev}
             , {round             , Round}
-            , {initiator         , InitiatorPubKey}
-            , {responder         , ResponderPubKey}
+            , {initiator         , InitiatorId}
+            , {responder         , ResponderId}
             , {initiator_amount  , InitiatorAmount}
             , {responder_amount  , ResponderAmount}
             , {updates           , Updates}
             , {state_hash        , StateHash}]) ->
+    channel = aec_id:specialize_type(ChannelId),
+    account = aec_id:specialize_type(InitiatorId),
+    account = aec_id:specialize_type(ResponderId),
     #channel_offchain_tx{
        channel_id         = ChannelId,
-       initiator          = InitiatorPubKey,
-       responder          = ResponderPubKey,
+       initiator          = InitiatorId,
+       responder          = ResponderId,
        initiator_amount   = InitiatorAmount,
        responder_amount   = ResponderAmount,
        updates            = Updates,
@@ -177,34 +186,31 @@ deserialize(?CHANNEL_OFFCHAIN_TX_VSN,
 
 -spec for_client(tx()) -> map().
 for_client(#channel_offchain_tx{
-              channel_id         = ChannelId,
-              initiator          = InitiatorPubKey,
-              responder          = ResponderPubKey,
               initiator_amount   = InitiatorAmount,
               responder_amount   = ResponderAmount,
               updates            = Updates,
               state_hash         = StateHash,
               previous_round     = Prev,
-              round              = Round}) ->
+              round              = Round} = Tx) ->
     #{<<"vsn">>                => ?CHANNEL_OFFCHAIN_TX_VSN,
-      <<"channel_id">>         => aec_base58c:encode(channel, ChannelId),
+      <<"channel_id">>         => aec_base58c:encode(channel, channel_id(Tx)),
       <<"previous_round">>     => Prev,
       <<"round">>              => Round,
       <<"initiator">>          => aec_base58c:encode(
-                                    account_pubkey, InitiatorPubKey),
+                                    account_pubkey, initiator(Tx)),
       <<"responder">>          => aec_base58c:encode(
-                                    account_pubkey, ResponderPubKey),
+                                    account_pubkey, responder(Tx)),
       <<"initiator_amount">>   => InitiatorAmount,
       <<"responder_amount">>   => ResponderAmount,
       <<"updates">>            => [update_for_client(D) || D <- Updates],
       <<"state_hash">>         => aec_base58c:encode(state, StateHash)}.
 
 serialization_template(?CHANNEL_OFFCHAIN_TX_VSN) ->
-    [ {channel_id        , binary}
+    [ {channel_id        , id}
     , {previous_round    , int}
     , {round             , int}
-    , {initiator         , binary}
-    , {responder         , binary}
+    , {initiator         , id}
+    , {responder         , id}
     , {initiator_amount  , int}
     , {responder_amount  , int}
     , {updates           , [{int,binary,binary,int}]}
@@ -217,19 +223,19 @@ serialization_template(?CHANNEL_OFFCHAIN_TX_VSN) ->
 
 -spec channel_id(tx()) -> aesc_channels:id().
 channel_id(#channel_offchain_tx{channel_id = ChannelId}) ->
-    ChannelId.
+    aec_id:specialize(ChannelId, channel).
 
 -spec initiator(tx()) -> aec_keys:pubkey().
-initiator(#channel_offchain_tx{initiator = InitiatorPubKey}) ->
-    InitiatorPubKey.
+initiator(#channel_offchain_tx{initiator = InitiatorId}) ->
+    aec_id:specialize(InitiatorId, account).
 
 -spec initiator_amount(tx()) -> aesc_channels:amount().
 initiator_amount(#channel_offchain_tx{initiator_amount = InitiatorAmount}) ->
     InitiatorAmount.
 
 -spec responder(tx()) -> aec_keys:pubkey().
-responder(#channel_offchain_tx{responder = ResponderPubKey}) ->
-    ResponderPubKey.
+responder(#channel_offchain_tx{responder = ResponderId}) ->
+    aec_id:specialize(ResponderId, account).
 
 -spec responder_amount(tx()) -> aesc_channels:amount().
 responder_amount(#channel_offchain_tx{responder_amount = ResponderAmount}) ->

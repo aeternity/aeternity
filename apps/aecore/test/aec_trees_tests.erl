@@ -15,7 +15,7 @@ ensure_account_test_() ->
     [{"Not existing account is created with 0 balance",
       fun() ->
               Trees0 = aec_test_utils:create_state_tree(),
-              AccountPubkey = <<"account_pubkey">>,
+              AccountPubkey = <<"_________account_pubkey_________">>,
 
               Trees = ?TEST_MODULE:ensure_account(AccountPubkey, Trees0),
 
@@ -25,7 +25,7 @@ ensure_account_test_() ->
       end},
      {"Same unmodified state tree is returned when account is present",
       fun() ->
-              AccountPubkey = <<"account_pubkey">>,
+              AccountPubkey = <<"_________account_pubkey_________">>,
               Account = aec_accounts:new(AccountPubkey, 777),
               Trees = aec_test_utils:create_state_tree_with_account(Account),
 
@@ -112,7 +112,7 @@ poi_test_() ->
                ATrees = aec_trees:accounts(Trees1),
                {value, Account} = aec_accounts_trees:lookup(AccountPubkey,
                                                             ATrees),
-               ?assertEqual(aec_accounts:deserialize(SerializedAccount),
+               ?assertEqual(aec_accounts:deserialize(AccountPubkey, SerializedAccount),
                             Account),
 
                %% Ensure that we can verify the presens of the
@@ -131,15 +131,20 @@ poi_test_() ->
       },
       {"POI for more than one account"
       , fun() ->
-                Pubkey1 = <<123:?MINER_PUB_BYTES/unit:8>>,
-                Pubkey2 = <<1234:?MINER_PUB_BYTES/unit:8>>,
-                Pubkey3 = <<12345:?MINER_PUB_BYTES/unit:8>>,
+                %% Carefully chosen pubkeys to provoke the intended
+                %% behavior.  If not done right, the PoI will contain
+                %% more accounts than we want to test ;-)
+                Pubkey1 = <<1:4, 2:4, 3:4, 4:4, 123:(?MINER_PUB_BYTES-2)/unit:8>>,
+                Pubkey2 = <<1:4, 2:4, 3:4, 5:4, 124:(?MINER_PUB_BYTES-2)/unit:8>>,
+                Pubkey3 = <<1:4, 3:4, 4:4, 5:4, 125:(?MINER_PUB_BYTES-2)/unit:8>>,
+                Pubkey4 = <<1:4, 3:4, 4:4, 6:4, 126:(?MINER_PUB_BYTES-2)/unit:8>>,
 
                 Account1 = aec_accounts:new(Pubkey1, 0),
                 Account2 = aec_accounts:new(Pubkey2, 0),
                 Account3 = aec_accounts:new(Pubkey3, 0),
+                Account4 = aec_accounts:new(Pubkey4, 0),
 
-                Accounts = [Account1, Account2, Account3],
+                Accounts = [Account1, Account2, Account3, Account4],
                 Trees = aec_test_utils:create_state_tree_with_accounts(Accounts),
 
                 Poi0 = ?TEST_MODULE:new_poi(Trees),
@@ -151,11 +156,14 @@ poi_test_() ->
                     ?TEST_MODULE:add_poi(accounts, Pubkey2, Trees, Poi1),
                 {ok, Serialized3, Poi3} =
                     ?TEST_MODULE:add_poi(accounts, Pubkey3, Trees, Poi2),
+                {ok, Serialized4, Poi4} =
+                    ?TEST_MODULE:add_poi(accounts, Pubkey4, Trees, Poi3),
 
                 %% Check the reported serializations
                 ?assertEqual(Serialized1, aec_accounts:serialize(Account1)),
                 ?assertEqual(Serialized2, aec_accounts:serialize(Account2)),
                 ?assertEqual(Serialized3, aec_accounts:serialize(Account3)),
+                ?assertEqual(Serialized4, aec_accounts:serialize(Account4)),
 
                 %% Check that the reported root hash is the same in all POI.
                 ?assertEqual(?TEST_MODULE:hash(Trees),
@@ -164,6 +172,8 @@ poi_test_() ->
                              ?TEST_MODULE:poi_hash(Poi2)),
                 ?assertEqual(?TEST_MODULE:hash(Trees),
                              ?TEST_MODULE:poi_hash(Poi3)),
+                ?assertEqual(?TEST_MODULE:hash(Trees),
+                             ?TEST_MODULE:poi_hash(Poi4)),
 
                 %% Check that the first account is present in all POI
                 ?assertMatch(ok,
@@ -175,8 +185,11 @@ poi_test_() ->
                 ?assertMatch(ok,
                              ?TEST_MODULE:verify_poi(accounts, Pubkey1,
                                                      Serialized1, Poi3)),
+                ?assertMatch(ok,
+                             ?TEST_MODULE:verify_poi(accounts, Pubkey1,
+                                                     Serialized1, Poi4)),
 
-                %% Check that the second account is present in two POIs
+                %% Check that the second account is present in all but the first
                 ?assertMatch({error, _},
                              ?TEST_MODULE:verify_poi(accounts, Pubkey2,
                                                      Serialized2, Poi1)),
@@ -186,8 +199,11 @@ poi_test_() ->
                 ?assertMatch(ok,
                              ?TEST_MODULE:verify_poi(accounts, Pubkey2,
                                                      Serialized2, Poi3)),
+                ?assertMatch(ok,
+                             ?TEST_MODULE:verify_poi(accounts, Pubkey2,
+                                                     Serialized2, Poi4)),
 
-                %% Check that the third account is present in only the last POI
+                %% Check that the third account is present in only the last two
                 ?assertMatch({error, _},
                              ?TEST_MODULE:verify_poi(accounts, Pubkey3,
                                                      Serialized3, Poi1)),
@@ -197,6 +213,23 @@ poi_test_() ->
                 ?assertMatch(ok,
                              ?TEST_MODULE:verify_poi(accounts, Pubkey3,
                                                      Serialized3, Poi3)),
+                ?assertMatch(ok,
+                             ?TEST_MODULE:verify_poi(accounts, Pubkey3,
+                                                     Serialized3, Poi4)),
+
+                %% Check that the fourth account is present in only the last one
+                ?assertMatch({error, _},
+                             ?TEST_MODULE:verify_poi(accounts, Pubkey4,
+                                                     Serialized4, Poi1)),
+                ?assertMatch({error, _},
+                             ?TEST_MODULE:verify_poi(accounts, Pubkey4,
+                                                     Serialized4, Poi2)),
+                ?assertMatch({error, _},
+                             ?TEST_MODULE:verify_poi(accounts, Pubkey4,
+                                                     Serialized4, Poi3)),
+                ?assertMatch(ok,
+                             ?TEST_MODULE:verify_poi(accounts, Pubkey4,
+                                                     Serialized4, Poi4)),
 
                 %% Check serialization/deserialization of PoI
                 %% NOTE: The deserialized poi contains a gb_tree,
@@ -206,7 +239,7 @@ poi_test_() ->
                               ?TEST_MODULE:serialize_poi(
                                  ?TEST_MODULE:deserialize_poi(
                                     ?TEST_MODULE:serialize_poi(PoI))))
-                 || PoI <- [Poi1, Poi2, Poi2]]
+                 || PoI <- [Poi1, Poi2, Poi2, Poi3, Poi4]]
         end
       }
     ].

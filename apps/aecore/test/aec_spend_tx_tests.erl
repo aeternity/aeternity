@@ -10,8 +10,8 @@
 
 -define(TEST_MODULE, aec_spend_tx).
 
--define(SENDER_PUBKEY, <<"sender_pubkey">>).
--define(RECIPIENT_PUBKEY, <<"recipient_pubkey">>).
+-define(SENDER_PUBKEY, <<"_________sender_pubkey__________">>).
+-define(RECIPIENT_PUBKEY, <<"________recipient_pubkey________">>).
 
 check_test_() ->
     [{"Tx fee lower than minimum fee defined in governance",

@@ -32,7 +32,6 @@
 -include_lib("stdlib/include/assert.hrl").
 
 -include_lib("apps/aecore/include/blocks.hrl").
--include_lib("apps/aecontract/include/contract_txs.hrl").
 -include_lib("apps/aecontract/src/aecontract.hrl").
 
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
@@ -266,11 +265,10 @@ call_contract(_Cfg) ->
 %%% State trees
 %%%===================================================================
 
-make_contract(PubKey = <<_:32, Rest/binary>>, Code, S) ->
+make_contract(PubKey, Code, S) ->
     Tx = aect_test_utils:create_tx(PubKey, #{ code => Code }, S),
-    ContractKey = <<"CODE", Rest/binary>>,
     {contract_create_tx, CTx} = aetx:specialize_type(Tx),
-    aect_contracts:new(ContractKey, CTx).
+    aect_contracts:new(CTx).
 
 make_call(PubKey, ContractKey,_Call,_S) ->
     aect_call:new(PubKey, 0, ContractKey, 1).

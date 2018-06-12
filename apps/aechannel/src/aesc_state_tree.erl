@@ -57,12 +57,12 @@ enter(Channel, Tree) ->
 
 -spec get(aesc_channels:id(), tree()) -> aesc_channels:channel().
 get(Id, Tree) ->
-    aesc_channels:deserialize(aeu_mtrees:get(Id, Tree)).
+    aesc_channels:deserialize(Id, aeu_mtrees:get(Id, Tree)).
 
 -spec lookup(aesc_channels:id(), tree()) -> {value, channel()} | none.
 lookup(Id, Tree) ->
     case aeu_mtrees:lookup(Id, Tree) of
-        {value, Val} -> {value, aesc_channels:deserialize(Val)};
+        {value, Val} -> {value, aesc_channels:deserialize(Id, Val)};
         none         -> none
     end.
 

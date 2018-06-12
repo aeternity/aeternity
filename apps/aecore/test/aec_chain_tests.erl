@@ -274,7 +274,7 @@ broken_chain_invalid_transaction() ->
 
     %% Add invalid transaction with too high nonce to last block
     Txs = B2#block.txs,
-    BogusSpendTx = aec_test_utils:signed_spend_tx(#{recipient => <<>>,
+    BogusSpendTx = aec_test_utils:signed_spend_tx(#{recipient => <<1:32/unit:8>>,
                                                     amount => 0,
                                                     fee => 1,
                                                     nonce => 10,

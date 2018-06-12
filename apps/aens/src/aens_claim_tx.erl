@@ -7,8 +7,6 @@
 
 -module(aens_claim_tx).
 
--include("ns_txs.hrl").
-
 -behavior(aetx).
 
 %% Behavior API
@@ -38,6 +36,15 @@
 -define(NAME_CLAIM_TX_VSN, 1).
 -define(NAME_CLAIM_TX_TYPE, name_claim_tx).
 
+-record(ns_claim_tx, {
+          account   :: aec_id:id(),
+          nonce     :: integer(),
+          name      :: binary(),
+          name_salt :: integer(),
+          fee       :: integer(),
+          ttl       :: aetx:tx_ttl()
+         }).
+
 -opaque tx() :: #ns_claim_tx{}.
 
 -export_type([tx/0]).
@@ -52,7 +59,7 @@ new(#{account   := AccountPubKey,
       name      := Name,
       name_salt := NameSalt,
       fee       := Fee} = Args) ->
-    Tx = #ns_claim_tx{account   = AccountPubKey,
+    Tx = #ns_claim_tx{account   = aec_id:create(account, AccountPubKey),
                       nonce     = Nonce,
                       name      = Name,
                       name_salt = NameSalt,
@@ -77,13 +84,14 @@ nonce(#ns_claim_tx{nonce = Nonce}) ->
     Nonce.
 
 -spec origin(tx()) -> aec_keys:pubkey().
-origin(#ns_claim_tx{account = AccountPubKey}) ->
-    AccountPubKey.
+origin(#ns_claim_tx{} = Tx) ->
+    account(Tx).
 
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()} | {error, term()}.
-check(#ns_claim_tx{account = AccountPubKey, nonce = Nonce,
-                   fee = Fee, name = Name, name_salt = NameSalt}, _Context, Trees, Height, _ConsensusVersion) ->
+check(#ns_claim_tx{nonce = Nonce, fee = Fee, name = Name, name_salt = NameSalt} = Tx,
+      _Context, Trees, Height, _ConsensusVersion) ->
+    AccountPubKey = account(Tx),
     case aens_utils:to_ascii(Name) of
         {ok, NameAscii} ->
             %% TODO: Maybe include burned fee in tx fee. To do so, mechanism determining
@@ -106,8 +114,10 @@ check(#ns_claim_tx{account = AccountPubKey, nonce = Nonce,
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()}.
-process(#ns_claim_tx{account = AccountPubKey, nonce = Nonce, fee = Fee,
-                     name = PlainName, name_salt = NameSalt} = ClaimTx, _Context, Trees0, Height, _ConsensusVersion) ->
+process(#ns_claim_tx{nonce = Nonce, fee = Fee, name = PlainName,
+                     name_salt = NameSalt} = ClaimTx,
+        _Context, Trees0, Height, _ConsensusVersion) ->
+    AccountPubKey = account(ClaimTx),
     AccountsTree0 = aec_trees:accounts(Trees0),
     NSTree0 = aec_trees:ns(Trees0),
 
@@ -130,18 +140,18 @@ process(#ns_claim_tx{account = AccountPubKey, nonce = Nonce, fee = Fee,
     {ok, Trees2}.
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
-signers(#ns_claim_tx{account = AccountPubKey}, _) ->
-    {ok, [AccountPubKey]}.
+signers(#ns_claim_tx{} = Tx, _) ->
+    {ok, [account(Tx)]}.
 
 -spec serialize(tx()) -> {integer(), [{atom(), term()}]}.
-serialize(#ns_claim_tx{account   = AccountPubKey,
+serialize(#ns_claim_tx{account   = AccountId,
                        nonce     = None,
                        name      = Name,
                        name_salt = NameSalt,
                        fee       = Fee,
                        ttl       = TTL}) ->
     {version(),
-     [ {account, AccountPubKey}
+     [ {account, AccountId}
      , {nonce, None}
      , {name, Name}
      , {name_salt, NameSalt}
@@ -151,13 +161,14 @@ serialize(#ns_claim_tx{account   = AccountPubKey,
 
 -spec deserialize(Vsn :: integer(), list({atom(), term()})) -> tx().
 deserialize(?NAME_CLAIM_TX_VSN,
-            [ {account, AccountPubKey}
+            [ {account, AccountId}
             , {nonce, Nonce}
             , {name, Name}
             , {name_salt, NameSalt}
             , {fee, Fee}
             , {ttl, TTL}]) ->
-    #ns_claim_tx{account   = AccountPubKey,
+    account = aec_id:specialize_type(AccountId),
+    #ns_claim_tx{account   = AccountId,
                  nonce     = Nonce,
                  name      = Name,
                  name_salt = NameSalt,
@@ -165,7 +176,7 @@ deserialize(?NAME_CLAIM_TX_VSN,
                  ttl       = TTL}.
 
 serialization_template(?NAME_CLAIM_TX_VSN) ->
-    [ {account, binary}
+    [ {account, id}
     , {nonce, int}
     , {name, binary}
     , {name_salt, int}
@@ -175,14 +186,13 @@ serialization_template(?NAME_CLAIM_TX_VSN) ->
 
 
 -spec for_client(tx()) -> map().
-for_client(#ns_claim_tx{account   = AccountPubKey,
-                        nonce     = Nonce,
+for_client(#ns_claim_tx{nonce     = Nonce,
                         name      = Name,
                         name_salt = NameSalt,
                         fee       = Fee,
-                        ttl       = TTL}) ->
+                        ttl       = TTL} = Tx) ->
     #{<<"vsn">>       => version(),
-      <<"account">>   => aec_base58c:encode(account_pubkey, AccountPubKey),
+      <<"account">>   => aec_base58c:encode(account_pubkey, account(Tx)),
       <<"nonce">>     => Nonce,
       <<"name">>      => Name,
       <<"name_salt">> => NameSalt,
@@ -195,7 +205,7 @@ for_client(#ns_claim_tx{account   = AccountPubKey,
 
 -spec account(tx()) -> aec_keys:pubkey().
 account(#ns_claim_tx{account = AccountPubKey}) ->
-    AccountPubKey.
+    aec_id:specialize(AccountPubKey, account).
 
 -spec name(tx()) -> binary().
 name(#ns_claim_tx{name = Name}) ->

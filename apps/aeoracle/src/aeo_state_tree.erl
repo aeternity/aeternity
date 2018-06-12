@@ -123,7 +123,7 @@ insert_oracle(O, Tree) ->
 
 -spec get_oracle(binary(), tree()) -> oracle().
 get_oracle(Id, Tree) ->
-    aeo_oracles:deserialize(aeu_mtrees:get(Id, Tree#oracle_tree.otree)).
+    aeo_oracles:deserialize(Id, aeu_mtrees:get(Id, Tree#oracle_tree.otree)).
 
 -spec get_oracle_query_ids(binary(), tree()) -> [aeo_query:id()].
 get_oracle_query_ids(Id, Tree) ->
@@ -143,7 +143,7 @@ get_oracles(From, Max, Tree) ->
 -spec lookup_oracle(binary(), tree()) -> {'value', oracle()} | 'none'.
 lookup_oracle(Id, Tree) ->
     case aeu_mtrees:lookup(Id, Tree#oracle_tree.otree) of
-        {value, Val}  -> {value, aeo_oracles:deserialize(Val)};
+        {value, Val}  -> {value, aeo_oracles:deserialize(Id, Val)};
         none -> none
     end.
 
@@ -154,7 +154,7 @@ root_hash(#oracle_tree{otree = OTree}) ->
 -ifdef(TEST).
 -spec oracle_list(tree()) -> list(oracle()).
 oracle_list(#oracle_tree{otree = OTree}) ->
-    [ aeo_oracles:deserialize(Val)
+    [ aeo_oracles:deserialize(Key, Val)
       || {Key, Val} <- aeu_mtrees:to_list(OTree),
          byte_size(Key) =:= ?PUB_SIZE
     ].
@@ -333,8 +333,8 @@ find_oracles(_Iterator, 0) -> [];
 find_oracles(Iterator, N) ->
     case aeu_mtrees:iterator_next(Iterator) of
         '$end_of_table' -> [];
-        {_Key, Value, NextIterator} ->
-            [aeo_oracles:deserialize(Value) | find_oracles(NextIterator, N-1)]
+        {Key, Value, NextIterator} ->
+            [aeo_oracles:deserialize(Key, Value) | find_oracles(NextIterator, N-1)]
     end.
 
 find_oracle_query_ids(OracleId, #oracle_tree{otree = T}, Type) ->

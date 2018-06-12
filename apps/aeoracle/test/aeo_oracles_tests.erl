@@ -9,7 +9,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--import(aeo_oracles, [ deserialize/1
+-import(aeo_oracles, [ deserialize/2
                      , expires/1
                      , id/1
                      , new/2
@@ -33,7 +33,8 @@ basic_test_() ->
 
 basic_serialize() ->
     O = aeo_oracles:new(register_tx(), 1),
-    ?assertEqual(O, deserialize(serialize(O))),
+    Id = aeo_oracles:id(O),
+    ?assertEqual(O, deserialize(Id, serialize(O))),
     ok.
 
 basic_getters() ->
