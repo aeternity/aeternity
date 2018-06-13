@@ -604,7 +604,7 @@ contract_transactions(_Config) ->
                       vm_version => 1,
                       deposit => 2,
                       amount => 1,
-                      gas => 30,
+                      gas => 300,
                       gas_price => 1,
                       fee => 1,
                       call_data => EncodedInitCallData},
@@ -672,7 +672,7 @@ contract_transactions(_Config) ->
                              contract => EncodedContractPubKey,
                              vm_version => 1,
                              amount => 1,
-                             gas => 100,
+                             gas => 1000,
                              gas_price => 1,
                              fee => 1,
                              call_data => EncodedCallData},
@@ -719,16 +719,19 @@ contract_transactions(_Config) ->
                                  <<"code">> => EncodedContractPubKey,
                                  <<"function">> => Function,
                                  <<"arg">> => Argument}),
-
-    ?assertEqual(maps:get(<<"return_value">>, CallObject), DirectCallResult),
-    #{<<"return_value">> := Value } = CallObject,
-    42 = Value,
+    ReturnBin = maps:get(<<"return_value">>, CallObject),
+    DecodedReturnValue = aehttp_logic:contract_decode_data(word, ReturnBin),
+    DecodedCallResult = get_contract_decode_data(
+                          #{ 'sophia-type' => <<"word">>,
+                             data => DirectCallResult}),
+    ?assertEqual(DecodedReturnValue, DecodedCallResult),
+    42 = DecodedReturnValue,
 
     ComputeCCallEncoded = #{ caller => MinerAddress,
                              contract => EncodedContractPubKey,
                              vm_version => 1,
                              amount => 1,
-                             gas => 100,
+                             gas => 1000,
                              gas_price => 1,
                              fee => 1,
                              function => Function,
@@ -3623,6 +3626,10 @@ get_contract_call_compute(Data) ->
 get_contract_call_object(TxHash) ->
     Host = external_address(),
     http_request(Host, get, "tx/"++binary_to_list(TxHash)++"/contract-call", []).
+
+get_contract_decode_data(Request) ->
+    Host = external_address(),
+    http_request(Host, post, "contract/decode-data", Request).
 
 get_spend(Data) ->
     Host = external_address(),

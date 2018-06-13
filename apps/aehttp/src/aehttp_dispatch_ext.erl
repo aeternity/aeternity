@@ -612,13 +612,16 @@ handle_request('EncodeCalldata', Req, _Context) ->
     end;
 
 handle_request('DecodeData', Req, _Context) ->
+    io:format("Request ~p~n",[Req]),
     case Req of
         #{'SophiaBinaryData' :=
-              #{ <<"type">>  := Type
+              #{ <<"sophia-type">>  := Type
 	       , <<"data">>  := Data
                }} ->
+            io:format("Type ~p~nData ~p~n",[Type, Data]),
             case aehttp_logic:contract_decode_data(Type, Data) of
                 {ok, Result} ->
+                    foo = Result,
                     {200, [], #{ data => Result}};
                 {error, ErrorMsg} ->
                     {403, [], #{reason => ErrorMsg}}

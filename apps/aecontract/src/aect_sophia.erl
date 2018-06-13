@@ -107,8 +107,11 @@ encode_call_data(Contract, Function, Argument) ->
 
 
 decode_data(Type, Data) ->
+    io:format("Type ~p~nData~p~n", [Type, Data]),
     try aeso_data:from_binary(Type, aeu_hex:hexstring_decode(Data)) of
-        Term -> {ok, Term}
+        Term ->
+            io:format("Term ~p~n", [Term]),
+            {ok, Term}
     catch _:_ -> {error, <<"bad argument">>}
     end.
 
