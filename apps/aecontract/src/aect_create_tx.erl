@@ -43,6 +43,8 @@
 %% Should this be in a header file somewhere?
 -define(PUB_SIZE, 32).
 
+-define(is_non_neg_integer(X), (is_integer(X) andalso (X >= 0))).
+
 -record(contract_create_tx, {
           owner      :: aec_id:id(),
           nonce      :: non_neg_integer(),
@@ -156,7 +158,8 @@ check(#contract_create_tx{nonce = Nonce,
                           gas        = Gas,
                           gas_price  = GasPrice,
                           deposit    = Deposit,
-                          fee = Fee} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
+                          fee = Fee} = Tx, _Context, Trees, _Height, _ConsensusVersion
+     ) when ?is_non_neg_integer(GasPrice) ->
     OwnerPubKey = owner(Tx),
     TotalAmount = Fee + Amount + Deposit + Gas * GasPrice,
     Checks =
@@ -206,7 +209,7 @@ process(#contract_create_tx{nonce      = Nonce,
               Nonce, Context, Height, Trees1, ConsensusVersion),
 
     %% Create the init call.
-    Call0 = aect_call:new(OwnerPubKey, Nonce, ContractPubKey, Height),
+    Call0 = aect_call:new(OwnerPubKey, Nonce, ContractPubKey, Height, GasPrice),
     %% Execute init calQl to get the contract state and return value
     {CallRes, Trees3} =
         run_contract(CreateTx, Call0, Height, Trees2, Contract, ContractPubKey),

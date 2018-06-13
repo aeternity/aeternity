@@ -127,6 +127,7 @@ create_contract_init_error(_Cfg) ->
     %% Check that the created init call has the correct details from the contract create tx
     ?assertEqual(PubKey, aect_call:caller_address(InitCall)),
     ?assertEqual(aetx:nonce(Tx), aect_call:caller_nonce(InitCall)),
+    ?assertEqual(aect_create_tx:gas_price(aetx:tx(Tx)), aect_call:gas_price(InitCall)),
     %% Check that the created init call has the correct details not from the contract create tx
     ?assertEqual(ContractKey, aect_call:contract_address(InitCall)), %% Contract not created.
     ?assertMatch(X when X > 0, aect_call:gas_used(InitCall)),
@@ -139,7 +140,9 @@ create_contract_init_error(_Cfg) ->
                  - aect_create_tx:gas_price(aetx:tx(Tx)) * aect_call:gas_used(InitCall),
                  aec_accounts:balance(aect_test_utils:get_account(PubKey, S2))),
     %% Check that the miner got credited correctly.
-    ?assertEqual(aec_governance:block_mine_reward() + aect_create_tx:fee(aetx:tx(Tx)),
+    ?assertEqual(aec_governance:block_mine_reward()
+                 + aect_create_tx:fee(aetx:tx(Tx))
+                 + aect_create_tx:gas_price(aetx:tx(Tx)) * aect_call:gas_used(InitCall),
                  aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S2))),
     ok.
 
@@ -177,6 +180,7 @@ create_contract(_Cfg) ->
     %% Check that the created init call has the correct details from the contract create tx
     ?assertEqual(PubKey, aect_call:caller_address(InitCall)),
     ?assertEqual(aetx:nonce(Tx), aect_call:caller_nonce(InitCall)),
+    ?assertEqual(aect_create_tx:gas_price(aetx:tx(Tx)), aect_call:gas_price(InitCall)),
     %% Check that the created init call has the correct details not from the contract create tx
     ?assertEqual(ContractKey, aect_call:contract_address(InitCall)),
     _ = aect_call:height(InitCall), %% Unclear if this needed.
@@ -195,7 +199,9 @@ create_contract(_Cfg) ->
     ?assertEqual(aect_create_tx:amount(aetx:tx(Tx)),
                  aec_accounts:balance(aect_test_utils:get_account(ContractKey, S2))),
     %% Check that the miner got credited correctly.
-    ?assertEqual(aec_governance:block_mine_reward() + aect_create_tx:fee(aetx:tx(Tx)),
+    ?assertEqual(aec_governance:block_mine_reward()
+                 + aect_create_tx:fee(aetx:tx(Tx))
+                 + aect_create_tx:gas_price(aetx:tx(Tx)) * aect_call:gas_used(InitCall),
                  aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S2))),
 
     ok.
@@ -276,6 +282,7 @@ call_contract(_Cfg) ->
     ?assertEqual(aetx:nonce(CallTx), aect_call:caller_nonce(Call)),
     _ = aect_call:height(Call), %% Unclear if this needed.
     ?assertEqual(ContractKey, aect_call:contract_address(Call)),
+    ?assertEqual(aect_call_tx:gas_price(aetx:tx(CallTx)), aect_call:gas_price(Call)),
     ?assertMatch(X when X > 0, aect_call:gas_used(Call)),
 
     %% Check that contract call transaction sender got charged the right amount for gas and fee.
@@ -289,7 +296,8 @@ call_contract(_Cfg) ->
     %% Check that the miner got credited correctly.
     ?assertEqual(aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S3))
                  + aec_governance:block_mine_reward()
-                 + aect_call_tx:fee(aetx:tx(CallTx)),
+                 + aect_call_tx:fee(aetx:tx(CallTx))
+                 + aect_call_tx:gas_price(aetx:tx(CallTx)) * aect_call:gas_used(Call),
                  aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S4))),
 
     {ok, S4}.
@@ -304,7 +312,7 @@ make_contract(PubKey, Code, S) ->
     aect_contracts:new(CTx).
 
 make_call(PubKey, ContractKey,_Call,_S) ->
-    aect_call:new(PubKey, 0, ContractKey, 1).
+    aect_call:new(PubKey, 0, ContractKey, 1, 1).
 
 state()  -> get(the_state).
 state(S) -> put(the_state, S).

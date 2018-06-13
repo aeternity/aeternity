@@ -665,6 +665,14 @@ contract_transactions(_Config) ->
     ?assertEqual(MinerAddress, maps:get(<<"caller_address">>, CallObject, <<>>)),
     ?assertEqual(aec_base58c:encode(contract_pubkey, ContractPubKey),
                  maps:get(<<"contract_address">>, CallObject, <<>>)),
+    ?assertEqual(maps:get(gas_price, ContractCallDecoded), maps:get(<<"gas_price">>, CallObject)),
+    ?assertMatch({Used, Limit} when
+      is_integer(Used) andalso
+      is_integer(Limit) andalso
+      Limit > 0 andalso
+      Used =< Limit,
+      {maps:get(<<"gas_used">>, CallObject), maps:get(gas, ContractCallDecoded)}
+      ),
 
     %% Test to call the contract without a transaction.
     {ok, 200, #{<<"out">> := DirectCallResult}} =

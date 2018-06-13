@@ -262,12 +262,12 @@ apply_txs_on_state_trees([SignedTx | Rest], FilteredSignedTxs, Trees0, Height, C
 
 -spec grant_fee_to_miner(aec_keys:pubkey(), trees(), non_neg_integer()) ->
                                 trees().
-grant_fee_to_miner(MinerPubkey, Trees0, TotalFee) ->
+grant_fee_to_miner(MinerPubkey, Trees0, Fee) ->
     Trees1 = ensure_account(MinerPubkey, Trees0),
     AccountsTrees1 = accounts(Trees1),
 
     {value, Account1} = aec_accounts_trees:lookup(MinerPubkey, AccountsTrees1),
-    {ok, Account} = aec_accounts:earn(Account1, TotalFee),
+    {ok, Account} = aec_accounts:earn(Account1, Fee),
 
     AccountsTrees = aec_accounts_trees:enter(Account, AccountsTrees1),
     set_accounts(Trees1, AccountsTrees).

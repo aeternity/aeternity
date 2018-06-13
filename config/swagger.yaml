@@ -2867,6 +2867,8 @@ definitions:
         type: integer
       contract_address:
         $ref: '#/definitions/EncodedHash'
+      gas_price:
+        type: integer
       gas_used:
         type: integer
       return_value:
@@ -2880,6 +2882,7 @@ definitions:
       - caller_nonce
       - height
       - contract_address
+      - gas_price
       - gas_used
       - return_value
       - return_type
