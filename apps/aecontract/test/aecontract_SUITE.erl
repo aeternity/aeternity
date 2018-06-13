@@ -12,8 +12,10 @@
 
 %% test case exports
 -export([ call_contract/1
+        , call_contract_with_gas_price_zero/1
         , call_contract_negative/1
         , create_contract/1
+        , create_contract_with_gas_price_zero/1
         , create_contract_init_error/1
         , create_contract_negative/1
         , state_tree/1
@@ -52,9 +54,11 @@ groups() ->
                               , {group, store}
                               ]}
     , {transactions, [sequence], [ create_contract
+                                 , create_contract_with_gas_price_zero
                                  , create_contract_init_error
                                  , create_contract_negative
                                  , call_contract
+                                 , call_contract_with_gas_price_zero
                                  , call_contract_negative
                                  ]}
     , {state_tree, [sequence], [ state_tree ]}
@@ -147,6 +151,12 @@ create_contract_init_error(_Cfg) ->
     ok.
 
 create_contract(_Cfg) ->
+    create_contract_(1).
+
+create_contract_with_gas_price_zero(_Cfg) ->
+    create_contract_(0).
+
+create_contract_(ContractCreateTxGasPrice) ->
     {PubKey, S1} = aect_test_utils:setup_new_account(aect_test_utils:new_state()),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
@@ -155,8 +165,10 @@ create_contract(_Cfg) ->
     Overrides    = #{ code => IdContract
         , call_data => CallData
         , gas => 10000
+        , gas_price => ContractCreateTxGasPrice
     },
     Tx           = aect_test_utils:create_tx(PubKey, Overrides, S1),
+    ?assertEqual(ContractCreateTxGasPrice, aect_create_tx:gas_price(aetx:tx(Tx))),
 
     %% Test that the create transaction is accepted
     {ok, S2} = sign_and_apply_transaction(Tx, PrivKey, S1, ?MINER_PUBKEY),
@@ -238,6 +250,12 @@ call_contract_negative(_Cfg) ->
     ok.
 
 call_contract(_Cfg) ->
+    call_contract_(2).
+
+call_contract_with_gas_price_zero(_Cfg) ->
+    call_contract_(0).
+
+call_contract_(ContractCallTxGasPrice) ->
     S0            = aect_test_utils:new_state(),
     {Owner,  S1}  = aect_test_utils:setup_new_account(S0),
     {Caller, S2}  = aect_test_utils:setup_new_account(S1),
@@ -251,8 +269,10 @@ call_contract(_Cfg) ->
     Overrides    = #{ code => IdContract
 		    , call_data => CallDataInit
 		    , gas => 10000
+                    , gas_price => 1
 		    },
     CreateTx     = aect_test_utils:create_tx(Owner, Overrides, S2),
+    ?assertEqual(1, aect_create_tx:gas_price(aetx:tx(CreateTx))),
 
     %% Test that the create transaction is accepted
     {SignedTx, [SignedTx], S3} = sign_and_apply_transaction_strict(CreateTx, OwnerPrivKey, S2, ?MINER_PUBKEY),
@@ -260,15 +280,15 @@ call_contract(_Cfg) ->
 
     %% Now check that we can call it.
     Fee           = 107,
-    GasPrice      = 2,
     Value         = 52,
     Arg           = <<"42">>,
     CallData = aect_sophia:create_call(IdContract, <<"main">>, Arg),
     CallTx = aect_test_utils:call_tx(Caller, ContractKey,
                                      #{call_data => CallData,
-                                       gas_price => GasPrice,
+                                       gas_price => ContractCallTxGasPrice,
                                        amount    => Value,
                                        fee       => Fee}, S3),
+    ?assertEqual(ContractCallTxGasPrice, aect_call_tx:gas_price(aetx:tx(CallTx))),
     {ok, S4} = sign_and_apply_transaction(CallTx, CallerPrivKey, S3, ?MINER_PUBKEY),
     CallId = aect_call:id(Caller, aetx:nonce(CallTx), ContractKey),
 
@@ -288,7 +308,7 @@ call_contract(_Cfg) ->
     %% Check that contract call transaction sender got charged the right amount for gas and fee.
     {NewCallerBalance, NewCallerBalance} =
         {aec_accounts:balance(aect_test_utils:get_account(Caller, S4)),
-         CallerBalance - Fee - GasPrice * aect_call:gas_used(Call) - Value},
+         CallerBalance - Fee - aect_call_tx:gas_price(aetx:tx(CallTx)) * aect_call:gas_used(Call) - Value},
     %% Check that called account got credited correctly.
     ?assertEqual(aec_accounts:balance(aect_test_utils:get_account(ContractKey, S3))
                  + aect_call_tx:amount(aetx:tx(CallTx)),
