@@ -129,7 +129,6 @@ on_chain_call(ContractKey, Function, Argument) ->
             BlockHeight = aec_blocks:height(Block),
             Amount = 0,
             VmVersion = ?AEVM_01_Sophia_01,
-            Deposit = 0,
             ChainState  = aec_vm_chain:new_state(Trees, BlockHeight, ContractKey),
             Spec = #{ code => aeu_hex:hexstring_encode(Code)
                     , address => Address
@@ -138,7 +137,7 @@ on_chain_call(ContractKey, Function, Argument) ->
                     , gas => 100000000000000000
                     , gasPrice => 1
                     , origin => 0
-                    , value => 0
+                    , value => Amount
 		      %% TODO:
                     , currentCoinbase => 1
                     , currentDifficulty => 1

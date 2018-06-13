@@ -111,7 +111,9 @@ create_contract_init_error(_Cfg) ->
     {PubKey, S1} = aect_test_utils:setup_new_account(aect_test_utils:new_state()),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
-    Tx = aect_test_utils:create_tx(PubKey, S1),
+    Overrides = #{ call_data => aeso_abi:create_calldata(<<>>, "init", "()")
+                 },
+    Tx = aect_test_utils:create_tx(PubKey, Overrides, S1),
 
     %% Test that the create transaction is accepted
     {ok, S2} = sign_and_apply_transaction(Tx, PrivKey, S1, ?MINER_PUBKEY),
@@ -139,7 +141,6 @@ create_contract_init_error(_Cfg) ->
     %% Check that the miner got credited correctly.
     ?assertEqual(aec_governance:block_mine_reward() + aect_create_tx:fee(aetx:tx(Tx)),
                  aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S2))),
-
     ok.
 
 create_contract(_Cfg) ->
@@ -147,7 +148,7 @@ create_contract(_Cfg) ->
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
     IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
-    CallData     = aeso_abi:create_calldata(IdContract, "main", "42"),
+    CallData     = aeso_abi:create_calldata(IdContract, "init", "42"),
     Overrides    = #{ code => IdContract
         , call_data => CallData
         , gas => 10000
@@ -240,9 +241,9 @@ call_contract(_Cfg) ->
     CallerBalance = aec_accounts:balance(aect_test_utils:get_account(Caller, S2)),
 
     IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
-    CallData     = aeso_abi:create_calldata(IdContract, "main", "42"),
+    CallDataInit = aeso_abi:create_calldata(IdContract, "init", "42"),
     Overrides    = #{ code => IdContract
-		    , call_data => CallData
+		    , call_data => CallDataInit
 		    , gas => 10000
 		    },
     CreateTx     = aect_test_utils:create_tx(Owner, Overrides, S2),

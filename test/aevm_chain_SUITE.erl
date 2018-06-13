@@ -59,7 +59,8 @@ setup_chain() ->
 create_contract(Owner, S) ->
     OwnerPrivKey = aect_test_utils:priv_key(Owner, S),
     IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
-    CallData     = aeso_abi:create_calldata(IdContract, "main", "42"),
+    CallData     = aeso_abi:create_calldata(IdContract, "init", "42"),
+
     Overrides    = #{ code => IdContract
 		    , call_data => CallData
 		    , gas => 10000

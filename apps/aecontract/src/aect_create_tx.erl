@@ -150,6 +150,8 @@ origin(#contract_create_tx{} = Tx) ->
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
                    {ok, aec_trees:trees()} | {error, term()}.
 check(#contract_create_tx{nonce = Nonce,
+                          vm_version = VmVersion,
+                          call_data  = CallData,
                           amount     = Amount,
                           gas        = Gas,
                           gas_price  = GasPrice,
@@ -158,7 +160,20 @@ check(#contract_create_tx{nonce = Nonce,
     OwnerPubKey = owner(Tx),
     TotalAmount = Fee + Amount + Deposit + Gas * GasPrice,
     Checks =
-        [fun() -> aetx_utils:check_account(OwnerPubKey, Trees, Nonce, TotalAmount) end
+        [fun() ->
+                 aetx_utils:check_account(OwnerPubKey, Trees, Nonce, TotalAmount)
+         end |
+         case VmVersion of
+            ?AEVM_01_Sophia_01 ->
+                 [fun() ->
+                          case aeso_data:get_function_from_calldata(CallData) of
+                              {ok, <<"init">>} -> ok;
+                              _Other -> {error, bad_init_function}
+                          end
+                  end
+                 ];
+            ?AEVM_01_Solidity_01 -> []
+         end
          %% TODO: Check minum gas price.
         ],
     case aeu_validation:run(Checks) of
