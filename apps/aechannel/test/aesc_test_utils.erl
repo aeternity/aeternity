@@ -47,6 +47,7 @@
          settle_tx_spec/3,
          settle_tx_spec/4]).
 
+
 %%%===================================================================
 %%% Test state
 %%%===================================================================
@@ -139,7 +140,7 @@ close_solo(Ch, Params) ->
                             aesc_channels:responder(Ch),
                             maps:merge(Params, #{initiator_amount => InitiatorEndBalance,
                                                  responder_amount => ResponderEndBalance})),
-    {ok, PayloadTx} = aesc_payload:correct_type(DummyStateTx),
+    {ok, PayloadTx} = aesc_payload:new(DummyStateTx),
 
     PoI = proof_of_inclusion([{aesc_channels:initiator(Ch), InitiatorEndBalance},
                               {aesc_channels:responder(Ch), ResponderEndBalance}]),
@@ -175,15 +176,22 @@ create_tx_spec(InitiatorPubKey, ResponderPubKey, State) ->
 
 create_tx_spec(InitiatorPubKey, ResponderPubKey, Spec0, State) ->
     Spec = maps:merge(create_tx_default_spec(InitiatorPubKey, State), Spec0),
+    InitiatorAmount = maps:get(initiator_amount, Spec),
+    ResponderAmount = maps:get(responder_amount, Spec),
+    Accounts = [aec_accounts:new(Pubkey, Balance) ||
+                {Pubkey, Balance} <- [{InitiatorPubKey, InitiatorAmount},
+                                      {ResponderPubKey, ResponderAmount}]],
+    Trees = aec_test_utils:create_state_tree_with_accounts(Accounts, no_backend),
+    StateHash = aec_trees:hash(Trees),
     #{initiator          => InitiatorPubKey,
-      initiator_amount   => maps:get(initiator_amount, Spec),
+      initiator_amount   => InitiatorAmount,
       responder          => ResponderPubKey,
-      responder_amount   => maps:get(responder_amount, Spec),
+      responder_amount   => ResponderAmount,
       channel_reserve    => maps:get(channel_reserve, Spec),
       lock_period        => maps:get(lock_period, Spec),
       ttl                => maps:get(ttl, Spec, 0),
       fee                => maps:get(fee, Spec),
-      state_hash         => maps:get(state_hash, Spec),
+      state_hash         => StateHash,
       nonce              => maps:get(nonce, Spec)}.
 
 create_tx_default_spec(InitiatorPubKey, State) ->
@@ -192,7 +200,6 @@ create_tx_default_spec(InitiatorPubKey, State) ->
       channel_reserve    => 20,
       lock_period        => 100,
       fee                => 3,
-      state_hash         => <<123456>>,
       nonce              => try next_nonce(InitiatorPubKey, State) catch _:_ -> 0 end}.
 
 %%%===================================================================

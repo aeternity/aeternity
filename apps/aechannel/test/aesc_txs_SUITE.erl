@@ -16,6 +16,9 @@
          create_negative/1,
          close_solo/1,
          close_solo_negative/1,
+         close_solo_payload_create_tx/1,
+         close_solo_payload_deposit_tx/1,
+         close_solo_payload_withdraw_tx/1,
          close_mutual/1,
          close_mutual_negative/1,
          slash/1,
@@ -48,6 +51,9 @@ groups() ->
        create_negative,
        close_solo,
        close_solo_negative,
+       close_solo_payload_create_tx,
+       close_solo_payload_deposit_tx,
+       close_solo_payload_withdraw_tx,
        close_mutual,
        close_mutual_negative,
        slash,
@@ -105,7 +111,7 @@ create(Cfg) ->
     ?assertEqual(aec_accounts:nonce(AccountBefore2),
                  aec_accounts:nonce(AccountAfter2)),
 
-    {PubKey1, PubKey2, ChannelId, S3}.
+    {PubKey1, PubKey2, ChannelId, SignedTx, S3}.
 
 create_negative(Cfg) ->
     {PubKey1, S1} = aesc_test_utils:setup_new_account(aesc_test_utils:new_state()),
@@ -170,7 +176,7 @@ create_negative(Cfg) ->
         aetx:check(Tx7, Trees, Height, ?PROTOCOL_VERSION),
 
     %% Test channel already present
-    {PubKey3, PubKey4, _ChannelId, S5} = create(Cfg),
+    {PubKey3, PubKey4, _ChannelId, _, S5} = create(Cfg),
     S6 = aesc_test_utils:set_account_nonce(PubKey3, 0, S5),
     Trees5 = aens_test_utils:trees(S6),
     TxSpec8 = aesc_test_utils:create_tx_spec(PubKey3, PubKey4, S6),
@@ -182,7 +188,7 @@ create_negative(Cfg) ->
 %%% Close solo
 %%%===================================================================
 close_solo(Cfg) ->
-    {PubKey1, PubKey2, ChannelId, S} = create(Cfg),
+    {PubKey1, PubKey2, ChannelId, _, S} = create(Cfg),
     PrivKey1 = aesc_test_utils:priv_key(PubKey1, S),
     PrivKey2 = aesc_test_utils:priv_key(PubKey2, S),
     Height = 2,
@@ -232,7 +238,7 @@ close_solo(Cfg) ->
     ok.
 
 close_solo_negative(Cfg) ->
-    {PubKey1, PubKey2, ChannelId, S} = create(Cfg),
+    {PubKey1, PubKey2, ChannelId, _, S} = create(Cfg),
     PrivKey1 = aesc_test_utils:priv_key(PubKey1, S),
     PrivKey2 = aesc_test_utils:priv_key(PubKey2, S),
     Height = 2,
@@ -363,7 +369,7 @@ close_solo_negative(Cfg) ->
 
     %% Test existing channel's payload
     Cfg2 = lists:keyreplace(state, 1, Cfg, {state, S}),
-    {PubKey21, PubKey22, ChannelId2, S2} = create(Cfg2),
+    {PubKey21, PubKey22, ChannelId2, _, S2} = create(Cfg2),
     Trees2 = aens_test_utils:trees(S2),
     PrivKey21 = aesc_test_utils:priv_key(PubKey21, S2),
     PrivKey22 = aesc_test_utils:priv_key(PubKey22, S2),
@@ -377,12 +383,116 @@ close_solo_negative(Cfg) ->
                            ?PROTOCOL_VERSION),
     ok.
 
+close_solo_payload_create_tx(Cfg) ->
+    {PubKey1, PubKey2, ChannelId, CreateTx, S} = create(Cfg),
+    {_, CrTxI} = aetx:specialize_type(aetx_sign:tx(CreateTx)),
+    InitiatorEndBalance = aesc_create_tx:initiator_amount(CrTxI),
+    ResponderEndBalance = aesc_create_tx:responder_amount(CrTxI),
+
+    PoI = aesc_test_utils:proof_of_inclusion([{PubKey1, InitiatorEndBalance},
+                                              {PubKey2, ResponderEndBalance}]),
+    Payload = aetx_sign:serialize_to_binary(CreateTx),
+    close_solo_after_(PubKey1, PubKey2, ChannelId, Payload, PoI, S).
+
+close_solo_payload_deposit_tx(Cfg) ->
+    {PubKey1, PubKey2, ChannelId, CreateTx, S} = create(Cfg),
+    PrivKey1 = aesc_test_utils:priv_key(PubKey1, S),
+    PrivKey2 = aesc_test_utils:priv_key(PubKey2, S),
+
+    {_, CrTxI} = aetx:specialize_type(aetx_sign:tx(CreateTx)),
+    InitiatorEndBalance = aesc_create_tx:initiator_amount(CrTxI),
+    ResponderEndBalance = aesc_create_tx:responder_amount(CrTxI),
+
+    Accounts = [{PubKey1, InitiatorEndBalance + 1},
+                {PubKey2, ResponderEndBalance}],
+    Accs = [aec_accounts:new(Pubkey, Balance) || {Pubkey, Balance} <- Accounts],
+
+    ChannelTrees = aec_test_utils:create_state_tree_with_accounts(Accs, no_backend),
+    StateHash = aec_trees:hash(ChannelTrees),
+    TxSpec = aesc_test_utils:deposit_tx_spec(ChannelId, PubKey1,
+                                             #{amount => 1,
+                                               fee    => 4,
+                                               state_hash => StateHash}, S),
+    {ok, DepositTx} = aesc_deposit_tx:new(TxSpec),
+    SignedDepositTx = aetx_sign:sign(DepositTx, [PrivKey1, PrivKey2]),
+    Payload = aetx_sign:serialize_to_binary(SignedDepositTx),
+    Trees = aens_test_utils:trees(S),
+    PoI = aesc_test_utils:proof_of_inclusion(Accounts),
+    {ok, [_], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
+                                        [SignedDepositTx], Trees, 2, ?PROTOCOL_VERSION),
+    S1 = aesc_test_utils:set_trees(Trees1, S),
+    close_solo_after_(PubKey1, PubKey2, ChannelId, Payload, PoI, S1).
+
+close_solo_payload_withdraw_tx(Cfg) ->
+    {PubKey1, PubKey2, ChannelId, CreateTx, S} = create(Cfg),
+    PrivKey1 = aesc_test_utils:priv_key(PubKey1, S),
+    PrivKey2 = aesc_test_utils:priv_key(PubKey2, S),
+
+    {_, CrTxI} = aetx:specialize_type(aetx_sign:tx(CreateTx)),
+    InitiatorEndBalance = aesc_create_tx:initiator_amount(CrTxI),
+    ResponderEndBalance = aesc_create_tx:responder_amount(CrTxI),
+
+    Accounts = [{PubKey1, InitiatorEndBalance - 1},
+                {PubKey2, ResponderEndBalance}],
+    Accs = [aec_accounts:new(Pubkey, Balance) || {Pubkey, Balance} <- Accounts],
+
+    ChannelTrees = aec_test_utils:create_state_tree_with_accounts(Accs, no_backend),
+    StateHash = aec_trees:hash(ChannelTrees),
+    TxSpec = aesc_test_utils:withdraw_tx_spec(ChannelId, PubKey1,
+                                             #{amount => 1,
+                                               fee    => 4,
+                                               state_hash => StateHash}, S),
+    {ok, WithdrawTx} = aesc_withdraw_tx:new(TxSpec),
+    SignedWithdrawTx = aetx_sign:sign(WithdrawTx, [PrivKey1, PrivKey2]),
+    Payload = aetx_sign:serialize_to_binary(SignedWithdrawTx),
+    Trees = aens_test_utils:trees(S),
+    PoI = aesc_test_utils:proof_of_inclusion(Accounts),
+    {ok, [_], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
+                                        [SignedWithdrawTx], Trees, 2, ?PROTOCOL_VERSION),
+    S1 = aesc_test_utils:set_trees(Trees1, S),
+    close_solo_after_(PubKey1, PubKey2, ChannelId, Payload, PoI, S1).
+
+close_solo_after_(PubKey1, PubKey2, ChannelId, Payload, PoI, S) ->
+    Trees = aens_test_utils:trees(S),
+    PrivKey1 = aesc_test_utils:priv_key(PubKey1, S),
+    Height = 3,
+    Fee = 3,
+
+    %% Get channel and account funds
+    {Acc1Balance0, Acc2Balance0} = get_balances(PubKey1, PubKey2, S),
+
+    %% Create close_solo tx and apply it on state trees
+    Test =
+        fun(From, FromPrivKey) ->
+            TxSpec = aesc_test_utils:close_solo_tx_spec(ChannelId, From, Payload,
+                                                    PoI, #{fee => Fee}, S),
+            {ok, Tx} = aesc_close_solo_tx:new(TxSpec),
+            SignedTx = aetx_sign:sign(Tx, [FromPrivKey]),
+            {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
+                                        [SignedTx], Trees, Height, ?PROTOCOL_VERSION),
+            S1 = aesc_test_utils:set_trees(Trees1, S),
+
+            {Acc1Balance1, Acc2Balance1} = get_balances(PubKey1, PubKey2, S1),
+            case From =:= PubKey1 of
+                true ->
+                    Acc1Balance1 = Acc1Balance0 - Fee,
+                    Acc2Balance1 = Acc2Balance0;
+                false ->
+                    Acc1Balance1 = Acc1Balance0,
+                    Acc2Balance1 = Acc2Balance0 - Fee
+            end,
+            ClosedCh = aesc_test_utils:get_channel(ChannelId, S1),
+            false = aesc_channels:is_active(ClosedCh)
+        end,
+    Test(PubKey1, PrivKey1),
+    ok.
+
 %%%===================================================================
 %%% Close mutual
 %%%===================================================================
 
 close_mutual(Cfg) ->
-    {PubKey1, PubKey2, ChannelId, S} = create(Cfg),
+    {PubKey1, PubKey2, ChannelId, _, S} = create(Cfg),
     PrivKey1 = aesc_test_utils:priv_key(PubKey1, S),
     PrivKey2 = aesc_test_utils:priv_key(PubKey2, S),
     Height = 2,
@@ -437,7 +547,7 @@ close_mutual(Cfg) ->
 
 
 close_mutual_negative(Cfg) ->
-    {PubKey1, _PubKey2, ChannelId, S} = create(Cfg),
+    {PubKey1, _PubKey2, ChannelId, _, S} = create(Cfg),
     Trees = aesc_test_utils:trees(S),
     Height = 2,
 
@@ -491,7 +601,7 @@ close_mutual_negative(Cfg) ->
 %%%===================================================================
 
 deposit(Cfg) ->
-    {PubKey1, _PubKey2, ChannelId, S} = create(Cfg),
+    {PubKey1, _PubKey2, ChannelId, _, S} = create(Cfg),
     PrivKey1 = aesc_test_utils:priv_key(PubKey1, S),
     Height = 2,
 
@@ -522,7 +632,7 @@ deposit(Cfg) ->
     ok.
 
 deposit_negative(Cfg) ->
-    {PubKey1, _PubKey2, ChannelId, S} = create(Cfg),
+    {PubKey1, _PubKey2, ChannelId, _, S} = create(Cfg),
     Trees = aesc_test_utils:trees(S),
     Height = 2,
 
@@ -582,7 +692,7 @@ deposit_negative(Cfg) ->
 %%%===================================================================
 
 withdraw(Cfg) ->
-    {PubKey1, _PubKey2, ChannelId, S} = create(Cfg),
+    {PubKey1, _PubKey2, ChannelId, _, S} = create(Cfg),
     PrivKey1 = aesc_test_utils:priv_key(PubKey1, S),
     Height = 2,
 
@@ -613,7 +723,7 @@ withdraw(Cfg) ->
     ok.
 
 withdraw_negative(Cfg) ->
-    {PubKey1, _PubKey2, ChannelId, S} = create(Cfg),
+    {PubKey1, _PubKey2, ChannelId, _, S} = create(Cfg),
     Trees = aesc_test_utils:trees(S),
     Height = 2,
 
@@ -685,7 +795,7 @@ get_balances(K1, K2, S) ->
 %%% Slash
 %%%===================================================================
 slash(Cfg) ->
-    {PubKey1, PubKey2, ChannelId, S0} = create(Cfg),
+    {PubKey1, PubKey2, ChannelId, _, S0} = create(Cfg),
     PrivKey1 = aesc_test_utils:priv_key(PubKey1, S0),
     PrivKey2 = aesc_test_utils:priv_key(PubKey2, S0),
     Height = 2,
@@ -740,7 +850,7 @@ slash(Cfg) ->
     ok.
 
 slash_negative(Cfg) ->
-    {PubKey1, PubKey2, ChannelId, S0} = create(Cfg),
+    {PubKey1, PubKey2, ChannelId, _, S0} = create(Cfg),
     PrivKey1 = aesc_test_utils:priv_key(PubKey1, S0),
     PrivKey2 = aesc_test_utils:priv_key(PubKey2, S0),
 
@@ -873,7 +983,7 @@ slash_negative(Cfg) ->
 
     %% Test existing channel's payload
     Cfg2 = lists:keyreplace(state, 1, Cfg, {state, S}),
-    {PubKey21, PubKey22, ChannelId2, S2} = create(Cfg2),
+    {PubKey21, PubKey22, ChannelId2, _, S2} = create(Cfg2),
     Trees2 = aens_test_utils:trees(S2),
     PrivKey21 = aesc_test_utils:priv_key(PubKey21, S2),
     PrivKey22 = aesc_test_utils:priv_key(PubKey22, S2),
@@ -891,7 +1001,7 @@ slash_negative(Cfg) ->
 %%%===================================================================
 
 settle(Cfg) ->
-    {PubKey1, PubKey2, ChannelId, S0} = create(Cfg),
+    {PubKey1, PubKey2, ChannelId, _, S0} = create(Cfg),
     PrivKey1 = aesc_test_utils:priv_key(PubKey1, S0),
     PrivKey2 = aesc_test_utils:priv_key(PubKey2, S0),
 
@@ -950,7 +1060,7 @@ settle(Cfg) ->
     ok.
 
 settle_negative(Cfg) ->
-    {PubKey1, _PubKey2, ChannelId, S0} = create(Cfg),
+    {PubKey1, _PubKey2, ChannelId, _, S0} = create(Cfg),
     Trees0 = aesc_test_utils:trees(S0),
     Height = 2,
 

@@ -229,7 +229,7 @@ deserialize_from_binary(Payload) ->
     try
         SignedTx = aetx_sign:deserialize_from_binary(Payload),
         Tx       = aetx_sign:tx(SignedTx),
-        case aesc_payload:correct_type(Tx) of
+        case aesc_payload:new(Tx) of
             {ok, PayloadTx} ->
                 {ok, SignedTx, PayloadTx};
             error ->

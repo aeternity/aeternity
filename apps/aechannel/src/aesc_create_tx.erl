@@ -7,6 +7,7 @@
 -module(aesc_create_tx).
 
 -behavior(aetx).
+-behaviour(aesc_payload).
 
 %% Behavior API
 -export([new/1,
@@ -32,6 +33,11 @@
          responder/1,
          responder_amount/1]).
 
+% payload callbacks
+-export([channel_id/1,
+         state_hash/1,
+         updates/1,
+         round/1]).
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -58,6 +64,8 @@
 -opaque tx() :: #channel_create_tx{}.
 
 -export_type([tx/0]).
+
+-compile({no_auto_import, [round/1]}).
 
 %%%===================================================================
 %%% Behaviour API
@@ -271,6 +279,17 @@ responder(#channel_create_tx{responder = ResponderId}) ->
 -spec responder_amount(tx()) -> non_neg_integer().
 responder_amount(#channel_create_tx{responder_amount = ResponderAmount}) ->
     ResponderAmount.
+
+channel_id(#channel_create_tx{nonce = Nonce} = Tx) ->
+    aesc_channels:id(initiator(Tx), Nonce, responder(Tx)).
+
+state_hash(#channel_create_tx{state_hash = StateHash}) -> StateHash.
+
+updates(#channel_create_tx{}) ->
+    [].
+
+round(#channel_create_tx{}) ->
+    1.
 
 %%%===================================================================
 %%% Internal functions

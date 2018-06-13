@@ -613,13 +613,7 @@ wdraw_signed({call, From}, Req, D) ->
     handle_call(wdraw_signed, Req, From, D).
 
 withdraw_locked_complete(SignedTx, #data{state = State, opts = Opts} = D) ->
-    {Mod, TxI} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
-    Amt = Mod:amount(TxI),
-    Account = Mod:origin(TxI),
-    Updates = [aesc_offchain_state:op_withdraw(Account, Amt)],
-    NewTx = aesc_offchain_state:make_update_tx(Updates, State, Opts),
-    SignedOCTx = aetx_sign:sign(NewTx, []),
-    D1   = D#data{state = aesc_offchain_state:add_signed_tx(SignedOCTx, D#data.state, Opts)},
+    D1   = D#data{state = aesc_offchain_state:add_signed_tx(SignedTx, State, Opts)},
     next_state(open, D1).
 
 
@@ -765,14 +759,10 @@ signed({call, From}, Req, D) ->
 
 
 funding_locked_complete(D) ->
-    {ok, OCTx} = initial_state(D),
-    SignedOCTx = aetx_sign:sign(OCTx, []),
-    D1   = D#data{state = aesc_offchain_state:add_signed_tx(SignedOCTx,
+    D1   = D#data{state = aesc_offchain_state:add_signed_tx(D#data.create_tx,
                                                             D#data.state,
                                                             D#data.opts)},
     next_state(open, D1).
-
-
 
 open(enter, _OldSt, D) ->
     D1 = if D#data.channel_status =/= open ->
@@ -1575,8 +1565,6 @@ fallback_to_stable_state(#data{state = State} = D) ->
 
 
 tx_round(Tx)            -> call_cb(Tx, round, []).
-tx_initiator(Tx)        -> call_cb(Tx, initiator, []).
-tx_responder(Tx)        -> call_cb(Tx, responder, []).
 
 -spec call_cb(aetx:tx(), atom(), list()) -> any().
 call_cb(Tx, F, Args) ->
@@ -1665,23 +1653,6 @@ on_chain_id(D, Initiator, Nonce, Responder) ->
     ID = aesc_channels:id(Initiator, Nonce, Responder),
     evt({on_chain_id, ID}),
     {ID, D#data{on_chain_id = ID}}.
-
-initial_state(#data{ create_tx    = SignedTx
-                   , on_chain_id = ChanId
-                   , state = State}) ->
-    Tx = aetx_sign:tx(SignedTx),
-    Initiator = tx_initiator(Tx),
-    Responder = tx_responder(Tx),
-    StateHash = aesc_offchain_state:hash(State),
-    NewOpts = #{ channel_id       => ChanId
-               , initiator        => Initiator
-               , responder        => Responder
-               , updates          => []
-               , state            => <<>>
-               , previous_round   => 0
-               , round            => 1
-               , state_hash       => StateHash},
-    {ok, _Tx} = aesc_offchain_tx:new(NewOpts).
 
 
 gproc_register(#data{role = Role, channel_id = ChanId}) ->

@@ -375,7 +375,7 @@ set_chid_if_undefined(R, Msg) ->
     end.
 
 receive_info(R, Msg, Debug) ->
-    receive_from_fsm(info, R, Msg, ?TIMEOUT, Debug).
+    receive_from_fsm(info, R, Msg, ?LONG_TIMEOUT, Debug).
 
 receive_from_fsm(Tag, #{role := Role, fsm := Fsm}, Info, Timeout, Debug)
   when is_atom(Info) ->

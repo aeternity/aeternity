@@ -8,14 +8,16 @@
        , state_hash/1
        , updates/1
        , round/1
-       , correct_type/1
+       , new/1
         ]).
 
 -opaque tx() :: {aesc_offchain_tx, aesc_offchain_tx:tx()}
+              | {aesc_create_tx, aesc_create_tx:tx()}
               | {aesc_deposit_tx, aesc_deposit_tx:tx()}
               | {aesc_withdraw_tx, aesc_withdraw_tx:tx()}.
 
 -define(MODS, [aesc_offchain_tx,
+               aesc_create_tx,
                aesc_deposit_tx,
                aesc_withdraw_tx]).
 
@@ -45,8 +47,8 @@ round(Tx) -> call_callback(Tx, round).
 -spec updates(tx()) -> [aesc_offchain_state:update()].
 updates(Tx) -> call_callback(Tx, updates).
 
--spec correct_type(aetx:tx()) -> {ok, tx()} | error.
-correct_type(Tx) ->
+-spec new(aetx:tx()) -> {ok, tx()} | error.
+new(Tx) ->
     {Mod, TxI} = aetx:specialize_callback(Tx),
     case lists:member(Mod, ?MODS) of
         true -> {ok, {Mod, TxI}};
