@@ -15,6 +15,7 @@ It:
 * Makes the owner of the contract create transaction lose the gas - in addition to the fee - if the init fails. This impacts consensus.
 * Ensures that the create contract function calls the init function for Sophia ABI contracts. This impacts consensus.
 * Rewards miner with gas used for execution of contracts, i.e. the execution of the initial call in any contract create transaction and the execution of any contract call transaction. This impacts consensus.
+* Enhances mempool to consider reward miner might get by processing contract-related transactions. This impacts the persisted DB.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.16.0
 

@@ -142,20 +142,26 @@ tx_pool_test_() ->
                  PK1 = new_pubkey(),
                  PK2 = new_pubkey(),
                  PK3 = new_pubkey(),
-                 STx1 = a_signed_tx(PK1, me, 1, 1),
-                 STx2 = a_signed_tx(PK1, me, 2, 2),
-                 STx3 = a_signed_tx(PK1, me, 3, 3),
-                 STx4 = a_signed_tx(PK2, me, 2, 5),
-                 STx5 = a_signed_tx(PK2, me, 1, 6),
+                 PK4 = new_pubkey(),
+                 STxs =
+                   [ a_signed_tx        (_Sender=PK1, me,_Nonce=1,_Fee=1)
+                   , a_signed_tx        (        PK1, me,       2,     2)
+                   , a_signed_tx        (        PK1, me,       3,     3)
+                   , a_signed_tx        (        PK2, me,       2,     5)
+                   , a_signed_tx        (        PK2, me,       1,     6)
+                   , signed_ct_create_tx(        PK4,           1,     1,_GasPrice=1)
+                   , signed_ct_call_tx  (        PK4,           2,     4,          9)
+                   , signed_ct_call_tx  (        PK4,           3,     7,          0)
+                   ],
 
-                 [?assertEqual(ok, aec_tx_pool:push(Tx)) || Tx <- [STx1, STx2, STx3, STx4, STx5]],
+                 [?assertEqual(ok, aec_tx_pool:push(Tx)) || Tx <- STxs],
                  {ok, CurrentMempoolSigned} = aec_tx_pool:peek(10),
                  %% extract transactions without verification
                  CurrentMempool = [ aetx_sign:tx(STx) || STx <- CurrentMempoolSigned ],
 
                  MempoolOrder = [{aetx:origin(Tx), aetx:nonce(Tx)} || Tx <- CurrentMempool],
-                 %% this is not-optimal order: transactions for PK1 are invalid in that order
-                 CorrectOrder = [{PK2,1},{PK2,2},{PK1,3},{PK1,2},{PK1,1}],
+                 %% this is not-optimal order: transactions for PK1 and PK4 are invalid in that order
+                 CorrectOrder = [{PK4,3},{PK2,1},{PK2,2},{PK4,2},{PK1,3},{PK1,2},{PK4,1},{PK1,1}],
 
                  ?assertEqual(CorrectOrder, MempoolOrder),
 
@@ -171,19 +177,34 @@ tx_pool_test_() ->
                PK = new_pubkey(),
 
                %% Only one tx in pool
-               STx1 = a_signed_tx(PK, me, 1, 1),
+               STx1 = a_signed_tx(PK, me, Nonce1=1,_Fee1=1),
                ?assertEqual(ok, aec_tx_pool:push(STx1)),
                ?assertEqual({ok, [STx1]}, aec_tx_pool:get_candidate(10, <<>>)),
 
                %% Order by nonce even if fee is higher
-               STx2 = a_signed_tx(PK, me, 2, 5),
+               STx2 = a_signed_tx(PK, me, Nonce2=2, Fee2=5),
                ?assertEqual(ok, aec_tx_pool:push(STx2)),
                ?assertEqual({ok, [STx1, STx2]}, aec_tx_pool:get_candidate(10, <<>>)),
 
                %% Replace same nonce with the higher fee
-               STx3 = a_signed_tx(PK, me, 1, 2),
+               STx3 = a_signed_tx(PK, me, Nonce1=1, 2),
                ?assertEqual(ok, aec_tx_pool:push(STx3)),
                ?assertEqual({ok, [STx3, STx2]}, aec_tx_pool:get_candidate(10, <<>>)),
+
+               %% Replace same nonce with same fee but positive gas price (gas price of transaction without gas price is considered zero)
+               STx4 = signed_ct_create_tx(PK, Nonce2=2, Fee2=5,_GasPrice4=1),
+               ?assertEqual(ok, aec_tx_pool:push(STx4)),
+               ?assertEqual({ok, [STx3, STx4]}, aec_tx_pool:get_candidate(10, <<>>)),
+
+               %% Replace same nonce with same fee but higher gas price
+               STx5 = signed_ct_create_tx(PK, Nonce2=2, Fee2=5, 2),
+               ?assertEqual(ok, aec_tx_pool:push(STx5)),
+               ?assertEqual({ok, [STx3, STx5]}, aec_tx_pool:get_candidate(10, <<>>)),
+
+               %% Order by nonce even if fee and gas price are higher
+               STx6 = signed_ct_call_tx(PK, _Nonce6=3,_Fee6=9,_GasPrice6=9),
+               ?assertEqual(ok, aec_tx_pool:push(STx6)),
+               ?assertEqual({ok, [STx3, STx5, STx6]}, aec_tx_pool:get_candidate(10, <<>>)),
 
                ok
        end},
