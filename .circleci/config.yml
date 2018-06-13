@@ -153,9 +153,13 @@ references:
         environment:
           PACKAGES_DIR: *packages_workspace
         command: |
-          export PACKAGE=${PACKAGES_DIR:?}/epoch-$(cat VERSION)-ubuntu-x86_64.tar.gz
+          PACKAGE=${PACKAGES_DIR:?}/epoch-$(cat VERSION)-ubuntu-x86_64.tar.gz
+          LIMIT="tag_role_epoch:&tag_env_${DEPLOY_ENV:?}"
+          if [ -n "$DEPLOY_COLOR" ]; then
+            LIMIT+=":&tag_color_${DEPLOY_COLOR}"
+          fi
           cd deployment/ansible
-          ansible-playbook --limit="tag_role_epoch:&tag_env_${DEPLOY_ENV:?}" \
+          ansible-playbook --limit="${LIMIT:?}" \
             --extra-vars "package=${PACKAGE:?} hosts_group=tag_env_${DEPLOY_ENV:?} env=${DEPLOY_ENV:?}" \
             deploy.yml
 
@@ -478,10 +482,18 @@ jobs:
       - DEPLOY_ENV: dev2
     steps: *deploy_steps
 
-  deploy_uat:
+  deploy_uat_blue:
     <<: *container_config
     environment:
       - DEPLOY_ENV: uat
+      - DEPLOY_COLOR: blue
+    steps: *deploy_steps
+
+  deploy_uat_green:
+    <<: *container_config
+    environment:
+      - DEPLOY_ENV: uat
+      - DEPLOY_COLOR: green
     steps: *deploy_steps
 
   deploy_fast_integration:
@@ -639,7 +651,7 @@ workflows:
             branches:
               only: env/dev2
 
-      - hodl:
+      - hodl_blue:
           type: approval
           filters:
             branches:
@@ -647,15 +659,33 @@ workflows:
             tags:
               only: /^v.*$/
 
-      - deploy_uat:
+      - hodl_green:
+          type: approval
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*$/
+
+      - deploy_uat_blue:
           requires:
             - eunit
             - static_analysis
             - linux_package
-            - hodl
+            - hodl_blue
           filters:
             branches:
-              ignore: /.*/
+              only: env/uat_blue
+            tags:
+              only: /^v.*$/
+
+      - deploy_uat_green:
+          requires:
+            - deploy_uat_blue
+            - hodl_green
+          filters:
+            branches:
+              only: env/uat_green
             tags:
               only: /^v.*$/
 
@@ -664,7 +694,7 @@ workflows:
             - eunit
             - static_analysis
             - linux_package
-            - hodl
+            - hodl_blue
           filters:
             branches:
               ignore: /.*/
@@ -676,7 +706,7 @@ workflows:
             - eunit
             - static_analysis
             - osx_package
-            - hodl
+            - hodl_blue
           filters:
             branches:
               ignore: /.*/
@@ -687,7 +717,7 @@ workflows:
           requires:
             - eunit
             - static_analysis
-            - hodl
+            - hodl_blue
           filters:
             branches:
               ignore: /.*/
