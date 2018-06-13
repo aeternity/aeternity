@@ -1,6 +1,6 @@
 # CUDA Miner
 
-As the release packages do not ship with CUDA miner, one should build it themselves. It consists of the below steps:
+The release packages do not ship with a CUDA miner, but you can build it yourself by following these steps:
 
 - CUDA toolkit installation
 - CUDA miner install
@@ -13,7 +13,7 @@ The documentation below is tested on:
 - Ubuntu 16.04.4
 - non-root user with `ALL` sudo privileges
 
-The documentation also assumes that an `epoch` node is already installed either by [release package](installation.md) or [from source](build.md), thus also it's dependencies are also installed.
+The documentation also assumes that an `epoch` node is already installed either by [release package](installation.md) or [from source](build.md), thus it's dependencies are also installed.
 Make sure the `epoch` node is stopped to speedup the installation process.
 
 ## CUDA toolkit installation
