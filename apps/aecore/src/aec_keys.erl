@@ -11,8 +11,6 @@
 
 -behaviour(gen_server).
 
--include("aec_crypto.hrl").
-
 %% API
 -export([start_link/0,
          start_link/1,
@@ -23,7 +21,6 @@
          terminate/2, code_change/3]).
 
 -export([sign/1, pubkey/0,
-         wait_for_pubkey/0,
          setup_peer_keys/2,
          save_peer_keys/4,
          peer_key_filenames/1]).
@@ -118,17 +115,6 @@ peer_pubkey() ->
 peer_privkey() ->
     gen_server:call(?MODULE, peer_privkey).
 
--spec wait_for_pubkey() -> {ok, binary()}.
-wait_for_pubkey() ->
-    wait_for_pubkey(1).
-
-wait_for_pubkey(Sleep) ->
-    case pubkey() of
-        {error, key_not_found} ->
-            timer:sleep(Sleep),
-            wait_for_pubkey(Sleep+10);
-        R -> R
-    end.
 
 -spec check_key_pair() -> boolean().
 check_key_pair() ->

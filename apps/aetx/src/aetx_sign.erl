@@ -36,7 +36,6 @@
               binary_signed_tx/0]).
 
 -include_lib("apps/aecore/include/blocks.hrl").
--include_lib("apps/aecore/include/aec_crypto.hrl").
 
 -record(signed_tx, {
           tx                         :: aetx:tx(),
