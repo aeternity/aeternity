@@ -26,7 +26,7 @@ call(Value, Data, State) ->
             {PrimOp} when ?PRIM_CALL_IN_ORACLE_RANGE(PrimOp) ->
                 oracle_call(PrimOp, Value, Data, State)
         end
-    catch _:Err ->
+    catch _:_Err ->
 	%% TODO: Better error for illegal call.
         {error, out_of_gas}
     end.
