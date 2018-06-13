@@ -13,7 +13,13 @@
 -behaviour(gen_server).
 
 -define(MEMPOOL, mempool).
--define(KEY_NONCE_PATTERN(Sender), {{'_', Sender, '$1', '_'}, '_'}).
+-define(KEY(NegFee, Origin, Nonce, TxHash), {NegFee, Origin, Nonce, TxHash}).
+-define(VALUE_POS, 2).
+-define(KEY_AS_MATCH_SPEC_RESULT(NegFee, Origin, Nonce, TxHash),
+        { %% Tuple of arity 1 where the single element is the mempool key tuple.
+         ?KEY(NegFee, Origin, Nonce, TxHash)
+        }).
+-define(KEY_NONCE_PATTERN(Sender), {?KEY('_', Sender, '$1', '_'), '_'}).
 
 %% API
 -export([ start_link/0
@@ -42,7 +48,7 @@
 -type non_pos_integer() :: neg_integer() | 0.
 
 -type pool_db_key() ::
-        {negated_fee(), aec_keys:pubkey(), non_neg_integer(), binary()}.
+        ?KEY(negated_fee(), aec_keys:pubkey(), non_neg_integer(), binary()).
 -type pool_db_value() :: aetx_sign:signed_tx().
 -type pool_db() :: atom().
 
@@ -174,13 +180,13 @@ int_get_candidate(0,_Mempool, _,_BlockHash, Acc) ->
     gb_trees:values(Acc);
 int_get_candidate(_N,_Mempool, '$end_of_table',_BlockHash, Acc) ->
     gb_trees:values(Acc);
-int_get_candidate(N, Mempool, {_Fee, Account, Nonce, _} = Key, BlockHash, Acc) ->
+int_get_candidate(N, Mempool, ?KEY(_Fee, Account, Nonce, _) = Key, BlockHash, Acc) ->
     case gb_trees:is_defined({Account, Nonce}, Acc) of
         true ->
             %% The earlier must have had higher fee. Skip this tx.
             int_get_candidate(N, Mempool, ets:next(Mempool, Key), BlockHash, Acc);
         false ->
-            Tx = ets:lookup_element(Mempool, Key, 2),
+            Tx = ets:lookup_element(Mempool, Key, ?VALUE_POS),
             case check_nonce_at_hash(Tx, BlockHash) of
                 ok ->
                     NewAcc = gb_trees:insert({Account, Nonce}, Tx, Acc),
@@ -204,13 +210,15 @@ pool_db_key(SignedTx) ->
     %%         the following key is unique for a transaction
     %%       * negative fee places high profit transactions at the beginning
     %%       * ordered_set type enables implicit overwrite of the same txs
-    {-aetx:fee(Tx), aetx:origin(Tx), aetx:nonce(Tx), aetx_sign:hash(SignedTx)}.
+    ?KEY(-aetx:fee(Tx), aetx:origin(Tx), aetx:nonce(Tx), aetx_sign:hash(SignedTx)).
 
 -spec select_pool_db_key_by_hash(pool_db(), binary()) -> {ok, pool_db_key()} | not_in_ets.
 select_pool_db_key_by_hash(Mempool, TxHash) ->
-    case sel_return(ets_select(Mempool, [{ {{'$1', '$2', '$3', '$4'}, '_'},
-                                           [{'=:=','$4', TxHash}],
-                                           [{{'$1', '$2', '$3', '$4'}}] }], infinity)) of
+    MatchFunction =
+        { {?KEY('$1', '$2', '$3', '$4'), '_'},
+          [{'=:=','$4', TxHash}],
+          [?KEY_AS_MATCH_SPEC_RESULT('$1', '$2', '$3', '$4')] },
+    case sel_return(ets_select(Mempool, [MatchFunction], infinity)) of
         [Key] -> {ok, Key};
         [] -> not_in_ets
     end.
