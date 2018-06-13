@@ -65,6 +65,7 @@ def test_contract_create():
     top = external_api.get_top()
     common.wait_until_height(external_api, top.height + 3)
     alice_balance = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
+
     assert_equals(alice_balance0,
                   alice_balance
                   + test_settings["create_contract"]["fee"]
