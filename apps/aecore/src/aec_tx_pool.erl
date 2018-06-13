@@ -198,8 +198,7 @@ int_get_candidate(N, Mempool, {_Fee, Account, Nonce, _} = Key, BlockHash, Acc) -
 -spec pool_db_key(aetx_sign:signed_tx()) -> pool_db_key().
 pool_db_key(SignedTx) ->
     Tx = aetx_sign:tx(SignedTx),
-    %% INFO: Sort by fee
-    %%       TODO: sort by fee, then by origin, then by nonce
+    %% INFO: Sort by fee, then by origin, then by nonce
 
     %% INFO: * given that nonce is an index of transactions for a user,
     %%         the following key is unique for a transaction
