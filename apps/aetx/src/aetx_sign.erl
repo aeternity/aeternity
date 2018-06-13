@@ -19,6 +19,7 @@
 
 %% API
 -export([sign/2,
+         new/2,
          hash/1,
          add_signatures/2,
          tx/1,
@@ -46,6 +47,12 @@
 
 -define(VALID_PUBK(K), byte_size(K) =:= 32).
 -define(VALID_PRIVK(K), byte_size(K) =:= 64).
+
+-spec new(aetx:tx(), [binary()]) -> signed_tx().
+new(Tx, Signatures) ->
+    _ = aetx:specialize_type(Tx),
+    true = lists:all(fun is_binary/1, Signatures),
+    #signed_tx{tx = Tx, signatures = lists:usort(Signatures)}.
 
 %% @doc Given a transaction Tx, a private key or list of keys,
 %% return the cryptographically signed transaction using the default crypto
