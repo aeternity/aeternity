@@ -150,7 +150,6 @@ origin(#contract_create_tx{} = Tx) ->
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
                    {ok, aec_trees:trees()} | {error, term()}.
 check(#contract_create_tx{nonce = Nonce,
-                          nonce = Nonce,
                           vm_version = VmVersion,
                           call_data  = CallData,
                           amount     = Amount,
