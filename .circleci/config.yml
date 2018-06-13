@@ -485,14 +485,14 @@ jobs:
   deploy_uat_blue:
     <<: *container_config
     environment:
-      - DEPLOY_ENV: uat
+      - DEPLOY_ENV: dev1
       - DEPLOY_COLOR: blue
     steps: *deploy_steps
 
   deploy_uat_green:
     <<: *container_config
     environment:
-      - DEPLOY_ENV: uat
+      - DEPLOY_ENV: dev1
       - DEPLOY_COLOR: green
     steps: *deploy_steps
 
@@ -540,6 +540,8 @@ workflows:
               ignore:
                 - env/dev1
                 - env/dev2
+                - env/uat_green
+                - env/uat_blue
                 - master
 
       - deploy_api_docs:
@@ -655,7 +657,7 @@ workflows:
           type: approval
           filters:
             branches:
-              ignore: /.*/
+              only: 157217781_blue_green_deployments
             tags:
               only: /^v.*$/
 
@@ -663,7 +665,7 @@ workflows:
           type: approval
           filters:
             branches:
-              ignore: /.*/
+              only: 157217781_blue_green_deployments
             tags:
               only: /^v.*$/
 
@@ -675,7 +677,9 @@ workflows:
             - hodl_blue
           filters:
             branches:
-              only: env/uat_blue
+              only:
+                - env/uat_blue
+                - 157217781_blue_green_deployments
             tags:
               only: /^v.*$/
 
@@ -685,7 +689,9 @@ workflows:
             - hodl_green
           filters:
             branches:
-              only: env/uat_green
+              only:
+                - env/uat_green
+                - 157217781_blue_green_deployments
             tags:
               only: /^v.*$/
 
