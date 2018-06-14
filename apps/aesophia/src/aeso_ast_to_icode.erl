@@ -244,6 +244,9 @@ ast_body({bool, _, Bool}) ->		%BOOL as ints
     #integer{value = Value};
 ast_body({int, _, Value}) ->
     #integer{value = Value};
+ast_body({hash, _, Hash}) ->
+    <<Value:32/unit:8>> = Hash,
+    #integer{value = Value};
 ast_body({string,_,Bin}) ->
     Cpts = [size(Bin)|aeso_data:binary_to_words(Bin)],
     #tuple{cpts = [#integer{value=X} || X <- Cpts]};
