@@ -231,8 +231,8 @@ handle_local_action(State = #state{ local = {active, Sync} }, Action, Res) ->
                     do_local_action(Sync, {unfold, NewUnfolds1, 0}),
                     State#state{ local = {active, Sync#sync{ data = NewGets1 }} }
             end;
-        {get, {ok, Txs}} ->
-            [ aec_tx_pool:push(Tx) || Tx <- Txs ],
+        {get, {ok, NTxs}} ->
+            epoch_sync:info("TX-pool sync added ~p TXs", [NTxs]),
             do_local_action(Sync, {finish, true}),
             State;
         {finish, {ok, Done}} ->
@@ -312,8 +312,18 @@ do_local_action(Sync = #sync{ peer_id = PeerId }, {unfold, Unfolds, Delay}) ->
           end,
     do_local_action(Sync, unfold, Fun, ?LOCAL_ACTION_TIMEOUT);
 do_local_action(Sync = #sync{ peer_id = PeerId }, {get, TxHashes}) ->
-    Fun = fun() -> aec_peer_connection:tx_pool_sync_get(PeerId, TxHashes) end,
-    do_local_action(Sync, get, Fun, ?LOCAL_ACTION_TIMEOUT);
+    Fun = fun() ->
+              case aec_peer_connection:tx_pool_sync_get(PeerId, TxHashes) of
+                  {ok, Txs} ->
+                      [ aec_tx_pool:push(Tx) || Tx <- Txs ],
+                      {ok, length(Txs)};
+                  Err = {error, _} ->
+                      Err
+              end
+          end,
+    %% Actually pushing the transactions might be a slow operation,
+    %% increase the timeout.
+    do_local_action(Sync, get, Fun, ?LOCAL_ACTION_TIMEOUT * 10);
 do_local_action(Sync = #sync{ peer_id = PeerId }, {finish, Done}) ->
     %% Try to send finish to Peer - if it fails it fails but at least
     %% we tried.
