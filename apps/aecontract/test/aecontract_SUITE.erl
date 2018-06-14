@@ -23,6 +23,7 @@
         , sophia_state/1
         , sophia_spend/1
         , sophia_oracles/1
+        , sophia_fundme/1
         , create_store/1
         , update_store/1
         , read_store/1
@@ -65,7 +66,8 @@ groups() ->
     , {sophia,     [sequence], [ sophia_identity,
                                  sophia_state,
                                  sophia_spend,
-                                 sophia_oracles ]}
+                                 sophia_oracles,
+                                 sophia_fundme ]}
     , {store, [sequence], [ create_store
                           , update_store
                           , read_store
@@ -219,9 +221,11 @@ create_contract_(ContractCreateTxGasPrice) ->
     ok.
 
 sign_and_apply_transaction(Tx, PrivKey, S1, Miner) ->
+    sign_and_apply_transaction(Tx, PrivKey, S1, Miner, 1).
+
+sign_and_apply_transaction(Tx, PrivKey, S1, Miner, Height) ->
     SignedTx = aetx_sign:sign(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
-    Height   = 1,
     {ok, AcceptedTxs, Trees1} =
         aec_block_candidate:apply_block_txs([SignedTx], Miner, Trees, Height, ?PROTOCOL_VERSION),
     S2       = aect_test_utils:set_trees(Trees1, S1),
@@ -231,9 +235,11 @@ sign_and_apply_transaction(Tx, PrivKey, S1, Miner) ->
     end.
 
 sign_and_apply_transaction_strict(Tx, PrivKey, S1, Miner) ->
+    sign_and_apply_transaction_strict(Tx, PrivKey, S1, Miner, 1).
+
+sign_and_apply_transaction_strict(Tx, PrivKey, S1, Miner, Height) ->
     SignedTx = aetx_sign:sign(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
-    Height   = 1,
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
     {ok, AcceptedTxs, Trees1} =
         aec_block_candidate:apply_block_txs_strict([SignedTx], Miner, Trees, Height, ConsensusVersion),
@@ -425,9 +431,10 @@ create_contract(Owner, Name, Args, Options, S) ->
                      , fee        => 1
                      , deposit    => 0
                      , amount     => 0
-                     , gas        => 10000 }, Options), S),
-    PrivKey     = aect_test_utils:priv_key(Owner, S),
-    {ok, S1} = sign_and_apply_transaction(CreateTx, PrivKey, S, ?MINER_PUBKEY),
+                     , gas        => 10000 }, maps:remove(height, Options)), S),
+    Height   = maps:get(height, Options, 1),
+    PrivKey  = aect_test_utils:priv_key(Owner, S),
+    {ok, S1} = sign_and_apply_transaction(CreateTx, PrivKey, S, ?MINER_PUBKEY, Height),
     ContractKey = aect_contracts:compute_contract_pubkey(Owner, Nonce),
     {ContractKey, S1}.
 
@@ -444,10 +451,11 @@ call_contract(Caller, ContractKey, Fun, Type, Args, Options, S) ->
                  , call_data  => CallData
                  , fee        => 1
                  , amount     => 0
-                 , gas        => 30000
-                 }, Options), S),
+                 , gas        => 50000
+                 }, maps:remove(height, Options)), S),
+    Height   = maps:get(height, Options, 1),
     PrivKey  = aect_test_utils:priv_key(Caller, S),
-    {ok, S1} = sign_and_apply_transaction(CallTx, PrivKey, S, ?MINER_PUBKEY),
+    {ok, S1} = sign_and_apply_transaction(CallTx, PrivKey, S, ?MINER_PUBKEY, Height),
     CallKey  = aect_call:id(Caller, Nonce, ContractKey),
     CallTree = aect_test_utils:calls(S1),
     Call     = aect_call_state_tree:get_call(ContractKey, CallKey, CallTree),
@@ -459,6 +467,10 @@ call_contract(Caller, ContractKey, Fun, Type, Args, Options, S) ->
             revert -> revert
         end,
     {Result, S1}.
+
+account_balance(PubKey, S) ->
+    Account = aect_test_utils:get_account(PubKey, S),
+    {aec_accounts:balance(Account), S}.
 
 args_to_binary(Args) -> list_to_binary(args_to_list(Args)).
 
@@ -543,6 +555,127 @@ sophia_oracles(_Cfg) ->
     {some, 4001}      = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
     {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Ct, 0, 10, TTL + 10}),
     ok.
+
+-record(fundme_scenario,
+    { name
+    , goal
+    , deadline
+    , events }).
+
+run_scenario(#fundme_scenario
+             { name     = Scenario
+             , goal     = Goal
+             , deadline = Deadline
+             , events   = Events }) ->
+
+    state(aect_test_utils:new_state()),
+    Denomination  = 1000 * 1000,
+    StartingFunds = 1000 * 1000 * Denomination,
+    InvestorNames = [ Investor || {contribute, Investor, _Amount, _Height} <- Events ],
+
+    %% Set up accounts
+    Beneficiary   = ?call(new_account, StartingFunds),
+    Organiser     = ?call(new_account, StartingFunds),
+    Investors     = maps:from_list([ {Name, ?call(new_account, StartingFunds)} || Name <- InvestorNames ]),
+
+    %% Create the contract
+    Contract      = ?call(create_contract, Organiser, fundme, {Beneficiary, Deadline, Goal * Denomination}),
+
+    %% Run the events
+    Account = fun(beneficiary) -> Beneficiary; (Name) -> maps:get(Name, Investors) end,
+    RunEvent = fun({contribute, Name, Amount, Height}) ->
+                    ?call(call_contract, Account(Name), Contract, contribute, bool, {},
+                                #{amount => Amount * Denomination, height => Height});
+                  ({withdraw, Name, Height, _}) ->
+                    ?call(call_contract, Account(Name), Contract, withdraw, {tuple, []}, {},
+                          #{height => Height})
+               end,
+
+    Results = [ {E, RunEvent(E)} || E <- Events ],
+
+    %% Analyse scenario
+    Contributed = fun(By) ->
+        lists:sum([ Amount || {contribute, Name, Amount, Height} <- Events,
+                              By == any orelse By == Name, Height < Deadline ]) end,
+
+    TotalFunds    = Contributed(any),
+    Funded        = TotalFunds >= Goal,
+
+    Withdrawn = fun(By) ->
+            [] /= [ w || {withdraw, Name, Height, _} <- Events,
+                         Name == By, Height >= Deadline, not Funded ]
+        end,
+
+    Contributions = maps:map(fun(Name, _) ->
+        case Withdrawn(Name) of
+            true  -> 0;
+            false -> Contributed(Name)
+        end end, Investors),
+
+    GasDelta = 100000,
+    Is = fun(_, Expect, Actual) when Expect - GasDelta =< Actual, Actual =< Expect -> true;
+            (Tag, Expect, Actual) -> {Scenario, Tag, Actual, is_not, Expect, minus_gas} end,
+
+    BeneficiaryWithdraw = [] /= [ w || {withdraw, beneficiary, Height, _} <- Events,
+                                       Funded, Height >= Deadline ],
+
+    io:format("TotalFunds = ~p\n", [TotalFunds]),
+
+    %% Check results
+    ExpectedResult =
+        fun({withdraw, _, _, ok})       -> {};
+           ({withdraw, _, _, error})    -> error;
+           ({contribute, _, _, Height}) -> Height < Deadline end,
+    lists:foreach(fun({E, Res}) ->
+        Expect = ExpectedResult(E),
+        case Expect == Res of
+            true -> ok;
+            _    -> exit({Scenario, E, expected, Expect, got, Res})
+        end end, Results),
+
+    %% Check beneficiary balance
+    BalanceB = ?call(account_balance, Beneficiary),
+    true = Is(beneficiary,
+              if BeneficiaryWithdraw -> TotalFunds * Denomination;
+                 true                -> 0 end, BalanceB - StartingFunds),
+
+    %% Check investor balances
+    lists:foreach(fun({Name, Acc}) ->
+            Bal    = ?call(account_balance, Acc),
+            Expect = -maps:get(Name, Contributions),
+            true = Is(Name, Expect * Denomination, Bal - StartingFunds)
+        end, maps:to_list(Investors)),
+
+    ok.
+
+%% The crowd funding example.
+sophia_fundme(_Cfg) ->
+    Funded = #fundme_scenario{
+        name     = funded_scenario,
+        goal     = 10,
+        deadline = 2000,
+        events   =
+            [{contribute, {investor, I}, I, 1000 + 100 * I} || I <- lists:seq(1, 5)] ++
+            [{contribute, {investor, 2}, 5, 1900},
+             {withdraw, beneficiary, 2100,   ok},
+             {contribute, {investor, 1}, 3, 2150},
+             {withdraw, beneficiary, 2200,   error},
+             {withdraw, {investor, 5}, 2200, error} ] },
+
+    NotFunded = #fundme_scenario{
+        name     = not_funded_scenario,
+        goal     = 25,
+        deadline = 2000,
+        events   =
+            [{contribute, {investor, I}, I, 1000 + 100 * I} || I <- lists:seq(1, 5)] ++
+            [{contribute, {investor, 2}, 5, 1900},
+             {withdraw, beneficiary, 2100, error},
+             {contribute, {investor, 2}, 3, 2150}] ++
+            [{withdraw, {investor, I}, 2200 + I, ok} || I <- lists:seq(1, 4)] ++
+            [{withdraw, {investor, 3}, 2300, error}] },
+
+    run_scenario(Funded),
+    run_scenario(NotFunded).
 
 %%%===================================================================
 %%% Store
