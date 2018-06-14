@@ -33,7 +33,7 @@
         , peer_con     :: pid()
         , peer_con_ref :: undefined | reference()
         , tree         :: undefined | aeu_mp_trees:tree()
-        , data         :: undefined | [binary()]
+        , data         :: undefined | [aeu_mp_trees:key()]
         }).
 
 -type sync_object() :: #sync{}.
@@ -46,6 +46,15 @@
 -define(SERVER, ?MODULE).
 -define(MAX_INCOMING_SYNC, 5).
 -define(TX_PLACEHOLDER, []). %% RLP encodable.
+
+-type unfold_node() :: aeu_mp_trees:unfold_node().
+-type unfold_leaf() :: aeu_mp_trees:unfold_leaf().
+-type unfold_subtree() :: {subtree, aeu_mp_trees:path()}.
+-type unfold_key() :: {key, aeu_mp_trees:key()}.
+-type unfold() :: unfold_node()
+                | unfold_leaf()
+                | unfold_subtree()
+                | unfold_key().
 
 %% -- API --------------------------------------------------------------------
 start_link() ->
@@ -353,6 +362,7 @@ do_get_(TxHash) ->
         []
     end.
 
+-spec unfold(unfold(), aeu_mp_trees:tree()) -> [unfold_leaf() | unfold_node() | unfold_key()].
 unfold({node, Path, Node}, Tree) ->
     aeu_mp_trees:unfold(Path, Node, Tree);
 unfold({leaf, Path}, _Tree) ->
@@ -362,6 +372,7 @@ unfold({subtree, Path}, Tree) ->
 unfold({key, Key}, _Tree) ->
     [{key, Key}].
 
+-spec get_subtree(aeu_mp_trees:path(), aeu_mp_trees:tree()) -> [unfold_key()].
 get_subtree(Key, _Tree) when bit_size(Key) =:= 32 * 8 ->
     [{key, Key}];
 get_subtree(Path, Tree) ->
@@ -397,6 +408,7 @@ serialize_unfolds(Us) ->
 deserialize_unfolds(SUs) ->
     [ deserialize_unfold(SU) || SU <- SUs ].
 
+-spec serialize_unfold(unfold()) -> aeu_rlp:encoded().
 serialize_unfold({node, Path, Node}) ->
     aeu_rlp:encode(
         aec_serialization:encode_fields(
@@ -418,6 +430,7 @@ serialize_unfold({key, Key}) ->
             [{type, int}, {key, binary}],
             [{type, ?KEY_TAG}, {key, Key}])).
 
+-spec deserialize_unfold(aeu_rlp:encoded()) -> unfold() | {error, term()}.
 deserialize_unfold(Blob) ->
     try
         [TypeBin | Fields] = aeu_rlp:decode(Blob),
@@ -454,6 +467,9 @@ deserialize_niblets(<<1:4, Bin/bitstring>>) ->
 deserialize_niblets(<<0:8, Bin/bitstring>>) ->
     Bin.
 
+-spec analyze_unfolds([unfold()], aeu_mp_trees:tree()) ->
+                             {[unfold_subtree() | unfold_node()],
+                              [aeu_mp_trees:key()]}.
 analyze_unfolds(Us, Tree) ->
     analyze_unfolds(Us, Tree, [], []).
 

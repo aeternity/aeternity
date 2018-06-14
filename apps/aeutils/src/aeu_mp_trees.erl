@@ -38,6 +38,9 @@
              , iterator_opts/0
              , key/0
              , value/0
+             , path/0
+             , unfold_leaf/0
+             , unfold_node/0
              ]).
 
 -record(mpt, { hash = <<>>          :: <<>> | hash() %% <<>> for the empty tree
@@ -83,6 +86,9 @@
 -type hash()         :: <<_:256>>.
 
 -type db()           :: aeu_mp_trees_db:db().
+
+-type unfold_leaf() :: {leaf, path()}.
+-type unfold_node() :: {node, path(), enc_node()}.
 
 %%%===================================================================
 %%% API
@@ -194,8 +200,7 @@ iterator_next(#iter{key = Key, root = Hash, db = DB, max_length = M} = Iter) ->
         {Key1, Val} -> {Key1, Val, Iter#iter{key = Key1}}
     end.
 
--spec unfold(path(), hash(), tree()) ->
-        [{leaf, path()} | {node, path(), enc_node()}].
+-spec unfold(path(), hash(), tree()) -> [unfold_leaf() | unfold_node()].
 unfold(<<>>, Hash, #mpt{ hash = Hash }) ->
     [];
 unfold(<<>>, _, #mpt{ hash = Hash, db = DB }) ->
