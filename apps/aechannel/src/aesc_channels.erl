@@ -72,12 +72,12 @@
 %%%===================================================================
 
 -spec close_solo(channel(), aesc_payload:tx(), aec_trees:poi(), aec_blocks:height()) -> channel().
-close_solo(#channel{lock_period = LockPeriod,
-                    initiator = Initiator,
-                    responder = Responder} = Ch, PayloadTx, PoI, Height) ->
+close_solo(#channel{lock_period = LockPeriod} = Ch, PayloadTx, PoI, Height) ->
+    Initiator = initiator(Ch),
+    Responder = responder(Ch),
     ClosesAt = Height + LockPeriod,
-    InitiatorAmt = amount_from_poi(PoI, Initiator),
-    ResponderAmt = amount_from_poi(PoI, Responder),
+    InitiatorAmt = fetch_amount_from_poi(PoI, Initiator),
+    ResponderAmt = fetch_amount_from_poi(PoI, Responder),
     Ch#channel{initiator_amount = InitiatorAmt,
                total_amount     = InitiatorAmt + ResponderAmt,
                round            = aesc_payload:round(PayloadTx),
@@ -183,11 +183,11 @@ serialization_template(?CHANNEL_VSN) ->
     ].
 
 -spec slash(channel(), aesc_payload:tx(), aec_trees:poi(), aec_blocks:height()) -> channel().
-slash(#channel{lock_period = LockPeriod,
-               initiator = Initiator,
-               responder = Responder} = Ch, PayloadTx, PoI, Height) ->
-    InitiatorAmt = amount_from_poi(PoI, Initiator),
-    ResponderAmt = amount_from_poi(PoI, Responder),
+slash(#channel{lock_period = LockPeriod} = Ch, PayloadTx, PoI, Height) ->
+    Initiator = initiator(Ch),
+    Responder = responder(Ch),
+    InitiatorAmt = fetch_amount_from_poi(PoI, Initiator),
+    ResponderAmt = fetch_amount_from_poi(PoI, Responder),
     ClosesAt = Height + LockPeriod,
     Ch#channel{initiator_amount = InitiatorAmt,
                total_amount     = InitiatorAmt +  ResponderAmt,
@@ -244,6 +244,7 @@ lock_period(#channel{lock_period = LockPeriod}) ->
 round(#channel{round = Round}) ->
     Round.
 
-amount_from_poi(PoI, Id) ->
-    {ok, Account} = aec_trees:lookup_poi(accounts, aec_id:specialize(Id, account), PoI),
+-spec fetch_amount_from_poi(aec_trees:poi(), aec_keys:pubkey()) -> non_neg_integer().
+fetch_amount_from_poi(PoI, Pubkey) ->
+    {ok, Account} = aec_trees:lookup_poi(accounts, Pubkey, PoI),
     aec_accounts:balance(Account).

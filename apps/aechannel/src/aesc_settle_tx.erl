@@ -1,3 +1,5 @@
+%%%=============================================================================
+%%% @copyright 2018, Aeternity Anstalt
 %%% @doc
 %%%    Module defining the State Channel settle transaction
 %%% @end
