@@ -496,20 +496,6 @@ jobs:
       - DEPLOY_COLOR: green
     steps: *deploy_steps
 
-  manual_deploy_uat_blue:
-    <<: *container_config
-    environment:
-      - DEPLOY_ENV: dev1
-      - DEPLOY_COLOR: blue
-    steps: *deploy_steps
-
-  manual_deploy_uat_green:
-    <<: *container_config
-    environment:
-      - DEPLOY_ENV: dev1
-      - DEPLOY_COLOR: green
-    steps: *deploy_steps
-
   deploy_fast_integration:
     <<: *container_config
     environment:
@@ -554,8 +540,6 @@ workflows:
               ignore:
                 - env/dev1
                 - env/dev2
-                - env/uat_green
-                - env/uat_blue
                 - master
 
       - deploy_api_docs:
@@ -704,24 +688,6 @@ workflows:
               ignore: /.*/
             tags:
               only: /^v.*$/
-
-      - manual_deploy_uat_blue:
-          requires:
-            - eunit
-            - static_analysis
-            - linux_package
-          filters:
-            branches:
-              only: env/uat_blue
-
-      - manual_deploy_uat_green:
-          requires:
-            - eunit
-            - static_analysis
-            - linux_package
-          filters:
-            branches:
-              only: env/uat_green
 
       - github_release_linux:
           requires:
