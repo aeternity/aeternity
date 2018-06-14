@@ -335,7 +335,7 @@ close_solo_negative(Cfg) ->
     %% Test reject payload with missing signatures
     TestPayloadSigners =
         fun(PrivKeys) ->
-            PayloadMissingS = aesc_test_utils:payload(MissingChannelId, PubKey1, PubKey2,
+            PayloadMissingS = aesc_test_utils:payload(ChannelId, PubKey1, PubKey2,
                                                   PrivKeys, PayloadSpec),
             TxSpecMissingS = aesc_test_utils:close_solo_tx_spec(ChannelId, PubKey1,
                                                       PayloadMissingS, PoI, S),
@@ -361,7 +361,7 @@ close_solo_negative(Cfg) ->
             TxSpecMissingS = aesc_test_utils:close_solo_tx_spec(ChannelId, I,
                                                       PayloadMissingS, PoI3, S),
             {ok, TxMissingS} = aesc_close_solo_tx:new(TxSpecMissingS),
-            {error, wrong_channel_peers} =
+            {error, signature_check_failed} =
                 aetx:check(TxMissingS, Trees, Height, ?PROTOCOL_VERSION)
         end,
     TestPayloadWrongPeers(PubKey1, PubKey3, [PrivKey1, PrivKey3]),
@@ -949,7 +949,7 @@ slash_negative(Cfg) ->
     %% Test reject payload with missing signatures
     TestPayloadSigners =
         fun(PrivKeys) ->
-            PayloadMissingS = aesc_test_utils:payload(MissingChannelId, PubKey1, PubKey2,
+            PayloadMissingS = aesc_test_utils:payload(ChannelId, PubKey1, PubKey2,
                                                   PrivKeys, PayloadSpec),
             TxSpecMissingS = aesc_test_utils:slash_tx_spec(ChannelId, PubKey1,
                                                       PayloadMissingS, PoI, S),
@@ -975,7 +975,7 @@ slash_negative(Cfg) ->
             TxSpecMissingS = aesc_test_utils:slash_tx_spec(ChannelId, I,
                                                       PayloadMissingS, PoI3, S),
             {ok, TxMissingS} = aesc_slash_tx:new(TxSpecMissingS),
-            {error, wrong_channel_peers} =
+            {error, signature_check_failed} =
                 aetx:check(TxMissingS, Trees, Height, ?PROTOCOL_VERSION)
         end,
     TestPayloadWrongPeers(PubKey1, PubKey3, [PrivKey1, PrivKey3]),

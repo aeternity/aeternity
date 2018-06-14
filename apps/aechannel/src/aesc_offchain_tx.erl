@@ -21,8 +21,6 @@
 
 %% Getters
 -export([channel_id/1,
-         initiator/1,
-         responder/1,
          updates/1,
          previous_round/1,
          round/1,
@@ -44,8 +42,6 @@
 
 -record(channel_offchain_tx, {
           channel_id         :: aec_id:id(),
-          initiator          :: aec_id:id(),
-          responder          :: aec_id:id(),
           updates            :: [aesc_offchain_state:update()],
           state_hash         :: binary(),
           previous_round     :: non_neg_integer(),
@@ -62,16 +58,12 @@
 
 -spec new(map()) -> {ok, aetx:tx()}.
 new(#{channel_id         := ChannelIdBin,
-      initiator          := InitiatorPubKey,
-      responder          := ResponderPubKey,
       state_hash         := StateHash,
       updates            := Updates,
       previous_round     := Prev,
       round              := Round}) ->
     Tx = #channel_offchain_tx{
             channel_id         = aec_id:create(channel, ChannelIdBin),
-            initiator          = aec_id:create(account, InitiatorPubKey),
-            responder          = aec_id:create(account, ResponderPubKey),
             updates            = Updates,
             state_hash         = StateHash,
             previous_round     = Prev,
@@ -96,15 +88,13 @@ nonce(#channel_offchain_tx{round = N}) ->
     N.
 
 -spec origin(tx()) -> aec_keys:pubkey().
-origin(#channel_offchain_tx{} = Tx) ->
-    initiator(Tx).
+origin(#channel_offchain_tx{}) ->
+    error(do_not_use).
 
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_offchain_tx{
          channel_id         = _ChannelId,
-         initiator          = _InitiatorPubKey,
-         responder          = _ResponderPubKey,
          updates            = _Updates,
          state_hash         = _State,
          previous_round     = _Prev,
@@ -119,14 +109,16 @@ process(#channel_offchain_tx{}, _Context, _Trees, _Height, _ConsensusVersion) ->
     error(off_chain_tx).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
-signers(#channel_offchain_tx{} = Tx,_Trees) ->
-    {ok, [initiator(Tx), responder(Tx)]}.
+signers(#channel_offchain_tx{} = Tx, Trees) ->
+    case aec_chain:get_channel(channel_id(Tx), Trees) of
+        {ok, Channel} ->
+            {ok, [aesc_channels:initiator(Channel), aesc_channels:responder(Channel)]};
+        {error, not_found} -> {error, channel_does_not_exist}
+    end.
 
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_offchain_tx{
              channel_id         = ChannelId,
-             initiator          = InitiatorId,
-             responder          = ResponderId,
              updates            = Updates,
              state_hash         = StateHash,
              previous_round     = Prev,
@@ -135,8 +127,6 @@ serialize(#channel_offchain_tx{
      [ {channel_id        , ChannelId}
      , {previous_round    , Prev}
      , {round             , Round}
-     , {initiator         , InitiatorId}
-     , {responder         , ResponderId}
      , {updates           , Updates}
      , {state_hash        , StateHash}
      ]}.
@@ -146,17 +136,11 @@ deserialize(?CHANNEL_OFFCHAIN_TX_VSN,
             [ {channel_id        , ChannelId}
             , {previous_round    , Prev}
             , {round             , Round}
-            , {initiator         , InitiatorId}
-            , {responder         , ResponderId}
             , {updates           , Updates}
             , {state_hash        , StateHash}]) ->
     channel = aec_id:specialize_type(ChannelId),
-    account = aec_id:specialize_type(InitiatorId),
-    account = aec_id:specialize_type(ResponderId),
     #channel_offchain_tx{
        channel_id         = ChannelId,
-       initiator          = InitiatorId,
-       responder          = ResponderId,
        updates            = Updates,
        state_hash         = StateHash,
        previous_round     = Prev,
@@ -172,10 +156,6 @@ for_client(#channel_offchain_tx{
       <<"channel_id">>         => aec_base58c:encode(channel, channel_id(Tx)),
       <<"previous_round">>     => Prev,
       <<"round">>              => Round,
-      <<"initiator">>          => aec_base58c:encode(
-                                    account_pubkey, initiator(Tx)),
-      <<"responder">>          => aec_base58c:encode(
-                                    account_pubkey, responder(Tx)),
       <<"updates">>            => [aesc_offchain_state:update_for_client(D) || D <- Updates],
       <<"state_hash">>         => aec_base58c:encode(state, StateHash)}.
 
@@ -183,8 +163,6 @@ serialization_template(?CHANNEL_OFFCHAIN_TX_VSN) ->
     [ {channel_id        , id}
     , {previous_round    , int}
     , {round             , int}
-    , {initiator         , id}
-    , {responder         , id}
     , {updates           , [{int,binary,binary,int}]}
     , {state_hash        , binary}
     ].
@@ -196,14 +174,6 @@ serialization_template(?CHANNEL_OFFCHAIN_TX_VSN) ->
 -spec channel_id(tx()) -> aesc_channels:id().
 channel_id(#channel_offchain_tx{channel_id = ChannelId}) ->
     aec_id:specialize(ChannelId, channel).
-
--spec initiator(tx()) -> aec_keys:pubkey().
-initiator(#channel_offchain_tx{initiator = InitiatorId}) ->
-    aec_id:specialize(InitiatorId, account).
-
--spec responder(tx()) -> aec_keys:pubkey().
-responder(#channel_offchain_tx{responder = ResponderId}) ->
-    aec_id:specialize(ResponderId, account).
 
 -spec updates(tx()) -> [aesc_offchain_state:update()].
 updates(#channel_offchain_tx{updates = Updates}) ->
