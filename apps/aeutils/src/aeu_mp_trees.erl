@@ -37,6 +37,7 @@
              , iterator/0
              , iterator_opts/0
              , key/0
+             , path/0
              , value/0
              , unfold_leaf/0
              , unfold_node/0
