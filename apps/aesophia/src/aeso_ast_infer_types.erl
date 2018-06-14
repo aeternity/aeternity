@@ -13,6 +13,7 @@
 global_env() ->
     Ann     = [{origin, system}],
     Int     = {id, Ann, "int"},
+    Bool    = {id, Ann, "bool"},
     String  = {id, Ann, "string"},
     Address = {id, Ann, "address"},
     State   = {id, Ann, "state"},
@@ -20,6 +21,7 @@ global_env() ->
     Query   = fun(Q, R) -> {app_t, Ann, {id, Ann, "oracle_query"}, [Q, R]} end,
     Unit    = {tuple_t, Ann, []},
     List    = fun(T) -> {app_t, Ann, {id, Ann, "list"}, [T]} end,
+    Option  = fun(T) -> {app_t, Ann, {id, Ann, "option"}, [T]} end,
     Map     = fun(A, B) -> {app_t, Ann, {id, Ann, "map"}, [A, B]} end,
     Pair    = fun(A, B) -> {tuple_t, Ann, [A, B]} end,
     Fun     = fun(Ts, T) -> {type_sig, Ts, T} end,
@@ -28,7 +30,7 @@ global_env() ->
     Signature = Int,
     TTL       = Int,
     Fee       = Int,
-    [A, B, Q, R] = lists:map(TVar, ["a", "b", "q", "r"]),
+    [A, B, Q, R, K, V] = lists:map(TVar, ["a", "b", "q", "r", "k", "v"]),
      %% Placeholder for inter-contract calls until we get proper type checking
      %% of contracts.
     [{"raw_call", Fun([Address, String, Int, Int, A], B)},
@@ -61,7 +63,11 @@ global_env() ->
      {["Oracle", "extend"],       Fun([Oracle(Q, R), Signature, Fee, TTL], Unit)},
      {["Oracle", "get_answer"],   Fun([Oracle(Q, R), Query(Q, R)], option_t(Ann, R))},
      %% Maps
-     {["Map", "from_list"], Fun1(List(Pair(A, B)), Map(A, B))}
+     {["Map", "from_list"], Fun1(List(Pair(K, V)), Map(K, V))},
+     {["Map", "to_list"],   Fun1(Map(K, V), List(Pair(K, V)))},
+     {["Map", "lookup"],    Fun([Map(K, V), K], Option(V))},
+     {["Map", "member"],    Fun([Map(K, V), K], Bool)},
+     {["Map", "size"],      Fun1(Map(K, V), Int)}
     ].
 
 option_t(As, T) -> {app_t, As, {id, As, "option"}, [T]}.

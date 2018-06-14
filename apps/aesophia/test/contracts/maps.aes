@@ -3,6 +3,11 @@ contract Maps =
   function lookup(m : map(string, int), k) =
     m[k]
 
+  function mlookup(m : map(string, int), k) : option(int) =
+    Map.lookup(m, k)
+
+  function member(m : map(string, int), k) = Map.member(m, k)
+
   function map1() =
     Map.from_list([("foo", 1004), ("bar", 1005)])
 
@@ -13,7 +18,9 @@ contract Maps =
   function test() =
     [ lookup(update(map1(), "bar", 1006), "bar"),
       lookup(map2(), "foo"),
-      map2() { ["bar"] @ x = x * 2 } ["bar"] ]
+      map2() { ["bar"] @ x = x * 2 } ["bar"],
+      if(member(map2(), "foo")) 200 else 0,
+      Map.size(map1()) ]
 
   function empty() : map(string, int) = {}
 

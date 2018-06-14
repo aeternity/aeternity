@@ -188,30 +188,50 @@ ast_body({qid, _, ["Oracle", "get_answer"]})   -> error({underapplied_primitive,
 ast_body({qid, _, ["Oracle", "get_question"]}) -> error({underapplied_primitive, 'Oracle.get_question'});
 
 %% Maps
-ast_body({map_get, _, Map, {typed, _, Key, KeyType}}) ->
-    Fun = {map_get, key_type(KeyType)},
+
+%% -- map lookup  m[k]
+ast_body({map_get, _, Map, {typed, Ann, Key, KeyType}}) ->
+    Fun = {map_get, key_type(Ann, KeyType)},
     #funcall{ function = #var_ref{name = {builtin, Fun}},
               args     = [ast_body(Map), ast_body(Key)] };
-ast_body(?qid_app(["Map", "from_list"], [List], _, _)) ->
-    ast_body(List);
-ast_body({qid, _, ["Map", "from_list"]}) ->
-    error({underapplied_primitive, 'Map.from_list'});
 
+%% -- lookup functions
+ast_body(?qid_app(["Map", "lookup"], [Map, {typed, Ann, Key, KeyType}], _, _)) ->
+    Fun = {map_lookup, key_type(Ann, KeyType)},
+    #funcall{ function = #var_ref{name = {builtin, Fun}},
+              args     = [ast_body(Map), ast_body(Key)] };
+ast_body(?qid_app(["Map", "member"], [Map, {typed, Ann, Key, KeyType}], _, _)) ->
+    Fun = {map_member, key_type(Ann, KeyType)},
+    #funcall{ function = #var_ref{name = {builtin, Fun}},
+              args     = [ast_body(Map), ast_body(Key)] };
+ast_body(?qid_app(["Map", "size"], [Map], _, _)) ->
+    #funcall{ function = #var_ref{name = {builtin, map_size}},
+              args     = [ast_body(Map), {integer, 0}] };
+
+%% -- map conversion to/from list
+ast_body(?qid_app(["Map", "from_list"], [List], _, _)) -> ast_body(List);
+ast_body(?qid_app(["Map", "to_list"],   [Map], _, _))  -> ast_body(Map);
+
+ast_body({qid, _, ["Map", "from_list"]}) -> error({underapplied_primitive, 'Map.from_list'});
+ast_body({qid, _, ["Map", "to_list"]})   -> error({underapplied_primitive, 'Map.to_list'});
+ast_body({qid, _, ["Map", "lookup"]})    -> error({underapplied_primitive, 'Map.to_list'});
+ast_body({qid, _, ["Map", "member"]})    -> error({underapplied_primitive, 'Map.to_list'});
+
+%% -- map construction { k1 = v1, k2 = v2 }
 ast_body({map, Ann, KVs}) ->
     ast_body({list, Ann, [{tuple, Ann, [K, V]} || {K, V} <- KVs]});
 
+%% -- map update       m { [k] = v } or m { [k] @ x = f(x) }
 ast_body({map, _, Map, []}) -> ast_body(Map);
 ast_body({map, _, Map, [Upd]}) ->
-    %% TODO: nested updates (desugar those earlier?)
     {Fun, Args} = case Upd of
-            {field, _, [{map_get, _, {typed, _, Key, KeyType}}], Val} ->
-                {{map_put, key_type(KeyType)}, [ast_body(Key), ast_body(Val)]};
-            {field_upd, _, [{map_get, _, {typed, _, Key, KeyType}}], ValFun} ->
-                {{map_upd, key_type(KeyType)}, [ast_body(Key), ast_body(ValFun)]}
+            {field, _, [{map_get, _, {typed, Ann, Key, KeyType}}], Val} ->
+                {{map_put, key_type(Ann, KeyType)}, [ast_body(Key), ast_body(Val)]};
+            {field_upd, _, [{map_get, _, {typed, Ann, Key, KeyType}}], ValFun} ->
+                {{map_upd, key_type(Ann, KeyType)}, [ast_body(Key), ast_body(ValFun)]}
         end,
     #funcall{ function = #var_ref{name = {builtin, Fun}},
               args     = [ast_body(Map) | Args] };
-
 ast_body({map, Ann, Map, [Upd | Upds]}) ->
     ast_body({map, Ann, {map, Ann, Map, [Upd]}, Upds});
 
@@ -400,20 +420,28 @@ set_functions(NewFuns, Icode) ->
 %% Builtins
 %% -------------------------------------------------------------------
 
-key_type(Type) ->
+key_type(Ann, Type) ->
     case ast_typerep(Type) of
         word   -> word;
         string -> string;
-        _      -> error({unsupported_key_type, Type})
+        _      -> error({unsupported_key_type, Ann, Type})
     end.
 
-builtin_deps({map_get, string}) -> [str_equal];
-builtin_deps({map_put, string}) -> [str_equal];
-builtin_deps({map_upd, string}) -> [str_equal];
+builtin_deps({map_get, Type})      -> [{map_lookup, Type}];
+builtin_deps({map_member, Type})   -> [{map_lookup, Type}];
+builtin_deps({map_lookup, string}) -> [str_equal];
+builtin_deps({map_put, string})    -> [str_equal];
+builtin_deps({map_upd, string})    -> [str_equal];
 builtin_deps(_) -> [].
 
+dep_closure(Deps) ->
+    case lists:umerge(lists:map(fun builtin_deps/1, Deps)) of
+        []    -> Deps;
+        Deps1 -> lists:umerge(Deps, dep_closure(Deps1))
+    end.
+
 used_builtins(#funcall{ function = #var_ref{ name = {builtin, Builtin} } }) ->
-    lists:umerge([Builtin], builtin_deps(Builtin));
+    dep_closure([Builtin]);
 used_builtins([H|T]) ->
   lists:umerge(used_builtins(H), used_builtins(T));
 used_builtins(T) when is_tuple(T) ->
@@ -426,21 +454,62 @@ builtin_eq(word, A, B)   -> {binop, '==', A, B};
 builtin_eq(string, A, B) -> {funcall, {var_ref, {builtin, str_equal}}, [A, B]}.
 
 builtin_function(Builtin = {map_get, Type}) ->
+    %% function map_get(m, k) =
+    %%   switch(map_lookup(m, k))
+    %%     Some(v) => v
+    {{builtin, Builtin},
+        [{"m", map_typerep(Type, word)}, {"k", Type}],
+            {switch, {funcall, {var_ref, {builtin, {map_lookup, Type}}},
+                     [{var_ref, "m"}, {var_ref, "k"}]},
+                [{{tuple, [{var_ref, "v"}]}, {var_ref, "v"}}]},
+     word};
+
+builtin_function(Builtin = {map_member, Type}) ->
+    %% function map_member(m, k) : bool =
+    %%   switch(Map.lookup(m, k))
+    %%     None => false
+    %%     _    => true
+    {{builtin, Builtin},
+        [{"m", map_typerep(Type, word)}, {"k", Type}],
+            {switch, {funcall, {var_ref, {builtin, {map_lookup, Type}}},
+                     [{var_ref, "m"}, {var_ref, "k"}]},
+                [{{list, []}, {integer, 0}},
+                 {{var_ref, "_"}, {integer, 1}}]},
+     word};
+
+builtin_function(Builtin = {map_lookup, Type}) ->
+    %% function map_lookup(map, key) =
+    %%   switch(map)
+    %%     [] => None
+    %%     (k, val) :: m =>
+    %%       if(k == key)
+    %%          Some(val)
+    %%      else
+    %%          map_lookup(m, key)
     Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
     Name = {builtin, Builtin},
     {Name,
-        [{"m", map_typerep(Type, word)}, {"k", Type}],
-        {switch, {var_ref, "m"},
-            [{{binop, '::',
-                {tuple, [{var_ref, "k'"}, {var_ref, "v"}]},
-                {var_ref, "m'"}},
-              {ifte, Eq({var_ref, "k"}, {var_ref, "k'"}),
-                {var_ref, "v"},
-                {funcall, {var_ref, Name},
-                    [{var_ref, "m'"}, {var_ref, "k"}]}}}]},
-        word};
+     [{"map", {list, {tuple, [word, word]}}}, {"key", word}],
+     {switch, {var_ref, "map"},
+              [{{list, []}, {list, []}},
+               {{binop, '::',
+                  {tuple, [{var_ref, "k"}, {var_ref, "val"}]},
+                  {var_ref, "m"}},
+                {ifte, Eq({var_ref, "k"}, {var_ref, "key"}),
+                    {tuple, [{var_ref, "val"}]},
+                    {funcall, {var_ref, Name},
+                             [{var_ref, "m"}, {var_ref, "key"}]}}}]},
+    {option, word}};
 
 builtin_function(Builtin = {map_put, Type}) ->
+    %% function map_put(map, key, val) =
+    %%   switch(map)
+    %%     [] => [(key, val)]
+    %%     (k, v) :: m =>
+    %%       if(k == key)
+    %%          (k, val) :: m
+    %%      else
+    %%          (k, v) :: map_put(m, key, val)  // note reallocates (k, v) pair
     Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
     Name = {builtin, Builtin},
     {Name,
@@ -466,6 +535,13 @@ builtin_function(Builtin = {map_put, Type}) ->
      {list, {tuple, [Type, word]}}};
 
 builtin_function(Builtin = {map_upd, Type}) ->
+    %% function map_upd(map, key, fun) =
+    %%   switch(map)
+    %%     (k, v) :: m =>
+    %%       if(k == key)
+    %%          (k, fun(v)) :: m
+    %%      else
+    %%          (k, v) :: map_upd(m, key, fun)  // note reallocates (k, v) pair
     Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
     Name = {builtin, Builtin},
     {Name,
@@ -488,6 +564,22 @@ builtin_function(Builtin = {map_upd, Type}) ->
                         {var_ref, "key"},
                         {var_ref, "fun"}]}}}}]},
      {list, {tuple, [Type, word]}}};
+
+builtin_function(map_size) ->
+    %% function size(map, acc) =
+    %%   switch(map)
+    %%     []        => acc
+    %%     _ :: map' => size(map', acc + 1)
+    Name = {builtin, map_size},
+    {Name,
+        [{"map", {list, word}}, {"acc", word}],
+        {switch, {var_ref, "map"},
+                [{{list, []}, {var_ref, "acc"}},
+                 {{binop, '::', {var_ref, "_"}, {var_ref, "map'"}},
+                  {funcall, {var_ref, Name},
+                           [{var_ref, "map'"},
+                            {binop, '+', {var_ref, "acc"}, {integer, 1}}]}}]},
+        word};
 
 builtin_function(str_equal) ->
     V = fun(X) -> {var_ref, atom_to_list(X)} end,
