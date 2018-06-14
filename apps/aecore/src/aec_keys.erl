@@ -254,7 +254,6 @@ handle_call(privkey, From, State) ->
 handle_call(peer_pubkey,_From, #state{peer_pub=PubKey} = State) ->
     {reply, {ok, PubKey}, State};
 handle_call(peer_privkey, From, State) ->
-    %% TODO: This should go away
     call_worker(peer_privkey, From, State),
     {noreply, State}.
 

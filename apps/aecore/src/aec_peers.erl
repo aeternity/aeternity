@@ -72,7 +72,6 @@
 -type peer_info() :: #{ host    => string() | binary(),
                         port    => inet:port_number(),
                         pubkey  := aec_keys:pubkey(),
-                        seckey  => binary(),
                         ping    => boolean(),
                         trusted => boolean() }.
 -type peer() :: #peer{}.
@@ -216,9 +215,8 @@ start_link() ->
 
 
 init(ok) ->
-    {ok, SecKey} = aec_keys:peer_privkey(),
     {ok, PubKey} = aec_keys:peer_pubkey(),
-    LocalPeer = #{seckey => SecKey, pubkey => PubKey},
+    LocalPeer = #{pubkey => PubKey},
     PMons = ets:new(aec_peer_monitors, [named_table, protected]),
     epoch_sync:info("aec_peers started at ~p", [LocalPeer]),
     {ok, #state{ peers = gb_trees:empty(),
@@ -435,9 +433,9 @@ handle_cast({add, PeerInfo}, State0) ->
                         epoch_sync:debug("Adding peer ~p", [PeerInfo]),
                         case maps:get(ping, PeerInfo, false) of
                             true ->
-                                #{ seckey := SKey, pubkey := PKey } = State0#state.local_peer,
+                                #{ pubkey := PKey } = State0#state.local_peer,
                                 ConnInfo = PeerInfo#{ r_pubkey => maps:get(pubkey, PeerInfo),
-                                                      seckey => SKey, pubkey => PKey },
+                                                      pubkey => PKey },
                                 {ok, Pid} = aec_peer_connection:connect(ConnInfo),
                                 Peer#peer{ connection = {pending, Pid} };
                             false ->
