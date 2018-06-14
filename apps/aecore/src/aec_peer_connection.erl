@@ -763,7 +763,7 @@ handle_tx_pool_sync_init(S, _MsgObj) ->
     S.
 
 handle_tx_pool_sync_unfold(S, MsgObj) ->
-    Unfolds = maps:get(unfolds, MsgObj, []),
+    Unfolds = maps:get(unfolds, MsgObj),
     case aec_tx_pool_sync:sync_unfold(peer_id(S), Unfolds) of
         {ok, NewUnfolds} ->
             send_response(S, txps_unfold, {ok, #{ unfolds => NewUnfolds }});
@@ -773,7 +773,7 @@ handle_tx_pool_sync_unfold(S, MsgObj) ->
     S.
 
 handle_tx_pool_sync_get(S, MsgObj) ->
-    TxHashes = maps:get(tx_hashes, MsgObj, []),
+    TxHashes = maps:get(tx_hashes, MsgObj),
     case aec_tx_pool_sync:sync_get(peer_id(S), TxHashes) of
         {ok, Txs} ->
             SerTxs = [ aetx_sign:serialize_to_binary(Tx) || Tx <- Txs ],
@@ -784,8 +784,8 @@ handle_tx_pool_sync_get(S, MsgObj) ->
     S.
 
 handle_tx_pool_sync_finish(S, MsgObj) ->
-    aec_tx_pool_sync:sync_finish(peer_id(S), {done, maps:get(done, MsgObj, false)}),
-    send_response(S, txps_finish, {ok, #{ done => maps:get(done, MsgObj, false) }}),
+    aec_tx_pool_sync:sync_finish(peer_id(S), {done, maps:get(done, MsgObj)}),
+    send_response(S, txps_finish, {ok, #{ done => maps:get(done, MsgObj) }}),
     S.
 
 handle_tx_pool_sync_rsp(S, Action, {tx_pool, From, _TRef}, MsgObj) ->
@@ -793,13 +793,13 @@ handle_tx_pool_sync_rsp(S, Action, {tx_pool, From, _TRef}, MsgObj) ->
         init ->
             gen_server:reply(From, ok);
         unfold ->
-            gen_server:reply(From, {ok, maps:get(unfolds, MsgObj, [])});
+            gen_server:reply(From, {ok, maps:get(unfolds, MsgObj)});
         get ->
             Txs = [ aetx_sign:deserialize_from_binary(SerTx)
-                    || SerTx <- maps:get(txs, MsgObj, []) ],
+                    || SerTx <- maps:get(txs, MsgObj) ],
             gen_server:reply(From, {ok, Txs});
         finish ->
-            gen_server:reply(From, {ok, maps:get(done, MsgObj, false)})
+            gen_server:reply(From, {ok, maps:get(done, MsgObj)})
     end,
     remove_request_fld(S, tx_pool).
 

@@ -26,6 +26,7 @@
          terminate/2, code_change/3]).
 
 -import(aec_peers, [ppp/1]).
+-include("blocks.hrl").
 
 -record(sync,
         { id           :: reference()
@@ -33,7 +34,7 @@
         , peer_con     :: pid()
         , peer_con_ref :: undefined | reference()
         , tree         :: undefined | aeu_mp_trees:tree()
-        , data         :: undefined | [binary()]
+        , data         :: undefined | [aeu_mp_trees:key()]
         }).
 
 -type sync_object() :: #sync{}.
@@ -45,6 +46,16 @@
 
 -define(SERVER, ?MODULE).
 -define(MAX_INCOMING_SYNC, 5).
+-define(TX_PLACEHOLDER, []). %% RLP encodable.
+
+-type unfold_node()    :: aeu_mp_trees:unfold_node().
+-type unfold_leaf()    :: aeu_mp_trees:unfold_leaf().
+-type unfold_subtree() :: {subtree, aeu_mp_trees:path()}.
+-type unfold_key()     :: {key, <<_:256>>}.
+-type unfold()         :: unfold_node()
+                        | unfold_leaf()
+                        | unfold_subtree()
+                        | unfold_key().
 
 %% -- API --------------------------------------------------------------------
 start_link() ->
@@ -251,9 +262,14 @@ handle_unfold(State, PeerId, SerUnfolds) ->
         #sync{ tree = undefined } ->
             {error, tree_not_ready};
         #sync{ tree = Tree } ->
-            Unfolds = deserialize_unfolds(SerUnfolds),
-            NewUnfolds = lists:append([ unfold(Unfold, Tree) || Unfold <- Unfolds ]),
-            {ok, serialize_unfolds(NewUnfolds)}
+            case deserialize_unfolds(SerUnfolds) of
+                {ok, Unfolds} ->
+                    NewUnfolds =
+                        lists:append([ unfold(Unfold, Tree) || Unfold <- Unfolds ]),
+                    {ok, serialize_unfolds(NewUnfolds)};
+                Err = {error, _} ->
+                    Err
+            end
     end.
 
 handle_finish(State = #state{ remote = Remotes }, PeerId) ->
@@ -287,7 +303,7 @@ do_local_action(Sync = #sync{ peer_id = PeerId }, {unfold, Unfolds, Delay}) ->
               SerUnfolds = serialize_unfolds(Unfolds),
               case aec_peer_connection:tx_pool_sync_unfold(PeerId, SerUnfolds) of
                   {ok, NewSerUnfolds} ->
-                      {ok, deserialize_unfolds(NewSerUnfolds)};
+                      deserialize_unfolds(NewSerUnfolds);
                   {error, <<"tree_not_ready">>} ->
                       {ok, tree_not_ready, Unfolds, Delay};
                   Err = {error, _} ->
@@ -352,23 +368,26 @@ do_get_(TxHash) ->
         []
     end.
 
+-spec unfold(unfold(), aeu_mp_trees:tree()) -> [unfold()].
 unfold({node, Path, Node}, Tree) ->
     aeu_mp_trees:unfold(Path, Node, Tree);
 unfold({leaf, Path}, _Tree) ->
-    {leaf, Path};
+    [{leaf, Path}];
 unfold({subtree, Path}, Tree) ->
     get_subtree(Path, Tree);
 unfold({key, Key}, _Tree) ->
     [{key, Key}].
 
-get_subtree(Key, _Tree) when bit_size(Key) =:= 32 * 8 ->
+-spec get_subtree(aeu_mp_trees:path(), aeu_mp_trees:tree()) -> [unfold_key()].
+get_subtree(Key, _Tree) when bit_size(Key) =:= ?TXS_HASH_BYTES * 8 ->
     [{key, Key}];
 get_subtree(Path, Tree) ->
     get_subtree(aeu_mp_trees:iterator_from(Path, Tree), Path, bit_size(Path), []).
 
 get_subtree(Iter, Path, S, Acc) ->
     case aeu_mp_trees:iterator_next(Iter) of
-        {Key = <<Path:S/bits, _Rest/bits>>, _, NewIter} ->
+        {Key = <<Path:S/bits, _Rest/bits>>, _, NewIter}
+                when byte_size(Key) =:= ?TXS_HASH_BYTES ->
             get_subtree(NewIter, Path, S, [{key, Key} | Acc]);
         _X ->
             lists:reverse(Acc)
@@ -377,7 +396,7 @@ get_subtree(Iter, Path, S, Acc) ->
 build_tx_mpt() ->
     try
         F = fun(TxHash, Tree) ->
-                aeu_mp_trees:put(TxHash, [], Tree)
+                aeu_mp_trees:put(TxHash, ?TX_PLACEHOLDER, Tree)
             end,
         Tree = aec_db:fold_mempool(F, aeu_mp_trees:new()),
         {ok, Tree}
@@ -390,12 +409,20 @@ build_tx_mpt() ->
 -define(SUBTREE_TAG, 2).
 -define(KEY_TAG, 3).
 
+-spec serialize_unfolds([unfold()]) -> [aeu_rlp:encoded()].
 serialize_unfolds(Us) ->
     [ serialize_unfold(U) || U <- Us ].
 
+-spec deserialize_unfolds([aeu_rlp:encoded()]) ->
+        {ok, [unfold()]} | {error, term()}.
 deserialize_unfolds(SUs) ->
-    [ deserialize_unfold(SU) || SU <- SUs ].
+    try
+        {ok, [ deserialize_unfold(SU) || SU <- SUs ]}
+    catch _:Reason ->
+        {error, Reason}
+    end.
 
+-spec serialize_unfold(unfold()) -> aeu_rlp:encoded().
 serialize_unfold({node, Path, Node}) ->
     aeu_rlp:encode(
         aec_serialization:encode_fields(
@@ -417,14 +444,11 @@ serialize_unfold({key, Key}) ->
             [{type, int}, {key, binary}],
             [{type, ?KEY_TAG}, {key, Key}])).
 
+-spec deserialize_unfold(aeu_rlp:encoded()) -> unfold().
 deserialize_unfold(Blob) ->
-    try
-        [TypeBin | Fields] = aeu_rlp:decode(Blob),
-        [{type, Type}] = aec_serialization:decode_fields([{type, int}], [TypeBin]),
-        deserialize_unfold(Type, Fields)
-    catch _:Reason ->
-        {error, Reason}
-    end.
+    [TypeBin | Fields] = aeu_rlp:decode(Blob),
+    [{type, Type}] = aec_serialization:decode_fields([{type, int}], [TypeBin]),
+    deserialize_unfold(Type, Fields).
 
 deserialize_unfold(?NODE_TAG, Flds) ->
     [{path, Path}, {node, Node}] =
@@ -460,10 +484,13 @@ analyze_unfolds([], _Tree, NewUs, NewGets) ->
     {lists:reverse(NewUs), lists:reverse(NewGets)};
 analyze_unfolds([{key, Key} | Us], Tree, NewUs, NewGets) ->
     analyze_unfolds(Us, Tree, NewUs, [Key | NewGets]);
-analyze_unfolds([{leaf, Path} | Us], Tree, NewUs, NewGets) ->
-    case aeu_mp_trees:get(Path, Tree) of
-        <<>> -> analyze_unfolds(Us, Tree, NewUs, [Path | NewGets]);
-        []   -> analyze_unfolds(Us, Tree, NewUs, NewGets)
+analyze_unfolds([{leaf, Key} | Us], Tree, NewUs, NewGets) ->
+    case aeu_mp_trees:get(Key, Tree) of
+        <<>> ->
+            %% Key is not in local tree - i.e. TX is missing, get it.
+            analyze_unfolds(Us, Tree, NewUs, [Key | NewGets]);
+        ?TX_PLACEHOLDER ->
+            analyze_unfolds(Us, Tree, NewUs, NewGets)
     end;
 analyze_unfolds([N = {node, Path, Node} | Us], Tree, NewUs, NewGets) ->
     case aeu_mp_trees:has_node(Path, Node, Tree) of

@@ -369,7 +369,7 @@ tx_pool_sync(Cfg) ->
 
 
     %% Check that the valid transactions made it to the chain.
-    #{ reciever := RecvAccount, amount := Amount } = lists:last(ValidTxs),
+    #{ receiver := RecvAccount, amount := Amount } = lists:last(ValidTxs),
     wait_for_value({balance, aec_base58c:encode(account_pubkey, RecvAccount), Amount},
                    [node1], 5 * ?MINING_TIMEOUT, Cfg),
 
@@ -410,7 +410,7 @@ tx_pool_sync(Cfg) ->
     add_spend_txs(node2, Patron, 1, 6),
 
     %% Check that the last of the first batch of invalid transactions made it to the chain.
-    #{ reciever := RecvAccount2, amount := Amount2 } = lists:last(InvalidTxs),
+    #{ receiver := RecvAccount2, amount := Amount2 } = lists:last(InvalidTxs),
     wait_for_value({balance, aec_base58c:encode(account_pubkey, RecvAccount2), Amount2},
                    [node1], 5 * ?MINING_TIMEOUT, Cfg),
 
@@ -432,7 +432,7 @@ add_spend_tx(Node, #{ pubkey := SendPubKey, privkey := SendSecKey }, Nonce) ->
     SignedTx = aetx_sign:sign(Tx, SendSecKey),
     SerSignTx = aetx_sign:serialize_to_binary(SignedTx),
     {ok, 200, #{ tx_hash := TxHash }} = request(Node, 'PostTx', #{ tx => aec_base58c:encode(transaction, SerSignTx) }),
-    #{ reciever => RecvPubKey, reciever_sec => RecvSecKey, amount => 10000, tx_hash => TxHash }.
+    #{ receiver => RecvPubKey, receiver_sec => RecvSecKey, amount => 10000, tx_hash => TxHash }.
 
 %% Test that two disconnected clusters of nodes are able to recover and merge
 %% there chain when connected back together.
