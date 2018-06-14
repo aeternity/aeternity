@@ -54,7 +54,6 @@ worker(Mod) ->
 peer_listener_spec() ->
     NumAcceptors = acceptors(),
     MaxConnections = max_connections(),
-    {ok, SecKey} = aec_keys:peer_privkey(),
     {ok, PubKey} = aec_keys:peer_pubkey(),
     ranch:child_spec(aec_peer, NumAcceptors,
                      ranch_tcp, [
@@ -64,7 +63,6 @@ peer_listener_spec() ->
                      ],
                      aec_peer_connection, #{
                          ext_sync_port => ext_sync_port(),
-                         seckey => SecKey,
                          pubkey => PubKey
                      }
                     ).

@@ -45,6 +45,7 @@
         , copy_genesis_dir/2
         , signed_spend_tx/1
         , fake_start_aehttp/0
+        , wait_for_pubkey/0
         ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -112,6 +113,18 @@ mock_genesis(PresetAccounts) ->
 unmock_genesis() ->
     meck:unload(aec_genesis_block_settings),
     ok.
+
+wait_for_pubkey() ->
+    wait_for_pubkey(1).
+
+wait_for_pubkey(Sleep) ->
+    case aec_keys:pubkey() of
+        {error, key_not_found} ->
+            timer:sleep(Sleep),
+            wait_for_pubkey(Sleep+10);
+        R -> R
+    end.
+
 
 wait_for_it(Fun, Value) ->
     wait_for_it(Fun, Value, 0).
@@ -210,7 +223,7 @@ gen_blocks_only_chain(Length) ->
     blocks_only_chain(gen_block_chain_with_state(Length)).
 
 gen_block_chain_with_state(Length, PresetAccounts) when Length > 0 ->
-    {ok, MinerAccount} = aec_keys:wait_for_pubkey(),
+    {ok, MinerAccount} = wait_for_pubkey(),
     gen_block_chain_with_state(Length, MinerAccount, PresetAccounts, []).
 
 
@@ -223,7 +236,7 @@ gen_block_chain_with_state(N, MinerAccount, PresetAccounts, [{PreviousBlock, Tre
     gen_block_chain_with_state(N - 1, MinerAccount, PresetAccounts, [{B, S} | Acc]).
 
 extend_block_chain_with_state(PrevBlock, PrevBlockState, Data) ->
-    {ok, MinerAccount} = aec_keys:wait_for_pubkey(),
+    {ok, MinerAccount} = wait_for_pubkey(),
     Targets    = maps:get(targets, Data),
     TxsFun     = maps:get(txs_by_height_fun, Data),
     Nonce      = maps:get(nonce, Data, 12345),
@@ -251,7 +264,7 @@ next_block_with_state(PrevBlock, Trees, Target, Time0, TxsFun, Nonce, MinerAcc) 
      S}.
 
 signed_spend_tx(ArgsMap) ->
-    {ok, SenderAccount} = aec_keys:wait_for_pubkey(),
+    {ok, SenderAccount} = wait_for_pubkey(),
     ArgsMap1 = maps:put(sender, SenderAccount, ArgsMap),
     {ok, SpendTx} = aec_spend_tx:new(ArgsMap1),
     {ok, SSTx} = aec_keys:sign(SpendTx),

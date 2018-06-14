@@ -4,36 +4,60 @@
 %%% @doc
 %%%     Key manager for AE node
 %%%     * it will open keys that it finds using sys.config
-%%% @end
-%%% Created : 28 Aug 2017
+%%%
+%%%     The gen_server aec_keys is the keeper of the signing and the
+%%%     peer keypairs for the miner. To avoid leaking the sensitive
+%%%     information (password, private key, etc) a separate worker
+%%%     process handles all things that need this information.
+%%%
+%%%     The worker process is linked to the server process, but traps
+%%%     exits, performs all operations in try...catch etc to avoid
+%%%     crash dumps. The worker process is flagged as 'sensitive',
+%%%     meaning that it cannot be traced, it will not be visible in
+%%%     crash dumps, etc.
+%%%
+%%%
+%%% @end Created : 28 Aug 2017
 %%%-------------------------------------------------------------------
 -module(aec_keys).
 
 -behaviour(gen_server).
 
--include("aec_crypto.hrl").
-
 %% API
+-export([peer_pubkey/0,
+         peer_privkey/0,
+         pubkey/0,
+         sign/1
+        ]).
+
+%% Supervisor API
 -export([start_link/0,
-         start_link/1,
-         stop/0]).
+         stop/0
+        ]).
 
 %% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2, code_change/3]).
+-export([init/1,
+         handle_call/3,
+         handle_cast/2,
+         handle_info/2,
+         terminate/2,
+         code_change/3
+        ]).
 
--export([sign/1, pubkey/0,
-         wait_for_pubkey/0,
-         setup_peer_keys/2,
+%% System test API
+-export([peer_key_filenames/1,
          save_peer_keys/4,
-         peer_key_filenames/1]).
+         setup_peer_keys/2
+        ]).
 
--export([peer_pubkey/0, peer_privkey/0, check_peer_keys/2]).
-
--export([check_key_pair/0]).
-
+%% Test API
 -ifdef(TEST).
--export([encrypt_key/2, check_sign_keys/2, sign_privkey/0]).
+-export([check_peer_keys/2,
+         check_sign_keys/2,
+         encrypt_key/2,
+         sign_privkey/0,
+         start_link/1
+        ]).
 -endif.
 
 -define(SERVER, ?MODULE).
@@ -49,17 +73,23 @@
 -define(FILENAME_PEERPRIV, "peer_key").
 
 -record(state, {
-          sign_pub       :: undefined | binary(),
-          sign_priv      :: undefined | binary(),
-          sign_pub_file  :: undefined | binary(),
-          sign_priv_file :: undefined | binary(),
+          worker_pid     :: pid(),
+          sign_pub       :: binary(),
+          peer_pub       :: binary()
+         }).
+
+-record(worker_state, {
+          sign_pub       :: binary(),
+          sign_priv      :: binary(),
+          sign_pub_file  :: binary(),
+          sign_priv_file :: binary(),
           sign_pass      :: password(),
-          peer_pub       :: undefined | binary(),
-          peer_priv      :: undefined | binary(),
-          peer_pub_file  :: undefined | binary(),
-          peer_priv_file :: undefined | binary(),
+          peer_pub       :: binary(),
+          peer_priv      :: binary(),
+          peer_pub_file  :: binary(),
+          peer_priv_file :: binary(),
           peer_pass      :: password(),
-          keys_dir       :: undefined | binary()
+          keys_dir       :: binary()
          }).
 
 -type password() :: binary().
@@ -71,8 +101,57 @@
 
 -export_type([privkey/0, pubkey/0]).
 
+
 %%%===================================================================
 %%% API
+%%%===================================================================
+
+-spec sign(tx()) -> {ok, signed_tx()} | {error, term()}.
+sign(Tx) ->
+    %% Serialize first to maybe (hopefully) pass as reference.
+    Bin = aetx:serialize_to_binary(Tx),
+    {ok, Signature} = gen_server:call(?MODULE, {sign, Bin}),
+    {ok, aetx_sign:new(Tx, [Signature])}.
+
+-spec pubkey() -> {ok, binary()} | {error, key_not_found}.
+pubkey() ->
+    gen_server:call(?MODULE, pubkey).
+
+-spec peer_pubkey() -> {ok, binary()} | {error, key_not_found}.
+peer_pubkey() ->
+    gen_server:call(?MODULE, peer_pubkey).
+
+-spec peer_privkey() -> {ok, binary()} | {error, key_not_found}.
+peer_privkey() ->
+    gen_server:call(?MODULE, peer_privkey).
+
+%%%===================================================================
+%%% Test API
+%%%===================================================================
+
+-ifdef(TEST).
+-spec sign_privkey() -> {ok, binary()} | {error, key_not_found}.
+sign_privkey() ->
+    gen_server:call(?MODULE, privkey).
+-endif.
+
+%% Used from system tests
+save_peer_keys(Password, KeysDir, PubKey, PrivKey) ->
+    case check_peer_keys(PubKey, PrivKey) of
+        true ->
+            {PeerPubFile, PeerPrivFile} = p_gen_peer_filename(KeysDir),
+            {EncPub, EncPriv} =
+                p_save_keys(Password, PeerPubFile, PubKey,
+                            PeerPrivFile, PrivKey),
+            {PeerPubFile, EncPub, PeerPrivFile, EncPriv};
+        false ->
+            error({key_pair_check_failed, [PubKey, PrivKey]})
+    end.
+
+peer_key_filenames(KeysDir) -> p_gen_peer_filename(KeysDir).
+
+%%%===================================================================
+%%% Gen server API
 %%%===================================================================
 
 %%--------------------------------------------------------------------
@@ -83,56 +162,17 @@
 %% @end
 %%--------------------------------------------------------------------
 start_link() ->
-    %% INFO: set the password to re-use keys between restarts
-    #{ keys_dir := KeysDir
-     , password := SignPwd
-     , peer_password := PeerPwd } = check_env(),
-    Args = [SignPwd, PeerPwd, KeysDir],
-    start_link(Args).
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+-ifdef(TEST).
 
 start_link(Args) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, Args, []).
 
-stop() ->
-    gen_server:stop(?SERVER).
-
--spec sign(tx()) -> {ok, signed_tx()} | {error, term()}.
-sign(Tx) ->
-    gen_server:call(?MODULE, {sign, Tx}).
-
--spec pubkey() -> {ok, binary()} | {error, key_not_found}.
-pubkey() ->
-    gen_server:call(?MODULE, pubkey).
-
--ifdef(TEST).
--spec sign_privkey() -> {ok, binary()} | {error, key_not_found}.
-sign_privkey() ->
-    gen_server:call(?MODULE, privkey).
 -endif.
 
--spec peer_pubkey() -> {ok, binary()} | {error, key_not_found}.
-peer_pubkey() ->
-    gen_server:call(?MODULE, peer_pubkey).
-
--spec peer_privkey() -> {ok, binary()} | {error, key_not_found}.
-peer_privkey() ->
-    gen_server:call(?MODULE, peer_privkey).
-
--spec wait_for_pubkey() -> {ok, binary()}.
-wait_for_pubkey() ->
-    wait_for_pubkey(1).
-
-wait_for_pubkey(Sleep) ->
-    case pubkey() of
-        {error, key_not_found} ->
-            timer:sleep(Sleep),
-            wait_for_pubkey(Sleep+10);
-        R -> R
-    end.
-
--spec check_key_pair() -> boolean().
-check_key_pair() ->
-    gen_server:call(?MODULE, check_key_pair).
+stop() ->
+    gen_server:stop(?SERVER).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -149,10 +189,143 @@ check_key_pair() ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([Pwd, KeysDir]) ->
-    init([Pwd, Pwd, KeysDir]);
-init([SignPwd, PeerPwd, KeysDir]) when is_binary(SignPwd), is_binary(PeerPwd) ->
+
+-ifdef(TEST).
+
+init([]) ->
     lager:info("Initializing keys manager"),
+    WorkerPid = start_worker(),
+    receive
+        {WorkerPid, pubkeys, SignPub, PeerPub} ->
+            {ok, #state{sign_pub = SignPub,
+                        peer_pub = PeerPub,
+                        worker_pid = WorkerPid
+                        }}
+    end;
+init([Pwd, KeysDir]) ->
+    %% Test interface
+    lager:info("Initializing keys manager"),
+    WorkerPid = start_worker(Pwd, KeysDir),
+    receive
+        {WorkerPid, pubkeys, SignPub, PeerPub} ->
+            {ok, #state{sign_pub = SignPub,
+                        peer_pub = PeerPub,
+                        worker_pid = WorkerPid
+                        }}
+    end.
+
+-else.
+
+init([]) ->
+    lager:info("Initializing keys manager"),
+    WorkerPid = start_worker(),
+    receive
+        {WorkerPid, pubkeys, SignPub, PeerPub} ->
+            {ok, #state{sign_pub = SignPub,
+                        peer_pub = PeerPub,
+                        worker_pid = WorkerPid
+                        }}
+    end.
+
+-endif.
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Handling call messages
+%%
+%% @spec handle_call(Request, From, State) ->
+%%                                   {reply, Reply, State} |
+%%                                   {reply, Reply, State, Timeout} |
+%%                                   {noreply, State} |
+%%                                   {noreply, State, Timeout} |
+%%                                   {stop, Reason, Reply, State} |
+%%                                   {stop, Reason, State}
+%% @end
+%%--------------------------------------------------------------------
+handle_call({sign,_Tx} = Msg, From, State) ->
+    call_worker(Msg, From, State),
+    {noreply, State};
+handle_call(pubkey, _From, #state{sign_pub=PubKey} = State) ->
+    {reply, {ok, PubKey}, State};
+handle_call(privkey, From, State) ->
+    call_worker_if_test(privkey, From, State),
+    {noreply, State};
+handle_call(peer_pubkey,_From, #state{peer_pub=PubKey} = State) ->
+    {reply, {ok, PubKey}, State};
+handle_call(peer_privkey, From, State) ->
+    call_worker(peer_privkey, From, State),
+    {noreply, State}.
+
+handle_cast(_Msg, State) ->
+    {noreply, State}.
+
+handle_info(_, State) ->
+    {noreply, State}.
+
+terminate(_Reason,_State) ->
+    ok.
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+%%%===================================================================
+%%% Worker
+%%%===================================================================
+
+call_worker(Msg, From, #state{worker_pid = Worker}) ->
+    Worker ! {self(), From, Msg}.
+
+-ifdef(TEST).
+
+call_worker_if_test(Msg, From, #state{worker_pid = Worker}) ->
+    Worker ! {self(), From, Msg}.
+
+-else.
+
+-spec call_worker_if_test(term(), pid(), #state{}) -> no_return().
+call_worker_if_test(Msg,_From, #state{}) ->
+    error({not_in_test, Msg}).
+
+-endif.
+
+start_worker() ->
+    Parent = self(),
+    Fun = fun() ->
+                  process_flag(sensitive, true), %% Protect against tracing etc
+                  process_flag(trap_exit, true),
+                  #{ keys_dir := KeysDir
+                   , password := SignPwd
+                   , peer_password := PeerPwd } = check_env(),
+                  enter_worker(Parent, SignPwd, PeerPwd, KeysDir)
+          end,
+    spawn_link(Fun).
+
+-ifdef(TEST).
+
+start_worker(Pwd, KeysDir) ->
+    Parent = self(),
+    Fun = fun() ->
+                  %% NOTE: This is only used in tests: omit the sensitive flag
+                  process_flag(trap_exit, true),
+                  enter_worker(Parent, Pwd, Pwd, KeysDir)
+          end,
+    spawn_link(Fun).
+-endif.
+
+enter_worker(Parent, SignPwd, PeerPwd, KeysDir) ->
+    try worker_init(SignPwd, PeerPwd, KeysDir) of
+        {ok, #worker_state{sign_pub = SP, peer_pub = PP} = State} ->
+            Parent ! {self(), pubkeys, SP, PP},
+            worker_loop(Parent, State)
+    catch Type:What ->
+            lager:debug("Error starting worker: ~p",
+                        [{Type, What, erlang:get_stacktrace()}]),
+            lager:error("aec_keys worker_failed"),
+            error(init_failed)
+    end.
+
+worker_init(SignPwd, PeerPwd, KeysDir) ->
     %% Ensure there is directory for keys
     case filelib:is_dir(KeysDir) of
         false ->
@@ -170,83 +343,52 @@ init([SignPwd, PeerPwd, KeysDir]) when is_binary(SignPwd), is_binary(PeerPwd) ->
         setup_peer_keys(PeerPwd, KeysDir),
 
     %% For sake of simplicity, if the initialization fails the
-    %% initialization above crashes - rather than collecting failure
-    %% reason and returning `{stop, Reason::term()}`.
-    {ok, #state{sign_priv=SignPriv, sign_pub=SignPub,
-                sign_priv_file=SignPrivFile, sign_pub_file=SignPubFile,
-                peer_priv=PeerPriv, peer_pub=PeerPub,
-                peer_priv_file=PeerPrivFile, peer_pub_file=PeerPubFile,
-                sign_pass=SignPwd, peer_pass=PeerPwd,
-                keys_dir=KeysDir}}.
+    %% initialization above crashes
+    {ok, #worker_state{ sign_priv      = SignPriv
+                      , sign_pub       = SignPub
+                      , sign_priv_file = SignPrivFile
+                      , sign_pub_file  = SignPubFile
+                      , peer_priv      = PeerPriv
+                      , peer_pub       = PeerPub
+                      , peer_priv_file = PeerPrivFile
+                      , peer_pub_file  = PeerPubFile
+                      , sign_pass      = SignPwd
+                      , peer_pass      = PeerPwd
+                      , keys_dir       = KeysDir
+                      }}.
 
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% Handling call messages
-%%
-%% @spec handle_call(Request, From, State) ->
-%%                                   {reply, Reply, State} |
-%%                                   {reply, Reply, State, Timeout} |
-%%                                   {noreply, State} |
-%%                                   {noreply, State, Timeout} |
-%%                                   {stop, Reason, Reply, State} |
-%%                                   {stop, Reason, State}
-%% @end
-%%--------------------------------------------------------------------
-handle_call({sign, _}, _From, #state{sign_priv=undefined} = State) ->
-    {reply, {error, key_not_found}, State};
-handle_call({sign, Tx}, _From, #state{sign_priv=PrivKey} = State) ->
-    SignedTx = aetx_sign:sign(Tx, PrivKey),
-    {reply, {ok, SignedTx}, State};
-handle_call(pubkey, _From, #state{sign_pub=undefined} = State) ->
-    {reply, {error, key_not_found}, State};
-handle_call(pubkey, _From, #state{sign_pub=PubKey} = State) ->
-    {reply, {ok, PubKey}, State};
-handle_call(privkey, _From, #state{sign_priv=PrivKey} = State) ->
-    case PrivKey of
-        undefined -> {reply, {error, key_not_found}, State};
-        _         -> {reply, {ok, PrivKey}, State}
-    end;
-handle_call(peer_pubkey, _From, #state{peer_pub=undefined} = State) ->
-    {reply, {error, key_not_found}, State};
-handle_call(peer_pubkey, _From, #state{peer_pub=PubKey} = State) ->
-    {reply, {ok, PubKey}, State};
-handle_call(peer_privkey, _From, #state{peer_priv=undefined} = State) ->
-    {reply, {error, key_not_found}, State};
-handle_call(peer_privkey, _From, #state{peer_priv=PrivKey} = State) ->
-    {reply, {ok, PrivKey}, State};
-handle_call(check_key_pair, _From, #state{sign_pub = PubKey, sign_priv = PrivKey} = State) ->
-    {reply, check_sign_keys(PubKey, PrivKey), State}.
-
-handle_cast(_Msg, State) ->
-    {noreply, State}.
-
-handle_info(_, State) ->
-    {noreply, State}.
-
-terminate(_Reason, _State) ->
-    ok.
-
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
-
-save_peer_keys(Password, KeysDir, PubKey, PrivKey) ->
-    case check_peer_keys(PubKey, PrivKey) of
-        true ->
-            {PeerPubFile, PeerPrivFile} = p_gen_peer_filename(KeysDir),
-            {EncPub, EncPriv} =
-                p_save_keys(Password, PeerPubFile, PubKey,
-                            PeerPrivFile, PrivKey),
-            {PeerPubFile, EncPub, PeerPrivFile, EncPriv};
-        false ->
-            error({key_pair_check_failed, [PubKey, PrivKey]})
+worker_loop(Parent, State) ->
+    receive
+        {'EXIT', Parent, _} ->
+            ok;
+        {Parent, From, Msg} ->
+            worker_handle_message(Msg, From, State),
+            worker_loop(Parent, State);
+        Other ->
+            lager:debug("Worker got unexpected: ~p", [Other]),
+            worker_loop(Parent, State)
     end.
 
-peer_key_filenames(KeysDir) -> p_gen_peer_filename(KeysDir).
+worker_handle_message({sign, Bin}, From, #worker_state{sign_priv=PrivKey}) ->
+    try enacl:sign_detached(Bin, PrivKey) of
+        Signature -> worker_reply(From, {ok, Signature})
+    catch Type:What ->
+            lager:error("Failed signing binary: ~p ~p",
+                        [Bin, {Type, What, erlang:get_stacktrace()}]),
+            worker_reply(From, {error, failed_sign})
+    end;
+worker_handle_message(privkey, From, #worker_state{sign_priv=PrivKey}) ->
+    worker_reply(From, {ok, PrivKey});
+worker_handle_message(peer_privkey, From, #worker_state{peer_priv=PrivKey}) ->
+    worker_reply(From, {ok, PrivKey}).
+
+worker_reply(From, Reply) ->
+    gen_server:reply(From, Reply).
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
 read_keys(Pwd, PubFile, PrivFile, PubSize, PrivSize) ->
     case {from_local_dir(PubFile), from_local_dir(PrivFile)} of
         {{ok, EPub}, {ok, EPriv}} ->
@@ -302,10 +444,7 @@ p_gen_new_sign(Pwd, PubFile, PrivFile) ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
     case check_sign_keys(PubKey, PrivKey) of
         true ->
-            {EncPub, EncPriv} =
-                p_save_keys(Pwd, PubFile, PubKey, PrivFile, PrivKey),
-            lager:debug(" PubKey: ~p", [EncPub]),
-            lager:debug(" PrivKey: ~p", [EncPriv]),
+            p_save_keys(Pwd, PubFile, PubKey, PrivFile, PrivKey),
             {PubFile, PubKey, PrivFile, PrivKey};
         false ->
             error({generated_key_pair_check_failed, [PubKey, PrivKey]})
@@ -317,10 +456,7 @@ p_gen_new_peer(Pwd, PubFile, PrivFile) ->
     PrivKey = enacl:crypto_sign_ed25519_secret_to_curve25519(SignPrivKey),
     case check_peer_keys(PubKey, PrivKey) of
         true ->
-            {EncPub, EncPriv} =
-                p_save_keys(Pwd, PubFile, PubKey, PrivFile, PrivKey),
-            lager:debug("New PeerPubKey: ~p", [EncPub]),
-            lager:debug("New PeerPrivKey: ~p", [EncPriv]),
+            p_save_keys(Pwd, PubFile, PubKey, PrivFile, PrivKey),
             {PubFile, PubKey, PrivFile, PrivKey};
         false ->
             error({generated_key_pair_check_failed, [PubKey, PrivKey]})
@@ -358,7 +494,6 @@ p_save_keys(Pwd, PubFile, PubKey, PrivFile, PrivKey) ->
     {EncPub, EncPriv}.
 
 to_local_dir(NewFile, Bin) ->
-    lager:debug("Saving keys to ~p", [NewFile]),
     case file:read_file(NewFile) of
         {error, enoent} ->
             {ok, IODevice} = file:open(NewFile, [write, binary, raw]),

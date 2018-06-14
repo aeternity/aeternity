@@ -7,7 +7,6 @@
 %%
 
 -include_lib("stdlib/include/assert.hrl").
--include_lib("aecore/include/aec_crypto.hrl").
 %% common_test exports
 -export(
    [

@@ -54,7 +54,7 @@ signatures_check_test_() ->
                         nonce => 1,
                         payload => <<>>}),
             SignedTxs = [SignedSpend],
-            {ok, SenderPubkey} = aec_keys:wait_for_pubkey(),
+            {ok, SenderPubkey} = aec_test_utils:wait_for_pubkey(),
             Account = aec_accounts:new(SenderPubkey, 1000),
             TreesIn = aec_test_utils:create_state_tree_with_account(Account),
             {ok, ApprovedTxs, _Trees} =
