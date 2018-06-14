@@ -163,8 +163,9 @@ arg_type(T) ->
 lookup_name(Env, As, Name) ->
     case proplists:get_value(Name, Env) of
 	undefined ->
-	    io:format("Unbound variable: ~p\n", [Name]),
-	    error({unbound_variable, Name});
+            Line = line_number({id, As, Name}),
+	    io:format("Line ~p: unbound variable: ~p\n", [Line, Name]),
+	    error({unbound_variable, Line, Name});
 	{type_sig, ArgTypes, ReturnType} ->
 	    ets:new(freshen_tvars, [set, public, named_table]),
 	    Type = freshen({fun_t, As, ArgTypes, ReturnType}),
