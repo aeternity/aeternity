@@ -302,6 +302,7 @@ pool_db_put(Mempool, Key, Tx, Event) ->
                      , fun check_nonce/2
                      , fun check_minimum_fee/2
                      , fun check_minimum_gas_price/2
+                     , fun check_tx_ttl/2
                      ],
             case aeu_validation:run(Checks, [Tx, Hash]) of
                 {error, _} = E ->
@@ -321,6 +322,14 @@ pool_db_put(Mempool, Key, Tx, Event) ->
                             ok
                     end
             end
+    end.
+
+check_tx_ttl(STx, _Hash) ->
+    Header = aec_chain:top_header(),
+    Tx = aetx_sign:tx(STx),
+    case aec_headers:height(Header) > aetx:ttl(Tx) of
+        true  -> {error, ttl_expired};
+        false -> ok
     end.
 
 check_signature(Tx, Hash) ->

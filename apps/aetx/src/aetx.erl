@@ -10,6 +10,7 @@
         , deserialize_from_binary/1
         , fee/1
         , lookup_gas_price/1
+        , ttl/1
         , is_tx_type/1
         , new/2
         , nonce/1

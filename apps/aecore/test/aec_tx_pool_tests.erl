@@ -194,17 +194,17 @@ tx_pool_test_() ->
                %% Replace same nonce with same fee but positive gas price (gas price of transaction without gas price is considered zero)
                STx4 = signed_ct_create_tx(PK, Nonce2=2, Fee2=5,_GasPrice4=1),
                ?assertEqual(ok, aec_tx_pool:push(STx4)),
-               ?assertEqual({ok, [STx3, STx4]}, aec_tx_pool:get_candidate(10, <<>>)),
+               ?assertEqual({ok, [STx3, STx4]}, aec_tx_pool:get_candidate(10, aec_chain:top_block_hash())),
 
                %% Replace same nonce with same fee but higher gas price
                STx5 = signed_ct_create_tx(PK, Nonce2=2, Fee2=5, 2),
                ?assertEqual(ok, aec_tx_pool:push(STx5)),
-               ?assertEqual({ok, [STx3, STx5]}, aec_tx_pool:get_candidate(10, <<>>)),
+               ?assertEqual({ok, [STx3, STx5]}, aec_tx_pool:get_candidate(10, aec_chain:top_block_hash())),
 
                %% Order by nonce even if fee and gas price are higher
                STx6 = signed_ct_call_tx(PK, _Nonce6=3,_Fee6=9,_GasPrice6=9),
                ?assertEqual(ok, aec_tx_pool:push(STx6)),
-               ?assertEqual({ok, [STx3, STx5, STx6]}, aec_tx_pool:get_candidate(10, <<>>)),
+               ?assertEqual({ok, [STx3, STx5, STx6]}, aec_tx_pool:get_candidate(10, aec_chain:top_block_hash())),
 
                ok
        end},
@@ -281,15 +281,31 @@ tx_pool_test_() ->
                ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 15, 100, 3))),
                ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 25, 100, 3))),
 
+               %% A transaction with too low ttl should be rejected
+               %% First add another block to make the chain high enough to
+               %% fail on TTL
+               {ok, Candidate2, _} = aec_block_candidate:create(aec_chain:top_block()),
+               {ok, Top2} = aec_blocks:hash_internal_representation(Candidate2),
+               ok = aec_chain_state:insert_block(Candidate2),
+               ?assertEqual(Top2, aec_chain:top_block_hash()),
+
+               STx5 = a_signed_tx(PubKey1, new_pubkey(), 6, 1, 1),
+               ?assertEqual({error, ttl_expired}, aec_tx_pool:push(STx5)),
+
                ok
        end}
      ]}.
 
 a_signed_tx(Sender, Recipient, Nonce, Fee) ->
+    a_signed_tx(Sender, Recipient, Nonce, Fee,0).
+
+a_signed_tx(Sender, Recipient, Nonce, Fee, TTL) ->
     {ok, Tx} = aec_spend_tx:new(#{sender => acct(Sender),
                                   recipient => acct(Recipient),
                                   amount => 1,
-                                  nonce => Nonce, fee => Fee,
+                                  nonce => Nonce,
+                                  fee => Fee,
+                                  ttl => TTL,
                                   payload => <<"">>}),
     {ok, STx} = sign(Sender, Tx),
     STx.
