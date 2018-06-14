@@ -214,16 +214,12 @@ close_mutual_tx_spec(ChannelId, Spec0, State) ->
       responder_amount  => maps:get(responder_amount, Spec),
       ttl               => maps:get(ttl, Spec, 0),
       fee               => maps:get(fee, Spec),
-      state_hash        => maps:get(state_hash, Spec),
-      round             => maps:get(round, Spec),
       nonce             => maps:get(nonce, Spec)}.
 
 close_mutual_tx_default_spec(Initiator, State) ->
     #{initiator_amount => 10,
       responder_amount => 10,
       fee              => 3,
-      state_hash       => <<123456>>,
-      round            => 42,
       nonce            => try next_nonce(Initiator, State) catch _:_ -> 0 end}.
 
 %%%===================================================================
@@ -333,16 +329,12 @@ settle_tx_spec(ChannelId, FromPubKey, Spec0, State) ->
       responder_amount  => maps:get(responder_amount, Spec),
       ttl               => maps:get(ttl, Spec, 0),
       fee               => maps:get(fee, Spec),
-      state_hash        => maps:get(state_hash, Spec),
-      round             => maps:get(round, Spec),
       nonce             => maps:get(nonce, Spec)}.
 
 settle_tx_default_spec(FromPubKey, State) ->
     #{initiator_amount => 10,
       responder_amount => 10,
       fee              => 3,
-      state_hash       => <<123456>>,
-      round            => 42,
       nonce            => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
 
 state_tx(ChannelId, Initiator, Responder, Spec0) ->

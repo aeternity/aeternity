@@ -39,8 +39,6 @@
           responder_amount :: non_neg_integer(),
           ttl              :: aetx:tx_ttl(),
           fee              :: non_neg_integer(),
-          state_hash       :: binary(),
-          round            :: non_neg_integer(),
           nonce            :: non_neg_integer()
          }).
 
@@ -58,8 +56,6 @@ new(#{channel_id        := ChannelIdBin,
       initiator_amount  := InitiatorAmount,
       responder_amount  := ResponderAmount,
       fee               := Fee,
-      state_hash        := StateHash,
-      round             := Round,
       nonce             := Nonce} = Args) ->
     Tx = #channel_settle_tx{
             channel_id        = aec_id:create(channel, ChannelIdBin),
@@ -68,8 +64,6 @@ new(#{channel_id        := ChannelIdBin,
             responder_amount  = ResponderAmount,
             ttl               = maps:get(ttl, Args, 0),
             fee               = Fee,
-            state_hash        = StateHash,
-            round             = Round,
             nonce             = Nonce},
     {ok, aetx:new(?MODULE, Tx)}.
 
@@ -103,8 +97,6 @@ channel(#channel_settle_tx{channel_id = ChannelId}) ->
 check(#channel_settle_tx{initiator_amount = InitiatorAmount,
                          responder_amount = ResponderAmount,
                          fee              = Fee,
-                         state_hash       = _StateHash,
-                         round            = _Round,
                          nonce            = Nonce} = Tx, _Context, Trees, Height, _ConsensusVersion) ->
     ChannelId = channel(Tx),
     FromPubKey = from(Tx),
@@ -124,8 +116,6 @@ check(#channel_settle_tx{initiator_amount = InitiatorAmount,
 process(#channel_settle_tx{initiator_amount = InitiatorAmount,
                            responder_amount = ResponderAmount,
                            fee              = Fee,
-                           state_hash       = _StateHash,
-                           round            = _Round,
                            nonce            = Nonce} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
     ChannelId = channel(Tx),
     FromPubKey = from(Tx),
@@ -174,8 +164,6 @@ serialize(#channel_settle_tx{channel_id       = ChannelId,
                              responder_amount = ResponderAmount,
                              ttl              = TTL,
                              fee              = Fee,
-                             state_hash       = StateHash,
-                             round            = Round,
                              nonce            = Nonce}) ->
     {version(),
     [ {channel_id       , ChannelId}
@@ -184,8 +172,6 @@ serialize(#channel_settle_tx{channel_id       = ChannelId,
     , {responder_amount , ResponderAmount}
     , {ttl              , TTL}
     , {fee              , Fee}
-    , {state_hash       , StateHash}
-    , {round            , Round}
     , {nonce            , Nonce}
     ]}.
 
@@ -197,8 +183,6 @@ deserialize(?CHANNEL_SETTLE_TX_VSN,
             , {responder_amount , ResponderAmount}
             , {ttl              , TTL}
             , {fee              , Fee}
-            , {state_hash       , StateHash}
-            , {round            , Round}
             , {nonce            , Nonce}]) ->
     channel = aec_id:specialize_type(ChannelId),
     account = aec_id:specialize_type(FromId),
@@ -208,8 +192,6 @@ deserialize(?CHANNEL_SETTLE_TX_VSN,
                        responder_amount = ResponderAmount,
                        ttl              = TTL,
                        fee              = Fee,
-                       state_hash       = StateHash,
-                       round            = Round,
                        nonce            = Nonce}.
 
 -spec for_client(tx()) -> map().
@@ -217,8 +199,6 @@ for_client(#channel_settle_tx{initiator_amount = InitiatorAmount,
                               responder_amount = ResponderAmount,
                               ttl              = TTL,
                               fee              = Fee,
-                              state_hash      = StateHash,
-                              round           = Round,
                               nonce            = Nonce} = Tx) ->
     #{<<"data_schema">>      => <<"ChannelSettleTxJSON">>, % swagger schema name
       <<"vsn">>              => version(),
@@ -228,8 +208,6 @@ for_client(#channel_settle_tx{initiator_amount = InitiatorAmount,
       <<"responder_amount">> => ResponderAmount,
       <<"ttl">>              => TTL,
       <<"fee">>              => Fee,
-      <<"state_hash">>       => aec_base58c:encode(state, StateHash),
-      <<"round">>            => Round,
       <<"nonce">>            => Nonce}.
 
 
@@ -240,8 +218,6 @@ serialization_template(?CHANNEL_SETTLE_TX_VSN) ->
     , {responder_amount , int}
     , {ttl              , int}
     , {fee              , int}
-    , {state_hash       , binary}
-    , {round            , int}
     , {nonce            , int}
     ].
 

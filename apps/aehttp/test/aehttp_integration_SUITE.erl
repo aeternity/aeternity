@@ -1191,16 +1191,12 @@ state_channels_withdrawal(ChannelId, MinerPubkey) ->
     ok.
 
 state_channels_close_mutual(ChannelId, InitiatorPubkey) ->
-    StateHash = <<123456>>,
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
                 initiator_amount => 4,
                 responder_amount => 3,
-                state_hash => aec_base58c:encode(state, StateHash),
-                round => 42,
                 fee => 1},
     Decoded = maps:merge(Encoded,
-                        #{channel_id => ChannelId,
-                          state_hash => StateHash}),
+                        #{channel_id => ChannelId}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_close_mutual/1,
                                fun aesc_close_mutual_tx:new/1, InitiatorPubkey,
@@ -1246,18 +1242,14 @@ state_channels_slash(ChannelId, MinerPubkey) ->
     ok.
 
 state_channels_settle(ChannelId, MinerPubkey) ->
-    StateHash = <<123456>>,
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
                 from => aec_base58c:encode(account_pubkey, MinerPubkey),
                 initiator_amount => 4,
                 responder_amount => 3,
-                state_hash => aec_base58c:encode(state, StateHash),
-                round => 42,
                 fee => 1},
     Decoded = maps:merge(Encoded,
                         #{from => MinerPubkey,
-                          channel_id => ChannelId,
-                          state_hash => StateHash}),
+                          channel_id => ChannelId}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_settle/1,
                                fun aesc_settle_tx:new/1, MinerPubkey,
