@@ -36,6 +36,8 @@ to_binary1(string, Address)      -> to_binary1({?TYPEREP_STRING_TAG}, Address);
 to_binary1({list, T}, Address)   -> to_binary1({?TYPEREP_LIST_TAG, T}, Address);
 to_binary1({option, T}, Address) -> to_binary1({?TYPEREP_OPTION_TAG, T}, Address);
 to_binary1({tuple, Ts}, Address) -> to_binary1({?TYPEREP_TUPLE_TAG, Ts}, Address);
+to_binary1(Map, Address) when is_map(Map) ->
+    to_binary1(maps:to_list(Map), Address);
 to_binary1(Data, Address) when is_tuple(Data) ->
     {Elems,Memory} = to_binaries(tuple_to_list(Data),Address+32*size(Data)),
     ElemsBin = << <<W:256>> || W <- Elems>>,
@@ -106,6 +108,8 @@ from_binary(Visited, {option, A}, Heap, V) ->
          {Elem} = from_binary(Visited, {tuple, [A]}, Heap, V),
          {some, Elem}
     end;
+from_binary(Visited, {map, A, B}, Heap, V) ->
+    maps:from_list(from_binary(Visited, {list, {tuple, [A, B]}}, Heap, V));
 from_binary(Visited, typerep, Heap, V) ->
     check_circular_refs(Visited, V),
     Tag = heap_word(Heap, V),
