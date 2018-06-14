@@ -22,6 +22,9 @@ contract Maps =
       if(member(map2(), "foo")) 200 else 0,
       Map.size(map1()) ]
 
+  function delete(m : map(string, int), k) =
+    Map.delete(m, k)
+
   function empty() : map(string, int) = {}
 
   function singleton(k, v) : map(string, int) = {[k] = v}

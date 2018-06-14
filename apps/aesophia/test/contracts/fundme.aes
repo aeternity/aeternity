@@ -4,7 +4,7 @@
 contract FundMe =
 
   type spend_args = { recipient : address,
-                      amount : int }
+                      amount    : int }
 
   type state = { contributions : map(address, int),
                  total         : int,
@@ -60,5 +60,5 @@ contract FundMe =
     let to = Call.caller
     spend({recipient = to,
            amount    = state.contributions[to]})
-    put(state{ contributions[to] = 0 })
+    put(state{ contributions @ c = Map.delete(c, to) })
 

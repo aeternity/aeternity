@@ -207,6 +207,10 @@ ast_body(?qid_app(["Map", "member"], [Map, {typed, Ann, Key, KeyType}], _, _)) -
 ast_body(?qid_app(["Map", "size"], [Map], _, _)) ->
     #funcall{ function = #var_ref{name = {builtin, map_size}},
               args     = [ast_body(Map), {integer, 0}] };
+ast_body(?qid_app(["Map", "delete"], [Map, {typed, Ann, Key, KeyType}], _, _)) ->
+    Fun = {map_del, key_type(Ann, KeyType)},
+    #funcall{ function = #var_ref{name = {builtin, Fun}},
+              args     = [ast_body(Map), ast_body(Key)] };
 
 %% -- map conversion to/from list
 ast_body(?qid_app(["Map", "from_list"], [List], _, _)) -> ast_body(List);
@@ -465,6 +469,7 @@ key_type(Ann, Type) ->
 builtin_deps({map_get, Type})      -> [{map_lookup, Type}];
 builtin_deps({map_member, Type})   -> [{map_lookup, Type}];
 builtin_deps({map_lookup, string}) -> [str_equal];
+builtin_deps({map_del, string})    -> [str_equal];
 builtin_deps({map_put, string})    -> [str_equal];
 builtin_deps({map_upd, string})    -> [str_equal];
 builtin_deps(_) -> [].
@@ -524,7 +529,7 @@ builtin_function(Builtin = {map_lookup, Type}) ->
     Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
     Name = {builtin, Builtin},
     {Name,
-     [{"map", {list, {tuple, [word, word]}}}, {"key", word}],
+     [{"map", map_typerep(Type, word)}, {"key", Type}],
      {switch, {var_ref, "map"},
               [{{list, []}, {list, []}},
                {{binop, '::',
@@ -548,7 +553,7 @@ builtin_function(Builtin = {map_put, Type}) ->
     Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
     Name = {builtin, Builtin},
     {Name,
-     [{"map", {list, {tuple, [word, word]}}}, {"key", word}, {"val", word}],
+     [{"map", map_typerep(Type, word)}, {"key", Type}, {"val", word}],
      {switch,
          {var_ref, "map"},
          [{{list, []}, {list, [{tuple, [{var_ref, "key"}, {var_ref, "val"}]}]}},
@@ -567,7 +572,37 @@ builtin_function(Builtin = {map_put, Type}) ->
                        [{var_ref, "m"},
                         {var_ref, "key"},
                         {var_ref, "val"}]}}}}]},
-     {list, {tuple, [Type, word]}}};
+     map_typerep(Type, word)};
+
+builtin_function(Builtin = {map_del, Type}) ->
+    %% function map_del(map, key) =
+    %%   switch(map)
+    %%     [] => []
+    %%     (k, v) :: m =>
+    %%       if(k == key)
+    %%          m
+    %%      else
+    %%          (k, v) :: map_del(m, key)  // note reallocates (k, v) pair
+    Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
+    Name = {builtin, Builtin},
+    {Name,
+     [{"map", map_typerep(Type, word)}, {"key", word}],
+     {switch,
+         {var_ref, "map"},
+         [{{list, []}, {list, []}},
+          {{binop, '::',
+               {tuple, [{var_ref, "k"}, {var_ref, "v"}]},
+               {var_ref, "m"}},
+           {ifte,
+               Eq({var_ref, "k"}, {var_ref, "key"}),
+               {var_ref, "m"},
+               {binop, '::',
+                   {tuple, [{var_ref, "k"}, {var_ref, "v"}]},
+                   {funcall,
+                       {var_ref, Name},
+                       [{var_ref, "m"},
+                        {var_ref, "key"}]}}}}]},
+     map_typerep(Type, word)};
 
 builtin_function(Builtin = {map_upd, Type}) ->
     %% function map_upd(map, key, fun) =
@@ -580,7 +615,7 @@ builtin_function(Builtin = {map_upd, Type}) ->
     Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
     Name = {builtin, Builtin},
     {Name,
-     [{"map", {list, {tuple, [word, word]}}}, {"key", word}, {"fun", word}],
+     [{"map", map_typerep(Type, word)}, {"key", word}, {"fun", word}],
      {switch,
          {var_ref, "map"},
          [{{binop, '::',
@@ -598,7 +633,7 @@ builtin_function(Builtin = {map_upd, Type}) ->
                        [{var_ref, "m"},
                         {var_ref, "key"},
                         {var_ref, "fun"}]}}}}]},
-     {list, {tuple, [Type, word]}}};
+     map_typerep(Type, word)};
 
 builtin_function(map_size) ->
     %% function size(map, acc) =
