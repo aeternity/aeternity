@@ -243,9 +243,15 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({sign,_Tx} = Msg, From, State) ->
-    call_worker(Msg, From, State),
-    {noreply, State};
+handle_call({sign, Bin} = Msg, From, State) ->
+    case is_binary(Bin) of
+        true  ->
+            call_worker(Msg, From, State),
+            {noreply, State};
+        false ->
+            lager:debug("Illegal sign request: ~p", [Bin]),
+            {reply, {error, can_only_sign_binaries}, State}
+    end;
 handle_call(pubkey, _From, #state{sign_pub=PubKey} = State) ->
     {reply, {ok, PubKey}, State};
 handle_call(privkey, From, State) ->
@@ -369,21 +375,35 @@ worker_loop(Parent, State) ->
             worker_loop(Parent, State)
     end.
 
-worker_handle_message({sign, Bin}, From, #worker_state{sign_priv=PrivKey}) ->
+worker_handle_message({sign, Bin}, From, WS) when is_binary(Bin) ->
+    #worker_state{sign_priv=PrivKey} = WS,
     try enacl:sign_detached(Bin, PrivKey) of
         Signature -> worker_reply(From, {ok, Signature})
-    catch Type:What ->
-            lager:error("Failed signing binary: ~p ~p",
-                        [Bin, {Type, What, erlang:get_stacktrace()}]),
-            worker_reply(From, {error, failed_sign})
+    catch
+        _Type:_What -> worker_reply(From, {error, failed_sign})
     end;
 worker_handle_message(privkey, From, #worker_state{sign_priv=PrivKey}) ->
-    worker_reply(From, {ok, PrivKey});
+    worker_reply_if_test(From, {ok, PrivKey});
 worker_handle_message(peer_privkey, From, #worker_state{peer_priv=PrivKey}) ->
-    worker_reply(From, {ok, PrivKey}).
+    worker_reply(From, {ok, PrivKey});
+worker_handle_message(Msg, From, #worker_state{}) ->
+    worker_reply(From, {error, illegal_query, Msg}).
 
 worker_reply(From, Reply) ->
     gen_server:reply(From, Reply).
+
+-ifdef(TEST).
+
+worker_reply_if_test(From, Reply) ->
+    worker_reply(From, Reply).
+
+-else.
+
+worker_reply_if_test(From,_Reply) ->
+    worker_reply(From, {error, not_in_test_mode}).
+
+-endif.
+
 
 %%%===================================================================
 %%% Internal functions
