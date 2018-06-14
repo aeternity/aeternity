@@ -332,7 +332,7 @@ do_local_action(#sync{ id = Ref }, Action, ActionFun, Timeout) ->
           end,
     Pid        = spawn_link(Fun),
     TimeoutMsg = {local_action, Ref, Pid, Action},
-    SendRef    = erlang:send_after(Timeout, self(), TimeoutMsg),
+    SendRef    = erlang:start_timer(Timeout, self(), TimeoutMsg),
     Pid ! {go, SendRef}.
 
 kill_local_action(Worker, Ref, Action) ->

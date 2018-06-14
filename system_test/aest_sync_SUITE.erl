@@ -375,7 +375,7 @@ tx_pool_sync(Cfg) ->
 
     %% Check that the mempool has the other transactions
     {ok, 200, MempoolTxs1} = request(node1, 'GetTxs', #{}),
-    true = (length(MempoolTxs1) == 10),
+    {10, _} = {length(MempoolTxs1), MempoolTxs1},
 
     %% Start 2nd node and let it sync
     start_node(node2, Cfg),
@@ -386,7 +386,7 @@ tx_pool_sync(Cfg) ->
     wait_for_value({height, Height1 + 5}, [node2], 5 * ?MINING_TIMEOUT, Cfg),
 
     {ok, 200, MempoolTxs2} = request(node2, 'GetTxs', #{}),
-    true = (length(MempoolTxs2) == 10),
+    {10, _} = {length(MempoolTxs2), MempoolTxs2},
 
     %% Stop node1
     stop_node(node1, 8000, Cfg),
@@ -404,7 +404,7 @@ tx_pool_sync(Cfg) ->
     wait_for_value({height, Height2 + 5}, [node1], 5 * ?MINING_TIMEOUT, Cfg),
 
     {ok, 200, MempoolTxs1B} = request(node1, 'GetTxs', #{}),
-    true = (length(MempoolTxs1B) == 11),
+    {11, _} = {length(MempoolTxs1B), MempoolTxs1B},
 
     %% Now add a Tx that unlocks 5 more...
     add_spend_txs(node2, Patron, 1, 6),
