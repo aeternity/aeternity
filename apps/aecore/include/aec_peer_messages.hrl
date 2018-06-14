@@ -9,8 +9,6 @@
 -define(MSG_GET_BLOCK, 7).
 -define(MSG_TXS, 9).
 -define(MSG_BLOCK, 11).
--define(MSG_GET_MEMPOOL, 13).
--define(MSG_MEMPOOL, 14).
 -define(MSG_GET_HEADER_BY_HEIGHT, 15).
 
 -define(MSG_TX_POOL_SYNC_INIT,   20).

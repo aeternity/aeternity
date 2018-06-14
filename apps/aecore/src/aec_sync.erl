@@ -19,7 +19,7 @@
 %% API called from strongly connected component aec_peers
 -export([schedule_ping/1]).
 
--export([start_sync/3, fetch_mempool/1]).
+-export([start_sync/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -37,9 +37,6 @@
 
 start_sync(PeerId, RemoteHash, RemoteDifficulty) ->
     gen_server:cast(?MODULE, {start_sync, PeerId, RemoteHash, RemoteDifficulty}).
-
-fetch_mempool(PeerId) ->
-    gen_server:cast(?MODULE, {fetch_mempool, PeerId}).
 
 schedule_ping(PeerId) ->
     gen_server:cast(?MODULE, {schedule_ping, PeerId}).
@@ -133,9 +130,6 @@ handle_cast({start_sync, PeerId, RemoteHash, _RemoteDifficulty}, State) ->
     %% We could decide not to sync if we are already syncing, but that
     %% opens up for an attack in which someone fakes to have higher difficulty
     run_job(sync_task_workers, fun() -> do_start_sync(PeerId, RemoteHash) end),
-    {noreply, State};
-handle_cast({fetch_mempool, PeerId}, State) ->
-    run_job(sync_mempool_workers, fun() -> do_fetch_mempool(PeerId) end),
     {noreply, State};
 handle_cast({schedule_ping, PeerId}, State) ->
     case peer_in_sync(State, PeerId) of
@@ -685,20 +679,6 @@ do_fetch_block_ext(Hash, PeerId) ->
             epoch_sync:debug("failed to fetch block from ~p; Hash = ~p; Error = ~p",
                              [ppp(PeerId), pp(Hash), Error]),
             Error
-    end.
-
-do_fetch_mempool(PeerId) ->
-    case aec_peer_connection:get_mempool(PeerId) of
-        {ok, Txs} ->
-            epoch_sync:debug("Mempool (~p) received, size: ~p",
-                             [ppp(PeerId), length(Txs)]),
-            lists:foreach(fun aec_tx_pool:push/1, Txs),
-            aec_events:publish(mempool_sync, {fetched, PeerId});
-        Other ->
-            epoch_sync:debug("Error fetching mempool from ~p: ~p",
-                             [ppp(PeerId), Other]),
-            aec_events:publish(mempool_sync, {error, Other, PeerId}),
-            Other
     end.
 
 %%%=============================================================================

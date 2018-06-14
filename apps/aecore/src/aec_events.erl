@@ -26,7 +26,6 @@
                | peers
                | metric
                | chain_sync
-               | mempool_sync
                | oracle_query_tx_created
                | oracle_response_tx_created.
 

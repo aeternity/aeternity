@@ -14,7 +14,7 @@
     new_node_joins_network/1,
     docker_keeps_data/1,
     stop_and_continue_sync/1,
-    mempool_sync/1,
+    tx_pool_sync/1,
     net_split_recovery/1,
     quick_start_stop/1
 ]).
@@ -101,7 +101,7 @@ all() -> [
     new_node_joins_network,
     docker_keeps_data,
     stop_and_continue_sync,
-    mempool_sync,
+    tx_pool_sync,
     net_split_recovery,
     quick_start_stop
 ].
@@ -337,7 +337,7 @@ stop_and_continue_sync(Cfg) ->
             ?assertEqual(C1, B2)
     end.
 
-mempool_sync(Cfg) ->
+tx_pool_sync(Cfg) ->
     NodeStartupTime = proplists:get_value(node_startup_time, Cfg),
 
     setup_nodes([#{ name    => node1,

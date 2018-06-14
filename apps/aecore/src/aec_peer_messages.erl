@@ -35,11 +35,6 @@ serialize(ping, Ping, Vsn = ?PING_VSN) ->
            , {best_hash, maps:get(best_hash, Ping)}
            , {peers, serialize(peers, maps:get(peers, Ping), ?VSN_1)} ],
     serialize_flds(ping, Vsn, Flds);
-serialize(get_mempool, _MemPool, Vsn = ?GET_MEMPOOL_VSN) ->
-    serialize_flds(get_mempool, Vsn, []);
-serialize(mempool, MemPool, Vsn = ?MEMPOOL_VSN) ->
-    #{ txs := Txs } = MemPool,
-    serialize_flds(mempool, Vsn, [{txs, Txs}]);
 serialize(get_header_by_hash, GetHeader, Vsn = ?GET_HEADER_BY_HASH_VSN) ->
     #{ hash := Hash } = GetHeader,
     serialize_flds(get_header_by_hash, Vsn, [{hash, Hash}]);
@@ -109,8 +104,6 @@ deserialize(Type, Binary) ->
     end.
 
 tag(ping)                 -> ?MSG_PING;
-tag(get_mempool)          -> ?MSG_GET_MEMPOOL;
-tag(mempool)              -> ?MSG_MEMPOOL;
 tag(get_header_by_hash)   -> ?MSG_GET_HEADER_BY_HASH;
 tag(get_header_by_height) -> ?MSG_GET_HEADER_BY_HEIGHT;
 tag(header)               -> ?MSG_HEADER;
@@ -126,8 +119,6 @@ tag(txps_get)             -> ?MSG_TX_POOL_SYNC_GET;
 tag(txps_finish)          -> ?MSG_TX_POOL_SYNC_FINISH.
 
 rev_tag(?MSG_PING)                 -> ping;
-rev_tag(?MSG_GET_MEMPOOL)          -> get_mempool;
-rev_tag(?MSG_MEMPOOL)              -> mempool;
 rev_tag(?MSG_GET_HEADER_BY_HASH)   -> get_header_by_hash;
 rev_tag(?MSG_GET_HEADER_BY_HEIGHT) -> get_header_by_height;
 rev_tag(?MSG_HEADER)               -> header;
@@ -143,8 +134,6 @@ rev_tag(?MSG_TX_POOL_SYNC_GET)     -> txps_get;
 rev_tag(?MSG_TX_POOL_SYNC_FINISH)  -> txps_finish.
 
 latest_vsn(ping)                 -> ?PING_VSN;
-latest_vsn(get_mempool)          -> ?GET_MEMPOOL_VSN;
-latest_vsn(mempool)              -> ?MEMPOOL_VSN;
 latest_vsn(get_header_by_hash)   -> ?GET_HEADER_BY_HASH_VSN;
 latest_vsn(get_header_by_height) -> ?GET_HEADER_BY_HEIGHT_VSN;
 latest_vsn(header)               -> ?HEADER_VSN;
@@ -173,15 +162,6 @@ deserialize(ping, Vsn, PingFlds) when Vsn == ?PING_VSN ->
     Difficulty = binary_to_float(DifficultyBin),
     PingData1 = replace_keys(PingData, [{peers, Peers}, {difficulty, Difficulty}]),
     {ping, Vsn, maps:from_list(PingData1)};
-deserialize(get_mempool, Vsn, GetMempoolFlds) when Vsn == ?GET_MEMPOOL_VSN ->
-    [] = aec_serialization:decode_fields(
-            serialization_template(get_mempool, Vsn), GetMempoolFlds),
-    {get_mempool, Vsn, #{}};
-deserialize(mempool, Vsn, MempoolFlds) when Vsn == ?MEMPOOL_VSN ->
-    [{txs, Txs}] = aec_serialization:decode_fields(
-                                    serialization_template(mempool, Vsn),
-                                    MempoolFlds),
-    {mempool, Vsn, #{ txs => Txs }};
 deserialize(get_header_by_hash, Vsn, GetHeaderFlds) when Vsn == ?GET_HEADER_BY_HASH_VSN ->
     [{hash, Hash}] = aec_serialization:decode_fields(
                          serialization_template(get_header_by_hash, Vsn), GetHeaderFlds),
@@ -275,10 +255,6 @@ serialization_template(ping, ?PING_VSN) ->
     , {difficulty, binary}
     , {best_hash, binary}
     , {peers, [binary]} ];
-serialization_template(get_mempool, ?GET_MEMPOOL_VSN) ->
-    [];
-serialization_template(mempool, ?MEMPOOL_VSN) ->
-    [{txs, [binary]}];
 serialization_template(get_header_by_hash, ?GET_HEADER_BY_HASH_VSN) ->
     [{hash, binary}];
 serialization_template(get_header_by_height, ?VSN_1) ->

@@ -23,7 +23,6 @@
         , get_block/2
         , get_header_by_hash/2
         , get_header_by_height/3
-        , get_mempool/1
         , get_n_successors/4
         , ping/1
         , send_block/2
@@ -88,9 +87,6 @@ get_n_successors(PeerId, FromHash, TargetHash, N) ->
 
 get_block(PeerId, Hash) ->
     call(PeerId, {get_block, [Hash]}).
-
-get_mempool(PeerId) ->
-    call(PeerId, {get_mempool, []}).
 
 tx_pool_sync_init(PeerId) ->
     call(PeerId, {tx_pool, [sync_init]}).
@@ -341,7 +337,6 @@ handle_request_timeout(S, Ref, Kind) ->
             {noreply, S}
     end.
 
-map_request(mempool)              -> get_mempool;
 map_request(get_header_by_hash)   -> get_header;
 map_request(get_header_by_height) -> get_header;
 map_request(header)               -> get_header;
@@ -437,7 +432,6 @@ handle_msg(S, _MsgType, true, {RequestFld, From, _TRef}, {error, Reason}) ->
 handle_msg(S, MsgType, false, Request, {ok, Vsn, Msg}) ->
     case MsgType of
         ping                 -> handle_ping(S, Request, Msg);
-        get_mempool          -> handle_get_mempool(S, Msg);
         get_header_by_hash   -> handle_get_header_by_hash(S, Msg);
         get_header_by_height -> handle_get_header_by_height(S, Vsn, Msg);
         get_n_successors     -> handle_get_n_successors(S, Vsn, Msg);
@@ -452,7 +446,6 @@ handle_msg(S, MsgType, false, Request, {ok, Vsn, Msg}) ->
 handle_msg(S, MsgType, true, Request, {ok, _Vsn, Msg}) ->
     case MsgType of
         ping          -> handle_ping_rsp(S, Request, Msg);
-        mempool       -> handle_get_mempool_rsp(S, Request, Msg);
         header        -> handle_header_rsp(S, Request, Msg);
         header_hashes -> handle_header_hashes_rsp(S, Request, Msg);
         block         -> handle_get_block_rsp(S, Request, Msg);
@@ -490,9 +483,7 @@ prepare_request_data(_S, get_header_by_height, [Height, TopHash]) ->
 prepare_request_data(_S, get_n_successors, [FromHash, TargetHash, N]) ->
     #{ from_hash => FromHash, target_hash => TargetHash, n => N };
 prepare_request_data(_S, get_block, [Hash]) ->
-    #{ hash => Hash };
-prepare_request_data(_S, get_mempool, []) ->
-    #{}.
+    #{ hash => Hash }.
 
 handle_tx_pool(S, Args, From) ->
     {Msg, MsgData} =
@@ -759,24 +750,6 @@ handle_get_block_rsp(S, {get_block, From, _TRef}, Msg) ->
             gen_server:reply(From, {error, no_block_in_response})
     end,
     remove_request_fld(S, get_block).
-
-%% -- Get Mempool --------------------------------------------------------------
-
-handle_get_mempool(S, _MsgObj) ->
-    {ok, Txs0} = aec_tx_pool:peek(infinity),
-    Txs = [ aetx_sign:serialize_to_binary(T) || T <- Txs0 ],
-    send_response(S, mempool, {ok, #{ txs => Txs }}),
-    S.
-
-handle_get_mempool_rsp(S, {get_mempool, From, _TRef}, MsgObj) ->
-    case maps:get(txs, MsgObj, undefined) of
-        Txs0 when is_list(Txs0) ->
-            Txs = [ aetx_sign:deserialize_from_binary(T) || T <- Txs0 ],
-            gen_server:reply(From, {ok, Txs});
-        _ ->
-            gen_server:reply(From, {error, bad_response})
-    end,
-    remove_request_fld(S, get_mempool).
 
 %% -- TX Pool ----------------------------------------------------------------
 
