@@ -45,6 +45,7 @@
 
 -define(SERVER, ?MODULE).
 -define(MAX_INCOMING_SYNC, 5).
+-define(TX_PLACEHOLDER, []). %% RLP encodable.
 
 %% -- API --------------------------------------------------------------------
 start_link() ->
@@ -377,7 +378,7 @@ get_subtree(Iter, Path, S, Acc) ->
 build_tx_mpt() ->
     try
         F = fun(TxHash, Tree) ->
-                aeu_mp_trees:put(TxHash, [], Tree)
+                aeu_mp_trees:put(TxHash, ?TX_PLACEHOLDER, Tree)
             end,
         Tree = aec_db:fold_mempool(F, aeu_mp_trees:new()),
         {ok, Tree}
@@ -462,8 +463,11 @@ analyze_unfolds([{key, Key} | Us], Tree, NewUs, NewGets) ->
     analyze_unfolds(Us, Tree, NewUs, [Key | NewGets]);
 analyze_unfolds([{leaf, Path} | Us], Tree, NewUs, NewGets) ->
     case aeu_mp_trees:get(Path, Tree) of
-        <<>> -> analyze_unfolds(Us, Tree, NewUs, [Path | NewGets]);
-        []   -> analyze_unfolds(Us, Tree, NewUs, NewGets)
+        <<>> ->
+            %% Path is non-empty (key).
+            analyze_unfolds(Us, Tree, NewUs, [Path | NewGets]);
+        ?TX_PLACEHOLDER ->
+            analyze_unfolds(Us, Tree, NewUs, NewGets)
     end;
 analyze_unfolds([N = {node, Path, Node} | Us], Tree, NewUs, NewGets) ->
     case aeu_mp_trees:has_node(Path, Node, Tree) of
