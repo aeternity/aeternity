@@ -16,7 +16,7 @@
 
 convert(Tree, Options) ->
     TypedTree = aeso_ast_infer_types:infer(Tree),
-    [io:format("Typed tree:\n~s\n",[prettypr:format(aeso_pretty:decls(TypedTree))]) || lists:member(pp_typed,Options)],
+    [io:format("Typed tree:\n~s\n",[prettypr:format(aeso_pretty:decls(TypedTree, [show_generated]))]) || lists:member(pp_typed,Options)],
     %% [io:format("Typed tree:\n~p\n",[TypedTree]) || lists:member(pp_typed,Options)],
     code(TypedTree,
 %%    code(Tree,
@@ -267,7 +267,7 @@ ast_body({app,As,Fun,Args}) ->
         infix  ->
             {Op, _} = Fun,
             [A, B]  = Args,
-            #binop{op = Op, left = ast_body(A), right = ast_body(B)};
+            ast_binop(Op, As, A, B);
         prefix ->
             {Op, _} = Fun,
             [A]     = Args,
@@ -348,6 +348,35 @@ ast_body({record, Attrs, {typed, _, Record, RecType={record_t, Fields}}, Update}
 ast_body({typed, _, Body, _}) ->
     ast_body(Body).
 
+ast_binop(Op, Ann, {typed, _, A, Type}, B)
+    when Op == '=='; Op == '!=';
+         Op == '<';  Op == '>';
+         Op == '<='; Op == '=<'; Op == '>=' ->
+    Monomorphic = is_monomorphic(Type),
+    case ast_typerep(Type) of
+        _ when not Monomorphic ->
+            error({cant_compare_polymorphic_type, Ann, Op, Type});
+        word   -> #binop{op = Op, left = ast_body(A), right = ast_body(B)};
+        string ->
+            Neg = case Op of
+                    '==' -> fun(X) -> X end;
+                    '!=' -> fun(X) -> #unop{ op = '!', rand = X } end;
+                    _    -> error({cant_compare, Ann, Op, Type})
+                  end,
+            Neg(#funcall{ function = #var_ref{name = {builtin, str_equal}},
+                          args     = [ast_body(A), ast_body(B)] });
+        _ -> error({cant_compare, Ann, Op, Type})
+    end;
+ast_binop(Op, _, A, B) ->
+    #binop{op = Op, left = ast_body(A), right = ast_body(B)}.
+
+is_monomorphic({tvar, _, _}) -> false;
+is_monomorphic([H|T]) ->
+  is_monomorphic(H) andalso is_monomorphic(T);
+is_monomorphic(T) when is_tuple(T) ->
+  is_monomorphic(tuple_to_list(T));
+is_monomorphic(_) -> true.
+
 %% Implemented as a contract call to the contract with address 0.
 prim_call(Prim, Amount, Args, ArgTypes, OutType) ->
     #prim_call_contract{ gas      = #integer{ value = 0 },
@@ -424,7 +453,10 @@ set_functions(NewFuns, Icode) ->
 %% -------------------------------------------------------------------
 
 key_type(Ann, Type) ->
+    Monomorphic = is_monomorphic(Type),
     case ast_typerep(Type) of
+        _ when not Monomorphic ->
+            error({polymorphic_key_type, Ann, Type});
         word   -> word;
         string -> string;
         _      -> error({unsupported_key_type, Ann, Type})

@@ -392,9 +392,9 @@ infer_infix({RelOp, As})
   when RelOp == '=='; RelOp == '!=';
        RelOp == '<';  RelOp == '>';
        RelOp == '<='; RelOp == '=<'; RelOp == '>=' ->
-    Int = {id, As, "int"},
+    T = fresh_uvar(As),     %% allow any type here, check in ast_to_icode that we have comparison for it
     Bool = {id, As, "bool"},
-    {fun_t, As, [Int, Int], Bool};
+    {fun_t, As, [T, T], Bool};
 infer_infix({'::', As}) ->
     ElemType = fresh_uvar(As),
     ListType = {app_t, As, {id, As, "list"}, [ElemType]},
