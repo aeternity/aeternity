@@ -45,11 +45,14 @@ check_active_channel_exists(ChannelId, PayloadTx, PoI, Trees) ->
                             STotalAmount      = PoIInitiatorAmt + PoIResponderAmt,
                             ChannelRound      = aesc_channels:round(Ch),
                             StRound           = aesc_payload:round(PayloadTx),
-                            case {ChTotalAmount     =:= STotalAmount,
-                                  ChannelRound      =<  StRound} of
-                                {true , true} -> ok;
-                                {false, _   } -> {error, poi_amounts_change_channel_funds};
-                                {_    , _   } -> {error, old_round}
+                            StChanId          = aesc_payload:channel_id(PayloadTx),
+                            case {ChTotalAmount =:= STotalAmount,
+                                  ChannelRound  =<  StRound,
+                                  ChannelId     =:= StChanId} of
+                                {true , true , true} -> ok;
+                                {_    , _    , false} -> {error, different_channel};
+                                {false, _    , _    } -> {error, poi_amounts_change_channel_funds};
+                                {_    , false, _    } -> {error, old_round}
                             end
                     end;
                 false ->
