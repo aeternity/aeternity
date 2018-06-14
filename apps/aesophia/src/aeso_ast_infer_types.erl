@@ -778,12 +778,14 @@ create_unification_errors() ->
     ets:new(unification_errors, [bag, named_table, public]).
 
 destroy_and_report_unification_errors() ->
+    Errors = ets:tab2list(unification_errors),
     [io:format("Cannot unify ~s (from line ~p)\n"
 	       "         and ~s (from line ~p)\n",
 	       [pp(instantiate(A)), line_number(A),
 		pp(instantiate(B)), line_number(B)])
-     || {A, B} <- ets:tab2list(unification_errors)],
-    ets:delete(unification_errors).
+     || {A, B} <- Errors],
+    ets:delete(unification_errors),
+    [ error(unification_errors) || Errors /= [] ].
 
 line_number(T) ->
     aeso_syntax:get_ann(line, T, 0).
