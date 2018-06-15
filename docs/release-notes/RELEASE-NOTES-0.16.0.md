@@ -16,6 +16,7 @@ It:
 * Ensures that the create contract function calls the init function for Sophia ABI contracts. This impacts consensus.
 * Rewards miner with gas used for execution of contracts, i.e. the execution of the initial call in any contract create transaction and the execution of any contract call transaction. This impacts consensus.
 * Enhances mempool to consider reward miner might get by processing contract-related transactions. This impacts the persisted DB.
+* Enables retrieving the contract call object produced by the execution of the initialization call in a contract create transaction.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.16.0
 

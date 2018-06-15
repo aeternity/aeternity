@@ -194,7 +194,7 @@ get_contract_call_object_from_tx(TxKey, CallKey) ->
                                     {ok, maps:put(CallKey, CallObject, State)}
                             end;
                         {_, _} ->
-                            {error, {400, [], #{<<"reason">> => <<"Tx is not a call">>}}}
+                            {error, {400, [], #{<<"reason">> => <<"Tx is not a create or call">>}}}
                     end
             end
     end.

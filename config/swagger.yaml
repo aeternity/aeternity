@@ -203,7 +203,7 @@ paths:
         - external
         - transactions
       operationId: GetContractCallFromTx
-      description: 'Get the call result for a contract_call transaction'
+      description: 'Get the call result for a contract_create or contract_call transaction'
       produces:
         - application/json
       parameters:
