@@ -203,9 +203,9 @@ verify_proof(Key, Value, RootHash, Proof) ->
 -spec lookup_proof(key(), root_hash(), proof()) -> {ok, value()} |
                                                    {error, term()}.
 lookup_proof(Key, RootHash, Proof) ->
-    case aeu_mp_trees:verify_proof(Key, perform_lookup, RootHash, Proof) of
-        {bad_value, Val} -> {ok, Val};
-        Other -> {error, Other}
+    case aeu_mp_trees:lookup_in_proof(Key, RootHash, Proof) of
+        {value, Val} -> {ok, Val};
+        none -> {error, not_found}
     end.
 
 -spec commit_to_db(mtree()) -> mtree().

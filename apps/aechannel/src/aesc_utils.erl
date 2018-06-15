@@ -63,7 +63,7 @@ check_active_channel_exists(ChannelId, PayloadTx, PoI, Trees) ->
 
 accounts_in_poi(Peers, PoI) ->
     Lookups = [aec_trees:lookup_poi(accounts, Pubkey, PoI) || Pubkey <- Peers],
-    Accounts = [Acc || {ok, Acc} <- Lookups],
+    Accounts = [Acc || {ok, Acc} <- Lookups], % filter successful ones
     case length(Accounts) =:= length(Peers) of
         false -> {error, wrong_channel_peers};
         true ->
@@ -120,7 +120,7 @@ check_are_funds_in_channel(ChannelId, Amount, Trees) ->
         false -> {error, insufficient_channel_funds}
     end.
 
--spec check_state_hash_size(binary) -> boolean().
+-spec check_state_hash_size(binary()) -> boolean().
 check_state_hash_size(Hash) ->
     byte_size(Hash) =:= 32.
 

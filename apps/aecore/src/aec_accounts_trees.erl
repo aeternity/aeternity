@@ -84,7 +84,7 @@ verify_poi(AccountKey, SerializedAccount, Poi) ->
     aec_poi:verify(AccountKey, SerializedAccount, Poi).
 
 -spec lookup_poi(aec_keys:pubkey(), aec_poi:poi()) ->
-                        {'ok', aec_accounts:account()} | {'error', term()}.
+                        {'ok', aec_accounts:account()} | {'error', not_found}.
 lookup_poi(AccountKey, Poi) ->
     case aec_poi:lookup(AccountKey, Poi) of
         {ok, SerializedAccount} -> {ok, aec_accounts:deserialize(AccountKey, SerializedAccount)};

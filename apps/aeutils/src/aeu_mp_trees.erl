@@ -19,6 +19,7 @@
         , iterator_from/2
         , iterator_from/3
         , iterator_next/1
+        , lookup_in_proof/3
         , pp/1
         , put/3
         , root_hash/1
@@ -148,18 +149,32 @@ construct_proof(Key, ProofDB, #mpt{db = DB, hash = Hash}) ->
     int_c_proof(Key, decode_node(Hash, DB), DB, ProofDB1).
 
 -type verify_error() :: 'bad_proof'
-                      | 'not_found'
                       | {'bad_value', term()}
                       | {'bad_hash', hash()}.
 
--spec verify_proof(key(), value() | perform_lookup, hash(), db()) -> 'ok'
-                                                  | {'error', verify_error()}.
+-spec verify_proof(key(), value(), hash(), db()) -> 'ok'
+                                                  | verify_error().
 verify_proof(Key, Val, Hash, ProofDB) ->
     try decode_node_and_check_hash(Hash, ProofDB) of
         {ok, Node} -> int_verify_proof(Key, Node, Val, ProofDB);
         {bad_hash, H} -> {bad_hash, H}
     catch
         _:_ -> bad_proof
+    end.
+
+-spec lookup_in_proof(key(), hash(), db()) -> 'none' | {'value', value()}.
+lookup_in_proof(Key, Hash, ProofDB) ->
+    try decode_node_and_check_hash(Hash, ProofDB) of
+        {ok, Node} ->
+            case int_verify_proof(Key, Node, lookup, ProofDB) of
+                bad_proof         -> none;
+                {bad_hash, _}     -> none;
+                {bad_value, <<>>} -> none;
+                {bad_value, Val}  -> {value, Val}
+            end;
+        {bad_hash,_H} -> none
+    catch
+        _:_ -> none
     end.
 
 -spec iterator(tree()) -> iterator().
@@ -483,7 +498,7 @@ int_verify_proof(Path, {Type, NodePath, NodeVal}, Val, ProofDB)
         _ ->
             case Val =:= <<>> of
                 true  -> ok;
-                false -> not_found
+                false -> {bad_value, <<>>}
             end
     end.
 

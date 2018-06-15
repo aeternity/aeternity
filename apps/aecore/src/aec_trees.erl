@@ -113,7 +113,7 @@ add_poi(Type,_PubKey,_Trees, #poi{} =_Poi) ->
     error({nyi, Type}).
 
 -spec lookup_poi(tree_type(), aec_keys:pubkey(), poi()) -> {'ok', aec_accounts:account()}
-                                                      | {'error', term()}.
+                                                         | {'error', 'not_found'}.
 lookup_poi(accounts, PubKey, #poi{} = Poi) ->
     internal_lookup_accounts_poi(PubKey, Poi).
 
@@ -340,12 +340,12 @@ internal_add_accounts_poi(Pubkey, Trees, #poi{accounts = {poi, APoi}} = Poi) ->
     end.
 
 internal_lookup_accounts_poi(_Pubkey, #poi{accounts = empty}) ->
-    {error, not_present};
+    {error, not_found};
 internal_lookup_accounts_poi(Pubkey, #poi{accounts = {poi, APoi}} = _Poi) ->
     case aec_accounts_trees:lookup_poi(Pubkey, APoi) of
         {ok, Account} ->
             {ok, Account};
-        {error, _} = E -> E
+        {error, not_found} = E -> E
     end.
 
 internal_verify_accounts_poi(_AccountPubkey,_Account, #poi{accounts = empty}) ->

@@ -82,11 +82,11 @@ verify(Key, Value, #aec_poi{root_hash = RootHash} = Poi) ->
         {error, _} = E -> E
     end.
 
--spec lookup(key(), poi()) -> {'ok', term()} | {'error', term()}.
+-spec lookup(key(), poi()) -> {'ok', term()} | {'error', not_found}.
 lookup(Key, #aec_poi{root_hash = RootHash} = Poi) ->
     case aeu_mtrees:lookup_proof(Key, RootHash, Poi#aec_poi.proof) of
         {ok, Val} -> {ok, Val};
-        {error, _} = E -> E
+        {error, not_found} = E -> E
     end.
 
 -spec serialization_format(poi()) -> {state_hash(), [{key(), proof_value()}]}.
