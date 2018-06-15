@@ -1,6 +1,6 @@
 %%% -*- erlang-indent-level:4; indent-tabs-mode: nil -*-
 %%%-------------------------------------------------------------------
-%%% @copyright (C) 2017, Aeternity Anstalt
+%%% @copyright (C) 2018, Aeternity Anstalt
 %%% @doc Memory pool of unconfirmed transactions.
 %%%
 %%% Unconfirmed transactions are transactions not included in any
@@ -36,7 +36,7 @@
 -define(SERVER, ?MODULE).
 -define(TAB, ?MODULE).
 
--record(state, {db :: pool_db()}).
+-record(state, { db :: pool_db() }).
 
 -type negated_fee() :: non_pos_integer().
 -type non_pos_integer() :: neg_integer() | 0.
@@ -154,7 +154,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
 -spec int_get_max_nonce(pool_db(), aec_keys:pubkey()) -> {ok, non_neg_integer()} | undefined.
 int_get_max_nonce(Mempool, Sender) ->
     case lists:flatten(ets:match(Mempool, ?KEY_NONCE_PATTERN(Sender))) of
@@ -357,3 +356,4 @@ check_minimum_fee(Tx,_Hash) ->
         true  -> ok;
         false -> {error, too_low_fee}
     end.
+

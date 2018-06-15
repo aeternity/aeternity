@@ -586,7 +586,7 @@ add_blocked(PeerId, PeerInfo, Blocked) ->
 del_blocked(PeerId, Blocked) ->
     gb_trees:delete_any(PeerId, Blocked).
 
-stop_connection(#peer{ connection = Pid }) when is_pid(Pid) ->
+stop_connection(#peer{ connection = {_, Pid} }) when is_pid(Pid) ->
     aec_peer_connection:stop(Pid);
 stop_connection(_) ->
     ok.

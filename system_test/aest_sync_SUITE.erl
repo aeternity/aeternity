@@ -14,6 +14,7 @@
     new_node_joins_network/1,
     docker_keeps_data/1,
     stop_and_continue_sync/1,
+    tx_pool_sync/1,
     net_split_recovery/1,
     quick_start_stop/1
 ]).
@@ -26,6 +27,7 @@
     connect_node/3, disconnect_node/3,
     wait_for_value/4,
     get_block/2,
+    get_top/1,
     request/3
 ]).
 
@@ -99,6 +101,7 @@ all() -> [
     new_node_joins_network,
     docker_keeps_data,
     stop_and_continue_sync,
+    tx_pool_sync,
     net_split_recovery,
     quick_start_stop
 ].
@@ -333,6 +336,103 @@ stop_and_continue_sync(Cfg) ->
             end,
             ?assertEqual(C1, B2)
     end.
+
+tx_pool_sync(Cfg) ->
+    NodeStartupTime = proplists:get_value(node_startup_time, Cfg),
+
+    setup_nodes([#{ name    => node1,
+                    peers   => [node2],
+                    backend => aest_docker,
+                    source  => {pull, "aeternity/epoch:local"}
+                  },
+                 #{ name    => node2,
+                    peers   => [node1],
+                    backend => aest_docker,
+                    source  => {pull, "aeternity/epoch:local"}
+                  }], Cfg),
+
+    start_node(node1, Cfg),
+    wait_for_value({height, 0}, [node1], NodeStartupTime, Cfg),
+
+    %% Let's post a bunch of transactions, preferrably some valid
+    %% and some "not yet valid"
+
+    Patron = #{ pubkey => <<206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>,
+                privkey => <<230,169,29,99,60,119,207,87,113,50,157,51,84,179,188,239,27,197,224,50,196,61,112,182,211,90,249,35,206,30,183,77,206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>
+              },
+
+    %% Add 5 valid spend transactions
+    ValidTxs = add_spend_txs(node1, Patron, 5, 1),
+    %% Add 10 invalid (nonce_too_high) spend transactions
+    InvalidTxs = add_spend_txs(node1, Patron, 5, 7),
+    add_spend_txs(node1, Patron, 5, 15),
+
+
+    %% Check that the valid transactions made it to the chain.
+    #{ receiver := RecvAccount, amount := Amount } = lists:last(ValidTxs),
+    wait_for_value({balance, aec_base58c:encode(account_pubkey, RecvAccount), Amount},
+                   [node1], 5 * ?MINING_TIMEOUT, Cfg),
+
+    %% Check that the mempool has the other transactions
+    {ok, 200, MempoolTxs1} = request(node1, 'GetTxs', #{}),
+    {10, _} = {length(MempoolTxs1), MempoolTxs1},
+
+    %% Start 2nd node and let it sync
+    start_node(node2, Cfg),
+    wait_for_value({height, 0}, [node2], NodeStartupTime, Cfg),
+
+    %% Give the sync a moment to finish
+    #{ height := Height1 } = get_top(node1),
+    wait_for_value({height, Height1 + 5}, [node2], 5 * ?MINING_TIMEOUT, Cfg),
+
+    {ok, 200, MempoolTxs2} = request(node2, 'GetTxs', #{}),
+    {10, _} = {length(MempoolTxs2), MempoolTxs2},
+
+    %% Stop node1
+    stop_node(node1, 8000, Cfg),
+
+    %% Add one more invalid transaction at Node2
+    add_spend_txs(node2, Patron, 1, 25),
+
+    %% Start node1 and make sure that Tx is synced.
+    %% TODO: Automate check that _only_ this Tx is synced.
+    start_node(node1, Cfg),
+    wait_for_value({height, 0}, [node1], NodeStartupTime, Cfg),
+
+    %% Give the sync a moment to finish
+    #{ height := Height2 } = get_top(node2),
+    wait_for_value({height, Height2 + 5}, [node1], 5 * ?MINING_TIMEOUT, Cfg),
+
+    {ok, 200, MempoolTxs1B} = request(node1, 'GetTxs', #{}),
+    {11, _} = {length(MempoolTxs1B), MempoolTxs1B},
+
+    %% Now add a Tx that unlocks 5 more...
+    add_spend_txs(node2, Patron, 1, 6),
+
+    %% Check that the last of the first batch of invalid transactions made it to the chain.
+    #{ receiver := RecvAccount2, amount := Amount2 } = lists:last(InvalidTxs),
+    wait_for_value({balance, aec_base58c:encode(account_pubkey, RecvAccount2), Amount2},
+                   [node1], 5 * ?MINING_TIMEOUT, Cfg),
+
+    ok.
+
+add_spend_txs(Node, SenderAcct, N, NonceStart) ->
+    [ add_spend_tx(Node, SenderAcct, Nonce) || Nonce <- lists:seq(NonceStart, NonceStart + N - 1) ].
+
+add_spend_tx(Node, #{ pubkey := SendPubKey, privkey := SendSecKey }, Nonce) ->
+    #{ public := RecvPubKey, secret := RecvSecKey } = enacl:sign_keypair(),
+    Params = #{ sender => SendPubKey
+              , recipient => RecvPubKey
+              , amount => 10000
+              , fee => 100
+              , ttl => 10000000
+              , nonce => Nonce
+              , payload => <<>> },
+    {ok, Tx} = aec_spend_tx:new(Params),
+    SignedTx = aetx_sign:sign(Tx, SendSecKey),
+    SerSignTx = aetx_sign:serialize_to_binary(SignedTx),
+    {ok, 200, #{ tx_hash := TxHash }} = request(Node, 'PostTx', #{ tx => aec_base58c:encode(transaction, SerSignTx) }),
+    #{ receiver => RecvPubKey, receiver_sec => RecvSecKey, amount => 10000, tx_hash => TxHash }.
 
 %% Test that two disconnected clusters of nodes are able to recover and merge
 %% there chain when connected back together.

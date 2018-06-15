@@ -14,6 +14,7 @@
         , construct_proof/3
         , delete/2
         , get/2
+        , has_node/3
         , iterator/1
         , iterator/2
         , iterator_from/2
@@ -22,6 +23,7 @@
         , pp/1
         , put/3
         , root_hash/1
+        , unfold/3
         , verify_proof/4
         ]).
 
@@ -35,7 +37,10 @@
              , iterator/0
              , iterator_opts/0
              , key/0
+             , path/0
              , value/0
+             , unfold_leaf/0
+             , unfold_node/0
              ]).
 
 -record(mpt, { hash = <<>>          :: <<>> | hash() %% <<>> for the empty tree
@@ -81,6 +86,9 @@
 -type hash()         :: <<_:256>>.
 
 -type db()           :: aeu_mp_trees_db:db().
+
+-type unfold_leaf() :: {leaf, path()}.
+-type unfold_node() :: {node, path(), enc_node()}.
 
 %%%===================================================================
 %%% API
@@ -192,6 +200,28 @@ iterator_next(#iter{key = Key, root = Hash, db = DB, max_length = M} = Iter) ->
         {Key1, Val} -> {Key1, Val, Iter#iter{key = Key1}}
     end.
 
+-spec unfold(path(), enc_node(), tree()) -> [unfold_node() | unfold_leaf()].
+unfold(<<>>, NodeHash, #mpt{ hash = NodeHash }) ->
+    [];
+unfold(<<>>, _, #mpt{ hash = Hash, db = DB }) ->
+    int_unfold(<<>>, decode_node(Hash, DB), DB);
+unfold(PrefixPath, Node, #mpt{ db = DB }) ->
+    int_unfold(PrefixPath, decode_node(Node, DB), DB).
+
+-spec has_node(path(), enc_node(), tree()) -> yes | no | maybe.
+has_node(Path, Node, T = #mpt{ hash = Root, db = DB }) ->
+    try decode_node(Node, DB) of
+        {'leaf', NodePath, Val} ->
+            case get(<<Path/bits, NodePath/bits>>, T) of
+                Val -> yes;
+                _   -> no
+            end;
+        _ ->
+            int_has_node(Path, Node, decode_node(Root, DB), DB)
+    catch _:_ ->
+        int_has_node(Path, Node, decode_node(Root, DB), DB)
+    end.
+
 -spec pp(tree()) -> 'ok'.
 pp(#mpt{hash = Hash, db = DB}) ->
     io:format("Root: ~s\n", [hexstring(Hash)]),
@@ -212,7 +242,7 @@ assert_val(Val) ->
 
 -spec int_get(path(), tree_node(), db()) -> value() | <<>>.
 
-int_get(_Path, <<>>,_DB) ->
+int_get(_Path, <<>>, _DB) ->
     <<>>;
 int_get(<<>>, {branch, Branch},_DB) when tuple_size(Branch) =:= 17 ->
     branch_value(Branch);
@@ -393,6 +423,61 @@ get_singleton_branch(Branch, N, Acc) ->
             %% First value
             get_singleton_branch(Branch, N + 1, {N, Node})
     end.
+
+
+%%%===================================================================
+%%% Unfold
+
+int_unfold(_Prefix, <<>>, _DB) ->
+    [];
+int_unfold(Prefix, {'leaf', Key, _}, _DB) ->
+    [{leaf, <<Prefix/bitstring, Key/bitstring>>}];
+int_unfold(Prefix, {'ext', P, Node}, DB) ->
+    int_unfold(<<Prefix/bitstring, P/bitstring>>, decode_node(Node, DB), DB);
+int_unfold(Prefix, {'branch', BranchTuple}, _DB) ->
+    int_unfold_branch(Prefix, lists:droplast(tuple_to_list(BranchTuple))).
+
+int_unfold_branch(Prefix, Bs) ->
+    int_unfold_branch(Prefix, 0, Bs, []).
+
+int_unfold_branch(Prefix, X, [<<>> | Ns], Acc) ->
+    int_unfold_branch(Prefix, X + 1, Ns, Acc);
+int_unfold_branch(Prefix, X, [N | Ns], Acc) ->
+    Prefix1 = <<Prefix/bitstring, X:4>>,
+    int_unfold_branch(Prefix, X + 1, Ns, [{node, Prefix1, N} | Acc]);
+int_unfold_branch(_Prefix, 16, [], Acc) ->
+    lists:reverse(Acc).
+
+int_has_node(<<Next:4>>, Node, {branch, Branch}, _DB) ->
+    case branch_next(Next, Branch) of
+        <<>> -> no;
+        Node -> yes;
+        _    -> maybe
+    end;
+int_has_node(<<Next:4, Rest/bits>>, Node, {branch, Branch}, DB) ->
+    NextEncoded = branch_next(Next, Branch),
+    NextNode = decode_node(NextEncoded, DB),
+    int_has_node(Rest, Node, NextNode, DB);
+int_has_node(Path, Node, {Type, NodePath, NodeVal}, DB)
+        when Type =:= ext; Type =:= leaf ->
+    S = bit_size(NodePath),
+    case Path of
+        <<NodePath:S/bits, Rest/bits>> when Type =:= ext ->
+            NextNode = decode_node(NodeVal, DB),
+            int_has_node(Rest, Node, NextNode, DB);
+        _ ->
+            S1 = bit_size(Path),
+            case NodePath of
+                <<Path:S1/bits, _/bits>> ->
+                    maybe;
+                _ ->
+                    no
+            end
+    end;
+int_has_node(_, _, <<>>, _) ->
+    no;
+int_has_node(<<>>, _, {branch, _Branch}, _DB) ->
+    maybe.
 
 %%%===================================================================
 %%% @doc Construct proof for a key.
