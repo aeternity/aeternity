@@ -7,7 +7,7 @@
 -module(aesc_create_tx).
 
 -behavior(aetx).
--behaviour(aesc_payload).
+-behaviour(aesc_signable_transaction).
 
 %% Behavior API
 -export([new/1,
@@ -33,7 +33,7 @@
          responder/1,
          responder_amount/1]).
 
-% payload callbacks
+% snapshot callbacks
 -export([channel_id/1,
          state_hash/1,
          updates/1,
@@ -285,6 +285,7 @@ responder_amount(#channel_create_tx{responder_amount = ResponderAmount}) ->
 channel_id(#channel_create_tx{nonce = Nonce} = Tx) ->
     aesc_channels:id(initiator(Tx), Nonce, responder(Tx)).
 
+-spec state_hash(tx()) -> binary().
 state_hash(#channel_create_tx{state_hash = StateHash}) -> StateHash.
 
 updates(#channel_create_tx{}) ->

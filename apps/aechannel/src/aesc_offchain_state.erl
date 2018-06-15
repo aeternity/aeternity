@@ -87,7 +87,7 @@ check_update_tx(F, SignedTx, #state{signed_txs = Txs}=State, Opts) ->
     Tx = aetx_sign:tx(SignedTx),
     {Mod, TxI} = aetx:specialize_callback(Tx),
     lager:debug("Tx = ~p", [Tx]),
-    case Mod:previous_round(TxI) of
+    case Mod:round(TxI) - 1 of
         0 when Txs == [] ->
             lager:debug("previous round = 0", []),
             check_update_tx_(F, Mod, TxI, State, Opts);

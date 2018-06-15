@@ -391,7 +391,7 @@ close_solo_payload_create_tx(Cfg) ->
 
     PoI = aesc_test_utils:proof_of_inclusion([{PubKey1, InitiatorEndBalance},
                                               {PubKey2, ResponderEndBalance}]),
-    Payload = aetx_sign:serialize_to_binary(CreateTx),
+    Payload = <<>>,
     close_solo_after_(PubKey1, PubKey2, ChannelId, Payload, PoI, S).
 
 close_solo_payload_deposit_tx(Cfg) ->
@@ -415,7 +415,7 @@ close_solo_payload_deposit_tx(Cfg) ->
                                                state_hash => StateHash}, S),
     {ok, DepositTx} = aesc_deposit_tx:new(TxSpec),
     SignedDepositTx = aetx_sign:sign(DepositTx, [PrivKey1, PrivKey2]),
-    Payload = aetx_sign:serialize_to_binary(SignedDepositTx),
+    Payload = <<>>,
     Trees = aens_test_utils:trees(S),
     PoI = aesc_test_utils:proof_of_inclusion(Accounts),
     {ok, [_], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
@@ -444,7 +444,7 @@ close_solo_payload_withdraw_tx(Cfg) ->
                                                state_hash => StateHash}, S),
     {ok, WithdrawTx} = aesc_withdraw_tx:new(TxSpec),
     SignedWithdrawTx = aetx_sign:sign(WithdrawTx, [PrivKey1, PrivKey2]),
-    Payload = aetx_sign:serialize_to_binary(SignedWithdrawTx),
+    Payload = <<>>,
     Trees = aens_test_utils:trees(S),
     PoI = aesc_test_utils:proof_of_inclusion(Accounts),
     {ok, [_], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
@@ -821,7 +821,6 @@ slash(Cfg) ->
     %% Create close_solo tx and apply it on state trees
     PayloadSpec = #{initiator_amount => InitiatorEndBalance,
                     responder_amount => ResponderEndBalance,
-                    previous_round => 11,
                     round => 12}, % greater than default of 11
     Payload = aesc_test_utils:payload(ChannelId, PubKey1, PubKey2,
                                       [PrivKey1, PrivKey2], PayloadSpec),

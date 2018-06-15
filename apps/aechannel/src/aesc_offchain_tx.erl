@@ -1,7 +1,7 @@
 -module(aesc_offchain_tx).
 
 -behaviour(aetx).
--behaviour(aesc_payload).
+-behaviour(aesc_signable_transaction).
 
 %% Behavior API
 -export([new/1,
@@ -22,7 +22,6 @@
 %% Getters
 -export([channel_id/1,
          updates/1,
-         previous_round/1,
          round/1,
          state_hash/1]).
 
@@ -44,7 +43,6 @@
           channel_id         :: aec_id:id(),
           updates            :: [aesc_offchain_state:update()],
           state_hash         :: binary(),
-          previous_round     :: non_neg_integer(),
           round              :: non_neg_integer()
          }).
 
@@ -60,13 +58,11 @@
 new(#{channel_id         := ChannelIdBin,
       state_hash         := StateHash,
       updates            := Updates,
-      previous_round     := Prev,
       round              := Round}) ->
     Tx = #channel_offchain_tx{
             channel_id         = aec_id:create(channel, ChannelIdBin),
             updates            = Updates,
             state_hash         = StateHash,
-            previous_round     = Prev,
             round              = Round},
     {ok, aetx:new(?MODULE, Tx)}.
 
@@ -97,7 +93,6 @@ check(#channel_offchain_tx{
          channel_id         = _ChannelId,
          updates            = _Updates,
          state_hash         = _State,
-         previous_round     = _Prev,
          round              = _Round}, _Context, Trees, _Height,
                                                 _ConsensusVersion) ->
     %% TODO: implement checks relevant to off-chain
@@ -121,11 +116,9 @@ serialize(#channel_offchain_tx{
              channel_id         = ChannelId,
              updates            = Updates,
              state_hash         = StateHash,
-             previous_round     = Prev,
              round              = Round}) ->
     {version(),
      [ {channel_id        , ChannelId}
-     , {previous_round    , Prev}
      , {round             , Round}
      , {updates           , Updates}
      , {state_hash        , StateHash}
@@ -134,7 +127,6 @@ serialize(#channel_offchain_tx{
 -spec deserialize(vsn(), list()) -> tx().
 deserialize(?CHANNEL_OFFCHAIN_TX_VSN,
             [ {channel_id        , ChannelId}
-            , {previous_round    , Prev}
             , {round             , Round}
             , {updates           , Updates}
             , {state_hash        , StateHash}]) ->
@@ -143,25 +135,21 @@ deserialize(?CHANNEL_OFFCHAIN_TX_VSN,
        channel_id         = ChannelId,
        updates            = Updates,
        state_hash         = StateHash,
-       previous_round     = Prev,
        round              = Round}.
 
 -spec for_client(tx()) -> map().
 for_client(#channel_offchain_tx{
               updates            = Updates,
               state_hash         = StateHash,
-              previous_round     = Prev,
               round              = Round} = Tx) ->
     #{<<"vsn">>                => ?CHANNEL_OFFCHAIN_TX_VSN,
       <<"channel_id">>         => aec_base58c:encode(channel, channel_id(Tx)),
-      <<"previous_round">>     => Prev,
       <<"round">>              => Round,
       <<"updates">>            => [aesc_offchain_state:update_for_client(D) || D <- Updates],
       <<"state_hash">>         => aec_base58c:encode(state, StateHash)}.
 
 serialization_template(?CHANNEL_OFFCHAIN_TX_VSN) ->
     [ {channel_id        , id}
-    , {previous_round    , int}
     , {round             , int}
     , {updates           , [{int,binary,binary,int}]}
     , {state_hash        , binary}
@@ -179,10 +167,6 @@ channel_id(#channel_offchain_tx{channel_id = ChannelId}) ->
 updates(#channel_offchain_tx{updates = Updates}) ->
     Updates.
 
--spec previous_round(tx()) -> non_neg_integer().
-previous_round(#channel_offchain_tx{previous_round = PreviousRound}) ->
-    PreviousRound.
-
 -spec round(tx()) -> aesc_channels:seq_number().
 round(#channel_offchain_tx{round = Round}) ->
     Round.
@@ -192,15 +176,11 @@ state_hash(#channel_offchain_tx{state_hash = StateHash}) ->
     StateHash.
 
 -type settable_field() :: updates
-                        | previous_round
                         | round.
 
 -spec set_value(tx(), settable_field(), any()) -> tx().
 set_value(#channel_offchain_tx{} = Tx, updates, Updates) when is_list(Updates) ->
     Tx#channel_offchain_tx{updates = Updates};
-set_value(#channel_offchain_tx{round = Seq} = Tx, previous_round, N)
-  when is_integer(N), N >= 0, N < Seq ->
-    Tx#channel_offchain_tx{previous_round = N};
 set_value(#channel_offchain_tx{round = Seq} = Tx, round, N)
   when is_integer(N), N >= 0, N > Seq ->
     Tx#channel_offchain_tx{round = N};

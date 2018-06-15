@@ -136,16 +136,16 @@ close_solo(Ch, Params) ->
                 {IAmt, RAmt}
         end,
 
-    DummyStateTx = state_tx(aesc_channels:id(Ch),
-                            aesc_channels:initiator(Ch),
-                            aesc_channels:responder(Ch),
-                            maps:merge(Params, #{initiator_amount => InitiatorEndBalance,
+    DummyState = state_tx(aesc_channels:id(Ch),
+                          aesc_channels:initiator(Ch),
+                          aesc_channels:responder(Ch),
+                          maps:merge(Params, #{initiator_amount => InitiatorEndBalance,
                                                  responder_amount => ResponderEndBalance})),
-    {ok, PayloadTx} = aesc_payload:new(DummyStateTx),
-
     PoI = proof_of_inclusion([{aesc_channels:initiator(Ch), InitiatorEndBalance},
                               {aesc_channels:responder(Ch), ResponderEndBalance}]),
-    aesc_channels:close_solo(Ch, PayloadTx, PoI, 11).
+
+    {channel_offchain_tx, DummyStateTx} = aetx:specialize_type(DummyState),
+    aesc_channels:close_solo(Ch, DummyStateTx, PoI, 11).
 
 get_channel(ChannelId, State) ->
     aesc_state_tree:get(ChannelId, aec_trees:channels(trees(State))).
@@ -369,7 +369,6 @@ state_tx(ChannelId, Initiator, Responder, Spec0) ->
               responder_amount   => ResponderAmount,
               state              => maps:get(state, Spec, <<>>),
               state_hash         => StateHash,
-              previous_round     => maps:get(previous_round, Spec),
               round              => maps:get(round, Spec)}),
     StateTx.
 
@@ -377,7 +376,6 @@ state_tx_spec() ->
     #{initiator_amount   => 3,
       responder_amount   => 4,
       state              => <<"state..">>,
-      previous_round     => 10,
       round              => 11}.
 
 payload(ChannelId, Initiator, Responder, SignersPrivKeys, Spec) ->

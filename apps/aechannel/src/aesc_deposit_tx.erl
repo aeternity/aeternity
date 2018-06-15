@@ -7,7 +7,7 @@
 -module(aesc_deposit_tx).
 
 -behavior(aetx).
--behaviour(aesc_payload).
+-behaviour(aesc_signable_transaction).
 
 %% Behavior API
 -export([new/1,
@@ -26,7 +26,7 @@
          for_client/1
         ]).
 
-% payload callbacks
+% snapshot callbacks
 -export([channel_id/1,
          state_hash/1,
          updates/1,
@@ -138,7 +138,7 @@ check(#channel_deposit_tx{amount     = Amount,
         {ok, aec_trees:trees()}.
 process(#channel_deposit_tx{amount     = Amount,
                             fee        = Fee,
-                            state_hash = _StateHash,
+                            state_hash = StateHash,
                             round      = Round,
                             nonce      = Nonce} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
     ChannelId = channel(Tx),
@@ -151,7 +151,7 @@ process(#channel_deposit_tx{amount     = Amount,
     AccountsTree1      = aec_accounts_trees:enter(FromAccount1, AccountsTree0),
 
     Channel0      = aesc_state_tree:get(ChannelId, ChannelsTree0),
-    Channel1      = aesc_channels:deposit(Channel0, Amount, Round),
+    Channel1      = aesc_channels:deposit(Channel0, Amount, Round, StateHash),
     ChannelsTree1 = aesc_state_tree:enter(Channel1, ChannelsTree0),
 
     Trees1 = aec_trees:set_accounts(Trees, AccountsTree1),

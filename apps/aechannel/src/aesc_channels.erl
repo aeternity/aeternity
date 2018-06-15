@@ -8,16 +8,18 @@
 
 %% API
 -export([deserialize/2,
-         deposit/3,
+         deposit/4,
          is_active/1,
          is_solo_closed/2,
          is_solo_closing/2,
          new/1,
          peers/1,
          serialize/1,
+         slash/3,
          slash/4,
+         close_solo/3,
          close_solo/4,
-         withdraw/3]).
+         withdraw/4]).
 
 %% Getters
 -export([id/1,
@@ -28,6 +30,7 @@
          initiator_amount/1,
          responder_amount/1,
          channel_reserve/1,
+         state_hash/1,
          round/1,
          closes_at/1]).
 
@@ -40,6 +43,7 @@
 -type id()     :: <<_:256>>.
 -type amount() :: non_neg_integer().
 -type seq_number() :: non_neg_integer().
+-type payload() :: aesc_offchain_tx:tx() | <<>>.
 
 -record(channel, {id               :: aec_id:id(),
                   initiator        :: aec_id:id(),
@@ -47,6 +51,7 @@
                   total_amount     :: amount(),
                   initiator_amount :: amount(),
                   channel_reserve  :: amount(),
+                  state_hash       :: binary(),
                   round            :: seq_number(),
                   lock_period      :: non_neg_integer(),
                   closes_at        :: aec_blocks:height()}).
@@ -59,7 +64,8 @@
               amount/0,
               seq_number/0,
               channel/0,
-              serialized/0]).
+              serialized/0,
+              payload/0]).
 
 -define(CHANNEL_TYPE, channel).
 -define(CHANNEL_VSN, 1).
@@ -71,8 +77,19 @@
 %%% API
 %%%===================================================================
 
--spec close_solo(channel(), aesc_payload:tx(), aec_trees:poi(), aec_blocks:height()) -> channel().
-close_solo(#channel{lock_period = LockPeriod} = Ch, PayloadTx, PoI, Height) ->
+%% close solo with last known onchain state
+-spec close_solo(channel(), aec_trees:poi(), aec_blocks:height()) -> channel().
+close_solo(Ch, PoI, Height) ->
+    close_solo_int(Ch, PoI, Height, round(Ch),        % keep the round
+                                    state_hash(Ch)).  % keep the state hash
+
+%% close solo with a payload
+-spec close_solo(channel(), aesc_offchain_tx:tx(), aec_trees:poi(), aec_blocks:height()) -> channel().
+close_solo(Ch, PayloadTx, PoI, Height) ->
+    close_solo_int(Ch, PoI, Height, aesc_offchain_tx:round(PayloadTx),
+                                    aesc_offchain_tx:state_hash(PayloadTx)).
+
+close_solo_int(#channel{lock_period = LockPeriod} = Ch, PoI, Height, Round, StateHash) ->
     Initiator = initiator(Ch),
     Responder = responder(Ch),
     ClosesAt = Height + LockPeriod,
@@ -80,12 +97,14 @@ close_solo(#channel{lock_period = LockPeriod} = Ch, PayloadTx, PoI, Height) ->
     ResponderAmt = fetch_amount_from_poi(PoI, Responder),
     Ch#channel{initiator_amount = InitiatorAmt,
                total_amount     = InitiatorAmt + ResponderAmt,
-               round            = aesc_payload:round(PayloadTx),
+               round            = Round,
+               state_hash       = StateHash,
                closes_at        = ClosesAt}.
 
--spec deposit(channel(), amount(), seq_number()) -> channel().
-deposit(#channel{total_amount = TotalAmount} = Ch, Amount, Round) ->
+-spec deposit(channel(), amount(), seq_number(), binary()) -> channel().
+deposit(#channel{total_amount = TotalAmount} = Ch, Amount, Round, StateHash) ->
     Ch#channel{total_amount = TotalAmount + Amount,
+               state_hash = StateHash,
                round = Round}.
 
 -spec deserialize(id(), binary()) -> channel().
@@ -95,6 +114,7 @@ deserialize(IdBin, Bin) ->
     , {total_amount     , TotalAmount}
     , {initiator_amount , InitiatorAmount}
     , {channel_reserve  , ChannelReserve}
+    , {state_hash       , StateHash}
     , {round            , Round}
     , {lock_period      , LockPeriod}
     , {closes_at        , ClosesAt}
@@ -111,6 +131,7 @@ deserialize(IdBin, Bin) ->
              total_amount     = TotalAmount,
              initiator_amount = InitiatorAmount,
              channel_reserve  = ChannelReserve,
+             state_hash       = StateHash,
              round            = Round,
              lock_period      = LockPeriod,
              closes_at        = ClosesAt}.
@@ -142,12 +163,14 @@ new(ChCTx) ->
             aesc_create_tx:responder(ChCTx)),
     InitiatorAmount   = aesc_create_tx:initiator_amount(ChCTx),
     ResponderAmount = aesc_create_tx:responder_amount(ChCTx),
+    StateHash = aesc_create_tx:state_hash(ChCTx),
     #channel{id               = aec_id:create(channel, Id),
              initiator        = aec_id:create(account, aesc_create_tx:initiator(ChCTx)),
              responder        = aec_id:create(account, aesc_create_tx:responder(ChCTx)),
              total_amount     = InitiatorAmount + ResponderAmount,
              initiator_amount = InitiatorAmount,
              channel_reserve  = aesc_create_tx:channel_reserve(ChCTx),
+             state_hash       = StateHash,
              round            = 0,
              closes_at        = 0,
              lock_period      = aesc_create_tx:lock_period(ChCTx)}.
@@ -166,6 +189,7 @@ serialize(#channel{initiator = InitiatorId, responder = ResponderId} = Ch) ->
       , {total_amount     , total_amount(Ch)}
       , {initiator_amount , initiator_amount(Ch)}
       , {channel_reserve  , channel_reserve(Ch)}
+      , {state_hash       , state_hash(Ch)}
       , {round            , round(Ch)}
       , {lock_period      , lock_period(Ch)}
       , {closes_at        , closes_at(Ch)}
@@ -177,13 +201,23 @@ serialization_template(?CHANNEL_VSN) ->
     , {total_amount     , int}
     , {initiator_amount , int}
     , {channel_reserve  , int}
+    , {state_hash       , binary}
     , {round            , int}
     , {lock_period      , int}
     , {closes_at        , int}
     ].
 
--spec slash(channel(), aesc_payload:tx(), aec_trees:poi(), aec_blocks:height()) -> channel().
-slash(#channel{lock_period = LockPeriod} = Ch, PayloadTx, PoI, Height) ->
+-spec slash(channel(), aec_trees:poi(), aec_blocks:height()) -> channel().
+slash(Ch, PoI, Height) ->
+    slash_int(Ch, PoI, Height, round(Ch),        % keep the round
+                               state_hash(Ch)).  % keep the state hash
+
+-spec slash(channel(), aesc_offchain_tx:tx(), aec_trees:poi(), aec_blocks:height()) -> channel().
+slash(Ch, PayloadTx, PoI, Height) ->
+    slash_int(Ch, PoI, Height, aesc_offchain_tx:round(PayloadTx),
+                               aesc_offchain_tx:state_hash(PayloadTx)).
+
+slash_int(#channel{lock_period = LockPeriod} = Ch, PoI, Height, Round, StateHash) ->
     Initiator = initiator(Ch),
     Responder = responder(Ch),
     InitiatorAmt = fetch_amount_from_poi(PoI, Initiator),
@@ -191,12 +225,14 @@ slash(#channel{lock_period = LockPeriod} = Ch, PayloadTx, PoI, Height) ->
     ClosesAt = Height + LockPeriod,
     Ch#channel{initiator_amount = InitiatorAmt,
                total_amount     = InitiatorAmt +  ResponderAmt,
-               round            = aesc_payload:round(PayloadTx),
+               round            = Round,
+               state_hash       = StateHash,
                closes_at        = ClosesAt}.
 
--spec withdraw(channel(), amount(), seq_number()) -> channel().
-withdraw(#channel{total_amount = TotalAmount} = Ch, Amount, Round) ->
+-spec withdraw(channel(), amount(), seq_number(), binary()) -> channel().
+withdraw(#channel{total_amount = TotalAmount} = Ch, Amount, Round, StateHash) ->
     Ch#channel{total_amount = TotalAmount - Amount,
+               state_hash = StateHash,
                round = Round}.
 
 %%%===================================================================
@@ -239,6 +275,10 @@ channel_reserve(#channel{channel_reserve = ChannelReserve}) ->
 -spec lock_period(channel()) -> non_neg_integer().
 lock_period(#channel{lock_period = LockPeriod}) ->
     LockPeriod.
+
+-spec state_hash(channel()) -> binary().
+state_hash(#channel{state_hash = StateHash}) ->
+    StateHash.
 
 -spec round(channel()) -> non_neg_integer().
 round(#channel{round = Round}) ->

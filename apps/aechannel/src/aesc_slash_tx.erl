@@ -127,9 +127,14 @@ process(#channel_slash_tx{payload    = Payload,
     {ok, FromAccount1} = aec_accounts:spend(FromAccount0, Fee, Nonce),
     AccountsTree1           = aec_accounts_trees:enter(FromAccount1, AccountsTree0),
 
-    {ok, _SignedTx, PayloadTx} = deserialize_from_binary(Payload),
     Channel0                   = aesc_state_tree:get(ChannelId, ChannelsTree0),
-    Channel1                   = aesc_channels:slash(Channel0, PayloadTx, PoI, Height),
+    Channel1 =
+        case aesc_utils:deserialize_payload(Payload) of
+            {ok, _SignedTx, PayloadTx} ->
+                aesc_channels:slash(Channel0, PayloadTx, PoI, Height);
+            {ok, last_onchain} ->
+                aesc_channels:slash(Channel0, PoI, Height)
+        end,
     ChannelsTree1              = aesc_state_tree:enter(Channel1, ChannelsTree0),
 
     Trees1 = aec_trees:set_accounts(Trees, AccountsTree1),
@@ -211,7 +216,8 @@ serialization_template(?CHANNEL_SLASH_TX_VSN) ->
                     aec_trees:poi(), aec_blocks:height(), aec_trees:trees()) ->
                            ok | {error, term()}.
 check_payload(ChannelId, FromPubKey, Payload, PoI, Height, Trees) ->
-    case deserialize_from_binary(Payload) of
+    case aesc_utils:deserialize_payload(Payload) of
+        {ok, last_onchain} -> ok;
         {ok, SignedState, PayloadTx} ->
             Checks =
                 [fun() -> is_peer(FromPubKey, SignedState, Trees) end,
@@ -221,22 +227,6 @@ check_payload(ChannelId, FromPubKey, Payload, PoI, Height, Trees) ->
             aeu_validation:run(Checks);
         {error, _Reason} = Error ->
             Error
-    end.
-
--spec deserialize_from_binary(binary()) -> {ok, aetx_sign:signed_tx(), aesc_payload:tx()}
-                                         | {error, bad_offchain_state_type}.
-deserialize_from_binary(Payload) ->
-    try
-        SignedTx = aetx_sign:deserialize_from_binary(Payload),
-        Tx       = aetx_sign:tx(SignedTx),
-        case aesc_payload:new(Tx) of
-            {ok, PayloadTx} ->
-                {ok, SignedTx, PayloadTx};
-            error ->
-                {error, bad_offchain_state_type}
-        end
-    catch _:_ ->
-            {error, payload_deserialization_failed}
     end.
 
 is_peer(AccountPubKey, SignedState, Trees) ->
@@ -250,11 +240,11 @@ is_peer(AccountPubKey, SignedState, Trees) ->
         {error, _Reason}=Err -> Err
     end.
 
--spec check_channel(aesc_channels:id(), aesc_payload:tx(),
+-spec check_channel(aesc_channels:id(), aesc_offchain_tx:tx(),
                     aec_trees:poi(), aec_blocks:height(), aec_trees:trees())
     -> ok | {error, atom()}.
 check_channel(ChannelId, PayloadTx, PoI, Height, Trees) ->
-    case ChannelId =:= aesc_payload:channel_id(PayloadTx) of
+    case ChannelId =:= aesc_offchain_tx:channel_id(PayloadTx) of
         true ->
             ChannelsTree = aec_trees:channels(Trees),
             case aesc_state_tree:lookup(ChannelId, ChannelsTree) of
@@ -294,13 +284,13 @@ check_solo_closing(Channel, Height) ->
     end.
 
 check_round(PayloadTx, Channel) ->
-    case aesc_channels:round(Channel) < aesc_payload:round(PayloadTx) of
+    case aesc_channels:round(Channel) < aesc_offchain_tx:round(PayloadTx) of
         true  -> ok;
         false -> {error, state_round_too_small}
     end.
 
 check_root_hash(PayloadTx, PoI) ->
-    ChannelStateHash = aesc_payload:state_hash(PayloadTx),
+    ChannelStateHash = aesc_offchain_tx:state_hash(PayloadTx),
     PoIHash = aec_trees:poi_hash(PoI),
     case ChannelStateHash =:= PoIHash of
         true -> ok;

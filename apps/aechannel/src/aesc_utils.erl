@@ -15,7 +15,8 @@
          check_are_funds_in_channel/3,
          check_round_greater_than_last/2,
          check_round_at_last_last/2,
-         check_state_hash_size/1
+         check_state_hash_size/1,
+         deserialize_payload/1
         ]).
 
 %%%===================================================================
@@ -23,7 +24,7 @@
 %%%===================================================================
 
 -spec check_active_channel_exists(aesc_channels:id(),
-                                  aesc_payload:tx(),
+                                  aesc_offchain_tx:tx(),
                                   aec_trees:poi(),
                                   aec_trees:trees()) ->
                                          {error, term()} | ok.
@@ -45,8 +46,8 @@ check_active_channel_exists(ChannelId, PayloadTx, PoI, Trees) ->
                             PoIResponderAmt = aec_accounts:balance(PoIResponderAcc),
                             STotalAmount      = PoIInitiatorAmt + PoIResponderAmt,
                             ChannelRound      = aesc_channels:round(Ch),
-                            StRound           = aesc_payload:round(PayloadTx),
-                            StChanId          = aesc_payload:channel_id(PayloadTx),
+                            StRound           = aesc_offchain_tx:round(PayloadTx),
+                            StChanId          = aesc_offchain_tx:channel_id(PayloadTx),
                             case {ChTotalAmount =:= STotalAmount,
                                   ChannelRound  =<  StRound,
                                   ChannelId     =:= StChanId} of
@@ -123,4 +124,23 @@ check_are_funds_in_channel(ChannelId, Amount, Trees) ->
 -spec check_state_hash_size(binary()) -> boolean().
 check_state_hash_size(Hash) ->
     byte_size(Hash) =:= 32.
+
+-spec deserialize_payload(binary()) -> {ok, aetx_sign:signed_tx(), aesc_offchain_tx:tx()}
+                                         | {ok, last_onchain}
+                                         | {error, bad_offchain_state_type}.
+deserialize_payload(<<>>) ->
+    {ok, last_onchain};
+deserialize_payload(Payload) ->
+    try
+        SignedTx = aetx_sign:deserialize_from_binary(Payload),
+        Tx       = aetx_sign:tx(SignedTx),
+        case aetx:specialize_type(Tx) of
+            {channel_offchain_tx, PayloadTx} ->
+                {ok, SignedTx, PayloadTx};
+            _ ->
+                {error, bad_offchain_state_type}
+        end
+    catch _:_ ->
+            {error, payload_deserialization_failed}
+    end.
 

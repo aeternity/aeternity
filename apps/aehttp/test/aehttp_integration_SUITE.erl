@@ -3159,8 +3159,6 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
     ct:log("Unsigned state tx ~p", [UnsignedStateTx]),
     %% verify contents
     {channel_offchain_tx, OffchainTx} = aetx:specialize_type(UnsignedStateTx),
-    Round = aesc_offchain_tx:round(OffchainTx),
-    true = Round - 1 =:= aesc_offchain_tx:previous_round(OffchainTx),
     [Update] = aesc_offchain_tx:updates(OffchainTx),
     Expected = aesc_offchain_state:op_transfer(StarterPubkey,
                                                AcknowledgerPubkey, Amount),
