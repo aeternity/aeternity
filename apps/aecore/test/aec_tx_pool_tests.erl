@@ -19,7 +19,7 @@ tx_pool_test_() ->
              aec_test_utils:mock_genesis(),
              GB = aec_test_utils:genesis_block(),
              aec_chain_state:insert_block(GB),
-             aec_test_utils:mock_block_target_validation(),
+             aec_test_utils:mock_block_target_validation(), %% Mocks aec_governance.
              {ok, _} = aec_tx_pool:start_link(),
              %% Start `aec_keys` merely for generating realistic test
              %% signed txs - as a node would do.
@@ -32,7 +32,7 @@ tx_pool_test_() ->
              ets:delete(?TAB),
              aec_test_utils:stop_chain_db(),
              aec_test_utils:unmock_genesis(),
-             aec_test_utils:unmock_block_target_validation(),
+             aec_test_utils:unmock_block_target_validation(), %% Unloads aec_governance mock.
              ok = aec_tx_pool:stop(),
              ok
      end,
@@ -142,20 +142,26 @@ tx_pool_test_() ->
                  PK1 = new_pubkey(),
                  PK2 = new_pubkey(),
                  PK3 = new_pubkey(),
-                 STx1 = a_signed_tx(PK1, me, 1, 1),
-                 STx2 = a_signed_tx(PK1, me, 2, 2),
-                 STx3 = a_signed_tx(PK1, me, 3, 3),
-                 STx4 = a_signed_tx(PK2, me, 2, 5),
-                 STx5 = a_signed_tx(PK2, me, 1, 6),
+                 PK4 = new_pubkey(),
+                 STxs =
+                   [ a_signed_tx        (_Sender=PK1, me,_Nonce=1,_Fee=1)
+                   , a_signed_tx        (        PK1, me,       2,     2)
+                   , a_signed_tx        (        PK1, me,       3,     3)
+                   , a_signed_tx        (        PK2, me,       2,     5)
+                   , a_signed_tx        (        PK2, me,       1,     6)
+                   , signed_ct_create_tx(        PK4,           1,     1,_GasPrice=1)
+                   , signed_ct_call_tx  (        PK4,           2,     4,          9)
+                   , signed_ct_call_tx  (        PK4,           3,     7,          0)
+                   ],
 
-                 [?assertEqual(ok, aec_tx_pool:push(Tx)) || Tx <- [STx1, STx2, STx3, STx4, STx5]],
+                 [?assertEqual(ok, aec_tx_pool:push(Tx)) || Tx <- STxs],
                  {ok, CurrentMempoolSigned} = aec_tx_pool:peek(10),
                  %% extract transactions without verification
                  CurrentMempool = [ aetx_sign:tx(STx) || STx <- CurrentMempoolSigned ],
 
                  MempoolOrder = [{aetx:origin(Tx), aetx:nonce(Tx)} || Tx <- CurrentMempool],
-                 %% this is not-optimal order: transactions for PK1 are invalid in that order
-                 CorrectOrder = [{PK2,1},{PK2,2},{PK1,3},{PK1,2},{PK1,1}],
+                 %% this is not-optimal order: transactions for PK1 and PK4 are invalid in that order
+                 CorrectOrder = [{PK4,3},{PK2,1},{PK2,2},{PK4,2},{PK1,3},{PK1,2},{PK4,1},{PK1,1}],
 
                  ?assertEqual(CorrectOrder, MempoolOrder),
 
@@ -171,19 +177,34 @@ tx_pool_test_() ->
                PK = new_pubkey(),
 
                %% Only one tx in pool
-               STx1 = a_signed_tx(PK, me, 1, 1),
+               STx1 = a_signed_tx(PK, me, Nonce1=1,_Fee1=1),
                ?assertEqual(ok, aec_tx_pool:push(STx1)),
                ?assertEqual({ok, [STx1]}, aec_tx_pool:get_candidate(10, <<>>)),
 
                %% Order by nonce even if fee is higher
-               STx2 = a_signed_tx(PK, me, 2, 5),
+               STx2 = a_signed_tx(PK, me, Nonce2=2, Fee2=5),
                ?assertEqual(ok, aec_tx_pool:push(STx2)),
                ?assertEqual({ok, [STx1, STx2]}, aec_tx_pool:get_candidate(10, <<>>)),
 
                %% Replace same nonce with the higher fee
-               STx3 = a_signed_tx(PK, me, 1, 2),
+               STx3 = a_signed_tx(PK, me, Nonce1=1, 2),
                ?assertEqual(ok, aec_tx_pool:push(STx3)),
                ?assertEqual({ok, [STx3, STx2]}, aec_tx_pool:get_candidate(10, <<>>)),
+
+               %% Replace same nonce with same fee but positive gas price (gas price of transaction without gas price is considered zero)
+               STx4 = signed_ct_create_tx(PK, Nonce2=2, Fee2=5,_GasPrice4=1),
+               ?assertEqual(ok, aec_tx_pool:push(STx4)),
+               ?assertEqual({ok, [STx3, STx4]}, aec_tx_pool:get_candidate(10, <<>>)),
+
+               %% Replace same nonce with same fee but higher gas price
+               STx5 = signed_ct_create_tx(PK, Nonce2=2, Fee2=5, 2),
+               ?assertEqual(ok, aec_tx_pool:push(STx5)),
+               ?assertEqual({ok, [STx3, STx5]}, aec_tx_pool:get_candidate(10, <<>>)),
+
+               %% Order by nonce even if fee and gas price are higher
+               STx6 = signed_ct_call_tx(PK, _Nonce6=3,_Fee6=9,_GasPrice6=9),
+               ?assertEqual(ok, aec_tx_pool:push(STx6)),
+               ?assertEqual({ok, [STx3, STx5, STx6]}, aec_tx_pool:get_candidate(10, <<>>)),
 
                ok
        end},
@@ -240,9 +261,26 @@ tx_pool_test_() ->
                STx3 = a_signed_tx(PubKey1, new_pubkey(), 5, 1),
                ?assertEqual(ok, aec_tx_pool:push(STx3)),
 
+               %% A transaction with too low fee should be rejected
                STx4 = a_signed_tx(PubKey1, new_pubkey(), 6,
                                   aec_governance:minimum_tx_fee() - 1),
                ?assertEqual({error, too_low_fee}, aec_tx_pool:push(STx4)),
+
+               %% A transaction with too low gas price should be rejected
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 10, 100, 0))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 20, 100, 0))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 11, 100, 1))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 21, 100, 1))),
+               meck:expect(aec_governance, minimum_gas_price, 0, 2),
+               ?assertEqual({error, too_low_gas_price}, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 12, 100, 0))),
+               ?assertEqual({error, too_low_gas_price}, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 22, 100, 0))),
+               ?assertEqual({error, too_low_gas_price}, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 13, 100, 1))),
+               ?assertEqual({error, too_low_gas_price}, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 23, 100, 1))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 14, 100, 2))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 24, 100, 2))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 15, 100, 3))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 25, 100, 3))),
+
                ok
        end}
      ]}.
@@ -253,6 +291,41 @@ a_signed_tx(Sender, Recipient, Nonce, Fee) ->
                                   amount => 1,
                                   nonce => Nonce, fee => Fee,
                                   payload => <<"">>}),
+    {ok, STx} = sign(Sender, Tx),
+    STx.
+
+signed_ct_create_tx(Sender, Nonce, Fee, GasPrice) ->
+    Spec =
+        #{ fee        => Fee
+         , owner      => Sender
+         , nonce      => Nonce
+         , code       => <<"NOT PROPER BYTE CODE">>
+         , vm_version => 1
+         , deposit    => 10
+         , amount     => 200
+         , gas        => 10
+         , gas_price  => GasPrice
+         , call_data  => <<"NOT ENCODED ACCORDING TO ABI">>
+         , ttl        => 0
+         },
+    {ok, Tx} = aect_create_tx:new(Spec),
+    {ok, STx} = sign(Sender, Tx),
+    STx.
+
+signed_ct_call_tx(Sender, Nonce, Fee, GasPrice) ->
+    Spec =
+        #{ fee         => Fee
+         , contract    => <<"contract_address......(32 bytes)">>
+         , caller      => Sender
+         , nonce       => Nonce
+         , vm_version  => 1
+         , amount      => 100
+         , gas         => 10000
+         , gas_price   => GasPrice
+         , call_data   => <<"CALL DATA">>
+         , ttl         => 0
+         },
+    {ok, Tx} = aect_call_tx:new(Spec),
     {ok, STx} = sign(Sender, Tx),
     STx.
 

@@ -13,7 +13,17 @@
 -behaviour(gen_server).
 
 -define(MEMPOOL, mempool).
--define(KEY_NONCE_PATTERN(Sender), {{'_', Sender, '$1', '_'}, '_'}).
+-define(KEY(NegFee, NegGasPrice, Origin, Nonce, TxHash),
+           {NegFee, NegGasPrice, Origin, Nonce, TxHash}).
+-define(VALUE_POS, 2).
+-define(KEY_AS_MATCH_SPEC_RESULT(NegFee, NegGasPrice, Origin, Nonce, TxHash),
+        { %% Tuple of arity 1 where the single element is the mempool key tuple.
+         ?KEY(NegFee, NegGasPrice, Origin, Nonce, TxHash)
+        }).
+-define(KEY_NONCE_PATTERN(Sender), {?KEY('_', '_', Sender, '$1', '_'), '_'}).
+
+%% Placeholder for gas price in mempool key for txs unrelated to contracts.
+-define(PSEUDO_GAS_PRICE, 0).
 
 %% API
 -export([ start_link/0
@@ -41,8 +51,8 @@
 -type negated_fee() :: non_pos_integer().
 -type non_pos_integer() :: neg_integer() | 0.
 
--type pool_db_key() ::
-        {negated_fee(), aec_keys:pubkey(), non_neg_integer(), binary()}.
+-type pool_db_key() :: ?KEY(negated_fee(), aect_contracts:amount(),
+                            aec_keys:pubkey(), non_neg_integer(), binary()).
 -type pool_db_value() :: aetx_sign:signed_tx().
 -type pool_db() :: atom().
 
@@ -165,7 +175,7 @@ int_get_max_nonce(Mempool, Sender) ->
     end.
 
 %% Ensure ordering of tx nonces in one account, and for duplicate account nonces
-%% we only get the one with higher fee.
+%% we only get the one with higher fee or - if equal fee - higher gas price.
 int_get_candidate(MaxNumberOfTxs, Mempool, BlockHash) ->
     int_get_candidate(MaxNumberOfTxs, Mempool, ets:first(Mempool),
                       BlockHash, gb_trees:empty()).
@@ -174,13 +184,13 @@ int_get_candidate(0,_Mempool, _,_BlockHash, Acc) ->
     gb_trees:values(Acc);
 int_get_candidate(_N,_Mempool, '$end_of_table',_BlockHash, Acc) ->
     gb_trees:values(Acc);
-int_get_candidate(N, Mempool, {_Fee, Account, Nonce, _} = Key, BlockHash, Acc) ->
+int_get_candidate(N, Mempool, ?KEY(_, _, Account, Nonce, _) = Key, BlockHash, Acc) ->
     case gb_trees:is_defined({Account, Nonce}, Acc) of
         true ->
-            %% The earlier must have had higher fee. Skip this tx.
+            %% The earlier must have had higher fee or higher gas price. Skip this tx.
             int_get_candidate(N, Mempool, ets:next(Mempool, Key), BlockHash, Acc);
         false ->
-            Tx = ets:lookup_element(Mempool, Key, 2),
+            Tx = ets:lookup_element(Mempool, Key, ?VALUE_POS),
             case check_nonce_at_hash(Tx, BlockHash) of
                 ok ->
                     NewAcc = gb_trees:insert({Account, Nonce}, Tx, Acc),
@@ -198,20 +208,23 @@ int_get_candidate(N, Mempool, {_Fee, Account, Nonce, _} = Key, BlockHash, Acc) -
 -spec pool_db_key(aetx_sign:signed_tx()) -> pool_db_key().
 pool_db_key(SignedTx) ->
     Tx = aetx_sign:tx(SignedTx),
-    %% INFO: Sort by fee
-    %%       TODO: sort by fee, then by origin, then by nonce
+    %% INFO: Sort by fee, then by gas price, then by origin, then by nonce
 
     %% INFO: * given that nonce is an index of transactions for a user,
     %%         the following key is unique for a transaction
-    %%       * negative fee places high profit transactions at the beginning
+    %%       * negative fee and negative gas price place high profit
+    %%         transactions at the beginning
     %%       * ordered_set type enables implicit overwrite of the same txs
-    {-aetx:fee(Tx), aetx:origin(Tx), aetx:nonce(Tx), aetx_sign:hash(SignedTx)}.
+    ?KEY(-aetx:fee(Tx), -int_gas_price(Tx),
+         aetx:origin(Tx), aetx:nonce(Tx), aetx_sign:hash(SignedTx)).
 
 -spec select_pool_db_key_by_hash(pool_db(), binary()) -> {ok, pool_db_key()} | not_in_ets.
 select_pool_db_key_by_hash(Mempool, TxHash) ->
-    case sel_return(ets_select(Mempool, [{ {{'$1', '$2', '$3', '$4'}, '_'},
-                                           [{'=:=','$4', TxHash}],
-                                           [{{'$1', '$2', '$3', '$4'}}] }], infinity)) of
+    MatchFunction =
+        { {?KEY('$1', '$2', '$3', '$4', '$5'), '_'},
+          [{'=:=','$5', TxHash}],
+          [?KEY_AS_MATCH_SPEC_RESULT('$1', '$2', '$3', '$4', '$5')] },
+    case sel_return(ets_select(Mempool, [MatchFunction], infinity)) of
         [Key] -> {ok, Key};
         [] -> not_in_ets
     end.
@@ -288,6 +301,7 @@ pool_db_put(Mempool, Key, Tx, Event) ->
             Checks = [ fun check_signature/2
                      , fun check_nonce/2
                      , fun check_minimum_fee/2
+                     , fun check_minimum_gas_price/2
                      ],
             case aeu_validation:run(Checks, [Tx, Hash]) of
                 {error, _} = E ->
@@ -357,3 +371,21 @@ check_minimum_fee(Tx,_Hash) ->
         false -> {error, too_low_fee}
     end.
 
+check_minimum_gas_price(Tx,_Hash) ->
+    case aetx:lookup_gas_price(aetx_sign:tx(Tx)) of
+        none -> ok;
+        {value, GasPrice} -> int_check_minimum_gas_price(GasPrice)
+    end.
+
+-dialyzer({no_match, int_check_minimum_gas_price/1}).
+int_check_minimum_gas_price(GasPrice) ->
+    case GasPrice >= aec_governance:minimum_gas_price() of
+        true  -> ok;
+        false -> {error, too_low_gas_price}
+    end.
+
+int_gas_price(Tx) ->
+    case aetx:lookup_gas_price(Tx) of
+        none -> ?PSEUDO_GAS_PRICE;
+        {value, GP} when is_integer(GP), GP >= 0 -> GP
+    end.
