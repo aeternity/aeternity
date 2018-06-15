@@ -545,6 +545,7 @@ workflows:
       - deploy_api_docs:
           requires:
             - static_analysis
+            - hodl_green
           filters:
             branches:
               ignore: /.*/
