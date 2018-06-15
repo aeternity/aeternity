@@ -207,6 +207,7 @@
 -define(NODE, dev1).
 -define(DEFAULT_TESTS_COUNT, 5).
 -define(WS, aehttp_ws_test_utils).
+-define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
 
 all() ->
     [
@@ -1123,19 +1124,18 @@ state_channel_id(Tx) ->
     aesc_channels:id(Initiator, Nonce, Responder).
 
 state_channels_create(MinerPubkey, ResponderPubkey) ->
-    StateHash = <<123456>>,
     Encoded = #{initiator => aec_base58c:encode(account_pubkey, MinerPubkey),
                 initiator_amount => 2,
                 responder => aec_base58c:encode(account_pubkey, ResponderPubkey),
                 responder_amount => 3,
                 push_amount => 5, channel_reserve => 5,
                 lock_period => 20,
-                state_hash => aec_base58c:encode(state, StateHash),
+                state_hash => aec_base58c:encode(state, ?BOGUS_STATE_HASH),
                 fee => 1},
     Decoded = maps:merge(Encoded,
                         #{initiator => MinerPubkey,
                           responder => ResponderPubkey,
-                          state_hash => StateHash}),
+                          state_hash => ?BOGUS_STATE_HASH}),
     {ok, Tx} = unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_create/1,
                                fun aesc_create_tx:new/1, MinerPubkey),
@@ -1146,17 +1146,16 @@ state_channels_create(MinerPubkey, ResponderPubkey) ->
 
 state_channels_deposit(ChannelId, MinerPubkey) ->
     MinerAddress = aec_base58c:encode(account_pubkey, MinerPubkey),
-    StateHash = <<123456>>,
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
                 from => MinerAddress,
                 amount => 2,
-                state_hash => aec_base58c:encode(state, StateHash),
+                state_hash => aec_base58c:encode(state, ?BOGUS_STATE_HASH),
                 round => 42,
                 fee => 1},
     Decoded = maps:merge(Encoded,
                         #{channel_id => ChannelId,
                           from => MinerPubkey,
-                          state_hash => StateHash}),
+                          state_hash => ?BOGUS_STATE_HASH}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_deposit/1,
                                fun aesc_deposit_tx:new/1, MinerPubkey,
@@ -1169,17 +1168,16 @@ state_channels_deposit(ChannelId, MinerPubkey) ->
 
 state_channels_withdrawal(ChannelId, MinerPubkey) ->
     MinerAddress = aec_base58c:encode(account_pubkey, MinerPubkey),
-    StateHash = <<123456>>,
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
                 to => MinerAddress,
                 amount => 2,
-                state_hash => aec_base58c:encode(state, StateHash),
+                state_hash => aec_base58c:encode(state, ?BOGUS_STATE_HASH),
                 round => 42,
                 fee => 1},
     Decoded = maps:merge(Encoded,
                         #{channel_id => ChannelId,
                           to => MinerPubkey,
-                          state_hash => StateHash}),
+                          state_hash => ?BOGUS_STATE_HASH}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_withdrawal/1,
                                fun aesc_withdraw_tx:new/1, MinerPubkey,

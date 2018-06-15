@@ -72,6 +72,7 @@ new(#{channel_id := ChannelIdBin,
       state_hash := StateHash,
       round      := Round,
       nonce      := Nonce} = Args) ->
+    true = aesc_utils:check_state_hash_size(StateHash),
     Tx = #channel_withdraw_tx{
             channel_id = aec_id:create(channel, ChannelIdBin),
             to         = aec_id:create(account, ToPubKey),
@@ -200,6 +201,7 @@ deserialize(?CHANNEL_WITHDRAW_TX_VSN,
             , {nonce      , Nonce}]) ->
     channel = aec_id:specialize_type(ChannelId),
     account = aec_id:specialize_type(ToId),
+    true = aesc_utils:check_state_hash_size(StateHash),
     #channel_withdraw_tx{channel_id = ChannelId,
                          to         = ToId,
                          amount     = Amount,

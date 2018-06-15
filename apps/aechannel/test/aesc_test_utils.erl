@@ -47,6 +47,7 @@
          settle_tx_spec/3,
          settle_tx_spec/4]).
 
+-define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
 
 %%%===================================================================
 %%% Test state
@@ -264,7 +265,7 @@ deposit_tx_spec(ChannelId, FromPubKey, Spec0, State) ->
 deposit_tx_default_spec(FromPubKey, State) ->
     #{amount      => 10,
       fee         => 3,
-      state_hash  => <<123456>>,
+      state_hash  => ?BOGUS_STATE_HASH,
       round       => 42,
       nonce       => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
 
@@ -289,7 +290,7 @@ withdraw_tx_spec(ChannelId, ToPubKey, Spec0, State) ->
 withdraw_tx_spec(ToPubKey, State) ->
     #{amount      => 10,
       fee         => 3,
-      state_hash  => <<123456>>,
+      state_hash  => ?BOGUS_STATE_HASH,
       round       => 42,
       nonce       => try next_nonce(ToPubKey, State) catch _:_ -> 0 end}.
 

@@ -70,6 +70,7 @@ new(#{channel_id  := ChannelIdBin,
       state_hash  := StateHash,
       round       := Round,
       nonce       := Nonce} = Args) ->
+    true = aesc_utils:check_state_hash_size(StateHash),
     try Tx = #channel_deposit_tx{
                 channel_id  = aec_id:create(channel, ChannelIdBin),
                 from        = aec_id:create(account, FromPubKey),
@@ -200,6 +201,7 @@ deserialize(?CHANNEL_DEPOSIT_TX_VSN,
             , {nonce       , Nonce}]) ->
     channel = aec_id:specialize_type(ChannelId),
     account = aec_id:specialize_type(FromId),
+    true = aesc_utils:check_state_hash_size(StateHash),
     #channel_deposit_tx{channel_id  = ChannelId,
                         from        = FromId,
                         amount      = Amount,

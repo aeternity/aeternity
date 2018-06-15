@@ -14,7 +14,8 @@
          check_are_peers/2,
          check_are_funds_in_channel/3,
          check_round_greater_than_last/2,
-         check_round_at_last_last/2
+         check_round_at_last_last/2,
+         check_state_hash_size/1
         ]).
 
 %%%===================================================================
@@ -118,3 +119,8 @@ check_are_funds_in_channel(ChannelId, Amount, Trees) ->
         true  -> ok;
         false -> {error, insufficient_channel_funds}
     end.
+
+-spec check_state_hash_size(binary) -> boolean().
+check_state_hash_size(Hash) ->
+    byte_size(Hash) =:= 32.
+

@@ -248,3 +248,5 @@ round(#channel{round = Round}) ->
 fetch_amount_from_poi(PoI, Pubkey) ->
     {ok, Account} = aec_trees:lookup_poi(accounts, Pubkey, PoI),
     aec_accounts:balance(Account).
+
+    
