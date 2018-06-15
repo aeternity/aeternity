@@ -663,6 +663,7 @@ contract_transactions(_Config) ->
     %% Get the call object
     {ok, 200, CallObject} = get_contract_call_object(ContractCallTxHash),
     ?assertEqual(MinerAddress, maps:get(<<"caller_address">>, CallObject, <<>>)),
+    ?assertEqual(get_tx_nonce(ContractCallTxHash), maps:get(<<"caller_nonce">>, CallObject)),
     ?assertEqual(aec_base58c:encode(contract_pubkey, ContractPubKey),
                  maps:get(<<"contract_address">>, CallObject, <<>>)),
     ?assertEqual(maps:get(gas_price, ContractCallDecoded), maps:get(<<"gas_price">>, CallObject)),
@@ -673,6 +674,7 @@ contract_transactions(_Config) ->
       Used =< Limit,
       {maps:get(<<"gas_used">>, CallObject), maps:get(gas, ContractCallDecoded)}
       ),
+    ?assertEqual(<<"ok">>, maps:get(<<"return_type">>, CallObject)),
 
     %% Test to call the contract without a transaction.
     {ok, 200, #{<<"out">> := DirectCallResult}} =
@@ -3610,6 +3612,10 @@ get_tx(TxHash, TxEncoding) ->
     Params = tx_encoding_param(TxEncoding),
     Host = external_address(),
     http_request(Host, get, "tx/" ++ binary_to_list(TxHash), Params).
+
+get_tx_nonce(TxHash) ->
+    {ok, 200, Tx} = get_tx(TxHash, json),
+    maps:get(<<"nonce">>, maps:get(<<"tx">>, maps:get(<<"transaction">>, Tx))).
 
 post_spend_tx(Recipient, Amount, Fee) ->
     post_spend_tx(Recipient, Amount, Fee, <<"foo">>).
