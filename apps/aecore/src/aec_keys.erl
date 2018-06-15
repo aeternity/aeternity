@@ -507,22 +507,13 @@ p_gen_filename(KeysDir, PubFile0, PrivFile0) ->
     {PubFile, PrivFile}.
 
 p_save_keys(Pwd, PubFile, PubKey, PrivFile, PrivKey) ->
+    %% We only get here after reading the file. If it already exists at this point
+    %% the user must have set write but not read permissions or so.
     EncPub = encrypt_key(Pwd, PubKey),
     EncPriv = encrypt_key(Pwd, PrivKey),
-    ok = to_local_dir(PubFile, EncPub),
-    ok = to_local_dir(PrivFile, EncPriv),
+    ok = file:write_file(PubFile, EncPub),
+    ok = file:write_file(PrivFile, EncPriv),
     {EncPub, EncPriv}.
-
-to_local_dir(NewFile, Bin) ->
-    case file:read_file(NewFile) of
-        {error, enoent} ->
-            {ok, IODevice} = file:open(NewFile, [write, binary, raw]),
-            ok = file:write_file(NewFile, Bin),
-            ok = file:close(IODevice);
-        {ok, _Out} ->
-            %% INFO: for now do not let to overwrite existing keys
-            {error, existing_keys}
-    end.
 
 check_sign_keys(PubKey, PrivKey) ->
     SampleMsg = <<"random message">>,
