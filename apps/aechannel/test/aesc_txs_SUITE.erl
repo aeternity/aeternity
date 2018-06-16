@@ -932,7 +932,7 @@ slash_negative(Cfg) ->
     TxSpecDiffChanId = aesc_test_utils:slash_tx_spec(?BOGUS_CHANNEL, PubKey1,
                                                           Payload, PoI, S),
     {ok, TxDiffChanId} = aesc_slash_tx:new(TxSpecDiffChanId),
-    {error, bad_state_channel_id} =
+    {error, channel_does_not_exist} =
         aetx:check(TxDiffChanId, Trees, Height, ?PROTOCOL_VERSION),
 
     %% Test channel missing
@@ -991,7 +991,7 @@ slash_negative(Cfg) ->
     TxPayload2Spec = aesc_test_utils:slash_tx_spec(ChannelId, PubKey21,
                                                       Payload2, PoI, S2),
     {ok, TxPayload2} = aesc_slash_tx:new(TxPayload2Spec),
-    {error, bad_state_channel_id} =
+    {error, channel_does_not_exist} =
                 aetx:check(TxPayload2, Trees2, Height + 2, ?PROTOCOL_VERSION),
     ok.
 

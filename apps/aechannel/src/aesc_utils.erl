@@ -8,6 +8,8 @@
 
 %% API
 -export([check_active_channel_exists/4,
+         get_channel/2,
+         get_active_channel/2,
          accounts_in_poi/2,
          check_is_active/1,
          check_is_peer/2,
@@ -16,6 +18,7 @@
          check_round_greater_than_last/2,
          check_round_at_last_last/2,
          check_state_hash_size/1,
+         check_peers_and_amounts_in_poi/2,
          deserialize_payload/1
         ]).
 
@@ -23,43 +26,61 @@
 %%% API
 %%%===================================================================
 
+-spec get_channel(aesc_channels:id(), aec_trees:trees()) ->
+                         {error, term()} | ok.
+get_channel(ChannelId, Trees) ->
+    ChannelsTree = aec_trees:channels(Trees),
+    case aesc_state_tree:lookup(ChannelId, ChannelsTree) of
+        none ->
+            {error, channel_does_not_exist};
+        {value, Ch} ->
+            {ok, Ch}
+    end.
+
+-spec get_active_channel(aesc_channels:id(), aec_trees:trees()) ->
+                         {error, term()} | ok.
+get_active_channel(ChannelId, Trees) ->
+    case get_channel(ChannelId, Trees) of
+        {error, _} = Err -> Err;
+        {ok, Ch} ->
+            case aesc_channels:is_active(Ch) of
+                true ->
+                    {ok, Ch};
+                false ->
+                    {error, channel_not_active}
+            end
+    end.
+
 -spec check_active_channel_exists(aesc_channels:id(),
                                   aesc_offchain_tx:tx(),
                                   aec_trees:poi(),
                                   aec_trees:trees()) ->
                                          {error, term()} | ok.
 check_active_channel_exists(ChannelId, PayloadTx, PoI, Trees) ->
-    ChannelsTree = aec_trees:channels(Trees),
-    case aesc_state_tree:lookup(ChannelId, ChannelsTree) of
-        none ->
-            {error, channel_does_not_exist};
-        {value, Ch} ->
-            case aesc_channels:is_active(Ch) of
-                true ->
-                    InitiatorPubKey = aesc_channels:initiator(Ch),
-                    ResponderPubKey = aesc_channels:responder(Ch),
-                    ChTotalAmount     = aesc_channels:total_amount(Ch),
-                    case accounts_in_poi([InitiatorPubKey, ResponderPubKey], PoI) of
-                        {error, _} = Err -> Err;
-                        {ok, [PoIInitiatorAcc, PoIResponderAcc]} ->
-                            PoIInitiatorAmt = aec_accounts:balance(PoIInitiatorAcc),
-                            PoIResponderAmt = aec_accounts:balance(PoIResponderAcc),
-                            STotalAmount      = PoIInitiatorAmt + PoIResponderAmt,
-                            ChannelRound      = aesc_channels:round(Ch),
-                            StRound           = aesc_offchain_tx:round(PayloadTx),
-                            StChanId          = aesc_offchain_tx:channel_id(PayloadTx),
-                            case {ChTotalAmount =:= STotalAmount,
-                                  ChannelRound  =<  StRound,
-                                  ChannelId     =:= StChanId} of
-                                {true , true , true} -> ok;
-                                {_    , _    , false} -> {error, different_channel};
-                                {false, _    , _    } -> {error, poi_amounts_change_channel_funds};
-                                {_    , false, _    } -> {error, old_round}
-                            end
-                    end;
-                false ->
-                    {error, channel_not_active}
-            end
+    case get_active_channel(ChannelId, Trees) of
+        {error, _} = Err -> Err;
+        {ok, Ch} ->
+            InitiatorPubKey = aesc_channels:initiator(Ch),
+            ResponderPubKey = aesc_channels:responder(Ch),
+            ChTotalAmount     = aesc_channels:total_amount(Ch),
+            case accounts_in_poi([InitiatorPubKey, ResponderPubKey], PoI) of
+                {error, _} = Err -> Err;
+                {ok, [PoIInitiatorAcc, PoIResponderAcc]} ->
+                    PoIInitiatorAmt = aec_accounts:balance(PoIInitiatorAcc),
+                    PoIResponderAmt = aec_accounts:balance(PoIResponderAcc),
+                    STotalAmount      = PoIInitiatorAmt + PoIResponderAmt,
+                    ChannelRound      = aesc_channels:round(Ch),
+                    StRound           = aesc_offchain_tx:round(PayloadTx),
+                    StChanId          = aesc_offchain_tx:channel_id(PayloadTx),
+                    case {ChTotalAmount =:= STotalAmount,
+                          ChannelRound  =<  StRound,
+                          ChannelId     =:= StChanId} of
+                        {true , true , true} -> ok;
+                        {_    , _    , false} -> {error, different_channel};
+                        {false, _    , _    } -> {error, poi_amounts_change_channel_funds};
+                        {_    , false, _    } -> {error, old_round}
+                    end
+          end
     end.
 
 accounts_in_poi(Peers, PoI) ->
@@ -142,5 +163,23 @@ deserialize_payload(Payload) ->
         end
     catch _:_ ->
             {error, payload_deserialization_failed}
+    end.
+
+-spec check_peers_and_amounts_in_poi(aesc_channels:channel(), aec_trees:poi())
+    -> ok | {error, atom()}.
+check_peers_and_amounts_in_poi(Channel, PoI) ->
+    InitiatorPubKey   = aesc_channels:initiator(Channel),
+    ResponderPubKey   = aesc_channels:responder(Channel),
+    ChannelAmount     = aesc_channels:total_amount(Channel),
+    case aesc_utils:accounts_in_poi([InitiatorPubKey, ResponderPubKey], PoI) of
+        {error, _} = Err -> Err;
+        {ok, [PoIInitiatorAcc, PoIResponderAcc]} ->
+            PoIInitiatorAmt = aec_accounts:balance(PoIInitiatorAcc),
+            PoIResponderAmt = aec_accounts:balance(PoIResponderAcc),
+            PoIAmount      = PoIInitiatorAmt + PoIResponderAmt,
+            case ChannelAmount =:= PoIAmount of
+                true  -> ok;
+                false -> {error, wrong_state_amount}
+            end
     end.
 

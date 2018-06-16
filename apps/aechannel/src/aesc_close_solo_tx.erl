@@ -217,7 +217,18 @@ serialization_template(?CHANNEL_CLOSE_SOLO_TX_VSN) ->
                            ok | {error, term()}.
 check_payload(ChannelId, FromPubKey, Payload, PoI, Trees) ->
     case aesc_utils:deserialize_payload(Payload) of
-        {ok, last_onchain} -> ok;
+        {ok, last_onchain} ->
+            case aesc_utils:get_active_channel(ChannelId, Trees) of
+                {ok, Channel} ->
+                    Checks =
+                          [fun() -> check_channel_hash(Channel, PoI) end,
+                           fun() ->
+                               aesc_utils:check_peers_and_amounts_in_poi(Channel,
+                                                                         PoI)
+                           end],
+                    aeu_validation:run(Checks);
+                {error, _} = Err -> Err
+            end;
         {ok, SignedState, PayloadTx} ->
             Checks =
                 [fun() -> is_peer(FromPubKey, SignedState, Trees) end,
@@ -261,3 +272,12 @@ check_root_hash(PayloadTx, PoI) ->
 -spec version() -> non_neg_integer().
 version() ->
     ?CHANNEL_CLOSE_SOLO_TX_VSN.
+
+check_channel_hash(Channel, PoI) ->
+    ChannelStateHash = aesc_channels:state_hash(Channel),
+    PoIHash = aec_trees:poi_hash(PoI),
+    case ChannelStateHash =:= PoIHash of
+        true -> ok;
+        false -> {error, invalid_poi_hash}
+    end.
+
