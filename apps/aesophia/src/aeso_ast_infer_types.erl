@@ -6,7 +6,7 @@
 %%%-------------------------------------------------------------------
 -module(aeso_ast_infer_types).
 
--export([infer/1]).
+-export([infer/1, infer_constant/1]).
 
 %% Environment containing language primitives
 -spec global_env() -> [{string(), aeso_syntax:type()}].
@@ -74,6 +74,7 @@ global_env() ->
 option_t(As, T) -> {app_t, As, {id, As, "option"}, [T]}.
 map_t(As, K, V) -> {app_t, As, {id, As, "map"}, [K, V]}.
 
+-spec infer(aeso_syntax:ast()) -> aeso_syntax:ast().
 infer([{contract, Attribs, ConName, Code}|Rest]) ->
     %% do type inference on each contract independently.
     [{contract, Attribs, ConName, infer_contract(Code)}|infer(Rest)];
@@ -86,6 +87,16 @@ infer_contract(Defs0) ->
     C = unfold_record_types(infer_contract(global_env(), Defs)),
     destroy_record_types(),
     C.
+
+infer_constant({letval, Attrs,_Pattern, Type, E}) ->
+    create_record_types([]),
+    ets:new(type_vars, [set, named_table, public]),
+    {typed, _, _, PatType} =
+        infer_expr(global_env(), {typed, Attrs, E, arg_type(Type)}),
+    T = instantiate(PatType),
+    ets:delete(type_vars),
+    destroy_record_types(),
+    T.
 
 %% infer_contract takes a proplist mapping global names to types, and
 %% a list of definitions.

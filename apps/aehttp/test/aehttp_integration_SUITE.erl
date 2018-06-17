@@ -19,6 +19,12 @@
 %% Endpoint calls
 -export([]).
 
+%% off chain endpoints
+-export(
+   [test_encode_decode_sophia_data/1,
+    test_encode_decode_sophia_data2/1
+   ]).
+
 %% test case exports
 %% external endpoints
 -export(
@@ -203,6 +209,7 @@
     sc_ws_close_mutual_responder/1
    ]).
 
+
 -include_lib("common_test/include/ct.hrl").
 -define(NODE, dev1).
 -define(DEFAULT_TESTS_COUNT, 5).
@@ -216,7 +223,8 @@ all() ->
 
 groups() ->
     [
-     {all_endpoints, [sequence], [{group, external_endpoints},
+     {all_endpoints, [sequence], [{group, off_chain_endpoints},
+                                  {group, external_endpoints},
                                   {group, internal_endpoints},
                                   {group, swagger_validation},
                                   {group, wrong_http_method_endpoints},
@@ -224,6 +232,11 @@ groups() ->
                                   {group, naming},
                                   {group, channel_websocket}
                                   ]},
+     {off_chain_endpoints, [],
+      [
+       test_encode_decode_sophia_data,
+       test_encode_decode_sophia_data2
+      ]},
      {external_endpoints, [sequence],
       [
         % get block-s
@@ -484,6 +497,73 @@ end_per_testcase(_Case, Config) ->
 %% ============================================================
 %% Test cases
 %% ============================================================
+
+%% off chain endpoints
+test_encode_decode_sophia_data(_Config) ->
+    CallEncodedInteger42 = encode_data(<<"(42,2)">>),
+    Decoded = decode_data(<<"(string, (int, int))">>,
+                          CallEncodedInteger42),
+    #{<<"data">> :=
+          #{<<"type">> := <<"tuple">>,
+            <<"value">> :=
+                [#{<<"type">>  := <<"string">>,
+                   <<"value">> := <<"foo">>},
+                 #{<<"type">>  := <<"tuple">>,
+                   <<"value">> :=
+                       [#{<<"type">> := <<"word">>,
+                          <<"value">> := 42},
+                        _]}
+                ]
+           }
+     }
+        = Decoded,
+
+    ok.
+
+test_encode_decode_sophia_data2(_Config) ->
+    CD =            <<"(\"Hello\", [1,2,3], Some(true))">>,
+    Type = <<"(string, (string, list(int), option(bool)))">>,
+    CallEncoded = encode_data(CD),
+    io:format("Encoded ~p~n",[CallEncoded]),
+    Decoded = decode_data(Type, CallEncoded),
+    io:format("Deocoded ~p~n",[Decoded]),
+    #{<<"data">> :=
+          #{ <<"type">> := <<"tuple">>
+           , <<"value">> :=
+                 [#{<<"type">>   := <<"string">>
+                   , <<"value">> := <<"foo">> }
+                 , #{ <<"type">>  := <<"tuple">>
+                    , <<"value">> :=
+                          [ #{ <<"type">> := <<"string">>
+                             , <<"value">> := <<"Hello">> }
+                          , #{ <<"type">> := <<"list">>
+                             , <<"value">> :=
+                                   [_,_,_]}
+                          , #{ <<"type">> := <<"option">>
+                             , <<"value">> :=
+                                   #{ <<"type">> := <<"word">>
+                                    , <<"value">> := 1}}]}
+                  ]
+           }
+     } = Decoded,
+
+    ok.
+
+
+encode_data(Term) ->
+    {ok, HexData} = aect_sophia:encode_call_data(<<>>,
+                                              <<"foo">>,
+                                              Term),
+    HexData.
+
+decode_data(Type, EncodedData) ->
+    {ok, 200, Data} =
+        get_contract_decode_data(#{ 'sophia-type' => Type,
+                                    data => EncodedData}),
+    Data.
+
+
+%% enpoints
 get_top_empty_chain(_Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     {ok, 200, HeaderMap} = get_top(),
@@ -579,8 +659,7 @@ block_by_hash(_Config) ->
 %% GET contract_call_tx unsigned transaction
 %% due to complexity of contract_call_tx (needs a contract in the state tree)
 %% both positive and negative cases are tested in this test
-contract_transactions(_Config) ->
-    % miner has an account
+contract_transactions(_Config) ->    % miner has an account
     {ok, 200, _} = get_balance_at_top(),
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
@@ -720,12 +799,13 @@ contract_transactions(_Config) ->
                                  <<"function">> => Function,
                                  <<"arg">> => Argument}),
     ReturnBin = maps:get(<<"return_value">>, CallObject),
-    DecodedReturnValue = aehttp_logic:contract_decode_data(word, ReturnBin),
-    DecodedCallResult = get_contract_decode_data(
-                          #{ 'sophia-type' => <<"word">>,
-                             data => DirectCallResult}),
+    {ok, DecodedReturnValue} = aehttp_logic:contract_decode_data(<<"int">>, ReturnBin),
+    {ok, 200, #{<<"data">> := DecodedCallResult}} =
+        get_contract_decode_data(
+          #{ 'sophia-type' => <<"int">>,
+             data => DirectCallResult}),
     ?assertEqual(DecodedReturnValue, DecodedCallResult),
-    42 = DecodedReturnValue,
+    #{<<"value">> := 42} = DecodedReturnValue,
 
     ComputeCCallEncoded = #{ caller => MinerAddress,
                              contract => EncodedContractPubKey,
@@ -763,8 +843,12 @@ contract_transactions(_Config) ->
     ?assertEqual(aec_base58c:encode(contract_pubkey, ContractPubKey),
                  maps:get(<<"contract_address">>, CallObject1, <<>>)),
 
+    {ok, 200, #{<<"data">> := DecodedCallReturnValue}} =
+        get_contract_decode_data(
+          #{ 'sophia-type' => <<"int">>,
+             data => maps:get(<<"return_value">>, CallObject1)}),
     %% Check that it is also the same as the direct call result
-    ?assertEqual(maps:get(<<"return_value">>, CallObject1), DirectCallResult),
+    ?assertEqual(DecodedCallReturnValue, DecodedCallResult),
 
     %% negative tests
     %% Invalid hashes

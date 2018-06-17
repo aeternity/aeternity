@@ -4,13 +4,21 @@
 %%% Created     : 1 Mar 2018 by Ulf Norell
 -module(aeso_parser).
 
--export([string/1]).
+-export([string/1,
+         type/1]).
 
 -include("aeso_parse_lib.hrl").
 
--spec string(string()) -> {ok, [aeso_syntax:decl()]} | {error, {aeso_parse_lib:pos(), atom(), term()}}.
+-spec string(string()) ->
+                    {ok, aeso_syntax:ast()}
+                        | {error, {aeso_parse_lib:pos(),
+                                   atom(),
+                                   term()}}.
 string(String) ->
   parse_and_scan(file(), String).
+
+type(String) ->
+  parse_and_scan(type(), String).
 
 parse_and_scan(P, S) ->
   case aeso_scan:scan(S) of

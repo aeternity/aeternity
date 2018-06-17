@@ -26,11 +26,11 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
     FileName = filename:join(CodeDir, "contracts/identity.aes"),
     {ok, ContractBin} = file:read_file(FileName),
     Contract = binary_to_list(ContractBin),
-    Code = aeso_compiler:from_string(Contract, []),
+    Code = aeso_compiler:from_string(Contract, [pp_icode, pp_assembler]),
 
     %% Create the call data
-    CallData = aeso_abi:create_calldata(Code, "main", "42"),
-
+    CallData = aeso_abi:create_calldata(Code, "main", "(42)"),
+    io:format("CallData ~p~n", [CallData]),
     {ok, Res} =
         aevm_eeevm:eval(
           aevm_eeevm_state:init(

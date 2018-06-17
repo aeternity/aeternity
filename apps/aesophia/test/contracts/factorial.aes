@@ -3,11 +3,11 @@
 contract Factorial =
 
   function main(worker : address) : int =
-    raw_call(worker, "fac", 100000, 0, 10)
+    raw_call(worker, "fac", 100000, 0, (10, 0))
 
   function fac(x : int) : int =
     if(x == 0)
       1
     else
-      x * raw_call(Call.caller, "fac", 100000, 0, x - 1)
+      x * raw_call(Call.caller, "fac", 100000, 0, (x - 1, 0))
 

@@ -8,8 +8,13 @@ all() ->
     [{group, eunit}].
 
 groups() ->
-    [{eunit, [], [aeso_scan_tests, aeso_parser_tests, aeso_compiler_tests]}].
+    [{eunit, [], [ aeso_scan_tests
+                 , aeso_parser_tests
+                 , aeso_compiler_tests
+                 , aeso_abi_tests
+                 ]}].
 
 aeso_scan_tests(_Config)   -> ok = eunit:test(aeso_scan_tests).
 aeso_parser_tests(_Config) -> ok = eunit:test(aeso_parser_tests).
 aeso_compiler_tests(_Config) -> ok = eunit:test(aeso_compiler_tests).
+aeso_abi_tests(_Config) -> ok = eunit:test(aeso_abi_tests).

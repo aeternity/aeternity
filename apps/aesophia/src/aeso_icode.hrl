@@ -1,8 +1,5 @@
 
--type type() :: word | string | typerep | function
-              | {list, type()}
-              | {option, type()}
-              | {tuple, [type()]}.
+-define(Type(), aeso_sophia:type()).
 
 -define(TYPEREP_WORD_TAG,   0).
 -define(TYPEREP_STRING_TAG, 1).
@@ -10,10 +7,10 @@
 -define(TYPEREP_TUPLE_TAG,  3).
 -define(TYPEREP_OPTION_TAG, 4).
 
--record(arg, {name::string(), type::type()}).
+-record(arg, {name::string(), type::?Type()}).
 
 -type expr() :: term().
--type arg() :: #arg{name::string(), type::type()}.
+-type arg() :: #arg{name::string(), type::?Type()}.
 -type arg_list() :: [arg()].
 
 -record(fun_dec, { name :: string()
@@ -27,8 +24,8 @@
     , address  :: expr()
     , value    :: expr()
     , arg      :: expr()
-    , arg_type :: type()
-    , out_type :: type() }).
+    , arg_type :: ?Type()
+    , out_type :: ?Type() }).
 
 -record(prim_balance,    { address :: expr() }).
 -record(prim_block_hash, { height :: expr() }).

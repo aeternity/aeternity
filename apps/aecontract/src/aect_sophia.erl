@@ -107,13 +107,54 @@ encode_call_data(Contract, Function, Argument) ->
 
 
 decode_data(Type, Data) ->
-    io:format("Type ~p~nData~p~n", [Type, Data]),
-    try aeso_data:from_binary(Type, aeu_hex:hexstring_decode(Data)) of
-        Term ->
-            io:format("Term ~p~n", [Term]),
-            {ok, Term}
-    catch _:_ -> {error, <<"bad argument">>}
+    case get_type(Type) of
+        {ok, SophiaType} ->
+            try aeso_data:from_binary(32, SophiaType,
+                                      aeu_hex:hexstring_decode(Data)) of
+                {ok, Term} ->
+                    try prepare_for_json(SophiaType, Term) of
+                        R -> {ok, R}
+                    catch throw:R -> R
+                    end;
+                {error, _} -> {error, <<"bad type/data">>}
+            catch _T:_E ->    {error, <<"bad argument">>}
+            end;
+        {error, _} = E -> E
     end.
+
+get_type(BinaryString) ->
+    String = unicode:characters_to_list(BinaryString, utf8),
+    case aeso_data:sophia_type_to_typerep(String) of
+        {ok, _Type} = R -> R;
+        {error, ErrorAtom} ->
+            {error, unicode:characters_to_binary(atom_to_list(ErrorAtom))}
+    end.
+
+
+prepare_for_json(word, Integer) when is_integer(Integer) ->
+    #{ <<"type">> => <<"word">>,
+       <<"value">> => Integer};
+prepare_for_json(string, String) when is_binary(String) ->
+    #{ <<"type">> => <<"string">>,
+       <<"value">> => String};
+prepare_for_json({option, _T}, none) ->
+    #{ <<"type">> => <<"option">>,
+       <<"value">> => <<"None">>};
+prepare_for_json({option, T}, {some, E}) ->
+    #{ <<"type">> => <<"option">>,
+       <<"value">> => prepare_for_json(T,E) };
+prepare_for_json({tuple, Ts}, Es) ->
+    #{ <<"type">> => <<"tuple">>,
+       <<"value">> => [prepare_for_json(T,E)
+                       || {T,E} <-
+                              lists:zip(Ts, tuple_to_list(Es))] };
+prepare_for_json({list, T}, Es) ->
+    #{ <<"type">> => <<"list">>,
+       <<"value">> => [prepare_for_json(T,E) || E <- Es]};
+prepare_for_json(T, R) ->
+    String = io_lib:format("Type: ~p Res:~p", [T,R]),
+    Error = << <<B>> || B <- "Invalid Sophia type: " ++ lists:flatten(String) >>,
+    throw({error, Error}).
 
 
 -spec create_call(binary(), binary(), binary()) -> binary() | {error, binary()}.

@@ -10,11 +10,12 @@ contract SpendTest =
     spend(Call.caller, amount)
 
   function withdraw_from(account, amount) =
-    raw_call(account, "withdraw", 12000, 0, amount)
+    // Pretend (amount, 0 ) is a 1 tuple.
+    raw_call(account, "withdraw", 12000, 0, (amount, 0))
     withdraw(amount)
 
   function spend_from(from, to, amount) =
-    raw_call(from, "withdraw", 12000, 0, amount)
+    raw_call(from, "withdraw", 12000, 0, (amount,0))
     raw_spend(to, amount)
     Chain.balance(to)
 

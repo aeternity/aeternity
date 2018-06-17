@@ -31,7 +31,8 @@ convert(#{ contract_name := _ContractName
     %% Create a function dispatcher
     DispatchFun = {"_main", [{"arg", "_"}],
                    {switch, {var_ref, "arg"},
-                    [{{tuple, [fun_hash(FName)|make_args(Args)]},
+                    [{{tuple, [fun_hash(FName),
+                               {tuple, make_args(Args)}]},
                       icode_seq([ hack_return_address(Fun, length(Args) + 1) ] ++
                                 [ {funcall, {var_ref, "_copy_state"}, [prim_state]} || not is_pure(Fun) ] ++
                                 [{encode, 0, TypeRep, {funcall, {var_ref, FName}, make_args(Args)}}])}
@@ -86,7 +87,7 @@ convert(#{ contract_name := _ContractName
                     push(0), dup(1), i(?MSTORE),
                     i(?RETURN)
                    ],
-
+    io:format("NewFunctions ~p", [NewFunctions]),
     %% Code is a deep list of instructions, containing labels and
     %% references to them. Labels take the form {'JUMPDEST', Ref}, and
     %% references take the form {push_label, Ref}, which is translated

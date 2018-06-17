@@ -204,10 +204,16 @@ contract_call(ABI, Code, Function, Argument) ->
     end.
 
 contract_decode_data(Type, Data) ->
-    case aect_sophia:decode_data(Type, Data) of
+    try aect_sophia:decode_data(Type, Data) of
         {ok, _Result} = OK -> OK;
         {error, _ErrorMsg} = Err -> Err
+    catch _T:_E ->
+            String = io_lib:format("~p:~p ~p", [_T,_E,erlang:get_stacktrace()]),
+            Error = << <<B>> || B <- "Bad argument: " ++ lists:flatten(String) >>,
+            {error, Error}
     end.
+
+
 
 contract_encode_call_data(ABI, Code, Function, Argument) ->
     case aect_dispatch:encode_call_data(ABI, Code, Function, Argument) of

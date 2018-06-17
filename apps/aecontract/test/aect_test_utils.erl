@@ -176,7 +176,7 @@ compile_contract(File) ->
     FileName = filename:join(CodeDir, File),
     {ok, ContractBin} = file:read_file(FileName),
     Contract = binary_to_list(ContractBin),
-    aeso_compiler:from_string(Contract, []). % [pp_icode, pp_assembler, pp_bytecode]).
+    aeso_compiler:from_string(Contract, [pp_icode, pp_assembler, pp_bytecode]). %[]). % [pp_icode, pp_assembler, pp_bytecode]).
 
 new_key_pair() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),

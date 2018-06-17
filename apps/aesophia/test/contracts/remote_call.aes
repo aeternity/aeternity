@@ -4,7 +4,9 @@ contract RemoteCall =
     function call(r : address, x : int) : int =
         let gas   = 10000
         let value = 10
-        raw_call(r, "main", gas, value, x)
+        // The Sophia compiler does not think (x) is a tuple
+        // But the two tuple (x,0) works fine.
+        raw_call(r, "main", gas, value, (x, 0))
 
     function call42(r : address) : int = call(r, 42)
 

@@ -115,7 +115,7 @@ call_common(#{ caller     := Caller
                               }
                },
           #{
-            trace => false
+            trace => true
            })
     of
 	InitState ->
