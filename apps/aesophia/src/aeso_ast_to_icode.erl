@@ -196,18 +196,18 @@ ast_body({map_get, _, Map, {typed, Ann, Key, KeyType}}) ->
               args     = [ast_body(Map), ast_body(Key)] };
 
 %% -- lookup functions
-ast_body(?qid_app(["Map", "lookup"], [Map, {typed, Ann, Key, KeyType}], _, _)) ->
+ast_body(?qid_app(["Map", "lookup"], [{typed, Ann, Key, KeyType}, Map], _, _)) ->
     Fun = {map_lookup, key_type(Ann, KeyType)},
     #funcall{ function = #var_ref{name = {builtin, Fun}},
               args     = [ast_body(Map), ast_body(Key)] };
-ast_body(?qid_app(["Map", "member"], [Map, {typed, Ann, Key, KeyType}], _, _)) ->
+ast_body(?qid_app(["Map", "member"], [{typed, Ann, Key, KeyType}, Map], _, _)) ->
     Fun = {map_member, key_type(Ann, KeyType)},
     #funcall{ function = #var_ref{name = {builtin, Fun}},
               args     = [ast_body(Map), ast_body(Key)] };
 ast_body(?qid_app(["Map", "size"], [Map], _, _)) ->
     #funcall{ function = #var_ref{name = {builtin, map_size}},
               args     = [ast_body(Map), {integer, 0}] };
-ast_body(?qid_app(["Map", "delete"], [Map, {typed, Ann, Key, KeyType}], _, _)) ->
+ast_body(?qid_app(["Map", "delete"], [{typed, Ann, Key, KeyType}, Map], _, _)) ->
     Fun = {map_del, key_type(Ann, KeyType)},
     #funcall{ function = #var_ref{name = {builtin, Fun}},
               args     = [ast_body(Map), ast_body(Key)] };

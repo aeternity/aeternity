@@ -1,12 +1,12 @@
 contract Maps =
 
-  function lookup(m : map(string, int), k) =
+  function lookup(k, m : map(string, int)) =
     m[k]
 
-  function mlookup(m : map(string, int), k) : option(int) =
-    Map.lookup(m, k)
+  function mlookup(k, m : map(string, int)) : option(int) =
+    Map.lookup(k, m)
 
-  function member(m : map(string, int), k) = Map.member(m, k)
+  function member(k, m : map(string, int)) = Map.member(k, m)
 
   function map1() =
     Map.from_list([("foo", 1004), ("bar", 1005)])
@@ -16,23 +16,23 @@ contract Maps =
       ["bar"] = 1005 }
 
   function test() =
-    [ lookup(update(map1(), "bar", 1006), "bar"),
-      lookup(map2(), "foo"),
+    [ lookup("bar", update("bar", 1006, map1())),
+      lookup("foo", map2()),
       map2() { ["bar"] @ x = x * 2 } ["bar"],
-      if(member(map2(), "foo")) 200 else 0,
+      if(member("foo", map2())) 200 else 0,
       Map.size(map1()) ]
 
-  function delete(m : map(string, int), k) =
-    Map.delete(m, k)
+  function delete(k, m : map(string, int)) =
+    Map.delete(k, m)
 
   function empty() : map(string, int) = {}
 
   function singleton(k, v) : map(string, int) = {[k] = v}
 
-  function update(m, k, v) : map(string, int) =
+  function update(k, v, m) : map(string, int) =
     m{ [k] = v }
 
-  function modify(m, k, f) : map(string, int) =
+  function modify(k, f, m) : map(string, int) =
     m{ [k] @ x = f(x) }
 
   type mem = { m : map(int, int), next : int }

@@ -65,9 +65,9 @@ global_env() ->
      %% Maps
      {["Map", "from_list"], Fun1(List(Pair(K, V)), Map(K, V))},
      {["Map", "to_list"],   Fun1(Map(K, V), List(Pair(K, V)))},
-     {["Map", "lookup"],    Fun([Map(K, V), K], Option(V))},
-     {["Map", "delete"],    Fun([Map(K, V), K], Map(K, V))},
-     {["Map", "member"],    Fun([Map(K, V), K], Bool)},
+     {["Map", "lookup"],    Fun([K, Map(K, V)], Option(V))},
+     {["Map", "delete"],    Fun([K, Map(K, V)], Map(K, V))},
+     {["Map", "member"],    Fun([K, Map(K, V)], Bool)},
      {["Map", "size"],      Fun1(Map(K, V), Int)}
     ].
 
