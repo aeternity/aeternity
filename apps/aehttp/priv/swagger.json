@@ -1536,6 +1536,76 @@
         }
       }
     },
+    "/account/{account_pubkey}/nonce" : {
+      "get" : {
+        "tags" : [ "external", "chain" ],
+        "description" : "Get accounts's last used nonce on chain",
+        "operationId" : "GetAccountNonce",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "account_pubkey",
+          "in" : "path",
+          "description" : "Account pubkey to show nonce for",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Nonce"
+            }
+          },
+          "400" : {
+            "description" : "Invalid account_pubkey provided",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/account/{account_pubkey}/pending_transactions" : {
+      "get" : {
+        "tags" : [ "external", "transactions" ],
+        "description" : "Get accounts's pending transactions from the mempool",
+        "operationId" : "GetAccountPendingTransactions",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "account_pubkey",
+          "in" : "path",
+          "description" : "Account pubkey to search for in mempool",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Transactions"
+            }
+          },
+          "400" : {
+            "description" : "Invalid account_pubkey provided",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/balances" : {
       "get" : {
         "tags" : [ "external", "debug" ],
@@ -2513,6 +2583,18 @@
       },
       "example" : {
         "balance" : 0
+      }
+    },
+    "Nonce" : {
+      "type" : "object",
+      "properties" : {
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      },
+      "example" : {
+        "nonce" : 0
       }
     },
     "Tx" : {
