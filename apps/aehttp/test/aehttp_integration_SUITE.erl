@@ -37,6 +37,7 @@
 
     % non signed txs
     contract_transactions/1,
+    contract_create_transaction_init_error/1,
     oracle_transactions/1,
     nameservice_transactions/1,
     spend_transaction/1,
@@ -239,6 +240,7 @@ groups() ->
 
         % non signed txs
         contract_transactions,
+        contract_create_transaction_init_error,
         oracle_transactions,
         nameservice_transactions,
         spend_transaction,
@@ -808,6 +810,69 @@ contract_transactions(_Config) ->
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
     {ok, 400, #{<<"reason">> := <<"Tx is not a create or call">>}} =
         get_contract_call_object(SpendTxHash),
+
+    ok.
+
+contract_create_transaction_init_error(_Config) ->
+    % miner has an account
+    {ok, 200, _} = get_balance_at_top(),
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+
+    % contract_create_tx positive test
+    Code = aeu_hex:hexstring_encode(<<"NOT PROPER BYTE CODE">>),
+
+    InitFunction = <<"init">>,
+    InitArgument = <<"()">>,
+    {ok, EncodedInitCallData} =
+        aect_sophia:encode_call_data(Code,
+            InitFunction,
+            InitArgument),
+    ValidEncoded = #{ owner => MinerAddress,
+        code => Code,
+        vm_version => 1,
+        deposit => 2,
+        amount => 1,
+        gas => 30,
+        gas_price => 1,
+        fee => 1,
+        call_data => EncodedInitCallData},
+    ValidDecoded = maps:merge(ValidEncoded,
+        #{owner => MinerPubkey,
+            code => aeu_hex:hexstring_decode(Code),
+            call_data => aeu_hex:hexstring_decode(EncodedInitCallData)}),
+
+    %% prepare a contract_create_tx and post it
+    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
+        <<"contract_address">> := EncodedContractPubKey}} =
+        get_contract_create(ValidEncoded),
+    {ok, ContractPubKey} = aec_base58c:safe_decode(contract_pubkey, EncodedContractPubKey),
+    ContractCreateTxHash = sign_and_post_tx(MinerAddress, EncodedUnsignedContractCreateTx),
+
+    %% Try to get the contract init call object while in mempool
+    {ok, 400, #{<<"reason">> := <<"Tx not mined">>}} =
+        get_contract_call_object(ContractCreateTxHash),
+
+    % mine a block
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    ?assert(tx_in_chain(ContractCreateTxHash)),
+
+    %% Get the contract init call object
+    {ok, 200, InitCallObject} = get_contract_call_object(ContractCreateTxHash),
+    ?assertEqual(MinerAddress, maps:get(<<"caller_address">>, InitCallObject)),
+    ?assertEqual(get_tx_nonce(ContractCreateTxHash), maps:get(<<"caller_nonce">>, InitCallObject)),
+    ?assertEqual(aec_base58c:encode(contract_pubkey, ContractPubKey),
+        maps:get(<<"contract_address">>, InitCallObject)),
+    ?assertEqual(maps:get(gas_price, ValidDecoded), maps:get(<<"gas_price">>, InitCallObject)),
+    ?assertMatch({Used, Limit} when
+        is_integer(Used) andalso
+            is_integer(Limit) andalso
+            Limit > 0 andalso
+            Used =< Limit,
+        {maps:get(<<"gas_used">>, InitCallObject), maps:get(gas, ValidDecoded)}
+    ),
+    ?assertEqual(<<"error">>, maps:get(<<"return_type">>, InitCallObject)),
+    ?assertMatch(_, maps:get(<<"return_value">>, InitCallObject)),
 
     ok.
 
