@@ -1097,7 +1097,6 @@ nameservice_transaction_revoke(MinerAddress, MinerPubkey) ->
 %% GET channel_withdraw_tx unsigned transaction
 %% GET channel_close_mutual_tx unsigned transaction
 %% GET channel_close_solo unsigned transaction
-%% GET channel_slash_tx unsigned transaction
 %% GET channel_settle_tx unsigned transaction
 state_channels_onchain_transactions(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
@@ -1111,7 +1110,6 @@ state_channels_onchain_transactions(_Config) ->
     state_channels_withdrawal(ChannelId, MinerPubkey),
     state_channels_close_mutual(ChannelId, MinerPubkey),
     state_channels_close_solo(ChannelId, MinerPubkey),
-    state_channels_slash(ChannelId, MinerPubkey),
     state_channels_settle(ChannelId, MinerPubkey),
     ok.
 
@@ -1219,23 +1217,6 @@ state_channels_close_solo(ChannelId, MinerPubkey) ->
                                fun get_channel_close_solo/1,
                                fun aesc_close_solo_tx:new/1, MinerPubkey),
     test_invalid_hash(MinerPubkey,  from, Encoded, fun get_channel_close_solo/1),
-    ok.
-
-state_channels_slash(ChannelId, MinerPubkey) ->
-    PoI = aec_trees:new_poi(aec_trees:new_without_backend()),
-    Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                from => aec_base58c:encode(account_pubkey, MinerPubkey),
-                payload => <<"hejsan svejsan">>, %%TODO proper payload
-                poi => aec_base58c:encode(poi, aec_trees:serialize_poi(PoI)),
-                fee => 1},
-    Decoded = maps:merge(Encoded,
-                        #{from => MinerPubkey,
-                          channel_id => ChannelId,
-                          poi => PoI}),
-    unsigned_tx_positive_test(Decoded, Encoded,
-                               fun get_channel_slash/1,
-                               fun aesc_slash_tx:new/1, MinerPubkey),
-    test_invalid_hash(MinerPubkey, from, Encoded, fun get_channel_slash/1),
     ok.
 
 state_channels_settle(ChannelId, MinerPubkey) ->
@@ -3566,10 +3547,6 @@ get_channel_close_mutual(Data) ->
 get_channel_close_solo(Data) ->
     Host = external_address(),
     http_request(Host, post, "tx/channel/close/solo", Data).
-
-get_channel_slash(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/channel/slash", Data).
 
 get_channel_settle(Data) ->
     Host = external_address(),

@@ -35,9 +35,6 @@
          close_solo_tx_spec/5,
          close_solo_tx_spec/6,
 
-         slash_tx_spec/5,
-         slash_tx_spec/6,
-
          deposit_tx_spec/3,
          deposit_tx_spec/4,
 
@@ -293,27 +290,6 @@ withdraw_tx_spec(ToPubKey, State) ->
       state_hash  => ?BOGUS_STATE_HASH,
       round       => 42,
       nonce       => try next_nonce(ToPubKey, State) catch _:_ -> 0 end}.
-
-%%%===================================================================
-%%% Slash tx
-%%%===================================================================
-
-slash_tx_spec(ChannelId, FromPubKey, Payload, PoI, State) ->
-    slash_tx_spec(ChannelId, FromPubKey, Payload, PoI, #{}, State).
-
-slash_tx_spec(ChannelId, FromPubKey, Payload, PoI, Spec0, State) ->
-    Spec = maps:merge(slash_tx_default_spec(FromPubKey, State), Spec0),
-    #{channel_id  => ChannelId,
-      from        => FromPubKey,
-      payload     => Payload,
-      poi         => PoI,
-      ttl         => maps:get(ttl, Spec, 0),
-      fee         => maps:get(fee, Spec),
-      nonce       => maps:get(nonce, Spec)}.
-
-slash_tx_default_spec(FromPubKey, State) ->
-    #{fee         => 3,
-      nonce       => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
 
 %%%===================================================================
 %%% Settle tx

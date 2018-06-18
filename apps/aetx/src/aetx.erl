@@ -53,7 +53,6 @@
                  | channel_withdraw_tx
                  | channel_close_mutual_tx
                  | channel_close_solo_tx
-                 | channel_slash_tx
                  | channel_settle_tx
                  | channel_offchain_tx.
 
@@ -74,7 +73,6 @@
                      | aesc_withdraw_tx:tx()
                      | aesc_close_mutual_tx:tx()
                      | aesc_close_solo_tx:tx()
-                     | aesc_slash_tx:tx()
                      | aesc_settle_tx:tx()
                      | aesc_offchain_tx:tx().
 
@@ -274,7 +272,6 @@ type_to_cb(channel_deposit_tx)      -> aesc_deposit_tx;
 type_to_cb(channel_withdraw_tx)     -> aesc_withdraw_tx;
 type_to_cb(channel_close_solo_tx)   -> aesc_close_solo_tx;
 type_to_cb(channel_close_mutual_tx) -> aesc_close_mutual_tx;
-type_to_cb(channel_slash_tx)        -> aesc_slash_tx;
 type_to_cb(channel_settle_tx)       -> aesc_settle_tx;
 type_to_cb(channel_offchain_tx)     -> aesc_offchain_tx.
 
@@ -308,7 +305,6 @@ tx_types() ->
     , channel_withdraw_tx
     , channel_close_mutual_tx
     , channel_close_solo_tx
-    , channel_slash_tx
     , channel_settle_tx
     , channel_offchain_tx
     ].

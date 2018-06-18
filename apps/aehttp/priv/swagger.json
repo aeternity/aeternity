@@ -897,36 +897,6 @@
         }
       }
     },
-    "/tx/channel/slash" : {
-      "post" : {
-        "tags" : [ "external", "dev" ],
-        "description" : "Get a channel_slash transaction object",
-        "operationId" : "PostChannelSlash",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "in" : "body",
-          "name" : "body",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/ChannelSlashTx"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "Successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/UnsignedTx"
-            }
-          },
-          "400" : {
-            "description" : "Invalid transaction",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
     "/tx/channel/settle" : {
       "post" : {
         "tags" : [ "external", "dev" ],
@@ -3279,44 +3249,6 @@
         "nonce" : 0
       }
     },
-    "ChannelSlashTx" : {
-      "type" : "object",
-      "required" : [ "channel_id", "fee", "from", "payload" ],
-      "properties" : {
-        "channel_id" : {
-          "type" : "string"
-        },
-        "from" : {
-          "$ref" : "#/definitions/EncodedHash"
-        },
-        "payload" : {
-          "type" : "string"
-        },
-        "ttl" : {
-          "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
-        },
-        "fee" : {
-          "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
-        },
-        "nonce" : {
-          "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
-        }
-      },
-      "example" : {
-        "payload" : "payload",
-        "fee" : 0,
-        "from" : { },
-        "channel_id" : "channel_id",
-        "ttl" : 0,
-        "nonce" : 0
-      }
-    },
     "ChannelSettleTx" : {
       "type" : "object",
       "required" : [ "channel_id", "fee", "from", "initiator_amount", "nonce" ],
@@ -3589,13 +3521,6 @@
         "$ref" : "#/definitions/JSONTx"
       }, {
         "$ref" : "#/definitions/ChannelCloseSoloTx"
-      } ]
-    },
-    "ChannelSlashTxJSON" : {
-      "allOf" : [ {
-        "$ref" : "#/definitions/JSONTx"
-      }, {
-        "$ref" : "#/definitions/ChannelSlashTx"
       } ]
     },
     "ChannelSettleTxJSON" : {

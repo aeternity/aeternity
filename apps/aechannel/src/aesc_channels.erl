@@ -15,8 +15,6 @@
          new/1,
          peers/1,
          serialize/1,
-         slash/3,
-         slash/4,
          close_solo/3,
          close_solo/4,
          withdraw/4]).
@@ -206,28 +204,6 @@ serialization_template(?CHANNEL_VSN) ->
     , {lock_period      , int}
     , {closes_at        , int}
     ].
-
--spec slash(channel(), aec_trees:poi(), aec_blocks:height()) -> channel().
-slash(Ch, PoI, Height) ->
-    slash_int(Ch, PoI, Height, round(Ch),        % keep the round
-                               state_hash(Ch)).  % keep the state hash
-
--spec slash(channel(), aesc_offchain_tx:tx(), aec_trees:poi(), aec_blocks:height()) -> channel().
-slash(Ch, PayloadTx, PoI, Height) ->
-    slash_int(Ch, PoI, Height, aesc_offchain_tx:round(PayloadTx),
-                               aesc_offchain_tx:state_hash(PayloadTx)).
-
-slash_int(#channel{lock_period = LockPeriod} = Ch, PoI, Height, Round, StateHash) ->
-    Initiator = initiator(Ch),
-    Responder = responder(Ch),
-    InitiatorAmt = fetch_amount_from_poi(PoI, Initiator),
-    ResponderAmt = fetch_amount_from_poi(PoI, Responder),
-    ClosesAt = Height + LockPeriod,
-    Ch#channel{initiator_amount = InitiatorAmt,
-               total_amount     = InitiatorAmt +  ResponderAmt,
-               round            = Round,
-               state_hash       = StateHash,
-               closes_at        = ClosesAt}.
 
 -spec withdraw(channel(), amount(), seq_number(), binary()) -> channel().
 withdraw(#channel{total_amount = TotalAmount} = Ch, Amount, Round, StateHash) ->
