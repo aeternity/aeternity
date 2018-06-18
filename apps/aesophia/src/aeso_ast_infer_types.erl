@@ -613,6 +613,10 @@ unfold_record_types({arg, Attr, Id, Type}) ->
     {arg, Attr, Id, unfold_record_types_in_type(Type)};
 unfold_record_types({type_sig, Args, Ret}) ->
     {type_sig, unfold_record_types_in_type(Args), unfold_record_types_in_type(Ret)};
+unfold_record_types({type_def, Ann, Name, Args, Def}) ->
+    {type_def, Ann, Name, Args, unfold_record_types_in_type(Def)};
+unfold_record_types({letfun, Ann, Name, Args, Type, Body}) ->
+    {letfun, Ann, Name, unfold_record_types(Args), unfold_record_types_in_type(Type), unfold_record_types(Body)};
 unfold_record_types(T) when is_tuple(T) ->
     list_to_tuple(unfold_record_types(tuple_to_list(T)));
 unfold_record_types([H|T]) ->
@@ -620,7 +624,7 @@ unfold_record_types([H|T]) ->
 unfold_record_types(X) ->
     X.
 
-unfold_record_types_in_type(Type={app_t, _, {id, _, RecName}, Args}) ->
+unfold_record_types_in_type({app_t, Ann, Id = {id, _, RecName}, Args}) ->
     case ets:lookup(record_types, RecName) of
 	[{RecName, Formals, Fields}] when length(Formals) == length(Args) ->
 	    {record_t,
@@ -628,7 +632,7 @@ unfold_record_types_in_type(Type={app_t, _, {id, _, RecName}, Args}) ->
 	       subst_tvars(lists:zip(Formals, Args), Fields))};
 	_ ->
 	    %% Not a record type, or ill-formed record type.
-	    Type
+	    {app_t, Ann, Id, unfold_record_types_in_type(Args)}
     end;
 unfold_record_types_in_type(Type={id, _, RecName}) ->
     %% Like the case above, but for record types without parameters.
