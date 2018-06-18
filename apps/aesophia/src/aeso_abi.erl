@@ -47,7 +47,10 @@ ast_to_erlang({app, _, {con, _, "Some"}, [A]}) -> {some, ast_to_erlang(A)};
 ast_to_erlang({tuple, _, Elems}) ->
     list_to_tuple(lists:map(fun ast_to_erlang/1, Elems));
 ast_to_erlang({list, _, Elems}) ->
-    lists:map(fun ast_to_erlang/1, Elems).
+    lists:map(fun ast_to_erlang/1, Elems);
+ast_to_erlang({map, _, Elems}) ->
+    maps:from_list([ {ast_to_erlang(element(1, Elem)), ast_to_erlang(element(2, Elem))}
+                        || Elem <- Elems ]).
 
 encode_function(_Contract, Function) ->
      << <<X>> || X <- Function>>.
@@ -62,8 +65,11 @@ get_type(T) when is_tuple(T) ->
 get_type(B) when is_binary(B) ->
     string;
 get_type([]) -> nil;
-get_type([E|_]) ->
-    {list, get_type(E)}.
+get_type([E|_]) -> {list, get_type(E)};
+get_type(#{}) -> empty_map;
+get_type(M) when is_map(M) ->
+    [{K, V} | _] = maps:to_list(M),
+    {map, get_type(K), get_type(V)}.
 
 
 

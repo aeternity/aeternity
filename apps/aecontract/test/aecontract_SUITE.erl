@@ -485,7 +485,10 @@ args_to_list(N) when is_integer(N) -> integer_to_list(N);
 args_to_list(L) when is_list(L) ->
     io_lib:format("[~s]", [commas(lists:map(fun args_to_list/1, L))]);
 args_to_list(T) when is_tuple(T) ->
-    io_lib:format("(~s)", [commas(lists:map(fun args_to_list/1, tuple_to_list(T)))]).
+    io_lib:format("(~s)", [commas(lists:map(fun args_to_list/1, tuple_to_list(T)))]);
+args_to_list(M) when is_map(M) ->
+    Elems = [ io_lib:format("[~s] = ~s", [args_to_list(K), args_to_list(V)]) || {K, V} <- maps:to_list(M) ],
+    ["{", string:join(Elems, ","), "}"].
 
 sophia_identity(_Cfg) ->
     state(aect_test_utils:new_state()),
