@@ -38,6 +38,8 @@ mempool:
     invalid_tx_ttl: 256
     # Number of blocks before expired (TTL or low nonce) TXs are garbage collected
     expired_tx_ttl: 5
+    # Mempool (re-)synchronization interval (in ms)
+    sync_interval: 1800000
 
 http:
     external:

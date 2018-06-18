@@ -40,13 +40,16 @@
 -type sync_object() :: #sync{}.
 
 -record(state,
-        { local  = not_synced :: not_synced | {active, sync_object()} | in_sync
+        { local  = not_synced :: not_synced | {active, sync_object()}
+                               | {in_sync, reference()}
         , remote = []         :: [sync_object()]
         }).
 
 -define(SERVER, ?MODULE).
 -define(MAX_INCOMING_SYNC, 5).
 -define(TX_PLACEHOLDER, []). %% RLP encodable.
+
+-define(DEFAULT_SYNC_INTERVAL, 30 * 60 * 1000).
 
 -type unfold_node()    :: aeu_mp_trees:unfold_node().
 -type unfold_leaf()    :: aeu_mp_trees:unfold_leaf().
@@ -113,6 +116,8 @@ handle_info({local_action, Ref, TimerRef, Action, Result}, State) ->
 handle_info({timeout, _TimerRef, {local_action, Ref, Worker, Action}}, State) ->
     kill_local_action(Worker, Ref, Action),
     {noreply, handle_local_action(State, Action, Ref, {error, timeout})};
+handle_info({timeout, TimerRef, re_sync}, State) ->
+    {noreply, handle_re_sync(State, TimerRef)};
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, State) ->
     {noreply, handle_down(State, Ref)};
 handle_info(Info, State) ->
@@ -177,6 +182,11 @@ handle_down(State = #state{ remote = Remotes }, Ref) ->
             end
     end.
 
+handle_re_sync(State = #state{ local = {in_sync, TimerRef} }, TimerRef) ->
+    State#state{ local = not_synced };
+handle_re_sync(State, _TimerRef) -> %% Stale TimerRef
+    State.
+
 handle_local_action(State = #state{ local = {active, #sync{ id = Ref }} }, Action, Ref, Result) ->
     handle_local_action(State, Action, Result);
 handle_local_action(State = #state{ remote = Remotes }, tree, Ref, Result) ->
@@ -240,7 +250,8 @@ handle_local_action(State = #state{ local = {active, Sync} }, Action, Res) ->
             case Done of
                 true  ->
                     epoch_sync:info("TX-pool synchronization finished!", []),
-                    State#state{ local = in_sync };
+                    TimerRef = erlang:start_timer(re_sync_timeout(), self(), re_sync),
+                    State#state{ local = {in_sync, TimerRef} };
                 false ->
                     epoch_sync:info("TX-pool synchronization aborted!", []),
                     State#state{ local = not_synced }
@@ -512,3 +523,6 @@ analyze_unfolds([N = {node, Path, Node} | Us], Tree, NewUs, NewGets) ->
             analyze_unfolds(Us, Tree, NewUs, NewGets)
     end.
 
+re_sync_timeout() ->
+    aeu_env:user_config_or_env([<<"mempool">>, <<"sync_interval">>],
+                               aecore, mempool_sync_interval, ?DEFAULT_SYNC_INTERVAL).
