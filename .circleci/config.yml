@@ -160,7 +160,7 @@ references:
           fi
           cd deployment/ansible
           ansible-playbook --limit="${LIMIT:?}" \
-            --extra-vars "package=${PACKAGE:?} hosts_group=tag_env_${DEPLOY_ENV:?} env=${DEPLOY_ENV:?}" \
+            --extra-vars "package=${PACKAGE:?} hosts_group=tag_env_${DEPLOY_ENV:?} env=${DEPLOY_ENV:?} downtime=${DEPLOY_DOWNTIME:-0}" \
             deploy.yml
 
   upload_github_release_asset: &upload_github_release_asset
@@ -468,6 +468,7 @@ jobs:
     <<: *container_config
     environment:
       - DEPLOY_ENV: integration
+      - DEPLOY_DOWNTIME: 15M
     steps: *deploy_steps
 
   deploy_dev1:
@@ -487,6 +488,7 @@ jobs:
     environment:
       - DEPLOY_ENV: uat
       - DEPLOY_COLOR: blue
+      - DEPLOY_DOWNTIME: 30M
     steps: *deploy_steps
 
   deploy_uat_green:
@@ -494,12 +496,14 @@ jobs:
     environment:
       - DEPLOY_ENV: uat
       - DEPLOY_COLOR: green
+      - DEPLOY_DOWNTIME: 30M
     steps: *deploy_steps
 
   deploy_fast_integration:
     <<: *container_config
     environment:
       - DEPLOY_ENV: fast_integration
+      - DEPLOY_DOWNTIME: 15M
     steps: *deploy_steps
 
   github_release_osx:

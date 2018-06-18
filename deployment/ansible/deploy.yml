@@ -73,6 +73,22 @@
 
   tasks:
     - block:
+      - name: Schedule downtime
+        run_once: yes
+        uri:
+          url: "{{ datadog_api_url }}"
+          method: POST
+          status_code: 200
+          timeout: 10
+          body_format: json
+          body:
+            scope: "env:{{ env }}"
+            message: "Deploy"
+            end: "{{ lookup('pipe', 'date -v+{{ downtime }} +%s') }}"
+        when:
+          - downtime is defined
+          - downtime != "0"
+
       - name: Fail on missing package variable
         fail:
           msg: '"package" variable must be defined'
