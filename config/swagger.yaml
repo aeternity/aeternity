@@ -1281,6 +1281,34 @@ paths:
           description: Block or account not found
           schema:
             $ref: '#/definitions/Error'
+  /account/{account_pubkey}/nonce:
+    get:
+      tags:
+        - external
+        - chain
+      operationId: GetAccountNonce
+      description: 'Get accounts''s last used nonce on chain'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: account_pubkey
+          description: 'Account pubkey to show nonce for'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: successful operation
+          schema:
+            $ref: '#/definitions/Nonce'
+        '400':
+          description: Invalid account_pubkey provided
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Account not found
+          schema:
+            $ref: '#/definitions/Error'
 
 ## CAUTION: debug endpoints, implementation may be inefficient
   /balances:
@@ -2098,6 +2126,12 @@ definitions:
     type: object
     properties:
       balance:
+        type: integer
+        format: int64
+  Nonce:
+    type: object
+    properties:
+      nonce:
         type: integer
         format: int64
   Tx:

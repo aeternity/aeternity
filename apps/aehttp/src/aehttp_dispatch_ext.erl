@@ -447,6 +447,19 @@ handle_request('GetAccountBalance', Req, _Context) ->
             {400, [], #{reason => <<"Invalid account hash">>}}
     end;
 
+handle_request('GetAccountNonce', Req, _Context) ->
+    case aec_base58c:safe_decode(account_pubkey, maps:get('account_pubkey', Req)) of
+        {ok, AccountPubkey} ->
+            case aec_chain:get_account(AccountPubkey) of
+                {value, Account} ->
+                    {200, [], #{nonce => aec_accounts:nonce(Account)}};
+                _ ->
+                    {404, [], #{reason => <<"Account not found">>}}
+            end;
+        _ ->
+            {400, [], #{reason => <<"Invalid account hash">>}}
+    end;
+
 handle_request('GetCommitmentHash', Req, _Context) ->
     Name         = maps:get('name', Req),
     Salt         = maps:get('salt', Req),
