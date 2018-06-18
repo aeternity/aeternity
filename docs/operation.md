@@ -64,7 +64,7 @@ Verify that your node sees the same longest blockchain as the testnet.
 
 Inspect the current top of the blockchain as seen by the testnet:
 ```bash
-curl http://31.13.249.70:3013/v2/top
+curl http://31.13.249.70:3013/v2/top || curl http://18.195.109.60:3013/v2/top
 ```
 
 Inspect the current top of the blockchain as seen by your node:
