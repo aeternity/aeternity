@@ -18,7 +18,8 @@
                     | name
                     | commitment
                     | peer_pubkey
-                    | state.
+                    | state
+                    | poi.
 
 -type payload() :: binary().
 -type encoded() :: binary().
@@ -86,7 +87,8 @@ type2pfx(signature)        -> <<"sg">>;
 type2pfx(commitment)       -> <<"cm">>;
 type2pfx(peer_pubkey)      -> <<"pp">>;
 type2pfx(name)             -> <<"nm">>;
-type2pfx(state)            -> <<"st">>.
+type2pfx(state)            -> <<"st">>;
+type2pfx(poi)              -> <<"pi">>.
 
 pfx2type(<<"bh">>) -> block_hash;
 pfx2type(<<"bx">>) -> block_tx_hash;
@@ -102,7 +104,8 @@ pfx2type(<<"sg">>) -> signature;
 pfx2type(<<"cm">>) -> commitment;
 pfx2type(<<"pp">>) -> peer_pubkey;
 pfx2type(<<"nm">>) -> name;
-pfx2type(<<"st">>) -> state.
+pfx2type(<<"st">>) -> state;
+pfx2type(<<"pi">>) -> poi.
 
 %% TODO: Fix the base58 module so that it consistently uses binaries instead
 %%

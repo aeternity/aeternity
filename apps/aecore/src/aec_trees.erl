@@ -13,6 +13,7 @@
          commit_to_db/1,
          hash/1,
          new/0,
+         new_without_backend/0,
          channels/1,
          ns/1,
          oracles/1,
@@ -36,6 +37,7 @@
 
 %% Proof of inclusion
 -export([add_poi/4,
+         lookup_poi/3,
          deserialize_poi/1,
          new_poi/1,
          poi_hash/1,
@@ -89,6 +91,16 @@ new() ->
            oracles   = aeo_state_tree:empty_with_backend()
           }.
 
+-spec new_without_backend() -> trees().
+new_without_backend() ->
+    #trees{accounts  = aec_accounts_trees:empty(),
+           calls     = aect_call_state_tree:empty(),
+           channels  = aesc_state_tree:empty(),
+           contracts = aect_state_tree:empty(),
+           ns        = aens_state_tree:empty(),
+           oracles   = aeo_state_tree:empty()
+          }.
+
 -spec new_poi(trees()) -> poi().
 new_poi(Trees) ->
     internal_new_poi(Trees).
@@ -99,6 +111,11 @@ add_poi(accounts, PubKey, Trees, #poi{} = Poi) ->
     internal_add_accounts_poi(PubKey, accounts(Trees), Poi);
 add_poi(Type,_PubKey,_Trees, #poi{} =_Poi) ->
     error({nyi, Type}).
+
+-spec lookup_poi(tree_type(), aec_keys:pubkey(), poi()) -> {'ok', aec_accounts:account()}
+                                                         | {'error', 'not_found'}.
+lookup_poi(accounts, PubKey, #poi{} = Poi) ->
+    internal_lookup_accounts_poi(PubKey, Poi).
 
 -spec poi_hash(poi()) -> state_hash().
 poi_hash(#poi{} = Poi) ->
@@ -320,6 +337,15 @@ internal_add_accounts_poi(Pubkey, Trees, #poi{accounts = {poi, APoi}} = Poi) ->
         {ok, SerializedAccount, NewAPoi} ->
             {ok, SerializedAccount, Poi#poi{accounts = {poi, NewAPoi}}};
         {error, _} = E -> E
+    end.
+
+internal_lookup_accounts_poi(_Pubkey, #poi{accounts = empty}) ->
+    {error, not_found};
+internal_lookup_accounts_poi(Pubkey, #poi{accounts = {poi, APoi}} = _Poi) ->
+    case aec_accounts_trees:lookup_poi(Pubkey, APoi) of
+        {ok, Account} ->
+            {ok, Account};
+        {error, not_found} = E -> E
     end.
 
 internal_verify_accounts_poi(_AccountPubkey,_Account, #poi{accounts = empty}) ->

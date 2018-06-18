@@ -30,12 +30,13 @@
          close_mutual_tx_spec/3,
 
          payload/5,
+         proof_of_inclusion/1,
 
-         close_solo_tx_spec/4,
          close_solo_tx_spec/5,
+         close_solo_tx_spec/6,
 
-         slash_tx_spec/4,
          slash_tx_spec/5,
+         slash_tx_spec/6,
 
          deposit_tx_spec/3,
          deposit_tx_spec/4,
@@ -46,6 +47,8 @@
          settle_tx_spec/3,
          settle_tx_spec/4]).
 
+-define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
+
 %%%===================================================================
 %%% Test state
 %%%===================================================================
@@ -54,7 +57,7 @@ new_state() ->
     #{}.
 
 trees(#{} = S) ->
-    maps:get(trees, S, aec_trees:new()).
+    maps:get(trees, S, aec_trees:new_without_backend()).
 
 set_trees(Trees, S) ->
     S#{trees => Trees}.
@@ -121,12 +124,28 @@ close_solo(Ch) ->
     close_solo(Ch, #{}).
 
 close_solo(Ch, Params) ->
-    DummyStateTx = state_tx(aesc_channels:id(Ch),
-                            aesc_channels:initiator(Ch),
-                            aesc_channels:responder(Ch),
-                            Params),
-    {_Type, Tx} = aetx:specialize_type(DummyStateTx),
-    aesc_channels:close_solo(Ch, Tx, 11).
+
+    {InitiatorEndBalance, ResponderEndBalance} =
+        case Params of
+            #{initiator_amount := IAmt, responder_amount := RAmt} ->
+                {IAmt, RAmt};
+            _ ->
+                ChannelAmount = aesc_channels:total_amount(Ch),
+                IAmt = rand:uniform(ChannelAmount),
+                RAmt = ChannelAmount - IAmt,
+                {IAmt, RAmt}
+        end,
+
+    DummyState = state_tx(aesc_channels:id(Ch),
+                          aesc_channels:initiator(Ch),
+                          aesc_channels:responder(Ch),
+                          maps:merge(Params, #{initiator_amount => InitiatorEndBalance,
+                                                 responder_amount => ResponderEndBalance})),
+    PoI = proof_of_inclusion([{aesc_channels:initiator(Ch), InitiatorEndBalance},
+                              {aesc_channels:responder(Ch), ResponderEndBalance}]),
+
+    {channel_offchain_tx, DummyStateTx} = aetx:specialize_type(DummyState),
+    aesc_channels:close_solo(Ch, DummyStateTx, PoI, 11).
 
 get_channel(ChannelId, State) ->
     aesc_state_tree:get(ChannelId, aec_trees:channels(trees(State))).
@@ -158,14 +177,22 @@ create_tx_spec(InitiatorPubKey, ResponderPubKey, State) ->
 
 create_tx_spec(InitiatorPubKey, ResponderPubKey, Spec0, State) ->
     Spec = maps:merge(create_tx_default_spec(InitiatorPubKey, State), Spec0),
+    InitiatorAmount = maps:get(initiator_amount, Spec),
+    ResponderAmount = maps:get(responder_amount, Spec),
+    Accounts = [aec_accounts:new(Pubkey, Balance) ||
+                {Pubkey, Balance} <- [{InitiatorPubKey, InitiatorAmount},
+                                      {ResponderPubKey, ResponderAmount}]],
+    Trees = aec_test_utils:create_state_tree_with_accounts(Accounts, no_backend),
+    StateHash = aec_trees:hash(Trees),
     #{initiator          => InitiatorPubKey,
-      initiator_amount   => maps:get(initiator_amount, Spec),
+      initiator_amount   => InitiatorAmount,
       responder          => ResponderPubKey,
-      responder_amount   => maps:get(responder_amount, Spec),
+      responder_amount   => ResponderAmount,
       channel_reserve    => maps:get(channel_reserve, Spec),
       lock_period        => maps:get(lock_period, Spec),
       ttl                => maps:get(ttl, Spec, 0),
       fee                => maps:get(fee, Spec),
+      state_hash         => StateHash,
       nonce              => maps:get(nonce, Spec)}.
 
 create_tx_default_spec(InitiatorPubKey, State) ->
@@ -200,21 +227,22 @@ close_mutual_tx_default_spec(Initiator, State) ->
 %%% Close solo tx
 %%%===================================================================
 
-close_solo_tx_spec(ChannelId, FromPubKey, Payload, State) ->
-    close_solo_tx_spec(ChannelId, FromPubKey, Payload, #{}, State).
+close_solo_tx_spec(ChannelId, FromPubKey, Payload, PoI, State) ->
+    close_solo_tx_spec(ChannelId, FromPubKey, Payload, PoI, #{}, State).
 
-close_solo_tx_spec(ChannelId, FromPubKey, Payload, Spec0, State) ->
+close_solo_tx_spec(ChannelId, FromPubKey, Payload, PoI, Spec0, State) ->
     Spec = maps:merge(close_solo_tx_default_spec(FromPubKey, State), Spec0),
     #{channel_id  => ChannelId,
       from        => FromPubKey,
       payload     => Payload,
+      poi         => PoI,
       ttl         => maps:get(ttl, Spec, 0),
       fee         => maps:get(fee, Spec),
       nonce       => maps:get(nonce, Spec)}.
 
 close_solo_tx_default_spec(FromPubKey, State) ->
-    #{ fee     => 3,
-       nonce   => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
+    #{fee         => 3,
+      nonce       => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
 
 %%%===================================================================
 %%% Deposit tx
@@ -230,12 +258,16 @@ deposit_tx_spec(ChannelId, FromPubKey, Spec0, State) ->
       amount     => maps:get(amount, Spec),
       ttl        => maps:get(ttl, Spec, 0),
       fee        => maps:get(fee, Spec),
+      state_hash => maps:get(state_hash, Spec),
+      round      => maps:get(round, Spec),
       nonce      => maps:get(nonce, Spec)}.
 
 deposit_tx_default_spec(FromPubKey, State) ->
-    #{amount => 10,
-      fee    => 3,
-      nonce  => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
+    #{amount      => 10,
+      fee         => 3,
+      state_hash  => ?BOGUS_STATE_HASH,
+      round       => 42,
+      nonce       => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
 
 %%%===================================================================
 %%% Withdraw tx
@@ -251,32 +283,37 @@ withdraw_tx_spec(ChannelId, ToPubKey, Spec0, State) ->
       amount     => maps:get(amount, Spec),
       ttl        => maps:get(ttl, Spec, 0),
       fee        => maps:get(fee, Spec),
+      state_hash => maps:get(state_hash, Spec),
+      round      => maps:get(round, Spec),
       nonce      => maps:get(nonce, Spec)}.
 
 withdraw_tx_spec(ToPubKey, State) ->
-    #{amount => 10,
-      fee    => 3,
-      nonce  => try next_nonce(ToPubKey, State) catch _:_ -> 0 end}.
+    #{amount      => 10,
+      fee         => 3,
+      state_hash  => ?BOGUS_STATE_HASH,
+      round       => 42,
+      nonce       => try next_nonce(ToPubKey, State) catch _:_ -> 0 end}.
 
 %%%===================================================================
 %%% Slash tx
 %%%===================================================================
 
-slash_tx_spec(ChannelId, FromPubKey, Payload, State) ->
-    slash_tx_spec(ChannelId, FromPubKey, Payload, #{}, State).
+slash_tx_spec(ChannelId, FromPubKey, Payload, PoI, State) ->
+    slash_tx_spec(ChannelId, FromPubKey, Payload, PoI, #{}, State).
 
-slash_tx_spec(ChannelId, FromPubKey, Payload, Spec0, State) ->
+slash_tx_spec(ChannelId, FromPubKey, Payload, PoI, Spec0, State) ->
     Spec = maps:merge(slash_tx_default_spec(FromPubKey, State), Spec0),
     #{channel_id  => ChannelId,
       from        => FromPubKey,
       payload     => Payload,
+      poi         => PoI,
       ttl         => maps:get(ttl, Spec, 0),
       fee         => maps:get(fee, Spec),
       nonce       => maps:get(nonce, Spec)}.
 
 slash_tx_default_spec(FromPubKey, State) ->
-    #{ fee     => 3,
-       nonce   => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
+    #{fee         => 3,
+      nonce       => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
 
 %%%===================================================================
 %%% Settle tx
@@ -308,9 +345,18 @@ state_tx(ChannelId, Initiator, Responder, Spec0) ->
     StateHash =
         case maps:get(state_hash, Spec, <<>>) of
             <<>> -> %not set, calculate
-                Trees = aesc_trees:new([{Initiator, InitiatorAmount},
-                                        {Responder, ResponderAmount}]),
-                aesc_trees:hash(Trees);
+                Trees0 = aec_trees:new_without_backend(),
+                Accounts =
+                    lists:foldl(
+                        fun({Pubkey, Amount}, AccTree) ->
+                        Account = aec_accounts:new(Pubkey, Amount),
+                        aec_accounts_trees:enter(Account, AccTree)
+                    end,
+                    aec_trees:accounts(Trees0),
+                    [{Initiator, InitiatorAmount},
+                     {Responder, ResponderAmount}]),
+                Trees = aec_trees:set_accounts(Trees0, Accounts),
+                aec_trees:hash(Trees);
             V -> V
         end,
     {ok, StateTx} =
@@ -323,7 +369,6 @@ state_tx(ChannelId, Initiator, Responder, Spec0) ->
               responder_amount   => ResponderAmount,
               state              => maps:get(state, Spec, <<>>),
               state_hash         => StateHash,
-              previous_round     => maps:get(previous_round, Spec),
               round              => maps:get(round, Spec)}),
     StateTx.
 
@@ -331,9 +376,22 @@ state_tx_spec() ->
     #{initiator_amount   => 3,
       responder_amount   => 4,
       state              => <<"state..">>,
-      previous_round     => 10,
       round              => 11}.
 
 payload(ChannelId, Initiator, Responder, SignersPrivKeys, Spec) ->
     StateTx = state_tx(ChannelId, Initiator, Responder, Spec),
     aetx_sign:serialize_to_binary(aetx_sign:sign(StateTx, SignersPrivKeys)). %% No signatures
+
+proof_of_inclusion(Participants) ->
+    Accounts = [aec_accounts:new(Pubkey, Balance) ||
+                {Pubkey, Balance} <- Participants],
+    Trees = aec_test_utils:create_state_tree_with_accounts(Accounts, no_backend),
+    lists:foldl(
+        fun({Pubkey, _}, AccumPoI) ->
+            {ok, _, AccumPoI1} = aec_trees:add_poi(accounts, Pubkey,
+                                                    Trees, AccumPoI),
+            AccumPoI1
+        end,
+        aec_trees:new_poi(Trees),
+        Participants).
+

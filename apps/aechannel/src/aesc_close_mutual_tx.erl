@@ -118,9 +118,6 @@ check(#channel_close_mutual_tx{initiator_amount = InitiatorAmount,
                         false -> {error, channel_not_active}
                     end
                 end,
-                fun() -> % check fee
-                    ok_or_error(InitiatorAmount + ResponderAmount >= Fee, fee_too_big)
-                end,
                 fun() -> % check amounts
                     ChannelAmt = aesc_channels:total_amount(Channel),
                     ok_or_error(ChannelAmt =:= InitiatorAmount + ResponderAmount + Fee,
@@ -213,8 +210,8 @@ deserialize(?CHANNEL_CLOSE_MUTUAL_TX_VSN,
 for_client(#channel_close_mutual_tx{initiator_amount = InitiatorAmount,
                                     responder_amount = ResponderAmount,
                                     ttl              = TTL,
-                                    fee         = Fee,
-                                    nonce       = Nonce} = Tx) ->
+                                    fee              = Fee,
+                                    nonce            = Nonce} = Tx) ->
     #{<<"data_schema">> => <<"ChannelCloseMutualTxJSON">>, % swagger schema name
       <<"vsn">>               => version(),
       <<"channel_id">>        => aec_base58c:encode(channel, channel(Tx)),

@@ -20,6 +20,7 @@
         , iterator_from/2
         , iterator_from/3
         , iterator_next/1
+        , lookup_in_proof/3
         , pp/1
         , put/3
         , root_hash/1
@@ -160,13 +161,28 @@ construct_proof(Key, ProofDB, #mpt{db = DB, hash = Hash}) ->
                       | {'bad_hash', hash()}.
 
 -spec verify_proof(key(), value(), hash(), db()) -> 'ok'
-                                                  | {'error', verify_error()}.
+                                                  | verify_error().
 verify_proof(Key, Val, Hash, ProofDB) ->
     try decode_node_and_check_hash(Hash, ProofDB) of
         {ok, Node} -> int_verify_proof(Key, Node, Val, ProofDB);
         {bad_hash, H} -> {bad_hash, H}
     catch
         _:_ -> bad_proof
+    end.
+
+-spec lookup_in_proof(key(), hash(), db()) -> 'none' | {'value', value()}.
+lookup_in_proof(Key, Hash, ProofDB) ->
+    try decode_node_and_check_hash(Hash, ProofDB) of
+        {ok, Node} ->
+            case int_verify_proof(Key, Node, lookup, ProofDB) of
+                bad_proof         -> none;
+                {bad_hash, _}     -> none;
+                {bad_value, <<>>} -> none;
+                {bad_value, Val}  -> {value, Val}
+            end;
+        {bad_hash,_H} -> none
+    catch
+        _:_ -> none
     end.
 
 -spec iterator(tree()) -> iterator().
@@ -534,6 +550,8 @@ proof_db_insert(Hash, DB, ProofDB) when byte_size(Hash) =:= 32 ->
 
 int_verify_proof(_Path, <<>>, <<>>, _ProofDB) ->
     ok;
+int_verify_proof(_Path, <<>>, _, _ProofDB) ->
+    bad_proof;
 int_verify_proof(<<>>, {branch, Branch}, Val, _ProofDB) ->
     case branch_value(Branch) of
         Val  -> ok;

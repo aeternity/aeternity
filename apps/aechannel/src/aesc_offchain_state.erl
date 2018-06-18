@@ -2,7 +2,7 @@
 
 -include_lib("apps/aecore/include/blocks.hrl").
 
--record(state, { trees                  :: aesc_trees:trees()
+-record(state, { trees                  :: aec_trees:trees()
                , signed_txs = []        :: [aetx_sign:signed_tx()]
                , half_signed_txs = []   :: [aetx_sign:signed_tx()]
               }).
@@ -23,13 +23,15 @@
         , check_initial_update_tx/3   %%  (SignedTx, State, Opts)
         , check_update_tx/3           %%  (SignedTx, State, Opts)
         , make_update_tx/3            %%  (Updates, State, Opts) -> Tx
-        , add_signed_tx/2             %%  (SignedTx, State0) -> State
+        , add_signed_tx/3             %%  (SignedTx, State0, Opts) -> State
         , add_half_signed_tx/2        %%  (SignedTx, State0) -> State
         , get_latest_half_signed_tx/1 %%  (State) -> SignedTx
         , get_latest_signed_tx/1      %%  (State) -> {Round, SignedTx}
         , get_fallback_state/1        %%  (State) -> {Round, State'}
         , fallback_to_stable_state/1  %%  (State) -> State'
         , hash/1                      %%  (State) -> hash()
+        , update_for_client/1
+        , balance/2                   %%  (Pubkey, State) -> Balance
         ]).
 -export([ op_transfer/3
         , op_deposit/2
@@ -43,13 +45,22 @@ new(Opts) ->
       responder          := ResponderPubKey,
       initiator_amount   := InitiatorAmount,
       responder_amount   := ResponderAmount} = Opts,
-    Trees = aesc_trees:new([{InitiatorPubKey, InitiatorAmount},
-                            {ResponderPubKey, ResponderAmount}]),
+    Trees0 = aec_trees:new_without_backend(),
+    Accounts =
+        lists:foldl(
+            fun({Pubkey, Amount}, AccTree) ->
+            Account = aec_accounts:new(Pubkey, Amount),
+            aec_accounts_trees:enter(Account, AccTree)
+        end,
+        aec_trees:accounts(Trees0),
+        [{InitiatorPubKey, InitiatorAmount},
+         {ResponderPubKey, ResponderAmount}]),
+    Trees = aec_trees:set_accounts(Trees0, Accounts),
     {ok, #state{trees=Trees}}.
 
 -spec hash(state()) -> binary().
 hash(#state{trees=Trees}) ->
-    aesc_trees:hash(Trees).
+    aec_trees:hash(Trees).
 
 %% update_tx checks
 check_initial_state({previous_round, N}, _) ->
@@ -76,36 +87,31 @@ check_update_tx(F, SignedTx, #state{signed_txs = Txs}=State, Opts) ->
     Tx = aetx_sign:tx(SignedTx),
     {Mod, TxI} = aetx:specialize_callback(Tx),
     lager:debug("Tx = ~p", [Tx]),
-    case Mod:previous_round(TxI) of
+    case Mod:round(TxI) - 1 of
         0 when Txs == [] ->
             lager:debug("previous round = 0", []),
-            check_update_tx_(F, Mod, TxI, TxI, State, Opts);
+            check_update_tx_(F, Mod, TxI, State, Opts);
         PrevRound ->
             lager:debug("PrevRound = ~p", [PrevRound]),
-            {LastRound, LastSignedTx} = get_latest_signed_tx(State),
-            LastTx = aetx_sign:tx(LastSignedTx),
-            {Mod, LastTxI} = aetx:specialize_callback(LastTx),  %% Mod bound!
+            {LastRound, _LastSignedTx} = get_latest_signed_tx(State),
             lager:debug("LastRound = ~p", [LastRound]),
             case PrevRound == LastRound of
                 true ->
                     lager:debug("PrevRound == LastRound", []),
-                    check_update_tx_(F, Mod, TxI, LastTxI, State, Opts);
+                    check_update_tx_(F, Mod, TxI, State, Opts);
                 false -> {error, invalid_previous_round}
             end
     end.
 
-check_update_tx_(F, Mod, RefTx, LastTx, #state{trees=Trees}, Opts) ->
+check_update_tx_(F, Mod, RefTx, #state{} = State, Opts) ->
     Updates = Mod:updates(RefTx),
-    try  {Tx1, Trees1} = apply_updates(Updates, Mod, LastTx, Trees, Opts),
-         case {{Mod:initiator_amount(RefTx), Mod:responder_amount(RefTx)},
-               {Mod:initiator_amount(Tx1)  , Mod:responder_amount(Tx1)},
-               Mod:state_hash(Tx1) =:= aesc_trees:hash(Trees1)} of
-             {X, X, true} ->
+    try Tx1 = make_update_tx(Updates, State, Opts),
+         {Mod1, Tx1I} = aetx:specialize_callback(Tx1),
+         case Mod1:state_hash(Tx1I) =:= Mod:state_hash(RefTx) of
+             true ->
                  run_extra_checks(F, Mod, RefTx);
-             {_, _, false} ->
-                 {error, state_hash_mismatch};
-             {X, Y, _} ->
-                 {error, {amount_mismatch, {X, Y}}}
+             false ->
+                 {error, state_hash_mismatch}
          end
     catch
         error:Reason ->
@@ -116,99 +122,59 @@ check_update_tx_(F, Mod, RefTx, LastTx, #state{trees=Trees}, Opts) ->
 make_update_tx(Updates, #state{signed_txs=[SignedTx|_], trees=Trees}, Opts) ->
     Tx = aetx_sign:tx(SignedTx),
     {Mod, TxI} = aetx:specialize_callback(Tx),
-    {TxI1, _Trees1} = apply_updates(Updates, Mod, TxI, Trees, Opts),
-    aetx:update_tx(Tx, TxI1).
+    Round = Mod:round(TxI),
+    ChannelId = Mod:channel_id(TxI),
+    #{initiator          := InitiatorPubKey,
+      responder          := ResponderPubKey} = Opts,
+    Trees1 = apply_updates(Updates, Trees, Opts),
+    StateHash = aec_trees:hash(Trees1),
+    {ok, OffchainTx} =
+        aesc_offchain_tx:new(#{channel_id     => ChannelId,
+                              initiator      => InitiatorPubKey,
+                              responder      => ResponderPubKey,
+                              state_hash     => StateHash,
+                              updates        => Updates,
+                              previous_round => Round,
+                              round          => Round + 1}),
+    OffchainTx.
 
-apply_updates(Updates, Mod, Tx, Trees, Opts) ->
-    Round = Mod:round(Tx),
-    {Tx1, NewTrees} = apply_updates_(Updates, Mod, Tx, Trees, Opts),
-    Tx2 = set_tx_values([{round, Round+1},
-                         {previous_round, Round},
-                         {updates, Updates}], Mod, Tx1),
-    {Tx2, NewTrees}.
-
-apply_updates_([], _Mod, Tx, Trees, _Opts) ->
-    {Tx, Trees};
-apply_updates_([{?OP_DEPOSIT, Acct, Acct, Amount} = U | Ds], Mod, Tx, Trees, Opts) ->
-    Initiator = Mod:initiator(Tx),
-    Responder = Mod:responder(Tx),
-    IAmt = Mod:initiator_amount(Tx),
-    RAmt = Mod:responder_amount(Tx),
-    Vals =
-        case Acct of
-            Initiator -> [{initiator_amount, IAmt + Amount}];
-            Responder -> [{responder_amount, RAmt + Amount}]
-        end,
-    {Trees1, _OldBalance, NewBalance} = modify_trees(U, Trees),
-    [{_, NewBalance}] = Vals, %% TODO: remove assert
-    Tx1 = set_tx_values(Vals, Mod, Tx),
-    apply_updates_(Ds, Mod, Tx1, Trees1, Opts);
-apply_updates_([{?OP_WITHDRAW, Acct, Acct, Amount} = U | Ds], Mod, Tx, Trees, Opts) ->
-    Initiator = Mod:initiator(Tx),
-    Responder = Mod:responder(Tx),
-    IAmt = Mod:initiator_amount(Tx),
-    RAmt = Mod:responder_amount(Tx),
-    Vals =
-        case Acct of
-            Initiator -> [{initiator_amount, check_min_amt(IAmt - Amount, Opts)}];
-            Responder -> [{responder_amount, check_min_amt(RAmt - Amount, Opts)}]
-        end,
-    {Trees1, _OldBalance, NewBalance} = modify_trees(U, Trees),
-    [{_, NewBalance}] = Vals, %% TODO: remove assert
-    Tx1 = set_tx_values(Vals, Mod, Tx),
-    apply_updates_(Ds, Mod, Tx1, Trees1, Opts);
-apply_updates_([{?OP_TRANSFER, From, To, Amount} = U | Ds], Mod, Tx, Trees, Opts)
-  when is_binary(From), is_binary(To), is_integer(Amount) ->
-    Initiator = Mod:initiator(Tx),
-    Responder = Mod:responder(Tx),
-    IAmt = Mod:initiator_amount(Tx),
-    RAmt = Mod:responder_amount(Tx),
-    {FA, FB, A, B} =
-        case {From, To} of
-            {Initiator, Responder} ->
-                {initiator_amount, responder_amount, IAmt, RAmt};
-            {Responder, Initiator} ->
-                {responder_amount, initiator_amount, RAmt, IAmt};
-            _Other ->
-                %% TODO: If multi-party channel, this could be valid
-                error(unknown_pubkeys)
-        end,
-    {A1, B1} = {check_min_amt(A - Amount, Opts), B + Amount},
-    {Trees1, FromBalance, ToBalance} = modify_trees(U, Trees),
-    {A, _} = {FromBalance, A}, %% TODO: remove assert
-    {B, _} = {ToBalance, B}, %% TODO: remove assert
-    {A1, B1} = {FromBalance - Amount, ToBalance + Amount},
-    StateHash = aesc_trees:hash(Trees1),
-    Tx1 = set_tx_values([{FA, A1},
-                          {FB, B1},
-                          {state_hash, StateHash}], Mod, Tx),
-    apply_updates_(Ds, Mod, Tx1, Trees1, Opts).
-
--spec modify_trees(update(), aesc_trees:trees()) ->
-    {aesc_trees:trees(), non_neg_integer(), non_neg_integer()}.
-modify_trees({?OP_TRANSFER, From, To, Amount}, Trees) ->
-    {ok, AccFrom0} = aesc_trees:get_account(Trees, From),
-    {ok, AccTo0} = aesc_trees:get_account(Trees, To),
-    FromBalance = aec_accounts:balance(AccFrom0),
-    ToBalance = aec_accounts:balance(AccTo0),
-    {ok, AccFrom} = aec_accounts:spend(AccFrom0, Amount, 0),
-    {ok, AccTo} = aec_accounts:earn(AccTo0, Amount),
-    {lists:foldl(
-        fun(Acc, Accum) -> aesc_trees:set_account(Accum, Acc) end,
+apply_updates(Updates, Trees, Opts) ->
+    lists:foldl(
+        fun(U, AccumTrees) -> modify_trees(U, AccumTrees, Opts) end,
         Trees,
-        [AccFrom, AccTo]), FromBalance, ToBalance};
-modify_trees({?OP_DEPOSIT, To, To, Amount}, Trees) ->
-    {ok, AccTo0} = aesc_trees:get_account(Trees, To),
-    ToBalance = aec_accounts:balance(AccTo0),
-    {ok, AccTo} = aec_accounts:earn(AccTo0, Amount),
-    NewBalance = ToBalance + Amount,
-    {aesc_trees:set_account(Trees, AccTo), ToBalance, NewBalance};
-modify_trees({?OP_WITHDRAW, From, From, Amount}, Trees) ->
-    {ok, AccFrom0} = aesc_trees:get_account(Trees, From),
+        Updates).
+
+-spec modify_trees(update(), aec_trees:trees(), map()) -> aec_trees:trees().
+modify_trees({?OP_TRANSFER, From, To, Amount}, Trees0, Opts) ->
+    AccountTrees = aec_trees:accounts(Trees0),
+    AccFrom0 = aec_accounts_trees:get(From, AccountTrees),
+    AccTo0 = aec_accounts_trees:get(To, AccountTrees),
     FromBalance = aec_accounts:balance(AccFrom0),
-    {ok, AccFrom} = aec_accounts:spend(AccFrom0, Amount, 0),
-    NewBalance = FromBalance - Amount,
-    {aesc_trees:set_account(Trees, AccFrom), FromBalance, NewBalance}.
+    check_min_amt(FromBalance - Amount, Opts),
+    Nonce = aec_accounts:nonce(AccFrom0),
+    {ok, AccFrom} = aec_accounts:spend(AccFrom0, Amount, Nonce + 1),
+    {ok, AccTo} = aec_accounts:earn(AccTo0, Amount),
+    AccountTrees1 =
+        lists:foldl(
+            fun(Acc, Accum) -> aec_accounts_trees:enter(Acc, Accum) end,
+            AccountTrees,
+            [AccFrom, AccTo]),
+    aec_trees:set_accounts(Trees0, AccountTrees1);
+modify_trees({?OP_DEPOSIT, To, To, Amount}, Trees, _Opts) ->
+    AccountTrees = aec_trees:accounts(Trees),
+    AccTo0 = aec_accounts_trees:get(To, AccountTrees),
+    {ok, AccTo} = aec_accounts:earn(AccTo0, Amount),
+    AccountTrees1 = aec_accounts_trees:enter(AccTo, AccountTrees),
+    aec_trees:set_accounts(Trees, AccountTrees1);
+modify_trees({?OP_WITHDRAW, From, From, Amount}, Trees, Opts) ->
+    AccountTrees = aec_trees:accounts(Trees),
+    AccFrom0 = aec_accounts_trees:get(From, AccountTrees),
+    FromBalance = aec_accounts:balance(AccFrom0),
+    check_min_amt(FromBalance - Amount, Opts),
+    Nonce = aec_accounts:nonce(AccFrom0),
+    {ok, AccFrom} = aec_accounts:spend(AccFrom0, Amount, Nonce), %no nonce bump
+    AccountTrees1 = aec_accounts_trees:enter(AccFrom, AccountTrees),
+    aec_trees:set_accounts(Trees, AccountTrees1).
 
 check_min_amt(Amt, Opts) ->
     Reserve = maps:get(channel_reserve, Opts, 0),
@@ -229,20 +195,24 @@ run_extra_checks(F, Mod, Tx) when is_function(F, 2) ->
             {error, Errors}
     end.
 
--spec add_signed_tx(aetx_sign:signed_tx(), state()) -> state().
-add_signed_tx(SignedTx, #state{signed_txs=Txs0}=State) ->
+-spec add_signed_tx(aetx_sign:signed_tx(), state(), map()) -> state().
+add_signed_tx(SignedTx, #state{signed_txs=Txs0}=State, Opts) ->
     true = mutually_signed(SignedTx), % ensure it is mutually signed
     Tx = aetx_sign:tx(SignedTx),
-    {Mod, TxI} = aetx:specialize_callback(Tx),
-    Trees =
-        lists:foldl(
-            fun(Update, TrAccum) ->
-                {TrAccum1, _, _} = modify_trees(Update, TrAccum),
-                TrAccum1
-            end,
-            State#state.trees,
-            Mod:updates(TxI)),
-    State#state{signed_txs=[SignedTx | Txs0], half_signed_txs=[], trees=Trees}.
+    case aetx:specialize_callback(Tx) of
+        {aesc_create_tx, _} ->
+            State#state{signed_txs=[SignedTx | Txs0], half_signed_txs=[]};
+        {Mod, TxI} ->
+            Trees =
+                lists:foldl(
+                    fun(Update, TrAccum) ->
+                        TrAccum1 = modify_trees(Update, TrAccum, Opts),
+                        TrAccum1
+                    end,
+                    State#state.trees,
+                    Mod:updates(TxI)),
+            State#state{signed_txs=[SignedTx | Txs0], half_signed_txs=[], trees=Trees}
+    end.
 
 -spec add_half_signed_tx(aetx_sign:signed_tx(), state()) -> state().
 add_half_signed_tx(SignedTx, #state{half_signed_txs=Txs0}=State) ->
@@ -287,10 +257,29 @@ mutually_signed(SignedTx) ->
             %% mutually signed
             true;
         _ ->
-           false
+            false
     end.
 
-set_tx_values([{K, V}|T], Mod, Tx) ->
-    set_tx_values(T, Mod, Mod:set_value(Tx, K, V));
-set_tx_values([], _, Tx) ->
-    Tx.
+-spec update_for_client(update()) -> map().
+update_for_client({?OP_TRANSFER, From, To, Amount}) ->
+    #{<<"op">> => <<"transfer">>,
+      <<"from">> => From,
+      <<"to">>   => To,
+      <<"am">>   => Amount};
+update_for_client({?OP_WITHDRAW, To, To, Amount}) ->
+    #{<<"op">> => <<"withdraw">>,
+      <<"to">>   => To,
+      <<"am">>   => Amount};
+update_for_client({?OP_DEPOSIT, From, From, Amount}) ->
+    #{<<"op">> => <<"deposit">>,
+      <<"from">>   => From,
+      <<"am">>   => Amount}.
+
+-spec balance(aec_keys:pubkey(), state()) -> {ok, non_neg_integer()}
+                                           | {error, not_found}.
+balance(Pubkey, #state{trees=Trees}) ->
+    AccTrees = aec_trees:accounts(Trees), 
+    case aec_accounts_trees:lookup(Pubkey, AccTrees) of
+        none -> {error, not_found};
+        {value, Account} -> {ok, aec_accounts:balance(Account)}
+    end.

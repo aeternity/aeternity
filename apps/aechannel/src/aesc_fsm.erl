@@ -467,11 +467,11 @@ awaiting_signature(cast, {?SIGNED, ?UPDATE, SignedTx}, D) ->
                          D#data{state = aesc_offchain_state:add_half_signed_tx(SignedTx, D#data.state)}),
     next_state(awaiting_update_ack, D1#data{latest = undefined});
 awaiting_signature(cast, {?SIGNED, ?UPDATE_ACK, SignedTx},
-                   #data{latest = {sign, ?UPDATE_ACK, OCTx}} = D) ->
+                   #data{latest = {sign, ?UPDATE_ACK, OCTx}, opts = Opts} = D) ->
     NewSignedTx = aetx_sign:add_signatures(
                     OCTx, aetx_sign:signatures(SignedTx)),
     D1 = send_update_ack_msg(NewSignedTx, D),
-    State = aesc_offchain_state:add_signed_tx(NewSignedTx, D1#data.state),
+    State = aesc_offchain_state:add_signed_tx(NewSignedTx, D1#data.state, Opts),
     D2 = D1#data{state = State},
     next_state(open, D2);
 awaiting_signature(cast, {?UPDATE, _Msg},
@@ -575,20 +575,8 @@ dep_signed({call, From}, Req, D) ->
     handle_call(dep_signed, Req, From, D).
 
 deposit_locked_complete(SignedTx, #data{state = State, opts = Opts} = D) ->
-    {Mod, TxI} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
-    MyAcct = my_account(D),
-    case Mod:origin(TxI) of
-        MyAcct ->
-            Amt = Mod:amount(TxI),
-            Updates = [aesc_offchain_state:op_deposit(MyAcct, Amt)],
-            NewTx = aesc_offchain_state:make_update_tx(Updates, State, Opts),
-            ok = request_signing(?UPDATE, NewTx, D),
-            D1 = D#data{latest = {sign, ?UPDATE, NewTx}},
-            next_state(awaiting_signature, D1);
-        _ ->
-            D1 = D#data{latest = {deposit, SignedTx}},
-            next_state(awaiting_deposit_update, D1)
-    end.
+    D1   = D#data{state = aesc_offchain_state:add_signed_tx(SignedTx, State, Opts)},
+    next_state(open, D1).
 
 wdraw_half_signed(enter, _OldSt, _D) -> keep_state_and_data;
 wdraw_half_signed(cast, {?WDRAW_SIGNED, Msg}, D) ->
@@ -625,20 +613,8 @@ wdraw_signed({call, From}, Req, D) ->
     handle_call(wdraw_signed, Req, From, D).
 
 withdraw_locked_complete(SignedTx, #data{state = State, opts = Opts} = D) ->
-    {Mod, TxI} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
-    MyAcct = my_account(D),
-    case Mod:origin(TxI) of
-        MyAcct ->
-            Amt = Mod:amount(TxI),
-            Updates = [aesc_offchain_state:op_withdraw(MyAcct, Amt)],
-            NewTx = aesc_offchain_state:make_update_tx(Updates, State, Opts),
-            ok = request_signing(?UPDATE, NewTx, D),
-            D1 = D#data{latest = {sign, ?UPDATE, NewTx}},
-            next_state(awaiting_signature, D1);
-        _ ->
-            D1 = D#data{latest = {withdraw, SignedTx}},
-            next_state(awaiting_withdraw_update, D1)
-    end.
+    D1   = D#data{state = aesc_offchain_state:add_signed_tx(SignedTx, State, Opts)},
+    next_state(open, D1).
 
 
 awaiting_locked(enter, _OldSt, _D) -> keep_state_and_data;
@@ -783,17 +759,10 @@ signed({call, From}, Req, D) ->
 
 
 funding_locked_complete(D) ->
-    case D#data.role of
-        initiator ->
-            {ok, OCTx} = initial_state(D),
-            ok   = request_signing(?UPDATE, OCTx, D),
-            D1   = D#data{latest = {sign, ?UPDATE, OCTx}},
-            next_state(awaiting_signature, D1);
-        responder ->
-            next_state(awaiting_initial_state, D)
-    end.
-
-
+    D1   = D#data{state = aesc_offchain_state:add_signed_tx(D#data.create_tx,
+                                                            D#data.state,
+                                                            D#data.opts)},
+    next_state(open, D1).
 
 open(enter, _OldSt, D) ->
     D1 = if D#data.channel_status =/= open ->
@@ -1085,25 +1054,34 @@ check_accept_msg(#{ chain_hash           := ChainHash
             {error, chain_hash_mismatch}
     end.
 
-dep_tx_for_signing(#{from := From} = Opts, #data{on_chain_id = ChanId}) ->
+dep_tx_for_signing(#{from := From} = Opts, #data{on_chain_id = ChanId, state=State}) ->
+    StateHash = aesc_offchain_state:hash(State),
+    {LastRound, _} = aesc_offchain_state:get_latest_signed_tx(State),
     Def = deposit_tx_defaults(ChanId, From, maps:get(ttl, Opts, undefined)),
     Opts1 = maps:merge(Def, Opts),
-    lager:debug("deposit_tx Opts = ~p", [Opts1]),
-    {ok, _} = Ok = aesc_deposit_tx:new(Opts1),
+    Opts2 = maps:merge(Opts1, #{state_hash => StateHash,
+                                round      => LastRound + 1}),
+    lager:debug("deposit_tx Opts = ~p", [Opts2]),
+    {ok, _} = Ok = aesc_deposit_tx:new(Opts2),
     Ok.
 
-wdraw_tx_for_signing(#{to := From} = Opts, #data{on_chain_id = ChanId}) ->
+wdraw_tx_for_signing(#{to := From} = Opts, #data{on_chain_id = ChanId, state=State}) ->
+    StateHash = aesc_offchain_state:hash(State),
+    {LastRound, _} = aesc_offchain_state:get_latest_signed_tx(State),
     Def = withdraw_tx_defaults(ChanId, From, maps:get(ttl, Opts, undefined)),
     Opts1 = maps:merge(Def, Opts),
-    lager:debug("withdraw_tx Opts = ~p", [Opts1]),
-    {ok, _} = Ok = aesc_withdraw_tx:new(Opts1),
+    Opts2 = maps:merge(Opts1, #{state_hash => StateHash,
+                                round      => LastRound + 1}),
+    lager:debug("withdraw_tx Opts = ~p", [Opts2]),
+    {ok, _} = Ok = aesc_withdraw_tx:new(Opts2),
     Ok.
 
-create_tx_for_signing(#data{opts = #{initiator := Initiator} = Opts}) ->
+create_tx_for_signing(#data{opts = #{initiator := Initiator} = Opts, state=State}) ->
+    StateHash = aesc_offchain_state:hash(State),
     Def = create_tx_defaults(Initiator),
     Opts1 = maps:merge(Def, Opts),
     lager:debug("create_tx Opts = ~p", [Opts1]),
-    {ok, _} = Ok = aesc_create_tx:new(Opts1),
+    {ok, _} = Ok = aesc_create_tx:new(Opts1#{state_hash => StateHash}),
     Ok.
 
 create_tx_defaults(Initiator) ->
@@ -1136,22 +1114,28 @@ close_mutual_tx(LatestSignedTx, D) ->
     {ok, Nonce} = aec_next_nonce:pick_for_account(Initiator),
     close_mutual_tx(Account, Nonce, LatestSignedTx, D).
 
-close_mutual_tx(Account, Nonce, LatestSignedTx,
+close_mutual_tx(Account, Nonce, _LatestSignedTx,
                 #data{ on_chain_id = ChanId
-                     , opts        = Opts } = D) ->
+                     , opts        = Opts
+                     , state       = State} = D) ->
     Def = close_mutual_defaults(Account, D),
     Opts1 = maps:merge(Def, Opts),
-    LatestTx = aetx_sign:tx(LatestSignedTx),
-    IAmt = tx_initiator_amount(LatestTx),
-    RAmt = tx_responder_amount(LatestTx),
+    #{initiator := Initiator,
+      responder := Responder} = Opts,
+    {ok, IAmt} = aesc_offchain_state:balance(Initiator, State),
+    {ok, RAmt} = aesc_offchain_state:balance(Responder, State),
     Fee = maps:get(fee, Opts1),
     TTL = maps:get(ttl, Opts1, 0), %% 0 means no TTL limit
     {IAmt1, RAmt1} = pay_close_mutual_fee(Fee, IAmt, RAmt),
+    {LastRound, _} = aesc_offchain_state:get_latest_signed_tx(State),
+    StateHash = aesc_offchain_state:hash(State),
     aesc_close_mutual_tx:new(#{ channel_id       => ChanId
                               , initiator_amount => IAmt1
                               , responder_amount => RAmt1
                               , ttl              => TTL
                               , fee              => Fee
+                              , state_hash       => StateHash
+                              , round            => LastRound + 1
                               , nonce            => Nonce }).
 
 pay_close_mutual_fee(Fee, IAmt, RAmt) ->
@@ -1461,10 +1445,10 @@ check_update_ack_msg_(#{ channel_id := ChanId
             {error, {deserialize, E}}
     end.
 
-check_signed_update_ack_tx(SignedTx, #data{state = State} = D) ->
+check_signed_update_ack_tx(SignedTx, #data{state = State, opts = Opts} = D) ->
     HalfSignedTx = aesc_offchain_state:get_latest_half_signed_tx(State),
     try  ok = check_update_ack_(SignedTx, HalfSignedTx),
-         {ok, D#data{state = aesc_offchain_state:add_signed_tx(SignedTx, State)}}
+         {ok, D#data{state = aesc_offchain_state:add_signed_tx(SignedTx, State, Opts)}}
     catch
         error:E ->
             lager:error("CAUGHT ~p, trace = ~p", [E, erlang:get_stacktrace()]),
@@ -1581,10 +1565,6 @@ fallback_to_stable_state(#data{state = State} = D) ->
 
 
 tx_round(Tx)            -> call_cb(Tx, round, []).
-tx_initiator(Tx)        -> call_cb(Tx, initiator, []).
-tx_responder(Tx)        -> call_cb(Tx, responder, []).
-tx_initiator_amount(Tx) -> call_cb(Tx, initiator_amount, []).
-tx_responder_amount(Tx) -> call_cb(Tx, responder_amount, []).
 
 -spec call_cb(aetx:tx(), atom(), list()) -> any().
 call_cb(Tx, F, Args) ->
@@ -1673,27 +1653,6 @@ on_chain_id(D, Initiator, Nonce, Responder) ->
     ID = aesc_channels:id(Initiator, Nonce, Responder),
     evt({on_chain_id, ID}),
     {ID, D#data{on_chain_id = ID}}.
-
-initial_state(#data{ create_tx    = SignedTx
-                   , on_chain_id = ChanId
-                   , state = State}) ->
-    Tx = aetx_sign:tx(SignedTx),
-    Initiator = tx_initiator(Tx),
-    Responder = tx_responder(Tx),
-    InitiatorAmount = tx_initiator_amount(Tx),
-    ResponderAmount = tx_responder_amount(Tx),
-    StateHash = aesc_offchain_state:hash(State),
-    NewOpts = #{ channel_id       => ChanId
-               , initiator        => Initiator
-               , responder        => Responder
-               , initiator_amount => InitiatorAmount
-               , responder_amount => ResponderAmount
-               , updates          => []
-               , state            => <<>>
-               , previous_round   => 0
-               , round            => 1
-               , state_hash       => StateHash},
-    {ok, _Tx} = aesc_offchain_tx:new(NewOpts).
 
 
 gproc_register(#data{role = Role, channel_id = ChanId}) ->
