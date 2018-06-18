@@ -23,6 +23,7 @@
         , sophia_state/1
         , sophia_spend/1
         , sophia_oracles/1
+        , sophia_maps/1
         , sophia_fundme/1
         , create_store/1
         , update_store/1
@@ -67,6 +68,7 @@ groups() ->
                                  sophia_state,
                                  sophia_spend,
                                  sophia_oracles,
+                                 sophia_maps,
                                  sophia_fundme ]}
     , {store, [sequence], [ create_store
                           , update_store
@@ -559,6 +561,151 @@ sophia_oracles(_Cfg) ->
     {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Ct, 0, 10, TTL + 10}),
     ok.
 
+%% Testing map functions and primitives
+sophia_maps(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000),
+    Ct  = ?call(create_contract, Acc, maps, {}),
+
+    Call = fun(Fn, Type, Args) -> ?call(call_contract, Acc, Ct, Fn, Type, Args) end,
+
+    Pt     = {tuple, [word, word]},
+    IntMap = {map, word,   Pt},
+    StrMap = {map, string, Pt},
+    IntList = {list, {tuple, [word,   Pt]}},
+    StrList = {list, {tuple, [string, Pt]}},
+    Unit   = {tuple, []},
+    State  = {tuple, [IntMap, StrMap]},
+
+    MapI     = #{1 => {1, 2}, 2 => {3, 4}, 3 => {5, 6}},
+    MapS     = #{<<"one">> => {1, 2}, <<"two">> => {3, 4}, <<"three">> => {5, 6}},
+    EmptyMap = #{},
+
+    MapI = Call(map_i, IntMap, {}),
+    MapS = Call(map_s, StrMap, {}),
+
+    {} = Call(map_state_i, Unit, {}),
+    {} = Call(map_state_s, Unit, {}),
+
+    {MapI, MapS} = Call(get_state, State, {}),
+
+    MkOption = fun(undefined) -> none; (X) -> {some, X} end,
+
+    Calls = lists:append(
+        %% get
+        [ [{Fn,  Pt, {K, Map}, maps:get(K, Map, error)},
+           {FnS, Pt, K,        maps:get(K, Map, error)}]
+         || {Fn, FnS, Map, Err} <- [{get_i, get_state_i, MapI, 4},
+                                    {get_s, get_state_s, MapS, <<"four">>}],
+            K <- maps:keys(Map) ++ [Err] ] ++
+        %% lookup
+        [ [{Fn,  {option, Pt}, {K, Map}, MkOption(maps:get(K, Map, undefined))},
+           {FnS, {option, Pt}, K,        MkOption(maps:get(K, Map, undefined))}]
+         || {Fn, FnS, Map, Err} <- [{lookup_i, lookup_state_i, MapI, 4},
+                                    {lookup_s, lookup_state_s, MapS, <<"four">>}],
+            K <- maps:keys(Map) ++ [Err] ] ++
+        %% member
+        [ [{Fn,  bool, {K, Map}, maps:is_key(K, Map)},
+           {FnS, bool, K,        maps:is_key(K, Map)}]
+         || {Fn, FnS, Map, Err} <- [{member_i, member_state_i, MapI, 4},
+                                    {member_s, member_state_s, MapS, <<"four">>}],
+            K <- maps:keys(Map) ++ [Err] ] ++
+        %% size
+        [ [{Fn,  word, Map, maps:size(Map)},
+           {FnS, word, {},  maps:size(Map)}]
+         || {Fn, FnS, Map} <- [{size_i, size_state_i, MapI},
+                               {size_s, size_state_s, MapS}] ] ++
+        %% set (not set_state)
+        [ [{Fn, Type, {K, V, Map}, Map#{K => V}}]
+         || {Fn, Type, Map, New, V} <- [{set_i, IntMap, MapI, 4, {7, 8}},
+                                        {set_s, StrMap, MapS, <<"four">>, {7, 8}}],
+            K <- maps:keys(Map) ++ [New] ] ++
+        %% setx (not setx_state)
+        [ [{Fn, Type, {K, V, Map}, case Map of #{K := {_, Y}} -> Map#{K => {V, Y}}; _ -> error end}]
+         || {Fn, Type, Map, New, V} <- [{setx_i, IntMap, MapI, 4, 7},
+                                        {setx_s, StrMap, MapS, <<"four">>, 7}],
+            K <- maps:keys(Map) ++ [New] ] ++
+        %% addx (not addx_state)
+        [ [{Fn, Type, {K, V, Map}, case Map of #{K := {X, Y}} -> Map#{K => {X + V, Y}}; _ -> error end}]
+         || {Fn, Type, Map, New, V} <- [{addx_i, IntMap, MapI, 4, 7},
+                                        {addx_s, StrMap, MapS, <<"four">>, 7}],
+            K <- maps:keys(Map) ++ [New] ] ++
+        %% delete (not delete_state)
+        [ [{Fn, Type, {K, Map}, maps:remove(K, Map)}]
+         || {Fn, Type, Map, New} <- [{delete_i, IntMap, MapI, 4},
+                                     {delete_s, StrMap, MapS, <<"four">>}],
+            K <- maps:keys(Map) ++ [New] ] ++
+        %% fromlist (not fromlist_state)
+        [ [{Fn, Type, maps:to_list(Map), Map}]
+         || {Fn, Type, Map} <- [{fromlist_i, IntMap, MapI},
+                                {fromlist_s, StrMap, MapS}] ] ++
+        []),
+
+    _ = [ Result = Call(Fn, Type, Args) || {Fn, Type, Args, Result} <- Calls ],
+
+    %% to_list (not tolist_state)
+    _ = [ {Xs, Xs} = {lists:keysort(1, Call(Fn, Type, Map)), maps:to_list(Map)}
+            || {Fn, Type, Map} <- [{tolist_i, IntList, MapI},
+                                   {tolist_s, StrList, MapS}] ],
+
+    %% Reset the state
+    Call(fromlist_state_i, Unit, []),
+    Call(fromlist_state_s, Unit, []),
+    {EmptyMap, EmptyMap} = Call(get_state, State, {}),
+
+    %% fromlist_state
+    Call(fromlist_state_i, Unit, maps:to_list(MapI)),
+    Call(fromlist_state_s, Unit, maps:to_list(MapS)),
+    {MapI, MapS} = Call(get_state, State, {}),
+
+    %% tolist_state
+    _ = [ {Xs, Xs} = {lists:keysort(1, Call(Fn, Type, {})), maps:to_list(Map)}
+            || {Fn, Type, Map} <- [{tolist_state_i, IntList, MapI},
+                                   {tolist_state_s, StrList, MapS}] ],
+
+    %% set_state
+    DeltaI1 = #{ 3 => {100, 200}, 4 => {300, 400} },
+    DeltaS1 = #{ <<"three">> => {100, 200}, <<"four">> => {300, 400} },
+    MapI1 = maps:merge(MapI, DeltaI1),
+    MapS1 = maps:merge(MapS, DeltaS1),
+    _ = [ {} = Call(Fn, Unit, {K, V})
+            || {Fn, Delta} <- [{set_state_i, DeltaI1}, {set_state_s, DeltaS1}],
+               {K, V} <- maps:to_list(Delta) ],
+    {MapI1, MapS1} = Call(get_state, State, {}),
+
+    %% setx_state/addx_state
+    DeltaI2 = [{set, 4, 50}, {set, 5, 300}, {add, 2, 10}, {add, 5, 10}],
+    DeltaS2 = [{set, <<"four">>, 50}, {set, <<"five">>, 300}, {add, <<"one">>, 100}, {add, <<"...">>, 1}],
+    Upd = fun({Op, K, V}, M) ->
+            case maps:get(K, M, undefined) of
+                undefined -> M;
+                {X, Y}    -> M#{K := {case Op of set -> V; add -> X + V end, Y}} end end,
+    MapI2 = lists:foldr(Upd, MapI1, DeltaI2),
+    MapS2 = lists:foldr(Upd, MapS1, DeltaS2),
+    _ = [ begin
+            T   = if is_integer(K) -> i; true -> s end,
+            Fn  = list_to_atom(lists:concat([Op, "x_state_", T])),
+            Res = case maps:is_key(K, Map) of true -> {}; false -> error end,
+            Res = Call(Fn, Unit, {K, V})
+          end || {Map, Delta} <- [{MapI1, DeltaI2}, {MapS1, DeltaS2}],
+               {Op, K, V} <- Delta ],
+    {MapI2, MapS2} = Call(get_state, State, {}),
+
+    %% delete_state
+    DeltaI3 = [2, 5],
+    DeltaS3 = [<<"four">>, <<"five">>],
+    MapI3 = lists:foldr(fun maps:remove/2, MapI2, DeltaI3),
+    MapS3 = lists:foldr(fun maps:remove/2, MapS2, DeltaS3),
+    _ = [ {} = Call(Fn, Unit, K)
+            || {Fn, Ks} <- [{delete_state_i, DeltaI3}, {delete_state_s, DeltaS3}],
+               K <- Ks ],
+    {MapI3, MapS3} = Call(get_state, State, {}),
+
+    ok.
+
+
+%% The crowd funding example.
+
 -record(fundme_scenario,
     { name
     , goal
@@ -651,7 +798,6 @@ run_scenario(#fundme_scenario
 
     ok.
 
-%% The crowd funding example.
 sophia_fundme(_Cfg) ->
     Funded = #fundme_scenario{
         name     = funded_scenario,
