@@ -48,6 +48,7 @@
         , find_tx_with_location/1
         , remove_tx_from_mempool/1
         , remove_tx_location/1
+        , gc_tx/1
         ]).
 
 %% Only to be used from aec_tx_pool:init/1
@@ -397,6 +398,17 @@ get_chain_state_value(Key) ->
 write_signed_tx(Hash, STx) ->
     ?t(write(aec_signed_tx, #aec_signed_tx{key = Hash,
                                            value = STx})).
+
+gc_tx(TxHash) ->
+    ?t(case find_tx_location(TxHash) of
+           BlockHash when is_binary(BlockHash) ->
+               {error, BlockHash};
+           none ->
+               delete(aec_signed_tx, TxHash);
+           mempool ->
+               delete(aec_tx_pool, TxHash),
+               delete(aec_signed_tx, TxHash)
+       end).
 
 get_signed_tx(Hash) ->
     [#aec_signed_tx{value = STx}] = ?t(read(aec_signed_tx, Hash)),

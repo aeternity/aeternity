@@ -46,16 +46,17 @@ create(Block) ->
                       aec_blocks:height(), non_neg_integer()) ->
         {ok, list(aetx_sign:signed_tx()), aec_trees:trees()}.
 apply_block_txs(Txs, Miner, Trees, Height, Version) ->
-    {ok, Txs1, Trees1, _} = int_apply_block_txs(Txs, Miner, Trees, Height, Version, false),
-    {ok, Txs1, Trees1}.
+    {ok, ValidTxs, _, Trees1, _} =
+        int_apply_block_txs(Txs, Miner, Trees, Height, Version, false),
+    {ok, ValidTxs, Trees1}.
 
 -spec apply_block_txs_strict(list(aetx_sign:signed_tx()), aec_keys:pubkey(),
                              aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, list(aetx_sign:signed_tx()), aec_trees:trees()} | {error, term()}.
 apply_block_txs_strict(Txs, Miner, Trees, Height, Version) ->
     case int_apply_block_txs(Txs, Miner, Trees, Height, Version, true) of
-        Err = {error, _}      -> Err;
-        {ok, Txs1, Trees1, _} -> {ok, Txs1, Trees1}
+        Err = {error, _}             -> Err;
+        {ok, ValidTxs, _, Trees1, _} -> {ok, ValidTxs, Trees1}
     end.
 
 -spec create_with_state(aec_blocks:block(), aec_keys:pubkey(),
@@ -183,14 +184,16 @@ int_create_block(PrevBlockHash, PrevBlock, Trees, Miner, Txs) ->
     Height = PrevBlockHeight + 1,
     Version = aec_hard_forks:protocol_effective_at_height(Height),
 
-    {ok, Txs1, Trees2, Fees} =
+    {ok, ValidTxs, InvalidTxs, Trees2, Fees} =
         int_apply_block_txs(Txs, Miner, Trees, Height, Version, false),
 
-    TxsTree = aec_txs_trees:from_txs(Txs1),
+    aec_tx_pool:invalid_txs([ aetx_sign:hash(STx) || STx <- InvalidTxs ], Height),
+
+    TxsTree = aec_txs_trees:from_txs(ValidTxs),
     TxsRootHash = aec_txs_trees:pad_empty(aec_txs_trees:root_hash(TxsTree)),
 
     NewBlock = aec_blocks:new(Height, PrevBlockHash, aec_trees:hash(Trees2),
-                              TxsRootHash, Txs1, aec_blocks:target(PrevBlock),
+                              TxsRootHash, ValidTxs, aec_blocks:target(PrevBlock),
                               0, aeu_time:now_in_msecs(), Version, Miner),
 
     BlockInfo = #{ trees => Trees2, fees => Fees, txs_tree => TxsTree },
@@ -199,17 +202,17 @@ int_create_block(PrevBlockHash, PrevBlock, Trees, Miner, Txs) ->
 %% Non-strict
 int_apply_block_txs(Txs, Miner, Trees, Height, Version, false) ->
     Trees0 = aec_trees:perform_pre_transformations(Trees, Height),
-    {ok, Txs1, Trees1} =
+    {ok, ValidTxs, InvalidTxs, Trees1} =
         aec_trees:apply_txs_on_state_trees(Txs, Trees0, Height, Version),
-    {Fees, Trees2} = calculate_and_grant_fees(Txs1, Miner, Trees1),
-    {ok, Txs1, Trees2, Fees};
+    {Fees, Trees2} = calculate_and_grant_fees(ValidTxs, Miner, Trees1),
+    {ok, ValidTxs, InvalidTxs, Trees2, Fees};
 %% strict
 int_apply_block_txs(Txs, Miner, Trees, Height, Version, true) ->
     Trees0 = aec_trees:perform_pre_transformations(Trees, Height),
     case aec_trees:apply_txs_on_state_trees_strict(Txs, Trees0, Height, Version) of
-        {ok, Txs1, Trees1} ->
-            {Fees, Trees2} = calculate_and_grant_fees(Txs1, Miner, Trees1),
-            {ok, Txs1, Trees2, Fees};
+        {ok, ValidTxs, InvalidTxs, Trees1} ->
+            {Fees, Trees2} = calculate_and_grant_fees(ValidTxs, Miner, Trees1),
+            {ok, ValidTxs, InvalidTxs, Trees2, Fees};
         Err = {error, _} ->
             Err
     end.
@@ -261,9 +264,9 @@ add_txs_to_trees(_N, Trees, [], Acc, _Height, _Version) ->
     {lists:reverse(Acc), Trees};
 add_txs_to_trees(N, Trees, [Tx | Txs], Acc, Height, Version) ->
     case aec_trees:apply_txs_on_state_trees([Tx], Trees, Height, Version) of
-        {ok, [], _} ->
+        {ok, [], _, _} ->
             add_txs_to_trees(N, Trees, Txs, Acc, Height, Version);
-        {ok, [Tx], Trees1} ->
+        {ok, [Tx], _, Trees1} ->
             add_txs_to_trees(N+1, Trees1, Txs, [Tx | Acc], Height, Version)
     end.
 

@@ -87,7 +87,7 @@ setup() ->
     Trees =
     aec_test_utils:create_state_tree_with_account(aec_accounts:new(?TEST_PUB, 0)),
     meck:expect(aec_trees, hash, 1, <<>>),
-    meck:expect(aec_trees, apply_txs_on_state_trees, 4, {ok, [], Trees}),
+    meck:expect(aec_trees, apply_txs_on_state_trees, 4, {ok, [], [], Trees}),
     meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
     ok.
 

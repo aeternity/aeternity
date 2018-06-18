@@ -119,17 +119,17 @@ block_extension_test_() ->
           meck:expect(aec_tx_pool, get_candidate, 2, {ok, [STx]}),
           meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
 
-          {ok, Block1A, #{ trees := Trees1A }} = aec_block_candidate:create(Block0),
+          {ok, _Block1A, #{ trees := Trees1A }} = aec_block_candidate:create(Block0),
 
           %% Amend call state tree, in order not to require calling
           %% actual contract that would make this unit test
           %% unnecessary complex.
           meck:expect(aec_trees, apply_txs_on_state_trees,
                       fun(STxs, Trees, Height, Vsn) ->
-                              {ok, STxs, NewTrees} =
+                              {ok, STxs, [], NewTrees} =
                                   meck:passthrough([STxs, Trees, Height, Vsn]),
                               case lists:member(STx, STxs) of
-                                  false -> {ok, STxs, NewTrees};
+                                  false -> {ok, [], STxs, NewTrees};
                                   true ->
                                       NewTreesWithCall =
                                           aec_trees:set_calls(
@@ -137,7 +137,7 @@ block_extension_test_() ->
                                             aect_call_state_tree:insert_call(
                                               Call,
                                               aec_trees:calls(NewTrees))),
-                                      {ok, STxs, NewTreesWithCall}
+                                      {ok, STxs, [], NewTreesWithCall}
                               end
                       end),
 
