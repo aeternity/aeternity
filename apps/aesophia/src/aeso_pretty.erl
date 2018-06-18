@@ -360,11 +360,14 @@ field({field, _, LV, Id, E}) ->
 field({field_upd, _, LV, Fun}) ->
     follow(hsep(lvalue(LV), text("~")), expr(Fun)). %% Not valid syntax
 
-lvalue(LV) ->
-    beside(lists:map(fun elim/1, LV)).
+lvalue([E | Es]) ->
+    beside([elim(E) | lists:map(fun elim1/1, Es)]).
 
 elim({proj, _, X})      -> name(X);
 elim({map_get, Ann, K}) -> expr_p(0, {list, Ann, [K]}).
+
+elim1(Proj={proj, _, _})   -> beside(text("."), elim(Proj));
+elim1(Get={map_get, _, _}) -> elim(Get).
 
 alt({'case', _, Pat, Body}) ->
     block_expr(0, hsep(expr_p(500, Pat), text("=>")), Body).
