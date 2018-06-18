@@ -618,10 +618,30 @@ contract_transactions(_Config) ->
     {ok, ContractPubKey} = aec_base58c:safe_decode(contract_pubkey, EncodedContractPubKey),
     ContractCreateTxHash = sign_and_post_tx(MinerAddress, EncodedUnsignedContractCreateTx),
 
+    %% Try to get the contract init call object while in mempool
+    {ok, 400, #{<<"reason">> := <<"Tx not mined">>}} =
+        get_contract_call_object(ContractCreateTxHash),
+
     % mine a block
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
     ?assert(tx_in_chain(ContractCreateTxHash)),
 
+    %% Get the contract init call object
+    {ok, 200, InitCallObject} = get_contract_call_object(ContractCreateTxHash),
+    ?assertEqual(MinerAddress, maps:get(<<"caller_address">>, InitCallObject)),
+    ?assertEqual(get_tx_nonce(ContractCreateTxHash), maps:get(<<"caller_nonce">>, InitCallObject)),
+    ?assertEqual(aec_base58c:encode(contract_pubkey, ContractPubKey),
+        maps:get(<<"contract_address">>, InitCallObject)),
+    ?assertEqual(maps:get(gas_price, ValidDecoded), maps:get(<<"gas_price">>, InitCallObject)),
+    ?assertMatch({Used, Limit} when
+        is_integer(Used) andalso
+            is_integer(Limit) andalso
+            Limit > 0 andalso
+            Used =< Limit,
+        {maps:get(<<"gas_used">>, InitCallObject), maps:get(gas, ValidDecoded)}
+    ),
+    ?assertEqual(<<"ok">>, maps:get(<<"return_type">>, InitCallObject)),
+    ?assertMatch(_, maps:get(<<"return_value">>, InitCallObject)),
 
     Function = <<"main">>,
     Argument = <<"42">>,
@@ -663,6 +683,7 @@ contract_transactions(_Config) ->
     %% Get the call object
     {ok, 200, CallObject} = get_contract_call_object(ContractCallTxHash),
     ?assertEqual(MinerAddress, maps:get(<<"caller_address">>, CallObject, <<>>)),
+    ?assertEqual(get_tx_nonce(ContractCallTxHash), maps:get(<<"caller_nonce">>, CallObject)),
     ?assertEqual(aec_base58c:encode(contract_pubkey, ContractPubKey),
                  maps:get(<<"contract_address">>, CallObject, <<>>)),
     ?assertEqual(maps:get(gas_price, ContractCallDecoded), maps:get(<<"gas_price">>, CallObject)),
@@ -673,6 +694,7 @@ contract_transactions(_Config) ->
       Used =< Limit,
       {maps:get(<<"gas_used">>, CallObject), maps:get(gas, ContractCallDecoded)}
       ),
+    ?assertEqual(<<"ok">>, maps:get(<<"return_type">>, CallObject)),
 
     %% Test to call the contract without a transaction.
     {ok, 200, #{<<"out">> := DirectCallResult}} =
@@ -780,9 +802,11 @@ contract_transactions(_Config) ->
     {ok, 400, #{<<"reason">> := <<"Failed to compute call_data, reason: bad argument">>}} =
         get_contract_call_compute(maps:put(arguments, <<"garbadge">>,
                                            ComputeCCallEncoded)),
+
     %% Call objects
+    {ok, 200, #{<<"tx_hash">> := SpendTxHash}} = post_spend_tx(MinerAddress, 1, 1),
     {ok, 400, #{<<"reason">> := <<"Tx is not a call">>}} =
-        get_contract_call_object(ContractCreateTxHash),
+        get_contract_call_object(SpendTxHash),
 
     ok.
 
@@ -3601,6 +3625,10 @@ get_tx(TxHash, TxEncoding) ->
     Params = tx_encoding_param(TxEncoding),
     Host = external_address(),
     http_request(Host, get, "tx/" ++ binary_to_list(TxHash), Params).
+
+get_tx_nonce(TxHash) ->
+    {ok, 200, Tx} = get_tx(TxHash, json),
+    maps:get(<<"nonce">>, maps:get(<<"tx">>, maps:get(<<"transaction">>, Tx))).
 
 post_spend_tx(Recipient, Amount, Fee) ->
     post_spend_tx(Recipient, Amount, Fee, <<"foo">>).
