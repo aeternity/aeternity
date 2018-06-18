@@ -73,11 +73,11 @@
 -type event() :: tx_created | tx_received.
 
 -ifndef(TEST).
--define(INVALID_TX_TTL, 256).
--define(EXPIRED_TX_TTL, 5).
+-define(DEFAULT_INVALID_TX_TTL, 256).
+-define(DEFAULT_EXPIRED_TX_TTL, 5).
 -else.
--define(INVALID_TX_TTL, 5).
--define(EXPIRED_TX_TTL, 2).
+-define(DEFAULT_INVALID_TX_TTL, 5).
+-define(DEFAULT_EXPIRED_TX_TTL, 2).
 -endif.
 
 %%%===================================================================
@@ -182,7 +182,7 @@ handle_call(Request, From, State) ->
     {noreply, State}.
 
 handle_cast({invalid_txs, TxHashes, Height}, State = #state{ gc_db = GCDb }) ->
-    [ enter_tx_gc(GCDb, TxHash, Height + ?INVALID_TX_TTL) || TxHash <- TxHashes ],
+    [ enter_tx_gc(GCDb, TxHash, Height + invalid_tx_ttl()) || TxHash <- TxHashes ],
     {noreply, State};
 handle_cast(garbage_collect, State) ->
     do_gc(State),
@@ -249,7 +249,7 @@ int_get_candidate(N, Dbs = {Db, GCDb}, ?KEY(_, _, Account, Nonce, TxHash) = Key,
                     int_get_candidate(N - 1, Dbs, Next, AccountsTree, Height, NewAcc);
                 false ->
                     %% This is not valid anymore.
-                    enter_tx_gc(GCDb, TxHash, Height + ?EXPIRED_TX_TTL),
+                    enter_tx_gc(GCDb, TxHash, Height + expired_tx_ttl()),
                     int_get_candidate(N, Dbs, Next, AccountsTree, Height, Acc)
             end
     end.
@@ -500,3 +500,12 @@ int_gas_price(Tx) ->
         none -> ?PSEUDO_GAS_PRICE;
         {value, GP} when is_integer(GP), GP >= 0 -> GP
     end.
+
+invalid_tx_ttl() ->
+    aeu_env:user_config_or_env([<<"mempool">>, <<"invalid_tx_ttl">>],
+                               aecore, mempool_invalid_tx_ttl, ?DEFAULT_INVALID_TX_TTL).
+
+expired_tx_ttl() ->
+    aeu_env:user_config_or_env([<<"mempool">>, <<"expired_tx_ttl">>],
+                               aecore, mempool_expired_tx_ttl, ?DEFAULT_EXPIRED_TX_TTL).
+

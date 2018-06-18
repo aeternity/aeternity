@@ -25,6 +25,20 @@
                 "pattern": "^aenode://pp\$[a-zA-Z0-9]+@[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/*$"
             }
         },
+        "mempool" : {
+            "type" : "object",
+            "additionalProperties" : false,
+            "properties" : {
+                "invalid_tx_ttl" : {
+                    "description" : "Number of blocks before invalid TXs are garbage collected",
+                    "type" : "integer"
+                },
+                "expired_tx_ttl" : {
+                    "description" : "Number of blocks before expired (TTL or low nonce) TXs are garbage collected",
+                    "type" : "integer"
+                }
+            }
+        },
         "sync" : {
             "type" : "object",
             "additionalProperties" : false,
