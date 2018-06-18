@@ -317,12 +317,12 @@ ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}) ->
 		    E ->
 			ast_body(E)
 		end
-		|| {field_t,_,_,{id,_,Name},_} <- DefFields]};
+		|| {field_t,_,{id,_,Name},_} <- DefFields]};
 ast_body({typed,_,{record,Attrs,_Fields},T}) ->
     error({record_has_bad_type,Attrs,T});
 ast_body({proj,_,{typed,_,Record,{record_t,Fields}},{id,_,FieldName}}) ->
     [Index] = [I
-	       || {I,{field_t,_,_,{id,_,Name},_}} <-
+	       || {I,{field_t,_,{id,_,Name},_}} <-
 		      lists:zip(lists:seq(1,length(Fields)),Fields),
 		  Name==FieldName],
     #binop{op = '!', left = #integer{value = 32*(Index-1)}, right = ast_body(Record)};
@@ -345,7 +345,7 @@ ast_body({record, Attrs, {typed, _, Record, RecType={record_t, Fields}}, Update}
 			       lists:map(CompileUpdate, Update) ++
 				[{field, Attrs, [{proj, Attrs, {id, Attrs, Name}}],
 				     {proj, Attrs, Rec, {id, Attrs, Name}}}
-				    || {field_t, _, _, {id, _, Name}, _} <- Fields,
+				    || {field_t, _, {id, _, Name}, _} <- Fields,
 				       not lists:member(Name, UpdatedNames)]},
 			      RecType})}
 		   ]};
@@ -412,7 +412,7 @@ ast_typerep({tvar,_,_}) ->
 ast_typerep({tuple_t,_,Cpts}) ->
     {tuple, [ast_typerep(C) || C<-Cpts]};
 ast_typerep({record_t,Fields}) ->
-    {tuple, [ast_typerep(T) || {field_t,_,_,_,T} <- Fields]};
+    {tuple, [ast_typerep(T) || {field_t,_,_,T} <- Fields]};
 ast_typerep({app_t,_,{id,_,"list"},[Elem]}) ->
     {list, ast_typerep(Elem)};
 ast_typerep({fun_t,_,_,_}) ->

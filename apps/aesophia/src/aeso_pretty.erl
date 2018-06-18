@@ -203,7 +203,7 @@ constructor_t({constr_t, _, C, []}) -> name(C);
 constructor_t({constr_t, _, C, Args}) -> beside(name(C), tuple_type(Args)).
 
 -spec field_t(aeso_syntax:field_t()) -> doc().
-field_t({field_t, _, immutable, Name, Type}) ->
+field_t({field_t, _, Name, Type}) ->
     typed(name(Name), Type).
 
 -spec type(aeso_syntax:type()) -> doc().

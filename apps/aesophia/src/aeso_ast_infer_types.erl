@@ -443,7 +443,7 @@ create_record_types(Defs) ->
     [begin
 	 ets:insert(record_types, {Name, Args, Fields}),
 	 [ets:insert(record_fields, {FieldName, FieldType, {app_t, Attrs, Id, Args}})
-	  || {field_t, _, _, {id, _, FieldName}, FieldType} <- Fields]
+	  || {field_t, _, {id, _, FieldName}, FieldType} <- Fields]
      end
      || {type_def, Attrs, Id={id, _, Name}, Args, {record_t, Fields}} <- Defs].
 
@@ -533,7 +533,7 @@ solve_known_record_types(Constraints) ->
 		     io:format("Undefined record type: ~s\n", [RecName]),
 		     error({undefined_record_type, RecName});
 		 [{RecName, Formals, Fields}] ->
-		     FieldTypes = [{Name, Type} || {field_t, _, _, {id, _, Name}, Type} <- Fields],
+		     FieldTypes = [{Name, Type} || {field_t, _, {id, _, Name}, Type} <- Fields],
 		     {id, _, FieldString} = FieldName,
                      Line = line_number(FieldName),
 		     case proplists:get_value(FieldString, FieldTypes) of
@@ -570,7 +570,7 @@ solve_for_uvar(UVar, Fields) ->
     Candidates = [RecName || {_, _, {app_t, _, {id, _, RecName}, _}} <- ets:lookup(record_fields, hd(Fields))],
     TypesAndFields = [case ets:lookup(record_types, RecName) of
 			  [{RecName, _, RecFields}] ->
-			      {RecName, [Field || {field_t, _, _, {id, _, Field}, _} <- RecFields]};
+			      {RecName, [Field || {field_t, _, {id, _, Field}, _} <- RecFields]};
 			  [] ->
 			      error({no_definition_for, RecName, in, Candidates})
 		      end
@@ -644,8 +644,8 @@ unfold_record_types_in_type(Type={id, _, RecName}) ->
 	    %% Not a record type, or ill-formed record type
 	    Type
     end;
-unfold_record_types_in_type({field_t, Attr, Mut, Name, Type}) ->
-    {field_t, Attr, Mut, Name, unfold_record_types_in_type(Type)};
+unfold_record_types_in_type({field_t, Attr, Name, Type}) ->
+    {field_t, Attr, Name, unfold_record_types_in_type(Type)};
 unfold_record_types_in_type(T) when is_tuple(T) ->
     list_to_tuple(unfold_record_types_in_type(tuple_to_list(T)));
 unfold_record_types_in_type([H|T]) ->

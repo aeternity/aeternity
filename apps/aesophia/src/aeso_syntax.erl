@@ -49,7 +49,7 @@
      | {record_t, [field_t()]}
      | {variant_t, [constructor_t()]}.
 
--type field_t() :: {field_t, ann(), mutable | immutable, id(), type()}.
+-type field_t() :: {field_t, ann(), id(), type()}.
 
 -type constructor_t() :: {constr_t, ann(), con(), [type()]}.
 

@@ -60,7 +60,7 @@ constructor() ->    %% TODO: format for Con() vs Con
            ?RULE(con(), type_args(), {constr_t, get_ann(_1), _1, _2})).
 
 type_args()  -> paren_list(type()).
-field_type() -> ?RULE(id(), tok(':'), type(), {field_t, get_ann(_1), immutable, _1, _3}).
+field_type() -> ?RULE(id(), tok(':'), type(), {field_t, get_ann(_1), _1, _3}).
 
 %% -- Let declarations -------------------------------------------------------
 
