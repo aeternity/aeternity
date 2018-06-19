@@ -378,10 +378,19 @@ update_state_tree(Node, State) ->
                 true ->
                     handle_top_block_change(OldTopHash, NewTopDifficulty, State1);
                 false ->
-                    %% NG: this may not be correct
-                    NewTopHash = get_top_block_hash(State1),
-                    add_locations(OldTopHash, NewTopHash),
-                    State1
+                    %% NG: this might be correct now
+                    %%
+                    %% since difficulty is 0 we can't trigger a fork switch here
+                    %% so just checking if the key-block is on-chain should be enough
+                    %% if we are on-chain set location otherwise keep the old tophash
+                    case hash_is_in_main_chain(node_key_hash(Node), OldTopHash) of
+                        false ->
+                            set_top_block_hash(OldTopHash, State1);
+                        true ->
+                            NewTopHash = get_top_block_hash(State1),
+                            add_locations(OldTopHash, NewTopHash),
+                            State1
+                    end
             end
     end.
 
