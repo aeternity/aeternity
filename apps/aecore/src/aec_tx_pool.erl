@@ -13,6 +13,7 @@
 -behaviour(gen_server).
 
 -define(MEMPOOL, mempool).
+-define(MEMPOOL_GC, mempool_gc).
 -define(KEY(NegFee, NegGasPrice, Origin, Nonce, TxHash),
            {NegFee, NegGasPrice, Origin, Nonce, TxHash}).
 -define(VALUE_POS, 2).
@@ -30,8 +31,10 @@
         , stop/0
         ]).
 
--export([ get_candidate/2
+-export([ garbage_collect/0
+        , get_candidate/2
         , get_max_nonce/1
+        , invalid_txs/2
         , peek/1
         , push/1
         , push/2
@@ -39,24 +42,43 @@
         , top_change/2
         ]).
 
+-ifdef(TEST).
+-export([garbage_collect/1]). %% Only for (Unit-)test
+-endif.
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+-import(aeu_debug, [pp/1]).
+
 -define(SERVER, ?MODULE).
 -define(TAB, ?MODULE).
 
--record(state, { db :: pool_db() }).
+-record(state, { db :: pool_db(), gc_db :: pool_db() }).
 
 -type negated_fee() :: non_pos_integer().
 -type non_pos_integer() :: neg_integer() | 0.
+-type tx_hash() :: binary().
 
 -type pool_db_key() :: ?KEY(negated_fee(), aect_contracts:amount(),
                             aec_keys:pubkey(), non_neg_integer(), binary()).
 -type pool_db_value() :: aetx_sign:signed_tx().
+
+-type pool_db_gc_key() :: tx_hash().
+-type pool_db_gc_value() :: aetx:tx_ttl().
+
 -type pool_db() :: atom().
 
 -type event() :: tx_created | tx_received.
+
+-ifndef(TEST).
+-define(DEFAULT_INVALID_TX_TTL, 256).
+-define(DEFAULT_EXPIRED_TX_TTL, 5).
+-else.
+-define(DEFAULT_INVALID_TX_TTL, 5).
+-define(DEFAULT_EXPIRED_TX_TTL, 2).
+-endif.
 
 %%%===================================================================
 %%% API
@@ -89,6 +111,20 @@ push(Tx, Event) when ?PUSH_EVENT(Event) ->
 get_max_nonce(Sender) ->
     gen_server:call(?SERVER, {get_max_nonce, Sender}).
 
+-spec invalid_txs([tx_hash()], aec_blocks:height()) -> ok.
+invalid_txs(TxHashes, Height) ->
+    gen_server:cast(?SERVER, {invalid_txs, TxHashes, Height}).
+
+-spec garbage_collect() -> ok.
+garbage_collect() ->
+    gen_server:cast(?SERVER, garbage_collect).
+
+-ifdef(TEST).
+-spec garbage_collect(Height :: aec_blocks:height()) -> ok.
+garbage_collect(Height) ->
+    gen_server:cast(?SERVER, {garbage_collect, Height}).
+-endif.
+
 %% The specified maximum number of transactions avoids requiring
 %% building in memory the complete list of all transactions in the
 %% pool.
@@ -114,15 +150,16 @@ size() ->
 %%%===================================================================
 
 init([]) ->
-    {ok, Db} = pool_db_open(),
+    {ok, MempoolDb} = pool_db_open(?MEMPOOL),
     Handled  = ets:new(init_tx_pool, [private]),
     InitF  = fun(TxHash, _) ->
-                     update_pool_on_tx_hash(TxHash, Db, Handled),
+                     update_pool_on_tx_hash(TxHash, MempoolDb, Handled),
                      ok
              end,
     ok = aec_db:ensure_transaction(fun() -> aec_db:fold_mempool(InitF, ok) end),
     ets:delete(Handled),
-    {ok, #state{db = Db}}.
+    {ok, MempoolGCDb} = pool_db_open(?MEMPOOL_GC),
+    {ok, #state{db = MempoolDb, gc_db = MempoolGCDb}}.
 
 handle_call({get_max_nonce, Sender}, _From, #state{db = Mempool} = State) ->
     {reply, int_get_max_nonce(Mempool, Sender), State};
@@ -137,14 +174,23 @@ handle_call({peek, MaxNumberOfTxs}, _From, #state{db = Mempool} = State)
        MaxNumberOfTxs =:= infinity ->
     Txs = pool_db_peek(Mempool, MaxNumberOfTxs),
     {reply, {ok, Txs}, State};
-handle_call({get_candidate, MaxNumberOfTxs, BlockHash}, _From,
-            #state{db = Mempool} = State) ->
-    Txs = int_get_candidate(MaxNumberOfTxs, Mempool, BlockHash),
+handle_call({get_candidate, MaxNumberOfTxs, BlockHash}, _From, State) ->
+    Txs = int_get_candidate(State, MaxNumberOfTxs, BlockHash),
     {reply, {ok, Txs}, State};
 handle_call(Request, From, State) ->
     lager:warning("Ignoring unknown call request from ~p: ~p", [From, Request]),
     {noreply, State}.
 
+handle_cast({invalid_txs, TxHashes, Height}, State = #state{ gc_db = GCDb }) ->
+    [ enter_tx_gc(GCDb, TxHash, Height + invalid_tx_ttl()) || TxHash <- TxHashes ],
+    {noreply, State};
+handle_cast(garbage_collect, State) ->
+    do_gc(State),
+    {noreply, State};
+%% Only for (Unit-)test
+handle_cast({garbage_collect, Height}, State) ->
+    do_gc(State, Height),
+    {noreply, State};
 handle_cast(Msg, State) ->
     lager:warning("Ignoring unknown cast message: ~p", [Msg]),
     {noreply, State}.
@@ -176,34 +222,67 @@ int_get_max_nonce(Mempool, Sender) ->
 
 %% Ensure ordering of tx nonces in one account, and for duplicate account nonces
 %% we only get the one with higher fee or - if equal fee - higher gas price.
-int_get_candidate(MaxNumberOfTxs, Mempool, BlockHash) ->
-    int_get_candidate(MaxNumberOfTxs, Mempool, ets:first(Mempool),
-                      BlockHash, gb_trees:empty()).
+int_get_candidate(#state{ db = Db, gc_db = GCDb }, MaxNumberOfTxs, BlockHash) ->
+    {ok, Trees} = aec_chain:get_block_state(BlockHash),
+    {ok, Header} = aec_chain:get_header(BlockHash),
+    int_get_candidate(MaxNumberOfTxs, {Db, GCDb}, ets:first(Db),
+                      {account_trees, aec_trees:accounts(Trees)},
+                      aec_headers:height(Header), gb_trees:empty()).
 
-int_get_candidate(0,_Mempool, _,_BlockHash, Acc) ->
+int_get_candidate(0, _Dbs, _, _AccountsTree, _Height, Acc) ->
     gb_trees:values(Acc);
-int_get_candidate(_N,_Mempool, '$end_of_table',_BlockHash, Acc) ->
+int_get_candidate(_N, _Dbs, '$end_of_table', _AccountsTree, _Height, Acc) ->
     gb_trees:values(Acc);
-int_get_candidate(N, Mempool, ?KEY(_, _, Account, Nonce, _) = Key, BlockHash, Acc) ->
+int_get_candidate(N, Dbs = {Db, GCDb}, ?KEY(_, _, Account, Nonce, TxHash) = Key,
+                  AccountsTree, Height, Acc) ->
+    Next = ets:next(Db, Key),
     case gb_trees:is_defined({Account, Nonce}, Acc) of
         true ->
-            %% The earlier must have had higher fee or higher gas price. Skip this tx.
-            int_get_candidate(N, Mempool, ets:next(Mempool, Key), BlockHash, Acc);
+            %% The earlier must have had higher fee. Skip this tx.
+            int_get_candidate(N, Dbs, Next, AccountsTree, Height, Acc);
         false ->
-            Tx = ets:lookup_element(Mempool, Key, ?VALUE_POS),
-            case check_nonce_at_hash(Tx, BlockHash) of
-                ok ->
+            Tx = ets:lookup_element(Db, Key, ?VALUE_POS),
+            TTL = aetx:ttl(aetx_sign:tx(Tx)),
+            case Height < TTL andalso ok == int_check_nonce(Tx, AccountsTree) of
+                true ->
                     NewAcc = gb_trees:insert({Account, Nonce}, Tx, Acc),
-                    Next = ets:next(Mempool, Key),
-                    int_get_candidate(N - 1, Mempool, Next, BlockHash, NewAcc);
-                {error, _} ->
+                    int_get_candidate(N - 1, Dbs, Next, AccountsTree, Height, NewAcc);
+                false ->
                     %% This is not valid anymore.
-                    %% TODO: This should also be deleted, but we don't know for
-                    %% sure that we are still on the top.
-                    int_get_candidate(N, Mempool, ets:next(Mempool, Key),
-                                      BlockHash, Acc)
+                    enter_tx_gc(GCDb, TxHash, Height + expired_tx_ttl()),
+                    int_get_candidate(N, Dbs, Next, AccountsTree, Height, Acc)
             end
     end.
+
+-spec do_gc(#state{}) -> ok.
+do_gc(State) ->
+    Header = aec_chain:top_header(),
+    Height = aec_headers:height(Header),
+    do_gc(State, Height).
+
+do_gc(State = #state{ gc_db = GCDb }, Height) ->
+    GCTxs = ets:foldl(fun({TxHash, ExpireBy}, Acc) ->
+                          case ExpireBy > Height of
+                              true  -> Acc;
+                              false -> [TxHash | Acc]
+                          end
+                      end, [], GCDb),
+    do_gc_(State, GCTxs).
+
+do_gc_(_S, []) ->
+    ok;
+do_gc_(S = #state{ db = Db, gc_db = GCDb }, [TxHash | TxHashes]) ->
+    case aec_db:gc_tx(TxHash) of
+        ok ->
+            delete_pool_db_gc(GCDb, TxHash),
+            delete_pool_db_by_hash(Db, TxHash),
+            lager:debug("Garbage collected ~p", [pp(TxHash)]);
+        {error, BlockHash} ->
+            lager:info("TX garbage collect failed ~p is present in ~p",
+                       [pp(BlockHash), pp(TxHash)]),
+            ok
+    end,
+    do_gc_(S, TxHashes).
 
 -spec pool_db_key(aetx_sign:signed_tx()) -> pool_db_key().
 pool_db_key(SignedTx) ->
@@ -229,9 +308,9 @@ select_pool_db_key_by_hash(Mempool, TxHash) ->
         [] -> not_in_ets
     end.
 
--spec pool_db_open() -> {ok, pool_db()}.
-pool_db_open() ->
-    {ok, ets:new(?MEMPOOL, [ordered_set, public, named_table])}.
+-spec pool_db_open(DbName :: atom()) -> {ok, pool_db()}.
+pool_db_open(DbName) ->
+    {ok, ets:new(DbName, [ordered_set, public, named_table])}.
 
 -spec pool_db_peek(pool_db(), MaxNumber::pos_integer() | infinity) ->
                           [pool_db_value()].
@@ -239,6 +318,20 @@ pool_db_peek(_, 0) -> [];
 pool_db_peek(Mempool, Max) ->
     sel_return(
       ets_select(Mempool, [{ {'_', '$1'}, [], ['$1'] }], Max)).
+
+%% If TxHash is not already in GC table insert it.
+-spec enter_tx_gc(pool_db(), pool_db_gc_key(), pool_db_gc_value()) -> ok.
+enter_tx_gc(MempoolGC, TxHash, TTL) ->
+    %% Use update_counter with a threshold to do the compare and maybe update
+    %% efficiently.
+    Res = ets:update_counter(MempoolGC, TxHash, {2, 0, TTL, TTL}, {TxHash, TTL}),
+    %% If Res == TTL we set the TTL otherwise kept prev. value
+    [ lager:debug("Adding ~p for GC at ~p", [pp(TxHash), Res]) || Res == TTL ],
+    ok.
+
+-spec delete_pool_db_gc(pool_db(), pool_db_gc_key()) -> true.
+delete_pool_db_gc(MempoolGC, TxHash) ->
+    ets:delete(MempoolGC, TxHash).
 
 ets_select(T, P, infinity) ->
     ets:select(T, P);
@@ -277,14 +370,18 @@ update_pool_on_tx_hash(TxHash, Mempool, Handled) ->
             case aec_db:is_in_tx_pool(TxHash) of
                 false ->
                     %% Added to chain
-                    case select_pool_db_key_by_hash(Mempool, TxHash) of
-                        {ok, Key} -> ets:delete(Mempool, Key);
-                        not_in_ets -> pass
-                    end;
+                    delete_pool_db_by_hash(Mempool, TxHash);
                 true ->
                     ets:insert(Mempool, {pool_db_key(Tx), Tx})
             end
     end.
+
+delete_pool_db_by_hash(Mempool, TxHash) ->
+    case select_pool_db_key_by_hash(Mempool, TxHash) of
+        {ok, Key} -> ets:delete(Mempool, Key);
+        not_in_ets -> pass
+    end.
+
 
 -spec pool_db_put(pool_db(), pool_db_key(), aetx_sign:signed_tx(), event()) ->
                          'ok' | {'error', atom()}.
@@ -302,6 +399,7 @@ pool_db_put(Mempool, Key, Tx, Event) ->
                      , fun check_nonce/2
                      , fun check_minimum_fee/2
                      , fun check_minimum_gas_price/2
+                     , fun check_tx_ttl/2
                      ],
             case aeu_validation:run(Checks, [Tx, Hash]) of
                 {error, _} = E ->
@@ -323,6 +421,14 @@ pool_db_put(Mempool, Key, Tx, Event) ->
             end
     end.
 
+check_tx_ttl(STx, _Hash) ->
+    Header = aec_chain:top_header(),
+    Tx = aetx_sign:tx(STx),
+    case aec_headers:height(Header) > aetx:ttl(Tx) of
+        true  -> {error, ttl_expired};
+        false -> ok
+    end.
+
 check_signature(Tx, Hash) ->
     {ok, Trees} = aec_chain:get_top_state(),
     case aetx_sign:verify(Tx, Trees) of
@@ -334,9 +440,9 @@ check_signature(Tx, Hash) ->
     end.
 
 check_nonce(Tx,_Hash) ->
-  check_nonce_at_hash(Tx, aec_chain:top_block_hash()).
+  int_check_nonce(Tx, {block_hash, aec_chain:top_block_hash()}).
 
-check_nonce_at_hash(Tx, BlockHash) ->
+int_check_nonce(Tx, Source) ->
     %% Check is conservative and only rejects certain cases
     Unsigned = aetx_sign:tx(Tx),
     TxNonce = aetx:nonce(Unsigned),
@@ -347,7 +453,7 @@ check_nonce_at_hash(Tx, BlockHash) ->
                 false ->
                     {error, illegal_nonce};
                 true ->
-                    case aec_chain:get_account_at_hash(Pubkey, BlockHash) of
+                    case get_account(Pubkey, Source) of
                         {error, no_state_trees} ->
                             ok;
                         none ->
@@ -364,6 +470,11 @@ check_nonce_at_hash(Tx, BlockHash) ->
                     end
             end
     end.
+
+get_account(AccountKey, {account_trees, AccountsTrees}) ->
+    aec_accounts_trees:lookup(AccountKey, AccountsTrees);
+get_account(AccountKey, {block_hash, BlockHash}) ->
+    aec_chain:get_account_at_hash(AccountKey, BlockHash).
 
 check_minimum_fee(Tx,_Hash) ->
     case aetx:fee(aetx_sign:tx(Tx)) >= aec_governance:minimum_tx_fee() of
@@ -389,3 +500,12 @@ int_gas_price(Tx) ->
         none -> ?PSEUDO_GAS_PRICE;
         {value, GP} when is_integer(GP), GP >= 0 -> GP
     end.
+
+invalid_tx_ttl() ->
+    aeu_env:user_config_or_env([<<"mempool">>, <<"invalid_tx_ttl">>],
+                               aecore, mempool_invalid_tx_ttl, ?DEFAULT_INVALID_TX_TTL).
+
+expired_tx_ttl() ->
+    aeu_env:user_config_or_env([<<"mempool">>, <<"expired_tx_ttl">>],
+                               aecore, mempool_expired_tx_ttl, ?DEFAULT_EXPIRED_TX_TTL).
+

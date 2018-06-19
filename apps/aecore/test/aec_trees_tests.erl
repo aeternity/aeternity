@@ -57,18 +57,18 @@ signatures_check_test_() ->
             {ok, SenderPubkey} = aec_test_utils:wait_for_pubkey(),
             Account = aec_accounts:new(SenderPubkey, 1000),
             TreesIn = aec_test_utils:create_state_tree_with_account(Account),
-            {ok, ApprovedTxs, _Trees} =
+            {ok, ValidTxs, _InvalidTxs, _Trees} =
                 ?TEST_MODULE:apply_txs_on_state_trees(SignedTxs, TreesIn, 1, ?PROTOCOL_VERSION),
-            ?assertEqual(SignedTxs, ApprovedTxs),
+            ?assertEqual(SignedTxs, ValidTxs),
             ok
         end}
      , {"Transactions with broken signatures are rejected",
         fun () ->
             Tx = make_spend_tx(<<0:32/unit:8>>, <<1:32/unit:8>>),
             MalformedTxs = [aetx_sign:sign(Tx, <<0:64/unit:8>>)],
-            {ok, ApprovedTxs, _Trees} =
+            {ok, ValidTxs, _InvalidTxs, _Trees} =
                 ?TEST_MODULE:apply_txs_on_state_trees(MalformedTxs, aec_trees:new(), 1, ?PROTOCOL_VERSION),
-            ?assertEqual([], ApprovedTxs),
+            ?assertEqual([], ValidTxs),
             ok
         end}
      ]}.

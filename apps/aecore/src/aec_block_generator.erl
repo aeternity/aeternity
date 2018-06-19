@@ -191,7 +191,8 @@ create_block_candidate(BlockOrBlockHash) ->
             gen_server:cast(?MODULE, {new_candidate, NewBlock, BlockInfo});
         {error, Reason} ->
             failed_attempt(Reason)
-    end.
+    end,
+    aec_tx_pool:garbage_collect().
 
 update_block_candidate(Block, BlockInfo, Txs) ->
     case aec_block_candidate:update(Block, Txs, BlockInfo) of

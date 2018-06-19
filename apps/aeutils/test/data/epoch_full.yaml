@@ -33,6 +33,12 @@ sync:
     # Maximum time for noise handshake in miliseconds
     noise_hs_timeout: 5000
 
+mempool:
+    # Number of blocks before invalid TXs are garbage collected
+    invalid_tx_ttl: 256
+    # Number of blocks before expired (TTL or low nonce) TXs are garbage collected
+    expired_tx_ttl: 5
+
 http:
     external:
         # Port used for external HTTP API

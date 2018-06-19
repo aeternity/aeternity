@@ -16,6 +16,8 @@ It:
 * Ensures that the create contract function calls the init function for Sophia ABI contracts. This impacts consensus.
 * Rewards miner with gas used for execution of contracts, i.e. the execution of the initial call in any contract create transaction and the execution of any contract call transaction. This impacts consensus.
 * Enhances mempool to consider reward miner might get by processing contract-related transactions. This impacts the persisted DB.
+* Adds garbage collection of transactions, invalid transactions (wrong nonce, insufficient balance, expired TTL, etc.) are
+  removed from the mempool/tx-pool periodically.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.16.0
 

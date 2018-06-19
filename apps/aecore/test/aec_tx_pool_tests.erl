@@ -179,32 +179,32 @@ tx_pool_test_() ->
                %% Only one tx in pool
                STx1 = a_signed_tx(PK, me, Nonce1=1,_Fee1=1),
                ?assertEqual(ok, aec_tx_pool:push(STx1)),
-               ?assertEqual({ok, [STx1]}, aec_tx_pool:get_candidate(10, <<>>)),
+               ?assertEqual({ok, [STx1]}, aec_tx_pool:get_candidate(10, aec_chain:top_block_hash())),
 
                %% Order by nonce even if fee is higher
                STx2 = a_signed_tx(PK, me, Nonce2=2, Fee2=5),
                ?assertEqual(ok, aec_tx_pool:push(STx2)),
-               ?assertEqual({ok, [STx1, STx2]}, aec_tx_pool:get_candidate(10, <<>>)),
+               ?assertEqual({ok, [STx1, STx2]}, aec_tx_pool:get_candidate(10, aec_chain:top_block_hash())),
 
                %% Replace same nonce with the higher fee
                STx3 = a_signed_tx(PK, me, Nonce1=1, 2),
                ?assertEqual(ok, aec_tx_pool:push(STx3)),
-               ?assertEqual({ok, [STx3, STx2]}, aec_tx_pool:get_candidate(10, <<>>)),
+               ?assertEqual({ok, [STx3, STx2]}, aec_tx_pool:get_candidate(10, aec_chain:top_block_hash())),
 
                %% Replace same nonce with same fee but positive gas price (gas price of transaction without gas price is considered zero)
                STx4 = signed_ct_create_tx(PK, Nonce2=2, Fee2=5,_GasPrice4=1),
                ?assertEqual(ok, aec_tx_pool:push(STx4)),
-               ?assertEqual({ok, [STx3, STx4]}, aec_tx_pool:get_candidate(10, <<>>)),
+               ?assertEqual({ok, [STx3, STx4]}, aec_tx_pool:get_candidate(10, aec_chain:top_block_hash())),
 
                %% Replace same nonce with same fee but higher gas price
                STx5 = signed_ct_create_tx(PK, Nonce2=2, Fee2=5, 2),
                ?assertEqual(ok, aec_tx_pool:push(STx5)),
-               ?assertEqual({ok, [STx3, STx5]}, aec_tx_pool:get_candidate(10, <<>>)),
+               ?assertEqual({ok, [STx3, STx5]}, aec_tx_pool:get_candidate(10, aec_chain:top_block_hash())),
 
                %% Order by nonce even if fee and gas price are higher
                STx6 = signed_ct_call_tx(PK, _Nonce6=3,_Fee6=9,_GasPrice6=9),
                ?assertEqual(ok, aec_tx_pool:push(STx6)),
-               ?assertEqual({ok, [STx3, STx5, STx6]}, aec_tx_pool:get_candidate(10, <<>>)),
+               ?assertEqual({ok, [STx3, STx5, STx6]}, aec_tx_pool:get_candidate(10, aec_chain:top_block_hash())),
 
                ok
        end},
@@ -281,15 +281,77 @@ tx_pool_test_() ->
                ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 15, 100, 3))),
                ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 25, 100, 3))),
 
+               %% A transaction with too low ttl should be rejected
+               %% First add another block to make the chain high enough to
+               %% fail on TTL
+               {ok, Candidate2, _} = aec_block_candidate:create(aec_chain:top_block()),
+               {ok, Top2} = aec_blocks:hash_internal_representation(Candidate2),
+               ok = aec_chain_state:insert_block(Candidate2),
+               ?assertEqual(Top2, aec_chain:top_block_hash()),
+
+               STx5 = a_signed_tx(PubKey1, new_pubkey(), 6, 1, 1),
+               ?assertEqual({error, ttl_expired}, aec_tx_pool:push(STx5)),
+
                ok
-       end}
+       end},
+       {"Test GC",
+        fun() ->
+            %% initialize chain
+            {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+            ok = aec_chain_state:insert_block(GenesisBlock),
+
+            %% Prepare three transactions
+            PubKey = new_pubkey(),
+            STx1 = a_signed_tx(PubKey, PubKey, 1, 1),
+            STx2 = a_signed_tx(PubKey, PubKey, 2, 1),
+            STx3 = a_signed_tx(PubKey, PubKey, 3, 1),
+
+            %% Post them
+            ?assertEqual(ok, aec_tx_pool:push(STx1)),
+            ?assertEqual(ok, aec_tx_pool:push(STx2)),
+            ?assertEqual(ok, aec_tx_pool:push(STx3)),
+
+            ?assertMatch({ok, [_, _, _]}, aec_tx_pool:peek(infinity)),
+
+            %% Schedule them for GC - they will be scheduled for
+            %% removal at Height + ?INVALID_TX_TTL
+            %% For test ?INVALID_TX_TTL = 5
+            aec_tx_pool:invalid_txs([aetx_sign:hash(STx1)], 1),
+            aec_tx_pool:invalid_txs([aetx_sign:hash(STx2)], 3),
+            aec_tx_pool:invalid_txs([aetx_sign:hash(STx3)], 5),
+
+            %% Doing a garbage collect at height 0 shouldn't affect
+            aec_tx_pool:garbage_collect(0),
+            ?assertMatch({ok, [_, _, _]}, aec_tx_pool:peek(infinity)),
+
+            %% At 5 still GC should not kick in.
+            aec_tx_pool:garbage_collect(5),
+            ?assertMatch({ok, [_, _, _]}, aec_tx_pool:peek(infinity)),
+
+            %% At 6, now one Tx should be dropped.
+            aec_tx_pool:garbage_collect(6),
+            ?assertMatch({ok, [_, _]}, aec_tx_pool:peek(infinity)),
+
+            %% At 8, now another Tx should be dropped.
+            aec_tx_pool:garbage_collect(8),
+            ?assertMatch({ok, [_]}, aec_tx_pool:peek(infinity)),
+
+            %% At 10, now mempool should be empty
+            aec_tx_pool:garbage_collect(10),
+            ?assertMatch({ok, []}, aec_tx_pool:peek(infinity))
+        end}
      ]}.
 
 a_signed_tx(Sender, Recipient, Nonce, Fee) ->
+    a_signed_tx(Sender, Recipient, Nonce, Fee,0).
+
+a_signed_tx(Sender, Recipient, Nonce, Fee, TTL) ->
     {ok, Tx} = aec_spend_tx:new(#{sender => acct(Sender),
                                   recipient => acct(Recipient),
                                   amount => 1,
-                                  nonce => Nonce, fee => Fee,
+                                  nonce => Nonce,
+                                  fee => Fee,
+                                  ttl => TTL,
                                   payload => <<"">>}),
     {ok, STx} = sign(Sender, Tx),
     STx.
