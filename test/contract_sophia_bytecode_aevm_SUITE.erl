@@ -176,13 +176,13 @@ spend_tests(_Cfg) ->
     {900, Env1}  = successful_call(101, word, withdraw, "100", Env, #{caller => 102}),
     {900, Env2}  = successful_call(101, word, get_balance, "()", Env1),
     {2100, Env3} = successful_call(102, word, get_balance, "()", Env2),
-    %% The call doesn't fail, but the spend transaction is not executed.
-    {-100, Env4} = successful_call(101, signed_word, withdraw, "1000", Env3, #{caller => 102}),
-    900          = successful_call_(101, word, get_balance, "()", Env4),
-    2100         = successful_call_(102, word, get_balance, "()", Env4),
+    %% The call fails with out_of_gas
+    out_of_gas   = failing_call(101, withdraw, "1000", Env3, #{caller => 102}),
+    900          = successful_call_(101, word, get_balance, "()", Env3),
+    2100         = successful_call_(102, word, get_balance, "()", Env3),
     %% Spending in nested call
-    {900, Env5}  = successful_call(101, word, withdraw_from, "(102,1000)", Env4, #{caller => 1}),
-    #{1 := 11000, 101 := 900, 102 := 1100} = maps:get(accounts, Env5),
+    {900, Env4}  = successful_call(101, word, withdraw_from, "(102,1000)", Env3, #{caller => 1}),
+    #{1 := 11000, 101 := 900, 102 := 1100} = maps:get(accounts, Env4),
     ok.
 
 complex_types(_Cfg) ->
