@@ -851,6 +851,16 @@ slash(Cfg) ->
         end,
     Test(PubKey1, PrivKey1),
     Test(PubKey2, PrivKey2),
+
+    %% Test that we cannot slash a channel that is already closing
+    %% without an explicit payload.
+
+    TxEmptyPayloadSpec =
+        aesc_test_utils:close_solo_tx_spec(ChannelId, PubKey1, <<>>,
+                                           PoI, #{fee    => Fee}, S),
+    {ok, TxEmptyPayload} = aesc_close_solo_tx:new(TxEmptyPayloadSpec),
+    {error, channel_not_active} = aetx:check(TxEmptyPayload, Trees,
+                                             Height, ?PROTOCOL_VERSION),
     ok.
 
 %%%===================================================================

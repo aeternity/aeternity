@@ -222,7 +222,8 @@ check_payload(ChannelId, FromPubKey, Payload, PoI, Trees) ->
             case aesc_utils:deserialize_payload(Payload) of
                 {ok, last_onchain} ->
                     Checks =
-                        [fun() -> check_root_hash_in_channel(Channel, PoI) end,
+                        [fun() -> aesc_utils:check_is_active(Channel) end,
+                         fun() -> check_root_hash_in_channel(Channel, PoI) end,
                          fun() -> check_peers_and_amounts_in_poi(Channel, PoI) end
                         ],
                     aeu_validation:run(Checks);
@@ -275,7 +276,7 @@ check_channel_id_in_payload(Channel, PayloadTx) ->
     end.
 
 check_round_in_payload(Channel, PayloadTx) ->
-    case aesc_channels:round(Channel) =< aesc_offchain_tx:round(PayloadTx) of
+    case aesc_channels:round(Channel) < aesc_offchain_tx:round(PayloadTx) of
         false -> {error, old_round};
         true  -> ok
     end.
