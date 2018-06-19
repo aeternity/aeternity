@@ -16,7 +16,7 @@
 
 convert(Tree, Options) ->
     TypedTree = aeso_ast_infer_types:infer(Tree),
-    [io:format("Typed tree:\n~s\n",[prettypr:format(aeso_pretty:decls(TypedTree))]) || lists:member(pp_typed,Options)],
+    [io:format("Typed tree:\n~s\n",[prettypr:format(aeso_pretty:decls(TypedTree, [show_generated]))]) || lists:member(pp_typed,Options)],
     %% [io:format("Typed tree:\n~p\n",[TypedTree]) || lists:member(pp_typed,Options)],
     code(TypedTree,
 %%    code(Tree,
@@ -29,7 +29,7 @@ code([{contract, _Attribs, {con, _, Name}, Code}|Rest], Icode) ->
     NewIcode = contract_to_icode(Code, set_name(Name, Icode)),
     code(Rest, NewIcode);
 code([], Icode) ->
-    add_default_init_function(Icode).
+    add_default_init_function(add_builtins(Icode)).
 
 %% Create default init function (only if state is unit).
 add_default_init_function(Icode = #{functions := Funs, state_type := State}) ->
@@ -92,6 +92,7 @@ ast_type(T) ->
 -define(oracle_t(Q, R), {app_t, _, {id, _, "oracle"}, [Q, R]}).
 -define(query_t(Q, R),  {app_t, _, {id, _, "oracle_query"}, [Q, R]}).
 -define(option_t(A),    {app_t, _, {id, _, "option"}, [A]}).
+-define(map_t(K, V),    {app_t, _, {id, _, "map"}, [K, V]}).
 
 ast_body(?id_app("raw_call", [To, Fun, Gas, Value, {typed, _, Arg, ArgT}], _, OutT)) ->
     %% TODO: temp hack before we have contract calls properly in the type checker
@@ -186,6 +187,58 @@ ast_body({qid, _, ["Oracle", "query_fee"]})    -> error({underapplied_primitive,
 ast_body({qid, _, ["Oracle", "get_answer"]})   -> error({underapplied_primitive, 'Oracle.get_answer'});
 ast_body({qid, _, ["Oracle", "get_question"]}) -> error({underapplied_primitive, 'Oracle.get_question'});
 
+%% Maps
+
+%% -- map lookup  m[k]
+ast_body({map_get, _, Map, {typed, Ann, Key, KeyType}}) ->
+    Fun = {map_get, key_type(Ann, KeyType)},
+    #funcall{ function = #var_ref{name = {builtin, Fun}},
+              args     = [ast_body(Map), ast_body(Key)] };
+
+%% -- lookup functions
+ast_body(?qid_app(["Map", "lookup"], [{typed, Ann, Key, KeyType}, Map], _, _)) ->
+    Fun = {map_lookup, key_type(Ann, KeyType)},
+    #funcall{ function = #var_ref{name = {builtin, Fun}},
+              args     = [ast_body(Map), ast_body(Key)] };
+ast_body(?qid_app(["Map", "member"], [{typed, Ann, Key, KeyType}, Map], _, _)) ->
+    Fun = {map_member, key_type(Ann, KeyType)},
+    #funcall{ function = #var_ref{name = {builtin, Fun}},
+              args     = [ast_body(Map), ast_body(Key)] };
+ast_body(?qid_app(["Map", "size"], [Map], _, _)) ->
+    #funcall{ function = #var_ref{name = {builtin, map_size}},
+              args     = [ast_body(Map), {integer, 0}] };
+ast_body(?qid_app(["Map", "delete"], [{typed, Ann, Key, KeyType}, Map], _, _)) ->
+    Fun = {map_del, key_type(Ann, KeyType)},
+    #funcall{ function = #var_ref{name = {builtin, Fun}},
+              args     = [ast_body(Map), ast_body(Key)] };
+
+%% -- map conversion to/from list
+ast_body(?qid_app(["Map", "from_list"], [List], _, _)) -> ast_body(List);
+ast_body(?qid_app(["Map", "to_list"],   [Map], _, _))  -> ast_body(Map);
+
+ast_body({qid, _, ["Map", "from_list"]}) -> error({underapplied_primitive, 'Map.from_list'});
+ast_body({qid, _, ["Map", "to_list"]})   -> error({underapplied_primitive, 'Map.to_list'});
+ast_body({qid, _, ["Map", "lookup"]})    -> error({underapplied_primitive, 'Map.to_list'});
+ast_body({qid, _, ["Map", "member"]})    -> error({underapplied_primitive, 'Map.to_list'});
+
+%% -- map construction { k1 = v1, k2 = v2 }
+ast_body({map, Ann, KVs}) ->
+    ast_body({list, Ann, [{tuple, Ann, [K, V]} || {K, V} <- KVs]});
+
+%% -- map update       m { [k] = v } or m { [k] @ x = f(x) }
+ast_body({map, _, Map, []}) -> ast_body(Map);
+ast_body({map, _, Map, [Upd]}) ->
+    {Fun, Args} = case Upd of
+            {field, _, [{map_get, _, {typed, Ann, Key, KeyType}}], Val} ->
+                {{map_put, key_type(Ann, KeyType)}, [ast_body(Key), ast_body(Val)]};
+            {field_upd, _, [{map_get, _, {typed, Ann, Key, KeyType}}], ValFun} ->
+                {{map_upd, key_type(Ann, KeyType)}, [ast_body(Key), ast_body(ValFun)]}
+        end,
+    #funcall{ function = #var_ref{name = {builtin, Fun}},
+              args     = [ast_body(Map) | Args] };
+ast_body({map, Ann, Map, [Upd | Upds]}) ->
+    ast_body({map, Ann, {map, Ann, Map, [Upd]}, Upds});
+
 %% Other terms
 ast_body({id, _, Name}) ->
     %% TODO Look up id in env
@@ -194,6 +247,9 @@ ast_body({bool, _, Bool}) ->		%BOOL as ints
     Value = if Bool -> 1 ; true -> 0 end,
     #integer{value = Value};
 ast_body({int, _, Value}) ->
+    #integer{value = Value};
+ast_body({hash, _, Hash}) ->
+    <<Value:32/unit:8>> = Hash,
     #integer{value = Value};
 ast_body({string,_,Bin}) ->
     Cpts = [size(Bin)|aeso_data:binary_to_words(Bin)],
@@ -215,7 +271,7 @@ ast_body({app,As,Fun,Args}) ->
         infix  ->
             {Op, _} = Fun,
             [A, B]  = Args,
-            #binop{op = Op, left = ast_body(A), right = ast_body(B)};
+            ast_binop(Op, As, A, B);
         prefix ->
             {Op, _} = Fun,
             [A]     = Args,
@@ -249,42 +305,81 @@ ast_body({lam,_,Args,Body}) ->
 	    body=ast_body(Body)};
 ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}) ->
     %% Compile as a tuple with the fields in the order they appear in the definition.
-    NamedFields = [{Name,E} || {field,_,{id,_,Name},E} <- Fields],
+    NamedField = fun({field, _, [{proj, _, {id, _, Name}}], E}) -> {Name, E} end,
+    NamedFields = lists:map(NamedField, Fields),
     #tuple{cpts =
 	       [case proplists:get_value(Name,NamedFields) of
 		    undefined ->
+                        io:format("~p not in ~p\n", [Name, NamedFields]),
 			Line = aeso_syntax:get_ann(line, Attrs),
 			#missing_field{format = "Missing field in record: ~s (on line ~p)\n",
 				       args = [Name,Line]};
 		    E ->
 			ast_body(E)
 		end
-		|| {field_t,_,_,{id,_,Name},_} <- DefFields]};
+		|| {field_t,_,{id,_,Name},_} <- DefFields]};
 ast_body({typed,_,{record,Attrs,_Fields},T}) ->
     error({record_has_bad_type,Attrs,T});
 ast_body({proj,_,{typed,_,Record,{record_t,Fields}},{id,_,FieldName}}) ->
     [Index] = [I
-	       || {I,{field_t,_,_,{id,_,Name},_}} <-
+	       || {I,{field_t,_,{id,_,Name},_}} <-
 		      lists:zip(lists:seq(1,length(Fields)),Fields),
 		  Name==FieldName],
     #binop{op = '!', left = #integer{value = 32*(Index-1)}, right = ast_body(Record)};
-ast_body({record,Attrs,{typed,_,Record,RecType={record_t,Fields}},Update}) ->
-    UpdatedNames = [Name || {field,_,{id,_,Name},_} <- Update],
+ast_body({record, Attrs, {typed, _, Record, RecType={record_t, Fields}}, Update}) ->
+    UpdatedName = fun({field, _,     [{proj, _, {id, _, Name}}], _}) -> Name;
+                     ({field_upd, _, [{proj, _, {id, _, Name}}], _}) -> Name
+                  end,
+    UpdatedNames = lists:map(UpdatedName, Update),
+    Rec = {typed, Attrs, {id, Attrs, "_record"}, RecType},
+    CompileUpdate =
+        fun(Fld={field, _, _, _}) -> Fld;
+           ({field_upd, Ann, LV=[{proj, Ann1, P}], Fun}) ->
+            {field, Ann, LV, {app, Ann, Fun, [{proj, Ann1, Rec, P}]}}
+        end,
+
     #switch{expr=ast_body(Record),
 	    cases=[{#var_ref{name = "_record"},
-		    ast_body({typed,Attrs,
-			      {record,Attrs,
-			       Update ++
-				   [{field,Attrs,{id,Attrs,Name},
-				     {proj,Attrs,
-				      {typed,Attrs,{id,Attrs,"_record"},RecType},
-				      {id,Attrs,Name}}}
-				    || {field_t,_,_,{id,_,Name},_} <- Fields,
-				       not lists:member(Name,UpdatedNames)]},
+		    ast_body({typed, Attrs,
+			      {record, Attrs,
+			       lists:map(CompileUpdate, Update) ++
+				[{field, Attrs, [{proj, Attrs, {id, Attrs, Name}}],
+				     {proj, Attrs, Rec, {id, Attrs, Name}}}
+				    || {field_t, _, {id, _, Name}, _} <- Fields,
+				       not lists:member(Name, UpdatedNames)]},
 			      RecType})}
 		   ]};
 ast_body({typed, _, Body, _}) ->
     ast_body(Body).
+
+ast_binop(Op, Ann, {typed, _, A, Type}, B)
+    when Op == '=='; Op == '!=';
+         Op == '<';  Op == '>';
+         Op == '<='; Op == '=<'; Op == '>=' ->
+    Monomorphic = is_monomorphic(Type),
+    case ast_typerep(Type) of
+        _ when not Monomorphic ->
+            error({cant_compare_polymorphic_type, Ann, Op, Type});
+        word   -> #binop{op = Op, left = ast_body(A), right = ast_body(B)};
+        string ->
+            Neg = case Op of
+                    '==' -> fun(X) -> X end;
+                    '!=' -> fun(X) -> #unop{ op = '!', rand = X } end;
+                    _    -> error({cant_compare, Ann, Op, Type})
+                  end,
+            Neg(#funcall{ function = #var_ref{name = {builtin, str_equal}},
+                          args     = [ast_body(A), ast_body(B)] });
+        _ -> error({cant_compare, Ann, Op, Type})
+    end;
+ast_binop(Op, _, A, B) ->
+    #binop{op = Op, left = ast_body(A), right = ast_body(B)}.
+
+is_monomorphic({tvar, _, _}) -> false;
+is_monomorphic([H|T]) ->
+  is_monomorphic(H) andalso is_monomorphic(T);
+is_monomorphic(T) when is_tuple(T) ->
+  is_monomorphic(tuple_to_list(T));
+is_monomorphic(_) -> true.
 
 %% Implemented as a contract call to the contract with address 0.
 prim_call(Prim, Amount, Args, ArgTypes, OutType) ->
@@ -309,17 +404,22 @@ ast_typerep(?query_t(_, _)) ->
     word;
 ast_typerep(?option_t(A)) ->
     {option, ast_typerep(A)};   %% For now, but needs to be generalised to arbitrary datatypes later.
+ast_typerep(?map_t(K, V)) ->
+    map_typerep(ast_typerep(K), ast_typerep(V));
 ast_typerep({tvar,_,_}) ->
     %% We serialize type variables just as addresses in the originating VM.
     word;
 ast_typerep({tuple_t,_,Cpts}) ->
     {tuple, [ast_typerep(C) || C<-Cpts]};
 ast_typerep({record_t,Fields}) ->
-    {tuple, [ast_typerep(T) || {field_t,_,_,_,T} <- Fields]};
+    {tuple, [ast_typerep(T) || {field_t,_,_,T} <- Fields]};
 ast_typerep({app_t,_,{id,_,"list"},[Elem]}) ->
     {list, ast_typerep(Elem)};
 ast_typerep({fun_t,_,_,_}) ->
     function.
+
+map_typerep(K, V) ->
+    {list, {tuple, [K, V]}}.  %% Lists of key-value pairs for now
 
 ast_type_value(T) ->
     type_value(ast_type(T)).
@@ -351,3 +451,219 @@ set_name(Name, Icode) ->
 
 set_functions(NewFuns, Icode) ->
     maps:put(functions, NewFuns, Icode).
+
+%% -------------------------------------------------------------------
+%% Builtins
+%% -------------------------------------------------------------------
+
+key_type(Ann, Type) ->
+    Monomorphic = is_monomorphic(Type),
+    case ast_typerep(Type) of
+        _ when not Monomorphic ->
+            error({polymorphic_key_type, Ann, Type});
+        word   -> word;
+        string -> string;
+        _      -> error({unsupported_key_type, Ann, Type})
+    end.
+
+builtin_deps({map_get, Type})      -> [{map_lookup, Type}];
+builtin_deps({map_member, Type})   -> [{map_lookup, Type}];
+builtin_deps({map_lookup, string}) -> [str_equal];
+builtin_deps({map_del, string})    -> [str_equal];
+builtin_deps({map_put, string})    -> [str_equal];
+builtin_deps({map_upd, string})    -> [str_equal];
+builtin_deps(_) -> [].
+
+dep_closure(Deps) ->
+    case lists:umerge(lists:map(fun builtin_deps/1, Deps)) of
+        []    -> Deps;
+        Deps1 -> lists:umerge(Deps, dep_closure(Deps1))
+    end.
+
+used_builtins(#funcall{ function = #var_ref{ name = {builtin, Builtin} } }) ->
+    dep_closure([Builtin]);
+used_builtins([H|T]) ->
+  lists:umerge(used_builtins(H), used_builtins(T));
+used_builtins(T) when is_tuple(T) ->
+  used_builtins(tuple_to_list(T));
+used_builtins(M) when is_map(M) ->
+  used_builtins(maps:to_list(M));
+used_builtins(_) -> [].
+
+builtin_eq(word, A, B)   -> {binop, '==', A, B};
+builtin_eq(string, A, B) -> {funcall, {var_ref, {builtin, str_equal}}, [A, B]}.
+
+builtin_function(Builtin = {map_get, Type}) ->
+    %% function map_get(m, k) =
+    %%   switch(map_lookup(m, k))
+    %%     Some(v) => v
+    {{builtin, Builtin},
+        [{"m", map_typerep(Type, word)}, {"k", Type}],
+            {switch, {funcall, {var_ref, {builtin, {map_lookup, Type}}},
+                     [{var_ref, "m"}, {var_ref, "k"}]},
+                [{{tuple, [{var_ref, "v"}]}, {var_ref, "v"}}]},
+     word};
+
+builtin_function(Builtin = {map_member, Type}) ->
+    %% function map_member(m, k) : bool =
+    %%   switch(Map.lookup(m, k))
+    %%     None => false
+    %%     _    => true
+    {{builtin, Builtin},
+        [{"m", map_typerep(Type, word)}, {"k", Type}],
+            {switch, {funcall, {var_ref, {builtin, {map_lookup, Type}}},
+                     [{var_ref, "m"}, {var_ref, "k"}]},
+                [{{list, []}, {integer, 0}},
+                 {{var_ref, "_"}, {integer, 1}}]},
+     word};
+
+builtin_function(Builtin = {map_lookup, Type}) ->
+    %% function map_lookup(map, key) =
+    %%   switch(map)
+    %%     [] => None
+    %%     (k, val) :: m =>
+    %%       if(k == key)
+    %%          Some(val)
+    %%      else
+    %%          map_lookup(m, key)
+    Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
+    Name = {builtin, Builtin},
+    {Name,
+     [{"map", map_typerep(Type, word)}, {"key", Type}],
+     {switch, {var_ref, "map"},
+              [{{list, []}, {list, []}},
+               {{binop, '::',
+                  {tuple, [{var_ref, "k"}, {var_ref, "val"}]},
+                  {var_ref, "m"}},
+                {ifte, Eq({var_ref, "k"}, {var_ref, "key"}),
+                    {tuple, [{var_ref, "val"}]},
+                    {funcall, {var_ref, Name},
+                             [{var_ref, "m"}, {var_ref, "key"}]}}}]},
+    {option, word}};
+
+builtin_function(Builtin = {map_put, Type}) ->
+    %% function map_put(map, key, val) =
+    %%   switch(map)
+    %%     [] => [(key, val)]
+    %%     (k, v) :: m =>
+    %%       if(k == key)
+    %%          (k, val) :: m
+    %%      else
+    %%          (k, v) :: map_put(m, key, val)  // note reallocates (k, v) pair
+    Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
+    Name = {builtin, Builtin},
+    {Name,
+     [{"map", map_typerep(Type, word)}, {"key", Type}, {"val", word}],
+     {switch,
+         {var_ref, "map"},
+         [{{list, []}, {list, [{tuple, [{var_ref, "key"}, {var_ref, "val"}]}]}},
+          {{binop, '::',
+               {tuple, [{var_ref, "k"}, {var_ref, "v"}]},
+               {var_ref, "m"}},
+           {ifte,
+               Eq({var_ref, "k"}, {var_ref, "key"}),
+               {binop, '::',
+                   {tuple, [{var_ref, "k"}, {var_ref, "val"}]},
+                   {var_ref, "m"}},
+               {binop, '::',
+                   {tuple, [{var_ref, "k"}, {var_ref, "v"}]},
+                   {funcall,
+                       {var_ref, Name},
+                       [{var_ref, "m"},
+                        {var_ref, "key"},
+                        {var_ref, "val"}]}}}}]},
+     map_typerep(Type, word)};
+
+builtin_function(Builtin = {map_del, Type}) ->
+    %% function map_del(map, key) =
+    %%   switch(map)
+    %%     [] => []
+    %%     (k, v) :: m =>
+    %%       if(k == key)
+    %%          m
+    %%      else
+    %%          (k, v) :: map_del(m, key)  // note reallocates (k, v) pair
+    Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
+    Name = {builtin, Builtin},
+    {Name,
+     [{"map", map_typerep(Type, word)}, {"key", word}],
+     {switch,
+         {var_ref, "map"},
+         [{{list, []}, {list, []}},
+          {{binop, '::',
+               {tuple, [{var_ref, "k"}, {var_ref, "v"}]},
+               {var_ref, "m"}},
+           {ifte,
+               Eq({var_ref, "k"}, {var_ref, "key"}),
+               {var_ref, "m"},
+               {binop, '::',
+                   {tuple, [{var_ref, "k"}, {var_ref, "v"}]},
+                   {funcall,
+                       {var_ref, Name},
+                       [{var_ref, "m"},
+                        {var_ref, "key"}]}}}}]},
+     map_typerep(Type, word)};
+
+builtin_function(Builtin = {map_upd, Type}) ->
+    %% function map_upd(map, key, fun) =
+    %%   switch(map)
+    %%     (k, v) :: m =>
+    %%       if(k == key)
+    %%          (k, fun(v)) :: m
+    %%      else
+    %%          (k, v) :: map_upd(m, key, fun)  // note reallocates (k, v) pair
+    Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
+    Name = {builtin, Builtin},
+    {Name,
+     [{"map", map_typerep(Type, word)}, {"key", word}, {"fun", word}],
+     {switch,
+         {var_ref, "map"},
+         [{{binop, '::',
+               {tuple, [{var_ref, "k"}, {var_ref, "v"}]},
+               {var_ref, "m"}},
+           {ifte,
+               Eq({var_ref, "k"}, {var_ref, "key"}),
+               {binop, '::',
+                   {tuple, [{var_ref, "k"}, {funcall, {var_ref, "fun"}, [{var_ref, "v"}]}]},
+                   {var_ref, "m"}},
+               {binop, '::',
+                   {tuple, [{var_ref, "k"}, {var_ref, "v"}]},
+                   {funcall,
+                       {var_ref, Name},
+                       [{var_ref, "m"},
+                        {var_ref, "key"},
+                        {var_ref, "fun"}]}}}}]},
+     map_typerep(Type, word)};
+
+builtin_function(map_size) ->
+    %% function size(map, acc) =
+    %%   switch(map)
+    %%     []        => acc
+    %%     _ :: map' => size(map', acc + 1)
+    Name = {builtin, map_size},
+    {Name,
+        [{"map", {list, word}}, {"acc", word}],
+        {switch, {var_ref, "map"},
+                [{{list, []}, {var_ref, "acc"}},
+                 {{binop, '::', {var_ref, "_"}, {var_ref, "map'"}},
+                  {funcall, {var_ref, Name},
+                           [{var_ref, "map'"},
+                            {binop, '+', {var_ref, "acc"}, {integer, 1}}]}}]},
+        word};
+
+builtin_function(str_equal) ->
+    V = fun(X) -> {var_ref, atom_to_list(X)} end,
+    P = fun(A, B) -> {tuple, [A, B]} end,
+    {{builtin, str_equal},
+        [{"s1", string}, {"s2", string}],
+        {switch, P(V(s1), V(s2)),
+        [{P(P(V(n1), V(w1)), P(V(n2), V(w2))),
+            {binop, '&&',
+                {binop, '==', V(n1), V(n2)},
+                {binop, '==', V(w1), V(w2)}}}]},  %% TODO: only compares first 32 bytes!
+        word}.
+
+add_builtins(Icode = #{functions := Funs}) ->
+    Builtins = used_builtins(Funs),
+    Icode#{functions := [ builtin_function(B) || B <- Builtins ] ++ Funs}.
+

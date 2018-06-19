@@ -18,6 +18,7 @@ It:
 * Enhances mempool to consider reward miner might get by processing contract-related transactions. This impacts the persisted DB.
 * Adds garbage collection of transactions, invalid transactions (wrong nonce, insufficient balance, expired TTL, etc.) are
   removed from the mempool/tx-pool periodically.
+* Adds support for maps to Sophia.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.16.0
 

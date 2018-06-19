@@ -49,7 +49,7 @@
      | {record_t, [field_t()]}
      | {variant_t, [constructor_t()]}.
 
--type field_t() :: {field_t, ann(), mutable | immutable, id(), type()}.
+-type field_t() :: {field_t, ann(), id(), type()}.
 
 -type constructor_t() :: {constr_t, ann(), con(), [type()]}.
 
@@ -86,6 +86,9 @@
      | {typed, ann(), expr(), type()}
      | {record, ann(), [field(expr())]}
      | {record, ann(), expr(), [field(expr())]} %% record update
+     | {map, ann(), expr(), [field(expr())]}    %% map update
+     | {map, ann(), [{expr(), expr()}]}
+     | {map_get, ann(), expr()}
      | {block, ann(), [stmt()]}
      | {op(), ann()}
      | id() | qid() | con() | qcon()
@@ -96,7 +99,8 @@
 %%    r { x.y: 5 }
 %% is the same as
 %%    r { x: r.x { y: 5 } }
--type field(E) :: {field, ann(), lvalue(), E}.
+-type field(E) :: {field, ann(), lvalue(), E}
+                | {field, ann(), lvalue(), id(), E}.  %% modifying a field (id is previous value)
 
 -type stmt() :: {assign, ann(), lvalue(), expr()}
               | letbind()
@@ -104,7 +108,10 @@
 
 -type alt() :: {'case', ann(), pat(), expr()}.
 
--type lvalue() :: {proj, ann(), expr(), id()} | id().
+-type lvalue() :: nonempty_list(elim()).
+
+-type elim() :: {proj, ann(), id()}
+              | {map_get, ann(), expr()}.
 
 -type pat() :: {app, ann(), con() | op(), [pat()]}
              | {tuple, ann(), [pat()]}

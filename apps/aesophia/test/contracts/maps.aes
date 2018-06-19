@@ -1,17 +1,82 @@
 contract Maps =
 
-  type map('a, 'b) = list(('a, 'b))
+  type pt    = {x : int, y : int}
+  type state = { map_i : map(int, pt),
+                 map_s : map(string, pt) }
 
-  function new() = []
+  function init() = { map_i = {}, map_s = {} }
 
-  function mput(k:'a, v:'b, m:list(('a, 'b))) =
-    switch(m)
-      []             => [(k, v)]
-      (k, _) :: rest => [(k, v) :: rest]
-      e :: rest      => e :: mput(k, v, rest)
+  function get_state() = state
 
-  function mget(k:'a, m:list(('a, 'b))) : option('b) =
-    switch(m)
-      []             => None
-      (k, v) :: rest => Some(v)
-      e :: rest      => mget(k, rest)
+  // {[k] = v}
+  function map_i() =
+    { [1] = {x = 1, y = 2},
+      [2] = {x = 3, y = 4},
+      [3] = {x = 5, y = 6} }
+  function map_s() =
+    { ["one"]   = {x = 1, y = 2},
+      ["two"]   = {x = 3, y = 4},
+      ["three"] = {x = 5, y = 6} }
+  function map_state_i() = put(state{ map_i = map_i() })
+  function map_state_s() = put(state{ map_s = map_s() })
+
+  // m[k]
+  function get_i(k, m : map(int,    pt)) = m[k]
+  function get_s(k, m : map(string, pt)) = m[k]
+  function get_state_i(k) = get_i(k, state.map_i)
+  function get_state_s(k) = get_s(k, state.map_s)
+
+  // m{[k] = v}
+  function set_i(k, p, m : map(int,    pt)) = m{ [k] = p }
+  function set_s(k, p, m : map(string, pt)) = m{ [k] = p }
+  function set_state_i(k, p) = put(state{ map_i = set_i(k, p, state.map_i) })
+  function set_state_s(k, p) = put(state{ map_s = set_s(k, p, state.map_s) })
+
+  // m{f[k].x = v}
+  function setx_i(k, x, m : map(int,    pt)) = m{ [k].x = x }
+  function setx_s(k, x, m : map(string, pt)) = m{ [k].x = x }
+  function setx_state_i(k, x) = put(state{ map_i[k].x = x })
+  function setx_state_s(k, x) = put(state{ map_s[k].x = x })
+
+  // m{[k] @ x = v }
+  function addx_i(k, d, m : map(int,    pt)) = m{ [k].x @ x = x + d }
+  function addx_s(k, d, m : map(string, pt)) = m{ [k].x @ x = x + d }
+  function addx_state_i(k, d) = put(state{ map_i[k].x @ x = x + d })
+  function addx_state_s(k, d) = put(state{ map_s[k].x @ x = x + d })
+
+  // Map.member
+  function member_i(k, m : map(int,    pt)) = Map.member(k, m)
+  function member_s(k, m : map(string, pt)) = Map.member(k, m)
+  function member_state_i(k) = member_i(k, state.map_i)
+  function member_state_s(k) = member_s(k, state.map_s)
+
+  // Map.lookup
+  function lookup_i(k, m : map(int,    pt)) = Map.lookup(k, m)
+  function lookup_s(k, m : map(string, pt)) = Map.lookup(k, m)
+  function lookup_state_i(k) = lookup_i(k, state.map_i)
+  function lookup_state_s(k) = lookup_s(k, state.map_s)
+
+  // Map.delete
+  function delete_i(k, m : map(int,    pt)) = Map.delete(k, m)
+  function delete_s(k, m : map(string, pt)) = Map.delete(k, m)
+  function delete_state_i(k) = put(state{ map_i = delete_i(k, state.map_i) })
+  function delete_state_s(k) = put(state{ map_s = delete_s(k, state.map_s) })
+
+  // Map.size
+  function size_i(m : map(int,    pt)) = Map.size(m)
+  function size_s(m : map(string, pt)) = Map.size(m)
+  function size_state_i() = size_i(state.map_i)
+  function size_state_s() = size_s(state.map_s)
+
+  // Map.to_list
+  function tolist_i(m : map(int,    pt)) = Map.to_list(m)
+  function tolist_s(m : map(string, pt)) = Map.to_list(m)
+  function tolist_state_i() = tolist_i(state.map_i)
+  function tolist_state_s() = tolist_s(state.map_s)
+
+  // Map.from_list
+  function fromlist_i(xs : list((int,    pt))) = Map.from_list(xs)
+  function fromlist_s(xs : list((string, pt))) = Map.from_list(xs)
+  function fromlist_state_i(xs) = put(state{ map_i = fromlist_i(xs) })
+  function fromlist_state_s(xs) = put(state{ map_s = fromlist_s(xs) })
+

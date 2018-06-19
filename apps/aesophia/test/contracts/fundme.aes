@@ -3,17 +3,26 @@
  */
 contract FundMe =
 
-  type state = { contributions : map(address, uint),
-                 total         : uint,
+  type spend_args = { recipient : address,
+                      amount    : int }
+
+  type state = { contributions : map(address, int),
+                 total         : int,
                  beneficiary   : address,
-                 deadline      : uint,
-                 goal          : uint }
+                 deadline      : int,
+                 goal          : int }
+
+  private function abort(err : string) =
+    switch(0) 1 => ()
 
   private function require(b : bool, err : string) =
     if(!b) abort(err)
 
+  private function spend(args : spend_args) =
+    raw_spend(args.recipient, args.amount)
+
   public function init(beneficiary, deadline, goal) : state =
-    { contributions = Map.empty,
+    { contributions = {},
       beneficiary   = beneficiary,
       deadline      = deadline,
       total         = 0,
@@ -23,16 +32,21 @@ contract FundMe =
     Map.member(addr, state.contributions)
 
   public stateful function contribute() =
-    require(Chain.height < deadline, "Deadline has passed")
-    let amount =
-      switch(Map.lookup(Call.caller, state.contributions))
-        None    => Call.value
-        Some(n) => n + Call.value
-    put(state{ contributions[Call.caller] = amount,
-               total = state.total + Call.value })
+    if(Chain.block_height >= state.deadline)
+      spend({ recipient = Call.caller, amount = Call.value }) // Refund money
+      false
+    else
+      let amount =
+        switch(Map.lookup(Call.caller, state.contributions))
+          None    => Call.value
+          Some(n) => n + Call.value
+      put(state{ contributions[Call.caller] = amount,
+                 total @ tot = tot + Call.value })
+      true
 
   public stateful function withdraw() =
-    require(chain.height >= deadline, "Cannot withdraw before deadline")
+    if(Chain.block_height < state.deadline)
+      abort("Cannot withdraw before deadline")
     if(Call.caller == state.beneficiary)
       withdraw_beneficiary()
     elif(is_contributor(Call.caller))
@@ -47,9 +61,10 @@ contract FundMe =
     put(state{ beneficiary = #0 })
 
   private stateful function withdraw_contributor() =
-    require(state.total < state.goal, "Project was funded")
+    if(state.total >= state.goal)
+      abort("Project was funded")
     let to = Call.caller
     spend({recipient = to,
            amount    = state.contributions[to]})
-    put(state{ contributions[to] = 0 })
+    put(state{ contributions @ c = Map.delete(to, c) })
 

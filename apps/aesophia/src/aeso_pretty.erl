@@ -173,7 +173,8 @@ name({id, _,   Name})  -> text(Name);
 name({con, _,  Name})  -> text(Name);
 name({qid, _,  Names}) -> text(string:join(Names, "."));
 name({qcon, _, Names}) -> text(string:join(Names, "."));
-name({tvar, _, Name})  -> text(Name).
+name({tvar, _, Name})  -> text(Name);
+name({typed, _, Name, _}) -> name(Name).
 
 -spec letdecl(string(), aeso_syntax:letbind()) -> doc().
 letdecl(Let, {letval, _, F, T, E}) ->
@@ -202,7 +203,7 @@ constructor_t({constr_t, _, C, []}) -> name(C);
 constructor_t({constr_t, _, C, Args}) -> beside(name(C), tuple_type(Args)).
 
 -spec field_t(aeso_syntax:field_t()) -> doc().
-field_t({field_t, _, immutable, Name, Type}) ->
+field_t({field_t, _, Name, Type}) ->
     typed(name(Name), Type).
 
 -spec type(aeso_syntax:type()) -> doc().
@@ -212,6 +213,7 @@ type({app_t, _, Type, Args}) ->
     beside(type(Type), tuple_type(Args));
 type({tuple_t, _, Args}) ->
     tuple_type(Args);
+type(R = {record_t, _}) -> typedef(R);
 type(T = {id, _, _})   -> name(T);
 type(T = {qid, _, _})  -> name(T);
 type(T = {con, _, _})  -> name(T);
@@ -245,6 +247,10 @@ expr_p(_, {list, _, Es}) ->
     list(lists:map(fun expr/1, Es));
 expr_p(_, {record, _, Fs}) ->
     record(lists:map(fun field/1, Fs));
+expr_p(_, {map, Ann, KVs}) ->
+    record([ field({field, Ann, [{map_get, [], K}], V}) || {K, V} <- KVs ]);
+expr_p(P, {map, Ann, E, Flds}) ->
+    expr_p(P, {record, Ann, E, Flds});
 expr_p(P, {record, Ann, E, Fs}) ->
     paren(P > 900, hsep(expr_p(900, E), expr({record, Ann, Fs})));
 expr_p(_, {block, _, Ss}) ->
@@ -348,7 +354,20 @@ app(P, F, Args) ->
            tuple(lists:map(fun expr/1, Args)))).
 
 field({field, _, LV, E}) ->
-    follow(hsep(expr_p(900, LV), text("=")), expr(E)).
+    follow(hsep(lvalue(LV), text("=")), expr(E));
+field({field, _, LV, Id, E}) ->
+    follow(hsep([lvalue(LV), text("@"), name(Id), text("=")]), expr(E));
+field({field_upd, _, LV, Fun}) ->
+    follow(hsep(lvalue(LV), text("~")), expr(Fun)). %% Not valid syntax
+
+lvalue([E | Es]) ->
+    beside([elim(E) | lists:map(fun elim1/1, Es)]).
+
+elim({proj, _, X})      -> name(X);
+elim({map_get, Ann, K}) -> expr_p(0, {list, Ann, [K]}).
+
+elim1(Proj={proj, _, _})   -> beside(text("."), elim(Proj));
+elim1(Get={map_get, _, _}) -> elim(Get).
 
 alt({'case', _, Pat, Body}) ->
     block_expr(0, hsep(expr_p(500, Pat), text("=>")), Body).

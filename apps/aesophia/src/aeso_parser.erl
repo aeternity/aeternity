@@ -60,7 +60,7 @@ constructor() ->    %% TODO: format for Con() vs Con
            ?RULE(con(), type_args(), {constr_t, get_ann(_1), _1, _2})).
 
 type_args()  -> paren_list(type()).
-field_type() -> ?RULE(id(), tok(':'), type(), {field_t, get_ann(_1), immutable, _1, _3}).
+field_type() -> ?RULE(id(), tok(':'), type(), {field_t, get_ann(_1), _1, _3}).
 
 %% -- Let declarations -------------------------------------------------------
 
@@ -174,7 +174,7 @@ exprAtom() ->
         , ?RULE(token(hex), set_ann(format, hex, setelement(1, _1, int)))
         , {bool, keyword(true), true}
         , {bool, keyword(false), false}
-        , {record, [], brace_list(?LAZY_P(field_assignment()))}
+        , ?RULE(brace_list(?LAZY_P(field_assignment())), record(_1))
         , {list, [], bracket_list(Expr)}
         , ?RULE(tok('['), Expr, binop('..'), Expr, tok(']'), _3(_2, _4))
         , ?RULE(keyword('('), comma_sep(Expr), tok(')'), tuple_e(_1, _2))
@@ -185,7 +185,7 @@ elim() ->
     ?LAZY_P(
     choice(
     [ {proj, keyword('.'), id()}
-    , ?RULE(paren_list(expr()), {app, get_ann(_1), _1})
+    , ?RULE(paren_list(expr()), {app, [], _1})
     , ?RULE(keyword('{'), comma_sep(field_assignment()), tok('}'), {rec_upd, _1, _2})
     , ?RULE(keyword('['), expr(), keyword(']'), {map_get, _1, _2})
     ])).
@@ -193,22 +193,57 @@ elim() ->
 elim(E, [])                          -> E;
 elim(E, [{proj, Ann, P} | Es])       -> elim({proj, Ann, E, P}, Es);
 elim(E, [{app, Ann, Args} | Es])     -> elim({app, Ann, E, Args}, Es);
-elim(E, [{rec_upd, Ann, Flds} | Es]) -> elim({record, Ann, E, Flds}, Es);
+elim(E, [{rec_upd, Ann, Flds} | Es]) -> elim(record_update(Ann, E, Flds), Es);
 elim(E, [{map_get, Ann, Key} | Es])  -> elim({map_get, Ann, E, Key}, Es).
 
+record_update(Ann, E, Flds) ->
+    {record_or_map(Flds), Ann, E, Flds}.
+
+record([]) -> {map, [], []};
+record(Fs) ->
+    case record_or_map(Fs) of
+        record -> {record, get_ann(hd(Fs)), Fs};
+        map    ->
+            Ann = get_ann(hd(Fs ++ [{empty, []}])), %% TODO: source location for empty maps
+            KV = fun({field, _, [{map_get, _, Key}], Val}) -> {Key, Val};
+                    ({field, _, LV, Id, _}) ->
+                        bad_expr_err("Cannot use '@' in map construction", infix(LV, {op, Ann, '@'}, Id));
+                    ({field, _, LV, _}) ->
+                        bad_expr_err("Cannot use nested fields or keys in map construction", LV) end,
+            {map, Ann, lists:map(KV, Fs)}
+    end.
+
+record_or_map(Fields) ->
+    Kind = fun(Fld) -> case element(3, Fld) of
+                [{proj, _, _}    | _] -> proj;
+                [{map_get, _, _} | _] -> map_get
+           end end,
+    case lists:usort(lists:map(Kind, Fields)) of
+        [proj]    -> record;
+        [map_get] -> map;
+        _         ->
+            [{field, Ann, _, _} | _] = Fields,
+            bad_expr_err("Mixed record fields and map keys in", {record, Ann, Fields})
+    end.
 
 field_assignment() ->
-    ?RULE(lvalue(), tok('='), expr(), {field, get_ann(_1), _1, _3}).
+    ?RULE(lvalue(), optional({tok('@'), id()}), tok('='), expr(), field_assignment(get_ann(_3), _1, _2, _4)).
 
+field_assignment(Ann, LV, none, E) ->
+    {field, Ann, LV, E};
+field_assignment(Ann, LV, {ok, {_, Id}}, E) ->
+    {field, Ann, LV, Id, E}.
 
 lvalue() ->
-    ?LET_P(E, expr900(),
-    case E of
-        E = {proj, _, _, _}    -> E;
-        E = {id, _, _}         -> E;
-        E = {map_get, _, _, _} -> E;
-        E -> bad_expr_err("Not a valid lvalue", E)
-    end).
+    ?LET_P(E, expr900(), lvalue(E)).
+
+lvalue(E) -> lvalue(E, []).
+
+lvalue(X = {id, Ann, _}, LV)     -> [{proj, Ann, X} | LV];
+lvalue({list, Ann, [K]}, LV)     -> [{map_get, Ann, K} | LV];
+lvalue({proj, Ann, E, P}, LV)    -> lvalue(E, [{proj, Ann, P} | LV]);
+lvalue({map_get, Ann, E, K}, LV) -> lvalue(E, [{map_get, Ann, K} | LV]);
+lvalue(E, _)                     -> bad_expr_err("Not a valid lvalue", E).
 
 infix(E, Op) ->
     ?RULE(E, optional({Op, E}),
@@ -366,8 +401,8 @@ parse_pattern(E) -> bad_expr_err("Not a valid pattern", E).
 parse_field_pattern({field, Ann, F, E}) ->
     {field, Ann, F, parse_pattern(E)}.
 
-return_error(Pos, Err) ->
-    fail({parse_error, Pos, Err}).
+return_error({L, C}, Err) ->
+    fail(io_lib:format("~p:~p:\n~s", [L, C, Err])).
 
 -spec ret_doc_err(ann(), prettypr:document()) -> no_return().
 ret_doc_err(Ann, Doc) ->

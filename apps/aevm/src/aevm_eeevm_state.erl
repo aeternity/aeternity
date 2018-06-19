@@ -333,7 +333,7 @@ trace_format(String, Argument, State) ->
             State
     end.
 
--define(MAXMEMPOS,20).
+-define(MAXMEMPOS,200).
 
 format_mem(Mem) ->
    lists:flatten(

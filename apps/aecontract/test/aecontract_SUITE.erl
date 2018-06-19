@@ -23,6 +23,8 @@
         , sophia_state/1
         , sophia_spend/1
         , sophia_oracles/1
+        , sophia_maps/1
+        , sophia_fundme/1
         , create_store/1
         , update_store/1
         , read_store/1
@@ -65,7 +67,9 @@ groups() ->
     , {sophia,     [sequence], [ sophia_identity,
                                  sophia_state,
                                  sophia_spend,
-                                 sophia_oracles ]}
+                                 sophia_oracles,
+                                 sophia_maps,
+                                 sophia_fundme ]}
     , {store, [sequence], [ create_store
                           , update_store
                           , read_store
@@ -219,9 +223,11 @@ create_contract_(ContractCreateTxGasPrice) ->
     ok.
 
 sign_and_apply_transaction(Tx, PrivKey, S1, Miner) ->
+    sign_and_apply_transaction(Tx, PrivKey, S1, Miner, 1).
+
+sign_and_apply_transaction(Tx, PrivKey, S1, Miner, Height) ->
     SignedTx = aetx_sign:sign(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
-    Height   = 1,
     {ok, AcceptedTxs, Trees1} =
         aec_block_candidate:apply_block_txs([SignedTx], Miner, Trees, Height, ?PROTOCOL_VERSION),
     S2       = aect_test_utils:set_trees(Trees1, S1),
@@ -231,9 +237,11 @@ sign_and_apply_transaction(Tx, PrivKey, S1, Miner) ->
     end.
 
 sign_and_apply_transaction_strict(Tx, PrivKey, S1, Miner) ->
+    sign_and_apply_transaction_strict(Tx, PrivKey, S1, Miner, 1).
+
+sign_and_apply_transaction_strict(Tx, PrivKey, S1, Miner, Height) ->
     SignedTx = aetx_sign:sign(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
-    Height   = 1,
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
     {ok, AcceptedTxs, Trees1} =
         aec_block_candidate:apply_block_txs_strict([SignedTx], Miner, Trees, Height, ConsensusVersion),
@@ -425,9 +433,10 @@ create_contract(Owner, Name, Args, Options, S) ->
                      , fee        => 1
                      , deposit    => 0
                      , amount     => 0
-                     , gas        => 10000 }, Options), S),
-    PrivKey     = aect_test_utils:priv_key(Owner, S),
-    {ok, S1} = sign_and_apply_transaction(CreateTx, PrivKey, S, ?MINER_PUBKEY),
+                     , gas        => 10000 }, maps:remove(height, Options)), S),
+    Height   = maps:get(height, Options, 1),
+    PrivKey  = aect_test_utils:priv_key(Owner, S),
+    {ok, S1} = sign_and_apply_transaction(CreateTx, PrivKey, S, ?MINER_PUBKEY, Height),
     ContractKey = aect_contracts:compute_contract_pubkey(Owner, Nonce),
     {ContractKey, S1}.
 
@@ -444,10 +453,11 @@ call_contract(Caller, ContractKey, Fun, Type, Args, Options, S) ->
                  , call_data  => CallData
                  , fee        => 1
                  , amount     => 0
-                 , gas        => 30000
-                 }, Options), S),
+                 , gas        => 50000
+                 }, maps:remove(height, Options)), S),
+    Height   = maps:get(height, Options, 1),
     PrivKey  = aect_test_utils:priv_key(Caller, S),
-    {ok, S1} = sign_and_apply_transaction(CallTx, PrivKey, S, ?MINER_PUBKEY),
+    {ok, S1} = sign_and_apply_transaction(CallTx, PrivKey, S, ?MINER_PUBKEY, Height),
     CallKey  = aect_call:id(Caller, Nonce, ContractKey),
     CallTree = aect_test_utils:calls(S1),
     Call     = aect_call_state_tree:get_call(ContractKey, CallKey, CallTree),
@@ -459,6 +469,10 @@ call_contract(Caller, ContractKey, Fun, Type, Args, Options, S) ->
             revert -> revert
         end,
     {Result, S1}.
+
+account_balance(PubKey, S) ->
+    Account = aect_test_utils:get_account(PubKey, S),
+    {aec_accounts:balance(Account), S}.
 
 args_to_binary(Args) -> list_to_binary(args_to_list(Args)).
 
@@ -473,7 +487,10 @@ args_to_list(N) when is_integer(N) -> integer_to_list(N);
 args_to_list(L) when is_list(L) ->
     io_lib:format("[~s]", [commas(lists:map(fun args_to_list/1, L))]);
 args_to_list(T) when is_tuple(T) ->
-    io_lib:format("(~s)", [commas(lists:map(fun args_to_list/1, tuple_to_list(T)))]).
+    io_lib:format("(~s)", [commas(lists:map(fun args_to_list/1, tuple_to_list(T)))]);
+args_to_list(M) when is_map(M) ->
+    Elems = [ io_lib:format("[~s] = ~s", [args_to_list(K), args_to_list(V)]) || {K, V} <- maps:to_list(M) ],
+    ["{", string:join(Elems, ","), "}"].
 
 sophia_identity(_Cfg) ->
     state(aect_test_utils:new_state()),
@@ -543,6 +560,271 @@ sophia_oracles(_Cfg) ->
     {some, 4001}      = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
     {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Ct, 0, 10, TTL + 10}),
     ok.
+
+%% Testing map functions and primitives
+sophia_maps(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000),
+    Ct  = ?call(create_contract, Acc, maps, {}),
+
+    Call = fun(Fn, Type, Args) -> ?call(call_contract, Acc, Ct, Fn, Type, Args) end,
+
+    Pt     = {tuple, [word, word]},
+    IntMap = {map, word,   Pt},
+    StrMap = {map, string, Pt},
+    IntList = {list, {tuple, [word,   Pt]}},
+    StrList = {list, {tuple, [string, Pt]}},
+    Unit   = {tuple, []},
+    State  = {tuple, [IntMap, StrMap]},
+
+    MapI     = #{1 => {1, 2}, 2 => {3, 4}, 3 => {5, 6}},
+    MapS     = #{<<"one">> => {1, 2}, <<"two">> => {3, 4}, <<"three">> => {5, 6}},
+    EmptyMap = #{},
+
+    MapI = Call(map_i, IntMap, {}),
+    MapS = Call(map_s, StrMap, {}),
+
+    {} = Call(map_state_i, Unit, {}),
+    {} = Call(map_state_s, Unit, {}),
+
+    {MapI, MapS} = Call(get_state, State, {}),
+
+    MkOption = fun(undefined) -> none; (X) -> {some, X} end,
+
+    Calls = lists:append(
+        %% get
+        [ [{Fn,  Pt, {K, Map}, maps:get(K, Map, error)},
+           {FnS, Pt, K,        maps:get(K, Map, error)}]
+         || {Fn, FnS, Map, Err} <- [{get_i, get_state_i, MapI, 4},
+                                    {get_s, get_state_s, MapS, <<"four">>}],
+            K <- maps:keys(Map) ++ [Err] ] ++
+        %% lookup
+        [ [{Fn,  {option, Pt}, {K, Map}, MkOption(maps:get(K, Map, undefined))},
+           {FnS, {option, Pt}, K,        MkOption(maps:get(K, Map, undefined))}]
+         || {Fn, FnS, Map, Err} <- [{lookup_i, lookup_state_i, MapI, 4},
+                                    {lookup_s, lookup_state_s, MapS, <<"four">>}],
+            K <- maps:keys(Map) ++ [Err] ] ++
+        %% member
+        [ [{Fn,  bool, {K, Map}, maps:is_key(K, Map)},
+           {FnS, bool, K,        maps:is_key(K, Map)}]
+         || {Fn, FnS, Map, Err} <- [{member_i, member_state_i, MapI, 4},
+                                    {member_s, member_state_s, MapS, <<"four">>}],
+            K <- maps:keys(Map) ++ [Err] ] ++
+        %% size
+        [ [{Fn,  word, Map, maps:size(Map)},
+           {FnS, word, {},  maps:size(Map)}]
+         || {Fn, FnS, Map} <- [{size_i, size_state_i, MapI},
+                               {size_s, size_state_s, MapS}] ] ++
+        %% set (not set_state)
+        [ [{Fn, Type, {K, V, Map}, Map#{K => V}}]
+         || {Fn, Type, Map, New, V} <- [{set_i, IntMap, MapI, 4, {7, 8}},
+                                        {set_s, StrMap, MapS, <<"four">>, {7, 8}}],
+            K <- maps:keys(Map) ++ [New] ] ++
+        %% setx (not setx_state)
+        [ [{Fn, Type, {K, V, Map}, case Map of #{K := {_, Y}} -> Map#{K => {V, Y}}; _ -> error end}]
+         || {Fn, Type, Map, New, V} <- [{setx_i, IntMap, MapI, 4, 7},
+                                        {setx_s, StrMap, MapS, <<"four">>, 7}],
+            K <- maps:keys(Map) ++ [New] ] ++
+        %% addx (not addx_state)
+        [ [{Fn, Type, {K, V, Map}, case Map of #{K := {X, Y}} -> Map#{K => {X + V, Y}}; _ -> error end}]
+         || {Fn, Type, Map, New, V} <- [{addx_i, IntMap, MapI, 4, 7},
+                                        {addx_s, StrMap, MapS, <<"four">>, 7}],
+            K <- maps:keys(Map) ++ [New] ] ++
+        %% delete (not delete_state)
+        [ [{Fn, Type, {K, Map}, maps:remove(K, Map)}]
+         || {Fn, Type, Map, New} <- [{delete_i, IntMap, MapI, 4},
+                                     {delete_s, StrMap, MapS, <<"four">>}],
+            K <- maps:keys(Map) ++ [New] ] ++
+        %% fromlist (not fromlist_state)
+        [ [{Fn, Type, maps:to_list(Map), Map}]
+         || {Fn, Type, Map} <- [{fromlist_i, IntMap, MapI},
+                                {fromlist_s, StrMap, MapS}] ] ++
+        []),
+
+    _ = [ Result = Call(Fn, Type, Args) || {Fn, Type, Args, Result} <- Calls ],
+
+    %% to_list (not tolist_state)
+    _ = [ {Xs, Xs} = {lists:keysort(1, Call(Fn, Type, Map)), maps:to_list(Map)}
+            || {Fn, Type, Map} <- [{tolist_i, IntList, MapI},
+                                   {tolist_s, StrList, MapS}] ],
+
+    %% Reset the state
+    Call(fromlist_state_i, Unit, []),
+    Call(fromlist_state_s, Unit, []),
+    {EmptyMap, EmptyMap} = Call(get_state, State, {}),
+
+    %% fromlist_state
+    Call(fromlist_state_i, Unit, maps:to_list(MapI)),
+    Call(fromlist_state_s, Unit, maps:to_list(MapS)),
+    {MapI, MapS} = Call(get_state, State, {}),
+
+    %% tolist_state
+    _ = [ {Xs, Xs} = {lists:keysort(1, Call(Fn, Type, {})), maps:to_list(Map)}
+            || {Fn, Type, Map} <- [{tolist_state_i, IntList, MapI},
+                                   {tolist_state_s, StrList, MapS}] ],
+
+    %% set_state
+    DeltaI1 = #{ 3 => {100, 200}, 4 => {300, 400} },
+    DeltaS1 = #{ <<"three">> => {100, 200}, <<"four">> => {300, 400} },
+    MapI1 = maps:merge(MapI, DeltaI1),
+    MapS1 = maps:merge(MapS, DeltaS1),
+    _ = [ {} = Call(Fn, Unit, {K, V})
+            || {Fn, Delta} <- [{set_state_i, DeltaI1}, {set_state_s, DeltaS1}],
+               {K, V} <- maps:to_list(Delta) ],
+    {MapI1, MapS1} = Call(get_state, State, {}),
+
+    %% setx_state/addx_state
+    DeltaI2 = [{set, 4, 50}, {set, 5, 300}, {add, 2, 10}, {add, 5, 10}],
+    DeltaS2 = [{set, <<"four">>, 50}, {set, <<"five">>, 300}, {add, <<"one">>, 100}, {add, <<"...">>, 1}],
+    Upd = fun({Op, K, V}, M) ->
+            case maps:get(K, M, undefined) of
+                undefined -> M;
+                {X, Y}    -> M#{K := {case Op of set -> V; add -> X + V end, Y}} end end,
+    MapI2 = lists:foldr(Upd, MapI1, DeltaI2),
+    MapS2 = lists:foldr(Upd, MapS1, DeltaS2),
+    _ = [ begin
+            T   = if is_integer(K) -> i; true -> s end,
+            Fn  = list_to_atom(lists:concat([Op, "x_state_", T])),
+            Res = case maps:is_key(K, Map) of true -> {}; false -> error end,
+            Res = Call(Fn, Unit, {K, V})
+          end || {Map, Delta} <- [{MapI1, DeltaI2}, {MapS1, DeltaS2}],
+               {Op, K, V} <- Delta ],
+    {MapI2, MapS2} = Call(get_state, State, {}),
+
+    %% delete_state
+    DeltaI3 = [2, 5],
+    DeltaS3 = [<<"four">>, <<"five">>],
+    MapI3 = lists:foldr(fun maps:remove/2, MapI2, DeltaI3),
+    MapS3 = lists:foldr(fun maps:remove/2, MapS2, DeltaS3),
+    _ = [ {} = Call(Fn, Unit, K)
+            || {Fn, Ks} <- [{delete_state_i, DeltaI3}, {delete_state_s, DeltaS3}],
+               K <- Ks ],
+    {MapI3, MapS3} = Call(get_state, State, {}),
+
+    ok.
+
+
+%% The crowd funding example.
+
+-record(fundme_scenario,
+    { name
+    , goal
+    , deadline
+    , events }).
+
+run_scenario(#fundme_scenario
+             { name     = Scenario
+             , goal     = Goal
+             , deadline = Deadline
+             , events   = Events }) ->
+
+    state(aect_test_utils:new_state()),
+    Denomination  = 1000 * 1000,
+    StartingFunds = 1000 * 1000 * Denomination,
+    InvestorNames = [ Investor || {contribute, Investor, _Amount, _Height} <- Events ],
+
+    %% Set up accounts
+    Beneficiary   = ?call(new_account, StartingFunds),
+    Organiser     = ?call(new_account, StartingFunds),
+    Investors     = maps:from_list([ {Name, ?call(new_account, StartingFunds)} || Name <- InvestorNames ]),
+
+    %% Create the contract
+    Contract      = ?call(create_contract, Organiser, fundme, {Beneficiary, Deadline, Goal * Denomination}),
+
+    %% Run the events
+    Account = fun(beneficiary) -> Beneficiary; (Name) -> maps:get(Name, Investors) end,
+    RunEvent = fun({contribute, Name, Amount, Height}) ->
+                    ?call(call_contract, Account(Name), Contract, contribute, bool, {},
+                                #{amount => Amount * Denomination, height => Height});
+                  ({withdraw, Name, Height, _}) ->
+                    ?call(call_contract, Account(Name), Contract, withdraw, {tuple, []}, {},
+                          #{height => Height})
+               end,
+
+    Results = [ {E, RunEvent(E)} || E <- Events ],
+
+    %% Analyse scenario
+    Contributed = fun(By) ->
+        lists:sum([ Amount || {contribute, Name, Amount, Height} <- Events,
+                              By == any orelse By == Name, Height < Deadline ]) end,
+
+    TotalFunds    = Contributed(any),
+    Funded        = TotalFunds >= Goal,
+
+    Withdrawn = fun(By) ->
+            [] /= [ w || {withdraw, Name, Height, _} <- Events,
+                         Name == By, Height >= Deadline, not Funded ]
+        end,
+
+    Contributions = maps:map(fun(Name, _) ->
+        case Withdrawn(Name) of
+            true  -> 0;
+            false -> Contributed(Name)
+        end end, Investors),
+
+    GasDelta = 100000,
+    Is = fun(_, Expect, Actual) when Expect - GasDelta =< Actual, Actual =< Expect -> true;
+            (Tag, Expect, Actual) -> {Scenario, Tag, Actual, is_not, Expect, minus_gas} end,
+
+    BeneficiaryWithdraw = [] /= [ w || {withdraw, beneficiary, Height, _} <- Events,
+                                       Funded, Height >= Deadline ],
+
+    io:format("TotalFunds = ~p\n", [TotalFunds]),
+
+    %% Check results
+    ExpectedResult =
+        fun({withdraw, _, _, ok})       -> {};
+           ({withdraw, _, _, error})    -> error;
+           ({contribute, _, _, Height}) -> Height < Deadline end,
+    lists:foreach(fun({E, Res}) ->
+        Expect = ExpectedResult(E),
+        case Expect == Res of
+            true -> ok;
+            _    -> exit({Scenario, E, expected, Expect, got, Res})
+        end end, Results),
+
+    %% Check beneficiary balance
+    BalanceB = ?call(account_balance, Beneficiary),
+    true = Is(beneficiary,
+              if BeneficiaryWithdraw -> TotalFunds * Denomination;
+                 true                -> 0 end, BalanceB - StartingFunds),
+
+    %% Check investor balances
+    lists:foreach(fun({Name, Acc}) ->
+            Bal    = ?call(account_balance, Acc),
+            Expect = -maps:get(Name, Contributions),
+            true = Is(Name, Expect * Denomination, Bal - StartingFunds)
+        end, maps:to_list(Investors)),
+
+    ok.
+
+sophia_fundme(_Cfg) ->
+    Funded = #fundme_scenario{
+        name     = funded_scenario,
+        goal     = 10,
+        deadline = 2000,
+        events   =
+            [{contribute, {investor, I}, I, 1000 + 100 * I} || I <- lists:seq(1, 5)] ++
+            [{contribute, {investor, 2}, 5, 1900},
+             {withdraw, beneficiary, 2100,   ok},
+             {contribute, {investor, 1}, 3, 2150},
+             {withdraw, beneficiary, 2200,   error},
+             {withdraw, {investor, 5}, 2200, error} ] },
+
+    NotFunded = #fundme_scenario{
+        name     = not_funded_scenario,
+        goal     = 25,
+        deadline = 2000,
+        events   =
+            [{contribute, {investor, I}, I, 1000 + 100 * I} || I <- lists:seq(1, 5)] ++
+            [{contribute, {investor, 2}, 5, 1900},
+             {withdraw, beneficiary, 2100, error},
+             {contribute, {investor, 2}, 3, 2150}] ++
+            [{withdraw, {investor, I}, 2200 + I, ok} || I <- lists:seq(1, 4)] ++
+            [{withdraw, {investor, 3}, 2300, error}] },
+
+    run_scenario(Funded),
+    run_scenario(NotFunded).
 
 %%%===================================================================
 %%% Store

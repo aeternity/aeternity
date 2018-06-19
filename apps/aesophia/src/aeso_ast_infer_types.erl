@@ -13,19 +13,24 @@
 global_env() ->
     Ann     = [{origin, system}],
     Int     = {id, Ann, "int"},
+    Bool    = {id, Ann, "bool"},
     String  = {id, Ann, "string"},
     Address = {id, Ann, "address"},
     State   = {id, Ann, "state"},
     Oracle  = fun(Q, R) -> {app_t, Ann, {id, Ann, "oracle"}, [Q, R]} end,
     Query   = fun(Q, R) -> {app_t, Ann, {id, Ann, "oracle_query"}, [Q, R]} end,
     Unit    = {tuple_t, Ann, []},
+    List    = fun(T) -> {app_t, Ann, {id, Ann, "list"}, [T]} end,
+    Option  = fun(T) -> {app_t, Ann, {id, Ann, "option"}, [T]} end,
+    Map     = fun(A, B) -> {app_t, Ann, {id, Ann, "map"}, [A, B]} end,
+    Pair    = fun(A, B) -> {tuple_t, Ann, [A, B]} end,
     Fun     = fun(Ts, T) -> {type_sig, Ts, T} end,
     Fun1    = fun(S, T) -> Fun([S], T) end,
     TVar    = fun(X) -> {tvar, Ann, "'" ++ X} end,
     Signature = Int,
     TTL       = Int,
     Fee       = Int,
-    [A, B, Q, R] = lists:map(TVar, ["a", "b", "q", "r"]),
+    [A, B, Q, R, K, V] = lists:map(TVar, ["a", "b", "q", "r", "k", "v"]),
      %% Placeholder for inter-contract calls until we get proper type checking
      %% of contracts.
     [{"raw_call", Fun([Address, String, Int, Int, A], B)},
@@ -56,10 +61,18 @@ global_env() ->
      {["Oracle", "get_question"], Fun([Oracle(Q, R), Query(Q, R)], Q)},
      {["Oracle", "respond"],      Fun([Oracle(Q, R), Query(Q, R), Signature, R], Unit)},
      {["Oracle", "extend"],       Fun([Oracle(Q, R), Signature, Fee, TTL], Unit)},
-     {["Oracle", "get_answer"],   Fun([Oracle(Q, R), Query(Q, R)], option_t(Ann, R))}
+     {["Oracle", "get_answer"],   Fun([Oracle(Q, R), Query(Q, R)], option_t(Ann, R))},
+     %% Maps
+     {["Map", "from_list"], Fun1(List(Pair(K, V)), Map(K, V))},
+     {["Map", "to_list"],   Fun1(Map(K, V), List(Pair(K, V)))},
+     {["Map", "lookup"],    Fun([K, Map(K, V)], Option(V))},
+     {["Map", "delete"],    Fun([K, Map(K, V)], Map(K, V))},
+     {["Map", "member"],    Fun([K, Map(K, V)], Bool)},
+     {["Map", "size"],      Fun1(Map(K, V), Int)}
     ].
 
 option_t(As, T) -> {app_t, As, {id, As, "option"}, [T]}.
+map_t(As, K, V) -> {app_t, As, {id, As, "map"}, [K, V]}.
 
 infer([{contract, Attribs, ConName, Code}|Rest]) ->
     %% do type inference on each contract independently.
@@ -67,7 +80,8 @@ infer([{contract, Attribs, ConName, Code}|Rest]) ->
 infer([]) ->
     [].
 
-infer_contract(Defs) ->
+infer_contract(Defs0) ->
+    Defs = desugar(Defs0),
     create_record_types(Defs),
     C = unfold_record_types(infer_contract(global_env(), Defs)),
     destroy_record_types(),
@@ -106,14 +120,18 @@ check_fundecl(_, {fun_decl, _Attrib, {id, _, Name}, Type}) ->
 %%     print_typesig(TypeSig),
 %%     Result.
 
+typesig_to_fun_t({type_sig, Args, Res}) -> {fun_t, [], Args, Res}.
+
 infer_letrec(Env, {letrec, Attrs, Defs}) ->
     ets:new(type_vars, [set, named_table, public]),
     create_unification_errors(),
     create_field_constraints(),
-    ExtendEnv = [{Name, fresh_uvar(A)}
-		 || {letfun, _, {id, A, Name}, _, _, _} <- Defs]
-	++ Env,
+    Env1 = [{Name, fresh_uvar(A)}
+		 || {letfun, _, {id, A, Name}, _, _, _} <- Defs],
+    ExtendEnv = Env1 ++ Env,
     Inferred = [infer_letfun(ExtendEnv, LF) || LF <- Defs],
+    [ unify(proplists:get_value(Name, Env1), typesig_to_fun_t(TypeSig))
+        || {{Name, TypeSig}, _} <- Inferred ],
     solve_field_constraints(),
     TypeSigs = instantiate([Sig || {Sig, _} <- Inferred]),
     NewDefs = instantiate([D || {_, D} <- Inferred]),
@@ -146,8 +164,9 @@ arg_type(T) ->
 lookup_name(Env, As, Name) ->
     case proplists:get_value(Name, Env) of
 	undefined ->
-	    io:format("Unbound variable: ~p\n", [Name]),
-	    error({unbound_variable, Name});
+            Line = line_number({id, As, Name}),
+	    io:format("Line ~p: unbound variable: ~p\n", [Line, Name]),
+	    error({unbound_variable, Line, Name});
 	{type_sig, ArgTypes, ReturnType} ->
 	    ets:new(freshen_tvars, [set, public, named_table]),
 	    Type = freshen({fun_t, As, ArgTypes, ReturnType}),
@@ -157,12 +176,19 @@ lookup_name(Env, As, Name) ->
             Type
     end.
 
+check_expr(Env, Expr, Type) ->
+    E = {typed, _, _, Type1} = infer_expr(Env, Expr),
+    unify(Type1, Type),
+    E.
+
 infer_expr(_Env, Body={bool, As, _}) ->
     {typed, As, Body, {id, As, "bool"}};
 infer_expr(_Env, Body={int, As, _}) ->
     {typed, As, Body, {id, As, "int"}};
 infer_expr(_Env, Body={string, As, _}) ->
     {typed, As, Body, {id, As, "string"}};
+infer_expr(_Env, Body={hash, As, _}) ->
+    {typed, As, Body, {id, As, "address"}};
 infer_expr(_Env, Body={id, As, "_"}) ->
     {typed, As, Body, fresh_uvar(As)};
 infer_expr(Env, Body={id, As, Name}) ->
@@ -216,9 +242,8 @@ infer_expr(Env, {app, As, Fun, Args}) ->
 infer_expr(Env, {'if', Attrs, Cond, Then, Else}) ->
     NewCond={typed, _, _, CondType} = infer_expr(Env, Cond),
     unify(CondType, {id, Attrs, "bool"}),
-    NewThen={typed, _, _, ThenType} = infer_expr(Env, Then),
-    NewElse={typed, _, _, ElseType} = infer_expr(Env, Else),
-    unify(ThenType, ElseType),
+    NewThen = {typed, _, _, ThenType} = infer_expr(Env, Then),
+    NewElse = check_expr(Env, Else, ThenType),
     {typed, Attrs, {'if', Attrs, NewCond, NewThen, NewElse}, ThenType};
 infer_expr(Env, {switch, Attrs, Expr, Cases}) ->
     NewExpr = {typed, _, _, ExprType} = infer_expr(Env, Expr),
@@ -230,21 +255,40 @@ infer_expr(Env, {record, Attrs, Fields}) ->
     RecordType = fresh_uvar(Attrs),
     NewFields = [{field, A, FieldName, infer_expr(Env, Expr)}
 		 || {field, A, FieldName, Expr} <- Fields],
-    constrain([{RecordType, FieldName, T}
-	       || {field, _, FieldName, {typed, _, _, T}} <- NewFields]),
+    constrain([case LV of
+                [{proj, _, FieldName}] -> {RecordType, FieldName, T}
+	       end || {field, _, LV, {typed, _, _, T}} <- NewFields]),
     {typed, Attrs, {record, Attrs, NewFields}, RecordType};
 infer_expr(Env, {record, Attrs, Record, Update}) ->
     NewRecord = {typed, _, _, RecordType} = infer_expr(Env, Record),
-    NewUpdate = [{field, A, FieldName, infer_expr(Env, Expr)}
-		 || {field, A, FieldName, Expr} <- Update],
-    constrain([{RecordType, FieldName, T}
-	       || {field, _, FieldName, {typed, _, _, T}} <- NewUpdate]),
+    NewUpdate = [ check_record_update(Env, RecordType, Fld) || Fld <- Update ],
     {typed, Attrs, {record, Attrs, NewRecord, NewUpdate}, RecordType};
 infer_expr(Env, {proj, Attrs, Record, FieldName}) ->
     NewRecord = {typed, _, _, RecordType} = infer_expr(Env, Record),
     FieldType = fresh_uvar(Attrs),
     constrain({RecordType, FieldName, FieldType}),
     {typed, Attrs, {proj, Attrs, NewRecord, FieldName}, FieldType};
+%% Maps
+infer_expr(Env, {map_get, Attrs, Map, Key}) ->  %% map lookup
+    KeyType = fresh_uvar(Attrs),
+    ValType = fresh_uvar(Attrs),
+    MapType = map_t(Attrs, KeyType, ValType),
+    Map1 = check_expr(Env, Map, MapType),
+    Key1 = check_expr(Env, Key, KeyType),
+    {typed, Attrs, {map_get, Attrs, Map1, Key1}, ValType};
+infer_expr(Env, {map, Attrs, KVs}) ->   %% map construction
+    KeyType = fresh_uvar(Attrs),
+    ValType = fresh_uvar(Attrs),
+    KVs1 = [ {check_expr(Env, K, KeyType), check_expr(Env, V, ValType)}
+             || {K, V} <- KVs ],
+    {typed, Attrs, {map, Attrs, KVs1}, map_t(Attrs, KeyType, ValType)};
+infer_expr(Env, {map, Attrs, Map, Updates}) -> %% map update
+    KeyType  = fresh_uvar(Attrs),
+    ValType  = fresh_uvar(Attrs),
+    MapType  = map_t(Attrs, KeyType, ValType),
+    Map1     = check_expr(Env, Map, MapType),
+    Updates1 = [ check_map_update(Env, Upd, KeyType, ValType) || Upd <- Updates ],
+    {typed, Attrs, {map, Attrs, Map1, Updates1}, MapType};
 infer_expr(Env, {block, Attrs, Stmts}) ->
     BlockType = fresh_uvar(Attrs),
     NewStmts = infer_block(Env, Attrs, Stmts, BlockType),
@@ -257,6 +301,32 @@ infer_expr(Env, {lam, Attrs, Args, Body}) ->
 	infer_case(Env, Attrs, {tuple, Attrs, ArgPatterns}, {tuple_t, Attrs, ArgTypes}, Body, ResultType),
     NewArgs = [{arg, As, NewPat, NewT} || {typed, As, NewPat, NewT} <- NewArgPatterns],
     {typed, Attrs, {lam, Attrs, NewArgs, NewBody}, {fun_t, Attrs, ArgTypes, ResultType}}.
+
+check_map_update(Env, {field, Ann, [{map_get, Ann1, Key}], Val}, KeyType, ValType) ->
+    Key1 = check_expr(Env, Key, KeyType),
+    Val1 = check_expr(Env, Val, ValType),
+    {field, Ann, [{map_get, Ann1, Key1}], Val1};
+check_map_update(Env, {field, Ann, [{map_get, Ann1, Key}], Id, Val}, KeyType, ValType) ->
+    FunType = {fun_t, Ann, [ValType], ValType},
+    Key1    = check_expr(Env, Key, KeyType),
+    Fun     = check_expr(Env, {lam, Ann1, [{arg, Ann1, Id, ValType}], Val}, FunType),
+    {field_upd, Ann, [{map_get, Ann1, Key1}], Fun};
+check_map_update(_, {field, Ann, Flds, _}, _, _) ->
+    error({nested_map_updates_not_implemented, Ann, Flds}).
+
+check_record_update(Env, RecordType, Fld) ->
+    [field, Ann, LV = [{proj, Ann1, FieldName}] | Val] = tuple_to_list(Fld),
+    FldType = fresh_uvar(Ann),
+    Fld1 = case Val of
+            [Expr] ->
+                {field, Ann, LV, check_expr(Env, Expr, FldType)};
+            [Id, Expr] ->
+                Fun     = {lam, Ann1, [{arg, Ann1, Id, FldType}], Expr},
+                FunType = {fun_t, Ann1, [FldType], FldType},
+                {field_upd, Ann, LV, check_expr(Env, Fun, FunType)}
+        end,
+    constrain([{RecordType, FieldName, FldType}]),
+    Fld1.
 
 infer_op(Env, As, Op, Args, InferOp) ->
     TypedArgs = [infer_expr(Env, A) || A <- Args],
@@ -323,9 +393,9 @@ infer_infix({RelOp, As})
   when RelOp == '=='; RelOp == '!=';
        RelOp == '<';  RelOp == '>';
        RelOp == '<='; RelOp == '=<'; RelOp == '>=' ->
-    Int = {id, As, "int"},
+    T = fresh_uvar(As),     %% allow any type here, check in ast_to_icode that we have comparison for it
     Bool = {id, As, "bool"},
-    {fun_t, As, [Int, Int], Bool};
+    {fun_t, As, [T, T], Bool};
 infer_infix({'::', As}) ->
     ElemType = fresh_uvar(As),
     ListType = {app_t, As, {id, As, "list"}, [ElemType]},
@@ -373,7 +443,7 @@ create_record_types(Defs) ->
     [begin
 	 ets:insert(record_types, {Name, Args, Fields}),
 	 [ets:insert(record_fields, {FieldName, FieldType, {app_t, Attrs, Id, Args}})
-	  || {field_t, _, _, {id, _, FieldName}, FieldType} <- Fields]
+	  || {field_t, _, {id, _, FieldName}, FieldType} <- Fields]
      end
      || {type_def, Attrs, Id={id, _, Name}, Args, {record_t, Fields}} <- Defs].
 
@@ -460,10 +530,10 @@ solve_known_record_types(Constraints) ->
 	     RecId = {id, Attrs, RecName} = record_type_name(RecType),
 	     case ets:lookup(record_types, RecName) of
 		 [] ->
-		     io:format("Undefined record type: ~s\n", RecName),
+		     io:format("Undefined record type: ~s\n", [RecName]),
 		     error({undefined_record_type, RecName});
 		 [{RecName, Formals, Fields}] ->
-		     FieldTypes = [{Name, Type} || {field_t, _, _, {id, _, Name}, Type} <- Fields],
+		     FieldTypes = [{Name, Type} || {field_t, _, {id, _, Name}, Type} <- Fields],
 		     {id, _, FieldString} = FieldName,
                      Line = line_number(FieldName),
 		     case proplists:get_value(FieldString, FieldTypes) of
@@ -500,7 +570,7 @@ solve_for_uvar(UVar, Fields) ->
     Candidates = [RecName || {_, _, {app_t, _, {id, _, RecName}, _}} <- ets:lookup(record_fields, hd(Fields))],
     TypesAndFields = [case ets:lookup(record_types, RecName) of
 			  [{RecName, _, RecFields}] ->
-			      {RecName, [Field || {field_t, _, _, {id, _, Field}, _} <- RecFields]};
+			      {RecName, [Field || {field_t, _, {id, _, Field}, _} <- RecFields]};
 			  [] ->
 			      error({no_definition_for, RecName, in, Candidates})
 		      end
@@ -539,6 +609,14 @@ lowest_scores([]) ->
 %% definition. This enables the code generator to see the fields.
 unfold_record_types({typed, Attr, E, Type}) ->
     {typed, Attr, unfold_record_types(E), unfold_record_types_in_type(Type)};
+unfold_record_types({arg, Attr, Id, Type}) ->
+    {arg, Attr, Id, unfold_record_types_in_type(Type)};
+unfold_record_types({type_sig, Args, Ret}) ->
+    {type_sig, unfold_record_types_in_type(Args), unfold_record_types_in_type(Ret)};
+unfold_record_types({type_def, Ann, Name, Args, Def}) ->
+    {type_def, Ann, Name, Args, unfold_record_types_in_type(Def)};
+unfold_record_types({letfun, Ann, Name, Args, Type, Body}) ->
+    {letfun, Ann, Name, unfold_record_types(Args), unfold_record_types_in_type(Type), unfold_record_types(Body)};
 unfold_record_types(T) when is_tuple(T) ->
     list_to_tuple(unfold_record_types(tuple_to_list(T)));
 unfold_record_types([H|T]) ->
@@ -546,7 +624,7 @@ unfold_record_types([H|T]) ->
 unfold_record_types(X) ->
     X.
 
-unfold_record_types_in_type(Type={app_t, _, {id, _, RecName}, Args}) ->
+unfold_record_types_in_type({app_t, Ann, Id = {id, _, RecName}, Args}) ->
     case ets:lookup(record_types, RecName) of
 	[{RecName, Formals, Fields}] when length(Formals) == length(Args) ->
 	    {record_t,
@@ -554,7 +632,7 @@ unfold_record_types_in_type(Type={app_t, _, {id, _, RecName}, Args}) ->
 	       subst_tvars(lists:zip(Formals, Args), Fields))};
 	_ ->
 	    %% Not a record type, or ill-formed record type.
-	    Type
+	    {app_t, Ann, Id, unfold_record_types_in_type(Args)}
     end;
 unfold_record_types_in_type(Type={id, _, RecName}) ->
     %% Like the case above, but for record types without parameters.
@@ -566,8 +644,8 @@ unfold_record_types_in_type(Type={id, _, RecName}) ->
 	    %% Not a record type, or ill-formed record type
 	    Type
     end;
-unfold_record_types_in_type({field_t, Attr, Mut, Name, Type}) ->
-    {field_t, Attr, Mut, Name, unfold_record_types_in_type(Type)};
+unfold_record_types_in_type({field_t, Attr, Name, Type}) ->
+    {field_t, Attr, Name, unfold_record_types_in_type(Type)};
 unfold_record_types_in_type(T) when is_tuple(T) ->
     list_to_tuple(unfold_record_types_in_type(tuple_to_list(T)));
 unfold_record_types_in_type([H|T]) ->
@@ -599,18 +677,18 @@ unify(T1, T2) ->
 
 unify1({uvar, _, R}, {uvar, _, R}) ->
     true;
-unify1({uvar, _A, R}, T) ->
+unify1({uvar, A, R}, T) ->
     case occurs_check(R, T) of
-        %% TODO:
-	%% true ->
-	%%     cannot_unify({uvar, A, R}, T),
-	%%     false;
+	true ->
+	    cannot_unify({uvar, A, R}, T),
+	    false;
 	false ->
 	    ets:insert(type_vars, {R, T}),
 	    true
     end;
 unify1(T, {uvar, A, R}) ->
     unify1({uvar, A, R}, T);
+unify1({tvar, _, X}, {tvar, _, X}) -> true; %% Rigid type variables
 unify1([A|B], [C|D]) ->
     unify(A, C) andalso unify(B, D);
 unify1(X, X) ->
@@ -646,9 +724,21 @@ dereference(T = {uvar, _, R}) ->
 dereference(T) ->
     T.
 
-occurs_check(_R, _T) ->
-    %% TODO
-    false.
+occurs_check(R, T) ->
+    occurs_check1(R, dereference(T)).
+
+occurs_check1(R, {uvar, _, R1}) -> R == R1;
+occurs_check1(_, {id, _, _}) -> false;
+occurs_check1(_, {tvar, _, _}) -> false;
+occurs_check1(R, {fun_t, _, Args, Res}) ->
+    occurs_check(R, [Res | Args]);
+occurs_check1(R, {app_t, _, T, Ts}) ->
+    occurs_check(R, [T | Ts]);
+occurs_check1(R, {tuple_t, _, Ts}) ->
+    occurs_check(R, Ts);
+occurs_check1(R, [H | T]) ->
+    occurs_check(R, H) orelse occurs_check(R, T);
+occurs_check1(_, []) -> false.
 
 fresh_uvar(Attrs) ->
     {uvar, Attrs, make_ref()}.
@@ -695,12 +785,14 @@ create_unification_errors() ->
     ets:new(unification_errors, [bag, named_table, public]).
 
 destroy_and_report_unification_errors() ->
+    Errors = ets:tab2list(unification_errors),
     [io:format("Cannot unify ~s (from line ~p)\n"
 	       "         and ~s (from line ~p)\n",
 	       [pp(instantiate(A)), line_number(A),
 		pp(instantiate(B)), line_number(B)])
-     || {A, B} <- ets:tab2list(unification_errors)],
-    ets:delete(unification_errors).
+     || {A, B} <- Errors],
+    ets:delete(unification_errors),
+    [ error(unification_errors) || Errors /= [] ].
 
 line_number(T) ->
     aeso_syntax:get_ann(line, T, 0).
@@ -728,3 +820,70 @@ pp({app_t, _, {id, _, Name}, Args}) ->
 pp({fun_t, _, As, B}) ->
     ["(", pp(As), ") => ", pp(B)].
 
+%% -- Pre-type checking desugaring -------------------------------------------
+
+%% Desugars nested record/map updates as follows:
+%%  { x.y = v1, x.z @ z = f(z) } becomes { x @ __x = __x { y = v1, z @ z = f(z) } }
+%%  { [k1].x = v1, [k2].y = v2 } becomes { [k1] @ __x = __x { x = v1 }, [k2] @ __x = __x { y = v2 } }
+%% There's no comparison of k1 and k2 to group the updates if they are equal.
+desugar({record, Ann, Rec, Updates}) ->
+    {record, Ann, Rec, desugar_updates(Updates)};
+desugar({map, Ann, Map, Updates}) ->
+    {map, Ann, Map, desugar_updates(Updates)};
+desugar([H|T]) ->
+  [desugar(H) | desugar(T)];
+desugar(T) when is_tuple(T) ->
+  list_to_tuple(desugar(tuple_to_list(T)));
+desugar(X) -> X.
+
+desugar_updates([]) -> [];
+desugar_updates([Upd | Updates]) ->
+    {Key, MakeField, Rest} = update_key(Upd),
+    {More, Updates1}       = updates_key(Key, Updates),
+    %% Check conflicts
+    case length([ [] || [] <- [Rest | More] ]) of
+        N when N > 1 -> error({conflicting_updates_for_field, element(2, Upd), Key});
+        _ -> ok
+    end,
+    [MakeField(lists:append([Rest | More])) | desugar_updates(Updates1)].
+
+%% TODO: refactor representation to make this not horrible
+update_key(Fld = {field, _, [Elim], _}) ->
+    {elim_key(Elim), fun(_) -> Fld end, []};
+update_key(Fld = {field, _, [Elim], _, _}) ->
+    {elim_key(Elim), fun(_) -> Fld end, []};
+update_key({field, Ann, [P = {proj, _, {id, _, Name}} | Rest], Value}) ->
+    {Name, fun(Flds) -> {field, Ann, [P], {id, [], "__x"},
+                            desugar(map_or_record(Ann, {id, [], "__x"}, Flds))}
+           end, [{field, Ann, Rest, Value}]};
+update_key({field, Ann, [P = {proj, _, {id, _, Name}} | Rest], Id, Value}) ->
+    {Name, fun(Flds) -> {field, Ann, [P], {id, [], "__x"},
+                            desugar(map_or_record(Ann, {id, [], "__x"}, Flds))}
+           end, [{field, Ann, Rest, Id, Value}]};
+update_key({field, Ann, [K = {map_get, _, _} | Rest], Value}) ->
+    {map_key, fun(Flds) -> {field, Ann, [K], {id, [], "__x"},
+                            desugar(map_or_record(Ann, {id, [], "__x"}, Flds))}
+              end, [{field, Ann, Rest, Value}]};
+update_key({field, Ann, [K = {map_get, _, _} | Rest], Id, Value}) ->
+    {map_key, fun(Flds) -> {field, Ann, [K], {id, [], "__x"},
+                            desugar(map_or_record(Ann, {id, [], "__x"}, Flds))}
+              end, [{field, Ann, Rest, Id, Value}]}.
+
+map_or_record(Ann, Val, Flds = [Fld | _]) ->
+    Kind = case element(3, Fld) of
+             [{proj, _, _}    | _] -> record;
+             [{map_get, _, _} | _] -> map
+           end,
+    {Kind, Ann, Val, Flds}.
+
+elim_key({proj, _, {id, _, Name}}) -> Name;
+elim_key({map_get, _, _})          -> map_key.  %% no grouping on map keys (yet)
+
+updates_key(map_key, Updates) -> {[], Updates};
+updates_key(Name, Updates) ->
+    Xs = [ {Upd, Name1 == Name, Rest}
+           || Upd <- Updates,
+              {Name1, _, Rest} <- [update_key(Upd)] ],
+    Updates1 = [ Upd  || {Upd, false, _} <- Xs ],
+    More     = [ Rest || {_, true, Rest} <- Xs ],
+    {More, Updates1}.
