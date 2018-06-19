@@ -21,7 +21,7 @@
          key_hash/1,
          set_target/2,
          new_key/8,
-         new_micro/9,
+         new_micro/8,
          from_header_and_txs/2,
          to_header/1,
          serialize_to_binary/1,
@@ -136,9 +136,8 @@ new_key(Height, PrevHash, RootHash, Target, Nonce, Time, Version, Miner) ->
           , miner     = Miner }.
 
 -spec new_micro(height(), block_header_hash(), block_header_hash(), state_hash(), txs_hash(),
-    list(aetx_sign:signed_tx()), non_neg_integer(), non_neg_integer(),
-    miner_pubkey()) -> block().
-new_micro(Height, PrevHash, KeyBlockHash, RootHash, TxsHash, Txs, Time, Version, Miner) ->
+    list(aetx_sign:signed_tx()), non_neg_integer(), non_neg_integer()) -> block().
+new_micro(Height, PrevHash, KeyBlockHash, RootHash, TxsHash, Txs, Time, Version) ->
     #block{ height = Height
         , prev_hash = PrevHash
         , key_hash = KeyBlockHash
@@ -146,8 +145,7 @@ new_micro(Height, PrevHash, KeyBlockHash, RootHash, TxsHash, Txs, Time, Version,
         , txs_hash  = TxsHash
         , txs       = Txs
         , time      = Time
-        , version   = Version
-        , miner     = Miner }.
+        , version   = Version }.
 
 -spec to_header(block()) -> aec_headers:header().
 to_header(#block{height = Height,

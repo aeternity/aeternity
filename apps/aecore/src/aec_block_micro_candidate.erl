@@ -162,7 +162,7 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlockHash, KeyBlock, Trees, Miner,
 
     NewBlock = aec_blocks:new_micro(Height, PrevBlockHash, KeyBlockHash,
                                     aec_trees:hash(Trees2), TxsRootHash, Txs1,
-                                    aeu_time:now_in_msecs(), Version, Miner),
+                                    aeu_time:now_in_msecs(), Version),
 
     BlockInfo = #{ trees => Trees2, fees => Fees, txs_tree => TxsTree },
     {ok, NewBlock, BlockInfo}.
