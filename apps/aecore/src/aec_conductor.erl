@@ -691,13 +691,12 @@ start_micro_signing(#state{consensus = #consensus{leader = true},
     %% Regenerate the candidate.
     State#state{micro_block_candidate = undefined};
 start_micro_signing(#state{consensus = #consensus{leader = true},
-                           micro_block_candidate = MicroCandidate} = State) ->
+                           micro_block_candidate = #candidate{block = MicroBlock}} = State) ->
     epoch_mining:info("Starting signing round"),
-    HeaderBin = MicroCandidate#candidate.bin,
     Info      = [{top_block_hash, State#state.seen_top_block_hash}],
     aec_events:publish(start_micro_signing, Info),
     Fun = fun() ->
-        aec_keys:sign(HeaderBin)
+        aec_keys:sign_micro_block(MicroBlock)
     end,
     dispatch_worker(micro_signing, Fun, State);
 start_micro_signing(#state{consensus = Consensus,
@@ -713,13 +712,10 @@ start_micro_signing(#state{consensus = Consensus,
 handle_micro_signing_reply(_Reply, #state{micro_block_candidate = undefined} = State) ->
     %% Something invalidated the block candidate already.
     start_micro_signing(State);
-handle_micro_signing_reply({ok, {HeaderBin, [Signature]}},
-                           #state{micro_block_candidate = #candidate{bin = HeaderBin, block = Block}} = State) ->
-
+handle_micro_signing_reply({ok, SignedMicroBlock}, State) ->
     aec_metrics:try_update([ae,epoch,aecore,mining,blocks_micro_signed], 1),
     State1 = State#state{micro_block_candidate = undefined},
-    Block = aec_blocks:set_signature(Block, Signature),
-    case handle_signed_block(Block, State1) of
+    case handle_signed_block(SignedMicroBlock, State1) of
         {ok, State2} ->
             State2;
         {{error, Reason}, State2} ->

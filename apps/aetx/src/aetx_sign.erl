@@ -60,12 +60,9 @@ new(Tx, Signatures) ->
 %% @doc Given a transaction Tx, a private key or list of keys,
 %% return the cryptographically signed transaction using the default crypto
 %% parameters.
--spec sign(aetx:tx()|binary(), list(binary()) | binary()) -> signed_tx() | tuple().
+-spec sign(aetx:tx(), list(binary()) | binary()) -> signed_tx() | tuple().
 sign(Tx, PrivKey) when is_binary(PrivKey) ->
     sign(Tx, [PrivKey]);
-sign(Bin, PrivKey) when is_binary(Bin) ->
-    Signatures = sign_bin(Bin, PrivKey),
-    {Bin, Signatures};
 sign(Tx, PrivKeys) when is_list(PrivKeys) ->
     Bin = aetx:serialize_to_binary(Tx),
     case lists:filter(fun(PrivKey) -> not (?VALID_PRIVK(PrivKey)) end, PrivKeys) of

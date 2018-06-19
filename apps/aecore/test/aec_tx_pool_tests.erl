@@ -330,7 +330,7 @@ signed_ct_call_tx(Sender, Nonce, Fee, GasPrice) ->
     STx.
 
 sign(me, Tx) ->
-    aec_keys:sign(Tx);  %% why via keys here?
+    aec_keys:sign_tx(Tx);  %% why via keys here?
 sign(PubKey, Tx) ->
     try
         [{_, PrivKey}] = ets:lookup(?TAB, PubKey),

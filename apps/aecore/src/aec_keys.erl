@@ -27,7 +27,8 @@
 -export([peer_pubkey/0,
          peer_privkey/0,
          pubkey/0,
-         sign/1
+         sign_micro_block/1,
+         sign_tx/1
         ]).
 
 %% Supervisor API
@@ -96,6 +97,7 @@
 -type pubkey()   :: <<_:256>>. %% 256 = 32 * 8
 -type privkey()  :: <<_:512>>. %% 512 = 64 * 8
 
+-type block() :: aec_blocks:block().
 -type tx() :: aetx:tx().
 -type signed_tx() :: aetx_sign:signed_tx().
 
@@ -106,11 +108,14 @@
 %%% API
 %%%===================================================================
 
--spec sign(tx()) -> {ok, signed_tx()} | {error, term()}.
-sign(Bin) when is_binary(Bin) ->
+-spec sign_micro_block(block()) -> {ok, block()} | {error, term()}.
+sign_micro_block(MicroBlock) ->
+    Bin = aec_headers:serialize_to_binary(aec_blocks:to_header(MicroBlock)),
     {ok, Signature} = gen_server:call(?MODULE, {sign, Bin}),
-    {ok, aetx_sign:new(Bin, [Signature])};
-sign(Tx) ->
+    {ok, aec_blocks:set_signature(MicroBlock, Signature)}.
+
+-spec sign_tx(tx()) -> {ok, signed_tx()} | {error, term()}.
+sign_tx(Tx) ->
     %% Serialize first to maybe (hopefully) pass as reference.
     Bin = aetx:serialize_to_binary(Tx),
     {ok, Signature} = gen_server:call(?MODULE, {sign, Bin}),

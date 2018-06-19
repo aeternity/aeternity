@@ -267,7 +267,7 @@ signed_spend_tx(ArgsMap) ->
     {ok, SenderAccount} = wait_for_pubkey(),
     ArgsMap1 = maps:put(sender, SenderAccount, ArgsMap),
     {ok, SpendTx} = aec_spend_tx:new(ArgsMap1),
-    {ok, SSTx} = aec_keys:sign(SpendTx),
+    {ok, SSTx} = aec_keys:sign_tx(SpendTx),
     SSTx.
 
 %% function to setup the .genesis file for test SUITE-s
