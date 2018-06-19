@@ -120,8 +120,8 @@ int_create_block(PrevBlockHash, PrevBlock, FeesInfo, Trees, Miner) ->
     Trees2 = grant_fees(FeesInfo, Miner, Trees),
 
     NewBlock = aec_blocks:new_key(Height, PrevBlockHash, aec_trees:hash(Trees2),
-                              aec_blocks:target(PrevBlock),
-                              0, aeu_time:now_in_msecs(), Version, Miner),
+                                  aec_blocks:target(PrevBlock),
+                                  0, aeu_time:now_in_msecs(), Version, Miner),
 
     BlockInfo = #{ trees => Trees2, fees => FeesInfo},
     {ok, NewBlock, BlockInfo}.

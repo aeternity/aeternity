@@ -83,10 +83,11 @@ genesis_block_with_state(Map) ->
     %% INFO NG: genesis block is a key block. We use micro API, because it handles txs
     {ok, Txs, Trees} =
         aec_block_micro_candidate:apply_block_txs_strict(Txs, miner(), populated_trees(Map),
-                                                   height(), ?GENESIS_VERSION),
+                                                         height(), ?GENESIS_VERSION),
 
-    Block = aec_blocks:new_key(height(), prev_hash(), aec_trees:hash(Trees), txs_hash(Txs),
-                           ?HIGHEST_TARGET_SCI, 0, ?GENESIS_VERSION, miner()),
+    Block = aec_blocks:new_key(height(), prev_hash(), aec_trees:hash(Trees),
+                               ?HIGHEST_TARGET_SCI, 0, aeu_time:now_in_msecs(),
+                               ?GENESIS_VERSION, miner()),
     {Block, Trees}.
 
 %% Returns state trees at genesis block.

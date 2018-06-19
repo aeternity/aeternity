@@ -125,11 +125,11 @@ txs_hash(Block) ->
 -spec new_key(height(), block_header_hash(), state_hash(), aec_pow:sci_int(),
           non_neg_integer(), non_neg_integer(), non_neg_integer(),
           miner_pubkey()) -> block().
-new_key(Height, PrevHash, RootHash, TxsHash, Nonce, Time, Version, Miner) ->
+new_key(Height, PrevHash, RootHash, Target, Nonce, Time, Version, Miner) ->
     #block{ height = Height
           , prev_hash = PrevHash
           , root_hash = RootHash
-          , txs_hash  = TxsHash
+          , target    = Target
           , nonce     = Nonce
           , time      = Time
           , version   = Version

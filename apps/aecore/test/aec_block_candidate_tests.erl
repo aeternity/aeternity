@@ -26,8 +26,8 @@ difficulty_recalculation_test_() ->
                  OneBlockExpectedMineTime = 300000,
                  BlockHeight = 30,
 
-                 Block0 = aec_blocks:new_key(BlockHeight, <<0:32/unit:8>>, <<0:32/unit:8>>, <<0:32/unit:8>>,
-                                         12345, Now, ?PROTOCOL_VERSION, ?TEST_PUB),
+                 Block0 = aec_blocks:new_key(BlockHeight, <<0:32/unit:8>>, <<0:32/unit:8>>, undefined,
+                                             12345, Now, ?PROTOCOL_VERSION, ?TEST_PUB),
                  Chain = lists:duplicate(10, #header{height = 20,
                                                      target = ?HIGHEST_TARGET_SCI,
                                                      time = Now - (10 * OneBlockExpectedMineTime),
@@ -45,7 +45,7 @@ difficulty_recalculation_test_() ->
                  PastTarget = aec_pow:integer_to_scientific(?HIGHEST_TARGET_INT div 2),
                  Chain = [ #header{ height = BlockHeight - I, target = PastTarget, time = T,
                                     version = ?PROTOCOL_VERSION } || {I, T} <- TS ],
-                 Block0 = aec_blocks:new_key(BlockHeight, <<0:32/unit:8>>, <<0:32/unit:8>>, <<0:32/unit:8>>,
+                 Block0 = aec_blocks:new_key(BlockHeight, <<0:32/unit:8>>, <<0:32/unit:8>>, undefined,
                                              12345, Now, ?PROTOCOL_VERSION, ?TEST_PUB),
 
                  {ok, Block} = aec_block_key_candidate:adjust_target(Block0, Chain),
