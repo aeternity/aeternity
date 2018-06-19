@@ -24,7 +24,7 @@ apply_signed_txs_test_() ->
              ok = aec_test_utils:aec_keys_cleanup(TmpKeysDir),
              meck:unload(aec_chain)
      end,
-     [{"Apply txs and add total fee to miner's account",
+     [{"Apply txs and check resulting balances",
        fun() ->
                %% Init state tree with 2 accounts
                {ok, MinerPubkey} = aec_keys:pubkey(),
@@ -57,10 +57,9 @@ apply_signed_txs_test_() ->
                {ok, SignedOverBalanceTx} = aec_keys:sign_tx(OverBalanceTx),
                SignedTxs = [SignedSpendTx, SignedOverBalanceTx],
 
-               %% TODO: fix the test - create block with state, then key block to grant awards
-
                {ok, ValidSignedTxs, StateTree} =
-                  aec_block_candidate:apply_block_txs(SignedTxs, MinerPubkey, StateTree0, BlockHeight, ?PROTOCOL_VERSION),
+                  aec_block_micro_candidate:apply_block_txs(SignedTxs, MinerPubkey,
+                                                            StateTree0, BlockHeight, ?PROTOCOL_VERSION),
 
                ?assertEqual([SignedSpendTx], ValidSignedTxs),
 
@@ -68,8 +67,8 @@ apply_signed_txs_test_() ->
                {value, ResultMinerAccount} = aec_accounts_trees:lookup(MinerPubkey, ResultAccountsTree),
                {value, ResultRecipientAccount} = aec_accounts_trees:lookup(?RECIPIENT_PUBKEY, ResultAccountsTree),
 
-               %% Initial balance - spend_tx amount - spend_tx fee + spend_tx fee + block mining reward
-               ?assertEqual(100 - 40 - 9 + 9 + aec_governance:block_mine_reward(), aec_accounts:balance(ResultMinerAccount)),
+               %% Initial balance - spend_tx amount - spend_tx fee
+               ?assertEqual(100 - 40 - 9, aec_accounts:balance(ResultMinerAccount)),
                ?assertEqual(80 + 40, aec_accounts:balance(ResultRecipientAccount))
        end
       }]}.
