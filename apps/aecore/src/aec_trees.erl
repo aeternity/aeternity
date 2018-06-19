@@ -109,13 +109,17 @@ new_poi(Trees) ->
                                                       | {'error', term()}.
 add_poi(accounts, PubKey, Trees, #poi{} = Poi) ->
     internal_add_accounts_poi(PubKey, accounts(Trees), Poi);
+add_poi(contracts, Id, Trees, #poi{} = Poi) ->
+    internal_add_contracts_poi(Id, contracts(Trees), Poi);
 add_poi(Type,_PubKey,_Trees, #poi{} =_Poi) ->
     error({nyi, Type}).
 
 -spec lookup_poi(tree_type(), aec_keys:pubkey(), poi()) -> {'ok', aec_accounts:account()}
                                                          | {'error', 'not_found'}.
 lookup_poi(accounts, PubKey, #poi{} = Poi) ->
-    internal_lookup_accounts_poi(PubKey, Poi).
+    internal_lookup_accounts_poi(PubKey, Poi);
+lookup_poi(contracts, PubKey, #poi{} = Poi) ->
+    internal_lookup_contracts_poi(PubKey, Poi).
 
 -spec poi_hash(poi()) -> state_hash().
 poi_hash(#poi{} = Poi) ->
@@ -133,6 +137,8 @@ deserialize_poi(Bin) when is_binary(Bin) ->
                                                           | {'error', term()}.
 verify_poi(accounts, PubKey, SerializedAccount, #poi{} = Poi) ->
     internal_verify_accounts_poi(PubKey, SerializedAccount, Poi);
+verify_poi(contracts, PubKey, SerializedContract, #poi{} = Poi) ->
+    internal_verify_contracts_poi(PubKey, SerializedContract, Poi);
 verify_poi(Type,_PubKey,_Account, #poi{} =_Poi) ->
     error({nyi, Type}).
 
@@ -342,6 +348,15 @@ internal_add_accounts_poi(Pubkey, Trees, #poi{accounts = {poi, APoi}} = Poi) ->
         {error, _} = E -> E
     end.
 
+internal_add_contracts_poi(_ContractPubKey, _Trees, #poi{contracts = empty}) ->
+    {error, not_present};
+internal_add_contracts_poi(ContractPubKey, Trees, #poi{contracts = {poi, CPoi}} = Poi) ->
+    case aect_state_tree:add_poi(ContractPubKey, Trees, CPoi) of
+        {ok, SerializedContract, NewAPoi} ->
+            {ok, SerializedContract, Poi#poi{contracts = {poi, NewAPoi}}};
+        {error, _} = E -> E
+    end.
+
 internal_lookup_accounts_poi(_Pubkey, #poi{accounts = empty}) ->
     {error, not_found};
 internal_lookup_accounts_poi(Pubkey, #poi{accounts = {poi, APoi}} = _Poi) ->
@@ -351,10 +366,24 @@ internal_lookup_accounts_poi(Pubkey, #poi{accounts = {poi, APoi}} = _Poi) ->
         {error, not_found} = E -> E
     end.
 
+internal_lookup_contracts_poi(_Pubkey, #poi{contracts = empty}) ->
+    {error, not_found};
+internal_lookup_contracts_poi(Pubkey, #poi{contracts = {poi, CPoi}} = _Poi) ->
+    case aect_state_tree:lookup_poi(Pubkey, CPoi) of
+        {ok, Contract} ->
+            {ok, Contract};
+        {error, not_found} = E -> E
+    end.
+
 internal_verify_accounts_poi(_AccountPubkey,_Account, #poi{accounts = empty}) ->
     {error, empty_accounts_poi};
 internal_verify_accounts_poi(AccountPubkey, Account, #poi{accounts = {poi, APoi}}) ->
     aec_accounts_trees:verify_poi(AccountPubkey, Account, APoi).
+
+internal_verify_contracts_poi(_ContractPubkey, _Contract, #poi{contracts = empty}) ->
+    {error, empty_contracts_poi};
+internal_verify_contracts_poi(ContractPubKey, Contract, #poi{contracts = {poi, CPoi}}) ->
+    aect_state_tree:verify_poi(ContractPubKey, Contract, CPoi).
 
 new_part_poi(<<0:?STATE_HASH_BYTES/unit:8>>) ->
     empty;

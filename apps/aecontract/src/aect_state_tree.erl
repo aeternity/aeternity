@@ -17,6 +17,12 @@
         , lookup_contract/2
         , root_hash/1]).
 
+%% API - Proof of inclusion
+-export([ add_poi/3
+        , verify_poi/3
+        , lookup_poi/2
+        ]).
+
 -export_type([tree/0]).
 
 %%%===================================================================
@@ -138,6 +144,25 @@ lookup_contract(Id, Tree) ->
 -spec root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
 root_hash(#contract_tree{contracts = CtTree}) ->
     aeu_mtrees:root_hash(CtTree).
+
+-spec add_poi(aect_contracts:id(), aect_state_tree:tree(), aec_poi:poi()) ->
+                     {'ok', binary(), aec_poi:poi()}
+                   | {'error', 'not_present' | 'wrong_root_hash'}.
+add_poi(Id, #contract_tree{contracts = CtTree}, Poi) ->
+    aec_poi:add_poi(Id, CtTree, Poi).
+
+-spec verify_poi(aect_contracts:id(), binary(), aec_poi:poi()) ->
+                        'ok' | {'error', term()}.
+verify_poi(Id, SerializedContract, Poi) ->
+    aec_poi:verify(Id, SerializedContract, Poi).
+
+-spec lookup_poi(aect_contracts:id(), aec_poi:poi()) ->
+                        {'ok', aect_contracts:contract()} | {'error', not_found}.
+lookup_poi(Id, Poi) ->
+    case aec_poi:lookup(Id, Poi) of
+        {ok, Val} -> {ok, aect_contracts:deserialize(Id, Val)};
+        Err -> Err
+    end.
 
 %% -- Commit to db --
 

@@ -20,6 +20,7 @@ It:
   removed from the mempool/tx-pool periodically.
 * Adds support for maps to Sophia.
 * Enables retrieving the contract call object produced by the execution of the initialization call in a contract create transaction.
+* Adds HTTP endpoint for contract proof of inclusion
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.16.0
 

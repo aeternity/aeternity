@@ -624,6 +624,8 @@ contract_transactions(_Config) ->
     {ok, 400, #{<<"reason">> := <<"Tx not mined">>}} =
         get_contract_call_object(ContractCreateTxHash),
 
+    {ok, 404, #{}} = get_contract_poi(EncodedContractPubKey),
+
     % mine a block
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
     ?assert(tx_in_chain(ContractCreateTxHash)),
@@ -644,6 +646,15 @@ contract_transactions(_Config) ->
     ),
     ?assertEqual(<<"ok">>, maps:get(<<"return_type">>, InitCallObject)),
     ?assertMatch(_, maps:get(<<"return_value">>, InitCallObject)),
+
+    {ok, 200, #{<<"poi">> := EncPoI}} = get_contract_poi(EncodedContractPubKey),
+    {ok, PoIBin} = aec_base58c:safe_decode(poi, EncPoI),
+    PoI = aec_trees:deserialize_poi(PoIBin),
+    {ok, ContractInPoI} = aec_trees:lookup_poi(contracts, ContractPubKey, PoI),
+    {ok, Trees} = rpc(aec_chain, get_top_state, []),
+    ContractInTree = rpc(aect_state_tree, get_contract, [ContractPubKey,
+                                                         aec_trees:contracts(Trees)]),
+    {ContractInPoI, _} = {ContractInTree, ContractInPoI},
 
     Function = <<"main">>,
     Argument = <<"42">>,
@@ -3904,6 +3915,10 @@ get_list_oracle_queries(Oracle, From, Max) ->
 get_peers() ->
     Host = internal_address(),
     http_request(Host, get, "debug/peers", []).
+
+get_contract_poi(ContractAddress) ->
+    Host = external_address(),
+    http_request(Host, get, "poi/contract/" ++ binary_to_list(ContractAddress), []).
 
 %% ============================================================
 %% Test swagger validation errors

@@ -31,6 +31,7 @@
                         , read_optional_param/3
                         , get_block/3
                         , get_block/4
+                        , get_poi/3
                         ]).
 
 -compile({parse_transform, lager_transform}).
@@ -420,6 +421,17 @@ handle_request('PostChannelSettle', #{'ChannelSettleTx' := Req}, _Context) ->
                  base58_decode([{channel_id, channel_id, channel},
                                 {from, from, account_pubkey}]),
                  unsigned_tx_response(fun aesc_settle_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request('GetContractPoI', Req, _Context) ->
+    ParseFuns = [read_required_params([contract]),
+                 base58_decode([{contract, contract, contract_pubkey}]),
+                 get_poi(contracts, contract, poi),
+                 ok_response(
+                    fun(#{poi := PoI}) ->
+                        #{poi => aec_base58c:encode(poi, aec_trees:serialize_poi(PoI))}
+                    end)
                 ],
     process_request(ParseFuns, Req);
 
