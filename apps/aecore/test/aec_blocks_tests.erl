@@ -12,47 +12,8 @@
 
 -define(TEST_MODULE, aec_blocks).
 -define(MINER_PUBKEY, <<42:?MINER_PUB_BYTES/unit:8>>).
+-define(MINER_SECKEY, <<42:?MINER_PUB_BYTES/unit:16>>).
 -define(FAKE_TXS_TREE_HASH, <<42:?TXS_HASH_BYTES/unit:8>>).
-
-new_block_test_() ->
-    {setup,
-     fun() ->
-             meck:new(aec_txs_trees, [passthrough]),
-             meck:new(aec_trees, [passthrough]),
-             meck:expect(aec_txs_trees, from_txs, 1, fake_txs_tree),
-             meck:expect(
-               aec_txs_trees, root_hash,
-               fun(fake_txs_tree) ->
-                       {ok, ?FAKE_TXS_TREE_HASH}
-               end),
-             meck:expect(aec_trees, hash, 1, <<>>)
-     end,
-     fun(_) ->
-             ?assert(meck:validate(aec_txs_trees)),
-             ?assert(meck:validate(aec_trees)),
-             meck:unload(aec_txs_trees),
-             meck:unload(aec_trees)
-     end,
-     {"Generate new block with given txs and 0 nonce",
-      fun() ->
-              PrevBlock = #block{height = 11, target = 17,
-                                 version = ?GENESIS_VERSION},
-              BlockHeader = ?TEST_MODULE:to_header(PrevBlock),
-
-              FeesInfo = #{txs => 0, gas => 0},
-              {NewBlock, _} =
-                  aec_block_key_candidate:create_with_state(PrevBlock, ?MINER_PUBKEY, aec_trees:new(), FeesInfo),
-
-              ?assertEqual(12, ?TEST_MODULE:height(NewBlock)),
-              SerializedBlockHeader =
-                  aec_headers:serialize_to_binary(BlockHeader),
-              ?assertEqual(aec_hash:hash(header, SerializedBlockHeader),
-                           ?TEST_MODULE:prev_hash(NewBlock)),
-              ?assertEqual(?FAKE_TXS_TREE_HASH, NewBlock#block.txs_hash),
-              ?assertEqual([], NewBlock#block.txs),
-              ?assertEqual(17, NewBlock#block.target),
-              ?assertEqual(?GENESIS_VERSION, NewBlock#block.version)
-      end}}.
 
 network_serialization_test_() ->
     [{"Serialize/deserialize block with min nonce",
@@ -89,10 +50,14 @@ network_serialization_test_() ->
 validate_test_() ->
     {setup,
      fun() ->
-             aec_test_utils:aec_keys_setup()
+             TmpKeysDir = aec_test_utils:aec_keys_setup(),
+             meck:new(enacl, [passthrough]),
+             meck:expect(enacl, sign_verify_detached, 3, {ok, <<>>}),
+             TmpKeysDir
      end,
      fun(TmpKeysDir) ->
-             ok = aec_test_utils:aec_keys_cleanup(TmpKeysDir)
+             ok = aec_test_utils:aec_keys_cleanup(TmpKeysDir),
+             meck:unload(enacl)
      end,
      [ {"Malformed txs merkle tree hash",
         fun validate_test_malformed_txs_root_hash/0}
@@ -125,7 +90,8 @@ validate_test_malformed_txs_root_hash() ->
     Block = #block{txs = [SignedSpend], txs_hash = MalformedRootHash,
                    version = ?PROTOCOL_VERSION},
 
-    ?assertEqual({error, malformed_txs_hash}, ?TEST_MODULE:validate(Block)).
+    ?assertEqual({error, {block, malformed_txs_hash}},
+                 ?TEST_MODULE:validate_micro_block(Block, ?MINER_SECKEY)).
 
 validate_test_pass_validation_no_txs() ->
     Txs = [],
@@ -134,7 +100,7 @@ validate_test_pass_validation_no_txs() ->
     Block = #block{txs = Txs, txs_hash = RootHash,
         version = ?PROTOCOL_VERSION},
 
-    ?assertEqual(ok, ?TEST_MODULE:validate(Block)).
+    ?assertEqual(ok, ?TEST_MODULE:validate_micro_block(Block, ?MINER_SECKEY)).
 
 validate_test_pass_validation() ->
     SignedSpend =
@@ -150,6 +116,6 @@ validate_test_pass_validation() ->
     Block = #block{txs = Txs, txs_hash = RootHash,
                    version = ?PROTOCOL_VERSION},
 
-    ?assertEqual(ok, ?TEST_MODULE:validate(Block)).
+    ?assertEqual(ok, ?TEST_MODULE:validate_micro_block(Block, ?MINER_SECKEY)).
 
 -endif.
