@@ -36,9 +36,9 @@ mine_block_test_() ->
                  % block uncomment the line below
                  %let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
                  Nonce = 12264766402353785602,
-
+                 FeesInfo = #{txs => 0, gas => 0},
                  {BlockCandidate, _} = aec_block_key_candidate:create_with_state(TopBlock, ?TEST_PUB,
-                                                                                 aec_trees:new()),
+                                                                                 aec_trees:new(), FeesInfo),
                  HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
 
                  Target = aec_blocks:target(BlockCandidate),
@@ -59,8 +59,9 @@ mine_block_test_() ->
                                    target = ?LOWEST_TARGET_SCI,
                                    version = ?GENESIS_VERSION},
                  meck:expect(aec_pow, pick_nonce, 0, 18),
-                 {BlockCandidate, _} = aec_block_candidate:create_with_state(TopBlock, ?TEST_PUB,
-                                                                             aec_trees:new()),
+                 FeesInfo = #{txs => 0, gas => 0},
+                 {BlockCandidate, _} = aec_block_key_candidate:create_with_state(TopBlock, ?TEST_PUB,
+                                                                             aec_trees:new(), FeesInfo),
                  Nonce = 18,
                  HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
                  Target = aec_blocks:target(BlockCandidate),
@@ -109,8 +110,9 @@ generate_valid_test_data(_TopBlock, Tries) when Tries < 1 ->
     could_not_find_nonce;
 generate_valid_test_data(TopBlock, Tries) ->
     Nonce = aec_pow:pick_nonce(),
-    {BlockCandidate, _} = aec_block_candidate:create_with_state(TopBlock, ?TEST_PUB,
-                                                                aec_trees:new()),
+    FeesInfo = #{txs => 0, gas => 0},
+    {BlockCandidate, _} = aec_block_key_candidate:create_with_state(TopBlock, ?TEST_PUB,
+                                                                    aec_trees:new(), FeesInfo),
     HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
     Target = aec_blocks:target(BlockCandidate),
     case ?TEST_MODULE:mine(HeaderBin, Target, Nonce) of

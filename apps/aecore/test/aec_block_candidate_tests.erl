@@ -1,7 +1,7 @@
 %%%=============================================================================
 %%% @copyright (C) 2018, Aeternity Anstalt
 %%% @doc
-%%%   Unit tests for the aec_block_candidate module
+%%%   Unit tests for the aec_block_{key,micro}_candidate module
 %%% @end
 %%%=============================================================================
 -module(aec_block_candidate_tests).
@@ -26,14 +26,14 @@ difficulty_recalculation_test_() ->
                  OneBlockExpectedMineTime = 300000,
                  BlockHeight = 30,
 
-                 Block0 = aec_blocks:new(BlockHeight, <<0:32/unit:8>>, <<0:32/unit:8>>, <<0:32/unit:8>>,
-                                         [], undefined, 12345, Now, ?PROTOCOL_VERSION, ?TEST_PUB),
+                 Block0 = aec_blocks:new_key(BlockHeight, <<0:32/unit:8>>, <<0:32/unit:8>>, <<0:32/unit:8>>,
+                                         12345, Now, ?PROTOCOL_VERSION, ?TEST_PUB),
                  Chain = lists:duplicate(10, #header{height = 20,
                                                      target = ?HIGHEST_TARGET_SCI,
                                                      time = Now - (10 * OneBlockExpectedMineTime),
                                                      version = ?PROTOCOL_VERSION}),
 
-                 {ok, Block} = aec_block_candidate:adjust_target(Block0, Chain),
+                 {ok, Block} = aec_block_key_candidate:adjust_target(Block0, Chain),
 
                  ?assertEqual(?HIGHEST_TARGET_SCI, Block#block.target)
          end},
@@ -45,10 +45,10 @@ difficulty_recalculation_test_() ->
                  PastTarget = aec_pow:integer_to_scientific(?HIGHEST_TARGET_INT div 2),
                  Chain = [ #header{ height = BlockHeight - I, target = PastTarget, time = T,
                                     version = ?PROTOCOL_VERSION } || {I, T} <- TS ],
-                 Block0 = aec_blocks:new(BlockHeight, <<0:32/unit:8>>, <<0:32/unit:8>>, <<0:32/unit:8>>,
-                                         [], undefined, 12345, Now, ?PROTOCOL_VERSION, ?TEST_PUB),
+                 Block0 = aec_blocks:new_key(BlockHeight, <<0:32/unit:8>>, <<0:32/unit:8>>, <<0:32/unit:8>>,
+                                             12345, Now, ?PROTOCOL_VERSION, ?TEST_PUB),
 
-                 {ok, Block} = aec_block_candidate:adjust_target(Block0, Chain),
+                 {ok, Block} = aec_block_key_candidate:adjust_target(Block0, Chain),
 
                  ?assertEqual(true, PastTarget < Block#block.target),
                  ?assertEqual(true, ?HIGHEST_TARGET_SCI >= Block#block.target)
@@ -84,13 +84,13 @@ block_extension_test_() ->
           meck:expect(aec_chain, get_block_state, 1, {ok, Trees0}),
           meck:expect(aec_tx_pool, get_candidate, 2, {ok, [STx]}),
           meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
-          {ok, Block1A, #{ trees := _Trees1A }} = aec_block_candidate:create(Block0),
+          {ok, Block1A, #{ trees := _Trees1A }} = aec_block_micro_candidate:create(Block0),
 
           meck:expect(aec_tx_pool, get_candidate, 2, {ok, []}),
-          {ok, Block1B0, BInfo} = aec_block_candidate:create(Block0),
+          {ok, Block1B0, BInfo} = aec_block_micro_candidate:create(Block0),
 
           {ok, Block1B, #{ trees := _Trees1B }} =
-                aec_block_candidate:update(Block1B0, [STx], BInfo),
+                aec_block_micro_candidate:update(Block1B0, [STx], BInfo),
 
           ?assertEqual(Block1A, Block1B)
         end},
@@ -119,7 +119,7 @@ block_extension_test_() ->
           meck:expect(aec_tx_pool, get_candidate, 2, {ok, [STx]}),
           meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
 
-          {ok, Block1A, #{ trees := Trees1A }} = aec_block_candidate:create(Block0),
+          {ok, Block1A, #{ trees := Trees1A }} = aec_block_micro_candidate:create(Block0),
 
           %% Amend call state tree, in order not to require calling
           %% actual contract that would make this unit test
@@ -141,16 +141,16 @@ block_extension_test_() ->
                               end
                       end),
 
-          {ok, Block1B, #{ trees := Trees1B }} = aec_block_candidate:create(Block0),
+          {ok, Block1B, #{ trees := Trees1B }} = aec_block_micro_candidate:create(Block0),
 
           ?assertEqual(get_miner_account_balance(Trees1A) + GasUsed * GasPrice,
                        get_miner_account_balance(Trees1B)),
 
           meck:expect(aec_tx_pool, get_candidate, 2, {ok, []}),
-          {ok, Block1C0, BInfo} = aec_block_candidate:create(Block0),
+          {ok, Block1C0, BInfo} = aec_block_micro_candidate:create(Block0),
 
           {ok, Block1C, #{ trees := _Trees1B }} =
-                aec_block_candidate:update(Block1C0, [STx], BInfo),
+                aec_block_micro_candidate:update(Block1C0, [STx], BInfo),
 
           ?assertEqual(Block1B, Block1C)
         end}

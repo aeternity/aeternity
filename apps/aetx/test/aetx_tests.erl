@@ -57,6 +57,8 @@ apply_signed_txs_test_() ->
                {ok, SignedOverBalanceTx} = aec_keys:sign_tx(OverBalanceTx),
                SignedTxs = [SignedSpendTx, SignedOverBalanceTx],
 
+               %% TODO: fix the test - create block with state, then key block to grant awards
+
                {ok, ValidSignedTxs, StateTree} =
                   aec_block_candidate:apply_block_txs(SignedTxs, MinerPubkey, StateTree0, BlockHeight, ?PROTOCOL_VERSION),
 
