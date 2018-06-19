@@ -3218,9 +3218,10 @@ definitions:
     properties:
       poi:
         description: Proof of inclusion 
-        $ref: '#/definitions/EncodedHash'
+        type: string
     required:
     - poi
+
 externalDocs:
   description: Find out more about Aeternity
   url: 'http://www.aeternity.com'

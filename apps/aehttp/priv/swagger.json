@@ -4218,12 +4218,12 @@
       "required" : [ "poi" ],
       "properties" : {
         "poi" : {
-          "description" : "Proof of inclusion",
-          "$ref" : "#/definitions/EncodedHash"
+          "type" : "string",
+          "description" : "Proof of inclusion"
         }
       },
       "example" : {
-        "poi" : { }
+        "poi" : "poi"
       }
     },
     "inline_response_200" : {
