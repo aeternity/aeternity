@@ -87,7 +87,6 @@ convert(#{ contract_name := _ContractName
                     push(0), dup(1), i(?MSTORE),
                     i(?RETURN)
                    ],
-    io:format("NewFunctions ~p", [NewFunctions]),
     %% Code is a deep list of instructions, containing labels and
     %% references to them. Labels take the form {'JUMPDEST', Ref}, and
     %% references take the form {push_label, Ref}, which is translated

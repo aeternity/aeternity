@@ -67,20 +67,6 @@ binary_to_words(<<N:256,Bin/binary>>) ->
 binary_to_words(Bin) ->
     binary_to_words(<<Bin/binary,0>>).
 
--ifdef(TEST).
-print_heap(Heap) ->
-    print_heap(0, Heap).
-print_heap(_, <<>>) -> ok;
-print_heap(A, <<W:256, Rest/binary>>) ->
-    io:format("~p : ~p~n", [A,W]),
-    print_heap(A+32, Rest);
-print_heap(A, <<B:8, Rest/binary>>) ->
-    io:format("~p : [~p]~n", [A,B]),
-    print_heap(A+1, Rest).
--else.
-print_heap(_) -> ok.
--endif.
-
 %% Interpret a return value (a binary) using a type rep.
 
 %% Base address is the address of the first word of the given heap.

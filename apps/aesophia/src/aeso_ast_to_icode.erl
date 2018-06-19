@@ -95,7 +95,6 @@ ast_type(T) ->
 -define(map_t(K, V),    {app_t, _, {id, _, "map"}, [K, V]}).
 
 ast_body(?id_app("raw_call", [To, Fun, Gas, Value, {typed, _, Arg, ArgT}], _, OutT)) ->
-    io:format("Arg ~p~nArgT ~p~n", [Arg, ArgT]),
     %% TODO: temp hack before we have contract calls properly in the type checker
     {Args, ArgTypes} =
         case Arg of %% Hack: pack unary argument in tuple
@@ -103,7 +102,6 @@ ast_body(?id_app("raw_call", [To, Fun, Gas, Value, {typed, _, Arg, ArgT}], _, Ou
             {tuple, _, Elems} -> {Arg, ArgT};
             _ -> {{tuple, [], [Arg]}, {tuple_t, [], [ArgT]}}
         end,
-    io:format("Args ~p~nArgTypes ~p~n", [Args, ArgTypes]),
     #prim_call_contract{ gas      = ast_body(Gas),
                          address  = ast_body(To),
                          value    = ast_body(Value),

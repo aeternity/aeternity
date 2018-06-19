@@ -4,13 +4,14 @@ import tempfile
 import os
 import shutil
 import time
-from nose.tools import assert_equals, assert_not_equals, with_setup
+from nose.tools import assert_equals, assert_not_equals,  assert_regexp_matches, with_setup
 import common
 from waiting import wait
 from swagger_client.rest import ApiException
 
 from swagger_client.models.tx import Tx
 from swagger_client.models.spend_tx import SpendTx
+from swagger_client.models.contract import Contract
 from swagger_client.models.contract_create_data import ContractCreateData
 from swagger_client.models.contract_call_data import ContractCallData
 from swagger_client.models.contract_call_input import ContractCallInput
@@ -18,6 +19,21 @@ from swagger_client.models.contract_call_input import ContractCallInput
 import keys
 
 settings = common.test_settings(__name__.split(".")[-1])
+
+def read_id_contract(api):
+    # Read a contract
+    currentFile = __file__
+    dirPath = os.path.dirname(currentFile)
+    contract_file = open(dirPath + "/identity.aes", "r")
+    contract_string = contract_file.read()
+
+    # Compile contract to bytecode
+    contract = Contract( contract_string, "")
+    compilation_result = api.compile_contract(contract)
+    assert_regexp_matches(compilation_result.bytecode, '0x.*')
+
+    return compilation_result.bytecode
+
 
 def test_contract_create():
     test_settings = settings["test_contract_create"]
@@ -48,12 +64,6 @@ def test_contract_create():
     assert_equals(tx['gas'], test_settings["create_contract"]["gas"])
     assert_equals(tx['gas_price'], test_settings["create_contract"]["gas_price"])
     assert_equals(tx['fee'], test_settings["create_contract"]["fee"])
-
-    code = bytearray.fromhex(test_settings["create_contract"]["code"][2:]) # without 0x
-    assert_equals(tx['code'], code)
-
-    call_data = bytearray.fromhex(test_settings["create_contract"]["call_data"][2:]) # without 0x
-    assert_equals(tx['call_data'], call_data)
 
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
     print("Signed transaction " + signed)
@@ -114,8 +124,9 @@ def test_contract_call():
                   + create_settings["create_contract"]["deposit"]
                   + create_settings["create_contract"]["amount"])
 
-    call_input = ContractCallInput("sophia", create_settings["create_contract"]["code"],\
-                                             call_contract["data"]["function"],\
+    bytecode = read_id_contract(external_api)
+    call_input = ContractCallInput("sophia", bytecode,
+                                             call_contract["data"]["function"],
                                              call_contract["data"]["argument"])
     result = external_api.call_contract(call_input)
     contract_call_obj = ContractCallData(
@@ -294,9 +305,18 @@ def send_tokens_to_user_(address, tokens, fee, external_api, internal_api):
          timeout_seconds=120, sleep_seconds=0.25)
 
 def get_unsigned_contract_create(owner, contract, external_api):
+    bytecode = read_id_contract(external_api)
+    call_input = ContractCallInput("sophia",
+                                   bytecode,
+                                   contract["function"],
+                                   contract["argument"])
+    print("Call input:", call_input)
+    result = external_api.encode_calldata(call_input)
+    call_data = result.calldata
+
     contract_create_data_obj = ContractCreateData(
         owner=owner,
-        code=contract["code"],
+        code=bytecode,
         vm_version=contract["vm_version"],
         deposit=contract["deposit"],
         amount=contract["amount"],
@@ -304,7 +324,6 @@ def get_unsigned_contract_create(owner, contract, external_api):
         gas_price=contract["gas_price"],
         fee=contract["fee"],
         ttl=100,
-        call_data=contract["call_data"])
-
+        call_data=call_data)
     tx_obj = external_api.post_contract_create(contract_create_data_obj)
     return (tx_obj.tx, tx_obj.contract_address)

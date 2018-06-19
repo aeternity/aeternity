@@ -524,9 +524,7 @@ test_encode_decode_sophia_data2(_Config) ->
     CD =            <<"(\"Hello\", [1,2,3], Some(true))">>,
     Type = <<"(string, (string, list(int), option(bool)))">>,
     CallEncoded = encode_data(CD),
-    io:format("Encoded ~p~n",[CallEncoded]),
     Decoded = decode_data(Type, CallEncoded),
-    io:format("Deocoded ~p~n",[Decoded]),
     #{<<"data">> :=
           #{ <<"type">> := <<"tuple">>
            , <<"value">> :=
