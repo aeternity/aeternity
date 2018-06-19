@@ -3174,7 +3174,7 @@
     },
     "ChannelCreateTx" : {
       "type" : "object",
-      "required" : [ "channel_reserve", "fee", "initiator", "initiator_amount", "lock_period", "push_amount", "responder", "responder_amount" ],
+      "required" : [ "channel_reserve", "fee", "initiator", "initiator_amount", "lock_period", "push_amount", "responder", "responder_amount", "state_hash" ],
       "properties" : {
         "initiator" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -3221,11 +3221,16 @@
           "type" : "integer",
           "format" : "int64",
           "minimum" : 0
+        },
+        "state_hash" : {
+          "description" : "Root hash of the channel's internal state tree",
+          "$ref" : "#/definitions/EncodedHash"
         }
       },
       "example" : {
         "responder_amount" : 0,
         "initiator_amount" : 0,
+        "state_hash" : null,
         "initiator" : { },
         "fee" : 0,
         "responder" : null,
@@ -3238,7 +3243,7 @@
     },
     "ChannelDepositTx" : {
       "type" : "object",
-      "required" : [ "amount", "channel_id", "fee", "from", "nonce" ],
+      "required" : [ "amount", "channel_id", "fee", "from", "nonce", "round", "state_hash" ],
       "properties" : {
         "channel_id" : {
           "type" : "string"
@@ -3265,10 +3270,22 @@
           "type" : "integer",
           "format" : "int64",
           "minimum" : 0
+        },
+        "state_hash" : {
+          "description" : "Root hash of the channel's internal state tree after the deposit had been applied to it",
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "round" : {
+          "type" : "integer",
+          "format" : "int64",
+          "description" : "Channel's next round",
+          "minimum" : 0
         }
       },
       "example" : {
         "amount" : 0,
+        "round" : 0,
+        "state_hash" : null,
         "fee" : 0,
         "from" : { },
         "channel_id" : "channel_id",
@@ -3278,7 +3295,7 @@
     },
     "ChannelWithdrawalTx" : {
       "type" : "object",
-      "required" : [ "amount", "channel_id", "fee", "nonce", "to" ],
+      "required" : [ "amount", "channel_id", "fee", "nonce", "round", "state_hash", "to" ],
       "properties" : {
         "channel_id" : {
           "type" : "string"
@@ -3305,10 +3322,22 @@
           "type" : "integer",
           "format" : "int64",
           "minimum" : 0
+        },
+        "state_hash" : {
+          "description" : "Root hash of the channel's internal state tree after the withdraw had been applied to it",
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "round" : {
+          "type" : "integer",
+          "format" : "int64",
+          "description" : "Channel's next round",
+          "minimum" : 0
         }
       },
       "example" : {
         "amount" : 0,
+        "round" : 0,
+        "state_hash" : null,
         "fee" : 0,
         "to" : { },
         "channel_id" : "channel_id",
@@ -3360,7 +3389,7 @@
     },
     "ChannelCloseSoloTx" : {
       "type" : "object",
-      "required" : [ "channel_id", "fee", "from", "payload" ],
+      "required" : [ "channel_id", "fee", "from", "payload", "poi" ],
       "properties" : {
         "channel_id" : {
           "type" : "string"
@@ -3385,12 +3414,17 @@
           "type" : "integer",
           "format" : "int64",
           "minimum" : 0
+        },
+        "poi" : {
+          "type" : "string",
+          "description" : "Proof of inclusion containing information for closing the channel"
         }
       },
       "example" : {
         "payload" : "payload",
         "fee" : 0,
         "from" : { },
+        "poi" : "poi",
         "channel_id" : "channel_id",
         "ttl" : 0,
         "nonce" : 0
@@ -3398,7 +3432,7 @@
     },
     "ChannelSlashTx" : {
       "type" : "object",
-      "required" : [ "channel_id", "fee", "from", "payload" ],
+      "required" : [ "channel_id", "fee", "from", "payload", "poi" ],
       "properties" : {
         "channel_id" : {
           "type" : "string"
@@ -3423,12 +3457,17 @@
           "type" : "integer",
           "format" : "int64",
           "minimum" : 0
+        },
+        "poi" : {
+          "type" : "string",
+          "description" : "Proof of inclusion containing information for closing the channel"
         }
       },
       "example" : {
         "payload" : "payload",
         "fee" : 0,
         "from" : { },
+        "poi" : "poi",
         "channel_id" : "channel_id",
         "ttl" : 0,
         "nonce" : 0

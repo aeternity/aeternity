@@ -2574,6 +2574,9 @@ definitions:
         type: integer
         format: int64
         minimum: 0
+      state_hash:
+        description: 'Root hash of the channel''s internal state tree'
+        $ref: '#/definitions/EncodedHash'
     required:
     - initiator
     - initiator_amount
@@ -2583,6 +2586,7 @@ definitions:
     - channel_reserve
     - lock_period
     - fee
+    - state_hash
   ChannelDepositTx:
     type: object
     properties:
@@ -2606,12 +2610,22 @@ definitions:
         type: integer
         format: int64
         minimum: 0
+      state_hash:
+        description: 'Root hash of the channel''s internal state tree after the deposit had been applied to it'
+        $ref: '#/definitions/EncodedHash'
+      round:
+        type: integer
+        format: int64
+        minimum: 0
+        description: 'Channel''s next round'
     required:
     - channel_id
     - from
     - amount
     - fee
     - nonce
+    - state_hash
+    - round
   ChannelWithdrawalTx:
     type: object
     properties:
@@ -2635,12 +2649,22 @@ definitions:
         type: integer
         format: int64
         minimum: 0
+      state_hash:
+        description: 'Root hash of the channel''s internal state tree after the withdraw had been applied to it'
+        $ref: '#/definitions/EncodedHash'
+      round:
+        type: integer
+        format: int64
+        minimum: 0
+        description: 'Channel''s next round'
     required:
     - channel_id
     - to
     - amount
     - fee
     - nonce
+    - state_hash
+    - round
   ChannelCloseMutualTx:
     type: object
     properties:
@@ -2693,11 +2717,15 @@ definitions:
         type: integer
         format: int64
         minimum: 0
+      poi:
+        type: string
+        description: 'Proof of inclusion containing information for closing the channel'
     required:
     - channel_id
     - from
     - payload
     - fee
+    - poi
   ChannelSlashTx:
     type: object
     properties:
@@ -2719,11 +2747,15 @@ definitions:
         type: integer
         format: int64
         minimum: 0
+      poi:
+        type: string
+        description: 'Proof of inclusion containing information for closing the channel'
     required:
     - channel_id
     - from
     - payload
     - fee
+    - poi
   ChannelSettleTx:
     type: object
     properties:
