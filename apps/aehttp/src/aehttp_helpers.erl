@@ -25,6 +25,7 @@
         , get_block/2
         , get_block/3
         , get_block/4
+        , get_poi/3
         , get_block_from_chain/1
         ]).
 
@@ -529,6 +530,21 @@ get_block(Fun, Req, DefaultEncoding, AddHash) when is_function(Fun, 0) ->
               end;
         {_Code, _, _Reason} = Err ->
             Err
+    end.
+
+get_poi(Subtree, KeyName, PutKey) when Subtree =:= accounts
+                                orelse Subtree =:= contracts ->
+    fun(_Req, State) ->
+        PubKey = maps:get(KeyName, State),
+        {ok, Trees} = aec_chain:get_top_state(),
+        EmptyPoI = aec_trees:new_poi(Trees),
+        case aec_trees:add_poi(Subtree, PubKey, Trees, EmptyPoI) of
+            {ok, _EncodedObj, PoI} ->
+                {ok, maps:put(PutKey, PoI, State)};
+            {error, _} ->
+                Msg = "Proof for " ++ atom_to_list(Subtree) ++ " not found",
+                {error, {404, [], #{<<"reason">> => list_to_binary(Msg)}}}
+        end
     end.
 
 -spec safe_binary_to_atom(binary()) -> {ok, atom()} | {error, non_existing}.

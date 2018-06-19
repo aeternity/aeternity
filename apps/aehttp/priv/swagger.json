@@ -957,6 +957,41 @@
         }
       }
     },
+    "/poi/contract/{contract}" : {
+      "get" : {
+        "tags" : [ "external", "chain" ],
+        "description" : "Get a proof of inclusion for a contract",
+        "operationId" : "GetContractPoI",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "contract",
+          "in" : "path",
+          "description" : "Contract pubkey to get proof for",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PoI"
+            }
+          },
+          "400" : {
+            "description" : "Invalid contract key",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Contract not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/transactions" : {
       "get" : {
         "tags" : [ "external", "transactions" ],
@@ -4177,6 +4212,19 @@
           }
         }
       } ]
+    },
+    "PoI" : {
+      "type" : "object",
+      "required" : [ "poi" ],
+      "properties" : {
+        "poi" : {
+          "description" : "Proof of inclusion",
+          "$ref" : "#/definitions/EncodedHash"
+        }
+      },
+      "example" : {
+        "poi" : { }
+      }
     },
     "inline_response_200" : {
       "properties" : {
