@@ -240,9 +240,9 @@ broken_chain_wrong_height() ->
     ?assertEqual(ok, insert_block(B2)),
 
     %% Change the height of the last block to an incompatible height.
-    ?assertEqual({error, height_inconsistent_with_previous_hash},
+    ?assertEqual({error, height_inconsistent_for_keyblock_with_previous_hash},
                  insert_block(B2#block{height = 4})),
-    ?assertEqual({error, height_inconsistent_with_previous_hash},
+    ?assertEqual({error, height_inconsistent_for_keyblock_with_previous_hash},
                  insert_block(B2#block{height = 1})),
     ok.
 
@@ -407,7 +407,7 @@ target_validation_test_() ->
              aec_test_utils:mock_difficulty_as_target(),
              meck:new(aec_governance, [passthrough]),
              meck:new(aec_pow, [passthrough]),
-             meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 3),
+             meck:expect(aec_governance, key_blocks_to_check_difficulty_count, 0, 3),
              meck:expect(aec_governance, expected_block_mine_rate, 0, 3000000), %% 50 mins
              aec_test_utils:mock_genesis(),
              aec_test_utils:aec_keys_setup()
@@ -421,10 +421,10 @@ target_validation_test_() ->
              aec_test_utils:stop_chain_db()
      end,
      [{"Ensure target is same as genesis block target"
-       " in first (blocks_to_check_difficulty_count + 1) headers/blocks",
+       " in first (key_blocks_to_check_difficulty_count + 1) headers/blocks",
        fun constant_target_at_the_beginning_of_the_chain/0},
       {"Ensure target is verified based on calculations"
-       " after (blocks_to_check_difficulty_count + 1) headers/blocks",
+       " after (key_blocks_to_check_difficulty_count + 1) headers/blocks",
        fun target_verified_based_on_calculations/0},
       {"Test target is verified even for blocks coming"
        " in different order, hence fork is rejected",
@@ -743,15 +743,16 @@ fork_get_transaction() ->
     EasyChain = blocks_only_chain(extend_chain_with_state(CommonChain, EasyChainExtensionTargets, 111, TxsFun)),
     HardChain = blocks_only_chain(extend_chain_with_state(CommonChain, HardChainExtensionTargets, 222, TxsFun)),
 
-    EasyTopBlock = lists:last(EasyChain),
+    %% Txs is in second to last (micro-)block
+    EasyTopBlock = lists:last(lists:droplast(EasyChain)),
     [EasySpend] = aec_blocks:txs(EasyTopBlock),
     EasyTxHash = aetx_sign:hash(EasySpend),
 
-    HardTopBlock = lists:last(HardChain),
+    HardTopBlock = lists:last(lists:droplast(HardChain)),
     [HardSpend] = aec_blocks:txs(HardTopBlock),
     HardTxHash = aetx_sign:hash(HardSpend),
 
-    HardButLastBlock = lists:last(lists:droplast(HardChain)),
+    HardButLastBlock = lists:last(lists:sublist(HardChain, 1, length(HardChain) - 3)),
     [HardButLastSpend] = aec_blocks:txs(HardButLastBlock),
     HardButLastTxHash = aetx_sign:hash(HardButLastSpend),
 
