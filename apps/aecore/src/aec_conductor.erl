@@ -256,13 +256,6 @@ handle_info({gproc_ps_event, candidate_block, #{info := new_candidate}}, State) 
             {noreply, State1}
     end;
 handle_info(init_continue, State) ->
-    %% Continue the initialization by (possibly) starting the miner
-    case State#state.mining_state of
-        running ->
-            aec_block_generator:start_generation();
-        stopped ->
-            ok
-    end,
     {noreply, start_mining(State)};
 handle_info({worker_reply, Pid, Res}, State) ->
     State1 = handle_worker_reply(Pid, Res, State),
