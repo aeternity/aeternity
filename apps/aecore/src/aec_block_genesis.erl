@@ -85,9 +85,8 @@ genesis_block_with_state(Map) ->
         aec_block_micro_candidate:apply_block_txs_strict(Txs, miner(), populated_trees(Map),
                                                    height(), ?GENESIS_VERSION),
 
-    Block = aec_blocks:new_key(height(), prev_hash(), aec_trees:hash(Trees),
-                           ?HIGHEST_TARGET_SCI, 0, 0, %%Epoch
-                           ?GENESIS_VERSION, miner()),
+    Block = aec_blocks:new_key(height(), prev_hash(), aec_trees:hash(Trees), txs_hash(Txs),
+                           ?HIGHEST_TARGET_SCI, 0, ?GENESIS_VERSION, miner()),
     {Block, Trees}.
 
 %% Returns state trees at genesis block.
