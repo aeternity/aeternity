@@ -19,6 +19,7 @@ It:
 * Adds garbage collection of transactions, invalid transactions (wrong nonce, insufficient balance, expired TTL, etc.) are
   removed from the mempool/tx-pool periodically.
 * Adds support for maps to Sophia.
+* Enables retrieving the contract call object produced by the execution of the initialization call in a contract create transaction.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.16.0
 

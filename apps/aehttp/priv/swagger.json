@@ -232,7 +232,7 @@
     "/tx/{tx_hash}/contract-call" : {
       "get" : {
         "tags" : [ "external", "transactions" ],
-        "description" : "Get the call result for a contract_call transaction",
+        "description" : "Get the call result for a contract_create or contract_call transaction",
         "operationId" : "GetContractCallFromTx",
         "produces" : [ "application/json" ],
         "parameters" : [ {
