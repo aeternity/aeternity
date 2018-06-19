@@ -447,6 +447,16 @@ handle_request('GetAccountBalance', Req, _Context) ->
             {400, [], #{reason => <<"Invalid account hash">>}}
     end;
 
+handle_request('GetAccountPendingTransactions', Req, _Context) ->
+    case aec_base58c:safe_decode(account_pubkey, maps:get('account_pubkey', Req)) of
+        {ok, AccountPubkey} ->
+            {ok, Txs0} = aec_tx_pool:peek(infinity, AccountPubkey),
+            Txs = [aehttp_api_parser:encode(tx, T) || T <- Txs0],
+            {200, [], Txs};
+        _ ->
+            {400, [], #{reason => <<"Invalid account hash">>}}
+    end;
+
 handle_request('GetAccountNonce', Req, _Context) ->
     case aec_base58c:safe_decode(account_pubkey, maps:get('account_pubkey', Req)) of
         {ok, AccountPubkey} ->

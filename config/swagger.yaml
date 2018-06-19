@@ -1310,6 +1310,35 @@ paths:
           schema:
             $ref: '#/definitions/Error'
 
+  /account/{account_pubkey}/pending_transactions:
+    get:
+      tags:
+        - external
+        - transactions
+      operationId: GetAccountPendingTransactions
+      description: 'Get accounts''s pending transactions from the mempool'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: account_pubkey
+          description: 'Account pubkey to search for in mempool'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: successful operation
+          schema:
+            $ref: '#/definitions/Transactions'
+        '400':
+          description: Invalid account_pubkey provided
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Account not found
+          schema:
+            $ref: '#/definitions/Error'
+
 ## CAUTION: debug endpoints, implementation may be inefficient
   /balances:
     get:

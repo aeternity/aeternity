@@ -1602,6 +1602,9 @@ all_accounts_balances(_Config) ->
         ReceiversAccounts),
 
     {ok, MinerPubKey} = rpc(aec_keys, pubkey, []),
+    {ok, 200, Txs} =  get_transactions(aec_base58c:encode(account_pubkey, MinerPubKey)),
+    ?assertEqual(Receivers, length(Txs)),
+
     % mine a block to include the txs
     {ok, [Block]} = aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
     {ok, 200, #{<<"accounts_balances">> := BalancesMap}} = get_all_accounts_balances(),
@@ -3597,6 +3600,11 @@ get_header_by_hash(Hash) ->
 get_transactions() ->
     Host = external_address(),
     http_request(Host, get, "transactions", []).
+
+get_transactions(EncodedPubKey) ->
+    Host = external_address(),
+    http_request(Host, get, "account/" ++ binary_to_list(EncodedPubKey) ++ "/pending_transactions", []).
+
 
 get_tx(TxHash, TxEncoding) ->
     Params = tx_encoding_param(TxEncoding),
