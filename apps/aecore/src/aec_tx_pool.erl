@@ -36,6 +36,7 @@
         , get_max_nonce/1
         , invalid_txs/2
         , peek/1
+        , peek/2
         , push/1
         , push/2
         , size/0
@@ -130,7 +131,13 @@ garbage_collect(Height) ->
 %% pool.
 -spec peek(pos_integer() | infinity) -> {ok, [aetx_sign:signed_tx()]}.
 peek(MaxN) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
-    gen_server:call(?SERVER, {peek, MaxN}).
+    gen_server:call(?SERVER, {peek, MaxN, all}).
+
+%% Only return transactions for a specific account public key
+-spec peek(pos_integer() | infinity, aec_keys:pubkey()) -> 
+                                       {ok, [aetx_sign:signed_tx()]}.
+peek(MaxN, Account) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
+    gen_server:call(?SERVER, {peek, MaxN, Account}).
 
 -spec get_candidate(pos_integer(), binary()) -> {ok, [aetx_sign:signed_tx()]}.
 get_candidate(MaxN, BlockHash) when is_integer(MaxN), MaxN >= 0,
@@ -169,10 +176,10 @@ handle_call({top_change, OldHash, NewHash}, _From,
             #state{db = Mempool} = State) ->
     do_top_change(OldHash, NewHash, Mempool),
     {reply, ok, State};
-handle_call({peek, MaxNumberOfTxs}, _From, #state{db = Mempool} = State)
+handle_call({peek, MaxNumberOfTxs, Account}, _From, #state{db = Mempool} = State)
   when is_integer(MaxNumberOfTxs), MaxNumberOfTxs >= 0;
        MaxNumberOfTxs =:= infinity ->
-    Txs = pool_db_peek(Mempool, MaxNumberOfTxs),
+    Txs = pool_db_peek(Mempool, MaxNumberOfTxs, Account),
     {reply, {ok, Txs}, State};
 handle_call({get_candidate, MaxNumberOfTxs, BlockHash}, _From, State) ->
     Txs = int_get_candidate(State, MaxNumberOfTxs, BlockHash),
@@ -312,12 +319,16 @@ select_pool_db_key_by_hash(Mempool, TxHash) ->
 pool_db_open(DbName) ->
     {ok, ets:new(DbName, [ordered_set, public, named_table])}.
 
--spec pool_db_peek(pool_db(), MaxNumber::pos_integer() | infinity) ->
+-spec pool_db_peek(pool_db(), MaxNumber::pos_integer() | infinity, aec_keys:pubkey() | all) ->
                           [pool_db_value()].
-pool_db_peek(_, 0) -> [];
-pool_db_peek(Mempool, Max) ->
+pool_db_peek(_, 0, _) -> [];
+pool_db_peek(Mempool, Max, all) ->
     sel_return(
-      ets_select(Mempool, [{ {'_', '$1'}, [], ['$1'] }], Max)).
+      ets_select(Mempool, [{ {'_', '$1'}, [], ['$1'] }], Max));
+pool_db_peek(Mempool, Max, Account) ->
+    sel_return(
+      ets_select(Mempool, [{ {?KEY('_', '_', Account, '_', '_'), '$1'}, [], ['$1'] }], Max)).
+
 
 %% If TxHash is not already in GC table insert it.
 -spec enter_tx_gc(pool_db(), pool_db_gc_key(), pool_db_gc_value()) -> ok.
