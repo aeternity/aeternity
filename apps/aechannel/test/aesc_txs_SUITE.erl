@@ -73,6 +73,9 @@ create(Cfg) ->
             undefined -> aesc_test_utils:new_state();
             State0    -> State0
         end,
+    create_from_state(S).
+
+create_from_state(S) ->
     {PubKey1, S1} = aesc_test_utils:setup_new_account(S),
     {PubKey2, S2} = aesc_test_utils:setup_new_account(S1),
     PrivKey1 = aesc_test_utils:priv_key(PubKey1, S2),
@@ -305,8 +308,12 @@ close_solo_negative(Cfg) ->
         aetx:check(TxWrongNonce, Trees, Height, ?PROTOCOL_VERSION),
 
     %% Test payload has different channelId
-    TxSpecDiffChanId = aesc_test_utils:close_solo_tx_spec(?BOGUS_CHANNEL, PubKey1,
-                                                          Payload, PoI, S),
+    BadPayloadSpec = #{initiator_amount => InitiatorEndBalance,
+                       responder_amount => ResponderEndBalance},
+    BadPayload = aesc_test_utils:payload(?BOGUS_CHANNEL, PubKey1, PubKey2,
+                                         [PrivKey1, PrivKey2], BadPayloadSpec),
+    TxSpecDiffChanId = aesc_test_utils:close_solo_tx_spec(ChannelId, PubKey1,
+                                                          BadPayload, PoI, S),
     {ok, TxDiffChanId} = aesc_close_solo_tx:new(TxSpecDiffChanId),
     {error, bad_state_channel_id} =
         aetx:check(TxDiffChanId, Trees, Height, ?PROTOCOL_VERSION),
@@ -368,8 +375,7 @@ close_solo_negative(Cfg) ->
     TestPayloadWrongPeers(PubKey2, PubKey3, [PrivKey2, PrivKey3]),
 
     %% Test existing channel's payload
-    Cfg2 = lists:keyreplace(state, 1, Cfg, {state, S}),
-    {PubKey21, PubKey22, ChannelId2, _, S2} = create(Cfg2),
+    {PubKey21, PubKey22, ChannelId2, _, S2} = create_from_state(S),
     Trees2 = aens_test_utils:trees(S2),
     PrivKey21 = aesc_test_utils:priv_key(PubKey21, S2),
     PrivKey22 = aesc_test_utils:priv_key(PubKey22, S2),
@@ -865,13 +871,16 @@ slash_negative(Cfg) ->
 
     Ch = aesc_test_utils:get_channel(ChannelId, S),
     ChannelAmount = aesc_channels:total_amount(Ch),
+    ChannelRound = aesc_channels:round(Ch),
 
     InitiatorEndBalance = rand:uniform(ChannelAmount - 2) + 1,
     ResponderEndBalance = ChannelAmount - InitiatorEndBalance,
     PoI = aesc_test_utils:proof_of_inclusion([{PubKey1, InitiatorEndBalance},
                                               {PubKey2, ResponderEndBalance}]),
     PayloadSpec = #{initiator_amount => InitiatorEndBalance,
-                    responder_amount => ResponderEndBalance},
+                    responder_amount => ResponderEndBalance,
+                    round            => ChannelRound + 1
+                   },
     Payload = aesc_test_utils:payload(ChannelId, PubKey1, PubKey2,
                                       [PrivKey1, PrivKey2], PayloadSpec),
 
@@ -894,7 +903,9 @@ slash_negative(Cfg) ->
     TestWrongAmounts =
         fun(IAmt, PAmt) ->
             PayloadSpecW = #{initiator_amount => IAmt,
-                            responder_amount => PAmt},
+                             responder_amount => PAmt,
+                             round            => ChannelRound + 2
+                            },
             PayloadW = aesc_test_utils:payload(ChannelId, PubKey1, PubKey2,
                                       [PrivKey1, PrivKey2], PayloadSpecW),
             PoI2 = aesc_test_utils:proof_of_inclusion([{PubKey1, IAmt},
@@ -902,7 +913,7 @@ slash_negative(Cfg) ->
             TxSpecW = aesc_test_utils:slash_tx_spec(ChannelId, PubKey1,
                                                          PayloadW, PoI2, S),
             {ok, TxW} = aesc_slash_tx:new(TxSpecW),
-            {error, wrong_state_amount} =
+            {error, poi_amounts_change_channel_funds} =
                 aetx:check(TxW, Trees, Height, ?PROTOCOL_VERSION)
         end,
     TestWrongAmounts(InitiatorEndBalance -1, ResponderEndBalance),
@@ -948,8 +959,9 @@ slash_negative(Cfg) ->
     %% Test reject payload with missing signatures
     TestPayloadSigners =
         fun(PrivKeys) ->
+            PayloadSpec1 = PayloadSpec#{round => ChannelRound + 2},
             PayloadMissingS = aesc_test_utils:payload(ChannelId, PubKey1, PubKey2,
-                                                  PrivKeys, PayloadSpec),
+                                                  PrivKeys, PayloadSpec1),
             TxSpecMissingS = aesc_test_utils:slash_tx_spec(ChannelId, PubKey1,
                                                       PayloadMissingS, PoI, S),
             {ok, TxMissingS} = aesc_slash_tx:new(TxSpecMissingS),
@@ -970,7 +982,9 @@ slash_negative(Cfg) ->
             PayloadMissingS = aesc_test_utils:payload(ChannelId, I, P,
                                                   PrivKeys,
                                                   PayloadSpec#{initiator_amount => IAmt,
-                                                               responder_amount => RAmt}),
+                                                               responder_amount => RAmt,
+                                                               round => ChannelRound + 2
+                                                              }),
             TxSpecMissingS = aesc_test_utils:slash_tx_spec(ChannelId, I,
                                                       PayloadMissingS, PoI3, S),
             {ok, TxMissingS} = aesc_slash_tx:new(TxSpecMissingS),

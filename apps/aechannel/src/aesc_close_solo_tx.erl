@@ -99,18 +99,11 @@ from(#channel_close_solo_tx{from = FromPubKey}) ->
 check(#channel_close_solo_tx{payload    = Payload,
                              poi        = PoI,
                              fee        = Fee,
-                             nonce      = Nonce} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
+                             nonce      = Nonce} = Tx, _Context, Trees, Height, _ConsensusVersion) ->
     ChannelId  = channel(Tx),
     FromPubKey = from(Tx),
-    Checks =
-        [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee) end,
-         fun() -> check_payload(ChannelId, FromPubKey, Payload, PoI, Trees) end],
-    case aeu_validation:run(Checks) of
-        ok ->
-            {ok, Trees};
-        {error, _Reason} = Error ->
-            Error
-    end.
+    aesc_utils:check_solo_close_payload(ChannelId, FromPubKey, Nonce, Fee,
+                                        Payload, PoI, Height, Trees).
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()}.
@@ -120,26 +113,8 @@ process(#channel_close_solo_tx{payload    = Payload,
                                nonce      = Nonce} = Tx, _Context, Trees, Height, _ConsensusVersion) ->
     ChannelId  = channel(Tx),
     FromPubKey = from(Tx),
-    AccountsTree0 = aec_trees:accounts(Trees),
-    ChannelsTree0 = aec_trees:channels(Trees),
-
-    FromAccount0       = aec_accounts_trees:get(FromPubKey, AccountsTree0),
-    {ok, FromAccount1} = aec_accounts:spend(FromAccount0, Fee, Nonce),
-    AccountsTree1      = aec_accounts_trees:enter(FromAccount1, AccountsTree0),
-
-    Channel0 = aesc_state_tree:get(ChannelId, ChannelsTree0),
-    Channel1 =
-        case aesc_utils:deserialize_payload(Payload) of
-            {ok, _SignedTx, PayloadTx} ->
-                aesc_channels:close_solo(Channel0, PayloadTx, PoI, Height);
-            {ok, last_onchain} ->
-                aesc_channels:close_solo(Channel0, PoI, Height)
-        end,
-    ChannelsTree1 = aesc_state_tree:enter(Channel1, ChannelsTree0),
-
-    Trees1 = aec_trees:set_accounts(Trees, AccountsTree1),
-    Trees2 = aec_trees:set_channels(Trees1, ChannelsTree1),
-    {ok, Trees2}.
+    aesc_utils:process_solo_close(ChannelId, FromPubKey, Nonce, Fee,
+                                  Payload, PoI, Height, Trees).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
 signers(#channel_close_solo_tx{} = Tx, _) ->
@@ -212,72 +187,7 @@ serialization_template(?CHANNEL_CLOSE_SOLO_TX_VSN) ->
 %%% Internal functions
 %%%===================================================================
 
--spec check_payload(aesc_channels:id(), aec_keys:pubkey(), binary(),
-                    aec_trees:poi(), aec_trees:trees()) ->
-                           ok | {error, term()}.
-check_payload(ChannelId, FromPubKey, Payload, PoI, Trees) ->
-    case aesc_utils:deserialize_payload(Payload) of
-        {ok, last_onchain} ->
-            case aesc_utils:get_active_channel(ChannelId, Trees) of
-                {ok, Channel} ->
-                    Checks =
-                          [fun() -> check_channel_hash(Channel, PoI) end,
-                           fun() ->
-                               aesc_utils:check_peers_and_amounts_in_poi(Channel,
-                                                                         PoI)
-                           end],
-                    aeu_validation:run(Checks);
-                {error, _} = Err -> Err
-            end;
-        {ok, SignedState, PayloadTx} ->
-            Checks =
-                [fun() -> is_peer(FromPubKey, SignedState, Trees) end,
-                 fun() -> aetx_sign:verify(SignedState, Trees) end,
-                 fun() -> check_channel(ChannelId, PayloadTx, PoI, Trees) end,
-                 fun() -> check_root_hash(PayloadTx, PoI) end],
-            aeu_validation:run(Checks);
-        {error, _Reason} = Error ->
-            Error
-    end.
-
-is_peer(FromPubKey, SignedState, Trees) ->
-    Tx = aetx_sign:tx(SignedState),
-    case aetx:signers(Tx, Trees) of
-        {ok, Signers} ->
-            case lists:member(FromPubKey, Signers) of
-                true  -> ok;
-                false -> {error, account_not_peer}
-            end;
-        {error, _Reason}=Err -> Err
-    end.
-
-
--spec check_channel(aesc_channels:id(), aesc_offchain_tx:tx(),
-                    aec_trees:poi(), aec_trees:trees()) -> ok | {error, atom()}.
-check_channel(ChannelId, PayloadTx, PoI, Trees) ->
-    case ChannelId =:= aesc_offchain_tx:channel_id(PayloadTx) of
-        false -> {error, bad_state_channel_id};
-        true ->
-          aesc_utils:check_active_channel_exists(ChannelId, PayloadTx, PoI, Trees)
-    end.
-
-check_root_hash(PayloadTx, PoI) ->
-    ChannelStateHash = aesc_offchain_tx:state_hash(PayloadTx),
-    PoIHash = aec_trees:poi_hash(PoI),
-    case ChannelStateHash =:= PoIHash of
-        true -> ok;
-        false -> {error, invalid_poi_hash}
-    end.
-
 -spec version() -> non_neg_integer().
 version() ->
     ?CHANNEL_CLOSE_SOLO_TX_VSN.
-
-check_channel_hash(Channel, PoI) ->
-    ChannelStateHash = aesc_channels:state_hash(Channel),
-    PoIHash = aec_trees:poi_hash(PoI),
-    case ChannelStateHash =:= PoIHash of
-        true -> ok;
-        false -> {error, invalid_poi_hash}
-    end.
 
