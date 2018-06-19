@@ -36,6 +36,10 @@
                 "expired_tx_ttl" : {
                     "description" : "Number of blocks before expired (TTL or low nonce) TXs are garbage collected",
                     "type" : "integer"
+                },
+                "sync_interval" : {
+                    "description" : "Interval between mempool (re-)synchronization (in ms)",
+                    "type" : "integer"
                 }
             }
         },
