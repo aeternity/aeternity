@@ -28,7 +28,7 @@
 -spec create(aec_blocks:block() | aec_blocks:block_header_hash(),
              aec_blocks:block() | aec_blocks:block_header_hash()) ->
         {ok, aec_blocks:block(), block_info()} | {error, term()}.
-create(BlockHash, KeyBlockHash) when is_binary(BlockHash), is_binary(BlockHash) ->
+create(BlockHash, KeyBlockHash) when is_binary(BlockHash), is_binary(KeyBlockHash) ->
     case {aec_chain:get_block(BlockHash), aec_chain:get_block(KeyBlockHash)} of
         {{ok, Block}, {ok, KeyBlock}} ->
             int_create(BlockHash, Block, KeyBlockHash, KeyBlock);
