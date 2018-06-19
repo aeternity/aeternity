@@ -84,7 +84,7 @@
           body:
             scope: "env:{{ env }}"
             message: "Deploy"
-            end: "{{ lookup('pipe', 'date -v+{{ downtime }} +%s') }}"
+            end: "{{ lookup('pipe', 'date +%s')|int + downtime|int }}"
         when:
           - downtime is defined
           - downtime != "0"

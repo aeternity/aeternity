@@ -468,7 +468,7 @@ jobs:
     <<: *container_config
     environment:
       - DEPLOY_ENV: integration
-      - DEPLOY_DOWNTIME: 15M
+      - DEPLOY_DOWNTIME: 900 #15M
     steps: *deploy_steps
 
   deploy_dev1:
@@ -488,7 +488,7 @@ jobs:
     environment:
       - DEPLOY_ENV: uat
       - DEPLOY_COLOR: blue
-      - DEPLOY_DOWNTIME: 30M
+      - DEPLOY_DOWNTIME: 1800 #30M
     steps: *deploy_steps
 
   deploy_uat_green:
@@ -496,14 +496,14 @@ jobs:
     environment:
       - DEPLOY_ENV: uat
       - DEPLOY_COLOR: green
-      - DEPLOY_DOWNTIME: 30M
+      - DEPLOY_DOWNTIME: 1800 #30M
     steps: *deploy_steps
 
   deploy_fast_integration:
     <<: *container_config
     environment:
       - DEPLOY_ENV: fast_integration
-      - DEPLOY_DOWNTIME: 15M
+      - DEPLOY_DOWNTIME: 900 #15M
     steps: *deploy_steps
 
   github_release_osx:
