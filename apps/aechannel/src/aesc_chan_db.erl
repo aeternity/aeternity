@@ -35,7 +35,6 @@ is_channel_tx(Mod) ->
         aesc_deposit_tx -> true;
         aesc_offchain_tx -> true;
         aesc_settle_tx -> true;
-        aesc_slash_tx -> true;
         aesc_withdraw_tx -> true;
         _ -> false
     end.

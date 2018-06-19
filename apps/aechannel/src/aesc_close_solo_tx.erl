@@ -216,28 +216,46 @@ serialization_template(?CHANNEL_CLOSE_SOLO_TX_VSN) ->
                     aec_trees:poi(), aec_trees:trees()) ->
                            ok | {error, term()}.
 check_payload(ChannelId, FromPubKey, Payload, PoI, Trees) ->
-    case aesc_utils:deserialize_payload(Payload) of
-        {ok, last_onchain} ->
-            case aesc_utils:get_active_channel(ChannelId, Trees) of
-                {ok, Channel} ->
+    case aesc_utils:get_channel(ChannelId, Trees) of
+        {error, _} = E -> E;
+        {ok, Channel} ->
+            case aesc_utils:deserialize_payload(Payload) of
+                {ok, last_onchain} ->
                     Checks =
-                          [fun() -> check_channel_hash(Channel, PoI) end,
-                           fun() ->
-                               aesc_utils:check_peers_and_amounts_in_poi(Channel,
-                                                                         PoI)
-                           end],
+                        [fun() -> aesc_utils:check_is_active(Channel) end,
+                         fun() -> check_root_hash_in_channel(Channel, PoI) end,
+                         fun() -> check_peers_and_amounts_in_poi(Channel, PoI) end
+                        ],
                     aeu_validation:run(Checks);
-                {error, _} = Err -> Err
-            end;
-        {ok, SignedState, PayloadTx} ->
-            Checks =
-                [fun() -> is_peer(FromPubKey, SignedState, Trees) end,
-                 fun() -> aetx_sign:verify(SignedState, Trees) end,
-                 fun() -> check_channel(ChannelId, PayloadTx, PoI, Trees) end,
-                 fun() -> check_root_hash(PayloadTx, PoI) end],
-            aeu_validation:run(Checks);
-        {error, _Reason} = Error ->
-            Error
+                {ok, SignedState, PayloadTx} ->
+                    Checks =
+                        [fun() -> check_channel_id_in_payload(Channel, PayloadTx) end,
+                         fun() -> check_round_in_payload(Channel, PayloadTx) end,
+                         fun() -> check_root_hash_in_payload(PayloadTx, PoI) end,
+                         fun() -> is_peer(FromPubKey, SignedState, Trees) end,
+                         fun() -> aetx_sign:verify(SignedState, Trees) end,
+                         fun() -> check_peers_and_amounts_in_poi(Channel, PoI) end
+                        ],
+                    aeu_validation:run(Checks);
+                {error, _Reason} = Error ->
+                    Error
+            end
+    end.
+
+check_peers_and_amounts_in_poi(Channel, PoI) ->
+    InitiatorPubKey   = aesc_channels:initiator(Channel),
+    ResponderPubKey   = aesc_channels:responder(Channel),
+    ChannelAmount     = aesc_channels:total_amount(Channel),
+    case aesc_utils:accounts_in_poi([InitiatorPubKey, ResponderPubKey], PoI) of
+        {error, _} = Err -> Err;
+        {ok, [PoIInitiatorAcc, PoIResponderAcc]} ->
+            PoIInitiatorAmt = aec_accounts:balance(PoIInitiatorAcc),
+            PoIResponderAmt = aec_accounts:balance(PoIResponderAcc),
+            PoIAmount       = PoIInitiatorAmt + PoIResponderAmt,
+            case ChannelAmount =:= PoIAmount of
+                true  -> ok;
+                false -> {error, poi_amounts_change_channel_funds}
+            end
     end.
 
 is_peer(FromPubKey, SignedState, Trees) ->
@@ -251,18 +269,28 @@ is_peer(FromPubKey, SignedState, Trees) ->
         {error, _Reason}=Err -> Err
     end.
 
-
--spec check_channel(aesc_channels:id(), aesc_offchain_tx:tx(),
-                    aec_trees:poi(), aec_trees:trees()) -> ok | {error, atom()}.
-check_channel(ChannelId, PayloadTx, PoI, Trees) ->
-    case ChannelId =:= aesc_offchain_tx:channel_id(PayloadTx) of
+check_channel_id_in_payload(Channel, PayloadTx) ->
+    case aesc_channels:id(Channel) =:= aesc_offchain_tx:channel_id(PayloadTx) of
         false -> {error, bad_state_channel_id};
-        true ->
-          aesc_utils:check_active_channel_exists(ChannelId, PayloadTx, PoI, Trees)
+        true -> ok
     end.
 
-check_root_hash(PayloadTx, PoI) ->
+check_round_in_payload(Channel, PayloadTx) ->
+    case aesc_channels:round(Channel) < aesc_offchain_tx:round(PayloadTx) of
+        false -> {error, old_round};
+        true  -> ok
+    end.
+
+check_root_hash_in_payload(PayloadTx, PoI) ->
     ChannelStateHash = aesc_offchain_tx:state_hash(PayloadTx),
+    PoIHash = aec_trees:poi_hash(PoI),
+    case ChannelStateHash =:= PoIHash of
+        true -> ok;
+        false -> {error, invalid_poi_hash}
+    end.
+
+check_root_hash_in_channel(Channel, PoI) ->
+    ChannelStateHash = aesc_channels:state_hash(Channel),
     PoIHash = aec_trees:poi_hash(PoI),
     case ChannelStateHash =:= PoIHash of
         true -> ok;
@@ -272,12 +300,4 @@ check_root_hash(PayloadTx, PoI) ->
 -spec version() -> non_neg_integer().
 version() ->
     ?CHANNEL_CLOSE_SOLO_TX_VSN.
-
-check_channel_hash(Channel, PoI) ->
-    ChannelStateHash = aesc_channels:state_hash(Channel),
-    PoIHash = aec_trees:poi_hash(PoI),
-    case ChannelStateHash =:= PoIHash of
-        true -> ok;
-        false -> {error, invalid_poi_hash}
-    end.
 
