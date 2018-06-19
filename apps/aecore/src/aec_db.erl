@@ -404,10 +404,9 @@ gc_tx(TxHash) ->
            BlockHash when is_binary(BlockHash) ->
                {error, BlockHash};
            none ->
-               delete(aec_signed_tx, TxHash);
+               ok;
            mempool ->
-               delete(aec_tx_pool, TxHash),
-               delete(aec_signed_tx, TxHash)
+               delete(aec_tx_pool, TxHash)
        end).
 
 get_signed_tx(Hash) ->
