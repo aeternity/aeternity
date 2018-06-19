@@ -99,7 +99,7 @@ ast_body(?id_app("raw_call", [To, Fun, Gas, Value, {typed, _, Arg, ArgT}], _, Ou
     {Args, ArgTypes} =
         case Arg of %% Hack: pack unary argument in tuple
             %% Already a tuple.
-            {tuple, _, Elems} -> {Arg, ArgT};
+            {tuple, _,_Elems} -> {Arg, ArgT};
             _ -> {{tuple, [], [Arg]}, {tuple_t, [], [ArgT]}}
         end,
     #prim_call_contract{ gas      = ast_body(Gas),
@@ -439,10 +439,6 @@ type_value({tuple, As}) ->
 ast_fun_to_icode(Name, Args, Body, TypeRep, #{functions := Funs} = Icode) ->
     NewFuns = [{Name, Args, Body, TypeRep}| Funs],
     aeso_icode:set_functions(NewFuns, Icode).
-
-
-set_functions(NewFuns, Icode) ->
-    maps:put(functions, NewFuns, Icode).
 
 %% -------------------------------------------------------------------
 %% Builtins

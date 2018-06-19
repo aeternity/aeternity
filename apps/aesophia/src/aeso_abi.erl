@@ -36,7 +36,7 @@ encode_call(FunctionHandle, ArgumentAst) ->
     Argument = ast_to_erlang(ArgumentAst),
     Call = list_to_tuple([FunctionHandle, Argument]),
     Data = aeso_data:to_binary(Call),
-    ArgumentType = get_type(Argument),
+    _ArgumentType = get_type(Argument),
     %% TODO: Verify that the type matches the function signature.
     Data.
 
