@@ -450,9 +450,14 @@ handle_request('GetAccountBalance', Req, _Context) ->
 handle_request('GetAccountPendingTransactions', Req, _Context) ->
     case aec_base58c:safe_decode(account_pubkey, maps:get('account_pubkey', Req)) of
         {ok, AccountPubkey} ->
-            {ok, Txs0} = aec_tx_pool:peek(infinity, AccountPubkey),
-            Txs = [aehttp_api_parser:encode(tx, T) || T <- Txs0],
-            {200, [], Txs};
+            case aec_chain:get_account(AccountPubkey) of
+                {value, _} ->
+                    {ok, Txs0} = aec_tx_pool:peek(infinity, AccountPubkey),
+                    Txs = [aehttp_api_parser:encode(tx, T) || T <- Txs0],
+                    {200, [], Txs};
+                _ ->
+                    {404, [], #{reason => <<"Account not found">>}}
+            end;
         _ ->
             {400, [], #{reason => <<"Invalid account hash">>}}
     end;
