@@ -52,7 +52,7 @@ create_with_state(Block, Miner, Trees, FeesInfo) ->
        {ok, aec_blocks:block()} | {error, term()}.
 adjust_target(Block, AdjHeaders) ->
     Header = aec_blocks:to_header(Block),
-    DeltaHeight = aec_governance:blocks_to_check_difficulty_count(),
+    DeltaHeight = aec_governance:key_blocks_to_check_difficulty_count(),
     case aec_headers:height(Header) =< DeltaHeight of
         true ->
             %% For the first DeltaHeight blocks, use pre-defined target
@@ -75,7 +75,7 @@ int_create(BlockHash, Block, FeesInfo) ->
     end.
 
 int_create(BlockHash, Block, FeesInfo, Trees) ->
-    N = aec_governance:blocks_to_check_difficulty_count(),
+    N = aec_governance:key_blocks_to_check_difficulty_count(),
     case aec_blocks:height(Block) < N of
         true  ->
             int_create(BlockHash, Block, Trees, []);

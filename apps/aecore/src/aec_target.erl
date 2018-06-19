@@ -9,7 +9,7 @@
 
 %% Return height of the header to be used as a start point for target calculations,
 %% based on the following formula:
-%% delta_height(Header) = Header.height - aec_governance:blocks_to_check_difficulty_count().
+%% delta_height(Header) = Header.height - aec_governance:key_blocks_to_check_difficulty_count().
 %% Returns {error | chain_too_short_to_recalculate_target} if initial height is a negative value
 %% or it points to genesis block.
 -spec determine_delta_header_height(
