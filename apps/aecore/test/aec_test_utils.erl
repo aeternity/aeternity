@@ -188,7 +188,7 @@ unmock_difficulty_as_target() ->
 mock_block_target_validation() ->
     meck:new(aec_governance, [passthrough]),
     meck:new(aec_target, [passthrough]),
-    meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 1),
+    meck:expect(aec_governance, key_blocks_to_check_difficulty_count, 0, 1),
     meck:expect(aec_target, verify, 2, ok).
 
 unmock_block_target_validation() ->
@@ -245,10 +245,11 @@ extend_block_chain_with_state(PrevBlock, PrevBlockState, Data) ->
 
 
 extend_block_chain_with_state(_, _, [], _, _, _, _, Chain) ->
-    lists:reverse(Chain);
+    Chain;
 extend_block_chain_with_state(PrevBlock, PrevBlockState, [Tgt | Tgts], [Ts | Tss], TxsFun, Nonce, MinerAcc, Chain) ->
-    {Block, BlockState} = next_block_with_state(PrevBlock, PrevBlockState, Tgt, Ts, TxsFun, Nonce, MinerAcc),
-    extend_block_chain_with_state(Block, BlockState, Tgts, Tss, TxsFun, Nonce, MinerAcc, [{Block, BlockState} | Chain]).
+    NewBs = next_block_with_state(PrevBlock, PrevBlockState, Tgt, Ts, TxsFun, Nonce, MinerAcc),
+    {Block, BlockState} = lists:last(NewBs),
+    extend_block_chain_with_state(Block, BlockState, Tgts, Tss, TxsFun, Nonce, MinerAcc, Chain ++ NewBs).
 
 
 blocks_only_chain(Chain) ->
@@ -258,11 +259,20 @@ blocks_only_chain(Chain) ->
 next_block_with_state(PrevBlock, Trees, Target, Time0, TxsFun, Nonce, MinerAcc) ->
     Height = aec_blocks:height(PrevBlock) + 1,
     Txs = TxsFun(Height),
-    %% TODO NG: figure out how to cover next block regarding key vs micro and apis
-    {B, S} = aec_block_micro_candidate:create_with_state(PrevBlock, MinerAcc, Txs, Trees),
-    {B#block{ target = Target, nonce  = Nonce,
-              time   = case Time0 of undefined -> B#block.time; _ -> Time0 end },
-     S}.
+    %% NG: if a block X used to have Txs, now put them in a microblock just before
+    %% the key-block at height X.
+    {PrevBlock1, Trees1} =
+        case Txs of
+            [] ->
+                {PrevBlock, Trees};
+            _  ->
+                aec_block_micro_candidate:create_with_state(PrevBlock, PrevBlock, MinerAcc, Txs, Trees)
+    end,
+    {B, S} = aec_block_key_candidate:create_with_state(PrevBlock1, MinerAcc, Trees1, #{txs => 0, gas => 0}),
+    [ {PrevBlock1, Trees1} || Txs /= [] ] ++
+        [{B#block{ target = Target, nonce  = Nonce,
+                   time   = case Time0 of undefined -> B#block.time; _ -> Time0 end },
+          S}].
 
 signed_spend_tx(ArgsMap) ->
     {ok, SenderAccount} = wait_for_pubkey(),
