@@ -78,7 +78,7 @@ int_create(BlockHash, Block, FeesInfo, Trees) ->
     N = aec_governance:key_blocks_to_check_difficulty_count(),
     case aec_blocks:height(Block) < N of
         true  ->
-            int_create(BlockHash, Block, Trees, []);
+            int_create(BlockHash, Block, FeesInfo, Trees, []);
         false ->
             case aec_chain:get_n_headers_backwards_from_hash(BlockHash, N) of
                 {ok, Headers} ->
