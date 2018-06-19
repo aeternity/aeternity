@@ -86,8 +86,7 @@ genesis_block_with_state(Map) ->
                                                          height(), ?GENESIS_VERSION),
 
     Block = aec_blocks:new_key(height(), prev_hash(), aec_trees:hash(Trees),
-                               ?HIGHEST_TARGET_SCI, 0, aeu_time:now_in_msecs(),
-                               ?GENESIS_VERSION, miner()),
+                               ?HIGHEST_TARGET_SCI, 0, 0, ?GENESIS_VERSION, miner()),
     {Block, Trees}.
 
 %% Returns state trees at genesis block.
