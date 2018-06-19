@@ -8,7 +8,7 @@
 
 -export([ apply_block_txs/5
         , apply_block_txs_strict/5
-        , create/2
+        , create/1
         , create_with_state/5
         , update/3
         ]).
@@ -25,20 +25,24 @@
                           adj_chain := [aec_headers:header()]}.
 
 %% -- API functions ----------------------------------------------------------
--spec create(aec_blocks:block() | aec_blocks:block_header_hash(),
-             aec_blocks:block() | aec_blocks:block_header_hash()) ->
+
+-spec create(aec_blocks:block() | aec_blocks:block_header_hash()) ->
         {ok, aec_blocks:block(), block_info()} | {error, term()}.
-create(BlockHash, KeyBlockHash) when is_binary(BlockHash), is_binary(KeyBlockHash) ->
-    case {aec_chain:get_block(BlockHash), aec_chain:get_block(KeyBlockHash)} of
-        {{ok, Block}, {ok, KeyBlock}} ->
-            int_create(BlockHash, Block, KeyBlockHash, KeyBlock);
-        _ ->
-            {error, block_not_found}
+create(BlockHash) when is_binary(BlockHash) ->
+    case aec_chain:get_block(BlockHash) of
+        {ok, Block} -> create(Block);
+        _ -> {error, block_not_found}
     end;
-create(Block, KeyBlock) ->
-    {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
-    {ok, KeyBlockHash} = aec_blocks:hash_internal_representation(KeyBlock),
-    int_create(BlockHash, Block, KeyBlockHash, KeyBlock).
+create(Block) ->
+    case aec_blocks:is_key_block(Block) of
+        true -> int_create(Block, Block);
+        false ->
+            KeyBlockHash = aec_blocks:key_hash(Block),
+            case aec_chain:get_block(KeyBlockHash) of
+                {ok, KeyBlock} -> int_create(Block, KeyBlock);
+                _ -> {error, block_not_found}
+            end
+    end.
 
 -spec create_with_state(aec_blocks:block(), aec_blocks:block(), aec_keys:pubkey(),
     list(aetx_sign:signed_tx()), aec_trees:trees()) ->
@@ -116,7 +120,9 @@ calculate_gas_fee(Calls) ->
         end,
     aeu_mtrees:fold(F, 0, aect_call_state_tree:iterator(Calls)).
 
-int_create(BlockHash, Block, KeyBlockHash, KeyBlock) ->
+int_create(Block, KeyBlock) ->
+    {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
+    {ok, KeyBlockHash} = aec_blocks:hash_internal_representation(KeyBlock),
     case aec_chain:get_block_state(BlockHash) of
         {ok, Trees} ->
             int_create(BlockHash, Block, KeyBlockHash, KeyBlock, Trees);
