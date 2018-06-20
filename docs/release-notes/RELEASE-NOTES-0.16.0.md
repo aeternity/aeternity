@@ -1,6 +1,6 @@
 # About this release
 
-[This release][this-release] is focused on TODOFILLMEIN.
+[This][this-release] is a maintenance release.
 It:
 * Improves TX-pool synchronization. It is now synced (with only missing transactions being
   pulled in) only once, at startup, after this it relies on the gossip protocol.
@@ -20,7 +20,7 @@ It:
   removed from the mempool/tx-pool periodically.
 * Adds support for maps to Sophia.
 * Enables retrieving the contract call object produced by the execution of the initialization call in a contract create transaction.
-* Adds HTTP endpoint for contract proof of inclusion
+* Adds HTTP endpoint for contract proof of inclusion.
 * Enables decoding of Sophia data into a json structure.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.16.0
