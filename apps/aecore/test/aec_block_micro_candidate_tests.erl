@@ -4,7 +4,7 @@
 %%%   Unit tests for the aec_block_{key,micro}_candidate module
 %%% @end
 %%%=============================================================================
--module(aec_block_candidate_tests).
+-module(aec_block_micro_candidate_tests).
 
 -ifdef(TEST).
 
@@ -143,7 +143,7 @@ block_extension_test_() ->
 
           {ok, Block1B, #{ trees := Trees1B }} = aec_block_micro_candidate:create(Block0),
 
-          ?assertEqual(get_miner_account_balance(Trees1A) + GasUsed * GasPrice,
+          ?assertEqual(get_miner_account_balance(Trees1A), %% NG: Not yet + GasUsed * GasPrice,
                        get_miner_account_balance(Trees1B)),
 
           meck:expect(aec_tx_pool, get_candidate, 2, {ok, []}),
