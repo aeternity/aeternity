@@ -453,6 +453,7 @@ awaiting_signature(cast, {?SIGNED, ?DEP_CREATED, SignedTx},
     NewSignedTx = aetx_sign:add_signatures(
                     HSCTx, aetx_sign:signatures(SignedTx)),
     D1 = send_deposit_signed_msg(NewSignedTx, D),
+    report(on_chain_tx, NewSignedTx, D1),
     {ok, D2} = start_min_depth_watcher(?WATCH_DEP, NewSignedTx, D1),
     next_state(awaiting_locked, D2);
 awaiting_signature(cast, {?SIGNED, ?WDRAW_CREATED, SignedTx},
@@ -544,7 +545,7 @@ dep_half_signed(enter, _OldSt, _D) -> keep_state_and_data;
 dep_half_signed(cast, {?DEP_SIGNED, Msg}, D) ->
     case check_deposit_signed_msg(Msg, D) of
         {ok, SignedTx, D1} ->
-            report(info, deposit_signed, D1),
+            report(on_chain_tx, SignedTx, D1),
             ok = aec_tx_pool:push(SignedTx),
             {ok, D2} = start_min_depth_watcher(deposit, SignedTx, D1),
             next_state(awaiting_locked, D2)

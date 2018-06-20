@@ -196,7 +196,9 @@
     sc_ws_conflict_and_close/1,
     sc_ws_close/1,
     sc_ws_close_mutual_inititator/1,
-    sc_ws_close_mutual_responder/1
+    sc_ws_close_mutual_responder/1,
+    sc_ws_deposit_initiator_and_close/1,
+    sc_ws_deposit_responder_and_close/1
    ]).
 
 
@@ -390,7 +392,15 @@ groups() ->
        % responder can start close mutual
        sc_ws_open,
        sc_ws_update,
-       sc_ws_close_mutual_responder
+       sc_ws_close_mutual_responder,
+       % initiator can make a deposit
+       sc_ws_open,
+       sc_ws_update,
+       sc_ws_deposit_initiator_and_close,
+       % responder can make a deposit
+       sc_ws_open,
+       sc_ws_update,
+       sc_ws_deposit_responder_and_close
       ]}
     ].
 
@@ -428,8 +438,8 @@ init_per_group(channel_websocket, Config) ->
     %% prepare participants
     {IPubkey, IPrivkey} = generate_key_pair(),
     {RPubkey, RPrivkey} = generate_key_pair(),
-    IStartAmt = 50,
-    RStartAmt = 50,
+    IStartAmt = 10000,
+    RStartAmt = 10000,
     Fee = 1,
     BlocksToMine = 1,
 
@@ -2832,10 +2842,8 @@ channel_sign_tx(ConnPid, Privkey, Tag) ->
     Tx.
 
 sc_ws_open(Config) ->
-    #{initiator := #{pub_key := IPubkey,
-                    priv_key :=_IPrivkey},
-      responder := #{pub_key := RPubkey,
-                    priv_key :=_RPrivkey}} = proplists:get_value(participants, Config),
+    #{initiator := #{pub_key := IPubkey},
+      responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
 
     {ok, 200, #{<<"balance">> := IStartAmt}} =
                  get_balance_at_top(aec_base58c:encode(account_pubkey, IPubkey)),
@@ -3256,6 +3264,52 @@ sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
 
     % ensure tx is not hanging in mempool
     {ok, 200, []} = get_transactions(),
+    ok.
+
+sc_ws_deposit_initiator_and_close(Config) ->
+    sc_ws_deposit_and_close(Config, initiator).
+
+sc_ws_deposit_responder_and_close(Config) ->
+    sc_ws_deposit_and_close(Config, responder).
+
+
+sc_ws_deposit_and_close(Config, Origin) when Origin =:= initiator
+                            orelse Origin =:= responder ->
+    {sc_ws_update, ConfigList} = ?config(saved_config, Config),
+    Participants= proplists:get_value(participants, ConfigList),
+    Clients = proplists:get_value(channel_clients, ConfigList),
+    {SenderRole, AckRole} =
+        case Origin of
+            initiator -> {initiator, responder};
+            responder -> {responder, initiator}
+        end,
+    #{pub_key := SenderPubkey,
+      priv_key:= SenderPrivkey} = maps:get(SenderRole, Participants),
+    #{pub_key := AckPubkey,
+      priv_key:= AckPrivkey} = maps:get(AckRole, Participants),
+    SenderConnPid = maps:get(SenderRole, Clients),
+    AckConnPid = maps:get(AckRole, Clients),
+    {SStartB, AStartB} = channel_participants_balances(SenderPubkey, AckPubkey),
+    ok = ?WS:register_test_for_channel_events(SenderConnPid, [sign, info, on_chain_tx]),
+    ok = ?WS:register_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx]),
+    ?WS:send(SenderConnPid, <<"deposit">>, #{amount => 2}),
+    UnsignedStateTx = channel_sign_tx(SenderConnPid, SenderPrivkey, <<"deposit_tx">>),
+    {ok, #{<<"event">> := <<"deposit_created">>}} = ?WS:wait_for_channel_event(AckConnPid, info),
+    UnsignedStateTx = channel_sign_tx(AckConnPid, AckPrivkey, <<"deposit_ack">>),
+    ct:log("Unsigned state tx ~p", [UnsignedStateTx]),
+    {ok, #{<<"tx">> := EncodedSignedDepositTx}} = ?WS:wait_for_channel_event(SenderConnPid, on_chain_tx),
+    {ok, #{<<"tx">> := EncodedSignedDepositTx}} = ?WS:wait_for_channel_event(AckConnPid, on_chain_tx),
+
+    {ok, SSignedDepositTx} = aec_base58c:safe_decode(transaction,
+                                                     EncodedSignedDepositTx),
+    SignedDepositTx = aetx_sign:deserialize_from_binary(SSignedDepositTx),
+    ok = wait_for_signed_transaction_in_block(SignedDepositTx),
+    % assert acknowledger balance have not changed
+    {SStartB1, AStartB} = channel_participants_balances(SenderPubkey, AckPubkey),
+    {SStartB1, _} = {SStartB - 2 - 1, SStartB},
+
+    ok = ?WS:stop(SenderConnPid),
+    ok = ?WS:stop(AckConnPid),
     ok.
 
 wait_for_signed_transaction_in_pool(SignedTx) ->

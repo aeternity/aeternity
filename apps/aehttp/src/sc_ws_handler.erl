@@ -20,7 +20,24 @@
 
 -opaque handler() :: #handler{}.
 -export_type([handler/0]).
-
+-define(ACTION_SIGNED(Action), Action =:= <<"initiator_sign">>;
+                               Action =:= <<"deposit_tx">>;
+                               Action =:= <<"deposit_ack">>;
+                               Action =:= <<"responder_sign">>;
+                               Action =:= <<"shutdown_sign">>;
+                               Action =:= <<"shutdown_sign_ack">>;
+                               Action =:= <<"update">>;
+                               Action =:= <<"update_ack">>).
+-define(ACTION_TAG(Action), case Action of
+                                <<"initiator_sign">> -> create_tx;
+                                <<"deposit_tx">> -> deposit_tx;
+                                <<"deposit_ack">> -> deposit_created;
+                                <<"responder_sign">> -> funding_created;
+                                <<"update">> -> update;
+                                <<"update_ack">> -> update_ack;
+                                <<"shutdown_sign">> -> shutdown;
+                                <<"shutdown_sign_ack">> -> shutdown_ack
+                            end).
 init(Req, _Opts) ->
     {cowboy_websocket, Req, maps:from_list(cowboy_req:parse_qs(Req))}.
 
@@ -239,26 +256,20 @@ process_incoming(#{<<"action">> := <<"message">>,
             end;
         _ -> {reply, error_response(R, broken_encoding)}
     end;
-process_incoming(#{<<"action">> := ActorSigned,
+process_incoming(#{<<"action">> := <<"deposit">>,
+                   <<"payload">> := #{<<"amount">>  := Amount}} = R, State) ->
+    case aesc_fsm:upd_deposit(fsm_pid(State), #{amount => Amount}) of
+        ok -> no_reply;
+        {error, Reason} ->
+            {reply, error_response(R, Reason)}
+    end;
+process_incoming(#{<<"action">> := Action,
                    <<"payload">> := #{<<"tx">> := EncodedTx}}, State)
-    when ActorSigned =:= <<"initiator_sign">> orelse
-         ActorSigned =:= <<"responder_sign">> orelse
-         ActorSigned =:= <<"shutdown_sign">> orelse
-         ActorSigned =:= <<"shutdown_sign_ack">> orelse
-         ActorSigned =:= <<"update">> orelse
-         ActorSigned =:= <<"update_ack">>  ->
-    Tag =
-        case ActorSigned of
-            <<"initiator_sign">> -> create_tx;
-            <<"responder_sign">> -> funding_created;
-            <<"update">> -> update;
-            <<"update_ack">> -> update_ack;
-            <<"shutdown_sign">> -> shutdown;
-            <<"shutdown_sign_ack">> -> shutdown_ack
-        end,
+    when ?ACTION_SIGNED(Action) ->
+    Tag = ?ACTION_TAG(Action),
     case aec_base58c:safe_decode(transaction, EncodedTx) of
         {error, _} ->
-            lager:warning("Channel WS: broken ~p tx ~p", [ActorSigned, EncodedTx]),
+            lager:warning("Channel WS: broken ~p tx ~p", [Action, EncodedTx]),
             {error, invalid_tx};
         {ok, TxBin} ->
              SignedTx = aetx_sign:deserialize_from_binary(TxBin),%TODO: check tx
@@ -280,6 +291,8 @@ process_incoming(Msg, _State) ->
 process_fsm(#{type := sign,
               tag  := Tag,
               info := Tx}) when Tag =:= create_tx
+                         orelse Tag =:= deposit_tx 
+                         orelse Tag =:= deposit_created 
                          orelse Tag =:= shutdown
                          orelse Tag =:= shutdown_ack
                          orelse Tag =:= funding_created
@@ -292,6 +305,7 @@ process_fsm(#{type := sign,
             funding_created -> <<"responder_sign">>;
             shutdown -> <<"shutdown_sign">>;
             shutdown_ack -> <<"shutdown_sign_ack">>;
+            deposit_created -> <<"deposit_ack">>;
             T -> T
         end,
     {reply, #{action => <<"sign">>,
@@ -333,7 +347,9 @@ process_fsm(#{type := report,
         end,
     Action = atom_to_binary(Tag, utf8),
     {reply, #{action => Action,
-              payload => Payload}}.
+              payload => Payload}};
+process_fsm(#{type := Type, tag := Tag, info := Event}) ->
+    error({unparsed_fsm_event, Type, Tag, Event}).
 
 prepare_handler(Params) ->
     Read =
