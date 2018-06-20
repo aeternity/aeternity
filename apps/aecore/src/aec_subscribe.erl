@@ -79,6 +79,8 @@ handle_info({gproc_ps_event, Event = top_changed, #{ info := BlockHash }}, State
     {ok, Block} = aec_chain:get_block(BlockHash),
     notify_subscribers(Event, Block, State);
 handle_info({gproc_ps_event, Event = block_created, #{ info := Block }}, State) ->
+    notify_subscribers(Event, Block, State);
+handle_info({gproc_ps_event, Event = micro_block_created, #{ info := Block }}, State) ->
     notify_subscribers(Event, Block, State).
 
 notify_subscribers(top_changed = Event, Block, State = #state{ subscribed = Subs }) ->
