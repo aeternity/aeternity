@@ -621,9 +621,8 @@ handle_request('DecodeData', Req, _Context) ->
                 {ok, Result} ->
                     {200, [], #{ data => Result}};
                 {error, ErrorMsg} ->
-                    {403, [], #{reason => ErrorMsg}}
-            end;
-        _ -> {403, [], #{reason => <<"Bad request">>}}
+                    {400, [], #{reason => ErrorMsg}}
+            end
     end;
 
 handle_request('GetTx', Req, _Context) ->

@@ -2054,10 +2054,10 @@ paths:
             $ref: '#/definitions/SophiaBinaryData'
       responses:
         '200':
-          description: Json ecoded data
+          description: Json encoded data
           schema:
             $ref: '#/definitions/SophiaJsonData'
-        '403':
+        '400':
           description: Invalid data
           schema:
             $ref: '#/definitions/Error'
@@ -3081,11 +3081,16 @@ definitions:
         type: string
       data:
         type: string
+    required:
+    - sophia-type
+    - data
   SophiaJsonData:
     type: object
     properties:
       data:
         type: object
+    required:
+    - data
   Peer:
     type: string
     description: 'Aeternity node'
