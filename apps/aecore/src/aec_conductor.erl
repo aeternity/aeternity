@@ -765,14 +765,17 @@ create_key_block_candidate(#state{seen_top_block_hash = TopHash} = State) ->
 
 handle_key_block_candidate_reply({{ok, KeyBlockCandidate, _Info}, TopHash},
                                  #state{seen_top_block_hash = TopHash} = State) ->
-            epoch_mining:info("Created key block candidate"
-                              "Its target is ~p (= difficulty ~p).",
-                              [
-                               aec_blocks:target(KeyBlockCandidate),
-                               aec_blocks:difficulty(KeyBlockCandidate)]),
-            Candidate = make_key_candidate(KeyBlockCandidate),
-            State1 = State#state{key_block_candidate = Candidate},
-            start_mining(State1);
+    epoch_mining:info("Created key block candidate"
+                      "Its target is ~p (= difficulty ~p).",
+                      [aec_blocks:target(KeyBlockCandidate),
+                       aec_blocks:difficulty(KeyBlockCandidate)]),
+    Candidate = make_key_candidate(KeyBlockCandidate),
+    State1 = State#state{key_block_candidate = Candidate},
+    start_mining(State1);
+handle_key_block_candidate_reply({{ok, _KeyBlockCandidate, _Info}, OldTopHash},
+                                 #state{seen_top_block_hash = TopHash} = State) ->
+    epoch_mining:debug("Created key block candidate is already stale, create a new one", []),
+    create_key_block_candidate(State);
 handle_key_block_candidate_reply({{error, key_not_found}, _}, State) ->
     start_mining(State#state{keys_ready = false});
 handle_key_block_candidate_reply({{error, Reason}, _}, State) ->
