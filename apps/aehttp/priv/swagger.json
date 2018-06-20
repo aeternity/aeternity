@@ -2417,12 +2417,12 @@
         } ],
         "responses" : {
           "200" : {
-            "description" : "Json ecoded data",
+            "description" : "Json encoded data",
             "schema" : {
               "$ref" : "#/definitions/SophiaJsonData"
             }
           },
-          "403" : {
+          "400" : {
             "description" : "Invalid data",
             "schema" : {
               "$ref" : "#/definitions/Error"
@@ -4013,6 +4013,7 @@
     },
     "SophiaBinaryData" : {
       "type" : "object",
+      "required" : [ "data", "sophia-type" ],
       "properties" : {
         "sophia-type" : {
           "type" : "string"
@@ -4028,6 +4029,7 @@
     },
     "SophiaJsonData" : {
       "type" : "object",
+      "required" : [ "data" ],
       "properties" : {
         "data" : {
           "type" : "object",

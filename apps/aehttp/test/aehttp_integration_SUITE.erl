@@ -22,7 +22,8 @@
 %% off chain endpoints
 -export(
    [test_encode_decode_sophia_data/1,
-    test_encode_decode_sophia_data2/1
+    test_encode_decode_sophia_data2/1,
+    broken_decode_sophia_data/1
    ]).
 
 %% test case exports
@@ -235,7 +236,8 @@ groups() ->
      {off_chain_endpoints, [],
       [
        test_encode_decode_sophia_data,
-       test_encode_decode_sophia_data2
+       test_encode_decode_sophia_data2,
+       broken_decode_sophia_data
       ]},
      {external_endpoints, [sequence],
       [
@@ -547,10 +549,72 @@ test_encode_decode_sophia_data2(_Config) ->
 
     ok.
 
+broken_decode_sophia_data(_Config) ->
+    %% Sanity check on happy path.
+    D = encode_data(<<"bar">>, <<"42">>),
+    T = <<"(string, int)">>,
+    {ok, 200, #{<<"data">> := _}} = get_contract_decode_data(#{'sophia-type' => T, data => D}),
+    %% Missing field.
+    lists:foreach(
+      fun({Req, ExpMissingField}) ->
+              {ok, 400, Body} = get_contract_decode_data(Req),
+              ?assertMatch(
+                 #{<<"reason">> := <<"validation_error">>,
+                   <<"parameter">> := <<"body">>,
+                   <<"info">> := #{<<"error">> := <<"missing_required_property">>,
+                                   <<"data">> := ActMissingField}
+                  } when ActMissingField =:= ExpMissingField,
+                 Body)
+      end,
+      [ { #{data => D}, <<"sophia-type">>}
+      , { #{'sophia-type' => T}, <<"data">>}
+      , { #{type => T, data => D}, <<"sophia-type">>}
+      ]),
+    %% Field invalid according to schema.
+    lists:foreach(
+      fun({Req, ExpWrongField, ExpWrongValue}) ->
+              {ok, 400, Body} = get_contract_decode_data(Req),
+              ?assertMatch(
+                 #{<<"reason">> := <<"validation_error">>,
+                   <<"parameter">> := <<"body">>,
+                   <<"info">> := #{<<"error">> := <<"wrong_type">>,
+                                   <<"path">> := [ActWrongField],
+                                   <<"data">> := ActWrongValue}
+                  } when (ActWrongField =:= ExpWrongField) andalso
+                         (ActWrongValue =:= ExpWrongValue),
+                 Body)
+      end,
+      [ { #{'sophia-type' => 42, data => D}, <<"sophia-type">>, 42}
+      , { #{'sophia-type' => T, data => 42}, <<"data">>, 42}
+      ]),
+    %% Field valid according to schema but invalid for handler.
+    {ok, 400, #{<<"reason">> := <<"bad_type">>}} = get_contract_decode_data(#{'sophia-type' => <<"foo">>, data => D}),
+    {ok, 400, #{<<"reason">> := <<"bad argument">>}} = get_contract_decode_data(#{'sophia-type' => T, data => <<"foo">>}),
+    {ok, 200,
+     #{<<"data">> :=
+           #{<<"type">> := <<"tuple">>,
+             <<"value">> :=
+                 [#{<<"type">> := <<"string">>, <<"value">> := <<"bar">>},
+                  #{<<"type">> := <<"word">>  , <<"value">> := 192} ]}}
+    } = %% Why not `{ok, 400, #{<<"reason">> := <<"bad_type">>}}`, with potentially different reason?
+         get_contract_decode_data(#{'sophia-type' => <<"(string, (int))">>, data => D}),
+    {ok, 200,
+     #{<<"data">> :=
+           #{<<"type">> := <<"tuple">>,
+             <<"value">> :=
+                 [#{<<"type">> := <<"string">>, <<"value">> := <<"bar">>},
+                  #{<<"type">> := <<"word">>, <<"value">> := 192} ]}}
+    } = %% Why not `{ok, 400, #{<<"reason">> := <<"bad_type">>}}`, with potentially different reason?
+        get_contract_decode_data(#{'sophia-type' => T, data => encode_data(<<"bar">>, <<"(42)">>)}),
+    ok.
+
 
 encode_data(Term) ->
+    encode_data(<<"foo">>, Term).
+
+encode_data(Function, Term) ->
     {ok, HexData} = aect_sophia:encode_call_data(<<>>,
-                                              <<"foo">>,
+                                              Function,
                                               Term),
     HexData.
 
