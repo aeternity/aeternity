@@ -8,17 +8,13 @@ ADD . /app
 RUN cd /app && make prod-build
 
 # Put epoch node in second stage container
-FROM ubuntu:16.04
+FROM ubuntu:18.04
 
 # Deploy application code from builder container
 COPY --from=builder /app/_build/prod/rel/epoch /home/epoch/node
 
-# Copy custom built libs
-# Note the `ldconfig` requirement which is implicitly run by openssl install
-COPY --from=builder /usr/local/lib /usr/local/lib
-
 # OpenSSL is shared lib dependency
-RUN apt-get -qq update && apt-get -qq -y install openssl curl \
+RUN apt-get -qq update && apt-get -qq -y install libssl1.0.0 curl libsodium23 \
     && ldconfig \
     && rm -rf /var/lib/apt/lists/*
 

@@ -1,42 +1,43 @@
 # Build from source
 
-This document describes how to build an epoch node from source on current Ubuntu 16.04.4 LTS.
+This document describes how to build an epoch node from source on current Ubuntu 16.04.4 LTS or Ubuntu 18.04 LTS.
 The commands below assume you are logged in with `sudo` user.
 
 ## Dependencies installation
 
-### Tools and libraries
+### Common tools and libraries
 
-Make sure your Ubuntu version and it's packages are up to date, then install required tools and libs:
+Make sure your Ubuntu version and it's packages are up to date, then install required tools and libraries:
 ```bash
 sudo apt-get -qq update \
 && sudo apt-get -y upgrade \
-&& sudo apt-get -qq -y install \
-git curl autoconf build-essential ncurses-dev libssl-dev
+&& sudo apt-get -qq -y install git curl autoconf build-essential ncurses-dev libssl-dev
 ```
 
 ### OTP install
 
-Required Erlang OTP version is `20.2.3` it could be installed from source running below commands:
+Required Erlang OTP version is `20.1`.
 
+A compatible OTP version can be installed from a package both on Ubuntu 16.04 and Ubuntu 18.04:
 ```bash
-OTP_VERSION="20.2.3"
-OTP_DOWNLOAD_URL="https://github.com/erlang/otp/archive/OTP-${OTP_VERSION}.tar.gz"
-curl -fsSL -o otp-src.tar.gz "$OTP_DOWNLOAD_URL" \
-&& mkdir otp-src \
-&& tar -zxf otp-src.tar.gz -C otp-src --strip-components=1 \
-&& cd otp-src \
-&& export ERL_TOP=`pwd` \
-&& ./otp_build autoconf && ./configure && make -j$(nproc) \
-&& sudo make install
-&& cd ..
+sudo apt-get install erlang
 ```
-
-For more details read the [dedicated OTP documentation](http://erlang.org/doc/installation_guide/INSTALL.html).
 
 ### Libsodium install
 
-Required Libsodium version is `1.0.16` it could be installed from source running below commands:
+Required Libsodium version is `1.0.16`.
+
+#### Ubuntu 18.04
+
+Since Ubuntu 18.04 ships with libsodium version 1.0.16 it can be installed from apt package:
+
+```bash
+sudo apt-get install libsodium-dev
+```
+
+#### Ubuntu 16.04
+
+Ubuntu 16.04 ships with older than required version of libsodium thus it must be installed from source running below commands:
 
 ```bash
 LIBSODIUM_VERSION="1.0.16"
