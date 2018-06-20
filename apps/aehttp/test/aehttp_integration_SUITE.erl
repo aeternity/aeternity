@@ -665,10 +665,6 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
 
     % contract_create_tx positive test
-    %% Code = <<"0x600035807f00000000000000000000000000000000000000000000000000000"
-    %%          "00000000000146200002c57005b6020356200003a9062000043565b6000526020"
-    %%          "6000f35b8090509056">>,
-
     InitFunction = <<"init">>,
     InitArgument = <<"()">>,
     {ok, EncodedInitCallData} =
