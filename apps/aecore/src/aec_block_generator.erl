@@ -72,7 +72,11 @@ handle_cast(stop_generation, State) ->
 handle_cast({new_candidate, Candidate, CandidateState}, State) ->
     epoch_mining:info("New candidate generated", []),
     lager:debug("New candidate generated", []),
-    publish_candidate(Candidate),
+    %% Only publish non-empty micro-blocks
+    case aec_blocks:txs(Candidate) of
+        [] -> ok;
+        _  -> publish_candidate(Candidate)
+    end,
     State1 = finish_worker(State),
     State2 = State1#state{ candidate = Candidate
                          , candidate_state = CandidateState },
