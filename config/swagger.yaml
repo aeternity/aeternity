@@ -3077,15 +3077,18 @@ definitions:
   SophiaBinaryData:
     type: object
     properties:
-      type:
+      sophia-type:
         type: string
+        required: true
       data:
         type: string
+        required: true
   SophiaJsonData:
     type: object
     properties:
       data:
         type: object
+        required: true
   Peer:
     type: string
     description: 'Aeternity node'
