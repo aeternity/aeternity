@@ -26,6 +26,7 @@ basic_test_() ->
     , {"Iterator test", fun test_iterator/0}
     , {"Iterator depth test", fun test_iterator_depth/0}
     , {"Iterator from non-existing", fun test_iterator_non_existing/0}
+    , {"Iterator of subtree", fun test_iterator_prefix/0}
     ].
 
 hash_test_() ->
@@ -194,6 +195,38 @@ test_iterator_non_existing([{Key, Val}|Left1], [NonExisting|Left2], Tree) ->
     test_iterator_non_existing(Left1, Left2, Tree);
 test_iterator_non_existing([], [],_Tree) ->
     ok.
+
+test_iterator_prefix() ->
+    rand:seed(exs1024s,{1529,527131,758402}),
+    Vals = gen_vals(1000),
+    Prefixes = [<<1:4>>, <<2:4, 2:4>>, <<2:4, 3:4>>,
+                <<4:4, 2452342462452435:60>>],
+    ValsPrefixed = [ {<<X/bits, Y/bits>>, Val}
+                     || X <- Prefixes, {Y, Val} <- Vals],
+    Sorted = lists:sort(ValsPrefixed),
+    ?assertEqual(Sorted, lists:ukeysort(1, Sorted)),
+    Tree = insert_vals(ValsPrefixed, aeu_mp_trees:new()),
+    test_iterator_prefix(Prefixes, Sorted, Tree).
+
+test_iterator_prefix([Prefix|Left], Sorted, Tree) ->
+    Opts = [{with_prefix, Prefix}],
+    Iterator = aeu_mp_trees:iterator_from(Prefix, Tree, Opts),
+    SortedLeft = test_iterator_prefix(Iterator, Sorted),
+    test_iterator_prefix(Left, SortedLeft, Tree);
+test_iterator_prefix([], [],_Tree) ->
+    ok.
+
+test_iterator_prefix(Iterator, [{Key, Val}|Left] = Vals) ->
+    case aeu_mp_trees:iterator_next(Iterator) of
+        '$end_of_table' -> Vals;
+        {IKey, IVal, Iterator1} ->
+            ?assertEqual(IKey, Key),
+            ?assertEqual(IVal, Val),
+            test_iterator_prefix(Iterator1, Left)
+    end;
+test_iterator_prefix(Iterator, []) ->
+    ?assertEqual('$end_of_table', aeu_mp_trees:iterator_next(Iterator)),
+    [].
 
 %%%=============================================================================
 %%% Hash tests
