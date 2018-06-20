@@ -515,18 +515,27 @@ assert_state_hash_valid(Trees, Node) ->
     end.
 
 apply_node_transactions(Node, Trees) ->
+    case is_micro_block(Node) of
+        true ->
+            apply_micro_block_transactions(Node, Trees);
+        false ->
+            %% NG-TODO: This is far too simplistic, miner wants more :-)
+            case node_height(Node) of
+                0 -> Trees;
+                _N ->
+                    aec_trees:grant_fee_to_miner(node_miner(Node), Trees,
+                                                 aec_governance:block_mine_reward())
+            end
+    end.
+
+apply_micro_block_transactions(Node, Trees) ->
     Txs = db_get_txs(hash(Node)),
     Height = node_height(Node),
     Version = node_version(Node),
 
     %% TODO: NG - it looks like we should keep Miner and Height of the prev key block in state in aec_chain_state
     %% TODO: optimization, fixit ^^
-    Miner = case is_micro_block(Node) of
-                true ->
-                    node_miner(db_get_node(node_key_hash(Node)));
-                false ->
-                    node_miner(Node)
-            end,
+    Miner = node_miner(db_get_node(node_key_hash(Node))),
 
     case aec_block_micro_candidate:apply_block_txs_strict(Txs, Miner, Trees, Height, Version) of
         {ok, _, NewTrees} -> NewTrees;

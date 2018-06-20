@@ -117,13 +117,13 @@ int_create_block(PrevBlockHash, PrevBlock, FeesInfo, Trees, Miner) ->
     Height = PrevBlockHeight + 1,
     Version = aec_hard_forks:protocol_effective_at_height(Height),
 
-    %% Trees2 = grant_fees(FeesInfo, Miner, Trees),
+    Trees2 = grant_fees(FeesInfo, Miner, Trees),
 
-    NewBlock = aec_blocks:new_key(Height, PrevBlockHash, aec_trees:hash(Trees),
+    NewBlock = aec_blocks:new_key(Height, PrevBlockHash, aec_trees:hash(Trees2),
                                   aec_blocks:target(PrevBlock),
                                   0, aeu_time:now_in_msecs(), Version, Miner),
 
-    BlockInfo = #{ trees => Trees, fees => FeesInfo},
+    BlockInfo = #{ trees => Trees2, fees => FeesInfo},
     {ok, NewBlock, BlockInfo}.
 
 
@@ -136,4 +136,4 @@ calculate_total_fee(#{txs := TxsFee, gas := GasFee}) ->
                  {fees_info(), aec_trees:trees()}.
 grant_fees(FeesInfo, Miner, Trees) ->
     _NewTrees = aec_trees:grant_fee_to_miner(Miner, Trees,
-                                            calculate_total_fee(FeesInfo)).
+                                             calculate_total_fee(FeesInfo)).
