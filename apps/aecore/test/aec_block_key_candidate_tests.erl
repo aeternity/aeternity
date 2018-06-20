@@ -9,12 +9,16 @@
 
 -include("blocks.hrl").
 
+-define(PREV_MINER_PUBKEY, <<85:?MINER_PUB_BYTES/unit:8>>).
 -define(MINER_PUBKEY, <<42:?MINER_PUB_BYTES/unit:8>>).
 
 new_key_block_test_() ->
     {"Create new key-block",
      fun() ->
+             %% Previous block is a key block, so it
+             %% has miner and height.
              PrevBlock = #block{height = 11, target = 17,
+                                miner = ?PREV_MINER_PUBKEY,
                                 version = ?GENESIS_VERSION},
              BlockHeader = aec_blocks:to_header(PrevBlock),
 
