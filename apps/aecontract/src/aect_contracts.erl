@@ -226,7 +226,7 @@ poi_serialization_template(?CONTRACT_VSN) ->
     , {active, bool}
     , {referers, [id]}
     , {deposit, int}
-    , {store, [{id, binary}]}
+    , {store, [{binary, binary}]}
     ].
 
 
