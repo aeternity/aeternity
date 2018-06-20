@@ -23,6 +23,8 @@
 -define(ACTION_SIGNED(Action), Action =:= <<"initiator_sign">>;
                                Action =:= <<"deposit_tx">>;
                                Action =:= <<"deposit_ack">>;
+                               Action =:= <<"withdraw_tx">>;
+                               Action =:= <<"withdraw_ack">>;
                                Action =:= <<"responder_sign">>;
                                Action =:= <<"shutdown_sign">>;
                                Action =:= <<"shutdown_sign_ack">>;
@@ -32,12 +34,15 @@
                                 <<"initiator_sign">> -> create_tx;
                                 <<"deposit_tx">> -> deposit_tx;
                                 <<"deposit_ack">> -> deposit_created;
+                                <<"withdraw_tx">> -> withdraw_tx;
+                                <<"withdraw_ack">> -> withdraw_created;
                                 <<"responder_sign">> -> funding_created;
                                 <<"update">> -> update;
                                 <<"update_ack">> -> update_ack;
                                 <<"shutdown_sign">> -> shutdown;
                                 <<"shutdown_sign_ack">> -> shutdown_ack
                             end).
+
 init(Req, _Opts) ->
     {cowboy_websocket, Req, maps:from_list(cowboy_req:parse_qs(Req))}.
 
@@ -263,6 +268,13 @@ process_incoming(#{<<"action">> := <<"deposit">>,
         {error, Reason} ->
             {reply, error_response(R, Reason)}
     end;
+process_incoming(#{<<"action">> := <<"withdraw">>,
+                   <<"payload">> := #{<<"amount">>  := Amount}} = R, State) ->
+    case aesc_fsm:upd_withdraw(fsm_pid(State), #{amount => Amount}) of
+        ok -> no_reply;
+        {error, Reason} ->
+            {reply, error_response(R, Reason)}
+    end;
 process_incoming(#{<<"action">> := Action,
                    <<"payload">> := #{<<"tx">> := EncodedTx}}, State)
     when ?ACTION_SIGNED(Action) ->
@@ -293,6 +305,8 @@ process_fsm(#{type := sign,
               info := Tx}) when Tag =:= create_tx
                          orelse Tag =:= deposit_tx 
                          orelse Tag =:= deposit_created 
+                         orelse Tag =:= withdraw_tx 
+                         orelse Tag =:= withdraw_created 
                          orelse Tag =:= shutdown
                          orelse Tag =:= shutdown_ack
                          orelse Tag =:= funding_created
@@ -306,6 +320,7 @@ process_fsm(#{type := sign,
             shutdown -> <<"shutdown_sign">>;
             shutdown_ack -> <<"shutdown_sign_ack">>;
             deposit_created -> <<"deposit_ack">>;
+            withdraw_created -> <<"withdraw_ack">>;
             T -> T
         end,
     {reply, #{action => <<"sign">>,

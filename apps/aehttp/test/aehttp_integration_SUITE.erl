@@ -198,7 +198,9 @@
     sc_ws_close_mutual_inititator/1,
     sc_ws_close_mutual_responder/1,
     sc_ws_deposit_initiator_and_close/1,
-    sc_ws_deposit_responder_and_close/1
+    sc_ws_deposit_responder_and_close/1,
+    sc_ws_withdraw_initiator_and_close/1,
+    sc_ws_withdraw_responder_and_close/1
    ]).
 
 
@@ -400,7 +402,15 @@ groups() ->
        % responder can make a deposit
        sc_ws_open,
        sc_ws_update,
-       sc_ws_deposit_responder_and_close
+       sc_ws_deposit_responder_and_close,
+       % initiator can make a withdrawal
+       sc_ws_open,
+       sc_ws_update,
+       sc_ws_withdraw_initiator_and_close,
+       % responder can make a withdrawal
+       sc_ws_open,
+       sc_ws_update,
+       sc_ws_withdraw_responder_and_close
       ]}
     ].
 
@@ -3307,6 +3317,51 @@ sc_ws_deposit_and_close(Config, Origin) when Origin =:= initiator
     % assert acknowledger balance have not changed
     {SStartB1, AStartB} = channel_participants_balances(SenderPubkey, AckPubkey),
     {SStartB1, _} = {SStartB - 2 - 1, SStartB},
+
+    ok = ?WS:stop(SenderConnPid),
+    ok = ?WS:stop(AckConnPid),
+    ok.
+
+sc_ws_withdraw_initiator_and_close(Config) ->
+    sc_ws_withdraw_and_close(Config, initiator).
+
+sc_ws_withdraw_responder_and_close(Config) ->
+    sc_ws_withdraw_and_close(Config, responder).
+
+
+sc_ws_withdraw_and_close(Config, Origin) when Origin =:= initiator
+                            orelse Origin =:= responder ->
+    {sc_ws_update, ConfigList} = ?config(saved_config, Config),
+    Participants= proplists:get_value(participants, ConfigList),
+    Clients = proplists:get_value(channel_clients, ConfigList),
+    {SenderRole, AckRole} =
+        case Origin of
+            initiator -> {initiator, responder};
+            responder -> {responder, initiator}
+        end,
+    #{pub_key := SenderPubkey,
+      priv_key:= SenderPrivkey} = maps:get(SenderRole, Participants),
+    #{pub_key := AckPubkey,
+      priv_key:= AckPrivkey} = maps:get(AckRole, Participants),
+    SenderConnPid = maps:get(SenderRole, Clients),
+    AckConnPid = maps:get(AckRole, Clients),
+    {SStartB, AStartB} = channel_participants_balances(SenderPubkey, AckPubkey),
+    ok = ?WS:register_test_for_channel_events(SenderConnPid, [sign, info, on_chain_tx]),
+    ok = ?WS:register_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx]),
+    ?WS:send(SenderConnPid, <<"withdraw">>, #{amount => 2}),
+    UnsignedStateTx = channel_sign_tx(SenderConnPid, SenderPrivkey, <<"withdraw_tx">>),
+    {ok, #{<<"event">> := <<"withdraw_created">>}} = ?WS:wait_for_channel_event(AckConnPid, info),
+    UnsignedStateTx = channel_sign_tx(AckConnPid, AckPrivkey, <<"withdraw_ack">>),
+    ct:log("Unsigned state tx ~p", [UnsignedStateTx]),
+    {ok, #{<<"tx">> := EncodedSignedWTx}} = ?WS:wait_for_channel_event(SenderConnPid, on_chain_tx),
+    {ok, #{<<"tx">> := EncodedSignedWTx}} = ?WS:wait_for_channel_event(AckConnPid, on_chain_tx),
+
+    {ok, SSignedWTx} = aec_base58c:safe_decode(transaction, EncodedSignedWTx),
+    SignedWTx = aetx_sign:deserialize_from_binary(SSignedWTx),
+    ok = wait_for_signed_transaction_in_block(SignedWTx),
+    % assert acknowledger balance have not changed
+    {SStartB1, AStartB} = channel_participants_balances(SenderPubkey, AckPubkey),
+    {SStartB1, _} = {SStartB + 2 - 1, SStartB},
 
     ok = ?WS:stop(SenderConnPid),
     ok = ?WS:stop(AckConnPid),
