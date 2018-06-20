@@ -545,12 +545,15 @@ apply_micro_block_transactions(Node, Trees) ->
 find_fork_point(Hash1, Hash2) ->
     find_fork_point(Hash1, db_find_fork_id(Hash1), Hash2, db_find_fork_id(Hash2)).
 
+find_fork_point(Hash,  {ok, FHash}, Hash,  {ok, FHash}) ->
+    {ok, Hash};
 find_fork_point(Hash1, {ok, FHash}, Hash2, {ok, FHash}) ->
     Height1 = node_height(db_get_node(Hash1)),
     Height2 = node_height(db_get_node(Hash2)),
-    case Height1 >= Height2 of
-        true -> {ok, Hash2};
-        false -> {ok, Hash1}
+    if
+        Height1  >  Height2 -> {ok, Hash2};
+        Height1  <  Height2 -> {ok, Hash1};
+        Height1 =:= Height2 -> find_micro_fork_point(Hash1, Hash2)
     end;
 find_fork_point(Hash1, {ok, FHash1}, Hash2, {ok, FHash2}) ->
     Height1 = node_height(db_get_node(FHash1)),
@@ -560,13 +563,31 @@ find_fork_point(Hash1, {ok, FHash1}, Hash2, {ok, FHash2}) ->
             PrevHash = db_get_prev_hash(FHash1),
             PrevRes = db_find_fork_id(PrevHash),
             find_fork_point(PrevHash, PrevRes, Hash2, {ok, FHash2});
-        Height2 >= Height1 ->
+        Height2 > Height1 ->
             PrevHash = db_get_prev_hash(FHash2),
             PrevRes = db_find_fork_id(PrevHash),
             find_fork_point(Hash1, {ok, FHash1}, PrevHash, PrevRes)
     end;
 find_fork_point(_Hash1, _Res1,_Hash2,_Res2) ->
     error.
+
+find_micro_fork_point(Hash1, Hash2) ->
+    case do_find_micro_fork_point(Hash1, Hash2) of
+        error ->
+            case do_find_micro_fork_point(Hash2, Hash1) of
+                {ok, _} = Res -> Res;
+                error -> error(illegal_micro_fork)
+            end;
+        {ok, _} = Res ->
+            Res
+    end.
+
+do_find_micro_fork_point(Hash, Hash)   -> {ok, Hash};
+do_find_micro_fork_point(Hash1, Hash2) ->
+    case is_key_block(db_get_node(Hash1)) of
+        true  -> error;
+        false -> do_find_micro_fork_point(db_get_prev_hash(Hash1), Hash2)
+    end.
 
 %%%-------------------------------------------------------------------
 %%% Internal interface for the db
@@ -635,14 +656,18 @@ db_find_prev_hash(Hash) when is_binary(Hash) ->
 db_children(#node{} = Node) ->
     Height = node_height(Node),
     Hash   = hash(Node),
+    %% NOTE: Micro blocks have the same height.
     [wrap_header(Header)
-     || Header <- aec_db:find_headers_at_height(Height + 1),
+     || Header <- aec_db:find_headers_at_height(Height + 1)
+            ++ aec_db:find_headers_at_height(Height),
         aec_headers:prev_hash(Header) =:= Hash].
 
 db_node_has_sibling_blocks(Node) ->
     Height   = node_height(Node),
     PrevHash = prev_hash(Node),
-    length([1 || Header <- aec_db:find_headers_at_height(Height),
+    %% NOTE: Micro blocks have the same height.
+    length([1 || Header <- aec_db:find_headers_at_height(Height)
+                     ++ aec_db:find_headers_at_height(Height - 1),
                  aec_headers:prev_hash(Header) =:= PrevHash]) > 1.
 
 %%% TODO: fix NG-genesis flow
