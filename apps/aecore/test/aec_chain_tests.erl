@@ -267,13 +267,22 @@ broken_chain_wrong_state_hash() ->
     ok.
 
 broken_chain_invalid_transaction() ->
-    [B0, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
+    #{ public := SenderPubKey, secret := SenderPrivKey } = enacl:sign_keypair(),
+    RecipientPubKey = <<42:32/unit:8>>,
+    PresetAccounts = [{SenderPubKey, 100}],
+    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    Spend = aetx_sign:sign(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
+
+    Chain0 = gen_block_chain_with_state_by_target(PresetAccounts, [?GENESIS_TARGET], 111),
+
+    TxsFun = fun(_) -> [Spend] end,
+    [B0, B1, MB1, _B2] = blocks_only_chain(extend_chain_with_state(Chain0, [?GENESIS_TARGET], 111, TxsFun)),
 
     %% Insert up to last block.
     ok = write_blocks_to_chain([B0, B1]),
 
     %% Add invalid transaction with too high nonce to last block
-    Txs = B2#block.txs,
+    Txs = MB1#block.txs,
     BogusSpendTx = aec_test_utils:signed_spend_tx(#{recipient => <<1:32/unit:8>>,
                                                     amount => 0,
                                                     fee => 1,
@@ -283,10 +292,10 @@ broken_chain_invalid_transaction() ->
 
     ?assertNotEqual(Txs, BogusTxs),
     ?assertMatch({error, invalid_transactions_in_block},
-                 insert_block(B2#block{txs = BogusTxs})),
+                 insert_block(MB1#block{txs = BogusTxs})),
 
     %% Check that we can insert the unmodified last block
-    ?assertEqual(ok, insert_block(B2)),
+    ?assertEqual(ok, insert_block(MB1)),
     ok.
 
 %%%===================================================================
