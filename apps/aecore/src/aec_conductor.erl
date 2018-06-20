@@ -722,12 +722,8 @@ handle_micro_signing_reply({ok, SignedMicroBlock}, State) ->
             epoch_mining:error("Block insertion failed: ~p.", [Reason]),
             start_micro_signing(State2)
     end;
-handle_micro_signing_reply({{error, {runtime, Reason}}, _}, State) ->
-    aec_metrics:try_update([ae,epoch,aecore,mining,retries], 1),
-    Candidate = State#state.micro_block_candidate,
-    epoch_mining:error("Failed to mine block, runtime error; "
-                       "retrying with different nonce (was ~p). "
-                       "Error: ~p", [Candidate#candidate.nonce, Reason]),
+handle_micro_signing_reply({{error, Reason}, _}, State) ->
+    epoch_mining:error("Failed to sign micro block error: ~p", [Reason]),
     start_micro_signing(State).
 
 %%%===================================================================
