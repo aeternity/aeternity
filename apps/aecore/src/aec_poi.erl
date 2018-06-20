@@ -94,8 +94,10 @@ lookup(Key, #aec_poi{root_hash = RootHash} = Poi) ->
 -spec iterator_from(key(), poi(), aeu_mtrees:iterator_opts()) ->
                            {'ok', aeu_mtrees:iterator()}
                                | {'error', bad_proof}.
-iterator_from(Key, #aec_poi{proof = ProofDb} = _Poi, Opts) ->
-    try aeu_mtrees:iterator_from(Key, ProofDb, Opts) of
+iterator_from(Key, #aec_poi{proof = ProofDb,
+                            root_hash =_RootHash} = _Poi, Opts) ->
+    Tree = aeu_mtrees:empty_with_backend(ProofDb),
+    try aeu_mtrees:iterator_from(Key, Tree, Opts) of
         Iterator -> {ok, Iterator}
     catch
         _:_ -> {error, bad_proof}

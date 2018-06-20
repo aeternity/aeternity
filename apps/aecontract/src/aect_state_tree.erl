@@ -218,15 +218,18 @@ lookup_poi(Id, Poi) ->
 
 add_store_from_poi(Contract, Poi) ->
     Id = aect_contracts:store_id(Contract),
-    Iterator = aec_poi:iterator_from(Id, Poi, [{with_prefix, Id}]),
-    Next = aeu_poi:iterator_next(Iterator),
-    Size = byte_size(Id),
-    case add_store_from_poi(Id, Next, Size, #{}, Poi) of
-        {error, _} = E -> E;
-        Store ->
-            {ok,
-             aect_contracts:serialize(
-               aect_contracts:set_state(Store, Contract))}
+    case aec_poi:iterator_from(Id, Poi, [{with_prefix, Id}]) of
+        {ok, Iterator} ->
+            Next = aec_poi:iterator_next(Iterator),
+            Size = byte_size(Id),
+            case add_store_from_poi(Id, Next, Size, #{}, Poi) of
+                {error, _} = E -> E;
+                Store ->
+                    {ok,
+                     aect_contracts:serialize(
+                       aect_contracts:set_state(Store, Contract))}
+            end;
+        {error, _} = E -> E
     end.
 
 add_store_from_poi(_, '$end_of_table', _, Store,_Poi) ->
@@ -235,9 +238,12 @@ add_store_from_poi(Id, {PrefixedKey, Val, Iter}, PrefixSize, Store, Poi) ->
     case PrefixedKey of
         <<Id:PrefixSize/binary, Key/binary>> ->
             Store1 = Store#{ Key => Val},
-            Next = aeu_poi:iterator_next(Iter),
-            add_store_from_poi(Id, Next, PrefixSize, Store1, Poi);
-        {error, _} = E -> E
+            case aec_poi:iterator_next(Iter) of
+                {error, _} = E -> E;
+                Next ->
+                    add_store_from_poi(Id, Next, PrefixSize, Store1, Poi)
+            end;
+         _ -> {error, bad_proof}
     end.
 
 %% -- Commit to db --

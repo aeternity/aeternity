@@ -370,8 +370,7 @@ internal_lookup_contracts_poi(_Pubkey, #poi{contracts = empty}) ->
     {error, not_found};
 internal_lookup_contracts_poi(Pubkey, #poi{contracts = {poi, CPoi}} = _Poi) ->
     case aect_state_tree:lookup_poi(Pubkey, CPoi) of
-        {ok, Contract} ->
-            {ok, Contract};
+        {ok, Contract} -> {ok, Contract};
         {error, not_found} = E -> E
     end.
 

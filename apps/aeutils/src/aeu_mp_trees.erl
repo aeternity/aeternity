@@ -58,7 +58,8 @@
 -opaque tree() :: #mpt{}.
 -opaque iterator() :: #iter{}.
 
--type iterator_opts() :: [{'max_path_length', pos_integer()}].
+-type iterator_opts() :: [ {'max_path_length', pos_integer()}
+                         | {'with_prefix', key()}].
 
 -type tree_node() :: null() | leaf() | extension() | branch().
 
