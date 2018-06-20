@@ -9,11 +9,13 @@
 
 %% API
 -export([ deserialize/2
+        , deserialize_from_poi/2
         , id/1
         , store_id/1
         , new/1
         , new/5 %% For use without transaction
         , serialize/1
+        , serialize_for_poi/1
         , compute_contract_pubkey/2
           %% Getters
         , pubkey/1
@@ -169,6 +171,64 @@ serialization_template(?CONTRACT_VSN) ->
     , {referers, [id]}
     , {deposit, int}
     ].
+
+-spec serialize_for_poi(contract()) -> serialized().
+serialize_for_poi(#contract{owner = OwnerId, referers = RefererIds} = C) ->
+    aec_object_serialization:serialize(
+      ?CONTRACT_TYPE,
+      ?CONTRACT_VSN,
+      poi_serialization_template(?CONTRACT_VSN),
+      [ {owner, OwnerId}
+      , {vm_version, vm_version(C)}
+      , {code, code(C)}
+      , {log, log(C)}
+      , {active, active(C)}
+      , {referers, RefererIds}
+      , {deposit, deposit(C)}
+      , {store,  lists:sort(maps:to_list(state(C)))}
+      ]).
+
+-spec deserialize_from_poi(aec_keys:pubkey(), serialized()) -> contract().
+deserialize_from_poi(Pubkey, Bin) ->
+    [ {owner, OwnerId}
+    , {vm_version, VmVersion}
+    , {code, Code}
+    , {log, Log}
+    , {active, Active}
+    , {referers, RefererIds}
+    , {deposit, Deposit}
+    , {store, Store}
+    ] = aec_object_serialization:deserialize(
+          ?CONTRACT_TYPE,
+          ?CONTRACT_VSN,
+          poi_serialization_template(?CONTRACT_VSN),
+          Bin
+          ),
+    [contract = aec_id:specialize_type(R) || R <- RefererIds],
+    account = aec_id:specialize_type(OwnerId),
+    #contract{ id         = aec_id:create(contract, Pubkey)
+             , owner      = OwnerId
+             , vm_version = VmVersion
+             , code       = Code
+             , store      =  maps:from_list(Store)
+             , log        = Log
+             , active     = Active
+             , referers   = RefererIds
+             , deposit    = Deposit
+             }.
+
+
+poi_serialization_template(?CONTRACT_VSN) ->
+    [ {owner, id}
+    , {vm_version, int}
+    , {code, binary}
+    , {log, binary}
+    , {active, bool}
+    , {referers, [id]}
+    , {deposit, int}
+    , {store, [{binary, binary}]}
+    ].
+
 
 -spec compute_contract_pubkey(aec_keys:pubkey(), non_neg_integer()) -> aec_keys:pubkey().
 compute_contract_pubkey(<<_:?PUB_SIZE/binary>> = Owner, Nonce) when Nonce >= 0  ->
