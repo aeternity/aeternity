@@ -91,6 +91,7 @@ notify_subscribers(block_created = Event, Block, State = #state{ subscribed = Su
     notify_chain_subscribers(Event, Block, Subs),
     {noreply, State};
 notify_subscribers(micro_block_created = Event, Block, State = #state{ subscribed = Subs }) ->
+    notify_tx_subscribers(aec_blocks:txs(Block), Subs),
     notify_chain_subscribers(Event, Block, Subs),
     {noreply, State}.
 
