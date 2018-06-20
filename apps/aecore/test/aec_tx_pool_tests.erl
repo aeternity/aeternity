@@ -78,6 +78,15 @@ tx_pool_test_() ->
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
                ok = aec_chain_state:insert_block(GenesisBlock),
+
+               %% The first block needs to be a key-block
+               {ok, KeyBlock1, _} = aec_block_key_candidate:create(aec_chain:top_block(),
+                                                                   #{txs => 0, gas => 0}),
+               {ok, KeyHash1} = aec_blocks:hash_internal_representation(KeyBlock1),
+               ok = aec_chain_state:insert_block(KeyBlock1),
+               ?assertEqual(KeyHash1, aec_chain:top_block_hash()),
+
+
                TopBlock = aec_chain:top_block(),
                TopBlockHash = aec_chain:top_block_hash(),
 
