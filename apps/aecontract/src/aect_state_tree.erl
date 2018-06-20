@@ -163,8 +163,11 @@ add_store_to_poi(Contract, CtTree, Poi) ->
     Iterator = aeu_mtrees:iterator_from(Id, CtTree),
     Next = aeu_mtrees:iterator_next(Iterator),
     Size = byte_size(Id),
-    {Store, StorePoi} = add_store_keys_poi(Id, Next, Size, #{}, Poi, CtTree),
-    {ok, aect_contracts:serialize_for_poi(aect_contracts:set_state(Store, Contract)), StorePoi}.
+    case add_store_keys_poi(Id, Next, Size, #{}, Poi, CtTree) of
+        {error, _} = E -> E;
+        {Store, StorePoi} ->
+            {ok, aect_contracts:serialize_for_poi(aect_contracts:set_state(Store, Contract)), StorePoi}
+    end.
 
 add_store_keys_poi(_, '$end_of_table', _, Store, Poi, _) ->
     {Store, Poi};
@@ -172,9 +175,12 @@ add_store_keys_poi(Id, {PrefixedKey, Val, Iter}, PrefixSize, Store, Poi, CtTree)
     case PrefixedKey of
         <<Id:PrefixSize/binary, Key/binary>> = KeyId ->
             Store1 = Store#{ Key => Val},
-            Poi1 = aec_poi:add_poi(KeyId, CtTree, Poi),
-            Next = aeu_mtrees:iterator_next(Iter),
-            add_store_keys_poi(Id, Next, PrefixSize, Store1, Poi1, CtTree);
+            case aec_poi:add_poi(KeyId, CtTree, Poi) of
+                {ok, _, Poi1} ->
+                    Next = aeu_mtrees:iterator_next(Iter),
+                    add_store_keys_poi(Id, Next, PrefixSize, Store1, Poi1, CtTree);
+                {error, _} = E -> E
+            end;
         _ ->
             {Store, Poi}
     end.
