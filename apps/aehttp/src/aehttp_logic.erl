@@ -28,6 +28,7 @@
 
 -export([ contract_compile/2
         , contract_call/4
+        , contract_decode_data/2
         , contract_encode_call_data/4
         ]).
 
@@ -201,6 +202,18 @@ contract_call(ABI, Code, Function, Argument) ->
         _ ->
             Call(Code)
     end.
+
+contract_decode_data(Type, Data) ->
+    try aect_sophia:decode_data(Type, Data) of
+        {ok, _Result} = OK -> OK;
+        {error, _ErrorMsg} = Err -> Err
+    catch _T:_E ->
+            String = io_lib:format("~p:~p ~p", [_T,_E,erlang:get_stacktrace()]),
+            Error = << <<B>> || B <- "Bad argument: " ++ lists:flatten(String) >>,
+            {error, Error}
+    end.
+
+
 
 contract_encode_call_data(ABI, Code, Function, Argument) ->
     case aect_dispatch:encode_call_data(ABI, Code, Function, Argument) of

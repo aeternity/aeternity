@@ -9,24 +9,22 @@
 %%%-------------------------------------------------------------------
 -module(aeso_ast_to_icode).
 
--export([convert/2]).
+-export([ast_typerep/1,
+         convert/2]).
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("aeso_icode.hrl").
 
+-spec convert(aeso_syntax:ast(), list()) -> aeso_icode:icode().
 convert(Tree, Options) ->
     TypedTree = aeso_ast_infer_types:infer(Tree),
     [io:format("Typed tree:\n~s\n",[prettypr:format(aeso_pretty:decls(TypedTree, [show_generated]))]) || lists:member(pp_typed,Options)],
     %% [io:format("Typed tree:\n~p\n",[TypedTree]) || lists:member(pp_typed,Options)],
-    code(TypedTree,
-%%    code(Tree,
-	 #{ functions => []
-	  , env => []
-          , state_type => {tuple, []}   %% Default to unit type for state
-	  , options => Options}).
+    code(TypedTree, aeso_icode:new(Options)).
 
 code([{contract, _Attribs, {con, _, Name}, Code}|Rest], Icode) ->
-    NewIcode = contract_to_icode(Code, set_name(Name, Icode)),
+    NewIcode = contract_to_icode(Code,
+                                 aeso_icode:set_name(Name, Icode)),
     code(Rest, NewIcode);
 code([], Icode) ->
     add_default_init_function(add_builtins(Icode)).
@@ -41,6 +39,8 @@ add_default_init_function(Icode = #{functions := Funs, state_type := State}) ->
             Icode#{ functions => [DefaultInit | Funs] }
     end.
 
+-spec contract_to_icode(aeso_syntax:ast(), aeso_icode:icode()) ->
+                               aeso_icode:icode().
 contract_to_icode([{type_def, _Attrib, {id, _, "state"}, _, TypeDef}|Rest], Icode) ->
     StateType =
         case TypeDef of
@@ -97,17 +97,16 @@ ast_type(T) ->
 ast_body(?id_app("raw_call", [To, Fun, Gas, Value, {typed, _, Arg, ArgT}], _, OutT)) ->
     %% TODO: temp hack before we have contract calls properly in the type checker
     {Args, ArgTypes} =
-        case Arg of %% Hack: unpack tuples
-            {tuple, _, Elems} ->
-                {tuple_t, _, Ts} = ArgT,
-                {Elems, Ts};
-            _ -> {[Arg], [ArgT]}
+        case Arg of %% Hack: pack unary argument in tuple
+            %% Already a tuple.
+            {tuple, _,_Elems} -> {Arg, ArgT};
+            _ -> {{tuple, [], [Arg]}, {tuple_t, [], [ArgT]}}
         end,
     #prim_call_contract{ gas      = ast_body(Gas),
                          address  = ast_body(To),
                          value    = ast_body(Value),
-                         arg      = #tuple{cpts = [ast_body(X) || X <- [Fun | Args]]},
-                         arg_type = {tuple, [string | lists:map(fun ast_typerep/1, ArgTypes)]},
+                         arg      = #tuple{cpts = [ast_body(X) || X <- [Fun , Args]]},
+                         arg_type = {tuple, [string , ast_typerep(ArgTypes)]},
                          out_type = ast_typerep(OutT) };
 ast_body(?id_app("raw_spend", [To, Amount], _, _)) ->
     prim_call(?PRIM_CALL_SPEND, ast_body(Amount), [ast_body(To)], [word], {tuple, []});
@@ -390,6 +389,7 @@ prim_call(Prim, Amount, Args, ArgTypes, OutType) ->
                          arg_type = {tuple, [word | ArgTypes]},
                          out_type = OutType }.
 
+-spec ast_typerep(aeso_syntax:type()) -> aeso_sophia:type().
 ast_typerep({id,_,"bool"}) ->		%BOOL as ints
     word;
 ast_typerep({id,_,"int"}) ->
@@ -438,19 +438,7 @@ type_value({tuple, As}) ->
 
 ast_fun_to_icode(Name, Args, Body, TypeRep, #{functions := Funs} = Icode) ->
     NewFuns = [{Name, Args, Body, TypeRep}| Funs],
-    set_functions(NewFuns, Icode).
-
-%% -------------------------------------------------------------------
-%% Icode
-%% -------------------------------------------------------------------
-set_name(Name, Icode) ->
-    maps:put(contract_name, Name, Icode).
-
-%% get_name(#{contract_name := Name}) -> Name;
-%% get_name(_) -> error(name_not_defined).
-
-set_functions(NewFuns, Icode) ->
-    maps:put(functions, NewFuns, Icode).
+    aeso_icode:set_functions(NewFuns, Icode).
 
 %% -------------------------------------------------------------------
 %% Builtins
@@ -666,4 +654,3 @@ builtin_function(str_equal) ->
 add_builtins(Icode = #{functions := Funs}) ->
     Builtins = used_builtins(Funs),
     Icode#{functions := [ builtin_function(B) || B <- Builtins ] ++ Funs}.
-

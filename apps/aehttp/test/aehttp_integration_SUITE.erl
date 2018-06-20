@@ -19,6 +19,13 @@
 %% Endpoint calls
 -export([]).
 
+%% off chain endpoints
+-export(
+   [test_encode_decode_sophia_data/1,
+    test_encode_decode_sophia_data2/1,
+    broken_decode_sophia_data/1
+   ]).
+
 %% test case exports
 %% external endpoints
 -export(
@@ -203,6 +210,7 @@
     sc_ws_close_mutual_responder/1
    ]).
 
+
 -include_lib("common_test/include/ct.hrl").
 -define(NODE, dev1).
 -define(DEFAULT_TESTS_COUNT, 5).
@@ -216,7 +224,8 @@ all() ->
 
 groups() ->
     [
-     {all_endpoints, [sequence], [{group, external_endpoints},
+     {all_endpoints, [sequence], [{group, off_chain_endpoints},
+                                  {group, external_endpoints},
                                   {group, internal_endpoints},
                                   {group, swagger_validation},
                                   {group, wrong_http_method_endpoints},
@@ -224,6 +233,12 @@ groups() ->
                                   {group, naming},
                                   {group, channel_websocket}
                                   ]},
+     {off_chain_endpoints, [],
+      [
+       test_encode_decode_sophia_data,
+       test_encode_decode_sophia_data2,
+       broken_decode_sophia_data
+      ]},
      {external_endpoints, [sequence],
       [
         % get block-s
@@ -484,6 +499,133 @@ end_per_testcase(_Case, Config) ->
 %% ============================================================
 %% Test cases
 %% ============================================================
+
+%% off chain endpoints
+test_encode_decode_sophia_data(_Config) ->
+    CallEncodedInteger42 = encode_data(<<"(42,2)">>),
+    Decoded = decode_data(<<"(string, (int, int))">>,
+                          CallEncodedInteger42),
+    #{<<"data">> :=
+          #{<<"type">> := <<"tuple">>,
+            <<"value">> :=
+                [#{<<"type">>  := <<"string">>,
+                   <<"value">> := <<"foo">>},
+                 #{<<"type">>  := <<"tuple">>,
+                   <<"value">> :=
+                       [#{<<"type">> := <<"word">>,
+                          <<"value">> := 42},
+                        _]}
+                ]
+           }
+     }
+        = Decoded,
+
+    ok.
+
+test_encode_decode_sophia_data2(_Config) ->
+    CD =            <<"(\"Hello\", [1,2,3], Some(true))">>,
+    Type = <<"(string, (string, list(int), option(bool)))">>,
+    CallEncoded = encode_data(CD),
+    Decoded = decode_data(Type, CallEncoded),
+    #{<<"data">> :=
+          #{ <<"type">> := <<"tuple">>
+           , <<"value">> :=
+                 [#{<<"type">>   := <<"string">>
+                   , <<"value">> := <<"foo">> }
+                 , #{ <<"type">>  := <<"tuple">>
+                    , <<"value">> :=
+                          [ #{ <<"type">> := <<"string">>
+                             , <<"value">> := <<"Hello">> }
+                          , #{ <<"type">> := <<"list">>
+                             , <<"value">> :=
+                                   [_,_,_]}
+                          , #{ <<"type">> := <<"option">>
+                             , <<"value">> :=
+                                   #{ <<"type">> := <<"word">>
+                                    , <<"value">> := 1}}]}
+                  ]
+           }
+     } = Decoded,
+
+    ok.
+
+broken_decode_sophia_data(_Config) ->
+    %% Sanity check on happy path.
+    D = encode_data(<<"bar">>, <<"42">>),
+    T = <<"(string, int)">>,
+    {ok, 200, #{<<"data">> := _}} = get_contract_decode_data(#{'sophia-type' => T, data => D}),
+    %% Missing field.
+    lists:foreach(
+      fun({Req, ExpMissingField}) ->
+              {ok, 400, Body} = get_contract_decode_data(Req),
+              ?assertMatch(
+                 #{<<"reason">> := <<"validation_error">>,
+                   <<"parameter">> := <<"body">>,
+                   <<"info">> := #{<<"error">> := <<"missing_required_property">>,
+                                   <<"data">> := ActMissingField}
+                  } when ActMissingField =:= ExpMissingField,
+                 Body)
+      end,
+      [ { #{data => D}, <<"sophia-type">>}
+      , { #{'sophia-type' => T}, <<"data">>}
+      , { #{type => T, data => D}, <<"sophia-type">>}
+      ]),
+    %% Field invalid according to schema.
+    lists:foreach(
+      fun({Req, ExpWrongField, ExpWrongValue}) ->
+              {ok, 400, Body} = get_contract_decode_data(Req),
+              ?assertMatch(
+                 #{<<"reason">> := <<"validation_error">>,
+                   <<"parameter">> := <<"body">>,
+                   <<"info">> := #{<<"error">> := <<"wrong_type">>,
+                                   <<"path">> := [ActWrongField],
+                                   <<"data">> := ActWrongValue}
+                  } when (ActWrongField =:= ExpWrongField) andalso
+                         (ActWrongValue =:= ExpWrongValue),
+                 Body)
+      end,
+      [ { #{'sophia-type' => 42, data => D}, <<"sophia-type">>, 42}
+      , { #{'sophia-type' => T, data => 42}, <<"data">>, 42}
+      ]),
+    %% Field valid according to schema but invalid for handler.
+    {ok, 400, #{<<"reason">> := <<"bad_type">>}} = get_contract_decode_data(#{'sophia-type' => <<"foo">>, data => D}),
+    {ok, 400, #{<<"reason">> := <<"bad argument">>}} = get_contract_decode_data(#{'sophia-type' => T, data => <<"foo">>}),
+    %% Field valid for both schema and handler, though data
+    %% interpreted in a different way than the specified type spec.
+    {ok, 200,
+     #{<<"data">> :=
+           #{<<"type">> := <<"tuple">>,
+             <<"value">> :=
+                 [#{<<"type">> := <<"string">>, <<"value">> := <<"bar">>},
+                  #{<<"type">> := <<"word">>  , <<"value">> := 192} ]}}
+    } = get_contract_decode_data(#{'sophia-type' => <<"(string, (int))">>, data => D}),
+    {ok, 200,
+     #{<<"data">> :=
+           #{<<"type">> := <<"tuple">>,
+             <<"value">> :=
+                 [#{<<"type">> := <<"string">>, <<"value">> := <<"bar">>},
+                  #{<<"type">> := <<"word">>, <<"value">> := 192} ]}}
+    } = get_contract_decode_data(#{'sophia-type' => T, data => encode_data(<<"bar">>, <<"(42)">>)}),
+    ok.
+
+
+encode_data(Term) ->
+    encode_data(<<"foo">>, Term).
+
+encode_data(Function, Term) ->
+    {ok, HexData} = aect_sophia:encode_call_data(<<>>,
+                                              Function,
+                                              Term),
+    HexData.
+
+decode_data(Type, EncodedData) ->
+    {ok, 200, Data} =
+        get_contract_decode_data(#{ 'sophia-type' => Type,
+                                    data => EncodedData}),
+    Data.
+
+
+%% enpoints
 get_top_empty_chain(_Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     {ok, 200, HeaderMap} = get_top(),
@@ -579,32 +721,31 @@ block_by_hash(_Config) ->
 %% GET contract_call_tx unsigned transaction
 %% due to complexity of contract_call_tx (needs a contract in the state tree)
 %% both positive and negative cases are tested in this test
-contract_transactions(_Config) ->
-    % miner has an account
+contract_transactions(_Config) ->    % miner has an account
     {ok, 200, _} = get_balance_at_top(),
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+    SophiaCode = <<"contract Identity = function main (x:int) = x">>,
+    {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
 
     % contract_create_tx positive test
-    Code = <<"0x600035807f00000000000000000000000000000000000000000000000000000"
-	     "00000000000146200002c57005b6020356200003a9062000043565b6000526020"
-	     "6000f35b8090509056">>,
-
     InitFunction = <<"init">>,
     InitArgument = <<"()">>,
     {ok, EncodedInitCallData} =
         aect_sophia:encode_call_data(Code,
                                      InitFunction,
                                      InitArgument),
+
     ValidEncoded = #{ owner => MinerAddress,
                       code => Code,
                       vm_version => 1,
                       deposit => 2,
                       amount => 1,
-                      gas => 30,
+                      gas => 300,
                       gas_price => 1,
                       fee => 1,
                       call_data => EncodedInitCallData},
+
     ValidDecoded = maps:merge(ValidEncoded,
                               #{owner => MinerPubkey,
                                 code => aeu_hex:hexstring_decode(Code),
@@ -654,7 +795,7 @@ contract_transactions(_Config) ->
     {ok, Trees} = rpc(aec_chain, get_top_state, []),
     ContractInTree = rpc(aect_state_tree, get_contract, [ContractPubKey,
                                                          aec_trees:contracts(Trees)]),
-    {ContractInPoI, _} = {ContractInTree, ContractInPoI},
+    {ContractInPoI, _} = {aect_contracts:set_state(#{}, ContractInTree), ContractInPoI},
 
     Function = <<"main">>,
     Argument = <<"42">>,
@@ -668,7 +809,7 @@ contract_transactions(_Config) ->
                              contract => EncodedContractPubKey,
                              vm_version => 1,
                              amount => 1,
-                             gas => 100,
+                             gas => 1000,
                              gas_price => 1,
                              fee => 1,
                              call_data => EncodedCallData},
@@ -715,14 +856,20 @@ contract_transactions(_Config) ->
                                  <<"code">> => EncodedContractPubKey,
                                  <<"function">> => Function,
                                  <<"arg">> => Argument}),
-
-    ?assertEqual(maps:get(<<"return_value">>, CallObject), DirectCallResult),
+    ReturnBin = maps:get(<<"return_value">>, CallObject),
+    {ok, DecodedReturnValue} = aehttp_logic:contract_decode_data(<<"int">>, ReturnBin),
+    {ok, 200, #{<<"data">> := DecodedCallResult}} =
+        get_contract_decode_data(
+          #{ 'sophia-type' => <<"int">>,
+             data => DirectCallResult}),
+    ?assertEqual(DecodedReturnValue, DecodedCallResult),
+    #{<<"value">> := 42} = DecodedReturnValue,
 
     ComputeCCallEncoded = #{ caller => MinerAddress,
                              contract => EncodedContractPubKey,
                              vm_version => 1,
                              amount => 1,
-                             gas => 100,
+                             gas => 1000,
                              gas_price => 1,
                              fee => 1,
                              function => Function,
@@ -754,8 +901,12 @@ contract_transactions(_Config) ->
     ?assertEqual(aec_base58c:encode(contract_pubkey, ContractPubKey),
                  maps:get(<<"contract_address">>, CallObject1, <<>>)),
 
+    {ok, 200, #{<<"data">> := DecodedCallReturnValue}} =
+        get_contract_decode_data(
+          #{ 'sophia-type' => <<"int">>,
+             data => maps:get(<<"return_value">>, CallObject1)}),
     %% Check that it is also the same as the direct call result
-    ?assertEqual(maps:get(<<"return_value">>, CallObject1), DirectCallResult),
+    ?assertEqual(DecodedCallReturnValue, DecodedCallResult),
 
     %% negative tests
     %% Invalid hashes
@@ -3596,6 +3747,12 @@ get_contract_create(Data) ->
     Host = external_address(),
     http_request(Host, post, "tx/contract/create", Data).
 
+
+get_contract_bytecode(SourceCode) ->
+    Host = external_address(),
+    http_request(Host, post, "contract/compile", #{ <<"code">> => SourceCode
+                                                  , <<"options">> => <<>>}).
+
 call_contract_directly(Data) ->
     Host = external_address(),
     http_request(Host, post, "contract/call", Data).
@@ -3611,6 +3768,10 @@ get_contract_call_compute(Data) ->
 get_contract_call_object(TxHash) ->
     Host = external_address(),
     http_request(Host, get, "tx/"++binary_to_list(TxHash)++"/contract-call", []).
+
+get_contract_decode_data(Request) ->
+    Host = external_address(),
+    http_request(Host, post, "contract/decode-data", Request).
 
 get_spend(Data) ->
     Host = external_address(),

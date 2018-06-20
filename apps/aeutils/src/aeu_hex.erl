@@ -61,7 +61,7 @@ hexstring_decode(Binary) ->
 
 hex_nibble(X) ->
     if X < 10 -> X+$0;
-       true   -> X+87
+       true   -> X+($a - 10)
     end.
 
 hex_to_int(X) when $A =< X, X =< $F -> 10 + X - $A;

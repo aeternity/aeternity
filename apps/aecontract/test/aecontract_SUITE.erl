@@ -165,7 +165,7 @@ create_contract_(ContractCreateTxGasPrice) ->
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
     IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
-    CallData     = aeso_abi:create_calldata(IdContract, "init", "42"),
+    CallData     = aeso_abi:create_calldata(IdContract, "init", "()"),
     Overrides    = #{ code => IdContract
         , call_data => CallData
         , gas => 10000
@@ -273,7 +273,7 @@ call_contract_(ContractCallTxGasPrice) ->
     CallerBalance = aec_accounts:balance(aect_test_utils:get_account(Caller, S2)),
 
     IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
-    CallDataInit = aeso_abi:create_calldata(IdContract, "init", "42"),
+    CallDataInit = aeso_abi:create_calldata(IdContract, "init", "()"),
     Overrides    = #{ code => IdContract
 		    , call_data => CallDataInit
 		    , gas => 10000
@@ -289,7 +289,7 @@ call_contract_(ContractCallTxGasPrice) ->
     %% Now check that we can call it.
     Fee           = 107,
     Value         = 52,
-    Arg           = <<"42">>,
+    Arg           = <<"(42)">>,
     CallData = aect_sophia:create_call(IdContract, <<"main">>, Arg),
     CallTx = aect_test_utils:call_tx(Caller, ContractKey,
                                      #{call_data => CallData,
@@ -498,7 +498,7 @@ sophia_identity(_Cfg) ->
     %% Remote calling the identity contract
     IdC   = ?call(create_contract, Acc1, identity, {}),
     RemC  = ?call(create_contract, Acc1, remote_call, {}, #{amount => 100}),
-    42    = ?call(call_contract,   Acc1, IdC, main, word, 42),
+    42    = ?call(call_contract,   Acc1, IdC, main, word, {42}),
     99    = ?call(call_contract,   Acc1, RemC, call, word, {IdC, 99}),
     RemC2 = ?call(create_contract, Acc1, remote_call, {}, #{amount => 100}),
     77    = ?call(call_contract,   Acc1, RemC2, staged_call, word, {RemC, IdC, 77}),

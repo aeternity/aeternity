@@ -6,10 +6,12 @@
         , from_binary/2
         , from_binary/3
         , get_function_from_calldata/1
+        , sophia_type_to_typerep/1
         ]).
 
 -include("aeso_icode.hrl").
 
+-spec to_binary(aeso_sophia:data()) -> aeso_sophia:heap().
 %% Encode the data as a heap fragment starting at address 32. The first word is
 %% a pointer into the heap fragment. The reason we store it at address 32 is to
 %% leave room for the state pointer at address 0.
@@ -18,7 +20,9 @@ to_binary(Data) ->
 
 to_binary(Data, BaseAddress) ->
     {Address, Memory} = to_binary1(Data, BaseAddress + 32),
-    <<Address:256, Memory/binary>>.
+    R = <<Address:256, Memory/binary>>,
+    R.
+
 
 %% Allocate the data in memory, from the given address.  Return a pair
 %% of memory contents from that address and the value representing the
@@ -66,16 +70,19 @@ binary_to_words(Bin) ->
 %% Interpret a return value (a binary) using a type rep.
 
 %% Base address is the address of the first word of the given heap.
--spec from_binary(BaseAddr :: non_neg_integer(), T :: type(), Heap :: binary()) ->
+-spec from_binary(BaseAddr :: non_neg_integer(),
+                  T :: ?Type(),
+                  Heap :: binary()) ->
         {ok, term()} | {error, term()}.
 from_binary(BaseAddr, T, Heap = <<V:256, _/binary>>) ->
     try {ok, from_binary(#{}, T, <<0:BaseAddr/unit:8, Heap/binary>>, V)}
-    catch _:Err -> {error, Err}
+    catch _:Err ->
+            {error, Err}
     end;
 from_binary(_, _, Bin) ->
     {error, {binary_too_short, Bin}}.
 
--spec from_binary(type(), binary()) -> {ok, term()} | {error, term()}.
+-spec from_binary(?Type(), binary()) -> {ok, term()} | {error, term()}.
 from_binary(T, Heap) ->
     from_binary(0, T, Heap).
 
@@ -96,8 +103,18 @@ from_binary(_, string, Heap, V) ->
     Bytes;
 from_binary(Visited, {tuple,Cpts}, Heap, V) ->
     check_circular_refs(Visited, V),
-    list_to_tuple([from_binary(Visited#{V => true}, T, Heap, heap_word(Heap, V+32*I))
-		   || {T,I} <- lists:zip(Cpts,lists:seq(0,length(Cpts)-1))]);
+    NewVisited = Visited#{V => true},
+    ElementNums = lists:seq(0, length(Cpts)-1),
+    TypesAndPointers = lists:zip(Cpts, ElementNums),
+    ElementAddress = fun(Index) -> V + 32 * Index end,
+    Element = fun(Index) ->
+                      heap_word(Heap, ElementAddress(Index))
+              end,
+    Convert = fun(Type, Index) ->
+                from_binary(NewVisited, Type, Heap, Element(Index))
+              end,
+    Elements = [Convert(T, I) || {T,I} <- TypesAndPointers],
+    list_to_tuple(Elements);
 from_binary(Visited, {list, Elem}, Heap, V) ->
     <<Nil:256>> = <<(-1):256>>,
     if V==Nil ->
@@ -129,9 +146,7 @@ from_binary(Visited, typerep, Heap, V) ->
 
 check_circular_refs(Visited, V) ->
     case maps:is_key(V, Visited) of
-        true ->
-            io:format("~p in ~p\n", [V, Visited]),
-            exit(circular_references);
+        true ->  exit(circular_references);
         false -> ok
     end.
 
@@ -149,3 +164,12 @@ get_function_from_calldata(Calldata) ->
             {ok, FunctionName};
         {error, _} = Error -> Error
     end.
+
+
+sophia_type_to_typerep(String) ->
+    {ok, Ast} = aeso_parser:type(String),
+    try aeso_ast_to_icode:ast_typerep(Ast) of
+        Type -> {ok, Type}
+    catch _:_ -> {error, bad_type}
+    end.
+

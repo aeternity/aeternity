@@ -7,6 +7,7 @@
          symbol_name/1
         ]).
 
+
 symbol(Line, Chars) -> {symbol, Line, Chars}.
 int(Line, Int) -> {'Int', Line, Int}.
 

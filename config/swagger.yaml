@@ -2034,6 +2034,33 @@ paths:
           description: Invalid contract
           schema:
             $ref: '#/definitions/Error'
+  /contract/decode-data:
+    post:
+      tags:
+        - external
+        - dev
+      operationId: 'DecodeData'
+      description: 'Decode Sophia data encoded according to Sophia ABI.'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Binary data in Sophia ABI format
+          required: true
+          schema:
+            $ref: '#/definitions/SophiaBinaryData'
+      responses:
+        '200':
+          description: Json encoded data
+          schema:
+            $ref: '#/definitions/SophiaJsonData'
+        '400':
+          description: Invalid data
+          schema:
+            $ref: '#/definitions/Error'
   /contract/encode-calldata:
     post:
       tags:
@@ -3047,6 +3074,23 @@ definitions:
     properties:
       calldata:
         type: string
+  SophiaBinaryData:
+    type: object
+    properties:
+      sophia-type:
+        type: string
+      data:
+        type: string
+    required:
+    - sophia-type
+    - data
+  SophiaJsonData:
+    type: object
+    properties:
+      data:
+        type: object
+    required:
+    - data
   Peer:
     type: string
     description: 'Aeternity node'
