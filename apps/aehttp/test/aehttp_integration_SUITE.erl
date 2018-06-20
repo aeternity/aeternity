@@ -590,22 +590,22 @@ broken_decode_sophia_data(_Config) ->
     %% Field valid according to schema but invalid for handler.
     {ok, 400, #{<<"reason">> := <<"bad_type">>}} = get_contract_decode_data(#{'sophia-type' => <<"foo">>, data => D}),
     {ok, 400, #{<<"reason">> := <<"bad argument">>}} = get_contract_decode_data(#{'sophia-type' => T, data => <<"foo">>}),
+    %% Field valid for both schema and handler, though data
+    %% interpreted in a different way than the specified type spec.
     {ok, 200,
      #{<<"data">> :=
            #{<<"type">> := <<"tuple">>,
              <<"value">> :=
                  [#{<<"type">> := <<"string">>, <<"value">> := <<"bar">>},
                   #{<<"type">> := <<"word">>  , <<"value">> := 192} ]}}
-    } = %% Why not `{ok, 400, #{<<"reason">> := <<"bad_type">>}}`, with potentially different reason?
-         get_contract_decode_data(#{'sophia-type' => <<"(string, (int))">>, data => D}),
+    } = get_contract_decode_data(#{'sophia-type' => <<"(string, (int))">>, data => D}),
     {ok, 200,
      #{<<"data">> :=
            #{<<"type">> := <<"tuple">>,
              <<"value">> :=
                  [#{<<"type">> := <<"string">>, <<"value">> := <<"bar">>},
                   #{<<"type">> := <<"word">>, <<"value">> := 192} ]}}
-    } = %% Why not `{ok, 400, #{<<"reason">> := <<"bad_type">>}}`, with potentially different reason?
-        get_contract_decode_data(#{'sophia-type' => T, data => encode_data(<<"bar">>, <<"(42)">>)}),
+    } = get_contract_decode_data(#{'sophia-type' => T, data => encode_data(<<"bar">>, <<"(42)">>)}),
     ok.
 
 
