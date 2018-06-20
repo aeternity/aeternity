@@ -172,7 +172,7 @@ chain_test_() ->
              meck:new(aec_headers, [passthrough]),
              meck:new(aec_blocks, [passthrough]),
              meck:expect(aec_headers, validate_key_block_header, fun(_) -> ok end),
-             meck:expect(aec_headers, validate_micro_block_header, fun(_,_) -> ok end),
+             meck:expect(aec_headers, validate_micro_block_header, fun(_) -> ok end),
              meck:expect(aec_blocks, validate_key_block, fun(_) -> ok end),
              meck:expect(aec_blocks, validate_micro_block, fun(_,_) -> ok end),
              TmpKeysDir

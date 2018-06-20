@@ -1,6 +1,6 @@
 %% -*- mode: erlang; erlang-indent-level: 4; indent-tabs-mode: nil -*-
 
--record(aec_blocks             , {key, txs}).
+-record(aec_blocks             , {key, txs, sig}).
 -record(aec_headers            , {key, value, height}).
 -record(aec_call_state         , {key, value}).
 -record(aec_contract_state     , {key, value}).

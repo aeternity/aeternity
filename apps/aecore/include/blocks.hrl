@@ -49,8 +49,8 @@
           time = 0                :: non_neg_integer(),
           version                 :: non_neg_integer(),
           pow_evidence = no_value :: aec_pow:pow_evidence(),
-          miner = <<0:?MINER_PUB_BYTES/unit:8>> :: miner_pubkey(), %% TODO: remove default, confusing
-          signature = undefined   :: binary() | undefined}).
+          miner = <<0:?MINER_PUB_BYTES/unit:8>> :: miner_pubkey() %% TODO: remove default, confusing
+          }).
 
 -type(header_binary() :: binary()).
 -type(deterministic_header_binary() :: binary()).

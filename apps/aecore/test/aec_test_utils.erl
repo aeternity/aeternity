@@ -268,7 +268,10 @@ next_block_with_state(PrevBlock, Trees, Target, Time0, TxsFun, Nonce, MinerAcc) 
             [] ->
                 {PrevBlock, Trees};
             _  ->
-                aec_block_micro_candidate:create_with_state(PrevBlock, PrevBlock, MinerAcc, Txs, Trees)
+                {MicroBlock, MicroTrees} =
+                    aec_block_micro_candidate:create_with_state(PrevBlock, PrevBlock, MinerAcc, Txs, Trees),
+                {ok, SignedMicroBlock} = aec_keys:sign_micro_block(MicroBlock),
+                {SignedMicroBlock, MicroTrees}
     end,
     {B, S} = aec_block_key_candidate:create_with_state(PrevBlock1, MinerAcc, Trees1, #{txs => 0, gas => 0}),
     [ {PrevBlock1, Trees1} || Txs /= [] ] ++

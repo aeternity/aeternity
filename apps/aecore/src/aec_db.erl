@@ -194,6 +194,7 @@ write_block(Block) ->
     Header = aec_blocks:to_header(Block),
     Height = aec_headers:height(Header),
     Txs    = aec_blocks:txs(Block),
+    Sig    = aec_blocks:signature(Block),
     {ok, Hash} = aec_headers:hash_header(Header),
     ?t(begin
            TxHashes = [begin
@@ -203,7 +204,8 @@ write_block(Block) ->
                        end
                        || STx <- Txs],
            mnesia:write(#aec_blocks{key = Hash,
-                                    txs = TxHashes}),
+                                    txs = TxHashes,
+                                    sig = Sig}),
            mnesia:write(#aec_headers{key = Hash,
                                      value = Header,
                                      height = Height})
@@ -213,14 +215,14 @@ get_block(Hash) ->
     ?t(begin
            [#aec_headers{value = Header}] =
                mnesia:read(aec_headers, Hash),
-           [#aec_blocks{txs = TxHashes}] =
+           [#aec_blocks{txs = TxHashes, sig = Sig}] =
                mnesia:read(aec_blocks, Hash),
            Txs = [begin
                       [#aec_signed_tx{value = STx}] =
                           mnesia:read(aec_signed_tx, TxHash),
                       STx
                   end || TxHash <- TxHashes],
-           aec_blocks:from_header_and_txs(Header, Txs)
+           aec_blocks:from_header_txs_and_signature(Header, Txs, Sig)
        end).
 
 get_block_tx_hashes(Hash) ->
@@ -245,14 +247,14 @@ has_block(Hash) ->
 
 find_block(Hash) ->
     ?t(case mnesia:read(aec_blocks, Hash) of
-           [#aec_blocks{txs = TxHashes}] ->
+           [#aec_blocks{txs = TxHashes, sig = Sig}] ->
                Txs = [begin
                           [#aec_signed_tx{value = STx}] =
                               mnesia:read(aec_signed_tx, TxHash),
                           STx
                       end || TxHash <- TxHashes],
                [#aec_headers{value = Header}] = mnesia:read(aec_headers, Hash),
-               {value, aec_blocks:from_header_and_txs(Header, Txs)};
+               {value, aec_blocks:from_header_txs_and_signature(Header, Txs, Sig)};
            [] -> none
        end).
 

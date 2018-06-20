@@ -34,8 +34,8 @@ mine_block_test_() ->
                  % and will invalidate the nonce value below
                  % in order to find a proper nonce for your
                  % block uncomment the line below
-                 %let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
-                 Nonce = 12264766402353785602,
+                 % let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
+                 Nonce = 16412084147239117398,
                  FeesInfo = #{txs => 0, gas => 0},
                  {BlockCandidate, _} = aec_block_key_candidate:create_with_state(TopBlock, ?TEST_PUB,
                                                                                  aec_trees:new(), FeesInfo),

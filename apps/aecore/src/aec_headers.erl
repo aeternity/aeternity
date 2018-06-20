@@ -21,7 +21,7 @@
          deserialize_pow_evidence/1,
          root_hash/1,
          validate_key_block_header/1,
-         validate_micro_block_header/2,
+         validate_micro_block_header/1,
          type/1]).
 
 -include("blocks.hrl").
@@ -93,7 +93,6 @@ serialize_to_map(micro, Header) ->
         <<"state_hash">> => Header#header.root_hash,
         <<"txs_hash">> => Header#header.txs_hash,
         <<"key_hash">> => Header#header.key_hash,
-        <<"signature">> => Header#header.signature,
         <<"time">> => Header#header.time,
         <<"version">> => Header#header.version
       },
@@ -122,14 +121,12 @@ deserialize_from_map(#{<<"prev_hash">> := PrevHash,
                        <<"state_hash">> := RootHash,
                        <<"txs_hash">> := TxsHash,
                        <<"key_hash">> := KeyHash,
-                       <<"signature">> := Signature,
                        <<"time">> := Time,
                        <<"version">> := Version}) ->
     #header{prev_hash = PrevHash,
             root_hash = RootHash,
             txs_hash = TxsHash,
             key_hash = KeyHash,
-            signature = Signature,
             time = Time,
             version = Version}.
 
@@ -155,7 +152,6 @@ serialize_to_binary(micro, Header) ->
       (Header#header.root_hash)/binary,
       (Header#header.txs_hash)/binary,
       (Header#header.key_hash)/binary,
-      (Header#header.signature)/binary,
       (Header#header.time):64>>.
 
 -spec deserialize_from_binary(deterministic_header_binary()) -> header().
@@ -183,13 +179,11 @@ deserialize_from_binary(<<Version:64,
                           RootHash:32/binary,
                           TxsHash:32/binary,
                           KeyHash:32/binary,
-                          Signature:64/binary,
                           Time:64>>) ->
     #header{prev_hash = PrevHash,
             root_hash = RootHash,
             txs_hash = TxsHash,
             key_hash = KeyHash,
-            signature = Signature,
             time = Time,
             version = Version}.
 
@@ -233,20 +227,19 @@ validate_key_block_header(Header) ->
     Validators = [fun validate_version/1,
                   fun validate_pow/1,
                   fun validate_time/1],
-    aeu_validation:run(Validators, [{Header, ProtocolVersions, undefined}]).
+    aeu_validation:run(Validators, [{Header, ProtocolVersions}]).
 
-validate_micro_block_header(Header, LeaderKey) ->
+validate_micro_block_header(Header) ->
     ProtocolVersions = aec_hard_forks:protocols(aec_governance:protocols()),
 
-    Validators = [fun validate_version/1,
-                  fun validate_signature/1],
-    aeu_validation:run(Validators, [{Header, ProtocolVersions, LeaderKey}]).
+    Validators = [fun validate_version/1],
+    aeu_validation:run(Validators, [{Header, ProtocolVersions}]).
 
 -spec validate_version({header(), aec_governance:protocols()}) ->
                               ok | {error, Reason} when
       Reason :: unknown_protocol_version
               | {protocol_version_mismatch, ExpectedVersion::non_neg_integer()}.
-validate_version({#header{version = V, height = H}, Protocols, _}) ->
+validate_version({#header{version = V, height = H}, Protocols}) ->
     case aec_hard_forks:is_known_protocol(V, Protocols) of
         false -> {error, unknown_protocol_version};
         true ->
@@ -260,7 +253,7 @@ validate_version({#header{version = V, height = H}, Protocols, _}) ->
                           ok | {error, incorrect_pow}.
 validate_pow({#header{nonce        = Nonce,
                       pow_evidence = Evd,
-                      target       = Target} = Header, _, _})
+                      target       = Target} = Header, _})
  when Nonce >= 0, Nonce =< ?MAX_NONCE ->
     %% Zero nonce and pow_evidence before hashing, as this is how the mined block
     %% got hashed.
@@ -275,20 +268,13 @@ validate_pow({#header{nonce        = Nonce,
 
 -spec validate_time({header(), aec_governance:protocols()}) ->
                            ok | {error, block_from_the_future}.
-validate_time({#header{time = Time}, _, _}) ->
+validate_time({#header{time = Time}, _}) ->
     MaxAcceptedTime = aeu_time:now_in_msecs() + ?ACCEPTED_FUTURE_KEY_BLOCK_TIME_SHIFT,
     case Time < MaxAcceptedTime of
         true ->
             ok;
         false ->
             {error, block_from_the_future}
-    end.
-
-validate_signature({#header{signature = Sig} = Header, _, LeaderKey}) ->
-    ok, Bin = serialize_to_binary(Header),
-    case enacl:sign_verify_detached(Sig, Bin, LeaderKey) of
-        {ok, _}    -> ok;
-        {error, _} -> {error, signature_verification_failed}
     end.
 
 type(Header = #header{}) ->

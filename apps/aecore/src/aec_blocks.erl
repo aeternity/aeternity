@@ -22,7 +22,7 @@
          set_target/2,
          new_key/8,
          new_micro/8,
-         from_header_and_txs/2,
+         from_header_txs_and_signature/3,
          to_header/1,
          serialize_to_binary/1,
          serialize_to_map/1,
@@ -97,7 +97,7 @@ pow(Block) ->
     Block#block.pow_evidence.
 
 %% Sets the signature for microblock
--spec set_signature(block(), list()) -> block().
+-spec set_signature(block(), binary()) -> block().
 set_signature(Block, Signature) ->
     Block#block{signature = Signature}.
 
@@ -138,14 +138,14 @@ new_key(Height, PrevHash, RootHash, Target, Nonce, Time, Version, Miner) ->
 -spec new_micro(height(), block_header_hash(), block_header_hash(), state_hash(), txs_hash(),
     list(aetx_sign:signed_tx()), non_neg_integer(), non_neg_integer()) -> block().
 new_micro(Height, PrevHash, KeyBlockHash, RootHash, TxsHash, Txs, Time, Version) ->
-    #block{ height = Height
-        , prev_hash = PrevHash
-        , key_hash = KeyBlockHash
-        , root_hash = RootHash
-        , txs_hash  = TxsHash
-        , txs       = Txs
-        , time      = Time
-        , version   = Version }.
+    #block{ height    = Height
+          , prev_hash = PrevHash
+          , key_hash  = KeyBlockHash
+          , root_hash = RootHash
+          , txs_hash  = TxsHash
+          , txs       = Txs
+          , time      = Time
+          , version   = Version }.
 
 -spec to_header(block()) -> aec_headers:header().
 to_header(#block{} = Block) ->
@@ -174,7 +174,6 @@ to_header(micro, #block{height = Height,
                         root_hash = RootHash,
                         txs_hash = TxsHash,
                         key_hash = KeyHash,
-                        signature = Signature,
                         time = Time,
                         version = Version}) ->
     #header{height = Height,
@@ -182,22 +181,21 @@ to_header(micro, #block{height = Height,
             root_hash = RootHash,
             txs_hash = TxsHash,
             key_hash = KeyHash,
-            signature = Signature,
             time = Time,
             version = Version}.
 
-from_header_and_txs(#header{} = Header, Txs) ->
-    from_header_and_txs(aec_headers:type(Header), Header, Txs).
+from_header_txs_and_signature(#header{} = Header, Txs, Signature) ->
+    from_header_txs_and_signature(aec_headers:type(Header), Header, Txs, Signature).
 
-from_header_and_txs(key, #header{height = Height,
-                                 prev_hash = PrevHash,
-                                 root_hash = RootHash,
-                                 miner = Miner,
-                                 target = Target,
-                                 pow_evidence = Evd,
-                                 nonce = Nonce,
-                                 time = Time,
-                                 version = Version}, _Txs) ->
+from_header_txs_and_signature(key, #header{height = Height,
+                                           prev_hash = PrevHash,
+                                           root_hash = RootHash,
+                                           miner = Miner,
+                                           target = Target,
+                                           pow_evidence = Evd,
+                                           nonce = Nonce,
+                                           time = Time,
+                                           version = Version}, _Txs, _Signature) ->
     #block{height = Height,
            prev_hash = PrevHash,
            root_hash = RootHash,
@@ -207,14 +205,13 @@ from_header_and_txs(key, #header{height = Height,
            nonce = Nonce,
            time = Time,
            version = Version};
-from_header_and_txs(micro, #header{height = Height,
-                                   prev_hash = PrevHash,
-                                   root_hash = RootHash,
-                                   txs_hash = TxsHash,
-                                   key_hash = KeyHash,
-                                   signature = Signature,
-                                   time = Time,
-                                   version = Version}, Txs) ->
+from_header_txs_and_signature(micro, #header{height = Height,
+                                             prev_hash = PrevHash,
+                                             root_hash = RootHash,
+                                             txs_hash = TxsHash,
+                                             key_hash = KeyHash,
+                                             time = Time,
+                                             version = Version}, Txs, Signature) ->
     #block{height = Height,
            prev_hash = PrevHash,
            root_hash = RootHash,
@@ -246,7 +243,7 @@ serialize_to_binary(micro, Block) ->
       micro_block,
       Vsn,
       Template,
-      [{header, Hdr}, {txs, Txs}]).
+      [{header, Hdr}, {txs, Txs}, {signature, Block#block.signature}]).
 
 deserialize_from_binary(Bin) ->
     case aec_object_serialization:deserialize_type_and_vsn(Bin) of
@@ -256,18 +253,18 @@ deserialize_from_binary(Bin) ->
                     [{header, Hdr0}] =
                         aec_object_serialization:deserialize(key_block, Vsn, Template, Bin),
                     Hdr = aec_headers:deserialize_from_binary(Hdr0),
-                    {ok, from_header_and_txs(Hdr, [])};
+                    {ok, from_header_txs_and_signature(Hdr, [], <<>>)};
                 Err = {error, _} ->
                     Err
             end;
         {micro_block, Vsn, _RawFields} ->
             case serialization_template(micro, Vsn) of
                 {ok, Template} ->
-                    [{header, Hdr0}, {txs, Txs0}] =
+                    [{header, Hdr0}, {txs, Txs0}, {signature, Sig}] =
                         aec_object_serialization:deserialize(micro_block, Vsn, Template, Bin),
                     Hdr = aec_headers:deserialize_from_binary(Hdr0),
                     Txs = [ aetx_sign:deserialize_from_binary(Tx) || Tx <- Txs0 ],
-                    {ok, from_header_and_txs(Hdr, Txs)};
+                    {ok, from_header_txs_and_signature(Hdr, Txs, Sig)};
                 Err = {error, _} ->
                     Err
             end
@@ -276,7 +273,7 @@ deserialize_from_binary(Bin) ->
 serialization_template(key, Vsn) when Vsn >= ?GENESIS_VERSION andalso Vsn =< ?PROTOCOL_VERSION ->
     {ok, [{header, binary}]};
 serialization_template(micro, Vsn) when Vsn >= ?GENESIS_VERSION andalso Vsn =< ?PROTOCOL_VERSION ->
-    {ok, [{header, binary}, {txs, [binary]}]};
+    {ok, [{header, binary}, {txs, [binary]}, {signature, binary}]};
 serialization_template(_BlockType, Vsn) ->
     {error, {bad_block_vsn, Vsn}}.
 
@@ -299,10 +296,10 @@ serialize_to_map(micro, Block) ->
       <<"state_hash">> => Block#block.root_hash,
       <<"txs_hash">> => Block#block.txs_hash,
       <<"key_hash">> => Block#block.key_hash,
-      <<"signature">> => Block#block.signature,
       <<"time">> => Block#block.time,
       <<"version">> => Block#block.version,
-      <<"transactions">> => Block#block.txs
+      <<"transactions">> => Block#block.txs,
+      <<"signature">> => Block#block.signature
      }.
 
 deserialize_from_map(#{<<"height">> := Height,
@@ -335,10 +332,10 @@ deserialize_from_map(#{<<"prev_hash">> := PrevHash,
                        <<"state_hash">> := RootHash,
                        <<"txs_hash">> := TxsHash,
                        <<"key_hash">> := KeyHash,
-                       <<"signature">> := Signature,
                        <<"time">> := Time,
                        <<"version">> := Version,
-                       <<"transactions">> := Txs}) ->
+                       <<"transactions">> := Txs,
+                       <<"signature">> := Signature}) ->
     {ok, #block{
             prev_hash = PrevHash,
             root_hash = RootHash,
@@ -382,10 +379,10 @@ validate_empty_txs_hash(#block{txs_hash = TxsHash}) ->
 validate_micro_block(Block, LeaderKey) ->
     % since trees are required for transaction signature validation, this is
     % performed while applying transactions
-    case aec_headers:validate_micro_block_header(to_header(Block), LeaderKey) of
+    case aec_headers:validate_micro_block_header(to_header(Block)) of
         ok ->
-            Validators = [fun validate_txs_hash/1],
-            case aeu_validation:run(Validators, [Block]) of
+            Validators = [fun validate_txs_hash/1, fun validate_signature/1],
+            case aeu_validation:run(Validators, [{Block, LeaderKey}]) of
                 ok              -> ok;
                 {error, Reason} -> {error, {block, Reason}}
             end;
@@ -393,9 +390,16 @@ validate_micro_block(Block, LeaderKey) ->
             {error, {header, Reason}}
     end.
 
--spec validate_txs_hash(block()) -> ok | {error, malformed_txs_hash}.
-validate_txs_hash(#block{txs = Txs,
-                         txs_hash = BlockTxsHash}) ->
+-spec validate_signature({block(), binary()}) -> ok | {error, signature_verification_failed}.
+validate_signature({#block{signature = Sig} = Block, LeaderKey}) ->
+    Bin = aec_headers:serialize_to_binary(to_header(Block)),
+    case enacl:sign_verify_detached(Sig, Bin, LeaderKey) of
+        {ok, _}    -> ok;
+        {error, _} -> {error, signature_verification_failed}
+    end.
+
+-spec validate_txs_hash({block(), binary()}) -> ok | {error, malformed_txs_hash}.
+validate_txs_hash({#block{txs = Txs, txs_hash = BlockTxsHash}, _}) ->
     case aec_txs_trees:pad_empty(aec_txs_trees:root_hash(aec_txs_trees:from_txs(Txs))) of
         BlockTxsHash ->
             ok;
