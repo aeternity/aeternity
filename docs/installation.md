@@ -11,14 +11,40 @@ In order to install an epoch node using a release binary, you need to:
 
 The release binaries are published on [GitHub](https://github.com/aeternity/epoch/releases) and are tested on the following platforms:
 * Ubuntu 16.04.3 LTS (x86-64);
+* Ubuntu 18.04 LTS (x86-64);
 * macOS Sierra (x86-64);
 * macOS High Sierra (x86-64).
 
 ## Install dependencies
 
-### Ubuntu 16.04 package
+### Ubuntu package
 
-The Ubuntu 16.04 package requires a libsodium shared library (v1.0.16) in `/usr/local/lib/libsodium.so.23` (`wget https://download.libsodium.org/libsodium/releases/libsodium-1.0.16.tar.gz`, unpack, then do `./configure && make && sudo make install && sudo ldconfig`).
+The package requires a libsodium v1.0.16 as `libsodium.so.23` shared object/library.
+
+#### Ubuntu 18.04
+
+Ubuntu 18.04 ships with libsodium 1.0.16, thus it can be installed with `apt` package manager:
+
+```bash
+sudo apt-get install libsodium23
+```
+
+#### Ubuntu 16.04
+
+As Ubuntu 16.04 ships with older libsodium version than required, it must be installed from source.
+A C compiler and related tools must be installed beforehand by running:
+
+```bash
+sudo apt-get install build-essential
+```
+
+then the library:
+
+```bash
+wget https://download.libsodium.org/libsodium/releases/libsodium-1.0.16.tar.gz
+tar -xf libsodium-1.0.16.tar.gz && cd libsodium-1.0.16
+./configure && make && sudo make install && sudo ldconfig
+```
 
 ### macOS package
 
