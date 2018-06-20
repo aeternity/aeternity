@@ -29,6 +29,12 @@ Ubuntu 18.04 ships with libsodium 1.0.16, thus it can be installed with `apt` pa
 sudo apt-get install libsodium23
 ```
 
+The Ubuntu release binaries are built with `libssl1.0.0` (default Ubuntu 18.04 version is 1.1) requirement that can be installed with:
+
+```bash
+sudo apt-get install libssl1.0.0
+```
+
 #### Ubuntu 16.04
 
 As Ubuntu 16.04 ships with older libsodium version than required, it must be installed from source.
