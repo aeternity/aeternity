@@ -216,11 +216,7 @@ iterator_next(#iter{key = Key, root = Hash, db = DB,
         end,
     case Res of
         '$end_of_table' -> '$end_of_table';
-        {Key1, Val} ->
-            case has_prefix(Prefix, Key1) of
-                true -> {Key1, Val, Iter#iter{key = Key1}};
-                false -> '$end_of_table'
-            end
+        {Key1, Val} -> {Key1, Val, Iter#iter{key = Key1}}
     end.
 
 -spec unfold(path(), enc_node(), tree()) -> [unfold_node() | unfold_leaf()].
@@ -614,7 +610,7 @@ process_iterator_opts(_Iter, [X|_]) ->
 -spec int_iter_next(path(), tree_node(), integer() | 'undefined', path(), db()) ->
                            '$end_of_table' | {path(), value()}.
 
-int_iter_next(_Path, <<>>,_Max,_prefix,_DB) ->
+int_iter_next(_Path, <<>>,_Max,_Prefix,_DB) ->
     '$end_of_table';
 int_iter_next(<<>>, {branch, Branch}, Max, Prefix, DB) ->
     case check_iter_path_length(<<0:4>>, Max) of
@@ -626,8 +622,9 @@ int_iter_next(<<>>, {branch, Branch}, Max, Prefix, DB) ->
 int_iter_next(<<N:4, Rest/bits>>, {branch, Branch}, Max,  Prefix, DB) ->
     case check_iter_path_length(<<N:4>>, Max) of
         {ok, NewMax} ->
+            {ok, NewPrefix} = match_prefix(Prefix, <<N:4>>),
             Next = decode_node(branch_next(N, Branch), DB),
-            case int_iter_next(Rest, Next, NewMax, Prefix, DB) of
+            case int_iter_next(Rest, Next, NewMax, NewPrefix, DB) of
                 '$end_of_table' -> pick_first_branch(Branch, N + 1, NewMax, Prefix, DB);
                 {RestPath, Val} -> {<<N:4, RestPath/bits>>, Val}
             end;
@@ -656,7 +653,8 @@ int_iter_next(Path, {ext, NodePath, Hash}, Max, Prefix, DB) ->
             case Path of
                 <<NodePath:S/bits, Rest/bits>> ->
                     Next = decode_node(Hash, DB),
-                    case int_iter_next(Rest, Next, NewMax, Prefix, DB) of
+                    {ok, NewPrefix} = match_prefix(Prefix, NodePath),
+                    case int_iter_next(Rest, Next, NewMax, NewPrefix, DB) of
                         '$end_of_table' -> '$end_of_table';
                         {RestPath, Val} ->
                             KeyPath = <<NodePath/bits, RestPath/bits>>,
@@ -666,15 +664,17 @@ int_iter_next(Path, {ext, NodePath, Hash}, Max, Prefix, DB) ->
                             end
                     end;
                 _ when Path < NodePath ->
-                    case pick_first(decode_node(Hash, DB),
-                                    NewMax, Prefix, DB) of
-                        '$end_of_table' -> '$end_of_table';
-                        {RestPath, Val} ->
-                            KeyPath = <<NodePath/bits, RestPath/bits>>,
-                            case has_prefix(Prefix, KeyPath) of
-                                true -> {KeyPath, Val};
-                                false -> '$end_of_table'
-                            end
+                    case match_prefix(Prefix, NodePath) of
+                        {ok, NewPrefix} ->
+                            case pick_first(decode_node(Hash, DB),
+                                            NewMax, NewPrefix, DB) of
+                                '$end_of_table' -> '$end_of_table';
+                                {RestPath, Val} ->
+                                    KeyPath = <<NodePath/bits, RestPath/bits>>,
+                                    {KeyPath, Val}
+                            end;
+                        error ->
+                            '$end_of_table'
                     end;
                 _ when Path >= NodePath ->
                     '$end_of_table'
@@ -697,29 +697,30 @@ pick_first({leaf, Path, Val}, Max, Prefix, _DB) ->
 pick_first({ext, Path, Hash}, Max, Prefix, DB) ->
     case check_iter_path_length(Path, Max) of
         {ok, NewMax} ->
-            case pick_first(decode_node(Hash, DB), NewMax, Prefix, DB) of
-                '$end_of_table' ->
-                    '$end_of_table';
-                {RestPath, Val} ->
-                    KeyPath = <<Path/bits, RestPath/bits>>,
-                    case has_prefix(Prefix, KeyPath) of
-                        true -> {KeyPath, Val};
-                        false -> '$end_of_table'
+            case match_prefix(Prefix, Path) of
+                error -> '$end_of_table';
+                {ok, NewPrefix} ->
+                    case pick_first(decode_node(Hash, DB), NewMax, NewPrefix, DB) of
+                        '$end_of_table' ->
+                            '$end_of_table';
+                        {RestPath, Val} ->
+                            KeyPath = <<Path/bits, RestPath/bits>>,
+                            {KeyPath, Val}
                     end
             end;
         error ->
             '$end_of_table'
     end;
 pick_first({branch, Branch}, Max, Prefix, DB) ->
-    case branch_value(Branch) of
-        <<>> ->
-            case check_iter_path_length(<<0:4>>, Max) of
-                {ok, NewMax} -> pick_first_branch(Branch, 0, NewMax, Prefix, DB);
+    case is_empty_prefix(Prefix) andalso (branch_value(Branch) =/= <<>>) of
+        true ->
+            case check_iter_path_length(<<>>, Max) of
+                {ok, _} -> {<<>>, branch_value(Branch)};
                 error -> '$end_of_table'
             end;
-        Val  ->
-            case check_iter_path_length(<<>>, Max) of
-                {ok, _} -> {<<>>, Val};
+        false ->
+            case check_iter_path_length(<<0:4>>, Max) of
+                {ok, NewMax} -> pick_first_branch(Branch, 0, NewMax, Prefix, DB);
                 error -> '$end_of_table'
             end
     end.
@@ -727,10 +728,17 @@ pick_first({branch, Branch}, Max, Prefix, DB) ->
 pick_first_branch(_Branch, N,_MaxPath,_Prefix,_DB) when is_integer(N), N > 15 ->
     '$end_of_table';
 pick_first_branch(Branch, N, MaxPath, Prefix, DB) when is_integer(N) ->
-    case pick_first(decode_node(branch_next(N, Branch), DB),
-                    MaxPath, Prefix, DB) of
-        '$end_of_table' -> pick_first_branch(Branch, N + 1, MaxPath, Prefix, DB);
-        {RestPath, Val} -> {<<N:4, RestPath/bits>>, Val}
+    case match_prefix(Prefix, <<N:4>>) of
+        {ok, NewPrefix} ->
+            case pick_first(decode_node(branch_next(N, Branch), DB),
+                            MaxPath, NewPrefix, DB) of
+                '$end_of_table' ->
+                    pick_first_branch(Branch, N + 1, MaxPath, Prefix, DB);
+                {RestPath, Val} ->
+                    {<<N:4, RestPath/bits>>, Val}
+            end;
+        error ->
+            '$end_of_table'
     end.
 
 check_iter_path_length(_Path, undefined) -> {ok, undefined};
@@ -740,6 +748,23 @@ check_iter_path_length(Path, Remaining) ->
         true  -> {ok, Remaining - Length};
         false -> error
     end.
+
+is_empty_prefix(<<>>) -> true;
+is_empty_prefix(_   ) -> false.
+
+has_prefix(<<>>,_Key) ->
+    true;
+has_prefix(Prefix, Key) ->
+    S = bit_size(Prefix),
+    case Key of
+        <<Prefix:S/bits, _/bits>> -> true;
+        _ -> false
+    end.
+
+match_prefix(<<>>  , _Key) -> {ok, <<>>};
+match_prefix(Prefix, <<>>) -> {ok, Prefix};
+match_prefix(<<X:4, Left1/bits>>, <<X:4, Left2/bits>>) -> match_prefix(Left1, Left2);
+match_prefix(_, _) -> error.
 
 %%%===================================================================
 %%% Prettyprinter
@@ -1008,11 +1033,3 @@ decode_path(<<?EVEN_EXT :4, 0:4, Left/bits>>) -> {ext, Left};
 decode_path(<<?ODD_EXT  :4,      Left/bits>>) -> {ext, Left};
 decode_path(<<?EVEN_LEAF:4, 0:4, Left/bits>>) -> {leaf, Left};
 decode_path(<<?ODD_LEAF :4,      Left/bits>>) -> {leaf, Left}.
-
-
-has_prefix(Prefix, Key) ->
-    S = bit_size(Prefix),
-    case Key of
-        <<Prefix:S/bits, _/bits>> -> true;
-        _ -> false
-    end.
