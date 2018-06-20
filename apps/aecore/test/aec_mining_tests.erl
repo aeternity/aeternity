@@ -49,7 +49,7 @@ mine_block_test_() ->
                  ?assertEqual(1, Block#block.height),
                  ?assertEqual(0, length(Block#block.txs)),
 
-                 ?assertEqual(ok, aec_headers:validate(
+                 ?assertEqual(ok, aec_headers:validate_key_block_header(
                                     aec_blocks:to_header(Block)))
          end}},
        {timeout, 60,
