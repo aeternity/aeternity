@@ -203,7 +203,7 @@ spend(Node, FromPub, ToPub, Amount, Fee) ->
                nonce => Nonce,
                payload => <<"foo">>},
     {ok, Tx} = rpc:call(Node, aec_spend_tx, new, [Params]),
-    {ok, SignedTx} = rpc:call(Node, aec_keys, sign, [Tx]),
+    {ok, SignedTx} = rpc:call(Node, aec_keys, sign_tx, [Tx]),
     ok = rpc:call(Node, aec_tx_pool, push, [SignedTx]).
 
 
