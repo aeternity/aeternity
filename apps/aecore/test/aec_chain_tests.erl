@@ -353,7 +353,6 @@ n_headers_forwards(Hdrs, Hashes, M) ->
 n_headers_forwards(_Hdrs,_Hashes,_M, 0) ->
     ok;
 n_headers_forwards(Hdrs, Hashes, M, N) ->
-    io:format("N: ~w M: ~w\n", [N, M]),
     Hash        = lists:nth(N, Hashes),
     PrunedStart = lists:nthtail(N - 1, Hdrs),
     Expected    = lists:sublist(PrunedStart, M),

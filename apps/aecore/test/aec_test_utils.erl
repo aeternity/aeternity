@@ -63,8 +63,10 @@ preset_accounts() ->
   ?PRESET_ACCOUNTS.
 
 genesis_accounts_balances(PresetAccounts) ->
-    [{aec_block_genesis:miner(), aec_governance:block_mine_reward()}
-     | PresetAccounts].
+    %% NG : No miner reward for Genesis (yet?)
+    PresetAccounts.
+    %% [{aec_block_genesis:miner(), aec_governance:block_mine_reward()}
+    %%  | PresetAccounts].
 
 mock_time() ->
     meck:new(aeu_time, [passthrough]),
