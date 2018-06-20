@@ -374,24 +374,7 @@ update_state_tree(Node, State) ->
             {State1, NewTopDifficulty} =
                 update_state_tree(Node, Trees, Difficulty, ForkId, State),
             OldTopHash = get_top_block_hash(State),
-            case is_key_block(Node) of
-                true ->
-                    handle_top_block_change(OldTopHash, NewTopDifficulty, State1);
-                false ->
-                    %% NG: this might be correct now
-                    %%
-                    %% since difficulty is 0 we can't trigger a fork switch here
-                    %% so just checking if the key-block is on-chain should be enough
-                    %% if we are on-chain set location otherwise keep the old tophash
-                    case hash_is_in_main_chain(node_key_hash(Node), OldTopHash) of
-                        false ->
-                            set_top_block_hash(OldTopHash, State1);
-                        true ->
-                            NewTopHash = get_top_block_hash(State1),
-                            add_locations(OldTopHash, NewTopHash),
-                            State1
-                    end
-            end
+            handle_top_block_change(OldTopHash, NewTopDifficulty, State1)
     end.
 
 update_state_tree(Node, TreesIn, Difficulty, ForkId, State) ->
@@ -470,19 +453,34 @@ handle_top_block_change(OldTopHash, NewTopDifficulty, State) ->
         NewTopHash when OldTopHash =:= undefined ->
             update_main_chain(get_genesis_hash(State), NewTopHash, State);
         NewTopHash ->
-            {ok, OldTopDifficulty} = db_find_difficulty(OldTopHash),
-            case OldTopDifficulty >= NewTopDifficulty of
-                true -> set_top_block_hash(OldTopHash, State); %% Reset
-                false -> update_main_chain(OldTopHash, NewTopHash, State)
+            {ok, ForkHash} = find_fork_point(OldTopHash, NewTopHash),
+            case ForkHash =:= OldTopHash of
+                true ->
+                    %% We are extending the current chain.
+                    %% Difficulty might not have changed if it is an
+                    %% extension of micro blocks.
+                    update_main_chain(OldTopHash, NewTopHash, ForkHash, State);
+                false ->
+                    %% We have a fork. Compare the difficulties.
+                    {ok, OldTopDifficulty} = db_find_difficulty(OldTopHash),
+                    case OldTopDifficulty >= NewTopDifficulty of
+                        true -> set_top_block_hash(OldTopHash, State); %% Reset
+                        false -> update_main_chain(OldTopHash, NewTopHash,
+                                                   ForkHash, State)
+                    end
             end
     end.
 
 update_main_chain(OldTopHash, NewTopHash, State) ->
-    case find_fork_point(OldTopHash, NewTopHash) of
-        {ok, OldTopHash} ->
+    {ok, ForkHash} = find_fork_point(OldTopHash, NewTopHash),
+    update_main_chain(OldTopHash, NewTopHash, ForkHash, State).
+
+update_main_chain(OldTopHash, NewTopHash, ForkHash, State) ->
+    case OldTopHash =:= ForkHash of
+        true ->
             add_locations(OldTopHash, NewTopHash),
             State;
-        {ok, ForkHash} ->
+        false ->
             remove_locations(ForkHash, OldTopHash),
             add_locations(ForkHash, NewTopHash),
             State
