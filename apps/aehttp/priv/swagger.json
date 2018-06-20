@@ -4014,7 +4014,7 @@
     "SophiaBinaryData" : {
       "type" : "object",
       "properties" : {
-        "type" : {
+        "sophia-type" : {
           "type" : "string"
         },
         "data" : {
@@ -4023,7 +4023,7 @@
       },
       "example" : {
         "data" : "data",
-        "type" : "type"
+        "sophia-type" : "sophia-type"
       }
     },
     "SophiaJsonData" : {
