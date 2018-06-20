@@ -1337,7 +1337,7 @@ get_transaction(_Config) ->
     {ok, 200, #{<<"tx">> := EncodedSpendTx}} = get_spend(Encoded),
     {ok, SpendTxBin} = aec_base58c:safe_decode(transaction, EncodedSpendTx),
     SpendTx = aetx:deserialize_from_binary(SpendTxBin),
-    {ok, SignedSpendTx} = rpc(aec_keys, sign, [SpendTx]),
+    {ok, SignedSpendTx} = rpc(aec_keys, sign_tx, [SpendTx]),
     TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedSpendTx)),
 
     SerializedSpendTx = aetx_sign:serialize_to_binary(SignedSpendTx),
@@ -1434,7 +1434,7 @@ post_correct_tx(_Config) ->
             fee => Fee,
             nonce => Nonce,
             payload => <<"foo">>}),
-    {ok, SignedTx} = rpc(aec_keys, sign, [SpendTx]),
+    {ok, SignedTx} = rpc(aec_keys, sign_tx, [SpendTx]),
     ExpectedHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
     {ok, 200, #{<<"tx_hash">> := ExpectedHash}} =
         post_tx(aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx))),
@@ -1453,7 +1453,7 @@ post_broken_tx(_Config) ->
             fee => Fee,
             nonce => Nonce,
             payload => <<"foo">>}),
-    {ok, SignedTx} = rpc(aec_keys, sign, [SpendTx]),
+    {ok, SignedTx} = rpc(aec_keys, sign_tx, [SpendTx]),
     SignedTxBin = aetx_sign:serialize_to_binary(SignedTx),
     BrokenTxBin = case SignedTxBin of
                     <<1:1, Rest/bits>> -> <<0:1, Rest/bits>>;
@@ -1480,7 +1480,7 @@ post_broken_base58_tx(_Config) ->
                     fee => Fee,
                     nonce => Nonce,
                     payload => <<"foo">>}),
-            {ok, SignedTx} = rpc(aec_keys, sign, [SpendTx]),
+            {ok, SignedTx} = rpc(aec_keys, sign_tx, [SpendTx]),
             <<_, BrokenHash/binary>> =
                 aec_base58c:encode(transaction,
                                    aetx_sign:serialize_to_binary(SignedTx)),
@@ -4240,7 +4240,7 @@ open_websockets_count() ->
 sign_and_post_tx(AccountPubKey, EncodedUnsignedTx) ->
     {ok, SerializedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedUnsignedTx),
     UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
-    {ok, SignedTx} = rpc(aec_keys, sign, [UnsignedTx]),
+    {ok, SignedTx} = rpc(aec_keys, sign_tx, [UnsignedTx]),
     SerializedTx = aetx_sign:serialize_to_binary(SignedTx),
     %% Check that we get the correct hash
     TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
