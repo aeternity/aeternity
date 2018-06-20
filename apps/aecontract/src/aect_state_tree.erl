@@ -184,7 +184,7 @@ add_store_keys_poi(Id, {PrefixedKey, Val, Iter}, PrefixSize, Store, Poi, CtTree)
 -spec verify_poi(aect_contracts:id(), binary(), aec_poi:poi()) ->
                         'ok' | {'error', term()}.
 verify_poi(Id, PoiSerializedContract, Poi) ->
-    Contract = aect_contracts:deserialize_from_poi(PoiSerializedContract),
+    Contract = aect_contracts:deserialize_from_poi(Id, PoiSerializedContract),
     SerializedContract = aect_contracts:serialize(Contract),
     case aec_poi:verify(Id, SerializedContract, Poi) of
         ok ->
@@ -195,7 +195,7 @@ verify_poi(Id, PoiSerializedContract, Poi) ->
                          (_,_, {error, _} = E) -> E
                       end,
                       ok,
-                      aect_contract:state(Contract));
+                      aect_contracts:state(Contract));
         {error, _} = E  -> E
     end.
 
