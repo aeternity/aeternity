@@ -870,8 +870,9 @@ setup_loop(State, LeaderKey, block_created) ->
     start_mining(State2);
 setup_loop(State, LeaderKey, block_received) ->
     State1 = State#state{consensus = #consensus{leader = false, leader_key = LeaderKey}},
-    start_mining(State1),
-    aec_block_generator:stop_generation();
+    State2 = start_mining(State1),
+    aec_block_generator:stop_generation(),
+    State2;
 setup_loop(State, LeaderKey, micro_block_created) ->
     State1 = State#state{consensus = #consensus{leader = true, leader_key = LeaderKey}},
     State2 = start_mining(State1),
