@@ -3079,16 +3079,13 @@ definitions:
     properties:
       sophia-type:
         type: string
-        required: true
       data:
         type: string
-        required: true
   SophiaJsonData:
     type: object
     properties:
       data:
         type: object
-        required: true
   Peer:
     type: string
     description: 'Aeternity node'
