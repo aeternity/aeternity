@@ -12,6 +12,8 @@
         , root_hash/1
         , verify/3
         , lookup/2
+        , iterator_from/3
+        , iterator_next/1
         ]).
 
 -export([ from_serialization_format/1
@@ -88,6 +90,31 @@ lookup(Key, #aec_poi{root_hash = RootHash} = Poi) ->
         {ok, Val} -> {ok, Val};
         {error, not_found} = E -> E
     end.
+
+-spec iterator_from(key(), poi(), aeu_mtrees:iterator_opts()) ->
+                           {'ok', aeu_mtrees:iterator()}
+                               | {'error', bad_proof}.
+iterator_from(Key, #aec_poi{proof = ProofDb,
+                            root_hash =_RootHash} = _Poi, Opts) ->
+    Tree = aeu_mtrees:empty_with_backend(ProofDb),
+    try aeu_mtrees:iterator_from(Key, Tree, Opts) of
+        Iterator -> {ok, Iterator}
+    catch
+        _:_ -> {error, bad_proof}
+    end.
+
+-spec iterator_next(aeu_mtrees:iterator()) ->
+                           {key(), value(), aeu_mtrees:iterator()}
+                               | '$end_of_table'
+                               | {'error', bad_proof}.
+iterator_next(Iterator) ->
+    try aeu_mtrees:iterator_next(Iterator) of
+        Next -> Next
+    catch
+        _:_ ->
+            {error, bad_proof}
+    end.
+
 
 -spec serialization_format(poi()) -> {state_hash(), [{key(), proof_value()}]}.
 serialization_format(#aec_poi{ root_hash = Hash
