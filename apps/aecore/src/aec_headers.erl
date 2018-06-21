@@ -89,7 +89,8 @@ serialize_to_map(key, Header) ->
     {ok, Serialized};
 serialize_to_map(micro, Header) ->
     Serialized =
-      #{<<"prev_hash">> => Header#header.prev_hash,
+      #{<<"height">> => Header#header.height,
+        <<"prev_hash">> => Header#header.prev_hash,
         <<"state_hash">> => Header#header.root_hash,
         <<"txs_hash">> => Header#header.txs_hash,
         <<"key_hash">> => Header#header.key_hash,
@@ -117,13 +118,15 @@ deserialize_from_map(#{<<"height">> := Height,
             nonce = Nonce,
             time = Time,
             version = Version};
-deserialize_from_map(#{<<"prev_hash">> := PrevHash,
+deserialize_from_map(#{<<"height">> := Height,
+                       <<"prev_hash">> := PrevHash,
                        <<"state_hash">> := RootHash,
                        <<"txs_hash">> := TxsHash,
                        <<"key_hash">> := KeyHash,
                        <<"time">> := Time,
                        <<"version">> := Version}) ->
-    #header{prev_hash = PrevHash,
+    #header{height = Height,
+            prev_hash = PrevHash,
             root_hash = RootHash,
             txs_hash = TxsHash,
             key_hash = KeyHash,
@@ -148,6 +151,7 @@ serialize_to_binary(key, Header) ->
       (Header#header.time):64>>;
 serialize_to_binary(micro, Header) ->
     <<(Header#header.version):64,
+      (Header#header.height):64,
       (Header#header.prev_hash)/binary,
       (Header#header.root_hash)/binary,
       (Header#header.txs_hash)/binary,
@@ -175,12 +179,14 @@ deserialize_from_binary(<<Version:64,
             time = Time,
             version = Version};
 deserialize_from_binary(<<Version:64,
+                          Height:64,
                           PrevHash:32/binary,
                           RootHash:32/binary,
                           TxsHash:32/binary,
                           KeyHash:32/binary,
                           Time:64>>) ->
-    #header{prev_hash = PrevHash,
+    #header{height = Height,
+            prev_hash = PrevHash,
             root_hash = RootHash,
             txs_hash = TxsHash,
             key_hash = KeyHash,

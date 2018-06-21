@@ -292,7 +292,8 @@ serialize_to_map(key, Block) ->
       <<"version">> => Block#block.version
      };
 serialize_to_map(micro, Block) ->
-    #{<<"prev_hash">> => Block#block.prev_hash,
+    #{<<"height">> => Block#block.height,
+      <<"prev_hash">> => Block#block.prev_hash,
       <<"state_hash">> => Block#block.root_hash,
       <<"txs_hash">> => Block#block.txs_hash,
       <<"key_hash">> => Block#block.key_hash,
@@ -328,7 +329,8 @@ deserialize_from_map(#{<<"height">> := Height,
                     time = Time,
                     version = Version}}
     end;
-deserialize_from_map(#{<<"prev_hash">> := PrevHash,
+deserialize_from_map(#{<<"height">> := Height,
+                       <<"prev_hash">> := PrevHash,
                        <<"state_hash">> := RootHash,
                        <<"txs_hash">> := TxsHash,
                        <<"key_hash">> := KeyHash,
@@ -337,6 +339,7 @@ deserialize_from_map(#{<<"prev_hash">> := PrevHash,
                        <<"transactions">> := Txs,
                        <<"signature">> := Signature}) ->
     {ok, #block{
+            height = Height,
             prev_hash = PrevHash,
             root_hash = RootHash,
             txs_hash = TxsHash,
