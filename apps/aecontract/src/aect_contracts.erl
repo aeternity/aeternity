@@ -62,6 +62,7 @@
 -opaque contract() :: #contract{}.
 
 -type id() :: aec_keys:pubkey().
+-type store_id() :: binary().
 -type serialized() :: binary().
 -type vm_version() :: byte().
 
@@ -87,7 +88,7 @@
 id(C) ->
   pubkey(C).
 
--spec store_id(contract()) -> id().
+-spec store_id(contract()) -> store_id().
 store_id(C) ->
     CId = pubkey(C),
     %% The STORE_PREFIX is used to name the storage tree and keep
