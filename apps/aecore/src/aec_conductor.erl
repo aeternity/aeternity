@@ -500,7 +500,9 @@ maybe_publish_block(block_synced,_Block) ->
     %% We don't publish blocks pulled from network. Otherwise on
     %% bootstrap the node would publish old blocks.
     ok;
-maybe_publish_block(block_received,_Block) ->
+maybe_publish_block(BlockReceived,_Block)
+  when BlockReceived =:= block_received
+    orelse BlockReceived =:= micro_block_received ->
     %% We don't publish all blocks pushed by network peers, only if it
     %% changes the top.
     ok;
