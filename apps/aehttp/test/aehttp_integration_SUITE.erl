@@ -798,7 +798,7 @@ oracle_transactions(_Config) ->
 
     % mine blocks to include it
     ct:log("Before oracle registered nonce is ~p", [rpc(aec_next_nonce, pick_for_account, [MinerPubkey])]),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
     ct:log("Oracle registered nonce is ~p", [rpc(aec_next_nonce, pick_for_account, [MinerPubkey])]),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
 
@@ -841,7 +841,7 @@ oracle_transactions(_Config) ->
     sign_and_post_tx(MinerAddress, QueryTx),
 
     % mine blocks to include it
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
 
     ResponseEncoded = #{oracle => OracleAddress,
