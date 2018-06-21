@@ -686,7 +686,7 @@ start_micro_signing(#state{consensus = #consensus{leader = true}, new_micro_cand
             {error, no_candidate} ->
                 State
         end,
-    start_mining(State1#state{ new_micro_candidate_available = false });
+    start_micro_signing(State1#state{ new_micro_candidate_available = false });
 start_micro_signing(#state{consensus = #consensus{leader = true},
                     micro_block_candidate = #candidate{top_hash = MicroBlockHash},
                     seen_top_block_hash = SeenHash} = State) when MicroBlockHash =/= SeenHash ->

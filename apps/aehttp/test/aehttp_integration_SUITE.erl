@@ -1802,7 +1802,7 @@ block_latest(_Config) ->
 block_pending(_Config) ->
     BlocksToPremine = rpc(aec_governance, key_blocks_to_check_difficulty_count, []),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   BlocksToPremine + 1),
+                                   BlocksToPremine),
     lists:foreach(
         fun(Opt) ->
             {ok, 404, #{<<"reason">> := <<"Not mining, no pending block">>}} =
