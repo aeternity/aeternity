@@ -135,7 +135,7 @@ serialize(#contract{owner = OwnerId, referers = RefererIds} = C) ->
       , {deposit, deposit(C)}
       ]).
 
--spec deserialize(aec_keys:pubkey(), serialized()) -> contract().
+-spec deserialize(id(), serialized()) -> contract().
 deserialize(Pubkey, Bin) ->
     [ {owner, OwnerId}
     , {vm_version, VmVersion}
@@ -189,7 +189,7 @@ serialize_for_poi(#contract{owner = OwnerId, referers = RefererIds} = C) ->
       , {store,  lists:sort(maps:to_list(state(C)))}
       ]).
 
--spec deserialize_from_poi(aec_keys:pubkey(), serialized()) -> contract().
+-spec deserialize_from_poi(id(), serialized()) -> contract().
 deserialize_from_poi(Pubkey, Bin) ->
     [ {owner, OwnerId}
     , {vm_version, VmVersion}
@@ -231,7 +231,7 @@ poi_serialization_template(?CONTRACT_VSN) ->
     ].
 
 
--spec compute_contract_pubkey(aec_keys:pubkey(), non_neg_integer()) -> aec_keys:pubkey().
+-spec compute_contract_pubkey(aec_keys:pubkey(), non_neg_integer()) -> id().
 compute_contract_pubkey(<<_:?PUB_SIZE/binary>> = Owner, Nonce) when Nonce >= 0  ->
     NonceBin = binary:encode_unsigned(Nonce),
     aec_hash:hash(pubkey, <<Owner/binary, NonceBin/binary>>).
@@ -240,7 +240,7 @@ compute_contract_pubkey(<<_:?PUB_SIZE/binary>> = Owner, Nonce) when Nonce >= 0  
 %%% Getters
 
 %% The address of the contract account.
--spec pubkey(contract()) -> aec_keys:pubkey().
+-spec pubkey(contract()) -> id().
 pubkey(C) -> aec_id:specialize(C#contract.id, contract).
 
 %% The owner of the contract is (initially) the account that created it.
@@ -268,7 +268,7 @@ log(C) -> C#contract.log.
 active(C) -> C#contract.active.
 
 %% A list of other contracts referring to this contract.
--spec referers(contract()) -> [aec_keys:pubkey()].
+-spec referers(contract()) -> [id()].
 referers(C) -> [aec_id:specialize(X, contract) || X <- C#contract.referers].
 
 %% The amount deposited at contract creation.
@@ -278,7 +278,7 @@ deposit(C) -> C#contract.deposit.
 %%%===================================================================
 %%% Setters
 
--spec set_pubkey(aec_keys:pubkey(), contract()) -> contract().
+-spec set_pubkey(id(), contract()) -> contract().
 set_pubkey(X, C) ->
     C#contract{id = aec_id:create(contract, assert_field(pubkey, X))}.
 
@@ -306,7 +306,7 @@ set_log(X, C) ->
 set_active(X, C) ->
     C#contract{active = assert_field(active, X)}.
 
--spec set_referers([aec_keys:pubkey()], contract()) -> contract().
+-spec set_referers([id()], contract()) -> contract().
 set_referers(X, C) ->
     C#contract{referers = [aec_id:create(contract, Y)
                            || Y <- assert_field(referers, X)]}.
