@@ -37,7 +37,8 @@
          verify_proof/4,
          lookup_proof/3,
          commit_to_db/1,
-         empty_with_backend/1
+         empty_with_backend/1,
+         new/2
         ]).
 
 %% For internal functional db
