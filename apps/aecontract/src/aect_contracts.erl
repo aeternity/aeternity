@@ -77,7 +77,7 @@
 -define(HASH_SIZE, 32).
 -define(CONTRACT_TYPE, contract).
 -define(CONTRACT_VSN, 1).
--define(STORE_PREFIX, 16). %% To collect storage trees in one subtree.
+-define(STORE_PREFIX, <<16:8/integer-unsigned-unit:1>>). %% To collect storage trees in one subtree.
 
 %%%===================================================================
 %%% API
@@ -92,7 +92,7 @@ store_id(C) ->
     CId = pubkey(C),
     %% The STORE_PREFIX is used to name the storage tree and keep
     %% all storage nodes in one subtree under the contract tree.
-    << CId/binary, ?STORE_PREFIX>>.
+    << CId/binary, ?STORE_PREFIX/binary>>.
 
 -spec new(aect_create_tx:tx()) -> contract().
 new(RTx) ->
