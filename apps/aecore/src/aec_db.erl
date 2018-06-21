@@ -32,6 +32,7 @@
          find_header/1,
          find_headers_at_height/1,
          get_block/1,
+         get_block_signature/1,
          get_block_tx_hashes/1,
          get_header/1,
          get_genesis_hash/0,
@@ -210,6 +211,14 @@ write_block(Block) ->
                                      value = Header,
                                      height = Height})
        end).
+
+get_block_signature(Hash) ->
+    ?t(begin
+           [#aec_blocks{sig = Sig}] =
+               mnesia:read(aec_blocks, Hash),
+           Sig
+       end).
+
 
 get_block(Hash) ->
     ?t(begin

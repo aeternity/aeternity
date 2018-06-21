@@ -477,7 +477,7 @@ preempt_if_new_top(#state{seen_top_block_hash = OldHash} = State, Origin) ->
             State1 = State#state{seen_top_block_hash = NewHash},
             State2 = kill_all_workers_with_tag(mining, State1),
             State3 = kill_all_workers_with_tag(micro_signing, State2),
-            {changed, State3#state{key_block_candidate = undefined}}
+            {changed, NewBlock, State3#state{key_block_candidate = undefined}}
     end.
 
 
@@ -493,6 +493,10 @@ maybe_publish_top(block_synced,_TopBlock) ->
     ok;
 maybe_publish_top(block_received, TopBlock) ->
     %% The received block pushed by a network peer changed the
+    %% top. Publish the new top.
+    aec_events:publish(block_to_publish, TopBlock);
+maybe_publish_top(micro_block_received, TopBlock) ->
+    %% The received micro block pushed by a network peer changed the
     %% top. Publish the new top.
     aec_events:publish(block_to_publish, TopBlock).
 
@@ -817,7 +821,7 @@ handle_signed_block(Block, State) ->
 as_hex(S) ->
     [io_lib:format("~2.16.0b", [X]) || <<X:8>> <= S].
 
-handle_add_block(Block, #state{consensus = #consensus{leader_key = LeaderKey}} = State, Origin) ->
+handle_add_block(Block, #state{} = State, Origin) ->
     Header = aec_blocks:to_header(Block),
     {ok, Hash} = aec_headers:hash_header(Header),
     case aec_chain:has_block(Hash) of
@@ -825,7 +829,7 @@ handle_add_block(Block, #state{consensus = #consensus{leader_key = LeaderKey}} =
             epoch_mining:debug("Block already in chain", []),
             {ok, State};
         false ->
-            case aec_validation:validate_block(Block, LeaderKey) of
+            case aec_validation:validate_block_no_signature(Block) of
                 ok ->
                     case aec_chain_state:insert_block(Block) of
                         ok ->
@@ -833,11 +837,9 @@ handle_add_block(Block, #state{consensus = #consensus{leader_key = LeaderKey}} =
                             case preempt_if_new_top(State, Origin) of
                                 no_change ->
                                     {ok, State};
-                                {changed, State1} ->
-                                    case aec_blocks:is_key_block(Block) of
-                                        true -> {ok, setup_loop(State1, aec_blocks:miner(Block), Origin)};
-                                        false -> {ok, setup_loop(State1, LeaderKey, Origin)}
-                                    end
+                                {changed, NewTopBlock, State1} ->
+                                    IsLeader = is_leader(NewTopBlock),
+                                    {ok, setup_loop(State1, IsLeader, Origin)}
                             end;
                         {error, Reason} ->
                             lager:error("Couldn't insert block (~p)", [Reason]),
@@ -852,6 +854,20 @@ handle_add_block(Block, #state{consensus = #consensus{leader_key = LeaderKey}} =
             end
     end.
 
+%% NG-TODO: This is pretty inefficient and can be helped with some info
+%%          in the state.
+is_leader(NewTopBlock) ->
+    LeaderKey =
+        case aec_blocks:type(NewTopBlock) of
+            key   -> aec_blocks:miner(NewTopBlock);
+            micro ->
+                {ok, Block} = aec_chain:get_block(aec_blocks:key_hash(NewTopBlock)),
+                aec_blocks:miner(Block)
+        end,
+    case aec_keys:pubkey() of
+        {ok, MinerKey} -> LeaderKey =:= MinerKey;
+        {error, _}     -> false
+    end.
 
 hard_reset_block_generator() ->
     %% Hard reset of aec_block_generator
@@ -866,22 +882,31 @@ flush_candidate() ->
         ok
     end.
 
-setup_loop(State, LeaderKey, block_created) ->
-    State1 = State#state{consensus = #consensus{leader = true, leader_key = LeaderKey}},
-    aec_block_generator:start_generation(),
-    State2 = start_micro_signing(State1),
-    start_mining(State2);
-setup_loop(State, LeaderKey, block_received) ->
-    State1 = State#state{consensus = #consensus{leader = false, leader_key = LeaderKey}},
+%% NG-TODO: This should be cleaned up
+setup_loop(State, IsLeader, block_created) ->
+    State1 = State#state{consensus = #consensus{leader = IsLeader}},
+    case IsLeader of
+        true ->
+            aec_block_generator:start_generation(),
+            State2 = start_micro_signing(State1),
+            start_mining(State2);
+        false ->
+            start_mining(State1)
+    end;
+setup_loop(State, IsLeader, block_received) ->
+    State1 = State#state{consensus = #consensus{leader = IsLeader}},
     State2 = start_mining(State1),
-    aec_block_generator:stop_generation(),
+    case IsLeader of
+        true  -> ok;
+        false -> aec_block_generator:stop_generation()
+    end,
     State2;
-setup_loop(State, LeaderKey, micro_block_created) ->
-    State1 = State#state{consensus = #consensus{leader = true, leader_key = LeaderKey}},
+setup_loop(State, IsLeader, micro_block_created) ->
+    State1 = State#state{consensus = #consensus{leader = IsLeader}},
     State2 = start_mining(State1),
     start_micro_sleep(State2);
-setup_loop(State, no_key, micro_block_received) ->
-    start_mining(State#state{consensus = #consensus{leader = false}});
-setup_loop(State, _, block_synced) ->
-    start_mining(State#state{consensus = #consensus{leader = false}}).
+setup_loop(State, IsLeader, micro_block_received) ->
+    start_mining(State#state{consensus = #consensus{leader = IsLeader}});
+setup_loop(State, IsLeader, block_synced) ->
+    start_mining(State#state{consensus = #consensus{leader = IsLeader}}).
 

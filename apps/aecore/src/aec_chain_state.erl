@@ -261,16 +261,14 @@ internal_insert(Node, Block) ->
     end.
 
 %% NG-INFO: micro blocks inherit the height from the last key block
-assert_previous_height(Node) ->
-    case {db_find_node(prev_hash(Node)), is_key_block(Node)} of
-        {error, _} ->
-            ok;
-        {{ok, PrevNode}, true} ->
+assert_previous_height(PrevNode, Node) ->
+    case is_key_block(Node) of
+        true ->
             case node_height(PrevNode) =:= (node_height(Node) - 1) of
                 true -> ok;
                 false -> internal_error(height_inconsistent_for_keyblock_with_previous_hash)
             end;
-        {{ok, PrevNode}, false} ->
+        false ->
             case node_height(PrevNode) =:= node_height(Node) of
                 true -> ok;
                 false -> internal_error(height_inconsistent_for_microblock_with_previous_hash)
@@ -338,10 +336,9 @@ get_n_key_headers_from(Node, N, Acc) ->
             get_n_key_headers_from(PrevNode, N-1, [export_header(Node) | Acc])
     end.
 
-assert_micro_block_time(Node) ->
+assert_micro_block_time(PrevNode, Node) ->
     case is_micro_block(Node) of
         true ->
-            {ok, PrevNode} = db_find_node(prev_hash(Node)),
             case time_diff_greater_than_minimal(Node, PrevNode) of
                 true  -> ok;
                 false -> ok %internal_error(micro_block_time_too_low)
@@ -351,6 +348,38 @@ assert_micro_block_time(Node) ->
 
 time_diff_greater_than_minimal(Node, PrevNode) ->
     node_time(Node) >= node_time(PrevNode) + aec_governance:micro_block_cycle().
+
+assert_micro_block_key_hash(PrevNode, Node) ->
+    case is_micro_block(Node) of
+        true ->
+            CompareHash = case node_type(PrevNode) of
+                              key   -> hash(PrevNode);
+                              micro -> node_key_hash(PrevNode)
+                          end,
+            case node_key_hash(Node) =:= CompareHash of
+                true  -> ok;
+                false -> internal_error(wrong_key_hash)
+            end;
+        false -> ok
+    end.
+
+assert_micro_signature(PrevNode, Node) ->
+    case is_micro_block(Node) of
+        true ->
+            {ok, KeyNode} =
+                case node_type(PrevNode) of
+                    key   -> {ok, PrevNode};
+                    micro -> db_find_node(node_key_hash(Node))
+                end,
+            Bin = aec_headers:serialize_to_binary(export_header(Node)),
+            Sig = db_get_signature(hash(Node)),
+            case enacl:sign_verify_detached(Sig, Bin, node_miner(KeyNode)) of
+                {ok, _}    -> ok;
+                {error, _} -> {error, signature_verification_failed}
+            end;
+        false ->
+            ok
+    end.
 
 %% Transitively compute new state trees iff
 %%   - We can find the state trees of the previous node; and
@@ -430,11 +459,19 @@ get_state_trees_in(Node, State) ->
 apply_and_store_state_trees(#node{hash = NodeHash} = Node, TreesIn, DifficultyIn, ForkId,
                             #{currently_adding := Hash}) ->
     try
-        assert_previous_height(Node),
+        case db_find_node(prev_hash(Node)) of
+            error ->
+                %% This must be the genesis node
+                ok;
+            {ok, PrevNode} ->
+                assert_previous_height(PrevNode, Node),
+                assert_calculated_target(Node),
+                assert_micro_block_time(PrevNode, Node),
+                assert_micro_block_key_hash(PrevNode, Node),
+                assert_micro_signature(PrevNode, Node)
+        end,
         Trees = apply_node_transactions(Node, TreesIn),
         assert_state_hash_valid(Trees, Node),
-        assert_calculated_target(Node),
-        assert_micro_block_time(Node),
         Difficulty = DifficultyIn + node_difficulty(Node),
         ok = db_put_state(hash(Node), Trees, Difficulty, ForkId),
         {ok, Trees, Difficulty}
@@ -639,6 +676,9 @@ db_find_fork_id(Hash) when is_binary(Hash) ->
 
 db_get_txs(Hash) when is_binary(Hash) ->
     aec_blocks:txs(aec_db:get_block(Hash)).
+
+db_get_signature(Hash) when is_binary(Hash) ->
+    aec_db:get_block_signature(Hash).
 
 db_get_tx_hashes(Hash) when is_binary(Hash) ->
     aec_db:get_block_tx_hashes(Hash).

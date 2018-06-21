@@ -25,7 +25,6 @@
                    }).
 
 -record(consensus, {leader            = false                 :: boolean(),
-                    leader_key                                :: binary() | undefined,
                     micro_block_cycle = ?NG_MICROBLOCK_TIMOUT :: integer()
                     }).
 

@@ -33,6 +33,7 @@
          version/1,
          validate_key_block/1,
          validate_micro_block/2,
+         validate_micro_block_no_signature/1,
          type/1]).
 
 -import(aec_hard_forks, [protocol_effective_at_height/1]).
@@ -379,12 +380,19 @@ validate_empty_txs_hash(#block{txs_hash = TxsHash}) ->
         false -> {error, wrong_txs_hash}
     end.
 
+validate_micro_block_no_signature(Block) ->
+    Validators = [fun validate_txs_hash/1],
+    validate_micro_block(Block, undefined, Validators).
+
 validate_micro_block(Block, LeaderKey) ->
+    Validators = [fun validate_txs_hash/1, fun validate_signature/1],
+    validate_micro_block(Block, LeaderKey, Validators).
+
+validate_micro_block(Block, LeaderKey, Validators) ->
     % since trees are required for transaction signature validation, this is
     % performed while applying transactions
     case aec_headers:validate_micro_block_header(to_header(Block)) of
         ok ->
-            Validators = [fun validate_txs_hash/1, fun validate_signature/1],
             case aeu_validation:run(Validators, [{Block, LeaderKey}]) of
                 ok              -> ok;
                 {error, Reason} -> {error, {block, Reason}}
