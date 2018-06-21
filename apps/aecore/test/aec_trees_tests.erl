@@ -107,6 +107,11 @@ poi_test_() ->
 
                ?assertEqual({error, not_present},
                             ?TEST_MODULE:add_poi(accounts, AccountPubkey,
+                                                 Trees0, Poi0)),
+
+               ContractPubkey = aect_contracts:id(make_contract(AccountPubkey)),
+               ?assertEqual({error, not_present},
+                            ?TEST_MODULE:add_poi(contracts, ContractPubkey,
                                                  Trees0, Poi0))
        end},
       {"Empty PoI constructed from non-empty state trees can be serialized/deserialized",
@@ -127,45 +132,25 @@ poi_test_() ->
        end},
       {"POI for one account",
        fun() ->
+               AccountKeyF = fun(A) -> aec_accounts:pubkey(A) end,
+               ChangeAccountF =
+                   fun(A) -> {ok, A1} = aec_accounts:earn(A, 1), A1 end,
+               InsertAccountF =
+                   fun(Ts, A) ->
+                           As = aec_trees:accounts(Ts),
+                           aec_trees:set_accounts(
+                             Ts, aec_accounts_trees:enter(A, As))
+                   end,
+
                AccountPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
+               Account = aec_accounts:new(AccountPubkey, 0),
 
-               Trees0 = aec_test_utils:create_state_tree(),
-
-               %% Add the account to the tree, and see that
-               %% we can construct a POI for the correct account.
-               Trees1 = ?TEST_MODULE:ensure_account(AccountPubkey, Trees0),
-               Poi1 = ?TEST_MODULE:new_poi(Trees1),
-               ?assertEqual(?TEST_MODULE:hash(Trees1),
-                            ?TEST_MODULE:poi_hash(Poi1)),
-
-               {ok, SerializedAccount, Poi11} =
-                   ?TEST_MODULE:add_poi(accounts, AccountPubkey, Trees1, Poi1),
-               ?assertEqual(?TEST_MODULE:hash(Trees1),
-                            ?TEST_MODULE:poi_hash(Poi11)),
-
-               %% Check the the stored account in the POI is the correct account
-               ATrees = aec_trees:accounts(Trees1),
-               {value, Account} = aec_accounts_trees:lookup(AccountPubkey,
-                                                            ATrees),
-               ?assertEqual(aec_accounts:deserialize(AccountPubkey, SerializedAccount),
-                            Account),
-
-               %% Ensure that we can verify the presence of the
-               %% account in the POI.
-               ?assertEqual(ok,
-                            aec_trees:verify_poi(accounts, AccountPubkey,
-                                                 SerializedAccount, Poi11)),
-               ?assertEqual({ok, Account},
-                            aec_trees:lookup_poi(accounts, AccountPubkey, Poi11)),
-
-               %% Ensure that the POI will fail if we change the account.
-               {ok, Account1} = aec_accounts:earn(Account, 1),
-               SerializedAccount1 = aec_accounts:serialize(Account1),
-               ?assertMatch({error, _},
-                            aec_trees:verify_poi(accounts, AccountPubkey,
-                                                 SerializedAccount1, Poi11))
-       end
-      },
+               check_poi_for_one_object(
+                 accounts,
+                 AccountKeyF, ChangeAccountF,
+                 InsertAccountF,
+                 Account)
+       end},
       {"POI for more than one account"
       , fun() ->
                 %% Carefully chosen pubkeys to provoke the intended
@@ -187,20 +172,14 @@ poi_test_() ->
                 Poi0 = ?TEST_MODULE:new_poi(Trees),
 
                 %% Add one account at a time.
-                {ok, Serialized1, Poi1} =
+                {ok, Poi1} =
                     ?TEST_MODULE:add_poi(accounts, Pubkey1, Trees, Poi0),
-                {ok, Serialized2, Poi2} =
+                {ok, Poi2} =
                     ?TEST_MODULE:add_poi(accounts, Pubkey2, Trees, Poi1),
-                {ok, Serialized3, Poi3} =
+                {ok, Poi3} =
                     ?TEST_MODULE:add_poi(accounts, Pubkey3, Trees, Poi2),
-                {ok, Serialized4, Poi4} =
+                {ok, Poi4} =
                     ?TEST_MODULE:add_poi(accounts, Pubkey4, Trees, Poi3),
-
-                %% Check the reported serializations
-                ?assertEqual(Serialized1, aec_accounts:serialize(Account1)),
-                ?assertEqual(Serialized2, aec_accounts:serialize(Account2)),
-                ?assertEqual(Serialized3, aec_accounts:serialize(Account3)),
-                ?assertEqual(Serialized4, aec_accounts:serialize(Account4)),
 
                 %% Check that the reported root hash is the same in all POI.
                 ?assertEqual(?TEST_MODULE:hash(Trees),
@@ -215,84 +194,84 @@ poi_test_() ->
                 %% Check that the first account is present in all POI
                 ?assertMatch(ok,
                              ?TEST_MODULE:verify_poi(accounts, Pubkey1,
-                                                     Serialized1, Poi1)),
+                                                     Account1, Poi1)),
                 ?assertMatch({ok, Account1},
                              ?TEST_MODULE:lookup_poi(accounts, Pubkey1, Poi1)),
                 ?assertMatch(ok,
                              ?TEST_MODULE:verify_poi(accounts, Pubkey1,
-                                                     Serialized1, Poi2)),
+                                                     Account1, Poi2)),
                 ?assertMatch({ok, Account1},
                              ?TEST_MODULE:lookup_poi(accounts, Pubkey1, Poi2)),
                 ?assertMatch(ok,
                              ?TEST_MODULE:verify_poi(accounts, Pubkey1,
-                                                     Serialized1, Poi3)),
+                                                     Account1, Poi3)),
                 ?assertMatch({ok, Account1},
                              ?TEST_MODULE:lookup_poi(accounts, Pubkey1, Poi3)),
                 ?assertMatch(ok,
                              ?TEST_MODULE:verify_poi(accounts, Pubkey1,
-                                                     Serialized1, Poi4)),
+                                                     Account1, Poi4)),
                 ?assertMatch({ok, Account1},
                              ?TEST_MODULE:lookup_poi(accounts, Pubkey1, Poi4)),
 
                 %% Check that the second account is present in all but the first
                 ?assertMatch({error, _},
                              ?TEST_MODULE:verify_poi(accounts, Pubkey2,
-                                                     Serialized2, Poi1)),
+                                                     Account2, Poi1)),
                 ?assertMatch({error, not_found},
                              ?TEST_MODULE:lookup_poi(accounts, Pubkey2, Poi1)),
                 ?assertMatch(ok,
                              ?TEST_MODULE:verify_poi(accounts, Pubkey2,
-                                                     Serialized2, Poi2)),
+                                                     Account2, Poi2)),
                 ?assertMatch({ok, Account2},
                              ?TEST_MODULE:lookup_poi(accounts, Pubkey2, Poi2)),
                 ?assertMatch(ok,
                              ?TEST_MODULE:verify_poi(accounts, Pubkey2,
-                                                     Serialized2, Poi3)),
+                                                     Account2, Poi3)),
                 ?assertMatch({ok, Account2},
                              ?TEST_MODULE:lookup_poi(accounts, Pubkey2, Poi3)),
                 ?assertMatch(ok,
                              ?TEST_MODULE:verify_poi(accounts, Pubkey2,
-                                                     Serialized2, Poi4)),
+                                                     Account2, Poi4)),
                 ?assertMatch({ok, Account2},
                              ?TEST_MODULE:lookup_poi(accounts, Pubkey2, Poi4)),
 
                 %% Check that the third account is present in only the last two
                 ?assertMatch({error, _},
                              ?TEST_MODULE:verify_poi(accounts, Pubkey3,
-                                                     Serialized3, Poi1)),
+                                                     Account3, Poi1)),
                 ?assertMatch({error, not_found},
                              ?TEST_MODULE:lookup_poi(accounts, Pubkey3, Poi1)),
                 ?assertMatch({error, _},
                              ?TEST_MODULE:verify_poi(accounts, Pubkey3,
-                                                     Serialized3, Poi2)),
+                                                     Account3, Poi2)),
                 ?assertMatch(ok,
                              ?TEST_MODULE:verify_poi(accounts, Pubkey3,
-                                                     Serialized3, Poi3)),
+                                                     Account3, Poi3)),
                 ?assertMatch({ok, Account3},
                              ?TEST_MODULE:lookup_poi(accounts, Pubkey3, Poi3)),
                 ?assertMatch(ok,
                              ?TEST_MODULE:verify_poi(accounts, Pubkey3,
-                                                     Serialized3, Poi4)),
+                                                     Account3, Poi4)),
 
                 %% Check that the fourth account is present in only the last one
                 ?assertMatch({error, _},
                              ?TEST_MODULE:verify_poi(accounts, Pubkey4,
-                                                     Serialized4, Poi1)),
+                                                     Account4, Poi1)),
                 ?assertMatch({error, not_found},
                              ?TEST_MODULE:lookup_poi(accounts, Pubkey4, Poi1)),
                 ?assertMatch({error, _},
                              ?TEST_MODULE:verify_poi(accounts, Pubkey4,
-                                                     Serialized4, Poi2)),
+                                                     Account4, Poi2)),
                 ?assertMatch({error, not_found},
                              ?TEST_MODULE:lookup_poi(accounts, Pubkey4, Poi2)),
                 ?assertMatch({error, _},
                              ?TEST_MODULE:verify_poi(accounts, Pubkey4,
-                                                     Serialized4, Poi3)),
+                                                     Account4, Poi3)),
                 ?assertMatch({error, not_found},
                              ?TEST_MODULE:lookup_poi(accounts, Pubkey4, Poi3)),
                 ?assertMatch(ok,
                              ?TEST_MODULE:verify_poi(accounts, Pubkey4,
-                                                     Serialized4, Poi4)),
+                                                     Account4, Poi4)),
                 ?assertMatch({ok, Account4},
                              ?TEST_MODULE:lookup_poi(accounts, Pubkey4, Poi4)),
 
@@ -302,7 +281,61 @@ poi_test_() ->
                                      ?TEST_MODULE:serialize_poi(PoI)))
                  || PoI <- [Poi1, Poi2, Poi2, Poi3, Poi4]]
         end
-      }
+      },
+      {"PoI for one contract without store",
+       fun() ->
+               OwnerPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
+               Contract = make_contract(OwnerPubkey),
+               ?assertEqual(#{}, aect_contracts:state(Contract)), %% Hardcoded expectation on test data.
+
+               check_poi_for_one_contract(
+                 Contract,
+                 _ChangeContractF =
+                     fun(C) ->
+                             true = aect_contracts:active(C), %% Assumption for simplicity.
+                             aect_contracts:set_active(false, C)
+                     end)
+       end},
+      {"PoI for one contract with store",
+       fun() ->
+               OwnerPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
+               Contract0 = make_contract(OwnerPubkey),
+               Contract1 = aect_contracts:set_state(#{<<"k">> => <<"v">>},
+                                                    Contract0),
+
+               check_poi_for_one_contract(
+                 Contract1,
+                 _ChangeContractF =
+                     fun(C) ->
+                             true = aect_contracts:active(C), %% Assumption for simplicity.
+                             aect_contracts:set_active(false, C)
+                     end)
+       end},
+      {"PoI for one contract without store that becomes with store",
+       fun() ->
+               OwnerPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
+
+               check_poi_for_one_contract(
+                 make_contract(OwnerPubkey),
+                 fun(C) -> %% Change contract function.
+                         ?assertEqual(#{}, %% Assumption for simplicity.
+                                      aect_contracts:state(C)),
+                         aect_contracts:set_state(#{<<"k">> => <<"v">>}, C)
+                 end)
+       end},
+      {"PoI for one contract with store that becomes without store",
+       fun() ->
+               OwnerPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
+
+               check_poi_for_one_contract(
+                 aect_contracts:set_state(#{<<"k">> => <<"v">>},
+                                          make_contract(OwnerPubkey)),
+                 fun(C) -> %% Change contract function.
+                         ?assertEqual(#{<<"k">> => <<"v">>}, %% Assumption for simplicity.
+                                      aect_contracts:state(C)),
+                         aect_contracts:set_state(#{}, C)
+                 end)
+       end}
     ].
 
 assert_equal_poi(PoIExpect, PoIExpr) ->
@@ -310,3 +343,72 @@ assert_equal_poi(PoIExpect, PoIExpr) ->
     %% order dependent.  The serialized version is canonical, though.
     ?assertEqual(?TEST_MODULE:serialize_poi(PoIExpect),
                  ?TEST_MODULE:serialize_poi(PoIExpr)).
+
+check_poi_for_one_contract(Contract, ChangeContractFun) ->
+    ContractKeyF = fun(C) -> aect_contracts:id(C) end,
+    InsertContractF =
+        fun(Ts, C) ->
+                Cs = aec_trees:contracts(Ts),
+                aec_trees:set_contracts(
+                  Ts, aect_state_tree:insert_contract(C, Cs))
+        end,
+
+    check_poi_for_one_object(
+      contracts,
+      ContractKeyF, ChangeContractFun,
+      InsertContractF,
+      Contract).
+
+check_poi_for_one_object(SubTree,
+                         ObjKeyFun, ChangeObjFun,
+                         InsertObjFun,
+                         Obj) ->
+    Trees0 = aec_test_utils:create_state_tree(),
+
+    %% Add the object to the tree, and see that we can construct a POI
+    %% for the correct object.
+    Trees1 = InsertObjFun(Trees0, Obj),
+    Poi1 = ?TEST_MODULE:new_poi(Trees1),
+    ?assertEqual(?TEST_MODULE:hash(Trees1),
+                 ?TEST_MODULE:poi_hash(Poi1)),
+    ObjKey = ObjKeyFun(Obj),
+    {ok, Poi11} = ?TEST_MODULE:add_poi(SubTree, ObjKey, Trees1, Poi1),
+    ?assertEqual(?TEST_MODULE:hash(Trees1),
+                 ?TEST_MODULE:poi_hash(Poi11)),
+
+    %% Check the the stored object in the POI is the correct one.
+    ?assertEqual({ok, Obj},
+                 aec_trees:lookup_poi(SubTree, ObjKey, Poi11)),
+
+    %% Ensure that we can verify the presence of the object in the
+    %% POI.
+    ?assertEqual(ok,
+                 aec_trees:verify_poi(SubTree, ObjKey, Obj, Poi11)),
+
+    %% Ensure that the POI will fail if we change the object.
+    Obj1 = ChangeObjFun(Obj),
+    ObjKey = ObjKeyFun(Obj1), %% Hardcoded expectation on function changing object.
+    ?assertMatch({error, _},
+                 aec_trees:verify_poi(SubTree, ObjKey, Obj1, Poi11)),
+    ok.
+
+make_contract(Owner) ->
+    {contract_create_tx, CTx} = aetx:specialize_type(ct_create_tx(Owner)),
+    aect_contracts:new(CTx).
+
+ct_create_tx(Sender) ->
+    Spec =
+        #{ fee        => 5
+         , owner      => Sender
+         , nonce      => 0
+         , code       => <<"NOT PROPER BYTE CODE">>
+         , vm_version => 1
+         , deposit    => 10
+         , amount     => 200
+         , gas        => 10
+         , gas_price  => 1
+         , call_data  => <<"NOT ENCODED ACCORDING TO ABI">>
+         , ttl        => 0
+         },
+    {ok, Tx} = aect_create_tx:new(Spec),
+    Tx.

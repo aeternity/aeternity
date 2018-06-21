@@ -9,14 +9,13 @@
 
 %% API
 -export([ deserialize/2
-        , deserialize_from_poi/2
         , id/1
         , store_id/1
         , new/1
         , new/5 %% For use without transaction
         , serialize/1
-        , serialize_for_poi/1
         , compute_contract_pubkey/2
+        , compute_contract_store_id/1
           %% Getters
         , pubkey/1
         , owner/1
@@ -90,10 +89,7 @@ id(C) ->
 
 -spec store_id(contract()) -> store_id().
 store_id(C) ->
-    CId = pubkey(C),
-    %% The STORE_PREFIX is used to name the storage tree and keep
-    %% all storage nodes in one subtree under the contract tree.
-    << CId/binary, ?STORE_PREFIX/binary>>.
+    compute_contract_store_id(pubkey(C)).
 
 -spec new(aect_create_tx:tx()) -> contract().
 new(RTx) ->
@@ -173,68 +169,16 @@ serialization_template(?CONTRACT_VSN) ->
     , {deposit, int}
     ].
 
--spec serialize_for_poi(contract()) -> serialized().
-serialize_for_poi(#contract{owner = OwnerId, referers = RefererIds} = C) ->
-    aec_object_serialization:serialize(
-      ?CONTRACT_TYPE,
-      ?CONTRACT_VSN,
-      poi_serialization_template(?CONTRACT_VSN),
-      [ {owner, OwnerId}
-      , {vm_version, vm_version(C)}
-      , {code, code(C)}
-      , {log, log(C)}
-      , {active, active(C)}
-      , {referers, RefererIds}
-      , {deposit, deposit(C)}
-      , {store,  lists:sort(maps:to_list(state(C)))}
-      ]).
-
--spec deserialize_from_poi(id(), serialized()) -> contract().
-deserialize_from_poi(Pubkey, Bin) ->
-    [ {owner, OwnerId}
-    , {vm_version, VmVersion}
-    , {code, Code}
-    , {log, Log}
-    , {active, Active}
-    , {referers, RefererIds}
-    , {deposit, Deposit}
-    , {store, Store}
-    ] = aec_object_serialization:deserialize(
-          ?CONTRACT_TYPE,
-          ?CONTRACT_VSN,
-          poi_serialization_template(?CONTRACT_VSN),
-          Bin
-          ),
-    [contract = aec_id:specialize_type(R) || R <- RefererIds],
-    account = aec_id:specialize_type(OwnerId),
-    #contract{ id         = aec_id:create(contract, Pubkey)
-             , owner      = OwnerId
-             , vm_version = VmVersion
-             , code       = Code
-             , store      =  maps:from_list(Store)
-             , log        = Log
-             , active     = Active
-             , referers   = RefererIds
-             , deposit    = Deposit
-             }.
-
-
-poi_serialization_template(?CONTRACT_VSN) ->
-    [ {owner, id}
-    , {vm_version, int}
-    , {code, binary}
-    , {log, binary}
-    , {active, bool}
-    , {referers, [id]}
-    , {deposit, int}
-    , {store, [{binary, binary}]}
-    ].
-
-
 -spec compute_contract_pubkey(aec_keys:pubkey(), non_neg_integer()) -> id().
 compute_contract_pubkey(<<_:?PUB_SIZE/binary>> = Owner, Nonce) when Nonce >= 0  ->
     NonceBin = binary:encode_unsigned(Nonce),
     aec_hash:hash(pubkey, <<Owner/binary, NonceBin/binary>>).
+
+-spec compute_contract_store_id(aec_keys:pubkey()) -> store_id().
+compute_contract_store_id(CId) ->
+    %% The STORE_PREFIX is used to name the storage tree and keep
+    %% all storage nodes in one subtree under the contract tree.
+    << CId/binary, ?STORE_PREFIX/binary>>.
 
 %%%===================================================================
 %%% Getters

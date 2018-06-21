@@ -388,8 +388,8 @@ proof_of_inclusion(Participants) ->
     Trees = aec_test_utils:create_state_tree_with_accounts(Accounts, no_backend),
     lists:foldl(
         fun({Pubkey, _}, AccumPoI) ->
-            {ok, _, AccumPoI1} = aec_trees:add_poi(accounts, Pubkey,
-                                                    Trees, AccumPoI),
+            {ok, AccumPoI1} = aec_trees:add_poi(accounts, Pubkey,
+                                                Trees, AccumPoI),
             AccumPoI1
         end,
         aec_trees:new_poi(Trees),
