@@ -36,7 +36,8 @@
          verify_proof/4,
          lookup_proof/3,
          commit_to_db/1,
-         empty_with_backend/1
+         empty_with_backend/1,
+         new/2
         ]).
 
 %% For internal functional db
@@ -85,6 +86,10 @@ empty() ->
 -spec empty_with_backend(aeu_mp_trees_db:db()) -> mtree().
 empty_with_backend(DB) ->
     aeu_mp_trees:new(DB).
+
+-spec new(root_hash(), aeu_mp_trees_db:db()) -> mtree().
+new(Hash, DB) ->
+    aeu_mp_trees:new(Hash, DB).
 
 delete(Key, Tree) when ?IS_KEY(Key) ->
     aeu_mp_trees:delete(Key, Tree).

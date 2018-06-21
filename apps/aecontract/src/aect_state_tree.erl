@@ -211,7 +211,10 @@ lookup_poi(Id, Poi) ->
     case aec_poi:lookup(Id, Poi) of
         {ok, Val} ->
             Contract = aect_contracts:deserialize(Id, Val),
-            add_store_from_poi(Contract, Poi);
+            case add_store_from_poi(Contract, Poi) of
+                {ok, Contract2} -> {ok, Contract2};
+                Other -> Other
+            end;
         Err -> Err
     end.
 
@@ -224,10 +227,7 @@ add_store_from_poi(Contract, Poi) ->
             Size = byte_size(Id),
             case add_store_from_poi(Id, Next, Size, #{}, Poi) of
                 {error, _} = E -> E;
-                Store ->
-                    {ok,
-                     aect_contracts:serialize(
-                       aect_contracts:set_state(Store, Contract))}
+                Store -> {ok, aect_contracts:set_state(Store, Contract)}
             end;
         {error, _} = E -> E
     end.
