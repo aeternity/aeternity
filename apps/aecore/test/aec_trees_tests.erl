@@ -83,18 +83,29 @@ make_spend_tx(Sender, Recipient) ->
     SpendTx.
 
 poi_test_() ->
-    [ {"POI for one account",
+    [ {"PoI constructed from empty state trees enables computation of state trees root hash",
        fun() ->
-               AccountPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
-
-               %% POI from an empty tree cannot be constructed.
                Trees0 = aec_test_utils:create_state_tree(),
                Poi0 = ?TEST_MODULE:new_poi(Trees0),
                ?assertEqual(?TEST_MODULE:hash(Trees0),
-                            ?TEST_MODULE:poi_hash(Poi0)),
+                            ?TEST_MODULE:poi_hash(Poi0))
+       end},
+      {"Non-empty PoI cannot be constructed from empty state trees",
+       fun() ->
+               AccountPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
+
+               Trees0 = aec_test_utils:create_state_tree(),
+               Poi0 = ?TEST_MODULE:new_poi(Trees0),
+
                ?assertEqual({error, not_present},
                             ?TEST_MODULE:add_poi(accounts, AccountPubkey,
-                                                 Trees0, Poi0)),
+                                                 Trees0, Poi0))
+       end},
+      {"POI for one account",
+       fun() ->
+               AccountPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
+
+               Trees0 = aec_test_utils:create_state_tree(),
 
                %% Add the account to the tree, and see that
                %% we can construct a POI for the correct account.
