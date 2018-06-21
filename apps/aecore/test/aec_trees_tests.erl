@@ -115,7 +115,7 @@ poi_test_() ->
                ?assertEqual(aec_accounts:deserialize(AccountPubkey, SerializedAccount),
                             Account),
 
-               %% Ensure that we can verify the presens of the
+               %% Ensure that we can verify the presence of the
                %% account in the POI.
                ?assertEqual(ok,
                             aec_trees:verify_poi(accounts, AccountPubkey,
