@@ -53,14 +53,14 @@ groups() ->
                               , {group, sophia}
                               , {group, store}
                               ]}
-    , {transactions, [sequence], [ create_contract
-                                 , create_contract_with_gas_price_zero
-                                 , create_contract_init_error
-                                 , create_contract_negative
-                                 , call_contract
-                                 , call_contract_with_gas_price_zero
-                                 , call_contract_negative
-                                 ]}
+    , {transactions, [], [ create_contract
+                         , create_contract_with_gas_price_zero
+                         , create_contract_init_error
+                         , create_contract_negative
+                         , call_contract
+                         , call_contract_with_gas_price_zero
+                         , call_contract_negative
+                         ]}
     , {state_tree, [sequence], [ state_tree ]}
     , {sophia,     [sequence], [ sophia_identity,
                                  sophia_state,
@@ -112,7 +112,9 @@ create_contract_negative(_Cfg) ->
     ok.
 
 create_contract_init_error(_Cfg) ->
-    {PubKey, S1} = aect_test_utils:setup_new_account(aect_test_utils:new_state()),
+    S  = aect_test_utils:new_state(),
+    S0 = aect_test_utils:setup_miner_account(?MINER_PUBKEY, S),
+    {PubKey, S1} = aect_test_utils:setup_new_account(S0),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
     Overrides = #{ call_data => aeso_abi:create_calldata(<<>>, "init", "()")
@@ -144,7 +146,8 @@ create_contract_init_error(_Cfg) ->
                  - aect_create_tx:gas_price(aetx:tx(Tx)) * aect_call:gas_used(InitCall),
                  aec_accounts:balance(aect_test_utils:get_account(PubKey, S2))),
     %% Check that the miner got credited correctly.
-    ?assertEqual(aec_governance:block_mine_reward()
+    ?assertEqual(aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S1))
+                 + aec_governance:block_mine_reward()
                  + aect_create_tx:fee(aetx:tx(Tx))
                  + aect_create_tx:gas_price(aetx:tx(Tx)) * aect_call:gas_used(InitCall),
                  aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S2))),
@@ -157,7 +160,9 @@ create_contract_with_gas_price_zero(_Cfg) ->
     create_contract_(0).
 
 create_contract_(ContractCreateTxGasPrice) ->
-    {PubKey, S1} = aect_test_utils:setup_new_account(aect_test_utils:new_state()),
+    S  = aect_test_utils:new_state(),
+    S0 = aect_test_utils:setup_miner_account(?MINER_PUBKEY, S),
+    {PubKey, S1} = aect_test_utils:setup_new_account(S0),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
     IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
@@ -211,7 +216,8 @@ create_contract_(ContractCreateTxGasPrice) ->
     ?assertEqual(aect_create_tx:amount(aetx:tx(Tx)),
                  aec_accounts:balance(aect_test_utils:get_account(ContractKey, S2))),
     %% Check that the miner got credited correctly.
-    ?assertEqual(aec_governance:block_mine_reward()
+    ?assertEqual(aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S1))
+                 + aec_governance:block_mine_reward()
                  + aect_create_tx:fee(aetx:tx(Tx))
                  + aect_create_tx:gas_price(aetx:tx(Tx)) * aect_call:gas_used(InitCall),
                  aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S2))),
@@ -256,7 +262,9 @@ call_contract_with_gas_price_zero(_Cfg) ->
     call_contract_(0).
 
 call_contract_(ContractCallTxGasPrice) ->
-    S0            = aect_test_utils:new_state(),
+    S  = aect_test_utils:new_state(),
+    S0 = aect_test_utils:setup_miner_account(?MINER_PUBKEY, S),
+
     {Owner,  S1}  = aect_test_utils:setup_new_account(S0),
     {Caller, S2}  = aect_test_utils:setup_new_account(S1),
     OwnerPrivKey  = aect_test_utils:priv_key(Owner, S2),
