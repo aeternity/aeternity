@@ -28,7 +28,7 @@
 	 spending_3/1,
 	 identity_contract_1/1,
 	 identity_contract_2/1,
-	 identity_contract_3/1,
+	 simple_storage/1,
 	 dutch_auction_contract_1/1,
 	 dutch_auction_contract_2/1,
 	 null/1
@@ -38,6 +38,16 @@
 -define(NODE, dev1).
 -define(DEFAULT_TESTS_COUNT, 5).
 -define(WS, aehttp_ws_test_utils).
+
+%% Contract return values for some predefined numbers. Conversion
+%% functions will make this unnecessary.
+
+-define(VALUE_STATEP, <<"0x0000000000000000000000000000000000000000000000000000000000000020">>).
+-define(VALUE_21, <<"0x0000000000000000000000000000000000000000000000000000000000000015">>).
+-define(VALUE_42, <<"0x000000000000000000000000000000000000000000000000000000000000002A">>).
+-define(VALUE_84, <<"0x0000000000000000000000000000000000000000000000000000000000000054">>).
+-define(VALUE_126, <<"0x000000000000000000000000000000000000000000000000000000000000007E">>).
+-define(VALUE_168, <<"0x00000000000000000000000000000000000000000000000000000000000000A8">>).
 
 all() ->
     [
@@ -53,7 +63,7 @@ groups() ->
        spending_3,
        identity_contract_1,
        identity_contract_2,
-       identity_contract_3,
+       simple_storage,
        %% dutch_auction_contract_1,
        %% dutch_auction_contract_2,
        null					%This allows to end with ,
@@ -318,14 +328,14 @@ spending_3(Config) ->
     ok.
 
 %% identity_contract_1(Config)
-%%  Run the identity contract by miner.
+%%  Create the Identity contract by miner and call by miner.
 
 identity_contract_1(Config) ->
     NodeName = proplists:get_value(node_name, Config),
     %% Get miner balance.
     {ok, 200, _Btop} = get_balance_at_top(),
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
-    {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+    %% {ok,MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
 
     %% Compile contract "identity.aes"
     ContractString = aeso_test_utils:read_contract("identity"),
@@ -337,29 +347,29 @@ identity_contract_1(Config) ->
     InitArgument = <<"()">>,
     {ok, EncodedInitData} = aect_sophia:encode_call_data(HexCode, InitFunction,
                                                          InitArgument),
-    DecodedInitData = aeu_hex:hexstring_decode(EncodedInitData),
+    %% DecodedInitData = aeu_hex:hexstring_decode(EncodedInitData),
 
     ContractInitEncoded = #{ owner => MinerAddress,
-			     code => HexCode,
-			     vm_version => 1,
-			     deposit => 2,
-			     amount => 1,
-			     gas => 1000,		%Need a lot of gas
-			     gas_price => 1,
-			     fee => 1,
-			     call_data => EncodedInitData},
-    ContractInitDecoded = maps:merge(ContractInitEncoded,
-				     #{owner => MinerPubkey,
-				       code => BinCode,
-				       call_data => DecodedInitData}),
+                             code => HexCode,
+                             vm_version => 1,
+                             deposit => 2,
+                             amount => 1,
+                             gas => 1000,               %Need a lot of gas
+                             gas_price => 1,
+                             fee => 1,
+                             call_data => EncodedInitData},
+    %% ContractInitDecoded = maps:merge(ContractInitEncoded,
+    %%                                  #{owner => MinerPubkey,
+    %%                                    code => BinCode,
+    %%                                    call_data => DecodedInitData}),
 
     {ok,200,#{<<"tx">> := EncodedUnsignedContractCreateTx,
-	      <<"contract_address">> := EncodedContractPubkey}} =
-	get_contract_create(ContractInitEncoded),
-    {ok, DecodedContractPubkey} = aec_base58c:safe_decode(contract_pubkey,
-							  EncodedContractPubkey),
+              <<"contract_address">> := EncodedContractPubkey}} =
+        get_contract_create(ContractInitEncoded),
+    %% {ok, DecodedContractPubkey} = aec_base58c:safe_decode(contract_pubkey,
+    %%                                                       EncodedContractPubkey),
     ContractCreateTxHash = sign_and_post_tx(MinerAddress,
-					    EncodedUnsignedContractCreateTx),
+                                            EncodedUnsignedContractCreateTx),
 
     %% Mine blocks.
     {ok, _} = aecore_suite_utils:mine_blocks(NodeName, 2),
@@ -369,26 +379,25 @@ identity_contract_1(Config) ->
     CallArgument = <<"(42)">>,
     {ok, EncodedCallData} = aect_sophia:encode_call_data(HexCode, CallFunction,
                                                          CallArgument),
-    DecodedCallData = aeu_hex:hexstring_decode(EncodedCallData),
+    %% DecodedCallData = aeu_hex:hexstring_decode(EncodedCallData),
 
     ContractCallEncoded = #{ caller => MinerAddress,
                              contract => EncodedContractPubkey,
                              vm_version => 1,
                              amount => 1,
-                             gas => 600,	%Need a log of gas
+                             gas => 600,        %Need a log of gas
                              gas_price => 1,
                              fee => 1,
                              call_data => EncodedCallData},
-
-    ContractCallDecoded = maps:merge(ContractCallEncoded,
-				     #{caller => MinerPubkey,
-				       contract => DecodedContractPubkey,
-				       call_data => DecodedCallData}),
+    %% ContractCallDecoded = maps:merge(ContractCallEncoded,
+    %%                                  #{caller => MinerPubkey,
+    %%                                    contract => DecodedContractPubkey,
+    %%                                    call_data => DecodedCallData}),
 
     {ok,200,#{<<"tx">> := EncodedUnsignedContractCallTx}} =
-	get_contract_call(ContractCallEncoded),
+        get_contract_call(ContractCallEncoded),
     ContractCallTxHash = sign_and_post_tx(MinerAddress,
-					  EncodedUnsignedContractCallTx),
+                                          EncodedUnsignedContractCallTx),
 
     %% Try to get the call object while in mempool
     {ok,400,#{<<"reason">> := <<"Tx not mined">>}} =
@@ -400,121 +409,25 @@ identity_contract_1(Config) ->
 
     %% Get the call object
     {ok,200,#{<<"return_type">> := <<"ok">>,
-	      <<"return_value">> := Value}} =
-	 get_contract_call_object(ContractCallTxHash),
+              <<"return_value">> := Value}} =
+        get_contract_call_object(ContractCallTxHash),
 
     ct:pal("Return value ~p\n", [Value]),
-
     ok.
 
 %% identity_contract_2(Config)
-%%  Create and call the identity contract by account acc_c.
+%%  Create the Identity contract by account acc_c and call by accounts
+%%  acc_c and acc_d.
 
 identity_contract_2(Config) ->
     NodeName = proplists:get_value(node_name, Config),
     %% Get account information.
     #{acc_c := #{pub_key := CPubkey,
-		 priv_key := CPrivkey}} = proplists:get_value(accounts, Config),
-
-    %% Make sure account has enough tokens.
-    CBal0 = ensure_balance(CPubkey, 50000),
-    {ok,[_]} = aecore_suite_utils:mine_blocks(NodeName, 1),
-
-    %% Compile contract "identity.aes"
-    ContractString = aeso_test_utils:read_contract("identity"),
-    BinCode = aeso_compiler:from_string(ContractString, []),
-    HexCode = aeu_hex:hexstring_encode(BinCode),
-
-    %% Initialise contract, owned by Carl.
-    InitFunction = <<"init">>,
-    InitArgument = <<"()">>,
-    {ok, EncodedInitData} = aect_sophia:encode_call_data(HexCode, InitFunction,
-                                                         InitArgument),
-    DecodedInitData = aeu_hex:hexstring_decode(EncodedInitData),
-
-    CAddress = aec_base58c:encode(account_pubkey, CPubkey),
-    {ok,CNonce0} = rpc(aec_next_nonce, pick_for_account, [CPubkey]),
-
-    ContractInitEncoded = #{ owner => CAddress,
-			     code => HexCode,
-			     vm_version => 1,
-			     deposit => 2,
-			     amount => 1,
-			     gas => 1000,		%Need a lot of gas
-			     gas_price => 1,
-			     fee => 1,
-			     nonce => CNonce0,
-			     call_data => EncodedInitData},
-    ContractInitDecoded = maps:merge(ContractInitEncoded,
-				     #{owner => CPubkey,
-				       code => BinCode,
-				       call_data => DecodedInitData}),
-
-    {ContractCreateTxHash,EncodedContractPubkey,DecodedContractPubkey} =
-	sign_and_post_create_tx(CPrivkey, ContractInitEncoded),
-
-    %% Mine blocks.
-    {ok, _} = aecore_suite_utils:mine_blocks(NodeName, 2),
-
-    ?assert(tx_in_chain(ContractCreateTxHash)),
-
-    %% Create call
-    CallFunction = <<"main">>,
-    CallArgument = <<"(42)">>,
-    {ok, EncodedCallData} = aect_sophia:encode_call_data(HexCode, CallFunction,
-                                                         CallArgument),
-    DecodedCallData = aeu_hex:hexstring_decode(EncodedCallData),
-
-    {ok,CNonce1} = rpc(aec_next_nonce, pick_for_account, [CPubkey]),
-
-    ContractCallEncoded = #{ caller => CAddress,
-                             contract => EncodedContractPubkey,
-                             vm_version => 1,
-                             amount => 1,
-                             gas => 600,	%Need a lot of gas
-                             gas_price => 1,
-                             fee => 1,
-			     nonce => CNonce1,
-                             call_data => EncodedCallData},
-    ContractCallDecoded = maps:merge(ContractCallEncoded,
-				     #{caller => CPubkey,
-				       contract => DecodedContractPubkey,
-				       call_data => DecodedCallData}),
-
-    ContractCallTxHash = sign_and_post_call_tx(CPrivkey, ContractCallEncoded),
-
-    ct:pal("ContractCallTxHash ~p\n", [ContractCallTxHash]),
-
-    %% Try to get the call object while in mempool
-    {ok,400,#{<<"reason">> := <<"Tx not mined">>}} =
-        get_contract_call_object(ContractCallTxHash),
-
-    %% Mine blocks.
-    aecore_suite_utils:mine_blocks(NodeName, 2),
-    ?assert(tx_in_chain(ContractCallTxHash)),
-
-    %% Get the call object
-    {ok,200,#{<<"return_type">> := <<"ok">>,
-	      <<"return_value">> := Value}} =
-	get_contract_call_object(ContractCallTxHash),
-
-    ct:pal("Return value ~p\n", [Value]),
-    ct:pal("C Balances ~p, ~p\n", [CBal0,get_balance(CPubkey)]),
-
-    ok.
-
-%% identity_contract_3(Config)
-%%  Create the identity contract by account acc_c and call by account acc_d.
-
-identity_contract_3(Config) ->
-    NodeName = proplists:get_value(node_name, Config),
-    %% Get account information.
-    #{acc_c := #{pub_key := CPubkey,
-		 priv_key := CPrivkey},
+                 priv_key := CPrivkey},
       acc_d := #{pub_key := DPubkey,
-		 priv_key := DPrivkey}} = proplists:get_value(accounts, Config),
+                 priv_key := DPrivkey}} = proplists:get_value(accounts, Config),
 
-    %% Make sure account has enough tokens.
+    %% Make sure accounts have enough tokens.
     CBal0 = ensure_balance(CPubkey, 50000),
     DBal0 = ensure_balance(DPubkey, 50000),
     {ok,[_]} = aecore_suite_utils:mine_blocks(NodeName, 1),
@@ -524,191 +437,237 @@ identity_contract_3(Config) ->
     BinCode = aeso_compiler:from_string(ContractString, []),
     HexCode = aeu_hex:hexstring_encode(BinCode),
 
-    ct:pal("BinCode ~p\n", [BinCode]),
-    ct:pal("HexCode ~p\n", [HexCode]),
-
     %% Initialise contract, owned by Carl.
     InitFunction = <<"init">>,
     InitArgument = <<"()">>,
-    {ok, EncodedInitData} = aect_sophia:encode_call_data(HexCode, InitFunction,
-                                                         InitArgument),
-    DecodedInitData = aeu_hex:hexstring_decode(EncodedInitData),
+    {ok,EncodedInitData} = aect_sophia:encode_call_data(HexCode, InitFunction,
+                                                        InitArgument),
+    {ContractCreateTxHash,EncodedContractPubkey,_} =
+        contract_create_tx(CPubkey, CPrivkey, HexCode, EncodedInitData),
 
-    CAddress = aec_base58c:encode(account_pubkey, CPubkey),
-    {ok,CNonce0} = rpc(aec_next_nonce, pick_for_account, [CPubkey]),
-
-    ContractInitEncoded = #{ owner => CAddress,
-			     code => HexCode,
-			     vm_version => 1,
-			     deposit => 2,
-			     amount => 1,
-			     gas => 1000,		%Need a lot of gas
-			     gas_price => 1,
-			     fee => 1,
-			     nonce => CNonce0,
-			     call_data => EncodedInitData},
-    ContractInitDecoded = maps:merge(ContractInitEncoded,
-				     #{owner => CPubkey,
-				       code => BinCode,
-				       call_data => DecodedInitData}),
-
-    {ContractCreateTxHash,EncodedContractPubkey,DecodedContractPubkey} =
-	sign_and_post_create_tx(CPrivkey, ContractInitEncoded),
-
-    %% Mine blocks.
+    %% Mine blocks check that it is in the chain.
     {ok, _} = aecore_suite_utils:mine_blocks(NodeName, 2),
-
     ?assert(tx_in_chain(ContractCreateTxHash)),
 
-    %% Call contract by David.
+    %% Set up call.
     CallFunction = <<"main">>,
     CallArgument = <<"(42)">>,
-    {ok, EncodedCallData} = aect_sophia:encode_call_data(HexCode, CallFunction,
-                                                         CallArgument),
-    DecodedCallData = aeu_hex:hexstring_decode(EncodedCallData),
+    {ok,EncodedCallData} = aect_sophia:encode_call_data(HexCode, CallFunction,
+                                                        CallArgument),
 
-    DAddress = aec_base58c:encode(account_pubkey, DPubkey),
-    {ok,DNonce1} = rpc(aec_next_nonce, pick_for_account, [DPubkey]),
+    %% Call contract by Carl.
+    CContractCallTxHash = contract_call_tx(CPubkey, CPrivkey,
+                                           EncodedContractPubkey,
+                                           EncodedCallData),
 
-    ContractCallEncoded = #{ caller => DAddress,
-                             contract => EncodedContractPubkey,
-                             vm_version => 1,
-                             amount => 1,
-                             gas => 600,	%Need a lot of gas
-                             gas_price => 1,
-                             fee => 1,
-			     nonce => DNonce1,
-                             call_data => EncodedCallData},
-    ContractCallDecoded = maps:merge(ContractCallEncoded,
-				     #{caller => DPubkey,
-				       contract => DecodedContractPubkey,
-				       call_data => DecodedCallData}),
-
-    ContractCallTxHash = sign_and_post_call_tx(DPrivkey, ContractCallEncoded),
-
-    ct:pal("ContractCallTxHash ~p\n", [ContractCallTxHash]),
+    ct:pal("C ContractCallTxHash ~p\n", [CContractCallTxHash]),
 
     %% Try to get the call object while in mempool
     {ok,400,#{<<"reason">> := <<"Tx not mined">>}} =
-        get_contract_call_object(ContractCallTxHash),
+        get_contract_call_object(CContractCallTxHash),
 
     %% Mine blocks.
     aecore_suite_utils:mine_blocks(NodeName, 2),
-    ?assert(tx_in_chain(ContractCallTxHash)),
+    ?assert(tx_in_chain(CContractCallTxHash)),
 
     %% Get the call object
     {ok,200,#{<<"return_type">> := <<"ok">>,
-	      <<"return_value">> := Value}} =
-	get_contract_call_object(ContractCallTxHash),
+              <<"return_value">> := CValue}} =
+        get_contract_call_object(CContractCallTxHash),
 
-    ct:pal("Return value ~p\n", [Value]),
+    %% Call contract by Diana.
+    DContractCallTxHash = contract_call_tx(DPubkey, DPrivkey,
+                                           EncodedContractPubkey,
+                                           EncodedCallData),
+
+    ct:pal("D ContractCallTxHash ~p\n", [DContractCallTxHash]),
+
+    %% Mine blocks.
+    aecore_suite_utils:mine_blocks(NodeName, 2),
+    ?assert(tx_in_chain(DContractCallTxHash)),
+
+    %% Get the call object
+    {ok,200,#{<<"return_type">> := <<"ok">>,
+              <<"return_value">> := DValue}} =
+        get_contract_call_object(DContractCallTxHash),
+
+    ct:pal("C Return value ~p\n", [CValue]),
+    ct:pal("D Return value ~p\n", [DValue]),
     ct:pal("C Balances ~p, ~p\n", [CBal0,get_balance(CPubkey)]),
     ct:pal("D Balances ~p, ~p\n", [DBal0,get_balance(DPubkey)]),
 
     ok.
 
-%% identity_contract_2(Config) ->
-%%     %% Get account information.
-%%     #{acc_a := #{pub_key := APubkey,
-%% 		 priv_key := APrivkey},
-%%       acc_b := #{pub_key := BPubkey,
-%% 		 priv_key := BPrivkey}} = proplists:get_value(accounts, Config),
-%%     % Get miner balance.
-%%     {ok, 200, _Btop} = get_balance_at_top(),
-%%     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
-%%     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+%% simple_storage(Config)
+%%  Create the SimpleStorage contract by acc_a and test and set its
+%%  state data by acc_a, acc_b, acc_c and finally by acc_d.
 
-%%     %% Compile contract "identity.aes"
-%%     ContractString = aeso_test_utils:read_contract("identity"),
-%%     BinCode = aeso_compiler:from_string(ContractString, []),
-%%     HexCode = aeu_hex:hexstring_encode(BinCode),
+simple_storage(Config) ->
+    NodeName = proplists:get_value(node_name, Config),
+    %% Get account information.
+    #{acc_a := #{pub_key := APubkey,
+                 priv_key := APrivkey},
+      acc_b := #{pub_key := BPubkey,
+                 priv_key := BPrivkey},
+      acc_c := #{pub_key := CPubkey,
+                 priv_key := CPrivkey},
+      acc_d := #{pub_key := DPubkey,
+                 priv_key := DPrivkey}} = proplists:get_value(accounts, Config),
 
-%%     Function = <<"main">>,
-%%     Argument = <<"42">>,
-%%     {ok, EncodedCallData} = aect_sophia:encode_call_data(HexCode, Function,
-%%                                                          Argument),
-%%     DecodedCallData = aeu_hex:hexstring_decode(EncodedCallData),
+    %% Make sure accounts have enough tokens.
+    ABal0 = ensure_balance(APubkey, 50000),
+    BBal0 = ensure_balance(BPubkey, 50000),
+    CBal0 = ensure_balance(CPubkey, 50000),
+    DBal0 = ensure_balance(DPubkey, 50000),
+    {ok,[_]} = aecore_suite_utils:mine_blocks(NodeName, 1),
 
-%%     %% Owned by Alice.
-%%     AAddress = aec_base58c:encode(account_pubkey, APubkey),
-%%     {ok,ANonce} = rpc(aec_next_nonce, pick_for_account, [APubkey]),
-%%     ct:pal("ANonce ~p\n", [ANonce]),
+    %% Compile contract "simple_storage.aes"
+    ContractString = aeso_test_utils:read_contract("simple_storage"),
+    BinCode = aeso_compiler:from_string(ContractString, []),
+    HexCode = aeu_hex:hexstring_encode(BinCode),
 
-%%     ValidEncoded = #{ owner => AAddress,
-%%                       code => HexCode,
-%%                       vm_version => 1,
-%%                       deposit => 2,
-%%                       amount => 1,
-%%                       gas => 30,
-%%                       gas_price => 1,
-%%                       fee => 1,
-%% 		      nonce => ANonce,
-%%                       call_data => EncodedCallData},
+    %% Initialise contract, owned by Alice.
+    InitFunction = <<"init">>,
+    InitArgument = <<"(21)">>,
+    {ok,EncodedInitData} = aect_sophia:encode_call_data(HexCode, InitFunction,
+                                                        InitArgument),
+    {ContractCreateTxHash,EncodedContractPubkey,_} =
+        contract_create_tx(APubkey, APrivkey, HexCode, EncodedInitData),
 
-%%     ValidDecoded = maps:merge(ValidEncoded,
-%%                               #{owner => APubkey,
-%%                                 code => BinCode,
-%%                                 call_data => DecodedCallData}),
+    %% Mine blocks and check that it is in the chain.
+    {ok, _} = aecore_suite_utils:mine_blocks(NodeName, 2),
+    ?assert(tx_in_chain(ContractCreateTxHash)),
 
-%%     %% Create transaction and sign
-%%     {ok, 200, #{<<"tx_hash">> := CtxA}} = sign_and_post_create_tx(APrivkey,
-%% 								  ValidDecoded),
-%%     ct:pal("CtxA ~p\n", [CtxA]),
+    %% Setup call to get which can be used by all gets.
+    {ok,EncodedGetData} = aect_sophia:encode_call_data(HexCode,
+						       <<"get">>, <<"()">>),
 
-%%     %% Mine block.
-%%     NodeName = proplists:get_value(node_name, Config),
-%%     {ok, [_]} = aecore_suite_utils:mine_blocks(NodeName, 1),
+    %% Call get contract by Alice.
+    AGetValue1 = call_get(NodeName, APubkey, APrivkey, EncodedContractPubkey,
+			  EncodedGetData),
+    ?assertEqual(AGetValue1, ?VALUE_21),
 
-%%     {ok,200,#{<<"transaction">> := #{<<"block_hash">> := CBlockHash}}} =
-%% 	get_tx(CtxA, json),
-%%     ct:pal("CBlockHash ~p\n", [CBlockHash]),
+    %% Call set contract by Alice.
+    ASetValue1 = call_set(NodeName, APubkey, APrivkey, EncodedContractPubkey,
+			  HexCode, <<"(42)">>),
+    %% ct:pal("A set value ~p\n", [ASetValue1]),
+    ?assertEqual(ASetValue1, ?VALUE_STATEP),
 
-%%     %% Call the contract in another transaction.
+    %% Call get contract by Bert.
+    BGetValue1 = call_get(NodeName, BPubkey, BPrivkey, EncodedContractPubkey,
+			  EncodedGetData),
+    ?assertEqual(BGetValue1, ?VALUE_42),
+    %% Call set contract by Bert.
+    BSetValue1 = call_set(NodeName, BPubkey, BPrivkey, EncodedContractPubkey,
+			  HexCode, <<"(84)">>),
+    ?assertEqual(BSetValue1, ?VALUE_STATEP),
 
-%%     ContractPubkey = aect_contracts:compute_contract_pubkey(APubkey, ANonce),
+    %% Call get and set contract by Carl.
+    {CGetValue1,CSetValue1} = call_get_set(NodeName, CPubkey, CPrivkey,
+					   EncodedContractPubkey,
+					   EncodedGetData,
+					   HexCode, <<"(126)">>),
+    ?assertEqual(CGetValue1, ?VALUE_84),
+    ?assertEqual(CSetValue1, ?VALUE_STATEP),
 
-%%     ContractPubkeyHash = aec_base58c:encode(contract_pubkey, ContractPubkey),
+    %% Call get contract by Diana.
+    DGetValue1 = call_get(NodeName, DPubkey, DPrivkey, EncodedContractPubkey,
+			  EncodedGetData),
+    ?assertEqual(DGetValue1, ?VALUE_126),
 
-%%     ct:pal("Ckey ~p\n", [ContractPubkey]),
-%%     ct:pal("Ckeyhash ~p\n", [ContractPubkeyHash]),
+    %% Call set contract by Diana.
+    DSetValue1 = call_set(NodeName, DPubkey, DPrivkey, EncodedContractPubkey,
+			  HexCode, <<"(168)">>),
+    ct:pal("C set value ~p\n", [DSetValue1]),
 
-%%     %% Called by Bert.
-%%     BAddress = aec_base58c:encode(account_pubkey, BPubkey),
-%%     {ok,BNonce} = rpc(aec_next_nonce, pick_for_account, [BPubkey]),
-%%     ct:pal("BNonce ~p\n", [BNonce]),
+    %% Call get contract by Alice.
+    AGetValue2 = call_get(NodeName, APubkey, APrivkey, EncodedContractPubkey,
+			  EncodedGetData),
+    ?assertEqual(AGetValue2, ?VALUE_168),
 
-%%     ContractCallEncoded = #{ caller => BAddress,
-%%                              contract => ContractPubkeyHash,
-%%                              vm_version => 1,
-%%                              amount => 1,
-%%                              gas => 10,
-%%                              gas_price => 1,
-%%                              fee => 1,
-%% 			     nonce => BNonce,
-%%                              call_data => EncodedCallData},
+    ct:pal("A Balances ~p, ~p\n", [ABal0,get_balance(APubkey)]),
+    ct:pal("B Balances ~p, ~p\n", [BBal0,get_balance(BPubkey)]),
+    ct:pal("C Balances ~p, ~p\n", [CBal0,get_balance(CPubkey)]),
+    ct:pal("D Balances ~p, ~p\n", [DBal0,get_balance(DPubkey)]),
 
-%%     ContractCallDecoded = maps:merge(ContractCallEncoded,
-%%                               #{caller => BPubkey,
-%% 				contract => ContractPubkey,
-%%                                 call_data => DecodedCallData}),
+    ok.
 
-%%     {ok, P1} = rpc(aec_tx_pool, peek, [infinity]), % empty
-%%     ct:pal("P1 ~p\n", [P1]),
-%%     %% Create call transaction and sign
-%%     {ok, 200, #{<<"tx_hash">> := CtxB}} = sign_and_post_call_tx(BPrivkey,
-%% 							       ContractCallDecoded),
-%%     ct:pal("CtxB ~p\n", [CtxB]),
+call_get_set(NodeName, Pubkey, Privkey, EncodedContractPubkey, EncodedGetData,
+	     HexCode, SetVal) ->
+    GetValue = call_get(NodeName, Pubkey, Privkey, EncodedContractPubkey,
+			EncodedGetData),
+    SetValue = call_set(NodeName, Pubkey, Privkey, EncodedContractPubkey,
+			HexCode, SetVal),
+    {GetValue,SetValue}.
 
-%%     {ok, P2} = rpc(aec_tx_pool, peek, [infinity]), % not empty
-%%     ct:pal("P2 ~p\n", [P2]),
+call_get(NodeName, Pubkey, Privkey, EncodedContractPubkey, EncodedGetData) ->
+    %% Call get contract.
+    ContractGetTxHash = contract_call_tx(Pubkey, Privkey,
+					 EncodedContractPubkey,
+					 EncodedGetData),
+    %% Mine blocks and check that it is in the chain.
+    aecore_suite_utils:mine_blocks(NodeName, 2),
+    ?assert(tx_in_chain(ContractGetTxHash)),
+    %% Get the call object and return value.
+    {ok,200,#{<<"return_type">> := <<"ok">>,
+              <<"return_value">> := GetValue}} =
+        get_contract_call_object(ContractGetTxHash),
+    GetValue.
 
-%%     %% Mine a block
-%%     aecore_suite_utils:mine_blocks(NodeName, 1),
-%%     {ok, 200, #{<<"transaction">> := #{<<"block_hash">> := BlockHash}}} = get_tx(CtxB, json),
-%%     %%true = BlockHash =/= <<"none">>,
-%%     ct:pal("BlockHash ~p\n", [BlockHash]),
+call_set(NodeName, Pubkey, Privkey, EncodedContractPubkey, HexCode, SetVal) ->
+    %% Call set contract.
+    {ok,EncodedSetData} = aect_sophia:encode_call_data(HexCode,
+						       <<"set">>, SetVal),
+    ContractSetTxHash = contract_call_tx(Pubkey, Privkey,
+					 EncodedContractPubkey,
+					 EncodedSetData),
+    %% Mine blocks.
+    aecore_suite_utils:mine_blocks(NodeName, 2),
+    %% Get the call object and return value.
+    {ok,200,#{<<"return_type">> := <<"ok">>,
+              <<"return_value">> := SetValue}} =
+        get_contract_call_object(ContractSetTxHash),
+    SetValue.
 
-%%     ok.
+contract_create_tx(Pubkey, Privkey, HexCode, EncodedInitData) ->
+    Address = aec_base58c:encode(account_pubkey, Pubkey),
+    {ok,Nonce} = rpc(aec_next_nonce, pick_for_account, [Pubkey]),
+
+    ContractInitEncoded = #{ owner => Address,
+                             code => HexCode,
+                             vm_version => 1,
+                             deposit => 2,
+                             amount => 1,
+                             gas => 1000,               %Need a lot of gas
+                             gas_price => 1,
+                             fee => 1,
+                             nonce => Nonce,
+                             call_data => EncodedInitData},
+    %% ContractInitDecoded = maps:merge(ContractInitEncoded,
+    %%                                  #{owner => Pubkey,
+    %%                                    code => BinCode,
+    %%                                    call_data => DecodedInitData}),
+    sign_and_post_create_tx(Privkey, ContractInitEncoded).
+
+
+contract_call_tx(Pubkey, Privkey, EncodedContractPubkey, EncodedCallData) ->
+    Address = aec_base58c:encode(account_pubkey, Pubkey),
+    {ok,Nonce} = rpc(aec_next_nonce, pick_for_account, [Pubkey]),
+
+    ContractCallEncoded = #{ caller => Address,
+                             contract => EncodedContractPubkey,
+                             vm_version => 1,
+                             amount => 1,
+                             gas => 1000,       %Need a lot of gas
+                             gas_price => 1,
+                             fee => 1,
+                             nonce => Nonce,
+                             call_data => EncodedCallData},
+    %% ContractCallDecoded = maps:merge(ContractCallEncoded,
+    %%                                  #{caller => Pubkey,
+    %%                                    contract => DecodedContractPubkey,
+    %%                                    call_data => DecodedCallData}),
+    sign_and_post_call_tx(Privkey, ContractCallEncoded).
 
 dutch_auction_contract_1(Config) ->
     %% Get account information.
@@ -717,7 +676,7 @@ dutch_auction_contract_1(Config) ->
       acc_b := #{pub_key := BPubkey,
 		 priv_key := BPrivkey}} = proplists:get_value(accounts, Config),
     % Get miner balance.
-    {ok, 200, Btop} = get_balance_at_top(),
+    {ok, 200, _Btop} = get_balance_at_top(),
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
 
@@ -1373,19 +1332,19 @@ populate_block(Txs) ->
 %%  This is based on post_correct_tx/1 in aehttp_integration_SUITE.
 
 spend_tokens(SenderPub, SenderPriv, Recip, Amount, Fee) ->
-    DefaultSet = #{ttl => 0},			%Defaut fields set by caller
+    DefaultSet = #{ttl => 0},                   %Defaut fields set by caller
     spend_tokens(SenderPub, SenderPriv, Recip, Amount, Fee, DefaultSet).
 
 spend_tokens(SenderPub, SenderPriv, Recip, Amount, Fee, CallerSet) ->
     %% Generate a nonce.
     {ok,Nonce} = rpc(aec_next_nonce, pick_for_account, [SenderPub]),
     Params0 = #{sender => SenderPub,
-		recipient => Recip,
-		amount => Amount,
-		fee => Fee,
-		nonce => Nonce,
-		payload => <<"spend tokens">>},
-    Params1 = maps:merge(Params0, CallerSet),	%Set caller defaults
+                recipient => Recip,
+                amount => Amount,
+                fee => Fee,
+                nonce => Nonce,
+                payload => <<"spend tokens">>},
+    Params1 = maps:merge(Params0, CallerSet),   %Set caller defaults
     {ok, UnsignedTx} = aec_spend_tx:new(Params1),
     SignedTx = aetx_sign:sign(UnsignedTx, SenderPriv),
     SerializedTx = aetx_sign:serialize_to_binary(SignedTx),
@@ -1397,29 +1356,29 @@ spend_tokens(SenderPub, SenderPriv, Recip, Amount, Fee, CallerSet) ->
 
 sign_and_post_create_tx(Privkey, CreateEncoded) ->
     {ok,200,#{<<"tx">> := EncodedUnsignedTx,
-	      <<"contract_address">> := EncodedPubkey}} =
-	get_contract_create(CreateEncoded),
+              <<"contract_address">> := EncodedPubkey}} =
+        get_contract_create(CreateEncoded),
     {ok,DecodedPubkey} = aec_base58c:safe_decode(contract_pubkey,
-						 EncodedPubkey),
+                                                 EncodedPubkey),
     {ok,SerializedUnsignedTx} = aec_base58c:safe_decode(transaction,
-							EncodedUnsignedTx),
+                                                        EncodedUnsignedTx),
     UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
     SignedTx = aetx_sign:sign(UnsignedTx, Privkey),
     SendTx = aec_base58c:encode(transaction,
-				aetx_sign:serialize_to_binary(SignedTx)),
-    ct:pal("sap_create_tx ~p\b", [{UnsignedTx,SignedTx,SendTx}]),
+                                aetx_sign:serialize_to_binary(SignedTx)),
+    %% ct:pal("sap_create_tx ~p\b", [{UnsignedTx,SignedTx,SendTx}]),
     {ok,200,#{<<"tx_hash">> := TxHash}} = post_tx(SendTx),
     {TxHash,EncodedPubkey,DecodedPubkey}.
 
 sign_and_post_call_tx(Privkey, CallEncoded) ->
     {ok,200,#{<<"tx">> := EncodedUnsignedTx}} = get_contract_call(CallEncoded),
     {ok,SerializedUnsignedTx} = aec_base58c:safe_decode(transaction,
-							EncodedUnsignedTx),
+                                                        EncodedUnsignedTx),
     UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
     SignedTx = aetx_sign:sign(UnsignedTx, Privkey),
     SendTx = aec_base58c:encode(transaction,
-				aetx_sign:serialize_to_binary(SignedTx)),
-    ct:pal("sap_call_tx ~p\b", [{UnsignedTx,SignedTx,SendTx}]),
+                                aetx_sign:serialize_to_binary(SignedTx)),
+    %% ct:pal("sap_call_tx ~p\b", [{UnsignedTx,SignedTx,SendTx}]),
     {ok,200,#{<<"tx_hash">> := TxHash}} = post_tx(SendTx),
     TxHash.
 
