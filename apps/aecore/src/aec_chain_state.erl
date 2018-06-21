@@ -112,7 +112,7 @@ set_top_block_hash(H, State) when is_binary(H) -> State#{top_block_hash => H}.
 
 -record(node, { header  :: #header{}
               , hash    :: binary()
-              , height  :: pos_integer()
+              , height  :: non_neg_integer()
               , type    :: block_type()
               , key_hash :: binary()
               }).

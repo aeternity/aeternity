@@ -149,12 +149,13 @@ reinit_chain() ->
 
 init(Options) ->
     process_flag(trap_exit, true),
-    State1 = set_option(autostart, Options, #state{}),
     ok     = init_chain_state(),
     TopBlockHash = aec_chain:top_block_hash(),
     Consensus = #consensus{micro_block_cycle = aec_governance:micro_block_cycle(),
                            leader = false},
-    State2 = State1#state{seen_top_block_hash = TopBlockHash, consensus = Consensus},
+    State1 = #state{seen_top_block_hash = TopBlockHash, consensus = Consensus},
+    State2 = set_option(autostart, Options, State1),
+
     epoch_mining:info("Miner process initilized ~p", [State2]),
     aec_events:subscribe(candidate_block),
     %% NOTE: The init continues at handle_info(init_continue, State).
@@ -733,8 +734,8 @@ handle_micro_signing_reply({{error, Reason}, _}, State) ->
 
 start_micro_sleep(#state{consensus = #consensus{leader = true, micro_block_cycle = Timeout}} = State) ->
     epoch_mining:debug("Starting sleep in between microblocks"),
-    Info      = [{starting_micro_sleep, State#state.seen_top_block_hash}],
-    aec_events:publish(starting_micro_sleep, Info),
+    Info      = [{start_micro_sleep, State#state.seen_top_block_hash}],
+    aec_events:publish(start_micro_sleep, Info),
     Fun = fun() ->
                   timer:sleep(Timeout) %% TODO: remove 'timer' dependency
           end,

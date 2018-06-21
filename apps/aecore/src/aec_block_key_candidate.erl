@@ -131,9 +131,8 @@ int_create_block(PrevBlockHash, PrevBlock, FeesInfo, Trees, Miner) ->
 calculate_total_fee(#{txs := TxsFee, gas := GasFee}) ->
     aec_governance:block_mine_reward() + TxsFee + GasFee.
 
--spec grant_fees(list(aetx_sign:signed_tx()), aec_keys:pubkey(),
-                 aec_trees:trees()) ->
-                 {fees_info(), aec_trees:trees()}.
+-spec grant_fees(fees_info(), aec_keys:pubkey(), aec_trees:trees()) ->
+                    aec_trees:trees().
 grant_fees(FeesInfo, Miner, Trees) ->
     _NewTrees = aec_trees:grant_fee_to_miner(Miner, Trees,
                                              calculate_total_fee(FeesInfo)).

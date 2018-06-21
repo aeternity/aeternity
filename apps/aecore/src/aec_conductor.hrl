@@ -19,8 +19,8 @@
 
 -record(candidate, {block     :: aec_blocks:block(),
                     bin       :: binary(), %% Serialized for hash
-                    nonce     :: aec_pow:nonce(),
-                    max_nonce :: aec_pow:nonce(),
+                    nonce     :: aec_pow:nonce() | 'undefined',
+                    max_nonce :: aec_pow:nonce() | 'undefined',
                     top_hash  :: binary()
                    }).
 
