@@ -169,15 +169,13 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlockHash, KeyBlock, Trees, Miner,
 
 %% Non-strict
 int_apply_block_txs(Txs, _Miner, Trees, Height, Version, false) ->
-    Trees0 = aec_trees:perform_pre_transformations(Trees, Height),
     {ok, Txs1, Trees1} =
-        aec_trees:apply_txs_on_state_trees(Txs, Trees0, Height, Version),
+        aec_trees:apply_txs_on_state_trees(Txs, Trees, Height, Version),
     Fees = calculate_fees(Txs1, Trees),
     {ok, Txs1, Trees1, Fees};
 %% strict
 int_apply_block_txs(Txs, _Miner, Trees, Height, Version, true) ->
-    Trees0 = aec_trees:perform_pre_transformations(Trees, Height),
-    case aec_trees:apply_txs_on_state_trees_strict(Txs, Trees0, Height, Version) of
+    case aec_trees:apply_txs_on_state_trees_strict(Txs, Trees, Height, Version) of
         {ok, Txs1, Trees1} ->
             Fees = calculate_fees(Txs1, Trees),
             {ok, Txs1, Trees1, Fees};

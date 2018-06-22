@@ -117,7 +117,8 @@ int_create_block(PrevBlockHash, PrevBlock, FeesInfo, Trees, Miner) ->
     Height = PrevBlockHeight + 1,
     Version = aec_hard_forks:protocol_effective_at_height(Height),
 
-    Trees2 = grant_fees(FeesInfo, Miner, Trees),
+    Trees1 = aec_trees:perform_pre_transformations(Trees, Height),
+    Trees2 = grant_fees(FeesInfo, Miner, Trees1),
 
     NewBlock = aec_blocks:new_key(Height, PrevBlockHash, aec_trees:hash(Trees2),
                                   aec_blocks:target(PrevBlock),

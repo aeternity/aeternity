@@ -560,7 +560,8 @@ apply_node_transactions(Node, Trees) ->
             case node_height(Node) of
                 0 -> Trees;
                 _N ->
-                    aec_trees:grant_fee_to_miner(node_miner(Node), Trees,
+                    Trees1 = aec_trees:perform_pre_transformations(Trees, node_height(Node)),
+                    aec_trees:grant_fee_to_miner(node_miner(Node), Trees1,
                                                  aec_governance:block_mine_reward())
             end
     end.
