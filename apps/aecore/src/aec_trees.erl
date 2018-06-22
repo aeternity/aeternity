@@ -118,8 +118,10 @@ add_poi(contracts, Id, Trees, #poi{} = Poi) ->
 add_poi(Type,_PubKey,_Trees, #poi{} =_Poi) ->
     error({nyi, Type}).
 
--spec lookup_poi(tree_type(), aec_keys:pubkey(), poi()) -> {'ok', aec_accounts:account()}
-                                                         | {'error', 'not_found'}.
+-spec lookup_poi(tree_type(), aec_keys:pubkey(), poi()) ->
+                        {'ok', Object} | {'error', 'not_found'} when
+      Object :: aec_accounts:account()
+              | aect_contracts:contract().
 lookup_poi(accounts, PubKey, #poi{} = Poi) ->
     internal_lookup_accounts_poi(PubKey, Poi);
 lookup_poi(contracts, PubKey, #poi{} = Poi) ->
