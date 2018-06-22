@@ -90,6 +90,14 @@ poi_test_() ->
                ?assertEqual(?TEST_MODULE:hash(Trees0),
                             ?TEST_MODULE:poi_hash(Poi0))
        end},
+      {"PoI constructed from empty state trees can be serialized/deserialized",
+       fun() ->
+               Trees0 = aec_test_utils:create_state_tree(),
+               Poi0 = ?TEST_MODULE:new_poi(Trees0),
+               assert_equal_poi(Poi0,
+                                ?TEST_MODULE:deserialize_poi(
+                                   ?TEST_MODULE:serialize_poi(Poi0)))
+       end},
       {"Non-empty PoI cannot be constructed from empty state trees",
        fun() ->
                AccountPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
@@ -100,6 +108,22 @@ poi_test_() ->
                ?assertEqual({error, not_present},
                             ?TEST_MODULE:add_poi(accounts, AccountPubkey,
                                                  Trees0, Poi0))
+       end},
+      {"Empty PoI constructed from non-empty state trees can be serialized/deserialized",
+       fun() ->
+               AccountPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
+
+               Trees0 = aec_test_utils:create_state_tree(),
+               Poi0 = ?TEST_MODULE:new_poi(Trees0),
+
+               Trees1 = ?TEST_MODULE:ensure_account(AccountPubkey, Trees0),
+               Poi1 = ?TEST_MODULE:new_poi(Trees1),
+
+               assert_equal_poi(Poi1,
+                                ?TEST_MODULE:deserialize_poi(
+                                   ?TEST_MODULE:serialize_poi(Poi1))),
+               ?assertNotEqual(?TEST_MODULE:serialize_poi(Poi0),
+                               ?TEST_MODULE:serialize_poi(Poi1))
        end},
       {"POI for one account",
        fun() ->
@@ -273,14 +297,16 @@ poi_test_() ->
                              ?TEST_MODULE:lookup_poi(accounts, Pubkey4, Poi4)),
 
                 %% Check serialization/deserialization of PoI
-                %% NOTE: The deserialized poi contains a gb_tree,
-                %% so it is operation order dependent.
-                %% The serialized version is canonical, though.
-                [?assertEqual(?TEST_MODULE:serialize_poi(PoI),
-                              ?TEST_MODULE:serialize_poi(
-                                 ?TEST_MODULE:deserialize_poi(
-                                    ?TEST_MODULE:serialize_poi(PoI))))
+                [assert_equal_poi(PoI,
+                                  ?TEST_MODULE:deserialize_poi(
+                                     ?TEST_MODULE:serialize_poi(PoI)))
                  || PoI <- [Poi1, Poi2, Poi2, Poi3, Poi4]]
         end
       }
     ].
+
+assert_equal_poi(PoIExpect, PoIExpr) ->
+    %% The deserialized poi contains a gb_tree, so it is operation
+    %% order dependent.  The serialized version is canonical, though.
+    ?assertEqual(?TEST_MODULE:serialize_poi(PoIExpect),
+                 ?TEST_MODULE:serialize_poi(PoIExpr)).
