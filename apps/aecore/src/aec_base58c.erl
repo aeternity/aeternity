@@ -31,13 +31,29 @@ encode(Type, Payload) ->
     <<Pfx/binary, "$", Enc/binary>>.
 
 -spec decode(binary()) -> {known_type(), payload()}.
-decode(Bin) ->
-    case split(Bin) of
+decode(Bin0) ->
+    case split(Bin0) of
         [Pfx, Payload] ->
-            {pfx2type(Pfx), decode_check(Payload)};
+            Type = pfx2type(Pfx),
+            Bin = decode_check(Payload),
+            case type_size_check(Type, Bin) of
+                ok -> {Type, Bin};
+                {error, Reason} -> erlang:error(Reason)
+            end;
         _ ->
             %% {<<>>, decode_check(Bin)}
             erlang:error(missing_prefix)
+    end.
+
+type_size_check(Type, Bin) ->
+    case type2size(Type) of
+        not_set -> ok;
+        CorrectSize ->
+            Size = byte_size(Bin),
+            case Size =:= CorrectSize of
+                true -> ok;
+                false -> {error, incorrect_size}
+            end
     end.
 
 safe_decode(Type, Enc) ->
@@ -106,6 +122,11 @@ pfx2type(<<"pp">>) -> peer_pubkey;
 pfx2type(<<"nm">>) -> name;
 pfx2type(<<"st">>) -> state;
 pfx2type(<<"pi">>) -> poi.
+
+type2size(poi) -> not_set;
+type2size(name) -> not_set;
+type2size(transaction) -> not_set;
+type2size(_) -> 32.
 
 %% TODO: Fix the base58 module so that it consistently uses binaries instead
 %%

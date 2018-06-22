@@ -2950,8 +2950,8 @@ sc_ws_update_fails_and_close(Config) ->
             {ok, #{<<"reason">> := <<"invalid_pubkeys">>,
                   <<"request">> := _Request2}} =
                 channel_update_fail(Conns, Sender,
-                                    #{initiator => #{pub_key => <<123456>>},
-                                      responder => #{pub_key => <<654321>>}},
+                                    #{initiator => #{pub_key => <<42:32/unit:8>>},
+                                      responder => #{pub_key => <<43:32/unit:8>>}},
                                     1),
             ok
         end,

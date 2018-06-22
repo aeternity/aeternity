@@ -27,6 +27,8 @@ preset_accounts_test_() ->
      end,
      [ {"Preset accounts parsing: broken file",
         fun() ->
+            Address1 = aec_base58c:encode(account_pubkey, <<42:32/unit:8>>),
+            Address2 = aec_base58c:encode(account_pubkey, <<43:32/unit:8>>),
             %% empty file
             expect_accounts(<<"">>),
             ?assertError(invalid_accounts_json, ?TEST_MODULE:preset_accounts()),
@@ -34,7 +36,7 @@ preset_accounts_test_() ->
             expect_accounts(<<"{">>),
             ?assertError(invalid_accounts_json, ?TEST_MODULE:preset_accounts()),
             %% broken json
-            expect_accounts(<<"{\"Alice\":1,\"Bob\":2">>),
+            expect_accounts(<<"{\"", Address1/binary, "\":1,\"", Address2/binary, "\":2">>),
             ?assertError(invalid_accounts_json, ?TEST_MODULE:preset_accounts()),
             %% not json at all
             expect_accounts(<<"Hejsan svejsan">>),
@@ -52,16 +54,17 @@ preset_accounts_test_() ->
 
        {"Preset accounts parsing: a preset account",
         fun() ->
-            expect_accounts([{<<"some pubkey">>, 10}]),
-            ?assertEqual([{<<"some pubkey">>, 10}], ?TEST_MODULE:preset_accounts()),
+            Pubkey = <<42:32/unit:8>>,
+            expect_accounts([{Pubkey, 10}]),
+            ?assertEqual([{Pubkey, 10}], ?TEST_MODULE:preset_accounts()),
             ok
         end},
        {"Preset accounts parsing: deterministic ordering",
         fun() ->
             Accounts =
-                [{<<"Alice">>, 10},
-                 {<<"Carol">>, 20},
-                 {<<"Bob">>, 42}],
+                [{<<2:32/unit:8>>, 10},
+                 {<<1:32/unit:8>>, 20},
+                 {<<3:32/unit:8>>, 42}],
             AccountsOrdered = lists:keysort(1, Accounts),
             expect_accounts(Accounts),
             ?assertEqual(AccountsOrdered, ?TEST_MODULE:preset_accounts()),
