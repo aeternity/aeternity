@@ -71,11 +71,6 @@
                     "type" : "integer",
                     "default": 10,
                 },
-                "max_connections" : {
-                    "description" : "The maximum number of incoming connections",
-                    "type" : "integer",
-                    "default": 1000,
-                },
                 "connect_timeout" : {
                     "description" : "Connection timeout in miliseconds",
                     "type" : "integer",
@@ -90,8 +85,32 @@
                     "description" : "Maximum time for noise handshake in miliseconds",
                     "type" : "integer",
                     "default": 5000,
+                },
+                "close_timeout" : {
+                    "description" : "Maximum time for the peer to close a connection cleanly",
+                    "type" : "integer",
+                    "default": 3000,
+                },
+                "max_inbound" : {
+                    "description" : "Maximum number of inbound connections after which inbound connection are temporary (only used for a single ping)",
+                    "type" : "integer",
+                    "default": 100,
+                },
+                "max_inbound_hard" : {
+                    "description" : "The maximum number of inbound connections",
+                    "type" : "integer",
+                    "default": 1000,
+                },
+                "max_outbound" : {
+                    "description" : "Maximum number of outbound connections",
+                    "type" : "integer",
+                    "default": 10,
+                },
+                "single_outbound_per_group" : {
+                    "description" : "If the extra outbound connections should be to nodes from different address groups (IP netmask /16)",
+                    "type" : "boolean",
+                    "default": true,
                 }
-
             }
         },
         "http" : {

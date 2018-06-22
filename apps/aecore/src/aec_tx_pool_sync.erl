@@ -187,6 +187,9 @@ handle_re_sync(State = #state{ local = {in_sync, TimerRef} }, TimerRef) ->
 handle_re_sync(State, _TimerRef) -> %% Stale TimerRef
     State.
 
+handle_local_action(State = #state{ local = not_synced }, _Action, _Ref, _Result) ->
+    % Synchronization aborted
+    State;
 handle_local_action(State = #state{ local = {active, #sync{ id = Ref }} }, Action, Ref, Result) ->
     handle_local_action(State, Action, Result);
 handle_local_action(State = #state{ remote = Remotes }, tree, Ref, Result) ->
@@ -294,7 +297,7 @@ mk_sync(PeerId, PeerCon) ->
 
 repair_sync(Sync = #sync{ peer_id = PeerId }) ->
     case aec_peers:get_connection(PeerId) of
-        {ok, {connected, NewPeerCon}} ->
+        {ok, NewPeerCon} ->
             NewRef = erlang:monitor(process, NewPeerCon),
             {ok, Sync#sync{ peer_con = NewPeerCon, peer_con_ref = NewRef }};
         _ ->

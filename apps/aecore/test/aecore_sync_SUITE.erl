@@ -101,14 +101,23 @@ init_per_suite(Config) ->
                                  {node, node()},
                                  {cookie, erlang:get_cookie()}]]),
     Forks = aecore_suite_utils:forks(),
-    DefCfg = #{<<"metrics">> =>
-                   #{<<"rules">> =>
-                         [#{<<"name">> => <<"ae.epoch.system.**">>,
-                            <<"actions">> => <<"log">>},
-                          #{<<"name">> => <<"ae.epoch.aecore.**">>,
-                            <<"actions">> => <<"log,send">>}]},
-              <<"chain">> => #{<<"persist">> => true,
-                               <<"hard_forks">> => Forks}},
+    DefCfg = #{
+        <<"metrics">> => #{
+            <<"rules">> => [
+                #{<<"name">> => <<"ae.epoch.system.**">>,
+                  <<"actions">> => <<"log">>},
+                #{<<"name">> => <<"ae.epoch.aecore.**">>,
+                  <<"actions">> => <<"log,send">>}
+            ]
+        },
+        <<"chain">> => #{
+            <<"persist">> => true,
+            <<"hard_forks">> => Forks
+        },
+        <<"sync">> => #{
+            <<"single_outbound_per_group">> => false
+        }
+    },
     Config2 = aec_metrics_test_utils:make_port_map([dev1, dev2, dev3], Config1),
     aecore_suite_utils:create_configs(Config2, DefCfg, [{add_peers, true}]),
     aecore_suite_utils:make_multi(Config2),
@@ -174,7 +183,8 @@ start_second_node(Config) ->
     aecore_suite_utils:start_node(Dev2, Config),
     aecore_suite_utils:connect(N2),
     aecore_suite_utils:await_aehttp(N2),
-    ct:log("Peers on dev2: ~p", [rpc:call(N2, aec_peers, all, [], 5000)]),
+    ct:log("Connected peers on dev2: ~p",
+           [rpc:call(N2, aec_peers, connected_peers, [], 5000)]),
     B1 = rpc:call(N1, aec_chain, top_block, [], 5000),
     ok = aecore_suite_utils:check_for_logs([dev2], Config),
     true = expect_block(N2, B1).
@@ -186,7 +196,8 @@ start_third_node(Config) ->
     aecore_suite_utils:start_node(Dev3, Config),
     aecore_suite_utils:connect(N3),
     aecore_suite_utils:await_aehttp(N3),
-    ct:log("Peers on dev3: ~p", [rpc:call(N3, aec_peers, all, [], 5000)]),
+    ct:log("Connected peers on dev3: ~p",
+           [rpc:call(N3, aec_peers, connected_peers, [], 5000)]),
     ok = aecore_suite_utils:check_for_logs([dev3], Config),
     true = expect_same(T0, Config).
 
@@ -211,8 +222,8 @@ start_blocked_second(Config) ->
     timer:sleep(2000),
 
     %% Check that there is only one non-blocked peer (dev3) and no connected peers
-    NonBlocked = rpc:call(N1, aec_peers, all, [], 5000),
-    Connected  = rpc:call(N1, aec_peers, get_random, [10], 5000),
+    NonBlocked = rpc:call(N1, aec_peers, get_random, [all], 5000),
+    Connected  = rpc:call(N1, aec_peers, connected_peers, [], 5000),
     ct:log("Non-blocked peers on dev1: ~p", [NonBlocked]),
     ct:log("Connected peers on dev1: ~p", [Connected]),
     [] = Connected,

@@ -349,7 +349,7 @@ groups() ->
         naming_system_broken_txs,
         miner_pub_key,
 
-        %% requested Endpoints
+        % requested Endpoints
         block_number,
 
         block_txs_count_by_height,
@@ -3976,8 +3976,8 @@ peers(_Config) ->
 
     %% ensure no peers
     lists:foreach(
-        fun(Peer) -> rpc(aec_peers, remove, [Peer]) end,
-        rpc(aec_peers, all, [])),
+        fun(Peer) -> rpc(aec_peers, del_peer, [Peer]) end,
+        rpc(aec_peers, get_random, [all])),
 
     {ok, 200, #{<<"blocked">> := [], <<"peers">> := []}} = get_peers(),
 

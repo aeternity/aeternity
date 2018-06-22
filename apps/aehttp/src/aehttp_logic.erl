@@ -246,9 +246,9 @@ peer_pubkey() ->
         {error, key_not_found} = Err -> Err
     end.
 
-all_peers() -> aec_peers:all().
+all_peers() -> aec_peers:connected_peers().
 
-blocked_peers() -> aec_peers:blocked().
+blocked_peers() -> aec_peers:blocked_peers().
 
 %% Private
 empty_fields_in_genesis() ->

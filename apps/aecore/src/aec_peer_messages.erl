@@ -33,6 +33,7 @@ serialize(ping, Ping, Vsn = ?PING_VSN) ->
            , {genesis_hash, maps:get(genesis_hash, Ping)}
            , {difficulty, serialize(double, maps:get(difficulty, Ping), ?VSN_1)}
            , {best_hash, maps:get(best_hash, Ping)}
+           , {sync_allowed, maps:get(sync_allowed, Ping)}
            , {peers, serialize(peers, maps:get(peers, Ping), ?VSN_1)} ],
     serialize_flds(ping, Vsn, Flds);
 serialize(get_header_by_hash, GetHeader, Vsn = ?GET_HEADER_BY_HASH_VSN) ->
@@ -93,7 +94,9 @@ serialize(response, Response, Vsn = ?RESPONSE_VSN) ->
               [ {result, maps:get(result, Response)}
               , {type,   maps:get(type, Response)}
               , {reason, maps:get(reason, Response, <<>>)}
-              , {object, maps:get(object, Response, <<>>)} ]).
+              , {object, maps:get(object, Response, <<>>)} ]);
+serialize(close, _, Vsn = ?CLOSE_VSN) ->
+    serialize_flds(close, Vsn, []).
 
 serialize_flds(Type, Vsn, Flds) ->
     Template = [{vsn, int} | serialization_template(Type, Vsn)],
@@ -124,7 +127,8 @@ tag(response)             -> ?MSG_P2P_RESPONSE;
 tag(txps_init)            -> ?MSG_TX_POOL_SYNC_INIT;
 tag(txps_unfold)          -> ?MSG_TX_POOL_SYNC_UNFOLD;
 tag(txps_get)             -> ?MSG_TX_POOL_SYNC_GET;
-tag(txps_finish)          -> ?MSG_TX_POOL_SYNC_FINISH.
+tag(txps_finish)          -> ?MSG_TX_POOL_SYNC_FINISH;
+tag(close)                -> ?MSG_CLOSE.
 
 rev_tag(?MSG_PING)                 -> ping;
 rev_tag(?MSG_GET_HEADER_BY_HASH)   -> get_header_by_hash;
@@ -141,7 +145,8 @@ rev_tag(?MSG_P2P_RESPONSE)         -> response;
 rev_tag(?MSG_TX_POOL_SYNC_INIT)    -> txps_init;
 rev_tag(?MSG_TX_POOL_SYNC_UNFOLD)  -> txps_unfold;
 rev_tag(?MSG_TX_POOL_SYNC_GET)     -> txps_get;
-rev_tag(?MSG_TX_POOL_SYNC_FINISH)  -> txps_finish.
+rev_tag(?MSG_TX_POOL_SYNC_FINISH)  -> txps_finish;
+rev_tag(?MSG_CLOSE)                -> close.
 
 latest_vsn(ping)                 -> ?PING_VSN;
 latest_vsn(get_header_by_hash)   -> ?GET_HEADER_BY_HASH_VSN;
@@ -158,7 +163,8 @@ latest_vsn(response)             -> ?RESPONSE_VSN;
 latest_vsn(txps_init)            -> ?TX_POOL_SYNC_INIT_VSN;
 latest_vsn(txps_unfold)          -> ?TX_POOL_SYNC_UNFOLD_VSN;
 latest_vsn(txps_get)             -> ?TX_POOL_SYNC_GET_VSN;
-latest_vsn(txps_finish)          -> ?TX_POOL_SYNC_FINISH_VSN.
+latest_vsn(txps_finish)          -> ?TX_POOL_SYNC_FINISH_VSN;
+latest_vsn(close)                -> ?CLOSE_VSN.
 
 deserialize(ping, Vsn, PingFlds) when Vsn == ?PING_VSN ->
     PingData =
@@ -167,6 +173,7 @@ deserialize(ping, Vsn, PingFlds) when Vsn == ?PING_VSN ->
         , {genesis_hash, _GenHash}
         , {difficulty, DifficultyBin}
         , {best_hash, _TopHash}
+        , {sync_allowed, _SyncAllowed}
         , {peers, PeersBin} ] = aec_serialization:decode_fields(
                                     serialization_template(ping, Vsn),
                                     PingFlds),
@@ -266,7 +273,9 @@ deserialize(response, Vsn, RspFlds) when Vsn == ?RESPONSE_VSN ->
             {response, Vsn, R#{ msg => deserialize(Type, Object) }};
         false ->
             {response, Vsn, R#{ reason => Reason }}
-    end.
+    end;
+deserialize(close, Vsn, _CloseFlds) when Vsn == ?CLOSE_VSN ->
+    {close, Vsn, #{}}.
 
 serialization_template(ping, ?PING_VSN) ->
     [ {port, int}
@@ -274,6 +283,7 @@ serialization_template(ping, ?PING_VSN) ->
     , {genesis_hash, binary}
     , {difficulty, binary}
     , {best_hash, binary}
+    , {sync_allowed, bool}
     , {peers, [binary]} ];
 serialization_template(get_header_by_hash, ?GET_HEADER_BY_HASH_VSN) ->
     [{hash, binary}];
@@ -315,7 +325,9 @@ serialization_template(response, ?RESPONSE_VSN) ->
     [ {result, bool}
     , {type, int}
     , {reason, binary}
-    , {object, binary} ].
+    , {object, binary} ];
+serialization_template(close, ?CLOSE_VSN) ->
+    [ ].
 
 %% -- Local functions  -------------------------------------------------------
 replace_keys(PropList, KeyValues) ->

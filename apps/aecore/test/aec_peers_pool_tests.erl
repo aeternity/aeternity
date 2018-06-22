@@ -15,6 +15,7 @@
 -import(aec_peers_pool, [
     new/1,
     count/3,
+    find/2,
     peer_state/2,
     is_verified/2,
     is_unverified/2,
@@ -43,6 +44,10 @@ empty_pool_test() ->
     ?assertEqual(0, count(P, available, both)),
     ?assertEqual(0, count(P, available, verified)),
     ?assertEqual(0, count(P, available, unverified)),
+    ?assertEqual(0, count(P, standby, both)),
+    ?assertEqual(0, count(P, standby, verified)),
+    ?assertEqual(0, count(P, standby, unverified)),
+    ?assertEqual(error, find(P, A)),
     ?assertEqual(undefined, is_verified(P, A)),
     ?assertEqual(undefined, is_unverified(P, A)),
     ?assertEqual(undefined, is_available(P, A)),
@@ -81,6 +86,10 @@ add_single_normal_test() ->
     ?assertEqual(1, count(P2, available, both)),
     ?assertEqual(0, count(P2, available, verified)),
     ?assertEqual(1, count(P2, available, unverified)),
+    ?assertEqual(0, count(P2, standby, both)),
+    ?assertEqual(0, count(P2, standby, verified)),
+    ?assertEqual(0, count(P2, standby, unverified)),
+    ?assertEqual({ok, bar}, find(P2, Id1)),
     ?assertEqual(false, is_verified(P2, Id1)),
     ?assertEqual(true, is_unverified(P2, Id1)),
     ?assertMatch({[{Id1, bar}], _}, random_subset(P2, all, undefined)),
@@ -127,6 +136,9 @@ add_single_trusted_test() ->
     ?assertEqual(1, count(P2, available, both)),
     ?assertEqual(1, count(P2, available, verified)),
     ?assertEqual(0, count(P2, available, unverified)),
+    ?assertEqual(0, count(P2, standby, both)),
+    ?assertEqual(0, count(P2, standby, verified)),
+    ?assertEqual(0, count(P2, standby, unverified)),
     ?assertEqual(true, is_verified(P2, Id1)),
     ?assertEqual(false, is_unverified(P2, Id1)),
     ?assertMatch({[{Id1, foo}], _}, random_subset(P2, all, undefined)),
@@ -537,8 +549,15 @@ peer_rejection_test() ->
 
     Now5 = Now4 + 1000,
 
+    ?assertEqual(0, count(Pool8, standby, both)),
+    ?assertEqual(0, count(Pool8, standby, verified)),
+    ?assertEqual(0, count(Pool8, standby, unverified)),
+
     Pool9 = reject(Pool8, Now5, S1),
     ?assertEqual(false, is_available(Pool9, S1)),
+    ?assertEqual(1, count(Pool9, standby, both)),
+    ?assertEqual(1, count(Pool9, standby, verified)),
+    ?assertEqual(0, count(Pool9, standby, unverified)),
 
     {wait, 5000, Pool10} = random_select(Pool9, Now5, both, undefined),
     {wait, 5000, Pool11} = random_select(Pool10, Now5, verified, undefined),
@@ -548,6 +567,9 @@ peer_rejection_test() ->
 
     Pool13 = reject(Pool12, Now6, S2),
     ?assertEqual(false, is_available(Pool13, S2)),
+    ?assertEqual(2, count(Pool13, standby, both)),
+    ?assertEqual(1, count(Pool13, standby, verified)),
+    ?assertEqual(1, count(Pool13, standby, unverified)),
 
     {wait, 4000, Pool14} = random_select(Pool13, Now6, both, undefined),
     {wait, 4000, Pool15} = random_select(Pool14, Now6, verified, undefined),
@@ -557,6 +579,9 @@ peer_rejection_test() ->
 
     Pool17 = reject(Pool16, Now7, S3),
     ?assertEqual(false, is_available(Pool17, S3)),
+    ?assertEqual(3, count(Pool17, standby, both)),
+    ?assertEqual(1, count(Pool17, standby, verified)),
+    ?assertEqual(2, count(Pool17, standby, unverified)),
 
     {wait, 2000, Pool18} = random_select(Pool17, Now7, both, undefined),
     {wait, 2000, Pool19} = random_select(Pool18, Now7, verified, undefined),
@@ -574,6 +599,10 @@ peer_rejection_test() ->
     {selected, {S1, _}, _} = random_select(Pool23, Now9, verified, undefined),
     {wait, 1000, Pool25} = random_select(Pool24, Now9, unverified, undefined),
 
+    ?assertEqual(2, count(Pool25, standby, both)),
+    ?assertEqual(0, count(Pool25, standby, verified)),
+    ?assertEqual(2, count(Pool25, standby, unverified)),
+
     Now10 = Now9 + 1000,
 
     {selected, {S2, _}, Pool26} = random_select(Pool25, Now10, both, undefined),
@@ -583,6 +612,10 @@ peer_rejection_test() ->
     {wait, 2000, Pool27} = random_select(Pool26, Now10, both, undefined),
     {unavailable, Pool28} = random_select(Pool27, Now10, verified, undefined),
     {wait, 2000, Pool29} = random_select(Pool28, Now10, unverified, undefined),
+
+    ?assertEqual(1, count(Pool29, standby, both)),
+    ?assertEqual(0, count(Pool29, standby, verified)),
+    ?assertEqual(1, count(Pool29, standby, unverified)),
 
     Now11 = Now10 + 2000,
 
@@ -594,6 +627,10 @@ peer_rejection_test() ->
     {unavailable, _} = random_select(Pool30, Now11, both, undefined),
     {unavailable, _} = random_select(Pool30, Now11, verified, undefined),
     {unavailable, _} = random_select(Pool30, Now11, unverified, undefined),
+
+    ?assertEqual(0, count(Pool30, standby, both)),
+    ?assertEqual(0, count(Pool30, standby, verified)),
+    ?assertEqual(0, count(Pool30, standby, unverified)),
     ok.
 
 %% Tests peer downgrading behavior.

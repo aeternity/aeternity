@@ -91,6 +91,7 @@
 -export([address_group/1]).
 -export([new/1]).
 -export([count/3]).
+-export([find/2]).
 -export([peer_state/2]).
 -export([is_verified/2]).
 -export([is_unverified/2]).
@@ -122,12 +123,6 @@
 %% must be a multiple of ?LOOKUP_START_SIZE.
 -define(MAX_LOOKUP_SIZE_INC, ?LOOKUP_START_SIZE * 16).
 
-%% Backoff lookup table for standby duration in seconds.
--define(BACKOFF_TIMES, [5, 15, 30, 60, 120, 300, 600]).
-%% Maximum number of times a peer can get rejected;
-%% when reached, the peer is downgraded/removed (if not trusted).
--define(MAX_REJECTIONS, 7).
-
 %% The default number of buckets in the verified pool.
 -define(DEFAULT_VERIF_BUCKET_COUNT,      256).
 %% The default number of peers in each verified pool buckets.
@@ -154,6 +149,12 @@
 -define(DEFAULT_SELECT_VERIFIED_PROB,    0.5).
 %% The default time without a peer being updated after which it get removed.
 -define(DEFAULT_MAX_UPDATE_LAPSE,         30 * 24 * 50 * 60 * 1000). % 30 days
+%% The default backoff lookup table for standby duration in milliseconds.
+-define(DEFAULT_STANDBY_TIMES,
+        [5000, 15000, 30000, 60000, 120000, 300000, 600000]).
+%% The default maximum number of times a peer can get rejected;
+%% when reached, the peer is downgraded/removed (if not trusted).
+-define(DEFAULT_MAX_REJECTIONS, 7).
 
 
 %=== TYPES =====================================================================
@@ -244,7 +245,11 @@
     unver_group_shard      :: pos_integer(),
     % If a strong random number should be used as an offset of weak ransdom
     % number for random_select/4 and random_subset/3.
-    use_rand_offset        :: boolean()
+    use_rand_offset        :: boolean(),
+    % The lookupt table for standby time.
+    standby_times          :: [non_neg_integer()],
+    % The maximum time a peer can be rejected.
+    max_rejections         :: pos_integer()
 }).
 
 -type state() :: #aec_peers_pool{}.
@@ -262,7 +267,7 @@
 -type bucket(Type) :: [Type].
 -type buckets(Type) :: array:array(bucket(Type)).
 -type select_target() :: verified | unverified | both.
--type ext_filter_fun() :: fun((peer_id(), extra()) -> boolean()).
+-type filter_fun() :: fun((peer_id(), extra()) -> boolean()).
 -type int_filter_fun() :: fun((peer_id()) -> boolean()).
 -type bucket_filter_fun() :: fun((peer_id()) -> keep | remove | evict).
 -type bucket_sort_key_fun() :: fun((peer_id()) -> term()).
@@ -283,7 +288,11 @@
                 | {max_update_lapse, pos_integer()}
                 | {secret, binary()}
                 | {seed, {integer(), integer(), integer()}}
-                | {disable_strong_random, boolean()}.
+                | {disable_strong_random, boolean()}
+                | {standby_times, [non_neg_integer()]}
+                | {max_rejections, pos_integer()}.
+
+-export_type([filter_fun/0, state/0]).
 
 %=== API FUNCTIONS =============================================================
 
@@ -327,6 +336,14 @@ address_group({A, B, _, _}) -> <<A:8, B:8>>.
 %%  <li>`disable_strong_random': If `true' no strong random number will be used
 %%    as offset for {@link random_subset/3} and {@link random_select/4};
 %%    this ensure reproducibility if a specific seed was provided.</li>
+%%  <li>`standby_times': The lookup table to use to know the time in seconds
+%%    a peer should be put on standby when rejected; if rejected more than
+%%    the size of the given list due to `max_rejections' being larger than
+%%    the list, the last value of the list is used multiple times.
+%%    Default: `[5, 15, 30, 60, 120, 300, 600]'.</li>
+%%  <li>`max_rejections': The maximum number of time a peer can be rejected
+%%    before it is downgraded from the verified pool or removed from
+%%    the unverified pool. Default: `7'.</li>
 %% </ul>
 -spec new(options()) -> state().
 new(Opts) ->
@@ -344,19 +361,24 @@ new(Opts) ->
     SelectProb = get_opt(select_verif_prob, Opts, ?DEFAULT_SELECT_VERIFIED_PROB),
     MaxLapse = get_opt(max_update_lapse, Opts, ?DEFAULT_MAX_UPDATE_LAPSE),
     DisableStrongRandom = get_opt(disable_strong_random, Opts, false),
-    if (VBCount =< 0) -> erlang:error(badarg);
-       (VBSize =< 0) -> erlang:error(badarg);
-       (VGroupShard =< 0) -> erlang:error(badarg);
-       (UBCount =< 0) -> erlang:error(badarg);
-       (UBSize =< 0) -> erlang:error(badarg);
-       (USourceShard =< 0) -> erlang:error(badarg);
-       (UGroupShard =< 0) -> erlang:error(badarg);
-       (USourceShard rem UGroupShard) > 0 -> erlang:error(badarg);
-       (UMaxRef < 1) -> erlang:error(badarg);
-       (SelectProb < 0) or (SelectProb > 1) -> erlang:error(badarg);
-       (MaxLapse =< 0) -> erlang:error(badarg);
-       true -> ok
-    end,
+    StandbyTimes = get_opt(standby_times, Opts, ?DEFAULT_STANDBY_TIMES),
+    MaxRejections = get_opt(max_rejections, Opts, ?DEFAULT_MAX_REJECTIONS),
+
+    ?assert(VBCount > 0),
+    ?assert(VBSize > 0),
+    ?assert(VGroupShard > 0),
+    ?assert(UBCount > 0),
+    ?assert(UBSize > 0),
+    ?assert(USourceShard > 0),
+    ?assert(UGroupShard > 0),
+    ?assert((USourceShard rem UGroupShard) =:= 0),
+    ?assert(UMaxRef > 0),
+    ?assert(SelectProb >= 0),
+    ?assert(MaxLapse > 0),
+    ?assert(is_list(StandbyTimes)),
+    ?assert(length(StandbyTimes) > 0),
+    ?assert(MaxRejections > 0),
+
     RSt = rand:seed_s(?RAND_ALGO, Seed),
     #?ST{
         secret = Secret,
@@ -373,7 +395,9 @@ new(Opts) ->
         verif_group_shard = VGroupShard,
         unver_group_shard = UGroupShard,
         unver_source_shard = USourceShard div UGroupShard,
-        use_rand_offset = not DisableStrongRandom
+        use_rand_offset = not DisableStrongRandom,
+        standby_times = StandbyTimes,
+        max_rejections = MaxRejections
     }.
 
 %% @doc Counts the pooled peers given discriminators.
@@ -388,6 +412,12 @@ new(Opts) ->
 %%    peers.</li>
 %%  <li>`available' + `unverified': Returns the number of selectable unverified
 %%    peers.</li>
+%%  <li>`standby' + `both': Returns the number of peers currently on standby
+%%    due to being rejected.</li>
+%%  <li>`standby' + `verified': Returns the number of verified peers
+%%    currently on standby due to being rejected.</li>
+%%  <li>`standby' + `unverified': Returns the number of unverified peers
+%%    currently on standby due to being rejected.</li>
 %% </ul>
 %%
 %% Note that the result of `available' peers do not take into account any
@@ -395,7 +425,8 @@ new(Opts) ->
 %%
 %% In addition, peers currently in standby that may have exhausted there standby
 %% time will <b>not</b> be counted.
--spec count(state(), all | available, select_target()) -> non_neg_integer().
+-spec count(state(), all | available | standby, select_target())
+    -> non_neg_integer().
 count(St, all, both) ->
     #?ST{verif_pool = VerifPool, unver_pool = UnverPool} = St,
     pool_size(VerifPool) + pool_size(UnverPool);
@@ -413,7 +444,24 @@ count(St, available, verified) ->
     lookup_size(VerifLookup);
 count(St, available, unverified) ->
     #?ST{lookup_unver = UnverLookup} = St,
-    lookup_size(UnverLookup).
+    lookup_size(UnverLookup);
+count(St, standby, both) ->
+    #?ST{standby = Standby} = St,
+    maps:size(Standby);
+count(St, standby, verified) ->
+    #?ST{standby = Standby} = St,
+    length([I || I <- maps:keys(Standby), is_verified(St, I)]);
+count(St, standby, unverified) ->
+    #?ST{standby = Standby} = St,
+    length([I || I <- maps:keys(Standby), is_unverified(St, I)]).
+
+%% @doc Returns the extra data for given peer identifier.
+-spec find(state(), peer_id()) -> {ok, extra()} | error.
+find(St, PeerId) ->
+    case find_peer(St, PeerId) of
+        #peer{extra = Extra} -> {ok, Extra};
+        undefined -> error
+    end.
 
 %% @doc Returns where a peer identifier is pooled and if it is available.
 -spec peer_state(state(), peer_id())
@@ -522,7 +570,7 @@ verify(St, Now, PeerId) ->
 %% the <b>first</b> time it was added by {@link update/7}.
 %%
 %% A filtering function can be specified to limit the possible results.
--spec random_subset(state(), all | pos_integer(), ext_filter_fun() | undefined)
+-spec random_subset(state(), all | pos_integer(), filter_fun() | undefined)
     -> {[ext_peer()], state()}.
 random_subset(St, Size, ExtFilterFun) ->
     #?ST{rand = RState, use_rand_offset = ROffset, lookup_all = Lookup} = St,
@@ -564,7 +612,7 @@ random_subset(St, Size, ExtFilterFun) ->
 %% {@link release/3} or marked as rejected with {@link reject/3} and the standby
 %% time is exausted.
 -spec random_select(state(), millitimestamp(), select_target(),
-             ext_filter_fun() | undefined)
+             filter_fun() | undefined)
     -> {selected, ext_peer(), state()}
      | {wait, milliseconds(), state()}
      | {unavailable, state()}.
@@ -661,10 +709,10 @@ safe_min(undefined, Value) -> Value;
 safe_min(Value1, Value2) -> min(Value1, Value2).
 
 %% Returns the time in miliseconds a peer should stay in standby when rejected.
--spec rejection_delay(pos_integer()) -> pos_integer().
-rejection_delay(RejectionCount) ->
-    BackoffIndex = min(RejectionCount, length(?BACKOFF_TIMES)),
-    lists:nth(BackoffIndex, ?BACKOFF_TIMES) * 1000.
+-spec rejection_delay([non_neg_integer()], pos_integer()) -> pos_integer().
+rejection_delay(BackoffTable, RejectionCount) ->
+    BackoffIndex = min(RejectionCount, length(BackoffTable)),
+    lists:nth(BackoffIndex, BackoffTable).
 
 %% Tells if we can add another reference to a pool.
 -spec should_add_ref(rand_state(), pos_integer()) -> {boolean(), rand_state()}.
@@ -777,7 +825,7 @@ select_order(St, both) ->
 
 %% Selects a peer from the pools in given order using given restrictions.
 -spec select_peer(state(), millitimestamp(), select_target(),
-                  ext_filter_fun() | undefined)
+                  filter_fun() | undefined)
     -> {unavailable, state()}
      | {selected, peer_id(), state()}
      | {wait, milliseconds(), state()}.
@@ -812,15 +860,17 @@ select_available_peer(St, Now, [Selector | Rest], FilterFun) ->
                           int_filter_fun() | undefined)
     -> {unavailable, state()} | {wait, milliseconds(), state()}.
 select_standby_peer(St, Now, Target, FilterFun) ->
-    #?ST{peers = Peers, standby = Standby} = St,
+    #?ST{peers = Peers, standby = Standby, standby_times = StandbyTimes} = St,
     MinExpiration = maps:fold(fun(PeerId, _, Min) ->
         #{PeerId := Peer} = Peers,
         PeerState = peer_state(Peer),
         ?assertNotEqual(undefined, PeerState),
         IsAccepted = (FilterFun =:= undefined) orelse FilterFun(PeerId),
         case IsAccepted and ((Target =:= both) or (PeerState =:= Target)) of
-            true -> safe_min(Min, peer_standby_recovery_time(Peer));
-            false -> Min
+            false -> Min;
+            true ->
+                StandbyTime = peer_standby_recovery_time(Peer, StandbyTimes),
+                safe_min(Min, StandbyTime)
         end
     end, undefined, Standby),
     case MinExpiration of
@@ -841,30 +891,38 @@ make_selected(St, Now, PeerId) ->
 %% Rejects a selected peer.
 -spec reject_peer(state(), millitimestamp(), peer_id()) -> state().
 reject_peer(St, Now, PeerId) ->
-    St2 = make_unavailable(St, PeerId),
-    Peer = get_peer(St2, PeerId),
-    ?assertEqual(true, Peer#peer.selected),
-    Peer2 = peer_reject(Peer, Now),
-    Peer3 = peer_deselect(Peer2, Now),
-    St3 = set_peer(St2, PeerId, Peer3),
-    case {peer_has_expired(Peer3), peer_state(Peer3)} of
-        {true, unverified} ->
-            del_peer(St3, PeerId);
-        {true, verified} ->
-            verified_downgrade(St3, Now, PeerId);
-        {false, _} ->
-            standby_add(St3, PeerId)
+    case find_peer(St, PeerId) of
+        #peer{selected = true} = Peer ->
+            #?ST{max_rejections = MaxRejections} = St,
+            St2 = make_unavailable(St, PeerId),
+            Peer = get_peer(St2, PeerId),
+            Peer2 = peer_reject(Peer, Now),
+            Peer3 = peer_deselect(Peer2, Now),
+            St3 = set_peer(St2, PeerId, Peer3),
+            case {peer_has_expired(Peer3, MaxRejections), peer_state(Peer3)} of
+                {true, unverified} ->
+                    del_peer(St3, PeerId);
+                {true, verified} ->
+                    verified_downgrade(St3, Now, PeerId);
+                {false, _} ->
+                    standby_add(St3, PeerId)
+            end;
+        _ ->
+            St
     end.
 
 %% Releases a selected peer.
 -spec release_peer(state(), millitimestamp(), peer_id()) -> state().
 release_peer(St, Now, PeerId) ->
-    Peer = get_peer(St, PeerId),
-    ?assertEqual(true, Peer#peer.selected),
-    Peer2 = peer_reset(Peer, Now),
-    Peer3 = peer_deselect(Peer2, Now),
-    St2 = set_peer(St, PeerId, Peer3),
-    make_available(St2, PeerId).
+    case find_peer(St, PeerId) of
+        #peer{selected = true} = Peer ->
+            Peer2 = peer_reset(Peer, Now),
+            Peer3 = peer_deselect(Peer2, Now),
+            St2 = set_peer(St, PeerId, Peer3),
+            make_available(St2, PeerId);
+        _ ->
+            St
+    end.
 
 %% Puts a peer on standby.
 -spec standby_add(state(), peer_id()) -> state().
@@ -884,10 +942,10 @@ standby_del(St, PeerId) ->
 %% there standby time.
 -spec standby_refresh(state(), millitimestamp()) -> state().
 standby_refresh(St0, Now) ->
-    #?ST{standby = Standby} = St0,
+    #?ST{standby = Standby, standby_times = StandbyTimes} = St0,
     lists:foldl(fun(PeerId, St) ->
         Peer = get_peer(St, PeerId),
-        case peer_is_in_standby(Peer, Now) of
+        case peer_is_in_standby(Peer, StandbyTimes, Now) of
             true -> St;
             false ->
                 St2 = set_peer(St, PeerId, Peer),
@@ -970,7 +1028,7 @@ export_result(St, PeerId) ->
 
 %% Wraps a filtering function to only require the peer identifier.
 %% The result should not be used if the list of peers is mutated.
--spec wrap_filter_fun(state(), ext_filter_fun() | undefined)
+-spec wrap_filter_fun(state(), filter_fun() | undefined)
     -> int_filter_fun() | undefined.
 wrap_filter_fun(_St, undefined) -> undefined;
 wrap_filter_fun(St, FilterFun) ->
@@ -1400,21 +1458,23 @@ peer_deselect(Peer, _Now) ->
     Peer#peer{selected = false}.
 
 %% Gives the time at which the peer should get out of standby
--spec peer_standby_recovery_time(peer()) -> millitimestamp().
-peer_standby_recovery_time(Peer) ->
+-spec peer_standby_recovery_time(peer(), [non_neg_integer()])
+    -> millitimestamp().
+peer_standby_recovery_time(Peer, BackoffTable) ->
     #peer{rejected = RejectCount, reject_time = RejectTime} = Peer,
-    RejectTime + rejection_delay(RejectCount).
+    RejectTime + rejection_delay(BackoffTable, RejectCount).
 
 %% Returns if a peer is currently in standby.
--spec peer_is_in_standby(peer(), millitimestamp()) -> boolean().
-peer_is_in_standby(Peer, Now) ->
-    Now < peer_standby_recovery_time(Peer).
+-spec peer_is_in_standby(peer(), [non_neg_integer()], millitimestamp())
+    -> boolean().
+peer_is_in_standby(Peer, BackoffTable, Now) ->
+    Now < peer_standby_recovery_time(Peer, BackoffTable).
 
 %% Returns if the given peer reached its rejection limit.
--spec peer_has_expired(peer()) -> boolean().
-peer_has_expired(#peer{trusted = true}) -> false;
-peer_has_expired(#peer{rejected = Rejections}) ->
-    Rejections > ?MAX_REJECTIONS.
+-spec peer_has_expired(peer(), pos_integer()) -> boolean().
+peer_has_expired(#peer{trusted = true}, _MaxRejections) -> false;
+peer_has_expired(#peer{rejected = Rejections}, MaxRejections) ->
+    Rejections > MaxRejections.
 
 %% Adds a peer to a lookup table, handling other peers being moved.
 -spec peers_lookup_add(peer_map(), rand_state(), peer_id(),

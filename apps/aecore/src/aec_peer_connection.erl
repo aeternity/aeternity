@@ -15,12 +15,12 @@
 
 %% Functions for outgoing connections
 -export([ connect/1
+        , disconnect/1
         , connect_start_link/2 % for aec_peer_connection_sup
         ]).
 
 %% API functions
--export([ retry/1
-        , get_generation/2
+-export([ get_generation/2
         , get_generation/3
         , get_header_by_hash/2
         , get_header_by_height/3
@@ -49,6 +49,7 @@
 -define(DEFAULT_CONNECT_TIMEOUT, 1000).
 -define(DEFAULT_FIRST_PING_TIMEOUT, 30000).
 -define(DEFAULT_NOISE_HS_TIMEOUT, 5000).
+-define(DEFAULT_CLOSE_TIMEOUT, 3000).
 -define(REQUEST_TIMEOUT, 5000).
 
 %% gen_server callbacks
@@ -68,11 +69,12 @@ connect(#{} = Options) ->
     aec_peer_connection_sup:start_peer_connection(Options).
 
 connect_start_link(Port, Opts) ->
-    Opts1 = Opts#{ext_sync_port => Port},
+    Opts1 = Opts#{ ext_sync_port => Port },
     gen_server:start_link(?MODULE, [Opts1], []).
 
-retry(PeerCon) ->
-    gen_server:cast(PeerCon, retry).
+%% Asynchronously close the connection, optionally notifying aec_peers.
+disconnect(PeerId) ->
+    cast(PeerId, disconnect).
 
 ping(PeerId) ->
     call(PeerId, {ping, []}).
@@ -133,12 +135,8 @@ cast(PeerId, Cast) when is_binary(PeerId) ->
 
 cast_or_call(PeerId, Action, CastOrCall) ->
     case aec_peers:get_connection(PeerId) of
-        {ok, PeerCon} ->
-            case PeerCon of
-                {connected, Pid} when Action == call -> call(Pid, CastOrCall);
-                {connected, Pid} when Action == cast -> cast(Pid, CastOrCall);
-                _ -> {error, no_connection}
-            end;
+        {ok, PeerCon} when Action == call -> call(PeerCon, CastOrCall);
+        {ok, PeerCon} when Action == cast -> cast(PeerCon, CastOrCall);
         Err = {error, _} ->
             Err
     end.
@@ -152,8 +150,11 @@ accept_init(Ref, TcpSock, ranch_tcp, Opts) ->
     Genesis = aec_chain:genesis_hash(),
     HSTimeout = noise_hs_timeout(),
     {ok, {Host, _Port}} = inet:peername(TcpSock),
+    {ok, Addr} = inet:getaddr(Host, inet),
     S0 = Opts#{ tcp_sock => TcpSock
               , role => responder
+              , kind => permanent
+              , address => Addr
               , host => list_to_binary(inet:ntoa(Host))
               , version => Version
               , genesis => Genesis },
@@ -201,6 +202,7 @@ init([Opts]) ->
     Version = <<?P2P_PROTOCOL_VSN:64>>,
     Genesis = aec_chain:genesis_hash(),
     Opts1 = Opts#{ role => initiator
+                 , kind => permanent
                  , version => Version
                  , genesis => Genesis},
     {ok, Opts1, 0}.
@@ -208,11 +210,6 @@ init([Opts]) ->
 handle_call(Request, From, State) ->
     handle_request(State, Request, From).
 
-handle_cast(retry, S = #{ host := Host, port := Port, status := error }) ->
-    Self = self(),
-    ConnTimeout = connect_timeout(),
-    Pid = spawn(fun() -> try_connect(Self, Host, Port, ConnTimeout) end),
-    {noreply, S#{ status => {connecting, Pid} }};
 handle_cast({send_tx, Hash}, State) ->
     send_send_tx(State, Hash),
     {noreply, State};
@@ -222,6 +219,14 @@ handle_cast({send_block, Hash}, State) ->
 handle_cast(stop, State) ->
     State1 = cleanup_connection(State),
     {stop, normal, State1};
+handle_cast(disconnect, #{ status := {connecting, _} } = S) ->
+    epoch_sync:debug("Disconnect received, aborting connection"),
+    {stop, normal, S};
+handle_cast(disconnect, #{ status := {connected, _} } = S) ->
+    epoch_sync:debug("Disconnect received, closing connection"),
+    {noreply, close(S)};
+handle_cast(disconnect, #{ status := {disconnecting, _} } = S) ->
+    {noreply, S};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -246,7 +251,11 @@ handle_info({timeout, Ref, first_ping_timeout}, S) ->
             epoch_sync:debug("Got stale first_ping_timeout", []),
             {noreply, S}
     end;
-handle_info({connected, Pid, Err = {error, _}}, S = #{ status := {connecting, Pid}}) ->
+handle_info({timeout, _Ref, close_timeout}, #{ status := {disconnecting, ESock} } = S) ->
+    epoch_sync:debug("Force close connection to ~p", [maps:get(host, S)]),
+    enoise:close(ESock),
+    {stop, normal, S};
+handle_info({connected, Pid, Err = {error, _}}, S = #{ status := {connecting, Pid} }) ->
     epoch_sync:debug("Failed to connected to ~p: ~p", [{maps:get(host, S), maps:get(port, S)}, Err]),
     connect_fail(S);
 handle_info({connected, Pid, {ok, TcpSock}}, S0 = #{ status := {connecting, Pid} }) ->
@@ -265,6 +274,8 @@ handle_info({connected, Pid, {ok, TcpSock}}, S0 = #{ status := {connecting, Pid}
     %% Keep the socket passive until here to avoid premature message
     %% receiving...
     inet:setopts(TcpSock, [{active, true}, {send_timeout, 1000}, {send_timeout_close, true}]),
+    {ok, {Host, _Port}} = inet:peername(TcpSock),
+    {ok, Addr} = inet:getaddr(Host, inet),
     case enoise:connect(TcpSock, NoiseOpts) of
         {ok, ESock, _} ->
             garbage_collect(),
@@ -272,11 +283,12 @@ handle_info({connected, Pid, {ok, TcpSock}}, S0 = #{ status := {connecting, Pid}
             %% ======  Exit critical section with Private keys in memory. ======
 
             epoch_sync:debug("Peer connected to ~p", [{maps:get(host, S), maps:get(port, S)}]),
-            case aec_peers:connect_peer(peer_id(S), self()) of
+            case aec_peers:peer_connected(peer_id(S), self()) of
                 ok ->
-                    {noreply, S#{ status => {connected, ESock} }};
-                {error, _} ->
-                    epoch_sync:debug("Dropping unnecessary connection to ~p", [maps:get(host, S)]),
+                    {noreply, S#{ status => {connected, ESock}, address => Addr}};
+                {error, Reason} ->
+                    epoch_sync:debug("Dropping unnecessary connection to ~p (~p)",
+                                     [maps:get(host, S), Reason]),
                     enoise:close(ESock),
                     {stop, normal, S}
             end;
@@ -301,6 +313,17 @@ handle_info({noise, _, <<Type:16, Payload/binary>>}, S) ->
             {noreply, handle_msg(S, MsgType, true, {error, Reason})};
         {response, _Vsn, #{ result := true, type := MsgType, msg := {MsgType, Vsn, Msg} }} ->
             {noreply, handle_msg(S, MsgType, true, {ok, Vsn, Msg})};
+        {close, _Vsn, _Msg} ->
+            case S of
+                #{ status := {disconnecting, _} } ->
+                    {stop, normal, S};
+                #{ status := {connected, ESock} } ->
+                    aec_peers:connection_closed(peer_id(S), self()),
+                    epoch_sync:debug("Connection closed by the other side ~p",
+                                     [maps:get(host, S)]),
+                    enoise:close(ESock),
+                    {stop, normal, S}
+            end;
         {MsgType, Vsn, Msg} ->
             {noreply, handle_msg(S, MsgType, false, {ok, Vsn, Msg})};
         Err = {error, _} ->
@@ -310,6 +333,8 @@ handle_info({noise, _, <<Type:16, Payload/binary>>}, S) ->
 handle_info({enoise_error, _, Reason}, S) ->
     epoch_sync:debug("Peer connection got enoise_error: ~p", [Reason]),
     handle_general_error(S);
+handle_info({tcp_closed, _}, #{ status := {disconnecting, _} } = S) ->
+    {stop, normal, S};
 handle_info({tcp_closed, _}, S) ->
     epoch_sync:debug("Peer connection got tcp_closed", []),
     handle_general_error(S);
@@ -327,6 +352,23 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% -- Local functions --------------------------------------------------------
+
+maybe_close(#{ kind := temporary, status := {connected, _} } = S) ->
+    epoch_sync:debug("Closing temporary connection"),
+    notify_close(S);
+maybe_close(S) ->
+    S.
+
+notify_close(S) ->
+    aec_peers:connection_closed(peer_id(S), self()),
+    close(S).
+
+close(#{ status := {connected, ESock} } = S) ->
+    send_msg(S, close, aec_peer_messages:serialize(close, #{})),
+    CloseTimeout = close_timeout(),
+    erlang:start_timer(CloseTimeout, self(), close_timeout),
+    S#{ status := {disconnecting, ESock} }.
+
 handle_general_error(S) ->
     S1 = cleanup_connection(S),
     case is_non_registered_accept(S) of
@@ -408,8 +450,9 @@ is_non_registered_accept(State) ->
 
 cleanup_connection(State) ->
     case maps:get(status, State, error) of
-        {connected, ESock} -> enoise:close(ESock);
-        _                  -> ok
+        {connected, ESock}     -> enoise:close(ESock);
+        {disconnecting, ESock} -> enoise:close(ESock);
+        _                      -> ok
     end,
     case maps:get(gen_tcp, State, undefined) of
         TSock when is_port(TSock) -> gen_tcp:close(TSock);
@@ -427,12 +470,8 @@ cleanup_requests(State) ->
 
 connect_fail(S0) ->
     S = cleanup_requests(S0),
-    case aec_peers:connect_fail(peer_id(S), self()) of
-        keep ->
-            {noreply, S#{ status := error }};
-        close ->
-            {stop, normal, S}
-    end.
+    aec_peers:connection_failed(peer_id(S), self()),
+    {stop, normal, S}.
 
 handle_fragment(S, 1, _M, Fragment) ->
     {noreply, S#{ fragments => [Fragment] }};
@@ -551,7 +590,7 @@ handle_ping(S, none, RemotePingObj) ->
                 {error, Reason}
         end,
     send_response(S, ping, Response),
-    S1;
+    maybe_close(S1);
 handle_ping(S, {ping, _From, _TRef}, RemotePingObj) ->
     epoch_sync:info("Peer ~p got new ping when waiting for PING_RSP - ~p",
                     [peer_id(S), RemotePingObj]),
@@ -563,9 +602,11 @@ handle_first_ping(S, RemotePingObj) ->
         true ->
             %% This is the first ping, now we have everything - accept the peer
             #{port := Port} = RemotePingObj,
-            Peer = #{ host => maps:get(host, S), port => Port,
-                      pubkey => maps:get(r_pubkey, S), connection => self(),
-                      ping => false, trusted => false },
+            PeerInfo = #{
+                host => maps:get(host, S),
+                port => Port,
+                pubkey => maps:get(r_pubkey, S)
+            },
 
             %% Cancel the first ping_timeout
             case maps:get(first_ping_tref, S, undefined) of
@@ -575,12 +616,12 @@ handle_first_ping(S, RemotePingObj) ->
             end,
 
             NewS = maps:remove(first_ping_tref, S#{ port => Port }),
-            case aec_peers:accept_peer(Peer, self()) of
-                ok ->
-                    {ok, NewS};
-                Err = {error, _} ->
+            case aec_peers:peer_accepted(PeerInfo, self()) of
+                {error, _} = Error ->
                     gen_server:cast(self(), stop),
-                    {Err, NewS}
+                    {Error, NewS};
+                ConnKind when ConnKind =:= temporary; ConnKind =:= permanent ->
+                    {ok, NewS#{ kind := ConnKind }}
             end;
         false ->
             {ok, S}
@@ -589,10 +630,13 @@ handle_first_ping(S, RemotePingObj) ->
 handle_ping_msg(S, RemotePingObj) ->
     #{ genesis_hash := LGHash,
        best_hash    := LTHash,
+       sync_allowed := LSyncAllowed,
        difficulty   := LDiff } = local_ping_obj(S),
+    #{ address := SourceAddr } = S,
     PeerId = peer_id(S),
     case decode_remote_ping(RemotePingObj) of
-        {ok, RGHash, RTHash, RDiff, RPeers} when RGHash == LGHash ->
+        {ok, true, RGHash, RTHash, RDiff, RPeers}
+          when RGHash == LGHash, LSyncAllowed =:= true ->
             case {{LTHash, LDiff}, {RTHash, RDiff}} of
                 {{T, _}, {T, _}} ->
                     epoch_sync:debug("Same top blocks", []),
@@ -606,10 +650,14 @@ handle_ping_msg(S, RemotePingObj) ->
                 {{_, _}, {_, DR}} ->
                     aec_sync:start_sync(PeerId, RTHash, DR)
             end,
-            ok = aec_peers:add_and_ping_peers(RPeers),
+            ok = aec_peers:add_peers(SourceAddr, RPeers),
             aec_tx_pool_sync:connect(PeerId, self()),
             ok;
-        {ok, _RGHash, _RTHash, _RDiff, _RPeers} ->
+        {ok, _SyncAllowed, RGHash, _RTHash, _RDiff, RPeers}
+          when RGHash == LGHash ->
+            epoch_sync:debug("Temporary connection, not synchronizing", []),
+            ok = aec_peers:add_peers(SourceAddr, RPeers);
+        {ok, _SyncAllowed, _RGHash, _RTHash, _RDiff, _RPeers} ->
             {error, wrong_genesis_hash};
         {error, Reason} ->
             {error, Reason}
@@ -618,14 +666,15 @@ handle_ping_msg(S, RemotePingObj) ->
 decode_remote_ping(#{ genesis_hash := GHash,
                       best_hash    := THash,
                       peers        := Peers,
-                      difficulty   := Difficulty }) ->
-    {ok, GHash, THash, Difficulty, Peers};
+                      difficulty   := Difficulty,
+                      sync_allowed := SyncAllowed}) ->
+    {ok, SyncAllowed, GHash, THash, Difficulty, Peers};
 decode_remote_ping(_) ->
     {error, bad_ping_message}.
 
 %% Encode hashes and get peers for PingObj
 ping_obj(PingObj, Exclude) ->
-    #{share := Share} = PingObj,
+    #{ share := Share } = PingObj,
     Peers = aec_peers:get_random(Share, Exclude),
     PingObj#{peers => Peers}.
 
@@ -634,18 +683,19 @@ ping_obj_rsp(S, RemotePingObj) ->
     #{ share := Share, peers := TheirPeers } = RemotePingObj,
     LocalPingObj = local_ping_obj(S),
     ping_obj(LocalPingObj#{ share => Share },
-             [PeerId | [aec_peers:peer_id(P) || P <- TheirPeers]]).
+             [ PeerId | [aec_peers:peer_id(P) || P <- TheirPeers] ]).
 
-local_ping_obj(#{ext_sync_port := Port}) ->
+local_ping_obj(#{ kind := ConnKind, ext_sync_port := Port }) ->
     GHash = aec_chain:genesis_hash(),
     TopHash = aec_chain:top_key_block_hash(),
     {ok, Difficulty} = aec_chain:difficulty_at_top_block(),
-    #{genesis_hash => GHash,
-      best_hash    => TopHash,
-      difficulty   => Difficulty,
-      share        => 32,  % TODO: make this configurable
-      peers        => [],
-      port         => Port}.
+    #{ genesis_hash => GHash,
+       best_hash    => TopHash,
+       difficulty   => Difficulty,
+       sync_allowed => ConnKind =/= temporary,
+       share        => 32,  % TODO: make this configurable
+       peers        => [],
+       port         => Port }.
 
 %% -- Get Header by Hash -----------------------------------------------------
 
@@ -951,4 +1001,9 @@ noise_hs_timeout() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"noise_hs_timeout">>],
                                aecore, sync_noise_hs_timeout,
                                ?DEFAULT_NOISE_HS_TIMEOUT).
+
+close_timeout() ->
+    aeu_env:user_config_or_env([<<"sync">>, <<"close_timeout">>],
+                               aecore, sync_close_timeout,
+                               ?DEFAULT_CLOSE_TIMEOUT).
 

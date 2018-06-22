@@ -130,7 +130,7 @@ application_test(Config) ->
 %%     ct:log("trying to connect again --> job scheduled"),
 %%     timer:sleep(50),
 %%     SyncPid = whereis(aec_sync), %% Sync has not been restarted!
-%%     Peers = aec_peers:all(),
+%%     Peers = aec_peers:connected_peers(),
 %%     ct:log("tried twice and although it failed, it is a peer: ~p", [Peers]),
 %%     1 = length(Peers),
 

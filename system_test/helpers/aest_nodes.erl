@@ -53,15 +53,24 @@
 
 %% AWK script to keep only error, critical, alert and emergency log lines with
 %% all the extra lines following the log lines.
+%% FIXME: Temporarily ignore dispatch_worker errors, remove when fixed.
 -define(EPOCH_LOG_SCAN_AWK_SCRIPT, "
+    /^.*\\[error\\].*aec_conductor:dispatch_worker.*Disallowing dispatch of additional.*$/ {
+      matched = 1
+      if (buff != \"\") {
+        buff = \"\"
+      }
+    }
     /^.*\\[(error|critical|alert|emergency)\\].*$/ {
       matched = 1
-      buff = $0
+      if (!matched) {
+        buff = $0
+      }
     }
     /^.*\\[(debug|info|notice|warning)\\].*$/ {
       matched = 1
       if (buff != \"\") {
-        print buff
+        print \"xxxxx \" buff
         buff = \"\"
       }
     }
