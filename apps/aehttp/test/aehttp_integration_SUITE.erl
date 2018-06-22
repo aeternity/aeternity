@@ -3197,7 +3197,7 @@ wait_for_signed_transaction_in_block(SignedTx) ->
     MineTx =
         fun Try(0) -> did_not_mine;
             Try(Attempts) ->
-                aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+                aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
                 case tx_in_chain(TxHash) of
                     true  -> ok;
                     false -> Try(Attempts - 1)
