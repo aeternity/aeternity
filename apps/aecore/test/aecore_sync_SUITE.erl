@@ -398,9 +398,9 @@ mine_on_third(Config) ->
 mine_and_compare(N1, Config) ->
     AllNodes = [N || {_, N} <- ?config(nodes, Config)],
     PrevTop = rpc:call(N1, aec_chain, top_block, [], 5000),
-    {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_blocks(N1, 2),
+    %% If there are txs in the mempool, the second block will be a micro block.
+    {ok, [KeyBlock, _KeyOrMicroBlock]} = aecore_suite_utils:mine_blocks(N1, 2),
     true = aec_blocks:is_key_block(KeyBlock),
-    true = not aec_blocks:is_key_block(MicroBlock),
     NewTop = rpc:call(N1, aec_chain, top_block, [], 5000),
     true = (NewTop =/= PrevTop),
     Bal1 = get_balance(N1),
