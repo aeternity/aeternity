@@ -2773,11 +2773,7 @@ sc_ws_open(Config) ->
     assert_balance(RPubkey, RStartAmt - RAmt),
 
     % mine min depth
-    % NG: we need at least 4 key blocks to increase height by 4
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 4),
 
     channel_send_locking_infos(IConnPid, RConnPid),
 
