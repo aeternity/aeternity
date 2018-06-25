@@ -335,6 +335,18 @@ poi_test_() ->
                                       aect_contracts:state(C)),
                          aect_contracts:set_state(#{}, C)
                  end)
+       end},
+      {"PoI for one contract with store in state trees containing multiple contracts with store",
+       fun() ->
+               Contracts =
+                   [aect_contracts:set_state(
+                      #{<<"k", X>> => <<"v", X>>}, %% Distinct key per contract.
+                      make_contract(<<X:?MINER_PUB_BYTES/unit:8>>))
+                    || X <- [1, 2, 3]],
+               [check_poi_for_a_contract_among_others(
+                  C,
+                  [_, _] = Contracts -- [C])
+                || C <- Contracts]
        end}
     ].
 
@@ -343,6 +355,12 @@ assert_equal_poi(PoIExpect, PoIExpr) ->
     %% order dependent.  The serialized version is canonical, though.
     ?assertEqual(?TEST_MODULE:serialize_poi(PoIExpect),
                  ?TEST_MODULE:serialize_poi(PoIExpr)).
+
+assert_not_equal_poi(PoIExpect, PoIExpr) ->
+    %% The deserialized poi contains a gb_tree, so it is operation
+    %% order dependent.  The serialized version is canonical, though.
+    ?assertNotEqual(?TEST_MODULE:serialize_poi(PoIExpect),
+                    ?TEST_MODULE:serialize_poi(PoIExpr)).
 
 check_poi_for_one_contract(Contract, ChangeContractFun) ->
     ContractKeyF = fun(C) -> aect_contracts:id(C) end,
@@ -358,6 +376,21 @@ check_poi_for_one_contract(Contract, ChangeContractFun) ->
       ContractKeyF, ChangeContractFun,
       InsertContractF,
       Contract).
+
+check_poi_for_a_contract_among_others(Contract, OtherContracts) ->
+    ContractKeyF = fun(C) -> aect_contracts:id(C) end,
+    InsertContractF =
+        fun(Ts, C) ->
+                Cs = aec_trees:contracts(Ts),
+                aec_trees:set_contracts(
+                  Ts, aect_state_tree:insert_contract(C, Cs))
+        end,
+
+    check_poi_for_an_object_among_others(
+      contracts,
+      ContractKeyF,
+      InsertContractF,
+      Contract, OtherContracts).
 
 check_poi_for_one_object(SubTree,
                          ObjKeyFun, ChangeObjFun,
@@ -376,7 +409,7 @@ check_poi_for_one_object(SubTree,
     ?assertEqual(?TEST_MODULE:hash(Trees1),
                  ?TEST_MODULE:poi_hash(Poi11)),
 
-    %% Check the the stored object in the POI is the correct one.
+    %% Check that the stored object in the POI is the correct one.
     ?assertEqual({ok, Obj},
                  aec_trees:lookup_poi(SubTree, ObjKey, Poi11)),
 
@@ -390,6 +423,62 @@ check_poi_for_one_object(SubTree,
     ObjKey = ObjKeyFun(Obj1), %% Hardcoded expectation on function changing object.
     ?assertMatch({error, _},
                  aec_trees:verify_poi(SubTree, ObjKey, Obj1, Poi11)),
+
+    ok.
+
+check_poi_for_an_object_among_others(SubTree,
+                                     ObjKeyFun,
+                                     InsertObjFun,
+                                     Obj, OtherObjs = [_|_]) ->
+    ?assertNot(lists:member(Obj, OtherObjs)), %% Hardcoded expectation on test data.
+
+    ObjKey = ObjKeyFun(Obj),
+    Trees0 = aec_test_utils:create_state_tree(),
+    Trees1 = InsertObjFun(Trees0, Obj),
+
+    %% Add all other objects to the tree.
+    Trees2 =
+        lists:foldl(
+          fun(OthObj, TreesIn) -> InsertObjFun(TreesIn, OthObj) end,
+          Trees1,
+          OtherObjs),
+
+    %% Construct a POI for the object.
+    Poi2 = ?TEST_MODULE:new_poi(Trees2),
+    ?assertEqual(?TEST_MODULE:hash(Trees2),
+                 ?TEST_MODULE:poi_hash(Poi2)),
+    {ok, Poi21} = ?TEST_MODULE:add_poi(SubTree, ObjKey, Trees2, Poi2),
+    ?assertEqual(?TEST_MODULE:hash(Trees2),
+                 ?TEST_MODULE:poi_hash(Poi21)),
+
+    %% Check that the stored object in the POI is the correct one.
+    ?assertEqual({ok, Obj},
+                 aec_trees:lookup_poi(SubTree, ObjKey, Poi21)),
+
+    %% Ensure that we can verify the presence of the object in the POI.
+    ?assertEqual(ok,
+                 aec_trees:verify_poi(SubTree, ObjKey, Obj, Poi21)),
+
+    %% Enrich the POI with the other objects.
+    {ok, Poi22} =
+        lists:foldl(
+          fun(OthObj, {ok, PoiIn}) ->
+                  ?TEST_MODULE:add_poi(SubTree, ObjKeyFun(OthObj), Trees2, PoiIn)
+          end,
+          {ok, Poi21},
+          OtherObjs),
+    assert_not_equal_poi(Poi21, Poi22),
+    ?assertEqual(?TEST_MODULE:hash(Trees2),
+                 ?TEST_MODULE:poi_hash(Poi22)),
+
+    %% Check that the stored object in the POI is still the correct one.
+    ?assertEqual({ok, Obj},
+                 aec_trees:lookup_poi(SubTree, ObjKey, Poi22)),
+
+    %% Ensure that we can still verify the presence of the object in the POI.
+    ?assertEqual(ok,
+                 aec_trees:verify_poi(SubTree, ObjKey, Obj, Poi22)),
+
     ok.
 
 make_contract(Owner) ->
