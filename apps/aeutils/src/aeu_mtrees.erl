@@ -23,6 +23,7 @@
          iterator_from/3,
          iterator_next/1,
          lookup/2,
+         new_with_backend/2,
          enter/3,
          to_list/1]).
 
@@ -85,6 +86,12 @@ empty() ->
 -spec empty_with_backend(aeu_mp_trees_db:db()) -> mtree().
 empty_with_backend(DB) ->
     aeu_mp_trees:new(DB).
+
+-spec new_with_backend(root_hash() | 'empty', aeu_mp_trees_db:db()) -> mtree().
+new_with_backend(empty, DB) ->
+    empty_with_backend(DB);
+new_with_backend(<<_:256>> = Hash, DB) ->
+    aeu_mp_trees:new(Hash, DB).
 
 delete(Key, Tree) when ?IS_KEY(Key) ->
     aeu_mp_trees:delete(Key, Tree).

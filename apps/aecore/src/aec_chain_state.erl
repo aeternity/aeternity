@@ -498,8 +498,7 @@ db_find_nodes_at_height(Height) when is_integer(Height) ->
     end.
 
 db_put_state(Hash, Trees, Difficulty, ForkId) when is_binary(Hash) ->
-    Trees1 = aec_trees:commit_to_db(Trees),
-    ok = aec_db:write_block_state(Hash, Trees1, Difficulty, ForkId).
+    ok = aec_db:write_block_state(Hash, Trees, Difficulty, ForkId).
 
 db_find_state(Hash) when is_binary(Hash) ->
     case aec_db:find_block_state_and_data(Hash) of

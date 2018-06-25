@@ -66,6 +66,7 @@ tag(channel_settle_tx) -> 56;
 tag(channel_offchain_tx) -> 57;
 tag(channel) -> 58;
 tag(trees_poi) -> 60;
+tag(trees_db) -> 61;
 tag(block) -> 100.
 
 rev_tag(10) -> account;
@@ -98,4 +99,5 @@ rev_tag(56) -> channel_settle_tx;
 rev_tag(57) -> channel_offchain_tx;
 rev_tag(58) -> channel;
 rev_tag(60) -> trees_poi;
+rev_tag(61) -> trees_db;
 rev_tag(100) -> block.

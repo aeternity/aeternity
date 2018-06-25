@@ -27,6 +27,10 @@
          set_oracles/2
         ]).
 
+-export([ deserialize_from_db/1
+        , serialize_for_db/1
+        ]).
+
 -export([ensure_account/2]).
 
 -export([apply_txs_on_state_trees/4,
@@ -205,37 +209,110 @@ set_contracts(Trees, Contracts) ->
     Trees#trees{contracts = Contracts}.
 
 %%%=============================================================================
+%%% Serialization for db storage
+%%%=============================================================================
+
+-define(AEC_TREES_VERSION, 0).
+
+-spec deserialize_from_db(binary()) -> trees().
+deserialize_from_db(Bin) when is_binary(Bin) ->
+    [ {contracts_hash, Contracts}
+    , {calls_hash, Calls}
+    , {channels_hash, Channels}
+    , {ns_hash, NS}
+    , {ns_cache_hash, NSCache}
+    , {oracles_hash, Oracles}
+    , {oracles_cache_hash, OraclesCache}
+    , {accounts_hash, Accounts}
+    ] = lists:map(fun db_deserialize_hash/1,
+                  aec_object_serialization:deserialize(
+                    trees_db,
+                    ?AEC_TREES_VERSION,
+                    db_serialization_template(?AEC_TREES_VERSION),
+                    Bin
+                   )),
+    #trees{ contracts = aect_state_tree:new_with_backend(Contracts)
+          , calls     = aect_call_state_tree:new_with_backend(Calls)
+          , channels  = aesc_state_tree:new_with_backend(Channels)
+          , ns        = aens_state_tree:new_with_backend(NS, NSCache)
+          , oracles   = aeo_state_tree:new_with_backend(Oracles, OraclesCache)
+          , accounts  = aec_accounts_trees:new_with_backend(Accounts)
+          }.
+
+-spec serialize_for_db(trees()) -> binary().
+serialize_for_db(#trees{} = Trees) ->
+    aec_object_serialization:serialize(
+      trees_db,
+      ?AEC_TREES_VERSION,
+      db_serialization_template(?AEC_TREES_VERSION),
+      lists:map(fun db_serialize_hash/1,
+                [ {contracts_hash,     contracts_hash(Trees)}
+                , {calls_hash,         calls_hash(Trees)}
+                , {channels_hash,      channels_hash(Trees)}
+                , {ns_hash,            ns_hash(Trees)}
+                , {ns_cache_hash,      ns_cache_hash(Trees)}
+                , {oracles_hash,       oracles_hash(Trees)}
+                , {oracles_cache_hash, oracles_cache_hash(Trees)}
+                , {accounts_hash,      accounts_hash(Trees)}
+                ])
+     ).
+
+db_serialization_template(?AEC_TREES_VERSION) ->
+    [ {contracts_hash,     [binary]}
+    , {calls_hash,         [binary]}
+    , {channels_hash,      [binary]}
+    , {ns_hash,            [binary]}
+    , {ns_cache_hash,      [binary]}
+    , {oracles_hash,       [binary]}
+    , {oracles_cache_hash, [binary]}
+    , {accounts_hash,      [binary]}
+    ].
+
+db_serialize_hash({Field, {ok, Hash}}) -> {Field, [Hash]};
+db_serialize_hash({Field, {error, empty}}) -> {Field, []}.
+
+db_deserialize_hash({Field, [Hash]}) -> {Field, Hash};
+db_deserialize_hash({Field, []}) -> {Field, empty}.
+
+%%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
 
 internal_hash(Trees) ->
     %% Note that all hash sizes are checked in pad_empty/2
     Bin = <<?PROTOCOL_VERSION:64,
-            (accounts_hash(Trees))  /binary,
-            (calls_hash(Trees))     /binary,
-            (channels_hash(Trees))  /binary,
-            (contracts_hash(Trees)) /binary,
-            (ns_hash(Trees))        /binary,
-            (oracles_hash(Trees))   /binary
+            (pad_empty(accounts_hash(Trees)))  /binary,
+            (pad_empty(calls_hash(Trees)))     /binary,
+            (pad_empty(channels_hash(Trees)))  /binary,
+            (pad_empty(contracts_hash(Trees))) /binary,
+            (pad_empty(ns_hash(Trees)))        /binary,
+            (pad_empty(oracles_hash(Trees)))   /binary
           >>,
     aec_hash:hash(state_trees, Bin).
 
 accounts_hash(Trees) ->
-    pad_empty(aec_accounts_trees:root_hash(accounts(Trees))).
+    aec_accounts_trees:root_hash(accounts(Trees)).
 
 calls_hash(Trees) ->
-    pad_empty(aect_call_state_tree:root_hash(calls(Trees))).
+    aect_call_state_tree:root_hash(calls(Trees)).
 
 channels_hash(Trees) ->
-    pad_empty(aesc_state_tree:root_hash(channels(Trees))).
+    aesc_state_tree:root_hash(channels(Trees)).
 
 contracts_hash(Trees) ->
-    pad_empty(aect_state_tree:root_hash(contracts(Trees))).
+    aect_state_tree:root_hash(contracts(Trees)).
 
 oracles_hash(Trees) ->
-    pad_empty(aeo_state_tree:root_hash(oracles(Trees))).
+    aeo_state_tree:root_hash(oracles(Trees)).
 
-ns_hash(Trees) -> pad_empty(aens_state_tree:root_hash(ns(Trees))).
+oracles_cache_hash(Trees) ->
+    aeo_state_tree:cache_root_hash(oracles(Trees)).
+
+ns_hash(Trees) ->
+    aens_state_tree:root_hash(ns(Trees)).
+
+ns_cache_hash(Trees) ->
+    aens_state_tree:cache_root_hash(ns(Trees)).
 
 pad_empty({ok, H}) when is_binary(H), byte_size(H) =:= ?STATE_HASH_BYTES -> H;
 pad_empty({error, empty}) -> <<0:?STATE_HASH_BYTES/unit:8>>.
@@ -316,12 +393,12 @@ ensure_account(AccountPubkey, Trees0) ->
 %%%=============================================================================
 
 internal_new_poi(Trees) ->
-    #poi{ accounts  = new_part_poi(accounts_hash(Trees))
-        , calls     = new_part_poi(calls_hash(Trees))
-        , channels  = new_part_poi(channels_hash(Trees))
-        , contracts = new_part_poi(contracts_hash(Trees))
-        , ns        = new_part_poi(ns_hash(Trees))
-        , oracles   = new_part_poi(oracles_hash(Trees))
+    #poi{ accounts  = new_part_poi(pad_empty(accounts_hash(Trees)))
+        , calls     = new_part_poi(pad_empty(calls_hash(Trees)))
+        , channels  = new_part_poi(pad_empty(channels_hash(Trees)))
+        , contracts = new_part_poi(pad_empty(contracts_hash(Trees)))
+        , ns        = new_part_poi(pad_empty(ns_hash(Trees)))
+        , oracles   = new_part_poi(pad_empty(oracles_hash(Trees)))
         }.
 
 internal_poi_hash(#poi{} = POI) ->
@@ -400,23 +477,23 @@ internal_serialize_poi(#poi{ accounts  = Accounts
                            , oracles   = Oracles
                            }) ->
 
-    Fields = [ {accounts  , serialization_format(Accounts)}
-             , {calls     , serialization_format(Calls)}
-             , {channels  , serialization_format(Channels)}
-             , {contracts , serialization_format(Contracts)}
-             , {ns        , serialization_format(Ns)}
-             , {oracles   , serialization_format(Oracles)}
+    Fields = [ {accounts  , poi_serialization_format(Accounts)}
+             , {calls     , poi_serialization_format(Calls)}
+             , {channels  , poi_serialization_format(Channels)}
+             , {contracts , poi_serialization_format(Contracts)}
+             , {ns        , poi_serialization_format(Ns)}
+             , {oracles   , poi_serialization_format(Oracles)}
              ],
     aec_object_serialization:serialize(trees_poi,
                                        ?POI_VSN,
                                        internal_serialize_poi_template(?POI_VSN),
                                        Fields).
 
-serialization_format(empty) -> [];
-serialization_format({poi, Poi}) -> [aec_poi:serialization_format(Poi)].
+poi_serialization_format(empty) -> [];
+poi_serialization_format({poi, Poi}) -> [aec_poi:serialization_format(Poi)].
 
-from_serialization_format([]) -> empty;
-from_serialization_format([Poi]) -> {poi, aec_poi:from_serialization_format(Poi)}.
+from_poi_serialization_format([]) -> empty;
+from_poi_serialization_format([Poi]) -> {poi, aec_poi:from_serialization_format(Poi)}.
 
 internal_deserialize_poi(Bin) ->
     Template = internal_serialize_poi_template(?POI_VSN),
@@ -429,12 +506,12 @@ internal_deserialize_poi(Bin) ->
     , {oracles   , Oracles}
     ] = aec_object_serialization:deserialize(trees_poi, ?POI_VSN, Template, Bin),
 
-    #poi{ accounts  = from_serialization_format(Accounts)
-        , calls     = from_serialization_format(Calls)
-        , channels  = from_serialization_format(Channels)
-        , contracts = from_serialization_format(Contracts)
-        , ns        = from_serialization_format(Ns)
-        , oracles   = from_serialization_format(Oracles)
+    #poi{ accounts  = from_poi_serialization_format(Accounts)
+        , calls     = from_poi_serialization_format(Calls)
+        , channels  = from_poi_serialization_format(Channels)
+        , contracts = from_poi_serialization_format(Contracts)
+        , ns        = from_poi_serialization_format(Ns)
+        , oracles   = from_poi_serialization_format(Oracles)
         }.
 
 

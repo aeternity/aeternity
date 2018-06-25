@@ -266,10 +266,14 @@ find_headers_at_height(Height) when is_integer(Height), Height >= 0 ->
                  <- mnesia:index_read(aec_headers, Height, height)]).
 
 write_block_state(Hash, Trees, AccDifficulty, ForkId) ->
-    ?t(mnesia:write(#aec_block_state{key = Hash, value = Trees,
-                                     difficulty = AccDifficulty,
-                                     fork_id = ForkId
-                                    })).
+    ?t(begin
+           Trees1 = aec_trees:serialize_for_db(aec_trees:commit_to_db(Trees)),
+           mnesia:write(#aec_block_state{key = Hash, value = Trees1,
+                                         difficulty = AccDifficulty,
+                                         fork_id = ForkId
+                                        })
+               end
+      ).
 
 write_accounts_node(Hash, Node) ->
     ?t(mnesia:write(#aec_account_state{key = Hash, value = Node})).
@@ -311,12 +315,13 @@ get_block_state(Hash) ->
     ?t(begin
            [#aec_block_state{value = Trees}] =
                mnesia:read(aec_block_state, Hash),
-           Trees
+           aec_trees:deserialize_from_db(Trees)
        end).
 
 find_block_state(Hash) ->
     case ?t(mnesia:read(aec_block_state, Hash)) of
-        [#aec_block_state{value = Trees}] -> {value, Trees};
+        [#aec_block_state{value = Trees}] ->
+            {value, aec_trees:deserialize_from_db(Trees)};
         [] -> none
     end.
 
@@ -335,7 +340,7 @@ find_block_fork_id(Hash) ->
 find_block_state_and_data(Hash) ->
     case ?t(mnesia:read(aec_block_state, Hash)) of
         [#aec_block_state{value = Trees, difficulty = D, fork_id = F}] ->
-            {value, Trees, D, F};
+            {value, aec_trees:deserialize_from_db(Trees), D, F};
         [] -> none
     end.
 

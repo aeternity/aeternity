@@ -14,6 +14,7 @@
          enter/2,
          get/2,
          lookup/2,
+         new_with_backend/1,
          root_hash/1]).
 
 %%%===================================================================
@@ -48,6 +49,10 @@ empty() ->
 -spec empty_with_backend() -> tree().
 empty_with_backend() ->
     aeu_mtrees:empty_with_backend(aec_db_backends:channels_backend()).
+
+-spec new_with_backend(aeu_mtrees:root_hash() | 'empty') -> tree().
+new_with_backend(Hash) ->
+    aeu_mtrees:new_with_backend(Hash, aec_db_backends:channels_backend()).
 
 -spec enter(channel(), tree()) -> tree().
 enter(Channel, Tree) ->
