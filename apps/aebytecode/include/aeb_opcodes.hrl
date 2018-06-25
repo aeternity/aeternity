@@ -161,3 +161,5 @@
 -define(PRIM_CALL_ORACLE_GET_QUESTION, 105).
 -define(PRIM_CALL_ORACLE_QUERY_FEE,    106).
 
+-define(PRIM_CALL_IN_AENS_RANGE(__TTYPE__), (((__TTYPE__) > 199) andalso ((__TTYPE__) < 300))).
+-define(PRIM_CALL_AENS_RESOLVE,  200).

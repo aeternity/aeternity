@@ -62,6 +62,8 @@ global_env() ->
      {["Oracle", "respond"],      Fun([Oracle(Q, R), Query(Q, R), Signature, R], Unit)},
      {["Oracle", "extend"],       Fun([Oracle(Q, R), Signature, Fee, TTL], Unit)},
      {["Oracle", "get_answer"],   Fun([Oracle(Q, R), Query(Q, R)], option_t(Ann, R))},
+     %% Name service
+     {["AENS", "resolve"], Fun([String, String], option_t(Ann, A))},
      %% Maps
      {["Map", "from_list"], Fun1(List(Pair(K, V)), Map(K, V))},
      {["Map", "to_list"],   Fun1(Map(K, V), List(Pair(K, V)))},

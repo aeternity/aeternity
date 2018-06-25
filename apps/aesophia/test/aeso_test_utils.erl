@@ -12,7 +12,8 @@
 
 -export([read_contract/1, contract_path/0, run_contract/4, pp/1, pp/2, dump_words/1, compile/1]).
 
--export([spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2]).
+-export([spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2,
+         aens_lookup/4]).
 
 contract_path() ->
     {ok, Cwd} = file:get_cwd(),
@@ -162,6 +163,10 @@ dump_words(<<>>, Acc) -> lists:reverse(Acc);
 dump_words(Rest, Acc) -> lists:reverse([{error, Rest} | Acc]).
 
 %% -- Chain API for test -----------------------------------------------------
+
+aens_lookup(Name, Key, Type, _S) ->
+    io:format("aens_lookup(~p, ~p, ~p)\n", [Name, Key, Type]),
+    {ok, {some, <<0:32/unit:8>>}}.
 
 spend(Recipient, Amount, S) ->
     io:format("+++ SPEND(~p, ~p)\n", [Recipient, Amount]),

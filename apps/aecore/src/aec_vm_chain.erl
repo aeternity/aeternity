@@ -24,6 +24,7 @@
           oracle_register/7,
           oracle_respond/5,
           oracle_response_spec/2,
+          aens_resolve/4,
           spend/3
         ]).
 
@@ -88,7 +89,7 @@ spend(Recipient, Amount, State = #state{ trees   = Trees,
 
 %%    Oracle
 -spec oracle_register(aec_keys:pubkey(), binary(), non_neg_integer(),
-                      non_neg_integer(), binary(), binary(), chain_state()) ->
+                      non_neg_integer(), aeso_sophia:type(), aeso_sophia:type(), chain_state()) ->
     {ok, aec_keys:pubkey(), chain_state()} | {error, term()}.
 oracle_register(AccountKey,_Sign, QueryFee, TTL, QuerySpec, ResponseSpec,
                 State = #state{ trees   = Trees,
@@ -285,7 +286,19 @@ oracle_response_spec(Oracle, #state{ trees   = Trees} =_State) ->
             {error, no_such_oracle}
     end.
 
+%%    AENS
 
+aens_resolve(Name, Key, Type, #state{ trees = Trees } = _State) ->
+    case aens:resolve(list_to_atom(binary_to_list(Key)), Name, aec_trees:ns(Trees)) of
+        {ok, Val}  -> decode_as(Type, Val);
+        {error, _} -> {ok, none}
+    end.
+
+decode_as(word, <<N:256>>) -> {ok, {some, N}};
+decode_as(string, Bin) when is_binary(Bin) -> {ok, {some, Bin}};
+decode_as(Type, Val) ->
+    io:format("Can't decode ~p as ~p\n", [Val, Type]),
+    {error, out_of_gas}.
 
 %%    Contracts
 

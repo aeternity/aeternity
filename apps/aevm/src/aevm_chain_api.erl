@@ -45,8 +45,8 @@
                           Sign :: binary(),
                           QueryFee :: non_neg_integer(),
                           TTL :: non_neg_integer(),
-                          DecodedQType :: binary(),
-                          DecodedRType :: binary(),
+                          DecodedQType :: aeso_sophia:type(),
+                          DecodedRType :: aeso_sophia:type(),
                           ChainState :: chain_state()) ->
     {ok, OracleKey :: pubkey(), chain_state()} | {error, term()}.
 
@@ -100,6 +100,14 @@
 -callback oracle_query_fee(Oracle :: pubkey(),
                            ChainState :: chain_state()) ->
     {ok, non_neg_integer()} | {error, term()}.
+
+%% -- Name Services --
+
+-callback aens_resolve(Name :: binary(),
+                       Key :: binary(),
+                       Type :: aeso_sophia:type(),
+                       ChainState :: chain_state()) ->
+    {ok, none | {some, term()}} | {error, term()}.
 
 %% Make a call to another contract.
 -callback call_contract(Contract  :: pubkey(),

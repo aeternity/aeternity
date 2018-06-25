@@ -186,6 +186,22 @@ ast_body({qid, _, ["Oracle", "query_fee"]})    -> error({underapplied_primitive,
 ast_body({qid, _, ["Oracle", "get_answer"]})   -> error({underapplied_primitive, 'Oracle.get_answer'});
 ast_body({qid, _, ["Oracle", "get_question"]}) -> error({underapplied_primitive, 'Oracle.get_question'});
 
+%% Name service
+ast_body(?qid_app(["AENS", "resolve"], [Name, Key], _, ?option_t(Type))) ->
+    case is_monomorphic(Type) of
+        true ->
+            case ast_type(Type) of
+                T when T == word; T == string -> ok;
+                _ -> error({invalid_result_type, 'AENS.resolve', Type})
+            end,
+            prim_call(?PRIM_CALL_AENS_RESOLVE, #integer{value = 0},
+                      [ast_body(Name), ast_body(Key), ast_type_value(Type)],
+                      [string, string, typerep], {option, ast_type(Type)});
+        false ->
+            error({unresolved_result_type, 'AENS.resolve', Type})
+    end;
+ast_body({qid, _, ["AENS", "resolve"]}) -> error({underapplied_primitive, 'AENS.resolve'});
+
 %% Maps
 
 %% -- map lookup  m[k]
