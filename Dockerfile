@@ -39,4 +39,7 @@ STOPSIGNAL SIGQUIT
 EXPOSE 3013 3014 3015 3113 3114
 
 COPY ./docker/entrypoint.sh /docker-entrypoint.sh
+COPY ./docker/healthcheck.sh /healthcheck.sh
+
 ENTRYPOINT ["/docker-entrypoint.sh"]
+HEALTHCHECK --timeout=3s CMD /healthcheck.sh
