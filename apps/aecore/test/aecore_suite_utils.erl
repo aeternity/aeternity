@@ -280,15 +280,15 @@ await_sync_complete(T0, Nodes) ->
                   check_event(Msg, Acc)
           end, Nodes, AllEvents),
     ct:log("SyncNodes = ~p", [SyncNodes]),
-    collect_sync_events(SyncNodes).
+    collect_sync_events(SyncNodes, 100).
 
-collect_sync_events([]) ->
-    done;
-collect_sync_events(SyncNodes) ->
+collect_sync_events(_, 0) -> error(retry_exhausted);
+collect_sync_events([], _) -> done;
+collect_sync_events(SyncNodes, N) ->
     receive
         {gproc_ps_event, chain_sync, Msg} ->
             SyncNodes1 = check_event(Msg, SyncNodes),
-            collect_sync_events(SyncNodes1)
+            collect_sync_events(SyncNodes1, N-1)
     after 20000 ->
             ct:log("Timeout in collect_sync_events: ~p~n"
                    "~p", [SyncNodes, process_info(self(), messages)]),
