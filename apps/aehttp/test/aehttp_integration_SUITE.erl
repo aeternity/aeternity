@@ -1493,7 +1493,6 @@ all_accounts_balances(_Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
     GenesisPresetAccounts = rpc(aec_genesis_block_settings, preset_accounts, []),
-    GenesisAccounts = [{aec_block_genesis:miner(), aec_governance:block_mine_reward()} | GenesisPresetAccounts],
     Receivers = ?DEFAULT_TESTS_COUNT,
     AmountToSpent = 1,
     {BlocksToMine0, Fee} = minimal_fee_and_blocks_to_mine(AmountToSpent, Receivers),
@@ -1516,7 +1515,7 @@ all_accounts_balances(_Config) ->
     {ok, 200, #{<<"accounts_balances">> := BalancesMap}} = get_all_accounts_balances(),
     {ok, MinerPubKey} = rpc(aec_keys, pubkey, []),
     {ok, MinerBal} = rpc(aec_mining, get_miner_account_balance, []),
-    ExpectedBalances = [{MinerPubKey, MinerBal} | GenesisAccounts] ++  ReceiversAccounts,
+    ExpectedBalances = [{MinerPubKey, MinerBal} | GenesisPresetAccounts] ++  ReceiversAccounts,
 
     % make sure all spend txs are part of the block
     AllTxs = aec_blocks:txs(MicroBlock),
@@ -1535,15 +1534,14 @@ all_accounts_balances_empty(_Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
     GenesisPresetAccounts = rpc(aec_genesis_block_settings, preset_accounts, []),
-    GenesisAccounts = [{aec_block_genesis:miner(), aec_governance:block_mine_reward()} | GenesisPresetAccounts],
     {ok, 200, #{<<"accounts_balances">> := Balances}} = get_all_accounts_balances(),
-    true = length(Balances) =:= length(GenesisAccounts),
+    true = length(Balances) =:= length(GenesisPresetAccounts),
     true =
         lists:all(
             fun(#{<<"pub_key">> := PKEncoded, <<"balance">> := Bal}) ->
                     {account_pubkey, AccDec} = aec_base58c:decode(PKEncoded),
                 Account = {AccDec, Bal},
-                lists:member(Account, GenesisAccounts) end,
+                lists:member(Account, GenesisPresetAccounts) end,
             Balances),
 
     ForkHeight = aecore_suite_utils:latest_fork_height(),
