@@ -2,7 +2,8 @@
 
 -export([encode/2,
          decode/1,
-         safe_decode/2]).
+         safe_decode/2,
+         byte_size_for_type/1]).
 
 -type known_type() :: block_hash
                     | block_tx_hash
@@ -46,8 +47,8 @@ decode(Bin0) ->
     end.
 
 type_size_check(Type, Bin) ->
-    case type2size(Type) of
-        not_set -> ok;
+    case byte_size_for_type(Type) of
+        not_applicable -> ok;
         CorrectSize ->
             Size = byte_size(Bin),
             case Size =:= CorrectSize of
@@ -123,10 +124,25 @@ pfx2type(<<"nm">>) -> name;
 pfx2type(<<"st">>) -> state;
 pfx2type(<<"pi">>) -> poi.
 
-type2size(poi) -> not_set;
-type2size(name) -> not_set;
-type2size(transaction) -> not_set;
-type2size(_) -> 32.
+-spec byte_size_for_type(known_type()) -> non_neg_integer() | not_applicable.
+
+byte_size_for_type(block_hash)       -> 32;
+byte_size_for_type(block_tx_hash)    -> 32;
+byte_size_for_type(block_state_hash) -> 32;
+byte_size_for_type(channel)          -> 32;
+byte_size_for_type(contract_pubkey)  -> 32;
+byte_size_for_type(transaction)      -> not_applicable;
+byte_size_for_type(tx_hash)          -> 32;
+byte_size_for_type(oracle_pubkey)    -> 32;
+byte_size_for_type(oracle_query_id)  -> 32;
+byte_size_for_type(account_pubkey)   -> 32;
+byte_size_for_type(signature)        -> 64;
+byte_size_for_type(name)             -> not_applicable;
+byte_size_for_type(commitment)       -> 32;
+byte_size_for_type(peer_pubkey)      -> 32;
+byte_size_for_type(state)            -> 32;
+byte_size_for_type(poi)              -> not_applicable.
+
 
 %% TODO: Fix the base58 module so that it consistently uses binaries instead
 %%

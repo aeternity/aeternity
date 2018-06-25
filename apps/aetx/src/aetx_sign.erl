@@ -55,6 +55,7 @@ new(Bin, Signatures) when is_binary(Bin) ->
 new(Tx, Signatures) ->
     _ = aetx:specialize_type(Tx),
     true = lists:all(fun is_binary/1, Signatures),
+    assert_sigs_size(Signatures),
     #signed_tx{tx = Tx, signatures = lists:usort(Signatures)}.
 
 %% @doc Given a transaction Tx, a private key or list of keys,
@@ -83,6 +84,7 @@ hash(#signed_tx{} = Tx) ->
 -spec add_signatures(signed_tx(), list(binary())) -> signed_tx().
 add_signatures(#signed_tx{signatures = OldSigs} = Tx, NewSigs)
   when is_list(NewSigs) ->
+    assert_sigs_size(NewSigs),
     Tx#signed_tx{signatures = lists:usort(NewSigs ++ OldSigs)}.
 
 -spec tx(signed_tx()) -> aetx:tx().
@@ -157,6 +159,7 @@ deserialize_from_binary(SignedTxBin) when is_binary(SignedTxBin) ->
           ?SIG_TX_VSN,
           serialization_template(?SIG_TX_VSN),
           SignedTxBin),
+    assert_sigs_size(Sigs),
     #signed_tx{ tx = aetx:deserialize_from_binary(TxBin)
               , signatures = Sigs
               }.
@@ -228,3 +231,9 @@ meta_data_from_client_serialized(json, Serialized) ->
     #{block_height => BlockHeight,
       block_hash => BlockHash,
       hash => TxHash}.
+
+assert_sigs_size(Sigs) ->
+    AllowedByteSize = aec_base58c:byte_size_for_type(signature),
+    lists:foreach(
+        fun(Sig) -> {AllowedByteSize, _} = {byte_size(Sig), Sig} end,
+        Sigs).
