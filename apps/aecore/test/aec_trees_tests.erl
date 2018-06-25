@@ -130,6 +130,41 @@ poi_test_() ->
                ?assertNotEqual(?TEST_MODULE:serialize_poi(Poi0),
                                ?TEST_MODULE:serialize_poi(Poi1))
        end},
+      {"Verification of presence of object fails for PoI not including object",
+       fun() ->
+               AccountPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
+               Account = aec_accounts:new(AccountPubkey, 0),
+               Contract = make_contract(AccountPubkey),
+               ContractId = aect_contracts:id(Contract),
+
+               %% Check that empty PoI does not prove object.
+               Trees0 = aec_test_utils:create_state_tree(),
+               Poi0 = ?TEST_MODULE:new_poi(Trees0),
+               ?assertMatch({error, _},
+                            aec_trees:verify_poi(accounts, AccountPubkey, Account, Poi0)),
+               ?assertMatch({error, _},
+                            aec_trees:verify_poi(contracts, ContractId, Contract, Poi0)),
+
+               %% Check that non-empty PoI that does not include
+               %% object does not prove it.
+               Trees1A = aec_trees:set_accounts(
+                           Trees0,
+                           aec_accounts_trees:enter(Account, aec_trees:accounts(Trees0))),
+               Poi1A = ?TEST_MODULE:new_poi(Trees1A),
+               {ok, Poi1A1} = ?TEST_MODULE:add_poi(accounts, AccountPubkey, Trees1A, Poi1A),
+               ?assertMatch({error, _},
+                            aec_trees:verify_poi(contracts, ContractId, Contract, Poi1A1)),
+               %%
+               Trees1C = aec_trees:set_contracts(
+                           Trees0,
+                           aect_state_tree:insert_contract(Contract, aec_trees:contracts(Trees0))),
+               Poi1C = ?TEST_MODULE:new_poi(Trees1C),
+               {ok, Poi1C1} = ?TEST_MODULE:add_poi(contracts, ContractId, Trees1C, Poi1C),
+               ?assertMatch({error, _},
+                            aec_trees:verify_poi(accounts, AccountPubkey, Account, Poi1C1)),
+
+               ok
+       end},
       {"POI for one account",
        fun() ->
                AccountKeyF = fun(A) -> aec_accounts:pubkey(A) end,
