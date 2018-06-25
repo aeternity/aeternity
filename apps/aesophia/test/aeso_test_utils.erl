@@ -76,7 +76,7 @@ run_contract(Name, Fun, Args, Type) ->
 %%  io:format("~p\n\n",[Code]),
   %% ok = aeb_disassemble:pp(Code),
   %% Load the call
-  Call = list_to_tuple([list_to_binary(atom_to_list(Fun))|Args]),
+  Call = {list_to_binary(atom_to_list(Fun)), list_to_tuple(Args)},
   Data = aeso_data:to_binary(Call),
   io:format("Running:\n"),
   {ok, State} = aevm_eeevm:eval(dummy_state(Code, Data)),
