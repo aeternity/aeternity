@@ -5,7 +5,7 @@
 EXTERNAL_ADDRESS=${EXTERNAL_ADDRESS:-localhost:3013}
 MIN_PEERS=${MIN_PEERS:-2}
 
-curl -s -f -S -o /dev/null --retry 3 http://${EXTERNAL_ADDRESS}/v2/top || exit 1
+curl -s -f -S -o /dev/null --retry 6 http://${EXTERNAL_ADDRESS}/v2/top || exit 1
 
 if [ -z $INTERNAL_ADDRESS ]; then
     exit 0
