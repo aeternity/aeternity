@@ -232,6 +232,8 @@ add_store_from_poi(Contract, Poi) ->
         {error, _} = E -> E
     end.
 
+add_store_from_poi(_, {error, bad_proof} = E, _, _, _) ->
+    E;
 add_store_from_poi(_, '$end_of_table', _, Store,_Poi) ->
     Store;
 add_store_from_poi(Id, {PrefixedKey, Val, Iter}, PrefixSize, Store, Poi) ->
