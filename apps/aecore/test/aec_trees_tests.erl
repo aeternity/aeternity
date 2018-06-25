@@ -165,6 +165,56 @@ poi_test_() ->
 
                ok
        end},
+      {"Broken serialized PoI fails verification",
+       fun() ->
+               OwnerPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
+               Contract = aect_contracts:set_state(#{<<"k1">> => <<"v1">>,
+                                                     <<"k2">> => <<"v2">>},
+                                                   make_contract(OwnerPubkey)),
+               ContractId = aect_contracts:id(Contract),
+
+               Trees0 = aec_test_utils:create_state_tree(),
+               Trees1 = aec_trees:set_contracts(
+                          Trees0,
+                          aect_state_tree:insert_contract(Contract, aec_trees:contracts(Trees0))),
+               Poi1 = ?TEST_MODULE:new_poi(Trees1),
+               {ok, Poi11} = ?TEST_MODULE:add_poi(contracts, ContractId, Trees1, Poi1),
+               Poi11Fields = aec_trees:internal_serialize_poi_fields(Poi11),
+
+               SerializePoiFromFieldsF =
+                   fun(Fields) ->
+                           aec_trees:deserialize_poi(
+                             aec_trees:internal_serialize_poi_from_fields(Fields))
+                   end,
+
+               %% The identified PoI fields lead to PoI that proves object.
+               ?assertEqual(ok,
+                            aec_trees:verify_poi(contracts, ContractId, Contract,
+                                                 SerializePoiFromFieldsF(Poi11Fields))),
+
+               %% Check that removing a node from PoI makes object inclusion not proved.
+               [{_, Poi11ProofKVs = [_,_|_]}] = %% Hardcoded expectation on test data: at least 2 nodes so able to remove 1 leaving at least a node.
+                   poi_fields_get(contracts, Poi11Fields),
+               lists:foreach(
+                 fun(KV) ->
+                         BrokenSerializedPoi =
+                             SerializePoiFromFieldsF(
+                               poi_fields_update_with(
+                                 contracts,
+                                 fun([{H, ProofKVs = [_,_|_]}]) ->
+                                         NewProofKVs = ProofKVs -- [KV],
+                                         ?assertMatch(_ when length(ProofKVs) =:= (1 + length(NewProofKVs)), NewProofKVs),
+                                         [{H, NewProofKVs}]
+                                 end,
+                                 Poi11Fields)),
+                         ?assertMatch({error, _},
+                                      aec_trees:verify_poi(contracts, ContractId, Contract,
+                                                           BrokenSerializedPoi))
+                 end,
+                 Poi11ProofKVs),
+
+               ok
+       end},
       {"POI for one account",
        fun() ->
                AccountKeyF = fun(A) -> aec_accounts:pubkey(A) end,
@@ -515,6 +565,20 @@ check_poi_for_an_object_among_others(SubTree,
                  aec_trees:verify_poi(SubTree, ObjKey, Obj, Poi22)),
 
     ok.
+
+poi_fields_get(FieldKey, PoiFields) ->
+    {_, FieldValue} = lists:keyfind(FieldKey, 1, PoiFields),
+    FieldValue.
+
+poi_fields_update_with(FieldKey, Fun, PoiFields) ->
+    _ = poi_fields_get(FieldKey, PoiFields), %% Check valid key.
+    lists:foldr(
+      fun({K, V}, PoiFieldsIn) ->
+              NewV = if K =:= FieldKey -> Fun(V); true -> V end,
+              [{K, NewV} | PoiFieldsIn]
+      end,
+      [],
+      PoiFields).
 
 make_contract(Owner) ->
     {contract_create_tx, CTx} = aetx:specialize_type(ct_create_tx(Owner)),
