@@ -127,12 +127,12 @@ check_fundecl(_, {fun_decl, _Attrib, {id, _, Name}, Type}) ->
 
 %% infer_nonrec(Env, LetFun) ->
 %%     ets:new(type_vars, [set, named_table, public]),
-%%     create_unification_errors(),
+%%     create_type_errors(),
 %%     create_field_constraints(),
 %%     NewLetFun = infer_letfun(Env, LetFun),
 %%     solve_field_constraints(),
 %%     Result = {TypeSig, _} = instantiate(NewLetFun),
-%%     destroy_and_report_unification_errors(),
+%%     destroy_and_report_type_errors(),
 %%     destroy_field_constraints(),
 %%     ets:delete(type_vars),
 %%     print_typesig(TypeSig),
@@ -142,35 +142,41 @@ typesig_to_fun_t({type_sig, Args, Res}) -> {fun_t, [], Args, Res}.
 
 infer_letrec(Env, {letrec, Attrs, Defs}) ->
     ets:new(type_vars, [set, named_table, public]),
-    create_unification_errors(),
+    create_type_errors(),
     create_field_constraints(),
     Env1 = [{Name, fresh_uvar(A)}
-		 || {letfun, _, {id, A, Name}, _, _, _} <- Defs],
+                 || {letfun, _, {id, A, Name}, _, _, _} <- Defs],
     ExtendEnv = Env1 ++ Env,
-    Inferred = [infer_letfun(ExtendEnv, LF) || LF <- Defs],
-    [ unify(proplists:get_value(Name, Env1), typesig_to_fun_t(TypeSig))
-        || {{Name, TypeSig}, _} <- Inferred ],
-    solve_field_constraints(),
+    Inferred =
+        [ begin
+            Res    = {{Name, TypeSig}, _} = infer_letfun(ExtendEnv, LF),
+            Got    = proplists:get_value(Name, Env1),
+            Expect = typesig_to_fun_t(TypeSig),
+            unify(Got, Expect, {check_typesig, Name, Got, Expect}),
+            solve_field_constraints(),
+            io:format("Checked ~s : ~s\n", [Name, pp(dereference_deep(Got))]),
+            Res
+          end || LF <- Defs ],
+    destroy_and_report_unsolved_field_constraints(),
+    destroy_and_report_type_errors(),
     TypeSigs = instantiate([Sig || {Sig, _} <- Inferred]),
-    NewDefs = instantiate([D || {_, D} <- Inferred]),
-    destroy_and_report_unification_errors(),
+    NewDefs  = instantiate([D || {_, D} <- Inferred]),
     [print_typesig(S) || S <- TypeSigs],
-    destroy_field_constraints(),
     ets:delete(type_vars),
     {TypeSigs, {letrec, Attrs, NewDefs}}.
 
 infer_letfun(Env, {letfun, Attrib, {id, NameAttrib, Name}, Args, What, Body}) ->
     ArgTypes  = [{ArgName, arg_type(T)} || {arg, _, {id, _, ArgName}, T} <- Args],
-    NewBody={typed, _, _, ResultType} = infer_expr(ArgTypes ++ Env, Body),
-    unify(ResultType, arg_type(What)),
+    ExpectedType = arg_type(What),
+    NewBody={typed, _, _, ResultType} = check_expr(ArgTypes ++ Env, Body, ExpectedType),
     NewArgs = [{arg, A1, {id, A2, ArgName}, T}
-	       || {{ArgName, T}, {arg, A1, {id, A2, ArgName}, _}} <- lists:zip(ArgTypes, Args)],
+               || {{ArgName, T}, {arg, A1, {id, A2, ArgName}, _}} <- lists:zip(ArgTypes, Args)],
     TypeSig = {type_sig, [T || {arg, _, _, T} <- NewArgs], ResultType},
     {{Name, TypeSig},
      {letfun, Attrib, {id, NameAttrib, Name}, NewArgs, ResultType, NewBody}}.
 
 print_typesig({Name, TypeSig}) ->
-    io:format("Inferred ~p : ~s\n", [Name, pp(TypeSig)]).
+    io:format("Inferred ~s : ~s\n", [Name, pp(TypeSig)]).
 
 arg_type({id, Attrs, "_"}) ->
     fresh_uvar(Attrs);
@@ -181,22 +187,21 @@ arg_type(T) ->
 
 lookup_name(Env, As, Name) ->
     case proplists:get_value(Name, Env) of
-	undefined ->
-            Line = line_number({id, As, Name}),
-	    io:format("Line ~p: unbound variable: ~p\n", [Line, Name]),
-	    error({unbound_variable, Line, Name});
-	{type_sig, ArgTypes, ReturnType} ->
-	    ets:new(freshen_tvars, [set, public, named_table]),
-	    Type = freshen({fun_t, As, ArgTypes, ReturnType}),
-	    ets:delete(freshen_tvars),
+        undefined ->
+            type_error({unbound_variable, {id, As, Name}}),
+            fresh_uvar(As);
+        {type_sig, ArgTypes, ReturnType} ->
+            ets:new(freshen_tvars, [set, public, named_table]),
+            Type = freshen({fun_t, As, ArgTypes, ReturnType}),
+            ets:delete(freshen_tvars),
             Type;
-	Type ->
+        Type ->
             Type
     end.
 
 check_expr(Env, Expr, Type) ->
     E = {typed, _, _, Type1} = infer_expr(Env, Expr),
-    unify(Type1, Type),
+    unify(Type1, Type, {check_expr, Expr, Type1, Type}),
     E.
 
 infer_expr(_Env, Body={bool, As, _}) ->
@@ -222,9 +227,8 @@ infer_expr(Env, {tuple, As, Cpts}) ->
     CptTypes = [T || {typed, _, _, T} <- NewCpts],
     {typed, As, {tuple, As, NewCpts}, {tuple_t, As, CptTypes}};
 infer_expr(Env, {list, As, Elems}) ->
-    NewElems = [infer_expr(Env, X) || X <- Elems],
     ElemType = fresh_uvar(As),
-    [unify(ElemType, T) || {typed, _, _, T} <- NewElems],
+    NewElems = [check_expr(Env, X, ElemType) || X <- Elems],
     {typed, As, {list, As, NewElems}, {app_t, As, {id, As, "list"}, [ElemType]}};
 %% TODO: not hardwired!
 infer_expr(_Env, E = {con, As, "None"}) ->
@@ -234,48 +238,41 @@ infer_expr(_Env, E = {con, As, "Some"}) ->
     ElemType = fresh_uvar(As),
     {typed, As, E, {fun_t, As, [ElemType], option_t(As, ElemType)}};
 infer_expr(Env, {typed, As, Body, Type}) ->
-    AnnotType = case Type of
-		    {id, Attrs, "_"} ->
-			fresh_uvar(Attrs);
-		    _ ->
-			Type
-		end,
-    {typed, _, NewBody, NewType} = infer_expr(Env, Body),
-    unify(NewType, AnnotType),
-    {typed, As, NewBody, AnnotType};
+    {typed, _, NewBody, NewType} = check_expr(Env, Body, Type),
+    {typed, As, NewBody, NewType};
 infer_expr(Env, {app, As, Fun, Args}) ->
     case aeso_syntax:get_ann(format, As) of
         infix ->
-	    infer_op(Env, As, Fun, Args, fun infer_infix/1);
-	prefix ->
-	    infer_op(Env, As, Fun, Args, fun infer_prefix/1);
+            infer_op(Env, As, Fun, Args, fun infer_infix/1);
+        prefix ->
+            infer_op(Env, As, Fun, Args, fun infer_prefix/1);
         _ ->
             NewFun={typed, _, _, FunType} = infer_expr(Env, Fun),
             NewArgs = [infer_expr(Env, A) || A <- Args],
             ArgTypes = [T || {typed, _, _, T} <- NewArgs],
             ResultType = fresh_uvar(As),
-            unify(FunType, {fun_t, [], ArgTypes, ResultType}),
+            unify(FunType, {fun_t, [], ArgTypes, ResultType}, {infer_app, Fun, Args, FunType, ArgTypes}),
             {typed, As, {app, As, NewFun, NewArgs}, dereference(ResultType)}
     end;
 infer_expr(Env, {'if', Attrs, Cond, Then, Else}) ->
-    NewCond={typed, _, _, CondType} = infer_expr(Env, Cond),
-    unify(CondType, {id, Attrs, "bool"}),
+    NewCond = check_expr(Env, Cond, {id, Attrs, "bool"}),
     NewThen = {typed, _, _, ThenType} = infer_expr(Env, Then),
-    NewElse = check_expr(Env, Else, ThenType),
+    NewElse = {typed, _, _, ElseType} = infer_expr(Env, Else),
+    unify(ThenType, ElseType, {if_branches, Then, ThenType, Else, ElseType}),
     {typed, Attrs, {'if', Attrs, NewCond, NewThen, NewElse}, ThenType};
 infer_expr(Env, {switch, Attrs, Expr, Cases}) ->
     NewExpr = {typed, _, _, ExprType} = infer_expr(Env, Expr),
     SwitchType = fresh_uvar(Attrs),
     NewCases = [infer_case(Env, As, Pattern, ExprType, Branch, SwitchType)
-		|| {'case', As, Pattern, Branch} <- Cases],
+                || {'case', As, Pattern, Branch} <- Cases],
     {typed, Attrs, {switch, Attrs, NewExpr, NewCases}, SwitchType};
 infer_expr(Env, {record, Attrs, Fields}) ->
     RecordType = fresh_uvar(Attrs),
     NewFields = [{field, A, FieldName, infer_expr(Env, Expr)}
-		 || {field, A, FieldName, Expr} <- Fields],
+                 || {field, A, FieldName, Expr} <- Fields],
     constrain([case LV of
-                [{proj, _, FieldName}] -> {RecordType, FieldName, T}
-	       end || {field, _, LV, {typed, _, _, T}} <- NewFields]),
+                [{proj, _, FieldName}] -> {RecordType, FieldName, T, Fld}
+               end || {Fld, {field, _, LV, {typed, _, _, T}}} <- lists:zip(Fields, NewFields)]),
     {typed, Attrs, {record, Attrs, NewFields}, RecordType};
 infer_expr(Env, {record, Attrs, Record, Update}) ->
     NewRecord = {typed, _, _, RecordType} = infer_expr(Env, Record),
@@ -284,7 +281,7 @@ infer_expr(Env, {record, Attrs, Record, Update}) ->
 infer_expr(Env, {proj, Attrs, Record, FieldName}) ->
     NewRecord = {typed, _, _, RecordType} = infer_expr(Env, Record),
     FieldType = fresh_uvar(Attrs),
-    constrain({RecordType, FieldName, FieldType}),
+    constrain({RecordType, FieldName, FieldType, {proj, Attrs, Record, FieldName}}),
     {typed, Attrs, {proj, Attrs, NewRecord, FieldName}, FieldType};
 %% Maps
 infer_expr(Env, {map_get, Attrs, Map, Key}) ->  %% map lookup
@@ -316,7 +313,7 @@ infer_expr(Env, {lam, Attrs, Args, Body}) ->
     ArgPatterns = [{typed, As, Pat, T} || {arg, As, Pat, T} <- Args],
     ResultType = fresh_uvar(Attrs),
     {'case', _, {typed, _, {tuple, _, NewArgPatterns}, _}, NewBody} =
-	infer_case(Env, Attrs, {tuple, Attrs, ArgPatterns}, {tuple_t, Attrs, ArgTypes}, Body, ResultType),
+        infer_case(Env, Attrs, {tuple, Attrs, ArgPatterns}, {tuple_t, Attrs, ArgTypes}, Body, ResultType),
     NewArgs = [{arg, As, NewPat, NewT} || {typed, As, NewPat, NewT} <- NewArgPatterns],
     {typed, Attrs, {lam, Attrs, NewArgs, NewBody}, {fun_t, Attrs, ArgTypes, ResultType}}.
 
@@ -343,43 +340,32 @@ check_record_update(Env, RecordType, Fld) ->
                 FunType = {fun_t, Ann1, [FldType], FldType},
                 {field_upd, Ann, LV, check_expr(Env, Fun, FunType)}
         end,
-    constrain([{RecordType, FieldName, FldType}]),
+    constrain([{RecordType, FieldName, FldType, Fld}]),
     Fld1.
 
 infer_op(Env, As, Op, Args, InferOp) ->
     TypedArgs = [infer_expr(Env, A) || A <- Args],
     ArgTypes = [T || {typed, _, _, T} <- TypedArgs],
-    {fun_t, _, OperandTypes, ResultType} = InferOp(Op),
-    unify(ArgTypes, OperandTypes),
+    Inferred = {fun_t, _, OperandTypes, ResultType} = InferOp(Op),
+    unify(ArgTypes, OperandTypes, {infer_app, Op, Args, Inferred, ArgTypes}),
     {typed, As, {app, As, Op, TypedArgs}, ResultType}.
 
 infer_case(Env, Attrs, Pattern, ExprType, Branch, SwitchType) ->
-    Line = line_number(Attrs),
     Vars = free_vars(Pattern),
     Names = [N || {id, _, N} <- Vars, N /= "_"],
     case Names -- lists:usort(Names) of
-	[] -> ok;
-	Nonlinear ->
-	    Plural = case lists:usort(Nonlinear) of
-			 [_] -> "";
-			 _   -> "s"
-		     end,
-	    io:format("Repeated name~s in pattern on line ~p: ~s\n",
-		      [Plural, Line, [[N, " "] || N <- lists:usort(Nonlinear)]]),
-	    error({non_linear_pattern, Pattern})
+        [] -> ok;
+        Nonlinear -> type_error({non_linear_pattern, Pattern, lists:usort(Nonlinear)})
     end,
     NewEnv = [{Name, fresh_uvar(Attr)} || {id, Attr, Name} <- Vars] ++ Env,
     NewPattern = {typed, _, _, PatType} = infer_expr(NewEnv, Pattern),
-    NewBranch = {typed, _, _, BranchType} = infer_expr(NewEnv, Branch),
-    unify(PatType, ExprType),
-    unify(BranchType, SwitchType),
+    NewBranch  = check_expr(NewEnv, Branch, SwitchType),
+    unify(PatType, ExprType, {case_pat, Pattern, PatType, ExprType}),
     {'case', Attrs, NewPattern, NewBranch}.
 
 %% NewStmts = infer_block(Env, Attrs, Stmts, BlockType)
 infer_block(_Env, Attrs, [], BlockType) ->
-    %% DANG! A block with no value. Interpret it as unit.
-    unify({tuple_t, Attrs, []}, BlockType),
-    [];
+    error({impossible, empty_block, Attrs, BlockType});
 infer_block(Env, Attrs, [Def={letfun, _, _, _, _, _}|Rest], BlockType) ->
     NewDef = infer_letfun(Env, Def),
     [NewDef|infer_block(Env, Attrs, Rest, BlockType)];
@@ -389,12 +375,10 @@ infer_block(Env, Attrs, [Def={letrec, _, _}|Rest], BlockType) ->
 infer_block(Env, _, [{letval, Attrs, Pattern, Type, E}|Rest], BlockType) ->
     NewE = {typed, _, _, PatType} = infer_expr(Env, {typed, Attrs, E, arg_type(Type)}),
     {'case', _, NewPattern, {typed, _, {block, _, NewRest}, _}} =
-	infer_case(Env, Attrs, Pattern, PatType, {block, Attrs, Rest}, BlockType),
+        infer_case(Env, Attrs, Pattern, PatType, {block, Attrs, Rest}, BlockType),
     [{letval, Attrs, NewPattern, Type, NewE}|NewRest];
 infer_block(Env, _, [E], BlockType) ->
-    NewE = {typed, _, _, Type} = infer_expr(Env, E),
-    unify(Type, BlockType),
-    [NewE];
+    [check_expr(Env, E, BlockType)];
 infer_block(Env, Attrs, [E|Rest], BlockType) ->
     [infer_expr(Env, E)|infer_block(Env, Attrs, Rest, BlockType)].
 
@@ -449,7 +433,7 @@ free_vars({typed, _, A, _}) ->
     free_vars(A);
 free_vars(L) when is_list(L) ->
     [V || Elem <- L,
-	  V <- free_vars(Elem)].
+          V <- free_vars(Elem)].
 
 %% Record types
 
@@ -459,9 +443,9 @@ create_record_types(Defs) ->
     %% A relation from field names to types
     ets:new(record_fields, [public, named_table, bag]),
     [begin
-	 ets:insert(record_types, {Name, Args, Fields}),
-	 [ets:insert(record_fields, {FieldName, FieldType, {app_t, Attrs, Id, Args}})
-	  || {field_t, _, {id, _, FieldName}, FieldType} <- Fields]
+         ets:insert(record_types, {Name, Args, Fields}),
+         [ets:insert(record_fields, {FieldName, FieldType, {app_t, Attrs, Id, Args}})
+          || {field_t, _, {id, _, FieldName}, FieldType} <- Fields]
      end
      || {type_def, Attrs, Id={id, _, Name}, Args, {record_t, Fields}} <- Defs].
 
@@ -484,142 +468,131 @@ solve_field_constraints() ->
 
 solve_field_constraints(Constraints) ->
     %% First look for record fields that appear in only one type definition
-    [case ets:lookup(record_fields, FieldName) of
-	 [] ->
-	     Line = line_number(Attrs),
-	     io:format("Undefined record field ~s on line ~p\n", [FieldName, Line]),
-	     error({undefined_field, FieldName});
-	 [{FieldName, FldType, RecType}] ->
-	     ets:new(freshen_tvars, [set, public, named_table]),
-	     FreshFldType = freshen(FldType),
-	     FreshRecType = freshen(RecType),
-	     ets:delete(freshen_tvars),
-	     unify(FreshFldType, FieldType),
-	     unify(FreshRecType, RecordType),
-	     true;
-	 _ ->
-	     %% ambiguity--need cleverer strategy
-	     false
-     end
-     || {RecordType, {id, Attrs, FieldName}, FieldType} <- Constraints],
-    solve_ambiguous_field_constraints(Constraints).
+    IsAmbiguous = fun({RecordType, Field={id, _Attrs, FieldName}, FieldType, When}) ->
+        case ets:lookup(record_fields, FieldName) of
+            [] ->
+                type_error({undefined_field, Field}),
+                false;
+            [{FieldName, FldType, RecType}] ->
+                ets:new(freshen_tvars, [set, public, named_table]),
+                FreshFldType = freshen(FldType),
+                FreshRecType = freshen(RecType),
+                ets:delete(freshen_tvars),
+                unify(FreshFldType, FieldType, {field_constraint, FreshFldType, FieldType, When}),
+                unify(FreshRecType, RecordType, {record_constraint, FreshRecType, RecordType, When}),
+                false;
+            _ ->
+                %% ambiguity--need cleverer strategy
+                true
+         end end,
+    AmbiguousConstraints = lists:filter(IsAmbiguous, Constraints),
+    solve_ambiguous_field_constraints(AmbiguousConstraints).
 
 solve_ambiguous_field_constraints(Constraints) ->
     Unknown = solve_known_record_types(Constraints),
     if Unknown == [] -> ok;
        length(Unknown) < length(Constraints) ->
-	    %% progress! Keep trying.
-	    solve_ambiguous_field_constraints(Unknown);
+            %% progress! Keep trying.
+            solve_ambiguous_field_constraints(Unknown);
        true ->
-	    %% If there is a SMALLEST record type that solves all the
-	    %% field constraints for a variable, choose that
-	    %% type. This should enable, in particular, record
-	    %% expressions that list all the fields of a record, even
-	    %% if there is a record type with a superset of the
-	    %% fields.
-	    UVars = lists:usort([UVar || {UVar, _, _} <- Unknown]),
-	    Solutions = [solve_for_uvar(UVar, [Field || {U, {id, _, Field}, _} <- Unknown,
-						        U == UVar])
-			 || UVar <- UVars],
-	    case lists:member(true, Solutions) of
-		true ->
-		    %% Progress!
-		    solve_ambiguous_field_constraints(Unknown);
-		false ->
-		    [io:format("Record\n  with fields ~s\n  on line ~p\n  could be any of ~s\n",
-			       [[[F, " "] || F <- Fields],
-				Line,
-				[[T, " "] || T <- Types]
-			       ])
-		     || {ambiguous_record, Line, Fields, Types} <- Solutions],
-		    [io:format("No record type has all the fields ~s(on line ~p)\n",
-			       [[[F, " "] || F <- Fs], Line])
-		     || {no_records_with_all_fields, Line, Fs} <- Solutions],
-		    error({ambiguous_constraints, Solutions})
-	    end
+            case solve_unknown_record_types(Unknown) of
+                true -> %% Progress!
+                    solve_ambiguous_field_constraints(Unknown);
+                _ -> ok %% No progress. Report errors later.
+            end
+    end.
+
+solve_unknown_record_types(Unknown) ->
+    UVars = lists:usort([UVar || {UVar = {uvar, _, _}, _, _, _} <- Unknown]),
+    Solutions = [solve_for_uvar(UVar, [Field || {U, Field, _, _} <- Unknown,
+                                                U == UVar])
+                 || UVar <- UVars],
+    case lists:member(true, Solutions) of
+        true  -> true;
+        false -> Solutions
     end.
 
 solve_known_record_types(Constraints) ->
     DerefConstraints =
-	[{dereference(RecordType), FieldName, FieldType}
-	 || {RecordType, FieldName, FieldType} <- Constraints],
+        [{dereference(RecordType), FieldName, FieldType, When}
+         || {RecordType, FieldName, FieldType, When} <- Constraints],
     SolvedConstraints =
-	[begin
-	     RecId = {id, Attrs, RecName} = record_type_name(RecType),
-	     case ets:lookup(record_types, RecName) of
-		 [] ->
-		     io:format("Undefined record type: ~s\n", [RecName]),
-		     error({undefined_record_type, RecName});
-		 [{RecName, Formals, Fields}] ->
-		     FieldTypes = [{Name, Type} || {field_t, _, {id, _, Name}, Type} <- Fields],
-		     {id, _, FieldString} = FieldName,
-                     Line = line_number(FieldName),
-		     case proplists:get_value(FieldString, FieldTypes) of
-			 undefined ->
-			     io:format("Field ~s of record ~s does not exist (line ~p)\n",
-				       [FieldString, RecName, Line]),
-			     error({missing_field, FieldString, RecName});
-			 FldType ->
-			     ets:new(freshen_tvars, [set, public, named_table]),
-			     FreshFldType = freshen(FldType),
-			     FreshRecType = freshen({app_t, Attrs, RecId, Formals}),
-			     ets:delete(freshen_tvars),
-			     unify(FreshFldType, FieldType),
-			     unify(FreshRecType, RecType),
-			     {RecType, FieldName, FieldType}
-		     end
-	     end
-	 end
-	 || {RecType, FieldName, FieldType} <- DerefConstraints,
-	    case RecType of
-		{uvar, _, _} -> false;
-		_          -> true
-	    end],
+        [begin
+             RecId = {id, Attrs, RecName} = record_type_name(RecType),
+             case ets:lookup(record_types, RecName) of
+                 [] ->
+                     type_error({not_a_record_type, RecId, When}),
+                     not_solved;
+                 [{RecName, Formals, Fields}] ->
+                     FieldTypes = [{Name, Type} || {field_t, _, {id, _, Name}, Type} <- Fields],
+                     {id, _, FieldString} = FieldName,
+                     case proplists:get_value(FieldString, FieldTypes) of
+                         undefined ->
+                             type_error({missing_field, FieldName, RecName}),
+                             not_solved;
+                         FldType ->
+                             ets:new(freshen_tvars, [set, public, named_table]),
+                             FreshFldType = freshen(FldType),
+                             FreshRecType = freshen({app_t, Attrs, RecId, Formals}),
+                             ets:delete(freshen_tvars),
+                             unify(FreshFldType, FieldType, {todo, {solve_field_constraint_field, When}}),
+                             unify(FreshRecType, RecType, {todo, {solve_field_constraint_record, When}}),
+                             {RecType, FieldName, FieldType, When}
+                     end
+             end
+         end
+         || {RecType, FieldName, FieldType, When} <- DerefConstraints,
+            case RecType of
+                {uvar, _, _} -> false;
+                _          -> true
+            end],
     DerefConstraints--SolvedConstraints.
+
+destroy_and_report_unsolved_field_constraints() ->
+    Unsolved = ets:tab2list(field_constraints),
+    Unknown  = solve_known_record_types(Unsolved),
+    if Unknown == [] -> ok;
+       true ->
+            case solve_unknown_record_types(Unknown) of
+                true   -> ok;
+                Errors -> [ type_error(Err) || Err <- Errors ]
+            end
+    end,
+    destroy_field_constraints(),
+    ok.
 
 record_type_name({app_t, _Attrs, RecId={id, _, _}, _Args}) ->
     RecId;
 record_type_name(RecId={id, _, _}) ->
     RecId.
 
-solve_for_uvar(UVar, Fields) ->
+solve_for_uvar(UVar = {uvar, Attrs, _}, Fields) ->
     %% Does this set of fields uniquely identify a record type?
-    UniqueFields = lists:usort(Fields),
-    Candidates = [RecName || {_, _, {app_t, _, {id, _, RecName}, _}} <- ets:lookup(record_fields, hd(Fields))],
+    FieldNames = [ Name || {id, _, Name} <- Fields ],
+    UniqueFields = lists:usort(FieldNames),
+    Candidates = [RecName || {_, _, {app_t, _, {id, _, RecName}, _}} <- ets:lookup(record_fields, hd(FieldNames))],
     TypesAndFields = [case ets:lookup(record_types, RecName) of
-			  [{RecName, _, RecFields}] ->
-			      {RecName, [Field || {field_t, _, {id, _, Field}, _} <- RecFields]};
-			  [] ->
-			      error({no_definition_for, RecName, in, Candidates})
-		      end
-		      || RecName <- Candidates],
-    SortByMissing = lists:sort([{length(RecFields -- UniqueFields), RecName}
-				|| {RecName, RecFields} <- TypesAndFields,
-			           UniqueFields -- RecFields == []]),
-    {uvar, Attrs, _} = UVar,
-    Line = line_number(UVar),
-    case lowest_scores(SortByMissing) of
-	[] ->
-	    {no_records_with_all_fields, Line, UniqueFields};
-	[RecName] ->
-	    [{RecName, Formals, _}] = ets:lookup(record_types, RecName),
-	    ets:new(freshen_tvars, [set, public, named_table]),
-	    FreshRecType = freshen({app_t, Attrs, {id, Attrs, RecName}, Formals}),
-	    ets:delete(freshen_tvars),
-	    unify(UVar, FreshRecType),
-	    true;
-	StillPossible ->
-	    {ambiguous_record, Line, UniqueFields, StillPossible}
+                          [{RecName, _, RecFields}] ->
+                              {RecName, [Field || {field_t, _, {id, _, Field}, _} <- RecFields]};
+                          [] ->
+                              error({no_definition_for, RecName, in, Candidates})
+                      end
+                      || RecName <- Candidates],
+    Solutions = lists:sort([RecName || {RecName, RecFields} <- TypesAndFields,
+                                       UniqueFields -- RecFields == []]),
+    case Solutions of
+        [] ->
+            {no_records_with_all_fields, Fields};
+        [RecName] ->
+            [{RecName, Formals, _}] = ets:lookup(record_types, RecName),
+            ets:new(freshen_tvars, [set, public, named_table]),
+            FreshRecType = freshen({app_t, Attrs, {id, Attrs, RecName}, Formals}),
+            ets:delete(freshen_tvars),
+            unify(UVar, FreshRecType, {solve_rec_type, UVar, Fields}),
+            true;
+        StillPossible ->
+            {ambiguous_record, Fields, StillPossible}
     end.
-
-lowest_scores([{M, X}, {N, Y}|More]) ->
-    if M < N  -> [X];
-       M == N -> [X|lowest_scores([{N, Y}|More])]
-    end;
-lowest_scores([{_M, X}]) ->
-    [X];
-lowest_scores([]) ->
-    [].
 
 %% During type inference, record types are represented by their
 %% names. But, before we pass the typed program to the code generator,
@@ -644,23 +617,23 @@ unfold_record_types(X) ->
 
 unfold_record_types_in_type({app_t, Ann, Id = {id, _, RecName}, Args}) ->
     case ets:lookup(record_types, RecName) of
-	[{RecName, Formals, Fields}] when length(Formals) == length(Args) ->
-	    {record_t,
-	     unfold_record_types_in_type(
-	       subst_tvars(lists:zip(Formals, Args), Fields))};
-	_ ->
-	    %% Not a record type, or ill-formed record type.
-	    {app_t, Ann, Id, unfold_record_types_in_type(Args)}
+        [{RecName, Formals, Fields}] when length(Formals) == length(Args) ->
+            {record_t,
+             unfold_record_types_in_type(
+               subst_tvars(lists:zip(Formals, Args), Fields))};
+        _ ->
+            %% Not a record type, or ill-formed record type.
+            {app_t, Ann, Id, unfold_record_types_in_type(Args)}
     end;
 unfold_record_types_in_type(Type={id, _, RecName}) ->
     %% Like the case above, but for record types without parameters.
     case ets:lookup(record_types, RecName) of
-	[{RecName, [], Fields}] ->
-	    {record_t,
-	     unfold_record_types_in_type(Fields)};
-	_ ->
-	    %% Not a record type, or ill-formed record type
-	    Type
+        [{RecName, [], Fields}] ->
+            {record_t,
+             unfold_record_types_in_type(Fields)};
+        _ ->
+            %% Not a record type, or ill-formed record type
+            Type
     end;
 unfold_record_types_in_type({field_t, Attr, Name, Type}) ->
     {field_t, Attr, Name, unfold_record_types_in_type(Type)};
@@ -686,61 +659,69 @@ subst_tvars1(_Env, X) ->
 
 %% Unification
 
-unify({id, _, "_"}, _) ->
+unify({id, _, "_"}, _, _When) ->
   true;
-unify(_, {id, _, "_"}) ->
+unify(_, {id, _, "_"}, _When) ->
   true;
-unify(T1, T2) ->
-  unify1(dereference(T1), dereference(T2)).
+unify(T1, T2, When) ->
+  unify1(dereference(T1), dereference(T2), When).
 
-unify1({uvar, _, R}, {uvar, _, R}) ->
+unify1({uvar, _, R}, {uvar, _, R}, _When) ->
     true;
-unify1({uvar, A, R}, T) ->
+unify1({uvar, A, R}, T, When) ->
     case occurs_check(R, T) of
-	true ->
-	    cannot_unify({uvar, A, R}, T),
-	    false;
-	false ->
-	    ets:insert(type_vars, {R, T}),
-	    true
+        true ->
+            cannot_unify({uvar, A, R}, T, When),
+            false;
+        false ->
+            ets:insert(type_vars, {R, T}),
+            true
     end;
-unify1(T, {uvar, A, R}) ->
-    unify1({uvar, A, R}, T);
-unify1({tvar, _, X}, {tvar, _, X}) -> true; %% Rigid type variables
-unify1([A|B], [C|D]) ->
-    unify(A, C) andalso unify(B, D);
-unify1(X, X) ->
+unify1(T, {uvar, A, R}, When) ->
+    unify1({uvar, A, R}, T, When);
+unify1({tvar, _, X}, {tvar, _, X}, _When) -> true; %% Rigid type variables
+unify1([A|B], [C|D], When) ->
+    unify(A, C, When) andalso unify(B, D, When);
+unify1(X, X, _When) ->
     true;
-unify1({id, _, Name}, {id, _, Name}) ->
+unify1({id, _, Name}, {id, _, Name}, _When) ->
     true;
-unify1({fun_t, _, Args1, Result1}, {fun_t, _, Args2, Result2}) ->
-    unify(Args1, Args2) andalso unify(Result1, Result2);
-unify1({app_t, _, {id, _, F}, Args1}, {app_t, _, {id, _, F}, Args2})
+unify1({fun_t, _, Args1, Result1}, {fun_t, _, Args2, Result2}, When) ->
+    unify(Args1, Args2, When) andalso unify(Result1, Result2, When);
+unify1({app_t, _, {id, _, F}, Args1}, {app_t, _, {id, _, F}, Args2}, When)
   when length(Args1) == length(Args2) ->
-    unify(Args1, Args2);
-unify1({tuple_t, _, As}, {tuple_t, _, Bs})
+    unify(Args1, Args2, When);
+unify1({tuple_t, _, As}, {tuple_t, _, Bs}, When)
   when length(As) == length(Bs) ->
-    unify(As, Bs);
+    unify(As, Bs, When);
 %% The grammar is a bit inconsistent about whether types without
 %% arguments are represented as applications to an empty list of
 %% parameters or not. We therefore allow them to unify.
-unify1({app_t, _, T, []}, B) ->
-    unify(T, B);
-unify1(A, {app_t, _, T, []}) ->
-    unify(A, T);
-unify1(A, B) ->
-    cannot_unify(A, B),
+unify1({app_t, _, T, []}, B, When) ->
+    unify(T, B, When);
+unify1(A, {app_t, _, T, []}, When) ->
+    unify(A, T, When);
+unify1(A, B, When) ->
+    cannot_unify(A, B, When),
     false.
 
 dereference(T = {uvar, _, R}) ->
     case ets:lookup(type_vars, R) of
-	[] ->
-	    T;
-	[{R, Type}] ->
-	    dereference(Type)
+        [] ->
+            T;
+        [{R, Type}] ->
+            dereference(Type)
     end;
 dereference(T) ->
     T.
+
+dereference_deep(Type) ->
+    case dereference(Type) of
+        Tup when is_tuple(Tup) ->
+            list_to_tuple(dereference_deep(tuple_to_list(Tup)));
+        [H | T] -> [dereference_deep(H) | dereference_deep(T)];
+        T -> T
+    end.
 
 occurs_check(R, T) ->
     occurs_check1(R, dereference(T)).
@@ -763,11 +744,11 @@ fresh_uvar(Attrs) ->
 
 freshen({tvar, As, Name}) ->
     NewT = case ets:lookup(freshen_tvars, Name) of
-	       [] ->
-		   fresh_uvar(As);
-	       [{Name, T}] ->
-		   T
-	   end,
+               [] ->
+                   fresh_uvar(As);
+               [{Name, T}] ->
+                   T
+           end,
     ets:insert(freshen_tvars, {Name, NewT}),
     NewT;
 freshen(T) when is_tuple(T) ->
@@ -796,24 +777,170 @@ instantiate1(X) ->
 
 %% Save unification failures for error messages.
 
-cannot_unify(A, B) ->
-    ets:insert(unification_errors, {A, B}).
+cannot_unify(A, B, When) ->
+    type_error({cannot_unify, A, B, When}).
 
-create_unification_errors() ->
-    ets:new(unification_errors, [bag, named_table, public]).
+type_error(Err) ->
+    ets:insert(type_errors, Err).
 
-destroy_and_report_unification_errors() ->
-    Errors = ets:tab2list(unification_errors),
-    [io:format("Cannot unify ~s (from line ~p)\n"
-	       "         and ~s (from line ~p)\n",
-	       [pp(instantiate(A)), line_number(A),
-		pp(instantiate(B)), line_number(B)])
-     || {A, B} <- Errors],
-    ets:delete(unification_errors),
-    [ error(unification_errors) || Errors /= [] ].
+create_type_errors() ->
+    ets:new(type_errors, [bag, named_table, public]).
 
-line_number(T) ->
-    aeso_syntax:get_ann(line, T, 0).
+destroy_and_report_type_errors() ->
+    Errors = ets:tab2list(type_errors),
+    [ io:format("~s", [pp_error(Err)]) || Err <- Errors ],
+    ets:delete(type_errors),
+    [ error(type_errors) || Errors /= [] ].
+
+pp_error({cannot_unify, A, B, When}) ->
+    io_lib:format("Cannot unify ~s\n"
+                  "         and ~s\n"
+                  "~s", [pp(instantiate(A)), pp(instantiate(B)), pp_when(When)]);
+pp_error({unbound_variable, Id}) ->
+    io_lib:format("Unbound variable ~s at ~s\n", [pp(Id), pp_loc(Id)]);
+pp_error({not_a_record_type, Type, Why}) ->
+    io_lib:format("~s\n~s\n", [pp_type("Not a record type: ", Type), pp_why_record(Why)]);
+pp_error({non_linear_pattern, Pattern, Nonlinear}) ->
+    Plural = [ $s || length(Nonlinear) > 1 ],
+    io_lib:format("Repeated name~s ~s in pattern\n~s (at ~s)\n",
+                  [Plural, string:join(Nonlinear, ", "), pp_expr("  ", Pattern), pp_loc(Pattern)]);
+pp_error({ambiguous_record, Fields, Candidates}) ->
+    S = [ "s" || length(Fields) > 1 ],
+    io_lib:format("Ambiguous record type with field~s ~s (at ~s) could be one of\n  ~s\n",
+                  [S, string:join([ pp(F) || F <- Fields ], ", "),
+                   pp_loc(hd(Fields)),
+                   string:join([ C || C <- Candidates ], ", ")]);
+pp_error({missing_field, Field, Rec}) ->
+    io_lib:format("Record type ~s does not have field ~s (at ~s)\n", [Rec, pp(Field), pp_loc(Field)]);
+pp_error({no_records_with_all_fields, Fields}) ->
+    S = [ "s" || length(Fields) > 1 ],
+    io_lib:format("No record type with field~s ~s (at ~s)\n",
+                  [S, string:join([ pp(F) || F <- Fields ], ", "),
+                   pp_loc(hd(Fields))]);
+pp_error(Err) ->
+    io_lib:format("Unknown error: ~p\n", [Err]).
+
+pp_when({todo, What}) -> io_lib:format("[TODO] ~p\n", [What]);
+pp_when({check_typesig, Name, Inferred, Given}) ->
+    io_lib:format("when checking the definition of ~s\n"
+                  "  inferred type: ~s\n"
+                  "  given type:    ~s\n",
+        [Name, pp(instantiate(Inferred)), pp(instantiate(Given))]);
+pp_when({infer_app, Fun, Args, Inferred0, ArgTypes0}) ->
+    Inferred = instantiate(Inferred0),
+    ArgTypes = instantiate(ArgTypes0),
+    io_lib:format("when checking the application at ~s of\n"
+                  "~s\n"
+                  "to arguments\n~s",
+                  [pp_loc(Fun),
+                   pp_typed("  ", Fun, Inferred),
+                   [ [pp_typed("  ", Arg, ArgT), "\n"]
+                      || {Arg, ArgT} <- lists:zip(Args, ArgTypes) ] ]);
+pp_when({field_constraint, FieldType0, InferredType0, Fld}) ->
+    FieldType    = instantiate(FieldType0),
+    InferredType = instantiate(InferredType0),
+    case Fld of
+        {field, _Ann, LV, Id, E} ->
+            io_lib:format("when checking the assignment of the field\n~s (at ~s)\nto the old value ~s and the new value\n~s\n",
+                [pp_typed("  ", {lvalue, [], LV}, FieldType),
+                 pp_loc(Fld),
+                 pp(Id),
+                 pp_typed("  ", E, InferredType)]);
+        {field, _Ann, LV, E} ->
+            io_lib:format("when checking the assignment of the field\n~s (at ~s)\nto the value\n~s\n",
+                [pp_typed("  ", {lvalue, [], LV}, FieldType),
+                 pp_loc(Fld),
+                 pp_typed("  ", E, InferredType)]);
+        {proj, _Ann, _Rec, _Fld} ->
+            io_lib:format("when checking the record projection at ~s\n~s\nagainst the expected type\n~s\n",
+                [pp_loc(Fld),
+                 pp_typed("  ", Fld, FieldType),
+                 pp_type("  ", InferredType)])
+    end;
+pp_when({record_constraint, RecType0, InferredType0, Fld}) ->
+    RecType      = instantiate(RecType0),
+    InferredType = instantiate(InferredType0),
+    case Fld of
+        {field, _Ann, _LV, _Id, _E} ->
+            io_lib:format("when checking that the record type\n~s\n~s\n"
+                          "matches the expected type\n~s\n",
+                [pp_type("  ", RecType),
+                 pp_why_record(Fld),
+                 pp_type("  ", InferredType)]);
+        {field, _Ann, _LV, _E} ->
+            io_lib:format("when checking that the record type\n~s\n~s\n"
+                          "matches the expected type\n~s\n",
+                [pp_type("  ", RecType),
+                 pp_why_record(Fld),
+                 pp_type("  ", InferredType)]);
+        {proj, _Ann, Rec, _FldName} ->
+            io_lib:format("when checking that the expression\n~s (at ~s)\nhas type\n~s\n~s\n",
+                [pp_typed("  ", Rec, InferredType),
+                 pp_loc(Rec),
+                 pp_type("  ", RecType),
+                 pp_why_record(Fld)])
+    end;
+pp_when({if_branches, Then, ThenType0, Else, ElseType0}) ->
+    {ThenType, ElseType} = instantiate({ThenType0, ElseType0}),
+    Branches = [ {Then, ThenType} | [ {B, ElseType} || B <- if_branches(Else) ] ],
+    io_lib:format("when comparing the types of the if-branches\n"
+                  "~s\n", [ [ io_lib:format("~s (at ~s)\n", [pp_typed("  - ", B, BType), pp_loc(B)])
+                                || {B, BType} <- Branches ] ]);
+pp_when({case_pat, Pat, PatType0, ExprType0}) ->
+    {PatType, ExprType} = instantiate({PatType0, ExprType0}),
+    io_lib:format("when checking the type of the pattern at ~s\n~s\n"
+                  "against the expected type\n~s\n",
+                  [pp_loc(Pat), pp_typed("  ", Pat, PatType),
+                   pp_type("  ", ExprType)]);
+pp_when({check_expr, Expr, Inferred0, Expected0}) ->
+    {Inferred, Expected} = instantiate({Inferred0, Expected0}),
+    io_lib:format("when checking the type of the expression at ~s\n~s\n"
+                  "against the expected type\n~s\n",
+                  [pp_loc(Expr), pp_typed("  ", Expr, Inferred),
+                   pp_type("  ", Expected)]);
+pp_when(unknown) -> "".
+
+pp_why_record(Fld = {field, _Ann, LV, _Id, _E}) ->
+    io_lib:format("arising from an assignment of the field ~s (at ~s)",
+        [pp_expr("", {lvalue, [], LV}),
+         pp_loc(Fld)]);
+pp_why_record(Fld = {field, _Ann, LV, _E}) ->
+    io_lib:format("arising from an assignment of the field ~s (at ~s)",
+        [pp_expr("", {lvalue, [], LV}),
+         pp_loc(Fld)]);
+pp_why_record({proj, _Ann, Rec, FldName}) ->
+    io_lib:format("arising from the projection of the field ~s (at ~s)",
+        [pp(FldName),
+         pp_loc(Rec)]).
+
+
+if_branches(If = {'if', Ann, _, Then, Else}) ->
+    case proplists:get_value(format, Ann) of
+        elif -> [Then | if_branches(Else)];
+        _    -> [If]
+    end;
+if_branches(E) -> [E].
+
+pp_typed(Label, {typed, _, Expr, _}, Type) ->
+    pp_typed(Label, Expr, Type);
+pp_typed(Label, Expr, Type) ->
+    pp_expr(Label, {typed, [], Expr, Type}).
+
+pp_expr(Label, Expr) ->
+    prettypr:format(prettypr:beside(prettypr:text(Label), aeso_pretty:expr(Expr, [show_generated]))).
+
+pp_type(Label, Type) ->
+    prettypr:format(prettypr:beside(prettypr:text(Label), aeso_pretty:type(Type, [show_generated]))).
+
+line_number(T)   -> aeso_syntax:get_ann(line, T, 0).
+column_number(T) -> aeso_syntax:get_ann(col, T, 0).
+
+loc(T) ->
+    {line_number(T), column_number(T)}.
+
+pp_loc(T) ->
+    {Line, Col} = loc(T),
+    io_lib:format("line ~p, column ~p", [Line, Col]).
 
 pp({type_sig, As, B}) ->
     ["(", pp(As), ") => ", pp(B)];
@@ -827,6 +954,8 @@ pp({id, _, Name}) ->
     Name;
 pp({con, _, Name}) ->
     Name;
+pp({uvar, _, Ref}) ->
+    ["?" | lists:sublist(base58:binary_to_base58(term_to_binary(Ref)), 43, 3)];
 pp({tvar, _, Name}) ->
     Name;
 pp({tuple_t, _, Cpts}) ->
@@ -860,7 +989,7 @@ desugar_updates([Upd | Updates]) ->
     {More, Updates1}       = updates_key(Key, Updates),
     %% Check conflicts
     case length([ [] || [] <- [Rest | More] ]) of
-        N when N > 1 -> error({conflicting_updates_for_field, element(2, Upd), Key});
+        N when N > 1 -> error({conflicting_updates_for_field, Upd, Key});
         _ -> ok
     end,
     [MakeField(lists:append([Rest | More])) | desugar_updates(Updates1)].
