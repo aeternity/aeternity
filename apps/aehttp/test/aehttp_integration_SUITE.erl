@@ -143,7 +143,6 @@
     wrong_http_method_commitment_hash/1,
     wrong_http_method_name/1,
     wrong_http_method_balance/1,
-    wrong_http_method_block/1,
     wrong_http_method_tx/1,
     wrong_http_method_all_accounts_balances/1,
     wrong_http_method_miner_pub_key/1,
@@ -158,11 +157,7 @@
     wrong_http_method_block_txs_count_latest/1,
     wrong_http_method_block_txs_count_genesis/1,
     wrong_http_method_block_txs_count_pending/1,
-    wrong_http_method_block_tx_by_index_height/1,
-    wrong_http_method_block_tx_by_index_hash/1,
     wrong_http_method_block_tx_by_index_latest/1,
-    wrong_http_method_block_txs_list_by_height/1,
-    wrong_http_method_block_txs_list_by_hash/1,
     wrong_http_method_list_oracles/1,
     wrong_http_method_list_oracle_queries/1,
     wrong_http_method_peers/1
@@ -322,7 +317,6 @@ groups() ->
         wrong_http_method_commitment_hash,
         wrong_http_method_name,
         wrong_http_method_balance,
-        wrong_http_method_block,
         wrong_http_method_tx,
         wrong_http_method_all_accounts_balances,
         wrong_http_method_miner_pub_key,
@@ -337,11 +331,7 @@ groups() ->
         wrong_http_method_block_txs_count_latest,
         wrong_http_method_block_txs_count_genesis,
         wrong_http_method_block_txs_count_pending,
-        wrong_http_method_block_tx_by_index_height,
-        wrong_http_method_block_tx_by_index_hash,
         wrong_http_method_block_tx_by_index_latest,
-        wrong_http_method_block_txs_list_by_height,
-        wrong_http_method_block_txs_list_by_hash,
         wrong_http_method_list_oracles,
         wrong_http_method_list_oracle_queries,
         wrong_http_method_peers
@@ -3556,13 +3546,6 @@ get_balance(EncodedPubKey, Params) ->
     http_request(Host, get, "account/" ++ binary_to_list(EncodedPubKey) ++ "/balance",
                  Params).
 
-post_block(Block) ->
-    post_block_map(aehttp_api_parser:encode(block, Block)).
-
-post_block_map(BlockMap) ->
-    Host = external_address(),
-    http_request(Host, post, "block", BlockMap).
-
 get_account_transactions(EncodedPubKey, Params) ->
     Host = external_address(),
     http_request(Host, get, "account/" ++ binary_to_list(EncodedPubKey) ++ "/txs",
@@ -3879,10 +3862,6 @@ wrong_http_method_balance(_Config) ->
     Host = external_address(),
     {ok, 405, _} = http_request(Host, post, "account/123/balance", []).
 
-wrong_http_method_block(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "block", []).
-
 wrong_http_method_tx(_Config) ->
     Host = external_address(),
     {ok, 405, _} = http_request(Host, get, "tx", []).
@@ -3943,25 +3922,9 @@ wrong_http_method_block_txs_count_pending(_Config) ->
     Host = internal_address(),
     {ok, 405, _} = http_request(Host, post, "block/txs/count/pending", []).
 
-wrong_http_method_block_tx_by_index_height(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "block/tx/height/123/123", []).
-
-wrong_http_method_block_tx_by_index_hash(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "block/tx/hash/123/123", []).
-
 wrong_http_method_block_tx_by_index_latest(_Config) ->
     Host = internal_address(),
     {ok, 405, _} = http_request(Host, post, "block/tx/latest/123", []).
-
-wrong_http_method_block_txs_list_by_height(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "block/txs/list/height", []).
-
-wrong_http_method_block_txs_list_by_hash(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "block/txs/list/hash", []).
 
 wrong_http_method_list_oracles(_Config) ->
     Host = internal_address(),
