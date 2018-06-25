@@ -98,7 +98,9 @@ tx_pool_test_() ->
                ?assertEqual(lists:sort([STx1, STx2]), lists:sort(PoolTxs)),
 
                %% Insert a block in chain.
-               {ok, Candidate1, _} = aec_block_micro_candidate:create(TopBlock),
+               {ok, USCandidate1, _} = aec_block_micro_candidate:create(TopBlock),
+               {ok, Candidate1} = aec_keys:sign_micro_block(USCandidate1),
+
                {ok, CHash1} = aec_blocks:hash_internal_representation(Candidate1),
                ok = aec_chain_state:insert_block(Candidate1),
                ?assertEqual(CHash1, aec_chain:top_block_hash()),
@@ -118,7 +120,9 @@ tx_pool_test_() ->
                %% on top of each of them
                STx3 = a_signed_tx(PubKey2, new_pubkey(), 1, 1),
                ?assertEqual(ok, aec_tx_pool:push(STx3)),
-               {ok, Candidate3, _} = aec_block_micro_candidate:create(aec_chain:top_block()),
+               {ok, USCandidate3, _} = aec_block_micro_candidate:create(aec_chain:top_block()),
+               {ok, Candidate3} = aec_keys:sign_micro_block(USCandidate3),
+
                ok = aec_chain_state:insert_block(Candidate3),
                TopBlockFork1 = aec_chain:top_block(),
                {ok, KeyBlock2, _} = aec_block_key_candidate:create(TopBlockFork1,
@@ -127,7 +131,9 @@ tx_pool_test_() ->
 
                STx4 = a_signed_tx(PubKey2, new_pubkey(), 2, 1),
                ?assertEqual(ok, aec_tx_pool:push(STx4)),
-               {ok, Candidate4, _} = aec_block_micro_candidate:create(aec_chain:top_block()),
+               {ok, USCandidate4, _} = aec_block_micro_candidate:create(aec_chain:top_block()),
+               {ok, Candidate4} = aec_keys:sign_micro_block(USCandidate4),
+
                ok = aec_chain_state:insert_block(Candidate4),
                TopBlockFork2 = aec_chain:top_block(),
                {ok, KeyBlock3, _} = aec_block_key_candidate:create(TopBlockFork2,
@@ -275,7 +281,8 @@ tx_pool_test_() ->
                %% Add a transaction to the chain
                STx1 = a_signed_tx(PubKey1, new_pubkey(), 1, 1),
                ?assertEqual(ok, aec_tx_pool:push(STx1)),
-               {ok, Candidate1, _} = aec_block_micro_candidate:create(TopBlock),
+               {ok, USCandidate1, _} = aec_block_micro_candidate:create(TopBlock),
+               {ok, Candidate1} = aec_keys:sign_micro_block(USCandidate1),
                {ok, Top} = aec_blocks:hash_internal_representation(Candidate1),
                ok = aec_chain_state:insert_block(Candidate1),
                ?assertEqual(Top, aec_chain:top_block_hash()),
