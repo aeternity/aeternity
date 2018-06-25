@@ -20,10 +20,10 @@
 %% test case exports
 -export([
           create_channel/1
+        , inband_msgs/1
         , upd_transfer/1
         , deposit/1
         , withdraw/1
-        , inband_msgs/1
         , multiple_channels/1
         ]).
 
@@ -104,29 +104,45 @@ stop_node(N, Config) ->
 %%%===================================================================
 
 create_channel(Cfg) ->
-    #{ i := #{fsm := FsmI}
-     , r := #{fsm := FsmR} } = _Ch = create_channel_([{port, 9325}|Cfg]),
-    rpc(dev1, aesc_fsm, shutdown, [FsmI]),
-    rpc(dev1, aesc_fsm, shutdown, [FsmR]),
+    #{ i := #{fsm := FsmI} = I
+     , r := #{} = R} = Ch = create_channel_([{port, 9325}|Cfg]),
+    ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
+    _ = await_signing_request(shutdown, I),
+    _ = await_signing_request(shutdown_ack, R),
     check_info(1000),
+    expect_close_mutual_tx(Ch),
+    ok.
+
+inband_msgs(Cfg) ->
+    #{ i := #{fsm := FsmI} = I
+     , r := #{} = R
+     , spec := #{ initiator := _PubI
+                , responder := PubR }} = Ch = create_channel_([{port,9326}|Cfg]),
+    check_info(),
+    ok = rpc(dev1, aesc_fsm, inband_msg, [FsmI, PubR, <<"i2r hello">>]),
+    receive_from_fsm(
+      message, R, fun(#{info := #{info := <<"i2r hello">>}}) -> ok end, 1000, true),
+
+    ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
+    _ = await_signing_request(shutdown, I),
+    _ = await_signing_request(shutdown_ack, R),
+    check_info(1000),
+    expect_close_mutual_tx(Ch),
     ok.
 
 upd_transfer(Cfg) ->
     #{ i := #{fsm := FsmI} = I
      , r := #{} = R
      , spec := #{ initiator := PubI
-                , responder := PubR }} = create_channel_([{port,9326}|Cfg]),
+                , responder := PubR }} = Ch = create_channel_([{port,9326}|Cfg]),
     check_info(),
     {I0, R0} = do_update(PubI, PubR, 2, I, R, true),
-    %%
     {I1, R1} = update_bench(I0, R0),
-    %%
     ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
     {_I2, _} = await_signing_request(shutdown, I1),
     {_R2, _} = await_signing_request(shutdown_ack, R1),
-    check_info(100),
-    {ok, [Tx]} = rpc(dev1, aec_tx_pool, peek, [1]),
-    ct:log("From mempool: ~p", [Tx]),
+    check_info(1000),
+    expect_close_mutual_tx(Ch),
     ok.
 
 update_bench(I, R) ->
@@ -198,20 +214,6 @@ withdraw(Cfg) ->
     #{initiator_amount := IAmt2, responder_amount := RAmt2} = I2,
     {IAmt2, RAmt2} = {IAmt0 - Withdrawal, RAmt0},
     check_info(100).
-
-inband_msgs(Cfg) ->
-    #{ i := #{fsm := FsmI} = _I
-     , r := #{fsm := FsmR} = R
-     , spec := #{ initiator := _PubI
-                , responder := PubR }} = create_channel_([{port,9326}|Cfg]),
-    check_info(),
-    ok = rpc(dev1, aesc_fsm, inband_msg, [FsmI, PubR, <<"i2r hello">>]),
-    receive_from_fsm(
-      message, R, fun(#{info := #{info := <<"i2r hello">>}}) -> ok end, 1000, true),
-    rpc(dev1, erlang, exit, [FsmI, kill]),
-    rpc(dev1, erlang, exit, [FsmR, kill]),
-    check_info(1000),
-    ok.
 
 multiple_channels(Cfg) ->
     ct:log("spawning multiple channels", []),
@@ -313,6 +315,17 @@ create_channel_(Cfg, Debug) ->
                        error(Err, erlang:get_stacktrace())
                end,
     #{i => I2, r => R2, spec => Spec}.
+
+expect_close_mutual_tx(#{i := #{channel_id := ChannelId}}) ->
+    {ok, Blocks} = mine_blocks(dev1, 4),
+    true = lists:member(ChannelId,
+        [ aec_id:specialize(ChId, channel)
+          || Block <- Blocks,
+             STx <- aec_blocks:txs(Block),
+             {channel_close_mutual_tx, Tx} <- [aetx:specialize_type(aetx_sign:tx(STx))],
+             {_, ChInfo} <- [aesc_close_mutual_tx:serialize(Tx)],
+             {channel_id, ChId} <- ChInfo
+        ]).
 
 await_create_tx_i(I, R, Debug) ->
     {I1, _} = await_signing_request(create_tx, I, Debug),
