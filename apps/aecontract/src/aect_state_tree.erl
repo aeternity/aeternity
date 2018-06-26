@@ -155,19 +155,90 @@ root_hash(#contract_tree{contracts = CtTree}) ->
                      {'ok', binary(), aec_poi:poi()}
                    | {'error', 'not_present' | 'wrong_root_hash'}.
 add_poi(Id, #contract_tree{contracts = CtTree}, Poi) ->
-    aec_poi:add_poi(Id, CtTree, Poi).
+    case aec_poi:add_poi(Id, CtTree, Poi) of
+        {ok, Contract, ContractPoi} ->
+            add_store_to_poi(
+              aect_contracts:deserialize(Id, Contract),
+              CtTree,
+              ContractPoi);
+        {error, _} = Error -> Error
+    end.
+
+add_store_to_poi(Contract, CtTree, Poi) ->
+    Id = aect_contracts:store_id(Contract),
+    Iterator = aeu_mtrees:iterator_from(Id, CtTree),
+    Next = aeu_mtrees:iterator_next(Iterator),
+    Size = byte_size(Id),
+    case add_store_keys_poi(Id, Next, Size, #{}, Poi, CtTree) of
+        {error, _} = E -> E;
+        {Store, StorePoi} ->
+            {ok, aect_contracts:serialize_for_poi(aect_contracts:set_state(Store, Contract)), StorePoi}
+    end.
+
+add_store_keys_poi(_, '$end_of_table', _, Store, Poi, _) ->
+    {Store, Poi};
+add_store_keys_poi(Id, {PrefixedKey, Val, Iter}, PrefixSize, Store, Poi, CtTree) ->
+    case PrefixedKey of
+        <<Id:PrefixSize/binary, Key/binary>> = KeyId ->
+            Store1 = Store#{ Key => Val},
+            case aec_poi:add_poi(KeyId, CtTree, Poi) of
+                {ok, _, Poi1} ->
+                    Next = aeu_mtrees:iterator_next(Iter),
+                    add_store_keys_poi(Id, Next, PrefixSize, Store1, Poi1, CtTree);
+                {error, _} = E -> E
+            end;
+        _ ->
+            {Store, Poi}
+    end.
+
+
 
 -spec verify_poi(aect_contracts:id(), binary(), aec_poi:poi()) ->
                         'ok' | {'error', term()}.
-verify_poi(Id, SerializedContract, Poi) ->
-    aec_poi:verify(Id, SerializedContract, Poi).
+verify_poi(Id, PoiSerializedContract, Poi) ->
+    Contract = aect_contracts:deserialize_from_poi(Id, PoiSerializedContract),
+    case lookup_poi(Id, Poi) of
+        {ok, Contract} -> ok;
+        {ok, _} -> {error, bad_proof};
+        {error, _} = E -> E
+    end.
 
 -spec lookup_poi(aect_contracts:id(), aec_poi:poi()) ->
                         {'ok', aect_contracts:contract()} | {'error', not_found}.
 lookup_poi(Id, Poi) ->
     case aec_poi:lookup(Id, Poi) of
-        {ok, Val} -> {ok, aect_contracts:deserialize(Id, Val)};
+        {ok, Val} ->
+            Contract = aect_contracts:deserialize(Id, Val),
+            case add_store_from_poi(Contract, Poi) of
+                {ok, Contract2} -> {ok, Contract2};
+                Other -> Other
+            end;
         Err -> Err
+    end.
+
+
+add_store_from_poi(Contract, Poi) ->
+    Id = aect_contracts:store_id(Contract),
+    case aec_poi:iterator_from(Id, Poi, [{with_prefix, Id}]) of
+        {ok, Iterator} ->
+            Next = aec_poi:iterator_next(Iterator),
+            Size = byte_size(Id),
+            case add_store_from_poi(Id, Next, Size, #{}, Poi) of
+                {error, _} = E -> E;
+                Store -> {ok, aect_contracts:set_state(Store, Contract)}
+            end;
+        {error, _} = E -> E
+    end.
+
+add_store_from_poi(_, '$end_of_table', _, Store,_Poi) ->
+    Store;
+add_store_from_poi(Id, {PrefixedKey, Val, Iter}, PrefixSize, Store, Poi) ->
+    <<Id:PrefixSize/binary, Key/binary>> = PrefixedKey,
+    Store1 = Store#{ Key => Val},
+    case aec_poi:iterator_next(Iter) of
+        {error, _} = E -> E;
+        Next ->
+            add_store_from_poi(Id, Next, PrefixSize, Store1, Poi)
     end.
 
 %% -- Commit to db --

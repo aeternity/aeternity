@@ -795,7 +795,7 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, Trees} = rpc(aec_chain, get_top_state, []),
     ContractInTree = rpc(aect_state_tree, get_contract, [ContractPubKey,
                                                          aec_trees:contracts(Trees)]),
-    {ContractInPoI, _} = {aect_contracts:set_state(#{}, ContractInTree), ContractInPoI},
+    {ContractInPoI, _} = {ContractInTree, ContractInPoI},
 
     Function = <<"main">>,
     Argument = <<"42">>,

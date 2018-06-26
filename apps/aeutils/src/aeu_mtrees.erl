@@ -23,7 +23,6 @@
          iterator_from/3,
          iterator_next/1,
          lookup/2,
-         new_with_backend/2,
          enter/3,
          to_list/1]).
 
@@ -37,6 +36,7 @@
          verify_proof/4,
          lookup_proof/3,
          commit_to_db/1,
+         new_with_backend/2,
          empty_with_backend/1
         ]).
 
