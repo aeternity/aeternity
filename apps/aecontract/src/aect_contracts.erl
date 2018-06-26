@@ -286,7 +286,19 @@ assert_field(owner,  <<_:?PUB_SIZE/binary>> = X)         -> X;
 assert_field(vm_version, X) when is_integer(X), X > 0,
                                                 X < 6    -> X;
 assert_field(code, X)       when is_binary(X)            -> X;
-assert_field(store, X)      when is_map(X)               -> X;
+assert_field(store = Field, X) when is_map(X) ->
+    try
+        F = fun(K, V, unused) ->
+                    assert_field(store_k, K),
+                    assert_field(store_v, V),
+                    unused
+            end,
+        %% map iterator would limit memory usage though it is available from OTP 21.
+        maps:fold(F, unused, X),
+        X
+    catch _:_ -> error({illegal, Field, X}) end;
+assert_field(store_k, X) when is_binary(X), byte_size(X) > 0 -> X;
+assert_field(store_v, X)    when is_binary(X)            -> X;
 assert_field(log, X)        when is_binary(X)            -> X;
 assert_field(active, X)     when X =:= true; X =:= false -> X;
 assert_field(referers = Field, X) ->

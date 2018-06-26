@@ -55,6 +55,10 @@ state_setter() ->
                    <<"k2">> => <<"v1">>},
                  state(set_state(#{<<"k1">> => <<"v2">>,
                                    <<"k2">> => <<"v1">>}, C))),
+    ?assertError({illegal, _, _}, set_state(#{<<>> => <<"v">>}, C)),
+    ?assertEqual(#{<<"k">> => <<>>}, state(set_state(#{<<"k">> => <<>>}, C))),
+    ?assertError({illegal, _, _}, set_state(#{<<1:4>> => <<"v">>}, C)),
+    ?assertError({illegal, _, _}, set_state(#{<<"k">> => <<1:4>>}, C)),
     ok.
 
 
