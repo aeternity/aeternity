@@ -392,11 +392,11 @@ jobs:
       - run:
           name: Build latest docker image
           command: |
-            docker-compose build node1
+            IMAGE_TAG=${CIRCLE_BRANCH:?} docker-compose build node1
       - run:
           name: Create localnet with docker-compose
           command: |
-            sudo -u ubuntu -E -H docker-compose up -d
+            sudo -u ubuntu -E -H IMAGE_TAG=${CIRCLE_BRANCH:?} docker-compose up -d
       - run:
           name: Healthcheck
           command: |
