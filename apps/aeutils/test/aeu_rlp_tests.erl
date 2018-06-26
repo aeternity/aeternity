@@ -24,6 +24,11 @@ rlp_another_one_byte_test() ->
     B = aeu_rlp:encode(B),
     B = aeu_rlp:decode(B).
 
+rlp_zero_bytes_test() ->
+    B = <<>>,
+    S = ?BYTE_ARRAY_OFFSET + 0,
+    <<S, B/binary>> = aeu_rlp:encode(B).
+
 rlp_two_bytes_test() ->
     B = <<128>>,
     S = ?BYTE_ARRAY_OFFSET + 1,
@@ -51,6 +56,13 @@ rlp_tagged_size_two_bytes_bytes_test() ->
     X = list_to_binary(lists:duplicate(L, 42)),
     S = byte_size(X),
     E = <<Tag, S:SizeSize/unit:8, X/binary>> = aeu_rlp:encode(X),
+    X = aeu_rlp:decode(E).
+
+rlp_zero_bytes_list_test() ->
+    L = 0,
+    Tag = ?LIST_OFFSET + L,
+    X = [],
+    E = <<Tag>> = aeu_rlp:encode(X),
     X = aeu_rlp:decode(E).
 
 rlp_one_byte_list_test() ->

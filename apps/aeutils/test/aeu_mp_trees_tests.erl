@@ -201,6 +201,7 @@ test_iterator_prefix() ->
     Vals = gen_vals(1000),
     Prefixes = [<<1:4>>, <<2:4, 2:4>>, <<2:4, 3:4>>,
                 <<4:4, 2452342462452435:60>>],
+    ?assertEqual(lists:usort(Prefixes), Prefixes), %% Hardcoded expectation on test data.
     ValsPrefixed = [ {<<X/bits, Y/bits>>, Val}
                      || X <- Prefixes, {Y, Val} <- Vals],
     Sorted = lists:sort(ValsPrefixed),
@@ -211,20 +212,22 @@ test_iterator_prefix() ->
 test_iterator_prefix([Prefix|Left], Sorted, Tree) ->
     Opts = [{with_prefix, Prefix}],
     Iterator = aeu_mp_trees:iterator_from(Prefix, Tree, Opts),
-    SortedLeft = test_iterator_prefix(Iterator, Sorted),
+    SortedLeft = test_iterator_one_prefix(Iterator, Prefix, Sorted),
     test_iterator_prefix(Left, SortedLeft, Tree);
 test_iterator_prefix([], [],_Tree) ->
     ok.
 
-test_iterator_prefix(Iterator, [{Key, Val}|Left] = Vals) ->
+test_iterator_one_prefix(Iterator, Prefix, [{Key, Val}|Left] = Vals) ->
     case aeu_mp_trees:iterator_next(Iterator) of
         '$end_of_table' -> Vals;
         {IKey, IVal, Iterator1} ->
+            PrefixS = bit_size(Prefix),
+            ?assertMatch(<<Prefix:PrefixS/bitstring, _/bitstring>>, Key),
             ?assertEqual(IKey, Key),
             ?assertEqual(IVal, Val),
-            test_iterator_prefix(Iterator1, Left)
+            test_iterator_one_prefix(Iterator1, Prefix, Left)
     end;
-test_iterator_prefix(Iterator, []) ->
+test_iterator_one_prefix(Iterator, _, []) ->
     ?assertEqual('$end_of_table', aeu_mp_trees:iterator_next(Iterator)),
     [].
 

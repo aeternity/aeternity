@@ -14,14 +14,17 @@
                         , new/2
                         , owner/1
                         , pubkey/1
+                        , state/1
                         , serialize/1
                         , set_owner/2
+                        , set_state/2
                         ]).
 
 basic_test_() ->
     [ {"Serialization test", fun basic_serialize/0}
     , {"Access test", fun basic_getters/0}
     , {"Update test", fun basic_setters/0}
+    , {"Update state test", fun state_setter/0}
     ].
 
 basic_serialize() ->
@@ -41,6 +44,21 @@ basic_setters() ->
     C = aect_contracts:new(create_tx()),
     ?assertError({illegal, _, _}, set_owner(<<4711:64/unit:8>>, C)),
     _ = set_owner(<<42:32/unit:8>>, C),
+    ok.
+
+state_setter() ->
+    C = aect_contracts:new(create_tx()),
+    ?assertEqual(#{}, state(set_state(#{}, C))),
+    ?assertEqual(#{<<"k">> => <<"v">>},
+                 state(set_state(#{<<"k">> => <<"v">>}, C))),
+    ?assertEqual(#{<<"k1">> => <<"v2">>,
+                   <<"k2">> => <<"v1">>},
+                 state(set_state(#{<<"k1">> => <<"v2">>,
+                                   <<"k2">> => <<"v1">>}, C))),
+    ?assertError({illegal, _, _}, set_state(#{<<>> => <<"v">>}, C)),
+    ?assertEqual(#{<<"k">> => <<>>}, state(set_state(#{<<"k">> => <<>>}, C))),
+    ?assertError({illegal, _, _}, set_state(#{<<1:4>> => <<"v">>}, C)),
+    ?assertError({illegal, _, _}, set_state(#{<<"k">> => <<1:4>>}, C)),
     ok.
 
 

@@ -539,7 +539,7 @@ get_poi(Subtree, KeyName, PutKey) when Subtree =:= accounts
         {ok, Trees} = aec_chain:get_top_state(),
         EmptyPoI = aec_trees:new_poi(Trees),
         case aec_trees:add_poi(Subtree, PubKey, Trees, EmptyPoI) of
-            {ok, _EncodedObj, PoI} ->
+            {ok, PoI} ->
                 {ok, maps:put(PutKey, PoI, State)};
             {error, _} ->
                 Msg = "Proof for " ++ atom_to_list(Subtree) ++ " not found",

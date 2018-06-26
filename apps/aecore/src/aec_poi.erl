@@ -58,7 +58,7 @@ root_hash(#aec_poi{root_hash = Hash}) ->
     Hash.
 
 -spec add_poi(key(), aeu_mtrees:mtree(), poi()) ->
-                     {'ok', value(), poi()}
+                     {'ok', poi()}
                    | {'error', 'not_present' | 'wrong_root_hash'}.
 add_poi(Key, Tree, #aec_poi{root_hash = RootHash} = Poi) ->
     case aeu_mtrees:root_hash(Tree) of
@@ -66,9 +66,8 @@ add_poi(Key, Tree, #aec_poi{root_hash = RootHash} = Poi) ->
             Proof = Poi#aec_poi.proof,
             case aeu_mtrees:lookup_with_proof(Key, Tree, Proof) of
                 none -> {error, not_present};
-                {value_and_proof, Value, NewProof} ->
+                {value_and_proof, _Value, NewProof} ->
                     { ok
-                    , Value
                     , Poi#aec_poi{ proof = NewProof}
                     }
             end;

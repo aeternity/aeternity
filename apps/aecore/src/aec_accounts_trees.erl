@@ -78,15 +78,15 @@ root_hash(Tree) ->
     aeu_mtrees:root_hash(Tree).
 
 -spec add_poi(aec_keys:pubkey(), tree(), aec_poi:poi()) ->
-                     {'ok', binary(), aec_poi:poi()}
+                     {'ok', aec_poi:poi()}
                          | {'error', 'not_present' | 'wrong_root_hash'}.
 add_poi(Pubkey, Tree, Poi) ->
     aec_poi:add_poi(Pubkey, Tree, Poi).
 
--spec verify_poi(aec_keys:pubkey(), binary(), aec_poi:poi()) ->
+-spec verify_poi(aec_keys:pubkey(), aec_accounts:account(), aec_poi:poi()) ->
                         'ok' | {'error', term()}.
-verify_poi(AccountKey, SerializedAccount, Poi) ->
-    aec_poi:verify(AccountKey, SerializedAccount, Poi).
+verify_poi(AccountKey, Account, Poi) ->
+    aec_poi:verify(AccountKey, aec_accounts:serialize(Account), Poi).
 
 -spec lookup_poi(aec_keys:pubkey(), aec_poi:poi()) ->
                         {'ok', aec_accounts:account()} | {'error', not_found}.
