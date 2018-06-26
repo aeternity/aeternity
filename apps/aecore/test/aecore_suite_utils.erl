@@ -20,6 +20,7 @@
          delete_node_db_if_persisted/1,
          mine_blocks/2,
          mine_blocks/3,
+         mine_key_blocks/2,
          spend/4,         %% (Node, FromPub, ToPub, Amount) -> ok
          spend/5,         %% (Node, FromPub, ToPub, Amount, Fee) -> ok
          forks/0,
@@ -147,10 +148,16 @@ delete_node_db_if_persisted({true, {ok, MnesiaDir}}) ->
     {false, _} = {filelib:is_file(MnesiaDir), MnesiaDir},
     ok.
 
+mine_key_blocks(Node, NumBlocksToMine) ->
+    mine_blocks(Node, NumBlocksToMine, 100, key).
+
 mine_blocks(Node, NumBlocksToMine) ->
-    mine_blocks(Node, NumBlocksToMine, 100).
+    mine_blocks(Node, NumBlocksToMine, 100, any).
 
 mine_blocks(Node, NumBlocksToMine, MiningRate) ->
+    mine_blocks(Node, NumBlocksToMine, MiningRate, any).
+
+mine_blocks(Node, NumBlocksToMine, MiningRate, Type) ->
     ok = rpc:call(
            Node, application, set_env, [aecore, expected_mine_rate, MiningRate],
            5000),
@@ -158,7 +165,7 @@ mine_blocks(Node, NumBlocksToMine, MiningRate) ->
     aecore_suite_utils:subscribe(Node, micro_block_created),
     StartRes = rpc:call(Node, aec_conductor, start_mining, [], 5000),
     ct:log("aec_conductor:start_mining() (~p) -> ~p", [Node, StartRes]),
-    Res = mine_blocks_loop(NumBlocksToMine),
+    Res = mine_blocks_loop(NumBlocksToMine, Type),
     StopRes = rpc:call(Node, aec_conductor, stop_mining, [], 5000),
     ct:log("aec_conductor:stop_mining() (~p) -> ~p", [Node, StopRes]),
     aecore_suite_utils:unsubscribe(Node, block_created),
@@ -170,21 +177,27 @@ mine_blocks(Node, NumBlocksToMine, MiningRate) ->
             erlang:error(Reason)
     end.
 
-mine_blocks_loop(Cnt) ->
-    mine_blocks_loop([], Cnt).
+mine_blocks_loop(Cnt, Type) ->
+    mine_blocks_loop([], Cnt, Type).
 
-mine_blocks_loop(Blocks, 0) ->
+mine_blocks_loop(Blocks, 0,_Type) ->
     {ok, Blocks};
-mine_blocks_loop(Blocks, BlocksToMine) ->
+mine_blocks_loop(Blocks, BlocksToMine, Type) ->
     receive
         {gproc_ps_event, block_created, Info} ->
             ct:log("key block created, Info=~p", [Info]),
             #{info := Block} = Info,
-            mine_blocks_loop([Block | Blocks], BlocksToMine - 1);
+            mine_blocks_loop([Block | Blocks], BlocksToMine - 1, Type);
         {gproc_ps_event, micro_block_created, Info} ->
             ct:log("micro block created, Info=~p", [Info]),
             #{info := Block} = Info,
-            mine_blocks_loop([Block | Blocks], BlocksToMine - 1)
+            case Type =:= key of
+                true ->
+                    %% Don't decrement
+                    mine_blocks_loop([Block | Blocks], BlocksToMine, Type);
+                false ->
+                    mine_blocks_loop([Block | Blocks], BlocksToMine - 1, Type)
+            end
     after 30000 ->
             ct:log("timeout waiting for block event~n"
                   "~p", [process_info(self(), messages)]),

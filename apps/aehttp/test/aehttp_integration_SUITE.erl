@@ -409,12 +409,12 @@ init_per_group(channel_websocket, Config) ->
     Fee = 1,
     BlocksToMine = 1,
 
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), BlocksToMine),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), BlocksToMine),
 
     {ok, 200, _} = post_spend_tx(IPubkey, IStartAmt, Fee),
     {ok, 200, _} = post_spend_tx(RPubkey, RStartAmt, Fee),
-    {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_blocks(
-                                     aecore_suite_utils:node_name(?NODE), 2),
+    {ok, [_KeyBlock, MicroBlock]} = aecore_suite_utils:mine_blocks(
+                                      aecore_suite_utils:node_name(?NODE), 2),
     [_Spend1, _Spend2] = aec_blocks:txs(MicroBlock),
     assert_balance(IPubkey, IStartAmt),
     assert_balance(RPubkey, RStartAmt),
@@ -2761,7 +2761,7 @@ sc_ws_open(Config) ->
     assert_balance(RPubkey, RStartAmt - RAmt),
 
     % mine min depth
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 4),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 4),
 
     channel_send_locking_infos(IConnPid, RConnPid),
 
@@ -3181,7 +3181,7 @@ wait_for_signed_transaction_in_block(SignedTx) ->
     MineTx =
         fun Try(0) -> did_not_mine;
             Try(Attempts) ->
-                aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+                aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 2),
                 case tx_in_chain(TxHash) of
                     true  -> ok;
                     false -> Try(Attempts - 1)
