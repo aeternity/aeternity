@@ -80,7 +80,7 @@ int_create(BlockHash, Block, FeesInfo, Trees) ->
         true  ->
             int_create(BlockHash, Block, FeesInfo, Trees, []);
         false ->
-            case aec_chain:get_n_headers_backwards_from_hash(BlockHash, N) of
+            case aec_chain:get_n_generation_headers_backwards_from_hash(BlockHash, N) of
                 {ok, Headers} ->
                     int_create(BlockHash, Block, FeesInfo, Trees, Headers);
                 error ->

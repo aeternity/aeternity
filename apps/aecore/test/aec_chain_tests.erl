@@ -327,18 +327,18 @@ n_headers_backwards() ->
     ok = write_blocks_to_chain(Chain),
     TopHash = top_block_hash(),
 
-    {ok, Hdrs0} = aec_chain:get_n_headers_backwards_from_hash(TopHash, 2),
+    {ok, Hdrs0} = aec_chain:get_n_generation_headers_backwards_from_hash(TopHash, 2),
 
     ?assertMatch(X when length(X) == 2, Hdrs0),
     ?assertEqual(lists:sublist(Hdrs, 2), lists:reverse(Hdrs0)),
 
 
-    {ok, Hdrs1} = aec_chain:get_n_headers_backwards_from_hash(TopHash, 4),
+    {ok, Hdrs1} = aec_chain:get_n_generation_headers_backwards_from_hash(TopHash, 4),
 
     ?assertMatch(X when length(X) == 4, Hdrs1),
     ?assertEqual(lists:sublist(Hdrs, 4), lists:reverse(Hdrs1)),
 
-    {ok, Hdrs2} = aec_chain:get_n_headers_backwards_from_hash(TopHash, 5),
+    {ok, Hdrs2} = aec_chain:get_n_generation_headers_backwards_from_hash(TopHash, 5),
 
     ?assertMatch(X when length(X) == 5, Hdrs2),
     ?assertEqual(lists:sublist(Hdrs, 5), lists:reverse(Hdrs2)).
@@ -366,7 +366,7 @@ n_headers_forwards(Hdrs, Hashes, M, N) ->
     PrunedStart = lists:nthtail(N - 1, Hdrs),
     Expected    = lists:sublist(PrunedStart, M),
     ?assertEqual({ok, Expected},
-                 aec_chain:get_at_most_n_headers_forward_from_hash(Hash, M)),
+                 aec_chain:get_at_most_n_generation_headers_forward_from_hash(Hash, M)),
     n_headers_forwards(Hdrs, Hashes, M, N - 1).
 
 
@@ -380,29 +380,29 @@ n_headers_forwards_fork() ->
     Hash = aec_chain:genesis_hash(),
     %% We should now get the headers from the easy chain.
     ?assertEqual({ok, lists:sublist(EasyHdrs, 3)},
-                 aec_chain:get_at_most_n_headers_forward_from_hash(Hash, 3)),
+                 aec_chain:get_at_most_n_generation_headers_forward_from_hash(Hash, 3)),
 
     %% Write the hard chain, that will take over as main fork.
     %% We should now get the headers from the hard chain.
     ok = write_blocks_to_chain(HardChain),
     ?assertEqual({ok, lists:sublist(HardHdrs, 3)},
-                 aec_chain:get_at_most_n_headers_forward_from_hash(Hash, 3)),
+                 aec_chain:get_at_most_n_generation_headers_forward_from_hash(Hash, 3)),
 
     %% If we try to get headers forward in the easy chain, we should
     %% get an error since the function is only defined on the main chain.
     Hash1 = block_hash(lists:nth(2, EasyChain)),
     ?assertEqual(error,
-                 aec_chain:get_at_most_n_headers_forward_from_hash(Hash1, 1)),
+                 aec_chain:get_at_most_n_generation_headers_forward_from_hash(Hash1, 1)),
 
     %% A special case error is if the header has higher height than the top hash
     Hash2 = block_hash(lists:last(EasyChain)),
     ?assertEqual(error,
-                 aec_chain:get_at_most_n_headers_forward_from_hash(Hash2, 1)),
+                 aec_chain:get_at_most_n_generation_headers_forward_from_hash(Hash2, 1)),
 
     %% A special case error is if the hash doesn't exist
     Hash3 = <<123:256>>,
     ?assertEqual(error,
-                 aec_chain:get_at_most_n_headers_forward_from_hash(Hash3, 1)),
+                 aec_chain:get_at_most_n_generation_headers_forward_from_hash(Hash3, 1)),
     ok.
 
 %%%===================================================================
