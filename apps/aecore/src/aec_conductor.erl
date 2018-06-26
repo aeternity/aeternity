@@ -204,7 +204,7 @@ handle_call(stop_mining,_From, State) ->
                              key_block_candidate = undefined}};
 handle_call(start_mining,_From, State) ->
     epoch_mining:info("Mining started"),
-    State1 = start_mining(State#state{mining_state = 'running'}),
+    State1 = start_mining(State#state{mining_state = 'running', consensus = #consensus{leader = false}}),
     {reply, ok, State1};
 handle_call(get_mining_state,_From, State) ->
     {reply, State#state.mining_state, State};
@@ -227,7 +227,8 @@ handle_call(reinit_chain, _From, State1) ->
                 start_mining(State3#state{mining_state = running,
                                           new_micro_candidate_available = false,
                                           micro_block_candidate = undefined,
-                                          key_block_candidate = undefined})
+                                          key_block_candidate = undefined,
+                                          consensus = #consensus{leader = false}})
         end,
     {reply, ok, State};
 handle_call(Request, _From, State) ->
