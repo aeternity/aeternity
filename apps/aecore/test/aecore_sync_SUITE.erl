@@ -324,7 +324,7 @@ crash_syncing_worker(Config) ->
     ct:log("top at Dev1 = ~p", [Top1]),
     ExtraBlocks = 5,  %% Might need more if CPU is really fast!
     aecore_suite_utils:mine_blocks(N1, ExtraBlocks),
-    H1 = aec_blocks:height(Top1) + ExtraBlocks,
+    H1 = aec_blocks:height(Top1) + ExtraBlocks - 1, %% TODO: fix mine_blocks
 
     %% Ensure compatible notation of uri:
     PeerId = aec_peers:peer_id(aecore_suite_utils:peer_info(Dev1)),

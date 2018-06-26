@@ -19,10 +19,12 @@
         , get_block_range_by_hash/2
         , get_block_range_by_height/2
         , get_block_state/1
+        , get_generation/1
+        , get_prev_generation/1
         , get_header/1
         , get_header_by_height/1
-        , get_n_headers_backwards_from_hash/2
-        , get_at_most_n_headers_forward_from_hash/2
+        , get_n_generation_headers_backwards_from_hash/2
+        , get_at_most_n_generation_headers_forward_from_hash/2
         , get_top_N_blocks_time_summary/1
         , get_transactions_between/2
         , has_block/1
@@ -31,6 +33,7 @@
         , prev_hash_from_hash/1
         , top_block/0
         , top_block_hash/0
+        , top_key_block_hash/0
         , top_block_with_state/0
         , top_header/0
         ]).
@@ -292,6 +295,19 @@ top_block() ->
 top_block_hash() ->
     aec_db:get_top_block_hash().
 
+-spec top_key_block_hash() -> 'undefined' | binary().
+top_key_block_hash() ->
+    case aec_db:get_top_block_hash() of
+        Hash when is_binary(Hash) ->
+            {ok, Block} = get_block(Hash),
+            case aec_blocks:type(Block) of
+                key -> Hash;
+                micro -> aec_blocks:key_hash(Block)
+            end;
+        undefined ->
+            undefined
+    end.
+
 -spec top_block_with_state() -> 'undefined' | {aec_blocks:block(), aec_trees:trees()}.
 top_block_with_state() ->
     case top_block_hash() of
@@ -336,14 +352,14 @@ hash_is_in_main_chain(Hash) when is_binary(Hash) ->
 hash_is_connected_to_genesis(Hash) when is_binary(Hash) ->
     aec_chain_state:hash_is_connected_to_genesis(Hash).
 
--spec get_at_most_n_headers_forward_from_hash(binary(), pos_integer()) ->
-                                                 {'ok', [aec_headers:header()]} |
-                                                 'error'.
+-spec get_at_most_n_generation_headers_forward_from_hash(binary(), pos_integer()) ->
+        {'ok', [aec_headers:header()]} | 'error'.
 
 %%% @doc Get n headers forwards in chain. Returns headers old -> new
 %%%      This function is only defined for headers in the main chain to avoid
 %%%      ambiguity.
-get_at_most_n_headers_forward_from_hash(Hash, N) when is_binary(Hash), is_integer(N), N > 0 ->
+get_at_most_n_generation_headers_forward_from_hash(Hash, N)
+        when is_binary(Hash), is_integer(N), N > 0 ->
     case top_header() of
         undefined -> error;
         TopHeader ->
@@ -357,7 +373,7 @@ get_at_most_n_headers_forward_from_hash(Hash, N) when is_binary(Hash), is_intege
                         true -> error;
                         false ->
                             Res = {ok, _} = get_header_by_height(Height + Delta),
-                            {ok, Headers} = get_n_headers_backwards_from_hash(Res, Delta + 1, []),
+                            {ok, Headers} = get_n_generation_headers_backwards_from_hash(Res, Delta + 1, []),
                             %% Validate that we were on the main fork.
                             case aec_headers:hash_header(hd(Headers)) =:= {ok, Hash} of
                                 true -> {ok, Headers};
@@ -367,20 +383,26 @@ get_at_most_n_headers_forward_from_hash(Hash, N) when is_binary(Hash), is_intege
             end
     end.
 
--spec get_n_headers_backwards_from_hash(binary(), pos_integer()) ->
+-spec get_n_generation_headers_backwards_from_hash(binary(), pos_integer()) ->
                                            {'ok', [aec_headers:header()]} |
                                            'error'.
 %%% @doc Get n headers backwards in chain. Returns headers old -> new
-get_n_headers_backwards_from_hash(Hash, N) when is_binary(Hash), is_integer(N), N > 0 ->
-    get_n_headers_backwards_from_hash(get_header(Hash), N, []).
+get_n_generation_headers_backwards_from_hash(Hash, N) when is_binary(Hash), is_integer(N), N > 0 ->
+    get_n_generation_headers_backwards_from_hash(get_header(Hash), N, []).
 
-get_n_headers_backwards_from_hash(_, 0, Acc) ->
+get_n_generation_headers_backwards_from_hash(_, 0, Acc) ->
     {ok, Acc};
-get_n_headers_backwards_from_hash({ok, Header}, N, Acc) ->
-    PrevHash = aec_headers:prev_hash(Header),
-    NewAcc = [Header|Acc],
-    get_n_headers_backwards_from_hash(get_header(PrevHash), N - 1, NewAcc);
-get_n_headers_backwards_from_hash(error,_N,_Acc) ->
+get_n_generation_headers_backwards_from_hash({ok, Header}, N, Acc) ->
+    case aec_headers:type(Header) of
+        key ->
+            PrevHash = aec_headers:prev_hash(Header),
+            NewAcc = [Header|Acc],
+            get_n_generation_headers_backwards_from_hash(get_header(PrevHash), N - 1, NewAcc);
+        micro ->
+            PrevKey = aec_headers:key_hash(Header),
+            get_n_generation_headers_backwards_from_hash(get_header(PrevKey), N, Acc)
+    end;
+get_n_generation_headers_backwards_from_hash(error,_N,_Acc) ->
     error.
 
 %%%===================================================================
@@ -509,6 +531,58 @@ get_block_by_height(Height) when is_integer(Height), Height >= 0 ->
                 error -> {error, block_not_found}
             end
     end.
+
+-spec get_generation(binary()) -> 'error' | {'ok', aec_blocks:block(), [aec_blocks:block()]}.
+get_generation(KeyBlockHash) ->
+    case aec_db:find_block(KeyBlockHash) of
+        none -> error;
+        {value, KeyBlock} ->
+            TopHash   = top_block_hash(),
+            TopHeight = aec_headers:height(aec_db:get_header(TopHash)),
+            Height    = aec_blocks:height(KeyBlock),
+            MaybeFirstMicro =
+                case TopHeight > Height of
+                    true ->
+                        {ok, NextKeyBlock} = get_block_by_height(Height),
+                        aec_blocks:prev_hash(NextKeyBlock);
+                    false ->
+                        TopHash
+                end,
+            case get_prev_generation(MaybeFirstMicro, []) of
+                {ok, MicroBlocks} ->
+                    {ok, KeyBlock, MicroBlocks};
+                error ->
+                    error
+            end
+    end.
+
+-spec get_prev_generation(binary()) -> 'error' | {'ok', aec_blocks:block(), [aec_blocks:block()]}.
+get_prev_generation(KeyBlockHash) ->
+    case aec_db:find_block(KeyBlockHash) of
+        none -> error;
+        {value, KeyBlock} ->
+            case get_prev_generation(aec_blocks:prev_hash(KeyBlock), []) of
+                {ok, MicroBlocks} ->
+                    {ok, KeyBlock, MicroBlocks};
+                error ->
+                    error
+            end
+    end.
+
+get_prev_generation(MaybeMicroBlockHash, Acc) ->
+    case aec_db:find_block(MaybeMicroBlockHash) of
+        none -> error;
+        {value, MaybeMicroBlock} ->
+            case aec_blocks:type(MaybeMicroBlock) of
+                key ->
+                    %% Don't reverse here we want the oldest micro block first
+                    {ok, Acc};
+                micro ->
+                    get_prev_generation(aec_blocks:prev_hash(MaybeMicroBlock),
+                                   [MaybeMicroBlock | Acc])
+            end
+    end.
+
 
 %%%===================================================================
 %%% Headers

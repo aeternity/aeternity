@@ -20,7 +20,8 @@
 
 %% API functions
 -export([ retry/1
-        , get_block/2
+        , get_generation/2
+        , get_generation/3
         , get_header_by_hash/2
         , get_header_by_height/3
         , get_n_successors/4
@@ -85,8 +86,11 @@ get_header_by_height(PeerId, Height, TopHash) ->
 get_n_successors(PeerId, FromHash, TargetHash, N) ->
     call(PeerId, {get_n_successors, [FromHash, TargetHash, N]}).
 
-get_block(PeerId, Hash) ->
-    call(PeerId, {get_block, [Hash]}).
+get_generation(PeerId, Hash) ->
+    get_generation(PeerId, Hash, backward).
+
+get_generation(PeerId, Hash, Dir) ->
+    call(PeerId, {get_generation, [Hash, Dir]}).
 
 tx_pool_sync_init(PeerId) ->
     call(PeerId, {tx_pool, [sync_init]}).
@@ -365,7 +369,7 @@ map_request(get_header_by_hash)   -> get_header;
 map_request(get_header_by_height) -> get_header;
 map_request(header)               -> get_header;
 map_request(header_hashes)        -> get_n_successors;
-map_request(block)                -> get_block;
+map_request(generation)           -> get_generation;
 map_request(txps_init)            -> tx_pool;
 map_request(txps_unfold)          -> tx_pool;
 map_request(txs)                  -> tx_pool;
@@ -459,7 +463,7 @@ handle_msg(S, MsgType, false, Request, {ok, Vsn, Msg}) ->
         get_header_by_hash   -> handle_get_header_by_hash(S, Msg);
         get_header_by_height -> handle_get_header_by_height(S, Vsn, Msg);
         get_n_successors     -> handle_get_n_successors(S, Vsn, Msg);
-        get_block            -> handle_get_block(S, Msg);
+        get_generation       -> handle_get_generation(S, Msg);
         block                -> handle_new_block(S, Msg);
         txs                  -> handle_new_txs(S, Msg);
         txps_init            -> handle_tx_pool_sync_init(S, Msg);
@@ -472,7 +476,7 @@ handle_msg(S, MsgType, true, Request, {ok, _Vsn, Msg}) ->
         ping          -> handle_ping_rsp(S, Request, Msg);
         header        -> handle_header_rsp(S, Request, Msg);
         header_hashes -> handle_header_hashes_rsp(S, Request, Msg);
-        block         -> handle_get_block_rsp(S, Request, Msg);
+        generation    -> handle_get_generation_rsp(S, Request, Msg);
         txps_init     -> handle_tx_pool_sync_rsp(S, init, Request, Msg);
         txps_unfold   -> handle_tx_pool_sync_rsp(S, unfold, Request, Msg);
         txs           -> handle_tx_pool_sync_rsp(S, get, Request, Msg);
@@ -506,8 +510,8 @@ prepare_request_data(_S, get_header_by_height, [Height, TopHash]) ->
     #{ height => Height, top_hash => TopHash };
 prepare_request_data(_S, get_n_successors, [FromHash, TargetHash, N]) ->
     #{ from_hash => FromHash, target_hash => TargetHash, n => N };
-prepare_request_data(_S, get_block, [Hash]) ->
-    #{ hash => Hash }.
+prepare_request_data(_S, get_generation, [Hash, Dir]) ->
+    #{ hash => Hash, forward => (Dir == forward) }.
 
 handle_tx_pool(S, Args, From) ->
     {Msg, MsgData} =
@@ -592,6 +596,7 @@ handle_ping_msg(S, RemotePingObj) ->
             case {{LTHash, LDiff}, {RTHash, RDiff}} of
                 {{T, _}, {T, _}} ->
                     epoch_sync:debug("Same top blocks", []),
+                    aec_sync:get_generation(PeerId, T),
                     aec_events:publish(chain_sync, {chain_sync_done, PeerId}),
                     ok;
                 {{_, DL}, {_, DR}} when DL > DR ->
@@ -633,7 +638,7 @@ ping_obj_rsp(S, RemotePingObj) ->
 
 local_ping_obj(#{ext_sync_port := Port}) ->
     GHash = aec_chain:genesis_hash(),
-    TopHash = aec_chain:top_block_hash(),
+    TopHash = aec_chain:top_key_block_hash(),
     {ok, Difficulty} = aec_chain:difficulty_at_top_block(),
     #{genesis_hash => GHash,
       best_hash    => TopHash,
@@ -703,7 +708,7 @@ handle_get_header_by_height(S, ?GET_HEADER_BY_HEIGHT_VSN,
 %% -- Get N Successors -------------------------------------------------------
 
 do_get_n_successors(Hash, N) ->
-    case aec_chain:get_at_most_n_headers_forward_from_hash(Hash, N+1) of
+    case aec_chain:get_at_most_n_generation_headers_forward_from_hash(Hash, N+1) of
         {ok, [_ | Headers]} ->
             HHashes = [ begin
                             {ok, HHash} = aec_headers:hash_header(H),
@@ -742,38 +747,53 @@ handle_header_hashes_rsp(S, {get_n_successors, From, _TRef}, Msg) ->
     end,
     remove_request_fld(S, get_n_successors).
 
-%% -- Get Block --------------------------------------------------------------
+%% -- Get Generation ----------------------------------------------------------
 
-handle_get_block(S, Msg) ->
+handle_get_generation(S, Msg) ->
+    Forward = maps:get(forward, Msg),
     Response =
-        case maps:get(hash, Msg, undefined) of
-            Hash when is_binary(Hash) ->
-                case aec_chain:get_block(Hash) of
-                    {ok, Block} ->
-                        SerBlock = aec_blocks:serialize_to_binary(Block),
-                        {ok, #{block => SerBlock}};
-                    error ->
-                        {error, block_not_found}
-                end;
-            _ ->
-                {error, bad_request}
+        case do_get_generation(maps:get(hash, Msg), Forward) of
+            {ok, KeyBlock, MicroBlocks} ->
+                SerKeyBlock = aec_blocks:serialize_to_binary(KeyBlock),
+                SerMicroBlocks = [ aec_blocks:serialize_to_binary(B) || B <- MicroBlocks ],
+                {ok, #{key_block => SerKeyBlock, micro_blocks => SerMicroBlocks, forward => Forward }};
+            error ->
+                {error, block_not_found}
         end,
-    send_response(S, block, Response),
+    send_response(S, generation, Response),
     S.
 
-handle_get_block_rsp(S, {get_block, From, _TRef}, Msg) ->
-    case maps:get(block, Msg, undefined) of
-        Block0 when is_binary(Block0) ->
-            case aec_blocks:deserialize_from_binary(Block0) of
-                {ok, Block} ->
-                    gen_server:reply(From, {ok, Block});
-                Err = {error, _} ->
-                    gen_server:reply(From, Err)
-            end;
-        _ ->
-            gen_server:reply(From, {error, no_block_in_response})
-    end,
-    remove_request_fld(S, get_block).
+do_get_generation(Hash, true) ->
+    aec_chain:get_generation(Hash);
+do_get_generation(Hash, false) ->
+    aec_chain:get_prev_generation(Hash).
+
+handle_get_generation_rsp(S, {get_generation, From, _TRef}, Msg) ->
+    SerKeyBlock = maps:get(key_block, Msg),
+    SerMicroBlocks = maps:get(micro_blocks, Msg),
+    Dir = case maps:get(forward, Msg) of true -> forward; false -> backward end,
+    Res =
+        case aec_blocks:deserialize_from_binary(SerKeyBlock) of
+            {ok, KeyBlock} ->
+                case deserialize_micro_blocks(SerMicroBlocks, []) of
+                    {ok, MicroBlocks} ->
+                        {ok, KeyBlock, MicroBlocks, Dir};
+                    Err = {error, _} ->
+                        Err
+                end;
+            Err = {error, _} ->
+                Err
+        end,
+    gen_server:reply(From, Res),
+    remove_request_fld(S, get_generation).
+
+deserialize_micro_blocks([], Acc) ->
+    {ok, lists:reverse(Acc)};
+deserialize_micro_blocks([SMB | SMBs], Acc) ->
+    case aec_blocks:deserialize_from_binary(SMB) of
+        {ok, MB}         -> deserialize_micro_blocks(SMBs, [MB | Acc]);
+        Err = {error, _} -> Err
+    end.
 
 %% -- TX Pool ----------------------------------------------------------------
 

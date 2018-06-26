@@ -5,7 +5,6 @@
         , get_top_hash/0
         , get_header_by_hash/1
         , get_header_by_height/1
-        , get_headers_list/3
         , get_block_by_height/1
         , get_block_by_hash/1
         , get_block_latest/0
@@ -110,20 +109,6 @@ get_block_range_by_hash(HashFrom, HashTo) ->
 
 get_block_range_by_height(HeightFrom, HeightTo) ->
     aec_chain:get_block_range_by_height(HeightFrom, HeightTo).
-
--spec get_headers_list(binary(), integer(), backward | forward) ->
-    {ok, list()} | {error, atom}.
-get_headers_list(Hash, N, Direction) ->
-    Fun =
-        case Direction of
-            forward  -> fun aec_chain:get_at_most_n_headers_forward_from_hash/2;
-            backward -> fun aec_chain:get_n_headers_backwards_from_hash/2
-        end,
-    case Fun(Hash, N) of
-        {ok, _Headers} = OK -> OK;
-        error ->
-            {error, header_not_found}
-    end.
 
 -spec get_account_balance(binary()) -> {ok, integer()}
                                      | {error, account_not_found}.

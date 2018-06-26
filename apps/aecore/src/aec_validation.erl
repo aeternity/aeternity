@@ -21,6 +21,15 @@
 %% depending on block/header kind.
 %% This will be changed in/after jur0's changes.
 
+validate_block_no_signature(#{ key_block := KeyBlock, micro_blocks := MicroBlocks }) ->
+    case aec_blocks:validate_key_block(KeyBlock) of
+        ok ->
+            lists:foldl(fun(MB, ok) -> aec_blocks:validate_micro_block_no_signature(MB);
+                           (_MB, Err = {error, _}) -> Err
+                        end, ok, MicroBlocks);
+        Err = {error, _} ->
+            Err
+    end;
 validate_block_no_signature(Block) ->
     case aec_blocks:is_key_block(Block) of
         true ->
@@ -28,7 +37,6 @@ validate_block_no_signature(Block) ->
         false ->
             aec_blocks:validate_micro_block_no_signature(Block)
     end.
-
 
 validate_block(Block, LeaderKey) ->
     case aec_blocks:is_key_block(Block) of

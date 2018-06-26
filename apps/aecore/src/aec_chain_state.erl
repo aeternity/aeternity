@@ -33,7 +33,27 @@
 get_hash_at_height(Height) when is_integer(Height), Height >= 0 ->
     get_hash_at_height(Height, new_state_from_persistence()).
 
--spec insert_block(#block{}) -> 'ok' | {'error', any()}.
+-spec insert_block(#block{} | map()) -> 'ok' | {'error', any()}.
+insert_block(#{ key_block := KeyBlock, micro_blocks := MicroBlocks, dir := forward }) ->
+    %% First insert key_block
+    case insert_block(KeyBlock) of
+        ok ->
+            lists:foldl(fun(MB, ok) -> insert_block(MB);
+                           (_MB, Err = {error, _}) -> Err
+                        end, ok, MicroBlocks);
+        Err = {error, _} ->
+            Err
+    end;
+insert_block(#{ key_block := KeyBlock, micro_blocks := MicroBlocks, dir := backward }) ->
+    %% First insert micro_blocks
+    case lists:foldl(fun(MB, ok) -> insert_block(MB);
+                        (_MB, Err = {error, _}) -> Err
+                     end, ok, MicroBlocks) of
+        ok ->
+            insert_block(KeyBlock);
+        Err = {error, _} ->
+            Err
+    end;
 insert_block(Block) ->
     Node = wrap_block(Block),
     try internal_insert(Node, Block)

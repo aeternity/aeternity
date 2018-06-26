@@ -131,7 +131,7 @@ handoff_leader() ->
 post_block(#block{} = Block) ->
     gen_server:call(?SERVER, {post_block, Block}).
 
--spec add_synced_block(#block{}) -> 'ok' | {'error', any()}.
+-spec add_synced_block(map()) -> 'ok' | {'error', any()}.
 add_synced_block(Block) ->
     gen_server:call(?SERVER, {add_synced_block, Block}).
 
@@ -821,8 +821,14 @@ handle_signed_block(Block, State) ->
 as_hex(S) ->
     [io_lib:format("~2.16.0b", [X]) || <<X:8>> <= S].
 
+handle_add_block(#{ key_block := KeyBlock } = Block, #state{} = State, Origin) ->
+    Header = aec_blocks:to_header(KeyBlock),
+    handle_add_block(Header, Block, State, Origin);
 handle_add_block(Block, #state{} = State, Origin) ->
     Header = aec_blocks:to_header(Block),
+    handle_add_block(Header, Block, State, Origin).
+
+handle_add_block(Header, Block, State, Origin) ->
     {ok, Hash} = aec_headers:hash_header(Header),
     case aec_chain:has_block(Hash) of
         true ->

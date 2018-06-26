@@ -56,7 +56,13 @@ serialize(get_block, GetBlock, Vsn = ?GET_BLOCK_VSN) ->
     serialize_flds(get_block, Vsn, [{hash, Hash}]);
 serialize(block, Block, Vsn = ?BLOCK_VSN) ->
     #{ block := Blk } = Block,
-    serialize_flds(block, Vsn, [{block, Blk}]);
+    serialize_flds(block, Vsn, [{block,Blk}]);
+serialize(get_generation, GetGeneration, Vsn = ?GET_GENERATION_VSN) ->
+    #{ hash := Hash, forward := Fwd } = GetGeneration,
+    serialize_flds(get_generation, Vsn, [{hash, Hash}, {forward, Fwd}]);
+serialize(generation, Generation, Vsn = ?GENERATION_VSN) ->
+    #{ key_block := KeyBlk, micro_blocks := MicroBlks, forward := Fwd } = Generation,
+    serialize_flds(generation, Vsn, [{key_block, KeyBlk}, {micro_blocks, MicroBlks}, {forward, Fwd}]);
 serialize(txs, TxMap, Vsn = ?TXS_VSN) ->
     #{ txs := Txs } = TxMap,
     serialize_flds(txs, Vsn, [{txs, Txs}]);
@@ -111,6 +117,8 @@ tag(get_n_successors)     -> ?MSG_GET_N_SUCCESSORS;
 tag(header_hashes)        -> ?MSG_HEADER_HASHES;
 tag(get_block)            -> ?MSG_GET_BLOCK;
 tag(block)                -> ?MSG_BLOCK;
+tag(get_generation)       -> ?MSG_GET_GENERATION;
+tag(generation)           -> ?MSG_GENERATION;
 tag(txs)                  -> ?MSG_TXS;
 tag(response)             -> ?MSG_P2P_RESPONSE;
 tag(txps_init)            -> ?MSG_TX_POOL_SYNC_INIT;
@@ -126,6 +134,8 @@ rev_tag(?MSG_GET_N_SUCCESSORS)     -> get_n_successors;
 rev_tag(?MSG_HEADER_HASHES)        -> header_hashes;
 rev_tag(?MSG_GET_BLOCK)            -> get_block;
 rev_tag(?MSG_BLOCK)                -> block;
+rev_tag(?MSG_GET_GENERATION)       -> get_generation;
+rev_tag(?MSG_GENERATION)           -> generation;
 rev_tag(?MSG_TXS)                  -> txs;
 rev_tag(?MSG_P2P_RESPONSE)         -> response;
 rev_tag(?MSG_TX_POOL_SYNC_INIT)    -> txps_init;
@@ -141,6 +151,8 @@ latest_vsn(get_n_successors)     -> ?GET_N_SUCCESSORS_VSN;
 latest_vsn(header_hashes)        -> ?HEADER_HASHES_VSN;
 latest_vsn(get_block)            -> ?GET_BLOCK_VSN;
 latest_vsn(block)                -> ?BLOCK_VSN;
+latest_vsn(get_generation)       -> ?GET_GENERATION_VSN;
+latest_vsn(generation)           -> ?GENERATION_VSN;
 latest_vsn(txs)                  -> ?TXS_VSN;
 latest_vsn(response)             -> ?RESPONSE_VSN;
 latest_vsn(txps_init)            -> ?TX_POOL_SYNC_INIT_VSN;
@@ -200,9 +212,17 @@ deserialize(get_block, Vsn, GetBlockFlds) when Vsn == ?GET_BLOCK_VSN ->
                          serialization_template(get_block, Vsn), GetBlockFlds),
     {get_block, Vsn, #{ hash => Hash }};
 deserialize(block, Vsn, BlockFlds) when Vsn == ?BLOCK_VSN ->
-    [{block, Block}] =  aec_serialization:decode_fields(
-                         serialization_template(block, Vsn), BlockFlds),
+    [{block, Block}] =
+        aec_serialization:decode_fields(serialization_template(block, Vsn), BlockFlds),
     {block, Vsn, #{ block => Block }};
+deserialize(get_generation, Vsn, GetGenFlds) when Vsn == ?GET_GENERATION_VSN ->
+    [{hash, Hash}, {forward, Fwd}] =
+        aec_serialization:decode_fields(serialization_template(get_generation, Vsn), GetGenFlds),
+    {get_generation, Vsn, #{ hash => Hash, forward => Fwd }};
+deserialize(generation, Vsn, GenerationFlds) when Vsn == ?GENERATION_VSN ->
+    [{key_block, KeyBlock}, {micro_blocks, MicroBlocks}, {forward, Fwd}] =
+        aec_serialization:decode_fields(serialization_template(generation, Vsn), GenerationFlds),
+    {generation, Vsn, #{ key_block => KeyBlock, micro_blocks => MicroBlocks, forward => Fwd }};
 deserialize(txs, Vsn, TxsFlds) when Vsn == ?TXS_VSN ->
     [{txs, Txs}] = aec_serialization:decode_fields(
                        serialization_template(txs, Vsn), TxsFlds),
@@ -273,6 +293,10 @@ serialization_template(get_block, ?GET_BLOCK_VSN) ->
     [{hash, binary}];
 serialization_template(block, ?BLOCK_VSN) ->
     [{block, binary}];
+serialization_template(get_generation, ?GET_GENERATION_VSN) ->
+    [{hash, binary}, {forward, bool}];
+serialization_template(generation, ?GENERATION_VSN) ->
+    [{key_block, binary}, {micro_blocks, [binary]}, {forward, bool}];
 serialization_template(txs, ?TXS_VSN) ->
     [{txs, [binary]}];
 serialization_template(txps_init, ?TX_POOL_SYNC_INIT_VSN) ->
