@@ -27,7 +27,7 @@ global_env() ->
     Fun     = fun(Ts, T) -> {type_sig, Ts, T} end,
     Fun1    = fun(S, T) -> Fun([S], T) end,
     TVar    = fun(X) -> {tvar, Ann, "'" ++ X} end,
-    Signature = Int,
+    Signature = {id, Ann, "signature"},
     TTL       = Int,
     Fee       = Int,
     [A, B, Q, R, K, V] = lists:map(TVar, ["a", "b", "q", "r", "k", "v"]),

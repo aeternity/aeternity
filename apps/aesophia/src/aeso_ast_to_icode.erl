@@ -414,6 +414,10 @@ ast_typerep({id,_,"string"}) ->
     string;
 ast_typerep({id,_,"address"}) ->
     word;
+ast_typerep({id,_,"hash"}) ->
+    word;
+ast_typerep({id,_,"signature"}) ->
+    word;
 ast_typerep(?oracle_t(_, _)) ->
     word;
 ast_typerep(?query_t(_, _)) ->
