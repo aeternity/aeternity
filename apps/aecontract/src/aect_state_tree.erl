@@ -118,7 +118,7 @@ get_contract(Id, #contract_tree{ contracts = CtTree }) ->
 
 add_store(Contract, CtTree) ->
     Id = aect_contracts:store_id(Contract),
-    Iterator = aeu_mtrees:iterator_from(Id, CtTree),
+    Iterator = aeu_mtrees:iterator_from(Id, CtTree, [{with_prefix, Id}]),
     Next = aeu_mtrees:iterator_next(Iterator),
     Size = byte_size(Id),
     Store = find_store_keys(Id, Next, Size, #{}),
@@ -127,14 +127,10 @@ add_store(Contract, CtTree) ->
 find_store_keys(_, '$end_of_table', _, Store) ->
     Store;
 find_store_keys(Id, {PrefixedKey, Val, Iter}, PrefixSize, Store) ->
-    case PrefixedKey of
-        <<Id:PrefixSize/binary, Key/binary>> ->
-            Store1 = Store#{ Key => Val},
-            Next = aeu_mtrees:iterator_next(Iter),
-            find_store_keys(Id, Next, PrefixSize, Store1);
-        _ ->
-            Store
-    end.
+    <<Id:PrefixSize/binary, Key/binary>> = PrefixedKey,
+    Store1 = Store#{ Key => Val},
+    Next = aeu_mtrees:iterator_next(Iter),
+    find_store_keys(Id, Next, PrefixSize, Store1).
 
 
 -spec lookup_contract(aect_contracts:id(), tree()) -> {value, aect_contracts:contract()} | none.
