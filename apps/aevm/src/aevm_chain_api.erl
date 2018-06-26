@@ -109,6 +109,32 @@
                        ChainState :: chain_state()) ->
     {ok, none | {some, term()}} | {error, term()}.
 
+-callback aens_preclaim(Addr  :: pubkey(),
+                        CHash :: binary(),
+                        Sign  :: binary(),
+                        ChainState :: chain_state()) ->
+    {ok, chain_state()} | {error, term()}.
+
+-callback aens_claim(Addr  :: pubkey(),
+                     Name  :: binary(),
+                     Salt  :: integer(),
+                     Sign  :: binary(),
+                     ChainState :: chain_state()) ->
+    {ok, chain_state()} | {error, term()}.
+
+-callback aens_transfer(FromAddr   :: pubkey(),
+                        ToAddr     :: pubkey(),
+                        Hash       :: binary(),
+                        Sign       :: binary(),
+                        ChainState :: chain_state()) ->
+    {ok, chain_state()} | {error, term()}.
+
+-callback aens_revoke(Addr       :: pubkey(),
+                      Hash       :: binary(),
+                      Sign       :: binary(),
+                      ChainState :: chain_state()) ->
+    {ok, chain_state()} | {error, term()}.
+
 %% Make a call to another contract.
 -callback call_contract(Contract  :: pubkey(),
                         Gas       :: non_neg_integer(),
