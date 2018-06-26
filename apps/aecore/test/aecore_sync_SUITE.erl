@@ -320,11 +320,15 @@ crash_syncing_worker(Config) ->
     aecore_suite_utils:delete_node_db_if_persisted(DbCfg),
     aecore_suite_utils:stop_node(Dev2, Config),
 
+    %% Hotfix - make sure mempool is empty
+    aecore_suite_utils:mine_blocks(N1, 4),
+    {ok, []} = rpc:call(N1, aec_tx_pool, peek, [infinity], 5000),
+
     Top1 = rpc:call(N1, aec_chain, top_block, [], 5000),
     ct:log("top at Dev1 = ~p", [Top1]),
     ExtraBlocks = 5,  %% Might need more if CPU is really fast!
     aecore_suite_utils:mine_blocks(N1, ExtraBlocks),
-    H1 = aec_blocks:height(Top1) + ExtraBlocks - 1, %% TODO: fix mine_blocks
+    H1 = aec_blocks:height(Top1) + ExtraBlocks,
 
     %% Ensure compatible notation of uri:
     PeerId = aec_peers:peer_id(aecore_suite_utils:peer_info(Dev1)),
