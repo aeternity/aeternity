@@ -1,9 +1,37 @@
 // AENS tests
 contract AENSTest =
 
+  // Name resolution
+
   function resolve_word(name : string, key : string) : option(address) =
     AENS.resolve(name, key)
 
   function resolve_string(name : string, key : string) : option(string) =
     AENS.resolve(name, key)
+
+  // Transactions
+
+  function preclaim(addr  : address,          // Claim on behalf of this account (can be Contract.address)
+                    chash : hash,             // Commitment hash
+                    sign  : signature) : () = // Signed by addr (if not Contract.address)
+    AENS.preclaim(addr, chash, sign)
+
+  function claim(addr : address,
+                 name : string,
+                 salt : int,
+                 sign : signature) : () =
+    AENS.claim(addr, name, salt, sign)
+
+  // TODO: update() -- how to handle pointers?
+
+  function transfer(owner     : address,
+                    new_owner : address,
+                    name_hash : hash,
+                    sign      : signature) : () =
+    AENS.transfer(owner, new_owner, name_hash, sign)
+
+  function revoke(owner     : address,
+                  name_hash : hash,
+                  sign      : signature) : () =
+    AENS.revoke(owner, name_hash, sign)
 

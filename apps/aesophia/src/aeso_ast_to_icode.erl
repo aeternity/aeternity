@@ -200,7 +200,32 @@ ast_body(?qid_app(["AENS", "resolve"], [Name, Key], _, ?option_t(Type))) ->
         false ->
             error({unresolved_result_type, 'AENS.resolve', Type})
     end;
-ast_body({qid, _, ["AENS", "resolve"]}) -> error({underapplied_primitive, 'AENS.resolve'});
+
+ast_body(?qid_app(["AENS", "preclaim"], [Addr, CHash, Sign], _, _)) ->
+    prim_call(?PRIM_CALL_AENS_PRECLAIM, #integer{value = 0},
+              [ast_body(Addr), ast_body(CHash), ast_body(Sign)],
+              [word, word, word], {tuple, []});
+
+ast_body(?qid_app(["AENS", "claim"], [Addr, Name, Salt, Sign], _, _)) ->
+    prim_call(?PRIM_CALL_AENS_CLAIM, #integer{value = 0},
+              [ast_body(Addr), ast_body(Name), ast_body(Salt), ast_body(Sign)],
+              [word, string, word, word], {tuple, []});
+
+ast_body(?qid_app(["AENS", "transfer"], [FromAddr, ToAddr, NameHash, Sign], _, _)) ->
+    prim_call(?PRIM_CALL_AENS_TRANSFER, #integer{value = 0},
+              [ast_body(FromAddr), ast_body(ToAddr), ast_body(NameHash), ast_body(Sign)],
+              [word, word, word, word], {tuple, []});
+
+ast_body(?qid_app(["AENS", "revoke"], [Addr, NameHash, Sign], _, _)) ->
+    prim_call(?PRIM_CALL_AENS_REVOKE, #integer{value = 0},
+              [ast_body(Addr), ast_body(NameHash), ast_body(Sign)],
+              [word, word, word], {tuple, []});
+
+ast_body({qid, _, ["AENS", "resolve"]})  -> error({underapplied_primitive, 'AENS.resolve'});
+ast_body({qid, _, ["AENS", "preclaim"]}) -> error({underapplied_primitive, 'AENS.preclaim'});
+ast_body({qid, _, ["AENS", "claim"]})    -> error({underapplied_primitive, 'AENS.claim'});
+ast_body({qid, _, ["AENS", "transfer"]}) -> error({underapplied_primitive, 'AENS.transfer'});
+ast_body({qid, _, ["AENS", "revoke"]})   -> error({underapplied_primitive, 'AENS.revoke'});
 
 %% Maps
 

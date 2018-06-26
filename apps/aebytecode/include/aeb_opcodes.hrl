@@ -163,3 +163,8 @@
 
 -define(PRIM_CALL_IN_AENS_RANGE(__TTYPE__), (((__TTYPE__) > 199) andalso ((__TTYPE__) < 300))).
 -define(PRIM_CALL_AENS_RESOLVE,  200).
+-define(PRIM_CALL_AENS_PRECLAIM, 201).
+-define(PRIM_CALL_AENS_CLAIM,    202).
+-define(PRIM_CALL_AENS_UPDATE,   203).
+-define(PRIM_CALL_AENS_TRANSFER, 204).
+-define(PRIM_CALL_AENS_REVOKE,   205).

@@ -17,6 +17,7 @@ global_env() ->
     String  = {id, Ann, "string"},
     Address = {id, Ann, "address"},
     State   = {id, Ann, "state"},
+    Hash    = {id, Ann, "hash"},
     Oracle  = fun(Q, R) -> {app_t, Ann, {id, Ann, "oracle"}, [Q, R]} end,
     Query   = fun(Q, R) -> {app_t, Ann, {id, Ann, "oracle_query"}, [Q, R]} end,
     Unit    = {tuple_t, Ann, []},
@@ -63,7 +64,11 @@ global_env() ->
      {["Oracle", "extend"],       Fun([Oracle(Q, R), Signature, Fee, TTL], Unit)},
      {["Oracle", "get_answer"],   Fun([Oracle(Q, R), Query(Q, R)], option_t(Ann, R))},
      %% Name service
-     {["AENS", "resolve"], Fun([String, String], option_t(Ann, A))},
+     {["AENS", "resolve"],  Fun([String, String], option_t(Ann, A))},
+     {["AENS", "preclaim"], Fun([Address, Hash, Signature], Unit)},
+     {["AENS", "claim"],    Fun([Address, String, Int, Signature], Unit)},
+     {["AENS", "transfer"], Fun([Address, Address, Hash, Signature], Unit)},
+     {["AENS", "revoke"],   Fun([Address, Hash, Signature], Unit)},
      %% Maps
      {["Map", "from_list"], Fun1(List(Pair(K, V)), Map(K, V))},
      {["Map", "to_list"],   Fun1(Map(K, V), List(Pair(K, V)))},
