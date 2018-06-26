@@ -181,7 +181,7 @@ poi_test_() ->
                {ok, Poi11} = ?TEST_MODULE:add_poi(contracts, ContractId, Trees1, Poi1),
                Poi11Fields = aec_trees:internal_serialize_poi_fields(Poi11),
 
-               SerializePoiFromFieldsF =
+               PoiFromFieldsF =
                    fun(Fields) ->
                            aec_trees:deserialize_poi(
                              aec_trees:internal_serialize_poi_from_fields(Fields))
@@ -190,7 +190,7 @@ poi_test_() ->
                %% The identified PoI fields lead to PoI that proves object.
                ?assertEqual(ok,
                             aec_trees:verify_poi(contracts, ContractId, Contract,
-                                                 SerializePoiFromFieldsF(Poi11Fields))),
+                                                 PoiFromFieldsF(Poi11Fields))),
 
                %% Check that removing a node from PoI makes object inclusion not proved.
                [{_, Poi11ProofKVs = [_,_|_]}] = %% Hardcoded expectation on test data: at least 2 nodes so able to remove 1 leaving at least a node.
@@ -198,7 +198,7 @@ poi_test_() ->
                lists:foreach(
                  fun(KV) ->
                          BrokenSerializedPoi =
-                             SerializePoiFromFieldsF(
+                             PoiFromFieldsF(
                                poi_fields_update_with(
                                  contracts,
                                  fun([{H, ProofKVs = [_,_|_]}]) ->
