@@ -8,7 +8,8 @@
 -module(aeo_state_tree).
 
 %% API
--export([ commit_to_db/1
+-export([ cache_root_hash/1
+        , commit_to_db/1
         , get_query/3
         , get_oracle/2
         , get_oracle_query_ids/2
@@ -22,6 +23,7 @@
         , insert_oracle/2
         , lookup_query/3
         , lookup_oracle/2
+        , new_with_backend/2
         , prune/2
         , root_hash/1
         ]).
@@ -80,6 +82,15 @@ empty() ->
 empty_with_backend() ->
     OTree  = aeu_mtrees:empty_with_backend(aec_db_backends:oracles_backend()),
     Cache  = aeu_mtrees:empty_with_backend(aec_db_backends:oracles_cache_backend()),
+    #oracle_tree{ otree  = OTree
+                , cache  = Cache
+                }.
+
+-spec new_with_backend(aeu_mtrees:root_hash() | 'empty',
+                       aeu_mtrees:root_hash() | 'empty') -> tree().
+new_with_backend(RootHash, CacheRootHash) ->
+    OTree  = aeu_mtrees:new_with_backend(RootHash, aec_db_backends:oracles_backend()),
+    Cache  = aeu_mtrees:new_with_backend(CacheRootHash, aec_db_backends:oracles_cache_backend()),
     #oracle_tree{ otree  = OTree
                 , cache  = Cache
                 }.
@@ -150,6 +161,10 @@ lookup_oracle(Id, Tree) ->
 -spec root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
 root_hash(#oracle_tree{otree = OTree}) ->
     aeu_mtrees:root_hash(OTree).
+
+-spec cache_root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
+cache_root_hash(#oracle_tree{cache = CTree}) ->
+    aeu_mtrees:root_hash(CTree).
 
 -ifdef(TEST).
 -spec oracle_list(tree()) -> list(oracle()).

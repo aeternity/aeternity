@@ -9,6 +9,7 @@
 
 %% API
 -export([commit_to_db/1,
+         cache_root_hash/1,
          delete_commitment/2,
          delete_name/2,
          empty/0,
@@ -19,6 +20,7 @@
          prune/2,
          lookup_commitment/2,
          lookup_name/2,
+         new_with_backend/2,
          root_hash/1]).
 
 %% Export for test
@@ -72,6 +74,13 @@ empty() ->
 empty_with_backend() ->
     MTree = aeu_mtrees:empty_with_backend(aec_db_backends:ns_backend()),
     Cache = aeu_mtrees:empty_with_backend(aec_db_backends:ns_cache_backend()),
+    #ns_tree{mtree = MTree, cache = Cache}.
+
+-spec new_with_backend(aeu_mtrees:root_hash() | 'empty',
+                       aeu_mtrees:root_hash() | 'empty') -> tree().
+new_with_backend(RootHash, CacheRootHash) ->
+    MTree = aeu_mtrees:new_with_backend(RootHash, aec_db_backends:ns_backend()),
+    Cache = aeu_mtrees:new_with_backend(CacheRootHash, aec_db_backends:ns_cache_backend()),
     #ns_tree{mtree = MTree, cache = Cache}.
 
 -spec prune(block_height(), tree()) -> tree().
@@ -129,6 +138,10 @@ lookup_name(Id, Tree) ->
 
 -spec root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
 root_hash(#ns_tree{mtree = MTree}) ->
+    aeu_mtrees:root_hash(MTree).
+
+-spec cache_root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
+cache_root_hash(#ns_tree{cache = MTree}) ->
     aeu_mtrees:root_hash(MTree).
 
 -spec commit_to_db(tree()) -> tree().
