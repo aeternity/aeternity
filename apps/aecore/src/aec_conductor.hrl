@@ -24,8 +24,8 @@
                     top_hash  :: binary()
                    }).
 
--record(consensus, {leader            = false                 :: boolean(),
-                    micro_block_cycle = ?NG_MICROBLOCK_TIMOUT :: integer()
+-record(consensus, {leader             = false                 :: boolean(),
+                    micro_block_cycle  = ?NG_MICROBLOCK_TIMOUT :: integer()
                     }).
 
 -record(state, {key_block_candidate                       :: #candidate{} | 'undefined',
@@ -34,7 +34,8 @@
                 blocked_tags            = []              :: ordsets:ordset(atom()),
                 keys_ready              = false           :: boolean(),
                 mining_state            = running         :: mining_state(),
-                seen_top_block_hash                       :: binary() | 'undefined',
+                top_block_hash                            :: binary() | 'undefined',
+                top_key_block_hash                        :: binary() | 'undefined',
                 workers                 = []              :: workers(),
                 consensus                                 :: #consensus{}
                }).
