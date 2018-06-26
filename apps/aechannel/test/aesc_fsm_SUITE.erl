@@ -188,7 +188,7 @@ deposit(Cfg) ->
     check_info(),
     {I1, _} = await_signing_request(deposit_tx, I),
     {R1, _} = await_signing_request(deposit_created, R),
-    mine_blocks(dev1, 4),
+    mine_blocks(dev1, 10),
     {I2, _R2} = await_initial_state(I1, R1),
     ct:log("I2 = ~p", [I2]),
     #{initiator_amount := IAmt2, responder_amount := RAmt2} = I2,
@@ -208,7 +208,7 @@ withdraw(Cfg) ->
     check_info(),
     {I1, _} = await_signing_request(withdraw_tx, I),
     {R1, _} = await_signing_request(withdraw_created, R),
-    mine_blocks(dev1, 4),
+    mine_blocks(dev1, 10),
     {I2, _R2} = await_initial_state(I1, R1),
     ct:log("I2 = ~p", [I2]),
     #{initiator_amount := IAmt2, responder_amount := RAmt2} = I2,
@@ -317,7 +317,7 @@ create_channel_(Cfg, Debug) ->
     #{i => I2, r => R2, spec => Spec}.
 
 expect_close_mutual_tx(#{i := #{channel_id := ChannelId}}) ->
-    {ok, Blocks} = mine_blocks(dev1, 4),
+    {ok, Blocks} = mine_blocks(dev1, 10),
     true = lists:member(ChannelId,
         [ aec_id:specialize(ChId, channel)
           || Block <- Blocks,
@@ -341,7 +341,7 @@ await_funding_signed_i(I, R, Debug) ->
 
 await_funding_locked(I, R, Debug) ->
     log(Debug, "mining blocks on dev1 for minimum depth", []),
-    mine_blocks(dev1, 4, Debug),
+    mine_blocks(dev1, 10, Debug),
     await_initial_state(I, R, Debug).
 
 await_initial_state(I, R) -> await_initial_state(I, R, true).
@@ -442,7 +442,7 @@ prep_initiator(Node) ->
     {ok, PubKey} = rpc(Node, aec_keys, pubkey, []),
     {ok, PrivKey} = rpc(Node, aec_keys, sign_privkey, []),
     ct:log("initiator Pubkey = ~p", [PubKey]),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(Node), 1),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(Node), 5),
     ct:log("initiator: 1 block mined on ~p", [Node]),
     {ok, Balance} = rpc(Node, aehttp_logic, get_account_balance, [PubKey]),
     #{role => initiator,
@@ -455,7 +455,7 @@ prep_responder(#{pub := IPub, balance := IBal} = _Initiator, Node) ->
     #{ public := Pub, secret := Priv } = enacl:sign_keypair(),
     Amount = IBal div 10,
     aecore_suite_utils:spend(NodeName, IPub, Pub, Amount),
-    mine_blocks(Node, 2), % one extra for good measure (TODO: ensure tx in block)
+    mine_blocks(Node, 5), % one extra for good measure (TODO: ensure tx in block)
     {ok, Amount} = rpc(Node, aehttp_logic, get_account_balance, [Pub]),
     #{role => responder,
       priv => Priv,
