@@ -89,24 +89,19 @@ create_contract_negative(_Cfg) ->
     {BadPubKey, BadS} = aect_test_utils:setup_new_account(aect_test_utils:new_state()),
     BadPrivKey        = aect_test_utils:priv_key(BadPubKey, BadS),
     RTx1      = aect_test_utils:create_tx(BadPubKey, S1),
-    {error, MaybeS1Mined} = sign_and_apply_transaction(RTx1, BadPrivKey, S1, ?MINER_PUBKEY),
-    S1Mined = aect_test_utils:setup_miner_account(?MINER_PUBKEY, S1),
-    aect_test_utils:assert_state_equal(S1Mined, MaybeS1Mined),
+    {error, S1} = sign_and_apply_transaction(RTx1, BadPrivKey, S1, ?MINER_PUBKEY),
     {error, account_not_found} = aetx:check(RTx1, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Insufficient funds
     S2     = aect_test_utils:set_account_balance(PubKey, 0, S1),
     Trees2 = aect_test_utils:trees(S2),
     RTx2   = aect_test_utils:create_tx(PubKey, S2),
-    {error, MaybeS2Mined} = sign_and_apply_transaction(RTx2, PrivKey, S2, ?MINER_PUBKEY),
-    S2Mined = aect_test_utils:setup_miner_account(?MINER_PUBKEY, S2),
-    aect_test_utils:assert_state_equal(S2Mined, MaybeS2Mined),
+    {error, S2} = sign_and_apply_transaction(RTx2, PrivKey, S2, ?MINER_PUBKEY),
     {error, insufficient_funds} = aetx:check(RTx2, Trees2, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test too high account nonce
     RTx3 = aect_test_utils:create_tx(PubKey, #{nonce => 0}, S1),
-    {error, MaybeS1Mined2} = sign_and_apply_transaction(RTx3, PrivKey, S1, ?MINER_PUBKEY),
-    aect_test_utils:assert_state_equal(S1Mined, MaybeS1Mined2),
+    {error, S1} = sign_and_apply_transaction(RTx3, PrivKey, S1, ?MINER_PUBKEY),
     {error, account_nonce_too_high} = aetx:check(RTx3, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     ok.
@@ -146,11 +141,11 @@ create_contract_init_error(_Cfg) ->
                  - aect_create_tx:gas_price(aetx:tx(Tx)) * aect_call:gas_used(InitCall),
                  aec_accounts:balance(aect_test_utils:get_account(PubKey, S2))),
     %% Check that the miner got credited correctly.
-    ?assertEqual(aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S1))
-                 + aec_governance:block_mine_reward()
-                 + aect_create_tx:fee(aetx:tx(Tx))
-                 + aect_create_tx:gas_price(aetx:tx(Tx)) * aect_call:gas_used(InitCall),
-                 aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S2))),
+    %% NG-NO_FEES
+    %% ?assertEqual(aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S1))
+    %%              + aect_create_tx:fee(aetx:tx(Tx))
+    %%              + aect_create_tx:gas_price(aetx:tx(Tx)) * aect_call:gas_used(InitCall),
+    %%              aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S2))),
     ok.
 
 create_contract(_Cfg) ->
@@ -216,11 +211,11 @@ create_contract_(ContractCreateTxGasPrice) ->
     ?assertEqual(aect_create_tx:amount(aetx:tx(Tx)),
                  aec_accounts:balance(aect_test_utils:get_account(ContractKey, S2))),
     %% Check that the miner got credited correctly.
-    ?assertEqual(aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S1))
-                 + aec_governance:block_mine_reward()
-                 + aect_create_tx:fee(aetx:tx(Tx))
-                 + aect_create_tx:gas_price(aetx:tx(Tx)) * aect_call:gas_used(InitCall),
-                 aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S2))),
+    %% NG-NO_FEES
+    %% ?assertEqual(aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S1))
+    %%              + aect_create_tx:fee(aetx:tx(Tx))
+    %%              + aect_create_tx:gas_price(aetx:tx(Tx)) * aect_call:gas_used(InitCall),
+    %%              aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S2))),
 
     ok.
 
@@ -301,7 +296,7 @@ call_contract_(ContractCallTxGasPrice) ->
     CallId = aect_call:id(Caller, aetx:nonce(CallTx), ContractKey),
 
     %% Check that it got stored and that we got the right return value
-    ?assertMatch([_], aect_call_state_tree:to_list(aect_test_utils:calls(S4))),
+    ?assertMatch([_, _], aect_call_state_tree:to_list(aect_test_utils:calls(S4))), %% Init + Call
     Call = aect_call_state_tree:get_call(ContractKey, CallId, aect_test_utils:calls(S4)),
     ok = aect_call:return_type(Call),
     <<42:256>> = aect_call:return_value(Call),
@@ -322,11 +317,11 @@ call_contract_(ContractCallTxGasPrice) ->
                  + aect_call_tx:amount(aetx:tx(CallTx)),
                  aec_accounts:balance(aect_test_utils:get_account(ContractKey, S4))),
     %% Check that the miner got credited correctly.
-    ?assertEqual(aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S3))
-                 + aec_governance:block_mine_reward()
-                 + aect_call_tx:fee(aetx:tx(CallTx))
-                 + aect_call_tx:gas_price(aetx:tx(CallTx)) * aect_call:gas_used(Call),
-                 aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S4))),
+    %% NG-NO_FEES
+    %% ?assertEqual(aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S3))
+    %%              + aect_call_tx:fee(aetx:tx(CallTx))
+    %%              + aect_call_tx:gas_price(aetx:tx(CallTx)) * aect_call:gas_used(Call),
+    %%              aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S4))),
 
     {ok, S4}.
 
