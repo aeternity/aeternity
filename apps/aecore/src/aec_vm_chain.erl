@@ -79,30 +79,27 @@ set_store(Store,  #state{ account = PubKey, trees = Trees } = State) ->
 %% @doc Spend money from the contract account.
 -spec spend(aec_keys:pubkey(), non_neg_integer(), chain_state()) ->
           {ok, chain_state()} | {error, term()}.
-spend(Recipient, Amount, State = #state{ trees   = Trees,
-                                         height  = Height,
-                                         account = ContractKey }) ->
-    case do_spend(Recipient, ContractKey, Amount, Trees, Height) of
-        {ok, Trees1}     -> {ok, State#state{ trees = Trees1 }};
-        Err = {error, _} -> Err
-    end.
+spend(Recipient, Amount, State = #state{ account = ContractKey }) ->
+    Nonce = next_nonce(State),
+    {ok, SpendTx} = aec_spend_tx:new(#{ sender => ContractKey
+                                      , recipient => Recipient
+                                      , amount => Amount
+                                      , fee => 0
+                                      , nonce => Nonce
+                                      , payload => <<>>}),
+    apply_transaction(SpendTx, State).
 
 %%    Oracle
 -spec oracle_register(aec_keys:pubkey(), binary(), non_neg_integer(),
                       non_neg_integer(), aeso_sophia:type(), aeso_sophia:type(), chain_state()) ->
     {ok, aec_keys:pubkey(), chain_state()} | {error, term()}.
 oracle_register(AccountKey,_Sign, QueryFee, TTL, QuerySpec, ResponseSpec,
-                State = #state{ trees   = Trees,
-                                height  = Height,
-                                account = ContractKey}) ->
-
-    AT = aec_trees:accounts(Trees),
-    {value, Account} = aec_accounts_trees:lookup(AccountKey, AT),
+                State = #state{account = ContractKey}) ->
+    Nonce = next_nonce(AccountKey, State),
     %% Note: The nonce of the account is incremented.
     %% This means that if you register an oracle for an account other than
     %% the contract account through a contract that contract nonce is incremented
     %% "behind your back".
-    Nonce = aec_accounts:nonce(Account) + 1,
     BinaryQuerySpec = aeso_data:to_binary(QuerySpec, 0),
     BinaryResponseSpec = aeso_data:to_binary(ResponseSpec, 0),
     Spec =
@@ -114,6 +111,7 @@ oracle_register(AccountKey,_Sign, QueryFee, TTL, QuerySpec, ResponseSpec,
           oracle_ttl    => {delta, TTL},
           ttl           => 0, %% Not used.
           fee           => 0},
+    {ok, Tx} = aeo_register_tx:new(Spec),
 
     %% TODO: To register an oracle for another account than the contract
     %%       we need a safe way to sign the register call.
@@ -121,25 +119,22 @@ oracle_register(AccountKey,_Sign, QueryFee, TTL, QuerySpec, ResponseSpec,
     %%       Then we need to check that signature here.
     %% Registering an oracle on the contract is ok.
     Result =
-        if AccountKey =:= ContractKey -> do_oracle_register(Spec, Height, Trees);
+        if AccountKey =:= ContractKey -> apply_transaction(Tx, State);
            true ->
                 %% TODO: Check that Sign is correct for external accounts.
                 {error, signature_check_failed}
         end,
     case Result of
-        {ok, Trees1}     -> {ok, AccountKey, State#state{ trees = Trees1 }};
+        {ok, State1}     -> {ok, AccountKey, State1};
         Err = {error, _} -> Err
     end.
 
 
 
 oracle_query(Oracle, Q, Value, QTTL, RTTL,
-             State = #state{ trees   = Trees,
-                             height  = Height,
-                             account = ContractKey} = State) ->
-    AT = aec_trees:accounts(Trees),
-    {value, Account} = aec_accounts_trees:lookup(ContractKey, AT),
-    Nonce = aec_accounts:nonce(Account) + 1,
+             State = #state{ height  = Height,
+                             account = ContractKey } = State) ->
+    Nonce = next_nonce(State),
     {ok, Tx} =
         aeo_query_tx:new(#{sender        => ContractKey,
                            nonce         => Nonce,
@@ -151,29 +146,18 @@ oracle_query(Oracle, Q, Value, QTTL, RTTL,
                            fee           => 0,
                            ttl           => 0 %% Not used
                           }),
-    ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
-    case aetx:check_from_contract(Tx, Trees, Height, ConsensusVersion) of
-        {ok, Trees1} ->
-            {ok, Trees2} =
-                aetx:process_from_contract(Tx, Trees1, Height, ConsensusVersion),
-            State1 = State#state{ trees = Trees2 },
+    case apply_transaction(Tx, State) of
+        {ok, State1} ->
             {oracle_query_tx, OTx} = aetx:specialize_type(Tx),
             Query = aeo_query:new(OTx, Height),
             Id = aeo_query:id(Query),
-
             {ok, Id, State1};
-
         {error, _} = E -> E
     end.
 
-oracle_respond(Oracle, QueryId,_Sign, Response,
-               #state{ trees   = Trees,
-                       height  = Height,
-                       account = ContractKey} = State) ->
+oracle_respond(Oracle, QueryId,_Sign, Response, State) ->
     %% TODO: Check signature
-    AT = aec_trees:accounts(Trees),
-    {value, Account} = aec_accounts_trees:lookup(ContractKey, AT),
-    Nonce = aec_accounts:nonce(Account) + 1,
+    Nonce = next_nonce(Oracle, State),
 
     {ok, Tx} = aeo_response_tx:new(
                  #{oracle   => Oracle,
@@ -184,39 +168,18 @@ oracle_respond(Oracle, QueryId,_Sign, Response,
                    ttl      => 0 %% Not used
                   }),
 
-    ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
+    apply_transaction(Tx, State).
 
-    case aetx:check_from_contract(Tx, Trees, Height, ConsensusVersion) of
-        {ok, Trees1} ->
-            {ok, Trees2} = aetx:process_from_contract(Tx, Trees1, Height, ConsensusVersion),
-            State1 = State#state{ trees = Trees2 },
-            {ok, State1};
-        {error, _} = E -> E
-    end.
-
-oracle_extend(Oracle,_Sign, Fee, TTL,
-              State = #state{ trees   = Trees,
-                              height  = Height,
-                              account = ContractKey} = State) ->
-    AT = aec_trees:accounts(Trees),
-    {value, Account} = aec_accounts_trees:lookup(ContractKey, AT),
-    Nonce = aec_accounts:nonce(Account) + 1,
+oracle_extend(Oracle,_Sign, Fee, TTL, State) ->
+    Nonce = next_nonce(Oracle, State),
     {ok, Tx} =
-        aeo_extend_tx:new(#{oracle    => Oracle,
+        aeo_extend_tx:new(#{oracle     => Oracle,
                             nonce      => Nonce,
                             oracle_ttl => {delta, TTL},
                             fee        => Fee,
                             ttl        => 0 %% Not used
                            }),
-    ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
-    case aetx:check_from_contract(Tx, Trees, Height, ConsensusVersion) of
-        {ok, Trees1} ->
-            {ok, Trees2} =
-                aetx:process_from_contract(Tx, Trees1, Height, ConsensusVersion),
-            State1 = State#state{ trees = Trees2 },
-            {ok, State1};
-        {error, _} = E -> E
-    end.
+    apply_transaction(Tx, State).
 
 oracle_get_answer(OracleId, QueryId, #state{ trees = Trees } =_State) ->
     case aeo_state_tree:lookup_query(OracleId, QueryId,
@@ -308,10 +271,8 @@ decode_as(Type, Val) ->
         {ok, aevm_chain_api:call_result(), chain_state()} | {error, term()}.
 call_contract(Target, Gas, Value, CallData, CallStack,
               State = #state{ trees   = Trees,
-                              height  = Height,
                               account = ContractKey
                             }) ->
-    ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
     CT = aec_trees:contracts(Trees),
     case aect_state_tree:lookup_contract(Target, CT) of
         {value, Contract} ->
@@ -330,36 +291,27 @@ call_contract(Target, Gas, Value, CallData, CallStack,
                                     gas_price  => 0,
                                     call_data  => CallData,
                                     call_stack => CallStack }),
-            do_call_contract(CallTx, ContractKey, Target, Nonce, Trees, State, Height,
-                             ConsensusVersion);
+            case apply_transaction(CallTx, State) of
+                {ok, State1 = #state{ trees = Trees1 }} ->
+                    CallId  = aect_call:id(ContractKey, Nonce, Target),
+                    Call    = aect_call_state_tree:get_call(Target, CallId,
+                                                            aec_trees:calls(Trees1)),
+                    GasUsed = aect_call:gas_used(Call),
+                    Result  =
+                        case aect_call:return_type(Call) of
+                            %% TODO: currently we don't set any
+                            %%       sensible return value on exceptions
+                            error ->
+                                aevm_chain_api:call_exception(out_of_gas, GasUsed);
+                            ok ->
+                                Bin = aect_call:return_value(Call),
+                                aevm_chain_api:call_result(Bin, GasUsed)
+                        end,
+                    {ok, Result, State1};
+                {error, _} = E -> E
+            end;
         none -> {error, {no_such_contract, Target}}
     end.
-
-do_call_contract(CallTx, ContractKey, Target, Nonce, Trees,
-                 State, Height, ConsensusVersion) ->
-    case aetx:check_from_contract(CallTx, Trees, Height, ConsensusVersion) of
-        Err = {error, _} -> Err;
-        {ok, Trees1} ->
-            {ok, Trees2} =
-                aetx:process_from_contract(CallTx, Trees1,
-                                           Height, ConsensusVersion),
-            CallId  = aect_call:id(ContractKey, Nonce, Target),
-            Call    = aect_call_state_tree:get_call(Target, CallId,
-                                                    aec_trees:calls(Trees2)),
-            GasUsed = aect_call:gas_used(Call),
-            Result  =
-                case aect_call:return_type(Call) of
-                    %% TODO: currently we don't set any
-                    %%       sensible return value on exceptions
-                    error ->
-                        aevm_chain_api:call_exception(out_of_gas, GasUsed);
-                    ok ->
-                        Bin = aect_call:return_value(Call),
-                        aevm_chain_api:call_result(Bin, GasUsed)
-                end,
-            {ok, Result, State#state{ trees = Trees2}}
-    end.
-
 
 %% -- Internal functions -----------------------------------------------------
 
@@ -385,28 +337,22 @@ do_set_store(Store, PubKey, Trees) ->
 	end,
     aect_state_tree:enter_contract(NewContract, ContractsTree).
 
-do_spend(Recipient, ContractKey, Amount, Trees, Height) ->
-    AccountTree = aec_trees:accounts(Trees),
-    {value, Account} = aec_accounts_trees:lookup(ContractKey, AccountTree),
-    Nonce = aec_accounts:nonce(Account) + 1,
-    ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
-    {ok, SpendTx} = aec_spend_tx:new(#{ sender => ContractKey
-                                      , recipient => Recipient
-                                      , amount => Amount
-                                      , fee => 0
-                                      , nonce => Nonce
-                                      , payload => <<>>}),
-    case aetx:check_from_contract(SpendTx, Trees, Height, ConsensusVersion) of
-        {ok, Trees1} ->
-            aetx:process_from_contract(SpendTx, Trees1, Height, ConsensusVersion);
-        Error -> Error
-    end.
-
-do_oracle_register(Spec, Height, Trees) ->
-    {ok, Tx} = aeo_register_tx:new(Spec),
+apply_transaction(Tx, #state{ trees = Trees, height = Height } = State) ->
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
     case aetx:check_from_contract(Tx, Trees, Height, ConsensusVersion) of
         {ok, Trees1} ->
-            aetx:process_from_contract(Tx, Trees1, Height, ConsensusVersion);
-        Error -> Error
+            {ok, Trees2} =
+                aetx:process_from_contract(Tx, Trees1, Height, ConsensusVersion),
+            State1 = State#state{ trees = Trees2 },
+            {ok, State1};
+        {error, _} = E -> E
     end.
+
+next_nonce(State = #state{ account = ContractKey }) ->
+    next_nonce(ContractKey, State).
+
+next_nonce(Addr, #state{ trees = Trees }) ->
+    AT = aec_trees:accounts(Trees),
+    {value, Account} = aec_accounts_trees:lookup(Addr, AT),
+    aec_accounts:nonce(Account) + 1.
+
