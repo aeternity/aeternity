@@ -24,7 +24,7 @@
 %% Mimicking the aec_persistence API used by aec_conductor_chain
 -export([has_block/1,
          write_block/1,
-         write_block_state/4,
+         write_block_state/5,
          write_genesis_hash/1,
          write_top_block_hash/1,
          write_top_block_height/1,
@@ -79,6 +79,7 @@
 
 -export([ find_block_state/1
         , find_block_difficulty/1
+        , find_block_fees/1
         , find_block_fork_id/1
         , find_block_state_and_data/1
         ]).
@@ -277,10 +278,11 @@ find_headers_at_height(Height) when is_integer(Height), Height >= 0 ->
     ?t([H || #aec_headers{value = H}
                  <- mnesia:index_read(aec_headers, Height, height)]).
 
-write_block_state(Hash, Trees, AccDifficulty, ForkId) ->
+write_block_state(Hash, Trees, AccDifficulty, ForkId, Fees) ->
     ?t(mnesia:write(#aec_block_state{key = Hash, value = Trees,
                                      difficulty = AccDifficulty,
-                                     fork_id = ForkId
+                                     fork_id = ForkId,
+                                     fees = Fees
                                     })).
 
 write_accounts_node(Hash, Node) ->
@@ -341,6 +343,12 @@ find_block_state(Hash) ->
 find_block_difficulty(Hash) ->
     case ?t(mnesia:read(aec_block_state, Hash)) of
         [#aec_block_state{difficulty = D}] -> {value, D};
+        [] -> none
+    end.
+
+find_block_fees(Hash) ->
+    case ?t(mnesia:read(aec_block_state, Hash)) of
+        [#aec_block_state{fees = F}] -> {value, F};
         [] -> none
     end.
 

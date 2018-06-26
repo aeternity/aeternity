@@ -220,8 +220,7 @@ mine_chain_with_state(Chain, N, PC) ->
 
 %% PoWCapacity = number of solutions per minute
 mining_step(Chain = [{Top, TopState} | _], PoWCapacity) ->
-    FeesInfo = #{txs => 0, gas => 0},
-    {Block, BlockState} = aec_block_key_candidate:create_with_state(Top, ?MINER_PUBKEY, TopState, FeesInfo),
+    {Block, BlockState} = aec_test_utils:create_keyblock_with_state(Top, ?MINER_PUBKEY, TopState),
     MiningTime = mining_time(Chain, PoWCapacity),
     {ok, NewBlock} =
         aec_block_key_candidate:adjust_target(

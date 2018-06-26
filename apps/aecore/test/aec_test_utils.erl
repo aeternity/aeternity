@@ -37,6 +37,7 @@
         , genesis_block_with_state/1
         , preset_accounts/0
         , genesis_accounts_balances/1
+        , create_keyblock_with_state/3
         , create_state_tree/0
         , create_state_tree_with_account/1
         , create_state_tree_with_accounts/1
@@ -234,8 +235,29 @@ gen_block_chain_with_state(N, MinerAccount, PresetAccounts, []) ->
     {B, S} = aec_block_genesis:genesis_block_with_state(#{preset_accounts => PresetAccounts}),
     gen_block_chain_with_state(N - 1, MinerAccount, PresetAccounts, [{B, S}]);
 gen_block_chain_with_state(N, MinerAccount, PresetAccounts, [{PreviousBlock, Trees} | _] = Acc) ->
-    {B, S} = aec_block_key_candidate:create_with_state(PreviousBlock, MinerAccount, Trees, #{txs => 0, gas => 0}),
+    {B, S} = create_keyblock_with_state(PreviousBlock, MinerAccount, Trees),
     gen_block_chain_with_state(N - 1, MinerAccount, PresetAccounts, [{B, S} | Acc]).
+
+create_keyblock_with_state(PreviousBlock, MinerAccount, Trees) ->
+    %% NOTE: This doesn't work for tx fees, only for mining rewards.
+    %%       If you really need this, don't create the blocks this way.
+    %%       Or mock the aec_governance:miner_reward_delay() to return
+    %%       something high.
+    {ok, PrevBlockHash} = aec_blocks:hash_internal_representation(PreviousBlock),
+    Height = aec_blocks:height(PreviousBlock) + 1,
+    Version = aec_hard_forks:protocol_effective_at_height(Height),
+    Trees1 = aec_trees:perform_pre_transformations(Trees, Height),
+    Trees2 = case Height >= aec_governance:miner_reward_delay() of
+                 true ->
+                     Reward = aec_governance:block_mine_reward(),
+                     aec_trees:grant_fee_to_miner(MinerAccount, Trees1, Reward);
+                 false ->
+                     Trees1
+             end,
+    Block = aec_blocks:new_key(Height, PrevBlockHash, aec_trees:hash(Trees2),
+                               aec_blocks:target(PreviousBlock),
+                               0, aeu_time:now_in_msecs(), Version, MinerAccount),
+    {Block, Trees2}.
 
 extend_block_chain_with_state(PrevBlock, PrevBlockState, Data) ->
     {ok, MinerAccount} = wait_for_pubkey(),
@@ -273,7 +295,7 @@ next_block_with_state(PrevBlock, Trees, Target, Time0, TxsFun, Nonce, MinerAcc) 
                 {ok, SignedMicroBlock} = aec_keys:sign_micro_block(MicroBlock),
                 {SignedMicroBlock, MicroTrees}
     end,
-    {B, S} = aec_block_key_candidate:create_with_state(PrevBlock1, MinerAcc, Trees1, #{txs => 0, gas => 0}),
+    {B, S} = create_keyblock_with_state(PrevBlock1, MinerAcc, Trees1),
     [ {PrevBlock1, Trees1} || Txs /= [] ] ++
         [{B#block{ target = Target, nonce  = Nonce,
                    time   = case Time0 of undefined -> B#block.time; _ -> Time0 end },

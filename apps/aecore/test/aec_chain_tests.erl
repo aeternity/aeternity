@@ -734,6 +734,7 @@ fork_get_transaction() ->
     RecipientPubKey = <<42:32/unit:8>>,
     PresetAccounts = [{SenderPubKey, 100}],
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_governance, miner_reward_delay, 0, 100),
     Spend1 = aetx_sign:sign(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
     Spend2 = aetx_sign:sign(make_spend_tx(SenderPubKey, 2, RecipientPubKey), SenderPrivKey),
     CommonChainTargets = [?GENESIS_TARGET, 1, 1],

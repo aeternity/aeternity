@@ -80,8 +80,7 @@ tx_pool_test_() ->
                ok = aec_chain_state:insert_block(GenesisBlock),
 
                %% The first block needs to be a key-block
-               {ok, KeyBlock1, _} = aec_block_key_candidate:create(aec_chain:top_block(),
-                                                                   #{txs => 0, gas => 0}),
+               {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block()),
                {ok, KeyHash1} = aec_blocks:hash_internal_representation(KeyBlock1),
                ok = aec_chain_state:insert_block(KeyBlock1),
                ?assertEqual(KeyHash1, aec_chain:top_block_hash()),
@@ -125,8 +124,7 @@ tx_pool_test_() ->
 
                ok = aec_chain_state:insert_block(Candidate3),
                TopBlockFork1 = aec_chain:top_block(),
-               {ok, KeyBlock2, _} = aec_block_key_candidate:create(TopBlockFork1,
-                                                                   #{txs => 0, gas => 0}),
+               {ok, KeyBlock2} = aec_block_key_candidate:create(TopBlockFork1),
                {ok, CHashFork1} = aec_blocks:hash_internal_representation(KeyBlock2),
 
                STx4 = a_signed_tx(PubKey2, new_pubkey(), 2, 1),
@@ -136,8 +134,7 @@ tx_pool_test_() ->
 
                ok = aec_chain_state:insert_block(Candidate4),
                TopBlockFork2 = aec_chain:top_block(),
-               {ok, KeyBlock3, _} = aec_block_key_candidate:create(TopBlockFork2,
-                                                                   #{txs => 0, gas => 0}),
+               {ok, KeyBlock3} = aec_block_key_candidate:create(TopBlockFork2),
                {ok, CHashFork2} = aec_blocks:hash_internal_representation(KeyBlock3),
 
                %% Push the keyblock with the longest chain of micro blocks
@@ -270,8 +267,7 @@ tx_pool_test_() ->
                ok = aec_chain_state:insert_block(GenesisBlock),
 
                %% The first block needs to be a key-block
-               {ok, KeyBlock1, _} = aec_block_key_candidate:create(aec_chain:top_block(),
-                                                                   #{txs => 0, gas => 0}),
+               {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block()),
                {ok, KeyHash1} = aec_blocks:hash_internal_representation(KeyBlock1),
                ok = aec_chain_state:insert_block(KeyBlock1),
                ?assertEqual(KeyHash1, aec_chain:top_block_hash()),

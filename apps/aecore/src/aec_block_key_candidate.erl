@@ -6,47 +6,28 @@
 %%%=============================================================================
 -module(aec_block_key_candidate).
 
--export([ create/2
-        , create_with_state/4
+-export([ create/1
         ]).
 
 -ifdef(TEST).
 -export([adjust_target/2]).
 -endif.
 
--export_type([block_info/0]).
-
 -include("blocks.hrl").
 
--type fees_info() :: #{txs := non_neg_integer(),
-                       gas := non_neg_integer()}.
--opaque block_info() :: #{trees := aec_trees:trees(),
-                          fees := fees_info(),
-                          txs_tree := aec_txs_trees:txs_tree(),
-                          adj_chain := [aec_headers:header()]}.
-
 %% -- API functions ----------------------------------------------------------
--spec create(aec_blocks:block() | aec_blocks:block_header_hash(), fees_info()) ->
-        {ok, aec_blocks:block(), block_info()} | {error, term()}.
-create(BlockHash, FeesInfo) when is_binary(BlockHash) ->
+-spec create(aec_blocks:block() | aec_blocks:block_header_hash()) ->
+        {ok, aec_blocks:block()} | {error, term()}.
+create(BlockHash) when is_binary(BlockHash) ->
     case aec_chain:get_block(BlockHash) of
         {ok, Block} ->
-            int_create(BlockHash, Block, FeesInfo);
+            int_create(BlockHash, Block);
         error ->
             {error, block_not_found}
     end;
-create(Block, FeesInfo) ->
+create(Block) ->
     {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
-    int_create(BlockHash, Block, FeesInfo).
-
--spec create_with_state(aec_blocks:block(), aec_keys:pubkey(),
-                        aec_trees:trees(), fees_info()) ->
-        {aec_blocks:block(), aec_trees:trees()}.
-create_with_state(Block, Miner, Trees, FeesInfo) ->
-    {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
-    {ok, NewBlock, #{ trees := NewTrees}} =
-        int_create_block(BlockHash, Block, FeesInfo, Trees, Miner),
-    {NewBlock, NewTrees}.
+    int_create(BlockHash, Block).
 
 -spec adjust_target(aec_blocks:block(), list(aec_headers:header())) ->
        {ok, aec_blocks:block()} | {error, term()}.
@@ -66,44 +47,38 @@ adjust_target(Block, AdjHeaders) ->
     end.
 
 %% -- Internal functions -----------------------------------------------------
-int_create(BlockHash, Block, FeesInfo) ->
-    case aec_chain:get_block_state(BlockHash) of
-        {ok, Trees} ->
-            int_create(BlockHash, Block, FeesInfo, Trees);
-        error ->
-            {error, block_state_not_found}
-    end.
 
-int_create(BlockHash, Block, FeesInfo, Trees) ->
+int_create(BlockHash, Block) ->
     N = aec_governance:key_blocks_to_check_difficulty_count(),
     case aec_blocks:height(Block) < N of
         true  ->
-            int_create(BlockHash, Block, FeesInfo, Trees, []);
+            int_create(BlockHash, Block, []);
         false ->
             case aec_chain:get_n_generation_headers_backwards_from_hash(BlockHash, N) of
                 {ok, Headers} ->
-                    int_create(BlockHash, Block, FeesInfo, Trees, Headers);
+                    int_create(BlockHash, Block, Headers);
                 error ->
                     {error, headers_for_target_adjustment_not_found}
             end
     end.
 
-int_create(BlockHash, Block, FeesInfo, Trees, AdjChain) ->
+int_create(BlockHash, Block, AdjChain) ->
     case aec_keys:pubkey() of
         {ok, Miner} ->
-            int_create(BlockHash, Block, FeesInfo, Trees, Miner, AdjChain);
+            int_create(BlockHash, Block, Miner, AdjChain);
         {error, _} = Error ->
             Error
     end.
 
-int_create(PrevBlockHash, PrevBlock, FeesInfo, Trees, Miner, AdjChain) ->
-    {ok, Block, BlockInfo} = int_create_block(PrevBlockHash, PrevBlock, FeesInfo, Trees, Miner),
+int_create(PrevBlockHash, PrevBlock, Miner, AdjChain) ->
+    {ok, Trees} = aec_chain_state:calculate_keyblock_state(PrevBlockHash, Miner),
+    Block = int_create_block(PrevBlockHash, PrevBlock, Miner, Trees),
     case adjust_target(Block, AdjChain) of
-        {ok, AdjBlock} -> {ok, AdjBlock, BlockInfo#{ adj_chain => AdjChain }};
+        {ok, AdjBlock} -> {ok, AdjBlock};
         {error, Reason} -> {error, {failed_to_adjust_target, Reason}}
     end.
 
-int_create_block(PrevBlockHash, PrevBlock, FeesInfo, Trees, Miner) ->
+int_create_block(PrevBlockHash, PrevBlock, Miner, Trees) ->
     PrevBlockHeight = aec_blocks:height(PrevBlock),
 
     %% Assert correctness of last block protocol version, as minimum
@@ -117,23 +92,6 @@ int_create_block(PrevBlockHash, PrevBlock, FeesInfo, Trees, Miner) ->
     Height = PrevBlockHeight + 1,
     Version = aec_hard_forks:protocol_effective_at_height(Height),
 
-    Trees1 = aec_trees:perform_pre_transformations(Trees, Height),
-    Trees2 = grant_fees(FeesInfo, Miner, Trees1),
-
-    NewBlock = aec_blocks:new_key(Height, PrevBlockHash, aec_trees:hash(Trees2),
-                                  aec_blocks:target(PrevBlock),
-                                  0, aeu_time:now_in_msecs(), Version, Miner),
-
-    BlockInfo = #{ trees => Trees2, fees => FeesInfo},
-    {ok, NewBlock, BlockInfo}.
-
-
--spec calculate_total_fee(fees_info()) -> non_neg_integer().
-calculate_total_fee(#{txs := TxsFee, gas := GasFee}) ->
-    aec_governance:block_mine_reward() + TxsFee + GasFee.
-
--spec grant_fees(fees_info(), aec_keys:pubkey(), aec_trees:trees()) ->
-                    aec_trees:trees().
-grant_fees(FeesInfo, Miner, Trees) ->
-    _NewTrees = aec_trees:grant_fee_to_miner(Miner, Trees,
-                                             calculate_total_fee(FeesInfo)).
+    aec_blocks:new_key(Height, PrevBlockHash, aec_trees:hash(Trees),
+                       aec_blocks:target(PrevBlock),
+                       0, aeu_time:now_in_msecs(), Version, Miner).

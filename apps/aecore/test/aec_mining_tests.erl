@@ -35,10 +35,10 @@ mine_block_test_() ->
                  % in order to find a proper nonce for your
                  % block uncomment the line below
                  % let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
-                 Nonce = 16412084147239117398,
-                 FeesInfo = #{txs => 0, gas => 0},
-                 {BlockCandidate, _} = aec_block_key_candidate:create_with_state(TopBlock, ?TEST_PUB,
-                                                                                 aec_trees:new(), FeesInfo),
+                 Nonce = 12318985976980345277,
+                 {BlockCandidate,_} = aec_test_utils:create_keyblock_with_state(
+                                        TopBlock, ?TEST_PUB, aec_trees:new()),
+
                  HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
 
                  Target = aec_blocks:target(BlockCandidate),
@@ -59,9 +59,9 @@ mine_block_test_() ->
                                    target = ?LOWEST_TARGET_SCI,
                                    version = ?GENESIS_VERSION},
                  meck:expect(aec_pow, pick_nonce, 0, 18),
-                 FeesInfo = #{txs => 0, gas => 0},
-                 {BlockCandidate, _} = aec_block_key_candidate:create_with_state(TopBlock, ?TEST_PUB,
-                                                                             aec_trees:new(), FeesInfo),
+                 {BlockCandidate,_} = aec_test_utils:create_keyblock_with_state(
+                                        TopBlock, ?TEST_PUB, aec_trees:new()),
+
                  Nonce = 18,
                  HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
                  Target = aec_blocks:target(BlockCandidate),
@@ -87,7 +87,7 @@ setup() ->
     {ok, _} = aec_tx_pool:start_link(),
     Trees =
     aec_test_utils:create_state_tree_with_account(aec_accounts:new(?TEST_PUB, 0)),
-    meck:expect(aec_trees, hash, 1, <<>>),
+    meck:expect(aec_trees, hash, 1, <<123:32/unit:8>>),
     meck:expect(aec_trees, apply_txs_on_state_trees, 4, {ok, [], Trees}),
     meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
     ok.
@@ -110,9 +110,8 @@ generate_valid_test_data(_TopBlock, Tries) when Tries < 1 ->
     could_not_find_nonce;
 generate_valid_test_data(TopBlock, Tries) ->
     Nonce = aec_pow:pick_nonce(),
-    FeesInfo = #{txs => 0, gas => 0},
-    {BlockCandidate, _} = aec_block_key_candidate:create_with_state(TopBlock, ?TEST_PUB,
-                                                                    aec_trees:new(), FeesInfo),
+    {BlockCandidate, _} = aec_test_utils:create_keyblock_with_state(
+                            TopBlock, ?TEST_PUB, aec_trees:new()),
     HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
     Target = aec_blocks:target(BlockCandidate),
     case ?TEST_MODULE:mine(HeaderBin, Target, Nonce) of
