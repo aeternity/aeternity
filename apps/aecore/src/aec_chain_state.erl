@@ -8,7 +8,8 @@
 
 -module(aec_chain_state).
 
--export([ find_common_ancestor/2
+-export([ calculate_keyblock_state/2
+        , find_common_ancestor/2
         , get_hash_at_height/1
         , hash_is_connected_to_genesis/1
         , hash_is_in_main_chain/1
@@ -89,6 +90,20 @@ hash_is_in_main_chain(Hash) ->
                 TopHash -> hash_is_in_main_chain(Hash, TopHash)
             end;
         error -> false
+    end.
+
+calculate_keyblock_state(PrevHash, Miner) ->
+    case db_find_node(PrevHash) of
+        error -> error;
+        {ok, PrevNode} ->
+            Node  = fake_key_node(PrevNode, node_height(PrevNode) + 1, Miner),
+            State = new_state_from_persistence(),
+            case get_state_trees_in(Node, State) of
+                error -> error;
+                {ok, TreesIn,_Difficulty,_ForkIdIn} ->
+                    {Trees,_Fees} = apply_node_transactions(Node, TreesIn, State),
+                    {ok, Trees}
+            end
     end.
 
 %%%===================================================================
@@ -199,6 +214,16 @@ wrap_block(Block) ->
          , type = aec_blocks:type(Block)
          , key_hash = aec_headers:key_hash(Header)
          }.
+
+fake_key_node(PrevNode, Height, Miner) ->
+    Block = aec_blocks:new_key(Height,
+                               hash(PrevNode),
+                               <<123:?STATE_HASH_BYTES/unit:8>>,
+                               node_target(PrevNode),
+                               0, aeu_time:now_in_msecs(),
+                               ?PROTOCOL_VERSION,
+                               Miner),
+    wrap_header(aec_blocks:to_header(Block)).
 
 wrap_header(Header) ->
     {ok, Hash} = aec_headers:hash_header(Header),
@@ -477,7 +502,7 @@ get_state_trees_in(Node, State) ->
     end.
 
 apply_and_store_state_trees(#node{hash = NodeHash} = Node, TreesIn, DifficultyIn, ForkId,
-                            #{currently_adding := Hash}) ->
+                            #{currently_adding := Hash} = State) ->
     try
         case db_find_node(prev_hash(Node)) of
             error ->
@@ -490,10 +515,10 @@ apply_and_store_state_trees(#node{hash = NodeHash} = Node, TreesIn, DifficultyIn
                 assert_micro_block_key_hash(PrevNode, Node),
                 assert_micro_signature(PrevNode, Node)
         end,
-        Trees = apply_node_transactions(Node, TreesIn),
+        {Trees, Fees} = apply_node_transactions(Node, TreesIn, State),
         assert_state_hash_valid(Trees, Node),
         Difficulty = DifficultyIn + node_difficulty(Node),
-        ok = db_put_state(hash(Node), Trees, Difficulty, ForkId),
+        ok = db_put_state(hash(Node), Trees, Difficulty, ForkId, Fees),
         {ok, Trees, Difficulty}
     catch
         %% Only catch this if the current node is NOT the one added in
@@ -567,36 +592,108 @@ assert_state_hash_valid(Trees, Node) ->
     Expected = node_root_hash(Node),
     case RootHash =:= Expected of
         true -> ok;
-        false ->
-            internal_error({root_hash_mismatch, RootHash, Expected})
+        false -> internal_error({root_hash_mismatch, RootHash, Expected})
     end.
 
-apply_node_transactions(Node, Trees) ->
+apply_node_transactions(Node, Trees, State) ->
     case is_micro_block(Node) of
         true ->
             apply_micro_block_transactions(Node, Trees);
         false ->
-            %% NG-TODO: This is far too simplistic, miner wants more :-)
-            case node_height(Node) of
-                0 -> Trees;
-                _N ->
+            case node_height(Node) =:= aec_block_genesis:height() of
+                true  -> {Trees, 0};
+                false ->
                     Trees1 = aec_trees:perform_pre_transformations(Trees, node_height(Node)),
-                    aec_trees:grant_fee_to_miner(node_miner(Node), Trees1,
-                                                 aec_governance:block_mine_reward())
+                    Fees   = calculate_fees(Node, State),
+                    Delay  = aec_governance:miner_reward_delay(),
+                    case node_height(Node) > aec_block_genesis:height() + Delay of
+                        true  -> {grant_fees(Node, Trees1, Delay, Fees, State), Fees};
+                        false -> {Trees1, Fees}
+                    end
             end
     end.
+
+find_prev_key_nodes(Node, N) when N > 0 ->
+    find_prev_key_nodes({ok, Node}, N, none).
+
+find_prev_key_nodes(error,_N,_Acc) ->
+    error;
+find_prev_key_nodes({ok, Node}, N, Acc) ->
+    case node_type(Node) of
+        key when N =:= 0 ->
+            {Node, Acc};
+        key when N =:= 1 ->
+            find_prev_key_nodes(db_find_node(prev_hash(Node)), N - 1, Node);
+        key ->
+            find_prev_key_nodes(db_find_node(prev_hash(Node)), N - 1, Acc);
+        micro ->
+            find_prev_key_nodes(db_find_node(node_key_hash(Node)), N, Acc)
+    end.
+
+grant_fees(Node, Trees, Delay, Fees, State) ->
+    {KeyNode1, KeyNode2} = find_prev_key_nodes(Node, Delay + 1),
+    KeyFees = case Node =:= KeyNode2 of
+                  true  -> Fees;
+                  false -> db_get_fees(hash(KeyNode2))
+              end,
+    Miner1 = node_miner(KeyNode1),
+    Miner2 = node_miner(KeyNode2),
+    Reward = aec_governance:block_mine_reward(),
+    MinerReward1 = round(KeyFees * 0.4),
+    MinerReward2 = KeyFees - MinerReward1 + Reward,
+    Trees1 = aec_trees:grant_fee_to_miner(Miner2, Trees, MinerReward2),
+    case node_is_genesis(KeyNode1, State) of
+        true  -> Trees1;
+        false -> aec_trees:grant_fee_to_miner(Miner1, Trees1, MinerReward1)
+    end.
+
+calculate_fees(Node, State) ->
+    key = node_type(Node), %% Assert
+    calculate_fees({ok, Node}, 0, false, State).
+
+calculate_fees(error, Fees,_SeenKey,_State) ->
+    %% The previous must have been the genesis node
+    Fees;
+calculate_fees({ok, Node}, Fees, SeenKey, State) ->
+    case node_type(Node) of
+        key when SeenKey -> Fees;
+        key ->
+            {ok, Trees,_Difficulty,_ForkIdIn} =
+                get_state_trees_in(Node, State),
+            GasFees = calculate_gas_fee(aec_trees:calls(Trees)),
+            TotalFees = Fees + GasFees,
+            Prev = db_find_node(prev_hash(Node)),
+            calculate_fees(Prev, TotalFees, true, State);
+        micro ->
+            TotalFees = db_get_fees(hash(Node)) + Fees,
+            calculate_fees(db_find_node(prev_hash(Node)), TotalFees, SeenKey, State)
+    end.
+
+calculate_gas_fee(Calls) ->
+    F = fun(_, SerCall, GasFeeIn) ->
+                Call = aect_call:deserialize(SerCall),
+                GasFee = aect_call:gas_used(Call) * aect_call:gas_price(Call),
+                GasFee + GasFeeIn
+        end,
+    aeu_mtrees:fold(F, 0, aect_call_state_tree:iterator(Calls)).
+
 
 apply_micro_block_transactions(Node, Trees) ->
     Txs = db_get_txs(hash(Node)),
     Height = node_height(Node),
     Version = node_version(Node),
+    TotalFees = lists:foldl(
+                  fun(SignedTx, AccFee) ->
+                          Fee = aetx:fee(aetx_sign:tx(SignedTx)),
+                          AccFee + Fee
+                  end, 0, Txs),
 
     %% TODO: NG - it looks like we should keep Miner and Height of the prev key block in state in aec_chain_state
     %% TODO: optimization, fixit ^^
     Miner = node_miner(db_get_node(node_key_hash(Node))),
 
     case aec_block_micro_candidate:apply_block_txs_strict(Txs, Miner, Trees, Height, Version) of
-        {ok, _, NewTrees} -> NewTrees;
+        {ok, _, NewTrees} -> {NewTrees, TotalFees};
         {error,_What} -> internal_error(invalid_transactions_in_block)
     end.
 
@@ -673,9 +770,9 @@ db_find_nodes_at_height(Height) when is_integer(Height) ->
         [] -> error
     end.
 
-db_put_state(Hash, Trees, Difficulty, ForkId) when is_binary(Hash) ->
+db_put_state(Hash, Trees, Difficulty, ForkId, Fees) when is_binary(Hash) ->
     Trees1 = aec_trees:commit_to_db(Trees),
-    ok = aec_db:write_block_state(Hash, Trees1, Difficulty, ForkId).
+    ok = aec_db:write_block_state(Hash, Trees1, Difficulty, ForkId, Fees).
 
 db_find_state(Hash) when is_binary(Hash) ->
     case aec_db:find_block_state_and_data(Hash) of
@@ -700,6 +797,10 @@ db_get_txs(Hash) when is_binary(Hash) ->
 
 db_get_signature(Hash) when is_binary(Hash) ->
     aec_db:get_block_signature(Hash).
+
+db_get_fees(Hash) when is_binary(Hash) ->
+    {value, Fees} = aec_db:find_block_fees(Hash),
+    Fees.
 
 db_get_tx_hashes(Hash) when is_binary(Hash) ->
     aec_db:get_block_tx_hashes(Hash).

@@ -22,9 +22,8 @@ new_key_block_test_() ->
                                 version = ?GENESIS_VERSION},
              BlockHeader = aec_blocks:to_header(PrevBlock),
 
-             FeesInfo = #{txs => 0, gas => 0},
-             {NewBlock, _} =
-                 aec_block_key_candidate:create_with_state(PrevBlock, ?MINER_PUBKEY, aec_trees:new(), FeesInfo),
+             {NewBlock, _} = aec_test_utils:create_keyblock_with_state(
+                               PrevBlock, ?MINER_PUBKEY, aec_trees:new()),
 
              ?assertEqual(12, aec_blocks:height(NewBlock)),
              SerializedBlockHeader = aec_headers:serialize_to_binary(BlockHeader),

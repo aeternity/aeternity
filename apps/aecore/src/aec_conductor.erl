@@ -779,16 +779,12 @@ create_key_block_candidate(#state{keys_ready = false} = State) ->
     wait_for_keys(State);
 create_key_block_candidate(#state{top_block_hash = TopHash} = State) ->
     epoch_mining:info("Creating key block candidate on the top"),
-
-    %% TODO NG: propagate Fees from microblock to keyblock
-    FeesInfo = #{txs => 0, gas => 0},
-
     Fun = fun() ->
-              {aec_block_key_candidate:create(TopHash, FeesInfo), TopHash}
+              {aec_block_key_candidate:create(TopHash), TopHash}
           end,
     dispatch_worker(create_key_block_candidate, Fun, State).
 
-handle_key_block_candidate_reply({{ok, KeyBlockCandidate, _Info}, TopHash},
+handle_key_block_candidate_reply({{ok, KeyBlockCandidate}, TopHash},
                                  #state{top_block_hash = TopHash} = State) ->
     epoch_mining:info("Created key block candidate"
                       "Its target is ~p (= difficulty ~p).",
@@ -797,7 +793,7 @@ handle_key_block_candidate_reply({{ok, KeyBlockCandidate, _Info}, TopHash},
     Candidate = make_key_candidate(KeyBlockCandidate),
     State1 = State#state{key_block_candidate = Candidate},
     start_mining(State1);
-handle_key_block_candidate_reply({{ok, _KeyBlockCandidate, _Info}, _OldTopHash},
+handle_key_block_candidate_reply({{ok, _KeyBlockCandidate}, _OldTopHash},
                                  #state{top_block_hash = _TopHash} = State) ->
     epoch_mining:debug("Created key block candidate is already stale, create a new one", []),
     create_key_block_candidate(State);

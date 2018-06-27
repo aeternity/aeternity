@@ -7,6 +7,7 @@
          expected_block_mine_rate/0,
          block_mine_reward/0,
          max_txs_in_block/0,
+         miner_reward_delay/0,
          minimum_tx_fee/0,
          minimum_gas_price/0,
          name_preclaim_expiration/0,
@@ -69,6 +70,9 @@ minimum_tx_fee() ->
     1.
 
 minimum_gas_price() ->
+    0.
+
+miner_reward_delay() ->
     0.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
