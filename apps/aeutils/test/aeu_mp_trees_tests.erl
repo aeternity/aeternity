@@ -353,8 +353,8 @@ test_bogus_proofs([],_T) ->
 alter_one_hash_value(DB) ->
     Dict = aeu_mp_trees_db:get_cache(DB),
     Size = dict:size(Dict),
-    Pos  = rand:uniform(Size - 1),
-    {Hash, Node} = lists:nth(Pos + 1, dict:to_list(Dict)),
+    Pos  = rand:uniform(Size),
+    {Hash, Node} = lists:nth(Pos, dict:to_list(Dict)),
     NewNode =
         case Node of
             [X, Y] ->
