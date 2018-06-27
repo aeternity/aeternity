@@ -592,7 +592,7 @@ contract_transactions(_Config) ->
                 <<"contract_address">> := EncodedContractPubKey}} =
         get_contract_create(ValidEncoded),
     {ok, ContractPubKey} = aec_base58c:safe_decode(contract_pubkey, EncodedContractPubKey),
-    ContractCreateTxHash = sign_and_post_tx(MinerAddress, EncodedUnsignedContractCreateTx),
+    ContractCreateTxHash = sign_and_post_tx(EncodedUnsignedContractCreateTx),
 
     % mine a block
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
@@ -626,7 +626,7 @@ contract_transactions(_Config) ->
                                fun aect_call_tx:new/1, MinerPubkey),
 
     {ok, 200, #{<<"tx">> := EncodedUnsignedContractCallTx}} = get_contract_call(ContractCallEncoded),
-    ContractCallTxHash = sign_and_post_tx(MinerAddress, EncodedUnsignedContractCallTx),
+    ContractCallTxHash = sign_and_post_tx(EncodedUnsignedContractCallTx),
 
     %% Try to get the call object while in mempool
     {ok, 400, #{<<"reason">> := <<"Tx not mined">>}} =
@@ -683,7 +683,7 @@ contract_transactions(_Config) ->
     {ok, 200, #{<<"tx">> := EncodedUnsignedContractCallComputeTx}} =
         get_contract_call_compute(ComputeCCallEncoded),
     ContractCallComputeTxHash =
-        sign_and_post_tx(MinerAddress, EncodedUnsignedContractCallComputeTx),
+        sign_and_post_tx(EncodedUnsignedContractCallComputeTx),
 
     % mine a block
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
@@ -788,7 +788,7 @@ oracle_transactions(_Config) ->
     % oracle_query_tx we first need an actual Oracle on the chain
 
     {ok, 200, #{<<"tx">> := RegisterTx}} = get_oracle_register(RegEncoded),
-    sign_and_post_tx(MinerAddress, RegisterTx),
+    sign_and_post_tx(RegisterTx),
 
     % mine blocks to include it
     ct:log("Before oracle registered nonce is ~p", [rpc(aec_next_nonce, pick_for_account, [MinerPubkey])]),
@@ -832,7 +832,7 @@ oracle_transactions(_Config) ->
     ct:log("Nonce is ~p", [QueryNonce]),
     QueryId = aeo_query:id(MinerPubkey, QueryNonce, MinerPubkey),
     {ok, 200, #{<<"tx">> := QueryTx}} = get_oracle_query(QueryEncoded),
-    sign_and_post_tx(MinerAddress, QueryTx),
+    sign_and_post_tx(QueryTx),
 
     % mine blocks to include it
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
@@ -850,7 +850,7 @@ oracle_transactions(_Config) ->
                                fun get_oracle_response/1,
                                fun aeo_response_tx:new/1, MinerPubkey),
     {ok, 200, #{<<"tx">> := ResponseTx}} = get_oracle_response(ResponseEncoded),
-    sign_and_post_tx(MinerAddress, ResponseTx),
+    sign_and_post_tx(ResponseTx),
     % mine a block to include it
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
 
@@ -1296,16 +1296,6 @@ unsigned_tx_positive_test(Data, Params0, HTTPCallFun, NewFun, Pubkey,
     Test(RandomNonce, maps:put(nonce, RandomNonce, Params)),
     {ok, Tx}.
 
-
-tx_is_mined_test(AccountPubKey, TxHash) ->
-    {ok, 200, #{<<"transactions">> := Txs}} = get_account_transactions(AccountPubKey, tx_encoding_param(json)),
-    {ok, 200, Txs2} = get_transactions(),
-    ct:log("TXS: ~p~nMEMPOOL TXS: ~p", [Txs, Txs2]),
-    true = lists:any(fun(#{<<"block_hash">> := BH, <<"hash">> := H})
-                           when H =:= TxHash, BH =/= <<"none">> -> true;
-                        (_) -> false
-                     end, Txs).
-
 get_transaction(_Config) ->
     {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_miner_pub_key(),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
@@ -1610,145 +1600,6 @@ peer_pub_key(_Config) ->
                                                     EncodedPubKey]),
     {ok, PeerPubKey} = aec_base58c:safe_decode(peer_pubkey, EncodedPubKey),
     ok.
-
-%% TODO NG: it was deleted in master - why?
-account_transactions(_Config) ->
-    ok = rpc(aec_conductor, reinit_chain, []),
-    {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_miner_pub_key(),
-    %% no transactions but no account either
-    {ok, 200, #{<<"transactions">> := [],
-                <<"data_schema">> := _}} =
-        get_account_transactions(EncodedPubKey, []),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
-
-    %% prepare some spends
-    ForkHeight = aecore_suite_utils:latest_fork_height(),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   ForkHeight),
-    add_spend_txs(), % in mempool
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
-
-    %% some tests with various offests and lengths
-    acc_txs_test(EncodedPubKey, 0, 2),
-    acc_txs_test(EncodedPubKey, 0, 10),
-    acc_txs_test(EncodedPubKey, 5, 7),
-
-    %% some offset, more than there are transactions, returns an empty list
-    {ok, 200, #{<<"transactions">> := []}} =
-        get_account_transactions(EncodedPubKey, #{offset => 2000000000}),
-
-    %% limit too big
-    {ok, 400, #{}} =
-        get_account_transactions(EncodedPubKey, #{limit => 101}),
-    %% limit too small
-    {ok, 400, #{}} =
-        get_account_transactions(EncodedPubKey, #{limit => 0}),
-
-    <<_, BrokenAddress/binary>> = EncodedPubKey,
-    {ok, 400, #{<<"reason">> := <<"Invalid account hash">>}} =
-        get_account_transactions(BrokenAddress, #{}),
-
-    %% this test assumes we don't have hejsan or svejsan transaction types
-    {ok, 400, #{<<"reason">> := <<"Unknown transaction type">>}} =
-        get_account_transactions(EncodedPubKey, #{tx_types => [<<"hejsan">>,
-                                                               <<"svejsan">>]}),
-    add_spend_txs(), % in mempool
-    lists:map(
-        fun(ShowPending) ->
-            acc_txs_test(EncodedPubKey, 0, 2, ShowPending),
-            acc_txs_test(EncodedPubKey, 0, 20, ShowPending)
-        end,
-        [default, true, false]),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
-
-    % test in pool tx of a new address without being present in trees
-    RandKey = random_hash(),
-    RandAddr = aec_base58c:encode(account_pubkey, RandKey),
-    {ok, 200, #{<<"transactions">> := [],
-                <<"data_schema">> := _}} = get_account_transactions(RandAddr, []),
-    ct:log("Posting a spend tx to random address ~p", [RandAddr]),
-    post_spend_tx(RandKey, 1, 1),
-    acc_txs_test(RandAddr, 0, 2),
-    ok.
-
-acc_txs_test(Pubkey, Offset, Limit) ->
-    acc_txs_test(Pubkey, Offset, Limit, default).
-
-acc_txs_test(Pubkey, Offset, Limit, ShowPending) ->
-    {account_pubkey, PKDecoded} = aec_base58c:decode(Pubkey),
-    TxEncodings = [default, message_pack, json],
-    AllTestedTxTypes = [[<<"spend_tx">>]],
-    {ok, 200, #{<<"hash">> := GenesisHash}} = get_internal_block_preset("genesis", default),
-    {ok, 200, #{<<"hash">> := ToHash}} = get_top(),
-    ct:log("Offset: ~p, Limit: ~p, Pending: ~p", [Offset, Limit, ShowPending]),
-    lists:foreach(
-        fun({TxEncoding, TxTypes}) ->
-            lists:foreach(
-                fun({Filter, TT}) ->
-                    PubkeyInTx =
-                        fun(SignedTx) ->
-                            Tx = aetx_sign:tx(SignedTx),
-                            lists:member(PKDecoded, aetx:accounts(Tx))
-                        end,
-                    AccountPendingTx =
-                        case ShowPending of
-                            false -> [];
-                            _ when ShowPending =:= true orelse
-                                   ShowPending =:= default ->
-                                {ok, AllPendingTxs} = rpc(aec_tx_pool, peek, [infinity]),
-                                FilteredPendingTxs =
-                                    lists:filter(
-                                        fun(Tx) ->
-                                            PubkeyInTx(Tx) andalso
-                                            apply_tx_type_filter(TT, [Tx]) =/= []
-                                        end,
-                                        AllPendingTxs),
-                                encode_pending_tx(
-                                    lists:sort(fun(A, B) ->
-                                                    aetx:nonce(aetx_sign:tx(A)) >=
-                                                    aetx:nonce(aetx_sign:tx(B))
-                                                end,
-                                                FilteredPendingTxs),
-                                    TxEncoding)
-                        end,
-                    #{<<"data_schema">> := ExpectedDS,
-                      <<"transactions">> := AllTxs} =
-                        expected_range_result(GenesisHash, ToHash, TxEncoding, TT,
-                                              PubkeyInTx, true),
-                    ParamsL0 = [tx_encoding_param(TxEncoding),
-                                make_tx_types_filter(Filter),
-                                #{offset => Offset, limit => Limit}],
-                    ParamsL =
-                        case ShowPending of
-                            default -> ParamsL0;
-                            _ when ShowPending =:= true orelse
-                                   ShowPending =:= false ->
-                                [{pending, atom_to_binary(ShowPending, utf8)} | ParamsL0]
-                        end,
-                    Params = make_params(ParamsL),
-                    {ok, 200, #{<<"data_schema">> := DS,
-                                <<"transactions">> := Txs}} =
-                        get_account_transactions(Pubkey, Params),
-                    ct:log("Encoding: Expected ~p,~nActual: ~p", [ExpectedDS, DS]),
-                    ExpectedDS = DS,
-                    Sublist =
-                        fun(List, Start, Len) ->
-                            case length(List) < Start of
-                                true -> [];
-                                false -> lists:sublist(List, Start, Len)
-                            end
-                        end,
-
-                    ExpectedTxs = Sublist(AccountPendingTx ++ AllTxs, Offset + 1, Limit),
-                    ct:log("Transactions:~nExpected ~p,~nActual: ~p",
-                           [ExpectedTxs, Txs]),
-                    ExpectedTxs = Txs
-                end,
-                [{#{}, all},
-                  {#{include => TxTypes}, {only, TxTypes}},
-                  {#{exclude => TxTypes}, {exclude, TxTypes}}])
-        end,
-        [{E, T} || E <- TxEncodings, T <- AllTestedTxTypes]).
 
 block_number(_Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
@@ -2126,77 +1977,6 @@ generic_block_tx_index_test(CallApi) when is_function(CallApi, 3)->
         end,
         lists:seq(ForkHeight, ForkHeight + GenerationCount)), % from latest fork
     ok.
-
-encode_pending_tx(Txs, TxEncoding0) ->
-    TxEncoding =
-        case TxEncoding0 of
-            default -> message_pack;
-            Other -> Other
-        end,
-    lists:map(
-        fun(Tx) -> aetx_sign:serialize_for_client_pending(TxEncoding, Tx)
-        end,
-        Txs).
-
-expected_range_result(HashFrom, HashTo, TxEncoding0, TxTypes, Filter,
-                      Reverse) ->
-    {block_hash, HashFrom1} = aec_base58c:decode(HashFrom),
-    {block_hash, HashTo1} = aec_base58c:decode(HashTo),
-    {ok, Blocks} = rpc(aec_chain, get_block_range_by_hash,
-                       [HashFrom1, HashTo1]),
-    TxEncoding =
-        case TxEncoding0 of
-            default -> message_pack;
-            Other -> Other
-        end,
-    SerializedTxs =
-        lists:foldl(
-            fun(Block, Accum) ->
-                AllBlockTxs =
-                    case Reverse of
-                        false -> aec_blocks:txs(Block);
-                        true -> lists:reverse(aec_blocks:txs(Block))
-                    end,
-                CustomFiltered = lists:filter(Filter, AllBlockTxs),
-                FilteredTxs = apply_tx_type_filter(TxTypes, CustomFiltered),
-                H = aec_blocks:to_header(Block),
-                lists:map(
-                    fun(Tx) ->
-                        aetx_sign:serialize_for_client(TxEncoding, H, Tx)
-                    end,
-                    FilteredTxs) ++ Accum
-            end,
-            [],
-            Blocks),
-    DataSchema =
-        case TxEncoding of
-            default ->
-                <<"MsgPackTxs">>;
-            message_pack ->
-                <<"MsgPackTxs">>;
-            json ->
-                <<"JSONTxs">>
-          end,
-    #{<<"data_schema">> => DataSchema,
-      <<"transactions">> => SerializedTxs}.
-
-apply_tx_type_filter(TxTypes, Txs) ->
-    case TxTypes of
-        all ->
-            Txs;
-        {only, Includes} ->
-            lists:filter(
-                fun(Tx) -> lists:member(tx_type(Tx), Includes) end,
-                Txs);
-        {exclude, Excludes} ->
-            lists:filter(
-                fun(Tx) -> not lists:member(tx_type(Tx), Excludes) end,
-                Txs)
-      end.
-
-tx_type(SignedTx) ->
-    Tx = aetx_sign:tx(SignedTx),
-    aetx:tx_type(Tx).
 
 naming_system_manage_name(_Config) ->
     {ok, PubKey} = rpc(aec_keys, pubkey, []),
@@ -3467,11 +3247,6 @@ get_block_by_hash(Hash, TxObjects) ->
     Host = external_address(),
     http_request(Host, get, "block/hash/" ++ http_uri:encode(Hash), Params).
 
-%% TODO NG: it was deleted in NG - why?
-get_header_by_hash(Hash) ->
-    Host = external_address(),
-    http_request(Host, get, "header-by-hash", [{hash, Hash}]).
-
 get_transactions() ->
     Host = external_address(),
     http_request(Host, get, "transactions", []).
@@ -3548,11 +3323,6 @@ get_balance(EncodedPubKey, Params) ->
     http_request(Host, get, "account/" ++ binary_to_list(EncodedPubKey) ++ "/balance",
                  Params).
 
-get_account_transactions(EncodedPubKey, Params) ->
-    Host = external_address(),
-    http_request(Host, get, "account/" ++ binary_to_list(EncodedPubKey) ++ "/txs",
-                 Params).
-
 post_tx(TxSerialized) ->
     Host = external_address(),
     http_request(Host, post, "tx", #{tx => TxSerialized}).
@@ -3622,20 +3392,6 @@ get_block_tx_by_index_latest(Index, TxObjects) ->
     Params = tx_encoding_param(TxObjects),
     Host = internal_address(),
     http_request(Host, get, "block/tx/latest/" ++ integer_to_list(Index), Params).
-
-make_tx_types_filter(Filter) ->
-    Includes = maps:get(include, Filter, []),
-    Excludes = maps:get(exclude, Filter, []),
-    Encode =
-        fun(_, [], Res) -> Res;
-        (Key, TypesBin, Res) ->
-            Types = lists:map(fun binary_to_list/1, TypesBin),
-            T = list_to_binary(lists:join(",", Types)),
-            maps:put(Key, T, Res)
-        end,
-    R0 = Encode(tx_types, Includes, #{}),
-    R = Encode(exclude_tx_types, Excludes, R0),
-    R.
 
 get_list_oracles(Max) ->
     get_list_oracles(undefined, Max).
@@ -4204,7 +3960,7 @@ open_websockets_count() ->
     length([1 || {_, QName} <- rpc(jobs, info, [monitors]),
                  QName =:= QueueName]).
 
-sign_and_post_tx(AccountPubKey, EncodedUnsignedTx) ->
+sign_and_post_tx(EncodedUnsignedTx) ->
     {ok, SerializedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedUnsignedTx),
     UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
     {ok, SignedTx} = rpc(aec_keys, sign_tx, [UnsignedTx]),
@@ -4239,16 +3995,6 @@ tx_in_chain(TxHash) ->
         {ok, 200, #{<<"transaction">> := #{<<"block_hash">> := _}}} -> true;
         {ok, 404, _} -> false
     end.
-
-make_params(L) ->
-    make_params(L, []).
-
-make_params([], Accum) ->
-    maps:from_list(Accum);
-make_params([H | T], Accum) when is_map(H) ->
-    make_params(T, maps:to_list(H) ++ Accum);
-make_params([{K, V} | T], Accum) ->
-    make_params(T, [{K, V} | Accum]).
 
 generate_key_pair() ->
     #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),
