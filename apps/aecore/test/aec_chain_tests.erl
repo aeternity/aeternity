@@ -11,7 +11,7 @@
 -include("blocks.hrl").
 
 -import(aec_test_utils,
-        [ extend_block_chain_with_state/3
+        [ extend_block_chain_with_state/2
         , blocks_only_chain/1
         , genesis_block/0
         , genesis_block_with_state/1
@@ -734,7 +734,6 @@ fork_get_transaction() ->
     RecipientPubKey = <<42:32/unit:8>>,
     PresetAccounts = [{SenderPubKey, 100}],
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
-    meck:expect(aec_governance, miner_reward_delay, 0, 100),
     Spend1 = aetx_sign:sign(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
     Spend2 = aetx_sign:sign(make_spend_tx(SenderPubKey, 2, RecipientPubKey), SenderPrivKey),
     CommonChainTargets = [?GENESIS_TARGET, 1, 1],
@@ -875,7 +874,7 @@ gen_blocks_only_chain(PresetAccounts, Data) ->
 
 gen_block_chain_with_state(PresetAccounts, Data) ->
     {B0, S0} = genesis_block_with_state(PresetAccounts),
-    [{B0, S0} | extend_block_chain_with_state(B0, S0, Data)].
+    extend_block_chain_with_state([{B0, S0}], Data).
 
 gen_blocks_only_chain_by_target(Targets, Nonce) ->
     gen_blocks_only_chain_by_target(aec_test_utils:preset_accounts(), Targets, Nonce).
@@ -896,8 +895,7 @@ extend_chain_with_state(Base, Targets, Nonce) ->
     extend_chain_with_state(Base, Targets, Nonce, fun(_) -> [] end).
 
 extend_chain_with_state(Base, Targets, Nonce, TxsFun) ->
-    {B, S} = lists:last(Base),
-    Base ++ extend_block_chain_with_state(B, S, #{ targets => Targets, txs_by_height_fun => TxsFun, nonce => Nonce }).
+    extend_block_chain_with_state(Base, #{ targets => Targets, txs_by_height_fun => TxsFun, nonce => Nonce }).
 
 block_hash(Block) ->
     {ok, H} = aec_blocks:hash_internal_representation(Block),

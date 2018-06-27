@@ -219,8 +219,8 @@ mine_chain_with_state(Chain, N, PC) ->
     mine_chain_with_state([{B, S} | Chain], N - 1, PC).
 
 %% PoWCapacity = number of solutions per minute
-mining_step(Chain = [{Top, TopState} | _], PoWCapacity) ->
-    {Block, BlockState} = aec_test_utils:create_keyblock_with_state(Top, ?MINER_PUBKEY, TopState),
+mining_step(Chain = [{Top, _} | _], PoWCapacity) ->
+    {Block, BlockState} = aec_test_utils:create_keyblock_with_state(Chain, ?MINER_PUBKEY),
     MiningTime = mining_time(Chain, PoWCapacity),
     {ok, NewBlock} =
         aec_block_key_candidate:adjust_target(

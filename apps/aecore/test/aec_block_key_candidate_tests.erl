@@ -23,7 +23,7 @@ new_key_block_test_() ->
              BlockHeader = aec_blocks:to_header(PrevBlock),
 
              {NewBlock, _} = aec_test_utils:create_keyblock_with_state(
-                               PrevBlock, ?MINER_PUBKEY, aec_trees:new()),
+                               [{PrevBlock, aec_trees:new()}], ?MINER_PUBKEY),
 
              ?assertEqual(12, aec_blocks:height(NewBlock)),
              SerializedBlockHeader = aec_headers:serialize_to_binary(BlockHeader),
