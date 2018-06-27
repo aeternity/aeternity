@@ -400,7 +400,7 @@ delete_vals([], T) ->
     T.
 
 random_hexstring(N) when N >= 1 ->
-    << <<(rand:uniform(15)):4>> || _ <- lists:seq(1, N) >>.
+    << <<(rand:uniform(16) - 1):4>> || _ <- lists:seq(1, N) >>.
 
 new_dict_db() ->
     aeu_mp_trees_db:new(dict_db_spec()).
