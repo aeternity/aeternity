@@ -10,9 +10,7 @@
     aetx,
     sext
    ]},
-  {env,[
-        {'$aec_db_add_index_plugins', {aesc_chan_db, add_index_plugins}}
-       ]},
+  {env,[]},
   {modules, []},
   {maintainers, []},
   {licenses, []},
