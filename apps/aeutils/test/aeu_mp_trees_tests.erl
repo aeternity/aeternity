@@ -126,6 +126,7 @@ test_iterator(Iterator, Tree, [{Key, Val}|Left]) ->
     ?assertEqual(IVal, Val),
     case Left of
         [{NextKey, NextVal}|_] ->
+            %% Iterator starting from key skips key.
             NewIterator = aeu_mp_trees:iterator_from(Key, Tree),
             ?assertMatch({NextKey, NextVal, _},
                          aeu_mp_trees:iterator_next(NewIterator));
@@ -212,12 +213,12 @@ test_iterator_prefix() ->
 test_iterator_prefix([Prefix|Left], Sorted, Tree) ->
     Opts = [{with_prefix, Prefix}],
     Iterator = aeu_mp_trees:iterator_from(Prefix, Tree, Opts),
-    SortedLeft = test_iterator_one_prefix(Iterator, Prefix, Sorted),
+    SortedLeft = test_iterator_one_prefix(Iterator, Tree, Prefix, Sorted),
     test_iterator_prefix(Left, SortedLeft, Tree);
 test_iterator_prefix([], [],_Tree) ->
     ok.
 
-test_iterator_one_prefix(Iterator, Prefix, [{Key, Val}|Left] = Vals) ->
+test_iterator_one_prefix(Iterator, Tree, Prefix, [{Key, Val}|Left] = Vals) ->
     case aeu_mp_trees:iterator_next(Iterator) of
         '$end_of_table' -> Vals;
         {IKey, IVal, Iterator1} ->
@@ -225,9 +226,25 @@ test_iterator_one_prefix(Iterator, Prefix, [{Key, Val}|Left] = Vals) ->
             ?assertMatch(<<Prefix:PrefixS/bitstring, _/bitstring>>, Key),
             ?assertEqual(IKey, Key),
             ?assertEqual(IVal, Val),
-            test_iterator_one_prefix(Iterator1, Prefix, Left)
+            %% Prefix iterator starting from key skips key.
+            _KeyS = bit_size(Key),
+            Opts =  [{with_prefix, Key}],
+            NewIterator = aeu_mp_trees:iterator_from(Key, Tree, Opts),
+            case Left of
+                [] ->
+                    ?assertMatch('$end_of_table',
+                                 aeu_mp_trees:iterator_next(NewIterator));
+                %% Case not triggered by test data.
+                %% [{NextKey = <<Key:KeyS/bitstring, _:1/bitstring, _/bitstring>>, NextVal}|_] ->
+                %%     ?assertMatch({NextKey, NextVal, _},
+                %%                  aeu_mp_trees:iterator_next(NewIterator));
+                [{NextKey,_NextVal}|_] when NextKey =/= Key ->
+                    ?assertMatch('$end_of_table',
+                                 aeu_mp_trees:iterator_next(NewIterator))
+            end,
+            test_iterator_one_prefix(Iterator1, Tree, Prefix, Left)
     end;
-test_iterator_one_prefix(Iterator, _, []) ->
+test_iterator_one_prefix(Iterator,_Tree, _, []) ->
     ?assertEqual('$end_of_table', aeu_mp_trees:iterator_next(Iterator)),
     [].
 
