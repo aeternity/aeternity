@@ -144,12 +144,6 @@ create_contract_init_error(_Cfg) ->
                  - aect_create_tx:fee(aetx:tx(Tx))
                  - aect_create_tx:gas_price(aetx:tx(Tx)) * aect_call:gas_used(InitCall),
                  aec_accounts:balance(aect_test_utils:get_account(PubKey, S2))),
-    %% Check that the miner got credited correctly.
-    %% NG-NO_FEES
-    %% ?assertEqual(aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S1))
-    %%              + aect_create_tx:fee(aetx:tx(Tx))
-    %%              + aect_create_tx:gas_price(aetx:tx(Tx)) * aect_call:gas_used(InitCall),
-    %%              aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S2))),
     ok.
 
 create_contract(_Cfg) ->
@@ -214,12 +208,6 @@ create_contract_(ContractCreateTxGasPrice) ->
     %% Check that created contract account got credited correctly.
     ?assertEqual(aect_create_tx:amount(aetx:tx(Tx)),
                  aec_accounts:balance(aect_test_utils:get_account(ContractKey, S2))),
-    %% Check that the miner got credited correctly.
-    %% NG-NO_FEES
-    %% ?assertEqual(aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S1))
-    %%              + aect_create_tx:fee(aetx:tx(Tx))
-    %%              + aect_create_tx:gas_price(aetx:tx(Tx)) * aect_call:gas_used(InitCall),
-    %%              aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S2))),
 
     ok.
 
@@ -324,12 +312,6 @@ call_contract_(ContractCallTxGasPrice) ->
     ?assertEqual(aec_accounts:balance(aect_test_utils:get_account(ContractKey, S3))
                  + aect_call_tx:amount(aetx:tx(CallTx)),
                  aec_accounts:balance(aect_test_utils:get_account(ContractKey, S4))),
-    %% Check that the miner got credited correctly.
-    %% NG-NO_FEES
-    %% ?assertEqual(aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S3))
-    %%              + aect_call_tx:fee(aetx:tx(CallTx))
-    %%              + aect_call_tx:gas_price(aetx:tx(CallTx)) * aect_call:gas_used(Call),
-    %%              aec_accounts:balance(aect_test_utils:get_account(?MINER_PUBKEY, S4))),
 
     {ok, S4}.
 
