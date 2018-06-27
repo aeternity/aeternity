@@ -1698,6 +1698,42 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /block/tx/hash/{hash}/{tx_index}:
+    get:
+      tags:
+        - internal
+        - chain
+      operationId: GetTransactionFromBlockHash
+      description: 'Get a transaction by index in the block by hash'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: hash
+          description: 'Hash of the block to search for'
+          required: true
+          type: string
+        - in: path
+          name: tx_index
+          description: 'Index of the transaction in the block'
+          required: true
+          type: integer
+        - in: query
+          name: tx_encoding
+          description: 'Transactions encoding'
+          type: string
+          enum: [message_pack, json]
+          default: message_pack
+      responses:
+        '200':
+          description: The transaction found
+          schema:
+            $ref: '#/definitions/SingleTxObject'
+        '404':
+          description: Block or transaction not found
+          schema:
+            $ref: '#/definitions/Error'
+      security:
   /block/tx/latest/{tx_index}:
     get:
       tags:

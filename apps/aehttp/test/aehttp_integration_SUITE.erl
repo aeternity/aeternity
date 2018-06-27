@@ -157,6 +157,8 @@
     wrong_http_method_block_txs_count_latest/1,
     wrong_http_method_block_txs_count_genesis/1,
     wrong_http_method_block_txs_count_pending/1,
+    wrong_http_method_block_tx_by_index_height/1,
+    wrong_http_method_block_tx_by_index_hash/1,
     wrong_http_method_block_tx_by_index_latest/1,
     wrong_http_method_list_oracles/1,
     wrong_http_method_list_oracle_queries/1,
@@ -331,6 +333,8 @@ groups() ->
         wrong_http_method_block_txs_count_latest,
         wrong_http_method_block_txs_count_genesis,
         wrong_http_method_block_txs_count_pending,
+        wrong_http_method_block_tx_by_index_height,
+        wrong_http_method_block_tx_by_index_hash,
         wrong_http_method_block_tx_by_index_latest,
         wrong_http_method_list_oracles,
         wrong_http_method_list_oracle_queries,
@@ -3921,6 +3925,14 @@ wrong_http_method_block_txs_count_genesis(_Config) ->
 wrong_http_method_block_txs_count_pending(_Config) ->
     Host = internal_address(),
     {ok, 405, _} = http_request(Host, post, "block/txs/count/pending", []).
+
+wrong_http_method_block_tx_by_index_height(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "block/tx/height/123/123", []).
+
+wrong_http_method_block_tx_by_index_hash(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "block/tx/hash/123/123", []).
 
 wrong_http_method_block_tx_by_index_latest(_Config) ->
     Host = internal_address(),
