@@ -37,7 +37,7 @@ mine_block_test_() ->
                  % let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
                  Nonce = 12318985976980345277,
                  {BlockCandidate,_} = aec_test_utils:create_keyblock_with_state(
-                                        TopBlock, ?TEST_PUB, aec_trees:new()),
+                                        [{TopBlock, aec_trees:new()}], ?TEST_PUB),
 
                  HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
 
@@ -60,7 +60,7 @@ mine_block_test_() ->
                                    version = ?GENESIS_VERSION},
                  meck:expect(aec_pow, pick_nonce, 0, 18),
                  {BlockCandidate,_} = aec_test_utils:create_keyblock_with_state(
-                                        TopBlock, ?TEST_PUB, aec_trees:new()),
+                                        [{TopBlock, aec_trees:new()}], ?TEST_PUB),
 
                  Nonce = 18,
                  HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
