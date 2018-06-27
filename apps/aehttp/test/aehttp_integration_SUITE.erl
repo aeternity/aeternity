@@ -180,6 +180,7 @@
    [ws_get_genesis/1,
     ws_request_tag/1,
     ws_block_mined/1,
+    ws_micro_block_added/1,
     ws_refused_on_limit_reached/1,
     ws_tx_on_chain/1,
     ws_oracles/1
@@ -365,6 +366,7 @@ groups() ->
       [ws_get_genesis,
        ws_request_tag,
        ws_block_mined,
+       ws_micro_block_added,
        ws_refused_on_limit_reached,
        ws_tx_on_chain,
        ws_oracles
@@ -2571,7 +2573,7 @@ ws_block_mined(_Config) ->
     %% Register for mined_block events
     ws_subscribe(ConnPid, #{ type => mined_block }),
 
-    {Height, Hash} = ws_mine_block(ConnPid, ?NODE, 1),
+    {Height, Hash} = ws_mine_key_block(ConnPid, ?NODE, 1),
 
     {_Tag, #{<<"block">> := Block}} = ws_chain_get(ConnPid, #{height => Height, type => block}),
     {_Tag, #{<<"block">> := Block}} = ws_chain_get(ConnPid, #{hash => Hash, type => block}),
@@ -2581,6 +2583,31 @@ ws_block_mined(_Config) ->
     ok = aehttp_ws_test_utils:stop(ConnPid),
     ok.
 
+ws_micro_block_added(_Config) ->
+    {ok, ConnPid} = ws_start_link(),
+
+    %% Mine 1 key block to get a reward.
+    ws_subscribe(ConnPid, #{ type => mined_block }),
+    {_Height0, _KeyBlockHash0} = ws_mine_key_block(ConnPid, ?NODE, 1),
+
+    %% 1 tx in the mempool, so micro block will be generated.
+    {ok, 200, _} = post_spend_tx(random_hash(), 1, 1),
+
+    %% Register for added_micro_block events
+    ws_subscribe(ConnPid, #{ type => added_micro_block }),
+    {Height, KeyBlockHash, MicroBlockHash} = ws_mine_key_and_micro_block(ConnPid, ?NODE),
+
+    {_Tag, #{<<"block">> := #{<<"height">> := Height, <<"prev_hash">> := PrevHash}}} =
+        ws_chain_get(ConnPid, #{hash => KeyBlockHash, type => block}),
+    {_Tag, #{<<"header">> := #{<<"height">> := Height, <<"prev_hash">> := PrevHash}}} =
+        ws_chain_get(ConnPid, #{hash => KeyBlockHash, type => header}),
+    {_Tag, #{<<"block">> := #{<<"height">> := Height, <<"prev_hash">> := PrevHash1, <<"txs_hash">> := TxsHash}}} =
+        ws_chain_get(ConnPid, #{hash => MicroBlockHash, type => block}),
+    {_Tag, #{<<"header">> := #{<<"height">> := Height, <<"prev_hash">> := PrevHash1, <<"txs_hash">> := TxsHash}}} =
+        ws_chain_get(ConnPid, #{hash => MicroBlockHash, type => header}),
+
+    ok = aehttp_ws_test_utils:stop(ConnPid),
+    ok.
 %% Currently the websockets are a queue: they have a maximim amount of
 %% acceptors. Every WS trying to connect after all acceptoprs are used
 %% goes into a queue. When the queue is full - the node starts rejecting
@@ -2658,7 +2685,7 @@ ws_tx_on_chain(_Config) ->
     ws_subscribe(ConnPid, #{ type => mined_block }),
 
     %% Mine a block to make sure the Pubkey has some funds!
-    ws_mine_block(ConnPid, ?NODE, 1),
+    ws_mine_key_block(ConnPid, ?NODE, 1),
 
     %% Fetch the pubkey via HTTP
     {ok, 200, #{ <<"pub_key">> := PK }} = get_miner_pub_key(),
@@ -2681,7 +2708,7 @@ ws_tx_on_chain(_Config) ->
 
     %% Mine a block and check that an event is receieved corresponding to
     %% the Tx.
-    ws_mine_block(ConnPid, ?NODE, 2),
+    ws_mine_key_block(ConnPid, ?NODE, 2),
     {ok, #{<<"tx_hash">> := TxHash }} = ?WS:wait_for_event(ConnPid, chain, tx_chain),
 
     ok = aehttp_ws_test_utils:stop(ConnPid),
@@ -2694,7 +2721,7 @@ ws_oracles(_Config) ->
     ws_subscribe(ConnPid, #{ type => mined_block }),
 
     %% Mine a block to make sure the Pubkey has some funds!
-    ws_mine_block(ConnPid, ?NODE, 2),
+    ws_mine_key_block(ConnPid, ?NODE, 2),
 
     %% Fetch the pubkey via HTTP
     {ok, 200, #{ <<"pub_key">> := PK }} = get_miner_pub_key(),
@@ -2704,7 +2731,7 @@ ws_oracles(_Config) ->
     OId = aec_base58c:encode(oracle_pubkey, ActualPK),
 
     %% Mine a block to get the oracle onto the chain
-    ws_mine_block(ConnPid, ?NODE, 1),
+    ws_mine_key_block(ConnPid, ?NODE, 1),
 
     %% Register for events when the freshly registered oracle is queried!
     ws_subscribe(ConnPid, #{ type => oracle_query, oracle_id => OId }),
@@ -2724,7 +2751,7 @@ ws_oracles(_Config) ->
 
     %% Mine a block and check that an event is receieved corresponding to
     %% the query.
-    ws_mine_block(ConnPid, ?NODE, 2),
+    ws_mine_key_block(ConnPid, ?NODE, 2),
     {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(ConnPid, chain, new_oracle_query),
 
     %% Subscribe to responses to the query.
@@ -2740,7 +2767,7 @@ ws_oracles(_Config) ->
       <<"query_id">> := QId } = ws_do_request(ConnPid, oracle, response, ResponseData),
 
     %% Mine a block and check that an event is received
-    ws_mine_block(ConnPid, ?NODE, 2),
+    ws_mine_key_block(ConnPid, ?NODE, 2),
     {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(ConnPid, chain, new_oracle_response),
 
     %% Check that we can extend the oracle TTL
@@ -2758,7 +2785,7 @@ ws_oracles(_Config) ->
     ok = ?WS:register_test_for_event(ConnPid, chain, tx_chain),
 
     %% Mine a block and check that the extend tx made it onto the chain
-    ws_mine_block(ConnPid, ?NODE, 2),
+    ws_mine_key_block(ConnPid, ?NODE, 2),
     {ok, #{<<"tx_hash">> := ExtendTxHash }} = ?WS:wait_for_event(ConnPid, chain, tx_chain),
 
     ok = aehttp_ws_test_utils:stop(ConnPid),
@@ -3393,12 +3420,22 @@ ws_chain_get(ConnPid, Tag, PayLoad) ->
     ok = ?WS:unregister_test_for_event(ConnPid, chain, requested_data),
     {Tag1, Res}.
 
-ws_mine_block(ConnPid, Node, Count) ->
+ws_mine_key_block(ConnPid, Node, Count) ->
     ok = ?WS:register_test_for_event(ConnPid, chain, mined_block),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(Node), Count),
     {ok, #{<<"height">> := Height, <<"hash">> := Hash}} = ?WS:wait_for_event(ConnPid, chain, mined_block),
     ok = ?WS:unregister_test_for_event(ConnPid, chain, mined_block),
     {Height, Hash}.
+
+ws_mine_key_and_micro_block(ConnPid, Node) ->
+    ok = ?WS:register_test_for_events(ConnPid, chain, [mined_block, added_micro_block]),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(Node), 2),
+    {ok, #{<<"height">> := Height, <<"hash">> := KeyBlockHash}} =
+        ?WS:wait_for_event(ConnPid, chain, mined_block),
+    {ok, #{<<"height">> := Height, <<"hash">> := MicroBlockHash}} =
+        ?WS:wait_for_event(ConnPid, chain, added_micro_block),
+    ok = ?WS:unregister_test_for_event(ConnPid, chain, [mined_block, added_micro_block]),
+    {Height, KeyBlockHash, MicroBlockHash}.
 
 %% ============================================================
 %% HTTP Requests
