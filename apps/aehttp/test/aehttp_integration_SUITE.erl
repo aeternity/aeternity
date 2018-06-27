@@ -2093,40 +2093,38 @@ block_tx_index_not_founds(_Config) ->
 generic_block_tx_index_test(CallApi) when is_function(CallApi, 3)->
     ok = rpc(aec_conductor, reinit_chain, []),
     ForkHeight = aecore_suite_utils:latest_fork_height(),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   ForkHeight),
-    BlocksToMine = ?DEFAULT_TESTS_COUNT,
+    %% ForkHeight can be 0, so no blocks are mined.
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), ForkHeight),
+    GenerationCount = ?DEFAULT_TESTS_COUNT,
     lists:foreach(
         fun(Height) ->
             lists:foreach(
                 fun({Opts, GetBlockDef, DataSchema}) ->
-                    {ok, 200, BlockMap} =
-                        get_block_by_height(Height, GetBlockDef),
+                    {ok, 200, BlockMap} = get_block_by_height(Height, GetBlockDef),
                     AllTxs = maps:get(<<"transactions">>, BlockMap, []),
-                    TxsIdxs =
-                        case length(AllTxs) of
-                            0 ->
-                                [];
-                            TxsLength ->
-                                lists:seq(1, TxsLength)
+                    TxsIdxs = case length(AllTxs) of
+                            0 -> [];
+                            TxsLength -> lists:seq(1, TxsLength)
                         end,
                     lists:foreach(
                         fun({Tx, Index}) ->
                             ct:log("Index: ~p, Transaction: ~p", [Index, Tx]),
                             {ok, 200, #{<<"data_schema">> := DataSchema,
-                                        <<"transaction">> := Tx}} = CallApi(Height,
-                                                                            Index,
-                                                                            Opts)
+                                        <<"transaction">> := Tx}} =
+                                CallApi(Height, Index, Opts)
                         end,
                         lists:zip(AllTxs, TxsIdxs))
                 end,
                 [{default, message_pack, <<"SingleTxMsgPack">>},
                  {message_pack, message_pack, <<"SingleTxMsgPack">>},
                  {json, json, <<"SingleTxJSON">>}]),
-            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+            %% The first generation (ForkHeight) is just 1 key block to get some
+            %% reward to be able to send txs in subsequent generations.
+            BlockCount = if Height == ForkHeight -> 1; true -> 2 end,
+            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), BlockCount),
             add_spend_txs()
         end,
-        lists:seq(ForkHeight, ForkHeight + BlocksToMine)), % from latest fork
+        lists:seq(ForkHeight, ForkHeight + GenerationCount)), % from latest fork
     ok.
 
 encode_pending_tx(Txs, TxEncoding0) ->
