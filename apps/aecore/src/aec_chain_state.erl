@@ -8,7 +8,7 @@
 
 -module(aec_chain_state).
 
--export([ calculate_keyblock_state/2
+-export([ calculate_state_for_new_keyblock/2
         , find_common_ancestor/2
         , get_hash_at_height/1
         , hash_is_connected_to_genesis/1
@@ -92,7 +92,12 @@ hash_is_in_main_chain(Hash) ->
         error -> false
     end.
 
-calculate_keyblock_state(PrevHash, Miner) ->
+
+-spec calculate_state_for_new_keyblock(binary(), aec_keys:pubkey()) ->
+                                              {'ok', aec_trees:trees()}
+                                            | 'error'.
+
+calculate_state_for_new_keyblock(PrevHash, Miner) ->
     case db_find_node(PrevHash) of
         error -> error;
         {ok, PrevNode} ->
