@@ -322,9 +322,9 @@ create_channel_(Cfg, Debug) ->
     log(Debug, "mining blocks on dev1 for minimum depth", []),
     mine_blocks(dev1, 4, Debug),
     check_info(),
-    receive_info(I2, open, Debug),
-    receive_info(R2, open, Debug),
-    #{i => I2, r => R2, spec => Spec}.
+    I3 = receive_info(I2, open, Debug),
+    R3 = receive_info(R2, open, Debug),
+    #{i => I3, r => R3, spec => Spec}.
 
 expect_close_mutual_tx(#{i := #{channel_id := ChannelId}}) ->
     {ok, Blocks} = mine_blocks(dev1, 4),
@@ -348,13 +348,6 @@ await_funding_created_p(I, R, Debug) ->
 await_funding_signed_i(I, R, Debug) ->
     receive_info(I, funding_signed, Debug),
     {I, R}.
-
-await_initial_state(I, R) -> await_initial_state(I, R, true).
-
-await_initial_state(I, R, Debug) ->
-    {I1, _} = await_signing_request(update, I, ?LONG_TIMEOUT, Debug),
-    {R1, _} = await_signing_request(update_ack, R, Debug),
-    {I1, R1}.
 
 await_signing_request(Tag, R) ->
     await_signing_request(Tag, R, ?TIMEOUT, true).
@@ -390,12 +383,12 @@ set_chid_if_undefined(R, Msg) ->
 receive_info(R, Msg, Debug) ->
     receive_from_fsm(info, R, Msg, ?LONG_TIMEOUT, Debug).
 
-receive_from_fsm(Tag, #{role := Role, fsm := Fsm}, Info, Timeout, Debug)
+receive_from_fsm(Tag, #{role := Role, fsm := Fsm} = R, Info, Timeout, Debug)
   when is_atom(Info) ->
     receive
         {aesc_fsm, Fsm, #{type := _Type, tag := Tag, info := Info} = Msg} ->
             log(Debug, "~p: received ~p:~p", [Role, Tag, Msg]),
-            ok
+            set_chid_if_undefined(R, Msg)
     after Timeout ->
             error(timeout)
     end;
