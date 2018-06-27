@@ -19,6 +19,7 @@
 %% For tests
 -export([ get_top_block_hash/1
         , get_hash_at_height/2
+        , calculate_gas_fee/1
         ]).
 
 

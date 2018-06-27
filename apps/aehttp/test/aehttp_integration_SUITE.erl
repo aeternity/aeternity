@@ -253,7 +253,7 @@ groups() ->
         get_transaction,
 
         % sync gossip
-        pending_transactions,  %% NG: fix after block reward/fees are done
+        pending_transactions,
         post_correct_tx,
         post_broken_tx,
         post_broken_base58_tx,
@@ -946,7 +946,7 @@ contract_transactions(_Config) ->    % miner has an account
 
     %% Call objects
     {ok, 200, #{<<"tx_hash">> := SpendTxHash}} = post_spend_tx(MinerPubkey, 1, 1),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
     {ok, 400, #{<<"reason">> := <<"Tx is not a create or call">>}} =
         get_contract_call_object(SpendTxHash),
 
@@ -1620,17 +1620,16 @@ pending_transactions(_Config) ->
             {ok, 404, #{<<"reason">> := <<"Account not found">>}} -> 0;
             {ok, 200, #{<<"balance">> := Bal00}} -> Bal00
         end,
-    AmountToSpent = 1,
+    AmountToSpent = 3,
     {BlocksToMine, Fee} = minimal_fee_and_blocks_to_mine(AmountToSpent, 1),
     MineReward = rpc(aec_governance, block_mine_reward, []),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), BlocksToMine),
     {ok, 200, #{<<"balance">> := Bal0}} = get_balance_at_top(),
 
-    %% ct:log("Bal0: ~p, Initial Balance: ~p, Blocks to mine: ~p, Mine reward: ~p, Fee: ~p",
-    %%        [Bal0, InitialBalance, BlocksToMine, MineReward, Fee]),
-    %% NG: TODO: fee goes to the miner?
-    %% {Bal0, _, _} = {InitialBalance + Fee + BlocksToMine * MineReward, Bal0,
-    %%              {InitialBalance, BlocksToMine, MineReward, Fee}},
+    ct:log("Bal0: ~p, Initial Balance: ~p, Blocks to mine: ~p, Mine reward: ~p, Fee: ~p",
+           [Bal0, InitialBalance, BlocksToMine, MineReward, Fee]),
+    {Bal0, _, _} = {InitialBalance + Fee + BlocksToMine * MineReward, Bal0,
+                 {InitialBalance, BlocksToMine, MineReward, Fee}},
     true = (is_integer(Bal0) andalso Bal0 > AmountToSpent + Fee),
 
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % still empty
@@ -1657,15 +1656,14 @@ pending_transactions(_Config) ->
                   get_balance_at_top(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
 
 
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 3),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty again
     {ok, 200, []} = get_transactions(),
 
     {ok, 200, #{<<"balance">> := Bal1}} = get_balance_at_top(),
-    %% NG: TODO
-    %% ct:log("Bal1: ~p, Bal0: ~p, Mine reward: ~p, Fee: ~p, Amount to spend: ~p",
-    %%        [Bal1, Bal0, MineReward, Fee, AmountToSpent]),
-    %% Bal1 = Bal0 + MineReward + Fee - AmountToSpent,
+    ct:log("Bal1: ~p, Bal0: ~p, Mine reward: ~p, Fee: ~p, Amount to spend: ~p",
+           [Bal1, Bal0, 2 * MineReward, Fee, AmountToSpent]),
+    {Bal1, _} = {Bal0 + 2 * MineReward + Fee - Fee - AmountToSpent, Bal1},
     {ok, 200, #{<<"balance">> := AmountToSpent}} =
                  get_balance_at_top(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
     ok.
@@ -2278,13 +2276,12 @@ naming_system_manage_name(_Config) ->
     CHash                          = aens_preclaim_tx:commitment(PreclaimTx),
 
     %% Mine a block and check mempool empty again
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 3),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Check fee taken from account, then mine reward and fee added to account
     {ok, 200, #{<<"balance">> := Balance1}} = get_balance_at_top(),
-    %% NG: uncomment when reward/fee calculation is fixed
-    %% Balance1 = Balance - Fee + MineReward + Fee,
+    {Balance1, _} = {Balance - Fee + 2 * MineReward + Fee, Balance1},
 
     %% Submit name claim tx and check it is in mempool
     {ok, 200, _}             = post_name_claim_tx(Name, NameSalt, Fee),
@@ -2293,19 +2290,18 @@ naming_system_manage_name(_Config) ->
     Name                     = aens_claim_tx:name(ClaimTx),
 
     %% Mine a block and check mempool empty again
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 3),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Check tx fee taken from account, claim fee burned,
     %% then mine reward and fee added to account
     ClaimBurnedFee = rpc(aec_governance, name_claim_burned_fee, []),
     {ok, 200, #{<<"balance">> := Balance2}} = get_balance_at_top(),
-    %% NG: uncomment when reward/fee calculation is fixed
-    %% Balance2 = Balance1 - Fee + MineReward + Fee - ClaimBurnedFee,
+    Balance2 = Balance1 - Fee + 2 * MineReward + Fee - ClaimBurnedFee,
 
     %% Check that name entry is present
     EncodedNHash = aec_base58c:encode(name, NHash),
-    ExpectedTTL1 = 3 + aec_governance:name_claim_max_expiration(),
+    ExpectedTTL1 = 4 + aec_governance:name_claim_max_expiration(),
     {ok, 200, #{<<"name">>      := Name,
                 <<"name_hash">> := EncodedNHash,
                 <<"name_ttl">>  := ExpectedTTL1,
@@ -2318,11 +2314,11 @@ naming_system_manage_name(_Config) ->
     NameTTL                    = aens_update_tx:name_ttl(UpdateTx),
 
     %% Mine a block and check mempool empty again
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 3),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Check that TTL and pointers got updated in name entry
-    ExpectedTTL2 = 4 + NameTTL,
+    ExpectedTTL2 = 6 + NameTTL,
     {ok, 200, #{<<"name">>     := Name,
                 <<"name_ttl">> := ExpectedTTL2,
                 <<"pointers">> := Pointers}} = get_name(Name),
@@ -2334,15 +2330,14 @@ naming_system_manage_name(_Config) ->
                                   amount           => 77,
                                   fee              => 50,
                                   payload          => <<"foo">>}),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 3),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Nothing gets lost as recipient = sender = miner
     %% This tests 'resolve_name' because recipient is expressed by name label
     %% This tests passes with 1 block confirmation due to lack of miner's reward delay
-    %% NG: uncomment when reward/fee calculation is fixed
-    %% FinalBalance = Balance3+MineReward,
     {ok, 200, #{<<"balance">> := FinalBalance}} = get_balance_at_top(),
+    {FinalBalance, _} = {Balance3 + 2 * MineReward, FinalBalance},
 
     %% Submit name transfer tx and check it is in mempool
     {ok, DecodedPubkey}            = aec_base58c:safe_decode(account_pubkey, PubKeyEnc),
