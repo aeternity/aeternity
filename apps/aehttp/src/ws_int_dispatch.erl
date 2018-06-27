@@ -71,6 +71,8 @@ do_execute(chain, SubUnSub, SubscribeData)
                     {oracle, {response, QId}};
                 <<"mined_block">> ->
                     {chain, mined_block};
+                <<"added_micro_block">> ->
+                    {chain, added_micro_block};
                 <<"new_block">> ->
                     {chain, new_block};
                 <<"tx">> ->

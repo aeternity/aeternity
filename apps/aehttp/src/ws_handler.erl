@@ -103,7 +103,9 @@ create_message_(SenderName, Action, Payload, Msg0) ->
     end.
 
 create_message_from_event(BlockEvent, {BlockHeight, BlockHash})
-        when BlockEvent == mined_block; BlockEvent == new_block ->
+        when BlockEvent == mined_block;
+             BlockEvent == added_micro_block;
+             BlockEvent == new_block ->
     Payload = [{height, BlockHeight},
                {hash, aec_base58c:encode(block_hash, BlockHash)}],
     {ok, create_message(chain, BlockEvent, Payload)};
