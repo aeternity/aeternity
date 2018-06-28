@@ -720,7 +720,7 @@ find_fork_point(Hash1, {ok, FHash1}, Hash2, {ok, FHash2}) ->
     Height1 = node_height(db_get_node(FHash1)),
     Height2 = node_height(db_get_node(FHash2)),
     if
-        Height1 > Height2 ->
+        Height1 >= Height2 ->
             PrevHash = db_get_prev_hash(FHash1),
             PrevRes = db_find_fork_id(PrevHash),
             find_fork_point(PrevHash, PrevRes, Hash2, {ok, FHash2});
