@@ -747,7 +747,8 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, 404, #{}} = get_contract_poi(EncodedContractPubKey),
 
     % mine a block
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    Fun1 = fun() -> tx_in_chain(ContractCreateTxHash)end,
+    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun1, 10),
     ?assert(tx_in_chain(ContractCreateTxHash)),
 
     %% Get the contract init call object
@@ -809,8 +810,9 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, 400, #{<<"reason">> := <<"Tx not mined">>}} =
         get_contract_call_object(ContractCallTxHash),
 
-    % mine a block
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    % mine blocks
+    Fun2 = fun() -> tx_in_chain(ContractCallTxHash)end,
+    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun2, 10),
     ?assert(tx_in_chain(ContractCallTxHash)),
 
     %% Get the call object
@@ -871,7 +873,8 @@ contract_transactions(_Config) ->    % miner has an account
         sign_and_post_tx(EncodedUnsignedContractCallComputeTx),
 
     % mine a block
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    Fun3 = fun() -> tx_in_chain(ContractCallComputeTxHash)end,
+    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun3, 10),
     ?assert(tx_in_chain(ContractCallComputeTxHash)),
 
     %% Get the call object
@@ -948,7 +951,8 @@ contract_transactions(_Config) ->    % miner has an account
 
     %% Call objects
     {ok, 200, #{<<"tx_hash">> := SpendTxHash}} = post_spend_tx(MinerPubkey, 1, 1),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    Fun4 = fun() -> tx_in_chain(SpendTxHash)end,
+    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun4, 10),
     {ok, 400, #{<<"reason">> := <<"Tx is not a create or call">>}} =
         get_contract_call_object(SpendTxHash),
 
@@ -994,8 +998,9 @@ contract_create_transaction_init_error(_Config) ->
     {ok, 400, #{<<"reason">> := <<"Tx not mined">>}} =
         get_contract_call_object(ContractCreateTxHash),
 
-    % mine a block
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    % mine blocks
+    Fun = fun() -> tx_in_chain(ContractCreateTxHash)end,
+    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun, 10),
     ?assert(tx_in_chain(ContractCreateTxHash)),
 
     %% Get the contract init call object
@@ -1043,11 +1048,12 @@ oracle_transactions(_Config) ->
     % oracle_query_tx we first need an actual Oracle on the chain
 
     {ok, 200, #{<<"tx">> := RegisterTx}} = get_oracle_register(RegEncoded),
-    sign_and_post_tx(RegisterTx),
+    RegisterTxHash = sign_and_post_tx(RegisterTx),
 
     % mine blocks to include it
     ct:log("Before oracle registered nonce is ~p", [rpc(aec_next_nonce, pick_for_account, [MinerPubkey])]),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    Fun = fun() -> tx_in_chain(RegisterTxHash)end,
+    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun, 10),
     ct:log("Oracle registered nonce is ~p", [rpc(aec_next_nonce, pick_for_account, [MinerPubkey])]),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
 
@@ -1087,10 +1093,11 @@ oracle_transactions(_Config) ->
     ct:log("Nonce is ~p", [QueryNonce]),
     QueryId = aeo_query:id(MinerPubkey, QueryNonce, MinerPubkey),
     {ok, 200, #{<<"tx">> := QueryTx}} = get_oracle_query(QueryEncoded),
-    sign_and_post_tx(QueryTx),
+    QueryTxHash = sign_and_post_tx(QueryTx),
 
     % mine blocks to include it
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    Fun1 = fun() -> tx_in_chain(QueryTxHash)end,
+    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun1, 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
 
     ResponseEncoded = #{oracle => OracleAddress,
@@ -1105,9 +1112,10 @@ oracle_transactions(_Config) ->
                                fun get_oracle_response/1,
                                fun aeo_response_tx:new/1, MinerPubkey),
     {ok, 200, #{<<"tx">> := ResponseTx}} = get_oracle_response(ResponseEncoded),
-    sign_and_post_tx(ResponseTx),
+    ResponseTxHash = sign_and_post_tx(ResponseTx),
     % mine a block to include it
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    Fun2 = fun() -> tx_in_chain(ResponseTxHash)end,
+    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun2, 10),
 
     %% negative tests
 
@@ -1625,7 +1633,7 @@ pending_transactions(_Config) ->
     AmountToSpent = 3,
     {BlocksToMine, Fee} = minimal_fee_and_blocks_to_mine(AmountToSpent, 1),
     MineReward = rpc(aec_governance, block_mine_reward, []),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), BlocksToMine),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), BlocksToMine),
     {ok, 200, #{<<"balance">> := Bal0}} = get_balance_at_top(),
 
     ct:log("Bal0: ~p, Initial Balance: ~p, Blocks to mine: ~p, Mine reward: ~p, Fee: ~p",
@@ -1750,8 +1758,8 @@ all_accounts_balances(_Config) ->
     ForkHeight = aecore_suite_utils:latest_fork_height(),
     BlocksToMine = max(BlocksToMine0, ForkHeight),
 
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   BlocksToMine),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
+                                       BlocksToMine),
     ReceiversAccounts = [{random_hash(), AmountToSpent} || _Idx <- lists:seq(1, Receivers)],
     lists:foreach(
         fun({ReceiverPubKey, _}) ->
@@ -1914,8 +1922,8 @@ block_latest(_Config) ->
 %% first X blocks, we need to premine them before the test
 block_pending(_Config) ->
     BlocksToPremine = rpc(aec_governance, key_blocks_to_check_difficulty_count, []),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   BlocksToPremine),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
+                                       BlocksToPremine),
     lists:foreach(
         fun(Opt) ->
             {ok, 404, #{<<"reason">> := <<"Not mining, no pending block">>}} =

@@ -20,6 +20,8 @@
          delete_node_db_if_persisted/1,
          mine_blocks/2,
          mine_blocks/3,
+         mine_blocks_until/3,
+         mine_blocks_until/4,
          mine_key_blocks/2,
          spend/4,         %% (Node, FromPub, ToPub, Amount) -> ok
          spend/5,         %% (Node, FromPub, ToPub, Amount, Fee) -> ok
@@ -175,6 +177,46 @@ mine_blocks(Node, NumBlocksToMine, MiningRate, Type) ->
             {ok, lists:reverse(BlocksReverse)};
         {error, Reason} ->
             erlang:error(Reason)
+    end.
+
+mine_blocks_until(Node, ConditionFun, Max) ->
+    mine_blocks_until(Node, ConditionFun, 100, Max).
+
+mine_blocks_until(Node, ConditionFun, MiningRate, Max) ->
+    ok = rpc:call(
+           Node, application, set_env, [aecore, expected_mine_rate, MiningRate],
+           5000),
+    aecore_suite_utils:subscribe(Node, block_created),
+    aecore_suite_utils:subscribe(Node, micro_block_created),
+    StartRes = rpc:call(Node, aec_conductor, start_mining, [], 5000),
+    ct:log("aec_conductor:start_mining() (~p) -> ~p", [Node, StartRes]),
+    Res = mine_blocks_until_loop(ConditionFun, Max),
+    StopRes = rpc:call(Node, aec_conductor, stop_mining, [], 5000),
+    ct:log("aec_conductor:stop_mining() (~p) -> ~p", [Node, StopRes]),
+    aecore_suite_utils:unsubscribe(Node, block_created),
+    aecore_suite_utils:unsubscribe(Node, micro_block_created),
+    case Res of
+        {ok, BlocksReverse} ->
+            {ok, lists:reverse(BlocksReverse)};
+        {error, Reason} ->
+            erlang:error(Reason)
+    end.
+
+mine_blocks_until_loop(ConditionFun, Max) ->
+    mine_blocks_until_loop(ConditionFun, Max, []).
+
+mine_blocks_until_loop(_ConditionFun, 0,_Acc) ->
+    {error, max_reached};
+mine_blocks_until_loop(ConditionFun, Max, Acc) ->
+    case mine_blocks_loop(1, any) of
+        {ok, Blocks} ->
+            NewAcc = Blocks ++ Acc,
+            case ConditionFun() of
+                true  -> {ok, NewAcc};
+                false ->
+                    mine_blocks_until_loop(ConditionFun, Max - 1, NewAcc)
+            end;
+        {error, _} = Error -> Error
     end.
 
 mine_blocks_loop(Cnt, Type) ->
