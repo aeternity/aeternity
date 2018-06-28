@@ -2308,6 +2308,42 @@
         }
       }
     },
+    "/contract/{contract_address}/balance" : {
+      "get" : {
+        "tags" : [ "external", "chain" ],
+        "description" : "Get Contract balance",
+        "operationId" : "GetContractBalance",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "contract_address",
+          "in" : "path",
+          "description" : "Arguments in sophia",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Contract's balance at the current height",
+            "schema" : {
+              "$ref" : "#/definitions/Balance"
+            }
+          },
+          "401" : {
+            "description" : "Invalid contract address",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Contract not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/peer/key" : {
       "get" : {
         "tags" : [ "external", "gossip" ],

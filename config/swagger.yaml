@@ -1958,6 +1958,36 @@ paths:
           description: Invalid contract
           schema:
             $ref: '#/definitions/Error'
+  /contract/{contract_address}/balance:
+    get:
+      tags:
+        - external
+        - chain
+      operationId: 'GetContractBalance'
+      description: 'Get Contract balance'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: contract_address
+          description: Arguments in sophia
+          required: true
+          type: string
+      responses:
+        '200':
+          description: Contract's balance at the current height 
+          schema:
+            $ref: '#/definitions/Balance'
+        '404':
+          description: Contract not found
+          schema:
+            $ref: '#/definitions/Error'
+        '400':
+          description: Invalid contract address
+          schema:
+            $ref: '#/definitions/Error'
   /peer/key:
     get:
       tags:

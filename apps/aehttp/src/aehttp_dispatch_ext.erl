@@ -459,6 +459,20 @@ handle_request('GetAccountBalance', Req, _Context) ->
             {400, [], #{reason => <<"Invalid account hash">>}}
     end;
 
+handle_request('GetContractBalance', Req, _Context) ->
+    ParseFuns = [read_required_params([contract_address]),
+                 base58_decode([{contract_address, contract, contract_pubkey}]),
+                 fun(_, #{contract := Pubkey}) ->
+                    case aehttp_logic:get_account_balance(Pubkey) of
+                        {error, account_not_found} ->
+                            {error, {404, [], #{<<"reason">> => <<"Contract not found">>}}};
+                        {ok, Balance} ->
+                            {ok, {200, [], #{<<"balance">> => Balance}}}
+                    end
+                end
+                ],
+    process_request(ParseFuns, Req);
+
 handle_request('GetAccountPendingTransactions', Req, _Context) ->
     case aec_base58c:safe_decode(account_pubkey, maps:get('account_pubkey', Req)) of
         {ok, AccountPubkey} ->
