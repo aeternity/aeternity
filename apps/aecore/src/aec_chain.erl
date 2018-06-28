@@ -372,8 +372,11 @@ get_at_most_n_generation_headers_forward_from_hash(Hash, N)
                     case Delta < 0 of
                         true -> error;
                         false ->
-                            Res = {ok, _} = get_header_by_height(Height + Delta),
-                            {ok, Headers} = get_n_generation_headers_backwards_from_hash(Res, Delta + 1, []),
+                            {ok, HeaderDelta} = get_header_by_height(Height + Delta),
+                            {ok, Headers} =
+                                aec_chain_state:get_n_key_headers_backward_from(HeaderDelta,
+                                                                                Delta + 1),
+
                             %% Validate that we were on the main fork.
                             case aec_headers:hash_header(hd(Headers)) =:= {ok, Hash} of
                                 true -> {ok, Headers};
@@ -388,22 +391,10 @@ get_at_most_n_generation_headers_forward_from_hash(Hash, N)
                                            'error'.
 %%% @doc Get n headers backwards in chain. Returns headers old -> new
 get_n_generation_headers_backwards_from_hash(Hash, N) when is_binary(Hash), is_integer(N), N > 0 ->
-    get_n_generation_headers_backwards_from_hash(get_header(Hash), N, []).
-
-get_n_generation_headers_backwards_from_hash(_, 0, Acc) ->
-    {ok, Acc};
-get_n_generation_headers_backwards_from_hash({ok, Header}, N, Acc) ->
-    case aec_headers:type(Header) of
-        key ->
-            PrevHash = aec_headers:prev_hash(Header),
-            NewAcc = [Header|Acc],
-            get_n_generation_headers_backwards_from_hash(get_header(PrevHash), N - 1, NewAcc);
-        micro ->
-            PrevKey = aec_headers:key_hash(Header),
-            get_n_generation_headers_backwards_from_hash(get_header(PrevKey), N, Acc)
-    end;
-get_n_generation_headers_backwards_from_hash(error,_N,_Acc) ->
-    error.
+    case get_header(Hash) of
+        {ok, Header} -> aec_chain_state:get_n_key_headers_backward_from(Header, N);
+        error        -> error
+    end.
 
 %%%===================================================================
 %%% Get a block range
