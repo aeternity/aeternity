@@ -16,9 +16,7 @@ from swagger_client.rest import ApiException
 from swagger_client.api.external_api import ExternalApi
 from swagger_client.api.internal_api import InternalApi
 from swagger_client.api_client import ApiClient
-from swagger_client.models.block import Block
 from swagger_client.models.balance import Balance
-from swagger_client.models.pub_key import PubKey
 from swagger_client.configuration import Configuration
 
 from nose.tools import assert_equals
