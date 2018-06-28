@@ -186,6 +186,11 @@ add_store_keys_poi(Id, {PrefixedKey, _Val, Iter}, PrefixSize, Poi, CtTree) ->
 -spec verify_poi(aect_contracts:id(), aect_contracts:contract(), aec_poi:poi()) ->
                         'ok' | {'error', term()}.
 verify_poi(Id, Contract, Poi) ->
+    %% Hardcode expectation on specified contract object key being
+    %% equal to key in internal representation of contract.  The key
+    %% is not part of the contract serialization so this shall never
+    %% happen.
+    Id = aect_contracts:id(Contract),
     case aec_poi:verify(Id, aect_contracts:serialize(Contract), Poi) of
         {error, _} = E -> E; %% More fine grained error reason than lookup.
         ok ->
