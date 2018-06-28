@@ -102,7 +102,7 @@ handle_request('GetHeaderByHash', Req, _Context) ->
             case aehttp_logic:get_block_by_hash(Hash) of
                 {ok, Block} ->
                     {200, [], aehttp_api_parser:encode(header, Block)};
-                {error, header_not_found} ->
+                {error, block_not_found} ->
                     {404, [], #{reason => <<"Header not found">>}}
             end
     end;
