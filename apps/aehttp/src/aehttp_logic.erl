@@ -41,7 +41,7 @@
 -export([cleanup_genesis/1,
          add_missing_to_genesis_block/1]).
 
--spec get_top() -> {ok, aec_headers:header()}.
+-spec get_top() -> {ok, aec_blocks:block()}.
 get_top() ->
     Block = aec_chain:top_block(),
     {ok, Block}.
