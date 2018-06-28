@@ -11,6 +11,7 @@
 -export([ calculate_state_for_new_keyblock/2
         , find_common_ancestor/2
         , get_hash_at_height/1
+        , get_n_key_headers_backward_from/2
         , hash_is_connected_to_genesis/1
         , hash_is_in_main_chain/1
         , insert_block/1
@@ -34,6 +35,12 @@
 -spec get_hash_at_height(aec_blocks:height()) -> {'ok', binary()} | 'error'.
 get_hash_at_height(Height) when is_integer(Height), Height >= 0 ->
     get_hash_at_height(Height, new_state_from_persistence()).
+
+-spec get_n_key_headers_backward_from(aec_headers:header(), non_neg_integer()) ->
+        {ok, [#header{}]} | 'error'.
+get_n_key_headers_backward_from(Header, N) ->
+    Node = wrap_header(Header),
+    get_n_key_headers_from(Node, N).
 
 -spec insert_block(#block{} | map()) -> 'ok' | {'error', any()}.
 insert_block(#{ key_block := KeyBlock, micro_blocks := MicroBlocks, dir := forward }) ->
@@ -372,20 +379,21 @@ assert_calculated_target(Node, PrevNode, Delta) ->
     end.
 
 get_n_key_headers_from(Node, N) ->
-    get_n_key_headers_from(Node, N-1, []).
+    get_n_key_headers_from({ok, Node}, N, []).
 
-get_n_key_headers_from(Node, 0, Acc) ->
-    {ok, lists:reverse([export_header(Node) | Acc])};
-get_n_key_headers_from(Node, N, Acc) ->
-    {ok, PrevNode} = db_find_node(prev_hash(Node)),
-    case node_type(PrevNode) of
-        micro ->
-            PrevKeyHash       = node_key_hash(PrevNode),
-            {ok, PrevKeyNode} = db_find_node(PrevKeyHash),
-            get_n_key_headers_from(PrevKeyNode, N-1, [export_header(PrevKeyNode) | Acc]);
+get_n_key_headers_from(_, 0, Acc) ->
+    {ok, Acc};
+get_n_key_headers_from({ok, Node}, N, Acc) ->
+    case node_type(Node) of
         key ->
-            get_n_key_headers_from(PrevNode, N-1, [export_header(Node) | Acc])
-    end.
+            PrevNode = db_find_node(prev_hash(Node)),
+            get_n_key_headers_from(PrevNode, N-1, [export_header(Node) | Acc]);
+        micro ->
+            PrevKeyNode = db_find_node(node_key_hash(Node)),
+            get_n_key_headers_from(PrevKeyNode, N, Acc)
+    end;
+get_n_key_headers_from(error, _N, _Acc) ->
+    error.
 
 assert_micro_block_time(PrevNode, Node) ->
     case is_micro_block(Node) of
