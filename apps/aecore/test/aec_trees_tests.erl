@@ -8,6 +8,8 @@
 
 -include("blocks.hrl").
 
+-include_lib("apps/aecontract/src/aecontract.hrl").
+
 -define(TEST_MODULE, aec_trees).
 -define(MINER_PUBKEY, <<42:?MINER_PUB_BYTES/unit:8>>).
 
@@ -168,8 +170,8 @@ poi_test_() ->
       {"Broken serialized PoI fails verification",
        fun() ->
                OwnerPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
-               Contract = aect_contracts:set_state(#{<<"k1">> => <<"v1">>,
-                                                     <<"k2">> => <<"v2">>},
+               Contract = aect_contracts:set_state(#{<<1>> => <<"v1">>,
+                                                     <<2>> => <<"v2">>},
                                                    make_contract(OwnerPubkey)),
                ContractId = aect_contracts:id(Contract),
 
@@ -385,7 +387,7 @@ poi_test_() ->
        fun() ->
                OwnerPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
                Contract0 = make_contract(OwnerPubkey),
-               Contract1 = aect_contracts:set_state(#{<<"k">> => <<"v">>},
+               Contract1 = aect_contracts:set_state(#{<<2>> => <<"v">>},
                                                     Contract0),
 
                check_poi_for_one_contract(
@@ -405,7 +407,7 @@ poi_test_() ->
                  fun(C) -> %% Change contract function.
                          ?assertEqual(#{}, %% Assumption for simplicity.
                                       aect_contracts:state(C)),
-                         aect_contracts:set_state(#{<<"k">> => <<"v">>}, C)
+                         aect_contracts:set_state(#{<<1>> => <<"v">>}, C)
                  end)
        end},
       {"PoI for one contract with store that becomes without store",
@@ -413,10 +415,10 @@ poi_test_() ->
                OwnerPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
 
                check_poi_for_one_contract(
-                 aect_contracts:set_state(#{<<"k">> => <<"v">>},
+                 aect_contracts:set_state(#{<<1>> => <<"v">>},
                                           make_contract(OwnerPubkey)),
                  fun(C) -> %% Change contract function.
-                         ?assertEqual(#{<<"k">> => <<"v">>}, %% Assumption for simplicity.
+                         ?assertEqual(#{<<1>> => <<"v">>}, %% Assumption for simplicity.
                                       aect_contracts:state(C)),
                          aect_contracts:set_state(#{}, C)
                  end)
@@ -425,7 +427,7 @@ poi_test_() ->
        fun() ->
                Contracts =
                    [aect_contracts:set_state(
-                      #{<<"k", X>> => <<"v", X>>}, %% Distinct key per contract.
+                      #{<<1, X>> => <<"v", X>>}, %% Distinct key per contract.
                       make_contract(<<X:?MINER_PUB_BYTES/unit:8>>))
                     || X <- [1, 2, 3]],
                [check_poi_for_a_contract_among_others(
@@ -435,8 +437,22 @@ poi_test_() ->
        end},
       {"Serialized contract PoI with empty contract store key fails verification",
        fun() ->
-               check_poi_for_contract_with_invalid_store_with_binary_keys(
-                 #{<<>> => <<"v">>})
+               [check_poi_for_contract_with_invalid_store_with_binary_keys(
+                  V, #{<<>> => <<"v">>}) || V <- vm_versions()]
+       end},
+      {"Serialized Solidity contract PoI with invalid contract store key fails verification",
+       fun() ->
+               IllegalKeys =
+                   [<<0, (binary:encode_unsigned(K))/binary>>
+                        || K <- lists:seq(0, 3)],
+               [check_poi_for_contract_with_invalid_store_with_binary_keys(
+                  ?AEVM_01_Solidity_01, #{K => <<"v">>}) || K <- IllegalKeys]
+       end},
+      {"Serialized Sophia contract PoI with invalid contract store key fails verification",
+       fun() ->
+               IllegalKeys = [<<1>>, <<2>>, <<16>>],
+               [check_poi_for_contract_with_invalid_store_with_binary_keys(
+                  ?AEVM_01_Sophia_01,  #{K => <<"v">>}) || K <- IllegalKeys]
        end}
     ].
 
@@ -571,11 +587,12 @@ check_poi_for_an_object_among_others(SubTree,
 
     ok.
 
-check_poi_for_contract_with_invalid_store_with_binary_keys(InvalidStore) ->
+check_poi_for_contract_with_invalid_store_with_binary_keys(
+  VmVersion, InvalidStore) ->
     OwnerPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
 
     %% Generate contract invalid because of an invalid contract store key.
-    ValidContract = make_contract(OwnerPubkey),
+    ValidContract = make_contract(OwnerPubkey, VmVersion),
     InvalidContract = aect_contracts:internal_set_state(InvalidStore,
                                                         ValidContract),
     ContractId = aect_contracts:id(InvalidContract),
@@ -632,16 +649,19 @@ poi_fields_update_with(FieldKey, Fun, PoiFields) ->
       PoiFields).
 
 make_contract(Owner) ->
-    {contract_create_tx, CTx} = aetx:specialize_type(ct_create_tx(Owner)),
+    make_contract(Owner, ?AEVM_01_Solidity_01).
+
+make_contract(Owner, VmVersion) ->
+    {contract_create_tx, CTx} = aetx:specialize_type(ct_create_tx(Owner, VmVersion)),
     aect_contracts:new(CTx).
 
-ct_create_tx(Sender) ->
+ct_create_tx(Sender, VmVersion) ->
     Spec =
         #{ fee        => 5
          , owner      => Sender
          , nonce      => 0
          , code       => <<"NOT PROPER BYTE CODE">>
-         , vm_version => 1
+         , vm_version => VmVersion
          , deposit    => 10
          , amount     => 200
          , gas        => 10
@@ -651,3 +671,8 @@ ct_create_tx(Sender) ->
          },
     {ok, Tx} = aect_create_tx:new(Spec),
     Tx.
+
+vm_versions() ->
+    [ ?AEVM_01_Sophia_01
+    , ?AEVM_01_Solidity_01
+    ].

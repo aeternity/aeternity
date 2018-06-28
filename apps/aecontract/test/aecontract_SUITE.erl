@@ -320,7 +320,8 @@ call_contract_(ContractCallTxGasPrice) ->
 %%%===================================================================
 
 make_contract(PubKey, Code, S) ->
-    Tx = aect_test_utils:create_tx(PubKey, #{ code => Code }, S),
+    Tx = aect_test_utils:create_tx(PubKey, #{ vm_version => 2,
+                                              code => Code }, S),
     {contract_create_tx, CTx} = aetx:specialize_type(Tx),
     aect_contracts:new(CTx).
 

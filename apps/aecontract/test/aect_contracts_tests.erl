@@ -49,16 +49,16 @@ basic_setters() ->
 state_setter() ->
     C = aect_contracts:new(create_tx()),
     ?assertEqual(#{}, state(set_state(#{}, C))),
-    ?assertEqual(#{<<"k">> => <<"v">>},
-                 state(set_state(#{<<"k">> => <<"v">>}, C))),
-    ?assertEqual(#{<<"k1">> => <<"v2">>,
-                   <<"k2">> => <<"v1">>},
-                 state(set_state(#{<<"k1">> => <<"v2">>,
-                                   <<"k2">> => <<"v1">>}, C))),
+    ?assertEqual(#{<<1>> => <<"v">>},
+                 state(set_state(#{<<1>> => <<"v">>}, C))),
+    ?assertEqual(#{<<1>> => <<"v2">>,
+                   <<2>> => <<"v1">>},
+                 state(set_state(#{<<1>> => <<"v2">>,
+                                   <<2>> => <<"v1">>}, C))),
     ?assertError({illegal, _, _}, set_state(#{<<>> => <<"v">>}, C)),
-    ?assertEqual(#{<<"k">> => <<>>}, state(set_state(#{<<"k">> => <<>>}, C))),
+    ?assertEqual(#{<<1>> => <<>>}, state(set_state(#{<<1>> => <<>>}, C))),
     ?assertError({illegal, _, _}, set_state(#{<<1:4>> => <<"v">>}, C)),
-    ?assertError({illegal, _, _}, set_state(#{<<"k">> => <<1:4>>}, C)),
+    ?assertError({illegal, _, _}, set_state(#{<<1>> => <<1:4>>}, C)),
     ok.
 
 
@@ -69,7 +69,7 @@ create_tx(Override) ->
     Map = #{ owner      => <<4711:32/unit:8>>
            , nonce      => 42
            , code       => <<"THIS IS NOT ACTUALLY PROPER BYTE CODE">>
-           , vm_version => 1
+           , vm_version => 2
            , fee        => 10
            , ttl        => 100
            , deposit    => 100

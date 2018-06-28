@@ -30,7 +30,6 @@
           %% Setters
         , set_pubkey/2
         , set_owner/2
-        , set_vm_version/2
         , set_code/2
         , set_state/2
         , set_log/2
@@ -38,6 +37,9 @@
         , set_referers/2
         , set_deposit/2
         ]).
+
+%% For testing only.
+-export([set_vm_version/2]).
 
 -ifdef(TEST).
 -export([internal_set_state/2]).
@@ -255,7 +257,7 @@ set_code(X, C) ->
 
 -spec set_state(store(), contract()) -> contract().
 set_state(X, C) ->
-    internal_set_state(assert_field(store, X), C).
+    internal_set_state(assert_field(store, X, C), C).
 
 internal_set_state(X, C) ->
     C#contract{store = X}.
@@ -292,31 +294,23 @@ assert_fields(C) ->
            , {referers,   referers(C)}
            , {deposit,    C#contract.deposit}
            ],
-    List1 = [try assert_field(X, Y), [] catch _:X -> X end
+    List1 = [try assert_field(X, Y, C), [] catch _:X -> X end
              || {X, Y} <- List],
     case lists:flatten(List1) of
         [] -> C;
         Other -> error({missing, Other})
     end.
 
+assert_field(store = FieldKey, FieldValue, C) ->
+    assert_field_store(FieldKey, FieldValue, C#contract.vm_version);
+assert_field(FieldKey, FieldValue, _) ->
+    assert_field(FieldKey, FieldValue).
+
 assert_field(pubkey, <<_:?PUB_SIZE/binary>> = X)         -> X;
 assert_field(owner,  <<_:?PUB_SIZE/binary>> = X)         -> X;
 assert_field(vm_version, X) when is_integer(X), X > 0,
                                                 X < 6    -> X;
 assert_field(code, X)       when is_binary(X)            -> X;
-assert_field(store = Field, X) when is_map(X) ->
-    try
-        F = fun(K, V, unused) ->
-                    assert_field(store_k, K),
-                    assert_field(store_v, V),
-                    unused
-            end,
-        %% map iterator would limit memory usage though it is available from OTP 21.
-        maps:fold(F, unused, X),
-        X
-    catch _:_ -> error({illegal, Field, X}) end;
-assert_field(store_k, X) when is_binary(X), byte_size(X) > 0 -> X;
-assert_field(store_v, X)    when is_binary(X)            -> X;
 assert_field(log, X)        when is_binary(X)            -> X;
 assert_field(active, X)     when X =:= true; X =:= false -> X;
 assert_field(referers = Field, X) ->
@@ -325,3 +319,20 @@ assert_field(referers = Field, X) ->
 assert_field(referer, <<_:?PUB_SIZE/binary>> = X)        -> X;
 assert_field(deposit, X)    when is_integer(X), X >= 0   -> X;
 assert_field(Field, X) -> error({illegal, Field, X}).
+
+assert_field_store(store = Field, X, VmVersion) when is_map(X) ->
+    try
+        F = fun(K, V, unused) ->
+                    assert_field_store(store_k, K, VmVersion),
+                    assert_field_store(store_v, V, VmVersion),
+                    unused
+            end,
+        %% map iterator would limit memory usage though it is available from OTP 21.
+        maps:fold(F, unused, X),
+        X
+    catch _:_ -> error({illegal, Field, X}) end;
+assert_field_store(store_k = Field, X, VmVersion) when is_binary(X),
+                                               byte_size(X) > 0 ->
+    try true = aevm_eeevm_store:is_valid_key(VmVersion, X)
+    catch _:_ -> error({illegal, Field, X}) end;
+assert_field_store(store_v, X,_VmVersion) when is_binary(X) -> X.
