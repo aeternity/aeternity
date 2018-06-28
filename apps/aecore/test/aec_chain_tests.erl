@@ -845,6 +845,90 @@ time_summary_N_blocks() ->
     ok.
 
 %%%===================================================================
+%%% Fees test
+
+fees_test_() ->
+    {foreach,
+     fun() ->
+             aec_test_utils:start_chain_db(),
+             setup_meck_and_keys()
+     end,
+     fun(TmpDir) ->
+             aec_test_utils:stop_chain_db(),
+             teardown_meck_and_keys(TmpDir)
+     end,
+     [{"Check fee division between three miners",
+       fun fees_three_miners/0}
+     ]
+    }.
+
+fees_three_miners() ->
+    %% Two accounts to act as sender and receiver.
+    #{ public := PubKey1, secret := PrivKey1 } = enacl:sign_keypair(),
+    #{ public := PubKey2, secret :=_PrivKey2 } = enacl:sign_keypair(),
+
+    PresetAccounts = [{PubKey1, 1000}],
+    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+
+    %% Three accounts to act as miners
+    #{ public := PubKey3, secret := PrivKey3 } = enacl:sign_keypair(),
+    #{ public := PubKey4, secret := PrivKey4 } = enacl:sign_keypair(),
+    #{ public := PubKey5, secret := PrivKey5 } = enacl:sign_keypair(),
+
+    %% Add two transactions in different blocks to collect fees from
+    Fee1 = 10,
+    Fee2 = 100,
+    TxsFun = fun(2) ->
+                     Tx = make_spend_tx(PubKey1, 1, PubKey2, Fee1),
+                     [aetx_sign:sign(Tx, PrivKey1)];
+                (3) ->
+                     Tx = make_spend_tx(PubKey1, 2, PubKey2, Fee2),
+                     [aetx_sign:sign(Tx, PrivKey1)];
+                (_) ->
+                     []
+             end,
+
+    %% Create a chain with the three different miners
+    Miners = [ {PubKey3, PrivKey3}
+             , {PubKey4, PrivKey4}
+             , {PubKey5, PrivKey5}
+             ],
+    Chain0 = gen_block_chain_with_state_by_miners(PresetAccounts, Miners, TxsFun),
+    Chain = blocks_only_chain(Chain0),
+
+    %% Write all but the last key block to the chain and keep the top hash.
+    ok = write_blocks_to_chain(lists:droplast(Chain)),
+    Hash1 = aec_chain:top_block_hash(),
+    {ok, Balances1} = aec_chain:all_accounts_balances_at_hash(Hash1),
+    DictBal1 = orddict:from_list(Balances1),
+
+    %% Write the last one as well to close the last generation.
+    ok = write_blocks_to_chain([lists:last(Chain)]),
+    Hash2 = aec_chain:top_block_hash(),
+    {ok, Balances2} = aec_chain:all_accounts_balances_at_hash(Hash2),
+    DictBal2 = orddict:from_list(Balances2),
+
+    %% Before the last generation is closed, only the two first miners
+    %% should have collected rewards
+    MiningReward = aec_governance:block_mine_reward(),
+    ?assertEqual(MiningReward + round(Fee1 * 0.4),
+                 orddict:fetch(PubKey3, DictBal1)),
+    ?assertEqual(MiningReward + round(Fee1 * 0.6),
+                 orddict:fetch(PubKey4, DictBal1)),
+    ?assertEqual(false, orddict:is_key(PubKey5, DictBal1)),
+
+    %% When the last generation is closed, the last transaction fee should
+    %% also have been collected.
+    ?assertEqual(MiningReward + round(Fee1 * 0.4),
+                 orddict:fetch(PubKey3, DictBal2)),
+    ?assertEqual(MiningReward + round(Fee1 * 0.6) + round(Fee2 * 0.4),
+                 orddict:fetch(PubKey4, DictBal2)),
+    ?assertEqual(MiningReward + round(Fee2 * 0.6),
+                 orddict:fetch(PubKey5, DictBal2)),
+    ok.
+
+
+%%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
@@ -891,6 +975,14 @@ gen_block_chain_with_state_by_target(PresetAccounts, Targets, Nonce) ->
 gen_block_chain_with_state_by_target(PresetAccounts, Targets, Nonce, TxsFun) ->
     gen_block_chain_with_state(PresetAccounts, #{ targets => Targets, txs_by_height_fun => TxsFun, nonce => Nonce }).
 
+gen_block_chain_with_state_by_miners(PresetAccounts, Miners, TxsFun) ->
+    Targets = lists:duplicate(length(Miners), ?GENESIS_TARGET),
+    gen_block_chain_with_state(PresetAccounts,
+                               #{ miners => Miners,
+                                  targets => Targets,
+                                  nonce => 111,
+                                  txs_by_height_fun => TxsFun}).
+
 extend_chain_with_state(Base, Targets, Nonce) ->
     extend_chain_with_state(Base, Targets, Nonce, fun(_) -> [] end).
 
@@ -902,10 +994,13 @@ block_hash(Block) ->
     H.
 
 make_spend_tx(Sender, SenderNonce, Recipient) ->
+    make_spend_tx(Sender, SenderNonce, Recipient, 1).
+
+make_spend_tx(Sender, SenderNonce, Recipient, Fee) ->
     {ok, SpendTx} = aec_spend_tx:new(#{sender => Sender,
                                        recipient => Recipient,
                                        amount => 1,
-                                       fee => 1,
+                                       fee => Fee,
                                        nonce => SenderNonce,
                                        payload => <<>>}),
     SpendTx.
