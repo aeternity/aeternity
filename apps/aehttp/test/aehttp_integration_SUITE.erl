@@ -611,7 +611,7 @@ get_top_empty_chain(_Config) ->
     ct:log("~p returned header = ~p", [?NODE, HeaderMap]),
     {ok, 200, GenBlockMap} = get_block_by_height(0),
     {ok, GenBlock} = aehttp_api_parser:decode(block, GenBlockMap),
-    ExpectedMap = header_to_endpoint_top(aec_blocks:to_header(GenBlock)),
+    ExpectedMap = block_to_endpoint_top(GenBlock),
     ct:log("Cleaned top header = ~p", [ExpectedMap]),
     ?assertEqual(ExpectedMap, HeaderMap),
 
@@ -622,8 +622,8 @@ get_top_empty_chain(_Config) ->
 
 get_top_non_empty_chain(_Config) ->
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-    ExpectedH = rpc(aec_chain, top_header, []),
-    ExpectedMap = header_to_endpoint_top(ExpectedH),
+    ExpectedB = rpc(aec_chain, top_block, []),
+    ExpectedMap = block_to_endpoint_top(ExpectedB),
     ct:log("Cleaned top header = ~p", [ExpectedMap]),
     {ok, 200, HeaderMap} = get_top(),
     ?assertEqual(ExpectedMap, HeaderMap),
@@ -4129,10 +4129,10 @@ process_http_return(R) ->
             Error
     end.
 
-header_to_endpoint_top(Header) ->
-    {ok, Hash} = aec_headers:hash_header(Header),
+block_to_endpoint_top(Block) ->
+    {ok, Hash} = aec_blocks:hash_internal_representation(Block),
     maps:put(<<"hash">>, aec_base58c:encode(block_hash, Hash),
-             aehttp_api_parser:encode(header, Header)).
+             aehttp_api_parser:encode(header, Block)).
 
 block_to_endpoint_map(Block) ->
     block_to_endpoint_map(Block, #{tx_encoding => message_pack}).

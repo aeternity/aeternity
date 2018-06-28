@@ -43,8 +43,8 @@
 
 -spec get_top() -> {ok, aec_headers:header()}.
 get_top() ->
-    Header = aec_chain:top_header(),
-    {ok, Header}.
+    Block = aec_chain:top_block(),
+    {ok, Block}.
 
 -spec get_top_height() -> {ok, integer()}.
 get_top_height() ->

@@ -31,10 +31,17 @@
                                     Err -> Err
                                 end
                             end},
-                   header => {fun(Header) ->
-                                {ok, HMap0} = aec_headers:serialize_to_map(Header),
-                                HMap = aehttp_logic:cleanup_genesis(HMap0),
-                                encode(header_map, HMap)
+                   header => {fun(Block) ->
+                                case aec_blocks:type(Block) of
+                                    key ->
+                                        BMap0 = aec_blocks:serialize_to_map(Block),
+                                        BMap = aehttp_logic:cleanup_genesis(BMap0),
+                                        encode(header_map, BMap);
+                                    micro ->
+                                        {ok, HMap0} = aec_headers:serialize_to_map(aec_blocks:to_header(Block)),
+                                        HMap = HMap0#{<<"signature">> => aec_blocks:signature(Block)},
+                                        encode(header_map, HMap)
+                                end
                             end,
                             fun(HMap) ->
                                 FullHMap = aehttp_logic:add_missing_to_genesis_block(HMap),
@@ -197,7 +204,7 @@ rule_type(L) when is_list(L) -> object.
 
 encode_block_for_client(Block, Encoding) ->
     Header = aec_blocks:to_header(Block),
-    EncodedHeader = encode(header, Header),
+    EncodedHeader = encode(header, Block),
     Txs =
         lists:map(
             fun(Tx) ->

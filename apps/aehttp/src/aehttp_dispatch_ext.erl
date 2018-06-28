@@ -43,10 +43,10 @@
        ) -> {Status :: cowboy:http_status(), Headers :: list(), Body :: map()}.
 
 handle_request('GetTop', _, _Context) ->
-    {ok, TopHeader} = aehttp_logic:get_top(),
-    {ok, Hash} = aec_headers:hash_header(TopHeader),
+    {ok, TopBlock} = aehttp_logic:get_top(),
+    {ok, Hash} = aec_blocks:hash_internal_representation(TopBlock),
     EncodedHash = aec_base58c:encode(block_hash, Hash),
-    EncodedHeader = aehttp_api_parser:encode(header, TopHeader),
+    EncodedHeader = aehttp_api_parser:encode(header, TopBlock),
     {200, [], maps:put(<<"hash">>, EncodedHash, EncodedHeader)};
 
 handle_request('GetBlockGenesis', Req, _Context) ->
@@ -99,9 +99,9 @@ handle_request('GetHeaderByHash', Req, _Context) ->
         {error, _} ->
             {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
-            case aehttp_logic:get_header_by_hash(Hash) of
-                {ok, Header} ->
-                    {200, [], aehttp_api_parser:encode(header, Header)};
+            case aehttp_logic:get_block_by_hash(Hash) of
+                {ok, Block} ->
+                    {200, [], aehttp_api_parser:encode(header, Block)};
                 {error, header_not_found} ->
                     {404, [], #{reason => <<"Header not found">>}}
             end
@@ -109,9 +109,9 @@ handle_request('GetHeaderByHash', Req, _Context) ->
 
 handle_request('GetHeaderByHeight', Req, _Context) ->
     Height = maps:get('height', Req),
-    case aehttp_logic:get_header_by_height(Height) of
-        {ok, H} ->
-            Resp = aehttp_api_parser:encode(header, H),
+    case aehttp_logic:get_block_by_height(Height) of
+        {ok, Block} ->
+            Resp = aehttp_api_parser:encode(header, Block),
             lager:debug("Resp = ~p", [pp(Resp)]),
             {200, [], Resp};
         {error, chain_too_short} ->
