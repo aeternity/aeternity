@@ -196,7 +196,9 @@ create_block_candidate(BlockOrBlockHash) ->
         {error, Reason} ->
             failed_attempt(Reason)
     end,
-    aec_tx_pool:garbage_collect().
+    %% NG: GC initially disabled. (And this is the wrong place...)
+    %% aec_tx_pool:garbage_collect(),
+    ok.
 
 update_block_candidate(Block, BlockInfo, Txs) ->
     case aec_block_micro_candidate:update(Block, Txs, BlockInfo) of
