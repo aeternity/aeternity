@@ -16,6 +16,7 @@
         , serialize/1
         , compute_contract_pubkey/2
         , compute_contract_store_id/1
+        , is_legal_state_fun/1
           %% Getters
         , pubkey/1
         , owner/1
@@ -37,6 +38,10 @@
         , set_referers/2
         , set_deposit/2
         ]).
+
+-ifdef(TEST).
+-export([internal_set_state/2]).
+-endif.
 
 %%%===================================================================
 %%% Types
@@ -180,6 +185,16 @@ compute_contract_store_id(CId) ->
     %% all storage nodes in one subtree under the contract tree.
     << CId/binary, ?STORE_PREFIX/binary>>.
 
+-spec is_legal_state_fun(contract()) -> fun((store()) -> boolean()).
+is_legal_state_fun(Contract) ->
+    fun(Store) ->
+            try set_state(Store, Contract) of
+                _ -> true
+            catch
+                _:_ -> false
+            end
+    end.
+
 %%%===================================================================
 %%% Getters
 
@@ -240,7 +255,10 @@ set_code(X, C) ->
 
 -spec set_state(store(), contract()) -> contract().
 set_state(X, C) ->
-    C#contract{store = assert_field(store, X)}.
+    internal_set_state(assert_field(store, X), C).
+
+internal_set_state(X, C) ->
+    C#contract{store = X}.
 
 -spec set_log(binary(), contract()) -> contract().
 set_log(X, C) ->

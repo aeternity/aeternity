@@ -194,9 +194,25 @@ verify_poi(Id, Contract, Poi) ->
     case aec_poi:verify(Id, aect_contracts:serialize(Contract), Poi) of
         {error, _} = E -> E; %% More fine grained error reason than lookup.
         ok ->
-            %% Verify contract store.
-            case lookup_poi(Id, Poi) of
-                {ok, Contract} -> ok;
+            verify_store_poi(aect_contracts:store_id(Contract),
+                             aect_contracts:state(Contract),
+                             aect_contracts:is_legal_state_fun(Contract),
+                             Poi)
+    end.
+
+verify_store_poi(Id, Store, IsLegalStoreFun, Poi) ->
+    %% Check separately absence of (invalid) empty key because Merkle
+    %% tree iterator-from-key, used in PoI lookup, does not return
+    %% initial key if present.
+    case aec_poi:lookup(Id, Poi) of
+        {ok, _StoreValWithEmptyKey} -> {error, bad_proof};
+        {error, not_found} ->
+            case lookup_store_poi(Id, Poi) of
+                {ok, Store} ->
+                    case IsLegalStoreFun(Store) of
+                        true -> ok;
+                        false -> {error, bad_proof}
+                    end;
                 {ok, _} -> {error, bad_proof};
                 {error, _} = E -> E
             end
@@ -208,38 +224,33 @@ lookup_poi(Id, Poi) ->
     case aec_poi:lookup(Id, Poi) of
         {ok, Val} ->
             Contract = aect_contracts:deserialize(Id, Val),
-            case add_store_from_poi(Contract, Poi) of
-                {ok, Contract2} -> {ok, Contract2};
-                Other -> Other
+            case lookup_store_poi(aect_contracts:store_id(Contract), Poi) of
+                {error, _} = E -> E;
+                {ok, Store} -> {ok, aect_contracts:set_state(Store, Contract)}
             end;
         Err -> Err
     end.
 
-
-add_store_from_poi(Contract, Poi) ->
-    Id = aect_contracts:store_id(Contract),
+lookup_store_poi(Id, Poi) ->
     case aec_poi:iterator_from(Id, Poi, [{with_prefix, Id}]) of
         {ok, Iterator} ->
             Next = aec_poi:iterator_next(Iterator),
             Size = byte_size(Id),
-            case add_store_from_poi(Id, Next, Size, #{}, Poi) of
-                {error, _} = E -> E;
-                Store -> {ok, aect_contracts:set_state(Store, Contract)}
-            end;
+            lookup_store_from_poi(Id, Next, Size, #{}, Poi);
         {error, _} = E -> E
     end.
 
-add_store_from_poi(_, {error, bad_proof} = E, _, _, _) ->
+lookup_store_from_poi(_, {error, bad_proof} = E, _, _, _) ->
     E;
-add_store_from_poi(_, '$end_of_table', _, Store,_Poi) ->
-    Store;
-add_store_from_poi(Id, {PrefixedKey, Val, Iter}, PrefixSize, Store, Poi) ->
+lookup_store_from_poi(_, '$end_of_table', _, Store,_Poi) ->
+    {ok, Store};
+lookup_store_from_poi(Id, {PrefixedKey, Val, Iter}, PrefixSize, Store, Poi) ->
     <<Id:PrefixSize/binary, Key/binary>> = PrefixedKey,
     Store1 = Store#{ Key => Val},
     case aec_poi:iterator_next(Iter) of
         {error, _} = E -> E;
         Next ->
-            add_store_from_poi(Id, Next, PrefixSize, Store1, Poi)
+            lookup_store_from_poi(Id, Next, PrefixSize, Store1, Poi)
     end.
 
 %% -- Commit to db --
