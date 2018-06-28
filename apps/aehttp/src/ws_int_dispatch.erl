@@ -45,7 +45,7 @@ do_execute(chain, get, QueryPayload) ->
             Val =
                   case Type of
                       <<"header">> ->
-                          aehttp_api_parser:encode(header, aec_blocks:to_header(Block));
+                          aehttp_api_parser:encode(header, Block);
                       <<"block">> ->
                           aehttp_api_parser:encode(block, Block)
                   end,
