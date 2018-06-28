@@ -102,6 +102,8 @@ mining:
             extra_args: ""
             # Number of bits used for representing a node in the Cuckoo Cycle problem.
             node_bits: 28
+            # Hexadecimal encode the header argument that is send to the miner executable. CUDA executables expect hex encoded header.
+            hex_encoded_header: false
 
 logging:
     # Controls the overload protection in the logs.

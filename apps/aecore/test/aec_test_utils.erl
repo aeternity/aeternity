@@ -92,12 +92,12 @@ unmock_time() ->
     meck:unload(aeu_time).
 
 mock_fast_cuckoo_pow() ->
-    mock_fast_cuckoo_pow({"mean16s-generic", "-t 5", 16}).
+    mock_fast_cuckoo_pow({"mean16s-generic", "-t 5", 16, false}).
 
 mock_fast_and_deterministic_cuckoo_pow() ->
-    mock_fast_cuckoo_pow({"mean16s-generic", "", 16}).
+    mock_fast_cuckoo_pow({"mean16s-generic", "", 16, false}).
 
-mock_fast_cuckoo_pow({_MinerBin, _MinerExtraArgs, _NodeBits} = Cfg) ->
+mock_fast_cuckoo_pow({_MinerBin, _MinerExtraArgs, _NodeBits, _EncodedHeader} = Cfg) ->
     meck:expect(aeu_env, get_env, 3,
                 fun
                     (aecore, aec_pow_cuckoo, _) ->

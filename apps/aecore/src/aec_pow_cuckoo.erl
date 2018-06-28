@@ -32,7 +32,7 @@
 -endif.
 -include("pow.hrl").
 
--define(DEFAULT_CUCKOO_ENV, {"mean28s-generic", "-t 5", 28}).
+-define(DEFAULT_CUCKOO_ENV, {"mean28s-generic", "-t 5", 28, false}).
 
 -define(debug(F, A), epoch_pow_cuckoo:debug(F, A)).
 -define(info(F, A),  epoch_pow_cuckoo:info(F, A)).
@@ -105,7 +105,7 @@ verify(Data, Nonce, Evd, Target) when is_list(Evd),
 %%------------------------------------------------------------------------------
 
 get_options() ->
-    {_, _, _} = aeu_env:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV).
+    {_, _, _, _} = aeu_env:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV).
 
 get_miner_options() ->
     case
@@ -116,7 +116,7 @@ get_miner_options() ->
         {{ok, BinB}, {ok, ExtraArgsB}} ->
             {binary_to_list(BinB), binary_to_list(ExtraArgsB)};
         {undefined, undefined} -> %% Both or neither - enforced by user config schema.
-            {Bin, ExtraArgs, _} = get_options(),
+            {Bin, ExtraArgs, _, _} = get_options(),
             {Bin, ExtraArgs}
     end.
 
@@ -125,8 +125,17 @@ get_node_bits() ->
         {ok, NodeBits} ->
             NodeBits;
         undefined ->
-            {_, _, NodeBits} = get_options(),
+            {_, _, NodeBits, _} = get_options(),
             NodeBits
+    end.
+
+get_hex_encoded_header() ->
+    case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"hex_encoded_header">>]) of
+        {ok, HexEncodedHeader} ->
+            HexEncodedHeader;
+        undefined ->
+            {_, _, _, HexEncodedHeader} = get_options(),
+            HexEncodedHeader
     end.
 
 %%------------------------------------------------------------------------------
@@ -160,7 +169,12 @@ generate_int(Hash, Nonce, Target) ->
                           {'error', term()}.
 generate_int(Header, Target) ->
     {MinerBin, MinerExtraArgs} = get_miner_options(),
-    generate_int(Header, Target, MinerBin, MinerExtraArgs).
+    EncodedHeader =
+        case get_hex_encoded_header() of
+            true -> hex_string(Header);
+            false -> Header
+        end,
+    generate_int(EncodedHeader, Target, MinerBin, MinerExtraArgs).
 
 generate_int(Header, Target, MinerBin, MinerExtraArgs) ->
     BinDir = aecuckoo:bin_dir(),
@@ -189,6 +203,11 @@ generate_int(Header, Target, MinerBin, MinerExtraArgs) ->
         after 0 -> ok
         end
     end.
+
+-spec hex_string(string()) -> string().
+hex_string(S) ->
+    Bin = list_to_binary(S),
+    lists:flatten([io_lib:format("~2.16.0B", [B]) || <<B:8>> <= Bin]).
 
 -define(POW_OK, ok).
 -define(POW_TOO_BIG(Nonce), {error, {nonce_too_big, Nonce}}).

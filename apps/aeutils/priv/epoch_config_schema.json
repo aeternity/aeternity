@@ -327,6 +327,11 @@
                                     "description" : "Number of bits used for representing a node in the Cuckoo Cycle problem. It affects both PoW generation (mining) and verification. WARNING: Changing this makes the node incompatible with the chain of other nodes in the network, do not change from the default unless you know what you are doing.",
                                     "type": "integer",
                                     "default": 28
+                                },
+                                "hex_encoded_header" : {
+                                    "description" : "Hexadecimal encode the header argument that is send to the miner executable. CUDA executables expect hex encoded header.",
+                                    "type": "boolean",
+                                    "default": false
                                 }
                             }
                         }
