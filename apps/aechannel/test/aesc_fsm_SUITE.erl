@@ -322,8 +322,8 @@ create_channel_(Cfg, Debug) ->
     log(Debug, "mining blocks on dev1 for minimum depth", []),
     mine_blocks(dev1, 4, Debug),
     check_info(),
-    I3 = receive_info(I2, open, Debug),
-    R3 = receive_info(R2, open, Debug),
+    I3 = await_open_report(I2, ?TIMEOUT, Debug),
+    R3 = await_open_report(R2, ?TIMEOUT, Debug),
     #{i => I3, r => R3, spec => Spec}.
 
 expect_close_mutual_tx(#{i := #{channel_id := ChannelId}}) ->
@@ -358,37 +358,32 @@ await_signing_request(Tag, R, Debug) ->
 await_signing_request(Tag, #{fsm := Fsm, priv := Priv} = R, Timeout, Debug) ->
     check_info(0, Debug),
     receive {aesc_fsm, Fsm, #{type := sign, tag := Tag, info := Tx} = Msg} ->
-            R1 = set_chid_if_undefined(R, Msg),
             log(Debug, "await_signing(~p, ~p) <- ~p", [Tag, Fsm, Msg]),
             SignedTx = aetx_sign:sign(Tx, [Priv]),
             aesc_fsm:signing_response(Fsm, Tag, SignedTx),
-            {check_amounts(R1, SignedTx), SignedTx}
+            {check_amounts(R, SignedTx), SignedTx}
     after Timeout ->
             error(timeout)
     end.
 
-set_chid_if_undefined(R, Msg) ->
-    case {maps:get(channel_id, R, undefined),
-          maps:get(channel_id, Msg, undefined)} of
-        {undefined, undefined} ->
-            R;
-        {undefined, V} ->
-            R#{channel_id => V};
-        {V, V} ->
-            R;
-        {A, B} ->
-            erlang:error({mismatch, [channel_id, A, B]})
+await_open_report(#{fsm := Fsm} = R, Timeout, Debug) ->
+    check_info(0, Debug),
+    receive {aesc_fsm, Fsm, #{type := report, tag := info, info := open} = Msg} ->
+                {ok, ChannelId} = maps:find(channel_id, Msg),
+                R#{channel_id => ChannelId}
+    after Timeout ->
+              error(timeout)
     end.
 
 receive_info(R, Msg, Debug) ->
     receive_from_fsm(info, R, Msg, ?LONG_TIMEOUT, Debug).
 
-receive_from_fsm(Tag, #{role := Role, fsm := Fsm} = R, Info, Timeout, Debug)
+receive_from_fsm(Tag, #{role := Role, fsm := Fsm}, Info, Timeout, Debug)
   when is_atom(Info) ->
     receive
         {aesc_fsm, Fsm, #{type := _Type, tag := Tag, info := Info} = Msg} ->
             log(Debug, "~p: received ~p:~p", [Role, Tag, Msg]),
-            set_chid_if_undefined(R, Msg)
+            ok
     after Timeout ->
             error(timeout)
     end;
