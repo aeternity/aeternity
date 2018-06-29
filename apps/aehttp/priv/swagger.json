@@ -2329,7 +2329,7 @@
               "$ref" : "#/definitions/Balance"
             }
           },
-          "401" : {
+          "400" : {
             "description" : "Invalid contract address",
             "schema" : {
               "$ref" : "#/definitions/Error"
