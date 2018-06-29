@@ -542,7 +542,12 @@ get_poi(Subtree, KeyName, PutKey) when Subtree =:= accounts
             {ok, PoI} ->
                 {ok, maps:put(PutKey, PoI, State)};
             {error, _} ->
-                Msg = "Proof for " ++ atom_to_list(Subtree) ++ " not found",
+                SingularName =
+                    case Subtree of
+                        accounts -> "account";
+                        contracts -> "contract"
+                    end,
+                Msg = "Proof for " ++ SingularName ++ " not found",
                 {error, {404, [], #{<<"reason">> => list_to_binary(Msg)}}}
         end
     end.

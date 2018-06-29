@@ -745,8 +745,8 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, 400, #{<<"reason">> := <<"Tx not mined">>}} =
         get_contract_call_object(ContractCreateTxHash),
 
-    {ok, 404, #{}} = get_contract_poi(EncodedContractPubKey),
-    {ok, 404, #{}} = get_contract_balance(EncodedContractPubKey),
+    {ok, 404, #{<<"reason">> := <<"Proof for contract not found">>}} = get_contract_poi(EncodedContractPubKey),
+    {ok, 404, #{<<"reason">> := <<"Contract not found">>}} = get_contract_balance(EncodedContractPubKey),
 
     % mine a block
     Fun1 = fun() -> tx_in_chain(ContractCreateTxHash)end,
@@ -779,6 +779,7 @@ contract_transactions(_Config) ->    % miner has an account
                                                          aec_trees:contracts(Trees)]),
     {ContractInPoI, _} = {ContractInTree, ContractInPoI},
 
+    %% Assert the balance is the one which we created the contract with
     {ok, 200, #{<<"balance">> := ContractInitBalance}} = get_contract_balance(EncodedContractPubKey),
     Function = <<"main">>,
     Argument = <<"42">>,
