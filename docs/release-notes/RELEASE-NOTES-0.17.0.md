@@ -1,9 +1,9 @@
 # About this release
 
-[This release][this-release] is focused on TODOFILLMEIN.
+[This][this-release] is focused on the first batch of work to support Bitcoin-NG in Aeternity.
 It:
 * Stores the chain state in the database in a more compact way. This affects the persisted chain.
-* Does this.
+* Changes the way we build chain, by electing a leader and introducing Key and Micro blocks. It is followed by new candidates generation modules, new serialized formats and enhanced sync layer.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.17.0
 
