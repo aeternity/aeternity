@@ -23,6 +23,7 @@
          mine_blocks_until/3,
          mine_blocks_until/4,
          mine_key_blocks/2,
+         wait_for_height/2,
          spend/4,         %% (Node, FromPub, ToPub, Amount) -> ok
          spend/5,         %% (Node, FromPub, ToPub, Amount, Fee) -> ok
          forks/0,
@@ -225,25 +226,56 @@ mine_blocks_loop(Cnt, Type) ->
 mine_blocks_loop(Blocks, 0,_Type) ->
     {ok, Blocks};
 mine_blocks_loop(Blocks, BlocksToMine, Type) ->
+    Block = wait_for_new_block(),
+    case aec_blocks:type(Block) of
+        micro when Type =:= key ->
+            %% Don't decrement
+            mine_blocks_loop([Block | Blocks], BlocksToMine, Type);
+        key when Type =:= micro ->
+            %% Don't decrement
+            mine_blocks_loop([Block | Blocks], BlocksToMine, Type);
+        _ ->
+            mine_blocks_loop([Block | Blocks], BlocksToMine - 1, Type)
+    end.
+
+wait_for_new_block() ->
     receive
         {gproc_ps_event, block_created, Info} ->
             ct:log("key block created, Info=~p", [Info]),
             #{info := Block} = Info,
-            mine_blocks_loop([Block | Blocks], BlocksToMine - 1, Type);
+            Block;
         {gproc_ps_event, micro_block_created, Info} ->
             ct:log("micro block created, Info=~p", [Info]),
             #{info := Block} = Info,
-            case Type =:= key of
-                true ->
-                    %% Don't decrement
-                    mine_blocks_loop([Block | Blocks], BlocksToMine, Type);
-                false ->
-                    mine_blocks_loop([Block | Blocks], BlocksToMine - 1, Type)
-            end
+            Block
     after 30000 ->
             ct:log("timeout waiting for block event~n"
                   "~p", [process_info(self(), messages)]),
             {error, timeout_waiting_for_block}
+    end.
+
+%% block the process until a certain height is reached
+%% this has the expectation that the Node is mining
+%% there is a timeout of 30 seconds for a single block to be produced
+wait_for_height(Node, Height) ->
+    aecore_suite_utils:subscribe(Node, block_created),
+    aecore_suite_utils:subscribe(Node, micro_block_created),
+    wait_for_height_(Node, Height),
+    aecore_suite_utils:unsubscribe(Node, block_created),
+    aecore_suite_utils:unsubscribe(Node, micro_block_created).
+
+wait_for_height_(Node, Height) ->
+    TopHeight =
+        case rpc:call(Node, aec_chain, top_header, []) of
+            undefined -> 0;
+            Header -> aec_headers:height(Header)
+        end,
+    case TopHeight >= Height of
+        true -> % reached height
+            ok;
+        false ->
+            _ = wait_for_new_block(),
+            wait_for_height_(Node, Height)
     end.
 
 spend(Node, FromPub, ToPub, Amount) ->

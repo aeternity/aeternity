@@ -246,7 +246,7 @@ multiple_channels(Cfg) ->
     ok.
 
 collect_acks([Pid | Pids], Tag, N) ->
-    Timeout = 10000 + (N div 10)*5000,  % wild guess
+    Timeout = 30000 + (N div 10)*5000,  % wild guess
     receive
         {Pid, Tag} ->
             [Pid | collect_acks(Pids, Tag, N)]
@@ -320,8 +320,14 @@ create_channel_(Cfg, Debug) ->
                        error(Err, erlang:get_stacktrace())
                end,
     log(Debug, "mining blocks on dev1 for minimum depth", []),
+    CurrentHeight = 
+        case rpc(dev1, aec_chain, top_header, []) of
+            undefined -> 0;
+            Header -> aec_headers:height(Header)
+        end,
     mine_blocks(dev1, 4, Debug),
     check_info(),
+    aecore_suite_utils:wait_for_height(aecore_suite_utils:node_name(dev1), CurrentHeight + 4),
     I3 = await_open_report(I2, ?TIMEOUT, Debug),
     R3 = await_open_report(R2, ?TIMEOUT, Debug),
     #{i => I3, r => R3, spec => Spec}.
