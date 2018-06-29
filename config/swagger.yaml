@@ -2,7 +2,7 @@ swagger: '2.0'
 openapi: '3.0.0'
 info:
   description: 'This is the [Aeternity](https://www.aeternity.com/) Epoch API.'
-  version: 0.16.0
+  version: 0.17.0
   title: Aeternity Epoch
   termsOfService: 'https://www.aeternity.com/terms/'
   contact:
