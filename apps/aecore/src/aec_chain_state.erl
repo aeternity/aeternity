@@ -113,8 +113,9 @@ calculate_state_for_new_keyblock(PrevHash, Miner) ->
             State = new_state_from_persistence(),
             case get_state_trees_in(Node, State) of
                 error -> error;
-                {ok, TreesIn,_Difficulty,_ForkIdIn} ->
-                    {Trees,_Fees} = apply_node_transactions(Node, TreesIn, State),
+                {ok, TreesIn, ForkInfoIn} ->
+                    {Trees,_Fees} = apply_node_transactions(Node, TreesIn,
+                                                            ForkInfoIn, State),
                     {ok, Trees}
             end
     end.
@@ -447,62 +448,70 @@ assert_micro_signature(PrevNode, Node) ->
 %% This should be called on the newly added node.
 %% It will fail if called on a node that already has its state computed.
 
+-record(fork_info, { fork_id
+                   , difficulty
+                   , fees
+                   }).
+
 update_state_tree(Node, State) ->
     case get_state_trees_in(Node, State) of
         error -> State;
-        {ok, Trees, Difficulty, ForkIdIn} ->
-            ForkId = case node_is_genesis(Node, State) of
-                         true  -> ForkIdIn;
-                         false ->
-                             case db_node_has_sibling_blocks(Node) of
-                                 true  -> hash(Node);
-                                 false -> ForkIdIn
-                             end
-                     end,
+        {ok, Trees, ForkInfoIn} ->
+            ForkInfo =
+                case node_is_genesis(Node, State) of
+                    true  -> ForkInfoIn;
+                    false ->
+                        case db_node_has_sibling_blocks(Node) of
+                            true  -> ForkInfoIn#fork_info{fork_id = hash(Node)};
+                            false -> ForkInfoIn
+                        end
+                end,
             {State1, NewTopDifficulty} =
-                update_state_tree(Node, Trees, Difficulty, ForkId, State),
+                update_state_tree(Node, Trees, ForkInfo, State),
             OldTopHash = get_top_block_hash(State),
             handle_top_block_change(OldTopHash, NewTopDifficulty, State1)
     end.
 
-update_state_tree(Node, TreesIn, Difficulty, ForkId, State) ->
+update_state_tree(Node, TreesIn, ForkInfo, State) ->
     case db_find_state(hash(Node)) of
-        {ok,_Trees,_DifficultyOut,_ForkId} ->
+        {ok,_ForkInfo} ->
             error({found_already_calculated_state, hash(Node)});
         error ->
-            case apply_and_store_state_trees(Node, TreesIn, Difficulty,
-                                             ForkId, State) of
-                {ok, Trees, DifficultyOut} ->
-                    update_next_state_tree(Node, Trees, DifficultyOut, ForkId, State);
+            case apply_and_store_state_trees(Node, TreesIn, ForkInfo, State) of
+                {ok, TreesOut, ForkInfoOut} ->
+                    update_next_state_tree(Node, TreesOut, ForkInfoOut, State);
                 error ->
-                    {State, Difficulty}
+                    {State, ForkInfo#fork_info.difficulty}
             end
     end.
 
-update_next_state_tree(Node, Trees, Difficulty, ForkId, State) ->
+update_next_state_tree(Node, Trees, ForkInfo, State) ->
     Hash = hash(Node),
     State1 = set_top_block_hash(Hash, State),
     case db_children(Node) of
-        [] -> {State1, Difficulty};
+        [] -> {State1, ForkInfo#fork_info.difficulty};
         [Child|Left] ->
             %% If there is only one child, it inherits the fork id.
             %% For more than one child, we neeed new fork_ids, which are
             %% the first node hash of each new fork.
-            Children = [{Child, ForkId}|[{C, hash(C)}|| C <- Left]],
-            update_next_state_tree_children(Children, Trees, Difficulty,
-                                            Difficulty, State1)
+            Children = [{Child, ForkInfo}|
+                        [{C, ForkInfo#fork_info{fork_id = hash(C)}}
+                         || C <- Left]
+                       ],
+            Difficulty = ForkInfo#fork_info.difficulty,
+            update_next_state_tree_children(Children, Trees, Difficulty, State1)
     end.
 
-update_next_state_tree_children([],_Trees,_Difficulty, Max, State) ->
+update_next_state_tree_children([],_Trees, Max, State) ->
     {State, Max};
-update_next_state_tree_children([{Child, ForkId}|Left], Trees, Difficulty, Max, State) ->
-    {State1, Max1} = update_state_tree(Child, Trees, Difficulty, ForkId, State),
+update_next_state_tree_children([{Child, ForkInfo}|Left], Trees, Max, State) ->
+    {State1, Max1} = update_state_tree(Child, Trees, ForkInfo, State),
     case Max1 > Max of
         true ->
-            update_next_state_tree_children(Left, Trees, Difficulty, Max1, State1);
+            update_next_state_tree_children(Left, Trees, Max1, State1);
         false ->
             State2 = set_top_block_hash(get_top_block_hash(State), State1),
-            update_next_state_tree_children(Left, Trees, Difficulty, Max, State2)
+            update_next_state_tree_children(Left, Trees, Max, State2)
     end.
 
 get_state_trees_in(Node, State) ->
@@ -510,12 +519,26 @@ get_state_trees_in(Node, State) ->
         true  ->
             {ok,
              aec_block_genesis:populated_trees(),
-             aec_block_genesis:genesis_difficulty(),
-             hash(Node)};
-        false -> db_find_state(prev_hash(Node))
+             #fork_info{ difficulty = aec_block_genesis:genesis_difficulty()
+                       , fork_id = hash(Node)
+                       , fees = 0
+                       }
+            };
+        false ->
+            PrevHash = prev_hash(Node),
+            case db_find_state(PrevHash) of
+                {ok, Trees, ForkInfo} ->
+                    %% Reset accumulated fees if the previous block is a key block
+                    %% to start accumulating the next generation.
+                    case node_type(db_get_node(PrevHash)) of
+                        key   -> {ok, Trees, ForkInfo#fork_info{fees = 0}};
+                        micro -> {ok, Trees, ForkInfo}
+                    end;
+                error -> error
+            end
     end.
 
-apply_and_store_state_trees(#node{hash = NodeHash} = Node, TreesIn, DifficultyIn, ForkId,
+apply_and_store_state_trees(#node{hash = NodeHash} = Node, TreesIn, ForkInfoIn,
                             #{currently_adding := Hash} = State) ->
     try
         case db_find_node(prev_hash(Node)) of
@@ -529,11 +552,19 @@ apply_and_store_state_trees(#node{hash = NodeHash} = Node, TreesIn, DifficultyIn
                 assert_micro_block_key_hash(PrevNode, Node),
                 assert_micro_signature(PrevNode, Node)
         end,
-        {Trees, Fees} = apply_node_transactions(Node, TreesIn, State),
+        {Trees, Fees} = apply_node_transactions(Node, TreesIn, ForkInfoIn, State),
         assert_state_hash_valid(Trees, Node),
-        Difficulty = DifficultyIn + node_difficulty(Node),
-        ok = db_put_state(hash(Node), Trees, Difficulty, ForkId, Fees),
-        {ok, Trees, Difficulty}
+        DifficultyOut = ForkInfoIn#fork_info.difficulty
+            + node_difficulty(Node),
+        FeesInNode = Fees + ForkInfoIn#fork_info.fees,
+        ForkInfoInNode = ForkInfoIn#fork_info{ fees = FeesInNode
+                                             , difficulty = DifficultyOut
+                                             },
+        ok = db_put_state(hash(Node), Trees, ForkInfoInNode),
+        case node_type(Node) of
+            key   -> {ok, Trees, ForkInfoInNode#fork_info{fees = 0}};
+            micro -> {ok, Trees, ForkInfoInNode}
+        end
     catch
         %% Only catch this if the current node is NOT the one added in
         %% the call. We don't want to give an error message for any
@@ -609,21 +640,18 @@ assert_state_hash_valid(Trees, Node) ->
         false -> internal_error({root_hash_mismatch, RootHash, Expected})
     end.
 
-apply_node_transactions(Node, Trees, State) ->
+apply_node_transactions(Node, Trees, #fork_info{fees = FeesIn}, State) ->
     case is_micro_block(Node) of
         true ->
-            apply_micro_block_transactions(Node, Trees);
+            apply_micro_block_transactions(Node, FeesIn, Trees);
         false ->
-            case node_height(Node) =:= aec_block_genesis:height() of
-                true  -> {Trees, 0};
-                false ->
-                    Trees1 = aec_trees:perform_pre_transformations(Trees, node_height(Node)),
-                    Fees   = calculate_fees(Node, State),
-                    Delay  = aec_governance:miner_reward_delay(),
-                    case node_height(Node) > aec_block_genesis:height() + Delay of
-                        true  -> {grant_fees(Node, Trees1, Delay, Fees, State), Fees};
-                        false -> {Trees1, Fees}
-                    end
+            GasFees = calculate_gas_fee(aec_trees:calls(Trees)),
+            TotalFees = GasFees + FeesIn,
+            Trees1 = aec_trees:perform_pre_transformations(Trees, node_height(Node)),
+            Delay  = aec_governance:miner_reward_delay(),
+            case node_height(Node) > aec_block_genesis:height() + Delay of
+                true  -> {grant_fees(Node, Trees1, Delay, TotalFees, State), TotalFees};
+                false -> {Trees1, TotalFees}
             end
     end.
 
@@ -661,28 +689,6 @@ grant_fees(Node, Trees, Delay, Fees, State) ->
         false -> aec_trees:grant_fee_to_miner(Miner1, Trees1, MinerReward1)
     end.
 
-calculate_fees(Node, State) ->
-    key = node_type(Node), %% Assert
-    calculate_fees({ok, Node}, 0, false, State).
-
-calculate_fees(error, Fees,_SeenKey,_State) ->
-    %% The previous must have been the genesis node
-    Fees;
-calculate_fees({ok, Node}, Fees, SeenKey, State) ->
-    case node_type(Node) of
-        key when SeenKey -> Fees;
-        key ->
-            {ok, Trees,_Difficulty,_ForkIdIn} =
-                get_state_trees_in(Node, State),
-            GasFees = calculate_gas_fee(aec_trees:calls(Trees)),
-            TotalFees = Fees + GasFees,
-            Prev = db_find_node(prev_hash(Node)),
-            calculate_fees(Prev, TotalFees, true, State);
-        micro ->
-            TotalFees = db_get_fees(hash(Node)) + Fees,
-            calculate_fees(db_find_node(prev_hash(Node)), TotalFees, SeenKey, State)
-    end.
-
 calculate_gas_fee(Calls) ->
     F = fun(_, SerCall, GasFeeIn) ->
                 Call = aect_call:deserialize(SerCall),
@@ -692,7 +698,7 @@ calculate_gas_fee(Calls) ->
     aeu_mtrees:fold(F, 0, aect_call_state_tree:iterator(Calls)).
 
 
-apply_micro_block_transactions(Node, Trees) ->
+apply_micro_block_transactions(Node, FeesIn, Trees) ->
     Txs = db_get_txs(hash(Node)),
     Height = node_height(Node),
     Version = node_version(Node),
@@ -700,7 +706,7 @@ apply_micro_block_transactions(Node, Trees) ->
                   fun(SignedTx, AccFee) ->
                           Fee = aetx:fee(aetx_sign:tx(SignedTx)),
                           AccFee + Fee
-                  end, 0, Txs),
+                  end, FeesIn, Txs),
 
     %% TODO: NG - it looks like we should keep Miner and Height of the prev key block in state in aec_chain_state
     %% TODO: optimization, fixit ^^
@@ -784,12 +790,22 @@ db_find_nodes_at_height(Height) when is_integer(Height) ->
         [] -> error
     end.
 
-db_put_state(Hash, Trees, Difficulty, ForkId, Fees) when is_binary(Hash) ->
+db_put_state(Hash, Trees, ForkInfo) when is_binary(Hash) ->
+    #fork_info{ difficulty = Difficulty
+              , fork_id    = ForkId
+              , fees       = Fees
+              } = ForkInfo,
     ok = aec_db:write_block_state(Hash, Trees, Difficulty, ForkId, Fees).
 
-db_find_state(Hash) when is_binary(Hash) ->
+db_find_state(Hash) ->
     case aec_db:find_block_state_and_data(Hash) of
-        {value, Trees, Difficulty, ForkId} -> {ok, Trees, Difficulty, ForkId};
+        {value, Trees, Difficulty, ForkId, Fees} ->
+            {ok, Trees,
+             #fork_info{ difficulty = Difficulty
+                       , fork_id = ForkId
+                       , fees = Fees
+                       }
+            };
         none -> error
     end.
 
