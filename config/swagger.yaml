@@ -1972,7 +1972,7 @@ paths:
       parameters:
         - in: path
           name: contract_address
-          description: Arguments in sophia
+          description: Contract's address
           required: true
           type: string
       responses:

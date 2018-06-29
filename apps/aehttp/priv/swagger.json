@@ -2318,7 +2318,7 @@
         "parameters" : [ {
           "name" : "contract_address",
           "in" : "path",
-          "description" : "Arguments in sophia",
+          "description" : "Contract's address",
           "required" : true,
           "type" : "string"
         } ],
