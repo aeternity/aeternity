@@ -474,7 +474,7 @@ update_state_tree(Node, State) ->
 
 update_state_tree(Node, TreesIn, ForkInfo, State) ->
     case db_find_state(hash(Node)) of
-        {ok,_ForkInfo} ->
+        {ok,_Trees,_ForkInfo} ->
             error({found_already_calculated_state, hash(Node)});
         error ->
             case apply_and_store_state_trees(Node, TreesIn, ForkInfo, State) of
