@@ -207,7 +207,11 @@ arg_type(T) ->
 lookup_name(Env, As, Name) ->
     case proplists:get_value(Name, Env) of
         undefined ->
-            type_error({unbound_variable, {id, As, Name}}),
+            Id = case Name of
+                    [C | _] when is_integer(C) -> {id, As, Name};
+                    [X | _] when is_list(X)    -> {qid, As, Name}
+                 end,
+            type_error({unbound_variable, Id}),
             fresh_uvar(As);
         {type_sig, ArgTypes, ReturnType} ->
             ets:new(freshen_tvars, [set, public, named_table]),
@@ -971,6 +975,8 @@ pp([T|Ts]) ->
     [pp(T), ", "|pp(Ts)];
 pp({id, _, Name}) ->
     Name;
+pp({qid, _, Name}) ->
+    string:join(Name, ".");
 pp({con, _, Name}) ->
     Name;
 pp({uvar, _, Ref}) ->
