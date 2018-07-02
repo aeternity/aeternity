@@ -105,8 +105,7 @@
 -type field(E) :: {field, ann(), lvalue(), E}
                 | {field, ann(), lvalue(), id(), E}.  %% modifying a field (id is previous value)
 
--type stmt() :: {assign, ann(), lvalue(), expr()}
-              | letbind()
+-type stmt() :: letbind()
               | expr().
 
 -type alt() :: {'case', ann(), pat(), expr()}.

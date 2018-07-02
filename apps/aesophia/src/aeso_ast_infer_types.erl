@@ -114,29 +114,48 @@ infer_contract(Env, Defs) ->
            end,
     Get = fun(K) -> [ Def || Def <- Defs, Kind(Def) == K ] end,
     %% TODO: handle type defs
-    TypeDefs   = Get(type),
+    TypeDefs  = Get(type),
     ProtoSigs = [ check_fundecl(Env, Decl) || Decl <- Get(prototype) ],
-    Env1      = ProtoSigs ++ Env,
-    {_, {letrec, _, Funs}} = infer_letrec(Env1, {letrec, [], Get(function)}),
-    TypeDefs ++ Funs.
+    Functions = Get(function),
+    FunMap    = maps:from_list([ {Fun, Def} || Def = {letfun, _, {id, _, Fun}, _, _, _} <- Functions ]),
+    DepGraph  = maps:map(fun(_, Def) -> aeso_syntax_utils:used_ids(Def) end, FunMap),
+    SCCs      = aeso_utils:scc(DepGraph),
+    io:format("Dependency sorted functions:\n  ~p\n", [SCCs]),
+    TypeDefs ++ check_sccs(ProtoSigs ++ Env, FunMap, SCCs, []).
+
+check_sccs(_, _, [], Acc) -> lists:reverse(Acc);
+check_sccs(Env, Funs, [{acyclic, X} | SCCs], Acc) ->
+    case maps:get(X, Funs, undefined) of
+        undefined ->    %% Previously defined function
+            check_sccs(Env, Funs, SCCs, Acc);
+        Def ->
+            {TypeSig, Def1} = infer_nonrec(Env, Def),
+            Env1 = [TypeSig | Env],
+            check_sccs(Env1, Funs, SCCs, [Def1 | Acc])
+    end;
+check_sccs(Env, Funs, [{cyclic, Xs} | SCCs], Acc) ->
+    Defs = [ maps:get(X, Funs) || X <- Xs ],
+    {TypeSigs, {letrec, _, Defs1}} = infer_letrec(Env, {letrec, [], Defs}),
+    Env1 = TypeSigs ++ Env,
+    check_sccs(Env1, Funs, SCCs, Defs1 ++ Acc).
 
 check_fundecl(_Env, {fun_decl, _Attrib, {id, _NameAttrib, Name}, {fun_t, _, Args, Ret}}) ->
     {Name, {type_sig, Args, Ret}};  %% TODO: actually check that the type makes sense!
 check_fundecl(_, {fun_decl, _Attrib, {id, _, Name}, Type}) ->
     error({fundecl_must_have_funtype, Name, Type}).
 
-%% infer_nonrec(Env, LetFun) ->
-%%     ets:new(type_vars, [set, named_table, public]),
-%%     create_type_errors(),
-%%     create_field_constraints(),
-%%     NewLetFun = infer_letfun(Env, LetFun),
-%%     solve_field_constraints(),
-%%     Result = {TypeSig, _} = instantiate(NewLetFun),
-%%     destroy_and_report_type_errors(),
-%%     destroy_field_constraints(),
-%%     ets:delete(type_vars),
-%%     print_typesig(TypeSig),
-%%     Result.
+infer_nonrec(Env, LetFun) ->
+    ets:new(type_vars, [set, named_table, public]),
+    create_type_errors(),
+    create_field_constraints(),
+    NewLetFun = infer_letfun(Env, LetFun),
+    solve_field_constraints(),
+    Result = {TypeSig, _} = instantiate(NewLetFun),
+    destroy_and_report_type_errors(),
+    destroy_field_constraints(),
+    ets:delete(type_vars),
+    print_typesig(TypeSig),
+    Result.
 
 typesig_to_fun_t({type_sig, Args, Res}) -> {fun_t, [], Args, Res}.
 
