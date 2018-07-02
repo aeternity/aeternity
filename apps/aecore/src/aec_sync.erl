@@ -99,6 +99,7 @@ start_link() ->
 init([]) ->
     aec_events:subscribe(block_to_publish),
     aec_events:subscribe(tx_created),
+    aec_events:subscribe(tx_received),
 
     Peers = parse_peers(aeu_env:user_map_or_env(<<"peers">>, aecore, peers, [])),
     BlockedPeers = parse_peers(aeu_env:user_map_or_env(<<"blocked_peers">>, aecore, blocked_peers, [])),
