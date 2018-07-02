@@ -203,6 +203,27 @@ references:
         fi
       when: on_fail
 
+  docker_compose_build: &docker_compose_build
+    run:
+      name: Build latest docker image
+      command: |
+        IMAGE_TAG=${CIRCLE_BRANCH:?} docker-compose build node1
+
+  docker_compose_start: &docker_compose_start
+    run:
+      name: Create localnet with docker-compose
+      command: |
+        sudo -u ubuntu -E -H IMAGE_TAG=${CIRCLE_BRANCH:?} docker-compose up -d
+
+  docker_compose_healthcheck: &docker_compose_healthcheck
+    run:
+      name: Healthcheck
+      command: |
+        sleep 5 # give it some time to boot the tcp listeners
+        EXTERNAL_ADDRESS=localhost:3001 INTERNAL_ADDRESS=localhost:3001/internal ./docker/healthcheck.sh
+        EXTERNAL_ADDRESS=localhost:3002 INTERNAL_ADDRESS=localhost:3002/internal ./docker/healthcheck.sh
+        EXTERNAL_ADDRESS=localhost:3003 INTERNAL_ADDRESS=localhost:3003/internal ./docker/healthcheck.sh
+
 jobs:
   build:
     <<: *container_config
@@ -384,33 +405,28 @@ jobs:
           destination: node3/
       - *fail_notification
 
-  docker_test_push_branch:
+  docker_smoke_tests:
     <<: *machine_config
     steps:
       - checkout
       - *prepare_ubuntu_user
+      - *docker_compose_build
+      - *docker_compose_start
+      - *docker_compose_healthcheck
+
+  docker_test_push_master:
+    <<: *machine_config
+    steps:
+      - checkout
+      - *prepare_ubuntu_user
+      - *docker_compose_build
+      - *docker_compose_start
+      - *docker_compose_healthcheck
       - run:
-          name: Build latest docker image
+          name: Push Docker image to DockerHub
           command: |
-            IMAGE_TAG=${CIRCLE_BRANCH:?} docker-compose build node1
-      - run:
-          name: Create localnet with docker-compose
-          command: |
-            sudo -u ubuntu -E -H IMAGE_TAG=${CIRCLE_BRANCH:?} docker-compose up -d
-      - run:
-          name: Healthcheck
-          command: |
-            sleep 5 # give it some time to boot the tcp listeners
-            EXTERNAL_ADDRESS=localhost:3001 INTERNAL_ADDRESS=localhost:3001/internal ./docker/healthcheck.sh
-            EXTERNAL_ADDRESS=localhost:3002 INTERNAL_ADDRESS=localhost:3002/internal ./docker/healthcheck.sh
-            EXTERNAL_ADDRESS=localhost:3003 INTERNAL_ADDRESS=localhost:3003/internal ./docker/healthcheck.sh
-      - run:
-          name: Push Docker image to DockerHub (master only)
-          command: |
-            # if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "master" ]; then
-              docker login -u $DOCKER_USER -p $DOCKER_PASS
-              docker push ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH:?}
-            # fi
+            docker login -u $DOCKER_USER -p $DOCKER_PASS
+            docker push ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH:?}
       - *fail_notification
 
   docker_push_tag:
@@ -553,6 +569,15 @@ workflows:
             tags:
               only: /^v.*$/
 
+      - docker_smoke_tests:
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - env/uat2
+                - master
+
       - deploy_api_docs:
           requires:
             - static_analysis
@@ -642,7 +667,7 @@ workflows:
             branches:
               only: master
 
-      - docker_test_push_branch:
+      - docker_test_push_master:
           requires:
             - test
             - eunit
@@ -651,10 +676,7 @@ workflows:
             - static_analysis
           filters:
             branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - env/uat2
+              only: master
 
       - deploy_dev1:
           requires:
