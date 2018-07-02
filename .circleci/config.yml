@@ -672,10 +672,11 @@ workflows:
             - test
             - eunit
             - aevm_tests
+            - uat_tests
             - static_analysis
           filters:
             branches:
-              only: 155124244_docker_compose_smoke
+              only: master
 
       - deploy_dev1:
           requires:
