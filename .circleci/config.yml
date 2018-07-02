@@ -506,6 +506,13 @@ jobs:
       - DEPLOY_DOWNTIME: 900 #15M
     steps: *deploy_steps
 
+  deploy_uat2:
+    <<: *container_config
+    environment:
+      - DEPLOY_ENV: uat2
+      - DEPLOY_DOWNTIME: 1800 #15M
+    steps: *deploy_steps
+
   github_release_osx:
     <<: *container_config
     steps:
@@ -535,6 +542,7 @@ workflows:
               ignore:
                 - env/dev1
                 - env/dev2
+                - env/uat2
             tags:
               only: /^v.*$/
 
@@ -544,6 +552,7 @@ workflows:
               ignore:
                 - env/dev1
                 - env/dev2
+                - env/uat2
                 - master
 
       - deploy_api_docs:
@@ -564,6 +573,7 @@ workflows:
               ignore:
                 - env/dev1
                 - env/dev2
+                - env/uat2
             tags:
               only: /^v.*$/
 
@@ -575,6 +585,7 @@ workflows:
               ignore:
                 - env/dev1
                 - env/dev2
+                - env/uat2
             tags:
               only: /^v.*$/
 
@@ -586,6 +597,7 @@ workflows:
               ignore:
                 - env/dev1
                 - env/dev2
+                - env/uat2
             tags:
               only: /^v.*$/
 
@@ -604,6 +616,7 @@ workflows:
               ignore:
                 - env/dev1
                 - env/dev2
+                - env/uat2
             tags:
               only: /^v.*$/
 
@@ -655,6 +668,13 @@ workflows:
           filters:
             branches:
               only: env/dev2
+
+      - deploy_uat2:
+          requires:
+            - linux_package
+          filters:
+            branches:
+              only: env/uat2
 
       - hodl_blue:
           type: approval
