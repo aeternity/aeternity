@@ -7,7 +7,7 @@ The release packages do not ship with a CUDA miner, but you can build it yoursel
 - Epoch node configuration
 
 The documentation below is tested on:
-- Epoch version 0.15.0
+- Epoch version 0.17.0
 - CUDA toolkit version 9.2
 - AWS p2.xlarge instance with 16GB EBS
 - Ubuntu 16.04.4
@@ -41,7 +41,7 @@ Epoch source code can be downloaded by cloning the git repository:
 ```bash
 cd ~
 git clone https://github.com/aeternity/epoch.git epoch && cd epoch
-git checkout tags/v0.15.0
+git checkout tags/v0.17.0
 ```
 
 The documentation below assumes that the `epoch` source code resides in `~/epoch` directory.
@@ -71,12 +71,10 @@ Once the CUDA miner is in place, one should change the node configuration to sta
 
 ```yaml
 mining:
-    autostart: true
-    expected_mine_rate: 300000
     cuckoo:
         miner:
             executable: cuda28
-            extra_args: "-t 16384"
+            extra_args: ""
             node_bits: 28
 ```
 
@@ -86,16 +84,20 @@ After configuration could be started (or restarted if it's already running):
 ~/node/bin/epoch start
 ```
 
-### Miner threads
+### Multiple GPU devices
 
-The `extra_args: "-t 16384"` in the configuration file denotes how many threads will be run on the GPU. The optimal value can be experimentally determined by running:
+The address of a GPU device used by the miner can be set with `-d` argument, for example to set device with address 0:
 
-```bash
-cd ~/epoch/apps/aecuckoo/c_src/src
-for t in 65536 32768 16384 8192 4096 2048 1024; do echo $t; time ./cuda28 -t $t -r 10; done;
+```yaml
+mining:
+    cuckoo:
+        miner:
+            executable: cuda28
+            extra_args: "-d 0"
+            node_bits: 28
 ```
 
-Look for "elapsed" time in the output, the shorter the better.
+The address of the device can be obtained by running `nvidia-smi`
 
 ## References
 
