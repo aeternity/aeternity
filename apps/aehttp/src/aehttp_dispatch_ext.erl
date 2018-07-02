@@ -151,7 +151,7 @@ handle_request('PostTx', #{'Tx' := Tx} = Req, _Context) ->
             {400, [], #{reason => <<"Invalid base58Check encoding">>}};
         {ok, SignedTx} ->
             lager:debug("deserialized: ~p", [pp(SignedTx)]),
-            PushRes = aec_tx_pool:push(SignedTx, tx_received),
+            PushRes = aec_tx_pool:push(SignedTx),
             lager:debug("PushRes = ~p", [pp(PushRes)]),
             Hash = aetx_sign:hash(SignedTx),
             {200, [], #{<<"tx_hash">> => aec_base58c:encode(tx_hash, Hash)}}
