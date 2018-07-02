@@ -70,12 +70,14 @@ handle_cast(stop_generation, State) ->
     lager:debug("stop_generation"),
     {noreply, do_stop_generation(State)};
 handle_cast({new_candidate, Candidate, CandidateState}, State) ->
-    epoch_mining:info("New candidate generated", []),
-    lager:debug("New candidate generated", []),
     %% Only publish non-empty micro-blocks
     case aec_blocks:txs(Candidate) of
-        [] -> ok;
-        _  -> publish_candidate(Candidate)
+        [] ->
+            lager:debug("New empty microblock candidate generated, and discarded", []),
+            ok;
+        _  ->
+            epoch_mining:info("New microblock candidate generated", []),
+            publish_candidate(Candidate)
     end,
     State1 = finish_worker(State),
     State2 = State1#state{ candidate = Candidate
