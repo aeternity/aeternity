@@ -1548,7 +1548,8 @@ recursive_call1(StateIn, Op) ->
                 case R of
                     {ok, Message} ->
                         aevm_eeevm_memory:write_area(OOffset, Message, ReturnState2);
-                    {error, _} -> ReturnState2
+                    {error, _} -> aevm_eeevm_state:set_gas(0, ReturnState2)
+                                    %% Consume all gas on failed contract call.
                 end,
             {1, ReturnState3}
     end.

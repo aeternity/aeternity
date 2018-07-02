@@ -9,7 +9,7 @@
 
 -import(prettypr, [text/1, sep/1, above/2, beside/2, nest/2, empty/0]).
 
--export([decls/1, decls/2, decl/1, decl/2, expr/1, expr/2]).
+-export([decls/1, decls/2, decl/1, decl/2, expr/1, expr/2, type/1, type/2]).
 
 -export_type([options/0]).
 
@@ -206,9 +206,15 @@ constructor_t({constr_t, _, C, Args}) -> beside(name(C), tuple_type(Args)).
 field_t({field_t, _, Name, Type}) ->
     typed(name(Name), Type).
 
+-spec type(aeso_syntax:type(), options()) -> doc().
+type(Type, Options) ->
+    with_options(Options, fun() -> type(Type) end).
+
 -spec type(aeso_syntax:type()) -> doc().
 type({fun_t, _, Args, Ret}) ->
     follow(hsep(tuple_type(Args), text("=>")), type(Ret));
+type({app_t, _, Type, []}) ->
+    type(Type);
 type({app_t, _, Type, Args}) ->
     beside(type(Type), tuple_type(Args));
 type({tuple_t, _, Args}) ->
@@ -296,7 +302,11 @@ expr_p(_, {char, _, C}) ->
 expr_p(_, E = {id, _, _})   -> name(E);
 expr_p(_, E = {con, _, _})  -> name(E);
 expr_p(_, E = {qid, _, _})  -> name(E);
-expr_p(_, E = {qcon, _, _}) -> name(E).
+expr_p(_, E = {qcon, _, _}) -> name(E);
+%% -- For error messages
+expr_p(_, {Op, _}) when is_atom(Op) ->
+    paren(text(atom_to_list(Op)));
+expr_p(_, {lvalue, _, LV})  -> lvalue(LV).
 
 stmt_p({'if', _, Cond, Then}) ->
     block_expr(200, beside(text("if"), paren(expr(Cond))), Then);

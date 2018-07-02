@@ -25,6 +25,7 @@
         , sophia_oracles/1
         , sophia_maps/1
         , sophia_fundme/1
+        , sophia_aens/1
         , create_store/1
         , update_store/1
         , read_store/1
@@ -69,7 +70,8 @@ groups() ->
                                  sophia_spend,
                                  sophia_oracles,
                                  sophia_maps,
-                                 sophia_fundme ]}
+                                 sophia_fundme,
+                                 sophia_aens ]}
     , {store, [sequence], [ create_store
                           , update_store
                           , read_store
@@ -810,6 +812,124 @@ sophia_fundme(_Cfg) ->
 
     run_scenario(Funded),
     run_scenario(NotFunded).
+
+%% AENS tests
+
+aens_preclaim(PubKey, Name, S) ->
+    aens_preclaim(PubKey, Name, #{}, S).
+
+aens_preclaim(PubKey, Name, Options, S) ->
+    Salt   = rand:uniform(10000),
+    Nonce  = aect_test_utils:next_nonce(PubKey, S),
+    Height = maps:get(height, Options, 1),
+    Fee    = maps:get(fee, Options, 1),
+    TTL    = maps:get(ttl, Options, 1000),
+    {ok, NameAscii} = aens_utils:to_ascii(Name),
+    CHash = aens_hash:commitment_hash(NameAscii, Salt),
+    {ok, Tx} = aens_preclaim_tx:new(#{ account => PubKey,
+                                       nonce => Nonce,
+                                       commitment => CHash,
+                                       fee => Fee,
+                                       ttl => TTL }),
+    PrivKey  = aect_test_utils:priv_key(PubKey, S),
+    {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, ?MINER_PUBKEY, Height),
+    {Salt, S1}.
+
+aens_claim(PubKey, Name, Salt, S) ->
+    aens_claim(PubKey, Name, Salt, #{}, S).
+
+aens_claim(PubKey, Name, Salt, Options, S) ->
+    Nonce  = aect_test_utils:next_nonce(PubKey, S),
+    Height = maps:get(height, Options, 2),
+    Fee    = maps:get(fee, Options, 1),
+    TTL    = maps:get(ttl, Options, 1000),
+    {ok, NameAscii} = aens_utils:to_ascii(Name),
+    NameHash = aens_hash:name_hash(NameAscii),
+    {ok, Tx} = aens_claim_tx:new(#{ account   => PubKey,
+                                    nonce     => Nonce,
+                                    name      => Name,
+                                    name_salt => Salt,
+                                    fee       => Fee,
+                                    ttl       => TTL }),
+    PrivKey  = aect_test_utils:priv_key(PubKey, S),
+    {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, ?MINER_PUBKEY, Height),
+    {NameHash, S1}.
+
+aens_revoke(PubKey, Hash, S) ->
+    aens_revoke(PubKey, Hash, #{}, S).
+
+aens_revoke(PubKey, Hash, Options, S) ->
+    Nonce  = aect_test_utils:next_nonce(PubKey, S),
+    Height = maps:get(height, Options, 3),
+    Fee    = maps:get(fee, Options, 1),
+    TTL    = maps:get(ttl, Options, 1000),
+    {ok, Tx} = aens_revoke_tx:new(#{ account   => PubKey,
+                                     nonce     => Nonce,
+                                     name_hash => Hash,
+                                     fee       => Fee,
+                                     ttl       => TTL }),
+    PrivKey  = aect_test_utils:priv_key(PubKey, S),
+    {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, ?MINER_PUBKEY, Height),
+    {ok, S1}.
+
+aens_update(PubKey, NameHash, Pointers, S) ->
+    aens_update(PubKey, NameHash, Pointers, #{}, S).
+
+aens_update(PubKey, NameHash, Pointers, Options, S) ->
+    Nonce     = aect_test_utils:next_nonce(PubKey, S),
+    Height    = maps:get(height, Options, 2),
+    Fee       = maps:get(fee, Options, 1),
+    TTL       = maps:get(ttl, Options, 1000),
+    ClientTTL = maps:get(client_ttl, Options, 1000),
+    NameTTL   = maps:get(name_ttl, Options, 1000),
+    {ok, Tx}  = aens_update_tx:new(#{ account    => PubKey,
+                                      nonce      => Nonce,
+                                      name_hash  => NameHash,
+                                      name_ttl   => NameTTL,
+                                      pointers   => Pointers,
+                                      client_ttl => ClientTTL,
+                                      fee        => Fee,
+                                      ttl        => TTL }),
+    PrivKey  = aect_test_utils:priv_key(PubKey, S),
+    {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, ?MINER_PUBKEY, Height),
+    {ok, S1}.
+
+sophia_aens(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc      = ?call(new_account, 1000000),
+    Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
+    Name     = <<"foo.test">>,
+    NameKey  = 101101,
+    URL      = <<"shadycorp.com">>,
+    Pointers = [ {atom_to_binary(Key, utf8), aec_base58c:encode(Key, Val)}
+                || {Key, Val} <- [ {account_pubkey, <<NameKey:256>>},
+                                   {name, URL} ] ],
+    Salt  = ?call(aens_preclaim, Acc, Name),
+    Hash  = ?call(aens_claim, Acc, Name, Salt),
+    ok    = ?call(aens_update, Acc, Hash, Pointers),
+
+    {some, NameKey} = ?call(call_contract, Acc, Ct, resolve_word,   {option, word},   {Name, <<"account_pubkey">>}),
+    none            = ?call(call_contract, Acc, Ct, resolve_word,   {option, word},   {Name, <<"oracle_pubkey">>}),
+    {some, URL}     = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"name">>}),
+    ok              = ?call(aens_revoke, Acc, Hash),
+    none            = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"name">>}),
+
+    %% AENS transactions from contract
+
+    Name1           = <<"bla.test">>,
+    Salt1           = rand:uniform(10000),
+    {ok, NameAscii} = aens_utils:to_ascii(Name1),
+    CHash           = aens_hash:commitment_hash(NameAscii, Salt1),
+    NHash           = aens_hash:name_hash(NameAscii),
+    {} = ?call(call_contract, Acc, Ct, preclaim, {tuple, []}, {Ct, CHash, 0},        #{ height => 10 }),
+    {} = ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {Ct, Name1, Salt1, 0}, #{ height => 11 }),
+    {} = ?call(call_contract, Acc, Ct, transfer, {tuple, []}, {Ct, Acc, NHash, 0},   #{ height => 12 }),
+    ok = ?call(aens_update, Acc, NHash, Pointers),
+    {some, URL} = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name1, <<"name">>}),
+    error       = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Ct, NHash, 0}, #{ height => 13 }),
+
+    ok.
+
 
 %%%===================================================================
 %%% Store

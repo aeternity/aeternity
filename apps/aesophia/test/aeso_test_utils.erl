@@ -12,7 +12,8 @@
 
 -export([read_contract/1, contract_path/0, run_contract/4, pp/1, pp/2, dump_words/1, compile/1]).
 
--export([spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2]).
+-export([spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2,
+         aens_lookup/4]).
 
 contract_path() ->
     {ok, Cwd} = file:get_cwd(),
@@ -76,7 +77,7 @@ run_contract(Name, Fun, Args, Type) ->
 %%  io:format("~p\n\n",[Code]),
   %% ok = aeb_disassemble:pp(Code),
   %% Load the call
-  Call = list_to_tuple([list_to_binary(atom_to_list(Fun))|Args]),
+  Call = {list_to_binary(atom_to_list(Fun)), list_to_tuple(Args)},
   Data = aeso_data:to_binary(Call),
   io:format("Running:\n"),
   {ok, State} = aevm_eeevm:eval(dummy_state(Code, Data)),
@@ -162,6 +163,10 @@ dump_words(<<>>, Acc) -> lists:reverse(Acc);
 dump_words(Rest, Acc) -> lists:reverse([{error, Rest} | Acc]).
 
 %% -- Chain API for test -----------------------------------------------------
+
+aens_lookup(Name, Key, Type, _S) ->
+    io:format("aens_lookup(~p, ~p, ~p)\n", [Name, Key, Type]),
+    {ok, {some, <<0:32/unit:8>>}}.
 
 spend(Recipient, Amount, S) ->
     io:format("+++ SPEND(~p, ~p)\n", [Recipient, Amount]),

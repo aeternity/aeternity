@@ -24,7 +24,9 @@ call(Value, Data, State) ->
                 {?PRIM_CALL_SPEND, Recipient} = DecodeAs({tuple, [word, word]}),
                 spend(Recipient, Value, State);
             {PrimOp} when ?PRIM_CALL_IN_ORACLE_RANGE(PrimOp) ->
-                oracle_call(PrimOp, Value, Data, State)
+                oracle_call(PrimOp, Value, Data, State);
+            {PrimOp} when ?PRIM_CALL_IN_AENS_RANGE(PrimOp) ->
+                aens_call(PrimOp, Value, Data, State)
         end
     catch _:_Err ->
 	%% TODO: Better error for illegal call.
@@ -167,6 +169,52 @@ oracle_call_query_fee(_Value, Data, State) ->
     [Oracle] = get_args(ArgumentTypes, Data),
     Callback = fun(API, ChainState) -> API:oracle_query_fee(<<Oracle:256>>, ChainState) end,
     query_chain(Callback, State).
+
+%% ------------------------------------------------------------------
+%% AENS operations.
+%% ------------------------------------------------------------------
+
+aens_call(?PRIM_CALL_AENS_RESOLVE, _Value, Data, State) ->
+    aens_call_resolve(Data, State);
+aens_call(?PRIM_CALL_AENS_PRECLAIM, _Value, Data, State) ->
+    aens_call_preclaim(Data, State);
+aens_call(?PRIM_CALL_AENS_CLAIM, _Value, Data, State) ->
+    aens_call_claim(Data, State);
+aens_call(?PRIM_CALL_AENS_TRANSFER, _Value, Data, State) ->
+    aens_call_transfer(Data, State);
+aens_call(?PRIM_CALL_AENS_REVOKE, _Value, Data, State) ->
+    aens_call_revoke(Data, State);
+aens_call(_, _, _, _) ->
+    {error, out_of_gas}.
+
+aens_call_resolve(Data, State) ->
+    [Name, Key, Type] = get_args([string, string, typerep], Data),
+    Callback = fun(API, ChainState) -> API:aens_resolve(Name, Key, Type, ChainState) end,
+    query_chain(Callback, State).
+
+aens_call_preclaim(Data, State) ->
+    [Addr, CHash, Sign] = get_args([word, word, word], Data),
+    Callback = fun(API, ChainState) -> API:aens_preclaim(<<Addr:256>>, <<CHash:256>>, <<Sign:256>>, ChainState) end,
+    call_chain(Callback, State).
+
+aens_call_claim(Data, State) ->
+    [Addr, Name, Salt, Sign] = get_args([word, string, word, word], Data),
+    Callback = fun(API, ChainState) -> API:aens_claim(<<Addr:256>>, Name, Salt, <<Sign:256>>, ChainState) end,
+    call_chain(Callback, State).
+
+aens_call_transfer(Data, State) ->
+    [From, To, Hash, Sign] = get_args([word, word, word, word], Data),
+    Callback = fun(API, ChainState) -> API:aens_transfer(<<From:256>>, <<To:256>>, <<Hash:256>>, <<Sign:256>>, ChainState) end,
+    call_chain(Callback, State).
+
+aens_call_revoke(Data, State) ->
+    [Addr, Hash, Sign] = get_args([word, word, word], Data),
+    Callback = fun(API, ChainState) -> API:aens_revoke(<<Addr:256>>, <<Hash:256>>, <<Sign:256>>, ChainState) end,
+    call_chain(Callback, State).
+
+%% ------------------------------------------------------------------
+%% Internal functions
+%% ------------------------------------------------------------------
 
 get_args(Types, Data) ->
     {ok, Val} = aeso_data:from_binary(?BASE_ADDRESS, {tuple, [word | Types]}, Data),

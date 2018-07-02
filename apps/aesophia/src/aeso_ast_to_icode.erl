@@ -186,6 +186,47 @@ ast_body({qid, _, ["Oracle", "query_fee"]})    -> error({underapplied_primitive,
 ast_body({qid, _, ["Oracle", "get_answer"]})   -> error({underapplied_primitive, 'Oracle.get_answer'});
 ast_body({qid, _, ["Oracle", "get_question"]}) -> error({underapplied_primitive, 'Oracle.get_question'});
 
+%% Name service
+ast_body(?qid_app(["AENS", "resolve"], [Name, Key], _, ?option_t(Type))) ->
+    case is_monomorphic(Type) of
+        true ->
+            case ast_type(Type) of
+                T when T == word; T == string -> ok;
+                _ -> error({invalid_result_type, 'AENS.resolve', Type})
+            end,
+            prim_call(?PRIM_CALL_AENS_RESOLVE, #integer{value = 0},
+                      [ast_body(Name), ast_body(Key), ast_type_value(Type)],
+                      [string, string, typerep], {option, ast_type(Type)});
+        false ->
+            error({unresolved_result_type, 'AENS.resolve', Type})
+    end;
+
+ast_body(?qid_app(["AENS", "preclaim"], [Addr, CHash, Sign], _, _)) ->
+    prim_call(?PRIM_CALL_AENS_PRECLAIM, #integer{value = 0},
+              [ast_body(Addr), ast_body(CHash), ast_body(Sign)],
+              [word, word, word], {tuple, []});
+
+ast_body(?qid_app(["AENS", "claim"], [Addr, Name, Salt, Sign], _, _)) ->
+    prim_call(?PRIM_CALL_AENS_CLAIM, #integer{value = 0},
+              [ast_body(Addr), ast_body(Name), ast_body(Salt), ast_body(Sign)],
+              [word, string, word, word], {tuple, []});
+
+ast_body(?qid_app(["AENS", "transfer"], [FromAddr, ToAddr, NameHash, Sign], _, _)) ->
+    prim_call(?PRIM_CALL_AENS_TRANSFER, #integer{value = 0},
+              [ast_body(FromAddr), ast_body(ToAddr), ast_body(NameHash), ast_body(Sign)],
+              [word, word, word, word], {tuple, []});
+
+ast_body(?qid_app(["AENS", "revoke"], [Addr, NameHash, Sign], _, _)) ->
+    prim_call(?PRIM_CALL_AENS_REVOKE, #integer{value = 0},
+              [ast_body(Addr), ast_body(NameHash), ast_body(Sign)],
+              [word, word, word], {tuple, []});
+
+ast_body({qid, _, ["AENS", "resolve"]})  -> error({underapplied_primitive, 'AENS.resolve'});
+ast_body({qid, _, ["AENS", "preclaim"]}) -> error({underapplied_primitive, 'AENS.preclaim'});
+ast_body({qid, _, ["AENS", "claim"]})    -> error({underapplied_primitive, 'AENS.claim'});
+ast_body({qid, _, ["AENS", "transfer"]}) -> error({underapplied_primitive, 'AENS.transfer'});
+ast_body({qid, _, ["AENS", "revoke"]})   -> error({underapplied_primitive, 'AENS.revoke'});
+
 %% Maps
 
 %% -- map lookup  m[k]
@@ -398,6 +439,10 @@ ast_typerep({id,_,"string"}) ->
     string;
 ast_typerep({id,_,"address"}) ->
     word;
+ast_typerep({id,_,"hash"}) ->
+    word;
+ast_typerep({id,_,"signature"}) ->
+    word;
 ast_typerep(?oracle_t(_, _)) ->
     word;
 ast_typerep(?query_t(_, _)) ->
@@ -460,6 +505,7 @@ builtin_deps({map_lookup, string}) -> [str_equal];
 builtin_deps({map_del, string})    -> [str_equal];
 builtin_deps({map_put, string})    -> [str_equal];
 builtin_deps({map_upd, string})    -> [str_equal];
+builtin_deps(str_equal)            -> [str_equal_p];
 builtin_deps(_) -> [].
 
 dep_closure(Deps) ->
@@ -639,16 +685,44 @@ builtin_function(map_size) ->
                             {binop, '+', {var_ref, "acc"}, {integer, 1}}]}}]},
         word};
 
-builtin_function(str_equal) ->
+builtin_function(str_equal_p) ->
+    %% function str_equal_p(n, p1, p2) =
+    %%   if(n =< 0) true
+    %%   else
+    %%      let w1 = *p1
+    %%      let w2 = *p2
+    %%      w1 == w2 && str_equal_p(n - 32, p1 + 32, p2 + 32)
     V = fun(X) -> {var_ref, atom_to_list(X)} end,
-    P = fun(A, B) -> {tuple, [A, B]} end,
+    LetWord = fun(W, P, Body) -> {switch, V(P), [{{tuple, [V(W)]}, Body}]} end,
+    Name = {builtin, str_equal_p},
+    {Name,
+        [{"n", word}, {"p1", pointer}, {"p2", pointer}],
+        {ifte, {binop, '<', V(n), {integer, 1}},
+            {integer, 1},
+            LetWord(w1, p1,
+            LetWord(w2, p2,
+                {binop, '&&', {binop, '==', V(w1), V(w2)},
+                    {funcall, {var_ref, Name},
+                        [{binop, '-', V(n), {integer, 32}},
+                         {binop, '+', V(p1), {integer, 32}},
+                         {binop, '+', V(p2), {integer, 32}}]}}))},
+     word};
+
+builtin_function(str_equal) ->
+    %% function str_equal(s1, s2) =
+    %%   let n1 = length(s1)
+    %%   let n2 = length(s2)
+    %%   n1 == n2 && str_equal_p(n1, s1 + 32, s2 + 32)
+    V = fun(X) -> {var_ref, atom_to_list(X)} end,
+    LetLen = fun(N, S, Body) -> {switch, V(S), [{{tuple, [V(N)]}, Body}]} end,
     {{builtin, str_equal},
         [{"s1", string}, {"s2", string}],
-        {switch, P(V(s1), V(s2)),
-        [{P(P(V(n1), V(w1)), P(V(n2), V(w2))),
-            {binop, '&&',
-                {binop, '==', V(n1), V(n2)},
-                {binop, '==', V(w1), V(w2)}}}]},  %% TODO: only compares first 32 bytes!
+        LetLen(n1, s1,
+        LetLen(n2, s2,
+            {binop, '&&', {binop, '==', V(n1), V(n2)},
+                {funcall, {var_ref, {builtin, str_equal_p}},
+                    [V(n1), {binop, '+', V(s1), {integer, 32}},
+                            {binop, '+', V(s2), {integer, 32}}]}})),
         word}.
 
 add_builtins(Icode = #{functions := Funs}) ->

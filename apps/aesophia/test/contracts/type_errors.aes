@@ -1,0 +1,42 @@
+
+contract Test =
+
+  type r = { x : map(string, string), y : int }
+  type r' = { y : string }
+  type r2 = { z : int, w : int }
+  type r3 = { x : int, z : int }
+
+  function set_x(r : r, z) = r{ x["foo"] @ x = x + 1 }
+
+  function bla(m : map(string, int)) = { [0] = "bla", ["foo"] = "" }
+
+  function foo(r) = r { y = 0 }
+  function bar() = { y = "foo", z = 0 }
+  function baz() = { y = "foo", w = 0 }
+
+  function foo() = zz
+
+  function test1() : string = { y = 0 }
+  function test2(x : string) = x { y = 0 }
+  function test3(x : string) = x { y @ y = y + 1 }
+  function test4(x : string) : int = x.y
+
+  function test5(xs) =
+    switch(xs)
+      x :: x => x
+      [] => 0
+
+  function case_pat(xs) =
+    switch(xs)
+      [] => 0
+      x :: xs => "x"
+
+  function foo(m : map(string, int)) = m{ [1] = "bla" }
+
+  function bad_if(x, y : int, w : int, z : string) =
+    if(x) y
+    elif(x) w
+    else z
+
+  function type_error(r, x) =
+    set_x(set_x(x, r), x)
