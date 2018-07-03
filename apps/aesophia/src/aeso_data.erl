@@ -138,6 +138,14 @@ from_binary(Visited, {variant, Cons}, Heap, V) ->
     Args     = lists:nth(Tag + 1, Cons),
     Visited1 = Visited#{V => true},
     {variant, Tag, tuple_to_list(from_binary(Visited1, {tuple, Args}, Heap, V + 32))};
+from_binary(Visited, {variant_t, TCons}, Heap, V) ->   %% Tagged variants
+    {Tags, Cons} = lists:unzip(TCons),
+    {variant, I, Args} = from_binary(Visited, {variant, Cons}, Heap, V),
+    Tag = lists:nth(I + 1, Tags),
+    case Args of
+        []  -> Tag;
+        _   -> list_to_tuple([Tag | Args])
+    end;
 from_binary(Visited, {map, A, B}, Heap, V) ->
     maps:from_list(from_binary(Visited, {list, {tuple, [A, B]}}, Heap, V));
 from_binary(Visited, typerep, Heap, V) ->
