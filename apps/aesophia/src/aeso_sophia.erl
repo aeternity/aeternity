@@ -7,7 +7,8 @@
 -type type() :: word | signed_word | string | typerep | function
               | {list,   type()}
               | {option, type()}
-              | {tuple, [type()]}.
+              | {tuple, [type()]}
+              | {variant, [[type()]]}.
 
 
 -type data() :: none
@@ -17,6 +18,7 @@
               | string
               | {list,   data()}
               | {tuple, [data()]}
+              | {variant, integer(), [data()]}
               | integer()
               | binary()
               | [data()]
