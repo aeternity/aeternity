@@ -128,17 +128,35 @@ infer_contract(Env, Defs) ->
     io:format("Dependency sorted functions:\n  ~p\n", [SCCs]),
     TypeDefs ++ check_sccs(Env2, FunMap, SCCs, []).
 
-check_typedefs(Env, []) -> Env;
-check_typedefs(Env, [{type_def, Ann, D, Xs, Def} | Defs]) ->
-    case Def of
-        {alias_t, _}  -> check_typedefs(Env, Defs); %% TODO: check these
-        {record_t, _} -> check_typedefs(Env, Defs); %%       and these
-        {variant_t, Cons} ->
-            Target   = {app_t, Ann, D, Xs},
-            ConTypes = [ {Con, case Args of [] -> Target; _ -> {type_sig, Args, Target} end}
-                        || {constr_t, _, {con, _, Con}, Args} <- Cons ],
-            check_typedefs(ConTypes ++ Env, Defs)
-    end.
+check_typedefs(Env, Defs) ->
+    create_type_errors(),
+    GetName  = fun({type_def, _, {id, _, Name}, _, _}) -> Name end,
+    TypeMap  = maps:from_list([ {GetName(Def), Def} || Def <- Defs ]),
+    DepGraph = maps:map(fun(_, Def) -> aeso_syntax_utils:used_types(Def) end, TypeMap),
+    SCCs     = aeso_utils:scc(DepGraph),
+    Res      = check_typedef_sccs(Env, TypeMap, SCCs),
+    destroy_and_report_type_errors(),
+    Res.
+
+check_typedef_sccs(Env, _TypeMap, []) -> Env;
+check_typedef_sccs(Env, TypeMap, [{acyclic, Name} | SCCs]) ->
+    case maps:get(Name, TypeMap, undefined) of
+        undefined -> check_typedef_sccs(Env, TypeMap, SCCs);    %% Builtin type
+        {type_def, Ann, D, Xs, Def} ->
+            case Def of
+                {alias_t, _}  -> check_typedef_sccs(Env, TypeMap, SCCs); %% TODO: check these
+                {record_t, _} -> check_typedef_sccs(Env, TypeMap, SCCs); %%       and these
+                {variant_t, Cons} ->
+                    Target   = {app_t, Ann, D, Xs},
+                    ConTypes = [ {Con, case Args of [] -> Target; _ -> {type_sig, Args, Target} end}
+                                || {constr_t, _, {con, _, Con}, Args} <- Cons ],
+                    check_typedef_sccs(ConTypes ++ Env, TypeMap, SCCs)
+            end
+    end;
+check_typedef_sccs(Env, TypeMap, [{cyclic, Names} | SCCs]) ->
+    Id = fun(X) -> {type_def, _, D, _, _} = maps:get(X, TypeMap), D end,
+    type_error({recursive_types_not_implemented, lists:map(Id, Names)}),
+    check_typedef_sccs(Env, TypeMap, SCCs).
 
 
 check_sccs(_, _, [], Acc) -> lists:reverse(Acc);
@@ -869,6 +887,11 @@ pp_error({no_records_with_all_fields, Fields}) ->
     io_lib:format("No record type with field~s ~s (at ~s)\n",
                   [S, string:join([ pp(F) || F <- Fields ], ", "),
                    pp_loc(hd(Fields))]);
+pp_error({recursive_types_not_implemented, Types}) ->
+    S = if length(Types) > 1 -> "s are mutually";
+           true              -> " is" end,
+    io_lib:format("The following type~s recursive, which is not yet supported:\n~s",
+                    [S, [io_lib:format("  - ~s (at ~s)\n", [pp(T), pp_loc(T)]) || T <- Types]]);
 pp_error(Err) ->
     io_lib:format("Unknown error: ~p\n", [Err]).
 
