@@ -670,6 +670,8 @@ all_type_reps([TR|InSource], Found) ->
                          {tuple, TRs} -> TRs;
                          {list, T}    -> [T];
                          {option, T}  -> [T];
+                         {variant, Cs} -> [{tuple, [word | Args]} || Args <- Cs];
+                            %% Constructor values are encoded as tuples with the tag as the first component
                          typerep      -> [{list, typerep}]; %% tuple case has a list of typereps
                          _            -> []
                      end,
@@ -762,8 +764,15 @@ make_encoder_body({option, TR}) ->
                  [{var_ref, "base"}, {var_ref, "elem"}]}]},
         {var_ref, "base"}}}
      ]};
+make_encoder_body({variant, Cons}) ->
+    Tags = lists:seq(0, length(Cons) - 1),
+    {switch, {var_ref, "value"},
+        [ {{tuple, [{integer, Tag}]},
+            {funcall, {var_ref, encoder_name({tuple, [word | Args]})},  %% TODO: optimize nullary constructors
+                [{var_ref, "base"}, {var_ref, "value"}]}}
+            || {Tag, Args} <- lists:zip(Tags, Cons) ]};
 make_encoder_body(function) ->
-    {integer, 33333333333333333}.
+    {integer, 33333333333333333}.   %% TODO: fail here once we distinguish public and private functions
 
 %% TODO: update pointers in-place so save memory!
 %% Note: we never need to decode typereps.
@@ -808,8 +817,19 @@ make_decoder_body({option, TR}) ->
          {{var_ref, "_"},
             {switch, Ptr, [{{tuple, [Elem]},
                 {tuple, [Decode(TR, Elem)]}}]}}]};
+make_decoder_body({variant, Cons}) ->
+    Ptr  = {binop, '+', {var_ref, "value"}, {var_ref, "base"}},
+    Tags = lists:seq(0, length(Cons) - 1),
+    Decode = fun(T, V) ->
+                {funcall, {var_ref, decoder_name(T)},
+                          [{var_ref, "base"}, V]}
+             end,
+    {switch, Ptr,
+        [{{tuple, [{integer, Tag}]},
+            Decode({tuple, [word | Args]}, {var_ref, "value"})}  %% TODO: optimize nullary constructors
+          || {Tag, Args} <- lists:zip(Tags, Cons)]};
 make_decoder_body(function) ->
-    error(cannot_decode_function_types).
+    error(cannot_decode_functions).
 
 make_vars(N) ->
     [{var_ref, "_v" ++ integer_to_list(I)} || I <- lists:seq(1, N)].
