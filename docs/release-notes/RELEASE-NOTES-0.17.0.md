@@ -4,6 +4,7 @@
 It:
 * Stores the chain state in the database in a more compact way. This affects the persisted chain.
 * Changes the way we build chain, by electing a leader and introducing Key and Micro blocks. It is followed by new candidates generation modules, new serialized formats and enhanced sync layer.
+* Allow configuration of header argument passed to the Cuckoo miner executable to support CUDA miners (`mining` > `cuckoo` > `miner` > `hex_encoded_header`)
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.17.0
 
