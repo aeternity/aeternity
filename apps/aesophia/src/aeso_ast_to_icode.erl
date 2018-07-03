@@ -49,9 +49,10 @@ contract_to_icode([{type_def, _Attrib, {id, _, "state"}, _, TypeDef}|Rest], Icod
             {variant_t, _} -> error({not_supported, variant_state_types, TypeDef})  %% TODO
         end,
     contract_to_icode(Rest, Icode#{ state_type => StateType});
-contract_to_icode([{type_def, _Attrib, _, _, _}|Rest], Icode) ->
-    %% TODO: Handle types
-    contract_to_icode(Rest, Icode);
+contract_to_icode([{type_def, _Attrib, {id, _, Name}, Args, Def}|Rest],
+                  Icode = #{ types := Types }) ->
+    TypeDef = make_type_def(Args, Def, Icode),
+    contract_to_icode(Rest, Icode#{ types := Types#{ Name => TypeDef } });
 contract_to_icode([{letfun,_Attrib, Name, Args, _What, Body={typed,_,_,T}}|Rest], Icode) ->
     %% TODO: Handle types
     FunName = ast_id(Name),
@@ -430,43 +431,47 @@ prim_call(Prim, Amount, Args, ArgTypes, OutType) ->
                          arg_type = {tuple, [word | ArgTypes]},
                          out_type = OutType }.
 
+make_type_def(Args, Def, Icode = #{ type_vars := TypeEnv }) ->
+    TVars = [ X || {tvar, _, X} <- Args ],
+    fun(Types) ->
+        TypeEnv1 = maps:from_list(lists:zip(TVars, Types)),
+        ast_typerep(Def, Icode#{ type_vars := maps:merge(TypeEnv, TypeEnv1) })
+    end.
+
 -spec ast_typerep(aeso_syntax:type()) -> aeso_sophia:type().
 ast_typerep(Type) -> ast_typerep(Type, aeso_icode:new([])).
 
-ast_typerep({id,_,"bool"}, _Icode) ->		%BOOL as ints
-    word;
-ast_typerep({id,_,"int"}, _Icode) ->
-    word;
-ast_typerep({id,_,"string"}, _Icode) ->
-    string;
-ast_typerep({id,_,"address"}, _Icode) ->
-    word;
-ast_typerep({id,_,"hash"}, _Icode) ->
-    word;
-ast_typerep({id,_,"signature"}, _Icode) ->
-    word;
-ast_typerep(?oracle_t(_, _), _Icode) ->
-    word;
-ast_typerep(?query_t(_, _), _Icode) ->
-    word;
-ast_typerep(?option_t(A), Icode) ->
-    {option, ast_typerep(A, Icode)};   %% For now, but needs to be generalised to arbitrary datatypes later.
-ast_typerep(?map_t(K, V), Icode) ->
-    map_typerep(ast_typerep(K, Icode), ast_typerep(V, Icode));
-ast_typerep({tvar,_,_}, _Icode) ->
-    %% We serialize type variables just as addresses in the originating VM.
-    word;
+ast_typerep({id, _, Name}, Icode) ->
+    lookup_type_id(Name, [], Icode);
+ast_typerep({app_t, _, {id, _, Name}, Args}, Icode) ->
+    ArgReps = [ ast_typerep(Arg, Icode) || Arg <- Args ],
+    lookup_type_id(Name, ArgReps, Icode);
+ast_typerep({tvar,_,A}, #{ type_vars := TypeVars }) ->
+    case maps:get(A, TypeVars, undefined) of
+        undefined -> word; %% We serialize type variables just as addresses in the originating VM.
+        Type      -> Type
+    end;
 ast_typerep({tuple_t,_,Cpts}, Icode) ->
     {tuple, [ast_typerep(C, Icode) || C<-Cpts]};
 ast_typerep({record_t,Fields}, Icode) ->
-    {tuple, [ast_typerep(T, Icode) || {field_t,_,_,T} <- Fields]};
-ast_typerep({app_t,_,{id,_,"list"},[Elem]}, Icode) ->
-    {list, ast_typerep(Elem, Icode)};
+    {tuple, [ begin
+                {field_t, _, _, T} = Field,
+                ast_typerep(T, Icode)
+              end || Field <- Fields]};
 ast_typerep({fun_t,_,_,_}, _Icode) ->
-    function.
+    function;
+ast_typerep({alias_t, T}, Icode) -> ast_typerep(T, Icode);
+ast_typerep({variant_t, Cons}, Icode) ->
+    {variant, [ begin
+                  {constr_t, _, _, Args} = Con,
+                  [ ast_typerep(Arg, Icode) || Arg <- Args ]
+                end || Con <- Cons ]}.
 
-map_typerep(K, V) ->
-    {list, {tuple, [K, V]}}.  %% Lists of key-value pairs for now
+lookup_type_id(Name, Args, #{ types := Types }) ->
+    case maps:get(Name, Types, undefined) of
+        undefined -> error({undefined_type, Name});
+        TDef      -> TDef(Args)
+    end.
 
 ast_type_value(T, Icode) ->
     type_value(ast_type(T, Icode)).
@@ -534,7 +539,7 @@ builtin_function(Builtin = {map_get, Type}) ->
     %%   switch(map_lookup(m, k))
     %%     Some(v) => v
     {{builtin, Builtin},
-        [{"m", map_typerep(Type, word)}, {"k", Type}],
+        [{"m", aeso_icode:map_typerep(Type, word)}, {"k", Type}],
             {switch, {funcall, {var_ref, {builtin, {map_lookup, Type}}},
                      [{var_ref, "m"}, {var_ref, "k"}]},
                 [{{tuple, [{var_ref, "v"}]}, {var_ref, "v"}}]},
@@ -546,7 +551,7 @@ builtin_function(Builtin = {map_member, Type}) ->
     %%     None => false
     %%     _    => true
     {{builtin, Builtin},
-        [{"m", map_typerep(Type, word)}, {"k", Type}],
+        [{"m", aeso_icode:map_typerep(Type, word)}, {"k", Type}],
             {switch, {funcall, {var_ref, {builtin, {map_lookup, Type}}},
                      [{var_ref, "m"}, {var_ref, "k"}]},
                 [{{list, []}, {integer, 0}},
@@ -565,7 +570,7 @@ builtin_function(Builtin = {map_lookup, Type}) ->
     Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
     Name = {builtin, Builtin},
     {Name,
-     [{"map", map_typerep(Type, word)}, {"key", Type}],
+     [{"map", aeso_icode:map_typerep(Type, word)}, {"key", Type}],
      {switch, {var_ref, "map"},
               [{{list, []}, {list, []}},
                {{binop, '::',
@@ -589,7 +594,7 @@ builtin_function(Builtin = {map_put, Type}) ->
     Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
     Name = {builtin, Builtin},
     {Name,
-     [{"map", map_typerep(Type, word)}, {"key", Type}, {"val", word}],
+     [{"map", aeso_icode:map_typerep(Type, word)}, {"key", Type}, {"val", word}],
      {switch,
          {var_ref, "map"},
          [{{list, []}, {list, [{tuple, [{var_ref, "key"}, {var_ref, "val"}]}]}},
@@ -608,7 +613,7 @@ builtin_function(Builtin = {map_put, Type}) ->
                        [{var_ref, "m"},
                         {var_ref, "key"},
                         {var_ref, "val"}]}}}}]},
-     map_typerep(Type, word)};
+     aeso_icode:map_typerep(Type, word)};
 
 builtin_function(Builtin = {map_del, Type}) ->
     %% function map_del(map, key) =
@@ -622,7 +627,7 @@ builtin_function(Builtin = {map_del, Type}) ->
     Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
     Name = {builtin, Builtin},
     {Name,
-     [{"map", map_typerep(Type, word)}, {"key", word}],
+     [{"map", aeso_icode:map_typerep(Type, word)}, {"key", word}],
      {switch,
          {var_ref, "map"},
          [{{list, []}, {list, []}},
@@ -638,7 +643,7 @@ builtin_function(Builtin = {map_del, Type}) ->
                        {var_ref, Name},
                        [{var_ref, "m"},
                         {var_ref, "key"}]}}}}]},
-     map_typerep(Type, word)};
+     aeso_icode:map_typerep(Type, word)};
 
 builtin_function(Builtin = {map_upd, Type}) ->
     %% function map_upd(map, key, fun) =
@@ -651,7 +656,7 @@ builtin_function(Builtin = {map_upd, Type}) ->
     Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
     Name = {builtin, Builtin},
     {Name,
-     [{"map", map_typerep(Type, word)}, {"key", word}, {"fun", word}],
+     [{"map", aeso_icode:map_typerep(Type, word)}, {"key", word}, {"fun", word}],
      {switch,
          {var_ref, "map"},
          [{{binop, '::',
@@ -669,7 +674,7 @@ builtin_function(Builtin = {map_upd, Type}) ->
                        [{var_ref, "m"},
                         {var_ref, "key"},
                         {var_ref, "fun"}]}}}}]},
-     map_typerep(Type, word)};
+     aeso_icode:map_typerep(Type, word)};
 
 builtin_function(map_size) ->
     %% function size(map, acc) =
