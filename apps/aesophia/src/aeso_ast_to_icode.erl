@@ -50,9 +50,19 @@ contract_to_icode([{type_def, _Attrib, {id, _, "state"}, _, TypeDef}|Rest], Icod
         end,
     contract_to_icode(Rest, Icode#{ state_type => StateType});
 contract_to_icode([{type_def, _Attrib, {id, _, Name}, Args, Def}|Rest],
-                  Icode = #{ types := Types }) ->
+                  Icode = #{ types := Types, constructors := Constructors }) ->
     TypeDef = make_type_def(Args, Def, Icode),
-    contract_to_icode(Rest, Icode#{ types := Types#{ Name => TypeDef } });
+    NewConstructors =
+        case Def of
+            {variant_t, Cons} ->
+                Tags = lists:seq(0, length(Cons) - 1),
+                GetName = fun({constr_t, _, {con, _, C}, _}) -> C end,
+                maps:from_list([ {GetName(Con), Tag} || {Tag, Con} <- lists:zip(Tags, Cons) ]);
+            _ -> #{}
+        end,
+    Icode1  = Icode#{ types := Types#{ Name => TypeDef },
+                      constructors := maps:merge(Constructors, NewConstructors) },
+    contract_to_icode(Rest, Icode1);
 contract_to_icode([{letfun,_Attrib, Name, Args, _What, Body={typed,_,_,T}}|Rest], Icode) ->
     %% TODO: Handle types
     FunName = ast_id(Name),
@@ -307,6 +317,12 @@ ast_body({app, _, {typed, _, {con, _, "Some"}, _}, [Elem]}, Icode) ->
 ast_body({typed, _, {con, _, "Some"}, {fun_t, _, [A], _}}, Icode) ->
     #lambda{ args = [#arg{name = "x", type = ast_type(A, Icode)}]
            , body = #tuple{cpts = [#var_ref{name = "x"}]} };
+ast_body({con, _, Name}, Icode) ->
+    Tag = aeso_icode:get_constructor_tag(Name, Icode),
+    #tuple{cpts = [#integer{value = Tag}]};
+ast_body({app, _, {typed, _, {con, _, Name}, _}, Args}, Icode) ->
+    Tag = aeso_icode:get_constructor_tag(Name, Icode),
+    #tuple{cpts = [#integer{value = Tag} | [ ast_body(Arg, Icode) || Arg <- Args ]]};
 ast_body({app,As,Fun,Args}, Icode) ->
     case aeso_syntax:get_ann(format, As) of
         infix  ->

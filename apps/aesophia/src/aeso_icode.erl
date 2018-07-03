@@ -9,7 +9,7 @@
 %%%-------------------------------------------------------------------
 -module(aeso_icode).
 
--export([new/1, pp/1, set_name/2, set_functions/2, map_typerep/2]).
+-export([new/1, pp/1, set_name/2, set_functions/2, map_typerep/2, get_constructor_tag/2]).
 -export_type([icode/0]).
 
 -include("aeso_icode.hrl").
@@ -27,6 +27,7 @@
                   , state_type => aeso_sophia:type()
                   , types => #{ string() => type_def() }
                   , type_vars => #{ string() => aeso_sophia:type() }
+                  , constructors => #{ string() => integer() }  %% name to tag
                   , options => [any()]
                   }.
 
@@ -43,6 +44,7 @@ new(Options) ->
      , state_type => {tuple, []}
      , types => builtin_types()
      , type_vars => #{}
+     , constructors => #{}
      , options => Options}.
 
 builtin_types() ->
@@ -73,3 +75,11 @@ set_name(Name, Icode) ->
 -spec set_functions([fun_dec()], icode()) -> icode().
 set_functions(NewFuns, Icode) ->
     maps:put(functions, NewFuns, Icode).
+
+-spec get_constructor_tag(string(), icode()) -> integer().
+get_constructor_tag(Name, #{constructors := Constructors}) ->
+    case maps:get(Name, Constructors, undefined) of
+        undefined -> error({undefined_constructor, Name});
+        Tag       -> Tag
+    end.
+
