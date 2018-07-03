@@ -74,3 +74,18 @@ bound_ids({letfun, _, X, _, _, _}) -> one(X);
 bound_ids({letrec, _, Decls})      -> union_map(fun bound_ids/1, Decls);
 bound_ids(_)                       -> none().
 
+used_types(Ts) when is_list(Ts)    -> union_map(fun used_types/1, Ts);
+used_types({type_def, _, _, _, T}) -> used_types(T);
+used_types({alias_t, T})           -> used_types(T);
+used_types({record_t, Fs})         -> used_types(Fs);
+used_types({variant_t, Cs})        -> used_types(Cs);
+used_types({field_t, _, _, T})     -> used_types(T);
+used_types({constr_t, _, _, Ts})   -> used_types(Ts);
+used_types({fun_t, _, Args, T})    -> used_types([T | Args]);
+used_types({app_t, _, T, Ts})      -> used_types([T | Ts]);
+used_types({tuple_t, _, Ts})       -> used_types(Ts);
+used_types({id, _, X})             -> one(X);
+used_types({qid, _, _})            -> none();
+used_types({con, _, _})            -> none();
+used_types({qcon, _, _})           -> none();
+used_types({tvar, _, _})           -> none().
