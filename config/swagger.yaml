@@ -1244,7 +1244,7 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
-  /account/{account_pubkey}/balance:
+  /account/{address}/balance:
     get:
       tags:
         - external
@@ -1255,8 +1255,8 @@ paths:
         - application/json
       parameters:
         - in: path
-          name: account_pubkey
-          description: 'Account pubkey to show balance for'
+          name: address
+          description: 'Address to show balance for; it can be either account or contract'
           required: true
           type: string
         - in: query
@@ -1956,36 +1956,6 @@ paths:
             $ref: '#/definitions/Calldata'
         '403':
           description: Invalid contract
-          schema:
-            $ref: '#/definitions/Error'
-  /contract/{contract_address}/balance:
-    get:
-      tags:
-        - external
-        - chain
-      operationId: 'GetContractBalance'
-      description: 'Get Contract balance'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: contract_address
-          description: Contract's address
-          required: true
-          type: string
-      responses:
-        '200':
-          description: Contract's balance at the current height 
-          schema:
-            $ref: '#/definitions/Balance'
-        '404':
-          description: Contract not found
-          schema:
-            $ref: '#/definitions/Error'
-        '400':
-          description: Invalid contract address
           schema:
             $ref: '#/definitions/Error'
   /peer/key:

@@ -746,7 +746,7 @@ contract_transactions(_Config) ->    % miner has an account
         get_contract_call_object(ContractCreateTxHash),
 
     {ok, 404, #{<<"reason">> := <<"Proof for contract not found">>}} = get_contract_poi(EncodedContractPubKey),
-    {ok, 404, #{<<"reason">> := <<"Contract not found">>}} = get_contract_balance(EncodedContractPubKey),
+    {ok, 404, #{<<"reason">> := <<"Account not found">>}} =  get_balance_at_top(EncodedContractPubKey),
 
     % mine a block
     Fun1 = fun() -> tx_in_chain(ContractCreateTxHash)end,
@@ -780,7 +780,7 @@ contract_transactions(_Config) ->    % miner has an account
     {ContractInPoI, _} = {ContractInTree, ContractInPoI},
 
     %% Assert the balance is the one which we created the contract with
-    {ok, 200, #{<<"balance">> := ContractInitBalance}} = get_contract_balance(EncodedContractPubKey),
+    {ok, 200, #{<<"balance">> := ContractInitBalance}} = get_balance_at_top(EncodedContractPubKey),
     Function = <<"main">>,
     Argument = <<"42">>,
     {ok, EncodedCallData} =
@@ -3350,7 +3350,7 @@ balance_negative_cases(_Config) ->
             Res = get_balance(H, #{height => Height,
                                    hash => BlockHash})
         end,
-    TestAccHash(400, <<"Invalid account hash">>, BrokenHash),
+    TestAccHash(400, <<"Invalid hash: address">>, BrokenHash),
     TestAccHash(404, <<"Account not found">>, RandAccount),
 
     % block in the future
@@ -3750,10 +3750,6 @@ get_peers() ->
 get_contract_poi(ContractAddress) ->
     Host = external_address(),
     http_request(Host, get, "poi/contract/" ++ binary_to_list(ContractAddress), []).
-
-get_contract_balance(ContractAddress) ->
-    Host = external_address(),
-    http_request(Host, get, "contract/" ++ binary_to_list(ContractAddress) ++ "/balance", []).
 
 %% ============================================================
 %% Test swagger validation errors

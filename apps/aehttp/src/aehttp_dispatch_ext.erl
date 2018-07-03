@@ -32,6 +32,7 @@
                         , get_block/3
                         , get_block/4
                         , get_poi/3
+                        , get_block_hash_optionally_by_hash_or_height/1
                         ]).
 
 -compile({parse_transform, lager_transform}).
@@ -436,39 +437,19 @@ handle_request('GetContractPoI', Req, _Context) ->
     process_request(ParseFuns, Req);
 
 handle_request('GetAccountBalance', Req, _Context) ->
-    case aec_base58c:safe_decode(account_pubkey, maps:get('account_pubkey', Req)) of
-        {ok, AccountPubkey} ->
-            case get_block_hash_optionally_by_hash_or_height(Req) of
-                {error, not_found} ->
-                    {404, [], #{reason => <<"Block not found">>}};
-                {error, invalid_hash} ->
-                    {400, [], #{reason => <<"Invalid block hash">>}};
-                {error, blocks_mismatch} ->
-                    {400, [], #{reason => <<"Invalid height and hash combination">>}};
-                {ok, Hash} ->
-                      case aehttp_logic:get_account_balance_at_hash(AccountPubkey, Hash) of
+    ParseFuns = [read_required_params([address]),
+                 base58_decode([{address, address, [account_pubkey,
+                                                    contract_pubkey]}]),
+                 get_block_hash_optionally_by_hash_or_height(block_hash),
+                 fun(_, #{address := Pubkey, block_hash := AtHash}) ->
+                      case aehttp_logic:get_account_balance_at_hash(Pubkey, AtHash) of
                           {error, account_not_found} ->
-                              {404, [], #{reason => <<"Account not found">>}};
+                              {error, {404, [], #{reason => <<"Account not found">>}}};
                           {error, not_on_main_chain} ->
-                              {400, [], #{reason => <<"Block not on the main chain">>}};
+                              {error, {400, [], #{reason => <<"Block not on the main chain">>}}};
                           {ok, Balance} ->
-                              {200, [], #{balance => Balance}}
+                              {ok, {200, [], #{balance => Balance}}}
                       end
-            end;
-        _ ->
-            {400, [], #{reason => <<"Invalid account hash">>}}
-    end;
-
-handle_request('GetContractBalance', Req, _Context) ->
-    ParseFuns = [read_required_params([contract_address]),
-                 base58_decode([{contract_address, contract, contract_pubkey}]),
-                 fun(_, #{contract := Pubkey}) ->
-                    case aehttp_logic:get_account_balance(Pubkey) of
-                        {error, account_not_found} ->
-                            {error, {404, [], #{<<"reason">> => <<"Contract not found">>}}};
-                        {ok, Balance} ->
-                            {ok, {200, [], #{<<"balance">> => Balance}}}
-                    end
                 end
                 ],
     process_request(ParseFuns, Req);
@@ -669,47 +650,3 @@ handle_request(OperationID, Req, Context) ->
      ),
     {501, [], #{}}.
 
--spec get_block_hash_optionally_by_hash_or_height(map()) ->
-    {ok, binary()} | {error, not_found | invalid_hash | blocks_mismatch}.
-get_block_hash_optionally_by_hash_or_height(Req) ->
-    GetHashByHeight =
-        fun(Height) ->
-            case aehttp_logic:get_header_by_height(Height) of
-                {error, chain_too_short} ->
-                    {error, not_found};
-                {ok, Header} ->
-                    {ok, _Hash} = aec_headers:hash_header(Header)
-            end
-        end,
-    case {maps:get('height', Req), maps:get('hash', Req)} of
-        {undefined, undefined} ->
-            {ok, _} = aehttp_logic:get_top_hash();
-        {undefined, EncodedHash} ->
-            case aec_base58c:safe_decode(block_hash, EncodedHash) of
-                {error, _} ->
-                    {error, invalid_hash};
-                {ok, Hash} ->
-                    case aec_chain:has_block(Hash) of
-                        false ->
-                            {error, not_found};
-                        true ->
-                            {ok, Hash}
-                    end
-            end;
-        {Height, undefined} ->
-            GetHashByHeight(Height);
-        {Height, EncodedHash} ->
-            case GetHashByHeight(Height) of
-                {error, _} = Err ->
-                    Err;
-                {ok, Hash} -> % ensure it is the same hash
-                    case aec_base58c:safe_decode(block_hash, EncodedHash) of
-                        {error, _} ->
-                            {error, invalid_hash};
-                        {ok, Hash} -> % same hash
-                            {ok, Hash};
-                        {ok, _OtherHash} ->
-                            {error, blocks_mismatch}
-                    end
-            end
-    end.

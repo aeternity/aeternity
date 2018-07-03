@@ -1494,16 +1494,16 @@
         }
       }
     },
-    "/account/{account_pubkey}/balance" : {
+    "/account/{address}/balance" : {
       "get" : {
         "tags" : [ "external", "chain" ],
         "description" : "Get accounts's balance",
         "operationId" : "GetAccountBalance",
         "produces" : [ "application/json" ],
         "parameters" : [ {
-          "name" : "account_pubkey",
+          "name" : "address",
           "in" : "path",
-          "description" : "Account pubkey to show balance for",
+          "description" : "Address to show balance for; it can be either account or contract",
           "required" : true,
           "type" : "string"
         }, {
@@ -2301,42 +2301,6 @@
           },
           "403" : {
             "description" : "Invalid contract",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/contract/{contract_address}/balance" : {
-      "get" : {
-        "tags" : [ "external", "chain" ],
-        "description" : "Get Contract balance",
-        "operationId" : "GetContractBalance",
-        "consumes" : [ "application/json" ],
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "contract_address",
-          "in" : "path",
-          "description" : "Contract's address",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "Contract's balance at the current height",
-            "schema" : {
-              "$ref" : "#/definitions/Balance"
-            }
-          },
-          "400" : {
-            "description" : "Invalid contract address",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          },
-          "404" : {
-            "description" : "Contract not found",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
