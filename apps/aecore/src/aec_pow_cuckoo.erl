@@ -195,7 +195,6 @@ generate_int(Header, Target, MinerBin, MinerExtraArgs) ->
                   {stderr, self()},
                   {cd, BinDir},
                   {env, [{"SHELL", "/bin/sh"}]},
-                  {nice, Niceness},
                   monitor]) of
         {ok, _ErlPid, OsPid} ->
             wait_for_result(#state{os_pid = OsPid,
