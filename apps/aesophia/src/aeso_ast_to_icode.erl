@@ -41,15 +41,7 @@ add_default_init_function(Icode = #{functions := Funs, state_type := State}) ->
 
 -spec contract_to_icode(aeso_syntax:ast(), aeso_icode:icode()) ->
                                aeso_icode:icode().
-contract_to_icode([{type_def, _Attrib, {id, _, "state"}, _, TypeDef}|Rest], Icode) ->
-    StateType =
-        case TypeDef of
-            {alias_t, T}   -> ast_typerep(T, Icode);
-            {record_t, _}  -> ast_typerep(TypeDef, Icode);
-            {variant_t, _} -> error({not_supported, variant_state_types, TypeDef})  %% TODO
-        end,
-    contract_to_icode(Rest, Icode#{ state_type => StateType});
-contract_to_icode([{type_def, _Attrib, {id, _, Name}, Args, Def}|Rest],
+contract_to_icode([{type_def, _Attrib, {id, _, Name}, Args, Def} | Rest],
                   Icode = #{ types := Types, constructors := Constructors }) ->
     TypeDef = make_type_def(Args, Def, Icode),
     NewConstructors =
@@ -60,9 +52,14 @@ contract_to_icode([{type_def, _Attrib, {id, _, Name}, Args, Def}|Rest],
                 maps:from_list([ {GetName(Con), Tag} || {Tag, Con} <- lists:zip(Tags, Cons) ]);
             _ -> #{}
         end,
-    Icode1  = Icode#{ types := Types#{ Name => TypeDef },
-                      constructors := maps:merge(Constructors, NewConstructors) },
-    contract_to_icode(Rest, Icode1);
+    Icode1 = Icode#{ types := Types#{ Name => TypeDef },
+                     constructors := maps:merge(Constructors, NewConstructors) },
+    Icode2 = case Name of
+                "state" when Args == [] -> Icode1#{ state_type => ast_typerep(Def, Icode) };
+                "state"                 -> error(state_type_cannot_be_parameterized);
+                _                       -> Icode1
+             end,
+    contract_to_icode(Rest, Icode2);
 contract_to_icode([{letfun,_Attrib, Name, Args, _What, Body={typed,_,_,T}}|Rest], Icode) ->
     %% TODO: Handle types
     FunName = ast_id(Name),
