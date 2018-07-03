@@ -1,8 +1,8 @@
 // Testing more interesting state types
 contract Stack =
 
-  type state = { stack : list(string),
-                 size  : int }
+  record state = { stack : list(string),
+                   size  : int }
 
   function init(ss) = { stack = ss, size = length(ss) }
 

@@ -51,9 +51,9 @@ contract Greeter =
      /* The creator of the contract will automatically
        be set in creator() by the transaction creating the contract. */
     function blockheight : unit => uint
-    type transaction = { tx : string }
-    type state = { greeting: string }
-    type retval = { state: state,
+    record transaction = { tx : string }
+    record state = { greeting: string }
+    record retval = { state: state,
                     transactions: list(transaction)}
 
     let state = { greeting = "Hello" }

@@ -1,7 +1,7 @@
 
 contract Counter =
 
-  type state = { value : int }
+  record state = { value : int }
 
   function init(val) = { value = val }
   function get()     = state.value

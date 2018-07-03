@@ -3,8 +3,8 @@ contract Identity =
   // type xy = {x:int, y:int}
   // type xz = {x:int, z:int}
   // type yz = {y:int, z:int}
-  type point = {x:int,y:int}
-  type cp('a) = {color: string, p:'a}
+  record point = {x:int,y:int}
+  record cp('a) = {color: string, p:'a}
   //type intpoint = point(int)
   //   //if (x==42) 1 else (x*x)
   // }

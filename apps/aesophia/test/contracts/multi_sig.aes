@@ -5,9 +5,9 @@
 
 contract MultiSig =
 
-    type pending_state = { yetNeeded : uint, ownersDone : uint, index : uint }
+    record pending_state = { yetNeeded : uint, ownersDone : uint, index : uint }
 
-    type event =
+    datatype event =
         Confirmation (address, hash)    // of { .owner : Address, .operation : Hash }
       | Revoke       (address, hash)    // of { .owner : Address, .operation : Hash }
       | OwnerChanged (address, address) // of { .oldOwner : Address, .newOwner : Address }
@@ -17,7 +17,7 @@ contract MultiSig =
 
     let maxOwners : uint = 250
 
-    type state = { nRequired    : uint
+    record state = { nRequired    : uint
                  , nOwners      : uint
                  , owners       : map(uint, address)
                  , ownerIndex   : map(address, uint)
@@ -47,8 +47,7 @@ contract MultiSig =
       event(Revoke(caller, operation))
 
 
-    type check_pending = CheckOk(state)
-                       | CheckFail(state)
+    datatype check_pending = CheckOk(state) | CheckFail(state)
 
     function changeOwner(fromOwner : address, toOwner : address) =
       switch(check_pending(callhash()))

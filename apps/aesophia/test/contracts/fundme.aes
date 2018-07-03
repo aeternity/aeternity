@@ -3,14 +3,14 @@
  */
 contract FundMe =
 
-  type spend_args = { recipient : address,
-                      amount    : int }
+  record spend_args = { recipient : address,
+                        amount    : int }
 
-  type state = { contributions : map(address, int),
-                 total         : int,
-                 beneficiary   : address,
-                 deadline      : int,
-                 goal          : int }
+  record state = { contributions : map(address, int),
+                   total         : int,
+                   beneficiary   : address,
+                   deadline      : int,
+                   goal          : int }
 
   private function abort(err : string) =
     switch(0) 1 => ()

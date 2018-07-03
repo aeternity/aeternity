@@ -19,7 +19,7 @@
 contract SimpleStorage =
 
   type event = int
-  type state = { data : int }
+  record state = { data : int }
 
   function init(value : int) : state = { data = value }
 
