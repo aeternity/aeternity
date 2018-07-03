@@ -117,8 +117,7 @@ infer_contract(Env, Defs) ->
            end,
     Get = fun(K) -> [ Def || Def <- Defs, Kind(Def) == K ] end,
     %% TODO: handle type defs
-    TypeDefs  = Get(type),
-    Env1      = check_typedefs(Env, TypeDefs),
+    {Env1, TypeDefs} = check_typedefs(Env, Get(type)),
     ProtoSigs = [ check_fundecl(Env1, Decl) || Decl <- Get(prototype) ],
     Env2      = ProtoSigs ++ Env1,
     Functions = Get(function),
@@ -134,9 +133,12 @@ check_typedefs(Env, Defs) ->
     TypeMap  = maps:from_list([ {GetName(Def), Def} || Def <- Defs ]),
     DepGraph = maps:map(fun(_, Def) -> aeso_syntax_utils:used_types(Def) end, TypeMap),
     SCCs     = aeso_utils:scc(DepGraph),
-    Res      = check_typedef_sccs(Env, TypeMap, SCCs),
+    io:format("Dependency sorted types:\n  ~p\n", [SCCs]),
+    Env1     = check_typedef_sccs(Env, TypeMap, SCCs),
     destroy_and_report_type_errors(),
-    Res.
+    SCCNames = fun({cyclic, Xs}) -> Xs; ({acyclic, X}) -> [X] end,
+    {Env1, [ Def || SCC <- SCCs, Name <- SCCNames(SCC),
+                    Def <- [maps:get(Name, TypeMap, undefined)], Def /= undefined ]}.
 
 check_typedef_sccs(Env, _TypeMap, []) -> Env;
 check_typedef_sccs(Env, TypeMap, [{acyclic, Name} | SCCs]) ->
