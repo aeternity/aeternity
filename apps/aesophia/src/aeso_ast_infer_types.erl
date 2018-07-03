@@ -473,6 +473,8 @@ free_vars({int, _, _}) ->
     [];
 free_vars({string, _, _}) ->
     [];
+free_vars({bool, _, _}) ->
+    [];
 free_vars(Id={id, _, _}) ->
     [Id];
 free_vars({con, _, _}) ->
