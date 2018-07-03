@@ -33,6 +33,7 @@
 -include("pow.hrl").
 
 -define(DEFAULT_CUCKOO_ENV, {"mean28s-generic", "-t 5", 28, false}).
+-define(DEFAULT_MINER_NICENESS, 0).
 
 -define(debug(F, A), epoch_pow_cuckoo:debug(F, A)).
 -define(info(F, A),  epoch_pow_cuckoo:info(F, A)).
@@ -138,6 +139,12 @@ get_hex_encoded_header() ->
             HexEncodedHeader
     end.
 
+get_miner_niceness() ->
+    case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"nice">>]) of
+        {ok, Niceness} -> Niceness;
+        undefined -> ?DEFAULT_MINER_NICENESS
+    end.
+
 %%------------------------------------------------------------------------------
 %% Proof of Work generation: use the hash provided
 %%------------------------------------------------------------------------------
@@ -182,11 +189,13 @@ generate_int(Header, Target, MinerBin, MinerExtraArgs) ->
                         " -h ", Header, " ", MinerExtraArgs]),
     ?info("Executing cmd: ~p", [Cmd]),
     Old = process_flag(trap_exit, true),
+    Niceness = get_miner_niceness(),
     try exec:run(Cmd,
                  [{stdout, self()},
                   {stderr, self()},
                   {cd, BinDir},
                   {env, [{"SHELL", "/bin/sh"}]},
+                  {nice, Niceness},
                   monitor]) of
         {ok, _ErlPid, OsPid} ->
             wait_for_result(#state{os_pid = OsPid,

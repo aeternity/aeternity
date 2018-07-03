@@ -332,6 +332,11 @@
                                     "description" : "Hexadecimal encode the header argument that is send to the miner executable. CUDA executables expect hex encoded header.",
                                     "type": "boolean",
                                     "default": false
+                                },
+                                "nice" : {
+                                    "description" : "Miner process priority (niceness) in a UNIX fashion. Higher `nice` means lower priority.",
+                                    "type": "integer",
+                                    "default": 0
                                 }
                             }
                         }

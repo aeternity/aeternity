@@ -104,6 +104,8 @@ mining:
             node_bits: 28
             # Hexadecimal encode the header argument that is send to the miner executable. CUDA executables expect hex encoded header.
             hex_encoded_header: false
+            # Miner process priority (niceness) in a UNIX fashion. Higher `nice` means lower priority.
+            nice: 0
 
 logging:
     # Controls the overload protection in the logs.
