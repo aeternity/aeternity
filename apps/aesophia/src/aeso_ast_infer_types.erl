@@ -32,9 +32,12 @@ global_env() ->
     TTL       = Int,
     Fee       = Int,
     [A, B, Q, R, K, V] = lists:map(TVar, ["a", "b", "q", "r", "k", "v"]),
+     %% Option constructors
+    [{"None", Option(A)},
+     {"Some", Fun1(A, Option(A))},
      %% Placeholder for inter-contract calls until we get proper type checking
      %% of contracts.
-    [{"raw_call", Fun([Address, String, Int, Int, A], B)},
+     {"raw_call", Fun([Address, String, Int, Int, A], B)},
      %% Spend transaction. Also not the proper version.
      {"raw_spend", Fun([Address, Int], Unit)},
      %% Environment variables
@@ -115,13 +118,28 @@ infer_contract(Env, Defs) ->
     Get = fun(K) -> [ Def || Def <- Defs, Kind(Def) == K ] end,
     %% TODO: handle type defs
     TypeDefs  = Get(type),
-    ProtoSigs = [ check_fundecl(Env, Decl) || Decl <- Get(prototype) ],
+    Env1      = check_typedefs(Env, TypeDefs),
+    ProtoSigs = [ check_fundecl(Env1, Decl) || Decl <- Get(prototype) ],
+    Env2      = ProtoSigs ++ Env1,
     Functions = Get(function),
     FunMap    = maps:from_list([ {Fun, Def} || Def = {letfun, _, {id, _, Fun}, _, _, _} <- Functions ]),
     DepGraph  = maps:map(fun(_, Def) -> aeso_syntax_utils:used_ids(Def) end, FunMap),
     SCCs      = aeso_utils:scc(DepGraph),
     io:format("Dependency sorted functions:\n  ~p\n", [SCCs]),
-    TypeDefs ++ check_sccs(ProtoSigs ++ Env, FunMap, SCCs, []).
+    TypeDefs ++ check_sccs(Env2, FunMap, SCCs, []).
+
+check_typedefs(Env, []) -> Env;
+check_typedefs(Env, [{type_def, Ann, D, Xs, Def} | Defs]) ->
+    case Def of
+        {alias_t, _}  -> check_typedefs(Env, Defs); %% TODO: check these
+        {record_t, _} -> check_typedefs(Env, Defs); %%       and these
+        {variant_t, Cons} ->
+            Target   = {app_t, Ann, D, Xs},
+            ConTypes = [ {Con, case Args of [] -> Target; _ -> {type_sig, Args, Target} end}
+                        || {constr_t, _, {con, _, Con}, Args} <- Cons ],
+            check_typedefs(ConTypes ++ Env, Defs)
+    end.
+
 
 check_sccs(_, _, [], Acc) -> lists:reverse(Acc);
 check_sccs(Env, Funs, [{acyclic, X} | SCCs], Acc) ->
@@ -205,6 +223,9 @@ arg_type(T) ->
     T.
 
 lookup_name(Env, As, Name) ->
+    lookup_name(Env, As, Name, []).
+
+lookup_name(Env, As, Name, Options) ->
     case proplists:get_value(Name, Env) of
         undefined ->
             Id = case Name of
@@ -213,13 +234,13 @@ lookup_name(Env, As, Name) ->
                  end,
             type_error({unbound_variable, Id}),
             fresh_uvar(As);
-        {type_sig, ArgTypes, ReturnType} ->
-            ets:new(freshen_tvars, [set, public, named_table]),
-            Type = freshen({fun_t, As, ArgTypes, ReturnType}),
-            ets:delete(freshen_tvars),
-            Type;
+        {type_sig, _, _} = Type ->
+            freshen_type(typesig_to_fun_t(Type));
         Type ->
-            Type
+            case proplists:get_value(freshen, Options, false) of
+                true  -> freshen_type(Type);
+                false -> Type
+            end
     end.
 
 check_expr(Env, Expr, Type) ->
@@ -243,6 +264,9 @@ infer_expr(Env, Body={id, As, Name}) ->
 infer_expr(Env, Body={qid, As, Name}) ->
     Type = lookup_name(Env, As, Name),
     {typed, As, Body, Type};
+infer_expr(Env, Body={con, As, Name}) ->
+    Type = lookup_name(Env, As, Name, [freshen]),
+    {typed, As, Body, Type};
 infer_expr(Env, {unit, As}) ->
     infer_expr(Env, {tuple, As, []});
 infer_expr(Env, {tuple, As, Cpts}) ->
@@ -253,13 +277,6 @@ infer_expr(Env, {list, As, Elems}) ->
     ElemType = fresh_uvar(As),
     NewElems = [check_expr(Env, X, ElemType) || X <- Elems],
     {typed, As, {list, As, NewElems}, {app_t, As, {id, As, "list"}, [ElemType]}};
-%% TODO: not hardwired!
-infer_expr(_Env, E = {con, As, "None"}) ->
-    ElemType = fresh_uvar(As),
-    {typed, As, E, option_t(As, ElemType)};
-infer_expr(_Env, E = {con, As, "Some"}) ->
-    ElemType = fresh_uvar(As),
-    {typed, As, E, {fun_t, As, [ElemType], option_t(As, ElemType)}};
 infer_expr(Env, {typed, As, Body, Type}) ->
     {typed, _, NewBody, NewType} = check_expr(Env, Body, Type),
     {typed, As, NewBody, NewType};
@@ -497,10 +514,10 @@ solve_field_constraints(Constraints) ->
                 type_error({undefined_field, Field}),
                 false;
             [{FieldName, FldType, RecType}] ->
-                ets:new(freshen_tvars, [set, public, named_table]),
+                create_freshen_tvars(),
                 FreshFldType = freshen(FldType),
                 FreshRecType = freshen(RecType),
-                ets:delete(freshen_tvars),
+                destroy_freshen_tvars(),
                 unify(FreshFldType, FieldType, {field_constraint, FreshFldType, FieldType, When}),
                 unify(FreshRecType, RecordType, {record_constraint, FreshRecType, RecordType, When}),
                 false;
@@ -554,10 +571,10 @@ solve_known_record_types(Constraints) ->
                              type_error({missing_field, FieldName, RecName}),
                              not_solved;
                          FldType ->
-                             ets:new(freshen_tvars, [set, public, named_table]),
+                             create_freshen_tvars(),
                              FreshFldType = freshen(FldType),
                              FreshRecType = freshen({app_t, Attrs, RecId, Formals}),
-                             ets:delete(freshen_tvars),
+                             destroy_freshen_tvars(),
                              unify(FreshFldType, FieldType, {todo, {solve_field_constraint_field, When}}),
                              unify(FreshRecType, RecType, {todo, {solve_field_constraint_record, When}}),
                              {RecType, FieldName, FieldType, When}
@@ -608,9 +625,9 @@ solve_for_uvar(UVar = {uvar, Attrs, _}, Fields) ->
             {no_records_with_all_fields, Fields};
         [RecName] ->
             [{RecName, Formals, _}] = ets:lookup(record_types, RecName),
-            ets:new(freshen_tvars, [set, public, named_table]),
+            create_freshen_tvars(),
             FreshRecType = freshen({app_t, Attrs, {id, Attrs, RecName}, Formals}),
-            ets:delete(freshen_tvars),
+            destroy_freshen_tvars(),
             unify(UVar, FreshRecType, {solve_rec_type, UVar, Fields}),
             true;
         StillPossible ->
@@ -764,6 +781,18 @@ occurs_check1(_, []) -> false.
 
 fresh_uvar(Attrs) ->
     {uvar, Attrs, make_ref()}.
+
+create_freshen_tvars() ->
+    ets:new(freshen_tvars, [set, public, named_table]).
+
+destroy_freshen_tvars() ->
+    ets:delete(freshen_tvars).
+
+freshen_type(Type) ->
+    create_freshen_tvars(),
+    Type1 = freshen(Type),
+    destroy_freshen_tvars(),
+    Type1.
 
 freshen({tvar, As, Name}) ->
     NewT = case ets:lookup(freshen_tvars, Name) of
