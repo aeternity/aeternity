@@ -192,6 +192,9 @@ deposit(Cfg) ->
     check_info(),
     {I1, _} = await_signing_request(deposit_tx, I),
     {_R1, _} = await_signing_request(deposit_created, R),
+    %SignedTx = await_on_chain_report(I1, ?TIMEOUT),
+    %SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
+    %wait_for_signed_transaction_in_block(dev1, SignedTx),
     mine_blocks(dev1, 4),
     ct:log("I2 = ~p", [I1]),
     #{initiator_amount := IAmt2, responder_amount := RAmt2} = I1,
@@ -212,6 +215,9 @@ withdraw(Cfg) ->
     check_info(),
     {I1, _} = await_signing_request(withdraw_tx, I),
     {_R1, _} = await_signing_request(withdraw_created, R),
+    %SignedTx = await_on_chain_report(I1, ?TIMEOUT),
+    %SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
+    %wait_for_signed_transaction_in_block(dev1, SignedTx),
     mine_blocks(dev1, 4),
     #{initiator_amount := IAmt2, responder_amount := RAmt2} = I1,
     Expected = {IAmt2, RAmt2},
@@ -291,6 +297,7 @@ create_channel_(Cfg, Debug) ->
 
     IAmt = 5,
     RAmt = 5,
+    MinimumDepth = 3,
     Spec = #{initiator        => maps:get(pub, I),
              responder        => maps:get(pub, R),
              initiator_amount => IAmt,
@@ -298,7 +305,7 @@ create_channel_(Cfg, Debug) ->
              push_amount      => 2,
              lock_period      => 10,
              channel_reserve  => 3,
-             minimum_depth    => 3,
+             minimum_depth    => MinimumDepth,
              client           => self(),
              noise            => [{noise, Proto}],
              timeouts         => #{idle => 20000},
@@ -325,9 +332,13 @@ create_channel_(Cfg, Debug) ->
             undefined -> 0;
             Header -> aec_headers:height(Header)
         end,
-    mine_blocks(dev1, 4, Debug),
+    SignedTx = await_on_chain_report(I2, ?TIMEOUT),
+    SignedTx = await_on_chain_report(R2, ?TIMEOUT), % same tx
+    wait_for_signed_transaction_in_block(dev1, SignedTx),
+    mine_blocks(dev1, MinimumDepth, Debug),
     check_info(),
-    aecore_suite_utils:wait_for_height(aecore_suite_utils:node_name(dev1), CurrentHeight + 4),
+    aecore_suite_utils:wait_for_height(aecore_suite_utils:node_name(dev1),
+                                       CurrentHeight + MinimumDepth),
     I3 = await_open_report(I2, ?TIMEOUT, Debug),
     R3 = await_open_report(R2, ?TIMEOUT, Debug),
     #{i => I3, r => R3, spec => Spec}.
@@ -370,6 +381,13 @@ await_signing_request(Tag, #{fsm := Fsm, priv := Priv} = R, Timeout, Debug) ->
             {check_amounts(R, SignedTx), SignedTx}
     after Timeout ->
             error(timeout)
+    end.
+
+await_on_chain_report(#{fsm := Fsm}, Timeout) ->
+    receive {aesc_fsm, Fsm, #{type := report, tag := on_chain_tx, info := SignedTx}} ->
+              SignedTx
+    after Timeout ->
+              error(timeout)
     end.
 
 await_open_report(#{fsm := Fsm} = R, Timeout, Debug) ->
