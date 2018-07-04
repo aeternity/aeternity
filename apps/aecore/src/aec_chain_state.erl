@@ -273,10 +273,12 @@ get_key_block_hash_at_height(Height, State) when is_integer(Height), Height >= 0
             end
     end.
 
+%% TODO: this function relies that both key blocks and micro blocks share the
+%% same index; this can change when they are indexed separately
 keyblock_hash_in_main_chain([Node|Left], TopHash) ->
     NodeFound =
-        case hash_is_in_main_chain(hash(Node), TopHash) of
-            true  -> is_key_block(Node);
+        case is_key_block(Node) of
+            true  -> hash_is_in_main_chain(hash(Node), TopHash);
             false -> false
         end,
     case NodeFound of

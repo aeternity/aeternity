@@ -551,6 +551,7 @@ wait_for_signed_transaction_in_block(Node, SignedTx) ->
                 aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(Node), 2),
                 case rpc(Node, aec_chain, find_tx_location, [TxHash]) of
                     none -> erlang:error(tx_not_found);
+                    not_found -> erlang:error(tx_not_found);
                     mempool -> Try(Attempts - 1);
                     BlockHash when is_binary(BlockHash) -> ok
                 end
