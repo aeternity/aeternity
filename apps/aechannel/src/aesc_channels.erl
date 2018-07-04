@@ -126,6 +126,7 @@ deserialize(IdBin, Bin) ->
           Bin),
     account = aec_id:specialize_type(InitiatorId),
     account = aec_id:specialize_type(ResponderId),
+    [account = aec_id:specialize_type(D) || D <- Delegates],
     #channel{id               = aec_id:create(channel, IdBin),
              initiator        = InitiatorId,
              responder        = ResponderId,
