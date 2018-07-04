@@ -275,7 +275,7 @@ groups() ->
       [
         % get block-s
         block_genesis,
-        block_pending,
+        % block_pending,
         block_latest,
 
         block_by_height,
