@@ -265,6 +265,41 @@
         }
       }
     },
+    "/micro-blocks/hash/{hash}/transactions/count" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get micro block transaction count by hash",
+        "operationId" : "GetMicroBlocksTransactionsCountByHash",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "hash",
+          "in" : "path",
+          "description" : "Hash of the block to fetch",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Returns micro block transaction count",
+            "schema" : {
+              "$ref" : "#/definitions/inline_response_200"
+            }
+          },
+          "400" : {
+            "description" : "Invalid hash",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Block not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/header-by-hash" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
@@ -2110,7 +2145,7 @@
           "200" : {
             "description" : "The count of transactions in the block",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200"
+              "$ref" : "#/definitions/inline_response_200_1"
             }
           },
           "400" : {
@@ -2157,7 +2192,7 @@
           "200" : {
             "description" : "The count of transactions in the block",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200"
+              "$ref" : "#/definitions/inline_response_200_1"
             }
           },
           "404" : {
@@ -2192,7 +2227,7 @@
           "200" : {
             "description" : "The count of transactions in the genesis block",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200"
+              "$ref" : "#/definitions/inline_response_200_1"
             }
           }
         }
@@ -2221,7 +2256,7 @@
           "200" : {
             "description" : "The count of transactions in the latest block",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200"
+              "$ref" : "#/definitions/inline_response_200_1"
             }
           }
         }
@@ -2250,7 +2285,7 @@
           "200" : {
             "description" : "The count of transactions in the pending block",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200"
+              "$ref" : "#/definitions/inline_response_200_1"
             }
           },
           "404" : {
@@ -2525,7 +2560,7 @@
           "200" : {
             "description" : "Node's peer public key",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200_1"
+              "$ref" : "#/definitions/inline_response_200_2"
             }
           },
           "404" : {
@@ -4407,6 +4442,7 @@
       "properties" : {
         "count" : {
           "type" : "integer",
+          "format" : "int64",
           "description" : "Count"
         }
       },
@@ -4415,6 +4451,17 @@
       }
     },
     "inline_response_200_1" : {
+      "properties" : {
+        "count" : {
+          "type" : "integer",
+          "description" : "Count"
+        }
+      },
+      "example" : {
+        "count" : 0
+      }
+    },
+    "inline_response_200_2" : {
       "properties" : {
         "pubkey" : {
           "$ref" : "#/definitions/EncodedHash"

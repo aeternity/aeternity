@@ -232,6 +232,40 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /micro-blocks/hash/{hash}/transactions/count:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetMicroBlocksTransactionsCountByHash
+      description: 'Get micro block transaction count by hash'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: hash
+          description: 'Hash of the block to fetch'
+          required: true
+          type : string
+      responses:
+        '200':
+          description: 'Returns micro block transaction count'
+          schema:
+            type: object
+            properties:
+              count:
+                type: integer
+                description: Count
+                format: int64
+        '400':
+          description: 'Invalid hash'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Block not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
   /header-by-hash:
     get:
       tags:

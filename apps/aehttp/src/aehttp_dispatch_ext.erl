@@ -108,6 +108,19 @@ handle_request('GetMicroBlocksTransactionsByHash', Params, _Context) ->
             {400, [], #{reason => <<"Invalid hash">>}}
     end;
 
+handle_request('GetMicroBlocksTransactionsCountByHash', Params, _Context) ->
+    case aec_base58c:safe_decode(block_hash, maps:get(hash, Params)) of
+        {ok, Hash} ->
+            case aehttp_logic:get_micro_block_by_hash(Hash) of
+                {ok, Block} ->
+                    {200, [], #{count => length(aec_blocks:txs(Block))}};
+                {error, block_not_found} ->
+                    {404, [], #{reason => <<"Block not found">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid hash">>}}
+    end;
+
 handle_request('GetBlockGenesis', Req, _Context) ->
     get_block(fun aehttp_logic:get_block_genesis/0, Req, json);
 

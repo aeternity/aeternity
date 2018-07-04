@@ -67,7 +67,8 @@
     get_micro_block_header_by_hash_on_micro_block/1,
     get_micro_block_transactions_by_hash_on_genesis_block/1,
     get_micro_block_transactions_by_hash_on_key_block/1,
-    get_micro_block_transactions_by_hash_on_micro_block/1
+    get_micro_block_transactions_by_hash_on_micro_block/1,
+    get_micro_block_transactions_count_by_hash_on_micro_block/1
    ]).
 
 %% test case exports
@@ -302,7 +303,8 @@ groups() ->
        get_micro_block_header_by_hash_on_micro_block,
        get_micro_block_transactions_by_hash_on_genesis_block,
        get_micro_block_transactions_by_hash_on_key_block,
-       get_micro_block_transactions_by_hash_on_micro_block
+       get_micro_block_transactions_by_hash_on_micro_block,
+       get_micro_block_transactions_count_by_hash_on_micro_block
       ]},
      {off_chain_endpoints, [],
       [
@@ -1095,6 +1097,22 @@ get_micro_block_transactions_by_hash_on_micro_block(_Config) ->
     %% TODO: check Tx is in Txs
     ok.
 
+get_micro_block_transactions_count_by_hash_on_micro_block(_Config) ->
+    Node = aecore_suite_utils:node_name(?NODE),
+    {ok, Pub} = rpc(aec_keys, pubkey, []),
+    {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1),
+    ?assertEqual({ok, [Tx]},  rpc:call(Node, aec_tx_pool, peek, [infinity])),
+    {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
+    ?assertEqual({ok, []}, rpc:call(Node, aec_tx_pool, peek, [infinity])),
+
+    ?assertEqual(true, aec_blocks:is_key_block(KeyBlock)),
+    ?assertEqual(false, aec_blocks:is_key_block(MicroBlock)),
+    ?assertEqual(MicroBlock, rpc(aec_chain, top_block, [])),
+
+    {ok, 200, Count} = get_micro_blocks_transactions_count_by_hash_sut(hash(MicroBlock)),
+    ?assertEqual(1, maps:get(<<"count">>, Count)),
+    ok.
+
 get_micro_blocks_header_by_hash_sut(Hash) ->
     Host = external_address(),
     Hash1 = binary_to_list(Hash),
@@ -1104,6 +1122,11 @@ get_micro_blocks_transactions_by_hash_sut(Hash) ->
     Host = external_address(),
     Hash1 = binary_to_list(Hash),
     http_request(Host, get, "micro-blocks/hash/" ++ http_uri:encode(Hash1) ++ "/transactions", []).
+
+get_micro_blocks_transactions_count_by_hash_sut(Hash) ->
+    Host = external_address(),
+    Hash1 = binary_to_list(Hash),
+    http_request(Host, get, "micro-blocks/hash/" ++ http_uri:encode(Hash1) ++ "/transactions/count", []).
 
 hash(Block) ->
     {ok, Hash0} = aec_blocks:hash_internal_representation(Block),
