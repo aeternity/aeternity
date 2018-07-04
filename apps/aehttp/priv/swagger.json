@@ -247,7 +247,7 @@
           "200" : {
             "description" : "Returns micro block transactions",
             "schema" : {
-              "$ref" : "#/definitions/#definitions/TxObjects"
+              "$ref" : "#/definitions/JSONTxs"
             }
           },
           "400" : {
@@ -2717,9 +2717,6 @@
         "data_schema" : {
           "type" : "string"
         }
-      },
-      "example" : {
-        "data_schema" : "data_schema"
       }
     },
     "MsgPackTxs" : {

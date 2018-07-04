@@ -1093,8 +1093,9 @@ get_micro_block_transactions_by_hash_on_micro_block(_Config) ->
     ?assertEqual(false, aec_blocks:is_key_block(MicroBlock)),
     ?assertEqual(MicroBlock, rpc(aec_chain, top_block, [])),
 
-    {ok, 200, Txs} = get_micro_blocks_transactions_by_hash_sut(hash(MicroBlock)),
+    {ok, 200, #{<<"transactions">> := Txs}} = get_micro_blocks_transactions_by_hash_sut(hash(MicroBlock)),
     %% TODO: check Tx is in Txs
+    ?assertMatch([_], Txs),
     ok.
 
 get_micro_block_transactions_count_by_hash_on_micro_block(_Config) ->

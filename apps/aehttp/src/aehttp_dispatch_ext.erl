@@ -96,11 +96,11 @@ handle_request('GetMicroBlocksTransactionsByHash', Params, _Context) ->
             case aehttp_logic:get_micro_block_by_hash(Hash) of
                 {ok, Block} ->
                     Header = aec_blocks:to_header(Block),
-                    %% TODO: find out what data_schema to use
-                    Txs = [#{tx => aetx_sign:serialize_for_client(json, Header, Tx),
-                             data_schema => <<"JSONTx">>}
-                           || Tx <- aec_blocks:txs(Block)],
-                    {200, [], Txs};
+                    Txs = [ aetx_sign:serialize_for_client(json, Header, Tx)
+                            || Tx <- aec_blocks:txs(Block)],
+                    JsonTxs = #{data_schema => <<"JSONTx">>,
+                                transactions => Txs},
+                    {200, [], JsonTxs};
                 {error, block_not_found} ->
                     {404, [], #{reason => <<"Block not found">>}}
             end;

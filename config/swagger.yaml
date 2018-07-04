@@ -222,7 +222,7 @@ paths:
         '200':
           description: 'Returns micro block transactions'
           schema:
-            $ref: '#definitions/TxObjects'
+            $ref: '#/definitions/JSONTxs'
         '400':
           description: 'Invalid hash'
           schema:
