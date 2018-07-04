@@ -24,6 +24,7 @@
         , upd_transfer/1
         , deposit/1
         , withdraw/1
+        , leave_reestablish/1
         , multiple_channels/1
         ]).
 
@@ -51,6 +52,7 @@ groups() ->
       , upd_transfer
       , deposit
       , withdraw
+      , leave_reestablish
       , multiple_channels
       ]
      }
@@ -246,6 +248,34 @@ withdraw(Cfg) ->
     Expected = {IAmt2, RAmt2},
     {Expected, Expected} = {{IAmt0 - Withdrawal, RAmt0}, Expected},
     check_info(100).
+
+leave_reestablish(Cfg) ->
+    #{ i := #{fsm := FsmI} = I
+     , r := #{} = R
+     , spec := #{ initiator := _PubI
+                , responder := _PubR }} = create_channel_([{port, 9329}|Cfg]),
+    ct:log("I = ~p", [I]),
+    #{initiator_amount := IAmt0, responder_amount := RAmt0} = I,
+    ok = rpc(dev1, aesc_fsm, upd_withdraw, [FsmI, #{amount => Withdrawal}]),
+    check_info(),
+    {I1, _} = await_signing_request(withdraw_tx, I),
+    {_R1, _} = await_signing_request(withdraw_created, R),
+    mine_blocks(dev1, 4),
+    ok.
+
+inband_msgs(Cfg) ->
+    #{ i := #{fsm := FsmI} = _I
+     , r := #{fsm := FsmR} = R
+     , spec := #{ initiator := _PubI
+                , responder := PubR }} = create_channel_([{port,9326}|Cfg]),
+    check_info(),
+    ok = rpc(dev1, aesc_fsm, inband_msg, [FsmI, PubR, <<"i2r hello">>]),
+    receive_from_fsm(
+      message, R, fun(#{info := #{info := <<"i2r hello">>}}) -> ok end, 1000, true),
+    rpc(dev1, erlang, exit, [FsmI, kill]),
+    rpc(dev1, erlang, exit, [FsmR, kill]),
+    check_info(1000),
+    ok.
 
 multiple_channels(Cfg) ->
     ct:log("spawning multiple channels", []),
