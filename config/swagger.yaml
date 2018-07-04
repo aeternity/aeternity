@@ -37,7 +37,7 @@ paths:
 ## External APIs definitions
 ###
 
-  /top:
+  /blocks/top:
     get:
       tags:
         - external

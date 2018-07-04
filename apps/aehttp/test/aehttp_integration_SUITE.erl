@@ -660,7 +660,7 @@ get_top_micro_block(_Config) ->
 
 get_top_sut() ->
     Host = external_address(),
-    http_request(Host, get, "top", []).
+    http_request(Host, get, "blocks/top", []).
 
 %% TODO fix header encoding for microblock
 block_to_endpoint_top(Block) ->
@@ -3510,7 +3510,7 @@ ws_mine_key_and_micro_block(ConnPid, Node) ->
 
 get_top() ->
     Host = external_address(),
-    http_request(Host, get, "top", []).
+    http_request(Host, get, "blocks/top", []).
 
 get_contract_create(Data) ->
     Host = external_address(),
