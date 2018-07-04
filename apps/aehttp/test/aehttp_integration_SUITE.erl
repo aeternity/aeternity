@@ -4011,7 +4011,7 @@ swagger_validation_types(_Config) ->
 
 wrong_http_method_top(_Config) ->
     Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "top", []).
+    {ok, 405, _} = http_request(Host, post, "blocks/top", []).
 
 wrong_http_method_contract_create(_Config) ->
     Host = external_address(),
