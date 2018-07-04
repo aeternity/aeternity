@@ -100,6 +100,26 @@ paths:
           description: Height of current key block
           type: integer
       security:
+  /key-blocks/pending:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetKeyBlocksPending
+      description: 'Get the pending key block'
+      produces:
+        - application/json
+      parameters:
+      responses:
+        '200':
+          description: The pending block with invalid nonce and pow evidence
+          schema:
+            $ref: '#/definitions/GenericBlock'
+        '404':
+          description: No pending block (node not mining)
+          schema:
+            $ref: '#/definitions/Error'
+      security:
   /key-blocks/hash/{hash}:
     get:
       tags:

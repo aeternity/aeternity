@@ -47,6 +47,10 @@
      get_current_key_block_height_on_genesis_block/1,
      get_current_key_block_height_on_key_block/1,
      get_current_key_block_height_on_micro_block/1,
+     get_pending_key_block_when_miner_is_stopped/1,
+     get_pending_key_block_on_genesis_block/1,
+     get_pending_key_block_on_key_block/1,
+     get_pending_key_block_on_micro_block/1,
      get_key_block_by_hash_on_genesis_block/1,
      get_key_block_by_hash_on_key_block/1,
      get_key_block_by_hash_on_micro_block/1
@@ -266,6 +270,10 @@ groups() ->
         get_current_key_block_height_on_genesis_block,
         get_current_key_block_height_on_key_block,
         get_current_key_block_height_on_micro_block,
+        get_pending_key_block_when_miner_is_stopped,
+        get_pending_key_block_on_genesis_block,
+        get_pending_key_block_on_key_block,
+        get_pending_key_block_on_micro_block,
         get_key_block_by_hash_on_genesis_block,
         get_key_block_by_hash_on_key_block,
         get_key_block_by_hash_on_micro_block
@@ -814,6 +822,92 @@ get_current_key_block_height_on_micro_block(_Config) ->
     ?assertEqual(aec_blocks:height(KeyBlock), Height),
     ok.
 
+get_pending_key_block_when_miner_is_stopped(_Config) ->
+    ok = rpc(aec_conductor, reinit_chain, []),
+
+    {ok, 404, #{<<"reason">> := Reason}} = get_key_blocks_pending_sut(),
+    ?assertEqual(<<"Not mining, no pending block">>, Reason),
+    ok.
+
+get_pending_key_block_on_genesis_block(_Config) ->
+    ok = rpc(aec_conductor, reinit_chain, []),
+    GenesisHash = rpc(aec_chain, genesis_hash, []),
+    GenesisHashEncoded = aec_base58c:encode(block_hash, GenesisHash),
+    %% Expect a key block each hour.
+    MiningRate = 60 * 60 * 1000,
+    ok = rpc(application, set_env, [aecore, expected_mine_rate, MiningRate]),
+    ok = rpc(aec_conductor, start_mining, []),
+    %% Make sure miner is started.
+    timer:sleep(100),
+
+    {ok, 200, PendingBlock} = get_key_blocks_pending_sut(),
+    ?assertEqual(1, maps:get(<<"height">>, PendingBlock)),
+    ?assertEqual(GenesisHashEncoded, maps:get(<<"prev_hash">>, PendingBlock)),
+    %% TODO: check the block_hash prefix
+
+    ok = rpc(aec_conductor, stop_mining, []),
+    ok.
+
+get_pending_key_block_on_key_block(_Config) ->
+    ok = rpc(aec_conductor, reinit_chain, []),
+    Node = aecore_suite_utils:node_name(?NODE),
+    ForkHeight = aecore_suite_utils:latest_fork_height(),
+    aecore_suite_utils:mine_blocks(Node, ForkHeight),
+
+    {ok, [TopBlock]} = aecore_suite_utils:mine_blocks(Node, 1),
+    ?assertEqual(TopBlock, rpc(aec_chain, top_block, [])),
+    ?assertEqual(true, aec_blocks:is_key_block(TopBlock)),
+    {ok, TopBlockHash} = aec_blocks:hash_internal_representation(TopBlock),
+    TopBlockHashEncoded = aec_base58c:encode(block_hash, TopBlockHash),
+
+    MiningRate = 60 * 60 * 1000,
+    ok = rpc(application, set_env, [aecore, expected_mine_rate, MiningRate]),
+    ok = rpc(aec_conductor, start_mining, []),
+    %% Make sure miner is started.
+    timer:sleep(100),
+
+    {ok, 200, PendingBlock} = get_key_blocks_pending_sut(),
+    ?assertEqual(maps:get(<<"height">>, PendingBlock), aec_blocks:height(TopBlock) + 1),
+    ?assertEqual(maps:get(<<"prev_hash">>, PendingBlock), TopBlockHashEncoded),
+
+    ok = rpc(aec_conductor, stop_mining, []),
+    ok.
+
+get_pending_key_block_on_micro_block(_Config) ->
+    ok = rpc(aec_conductor, reinit_chain, []),
+    Node = aecore_suite_utils:node_name(?NODE),
+    ForkHeight = aecore_suite_utils:latest_fork_height(),
+    aecore_suite_utils:mine_blocks(Node, ForkHeight),
+
+    %% Mine 1 key block to get funds to spend.
+    {ok, [KeyBlock0]} = aecore_suite_utils:mine_blocks(Node, 1),
+    ?assertEqual(true, aec_blocks:is_key_block(KeyBlock0)),
+    {ok, Pub} = rpc(aec_keys, pubkey, []),
+    ok = aecore_suite_utils:spend(Node, Pub, Pub, 1),
+    {ok, [_]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+    {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
+    {ok, []} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+    TopBlock = rpc(aec_chain, top_block, []),
+    {ok, TopBlockHash} = aec_blocks:hash_internal_representation(TopBlock),
+    TopBlockHashEncoded = aec_base58c:encode(block_hash, TopBlockHash),
+
+    ?assertEqual(true, aec_blocks:is_key_block(KeyBlock)),
+    ?assertEqual(false, aec_blocks:is_key_block(MicroBlock)),
+    ?assertEqual(MicroBlock, TopBlock),
+
+    MiningRate = 60 * 60 * 1000,
+    ok = rpc(application, set_env, [aecore, expected_mine_rate, MiningRate]),
+    ok = rpc(aec_conductor, start_mining, []),
+    %% Make sure miner is started.
+    timer:sleep(100),
+
+    {ok, 200, PendingBlock} = get_key_blocks_pending_sut(),
+    ?assertEqual(maps:get(<<"height">>, PendingBlock), aec_blocks:height(TopBlock) + 1),
+    ?assertEqual(maps:get(<<"prev_hash">>, PendingBlock), TopBlockHashEncoded),
+
+    ok = rpc(aec_conductor, stop_mining, []),
+    ok.
+
 get_key_block_by_hash_on_genesis_block(_Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     GenesisBlock = rpc(aec_chain, genesis_block, []),
@@ -863,6 +957,10 @@ get_key_blocks_current_hash_sut() ->
 get_key_blocks_current_height_sut() ->
     Host = external_address(),
     http_request(Host, get, "key-blocks/current/height", []).
+
+get_key_blocks_pending_sut() ->
+    Host = external_address(),
+    http_request(Host, get, "key-blocks/pending", []).
 
 get_key_blocks_by_hash_sut(Hash) ->
     Host = external_address(),
