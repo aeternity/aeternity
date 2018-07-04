@@ -63,36 +63,12 @@ handle_request('GetKeyBlockByHeight', Req, _Context) ->
     Height = maps:get('height', Req),
     get_block(fun() -> aehttp_logic:get_key_block_by_height(Height) end, Req, json);
 
-handle_request('GetBlockByHeightDeprecated', Req, _Context) ->
-    Height = maps:get('height', Req),
-    case aehttp_logic:get_key_block_by_height(Height) of
-        {ok, Block} ->
-            {200, [], aehttp_api_parser:encode(block, Block)};
-        {error, block_not_found} ->
-            {404, [], #{reason => <<"Block not found">>}};
-        {error, chain_too_short} ->
-            {404, [], #{reason => <<"Chain too short">>}}
-    end;
-
 handle_request('GetBlockByHash', Req, _Context) ->
     case aec_base58c:safe_decode(block_hash, maps:get('hash', Req)) of
         {error, _} ->
             {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
             get_block(fun() -> aehttp_logic:get_block_by_hash(Hash) end, Req, json)
-    end;
-
-handle_request('GetBlockByHashDeprecated' = _Method, Req, _Context) ->
-    case aec_base58c:safe_decode(block_hash, maps:get('hash', Req)) of
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid hash">>}};
-        {ok, Hash} ->
-            case aehttp_logic:get_block_by_hash(Hash) of
-                {ok, Block} ->
-                    {200, [], aehttp_api_parser:encode(block, Block)};
-                {error, block_not_found} ->
-                    {404, [], #{reason => <<"Block not found">>}}
-            end
     end;
 
 handle_request('GetHeaderByHash', Req, _Context) ->
