@@ -230,6 +230,41 @@
         }
       }
     },
+    "/micro-blocks/hash/{hash}/transactions" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get micro block transactions by hash",
+        "operationId" : "GetMicroBlocksTransactionsByHash",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "hash",
+          "in" : "path",
+          "description" : "Hash of the block to fetch",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Returns micro block transactions",
+            "schema" : {
+              "$ref" : "#/definitions/#definitions/TxObjects"
+            }
+          },
+          "400" : {
+            "description" : "Invalid hash",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Block not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/header-by-hash" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
@@ -2647,6 +2682,9 @@
         "data_schema" : {
           "type" : "string"
         }
+      },
+      "example" : {
+        "data_schema" : "data_schema"
       }
     },
     "MsgPackTxs" : {

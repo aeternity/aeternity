@@ -64,7 +64,10 @@
    [
     get_micro_block_header_by_hash_on_genesis_block/1,
     get_micro_block_header_by_hash_on_key_block/1,
-    get_micro_block_header_by_hash_on_micro_block/1
+    get_micro_block_header_by_hash_on_micro_block/1,
+    get_micro_block_transactions_by_hash_on_genesis_block/1,
+    get_micro_block_transactions_by_hash_on_key_block/1,
+    get_micro_block_transactions_by_hash_on_micro_block/1
    ]).
 
 %% test case exports
@@ -296,7 +299,10 @@ groups() ->
       [
        get_micro_block_header_by_hash_on_genesis_block,
        get_micro_block_header_by_hash_on_key_block,
-       get_micro_block_header_by_hash_on_micro_block
+       get_micro_block_header_by_hash_on_micro_block,
+       get_micro_block_transactions_by_hash_on_genesis_block,
+       get_micro_block_transactions_by_hash_on_key_block,
+       get_micro_block_transactions_by_hash_on_micro_block
       ]},
      {off_chain_endpoints, [],
       [
@@ -1053,10 +1059,51 @@ get_micro_block_header_by_hash_on_micro_block(_Config) ->
     ?assertEqual(maps:get(<<"height">>, Header), aec_blocks:height(KeyBlock)),
     ok.
 
+get_micro_block_transactions_by_hash_on_genesis_block(_Config) ->
+    ok = rpc(aec_conductor, reinit_chain, []),
+    GenesisBlock = rpc(aec_chain, genesis_block, []),
+
+    {ok, 404, #{<<"reason">> := Reason}} = get_micro_blocks_transactions_by_hash_sut(hash(GenesisBlock)),
+    ?assertEqual(<<"Block not found">>, Reason),
+
+    ForkHeight = aecore_suite_utils:latest_fork_height(),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), ForkHeight),
+    ok.
+
+get_micro_block_transactions_by_hash_on_key_block(_Config) ->
+    {ok, [TopBlock]} = aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    ?assertEqual(TopBlock, rpc(aec_chain, top_block, [])),
+    ?assertEqual(true, aec_blocks:is_key_block(TopBlock)),
+
+    {ok, 404, #{<<"reason">> := Reason}} = get_micro_blocks_transactions_by_hash_sut(hash(TopBlock)),
+    ?assertEqual(<<"Block not found">>, Reason),
+    ok.
+
+get_micro_block_transactions_by_hash_on_micro_block(_Config) ->
+    Node = aecore_suite_utils:node_name(?NODE),
+    {ok, Pub} = rpc(aec_keys, pubkey, []),
+    {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1),
+    ?assertEqual({ok, [Tx]},  rpc:call(Node, aec_tx_pool, peek, [infinity])),
+    {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
+    ?assertEqual({ok, []}, rpc:call(Node, aec_tx_pool, peek, [infinity])),
+
+    ?assertEqual(true, aec_blocks:is_key_block(KeyBlock)),
+    ?assertEqual(false, aec_blocks:is_key_block(MicroBlock)),
+    ?assertEqual(MicroBlock, rpc(aec_chain, top_block, [])),
+
+    {ok, 200, Txs} = get_micro_blocks_transactions_by_hash_sut(hash(MicroBlock)),
+    %% TODO: check Tx is in Txs
+    ok.
+
 get_micro_blocks_header_by_hash_sut(Hash) ->
     Host = external_address(),
     Hash1 = binary_to_list(Hash),
     http_request(Host, get, "micro-blocks/hash/" ++ http_uri:encode(Hash1) ++ "/header", []).
+
+get_micro_blocks_transactions_by_hash_sut(Hash) ->
+    Host = external_address(),
+    Hash1 = binary_to_list(Hash),
+    http_request(Host, get, "micro-blocks/hash/" ++ http_uri:encode(Hash1) ++ "/transactions", []).
 
 hash(Block) ->
     {ok, Hash0} = aec_blocks:hash_internal_representation(Block),

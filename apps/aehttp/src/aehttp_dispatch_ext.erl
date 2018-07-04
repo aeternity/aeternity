@@ -90,6 +90,24 @@ handle_request('GetMicroBlocksHeaderByHash', Params, _Context) ->
             {400, [], #{reason => <<"Invalid hash">>}}
     end;
 
+handle_request('GetMicroBlocksTransactionsByHash', Params, _Context) ->
+    case aec_base58c:safe_decode(block_hash, maps:get(hash, Params)) of
+        {ok, Hash} ->
+            case aehttp_logic:get_micro_block_by_hash(Hash) of
+                {ok, Block} ->
+                    Header = aec_blocks:to_header(Block),
+                    %% TODO: find out what data_schema to use
+                    Txs = [#{tx => aetx_sign:serialize_for_client(json, Header, Tx),
+                             data_schema => <<"JSONTx">>}
+                           || Tx <- aec_blocks:txs(Block)],
+                    {200, [], Txs};
+                {error, block_not_found} ->
+                    {404, [], #{reason => <<"Block not found">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid hash">>}}
+    end;
+
 handle_request('GetBlockGenesis', Req, _Context) ->
     get_block(fun aehttp_logic:get_block_genesis/0, Req, json);
 
