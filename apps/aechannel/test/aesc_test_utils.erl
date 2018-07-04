@@ -184,22 +184,16 @@ create_tx_spec(InitiatorPubKey, ResponderPubKey, Spec0, State) ->
                                       {ResponderPubKey, ResponderAmount}]],
     Trees = aec_test_utils:create_state_tree_with_accounts(Accounts, no_backend),
     StateHash = aec_trees:hash(Trees),
-    #{initiator          => InitiatorPubKey,
-      initiator_amount   => InitiatorAmount,
-      responder          => ResponderPubKey,
-      responder_amount   => ResponderAmount,
-      channel_reserve    => maps:get(channel_reserve, Spec),
-      lock_period        => maps:get(lock_period, Spec),
-      ttl                => maps:get(ttl, Spec, 0),
-      fee                => maps:get(fee, Spec),
-      state_hash         => StateHash,
-      nonce              => maps:get(nonce, Spec)}.
+    Spec#{initiator          => InitiatorPubKey,
+          responder          => ResponderPubKey,
+          state_hash         => StateHash}.
 
 create_tx_default_spec(InitiatorPubKey, State) ->
     #{initiator_amount   => 50,
       responder_amount   => 50,
       channel_reserve    => 20,
       lock_period        => 100,
+      ttl                => 0,
       fee                => 3,
       nonce              => try next_nonce(InitiatorPubKey, State) catch _:_ -> 0 end}.
 

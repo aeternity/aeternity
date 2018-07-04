@@ -14,6 +14,7 @@
          is_solo_closing/2,
          new/1,
          peers/1,
+         delegates/1,
          serialize/1,
          close_solo/3,
          close_solo/4,
@@ -46,6 +47,7 @@
 -record(channel, {id               :: aec_id:id(),
                   initiator        :: aec_id:id(),
                   responder        :: aec_id:id(),
+                  delegates        :: [aec_id:id()],
                   total_amount     :: amount(),
                   initiator_amount :: amount(),
                   channel_reserve  :: amount(),
@@ -112,6 +114,7 @@ deserialize(IdBin, Bin) ->
     , {total_amount     , TotalAmount}
     , {initiator_amount , InitiatorAmount}
     , {channel_reserve  , ChannelReserve}
+    , {delegates        , Delegates}
     , {state_hash       , StateHash}
     , {round            , Round}
     , {lock_period      , LockPeriod}
@@ -126,6 +129,7 @@ deserialize(IdBin, Bin) ->
     #channel{id               = aec_id:create(channel, IdBin),
              initiator        = InitiatorId,
              responder        = ResponderId,
+             delegates        = Delegates,
              total_amount     = TotalAmount,
              initiator_amount = InitiatorAmount,
              channel_reserve  = ChannelReserve,
@@ -161,6 +165,7 @@ new(ChCTx) ->
             aesc_create_tx:responder(ChCTx)),
     InitiatorAmount   = aesc_create_tx:initiator_amount(ChCTx),
     ResponderAmount = aesc_create_tx:responder_amount(ChCTx),
+    Delegates = aesc_create_tx:delegates(ChCTx),
     StateHash = aesc_create_tx:state_hash(ChCTx),
     #channel{id               = aec_id:create(channel, Id),
              initiator        = aec_id:create(account, aesc_create_tx:initiator(ChCTx)),
@@ -168,6 +173,7 @@ new(ChCTx) ->
              total_amount     = InitiatorAmount + ResponderAmount,
              initiator_amount = InitiatorAmount,
              channel_reserve  = aesc_create_tx:channel_reserve(ChCTx),
+             delegates        = [aec_id:create(account, D) || D <- Delegates],
              state_hash       = StateHash,
              round            = 0,
              closes_at        = 0,
@@ -178,7 +184,9 @@ peers(#channel{} = Ch) ->
     [initiator(Ch), responder(Ch)].
 
 -spec serialize(channel()) -> binary().
-serialize(#channel{initiator = InitiatorId, responder = ResponderId} = Ch) ->
+serialize(#channel{initiator = InitiatorId,
+                   responder = ResponderId,
+                   delegates = Delegates} = Ch) ->
     aec_object_serialization:serialize(
       ?CHANNEL_TYPE, ?CHANNEL_VSN,
       serialization_template(?CHANNEL_VSN),
@@ -187,6 +195,7 @@ serialize(#channel{initiator = InitiatorId, responder = ResponderId} = Ch) ->
       , {total_amount     , total_amount(Ch)}
       , {initiator_amount , initiator_amount(Ch)}
       , {channel_reserve  , channel_reserve(Ch)}
+      , {delegates        , Delegates}
       , {state_hash       , state_hash(Ch)}
       , {round            , round(Ch)}
       , {lock_period      , lock_period(Ch)}
@@ -199,6 +208,7 @@ serialization_template(?CHANNEL_VSN) ->
     , {total_amount     , int}
     , {initiator_amount , int}
     , {channel_reserve  , int}
+    , {delegates        , [id]}
     , {state_hash       , binary}
     , {round            , int}
     , {lock_period      , int}
@@ -251,6 +261,10 @@ channel_reserve(#channel{channel_reserve = ChannelReserve}) ->
 -spec lock_period(channel()) -> non_neg_integer().
 lock_period(#channel{lock_period = LockPeriod}) ->
     LockPeriod.
+
+-spec delegates(channel()) -> list(aec_keys:pubkey()).
+delegates(#channel{delegates = Ds}) ->
+    [aec_id:specialize(D, account) || D <- Ds].
 
 -spec state_hash(channel()) -> binary().
 state_hash(#channel{state_hash = StateHash}) ->
