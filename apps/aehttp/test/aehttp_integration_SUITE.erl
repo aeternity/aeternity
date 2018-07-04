@@ -26,14 +26,20 @@
     broken_decode_sophia_data/1
    ]).
 
+
+%% /blocks/top
+-export(
+    [
+     get_top_empty_chain/1,
+     get_top_key_block/1,
+     get_top_micro_block/1
+    ]).
+
 %% test case exports
 %% external endpoints
 -export(
    [
     % get block-s
-    get_top_empty_chain/1,
-    get_top_key_block/1,
-    get_top_micro_block/1,
     block_genesis/1,
     block_pending/1,
     block_latest/1,
@@ -214,7 +220,9 @@ all() ->
 
 groups() ->
     [
-     {all_endpoints, [sequence], [{group, off_chain_endpoints},
+     {all_endpoints, [sequence], [
+                                  {group, top},
+                                  {group, off_chain_endpoints},
                                   {group, external_endpoints},
                                   {group, internal_endpoints},
                                   {group, swagger_validation},
@@ -222,7 +230,13 @@ groups() ->
                                   {group, websocket},
                                   {group, naming},
                                   {group, channel_websocket}
-                                  ]},
+                                 ]},
+     {top, [sequence],
+      [
+        get_top_empty_chain,
+        get_top_key_block,
+        get_top_micro_block
+      ]},
      {off_chain_endpoints, [],
       [
        test_encode_decode_sophia_data,
@@ -232,9 +246,6 @@ groups() ->
      {external_endpoints, [sequence],
       [
         % get block-s
-        get_top_empty_chain,
-        get_top_key_block,
-        get_top_micro_block,
         block_genesis,
         block_pending,
         block_latest,
@@ -605,13 +616,13 @@ decode_data(Type, EncodedData) ->
                                     data => EncodedData}),
     Data.
 
+%% /blocks/top
 
-%% enpoints
 get_top_empty_chain(_Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     GenesisBlock = rpc(aec_chain, genesis_block, []),
 
-    {ok, 200, ApiTop} = get_top(),
+    {ok, 200, ApiTop} = get_top_sut(),
     ?assertEqual(ApiTop, block_to_endpoint_top(GenesisBlock)),
 
     ForkHeight = aecore_suite_utils:latest_fork_height(),
@@ -623,7 +634,7 @@ get_top_key_block(_Config) ->
     ?assertEqual(TopBlock, rpc(aec_chain, top_block, [])),
     ?assertEqual(true, aec_blocks:is_key_block(TopBlock)),
 
-    {ok, 200, #{<<"height">> := Height} = ApiTop} = get_top(),
+    {ok, 200, #{<<"height">> := Height} = ApiTop} = get_top_sut(),
     ?assertEqual(true, Height > 0),
     ?assertEqual(ApiTop, block_to_endpoint_top(TopBlock)),
     ok.
@@ -643,10 +654,25 @@ get_top_micro_block(_Config) ->
     ?assertEqual(false, aec_blocks:is_key_block(TopBlock)),
     ?assertEqual(true, aec_blocks:height(KeyTopBlock) < aec_blocks:height(TopBlock)),
 
-    {ok, 200, ApiTop} = get_top(),
+    {ok, 200, ApiTop} = get_top_sut(),
     ?assertEqual(ApiTop, block_to_endpoint_top(TopBlock)),
     ok.
 
+get_top_sut() ->
+    Host = external_address(),
+    http_request(Host, get, "top", []).
+
+%% TODO fix header encoding for microblock
+block_to_endpoint_top(Block) ->
+    {ok, Hash} = aec_blocks:hash_internal_representation(Block),
+    ApiTop = maps:put(<<"hash">>, aec_base58c:encode(block_hash, Hash),
+             aehttp_api_parser:encode(header, Block)),
+    case aec_blocks:is_key_block(Block) of
+        true -> ApiTop;
+        false -> jsx:decode(jsx:encode(ApiTop), [return_maps])
+    end.
+
+%% enpoints
 
 block_by_height(_Config) ->
     GetExpectedBlockFun =
@@ -4173,16 +4199,6 @@ process_http_return(R) ->
             end;
         {error, _} = Error ->
             Error
-    end.
-
-%% TODO fix header encoding for microblock
-block_to_endpoint_top(Block) ->
-    {ok, Hash} = aec_blocks:hash_internal_representation(Block),
-    ApiTop = maps:put(<<"hash">>, aec_base58c:encode(block_hash, Hash),
-             aehttp_api_parser:encode(header, Block)),
-    case aec_blocks:is_key_block(Block) of
-        true -> ApiTop;
-        false -> jsx:decode(jsx:encode(ApiTop), [return_maps])
     end.
 
 block_to_endpoint_map(Block) ->
