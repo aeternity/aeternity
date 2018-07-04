@@ -76,11 +76,11 @@
 -type event() :: tx_created | tx_received.
 
 -ifndef(TEST).
--define(DEFAULT_INVALID_TX_TTL, 256).
--define(DEFAULT_EXPIRED_TX_TTL, 5).
+-define(DEFAULT_TX_TTL, 256).
+-define(DEFAULT_INVALID_TX_TTL, 5).
 -else.
--define(DEFAULT_INVALID_TX_TTL, 8).
--define(DEFAULT_EXPIRED_TX_TTL, 2).
+-define(DEFAULT_TX_TTL, 8).
+-define(DEFAULT_INVALID_TX_TTL, 2).
 -endif.
 
 %%%===================================================================
@@ -256,7 +256,7 @@ int_get_candidate(N, Dbs = {Db, GCDb}, ?KEY(_, _, Account, Nonce, TxHash) = Key,
                     int_get_candidate(N - 1, Dbs, Next, AccountsTree, Height, NewAcc);
                 false ->
                     %% This is not valid anymore.
-                    enter_tx_gc(GCDb, TxHash, Height + expired_tx_ttl()),
+                    enter_tx_gc(GCDb, TxHash, Height + invalid_tx_ttl()),
                     int_get_candidate(N, Dbs, Next, AccountsTree, Height, Acc)
             end
     end.
@@ -417,7 +417,7 @@ update_pool_on_tx_hash(TxHash, {Db, GCDb, GCHeight}, Handled) ->
                     delete_pool_db_gc(GCDb, TxHash);
                 true ->
                     ets:insert(Db, {pool_db_key(Tx), Tx}),
-                    enter_tx_gc(GCDb, TxHash, GCHeight + invalid_tx_ttl())
+                    enter_tx_gc(GCDb, TxHash, GCHeight + tx_ttl())
             end
     end.
 
@@ -464,7 +464,7 @@ pool_db_put(#state{ db = Db, gc_db = GCDb, gc_height = GCHeight }, Key, Tx, Even
                             aec_db:add_tx(Tx),
                             aec_events:publish(Event, Tx),
                             ets:insert(Db, {Key, Tx}),
-                            enter_tx_gc(GCDb, Hash, GCHeight + invalid_tx_ttl()),
+                            enter_tx_gc(GCDb, Hash, GCHeight + tx_ttl()),
                             ok
                     end
             end
@@ -549,11 +549,11 @@ int_gas_price(Tx) ->
         {value, GP} when is_integer(GP), GP >= 0 -> GP
     end.
 
+tx_ttl() ->
+    aeu_env:user_config_or_env([<<"mempool">>, <<"tx_ttl">>],
+                               aecore, mempool_tx_ttl, ?DEFAULT_TX_TTL).
+
 invalid_tx_ttl() ->
     aeu_env:user_config_or_env([<<"mempool">>, <<"invalid_tx_ttl">>],
                                aecore, mempool_invalid_tx_ttl, ?DEFAULT_INVALID_TX_TTL).
-
-expired_tx_ttl() ->
-    aeu_env:user_config_or_env([<<"mempool">>, <<"expired_tx_ttl">>],
-                               aecore, mempool_expired_tx_ttl, ?DEFAULT_EXPIRED_TX_TTL).
 
