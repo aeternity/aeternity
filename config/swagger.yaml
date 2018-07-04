@@ -87,8 +87,8 @@ paths:
       tags:
         - external
         - gossip
-      operationId: GetHeaderByHeight
-      description: 'Get a header by its height in the chain'
+      operationId: GetKeyHeaderByHeight
+      description: 'Get a key header by its height in the chain'
       produces:
         - application/json
       parameters:
@@ -1244,7 +1244,7 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
-  /account/{account_pubkey}/balance:
+  /account/{address}/balance:
     get:
       tags:
         - external
@@ -1255,8 +1255,8 @@ paths:
         - application/json
       parameters:
         - in: path
-          name: account_pubkey
-          description: 'Account pubkey to show balance for'
+          name: address
+          description: 'Address to show balance for; it can be either account or contract'
           required: true
           type: string
         - in: query
@@ -1440,8 +1440,8 @@ paths:
       tags:
         - external
         - chain
-      operationId: GetBlockByHeight
-      description: 'Get a block by height'
+      operationId: GetKeyBlockByHeight
+      description: 'Get a key block by height'
       produces:
         - application/json
       parameters:

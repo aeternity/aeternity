@@ -136,7 +136,7 @@ restart_test_() ->
      [{"Build chain, then kill server, check that chain is read back.",
        fun() ->
                [GB, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
-               ?assertEqual({ok, GB}, aec_chain:get_block_by_height(0)),
+               ?assertEqual({ok, GB}, aec_chain:get_key_block_by_height(0)),
                ?assertEqual(ok, aec_conductor:post_block(B1)),
                ?assertEqual(ok, aec_conductor:post_block(B2)),
                %% Now B2 should be the top block

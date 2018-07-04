@@ -633,7 +633,7 @@ get_top_non_empty_chain(_Config) ->
 
 block_by_height(_Config) ->
     GetExpectedBlockFun =
-        fun(H) -> rpc(aec_chain, get_block_by_height, [H]) end,
+        fun(H) -> rpc(aec_chain, get_key_block_by_height, [H]) end,
     CallApiFun = fun get_block_by_height/2,
     internal_get_block_generic(GetExpectedBlockFun, CallApiFun).
 
@@ -687,7 +687,7 @@ block_not_found_by_broken_hash(_Config) ->
 
 block_by_hash(_Config) ->
     GetExpectedBlockFun =
-        fun(H) -> rpc(aec_chain, get_block_by_height, [H]) end,
+        fun(H) -> rpc(aec_chain, get_key_block_by_height, [H]) end,
     CallApiFun =
         fun(H, Opts) ->
             {ok, Hash} = block_hash_by_height(H),
@@ -715,11 +715,12 @@ contract_transactions(_Config) ->    % miner has an account
                                      InitFunction,
                                      InitArgument),
 
+    ContractInitBalance = 1,
     ValidEncoded = #{ owner => MinerAddress,
                       code => Code,
                       vm_version => 1,
                       deposit => 2,
-                      amount => 1,
+                      amount => ContractInitBalance,
                       gas => 300,
                       gas_price => 1,
                       fee => 1,
@@ -744,7 +745,8 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, 400, #{<<"reason">> := <<"Tx not mined">>}} =
         get_contract_call_object(ContractCreateTxHash),
 
-    {ok, 404, #{}} = get_contract_poi(EncodedContractPubKey),
+    {ok, 404, #{<<"reason">> := <<"Proof for contract not found">>}} = get_contract_poi(EncodedContractPubKey),
+    {ok, 404, #{<<"reason">> := <<"Account not found">>}} =  get_balance_at_top(EncodedContractPubKey),
 
     % mine a block
     Fun1 = fun() -> tx_in_chain(ContractCreateTxHash)end,
@@ -777,6 +779,8 @@ contract_transactions(_Config) ->    % miner has an account
                                                          aec_trees:contracts(Trees)]),
     {ContractInPoI, _} = {ContractInTree, ContractInPoI},
 
+    %% Assert the balance is the one which we created the contract with
+    {ok, 200, #{<<"balance">> := ContractInitBalance}} = get_balance_at_top(EncodedContractPubKey),
     Function = <<"main">>,
     Argument = <<"42">>,
     {ok, EncodedCallData} =
@@ -2054,7 +2058,7 @@ internal_get_block_generic(GetExpectedBlockFun, CallApiFun) ->
     ok.
 
 block_txs_count_by_height(_Config) ->
-    generic_counts_test(fun(H) -> rpc(aec_chain, get_block_by_height,
+    generic_counts_test(fun(H) -> rpc(aec_chain, get_key_block_by_height,
                                      [H]) end,
                         fun get_block_txs_count_by_height/1).
 
@@ -2064,7 +2068,7 @@ block_txs_count_by_hash(_Config) ->
             {ok, Hash} = block_hash_by_height(H),
             get_block_txs_count_by_hash(Hash)
         end,
-    generic_counts_test(fun(H) -> rpc(aec_chain, get_block_by_height,
+    generic_counts_test(fun(H) -> rpc(aec_chain, get_key_block_by_height,
                                      [H]) end,
                         CallApiFun).
 
@@ -3363,7 +3367,7 @@ balance_negative_cases(_Config) ->
             Res = get_balance(H, #{height => Height,
                                    hash => BlockHash})
         end,
-    TestAccHash(400, <<"Invalid account hash">>, BrokenHash),
+    TestAccHash(400, <<"Invalid hash: address">>, BrokenHash),
     TestAccHash(404, <<"Account not found">>, RandAccount),
 
     % block in the future
@@ -4202,7 +4206,7 @@ prepare_for_spending(BlocksToMine) ->
 
 -spec block_hash_by_height(integer()) -> string().
 block_hash_by_height(Height) ->
-    {ok, B} = rpc(aec_chain, get_block_by_height, [Height]),
+    {ok, B} = rpc(aec_chain, get_key_block_by_height, [Height]),
     {ok, HBin} = aec_blocks:hash_internal_representation(B),
     Hash = binary_to_list(aec_base58c:encode(block_hash, HBin)),
     {ok, Hash}.

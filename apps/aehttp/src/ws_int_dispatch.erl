@@ -32,7 +32,7 @@ do_execute(chain, get, QueryPayload) ->
     {BlockFound, Query} =
         case QueryPayload of
             #{<<"height">> := Height} ->
-                {aec_chain:get_block_by_height(Height), {height, Height}};
+                {aec_chain:get_key_block_by_height(Height), {height, Height}};
             #{<<"hash">> := Hash0} ->
                 {ok, Hash} = aec_base58c:safe_decode(block_hash, Hash0),
                 {aec_chain:get_block(Hash), {hash, Hash0}}

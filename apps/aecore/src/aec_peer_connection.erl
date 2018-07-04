@@ -673,7 +673,7 @@ get_header(_) ->
 get_header(hash, Hash) ->
     get_header(fun aec_chain:get_header/1, Hash);
 get_header(height, N) ->
-    get_header(fun aec_chain:get_header_by_height/1, N);
+    get_header(fun aec_chain:get_key_header_by_height/1, N);
 get_header(Fun, Arg) ->
     case Fun(Arg) of
         {ok, Header} ->
@@ -691,7 +691,7 @@ handle_get_header_by_height(S, ?VSN_1, Msg) ->
     S;
 handle_get_header_by_height(S, ?GET_HEADER_BY_HEIGHT_VSN,
                             #{ height := H, top_hash := TopHash}) ->
-    case {aec_chain:get_header_by_height(H),
+    case {aec_chain:get_key_header_by_height(H),
           aec_chain:hash_is_in_main_chain(TopHash)} of
         {{ok, Header}, true} ->
             SerHeader = aec_headers:serialize_to_binary(Header),

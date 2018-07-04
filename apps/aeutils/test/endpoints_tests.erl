@@ -12,13 +12,13 @@ path_without_test() ->
 
 path_with_params_test() ->
    ?assertEqual(<<"/v2/block/height/3">>,
-      iolist_to_binary(endpoints:path(get, 'GetBlockByHeight',
+      iolist_to_binary(endpoints:path(get, 'GetKeyBlockByHeight',
                                       #{"height" => 3, "tx_objects" => true}))),
    ?assertEqual(<<"/v2/block/height/3">>,
-      iolist_to_binary(endpoints:path(get, 'GetBlockByHeight',
+      iolist_to_binary(endpoints:path(get, 'GetKeyBlockByHeight',
                                       #{"height" => 3}))),
    ?assertThrow({error, _},
-      iolist_to_binary(endpoints:path(get, 'GetBlockByHeight',
+      iolist_to_binary(endpoints:path(get, 'GetKeyBlockByHeight',
                                       #{}))).
 
 -endif.

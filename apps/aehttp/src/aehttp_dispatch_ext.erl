@@ -32,6 +32,7 @@
                         , get_block/3
                         , get_block/4
                         , get_poi/3
+                        , get_block_hash_optionally_by_hash_or_height/1
                         ]).
 
 -compile({parse_transform, lager_transform}).
@@ -58,13 +59,13 @@ handle_request('GetBlockLatest', Req, _Context) ->
 handle_request('GetBlockPending', Req, _Context) ->
     get_block(fun aehttp_logic:get_block_pending/0, Req, json, false);
 
-handle_request('GetBlockByHeight', Req, _Context) ->
+handle_request('GetKeyBlockByHeight', Req, _Context) ->
     Height = maps:get('height', Req),
-    get_block(fun() -> aehttp_logic:get_block_by_height(Height) end, Req, json);
+    get_block(fun() -> aehttp_logic:get_key_block_by_height(Height) end, Req, json);
 
 handle_request('GetBlockByHeightDeprecated', Req, _Context) ->
     Height = maps:get('height', Req),
-    case aehttp_logic:get_block_by_height(Height) of
+    case aehttp_logic:get_key_block_by_height(Height) of
         {ok, Block} ->
             {200, [], aehttp_api_parser:encode(block, Block)};
         {error, block_not_found} ->
@@ -107,9 +108,9 @@ handle_request('GetHeaderByHash', Req, _Context) ->
             end
     end;
 
-handle_request('GetHeaderByHeight', Req, _Context) ->
+handle_request('GetKeyHeaderByHeight', Req, _Context) ->
     Height = maps:get('height', Req),
-    case aehttp_logic:get_block_by_height(Height) of
+    case aehttp_logic:get_key_block_by_height(Height) of
         {ok, Block} ->
             Resp = aehttp_api_parser:encode(header, Block),
             lager:debug("Resp = ~p", [pp(Resp)]),
@@ -436,28 +437,22 @@ handle_request('GetContractPoI', Req, _Context) ->
     process_request(ParseFuns, Req);
 
 handle_request('GetAccountBalance', Req, _Context) ->
-    case aec_base58c:safe_decode(account_pubkey, maps:get('account_pubkey', Req)) of
-        {ok, AccountPubkey} ->
-            case get_block_hash_optionally_by_hash_or_height(Req) of
-                {error, not_found} ->
-                    {404, [], #{reason => <<"Block not found">>}};
-                {error, invalid_hash} ->
-                    {400, [], #{reason => <<"Invalid block hash">>}};
-                {error, blocks_mismatch} ->
-                    {400, [], #{reason => <<"Invalid height and hash combination">>}};
-                {ok, Hash} ->
-                      case aehttp_logic:get_account_balance_at_hash(AccountPubkey, Hash) of
+    ParseFuns = [read_required_params([address]),
+                 base58_decode([{address, address, [account_pubkey,
+                                                    contract_pubkey]}]),
+                 get_block_hash_optionally_by_hash_or_height(block_hash),
+                 fun(_, #{address := Pubkey, block_hash := AtHash}) ->
+                      case aehttp_logic:get_account_balance_at_hash(Pubkey, AtHash) of
                           {error, account_not_found} ->
-                              {404, [], #{reason => <<"Account not found">>}};
+                              {error, {404, [], #{reason => <<"Account not found">>}}};
                           {error, not_on_main_chain} ->
-                              {400, [], #{reason => <<"Block not on the main chain">>}};
+                              {error, {400, [], #{reason => <<"Block not on the main chain">>}}};
                           {ok, Balance} ->
-                              {200, [], #{balance => Balance}}
+                              {ok, {200, [], #{balance => Balance}}}
                       end
-            end;
-        _ ->
-            {400, [], #{reason => <<"Invalid account hash">>}}
-    end;
+                end
+                ],
+    process_request(ParseFuns, Req);
 
 handle_request('GetAccountPendingTransactions', Req, _Context) ->
     case aec_base58c:safe_decode(account_pubkey, maps:get('account_pubkey', Req)) of
@@ -655,47 +650,3 @@ handle_request(OperationID, Req, Context) ->
      ),
     {501, [], #{}}.
 
--spec get_block_hash_optionally_by_hash_or_height(map()) ->
-    {ok, binary()} | {error, not_found | invalid_hash | blocks_mismatch}.
-get_block_hash_optionally_by_hash_or_height(Req) ->
-    GetHashByHeight =
-        fun(Height) ->
-            case aehttp_logic:get_header_by_height(Height) of
-                {error, chain_too_short} ->
-                    {error, not_found};
-                {ok, Header} ->
-                    {ok, _Hash} = aec_headers:hash_header(Header)
-            end
-        end,
-    case {maps:get('height', Req), maps:get('hash', Req)} of
-        {undefined, undefined} ->
-            {ok, _} = aehttp_logic:get_top_hash();
-        {undefined, EncodedHash} ->
-            case aec_base58c:safe_decode(block_hash, EncodedHash) of
-                {error, _} ->
-                    {error, invalid_hash};
-                {ok, Hash} ->
-                    case aec_chain:has_block(Hash) of
-                        false ->
-                            {error, not_found};
-                        true ->
-                            {ok, Hash}
-                    end
-            end;
-        {Height, undefined} ->
-            GetHashByHeight(Height);
-        {Height, EncodedHash} ->
-            case GetHashByHeight(Height) of
-                {error, _} = Err ->
-                    Err;
-                {ok, Hash} -> % ensure it is the same hash
-                    case aec_base58c:safe_decode(block_hash, EncodedHash) of
-                        {error, _} ->
-                            {error, invalid_hash};
-                        {ok, Hash} -> % same hash
-                            {ok, Hash};
-                        {ok, _OtherHash} ->
-                            {error, blocks_mismatch}
-                    end
-            end
-    end.

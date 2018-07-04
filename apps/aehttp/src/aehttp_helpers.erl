@@ -27,6 +27,7 @@
         , get_block/4
         , get_poi/3
         , get_block_from_chain/1
+        , get_block_hash_optionally_by_hash_or_height/1
         ]).
 
 -export([ get_transaction/2
@@ -80,15 +81,35 @@ read_optional_params(Params) ->
         "Not found").
 
 base58_decode(Params) ->
-    params_read_fun(Params,
-        fun({Name, Type}, _, Data) ->
-            Encoded = maps:get(Name, Data),
+    Decode =
+        fun(Type, Encoded) ->
             case aec_base58c:safe_decode(Type, Encoded) of
                 {error, _} ->
                     error;
                 {ok, Hash} ->
                     {ok, Hash}
             end
+        end,
+    params_read_fun(Params,
+        fun({Name, Types}, _, Data) when is_list(Types) ->
+                Encoded = maps:get(Name, Data),
+                DecodedHash =
+                    lists:foldl(
+                        fun(Type, Accum) ->
+                            case Decode(Type, Encoded) of
+                                error -> Accum;
+                                {ok, Hash} -> Hash % replace
+                            end
+                        end,
+                        no_type_match,
+                        Types),
+                case DecodedHash of
+                    no_type_match -> error;
+                    Hash -> {ok, Hash}
+                end;
+           ({Name, Type}, _, Data) ->
+                Encoded = maps:get(Name, Data),
+                Decode(Type, Encoded)
         end,
         "Invalid hash").
 
@@ -542,7 +563,12 @@ get_poi(Subtree, KeyName, PutKey) when Subtree =:= accounts
             {ok, PoI} ->
                 {ok, maps:put(PutKey, PoI, State)};
             {error, _} ->
-                Msg = "Proof for " ++ atom_to_list(Subtree) ++ " not found",
+                SingularName =
+                    case Subtree of
+                        accounts -> "account";
+                        contracts -> "contract"
+                    end,
+                Msg = "Proof for " ++ SingularName ++ " not found",
                 {error, {404, [], #{<<"reason">> => list_to_binary(Msg)}}}
         end
     end.
@@ -553,4 +579,63 @@ safe_binary_to_atom(Binary) when is_binary(Binary) ->
         Atom -> {ok, Atom}
     catch
         error:badarg -> {error, non_existing}
+    end.
+
+get_block_hash_optionally_by_hash_or_height(PutKey) ->
+    fun(Req, State) ->
+        GetHashByHeight =
+            fun(Height) ->
+                case aehttp_logic:get_key_header_by_height(Height) of
+                    {error, chain_too_short} ->
+                        {error, not_found};
+                    {ok, Header} ->
+                        {ok, _Hash} = aec_headers:hash_header(Header)
+                end
+            end,
+        R =
+            case {maps:get('height', Req), maps:get('hash', Req)} of
+                {undefined, undefined} ->
+                    {ok, _} = aehttp_logic:get_top_hash();
+                {undefined, EncodedHash} ->
+                    case aec_base58c:safe_decode(block_hash, EncodedHash) of
+                        {error, _} ->
+                            {error, invalid_hash};
+                        {ok, Hash} ->
+                            case aec_chain:has_block(Hash) of
+                                false ->
+                                    {error, not_found};
+                                true ->
+                                    {ok, Hash}
+                            end
+                    end;
+                {Height, undefined} ->
+                    GetHashByHeight(Height);
+                {Height, EncodedHash} ->
+                    case GetHashByHeight(Height) of
+                        {error, _} = Err ->
+                            Err;
+                        {ok, Hash} -> % ensure it is the same hash
+                            case aec_base58c:safe_decode(block_hash, EncodedHash) of
+                                {error, _} ->
+                                    {error, invalid_hash};
+                                {ok, Hash} -> % same hash
+                                    {ok, Hash};
+                                {ok, _OtherHash} ->
+                                    {error, blocks_mismatch}
+                            end
+                    end
+            end,
+        case R of
+            {error, not_found} ->
+                {error, {404, [], #{<<"reason">> => <<"Block not found">>}}};
+            {error, Why} ->
+                Msg = 
+                    case Why of
+                        invalid_hash -> <<"Invalid block hash">>;
+                        blocks_mismatch -> <<"Invalid height and hash combination">>
+                    end,
+                {error, {400, [], #{<<"reason">> => Msg}}};
+          {ok, BlockHash} ->
+                {ok, maps:put(PutKey, BlockHash, State)}
+        end
     end.

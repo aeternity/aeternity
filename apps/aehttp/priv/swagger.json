@@ -98,8 +98,8 @@
     "/header-by-height" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
-        "description" : "Get a header by its height in the chain",
-        "operationId" : "GetHeaderByHeight",
+        "description" : "Get a key header by its height in the chain",
+        "operationId" : "GetKeyHeaderByHeight",
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "height",
@@ -1494,16 +1494,16 @@
         }
       }
     },
-    "/account/{account_pubkey}/balance" : {
+    "/account/{address}/balance" : {
       "get" : {
         "tags" : [ "external", "chain" ],
         "description" : "Get accounts's balance",
         "operationId" : "GetAccountBalance",
         "produces" : [ "application/json" ],
         "parameters" : [ {
-          "name" : "account_pubkey",
+          "name" : "address",
           "in" : "path",
-          "description" : "Account pubkey to show balance for",
+          "description" : "Address to show balance for; it can be either account or contract",
           "required" : true,
           "type" : "string"
         }, {
@@ -1718,8 +1718,8 @@
     "/block/height/{height}" : {
       "get" : {
         "tags" : [ "external", "chain" ],
-        "description" : "Get a block by height",
-        "operationId" : "GetBlockByHeight",
+        "description" : "Get a key block by height",
+        "operationId" : "GetKeyBlockByHeight",
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "height",

@@ -453,8 +453,8 @@ prep_responder(#{pub := IPub, balance := IBal} = _Initiator, Node) ->
     NodeName = aecore_suite_utils:node_name(Node),
     #{ public := Pub, secret := Priv } = enacl:sign_keypair(),
     Amount = IBal div 10,
-    aecore_suite_utils:spend(NodeName, IPub, Pub, Amount),
-    mine_blocks(Node, 2), % one extra for good measure (TODO: ensure tx in block)
+    {ok, SignedTx} = aecore_suite_utils:spend(NodeName, IPub, Pub, Amount),
+    ok = wait_for_signed_transaction_in_block(Node, SignedTx),
     {ok, Amount} = rpc(Node, aehttp_logic, get_account_balance, [Pub]),
     #{role => responder,
       priv => Priv,
@@ -542,3 +542,18 @@ role(Pubkey, #{pub               := MyKey
         {_OtherKey, initiator} -> responder;
         {_OtherKey, responder} -> initiator
     end.
+
+wait_for_signed_transaction_in_block(Node, SignedTx) ->
+    TxHash = aetx_sign:hash(SignedTx),
+    MineTx =
+        fun Try(0) -> did_not_mine;
+            Try(Attempts) ->
+                aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(Node), 2),
+                case rpc(Node, aec_chain, find_tx_location, [TxHash]) of
+                    none -> erlang:error(tx_not_found);
+                    not_found -> erlang:error(tx_not_found);
+                    mempool -> Try(Attempts - 1);
+                    BlockHash when is_binary(BlockHash) -> ok
+                end
+        end,
+    ok = MineTx(5).

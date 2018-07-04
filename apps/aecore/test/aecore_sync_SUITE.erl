@@ -349,10 +349,10 @@ crash_syncing_worker(Config) ->
     timer:sleep(2000),
     Top2 = rpc:call(N2, aec_chain, top_block, [], 5000),
     ct:log("top at Dev2 = ~p", [Top2]),
-    {ok, B2} = rpc:call(N2, aec_chain, get_block_by_height, [H1], 5000),
+    {ok, B2} = rpc:call(N2, aec_chain, get_key_block_by_height, [H1], 5000),
     ct:log("Block @ ~p on Dev2 = ~p", [ H1, B2]),
 
-    {ok, B2} = rpc:call(N1, aec_chain, get_block_by_height, [H1], 5000),
+    {ok, B2} = rpc:call(N1, aec_chain, get_key_block_by_height, [H1], 5000),
     ok.
 
 kill_sync_worker(N, PeerId) ->
