@@ -279,7 +279,7 @@ get(NodeName, Service, Path, Query, Ctx) ->
     end.
 
 get_block(NodeName, Height) ->
-    case request(NodeName, 'GetBlockByHeight', #{height => Height}) of
+    case request(NodeName, 'GetKeyBlockByHeight', #{height => Height}) of
         {ok, 200, Block} -> Block;
         {ok, 404, _} -> undefined
     end.
@@ -295,31 +295,9 @@ wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, _Ctx) ->
     Expiration = make_expiration(Timeout),
     CheckF =
         fun(Node) ->
-                case request(Node, 'GetAccountBalance', #{account_pubkey => PubKey}) of
+                case request(Node, 'GetAccountBalance', #{address => PubKey}) of
                     {ok, 200, #{balance := Balance}} when Balance >= MinBalance -> done;
                     _ -> wait
-                end
-        end,
-    wait_for_value(CheckF, NodeNames, [], 500, Expiration);
-wait_for_value({contract_tx, SenderPubKey, Nonce}, NodeNames, Timeout, _Ctx) ->
-    Expiration = make_expiration(Timeout),
-    Params = #{account_pubkey => SenderPubKey, tx_encoding => json},
-    CheckF =
-        fun(Node) ->
-                case request(Node, 'GetAccountTransactions', Params) of
-                    {ok, 200, #{transactions := Txs}} ->
-                        case lists:any(
-                               fun(#{block_hash := BH, tx := #{nonce := N}})
-                                     when BH =/= <<"none">>, N =:= Nonce ->
-                                       true;
-                                  (_) ->
-                                       false
-                                end, Txs) of
-                            true -> done;
-                            false -> wait
-                        end;
-                    _ ->
-                        wait
                 end
         end,
     wait_for_value(CheckF, NodeNames, [], 500, Expiration);
@@ -328,7 +306,7 @@ wait_for_value({height, MinHeight}, NodeNames, Timeout, _Ctx) ->
     Expiration = make_expiration(Timeout),
     CheckF =
         fun(Node) ->
-                case request(Node, 'GetBlockByHeight', #{height => MinHeight}) of
+                case request(Node, 'GetKeyBlockByHeight', #{height => MinHeight}) of
                     {ok, 200, _} -> done;
                     _ -> wait
                 end

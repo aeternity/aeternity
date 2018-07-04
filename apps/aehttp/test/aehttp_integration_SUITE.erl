@@ -769,7 +769,7 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, 404, #{<<"reason">> := <<"Account not found">>}} =  get_balance_at_top(EncodedContractPubKey),
 
     % mine a block
-    Fun1 = fun() -> tx_in_chain(ContractCreateTxHash)end,
+    Fun1 = fun() -> tx_in_chain(ContractCreateTxHash) end,
     aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun1, 10),
     ?assert(tx_in_chain(ContractCreateTxHash)),
 
@@ -795,9 +795,8 @@ contract_transactions(_Config) ->    % miner has an account
     PoI = aec_trees:deserialize_poi(PoIBin),
     {ok, ContractInPoI} = aec_trees:lookup_poi(contracts, ContractPubKey, PoI),
     {ok, Trees} = rpc(aec_chain, get_top_state, []),
-    ContractInTree = rpc(aect_state_tree, get_contract, [ContractPubKey,
+    ContractInPoI = rpc(aect_state_tree, get_contract, [ContractPubKey,
                                                          aec_trees:contracts(Trees)]),
-    {ContractInPoI, _} = {ContractInTree, ContractInPoI},
 
     %% Assert the balance is the one which we created the contract with
     {ok, 200, #{<<"balance">> := ContractInitBalance}} = get_balance_at_top(EncodedContractPubKey),
@@ -835,7 +834,7 @@ contract_transactions(_Config) ->    % miner has an account
         get_contract_call_object(ContractCallTxHash),
 
     % mine blocks
-    Fun2 = fun() -> tx_in_chain(ContractCallTxHash)end,
+    Fun2 = fun() -> tx_in_chain(ContractCallTxHash) end,
     aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun2, 10),
     ?assert(tx_in_chain(ContractCallTxHash)),
 

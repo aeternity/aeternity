@@ -29,6 +29,7 @@
     request/3,
     wait_for_value/4,
     wait_for_time/4,
+    get_block/2,
     time_to_ms/1
 ]).
 
@@ -180,12 +181,6 @@ wait_for_startup(Nodes, Height, Cfg) ->
 wait_for_sync(Nodes, Height, Cfg) ->
     SyncTimeout = proplists:get_value(sync_timeout, Cfg),
     wait_for_value({height, Height}, Nodes, SyncTimeout * Height, Cfg).
-
-get_block(NodeName, Height) ->
-    case request(NodeName, 'GetBlockByHeight', #{height => Height}) of
-        {ok, 200, Block} -> Block;
-        _ -> error(undefined)
-    end.
 
 cfg(Keys, Cfg) when is_list(Keys) ->
     [cfg(K, Cfg) || K <- Keys];
