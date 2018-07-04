@@ -255,6 +255,7 @@ paths:
             properties:
               count:
                 type: integer
+                minimum: 1
                 description: Count
                 format: int64
         '400':

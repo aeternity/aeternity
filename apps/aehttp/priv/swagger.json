@@ -4440,11 +4440,12 @@
         "count" : {
           "type" : "integer",
           "format" : "int64",
-          "description" : "Count"
+          "description" : "Count",
+          "minimum" : 1
         }
       },
       "example" : {
-        "count" : 0
+        "count" : 1
       }
     },
     "inline_response_200_1" : {
