@@ -7,6 +7,7 @@
         , get_key_header_by_height/1
         , get_key_block_by_hash/1
         , get_key_block_by_height/1
+        , get_micro_block_by_hash/1
         , get_block_by_hash/1
         , get_block_latest/0
         , get_block_pending/0
@@ -114,6 +115,19 @@ get_key_block_by_hash(Hash) ->
             case aec_blocks:is_key_block(Block) of
                 true -> {ok, Block};
                 false -> {error, block_not_found}
+            end;
+        error ->
+            {error, block_not_found}
+    end.
+
+-spec get_micro_block_by_hash(binary()) -> {ok, aec_blocks:block()} |
+                                           {error, block_not_found}.
+get_micro_block_by_hash(Hash) ->
+    case aec_chain:get_block(Hash) of
+        {ok, Block} ->
+            case aec_blocks:is_key_block(Block) of
+                false -> {ok, Block};
+                true -> {error, block_not_found}
             end;
         error ->
             {error, block_not_found}

@@ -174,6 +174,35 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /micro-blocks/hash/{hash}/header:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetMicroBlocksHeaderByHash
+      description: 'Get micro block header by hash'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: hash
+          description: 'Hash of the block to fetch'
+          required: true
+          type : string
+      responses:
+        '200':
+          description: 'Returns micro block header'
+          schema:
+            $ref: '#definitions/MicroBlockHeader'
+        '400':
+          description: 'Invalid hash'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Block not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
   /header-by-hash:
     get:
       tags:
@@ -2155,6 +2184,28 @@ definitions:
             $ref: '#/definitions/EncodedHash'
         required:
         - data_schema
+  MicroBlockHeader:
+    type: object
+    properties:
+      height:
+        type: integer
+        format: int64
+      prev_hash:
+        $ref: '#/definitions/EncodedHash'
+      state_hash:
+        $ref: '#/definitions/EncodedHash'
+      txs_hash:
+        $ref: '#/definitions/EncodedHash'
+      key_hash:
+        $ref: '#/definitions/EncodedHash'
+      signature:
+        $ref: '#/definitions/EncodedHash'
+      time:
+        type: integer
+        format: int64
+      version:
+        type: integer
+        format: int64
   Top:
     allOf:
       - $ref: '#/definitions/Header'

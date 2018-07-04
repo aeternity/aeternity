@@ -77,6 +77,19 @@ handle_request('GetKeyBlocksByHash', Params, _Context) ->
             get_block(fun() -> aehttp_logic:get_key_block_by_hash(Hash) end, Params, json)
     end;
 
+handle_request('GetMicroBlocksHeaderByHash', Params, _Context) ->
+    case aec_base58c:safe_decode(block_hash, maps:get(hash, Params)) of
+        {ok, Hash} ->
+            case aehttp_logic:get_micro_block_by_hash(Hash) of
+                {ok, Block} ->
+                    {200, [], aehttp_api_parser:encode(header, Block)};
+                {error, block_not_found} ->
+                    {404, [], #{reason => <<"Block not found">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid hash">>}}
+    end;
+
 handle_request('GetBlockGenesis', Req, _Context) ->
     get_block(fun aehttp_logic:get_block_genesis/0, Req, json);
 
