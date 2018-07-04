@@ -453,7 +453,8 @@ validate_logs(Cfg) ->
     maps:fold(fun(NodeName, LogPath, Result) ->
         Result1 = check_crash_log(NodeName, LogPath, Cfg, Result),
         Result2 = check_log_for_errors(NodeName, LogPath, "epoch.log", Cfg, Result1),
-        check_log_for_errors(NodeName, LogPath, "epoch_sync.log", Cfg, Result2)
+        Result3 = check_log_for_errors(NodeName, LogPath, "epoch_sync.log", Cfg, Result2),
+                  check_log_for_errors(NodeName, LogPath, "epoch_mining.log", Cfg, Result3)
     end, ok, Logs).
 
 check_crash_log(NodeName, LogPath, Cfg, Result) ->

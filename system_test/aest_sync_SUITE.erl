@@ -121,7 +121,10 @@ init_per_testcase(_TC, Config) ->
     aest_nodes:ct_setup(Config).
 
 end_per_testcase(_TC, Config) ->
-    aest_nodes:ct_cleanup(Config).
+    try aest_nodes:ct_cleanup(Config)
+    catch _:Reason ->
+        {fail, Reason}
+    end.
 
 end_per_suite(_Config) -> ok.
 
