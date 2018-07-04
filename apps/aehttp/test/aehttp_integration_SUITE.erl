@@ -661,15 +661,10 @@ get_top_sut() ->
     Host = external_address(),
     http_request(Host, get, "blocks/top", []).
 
-%% TODO fix header encoding for microblock
 block_to_endpoint_top(Block) ->
     {ok, Hash} = aec_blocks:hash_internal_representation(Block),
-    ApiTop = maps:put(<<"hash">>, aec_base58c:encode(block_hash, Hash),
-             aehttp_api_parser:encode(header, Block)),
-    case aec_blocks:is_key_block(Block) of
-        true -> ApiTop;
-        false -> jsx:decode(jsx:encode(ApiTop), [return_maps])
-    end.
+    maps:put(<<"hash">>, aec_base58c:encode(block_hash, Hash),
+             aehttp_api_parser:encode(header, Block)).
 
 %% enpoints
 
