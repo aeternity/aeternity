@@ -829,8 +829,11 @@ get_current_key_block_height_on_micro_block(_Config) ->
     ok.
 
 get_pending_key_block_when_miner_is_stopped(_Config) ->
-    ok = rpc(aec_conductor, reinit_chain, []),
+    ok = rpc(aec_conductor, start_mining, []),
+    ok = wait_for_key_block_candidate(),
+    ?assertMatch({ok, 200, _}, get_key_blocks_pending_sut()),
 
+    ok = rpc(aec_conductor, stop_mining, []),
     {ok, 404, #{<<"reason">> := Reason}} = get_key_blocks_pending_sut(),
     ?assertEqual(<<"Not mining, no pending block">>, Reason),
     ok.
@@ -843,9 +846,8 @@ get_pending_key_block_on_genesis_block(_Config) ->
     MiningRate = 60 * 60 * 1000,
     ok = rpc(application, set_env, [aecore, expected_mine_rate, MiningRate]),
     ok = rpc(aec_conductor, start_mining, []),
-    %% Make sure miner is started.
-    timer:sleep(100),
 
+    ok = wait_for_key_block_candidate(),
     {ok, 200, PendingBlock} = get_key_blocks_pending_sut(),
     ?assertEqual(1, maps:get(<<"height">>, PendingBlock)),
     ?assertEqual(GenesisHashEncoded, maps:get(<<"prev_hash">>, PendingBlock)),
@@ -855,61 +857,46 @@ get_pending_key_block_on_genesis_block(_Config) ->
     ok.
 
 get_pending_key_block_on_key_block(_Config) ->
-    ok = rpc(aec_conductor, reinit_chain, []),
     Node = aecore_suite_utils:node_name(?NODE),
-    ForkHeight = aecore_suite_utils:latest_fork_height(),
-    aecore_suite_utils:mine_blocks(Node, ForkHeight),
-
-    {ok, [TopBlock]} = aecore_suite_utils:mine_blocks(Node, 1),
+    {ok, [TopBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     ?assertEqual(TopBlock, rpc(aec_chain, top_block, [])),
     ?assertEqual(true, aec_blocks:is_key_block(TopBlock)),
-    {ok, TopBlockHash} = aec_blocks:hash_internal_representation(TopBlock),
-    TopBlockHashEncoded = aec_base58c:encode(block_hash, TopBlockHash),
 
     MiningRate = 60 * 60 * 1000,
     ok = rpc(application, set_env, [aecore, expected_mine_rate, MiningRate]),
     ok = rpc(aec_conductor, start_mining, []),
-    %% Make sure miner is started.
-    timer:sleep(100),
 
+    ok = wait_for_key_block_candidate(),
     {ok, 200, PendingBlock} = get_key_blocks_pending_sut(),
     ?assertEqual(maps:get(<<"height">>, PendingBlock), aec_blocks:height(TopBlock) + 1),
-    ?assertEqual(maps:get(<<"prev_hash">>, PendingBlock), TopBlockHashEncoded),
+    ?assertEqual(maps:get(<<"prev_hash">>, PendingBlock), hash(TopBlock)),
 
     ok = rpc(aec_conductor, stop_mining, []),
     ok.
 
 get_pending_key_block_on_micro_block(_Config) ->
-    ok = rpc(aec_conductor, reinit_chain, []),
     Node = aecore_suite_utils:node_name(?NODE),
-    ForkHeight = aecore_suite_utils:latest_fork_height(),
-    aecore_suite_utils:mine_blocks(Node, ForkHeight),
-
     %% Mine 1 key block to get funds to spend.
-    {ok, [KeyBlock0]} = aecore_suite_utils:mine_blocks(Node, 1),
+    {ok, [KeyBlock0]} = aecore_suite_utils:mine_key_blocks(Node, 1),
+    ?assertEqual(KeyBlock0, rpc(aec_chain, top_block, [])),
     ?assertEqual(true, aec_blocks:is_key_block(KeyBlock0)),
     {ok, Pub} = rpc(aec_keys, pubkey, []),
     {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1),
     ?assertEqual({ok, [Tx]},  rpc:call(Node, aec_tx_pool, peek, [infinity])),
     {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
     ?assertEqual({ok, []}, rpc:call(Node, aec_tx_pool, peek, [infinity])),
-    TopBlock = rpc(aec_chain, top_block, []),
-    {ok, TopBlockHash} = aec_blocks:hash_internal_representation(TopBlock),
-    TopBlockHashEncoded = aec_base58c:encode(block_hash, TopBlockHash),
-
     ?assertEqual(true, aec_blocks:is_key_block(KeyBlock)),
     ?assertEqual(false, aec_blocks:is_key_block(MicroBlock)),
-    ?assertEqual(MicroBlock, TopBlock),
+    ?assertEqual(MicroBlock, rpc(aec_chain, top_block, [])),
 
     MiningRate = 60 * 60 * 1000,
     ok = rpc(application, set_env, [aecore, expected_mine_rate, MiningRate]),
     ok = rpc(aec_conductor, start_mining, []),
-    %% Make sure miner is started.
-    timer:sleep(100),
 
+    wait_for_key_block_candidate(),
     {ok, 200, PendingBlock} = get_key_blocks_pending_sut(),
-    ?assertEqual(maps:get(<<"height">>, PendingBlock), aec_blocks:height(TopBlock) + 1),
-    ?assertEqual(maps:get(<<"prev_hash">>, PendingBlock), TopBlockHashEncoded),
+    ?assertEqual(aec_blocks:height(KeyBlock) + 1, maps:get(<<"height">>, PendingBlock)),
+    ?assertEqual(hash(MicroBlock), maps:get(<<"prev_hash">>, PendingBlock)),
 
     ok = rpc(aec_conductor, stop_mining, []),
     ok.
@@ -1024,6 +1011,18 @@ key_block_to_endpoint_struct(Block) ->
     M2 = maps:put(<<"hash">>, aec_base58c:encode(block_hash, Hash), M1),
     M3 = maps:put(<<"data_schema">>, <<"BlockWithJSONTxs">>, M2),
     M3.
+
+wait_for_key_block_candidate() -> wait_for_key_block_candidate(10).
+
+wait_for_key_block_candidate(0) -> {error, miner_starting};
+wait_for_key_block_candidate(N) ->
+    case rpc(aec_conductor, get_key_block_candidate, []) of
+        {ok, _} -> ok;
+        {error, not_mining} -> {error, not_mining};
+        {error, miner_starting} ->
+            timer:sleep(10),
+            wait_for_key_block_candidate(N)
+    end.
 
 %% enpoints
 
