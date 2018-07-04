@@ -8,7 +8,8 @@ peers: {{^peers}}[]{{/peers}}
 sync:
     port: {{services.sync.port}}
     single_outbound_per_group: false
-    max_inbound: 2
+    max_inbound: {{config.max_inbound}}
+    ping_interval: {{config.ping_interval}}
 
 http:
     external:
@@ -16,6 +17,7 @@ http:
     internal:
         listen_address: 0.0.0.0
         port: {{services.int_http.port}}
+    debug: true
 
 websocket:
     internal:

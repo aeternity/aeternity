@@ -293,6 +293,7 @@ test_multiple_normal_peers() ->
 
 test_invalid_hostname() ->
     test_mgr_set_recipient(self()),
+    setup_mock_getaddr(),
 
     mock_getaddr({error, nxdomain}),
 
@@ -1028,7 +1029,7 @@ teardown(Overridden) ->
     gen_server:stop(aec_peers),
     meck:unload(aec_peer_connection),
     meck:unload(aec_sync),
-    catch meck:unload(inet), % only for test_invalid_hostname/0 test
+    cleanup_mock_getaddr(), % only for test_invalid_hostname/0 test
     lists:foreach(fun({K, V}) ->
         application:set_env(aecore, K, V)
     end, Overridden),
@@ -1057,11 +1058,16 @@ dump_messages(Acc) ->
         end
     end.
 
+setup_mock_getaddr() ->
+    cleanup_mock_getaddr(),
+    ok = meck:new(inet, [unstick, passthrough]).
+
+cleanup_mock_getaddr() ->
+    catch meck:unload(inet).
+
 mock_getaddr(Result) ->
     Self = self(),
-    catch meck:unload(inet),
-    meck:new(inet, [unstick, passthrough]),
-    meck:expect(inet, getaddr, fun(Hostname, _) ->
+    ok = meck:expect(inet, getaddr, fun(Hostname, _) ->
         Self ! {getaddr, Hostname},
         Result
     end).

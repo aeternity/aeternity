@@ -11,6 +11,7 @@
 
 % Test cases
 -export([
+    test_peer_discovery/1,
     test_inbound_limitation/1
 ]).
 
@@ -72,6 +73,7 @@
 %=== COMMON TEST FUNCTIONS =====================================================
 
 all() -> [
+    test_peer_discovery,
     test_inbound_limitation
 ].
 
@@ -91,12 +93,46 @@ end_per_suite(_Config) -> ok.
 
 %=== TEST CASES ================================================================
 
-test_inbound_limitation(Cfg) ->
-    Length = 20,
-    StartupTimeout = proplists:get_value(node_startup_time, Cfg),
-    setup_nodes([?NODE1, ?NODE2, ?NODE3, ?NODE4], Cfg),
+test_peer_discovery(Cfg) ->
+    NodeConfig = #{
+        ping_interval => 30000,
+        max_inbound => 4
+    },
+    setup([?NODE1, ?NODE2, ?NODE3, ?NODE4, ?NODE5], NodeConfig, Cfg),
     start_node(node1, Cfg),
     start_node(node2, Cfg),
+    start_node(node3, Cfg),
+    start_node(node4, Cfg),
+    start_node(node5, Cfg),
+
+    % Wait for two gossip ping messages.
+    timer:sleep(35000 * 2),
+
+    lists:foreach(fun(N) ->
+        {ok, 200, Peers} = aehttp_client:request('GetPeers', #{}, [
+                {int_http, aest_nodes_mgr:get_service_address(N, int_http)},
+                {ct_log, true}
+        ]),
+        #{inbound := InboundPeers, outbound := OutboundPeers} = Peers,
+        ?assertEqual(4, length(InboundPeers) + length(OutboundPeers))
+    end, [node1, node2, node3, node4, node5]),
+    ok.
+
+test_inbound_limitation(Cfg) ->
+    Length = 30,
+    StartupTimeout = proplists:get_value(node_startup_time, Cfg),
+    NodeConfig = #{
+        ping_interval => 30000,
+        max_inbound => 2
+    },
+    setup([?NODE1, ?NODE2, ?NODE3, ?NODE4], NodeConfig, Cfg),
+    start_node(node1, Cfg),
+    start_node(node2, Cfg),
+    wait_for_value({height, 0}, [node1, node2], StartupTimeout, Cfg),
+
+    % Retrieve node1 peer address.
+    #{outbound := [Node1PeerAddr]} = get_peers(node2),
+
     start_node(node3, Cfg),
     wait_for_value({height, 0}, [node1, node2, node3], StartupTimeout, Cfg),
 
@@ -105,12 +141,17 @@ test_inbound_limitation(Cfg) ->
 
     try_until(T1 + 2 * ping_interval(),
             fun() ->
-                {ok, 200, B1a} = request(node1, 'GetBlockByHeight', #{height => Length}),
-                {ok, 200, B2a} = request(node2, 'GetBlockByHeight', #{height => Length}),
-                {ok, 200, B3a} = request(node3, 'GetBlockByHeight', #{height => Length}),
+                B1a = get_block(node1, Length),
+                B2a = get_block(node2, Length),
+                B3a = get_block(node3, Length),
                 ?assertEqual(B1a, B2a),
-                ?assertEqual(B1a, B3a)
+                ?assertEqual(B1a, B3a),
+                ?assertNotEqual(undefined, B1a)
             end),
+
+    % Wait for pings so the nodes discover each others and interconnect.
+    TimeForPing1 = max(0, 35000 - (erlang:system_time(millisecond) - T1)),
+    timer:sleep(TimeForPing1),
 
     % Start 4th node that should get disconnected from node1 and connect to another one.
     start_node(node4, Cfg),
@@ -121,17 +162,37 @@ test_inbound_limitation(Cfg) ->
 
     try_until(T2 + 2 * ping_interval(),
             fun() ->
-                {ok, 200, B1b} = request(node1, 'GetBlockByHeight', #{height => Length * 2}),
-                {ok, 200, B2b} = request(node2, 'GetBlockByHeight', #{height => Length * 2}),
-                {ok, 200, B3b} = request(node3, 'GetBlockByHeight', #{height => Length * 2}),
-                {ok, 200, B4b} = request(node3, 'GetBlockByHeight', #{height => Length * 2}),
+                B1b = get_block(node1, Length * 2),
+                B2b = get_block(node2, Length * 2),
+                B3b = get_block(node3, Length * 2),
+                B4b = get_block(node4, Length * 2),
                 ?assertEqual(B1b, B2b),
                 ?assertEqual(B1b, B3b),
-                ?assertEqual(B1b, B4b)
+                ?assertEqual(B1b, B4b),
+                ?assertNotEqual(undefined, B1b)
             end),
+
+    % Wait for pings so the last nodes discover the others and interconnect.
+    TimeForPing2 = max(0, 35000 - (erlang:system_time(millisecond) - T2)),
+    timer:sleep(TimeForPing2),
+
+    % Check node4 do not have an outbound connection to node1 anymore.
+    #{outbound := OutboundPeers, inbound := InboundPeers} = get_peers(node4),
+    ?assertNot(lists:member(Node1PeerAddr, OutboundPeers)),
+    ?assert(lists:member(Node1PeerAddr, InboundPeers)),
     ok.
 
 %=== INTERNAL FUNCTIONS ========================================================
+
+setup(Nodes, Config, Cfg) ->
+    setup_nodes([maps:put(config, Config, N) || N <- Nodes], Cfg).
+
+get_peers(Node) ->
+    {ok, 200, Peers} = aehttp_client:request('GetPeers', #{}, [
+                {int_http, aest_nodes_mgr:get_service_address(Node, int_http)},
+                {ct_log, true}
+    ]),
+    Peers.
 
 ping_interval() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"ping_interval">>],

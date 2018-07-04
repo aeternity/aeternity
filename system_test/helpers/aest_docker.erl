@@ -31,6 +31,7 @@
 -define(EPOCH_KEYS_FOLDER, "/home/epoch/node/keys").
 -define(EPOCH_GENESIS_FILE, "/home/epoch/node/data/aecore/.genesis/accounts.json").
 -define(EPOCH_MINE_RATE, 1000).
+-define(EPOCH_MAX_INBOUND, 100).
 -define(EXT_HTTP_PORT, 3013).
 -define(EXT_SYNC_PORT, 3015).
 -define(INT_HTTP_PORT, 3113).
@@ -44,7 +45,7 @@
 
 -type log_fun() :: fun((io:format(), list()) -> ok) | undefined.
 -type test_uid() :: binary() | undefined.
--type service_label() :: ext_http | int_http | int_ws | ext_ws.
+-type service_label() :: sync | ext_http | int_http | int_ws | ext_ws.
 
 %% State of the docker backend
 -type backend_state() :: #{
@@ -66,7 +67,8 @@
     cuckoo_miner => default | #{ex := binary(),
                                 args := binary(),
                                 bits := pos_integer()},
-    hard_forks => #{non_neg_integer() => non_neg_integer()} % Consensus protocols (version -> height)
+    hard_forks => #{non_neg_integer() => non_neg_integer()}, % Consensus protocols (version -> height)
+    config => #{atom() => term()}
 }.
 
 %% State of a node
@@ -160,6 +162,7 @@ setup_node(Spec, BackendState) ->
       peers := Peers,
       source := {pull, Image}} = Spec,
     MineRate = maps:get(mine_rate, Spec, ?EPOCH_MINE_RATE),
+    ExtraConfig = maps:get(config, Spec, #{}),
 
     Hostname = format("~s~s", [Name, Postfix]),
     ExposedPorts = #{
@@ -214,6 +217,7 @@ setup_node(Spec, BackendState) ->
         ext_addr => format("http://~s:~w/", [Hostname, ?EXT_HTTP_PORT]),
         peers => PeerVars,
         key_password => ?PEER_KEYS_PASSWORD,
+        config => ExtraConfig,
         services => #{
             sync => #{port => ?EXT_SYNC_PORT},
             ext_http => #{port => ?EXT_HTTP_PORT},

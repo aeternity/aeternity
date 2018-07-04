@@ -340,10 +340,14 @@ handle_request('GetPeers', _Req, _Context) ->
     case aeu_env:user_config_or_env([<<"http">>, <<"debug">>],
                                     aehttp, enable_debug_endpoints, false) of
         true ->
-            Peers = aehttp_logic:all_peers(),
+            Peers = aehttp_logic:connected_peers(all),
+            InboundPeers = aehttp_logic:connected_peers(inbound),
+            OutboundPeers = aehttp_logic:connected_peers(outbound),
             Blocked = aehttp_logic:blocked_peers(),
 
             {200, [], #{peers => lists:map(fun aec_peers:encode_peer_address/1, Peers),
+                        inbound => lists:map(fun aec_peers:encode_peer_address/1, InboundPeers),
+                        outbound => lists:map(fun aec_peers:encode_peer_address/1, OutboundPeers),
                         blocked => lists:map(fun aec_peers:encode_peer_address/1, Blocked)}};
         false ->
             {403, [], #{reason => <<"Call not enabled">>}}

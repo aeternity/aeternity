@@ -149,52 +149,62 @@ accept_init(Ref, TcpSock, ranch_tcp, Opts) ->
     Version = <<?P2P_PROTOCOL_VSN:64>>,
     Genesis = aec_chain:genesis_hash(),
     HSTimeout = noise_hs_timeout(),
-    {ok, {Host, _Port}} = inet:peername(TcpSock),
-    {ok, Addr} = inet:getaddr(Host, inet),
-    S0 = Opts#{ tcp_sock => TcpSock
-              , role => responder
-              , kind => permanent
-              , address => Addr
-              , host => list_to_binary(inet:ntoa(Host))
-              , version => Version
-              , genesis => Genesis },
-    S = #{ version := Version, genesis := Genesis,
-           pubkey := PubKey } = ensure_genesis(S0),
-
-    %% ======  Entering critical section with Private keys in memory. ======
-    PrevSensitive = process_flag(sensitive, true),
-    {ok, SecKey} = aec_keys:peer_privkey(),
-    NoiseOpts = [ {noise, <<"Noise_XK_25519_ChaChaPoly_BLAKE2b">>}
-                , {s, enoise_keypair:new(dh25519, SecKey, PubKey)}
-                , {prologue, <<Version/binary, Genesis/binary>>}
-                , {timeout, HSTimeout} ],
-    %% Keep the socket passive until here to avoid premature message
-    %% receiving...
-    inet:setopts(TcpSock, [{active, true}, {send_timeout, 1000}, {send_timeout_close, true}]),
-    case enoise:accept(TcpSock, NoiseOpts) of
-        {ok, ESock, FinalState} ->
-            RemotePub = enoise_keypair:pubkey(enoise_hs_state:remote_keys(FinalState)),
-            garbage_collect(),
-            process_flag(sensitive, PrevSensitive),
-            %% ======  Exit critical section with Private keys in memory. ======
-
-            PingTimeout = first_ping_timeout(),
-            epoch_sync:debug("Connection accepted from ~p", [RemotePub]),
-            %% Report this to aec_peers!? And possibly fail?
-            %% Or, we can't do this yet we don't know the port?!
-            TRef = erlang:start_timer(PingTimeout, self(), first_ping_timeout),
-            S1 = S#{ status => {connected, ESock}
-                   , r_pubkey => RemotePub
-                   , first_ping_tref => TRef },
-            gen_server:enter_loop(?MODULE, [], S1);
+    case inet:peername(TcpSock) of
         {error, Reason} ->
-            garbage_collect(),
-            process_flag(sensitive, PrevSensitive),
-            %% ======  Exit critical section with Private keys in memory. ======
+            epoch_sync:info("Connection accept failed: ~p", [Reason]),
+            gen_tcp:close(TcpSock);
+        {ok, {Addr, _Port}} ->
+            S0 = Opts#{ tcp_sock => TcpSock
+                      , role => responder
+                      , kind => permanent
+                      , address => Addr
+                      , host => list_to_binary(inet:ntoa(Addr))
+                      , version => Version
+                      , genesis => Genesis },
+            S = #{ version := Version, genesis := Genesis,
+                   pubkey := PubKey } = ensure_genesis(S0),
 
-            %% What to do here? Close the socket and stop?
-            epoch_sync:info("Connection accept failed - ~p was from ~p", [Reason, maps:get(host, S)]),
-            gen_tcp:close(TcpSock)
+            %% ======  Entering critical section with Private keys in memory. ======
+            PrevSensitive = process_flag(sensitive, true),
+            {ok, SecKey} = aec_keys:peer_privkey(),
+            NoiseOpts = [ {noise, <<"Noise_XK_25519_ChaChaPoly_BLAKE2b">>}
+                        , {s, enoise_keypair:new(dh25519, SecKey, PubKey)}
+                        , {prologue, <<Version/binary, Genesis/binary>>}
+                        , {timeout, HSTimeout} ],
+            %% Keep the socket passive until here to avoid premature message
+            %% receiving...
+            inet:setopts(TcpSock, [
+                {active, true},
+                {send_timeout, 1000},
+                {send_timeout_close, true}
+            ]),
+            case enoise:accept(TcpSock, NoiseOpts) of
+                {ok, ESock, FinalState} ->
+                    RemoteKeys = enoise_hs_state:remote_keys(FinalState),
+                    RemotePub = enoise_keypair:pubkey(RemoteKeys),
+                    garbage_collect(),
+                    process_flag(sensitive, PrevSensitive),
+                    %% ======  Exit critical section with Private keys in memory. ======
+
+                    PingTimeout = first_ping_timeout(),
+                    epoch_sync:debug("Connection accepted from ~p", [RemotePub]),
+                    %% Report this to aec_peers!? And possibly fail?
+                    %% Or, we can't do this yet we don't know the port?!
+                    TRef = erlang:start_timer(PingTimeout, self(), first_ping_timeout),
+                    S1 = S#{ status => {connected, ESock}
+                           , r_pubkey => RemotePub
+                           , first_ping_tref => TRef },
+                    gen_server:enter_loop(?MODULE, [], S1);
+                {error, Reason} ->
+                    garbage_collect(),
+                    process_flag(sensitive, PrevSensitive),
+                    %% ======  Exit critical section with Private keys in memory. ======
+
+                    %% What to do here? Close the socket and stop?
+                    epoch_sync:info("Connection accept failed - ~p was from ~p",
+                                    [Reason, maps:get(host, S)]),
+                    gen_tcp:close(TcpSock)
+            end
     end.
 
 %% Called when connecting to a peer
@@ -259,50 +269,59 @@ handle_info({connected, Pid, Err = {error, _}}, S = #{ status := {connecting, Pi
     epoch_sync:debug("Failed to connected to ~p: ~p", [{maps:get(host, S), maps:get(port, S)}, Err]),
     connect_fail(S);
 handle_info({connected, Pid, {ok, TcpSock}}, S0 = #{ status := {connecting, Pid} }) ->
-    HSTimeout = noise_hs_timeout(),
-    S = #{ version := Version, genesis := Genesis,
-           pubkey := PubKey, r_pubkey := RemotePub } = ensure_genesis(S0),
-
-    %% ======  Entering critical section with Private keys in memory. ======
-    PrevSensitive = process_flag(sensitive, true),
-    {ok, SecKey} = aec_keys:peer_privkey(),
-    NoiseOpts = [ {noise, <<"Noise_XK_25519_ChaChaPoly_BLAKE2b">>}
-                , {s, enoise_keypair:new(dh25519, SecKey, PubKey)}
-                , {prologue, <<Version/binary, Genesis/binary>>}
-                , {rs, enoise_keypair:new(dh25519, RemotePub)}
-                , {timeout, HSTimeout} ],
-    %% Keep the socket passive until here to avoid premature message
-    %% receiving...
-    inet:setopts(TcpSock, [{active, true}, {send_timeout, 1000}, {send_timeout_close, true}]),
-    {ok, {Host, _Port}} = inet:peername(TcpSock),
-    {ok, Addr} = inet:getaddr(Host, inet),
-    case enoise:connect(TcpSock, NoiseOpts) of
-        {ok, ESock, _} ->
-            garbage_collect(),
-            process_flag(sensitive, PrevSensitive),
-            %% ======  Exit critical section with Private keys in memory. ======
-
-            epoch_sync:debug("Peer connected to ~p", [{maps:get(host, S), maps:get(port, S)}]),
-            case aec_peers:peer_connected(peer_id(S), self()) of
-                ok ->
-                    {noreply, S#{ status => {connected, ESock}, address => Addr}};
-                {error, Reason} ->
-                    epoch_sync:debug("Dropping unnecessary connection to ~p (~p)",
-                                     [maps:get(host, S), Reason]),
-                    enoise:close(ESock),
-                    {stop, normal, S}
-            end;
+    case inet:peername(TcpSock) of
         {error, Reason} ->
-            garbage_collect(),
-            process_flag(sensitive, PrevSensitive),
-            %% ======  Exit critical section with Private keys in memory. ======
-
-            %% For now lets report connect_fail
-            %% Maybe instead report permanent fail + block?!
-            epoch_sync:info("Connection handshake failed - ~p was from ~p",
-                            [Reason, maps:get(host, S)]),
+            epoch_sync:info("Connection failed: ~p", [Reason]),
             gen_tcp:close(TcpSock),
-            connect_fail(S)
+            connect_fail(S0);
+        {ok, {Addr, _Port}} ->
+            HSTimeout = noise_hs_timeout(),
+            S = #{ version := Version, genesis := Genesis,
+                   pubkey := PubKey, r_pubkey := RemotePub } = ensure_genesis(S0),
+            %% ======  Entering critical section with Private keys in memory. ======
+            PrevSensitive = process_flag(sensitive, true),
+            {ok, SecKey} = aec_keys:peer_privkey(),
+            NoiseOpts = [ {noise, <<"Noise_XK_25519_ChaChaPoly_BLAKE2b">>}
+                        , {s, enoise_keypair:new(dh25519, SecKey, PubKey)}
+                        , {prologue, <<Version/binary, Genesis/binary>>}
+                        , {rs, enoise_keypair:new(dh25519, RemotePub)}
+                        , {timeout, HSTimeout} ],
+            %% Keep the socket passive until here to avoid premature message
+            %% receiving...
+            inet:setopts(TcpSock, [
+                {active, true},
+                {send_timeout, 1000},
+                {send_timeout_close, true}
+            ]),
+            case enoise:connect(TcpSock, NoiseOpts) of
+                {ok, ESock, _} ->
+                    garbage_collect(),
+                    process_flag(sensitive, PrevSensitive),
+                    %% ======  Exit critical section with Private keys in memory. ======
+
+                    epoch_sync:debug("Peer connected to ~p",
+                                     [{maps:get(host, S), maps:get(port, S)}]),
+                    case aec_peers:peer_connected(peer_id(S), self()) of
+                        ok ->
+                            {noreply, S#{ status => {connected, ESock}, address => Addr}};
+                        {error, Reason} ->
+                            epoch_sync:debug("Dropping unnecessary connection to ~p (~p)",
+                                             [maps:get(host, S), Reason]),
+                            enoise:close(ESock),
+                            {stop, normal, S}
+                    end;
+                {error, Reason} ->
+                    garbage_collect(),
+                    process_flag(sensitive, PrevSensitive),
+                    %% ======  Exit critical section with Private keys in memory. ======
+
+                    %% For now lets report connect_fail
+                    %% Maybe instead report permanent fail + block?!
+                    epoch_sync:info("Connection handshake failed - ~p was from ~p",
+                                    [Reason, maps:get(host, S)]),
+                    gen_tcp:close(TcpSock),
+                    connect_fail(S)
+            end
     end;
 
 handle_info({noise, _, <<?MSG_FRAGMENT:16, N:16, M:16, Fragment/binary>>}, S) ->
@@ -683,7 +702,7 @@ ping_obj_rsp(S, RemotePingObj) ->
     #{ share := Share, peers := TheirPeers } = RemotePingObj,
     LocalPingObj = local_ping_obj(S),
     ping_obj(LocalPingObj#{ share => Share },
-             [ PeerId | [aec_peers:peer_id(P) || P <- TheirPeers] ]).
+             [PeerId | [aec_peers:peer_id(P) || P <- TheirPeers]]).
 
 local_ping_obj(#{ kind := ConnKind, ext_sync_port := Port }) ->
     GHash = aec_chain:genesis_hash(),

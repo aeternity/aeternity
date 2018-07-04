@@ -34,7 +34,7 @@
 %% API for getters and flags.
 -export([is_blocked/1]).
 -export([count/1]).
--export([connected_peers/0]).
+-export([connected_peers/0, connected_peers/1]).
 -export([blocked_peers/0]).
 -export([get_random/1, get_random/2]).
 -export([get_connection/1]).
@@ -128,7 +128,7 @@
          #{ peer_id() => {inet:ip_address(), peer_info(), boolean()}}}}
 }).
 
-%% The Peer is identified by its pubk4ey for now.
+%% The Peer is identified by its pubkey for now.
 -type peer_id() :: binary().
 -type peer_info() :: #{
     pubkey  := aec_keys:pubkey(),
@@ -207,7 +207,15 @@ count(Tag) ->
 %% @doc Gets the list of all connected peers.
 -spec connected_peers() -> [peer_info()].
 connected_peers() ->
-    gen_server:call(?MODULE, connected_peers).
+    connected_peers(all).
+
+%% @doc Gets the list of connected peers.
+%%  * `all': All connected peers.
+%%  * `outbound': All peers with outbound connection to.
+%%  * `inbound': All peers with inbound connection from.
+-spec connected_peers(all | inbound | outbound) -> [peer_info()].
+connected_peers(Tag) when Tag =:= all; Tag =:= inbound; Tag =:= outbound ->
+    gen_server:call(?MODULE, {connected_peers, Tag}).
 
 %% @doc Gets the list of blocked peers.
 -spec blocked_peers() -> [peer_info()].
@@ -366,8 +374,8 @@ handle_call(unblock_all, _From, State) -> % Only used in tests
     {reply, ok, update_peer_metrics(schedule_connect(unblock_all(State)))};
 handle_call({count, Tag}, _From, State) ->
     {reply, count(Tag, State), State};
-handle_call(connected_peers, _From, State) ->
-    {reply, connected_peers(State), State};
+handle_call({connected_peers, Tag}, _From, State) ->
+    {reply, connected_peers(Tag, State), State};
 handle_call(blocked_peers, _From, State) ->
      #state{ blocked = Blocked } = State,
     Result = [ PeerInfo || PeerInfo <- gb_trees:values(Blocked) ],
@@ -566,11 +574,16 @@ count(Tag, State) when Tag =:= verified; Tag =:= unverified ->
     #state{ pool = Pool} = State,
     aec_peers_pool:count(Pool, all, Tag).
 
--spec connected_peers(state()) -> [peer_info()].
-connected_peers(State) ->
-    #state{ conns = Conns } = State,
-    [ peer_info(Peer)
-      || #conn{ peer = Peer, state = connected } <- maps:values(Conns) ].
+-spec connected_peers(all | inbound | outbound, state()) -> [peer_info()].
+connected_peers(all, #state{ conns = Conns }) ->
+    [ peer_info(P) || #conn{ peer = P, state = connected }
+                      <- maps:values(Conns) ];
+connected_peers(inbound, #state{ conns = Conns }) ->
+    [ peer_info(P) || #conn{ peer = P, type = inbound, state = connected }
+                      <- maps:values(Conns) ];
+connected_peers(outbound, #state{ conns = Conns }) ->
+    [ peer_info(P) || #conn{ peer = P, type = outbound, state = connected }
+                      <- maps:values(Conns) ].
 
 %--- OUTBOUND CONNECTION HANDLING FUNCTIONS ------------------------------------
 
@@ -891,7 +904,7 @@ new_inbound_kind(State) ->
 on_log_ping(PeerId, Outcome, State) ->
     case conn_find(PeerId, State) of
         error ->
-            epoch_sync:debug("Peer ~p - go ping event ~p for unknown "
+            epoch_sync:debug("Peer ~p - got ping event ~p for unknown "
                              "peer connection", [ppp(PeerId), Outcome]),
             State;
         {ok, #conn{ state = connected }} ->
@@ -1054,7 +1067,7 @@ on_process_down(Pid, MonitorRef, State) ->
                              [ppp(PeerId)]),
             State;
         error ->
-            epoch_sync:info("Unkown process down message for process ~p",
+            epoch_sync:info("Unknown process down message for process ~p",
                             [Pid]),
             State
     end.
@@ -1229,7 +1242,7 @@ pool_random_subset(N, Exclude, State) ->
     -> undefined | aec_peers_pool:filter_fun().
 pool_subset_filter_fun(undefined) -> undefined;
 pool_subset_filter_fun(Exclude) ->
-    fun(PeerId, _Peer) -> lists:member(PeerId, Exclude) end.
+    fun(PeerId, _Peer) -> not lists:member(PeerId, Exclude) end.
 
 %% Returns the filter function to be used when selecting a random peer.
 -spec pool_select_filter_fun(state())
@@ -1384,8 +1397,7 @@ conn_add(Conn, State0) ->
 
 %% Set connections state.
 -spec conn_set_connected(peer_id(), state()) -> state().
-conn_set_connected(PeerId, State) ->
-    #state{ conns = Conns } = State,
+conn_set_connected(PeerId, #state{ conns = Conns } = State) ->
     #{ PeerId := Conn } = Conns,
     Conn2 = Conn#conn{ state = connected },
     State#state{ conns = Conns#{ PeerId := Conn2} }.
@@ -1411,8 +1423,7 @@ conn_pid(PeerId, State) ->
     end.
 
 -spec conn_schedule_ping(peer_id(), non_neg_integer(), state()) -> state().
-conn_schedule_ping(PeerId, Timeout, State) ->
-    #state{ conns = Conns } = State,
+conn_schedule_ping(PeerId, Timeout, #state{ conns = Conns } = State) ->
     #{ PeerId := Conn } = Conns,
     #conn{ ping = OldRef } = Conn,
     PeerId = peer_id(Conn),
@@ -1423,16 +1434,14 @@ conn_schedule_ping(PeerId, Timeout, State) ->
     State#state{ conns = Conns#{ PeerId := Conn2} }.
 
 -spec conn_reset_ping(peer_id(), state()) -> state().
-conn_reset_ping(PeerId, State) ->
-    #state{ conns = Conns } = State,
+conn_reset_ping(PeerId, #state{ conns = Conns } = State) ->
     #{ PeerId := Conn } = Conns,
     State#state{ conns = Conns#{ PeerId := Conn#conn{ ping = undefined } } }.
 
 %% Cleanup resource used by a connection.
 %% The connection SHOULD NOT be in the state anymore.
 -spec conn_cleanup(conn(), state()) -> state().
-conn_cleanup(Conn, State) ->
-    #conn{ ping = OldRef } = Conn,
+conn_cleanup(#conn{ ping = OldRef } = Conn, State) ->
     ?assertNot(maps:is_key(peer_id(Conn), State#state.conns)),
     cancel_timer(OldRef),
     conn_demonitor(Conn, group_del(Conn, State)).
