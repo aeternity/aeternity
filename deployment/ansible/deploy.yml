@@ -167,7 +167,7 @@
 
       - name: Update epoch configuration
         template:
-          src: templates/epoch.yaml.j2
+          src: templates/epoch.yaml
           dest: "{{ project_root }}/epoch.yaml"
           mode: '0600'
         tags: [config]
