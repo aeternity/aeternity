@@ -23,6 +23,7 @@
          mine_blocks_until/3,
          mine_blocks_until/4,
          mine_key_blocks/2,
+         mine_micro_blocks/2,
          wait_for_height/2,
          spend/4,         %% (Node, FromPub, ToPub, Amount) -> ok
          spend/5,         %% (Node, FromPub, ToPub, Amount, Fee) -> ok
@@ -153,6 +154,9 @@ delete_node_db_if_persisted({true, {ok, MnesiaDir}}) ->
 
 mine_key_blocks(Node, NumBlocksToMine) ->
     mine_blocks(Node, NumBlocksToMine, 100, key).
+
+mine_micro_blocks(Node, NumBlocksToMine) ->
+    mine_blocks(Node, NumBlocksToMine, 100, micro).
 
 mine_blocks(Node, NumBlocksToMine) ->
     mine_blocks(Node, NumBlocksToMine, 100, any).

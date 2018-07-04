@@ -32,7 +32,8 @@
    [
     % get block-s
     get_top_empty_chain/1,
-    get_top_non_empty_chain/1,
+    get_top_key_block/1,
+    get_top_micro_block/1,
     block_genesis/1,
     block_pending/1,
     block_latest/1,
@@ -232,7 +233,8 @@ groups() ->
       [
         % get block-s
         get_top_empty_chain,
-        get_top_non_empty_chain,
+        get_top_key_block,
+        get_top_micro_block,
         block_genesis,
         block_pending,
         block_latest,
@@ -620,16 +622,35 @@ get_top_empty_chain(_Config) ->
                                    ForkHeight),
     ok.
 
-get_top_non_empty_chain(_Config) ->
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-    ExpectedB = rpc(aec_chain, top_block, []),
-    ExpectedMap = block_to_endpoint_top(ExpectedB),
-    ct:log("Cleaned top header = ~p", [ExpectedMap]),
-    {ok, 200, HeaderMap} = get_top(),
-    ?assertEqual(ExpectedMap, HeaderMap),
-    #{<<"height">> := Height} = HeaderMap,
-    true = Height > 0,
+get_top_key_block(_Config) ->
+    {ok, [TopBlock]} = aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    ?assertEqual(TopBlock, rpc(aec_chain, top_block, [])),
+    ?assertEqual(true, aec_blocks:is_key_block(TopBlock)),
+
+    {ok, 200, #{<<"height">> := Height} = ApiTop} = get_top(),
+    ?assertEqual(true, Height > 0),
+    ?assertEqual(ApiTop, block_to_endpoint_top(TopBlock)),
     ok.
+
+get_top_micro_block(_Config) ->
+    KeyTopBlock = rpc(aec_chain, top_block, []),
+    ?assertEqual(true, aec_blocks:is_key_block(KeyTopBlock)),
+
+    Node = aecore_suite_utils:node_name(?NODE),
+    {ok, Pub} = rpc(aec_keys, pubkey, []),
+    ok = aecore_suite_utils:spend(Node, Pub, Pub, 1),
+    {ok, [_]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+    {ok, [_, TopBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
+    {ok, []} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+
+    ?assertEqual(TopBlock, rpc(aec_chain, top_block, [])),
+    ?assertEqual(false, aec_blocks:is_key_block(TopBlock)),
+    ?assertEqual(true, aec_blocks:height(KeyTopBlock) < aec_blocks:height(TopBlock)),
+
+    {ok, 200, ApiTop} = get_top(),
+    ?assertEqual(ApiTop, block_to_endpoint_top(TopBlock)),
+    ok.
+
 
 block_by_height(_Config) ->
     GetExpectedBlockFun =
@@ -4158,10 +4179,15 @@ process_http_return(R) ->
             Error
     end.
 
+%% TODO fix header encoding for microblock
 block_to_endpoint_top(Block) ->
     {ok, Hash} = aec_blocks:hash_internal_representation(Block),
-    maps:put(<<"hash">>, aec_base58c:encode(block_hash, Hash),
-             aehttp_api_parser:encode(header, Block)).
+    ApiTop = maps:put(<<"hash">>, aec_base58c:encode(block_hash, Hash),
+             aehttp_api_parser:encode(header, Block)),
+    case aec_blocks:is_key_block(Block) of
+        true -> ApiTop;
+        false -> jsx:decode(jsx:encode(ApiTop), [return_maps])
+    end.
 
 block_to_endpoint_map(Block) ->
     block_to_endpoint_map(Block, #{tx_encoding => message_pack}).
