@@ -609,17 +609,13 @@ decode_data(Type, EncodedData) ->
 %% enpoints
 get_top_empty_chain(_Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
-    {ok, 200, HeaderMap} = get_top(),
-    ct:log("~p returned header = ~p", [?NODE, HeaderMap]),
-    {ok, 200, GenBlockMap} = get_block_by_height(0),
-    {ok, GenBlock} = aehttp_api_parser:decode(block, GenBlockMap),
-    ExpectedMap = block_to_endpoint_top(GenBlock),
-    ct:log("Cleaned top header = ~p", [ExpectedMap]),
-    ?assertEqual(ExpectedMap, HeaderMap),
+    GenesisBlock = rpc(aec_chain, genesis_block, []),
+
+    {ok, 200, ApiTop} = get_top(),
+    ?assertEqual(ApiTop, block_to_endpoint_top(GenesisBlock)),
 
     ForkHeight = aecore_suite_utils:latest_fork_height(),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   ForkHeight),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), ForkHeight),
     ok.
 
 get_top_key_block(_Config) ->
