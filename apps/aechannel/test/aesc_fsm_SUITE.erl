@@ -36,6 +36,9 @@
 -define(OP_WITHDRAW, 1).
 -define(OP_DEPOSIT , 2).
 
+
+-define(MINIMUM_DEPTH, 3).
+
 all() ->
     [{group, all_tests}].
 
@@ -108,20 +111,22 @@ stop_node(N, Config) ->
 %%%===================================================================
 
 create_channel(Cfg) ->
-    #{ i := #{fsm := FsmI} = I
-     , r := #{} = R} = Ch = create_channel_([{port, 9325}|Cfg]),
+    #{ i := #{fsm := FsmI, channel_id := ChannelId} = I
+     , r := #{} = R} = create_channel_([{port, 9325}|Cfg]),
     ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
     _ = await_signing_request(shutdown, I),
     _ = await_signing_request(shutdown_ack, R),
-    check_info(1000),
-    expect_close_mutual_tx(Ch),
+    SignedTx = await_on_chain_report(I, ?TIMEOUT),
+    SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
+    wait_for_signed_transaction_in_block(dev1, SignedTx),
+    verify_close_mutual_tx(SignedTx, ChannelId),
     ok.
 
 inband_msgs(Cfg) ->
-    #{ i := #{fsm := FsmI} = I
+    #{ i := #{fsm := FsmI, channel_id := ChannelId} = I
      , r := #{} = R
      , spec := #{ initiator := _PubI
-                , responder := PubR }} = Ch = create_channel_([{port,9326}|Cfg]),
+                , responder := PubR }} = create_channel_([{port,9326}|Cfg]),
     check_info(),
     ok = rpc(dev1, aesc_fsm, inband_msg, [FsmI, PubR, <<"i2r hello">>]),
     receive_from_fsm(
@@ -130,23 +135,27 @@ inband_msgs(Cfg) ->
     ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
     _ = await_signing_request(shutdown, I),
     _ = await_signing_request(shutdown_ack, R),
-    check_info(1000),
-    expect_close_mutual_tx(Ch),
+    SignedTx = await_on_chain_report(I, ?TIMEOUT),
+    SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
+    wait_for_signed_transaction_in_block(dev1, SignedTx),
+    verify_close_mutual_tx(SignedTx, ChannelId),
     ok.
 
 upd_transfer(Cfg) ->
-    #{ i := #{fsm := FsmI} = I
+    #{ i := #{fsm := FsmI, channel_id := ChannelId} = I
      , r := #{} = R
      , spec := #{ initiator := PubI
-                , responder := PubR }} = Ch = create_channel_([{port,9326}|Cfg]),
+                , responder := PubR }} = create_channel_([{port,9326}|Cfg]),
     check_info(),
     {I0, R0} = do_update(PubI, PubR, 2, I, R, true),
     {I1, R1} = update_bench(I0, R0),
     ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
     {_I2, _} = await_signing_request(shutdown, I1),
     {_R2, _} = await_signing_request(shutdown_ack, R1),
-    check_info(1000),
-    expect_close_mutual_tx(Ch),
+    SignedTx = await_on_chain_report(I, ?TIMEOUT),
+    SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
+    wait_for_signed_transaction_in_block(dev1, SignedTx),
+    verify_close_mutual_tx(SignedTx, ChannelId),
     ok.
 
 update_bench(I, R) ->
@@ -192,10 +201,10 @@ deposit(Cfg) ->
     check_info(),
     {I1, _} = await_signing_request(deposit_tx, I),
     {_R1, _} = await_signing_request(deposit_created, R),
-    %SignedTx = await_on_chain_report(I1, ?TIMEOUT),
-    %SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
-    %wait_for_signed_transaction_in_block(dev1, SignedTx),
-    mine_blocks(dev1, 4),
+    SignedTx = await_on_chain_report(I1, ?TIMEOUT),
+    SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
+    wait_for_signed_transaction_in_block(dev1, SignedTx),
+    mine_blocks(dev1, ?MINIMUM_DEPTH),
     ct:log("I2 = ~p", [I1]),
     #{initiator_amount := IAmt2, responder_amount := RAmt2} = I1,
     Expected = {IAmt2, RAmt2},
@@ -215,10 +224,10 @@ withdraw(Cfg) ->
     check_info(),
     {I1, _} = await_signing_request(withdraw_tx, I),
     {_R1, _} = await_signing_request(withdraw_created, R),
-    %SignedTx = await_on_chain_report(I1, ?TIMEOUT),
-    %SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
-    %wait_for_signed_transaction_in_block(dev1, SignedTx),
-    mine_blocks(dev1, 4),
+    SignedTx = await_on_chain_report(I1, ?TIMEOUT),
+    SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
+    wait_for_signed_transaction_in_block(dev1, SignedTx),
+    mine_blocks(dev1, ?MINIMUM_DEPTH),
     #{initiator_amount := IAmt2, responder_amount := RAmt2} = I1,
     Expected = {IAmt2, RAmt2},
     {Expected, Expected} = {{IAmt0 - Withdrawal, RAmt0}, Expected},
@@ -297,7 +306,6 @@ create_channel_(Cfg, Debug) ->
 
     IAmt = 5,
     RAmt = 5,
-    MinimumDepth = 3,
     Spec = #{initiator        => maps:get(pub, I),
              responder        => maps:get(pub, R),
              initiator_amount => IAmt,
@@ -305,7 +313,7 @@ create_channel_(Cfg, Debug) ->
              push_amount      => 2,
              lock_period      => 10,
              channel_reserve  => 3,
-             minimum_depth    => MinimumDepth,
+             minimum_depth    => ?MINIMUM_DEPTH,
              client           => self(),
              noise            => [{noise, Proto}],
              timeouts         => #{idle => 20000},
@@ -335,22 +343,23 @@ create_channel_(Cfg, Debug) ->
     SignedTx = await_on_chain_report(I2, ?TIMEOUT),
     SignedTx = await_on_chain_report(R2, ?TIMEOUT), % same tx
     wait_for_signed_transaction_in_block(dev1, SignedTx),
-    mine_blocks(dev1, MinimumDepth, Debug),
+    mine_blocks(dev1, ?MINIMUM_DEPTH, Debug),
     check_info(),
+    %% in case of multiple channels starting in parallel - the mining above
+    %% has no effect (the blocks are mined in another process)
+    %% The following line makes sure this process is blocked until the proper
+    %% height is reached
     aecore_suite_utils:wait_for_height(aecore_suite_utils:node_name(dev1),
-                                       CurrentHeight + MinimumDepth),
+                                       CurrentHeight + ?MINIMUM_DEPTH),
     I3 = await_open_report(I2, ?TIMEOUT, Debug),
     R3 = await_open_report(R2, ?TIMEOUT, Debug),
     #{i => I3, r => R3, spec => Spec}.
 
-expect_close_mutual_tx(#{i := #{channel_id := ChannelId}}) ->
-    {ok, Blocks} = mine_blocks(dev1, 4),
+verify_close_mutual_tx(SignedTx, ChannelId) ->
+    {channel_close_mutual_tx, Tx} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
+    {_, ChInfo} = aesc_close_mutual_tx:serialize(Tx),
     true = lists:member(ChannelId,
-        [ aec_id:specialize(ChId, channel)
-          || Block <- Blocks,
-             STx <- aec_blocks:txs(Block),
-             {channel_close_mutual_tx, Tx} <- [aetx:specialize_type(aetx_sign:tx(STx))],
-             {_, ChInfo} <- [aesc_close_mutual_tx:serialize(Tx)],
+        [ aec_id:specialize(ChId, channel)||
              {channel_id, ChId} <- ChInfo
         ]).
 

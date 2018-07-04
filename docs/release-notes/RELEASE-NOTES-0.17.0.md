@@ -7,6 +7,7 @@ It:
 * Allow configuration of header argument passed to the Cuckoo miner executable to support CUDA miners (`mining` > `cuckoo` > `miner` > `hex_encoded_header`)
 * Improves HTTP API with proper checks for key sizes.
 * Allow configuration of miner process niceness (`mining` > `cuckoo` > `miner` > `nice`)
+* Enriches channels' websocket API with deposit and withdrawal sequences.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.17.0
 
