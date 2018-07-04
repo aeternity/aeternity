@@ -50,6 +50,9 @@ handle_request('GetTop', _, _Context) ->
     EncodedHeader = aehttp_api_parser:encode(header, TopBlock),
     {200, [], maps:put(<<"hash">>, EncodedHash, EncodedHeader)};
 
+handle_request('GetKeyBlocksCurrent', Req, _Context) ->
+    get_block(fun() -> aec_chain:top_key_block() end, Req, json);
+
 handle_request('GetKeyBlocksCurrentHash', _, _Context) ->
     Hash = aec_chain:top_key_block_hash(),
     EncodedHash = aec_base58c:encode(block_hash, Hash),

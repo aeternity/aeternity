@@ -53,6 +53,22 @@ paths:
           schema:
             $ref: '#/definitions/Top'
       security:
+  /key-blocks/current:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetKeyBlocksCurrent
+      description: 'Get the current key block'
+      produces:
+        - application/json
+      parameters:
+      responses:
+        '200':
+          description: Returns top key block
+          schema:
+            $ref: '#/definitions/GenericBlock'
+      security:
   /key-blocks/current/hash:
     get:
       tags:

@@ -38,6 +38,9 @@
 %% /key-blocks/*
 -export(
     [
+     get_current_key_block_on_genesis_block/1,
+     get_current_key_block_on_key_block/1,
+     get_current_key_block_on_micro_block/1,
      get_current_key_block_hash_on_genesis_block/1,
      get_current_key_block_hash_on_key_block/1,
      get_current_key_block_hash_on_micro_block/1,
@@ -251,6 +254,9 @@ groups() ->
       ]},
      {key_blocks, [sequence],
       [
+        get_current_key_block_on_genesis_block,
+        get_current_key_block_on_key_block,
+        get_current_key_block_on_micro_block,
         get_current_key_block_hash_on_genesis_block,
         get_current_key_block_hash_on_key_block,
         get_current_key_block_hash_on_micro_block,
@@ -690,6 +696,42 @@ block_to_endpoint_top(Block) ->
 
 %% /key-blocks/*
 
+get_current_key_block_on_genesis_block(_Config) ->
+    ok = rpc(aec_conductor, reinit_chain, []),
+    GenesisBlock = rpc(aec_chain, genesis_block, []),
+
+    {ok, 200, Block} = get_key_blocks_current_sut(),
+    ?assertEqual(key_block_to_endpoint_struct(GenesisBlock), Block),
+
+    ForkHeight = aecore_suite_utils:latest_fork_height(),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), ForkHeight),
+    ok.
+
+get_current_key_block_on_key_block(_Config) ->
+    {ok, [TopBlock]} = aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    ?assertEqual(TopBlock, rpc(aec_chain, top_block, [])),
+    ?assertEqual(true, aec_blocks:is_key_block(TopBlock)),
+
+    {ok, 200, Block} = get_key_blocks_current_sut(),
+    ?assertEqual(key_block_to_endpoint_struct(TopBlock), Block),
+    ok.
+
+get_current_key_block_on_micro_block(_Config) ->
+    Node = aecore_suite_utils:node_name(?NODE),
+    {ok, Pub} = rpc(aec_keys, pubkey, []),
+    ok = aecore_suite_utils:spend(Node, Pub, Pub, 1),
+    {ok, [_]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+    {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
+    {ok, []} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+
+    ?assertEqual(true, aec_blocks:is_key_block(KeyBlock)),
+    ?assertEqual(false, aec_blocks:is_key_block(MicroBlock)),
+    ?assertEqual(MicroBlock, rpc(aec_chain, top_block, [])),
+
+    {ok, 200, Block} = get_key_blocks_current_sut(),
+    ?assertEqual(key_block_to_endpoint_struct(KeyBlock), Block),
+    ok.
+
 get_current_key_block_hash_on_genesis_block(_Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     GenesisHash = rpc(aec_chain, genesis_hash, []),
@@ -767,6 +809,10 @@ get_current_key_block_height_on_micro_block(_Config) ->
     ?assertEqual(aec_blocks:height(KeyBlock), Height),
     ok.
 
+get_key_blocks_current_sut() ->
+    Host = external_address(),
+    http_request(Host, get, "key-blocks/current", []).
+
 get_key_blocks_current_hash_sut() ->
     Host = external_address(),
     http_request(Host, get, "key-blocks/current/hash", []).
@@ -774,6 +820,14 @@ get_key_blocks_current_hash_sut() ->
 get_key_blocks_current_height_sut() ->
     Host = external_address(),
     http_request(Host, get, "key-blocks/current/height", []).
+
+key_block_to_endpoint_struct(Block) ->
+    {ok, Hash} = aec_blocks:hash_internal_representation(Block),
+    M0 = aehttp_api_parser:encode_client_readable_block(Block, json),
+    M1 = aehttp_logic:cleanup_genesis(M0),
+    M2 = maps:put(<<"hash">>, aec_base58c:encode(block_hash, Hash), M1),
+    M3 = maps:put(<<"data_schema">>, <<"BlockWithJSONTxs">>, M2),
+    M3.
 
 %% enpoints
 
