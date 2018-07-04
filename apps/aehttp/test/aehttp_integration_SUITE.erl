@@ -633,7 +633,7 @@ get_top_non_empty_chain(_Config) ->
 
 block_by_height(_Config) ->
     GetExpectedBlockFun =
-        fun(H) -> rpc(aec_chain, get_block_by_height, [H]) end,
+        fun(H) -> rpc(aec_chain, get_key_block_by_height, [H]) end,
     CallApiFun = fun get_block_by_height/2,
     internal_get_block_generic(GetExpectedBlockFun, CallApiFun).
 
@@ -687,7 +687,7 @@ block_not_found_by_broken_hash(_Config) ->
 
 block_by_hash(_Config) ->
     GetExpectedBlockFun =
-        fun(H) -> rpc(aec_chain, get_block_by_height, [H]) end,
+        fun(H) -> rpc(aec_chain, get_key_block_by_height, [H]) end,
     CallApiFun =
         fun(H, Opts) ->
             {ok, Hash} = block_hash_by_height(H),
@@ -2041,7 +2041,7 @@ internal_get_block_generic(GetExpectedBlockFun, CallApiFun) ->
     ok.
 
 block_txs_count_by_height(_Config) ->
-    generic_counts_test(fun(H) -> rpc(aec_chain, get_block_by_height,
+    generic_counts_test(fun(H) -> rpc(aec_chain, get_key_block_by_height,
                                      [H]) end,
                         fun get_block_txs_count_by_height/1).
 
@@ -2051,7 +2051,7 @@ block_txs_count_by_hash(_Config) ->
             {ok, Hash} = block_hash_by_height(H),
             get_block_txs_count_by_hash(Hash)
         end,
-    generic_counts_test(fun(H) -> rpc(aec_chain, get_block_by_height,
+    generic_counts_test(fun(H) -> rpc(aec_chain, get_key_block_by_height,
                                      [H]) end,
                         CallApiFun).
 
@@ -4189,7 +4189,7 @@ prepare_for_spending(BlocksToMine) ->
 
 -spec block_hash_by_height(integer()) -> string().
 block_hash_by_height(Height) ->
-    {ok, B} = rpc(aec_chain, get_block_by_height, [Height]),
+    {ok, B} = rpc(aec_chain, get_key_block_by_height, [Height]),
     {ok, HBin} = aec_blocks:hash_internal_representation(B),
     Hash = binary_to_list(aec_base58c:encode(block_hash, HBin)),
     {ok, Hash}.

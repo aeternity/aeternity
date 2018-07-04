@@ -15,14 +15,14 @@
         , genesis_hash/0
         , genesis_header/0
         , get_block/1
-        , get_block_by_height/1
+        , get_key_block_by_height/1
         , get_block_range_by_hash/2
         , get_block_range_by_height/2
         , get_block_state/1
         , get_generation/1
         , get_prev_generation/1
         , get_header/1
-        , get_header_by_height/1
+        , get_key_header_by_height/1
         , get_n_generation_headers_backwards_from_hash/2
         , get_at_most_n_generation_headers_forward_from_hash/2
         , get_top_N_blocks_time_summary/1
@@ -372,7 +372,7 @@ get_at_most_n_generation_headers_forward_from_hash(Hash, N)
                     case Delta < 0 of
                         true -> error;
                         false ->
-                            {ok, HeaderDelta} = get_header_by_height(Height + Delta),
+                            {ok, HeaderDelta} = get_key_header_by_height(Height + Delta),
                             {ok, Headers} =
                                 aec_chain_state:get_n_key_headers_backward_from(HeaderDelta,
                                                                                 Delta + 1),
@@ -404,7 +404,7 @@ get_n_generation_headers_backwards_from_hash(Hash, N) when is_binary(Hash), is_i
 max_block_range() -> ?MAXIMUM_BLOCK_RANGE.
 
 get_block_range_by_height(H1, H2) ->
-    Fun = fun() -> {get_block_by_height(H1), get_block_by_height(H2)} end,
+    Fun = fun() -> {get_key_block_by_height(H1), get_key_block_by_height(H2)} end,
     case aec_db:ensure_transaction(Fun) of
         {{ok, B1}, {ok, B2}} -> get_block_range(H1, H2, B1, B2);
         {{error, Err}, _} -> {error, Err};
@@ -510,11 +510,11 @@ get_block(Hash) when is_binary(Hash) ->
         {value, Block} -> {ok, Block}
     end.
 
--spec get_block_by_height(non_neg_integer()) ->
+-spec get_key_block_by_height(non_neg_integer()) ->
                                  {'ok', aec_blocks:block()} |
                                  {'error', 'chain_too_short' | 'block_not_found'}.
-get_block_by_height(Height) when is_integer(Height), Height >= 0 ->
-    case aec_chain_state:get_hash_at_height(Height) of
+get_key_block_by_height(Height) when is_integer(Height), Height >= 0 ->
+    case aec_chain_state:get_key_block_hash_at_height(Height) of
         error -> {error, chain_too_short};
         {ok, Hash} ->
             case get_block(Hash) of
@@ -530,11 +530,11 @@ get_generation(KeyBlockHash) ->
         {value, KeyBlock} ->
             TopHash   = top_block_hash(),
             TopHeight = aec_headers:height(aec_db:get_header(TopHash)),
-            Height    = aec_blocks:height(KeyBlock),
+            Height    = aec_blocks:height(KeyBlock) + 1,
             MaybeFirstMicro =
-                case TopHeight > Height of
+                case TopHeight >= Height of
                     true ->
-                        {ok, NextKeyBlock} = get_block_by_height(Height),
+                        {ok, NextKeyBlock} = get_key_block_by_height(Height),
                         aec_blocks:prev_hash(NextKeyBlock);
                     false ->
                         TopHash
@@ -586,10 +586,10 @@ get_header(Hash) when is_binary(Hash) ->
         {value, Header} -> {ok, Header}
     end.
 
--spec get_header_by_height(non_neg_integer()) ->
+-spec get_key_header_by_height(non_neg_integer()) ->
                               {'ok', aec_headers:header()} | {'error', 'chain_too_short'}.
-get_header_by_height(Height) when is_integer(Height), Height >= 0 ->
-    case aec_chain_state:get_hash_at_height(Height) of
+get_key_header_by_height(Height) when is_integer(Height), Height >= 0 ->
+    case aec_chain_state:get_key_block_hash_at_height(Height) of
         error -> {error, chain_too_short};
         {ok, Hash} -> get_header(Hash)
     end.

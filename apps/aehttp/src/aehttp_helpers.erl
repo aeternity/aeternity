@@ -585,7 +585,7 @@ get_block_hash_optionally_by_hash_or_height(PutKey) ->
     fun(Req, State) ->
         GetHashByHeight =
             fun(Height) ->
-                case aehttp_logic:get_header_by_height(Height) of
+                case aehttp_logic:get_key_header_by_height(Height) of
                     {error, chain_too_short} ->
                         {error, not_found};
                     {ok, Header} ->

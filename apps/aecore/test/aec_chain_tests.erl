@@ -25,10 +25,10 @@
         [ difficulty_at_hash/1
         , difficulty_at_top_block/0
         , get_block/1
-        , get_block_by_height/1
+        , get_key_block_by_height/1
         , get_block_state/1
         , get_header/1
-        , get_header_by_height/1
+        , get_key_header_by_height/1
         , top_block/0
         , top_block_hash/0
         , top_header/0
@@ -102,13 +102,13 @@ basic_access_test_block_chain() ->
     ?compareBlockResults({ok, B2}, get_block(B2H)),
 
     %% Check by height
-    ?assertEqual({ok, BH0}, get_header_by_height(0)),
-    ?assertEqual({ok, BH1}, get_header_by_height(1)),
-    ?assertEqual({ok, BH2}, get_header_by_height(2)),
-    ?compareBlockResults({ok, B0}, get_block_by_height(0)),
-    ?compareBlockResults({ok, B1}, get_block_by_height(1)),
-    ?compareBlockResults({ok, B2}, get_block_by_height(2)),
-    ?assertEqual({error, chain_too_short}, get_block_by_height(3)).
+    ?assertEqual({ok, BH0}, get_key_header_by_height(0)),
+    ?assertEqual({ok, BH1}, get_key_header_by_height(1)),
+    ?assertEqual({ok, BH2}, get_key_header_by_height(2)),
+    ?compareBlockResults({ok, B0}, get_key_block_by_height(0)),
+    ?compareBlockResults({ok, B1}, get_key_block_by_height(1)),
+    ?compareBlockResults({ok, B2}, get_key_block_by_height(2)),
+    ?assertEqual({error, chain_too_short}, get_key_block_by_height(3)).
 
 %%%===================================================================
 %%% Out of order tests
@@ -673,13 +673,13 @@ fork_get_by_height() ->
 
     ok = write_blocks_to_chain(EasyChain),
     ?assertEqual({ok, block_hash(lists:last(EasyChain))},
-                 aec_chain_state:get_hash_at_height(4)),
+                 aec_chain_state:get_key_block_hash_at_height(4)),
 
     ok = write_blocks_to_chain(HardChain),
     ?assertEqual({ok, block_hash(lists:last(HardChain))},
-                 aec_chain_state:get_hash_at_height(4)),
+                 aec_chain_state:get_key_block_hash_at_height(4)),
 
-    ?assertEqual(error, aec_chain_state:get_hash_at_height(5)),
+    ?assertEqual(error, aec_chain_state:get_key_block_hash_at_height(5)),
 
     ok.
 

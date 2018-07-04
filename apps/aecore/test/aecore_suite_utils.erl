@@ -291,7 +291,8 @@ spend(Node, FromPub, ToPub, Amount, Fee) ->
                payload => <<"foo">>},
     {ok, Tx} = rpc:call(Node, aec_spend_tx, new, [Params]),
     {ok, SignedTx} = rpc:call(Node, aec_keys, sign_tx, [Tx]),
-    ok = rpc:call(Node, aec_tx_pool, push, [SignedTx]).
+    ok = rpc:call(Node, aec_tx_pool, push, [SignedTx]),
+    {ok, SignedTx}.
 
 
 forks() ->

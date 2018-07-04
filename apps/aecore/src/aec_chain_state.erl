@@ -10,7 +10,7 @@
 
 -export([ calculate_state_for_new_keyblock/2
         , find_common_ancestor/2
-        , get_hash_at_height/1
+        , get_key_block_hash_at_height/1
         , get_n_key_headers_backward_from/2
         , hash_is_connected_to_genesis/1
         , hash_is_in_main_chain/1
@@ -19,7 +19,7 @@
 
 %% For tests
 -export([ get_top_block_hash/1
-        , get_hash_at_height/2
+        , get_key_block_hash_at_height/2
         , calculate_gas_fee/1
         ]).
 
@@ -32,9 +32,9 @@
 %%% API
 %%%===================================================================
 
--spec get_hash_at_height(aec_blocks:height()) -> {'ok', binary()} | 'error'.
-get_hash_at_height(Height) when is_integer(Height), Height >= 0 ->
-    get_hash_at_height(Height, new_state_from_persistence()).
+-spec get_key_block_hash_at_height(aec_blocks:height()) -> {'ok', binary()} | 'error'.
+get_key_block_hash_at_height(Height) when is_integer(Height), Height >= 0 ->
+    get_key_block_hash_at_height(Height, new_state_from_persistence()).
 
 -spec get_n_key_headers_backward_from(aec_headers:header(), non_neg_integer()) ->
         {ok, [#header{}]} | 'error'.
@@ -255,7 +255,7 @@ export_header(#node{header = Header}) ->
 %%       The function assumes that a node is in the main chain if
 %%       there is only one node at that height, and the height is lower
 %%       than the current top.
-get_hash_at_height(Height, State) when is_integer(Height), Height >= 0 ->
+get_key_block_hash_at_height(Height, State) when is_integer(Height), Height >= 0 ->
     case get_top_block_hash(State) of
         undefined -> error;
         Hash ->
@@ -268,17 +268,22 @@ get_hash_at_height(Height, State) when is_integer(Height), Height >= 0 ->
                         error -> error({broken_chain, Height});
                         {ok, [Node]} -> {ok, hash(Node)};
                         {ok, [_|_] = Nodes} ->
-                            first_hash_in_main_chain(Nodes, Hash)
+                            keyblock_hash_in_main_chain(Nodes, Hash)
                     end
             end
     end.
 
-first_hash_in_main_chain([Node|Left], TopHash) ->
-    case hash_is_in_main_chain(hash(Node), TopHash) of
-        true  -> {ok, hash(Node)};
-        false -> first_hash_in_main_chain(Left, TopHash)
+keyblock_hash_in_main_chain([Node|Left], TopHash) ->
+    NodeFound =
+        case hash_is_in_main_chain(hash(Node), TopHash) of
+            true  -> is_key_block(Node);
+            false -> false
+        end,
+    case NodeFound of
+        true -> {ok, hash(Node)};
+        false -> keyblock_hash_in_main_chain(Left, TopHash)
     end;
-first_hash_in_main_chain([],_TopHash) ->
+keyblock_hash_in_main_chain([],_TopHash) ->
     error.
 
 hash_is_in_main_chain(Hash, TopHash) ->

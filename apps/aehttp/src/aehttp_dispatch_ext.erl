@@ -61,11 +61,11 @@ handle_request('GetBlockPending', Req, _Context) ->
 
 handle_request('GetBlockByHeight', Req, _Context) ->
     Height = maps:get('height', Req),
-    get_block(fun() -> aehttp_logic:get_block_by_height(Height) end, Req, json);
+    get_block(fun() -> aehttp_logic:get_key_block_by_height(Height) end, Req, json);
 
 handle_request('GetBlockByHeightDeprecated', Req, _Context) ->
     Height = maps:get('height', Req),
-    case aehttp_logic:get_block_by_height(Height) of
+    case aehttp_logic:get_key_block_by_height(Height) of
         {ok, Block} ->
             {200, [], aehttp_api_parser:encode(block, Block)};
         {error, block_not_found} ->
@@ -110,7 +110,7 @@ handle_request('GetHeaderByHash', Req, _Context) ->
 
 handle_request('GetHeaderByHeight', Req, _Context) ->
     Height = maps:get('height', Req),
-    case aehttp_logic:get_block_by_height(Height) of
+    case aehttp_logic:get_key_block_by_height(Height) of
         {ok, Block} ->
             Resp = aehttp_api_parser:encode(header, Block),
             lager:debug("Resp = ~p", [pp(Resp)]),

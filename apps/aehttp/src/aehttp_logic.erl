@@ -4,8 +4,8 @@
         , get_top_height/0
         , get_top_hash/0
         , get_header_by_hash/1
-        , get_header_by_height/1
-        , get_block_by_height/1
+        , get_key_header_by_height/1
+        , get_key_block_by_height/1
         , get_block_by_hash/1
         , get_block_latest/0
         , get_block_pending/0
@@ -65,18 +65,18 @@ get_header_by_hash(Hash) ->
             {error, header_not_found}
     end.
 
--spec get_header_by_height(integer()) -> {ok, aec_headers:header()} | {error, chain_too_short}.
-get_header_by_height(Height) ->
-    case aec_chain:get_header_by_height(Height) of
+-spec get_key_header_by_height(integer()) -> {ok, aec_headers:header()} | {error, chain_too_short}.
+get_key_header_by_height(Height) ->
+    case aec_chain:get_key_header_by_height(Height) of
         {ok, _Header} = OK -> OK;
         {error, chain_too_short} = Err ->
             Err
     end.
 
--spec get_block_by_height(integer()) -> {ok, aec_blocks:block()} |
+-spec get_key_block_by_height(integer()) -> {ok, aec_blocks:block()} |
                                         {error, block_not_found | chain_too_short}.
-get_block_by_height(Height) ->
-    case aec_chain:get_block_by_height(Height) of
+get_key_block_by_height(Height) ->
+    case aec_chain:get_key_block_by_height(Height) of
         {ok, Block} ->
             {ok, Block};
         {error, Msg} = Err when Msg =:= block_not_found orelse
