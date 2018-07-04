@@ -59,7 +59,7 @@ handle_request('GetBlockLatest', Req, _Context) ->
 handle_request('GetBlockPending', Req, _Context) ->
     get_block(fun aehttp_logic:get_block_pending/0, Req, json, false);
 
-handle_request('GetBlockByHeight', Req, _Context) ->
+handle_request('GetKeyBlockByHeight', Req, _Context) ->
     Height = maps:get('height', Req),
     get_block(fun() -> aehttp_logic:get_key_block_by_height(Height) end, Req, json);
 
@@ -108,7 +108,7 @@ handle_request('GetHeaderByHash', Req, _Context) ->
             end
     end;
 
-handle_request('GetHeaderByHeight', Req, _Context) ->
+handle_request('GetKeyHeaderByHeight', Req, _Context) ->
     Height = maps:get('height', Req),
     case aehttp_logic:get_key_block_by_height(Height) of
         {ok, Block} ->

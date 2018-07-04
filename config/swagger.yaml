@@ -87,8 +87,8 @@ paths:
       tags:
         - external
         - gossip
-      operationId: GetHeaderByHeight
-      description: 'Get a header by its height in the chain'
+      operationId: GetKeyHeaderByHeight
+      description: 'Get a key header by its height in the chain'
       produces:
         - application/json
       parameters:
@@ -1440,8 +1440,8 @@ paths:
       tags:
         - external
         - chain
-      operationId: GetBlockByHeight
-      description: 'Get a block by height'
+      operationId: GetKeyBlockByHeight
+      description: 'Get a key block by height'
       produces:
         - application/json
       parameters:
