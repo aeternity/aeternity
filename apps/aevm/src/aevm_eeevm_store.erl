@@ -14,9 +14,13 @@
 	, to_binary/1
         , from_sophia_state/1
         , to_sophia_state/1
+        , is_valid_key/2
         ]).
 
 -include("aevm_eeevm.hrl").
+-include_lib("aecontract/src/aecontract.hrl").
+
+-define(SOPHIA_STATE_KEY, <<0>>).
 
 %%====================================================================
 %% API
@@ -43,10 +47,14 @@ store(Address, Value, State) when is_integer(Value) ->
     aevm_eeevm_state:set_storage(Store1, State).
 
 -spec from_sophia_state(binary()) -> aect_contracts:store().
-from_sophia_state(Data) -> #{<<0>> => Data}.
+from_sophia_state(Data) -> #{?SOPHIA_STATE_KEY => Data}.
 
 -spec to_sophia_state(aect_contracts:store()) -> binary().
-to_sophia_state(Store) -> maps:get(<<0>>, Store, <<>>).
+to_sophia_state(Store) -> maps:get(?SOPHIA_STATE_KEY, Store, <<>>).
+
+is_valid_key(?AEVM_01_Sophia_01, ?SOPHIA_STATE_KEY) -> true;
+is_valid_key(?AEVM_01_Sophia_01, _) -> false;
+is_valid_key(?AEVM_01_Solidity_01, K) -> is_binary_map_key(K).
 
 %%====================================================================
 %% Internal functions
@@ -60,7 +68,7 @@ storage_write(Address, Value, Mem) -> maps:put(Address, Value, Mem).
 
 binary_to_integer_map(ChainStore) ->
     ToInt = fun(K, Val, Map) ->
-                    Address = binary:decode_unsigned(K),
+                    Address = binary_to_integer_map_key(K),
                     case binary:decode_unsigned(Val) of
                         0 -> Map;
                         V -> Map#{ Address => V }
@@ -70,7 +78,7 @@ binary_to_integer_map(ChainStore) ->
 
 integer_to_binary_map(Store) ->
     ToBin = fun(A, Val, Map) ->
-                    Key = binary:encode_unsigned(A),
+                    Key = integer_to_binary_map_key(A),
                     case binary:encode_unsigned(Val) of
                         <<0>> -> Map;
                         V -> Map#{ Key => V}
@@ -78,3 +86,8 @@ integer_to_binary_map(Store) ->
             end,
     maps:fold(ToBin, #{}, Store).
 
+binary_to_integer_map_key(K) -> binary:decode_unsigned(K).
+integer_to_binary_map_key(K) -> binary:encode_unsigned(K).
+
+is_binary_map_key(K) ->
+    K =:= integer_to_binary_map_key(binary_to_integer_map_key(K)).

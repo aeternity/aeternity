@@ -86,6 +86,11 @@ add_poi(Pubkey, Tree, Poi) ->
 -spec verify_poi(aec_keys:pubkey(), aec_accounts:account(), aec_poi:poi()) ->
                         'ok' | {'error', term()}.
 verify_poi(AccountKey, Account, Poi) ->
+    %% Hardcode expectation on specified account object key being
+    %% equal to key in internal representation of account.  The key is
+    %% not part of the account serialization so this shall never
+    %% happen.
+    AccountKey = aec_accounts:pubkey(Account),
     aec_poi:verify(AccountKey, aec_accounts:serialize(Account), Poi).
 
 -spec lookup_poi(aec_keys:pubkey(), aec_poi:poi()) ->
