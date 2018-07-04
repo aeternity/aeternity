@@ -29,15 +29,15 @@ class Erlang < Formula
   desc "Programming language for highly scalable real-time systems"
   homepage "https://www.erlang.org/"
   # Download tarball from GitHub; it is served faster than the official tarball.
-  url "https://github.com/erlang/otp/archive/OTP-20.2.3.tar.gz"
-  sha256 "d50a7e77a4f0c737c5d6110b92a0aa31bad1c801ff3dccc80c02e3d564242f69"
+  url "https://github.com/erlang/otp/archive/OTP-20.3.8.tar.gz"
+  sha256 "a7e59c531605fbd19ceac0568ae81c89ec690449e861da6e3598399f9c4b747f"
   head "https://github.com/erlang/otp.git"
 
   bottle do
     cellar :any
-    sha256 "3b2d2f2e70a6860dadf35bca2373d0887a568f4c97446a4ede6dc70adcffefd7" => :high_sierra
-    sha256 "7857f481eb20d51fc3052a287221732143520d184e74b304fd01f794f4e84a24" => :sierra
-    sha256 "e3d2282263cb1552c04f0b2263b02fc101a5acfc4180cfa0a9056433c713031c" => :el_capitan
+    sha256 "906722cd512380168f57c650783e771325cc813e00fc01177f9dad0784c00b23" => :high_sierra
+    sha256 "7c6b132bc3cde0904dfd7943c7c7b3fab631d99564d3d9314e237ec17c5411ee" => :sierra
+    sha256 "c0ad4c489f570d17e2c18d42383cc9fc8209247d7cdec7579e4f8021104e7255" => :el_capitan
   end
 
   option "without-hipe", "Disable building hipe; fails on various macOS systems"
@@ -58,15 +58,15 @@ class Erlang < Formula
   depends_on "wxmac" => :recommended # for GUI apps like observer
 
   resource "man" do
-    url "https://www.erlang.org/download/otp_doc_man_20.2.tar.gz"
-    mirror "https://fossies.org/linux/misc/otp_doc_man_20.2.tar.gz"
-    sha256 "950e088f9e47fc10a98e3f67d6420a990650836c648686a2f5dafe331747cbdf"
+    url "https://www.erlang.org/download/otp_doc_man_20.3.tar.gz"
+    mirror "https://fossies.org/linux/misc/otp_doc_man_20.3.tar.gz"
+    sha256 "17e0b2f94f11576a12526614a906ecad629b8804c25e6c18523f7c4346607112"
   end
 
   resource "html" do
-    url "https://www.erlang.org/download/otp_doc_html_20.2.tar.gz"
-    mirror "https://fossies.org/linux/misc/otp_doc_html_20.2.tar.gz"
-    sha256 "7f5e7d4cd0c58e15d7d29231931c2a710f7f5fdfcb0ff8edb8142969520c4256"
+    url "https://www.erlang.org/download/otp_doc_html_20.3.tar.gz"
+    mirror "https://fossies.org/linux/misc/otp_doc_html_20.3.tar.gz"
+    sha256 "8099b62e9fa24b3f90eaeda151fa23ae729c8297e7d3fd8adaca865b35a3125d"
   end
 
   def install
@@ -126,8 +126,9 @@ class Erlang < Formula
   def caveats; <<~EOS
     Man pages can be found in:
       #{opt_lib}/erlang/man
+
     Access them with `erl -man`, or add this directory to MANPATH.
-    EOS
+  EOS
   end
 
   test do
