@@ -85,7 +85,7 @@ check_are_funds_in_channel(ChannelId, Amount, Trees) ->
 
 -spec check_state_hash_size(binary()) -> boolean().
 check_state_hash_size(Hash) ->
-    byte_size(Hash) =:= 32.
+    byte_size(Hash) =:= aec_base58c:byte_size_for_type(state).
 
 -spec deserialize_payload(binary()) -> {ok, aetx_sign:signed_tx(), aesc_offchain_tx:tx()}
                                          | {ok, last_onchain}

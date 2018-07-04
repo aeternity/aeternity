@@ -2,7 +2,8 @@
 
 -export([encode/2,
          decode/1,
-         safe_decode/2]).
+         safe_decode/2,
+         byte_size_for_type/1]).
 
 -type known_type() :: block_hash
                     | block_tx_hash
@@ -31,13 +32,29 @@ encode(Type, Payload) ->
     <<Pfx/binary, "$", Enc/binary>>.
 
 -spec decode(binary()) -> {known_type(), payload()}.
-decode(Bin) ->
-    case split(Bin) of
+decode(Bin0) ->
+    case split(Bin0) of
         [Pfx, Payload] ->
-            {pfx2type(Pfx), decode_check(Payload)};
+            Type = pfx2type(Pfx),
+            Bin = decode_check(Payload),
+            case type_size_check(Type, Bin) of
+                ok -> {Type, Bin};
+                {error, Reason} -> erlang:error(Reason)
+            end;
         _ ->
             %% {<<>>, decode_check(Bin)}
             erlang:error(missing_prefix)
+    end.
+
+type_size_check(Type, Bin) ->
+    case byte_size_for_type(Type) of
+        not_applicable -> ok;
+        CorrectSize ->
+            Size = byte_size(Bin),
+            case Size =:= CorrectSize of
+                true -> ok;
+                false -> {error, incorrect_size}
+            end
     end.
 
 safe_decode(Type, Enc) ->
@@ -106,6 +123,26 @@ pfx2type(<<"pp">>) -> peer_pubkey;
 pfx2type(<<"nm">>) -> name;
 pfx2type(<<"st">>) -> state;
 pfx2type(<<"pi">>) -> poi.
+
+-spec byte_size_for_type(known_type()) -> non_neg_integer() | not_applicable.
+
+byte_size_for_type(block_hash)       -> 32;
+byte_size_for_type(block_tx_hash)    -> 32;
+byte_size_for_type(block_state_hash) -> 32;
+byte_size_for_type(channel)          -> 32;
+byte_size_for_type(contract_pubkey)  -> 32;
+byte_size_for_type(transaction)      -> not_applicable;
+byte_size_for_type(tx_hash)          -> 32;
+byte_size_for_type(oracle_pubkey)    -> 32;
+byte_size_for_type(oracle_query_id)  -> 32;
+byte_size_for_type(account_pubkey)   -> 32;
+byte_size_for_type(signature)        -> 64;
+byte_size_for_type(name)             -> not_applicable;
+byte_size_for_type(commitment)       -> 32;
+byte_size_for_type(peer_pubkey)      -> 32;
+byte_size_for_type(state)            -> 32;
+byte_size_for_type(poi)              -> not_applicable.
+
 
 %% TODO: Fix the base58 module so that it consistently uses binaries instead
 %%

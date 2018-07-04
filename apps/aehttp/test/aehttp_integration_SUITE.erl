@@ -1202,20 +1202,37 @@ nameservice_transaction_preclaim(MinerAddress, MinerPubkey) ->
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_name_preclaim/1,
                                fun aens_preclaim_tx:new/1, MinerPubkey),
-    test_invalid_hash(MinerPubkey, account, Encoded, fun get_name_preclaim/1),
-    test_invalid_hash(MinerPubkey, commitment, Encoded, fun get_name_preclaim/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, account, Encoded, fun get_name_preclaim/1),
+    test_invalid_hash({commitment, MinerPubkey}, commitment, Encoded, fun get_name_preclaim/1),
     test_missing_address(account, Encoded, fun get_name_preclaim/1),
     ok.
 
-test_invalid_hash(CorrectAddress, Key0, Encoded, APIFun) ->
-    {Key, Name} =
-        case Key0 of
+test_invalid_hash({PubKeyType, PubKey}, MapKey0, Encoded, APIFun) when is_atom(PubKeyType) ->
+    {MapKey, Name} =
+        case MapKey0 of
             {_, _} = Pair -> Pair;
             K -> {K, K}
         end,
-    <<_, InvalidHash/binary>> = CorrectAddress,
+    CorrectAddress = aec_base58c:encode(PubKeyType, PubKey),
     Msg = list_to_binary("Invalid hash: " ++ atom_to_list(Name)),
-    {ok, 400, #{<<"reason">> := Msg}} = APIFun(maps:put(Key, InvalidHash, Encoded)),
+    <<_, HashWithBrokenPrefix/binary>> = CorrectAddress,
+    {ok, 400, #{<<"reason">> := Msg}} = APIFun(maps:put(MapKey, HashWithBrokenPrefix, Encoded)),
+
+    <<_Prefix:3/binary, HashWithNoPrefix/binary>> = CorrectAddress,
+    {ok, 400, #{<<"reason">> := Msg}} = APIFun(maps:put(MapKey, HashWithNoPrefix, Encoded)),
+
+    case aec_base58c:byte_size_for_type(PubKeyType) of
+        not_applicable -> pass;
+        _ ->
+            <<ShortHash:10/binary, _Rest/binary>> = CorrectAddress,
+            {ok, 400, #{<<"reason">> := Msg}} = APIFun(maps:put(MapKey, ShortHash, Encoded)),
+
+            BS = byte_size(PubKey),
+            HalfSize = BS div 2,
+            <<FirstHalfKey:HalfSize/binary, _SecondHalfKey/binary>> = PubKey,
+            HalfHash = aec_base58c:encode(PubKeyType, FirstHalfKey),
+            {ok, 400, #{<<"reason">> := Msg}} = APIFun(maps:put(MapKey, HalfHash, Encoded))
+    end,
     ok.
 
 test_missing_address(Key, Encoded, APIFun) ->
@@ -1251,8 +1268,8 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_name_claim/1,
                                fun aens_claim_tx:new/1, MinerPubkey),
-    test_invalid_hash(MinerPubkey, account, Encoded, fun get_name_claim/1),
-    test_invalid_hash(MinerPubkey, name, Encoded, fun get_name_claim/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, account, Encoded, fun get_name_claim/1),
+    test_invalid_hash({name, MinerPubkey}, name, Encoded, fun get_name_claim/1),
     test_missing_address(account, Encoded, fun get_name_claim/1),
 
     %% missing registar
@@ -1280,8 +1297,8 @@ nameservice_transaction_update(MinerAddress, MinerPubkey) ->
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_name_update/1,
                                fun aens_update_tx:new/1, MinerPubkey),
-    test_invalid_hash(MinerPubkey, account, Encoded, fun get_name_update/1),
-    test_invalid_hash(MinerPubkey, name_hash, Encoded, fun get_name_update/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, account, Encoded, fun get_name_update/1),
+    test_invalid_hash({name, MinerPubkey}, name_hash, Encoded, fun get_name_update/1),
     test_missing_address(account, Encoded, fun get_name_update/1),
     %% test broken pointers
     TestBrokenPointers =
@@ -1308,9 +1325,9 @@ nameservice_transaction_transfer(MinerAddress, MinerPubkey) ->
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_name_transfer/1,
                                fun aens_transfer_tx:new/1, MinerPubkey),
-    test_invalid_hash(MinerPubkey, account, Encoded, fun get_name_transfer/1),
-    test_invalid_hash(MinerPubkey, recipient_pubkey, Encoded, fun get_name_transfer/1),
-    test_invalid_hash(MinerPubkey, name_hash, Encoded, fun get_name_transfer/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, account, Encoded, fun get_name_transfer/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, recipient_pubkey, Encoded, fun get_name_transfer/1),
+    test_invalid_hash({name, MinerPubkey}, name_hash, Encoded, fun get_name_transfer/1),
     test_missing_address(account, Encoded, fun get_name_transfer/1),
     ok.
 
@@ -1325,8 +1342,8 @@ nameservice_transaction_revoke(MinerAddress, MinerPubkey) ->
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_name_revoke/1,
                                fun aens_revoke_tx:new/1, MinerPubkey),
-    test_invalid_hash(MinerPubkey, account, Encoded, fun get_name_revoke/1),
-    test_invalid_hash(MinerPubkey, name_hash, Encoded, fun get_name_revoke/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, account, Encoded, fun get_name_revoke/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, name_hash, Encoded, fun get_name_revoke/1),
     test_missing_address(account, Encoded, fun get_name_revoke/1),
     ok.
 
@@ -1377,8 +1394,8 @@ state_channels_create(MinerPubkey, ResponderPubkey) ->
     {ok, Tx} = unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_create/1,
                                fun aesc_create_tx:new/1, MinerPubkey),
-    test_invalid_hash(MinerPubkey, initiator, Encoded, fun get_channel_create/1),
-    test_invalid_hash(ResponderPubkey, responder, Encoded, fun get_channel_create/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, initiator, Encoded, fun get_channel_create/1),
+    test_invalid_hash({account_pubkey, ResponderPubkey}, responder, Encoded, fun get_channel_create/1),
     test_missing_address(initiator, Encoded, fun get_channel_create/1),
     {ok, Tx}.
 
@@ -1401,7 +1418,7 @@ state_channels_deposit(ChannelId, MinerPubkey) ->
     {{ok, NextNonce}, _} = {rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
                             MinerPubkey},
     Encoded1 = maps:put(nonce, NextNonce, Encoded),
-    test_invalid_hash(MinerPubkey, from, Encoded1, fun get_channel_deposit/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, from, Encoded1, fun get_channel_deposit/1),
     ok.
 
 state_channels_withdrawal(ChannelId, MinerPubkey) ->
@@ -1423,7 +1440,7 @@ state_channels_withdrawal(ChannelId, MinerPubkey) ->
     {{ok, NextNonce}, _} = {rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
                             MinerPubkey},
     Encoded1 = maps:put(nonce, NextNonce, Encoded),
-    test_invalid_hash(MinerPubkey, to, Encoded1, fun get_channel_withdrawal/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, to, Encoded1, fun get_channel_withdrawal/1),
     ok.
 
 state_channels_close_mutual(ChannelId, InitiatorPubkey) ->
@@ -1440,7 +1457,7 @@ state_channels_close_mutual(ChannelId, InitiatorPubkey) ->
     {{ok, NextNonce}, _} = {rpc(aec_next_nonce, pick_for_account, [InitiatorPubkey]),
                             InitiatorPubkey},
     Encoded1 = maps:put(nonce, NextNonce, Encoded),
-    test_invalid_hash(ChannelId, channel_id, Encoded1, fun get_channel_close_mutual/1),
+    test_invalid_hash({channel, ChannelId}, channel_id, Encoded1, fun get_channel_close_mutual/1),
     ok.
 
 state_channels_close_solo(ChannelId, MinerPubkey) ->
@@ -1457,7 +1474,7 @@ state_channels_close_solo(ChannelId, MinerPubkey) ->
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_close_solo/1,
                                fun aesc_close_solo_tx:new/1, MinerPubkey),
-    test_invalid_hash(MinerPubkey,  from, Encoded, fun get_channel_close_solo/1),
+    test_invalid_hash({account_pubkey, MinerPubkey},  from, Encoded, fun get_channel_close_solo/1),
     ok.
 
 state_channels_slash(ChannelId, MinerPubkey) ->
@@ -1474,7 +1491,7 @@ state_channels_slash(ChannelId, MinerPubkey) ->
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_slash/1,
                                fun aesc_slash_tx:new/1, MinerPubkey),
-    test_invalid_hash(MinerPubkey, from, Encoded, fun get_channel_slash/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, from, Encoded, fun get_channel_slash/1),
     ok.
 
 state_channels_settle(ChannelId, MinerPubkey) ->
@@ -1493,7 +1510,7 @@ state_channels_settle(ChannelId, MinerPubkey) ->
     {{ok, NextNonce}, _} = {rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
                             MinerPubkey},
     Encoded1 = maps:put(nonce, NextNonce, Encoded),
-    test_invalid_hash(MinerPubkey, from, Encoded1, fun get_channel_settle/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, from, Encoded1, fun get_channel_settle/1),
     ok.
 
 %% tests the following
@@ -1519,8 +1536,8 @@ spend_transaction(_Config) ->
     {spend_tx, SpendTx} = aetx:specialize_type(T),
     <<"hejsan svejsan">> = aec_spend_tx:payload(SpendTx),
 
-    test_invalid_hash(MinerPubkey, sender, Encoded, fun get_spend/1),
-    test_invalid_hash(MinerPubkey, {recipient_pubkey, recipient}, Encoded, fun get_spend/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, sender, Encoded, fun get_spend/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, {recipient_pubkey, recipient}, Encoded, fun get_spend/1),
     test_missing_address(sender, Encoded, fun get_spend/1),
     ok.
 
@@ -2950,8 +2967,8 @@ sc_ws_update_fails_and_close(Config) ->
             {ok, #{<<"reason">> := <<"invalid_pubkeys">>,
                   <<"request">> := _Request2}} =
                 channel_update_fail(Conns, Sender,
-                                    #{initiator => #{pub_key => <<123456>>},
-                                      responder => #{pub_key => <<654321>>}},
+                                    #{initiator => #{pub_key => <<42:32/unit:8>>},
+                                      responder => #{pub_key => <<43:32/unit:8>>}},
                                     1),
             ok
         end,

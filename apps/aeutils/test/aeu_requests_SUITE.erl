@@ -86,7 +86,7 @@ application_test(Config) ->
     AlreadyRunning = [ Name || {Name, _, _} <- proplists:get_value(running_apps, Config) ],
 
     %% Start application it depends on (among which aecore)
-    application:set_env(aecore, password, <<"secret">>), 
+    application:set_env(aecore, password, <<"secret">>),
 
     {ok, Started} = application:ensure_all_started(aehttp),
     application:stop(aehttp),
@@ -98,4 +98,4 @@ application_test(Config) ->
                             -- AlreadyRunning)
                            -- ?TO_BE_STOPPED_APPS_BLACKLIST) ],
     ok.
-  
+
