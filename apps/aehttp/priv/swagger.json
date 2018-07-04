@@ -108,6 +108,35 @@
         }
       }
     },
+    "/key-blocks/height/{height}" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get key block by height",
+        "operationId" : "GetKeyBlocksByHeight",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "height",
+          "in" : "path",
+          "description" : "Height of the block to fetch",
+          "required" : true,
+          "type" : "integer"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Returns key block",
+            "schema" : {
+              "$ref" : "#/definitions/GenericBlock"
+            }
+          },
+          "404" : {
+            "description" : "Block not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/key-blocks/hash/{hash}" : {
       "get" : {
         "tags" : [ "external", "gossip" ],

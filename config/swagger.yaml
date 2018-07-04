@@ -120,6 +120,31 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /key-blocks/height/{height}:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetKeyBlocksByHeight
+      description: 'Get key block by height'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: height
+          description: 'Height of the block to fetch'
+          required: true
+          type : integer
+      responses:
+        '200':
+          description: Returns key block
+          schema:
+            $ref: '#/definitions/GenericBlock'
+        '404':
+          description: Block not found
+          schema:
+            $ref: '#/definitions/Error'
+      security:
   /key-blocks/hash/{hash}:
     get:
       tags:

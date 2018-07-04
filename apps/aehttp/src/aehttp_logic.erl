@@ -5,6 +5,7 @@
         , get_top_hash/0
         , get_header_by_hash/1
         , get_key_header_by_height/1
+        , get_key_block_by_hash/1
         , get_key_block_by_height/1
         , get_block_by_hash/1
         , get_block_latest/0
@@ -13,7 +14,6 @@
         , get_block_range_by_hash/2
         , get_block_range_by_height/2
         , get_genesis_hash/0
-        , get_key_block_by_hash/1
         , get_top_blocks_time_summary/1
         ]).
 
