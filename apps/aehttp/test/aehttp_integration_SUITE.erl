@@ -714,10 +714,10 @@ get_top_micro_block(_Config) ->
 
     Node = aecore_suite_utils:node_name(?NODE),
     {ok, Pub} = rpc(aec_keys, pubkey, []),
-    ok = aecore_suite_utils:spend(Node, Pub, Pub, 1),
-    {ok, [_]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+    {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1),
+    ?assertEqual({ok, [Tx]},  rpc:call(Node, aec_tx_pool, peek, [infinity])),
     {ok, [_, TopBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
-    {ok, []} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+    ?assertEqual({ok, []}, rpc:call(Node, aec_tx_pool, peek, [infinity])),
 
     ?assertEqual(TopBlock, rpc(aec_chain, top_block, [])),
     ?assertEqual(false, aec_blocks:is_key_block(TopBlock)),
