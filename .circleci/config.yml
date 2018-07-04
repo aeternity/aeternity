@@ -626,7 +626,6 @@ workflows:
               only: /^v.*$/
 
       - osx_package:
-          filters:
             tags:
               only: /^v.*$/
 
