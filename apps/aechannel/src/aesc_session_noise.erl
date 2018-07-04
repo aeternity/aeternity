@@ -16,6 +16,7 @@
        , deposit_signed/2
        , deposit_locked/2
        , channel_reestablish/2
+       , channel_reestablish_ack/2
        , update/2
        , update_ack/2
        , update_error/2
@@ -29,6 +30,8 @@
        , wdraw_error/2
        , error/2
        , inband_msg/2
+       , leave/2
+       , leave_ack/2
        , shutdown/2
        , shutdown_ack/2]).
 
@@ -52,6 +55,7 @@ deposit_created    (Session, Msg) -> cast(Session, {msg, ?DEP_CREATED  , Msg}).
 deposit_signed     (Session, Msg) -> cast(Session, {msg, ?DEP_SIGNED   , Msg}).
 deposit_locked     (Session, Msg) -> cast(Session, {msg, ?DEP_LOCKED   , Msg}).
 channel_reestablish(Session, Msg) -> cast(Session, {msg, ?CH_REESTABL  , Msg}).
+channel_reestablish_ack(Sn , Msg) -> cast(Sn     , {msg, ?CH_REEST_ACK , Msg}).
 update             (Session, Msg) -> cast(Session, {msg, ?UPDATE       , Msg}).
 update_ack         (Session, Msg) -> cast(Session, {msg, ?UPDATE_ACK   , Msg}).
 update_error       (Session, Msg) -> cast(Session, {msg, ?UPDATE_ERR   , Msg}).
@@ -65,6 +69,8 @@ wdraw_locked       (Session, Msg) -> cast(Session, {msg, ?WDRAW_LOCKED , Msg}).
 wdraw_error        (Session, Msg) -> cast(Session, {msg, ?WDRAW_ERR    , Msg}).
 error              (Session, Msg) -> cast(Session, {msg, ?ERROR        , Msg}).
 inband_msg         (Session, Msg) -> cast(Session, {msg, ?INBAND_MSG   , Msg}).
+leave              (Session, Msg) -> cast(Session, {msg, ?LEAVE        , Msg}).
+leave_ack          (Session, Msg) -> cast(Session, {msg, ?LEAVE_ACK    , Msg}).
 shutdown           (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN     , Msg}).
 shutdown_ack       (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN_ACK , Msg}).
 

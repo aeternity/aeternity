@@ -22,6 +22,8 @@
 -export([ new/1                       %%  (Opts) -> {ok, Tx, State}
         , check_initial_update_tx/3   %%  (SignedTx, State, Opts)
         , check_update_tx/3           %%  (SignedTx, State, Opts)
+        , check_reestablish_tx/3      %%  (SignedTx, Channel, Opts)
+        , verify_signatures/2         %%  (SignedTx, State)
         , make_update_tx/3            %%  (Updates, State, Opts) -> Tx
         , add_signed_tx/3             %%  (SignedTx, State0, Opts) -> State
         , add_half_signed_tx/2        %%  (SignedTx, State0) -> State
@@ -78,6 +80,37 @@ assert(false, Error) -> Error.
 check_initial_update_tx(SignedTx, State, Opts) ->
     check_update_tx(fun check_initial_state/2, SignedTx, State, Opts).
 
+-spec check_reestablish_tx(aetx_sign:signed_tx(), aesc_channels:channel(), map()) -> {ok, state()} | {error, atom()}.
+check_reestablish_tx(SignedTx, Channel, Opts) ->
+    lager:debug("check_reestablish_tx()", []),
+    case mutually_signed(SignedTx) of
+        true ->
+            check_mutually_signed_reestablish_tx(SignedTx, Channel, Opts);
+        false ->
+            {error, not_mutually_signed}
+    end.
+
+check_mutually_signed_reestablish_tx(SignedTx, Channel, Opts) ->
+    {ok, St0} = new(Opts#{initiator_amount => 0, responder_amount => 0}),
+    St1 = add_signed_tx(SignedTx, St0, Opts),
+    #{ initiator := Initiator
+     , responder := Responder } = Opts, 
+    TotalAmount = (balance(Initiator, St1)
+                   + balance(Responder, St1)),
+    Tx = aetx_sign:tx(SignedTx),
+    {Mod, TxI} = aetx:specialize_callback(Tx),
+    lager:debug("Tx = ~p", [Tx]),
+    case {{Mod:state_hash(TxI), aesc_channels:state_hash(Channel)},
+          {TotalAmount        , aesc_channels:total_amount(Channel)},
+          {Mod:round(TxI)     , aesc_channels:round(Channel)}} of
+        {{H, H}, {A, A}, {Rt, Rc}} when is_integer(Rt), Rt >= Rc ->
+            {ok, St1};
+        {{A, B}, _, _} when A =/= B -> {error, state_hash_mismatch};
+        {_, {A, B}, _} when A =/= B -> {error, total_amount_mismatch};
+        {_, _, _} ->
+            {error, illegal_round}
+    end.
+
 -spec check_update_tx(aetx_sign:signed_tx(), state(), map()) -> ok | {error, atom()}.
 check_update_tx(SignedTx, State, Opts) ->
     check_update_tx(none, SignedTx, State, Opts).
@@ -117,6 +150,10 @@ check_update_tx_(F, Mod, RefTx, #state{} = State, Opts) ->
         error:Reason ->
             {error, Reason}
     end.
+
+-spec verify_signatures(aetx_sign:signed_tx(), state()) -> ok | error.
+verify_signatures(SignedTx, #state{trees = Trees}) ->
+    aetx_sign:verify(SignedTx, Trees).
 
 -spec make_update_tx(list(update()), state(), map()) -> aetx:tx().
 make_update_tx(Updates, #state{signed_txs=[SignedTx|_], trees=Trees}, Opts) ->

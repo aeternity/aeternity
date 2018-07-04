@@ -9,6 +9,7 @@
          upd_transfer/4, %% (fsm() , from(), to(), amount())
          upd_deposit/2,  %% (fsm() , map())
          upd_withdraw/2, %% (fsm() , map())
+         leave/1,
          shutdown/1,     %% (fsm())
          client_died/1,  %% (fsm())
          inband_msg/3]).
@@ -31,6 +32,7 @@
 
 %% FSM states
 -export([initialized/3,
+         reestablish_init/3,
          accepted/3,
          awaiting_open/3,
          awaiting_signature/3,
@@ -39,6 +41,7 @@
          awaiting_update_ack/3,
          awaiting_deposit_update/3,
          awaiting_withdraw_update/3,
+         awaiting_leave_ack/3,
          half_signed/3,
          signed/3,
          dep_half_signed/3,
@@ -152,6 +155,8 @@ message(Fsm, {T, _} = Msg) when T =:= ?CH_OPEN
                               ; T =:= ?WDRAW_ERR
                               ; T =:= ?INBAND_MSG
                               ; T =:= disconnect
+                              ; T =:= ?LEAVE
+                              ; T =:= ?LEAVE_ACK
                               ; T =:= ?SHUTDOWN
                               ; T =:= ?SHUTDOWN_ACK
                               ; T =:= ?CH_REESTABL ->
@@ -201,6 +206,7 @@ timer_for_state(St, #data{opts = #{timeouts := TOs}} = D) ->
 
 timer_subst(open                    ) -> idle;
 timer_subst(awaiting_open           ) -> idle;
+timer_subst(reestablish_init        ) -> accept;
 timer_subst(awaiting_signature      ) -> sign;
 timer_subst(awaiting_locked         ) -> funding_lock;
 timer_subst(awaiting_initial_state  ) -> accept;
@@ -266,6 +272,10 @@ inband_msg(Fsm, To, Msg) ->
     lager:debug("inband_msg(~p, ~p, ~p)", [Fsm, To, Msg]),
     gen_statem:call(Fsm, {inband_msg, To, Msg}).
 
+leave(Fsm) ->
+    lager:debug("leave(~p)", [Fsm]),
+    gen_statem:call(Fsm, leave).
+
 shutdown(Fsm) ->
     lager:debug("shutdown(~p)", [Fsm]),
     gen_statem:call(Fsm, shutdown).
@@ -302,11 +312,14 @@ init(#{role := Role} = Arg) ->
     %% TODO: Amend the fsm above to include this step. We have transport-level
     %% connectivity, but not yet agreement on the channel parameters. We will next send
     %% a channel_open() message and await a channel_accept().
-    case Role of
-        initiator ->
+    case {Role, Opts} of
+        {initiator, #{ existing_channel_id := _ }} ->
+            {ok, reestablish_init, send_reestablish_msg(Data),
+             [timer_for_state(reestablish_init, Data)]};
+        {initiator, _} ->
             {ok, initialized, send_open_msg(Data),
                         [timer_for_state(initialized, Data)]};
-        responder ->
+        {responder, _} ->
             {ok, awaiting_open, Data,
                         [timer_for_state(awaiting_open, Data)]}
     end.
@@ -400,6 +413,15 @@ awaiting_open(cast, {?CH_OPEN, Msg}, #data{role = responder} = D) ->
         {error, _} = Error ->
             close(Error, D)
     end;
+awaiting_open(cast, {?CH_REESTABL, Msg}, #data{role = responder} = D) ->
+    case check_reestablish_msg(Msg, D) of
+        {ok, D1} ->
+            report(info, channel_reestablished, D1),
+            gproc_register(D1),
+            next_state(open, send_reestablish_ack_msg(D1));
+        {error, _} = Error ->
+            close(Error, D)
+    end;
 awaiting_open(timeout, awaiting_open = T, D) ->
     close({timeout, T}, D);
 awaiting_open(cast, {?DISCONNECT, _Msg}, D) ->
@@ -425,6 +447,21 @@ initialized(cast, {?DISCONNECT, _Msg}, D) ->
 initialized({call, From}, Req, D) ->
     handle_call(initialized, Req, From, D).
 
+reestablish_init(enter, _OldSt, _D) -> keep_state_and_data;
+reestablish_init(cast, {?CH_REEST_ACK, Msg}, D) ->
+    case check_reestablish_ack_msg(Msg, D) of
+        {ok, D1} ->
+            report(info, channel_reestablished, D1),
+            next_state(open, D1);
+        {error, _} = Err ->
+            close(Err, D)
+    end;
+reestablish_init(timeout, reestablish_init = T, D) ->
+    close({timeout, T}, D);
+reestablish_init(cast, {?DISCONNECT, _Msg}, D) ->
+    close(disconnect, D);
+reestablish_init({call, From}, Req, D) ->
+    handle_call(reestablish_init, Req, From, D).
 
 awaiting_signature(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_signature(cast, {?SIGNED, create_tx, Tx},
@@ -703,6 +740,33 @@ awaiting_update_ack(timeout, awaiting_update_ack = T, D) ->
 awaiting_update_ack({call, _}, _Req, D) ->
     postpone(D).
 
+awaiting_leave_ack(cast, {?LEAVE_ACK, Msg}, D) ->
+    lager:debug("received leave_ack", []),
+    case check_leave_ack_msg(Msg, D) of
+        {ok, D1} ->
+            report_update(D1),
+            close(leave, D1);
+        {error, _} = Err ->
+            close(Err, D)
+    end;
+awaiting_leave_ack(cast, {?DISCONNECT, _Msg}, D) ->
+    close(disconnect, D);
+awaiting_leave_ack(timeout, awaiting_leave_ack = T, D) ->
+    close({timeout, T}, D);
+awaiting_leave_ack(cast, {?LEAVE, Msg}, D) ->
+    case check_leave_msg(Msg, D) of
+        {ok, D1} ->
+            send_leave_ack_msg(D1),
+            report_update(D1),
+            close(leave, D1);
+        {error, _} = Err ->
+            close(Err, D)
+    end;
+awaiting_leave_ack(cast, _Msg, D) ->
+    postpone(D);
+awaiting_leave_ack({call, _From}, _Req, D) ->
+    postpone(D).
+
 awaiting_deposit_update(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_deposit_update(cast, {?UPDATE, Msg}, D) ->
     case check_deposit_update_msg(Msg, D) of
@@ -815,6 +879,15 @@ open(cast, {?INBAND_MSG, Msg}, D) ->
     keep_state(NewD);
 open({call, From}, Request, D) ->
     handle_call(open, Request, From, D);
+open(cast, {?LEAVE, Msg}, D) ->
+    case check_leave_msg(Msg, D) of
+        {ok, D1} ->
+            send_leave_ack_msg(D1),
+            report(info, leave, D1),
+            close(leave, D1);
+        {error, _} = Err ->
+            close(Err, D)
+    end;
 open(cast, {?SHUTDOWN, Msg}, D) ->
     case check_shutdown_msg(Msg, D) of
         {ok, SignedTx, D1} ->
@@ -855,6 +928,9 @@ disconnected(cast, {?CH_REESTABL, _Msg}, D) ->
 
 close(close_mutual, D) ->
     report(info, close_mutual, D),
+    {stop, normal, D};
+close(leave, D) ->
+    report(info, leave, D),
     {stop, normal, D};
 close(Reason, D) ->
     try send_error_msg(Reason, D)
@@ -917,6 +993,10 @@ handle_call_(open, {upd_withdraw, #{amount := Amt} = Opts}, From,
     gen_statem:reply(From, ok),
     D1 = D#data{latest = {sign, withdraw_tx, DepTx}},
     next_state(awaiting_signature, D1);
+handle_call_(open, leave, From, #data{} = D) ->
+    ok = send_leave_msg(D),
+    gen_statem:reply(From, ok),
+    next_state(awaiting_leave_ack, D);
 handle_call_(open, shutdown, From, #data{state = State} = D) ->
     try  {_Round, Latest} = aesc_offchain_state:get_latest_signed_tx(State),
          {ok, CloseTx} = close_mutual_tx(Latest, D),
@@ -1014,6 +1094,94 @@ check_open_msg(#{ chain_hash           := ChainHash
                      , channel_reserve    => ChanReserve},
             {ok, Data#data{channel_id = ChanId,
                            opts       = Opts1}};
+        _ ->
+            {error, chain_hash_mismatch}
+    end.
+
+send_reestablish_msg(#data{ opts = #{ existing_channel_id  := ChId
+                                    , offchain_tx := OffChainTx }
+                          , session = Sn} = Data) ->
+    ChainHash = aec_chain:genesis_hash(),
+    TxBin = aetx_sign:serialize_to_binary(OffChainTx),
+    Msg = #{ chain_hash => ChainHash
+           , channel_id => ChId
+           , data       => TxBin },
+    aesc_session_noise:channel_reestablish(Sn, Msg),
+    Data#data{channel_id = ChId,
+              on_chain_id = ChId,
+              latest = {reestablish, OffChainTx} }.
+
+check_reestablish_msg(#{ chain_hash := ChainHash
+                       , channel_id := ChId
+                       , data       := TxBin },
+                      #data{opts = Opts} = Data) ->
+    case get_channel(ChainHash, ChId) of
+        {ok, Channel} ->
+            SignedTx = aetx_sign:deserialize_from_binary(TxBin),
+            case aesc_offchain_state:check_reestablish_tx(
+                   SignedTx, Channel, Opts) of
+                {ok, NewState} ->
+                    {ok, Data#data{ channel_id  = ChId
+                                  , on_chain_id = ChId
+                                  , state       = NewState}};
+                {error, _} = TxErr ->
+                    TxErr
+            end;
+        {error, _} = ChErr ->
+            ChErr
+    end.
+
+send_reestablish_ack_msg(#data{ state       = State
+                              , on_chain_id = ChId
+                              , session     = Sn } = Data) ->
+    ChainHash = aec_chain:genesis_hash(),
+    SignedTx = aesc_offchain_state:get_latest_signed_tx(State),
+    TxBin = aetx_sign:serialize_to_binary(SignedTx),
+    Msg = #{ chain_hash  => ChainHash
+           , channel_id  => ChId
+           , data        => TxBin },
+    aesc_session_noise:channel_reestablish_ack(Sn, Msg),
+    Data#data{latest = undefined}.
+
+check_reestablish_ack_msg(#{ data := TxBin } = Msg, #data{} = Data) ->
+    SignedTx = aetx_sign:deserialize_from_binary(TxBin),
+    run_checks(
+      [ fun chk_chain_hash/3
+      , fun chk_channel_id/3
+      , fun chk_dual_sigs/3
+      , fun chk_same_tx/3
+      ], Msg, SignedTx, Data).
+
+run_checks([F|Funs], Msg, SignedTx, Data) ->
+    case F(Msg, SignedTx, Data) of
+        {true, _} ->
+            run_checks(Funs, Msg, SignedTx, Data);
+        {false, Err} ->
+            {error, Err}
+    end;
+run_checks([], _, _, Data) ->
+    {ok, Data}.
+
+chk_chain_hash(#{ chain_hash := CH }, _, _) ->
+    {CH == aec_chain:genesis_hash(), chain_hash_mismatch}.
+
+chk_channel_id(#{ channel_id := ChId }, _, #data{ on_chain_id = OCId }) ->
+    {ChId == OCId, channel_id_mismatch}.
+
+chk_dual_sigs(_, SignedTx, #data{ state = State }) ->
+    [_,_] = aetx_sign:signatures(SignedTx),
+    {ok == aesc_offchain_state:verify_signatures(SignedTx, State),
+     signatures_invalid}.
+
+chk_same_tx(_, SignedTx, #data{ state = State }) ->
+    {_, MySignedTx} = aesc_offchain_state:get_signed_tx(State),
+    {aetx_sign:serialize_to_binary(SignedTx)
+     == aex_sign:serialize_to_binary(MySignedTx), offchain_state_mismatch}.
+
+get_channel(ChainHash, ChId) ->
+    case aec_chain:genesis_hash() of
+        ChainHash ->
+            aec_chain:get_channel(ChId);
         _ ->
             {error, chain_hash_mismatch}
     end.
@@ -1480,6 +1648,34 @@ handle_upd_transfer(FromPub, ToPub, Amount, From, #data{ state = State
         error:Reason ->
             lager:error("CAUGHT ~p, trace = ~p", [Reason, erlang:get_stacktrace()]),
             keep_state(D, [{reply, From, {error, Reason}}])
+    end.
+
+send_leave_msg(#data{ on_chain_id = ChId
+                    , session     = Session} = Data) ->
+    Msg = #{ channel_id => ChId },
+    aesc_session_noise:leave(Session, Msg),
+    Data.
+
+check_leave_msg(#{ channel_id := ChId }, #data{on_chain_id = ChId0} = Data) ->
+    case ChId == ChId0 of
+        true ->
+            {ok, Data};
+        false ->
+            {error, channel_id_mismatch}
+    end.
+
+send_leave_ack_msg(#data{ on_chain_id = ChId
+                        , session     = Session} = Data) ->
+    Msg = #{ channel_id => ChId },
+    aesc_session_noise:leave(Session, Msg),
+    Data.
+
+check_leave_ack_msg(#{channel_id := ChId}, #data{on_chain_id = ChId0} = Data) ->
+    case ChId == ChId0 of
+        true ->
+            {ok, Data};
+        false ->
+            {error, channel_id_mismatch}
     end.
 
 send_shutdown_msg(SignedTx, #data{session = Session} = Data) ->
