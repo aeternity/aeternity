@@ -350,8 +350,8 @@ tx_pool_test_() ->
             ?assertMatch({ok, [_, _, _]}, aec_tx_pool:peek(infinity)),
 
             %% Txs will be scheduled for
-            %% removal at Height + ?INVALID_TX_TTL
-            %% For test ?INVALID_TX_TTL = 8
+            %% removal at Height + ?TX_TTL
+            %% For test ?TX_TTL = 8
 
             %% Doing a garbage collect at height 0 shouldn't affect
             aec_tx_pool:garbage_collect(0),
