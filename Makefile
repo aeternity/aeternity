@@ -246,6 +246,10 @@ swagger-docs:
 	(cd ./apps/aehttp && $(MAKE) swagger-docs);
 
 swagger-check:
+	./swagger/version-check.py \
+		"$(CURDIR)/VERSION" \
+		"$(CURDIR)/config/swagger.yaml" \
+		"$(CURDIR)/apps/aehttp/priv/swagger.json"
 	./swagger/check \
 		"$(CURDIR)/config/swagger.yaml" \
 		"swagger" \
