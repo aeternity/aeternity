@@ -182,12 +182,17 @@ generate_int(Header, Target, MinerBin, MinerExtraArgs) ->
                         " -h ", Header, " ", MinerExtraArgs]),
     ?info("Executing cmd: ~p", [Cmd]),
     Old = process_flag(trap_exit, true),
-    try exec:run(Cmd,
-                 [{stdout, self()},
-                  {stderr, self()},
-                  {cd, BinDir},
-                  {env, [{"SHELL", "/bin/sh"}]},
-                  monitor]) of
+    DefaultOptions = [{stdout, self()},
+                      {stderr, self()},
+                      {cd, BinDir},
+                      {env, [{"SHELL", "/bin/sh"}]},
+                      monitor],
+    Options =
+      case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"nice">>]) of
+          {ok, Niceness} -> DefaultOptions ++ [{nice, Niceness}];
+          undefined -> DefaultOptions
+      end,
+    try exec:run(Cmd, Options) of
         {ok, _ErlPid, OsPid} ->
             wait_for_result(#state{os_pid = OsPid,
                                    buffer = [],
