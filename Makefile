@@ -41,7 +41,7 @@ SWTEMP := $(shell mktemp -d 2>/dev/null || mktemp -d -t 'mytmpdir')
 all:	local-build
 
 console:
-	@./rebar3 shell --config config/sys.config --sname epoch
+	@./rebar3 shell --config config/dev.config --sname epoch
 
 local-build: KIND=local
 local-build: internal-build

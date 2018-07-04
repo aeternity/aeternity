@@ -45,7 +45,9 @@
          call_proxy/2,
          await_aehttp/1,
          await_sync_complete/2
-         ]).
+        ]).
+
+-export([sign_keys/0]).
 
 -include_lib("kernel/include/file.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -59,6 +61,18 @@ peer_keys() ->
      {dev3, {<<192,145,22,50,217,175,73,12,42,218,16,92,216,240,151,252,189,80,190,47,62,203,178,89,230,75,253,78,114,65,96,78>>,
              <<177,115,250,203,226,39,102,92,8,182,166,254,125,117,140,134,199,149,211,182,184,107,119,43,218,70,251,60,10,56,12,53>>}}
     ].
+
+%% Keys for signing / verification
+sign_keys() ->
+    [{dev1, {<<238,121,108,68,47,65,15,139,26,172,250,135,122,63,231,52,188,121,206,144,200,39,37,112,172,29,216,205,172,56,241,4,217,202,108,173,192,99,
+               13,10,129,124,71,86,232,121,148,177,243,254,160,88,174,204,22,114,15,42,51,71,75,19,135,16>>,
+             <<217,202,108,173,192,99,13,10,129,124,71,86,232,121,148,177,243,254,160,88,174,204,22,114,15,42,51,71,75,19,135,16>>}},
+     {dev2, {<<133,191,59,166,119,215,123,78,192,54,29,91,247,72,123,72,245,85,161,97,70,225,58,34,166,141,6,63,193,79,58,65,40,25,191,50,209,111,19,239,
+               98,126,125,211,15,133,93,12,13,125,167,137,94,138,27,55,23,50,106,33,28,222,180,102>>,
+             <<40,25,191,50,209,111,19,239,98,126,125,211,15,133,93,12,13,125,167,137,94,138,27,55,23,50,106,33,28,222,180,102>>}},
+     {dev3, {<<238,230,20,172,221,171,100,208,126,164,204,120,180,48,69,184,235,69,115,91,190,182,78,22,50,182,78,251,154,80,216,250,207,253,207,144,121,
+               89,70,193,75,247,195,248,104,132,11,199,133,103,156,209,167,244,82,126,86,51,156,36,165,214,45,50>>,
+             <<207,253,207,144,121,89,70,193,75,247,195,248,104,132,11,199,133,103,156,209,167,244,82,126,86,51,156,36,165,214,45,50>>}}].
 
 
 %%%=============================================================================
@@ -86,8 +100,8 @@ create_config(Node, CTConfig, CustomConfig, Options) ->
     MergedCfg = maps:merge(default_config(Node, CTConfig), CustomConfig),
     MergedCfg1 = aec_metrics_test_utils:set_statsd_port_config(
                    Node, MergedCfg, CTConfig),
-    Config =  config_apply_options(Node, MergedCfg1, Options),
-    write_peer_keys(Node, Config),
+    Config = config_apply_options(Node, MergedCfg1, Options),
+    write_keys(Node, Config),
     write_config(EpochCfgPath, Config).
 
 make_multi(Config) ->
@@ -559,13 +573,16 @@ config_apply_options(Node, Cfg, [{add_peers, true}| T]) ->
               [peer_info(N1) || N1 <- [dev1, dev2, dev3] -- [Node]]},
     config_apply_options(Node, Cfg1, T).
 
-write_peer_keys(Node, Config) ->
+write_keys(Node, Config) ->
     #{ <<"keys">> := #{ <<"dir">> := Path, <<"password">> := Pwd } } = Config,
-    {Node, {PrivKey, PubKey}} = lists:keyfind(Node, 1, peer_keys()),
     ok = filelib:ensure_dir(filename:join(Path, "foo")),
-    ct:log("Writing peer keys to ~p (~p)", [Path, filelib:is_dir(Path)]),
-    ok = file:write_file(filename:join(Path, "peer_key.pub"), aec_keys:encrypt_key(Pwd, PubKey)),
-    ok = file:write_file(filename:join(Path, "peer_key"), aec_keys:encrypt_key(Pwd, PrivKey)),
+    ct:log("Writing peer and sign keys to ~p (~p)", [Path, filelib:is_dir(Path)]),
+    {Node, {PeerPrivKey, PeerPubKey}} = lists:keyfind(Node, 1, peer_keys()),
+    ok = file:write_file(filename:join(Path, "peer_key.pub"), aec_keys:encrypt_key(Pwd, PeerPubKey)),
+    ok = file:write_file(filename:join(Path, "peer_key"), aec_keys:encrypt_key(Pwd, PeerPrivKey)),
+    {Node, {SignPrivKey, SignPubKey}} = lists:keyfind(Node, 1, sign_keys()),
+    ok = file:write_file(filename:join(Path, "sign_key.pub"), aec_keys:encrypt_key(Pwd, SignPubKey)),
+    ok = file:write_file(filename:join(Path, "sign_key"), aec_keys:encrypt_key(Pwd, SignPrivKey)),
     ok.
 
 write_config(F, Config) ->
@@ -582,20 +599,22 @@ write_config(F, Config) ->
 
 default_config(N, Config) ->
     {A,B,C} = os:timestamp(),
-     #{<<"keys">> =>
-           #{<<"dir">> => iolist_to_binary(keys_dir(N, Config)),
-             <<"password">> => iolist_to_binary(io_lib:format("~w.~w.~w", [A,B,C]))},
-       <<"logging">> =>
-           #{<<"hwm">> => 500},
-       <<"mining">> =>
-           #{<<"autostart">> => false},
-       <<"chain">> =>
-           #{<<"persist">> => true},
-       <<"websocket">> =>
-           #{<<"internal">> =>
-                 #{<<"acceptors">> => 10}
-            }
-      }.
+    {N, {_PrivKey, PubKey}} = lists:keyfind(N, 1, sign_keys()),
+    #{<<"keys">> =>
+          #{<<"dir">> => iolist_to_binary(keys_dir(N, Config)),
+            <<"password">> => iolist_to_binary(io_lib:format("~w.~w.~w", [A,B,C]))},
+      <<"logging">> =>
+          #{<<"hwm">> => 500},
+      <<"mining">> =>
+          #{<<"autostart">> => false,
+            <<"beneficiary">> => aec_base58c:encode(account_pubkey, PubKey)},
+      <<"chain">> =>
+          #{<<"persist">> => true},
+      <<"websocket">> =>
+          #{<<"internal">> =>
+                #{<<"acceptors">> => 10}
+           }
+     }.
 
 epoch_config_dir(N, Config) ->
     filename:join(data_dir(N, Config), "epoch.json").

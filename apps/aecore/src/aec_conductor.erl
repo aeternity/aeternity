@@ -154,9 +154,11 @@ init(Options) ->
     TopKeyBlockHash = aec_chain:top_key_block_hash(),
     Consensus = #consensus{micro_block_cycle = aec_governance:micro_block_cycle(),
                            leader = false},
+    {ok, Beneficiary} = get_beneficiary(),
     State1 = #state{ top_block_hash = TopBlockHash,
                      top_key_block_hash = TopKeyBlockHash,
-                     consensus = Consensus},
+                     consensus = Consensus,
+                     beneficiary = Beneficiary},
     State2 = set_option(autostart, Options, State1),
 
     aec_metrics:try_update([ae,epoch,aecore,chain,height],
@@ -288,6 +290,20 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+get_beneficiary() ->
+    case aeu_env:user_config_or_env([<<"mining">>, <<"beneficiary">>], aecore, beneficiary) of
+        {ok, EncodedBeneficiary} ->
+            case aec_base58c:safe_decode(account_pubkey, EncodedBeneficiary) of
+                {ok, _Beneficiary} = Result ->
+                    Result;
+                {error, Reason} ->
+                    {error, {beneficiary_error, Reason}}
+            end;
+        undefined ->
+            {error, beneficiary_not_configured}
+    end.
+
 try_fetch_and_make_candidate() ->
     case aec_block_generator:get_candidate() of
         {ok, Block} ->
@@ -780,10 +796,11 @@ handle_micro_sleep_reply(ok, State) ->
 create_key_block_candidate(#state{keys_ready = false} = State) ->
     %% Keys are needed for creating a candidate
     wait_for_keys(State);
-create_key_block_candidate(#state{top_block_hash = TopHash} = State) ->
+create_key_block_candidate(#state{top_block_hash = TopHash,
+                                  beneficiary    = Beneficiary} = State) ->
     epoch_mining:info("Creating key block candidate on the top"),
     Fun = fun() ->
-              {aec_block_key_candidate:create(TopHash), TopHash}
+              {aec_block_key_candidate:create(TopHash, Beneficiary), TopHash}
           end,
     dispatch_worker(create_key_block_candidate, Fun, State).
 

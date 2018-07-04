@@ -37,5 +37,6 @@
                 top_block_hash                            :: binary() | 'undefined',
                 top_key_block_hash                        :: binary() | 'undefined',
                 workers                 = []              :: workers(),
-                consensus                                 :: #consensus{}
+                consensus                                 :: #consensus{},
+                beneficiary                               :: <<_:(32*8)>>  % Maybe move beneficiary out of conductor's state
                }).

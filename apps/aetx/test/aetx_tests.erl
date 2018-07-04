@@ -58,8 +58,7 @@ apply_signed_txs_test_() ->
                SignedTxs = [SignedSpendTx, SignedOverBalanceTx],
 
                {ok, ValidSignedTxs, StateTree} =
-                  aec_block_micro_candidate:apply_block_txs(SignedTxs, MinerPubkey,
-                                                            StateTree0, BlockHeight, ?PROTOCOL_VERSION),
+                  aec_block_micro_candidate:apply_block_txs(SignedTxs, StateTree0, BlockHeight, ?PROTOCOL_VERSION),
 
                ?assertEqual([SignedSpendTx], ValidSignedTxs),
 

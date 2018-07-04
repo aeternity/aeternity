@@ -80,7 +80,12 @@ One can create a production build by running:
 make prod-build
 ```
 
-If everything went fine, one should be able to navigate to the build artifacts directory and start the epoch node:
+Make sure beneficiary account is set in configuration, as this is mandatory to successfully start a node.
+There is no default beneficiary configured.
+
+See [configuration documentation](configuration.md) for configuration details.
+
+If `prod-build` went fine, configuration is in place, one should be able to navigate to the build artifacts directory and start the epoch node:
 ```bash
 cd _build/prod/rel/epoch/
 bin/epoch start
@@ -104,6 +109,11 @@ To deploy the package for example in `/tmp/node` one should just unarchive it to
 mkdir /tmp/node
 tar xf _build/prod/rel/epoch/epoch-${VERSION:?}.tar.gz -C /tmp/node
 ```
+
+Make sure beneficiary account is set in configuration, as this is mandatory to successfully start a node.
+There is no default beneficiary configured.
+
+See [configuration documentation](configuration.md) for configuration details.
 
 Then start the node:
 ```bash

@@ -35,7 +35,7 @@
 
 -export([apply_txs_on_state_trees/4,
          apply_txs_on_state_trees_strict/4,
-         grant_fee_to_miner/3,
+         grant_fee/3,
          perform_pre_transformations/2
         ]).
 
@@ -116,7 +116,7 @@ new_poi(Trees) ->
     internal_new_poi(Trees).
 
 -spec add_poi(tree_type(), aec_keys:pubkey(), trees(), poi()) -> {'ok', poi()}
-                                                      | {'error', term()}.
+                                                                     | {'error', term()}.
 add_poi(accounts, PubKey, Trees, #poi{} = Poi) ->
     internal_add_accounts_poi(PubKey, accounts(Trees), Poi);
 add_poi(contracts, Id, Trees, #poi{} = Poi) ->
@@ -373,13 +373,12 @@ apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees0, Height
                                      Height, ConsensusVersion, Strict)
     end.
 
--spec grant_fee_to_miner(aec_keys:pubkey(), trees(), non_neg_integer()) ->
-                                trees().
-grant_fee_to_miner(MinerPubkey, Trees0, Fee) ->
-    Trees1 = ensure_account(MinerPubkey, Trees0),
+-spec grant_fee(aec_keys:pubkey(), trees(), non_neg_integer()) -> trees().
+grant_fee(BeneficiaryPubKey, Trees0, Fee) ->
+    Trees1 = ensure_account(BeneficiaryPubKey, Trees0),
     AccountsTrees1 = accounts(Trees1),
 
-    {value, Account1} = aec_accounts_trees:lookup(MinerPubkey, AccountsTrees1),
+    {value, Account1} = aec_accounts_trees:lookup(BeneficiaryPubKey, AccountsTrees1),
     {ok, Account} = aec_accounts:earn(Account1, Fee),
 
     AccountsTrees = aec_accounts_trees:enter(Account, AccountsTrees1),

@@ -34,6 +34,7 @@
          pow/0,
          txs_hash/0,
          transactions/0,
+         beneficiary/0,
          miner/0]).
 
 -ifdef(TEST).
@@ -68,6 +69,8 @@ height() -> ?GENESIS_HEIGHT.
 
 miner() -> <<0:?MINER_PUB_BYTES/unit:8>>.
 
+beneficiary() -> <<0:?BENEFICIARY_PUB_BYTES/unit:8>>.
+
 %% Returns the genesis block and the state trees.
 %%
 %% The current implementation of state trees causes a new Erlang term,
@@ -82,11 +85,11 @@ genesis_block_with_state(Map) ->
     Txs = transactions(),
     %% INFO NG: genesis block is a key block. We use micro API, because it handles txs
     {ok, Txs, Trees} =
-        aec_block_micro_candidate:apply_block_txs_strict(Txs, miner(), populated_trees(Map),
+        aec_block_micro_candidate:apply_block_txs_strict(Txs, populated_trees(Map),
                                                          height(), ?GENESIS_VERSION),
 
     Block = aec_blocks:new_key(height(), prev_hash(), aec_trees:hash(Trees),
-                               ?HIGHEST_TARGET_SCI, 0, 0, ?GENESIS_VERSION, miner()),
+                               ?HIGHEST_TARGET_SCI, 0, 0, ?GENESIS_VERSION, miner(), beneficiary()),
     {Block, Trees}.
 
 %% Returns state trees at genesis block.

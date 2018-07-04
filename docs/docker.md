@@ -18,11 +18,63 @@ To pull the latest "stable" image run:
 docker pull aeternity/epoch
 ```
 
+### Configuration
+
+Please prepare node configuration.
+
+The minimal configuration to join the testnet is the following (mind that `beneficiary` must be changed to valid account public key, see [configuration documentation](configuration.md) for more details):
+```
+---
+keys:
+    password: "top secret"
+    dir: ./keys
+
+chain:
+    persist: true
+
+mining:
+    autostart: true
+    beneficiary: "encoded_beneficiary_pubkey_to_be_replaced"
+```
+
+#### Generating beneficiary account for the first time
+
+If you don't have your beneficiary account public key yet, but you have Docker image, you can use `keys_gen` tool to generate public-private keypair from the inside of the Docker container.
+
+Assuming:
+* `/tmp/generated_keys` is a directory on you local machine;
+* you change `my_password` in the command below to your password that will protect your public-private keypair,
+
+run:
+```
+docker run --entrypoint=/bin/bash \
+    -v /tmp/generated_keys:/home/epoch/node/generated_keys \
+    aeternity/epoch
+    -c './bin/epoch keys_gen my_password'
+```
+Your generated keypair will be located in `/tmp/generated_keys` on your machine, and your public key to be put in the configuration file will be printed in the console.
+
+For more details see [configuration documentation beneficiary section](configuration.md#beneficiary-account).
+
+#### External Peer Address
+
+Please note that, if your node is behind a firewall, you need to open and map the TCP port defined by (`sync` > `port` with default `3015`) option in your firewall to the container port.
+If the publicly available port has to be different from the internal port it as to be reflected in the configuration with the (`sync` > `external_port`) option.
+
+#### Peer addresses
+
+Docker image has packaged the addresses of testnet seed peers in the configuration. To change the peers configuration (e.g. join other network) change the configuration file.
+
 ### Start a Node
+
+Assuming configuration file location is `~/.aeternity/myepoch.yaml`:
 
 To start a docker node and join the testnet run:
 ```bash
-docker run -d --name epoch_node0 -p 3013:3013 aeternity/epoch
+docker run -d --name epoch_node0 -p 3013:3013 \
+    -v ~/.aeternity/myepoch.yaml:/home/epoch/myepoch.yaml \
+    -e EPOCH_CONFIG=/home/epoch/myepoch.yaml \
+    aeternity/epoch
 ```
 
 Verify the node is running:
@@ -34,7 +86,10 @@ curl localhost:3013/v2/top
 
 Arguments can also be passed to epoch node, for example to enable API debug endpoints:
 ```bash
-docker run -d --name epoch_node0 -p 3013:3013 aeternity/epoch -aehttp enable_debug_endpoints true
+docker run -d -p 3013:3013 \
+    -v ~/.aeternity/myepoch.yaml:/home/epoch/myepoch.yaml \
+    -e EPOCH_CONFIG=/home/epoch/myepoch.yaml \
+    aeternity/epoch -aehttp enable_debug_endpoints true
 ```
 
 ### Stop a Node
@@ -56,37 +111,16 @@ For example to check what's in the epoch logs run:
 docker exec epoch_node0 tail log/epoch.log
 ```
 
-### Configuration
-
-The container will use the default configuration unless other configuration file is specified (see below).
-
-#### External Peer Address
-
-Please note that, if your node is behind a firewall, you need to open and map the TCP port defined by (`sync` > `port` with default `3015`) option in your firewall to the container port.
-If the publicly available port has to be different from the internal port it as to be reflected in the configuration with the ('sync' > 'external_port') option.
-
-#### Peer addresses
-
-Docker image has packaged the addresses of testnet seed peers in the configuration. To change the peers configuration (e.g. join other network) change the configuration file (see below).
-
-#### Changing the configuration file
-
-Assuming the new configuration file location is `~/.aeternity/myepoch.yaml`:
-
-```bash
-docker run -d -p 3013:3013 \
-    -v ~/.aeternity/myepoch.yaml:/home/epoch/myepoch.yaml \
-    -e EPOCH_CONFIG=/home/epoch/myepoch.yaml \
-    aeternity/epoch
-```
-
 ### Persisting Data
 
 To persist blockchain data and node keys between container runs, use [Docker volumes](https://docs.docker.com/engine/admin/volumes/volumes/). Replace `~/.aeternity/db` with location of your choice.
 
 
 ```bash
-docker run -d -p 3013:3013 --hostname node0 \
+docker run -d -p 3013:3013 \
+    -v ~/.aeternity/myepoch.yaml:/home/epoch/myepoch.yaml \
+    -e EPOCH_CONFIG=/home/epoch/myepoch.yaml \
+    --hostname node0 \
     -v ~/.aeternity/db:/home/epoch/node/data/mnesia \
     -v ~/.aeternity/keys:/home/epoch/node/keys \
     aeternity/epoch

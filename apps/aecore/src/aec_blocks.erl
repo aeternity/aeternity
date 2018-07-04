@@ -5,7 +5,8 @@
 -module(aec_blocks).
 
 %% API
--export([prev_hash/1,
+-export([beneficiary/1,
+         prev_hash/1,
          height/1,
          miner/1,
          target/1,
@@ -20,7 +21,7 @@
          set_signature/2,
          key_hash/1,
          set_target/2,
-         new_key/8,
+         new_key/9,
          new_micro/8,
          from_header_txs_and_signature/3,
          to_header/1,
@@ -50,6 +51,10 @@
 -type height() :: non_neg_integer().
 -export_type([block/0, block_header_hash/0, height/0]).
 
+-spec beneficiary(block()) -> aec_keys:pubkey().
+beneficiary(Block) ->
+    Block#block.beneficiary.
+
 -spec prev_hash(block()) -> block_header_hash().
 prev_hash(Block) ->
     Block#block.prev_hash.
@@ -68,8 +73,8 @@ difficulty(Block) ->
 
 -spec is_key_block(block()) -> boolean().
 is_key_block(#block{miner = Miner, height = Height}) ->
-    Miner =/= <<0:?MINER_PUB_BYTES/unit:8>> orelse
-        (Miner =:= <<0:?MINER_PUB_BYTES/unit:8>> andalso Height =:= aec_block_genesis:height()).
+    Miner =/= <<0:?MINER_PUB_BYTES/unit:8>>
+        orelse (Miner =:= <<0:?MINER_PUB_BYTES/unit:8>> andalso Height =:= aec_block_genesis:height()).
 
 
 time_in_msecs(Block) ->
@@ -124,20 +129,21 @@ txs_hash(Block) ->
     Block#block.txs_hash.
 
 -spec new_key(height(), block_header_hash(), state_hash(), aec_pow:sci_int(),
-          non_neg_integer(), non_neg_integer(), non_neg_integer(),
-          miner_pubkey()) -> block().
-new_key(Height, PrevHash, RootHash, Target, Nonce, Time, Version, Miner) ->
-    #block{ height = Height
-          , prev_hash = PrevHash
-          , root_hash = RootHash
-          , target    = Target
-          , nonce     = Nonce
-          , time      = Time
-          , version   = Version
-          , miner     = Miner }.
+              non_neg_integer(), non_neg_integer(), non_neg_integer(),
+              miner_pubkey(), beneficiary_pubkey()) -> block().
+new_key(Height, PrevHash, RootHash, Target, Nonce, Time, Version, Miner, Beneficiary) ->
+    #block{ height      = Height
+          , prev_hash   = PrevHash
+          , root_hash   = RootHash
+          , target      = Target
+          , nonce       = Nonce
+          , time        = Time
+          , version     = Version
+          , miner       = Miner
+          , beneficiary = Beneficiary }.
 
 -spec new_micro(height(), block_header_hash(), block_header_hash(), state_hash(), txs_hash(),
-    list(aetx_sign:signed_tx()), non_neg_integer(), non_neg_integer()) -> block().
+                list(aetx_sign:signed_tx()), non_neg_integer(), non_neg_integer()) -> block().
 new_micro(Height, PrevHash, KeyBlockHash, RootHash, TxsHash, Txs, Time, Version) ->
     #block{ height    = Height
           , prev_hash = PrevHash
@@ -156,6 +162,7 @@ to_header(key, #block{height = Height,
                       prev_hash = PrevHash,
                       root_hash = RootHash,
                       miner = Miner,
+                      beneficiary = Beneficiary,
                       target = Target,
                       pow_evidence = Evd,
                       nonce = Nonce,
@@ -165,6 +172,7 @@ to_header(key, #block{height = Height,
             prev_hash = PrevHash,
             root_hash = RootHash,
             miner = Miner,
+            beneficiary = Beneficiary,
             target = Target,
             pow_evidence = Evd,
             nonce = Nonce,
@@ -192,6 +200,7 @@ from_header_txs_and_signature(key, #header{height = Height,
                                            prev_hash = PrevHash,
                                            root_hash = RootHash,
                                            miner = Miner,
+                                           beneficiary = Beneficiary,
                                            target = Target,
                                            pow_evidence = Evd,
                                            nonce = Nonce,
@@ -201,6 +210,7 @@ from_header_txs_and_signature(key, #header{height = Height,
            prev_hash = PrevHash,
            root_hash = RootHash,
            miner = Miner,
+           beneficiary = Beneficiary,
            target = Target,
            pow_evidence = Evd,
            nonce = Nonce,
@@ -286,6 +296,7 @@ serialize_to_map(key, Block) ->
       <<"prev_hash">> => Block#block.prev_hash,
       <<"state_hash">> => Block#block.root_hash,
       <<"miner">> => Block#block.miner,
+      <<"beneficiary">> => Block#block.beneficiary,
       <<"target">> => Block#block.target,
       <<"pow">> => Block#block.pow_evidence,
       <<"nonce">> => Block#block.nonce,
@@ -308,6 +319,7 @@ deserialize_from_map(#{<<"height">> := Height,
                        <<"prev_hash">> := PrevHash,
                        <<"state_hash">> := RootHash,
                        <<"miner">> := Miner,
+                       <<"beneficiary">> := Beneficiary,
                        <<"target">> := Target,
                        <<"pow">> := PowEvidence,
                        <<"nonce">> := Nonce,
@@ -324,6 +336,7 @@ deserialize_from_map(#{<<"height">> := Height,
                     prev_hash = PrevHash,
                     root_hash = RootHash,
                     miner = Miner,
+                    beneficiary = Beneficiary,
                     target = Target,
                     pow_evidence = PowEvidence,
                     nonce = Nonce,

@@ -31,8 +31,6 @@
 -include_lib("apps/aecore/include/blocks.hrl").
 -include_lib("apps/aeoracle/include/oracle_txs.hrl").
 
--define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
-
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
@@ -108,7 +106,7 @@ register_oracle(_Cfg) ->
     Trees    = aeo_test_utils:trees(S1),
     Height   = ?ORACLE_REG_HEIGHT,
     {ok, [SignedTx], Trees1} =
-        aec_block_micro_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY, Trees, Height, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Height, ?PROTOCOL_VERSION),
     S2       = aeo_test_utils:set_trees(Trees1, S1),
     {PubKey, S2}.
 
@@ -170,7 +168,7 @@ extend_oracle(Cfg) ->
     Tx       = aeo_test_utils:extend_tx(OracleKey, S),
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     {ok, [SignedTx], Trees1} =
-        aec_block_micro_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY, Trees, CurrHeight, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, CurrHeight, ?PROTOCOL_VERSION),
     S1       = aeo_test_utils:set_trees(Trees1, S),
 
     OTrees1  = aec_trees:oracles(Trees1),
@@ -242,7 +240,7 @@ query_oracle(Cfg, Opts) ->
     %% Test that QueryTX is accepted
     SignedTx = aec_test_utils:sign_tx(Q1, PrivKey),
     {ok, [SignedTx], Trees2} =
-        aec_block_micro_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY, Trees, CurrHeight, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, CurrHeight, ?PROTOCOL_VERSION),
     S3 = aeo_test_utils:set_trees(Trees2, S2),
     {oracle_query_tx, QTx} = aetx:specialize_type(Q1),
     ID = aeo_query:id(aeo_query:new(QTx, CurrHeight)),
@@ -297,7 +295,7 @@ query_response(Cfg, QueryOpts) ->
     PrivKey  = aeo_test_utils:priv_key(OracleKey, S1),
     SignedTx = aec_test_utils:sign_tx(RTx, PrivKey),
     {ok, [SignedTx], Trees2} =
-        aec_block_micro_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY, Trees, CurrHeight, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     S2 = aeo_test_utils:set_trees(Trees2, S1),
 

@@ -75,6 +75,11 @@ epoch_commands(Cfg) ->
     Result6 = aest_nodes:run_cmd_in_node_dir(node1, ["bin/epoch", "status"], Cfg),
     ?assertMatch({0, _}, Result6),
 
+    {0, Output7} = aest_nodes:run_cmd_in_node_dir(node1, ["bin/epoch", "keys_gen", "secret password"], Cfg),
+    ?assertMatch({match, _}, re:run(Output7, "Generated keypair with encoded pubkey:[\r\n]*")),
+    {match, [EncodedPubKey]} = re:run(Output7, "ak\\$[A-Za-z0-9]*", [{capture, first, binary}]),
+    ?assertMatch({ok, _}, aec_base58c:safe_decode(account_pubkey, EncodedPubKey)),
+
     ok.
 
 

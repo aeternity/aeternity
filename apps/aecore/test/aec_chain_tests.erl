@@ -857,12 +857,12 @@ fees_test_() ->
              aec_test_utils:stop_chain_db(),
              teardown_meck_and_keys(TmpDir)
      end,
-     [{"Check fee division between three miners",
-       fun fees_three_miners/0}
+     [{"Check fee division between three beneficiaries",
+       fun fees_three_beneficiaries/0}
      ]
     }.
 
-fees_three_miners() ->
+fees_three_beneficiaries() ->
     %% Two accounts to act as sender and receiver.
     #{ public := PubKey1, secret := PrivKey1 } = enacl:sign_keypair(),
     #{ public := PubKey2, secret :=_PrivKey2 } = enacl:sign_keypair(),
@@ -874,6 +874,11 @@ fees_three_miners() ->
     #{ public := PubKey3, secret := PrivKey3 } = enacl:sign_keypair(),
     #{ public := PubKey4, secret := PrivKey4 } = enacl:sign_keypair(),
     #{ public := PubKey5, secret := PrivKey5 } = enacl:sign_keypair(),
+
+    %% Three accounts to act as beneficiaries
+    #{ public := PubKey6, secret := _PrivKey6 } = enacl:sign_keypair(),
+    #{ public := PubKey7, secret := _PrivKey7 } = enacl:sign_keypair(),
+    #{ public := PubKey8, secret := _PrivKey8 } = enacl:sign_keypair(),
 
     %% Add two transactions in different blocks to collect fees from
     Fee1 = 10,
@@ -888,12 +893,13 @@ fees_three_miners() ->
                      []
              end,
 
-    %% Create a chain with the three different miners
+    %% Create a chain with the three different miners and beneficiaries
     Miners = [ {PubKey3, PrivKey3}
              , {PubKey4, PrivKey4}
              , {PubKey5, PrivKey5}
              ],
-    Chain0 = gen_block_chain_with_state_by_miners(PresetAccounts, Miners, TxsFun),
+    Beneficiaries = [PubKey6, PubKey7, PubKey8],
+    Chain0 = gen_block_chain_with_state_by_actors(PresetAccounts, Miners, Beneficiaries, TxsFun),
     Chain = blocks_only_chain(Chain0),
 
     %% Write all but the last key block to the chain and keep the top hash.
@@ -908,23 +914,28 @@ fees_three_miners() ->
     {ok, Balances2} = aec_chain:all_accounts_balances_at_hash(Hash2),
     DictBal2 = orddict:from_list(Balances2),
 
-    %% Before the last generation is closed, only the two first miners
+    %% Before the last generation is closed, only the two first beneficiaries
     %% should have collected rewards
     MiningReward = aec_governance:block_mine_reward(),
     ?assertEqual(MiningReward + round(Fee1 * 0.4),
-                 orddict:fetch(PubKey3, DictBal1)),
+                 orddict:fetch(PubKey6, DictBal1)),
     ?assertEqual(MiningReward + round(Fee1 * 0.6),
-                 orddict:fetch(PubKey4, DictBal1)),
+                 orddict:fetch(PubKey7, DictBal1)),
     ?assertEqual(false, orddict:is_key(PubKey5, DictBal1)),
 
     %% When the last generation is closed, the last transaction fee should
     %% also have been collected.
     ?assertEqual(MiningReward + round(Fee1 * 0.4),
-                 orddict:fetch(PubKey3, DictBal2)),
+                 orddict:fetch(PubKey6, DictBal2)),
     ?assertEqual(MiningReward + round(Fee1 * 0.6) + round(Fee2 * 0.4),
-                 orddict:fetch(PubKey4, DictBal2)),
+                 orddict:fetch(PubKey7, DictBal2)),
     ?assertEqual(MiningReward + round(Fee2 * 0.6),
-                 orddict:fetch(PubKey5, DictBal2)),
+                 orddict:fetch(PubKey8, DictBal2)),
+
+    %% Miners' balances did not change, since beneficiaries took the rewards.
+    ?assertEqual(error, orddict:find(PubKey3, DictBal2)),
+    ?assertEqual(error, orddict:find(PubKey4, DictBal2)),
+    ?assertEqual(error, orddict:find(PubKey5, DictBal2)),
     ok.
 
 
@@ -975,10 +986,11 @@ gen_block_chain_with_state_by_target(PresetAccounts, Targets, Nonce) ->
 gen_block_chain_with_state_by_target(PresetAccounts, Targets, Nonce, TxsFun) ->
     gen_block_chain_with_state(PresetAccounts, #{ targets => Targets, txs_by_height_fun => TxsFun, nonce => Nonce }).
 
-gen_block_chain_with_state_by_miners(PresetAccounts, Miners, TxsFun) ->
+gen_block_chain_with_state_by_actors(PresetAccounts, Miners, Beneficiaries, TxsFun) ->
     Targets = lists:duplicate(length(Miners), ?GENESIS_TARGET),
     gen_block_chain_with_state(PresetAccounts,
                                #{ miners => Miners,
+                                  beneficiaries => Beneficiaries,
                                   targets => Targets,
                                   nonce => 111,
                                   txs_by_height_fun => TxsFun}).

@@ -43,11 +43,14 @@ write_chain_test_() ->
              meck:expect(aec_events, publish, fun(_, _) -> ok end),
              aec_test_utils:mock_genesis(),
              TmpDir = aec_test_utils:aec_keys_setup(),
+             {ok, PubKey} = aec_keys:pubkey(),
+             ok = application:set_env(aecore, beneficiary, aec_base58c:encode(account_pubkey, PubKey)),
              {ok, _} = aec_tx_pool:start_link(),
              {ok, _} = aec_conductor:start_link([{autostart, false}]),
              TmpDir
      end,
      fun(TmpDir) ->
+             ok = application:unset_env(aecore, beneficiary),
              ok = aec_conductor:stop(),
              ok = aec_tx_pool:stop(),
              ok = application:stop(gproc),
@@ -114,6 +117,8 @@ restart_test_() ->
      fun() ->
              ok = application:ensure_started(gproc),
              TmpDir = aec_test_utils:aec_keys_setup(),
+             {ok, PubKey} = aec_keys:pubkey(),
+             ok = application:set_env(aecore, beneficiary, aec_base58c:encode(account_pubkey, PubKey)),
              aec_test_utils:start_chain_db(),
              meck:new(aec_events, [passthrough]),
              meck:expect(aec_events, publish, fun(_, _) -> ok end),
@@ -125,6 +130,7 @@ restart_test_() ->
              TmpDir
      end,
      fun(TmpDir) ->
+             ok = application:unset_env(aecore, beneficiary),
              ok = aec_tx_pool:stop(),
              meck:unload(aec_pow_cuckoo),
              meck:unload(aec_events),

@@ -19,8 +19,6 @@
 
 -include_lib("apps/aecore/include/blocks.hrl").
 
--define(MINER_PUBKEY, <<42:?MINER_PUB_BYTES/unit:8>>).
-
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
@@ -74,7 +72,7 @@ sign_and_apply_transaction(Tx, PrivKey, S1) ->
     Trees    = aect_test_utils:trees(S1),
     Height   = 1,
     {ok, AcceptedTxs, Trees1} =
-        aec_block_micro_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY, Trees, Height, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Height, ?PROTOCOL_VERSION),
     S2       = aect_test_utils:set_trees(Trees1, S1),
     {SignedTx, AcceptedTxs, S2}.
 

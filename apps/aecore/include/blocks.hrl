@@ -1,6 +1,6 @@
 -include("pow.hrl").
 
--define(PROTOCOL_VERSION, 16).
+-define(PROTOCOL_VERSION, 17).
 -define(GENESIS_VERSION, ?PROTOCOL_VERSION).
 -define(GENESIS_HEIGHT, 0).
 
@@ -8,6 +8,7 @@
 -define(TXS_HASH_BYTES, 32).
 -define(STATE_HASH_BYTES, 32).
 -define(MINER_PUB_BYTES, 32).
+-define(BENEFICIARY_PUB_BYTES, 32).
 
 -define(ACCEPTED_FUTURE_KEY_BLOCK_TIME_SHIFT, 30 * 60 * 1000). %% 30 min
 -define(ACCEPTED_MICRO_BLOCK_MIN_TIME_DIFF, 3 * 1000). %% 3 secs
@@ -19,6 +20,7 @@
 -type(txs_hash() :: <<_:(?TXS_HASH_BYTES*8)>>).
 -type(state_hash() :: <<_:(?STATE_HASH_BYTES*8)>>).
 -type(miner_pubkey() :: <<_:(?MINER_PUB_BYTES*8)>>).
+-type(beneficiary_pubkey() :: <<_:(?BENEFICIARY_PUB_BYTES*8)>>).
 -type(block_header_hash() :: <<_:(?BLOCK_HEADER_HASH_BYTES*8)>>).
 
 -type(block_type() :: key | micro).
@@ -36,7 +38,8 @@
           version                 :: non_neg_integer(),
           pow_evidence = no_value :: aec_pow:pow_evidence(),
           miner = <<0:?MINER_PUB_BYTES/unit:8>> :: miner_pubkey(),
-          signature = undefined   :: binary() | undefined}).
+          signature = undefined   :: binary() | undefined,
+          beneficiary = <<0:?BENEFICIARY_PUB_BYTES/unit:8>> :: beneficiary_pubkey()}).
 
 -record(header, {
           height = 0              :: aec_blocks:height(),
@@ -49,8 +52,8 @@
           time = 0                :: non_neg_integer(),
           version                 :: non_neg_integer(),
           pow_evidence = no_value :: aec_pow:pow_evidence(),
-          miner = <<0:?MINER_PUB_BYTES/unit:8>> :: miner_pubkey() %% TODO: remove default, confusing
-          }).
+          miner = <<0:?MINER_PUB_BYTES/unit:8>> :: miner_pubkey(), %% TODO: remove default, confusing
+          beneficiary = <<0:?BENEFICIARY_PUB_BYTES/unit:8>> :: beneficiary_pubkey()}). %% TODO: separate records for key and micro blocks..
 
 -type(header_binary() :: binary()).
 -type(deterministic_header_binary() :: binary()).
