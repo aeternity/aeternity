@@ -652,7 +652,6 @@ get_top_micro_block(_Config) ->
 
     ?assertEqual(TopBlock, rpc(aec_chain, top_block, [])),
     ?assertEqual(false, aec_blocks:is_key_block(TopBlock)),
-    ?assertEqual(true, aec_blocks:height(KeyTopBlock) < aec_blocks:height(TopBlock)),
 
     {ok, 200, ApiTop} = get_top_sut(),
     ?assertEqual(ApiTop, block_to_endpoint_top(TopBlock)),
