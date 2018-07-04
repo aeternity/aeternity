@@ -159,6 +159,8 @@ init(Options) ->
                      consensus = Consensus},
     State2 = set_option(autostart, Options, State1),
 
+    aec_metrics:try_update([ae,epoch,aecore,chain,height],
+                            aec_blocks:height(aec_chain:top_block())),
     epoch_mining:info("Miner process initilized ~p", [State2]),
     aec_events:subscribe(candidate_block),
     %% NOTE: The init continues at handle_info(init_continue, State).
