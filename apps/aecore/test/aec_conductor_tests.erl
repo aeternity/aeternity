@@ -376,12 +376,12 @@ test_block_publishing() ->
 %%           ok
 %%      end,
 %%      [
-%%       {"Get block candidate", fun test_get_block_candidate/0}
+%%       {"Get block candidate", fun test_get_key_block_candidate/0}
 %%      ]}.
 
-test_get_block_candidate() ->
+test_get_key_block_candidate() ->
     assert_stopped_and_genesis_at_top(),
-    ?assertEqual({error, not_mining}, ?TEST_MODULE:get_block_candidate()),
+    ?assertEqual({error, not_mining}, ?TEST_MODULE:get_key_block_candidate()),
     {ok, MyAccount} = aec_keys:pubkey(),
     lists:foreach(
         fun(X) ->
@@ -395,12 +395,12 @@ test_get_block_candidate() ->
         end,
         lists:seq(1, 3)),
     ?TEST_MODULE:start_mining(),
-    ?assertEqual({error, miner_starting}, ?TEST_MODULE:get_block_candidate()),
+    ?assertEqual({error, miner_starting}, ?TEST_MODULE:get_key_block_candidate()),
     true = aec_test_utils:wait_for_it(
-              fun() -> {error, miner_starting} =/= ?TEST_MODULE:get_block_candidate() end,
+              fun() -> {error, miner_starting} =/= ?TEST_MODULE:get_key_block_candidate() end,
               true),
     TopBlock = aec_chain:top_block(),
-    {ok, BlockCandidate} = ?TEST_MODULE:get_block_candidate(),
+    {ok, BlockCandidate} = ?TEST_MODULE:get_key_block_candidate(),
     {ok, TopBlockHash} = aec_blocks:hash_internal_representation(TopBlock),
     ?assertEqual(TopBlockHash, aec_blocks:prev_hash(BlockCandidate)),
     {ok, AllTxsInPool} = aec_tx_pool:peek(infinity),
@@ -411,7 +411,7 @@ test_get_block_candidate() ->
             end,
             aec_blocks:txs(BlockCandidate))),
     ?TEST_MODULE:stop_mining(),
-    ?assertEqual({error, not_mining}, ?TEST_MODULE:get_block_candidate()),
+    ?assertEqual({error, not_mining}, ?TEST_MODULE:get_key_block_candidate()),
     ok.
 %%%===================================================================
 %%% Helpers

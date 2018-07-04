@@ -2,6 +2,7 @@
 
 -export([encode/2,
          encode/3,
+         encode_client_readable_key_block/2,
          encode_client_readable_block/2,
          decode/2]).
 
@@ -13,13 +14,18 @@
                                     fun(Pow) ->
                                         {ok, aec_headers:deserialize_pow_evidence(Pow)}
                                     end}},
+                     {<<"key_hash">>, block_hash},
                      {<<"txs_hash">>, block_tx_hash},
                      {<<"signature">>, signature},
-                     {<<"key_hash">>, block_hash},
                      {<<"miner">>, {fun(Val) -> aec_base58c:encode(account_pubkey, Val) end,
                                     fun decode_miner/1}}]).
 -define(OBJECTS, #{header_map => ?HEADER_OBJ,
                    block_map => [ {<<"transactions">>, {list, tx}} | ?HEADER_OBJ],
+                   block_hash =>  {fun(Block) ->
+                                       {ok, Hash} = aec_blocks:hash_internal_representation(Block),
+                                       aec_base58c:encode(block_hash, Hash)
+                                   end,
+                                   fun(_) -> {error, not_implemented} end},
                    block => {fun(Block) ->
                                 BMap = aehttp_logic:cleanup_genesis(
                                             aec_blocks:serialize_to_map(Block)),
@@ -40,18 +46,8 @@
                                         BMap = aehttp_logic:cleanup_genesis(BMap0),
                                         encode(header_map, BMap);
                                     micro ->
-                                        {ok, HMap0} = aec_headers:serialize_to_map(aec_blocks:to_header(Block)),
-%% currently the pending endpoint can return a pending microblock. The
-%% pending micro block is NOT signed (singature is `undefined`) which 
-%% does not play well with serialization. The pendining endpoint shall not
-%% return a microblock. The following lines are a workaround for this and must
-%% be fixed as soon as the pending endpoint is refactored 
-                                        HMap =
-                                            case aec_blocks:signature(Block) of
-                                                undefined -> HMap0;
-                                                Sig -> HMap0#{<<"signature">> => Sig}
-                                            end,
-                                        encode(header_map, HMap)
+                                        {ok, HMap} = aec_headers:serialize_to_map(aec_blocks:to_header(Block)),
+                                        encode(header_map, HMap#{<<"signature">> => aec_blocks:signature(Block)})
                                 end
                             end,
                             fun(HMap) ->
@@ -62,8 +58,20 @@
                                     Err -> Err
                                 end
                             end},
+                   client_key_block => {fun(Block, TxEncoding) ->
+                                                Resp = aehttp_logic:cleanup_genesis(
+                                                  encode_block_for_client(Block, TxEncoding)),
+                                                Resp#{
+                                                  data_schema => encode(tx_encoding, TxEncoding),
+                                                  hash => encode(block_hash, Block)}
+                                        end,
+                                        fun(_) -> {error, not_implemented} end},
                    client_block => {fun encode_block_for_client/2,
                                     fun(_) -> {error, not_implemented} end},
+                   tx_encoding => {fun(message_pack) -> <<"BlockWithMsgPackTxs">>;
+                                      (json) -> <<"BlockWithJSONTxs">>
+                                   end,
+                                   fun(_) -> {error, not_implemented} end},
                    tx => {fun(Tx) ->
                               #{<<"tx">> => aec_base58c:encode(transaction,
                                   aetx_sign:serialize_to_binary(Tx))}
@@ -95,6 +103,9 @@
 -spec encode(atom(), term() | list()) -> map() | list().
 encode(ObjectType, Data) ->
     encode(ObjectType, Data, []).
+
+encode_client_readable_key_block(Block, TxEncoding) ->
+    encode(client_key_block, Block, TxEncoding).
 
 encode_client_readable_block(Block, TxEncoding) ->
     encode(client_block, Block, TxEncoding).

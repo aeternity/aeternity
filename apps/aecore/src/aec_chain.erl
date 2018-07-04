@@ -33,6 +33,7 @@
         , prev_hash_from_hash/1
         , top_block/0
         , top_block_hash/0
+        , top_key_block/0
         , top_key_block_hash/0
         , top_block_with_state/0
         , top_header/0
@@ -295,6 +296,21 @@ top_block() ->
 top_block_hash() ->
     aec_db:get_top_block_hash().
 
+-spec top_key_block() -> 'error' | {ok, aec_blocks:block()}.
+top_key_block() ->
+    case aec_db:get_top_block_hash() of
+        Hash when is_binary(Hash) ->
+            {ok, Block} = get_block(Hash),
+            case aec_blocks:type(Block) of
+                key -> {ok, Block};
+                micro ->
+                    KeyHash = aec_blocks:key_hash(Block),
+                    get_block(KeyHash)
+            end;
+        undefined ->
+            error
+    end.
+
 -spec top_key_block_hash() -> 'undefined' | binary().
 top_key_block_hash() ->
     case aec_db:get_top_block_hash() of
@@ -528,23 +544,29 @@ get_generation(KeyBlockHash) ->
     case aec_db:find_block(KeyBlockHash) of
         none -> error;
         {value, KeyBlock} ->
-            TopHash   = top_block_hash(),
-            TopHeight = aec_headers:height(aec_db:get_header(TopHash)),
-            Height    = aec_blocks:height(KeyBlock) + 1,
-            MaybeFirstMicro =
-                case TopHeight >= Height of
-                    true ->
-                        {ok, NextKeyBlock} = get_key_block_by_height(Height),
-                        aec_blocks:prev_hash(NextKeyBlock);
-                    false ->
-                        TopHash
-                end,
-            case get_prev_generation(MaybeFirstMicro, []) of
-                {ok, MicroBlocks} ->
-                    {ok, KeyBlock, MicroBlocks};
-                error ->
-                    error
+            case aec_blocks:is_key_block(KeyBlock) of
+                true -> get_generation_(KeyBlock);
+                false -> error
             end
+    end.
+
+get_generation_(KeyBlock) ->
+    TopHash   = top_block_hash(),
+    TopHeight = aec_headers:height(aec_db:get_header(TopHash)),
+    Height    = aec_blocks:height(KeyBlock) + 1,
+    MaybeFirstMicro =
+    case TopHeight >= Height of
+        true ->
+            {ok, NextKeyBlock} = get_key_block_by_height(Height),
+            aec_blocks:prev_hash(NextKeyBlock);
+        false ->
+            TopHash
+    end,
+    case get_prev_generation(MaybeFirstMicro, []) of
+        {ok, MicroBlocks} ->
+            {ok, KeyBlock, MicroBlocks};
+        error ->
+            error
     end.
 
 -spec get_prev_generation(binary()) -> 'error' | {'ok', aec_blocks:block(), [aec_blocks:block()]}.

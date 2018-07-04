@@ -192,7 +192,7 @@ chain:
 
 def node_is_online(api):
     try:
-        top = api.get_top()
+        top = api.get_top_block()
         return top.height > -1
     except Exception as e:
         return False
@@ -318,7 +318,7 @@ def main(argv):
 
     wait_all_nodes_are_online(node_objs)
 
-    top = node_objs[0].get_top()
+    top = node_objs[0].get_top_block()
     height = top.height
     max_height = blocks_to_mine + height
     test_failed = False
@@ -327,7 +327,7 @@ def main(argv):
         while height < max_height:
             time.sleep(1) # check every second
             for name, node in zip(node_names, node_objs):
-                top = node.get_top() # node is alive and mining
+                top = node.get_top_block() # node is alive and mining
                 print("[" + name + "] height=" + str(top.height))
                 height = max(height, top.height)
             print("")

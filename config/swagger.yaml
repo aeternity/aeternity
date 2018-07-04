@@ -37,21 +37,354 @@ paths:
 ## External APIs definitions
 ###
 
-  /top:
+  /blocks/top:
     get:
       tags:
         - external
         - gossip
-      operationId: GetTop
-      description: 'Get the top block header'
+      operationId: GetTopBlock
+      description: 'Get the top block (either key or micro block)'
       produces:
         - application/json
       parameters:
       responses:
         '200':
-          description: successful operation
+          description: 'Successful operation'
           schema:
             $ref: '#/definitions/Top'
+      security:
+  /key-blocks/current:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetCurrentKeyBlock
+      description: 'Get the current key block'
+      produces:
+        - application/json
+      parameters:
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/GenericBlock'
+      security:
+  /key-blocks/current/hash:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetCurrentKeyBlockHash
+      description: 'Get the hash of the current key block'
+      produces:
+        - application/json
+      parameters:
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            type: object
+            properties:
+              hash:
+                type: string
+                description: 'Hash'
+      security:
+  /key-blocks/current/height:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetCurrentKeyBlockHeight
+      description: 'Get the height of the current key block'
+      produces:
+        - application/json
+      parameters:
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            type: object
+            properties:
+              hash:
+                type: integer
+                description: 'Height'
+                format: int64
+      security:
+  /key-blocks/pending:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetPendingKeyBlock
+      description: 'Get the pending key block'
+      produces:
+        - application/json
+      parameters:
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/GenericBlock'
+        '404':
+          description: 'No pending block (node not mining)'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /key-blocks/hash/{hash}:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetKeyBlockByHash
+      description: 'Get a key block by hash'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: hash
+          description: 'The hash of the block'
+          required: true
+          type : string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/GenericBlock'
+        '400':
+          description: 'Invalid hash'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Block not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /key-blocks/height/{height}:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetKeyBlockByHeight
+      description: 'Get a key block by height'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: height
+          description: 'The height of the block'
+          required: true
+          type : integer
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/GenericBlock'
+        '404':
+          description: 'Block not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /micro-blocks/hash/{hash}/header:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetMicroBlockHeaderByHash
+      description: 'Get a micro block header by hash'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: hash
+          description: 'The hash of the block'
+          required: true
+          type : string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#definitions/MicroBlockHeader'
+        '400':
+          description: 'Invalid hash'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Block not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /micro-blocks/hash/{hash}/transactions:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetMicroBlockTransactionsByHash
+      description: 'Get micro block transactions by hash'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: hash
+          description: 'The hash of the block'
+          required: true
+          type : string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/JSONTxs'
+        '400':
+          description: 'Invalid hash'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Block not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /micro-blocks/hash/{hash}/transactions/index/{index}:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetMicroBlockTransactionByHashAndIndex
+      description: 'Get a micro block transaction by hash and index'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: hash
+          description: 'The hash of the block'
+          required: true
+          type: string
+        - in: path
+          name: index
+          description: 'The index of the transaction in a block'
+          required: true
+          type: integer
+          minimum: 1
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/SignedTxJSON'
+        '400':
+          description: 'Invalid hash or index'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Block not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /micro-blocks/hash/{hash}/transactions/count:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetMicroBlockTransactionsCountByHash
+      description: 'Get micro block transaction count by hash'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: hash
+          description: 'The hash of the block'
+          required: true
+          type : string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            type: object
+            properties:
+              count:
+                type: integer
+                minimum: 1
+                description: 'Count'
+                format: int64
+        '400':
+          description: 'Invalid hash'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Block not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /generations/current:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetCurrentGeneration
+      description: 'Get the current generation'
+      produces:
+        - application/json
+      parameters:
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/Generation'
+        '404':
+          description: 'Generation not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /generations/hash/{hash}:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetGenerationByHash
+      description: 'Get a generation by hash'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: hash
+          description: 'The hash of the generation'
+          required: true
+          type : string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/Generation'
+        '400':
+          description: 'Invalid hash'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Generation not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /generations/height/{height}:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetGenerationByHeight
+      description: 'Get a generation by height'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: height
+          description: 'The height of the generation'
+          required: true
+          type : integer
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/Generation'
+        '404':
+          description: 'Generation not found'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /header-by-hash:
     get:
@@ -1440,7 +1773,7 @@ paths:
       tags:
         - external
         - chain
-      operationId: GetKeyBlockByHeight
+      operationId: GetKeyBlockByHeightObsolete
       description: 'Get a key block by height'
       produces:
         - application/json
@@ -1544,32 +1877,6 @@ paths:
           description: The top block
           schema:
             $ref: '#/definitions/GenericBlock'
-      security:
-  /block/pending:
-    get:
-      tags:
-        - external
-        - chain
-      operationId: GetBlockPending
-      description: 'Get the block being mined'
-      produces:
-        - application/json
-      parameters:
-        - in: query
-          name: tx_encoding
-          description: 'Transactions encoding'
-          type: string
-          enum: [message_pack, json]
-          default: json
-      responses:
-        '200':
-          description: The pending block with invalid nonce and pow evidence
-          schema:
-            $ref: '#/definitions/GenericBlock'
-        '404':
-          description: No pending block (node not mining)
-          schema:
-            $ref: '#/definitions/Error'
       security:
   /block/txs/count/hash/{hash}:
     get:
@@ -2034,6 +2341,30 @@ definitions:
             $ref: '#/definitions/EncodedHash'
         required:
         - data_schema
+  MicroBlockHeader:
+    type: object
+    properties:
+      hash:
+        $ref: '#/definitions/EncodedHash'
+      height:
+        type: integer
+        format: int64
+      prev_hash:
+        $ref: '#/definitions/EncodedHash'
+      state_hash:
+        $ref: '#/definitions/EncodedHash'
+      txs_hash:
+        $ref: '#/definitions/EncodedHash'
+      key_hash:
+        $ref: '#/definitions/EncodedHash'
+      signature:
+        $ref: '#/definitions/EncodedHash'
+      time:
+        type: integer
+        format: int64
+      version:
+        type: integer
+        format: int64
   Top:
     allOf:
       - $ref: '#/definitions/Header'
@@ -3154,10 +3485,21 @@ definitions:
     type: object
     properties:
       poi:
-        description: Proof of inclusion 
+        description: Proof of inclusion
         type: string
     required:
     - poi
+  Generation:
+    type: object
+    properties:
+      key_block:
+        $ref: '#/definitions/GenericBlock'
+      micro_blocks:
+        type: array
+        items:
+            $ref: '#/definitions/EncodedHash'
+    required:
+    - tx
 
 externalDocs:
   description: Find out more about Aeternity

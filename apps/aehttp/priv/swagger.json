@@ -43,18 +43,390 @@
   } ],
   "schemes" : [ "http" ],
   "paths" : {
-    "/top" : {
+    "/blocks/top" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
-        "description" : "Get the top block header",
-        "operationId" : "GetTop",
+        "description" : "Get the top block (either key or micro block)",
+        "operationId" : "GetTopBlock",
         "produces" : [ "application/json" ],
         "parameters" : [ ],
         "responses" : {
           "200" : {
-            "description" : "successful operation",
+            "description" : "Successful operation",
             "schema" : {
               "$ref" : "#/definitions/Top"
+            }
+          }
+        }
+      }
+    },
+    "/key-blocks/current" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get the current key block",
+        "operationId" : "GetCurrentKeyBlock",
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/GenericBlock"
+            }
+          }
+        }
+      }
+    },
+    "/key-blocks/current/hash" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get the hash of the current key block",
+        "operationId" : "GetCurrentKeyBlockHash",
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/inline_response_200"
+            }
+          }
+        }
+      }
+    },
+    "/key-blocks/current/height" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get the height of the current key block",
+        "operationId" : "GetCurrentKeyBlockHeight",
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/inline_response_200_1"
+            }
+          }
+        }
+      }
+    },
+    "/key-blocks/pending" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get the pending key block",
+        "operationId" : "GetPendingKeyBlock",
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/GenericBlock"
+            }
+          },
+          "404" : {
+            "description" : "No pending block (node not mining)",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/key-blocks/hash/{hash}" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get a key block by hash",
+        "operationId" : "GetKeyBlockByHash",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "hash",
+          "in" : "path",
+          "description" : "The hash of the block",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/GenericBlock"
+            }
+          },
+          "400" : {
+            "description" : "Invalid hash",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Block not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/key-blocks/height/{height}" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get a key block by height",
+        "operationId" : "GetKeyBlockByHeight",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "height",
+          "in" : "path",
+          "description" : "The height of the block",
+          "required" : true,
+          "type" : "integer"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/GenericBlock"
+            }
+          },
+          "404" : {
+            "description" : "Block not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/micro-blocks/hash/{hash}/header" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get a micro block header by hash",
+        "operationId" : "GetMicroBlockHeaderByHash",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "hash",
+          "in" : "path",
+          "description" : "The hash of the block",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/#definitions/MicroBlockHeader"
+            }
+          },
+          "400" : {
+            "description" : "Invalid hash",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Block not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/micro-blocks/hash/{hash}/transactions" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get micro block transactions by hash",
+        "operationId" : "GetMicroBlockTransactionsByHash",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "hash",
+          "in" : "path",
+          "description" : "The hash of the block",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/JSONTxs"
+            }
+          },
+          "400" : {
+            "description" : "Invalid hash",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Block not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/micro-blocks/hash/{hash}/transactions/index/{index}" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get a micro block transaction by hash and index",
+        "operationId" : "GetMicroBlockTransactionByHashAndIndex",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "hash",
+          "in" : "path",
+          "description" : "The hash of the block",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "name" : "index",
+          "in" : "path",
+          "description" : "The index of the transaction in a block",
+          "required" : true,
+          "type" : "integer",
+          "minimum" : 1
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SignedTxJSON"
+            }
+          },
+          "400" : {
+            "description" : "Invalid hash or index",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Block not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/micro-blocks/hash/{hash}/transactions/count" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get micro block transaction count by hash",
+        "operationId" : "GetMicroBlockTransactionsCountByHash",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "hash",
+          "in" : "path",
+          "description" : "The hash of the block",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/inline_response_200_2"
+            }
+          },
+          "400" : {
+            "description" : "Invalid hash",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Block not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/generations/current" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get the current generation",
+        "operationId" : "GetCurrentGeneration",
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Generation"
+            }
+          },
+          "404" : {
+            "description" : "Generation not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/generations/hash/{hash}" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get a generation by hash",
+        "operationId" : "GetGenerationByHash",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "hash",
+          "in" : "path",
+          "description" : "The hash of the generation",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Generation"
+            }
+          },
+          "400" : {
+            "description" : "Invalid hash",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Generation not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/generations/height/{height}" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get a generation by height",
+        "operationId" : "GetGenerationByHeight",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "height",
+          "in" : "path",
+          "description" : "The height of the generation",
+          "required" : true,
+          "type" : "integer"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Generation"
+            }
+          },
+          "404" : {
+            "description" : "Generation not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
             }
           }
         }
@@ -1719,7 +2091,7 @@
       "get" : {
         "tags" : [ "external", "chain" ],
         "description" : "Get a key block by height",
-        "operationId" : "GetKeyBlockByHeight",
+        "operationId" : "GetKeyBlockByHeightObsolete",
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "height",
@@ -1845,37 +2217,6 @@
         }
       }
     },
-    "/block/pending" : {
-      "get" : {
-        "tags" : [ "external", "chain" ],
-        "description" : "Get the block being mined",
-        "operationId" : "GetBlockPending",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "tx_encoding",
-          "in" : "query",
-          "description" : "Transactions encoding",
-          "required" : false,
-          "type" : "string",
-          "default" : "json",
-          "enum" : [ "message_pack", "json" ]
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "The pending block with invalid nonce and pow evidence",
-            "schema" : {
-              "$ref" : "#/definitions/GenericBlock"
-            }
-          },
-          "404" : {
-            "description" : "No pending block (node not mining)",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
     "/block/txs/count/hash/{hash}" : {
       "get" : {
         "tags" : [ "internal", "chain" ],
@@ -1905,7 +2246,7 @@
           "200" : {
             "description" : "The count of transactions in the block",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200"
+              "$ref" : "#/definitions/inline_response_200_3"
             }
           },
           "400" : {
@@ -1952,7 +2293,7 @@
           "200" : {
             "description" : "The count of transactions in the block",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200"
+              "$ref" : "#/definitions/inline_response_200_3"
             }
           },
           "404" : {
@@ -1987,7 +2328,7 @@
           "200" : {
             "description" : "The count of transactions in the genesis block",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200"
+              "$ref" : "#/definitions/inline_response_200_3"
             }
           }
         }
@@ -2016,7 +2357,7 @@
           "200" : {
             "description" : "The count of transactions in the latest block",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200"
+              "$ref" : "#/definitions/inline_response_200_3"
             }
           }
         }
@@ -2045,7 +2386,7 @@
           "200" : {
             "description" : "The count of transactions in the pending block",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200"
+              "$ref" : "#/definitions/inline_response_200_3"
             }
           },
           "404" : {
@@ -2320,7 +2661,7 @@
           "200" : {
             "description" : "Node's peer public key",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200_1"
+              "$ref" : "#/definitions/inline_response_200_4"
             }
           },
           "404" : {
@@ -2414,6 +2755,52 @@
           }
         }
       } ]
+    },
+    "MicroBlockHeader" : {
+      "type" : "object",
+      "properties" : {
+        "hash" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "height" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "prev_hash" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "state_hash" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "txs_hash" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "key_hash" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "signature" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "time" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "version" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      },
+      "example" : {
+        "txs_hash" : null,
+        "state_hash" : null,
+        "signature" : null,
+        "key_hash" : null,
+        "prev_hash" : null,
+        "time" : 6,
+        "version" : 1,
+        "hash" : { },
+        "height" : 0
+      }
     },
     "Top" : {
       "allOf" : [ {
@@ -3569,6 +3956,16 @@
           },
           "minItems" : 1
         }
+      },
+      "example" : {
+        "tx" : {
+          "vsn" : 0,
+          "data_schema" : "data_schema"
+        },
+        "block_hash" : { },
+        "block_height" : 6,
+        "hash" : null,
+        "signatures" : [ "signatures", "signatures" ]
       }
     },
     "ChannelCreateTxJSON" : {
@@ -3631,6 +4028,10 @@
         "vsn" : {
           "type" : "integer"
         }
+      },
+      "example" : {
+        "vsn" : 0,
+        "data_schema" : "data_schema"
       }
     },
     "SpendTxJSON" : {
@@ -4153,7 +4554,61 @@
         "poi" : "poi"
       }
     },
+    "Generation" : {
+      "type" : "object",
+      "properties" : {
+        "key_block" : {
+          "$ref" : "#/definitions/GenericBlock"
+        },
+        "micro_blocks" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/EncodedHash"
+          }
+        }
+      },
+      "example" : {
+        "micro_blocks" : [ { }, { } ],
+        "key_block" : ""
+      }
+    },
     "inline_response_200" : {
+      "properties" : {
+        "hash" : {
+          "type" : "string",
+          "description" : "Hash"
+        }
+      },
+      "example" : {
+        "hash" : "hash"
+      }
+    },
+    "inline_response_200_1" : {
+      "properties" : {
+        "hash" : {
+          "type" : "integer",
+          "format" : "int64",
+          "description" : "Height"
+        }
+      },
+      "example" : {
+        "hash" : 0
+      }
+    },
+    "inline_response_200_2" : {
+      "properties" : {
+        "count" : {
+          "type" : "integer",
+          "format" : "int64",
+          "description" : "Count",
+          "minimum" : 1
+        }
+      },
+      "example" : {
+        "count" : 1
+      }
+    },
+    "inline_response_200_3" : {
       "properties" : {
         "count" : {
           "type" : "integer",
@@ -4164,7 +4619,7 @@
         "count" : 0
       }
     },
-    "inline_response_200_1" : {
+    "inline_response_200_4" : {
       "properties" : {
         "pubkey" : {
           "$ref" : "#/definitions/EncodedHash"
