@@ -174,15 +174,16 @@ new_node_joins_network(Cfg) ->
     MiningTime = round(timer:now_diff(EndTime, StartTime) * 1.5)
                  div (1000 * Length),
 
-    {ok, 200, Top1} = request(old_node1, 'GetTop', #{}),
+    Top1 = get_top(old_node1),
     ct:log("Node 1 top: ~p", [Top1]),
-    {ok, 200, Height1} = request(old_node1, 'GetBlockByHeight', #{height => Length}),
+    Height1 = get_block(old_node1, Length),
     ct:log("Node 1 at height ~p: ~p", [Length, Height1]),
-    {ok, 200, Height2} = request(old_node2, 'GetBlockByHeight', #{height => Length}),
+    Height2 = get_block(old_node2, Length),
     ct:log("Node 2 at height ~p: ~p", [Length, Height2]),
 
     %% Checks node 1 and 2 are synchronized
     ?assertEqual(Height1, Height2),
+    ?assertNotEqual(undefined, Height1),
 
     %% Starts a third node and check it synchronize with the first two
     start_node(new_node1, Cfg),
@@ -192,7 +193,7 @@ new_node_joins_network(Cfg) ->
     %% Waits enough for node 3 to sync but not for it to build a new chain
     wait_for_value({height, Length}, [new_node1], MiningTime * 3, Cfg),
     ct:log("Node 3 on same height"),
-    {ok, 200, Height3} = request(new_node1, 'GetBlockByHeight', #{height => Length}),
+    Height3 = get_block(new_node1, Length),
     ct:log("Node 3 at height ~p: ~p", [Length, Height3]),
 
     %% Checks node 3 is synchronized with nodes 1 and 2
@@ -306,8 +307,9 @@ stop_and_continue_sync(Cfg) ->
 
     wait_for_value({height, Length}, [node1], Length * ?MINING_TIMEOUT, Cfg),
 
-    {ok, 200, B1} = request(node1, 'GetBlockByHeight', #{height => Length}),
+    B1 = get_block(node1, Length),
     ct:log("Node 1 at height ~p: ~p~n", [Length, B1]),
+    ?assertNotEqual(undefined, B1),
 
     %% Start fetching the chain
     start_node(node2, Cfg),
@@ -316,7 +318,7 @@ stop_and_continue_sync(Cfg) ->
 
     %% we are fetching blocks, abruptly stop node1 now
     stop_node(node1, 8000, Cfg),
-    {ok, 200, Top2} = request(node2, 'GetTop', #{}),
+    Top2 = get_top(node2),
     ct:log("Node 2 top: ~p~n", [Top2]),
     Height = maps:get(height, Top2),
     case Height >= Length of
@@ -325,8 +327,8 @@ stop_and_continue_sync(Cfg) ->
             start_node(node1, Cfg),
             %% should sync with about 10 blocks per second, hence 100ms per block
             wait_for_value({height, Length}, [node2], (Length - Height) * ?MINING_TIMEOUT, Cfg),
-            {ok, 200, B2} = request(node2, 'GetBlockByHeight', #{height => Length}),
-            {ok, 200, C1} = request(node1, 'GetBlockByHeight', #{height => Length}),
+            B2 = get_block(node2, Length),
+            C1 = get_block(node1, Length),
             ct:log("Node 2 at height ~p: ~p and  Node 1 at same height ~p~n", [Length, B2, C1]),
             if C1 == B1 ->
                 ct:log("This test showed that sync can be interrupted");
@@ -334,7 +336,9 @@ stop_and_continue_sync(Cfg) ->
                 ct:log("Tested non-interesting branch, node2 synced with node1")
                 %% skip here?
             end,
-            ?assertEqual(C1, B2)
+            ?assertEqual(C1, B2),
+            ?assertNotEqual(undefined, C1),
+            ?assertNotEqual(undefined, B2)
     end.
 
 tx_pool_sync(Cfg) ->
@@ -453,15 +457,17 @@ net_split_recovery(Cfg) ->
 
     wait_for_value({height, Length}, Nodes, Length * ?MINING_TIMEOUT, Cfg),
 
-    {ok, 200, A1} = request(net1_node1, 'GetBlockByHeight', #{height => Length}),
-    {ok, 200, A2} = request(net1_node2, 'GetBlockByHeight', #{height => Length}),
-    {ok, 200, A3} = request(net2_node1, 'GetBlockByHeight', #{height => Length}),
-    {ok, 200, A4} = request(net2_node2, 'GetBlockByHeight', #{height => Length}),
+    A1 = get_block(net1_node1, Length),
+    A2 = get_block(net1_node2, Length),
+    A3 = get_block(net2_node1, Length),
+    A4 = get_block(net2_node2, Length),
 
     %% Check that the chains are different
     ?assertEqual(A1, A2),
     ?assertEqual(A3, A4),
     ?assertNotEqual(A1, A3),
+    ?assertNotEqual(undefined, A1),
+    ?assertNotEqual(undefined, A3),
 
     %% Join all the nodes
     connect_node(net1_node1, net2, Cfg),
@@ -478,15 +484,16 @@ net_split_recovery(Cfg) ->
     try_until(T0 + 2 * ping_interval(),
             fun() ->
 
-              {ok, 200, B1} = request(net1_node1, 'GetBlockByHeight', #{height => Length * 2}),
-              {ok, 200, B2} = request(net1_node2, 'GetBlockByHeight', #{height => Length * 2}),
-              {ok, 200, B3} = request(net2_node1, 'GetBlockByHeight', #{height => Length * 2}),
-              {ok, 200, B4} = request(net2_node2, 'GetBlockByHeight', #{height => Length * 2}),
+              B1 = get_block(net1_node1, Length * 2),
+              B2 = get_block(net1_node2, Length * 2),
+              B3 = get_block(net2_node1, Length * 2),
+              B4 = get_block(net2_node2, Length * 2),
 
               %% Check that the chain merged
               ?assertEqual(B1, B2),
               ?assertEqual(B1, B3),
-              ?assertEqual(B1, B4)
+              ?assertEqual(B1, B4),
+              ?assertNotEqual(undefined, B1)
             end),
 
     {ok, 200, #{height := Top2}} = request(net1_node1, 'GetTop', #{}),
@@ -500,15 +507,18 @@ net_split_recovery(Cfg) ->
 
     wait_for_value({height, Top2 + Length}, Nodes, Length * ?MINING_TIMEOUT, Cfg),
 
-    {ok, 200, C1} = request(net1_node1, 'GetBlockByHeight', #{height => Top2 + Length}),
-    {ok, 200, C2} = request(net1_node2, 'GetBlockByHeight', #{height => Top2 + Length}),
-    {ok, 200, C3} = request(net2_node1, 'GetBlockByHeight', #{height => Top2 + Length}),
-    {ok, 200, C4} = request(net2_node2, 'GetBlockByHeight', #{height => Top2 + Length}),
+    C1 = get_block(net1_node1, Top2 + Length),
+    C2 = get_block(net1_node2, Top2 + Length),
+    C3 = get_block(net2_node1, Top2 + Length),
+    C4 = get_block(net2_node2, Top2 + Length),
 
     %% Check the the chains forked
     ?assertEqual(C1, C2),
     ?assertEqual(C3, C4),
     ?assertNotEqual(C1, C3),
+    ?assertNotEqual(undefined, C1),
+    ?assertNotEqual(undefined, C3),
+
 
     %% Reconnect the nodes together
     connect_node(net1_node1, net2, Cfg),
@@ -521,15 +531,16 @@ net_split_recovery(Cfg) ->
 
     try_until(T1 + 2 * ping_interval(),
             fun() ->
-              {ok, 200, D1} = request(net1_node1, 'GetBlockByHeight', #{height => Top2 + Length * 2}),
-              {ok, 200, D2} = request(net1_node2, 'GetBlockByHeight', #{height => Top2 + Length * 2}),
-              {ok, 200, D3} = request(net2_node1, 'GetBlockByHeight', #{height => Top2 + Length * 2}),
-              {ok, 200, D4} = request(net2_node2, 'GetBlockByHeight', #{height => Top2 + Length * 2}),
+              D1 = get_block(net1_node1, Top2 + Length * 2),
+              D2 = get_block(net1_node2, Top2 + Length * 2),
+              D3 = get_block(net2_node1, Top2 + Length * 2),
+              D4 = get_block(net2_node2, Top2 + Length * 2),
 
               %% Check the chain merged again
               ?assertEqual(D1, D2),
               ?assertEqual(D1, D3),
-              ?assertEqual(D1, D4)
+              ?assertEqual(D1, D4),
+              ?assertNotEqual(undefined, D1)
             end),
 
     {ok, 200,#{height := Top3}} = request(net1_node1, 'GetTop', #{}),
