@@ -55,6 +55,11 @@ handle_request('GetKeyBlocksCurrentHash', _, _Context) ->
     EncodedHash = aec_base58c:encode(block_hash, Hash),
     {200, [], EncodedHash};
 
+handle_request('GetKeyBlocksCurrentHeight', _, _Context) ->
+    TopBlock = aec_chain:top_block(),
+    Height = aec_blocks:height(TopBlock),
+    {200, [], Height};
+
 handle_request('GetBlockGenesis', Req, _Context) ->
     get_block(fun aehttp_logic:get_block_genesis/0, Req, json);
 
