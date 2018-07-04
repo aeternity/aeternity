@@ -94,7 +94,7 @@ get_block_latest() ->
     {ok, TopBlock}.
 
 get_block_pending() ->
-    aec_conductor:get_block_candidate().
+    aec_conductor:get_key_block_candidate().
 
 -spec get_block_by_hash(binary()) -> {ok, aec_blocks:block()} |
                                      {error, block_not_found}.

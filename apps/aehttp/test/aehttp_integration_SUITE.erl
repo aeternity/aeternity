@@ -280,7 +280,7 @@ groups() ->
       [
         % get block-s
         block_genesis,
-        % block_pending,
+        block_pending,
         block_latest,
 
         block_by_height,
@@ -4463,7 +4463,7 @@ block_hash_by_height(Height) ->
 get_pending_block() ->
     aec_test_utils:exec_with_timeout(
         fun TryGetting() ->
-            case rpc(aec_conductor, get_block_candidate, []) of
+            case rpc(aec_conductor, get_key_block_candidate, []) of
                 {ok, OK} -> OK;
                 {error, not_mining} = Err->
                     Err;
