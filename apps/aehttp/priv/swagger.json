@@ -43,7 +43,7 @@
   } ],
   "schemes" : [ "http" ],
   "paths" : {
-    "/top" : {
+    "/blocks/top" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
         "description" : "Get the top block header",
@@ -56,6 +56,54 @@
             "schema" : {
               "$ref" : "#/definitions/Top"
             }
+          }
+        }
+      }
+    },
+    "/key-blocks/current" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get the current key block",
+        "operationId" : "GetKeyBlocksCurrent",
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Returns top key block",
+            "schema" : {
+              "$ref" : "#/definitions/GenericBlock"
+            }
+          }
+        }
+      }
+    },
+    "/key-blocks/current/hash" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get the current key block hash",
+        "operationId" : "GetKeyBlocksCurrentHash",
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/EncodedHash"
+            }
+          }
+        }
+      }
+    },
+    "/key-blocks/current/height" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get the current key block height",
+        "operationId" : "GetKeyBlocksCurrentHeight",
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Height of current key block"
           }
         }
       }
