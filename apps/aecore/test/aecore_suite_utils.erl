@@ -209,7 +209,7 @@ mine_blocks_until_loop(ConditionFun, Max) ->
 mine_blocks_until_loop(_ConditionFun, 0,_Acc) ->
     {error, max_reached};
 mine_blocks_until_loop(ConditionFun, Max, Acc) ->
-    case mine_blocks_loop(1, any) of
+    case mine_blocks_loop(1, key) of
         {ok, Blocks} ->
             NewAcc = Blocks ++ Acc,
             case ConditionFun() of
