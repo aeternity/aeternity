@@ -54,7 +54,6 @@ epoch_commands(Cfg) ->
     setup_nodes([?NODE1], Cfg),
     start_node(node1, Cfg),
     wait_for_value({height, 0}, [node1], ?STARTUP_TIMEOUT, Cfg),
-    wait_for_value({height, 10}, [node1], ?MINING_TIMEOUT * 10, Cfg),
     {0, Output1} = aest_nodes:run_cmd_in_node_dir(node1, ["bin/epoch", "versions"], Cfg),
     ?assertMatch({match, _}, re:run(Output1,
         "Installed versions:[\r\n]*\\*[ \t]*[0-9.]*[ \t]*permanent[\r\n]*")),
