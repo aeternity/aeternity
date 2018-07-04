@@ -63,6 +63,13 @@ handle_request('GetKeyBlocksCurrentHeight', _, _Context) ->
     Height = aec_blocks:height(TopBlock),
     {200, [], Height};
 
+handle_request('GetKeyBlocksByHash', Params, _Context) ->
+    case aec_base58c:safe_decode(block_hash, maps:get('hash', Params)) of
+        {error, _} -> {400, [], #{reason => <<"Invalid hash">>}};
+        {ok, Hash} ->
+            get_block(fun() -> aehttp_logic:get_key_block_by_hash(Hash) end, Params, json)
+    end;
+
 handle_request('GetBlockGenesis', Req, _Context) ->
     get_block(fun aehttp_logic:get_block_genesis/0, Req, json);
 

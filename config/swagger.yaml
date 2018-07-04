@@ -100,6 +100,35 @@ paths:
           description: Height of current key block
           type: integer
       security:
+  /key-blocks/hash/{hash}:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetKeyBlocksByHash
+      description: 'Get key block by hash'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: hash
+          description: 'Hash of the block to fetch'
+          required: true
+          type : string
+      responses:
+        '200':
+          description: Returns key block
+          schema:
+            $ref: '#/definitions/GenericBlock'
+        '400':
+          description: Invalid hash
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Block not found
+          schema:
+            $ref: '#/definitions/Error'
+      security:
   /header-by-hash:
     get:
       tags:

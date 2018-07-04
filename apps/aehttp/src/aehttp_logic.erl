@@ -13,6 +13,7 @@
         , get_block_range_by_hash/2
         , get_block_range_by_height/2
         , get_genesis_hash/0
+        , get_key_block_by_hash/1
         , get_top_blocks_time_summary/1
         ]).
 
@@ -101,6 +102,19 @@ get_block_by_hash(Hash) ->
     case aec_chain:get_block(Hash) of
         {ok, Block} ->
             {ok, Block};
+        error ->
+            {error, block_not_found}
+    end.
+
+-spec get_key_block_by_hash(binary()) -> {ok, aec_blocks:block()} |
+                                         {error, block_not_found}.
+get_key_block_by_hash(Hash) ->
+    case aec_chain:get_block(Hash) of
+        {ok, Block} ->
+            case aec_blocks:is_key_block(Block) of
+                true -> {ok, Block};
+                false -> {error, block_not_found}
+            end;
         error ->
             {error, block_not_found}
     end.

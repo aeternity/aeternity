@@ -46,7 +46,10 @@
      get_current_key_block_hash_on_micro_block/1,
      get_current_key_block_height_on_genesis_block/1,
      get_current_key_block_height_on_key_block/1,
-     get_current_key_block_height_on_micro_block/1
+     get_current_key_block_height_on_micro_block/1,
+     get_key_block_by_hash_on_genesis_block/1,
+     get_key_block_by_hash_on_key_block/1,
+     get_key_block_by_hash_on_micro_block/1
     ]).
 
 %% test case exports
@@ -262,8 +265,10 @@ groups() ->
         get_current_key_block_hash_on_micro_block,
         get_current_key_block_height_on_genesis_block,
         get_current_key_block_height_on_key_block,
-        get_current_key_block_height_on_micro_block
-
+        get_current_key_block_height_on_micro_block,
+        get_key_block_by_hash_on_genesis_block,
+        get_key_block_by_hash_on_key_block,
+        get_key_block_by_hash_on_micro_block
       ]},
      {off_chain_endpoints, [],
       [
@@ -809,6 +814,44 @@ get_current_key_block_height_on_micro_block(_Config) ->
     ?assertEqual(aec_blocks:height(KeyBlock), Height),
     ok.
 
+get_key_block_by_hash_on_genesis_block(_Config) ->
+    ok = rpc(aec_conductor, reinit_chain, []),
+    GenesisBlock = rpc(aec_chain, genesis_block, []),
+
+    {ok, 200, Block} = get_key_blocks_by_hash_sut(hash(GenesisBlock)),
+    ?assertEqual(key_block_to_endpoint_struct(GenesisBlock), Block),
+
+    ForkHeight = aecore_suite_utils:latest_fork_height(),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), ForkHeight),
+    ok.
+
+get_key_block_by_hash_on_key_block(_Config) ->
+    {ok, [TopBlock]} = aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    ?assertEqual(TopBlock, rpc(aec_chain, top_block, [])),
+    ?assertEqual(true, aec_blocks:is_key_block(TopBlock)),
+
+    {ok, 200, Block} = get_key_blocks_by_hash_sut(hash(TopBlock)),
+    ?assertEqual(key_block_to_endpoint_struct(TopBlock), Block),
+    ok.
+
+get_key_block_by_hash_on_micro_block(_Config) ->
+    Node = aecore_suite_utils:node_name(?NODE),
+    {ok, Pub} = rpc(aec_keys, pubkey, []),
+    ok = aecore_suite_utils:spend(Node, Pub, Pub, 1),
+    {ok, [_]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+    {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
+    {ok, []} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+
+    ?assertEqual(true, aec_blocks:is_key_block(KeyBlock)),
+    ?assertEqual(false, aec_blocks:is_key_block(MicroBlock)),
+    ?assertEqual(MicroBlock, rpc(aec_chain, top_block, [])),
+
+    {ok, 200, Block} = get_key_blocks_by_hash_sut(hash(KeyBlock)),
+    ?assertEqual(key_block_to_endpoint_struct(KeyBlock), Block),
+
+    ?assertMatch({ok, 404, #{}}, get_key_blocks_by_hash_sut(hash(MicroBlock))),
+    ok.
+
 get_key_blocks_current_sut() ->
     Host = external_address(),
     http_request(Host, get, "key-blocks/current", []).
@@ -820,6 +863,14 @@ get_key_blocks_current_hash_sut() ->
 get_key_blocks_current_height_sut() ->
     Host = external_address(),
     http_request(Host, get, "key-blocks/current/height", []).
+
+get_key_blocks_by_hash_sut(Hash) ->
+    Host = external_address(),
+    http_request(Host, get, "key-blocks/hash/" ++ http_uri:encode(Hash), []).
+
+hash(Block) ->
+    {ok, Hash0} = aec_blocks:hash_internal_representation(Block),
+    aec_base58c:encode(block_hash, Hash0).
 
 key_block_to_endpoint_struct(Block) ->
     {ok, Hash} = aec_blocks:hash_internal_representation(Block),
