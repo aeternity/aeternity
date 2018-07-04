@@ -108,6 +108,29 @@
         }
       }
     },
+    "/key-blocks/pending" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get the pending key block",
+        "operationId" : "GetKeyBlocksPending",
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "The pending block with invalid nonce and pow evidence",
+            "schema" : {
+              "$ref" : "#/definitions/GenericBlock"
+            }
+          },
+          "404" : {
+            "description" : "No pending block (node not mining)",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/key-blocks/height/{height}" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
