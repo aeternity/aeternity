@@ -436,10 +436,12 @@ gc_tx(TxHash) ->
     ?t(case find_tx_location(TxHash) of
            BlockHash when is_binary(BlockHash) ->
                {error, BlockHash};
+           mempool ->
+               delete(aec_tx_pool, TxHash);
            none ->
                ok;
-           mempool ->
-               delete(aec_tx_pool, TxHash)
+           not_found ->
+               {error, tx_not_found}
        end).
 
 get_signed_tx(Hash) ->
@@ -458,7 +460,10 @@ find_tx_location(STxHash) ->
     ?t(case mnesia:read(aec_tx_location, STxHash) of
            [] ->
                case mnesia:read(aec_tx_pool, STxHash) of
-                   [] -> none;
+                   [] -> case mnesia:read(aec_signed_tx, STxHash) of
+                             [] -> not_found;
+                             [_] -> none
+                         end;
                    [_] -> mempool
                end;
            [#aec_tx_location{value = BlockHash}] -> BlockHash

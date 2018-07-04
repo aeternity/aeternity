@@ -200,8 +200,9 @@ handle_call(get_block_candidate,_From, State) ->
 handle_call({post_block, Block},_From, State) ->
     {Reply, State1} = handle_post_block(Block, State),
     {reply, Reply, State1};
-handle_call(stop_mining,_From, State) ->
+handle_call(stop_mining,_From, State = #state{ consensus = Cons }) ->
     epoch_mining:info("Mining stopped"),
+    [ aec_tx_pool:garbage_collect() || is_record(Cons, consensus) andalso Cons#consensus.leader ],
     State1 = kill_all_workers(State),
     {reply, ok, State1#state{mining_state = 'stopped',
                              key_block_candidate = undefined}};
@@ -861,6 +862,8 @@ handle_add_block(Header, Block, State, Origin) ->
                                     {ok, setup_loop(State1, false, Cons#consensus.leader, Origin)};
                                 {changed, NewTopBlock, State1} ->
                                     IsLeader = is_leader(NewTopBlock),
+                                    %% Don't spend time when we are the leader.
+                                    [ aec_tx_pool:garbage_collect() || not IsLeader ],
                                     {ok, setup_loop(State1, true, IsLeader, Origin)}
                             end;
                         {error, Reason} ->

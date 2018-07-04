@@ -349,32 +349,22 @@ tx_pool_test_() ->
 
             ?assertMatch({ok, [_, _, _]}, aec_tx_pool:peek(infinity)),
 
-            %% Schedule them for GC - they will be scheduled for
+            %% Txs will be scheduled for
             %% removal at Height + ?INVALID_TX_TTL
-            %% For test ?INVALID_TX_TTL = 5
-            aec_tx_pool:invalid_txs([aetx_sign:hash(STx1)], 1),
-            aec_tx_pool:invalid_txs([aetx_sign:hash(STx2)], 3),
-            aec_tx_pool:invalid_txs([aetx_sign:hash(STx3)], 5),
+            %% For test ?INVALID_TX_TTL = 8
 
             %% Doing a garbage collect at height 0 shouldn't affect
             aec_tx_pool:garbage_collect(0),
             ?assertMatch({ok, [_, _, _]}, aec_tx_pool:peek(infinity)),
 
-            %% At 5 still GC should not kick in.
-            aec_tx_pool:garbage_collect(5),
+            %% At 4 still GC should not kick in.
+            aec_tx_pool:garbage_collect(4),
             ?assertMatch({ok, [_, _, _]}, aec_tx_pool:peek(infinity)),
 
-            %% At 6, now one Tx should be dropped.
-            aec_tx_pool:garbage_collect(6),
-            ?assertMatch({ok, [_, _]}, aec_tx_pool:peek(infinity)),
-
-            %% At 8, now another Tx should be dropped.
+            %% At 8, now TXs should be dropped.
             aec_tx_pool:garbage_collect(8),
-            ?assertMatch({ok, [_]}, aec_tx_pool:peek(infinity)),
-
-            %% At 10, now mempool should be empty
-            aec_tx_pool:garbage_collect(10),
             ?assertMatch({ok, []}, aec_tx_pool:peek(infinity))
+
         end}
      ]}.
 

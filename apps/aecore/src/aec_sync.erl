@@ -91,6 +91,7 @@ handle_worker(Task, Action) ->
                     adding = [], pending = [], workers = []}).
 -record(state, { sync_tasks = []                 :: [#sync_task{}]
                , last_generation_in_sync = false :: boolean()
+               , top_target = 0                  :: aec_blocks:height()
                }).
 
 start_link() ->
@@ -123,7 +124,14 @@ handle_call({known_chain, Chain0 = #{ chain_id := CId0 }, NewChainInfo}, _From, 
                 {Chain0, add_chain_info(NewChainInfo, State0)}
         end,
     {Res, State1} = sync_task_for_chain(Chain, State),
-    {reply, Res, State1};
+    State2 =
+        case Res of
+            {NewOrEx, SyncChain, _} when NewOrEx == new; NewOrEx == existing ->
+                maybe_new_top_target(SyncChain, State1);
+            {inconclusive, _, _} ->
+                State1
+        end,
+    {reply, Res, State2};
 handle_call({update_sync_task, Update, STId}, _From, State) ->
     State1 = do_update_sync_task(State, STId, Update),
     {reply, ok, State1};
@@ -212,7 +220,7 @@ sync_task_for_chain(Chain, S = #state{ sync_tasks = STs }) ->
         {match, ST = #sync_task{ id = STId, chain = C2 }} ->
             NewChain = merge_chains(Chain#{ chain_id := STId }, C2),
             ST1 = ST#sync_task{ chain = NewChain },
-            {{existing, STId}, set_sync_task(ST1, S)};
+            {{existing, NewChain, STId}, set_sync_task(ST1, S)};
         Res = {inconclusive, _, _} ->
             {Res, S}
     end.
@@ -309,10 +317,33 @@ maybe_end_sync_task(State, ST) ->
         #{ peers := [], chain := [Target | _] } ->
             epoch_sync:info("Removing/ending sync task ~p target was ~p",
                             [ST#sync_task.id, Target]),
-            delete_sync_task(ST, State);
+            State1 = delete_sync_task(ST, State),
+            maybe_update_top_target(State1);
         _ ->
             set_sync_task(ST, State)
     end.
+
+maybe_new_top_target(#{ chain := [#{ height := ChainTopTarget } | _] }, State) ->
+    case State#state.top_target < ChainTopTarget of
+        true  -> update_top_target(ChainTopTarget, State);
+        false -> State
+    end.
+
+maybe_update_top_target(State = #state{ top_target = TopTarget, sync_tasks = STs }) ->
+    NewTop = lists:foldl(fun(#sync_task{ chain = Chain }, PrevMax) ->
+                             case Chain of
+                                 #{ chain := [#{ height := H } | _] } when H > PrevMax -> H;
+                                 _ -> PrevMax
+                             end
+                         end, 0, STs),
+    case TopTarget == NewTop of
+        true  -> State;
+        false -> update_top_target(NewTop, State)
+    end.
+
+update_top_target(TopTarget, State) ->
+    aec_tx_pool:new_sync_top_target(TopTarget),
+    State#state{ top_target = TopTarget }.
 
 do_update_sync_task(State, STId, Update) ->
     case get_sync_task(STId, State) of
@@ -522,7 +553,7 @@ init_chain(ChainId, Peers, Header) ->
 known_chain(Chain) ->
     identify_chain(known_chain(Chain, none)).
 
-identify_chain({existing, Task}) ->
+identify_chain({existing, _Chain, Task}) ->
     epoch_sync:debug("Already syncing chain ~p", [Task]),
     {ok, Task};
 identify_chain({new, #{ chain := [Target | _]}, Task}) ->
