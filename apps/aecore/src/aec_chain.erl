@@ -268,7 +268,7 @@ find_tx_with_location(TxHash) ->
         {mempool, STx} -> {mempool, STx}
     end.
 
--spec find_tx_location(binary()) -> 'none' | 'mempool' | binary().
+-spec find_tx_location(binary()) -> 'not_found' | 'none' | 'mempool' | binary().
 
 find_tx_location(TxHash) ->
     aec_db:find_tx_location(TxHash).

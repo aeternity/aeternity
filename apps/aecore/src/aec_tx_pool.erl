@@ -34,7 +34,7 @@
 -export([ garbage_collect/0
         , get_candidate/2
         , get_max_nonce/1
-        , invalid_txs/2
+        , new_sync_top_target/1
         , peek/1
         , peek/2
         , push/1
@@ -56,7 +56,9 @@
 -define(SERVER, ?MODULE).
 -define(TAB, ?MODULE).
 
--record(state, { db :: pool_db(), gc_db :: pool_db() }).
+-record(state, { db            :: pool_db()
+               , gc_db         :: pool_db()
+               , gc_height = 0 :: aec_blocks:height() }).
 
 -type negated_fee() :: non_pos_integer().
 -type non_pos_integer() :: neg_integer() | 0.
@@ -77,7 +79,7 @@
 -define(DEFAULT_INVALID_TX_TTL, 256).
 -define(DEFAULT_EXPIRED_TX_TTL, 5).
 -else.
--define(DEFAULT_INVALID_TX_TTL, 5).
+-define(DEFAULT_INVALID_TX_TTL, 8).
 -define(DEFAULT_EXPIRED_TX_TTL, 2).
 -endif.
 
@@ -112,10 +114,6 @@ push(Tx, Event) when ?PUSH_EVENT(Event) ->
 get_max_nonce(Sender) ->
     gen_server:call(?SERVER, {get_max_nonce, Sender}).
 
--spec invalid_txs([tx_hash()], aec_blocks:height()) -> ok.
-invalid_txs(TxHashes, Height) ->
-    gen_server:cast(?SERVER, {invalid_txs, TxHashes, Height}).
-
 -spec garbage_collect() -> ok.
 garbage_collect() ->
     gen_server:cast(?SERVER, garbage_collect).
@@ -134,7 +132,7 @@ peek(MaxN) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
     gen_server:call(?SERVER, {peek, MaxN, all}).
 
 %% Only return transactions for a specific account public key
--spec peek(pos_integer() | infinity, aec_keys:pubkey()) -> 
+-spec peek(pos_integer() | infinity, aec_keys:pubkey()) ->
                                        {ok, [aetx_sign:signed_tx()]}.
 peek(MaxN, Account) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
     gen_server:call(?SERVER, {peek, MaxN, Account}).
@@ -148,6 +146,10 @@ get_candidate(MaxN, BlockHash) when is_integer(MaxN), MaxN >= 0,
 top_change(OldHash, NewHash) ->
     gen_server:call(?SERVER, {top_change, OldHash, NewHash}).
 
+-spec new_sync_top_target(aec_blocks:height()) -> ok.
+new_sync_top_target(NewSyncTop) ->
+    gen_server:cast(?SERVER, {new_sync_top_target, NewSyncTop}).
+
 -spec size() -> non_neg_integer() | undefined.
 size() ->
     ets:info(?MEMPOOL, size).
@@ -158,23 +160,23 @@ size() ->
 
 init([]) ->
     {ok, MempoolDb} = pool_db_open(?MEMPOOL),
+    {ok, MempoolGCDb} = pool_db_open(?MEMPOOL_GC),
+    GCHeight = top_height(),
     Handled  = ets:new(init_tx_pool, [private]),
     InitF  = fun(TxHash, _) ->
-                     update_pool_on_tx_hash(TxHash, MempoolDb, Handled),
+                     update_pool_on_tx_hash(TxHash, {MempoolDb, MempoolGCDb, GCHeight}, Handled),
                      ok
              end,
     ok = aec_db:ensure_transaction(fun() -> aec_db:fold_mempool(InitF, ok) end),
     ets:delete(Handled),
-    {ok, MempoolGCDb} = pool_db_open(?MEMPOOL_GC),
-    {ok, #state{db = MempoolDb, gc_db = MempoolGCDb}}.
+    {ok, #state{db = MempoolDb, gc_db = MempoolGCDb, gc_height = GCHeight}}.
 
 handle_call({get_max_nonce, Sender}, _From, #state{db = Mempool} = State) ->
     {reply, int_get_max_nonce(Mempool, Sender), State};
-handle_call({push, Tx, Event}, _From, #state{db = Mempool} = State) ->
-    {reply, pool_db_put(Mempool, pool_db_key(Tx), Tx, Event), State};
-handle_call({top_change, OldHash, NewHash}, _From,
-            #state{db = Mempool} = State) ->
-    do_top_change(OldHash, NewHash, Mempool),
+handle_call({push, Tx, Event}, _From, State) ->
+    {reply, pool_db_put(State, pool_db_key(Tx), Tx, Event), State};
+handle_call({top_change, OldHash, NewHash}, _From, State) ->
+    do_top_change(OldHash, NewHash, State),
     {reply, ok, State};
 handle_call({peek, MaxNumberOfTxs, Account}, _From, #state{db = Mempool} = State)
   when is_integer(MaxNumberOfTxs), MaxNumberOfTxs >= 0;
@@ -188,12 +190,10 @@ handle_call(Request, From, State) ->
     lager:warning("Ignoring unknown call request from ~p: ~p", [From, Request]),
     {noreply, State}.
 
-handle_cast({invalid_txs, TxHashes, Height}, State = #state{ gc_db = GCDb }) ->
-    [ enter_tx_gc(GCDb, TxHash, Height + invalid_tx_ttl()) || TxHash <- TxHashes ],
-    {noreply, State};
+handle_cast({new_sync_top_target, NewSyncTop}, State) ->
+    {noreply, do_update_sync_top(State, NewSyncTop)};
 handle_cast(garbage_collect, State) ->
-    do_gc(State),
-    {noreply, State};
+    {noreply, do_gc(State)};
 %% Only for (Unit-)test
 handle_cast({garbage_collect, Height}, State) ->
     do_gc(State, Height),
@@ -261,11 +261,39 @@ int_get_candidate(N, Dbs = {Db, GCDb}, ?KEY(_, _, Account, Nonce, TxHash) = Key,
             end
     end.
 
--spec do_gc(#state{}) -> ok.
+top_height() ->
+    case aec_chain:top_header() of
+        undefined -> 0;
+        Header    -> aec_headers:height(Header)
+    end.
+
+do_update_sync_top(State = #state{ gc_height = GCHeight }, NewSyncTop) ->
+    LocalTop = top_height(),
+    NewGCHeight = lists:max([LocalTop, GCHeight, NewSyncTop]),
+    case NewGCHeight < GCHeight - 5 of
+        true ->
+            %% This is a special case, normally the height shouldn't go down
+            %% this means that the sync was aborted - in this case we
+            %% re-adjust the GC-height for all TXs in order not to carry around
+            %% transactions unnecessarily.
+            adjust_gc_height(State#state.gc_db, GCHeight - NewGCHeight);
+        false ->
+            ok
+    end,
+    State#state{ gc_height = NewGCHeight }.
+
+adjust_gc_height(GCDb, Diff) ->
+    adjust_gc_height(GCDb, ets:first(GCDb), Diff).
+
+adjust_gc_height(_GCDb, '$end_of_table', _Diff) ->
+    ok;
+adjust_gc_height(GCDb, TxHash, Diff) ->
+    ets:update_counter(GCDb, TxHash, {2, -Diff}),
+    adjust_gc_height(GCDb, ets:next(GCDb, TxHash), Diff).
+
 do_gc(State) ->
-    Header = aec_chain:top_header(),
-    Height = aec_headers:height(Header),
-    do_gc(State, Height).
+    State1 = do_update_sync_top(State, top_height()),
+    do_gc(State1, State1#state.gc_height).
 
 do_gc(State = #state{ gc_db = GCDb }, Height) ->
     GCTxs = ets:foldl(fun({TxHash, ExpireBy}, Acc) ->
@@ -276,8 +304,8 @@ do_gc(State = #state{ gc_db = GCDb }, Height) ->
                       end, [], GCDb),
     do_gc_(State, GCTxs).
 
-do_gc_(_S, []) ->
-    ok;
+do_gc_(S, []) ->
+    S;
 do_gc_(S = #state{ db = Db, gc_db = GCDb }, [TxHash | TxHashes]) ->
     case aec_db:gc_tx(TxHash) of
         ok ->
@@ -337,7 +365,7 @@ enter_tx_gc(MempoolGC, TxHash, TTL) ->
     %% efficiently.
     Res = ets:update_counter(MempoolGC, TxHash, {2, 0, TTL, TTL}, {TxHash, TTL}),
     %% If Res == TTL we set the TTL otherwise kept prev. value
-    [ lager:debug("Adding ~p for GC at ~p", [pp(TxHash), Res]) || Res == TTL ],
+    [ lager:debug("Adding ~p for GC at ~p", [pp(TxHash), TTL]) || Res == TTL ],
     ok.
 
 -spec delete_pool_db_gc(pool_db(), pool_db_gc_key()) -> true.
@@ -353,29 +381,30 @@ sel_return(L) when is_list(L) -> L;
 sel_return('$end_of_table' ) -> [];
 sel_return({Matches, _Cont}) -> Matches.
 
-do_top_change(OldHash, NewHash, Mempool) ->
+do_top_change(OldHash, NewHash, State) ->
     %% Add back transactions to the pool from discarded part of the chain
     %% Mind that we don't need to add those which are incoming in the fork
 
     %% NG: does this work for common ancestor for micro blocks?
     {ok, Ancestor} = aec_chain:find_common_ancestor(OldHash, NewHash),
+    Info = {State#state.db, State#state.gc_db, State#state.gc_height},
 
     Handled = ets:new(foo, [private, set]),
-    update_pool_from_blocks(Ancestor, OldHash, Mempool, Handled),
-    update_pool_from_blocks(Ancestor, NewHash, Mempool, Handled),
+    update_pool_from_blocks(Ancestor, OldHash, Info, Handled),
+    update_pool_from_blocks(Ancestor, NewHash, Info, Handled),
     ets:delete(Handled),
     ok.
 
-update_pool_from_blocks(Hash, Hash,_Mempool,_Handled) -> ok;
-update_pool_from_blocks(Ancestor, Current, Mempool, Handled) ->
+update_pool_from_blocks(Hash, Hash,_Info,_Handled) -> ok;
+update_pool_from_blocks(Ancestor, Current, Info, Handled) ->
     lists:foreach(fun(TxHash) ->
-                          update_pool_on_tx_hash(TxHash, Mempool, Handled)
+                          update_pool_on_tx_hash(TxHash, Info, Handled)
                   end,
                   aec_db:get_block_tx_hashes(Current)),
     Prev = aec_chain:prev_hash_from_hash(Current),
-    update_pool_from_blocks(Ancestor, Prev, Mempool, Handled).
+    update_pool_from_blocks(Ancestor, Prev, Info, Handled).
 
-update_pool_on_tx_hash(TxHash, Mempool, Handled) ->
+update_pool_on_tx_hash(TxHash, {Db, GCDb, GCHeight}, Handled) ->
     case ets:member(Handled, TxHash) of
         true -> ok;
         false ->
@@ -384,9 +413,11 @@ update_pool_on_tx_hash(TxHash, Mempool, Handled) ->
             case aec_db:is_in_tx_pool(TxHash) of
                 false ->
                     %% Added to chain
-                    delete_pool_db_by_hash(Mempool, TxHash);
+                    delete_pool_db_by_hash(Db, TxHash),
+                    delete_pool_db_gc(GCDb, TxHash);
                 true ->
-                    ets:insert(Mempool, {pool_db_key(Tx), Tx})
+                    ets:insert(Db, {pool_db_key(Tx), Tx}),
+                    enter_tx_gc(GCDb, TxHash, GCHeight + invalid_tx_ttl())
             end
     end.
 
@@ -396,12 +427,11 @@ delete_pool_db_by_hash(Mempool, TxHash) ->
         not_in_ets -> pass
     end.
 
-
--spec pool_db_put(pool_db(), pool_db_key(), aetx_sign:signed_tx(), event()) ->
+-spec pool_db_put(#state{}, pool_db_key(), aetx_sign:signed_tx(), event()) ->
                          'ok' | {'error', atom()}.
-pool_db_put(Mempool, Key, Tx, Event) ->
+pool_db_put(#state{ db = Db, gc_db = GCDb, gc_height = GCHeight }, Key, Tx, Event) ->
     Hash = aetx_sign:hash(Tx),
-    case aec_db:find_tx_location(Hash) of
+    case aec_chain:find_tx_location(Hash) of
         BlockHash when is_binary(BlockHash) ->
             lager:debug("Already have tx: ~p in ~p", [Hash, BlockHash]),
             {error, already_accepted};
@@ -409,6 +439,9 @@ pool_db_put(Mempool, Key, Tx, Event) ->
             %% lager:debug("Already have tx: ~p in ~p", [Hash, mempool]),
             ok;
         none ->
+            lager:debug("Already have GC:ed tx: ~p", [Hash]),
+            ok;
+        not_found ->
             Checks = [ fun check_signature/2
                      , fun check_nonce/2
                      , fun check_minimum_fee/2
@@ -420,7 +453,8 @@ pool_db_put(Mempool, Key, Tx, Event) ->
                     lager:debug("Validation error for tx ~p: ~p", [Hash, E]),
                     E;
                 ok ->
-                    case ets:member(Mempool, Key) of
+                    %% TODO: This check is never going to hit? Hash is part of the Key!?
+                    case ets:member(Db, Key) of
                         true ->
                             lager:debug("Pool db key already present (~p)", [Key]),
                             %% TODO: We should make a decision whether to switch the tx.
@@ -428,17 +462,17 @@ pool_db_put(Mempool, Key, Tx, Event) ->
                         false ->
                             lager:debug("Adding tx: ~p", [Hash]),
                             aec_db:add_tx(Tx),
-                            ets:insert(Mempool, {Key, Tx}),
                             aec_events:publish(Event, Tx),
+                            ets:insert(Db, {Key, Tx}),
+                            enter_tx_gc(GCDb, Hash, GCHeight + invalid_tx_ttl()),
                             ok
                     end
             end
     end.
 
 check_tx_ttl(STx, _Hash) ->
-    Header = aec_chain:top_header(),
     Tx = aetx_sign:tx(STx),
-    case aec_headers:height(Header) > aetx:ttl(Tx) of
+    case top_height() > aetx:ttl(Tx) of
         true  -> {error, ttl_expired};
         false -> ok
     end.
