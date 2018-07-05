@@ -50,6 +50,103 @@ handle_request('GetTop', _, _Context) ->
     EncodedHeader = aehttp_api_parser:encode(header, TopBlock),
     {200, [], maps:put(<<"hash">>, EncodedHash, EncodedHeader)};
 
+handle_request('GetKeyBlocksCurrent', Req, _Context) ->
+    get_block(fun() -> aec_chain:top_key_block() end, Req, json);
+
+handle_request('GetKeyBlocksCurrentHash', _, _Context) ->
+    Hash = aec_chain:top_key_block_hash(),
+    EncodedHash = aec_base58c:encode(block_hash, Hash),
+    {200, [], EncodedHash};
+
+handle_request('GetKeyBlocksCurrentHeight', _, _Context) ->
+    TopBlock = aec_chain:top_block(),
+    Height = aec_blocks:height(TopBlock),
+    {200, [], Height};
+
+handle_request('GetKeyBlocksPending', Req, _Context) ->
+    get_block(fun aehttp_logic:get_block_pending/0, Req, json, false);
+
+handle_request('GetKeyBlocksByHeight', Params, _Context) ->
+    Height = maps:get(height, Params),
+    get_block(fun() -> aehttp_logic:get_key_block_by_height(Height) end, Params, json);
+
+handle_request('GetKeyBlocksByHash', Params, _Context) ->
+    case aec_base58c:safe_decode(block_hash, maps:get('hash', Params)) of
+        {error, _} -> {400, [], #{reason => <<"Invalid hash">>}};
+        {ok, Hash} ->
+            get_block(fun() -> aehttp_logic:get_key_block_by_hash(Hash) end, Params, json)
+    end;
+
+handle_request('GetMicroBlocksHeaderByHash', Params, _Context) ->
+    case aec_base58c:safe_decode(block_hash, maps:get(hash, Params)) of
+        {ok, Hash} ->
+            case aehttp_logic:get_micro_block_by_hash(Hash) of
+                {ok, Block} ->
+                    {200, [], aehttp_api_parser:encode(header, Block)};
+                {error, block_not_found} ->
+                    {404, [], #{reason => <<"Block not found">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid hash">>}}
+    end;
+
+handle_request('GetMicroBlocksTransactionsByHash', Params, _Context) ->
+    case aec_base58c:safe_decode(block_hash, maps:get(hash, Params)) of
+        {ok, Hash} ->
+            case aehttp_logic:get_micro_block_by_hash(Hash) of
+                {ok, Block} ->
+                    Header = aec_blocks:to_header(Block),
+                    Txs = [ aetx_sign:serialize_for_client(json, Header, Tx)
+                            || Tx <- aec_blocks:txs(Block)],
+                    JsonTxs = #{data_schema => <<"JSONTx">>,
+                                transactions => Txs},
+                    {200, [], JsonTxs};
+                {error, block_not_found} ->
+                    {404, [], #{reason => <<"Block not found">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid hash">>}}
+    end;
+
+handle_request('GetMicroBlocksTransactionsByHashByIndex', Params, _Context) ->
+    HashDec = aec_base58c:safe_decode(block_hash, maps:get(hash, Params)),
+    IndexDec = maps:get(index, Params),
+    case {HashDec, IndexDec} of
+        {{ok, Hash}, Index} when is_integer(Index) ->
+            case aehttp_logic:get_micro_block_by_hash(Hash) of
+                {ok, Block} ->
+                    Txs = aec_blocks:txs(Block),
+                    TxsCount = length(Txs),
+                    case Index of
+                        I when I > 0, I =< TxsCount ->
+                            Header = aec_blocks:to_header(Block),
+                            Tx = lists:nth(I, Txs),
+                            SingleTxJSON = aetx_sign:serialize_for_client(json, Header, Tx),
+                            {200, [], SingleTxJSON};
+                        _Other ->
+                            {404, [], #{reason => <<"Invalid hash or index">>}}
+                    end;
+                {error, block_not_found} ->
+                    {404, [], #{reason => <<"Block not found">>}}
+            end;
+        {_, _} ->
+            {400, [], #{reason => <<"Invalid hash or index">>}}
+    end;
+
+
+handle_request('GetMicroBlocksTransactionsCountByHash', Params, _Context) ->
+    case aec_base58c:safe_decode(block_hash, maps:get(hash, Params)) of
+        {ok, Hash} ->
+            case aehttp_logic:get_micro_block_by_hash(Hash) of
+                {ok, Block} ->
+                    {200, [], #{count => length(aec_blocks:txs(Block))}};
+                {error, block_not_found} ->
+                    {404, [], #{reason => <<"Block not found">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid hash">>}}
+    end;
+
 handle_request('GetBlockGenesis', Req, _Context) ->
     get_block(fun aehttp_logic:get_block_genesis/0, Req, json);
 

@@ -471,7 +471,7 @@ read_optional_param(Key, Req, Default) ->
     %% swagger does not take into consideration the 'default'
     %% if a query param is missing, swagger adds it to Req with a value of
     %% 'undefined'
-    case maps:get(Key, Req) of
+    case maps:get(Key, Req, undefined) of
         undefined -> Default;
         Val -> Val
     end.

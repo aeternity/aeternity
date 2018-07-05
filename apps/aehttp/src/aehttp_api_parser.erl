@@ -13,7 +13,9 @@
                                     fun(Pow) ->
                                         {ok, aec_headers:deserialize_pow_evidence(Pow)}
                                     end}},
+                     {<<"key_hash">>, block_hash},
                      {<<"txs_hash">>, block_tx_hash},
+                     {<<"signature">>, signature},
                      {<<"miner">>, {fun(Val) -> aec_base58c:encode(account_pubkey, Val) end,
                                     fun decode_miner/1}}]).
 -define(OBJECTS, #{header_map => ?HEADER_OBJ,

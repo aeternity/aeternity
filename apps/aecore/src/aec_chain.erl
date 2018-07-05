@@ -33,6 +33,7 @@
         , prev_hash_from_hash/1
         , top_block/0
         , top_block_hash/0
+        , top_key_block/0
         , top_key_block_hash/0
         , top_block_with_state/0
         , top_header/0
@@ -294,6 +295,21 @@ top_block() ->
 -spec top_block_hash() -> 'undefined' | binary().
 top_block_hash() ->
     aec_db:get_top_block_hash().
+
+-spec top_key_block() -> 'error' | {ok, aec_blocks:block()}.
+top_key_block() ->
+    case aec_db:get_top_block_hash() of
+        Hash when is_binary(Hash) ->
+            {ok, Block} = get_block(Hash),
+            case aec_blocks:type(Block) of
+                key -> {ok, Block};
+                micro ->
+                    KeyHash = aec_blocks:key_hash(Block),
+                    get_block(KeyHash)
+            end;
+        undefined ->
+            error
+    end.
 
 -spec top_key_block_hash() -> 'undefined' | binary().
 top_key_block_hash() ->
