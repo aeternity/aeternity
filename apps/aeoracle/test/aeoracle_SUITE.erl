@@ -104,7 +104,7 @@ register_oracle(_Cfg) ->
     PrivKey      = aeo_test_utils:priv_key(PubKey, S1),
 
     %% Test that RegisterTX is accepted
-    SignedTx = aetx_sign:sign(Tx, PrivKey),
+    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Trees    = aeo_test_utils:trees(S1),
     Height   = ?ORACLE_REG_HEIGHT,
     {ok, [SignedTx], Trees1} =
@@ -168,7 +168,7 @@ extend_oracle(Cfg) ->
 
     %% Test that ExtendTX is accepted
     Tx       = aeo_test_utils:extend_tx(OracleKey, S),
-    SignedTx = aetx_sign:sign(Tx, PrivKey),
+    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     {ok, [SignedTx], Trees1} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY, Trees, CurrHeight, ?PROTOCOL_VERSION),
     S1       = aeo_test_utils:set_trees(Trees1, S),
@@ -240,7 +240,7 @@ query_oracle(Cfg, Opts) ->
 
     Q1 = aeo_test_utils:query_tx(SenderKey, OracleKey, Opts, S2),
     %% Test that QueryTX is accepted
-    SignedTx = aetx_sign:sign(Q1, PrivKey),
+    SignedTx = aec_test_utils:sign_tx(Q1, PrivKey),
     {ok, [SignedTx], Trees2} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY, Trees, CurrHeight, ?PROTOCOL_VERSION),
     S3 = aeo_test_utils:set_trees(Trees2, S2),
@@ -295,7 +295,7 @@ query_response(Cfg, QueryOpts) ->
     %% Test that ResponseTX is accepted
     RTx      = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, S1),
     PrivKey  = aeo_test_utils:priv_key(OracleKey, S1),
-    SignedTx = aetx_sign:sign(RTx, PrivKey),
+    SignedTx = aec_test_utils:sign_tx(RTx, PrivKey),
     {ok, [SignedTx], Trees2} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY, Trees, CurrHeight, ?PROTOCOL_VERSION),
 

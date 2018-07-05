@@ -385,7 +385,7 @@ await_signing_request(Tag, #{fsm := Fsm, priv := Priv} = R, Timeout, Debug) ->
     check_info(0, Debug),
     receive {aesc_fsm, Fsm, #{type := sign, tag := Tag, info := Tx} = Msg} ->
             log(Debug, "await_signing(~p, ~p) <- ~p", [Tag, Fsm, Msg]),
-            SignedTx = aetx_sign:sign(Tx, [Priv]),
+            SignedTx = aec_test_utils:sign_tx(Tx, [Priv]),
             aesc_fsm:signing_response(Fsm, Tag, SignedTx),
             {check_amounts(R, SignedTx), SignedTx}
     after Timeout ->

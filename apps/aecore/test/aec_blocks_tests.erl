@@ -82,7 +82,7 @@ validate_test_malformed_txs_root_hash() ->
                                      fee => 1,
                                      nonce => 1,
                                      payload => <<>>}),
-    BadSignedSpend = aetx_sign:sign(Spend, <<0:64/unit:8>>),
+    BadSignedSpend = aec_test_utils:sign_tx(Spend, <<0:64/unit:8>>),
 
     MalformedTxs = [SignedSpend, BadSignedSpend],
     MalformedTree = aec_txs_trees:from_txs(MalformedTxs),

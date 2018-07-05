@@ -433,7 +433,7 @@ add_spend_tx(Node, #{ pubkey := SendPubKey, privkey := SendSecKey }, Nonce) ->
               , nonce => Nonce
               , payload => <<>> },
     {ok, Tx} = aec_spend_tx:new(Params),
-    SignedTx = aetx_sign:sign(Tx, SendSecKey),
+    SignedTx = aec_test_utils:sign_tx(Tx, SendSecKey),
     SerSignTx = aetx_sign:serialize_to_binary(SignedTx),
     {ok, 200, #{ tx_hash := TxHash }} = request(Node, 'PostTx', #{ tx => aec_base58c:encode(transaction, SerSignTx) }),
     #{ receiver => RecvPubKey, receiver_sec => RecvSecKey, amount => 10000, tx_hash => TxHash }.

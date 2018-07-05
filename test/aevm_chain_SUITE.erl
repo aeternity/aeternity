@@ -70,7 +70,7 @@ create_contract(Owner, S) ->
     {aect_contracts:compute_contract_pubkey(Owner, aetx:nonce(CreateTx)), S1}.
 
 sign_and_apply_transaction(Tx, PrivKey, S1) ->
-    SignedTx = aetx_sign:sign(Tx, PrivKey),
+    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
     Height   = 1,
     {ok, AcceptedTxs, Trees1} =

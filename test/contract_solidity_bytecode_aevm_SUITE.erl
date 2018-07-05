@@ -112,7 +112,7 @@ execute_identity_fun_from_solidity_binary(Cfg) ->
 
     Tx = create_tx(#{}, Cfg),
     PrivKey = ?config(my_priv_key, Cfg),
-    SignedTx = aetx_sign:sign(Tx, PrivKey),
+    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     ok = aec_tx_pool:push(SignedTx),
     TxHash = aetx_sign:hash(SignedTx),
 
@@ -164,7 +164,7 @@ execute_counter_fun_from_bytecode(Cfg) ->
     ContractPubKey = aect_contracts:compute_contract_pubkey(OwnerPubKey, Nonce),
 
 
-    SignedTx = aetx_sign:sign(Tx, PrivKey),
+    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     ok = aec_tx_pool:push(SignedTx),
     TxHash = aetx_sign:hash(SignedTx),
 
@@ -200,7 +200,7 @@ execute_counter_fun_from_bytecode(Cfg) ->
             , call_data  => CallData
             },
     {ok, CallTx} = aect_call_tx:new(Spec),
-    SignedCallTx = aetx_sign:sign(CallTx, PrivKey),
+    SignedCallTx = aec_test_utils:sign_tx(CallTx, PrivKey),
     ok = aec_tx_pool:push(SignedCallTx),
     CallTxHash = aetx_sign:hash(SignedCallTx),
     wait_for_it(fun () ->
