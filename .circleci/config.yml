@@ -24,9 +24,16 @@ references:
       docker_layer_caching: true
       version: "17.09.0-ce"
 
+  prepare_ubuntu_user: &prepare_ubuntu_user
+    run:
+      name: Prepare ubuntu user (1000:1000) to run docker commands
+      command: |
+        sudo usermod -aG docker ubuntu
+        sudo chown -R ubuntu:ubuntu ~/epoch
+
   install_docker_client: &install_docker_client
     run:
-      name: Install Docker client
+      name: Install Docker CLI tools
       command: |
         curl -L -o /tmp/docker-${DOCKER_CLIENT_VERSION:?}.tgz \
           https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_CLIENT_VERSION:?}.tgz
@@ -195,6 +202,27 @@ references:
           curl -X POST -H 'Content-Type: application/json' ${ROCKET_HOOK_URL:?} --data "${HOOK_DATA:?}"
         fi
       when: on_fail
+
+  docker_compose_build: &docker_compose_build
+    run:
+      name: Build latest docker image
+      command: |
+        IMAGE_TAG=${CIRCLE_BRANCH:?} docker-compose build node1
+
+  docker_compose_start: &docker_compose_start
+    run:
+      name: Create localnet with docker-compose
+      command: |
+        sudo -u ubuntu -E -H IMAGE_TAG=${CIRCLE_BRANCH:?} docker-compose up -d
+
+  docker_compose_healthcheck: &docker_compose_healthcheck
+    run:
+      name: Healthcheck
+      command: |
+        sleep 5 # give it some time to boot the tcp listeners
+        EXTERNAL_ADDRESS=localhost:3001 INTERNAL_ADDRESS=localhost:3001/internal ./docker/healthcheck.sh
+        EXTERNAL_ADDRESS=localhost:3002 INTERNAL_ADDRESS=localhost:3002/internal ./docker/healthcheck.sh
+        EXTERNAL_ADDRESS=localhost:3003 INTERNAL_ADDRESS=localhost:3003/internal ./docker/healthcheck.sh
 
 jobs:
   build:
@@ -377,16 +405,29 @@ jobs:
           destination: node3/
       - *fail_notification
 
-  docker_image_build:
-    <<: *container_config
+  docker_smoke_tests:
+    <<: *machine_config
     steps:
       - checkout
-      - *setup_remote_docker
-      - *install_docker_client
+      - *prepare_ubuntu_user
+      - *docker_compose_build
+      - *docker_compose_start
+      - *docker_compose_healthcheck
+
+  docker_test_push_master:
+    <<: *machine_config
+    steps:
+      - checkout
+      - *prepare_ubuntu_user
+      - *docker_compose_build
+      - *docker_compose_start
+      - *docker_compose_healthcheck
       - run:
-          name: Build Docker image
+          name: Push Docker image to DockerHub
           command: |
-            ~/bin/docker build .
+            docker login -u $DOCKER_USER -p $DOCKER_PASS
+            docker push ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH:?}
+      - *fail_notification
 
   docker_push_tag:
     <<: *container_config
@@ -401,20 +442,6 @@ jobs:
             ~/bin/docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} -t ${DOCKERHUB_REPO:?}:latest .
             ~/bin/docker push ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}
             ~/bin/docker push ${DOCKERHUB_REPO:?}:latest
-
-  docker_push_dev:
-    <<: *container_config
-    steps:
-      - checkout
-      - *setup_remote_docker
-      - *install_docker_client
-      - run:
-          name: Build and push Docker image to DockerHub
-          command: |
-            ~/bin/docker login -u $DOCKER_USER -p $DOCKER_PASS
-            ~/bin/docker build -t ${DOCKERHUB_REPO:?}:dev .
-            ~/bin/docker push ${DOCKERHUB_REPO:?}:dev
-      - *fail_notification
 
   uat_chain_snapshot:
     <<: *container_config
@@ -440,15 +467,11 @@ jobs:
       - *install_os_deps
       - *install_otp
       - *install_libsodium
+      - *prepare_ubuntu_user
       - run:
           name: Build local docker image
           command: |
             docker build -t ${DOCKERHUB_REPO:?}:local .
-      - run:
-          name: Prepare suitable user to run tests
-          command: |
-            sudo usermod -aG docker ubuntu
-            sudo chown -R ubuntu:ubuntu ~/epoch
       - run:
           name: Install system tests dependancies
           command: |
@@ -546,7 +569,7 @@ workflows:
             tags:
               only: /^v.*$/
 
-      - docker_image_build:
+      - docker_smoke_tests:
           filters:
             branches:
               ignore:
@@ -644,7 +667,7 @@ workflows:
             branches:
               only: master
 
-      - docker_push_dev:
+      - docker_test_push_master:
           requires:
             - test
             - eunit
