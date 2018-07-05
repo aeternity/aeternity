@@ -14,6 +14,8 @@
                                         {ok, aec_headers:deserialize_pow_evidence(Pow)}
                                     end}},
                      {<<"txs_hash">>, block_tx_hash},
+                     {<<"signature">>, signature},
+                     {<<"key_hash">>, block_hash},
                      {<<"miner">>, {fun(Val) -> aec_base58c:encode(account_pubkey, Val) end,
                                     fun decode_miner/1}}]).
 -define(OBJECTS, #{header_map => ?HEADER_OBJ,
@@ -39,7 +41,16 @@
                                         encode(header_map, BMap);
                                     micro ->
                                         {ok, HMap0} = aec_headers:serialize_to_map(aec_blocks:to_header(Block)),
-                                        HMap = HMap0#{<<"signature">> => aec_blocks:signature(Block)},
+%% currently the pending endpoint can return a pending microblock. The
+%% pending micro block is NOT signed (singature is `undefined`) which 
+%% does not play well with serialization. The pendining endpoint shall not
+%% return a microblock. The following lines are a workaround for this and must
+%% be fixed as soon as the pending endpoint is refactored 
+                                        HMap =
+                                            case aec_blocks:signature(Block) of
+                                                undefined -> HMap0;
+                                                Sig -> HMap0#{<<"signature">> => Sig}
+                                            end,
                                         encode(header_map, HMap)
                                 end
                             end,
