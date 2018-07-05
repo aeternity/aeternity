@@ -45,10 +45,7 @@ init_per_testcase(_TC, Config) ->
     aest_nodes:ct_setup(Config).
 
 end_per_testcase(_TC, Config) ->
-    try aest_nodes:ct_cleanup(Config)
-    catch _:Reason ->
-        {fail, Reason}
-    end.
+    aest_nodes:ct_cleanup(Config).
 
 %=== TEST CASES ================================================================
 

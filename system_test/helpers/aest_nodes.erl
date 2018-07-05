@@ -161,7 +161,9 @@ ct_cleanup(Ctx) ->
     call(Pid, stop),
     wait_for_exit(Pid, ?CALL_TIMEOUT),
     case Result of
-        {error, Reason} -> erlang:error(Reason);
+        {error, Reason} ->
+            %% returning fail will cause common test to see it as test failure 
+            {fail, Reason};
         ok -> ok
     end.
 
