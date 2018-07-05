@@ -708,7 +708,7 @@ make_encoder_body(word) ->
 make_encoder_body(typerep) ->
     Con = fun(Tag, Args) -> {tuple, [{integer, Tag} | Args]} end,
     Rel = fun(E) -> {binop, '-', E, {var_ref, "base"}} end,
-    Enc = fun(T, X) -> {funcall, {var_ref, encoder_name(T)}, [{var_ref, X}]} end,
+    Enc = fun(T, X) -> {funcall, {var_ref, encoder_name(T)}, [{var_ref, "base"}, {var_ref, X}]} end,
     {switch, {var_ref, "value"},
         [{Con(?TYPEREP_WORD_TAG, []),   Rel(Con(?TYPEREP_WORD_TAG, []))},
          {Con(?TYPEREP_STRING_TAG, []), Rel(Con(?TYPEREP_STRING_TAG, []))},
