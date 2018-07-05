@@ -106,7 +106,7 @@ set_signature(Block, Signature) ->
 key_hash(Block) ->
     Block#block.key_hash.
 
--spec signature(block()) -> binary().
+-spec signature(block()) -> binary() | undefined.
 signature(Block) ->
     Block#block.signature.
 
