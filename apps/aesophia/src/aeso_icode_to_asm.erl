@@ -672,7 +672,8 @@ all_type_reps([TR|InSource], Found) ->
                          {option, T}  -> [T];
                          {variant, Cs} -> [{tuple, [word | Args]} || Args <- Cs];
                             %% Constructor values are encoded as tuples with the tag as the first component
-                         typerep      -> [{list, typerep}]; %% tuple case has a list of typereps
+                         typerep      -> [{list, {list, typerep}}];
+                            %% tuple case has a list of typereps and variant list(list(typerep))
                          _            -> []
                      end,
             all_type_reps(Nested ++ InSource, [TR|Found])
@@ -717,7 +718,9 @@ make_encoder_body(typerep) ->
          {Con(?TYPEREP_OPTION_TAG, [{var_ref, "t"}]),
             Rel(Con(?TYPEREP_OPTION_TAG, [Enc(typerep, "t")]))},
          {Con(?TYPEREP_TUPLE_TAG, [{var_ref, "ts"}]),
-            Rel(Con(?TYPEREP_TUPLE_TAG, [Enc({list, typerep}, "ts")]))}]};
+            Rel(Con(?TYPEREP_TUPLE_TAG, [Enc({list, typerep}, "ts")]))},
+         {Con(?TYPEREP_VARIANT_TAG, [{var_ref, "cs"}]),
+            Rel(Con(?TYPEREP_VARIANT_TAG, [Enc({list, {list, typerep}}, "cs")]))}]};
 make_encoder_body(string) ->
     %% matching against a singleton tuple reads an address
     {switch, {var_ref, "value"},

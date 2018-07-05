@@ -499,7 +499,10 @@ type_value({option, A}) ->
     #tuple{ cpts = [#integer{ value = ?TYPEREP_OPTION_TAG }, type_value(A)] };
 type_value({tuple, As}) ->
     #tuple{ cpts = [#integer{ value = ?TYPEREP_TUPLE_TAG },
-                    #list{ elems = [ type_value(A) || A <- As ] }] }.
+                    #list{ elems = [ type_value(A) || A <- As ] }] };
+type_value({variant, Cs}) ->
+    #tuple{ cpts = [#integer{ value = ?TYPEREP_VARIANT_TAG },
+                    #list{ elems = [ #list{ elems = [ type_value(A) || A <- As ] } || As <- Cs ] }] }.
 
 ast_fun_to_icode(Name, Args, Body, TypeRep, #{functions := Funs} = Icode) ->
     NewFuns = [{Name, Args, Body, TypeRep}| Funs],
