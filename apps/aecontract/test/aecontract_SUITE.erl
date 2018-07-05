@@ -24,6 +24,7 @@
         , sophia_spend/1
         , sophia_oracles/1
         , sophia_maps/1
+        , sophia_variant_types/1
         , sophia_fundme/1
         , sophia_aens/1
         , create_store/1
@@ -70,6 +71,7 @@ groups() ->
                                  sophia_spend,
                                  sophia_oracles,
                                  sophia_maps,
+                                 sophia_variant_types,
                                  sophia_fundme,
                                  sophia_aens ]}
     , {store, [sequence], [ create_store
@@ -699,6 +701,22 @@ sophia_maps(_Cfg) ->
                K <- Ks ],
     {MapI3, MapS3} = Call(get_state, State, {}),
 
+    ok.
+
+sophia_variant_types(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = <<AccId:256>> = ?call(new_account, 1000000),
+    Ct  = ?call(create_contract, Acc, variant_types, {}),
+    Call = fun(Fn, Type, Args) -> ?call(call_contract, Acc, Ct, Fn, Type, Args) end,
+    Color  = {variant_t, [{red, []}, {green, []}, {blue, []}, {grey, [word]}]},
+    StateR = {tuple, [word, word, Color]},
+    State  = {variant_t, [{started, [StateR]}, {stopped, []}]},
+    Unit   = {tuple, []},
+    stopped   = Call(get_state, State, {}),
+    {}        = Call(start, Unit, {123}),
+    {grey, 0} = Call(get_color, Color, {}),
+    {}        = Call(set_color, Unit, {{1}}),   %% green has tag 1
+    {started, {AccId, 123, green}} = Call(get_state, State, {}),
     ok.
 
 
