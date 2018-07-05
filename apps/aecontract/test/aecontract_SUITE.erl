@@ -431,9 +431,10 @@ create_contract(Owner, Name, Args, Options, S) ->
 call_contract(Caller, ContractKey, Fun, Type, Args, S) ->
     call_contract(Caller, ContractKey, Fun, Type, Args, #{}, S).
 
-call_contract(Caller, ContractKey, Fun, Type, Args, Options, S) ->
+call_contract(Caller, ContractKey, Fun, Type, Args0, Options, S) ->
     Nonce    = aect_test_utils:next_nonce(Caller, S),
-    CallData = aect_sophia:create_call(<<"unused">>, list_to_binary(atom_to_list(Fun)), args_to_binary(Args)),
+    Args     = if is_tuple(Args0) -> Args0; true -> {Args0} end,
+    CallData = aeso_data:to_binary({list_to_binary(atom_to_list(Fun)), translate_pubkeys(Args)}),
     CallTx   = aect_test_utils:call_tx(Caller, ContractKey,
                 maps:merge(
                 #{ nonce      => Nonce
@@ -462,6 +463,15 @@ account_balance(PubKey, S) ->
     Account = aect_test_utils:get_account(PubKey, S),
     {aec_accounts:balance(Account), S}.
 
+translate_pubkeys(<<N:256>>) -> N;
+translate_pubkeys([H|T]) ->
+  [translate_pubkeys(H) | translate_pubkeys(T)];
+translate_pubkeys(T) when is_tuple(T) ->
+  list_to_tuple(translate_pubkeys(tuple_to_list(T)));
+translate_pubkeys(M) when is_map(M) ->
+  maps:from_list(translate_pubkeys(maps:to_list(M)));
+translate_pubkeys(X) -> X.
+
 args_to_binary(Args) -> list_to_binary(args_to_list(Args)).
 
 commas([]) -> [];
@@ -486,7 +496,7 @@ sophia_identity(_Cfg) ->
     %% Remote calling the identity contract
     IdC   = ?call(create_contract, Acc1, identity, {}),
     RemC  = ?call(create_contract, Acc1, remote_call, {}, #{amount => 100}),
-    42    = ?call(call_contract,   Acc1, IdC, main, word, {42}),
+    42    = ?call(call_contract,   Acc1, IdC, main, word, 42),
     99    = ?call(call_contract,   Acc1, RemC, call, word, {IdC, 99}),
     RemC2 = ?call(create_contract, Acc1, remote_call, {}, #{amount => 100}),
     77    = ?call(call_contract,   Acc1, RemC2, staged_call, word, {RemC, IdC, 77}),
