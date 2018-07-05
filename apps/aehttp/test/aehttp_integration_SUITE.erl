@@ -266,7 +266,7 @@ groups() ->
       ]},
      {with_pending_key_block, [],
       [
-       {group, get_block_info}
+       get_pending_key_block
       ]},
      {get_block_info, [sequence],
       [
@@ -274,7 +274,6 @@ groups() ->
        get_current_key_block,
        get_current_key_block_hash,
        get_current_key_block_height,
-       get_pending_key_block,
        get_key_block_by_hash,
        get_key_block_by_height,
        get_micro_block_header_by_hash,
