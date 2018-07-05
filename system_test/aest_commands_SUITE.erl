@@ -47,7 +47,6 @@ init_per_testcase(_TC, Config) ->
 end_per_testcase(_TC, Config) ->
     aest_nodes:ct_cleanup(Config).
 
-
 %=== TEST CASES ================================================================
 
 epoch_commands(Cfg) ->

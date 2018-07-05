@@ -83,14 +83,19 @@ init_per_group(long_chain, InitCfg) ->
     Tag = io_lib:format("local-h~b", [Height]),
     Ref = aest_nodes:export(n1, Tag, Cfg),
     [kill_node(N, Cfg) || N <- Nodes],
+
+    %% Match "ok =" when we want to find errors in this stage
+    %% ok = 
     aest_nodes:ct_cleanup(Cfg),
+ 
     [{height, Height}, {source, Ref}|Cfg].
 
 end_per_group(long_chain, _Cfg) -> ok.
 
 init_per_testcase(_TC, Cfg) -> aest_nodes:ct_setup(Cfg).
 
-end_per_testcase(_TC, Cfg) -> aest_nodes:ct_cleanup(Cfg).
+end_per_testcase(_TC, Cfg) ->
+  aest_nodes:ct_cleanup(Cfg).
 
 end_per_suite(_Cfg) -> ok.
 
