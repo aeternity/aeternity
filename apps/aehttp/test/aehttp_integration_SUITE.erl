@@ -37,6 +37,7 @@
     get_current_key_block/1,
     get_current_key_block_hash/1,
     get_current_key_block_height/1,
+    get_pending_key_block/1,
     get_key_block_by_hash/1,
     get_key_block_by_height/1
    ]).
@@ -48,15 +49,6 @@
     get_micro_block_transactions_count_by_hash/1,
     get_micro_block_transaction_by_hash_and_index/1
    ]).
-
-%% /key-blocks/*
--export(
-    [
-     get_pending_key_block_when_miner_is_stopped/1,
-     get_pending_key_block_on_genesis_block/1,
-     get_pending_key_block_on_key_block/1,
-     get_pending_key_block_on_micro_block/1
-    ]).
 
 %% test case exports
 %% external endpoints
@@ -248,7 +240,6 @@ groups() ->
        {group, on_genesis_block},
        {group, on_key_block},
        {group, on_micro_block},
-       {group, key_blocks},
        {group, off_chain_endpoints},
        {group, external_endpoints},
        {group, internal_endpoints},
@@ -258,28 +249,38 @@ groups() ->
        {group, naming},
        {group, channel_websocket}
       ]},
-     {on_genesis_block, [], [{group, get_block_info}]},
-     {on_key_block, [], [{group, get_block_info}]},
-     {on_micro_block, [], [{group, get_block_info}]},
+     {on_genesis_block, [],
+      [
+       {group, get_block_info},
+       {group, with_pending_key_block}
+      ]},
+     {on_key_block, [],
+      [
+       {group, get_block_info},
+       {group, with_pending_key_block}
+      ]},
+     {on_micro_block, [],
+      [
+       {group, get_block_info},
+       {group, with_pending_key_block}
+      ]},
+     {with_pending_key_block, [],
+      [
+       {group, get_block_info}
+      ]},
      {get_block_info, [sequence],
       [
        get_top_block,
        get_current_key_block,
        get_current_key_block_hash,
        get_current_key_block_height,
+       get_pending_key_block,
        get_key_block_by_hash,
        get_key_block_by_height,
        get_micro_block_header_by_hash,
        get_micro_block_transactions_by_hash,
        get_micro_block_transactions_count_by_hash,
        get_micro_block_transaction_by_hash_and_index
-      ]},
-     {key_blocks, [sequence],
-      [
-        get_pending_key_block_when_miner_is_stopped,
-        get_pending_key_block_on_genesis_block,
-        get_pending_key_block_on_key_block,
-        get_pending_key_block_on_micro_block
       ]},
      {off_chain_endpoints, [],
       [
@@ -519,6 +520,13 @@ init_per_group(on_micro_block, Config) ->
      {current_block_height, aec_blocks:height(KeyBlock)},
      {current_block_txs, [Tx]},
      {current_block_type, micro_block} | Config];
+init_per_group(with_pending_key_block, Config) ->
+    %% Expect a key block each hour.
+    MineRate = 60 * 60 * 1000,
+    ok = rpc(application, set_env, [aecore, expected_mine_rate, MineRate]),
+    ok = rpc(aec_conductor, start_mining, []),
+    ok = wait_for_key_block_candidate(),
+    [{expected_mine_rate, MineRate}, {pending_key_block, true} | Config];
 init_per_group(channel_websocket, Config) ->
     aecore_suite_utils:start_node(?NODE, Config),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
@@ -557,6 +565,8 @@ init_per_group(_Group, Config) ->
 
 end_per_group(all, _Config) ->
     ok;
+end_per_group(with_pending_key_block, _Config) ->
+    ok = rpc(aec_conductor, stop_mining, []);
 end_per_group(get_block_info, _Config) ->
     ok;
 end_per_group(_Group, Config) ->
@@ -772,77 +782,21 @@ get_current_key_block_height(_CurrentBlockType, Config) ->
     ?assertEqual(CurrentBlockHeight, Height),
     ok.
 
-get_pending_key_block_when_miner_is_stopped(_Config) ->
-    ok = rpc(aec_conductor, start_mining, []),
-    ok = wait_for_key_block_candidate(),
-    ?assertMatch({ok, 200, _}, get_key_blocks_pending_sut()),
+get_pending_key_block(Config) ->
+    CurrentBlockType = ?config(current_block_type, Config),
+    PendingKeyBlockOpt = {pending_key_block, proplists:get_value(pending_key_block, Config, false)},
+    get_pending_key_block(PendingKeyBlockOpt, CurrentBlockType, Config).
 
-    ok = rpc(aec_conductor, stop_mining, []),
-    {ok, 404, #{<<"reason">> := Reason}} = get_key_blocks_pending_sut(),
-    ?assertEqual(<<"Not mining, no pending block">>, Reason),
-    ok.
-
-get_pending_key_block_on_genesis_block(_Config) ->
-    ok = rpc(aec_conductor, reinit_chain, []),
-    GenesisHash = rpc(aec_chain, genesis_hash, []),
-    GenesisHashEncoded = aec_base58c:encode(block_hash, GenesisHash),
-    %% Expect a key block each hour.
-    MiningRate = 60 * 60 * 1000,
-    ok = rpc(application, set_env, [aecore, expected_mine_rate, MiningRate]),
-    ok = rpc(aec_conductor, start_mining, []),
-
-    ok = wait_for_key_block_candidate(),
-    {ok, 200, PendingBlock} = get_key_blocks_pending_sut(),
-    ?assertEqual(1, maps:get(<<"height">>, PendingBlock)),
-    ?assertEqual(GenesisHashEncoded, maps:get(<<"prev_hash">>, PendingBlock)),
-    %% TODO: check the block_hash prefix
-
-    ok = rpc(aec_conductor, stop_mining, []),
-    ok.
-
-get_pending_key_block_on_key_block(_Config) ->
-    Node = aecore_suite_utils:node_name(?NODE),
-    {ok, [TopBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
-    ?assertEqual(TopBlock, rpc(aec_chain, top_block, [])),
-    ?assertEqual(true, aec_blocks:is_key_block(TopBlock)),
-
-    MiningRate = 60 * 60 * 1000,
-    ok = rpc(application, set_env, [aecore, expected_mine_rate, MiningRate]),
-    ok = rpc(aec_conductor, start_mining, []),
-
-    ok = wait_for_key_block_candidate(),
-    {ok, 200, PendingBlock} = get_key_blocks_pending_sut(),
-    ?assertEqual(maps:get(<<"height">>, PendingBlock), aec_blocks:height(TopBlock) + 1),
-    ?assertEqual(maps:get(<<"prev_hash">>, PendingBlock), hash(TopBlock)),
-
-    ok = rpc(aec_conductor, stop_mining, []),
-    ok.
-
-get_pending_key_block_on_micro_block(_Config) ->
-    Node = aecore_suite_utils:node_name(?NODE),
-    %% Mine 1 key block to get funds to spend.
-    {ok, [KeyBlock0]} = aecore_suite_utils:mine_key_blocks(Node, 1),
-    ?assertEqual(KeyBlock0, rpc(aec_chain, top_block, [])),
-    ?assertEqual(true, aec_blocks:is_key_block(KeyBlock0)),
-    {ok, Pub} = rpc(aec_keys, pubkey, []),
-    {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1),
-    ?assertEqual({ok, [Tx]},  rpc:call(Node, aec_tx_pool, peek, [infinity])),
-    {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
-    ?assertEqual({ok, []}, rpc:call(Node, aec_tx_pool, peek, [infinity])),
-    ?assertEqual(true, aec_blocks:is_key_block(KeyBlock)),
-    ?assertEqual(false, aec_blocks:is_key_block(MicroBlock)),
-    ?assertEqual(MicroBlock, rpc(aec_chain, top_block, [])),
-
-    MiningRate = 60 * 60 * 1000,
-    ok = rpc(application, set_env, [aecore, expected_mine_rate, MiningRate]),
-    ok = rpc(aec_conductor, start_mining, []),
-
-    wait_for_key_block_candidate(),
-    {ok, 200, PendingBlock} = get_key_blocks_pending_sut(),
-    ?assertEqual(aec_blocks:height(KeyBlock) + 1, maps:get(<<"height">>, PendingBlock)),
-    ?assertEqual(hash(MicroBlock), maps:get(<<"prev_hash">>, PendingBlock)),
-
-    ok = rpc(aec_conductor, stop_mining, []),
+get_pending_key_block({pending_key_block, false}, _CurrentBlockType, _Config) ->
+    {ok, 404, Error} = get_key_blocks_pending_sut(),
+    ?assertEqual(<<"Not mining, no pending block">>, maps:get(<<"reason">>, Error)),
+    ok;
+get_pending_key_block({pending_key_block, true}, _CurrentBlockType, Config) ->
+    CurrentBlockHash = ?config(current_block_hash, Config),
+    CurrentBlockHeight = ?config(current_block_height, Config),
+    {ok, 200, Block} = get_key_blocks_pending_sut(),
+    ?assertEqual(CurrentBlockHeight + 1, maps:get(<<"height">>, Block)),
+    ?assertEqual(CurrentBlockHash, maps:get(<<"prev_hash">>, Block)),
     ok.
 
 get_key_block_by_hash(Config) ->
