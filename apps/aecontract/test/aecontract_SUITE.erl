@@ -559,6 +559,14 @@ sophia_oracles(_Cfg) ->
     {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {CtId, QId, 0, 4001}),
     {some, 4001}      = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
     {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Ct, 0, 10, TTL + 10}),
+
+    %% Test complex answers
+    Ct1 = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
+    QuestionType = {variant_t, [{why, [word]}, {how, [string]}]},
+    AnswerType   = {variant_t, [{noAnswer, []}, {yesAnswer, [QuestionType, string, word]}]},
+    Question1    = {1, <<"birds fly?">>},
+    Answer       = {yesAnswer, {how, <<"birds fly?">>}, <<"magic">>, 1337},
+    {some, Answer} = ?call(call_contract, Acc, Ct1, complexOracle, {option, AnswerType}, {Question1, 0}),
     ok.
 
 %% Testing map functions and primitives

@@ -42,3 +42,13 @@ contract Oracles =
   function getAnswer(o : oracle(string, int),
                      q : oracle_query(string, int)) : option(int) =
     Oracle.get_answer(o, q)
+
+  datatype complexQuestion = Why(int) | How(string)
+  datatype complexAnswer   = NoAnswer | Answer(complexQuestion, string, int)
+
+  function complexOracle(question, sig) =
+    let o = Oracle.register(Contract.address, sig, 0, 0, 1000) : oracle(complexQuestion, complexAnswer)
+    let q = Oracle.query(o, question, 0, 100, 100)
+    Oracle.respond(o, q, sig, Answer(question, "magic", 1337))
+    Oracle.get_answer(o, q)
+
