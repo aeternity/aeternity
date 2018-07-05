@@ -29,3 +29,6 @@ single-uat:
 release-test:
 	@$(PYTHON) $(PYTHON_TESTS)/release.py --workdir="$(WORKDIR)" --tarball=$(TARBALL) --blocks=100 --version=$(VER)
 
+.PHONY: swagger-version-check
+swagger-version-check:
+	@$(PYTHON) $(PYTHON_TESTS)/swagger-version-check.py "$(VERSION)" "$(SWAGGER_YAML)" "$(SWAGGER_JSON)"

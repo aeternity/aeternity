@@ -245,11 +245,14 @@ swagger: config/swagger.yaml $(SWAGGER_CODEGEN_CLI)
 swagger-docs:
 	(cd ./apps/aehttp && $(MAKE) swagger-docs);
 
-swagger-check:
-	./swagger/version-check.py \
-		"$(CURDIR)/VERSION" \
-		"$(CURDIR)/config/swagger.yaml" \
-		"$(CURDIR)/apps/aehttp/priv/swagger.json"
+swagger-version-check:
+	@( cd $(PYTHON_DIR) && \
+		VERSION="$(CURDIR)/VERSION" \
+		SWAGGER_YAML=$(CURDIR)/config/swagger.yaml \
+		SWAGGER_JSON=$(CURDIR)/apps/aehttp/priv/swagger.json \
+		$(MAKE) swagger-version-check )
+
+swagger-check: swagger-version-check
 	./swagger/check \
 		"$(CURDIR)/config/swagger.yaml" \
 		"swagger" \
@@ -342,5 +345,5 @@ internal-distclean: $$(KIND)
 	test smoke-test smoke-test-run system-test system-test-deps aevm-test-deps\
 	kill killall \
 	clean distclean \
-	swagger swagger-docs swagger-check \
+	swagger swagger-docs swagger-check swagger-version-check \
 	rebar-lock-check
