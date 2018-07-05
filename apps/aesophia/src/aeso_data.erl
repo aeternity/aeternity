@@ -104,6 +104,8 @@ from_binary(_, string, Heap, V) ->
     BitAddr = 8*(V+32),
     <<_:BitAddr,Bytes:StringSize/binary,_/binary>> = Heap,
     Bytes;
+from_binary(_, {tuple, []}, _, _) ->
+    {};
 from_binary(Visited, {tuple,Cpts}, Heap, V) ->
     check_circular_refs(Visited, V),
     NewVisited = Visited#{V => true},
