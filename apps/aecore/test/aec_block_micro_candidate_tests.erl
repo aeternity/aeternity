@@ -75,7 +75,7 @@ block_extension_test_() ->
         fun() ->
           {ok, Tx} = aec_spend_tx:new(#{ sender => ?TEST_PUB, recipient => ?TEST_PUB
                                        , amount => 10, fee => 1, ttl => 100, nonce => 1, payload => <<>> }),
-          STx = aetx_sign:sign(Tx, ?TEST_PRIV),
+          STx = aec_test_utils:sign_tx(Tx, ?TEST_PRIV),
 
           AccMap = #{ preset_accounts => [{?TEST_PUB, 1000}] },
           {Block0, Trees0} = aec_block_genesis:genesis_block_with_state(AccMap),
@@ -109,7 +109,7 @@ block_extension_test_() ->
 
           {ok, Tx} = aec_spend_tx:new(#{ sender => ?TEST_PUB, recipient => ?TEST_PUB
                                        , amount => 10, fee => 1, ttl => 100, nonce => 1, payload => <<>> }),
-          STx = aetx_sign:sign(Tx, ?TEST_PRIV),
+          STx = aec_test_utils:sign_tx(Tx, ?TEST_PRIV),
 
           AccMap = #{ preset_accounts => [{?TEST_PUB, 1000}] },
           {Block0, Trees0} = aec_block_genesis:genesis_block_with_state(AccMap),

@@ -2560,7 +2560,7 @@ register_oracle(ChainHeight, PubKey, PrivKey, Nonce, QueryFee, TTL) ->
                                         query_fee     => QueryFee,
                                         oracle_ttl    => TTL,
                                         fee           => 4 + TTLFee}),
-    SignedTx = aetx_sign:sign(RegTx, PrivKey),
+    SignedTx = aec_test_utils:sign_tx(RegTx, PrivKey),
     SendTx = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)),
     post_tx(SendTx).
 
@@ -2574,7 +2574,7 @@ query_oracle(ChainHeight, PubKey, PrivKey, Oracle, Nonce, Query, TTL, QueryFee) 
                                        query_ttl     => TTL,
                                        response_ttl  => {delta, 10},
                                        fee           => QueryFee + 2 + TTLFee }),
-    SignedTx = aetx_sign:sign(QueryTx, PrivKey),
+    SignedTx = aec_test_utils:sign_tx(QueryTx, PrivKey),
     SendTx = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)),
     {ok, 200, Res} = post_tx(SendTx),
     Res.
@@ -2844,7 +2844,7 @@ channel_sign_tx(ConnPid, Privkey, Tag) ->
     {ok, Tag, #{<<"tx">> := EncCreateTx}} = ?WS:wait_for_channel_event(ConnPid, sign),
     {ok, CreateBinTx} = aec_base58c:safe_decode(transaction, EncCreateTx),
     Tx = aetx:deserialize_from_binary(CreateBinTx),
-    SignedCreateTx = aetx_sign:sign(Tx, Privkey),
+    SignedCreateTx = aec_test_utils:sign_tx(Tx, Privkey),
     EncSignedCreateTx = aec_base58c:encode(transaction,
                                   aetx_sign:serialize_to_binary(SignedCreateTx)),
     ?WS:send(ConnPid, Tag, #{tx => EncSignedCreateTx}),
@@ -3083,7 +3083,7 @@ channel_conflict(#{initiator := IConnPid, responder :=RConnPid},
                 {ok, <<"update">>, #{<<"tx">> := EncCreateTx}} ->
                     {ok, CreateBinTx} = aec_base58c:safe_decode(transaction, EncCreateTx),
                     Tx = aetx:deserialize_from_binary(CreateBinTx),
-                    SignedCreateTx = aetx_sign:sign(Tx, Privkey),
+                    SignedCreateTx = aec_test_utils:sign_tx(Tx, Privkey),
                     EncSignedCreateTx = aec_base58c:encode(transaction,
                                                   aetx_sign:serialize_to_binary(SignedCreateTx)),
                     ?WS:send(ConnPid, <<"update">>, #{tx => EncSignedCreateTx})

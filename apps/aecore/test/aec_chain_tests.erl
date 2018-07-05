@@ -271,7 +271,7 @@ broken_chain_invalid_transaction() ->
     RecipientPubKey = <<42:32/unit:8>>,
     PresetAccounts = [{SenderPubKey, 100}],
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
-    Spend = aetx_sign:sign(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
+    Spend = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
 
     Chain0 = gen_block_chain_with_state_by_target(PresetAccounts, [?GENESIS_TARGET], 111),
 
@@ -734,8 +734,8 @@ fork_get_transaction() ->
     RecipientPubKey = <<42:32/unit:8>>,
     PresetAccounts = [{SenderPubKey, 100}],
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
-    Spend1 = aetx_sign:sign(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
-    Spend2 = aetx_sign:sign(make_spend_tx(SenderPubKey, 2, RecipientPubKey), SenderPrivKey),
+    Spend1 = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
+    Spend2 = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 2, RecipientPubKey), SenderPrivKey),
     CommonChainTargets = [?GENESIS_TARGET, 1, 1],
     EasyChainExtensionTargets = [2, 2],
     HardChainExtensionTargets = [1, 1, 1],
@@ -880,10 +880,10 @@ fees_three_miners() ->
     Fee2 = 100,
     TxsFun = fun(2) ->
                      Tx = make_spend_tx(PubKey1, 1, PubKey2, Fee1),
-                     [aetx_sign:sign(Tx, PrivKey1)];
+                     [aec_test_utils:sign_tx(Tx, PrivKey1)];
                 (3) ->
                      Tx = make_spend_tx(PubKey1, 2, PubKey2, Fee2),
-                     [aetx_sign:sign(Tx, PrivKey1)];
+                     [aec_test_utils:sign_tx(Tx, PrivKey1)];
                 (_) ->
                      []
              end,

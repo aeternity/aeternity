@@ -88,7 +88,7 @@ preclaim(Cfg) ->
     %% Create Preclaim tx and apply it on trees
     TxSpec = aens_test_utils:preclaim_tx_spec(PubKey, CHash, S1),
     {ok, Tx} = aens_preclaim_tx:new(TxSpec),
-    SignedTx = aetx_sign:sign(Tx, PrivKey),
+    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     {ok, [SignedTx], Trees1} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY_PRECLAIM, Trees, Height, ?PROTOCOL_VERSION),
     S2 = aens_test_utils:set_trees(Trees1, S1),
@@ -160,7 +160,7 @@ claim(Cfg) ->
     %% Create Claim tx and apply it on trees
     TxSpec = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, S1),
     {ok, Tx} = aens_claim_tx:new(TxSpec),
-    SignedTx = aetx_sign:sign(Tx, PrivKey),
+    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
 
     {ok, [SignedTx], Trees1} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY_CLAIM, Trees, Height, ?PROTOCOL_VERSION),
@@ -264,7 +264,7 @@ update(Cfg) ->
     TxSpec = aens_test_utils:update_tx_spec(
                PubKey, NHash, #{pointers => Pointers, name_ttl => NameTTL}, S1),
     {ok, Tx} = aens_update_tx:new(TxSpec),
-    SignedTx = aetx_sign:sign(Tx, PrivKey),
+    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
 
     {ok, [SignedTx], Trees1} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY_UPDATE, Trees, Height, ?PROTOCOL_VERSION),
@@ -360,7 +360,7 @@ transfer(Cfg) ->
     TxSpec = aens_test_utils:transfer_tx_spec(
                PubKey, NHash, PubKey2, S1),
     {ok, Tx} = aens_transfer_tx:new(TxSpec),
-    SignedTx = aetx_sign:sign(Tx, PrivKey),
+    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
 
     {ok, [SignedTx], Trees2} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY_TRANSFER, Trees1, Height, ?PROTOCOL_VERSION),
@@ -438,7 +438,7 @@ revoke(Cfg) ->
     %% Create Transfer tx and apply it on trees
     TxSpec = aens_test_utils:revoke_tx_spec(PubKey, NHash, S1),
     {ok, Tx} = aens_revoke_tx:new(TxSpec),
-    SignedTx = aetx_sign:sign(Tx, PrivKey),
+    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
 
     {ok, [SignedTx], Trees1} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY_REVOKE, Trees, Height, ?PROTOCOL_VERSION),

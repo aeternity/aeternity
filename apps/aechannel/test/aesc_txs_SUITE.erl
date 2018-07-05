@@ -86,7 +86,7 @@ create_from_state(S) ->
     Height = 1,
     TxSpec = aesc_test_utils:create_tx_spec(PubKey1, PubKey2, S2),
     {ok, Tx} = aesc_create_tx:new(TxSpec),
-    SignedTx = aetx_sign:sign(Tx, [PrivKey1, PrivKey2]),
+    SignedTx = aec_test_utils:sign_tx(Tx, [PrivKey1, PrivKey2]),
     {ok, [SignedTx], Trees1} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY, Trees,
                                                   Height, ?PROTOCOL_VERSION),
@@ -219,7 +219,7 @@ close_solo(Cfg) ->
             TxSpec = aesc_test_utils:close_solo_tx_spec(ChannelId, From, Payload,
                                                     PoI, #{fee => Fee}, S),
             {ok, Tx} = aesc_close_solo_tx:new(TxSpec),
-            SignedTx = aetx_sign:sign(Tx, [FromPrivKey]),
+            SignedTx = aec_test_utils:sign_tx(Tx, [FromPrivKey]),
             {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
                                         [SignedTx], Trees, Height, ?PROTOCOL_VERSION),
             S1 = aesc_test_utils:set_trees(Trees1, S),
@@ -420,7 +420,7 @@ close_solo_payload_deposit_tx(Cfg) ->
                                                fee    => 4,
                                                state_hash => StateHash}, S),
     {ok, DepositTx} = aesc_deposit_tx:new(TxSpec),
-    SignedDepositTx = aetx_sign:sign(DepositTx, [PrivKey1, PrivKey2]),
+    SignedDepositTx = aec_test_utils:sign_tx(DepositTx, [PrivKey1, PrivKey2]),
     Payload = <<>>,
     Trees = aens_test_utils:trees(S),
     PoI = aesc_test_utils:proof_of_inclusion(Accounts),
@@ -449,7 +449,7 @@ close_solo_payload_withdraw_tx(Cfg) ->
                                                fee    => 4,
                                                state_hash => StateHash}, S),
     {ok, WithdrawTx} = aesc_withdraw_tx:new(TxSpec),
-    SignedWithdrawTx = aetx_sign:sign(WithdrawTx, [PrivKey1, PrivKey2]),
+    SignedWithdrawTx = aec_test_utils:sign_tx(WithdrawTx, [PrivKey1, PrivKey2]),
     Payload = <<>>,
     Trees = aens_test_utils:trees(S),
     PoI = aesc_test_utils:proof_of_inclusion(Accounts),
@@ -473,7 +473,7 @@ close_solo_after_(PubKey1, PubKey2, ChannelId, Payload, PoI, S) ->
             TxSpec = aesc_test_utils:close_solo_tx_spec(ChannelId, From, Payload,
                                                     PoI, #{fee => Fee}, S),
             {ok, Tx} = aesc_close_solo_tx:new(TxSpec),
-            SignedTx = aetx_sign:sign(Tx, [FromPrivKey]),
+            SignedTx = aec_test_utils:sign_tx(Tx, [FromPrivKey]),
             {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
                                         [SignedTx], Trees, Height, ?PROTOCOL_VERSION),
             S1 = aesc_test_utils:set_trees(Trees1, S),
@@ -519,7 +519,7 @@ close_mutual(Cfg) ->
                                                       responder_amount => PAmt,
                                                       fee    => Fee}, S),
             {ok, Tx} = aesc_close_mutual_tx:new(TxSpec),
-            SignedTx = aetx_sign:sign(Tx, [PrivKey1, PrivKey2]),
+            SignedTx = aec_test_utils:sign_tx(Tx, [PrivKey1, PrivKey2]),
             {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
                                         [SignedTx], Trees, Height, ?PROTOCOL_VERSION),
             S1 = aesc_test_utils:set_trees(Trees1, S),
@@ -623,7 +623,7 @@ deposit(Cfg) ->
                                              #{amount => 13,
                                                fee    => 4}, S),
     {ok, Tx} = aesc_deposit_tx:new(TxSpec),
-    SignedTx = aetx_sign:sign(Tx, [PrivKey1]),
+    SignedTx = aec_test_utils:sign_tx(Tx, [PrivKey1]),
     {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
                                  [SignedTx], Trees, Height, ?PROTOCOL_VERSION),
 
@@ -714,7 +714,7 @@ withdraw(Cfg) ->
                                               #{amount => 13,
                                                 fee    => 4}, S),
     {ok, Tx} = aesc_withdraw_tx:new(TxSpec),
-    SignedTx = aetx_sign:sign(Tx, [PrivKey1]),
+    SignedTx = aec_test_utils:sign_tx(Tx, [PrivKey1]),
     {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
                                  [SignedTx], Trees, Height, ?PROTOCOL_VERSION),
 
@@ -835,7 +835,7 @@ slash(Cfg) ->
             TxSpec = aesc_test_utils:slash_tx_spec(ChannelId, From, Payload,
                                                     PoI, #{fee    => Fee}, S),
             {ok, Tx} = aesc_slash_tx:new(TxSpec),
-            SignedTx = aetx_sign:sign(Tx, [FromPrivKey]),
+            SignedTx = aec_test_utils:sign_tx(Tx, [FromPrivKey]),
             {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
                                         [SignedTx], Trees, Height, ?PROTOCOL_VERSION),
             S1 = aesc_test_utils:set_trees(Trees1, S),
@@ -1043,7 +1043,7 @@ settle(Cfg) ->
                                                       ttl => 1001,
                                                       fee    => Fee}, S),
             {ok, Tx} = aesc_settle_tx:new(TxSpec),
-            SignedTx = aetx_sign:sign(Tx, [PrivKey1, PrivKey2]),
+            SignedTx = aec_test_utils:sign_tx(Tx, [PrivKey1, PrivKey2]),
             {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
                                         [SignedTx], Trees, ClosesAt, ?PROTOCOL_VERSION),
             S1 = aesc_test_utils:set_trees(Trees1, S),
@@ -1143,7 +1143,7 @@ settle_negative(Cfg) ->
 
     %% Test only one settle
     PrivKey1 = aesc_test_utils:priv_key(PubKey1, S),
-    SignedTx = aetx_sign:sign(Tx, [PrivKey1]),
+    SignedTx = aec_test_utils:sign_tx(Tx, [PrivKey1]),
     {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
                                 [SignedTx], Trees, ClosesAt, ?PROTOCOL_VERSION),
     S5 = aesc_test_utils:set_trees(Trees1, S),

@@ -22,7 +22,7 @@ sign_txs_test_() ->
        fun() ->
                #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),
                {ok, SpendTx} = make_spend_tx(Pubkey),
-               Signed = ?TEST_MODULE:sign(SpendTx, Privkey),
+               Signed = aec_test_utils:sign_tx(SpendTx, Privkey),
                ?assertEqual(ok, ?TEST_MODULE:verify(Signed, aec_trees:new())),
                ok
       end},
@@ -31,7 +31,7 @@ sign_txs_test_() ->
                #{ public :=  PubkeyA, secret := _PrivkeyA } = enacl:sign_keypair(),
                #{ public := _PubkeyB, secret :=  PrivkeyB } = enacl:sign_keypair(),
                {ok, SpendTx} = make_spend_tx(PubkeyA),
-               Signed = ?TEST_MODULE:sign(SpendTx, PrivkeyB),
+               Signed = aec_test_utils:sign_tx(SpendTx, PrivkeyB),
                ?assertEqual({error, signature_check_failed},
                             ?TEST_MODULE:verify(Signed, aec_trees:new())),
                ok
@@ -40,7 +40,7 @@ sign_txs_test_() ->
        fun() ->
                #{ public := _Pubkey, secret := Privkey } = enacl:sign_keypair(),
                {ok, SpendTx} = make_spend_tx(<<0:32/unit:8>>),
-               Signed = ?TEST_MODULE:sign(SpendTx, Privkey),
+               Signed = aec_test_utils:sign_tx(SpendTx, Privkey),
                ?assertEqual({error, signature_check_failed},
                             ?TEST_MODULE:verify(Signed, aec_trees:new())),
                ok
@@ -50,7 +50,7 @@ sign_txs_test_() ->
                BrokenKey = <<0:32/unit:8>>,
                {ok, SpendTx} = make_spend_tx(BrokenKey),
                ?_assertException(error, {invalid_priv_key, [BrokenKey]},
-                                 ?TEST_MODULE:sign(SpendTx, <<0:42/unit:8>>)),
+                                 aec_test_utils:sign_tx(SpendTx, <<0:42/unit:8>>)),
                ok
       end},
       {"Missing channel does not validate",
@@ -80,4 +80,4 @@ make_signed_mutual_close() ->
                                           ttl               => 1000,
                                           fee               => 10,
                                           nonce             => 1234}),
-    aetx_sign:sign(Tx, [PrivKey1, PrivKey2]).
+    aec_test_utils:sign_tx(Tx, [PrivKey1, PrivKey2]).

@@ -67,7 +67,7 @@ signatures_check_test_() ->
      , {"Transactions with broken signatures are rejected",
         fun () ->
             Tx = make_spend_tx(<<0:32/unit:8>>, <<1:32/unit:8>>),
-            MalformedTxs = [aetx_sign:sign(Tx, <<0:64/unit:8>>)],
+            MalformedTxs = [aec_test_utils:sign_tx(Tx, <<0:64/unit:8>>)],
             {ok, ValidTxs, _InvalidTxs, _Trees} =
                 ?TEST_MODULE:apply_txs_on_state_trees(MalformedTxs, aec_trees:new(), 1, ?PROTOCOL_VERSION),
             ?assertEqual([], ValidTxs),

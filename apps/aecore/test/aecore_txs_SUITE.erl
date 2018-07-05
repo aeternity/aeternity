@@ -121,7 +121,7 @@ add_spend_tx(Node, Amount, Fee, Nonce, TTL) ->
     Params = #{ sender => maps:get(pubkey, patron()), recipient => new_pubkey(),
                 amount => Amount, nonce => Nonce, ttl => TTL, payload => <<>>, fee => Fee },
     {ok, Tx} = aec_spend_tx:new(Params),
-    STx = aetx_sign:sign(Tx, maps:get(privkey, patron())),
+    STx = aec_test_utils:sign_tx(Tx, maps:get(privkey, patron())),
     rpc:call(Node, aec_tx_pool, push, [STx]).
 
 new_pubkey() ->

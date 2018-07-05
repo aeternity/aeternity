@@ -217,7 +217,7 @@ sign_and_apply_transaction(Tx, PrivKey, S1, Miner) ->
     sign_and_apply_transaction(Tx, PrivKey, S1, Miner, 1).
 
 sign_and_apply_transaction(Tx, PrivKey, S1, Miner, Height) ->
-    SignedTx = aetx_sign:sign(Tx, PrivKey),
+    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
     {ok, AcceptedTxs, Trees1} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], Miner, Trees, Height, ?PROTOCOL_VERSION),
@@ -231,7 +231,7 @@ sign_and_apply_transaction_strict(Tx, PrivKey, S1, Miner) ->
     sign_and_apply_transaction_strict(Tx, PrivKey, S1, Miner, 1).
 
 sign_and_apply_transaction_strict(Tx, PrivKey, S1, Miner, Height) ->
-    SignedTx = aetx_sign:sign(Tx, PrivKey),
+    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
     {ok, AcceptedTxs, Trees1} =

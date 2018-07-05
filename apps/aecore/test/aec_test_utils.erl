@@ -45,6 +45,7 @@
         , create_temp_key_dir/0
         , remove_temp_key_dir/1
         , copy_genesis_dir/2
+        , sign_tx/2
         , signed_spend_tx/1
         , fake_start_aehttp/0
         , wait_for_pubkey/0
@@ -345,6 +346,22 @@ next_block_with_state([{PB, PBS} | _] = Chain, Target, Time0, TxsFun, Nonce,
     [{B#block{ target = Target, nonce  = Nonce,
                    time   = case Time0 of undefined -> B#block.time; _ -> Time0 end },
       S} | Chain1].
+
+%% @doc Given a transaction Tx, a private key or list of keys,
+%% return the cryptographically signed transaction using the default crypto
+%% parameters.
+-define(VALID_PRIVK(K), byte_size(K) =:= 64).
+-spec sign_tx(aetx:tx(), list(binary()) | binary()) -> aetx_sign:signed_tx() | tuple().
+sign_tx(Tx, PrivKey) when is_binary(PrivKey) ->
+    sign_tx(Tx, [PrivKey]);
+sign_tx(Tx, PrivKeys) when is_list(PrivKeys) ->
+    Bin = aetx:serialize_to_binary(Tx),
+    case lists:filter(fun(PrivKey) -> not (?VALID_PRIVK(PrivKey)) end, PrivKeys) of
+        [_|_]=BrokenKeys -> erlang:error({invalid_priv_key, BrokenKeys});
+        [] -> pass
+    end,
+    Signatures = [ enacl:sign_detached(Bin, PrivKey) || PrivKey <- PrivKeys ],
+    aetx_sign:new(Tx, Signatures).
 
 signed_spend_tx(ArgsMap) ->
     {ok, SenderAccount} = wait_for_pubkey(),

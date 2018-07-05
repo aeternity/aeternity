@@ -425,7 +425,7 @@ sign(PubKey, Tx) ->
         {ok, Trees} = aec_chain:get_top_state(),
         {ok, Signers} = aetx:signers(Tx, Trees),
         true = lists:member(PubKey, Signers),
-        {ok, aetx_sign:sign(Tx, PrivKey)}
+        {ok, aec_test_utils:sign_tx(Tx, PrivKey)}
     catch
         error:Err ->
             erlang:error({Err, erlang:get_stacktrace()})

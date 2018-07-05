@@ -380,7 +380,7 @@ state_tx_spec() ->
 
 payload(ChannelId, Initiator, Responder, SignersPrivKeys, Spec) ->
     StateTx = state_tx(ChannelId, Initiator, Responder, Spec),
-    aetx_sign:serialize_to_binary(aetx_sign:sign(StateTx, SignersPrivKeys)). %% No signatures
+    aetx_sign:serialize_to_binary(aec_test_utils:sign_tx(StateTx, SignersPrivKeys)). %% No signatures
 
 proof_of_inclusion(Participants) ->
     Accounts = [aec_accounts:new(Pubkey, Balance) ||
