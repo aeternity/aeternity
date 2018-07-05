@@ -108,6 +108,32 @@ handle_request('GetMicroBlocksTransactionsByHash', Params, _Context) ->
             {400, [], #{reason => <<"Invalid hash">>}}
     end;
 
+handle_request('GetMicroBlocksTransactionsByHashByIndex', Params, _Context) ->
+    HashDec = aec_base58c:safe_decode(block_hash, maps:get(hash, Params)),
+    IndexDec = maps:get(index, Params),
+    case {HashDec, IndexDec} of
+        {{ok, Hash}, Index} when is_integer(Index) ->
+            case aehttp_logic:get_micro_block_by_hash(Hash) of
+                {ok, Block} ->
+                    Txs = aec_blocks:txs(Block),
+                    TxsCount = length(Txs),
+                    case Index of
+                        I when I > 0, I =< TxsCount ->
+                            Header = aec_blocks:to_header(Block),
+                            Tx = lists:nth(I, Txs),
+                            SingleTxJSON = aetx_sign:serialize_for_client(json, Header, Tx),
+                            {200, [], SingleTxJSON};
+                        _Other ->
+                            {404, [], #{reason => <<"Invalid hash or index">>}}
+                    end;
+                {error, block_not_found} ->
+                    {404, [], #{reason => <<"Block not found">>}}
+            end;
+        {_, _} ->
+            {400, [], #{reason => <<"Invalid hash or index">>}}
+    end;
+
+
 handle_request('GetMicroBlocksTransactionsCountByHash', Params, _Context) ->
     case aec_base58c:safe_decode(block_hash, maps:get(hash, Params)) of
         {ok, Hash} ->

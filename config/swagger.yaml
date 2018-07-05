@@ -232,6 +232,41 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /micro-blocks/hash/{hash}/transactions/index/{index}:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetMicroBlocksTransactionsByHashByIndex
+      description: 'Get micro block transaction by hash and index'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: hash
+          description: 'Hash of the block to fetch'
+          required: true
+          type: string
+        - in: path
+          name: index
+          description: 'Index of the transaction to fetch'
+          required: true
+          type: integer
+          minimum: 1
+      responses:
+        '200':
+          description: 'Returns micro block transaction'
+          schema:
+            $ref: '#/definitions/SignedTxJSON'
+        '400':
+          description: 'Invalid hash or index'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Block not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
   /micro-blocks/hash/{hash}/transactions/count:
     get:
       tags:
