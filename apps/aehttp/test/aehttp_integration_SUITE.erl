@@ -68,6 +68,8 @@
     get_micro_block_transactions_by_hash_on_genesis_block/1,
     get_micro_block_transactions_by_hash_on_key_block/1,
     get_micro_block_transactions_by_hash_on_micro_block/1,
+    get_micro_block_transactions_count_by_hash_on_genesis_block/1,
+    get_micro_block_transactions_count_by_hash_on_key_block/1,
     get_micro_block_transactions_count_by_hash_on_micro_block/1
    ]).
 
@@ -304,6 +306,8 @@ groups() ->
        get_micro_block_transactions_by_hash_on_genesis_block,
        get_micro_block_transactions_by_hash_on_key_block,
        get_micro_block_transactions_by_hash_on_micro_block,
+       get_micro_block_transactions_count_by_hash_on_genesis_block,
+       get_micro_block_transactions_count_by_hash_on_key_block,
        get_micro_block_transactions_count_by_hash_on_micro_block
       ]},
      {off_chain_endpoints, [],
@@ -1096,6 +1100,26 @@ get_micro_block_transactions_by_hash_on_micro_block(_Config) ->
     {ok, 200, #{<<"transactions">> := Txs}} = get_micro_blocks_transactions_by_hash_sut(hash(MicroBlock)),
     %% TODO: check Tx is in Txs
     ?assertMatch([_], Txs),
+    ok.
+
+get_micro_block_transactions_count_by_hash_on_genesis_block(_Config) ->
+    ok = rpc(aec_conductor, reinit_chain, []),
+    GenesisBlock = rpc(aec_chain, genesis_block, []),
+
+    {ok, 404, #{<<"reason">> := Reason}} = get_micro_blocks_transactions_count_by_hash_sut(hash(GenesisBlock)),
+    ?assertEqual(<<"Block not found">>, Reason),
+
+    ForkHeight = aecore_suite_utils:latest_fork_height(),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), ForkHeight),
+    ok.
+
+get_micro_block_transactions_count_by_hash_on_key_block(_Config) ->
+    {ok, [TopBlock]} = aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    ?assertEqual(TopBlock, rpc(aec_chain, top_block, [])),
+    ?assertEqual(true, aec_blocks:is_key_block(TopBlock)),
+
+    {ok, 404, #{<<"reason">> := Reason}} = get_micro_blocks_transactions_by_hash_sut(hash(TopBlock)),
+    ?assertEqual(<<"Block not found">>, Reason),
     ok.
 
 get_micro_block_transactions_count_by_hash_on_micro_block(_Config) ->
