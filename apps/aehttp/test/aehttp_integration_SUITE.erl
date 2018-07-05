@@ -1179,6 +1179,8 @@ get_micro_block_transactions_by_hash_by_index_on_micro_block(_Config) ->
     {ok, 200, Tx1} = get_micro_blocks_transactions_by_hash_by_index_sut(hash(MicroBlock), 1),
     ?assertEqual(hash(MicroBlock), maps:get(<<"block_hash">>, Tx1)),
     %% TODO: check tx hashes
+    {ok, 400, #{<<"reason">> := Reason}} = get_micro_blocks_transactions_by_hash_by_index_sut(hash(MicroBlock), 2),
+    ?assertEqual(<<"Invalid hash or index">>, Reason),
     ok.
 
 get_micro_blocks_header_by_hash_sut(Hash) ->

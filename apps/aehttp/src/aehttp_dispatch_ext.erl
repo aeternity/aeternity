@@ -124,7 +124,7 @@ handle_request('GetMicroBlocksTransactionsByHashByIndex', Params, _Context) ->
                             SingleTxJSON = aetx_sign:serialize_for_client(json, Header, Tx),
                             {200, [], SingleTxJSON};
                         _Other ->
-                            {404, [], #{reason => <<"Invalid hash or index">>}}
+                            {400, [], #{reason => <<"Invalid hash or index">>}}
                     end;
                 {error, block_not_found} ->
                     {404, [], #{reason => <<"Block not found">>}}
