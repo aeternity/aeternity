@@ -170,4 +170,7 @@ call_common(#{ caller     := Caller
     end.
 
 error_to_binary(out_of_gas) -> <<"out_of_gas">>;
-error_to_binary(out_of_stack) -> <<"out_of_stack">>.
+error_to_binary(out_of_stack) -> <<"out_of_stack">>;
+error_to_binary(E) ->
+    io:format("Unknown error: ~p\n", [E]),
+    <<"unknown_error">>.
