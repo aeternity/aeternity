@@ -150,8 +150,13 @@ check_typedef_sccs(Env, TypeMap, [{acyclic, Name} | SCCs]) ->
                 {record_t, _} -> check_typedef_sccs(Env, TypeMap, SCCs); %%       and these
                 {variant_t, Cons} ->
                     Target   = {app_t, Ann, D, Xs},
-                    ConTypes = [ {Con, case Args of [] -> Target; _ -> {type_sig, Args, Target} end}
-                                || {constr_t, _, {con, _, Con}, Args} <- Cons ],
+                    ConType  = fun([]) -> Target; (Args) -> {type_sig, Args, Target} end,
+                    ConTypes = [ begin
+                                    {constr_t, _, {con, _, Con}, Args} = ConDef,
+                                    {Con, ConType(Args)}
+                                 end || ConDef <- Cons ],
+                    check_repeated_constructors([ {Con, ConType(Args)} || {constr_t, _, Con, Args} <- Cons ]),
+                    [ check_constructor_overlap(Env, Con, Target) || {constr_t, _, Con, _} <- Cons ],
                     check_typedef_sccs(ConTypes ++ Env, TypeMap, SCCs)
             end
     end;
@@ -160,6 +165,24 @@ check_typedef_sccs(Env, TypeMap, [{cyclic, Names} | SCCs]) ->
     type_error({recursive_types_not_implemented, lists:map(Id, Names)}),
     check_typedef_sccs(Env, TypeMap, SCCs).
 
+check_constructor_overlap(Env, Con = {con, _, Name}, NewType) ->
+    case proplists:get_value(Name, Env) of
+        undefined -> ok;
+        Type ->
+            OldType = case Type of {type_sig, _, T} -> T;
+                                   _ -> Type end,
+            OldCon  = {con, aeso_syntax:get_ann(OldType), Name},    %% TODO: we don't have the location of the old constructor here
+            type_error({repeated_constructor, [{OldCon, OldType}, {Con, NewType}]})
+    end.
+
+check_repeated_constructors(Cons) ->
+    Names      = [ Name || {{con, _, Name}, _} <- Cons ],
+    Duplicated = lists:usort(Names -- lists:usort(Names)),
+    Fail       = fun(Name) ->
+                    type_error({repeated_constructor, [ CT || CT = {{con, _, C}, _} <- Cons, C == Name ]})
+                 end,
+    [ Fail(Dup) || Dup <- Duplicated ],
+    ok.
 
 check_sccs(_, _, [], Acc) -> lists:reverse(Acc);
 check_sccs(Env, Funs, [{acyclic, X} | SCCs], Acc) ->
@@ -896,6 +919,9 @@ pp_error({recursive_types_not_implemented, Types}) ->
            true              -> " is" end,
     io_lib:format("The following type~s recursive, which is not yet supported:\n~s",
                     [S, [io_lib:format("  - ~s (at ~s)\n", [pp(T), pp_loc(T)]) || T <- Types]]);
+pp_error({repeated_constructor, Cs}) ->
+    io_lib:format("Variant types must have distinct constructor names\n~s",
+                  [[ io_lib:format("~s  (at ~s)\n", [pp_typed("  - ", C, T), pp_loc(C)]) || {C, T} <- Cs ]]);
 pp_error(Err) ->
     io_lib:format("Unknown error: ~p\n", [Err]).
 
@@ -1000,6 +1026,7 @@ if_branches(If = {'if', Ann, _, Then, Else}) ->
     end;
 if_branches(E) -> [E].
 
+pp_typed(Label, E, T = {type_sig, _, _}) -> pp_typed(Label, E, typesig_to_fun_t(T));
 pp_typed(Label, {typed, _, Expr, _}, Type) ->
     pp_typed(Label, Expr, Type);
 pp_typed(Label, Expr, Type) ->
