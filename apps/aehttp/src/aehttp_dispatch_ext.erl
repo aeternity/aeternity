@@ -146,16 +146,19 @@ handle_request('GetMicroBlocksTransactionsCountByHash', Params, _Context) ->
             {400, [], #{reason => <<"Invalid hash">>}}
     end;
 
-handle_request('GetGenerationsCurrent', _Req, _Context) ->
-    TopKeyBlockHash = aec_chain:top_key_block_hash(),
-    case aec_chain:get_generation(TopKeyBlockHash) of
-        error -> {404, [], #{reason => <<"Block not found">>}};
-        {ok, KeyBlock, MicroBlocks} ->
-            Struct = #{
-              key_block => aehttp_api_parser:encode_client_readable_key_block(KeyBlock, json),
-              micro_blocks => [ aehttp_api_parser:encode(block_hash, Micro) || Micro <- MicroBlocks ]
-            },
-            {200, [], Struct}
+handle_request('GetGenerationsCurrent', _, _Context) ->
+    get_generation(aec_chain:top_key_block_hash());
+
+handle_request('GetGenerationsByHash', Params, _Context) ->
+    case aec_base58c:safe_decode(block_hash, maps:get('hash', Params)) of
+        {error, _} -> {400, [], #{reason => <<"Invalid hash">>}};
+        {ok, Hash} -> get_generation(Hash)
+    end;
+handle_request('GetGenerationsByHeight', Params, _Context) ->
+    Height = maps:get('height', Params),
+    case aec_chain_state:get_key_block_hash_at_height(Height) of
+        error -> {404, [], #{reason => <<"Chain too short">>}};
+        {ok, Hash} -> get_generation(Hash)
     end;
 
 handle_request('GetBlockGenesis', Req, _Context) ->
@@ -758,3 +761,13 @@ handle_request(OperationID, Req, Context) ->
      ),
     {501, [], #{}}.
 
+get_generation(Hash) ->
+    case aec_chain:get_generation(Hash) of
+        error -> {404, [], #{reason => <<"Block not found">>}};
+        {ok, KeyBlock, MicroBlocks} ->
+            Struct = #{
+              key_block => aehttp_api_parser:encode_client_readable_key_block(KeyBlock, json),
+              micro_blocks => [ aehttp_api_parser:encode(block_hash, Micro) || Micro <- MicroBlocks ]
+            },
+            {200, [], Struct}
+    end.

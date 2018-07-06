@@ -52,7 +52,9 @@
 
 -export(
     [
-     get_generation_current/1
+     get_generation_current/1,
+     get_generation_by_hash/1,
+     get_generation_by_height/1
     ]).
 
 %% test case exports
@@ -285,7 +287,9 @@ groups() ->
        get_micro_block_transactions_by_hash,
        get_micro_block_transactions_count_by_hash,
        get_micro_block_transaction_by_hash_and_index,
-       get_generation_current
+       get_generation_current,
+       get_generation_by_hash,
+       get_generation_by_height
       ]},
      {off_chain_endpoints, [],
       [
@@ -997,9 +1001,69 @@ get_generation_current(micro_block, Config) ->
     ?assertEqual(?config(current_block_hash, Config), MicroBlockHash),
     ok.
 
+get_generation_by_hash(Config) ->
+    get_generation_by_hash(?config(current_block_type, Config), Config).
+
+get_generation_by_hash(CurrentBlockType, Config) when
+      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    CurrentBlockHash = ?config(current_block_hash, Config),
+    {ok, 200, #{<<"key_block">> := KeyBlock,
+                <<"micro_blocks">> := []}} = get_generation_by_hash_sut(CurrentBlockHash),
+
+    ?assertEqual(CurrentBlockHash, maps:get(<<"hash">>, KeyBlock)),
+    ?assertEqual({ok, 400, #{<<"reason">> => <<"Invalid hash">>}},
+                 get_generation_by_hash_sut(<<"random">>)),
+    ok;
+get_generation_by_hash(micro_block, Config) ->
+    PrevKeyBlockHash = ?config(prev_key_block_hash, Config),
+    CurrentBlockHash = ?config(current_block_hash, Config),
+    {ok, 200, #{<<"key_block">> := KeyBlock,
+                <<"micro_blocks">> := [MicroBlockHash]}} = get_generation_by_hash_sut(PrevKeyBlockHash),
+
+    ?assertEqual(PrevKeyBlockHash, maps:get(<<"hash">>, KeyBlock)),
+    ?assertEqual(CurrentBlockHash, MicroBlockHash),
+    ?assertEqual({ok, 404, #{<<"reason">> => <<"Block not found">>}},
+                 get_generation_by_hash_sut(CurrentBlockHash)),
+    ?assertEqual({ok, 400, #{<<"reason">> => <<"Invalid hash">>}},
+                 get_generation_by_hash_sut(<<"random">>)),
+    ok.
+
+get_generation_by_height(Config) ->
+    get_generation_by_height(?config(current_block_type, Config), Config).
+
+get_generation_by_height(CurrentBlockType, Config) when
+      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    CurrentBlockHash = ?config(current_block_hash, Config),
+    CurrentBlockHeight = ?config(current_block_height, Config),
+    {ok, 200, #{<<"key_block">> := KeyBlock,
+                <<"micro_blocks">> := []}} = get_generation_by_height_sut(CurrentBlockHeight),
+
+    ?assertEqual(CurrentBlockHash, maps:get(<<"hash">>, KeyBlock)),
+    ?assertEqual({ok,404,#{<<"reason">> => <<"Chain too short">>}},
+                 get_generation_by_height_sut(CurrentBlockHeight+1)),
+    ok;
+get_generation_by_height(micro_block, Config) ->
+    CurrentBlockHeight = ?config(current_block_height, Config),
+    {ok, 200, #{<<"key_block">> := KeyBlock,
+                <<"micro_blocks">> := [MicroBlockHash]}} = get_generation_by_height_sut(CurrentBlockHeight),
+
+    ?assertEqual(?config(prev_key_block_hash, Config), maps:get(<<"hash">>, KeyBlock)),
+    ?assertEqual(?config(current_block_hash, Config), MicroBlockHash),
+    ?assertEqual({ok,404,#{<<"reason">> => <<"Chain too short">>}},
+                 get_generation_by_height_sut(CurrentBlockHeight+1)),
+    ok.
+
 get_generation_current_sut() ->
     Host = external_address(),
     http_request(Host, get, "generations/current", []).
+
+get_generation_by_hash_sut(Hash) ->
+    Host = external_address(),
+    http_request(Host, get, "generations/hash/" ++ http_uri:encode(Hash), []).
+
+get_generation_by_height_sut(Height) ->
+    Host = external_address(),
+    http_request(Host, get, "generations/height/" ++ integer_to_list(Height), []).
 
 %% enpoints
 

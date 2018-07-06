@@ -322,6 +322,60 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /generations/hash/{hash}:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetGenerationsByHash
+      description: 'Get generation by key block hash'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: hash
+          description: 'Hash of the key block in generation'
+          required: true
+          type : string
+      responses:
+        '200':
+          description: Returns current generations
+          schema:
+            $ref: '#/definitions/Generation'
+        '400':
+          description: Generation not found
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Generation not found
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /generations/height/{height}:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetGenerationsByHeight
+      description: 'Get generation by key block height'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: height
+          description: 'Hash of the key block in generation'
+          required: true
+          type : integer
+      responses:
+        '200':
+          description: Returns current generations
+          schema:
+            $ref: '#/definitions/Generation'
+        '404':
+          description: Generation not found
+          schema:
+            $ref: '#/definitions/Error'
+      security:
   /header-by-hash:
     get:
       tags:

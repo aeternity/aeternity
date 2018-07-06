@@ -365,6 +365,70 @@
         }
       }
     },
+    "/generations/hash/{hash}" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get generation by key block hash",
+        "operationId" : "GetGenerationsByHash",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "hash",
+          "in" : "path",
+          "description" : "Hash of the key block in generation",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Returns current generations",
+            "schema" : {
+              "$ref" : "#/definitions/Generation"
+            }
+          },
+          "400" : {
+            "description" : "Generation not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Generation not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/generations/height/{height}" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get generation by key block height",
+        "operationId" : "GetGenerationsByHeight",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "height",
+          "in" : "path",
+          "description" : "Hash of the key block in generation",
+          "required" : true,
+          "type" : "integer"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Returns current generations",
+            "schema" : {
+              "$ref" : "#/definitions/Generation"
+            }
+          },
+          "404" : {
+            "description" : "Generation not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/header-by-hash" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
