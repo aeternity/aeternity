@@ -31,7 +31,8 @@
          channel_reserve/1,
          lock_period/1,
          responder/1,
-         responder_amount/1]).
+         responder_amount/1,
+         delegates/1]).
 
 % snapshot callbacks
 -export([channel_id/1,
@@ -57,6 +58,7 @@
           lock_period        :: non_neg_integer(),
           ttl                :: aetx:tx_ttl(),
           fee                :: non_neg_integer(),
+          delegates          :: [aec_id:id()],
           state_hash         :: binary(),
           nonce              :: non_neg_integer()
          }).
@@ -82,6 +84,8 @@ new(#{initiator          := InitiatorPubKey,
       state_hash         := StateHash,
       nonce              := Nonce} = Args) ->
     true = aesc_utils:check_state_hash_size(StateHash),
+    Delegates0 = maps:get(delegates, Args, []),
+    Delegates = [aec_id:create(account, D) || D <- Delegates0],
     Tx = #channel_create_tx{initiator          = aec_id:create(account, InitiatorPubKey),
                             responder          = aec_id:create(account, ResponderPubKey),
                             initiator_amount   = InitiatorAmount,
@@ -90,6 +94,7 @@ new(#{initiator          := InitiatorPubKey,
                             lock_period        = LockPeriod,
                             ttl                = maps:get(ttl, Args, 0),
                             fee                = Fee,
+                            delegates          = Delegates,
                             state_hash         = StateHash,
                             nonce              = Nonce},
     {ok, aetx:new(?MODULE, Tx)}.
@@ -178,6 +183,7 @@ serialize(#channel_create_tx{initiator          = InitiatorId,
                              lock_period        = LockPeriod,
                              ttl                = TTL,
                              fee                = Fee,
+                             delegates          = Delegates,
                              state_hash         = StateHash,
                              nonce              = Nonce}) ->
     {version(),
@@ -189,6 +195,7 @@ serialize(#channel_create_tx{initiator          = InitiatorId,
      , {lock_period       , LockPeriod}
      , {ttl               , TTL}
      , {fee               , Fee}
+     , {delegates         , Delegates}
      , {state_hash        , StateHash}
      , {nonce             , Nonce}
      ]}.
@@ -203,10 +210,12 @@ deserialize(?CHANNEL_CREATE_TX_VSN,
             , {lock_period       , LockPeriod}
             , {ttl               , TTL}
             , {fee               , Fee}
+            , {delegates         , Delegates}
             , {state_hash        , StateHash}
             , {nonce             , Nonce}]) ->
     account = aec_id:specialize_type(InitiatorId),
     account = aec_id:specialize_type(ResponderId),
+    [account = aec_id:specialize_type(D) || D <- Delegates],
     true = aesc_utils:check_state_hash_size(StateHash),
     #channel_create_tx{initiator          = InitiatorId,
                        initiator_amount   = InitiatorAmount,
@@ -216,6 +225,7 @@ deserialize(?CHANNEL_CREATE_TX_VSN,
                        lock_period        = LockPeriod,
                        ttl                = TTL,
                        fee                = Fee,
+                       delegates          = Delegates,
                        state_hash         = StateHash,
                        nonce              = Nonce}.
 
@@ -238,6 +248,7 @@ for_client(#channel_create_tx{initiator_amount   = InitiatorAmount,
       <<"lock_period">>        => LockPeriod,
       <<"nonce">>              => Nonce,
       <<"ttl">>                => TTL,
+      <<"delegates">>          => [aec_base58c:encode(account_pubkey, D) || D <- delegates(Tx)],
       <<"state_hash">>         => aec_base58c:encode(state, StateHash),
       <<"fee">>                => Fee}.
 
@@ -250,6 +261,7 @@ serialization_template(?CHANNEL_CREATE_TX_VSN) ->
     , {lock_period       , int}
     , {ttl               , int}
     , {fee               , int}
+    , {delegates         , [id]}
     , {state_hash        , binary}
     , {nonce             , int}
     ].
@@ -293,6 +305,10 @@ updates(#channel_create_tx{}) ->
 
 round(#channel_create_tx{}) ->
     1.
+
+-spec delegates(tx()) -> [aec_keys:pubkey()].
+delegates(#channel_create_tx{delegates = Delegates}) ->
+    [aec_id:specialize(D, account) || D <- Delegates].
 
 %%%===================================================================
 %%% Internal functions

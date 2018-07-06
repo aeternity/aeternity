@@ -166,7 +166,7 @@ check_close_slash_payload(ChannelId, FromPubKey, Payload, PoI, Height, Trees, Ty
                         [fun() -> check_channel_id_in_payload(Channel, PayloadTx) end,
                          fun() -> check_round_in_payload(Channel, PayloadTx) end,
                          fun() -> check_root_hash_in_payload(PayloadTx, PoI) end,
-                         fun() -> is_peer(FromPubKey, SignedState, Trees) end,
+                         fun() -> is_peer_or_delegate(ChannelId, FromPubKey, SignedState, Trees, Type) end,
                          fun() -> aetx_sign:verify(SignedState, Trees) end,
                          fun() -> check_peers_and_amounts_in_poi(Channel, PoI) end
                         ],
@@ -192,6 +192,24 @@ check_peers_and_amounts_in_poi(Channel, PoI) ->
             end
     end.
 
+is_peer_or_delegate(ChannelId, FromPubKey, SignedState, Trees, Type) ->
+    case is_peer(FromPubKey, SignedState, Trees) of
+        ok -> ok;
+        {error, account_not_peer} = E0 ->
+            case is_delegatable_tx_type(Type) of
+                true ->
+                    case is_delegate(ChannelId, FromPubKey, Trees) of
+                        ok -> ok;
+                        {error, account_not_delegate} ->
+                            {error, account_not_peer_or_delegate};
+                        {error,_} = E ->
+                            E
+                    end;
+                false ->
+                    E0
+            end
+    end.
+
 is_peer(FromPubKey, SignedState, Trees) ->
     Tx = aetx_sign:tx(SignedState),
     case aetx:signers(Tx, Trees) of
@@ -201,6 +219,31 @@ is_peer(FromPubKey, SignedState, Trees) ->
                 false -> {error, account_not_peer}
             end;
         {error, _Reason}=Err -> Err
+    end.
+
+is_delegatable_tx_type(Type) ->
+    lists:member(Type, delegatable_tx_types()).
+
+delegatable_tx_types() ->
+    [slash].
+
+is_delegate(ChannelId, FromPubKey, Trees) ->
+    with_channel(fun(Channel) ->
+                         is_delegate_(Channel, FromPubKey)
+                 end, ChannelId, Trees).
+
+is_delegate_(Channel, FromPubKey) ->
+    case lists:member(FromPubKey, aesc_channels:delegates(Channel)) of
+        true ->
+            ok;
+        false ->
+            {error, account_not_delegate}
+    end.
+
+with_channel(F, ChannelId, Trees) ->
+    case get_channel(ChannelId, Trees) of
+        {ok, Channel}  -> F(Channel);
+        {error, _} = E -> E
     end.
 
 check_channel_id_in_payload(Channel, PayloadTx) ->

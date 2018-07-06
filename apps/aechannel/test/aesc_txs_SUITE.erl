@@ -68,14 +68,30 @@ groups() ->
 
 %%%===================================================================
 
-create(Cfg) ->
-    S = case proplists:get_value(state, Cfg) of
-            undefined -> aesc_test_utils:new_state();
-            State0    -> State0
-        end,
-    create_from_state(S).
+create(Cfg) -> create(Cfg, #{}).
+
+create(Cfg, Spec0) ->
+    create_from_state(get_state(Cfg), Spec0).
+
+get_state(Cfg) ->
+    case proplists:get_value(state, Cfg) of
+        undefined -> aesc_test_utils:new_state();
+        State0    -> State0
+    end.
+
+%% Returns a default spec (w/ delegates) and an updated Cfg.
+new_spec_with_delegates(N, Cfg) when N > 0 ->
+    {Delegates, NewS} =
+        lists:mapfoldl(
+          fun(_, Sx) ->
+                  {_PubKey, _Sx1} = aesc_test_utils:setup_new_account(Sx)
+          end, get_state(Cfg), lists:seq(1, N)),
+    {#{delegates => Delegates}, lists:keystore(state, 1, Cfg, {state, NewS})}.
 
 create_from_state(S) ->
+    create_from_state(S, #{}).
+
+create_from_state(S, DefaultSpec) ->
     {PubKey1, S1} = aesc_test_utils:setup_new_account(S),
     {PubKey2, S2} = aesc_test_utils:setup_new_account(S1),
     PrivKey1 = aesc_test_utils:priv_key(PubKey1, S2),
@@ -84,7 +100,7 @@ create_from_state(S) ->
     %% Create Channel Create tx and apply it on trees
     Trees = aesc_test_utils:trees(S2),
     Height = 1,
-    TxSpec = aesc_test_utils:create_tx_spec(PubKey1, PubKey2, S2),
+    TxSpec = aesc_test_utils:create_tx_spec(PubKey1, PubKey2, DefaultSpec, S2),
     {ok, Tx} = aesc_create_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, [PrivKey1, PrivKey2]),
     {ok, [SignedTx], Trees1} =
@@ -240,8 +256,9 @@ close_solo(Cfg) ->
     Test(PubKey2, PrivKey2),
     ok.
 
-close_solo_negative(Cfg) ->
-    {PubKey1, PubKey2, ChannelId, _, S} = create(Cfg),
+close_solo_negative(Cfg0) ->
+    {Spec0, Cfg} = new_spec_with_delegates(2, Cfg0),
+    {PubKey1, PubKey2, ChannelId, _, S} = create(Cfg, Spec0),
     PrivKey1 = aesc_test_utils:priv_key(PubKey1, S),
     PrivKey2 = aesc_test_utils:priv_key(PubKey2, S),
     Height = 2,
@@ -292,13 +309,10 @@ close_solo_negative(Cfg) ->
     %% Test from account not peer
     {PubKey3, SNotPeer} = aesc_test_utils:setup_new_account(S),
     PrivKey3 = aesc_test_utils:priv_key(PubKey3, SNotPeer),
+    ok = verify_pubkey_cannot_close_solo(PubKey3, ChannelId, Payload, PoI, Height, SNotPeer),
 
-    TxSpecNotPeer = aesc_test_utils:close_solo_tx_spec(ChannelId, PubKey3,
-                                                       Payload, PoI, SNotPeer),
-    TreesNotPeer = aesc_test_utils:trees(SNotPeer),
-    {ok, TxNotPeer} = aesc_close_solo_tx:new(TxSpecNotPeer),
-    {error, account_not_peer} =
-        aetx:check(TxNotPeer, TreesNotPeer, Height, ?PROTOCOL_VERSION),
+    [ok = verify_pubkey_cannot_close_solo(D, ChannelId, Payload, PoI, Height, S)
+     || D <- aesc_channels:delegates(Ch)],
 
     %% Test too high from account nonce
     TxSpecWrongNonce = aesc_test_utils:close_solo_tx_spec(ChannelId, PubKey1,
@@ -387,6 +401,15 @@ close_solo_negative(Cfg) ->
     {error, bad_state_channel_id} =
                 aetx:check(TxPayload2, Trees2, Height + 2,
                            ?PROTOCOL_VERSION),
+    ok.
+
+verify_pubkey_cannot_close_solo(PubKey, ChannelId, Payload, PoI, Height, S) ->
+    TxSpec = aesc_test_utils:close_solo_tx_spec(ChannelId, PubKey,
+                                                Payload, PoI, S),
+    Trees = aesc_test_utils:trees(S),
+    {ok, Tx} = aesc_close_solo_tx:new(TxSpec),
+    {error, account_not_peer} =
+        aetx:check(Tx, Trees, Height, ?PROTOCOL_VERSION),
     ok.
 
 close_solo_payload_create_tx(Cfg) ->
@@ -791,17 +814,18 @@ withdraw_negative(Cfg) ->
     ok.
 
 get_balances(K1, K2, S) ->
-    Acc1 = aesc_test_utils:get_account(K1, S),
-    Acc1Balance = aec_accounts:balance(Acc1),
-    Acc2 = aesc_test_utils:get_account(K2, S),
-    Acc2Balance = aec_accounts:balance(Acc2),
-    {Acc1Balance, Acc2Balance}.
+    {get_balance(K1, S), get_balance(K2, S)}.
+
+get_balance(K, S) ->
+    Acc = aesc_test_utils:get_account(K, S),
+    aec_accounts:balance(Acc).
 
 %%%===================================================================
 %%% Slash
 %%%===================================================================
-slash(Cfg) ->
-    {PubKey1, PubKey2, ChannelId, _, S0} = create(Cfg),
+slash(Cfg0) ->
+    {Spec0, Cfg} = new_spec_with_delegates(2, Cfg0),
+    {PubKey1, PubKey2, ChannelId, _, S0} = create(Cfg, Spec0),
     PrivKey1 = aesc_test_utils:priv_key(PubKey1, S0),
     PrivKey2 = aesc_test_utils:priv_key(PubKey2, S0),
     Height = 2,
@@ -841,21 +865,28 @@ slash(Cfg) ->
             S1 = aesc_test_utils:set_trees(Trees1, S),
 
             {Acc1Balance1, Acc2Balance1} = get_balances(PubKey1, PubKey2, S1),
-            case From =:= PubKey1 of
-                true ->
+            case From of
+                PubKey1 ->
                     Acc1Balance1 = Acc1Balance0 - Fee,
                     Acc2Balance1 = Acc2Balance0;
-                false ->
+                PubKey2 ->
                     Acc1Balance1 = Acc1Balance0,
-                    Acc2Balance1 = Acc2Balance0 - Fee
+                    Acc2Balance1 = Acc2Balance0 - Fee;
+                Delegate ->
+                    Bal0 = get_balance(Delegate, S),
+                    Bal1 = get_balance(Delegate, S1),
+                    Bal1 = Bal0 - Fee
             end
         end,
     Test(PubKey1, PrivKey1),
     Test(PubKey2, PrivKey2),
+    [Test(D, PrivKeyD) || D <- aesc_channels:delegates(Ch),
+                          PrivKeyD <- [aesc_test_utils:priv_key(D, S)]],
     ok.
 
-slash_negative(Cfg) ->
-    {PubKey1, PubKey2, ChannelId, _, S0} = create(Cfg),
+slash_negative(Cfg0) ->
+    {Spec0, Cfg} = new_spec_with_delegates(2, Cfg0),
+    {PubKey1, PubKey2, ChannelId, _, S0} = create(Cfg, Spec0),
     PrivKey1 = aesc_test_utils:priv_key(PubKey1, S0),
     PrivKey2 = aesc_test_utils:priv_key(PubKey2, S0),
 
@@ -929,7 +960,7 @@ slash_negative(Cfg) ->
                                                   PoI, SNotPeer),
     TreesNotPeer = aesc_test_utils:trees(SNotPeer),
     {ok, TxNotPeer} = aesc_slash_tx:new(TxSpecNotPeer),
-    {error, account_not_peer} =
+    {error, account_not_peer_or_delegate} =
         aetx:check(TxNotPeer, TreesNotPeer, Height, ?PROTOCOL_VERSION),
 
     %% Test too high from account nonce
@@ -995,8 +1026,7 @@ slash_negative(Cfg) ->
     TestPayloadWrongPeers(PubKey2, PubKey3, [PrivKey2, PrivKey3]),
 
     %% Test existing channel's payload
-    Cfg2 = lists:keyreplace(state, 1, Cfg, {state, S}),
-    {PubKey21, PubKey22, ChannelId2, _, S2} = create(Cfg2),
+    {PubKey21, PubKey22, ChannelId2, _, S2} = create(Cfg0),  % no pre-stuffed delegates!
     Trees2 = aens_test_utils:trees(S2),
     PrivKey21 = aesc_test_utils:priv_key(PubKey21, S2),
     PrivKey22 = aesc_test_utils:priv_key(PubKey22, S2),
