@@ -543,7 +543,7 @@ jobs:
       - DEPLOY_DOWNTIME: 1800 #15M
     steps: *deploy_steps
 
-  github_release_osx:
+  upload_packages_osx:
     <<: *container_config
     steps:
       - checkout
@@ -551,7 +551,7 @@ jobs:
           at: *packages_workspace
       - *upload_github_release_asset
 
-  github_release_linux:
+  upload_packages_linux:
     <<: *container_config
     steps:
       - checkout
@@ -746,7 +746,7 @@ workflows:
             tags:
               only: /^v.*$/
 
-      - github_release_linux:
+      - upload_packages_linux:
           requires:
             - eunit
             - static_analysis
@@ -758,7 +758,7 @@ workflows:
             tags:
               only: /^v.*$/
 
-      - github_release_osx:
+      - upload_packages_osx:
           requires:
             - eunit
             - static_analysis
