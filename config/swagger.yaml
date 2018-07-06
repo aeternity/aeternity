@@ -42,7 +42,7 @@ paths:
       tags:
         - external
         - gossip
-      operationId: GetTop
+      operationId: GetTopBlock
       description: 'Get the top block header'
       produces:
         - application/json
@@ -58,7 +58,7 @@ paths:
       tags:
         - external
         - gossip
-      operationId: GetKeyBlocksCurrent
+      operationId: GetCurrentKeyBlock
       description: 'Get the current key block'
       produces:
         - application/json
@@ -74,7 +74,7 @@ paths:
       tags:
         - external
         - gossip
-      operationId: GetKeyBlocksCurrentHash
+      operationId: GetCurrentKeyBlockHash
       description: 'Get the current key block hash'
       produces:
         - application/json
@@ -90,7 +90,7 @@ paths:
       tags:
         - external
         - gossip
-      operationId: GetKeyBlocksCurrentHeight
+      operationId: GetCurrentKeyBlockHeight
       description: 'Get the current key block height'
       produces:
         - application/json
@@ -105,7 +105,7 @@ paths:
       tags:
         - external
         - gossip
-      operationId: GetKeyBlocksPending
+      operationId: GetPendingKeyBlock
       description: 'Get the pending key block'
       produces:
         - application/json
@@ -120,37 +120,12 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
-  /key-blocks/height/{height}:
-    get:
-      tags:
-        - external
-        - gossip
-      operationId: GetKeyBlocksByHeight
-      description: 'Get key block by height'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: height
-          description: 'Height of the block to fetch'
-          required: true
-          type : integer
-      responses:
-        '200':
-          description: Returns key block
-          schema:
-            $ref: '#/definitions/GenericBlock'
-        '404':
-          description: Block not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
   /key-blocks/hash/{hash}:
     get:
       tags:
         - external
         - gossip
-      operationId: GetKeyBlocksByHash
+      operationId: GetKeyBlockByHash
       description: 'Get key block by hash'
       produces:
         - application/json
@@ -174,12 +149,37 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /key-blocks/height/{height}:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetKeyBlockByHeight
+      description: 'Get key block by height'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: height
+          description: 'Height of the block to fetch'
+          required: true
+          type : integer
+      responses:
+        '200':
+          description: Returns key block
+          schema:
+            $ref: '#/definitions/GenericBlock'
+        '404':
+          description: Block not found
+          schema:
+            $ref: '#/definitions/Error'
+      security:
   /micro-blocks/hash/{hash}/header:
     get:
       tags:
         - external
         - gossip
-      operationId: GetMicroBlocksHeaderByHash
+      operationId: GetMicroBlockHeaderByHash
       description: 'Get micro block header by hash'
       produces:
         - application/json
@@ -208,7 +208,7 @@ paths:
       tags:
         - external
         - gossip
-      operationId: GetMicroBlocksTransactionsByHash
+      operationId: GetMicroBlockTransactionsByHash
       description: 'Get micro block transactions by hash'
       produces:
         - application/json
@@ -237,7 +237,7 @@ paths:
       tags:
         - external
         - gossip
-      operationId: GetMicroBlocksTransactionsByHashByIndex
+      operationId: GetMicroBlockTransactionByHashAndIndex
       description: 'Get micro block transaction by hash and index'
       produces:
         - application/json
@@ -272,7 +272,7 @@ paths:
       tags:
         - external
         - gossip
-      operationId: GetMicroBlocksTransactionsCountByHash
+      operationId: GetMicroBlockTransactionsCountByHash
       description: 'Get micro block transaction count by hash'
       produces:
         - application/json
@@ -307,7 +307,7 @@ paths:
       tags:
         - external
         - gossip
-      operationId: GetGenerationsCurrent
+      operationId: GetCurrentGeneration
       description: 'Get the current generation'
       produces:
         - application/json
@@ -327,7 +327,7 @@ paths:
       tags:
         - external
         - gossip
-      operationId: GetGenerationsByHash
+      operationId: GetGenerationByHash
       description: 'Get generation by key block hash'
       produces:
         - application/json
@@ -356,7 +356,7 @@ paths:
       tags:
         - external
         - gossip
-      operationId: GetGenerationsByHeight
+      operationId: GetGenerationByHeight
       description: 'Get generation by key block height'
       produces:
         - application/json
@@ -1763,7 +1763,7 @@ paths:
       tags:
         - external
         - chain
-      operationId: GetKeyBlockByHeight
+      operationId: GetKeyBlockByHeightObsolete
       description: 'Get a key block by height'
       produces:
         - application/json

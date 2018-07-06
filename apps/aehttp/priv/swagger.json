@@ -47,7 +47,7 @@
       "get" : {
         "tags" : [ "external", "gossip" ],
         "description" : "Get the top block header",
-        "operationId" : "GetTop",
+        "operationId" : "GetTopBlock",
         "produces" : [ "application/json" ],
         "parameters" : [ ],
         "responses" : {
@@ -64,7 +64,7 @@
       "get" : {
         "tags" : [ "external", "gossip" ],
         "description" : "Get the current key block",
-        "operationId" : "GetKeyBlocksCurrent",
+        "operationId" : "GetCurrentKeyBlock",
         "produces" : [ "application/json" ],
         "parameters" : [ ],
         "responses" : {
@@ -81,7 +81,7 @@
       "get" : {
         "tags" : [ "external", "gossip" ],
         "description" : "Get the current key block hash",
-        "operationId" : "GetKeyBlocksCurrentHash",
+        "operationId" : "GetCurrentKeyBlockHash",
         "produces" : [ "application/json" ],
         "parameters" : [ ],
         "responses" : {
@@ -98,7 +98,7 @@
       "get" : {
         "tags" : [ "external", "gossip" ],
         "description" : "Get the current key block height",
-        "operationId" : "GetKeyBlocksCurrentHeight",
+        "operationId" : "GetCurrentKeyBlockHeight",
         "produces" : [ "application/json" ],
         "parameters" : [ ],
         "responses" : {
@@ -112,7 +112,7 @@
       "get" : {
         "tags" : [ "external", "gossip" ],
         "description" : "Get the pending key block",
-        "operationId" : "GetKeyBlocksPending",
+        "operationId" : "GetPendingKeyBlock",
         "produces" : [ "application/json" ],
         "parameters" : [ ],
         "responses" : {
@@ -131,40 +131,11 @@
         }
       }
     },
-    "/key-blocks/height/{height}" : {
-      "get" : {
-        "tags" : [ "external", "gossip" ],
-        "description" : "Get key block by height",
-        "operationId" : "GetKeyBlocksByHeight",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "height",
-          "in" : "path",
-          "description" : "Height of the block to fetch",
-          "required" : true,
-          "type" : "integer"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "Returns key block",
-            "schema" : {
-              "$ref" : "#/definitions/GenericBlock"
-            }
-          },
-          "404" : {
-            "description" : "Block not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
     "/key-blocks/hash/{hash}" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
         "description" : "Get key block by hash",
-        "operationId" : "GetKeyBlocksByHash",
+        "operationId" : "GetKeyBlockByHash",
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "hash",
@@ -195,11 +166,40 @@
         }
       }
     },
+    "/key-blocks/height/{height}" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get key block by height",
+        "operationId" : "GetKeyBlockByHeight",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "height",
+          "in" : "path",
+          "description" : "Height of the block to fetch",
+          "required" : true,
+          "type" : "integer"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Returns key block",
+            "schema" : {
+              "$ref" : "#/definitions/GenericBlock"
+            }
+          },
+          "404" : {
+            "description" : "Block not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/micro-blocks/hash/{hash}/header" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
         "description" : "Get micro block header by hash",
-        "operationId" : "GetMicroBlocksHeaderByHash",
+        "operationId" : "GetMicroBlockHeaderByHash",
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "hash",
@@ -234,7 +234,7 @@
       "get" : {
         "tags" : [ "external", "gossip" ],
         "description" : "Get micro block transactions by hash",
-        "operationId" : "GetMicroBlocksTransactionsByHash",
+        "operationId" : "GetMicroBlockTransactionsByHash",
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "hash",
@@ -269,7 +269,7 @@
       "get" : {
         "tags" : [ "external", "gossip" ],
         "description" : "Get micro block transaction by hash and index",
-        "operationId" : "GetMicroBlocksTransactionsByHashByIndex",
+        "operationId" : "GetMicroBlockTransactionByHashAndIndex",
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "hash",
@@ -311,7 +311,7 @@
       "get" : {
         "tags" : [ "external", "gossip" ],
         "description" : "Get micro block transaction count by hash",
-        "operationId" : "GetMicroBlocksTransactionsCountByHash",
+        "operationId" : "GetMicroBlockTransactionsCountByHash",
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "hash",
@@ -346,7 +346,7 @@
       "get" : {
         "tags" : [ "external", "gossip" ],
         "description" : "Get the current generation",
-        "operationId" : "GetGenerationsCurrent",
+        "operationId" : "GetCurrentGeneration",
         "produces" : [ "application/json" ],
         "parameters" : [ ],
         "responses" : {
@@ -369,7 +369,7 @@
       "get" : {
         "tags" : [ "external", "gossip" ],
         "description" : "Get generation by key block hash",
-        "operationId" : "GetGenerationsByHash",
+        "operationId" : "GetGenerationByHash",
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "hash",
@@ -404,7 +404,7 @@
       "get" : {
         "tags" : [ "external", "gossip" ],
         "description" : "Get generation by key block height",
-        "operationId" : "GetGenerationsByHeight",
+        "operationId" : "GetGenerationByHeight",
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "height",
@@ -2088,7 +2088,7 @@
       "get" : {
         "tags" : [ "external", "chain" ],
         "description" : "Get a key block by height",
-        "operationId" : "GetKeyBlockByHeight",
+        "operationId" : "GetKeyBlockByHeightObsolete",
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "height",

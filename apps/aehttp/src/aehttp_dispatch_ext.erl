@@ -43,40 +43,40 @@
         Context :: #{}
        ) -> {Status :: cowboy:http_status(), Headers :: list(), Body :: map()}.
 
-handle_request('GetTop', _, _Context) ->
+handle_request('GetTopBlock', _, _Context) ->
     {ok, TopBlock} = aehttp_logic:get_top(),
     EncodedHash = aehttp_api_parser:encode(block_hash, TopBlock),
     EncodedHeader = aehttp_api_parser:encode(header, TopBlock),
     {200, [], maps:put(<<"hash">>, EncodedHash, EncodedHeader)};
 
-handle_request('GetKeyBlocksCurrent', Req, _Context) ->
+handle_request('GetCurrentKeyBlock', Req, _Context) ->
     get_block(fun() -> aec_chain:top_key_block() end, Req, json);
 
-handle_request('GetKeyBlocksCurrentHash', _, _Context) ->
+handle_request('GetCurrentKeyBlockHash', _, _Context) ->
     Hash = aec_chain:top_key_block_hash(),
     EncodedHash = aec_base58c:encode(block_hash, Hash),
     {200, [], EncodedHash};
 
-handle_request('GetKeyBlocksCurrentHeight', _, _Context) ->
+handle_request('GetCurrentKeyBlockHeight', _, _Context) ->
     TopBlock = aec_chain:top_block(),
     Height = aec_blocks:height(TopBlock),
     {200, [], Height};
 
-handle_request('GetKeyBlocksPending', Req, _Context) ->
+handle_request('GetPendingKeyBlock', Req, _Context) ->
     get_block(fun aehttp_logic:get_block_pending/0, Req, json, false);
 
-handle_request('GetKeyBlocksByHeight', Params, _Context) ->
-    Height = maps:get(height, Params),
-    get_block(fun() -> aehttp_logic:get_key_block_by_height(Height) end, Params, json);
-
-handle_request('GetKeyBlocksByHash', Params, _Context) ->
+handle_request('GetKeyBlockByHash', Params, _Context) ->
     case aec_base58c:safe_decode(block_hash, maps:get('hash', Params)) of
         {error, _} -> {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
             get_block(fun() -> aehttp_logic:get_key_block_by_hash(Hash) end, Params, json)
     end;
 
-handle_request('GetMicroBlocksHeaderByHash', Params, _Context) ->
+handle_request('GetKeyBlockByHeight', Params, _Context) ->
+    Height = maps:get(height, Params),
+    get_block(fun() -> aehttp_logic:get_key_block_by_height(Height) end, Params, json);
+
+handle_request('GetMicroBlockHeaderByHash', Params, _Context) ->
     case aec_base58c:safe_decode(block_hash, maps:get(hash, Params)) of
         {ok, Hash} ->
             case aehttp_logic:get_micro_block_by_hash(Hash) of
@@ -90,7 +90,7 @@ handle_request('GetMicroBlocksHeaderByHash', Params, _Context) ->
             {400, [], #{reason => <<"Invalid hash">>}}
     end;
 
-handle_request('GetMicroBlocksTransactionsByHash', Params, _Context) ->
+handle_request('GetMicroBlockTransactionsByHash', Params, _Context) ->
     case aec_base58c:safe_decode(block_hash, maps:get(hash, Params)) of
         {ok, Hash} ->
             case aehttp_logic:get_micro_block_by_hash(Hash) of
@@ -108,7 +108,7 @@ handle_request('GetMicroBlocksTransactionsByHash', Params, _Context) ->
             {400, [], #{reason => <<"Invalid hash">>}}
     end;
 
-handle_request('GetMicroBlocksTransactionsByHashByIndex', Params, _Context) ->
+handle_request('GetMicroBlockTransactionByHashAndIndex', Params, _Context) ->
     HashDec = aec_base58c:safe_decode(block_hash, maps:get(hash, Params)),
     IndexDec = maps:get(index, Params),
     case {HashDec, IndexDec} of
@@ -134,7 +134,7 @@ handle_request('GetMicroBlocksTransactionsByHashByIndex', Params, _Context) ->
     end;
 
 
-handle_request('GetMicroBlocksTransactionsCountByHash', Params, _Context) ->
+handle_request('GetMicroBlockTransactionsCountByHash', Params, _Context) ->
     case aec_base58c:safe_decode(block_hash, maps:get(hash, Params)) of
         {ok, Hash} ->
             case aehttp_logic:get_micro_block_by_hash(Hash) of
@@ -147,15 +147,15 @@ handle_request('GetMicroBlocksTransactionsCountByHash', Params, _Context) ->
             {400, [], #{reason => <<"Invalid hash">>}}
     end;
 
-handle_request('GetGenerationsCurrent', _, _Context) ->
+handle_request('GetCurrentGeneration', _, _Context) ->
     get_generation(aec_chain:top_key_block_hash());
 
-handle_request('GetGenerationsByHash', Params, _Context) ->
+handle_request('GetGenerationByHash', Params, _Context) ->
     case aec_base58c:safe_decode(block_hash, maps:get('hash', Params)) of
         {error, _} -> {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} -> get_generation(Hash)
     end;
-handle_request('GetGenerationsByHeight', Params, _Context) ->
+handle_request('GetGenerationByHeight', Params, _Context) ->
     Height = maps:get('height', Params),
     case aec_chain_state:get_key_block_hash_at_height(Height) of
         error -> {404, [], #{reason => <<"Chain too short">>}};
@@ -171,7 +171,7 @@ handle_request('GetBlockLatest', Req, _Context) ->
 handle_request('GetBlockPending', Req, _Context) ->
     get_block(fun aehttp_logic:get_block_pending/0, Req, json, false);
 
-handle_request('GetKeyBlockByHeight', Req, _Context) ->
+handle_request('GetKeyBlockByHeightObsolete', Req, _Context) ->
     Height = maps:get('height', Req),
     get_block(fun() -> aehttp_logic:get_key_block_by_height(Height) end, Req, json);
 
