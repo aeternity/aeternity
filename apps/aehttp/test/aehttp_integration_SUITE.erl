@@ -21,8 +21,8 @@
 
 %% off chain endpoints
 -export(
-   [test_encode_decode_sophia_data/1,
-    test_encode_decode_sophia_data2/1,
+   [test_decode_sophia_data/1,
+    test_decode_sophia_data2/1,
     broken_decode_sophia_data/1
    ]).
 
@@ -228,8 +228,8 @@ groups() ->
                                   ]},
      {off_chain_endpoints, [],
       [
-       test_encode_decode_sophia_data,
-       test_encode_decode_sophia_data2,
+       test_decode_sophia_data,
+       test_decode_sophia_data2,
        broken_decode_sophia_data
       ]},
      {external_endpoints, [sequence],
@@ -500,8 +500,8 @@ end_per_testcase(_Case, Config) ->
 %% ============================================================
 
 %% off chain endpoints
-test_encode_decode_sophia_data(_Config) ->
-    CallEncodedInteger42 = encode_data(<<"(42,2)">>),
+test_decode_sophia_data(_Config) ->
+    CallEncodedInteger42 = to_binary({<<"foo">>, {42, 2}}),
     Decoded = decode_data(<<"(string, (int, int))">>,
                           CallEncodedInteger42),
     #{<<"data">> :=
@@ -521,10 +521,10 @@ test_encode_decode_sophia_data(_Config) ->
 
     ok.
 
-test_encode_decode_sophia_data2(_Config) ->
-    CD =            <<"(\"Hello\", [1,2,3], Some(true))">>,
+test_decode_sophia_data2(_Config) ->
+    CD = {<<"foo">>, {<<"Hello">>, [1, 2, 3], {some, 1}}},
     Type = <<"(string, (string, list(int), option(bool)))">>,
-    CallEncoded = encode_data(CD),
+    CallEncoded = to_binary(CD),
     Decoded = decode_data(Type, CallEncoded),
     #{<<"data">> :=
           #{ <<"type">> := <<"tuple">>
@@ -549,10 +549,16 @@ test_encode_decode_sophia_data2(_Config) ->
     ok.
 
 broken_decode_sophia_data(_Config) ->
-    %% Sanity check on happy path.
-    D = encode_data(<<"bar">>, <<"42">>),
+    D = to_binary({<<"bar">>, 42}),
     T = <<"(string, int)">>,
-    {ok, 200, #{<<"data">> := _}} = get_contract_decode_data(#{'sophia-type' => T, data => D}),
+    %% Happy path.
+    {ok, 200,
+     #{<<"data">> :=
+           #{<<"type">> := <<"tuple">>,
+             <<"value">> :=
+                 [#{<<"type">> := <<"string">>, <<"value">> := <<"bar">>},
+                  #{<<"type">> := <<"word">>  , <<"value">> := 42} ]}}
+    } = get_contract_decode_data(#{'sophia-type' => T, data => D}),
     %% Missing field.
     lists:foreach(
       fun({Req, ExpMissingField}) ->
@@ -596,26 +602,14 @@ broken_decode_sophia_data(_Config) ->
            #{<<"type">> := <<"tuple">>,
              <<"value">> :=
                  [#{<<"type">> := <<"string">>, <<"value">> := <<"bar">>},
-                  #{<<"type">> := <<"word">>  , <<"value">> := 192} ]}}
-    } = get_contract_decode_data(#{'sophia-type' => <<"(string, (int))">>, data => D}),
-    {ok, 200,
-     #{<<"data">> :=
-           #{<<"type">> := <<"tuple">>,
-             <<"value">> :=
-                 [#{<<"type">> := <<"string">>, <<"value">> := <<"bar">>},
-                  #{<<"type">> := <<"word">>, <<"value">> := 192} ]}}
-    } = get_contract_decode_data(#{'sophia-type' => T, data => encode_data(<<"bar">>, <<"(42)">>)}),
+                  #{<<"type">> := <<"word">>, <<"value">> := 160} ]}}
+    } = get_contract_decode_data(#{'sophia-type' => T, data => to_binary({<<"bar">>, {42}})}),
     ok.
 
-
-encode_data(Term) ->
-    encode_data(<<"foo">>, Term).
-
-encode_data(Function, Term) ->
-    {ok, HexData} = aect_sophia:encode_call_data(<<>>,
-                                              Function,
-                                              Term),
-    HexData.
+%% Used in contract-decode endpoint tests.
+to_binary(Term) ->
+    BaseAddr = 0, %% Decode expects base address 0 (since return values have base address 0)
+    aeu_hex:hexstring_encode(aeso_data:to_binary(Term, BaseAddr)).
 
 decode_data(Type, EncodedData) ->
     {ok, 200, Data} =
