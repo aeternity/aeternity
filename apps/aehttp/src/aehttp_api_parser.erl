@@ -2,6 +2,7 @@
 
 -export([encode/2,
          encode/3,
+         encode_client_readable_key_block/2,
          encode_client_readable_block/2,
          decode/2]).
 
@@ -20,6 +21,11 @@
                                     fun decode_miner/1}}]).
 -define(OBJECTS, #{header_map => ?HEADER_OBJ,
                    block_map => [ {<<"transactions">>, {list, tx}} | ?HEADER_OBJ],
+                   block_hash =>  {fun(Block) ->
+                                       {ok, Hash} = aec_blocks:hash_internal_representation(Block),
+                                       aec_base58c:encode(block_hash, Hash)
+                                   end,
+                                   fun(_) -> {error, not_implemented} end},
                    block => {fun(Block) ->
                                 BMap = aehttp_logic:cleanup_genesis(
                                             aec_blocks:serialize_to_map(Block)),
@@ -53,8 +59,20 @@
                                     Err -> Err
                                 end
                             end},
+                   client_key_block => {fun(Block, TxEncoding) ->
+                                                Resp = aehttp_logic:cleanup_genesis(
+                                                  encode_block_for_client(Block, TxEncoding)),
+                                                Resp#{
+                                                  data_schema => encode(tx_encoding, TxEncoding),
+                                                  hash => encode(block_hash, Block)}
+                                        end,
+                                        fun(_) -> {error, not_implemented} end},
                    client_block => {fun encode_block_for_client/2,
                                     fun(_) -> {error, not_implemented} end},
+                   tx_encoding => {fun(message_pack) -> <<"BlockWithMsgPackTxs">>;
+                                      (json) -> <<"BlockWithJSONTxs">>
+                                   end,
+                                   fun(_) -> {error, not_implemented} end},
                    tx => {fun(Tx) ->
                               #{<<"tx">> => aec_base58c:encode(transaction,
                                   aetx_sign:serialize_to_binary(Tx))}
@@ -86,6 +104,9 @@
 -spec encode(atom(), term() | list()) -> map() | list().
 encode(ObjectType, Data) ->
     encode(ObjectType, Data, []).
+
+encode_client_readable_key_block(Block, TxEncoding) ->
+    encode(client_key_block, Block, TxEncoding).
 
 encode_client_readable_block(Block, TxEncoding) ->
     encode(client_block, Block, TxEncoding).

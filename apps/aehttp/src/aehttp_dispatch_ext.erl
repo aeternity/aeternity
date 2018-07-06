@@ -45,8 +45,7 @@
 
 handle_request('GetTop', _, _Context) ->
     {ok, TopBlock} = aehttp_logic:get_top(),
-    {ok, Hash} = aec_blocks:hash_internal_representation(TopBlock),
-    EncodedHash = aec_base58c:encode(block_hash, Hash),
+    EncodedHash = aehttp_api_parser:encode(block_hash, TopBlock),
     EncodedHeader = aehttp_api_parser:encode(header, TopBlock),
     {200, [], maps:put(<<"hash">>, EncodedHash, EncodedHeader)};
 
@@ -145,6 +144,18 @@ handle_request('GetMicroBlocksTransactionsCountByHash', Params, _Context) ->
             end;
         {error, _} ->
             {400, [], #{reason => <<"Invalid hash">>}}
+    end;
+
+handle_request('GetGenerationsCurrent', _Req, _Context) ->
+    TopKeyBlockHash = aec_chain:top_key_block_hash(),
+    case aec_chain:get_generation(TopKeyBlockHash) of
+        error -> {404, [], #{reason => <<"Block not found">>}};
+        {ok, KeyBlock, MicroBlocks} ->
+            Struct = #{
+              key_block => aehttp_api_parser:encode_client_readable_key_block(KeyBlock, json),
+              micro_blocks => [ aehttp_api_parser:encode(block_hash, Micro) || Micro <- MicroBlocks ]
+            },
+            {200, [], Struct}
     end;
 
 handle_request('GetBlockGenesis', Req, _Context) ->

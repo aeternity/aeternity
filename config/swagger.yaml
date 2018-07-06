@@ -302,6 +302,26 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /generations/current:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetGenerationsCurrent
+      description: 'Get the current generation'
+      produces:
+        - application/json
+      parameters:
+      responses:
+        '200':
+          description: Returns current generations
+          schema:
+            $ref: '#/definitions/Generation'
+        '404':
+          description: Generation not found
+          schema:
+            $ref: '#/definitions/Error'
+      security:
   /header-by-hash:
     get:
       tags:
@@ -3429,6 +3449,17 @@ definitions:
         type: string
     required:
     - poi
+  Generation:
+    type: object
+    properties:
+      key_block:
+        $ref: '#/definitions/GenericBlock'
+      micro_blocks:
+        type: array
+        items:
+            $ref: '#/definitions/EncodedHash'
+    required:
+    - tx
 
 externalDocs:
   description: Find out more about Aeternity

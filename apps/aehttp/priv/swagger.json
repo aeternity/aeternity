@@ -342,6 +342,29 @@
         }
       }
     },
+    "/generations/current" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get the current generation",
+        "operationId" : "GetGenerationsCurrent",
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Returns current generations",
+            "schema" : {
+              "$ref" : "#/definitions/Generation"
+            }
+          },
+          "404" : {
+            "description" : "Generation not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/header-by-hash" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
@@ -4489,6 +4512,24 @@
       },
       "example" : {
         "poi" : "poi"
+      }
+    },
+    "Generation" : {
+      "type" : "object",
+      "properties" : {
+        "key_block" : {
+          "$ref" : "#/definitions/GenericBlock"
+        },
+        "micro_blocks" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/EncodedHash"
+          }
+        }
+      },
+      "example" : {
+        "micro_blocks" : [ { }, { } ],
+        "key_block" : ""
       }
     },
     "inline_response_200" : {

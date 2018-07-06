@@ -50,6 +50,11 @@
     get_micro_block_transaction_by_hash_and_index/1
    ]).
 
+-export(
+    [
+     get_generation_current/1
+    ]).
+
 %% test case exports
 %% external endpoints
 -export(
@@ -279,7 +284,8 @@ groups() ->
        get_micro_block_header_by_hash,
        get_micro_block_transactions_by_hash,
        get_micro_block_transactions_count_by_hash,
-       get_micro_block_transaction_by_hash_and_index
+       get_micro_block_transaction_by_hash_and_index,
+       get_generation_current
       ]},
      {off_chain_endpoints, [],
       [
@@ -970,6 +976,30 @@ wait_for_key_block_candidate(N) ->
             timer:sleep(10),
             wait_for_key_block_candidate(N)
     end.
+
+%% /generations/*
+
+get_generation_current(Config) ->
+    get_generation_current(?config(current_block_type, Config), Config).
+
+get_generation_current(CurrentBlockType, Config) when
+      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    CurrentBlockHash = ?config(current_block_hash, Config),
+    {ok, 200, #{<<"key_block">> := KeyBlock,
+                <<"micro_blocks">> := []}} = get_generation_current_sut(),
+    ?assertEqual(CurrentBlockHash, maps:get(<<"hash">>, KeyBlock)),
+    ok;
+get_generation_current(micro_block, Config) ->
+    {ok, 200, #{<<"key_block">> := KeyBlock,
+                <<"micro_blocks">> := [MicroBlockHash]}} = get_generation_current_sut(),
+
+    ?assertEqual(?config(prev_key_block_hash, Config), maps:get(<<"hash">>, KeyBlock)),
+    ?assertEqual(?config(current_block_hash, Config), MicroBlockHash),
+    ok.
+
+get_generation_current_sut() ->
+    Host = external_address(),
+    http_request(Host, get, "generations/current", []).
 
 %% enpoints
 
