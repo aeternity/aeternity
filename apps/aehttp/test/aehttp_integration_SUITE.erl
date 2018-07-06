@@ -773,12 +773,12 @@ get_current_key_block_hash(Config) ->
 get_current_key_block_hash(CurrentBlockType, Config) when
       CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
     CurrentBlockHash = ?config(current_block_hash, Config),
-    {ok, 200, Hash} = get_key_blocks_current_hash_sut(),
+    {ok, 200, #{<<"hash">> := Hash}} = get_key_blocks_current_hash_sut(),
     ?assertEqual(CurrentBlockHash, Hash),
     ok;
 get_current_key_block_hash(micro_block, Config) ->
     PrevKeyBlockHash = ?config(prev_key_block_hash, Config),
-    {ok, 200, Hash} = get_key_blocks_current_hash_sut(),
+    {ok, 200, #{<<"hash">> := Hash}} = get_key_blocks_current_hash_sut(),
     ?assertEqual(PrevKeyBlockHash, Hash),
     ok.
 
@@ -787,7 +787,7 @@ get_current_key_block_height(Config) ->
 
 get_current_key_block_height(_CurrentBlockType, Config) ->
     CurrentBlockHeight = ?config(current_block_height, Config),
-    {ok, 200, Height} = get_key_blocks_current_height_sut(),
+    {ok, 200, #{<<"height">> := Height}} = get_key_blocks_current_height_sut(),
     ?assertEqual(CurrentBlockHeight, Height),
     ok.
 

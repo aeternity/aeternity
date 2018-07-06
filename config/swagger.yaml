@@ -83,7 +83,11 @@ paths:
         '200':
           description: successful operation
           schema:
-            $ref: '#/definitions/EncodedHash'
+            type: object
+            properties:
+              hash:
+                type: string
+                description: Block hash
       security:
   /key-blocks/current/height:
     get:
@@ -98,7 +102,13 @@ paths:
       responses:
         '200':
           description: Height of current key block
-          type: integer
+          schema:
+            type: object
+            properties:
+              hash:
+                type: integer
+                description: Block height
+                format: int64
       security:
   /key-blocks/pending:
     get:
