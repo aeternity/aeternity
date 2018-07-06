@@ -3027,6 +3027,32 @@ definitions:
     - participant_amount
     - fee
     - nonce
+  ChannelSnapshotSoloTx:
+    type: object
+    properties:
+      channel_id:
+        type: string
+      from:
+        $ref: '#/definitions/EncodedHash'
+      payload:
+        type: string
+      ttl:
+        type: integer
+        format: int64
+        minimum: 0
+      fee:
+        type: integer
+        format: int64
+        minimum: 0
+      nonce:
+        type: integer
+        format: int64
+        minimum: 0
+    required:
+    - channel_id
+    - from
+    - payload
+    - fee
   PubKey:
     type: object
     properties:

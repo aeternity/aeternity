@@ -56,6 +56,7 @@
                  | channel_close_solo_tx
                  | channel_slash_tx
                  | channel_settle_tx
+                 | channel_snapshot_solo_tx
                  | channel_offchain_tx.
 
 -type tx_instance() :: aec_spend_tx:tx()
@@ -77,6 +78,7 @@
                      | aesc_close_solo_tx:tx()
                      | aesc_slash_tx:tx()
                      | aesc_settle_tx:tx()
+                     | aesc_snapshot_solo_tx:tx()
                      | aesc_offchain_tx:tx().
 
 -type tx_context() :: aetx_transaction | aetx_contract.

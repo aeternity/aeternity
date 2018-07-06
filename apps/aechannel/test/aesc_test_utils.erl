@@ -45,7 +45,10 @@
          withdraw_tx_spec/4,
 
          settle_tx_spec/3,
-         settle_tx_spec/4]).
+         settle_tx_spec/4,
+         
+         snapshot_solo_tx_spec/4,
+         snapshot_solo_tx_spec/5]).
 
 -define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
 
@@ -327,6 +330,26 @@ settle_tx_spec(ChannelId, FromPubKey, Spec0, State) ->
       nonce             => maps:get(nonce, Spec)}.
 
 settle_tx_default_spec(FromPubKey, State) ->
+    #{initiator_amount => 10,
+      responder_amount => 10,
+      fee              => 3,
+      nonce            => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
+
+%%%===================================================================
+%%% Snapshot solo tx
+%%%===================================================================
+
+snapshot_solo_tx_spec(ChannelId, FromPubKey, Payload, State) ->
+    snapshot_solo_tx_spec(ChannelId, FromPubKey, Payload, #{}, State).
+
+snapshot_solo_tx_spec(ChannelId, FromPubKey, Payload, Spec0, State) ->
+    Spec = maps:merge(snapshot_solo_tx_default_spec(FromPubKey, State), Spec0),
+    Spec#{channel_id  => ChannelId,
+          from        => FromPubKey,
+          payload     => Payload,
+          ttl         => maps:get(ttl, Spec, 0)}.
+
+snapshot_solo_tx_default_spec(FromPubKey, State) ->
     #{initiator_amount => 10,
       responder_amount => 10,
       fee              => 3,

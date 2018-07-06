@@ -3786,6 +3786,36 @@
         "nonce" : 0
       }
     },
+    "ChannelSnapshotSoloTx" : {
+      "type" : "object",
+      "required" : [ "channel_id", "fee", "from", "payload" ],
+      "properties" : {
+        "channel_id" : {
+          "type" : "string"
+        },
+        "from" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "payload" : {
+          "type" : "string"
+        },
+        "ttl" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        }
+      }
+    },
     "PubKey" : {
       "type" : "object",
       "properties" : {

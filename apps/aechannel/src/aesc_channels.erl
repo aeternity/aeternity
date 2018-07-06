@@ -18,6 +18,7 @@
          serialize/1,
          close_solo/3,
          close_solo/4,
+         snapshot_solo/2,
          withdraw/4]).
 
 %% Getters
@@ -138,6 +139,14 @@ deserialize(IdBin, Bin) ->
              round            = Round,
              lock_period      = LockPeriod,
              closes_at        = ClosesAt}.
+
+%% close solo with a payload
+-spec snapshot_solo(channel(), aesc_offchain_tx:tx()) -> channel().
+snapshot_solo(Ch, PayloadTx) ->
+    Round = aesc_offchain_tx:round(PayloadTx),
+    StateHash = aesc_offchain_tx:state_hash(PayloadTx),
+    Ch#channel{round            = Round,
+               state_hash       = StateHash}.
 
 -spec is_active(channel()) -> boolean().
 is_active(#channel{closes_at = ClosesAt}) ->

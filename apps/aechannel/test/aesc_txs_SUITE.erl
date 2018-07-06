@@ -28,7 +28,15 @@
          withdraw/1,
          withdraw_negative/1,
          settle/1,
-         settle_negative/1]).
+         settle_negative/1,
+         snapshot_solo/1]).
+
+% negative snapshot solo
+-export([snapshot_closed_channel/1,
+         snapshot_closing_channel/1,
+         snapshot_older_state/1,
+         snapshot_missing_channel/1,
+         snapshot_payload_from_another_channel/1]).
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("apps/aecore/include/blocks.hrl").
@@ -61,8 +69,17 @@ groups() ->
        deposit_negative,
        withdraw,
        settle,
-       settle_negative]
-     }
+       settle_negative,
+       snapshot_solo,
+       {group, snapshot_solo_negative}]
+     },
+     {snapshot_solo_negative, [sequence],
+      [snapshot_closed_channel,
+       snapshot_closing_channel,
+       snapshot_older_state,
+       snapshot_missing_channel,
+       snapshot_payload_from_another_channel
+      ]}
     ].
 
 %%%===================================================================
@@ -288,13 +305,13 @@ close_solo_negative(Cfg0) ->
 
     %% Test wrong amounts (different than channel balance)
     TestWrongAmounts =
-        fun(IAmt, PAmt) ->
+        fun(IAmt, RAmt) ->
             PayloadSpecW = #{initiator_amount => IAmt,
-                            responder_amount => PAmt},
+                            responder_amount => RAmt},
             PayloadW = aesc_test_utils:payload(ChannelId, PubKey1, PubKey2,
                                       [PrivKey1, PrivKey2], PayloadSpecW),
             PoI2 = aesc_test_utils:proof_of_inclusion([{PubKey1, IAmt},
-                                              {PubKey2, PAmt}]),
+                                              {PubKey2, RAmt}]),
             TxSpecW = aesc_test_utils:close_solo_tx_spec(ChannelId, PubKey1,
                                                          PayloadW, PoI2, S),
             {ok, TxW} = aesc_close_solo_tx:new(TxSpecW),
@@ -535,11 +552,11 @@ close_mutual(Cfg) ->
 
     %% Create close_mutual tx and apply it on state trees
     Test =
-        fun(IAmt, PAmt, Fee) ->
+        fun(IAmt, RAmt, Fee) ->
             TxSpec = aesc_test_utils:close_mutual_tx_spec(ChannelId,
                                                     #{initiator_amount => IAmt,
                                                       initiator_account => PubKey1,
-                                                      responder_amount => PAmt,
+                                                      responder_amount => RAmt,
                                                       fee    => Fee}, S),
             {ok, Tx} = aesc_close_mutual_tx:new(TxSpec),
             SignedTx = aec_test_utils:sign_tx(Tx, [PrivKey1, PrivKey2]),
@@ -551,9 +568,9 @@ close_mutual(Cfg) ->
             % ensure balances are updated
             {_, {_, _, Acc1Balance1, _}, {_, _, Acc2Balance1, _}} =
              {Fee,  {Acc1Balance0, IAmt, Acc1Balance0 + IAmt, Acc1Balance1},
-                    {Acc2Balance0, PAmt, Acc2Balance0 + PAmt, Acc2Balance1}},
+                    {Acc2Balance0, RAmt, Acc2Balance0 + RAmt, Acc2Balance1}},
             none = aesc_test_utils:lookup_channel(ChannelId, S1),
-            {IAmt, PAmt}
+            {IAmt, RAmt}
         end,
     100 = ChannelAmount, % expectation on aesc_test_utils:create_tx_spec/3
 
@@ -932,15 +949,15 @@ slash_negative(Cfg0) ->
 
     %% Test wrong amounts (different than channel balance)
     TestWrongAmounts =
-        fun(IAmt, PAmt) ->
+        fun(IAmt, RAmt) ->
             PayloadSpecW = #{initiator_amount => IAmt,
-                             responder_amount => PAmt,
+                             responder_amount => RAmt,
                              round            => ChannelRound + 2
                             },
             PayloadW = aesc_test_utils:payload(ChannelId, PubKey1, PubKey2,
                                       [PrivKey1, PrivKey2], PayloadSpecW),
             PoI2 = aesc_test_utils:proof_of_inclusion([{PubKey1, IAmt},
-                                              {PubKey2, PAmt}]),
+                                              {PubKey2, RAmt}]),
             TxSpecW = aesc_test_utils:slash_tx_spec(ChannelId, PubKey1,
                                                          PayloadW, PoI2, S),
             {ok, TxW} = aesc_slash_tx:new(TxSpecW),
@@ -1058,18 +1075,18 @@ settle(Cfg) ->
 
     %% Create close_mutual tx and apply it on state trees
     Test =
-        fun(From, IAmt, PAmt, Fee) ->
+        fun(From, IAmt, RAmt, Fee) ->
             Ch = aesc_test_utils:close_solo(Ch0, #{initiator_amount => IAmt,
-                                                   responder_amount => PAmt}),
+                                                   responder_amount => RAmt}),
             ClosesAt = aesc_channels:closes_at(Ch),
-            ChannelAmount = IAmt + PAmt, %% assert
+            ChannelAmount = IAmt + RAmt, %% assert
 
             S = aesc_test_utils:set_channel(Ch, S0),
             Trees = aens_test_utils:trees(S),
 
             TxSpec = aesc_test_utils:settle_tx_spec(ChannelId, From,
                                                     #{initiator_amount => IAmt,
-                                                      responder_amount => PAmt,
+                                                      responder_amount => RAmt,
                                                       ttl => 1001,
                                                       fee    => Fee}, S),
             {ok, Tx} = aesc_settle_tx:new(TxSpec),
@@ -1079,7 +1096,7 @@ settle(Cfg) ->
             S1 = aesc_test_utils:set_trees(Trees1, S),
 
             {Acc1Balance1, Acc2Balance1} = get_balances(PubKey1, PubKey2, S1),
-            {IFee, PFee} =
+            {IFee, RFee} =
                 case From of
                     PubKey1 -> {Fee, 0};
                     PubKey2 -> {0, Fee}
@@ -1087,9 +1104,9 @@ settle(Cfg) ->
             % ensure balances are updated
             {_, {_, _, _, Acc1Balance1, _}, {_, _, _, Acc2Balance1, _}} =
              {Fee,  {Acc1Balance0, IFee, IAmt, Acc1Balance0 + IAmt - IFee, Acc1Balance1},
-                    {Acc2Balance0, PFee, PAmt, Acc2Balance0 + PAmt - PFee, Acc2Balance1}},
+                    {Acc2Balance0, RFee, RAmt, Acc2Balance0 + RAmt - RFee, Acc2Balance1}},
             none = aesc_test_utils:lookup_channel(ChannelId, S1),
-            {IAmt, PAmt}
+            {IAmt, RAmt}
         end,
     100 = ChannelAmount, % expectation on aesc_test_utils:create_tx_spec/3
     lists:foreach(
@@ -1185,3 +1202,286 @@ settle_negative(Cfg) ->
     {error, channel_does_not_exist} =
         aetx:check(Tx6, Trees1, ClosesAt + 2, ?PROTOCOL_VERSION),
   ok.
+
+%%%===================================================================
+%%% Snapshot solo
+%%%===================================================================
+
+snapshot_solo(Cfg) ->
+    Round = 43,
+    StateHashSize = aec_base58c:byte_size_for_type(state),
+    StateHash = <<43:StateHashSize/unit:8>>,
+    Test =
+        fun(Snapshoter) ->
+            run(#{cfg => Cfg},
+                [positive(fun create_channel_/2),
+                set_from(Snapshoter),
+                set_prop(round, Round),
+                set_prop(state_hash, StateHash),
+                positive(fun snapshot_solo_/2),
+                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                    % ensure channel had been updated
+                    Channel = aesc_test_utils:get_channel(ChannelId, S),
+                    Round = aesc_channels:round(Channel),
+                    StateHash = aesc_channels:state_hash(Channel),
+                    Props
+                end
+                ])
+        end,
+    Test(initiator),
+    Test(responder).
+
+% no one can post a snapshot_tx to a closed channel
+snapshot_closed_channel(Cfg) ->
+    Test =
+        fun(Snapshoter) ->
+            run(#{cfg => Cfg},
+                [positive(fun create_channel_/2),
+                set_from(initiator),
+                positive(fun close_mutual_/2),
+                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                    % ensure channel is closed
+                    none = aesc_test_utils:lookup_channel(ChannelId, S),
+                    Props
+                end,
+                set_from(Snapshoter),
+                negative(fun snapshot_solo_/2, {error, channel_does_not_exist})])
+        end,
+    Test(initiator),
+    Test(responder).
+
+% no one can post a snapshot_tx to a closing channel, not even the one that
+% initiated the close
+snapshot_closing_channel(Cfg) ->
+    Test =
+        fun(Closer, Snapshoter) ->
+            run(#{cfg => Cfg},
+                [positive(fun create_channel_/2),
+                set_from(Closer),
+                positive(fun close_solo_/2),
+                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                    % make sure the channel is not active any more
+                    ClosedCh = aesc_test_utils:get_channel(ChannelId, S),
+                    false = aesc_channels:is_active(ClosedCh),
+                    Props
+                end,
+                set_from(Snapshoter),
+                negative(fun snapshot_solo_/2, {error, channel_not_active})])
+        end,
+    Test(initiator, initiator),
+    Test(initiator, responder),
+    Test(responder, initiator),
+    Test(responder, responder),
+    ok.
+
+% no one can overwrite a state, not even the one that posted it
+snapshot_older_state(Cfg) ->
+    Test =
+        fun(First, Second) ->
+            run(#{cfg => Cfg},
+                [positive(fun create_channel_/2),
+                set_prop(round, 42),
+                set_from(First),
+                positive(fun snapshot_solo_/2),
+                set_from(Second),
+                set_prop(round, 41),
+                negative(fun snapshot_solo_/2, {error, old_round})])
+        end,
+    Test(initiator, initiator),
+    Test(initiator, responder),
+    Test(responder, initiator),
+    Test(responder, responder),
+    ok.
+
+% snapshot_tx calls to a missing channel are rejected
+snapshot_missing_channel(Cfg) ->
+    ChannelHashSize = aec_base58c:byte_size_for_type(channel),
+    FakeChannelId = <<42:ChannelHashSize/unit:8>>,
+    Test =
+        fun(Snapshoter) ->
+            run(#{cfg => Cfg},
+                [positive(fun create_channel_/2),
+                set_prop(channel_id, FakeChannelId),
+                set_from(Snapshoter),
+                negative(fun snapshot_solo_/2, {error, channel_does_not_exist})])
+        end,
+    Test(initiator),
+    Test(responder).
+
+% snapshot_tx calls from another channel are rejected
+snapshot_payload_from_another_channel(Cfg) ->
+    Test =
+        fun(Snapshoter) ->
+            run(#{cfg => Cfg},
+                [positive(fun create_channel_/2), % create a channelA
+                 create_payload(), % produce a payload for channelA
+                 % create another channelB and replace the old one with the
+                 % participansts as well
+                 positive(fun create_channel_/2),
+                 set_from(Snapshoter),
+                 % use the payload of channelA in a snapshot_tx for channelB
+                 negative(fun snapshot_solo_/2, {error, bad_state_channel_id})])
+        end,
+    Test(initiator),
+    Test(responder).
+
+
+close_solo_(#{channel_id        := ChannelId,
+              from              := From,
+              from_privkey      := FromPrivkey,
+              initiator_amount  := IAmt,
+              responder_amount  := RAmt,
+              initiator_pubkey  := IPubkey,
+              responder_pubkey  := RPubkey,
+              fee               := Fee,
+              state             := S,
+              initiator_privkey := IPrivkey,
+              responder_privkey := RPrivkey} = Props, Expected) ->
+
+    %% Create close_solo tx and apply it on state trees
+    PayloadSpec = #{initiator_amount => IAmt,
+                    responder_amount => RAmt},
+    Payload = aesc_test_utils:payload(ChannelId, IPubkey, RPubkey,
+                                    [IPrivkey, RPrivkey], PayloadSpec),
+    PoI = aesc_test_utils:proof_of_inclusion([{IPubkey, IAmt}, {RPubkey, RAmt}]),
+    TxSpec = aesc_test_utils:close_solo_tx_spec(ChannelId, From, Payload,
+                                            PoI, #{fee => Fee}, S),
+    {ok, Tx} = aesc_close_solo_tx:new(TxSpec),
+    SignedTx = aec_test_utils:sign_tx(Tx, [FromPrivkey]),
+    apply_on_trees_(Props, SignedTx, S, Expected).
+
+create_payload() ->
+    fun(#{channel_id        := ChannelId,
+          initiator_amount  := IAmt,
+          responder_amount  := RAmt,
+          initiator_pubkey  := IPubkey,
+          responder_pubkey  := RPubkey,
+          initiator_privkey := IPrivkey,
+          responder_privkey := RPrivkey} = Props) ->
+        PayloadSpec = #{initiator_amount => IAmt,
+                        responder_amount => RAmt},
+        Payload = aesc_test_utils:payload(ChannelId, IPubkey, RPubkey,
+                                        [IPrivkey, RPrivkey], PayloadSpec),
+        Props#{payload => Payload}
+    end.
+
+close_mutual_(#{channel_id      := ChannelId,
+                initiator_amount  := IAmt,
+                responder_amount  := RAmt,
+                initiator_pubkey  := IPubkey,
+                fee               := Fee,
+                state             := S,
+                initiator_privkey := PrivKey1,
+                responder_privkey := PrivKey2} = Props, Expected) ->
+        TxSpec = aesc_test_utils:close_mutual_tx_spec(ChannelId,
+                                                #{initiator_amount => IAmt - Fee,
+                                                  initiator_account => IPubkey,
+                                                  responder_amount => RAmt,
+                                                  fee    => Fee}, S),
+        {ok, Tx} = aesc_close_mutual_tx:new(TxSpec),
+        SignedTx = aec_test_utils:sign_tx(Tx, [PrivKey1, PrivKey2]),
+        apply_on_trees_(Props, SignedTx, S, Expected).
+
+
+create_channel_(#{cfg := Cfg} = Props, _) ->
+    CreateOpts =
+        case maps:get(state, Props, undefined) of
+            undefined -> #{};
+            State -> #{state => State}
+        end,
+    {PubKey1, PubKey2, ChannelId, _, S0} = create(Cfg, CreateOpts),
+    PrivKey1 = aesc_test_utils:priv_key(PubKey1, S0),
+    PrivKey2 = aesc_test_utils:priv_key(PubKey2, S0),
+
+    Height = 2,
+
+    %% Get channel and account funds
+
+    IAmt = 30,
+    RAmt = 70,
+    Fee = 2,
+    %% expected amounts
+    100 = IAmt + RAmt,
+    Props#{ channel_id        => ChannelId,
+            initiator_amount  => IAmt,
+            responder_amount  => RAmt,
+            initiator_pubkey  => PubKey1,
+            responder_pubkey  => PubKey2,
+            fee               => Fee,
+            height            => Height,
+            state             => S0,
+            initiator_privkey => PrivKey1,
+            responder_privkey => PrivKey2}.
+
+snapshot_solo_(#{ channel_id        := ChannelId,
+                  from              := From,
+                  from_privkey      := FromPrivkey,
+                  initiator_amount  := IAmt,
+                  responder_amount  := RAmt,
+                  initiator_pubkey  := IPubkey,
+                  responder_pubkey  := RPubkey,
+                  fee               := Fee,
+                  state             := S,
+                  initiator_privkey := IPrivkey,
+                  responder_privkey := RPrivkey} = Props, Expected) ->
+
+    Round = maps:get(round, Props, 42),
+    StateHashSize = aec_base58c:byte_size_for_type(state),
+    StateHash = maps:get(state_hash, Props, <<42:StateHashSize/unit:8>>),
+    PayloadSpec = #{initiator_amount => IAmt,
+                    responder_amount => RAmt,
+                    state_hash       => StateHash,
+                    round            => Round},
+    Payload = maps:get(payload, Props,
+                       aesc_test_utils:payload(ChannelId, IPubkey, RPubkey,
+                                      [IPrivkey, RPrivkey], PayloadSpec)),
+
+
+    SnapshotTxSpec = aesc_test_utils:snapshot_solo_tx_spec(ChannelId, From,
+                           Payload, #{fee => Fee},S),
+    {ok, SnapshotTx} = aesc_snapshot_solo_tx:new(SnapshotTxSpec),
+
+    SignedTx = aec_test_utils:sign_tx(SnapshotTx, [FromPrivkey]),
+    apply_on_trees_(Props, SignedTx, S, Expected).
+
+
+positive(Fun) ->
+    fun(Props) -> Fun(Props, positive) end.
+
+negative(Fun, ErrMsg) ->
+    fun(Props) -> Fun(Props, {negative, ErrMsg}) end.
+
+set_from(Role) ->
+    fun(Props) ->
+        {KeyPub, KeyPriv} =
+            case Role of
+                initiator -> {initiator_pubkey, initiator_privkey};
+                responder -> {responder_pubkey, responder_privkey}
+            end,
+        PubKey = maps:get(KeyPub, Props),
+        PrivKey = maps:get(KeyPriv, Props),
+        Props#{from => PubKey, from_privkey => PrivKey}
+    end.
+
+set_prop(Key, Value) ->
+    fun(Props) ->
+        maps:put(Key, Value, Props)
+    end.
+
+run(Cfg, Funs) ->
+    lists:foldl(
+        fun(Fun, Props) -> Fun(Props) end,
+        Cfg,
+        Funs).
+
+apply_on_trees_(#{height := Height} = Props, SignedTx, S, positive) ->
+    Trees = aens_test_utils:trees(S),
+    {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
+                                [SignedTx], Trees, Height, ?PROTOCOL_VERSION),
+    S1 = aesc_test_utils:set_trees(Trees1, S),
+    Props#{state => S1};
+apply_on_trees_(#{height := Height} = Props, SignedTx, S, {negative, ExpectedError}) ->
+    Trees = aens_test_utils:trees(S),
+    Tx = aetx_sign:tx(SignedTx),
+    ExpectedError =  aetx:check(Tx, Trees, Height, ?PROTOCOL_VERSION),
+    Props.
