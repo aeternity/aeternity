@@ -1978,8 +1978,8 @@ spend_transaction(_Config) ->
                 ttl => 43,
                 payload => <<"hejsan svejsan">>},
     Decoded = maps:merge(Encoded,
-                        #{sender => MinerPubkey,
-                          recipient => RandAddress}),
+                        #{sender => aec_id:create(account, MinerPubkey),
+                          recipient => aec_id:create(account, RandAddress)}),
     {ok, T} = unsigned_tx_positive_test(Decoded, Encoded,
                                   fun get_spend/1,
                                   fun aec_spend_tx:new/1, MinerPubkey),
@@ -2153,8 +2153,8 @@ post_correct_tx(_Config) ->
     {PubKey, Nonce} = prepare_for_spending(BlocksToMine),
     {ok, SpendTx} =
         aec_spend_tx:new(
-          #{sender => PubKey,
-            recipient => random_hash(),
+          #{sender => aec_id:create(account, PubKey),
+            recipient => aec_id:create(account, random_hash()),
             amount => Amount,
             fee => Fee,
             nonce => Nonce,
@@ -2172,8 +2172,8 @@ post_broken_tx(_Config) ->
     {PubKey, Nonce} = prepare_for_spending(BlocksToMine),
     {ok, SpendTx} =
         aec_spend_tx:new(
-          #{sender => PubKey,
-            recipient => random_hash(),
+          #{sender => aec_id:create(account, PubKey),
+            recipient => aec_id:create(account, random_hash()),
             amount => Amount,
             fee => Fee,
             nonce => Nonce,
@@ -2199,8 +2199,8 @@ post_broken_base58_tx(_Config) ->
         fun(_) ->
             {ok, SpendTx} =
                 aec_spend_tx:new(
-                  #{sender => PubKey,
-                    recipient => random_hash(),
+                  #{sender => aec_id:create(account, PubKey),
+                    recipient => aec_id:create(account, random_hash()),
                     amount => Amount,
                     fee => Fee,
                     nonce => Nonce,
@@ -2803,7 +2803,7 @@ naming_system_manage_name(_Config) ->
     {ok, 200, #{<<"balance">> := Balance3}} = get_balance_at_top(),
     Host = internal_address(),
     {ok, 200, _} = http_request(Host, post, "spend-tx",
-                                #{recipient_pubkey => Name,
+                                #{recipient_pubkey => EncodedNHash,
                                   amount           => 77,
                                   fee              => 50,
                                   payload          => <<"foo">>}),

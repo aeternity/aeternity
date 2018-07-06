@@ -31,11 +31,13 @@ sender_and_hash(STx) ->
 spend(EncodedRecipient, Amount, Fee, TTL, Payload) ->
     create_tx(
         fun(SenderPubkey, Nonce) ->
-            case aec_chain:resolve_name(account_pubkey, EncodedRecipient) of
-                {ok, DecodedRecipientPubkey} ->
+            %% Note that this is the local node's pubkey.
+            Sender = aec_id:create(account, SenderPubkey),
+            case aec_base58c:safe_decode(id_hash, EncodedRecipient) of
+                {ok, DecodedRecipientId} ->
                     aec_spend_tx:new(
-                      #{sender    => SenderPubkey,
-                        recipient => DecodedRecipientPubkey,
+                      #{sender    => Sender,
+                        recipient => DecodedRecipientId,
                         amount    => Amount,
                         payload   => Payload,
                         fee       => Fee,

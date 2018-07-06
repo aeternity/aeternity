@@ -287,8 +287,8 @@ spend(Node, FromPub, ToPub, Amount) ->
 
 spend(Node, FromPub, ToPub, Amount, Fee) ->
     {ok, Nonce} = rpc:call(Node, aec_next_nonce, pick_for_account, [FromPub]),
-    Params = #{sender => FromPub,
-               recipient => ToPub,
+    Params = #{sender => aec_id:create(account, FromPub),
+               recipient => aec_id:create(account, ToPub),
                amount => Amount,
                fee => Fee,
                nonce => Nonce,

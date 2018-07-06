@@ -433,9 +433,9 @@ sign(PubKey, Tx) ->
 
 acct(me) ->
     {ok, Key} = aec_keys:pubkey(),
-    Key;
+    aec_id:create(account, Key);
 acct(A) when is_binary(A) ->
-    A.
+    aec_id:create(account, A).
 
 new_pubkey() ->
     {Pub, Priv} = keypair(),

@@ -11,6 +11,7 @@
                         , hexstrings_decode/1
                         , nameservice_pointers_decode/1
                         , get_nonce/1
+                        , get_nonce_from_account_id/1
                         , print_state/0
                         , get_contract_code/2
                         , get_contract_call_object_from_tx/2
@@ -414,9 +415,9 @@ handle_request('PostSpend', #{'SpendTx' := Req}, _Context) ->
                                        {recipient_pubkey, recipient},
                                         amount, fee, payload]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{sender, sender, account_pubkey},
-                                {recipient, recipient, account_pubkey}]),
-                 get_nonce(sender),
+                 base58_decode([{sender, sender, id_hash},
+                                {recipient, recipient, id_hash}]),
+                 get_nonce_from_account_id(sender),
                  unsigned_tx_response(fun aec_spend_tx:new/1)
                 ],
     process_request(ParseFuns, Req);

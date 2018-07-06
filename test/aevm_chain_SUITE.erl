@@ -88,16 +88,17 @@ call_data(Arg) ->
 
 spend(_Cfg) ->
     {[Acc, _Acc2, Contract1, _Contract2], S} = setup_chain(),
+    AccId    = aec_id:create(account, Acc),
     AccBal1  = aec_vm_chain:get_balance(Acc, S),
     Bal1     = aec_vm_chain:get_balance(Contract1, S),
     Amount   = 50,
-    {ok, S1} = aec_vm_chain:spend(Acc, Amount, S),
+    {ok, S1} = aec_vm_chain:spend(AccId, Amount, S),
     Bal2     = aec_vm_chain:get_balance(Contract1, S1),
     Bal2     = Bal1 - Amount,
     AccBal2  = aec_vm_chain:get_balance(Acc, S1),
     AccBal2  = AccBal1 + Amount,
     {error, insufficient_funds}
-             = aec_vm_chain:spend(Acc, 1000000, S1),
+             = aec_vm_chain:spend(AccId, 1000000, S1),
     ok.
 
 %%%===================================================================

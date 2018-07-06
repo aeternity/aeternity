@@ -81,11 +81,13 @@ set_store(Store,  #state{ account = PubKey, trees = Trees } = State) ->
 %%    Account
 
 %% @doc Spend money from the contract account.
--spec spend(aec_keys:pubkey(), non_neg_integer(), chain_state()) ->
+-spec spend(aec_id:id(), non_neg_integer(), chain_state()) ->
           {ok, chain_state()} | {error, term()}.
 spend(Recipient, Amount, State = #state{ account = ContractKey }) ->
     Nonce = next_nonce(State),
-    {ok, SpendTx} = aec_spend_tx:new(#{ sender => ContractKey
+    %% Note: The spend is from the contract's account.
+    Sender = aec_id:create(account, ContractKey),
+    {ok, SpendTx} = aec_spend_tx:new(#{ sender => Sender
                                       , recipient => Recipient
                                       , amount => Amount
                                       , fee => 0

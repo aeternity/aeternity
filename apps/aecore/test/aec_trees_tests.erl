@@ -50,7 +50,7 @@ signatures_check_test_() ->
         fun () ->
             SignedSpend =
                     aec_test_utils:signed_spend_tx(
-                      #{recipient => <<1:32/unit:8>>,
+                      #{recipient => aec_id:create(account, <<1:32/unit:8>>),
                         amount => 1,
                         fee => 1,
                         nonce => 1,
@@ -76,8 +76,8 @@ signatures_check_test_() ->
      ]}.
 
 make_spend_tx(Sender, Recipient) ->
-    {ok, SpendTx} = aec_spend_tx:new(#{sender => Sender,
-                                       recipient => Recipient,
+    {ok, SpendTx} = aec_spend_tx:new(#{sender => aec_id:create(account, Sender),
+                                       recipient => aec_id:create(account, Recipient),
                                        amount => 1,
                                        fee => 1,
                                        nonce => 1,

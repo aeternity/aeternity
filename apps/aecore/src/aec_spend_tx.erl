@@ -31,8 +31,8 @@
 -define(SPEND_TX_TYPE, spend_tx).
 
 -record(spend_tx, {
-          sender    = <<>>          :: aec_id:id(),
-          recipient = <<>>          :: aec_id:id(),
+          sender                    :: aec_id:id(),
+          recipient                 :: aec_id:id(),
           amount    = 0             :: non_neg_integer(),
           fee       = 0             :: non_neg_integer(),
           ttl       = 0             :: aetx:tx_ttl(),
@@ -44,25 +44,32 @@
 -export_type([tx/0]).
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{sender := SenderPubkey,
-      recipient := RecipientPubkey,
+new(#{sender := Sender,
+      recipient := Recipient,
       amount := Amount,
       fee := Fee,
       nonce := Nonce,
       payload := Payload} = Args) when is_integer(Amount), Amount >= 0,
                                        is_integer(Nonce), Nonce >= 0,
                                        is_integer(Fee), Fee >= 0,
-                                       is_binary(SenderPubkey),
-                                       is_binary(RecipientPubkey),
                                        is_binary(Payload) ->
-    Tx = #spend_tx{sender = aec_id:create(account, SenderPubkey),
-                   recipient = aec_id:create(account, RecipientPubkey),
+    assert_id(Sender),
+    assert_id(Recipient),
+    Tx = #spend_tx{sender = Sender,
+                   recipient = Recipient,
                    amount = Amount,
                    fee = Fee,
                    ttl = maps:get(ttl, Args, 0),
                    nonce = Nonce,
                    payload = Payload},
     {ok, aetx:new(?MODULE, Tx)}.
+
+assert_id(Id) ->
+    case aec_id:specialize_type(Id) of
+        account -> ok;
+        name    -> ok;
+        Other   -> error({illegal_id_type, Other})
+    end.
 
 -spec type() -> atom().
 type() ->
@@ -82,15 +89,25 @@ nonce(#spend_tx{nonce = Nonce}) ->
 
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#spend_tx{} = Tx) ->
-    sender(Tx).
+    sender_pubkey(Tx).
 
--spec sender(tx()) -> aec_keys:pubkey().
+-spec sender(tx()) -> aec_id:id().
 sender(#spend_tx{sender = Sender}) ->
+    Sender.
+
+-spec sender_pubkey(tx()) -> aec_keys:pubkey().
+sender_pubkey(#spend_tx{sender = Sender}) ->
     aec_id:specialize(Sender, account).
 
--spec recipient(tx()) -> aec_keys:pubkey().
+-spec recipient(tx()) -> aec_id:id().
 recipient(#spend_tx{recipient = Recipient}) ->
-    aec_id:specialize(Recipient, account).
+    Recipient.
+
+resolve_recipient(#spend_tx{recipient = Recipient}, Trees) ->
+    case aec_id:specialize(Recipient) of
+        {account, RecipientPubkey} -> {ok, RecipientPubkey};
+        {name, NameHash} -> aens:resolve_from_hash(account_pubkey, NameHash, aec_trees:ns(Trees))
+    end.
 
 -spec payload(tx()) -> binary().
 payload(#spend_tx{payload = Payload}) ->
@@ -99,25 +116,28 @@ payload(#spend_tx{payload = Payload}) ->
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()} | {error, term()}.
 check(#spend_tx{} = SpendTx, _Context, Trees, Height, _ConsensusVersion) ->
-    RecipientPubkey = recipient(SpendTx),
     Checks = [fun check_sender_account/3],
     case aeu_validation:run(Checks, [SpendTx, Trees, Height]) of
         ok ->
-            {ok, aec_trees:ensure_account(RecipientPubkey, Trees)};
+            case resolve_recipient(SpendTx, Trees) of
+                {ok, RecipientPubkey} ->
+                    {ok, aec_trees:ensure_account(RecipientPubkey, Trees)};
+                {error, _} = E ->
+                    E
+            end;
         {error, _Reason} = Error ->
             Error
     end.
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
-signers(#spend_tx{} = Tx, _) -> {ok, [sender(Tx)]}.
+signers(#spend_tx{} = Tx, _) -> {ok, [sender_pubkey(Tx)]}.
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#spend_tx{amount = Amount,
                   fee = Fee,
                   nonce = Nonce} = Tx, _Context, Trees0, _Height, _ConsensusVersion) ->
-    SenderPubkey = sender(Tx),
-    RecipientPubkey = recipient(Tx),
-
+    SenderPubkey = sender_pubkey(Tx),
+    {ok, RecipientPubkey} = resolve_recipient(Tx, Trees0),
     AccountsTrees0 = aec_trees:accounts(Trees0),
 
     {value, SenderAccount0} = aec_accounts_trees:lookup(SenderPubkey, AccountsTrees0),
@@ -158,7 +178,10 @@ deserialize(?SPEND_TX_VSN,
             , {payload, Payload}]) ->
     %% Asserts
     account = aec_id:specialize_type(Sender),
-    account = aec_id:specialize_type(Recipient),
+    case aec_id:specialize_type(Recipient) of
+        account -> ok;
+        name    -> ok
+    end,
     #spend_tx{sender = Sender,
               recipient = Recipient,
               amount = Amount,
@@ -182,9 +205,9 @@ for_client(#spend_tx{amount = Amount,
                      ttl = TTL,
                      nonce = Nonce,
                      payload = Payload} = Tx) ->
-    #{<<"sender">> => aec_base58c:encode(account_pubkey, sender(Tx)),
+    #{<<"sender">> => aec_base58c:encode(id_hash, sender(Tx)),
       <<"data_schema">> => <<"SpendTxJSON">>, % swagger schema name
-      <<"recipient">> => aec_base58c:encode(account_pubkey, recipient(Tx)),
+      <<"recipient">> => aec_base58c:encode(id_hash, recipient(Tx)),
       <<"amount">> => Amount,
       <<"fee">> => Fee,
       <<"ttl">> => TTL,
@@ -198,7 +221,7 @@ for_client(#spend_tx{amount = Amount,
                                   ok | {error, term()}.
 check_sender_account(#spend_tx{amount = Amount,
                                fee = Fee, nonce = TxNonce } = Tx, Trees, _Height) ->
-    SenderPubkey = sender(Tx),
+    SenderPubkey = sender_pubkey(Tx),
     aetx_utils:check_account(SenderPubkey, Trees, TxNonce, Fee + Amount).
 
 version() ->

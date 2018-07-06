@@ -70,14 +70,14 @@ validate_test_() ->
 validate_test_malformed_txs_root_hash() ->
     SignedSpend =
         aec_test_utils:signed_spend_tx(
-          #{recipient => <<1:32/unit:8>>,
+          #{recipient => aec_id:create(account, <<1:32/unit:8>>),
             amount => 1,
             fee => 1,
             nonce => 1,
             payload => <<>>}),
 
-    {ok, Spend} = aec_spend_tx:new(#{sender => <<42:32/unit:8>>,
-                                     recipient => <<4242:32/unit:8>>,
+    {ok, Spend} = aec_spend_tx:new(#{sender => aec_id:create(account, <<42:32/unit:8>>),
+                                     recipient => aec_id:create(account, <<4242:32/unit:8>>),
                                      amount => 1,
                                      fee => 1,
                                      nonce => 1,
@@ -105,7 +105,7 @@ validate_test_pass_validation_no_txs() ->
 validate_test_pass_validation() ->
     SignedSpend =
         aec_test_utils:signed_spend_tx(
-          #{recipient => <<1:32/unit:8>>,
+          #{recipient => aec_id:create(account, <<1:32/unit:8>>),
             amount => 1,
             fee => 1,
             nonce => 1,

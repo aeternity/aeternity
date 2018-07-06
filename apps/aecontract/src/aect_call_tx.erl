@@ -188,8 +188,8 @@ process(#contract_call_tx{nonce = Nonce,
 
 spend(CallerPubKey, CalleePubKey, Value, Nonce,_Context, Height, Trees,
       ConsensusVersion) ->
-    {ok, SpendTx} = aec_spend_tx:new(#{ sender => CallerPubKey
-                                , recipient => CalleePubKey
+    {ok, SpendTx} = aec_spend_tx:new(#{ sender => aec_id:create(account, CallerPubKey)
+                                , recipient => aec_id:create(account, CalleePubKey)
                                 , amount => Value
                                 , fee => 0
                                 , nonce => Nonce

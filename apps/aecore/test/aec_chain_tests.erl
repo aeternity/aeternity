@@ -283,11 +283,12 @@ broken_chain_invalid_transaction() ->
 
     %% Add invalid transaction with too high nonce to last block
     Txs = MB1#block.txs,
-    BogusSpendTx = aec_test_utils:signed_spend_tx(#{recipient => <<1:32/unit:8>>,
-                                                    amount => 0,
-                                                    fee => 1,
-                                                    nonce => 10,
-                                                    payload => <<"">>}),
+    BogusSpendTx = aec_test_utils:signed_spend_tx(
+                     #{recipient => aec_id:create(account, <<1:32/unit:8>>),
+                       amount => 0,
+                       fee => 1,
+                       nonce => 10,
+                       payload => <<"">>}),
     BogusTxs = [BogusSpendTx | Txs],
 
     ?assertNotEqual(Txs, BogusTxs),
@@ -997,8 +998,10 @@ make_spend_tx(Sender, SenderNonce, Recipient) ->
     make_spend_tx(Sender, SenderNonce, Recipient, 1).
 
 make_spend_tx(Sender, SenderNonce, Recipient, Fee) ->
-    {ok, SpendTx} = aec_spend_tx:new(#{sender => Sender,
-                                       recipient => Recipient,
+    SenderId = aec_id:create(account, Sender),
+    RecipientId = aec_id:create(account, Recipient),
+    {ok, SpendTx} = aec_spend_tx:new(#{sender => SenderId,
+                                       recipient => RecipientId,
                                        amount => 1,
                                        fee => Fee,
                                        nonce => SenderNonce,

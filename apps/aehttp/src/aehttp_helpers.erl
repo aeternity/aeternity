@@ -12,6 +12,7 @@
         , relative_ttl_decode/1
         , nameservice_pointers_decode/1
         , get_nonce/1
+        , get_nonce_from_account_id/1
         , print_state/0
         , get_contract_code/2
         , get_contract_call_object_from_tx/2
@@ -162,6 +163,23 @@ get_nonce(AccountKey) ->
         case maps:get(nonce, Req, undefined) of
             undefined ->
                 Pubkey = maps:get(AccountKey, State),
+                case aec_next_nonce:pick_for_account(Pubkey) of
+                    {ok, Nonce} ->
+                        {ok, maps:put(nonce, Nonce, State)};
+                    {error, account_not_found} ->
+                        Msg = "Account of " ++ atom_to_list(AccountKey) ++ " not found",
+                        {error, {404, [], #{<<"reason">> => list_to_binary(Msg)}}}
+                end;
+            Nonce ->
+                {ok, maps:put(nonce, Nonce, State)}
+        end
+    end.
+
+get_nonce_from_account_id(AccountKey) ->
+    fun(Req, State) ->
+        case maps:get(nonce, Req, undefined) of
+            undefined ->
+                Pubkey = aec_id:specialize(maps:get(AccountKey, State), account),
                 case aec_next_nonce:pick_for_account(Pubkey) of
                     {ok, Nonce} ->
                         {ok, maps:put(nonce, Nonce, State)};

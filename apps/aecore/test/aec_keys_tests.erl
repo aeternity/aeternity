@@ -26,9 +26,11 @@ all_test_() ->
                 fun() ->
                         {ok, PubKey} = aec_keys:pubkey(),
                         #{ public := RecipientPubkey } = enacl:sign_keypair(),
+                        Sender = aec_id:create(account, PubKey),
+                        Receiver = aec_id:create(account, RecipientPubkey),
                         {ok, Tx} =
-                            aec_spend_tx:new(#{sender => PubKey,
-                                               recipient => RecipientPubkey,
+                            aec_spend_tx:new(#{sender => Sender,
+                                               recipient => Receiver,
                                                amount => 10,
                                                fee => 2,
                                                nonce => 3,

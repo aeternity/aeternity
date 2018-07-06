@@ -64,8 +64,10 @@ sign_txs_test_() ->
 
 make_spend_tx(Sender) ->
     #{ public := OtherPubkey} = enacl:sign_keypair(),
-    {ok, _SpendTx} = aec_spend_tx:new(#{sender => Sender,
-                                        recipient => OtherPubkey,
+    SenderId = aec_id:create(account, Sender),
+    Recipient = aec_id:create(account, OtherPubkey),
+    {ok, _SpendTx} = aec_spend_tx:new(#{sender => SenderId,
+                                        recipient => Recipient,
                                         amount => 4,
                                         fee => 1,
                                         ttl => 100,

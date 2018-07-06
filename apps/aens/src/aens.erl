@@ -9,6 +9,7 @@
 
 %% API
 -export([resolve/3,
+         resolve_from_hash/3,
          get_commitment_hash/2,
          get_name_entry/2,
          get_name_hash/1]).
@@ -38,6 +39,18 @@ resolve(Type, Binary, NSTree) ->
                 {error, _Reason} = Error ->
                     Error
             end
+    end.
+
+resolve_from_hash(Type, NameHash, NSTree) ->
+    case aens_state_tree:lookup_name(NameHash, NSTree) of
+        {value, Name} ->
+            Pointers = aens_names:pointers(Name),
+            case proplists:get_value(atom_to_binary(Type, utf8), Pointers) of
+                undefined -> {error, type_not_found};
+                Val       -> aec_base58c:safe_decode(Type, Val)
+            end;
+        none ->
+            {error, hash_not_found}
     end.
 
 -spec get_commitment_hash(binary(), integer()) -> {ok, aens_hash:commitment_hash()} |

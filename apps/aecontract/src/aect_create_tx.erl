@@ -249,8 +249,8 @@ create_contract(CreateTx, Trees0) ->
 spend(SenderPubKey, ReceiverPubKey, Value, Fee, Nonce,
       Context, Height, Trees, ConsensusVersion) ->
     {ok, SpendTx} = aec_spend_tx:new(
-                      #{ sender => SenderPubKey
-                       , recipient => ReceiverPubKey
+                      #{ sender => aec_id:create(account, SenderPubKey)
+                       , recipient => aec_id:create(account, ReceiverPubKey)
                        , amount => Value
                        , fee => Fee
                        , ttl => Height
