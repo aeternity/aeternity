@@ -2360,6 +2360,8 @@ definitions:
   MicroBlockHeader:
     type: object
     properties:
+      hash:
+        $ref: '#/definitions/EncodedHash'
       height:
         type: integer
         format: int64

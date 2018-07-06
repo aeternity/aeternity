@@ -882,8 +882,7 @@ get_micro_block_header_by_hash(micro_block, Config) ->
     CurrentBlockHash = ?config(current_block_hash, Config),
     {ok, 200, Header} = get_micro_blocks_header_by_hash_sut(CurrentBlockHash),
     ?assertEqual(PrevKeyBlockHash, maps:get(<<"prev_hash">>, Header)),
-    %% TODO: Add hash to the response.
-    %%?assertEqual(MicroBlockHash, maps:get(<<"hash">>, Header)),
+    ?assertEqual(CurrentBlockHash, maps:get(<<"hash">>, Header)),
     ok.
 
 get_micro_block_transactions_by_hash(Config) ->

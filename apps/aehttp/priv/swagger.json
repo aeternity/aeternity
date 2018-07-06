@@ -2787,6 +2787,9 @@
     "MicroBlockHeader" : {
       "type" : "object",
       "properties" : {
+        "hash" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
         "height" : {
           "type" : "integer",
           "format" : "int64"
@@ -2820,9 +2823,10 @@
         "state_hash" : null,
         "signature" : null,
         "key_hash" : null,
-        "prev_hash" : { },
+        "prev_hash" : null,
         "time" : 6,
         "version" : 1,
+        "hash" : { },
         "height" : 0
       }
     },

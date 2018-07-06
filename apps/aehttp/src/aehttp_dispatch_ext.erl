@@ -81,7 +81,8 @@ handle_request('GetMicroBlocksHeaderByHash', Params, _Context) ->
         {ok, Hash} ->
             case aehttp_logic:get_micro_block_by_hash(Hash) of
                 {ok, Block} ->
-                    {200, [], aehttp_api_parser:encode(header, Block)};
+                    Resp = aehttp_api_parser:encode(header, Block),
+                    {200, [], Resp#{hash => aec_base58c:encode(block_hash, Hash)}};
                 {error, block_not_found} ->
                     {404, [], #{reason => <<"Block not found">>}}
             end;
