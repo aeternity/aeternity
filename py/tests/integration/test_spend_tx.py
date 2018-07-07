@@ -55,7 +55,7 @@ def test_not_enough_tokens():
     print("Bob's spend_tx is " + str(spend_tx_obj))
     bob_internal_api.post_spend_tx(spend_tx_obj)
     print("Transaction sent")
-    bob_top_after_tx = bob_api.get_top()
+    bob_top_after_tx = bob_api.get_top_block()
 
     print("Waiting for a few blocks to be mined")
     checked_height = bob_top_after_tx.height + 3
@@ -155,7 +155,7 @@ def miner_send_tokens(address, amount, internal_api, external_api):
     # populate account
     internal_api.post_spend_tx(spend_tx_obj)
 
-    top = external_api.get_top()
+    top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
 
 def register_name(name, address, external_api, private_key):
@@ -169,7 +169,7 @@ def register_name(name, address, external_api, private_key):
     signed_preclaim = keys.sign_encode_tx(unsigned_preclaim, private_key)
 
     external_api.post_tx(Tx(tx=signed_preclaim))
-    top = external_api.get_top()
+    top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
 
     # claim
@@ -180,7 +180,7 @@ def register_name(name, address, external_api, private_key):
     signed_claim = keys.sign_encode_tx(unsigned_claim, private_key)
 
     external_api.post_tx(Tx(tx=signed_claim))
-    top = external_api.get_top()
+    top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
     name_entry0 = external_api.get_name(name)
     print("Name " + name_entry0.name + " has been claimed and has hash " + name_entry0.name_hash)
@@ -194,7 +194,7 @@ def register_name(name, address, external_api, private_key):
     signed_update = keys.sign_encode_tx(unsigned_update, private_key)
 
     external_api.post_tx(Tx(tx=signed_update))
-    top = external_api.get_top()
+    top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
     name_entry = external_api.get_name(name)
     received_pointers = json.loads(name_entry.pointers)
@@ -212,5 +212,5 @@ def send_tokens_to_name(name, tokens, sender_address, private_key, external_api)
     signed_spend = keys.sign_encode_tx(unsigned_spend, private_key)
 
     external_api.post_tx(Tx(tx=signed_spend))
-    top = external_api.get_top()
+    top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)

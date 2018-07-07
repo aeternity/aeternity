@@ -54,7 +54,7 @@
 
 %% Chain API
 -export([ add_synced_block/1
-        , get_block_candidate/0
+        , get_key_block_candidate/0
         , post_block/1
         ]).
 
@@ -135,9 +135,9 @@ post_block(#block{} = Block) ->
 add_synced_block(Block) ->
     gen_server:call(?SERVER, {add_synced_block, Block}).
 
--spec get_block_candidate() -> {'ok', aec_blocks:block()} | {'error', atom()}.
-get_block_candidate() ->
-    gen_server:call(?SERVER, get_block_candidate).
+-spec get_key_block_candidate() -> {'ok', aec_blocks:block()} | {'error', atom()}.
+get_key_block_candidate() ->
+    gen_server:call(?SERVER, get_key_block_candidate).
 
 -spec reinit_chain() -> aec_headers:header().
 reinit_chain() ->
@@ -188,9 +188,9 @@ reinit_chain_state() ->
 handle_call({add_synced_block, Block},_From, State) ->
     {Reply, State1} = handle_synced_block(Block, State),
     {reply, Reply, State1};
-handle_call(get_block_candidate,_From, State) ->
+handle_call(get_key_block_candidate,_From, State) ->
     Res =
-        case State#state.micro_block_candidate of
+        case State#state.key_block_candidate of
             undefined when State#state.mining_state =:= stopped ->
                 {error, not_mining};
             undefined when State#state.mining_state =:= running ->

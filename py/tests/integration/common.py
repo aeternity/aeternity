@@ -48,7 +48,7 @@ def internal_api(name):
 def node_online(ext_api, int_api):
     def is_ext_online():
         try:
-            top = ext_api.get_top()
+            top = ext_api.get_top_block()
             return top.height > -1
         except Exception as e:
             return False
@@ -83,7 +83,7 @@ def setup_node_with_tokens(node, blocks_to_mine):
     # populate the chain so node had mined some blocks and has tokens
     # to spend
     wait_until_height(api, blocks_to_mine)
-    top = api.get_top()
+    top = api.get_top_block()
     assert_equals(top.height >= blocks_to_mine, True)
     # Now the node has at least blocks_to_mine blocks mined
 
@@ -175,7 +175,7 @@ def tool_settings(test_name):
     return config['tools'][test_name]
 
 def genesis_hash(api):
-    top = api.get_top()
+    top = api.get_top_block()
     if top.height == 0:
         return top.hash
     block = api.get_block_by_hash(top.hash)
@@ -184,7 +184,7 @@ def genesis_hash(api):
     return block.prev_hash
 
 def wait_until_height(api, height):
-    wait(lambda: api.get_top().height >= height, timeout_seconds=120, sleep_seconds=0.25)
+    wait(lambda: api.get_top_block().height >= height, timeout_seconds=120, sleep_seconds=0.25)
 
 def get_account_balance(api, int_api, pub_key=None):
     return _balance_from_get_account_balance(

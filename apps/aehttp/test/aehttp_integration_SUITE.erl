@@ -26,13 +26,42 @@
     broken_decode_sophia_data/1
    ]).
 
+
+-export(
+   [
+    get_top_block/1
+   ]).
+
+-export(
+   [
+    get_current_key_block/1,
+    get_current_key_block_hash/1,
+    get_current_key_block_height/1,
+    get_pending_key_block/1,
+    get_key_block_by_hash/1,
+    get_key_block_by_height/1
+   ]).
+
+-export(
+   [
+    get_micro_block_header_by_hash/1,
+    get_micro_block_transactions_by_hash/1,
+    get_micro_block_transactions_count_by_hash/1,
+    get_micro_block_transaction_by_hash_and_index/1
+   ]).
+
+-export(
+    [
+     get_generation_current/1,
+     get_generation_by_hash/1,
+     get_generation_by_height/1
+    ]).
+
 %% test case exports
 %% external endpoints
 -export(
    [
     % get block-s
-    get_top_empty_chain/1,
-    get_top_non_empty_chain/1,
     block_genesis/1,
     block_pending/1,
     block_latest/1,
@@ -159,7 +188,6 @@
     wrong_http_method_block_number/1,
     wrong_http_method_block_latest/1,
     wrong_http_method_block_genesis/1,
-    wrong_http_method_block_pending/1,
     wrong_http_method_block_txs_count_by_height/1,
     wrong_http_method_block_txs_count_by_hash/1,
     wrong_http_method_block_txs_count_latest/1,
@@ -212,20 +240,60 @@
 
 all() ->
     [
-     {group, all_endpoints}
+     {group, all}
     ].
 
 groups() ->
     [
-     {all_endpoints, [sequence], [{group, off_chain_endpoints},
-                                  {group, external_endpoints},
-                                  {group, internal_endpoints},
-                                  {group, swagger_validation},
-                                  {group, wrong_http_method_endpoints},
-                                  {group, websocket},
-                                  {group, naming},
-                                  {group, channel_websocket}
-                                  ]},
+     {all, [sequence],
+      [
+       {group, on_genesis_block},
+       {group, on_key_block},
+       {group, on_micro_block},
+       {group, off_chain_endpoints},
+       {group, external_endpoints},
+       {group, internal_endpoints},
+       {group, swagger_validation},
+       {group, wrong_http_method_endpoints},
+       {group, websocket},
+       {group, naming},
+       {group, channel_websocket}
+      ]},
+     {on_genesis_block, [],
+      [
+       {group, get_block_info},
+       {group, with_pending_key_block}
+      ]},
+     {on_key_block, [],
+      [
+       {group, get_block_info},
+       {group, with_pending_key_block}
+      ]},
+     {on_micro_block, [],
+      [
+       {group, get_block_info},
+       {group, with_pending_key_block}
+      ]},
+     {with_pending_key_block, [],
+      [
+       get_pending_key_block
+      ]},
+     {get_block_info, [sequence],
+      [
+       get_top_block,
+       get_current_key_block,
+       get_current_key_block_hash,
+       get_current_key_block_height,
+       get_key_block_by_hash,
+       get_key_block_by_height,
+       get_micro_block_header_by_hash,
+       get_micro_block_transactions_by_hash,
+       get_micro_block_transactions_count_by_hash,
+       get_micro_block_transaction_by_hash_and_index,
+       get_generation_current,
+       get_generation_by_hash,
+       get_generation_by_height
+      ]},
      {off_chain_endpoints, [],
       [
        test_decode_sophia_data,
@@ -235,10 +303,8 @@ groups() ->
      {external_endpoints, [sequence],
       [
         % get block-s
-        get_top_empty_chain,
-        get_top_non_empty_chain,
         block_genesis,
-        block_pending,
+        %block_pending,  TODO: delete the test case in the next PR
         block_latest,
 
         block_by_height,
@@ -350,7 +416,6 @@ groups() ->
         wrong_http_method_block_number,
         wrong_http_method_block_latest,
         wrong_http_method_block_genesis,
-        wrong_http_method_block_pending,
         wrong_http_method_block_txs_count_by_height,
         wrong_http_method_block_txs_count_by_hash,
         wrong_http_method_block_txs_count_latest,
@@ -439,8 +504,56 @@ init_per_suite(Config) ->
 end_per_suite(_Config) ->
     ok.
 
-init_per_group(all_endpoints, Config) ->
+init_per_group(all, Config) ->
     Config;
+init_per_group(on_genesis_block, Config) ->
+    {ok, Node} = init_node(Config),
+    GenesisBlock = rpc(aec_chain, genesis_block, []),
+    [{node, Node},
+     {current_block, GenesisBlock},
+     {current_block_hash, hash(GenesisBlock)},
+     {current_block_height, 0},
+     {current_block_type, genesis_block} | Config];
+init_per_group(on_key_block, Config) ->
+    {ok, Node} = init_node(Config),
+    %% Mine at least 1 key block (fork height may be 0).
+    aecore_suite_utils:mine_key_blocks(Node, aecore_suite_utils:latest_fork_height()),
+    {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
+    true = aec_blocks:is_key_block(KeyBlock),
+    [{node, Node},
+     {current_block, KeyBlock},
+     {current_block_hash, hash(KeyBlock)},
+     {current_block_height, aec_blocks:height(KeyBlock)},
+     {current_block_type, key_block} | Config];
+init_per_group(on_micro_block, Config) ->
+    {ok, Node} = init_node(Config),
+    %% Mine at least 1 key block (fork height may be 0).
+    aecore_suite_utils:mine_key_blocks(Node, aecore_suite_utils:latest_fork_height()),
+    {ok, [_KeyBlock0]} = aecore_suite_utils:mine_key_blocks(Node, 1),
+    %% Send spend tx so it gets included into micro block.
+    {ok, Pub} = rpc(aec_keys, pubkey, []),
+    {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1),
+    {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+    {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
+    {ok, []} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+    true = aec_blocks:is_key_block(KeyBlock),
+    false = aec_blocks:is_key_block(MicroBlock),
+    [{node, Node},
+     {prev_key_block, KeyBlock},
+     {prev_key_block_hash, hash(KeyBlock)},
+     {prev_key_block_height, aec_blocks:height(KeyBlock)},
+     {current_block, MicroBlock},
+     {current_block_hash, hash(MicroBlock)},
+     {current_block_height, aec_blocks:height(KeyBlock)},
+     {current_block_txs, [Tx]},
+     {current_block_type, micro_block} | Config];
+init_per_group(with_pending_key_block, Config) ->
+    %% Expect a key block each hour.
+    MineRate = 60 * 60 * 1000,
+    ok = rpc(application, set_env, [aecore, expected_mine_rate, MineRate]),
+    ok = rpc(aec_conductor, start_mining, []),
+    ok = wait_for_key_block_candidate(),
+    [{expected_mine_rate, MineRate}, {pending_key_block, true} | Config];
 init_per_group(channel_websocket, Config) ->
     aecore_suite_utils:start_node(?NODE, Config),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
@@ -469,22 +582,22 @@ init_per_group(channel_websocket, Config) ->
                                     priv_key => RPrivkey,
                                     start_amt => RStartAmt}},
     [{participants, Participants} | Config];
+init_per_group(get_block_info, Config) ->
+    Config;
 init_per_group(_Group, Config) ->
-    aecore_suite_utils:start_node(?NODE, Config),
-    aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
-    ToMine = aecore_suite_utils:latest_fork_height(),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   ToMine),
+    {ok, Node} = init_node(Config),
+    BlocksToMine = aecore_suite_utils:latest_fork_height(),
+    aecore_suite_utils:mine_blocks(Node, BlocksToMine),
     Config.
 
-end_per_group(all_endpoints, _Config) ->
+end_per_group(all, _Config) ->
+    ok;
+end_per_group(with_pending_key_block, _Config) ->
+    ok = rpc(aec_conductor, stop_mining, []);
+end_per_group(get_block_info, _Config) ->
     ok;
 end_per_group(_Group, Config) ->
-    RpcFun = fun(M, F, A) -> rpc(?NODE, M, F, A) end,
-    {ok, DbCfg} = aecore_suite_utils:get_node_db_config(RpcFun),
-    aecore_suite_utils:stop_node(?NODE, Config),
-    aecore_suite_utils:delete_node_db_if_persisted(DbCfg),
-    ok.
+    ok = stop_node(Config).
 
 init_per_testcase(_Case, Config) ->
     [{tc_start, os:timestamp()}|Config].
@@ -493,6 +606,19 @@ end_per_testcase(_Case, Config) ->
     Ts0 = ?config(tc_start, Config),
     ct:log("Events during TC: ~p", [[{N, aecore_suite_utils:all_events_since(N, Ts0)}
                                      || {_,N} <- ?config(nodes, Config)]]),
+    ok.
+
+init_node(Config) ->
+    aecore_suite_utils:start_node(?NODE, Config),
+    Node = aecore_suite_utils:node_name(?NODE),
+    aecore_suite_utils:connect(Node),
+    {ok, Node}.
+
+stop_node(Config) ->
+    RpcFun = fun(M, F, A) -> rpc(?NODE, M, F, A) end,
+    {ok, DbCfg} = aecore_suite_utils:get_node_db_config(RpcFun),
+    aecore_suite_utils:stop_node(?NODE, Config),
+    aecore_suite_utils:delete_node_db_if_persisted(DbCfg),
     ok.
 
 %% ============================================================
@@ -617,33 +743,340 @@ decode_data(Type, EncodedData) ->
                                     data => EncodedData}),
     Data.
 
+%% /blocks/top
+
+get_top_block(Config) ->
+    get_top_block(?config(current_block_type, Config), Config).
+
+get_top_block(_CurrentBlockType, Config) ->
+    CurrentBlockHash = ?config(current_block_hash, Config),
+    {ok, 200, Block} = get_top_sut(),
+    ?assertEqual(CurrentBlockHash, maps:get(<<"hash">>, Block)),
+    ok.
+
+get_top_sut() ->
+    Host = external_address(),
+    http_request(Host, get, "blocks/top", []).
+
+%% /key-blocks/*
+
+get_current_key_block(Config) ->
+    get_current_key_block(?config(current_block_type, Config), Config).
+
+get_current_key_block(CurrentBlockType, Config) when
+      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    CurrentBlockHash = ?config(current_block_hash, Config),
+    CurrentBlockHeight = ?config(current_block_height, Config),
+    {ok, 200, Block} = get_key_blocks_current_sut(),
+    ?assertEqual(CurrentBlockHash, maps:get(<<"hash">>, Block)),
+    ?assertEqual(CurrentBlockHeight, maps:get(<<"height">>, Block)),
+    ok;
+get_current_key_block(micro_block, Config) ->
+    PrevKeyBlockHash = ?config(prev_key_block_hash, Config),
+    PrevKeyBlockHeight = ?config(prev_key_block_height, Config),
+    {ok, 200, Block} = get_key_blocks_current_sut(),
+    ?assertEqual(PrevKeyBlockHash, maps:get(<<"hash">>, Block)),
+    ?assertEqual(PrevKeyBlockHeight, maps:get(<<"height">>, Block)),
+    ok.
+
+get_current_key_block_hash(Config) ->
+    get_current_key_block_hash(?config(current_block_type, Config), Config).
+
+get_current_key_block_hash(CurrentBlockType, Config) when
+      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    CurrentBlockHash = ?config(current_block_hash, Config),
+    {ok, 200, #{<<"hash">> := Hash}} = get_key_blocks_current_hash_sut(),
+    ?assertEqual(CurrentBlockHash, Hash),
+    ok;
+get_current_key_block_hash(micro_block, Config) ->
+    PrevKeyBlockHash = ?config(prev_key_block_hash, Config),
+    {ok, 200, #{<<"hash">> := Hash}} = get_key_blocks_current_hash_sut(),
+    ?assertEqual(PrevKeyBlockHash, Hash),
+    ok.
+
+get_current_key_block_height(Config) ->
+    get_current_key_block_height(?config(current_block_type, Config), Config).
+
+get_current_key_block_height(_CurrentBlockType, Config) ->
+    CurrentBlockHeight = ?config(current_block_height, Config),
+    {ok, 200, #{<<"height">> := Height}} = get_key_blocks_current_height_sut(),
+    ?assertEqual(CurrentBlockHeight, Height),
+    ok.
+
+get_pending_key_block(Config) ->
+    CurrentBlockType = ?config(current_block_type, Config),
+    PendingKeyBlockOpt = {pending_key_block, proplists:get_value(pending_key_block, Config, false)},
+    get_pending_key_block(PendingKeyBlockOpt, CurrentBlockType, Config).
+
+get_pending_key_block({pending_key_block, false}, _CurrentBlockType, _Config) ->
+    {ok, 404, Error} = get_key_blocks_pending_sut(),
+    ?assertEqual(<<"Not mining, no pending block">>, maps:get(<<"reason">>, Error)),
+    ok;
+get_pending_key_block({pending_key_block, true}, _CurrentBlockType, Config) ->
+    CurrentBlockHash = ?config(current_block_hash, Config),
+    CurrentBlockHeight = ?config(current_block_height, Config),
+    {ok, 200, Block} = get_key_blocks_pending_sut(),
+    ?assertEqual(CurrentBlockHeight + 1, maps:get(<<"height">>, Block)),
+    ?assertEqual(CurrentBlockHash, maps:get(<<"prev_hash">>, Block)),
+    ok.
+
+get_key_block_by_hash(Config) ->
+    get_key_block_by_hash(?config(current_block_type, Config), Config).
+
+get_key_block_by_hash(CurrentBlockType, Config) when
+      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    CurrentBlockHash = ?config(current_block_hash, Config),
+    {ok, 200, Block} = get_key_blocks_by_hash_sut(CurrentBlockHash),
+    ?assertEqual(CurrentBlockHash, maps:get(<<"hash">>, Block)),
+    ok;
+get_key_block_by_hash(micro_block, Config) ->
+    PrevKeyBlockHash = ?config(prev_key_block_hash, Config),
+    {ok, 200, Block} = get_key_blocks_by_hash_sut(PrevKeyBlockHash),
+    ?assertEqual(PrevKeyBlockHash, maps:get(<<"hash">>, Block)),
+    ok.
+
+get_key_block_by_height(Config) ->
+    get_key_block_by_height(?config(current_block_type, Config), Config).
+
+get_key_block_by_height(CurrentBlockType, Config) when
+      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    CurrentBlockHash = ?config(current_block_hash, Config),
+    CurrentBlockHeight = ?config(current_block_height, Config),
+    {ok, 200, Block} = get_key_blocks_by_height_sut(CurrentBlockHeight),
+    ?assertEqual(CurrentBlockHash, maps:get(<<"hash">>, Block)),
+    ?assertEqual(CurrentBlockHeight, maps:get(<<"height">>, Block)),
+    ok;
+get_key_block_by_height(micro_block, Config) ->
+    PrevKeyBlockHash = ?config(prev_key_block_hash, Config),
+    PrevKeyBlockHeight = ?config(prev_key_block_height, Config),
+    {ok, 200, Block} = get_key_blocks_by_height_sut(PrevKeyBlockHeight),
+    ?assertEqual(PrevKeyBlockHash, maps:get(<<"hash">>, Block)),
+    ?assertEqual(PrevKeyBlockHeight, maps:get(<<"height">>, Block)),
+    ok.
+
+get_key_blocks_current_sut() ->
+    Host = external_address(),
+    http_request(Host, get, "key-blocks/current", []).
+
+get_key_blocks_current_hash_sut() ->
+    Host = external_address(),
+    http_request(Host, get, "key-blocks/current/hash", []).
+
+get_key_blocks_current_height_sut() ->
+    Host = external_address(),
+    http_request(Host, get, "key-blocks/current/height", []).
+
+get_key_blocks_pending_sut() ->
+    Host = external_address(),
+    http_request(Host, get, "key-blocks/pending", []).
+
+get_key_blocks_by_height_sut(Height) ->
+    Host = external_address(),
+    http_request(Host, get, "key-blocks/height/" ++ integer_to_list(Height), []).
+
+get_key_blocks_by_hash_sut(Hash) ->
+    Host = external_address(),
+    http_request(Host, get, "key-blocks/hash/" ++ http_uri:encode(Hash), []).
+
+%% /micro-blocks/*
+
+get_micro_block_header_by_hash(Config) ->
+    get_micro_block_header_by_hash(?config(current_block_type, Config), Config).
+
+get_micro_block_header_by_hash(CurrentBlockType, Config) when
+      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    CurrentBlockHash = ?config(current_block_hash, Config),
+    {ok, 404, Error} = get_micro_blocks_header_by_hash_sut(CurrentBlockHash),
+    ?assertEqual(<<"Block not found">>, maps:get(<<"reason">>, Error)),
+    ok;
+get_micro_block_header_by_hash(micro_block, Config) ->
+    PrevKeyBlockHash = ?config(prev_key_block_hash, Config),
+    CurrentBlockHash = ?config(current_block_hash, Config),
+    {ok, 200, Header} = get_micro_blocks_header_by_hash_sut(CurrentBlockHash),
+    ?assertEqual(PrevKeyBlockHash, maps:get(<<"prev_hash">>, Header)),
+    ?assertEqual(CurrentBlockHash, maps:get(<<"hash">>, Header)),
+    ok.
+
+get_micro_block_transactions_by_hash(Config) ->
+    get_micro_block_transactions_by_hash(?config(current_block_type, Config), Config).
+
+get_micro_block_transactions_by_hash(CurrentBlockType, Config) when
+      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    CurrentBlockHash = ?config(current_block_hash, Config),
+    {ok, 404, Error} = get_micro_blocks_transactions_by_hash_sut(CurrentBlockHash),
+    ?assertEqual(<<"Block not found">>, maps:get(<<"reason">>, Error)),
+    ok;
+get_micro_block_transactions_by_hash(micro_block, Config) ->
+    CurrentBlockHash = ?config(current_block_hash, Config),
+    CurrentBlockTxs = ?config(current_block_txs, Config),
+    CurrentBlockTxsCount = length(CurrentBlockTxs),
+    {ok, 200, #{<<"transactions">> := Txs}} = get_micro_blocks_transactions_by_hash_sut(CurrentBlockHash),
+    %% TODO: check Txs is the same as CurrentBlockTxs
+    ?assertMatch([_], Txs),
+    ?assertMatch(CurrentBlockTxsCount, length(Txs)),
+    ok.
+
+get_micro_block_transactions_count_by_hash(Config) ->
+    get_micro_block_transactions_count_by_hash(?config(current_block_type, Config), Config).
+
+get_micro_block_transactions_count_by_hash(CurrentBlockType, Config) when
+      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    CurrentBlockHash = ?config(current_block_hash, Config),
+    {ok, 404, Error} = get_micro_blocks_transactions_count_by_hash_sut(CurrentBlockHash),
+    ?assertEqual(<<"Block not found">>, maps:get(<<"reason">>, Error)),
+    ok;
+get_micro_block_transactions_count_by_hash(micro_block, Config) ->
+    CurrentBlockHash = ?config(current_block_hash, Config),
+    CurrentBlockTxs = ?config(current_block_txs, Config),
+    CurrentBlockTxsCount = length(CurrentBlockTxs),
+    {ok, 200, Count} = get_micro_blocks_transactions_count_by_hash_sut(CurrentBlockHash),
+    ?assertEqual(CurrentBlockTxsCount, maps:get(<<"count">>, Count)),
+    ok.
+
+get_micro_block_transaction_by_hash_and_index(Config) ->
+    get_micro_block_transaction_by_hash_and_index(?config(current_block_type, Config), Config).
+
+get_micro_block_transaction_by_hash_and_index(CurrentBlockType, Config) when
+      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    CurrentBlockHash = ?config(current_block_hash, Config),
+    {ok, 404, Error} = get_micro_blocks_transactions_by_hash_by_index_sut(CurrentBlockHash, 3),
+    ?assertEqual(<<"Block not found">>, maps:get(<<"reason">>, Error)),
+    ok;
+get_micro_block_transaction_by_hash_and_index(micro_block, Config) ->
+    CurrentBlockHash = ?config(current_block_hash, Config),
+    CurrentBlockTxs = ?config(current_block_txs, Config),
+    CurrentBlockTxIndex = 1,
+    WrongCurrentBlockTxIndex = length(CurrentBlockTxs) + 1,
+    {ok, 200, Tx} = get_micro_blocks_transactions_by_hash_by_index_sut(CurrentBlockHash, CurrentBlockTxIndex),
+    ?assertEqual(CurrentBlockHash, maps:get(<<"block_hash">>, Tx)),
+    %% TODO: check tx hashes
+    {ok, 400, Error} = get_micro_blocks_transactions_by_hash_by_index_sut(CurrentBlockHash, WrongCurrentBlockTxIndex),
+    ?assertEqual(<<"Invalid hash or index">>, maps:get(<<"reason">>, Error)),
+    ok.
+
+get_micro_blocks_header_by_hash_sut(Hash) ->
+    Host = external_address(),
+    Hash1 = binary_to_list(Hash),
+    http_request(Host, get, "micro-blocks/hash/" ++ http_uri:encode(Hash1) ++ "/header", []).
+
+get_micro_blocks_transactions_by_hash_sut(Hash) ->
+    Host = external_address(),
+    Hash1 = binary_to_list(Hash),
+    http_request(Host, get, "micro-blocks/hash/" ++ http_uri:encode(Hash1) ++ "/transactions", []).
+
+get_micro_blocks_transactions_count_by_hash_sut(Hash) ->
+    Host = external_address(),
+    Hash1 = binary_to_list(Hash),
+    http_request(Host, get, "micro-blocks/hash/" ++ http_uri:encode(Hash1) ++ "/transactions/count", []).
+
+get_micro_blocks_transactions_by_hash_by_index_sut(Hash, Index) ->
+    Host = external_address(),
+    Hash1 = binary_to_list(Hash),
+    Index1 = integer_to_list(Index),
+    Path = "micro-blocks/hash/" ++ http_uri:encode(Hash1) ++ "/transactions/index/" ++ Index1,
+    http_request(Host, get, Path, []).
+
+hash(Block) ->
+    {ok, Hash0} = aec_blocks:hash_internal_representation(Block),
+    aec_base58c:encode(block_hash, Hash0).
+
+wait_for_key_block_candidate() -> wait_for_key_block_candidate(10).
+
+wait_for_key_block_candidate(0) -> {error, miner_starting};
+wait_for_key_block_candidate(N) ->
+    case rpc(aec_conductor, get_key_block_candidate, []) of
+        {ok, _} -> ok;
+        {error, not_mining} -> {error, not_mining};
+        {error, miner_starting} ->
+            timer:sleep(10),
+            wait_for_key_block_candidate(N)
+    end.
+
+%% /generations/*
+
+get_generation_current(Config) ->
+    get_generation_current(?config(current_block_type, Config), Config).
+
+get_generation_current(CurrentBlockType, Config) when
+      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    CurrentBlockHash = ?config(current_block_hash, Config),
+    {ok, 200, #{<<"key_block">> := KeyBlock,
+                <<"micro_blocks">> := []}} = get_generation_current_sut(),
+    ?assertEqual(CurrentBlockHash, maps:get(<<"hash">>, KeyBlock)),
+    ok;
+get_generation_current(micro_block, Config) ->
+    {ok, 200, #{<<"key_block">> := KeyBlock,
+                <<"micro_blocks">> := [MicroBlockHash]}} = get_generation_current_sut(),
+
+    ?assertEqual(?config(prev_key_block_hash, Config), maps:get(<<"hash">>, KeyBlock)),
+    ?assertEqual(?config(current_block_hash, Config), MicroBlockHash),
+    ok.
+
+get_generation_by_hash(Config) ->
+    get_generation_by_hash(?config(current_block_type, Config), Config).
+
+get_generation_by_hash(CurrentBlockType, Config) when
+      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    CurrentBlockHash = ?config(current_block_hash, Config),
+    {ok, 200, #{<<"key_block">> := KeyBlock,
+                <<"micro_blocks">> := []}} = get_generation_by_hash_sut(CurrentBlockHash),
+
+    ?assertEqual(CurrentBlockHash, maps:get(<<"hash">>, KeyBlock)),
+    ?assertEqual({ok, 400, #{<<"reason">> => <<"Invalid hash">>}},
+                 get_generation_by_hash_sut(<<"random">>)),
+    ok;
+get_generation_by_hash(micro_block, Config) ->
+    PrevKeyBlockHash = ?config(prev_key_block_hash, Config),
+    CurrentBlockHash = ?config(current_block_hash, Config),
+    {ok, 200, #{<<"key_block">> := KeyBlock,
+                <<"micro_blocks">> := [MicroBlockHash]}} = get_generation_by_hash_sut(PrevKeyBlockHash),
+
+    ?assertEqual(PrevKeyBlockHash, maps:get(<<"hash">>, KeyBlock)),
+    ?assertEqual(CurrentBlockHash, MicroBlockHash),
+    ?assertEqual({ok, 404, #{<<"reason">> => <<"Block not found">>}},
+                 get_generation_by_hash_sut(CurrentBlockHash)),
+    ?assertEqual({ok, 400, #{<<"reason">> => <<"Invalid hash">>}},
+                 get_generation_by_hash_sut(<<"random">>)),
+    ok.
+
+get_generation_by_height(Config) ->
+    get_generation_by_height(?config(current_block_type, Config), Config).
+
+get_generation_by_height(CurrentBlockType, Config) when
+      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    CurrentBlockHash = ?config(current_block_hash, Config),
+    CurrentBlockHeight = ?config(current_block_height, Config),
+    {ok, 200, #{<<"key_block">> := KeyBlock,
+                <<"micro_blocks">> := []}} = get_generation_by_height_sut(CurrentBlockHeight),
+
+    ?assertEqual(CurrentBlockHash, maps:get(<<"hash">>, KeyBlock)),
+    ?assertEqual({ok,404,#{<<"reason">> => <<"Chain too short">>}},
+                 get_generation_by_height_sut(CurrentBlockHeight+1)),
+    ok;
+get_generation_by_height(micro_block, Config) ->
+    CurrentBlockHeight = ?config(current_block_height, Config),
+    {ok, 200, #{<<"key_block">> := KeyBlock,
+                <<"micro_blocks">> := [MicroBlockHash]}} = get_generation_by_height_sut(CurrentBlockHeight),
+
+    ?assertEqual(?config(prev_key_block_hash, Config), maps:get(<<"hash">>, KeyBlock)),
+    ?assertEqual(?config(current_block_hash, Config), MicroBlockHash),
+    ?assertEqual({ok,404,#{<<"reason">> => <<"Chain too short">>}},
+                 get_generation_by_height_sut(CurrentBlockHeight+1)),
+    ok.
+
+get_generation_current_sut() ->
+    Host = external_address(),
+    http_request(Host, get, "generations/current", []).
+
+get_generation_by_hash_sut(Hash) ->
+    Host = external_address(),
+    http_request(Host, get, "generations/hash/" ++ http_uri:encode(Hash), []).
+
+get_generation_by_height_sut(Height) ->
+    Host = external_address(),
+    http_request(Host, get, "generations/height/" ++ integer_to_list(Height), []).
 
 %% enpoints
-get_top_empty_chain(_Config) ->
-    ok = rpc(aec_conductor, reinit_chain, []),
-    {ok, 200, HeaderMap} = get_top(),
-    ct:log("~p returned header = ~p", [?NODE, HeaderMap]),
-    {ok, 200, GenBlockMap} = get_block_by_height(0),
-    {ok, GenBlock} = aehttp_api_parser:decode(block, GenBlockMap),
-    ExpectedMap = block_to_endpoint_top(GenBlock),
-    ct:log("Cleaned top header = ~p", [ExpectedMap]),
-    ?assertEqual(ExpectedMap, HeaderMap),
-
-    ForkHeight = aecore_suite_utils:latest_fork_height(),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   ForkHeight),
-    ok.
-
-get_top_non_empty_chain(_Config) ->
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-    ExpectedB = rpc(aec_chain, top_block, []),
-    ExpectedMap = block_to_endpoint_top(ExpectedB),
-    ct:log("Cleaned top header = ~p", [ExpectedMap]),
-    {ok, 200, HeaderMap} = get_top(),
-    ?assertEqual(ExpectedMap, HeaderMap),
-    #{<<"height">> := Height} = HeaderMap,
-    true = Height > 0,
-    ok.
 
 block_by_height(_Config) ->
     GetExpectedBlockFun =
@@ -3584,7 +4017,7 @@ ws_mine_key_and_micro_block(ConnPid, Node) ->
 
 get_top() ->
     Host = external_address(),
-    http_request(Host, get, "top", []).
+    http_request(Host, get, "blocks/top", []).
 
 get_contract_create(Data) ->
     Host = external_address(),
@@ -3982,7 +4415,7 @@ swagger_validation_types(_Config) ->
 
 wrong_http_method_top(_Config) ->
     Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "top", []).
+    {ok, 405, _} = http_request(Host, post, "blocks/top", []).
 
 wrong_http_method_contract_create(_Config) ->
     Host = external_address(),
@@ -4123,10 +4556,6 @@ wrong_http_method_block_latest(_Config) ->
 wrong_http_method_block_genesis(_Config) ->
     Host = external_address(),
     {ok, 405, _} = http_request(Host, post, "block/genesis", []).
-
-wrong_http_method_block_pending(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "block/pending", []).
 
 wrong_http_method_block_txs_count_by_height(_Config) ->
     Host = internal_address(),
@@ -4275,11 +4704,6 @@ process_http_return(R) ->
             Error
     end.
 
-block_to_endpoint_top(Block) ->
-    {ok, Hash} = aec_blocks:hash_internal_representation(Block),
-    maps:put(<<"hash">>, aec_base58c:encode(block_hash, Hash),
-             aehttp_api_parser:encode(header, Block)).
-
 block_to_endpoint_map(Block) ->
     block_to_endpoint_map(Block, #{tx_encoding => message_pack}).
 
@@ -4334,7 +4758,7 @@ block_hash_by_height(Height) ->
 get_pending_block() ->
     aec_test_utils:exec_with_timeout(
         fun TryGetting() ->
-            case rpc(aec_conductor, get_block_candidate, []) of
+            case rpc(aec_conductor, get_key_block_candidate, []) of
                 {ok, OK} -> OK;
                 {error, not_mining} = Err->
                     Err;

@@ -72,7 +72,7 @@ def test_contract_create():
     tx_object = Tx(tx=signed)
     external_api.post_tx(tx_object)
 
-    top = external_api.get_top()
+    top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
     alice_balance = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
 
@@ -111,7 +111,7 @@ def test_contract_call():
     tx_object = Tx(tx=signed)
     external_api.post_tx(tx_object)
 
-    top = external_api.get_top()
+    top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
     alice_balance = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
 
@@ -154,7 +154,7 @@ def test_contract_call():
     tx_object = Tx(tx=signed_call)
     external_api.post_tx(tx_object)
 
-    top = external_api.get_top()
+    top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
     alice_balance = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
 
@@ -193,7 +193,7 @@ def test_contract_on_chain_call_off_chain():
     tx_object = Tx(tx=signed)
     external_api.post_tx(tx_object)
 
-    top = external_api.get_top()
+    top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
 
     call_contract = test_settings["contract_call"]
