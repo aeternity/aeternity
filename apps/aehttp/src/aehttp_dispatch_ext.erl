@@ -182,6 +182,23 @@ handle_request('GetAccountByPubkey', Params, _Context) ->
             {400, [], #{reason => <<"Invalid public key">>}}
     end;
 
+handle_request('GetPendingAccountTransactionsByPubkey', Params, _Context) ->
+    case aec_base58c:safe_decode(account_pubkey, maps:get(pubkey, Params)) of
+        {ok, Pubkey} ->
+            case aec_chain:get_account(Pubkey) of
+                {value, _} ->
+                    {ok, Txs0} = aec_tx_pool:peek(infinity, Pubkey),
+                    Txs = [aetx_sign:serialize_for_client_pending(json, T) || T <- Txs0],
+                    JsonTxs = #{data_schema => <<"JSONTx">>,
+                                transactions => Txs},
+                    {200, [], JsonTxs};
+                _ ->
+                    {404, [], #{reason => <<"Account not found">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid public key">>}}
+    end;
+
 handle_request('GetBlockGenesis', Req, _Context) ->
     get_block(fun aehttp_logic:get_block_genesis/0, Req, json);
 

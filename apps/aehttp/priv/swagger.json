@@ -484,6 +484,41 @@
         }
       }
     },
+    "/accounts/{pubkey}/transactions/pending" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get pending account transactions by public key",
+        "operationId" : "GetPendingAccountTransactionsByPubkey",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "The public key of the account",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/JSONTxs"
+            }
+          },
+          "400" : {
+            "description" : "Invalid public key",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/header-by-hash" : {
       "get" : {
         "tags" : [ "external", "gossip" ],

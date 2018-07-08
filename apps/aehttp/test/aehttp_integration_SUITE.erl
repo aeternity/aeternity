@@ -59,7 +59,8 @@
 
 -export(
    [
-    get_account_by_pubkey/1
+    get_account_by_pubkey/1,
+    get_pending_account_transactions_by_pubkey/1
    ]).
 
 %% test case exports
@@ -302,20 +303,26 @@ groups() ->
       ]},
      {account, [sequence],
       [
-       {group, without_balance},
+       {group, nonexistent},
        {group, with_balance}
       ]},
-     {without_balance, [],
+     { nonexistent, [sequence],
       [
        {group, get_account_info}
       ]},
-     {with_balance, [],
+     {with_balance, [sequence],
+      [
+       {group, get_account_info},
+       {group, with_pending_txs}
+      ]},
+     {with_pending_txs, [],
       [
        {group, get_account_info}
       ]},
      {get_account_info, [sequence],
       [
-       get_account_by_pubkey
+       get_account_by_pubkey,
+       get_pending_account_transactions_by_pubkey
       ]},
      {off_chain_endpoints, [],
       [
@@ -580,17 +587,23 @@ init_per_group(with_pending_key_block, Config) ->
 init_per_group(account, Config) ->
     {ok, Node} = init_node(Config),
     [{node, Node} | Config];
-init_per_group(without_balance, Config) ->
+init_per_group(nonexistent, Config) ->
     {ok, Pubkey} = rpc(aec_keys, pubkey, []),
     [{account_pubkey, aec_base58c:encode(account_pubkey, Pubkey)},
-     {account_type, without_balance} | Config];
+     {account_state, nonexistent} | Config];
 init_per_group(with_balance, Config) ->
     Node = ?config(node, Config),
     {ok, Pubkey} = rpc(aec_keys, pubkey, []),
     aecore_suite_utils:mine_key_blocks(Node, aecore_suite_utils:latest_fork_height()),
     {ok, [_KeyBlock0]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     [{account_pubkey, aec_base58c:encode(account_pubkey, Pubkey)},
-     {account_type, with_balance} | Config];
+     {account_state, with_balance} | Config];
+init_per_group(with_pending_txs, Config) ->
+    Node = ?config(node, Config),
+    {ok, Pubkey} = rpc(aec_keys, pubkey, []),
+    {ok, Tx} = aecore_suite_utils:spend(Node, Pubkey, Pubkey, 1),
+    {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+    [{pending_txs, [Tx]} | Config];
 init_per_group(channel_websocket, Config) ->
     aecore_suite_utils:start_node(?NODE, Config),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
@@ -635,9 +648,11 @@ end_per_group(with_pending_key_block, _Config) ->
     ok = rpc(aec_conductor, stop_mining, []);
 end_per_group(get_block_info, _Config) ->
     ok;
-end_per_group(without_balance, _Config) ->
+end_per_group(nonexistent, _Config) ->
     ok;
 end_per_group(with_balance, _Config) ->
+    ok;
+end_per_group(with_pending_txs, _Config) ->
     ok;
 end_per_group(get_account_info, _Config) ->
     ok;
@@ -1124,9 +1139,9 @@ get_generation_by_height_sut(Height) ->
 %% /accounts/*
 
 get_account_by_pubkey(Config) ->
-    get_account_by_pubkey(?config(account_type, Config), Config).
+    get_account_by_pubkey(?config(account_state, Config), Config).
 
-get_account_by_pubkey(without_balance, Config) ->
+get_account_by_pubkey(nonexistent, Config) ->
     AccountPubkey = ?config(account_pubkey, Config),
     {ok, 404, Error} = get_accounts_by_pubkey_sut(AccountPubkey),
     ?assertEqual(<<"Account not found">>, maps:get(<<"reason">>, Error)),
@@ -1139,9 +1154,31 @@ get_account_by_pubkey(with_balance, Config) ->
     %% TODO: check nonce?
     ok.
 
+get_pending_account_transactions_by_pubkey(Config) ->
+    AccountState = ?config(account_state, Config),
+    PendingTxs = {pending_txs, proplists:get_value(pending_txs, Config, [])},
+    get_pending_account_transactions_by_pubkey(PendingTxs, AccountState, Config).
+
+get_pending_account_transactions_by_pubkey(_PendingTxs, nonexistent, Config) ->
+    AccountPubkey = ?config(account_pubkey, Config),
+    {ok, 404, Error} = get_accounts_transactions_pending_by_pubkey_sut(AccountPubkey),
+    ?assertEqual(<<"Account not found">>, maps:get(<<"reason">>, Error)),
+    ok;
+get_pending_account_transactions_by_pubkey({pending_txs, PendingTxs}, with_balance, Config) ->
+    AccountPubkey = ?config(account_pubkey, Config),
+    {ok, 200, Txs} = get_accounts_transactions_pending_by_pubkey_sut(AccountPubkey),
+    %% TODO: check txs hashes
+    ?assertEqual(length(PendingTxs), length(maps:get(<<"transactions">>, Txs))),
+    ok.
+
 get_accounts_by_pubkey_sut(Pubkey) ->
     Host = external_address(),
     http_request(Host, get, "accounts/" ++ http_uri:encode(Pubkey), []).
+
+get_accounts_transactions_pending_by_pubkey_sut(Pubkey) ->
+    Host = external_address(),
+    Pubkey1 = binary_to_list(Pubkey),
+    http_request(Host, get, "accounts/" ++ http_uri:encode(Pubkey1) ++ "/transactions/pending", []).
 
 %% enpoints
 

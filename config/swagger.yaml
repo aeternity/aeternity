@@ -431,6 +431,35 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /accounts/{pubkey}/transactions/pending:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetPendingAccountTransactionsByPubkey
+      description: 'Get pending account transactions by public key'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'The public key of the account'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/JSONTxs'
+        '400':
+          description: 'Invalid public key'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Account not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
   /header-by-hash:
     get:
       tags:
