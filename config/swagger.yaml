@@ -402,6 +402,35 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /accounts/{pubkey}:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetAccountByPubkey
+      description: 'Get an account by public key'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'The public key of the account'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/Account'
+        '400':
+          description: 'Invalid public key'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Account not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
   /header-by-hash:
     get:
       tags:
@@ -2440,6 +2469,22 @@ definitions:
             type: array
             items:
               $ref: '#/definitions/SignedTxJSON'
+  Account:
+    type: object
+    properties:
+      pubkey:
+        type: string
+        description: 'Public key'
+      balance:
+        type: integer
+        description: 'Balance'
+        format: int64
+        minimum: 0
+      nonce:
+        type: integer
+        description: 'Nonce'
+        format: int64
+        minimum: 0
   Balance:
     type: object
     properties:

@@ -449,6 +449,41 @@
         }
       }
     },
+    "/accounts/{pubkey}" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get an account by public key",
+        "operationId" : "GetAccountByPubkey",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "The public key of the account",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Account"
+            }
+          },
+          "400" : {
+            "description" : "Invalid public key",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/header-by-hash" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
@@ -2904,6 +2939,32 @@
           }
         }
       } ]
+    },
+    "Account" : {
+      "type" : "object",
+      "properties" : {
+        "pubkey" : {
+          "type" : "string",
+          "description" : "Public key"
+        },
+        "balance" : {
+          "type" : "integer",
+          "format" : "int64",
+          "description" : "Balance",
+          "minimum" : 0
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64",
+          "description" : "Nonce",
+          "minimum" : 0
+        }
+      },
+      "example" : {
+        "balance" : 0,
+        "nonce" : 0,
+        "pubkey" : "pubkey"
+      }
     },
     "Balance" : {
       "type" : "object",

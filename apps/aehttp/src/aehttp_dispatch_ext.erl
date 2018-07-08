@@ -166,6 +166,22 @@ handle_request('GetGenerationByHeight', Params, _Context) ->
         {ok, Hash} -> get_generation(Hash)
     end;
 
+handle_request('GetAccountByPubkey', Params, _Context) ->
+    case aec_base58c:safe_decode(account_pubkey, maps:get(pubkey, Params)) of
+        {ok, Pubkey} ->
+            case aehttp_logic:get_account(Pubkey) of
+                {ok, Account} ->
+                    {200, [],
+                     #{pubkey => aec_base58c:encode(account_pubkey, Pubkey),
+                       balance => aec_accounts:balance(Account),
+                       nonce => aec_accounts:nonce(Account)}};
+                {error, _} ->
+                    {404, [], #{reason => <<"Account not found">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid public key">>}}
+    end;
+
 handle_request('GetBlockGenesis', Req, _Context) ->
     get_block(fun aehttp_logic:get_block_genesis/0, Req, json);
 
@@ -766,3 +782,4 @@ get_generation(Hash) ->
             },
             {200, [], Struct}
     end.
+
