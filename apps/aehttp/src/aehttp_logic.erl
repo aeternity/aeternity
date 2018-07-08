@@ -18,7 +18,8 @@
         , get_top_blocks_time_summary/1
         ]).
 
--export([ get_account_balance/1
+-export([ get_account/1
+        , get_account_balance/1
         , get_account_balance_at_hash/2
         , get_all_accounts_balances/0
         ]).
@@ -138,6 +139,13 @@ get_block_range_by_hash(HashFrom, HashTo) ->
 
 get_block_range_by_height(HeightFrom, HeightTo) ->
     aec_chain:get_block_range_by_height(HeightFrom, HeightTo).
+
+-spec get_account(binary()) -> {ok, map()} | {error, account_not_found}.
+get_account(Pubkey) ->
+    case aec_chain:get_account(Pubkey) of
+        {value, Account} -> {ok, Account};
+        none -> {error, account_not_found}
+    end.
 
 -spec get_account_balance(binary()) -> {ok, integer()}
                                      | {error, account_not_found}.
