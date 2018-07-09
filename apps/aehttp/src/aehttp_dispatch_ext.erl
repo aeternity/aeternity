@@ -199,6 +199,49 @@ handle_request('GetPendingAccountTransactionsByPubkey', Params, _Context) ->
             {400, [], #{reason => <<"Invalid public key">>}}
     end;
 
+handle_request('GetTransactionByHash', Params, _Config) ->
+    case aec_base58c:safe_decode(tx_hash, maps:get(hash, Params)) of
+        {ok, Hash} ->
+            case aec_chain:find_tx_with_location(Hash) of
+                none ->
+                    {404, [], #{<<"reason">> => <<"Transaction not found">>}};
+                {mempool, Tx} ->
+                    JSONTx = aetx_sign:serialize_for_client_pending(json, Tx),
+                    {200, [], JSONTx};
+                {BlockHash, Tx} ->
+                    {ok, Header} = aec_chain:get_header(BlockHash),
+                    JSONTx = aetx_sign:serialize_for_client(json, Header, Tx),
+                    {200, [], JSONTx}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid hash">>}}
+    end;
+
+handle_request('GetTransactionInfoByHash', Params, _Config) ->
+    ParseFuns = [read_required_params([hash]),
+                 base58_decode([{hash, tx_hash, tx_hash}]),
+                 get_transaction(tx_hash, tx),
+                 get_contract_call_object_from_tx(tx, contract_call),
+                 ok_response(
+                    fun(#{contract_call := Call}) ->
+                            aect_call:serialize_for_client(Call)
+                    end)
+                ],
+    process_request(ParseFuns, Params);
+
+handle_request('PostTransaction', #{'Tx' := Tx} = Params, _Context) ->
+    case aehttp_api_parser:decode(tx, maps:get(<<"tx">>, Tx)) of
+        {error, #{<<"tx">> := broken_tx}} ->
+            {400, [], #{reason => <<"Invalid tx">>}};
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid base58Check encoding">>}};
+        {ok, SignedTx} ->
+            %% TODO: lager debug log?
+            aec_tx_pool:push(SignedTx),
+            Hash = aetx_sign:hash(SignedTx),
+            {200, [], #{<<"tx_hash">> => aec_base58c:encode(tx_hash, Hash)}}
+    end;
+
 handle_request('GetBlockGenesis', Req, _Context) ->
     get_block(fun aehttp_logic:get_block_genesis/0, Req, json);
 

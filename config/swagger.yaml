@@ -460,6 +460,92 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /transactions/{hash}:
+    get:
+      tags:
+        - external
+        - transactions
+      operationId: GetTransactionByHash
+      description: 'Get a transaction by hash'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: hash
+          description: 'The hash of the transaction'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/SignedTxJSON'
+        '400':
+          description: 'Invalid hash'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Transaction not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /transactions/{hash}/info:
+    get:
+      tags:
+        - external
+        - transactions
+      operationId: GetTransactionInfoByHash
+      description: 'Get a transaction info by hash'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: hash
+          description: 'The hash of the transaction'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/ContractCallObject'
+        '400':
+          description: 'Invalid hash'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Transaction not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /transactions:
+    post:
+      tags:
+        - external
+        - transactions
+      operationId: PostTransaction
+      description: 'Post a new transaction'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: 'The new transaction'
+          required: true
+          schema:
+            $ref: '#/definitions/Tx'
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/PostTxResponse'
+        '400':
+          description: 'Invalid transaction'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
   /header-by-hash:
     get:
       tags:
@@ -3633,7 +3719,7 @@ definitions:
     type: object
     properties:
       tx_hash:
-        description: Hash of a signed transaction
+        description: 'Hash of a signed transaction'
         $ref: '#/definitions/EncodedHash'
     required:
     - tx_hash

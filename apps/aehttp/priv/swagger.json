@@ -519,6 +519,93 @@
         }
       }
     },
+    "/transactions/{hash}" : {
+      "get" : {
+        "tags" : [ "external", "transactions" ],
+        "description" : "Get a transaction by hash",
+        "operationId" : "GetTransactionByHash",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "hash",
+          "in" : "path",
+          "description" : "The hash of the transaction",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SignedTxJSON"
+            }
+          },
+          "400" : {
+            "description" : "Invalid hash",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Transaction not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/transactions/{hash}/info" : {
+      "get" : {
+        "tags" : [ "external", "transactions" ],
+        "description" : "Get a transaction info by hash",
+        "operationId" : "GetTransactionInfoByHash",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "hash",
+          "in" : "path",
+          "description" : "The hash of the transaction",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/ContractCallObject"
+            }
+          },
+          "400" : {
+            "description" : "Invalid hash",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Transaction not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/transactions" : {
+      "get" : {
+        "tags" : [ "external", "transactions" ],
+        "description" : "Get transactions in the mempool",
+        "operationId" : "GetTxs",
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Transactions"
+            }
+          }
+        }
+      }
+    },
     "/header-by-hash" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
@@ -1447,23 +1534,6 @@
             "description" : "Contract not found",
             "schema" : {
               "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/transactions" : {
-      "get" : {
-        "tags" : [ "external", "transactions" ],
-        "description" : "Get transactions in the mempool",
-        "operationId" : "GetTxs",
-        "produces" : [ "application/json" ],
-        "parameters" : [ ],
-        "responses" : {
-          "200" : {
-            "description" : "Successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/Transactions"
             }
           }
         }
