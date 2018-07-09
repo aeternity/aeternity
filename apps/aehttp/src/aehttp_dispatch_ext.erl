@@ -43,6 +43,9 @@
         Context :: #{}
        ) -> {Status :: cowboy:http_status(), Headers :: list(), Body :: map()}.
 
+handle_request('GetTop', Req, Context) ->
+    handle_request('GetTopBlock', Req, Context);
+
 handle_request('GetTopBlock', _, _Context) ->
     {ok, TopBlock} = aehttp_logic:get_top(),
     EncodedHash = aehttp_api_parser:encode(block_hash, TopBlock),

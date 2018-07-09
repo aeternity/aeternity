@@ -43,6 +43,23 @@
   } ],
   "schemes" : [ "http" ],
   "paths" : {
+    "/top" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get the top block (either key or micro block)",
+        "operationId" : "GetTop",
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Top"
+            }
+          }
+        }
+      }
+    },
     "/blocks/top" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
