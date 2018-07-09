@@ -63,6 +63,11 @@
     get_pending_account_transactions_by_pubkey/1
    ]).
 
+-export(
+   [
+    get_transaction_by_hash/1
+   ]).
+
 %% test case exports
 %% external endpoints
 -export(
@@ -315,7 +320,7 @@ groups() ->
        {group, get_account_info},
        {group, with_pending_txs}
       ]},
-     {with_pending_txs, [],
+     {with_pending_txs, [sequence],
       [
        {group, get_account_info}
       ]},
@@ -323,6 +328,23 @@ groups() ->
       [
        get_account_by_pubkey,
        get_pending_account_transactions_by_pubkey
+      ]},
+     {transaction, [sequence],
+      [
+       {group, with_mempool_txs},
+       {group, with_on_chain_txs}
+      ]},
+     {with_mempool_txs, [sequence],
+      [
+       {group, get_transaction_info}
+      ]},
+     {with_on_chain_txs, [],
+      [
+       {group, get_transaction_info}
+      ]},
+     {get_transaction_info, [sequence],
+      [
+       get_transaction_by_hash
       ]},
      {off_chain_endpoints, [],
       [
@@ -587,6 +609,11 @@ init_per_group(with_pending_key_block, Config) ->
 init_per_group(account, Config) ->
     {ok, Node} = init_node(Config),
     [{node, Node} | Config];
+init_per_group(transaction, Config) ->
+    {ok, Node} = init_node(Config),
+    aecore_suite_utils:mine_key_blocks(Node, aecore_suite_utils:latest_fork_height()),
+    {ok, [_KeyBlock0]} = aecore_suite_utils:mine_key_blocks(Node, 1),
+    [{node, Node} | Config];
 init_per_group(nonexistent, Config) ->
     {ok, Pubkey} = rpc(aec_keys, pubkey, []),
     [{account_pubkey, aec_base58c:encode(account_pubkey, Pubkey)},
@@ -598,12 +625,24 @@ init_per_group(with_balance, Config) ->
     {ok, [_KeyBlock0]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     [{account_pubkey, aec_base58c:encode(account_pubkey, Pubkey)},
      {account_state, with_balance} | Config];
-init_per_group(with_pending_txs, Config) ->
+init_per_group(Group, Config) when Group =:= with_pending_txs; Group =:= with_mempool_txs ->
     Node = ?config(node, Config),
     {ok, Pubkey} = rpc(aec_keys, pubkey, []),
     {ok, Tx} = aecore_suite_utils:spend(Node, Pubkey, Pubkey, 1),
     {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
-    [{pending_txs, [Tx]} | Config];
+    [{pending_txs, [{aec_base58c:encode(tx_hash, aetx_sign:hash(Tx)), Tx}]} | Config];
+init_per_group(with_on_chain_txs, Config) ->
+    Node = ?config(node, Config),
+    {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
+    {ok, []} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+    true = aec_blocks:is_key_block(KeyBlock),
+    false = aec_blocks:is_key_block(MicroBlock),
+    [Tx] = aec_blocks:txs(MicroBlock),
+    Config1 = proplists:delete(pending_txs, Config),
+    [{on_chain_txs, [{aec_base58c:encode(tx_hash, aetx_sign:hash(Tx)), Tx}]},
+     {block_with_txs, MicroBlock},
+     {block_with_txs_hash, hash(MicroBlock)},
+     {block_with_txs_height, aec_blocks:height(KeyBlock)} | Config1];
 init_per_group(channel_websocket, Config) ->
     aecore_suite_utils:start_node(?NODE, Config),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
@@ -654,7 +693,13 @@ end_per_group(with_balance, _Config) ->
     ok;
 end_per_group(with_pending_txs, _Config) ->
     ok;
+end_per_group(with_on_chain_txs, _Config) ->
+    ok;
+end_per_group(with_mempool_txs, _Config) ->
+    ok;
 end_per_group(get_account_info, _Config) ->
+    ok;
+end_per_group(get_transaction_info, _Config) ->
     ok;
 end_per_group(_Group, Config) ->
     ok = stop_node(Config).
@@ -1179,6 +1224,32 @@ get_accounts_transactions_pending_by_pubkey_sut(Pubkey) ->
     Host = external_address(),
     Pubkey1 = binary_to_list(Pubkey),
     http_request(Host, get, "accounts/" ++ http_uri:encode(Pubkey1) ++ "/transactions/pending", []).
+
+%% /transactions/*
+
+get_transaction_by_hash(Config) ->
+    PendingTxs = proplists:get_value(pending_txs, Config, []),
+    OnChainTxs = proplists:get_value(on_chain_txs, Config, []),
+    get_transaction_by_hash(PendingTxs, OnChainTxs, Config).
+
+get_transaction_by_hash([{TxHash, PendingTx}], [], Config) ->
+    {ok, 200, Tx} = get_transactions_by_hash_sut(TxHash),
+    ?assertEqual(TxHash, maps:get(<<"hash">>, Tx)),
+    ?assertEqual(<<"none">>, maps:get(<<"block_hash">>, Tx)),
+    ?assertEqual(-1, maps:get(<<"block_height">>, Tx)),
+    ok;
+get_transaction_by_hash([], [{TxHash, OnChainTx}], Config) ->
+    BlockWithTxsHash = ?config(block_with_txs_hash, Config),
+    BlockWithTxsHeight = ?config(block_with_txs_height, Config),
+    {ok, 200, Tx} = get_transactions_by_hash_sut(TxHash),
+    ?assertEqual(TxHash, maps:get(<<"hash">>, Tx)),
+    ?assertEqual(BlockWithTxsHash, maps:get(<<"block_hash">>, Tx)),
+    ?assertEqual(BlockWithTxsHeight, maps:get(<<"block_height">>, Tx)),
+    ok.
+
+get_transactions_by_hash_sut(Hash) ->
+    Host = external_address(),
+    http_request(Host, get, "transactions/" ++ http_uri:encode(Hash), []).
 
 %% enpoints
 

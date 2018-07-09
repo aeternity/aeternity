@@ -199,6 +199,24 @@ handle_request('GetPendingAccountTransactionsByPubkey', Params, _Context) ->
             {400, [], #{reason => <<"Invalid public key">>}}
     end;
 
+handle_request('GetTransactionByHash', Params, _Config) ->
+    case aec_base58c:safe_decode(tx_hash, maps:get(hash, Params)) of
+        {ok, Hash} ->
+            case aec_chain:find_tx_with_location(Hash) of
+                none ->
+                    {error, {404, [], #{<<"reason">> => <<"Transaction not found">>}}};
+                {mempool, Tx} ->
+                    JSONTx = aetx_sign:serialize_for_client_pending(json, Tx),
+                    {200, [], JSONTx};
+                {BlockHash1, Tx} ->
+                    {ok, Header} = aec_chain:get_header(BlockHash1),
+                    JSONTx = aetx_sign:serialize_for_client(json, Header, Tx),
+                    {200, [], JSONTx}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid hash">>}}
+    end;
+
 handle_request('GetBlockGenesis', Req, _Context) ->
     get_block(fun aehttp_logic:get_block_genesis/0, Req, json);
 

@@ -460,6 +460,35 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /transactions/{hash}:
+    get:
+      tags:
+        - external
+        - transactions
+      operationId: GetTransactionByHash
+      description: 'Get a transaction by hash'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: hash
+          description: 'The hash of the transaction'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/SignedTxJSON'
+        '400':
+          description: 'Invalid hash'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Transaction not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
   /header-by-hash:
     get:
       tags:

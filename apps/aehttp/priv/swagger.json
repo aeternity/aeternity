@@ -519,6 +519,41 @@
         }
       }
     },
+    "/transactions/{hash}" : {
+      "get" : {
+        "tags" : [ "external", "transactions" ],
+        "description" : "Get a transaction by hash",
+        "operationId" : "GetTransactionByHash",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "hash",
+          "in" : "path",
+          "description" : "The hash of the transaction",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SignedTxJSON"
+            }
+          },
+          "400" : {
+            "description" : "Invalid hash",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Transaction not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/header-by-hash" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
