@@ -208,19 +208,16 @@ $(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests:
 	@git clone https://github.com/ethereum/tests.git $(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests
 
 
-venv-present:
-	@virtualenv -q $(PYTHON_DIR)
-
-python-env: venv-present swagger
+python-env:
 	( cd $(PYTHON_DIR) && $(MAKE) env; )
 
-python-ws-test:
+python-ws-test: swagger
 	( cd $(PYTHON_DIR) && $(MAKE) websocket-test; )
 
-python-uats:
+python-uats: swagger
 	( cd $(PYTHON_DIR) && $(MAKE) uats; )
 
-python-single-uat:
+python-single-uat: swagger
 	( cd $(PYTHON_DIR) && TEST_NAME=$(TEST_NAME) $(MAKE) single-uat; )
 
 python-release-test: swagger
