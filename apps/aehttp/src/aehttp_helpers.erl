@@ -179,7 +179,10 @@ get_nonce_from_account_id(AccountKey) ->
     fun(Req, State) ->
         case maps:get(nonce, Req, undefined) of
             undefined ->
-                Pubkey = aec_id:specialize(maps:get(AccountKey, State), account),
+                Pubkey = case aec_id:specialize(maps:get(AccountKey, State)) of
+                             {account, A} -> A;
+                             {oracle, O} -> O
+                         end,
                 case aec_next_nonce:pick_for_account(Pubkey) of
                     {ok, Nonce} ->
                         {ok, maps:put(nonce, Nonce, State)};
@@ -250,20 +253,38 @@ contract_caller_nonce_key(contract_call_tx, {CB, Tx}) ->
     {CB:caller(Tx), CB:nonce(Tx), CB:contract(Tx)}.
 
 verify_oracle_existence(OracleKey) ->
-    verify_key_in_state_tree(OracleKey, fun aec_trees:oracles/1,
-                             fun aeo_state_tree:lookup_oracle/2,
-                             "Oracle address").
+    fun(_Req, State) ->
+            case aec_id:specialize(maps:get(OracleKey, State)) of
+                {oracle, OraclePubkey} ->
+                    TopBlockHash = aec_chain:top_block_hash(),
+                    {ok, Trees} = aec_chain:get_block_state(TopBlockHash),
+                    OTree = aec_trees:oracles(Trees),
+                    case aeo_state_tree:lookup_oracle(OraclePubkey, OTree) of
+                        {value, _} -> ok;
+                        none ->
+                            Msg = "Oracle address for key " ++ atom_to_list(OracleKey) ++ " not found",
+                            {error, {404, [], #{<<"reason">> => list_to_binary(Msg)}}}
+                    end;
+                {name, _} ->
+                    ok
+            end
+    end.
 
 verify_oracle_query_existence(OracleKey, QueryKey) ->
     fun(Req, State) ->
-        OraclePubKey = maps:get(OracleKey, State),
-        Lookup =
-            fun(QId, Tree) ->
-                aeo_state_tree:lookup_query(OraclePubKey, QId, Tree)
-            end,
-        Fun = verify_key_in_state_tree(QueryKey, fun aec_trees:oracles/1,
-                                        Lookup, "Oracle query"),
-        Fun(Req, State)
+        case aec_id:specialize(maps:get(OracleKey, State)) of
+            {oracle, OraclePubKey} ->
+                Lookup =
+                    fun(QId, Tree) ->
+                            aeo_state_tree:lookup_query(OraclePubKey, QId, Tree)
+                    end,
+                Fun = verify_key_in_state_tree(QueryKey, fun aec_trees:oracles/1,
+                                               Lookup, "Oracle query"),
+                Fun(Req, State);
+            {name, _} ->
+                %% We might succeed
+                ok
+        end
     end.
 
 verify_key_in_state_tree(Key, StateTreeFun, Lookup, Entity) ->

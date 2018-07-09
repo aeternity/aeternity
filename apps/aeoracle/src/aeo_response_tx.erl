@@ -49,9 +49,12 @@
 
 -export_type([tx/0]).
 
--spec oracle(tx()) -> aec_keys:pubkey().
-oracle(#oracle_response_tx{oracle = OraclePubKey}) ->
-    aec_id:specialize(OraclePubKey, oracle).
+-spec oracle(tx()) -> aec_id:id().
+oracle(#oracle_response_tx{oracle = Oracle}) ->
+    Oracle.
+
+oracle_pubkey(#oracle_response_tx{oracle = Oracle}) ->
+    aec_id:specialize(Oracle, oracle).
 
 -spec query_id(tx()) -> aeo_query:id().
 query_id(#oracle_response_tx{query_id = QId}) ->
@@ -67,7 +70,8 @@ new(#{oracle   := Oracle,
       query_id := QId,
       response := Response,
       fee      := Fee} = Args) ->
-    Tx = #oracle_response_tx{oracle   = aec_id:create(oracle, Oracle),
+    oracle = aec_id:specialize_type(Oracle),
+    Tx = #oracle_response_tx{oracle   = Oracle,
                              nonce    = Nonce,
                              query_id = QId,
                              response = Response,
@@ -93,7 +97,7 @@ nonce(#oracle_response_tx{nonce = Nonce}) ->
 
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#oracle_response_tx{} = Tx) ->
-    oracle(Tx).
+    oracle_pubkey(Tx).
 
 %% Oracle should exist, and have enough funds for the fee.
 %% QueryId id should match oracle.
@@ -101,14 +105,14 @@ origin(#oracle_response_tx{} = Tx) ->
         {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_response_tx{nonce = Nonce, query_id = QId, fee = Fee} = Tx,
       Context, Trees, Height, _ConsensusVersion) ->
-    OraclePubKey = oracle(Tx),
+    OraclePubKey = oracle_pubkey(Tx),
     case fetch_query(OraclePubKey, QId, Trees) of
         {value, I} ->
             ResponseTTL = aeo_query:response_ttl(I),
             QueryFee    = aeo_query:fee(I),
             Checks =
                 [fun() -> check_oracle(OraclePubKey, Trees) end,
-                 fun() -> check_query(I, OraclePubKey) end |
+                 fun() -> check_query(OraclePubKey, I) end |
                  case Context of
                      aetx_contract -> []; %% TODO: Handle fees from contracts right.
                      aetx_transaction ->
@@ -126,14 +130,14 @@ check(#oracle_response_tx{nonce = Nonce, query_id = QId, fee = Fee} = Tx,
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#oracle_response_tx{} = Tx, _) ->
-    {ok, [oracle(Tx)]}.
+    {ok, [oracle_pubkey(Tx)]}.
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()}.
 process(#oracle_response_tx{nonce = Nonce, query_id = QId, response = Response,
                             fee = Fee} = Tx,
         _Context, Trees0, Height, _ConsensusVersion) ->
-    OraclePubKey  = oracle(Tx),
+    OraclePubKey  = oracle_pubkey(Tx),
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),
 
@@ -202,7 +206,7 @@ for_client(#oracle_response_tx{ nonce    = Nonce,
                                 ttl      = TTL} = Tx) ->
     #{<<"data_schema">> => <<"OracleResponseTxJSON">>, % swagger schema name
       <<"vsn">> => version(),
-      <<"oracle">> => aec_base58c:encode(oracle_pubkey, oracle(Tx)),
+      <<"oracle">> => aec_base58c:encode(id_hash, oracle(Tx)),
       <<"nonce">> => Nonce,
       <<"query_id">> => aec_base58c:encode(oracle_query_id, QId),
       <<"response">> => Response,
@@ -215,7 +219,7 @@ fetch_query(OId, QId, Trees) ->
     OraclesTree  = aec_trees:oracles(Trees),
     aeo_state_tree:lookup_query(OId, QId, OraclesTree).
 
-check_query(I, OraclePubKey) ->
+check_query(OraclePubKey, I) ->
     case OraclePubKey == aeo_query:oracle_address(I) of
         true  ->
             case aeo_query:is_closed(I) of

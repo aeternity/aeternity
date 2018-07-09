@@ -109,7 +109,7 @@ oracle_register(AccountKey,_Sign, QueryFee, TTL, QuerySpec, ResponseSpec,
     BinaryQuerySpec = aeso_data:to_binary(QuerySpec, 0),
     BinaryResponseSpec = aeso_data:to_binary(ResponseSpec, 0),
     Spec =
-        #{account       => AccountKey,
+        #{account       => aec_id:create(account, AccountKey),
           nonce         => Nonce,
           query_spec    => BinaryQuerySpec,
           response_spec => BinaryResponseSpec,
@@ -138,14 +138,13 @@ oracle_register(AccountKey,_Sign, QueryFee, TTL, QuerySpec, ResponseSpec,
 
 
 oracle_query(Oracle, Q, Value, QTTL, RTTL,
-             State = #state{ height  = Height,
-                             account = ContractKey } = State) ->
+             State = #state{ account = ContractKey } = State) ->
     Nonce = next_nonce(State),
     QueryData = aeso_data:to_binary(Q, 0),
     {ok, Tx} =
-        aeo_query_tx:new(#{sender        => ContractKey,
+        aeo_query_tx:new(#{sender        => aec_id:create(account, ContractKey),
                            nonce         => Nonce,
-                           oracle        => Oracle,
+                           oracle        => aec_id:create(oracle, Oracle),
                            query         => QueryData,
                            query_fee     => Value,
                            query_ttl     => {delta, QTTL},
@@ -156,8 +155,7 @@ oracle_query(Oracle, Q, Value, QTTL, RTTL,
     case apply_transaction(Tx, State) of
         {ok, State1} ->
             {oracle_query_tx, OTx} = aetx:specialize_type(Tx),
-            Query = aeo_query:new(OTx, Height),
-            Id = aeo_query:id(Query),
+            Id = aeo_query_tx:query_id(OTx),
             {ok, Id, State1};
         {error, _} = E -> E
     end.
@@ -167,7 +165,7 @@ oracle_respond(Oracle, QueryId,_Sign, Response, State) ->
     Nonce = next_nonce(Oracle, State),
 
     {ok, Tx} = aeo_response_tx:new(
-                 #{oracle   => Oracle,
+                 #{oracle   => aec_id:create(oracle, Oracle),
                    nonce    => Nonce,
                    query_id => QueryId,
                    response => aeso_data:to_binary(Response, 0),
@@ -180,7 +178,7 @@ oracle_respond(Oracle, QueryId,_Sign, Response, State) ->
 oracle_extend(Oracle,_Sign, Fee, TTL, State) ->
     Nonce = next_nonce(Oracle, State),
     {ok, Tx} =
-        aeo_extend_tx:new(#{oracle     => Oracle,
+        aeo_extend_tx:new(#{oracle     => aec_id:create(oracle, Oracle),
                             nonce      => Nonce,
                             oracle_ttl => {delta, TTL},
                             fee        => Fee,

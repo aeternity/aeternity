@@ -51,8 +51,10 @@ spend(EncodedRecipient, Amount, Fee, TTL, Payload) ->
 oracle_register(QueryFormat, ResponseFormat, QueryFee, Fee, TTLType, TTLValue, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
+            %% Note that this is the local node's pubkey.
+            Sender = aec_id:create(account, Pubkey),
             aeo_register_tx:new(
-              #{account       => Pubkey,
+              #{account       => Sender,
                 nonce         => Nonce,
                 query_spec    => QueryFormat,
                 response_spec => ResponseFormat,
@@ -65,8 +67,10 @@ oracle_register(QueryFormat, ResponseFormat, QueryFee, Fee, TTLType, TTLValue, T
 oracle_extend(Fee, TTLType, TTLValue, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
+            %% Note that this is the local node's pubkey.
+            Sender = aec_id:create(oracle, Pubkey),
             aeo_extend_tx:new(
-              #{oracle     => Pubkey,
+              #{oracle     => Sender,
                 nonce      => Nonce,
                 oracle_ttl => {TTLType, TTLValue},
                 fee        => Fee,
@@ -77,20 +81,24 @@ oracle_query(EncodedOraclePubkey, Query, QueryFee, QueryTTLType,
              QueryTTLValue, ResponseTTLValue, Fee, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
-            case aec_chain:resolve_name(oracle_pubkey, EncodedOraclePubkey) of
-                {ok, DecodedOraclePubkey} ->
+            %% Note that this is the local node's pubkey.
+            Sender = aec_id:create(account, Pubkey),
+            case aec_base58c:safe_decode(id_hash, EncodedOraclePubkey) of
+                {ok, DecodedOracleId} ->
                     {ok, Tx} =
                         aeo_query_tx:new(
-                          #{sender       => Pubkey,
+                          #{sender       => Sender,
                             nonce        => Nonce,
-                            oracle       => DecodedOraclePubkey,
+                            oracle       => DecodedOracleId,
                             query        => Query,
                             query_fee    => QueryFee,
                             query_ttl    => {QueryTTLType, QueryTTLValue},
                             response_ttl => {delta, ResponseTTLValue},
                             fee          => Fee,
                             ttl          => TTL}),
-                    QId = aeo_query:id(Pubkey, Nonce, DecodedOraclePubkey),
+                    %% NOTE: Does not work with names
+                    OraclePubkey = aec_id:specialize(DecodedOracleId, oracle),
+                    QId = aeo_query:id(Pubkey, Nonce, OraclePubkey),
                     {ok, Tx, QId};
                 {error, _} -> {error, invalid_key}
               end
@@ -99,8 +107,10 @@ oracle_query(EncodedOraclePubkey, Query, QueryFee, QueryTTLType,
 oracle_response(DecodedQueryId, Response, Fee, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
+            %% Note that this is the local node's pubkey.
+            Sender = aec_id:create(oracle, Pubkey),
             aeo_response_tx:new(
-              #{oracle   => Pubkey,
+              #{oracle   => Sender,
                 nonce    => Nonce,
                 query_id => DecodedQueryId,
                 response => Response,

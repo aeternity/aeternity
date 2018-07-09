@@ -159,7 +159,8 @@ query_oracle_adapt(S, [Account, Query]) ->
 
 query_oracle(Account, Query) ->
     QueryTx = mk_oracle_query_tx(Account, Query),
-    Id = aeo_query:id(aeo_query:new(QueryTx, 0)),
+    {oracle_query_tx, QTx} = aetx:specialize_type(QueryTx),
+    Id = aeo_query_tx:query_id(QTx),
     {apply_tx(QueryTx), Id}.
 
 query_oracle_next(S, Id, [A = #account{ balance = B, nonce = N, pubkey = PK },

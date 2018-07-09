@@ -66,7 +66,7 @@ register_tx() ->
     register_tx(#{}).
 
 register_tx(Override) ->
-    Map = #{ account       => <<4711:32/unit:8>>
+    Map = #{ account       => aec_id:create(account, <<4711:32/unit:8>>)
            , nonce         => 42
            , query_spec    => <<"{foo: bar}"/utf8>>
            , response_spec => <<"boolean()"/utf8>>

@@ -52,9 +52,12 @@
 
 -export_type([tx/0]).
 
--spec account(tx()) -> aec_keys:pubkey().
-account(#oracle_register_tx{account = AccountPubKey}) ->
-    aec_id:specialize(AccountPubKey, account).
+-spec account(tx()) -> aec_id:id().
+account(#oracle_register_tx{account = Account}) ->
+    Account.
+
+account_pubkey(#oracle_register_tx{account = Account}) ->
+    aec_id:specialize(Account, account).
 
 -spec query_spec(tx()) -> aeo_oracles:type_spec().
 query_spec(#oracle_register_tx{query_spec = QuerySpec}) ->
@@ -81,14 +84,15 @@ ttl(#oracle_register_tx{ttl = TTL}) ->
     TTL.
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{account       := AccountPubKey,
+new(#{account       := Account,
       nonce         := Nonce,
       query_spec    := QuerySpec,
       response_spec := ResponseSpec,
       query_fee     := QueryFee,
       oracle_ttl    := OracleTTL,
       fee           := Fee} = Args) ->
-    Tx = #oracle_register_tx{account       = aec_id:create(account, AccountPubKey),
+    account = aec_id:specialize_type(Account),
+    Tx = #oracle_register_tx{account       = Account,
                              nonce         = Nonce,
                              query_spec    = QuerySpec,
                              response_spec = ResponseSpec,
@@ -115,7 +119,7 @@ origin(#oracle_register_tx{account = AccountPubKey}) ->
         {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_register_tx{nonce = Nonce, oracle_ttl = OTTL, fee = Fee} = Tx,
       Context, Trees, Height, _ConsensusVersion) ->
-    AccountPubKey = account(Tx),
+    AccountPubKey = aec_id:specialize(account(Tx), account),
     Checks =
         [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee) end,
          fun() -> ensure_not_oracle(AccountPubKey, Trees) end
@@ -133,13 +137,13 @@ check(#oracle_register_tx{nonce = Nonce, oracle_ttl = OTTL, fee = Fee} = Tx,
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#oracle_register_tx{} = Tx, _) ->
-    {ok, [account(Tx)]}.
+    {ok, [account_pubkey(Tx)]}.
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()}.
 process(#oracle_register_tx{nonce = Nonce, fee = Fee} = RegisterTx,
         _Ctxt, Trees0, Height, _ConsensusVersion) ->
-    AccountPubKey = account(RegisterTx),
+    AccountPubKey = aec_id:specialize(account(RegisterTx), account),
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),
 
@@ -228,7 +232,7 @@ for_client(#oracle_register_tx{ nonce         = Nonce,
                                 ttl           = TTL} = Tx) ->
     #{<<"data_schema">> => <<"OracleRegisterTxJSON">>, % swagger schema name
       <<"vsn">> => version(),
-      <<"account">> => aec_base58c:encode(account_pubkey, account(Tx)),
+      <<"account">> => aec_base58c:encode(id_hash, account(Tx)),
       <<"nonce">> => Nonce,
       <<"query_spec">> => QuerySpec,
       <<"response_spec">> => ResponseSpec,

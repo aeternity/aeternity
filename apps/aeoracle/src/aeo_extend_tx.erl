@@ -46,9 +46,12 @@
 
 -export_type([tx/0]).
 
--spec oracle(tx()) -> aec_keys:pubkey().
+-spec oracle(tx()) -> aec_id:id().
 oracle(#oracle_extend_tx{oracle = Oracle}) ->
-    aec_id:specialize(Oracle, oracle).
+    Oracle.
+
+oracle_pubkey(#oracle_extend_tx{} = Tx) ->
+    aec_id:specialize(oracle(Tx), oracle).
 
 -spec oracle_ttl(tx()) -> aeo_oracles:relative_ttl().
 oracle_ttl(#oracle_extend_tx{oracle_ttl = OTTL}) ->
@@ -63,11 +66,12 @@ ttl(#oracle_extend_tx{ttl = TTL}) ->
     TTL.
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{oracle     := OraclePK,
+new(#{oracle     := Oracle,
       nonce      := Nonce,
       oracle_ttl := OracleTTL,
       fee        := Fee} = Args) ->
-    Tx = #oracle_extend_tx{oracle     = aec_id:create(oracle, OraclePK),
+    oracle = aec_id:specialize_type(Oracle),
+    Tx = #oracle_extend_tx{oracle     = Oracle,
                            nonce      = Nonce,
                            oracle_ttl = OracleTTL,
                            fee        = Fee,
@@ -84,7 +88,7 @@ nonce(#oracle_extend_tx{nonce = Nonce}) ->
 
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#oracle_extend_tx{} = Tx) ->
-    oracle(Tx).
+    aec_id:specialize(oracle(Tx), oracle).
 
 %% Account should exist, and have enough funds for the fee
 %% Oracle should exist.
@@ -92,7 +96,7 @@ origin(#oracle_extend_tx{} = Tx) ->
     {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_extend_tx{nonce = Nonce, oracle_ttl = OTTL, fee = Fee} = Tx,
       _Context, Trees, Height, _ConsensusVersion) ->
-    OraclePK = oracle(Tx),
+    OraclePK = oracle_pubkey(Tx),
     Checks =
         [fun() -> aetx_utils:check_account(OraclePK, Trees, Nonce, Fee) end,
          fun() -> ensure_oracle(OraclePK, Trees) end,
@@ -105,13 +109,13 @@ check(#oracle_extend_tx{nonce = Nonce, oracle_ttl = OTTL, fee = Fee} = Tx,
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#oracle_extend_tx{} = Tx, _) ->
-    {ok, [oracle(Tx)]}.
+    {ok, [oracle_pubkey(Tx)]}.
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()}.
 process(#oracle_extend_tx{nonce = Nonce, fee = Fee, oracle_ttl = OTTL} = Tx,
         _Context, Trees0, _Height, _ConsensusVersion) ->
-    OraclePK      = oracle(Tx),
+    OraclePK      = aec_id:specialize(oracle(Tx), oracle),
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),
 
@@ -176,7 +180,7 @@ for_client(#oracle_extend_tx{ nonce      = Nonce,
                               ttl        = TTL} = Tx) ->
     #{<<"data_schema">> => <<"OracleExtendTxJSON">>, % swagger schema name
       <<"vsn">> => version(),
-      <<"account">> => aec_base58c:encode(account_pubkey, oracle(Tx)),
+      <<"account">> => aec_base58c:encode(id_hash, oracle(Tx)),
       <<"nonce">> => Nonce,
       <<"oracle_ttl">> => #{<<"type">> => TTLType, <<"value">> => TTLValue},
       <<"fee">> => Fee,

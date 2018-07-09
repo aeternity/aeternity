@@ -63,7 +63,7 @@ do_execute(chain, SubUnSub, SubscribeData)
             case SubType of
                 <<"oracle_query">> ->
                     #{<<"oracle_id">> := EncodedOId} = SubscribeData,
-                    {ok, OId} = aec_base58c:safe_decode(oracle_pubkey, EncodedOId),
+                    {ok, OId} = aec_base58c:safe_decode(id_hash, EncodedOId),
                     {oracle, {query, OId}};
                 <<"oracle_response">> ->
                     #{<<"query_id">> := EncodedQId} = SubscribeData,

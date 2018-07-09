@@ -79,8 +79,8 @@ id(O) ->
 -spec new(aeo_register_tx:tx(), aec_blocks:height()) -> oracle().
 new(RTx, BlockHeight) ->
     Expires = aeo_utils:ttl_expiry(BlockHeight, aeo_register_tx:oracle_ttl(RTx)),
-    Id = aec_id:create(oracle, aeo_register_tx:account(RTx)),
-    O = #oracle{ id = Id
+    Pubkey = aec_id:specialize(aeo_register_tx:account(RTx), account),
+    O = #oracle{ id = aec_id:create(oracle, Pubkey)
                , query_format = aeo_register_tx:query_spec(RTx)
                , response_format = aeo_register_tx:response_spec(RTx)
                , query_fee = aeo_register_tx:query_fee(RTx)
