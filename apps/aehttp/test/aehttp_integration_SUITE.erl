@@ -262,6 +262,7 @@ groups() ->
        {group, on_key_block},
        {group, on_micro_block},
        {group, account},
+       {group, transaction},
        {group, off_chain_endpoints},
        {group, external_endpoints},
        {group, internal_endpoints},
@@ -311,7 +312,7 @@ groups() ->
        {group, nonexistent},
        {group, with_balance}
       ]},
-     { nonexistent, [sequence],
+     {nonexistent, [],
       [
        {group, get_account_info}
       ]},
@@ -320,7 +321,7 @@ groups() ->
        {group, get_account_info},
        {group, with_pending_txs}
       ]},
-     {with_pending_txs, [sequence],
+     {with_pending_txs, [],
       [
        {group, get_account_info}
       ]},
@@ -334,7 +335,7 @@ groups() ->
        {group, with_mempool_txs},
        {group, with_on_chain_txs}
       ]},
-     {with_mempool_txs, [sequence],
+     {with_mempool_txs, [],
       [
        {group, get_transaction_info}
       ]},
@@ -342,7 +343,7 @@ groups() ->
       [
        {group, get_transaction_info}
       ]},
-     {get_transaction_info, [sequence],
+     {get_transaction_info, [],
       [
        get_transaction_by_hash
       ]},
@@ -630,7 +631,10 @@ init_per_group(Group, Config) when Group =:= with_pending_txs; Group =:= with_me
     {ok, Pubkey} = rpc(aec_keys, pubkey, []),
     {ok, Tx} = aecore_suite_utils:spend(Node, Pubkey, Pubkey, 1),
     {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
-    [{pending_txs, [{aec_base58c:encode(tx_hash, aetx_sign:hash(Tx)), Tx}]} | Config];
+    [{pending_txs, [{aec_base58c:encode(tx_hash, aetx_sign:hash(Tx)), Tx}]},
+     {block_with_txs, undefined},
+     {block_with_txs_hash, <<"none">>},
+     {block_with_txs_height, -1} | Config];
 init_per_group(with_on_chain_txs, Config) ->
     Node = ?config(node, Config),
     {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
@@ -1230,15 +1234,12 @@ get_accounts_transactions_pending_by_pubkey_sut(Pubkey) ->
 get_transaction_by_hash(Config) ->
     PendingTxs = proplists:get_value(pending_txs, Config, []),
     OnChainTxs = proplists:get_value(on_chain_txs, Config, []),
-    get_transaction_by_hash(PendingTxs, OnChainTxs, Config).
+    case {PendingTxs, OnChainTxs} of
+        {[_], []} -> get_transaction_by_hash(PendingTxs, Config);
+        {[], [_]} -> get_transaction_by_hash(OnChainTxs, Config)
+    end.
 
-get_transaction_by_hash([{TxHash, PendingTx}], [], Config) ->
-    {ok, 200, Tx} = get_transactions_by_hash_sut(TxHash),
-    ?assertEqual(TxHash, maps:get(<<"hash">>, Tx)),
-    ?assertEqual(<<"none">>, maps:get(<<"block_hash">>, Tx)),
-    ?assertEqual(-1, maps:get(<<"block_height">>, Tx)),
-    ok;
-get_transaction_by_hash([], [{TxHash, OnChainTx}], Config) ->
+get_transaction_by_hash([{TxHash, _ExpectedTx}], Config) ->
     BlockWithTxsHash = ?config(block_with_txs_hash, Config),
     BlockWithTxsHeight = ?config(block_with_txs_height, Config),
     {ok, 200, Tx} = get_transactions_by_hash_sut(TxHash),
