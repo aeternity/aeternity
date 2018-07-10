@@ -33,7 +33,8 @@ spend(EncodedRecipient, Amount, Fee, TTL, Payload) ->
         fun(SenderPubkey, Nonce) ->
             %% Note that this is the local node's pubkey.
             Sender = aec_id:create(account, SenderPubkey),
-            case aec_base58c:safe_decode(id_hash, EncodedRecipient) of
+            case aec_base58c:safe_decode({id_hash, [account_pubkey, name]},
+                                         EncodedRecipient) of
                 {ok, DecodedRecipientId} ->
                     aec_spend_tx:new(
                       #{sender    => Sender,
@@ -83,7 +84,8 @@ oracle_query(EncodedOraclePubkey, Query, QueryFee, QueryTTLType,
         fun(Pubkey, Nonce) ->
             %% Note that this is the local node's pubkey.
             Sender = aec_id:create(account, Pubkey),
-            case aec_base58c:safe_decode(id_hash, EncodedOraclePubkey) of
+            case aec_base58c:safe_decode({id_hash, [oracle_pubkey]},
+                                         EncodedOraclePubkey) of
                 {ok, DecodedOracleId} ->
                     {ok, Tx} =
                         aeo_query_tx:new(

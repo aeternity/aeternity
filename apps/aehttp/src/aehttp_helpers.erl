@@ -82,37 +82,23 @@ read_optional_params(Params) ->
         "Not found").
 
 base58_decode(Params) ->
-    Decode =
-        fun(Type, Encoded) ->
-            case aec_base58c:safe_decode(Type, Encoded) of
-                {error, _} ->
-                    error;
-                {ok, Hash} ->
-                    {ok, Hash}
-            end
-        end,
-    params_read_fun(Params,
-        fun({Name, Types}, _, Data) when is_list(Types) ->
-                Encoded = maps:get(Name, Data),
-                DecodedHash =
-                    lists:foldl(
-                        fun(Type, Accum) ->
-                            case Decode(Type, Encoded) of
-                                error -> Accum;
-                                {ok, Hash} -> Hash % replace
-                            end
-                        end,
-                        no_type_match,
-                        Types),
-                case DecodedHash of
-                    no_type_match -> error;
-                    Hash -> {ok, Hash}
-                end;
-           ({Name, Type}, _, Data) ->
-                Encoded = maps:get(Name, Data),
-                Decode(Type, Encoded)
-        end,
-        "Invalid hash").
+    params_read_fun(Params, fun base58_decode_read_fun/3, "Invalid hash").
+
+base58_decode_read_fun({Name, Types}, _, Data) when is_list(Types) ->
+    Encoded = maps:get(Name, Data),
+    FoldFun = fun(Type, Acc) ->
+                      case aec_base58c:safe_decode(Type, Encoded) of
+                          {error, _} -> Acc;
+                          {ok, Hash} -> {ok, Hash}
+                      end
+              end,
+    lists:foldl(FoldFun, error, Types);
+base58_decode_read_fun({Name, Type}, _, Data) ->
+    Encoded = maps:get(Name, Data),
+    case aec_base58c:safe_decode(Type, Encoded) of
+        {error, _} -> error;
+        {ok, _} = Res -> Res
+    end.
 
 hexstrings_decode(ParamNames) ->
     params_read_fun(ParamNames,

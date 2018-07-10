@@ -28,6 +28,7 @@
 
 %% Additional getters
 -export([oracle/1,
+         oracle_pubkey/1,
          query/1,
          query_fee/1,
          query_id/1,
@@ -67,6 +68,7 @@ sender_pubkey(#oracle_query_tx{sender = Sender}) ->
 oracle(#oracle_query_tx{oracle = Oracle}) ->
     Oracle.
 
+-spec oracle_pubkey(tx()) -> aec_keys:pubkey().
 oracle_pubkey(#oracle_query_tx{oracle = Oracle}) ->
     aec_id:specialize(Oracle, oracle).
 

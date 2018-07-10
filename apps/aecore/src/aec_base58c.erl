@@ -20,8 +20,10 @@
                     | commitment
                     | peer_pubkey
                     | state
-                    | poi
-                    | id_hash. %% Actual type is in the aec_id:id()
+                    | poi.
+
+-type extended_type() :: known_type() | {id_hash, [known_type()]}.
+
 
 -type payload() :: binary().
 -type encoded() :: binary().
@@ -61,12 +63,25 @@ type_size_check(Type, Bin) ->
             end
     end.
 
+-spec safe_decode(extended_type(), encoded()) -> {'ok', payload() | aec_id:id()}
+                                                     | {'error', atom()}.
+safe_decode({id_hash, AllowedTypes}, Enc) ->
+    try decode(Enc) of
+        {ActualType, Dec} ->
+            case lists:member(ActualType, AllowedTypes) of
+                true ->
+                    try {ok, aec_id:create(type2id(ActualType), Dec)}
+                    catch error:_ -> {error, invalid_prefix}
+                    end;
+                false ->
+                    {error, invalid_prefix}
+            end
+    catch
+        error:_ ->
+            {error, invalid_encoding}
+    end;
 safe_decode(Type, Enc) ->
     try decode(Enc) of
-        {ActualType, Dec} when Type =:= id_hash ->
-            try {ok, aec_id:create(type2id(ActualType), Dec)}
-            catch error:_ -> {error, invalid_prefix}
-            end;
         {Type, Dec} ->
             {ok, Dec};
         {_, _} ->
