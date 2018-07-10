@@ -658,7 +658,7 @@ make_contract(Owner, VmVersion) ->
 ct_create_tx(Sender, VmVersion) ->
     Spec =
         #{ fee        => 5
-         , owner      => Sender
+         , owner      => aec_id:create(account, Sender)
          , nonce      => 0
          , code       => <<"NOT PROPER BYTE CODE">>
          , vm_version => VmVersion

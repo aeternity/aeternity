@@ -252,15 +252,14 @@ handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) -
                  read_required_params([owner, code, vm_version, deposit,
                                        amount, gas, gas_price, fee, call_data]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{owner, owner, account_pubkey}]),
-                 get_nonce(owner),
+                 base58_decode([{owner, owner, id_hash}]),
+                 get_nonce_from_account_id(owner),
                  hexstrings_decode([code, call_data]),
                  ok_response(
                     fun(Data) ->
                         {ok, Tx} = aect_create_tx:new(Data),
-                        #{owner := Owner, nonce := Nonce} = Data,
-                        ContractPubKey =
-                            aect_contracts:compute_contract_pubkey(Owner, Nonce),
+                        {CB, CTx} = aetx:specialize_callback(Tx),
+                        ContractPubKey = CB:contract_pubkey(CTx),
                         #{tx => aec_base58c:encode(transaction,
                                                   aetx:serialize_to_binary(Tx)),
                           contract_address =>
@@ -275,9 +274,9 @@ handle_request('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
                  read_required_params([caller, contract, vm_version,
                                        amount, gas, gas_price, fee, call_data]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{caller, caller, account_pubkey},
-                                {contract, contract, contract_pubkey}]),
-                 get_nonce(caller),
+                 base58_decode([{caller, caller, id_hash},
+                                {contract, contract, id_hash}]),
+                 get_nonce_from_account_id(caller),
                  get_contract_code(contract, contract_code),
                  hexstrings_decode([call_data]),
                  unsigned_tx_response(fun aect_call_tx:new/1)
@@ -290,9 +289,9 @@ handle_request('PostContractCallCompute', #{'ContractCallCompute' := Req}, _Cont
                                        amount, gas, gas_price, fee,
                                        function, arguments]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{caller, caller, account_pubkey},
-                                {contract, contract, contract_pubkey}]),
-                 get_nonce(caller),
+                 base58_decode([{caller, caller, id_hash},
+                                {contract, contract, id_hash}]),
+                 get_nonce_from_account_id(caller),
                  get_contract_code(contract, contract_code),
                  compute_contract_call_data(),
                  unsigned_tx_response(fun aect_call_tx:new/1)

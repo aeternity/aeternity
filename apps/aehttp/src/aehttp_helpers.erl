@@ -203,7 +203,8 @@ print_state() ->
 
 get_contract_code(ContractKey, CodeKey) ->
     fun(_Req, State) ->
-        ContractPubKey = maps:get(ContractKey, State),
+        ContractId = maps:get(ContractKey, State),
+        ContractPubKey = aec_id:specialize(ContractId, contract),
         TopBlockHash = aec_chain:top_block_hash(),
         {ok, Trees} = aec_chain:get_block_state(TopBlockHash),
         Tree = aec_trees:contracts(Trees),
@@ -226,11 +227,9 @@ get_contract_call_object_from_tx(TxKey, CallKey) ->
                     case aetx:specialize_type(Tx) of
                         {TxType, _} when TxType =:= contract_create_tx;
                                          TxType =:= contract_call_tx ->
-                            {Caller, Nonce, Contract} =
-                                contract_caller_nonce_key(
-                                  TxType,
-                                  aetx:specialize_callback(Tx)),
-                            CallId = aect_call:id(Caller, Nonce, Contract),
+                            {CB, CTx} = aetx:specialize_callback(Tx),
+                            Contract  = CB:contract_pubkey(CTx),
+                            CallId    = CB:call_id(CTx),
                             case aec_chain:get_contract_call(Contract, CallId, BlockHash) of
                                 {error, Why} ->
                                     Msg = atom_to_binary(Why, utf8),
@@ -243,14 +242,6 @@ get_contract_call_object_from_tx(TxKey, CallKey) ->
                     end
             end
     end.
-
-contract_caller_nonce_key(contract_create_tx, {CB, Tx}) ->
-    Owner = CB:owner(Tx),
-    Nonce = CB:nonce(Tx),
-    Contract = aect_contracts:compute_contract_pubkey(Owner, Nonce),
-    {Owner, Nonce, Contract};
-contract_caller_nonce_key(contract_call_tx, {CB, Tx}) ->
-    {CB:caller(Tx), CB:nonce(Tx), CB:contract(Tx)}.
 
 verify_oracle_existence(OracleKey) ->
     fun(_Req, State) ->

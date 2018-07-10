@@ -101,7 +101,7 @@ create_tx(PubKey, Spec0, State) ->
 
 create_tx_default_spec(PubKey, State) ->
     #{ fee        => 5
-     , owner      => PubKey
+     , owner      => aec_id:create(account, PubKey)
      , nonce      => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , code       => <<"NOT PROPER BYTE CODE">>
      , vm_version => 1
@@ -127,8 +127,8 @@ call_tx(PubKey, ContractKey, Spec0, State) ->
 
 call_tx_default_spec(PubKey, ContractKey, State) ->
     #{ fee         => 5
-     , contract    => ContractKey
-     , caller      => PubKey
+     , contract    => aec_id:create(contract, ContractKey)
+     , caller      => aec_id:create(account, PubKey)
      , nonce       => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , vm_version  => 1
      , amount      => 100

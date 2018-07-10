@@ -66,7 +66,7 @@ create_tx() ->
     create_tx(#{}).
 
 create_tx(Override) ->
-    Map = #{ owner      => <<4711:32/unit:8>>
+    Map = #{ owner      => aec_id:create(account, <<4711:32/unit:8>>)
            , nonce      => 42
            , code       => <<"THIS IS NOT ACTUALLY PROPER BYTE CODE">>
            , vm_version => 2

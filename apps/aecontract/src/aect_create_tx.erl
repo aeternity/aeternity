@@ -28,13 +28,17 @@
 
 %% Additional getters
 -export([owner/1,
+         owner_pubkey/1,
          code/1,
+         contract_pubkey/1,
          vm_version/1,
          deposit/1,
          amount/1,
          gas/1,
          gas_price/1,
-         call_data/1]).
+         call_data/1,
+         call_id/1
+        ]).
 
 -define(CONTRACT_CREATE_TX_VSN, 1).
 -define(CONTRACT_CREATE_TX_TYPE, contract_create_tx).
@@ -68,13 +72,21 @@
 %%%===================================================================
 %%% Getters
 
--spec owner(tx()) -> aec_keys:pubkey().
+-spec owner(tx()) -> aec_id:id().
 owner(#contract_create_tx{owner = OwnerId}) ->
+    OwnerId.
+
+-spec owner_pubkey(tx()) -> aec_keys:pubkey().
+owner_pubkey(#contract_create_tx{owner = OwnerId}) ->
     aec_id:specialize(OwnerId, account).
 
 -spec code(tx()) -> binary().
 code(#contract_create_tx{code = X}) ->
     X.
+
+-spec contract_pubkey(tx()) -> aec_keys:pubkey().
+contract_pubkey(#contract_create_tx{} = Tx) ->
+    aect_contracts:compute_contract_pubkey(owner_pubkey(Tx), nonce(Tx)).
 
 -spec vm_version(tx()) -> aect_contracts:vm_version().
 vm_version(#contract_create_tx{vm_version = X}) ->
@@ -100,6 +112,10 @@ gas_price(#contract_create_tx{gas_price = X}) ->
 call_data(#contract_create_tx{call_data = X}) ->
     X.
 
+-spec call_id(tx()) -> aect_call:id().
+call_id(#contract_create_tx{} = Tx) ->
+    aect_call:id(owner_pubkey(Tx), nonce(Tx), contract_pubkey(Tx)).
+
 %%%===================================================================
 %%% Behavior API
 
@@ -112,7 +128,7 @@ ttl(#contract_create_tx{ttl = TTL}) ->
     TTL.
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{owner      := OwnerPubKey,
+new(#{owner      := Owner,
       nonce      := Nonce,
       code       := Code,
       vm_version := VmVersion,
@@ -122,7 +138,8 @@ new(#{owner      := OwnerPubKey,
       gas_price  := GasPrice,
       call_data  := CallData,
       fee        := Fee} = Args) ->
-    Tx = #contract_create_tx{owner      = aec_id:create(account, OwnerPubKey),
+    account = aec_id:specialize_type(Owner),
+    Tx = #contract_create_tx{owner      = Owner,
                              nonce      = Nonce,
                              code       = Code,
                              vm_version = VmVersion,
@@ -145,7 +162,7 @@ nonce(#contract_create_tx{nonce = Nonce}) ->
 
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#contract_create_tx{} = Tx) ->
-    owner(Tx).
+    owner_pubkey(Tx).
 
 %% Owner should exist, and have enough funds for the fee, the amount
 %% the deposit and the gas
@@ -160,7 +177,7 @@ check(#contract_create_tx{nonce = Nonce,
                           deposit    = Deposit,
                           fee = Fee} = Tx, _Context, Trees, _Height, _ConsensusVersion
      ) when ?is_non_neg_integer(GasPrice) ->
-    OwnerPubKey = owner(Tx),
+    OwnerPubKey = owner_pubkey(Tx),
     TotalAmount = Fee + Amount + Deposit + Gas * GasPrice,
     Checks =
         [fun() ->
@@ -186,7 +203,7 @@ check(#contract_create_tx{nonce = Nonce,
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#contract_create_tx{} = Tx, _) ->
-    {ok, [owner(Tx)]}.
+    {ok, [owner_pubkey(Tx)]}.
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()}.
@@ -198,7 +215,7 @@ process(#contract_create_tx{nonce      = Nonce,
                             deposit    = _Deposit,
                             fee        = Fee} = CreateTx,
         Context, Trees0, Height, ConsensusVersion) ->
-    OwnerPubKey = owner(CreateTx),
+    OwnerPubKey = owner_pubkey(CreateTx),
 
     {ContractPubKey, Contract, Trees1} = create_contract(CreateTx, Trees0),
 
@@ -278,7 +295,7 @@ run_contract(#contract_create_tx{ nonce      =_Nonce
 				, call_data  = CallData
 				} = Tx,
 	     Call, Height, Trees,_Contract, ContractPubKey)->
-    Caller = owner(Tx),
+    Caller = owner_pubkey(Tx),
     CallStack = [], %% TODO: should we have a call stack for create_tx also
                     %% when creating a contract in a contract.
 
@@ -306,7 +323,7 @@ initialize_contract(#contract_create_tx{nonce      = Nonce,
                                         fee   =_Fee} = Tx,
                     ContractPubKey, Contract,
                     CallRes,  Context, Trees, Height, ConsensusVersion) ->
-    OwnerPubKey = owner(Tx),
+    OwnerPubKey = owner_pubkey(Tx),
 
     %% Insert the call into the state tree for one block.
     %% This is mainly to make the return value accessible.
@@ -418,7 +435,7 @@ for_client(#contract_create_tx{ nonce      = Nonce,
                                 call_data  = CallData} = Tx) ->
     #{<<"data_schema">> => <<"ContractCreateTxObject">>, % swagger schema name
       <<"vsn">>         => version(),
-      <<"owner">>       => aec_base58c:encode(account_pubkey, owner(Tx)),
+      <<"owner">>       => aec_base58c:encode(id_hash, owner(Tx)),
       <<"nonce">>       => Nonce,
       <<"code">>        => aect_utils:hex_bytes(Code),
       <<"vm_version">>  => aect_utils:hex_byte(VmVersion),

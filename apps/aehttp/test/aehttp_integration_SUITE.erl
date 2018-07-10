@@ -1174,7 +1174,7 @@ contract_transactions(_Config) ->    % miner has an account
                       call_data => EncodedInitCallData},
 
     ValidDecoded = maps:merge(ValidEncoded,
-                              #{owner => MinerPubkey,
+                              #{owner => aec_id:create(account, MinerPubkey),
                                 code => aeu_hex:hexstring_decode(Code),
                                 call_data => aeu_hex:hexstring_decode(EncodedInitCallData)}),
 
@@ -1245,8 +1245,8 @@ contract_transactions(_Config) ->    % miner has an account
                              call_data => EncodedCallData},
 
     ContractCallDecoded = maps:merge(ContractCallEncoded,
-                              #{caller => MinerPubkey,
-                                contract => ContractPubKey,
+                              #{caller => aec_id:create(account, MinerPubkey),
+                                contract => aec_id:create(contract, ContractPubKey),
                                 call_data => aeu_hex:hexstring_decode(EncodedCallData)}),
 
     unsigned_tx_positive_test(ContractCallDecoded, ContractCallEncoded,
@@ -1309,8 +1309,8 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, EncodedCallData} = aect_sophia:encode_call_data(Code, Function,
                                                          Argument),
     ComputeCCallDecoded = maps:merge(ComputeCCallEncoded,
-                              #{caller => MinerPubkey,
-                                contract => ContractPubKey,
+                              #{caller => aec_id:create(account, MinerPubkey),
+                                contract => aec_id:create(contract, ContractPubKey),
                                 call_data => aeu_hex:hexstring_decode(EncodedCallData)}),
 
     unsigned_tx_positive_test(ComputeCCallDecoded, ComputeCCallEncoded,
