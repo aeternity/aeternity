@@ -316,7 +316,7 @@ jobs:
           paths:
             - _build/default/rebar3_20.2.3_plt
       - run: make dialyzer
-      - run: make swagger-check
+      - run: make python-env && make swagger-check
       - run: make rebar-lock-check
       - run: ./rebar3 xref || true
       - *fail_notification

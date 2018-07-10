@@ -208,19 +208,16 @@ $(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests:
 	@git clone https://github.com/ethereum/tests.git $(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests
 
 
-venv-present:
-	@virtualenv -q $(PYTHON_DIR)
-
-python-env: venv-present swagger
+python-env:
 	( cd $(PYTHON_DIR) && $(MAKE) env; )
 
-python-ws-test:
+python-ws-test: swagger
 	( cd $(PYTHON_DIR) && $(MAKE) websocket-test; )
 
-python-uats:
+python-uats: swagger
 	( cd $(PYTHON_DIR) && $(MAKE) uats; )
 
-python-single-uat:
+python-single-uat: swagger
 	( cd $(PYTHON_DIR) && TEST_NAME=$(TEST_NAME) $(MAKE) single-uat; )
 
 python-release-test: swagger
@@ -245,7 +242,14 @@ swagger: config/swagger.yaml $(SWAGGER_CODEGEN_CLI)
 swagger-docs:
 	(cd ./apps/aehttp && $(MAKE) swagger-docs);
 
-swagger-check:
+swagger-version-check:
+	@( cd $(PYTHON_DIR) && \
+		VERSION="$(CURDIR)/VERSION" \
+		SWAGGER_YAML=$(CURDIR)/config/swagger.yaml \
+		SWAGGER_JSON=$(CURDIR)/apps/aehttp/priv/swagger.json \
+		$(MAKE) swagger-version-check )
+
+swagger-check: swagger-version-check
 	./swagger/check \
 		"$(CURDIR)/config/swagger.yaml" \
 		"swagger" \
@@ -338,5 +342,5 @@ internal-distclean: $$(KIND)
 	test smoke-test smoke-test-run system-test system-test-deps aevm-test-deps\
 	kill killall \
 	clean distclean \
-	swagger swagger-docs swagger-check \
+	swagger swagger-docs swagger-check swagger-version-check \
 	rebar-lock-check
