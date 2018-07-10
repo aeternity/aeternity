@@ -12,7 +12,7 @@
          new/3,
          update/3,
          revoke/3,
-         transfer/2,
+         transfer_to/2,
          serialize/1,
          deserialize/2
         ]).
@@ -65,7 +65,7 @@ new(ClaimTx, Expiration, BlockHeight) ->
     {ok, Hash} = aens:get_name_hash(Name),
     %% TODO: add assertions on fields, similarily to what is done in aeo_oracles:new/2
     #name{id      = aec_id:create(name, Hash),
-          owner   = aens_claim_tx:account(ClaimTx),
+          owner   = aens_claim_tx:account_pubkey(ClaimTx),
           expires = Expires,
           status  = claimed}.
 
@@ -82,9 +82,9 @@ revoke(Name, Expiration, BlockHeight) ->
     Name#name{status  = revoked,
               expires = Expires}.
 
--spec transfer(aens_transfer_tx:tx(), name()) -> name().
-transfer(TransferTx, Name) ->
-    Name#name{owner = aens_transfer_tx:recipient_account(TransferTx)}.
+-spec transfer_to(aec_keys:pubkey(), name()) -> name().
+transfer_to(Pubkey, Name) ->
+    Name#name{owner = Pubkey}.
 
 -spec serialize(name()) -> binary().
 serialize(#name{} = N) ->

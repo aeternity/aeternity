@@ -151,7 +151,7 @@ name_preclaim(DecodedCommitment, Fee, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
             aens_preclaim_tx:new(
-              #{account    => Pubkey,
+              #{account    => aec_id:create(account, Pubkey),
                 nonce      => Nonce,
                 commitment => DecodedCommitment,
                 fee        => Fee,
@@ -165,7 +165,7 @@ name_claim(Name, NameSalt, Fee, TTL) ->
                 {ok, NameHash} ->
                     {ok, Tx} =
                         aens_claim_tx:new(
-                          #{account   => Pubkey,
+                          #{account   => aec_id:create(account, Pubkey),
                             nonce     => Nonce,
                             name      => Name,
                             name_salt => NameSalt,
@@ -180,7 +180,7 @@ name_update(DecodedNameHash, NameTTL, Pointers, ClientTTL, Fee, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
             aens_update_tx:new(
-              #{account    => Pubkey,
+              #{account    => aec_id:create(account, Pubkey),
                 nonce      => Nonce,
                 name_hash  => DecodedNameHash,
                 name_ttl   => NameTTL,
@@ -193,8 +193,9 @@ name_update(DecodedNameHash, NameTTL, Pointers, ClientTTL, Fee, TTL) ->
 name_transfer(DecodedNameHash, DecodedRecipientPubKey, Fee, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
+            %% Note that this is the local node's pubkey.
             aens_transfer_tx:new(
-              #{account           => Pubkey,
+              #{account           => aec_id:create(account, Pubkey),
                 nonce             => Nonce,
                 name_hash         => DecodedNameHash,
                 recipient_account => DecodedRecipientPubKey,
@@ -205,8 +206,9 @@ name_transfer(DecodedNameHash, DecodedRecipientPubKey, Fee, TTL) ->
 name_revoke(DecodedNameHash, Fee, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
+            %% Note that this is the local node's pubkey.
             aens_revoke_tx:new(
-              #{account   => Pubkey,
+              #{account   => aec_id:create(account, Pubkey),
                 nonce     => Nonce,
                 name_hash => DecodedNameHash,
                 fee       => Fee,

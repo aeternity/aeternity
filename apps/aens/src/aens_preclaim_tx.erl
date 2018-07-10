@@ -27,7 +27,10 @@
 
 %% Getters
 -export([account/1,
-         commitment/1]).
+         account_pubkey/1,
+         commitment/1,
+         commitment_hash/1
+        ]).
 
 %%%===================================================================
 %%% Types
@@ -53,13 +56,15 @@
 %%%===================================================================
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{account    := AccountPubKey,
+new(#{account    := Account,
       nonce      := Nonce,
       commitment := Commitment,
       fee        := Fee} = Args) ->
-    Tx = #ns_preclaim_tx{account    = aec_id:create(account, AccountPubKey),
+    account    = aec_id:specialize_type(Account),
+    commitment = aec_id:specialize_type(Commitment),
+    Tx = #ns_preclaim_tx{account    = Account,
                          nonce      = Nonce,
-                         commitment = aec_id:create(commitment, Commitment),
+                         commitment = Commitment,
                          fee        = Fee,
                          ttl        = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.
@@ -82,14 +87,14 @@ nonce(#ns_preclaim_tx{nonce = Nonce}) ->
 
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#ns_preclaim_tx{} = Tx) ->
-    account(Tx).
+    account_pubkey(Tx).
 
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()} | {error, term()}.
 check(#ns_preclaim_tx{nonce = Nonce, fee = Fee} = Tx,
       _Context, Trees, _Height, _ConsensusVersion) ->
-    AccountPubKey = account(Tx),
-    Commitment = commitment(Tx),
+    AccountPubKey = account_pubkey(Tx),
+    Commitment = commitment_hash(Tx),
     Checks =
         [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee) end,
          fun() -> check_not_commitment(Commitment, Trees) end],
@@ -103,7 +108,7 @@ check(#ns_preclaim_tx{nonce = Nonce, fee = Fee} = Tx,
         {ok, aec_trees:trees()}.
 process(#ns_preclaim_tx{fee = Fee, nonce = Nonce} = PreclaimTx,
         _Context, Trees0, Height, _ConsensusVersion) ->
-    AccountPubKey = account(PreclaimTx),
+    AccountPubKey = account_pubkey(PreclaimTx),
     AccountsTree0 = aec_trees:accounts(Trees0),
     NSTree0 = aec_trees:ns(Trees0),
 
@@ -122,7 +127,7 @@ process(#ns_preclaim_tx{fee = Fee, nonce = Nonce} = PreclaimTx,
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#ns_preclaim_tx{} = Tx, _) ->
-    {ok, [account(Tx)]}.
+    {ok, [account_pubkey(Tx)]}.
 
 -spec serialize(tx()) -> {integer(), [{atom(), term()}]}.
 serialize(#ns_preclaim_tx{account    = AccountId,
@@ -166,9 +171,9 @@ for_client(#ns_preclaim_tx{nonce      = Nonce,
                            fee        = Fee,
                            ttl        = TTL} = Tx) ->
     #{<<"vsn">>        => version(),
-      <<"account">>    => aec_base58c:encode(account_pubkey, account(Tx)),
+      <<"account">>    => aec_base58c:encode(id_hash, account(Tx)),
       <<"nonce">>      => Nonce,
-      <<"commitment">> => aec_base58c:encode(commitment, commitment(Tx)),
+      <<"commitment">> => aec_base58c:encode(id_hash, commitment(Tx)),
       <<"fee">>        => Fee,
       <<"ttl">>        => TTL}.
 
@@ -176,12 +181,20 @@ for_client(#ns_preclaim_tx{nonce      = Nonce,
 %%% Getters
 %%%===================================================================
 
--spec account(tx()) -> aec_keys:pubkey().
-account(#ns_preclaim_tx{account = AccountPubKey}) ->
+-spec account(tx()) -> aec_id:id().
+account(#ns_preclaim_tx{account = Account}) ->
+    Account.
+
+-spec account_pubkey(tx()) -> aec_keys:pubkey().
+account_pubkey(#ns_preclaim_tx{account = AccountPubKey}) ->
     aec_id:specialize(AccountPubKey, account).
 
--spec commitment(tx()) -> binary().
+-spec commitment(tx()) -> aec_id:id().
 commitment(#ns_preclaim_tx{commitment = Commitment}) ->
+    Commitment.
+
+-spec commitment_hash(tx()) -> binary().
+commitment_hash(#ns_preclaim_tx{commitment = Commitment}) ->
     aec_id:specialize(Commitment, commitment).
 
 %%%===================================================================

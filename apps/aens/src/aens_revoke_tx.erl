@@ -48,13 +48,15 @@
 %%%===================================================================
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{account   := AccountPubKey,
+new(#{account   := Account,
       nonce     := Nonce,
-      name_hash := NameHash,
+      name_hash := NameId,
       fee       := Fee} = Args) ->
-    Tx = #ns_revoke_tx{account   = aec_id:create(account, AccountPubKey),
+    account = aec_id:specialize_type(Account),
+    name    = aec_id:specialize_type(NameId),
+    Tx = #ns_revoke_tx{account   = Account,
                        nonce     = Nonce,
-                       name_hash = aec_id:create(name, NameHash),
+                       name_hash = NameId,
                        fee       = Fee,
                        ttl       = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.
@@ -77,10 +79,16 @@ nonce(#ns_revoke_tx{nonce = Nonce}) ->
 
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#ns_revoke_tx{} = Tx) ->
-    account(Tx).
+    account_pubkey(Tx).
 
 account(#ns_revoke_tx{account = AccountId}) ->
+    AccountId.
+
+account_pubkey(#ns_revoke_tx{account = AccountId}) ->
     aec_id:specialize(AccountId, account).
+
+name(#ns_revoke_tx{name_hash = NameId}) ->
+    NameId.
 
 name_hash(#ns_revoke_tx{name_hash = NameId}) ->
     aec_id:specialize(NameId, name).
@@ -89,7 +97,7 @@ name_hash(#ns_revoke_tx{name_hash = NameId}) ->
         {ok, aec_trees:trees()} | {error, term()}.
 check(#ns_revoke_tx{nonce = Nonce, fee = Fee} = Tx,
       _Context, Trees, _Height, _ConsensusVersion) ->
-    AccountPubKey = account(Tx),
+    AccountPubKey = account_pubkey(Tx),
     NameHash = name_hash(Tx),
     Checks =
         [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee) end,
@@ -104,7 +112,7 @@ check(#ns_revoke_tx{nonce = Nonce, fee = Fee} = Tx,
         {ok, aec_trees:trees()}.
 process(#ns_revoke_tx{fee = Fee, nonce = Nonce} = Tx,
         _Context, Trees0, Height, _ConsensusVersion) ->
-    AccountPubKey = account(Tx),
+    AccountPubKey = account_pubkey(Tx),
     NameHash = name_hash(Tx),
     AccountsTree0 = aec_trees:accounts(Trees0),
     NamesTree0 = aec_trees:ns(Trees0),
@@ -125,7 +133,7 @@ process(#ns_revoke_tx{fee = Fee, nonce = Nonce} = Tx,
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#ns_revoke_tx{} = Tx, _) ->
-    {ok, [account(Tx)]}.
+    {ok, [account_pubkey(Tx)]}.
 
 -spec serialize(tx()) -> {integer(), [{atom(), term()}]}.
 serialize(#ns_revoke_tx{account   = AccountId,
@@ -169,9 +177,9 @@ for_client(#ns_revoke_tx{nonce     = Nonce,
                          fee       = Fee,
                          ttl       = TTL} = Tx) ->
     #{<<"vsn">>       => version(),
-      <<"account">>   => aec_base58c:encode(account_pubkey, account(Tx)),
+      <<"account">>   => aec_base58c:encode(id_hash, account(Tx)),
       <<"nonce">>     => Nonce,
-      <<"name_hash">> => aec_base58c:encode(name, name_hash(Tx)),
+      <<"name_hash">> => aec_base58c:encode(id_hash, name(Tx)),
       <<"fee">>       => Fee,
       <<"ttl">>       => TTL}.
 

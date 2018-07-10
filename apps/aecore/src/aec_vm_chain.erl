@@ -276,9 +276,9 @@ decode_as(Type, Val) ->
 aens_preclaim(Addr, CHash, _Sign, #state{ account = ContractKey } = State) ->
     Nonce = next_nonce(Addr, State),
     {ok, Tx} =
-        aens_preclaim_tx:new(#{ account    => Addr,
+        aens_preclaim_tx:new(#{ account    => aec_id:create(account, Addr),
                                 nonce      => Nonce,
-                                commitment => CHash,
+                                commitment => aec_id:create(commitment, CHash),
                                 fee        => 0 }),
     case Addr =:= ContractKey of
         true  -> apply_transaction(Tx, State);
@@ -289,7 +289,7 @@ aens_preclaim(Addr, CHash, _Sign, #state{ account = ContractKey } = State) ->
 aens_claim(Addr, Name, Salt, _Sign, #state{ account = ContractKey } = State) ->
     Nonce = next_nonce(Addr, State),
     {ok, Tx} =
-        aens_claim_tx:new(#{ account    => Addr,
+        aens_claim_tx:new(#{ account    => aec_id:create(account, Addr),
                              nonce      => Nonce,
                              name       => Name,
                              name_salt  => Salt,
@@ -303,10 +303,10 @@ aens_claim(Addr, Name, Salt, _Sign, #state{ account = ContractKey } = State) ->
 aens_transfer(FromAddr, ToAddr, Hash, _Sign, #state{ account = ContractKey } = State) ->
     Nonce = next_nonce(FromAddr, State),
     {ok, Tx} =
-        aens_transfer_tx:new(#{ account           => FromAddr,
+        aens_transfer_tx:new(#{ account           => aec_id:create(account, FromAddr),
                                 nonce             => Nonce,
-                                name_hash         => Hash,
-                                recipient_account => ToAddr,
+                                name_hash         => aec_id:create(name, Hash),
+                                recipient_account => aec_id:create(account, ToAddr),
                                 fee               => 0 }),
     case FromAddr =:= ContractKey of
         true  -> apply_transaction(Tx, State);
@@ -317,9 +317,9 @@ aens_transfer(FromAddr, ToAddr, Hash, _Sign, #state{ account = ContractKey } = S
 aens_revoke(Addr, Hash, _Sign, #state{ account = ContractKey } = State) ->
     Nonce = next_nonce(Addr, State),
     {ok, Tx} =
-        aens_revoke_tx:new(#{ account   => Addr,
+        aens_revoke_tx:new(#{ account   => aec_id:create(account, Addr),
                               nonce     => Nonce,
-                              name_hash => Hash,
+                              name_hash => aec_id:create(name, Hash),
                               fee       => 0 }),
     case Addr =:= ContractKey of
         true  -> apply_transaction(Tx, State);

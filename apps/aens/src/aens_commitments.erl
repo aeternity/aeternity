@@ -54,9 +54,10 @@ id(C) ->
 new(PreclaimTx, Expiration, BlockHeight) ->
     Expires = BlockHeight + Expiration,
     %% TODO: add assertions on fields, similarily to what is done in aeo_oracles:new/2
-    Id = aec_id:create(commitment, aens_preclaim_tx:commitment(PreclaimTx)),
+    Id = aens_preclaim_tx:commitment(PreclaimTx),
+    commitment = aec_id:specialize_type(Id),
     #commitment{id      = Id,
-                owner   = aens_preclaim_tx:account(PreclaimTx),
+                owner   = aens_preclaim_tx:account_pubkey(PreclaimTx),
                 created = BlockHeight,
                 expires = Expires}.
 

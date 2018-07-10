@@ -353,9 +353,9 @@ handle_request('PostNamePreclaim', #{'NamePreclaimTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([account, commitment, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{account, account, account_pubkey},
-                                {commitment, commitment, commitment}]),
-                 get_nonce(account),
+                 base58_decode([{account, account, {id_hash, [account_pubkey]}},
+                                {commitment, commitment, {id_hash, [commitment]}}]),
+                 get_nonce_from_account_id(account),
                  unsigned_tx_response(fun aens_preclaim_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
@@ -364,9 +364,9 @@ handle_request('PostNameClaim', #{'NameClaimTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([account, name, name_salt, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{account, account, account_pubkey},
+                 base58_decode([{account, account, {id_hash, [account_pubkey]}},
                                 {name, name, name}]),
-                 get_nonce(account),
+                 get_nonce_from_account_id(account),
                  verify_name(name),
                  unsigned_tx_response(fun aens_claim_tx:new/1)
                 ],
@@ -377,10 +377,10 @@ handle_request('PostNameUpdate', #{'NameUpdateTx' := Req}, _Context) ->
                  read_required_params([account, name_hash, name_ttl,
                                        pointers, client_ttl, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{account, account, account_pubkey},
-                                {name_hash, name_hash, name}]),
+                 base58_decode([{account, account, {id_hash, [account_pubkey]}},
+                                {name_hash, name_hash, {id_hash, [name]}}]),
                  nameservice_pointers_decode(pointers),
-                 get_nonce(account),
+                 get_nonce_from_account_id(account),
                  unsigned_tx_response(fun aens_update_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
@@ -389,10 +389,10 @@ handle_request('PostNameTransfer', #{'NameTransferTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([account, name_hash, recipient_pubkey, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{account, account, account_pubkey},
-                                {recipient_pubkey, recipient_account, account_pubkey},
-                                {name_hash, name_hash, name}]),
-                 get_nonce(account),
+                 base58_decode([{account, account, {id_hash, [account_pubkey]}},
+                                {recipient_pubkey, recipient_account, {id_hash, [account_pubkey]}},
+                                {name_hash, name_hash, {id_hash, [name]}}]),
+                 get_nonce_from_account_id(account),
                  unsigned_tx_response(fun aens_transfer_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
@@ -401,9 +401,9 @@ handle_request('PostNameRevoke', #{'NameRevokeTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([account, name_hash, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{account, account, account_pubkey},
-                                {name_hash, name_hash, name}]),
-                 get_nonce(account),
+                 base58_decode([{account, account, {id_hash, [account_pubkey]}},
+                                {name_hash, name_hash, {id_hash, [name]}}]),
+                 get_nonce_from_account_id(account),
                  unsigned_tx_response(fun aens_revoke_tx:new/1)
                 ],
     process_request(ParseFuns, Req);

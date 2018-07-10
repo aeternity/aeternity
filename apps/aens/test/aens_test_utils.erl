@@ -113,9 +113,9 @@ preclaim_tx_spec(PubKey, Commitment, State) ->
 
 preclaim_tx_spec(PubKey, Commitment, Spec0, State) ->
     Spec = maps:merge(preclaim_tx_default_spec(PubKey, State), Spec0),
-    #{account    => PubKey,
+    #{account    => aec_id:create(account, PubKey),
       nonce      => maps:get(nonce, Spec),
-      commitment => Commitment,
+      commitment => aec_id:create(commitment, Commitment),
       fee        => maps:get(fee, Spec),
       ttl        => maps:get(ttl, Spec, 0)}.
 
@@ -132,7 +132,7 @@ claim_tx_spec(PubKey, Name, NameSalt, State) ->
 
 claim_tx_spec(PubKey, Name, NameSalt, Spec0, State) ->
     Spec = maps:merge(claim_tx_default_spec(PubKey, State), Spec0),
-    #{account   => PubKey,
+    #{account   => aec_id:create(account, PubKey),
       nonce     => maps:get(nonce, Spec),
       name      => Name,
       name_salt => NameSalt,
@@ -152,9 +152,9 @@ update_tx_spec(PubKey, NameHash, State) ->
 
 update_tx_spec(PubKey, NameHash, Spec0, State) ->
     Spec = maps:merge(update_tx_default_spec(PubKey, State), Spec0),
-    #{account    => PubKey,
+    #{account    => aec_id:create(account, PubKey),
       nonce      => maps:get(nonce, Spec),
-      name_hash  => NameHash,
+      name_hash  => aec_id:create(name, NameHash),
       name_ttl   => maps:get(name_ttl, Spec),
       pointers   => maps:get(pointers, Spec),
       client_ttl => maps:get(client_ttl, Spec),
@@ -177,10 +177,10 @@ transfer_tx_spec(PubKey, NameHash, RecipientAccount, State) ->
 
 transfer_tx_spec(PubKey, NameHash, RecipientAccount, Spec0, State) ->
     Spec = maps:merge(transfer_tx_default_spec(PubKey, State), Spec0),
-    #{account           => PubKey,
+    #{account           => aec_id:create(account, PubKey),
       nonce             => maps:get(nonce, Spec),
-      name_hash         => NameHash,
-      recipient_account => RecipientAccount,
+      name_hash         => aec_id:create(name, NameHash),
+      recipient_account => aec_id:create(account, RecipientAccount),
       fee               => maps:get(fee, Spec),
       ttl               => maps:get(ttl, Spec, 0)}.
 
@@ -197,9 +197,9 @@ revoke_tx_spec(PubKey, NameHash, State) ->
 
 revoke_tx_spec(PubKey, NameHash, Spec0, State) ->
     Spec = maps:merge(revoke_tx_default_spec(PubKey, State), Spec0),
-    #{account   => PubKey,
+    #{account   => aec_id:create(account, PubKey),
       nonce     => maps:get(nonce, Spec),
-      name_hash => NameHash,
+      name_hash => aec_id:create(name, NameHash),
       fee       => maps:get(fee, Spec),
       ttl       => maps:get(ttl, Spec, 0)}.
 
