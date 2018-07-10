@@ -1,8 +1,0 @@
-Relx0 = lists:keyfind(relx, 1, CONFIG),
-{relx, [{release, {epoch, _}, Opts} | T]} = Relx0,
-{ok, VersionBin} = file:read_file(<<"VERSION">>),
-Version = string:trim(binary_to_list(VersionBin)),
-%% the release should be in front
-Relx = {relx, [{release, {epoch, Version}, Opts}] ++ T},
-lists:keyreplace(relx, 1, CONFIG, Relx).
-

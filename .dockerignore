@@ -3,7 +3,6 @@
 !rebar.lock
 !Makefile
 !rebar3
-!rebar.config.script
 !VERSION
 !apps
 !.git
