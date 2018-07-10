@@ -33,7 +33,9 @@ spend(EncodedRecipient, Amount, Fee, TTL, Payload) ->
         fun(SenderPubkey, Nonce) ->
             %% Note that this is the local node's pubkey.
             Sender = aec_id:create(account, SenderPubkey),
-            case aec_base58c:safe_decode({id_hash, [account_pubkey, name]},
+            AllowedTypes = [account_pubkey, name,
+                            oracle_pubkey, contract_pubkey],
+            case aec_base58c:safe_decode({id_hash, AllowedTypes},
                                          EncodedRecipient) of
                 {ok, DecodedRecipientId} ->
                     aec_spend_tx:new(

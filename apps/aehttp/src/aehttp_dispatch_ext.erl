@@ -409,6 +409,7 @@ handle_request('PostNameRevoke', #{'NameRevokeTx' := Req}, _Context) ->
     process_request(ParseFuns, Req);
 
 handle_request('PostSpend', #{'SpendTx' := Req}, _Context) ->
+    AllowedRecipients = [account_pubkey, name, oracle_pubkey, contract_pubkey],
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([sender,
                                        {recipient_pubkey, recipient},
@@ -416,7 +417,7 @@ handle_request('PostSpend', #{'SpendTx' := Req}, _Context) ->
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  base58_decode([{sender, sender, {id_hash, [account_pubkey]}},
                                 {recipient, recipient,
-                                 {id_hash, [account_pubkey, name]}}]),
+                                 {id_hash, AllowedRecipients}}]),
                  get_nonce_from_account_id(sender),
                  unsigned_tx_response(fun aec_spend_tx:new/1)
                 ],

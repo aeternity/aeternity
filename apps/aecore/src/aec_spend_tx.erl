@@ -53,8 +53,8 @@ new(#{sender := Sender,
                                        is_integer(Nonce), Nonce >= 0,
                                        is_integer(Fee), Fee >= 0,
                                        is_binary(Payload) ->
-    assert_id(Sender),
-    assert_id(Recipient),
+    assert_sender(Sender),
+    assert_recipient(Recipient),
     Tx = #spend_tx{sender = Sender,
                    recipient = Recipient,
                    amount = Amount,
@@ -64,10 +64,18 @@ new(#{sender := Sender,
                    payload = Payload},
     {ok, aetx:new(?MODULE, Tx)}.
 
-assert_id(Id) ->
+assert_sender(Id) ->
     case aec_id:specialize_type(Id) of
         account -> ok;
-        name    -> ok;
+        Other   -> error({illegal_id_type, Other})
+    end.
+
+assert_recipient(Id) ->
+    case aec_id:specialize_type(Id) of
+        account  -> ok;
+        name     -> ok;
+        oracle   -> ok;
+        contract -> ok;
         Other   -> error({illegal_id_type, Other})
     end.
 
@@ -105,7 +113,9 @@ recipient(#spend_tx{recipient = Recipient}) ->
 
 resolve_recipient(#spend_tx{recipient = Recipient}, Trees) ->
     case aec_id:specialize(Recipient) of
-        {account, RecipientPubkey} -> {ok, RecipientPubkey};
+        {account,  RecipientPubkey} -> {ok, RecipientPubkey};
+        {oracle,   RecipientPubkey} -> {ok, RecipientPubkey};
+        {contract, RecipientPubkey} -> {ok, RecipientPubkey};
         {name, NameHash} -> aens:resolve_from_hash(account_pubkey, NameHash, aec_trees:ns(Trees))
     end.
 
