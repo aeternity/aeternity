@@ -1,8 +1,8 @@
 contract Maps =
 
-  type pt    = {x : int, y : int}
-  type state = { map_i : map(int, pt),
-                 map_s : map(string, pt) }
+  record pt    = {x : int, y : int}
+  record state = { map_i : map(int, pt),
+                   map_s : map(string, pt) }
 
   function init() = { map_i = {}, map_s = {} }
 

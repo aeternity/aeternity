@@ -1,10 +1,10 @@
 
 contract Test =
 
-  type r = { x : map(string, string), y : int }
-  type r' = { y : string }
-  type r2 = { z : int, w : int }
-  type r3 = { x : int, z : int }
+  record r = { x : map(string, string), y : int }
+  record r' = { y : string }
+  record r2 = { z : int, w : int }
+  record r3 = { x : int, z : int }
 
   function set_x(r : r, z) = r{ x["foo"] @ x = x + 1 }
 

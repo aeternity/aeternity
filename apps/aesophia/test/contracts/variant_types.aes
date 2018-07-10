@@ -1,0 +1,33 @@
+
+contract VariantTypes =
+
+  datatype state = Started(started_state) | Stopped
+
+  record started_state = {owner : address, balance : int, color : color}
+
+  datatype color = Red | Green | Blue | Grey(int)
+
+  function init() = Stopped
+
+  function abort() =
+    switch(true)
+      false => ()
+
+  function require(b) = if(!b) abort()
+
+  function start(bal : int) =
+    switch(state)
+      Stopped => put(Started({owner = Call.caller, balance = bal, color = Grey(0)}))
+
+  function stop() =
+    switch(state)
+      Started(st) =>
+        require(Call.caller == st.owner)
+        put(Stopped)
+        st.balance
+
+  function get_color()  = switch(state) Started(st) => st.color
+  function set_color(c) = switch(state) Started(st) => put(Started(st{color = c}))
+
+  function get_state() = state
+

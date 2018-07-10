@@ -32,9 +32,12 @@ global_env() ->
     TTL       = Int,
     Fee       = Int,
     [A, B, Q, R, K, V] = lists:map(TVar, ["a", "b", "q", "r", "k", "v"]),
+     %% Option constructors
+    [{"None", Option(A)},
+     {"Some", Fun1(A, Option(A))},
      %% Placeholder for inter-contract calls until we get proper type checking
      %% of contracts.
-    [{"raw_call", Fun([Address, String, Int, Int, A], B)},
+     {"raw_call", Fun([Address, String, Int, Int, A], B)},
      %% Spend transaction. Also not the proper version.
      {"raw_spend", Fun([Address, Int], Unit)},
      %% Environment variables
@@ -114,29 +117,106 @@ infer_contract(Env, Defs) ->
            end,
     Get = fun(K) -> [ Def || Def <- Defs, Kind(Def) == K ] end,
     %% TODO: handle type defs
-    TypeDefs   = Get(type),
-    ProtoSigs = [ check_fundecl(Env, Decl) || Decl <- Get(prototype) ],
-    Env1      = ProtoSigs ++ Env,
-    {_, {letrec, _, Funs}} = infer_letrec(Env1, {letrec, [], Get(function)}),
-    TypeDefs ++ Funs.
+    {Env1, TypeDefs} = check_typedefs(Env, Get(type)),
+    ProtoSigs = [ check_fundecl(Env1, Decl) || Decl <- Get(prototype) ],
+    Env2      = ProtoSigs ++ Env1,
+    Functions = Get(function),
+    FunMap    = maps:from_list([ {Fun, Def} || Def = {letfun, _, {id, _, Fun}, _, _, _} <- Functions ]),
+    DepGraph  = maps:map(fun(_, Def) -> aeso_syntax_utils:used_ids(Def) end, FunMap),
+    SCCs      = aeso_utils:scc(DepGraph),
+    io:format("Dependency sorted functions:\n  ~p\n", [SCCs]),
+    TypeDefs ++ check_sccs(Env2, FunMap, SCCs, []).
+
+check_typedefs(Env, Defs) ->
+    create_type_errors(),
+    GetName  = fun({type_def, _, {id, _, Name}, _, _}) -> Name end,
+    TypeMap  = maps:from_list([ {GetName(Def), Def} || Def <- Defs ]),
+    DepGraph = maps:map(fun(_, Def) -> aeso_syntax_utils:used_types(Def) end, TypeMap),
+    SCCs     = aeso_utils:scc(DepGraph),
+    io:format("Dependency sorted types:\n  ~p\n", [SCCs]),
+    Env1     = check_typedef_sccs(Env, TypeMap, SCCs),
+    destroy_and_report_type_errors(),
+    SCCNames = fun({cyclic, Xs}) -> Xs; ({acyclic, X}) -> [X] end,
+    {Env1, [ Def || SCC <- SCCs, Name <- SCCNames(SCC),
+                    Def <- [maps:get(Name, TypeMap, undefined)], Def /= undefined ]}.
+
+check_typedef_sccs(Env, _TypeMap, []) -> Env;
+check_typedef_sccs(Env, TypeMap, [{acyclic, Name} | SCCs]) ->
+    case maps:get(Name, TypeMap, undefined) of
+        undefined -> check_typedef_sccs(Env, TypeMap, SCCs);    %% Builtin type
+        {type_def, Ann, D, Xs, Def} ->
+            case Def of
+                {alias_t, _}  -> check_typedef_sccs(Env, TypeMap, SCCs); %% TODO: check these
+                {record_t, _} -> check_typedef_sccs(Env, TypeMap, SCCs); %%       and these
+                {variant_t, Cons} ->
+                    Target   = {app_t, Ann, D, Xs},
+                    ConType  = fun([]) -> Target; (Args) -> {type_sig, Args, Target} end,
+                    ConTypes = [ begin
+                                    {constr_t, _, {con, _, Con}, Args} = ConDef,
+                                    {Con, ConType(Args)}
+                                 end || ConDef <- Cons ],
+                    check_repeated_constructors([ {Con, ConType(Args)} || {constr_t, _, Con, Args} <- Cons ]),
+                    [ check_constructor_overlap(Env, Con, Target) || {constr_t, _, Con, _} <- Cons ],
+                    check_typedef_sccs(ConTypes ++ Env, TypeMap, SCCs)
+            end
+    end;
+check_typedef_sccs(Env, TypeMap, [{cyclic, Names} | SCCs]) ->
+    Id = fun(X) -> {type_def, _, D, _, _} = maps:get(X, TypeMap), D end,
+    type_error({recursive_types_not_implemented, lists:map(Id, Names)}),
+    check_typedef_sccs(Env, TypeMap, SCCs).
+
+check_constructor_overlap(Env, Con = {con, _, Name}, NewType) ->
+    case proplists:get_value(Name, Env) of
+        undefined -> ok;
+        Type ->
+            OldType = case Type of {type_sig, _, T} -> T;
+                                   _ -> Type end,
+            OldCon  = {con, aeso_syntax:get_ann(OldType), Name},    %% TODO: we don't have the location of the old constructor here
+            type_error({repeated_constructor, [{OldCon, OldType}, {Con, NewType}]})
+    end.
+
+check_repeated_constructors(Cons) ->
+    Names      = [ Name || {{con, _, Name}, _} <- Cons ],
+    Duplicated = lists:usort(Names -- lists:usort(Names)),
+    Fail       = fun(Name) ->
+                    type_error({repeated_constructor, [ CT || CT = {{con, _, C}, _} <- Cons, C == Name ]})
+                 end,
+    [ Fail(Dup) || Dup <- Duplicated ],
+    ok.
+
+check_sccs(_, _, [], Acc) -> lists:reverse(Acc);
+check_sccs(Env, Funs, [{acyclic, X} | SCCs], Acc) ->
+    case maps:get(X, Funs, undefined) of
+        undefined ->    %% Previously defined function
+            check_sccs(Env, Funs, SCCs, Acc);
+        Def ->
+            {TypeSig, Def1} = infer_nonrec(Env, Def),
+            Env1 = [TypeSig | Env],
+            check_sccs(Env1, Funs, SCCs, [Def1 | Acc])
+    end;
+check_sccs(Env, Funs, [{cyclic, Xs} | SCCs], Acc) ->
+    Defs = [ maps:get(X, Funs) || X <- Xs ],
+    {TypeSigs, {letrec, _, Defs1}} = infer_letrec(Env, {letrec, [], Defs}),
+    Env1 = TypeSigs ++ Env,
+    check_sccs(Env1, Funs, SCCs, Defs1 ++ Acc).
 
 check_fundecl(_Env, {fun_decl, _Attrib, {id, _NameAttrib, Name}, {fun_t, _, Args, Ret}}) ->
     {Name, {type_sig, Args, Ret}};  %% TODO: actually check that the type makes sense!
 check_fundecl(_, {fun_decl, _Attrib, {id, _, Name}, Type}) ->
     error({fundecl_must_have_funtype, Name, Type}).
 
-%% infer_nonrec(Env, LetFun) ->
-%%     ets:new(type_vars, [set, named_table, public]),
-%%     create_type_errors(),
-%%     create_field_constraints(),
-%%     NewLetFun = infer_letfun(Env, LetFun),
-%%     solve_field_constraints(),
-%%     Result = {TypeSig, _} = instantiate(NewLetFun),
-%%     destroy_and_report_type_errors(),
-%%     destroy_field_constraints(),
-%%     ets:delete(type_vars),
-%%     print_typesig(TypeSig),
-%%     Result.
+infer_nonrec(Env, LetFun) ->
+    ets:new(type_vars, [set, named_table, public]),
+    create_type_errors(),
+    create_field_constraints(),
+    NewLetFun = infer_letfun(Env, LetFun),
+    solve_field_constraints(),
+    Result = {TypeSig, _} = instantiate(NewLetFun),
+    destroy_and_report_type_errors(),
+    destroy_field_constraints(),
+    ets:delete(type_vars),
+    print_typesig(TypeSig),
+    Result.
 
 typesig_to_fun_t({type_sig, Args, Res}) -> {fun_t, [], Args, Res}.
 
@@ -186,17 +266,24 @@ arg_type(T) ->
     T.
 
 lookup_name(Env, As, Name) ->
+    lookup_name(Env, As, Name, []).
+
+lookup_name(Env, As, Name, Options) ->
     case proplists:get_value(Name, Env) of
         undefined ->
-            type_error({unbound_variable, {id, As, Name}}),
+            Id = case Name of
+                    [C | _] when is_integer(C) -> {id, As, Name};
+                    [X | _] when is_list(X)    -> {qid, As, Name}
+                 end,
+            type_error({unbound_variable, Id}),
             fresh_uvar(As);
-        {type_sig, ArgTypes, ReturnType} ->
-            ets:new(freshen_tvars, [set, public, named_table]),
-            Type = freshen({fun_t, As, ArgTypes, ReturnType}),
-            ets:delete(freshen_tvars),
-            Type;
+        {type_sig, _, _} = Type ->
+            freshen_type(typesig_to_fun_t(Type));
         Type ->
-            Type
+            case proplists:get_value(freshen, Options, false) of
+                true  -> freshen_type(Type);
+                false -> Type
+            end
     end.
 
 check_expr(Env, Expr, Type) ->
@@ -220,6 +307,9 @@ infer_expr(Env, Body={id, As, Name}) ->
 infer_expr(Env, Body={qid, As, Name}) ->
     Type = lookup_name(Env, As, Name),
     {typed, As, Body, Type};
+infer_expr(Env, Body={con, As, Name}) ->
+    Type = lookup_name(Env, As, Name, [freshen]),
+    {typed, As, Body, Type};
 infer_expr(Env, {unit, As}) ->
     infer_expr(Env, {tuple, As, []});
 infer_expr(Env, {tuple, As, Cpts}) ->
@@ -230,13 +320,6 @@ infer_expr(Env, {list, As, Elems}) ->
     ElemType = fresh_uvar(As),
     NewElems = [check_expr(Env, X, ElemType) || X <- Elems],
     {typed, As, {list, As, NewElems}, {app_t, As, {id, As, "list"}, [ElemType]}};
-%% TODO: not hardwired!
-infer_expr(_Env, E = {con, As, "None"}) ->
-    ElemType = fresh_uvar(As),
-    {typed, As, E, option_t(As, ElemType)};
-infer_expr(_Env, E = {con, As, "Some"}) ->
-    ElemType = fresh_uvar(As),
-    {typed, As, E, {fun_t, As, [ElemType], option_t(As, ElemType)}};
 infer_expr(Env, {typed, As, Body, Type}) ->
     {typed, _, NewBody, NewType} = check_expr(Env, Body, Type),
     {typed, As, NewBody, NewType};
@@ -415,6 +498,8 @@ free_vars({int, _, _}) ->
     [];
 free_vars({string, _, _}) ->
     [];
+free_vars({bool, _, _}) ->
+    [];
 free_vars(Id={id, _, _}) ->
     [Id];
 free_vars({con, _, _}) ->
@@ -474,10 +559,10 @@ solve_field_constraints(Constraints) ->
                 type_error({undefined_field, Field}),
                 false;
             [{FieldName, FldType, RecType}] ->
-                ets:new(freshen_tvars, [set, public, named_table]),
+                create_freshen_tvars(),
                 FreshFldType = freshen(FldType),
                 FreshRecType = freshen(RecType),
-                ets:delete(freshen_tvars),
+                destroy_freshen_tvars(),
                 unify(FreshFldType, FieldType, {field_constraint, FreshFldType, FieldType, When}),
                 unify(FreshRecType, RecordType, {record_constraint, FreshRecType, RecordType, When}),
                 false;
@@ -531,10 +616,10 @@ solve_known_record_types(Constraints) ->
                              type_error({missing_field, FieldName, RecName}),
                              not_solved;
                          FldType ->
-                             ets:new(freshen_tvars, [set, public, named_table]),
+                             create_freshen_tvars(),
                              FreshFldType = freshen(FldType),
                              FreshRecType = freshen({app_t, Attrs, RecId, Formals}),
-                             ets:delete(freshen_tvars),
+                             destroy_freshen_tvars(),
                              unify(FreshFldType, FieldType, {todo, {solve_field_constraint_field, When}}),
                              unify(FreshRecType, RecType, {todo, {solve_field_constraint_record, When}}),
                              {RecType, FieldName, FieldType, When}
@@ -585,9 +670,9 @@ solve_for_uvar(UVar = {uvar, Attrs, _}, Fields) ->
             {no_records_with_all_fields, Fields};
         [RecName] ->
             [{RecName, Formals, _}] = ets:lookup(record_types, RecName),
-            ets:new(freshen_tvars, [set, public, named_table]),
+            create_freshen_tvars(),
             FreshRecType = freshen({app_t, Attrs, {id, Attrs, RecName}, Formals}),
-            ets:delete(freshen_tvars),
+            destroy_freshen_tvars(),
             unify(UVar, FreshRecType, {solve_rec_type, UVar, Fields}),
             true;
         StillPossible ->
@@ -742,6 +827,18 @@ occurs_check1(_, []) -> false.
 fresh_uvar(Attrs) ->
     {uvar, Attrs, make_ref()}.
 
+create_freshen_tvars() ->
+    ets:new(freshen_tvars, [set, public, named_table]).
+
+destroy_freshen_tvars() ->
+    ets:delete(freshen_tvars).
+
+freshen_type(Type) ->
+    create_freshen_tvars(),
+    Type1 = freshen(Type),
+    destroy_freshen_tvars(),
+    Type1.
+
 freshen({tvar, As, Name}) ->
     NewT = case ets:lookup(freshen_tvars, Name) of
                [] ->
@@ -817,6 +914,14 @@ pp_error({no_records_with_all_fields, Fields}) ->
     io_lib:format("No record type with field~s ~s (at ~s)\n",
                   [S, string:join([ pp(F) || F <- Fields ], ", "),
                    pp_loc(hd(Fields))]);
+pp_error({recursive_types_not_implemented, Types}) ->
+    S = if length(Types) > 1 -> "s are mutually";
+           true              -> " is" end,
+    io_lib:format("The following type~s recursive, which is not yet supported:\n~s",
+                    [S, [io_lib:format("  - ~s (at ~s)\n", [pp(T), pp_loc(T)]) || T <- Types]]);
+pp_error({repeated_constructor, Cs}) ->
+    io_lib:format("Variant types must have distinct constructor names\n~s",
+                  [[ io_lib:format("~s  (at ~s)\n", [pp_typed("  - ", C, T), pp_loc(C)]) || {C, T} <- Cs ]]);
 pp_error(Err) ->
     io_lib:format("Unknown error: ~p\n", [Err]).
 
@@ -921,6 +1026,7 @@ if_branches(If = {'if', Ann, _, Then, Else}) ->
     end;
 if_branches(E) -> [E].
 
+pp_typed(Label, E, T = {type_sig, _, _}) -> pp_typed(Label, E, typesig_to_fun_t(T));
 pp_typed(Label, {typed, _, Expr, _}, Type) ->
     pp_typed(Label, Expr, Type);
 pp_typed(Label, Expr, Type) ->
@@ -952,6 +1058,8 @@ pp([T|Ts]) ->
     [pp(T), ", "|pp(Ts)];
 pp({id, _, Name}) ->
     Name;
+pp({qid, _, Name}) ->
+    string:join(Name, ".");
 pp({con, _, Name}) ->
     Name;
 pp({uvar, _, Ref}) ->

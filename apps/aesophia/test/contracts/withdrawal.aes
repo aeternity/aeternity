@@ -36,9 +36,9 @@
 
 contract WithdrawalContract =
 
-  type state = { richest  : address,
-                 mostSent : uint,
-                 pendingWithdrawals : map(address, uint) }
+  record state = { richest  : address,
+                   mostSent : uint,
+                   pendingWithdrawals : map(address, uint) }
 
   function becomeRichest() : result(bool) =
       if (call().value > state.mostSent)

@@ -17,7 +17,7 @@ contract ComplexTypes =
 
   function up_to(n) = up_to_acc(n, [])
 
-  type answer('a) = {label : string, result : 'a}
+  record answer('a) = {label : string, result : 'a}
 
   function remote_triangle(worker, n) : answer(int) =
     let xs = raw_call(worker, "up_to", 100000, 0, n) : list(int)

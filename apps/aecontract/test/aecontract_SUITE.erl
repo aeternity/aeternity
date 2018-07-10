@@ -24,6 +24,7 @@
         , sophia_spend/1
         , sophia_oracles/1
         , sophia_maps/1
+        , sophia_variant_types/1
         , sophia_fundme/1
         , sophia_aens/1
         , create_store/1
@@ -70,6 +71,7 @@ groups() ->
                                  sophia_spend,
                                  sophia_oracles,
                                  sophia_maps,
+                                 sophia_variant_types,
                                  sophia_fundme,
                                  sophia_aens ]}
     , {store, [sequence], [ create_store
@@ -431,9 +433,10 @@ create_contract(Owner, Name, Args, Options, S) ->
 call_contract(Caller, ContractKey, Fun, Type, Args, S) ->
     call_contract(Caller, ContractKey, Fun, Type, Args, #{}, S).
 
-call_contract(Caller, ContractKey, Fun, Type, Args, Options, S) ->
+call_contract(Caller, ContractKey, Fun, Type, Args0, Options, S) ->
     Nonce    = aect_test_utils:next_nonce(Caller, S),
-    CallData = aect_sophia:create_call(<<"unused">>, list_to_binary(atom_to_list(Fun)), args_to_binary(Args)),
+    Args     = if is_tuple(Args0) -> Args0; true -> {Args0} end,
+    CallData = aeso_data:to_binary({list_to_binary(atom_to_list(Fun)), translate_pubkeys(Args)}),
     CallTx   = aect_test_utils:call_tx(Caller, ContractKey,
                 maps:merge(
                 #{ nonce      => Nonce
@@ -462,6 +465,15 @@ account_balance(PubKey, S) ->
     Account = aect_test_utils:get_account(PubKey, S),
     {aec_accounts:balance(Account), S}.
 
+translate_pubkeys(<<N:256>>) -> N;
+translate_pubkeys([H|T]) ->
+  [translate_pubkeys(H) | translate_pubkeys(T)];
+translate_pubkeys(T) when is_tuple(T) ->
+  list_to_tuple(translate_pubkeys(tuple_to_list(T)));
+translate_pubkeys(M) when is_map(M) ->
+  maps:from_list(translate_pubkeys(maps:to_list(M)));
+translate_pubkeys(X) -> X.
+
 args_to_binary(Args) -> list_to_binary(args_to_list(Args)).
 
 commas([]) -> [];
@@ -486,7 +498,7 @@ sophia_identity(_Cfg) ->
     %% Remote calling the identity contract
     IdC   = ?call(create_contract, Acc1, identity, {}),
     RemC  = ?call(create_contract, Acc1, remote_call, {}, #{amount => 100}),
-    42    = ?call(call_contract,   Acc1, IdC, main, word, {42}),
+    42    = ?call(call_contract,   Acc1, IdC, main, word, 42),
     99    = ?call(call_contract,   Acc1, RemC, call, word, {IdC, 99}),
     RemC2 = ?call(create_contract, Acc1, remote_call, {}, #{amount => 100}),
     77    = ?call(call_contract,   Acc1, RemC2, staged_call, word, {RemC, IdC, 77}),
@@ -547,6 +559,14 @@ sophia_oracles(_Cfg) ->
     {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {CtId, QId, 0, 4001}),
     {some, 4001}      = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
     {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Ct, 0, 10, TTL + 10}),
+
+    %% Test complex answers
+    Ct1 = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
+    QuestionType = {variant_t, [{why, [word]}, {how, [string]}]},
+    AnswerType   = {variant_t, [{noAnswer, []}, {yesAnswer, [QuestionType, string, word]}]},
+    Question1    = {1, <<"birds fly?">>},
+    Answer       = {yesAnswer, {how, <<"birds fly?">>}, <<"magic">>, 1337},
+    {some, Answer} = ?call(call_contract, Acc, Ct1, complexOracle, {option, AnswerType}, {Question1, 0}),
     ok.
 
 %% Testing map functions and primitives
@@ -689,6 +709,22 @@ sophia_maps(_Cfg) ->
                K <- Ks ],
     {MapI3, MapS3} = Call(get_state, State, {}),
 
+    ok.
+
+sophia_variant_types(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = <<AccId:256>> = ?call(new_account, 1000000),
+    Ct  = ?call(create_contract, Acc, variant_types, {}),
+    Call = fun(Fn, Type, Args) -> ?call(call_contract, Acc, Ct, Fn, Type, Args) end,
+    Color  = {variant_t, [{red, []}, {green, []}, {blue, []}, {grey, [word]}]},
+    StateR = {tuple, [word, word, Color]},
+    State  = {variant_t, [{started, [StateR]}, {stopped, []}]},
+    Unit   = {tuple, []},
+    stopped   = Call(get_state, State, {}),
+    {}        = Call(start, Unit, {123}),
+    {grey, 0} = Call(get_color, Color, {}),
+    {}        = Call(set_color, Unit, {{1}}),   %% green has tag 1
+    {started, {AccId, 123, green}} = Call(get_state, State, {}),
     ok.
 
 

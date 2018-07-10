@@ -15,9 +15,9 @@ contract AllSyntax =
   type typeDecl = int
   type paramTypeDecl('a, 'b) = (('a, 'b) => 'b) => list('a) => 'b => 'b
 
-  type nestedRecord = { x : int }
-  type recordType = { z : nestedRecord, y : int }
-  type variantType('a) = None | Some('a)
+  record nestedRecord = { x : int }
+  record recordType = { z : nestedRecord, y : int }
+  datatype variantType('a) = None | Some('a)
 
   let valWithType : map(int, int) => option(int) = (m) => Map.get(m, 42)
   let valNoType =

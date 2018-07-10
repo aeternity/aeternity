@@ -91,7 +91,7 @@
      | {record, ann(), expr(), [field(expr())]} %% record update
      | {map, ann(), expr(), [field(expr())]}    %% map update
      | {map, ann(), [{expr(), expr()}]}
-     | {map_get, ann(), expr()}
+     | {map_get, ann(), expr(), expr()}
      | {block, ann(), [stmt()]}
      | {op(), ann()}
      | id() | qid() | con() | qcon()
@@ -105,8 +105,7 @@
 -type field(E) :: {field, ann(), lvalue(), E}
                 | {field, ann(), lvalue(), id(), E}.  %% modifying a field (id is previous value)
 
--type stmt() :: {assign, ann(), lvalue(), expr()}
-              | letbind()
+-type stmt() :: letbind()
               | expr().
 
 -type alt() :: {'case', ann(), pat(), expr()}.

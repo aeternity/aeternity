@@ -35,11 +35,14 @@ to_binary1(Data, Address) when is_binary(Data) ->
     {Address,<<(size(Data)):256, << <<W:256>> || W <- Words>>/binary>>};
 to_binary1(none, Address) -> to_binary1([], Address);
 to_binary1({some, Value}, Address) -> to_binary1({Value}, Address);
-to_binary1(word, Address)        -> to_binary1({?TYPEREP_WORD_TAG}, Address);
-to_binary1(string, Address)      -> to_binary1({?TYPEREP_STRING_TAG}, Address);
-to_binary1({list, T}, Address)   -> to_binary1({?TYPEREP_LIST_TAG, T}, Address);
-to_binary1({option, T}, Address) -> to_binary1({?TYPEREP_OPTION_TAG, T}, Address);
-to_binary1({tuple, Ts}, Address) -> to_binary1({?TYPEREP_TUPLE_TAG, Ts}, Address);
+to_binary1(word, Address)            -> to_binary1({?TYPEREP_WORD_TAG}, Address);
+to_binary1(string, Address)          -> to_binary1({?TYPEREP_STRING_TAG}, Address);
+to_binary1({list, T}, Address)       -> to_binary1({?TYPEREP_LIST_TAG, T}, Address);
+to_binary1({option, T}, Address)     -> to_binary1({?TYPEREP_OPTION_TAG, T}, Address);
+to_binary1({tuple, Ts}, Address)     -> to_binary1({?TYPEREP_TUPLE_TAG, Ts}, Address);
+to_binary1({variant, Cons}, Address) -> to_binary1({?TYPEREP_VARIANT_TAG, Cons}, Address);
+to_binary1({variant, Tag, Args}, Address) ->
+    to_binary1(list_to_tuple([Tag | Args]), Address);
 to_binary1(Map, Address) when is_map(Map) ->
     to_binary1(maps:to_list(Map), Address);
 to_binary1(Data, Address) when is_tuple(Data) ->
@@ -101,6 +104,8 @@ from_binary(_, string, Heap, V) ->
     BitAddr = 8*(V+32),
     <<_:BitAddr,Bytes:StringSize/binary,_/binary>> = Heap,
     Bytes;
+from_binary(_, {tuple, []}, _, _) ->
+    {};
 from_binary(Visited, {tuple,Cpts}, Heap, V) ->
     check_circular_refs(Visited, V),
     NewVisited = Visited#{V => true},
@@ -130,6 +135,19 @@ from_binary(Visited, {option, A}, Heap, V) ->
          {Elem} = from_binary(Visited, {tuple, [A]}, Heap, V),
          {some, Elem}
     end;
+from_binary(Visited, {variant, Cons}, Heap, V) ->
+    Tag      = heap_word(Heap, V),
+    Args     = lists:nth(Tag + 1, Cons),
+    Visited1 = Visited#{V => true},
+    {variant, Tag, tuple_to_list(from_binary(Visited1, {tuple, Args}, Heap, V + 32))};
+from_binary(Visited, {variant_t, TCons}, Heap, V) ->   %% Tagged variants
+    {Tags, Cons} = lists:unzip(TCons),
+    {variant, I, Args} = from_binary(Visited, {variant, Cons}, Heap, V),
+    Tag = lists:nth(I + 1, Tags),
+    case Args of
+        []  -> Tag;
+        _   -> list_to_tuple([Tag | Args])
+    end;
 from_binary(Visited, {map, A, B}, Heap, V) ->
     maps:from_list(from_binary(Visited, {list, {tuple, [A, B]}}, Heap, V));
 from_binary(Visited, typerep, Heap, V) ->
@@ -137,11 +155,12 @@ from_binary(Visited, typerep, Heap, V) ->
     Tag = heap_word(Heap, V),
     Arg = fun(T) -> from_binary(Visited#{V => true}, T, Heap, heap_word(Heap, V + 32)) end,
     case Tag of
-        ?TYPEREP_WORD_TAG   -> word;
-        ?TYPEREP_STRING_TAG -> string;
-        ?TYPEREP_LIST_TAG   -> {list,   Arg(typerep)};
-        ?TYPEREP_OPTION_TAG -> {option, Arg(typerep)};
-        ?TYPEREP_TUPLE_TAG  -> {tuple,  Arg({list, typerep})}
+        ?TYPEREP_WORD_TAG    -> word;
+        ?TYPEREP_STRING_TAG  -> string;
+        ?TYPEREP_LIST_TAG    -> {list,   Arg(typerep)};
+        ?TYPEREP_OPTION_TAG  -> {option, Arg(typerep)};
+        ?TYPEREP_TUPLE_TAG   -> {tuple,  Arg({list, typerep})};
+        ?TYPEREP_VARIANT_TAG -> {variant, Arg({list, {list, typerep}})}
     end.
 
 check_circular_refs(Visited, V) ->

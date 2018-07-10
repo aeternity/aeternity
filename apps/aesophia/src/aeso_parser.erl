@@ -37,10 +37,14 @@ decl() ->
     [ ?RULE(keyword(contract), con(), tok('='), maybe_block(decl()), {contract, _1, _2, _4})
 
       %% Type declarations  TODO: format annotation for "type bla" vs "type bla()"
-    , ?RULE(keyword(type), id(),                                   {type_decl, _1, _2, []})
-    , ?RULE(keyword(type), id(), type_vars(),                      {type_decl, _1, _2, _3})
-    , ?RULE(keyword(type), id(),              tok('='), typedef(), {type_def, _1, _2, [], _4})
-    , ?RULE(keyword(type), id(), type_vars(), tok('='), typedef(), {type_def, _1, _2, _3, _5})
+    , ?RULE(keyword(type),     id(),                                          {type_decl, _1, _2, []})
+    , ?RULE(keyword(type),     id(), type_vars(),                             {type_decl, _1, _2, _3})
+    , ?RULE(keyword(type),     id(),              tok('='), typedef(type),    {type_def, _1, _2, [], _4})
+    , ?RULE(keyword(type),     id(), type_vars(), tok('='), typedef(type),    {type_def, _1, _2, _3, _5})
+    , ?RULE(keyword(record),   id(),              tok('='), typedef(record),  {type_def, _1, _2, [], _4})
+    , ?RULE(keyword(record),   id(), type_vars(), tok('='), typedef(record),  {type_def, _1, _2, _3, _5})
+    , ?RULE(keyword(datatype), id(),              tok('='), typedef(variant), {type_def, _1, _2, [], _4})
+    , ?RULE(keyword(datatype), id(), type_vars(), tok('='), typedef(variant), {type_def, _1, _2, _3, _5})
 
       %% Function declarations
     , ?RULE(modifiers(), keyword(function), id(), tok(':'), type(), {fun_decl, _2, _3, _5})     %% TODO modifiers
@@ -53,12 +57,9 @@ modifiers() ->
 
 %% -- Type declarations ------------------------------------------------------
 
-typedef() ->
-    choice(
-    [ ?RULE(type(),                   {alias_t, _1})
-    , ?RULE(brace_list(field_type()), {record_t, _1})
-    , ?RULE(constructors(),           {variant_t, _1})
-    ]).
+typedef(type)    -> ?RULE(type(),                   {alias_t, _1});
+typedef(record)  -> ?RULE(brace_list(field_type()), {record_t, _1});
+typedef(variant) -> ?RULE(constructors(),           {variant_t, _1}).
 
 constructors() ->
     sep1(constructor(), tok('|')).
@@ -398,8 +399,7 @@ parse_pattern(E = {con, _, _})    -> E;
 parse_pattern(E = {id, _, _})     -> E;
 parse_pattern(E = {unit, _})      -> E;
 parse_pattern(E = {int, _, _})    -> E;
-parse_pattern(E = {true, _})      -> E;
-parse_pattern(E = {false, _})     -> E;
+parse_pattern(E = {bool, _, _})   -> E;
 parse_pattern(E = {hash, _, _})   -> E;
 parse_pattern(E = {string, _, _}) -> E;
 parse_pattern(E = {char, _, _})   -> E;

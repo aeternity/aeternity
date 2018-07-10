@@ -147,12 +147,10 @@ decl(D, Options) ->
 -spec decl(aeso_syntax:decl()) -> doc().
 decl({contract, _, C, Ds}) ->
     block(follow(text("contract"), hsep(name(C), text("="))), decls(Ds));
-decl({type_decl, _, T, []})   -> hsep(text("type"), name(T));
-decl({type_decl, _, T, Vars}) ->
-    beside(hsep(text("type"), name(T)),
-           tuple(lists:map(fun name/1, Vars)));
-decl({type_def, Ann, T, Vars, Def}) ->
-    equals(decl({type_decl, Ann, T, Vars}), typedef(Def));
+decl({type_decl, _, T, Vars}) -> typedecl(alias_t, T, Vars);
+decl({type_def, _, T, Vars, Def}) ->
+    Kind = element(1, Def),
+    equals(typedecl(Kind, T, Vars), typedef(Def));
 decl({fun_decl, _, F, T}) ->
     hsep(text("function"), typed(name(F), T));
 decl(D = {letfun, _, _, _, _, _}) -> letdecl("function", D);
@@ -190,6 +188,19 @@ args(Args) ->
 
 -spec arg(aeso_syntax:arg()) -> doc().
 arg({arg, _, X, T}) -> typed(name(X), T).
+
+-spec typedecl(alias_t | record_t | variant_t, aeso_syntax:id(), [aeso_syntax:tvar()]) -> doc().
+typedecl(Kind, T, Vars) ->
+    KW = case Kind of
+            alias_t -> text("type");
+            record_t -> text("record");
+            variant_t -> text("datatype")
+         end,
+    case Vars of
+        [] -> hsep(KW, name(T));
+        _  -> beside(hsep(KW, name(T)),
+                tuple(lists:map(fun name/1, Vars)))
+    end.
 
 -spec typedef(aeso_syntax:typedef()) -> doc().
 typedef({alias_t, Type})           -> type(Type);

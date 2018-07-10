@@ -14,19 +14,19 @@ contract VotingType =
 contract Voting =
 
   // Types
-  type proposal =
+  record proposal =
     { name : string
     , voteCount : uint
     }
 
-  type vote = NotVoted | Voted(int) | Delegated(address)
+  datatype vote = NotVoted | Voted(int) | Delegated(address)
 
-  type voter =
+  record voter =
     { weight : int
     , vote : vote
     }
 
-  type state =
+  record state =
     { chairPerson : address
     , voters : map(address, voter)
     , proposals : list(proposal)

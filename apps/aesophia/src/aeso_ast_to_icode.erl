@@ -41,25 +41,33 @@ add_default_init_function(Icode = #{functions := Funs, state_type := State}) ->
 
 -spec contract_to_icode(aeso_syntax:ast(), aeso_icode:icode()) ->
                                aeso_icode:icode().
-contract_to_icode([{type_def, _Attrib, {id, _, "state"}, _, TypeDef}|Rest], Icode) ->
-    StateType =
-        case TypeDef of
-            {alias_t, T}   -> ast_typerep(T);
-            {record_t, _}  -> ast_typerep(TypeDef);
-            {variant_t, _} -> error({not_supported, variant_state_types, TypeDef})
+contract_to_icode([{type_def, _Attrib, {id, _, Name}, Args, Def} | Rest],
+                  Icode = #{ types := Types, constructors := Constructors }) ->
+    TypeDef = make_type_def(Args, Def, Icode),
+    NewConstructors =
+        case Def of
+            {variant_t, Cons} ->
+                Tags = lists:seq(0, length(Cons) - 1),
+                GetName = fun({constr_t, _, {con, _, C}, _}) -> C end,
+                maps:from_list([ {GetName(Con), Tag} || {Tag, Con} <- lists:zip(Tags, Cons) ]);
+            _ -> #{}
         end,
-    contract_to_icode(Rest, Icode#{ state_type => StateType});
-contract_to_icode([{type_def, _Attrib, _, _, _}|Rest], Icode) ->
-    %% TODO: Handle types
-    contract_to_icode(Rest, Icode);
+    Icode1 = Icode#{ types := Types#{ Name => TypeDef },
+                     constructors := maps:merge(Constructors, NewConstructors) },
+    Icode2 = case Name of
+                "state" when Args == [] -> Icode1#{ state_type => ast_typerep(Def, Icode) };
+                "state"                 -> error(state_type_cannot_be_parameterized);
+                _                       -> Icode1
+             end,
+    contract_to_icode(Rest, Icode2);
 contract_to_icode([{letfun,_Attrib, Name, Args, _What, Body={typed,_,_,T}}|Rest], Icode) ->
     %% TODO: Handle types
     FunName = ast_id(Name),
     %% TODO: push funname to env
-    FunArgs = ast_args(Args, []),
+    FunArgs = ast_args(Args, [], Icode),
     %% TODO: push args to env
-    FunBody = ast_body(Body),
-    TypeRep = ast_typerep(T),
+    FunBody = ast_body(Body, Icode),
+    TypeRep = ast_typerep(T, Icode),
     NewIcode = ast_fun_to_icode(FunName, FunArgs, FunBody, TypeRep, Icode),
     contract_to_icode(Rest, NewIcode);
 contract_to_icode([{letrec,_,Defs}|Rest], Icode) ->
@@ -76,12 +84,12 @@ contract_to_icode(Code, Icode) ->
 
 ast_id({id, _, Id}) -> Id.
 
-ast_args([{arg, _, Name, Type}|Rest], Acc) ->
-    ast_args(Rest, [{ast_id(Name), ast_type(Type)}| Acc]);
-ast_args([], Acc) -> lists:reverse(Acc).
+ast_args([{arg, _, Name, Type}|Rest], Acc, Icode) ->
+    ast_args(Rest, [{ast_id(Name), ast_type(Type, Icode)}| Acc], Icode);
+ast_args([], Acc, _Icode) -> lists:reverse(Acc).
 
-ast_type(T) ->
-    ast_typerep(T).
+ast_type(T, Icode) ->
+    ast_typerep(T, Icode).
 
 -define(id_app(Fun, Args, ArgTypes, OutType),
     {app, _, {typed, _, {id, _, Fun}, {fun_t, _, ArgTypes, OutType}}, Args}).
@@ -94,7 +102,7 @@ ast_type(T) ->
 -define(option_t(A),    {app_t, _, {id, _, "option"}, [A]}).
 -define(map_t(K, V),    {app_t, _, {id, _, "map"}, [K, V]}).
 
-ast_body(?id_app("raw_call", [To, Fun, Gas, Value, {typed, _, Arg, ArgT}], _, OutT)) ->
+ast_body(?id_app("raw_call", [To, Fun, Gas, Value, {typed, _, Arg, ArgT}], _, OutT), Icode) ->
     %% TODO: temp hack before we have contract calls properly in the type checker
     {Args, ArgTypes} =
         case Arg of %% Hack: pack unary argument in tuple
@@ -102,248 +110,254 @@ ast_body(?id_app("raw_call", [To, Fun, Gas, Value, {typed, _, Arg, ArgT}], _, Ou
             {tuple, _,_Elems} -> {Arg, ArgT};
             _ -> {{tuple, [], [Arg]}, {tuple_t, [], [ArgT]}}
         end,
-    #prim_call_contract{ gas      = ast_body(Gas),
-                         address  = ast_body(To),
-                         value    = ast_body(Value),
-                         arg      = #tuple{cpts = [ast_body(X) || X <- [Fun , Args]]},
-                         arg_type = {tuple, [string , ast_typerep(ArgTypes)]},
-                         out_type = ast_typerep(OutT) };
-ast_body(?id_app("raw_spend", [To, Amount], _, _)) ->
-    prim_call(?PRIM_CALL_SPEND, ast_body(Amount), [ast_body(To)], [word], {tuple, []});
+    #prim_call_contract{ gas      = ast_body(Gas, Icode),
+                         address  = ast_body(To, Icode),
+                         value    = ast_body(Value, Icode),
+                         arg      = #tuple{cpts = [ast_body(X, Icode) || X <- [Fun , Args]]},
+                         arg_type = {tuple, [string , ast_typerep(ArgTypes, Icode)]},
+                         out_type = ast_typerep(OutT, Icode) };
+ast_body(?id_app("raw_spend", [To, Amount], _, _), Icode) ->
+    prim_call(?PRIM_CALL_SPEND, ast_body(Amount, Icode), [ast_body(To, Icode)], [word], {tuple, []});
 
 %% Chain environment
-ast_body(?qid_app(["Chain", "balance"], [Address], _, _)) ->
-    #prim_balance{ address = ast_body(Address) };
-ast_body(?qid_app(["Chain", "block_hash"], [Height], _, _)) ->
-    #prim_block_hash{ height = ast_body(Height) };
-ast_body({qid, _, ["Contract", "address"]})      -> prim_contract_address;
-ast_body({qid, _, ["Contract", "balance"]})      -> #prim_balance{ address = prim_contract_address };
-ast_body({qid, _, ["Call",     "origin"]})       -> prim_call_origin;
-ast_body({qid, _, ["Call",     "caller"]})       -> prim_caller;
-ast_body({qid, _, ["Call",     "value"]})        -> prim_call_value;
-ast_body({qid, _, ["Call",     "gas_price"]})    -> prim_gas_price;
-ast_body({qid, _, ["Chain",    "coinbase"]})     -> prim_coinbase;
-ast_body({qid, _, ["Chain",    "timestamp"]})    -> prim_timestamp;
-ast_body({qid, _, ["Chain",    "block_height"]}) -> prim_block_height;
-ast_body({qid, _, ["Chain",    "difficulty"]})   -> prim_difficulty;
-ast_body({qid, _, ["Chain",    "gas_limit"]})    -> prim_gas_limit;
+ast_body(?qid_app(["Chain", "balance"], [Address], _, _), Icode) ->
+    #prim_balance{ address = ast_body(Address, Icode) };
+ast_body(?qid_app(["Chain", "block_hash"], [Height], _, _), Icode) ->
+    #prim_block_hash{ height = ast_body(Height, Icode) };
+ast_body({qid, _, ["Contract", "address"]}, _Icode)      -> prim_contract_address;
+ast_body({qid, _, ["Contract", "balance"]}, _Icode)      -> #prim_balance{ address = prim_contract_address };
+ast_body({qid, _, ["Call",     "origin"]}, _Icode)       -> prim_call_origin;
+ast_body({qid, _, ["Call",     "caller"]}, _Icode)       -> prim_caller;
+ast_body({qid, _, ["Call",     "value"]}, _Icode)        -> prim_call_value;
+ast_body({qid, _, ["Call",     "gas_price"]}, _Icode)    -> prim_gas_price;
+ast_body({qid, _, ["Chain",    "coinbase"]}, _Icode)     -> prim_coinbase;
+ast_body({qid, _, ["Chain",    "timestamp"]}, _Icode)    -> prim_timestamp;
+ast_body({qid, _, ["Chain",    "block_height"]}, _Icode) -> prim_block_height;
+ast_body({qid, _, ["Chain",    "difficulty"]}, _Icode)   -> prim_difficulty;
+ast_body({qid, _, ["Chain",    "gas_limit"]}, _Icode)    -> prim_gas_limit;
 %% TODO: eta expand!
-ast_body({qid, _, ["Chain", "balance"]}) ->
+ast_body({qid, _, ["Chain", "balance"]}, _Icode) ->
     error({underapplied_primitive, 'Chain.balance'});
-ast_body({qid, _, ["Chain", "block_hash"]}) ->
+ast_body({qid, _, ["Chain", "block_hash"]}, _Icode) ->
     error({underapplied_primitive, 'Chain.block_hash'});
-ast_body({id, _, "raw_call"}) ->
+ast_body({id, _, "raw_call"}, _Icode) ->
     error({underapplied_primitive, raw_call});
-ast_body({id, _, "raw_spend"}) ->
+ast_body({id, _, "raw_spend"}, _Icode) ->
     error({underapplied_primitive, raw_spend});
 
 %% State
-ast_body({id, _, "state"}) -> prim_state;
-ast_body(?id_app("put", [NewState], _, _)) ->
-    #prim_put{ state = ast_body(NewState) };
-ast_body({id, _, "put"}) ->
+ast_body({id, _, "state"}, _Icode) -> prim_state;
+ast_body(?id_app("put", [NewState], _, _), Icode) ->
+    #prim_put{ state = ast_body(NewState, Icode) };
+ast_body({id, _, "put"}, _Icode) ->
     error({underapplied_primitive, put});   %% TODO: eta
 
 %% Oracles
-ast_body(?qid_app(["Oracle", "register"], [Acct, Sign, Fee, QFee, TTL], _, ?oracle_t(QType, RType))) ->
-    prim_call(?PRIM_CALL_ORACLE_REGISTER, ast_body(Fee),
-              [ast_body(Acct), ast_body(Sign), ast_body(QFee), ast_body(TTL),
-               ast_type_value(QType), ast_type_value(RType)],
+ast_body(?qid_app(["Oracle", "register"], [Acct, Sign, Fee, QFee, TTL], _, ?oracle_t(QType, RType)), Icode) ->
+    prim_call(?PRIM_CALL_ORACLE_REGISTER, ast_body(Fee, Icode),
+              [ast_body(Acct, Icode), ast_body(Sign, Icode), ast_body(QFee, Icode), ast_body(TTL, Icode),
+               ast_type_value(QType, Icode), ast_type_value(RType, Icode)],
               [word, word, word, word, typerep, typerep], word);
 
-ast_body(?qid_app(["Oracle", "query_fee"], [Oracle], _, _)) ->
+ast_body(?qid_app(["Oracle", "query_fee"], [Oracle], _, _), Icode) ->
     prim_call(?PRIM_CALL_ORACLE_QUERY_FEE, #integer{value = 0},
-              [ast_body(Oracle)], [word], word);
+              [ast_body(Oracle, Icode)], [word], word);
 
-ast_body(?qid_app(["Oracle", "query"], [Oracle, Q, Fee, QTTL, RTTL], [_, QType, _, _, _], _)) ->
-    prim_call(?PRIM_CALL_ORACLE_QUERY, ast_body(Fee),
-              [ast_body(Oracle), ast_body(Q), ast_body(QTTL), ast_body(RTTL)],
-              [word, ast_type(QType), word, word], word);
+ast_body(?qid_app(["Oracle", "query"], [Oracle, Q, Fee, QTTL, RTTL], [_, QType, _, _, _], _), Icode) ->
+    prim_call(?PRIM_CALL_ORACLE_QUERY, ast_body(Fee, Icode),
+              [ast_body(Oracle, Icode), ast_body(Q, Icode), ast_body(QTTL, Icode), ast_body(RTTL, Icode)],
+              [word, ast_type(QType, Icode), word, word], word);
 
-ast_body(?qid_app(["Oracle", "extend"], [Oracle, Sign, Fee, TTL], _, _)) ->
+ast_body(?qid_app(["Oracle", "extend"], [Oracle, Sign, Fee, TTL], _, _), Icode) ->
     prim_call(?PRIM_CALL_ORACLE_EXTEND, #integer{value = 0},
-              [ast_body(Oracle), ast_body(Sign), ast_body(Fee), ast_body(TTL)],
+              [ast_body(Oracle, Icode), ast_body(Sign, Icode), ast_body(Fee, Icode), ast_body(TTL, Icode)],
               [word, word, word, word], {tuple, []});
 
-ast_body(?qid_app(["Oracle", "respond"], [Oracle, Query, Sign, R], [_, _, _, RType], _)) ->
+ast_body(?qid_app(["Oracle", "respond"], [Oracle, Query, Sign, R], [_, _, _, RType], _), Icode) ->
     prim_call(?PRIM_CALL_ORACLE_RESPOND, #integer{value = 0},
-              [ast_body(Oracle), ast_body(Query), ast_body(Sign), ast_body(R)],
-              [word, word, word, ast_type(RType)], {tuple, []});
+              [ast_body(Oracle, Icode), ast_body(Query, Icode), ast_body(Sign, Icode), ast_body(R, Icode)],
+              [word, word, word, ast_type(RType, Icode)], {tuple, []});
 
-ast_body(?qid_app(["Oracle", "get_question"], [Oracle, Q], [_, ?query_t(QType, _)], _)) ->
+ast_body(?qid_app(["Oracle", "get_question"], [Oracle, Q], [_, ?query_t(QType, _)], _), Icode) ->
     prim_call(?PRIM_CALL_ORACLE_GET_QUESTION, #integer{value = 0},
-              [ast_body(Oracle), ast_body(Q)], [word, word], ast_type(QType));
+              [ast_body(Oracle, Icode), ast_body(Q, Icode)], [word, word], ast_type(QType, Icode));
 
-ast_body(?qid_app(["Oracle", "get_answer"], [Oracle, Q], [_, ?query_t(_, RType)], _)) ->
+ast_body(?qid_app(["Oracle", "get_answer"], [Oracle, Q], [_, ?query_t(_, RType)], _), Icode) ->
     prim_call(?PRIM_CALL_ORACLE_GET_ANSWER, #integer{value = 0},
-              [ast_body(Oracle), ast_body(Q)], [word, word], {option, ast_type(RType)});
+              [ast_body(Oracle, Icode), ast_body(Q, Icode)], [word, word], {option, ast_type(RType, Icode)});
 
-ast_body({qid, _, ["Oracle", "register"]})     -> error({underapplied_primitive, 'Oracle.register'});
-ast_body({qid, _, ["Oracle", "query"]})        -> error({underapplied_primitive, 'Oracle.query'});
-ast_body({qid, _, ["Oracle", "extend"]})       -> error({underapplied_primitive, 'Oracle.extend'});
-ast_body({qid, _, ["Oracle", "respond"]})      -> error({underapplied_primitive, 'Oracle.respond'});
-ast_body({qid, _, ["Oracle", "query_fee"]})    -> error({underapplied_primitive, 'Oracle.query_fee'});
-ast_body({qid, _, ["Oracle", "get_answer"]})   -> error({underapplied_primitive, 'Oracle.get_answer'});
-ast_body({qid, _, ["Oracle", "get_question"]}) -> error({underapplied_primitive, 'Oracle.get_question'});
+ast_body({qid, _, ["Oracle", "register"]}, _Icode)     -> error({underapplied_primitive, 'Oracle.register'});
+ast_body({qid, _, ["Oracle", "query"]}, _Icode)        -> error({underapplied_primitive, 'Oracle.query'});
+ast_body({qid, _, ["Oracle", "extend"]}, _Icode)       -> error({underapplied_primitive, 'Oracle.extend'});
+ast_body({qid, _, ["Oracle", "respond"]}, _Icode)      -> error({underapplied_primitive, 'Oracle.respond'});
+ast_body({qid, _, ["Oracle", "query_fee"]}, _Icode)    -> error({underapplied_primitive, 'Oracle.query_fee'});
+ast_body({qid, _, ["Oracle", "get_answer"]}, _Icode)   -> error({underapplied_primitive, 'Oracle.get_answer'});
+ast_body({qid, _, ["Oracle", "get_question"]}, _Icode) -> error({underapplied_primitive, 'Oracle.get_question'});
 
 %% Name service
-ast_body(?qid_app(["AENS", "resolve"], [Name, Key], _, ?option_t(Type))) ->
+ast_body(?qid_app(["AENS", "resolve"], [Name, Key], _, ?option_t(Type)), Icode) ->
     case is_monomorphic(Type) of
         true ->
-            case ast_type(Type) of
+            case ast_type(Type, Icode) of
                 T when T == word; T == string -> ok;
                 _ -> error({invalid_result_type, 'AENS.resolve', Type})
             end,
             prim_call(?PRIM_CALL_AENS_RESOLVE, #integer{value = 0},
-                      [ast_body(Name), ast_body(Key), ast_type_value(Type)],
-                      [string, string, typerep], {option, ast_type(Type)});
+                      [ast_body(Name, Icode), ast_body(Key, Icode), ast_type_value(Type, Icode)],
+                      [string, string, typerep], {option, ast_type(Type, Icode)});
         false ->
             error({unresolved_result_type, 'AENS.resolve', Type})
     end;
 
-ast_body(?qid_app(["AENS", "preclaim"], [Addr, CHash, Sign], _, _)) ->
+ast_body(?qid_app(["AENS", "preclaim"], [Addr, CHash, Sign], _, _), Icode) ->
     prim_call(?PRIM_CALL_AENS_PRECLAIM, #integer{value = 0},
-              [ast_body(Addr), ast_body(CHash), ast_body(Sign)],
+              [ast_body(Addr, Icode), ast_body(CHash, Icode), ast_body(Sign, Icode)],
               [word, word, word], {tuple, []});
 
-ast_body(?qid_app(["AENS", "claim"], [Addr, Name, Salt, Sign], _, _)) ->
+ast_body(?qid_app(["AENS", "claim"], [Addr, Name, Salt, Sign], _, _), Icode) ->
     prim_call(?PRIM_CALL_AENS_CLAIM, #integer{value = 0},
-              [ast_body(Addr), ast_body(Name), ast_body(Salt), ast_body(Sign)],
+              [ast_body(Addr, Icode), ast_body(Name, Icode), ast_body(Salt, Icode), ast_body(Sign, Icode)],
               [word, string, word, word], {tuple, []});
 
-ast_body(?qid_app(["AENS", "transfer"], [FromAddr, ToAddr, NameHash, Sign], _, _)) ->
+ast_body(?qid_app(["AENS", "transfer"], [FromAddr, ToAddr, NameHash, Sign], _, _), Icode) ->
     prim_call(?PRIM_CALL_AENS_TRANSFER, #integer{value = 0},
-              [ast_body(FromAddr), ast_body(ToAddr), ast_body(NameHash), ast_body(Sign)],
+              [ast_body(FromAddr, Icode), ast_body(ToAddr, Icode), ast_body(NameHash, Icode), ast_body(Sign, Icode)],
               [word, word, word, word], {tuple, []});
 
-ast_body(?qid_app(["AENS", "revoke"], [Addr, NameHash, Sign], _, _)) ->
+ast_body(?qid_app(["AENS", "revoke"], [Addr, NameHash, Sign], _, _), Icode) ->
     prim_call(?PRIM_CALL_AENS_REVOKE, #integer{value = 0},
-              [ast_body(Addr), ast_body(NameHash), ast_body(Sign)],
+              [ast_body(Addr, Icode), ast_body(NameHash, Icode), ast_body(Sign, Icode)],
               [word, word, word], {tuple, []});
 
-ast_body({qid, _, ["AENS", "resolve"]})  -> error({underapplied_primitive, 'AENS.resolve'});
-ast_body({qid, _, ["AENS", "preclaim"]}) -> error({underapplied_primitive, 'AENS.preclaim'});
-ast_body({qid, _, ["AENS", "claim"]})    -> error({underapplied_primitive, 'AENS.claim'});
-ast_body({qid, _, ["AENS", "transfer"]}) -> error({underapplied_primitive, 'AENS.transfer'});
-ast_body({qid, _, ["AENS", "revoke"]})   -> error({underapplied_primitive, 'AENS.revoke'});
+ast_body({qid, _, ["AENS", "resolve"]}, _Icode)  -> error({underapplied_primitive, 'AENS.resolve'});
+ast_body({qid, _, ["AENS", "preclaim"]}, _Icode) -> error({underapplied_primitive, 'AENS.preclaim'});
+ast_body({qid, _, ["AENS", "claim"]}, _Icode)    -> error({underapplied_primitive, 'AENS.claim'});
+ast_body({qid, _, ["AENS", "transfer"]}, _Icode) -> error({underapplied_primitive, 'AENS.transfer'});
+ast_body({qid, _, ["AENS", "revoke"]}, _Icode)   -> error({underapplied_primitive, 'AENS.revoke'});
 
 %% Maps
 
 %% -- map lookup  m[k]
-ast_body({map_get, _, Map, {typed, Ann, Key, KeyType}}) ->
-    Fun = {map_get, key_type(Ann, KeyType)},
+ast_body({map_get, _, Map, {typed, Ann, Key, KeyType}}, Icode) ->
+    Fun = {map_get, key_type(Ann, KeyType, Icode)},
     #funcall{ function = #var_ref{name = {builtin, Fun}},
-              args     = [ast_body(Map), ast_body(Key)] };
+              args     = [ast_body(Map, Icode), ast_body(Key, Icode)] };
 
 %% -- lookup functions
-ast_body(?qid_app(["Map", "lookup"], [{typed, Ann, Key, KeyType}, Map], _, _)) ->
-    Fun = {map_lookup, key_type(Ann, KeyType)},
+ast_body(?qid_app(["Map", "lookup"], [{typed, Ann, Key, KeyType}, Map], _, _), Icode) ->
+    Fun = {map_lookup, key_type(Ann, KeyType, Icode)},
     #funcall{ function = #var_ref{name = {builtin, Fun}},
-              args     = [ast_body(Map), ast_body(Key)] };
-ast_body(?qid_app(["Map", "member"], [{typed, Ann, Key, KeyType}, Map], _, _)) ->
-    Fun = {map_member, key_type(Ann, KeyType)},
+              args     = [ast_body(Map, Icode), ast_body(Key, Icode)] };
+ast_body(?qid_app(["Map", "member"], [{typed, Ann, Key, KeyType}, Map], _, _), Icode) ->
+    Fun = {map_member, key_type(Ann, KeyType, Icode)},
     #funcall{ function = #var_ref{name = {builtin, Fun}},
-              args     = [ast_body(Map), ast_body(Key)] };
-ast_body(?qid_app(["Map", "size"], [Map], _, _)) ->
+              args     = [ast_body(Map, Icode), ast_body(Key, Icode)] };
+ast_body(?qid_app(["Map", "size"], [Map], _, _), Icode) ->
     #funcall{ function = #var_ref{name = {builtin, map_size}},
-              args     = [ast_body(Map), {integer, 0}] };
-ast_body(?qid_app(["Map", "delete"], [{typed, Ann, Key, KeyType}, Map], _, _)) ->
-    Fun = {map_del, key_type(Ann, KeyType)},
+              args     = [ast_body(Map, Icode), {integer, 0}] };
+ast_body(?qid_app(["Map", "delete"], [{typed, Ann, Key, KeyType}, Map], _, _), Icode) ->
+    Fun = {map_del, key_type(Ann, KeyType, Icode)},
     #funcall{ function = #var_ref{name = {builtin, Fun}},
-              args     = [ast_body(Map), ast_body(Key)] };
+              args     = [ast_body(Map, Icode), ast_body(Key, Icode)] };
 
 %% -- map conversion to/from list
-ast_body(?qid_app(["Map", "from_list"], [List], _, _)) -> ast_body(List);
-ast_body(?qid_app(["Map", "to_list"],   [Map], _, _))  -> ast_body(Map);
+ast_body(?qid_app(["Map", "from_list"], [List], _, _), Icode) -> ast_body(List, Icode);
+ast_body(?qid_app(["Map", "to_list"],   [Map], _, _), Icode)  -> ast_body(Map, Icode);
 
-ast_body({qid, _, ["Map", "from_list"]}) -> error({underapplied_primitive, 'Map.from_list'});
-ast_body({qid, _, ["Map", "to_list"]})   -> error({underapplied_primitive, 'Map.to_list'});
-ast_body({qid, _, ["Map", "lookup"]})    -> error({underapplied_primitive, 'Map.to_list'});
-ast_body({qid, _, ["Map", "member"]})    -> error({underapplied_primitive, 'Map.to_list'});
+ast_body({qid, _, ["Map", "from_list"]}, _Icode) -> error({underapplied_primitive, 'Map.from_list'});
+ast_body({qid, _, ["Map", "to_list"]}, _Icode)   -> error({underapplied_primitive, 'Map.to_list'});
+ast_body({qid, _, ["Map", "lookup"]}, _Icode)    -> error({underapplied_primitive, 'Map.to_list'});
+ast_body({qid, _, ["Map", "member"]}, _Icode)    -> error({underapplied_primitive, 'Map.to_list'});
 
 %% -- map construction { k1 = v1, k2 = v2 }
-ast_body({map, Ann, KVs}) ->
-    ast_body({list, Ann, [{tuple, Ann, [K, V]} || {K, V} <- KVs]});
+ast_body({map, Ann, KVs}, Icode) ->
+    ast_body({list, Ann, [{tuple, Ann, [K, V]} || {K, V} <- KVs]}, Icode);
 
 %% -- map update       m { [k] = v } or m { [k] @ x = f(x) }
-ast_body({map, _, Map, []}) -> ast_body(Map);
-ast_body({map, _, Map, [Upd]}) ->
+ast_body({map, _, Map, []}, Icode) -> ast_body(Map, Icode);
+ast_body({map, _, Map, [Upd]}, Icode) ->
     {Fun, Args} = case Upd of
             {field, _, [{map_get, _, {typed, Ann, Key, KeyType}}], Val} ->
-                {{map_put, key_type(Ann, KeyType)}, [ast_body(Key), ast_body(Val)]};
+                {{map_put, key_type(Ann, KeyType, Icode)}, [ast_body(Key, Icode), ast_body(Val, Icode)]};
             {field_upd, _, [{map_get, _, {typed, Ann, Key, KeyType}}], ValFun} ->
-                {{map_upd, key_type(Ann, KeyType)}, [ast_body(Key), ast_body(ValFun)]}
+                {{map_upd, key_type(Ann, KeyType, Icode)}, [ast_body(Key, Icode), ast_body(ValFun, Icode)]}
         end,
     #funcall{ function = #var_ref{name = {builtin, Fun}},
-              args     = [ast_body(Map) | Args] };
-ast_body({map, Ann, Map, [Upd | Upds]}) ->
-    ast_body({map, Ann, {map, Ann, Map, [Upd]}, Upds});
+              args     = [ast_body(Map, Icode) | Args] };
+ast_body({map, Ann, Map, [Upd | Upds]}, Icode) ->
+    ast_body({map, Ann, {map, Ann, Map, [Upd]}, Upds}, Icode);
 
 %% Other terms
-ast_body({id, _, Name}) ->
+ast_body({id, _, Name}, _Icode) ->
     %% TODO Look up id in env
     #var_ref{name = Name};
-ast_body({bool, _, Bool}) ->		%BOOL as ints
+ast_body({bool, _, Bool}, _Icode) ->		%BOOL as ints
     Value = if Bool -> 1 ; true -> 0 end,
     #integer{value = Value};
-ast_body({int, _, Value}) ->
+ast_body({int, _, Value}, _Icode) ->
     #integer{value = Value};
-ast_body({hash, _, Hash}) ->
+ast_body({hash, _, Hash}, _Icode) ->
     <<Value:32/unit:8>> = Hash,
     #integer{value = Value};
-ast_body({string,_,Bin}) ->
+ast_body({string,_,Bin}, _Icode) ->
     Cpts = [size(Bin)|aeso_data:binary_to_words(Bin)],
     #tuple{cpts = [#integer{value=X} || X <- Cpts]};
-ast_body({tuple,_,Args}) ->
-    #tuple{cpts = [ast_body(A) || A <- Args]};
-ast_body({list,_,Args}) ->
-    #list{elems = [ast_body(A) || A <- Args]};
+ast_body({tuple,_,Args}, Icode) ->
+    #tuple{cpts = [ast_body(A, Icode) || A <- Args]};
+ast_body({list,_,Args}, Icode) ->
+    #list{elems = [ast_body(A, Icode) || A <- Args]};
 %% Hardwired option types. TODO: Remove when we have arbitrary variant types.
-ast_body({con, _, "None"}) ->
+ast_body({con, _, "None"}, _Icode) ->
     #list{elems = []};
-ast_body({app, _, {typed, _, {con, _, "Some"}, _}, [Elem]}) ->
-    #tuple{cpts = [ast_body(Elem)]};
-ast_body({typed, _, {con, _, "Some"}, {fun_t, _, [A], _}}) ->
-    #lambda{ args = [#arg{name = "x", type = ast_type(A)}]
+ast_body({app, _, {typed, _, {con, _, "Some"}, _}, [Elem]}, Icode) ->
+    #tuple{cpts = [ast_body(Elem, Icode)]};
+ast_body({typed, _, {con, _, "Some"}, {fun_t, _, [A], _}}, Icode) ->
+    #lambda{ args = [#arg{name = "x", type = ast_type(A, Icode)}]
            , body = #tuple{cpts = [#var_ref{name = "x"}]} };
-ast_body({app,As,Fun,Args}) ->
+ast_body({con, _, Name}, Icode) ->
+    Tag = aeso_icode:get_constructor_tag(Name, Icode),
+    #tuple{cpts = [#integer{value = Tag}]};
+ast_body({app, _, {typed, _, {con, _, Name}, _}, Args}, Icode) ->
+    Tag = aeso_icode:get_constructor_tag(Name, Icode),
+    #tuple{cpts = [#integer{value = Tag} | [ ast_body(Arg, Icode) || Arg <- Args ]]};
+ast_body({app,As,Fun,Args}, Icode) ->
     case aeso_syntax:get_ann(format, As) of
         infix  ->
             {Op, _} = Fun,
             [A, B]  = Args,
-            ast_binop(Op, As, A, B);
+            ast_binop(Op, As, A, B, Icode);
         prefix ->
             {Op, _} = Fun,
             [A]     = Args,
-            #unop{op = Op, rand = ast_body(A)};
+            #unop{op = Op, rand = ast_body(A, Icode)};
         _ ->
-            #funcall{function=ast_body(Fun),
-	             args=[ast_body(A) || A <- Args]}
+            #funcall{function=ast_body(Fun, Icode),
+	             args=[ast_body(A, Icode) || A <- Args]}
     end;
-ast_body({'if',_,Dec,Then,Else}) ->
-    #ifte{decision = ast_body(Dec)
-	 ,then     = ast_body(Then)
-	 ,else     = ast_body(Else)};
-ast_body({switch,_,A,Cases}) ->
+ast_body({'if',_,Dec,Then,Else}, Icode) ->
+    #ifte{decision = ast_body(Dec, Icode)
+	 ,then     = ast_body(Then, Icode)
+	 ,else     = ast_body(Else, Icode)};
+ast_body({switch,_,A,Cases}, Icode) ->
     %% let's assume the parser has already ensured that only valid
     %% patterns appear in cases.
-    #switch{expr=ast_body(A),
-	    cases=[{ast_body(Pat),ast_body(Body)}
+    #switch{expr=ast_body(A, Icode),
+	    cases=[{ast_body(Pat, Icode),ast_body(Body, Icode)}
 		   || {'case',_,Pat,Body} <- Cases]};
-ast_body({block,As,[{letval,_,Pat,_,E}|Rest]}) ->
-    #switch{expr=ast_body(E),
-	    cases=[{ast_body(Pat),ast_body({block,As,Rest})}]};
-ast_body({block,_,[]}) ->
+ast_body({block,As,[{letval,_,Pat,_,E}|Rest]}, Icode) ->
+    #switch{expr=ast_body(E, Icode),
+	    cases=[{ast_body(Pat, Icode),ast_body({block,As,Rest}, Icode)}]};
+ast_body({block,_,[]}, _Icode) ->
     #tuple{cpts=[]};
-ast_body({block,_,[E]}) ->
-    ast_body(E);
-ast_body({block,As,[E|Rest]}) ->
-    #switch{expr=ast_body(E),
-	    cases=[{#var_ref{name="_"},ast_body({block,As,Rest})}]};
-ast_body({lam,_,Args,Body}) ->
-    #lambda{args=[#arg{name = ast_id(P), type = ast_type(T)} || {arg,_,P,T} <- Args],
-	    body=ast_body(Body)};
-ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}) ->
+ast_body({block,_,[E]}, Icode) ->
+    ast_body(E, Icode);
+ast_body({block,As,[E|Rest]}, Icode) ->
+    #switch{expr=ast_body(E, Icode),
+	    cases=[{#var_ref{name="_"},ast_body({block,As,Rest}, Icode)}]};
+ast_body({lam,_,Args,Body}, Icode) ->
+    #lambda{args=[#arg{name = ast_id(P), type = ast_type(T, Icode)} || {arg,_,P,T} <- Args],
+	    body=ast_body(Body, Icode)};
+ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}, Icode) ->
     %% Compile as a tuple with the fields in the order they appear in the definition.
     NamedField = fun({field, _, [{proj, _, {id, _, Name}}], E}) -> {Name, E} end,
     NamedFields = lists:map(NamedField, Fields),
@@ -355,18 +369,18 @@ ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}) ->
 			#missing_field{format = "Missing field in record: ~s (on line ~p)\n",
 				       args = [Name,Line]};
 		    E ->
-			ast_body(E)
+			ast_body(E, Icode)
 		end
 		|| {field_t,_,{id,_,Name},_} <- DefFields]};
-ast_body({typed,_,{record,Attrs,_Fields},T}) ->
+ast_body({typed,_,{record,Attrs,_Fields},T}, _Icode) ->
     error({record_has_bad_type,Attrs,T});
-ast_body({proj,_,{typed,_,Record,{record_t,Fields}},{id,_,FieldName}}) ->
+ast_body({proj,_,{typed,_,Record,{record_t,Fields}},{id,_,FieldName}}, Icode) ->
     [Index] = [I
 	       || {I,{field_t,_,{id,_,Name},_}} <-
 		      lists:zip(lists:seq(1,length(Fields)),Fields),
 		  Name==FieldName],
-    #binop{op = '!', left = #integer{value = 32*(Index-1)}, right = ast_body(Record)};
-ast_body({record, Attrs, {typed, _, Record, RecType={record_t, Fields}}, Update}) ->
+    #binop{op = '!', left = #integer{value = 32*(Index-1)}, right = ast_body(Record, Icode)};
+ast_body({record, Attrs, {typed, _, Record, RecType={record_t, Fields}}, Update}, Icode) ->
     UpdatedName = fun({field, _,     [{proj, _, {id, _, Name}}], _}) -> Name;
                      ({field_upd, _, [{proj, _, {id, _, Name}}], _}) -> Name
                   end,
@@ -378,7 +392,7 @@ ast_body({record, Attrs, {typed, _, Record, RecType={record_t, Fields}}, Update}
             {field, Ann, LV, {app, Ann, Fun, [{proj, Ann1, Rec, P}]}}
         end,
 
-    #switch{expr=ast_body(Record),
+    #switch{expr=ast_body(Record, Icode),
 	    cases=[{#var_ref{name = "_record"},
 		    ast_body({typed, Attrs,
 			      {record, Attrs,
@@ -387,20 +401,20 @@ ast_body({record, Attrs, {typed, _, Record, RecType={record_t, Fields}}, Update}
 				     {proj, Attrs, Rec, {id, Attrs, Name}}}
 				    || {field_t, _, {id, _, Name}, _} <- Fields,
 				       not lists:member(Name, UpdatedNames)]},
-			      RecType})}
+			      RecType}, Icode)}
 		   ]};
-ast_body({typed, _, Body, _}) ->
-    ast_body(Body).
+ast_body({typed, _, Body, _}, Icode) ->
+    ast_body(Body, Icode).
 
-ast_binop(Op, Ann, {typed, _, A, Type}, B)
+ast_binop(Op, Ann, {typed, _, A, Type}, B, Icode)
     when Op == '=='; Op == '!=';
          Op == '<';  Op == '>';
          Op == '<='; Op == '=<'; Op == '>=' ->
     Monomorphic = is_monomorphic(Type),
-    case ast_typerep(Type) of
+    case ast_typerep(Type, Icode) of
         _ when not Monomorphic ->
             error({cant_compare_polymorphic_type, Ann, Op, Type});
-        word   -> #binop{op = Op, left = ast_body(A), right = ast_body(B)};
+        word   -> #binop{op = Op, left = ast_body(A, Icode), right = ast_body(B, Icode)};
         string ->
             Neg = case Op of
                     '==' -> fun(X) -> X end;
@@ -408,11 +422,11 @@ ast_binop(Op, Ann, {typed, _, A, Type}, B)
                     _    -> error({cant_compare, Ann, Op, Type})
                   end,
             Neg(#funcall{ function = #var_ref{name = {builtin, str_equal}},
-                          args     = [ast_body(A), ast_body(B)] });
+                          args     = [ast_body(A, Icode), ast_body(B, Icode)] });
         _ -> error({cant_compare, Ann, Op, Type})
     end;
-ast_binop(Op, _, A, B) ->
-    #binop{op = Op, left = ast_body(A), right = ast_body(B)}.
+ast_binop(Op, _, A, B, Icode) ->
+    #binop{op = Op, left = ast_body(A, Icode), right = ast_body(B, Icode)}.
 
 is_monomorphic({tvar, _, _}) -> false;
 is_monomorphic([H|T]) ->
@@ -430,44 +444,50 @@ prim_call(Prim, Amount, Args, ArgTypes, OutType) ->
                          arg_type = {tuple, [word | ArgTypes]},
                          out_type = OutType }.
 
+make_type_def(Args, Def, Icode = #{ type_vars := TypeEnv }) ->
+    TVars = [ X || {tvar, _, X} <- Args ],
+    fun(Types) ->
+        TypeEnv1 = maps:from_list(lists:zip(TVars, Types)),
+        ast_typerep(Def, Icode#{ type_vars := maps:merge(TypeEnv, TypeEnv1) })
+    end.
+
 -spec ast_typerep(aeso_syntax:type()) -> aeso_sophia:type().
-ast_typerep({id,_,"bool"}) ->		%BOOL as ints
-    word;
-ast_typerep({id,_,"int"}) ->
-    word;
-ast_typerep({id,_,"string"}) ->
-    string;
-ast_typerep({id,_,"address"}) ->
-    word;
-ast_typerep({id,_,"hash"}) ->
-    word;
-ast_typerep({id,_,"signature"}) ->
-    word;
-ast_typerep(?oracle_t(_, _)) ->
-    word;
-ast_typerep(?query_t(_, _)) ->
-    word;
-ast_typerep(?option_t(A)) ->
-    {option, ast_typerep(A)};   %% For now, but needs to be generalised to arbitrary datatypes later.
-ast_typerep(?map_t(K, V)) ->
-    map_typerep(ast_typerep(K), ast_typerep(V));
-ast_typerep({tvar,_,_}) ->
-    %% We serialize type variables just as addresses in the originating VM.
-    word;
-ast_typerep({tuple_t,_,Cpts}) ->
-    {tuple, [ast_typerep(C) || C<-Cpts]};
-ast_typerep({record_t,Fields}) ->
-    {tuple, [ast_typerep(T) || {field_t,_,_,T} <- Fields]};
-ast_typerep({app_t,_,{id,_,"list"},[Elem]}) ->
-    {list, ast_typerep(Elem)};
-ast_typerep({fun_t,_,_,_}) ->
-    function.
+ast_typerep(Type) -> ast_typerep(Type, aeso_icode:new([])).
 
-map_typerep(K, V) ->
-    {list, {tuple, [K, V]}}.  %% Lists of key-value pairs for now
+ast_typerep({id, _, Name}, Icode) ->
+    lookup_type_id(Name, [], Icode);
+ast_typerep({app_t, _, {id, _, Name}, Args}, Icode) ->
+    ArgReps = [ ast_typerep(Arg, Icode) || Arg <- Args ],
+    lookup_type_id(Name, ArgReps, Icode);
+ast_typerep({tvar,_,A}, #{ type_vars := TypeVars }) ->
+    case maps:get(A, TypeVars, undefined) of
+        undefined -> word; %% We serialize type variables just as addresses in the originating VM.
+        Type      -> Type
+    end;
+ast_typerep({tuple_t,_,Cpts}, Icode) ->
+    {tuple, [ast_typerep(C, Icode) || C<-Cpts]};
+ast_typerep({record_t,Fields}, Icode) ->
+    {tuple, [ begin
+                {field_t, _, _, T} = Field,
+                ast_typerep(T, Icode)
+              end || Field <- Fields]};
+ast_typerep({fun_t,_,_,_}, _Icode) ->
+    function;
+ast_typerep({alias_t, T}, Icode) -> ast_typerep(T, Icode);
+ast_typerep({variant_t, Cons}, Icode) ->
+    {variant, [ begin
+                  {constr_t, _, _, Args} = Con,
+                  [ ast_typerep(Arg, Icode) || Arg <- Args ]
+                end || Con <- Cons ]}.
 
-ast_type_value(T) ->
-    type_value(ast_type(T)).
+lookup_type_id(Name, Args, #{ types := Types }) ->
+    case maps:get(Name, Types, undefined) of
+        undefined -> error({undefined_type, Name});
+        TDef      -> TDef(Args)
+    end.
+
+ast_type_value(T, Icode) ->
+    type_value(ast_type(T, Icode)).
 
 type_value(word)   ->
     #tuple{ cpts = [#integer{ value = ?TYPEREP_WORD_TAG }] };
@@ -479,7 +499,10 @@ type_value({option, A}) ->
     #tuple{ cpts = [#integer{ value = ?TYPEREP_OPTION_TAG }, type_value(A)] };
 type_value({tuple, As}) ->
     #tuple{ cpts = [#integer{ value = ?TYPEREP_TUPLE_TAG },
-                    #list{ elems = [ type_value(A) || A <- As ] }] }.
+                    #list{ elems = [ type_value(A) || A <- As ] }] };
+type_value({variant, Cs}) ->
+    #tuple{ cpts = [#integer{ value = ?TYPEREP_VARIANT_TAG },
+                    #list{ elems = [ #list{ elems = [ type_value(A) || A <- As ] } || As <- Cs ] }] }.
 
 ast_fun_to_icode(Name, Args, Body, TypeRep, #{functions := Funs} = Icode) ->
     NewFuns = [{Name, Args, Body, TypeRep}| Funs],
@@ -489,9 +512,9 @@ ast_fun_to_icode(Name, Args, Body, TypeRep, #{functions := Funs} = Icode) ->
 %% Builtins
 %% -------------------------------------------------------------------
 
-key_type(Ann, Type) ->
+key_type(Ann, Type, Icode) ->
     Monomorphic = is_monomorphic(Type),
-    case ast_typerep(Type) of
+    case ast_typerep(Type, Icode) of
         _ when not Monomorphic ->
             error({polymorphic_key_type, Ann, Type});
         word   -> word;
@@ -532,7 +555,7 @@ builtin_function(Builtin = {map_get, Type}) ->
     %%   switch(map_lookup(m, k))
     %%     Some(v) => v
     {{builtin, Builtin},
-        [{"m", map_typerep(Type, word)}, {"k", Type}],
+        [{"m", aeso_icode:map_typerep(Type, word)}, {"k", Type}],
             {switch, {funcall, {var_ref, {builtin, {map_lookup, Type}}},
                      [{var_ref, "m"}, {var_ref, "k"}]},
                 [{{tuple, [{var_ref, "v"}]}, {var_ref, "v"}}]},
@@ -544,7 +567,7 @@ builtin_function(Builtin = {map_member, Type}) ->
     %%     None => false
     %%     _    => true
     {{builtin, Builtin},
-        [{"m", map_typerep(Type, word)}, {"k", Type}],
+        [{"m", aeso_icode:map_typerep(Type, word)}, {"k", Type}],
             {switch, {funcall, {var_ref, {builtin, {map_lookup, Type}}},
                      [{var_ref, "m"}, {var_ref, "k"}]},
                 [{{list, []}, {integer, 0}},
@@ -563,7 +586,7 @@ builtin_function(Builtin = {map_lookup, Type}) ->
     Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
     Name = {builtin, Builtin},
     {Name,
-     [{"map", map_typerep(Type, word)}, {"key", Type}],
+     [{"map", aeso_icode:map_typerep(Type, word)}, {"key", Type}],
      {switch, {var_ref, "map"},
               [{{list, []}, {list, []}},
                {{binop, '::',
@@ -587,7 +610,7 @@ builtin_function(Builtin = {map_put, Type}) ->
     Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
     Name = {builtin, Builtin},
     {Name,
-     [{"map", map_typerep(Type, word)}, {"key", Type}, {"val", word}],
+     [{"map", aeso_icode:map_typerep(Type, word)}, {"key", Type}, {"val", word}],
      {switch,
          {var_ref, "map"},
          [{{list, []}, {list, [{tuple, [{var_ref, "key"}, {var_ref, "val"}]}]}},
@@ -606,7 +629,7 @@ builtin_function(Builtin = {map_put, Type}) ->
                        [{var_ref, "m"},
                         {var_ref, "key"},
                         {var_ref, "val"}]}}}}]},
-     map_typerep(Type, word)};
+     aeso_icode:map_typerep(Type, word)};
 
 builtin_function(Builtin = {map_del, Type}) ->
     %% function map_del(map, key) =
@@ -620,7 +643,7 @@ builtin_function(Builtin = {map_del, Type}) ->
     Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
     Name = {builtin, Builtin},
     {Name,
-     [{"map", map_typerep(Type, word)}, {"key", word}],
+     [{"map", aeso_icode:map_typerep(Type, word)}, {"key", word}],
      {switch,
          {var_ref, "map"},
          [{{list, []}, {list, []}},
@@ -636,7 +659,7 @@ builtin_function(Builtin = {map_del, Type}) ->
                        {var_ref, Name},
                        [{var_ref, "m"},
                         {var_ref, "key"}]}}}}]},
-     map_typerep(Type, word)};
+     aeso_icode:map_typerep(Type, word)};
 
 builtin_function(Builtin = {map_upd, Type}) ->
     %% function map_upd(map, key, fun) =
@@ -649,7 +672,7 @@ builtin_function(Builtin = {map_upd, Type}) ->
     Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
     Name = {builtin, Builtin},
     {Name,
-     [{"map", map_typerep(Type, word)}, {"key", word}, {"fun", word}],
+     [{"map", aeso_icode:map_typerep(Type, word)}, {"key", word}, {"fun", word}],
      {switch,
          {var_ref, "map"},
          [{{binop, '::',
@@ -667,7 +690,7 @@ builtin_function(Builtin = {map_upd, Type}) ->
                        [{var_ref, "m"},
                         {var_ref, "key"},
                         {var_ref, "fun"}]}}}}]},
-     map_typerep(Type, word)};
+     aeso_icode:map_typerep(Type, word)};
 
 builtin_function(map_size) ->
     %% function size(map, acc) =

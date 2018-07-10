@@ -3,11 +3,11 @@
 //
 contract DutchAuction =
 
-  type state = { start_amount : int,
-                 start_height : int,
-                 dec          : int,
-                 beneficiary  : address,
-                 sold         : bool }
+  record state = { start_amount : int,
+                   start_height : int,
+                   dec          : int,
+                   beneficiary  : address,
+                   sold         : bool }
 
   // Add to work around current lack of predefined functions
   private function abort(err) = abort(err)

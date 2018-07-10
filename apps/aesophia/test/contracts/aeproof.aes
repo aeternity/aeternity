@@ -90,18 +90,18 @@ contract AEProof {
 
 contract AEProof =
 
-    type proof = { owner: address
-                 , timestamp: uint
-                 , proofBlock: uint
-                 , comment: string
-                 , ipfsHash: string
-                 , document: string
-                 }
+    record proof = { owner: address
+                   , timestamp: uint
+                   , proofBlock: uint
+                   , comment: string
+                   , ipfsHash: string
+                   , document: string
+                   }
 
 
-    type state = { aeToken : aetoken,
-                   proofs  : map(uint, proof),
-                   proofsByOwner : map(address, array(uint)) }
+    record state = { aeToken : aetoken,
+                     proofs  : map(uint, proof),
+                     proofsByOwner : map(address, array(uint)) }
 
     function notarize(document:string, comment:string, ipfsHash:hash) =
         let _ = require(aetoken.balanceOf(caller()) > 0)

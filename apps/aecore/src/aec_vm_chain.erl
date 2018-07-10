@@ -139,11 +139,12 @@ oracle_query(Oracle, Q, Value, QTTL, RTTL,
              State = #state{ height  = Height,
                              account = ContractKey } = State) ->
     Nonce = next_nonce(State),
+    QueryData = aeso_data:to_binary(Q, 0),
     {ok, Tx} =
         aeo_query_tx:new(#{sender        => ContractKey,
                            nonce         => Nonce,
                            oracle        => Oracle,
-                           query         => Q,
+                           query         => QueryData,
                            query_fee     => Value,
                            query_ttl     => {delta, QTTL},
                            response_ttl  => {delta, RTTL},
@@ -204,11 +205,11 @@ oracle_get_answer(OracleId, QueryId, #state{ trees = Trees } =_State) ->
     end.
 
 oracle_get_question(OracleId, QueryId, #state{trees = Trees} = _State) ->
-    case aeo_state_tree:lookup_query(OracleId, QueryId,
-                                     aec_trees:oracles(Trees)) of
+    OraclesTree = aec_trees:oracles(Trees),
+    case aeo_state_tree:lookup_query(OracleId, QueryId, OraclesTree) of
         {value, Query} ->
-            Question = aeo_query:query(Query),
-            {ok, Question};
+            {ok, QueryType} = get_query_type(OracleId, OraclesTree),
+            aeso_data:from_binary(QueryType, aeo_query:query(Query));
         none ->
             {ok, none}
     end.
@@ -252,6 +253,11 @@ oracle_response_spec(Oracle, #state{ trees   = Trees} =_State) ->
         none ->
             {error, no_such_oracle}
     end.
+
+get_query_type(OracleId, OraclesTree) ->
+    {value, Oracle} = aeo_state_tree:lookup_oracle(OracleId, OraclesTree),
+    QueryFormat     = aeo_oracles:query_format(Oracle),
+    aeso_data:from_binary(typerep, QueryFormat).
 
 %%    AENS
 
