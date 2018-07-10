@@ -204,12 +204,12 @@ handle_request('GetTransactionByHash', Params, _Config) ->
         {ok, Hash} ->
             case aec_chain:find_tx_with_location(Hash) of
                 none ->
-                    {error, {404, [], #{<<"reason">> => <<"Transaction not found">>}}};
+                    {404, [], #{<<"reason">> => <<"Transaction not found">>}};
                 {mempool, Tx} ->
                     JSONTx = aetx_sign:serialize_for_client_pending(json, Tx),
                     {200, [], JSONTx};
-                {BlockHash1, Tx} ->
-                    {ok, Header} = aec_chain:get_header(BlockHash1),
+                {BlockHash, Tx} ->
+                    {ok, Header} = aec_chain:get_header(BlockHash),
                     JSONTx = aetx_sign:serialize_for_client(json, Header, Tx),
                     {200, [], JSONTx}
             end;
