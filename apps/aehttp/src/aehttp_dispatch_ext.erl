@@ -217,6 +217,18 @@ handle_request('GetTransactionByHash', Params, _Config) ->
             {400, [], #{reason => <<"Invalid hash">>}}
     end;
 
+handle_request('GetTransactionInfoByHash', Params, _Config) ->
+    ParseFuns = [read_required_params([hash]),
+                 base58_decode([{hash, hash, hash}]),
+                 get_transaction(hash, tx),
+                 get_contract_call_object_from_tx(tx, contract_call),
+                 ok_response(
+                    fun(#{contract_call := Call}) ->
+                            aect_call:serialize_for_client(Call)
+                    end)
+                ],
+    process_request(ParseFuns, Params);
+
 handle_request('GetBlockGenesis', Req, _Context) ->
     get_block(fun aehttp_logic:get_block_genesis/0, Req, json);
 
