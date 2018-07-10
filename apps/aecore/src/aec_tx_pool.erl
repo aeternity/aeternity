@@ -292,8 +292,9 @@ adjust_gc_height(GCDb, TxHash, Diff) ->
     adjust_gc_height(GCDb, ets:next(GCDb, TxHash), Diff).
 
 do_gc(State) ->
-    State1 = do_update_sync_top(State, top_height()),
-    do_gc(State1, State1#state.gc_height).
+    Height = top_height(),
+    State1 = do_update_sync_top(State, Height),
+    do_gc(State1, Height).
 
 do_gc(State = #state{ gc_db = GCDb }, Height) ->
     GCTxs = ets:foldl(fun({TxHash, ExpireBy}, Acc) ->
