@@ -589,6 +589,23 @@
         }
       }
     },
+    "/transactions" : {
+      "get" : {
+        "tags" : [ "external", "transactions" ],
+        "description" : "Get transactions in the mempool",
+        "operationId" : "GetTxs",
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Transactions"
+            }
+          }
+        }
+      }
+    },
     "/header-by-hash" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
@@ -1517,23 +1534,6 @@
             "description" : "Contract not found",
             "schema" : {
               "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/transactions" : {
-      "get" : {
-        "tags" : [ "external", "transactions" ],
-        "description" : "Get transactions in the mempool",
-        "operationId" : "GetTxs",
-        "produces" : [ "application/json" ],
-        "parameters" : [ ],
-        "responses" : {
-          "200" : {
-            "description" : "Successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/Transactions"
             }
           }
         }

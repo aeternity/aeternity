@@ -55,7 +55,8 @@
 -export(
    [
     get_transaction_by_hash/1,
-    get_transaction_info_by_hash/1
+    get_transaction_info_by_hash/1,
+    post_spend_tx/1
    ]).
 
 %% off chain endpoints
@@ -344,9 +345,10 @@ groups() ->
      %% /transactions/*
      {transaction_endpoints, [sequence],
       [
-       {group, nonexistent_tx}, %% standalone
-       {group, tx_is_pending},  %% standalone
-       {group, tx_is_on_chain}  %% standalone
+       {group, nonexistent_tx},    %% standalone
+       {group, tx_is_pending},     %% standalone
+       {group, tx_is_on_chain},    %% standalone
+       {group, post_tx_to_mempool} %% standalone
       ]},
      {nonexistent_tx, [],
       [
@@ -359,6 +361,10 @@ groups() ->
      {tx_is_on_chain, [],
       [
        {group, tx_info}
+      ]},
+     {post_tx_to_mempool, [],
+      [
+       post_spend_tx
       ]},
      {tx_info, [sequence],
       [
@@ -689,6 +695,18 @@ init_per_group(tx_is_on_chain = Group, Config) ->
      {block_with_txs, MicroBlock},
      {block_with_txs_hash, hash(MicroBlock)},
      {block_with_txs_height, aec_blocks:height(KeyBlock)} | Config1];
+init_per_group(post_tx_to_mempool = Group, Config) ->
+    Config1 = start_node(Group, Config),
+    Node = ?config(node, Config1),
+    {ok, Pubkey} = rpc(aec_keys, pubkey, []),
+    aecore_suite_utils:mine_key_blocks(Node, aecore_suite_utils:latest_fork_height()),
+    {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
+    true = aec_blocks:is_key_block(KeyBlock),
+    [{account_pubkey, aec_base58c:encode(account_pubkey, Pubkey)},
+     {recipient_pubkey, aec_base58c:encode(account_pubkey, random_hash())},
+     {amount, 1},
+     {fee, 1},
+     {payload, <<"foo">>} | Config1];
 init_per_group(channel_websocket = Group, Config) ->
     Config1 = start_node(Group, Config),
     Node = ?config(node, Config1),
@@ -1285,6 +1303,21 @@ get_transaction_by_hash([{TxHash, _ExpectedTx}], Config) ->
 get_transaction_info_by_hash(_Config) ->
     {skip, not_implemented}.
 
+post_spend_tx(Config) ->
+    Node = ?config(node, Config),
+    TxArgs =
+        #{sender           => ?config(account_pubkey, Config),
+          recipient_pubkey => ?config(recipient_pubkey, Config),
+          amount           => ?config(amount, Config),
+          fee              => ?config(fee, Config),
+          payload          => ?config(payload, Config)},
+    {TxHash, Tx} = prepare_tx(spend_tx, TxArgs),
+    {ok, 200, Resp} = post_transactions_sut(Tx),
+    {ok, [MempoolTx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+    ?assertEqual(TxHash, maps:get(<<"tx_hash">>, Resp)),
+    ?assertEqual(TxHash, aec_base58c:encode(tx_hash, aetx_sign:hash(MempoolTx))),
+    ok.
+
 get_transactions_by_hash_sut(Hash) ->
     Host = external_address(),
     http_request(Host, get, "transactions/" ++ http_uri:encode(Hash), []).
@@ -1294,6 +1327,30 @@ get_transactions_info_by_hash_sut(Hash) ->
     Hash1 = http_uri:encode(Hash),
     http_request(Host, get, "transactions/" ++ Hash1, []).
 
+post_transactions_sut(Tx) ->
+    Host = external_address(),
+    http_request(Host, post, "transactions", #{tx => Tx}).
+
+prepare_tx(TxType, Args) ->
+    assert_required_tx_fields(TxType, Args),
+    Host = external_address(),
+    Path = tx_object_http_path(TxType),
+    {ok, 200, #{<<"tx">> := EncodedSerializedUnsignedTx}} = http_request(Host, post, Path, Args),
+    {ok, SerializedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedSerializedUnsignedTx),
+    UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
+    {ok, SignedTx} = rpc(aec_keys, sign_tx, [UnsignedTx]),
+    TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
+    EncodedSerializedSignedTx = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)),
+    {TxHash, EncodedSerializedSignedTx}.
+
+assert_required_tx_fields(TxType, Args) ->
+    lists:foreach(fun(Key) -> true = maps:is_key(Key, Args) end, required_tx_fields(TxType)).
+
+required_tx_fields(spend_tx) ->
+    [sender, recipient_pubkey, amount, fee, payload].
+
+%% TODO: use /debug/* when available
+tx_object_http_path(spend_tx) -> "tx/spend".
 
 hash(Block) ->
     {ok, Hash0} = aec_blocks:hash_internal_representation(Block),
@@ -4391,7 +4448,7 @@ get_block_by_hash(Hash, TxObjects) ->
 
 get_transactions() ->
     Host = external_address(),
-    http_request(Host, get, "transactions", []).
+    http_request(Host, get, "transactions-obsolete", []).
 
 get_transactions(EncodedPubKey) ->
     Host = external_address(),

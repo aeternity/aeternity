@@ -229,6 +229,19 @@ handle_request('GetTransactionInfoByHash', Params, _Config) ->
                 ],
     process_request(ParseFuns, Params);
 
+handle_request('PostTransaction', #{'Tx' := Tx} = Params, _Context) ->
+    case aehttp_api_parser:decode(tx, maps:get(<<"tx">>, Tx)) of
+        {error, #{<<"tx">> := broken_tx}} ->
+            {400, [], #{reason => <<"Invalid tx">>}};
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid base58Check encoding">>}};
+        {ok, SignedTx} ->
+            %% TODO: lager debug log?
+            aec_tx_pool:push(SignedTx),
+            Hash = aetx_sign:hash(SignedTx),
+            {200, [], #{<<"tx_hash">> => aec_base58c:encode(tx_hash, Hash)}}
+    end;
+
 handle_request('GetBlockGenesis', Req, _Context) ->
     get_block(fun aehttp_logic:get_block_genesis/0, Req, json);
 
