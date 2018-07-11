@@ -478,8 +478,7 @@ pool_db_put(#state{ db = Db, gc_db = GCDb, gc_height = GCHeight }, Key, Tx, Even
 
 pool_db_raw_put(Db, GCDb, GCHeight, Key, Tx, TxHash) ->
     ets:insert(Db, {Key, Tx}),
-    enter_tx_gc(GCDb, TxHash, GCHeight + tx_ttl()),
-    ok.
+    enter_tx_gc(GCDb, TxHash, GCHeight + tx_ttl()).
 
 check_tx_ttl(STx, _Hash) ->
     Tx = aetx_sign:tx(STx),
