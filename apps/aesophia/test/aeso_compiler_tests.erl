@@ -37,6 +37,7 @@ compilable_contracts() ->
      "dutch_auction",
      "environment",
      "factorial",
+     "fundme",
      "identity",
      "remote_call",
      "simple",
