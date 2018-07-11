@@ -60,7 +60,7 @@ global_env() ->
      {"put",   Fun1(State, Unit)},
      %% Oracles
      {["Oracle", "register"],     Fun([Address, Signature, Fee, Fee, TTL], Oracle(Q, R))},
-     {["Oracle", "query_fee"],    Fun([Oracle(Q, R)], Int)},
+     {["Oracle", "query_fee"],    Fun([Oracle(Q, R)], Fee)},
      {["Oracle", "query"],        Fun([Oracle(Q, R), Q, Fee, TTL, TTL], Query(Q, R))},
      {["Oracle", "get_question"], Fun([Oracle(Q, R), Query(Q, R)], Q)},
      {["Oracle", "respond"],      Fun([Oracle(Q, R), Query(Q, R), Signature, R], Unit)},
