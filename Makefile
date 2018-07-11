@@ -7,8 +7,15 @@ EUNIT_TEST_FLAGS ?=
 CT_TEST_FLAGS ?=
 ST_CT_FLAGS = --dir system_test --logdir system_test/logs
 
+null  :=
+space := $(null) # space
+comma := ,
+
+comma-separate = $(subst ${space},${comma},$(strip $1))
+space-separate = $(subst ${comma},${space},$(strip $1))
+
 ifdef SUITE
-CT_TEST_FLAGS += --suite=$(SUITE)_SUITE
+CT_TEST_FLAGS += --suite=$(call comma-separate,$(foreach suite,$(call space-separate,${SUITE}),${suite}_SUITE))
 unexport SUITE
 endif
 
