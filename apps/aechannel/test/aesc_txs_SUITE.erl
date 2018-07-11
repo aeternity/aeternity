@@ -84,7 +84,8 @@ new_spec_with_delegates(N, Cfg) when N > 0 ->
     {Delegates, NewS} =
         lists:mapfoldl(
           fun(_, Sx) ->
-                  {_PubKey, _Sx1} = aesc_test_utils:setup_new_account(Sx)
+                  {PubKey, Sx1} = aesc_test_utils:setup_new_account(Sx),
+                  {aec_id:create(account, PubKey), Sx1}
           end, get_state(Cfg), lists:seq(1, N)),
     {#{delegates => Delegates}, lists:keystore(state, 1, Cfg, {state, NewS})}.
 
@@ -1181,7 +1182,7 @@ settle_negative(Cfg) ->
     TxSpec6 = aesc_test_utils:settle_tx_spec(ChannelId, PubKey1,
                                       #{initiator_amount => ChannelAmount,
                                         responder_amount => 0}, S5),
-    {ok, Tx6} = aesc_close_mutual_tx:new(TxSpec6),
+    {ok, Tx6} = aesc_settle_tx:new(TxSpec6),
     {error, channel_does_not_exist} =
         aetx:check(Tx6, Trees1, ClosesAt + 2, ?PROTOCOL_VERSION),
   ok.
