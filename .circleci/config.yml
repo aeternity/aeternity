@@ -11,6 +11,8 @@ references:
       # Official docker versions: https://download.docker.com/linux/static/stable/x86_64/
       DOCKER_CLIENT_VERSION: "17.09.0-ce"
       DOCKERHUB_REPO: aeternity/epoch
+      S3_BUILDS_BUCKET: aeternity-epoch-builds
+      S3_RELEASES_BUCKET: aeternity-epoch-releases
 
   machine_config: &machine_config
     machine:
@@ -111,14 +113,8 @@ references:
       name: Set package path
       environment:
         PACKAGES_DIR: *packages_workspace
-      command: |
-        if [ "$(uname -s)" == "Darwin" ]; then
-            PKG_SUFFIX="osx-$(sw_vers -productVersion)"
-        elif [ "$(uname -s)" == "Linux" ]; then
-            PKG_SUFFIX="ubuntu-"`uname -m`
-        fi
-        export PACKAGE_TARBALL=${PACKAGES_DIR:?}/epoch-$(cat VERSION)-${PKG_SUFFIX}.tar.gz
-        echo "export PACKAGE_TARBALL=${PACKAGE_TARBALL}" >> $BASH_ENV
+      # construct and export PACKAGE_TARBALL environment variable available to all jobs
+      command: .circleci/set_package_path.sh
 
   build_package: &build_package
     run:
@@ -148,8 +144,19 @@ references:
       path: *packages_workspace
       destination: /
 
+  upload_build_artifacts: &upload_build_artifacts
+    run:
+      name: Upload build artifacts to central repository (AWS)
+      command: aws s3 cp ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/
+
+  upload_release_artifacts: &upload_release_artifacts
+    run:
+      name: Upload release artifacts to central repository (AWS)
+      command: aws s3 cp ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/
+
   deploy_steps: &deploy_steps
     - checkout
+    - *set_package_path
     - *restore_pip_cache
     - *install_pip_requirements
     - *save_pip_cache
@@ -160,14 +167,13 @@ references:
         environment:
           PACKAGES_DIR: *packages_workspace
         command: |
-          PACKAGE=${PACKAGES_DIR:?}/epoch-$(cat VERSION)-ubuntu-x86_64.tar.gz
           LIMIT="tag_role_epoch:&tag_env_${DEPLOY_ENV:?}"
           if [ -n "$DEPLOY_COLOR" ]; then
             LIMIT+=":&tag_color_${DEPLOY_COLOR}"
           fi
           cd deployment/ansible
           ansible-playbook --limit="${LIMIT:?}" \
-            --extra-vars "package=${PACKAGE:?} hosts_group=tag_env_${DEPLOY_ENV:?} env=${DEPLOY_ENV:?} downtime=${DEPLOY_DOWNTIME:-0}" \
+            --extra-vars "package=${PACKAGE_TARBALL:?} hosts_group=tag_env_${DEPLOY_ENV:?} env=${DEPLOY_ENV:?} downtime=${DEPLOY_DOWNTIME:-0}" \
             deploy.yml
 
   upload_github_release_asset: &upload_github_release_asset
@@ -335,6 +341,7 @@ jobs:
       - store_artifacts:
           path: /tmp/package_tests/node3/log
       - *store_package_artifacts
+      - *upload_build_artifacts
       - persist_to_workspace:
           root: *packages_workspace
           paths:
@@ -536,7 +543,7 @@ jobs:
       - DEPLOY_DOWNTIME: 1800 #15M
     steps: *deploy_steps
 
-  github_release_osx:
+  upload_packages_osx:
     <<: *container_config
     steps:
       - checkout
@@ -544,13 +551,15 @@ jobs:
           at: *packages_workspace
       - *upload_github_release_asset
 
-  github_release_linux:
+  upload_packages_linux:
     <<: *container_config
     steps:
       - checkout
+      - *set_package_path
       - attach_workspace:
           at: *packages_workspace
       - *upload_github_release_asset
+      - *upload_release_artifacts
 
 # CircleCI skips a job for a tag by default.
 # A job must have a filters tags section to run as a part of a tag push
@@ -737,7 +746,7 @@ workflows:
             tags:
               only: /^v.*$/
 
-      - github_release_linux:
+      - upload_packages_linux:
           requires:
             - eunit
             - static_analysis
@@ -749,7 +758,7 @@ workflows:
             tags:
               only: /^v.*$/
 
-      - github_release_osx:
+      - upload_packages_osx:
           requires:
             - eunit
             - static_analysis
