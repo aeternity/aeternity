@@ -208,6 +208,9 @@ handle_call(stop_mining,_From, State = #state{ consensus = Cons }) ->
     State1 = kill_all_workers(State),
     {reply, ok, State1#state{mining_state = 'stopped',
                              key_block_candidate = undefined}};
+handle_call(start_mining,_From, #state{mining_state = 'running'} = State) ->
+    epoch_mining:info("Mining running"),
+    {reply, ok, State};
 handle_call(start_mining,_From, State) ->
     epoch_mining:info("Mining started"),
     State1 = start_mining(State#state{mining_state = 'running', consensus = #consensus{leader = false}}),
@@ -789,7 +792,7 @@ create_key_block_candidate(#state{top_block_hash = TopHash} = State) ->
 
 handle_key_block_candidate_reply({{ok, KeyBlockCandidate}, TopHash},
                                  #state{top_block_hash = TopHash} = State) ->
-    epoch_mining:info("Created key block candidate"
+    epoch_mining:info("Created key block candidate "
                       "Its target is ~p (= difficulty ~p).",
                       [aec_blocks:target(KeyBlockCandidate),
                        aec_blocks:difficulty(KeyBlockCandidate)]),
