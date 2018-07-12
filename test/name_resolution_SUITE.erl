@@ -16,14 +16,12 @@
         , transfer_name_to_named_account/1
         ]).
 
--import(aec_block_micro_candidate, [apply_block_txs_strict/5
+-import(aec_block_micro_candidate, [apply_block_txs_strict/4
                                    ]).
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
 -include_lib("aecore/include/blocks.hrl").
-
--define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
 
 %%%===================================================================
 %%% Common test framework
@@ -65,7 +63,7 @@ balance(Pubkey, #{trees := Trees}) ->
 
 apply_txs([Tx|Left], #{trees := Trees, height := Height} = S) ->
     STx = sign(Tx, S),
-    case apply_block_txs_strict([STx], ?MINER_PUBKEY, Trees,
+    case apply_block_txs_strict([STx], Trees,
                                 Height, ?PROTOCOL_VERSION) of
         {ok, [STx], Trees1} ->
             apply_txs(Left, S#{trees => Trees1});
