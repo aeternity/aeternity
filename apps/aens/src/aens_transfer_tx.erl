@@ -212,8 +212,10 @@ for_client(#ns_transfer_tx{nonce             = Nonce,
 recipient(#ns_transfer_tx{recipient_account = Recipient}) ->
     Recipient.
 
+-ifdef(TEST).
 recipient_pubkey(#ns_transfer_tx{recipient_account = Recipient}) ->
     aec_id:specialize(Recipient, account).
+-endif.
 
 %%%===================================================================
 %%% Internal functions
