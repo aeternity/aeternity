@@ -457,13 +457,15 @@ net_split_recovery(Cfg) ->
     start_node(net2_node2, Cfg),
 
     %% Starts with a net split
+    TargetHeight1 = Length,
+    %% Wait for one extra block for resolving potential fork caused by nodes mining distinct blocks at the same time.
+    MinedHeight1 = 1 + TargetHeight1,
+    wait_for_value({height, MinedHeight1}, Nodes, (1 + Length) * ?MINING_TIMEOUT, Cfg),
 
-    wait_for_value({height, Length}, Nodes, Length * ?MINING_TIMEOUT, Cfg),
-
-    A1 = get_block(net1_node1, Length),
-    A2 = get_block(net1_node2, Length),
-    A3 = get_block(net2_node1, Length),
-    A4 = get_block(net2_node2, Length),
+    A1 = get_block(net1_node1, TargetHeight1),
+    A2 = get_block(net1_node2, TargetHeight1),
+    A3 = get_block(net2_node1, TargetHeight1),
+    A4 = get_block(net2_node2, TargetHeight1),
 
     %% Check that the chains are different
     ?assertEqual(A1, A2),
@@ -481,16 +483,18 @@ net_split_recovery(Cfg) ->
 
     %% Mine Length blocks, this may take longer than ping interval
     %% if so, the chains should be in sync when it's done.
-    wait_for_value({height, Length * 2}, Nodes, Length * ?MINING_TIMEOUT, Cfg),
+    TargetHeight2 = MinedHeight1 + Length,
+    %% Wait for one extra block for resolving potential fork caused by nodes mining distinct blocks at the same time.
+    wait_for_value({height, 1 + TargetHeight2}, Nodes, (1 + Length) * ?MINING_TIMEOUT, Cfg),
 
     %% Wait at least as long as the ping timer can take
     try_until(T0 + 2 * ping_interval(),
             fun() ->
 
-              B1 = get_block(net1_node1, Length * 2),
-              B2 = get_block(net1_node2, Length * 2),
-              B3 = get_block(net2_node1, Length * 2),
-              B4 = get_block(net2_node2, Length * 2),
+              B1 = get_block(net1_node1, TargetHeight2),
+              B2 = get_block(net1_node2, TargetHeight2),
+              B3 = get_block(net2_node1, TargetHeight2),
+              B4 = get_block(net2_node2, TargetHeight2),
 
               %% Check that the chain merged
               ?assertEqual(B1, B2),
@@ -508,12 +512,15 @@ net_split_recovery(Cfg) ->
     disconnect_node(net2_node1, net1, Cfg),
     disconnect_node(net2_node2, net1, Cfg),
 
-    wait_for_value({height, Top2 + Length}, Nodes, Length * ?MINING_TIMEOUT, Cfg),
+    TargetHeight3 = Top2 + Length,
+    %% Wait for one extra block for resolving potential fork caused by nodes mining distinct blocks at the same time.
+    MinedHeight3 = 1 + TargetHeight3,
+    wait_for_value({height, MinedHeight3}, Nodes, (1 + Length) * ?MINING_TIMEOUT, Cfg),
 
-    C1 = get_block(net1_node1, Top2 + Length),
-    C2 = get_block(net1_node2, Top2 + Length),
-    C3 = get_block(net2_node1, Top2 + Length),
-    C4 = get_block(net2_node2, Top2 + Length),
+    C1 = get_block(net1_node1, TargetHeight3),
+    C2 = get_block(net1_node2, TargetHeight3),
+    C3 = get_block(net2_node1, TargetHeight3),
+    C4 = get_block(net2_node2, TargetHeight3),
 
     %% Check the the chains forked
     ?assertEqual(C1, C2),
@@ -530,14 +537,16 @@ net_split_recovery(Cfg) ->
     connect_node(net2_node2, net1, Cfg),
     T1 = erlang:system_time(millisecond),
 
-    wait_for_value({height, Top2 + Length * 2}, Nodes, Length * 2 * ?MINING_TIMEOUT, Cfg),
+    TargetHeight4 = MinedHeight3 + Length,
+    %% Wait for one extra block for resolving potential fork caused by nodes mining distinct blocks at the same time.
+    wait_for_value({height, 1 + TargetHeight4}, Nodes, (1 + Length) * ?MINING_TIMEOUT, Cfg),
 
     try_until(T1 + 2 * ping_interval(),
             fun() ->
-              D1 = get_block(net1_node1, Top2 + Length * 2),
-              D2 = get_block(net1_node2, Top2 + Length * 2),
-              D3 = get_block(net2_node1, Top2 + Length * 2),
-              D4 = get_block(net2_node2, Top2 + Length * 2),
+              D1 = get_block(net1_node1, TargetHeight4),
+              D2 = get_block(net1_node2, TargetHeight4),
+              D3 = get_block(net2_node1, TargetHeight4),
+              D4 = get_block(net2_node2, TargetHeight4),
 
               %% Check the chain merged again
               ?assertEqual(D1, D2),
