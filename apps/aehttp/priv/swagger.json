@@ -606,6 +606,41 @@
         }
       }
     },
+    "/oracles/{pubkey}" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get an oracle by public key",
+        "operationId" : "GetOracleByPubkey",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "The public key of the oracle",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/RegisteredOracle"
+            }
+          },
+          "400" : {
+            "description" : "Invalid public key",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Oracle not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/header-by-hash" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
@@ -3112,10 +3147,38 @@
         "$ref" : "#/definitions/Tx"
       }
     },
+    "RegisteredOracle" : {
+      "type" : "object",
+      "properties" : {
+        "id" : {
+          "type" : "string"
+        },
+        "query_format" : {
+          "type" : "string"
+        },
+        "response_format" : {
+          "type" : "string"
+        },
+        "query_fee" : {
+          "type" : "integer"
+        },
+        "expires" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      },
+      "example" : {
+        "expires" : 6,
+        "response_format" : "response_format",
+        "id" : "id",
+        "query_fee" : 0,
+        "query_format" : "query_format"
+      }
+    },
     "RegisteredOracles" : {
       "type" : "array",
       "items" : {
-        "$ref" : "#/definitions/RegisteredOracles_inner"
+        "$ref" : "#/definitions/RegisteredOracle"
       }
     },
     "OracleQuestions" : {
@@ -4882,26 +4945,6 @@
       },
       "example" : {
         "pubkey" : { }
-      }
-    },
-    "RegisteredOracles_inner" : {
-      "properties" : {
-        "address" : {
-          "type" : "string"
-        },
-        "query_format" : {
-          "type" : "string"
-        },
-        "response_format" : {
-          "type" : "string"
-        },
-        "query_fee" : {
-          "type" : "integer"
-        },
-        "expires_at" : {
-          "type" : "integer",
-          "format" : "int64"
-        }
       }
     },
     "OracleQuestions_inner" : {

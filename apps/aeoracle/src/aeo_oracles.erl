@@ -17,6 +17,7 @@
         , query_format/1
         , response_format/1
         , serialize/1
+        , serialize_for_client/1
         , set_expires/2
         , set_owner/2
         , set_query_fee/2
@@ -127,6 +128,12 @@ serialization_template(?ORACLE_VSN) ->
     , {expires, int}
     ].
 
+serialize_for_client(#oracle{} = O) ->
+    #{ <<"id">>              => aec_base58c:encode(oracle_pubkey, owner(O))
+     , <<"query_format">>    => query_format(O)
+     , <<"response_format">> => response_format(O)
+     , <<"query_fee">>       => query_fee(O)
+     , <<"expires">>         => expires(O)}.
 
 %%%===================================================================
 %%% Getters

@@ -546,6 +546,35 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /oracles/{pubkey}:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetOracleByPubkey
+      description: 'Get an oracle by public key'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'The public key of the oracle'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/RegisteredOracle'
+        '400':
+          description: 'Invalid public key'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Oracle not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
   /header-by-hash:
     get:
       tags:
@@ -2621,22 +2650,24 @@ definitions:
     type: array
     items:
       $ref: '#/definitions/Tx'
+  RegisteredOracle:
+    type: object
+    properties:
+      id:
+        type: string
+      query_format:
+        type: string
+      response_format:
+        type: string
+      query_fee:
+        type: integer
+      expires:
+        type: integer
+        format: int64
   RegisteredOracles:
     type: array
     items:
-      type: object
-      properties:
-        address:
-          type: string
-        query_format:
-          type: string
-        response_format:
-          type: string
-        query_fee:
-          type: integer
-        expires_at:
-          type: integer
-          format: int64
+      $ref: '#/definitions/RegisteredOracle'
   OracleQuestions:
     type: array
     items:

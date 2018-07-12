@@ -51,7 +51,8 @@
         ]).
 
 %%% Oracles API
--export([ get_open_oracle_queries/3
+-export([ get_oracle/1
+        , get_open_oracle_queries/3
         , get_oracles/2
         ]).
 
@@ -111,6 +112,19 @@ all_accounts_balances_at_hash(Hash) when is_binary(Hash) ->
 %%%===================================================================
 %%% Oracles
 %%%===================================================================
+
+-spec get_oracle(aec_keys:pubkey()) ->
+    {ok, aeo_oracles:oracle()} | {error, term()}.
+get_oracle(Pubkey) ->
+    case get_top_state() of
+        {ok, Trees} ->
+            case aeo_state_tree:lookup_oracle(Pubkey, aec_trees:oracles(Trees)) of
+                {value, Oracle} -> {ok, Oracle};
+                none -> {error, not_found}
+            end;
+        error ->
+            {error, no_state_trees}
+    end.
 
 -spec get_open_oracle_queries(aec_keys:pubkey(), binary() | '$first', non_neg_integer()) ->
                                      {'ok', list()} |
