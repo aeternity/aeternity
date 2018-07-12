@@ -58,7 +58,13 @@
 
 -record(state, { db            :: pool_db()
                , gc_db         :: pool_db()
-               , gc_height = 0 :: aec_blocks:height() }).
+               ,
+                 %% Used at tx insertion and at tx re-insertion (on
+                 %% chain fork change) for preventing GCing received
+                 %% txs while syncing with a stronger (i.e. with a
+                 %% higher cumulative difficulty) and much longer
+                 %% fork - typically at bootstrap.
+                 gc_height = 0 :: aec_blocks:height() }).
 
 -type negated_fee() :: non_pos_integer().
 -type non_pos_integer() :: neg_integer() | 0.
@@ -142,6 +148,7 @@ get_candidate(MaxN, BlockHash) when is_integer(MaxN), MaxN >= 0,
                                     is_binary(BlockHash) ->
     gen_server:call(?SERVER, {get_candidate, MaxN, BlockHash}).
 
+%% It assumes that the persisted mempool has been updated.
 -spec top_change(binary(), binary()) -> ok.
 top_change(OldHash, NewHash) ->
     gen_server:call(?SERVER, {top_change, OldHash, NewHash}).
@@ -292,8 +299,9 @@ adjust_gc_height(GCDb, TxHash, Diff) ->
     adjust_gc_height(GCDb, ets:next(GCDb, TxHash), Diff).
 
 do_gc(State) ->
-    State1 = do_update_sync_top(State, top_height()),
-    do_gc(State1, State1#state.gc_height).
+    Height = top_height(),
+    State1 = do_update_sync_top(State, Height),
+    do_gc(State1, Height).
 
 do_gc(State = #state{ gc_db = GCDb }, Height) ->
     GCTxs = ets:foldl(fun({TxHash, ExpireBy}, Acc) ->
@@ -416,8 +424,7 @@ update_pool_on_tx_hash(TxHash, {Db, GCDb, GCHeight}, Handled) ->
                     delete_pool_db_by_hash(Db, TxHash),
                     delete_pool_db_gc(GCDb, TxHash);
                 true ->
-                    ets:insert(Db, {pool_db_key(Tx), Tx}),
-                    enter_tx_gc(GCDb, TxHash, GCHeight + tx_ttl())
+                    pool_db_raw_put(Db, GCDb, GCHeight, pool_db_key(Tx), Tx, TxHash)
             end
     end.
 
@@ -463,12 +470,15 @@ pool_db_put(#state{ db = Db, gc_db = GCDb, gc_height = GCHeight }, Key, Tx, Even
                             lager:debug("Adding tx: ~p", [Hash]),
                             aec_db:add_tx(Tx),
                             aec_events:publish(Event, Tx),
-                            ets:insert(Db, {Key, Tx}),
-                            enter_tx_gc(GCDb, Hash, GCHeight + tx_ttl()),
+                            pool_db_raw_put(Db, GCDb, GCHeight, Key, Tx, Hash),
                             ok
                     end
             end
     end.
+
+pool_db_raw_put(Db, GCDb, GCHeight, Key, Tx, TxHash) ->
+    ets:insert(Db, {Key, Tx}),
+    enter_tx_gc(GCDb, TxHash, GCHeight + tx_ttl()).
 
 check_tx_ttl(STx, _Hash) ->
     Tx = aetx_sign:tx(STx),
