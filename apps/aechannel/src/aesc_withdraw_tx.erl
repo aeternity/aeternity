@@ -282,7 +282,9 @@ check_channel(ChannelId, Amount, ToPubKey, Round, Trees) ->
 -spec check_amount(aesc_channels:channel(), aesc_channels:amount()) ->
                           ok | {error, not_enough_channel_funds}.
 check_amount(Channel, Amount) ->
-    case aesc_channels:total_amount(Channel) >= Amount of
+    MaxWithdrawableAmt = aesc_channels:total_amount(Channel) -
+                         2 * aesc_channels:channel_reserve(Channel),
+    case MaxWithdrawableAmt >= Amount of
         true ->
             ok;
         false ->

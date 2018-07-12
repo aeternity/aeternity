@@ -46,7 +46,7 @@
 
          settle_tx_spec/3,
          settle_tx_spec/4,
-         
+
          snapshot_solo_tx_spec/4,
          snapshot_solo_tx_spec/5]).
 

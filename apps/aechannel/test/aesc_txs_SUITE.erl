@@ -13,36 +13,94 @@
 
 %% test case exports
 -export([create/1,
-         create_negative/1,
          close_solo/1,
-         close_solo_negative/1,
-         close_solo_payload_create_tx/1,
-         close_solo_payload_deposit_tx/1,
-         close_solo_payload_withdraw_tx/1,
          close_mutual/1,
-         close_mutual_negative/1,
          slash/1,
-         slash_negative/1,
+         slash_by_delegate/1,
          deposit/1,
-         deposit_negative/1,
          withdraw/1,
-         withdraw_negative/1,
          settle/1,
-         settle_negative/1,
          snapshot_solo/1]).
+
+% negative create
+-export([create_missing_account/1,
+         create_insufficient_funds/1,
+         create_wrong_nonce/1,
+         create_insufficient_funds_reserve/1,
+         create_exsisting/1
+         ]).
+
+% negative close solo
+-export([close_solo_unknown_from/1,
+         close_solo_wrong_amounts/1,
+         close_solo_not_participant/1,
+         close_solo_wrong_nonce/1,
+         close_solo_payload_from_another_channel/1,
+         close_solo_payload_not_co_signed/1,
+         close_solo_missing_channel/1,
+         close_solo_already_closing/1
+         ]).
+
+% negative close mutual
+-export([close_mutual_wrong_amounts/1,
+         close_mutual_wrong_nonce/1,
+         close_mutual_missing_channel/1,
+         close_mutual_already_closing/1
+        ]).
+
+% negative slash
+-export([slash_not_closing/1,
+         slash_unknown_from/1,
+         slash_wrong_amounts/1,
+         slash_not_participant/1,
+         slash_wrong_nonce/1,
+         slash_payload_from_another_channel/1,
+         slash_payload_not_co_signed/1,
+         slash_missing_channel/1
+         ]).
+
+% negative settle
+-export([settle_wrong_amounts/1,
+         settle_wrong_nonce/1,
+         settle_missing_channel/1,
+         settle_not_closing/1,
+         settle_not_yet_closable/1
+        ]).
+
+% negative deposit
+-export([deposit_unknown_from/1,
+         deposit_insufficent_funds/1,
+         deposit_wrong_nonce/1,
+         deposit_missing_channel/1,
+         deposit_closing/1,
+         deposit_not_participant/1
+        ]).
+
+% negative withdraw
+-export([withdraw_unknown_from/1,
+         withdraw_insufficent_funds/1,
+         withdraw_wrong_nonce/1,
+         withdraw_missing_channel/1,
+         withdraw_closing/1,
+         withdraw_not_participant/1
+        ]).
+
 
 % negative snapshot solo
 -export([snapshot_closed_channel/1,
          snapshot_closing_channel/1,
          snapshot_older_state/1,
          snapshot_missing_channel/1,
-         snapshot_payload_from_another_channel/1]).
+         snapshot_payload_from_another_channel/1,
+         snapshot_payload_not_co_signed/1]).
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("apps/aecore/include/blocks.hrl").
 -include_lib("stdlib/include/assert.hrl").
 
+-define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
 -define(BOGUS_CHANNEL, <<0:?MINER_PUB_BYTES/unit:8>>).
+-define(ROLES, [initiator, responder]).
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
@@ -55,39 +113,1253 @@ groups() ->
      {all_tests, [sequence], [{group, transactions}]},
      {transactions, [sequence],
       [create,
-       create_negative,
+       {group, create_negative},
        close_solo,
-       close_solo_negative,
-       close_solo_payload_create_tx,
-       close_solo_payload_deposit_tx,
-       close_solo_payload_withdraw_tx,
+       {group, close_solo_negative},
        close_mutual,
-       close_mutual_negative,
+       {group, close_mutual_negative},
        slash,
-       slash_negative,
+       slash_by_delegate,
+       {group, slash_negative},
        deposit,
-       deposit_negative,
+       {group, deposit_negative},
        withdraw,
+       {group, withdraw_negative},
        settle,
-       settle_negative,
+       {group, settle_negative},
        snapshot_solo,
        {group, snapshot_solo_negative}]
      },
+     {create_negative, [sequence],
+      [create_missing_account,
+       create_insufficient_funds,
+       create_wrong_nonce,
+       create_insufficient_funds_reserve,
+       create_exsisting
+      ]},
+     {close_solo_negative, [sequence],
+      [close_solo_unknown_from,
+       close_solo_wrong_amounts,
+       close_solo_not_participant,
+			 close_solo_wrong_nonce,
+       close_solo_payload_from_another_channel,
+       close_solo_payload_not_co_signed,
+       close_solo_missing_channel,
+       close_solo_already_closing
+      ]},
+     {close_mutual_negative, [sequence],
+      [close_mutual_wrong_amounts,
+       close_mutual_wrong_nonce,
+       close_mutual_missing_channel,
+       close_mutual_already_closing
+      ]},
+     {slash_negative, [sequence],
+      [slash_not_closing,
+       slash_unknown_from,
+       slash_wrong_amounts,
+       slash_not_participant,
+			 slash_wrong_nonce,
+       slash_payload_from_another_channel,
+       slash_payload_not_co_signed,
+       slash_missing_channel
+      ]},
+     {settle_negative, [sequence],
+      [settle_wrong_amounts,
+       settle_wrong_nonce,
+       settle_missing_channel,
+       settle_not_closing,
+       settle_not_yet_closable
+      ]},
+     {deposit_negative, [sequence],
+      [deposit_unknown_from,
+       deposit_insufficent_funds,
+       deposit_wrong_nonce,
+       deposit_missing_channel,
+       deposit_closing,
+       deposit_not_participant
+      ]},
+     {withdraw_negative, [sequence],
+      [withdraw_unknown_from,
+       withdraw_insufficent_funds,
+       withdraw_wrong_nonce,
+       withdraw_missing_channel,
+       withdraw_closing,
+       withdraw_not_participant
+      ]},
      {snapshot_solo_negative, [sequence],
       [snapshot_closed_channel,
        snapshot_closing_channel,
        snapshot_older_state,
        snapshot_missing_channel,
-       snapshot_payload_from_another_channel
+       snapshot_payload_from_another_channel,
+       snapshot_payload_not_co_signed
       ]}
     ].
 
 %%%===================================================================
 
-create(Cfg) -> create(Cfg, #{}).
+create(Cfg) ->
+    run(#{cfg => Cfg},
+        [positive(fun create_channel_/2)]).
 
-create(Cfg, Spec0) ->
-    create_from_state(get_state(Cfg), Spec0).
+create_missing_account(_Cfg) ->
+    {PubKey1, S} = aesc_test_utils:setup_new_account(aesc_test_utils:new_state()),
+    Trees = aesc_test_utils:trees(S),
+    Height = 1,
+
+    BadPubKey = <<42:32/unit:8>>,
+
+    TxSpec1 = aesc_test_utils:create_tx_spec(BadPubKey, PubKey1, S),
+    {ok, Tx1} = aesc_create_tx:new(TxSpec1),
+    {error, account_not_found} =
+        aetx:check(Tx1, Trees, Height, ?PROTOCOL_VERSION),
+
+    TxSpec2 = aesc_test_utils:create_tx_spec(PubKey1, BadPubKey, S),
+    {ok, Tx2} = aesc_create_tx:new(TxSpec2),
+    {error, account_not_found} =
+        aetx:check(Tx2, Trees, Height, ?PROTOCOL_VERSION),
+    ok.
+
+create_insufficient_funds(_Cfg) ->
+    {Loaded, NotLoaded, S} = create_loaded_accounts(100, 1),
+    Trees = aesc_test_utils:trees(S),
+    Height = 1,
+
+    %% Test insufficient initiator funds
+    TxSpecI = aesc_test_utils:create_tx_spec(
+                NotLoaded, Loaded,
+                #{initiator_amount => 1,
+                  fee => 2}, S),
+    {ok, TxI} = aesc_create_tx:new(TxSpecI),
+    {error, insufficient_funds} =
+        aetx:check(TxI, Trees, Height, ?PROTOCOL_VERSION),
+
+    %% Test insufficient responder funds
+    TxSpecR = aesc_test_utils:create_tx_spec(
+                Loaded, NotLoaded,
+                #{initiator_amount => 1,
+                  fee => 2}, S),
+    {ok, TxR} = aesc_create_tx:new(TxSpecR),
+    {error, insufficient_funds} =
+        aetx:check(TxR, Trees, Height, ?PROTOCOL_VERSION),
+    ok.
+
+
+create_insufficient_funds_reserve(_Cfg) ->
+    {Loaded, NotLoaded, S} = create_loaded_accounts(100, 10),
+    Trees = aesc_test_utils:trees(S),
+    Height = 1,
+
+    %% Test initiator funds lower than channel reserve
+    TxSpecI = aesc_test_utils:create_tx_spec(
+                NotLoaded, Loaded,
+                #{initiator_amount => 1,
+                  channel_reserve => 2,
+                  fee => 1}, S),
+    {ok, TxI} = aesc_create_tx:new(TxSpecI),
+    {error, insufficient_initiator_amount} =
+        aetx:check(TxI, Trees, Height, ?PROTOCOL_VERSION),
+
+    %% Test responder funds lower than channel reserve
+    TxSpecR = aesc_test_utils:create_tx_spec(
+                Loaded, NotLoaded,
+                #{responder_amount => 1,
+                  channel_reserve => 2,
+                  fee => 1}, S),
+    {ok, TxR} = aesc_create_tx:new(TxSpecR),
+    {error, insufficient_responder_amount} =
+        aetx:check(TxR, Trees, Height, ?PROTOCOL_VERSION),
+    ok.
+
+create_loaded_accounts(FAmt, SAmt) ->
+    {First, S1} = aesc_test_utils:setup_new_account(aesc_test_utils:new_state()),
+    {Second, S2} = aesc_test_utils:setup_new_account(S1),
+    S30 = aesc_test_utils:set_account_balance(First, FAmt, S2),
+    S3 = aesc_test_utils:set_account_balance(Second, SAmt, S30),
+    _ = aesc_test_utils:priv_key(First, S3),
+    _ = aesc_test_utils:priv_key(Second, S3),
+    {First, Second, S3}.
+
+create_wrong_nonce(_Cfg) ->
+    {Initiator, Responder, S0} = create_loaded_accounts(100, 100),
+		Nonce = 42,
+    S = aesc_test_utils:set_account_nonce(Initiator, Nonce, S0),
+    Trees = aesc_test_utils:trees(S),
+    Height = 1,
+
+    Test =
+        fun(TestNonce, Err) ->
+            TxSpec = aesc_test_utils:create_tx_spec(Initiator, Responder,
+                                                    #{nonce => TestNonce}, S),
+            {ok, Tx} = aesc_create_tx:new(TxSpec),
+            {error, Err} =
+                aetx:check(Tx, Trees, Height, ?PROTOCOL_VERSION)
+        end,
+    Test(Nonce - 1, account_nonce_too_high),
+    Test(Nonce, account_nonce_too_high),
+    Test(Nonce + 2, account_nonce_too_low),
+    ok.
+
+create_exsisting(Cfg) ->
+    run(#{cfg => Cfg},
+        [positive(fun create_channel_/2),
+         % set initiator nonce back to 0 so we try creating the same channel
+         fun(#{state := S0, initiator_pubkey := Initiator} = Props) ->
+            S = aesc_test_utils:set_account_nonce(Initiator, 0, S0),
+            Props#{state => S}
+         end,
+         negative(fun create_channel_/2, {error, channel_exists})
+        ]).
+
+%%%===================================================================
+%%% Close solo
+%%%===================================================================
+close_solo(Cfg) ->
+    Test =
+        fun(Closer) ->
+            run(#{cfg => Cfg},
+               [positive(fun create_channel_/2),
+                set_from(Closer),
+                positive(fun close_solo_/2),
+                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                    % make sure the channel is not active any more
+                    ClosedCh = aesc_test_utils:get_channel(ChannelId, S),
+                    false = aesc_channels:is_active(ClosedCh),
+                    Props
+                end])
+        end,
+    [Test(Role) || Role <- ?ROLES],
+
+    IStartAmt = 10,
+    RStartAmt = 10,
+    TestEmptyPayload =
+        fun(Closer) ->
+            run(#{cfg => Cfg, initiator_amount => IStartAmt, responder_amount => RStartAmt,
+                 channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                set_from(Closer),
+                set_prop(payload, <<>>),
+                calc_poi(IStartAmt, RStartAmt),
+                positive(fun close_solo_/2),
+                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                    % make sure the channel is not active any more
+                    ClosedCh = aesc_test_utils:get_channel(ChannelId, S),
+                    false = aesc_channels:is_active(ClosedCh),
+                    Props
+                end])
+        end,
+    [TestEmptyPayload(Role) || Role <- ?ROLES],
+
+    Amount = 3,
+
+    TestEmptyPayloadDeposit =
+        fun(Depositor, Closer) ->
+            run(#{cfg => Cfg, initiator_amount => IStartAmt, responder_amount => RStartAmt,
+                 channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                set_from(Depositor),
+                set_prop(amount, Amount),
+                calc_poi(IStartAmt + Amount, RStartAmt),
+                % calc poi so balances match the expectations
+                fun(#{poi := PoI} = Props) ->
+                    PoIHash = aec_trees:poi_hash(PoI),
+                    Props#{state_hash => PoIHash}
+                end,
+                positive(fun deposit_/2),
+                set_from(Closer),
+                set_prop(payload, <<>>),
+                positive(fun close_solo_/2),
+                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                    % make sure the channel is not active any more
+                    ClosedCh = aesc_test_utils:get_channel(ChannelId, S),
+                    false = aesc_channels:is_active(ClosedCh),
+                    Props
+                end])
+        end,
+    [TestEmptyPayloadDeposit(Depositor, Closer) || Depositor <- ?ROLES,
+                                                   Closer <- ?ROLES],
+
+    TestEmptyPayloadWithdrawal =
+        fun(Withdrawer, Closer) ->
+            run(#{cfg => Cfg, initiator_amount => IStartAmt, responder_amount => RStartAmt,
+                 channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                set_from(Withdrawer),
+                set_prop(amount, Amount),
+                calc_poi(IStartAmt - Amount, RStartAmt),
+                % calc poi so balances match the expectations
+                fun(#{poi := PoI} = Props) ->
+                    PoIHash = aec_trees:poi_hash(PoI),
+                    Props#{state_hash => PoIHash}
+                end,
+                positive(fun withdraw_/2),
+                set_from(Closer),
+                set_prop(payload, <<>>),
+                positive(fun close_solo_/2),
+                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                    % make sure the channel is not active any more
+                    ClosedCh = aesc_test_utils:get_channel(ChannelId, S),
+                    false = aesc_channels:is_active(ClosedCh),
+                    Props
+                end])
+        end,
+    [TestEmptyPayloadWithdrawal(Withdrawer, Closer) || Withdrawer <- ?ROLES,
+                                                       Closer <- ?ROLES],
+    ok.
+
+calc_poi(IB, RB) ->
+    fun(#{initiator_pubkey := I, responder_pubkey := R} = Props) ->
+        PoI = aesc_test_utils:proof_of_inclusion([{I, IB},{R, RB}]),
+        Props#{poi => PoI}
+    end.
+
+close_solo_unknown_from(Cfg) ->
+    {MissingAccount, S} = aesc_test_utils:setup_new_account(aesc_test_utils:new_state()),
+    PrivKey = aesc_test_utils:priv_key(MissingAccount, S),
+    run(#{cfg => Cfg},
+        [positive(fun create_channel_/2),
+         set_prop(from, MissingAccount),
+         set_prop(from_privkey, PrivKey),
+         negative(fun close_solo_/2, {error, account_not_found})]),
+    ok.
+
+%% Test wrong amounts (different than channel balance)
+close_solo_wrong_amounts(Cfg) ->
+    IAmt = 35,
+    RAmt = 42,
+    Test =
+        fun(Closer, ICloseAmt, RCloseAmt) ->
+            run(#{cfg => Cfg, initiator_amount => IAmt, responder_amount => RAmt},
+                [positive(fun create_channel_/2),
+                 set_prop(initiator_amount, ICloseAmt),
+                 set_prop(responder_amount, RCloseAmt),
+                 set_from(Closer),
+                 negative(fun close_solo_/2, {error, poi_amounts_change_channel_funds})])
+        end,
+    lists:foreach(
+        fun(Closer) ->
+            Test(Closer, IAmt + 1, RAmt),
+            Test(Closer, IAmt - 1, RAmt),
+            Test(Closer, IAmt, RAmt + 1),
+            Test(Closer, IAmt, RAmt - 1)
+        end,
+        ?ROLES),
+    ok.
+
+%% Test not a peer can not close channel
+close_solo_not_participant(Cfg) ->
+    run(#{cfg => Cfg},
+        [positive(fun create_channel_/2),
+         fun(#{state := S0} = Props) ->
+            {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
+            S1 = aesc_test_utils:set_account_balance(NewAcc, 1000, S),
+            PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
+            Props#{state => S1, from => NewAcc, from_privkey => PrivKey}
+         end,
+         negative(fun close_solo_/2, {error, account_not_peer})]),
+    ok.
+
+close_solo_wrong_nonce(Cfg) ->
+    test_both_wrong_nonce(Cfg, fun close_solo_/2).
+
+close_solo_payload_from_another_channel(Cfg) ->
+    test_both_payload_from_different_channel(Cfg, fun close_solo_/2).
+
+close_solo_payload_not_co_signed(Cfg) ->
+    test_payload_not_both_signed(Cfg, fun aesc_test_utils:close_solo_tx_spec/5,
+                                      fun aesc_close_solo_tx:new/1).
+
+close_solo_missing_channel(Cfg) ->
+    test_both_missing_channel(Cfg, fun close_solo_/2).
+
+close_solo_already_closing(Cfg) ->
+    test_both_closing_channel(Cfg, fun close_solo_/2).
+
+%%%===================================================================
+%%% Close mutual
+%%%===================================================================
+
+close_mutual(Cfg) ->
+    StartIAmt = 50,
+    StartRAmt = 50,
+    ChannelAmount = StartIAmt + StartRAmt,
+
+    Test =
+        fun(IAmt, RAmt, Fee) ->
+            run(#{cfg => Cfg, initiator_amount => StartIAmt, responder_amount => StartRAmt},
+               [positive(fun create_channel_/2),
+                get_onchain_balances(before_close),
+                set_prop(initiator_amount, IAmt),
+                set_prop(responder_amount, RAmt),
+                set_prop(fee, Fee),
+                positive(fun close_mutual_/2),
+                get_onchain_balances(after_close),
+                % this function returns the closing amount deltas
+                fun(#{before_close := #{initiator := I0, responder := R0},
+                      after_close  := #{initiator := I1, responder := R1}}) ->
+                    {I1 - I0, R1 - R0}
+                end])
+        end,
+    Fee = 10,
+
+    %% normal cases
+    {45, 45} = Test(45, 45, Fee),
+    {15, 75} = Test(15, ChannelAmount - 15 - Fee, Fee),
+
+    %% fee edge cases
+    %% amount - HalfFee = 0
+    {0, 90} = Test(0, ChannelAmount - Fee, Fee),
+    {90, 0} = Test(ChannelAmount - Fee, 0, Fee),
+
+    %% amount - HalfFee < 0
+    {1, 89} = Test(1 , ChannelAmount - Fee - 1, Fee),
+    {89, 1} = Test(ChannelAmount - Fee - 1, 1, Fee),
+
+    ok.
+
+close_mutual_wrong_amounts(Cfg) ->
+    StartIAmt = 50,
+    StartRAmt = 50,
+
+    Test =
+        fun(IAmt, RAmt, Fee, Err) ->
+            run(#{cfg => Cfg, initiator_amount => StartIAmt, responder_amount => StartRAmt},
+               [positive(fun create_channel_/2),
+                set_prop(initiator_amount, IAmt),
+                set_prop(responder_amount, RAmt),
+                set_prop(fee, Fee),
+                negative(fun close_mutual_/2, {error, Err})])
+        end,
+
+    % sum too big
+    Test(50, 50, 10, wrong_amounts),
+    % sum too small
+    Test(10, 10, 10, wrong_amounts),
+    % nonce too small
+    Test(50, 50, 0, too_low_fee),
+    ok.
+
+close_mutual_wrong_nonce(Cfg) ->
+    InitiatorNonce = 42,
+    Test =
+        fun(TestNonce, Error) ->
+            run(#{cfg => Cfg},
+                [positive(fun create_channel_/2),
+                 fun(#{state := S0, initiator_pubkey := I} = Props) ->
+                    S = aesc_test_utils:set_account_nonce(I, InitiatorNonce, S0),
+                    Props#{state => S}
+                 end,
+                 set_prop(nonce, TestNonce),
+                 %% prepare balances and a fee..
+                 prepare_balances_for_mutual_close(),
+                 negative(fun close_mutual_/2, {error, Error})])
+        end,
+    Test(InitiatorNonce - 1,  account_nonce_too_high),
+    Test(InitiatorNonce,      account_nonce_too_high),
+    Test(InitiatorNonce + 2,  account_nonce_too_low),
+    ok.
+
+
+close_mutual_missing_channel(Cfg) ->
+    ChannelHashSize = aec_base58c:byte_size_for_type(channel),
+    FakeChannelId = <<42:ChannelHashSize/unit:8>>,
+    run(#{cfg => Cfg},
+        [positive(fun create_channel_/2),
+         %% prepare balances and a fee..
+         prepare_balances_for_mutual_close(),
+         set_prop(channel_id, FakeChannelId),
+         negative(fun close_mutual_/2, {error, channel_does_not_exist})]),
+    ok.
+
+close_mutual_already_closing(Cfg) ->
+    Test =
+        fun(Closer) ->
+            run(#{cfg => Cfg},
+               [positive(fun create_channel_/2),
+                set_from(Closer),
+                positive(fun close_solo_/2),
+                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                    % make sure the channel is not active any more
+                    ClosedCh = aesc_test_utils:get_channel(ChannelId, S),
+                    false = aesc_channels:is_active(ClosedCh),
+                    Props
+                end,
+                %% prepare balances and a fee..
+                prepare_balances_for_mutual_close(),
+                negative(fun close_mutual_/2, {error, channel_not_active})])
+        end,
+    [Test(Role) || Role <- ?ROLES],
+    ok.
+
+%%%===================================================================
+%%% Slash
+%%%===================================================================
+slash(Cfg) ->
+    Test =
+        fun(Closer, Slasher, Round0, Round1) ->
+            run(#{cfg => Cfg},
+               [positive(fun create_channel_/2),
+                set_from(Closer),
+                set_prop(round, Round0),
+                positive(fun close_solo_/2),
+                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                    % make sure the channel is not active any more
+                    ClosedCh = aesc_test_utils:get_channel(ChannelId, S),
+                    false = aesc_channels:is_active(ClosedCh),
+                    Props
+                end,
+                set_from(Slasher),
+                set_prop(round, Round1),
+                positive(fun slash_/2)])
+        end,
+    lists:foreach(
+        fun(Closer) ->
+            lists:foreach(
+                fun(Slasher) ->
+                    Test(Closer, Slasher, 1, 2),
+                    Test(Closer, Slasher, 1, 5),
+                    Test(Closer, Slasher, 5, 6)
+                end,
+                ?ROLES)
+        end,
+        ?ROLES),
+    ok.
+
+slash_by_delegate(Cfg) ->
+    Test =
+        fun(Closer, Round0, Round1) ->
+            run(#{cfg => Cfg},
+               [fun(Props) ->
+                    {Delegate1, Delegate2, S} = create_loaded_accounts(100, 100),
+                    Props#{cfg => [{state, S} | Cfg],
+                           delegates => [aec_id:create(account, Delegate1),
+                                         aec_id:create(account, Delegate2)]}
+                end,
+                positive(fun create_channel_/2),
+                set_from(Closer),
+                set_prop(round, Round0),
+                positive(fun close_solo_/2),
+                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                    % make sure the channel is not active any more
+                    ClosedCh = aesc_test_utils:get_channel(ChannelId, S),
+                    false = aesc_channels:is_active(ClosedCh),
+                    Props
+                end,
+                set_prop(round, Round1),
+                fun(#{delegates := [D1 |_], state := S} = Props) ->
+                    D1Pubkey = aec_id:specialize(D1, account),
+                    D1PrivKey = aesc_test_utils:priv_key(D1Pubkey, S),
+                    Props#{from => D1Pubkey, from_privkey => D1PrivKey}
+                end,
+                positive(fun slash_/2)])
+        end,
+    lists:foreach(
+        fun(Closer) ->
+            Test(Closer, 1, 2),
+            Test(Closer, 1, 5),
+            Test(Closer, 5, 6)
+        end,
+        ?ROLES),
+    ok.
+
+slash_not_closing(Cfg) ->
+    Test =
+        fun(Slasher) ->
+            run(#{cfg => Cfg},
+                [positive(fun create_channel_/2),
+                 set_from(Slasher),
+                 negative(fun slash_/2, {error, channel_not_closing})])
+        end,
+    [Test(Role) || Role <- ?ROLES],
+    ok.
+
+slash_unknown_from(Cfg) ->
+    {MissingAccount, S} = aesc_test_utils:setup_new_account(aesc_test_utils:new_state()),
+    PrivKey = aesc_test_utils:priv_key(MissingAccount, S),
+    Test =
+        fun(Closer) ->
+            run(#{cfg => Cfg},
+                [positive(fun create_channel_/2),
+                 set_from(Closer),
+                 positive(fun close_solo_/2),
+                 set_prop(from, MissingAccount),
+                 set_prop(from_privkey, PrivKey),
+                 negative(fun slash_/2, {error, account_not_found})])
+        end,
+    [Test(Role) || Role <- ?ROLES],
+    ok.
+
+%% Test wrong amounts (different than channel balance)
+slash_wrong_amounts(Cfg) ->
+    IAmt = 50,
+    RAmt = 50,
+    Test =
+        fun(Closer, Slasher, ICloseAmt0, RCloseAmt0, ICloseAmt, RCloseAmt) ->
+            run(#{cfg => Cfg, initiator_amount => IAmt, responder_amount => RAmt},
+                [positive(fun create_channel_/2),
+                 set_prop(initiator_amount, ICloseAmt0),
+                 set_prop(responder_amount, RCloseAmt0),
+                 set_from(Closer),
+                 set_prop(round, 5),
+                 positive(fun close_solo_/2),
+                 set_prop(initiator_amount, ICloseAmt),
+                 set_prop(responder_amount, RCloseAmt),
+                 set_from(Slasher),
+                 set_prop(round, 10),
+                 negative(fun slash_/2, {error, poi_amounts_change_channel_funds})])
+        end,
+    lists:foreach(
+        fun(Closer) ->
+            lists:foreach(
+                fun(Slasher) ->
+                    % sum is more
+                    Test(Closer, Slasher, 40, 60, 49, 52),
+                    Test(Closer, Slasher, 40, 60, 52, 49),
+                    % sum is less
+                    Test(Closer, Slasher, 40, 60, 10, 20),
+                    Test(Closer, Slasher, 40, 60, 20, 10)
+                end,
+                ?ROLES)
+        end,
+        ?ROLES),
+    ok.
+
+%% Test not a peer can not slash
+slash_not_participant(Cfg) ->
+    Test =
+        fun(Closer) ->
+            run(#{cfg => Cfg},
+                [positive(fun create_channel_/2),
+                 set_from(Closer),
+                 set_prop(round, 5),
+                 positive(fun close_solo_/2),
+                 fun(#{state := S0} = Props) ->
+                    {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
+                    S1 = aesc_test_utils:set_account_balance(NewAcc, 1000, S),
+                    PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
+                    Props#{state => S1, from => NewAcc, from_privkey => PrivKey}
+                 end,
+                 set_prop(round, 10),
+                 negative(fun slash_/2, {error, account_not_peer_or_delegate})])
+        end,
+    [Test(Role) || Role <- ?ROLES],
+    ok.
+
+slash_wrong_nonce(Cfg) ->
+    test_both_wrong_nonce(Cfg, fun slash_/2).
+
+slash_payload_from_another_channel(Cfg) ->
+    Test =
+        fun(Closer, Slasher) ->
+            run(#{cfg => Cfg},
+               [positive(fun create_channel_/2), % create a channelA
+                % produce a payload for channelA
+                create_payload(different_payload),
+                % create another channelB and replace the old one with the
+                % participansts as well
+                positive(fun create_channel_/2),
+                % use the payload of channelA in a snapshot_tx for channelB
+                set_from(Closer),
+                set_prop(round, 5),
+                positive(fun close_solo_/2),
+                fun(#{different_payload := Payload} = Props) ->
+                    Props#{payload => Payload}
+                end,
+                set_from(Slasher),
+                negative(fun slash_/2, {error, bad_state_channel_id})])
+        end,
+    [Test(Closer, Slasher) || Closer <- ?ROLES,
+                              Slasher <- ?ROLES],
+    ok.
+
+slash_payload_not_co_signed(Cfg) ->
+    Test =
+        fun(Closer, Slasher) ->
+            run(#{cfg => Cfg},
+               [positive(fun create_channel_/2), % create a channelA
+                set_from(Closer),
+                set_prop(round, 5),
+                positive(fun close_solo_/2),
+                set_prop(round, 10),
+                set_from(Slasher),
+                fun(#{channel_id        := ChannelId,
+                      initiator_pubkey  := I,
+                      responder_pubkey  := R,
+                      initiator_privkey := IPriv,
+                      responder_privkey := RPriv,
+                      initiator_amount  := IAmt,
+                      responder_amount  := RAmt,
+                      from              := From,
+                      state             := S,
+                      height            := Height}) ->
+                    lists:foreach(
+                        fun(PrivKeys) ->
+                            PayloadSpec = #{initiator_amount => IAmt,
+                                            responder_amount => RAmt},
+                            PayloadMissingS = aesc_test_utils:payload(ChannelId, I, R,
+                                                          PrivKeys, PayloadSpec),
+                            PoI = aesc_test_utils:proof_of_inclusion([{I, IAmt},
+                                                                      {R, RAmt}]),
+                            TxSpecMissingS = aesc_test_utils:slash_tx_spec(ChannelId, From,
+                                                    PayloadMissingS, PoI, S),
+                            {ok, TxMissingS} = aesc_slash_tx:new(TxSpecMissingS),
+                            Trees = aesc_test_utils:trees(S),
+                            {error, signature_check_failed} =
+                                aetx:check(TxMissingS, Trees, Height, ?PROTOCOL_VERSION)
+                        end,
+                        [[],       % not signed at all
+                         [IPriv],  % signed only by initiator
+                         [RPriv]]) % signed only by responder
+                end])
+        end,
+    [Test(Closer, Slasher) || Closer <- ?ROLES,
+                              Slasher <- ?ROLES],
+    ok.
+
+slash_missing_channel(Cfg) ->
+    test_both_missing_channel(Cfg, fun slash_/2).
+
+%%%===================================================================
+%%% Deposit
+%%%===================================================================
+
+deposit(Cfg) ->
+    Amount = 10,
+    Fee = 1,
+    Test =
+        fun(Depositor, RoleKey) ->
+            run(#{cfg => Cfg},
+               [positive(fun create_channel_/2),
+                set_from(Depositor),
+                fun(Props) ->
+                    Pubkey = maps:get(RoleKey, Props),
+                    (get_onchain_balance(Pubkey, depositor))(Props)
+                end,
+                set_prop(amount, Amount),
+                set_prop(fee, Fee),
+                positive(fun deposit_/2),
+                fun(#{state := S, depositor := D} = Props) ->
+                    [Pubkey] = maps:keys(D),
+                    BalanceBefore = maps:get(Pubkey, D),
+
+                    BalanceAfter = get_balance(Pubkey, S),
+
+                    BalanceAfter = BalanceBefore - Amount - Fee,
+                    Props
+                end])
+        end,
+    Test(initiator, initiator_pubkey),
+    Test(responder, responder_pubkey),
+    ok.
+
+deposit_unknown_from(Cfg) ->
+    {MissingAccount, S} = aesc_test_utils:setup_new_account(aesc_test_utils:new_state()),
+    PrivKey = aesc_test_utils:priv_key(MissingAccount, S),
+    run(#{cfg => Cfg},
+        [positive(fun create_channel_/2),
+         set_prop(from, MissingAccount),
+         set_prop(from_privkey, PrivKey),
+         set_prop(amount, 10),
+         negative(fun deposit_/2, {error, account_not_found})]),
+    ok.
+
+deposit_insufficent_funds(Cfg) ->
+    TotalAmount = 10,
+    Test =
+        fun(Depositor, TestAmount, Fee, Err) ->
+            run(#{cfg => Cfg},
+                [positive(fun create_channel_/2),
+                 set_from(Depositor),
+                 fun(#{state := S0, from := From} = Props) ->
+                    S1 = aesc_test_utils:set_account_balance(From, TotalAmount, S0),
+                    Props#{state => S1}
+                 end,
+                 set_prop(amount, TestAmount),
+                 set_prop(fee, Fee),
+                 negative(fun deposit_/2, {error, Err})])
+        end,
+    lists:foreach(
+        fun(Depositor) ->
+            Test(Depositor, 12, 1, insufficient_funds),
+            Test(Depositor, 10, 1, insufficient_funds),
+            Test(Depositor, 10, 0, too_low_fee)
+        end,
+        ?ROLES),
+    ok.
+
+deposit_wrong_nonce(Cfg) ->
+    test_both_wrong_nonce(Cfg, fun deposit_/2, #{amount => 1, fee => 1}).
+
+deposit_missing_channel(Cfg) ->
+    test_both_missing_channel(Cfg, fun deposit_/2, #{amount => 1, fee => 1}).
+
+deposit_closing(Cfg) ->
+    test_both_missing_channel(Cfg, fun deposit_/2, #{amount => 1, fee => 1}).
+
+deposit_not_participant(Cfg) ->
+    run(#{cfg => Cfg, amount => 1, fee => 1},
+        [positive(fun create_channel_/2),
+         fun(#{state := S0} = Props) ->
+            {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
+            S1 = aesc_test_utils:set_account_balance(NewAcc, 1000, S),
+            PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
+            Props#{state => S1, from => NewAcc, from_privkey => PrivKey}
+         end,
+         negative(fun deposit_/2, {error, account_not_peer})]),
+    ok.
+
+%%%===================================================================
+%%% Withdraw
+%%%===================================================================
+withdraw(Cfg) ->
+    Amount = 10,
+    Fee = 1,
+    Test =
+        fun(Depositor, RoleKey) ->
+            run(#{cfg => Cfg},
+               [positive(fun create_channel_/2),
+                set_from(Depositor),
+                fun(Props) ->
+                    Pubkey = maps:get(RoleKey, Props),
+                    (get_onchain_balance(Pubkey, withdrawer))(Props)
+                end,
+                set_prop(amount, Amount),
+                set_prop(fee, Fee),
+                positive(fun withdraw_/2),
+                fun(#{state := S, withdrawer := D} = Props) ->
+                    [Pubkey] = maps:keys(D),
+                    BalanceBefore = maps:get(Pubkey, D),
+
+                    BalanceAfter = get_balance(Pubkey, S),
+
+                    BalanceAfter = BalanceBefore + Amount - Fee,
+                    Props
+                end])
+        end,
+    Test(initiator, initiator_pubkey),
+    Test(responder, responder_pubkey),
+    ok.
+
+withdraw_unknown_from(Cfg) ->
+    {MissingAccount, S} = aesc_test_utils:setup_new_account(aesc_test_utils:new_state()),
+    PrivKey = aesc_test_utils:priv_key(MissingAccount, S),
+    run(#{cfg => Cfg},
+        [positive(fun create_channel_/2),
+         set_prop(from, MissingAccount),
+         set_prop(from_privkey, PrivKey),
+         set_prop(amount, 10),
+         negative(fun withdraw_/2, {error, account_not_found})]),
+    ok.
+
+withdraw_insufficent_funds(Cfg) ->
+    IAmt = 5,
+    RAmt = 5,
+    Test =
+        fun(Withdrawer, TestAmount, Fee, Err) ->
+            run(#{cfg => Cfg, initiator_amount => IAmt, responder_amount => RAmt,
+                  channel_reserve => 1},
+                [positive(fun create_channel_/2),
+                 set_from(Withdrawer),
+                 set_prop(amount, TestAmount),
+                 set_prop(fee, Fee),
+                 negative(fun withdraw_/2, {error, Err})])
+        end,
+    lists:foreach(
+        fun(Withdrawer) ->
+            Test(Withdrawer, 11, 1, not_enough_channel_funds),
+            % keep at least 2*channel_reserve in the channel
+            Test(Withdrawer, 9, 1, not_enough_channel_funds)
+        end,
+        ?ROLES),
+    ok.
+
+withdraw_wrong_nonce(Cfg) ->
+    test_both_wrong_nonce(Cfg, fun withdraw_/2, #{amount => 1, fee => 1}).
+
+withdraw_missing_channel(Cfg) ->
+    test_both_missing_channel(Cfg, fun withdraw_/2, #{amount => 1, fee => 1}).
+
+withdraw_closing(Cfg) ->
+    test_both_missing_channel(Cfg, fun withdraw_/2, #{amount => 1, fee => 1}).
+
+withdraw_not_participant(Cfg) ->
+    run(#{cfg => Cfg, amount => 1, fee => 1},
+        [positive(fun create_channel_/2),
+         fun(#{state := S0} = Props) ->
+            {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
+            S1 = aesc_test_utils:set_account_balance(NewAcc, 1000, S),
+            PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
+            Props#{state => S1, from => NewAcc, from_privkey => PrivKey}
+         end,
+         negative(fun withdraw_/2, {error, account_not_peer})]),
+    ok.
+
+
+
+get_balances(K1, K2, S) ->
+    {get_balance(K1, S), get_balance(K2, S)}.
+
+get_balance(K, S) ->
+    Acc = aesc_test_utils:get_account(K, S),
+    aec_accounts:balance(Acc).
+
+%%%===================================================================
+%%% Settle
+%%%===================================================================
+settle(Cfg) ->
+    Test =
+        fun(Closer, Settler) ->
+            run(#{cfg => Cfg, lock_period => 10},
+               [positive(fun create_channel_/2),
+                set_from(Closer),
+                set_prop(height, 10),
+                positive(fun close_solo_/2),
+                set_from(Settler),
+                set_prop(height, 21),
+                positive(fun settle_/2)
+                ])
+        end,
+    [Test(Closer, Setler) || Closer <- ?ROLES,
+                             Setler <- ?ROLES],
+
+    TestWithSlash =
+        fun(Closer, Slasher, Settler) ->
+            run(#{cfg => Cfg, lock_period => 10},
+               [positive(fun create_channel_/2),
+                set_from(Closer),
+                set_prop(height, 10),
+                set_prop(round, 20),
+                positive(fun close_solo_/2),
+                set_from(Slasher),
+                set_prop(height, 15),
+                set_prop(round, 42),
+                positive(fun slash_/2),
+                set_from(Settler),
+                set_prop(height, 26),
+                positive(fun settle_/2)
+                ])
+        end,
+    [TestWithSlash(Closer, Slasher, Setler) ||  Closer <- ?ROLES,
+                                                Slasher <- ?ROLES,
+                                                Setler <- ?ROLES],
+    ok.
+
+settle_wrong_amounts(Cfg) ->
+    IAmt = 5,
+    RAmt = 5,
+    CloseAmtI = IAmt + 1, % initiator had gained 1 token
+    CloseAmtR = RAmt - 1, % responder had spent 1 token
+    Test =
+        fun(Closer, Settler, IAmt1, RAmt1, Fee, Err) ->
+            run(#{cfg => Cfg, lock_period => 10,
+                  initiator_amount => IAmt, responder_amount => RAmt,
+                  channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                set_from(Closer),
+                set_prop(height, 10),
+                set_prop(initiator_amount, CloseAmtI),
+                set_prop(responder_amount, CloseAmtR),
+                positive(fun close_solo_/2),
+                set_from(Settler),
+                set_prop(initiator_amount, IAmt1),
+                set_prop(responder_amount, RAmt1),
+                set_prop(fee, Fee),
+                set_prop(height, 21),
+                negative(fun settle_/2, {error, Err})
+                ])
+        end,
+    % settle tx amounts must be equal to the last on-chain tx
+    ActualTest =
+        fun(Closer, Setler) ->
+            % someone has more
+            Test(Closer, Setler, CloseAmtI + 1, CloseAmtR, 1, insufficient_channel_funds),
+            Test(Closer, Setler, CloseAmtI, CloseAmtR + 1, 1, insufficient_channel_funds),
+            % someone has less
+            Test(Closer, Setler, CloseAmtI - 1, CloseAmtR, 1, wrong_amt),
+            Test(Closer, Setler, CloseAmtI, CloseAmtR - 1, 1, wrong_amt),
+
+            % fee
+            Test(Closer, Setler, CloseAmtI, CloseAmtR, 0, too_low_fee)
+        end,
+    [ActualTest(Closer, Setler) ||  Closer <- ?ROLES,
+                                    Setler <- ?ROLES],
+    ok.
+
+settle_missing_channel(Cfg) ->
+    ChannelHashSize = aec_base58c:byte_size_for_type(channel),
+    FakeChannelId = <<42:ChannelHashSize/unit:8>>,
+    Test =
+        fun(Closer, Settler) ->
+            run(#{cfg => Cfg},
+                [positive(fun create_channel_/2),
+                set_from(Closer),
+                set_prop(height, 10),
+                positive(fun close_solo_/2),
+                set_from(Settler),
+                set_prop(height, 21),
+                set_prop(channel_id, FakeChannelId),
+                negative(fun settle_/2, {error, channel_does_not_exist})])
+        end,
+    [Test(Closer, Setler) || Closer <- ?ROLES,
+                             Setler <- ?ROLES],
+    ok.
+
+settle_wrong_nonce(Cfg) ->
+    Nonce = 42,
+    Test =
+        fun(Closer, {Settler, RoleKey}, TestNonce, Err) ->
+            run(#{cfg => Cfg, lock_period => 10},
+               [positive(fun create_channel_/2),
+                set_from(Closer),
+                set_prop(height, 10),
+                positive(fun close_solo_/2),
+                fun(#{state := S0} = Props) ->
+                    Pubkey = maps:get(RoleKey, Props),
+                    S = aesc_test_utils:set_account_nonce(Pubkey, Nonce, S0),
+                    Props#{state => S}
+                 end,
+                set_prop(nonce, TestNonce),
+                set_from(Settler),
+                set_prop(height, 21),
+                negative(fun settle_/2, {error, Err})
+                ])
+        end,
+    RolesWithKeys = [{initiator, initiator_pubkey}, {responder, responder_pubkey}],
+    % settle tx amounts must be equal to the last on-chain tx
+    ActualTest =
+        fun(Closer, Setler) ->
+            Test(Closer, Setler, Nonce - 1,  account_nonce_too_high),
+            Test(Closer, Setler, Nonce    ,  account_nonce_too_high),
+            Test(Closer, Setler, Nonce + 2,  account_nonce_too_low)
+        end,
+    [ActualTest(Closer, Setler) ||  Closer <- ?ROLES,
+                                    Setler <- RolesWithKeys],
+    ok.
+
+settle_not_closing(Cfg) ->
+    Test =
+        fun(Settler) ->
+            run(#{cfg => Cfg},
+               [positive(fun create_channel_/2),
+                set_from(Settler),
+                negative(fun settle_/2, {error, channel_not_closed})])
+        end,
+    [Test(Role) || Role <- ?ROLES],
+    ok.
+
+settle_not_yet_closable(Cfg) ->
+    Test =
+        fun(Closer, Settler) ->
+            run(#{cfg => Cfg, lock_period => 10},
+               [positive(fun create_channel_/2),
+                set_from(Closer),
+                set_prop(height, 10),
+                positive(fun close_solo_/2),
+                set_from(Settler),
+                set_prop(height, 19),
+                negative(fun settle_/2, {error, channel_not_closed})
+                ])
+        end,
+    [Test(Closer, Setler) || Closer <- ?ROLES,
+                             Setler <- ?ROLES],
+
+    TestWithSlash =
+        fun(Closer, Slasher, Settler) ->
+            run(#{cfg => Cfg, lock_period => 10},
+               [positive(fun create_channel_/2),
+                set_from(Closer),
+                set_prop(height, 10),
+                set_prop(round, 20),
+                positive(fun close_solo_/2),
+                set_from(Slasher),
+                set_prop(height, 15),
+                set_prop(round, 42),
+                positive(fun slash_/2),
+                set_from(Settler),
+                set_prop(height, 24),
+                negative(fun settle_/2, {error, channel_not_closed})
+                ])
+        end,
+    [TestWithSlash(Closer, Slasher, Setler) ||  Closer <- ?ROLES,
+                                                Slasher <- ?ROLES,
+                                                Setler <- ?ROLES],
+    ok.
+
+%%%===================================================================
+%%% Snapshot solo
+%%%===================================================================
+
+snapshot_solo(Cfg) ->
+    Round = 43,
+    StateHashSize = aec_base58c:byte_size_for_type(state),
+    StateHash = <<43:StateHashSize/unit:8>>,
+    Test =
+        fun(Snapshoter) ->
+            run(#{cfg => Cfg},
+               [positive(fun create_channel_/2),
+                set_from(Snapshoter),
+                set_prop(round, Round),
+                set_prop(state_hash, StateHash),
+                positive(fun snapshot_solo_/2),
+                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                    % ensure channel had been updated
+                    Channel = aesc_test_utils:get_channel(ChannelId, S),
+                    Round = aesc_channels:round(Channel),
+                    StateHash = aesc_channels:state_hash(Channel),
+                    Props
+                end
+                ])
+        end,
+    [Test(Role) || Role <- ?ROLES],
+    ok.
+
+% no one can post a snapshot_tx to a closed channel
+snapshot_closed_channel(Cfg) ->
+    Test =
+        fun(Snapshoter) ->
+            run(#{cfg => Cfg},
+               [positive(fun create_channel_/2),
+                set_from(initiator),
+                set_prop(fee, 1),
+                prepare_balances_for_mutual_close(),
+                positive(fun close_mutual_/2),
+                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                    % ensure channel is closed
+                    none = aesc_test_utils:lookup_channel(ChannelId, S),
+                    Props
+                end,
+                set_from(Snapshoter),
+                negative(fun snapshot_solo_/2, {error, channel_does_not_exist})])
+        end,
+    [Test(Role) || Role <- ?ROLES],
+    ok.
+
+% no one can post a snapshot_tx to a closing channel, not even the one that
+% initiated the close
+snapshot_closing_channel(Cfg) ->
+    test_both_closing_channel(Cfg, fun snapshot_solo_/2).
+
+% no one can overwrite a state, not even the one that posted it
+snapshot_older_state(Cfg) ->
+    Test =
+        fun(First, Second) ->
+            run(#{cfg => Cfg},
+               [positive(fun create_channel_/2),
+                set_prop(round, 42),
+                set_from(First),
+                positive(fun snapshot_solo_/2),
+                set_from(Second),
+                set_prop(round, 41),
+                negative(fun snapshot_solo_/2, {error, old_round})])
+        end,
+    [Test(First, Second) || First <- ?ROLES,
+                            Second <- ?ROLES],
+    ok.
+
+% snapshot_tx calls to a missing channel are rejected
+snapshot_missing_channel(Cfg) ->
+    test_both_missing_channel(Cfg, fun snapshot_solo_/2).
+
+% snapshot_tx calls with a payload from another channel are rejected
+snapshot_payload_from_another_channel(Cfg) ->
+    test_both_payload_from_different_channel(Cfg, fun snapshot_solo_/2).
+
+% snapshot_tx calls with a payload
+snapshot_payload_not_co_signed(Cfg) ->
+    test_payload_not_both_signed(Cfg,
+                                 fun(ChannelId, From, Payload, _PoI, S) ->
+                                     aesc_test_utils:snapshot_solo_tx_spec(ChannelId,
+                                                                           From,
+                                                                           Payload,
+                                                                           S)
+                                  end,
+                                  fun aesc_snapshot_solo_tx:new/1).
+
+%%%===================================================================
+%%% Test utils
+%%%===================================================================
+
+%%%
+%%% wrappers
+%%%
+
+positive(Fun) ->
+    fun(Props) -> Fun(Props, positive) end.
+
+negative(Fun, ErrMsg) ->
+    fun(Props) -> Fun(Props, {negative, ErrMsg}) end.
+
+set_from(Role) ->
+    fun(Props) ->
+        {KeyPub, KeyPriv} =
+            case Role of
+                initiator -> {initiator_pubkey, initiator_privkey};
+                responder -> {responder_pubkey, responder_privkey}
+            end,
+        PubKey = maps:get(KeyPub, Props),
+        PrivKey = maps:get(KeyPriv, Props),
+        Props#{from => PubKey, from_privkey => PrivKey}
+    end.
+
+set_prop(Key, Value) ->
+    fun(Props) ->
+        maps:put(Key, Value, Props)
+    end.
+
+prepare_balances_for_mutual_close() ->
+    fun(#{initiator_amount := IAmt} = Props) ->
+        Fee = maps:get(fee, Props, 1),
+        Props#{initiator_amount => IAmt - Fee, fee => Fee}
+    end.
+
+get_onchain_balances(Key) ->
+    fun(#{state := State, initiator_pubkey := I, responder_pubkey := R} = Props ) ->
+        {BI, BR} = get_balances(I, R, State),
+        maps:put(Key, #{initiator => BI, responder => BR}, Props)
+    end.
+
+get_onchain_balance(Pubkey, Key) ->
+    fun(#{state := State} = Props ) ->
+        B = get_balance(Pubkey, State),
+        OldVals = maps:get(Key, Props, #{}),
+        maps:put(Key, OldVals#{Pubkey => B}, Props)
+    end.
+
+create_payload() ->
+    create_payload(payload).
+
+create_payload(Key) ->
+    fun(#{channel_id        := ChannelId,
+          initiator_amount  := IAmt,
+          responder_amount  := RAmt,
+          initiator_pubkey  := IPubkey,
+          responder_pubkey  := RPubkey,
+          initiator_privkey := IPrivkey,
+          responder_privkey := RPrivkey} = Props) ->
+        PayloadSpec = #{initiator_amount => IAmt,
+                        responder_amount => RAmt},
+        Payload = aesc_test_utils:payload(ChannelId, IPubkey, RPubkey,
+                                        [IPrivkey, RPrivkey], PayloadSpec),
+        Props#{Key => Payload}
+    end.
+
+run(Cfg, Funs) ->
+    lists:foldl(
+        fun(Fun, Props) -> Fun(Props) end,
+        Cfg,
+        Funs).
+
+apply_on_trees_(#{height := Height} = Props, SignedTx, S, positive) ->
+    Trees = aens_test_utils:trees(S),
+    {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
+                                [SignedTx], Trees, Height, ?PROTOCOL_VERSION),
+    S1 = aesc_test_utils:set_trees(Trees1, S),
+    Props#{state => S1};
+apply_on_trees_(#{height := Height} = Props, SignedTx, S, {negative, ExpectedError}) ->
+    Trees = aens_test_utils:trees(S),
+    Tx = aetx_sign:tx(SignedTx),
+    ExpectedError =  aetx:check(Tx, Trees, Height, ?PROTOCOL_VERSION),
+    Props.
 
 get_state(Cfg) ->
     case proplists:get_value(state, Cfg) of
@@ -95,18 +1367,8 @@ get_state(Cfg) ->
         State0    -> State0
     end.
 
-%% Returns a default spec (w/ delegates) and an updated Cfg.
-new_spec_with_delegates(N, Cfg) when N > 0 ->
-    {Delegates, NewS} =
-        lists:mapfoldl(
-          fun(_, Sx) ->
-                  {PubKey, Sx1} = aesc_test_utils:setup_new_account(Sx),
-                  {aec_id:create(account, PubKey), Sx1}
-          end, get_state(Cfg), lists:seq(1, N)),
-    {#{delegates => Delegates}, lists:keystore(state, 1, Cfg, {state, NewS})}.
-
-create_from_state(S) ->
-    create_from_state(S, #{}).
+create_(Cfg, Spec0) ->
+    create_from_state(get_state(Cfg), Spec0).
 
 create_from_state(S, DefaultSpec) ->
     {PubKey1, S1} = aesc_test_utils:setup_new_account(S),
@@ -149,1182 +1411,41 @@ create_from_state(S, DefaultSpec) ->
 
     {PubKey1, PubKey2, ChannelId, SignedTx, S3}.
 
-create_negative(Cfg) ->
-    {PubKey1, S1} = aesc_test_utils:setup_new_account(aesc_test_utils:new_state()),
-    {PubKey2, S2} = aesc_test_utils:setup_new_account(S1),
-    Trees = aesc_test_utils:trees(S2),
-    Height = 1,
-
-    %% Test bad initiator account key
-    BadPubKey = <<42:32/unit:8>>,
-    TxSpec1 = aesc_test_utils:create_tx_spec(BadPubKey, PubKey2, S2),
-    {ok, Tx1} = aesc_create_tx:new(TxSpec1),
-    {error, account_not_found} =
-        aetx:check(Tx1, Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test bad responder account key
-    TxSpec2 = aesc_test_utils:create_tx_spec(PubKey1, BadPubKey, S2),
-    {ok, Tx2} = aesc_create_tx:new(TxSpec2),
-    {error, account_not_found} =
-        aetx:check(Tx2, Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test insufficient initiator funds
-    S3 = aesc_test_utils:set_account_balance(PubKey1, 11, S2),
-    Trees3 = aesc_test_utils:trees(S3),
-    TxSpec3 = aesc_test_utils:create_tx_spec(
-                PubKey1, PubKey2,
-                #{initiator_amount => 10,
-                  fee => 2}, S3),
-    {ok, Tx3} = aesc_create_tx:new(TxSpec3),
-    {error, insufficient_funds} =
-        aetx:check(Tx3, Trees3, Height, ?PROTOCOL_VERSION),
-
-    %% Test insufficient responder funds
-    S4 = aesc_test_utils:set_account_balance(PubKey2, 11, S2),
-    Trees4 = aesc_test_utils:trees(S4),
-    TxSpec4 = aesc_test_utils:create_tx_spec(
-                PubKey1, PubKey2,
-                #{responder_amount => 12}, S4),
-    {ok, Tx4} = aesc_create_tx:new(TxSpec4),
-    {error, insufficient_funds} =
-        aetx:check(Tx4, Trees4, Height, ?PROTOCOL_VERSION),
-
-    %% Test too high initiator nonce
-    TxSpec5 = aesc_test_utils:create_tx_spec(PubKey1, PubKey2, #{nonce => 0}, S2),
-    {ok, Tx5} = aesc_create_tx:new(TxSpec5),
-    {error, account_nonce_too_high} =
-        aetx:check(Tx5, Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test initiator funds lower than channel reserve
-    TxSpec6 = aesc_test_utils:create_tx_spec(PubKey1, PubKey2,
-                                             #{initiator_amount => 5,
-                                               channel_reserve => 8}, S2),
-    {ok, Tx6} = aesc_create_tx:new(TxSpec6),
-    {error, insufficient_initiator_amount} =
-        aetx:check(Tx6, Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test responder funds lower than channel reserve
-    TxSpec7 = aesc_test_utils:create_tx_spec(PubKey1, PubKey2,
-                                             #{responder_amount => 5,
-                                               channel_reserve  => 8}, S2),
-    {ok, Tx7} = aesc_create_tx:new(TxSpec7),
-    {error, insufficient_responder_amount} =
-        aetx:check(Tx7, Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test channel already present
-    {PubKey3, PubKey4, _ChannelId, _, S5} = create(Cfg),
-    S6 = aesc_test_utils:set_account_nonce(PubKey3, 0, S5),
-    Trees5 = aens_test_utils:trees(S6),
-    TxSpec8 = aesc_test_utils:create_tx_spec(PubKey3, PubKey4, S6),
-    {ok, Tx8} = aesc_create_tx:new(TxSpec8),
-    {error, channel_exists} = aetx:check(Tx8, Trees5, Height, ?PROTOCOL_VERSION),
-    ok.
-
-%%%===================================================================
-%%% Close solo
-%%%===================================================================
-close_solo(Cfg) ->
-    {PubKey1, PubKey2, ChannelId, _, S} = create(Cfg),
-    PrivKey1 = aesc_test_utils:priv_key(PubKey1, S),
-    PrivKey2 = aesc_test_utils:priv_key(PubKey2, S),
-    Height = 2,
-    Fee = 3,
-
-    %% Get channel and account funds
-    Trees = aens_test_utils:trees(S),
-
-    {Acc1Balance0, Acc2Balance0} = get_balances(PubKey1, PubKey2, S),
-    Ch = aesc_test_utils:get_channel(ChannelId, S),
-    ChannelAmount = aesc_channels:total_amount(Ch),
-
-    InitiatorEndBalance = rand:uniform(ChannelAmount),
-    ResponderEndBalance = ChannelAmount - InitiatorEndBalance,
-
-    PoI = aesc_test_utils:proof_of_inclusion([{PubKey1, InitiatorEndBalance},
-                                              {PubKey2, ResponderEndBalance}]),
-    %% Create close_solo tx and apply it on state trees
-    PayloadSpec = #{initiator_amount => InitiatorEndBalance,
-                    responder_amount => ResponderEndBalance},
-    Payload = aesc_test_utils:payload(ChannelId, PubKey1, PubKey2,
-                                      [PrivKey1, PrivKey2], PayloadSpec),
-    Test =
-        fun(From, FromPrivKey) ->
-            TxSpec = aesc_test_utils:close_solo_tx_spec(ChannelId, From, Payload,
-                                                    PoI, #{fee => Fee}, S),
-            {ok, Tx} = aesc_close_solo_tx:new(TxSpec),
-            SignedTx = aec_test_utils:sign_tx(Tx, [FromPrivKey]),
-            {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
-                                        [SignedTx], Trees, Height, ?PROTOCOL_VERSION),
-            S1 = aesc_test_utils:set_trees(Trees1, S),
-
-            {Acc1Balance1, Acc2Balance1} = get_balances(PubKey1, PubKey2, S1),
-            case From =:= PubKey1 of
-                true ->
-                    Acc1Balance1 = Acc1Balance0 - Fee,
-                    Acc2Balance1 = Acc2Balance0;
-                false ->
-                    Acc1Balance1 = Acc1Balance0,
-                    Acc2Balance1 = Acc2Balance0 - Fee
-            end,
-            ClosedCh = aesc_test_utils:get_channel(ChannelId, S1),
-            false = aesc_channels:is_active(ClosedCh)
-        end,
-    Test(PubKey1, PrivKey1),
-    Test(PubKey2, PrivKey2),
-    ok.
-
-close_solo_negative(Cfg0) ->
-    {Spec0, Cfg} = new_spec_with_delegates(2, Cfg0),
-    {PubKey1, PubKey2, ChannelId, _, S} = create(Cfg, Spec0),
-    PrivKey1 = aesc_test_utils:priv_key(PubKey1, S),
-    PrivKey2 = aesc_test_utils:priv_key(PubKey2, S),
-    Height = 2,
-
-    %% Get channel and account funds
-    Trees = aens_test_utils:trees(S),
-
-    Ch = aesc_test_utils:get_channel(ChannelId, S),
-    ChannelAmount = aesc_channels:total_amount(Ch),
-
-    InitiatorEndBalance = rand:uniform(ChannelAmount - 2) + 1,
-    ResponderEndBalance = ChannelAmount - InitiatorEndBalance,
-
-    PoI = aesc_test_utils:proof_of_inclusion([{PubKey1, InitiatorEndBalance},
-                                              {PubKey2, ResponderEndBalance}]),
-    PayloadSpec = #{initiator_amount => InitiatorEndBalance,
-                    responder_amount => ResponderEndBalance},
-    Payload = aesc_test_utils:payload(ChannelId, PubKey1, PubKey2,
-                                      [PrivKey1, PrivKey2], PayloadSpec),
-    %% Test bad from account key
-    BadPubKey = <<42:32/unit:8>>,
-    TxSpec1 = aesc_test_utils:close_solo_tx_spec(ChannelId, BadPubKey,
-                                                 PoI, Payload, S),
-    {ok, Tx1} = aesc_close_solo_tx:new(TxSpec1),
-    {error, account_not_found} =
-        aetx:check(Tx1, Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test wrong amounts (different than channel balance)
-    TestWrongAmounts =
-        fun(IAmt, RAmt) ->
-            PayloadSpecW = #{initiator_amount => IAmt,
-                            responder_amount => RAmt},
-            PayloadW = aesc_test_utils:payload(ChannelId, PubKey1, PubKey2,
-                                      [PrivKey1, PrivKey2], PayloadSpecW),
-            PoI2 = aesc_test_utils:proof_of_inclusion([{PubKey1, IAmt},
-                                              {PubKey2, RAmt}]),
-            TxSpecW = aesc_test_utils:close_solo_tx_spec(ChannelId, PubKey1,
-                                                         PayloadW, PoI2, S),
-            {ok, TxW} = aesc_close_solo_tx:new(TxSpecW),
-            {error, poi_amounts_change_channel_funds} =
-                aetx:check(TxW, Trees, Height, ?PROTOCOL_VERSION)
-        end,
-    TestWrongAmounts(InitiatorEndBalance -1, ResponderEndBalance),
-    TestWrongAmounts(InitiatorEndBalance +1, ResponderEndBalance),
-    TestWrongAmounts(InitiatorEndBalance, ResponderEndBalance - 1),
-    TestWrongAmounts(InitiatorEndBalance, ResponderEndBalance + 1),
-
-    %% Test from account not peer
-    {PubKey3, SNotPeer} = aesc_test_utils:setup_new_account(S),
-    PrivKey3 = aesc_test_utils:priv_key(PubKey3, SNotPeer),
-    ok = verify_pubkey_cannot_close_solo(PubKey3, ChannelId, Payload, PoI, Height, SNotPeer),
-
-    [ok = verify_pubkey_cannot_close_solo(D, ChannelId, Payload, PoI, Height, S)
-     || D <- aesc_channels:delegates(Ch)],
-
-    %% Test too high from account nonce
-    TxSpecWrongNonce = aesc_test_utils:close_solo_tx_spec(ChannelId, PubKey1,
-                                                          Payload, PoI, #{nonce => 0}, S),
-    {ok, TxWrongNonce} = aesc_close_solo_tx:new(TxSpecWrongNonce),
-    {error, account_nonce_too_high} =
-        aetx:check(TxWrongNonce, Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test payload has different channelId
-    BadPayloadSpec = #{initiator_amount => InitiatorEndBalance,
-                       responder_amount => ResponderEndBalance},
-    BadPayload = aesc_test_utils:payload(?BOGUS_CHANNEL, PubKey1, PubKey2,
-                                         [PrivKey1, PrivKey2], BadPayloadSpec),
-    TxSpecDiffChanId = aesc_test_utils:close_solo_tx_spec(ChannelId, PubKey1,
-                                                          BadPayload, PoI, S),
-    {ok, TxDiffChanId} = aesc_close_solo_tx:new(TxSpecDiffChanId),
-    {error, bad_state_channel_id} =
-        aetx:check(TxDiffChanId, Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test channel missing
-    MissingChannelId = ?BOGUS_CHANNEL,
-    PayloadMissingChanId = aesc_test_utils:payload(MissingChannelId, PubKey1, PubKey2,
-                                                  [PrivKey1, PrivKey2], PayloadSpec),
-    TxSpecNoChan = aesc_test_utils:close_solo_tx_spec(MissingChannelId, PubKey1,
-                                               PayloadMissingChanId, PoI, S),
-    {ok, TxNoChan} = aesc_close_solo_tx:new(TxSpecNoChan),
-    {error, channel_does_not_exist} =
-        aetx:check(TxNoChan, Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test channel not active
-    Ch1 = aesc_test_utils:get_channel(ChannelId, S),
-    Ch2 = aesc_test_utils:close_solo(Ch1),
-    SClosed = aesc_test_utils:set_channel(Ch2, S),
-    TxSpecClosed = aesc_test_utils:close_solo_tx_spec(ChannelId, PubKey1,
-                                                      Payload, PoI, SClosed),
-    TreesClosed = aesc_test_utils:trees(SClosed),
-    {ok, TxClosed} = aesc_close_solo_tx:new(TxSpecClosed),
-    {error, channel_not_active} =
-        aetx:check(TxClosed, TreesClosed, Height, ?PROTOCOL_VERSION),
-
-    %% Test reject payload with missing signatures
-    TestPayloadSigners =
-        fun(PrivKeys) ->
-            PayloadMissingS = aesc_test_utils:payload(ChannelId, PubKey1, PubKey2,
-                                                  PrivKeys, PayloadSpec),
-            TxSpecMissingS = aesc_test_utils:close_solo_tx_spec(ChannelId, PubKey1,
-                                                      PayloadMissingS, PoI, S),
-            {ok, TxMissingS} = aesc_close_solo_tx:new(TxSpecMissingS),
-            {error, signature_check_failed} =
-                aetx:check(TxMissingS, Trees, Height, ?PROTOCOL_VERSION)
-        end,
-    TestPayloadSigners([]),
-    TestPayloadSigners([PrivKey1]),
-    TestPayloadSigners([PrivKey2]),
-
-    %% Test reject payload with wrong signers
-    TestPayloadWrongPeers =
-        fun(I, P, PrivKeys) ->
-            ChannelAmount = aesc_channels:total_amount(Ch),
-            IAmt = rand:uniform(ChannelAmount),
-            RAmt = ChannelAmount - IAmt,
-            PoI3 = aesc_test_utils:proof_of_inclusion([{I, IAmt}, {P, RAmt}]),
-            PayloadMissingS = aesc_test_utils:payload(ChannelId, I, P,
-                                                  PrivKeys,
-                                                  PayloadSpec#{initiator_amount => IAmt,
-                                                               responder_amount => RAmt}),
-            TxSpecMissingS = aesc_test_utils:close_solo_tx_spec(ChannelId, I,
-                                                      PayloadMissingS, PoI3, S),
-            {ok, TxMissingS} = aesc_close_solo_tx:new(TxSpecMissingS),
-            {error, signature_check_failed} =
-                aetx:check(TxMissingS, Trees, Height, ?PROTOCOL_VERSION)
-        end,
-    TestPayloadWrongPeers(PubKey1, PubKey3, [PrivKey1, PrivKey3]),
-    TestPayloadWrongPeers(PubKey2, PubKey3, [PrivKey2, PrivKey3]),
-
-    %% Test existing channel's payload
-    {PubKey21, PubKey22, ChannelId2, _, S2} = create_from_state(S),
-    Trees2 = aens_test_utils:trees(S2),
-    PrivKey21 = aesc_test_utils:priv_key(PubKey21, S2),
-    PrivKey22 = aesc_test_utils:priv_key(PubKey22, S2),
-    Payload2 = aesc_test_utils:payload(ChannelId2, PubKey21, PubKey22,
-                                      [PrivKey21, PrivKey22], PayloadSpec),
-    TxPayload2Spec = aesc_test_utils:close_solo_tx_spec(ChannelId, PubKey21,
-                                                      Payload2, PoI, S2),
-    {ok, TxPayload2} = aesc_close_solo_tx:new(TxPayload2Spec),
-    {error, bad_state_channel_id} =
-                aetx:check(TxPayload2, Trees2, Height + 2,
-                           ?PROTOCOL_VERSION),
-    ok.
-
-verify_pubkey_cannot_close_solo(PubKey, ChannelId, Payload, PoI, Height, S) ->
-    TxSpec = aesc_test_utils:close_solo_tx_spec(ChannelId, PubKey,
-                                                Payload, PoI, S),
-    Trees = aesc_test_utils:trees(S),
-    {ok, Tx} = aesc_close_solo_tx:new(TxSpec),
-    {error, account_not_peer} =
-        aetx:check(Tx, Trees, Height, ?PROTOCOL_VERSION),
-    ok.
-
-close_solo_payload_create_tx(Cfg) ->
-    {PubKey1, PubKey2, ChannelId, CreateTx, S} = create(Cfg),
-    {_, CrTxI} = aetx:specialize_type(aetx_sign:tx(CreateTx)),
-    InitiatorEndBalance = aesc_create_tx:initiator_amount(CrTxI),
-    ResponderEndBalance = aesc_create_tx:responder_amount(CrTxI),
-
-    PoI = aesc_test_utils:proof_of_inclusion([{PubKey1, InitiatorEndBalance},
-                                              {PubKey2, ResponderEndBalance}]),
-    Payload = <<>>,
-    close_solo_after_(PubKey1, PubKey2, ChannelId, Payload, PoI, S).
-
-close_solo_payload_deposit_tx(Cfg) ->
-    {PubKey1, PubKey2, ChannelId, CreateTx, S} = create(Cfg),
-    PrivKey1 = aesc_test_utils:priv_key(PubKey1, S),
-    PrivKey2 = aesc_test_utils:priv_key(PubKey2, S),
-
-    {_, CrTxI} = aetx:specialize_type(aetx_sign:tx(CreateTx)),
-    InitiatorEndBalance = aesc_create_tx:initiator_amount(CrTxI),
-    ResponderEndBalance = aesc_create_tx:responder_amount(CrTxI),
-
-    Accounts = [{PubKey1, InitiatorEndBalance + 1},
-                {PubKey2, ResponderEndBalance}],
-    Accs = [aec_accounts:new(Pubkey, Balance) || {Pubkey, Balance} <- Accounts],
-
-    ChannelTrees = aec_test_utils:create_state_tree_with_accounts(Accs, no_backend),
-    StateHash = aec_trees:hash(ChannelTrees),
-    TxSpec = aesc_test_utils:deposit_tx_spec(ChannelId, PubKey1,
-                                             #{amount => 1,
-                                               fee    => 4,
-                                               state_hash => StateHash}, S),
-    {ok, DepositTx} = aesc_deposit_tx:new(TxSpec),
-    SignedDepositTx = aec_test_utils:sign_tx(DepositTx, [PrivKey1, PrivKey2]),
-    Payload = <<>>,
-    Trees = aens_test_utils:trees(S),
-    PoI = aesc_test_utils:proof_of_inclusion(Accounts),
-    {ok, [_], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
-                                        [SignedDepositTx], Trees, 2, ?PROTOCOL_VERSION),
-    S1 = aesc_test_utils:set_trees(Trees1, S),
-    close_solo_after_(PubKey1, PubKey2, ChannelId, Payload, PoI, S1).
-
-close_solo_payload_withdraw_tx(Cfg) ->
-    {PubKey1, PubKey2, ChannelId, CreateTx, S} = create(Cfg),
-    PrivKey1 = aesc_test_utils:priv_key(PubKey1, S),
-    PrivKey2 = aesc_test_utils:priv_key(PubKey2, S),
-
-    {_, CrTxI} = aetx:specialize_type(aetx_sign:tx(CreateTx)),
-    InitiatorEndBalance = aesc_create_tx:initiator_amount(CrTxI),
-    ResponderEndBalance = aesc_create_tx:responder_amount(CrTxI),
-
-    Accounts = [{PubKey1, InitiatorEndBalance - 1},
-                {PubKey2, ResponderEndBalance}],
-    Accs = [aec_accounts:new(Pubkey, Balance) || {Pubkey, Balance} <- Accounts],
-
-    ChannelTrees = aec_test_utils:create_state_tree_with_accounts(Accs, no_backend),
-    StateHash = aec_trees:hash(ChannelTrees),
-    TxSpec = aesc_test_utils:withdraw_tx_spec(ChannelId, PubKey1,
-                                             #{amount => 1,
-                                               fee    => 4,
-                                               state_hash => StateHash}, S),
-    {ok, WithdrawTx} = aesc_withdraw_tx:new(TxSpec),
-    SignedWithdrawTx = aec_test_utils:sign_tx(WithdrawTx, [PrivKey1, PrivKey2]),
-    Payload = <<>>,
-    Trees = aens_test_utils:trees(S),
-    PoI = aesc_test_utils:proof_of_inclusion(Accounts),
-    {ok, [_], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
-                                        [SignedWithdrawTx], Trees, 2, ?PROTOCOL_VERSION),
-    S1 = aesc_test_utils:set_trees(Trees1, S),
-    close_solo_after_(PubKey1, PubKey2, ChannelId, Payload, PoI, S1).
-
-close_solo_after_(PubKey1, PubKey2, ChannelId, Payload, PoI, S) ->
-    Trees = aens_test_utils:trees(S),
-    PrivKey1 = aesc_test_utils:priv_key(PubKey1, S),
-    Height = 3,
-    Fee = 3,
-
-    %% Get channel and account funds
-    {Acc1Balance0, Acc2Balance0} = get_balances(PubKey1, PubKey2, S),
-
-    %% Create close_solo tx and apply it on state trees
-    Test =
-        fun(From, FromPrivKey) ->
-            TxSpec = aesc_test_utils:close_solo_tx_spec(ChannelId, From, Payload,
-                                                    PoI, #{fee => Fee}, S),
-            {ok, Tx} = aesc_close_solo_tx:new(TxSpec),
-            SignedTx = aec_test_utils:sign_tx(Tx, [FromPrivKey]),
-            {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
-                                        [SignedTx], Trees, Height, ?PROTOCOL_VERSION),
-            S1 = aesc_test_utils:set_trees(Trees1, S),
-
-            {Acc1Balance1, Acc2Balance1} = get_balances(PubKey1, PubKey2, S1),
-            case From =:= PubKey1 of
-                true ->
-                    Acc1Balance1 = Acc1Balance0 - Fee,
-                    Acc2Balance1 = Acc2Balance0;
-                false ->
-                    Acc1Balance1 = Acc1Balance0,
-                    Acc2Balance1 = Acc2Balance0 - Fee
-            end,
-            ClosedCh = aesc_test_utils:get_channel(ChannelId, S1),
-            false = aesc_channels:is_active(ClosedCh)
-        end,
-    Test(PubKey1, PrivKey1),
-    ok.
-
-%%%===================================================================
-%%% Close mutual
-%%%===================================================================
-
-close_mutual(Cfg) ->
-    {PubKey1, PubKey2, ChannelId, _, S} = create(Cfg),
-    PrivKey1 = aesc_test_utils:priv_key(PubKey1, S),
-    PrivKey2 = aesc_test_utils:priv_key(PubKey2, S),
-    Height = 2,
-
-    %% Get channel and account funds
-    Trees = aens_test_utils:trees(S),
-
-    {Acc1Balance0, Acc2Balance0} = get_balances(PubKey1, PubKey2, S),
-    Ch = aesc_test_utils:get_channel(ChannelId, S),
-    ChannelAmount = aesc_channels:total_amount(Ch),
-
-    %% Create close_mutual tx and apply it on state trees
-    Test =
-        fun(IAmt, RAmt, Fee) ->
-            TxSpec = aesc_test_utils:close_mutual_tx_spec(ChannelId,
-                                                    #{initiator_amount => IAmt,
-                                                      initiator_account => PubKey1,
-                                                      responder_amount => RAmt,
-                                                      fee    => Fee}, S),
-            {ok, Tx} = aesc_close_mutual_tx:new(TxSpec),
-            SignedTx = aec_test_utils:sign_tx(Tx, [PrivKey1, PrivKey2]),
-            {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
-                                        [SignedTx], Trees, Height, ?PROTOCOL_VERSION),
-            S1 = aesc_test_utils:set_trees(Trees1, S),
-
-            {Acc1Balance1, Acc2Balance1} = get_balances(PubKey1, PubKey2, S1),
-            % ensure balances are updated
-            {_, {_, _, Acc1Balance1, _}, {_, _, Acc2Balance1, _}} =
-             {Fee,  {Acc1Balance0, IAmt, Acc1Balance0 + IAmt, Acc1Balance1},
-                    {Acc2Balance0, RAmt, Acc2Balance0 + RAmt, Acc2Balance1}},
-            none = aesc_test_utils:lookup_channel(ChannelId, S1),
-            {IAmt, RAmt}
-        end,
-    100 = ChannelAmount, % expectation on aesc_test_utils:create_tx_spec/3
-
-    Fee = 10,
-
-    %% normal cases
-    {45, 45} = Test(45, ChannelAmount - 45 - Fee, Fee),
-    {15, 75} = Test(15, ChannelAmount - 15 - Fee, Fee),
-
-    %% fee edge cases
-    %% amount - HalfFee = 0
-    {0, 90} = Test(0, ChannelAmount - Fee, Fee),
-    {90, 0} = Test(ChannelAmount - Fee, 0, Fee),
-
-    %% amount - HalfFee < 0
-    {1, 89} = Test(1 , ChannelAmount - Fee - 1, Fee),
-    {89, 1} = Test(ChannelAmount - Fee - 1, 1, Fee),
-
-    ok.
-
-
-close_mutual_negative(Cfg) ->
-    {PubKey1, _PubKey2, ChannelId, _, S} = create(Cfg),
-    Trees = aesc_test_utils:trees(S),
-    Height = 2,
-
-    Ch = aesc_test_utils:get_channel(ChannelId, S),
-    ChannelAmount = aesc_channels:total_amount(Ch),
-
-    %% Test insufficient tokens in channel
-    TxSpec2 = aesc_test_utils:close_mutual_tx_spec(
-                ChannelId,
-                #{initiator_amount => 1,
-                  initiator_account => PubKey1,
-                  responder_amount => ChannelAmount,
-                  fee    => 2}, S),
-    {ok, Tx2} = aesc_close_mutual_tx:new(TxSpec2),
-    {error, wrong_amounts} =
-        aetx:check(Tx2, Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test too high from account nonce
-    TxSpec3 = aesc_test_utils:close_mutual_tx_spec(
-                ChannelId, #{nonce => 0, initiator_account => PubKey1},
-                S),
-    {ok, Tx3} = aesc_close_mutual_tx:new(TxSpec3),
-    {error, account_nonce_too_high} =
-        aetx:check(Tx3, Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test channel does not exist
-    TxSpec4 = aesc_test_utils:close_mutual_tx_spec(
-                ?BOGUS_CHANNEL,
-                #{initiator_account => PubKey1},
-                S),
-    {ok, Tx4} = aesc_close_mutual_tx:new(TxSpec4),
-    {error, channel_does_not_exist} =
-        aetx:check(Tx4, Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test channel not active
-    Ch51 = aesc_test_utils:get_channel(ChannelId, S),
-    Ch52 = aesc_test_utils:close_solo(Ch51),
-    S5   = aesc_test_utils:set_channel(Ch52, S),
-    TxSpec5 = aesc_test_utils:close_mutual_tx_spec(
-                ChannelId,
-                #{initiator_account => PubKey1},
-                S5),
-    Trees5 = aesc_test_utils:trees(S5),
-    {ok, Tx5} = aesc_close_mutual_tx:new(TxSpec5),
-    {error, channel_not_active} =
-        aetx:check(Tx5, Trees5, Height, ?PROTOCOL_VERSION),
-    ok.
-
-%%%===================================================================
-%%% Deposit
-%%%===================================================================
-
-deposit(Cfg) ->
-    {PubKey1, _PubKey2, ChannelId, _, S} = create(Cfg),
-    PrivKey1 = aesc_test_utils:priv_key(PubKey1, S),
-    Height = 2,
-
-    %% Get channel and account funds
-    Trees = aens_test_utils:trees(S),
-    Acc1 = aesc_test_utils:get_account(PubKey1, S),
-    Acc1Balance = aec_accounts:balance(Acc1),
-    Ch = aesc_test_utils:get_channel(ChannelId, S),
-    ChannelAmount = aesc_channels:total_amount(Ch),
-
-    %% Create deposit tx and apply it on state trees
-    TxSpec = aesc_test_utils:deposit_tx_spec(ChannelId, PubKey1,
-                                             #{amount => 13,
-                                               fee    => 4}, S),
-    {ok, Tx} = aesc_deposit_tx:new(TxSpec),
-    SignedTx = aec_test_utils:sign_tx(Tx, [PrivKey1]),
-    {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
-                                 [SignedTx], Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test channel and account funds
-    {value, UpdatedCh} = aesc_state_tree:lookup(ChannelId, aec_trees:channels(Trees1)),
-    UpdatedAmount = aesc_channels:total_amount(UpdatedCh),
-    UpdatedAmount = ChannelAmount + 13,
-
-    UpdatedAcc1 = aec_accounts_trees:get(PubKey1, aec_trees:accounts(Trees1)),
-    UpdatedAcc1Balance = aec_accounts:balance(UpdatedAcc1),
-    UpdatedAcc1Balance = Acc1Balance - 13 - 4,
-    ok.
-
-deposit_negative(Cfg) ->
-    {PubKey1, _PubKey2, ChannelId, _, S} = create(Cfg),
-    Trees = aesc_test_utils:trees(S),
-    Height = 2,
-
-    %% Test bad from account key
-    BadPubKey = <<42:32/unit:8>>,
-    TxSpec1 = aesc_test_utils:deposit_tx_spec(ChannelId, BadPubKey, S),
-    {ok, Tx1} = aesc_deposit_tx:new(TxSpec1),
-    {error, account_not_found} =
-        aetx:check(Tx1, Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test insufficient from account funds
-    S2 = aesc_test_utils:set_account_balance(PubKey1, 5, S),
-    Trees2 = aesc_test_utils:trees(S2),
-    TxSpec2 = aesc_test_utils:deposit_tx_spec(
-                ChannelId, PubKey1,
-                #{amount => 10,
-                  fee    => 2}, S2),
-    {ok, Tx2} = aesc_deposit_tx:new(TxSpec2),
-    {error, insufficient_funds} =
-        aetx:check(Tx2, Trees2, Height, ?PROTOCOL_VERSION),
-
-    %% Test too high from account nonce
-    TxSpec3 = aesc_test_utils:deposit_tx_spec(ChannelId, PubKey1, #{nonce => 0}, S),
-    {ok, Tx3} = aesc_deposit_tx:new(TxSpec3),
-    {error, account_nonce_too_high} =
-        aetx:check(Tx3, Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test channel does not exist
-    TxSpec4 = aesc_test_utils:deposit_tx_spec(?BOGUS_CHANNEL, PubKey1, S),
-    {ok, Tx4} = aesc_deposit_tx:new(TxSpec4),
-    {error, channel_does_not_exist} =
-        aetx:check(Tx4, Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test channel not active
-    Ch51 = aesc_test_utils:get_channel(ChannelId, S),
-    Ch52 = aesc_test_utils:close_solo(Ch51),
-    S5   = aesc_test_utils:set_channel(Ch52, S),
-    TxSpec5 = aesc_test_utils:deposit_tx_spec(ChannelId, PubKey1,
-                                              #{amount => 13,
-                                                fee    => 4}, S5),
-    Trees5 = aesc_test_utils:trees(S5),
-    {ok, Tx5} = aesc_deposit_tx:new(TxSpec5),
-    {error, channel_not_active} =
-        aetx:check(Tx5, Trees5, Height, ?PROTOCOL_VERSION),
-
-    %% Test from account not peer
-    {PubKey3, S6} = aesc_test_utils:setup_new_account(S),
-    TxSpec6 = aesc_test_utils:deposit_tx_spec(ChannelId, PubKey3, S6),
-    Trees6 = aesc_test_utils:trees(S6),
-    {ok, Tx6} = aesc_deposit_tx:new(TxSpec6),
-    {error, account_not_peer} =
-        aetx:check(Tx6, Trees6, Height, ?PROTOCOL_VERSION),
-    ok.
-
-%%%===================================================================
-%%% Withdraw
-%%%===================================================================
-
-withdraw(Cfg) ->
-    {PubKey1, _PubKey2, ChannelId, _, S} = create(Cfg),
-    PrivKey1 = aesc_test_utils:priv_key(PubKey1, S),
-    Height = 2,
-
-    %% Get channel and account funds
-    Trees = aens_test_utils:trees(S),
-    Acc1 = aec_accounts_trees:get(PubKey1, aec_trees:accounts(Trees)),
-    Acc1Balance = aec_accounts:balance(Acc1),
-    {value, Ch} = aesc_state_tree:lookup(ChannelId, aec_trees:channels(Trees)),
-    ChannelAmount = aesc_channels:total_amount(Ch),
-
-    %% Create withdraw tx and apply it on state trees
-    TxSpec = aesc_test_utils:withdraw_tx_spec(ChannelId, PubKey1,
-                                              #{amount => 13,
-                                                fee    => 4}, S),
-    {ok, Tx} = aesc_withdraw_tx:new(TxSpec),
-    SignedTx = aec_test_utils:sign_tx(Tx, [PrivKey1]),
-    {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
-                                 [SignedTx], Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test channel and account funds
-    {value, UpdatedCh} = aesc_state_tree:lookup(ChannelId, aec_trees:channels(Trees1)),
-    UpdatedAmount = aesc_channels:total_amount(UpdatedCh),
-    UpdatedAmount = ChannelAmount - 13,
-
-    UpdatedAcc1 = aec_accounts_trees:get(PubKey1, aec_trees:accounts(Trees1)),
-    UpdatedAcc1Balance = aec_accounts:balance(UpdatedAcc1),
-    UpdatedAcc1Balance = Acc1Balance + 13 - 4,
-    ok.
-
-withdraw_negative(Cfg) ->
-    {PubKey1, _PubKey2, ChannelId, _, S} = create(Cfg),
-    Trees = aesc_test_utils:trees(S),
-    Height = 2,
-
-    %% Test bad from account key
-    BadPubKey = <<42:32/unit:8>>,
-    TxSpec1 = aesc_test_utils:withdraw_tx_spec(ChannelId, BadPubKey, S),
-    {ok, Tx1} = aesc_withdraw_tx:new(TxSpec1),
-    {error, account_not_found} =
-        aetx:check(Tx1, Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test insufficient from account funds
-    S2 = aesc_test_utils:set_account_balance(PubKey1, 5, S),
-    Trees2 = aesc_test_utils:trees(S2),
-    TxSpec2 = aesc_test_utils:withdraw_tx_spec(
-                ChannelId, PubKey1,
-                #{amount => 10,
-                  fee    => 2}, S2),
-    {ok, Tx2} = aesc_withdraw_tx:new(TxSpec2),
-    {error, insufficient_funds} =
-        aetx:check(Tx2, Trees2, Height, ?PROTOCOL_VERSION),
-
-    %% Test too high from account nonce
-    TxSpec3 = aesc_test_utils:withdraw_tx_spec(ChannelId, PubKey1, #{nonce => 0}, S),
-    {ok, Tx3} = aesc_withdraw_tx:new(TxSpec3),
-    {error, account_nonce_too_high} =
-        aetx:check(Tx3, Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test channel does not exist
-    TxSpec4 = aesc_test_utils:withdraw_tx_spec(?BOGUS_CHANNEL, PubKey1, S),
-    {ok, Tx4} = aesc_withdraw_tx:new(TxSpec4),
-    {error, channel_does_not_exist} =
-        aetx:check(Tx4, Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test channel not active
-    Ch51 = aesc_test_utils:get_channel(ChannelId, S),
-    Ch52 = aesc_test_utils:close_solo(Ch51),
-    S5   = aesc_test_utils:set_channel(Ch52, S),
-    TxSpec5 = aesc_test_utils:withdraw_tx_spec(ChannelId, PubKey1,
-                                               #{amount => 13,
-                                                 fee    => 4}, S5),
-    Trees5 = aesc_test_utils:trees(S5),
-    {ok, Tx5} = aesc_withdraw_tx:new(TxSpec5),
-    {error, channel_not_active} =
-        aetx:check(Tx5, Trees5, Height, ?PROTOCOL_VERSION),
-
-    %% Test from account not peer
-    {PubKey3, S6} = aesc_test_utils:setup_new_account(S),
-    TxSpec6 = aesc_test_utils:withdraw_tx_spec(ChannelId, PubKey3, S6),
-    Trees6 = aesc_test_utils:trees(S6),
-    {ok, Tx6} = aesc_withdraw_tx:new(TxSpec6),
-    {error, account_not_peer} =
-        aetx:check(Tx6, Trees6, Height, ?PROTOCOL_VERSION),
-
-    %% Test withdrawn amount exceeds channel funds
-    TxSpec7 = aesc_test_utils:withdraw_tx_spec(ChannelId, PubKey1, S),
-    {ok, Tx7} = aesc_withdraw_tx:new(TxSpec7),
-    {error, not_enough_channel_funds} =
-        aetx:check(Tx7, Trees, Height, ?PROTOCOL_VERSION),
-    ok.
-
-get_balances(K1, K2, S) ->
-    {get_balance(K1, S), get_balance(K2, S)}.
-
-get_balance(K, S) ->
-    Acc = aesc_test_utils:get_account(K, S),
-    aec_accounts:balance(Acc).
-
-%%%===================================================================
-%%% Slash
-%%%===================================================================
-slash(Cfg0) ->
-    {Spec0, Cfg} = new_spec_with_delegates(2, Cfg0),
-    {PubKey1, PubKey2, ChannelId, _, S0} = create(Cfg, Spec0),
-    PrivKey1 = aesc_test_utils:priv_key(PubKey1, S0),
-    PrivKey2 = aesc_test_utils:priv_key(PubKey2, S0),
-    Height = 2,
-    Fee = 3,
-
-    %% close the channel
-    Ch0 = aesc_test_utils:get_channel(ChannelId, S0),
-    Ch = aesc_test_utils:close_solo(Ch0),
-    S   = aesc_test_utils:set_channel(Ch, S0),
-
-    %% Get channel and account funds
-    Trees = aens_test_utils:trees(S),
-
-    {Acc1Balance0, Acc2Balance0} = get_balances(PubKey1, PubKey2, S),
-    ChannelAmount = aesc_channels:total_amount(Ch),
-
-    InitiatorEndBalance = rand:uniform(ChannelAmount),
-    ResponderEndBalance = ChannelAmount - InitiatorEndBalance,
-
-    PoI = aesc_test_utils:proof_of_inclusion([{PubKey1, InitiatorEndBalance},
-                                              {PubKey2, ResponderEndBalance}]),
-
-    %% Create close_solo tx and apply it on state trees
-    PayloadSpec = #{initiator_amount => InitiatorEndBalance,
-                    responder_amount => ResponderEndBalance,
-                    round => 12}, % greater than default of 11
-    Payload = aesc_test_utils:payload(ChannelId, PubKey1, PubKey2,
-                                      [PrivKey1, PrivKey2], PayloadSpec),
-    Test =
-        fun(From, FromPrivKey) ->
-            TxSpec = aesc_test_utils:slash_tx_spec(ChannelId, From, Payload,
-                                                    PoI, #{fee    => Fee}, S),
-            {ok, Tx} = aesc_slash_tx:new(TxSpec),
-            SignedTx = aec_test_utils:sign_tx(Tx, [FromPrivKey]),
-            {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
-                                        [SignedTx], Trees, Height, ?PROTOCOL_VERSION),
-            S1 = aesc_test_utils:set_trees(Trees1, S),
-
-            {Acc1Balance1, Acc2Balance1} = get_balances(PubKey1, PubKey2, S1),
-            case From of
-                PubKey1 ->
-                    Acc1Balance1 = Acc1Balance0 - Fee,
-                    Acc2Balance1 = Acc2Balance0;
-                PubKey2 ->
-                    Acc1Balance1 = Acc1Balance0,
-                    Acc2Balance1 = Acc2Balance0 - Fee;
-                Delegate ->
-                    Bal0 = get_balance(Delegate, S),
-                    Bal1 = get_balance(Delegate, S1),
-                    Bal1 = Bal0 - Fee
-            end
-        end,
-    Test(PubKey1, PrivKey1),
-    Test(PubKey2, PrivKey2),
-    [Test(D, PrivKeyD) || D <- aesc_channels:delegates(Ch),
-                          PrivKeyD <- [aesc_test_utils:priv_key(D, S)]],
-    ok.
-
-slash_negative(Cfg0) ->
-    {Spec0, Cfg} = new_spec_with_delegates(2, Cfg0),
-    {PubKey1, PubKey2, ChannelId, _, S0} = create(Cfg, Spec0),
+%%%
+%%% create and apply transactions
+%%%
+
+create_channel_(#{cfg := Cfg} = Props, _) ->
+    CreateOpts = maps:filter(
+                   fun(K, _V) -> lists:member(K, [state, initiator_amount,
+                                                 responder_amount,
+                                                 channel_reserve,
+                                                 lock_period,
+                                                 delegates])
+                   end,
+                   Props),
+    {PubKey1, PubKey2, ChannelId, _, S0} = create_(Cfg, CreateOpts),
     PrivKey1 = aesc_test_utils:priv_key(PubKey1, S0),
     PrivKey2 = aesc_test_utils:priv_key(PubKey2, S0),
 
-    %% close the channel
-    Ch0 = aesc_test_utils:get_channel(ChannelId, S0),
-    Ch = aesc_test_utils:close_solo(Ch0),
-    S   = aesc_test_utils:set_channel(Ch, S0),
     Height = 2,
 
     %% Get channel and account funds
-    Trees0 = aens_test_utils:trees(S0),
-    Trees = aens_test_utils:trees(S),
 
-    Ch = aesc_test_utils:get_channel(ChannelId, S),
-    ChannelAmount = aesc_channels:total_amount(Ch),
-    ChannelRound = aesc_channels:round(Ch),
+    IAmt = maps:get(initiator_amount, Props, 30),
+    RAmt = maps:get(responder_amount, Props, 70),
+    Fee = maps:get(fee, Props, 2),
 
-    InitiatorEndBalance = rand:uniform(ChannelAmount - 2) + 1,
-    ResponderEndBalance = ChannelAmount - InitiatorEndBalance,
-    PoI = aesc_test_utils:proof_of_inclusion([{PubKey1, InitiatorEndBalance},
-                                              {PubKey2, ResponderEndBalance}]),
-    PayloadSpec = #{initiator_amount => InitiatorEndBalance,
-                    responder_amount => ResponderEndBalance,
-                    round            => ChannelRound + 1
-                   },
-    Payload = aesc_test_utils:payload(ChannelId, PubKey1, PubKey2,
-                                      [PrivKey1, PrivKey2], PayloadSpec),
-
-    %% Test not closed channel
-    TxSpec0 = aesc_test_utils:slash_tx_spec(ChannelId, PubKey1,
-                                                 Payload, PoI, S0),
-    {ok, Tx0} = aesc_slash_tx:new(TxSpec0),
-    {error, channel_not_closing} =
-        aetx:check(Tx0, Trees0, Height, ?PROTOCOL_VERSION),
-
-    %% Test bad from account key
-    BadPubKey = <<42:32/unit:8>>,
-    TxSpec1 = aesc_test_utils:slash_tx_spec(ChannelId, BadPubKey,
-                                                 Payload, PoI, S),
-    {ok, Tx1} = aesc_slash_tx:new(TxSpec1),
-    {error, account_not_found} =
-        aetx:check(Tx1, Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test wrong amounts (different than channel balance)
-    TestWrongAmounts =
-        fun(IAmt, RAmt) ->
-            PayloadSpecW = #{initiator_amount => IAmt,
-                             responder_amount => RAmt,
-                             round            => ChannelRound + 2
-                            },
-            PayloadW = aesc_test_utils:payload(ChannelId, PubKey1, PubKey2,
-                                      [PrivKey1, PrivKey2], PayloadSpecW),
-            PoI2 = aesc_test_utils:proof_of_inclusion([{PubKey1, IAmt},
-                                              {PubKey2, RAmt}]),
-            TxSpecW = aesc_test_utils:slash_tx_spec(ChannelId, PubKey1,
-                                                         PayloadW, PoI2, S),
-            {ok, TxW} = aesc_slash_tx:new(TxSpecW),
-            {error, poi_amounts_change_channel_funds} =
-                aetx:check(TxW, Trees, Height, ?PROTOCOL_VERSION)
-        end,
-    TestWrongAmounts(InitiatorEndBalance -1, ResponderEndBalance),
-    TestWrongAmounts(InitiatorEndBalance +1, ResponderEndBalance),
-    TestWrongAmounts(InitiatorEndBalance, ResponderEndBalance - 1),
-    TestWrongAmounts(InitiatorEndBalance, ResponderEndBalance + 1),
-
-    %% Test from account not peer
-    {PubKey3, SNotPeer} = aesc_test_utils:setup_new_account(S),
-    PrivKey3 = aesc_test_utils:priv_key(PubKey3, SNotPeer),
-
-    TxSpecNotPeer = aesc_test_utils:slash_tx_spec(ChannelId, PubKey3, Payload,
-                                                  PoI, SNotPeer),
-    TreesNotPeer = aesc_test_utils:trees(SNotPeer),
-    {ok, TxNotPeer} = aesc_slash_tx:new(TxSpecNotPeer),
-    {error, account_not_peer_or_delegate} =
-        aetx:check(TxNotPeer, TreesNotPeer, Height, ?PROTOCOL_VERSION),
-
-    %% Test too high from account nonce
-    TxSpecWrongNonce = aesc_test_utils:slash_tx_spec(ChannelId, PubKey1,
-                                                          Payload, PoI, #{nonce => 0}, S),
-    {ok, TxWrongNonce} = aesc_slash_tx:new(TxSpecWrongNonce),
-    {error, account_nonce_too_high} =
-        aetx:check(TxWrongNonce, Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test payload has different channelId
-    TxSpecDiffChanId = aesc_test_utils:slash_tx_spec(?BOGUS_CHANNEL, PubKey1,
-                                                          Payload, PoI, S),
-    {ok, TxDiffChanId} = aesc_slash_tx:new(TxSpecDiffChanId),
-    {error, channel_does_not_exist} =
-        aetx:check(TxDiffChanId, Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test channel missing
-    MissingChannelId = ?BOGUS_CHANNEL,
-    PayloadMissingChanId = aesc_test_utils:payload(MissingChannelId, PubKey1, PubKey2,
-                                                  [PrivKey1, PrivKey2], PayloadSpec),
-    TxSpecNoChan = aesc_test_utils:slash_tx_spec(MissingChannelId, PubKey1,
-                                               PayloadMissingChanId, PoI, S),
-    {ok, TxNoChan} = aesc_slash_tx:new(TxSpecNoChan),
-    {error, channel_does_not_exist} =
-        aetx:check(TxNoChan, Trees, Height, ?PROTOCOL_VERSION),
-
-    %% Test reject payload with missing signatures
-    TestPayloadSigners =
-        fun(PrivKeys) ->
-            PayloadSpec1 = PayloadSpec#{round => ChannelRound + 2},
-            PayloadMissingS = aesc_test_utils:payload(ChannelId, PubKey1, PubKey2,
-                                                  PrivKeys, PayloadSpec1),
-            TxSpecMissingS = aesc_test_utils:slash_tx_spec(ChannelId, PubKey1,
-                                                      PayloadMissingS, PoI, S),
-            {ok, TxMissingS} = aesc_slash_tx:new(TxSpecMissingS),
-            {error, signature_check_failed} =
-                aetx:check(TxMissingS, Trees, Height, ?PROTOCOL_VERSION)
-        end,
-    TestPayloadSigners([]),
-    TestPayloadSigners([PrivKey1]),
-    TestPayloadSigners([PrivKey2]),
-
-    %% Test reject payload with wrong signers
-    TestPayloadWrongPeers =
-        fun(I, P, PrivKeys) ->
-            ChannelAmount = aesc_channels:total_amount(Ch),
-            IAmt = rand:uniform(ChannelAmount),
-            RAmt = ChannelAmount - IAmt,
-            PoI3 = aesc_test_utils:proof_of_inclusion([{I, IAmt}, {P, RAmt}]),
-            PayloadMissingS = aesc_test_utils:payload(ChannelId, I, P,
-                                                  PrivKeys,
-                                                  PayloadSpec#{initiator_amount => IAmt,
-                                                               responder_amount => RAmt,
-                                                               round => ChannelRound + 2
-                                                              }),
-            TxSpecMissingS = aesc_test_utils:slash_tx_spec(ChannelId, I,
-                                                      PayloadMissingS, PoI3, S),
-            {ok, TxMissingS} = aesc_slash_tx:new(TxSpecMissingS),
-            {error, signature_check_failed} =
-                aetx:check(TxMissingS, Trees, Height, ?PROTOCOL_VERSION)
-        end,
-    TestPayloadWrongPeers(PubKey1, PubKey3, [PrivKey1, PrivKey3]),
-    TestPayloadWrongPeers(PubKey2, PubKey3, [PrivKey2, PrivKey3]),
-
-    %% Test existing channel's payload
-    {PubKey21, PubKey22, ChannelId2, _, S2} = create(Cfg0),  % no pre-stuffed delegates!
-    Trees2 = aens_test_utils:trees(S2),
-    PrivKey21 = aesc_test_utils:priv_key(PubKey21, S2),
-    PrivKey22 = aesc_test_utils:priv_key(PubKey22, S2),
-    Payload2 = aesc_test_utils:payload(ChannelId2, PubKey21, PubKey22,
-                                      [PrivKey21, PrivKey22], PayloadSpec),
-    TxPayload2Spec = aesc_test_utils:slash_tx_spec(ChannelId, PubKey21,
-                                                      Payload2, PoI, S2),
-    {ok, TxPayload2} = aesc_slash_tx:new(TxPayload2Spec),
-    {error, channel_does_not_exist} =
-                aetx:check(TxPayload2, Trees2, Height + 2, ?PROTOCOL_VERSION),
-    ok.
-
-%%%===================================================================
-%%% Settle
-%%%===================================================================
-
-settle(Cfg) ->
-    {PubKey1, PubKey2, ChannelId, _, S0} = create(Cfg),
-    PrivKey1 = aesc_test_utils:priv_key(PubKey1, S0),
-    PrivKey2 = aesc_test_utils:priv_key(PubKey2, S0),
-
-    %% Get channel and account funds
-
-    {Acc1Balance0, Acc2Balance0} = get_balances(PubKey1, PubKey2, S0),
-    Ch0 = aesc_test_utils:get_channel(ChannelId, S0),
-
-
-    100 = ChannelAmount = aesc_channels:total_amount(Ch0),
-
-    %% Create close_mutual tx and apply it on state trees
-    Test =
-        fun(From, IAmt, RAmt, Fee) ->
-            Ch = aesc_test_utils:close_solo(Ch0, #{initiator_amount => IAmt,
-                                                   responder_amount => RAmt}),
-            ClosesAt = aesc_channels:closes_at(Ch),
-            ChannelAmount = IAmt + RAmt, %% assert
-
-            S = aesc_test_utils:set_channel(Ch, S0),
-            Trees = aens_test_utils:trees(S),
-
-            TxSpec = aesc_test_utils:settle_tx_spec(ChannelId, From,
-                                                    #{initiator_amount => IAmt,
-                                                      responder_amount => RAmt,
-                                                      ttl => 1001,
-                                                      fee    => Fee}, S),
-            {ok, Tx} = aesc_settle_tx:new(TxSpec),
-            SignedTx = aec_test_utils:sign_tx(Tx, [PrivKey1, PrivKey2]),
-            {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
-                                        [SignedTx], Trees, ClosesAt, ?PROTOCOL_VERSION),
-            S1 = aesc_test_utils:set_trees(Trees1, S),
-
-            {Acc1Balance1, Acc2Balance1} = get_balances(PubKey1, PubKey2, S1),
-            {IFee, RFee} =
-                case From of
-                    PubKey1 -> {Fee, 0};
-                    PubKey2 -> {0, Fee}
-                end,
-            % ensure balances are updated
-            {_, {_, _, _, Acc1Balance1, _}, {_, _, _, Acc2Balance1, _}} =
-             {Fee,  {Acc1Balance0, IFee, IAmt, Acc1Balance0 + IAmt - IFee, Acc1Balance1},
-                    {Acc2Balance0, RFee, RAmt, Acc2Balance0 + RAmt - RFee, Acc2Balance1}},
-            none = aesc_test_utils:lookup_channel(ChannelId, S1),
-            {IAmt, RAmt}
-        end,
-    100 = ChannelAmount, % expectation on aesc_test_utils:create_tx_spec/3
-    lists:foreach(
-        fun(From) ->
-            Fee = 10,
-            % normal cases
-            {50, 50} = Test(From, 50, ChannelAmount - 50, Fee),
-            {20, 80} = Test(From, 20, ChannelAmount - 20, Fee)
-        end,
-        [PubKey1, PubKey2]),
-    ok.
-
-settle_negative(Cfg) ->
-    {PubKey1, _PubKey2, ChannelId, _, S0} = create(Cfg),
-    Trees0 = aesc_test_utils:trees(S0),
-    Height = 2,
-
-    Ch0 = aesc_test_utils:get_channel(ChannelId, S0),
-    100 = ChannelAmount = aesc_channels:total_amount(Ch0),
-
-    %% Test not closed at all
-    TxSpec0 = aesc_test_utils:settle_tx_spec(ChannelId, PubKey1,
-                                        #{initiator_amount => ChannelAmount,
-                                          responder_amount => 0}, S0),
-    {ok, Tx0} = aesc_settle_tx:new(TxSpec0),
-    {error, channel_not_closed} =
-        aetx:check(Tx0, Trees0, Height, ?PROTOCOL_VERSION),
-
-    %% Test not closed yet
-    Ch = aesc_test_utils:close_solo(Ch0, #{initiator_amount => ChannelAmount,
-                                           responder_amount => 0}),
-    ClosesAt = aesc_channels:closes_at(Ch),
-    S   = aesc_test_utils:set_channel(Ch, S0),
-    ChannelAmount = aesc_channels:total_amount(Ch),
-    TxSpec = aesc_test_utils:settle_tx_spec(ChannelId, PubKey1,
-                                            #{initiator_amount => ChannelAmount,
-                                              responder_amount => 0,
-                                              ttl => ClosesAt + 1}, S),
-    Trees = aesc_test_utils:trees(S),
-    {ok, Tx} = aesc_settle_tx:new(TxSpec),
-    {error, channel_not_closed} =
-        aetx:check(Tx, Trees, ClosesAt - 1, ?PROTOCOL_VERSION),
-
-    %% Test bad from account key
-    BadPubKey = <<42:32/unit:8>>,
-    TxSpec1 = aesc_test_utils:settle_tx_spec(ChannelId, BadPubKey,
-                                                   #{nonce => 2}, S),
-    {ok, Tx1} = aesc_settle_tx:new(TxSpec1),
-    {error, account_not_found} =
-        aetx:check(Tx1, Trees, ClosesAt, ?PROTOCOL_VERSION),
-
-    %% Test insufficient different tokens distribution than in channel
-    TxSpec2 = aesc_test_utils:settle_tx_spec(
-                ChannelId, PubKey1,
-                #{initiator_amount => 1,
-                  responder_amount => ChannelAmount - 1,
-                  fee    => 2}, S),
-    {ok, Tx2} = aesc_settle_tx:new(TxSpec2),
-    {error, wrong_amt} =
-        aetx:check(Tx2, Trees, ClosesAt, ?PROTOCOL_VERSION),
-
-    %% Test too high from account nonce
-    TxSpec3 = aesc_test_utils:settle_tx_spec(ChannelId, PubKey1,
-                                                   #{nonce => 0}, S),
-    {ok, Tx3} = aesc_settle_tx:new(TxSpec3),
-    {error, account_nonce_too_high} =
-        aetx:check(Tx3, Trees, ClosesAt, ?PROTOCOL_VERSION),
-
-    %% Test too low TTL
-    TxSpec4 = aesc_test_utils:settle_tx_spec(ChannelId, PubKey1, #{ttl => ClosesAt - 1}, S),
-    {ok, Tx4} = aesc_settle_tx:new(TxSpec4),
-    {error, ttl_expired} =
-        aetx:check(Tx4, Trees, ClosesAt, ?PROTOCOL_VERSION),
-
-    %% Test channel does not exist
-    TxSpec5 = aesc_test_utils:settle_tx_spec(?BOGUS_CHANNEL, PubKey1,
-                                             #{ttl => ClosesAt}, S),
-    {ok, Tx5} = aesc_settle_tx:new(TxSpec5),
-    {error, channel_does_not_exist} =
-        aetx:check(Tx5, Trees, ClosesAt, ?PROTOCOL_VERSION),
-
-    %% Test only one settle
-    PrivKey1 = aesc_test_utils:priv_key(PubKey1, S),
-    SignedTx = aec_test_utils:sign_tx(Tx, [PrivKey1]),
-    {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
-                                [SignedTx], Trees, ClosesAt, ?PROTOCOL_VERSION),
-    S5 = aesc_test_utils:set_trees(Trees1, S),
-
-    TxSpec6 = aesc_test_utils:settle_tx_spec(ChannelId, PubKey1,
-                                      #{initiator_amount => ChannelAmount,
-                                        responder_amount => 0}, S5),
-    {ok, Tx6} = aesc_settle_tx:new(TxSpec6),
-    {error, channel_does_not_exist} =
-        aetx:check(Tx6, Trees1, ClosesAt + 2, ?PROTOCOL_VERSION),
-  ok.
-
-%%%===================================================================
-%%% Snapshot solo
-%%%===================================================================
-
-snapshot_solo(Cfg) ->
-    Round = 43,
-    StateHashSize = aec_base58c:byte_size_for_type(state),
-    StateHash = <<43:StateHashSize/unit:8>>,
-    Test =
-        fun(Snapshoter) ->
-            run(#{cfg => Cfg},
-                [positive(fun create_channel_/2),
-                set_from(Snapshoter),
-                set_prop(round, Round),
-                set_prop(state_hash, StateHash),
-                positive(fun snapshot_solo_/2),
-                fun(#{channel_id := ChannelId, state := S} = Props) ->
-                    % ensure channel had been updated
-                    Channel = aesc_test_utils:get_channel(ChannelId, S),
-                    Round = aesc_channels:round(Channel),
-                    StateHash = aesc_channels:state_hash(Channel),
-                    Props
-                end
-                ])
-        end,
-    Test(initiator),
-    Test(responder).
-
-% no one can post a snapshot_tx to a closed channel
-snapshot_closed_channel(Cfg) ->
-    Test =
-        fun(Snapshoter) ->
-            run(#{cfg => Cfg},
-                [positive(fun create_channel_/2),
-                set_from(initiator),
-                positive(fun close_mutual_/2),
-                fun(#{channel_id := ChannelId, state := S} = Props) ->
-                    % ensure channel is closed
-                    none = aesc_test_utils:lookup_channel(ChannelId, S),
-                    Props
-                end,
-                set_from(Snapshoter),
-                negative(fun snapshot_solo_/2, {error, channel_does_not_exist})])
-        end,
-    Test(initiator),
-    Test(responder).
-
-% no one can post a snapshot_tx to a closing channel, not even the one that
-% initiated the close
-snapshot_closing_channel(Cfg) ->
-    Test =
-        fun(Closer, Snapshoter) ->
-            run(#{cfg => Cfg},
-                [positive(fun create_channel_/2),
-                set_from(Closer),
-                positive(fun close_solo_/2),
-                fun(#{channel_id := ChannelId, state := S} = Props) ->
-                    % make sure the channel is not active any more
-                    ClosedCh = aesc_test_utils:get_channel(ChannelId, S),
-                    false = aesc_channels:is_active(ClosedCh),
-                    Props
-                end,
-                set_from(Snapshoter),
-                negative(fun snapshot_solo_/2, {error, channel_not_active})])
-        end,
-    Test(initiator, initiator),
-    Test(initiator, responder),
-    Test(responder, initiator),
-    Test(responder, responder),
-    ok.
-
-% no one can overwrite a state, not even the one that posted it
-snapshot_older_state(Cfg) ->
-    Test =
-        fun(First, Second) ->
-            run(#{cfg => Cfg},
-                [positive(fun create_channel_/2),
-                set_prop(round, 42),
-                set_from(First),
-                positive(fun snapshot_solo_/2),
-                set_from(Second),
-                set_prop(round, 41),
-                negative(fun snapshot_solo_/2, {error, old_round})])
-        end,
-    Test(initiator, initiator),
-    Test(initiator, responder),
-    Test(responder, initiator),
-    Test(responder, responder),
-    ok.
-
-% snapshot_tx calls to a missing channel are rejected
-snapshot_missing_channel(Cfg) ->
-    ChannelHashSize = aec_base58c:byte_size_for_type(channel),
-    FakeChannelId = <<42:ChannelHashSize/unit:8>>,
-    Test =
-        fun(Snapshoter) ->
-            run(#{cfg => Cfg},
-                [positive(fun create_channel_/2),
-                set_prop(channel_id, FakeChannelId),
-                set_from(Snapshoter),
-                negative(fun snapshot_solo_/2, {error, channel_does_not_exist})])
-        end,
-    Test(initiator),
-    Test(responder).
-
-% snapshot_tx calls from another channel are rejected
-snapshot_payload_from_another_channel(Cfg) ->
-    Test =
-        fun(Snapshoter) ->
-            run(#{cfg => Cfg},
-                [positive(fun create_channel_/2), % create a channelA
-                 create_payload(), % produce a payload for channelA
-                 % create another channelB and replace the old one with the
-                 % participansts as well
-                 positive(fun create_channel_/2),
-                 set_from(Snapshoter),
-                 % use the payload of channelA in a snapshot_tx for channelB
-                 negative(fun snapshot_solo_/2, {error, bad_state_channel_id})])
-        end,
-    Test(initiator),
-    Test(responder).
-
+    Props#{ channel_id        => ChannelId,
+            initiator_amount  => IAmt,
+            responder_amount  => RAmt,
+            initiator_pubkey  => PubKey1,
+            responder_pubkey  => PubKey2,
+            fee               => Fee,
+            height            => Height,
+            state             => S0,
+            initiator_privkey => PrivKey1,
+            responder_privkey => PrivKey2}.
 
 close_solo_(#{channel_id        := ChannelId,
               from              := From,
@@ -1339,31 +1460,58 @@ close_solo_(#{channel_id        := ChannelId,
               responder_privkey := RPrivkey} = Props, Expected) ->
 
     %% Create close_solo tx and apply it on state trees
+    Round = maps:get(round, Props, 10),
     PayloadSpec = #{initiator_amount => IAmt,
-                    responder_amount => RAmt},
-    Payload = aesc_test_utils:payload(ChannelId, IPubkey, RPubkey,
-                                    [IPrivkey, RPrivkey], PayloadSpec),
-    PoI = aesc_test_utils:proof_of_inclusion([{IPubkey, IAmt}, {RPubkey, RAmt}]),
+                    responder_amount => RAmt,
+                    round => Round},
+    Payload = maps:get(payload, Props,
+                        aesc_test_utils:payload(ChannelId, IPubkey, RPubkey,
+                                    [IPrivkey, RPrivkey], PayloadSpec)),
+    PoI =  maps:get(poi, Props,
+                    aesc_test_utils:proof_of_inclusion([{IPubkey, IAmt},
+                                                        {RPubkey, RAmt}])),
+    Spec =
+        case Props of
+            #{nonce := Nonce} -> #{fee => Fee, nonce => Nonce};
+            _ -> #{fee => Fee}
+        end,
     TxSpec = aesc_test_utils:close_solo_tx_spec(ChannelId, From, Payload,
-                                            PoI, #{fee => Fee}, S),
+                                            PoI, Spec, S),
     {ok, Tx} = aesc_close_solo_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, [FromPrivkey]),
     apply_on_trees_(Props, SignedTx, S, Expected).
 
-create_payload() ->
-    fun(#{channel_id        := ChannelId,
-          initiator_amount  := IAmt,
-          responder_amount  := RAmt,
-          initiator_pubkey  := IPubkey,
-          responder_pubkey  := RPubkey,
-          initiator_privkey := IPrivkey,
-          responder_privkey := RPrivkey} = Props) ->
-        PayloadSpec = #{initiator_amount => IAmt,
-                        responder_amount => RAmt},
-        Payload = aesc_test_utils:payload(ChannelId, IPubkey, RPubkey,
-                                        [IPrivkey, RPrivkey], PayloadSpec),
-        Props#{payload => Payload}
-    end.
+slash_(#{channel_id        := ChannelId,
+         from              := From,
+         from_privkey      := FromPrivkey,
+         initiator_amount  := IAmt,
+         responder_amount  := RAmt,
+         initiator_pubkey  := IPubkey,
+         responder_pubkey  := RPubkey,
+         fee               := Fee,
+         state             := S,
+         initiator_privkey := IPrivkey,
+         responder_privkey := RPrivkey} = Props, Expected) ->
+
+    %% Create slash tx and apply it on state trees
+    Round = maps:get(round, Props, 10),
+    PayloadSpec = #{initiator_amount => IAmt,
+                    responder_amount => RAmt,
+                    round => Round},
+    Payload = maps:get(payload, Props,
+                        aesc_test_utils:payload(ChannelId, IPubkey, RPubkey,
+                                    [IPrivkey, RPrivkey], PayloadSpec)),
+    PoI = aesc_test_utils:proof_of_inclusion([{IPubkey, IAmt}, {RPubkey, RAmt}]),
+    Spec =
+        case Props of
+            #{nonce := Nonce} -> #{fee => Fee, nonce => Nonce};
+            _ -> #{fee => Fee}
+        end,
+    TxSpec = aesc_test_utils:slash_tx_spec(ChannelId, From, Payload,
+                                            PoI, Spec, S),
+    {ok, Tx} = aesc_slash_tx:new(TxSpec),
+    SignedTx = aec_test_utils:sign_tx(Tx, [FromPrivkey]),
+    apply_on_trees_(Props, SignedTx, S, Expected).
 
 close_mutual_(#{channel_id      := ChannelId,
                 initiator_amount  := IAmt,
@@ -1373,45 +1521,20 @@ close_mutual_(#{channel_id      := ChannelId,
                 state             := S,
                 initiator_privkey := PrivKey1,
                 responder_privkey := PrivKey2} = Props, Expected) ->
-        TxSpec = aesc_test_utils:close_mutual_tx_spec(ChannelId,
-                                                #{initiator_amount => IAmt - Fee,
-                                                  initiator_account => IPubkey,
-                                                  responder_amount => RAmt,
-                                                  fee    => Fee}, S),
-        {ok, Tx} = aesc_close_mutual_tx:new(TxSpec),
-        SignedTx = aec_test_utils:sign_tx(Tx, [PrivKey1, PrivKey2]),
-        apply_on_trees_(Props, SignedTx, S, Expected).
+      Spec0 = #{initiator_amount => IAmt,
+                initiator_account => IPubkey,
+                responder_amount => RAmt,
+                fee    => Fee},
+      Spec =
+          case Props of
+              #{nonce := Nonce} -> Spec0#{nonce => Nonce};
+              _ -> Spec0
+          end,
 
-
-create_channel_(#{cfg := Cfg} = Props, _) ->
-    CreateOpts =
-        case maps:get(state, Props, undefined) of
-            undefined -> #{};
-            State -> #{state => State}
-        end,
-    {PubKey1, PubKey2, ChannelId, _, S0} = create(Cfg, CreateOpts),
-    PrivKey1 = aesc_test_utils:priv_key(PubKey1, S0),
-    PrivKey2 = aesc_test_utils:priv_key(PubKey2, S0),
-
-    Height = 2,
-
-    %% Get channel and account funds
-
-    IAmt = 30,
-    RAmt = 70,
-    Fee = 2,
-    %% expected amounts
-    100 = IAmt + RAmt,
-    Props#{ channel_id        => ChannelId,
-            initiator_amount  => IAmt,
-            responder_amount  => RAmt,
-            initiator_pubkey  => PubKey1,
-            responder_pubkey  => PubKey2,
-            fee               => Fee,
-            height            => Height,
-            state             => S0,
-            initiator_privkey => PrivKey1,
-            responder_privkey => PrivKey2}.
+      TxSpec = aesc_test_utils:close_mutual_tx_spec(ChannelId, Spec, S),
+      {ok, Tx} = aesc_close_mutual_tx:new(TxSpec),
+      SignedTx = aec_test_utils:sign_tx(Tx, [PrivKey1, PrivKey2]),
+      apply_on_trees_(Props, SignedTx, S, Expected).
 
 snapshot_solo_(#{ channel_id        := ChannelId,
                   from              := From,
@@ -1424,7 +1547,6 @@ snapshot_solo_(#{ channel_id        := ChannelId,
                   state             := S,
                   initiator_privkey := IPrivkey,
                   responder_privkey := RPrivkey} = Props, Expected) ->
-
     Round = maps:get(round, Props, 42),
     StateHashSize = aec_base58c:byte_size_for_type(state),
     StateHash = maps:get(state_hash, Props, <<42:StateHashSize/unit:8>>),
@@ -1436,7 +1558,6 @@ snapshot_solo_(#{ channel_id        := ChannelId,
                        aesc_test_utils:payload(ChannelId, IPubkey, RPubkey,
                                       [IPrivkey, RPrivkey], PayloadSpec)),
 
-
     SnapshotTxSpec = aesc_test_utils:snapshot_solo_tx_spec(ChannelId, From,
                            Payload, #{fee => Fee},S),
     {ok, SnapshotTx} = aesc_snapshot_solo_tx:new(SnapshotTxSpec),
@@ -1445,43 +1566,185 @@ snapshot_solo_(#{ channel_id        := ChannelId,
     apply_on_trees_(Props, SignedTx, S, Expected).
 
 
-positive(Fun) ->
-    fun(Props) -> Fun(Props, positive) end.
+settle_(#{channel_id        := ChannelId,
+          from              := From,
+          from_privkey      := FromPrivkey,
+          initiator_amount  := IAmt,
+          responder_amount  := RAmt,
+          fee               := Fee,
+          state             := S} = Props, Expected) ->
+    Spec0 = #{initiator_amount => IAmt,
+              responder_amount => RAmt,
+              ttl => 1001,
+              fee    => Fee},
+    Spec =
+        case Props of
+            #{nonce := Nonce} -> Spec0#{nonce => Nonce};
+            _ -> Spec0
+        end,
+    TxSpec = aesc_test_utils:settle_tx_spec(ChannelId, From, Spec, S),
+    {ok, Tx} = aesc_settle_tx:new(TxSpec),
+    SignedTx = aec_test_utils:sign_tx(Tx, [FromPrivkey]),
+    apply_on_trees_(Props, SignedTx, S, Expected).
 
-negative(Fun, ErrMsg) ->
-    fun(Props) -> Fun(Props, {negative, ErrMsg}) end.
-
-set_from(Role) ->
-    fun(Props) ->
-        {KeyPub, KeyPriv} =
-            case Role of
-                initiator -> {initiator_pubkey, initiator_privkey};
-                responder -> {responder_pubkey, responder_privkey}
+deposit_(#{channel_id        := ChannelId,
+           from              := From,
+           from_privkey      := FromPrivkey,
+           fee               := Fee,
+           amount            := Amount,
+           state             := S} = Props, Expected) ->
+    Spec =
+        lists:foldl(
+            fun(P, AccumSpec) ->
+                case maps:get(P, Props, not_found) of
+                    not_found -> AccumSpec;
+                    V -> maps:put(P, V, AccumSpec)
+                end
             end,
-        PubKey = maps:get(KeyPub, Props),
-        PrivKey = maps:get(KeyPriv, Props),
-        Props#{from => PubKey, from_privkey => PrivKey}
-    end.
+            #{amount => Amount, fee => Fee},
+            [nonce, state_hash]),
+    TxSpec = aesc_test_utils:deposit_tx_spec(ChannelId, From, Spec, S),
+    {ok, Tx} = aesc_deposit_tx:new(TxSpec),
+    SignedTx = aec_test_utils:sign_tx(Tx, [FromPrivkey]),
+    apply_on_trees_(Props, SignedTx, S, Expected).
 
-set_prop(Key, Value) ->
-    fun(Props) ->
-        maps:put(Key, Value, Props)
-    end.
+withdraw_(#{channel_id        := ChannelId,
+            from              := From,
+            from_privkey      := FromPrivkey,
+            fee               := Fee,
+            amount            := Amount,
+            state             := S} = Props, Expected) ->
+    Spec =
+        lists:foldl(
+            fun(P, AccumSpec) ->
+                case maps:get(P, Props, not_found) of
+                    not_found -> AccumSpec;
+                    V -> maps:put(P, V, AccumSpec)
+                end
+            end,
+            #{amount => Amount, fee => Fee},
+            [nonce, state_hash]),
+    TxSpec = aesc_test_utils:withdraw_tx_spec(ChannelId, From,
+                                              Spec, S),
+    {ok, Tx} = aesc_withdraw_tx:new(TxSpec),
+    SignedTx = aec_test_utils:sign_tx(Tx, [FromPrivkey]),
+    apply_on_trees_(Props, SignedTx, S, Expected).
 
-run(Cfg, Funs) ->
-    lists:foldl(
-        fun(Fun, Props) -> Fun(Props) end,
-        Cfg,
-        Funs).
+test_both_wrong_nonce(Cfg, Fun) ->
+    test_both_wrong_nonce(Cfg, Fun, #{}).
 
-apply_on_trees_(#{height := Height} = Props, SignedTx, S, positive) ->
-    Trees = aens_test_utils:trees(S),
-    {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
-                                [SignedTx], Trees, Height, ?PROTOCOL_VERSION),
-    S1 = aesc_test_utils:set_trees(Trees1, S),
-    Props#{state => S1};
-apply_on_trees_(#{height := Height} = Props, SignedTx, S, {negative, ExpectedError}) ->
-    Trees = aens_test_utils:trees(S),
-    Tx = aetx_sign:tx(SignedTx),
-    ExpectedError =  aetx:check(Tx, Trees, Height, ?PROTOCOL_VERSION),
-    Props.
+test_both_wrong_nonce(Cfg, Fun, InitProps) ->
+    AccountNonce = 42,
+    Test =
+        fun(Poster, TestNonce, Error) ->
+            run(InitProps#{cfg => Cfg},
+                [positive(fun create_channel_/2),
+                 set_from(Poster),
+                 fun(#{state := S0, from := From} = Props) ->
+                    S = aesc_test_utils:set_account_nonce(From, AccountNonce, S0),
+                    Props#{state => S}
+                 end,
+                 set_prop(nonce, TestNonce),
+                 negative(Fun, {error, Error})])
+        end,
+    lists:foreach(
+        fun(Poster) ->
+            Test(Poster, AccountNonce - 1,  account_nonce_too_high),
+            Test(Poster, AccountNonce,      account_nonce_too_high),
+            Test(Poster, AccountNonce + 2,  account_nonce_too_low)
+        end,
+        ?ROLES),
+    ok.
+
+test_both_payload_from_different_channel(Cfg, Fun) ->
+    Test =
+        fun(Poster) ->
+            run(#{cfg => Cfg},
+               [positive(fun create_channel_/2), % create a channelA
+                create_payload(), % produce a payload for channelA
+                % create another channelB and replace the old one with the
+                % participansts as well
+                positive(fun create_channel_/2),
+                set_from(Poster),
+                % use the payload of channelA in a snapshot_tx for channelB
+                negative(Fun, {error, bad_state_channel_id})])
+        end,
+    [Test(Role) || Role <- ?ROLES],
+    ok.
+
+test_payload_not_both_signed(Cfg, SpecFun, CreateTxFun) ->
+    Test =
+        fun(Poster) ->
+            run(#{cfg => Cfg},
+               [positive(fun create_channel_/2), % create a channelA
+                set_from(Poster),
+                fun(#{channel_id        := ChannelId,
+                      initiator_pubkey  := I,
+                      responder_pubkey  := R,
+                      initiator_privkey := IPriv,
+                      responder_privkey := RPriv,
+                      initiator_amount  := IAmt,
+                      responder_amount  := RAmt,
+                      from              := From,
+                      state             := S,
+                      height            := Height}) ->
+                    lists:foreach(
+                        fun(PrivKeys) ->
+                            PayloadSpec = #{initiator_amount => IAmt,
+                                            responder_amount => RAmt},
+                            PayloadMissingS = aesc_test_utils:payload(ChannelId, I, R,
+                                                          PrivKeys, PayloadSpec),
+                            PoI = aesc_test_utils:proof_of_inclusion([{I, IAmt},
+                                                                      {R, RAmt}]),
+                            TxSpecMissingS = SpecFun(ChannelId, From,
+                                                    PayloadMissingS, PoI, S),
+                            {ok, TxMissingS} = CreateTxFun(TxSpecMissingS),
+                            Trees = aesc_test_utils:trees(S),
+                            {error, signature_check_failed} =
+                                aetx:check(TxMissingS, Trees, Height, ?PROTOCOL_VERSION)
+                        end,
+                        [[],       % not signed at all
+                         [IPriv],  % signed only by initiator
+                         [RPriv]]) % signed only by responder
+                end])
+        end,
+    [Test(Role) || Role <- ?ROLES],
+    ok.
+
+test_both_missing_channel(Cfg, Fun) ->
+    test_both_missing_channel(Cfg, Fun, #{}).
+
+test_both_missing_channel(Cfg, Fun, InitProps) ->
+    ChannelHashSize = aec_base58c:byte_size_for_type(channel),
+    FakeChannelId = <<42:ChannelHashSize/unit:8>>,
+    Test =
+        fun(Poster) ->
+            run(InitProps#{cfg => Cfg},
+               [positive(fun create_channel_/2),
+                set_prop(channel_id, FakeChannelId),
+                set_from(Poster),
+                negative(Fun, {error, channel_does_not_exist})])
+        end,
+    [Test(Role) || Role <- ?ROLES],
+    ok.
+
+test_both_closing_channel(Cfg, Fun) ->
+    Test =
+        fun(Closer, Poster) ->
+            run(#{cfg => Cfg},
+               [positive(fun create_channel_/2),
+                set_from(Closer),
+                positive(fun close_solo_/2),
+                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                    % make sure the channel is not active any more
+                    ClosedCh = aesc_test_utils:get_channel(ChannelId, S),
+                    false = aesc_channels:is_active(ClosedCh),
+                    Props
+                end,
+                set_from(Poster),
+                negative(Fun, {error, channel_not_active})])
+        end,
+    [Test(Closer, Poster) || Closer <- ?ROLES,
+                             Poster <- ?ROLES],
+    ok.
+
