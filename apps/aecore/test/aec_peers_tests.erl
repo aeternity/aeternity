@@ -112,10 +112,10 @@ aec_peers_test_() ->
                 fun test_ping/0},
         {setup, fun setup/0, fun teardown/1, fun test_connection_conflict/0},
         {setup, fun() -> setup([
-                    {peer_unblock_interval, 4000, 900000}
+                    {peer_unblock_interval, 2000, 900000}
                 ]) end,
                 fun teardown/1,
-                fun test_blocking/0}
+                {timeout, 12, fun test_blocking/0}}
     ]}
 ].
 
@@ -128,6 +128,11 @@ test_single_trusted_peer() ->
     ?assertMatch(false, aec_peers:is_blocked(Id)),
     ?assertMatch([], aec_peers:blocked_peers()),
     ?assertMatch([], aec_peers:connected_peers()),
+    ?assertMatch([], aec_peers:available_peers()),
+    ?assertMatch([], aec_peers:available_peers(both)),
+    ?assertMatch([], aec_peers:available_peers(verified)),
+    ?assertMatch([], aec_peers:available_peers(unverified)),
+    ?assertEqual(0, aec_peers:count(available)),
     ?assertMatch([], aec_peers:get_random(all)),
     ?assertMatch({error, _}, aec_peers:get_connection(Id)),
 
@@ -139,7 +144,8 @@ test_single_trusted_peer() ->
     ?assertEqual(0, aec_peers:count(unverified)),
     ?assertEqual(0, aec_peers:count(standby)),
 
-    aec_peers:add_trusted(peer(PubKey, "aeternity.com", 4000)),
+    Peer = peer(PubKey, "aeternity.com", 4000),
+    aec_peers:add_trusted(Peer),
     {ok, Conn} = ?assertCalled(connect, [#{ r_pubkey := PubKey }], {ok, _}, 100),
 
     ?assertMatch([], aec_peers:connected_peers()),
@@ -159,6 +165,12 @@ test_single_trusted_peer() ->
     ?assertMatch([#{ pubkey := PubKey }], aec_peers:connected_peers()),
     ?assertMatch([#{ pubkey := PubKey }], aec_peers:get_random(all)),
     ?assertMatch({ok, Conn}, aec_peers:get_connection(Id)),
+
+    ?assertMatch([], aec_peers:available_peers()),
+    ?assertMatch([], aec_peers:available_peers(both)),
+    ?assertMatch([], aec_peers:available_peers(verified)),
+    ?assertMatch([], aec_peers:available_peers(unverified)),
+    ?assertEqual(0, aec_peers:count(available)),
     ok.
 
 
@@ -168,8 +180,16 @@ test_single_normal_peer() ->
     Source = {192, 168, 0, 1},
     PubKey = <<"ef42d46eace742cd">>,
     Id = aec_peers:peer_id(PubKey),
+    Peer = peer(PubKey, <<"aeternity.com">>, 4000),
 
-    aec_peers:add_peers(Source, peer(PubKey, <<"aeternity.com">>, 4000)),
+    aec_peers:add_peers(Source, Peer),
+
+    ?assertMatch([Peer], aec_peers:available_peers()),
+    ?assertMatch([Peer], aec_peers:available_peers(both)),
+    ?assertMatch([], aec_peers:available_peers(verified)),
+    ?assertMatch([Peer], aec_peers:available_peers(unverified)),
+    ?assertEqual(1, aec_peers:count(available)),
+
     {ok, Conn} = ?assertCalled(connect, [#{ r_pubkey := PubKey }], {ok, _}, 150),
 
     ?assertMatch([], aec_peers:connected_peers()),
@@ -189,6 +209,12 @@ test_single_normal_peer() ->
     ?assertMatch([#{ pubkey := PubKey }], aec_peers:connected_peers()),
     ?assertMatch([#{ pubkey := PubKey }], aec_peers:get_random(all)),
     ?assertMatch({ok, Conn}, aec_peers:get_connection(Id)),
+
+    ?assertMatch([], aec_peers:available_peers()),
+    ?assertMatch([], aec_peers:available_peers(both)),
+    ?assertMatch([], aec_peers:available_peers(verified)),
+    ?assertMatch([], aec_peers:available_peers(unverified)),
+    ?assertEqual(0, aec_peers:count(available)),
     ok.
 
 test_multiple_trusted_peers() ->
@@ -890,6 +916,7 @@ test_blocking() ->
     Source = {192, 168, 0, 1},
     Peer1 = peer(1, "192.168.0.1", 1),
     Id1 = aec_peers:peer_id(Peer1),
+    #{ pubkey := PubKey1 } = Peer1,
     Peer2 = peer(2, "192.168.0.2", 2),
     #{ pubkey := PubKey2 } = Peer2,
     Id2 = aec_peers:peer_id(Peer2),
@@ -902,6 +929,7 @@ test_blocking() ->
     A = erlang:system_time(millisecond),
 
     aec_peers:block_peer(Peer1),
+    ?assertEqual(1, aec_peers:count(blocked)),
     ?assert(aec_peers:is_blocked(Id1)),
     ?assertEqual([Peer1], aec_peers:blocked_peers()),
 
@@ -922,6 +950,7 @@ test_blocking() ->
 
     aec_peers:block_peer(Peer2),
     ?assertCalled(disconnect, [Conn2], ok, 100),
+    ?assertEqual(2, aec_peers:count(blocked)),
     ?assert(aec_peers:is_blocked(Id2)),
     ?assertEqual(lists:sort([Peer1, Peer2]),
                  lists:sort(aec_peers:blocked_peers())),
@@ -936,6 +965,7 @@ test_blocking() ->
 
     aec_peers:block_peer(Peer3),
     ?assertCalled(disconnect, [Conn3], ok, 100),
+    ?assertEqual(3, aec_peers:count(blocked)),
     ?assert(aec_peers:is_blocked(Id3)),
     ?assertEqual(lists:sort([Peer1, Peer2, Peer3]),
                  lists:sort(aec_peers:blocked_peers())),
@@ -949,6 +979,7 @@ test_blocking() ->
 
     aec_peers:block_peer(Peer4),
     ?assertCalled(disconnect, [Conn4], ok, 100),
+    ?assertEqual(4, aec_peers:count(blocked)),
     ?assert(aec_peers:is_blocked(Id4)),
     ?assertEqual(lists:sort([Peer1, Peer2, Peer3, Peer4]),
                  lists:sort(aec_peers:blocked_peers())),
@@ -956,6 +987,7 @@ test_blocking() ->
     ?assertEqual(0, aec_peers:count(connections)),
 
     aec_peers:unblock_peer(Id2),
+    ?assertEqual(3, aec_peers:count(blocked)),
     ?assertEqual(lists:sort([Peer1, Peer3, Peer4]),
                  lists:sort(aec_peers:blocked_peers())),
 
@@ -969,15 +1001,62 @@ test_blocking() ->
     ?assertEqual(lists:sort([Peer1, Peer3, Peer4]),
                  lists:sort(aec_peers:blocked_peers())),
 
+    % Test peers are unblocked when calling `is_blocked/1` after interval.
+
     B = erlang:system_time(millisecond),
 
-    timer:sleep(4100 - (B - A)),
+    timer:sleep(2100 - (B - A)),
 
     ?assertNot(aec_peers:is_blocked(Id1)),
     ?assertNot(aec_peers:is_blocked(Id2)),
     ?assertNot(aec_peers:is_blocked(Id3)),
     ?assertNot(aec_peers:is_blocked(Id4)),
     ?assertEqual([], aec_peers:blocked_peers()),
+
+    % Test peers are unblocked when accepting peers after interval.
+
+    aec_peers:block_peer(Peer1),
+    {ok, Conn6} = test_mgr_start_inbound(Peer1),
+    ?assertEqual({error, blocked}, conn_peer_accepted(Conn6)),
+    timer:sleep(1000),
+    {ok, Conn7} = test_mgr_start_inbound(Peer1),
+    ?assertEqual({error, blocked}, conn_peer_accepted(Conn7)),
+    timer:sleep(1100),
+    {ok, Conn8} = test_mgr_start_inbound(Peer1),
+    ?assertEqual(permanent, conn_peer_accepted(Conn8)),
+
+    % Test peers are unblocked when connecting to a peer after interval.
+
+    aec_peers:del_peer(Id1),
+    aec_peers:del_peer(Id2),
+    aec_peers:del_peer(Id3),
+    aec_peers:del_peer(Id4),
+
+    aec_peers:block_peer(Peer1),
+
+    aec_peers:add_peers(Source, Peer1),
+    ?assertEqual(0, aec_peers:count(peers)),
+    timer:sleep(1000),
+    aec_peers:add_peers(Source, Peer1),
+    ?assertEqual(0, aec_peers:count(peers)),
+    timer:sleep(1100),
+    aec_peers:add_peers(Source, Peer1),
+    {ok, Conn9} = ?assertCalled(connect, [#{ r_pubkey := PubKey1 }], {ok, _}, 1100),
+    ok = conn_peer_connected(Conn9),
+    ?assertEqual(1, aec_peers:count(peers)),
+    ?assertEqual(1, aec_peers:count(connections)),
+
+    % Check trusted peers cannot be blocked.
+
+    aec_peers:add_trusted(Peer2),
+    {ok, Conn10} = ?assertCalled(connect, [#{ r_pubkey := PubKey2 }], {ok, _}, 1100),
+    ok = conn_peer_connected(Conn10),
+    ?assertEqual(2, aec_peers:count(peers)),
+    ?assertEqual(2, aec_peers:count(connections)),
+    ?assertEqual([], aec_peers:blocked_peers()),
+    aec_peers:block_peer(Peer2),
+    ?assertEqual([], aec_peers:blocked_peers()),
+
     ok.
 
 %=== INTERNAL FUNCTIONS ========================================================

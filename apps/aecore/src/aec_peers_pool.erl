@@ -105,6 +105,9 @@
 -export([release/3]).
 -export([delete/2]).
 
+%% Functions for debug/testing.
+-export([available/2]).
+
 -ifdef(TEST).
 -compile([export_all, nowarn_export_all]).
 -endif.
@@ -662,6 +665,19 @@ release(St, Now, PeerId) ->
 -spec delete(state(), peer_id()) -> state().
 delete(St, PeerId) ->
     del_peer(St, PeerId).
+
+%% @doc Returns the list of available peers.
+%% The result could be very large; use only for debugging/testing.
+-spec available(state(), both | verified | unverified) -> [ext_peer()].
+available(St, verified) ->
+    #?ST{lookup_verif = Lookup} = St,
+    export_results(St, lookup_to_list(Lookup));
+available(St, unverified) ->
+    #?ST{lookup_unver = Lookup} = St,
+    export_results(St, lookup_to_list(Lookup));
+available(St, both) ->
+    #?ST{lookup_verif = Verif, lookup_unver = Unver} = St,
+    export_results(St, lookup_to_list(Verif) ++ lookup_to_list(Unver)).
 
 %=== INTERNAL FUNCTIONS ========================================================
 
@@ -1672,6 +1688,11 @@ lookup_new() ->
         size = 0,
         array = array:new(?LOOKUP_START_SIZE)
     }.
+
+%% Converts a lookup table to a list.
+-spec lookup_to_list(lookup()) -> [peer_id()].
+lookup_to_list(#lookup{array = Array}) ->
+    array:sparse_to_list(Array).
 
 %% Returns the number of element in a lookup table.
 -spec lookup_size(lookup()) -> non_neg_integer().

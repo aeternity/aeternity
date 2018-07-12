@@ -270,6 +270,7 @@ def make_peers_user_config(root_dir, file_name, keys, sync_port, peers, mining):
 
 sync:
     port: {}
+    single_outbound_per_group: false
 
 keys:
     dir: "{}"

@@ -957,6 +957,7 @@ handle_new_txs(S, Msg) ->
     S.
 
 %% -- Send message -----------------------------------------------------------
+send_msg(#{ status := {disconnecting, _ESock} }, _Type, _Msg) -> ok;
 send_msg(#{ status := {connected, ESock} }, Type, Msg) when is_binary(Msg) ->
     do_send(ESock, <<(aec_peer_messages:tag(Type)):16, Msg/binary>>).
 

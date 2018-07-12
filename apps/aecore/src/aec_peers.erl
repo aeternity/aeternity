@@ -35,6 +35,7 @@
 -export([is_blocked/1]).
 -export([count/1]).
 -export([connected_peers/0, connected_peers/1]).
+-export([available_peers/0, available_peers/1]).
 -export([blocked_peers/0]).
 -export([get_random/1, get_random/2]).
 -export([get_connection/1]).
@@ -198,11 +199,30 @@ is_blocked(PeerId) ->
 %%  * `unverified` : Pooled unverified peers.
 %%  * `standby` : Peers that failed and are in standby for retry.
 %%  * `hostnames` : Hostnames pending for resolution to add peers.
--spec count(connections | inbound | outbound | peers
-            | verified | unverified | standby | hostnames)
+-spec count(connections | inbound | outbound | blocked | peers
+            | verified | unverified | available | standby | hostnames)
     -> non_neg_integer().
-count(Tag) ->
+count(Tag)
+  when Tag =:= connections; Tag =:= inbound; Tag =:= outbound;
+       Tag =:= peers; Tag =:= verified; Tag =:= unverified;
+       Tag =:= available; Tag =:= standby; Tag =:= hostnames; Tag =:= blocked
+  ->
     gen_server:call(?MODULE, {count, Tag}).
+
+%% @doc Gets the list of peers available to connect to.
+%% The result could be very large; use only for debugging/testing.
+-spec available_peers() -> [peer_info()].
+available_peers() ->
+    gen_server:call(?MODULE, {available_peers, both}).
+
+%% @doc Gets the list of peers available to connect to.
+%%  * `both': both verified and unverified peers.
+%%  * `verified': only available verified peers.
+%%  * `unverified': only available unverified peers.
+%% The result could be very large; use only for debugging/testing.
+-spec available_peers(both | verified | unverified) -> [peer_info()].
+available_peers(Tag) when Tag =:= both; Tag =:= verified; Tag =:= unverified ->
+    gen_server:call(?MODULE, {available_peers, Tag}).
 
 %% @doc Gets the list of all connected peers.
 -spec connected_peers() -> [peer_info()].
@@ -376,6 +396,8 @@ handle_call({count, Tag}, _From, State) ->
     {reply, count(Tag, State), State};
 handle_call({connected_peers, Tag}, _From, State) ->
     {reply, connected_peers(Tag, State), State};
+handle_call({available_peers, Tag}, _From, State) ->
+    {reply, available_peers(Tag, State), State};
 handle_call(blocked_peers, _From, State) ->
      #state{ blocked = Blocked } = State,
     Result = [ PeerInfo || PeerInfo <- gb_trees:values(Blocked) ],
@@ -509,7 +531,6 @@ safe_max(Value1, Value2) -> max(Value1, Value2).
 %% Updates peer metrics.
 -spec update_peer_metrics(state()) -> state().
 update_peer_metrics(State) ->
-    #state{ pool = Pool, blocked = Blocked } = State,
     aec_metrics:try_update([ae,epoch,aecore,peers,count],
                            conn_count(both, State)),
     aec_metrics:try_update([ae,epoch,aecore,peers,inbound],
@@ -517,13 +538,13 @@ update_peer_metrics(State) ->
     aec_metrics:try_update([ae,epoch,aecore,peers,outbound],
                            conn_count(outbound, State)),
     aec_metrics:try_update([ae,epoch,aecore,peers,verified],
-                           aec_peers_pool:count(Pool, all, verified)),
+                           count(verified, State)),
     aec_metrics:try_update([ae,epoch,aecore,peers,unverified],
-                           aec_peers_pool:count(Pool, all, unverified)),
+                           count(unverified, State)),
     aec_metrics:try_update([ae,epoch,aecore,peers,errored],
-                           aec_peers_pool:count(Pool, standby, both)),
+                           count(standby, State)),
     aec_metrics:try_update([ae,epoch,aecore,peers,blocked],
-                           gb_trees:size(Blocked)),
+                           count(blocked, State)),
     State.
 
 %% Updates the ping metric in function of the outcome.
@@ -555,23 +576,29 @@ api_add_peer(SourceAddr0, PeerInfo, IsTrusted) ->
             gen_server:cast(?MODULE, {add_peer, SourceAddr, Peer})
     end.
 
--spec count(connections | inbound | outbound | peers
-            | verified | unverified | standby | hostnames, state())
+-spec count(connections | inbound | outbound | blocked | peers
+            | verified | unverified | available | standby | hostnames, state())
     -> non_neg_integer().
 count(connections, State) -> conn_count(both, State);
 count(Tag, State) when Tag =:= inbound; Tag =:= outbound ->
     conn_count(Tag, State);
+count(blocked, State) ->
+    #state{ blocked = Blocked } = State,
+    gb_trees:size(Blocked);
 count(peers, State) ->
-    #state{ pool = Pool} = State,
+    #state{ pool = Pool } = State,
     aec_peers_pool:count(Pool, all, both);
+count(available, State) ->
+    #state{ pool = Pool } = State,
+    aec_peers_pool:count(Pool, available, both);
 count(standby, State) ->
-    #state{ pool = Pool} = State,
+    #state{ pool = Pool } = State,
     aec_peers_pool:count(Pool, standby, both);
 count(hostnames, State) ->
-    #state{ hostnames = Hostnames} = State,
+    #state{ hostnames = Hostnames } = State,
     maps:size(Hostnames);
 count(Tag, State) when Tag =:= verified; Tag =:= unverified ->
-    #state{ pool = Pool} = State,
+    #state{ pool = Pool } = State,
     aec_peers_pool:count(Pool, all, Tag).
 
 -spec connected_peers(all | inbound | outbound, state()) -> [peer_info()].
@@ -584,6 +611,10 @@ connected_peers(inbound, #state{ conns = Conns }) ->
 connected_peers(outbound, #state{ conns = Conns }) ->
     [ peer_info(P) || #conn{ peer = P, type = outbound, state = connected }
                       <- maps:values(Conns) ].
+
+-spec available_peers(both | verified | unverified, state()) -> [peer_info()].
+available_peers(Tag, #state{ pool = Pool }) ->
+    [ peer_info(P) || {_, P} <- aec_peers_pool:available(Pool, Tag) ].
 
 %--- OUTBOUND CONNECTION HANDLING FUNCTIONS ------------------------------------
 
@@ -601,6 +632,7 @@ connect(State0) ->
                                      "connections", []),
                     State2;
                 {wait, Delay, State2} ->
+                    epoch_sync:debug("No peers available befor ~b ms", [Delay]),
                     schedule_connect(Delay, State2);
                 {selected, Peer, State2} ->
                     schedule_connect(undefined, start_connection(Peer, State2))
@@ -796,7 +828,8 @@ on_peer_connected(PeerId, Pid, State) ->
 %% Supports not trusted peer address changing.
 -spec on_peer_accepted(inet:ip_address(), peer_info(), pid(), state())
     -> {ok, state()} | {temporary, state()} | {{error, term()}, state()}.
-on_peer_accepted(PeerAddr, PeerInfo, Pid, State) ->
+on_peer_accepted(PeerAddr, PeerInfo, Pid, State0) ->
+    State = maybe_unblock(State0),
     #{ pubkey := PubKey, port := Port } = PeerInfo,
     PeerId  = peer_id(PeerInfo),
     case is_local(PeerId, State) orelse is_blocked(PeerId, State) of
@@ -970,8 +1003,10 @@ on_resolve_hostname(Ref, Host, State) ->
 
 %% Handles event adding a new peer to the pool.
 -spec on_add_peer(inet:ip_address(), peer(), state()) -> state().
-on_add_peer(SourceAddr, Peer, State) ->
+on_add_peer(SourceAddr, Peer, State0) ->
+    State = maybe_unblock(State0),
     PeerId  = peer_id(Peer),
+    #peer{ pubkey = PPK, address = PA, port = PP } = Peer,
     case is_local(PeerId, State) orelse is_blocked(PeerId, State) of
         true ->
             epoch_sync:debug("Peer ~p - will not be added; local or blocked",
@@ -981,9 +1016,9 @@ on_add_peer(SourceAddr, Peer, State) ->
             case pool_find(PeerId, State) of
                 error ->
                     add_peer(SourceAddr, Peer, State);
-                {ok, Peer} ->
+                {ok, #peer{ pubkey = PPK, address = PA, port = PP} = Peer2} ->
                     % Only update gossip time and source.
-                    {_, State2} = pool_update(SourceAddr, Peer, State),
+                    {_, State2} = pool_update(SourceAddr, Peer2, State),
                     State2;
                 {ok, OtherPeer} ->
                     epoch_sync:info("Peer ~p - ignoring peer address changed "
@@ -1020,8 +1055,12 @@ add_peer(SourceAddr, Peer, State) ->
 %% Handles event removing a peer.
 -spec on_del_peer(peer_id(), state()) -> state().
 on_del_peer(PeerId, State) ->
-    epoch_sync:debug("Peer ~p - deleting peer", [ppp(PeerId)]),
-    pool_delete(PeerId, pool_release(PeerId, conn_del(PeerId, State))).
+    case pool_find(PeerId, State) of
+        error -> State;
+        {ok, _Peer} ->
+            epoch_sync:debug("Peer ~p - deleting peer", [ppp(PeerId)]),
+            pool_delete(PeerId, pool_release(PeerId, conn_del(PeerId, State)))
+    end.
 
 %% Handles ping timeout event.
 -spec on_ping_timeout(peer_id(), reference(), state()) -> state().

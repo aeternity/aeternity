@@ -53,7 +53,10 @@
 
 %% AWK script to keep only error, critical, alert and emergency log lines with
 %% all the extra lines following the log lines.
-%% FIXME: Temporarily ignore dispatch_worker errors, remove when fixed.
+%% FIXME: Temporarily ignore dispatch_worker errors, remove when PT-158762778 fixes it.
+%% Example of ignored lines:
+%% 2018-07-10 15:48:59.649 [error] <0.1270.0>@aec_conductor:dispatch_worker:394 Disallowing dispatch of additional create_key_block_candidate worker
+%% 2018-07-10 15:52:10.864 [error] <0.1270.0>@aec_conductor:dispatch_worker:394 Disallowing dispatch of additional micro_sleep worker
 -define(EPOCH_LOG_SCAN_AWK_SCRIPT, "
     /^.*\\[error\\].*aec_conductor:dispatch_worker.*Disallowing dispatch of additional.*$/ {
       matched = 1
@@ -62,8 +65,8 @@
       }
     }
     /^.*\\[(error|critical|alert|emergency)\\].*$/ {
-      matched = 1
       if (!matched) {
+        matched = 1
         buff = $0
       }
     }
@@ -134,8 +137,7 @@
     % Public/private peer key can be specified explicity for the node.
     % Both are required and will be saved, overriding any present keys.
     pubkey => binary(),
-    privkey => binary(),
-    config => #{atom() => term()}
+    privkey => binary()
 }.
 
 %=== COMMON TEST API FUNCTIONS =================================================

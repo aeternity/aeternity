@@ -27,7 +27,8 @@
     select/3,
     reject/3,
     release/3,
-    delete/2
+    delete/2,
+    available/2
 ]).
 
 %=== TEST CASES ================================================================
@@ -47,6 +48,9 @@ empty_pool_test() ->
     ?assertEqual(0, count(P, standby, both)),
     ?assertEqual(0, count(P, standby, verified)),
     ?assertEqual(0, count(P, standby, unverified)),
+    ?assertEqual([], available(P, both)),
+    ?assertEqual([], available(P, verified)),
+    ?assertEqual([], available(P, unverified)),
     ?assertEqual(error, find(P, A)),
     ?assertEqual(undefined, is_verified(P, A)),
     ?assertEqual(undefined, is_unverified(P, A)),
@@ -89,6 +93,9 @@ add_single_normal_test() ->
     ?assertEqual(0, count(P2, standby, both)),
     ?assertEqual(0, count(P2, standby, verified)),
     ?assertEqual(0, count(P2, standby, unverified)),
+    ?assertEqual([{Id1, bar}], available(P2, both)),
+    ?assertEqual([], available(P2, verified)),
+    ?assertEqual([{Id1, bar}], available(P2, unverified)),
     ?assertEqual({ok, bar}, find(P2, Id1)),
     ?assertEqual(false, is_verified(P2, Id1)),
     ?assertEqual(true, is_unverified(P2, Id1)),
@@ -139,6 +146,9 @@ add_single_trusted_test() ->
     ?assertEqual(0, count(P2, standby, both)),
     ?assertEqual(0, count(P2, standby, verified)),
     ?assertEqual(0, count(P2, standby, unverified)),
+    ?assertEqual([{Id1, foo}], available(P2, both)),
+    ?assertEqual([{Id1, foo}], available(P2, verified)),
+    ?assertEqual([], available(P2, unverified)),
     ?assertEqual(true, is_verified(P2, Id1)),
     ?assertEqual(false, is_unverified(P2, Id1)),
     ?assertMatch({[{Id1, foo}], _}, random_subset(P2, all, undefined)),
@@ -198,6 +208,14 @@ multiple_peers_subset_test() ->
     ?assertEqual(TotalCount, count(Pool2, available, both)),
     ?assertEqual(VerifCount, count(Pool2, available, verified)),
     ?assertEqual(UnverCount, count(Pool2, available, unverified)),
+    ?assertEqual(lists:sort([{maps:get(id, P), P} || P <- maps:values(Peers)]),
+                 lists:sort(available(Pool2, both))),
+    ?assertEqual(lists:sort([{maps:get(id, P), P}
+                             || #{trusted := true} = P <- maps:values(Peers)]),
+                 lists:sort(available(Pool2, verified))),
+    ?assertEqual(lists:sort([{maps:get(id, P), P}
+                             || #{trusted := false} = P <- maps:values(Peers)]),
+                 lists:sort(available(Pool2, unverified))),
 
     {S2a, _} = random_subset(Pool2, all, undefined),
     ?assertEqual(TotalCount, length(S2a)),
