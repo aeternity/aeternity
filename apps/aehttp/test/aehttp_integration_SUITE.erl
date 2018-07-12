@@ -62,7 +62,8 @@
 -export(
    [
     post_oracle_register/1,
-    get_oracle_by_pubkey/1
+    get_oracle_by_pubkey/1,
+    post_oracle_extend/1
    ]).
 
 %% off chain endpoints
@@ -395,7 +396,7 @@ groups() ->
      {oracle_txs, [sequence],
       [
        post_oracle_register,
-       get_oracle_by_pubkey
+       post_oracle_extend
       ]},
 
      {off_chain_endpoints, [],
@@ -808,7 +809,16 @@ init_per_testcase(post_oracle_register, Config) ->
      {query_fee, 1},
      {fee, 10},
      {oracle_ttl_type, <<"block">>},
-     {oracle_ttl_value, 2000} | Config];
+     {oracle_ttl_value, 2000} | init_per_testcase_all(Config)];
+init_per_testcase(post_oracle_extend, Config) ->
+    {post_oracle_register, SavedConfig} = ?config(saved_config, Config),
+    OracleTtlDelta = 500,
+    [{account_pubkey, ?config(account_pubkey, SavedConfig)},
+     {oracle_pubkey, ?config(oracle_pubkey, SavedConfig)},
+     {fee, 10},
+     {oracle_ttl_value_final, ?config(oracle_ttl_value, SavedConfig) + OracleTtlDelta},
+     {oracle_ttl_type, <<"delta">>},
+     {oracle_ttl_value, OracleTtlDelta} | init_per_testcase_all(Config)];
 init_per_testcase(_Case, Config) ->
     init_per_testcase_all(Config).
 
@@ -1393,26 +1403,15 @@ post_transactions_sut(Tx) ->
 
 %% /oracles/*
 
-get_oracle_by_pubkey(Config) ->
-    case proplists:get_value(saved_config, Config) of
-        {post_oracle_register, SavedConfig} ->
-            OraclePubkey = proplists:get_value(oracle_pubkey, SavedConfig),
-            get_oracle_by_pubkey(OraclePubkey, Config);
-        undefined ->
-            get_oracle_by_pubkey(undefined, Config)
-    end.
-
-get_oracle_by_pubkey(undefined, _Config) ->
+get_oracle_by_pubkey(_Config) ->
     RandomOraclePubkey = aec_base58c:encode(oracle_pubkey, random_hash()),
     {ok, 404, Error} = get_oracles_by_pubkey_sut(RandomOraclePubkey),
     ?assertEqual(<<"Oracle not found">>, maps:get(<<"reason">>, Error)),
-    ok;
-get_oracle_by_pubkey(OraclePubkey, _Config) ->
-    {ok, 200, Resp} = get_oracles_by_pubkey_sut(OraclePubkey),
-    ?assertEqual(OraclePubkey, maps:get(<<"id">>, Resp)),
     ok.
 
 post_oracle_register(Config) ->
+    Node = ?config(node, Config),
+    OraclePubkey = ?config(oracle_pubkey, Config),
     TxArgs =
         #{account         => ?config(account_pubkey, Config),
           query_format    => ?config(query_format, Config),
@@ -1423,9 +1422,26 @@ post_oracle_register(Config) ->
                                value => ?config(oracle_ttl_value, Config)}},
     {TxHash, Tx} = prepare_tx(oracle_register_tx, TxArgs),
     ok = post_tx(TxHash, Tx),
-    Fun = fun() -> tx_in_chain(TxHash)end,
-    aecore_suite_utils:mine_blocks_until(?config(node, Config), Fun, 10),
-    {save_config, Config}.
+    aecore_suite_utils:mine_blocks_until(Node, fun() -> tx_in_chain(TxHash) end, 10),
+    {ok, 200, Resp} = get_oracles_by_pubkey_sut(OraclePubkey),
+    ?assertEqual(OraclePubkey, maps:get(<<"id">>, Resp)),
+    {save_config, save_config([account_pubkey, oracle_pubkey, oracle_ttl_value], Config)}.
+
+post_oracle_extend(Config) ->
+    Node = ?config(node, Config),
+    OraclePubkey = ?config(oracle_pubkey, Config),
+    TxArgs =
+        #{oracle     => ?config(oracle_pubkey, Config),
+          fee        => ?config(fee, Config),
+          oracle_ttl => #{type  => ?config(oracle_ttl_type, Config),
+                          value => ?config(oracle_ttl_value, Config)}},
+    {TxHash, Tx} = prepare_tx(oracle_extend_tx, TxArgs),
+    ok = post_tx(TxHash, Tx),
+    aecore_suite_utils:mine_blocks_until(Node, fun() -> tx_in_chain(TxHash) end, 10),
+    {ok, 200, Resp} = get_oracles_by_pubkey_sut(OraclePubkey),
+    ?assertEqual(OraclePubkey, maps:get(<<"id">>, Resp)),
+    ?assertEqual(?config(oracle_ttl_value_final, Config), maps:get(<<"expires">>, Resp)),
+    ok.
 
 get_oracles_by_pubkey_sut(Pubkey) ->
     Host = external_address(),
@@ -1460,7 +1476,8 @@ post_tx(TxHash, Tx) ->
 
 %% TODO: use /debug/* when available
 tx_object_http_path(spend_tx) -> "tx/spend";
-tx_object_http_path(oracle_register_tx) -> "tx/oracle/register".
+tx_object_http_path(oracle_register_tx) -> "tx/oracle/register";
+tx_object_http_path(oracle_extend_tx) -> "tx/oracle/extend".
 
 hash(Block) ->
     {ok, Hash0} = aec_blocks:hash_internal_representation(Block),
@@ -1477,6 +1494,15 @@ wait_for_key_block_candidate(N) ->
             timer:sleep(10),
             wait_for_key_block_candidate(N)
     end.
+
+save_config(Keys, Config) ->
+    save_config(Keys, Config, []).
+
+save_config([Key | Rest], Config, Acc) ->
+    save_config(Rest, Config, [{Key, ?config(Key, Config)} | Acc]);
+save_config([], _Config, Acc) ->
+    Acc.
+
 
 %% enpoints
 
