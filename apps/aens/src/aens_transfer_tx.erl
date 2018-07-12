@@ -62,7 +62,10 @@ new(#{account           := Account,
       fee               := Fee} = Args) ->
     account = aec_id:specialize_type(Account),
     name    = aec_id:specialize_type(NameId),
-    account = aec_id:specialize_type(RecipientAccount),
+    case aec_id:specialize_type(RecipientAccount) of
+        account -> ok;
+        name    -> ok
+    end,
     Tx = #ns_transfer_tx{account           = Account,
                          nonce             = Nonce,
                          name_hash         = NameId,
@@ -111,7 +114,9 @@ check(#ns_transfer_tx{nonce = Nonce, fee = Fee} = Tx,
     NameHash = name_hash(Tx),
     Checks =
         [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee) end,
-         fun() -> aens_utils:check_name_claimed_and_owned(NameHash, AccountPubKey, Trees) end],
+         fun() -> aens_utils:check_name_claimed_and_owned(NameHash, AccountPubKey, Trees) end,
+         fun() -> check_recipient_resolvement(Tx, Trees)end
+        ],
 
     case aeu_validation:run(Checks) of
         ok              -> {ok, Trees};
@@ -132,7 +137,7 @@ process(#ns_transfer_tx{fee = Fee, nonce = Nonce} = TransferTx,
     AccountsTree1 = aec_accounts_trees:enter(Account1, AccountsTree0),
 
     Name0 = aens_state_tree:get_name(NameHash, NamesTree0),
-    RecipientPubkey = recipient_pubkey(TransferTx),
+    {ok, RecipientPubkey} = resolve_recipient(TransferTx, NamesTree0),
     Name1 = aens_names:transfer_to(RecipientPubkey, Name0),
     NamesTree1 = aens_state_tree:enter_name(Name1, NamesTree0),
 
@@ -208,12 +213,24 @@ recipient(#ns_transfer_tx{recipient_account = Recipient}) ->
     Recipient.
 
 recipient_pubkey(#ns_transfer_tx{recipient_account = Recipient}) ->
-    %% TODO: Resolve name
     aec_id:specialize(Recipient, account).
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+check_recipient_resolvement(Tx, Trees) ->
+    case resolve_recipient(Tx, aec_trees:ns(Trees)) of
+        {ok,_Pubkey} -> ok;
+        {error, _} = E -> E
+    end.
+
+resolve_recipient(Tx, NTrees) ->
+    case aec_id:specialize(recipient(Tx)) of
+        {account, Pubkey} -> {ok, Pubkey};
+        {name, NameHash} ->
+            aens:resolve_from_hash(account_pubkey, NameHash, NTrees)
+    end.
 
 version() ->
     ?NAME_TRANSFER_TX_VSN.

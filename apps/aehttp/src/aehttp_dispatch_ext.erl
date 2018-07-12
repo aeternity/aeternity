@@ -390,7 +390,8 @@ handle_request('PostNameTransfer', #{'NameTransferTx' := Req}, _Context) ->
                  read_required_params([account, name_hash, recipient_pubkey, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  base58_decode([{account, account, {id_hash, [account_pubkey]}},
-                                {recipient_pubkey, recipient_account, {id_hash, [account_pubkey]}},
+                                {recipient_pubkey, recipient_account,
+                                 {id_hash, [account_pubkey, name]}},
                                 {name_hash, name_hash, {id_hash, [name]}}]),
                  get_nonce_from_account_id(account),
                  unsigned_tx_response(fun aens_transfer_tx:new/1)
