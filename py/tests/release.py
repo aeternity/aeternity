@@ -53,6 +53,7 @@ websocket:
         acceptors: 100
 
 mining:
+    beneficiary: "ak$RShHyLiaQJF8AZ7Thi4Sgjm6ncHhqguqBBqCzQRG3fyjvKj6V"
     cuckoo:
         miner:
             executable: mean16s-generic
@@ -108,6 +109,7 @@ websocket:
         acceptors: 100
 
 mining:
+    beneficiary: "ak$2WPFUrtoxvdpaMySJUfyhGeBg5o725y6wFJTWAdv9YQ7pJMHjT"
     cuckoo:
         miner:
             executable: mean16s-generic
@@ -163,6 +165,7 @@ websocket:
         acceptors: 100
 
 mining:
+    beneficiary: "ak$uDBX3LjznjmtoFzVmVWBnAaMXhvsReKYkxMrA1QMSxudhbjuf"
     cuckoo:
         miner:
             executable: mean16s-generic

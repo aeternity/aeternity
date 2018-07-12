@@ -38,6 +38,7 @@
         , preset_accounts/0
         , genesis_accounts_balances/1
         , create_keyblock_with_state/2
+        , create_keyblock_with_state/3
         , create_state_tree/0
         , create_state_tree_with_account/1
         , create_state_tree_with_accounts/1
@@ -66,9 +67,9 @@ preset_accounts() ->
   ?PRESET_ACCOUNTS.
 
 genesis_accounts_balances(PresetAccounts) ->
-    %% NG : No miner reward for Genesis (yet?)
+    %% NG : No beneficiary reward for Genesis (yet?)
     PresetAccounts.
-    %% [{aec_block_genesis:miner(), aec_governance:block_mine_reward()}
+    %% [{aec_block_genesis:beneficiary(), aec_governance:block_mine_reward()}
     %%  | PresetAccounts].
 
 mock_time() ->
@@ -240,39 +241,42 @@ gen_block_chain_with_state(N, MinerAccount, PresetAccounts, Acc) ->
     {B, S} = create_keyblock_with_state(Acc, MinerAccount),
     gen_block_chain_with_state(N - 1, MinerAccount, PresetAccounts, [{B, S} | Acc]).
 
-grant_fees(FromHeight, BlockReward, Chain, TreesIn, MinerAccount) ->
-    {Fees, Miner1, Miner2} = fees_at_height(FromHeight, Chain, 0, MinerAccount),
-    Miner1Reward = round(0.4 * Fees),
-    Miner2Reward = Fees - Miner1Reward + BlockReward,
-    Trees1 = aec_trees:grant_fee_to_miner(Miner2, TreesIn, Miner2Reward),
+grant_fees(FromHeight, BlockReward, Chain, TreesIn, BeneficiaryAccount) ->
+    {Fees, Beneficiary1, Beneficiary2} = fees_at_height(FromHeight, Chain, 0, BeneficiaryAccount),
+    Beneficiary1Reward = round(0.4 * Fees),
+    Beneficiary2Reward = Fees - Beneficiary1Reward + BlockReward,
+    Trees1 = aec_trees:grant_fee(Beneficiary2, TreesIn, Beneficiary2Reward),
     case FromHeight =:= 0 of
         true  -> Trees1;
-        false -> aec_trees:grant_fee_to_miner(Miner1, Trees1, Miner1Reward)
+        false -> aec_trees:grant_fee(Beneficiary1, Trees1, Beneficiary1Reward)
     end.
 
-fees_at_height(N, [{B, S} | Chain], Acc, Miner) ->
+fees_at_height(N, [{B, S} | Chain], Acc, Beneficiary) ->
     Height = aec_blocks:height(B),
     if
         Height =:= N ->
             case aec_blocks:type(B) of
                 key ->
                     GasFees = aec_chain_state:calculate_gas_fee(aec_trees:calls(S)),
-                    {Acc + GasFees, aec_blocks:miner(B), Miner};
+                    {Acc + GasFees, aec_blocks:beneficiary(B), Beneficiary};
                 micro ->
                     TxFees = lists:foldl(
                           fun(SignedTx, AccFee) ->
                                   Fee = aetx:fee(aetx_sign:tx(SignedTx)),
                                   AccFee + Fee
                           end, 0, aec_blocks:txs(B)),
-                    fees_at_height(N, Chain, Acc + TxFees, Miner)
+                    fees_at_height(N, Chain, Acc + TxFees, Beneficiary)
             end;
         Height =:= N + 1 ->
-            fees_at_height(N, Chain, Acc, aec_blocks:miner(B));
+            fees_at_height(N, Chain, Acc, aec_blocks:beneficiary(B));
         Height > N + 1 ->
-            fees_at_height(N, Chain, Acc, Miner)
+            fees_at_height(N, Chain, Acc, Beneficiary)
     end.
 
-create_keyblock_with_state([{PrevBlock, TreesIn} | _] = Chain, MinerAccount) ->
+create_keyblock_with_state(Chain, MinerAccount) ->
+    create_keyblock_with_state(Chain, MinerAccount, MinerAccount).
+
+create_keyblock_with_state([{PrevBlock, TreesIn} | _] = Chain, MinerAccount, BeneficiaryAccount) ->
     {ok, PrevBlockHash} = aec_blocks:hash_internal_representation(PrevBlock),
     Height = aec_blocks:height(PrevBlock) + 1,
     Version = aec_hard_forks:protocol_effective_at_height(Height),
@@ -281,18 +285,18 @@ create_keyblock_with_state([{PrevBlock, TreesIn} | _] = Chain, MinerAccount) ->
     %% Dummy block to calculate the fees.
     Block0 = aec_blocks:new_key(Height, PrevBlockHash, aec_trees:hash(TreesIn),
                                 aec_blocks:target(PrevBlock),
-                                0, aeu_time:now_in_msecs(), Version, MinerAccount),
+                                0, aeu_time:now_in_msecs(), Version, MinerAccount, BeneficiaryAccount),
     Trees2 = case Height > Delay of
                  true ->
                      Reward = aec_governance:block_mine_reward(),
                      grant_fees(Height - Delay - 1, Reward, [{Block0, TreesIn}|Chain],
-                                Trees1, MinerAccount);
+                                Trees1, BeneficiaryAccount);
                  false ->
                      Trees1
              end,
     Block = aec_blocks:new_key(Height, PrevBlockHash, aec_trees:hash(Trees2),
                                aec_blocks:target(PrevBlock),
-                               0, aeu_time:now_in_msecs(), Version, MinerAccount),
+                               0, aeu_time:now_in_msecs(), Version, MinerAccount, BeneficiaryAccount),
     {Block, Trees2}.
 
 extend_block_chain_with_state(Chain, Data) ->
@@ -304,25 +308,27 @@ extend_block_chain_with_state(Chain, Data) ->
     Timestamps = maps:get(timestamps, Data, lists:duplicate(length(Targets), undefined)),
     Timestamps = maps:get(timestamps, Data, lists:duplicate(length(Targets), undefined)),
     Miners     = maps:get(miners, Data, lists:duplicate(length(Targets), {Pubkey, PrivKey})),
+    Beneficiaries = maps:get(beneficiaries, Data, lists:duplicate(length(Targets), Pubkey)),
     extend_block_chain_with_state(lists:reverse(Chain), Targets, Timestamps,
-                                  Miners, TxsFun, Nonce).
+                                  Miners, Beneficiaries, TxsFun, Nonce).
 
-extend_block_chain_with_state(Chain, [], _, _, _, _) ->
+extend_block_chain_with_state(Chain, [], _, _, _, _, _) ->
     lists:reverse(Chain);
 extend_block_chain_with_state(Chain,
                               [Tgt | Tgts],
                               [Ts | Tss],
                               [{PubKey, PrivKey}|Miners],
+                              [BeneficiaryPubKey | Beneficiaries],
                               TxsFun, Nonce) ->
-    NewChain = next_block_with_state(Chain, Tgt, Ts, TxsFun, Nonce, PubKey, PrivKey),
-    extend_block_chain_with_state(NewChain, Tgts, Tss, Miners, TxsFun, Nonce).
+    NewChain = next_block_with_state(Chain, Tgt, Ts, TxsFun, Nonce, PubKey, PrivKey, BeneficiaryPubKey),
+    extend_block_chain_with_state(NewChain, Tgts, Tss, Miners, Beneficiaries, TxsFun, Nonce).
 
 blocks_only_chain(Chain) ->
     lists:map(fun({B, _S}) -> B end, Chain).
 
-create_micro_block(PrevBlock, PubKey, PrivKey, Txs, Trees) ->
+create_micro_block(PrevBlock, PrivKey, Txs, Trees) ->
     {Block1, Trees1} =
-        aec_block_micro_candidate:create_with_state(PrevBlock, PrevBlock, PubKey, Txs, Trees),
+        aec_block_micro_candidate:create_with_state(PrevBlock, PrevBlock, Txs, Trees),
     SignedMicroBlock = sign_micro_block(Block1, PrivKey),
     {SignedMicroBlock, Trees1}.
 
@@ -332,7 +338,7 @@ sign_micro_block(MicroBlock, PrivKey) ->
     aec_blocks:set_signature(MicroBlock, Signature).
 
 next_block_with_state([{PB, PBS} | _] = Chain, Target, Time0, TxsFun, Nonce,
-                      PubKey, PrivKey) ->
+                      PubKey, PrivKey, BeneficiaryPubKey) ->
     Height = aec_blocks:height(PB) + 1,
     Txs = TxsFun(Height),
     %% NG: if a block X used to have Txs, now put them in a microblock just before
@@ -340,9 +346,9 @@ next_block_with_state([{PB, PBS} | _] = Chain, Target, Time0, TxsFun, Nonce,
     Chain1 =
         case Txs of
             [] -> Chain;
-            _  -> [create_micro_block(PB, PubKey, PrivKey, Txs, PBS) | Chain]
+            _  -> [create_micro_block(PB, PrivKey, Txs, PBS) | Chain]
     end,
-    {B, S} = create_keyblock_with_state(Chain1, PubKey),
+    {B, S} = create_keyblock_with_state(Chain1, PubKey, BeneficiaryPubKey),
     [{B#block{ target = Target, nonce  = Nonce,
                    time   = case Time0 of undefined -> B#block.time; _ -> Time0 end },
       S} | Chain1].

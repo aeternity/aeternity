@@ -6,10 +6,10 @@
 %%%=============================================================================
 -module(aec_block_micro_candidate).
 
--export([ apply_block_txs/5
-        , apply_block_txs_strict/5
+-export([ apply_block_txs/4
+        , apply_block_txs_strict/4
         , create/1
-        , create_with_state/5
+        , create_with_state/4
         , update/3
         ]).
 
@@ -41,27 +41,27 @@ create(Block) ->
             end
     end.
 
--spec create_with_state(aec_blocks:block(), aec_blocks:block(), aec_keys:pubkey(),
+-spec create_with_state(aec_blocks:block(), aec_blocks:block(),
     list(aetx_sign:signed_tx()), aec_trees:trees()) ->
     {aec_blocks:block(), aec_trees:trees()}.
-create_with_state(Block, KeyBlock, Miner, Txs, Trees) ->
+create_with_state(Block, KeyBlock, Txs, Trees) ->
     {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
     {ok, KeyBlockHash} = aec_blocks:hash_internal_representation(KeyBlock),
     {ok, NewBlock, #{ trees := NewTrees}} =
-        int_create_block(BlockHash, Block, KeyBlockHash, KeyBlock, Trees, Miner, Txs),
+        int_create_block(BlockHash, Block, KeyBlockHash, KeyBlock, Trees, Txs),
     {NewBlock, NewTrees}.
 
--spec apply_block_txs(list(aetx_sign:signed_tx()), aec_keys:pubkey(), aec_trees:trees(),
+-spec apply_block_txs(list(aetx_sign:signed_tx()), aec_trees:trees(),
                       aec_blocks:height(), non_neg_integer()) ->
         {ok, list(aetx_sign:signed_tx()), aec_trees:trees()}.
-apply_block_txs(Txs, Miner, Trees, Height, Version) ->
-    int_apply_block_txs(Txs, Miner, Trees, Height, Version, false).
+apply_block_txs(Txs, Trees, Height, Version) ->
+    int_apply_block_txs(Txs, Trees, Height, Version, false).
 
--spec apply_block_txs_strict(list(aetx_sign:signed_tx()), aec_keys:pubkey(),
+-spec apply_block_txs_strict(list(aetx_sign:signed_tx()),
                              aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, list(aetx_sign:signed_tx()), aec_trees:trees()} | {error, term()}.
-apply_block_txs_strict(Txs, Miner, Trees, Height, Version) ->
-    case int_apply_block_txs(Txs, Miner, Trees, Height, Version, true) of
+apply_block_txs_strict(Txs, Trees, Height, Version) ->
+    case int_apply_block_txs(Txs, Trees, Height, Version, true) of
         Err = {error, _}      -> Err;
         {ok, Txs1, Trees1} -> {ok, Txs1, Trees1}
     end.
@@ -101,14 +101,9 @@ int_create(Block, KeyBlock) ->
 int_create(BlockHash, Block, KeyBlockHash, KeyBlock, Trees) ->
     MaxN = aec_governance:max_txs_in_block(),
     {ok, Txs} = aec_tx_pool:get_candidate(MaxN, BlockHash),
-    case aec_keys:pubkey() of
-        {ok, Miner} ->
-            int_create_block(BlockHash, Block, KeyBlockHash, KeyBlock, Trees, Miner, Txs);
-        {error, _} = Error ->
-            Error
-    end.
+    int_create_block(BlockHash, Block, KeyBlockHash, KeyBlock, Trees, Txs).
 
-int_create_block(PrevBlockHash, PrevBlock, KeyBlockHash, KeyBlock, Trees, Miner, Txs) ->
+int_create_block(PrevBlockHash, PrevBlock, KeyBlockHash, KeyBlock, Trees, Txs) ->
     PrevBlockHeight = aec_blocks:height(PrevBlock),
 
     %% Assert correctness of last block protocol version, as minimum
@@ -123,7 +118,7 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlockHash, KeyBlock, Trees, Miner,
     Version = aec_hard_forks:protocol_effective_at_height(Height),
 
     {ok, Txs1, Trees2} =
-        int_apply_block_txs(Txs, Miner, Trees, Height, Version, false),
+        int_apply_block_txs(Txs, Trees, Height, Version, false),
 
     TxsTree = aec_txs_trees:from_txs(Txs1),
     TxsRootHash = aec_txs_trees:pad_empty(aec_txs_trees:root_hash(TxsTree)),
@@ -136,12 +131,12 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlockHash, KeyBlock, Trees, Miner,
     {ok, NewBlock, BlockInfo}.
 
 %% Non-strict
-int_apply_block_txs(Txs, _Miner, Trees, Height, Version, false) ->
+int_apply_block_txs(Txs, Trees, Height, Version, false) ->
     {ok, Txs1, _InvalidTxs, Trees1} =
         aec_trees:apply_txs_on_state_trees(Txs, Trees, Height, Version),
     {ok, Txs1, Trees1};
 %% strict
-int_apply_block_txs(Txs, _Miner, Trees, Height, Version, true) ->
+int_apply_block_txs(Txs, Trees, Height, Version, true) ->
     case aec_trees:apply_txs_on_state_trees_strict(Txs, Trees, Height, Version) of
         {ok, Txs1, [], Trees1} ->
             {ok, Txs1, Trees1};

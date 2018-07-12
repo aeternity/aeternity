@@ -87,6 +87,7 @@ application_test(Config) ->
 
     %% Start application it depends on (among which aecore)
     application:set_env(aecore, password, <<"secret">>),
+    application:set_env(aecore, beneficiary, aec_base58c:encode(account_pubkey, <<"_________my_public_key__________">>)),
 
     {ok, Started} = application:ensure_all_started(aehttp),
     application:stop(aehttp),

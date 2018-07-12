@@ -294,6 +294,11 @@
                     "Maximum time (milliseconds) for each attempt to mine a block with a specific nonce.",
                     "type" : "integer"
                 },
+                "beneficiary" : {
+                    "description" :
+                    "Public key of beneficiary account that will receive fees from mining on a node.",
+                    "type" : "string"
+                },
                 "expected_mine_rate" : {
                     "description" : "Expected mine rate (milliseconds) between blocks. Used in governance.",
                     "type" : "integer",

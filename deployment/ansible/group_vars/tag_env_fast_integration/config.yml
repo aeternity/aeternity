@@ -1,4 +1,5 @@
 log_level: warning
+mining_beneficiary: "ak$2VoAhMd7tVJrDYM5vPJwFRjueZyirDJumVJNeBWL9j1eNTHsRx"
 expected_mine_rate: 15000
 miner_executable: mean16s-generic
 miner_node_bits: 16

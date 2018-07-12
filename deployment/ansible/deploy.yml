@@ -58,13 +58,14 @@
           port: 3114
       chain:
         persist: true
-        db_path: "./db67"
+        db_path: "./db68"
       keypair:
         dir: "keys"
         password: "{{ vault_keys_password|default('secret') }}"
       logging:
         level: "{{ log_level|default('error') }}"
       mining:
+        beneficiary: "{{ mining_beneficiary }}"
         expected_mine_rate: "{{ expected_mine_rate|default(300000) }}"
         cuckoo:
           miner:

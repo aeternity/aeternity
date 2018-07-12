@@ -23,9 +23,44 @@ a port set up for channels' websocket communication. That would be the TCP port 
 
 Please notice that, if your node is behind a firewall, you need to open a TCP port in your firewall (the one you want to connect to) and map that port to the one the node actually listens on (`websocket` > `channel` > `port` parameter).
 
-### Keys management
+### Beneficiary account
 
-In order for your node to manage the correct account (able to hold tokens on the blockchain), you need to specify in the configuration file the location of your public-private key pair.
+In order to configure who receives fees from mining on a node, you must configure beneficiary public key.
+
+If you don't have your public key yet, you can use provided `keys_gen` tool, that will generate a public-private key pair for you.
+The key pair will be encrypted with a password that you shall pass to `keys_gen` tool (below assumes the node is deployed in directory `/tmp/node`):
+
+
+```bash
+cd /tmp/node
+bin/epoch keys_gen PASSWORD
+```
+The output should be:
+```
+Generated keypair with encoded pubkey: YOUR_PUBLIC_KEY
+```
+
+Generated public-private key pair will be located in `/tmp/node/generated_keys`, and public key is to be put in epoch configuration file (`mining` > `beneficiary` parameter).
+
+Do make sure you back up `/tmp/node/generated_keys` (and remember the password): if you destroy the node, you can setup a new node and use the same account (public key) as a beneficiary.
+You shall not share the private key (or the password) with anyone.
+
+e.g.
+
+```bash
+cd /tmp/node
+bin/epoch keys_gen my_secret_password
+```
+```
+Generated keypair with encoded pubkey: ak$2D9REvQsrAgnJgmdwPq585D8YksJC8PSAA8MscQdxinbkFC7rq
+```
+
+In the example the generated public key is `ak$2D9REvQsrAgnJgmdwPq585D8YksJC8PSAA8MscQdxinbkFC7rq`, but do not use it in your config!
+This is just an example value to show what public key format you should expect after running `bin/epoch keys_gen` command.
+
+### Signing keys management
+
+In order for your node to sign and verify transactions, you need to specify in the configuration file the location of your public-private key pair.
 The storage of the key pair by the node is basic:
 * Each node handles one key pair;
 * The key pair is stored on disk;
@@ -34,18 +69,21 @@ The storage of the key pair by the node is basic:
 * A fresh key pair is generated if none is found in the configured location.
 
 You do not need to create a key pair yourself: the node will generate one (`keys` > `dir` parameter) in the configured location if none found there.
-After the node generates the key pair in the configured location, you should back up that directory (and remember the password): if you destroy the node, you can setup a new node with the same account in order not to lose the tokens you had obtained by mining on the chain.
-You shall not share the private key (or the password) with anyone.
 
 ## Instructions
 
 The instructions below assume that:
 * The node is deployed in directory `/tmp/node`;
+* You already know your `beneficiary` account public key (if you don't, see [Beneficiary account section](#beneficiary-account));
 * No custom peers are specified under the `peers:` key in the config. If the `peers:` key is undefined, the *testnet* seed peers (built-in in the package source) are used.
 
 If any of the assumptions does not hold, you need to amend the instructions accordingly.
 
-Create the file `/tmp/node/epoch.yaml` with the following content (amend the `sync` > `port` parameter with your actual value):
+Create the file `/tmp/node/epoch.yaml` with the below content.
+Make sure you amend:
+* the `mining` > `beneficiary` parameter, i.e. replace `encoded_beneficiary_pubkey_to_be_replaced` with your public key;
+* the `sync` > `port` parameter with your actual value:
+
 ```yaml
 ---
 sync:
@@ -69,6 +107,7 @@ websocket:
         port: 3014
 
 mining:
+    beneficiary: "beneficiary_pubkey_to_be_replaced"
     autostart: true
 
 chain:

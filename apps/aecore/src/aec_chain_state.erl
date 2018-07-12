@@ -8,7 +8,7 @@
 
 -module(aec_chain_state).
 
--export([ calculate_state_for_new_keyblock/2
+-export([ calculate_state_for_new_keyblock/3
         , find_common_ancestor/2
         , get_key_block_hash_at_height/1
         , get_n_key_headers_backward_from/2
@@ -101,15 +101,15 @@ hash_is_in_main_chain(Hash) ->
     end.
 
 
--spec calculate_state_for_new_keyblock(binary(), aec_keys:pubkey()) ->
+-spec calculate_state_for_new_keyblock(binary(), aec_keys:pubkey(), aec_keys:pubkey()) ->
                                               {'ok', aec_trees:trees()}
                                             | 'error'.
 
-calculate_state_for_new_keyblock(PrevHash, Miner) ->
+calculate_state_for_new_keyblock(PrevHash, Miner, Beneficiary) ->
     case db_find_node(PrevHash) of
         error -> error;
         {ok, PrevNode} ->
-            Node  = fake_key_node(PrevNode, node_height(PrevNode) + 1, Miner),
+            Node  = fake_key_node(PrevNode, node_height(PrevNode) + 1, Miner, Beneficiary),
             State = new_state_from_persistence(),
             case get_state_trees_in(Node, State) of
                 error -> error;
@@ -161,7 +161,6 @@ set_top_block_hash(H, State) when is_binary(H) -> State#{top_block_hash => H}.
 
 -record(node, { header  :: #header{}
               , hash    :: binary()
-              , height  :: non_neg_integer()
               , type    :: block_type()
               , key_hash :: binary()
               }).
@@ -170,7 +169,7 @@ hash(#node{hash = Hash}) -> Hash.
 
 prev_hash(#node{header = H}) -> aec_headers:prev_hash(H).
 
-node_height(#node{height = Height}) -> Height.
+node_height(#node{header = H}) -> aec_headers:height(H).
 
 node_version(#node{header = H}) -> aec_headers:version(H).
 
@@ -182,6 +181,8 @@ node_target(#node{header = H}) -> aec_headers:target(H).
 node_root_hash(#node{header = H}) -> aec_headers:root_hash(H).
 
 node_miner(#node{header = H}) -> aec_headers:miner(H).
+
+node_beneficiary(#node{header = H}) -> aec_headers:beneficiary(H).
 
 node_type(#node{type = T}) -> T.
 
@@ -224,26 +225,25 @@ wrap_block(Block) ->
     {ok, Hash} = aec_headers:hash_header(Header),
     #node{ header = Header
          , hash = Hash
-         , height = aec_headers:height(Header)
          , type = aec_blocks:type(Block)
          , key_hash = aec_headers:key_hash(Header)
          }.
 
-fake_key_node(PrevNode, Height, Miner) ->
+fake_key_node(PrevNode, Height, Miner, Beneficiary) ->
     Block = aec_blocks:new_key(Height,
                                hash(PrevNode),
                                <<123:?STATE_HASH_BYTES/unit:8>>,
                                node_target(PrevNode),
                                0, aeu_time:now_in_msecs(),
                                ?PROTOCOL_VERSION,
-                               Miner),
+                               Miner,
+                               Beneficiary),
     wrap_header(aec_blocks:to_header(Block)).
 
 wrap_header(Header) ->
     {ok, Hash} = aec_headers:hash_header(Header),
     #node{ header = Header
          , hash = Hash
-         , height = aec_headers:height(Header)
          , type = aec_headers:type(Header)
          , key_hash = aec_headers:key_hash(Header)
          }.
@@ -307,10 +307,9 @@ internal_insert(Node, Block) ->
                           %% adding to avoid giving spurious error
                           %% messages.
                           State1 = State#{ currently_adding => hash(Node)},
-                          Node1 = set_height(Node),
-                          assert_not_new_genesis(Node1, State1),
-                          ok = db_put_node(Block, hash(Node1)),
-                          State2 = update_state_tree(Node1, maybe_add_genesis_hash(State1, Node1)),
+                          assert_not_new_genesis(Node, State1),
+                          ok = db_put_node(Block, hash(Node)),
+                          State2 = update_state_tree(Node, maybe_add_genesis_hash(State1, Node)),
                           persist_state(State2),
                           ok
                   end,
@@ -680,15 +679,15 @@ grant_fees(Node, Trees, Delay, Fees, State) ->
                   true  -> Fees;
                   false -> db_get_fees(hash(KeyNode2))
               end,
-    Miner1 = node_miner(KeyNode1),
-    Miner2 = node_miner(KeyNode2),
+    Beneficiary1 = node_beneficiary(KeyNode1),
+    Beneficiary2 = node_beneficiary(KeyNode2),
     Reward = aec_governance:block_mine_reward(),
-    MinerReward1 = round(KeyFees * 0.4),
-    MinerReward2 = KeyFees - MinerReward1 + Reward,
-    Trees1 = aec_trees:grant_fee_to_miner(Miner2, Trees, MinerReward2),
+    BeneficiaryReward1 = round(KeyFees * 0.4),
+    BeneficiaryReward2 = KeyFees - BeneficiaryReward1 + Reward,
+    Trees1 = aec_trees:grant_fee(Beneficiary2, Trees, BeneficiaryReward2),
     case node_is_genesis(KeyNode1, State) of
         true  -> Trees1;
-        false -> aec_trees:grant_fee_to_miner(Miner1, Trees1, MinerReward1)
+        false -> aec_trees:grant_fee(Beneficiary1, Trees1, BeneficiaryReward1)
     end.
 
 calculate_gas_fee(Calls) ->
@@ -710,11 +709,7 @@ apply_micro_block_transactions(Node, FeesIn, Trees) ->
                           AccFee + Fee
                   end, FeesIn, Txs),
 
-    %% TODO: NG - it looks like we should keep Miner and Height of the prev key block in state in aec_chain_state
-    %% TODO: optimization, fixit ^^
-    Miner = node_miner(db_get_node(node_key_hash(Node))),
-
-    case aec_block_micro_candidate:apply_block_txs_strict(Txs, Miner, Trees, Height, Version) of
+    case aec_block_micro_candidate:apply_block_txs_strict(Txs, Trees, Height, Version) of
         {ok, _, NewTrees} -> {NewTrees, TotalFees};
         {error,_What} -> internal_error(invalid_transactions_in_block)
     end.
@@ -863,12 +858,3 @@ db_node_has_sibling_blocks(Node) ->
                      ++ aec_db:find_headers_at_height(Height - 1),
                  aec_headers:prev_hash(Header) =:= PrevHash]) > 1.
 
-%%% TODO: fix NG-genesis flow
-set_height(#node{type = micro, key_hash = KeyHash} = Node) ->
-    Height = case aec_db:get_header(KeyHash) of
-                [] -> error({key_hash_not_found, KeyHash});
-                Header -> aec_headers:height(Header)
-             end,
-    Node#node{height = Height};
-set_height(Node) ->
-    Node.

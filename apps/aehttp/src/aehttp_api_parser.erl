@@ -18,7 +18,10 @@
                      {<<"txs_hash">>, block_tx_hash},
                      {<<"signature">>, signature},
                      {<<"miner">>, {fun(Val) -> aec_base58c:encode(account_pubkey, Val) end,
-                                    fun decode_miner/1}}]).
+                                    fun decode_miner/1}},
+                     {<<"beneficiary">>, {fun(Val) -> aec_base58c:encode(account_pubkey, Val) end,
+                                          fun decode_beneficiary/1}}]).
+
 -define(OBJECTS, #{header_map => ?HEADER_OBJ,
                    block_map => [ {<<"transactions">>, {list, tx}} | ?HEADER_OBJ],
                    block_hash =>  {fun(Block) ->
@@ -242,5 +245,15 @@ decode_miner(Miner) ->
             case byte_size(X) of
                 ?MINER_PUB_BYTES -> {ok, X};
                 Size -> {error, {bad_miner_size, Size}}
+            end
+    end.
+
+decode_beneficiary(Beneficiary) ->
+    case aec_base58c:safe_decode(account_pubkey, Beneficiary) of
+        {error, _} = Err -> Err;
+        {ok, X} when is_binary(X) ->
+            case byte_size(X) of
+                ?BENEFICIARY_PUB_BYTES -> {ok, X};
+                Size -> {error, {bad_beneficiary_size, Size}}
             end
     end.

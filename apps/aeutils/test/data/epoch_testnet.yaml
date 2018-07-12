@@ -10,3 +10,5 @@ chain:
 
 mining:
     autostart: true
+    # Public key of beneficiary account that will receive fees from mining on a node.
+    beneficiary: "encoded_beneficiary_pubkey_to_be_replaced"

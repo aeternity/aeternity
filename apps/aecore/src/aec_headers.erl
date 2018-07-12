@@ -11,6 +11,7 @@
          time_in_secs/1,
          time_in_msecs/1,
          miner/1,
+         beneficiary/1,
          key_hash/1,
          serialize_to_binary/1,
          serialize_to_map/1,
@@ -67,6 +68,9 @@ time_in_msecs(Header) ->
 miner(Header) ->
     Header#header.miner.
 
+beneficiary(Header) ->
+    Header#header.beneficiary.
+
 key_hash(Header) ->
     Header#header.key_hash.
 
@@ -80,6 +84,7 @@ serialize_to_map(key, Header) ->
         <<"prev_hash">> => Header#header.prev_hash,
         <<"state_hash">> => Header#header.root_hash,
         <<"miner">> => Header#header.miner,
+        <<"beneficiary">> => Header#header.beneficiary,
         <<"target">> => Header#header.target,
         <<"pow">> => Header#header.pow_evidence,
         <<"nonce">> => Header#header.nonce,
@@ -104,6 +109,7 @@ deserialize_from_map(#{<<"height">> := Height,
                        <<"prev_hash">> := PrevHash,
                        <<"state_hash">> := RootHash,
                        <<"miner">> := Miner,
+                       <<"beneficiary">> := Beneficiary,
                        <<"target">> := Target,
                        <<"pow">> := PowEvidence,
                        <<"nonce">> := Nonce,
@@ -113,6 +119,7 @@ deserialize_from_map(#{<<"height">> := Height,
             prev_hash = PrevHash,
             root_hash = RootHash,
             miner = Miner,
+            beneficiary = Beneficiary,
             target = Target,
             pow_evidence = PowEvidence,
             nonce = Nonce,
@@ -145,6 +152,7 @@ serialize_to_binary(key, Header) ->
       (Header#header.prev_hash)/binary,
       (Header#header.root_hash)/binary,
       (Header#header.miner)/binary,
+      (Header#header.beneficiary)/binary,
       (Header#header.target):64,
       PowEvidence/binary,
       (Header#header.nonce):64,
@@ -164,6 +172,7 @@ deserialize_from_binary(<<Version:64,
                           PrevHash:32/binary,
                           RootHash:32/binary,
                           Miner:32/binary,
+                          Beneficiary:32/binary,
                           Target:64,
                           PowEvidenceBin:168/binary,
                           Nonce:64,
@@ -173,6 +182,7 @@ deserialize_from_binary(<<Version:64,
             prev_hash = PrevHash,
             root_hash = RootHash,
             miner = Miner,
+            beneficiary = Beneficiary,
             target = Target,
             pow_evidence = PowEvidence,
             nonce = Nonce,

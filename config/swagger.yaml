@@ -2345,6 +2345,8 @@ definitions:
         $ref: '#/definitions/Pow'
       miner:
         $ref: '#/definitions/EncodedHash'
+      beneficiary:
+        $ref: '#/definitions/EncodedHash'
   GenericBlock:
     allOf:
       - $ref: '#/definitions/Header'

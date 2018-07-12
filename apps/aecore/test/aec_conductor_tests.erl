@@ -26,11 +26,14 @@ setup_minimal() ->
                 end),
     aec_test_utils:mock_genesis(),
     TmpKeysDir = aec_test_utils:aec_keys_setup(),
+    {ok, PubKey} = aec_keys:pubkey(),
+    ok = application:set_env(aecore, beneficiary, aec_base58c:encode(account_pubkey, PubKey)),
     aec_test_utils:mock_time(),
     {ok, _} = aec_tx_pool:start_link(),
     TmpKeysDir.
 
 teardown_minimal(TmpKeysDir) ->
+    ok = application:unset_env(aecore, beneficiary),
     ok = aec_tx_pool:stop(),
     aec_block_generator:stop(),
     ok = application:stop(gproc),

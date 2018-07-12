@@ -34,7 +34,6 @@
 -include_lib("apps/aecore/include/blocks.hrl").
 -include_lib("stdlib/include/assert.hrl").
 
--define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
 -define(BOGUS_CHANNEL, <<0:?MINER_PUB_BYTES/unit:8>>).
 %%%===================================================================
 %%% Common test framework
@@ -104,7 +103,7 @@ create_from_state(S, DefaultSpec) ->
     {ok, Tx} = aesc_create_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, [PrivKey1, PrivKey2]),
     {ok, [SignedTx], Trees1} =
-        aec_block_micro_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY, Trees,
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees,
                                                   Height, ?PROTOCOL_VERSION),
     S3 = aesc_test_utils:set_trees(Trees1, S2),
 

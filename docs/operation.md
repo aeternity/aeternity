@@ -6,6 +6,7 @@ This document describes how to start your epoch node installed using a release b
 
 The instructions below assume that:
 * The node is deployed in directory `/tmp/node`;
+* beneficiary account is set under `mining` > `beneficiary` in the config (see [configuration documentation](configuration.md));
 * No custom peers are specified under the `peers:` key in the config. If the `peers:` key is undefined, the *testnet* seed peers (built-in in the package source) are used.
 * The external HTTP endpoint of the user API of the node can be contacted at 127.0.0.1 port 3013.
 

@@ -1,0 +1,62 @@
+-mode(compile).
+
+-define(KEYS_DIR         , "generated_keys").
+-define(FILENAME_SIGNPUB , "key.pub").
+-define(FILENAME_SIGNPRIV, "key").
+
+main([[]]) ->
+    io:fwrite("Usage: keys_gen PASSWORD~n"),
+    halt(1);
+main([Password]) ->
+    ok = ensure_dir(?KEYS_DIR),
+    {PubFile, PrivFile} = gen_keypair_filenames(?KEYS_DIR),
+    case ensure_keypair_not_present(PubFile, PrivFile) of
+        ok ->
+            #{public := PubKey, secret := PrivKey} = enacl:sign_keypair(),
+            true = check_keys(PubKey, PrivKey),
+            ok   = save_keys(Password, PubFile, PubKey, PrivFile, PrivKey),
+            EncodedPubKey = aec_base58c:encode(account_pubkey, PubKey),
+            io:fwrite("Generated keypair with encoded pubkey: ~s~n", [binary_to_list(EncodedPubKey)]);
+        {error, key_already_present} ->
+            io:fwrite("Keys generation directory ~s already contains keys~n", [?KEYS_DIR]),
+            halt(1)
+    end.
+
+ensure_dir(KeysDir) ->
+    case filelib:is_dir(KeysDir) of
+        false ->
+            ok = file:make_dir(KeysDir);
+        true ->
+            ok
+    end.
+
+ensure_keypair_not_present(PubFile, PrivFile) ->
+    case {file:read_file_info(PubFile), file:read_file_info(PrivFile)} of
+        {{error, enoent}, {error, enoent}} -> ok;
+        {_              , _              } -> {error, key_already_present}
+    end.
+
+gen_keypair_filenames(KeysDir) ->
+    gen_filename(KeysDir, ?FILENAME_SIGNPUB, ?FILENAME_SIGNPRIV).
+
+gen_filename(KeysDir, PubFile0, PrivFile0) ->
+    PubFile  = filename:join(KeysDir, PubFile0),
+    PrivFile = filename:join(KeysDir, PrivFile0),
+    {PubFile, PrivFile}.
+
+check_keys(PubKey, PrivKey) ->
+    SampleMsg = <<"random message">>,
+    Signature = enacl:sign_detached(SampleMsg, PrivKey),
+    {ok, SampleMsg} == enacl:sign_verify_detached(Signature, SampleMsg, PubKey).
+
+save_keys(Pwd, PubFile, PubKey, PrivFile, PrivKey) ->
+    EncPub  = encrypt_key(Pwd, PubKey),
+    EncPriv = encrypt_key(Pwd, PrivKey),
+    ok = file:write_file(PubFile, EncPub),
+    ok = file:write_file(PrivFile, EncPriv).
+
+encrypt_key(Password, Bin) ->
+    crypto:block_encrypt(aes_ecb, hash(Password), Bin).
+
+hash(Bin) ->
+    crypto:hash(sha256, Bin).

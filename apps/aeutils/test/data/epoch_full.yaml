@@ -85,7 +85,7 @@ chain:
     db_path: .
     # Hard forks
     hard_forks:
-      "16": 0
+      "17": 0
 
 mining:
     # Start mining automatically.
@@ -94,6 +94,8 @@ mining:
     attempt_timeout: 3600000
     # Expected mine rate (milliseconds) between blocks. Used in governance.
     expected_mine_rate: 300000
+    # Public key of beneficiary account that will receive fees from mining on a node.
+    beneficiary: "encoded_beneficiary_pubkey_to_be_replaced"
     cuckoo:
         miner:
             # Executable binary of the miner.

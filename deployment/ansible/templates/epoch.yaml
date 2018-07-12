@@ -33,6 +33,7 @@ websocket:
 
 mining:
     autostart: true
+    beneficiary: {{ config.mining.beneficiary }}
     expected_mine_rate: {{ config.mining.expected_mine_rate }}
     cuckoo:
         miner:

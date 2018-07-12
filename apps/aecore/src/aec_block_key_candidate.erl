@@ -6,7 +6,7 @@
 %%%=============================================================================
 -module(aec_block_key_candidate).
 
--export([ create/1
+-export([ create/2
         ]).
 
 -ifdef(TEST).
@@ -16,21 +16,22 @@
 -include("blocks.hrl").
 
 %% -- API functions ----------------------------------------------------------
--spec create(aec_blocks:block() | aec_blocks:block_header_hash()) ->
-        {ok, aec_blocks:block()} | {error, term()}.
-create(BlockHash) when is_binary(BlockHash) ->
+-spec create(aec_blocks:block() | aec_blocks:block_header_hash(),
+             aec_keys:pubkey()) ->
+                    {ok, aec_blocks:block()} | {error, term()}.
+create(BlockHash, Beneficiary) when is_binary(BlockHash) ->
     case aec_chain:get_block(BlockHash) of
         {ok, Block} ->
-            int_create(BlockHash, Block);
+            int_create(BlockHash, Block, Beneficiary);
         error ->
             {error, block_not_found}
     end;
-create(Block) ->
+create(Block, Beneficiary) ->
     {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
-    int_create(BlockHash, Block).
+    int_create(BlockHash, Block, Beneficiary).
 
 -spec adjust_target(aec_blocks:block(), list(aec_headers:header())) ->
-       {ok, aec_blocks:block()} | {error, term()}.
+                           {ok, aec_blocks:block()} | {error, term()}.
 adjust_target(Block, AdjHeaders) ->
     Header = aec_blocks:to_header(Block),
     DeltaHeight = aec_governance:key_blocks_to_check_difficulty_count(),
@@ -48,37 +49,37 @@ adjust_target(Block, AdjHeaders) ->
 
 %% -- Internal functions -----------------------------------------------------
 
-int_create(BlockHash, Block) ->
+int_create(BlockHash, Block, Beneficiary) ->
     N = aec_governance:key_blocks_to_check_difficulty_count(),
     case aec_blocks:height(Block) < N of
         true  ->
-            int_create(BlockHash, Block, []);
+            int_create(BlockHash, Block, Beneficiary, []);
         false ->
             case aec_chain:get_n_generation_headers_backwards_from_hash(BlockHash, N) of
                 {ok, Headers} ->
-                    int_create(BlockHash, Block, Headers);
+                    int_create(BlockHash, Block, Beneficiary, Headers);
                 error ->
                     {error, headers_for_target_adjustment_not_found}
             end
     end.
 
-int_create(BlockHash, Block, AdjChain) ->
+int_create(BlockHash, Block, Beneficiary, AdjChain) ->
     case aec_keys:pubkey() of
         {ok, Miner} ->
-            int_create(BlockHash, Block, Miner, AdjChain);
+            int_create(BlockHash, Block, Miner, Beneficiary, AdjChain);
         {error, _} = Error ->
             Error
     end.
 
-int_create(PrevBlockHash, PrevBlock, Miner, AdjChain) ->
-    {ok, Trees} = aec_chain_state:calculate_state_for_new_keyblock(PrevBlockHash, Miner),
-    Block = int_create_block(PrevBlockHash, PrevBlock, Miner, Trees),
+int_create(PrevBlockHash, PrevBlock, Miner, Beneficiary, AdjChain) ->
+    {ok, Trees} = aec_chain_state:calculate_state_for_new_keyblock(PrevBlockHash, Miner, Beneficiary),
+    Block = int_create_block(PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees),
     case adjust_target(Block, AdjChain) of
         {ok, AdjBlock} -> {ok, AdjBlock};
         {error, Reason} -> {error, {failed_to_adjust_target, Reason}}
     end.
 
-int_create_block(PrevBlockHash, PrevBlock, Miner, Trees) ->
+int_create_block(PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees) ->
     PrevBlockHeight = aec_blocks:height(PrevBlock),
 
     %% Assert correctness of last block protocol version, as minimum
@@ -94,4 +95,4 @@ int_create_block(PrevBlockHash, PrevBlock, Miner, Trees) ->
 
     aec_blocks:new_key(Height, PrevBlockHash, aec_trees:hash(Trees),
                        aec_blocks:target(PrevBlock),
-                       0, aeu_time:now_in_msecs(), Version, Miner).
+                       0, aeu_time:now_in_msecs(), Version, Miner, Beneficiary).
