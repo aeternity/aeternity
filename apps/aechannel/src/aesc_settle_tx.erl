@@ -53,15 +53,17 @@
 %%%===================================================================
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{channel_id        := ChannelIdBin,
-      from              := FromPubKey,
+new(#{channel_id        := ChannelId,
+      from              := From,
       initiator_amount  := InitiatorAmount,
       responder_amount  := ResponderAmount,
       fee               := Fee,
       nonce             := Nonce} = Args) ->
+    channel = aec_id:specialize_type(ChannelId),
+    account = aec_id:specialize_type(From),
     Tx = #channel_settle_tx{
-            channel_id        = aec_id:create(channel, ChannelIdBin),
-            from              = aec_id:create(account, FromPubKey),
+            channel_id        = ChannelId,
+            from              = From,
             initiator_amount  = InitiatorAmount,
             responder_amount  = ResponderAmount,
             ttl               = maps:get(ttl, Args, 0),
@@ -86,12 +88,18 @@ nonce(#channel_settle_tx{nonce = Nonce}) ->
 
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#channel_settle_tx{} = Tx) ->
-    from(Tx).
+    from_pubkey(Tx).
 
-from(#channel_settle_tx{from = FromPubKey}) ->
+from(#channel_settle_tx{from = From}) ->
+    From.
+
+from_pubkey(#channel_settle_tx{from = FromPubKey}) ->
     aec_id:specialize(FromPubKey, account).
 
 channel(#channel_settle_tx{channel_id = ChannelId}) ->
+    ChannelId.
+
+channel_hash(#channel_settle_tx{channel_id = ChannelId}) ->
     aec_id:specialize(ChannelId, channel).
 
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
@@ -100,8 +108,8 @@ check(#channel_settle_tx{initiator_amount = InitiatorAmount,
                          responder_amount = ResponderAmount,
                          fee              = Fee,
                          nonce            = Nonce} = Tx, _Context, Trees, Height, _ConsensusVersion) ->
-    ChannelId = channel(Tx),
-    FromPubKey = from(Tx),
+    ChannelId = channel_hash(Tx),
+    FromPubKey = from_pubkey(Tx),
     Checks =
         [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee) end,
          fun() -> check_channel(ChannelId, FromPubKey, InitiatorAmount,
@@ -119,8 +127,8 @@ process(#channel_settle_tx{initiator_amount = InitiatorAmount,
                            responder_amount = ResponderAmount,
                            fee              = Fee,
                            nonce            = Nonce} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
-    ChannelId = channel(Tx),
-    FromPubKey = from(Tx),
+    ChannelId = channel_hash(Tx),
+    FromPubKey = from_pubkey(Tx),
     AccountsTree0 = aec_trees:accounts(Trees),
     ChannelsTree0 = aec_trees:channels(Trees),
 
@@ -157,7 +165,7 @@ process(#channel_settle_tx{initiator_amount = InitiatorAmount,
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
 signers(#channel_settle_tx{} = Tx, _) ->
-    {ok, [from(Tx)]}.
+    {ok, [from_pubkey(Tx)]}.
 
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_settle_tx{channel_id       = ChannelId,
@@ -204,8 +212,8 @@ for_client(#channel_settle_tx{initiator_amount = InitiatorAmount,
                               nonce            = Nonce} = Tx) ->
     #{<<"data_schema">>      => <<"ChannelSettleTxJSON">>, % swagger schema name
       <<"vsn">>              => version(),
-      <<"channel_id">>       => aec_base58c:encode(channel, channel(Tx)),
-      <<"from">>             => aec_base58c:encode(account_pubkey, from(Tx)),
+      <<"channel_id">>       => aec_base58c:encode(id_hash, channel(Tx)),
+      <<"from">>             => aec_base58c:encode(id_hash, from(Tx)),
       <<"initiator_amount">> => InitiatorAmount,
       <<"responder_amount">> => ResponderAmount,
       <<"ttl">>              => TTL,

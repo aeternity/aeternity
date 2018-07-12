@@ -31,7 +31,7 @@
 %% -- Accounts --
 
 %% Execute a spend transaction from the contract account.
--callback spend(Recipient :: pubkey(),
+-callback spend(Recipient :: aec_id:id(),
                 Amount    :: non_neg_integer(),
                 State     :: chain_state()) -> {ok, chain_state()} | {error, term()}.
 

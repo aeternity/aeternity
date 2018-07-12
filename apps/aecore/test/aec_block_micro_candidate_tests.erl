@@ -17,7 +17,7 @@
                      178,143,191,176,251,107,170,15,223,140,13,57,96,171,79,
                      43,181,14,1,149,98,104,64,190,242,52,152,159,190,216,30,
                      49,94,251,20,75,9,85,29,82,35,178,98,75,188,72,242,141>>).
-
+-define(TEST_ID, aec_id:create(account, ?TEST_PUB)).
 
 difficulty_recalculation_test_() ->
       [ {"For good mining speed mine block with the same difficulty",
@@ -73,7 +73,7 @@ block_extension_test_() ->
       end,
       [{"Generate a block in one step, compared with two steps, with a spend tx",
         fun() ->
-          {ok, Tx} = aec_spend_tx:new(#{ sender => ?TEST_PUB, recipient => ?TEST_PUB
+          {ok, Tx} = aec_spend_tx:new(#{ sender => ?TEST_ID, recipient => ?TEST_ID
                                        , amount => 10, fee => 1, ttl => 100, nonce => 1, payload => <<>> }),
           STx = aec_test_utils:sign_tx(Tx, ?TEST_PRIV),
 
@@ -107,7 +107,7 @@ block_extension_test_() ->
                      _BlockHeight = 42,
                      GasPrice)),
 
-          {ok, Tx} = aec_spend_tx:new(#{ sender => ?TEST_PUB, recipient => ?TEST_PUB
+          {ok, Tx} = aec_spend_tx:new(#{ sender => ?TEST_ID, recipient => ?TEST_ID
                                        , amount => 10, fee => 1, ttl => 100, nonce => 1, payload => <<>> }),
           STx = aec_test_utils:sign_tx(Tx, ?TEST_PRIV),
 

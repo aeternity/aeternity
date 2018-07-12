@@ -19,15 +19,17 @@
                       list({aec_subscribe:id(), aec_subscribe:event()})) -> ok.
 notify_query_tx(Tx, Subs) ->
     {oracle_query_tx, QTx} = aetx:specialize_type(Tx),
+    ActualOid = aeo_query_tx:oracle_pubkey(QTx),
     [ WS ! {event, oracle_query_tx, QTx} || {{ws, WS}, {oracle, {query, OId}}} <- Subs,
-                                            OId == aeo_query_tx:oracle(QTx) ],
+                                            OId == ActualOid],
     ok.
 
 -spec notify_response_tx(aetx:tx(),
                          list({aec_subscribe:id(), aec_subscribe:event()})) -> ok.
 notify_response_tx(Tx, Subs) ->
     {oracle_response_tx, RTx} = aetx:specialize_type(Tx),
+    ActualQId = aeo_response_tx:query_id(RTx),
     [ WS ! {event, oracle_response_tx, RTx} || {{ws, WS}, {oracle, {response, QId}}} <- Subs,
-                                               QId == aeo_response_tx:query_id(RTx) ],
+                                               QId == ActualQId],
     ok.
 

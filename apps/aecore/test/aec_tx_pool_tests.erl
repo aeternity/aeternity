@@ -389,7 +389,7 @@ a_signed_tx(Sender, Recipient, Nonce, Fee, TTL) ->
 signed_ct_create_tx(Sender, Nonce, Fee, GasPrice) ->
     Spec =
         #{ fee        => Fee
-         , owner      => Sender
+         , owner      => aec_id:create(account, Sender)
          , nonce      => Nonce
          , code       => <<"NOT PROPER BYTE CODE">>
          , vm_version => 1
@@ -405,10 +405,11 @@ signed_ct_create_tx(Sender, Nonce, Fee, GasPrice) ->
     STx.
 
 signed_ct_call_tx(Sender, Nonce, Fee, GasPrice) ->
+    Contract = aec_id:create(contract, <<"contract_address......(32 bytes)">>),
     Spec =
         #{ fee         => Fee
-         , contract    => <<"contract_address......(32 bytes)">>
-         , caller      => Sender
+         , contract    => Contract
+         , caller      => aec_id:create(account, Sender)
          , nonce       => Nonce
          , vm_version  => 1
          , amount      => 100
@@ -437,9 +438,9 @@ sign(PubKey, Tx) ->
 
 acct(me) ->
     {ok, Key} = aec_keys:pubkey(),
-    Key;
+    aec_id:create(account, Key);
 acct(A) when is_binary(A) ->
-    A.
+    aec_id:create(account, A).
 
 new_pubkey() ->
     {Pub, Priv} = keypair(),

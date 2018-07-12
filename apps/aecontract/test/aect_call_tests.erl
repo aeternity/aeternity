@@ -68,9 +68,9 @@ basic_setters() ->
     ok.
 
 new_call(Tx, Height) ->
-    Caller = aect_call_tx:caller(Tx),
+    Caller = aect_call_tx:caller_pubkey(Tx),
     Nonce  = aect_call_tx:nonce(Tx),
-    Address = aect_call_tx:contract(Tx),
+    Address = aect_call_tx:contract_pubkey(Tx),
     GasPrice = aect_call_tx:gas_price(Tx),
     new(Caller, Nonce, Address, Height, GasPrice).
 
@@ -78,9 +78,9 @@ call_tx() ->
     call_tx(#{}).
 
 call_tx(Override) ->
-    Map = #{ caller     => <<42:32/unit:8>>
+    Map = #{ caller     => aec_id:create(account, <<42:32/unit:8>>)
            , nonce      => 42
-           , contract   => <<4711:32/unit:8>>
+           , contract   => aec_id:create(contract, <<4711:32/unit:8>>)
            , fee        => 100
            , ttl        => 100
            , vm_version => 1

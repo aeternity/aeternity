@@ -53,15 +53,17 @@
 %%%===================================================================
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{channel_id := ChannelIdBin,
-      from       := FromPubKey,
+new(#{channel_id := ChannelId,
+      from       := From,
       payload    := Payload,
       poi        := PoI,
       fee        := Fee,
       nonce      := Nonce} = Args) ->
+    channel = aec_id:specialize_type(ChannelId),
+    account = aec_id:specialize_type(From),
     Tx = #channel_slash_tx{
-            channel_id = aec_id:create(channel, ChannelIdBin),
-            from       = aec_id:create(account, FromPubKey),
+            channel_id = ChannelId,
+            from       = From,
             payload    = Payload,
             poi        = PoI,
             ttl        = maps:get(ttl, Args, 0),
@@ -86,12 +88,18 @@ nonce(#channel_slash_tx{nonce = Nonce}) ->
 
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#channel_slash_tx{} = Tx) ->
-    from(Tx).
+    from_pubkey(Tx).
 
 from(#channel_slash_tx{from = FromId}) ->
+    FromId.
+
+from_pubkey(#channel_slash_tx{from = FromId}) ->
     aec_id:specialize(FromId, account).
 
 channel(#channel_slash_tx{channel_id = ChannelId}) ->
+    ChannelId.
+
+channel_hash(#channel_slash_tx{channel_id = ChannelId}) ->
     aec_id:specialize(ChannelId, channel).
 
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
@@ -100,8 +108,8 @@ check(#channel_slash_tx{payload    = Payload,
                         poi        = PoI,
                         fee        = Fee,
                         nonce      = Nonce} = Tx, _Context, Trees, Height,  _ConsensusVersion) ->
-    ChannelId  = channel(Tx),
-    FromPubKey = from(Tx),
+    ChannelId  = channel_hash(Tx),
+    FromPubKey = from_pubkey(Tx),
     aesc_utils:check_slash_payload(ChannelId, FromPubKey, Nonce, Fee,
                                    Payload, PoI, Height, Trees).
 
@@ -112,14 +120,14 @@ process(#channel_slash_tx{payload    = Payload,
                           poi        = PoI,
                           fee        = Fee,
                           nonce      = Nonce} = Tx, _Context, Trees, Height, _ConsensusVersion) ->
-    ChannelId  = channel(Tx),
-    FromPubKey = from(Tx),
+    ChannelId  = channel_hash(Tx),
+    FromPubKey = from_pubkey(Tx),
     aesc_utils:process_slash(ChannelId, FromPubKey, Nonce, Fee,
                              Payload, PoI, Height, Trees).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
 signers(#channel_slash_tx{} = Tx, _) ->
-    {ok, [from(Tx)]}.
+    {ok, [from_pubkey(Tx)]}.
 
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_slash_tx{channel_id = ChannelId,
@@ -166,8 +174,8 @@ for_client(#channel_slash_tx{payload    = Payload,
                              nonce      = Nonce} = Tx) ->
     #{<<"data_schema">>=> <<"ChannelSlashTxJSON">>, % swagger schema name
       <<"vsn">>        => version(),
-      <<"channel_id">> => aec_base58c:encode(channel, channel(Tx)),
-      <<"from">>       => aec_base58c:encode(account_pubkey, from(Tx)),
+      <<"channel_id">> => aec_base58c:encode(id_hash, channel(Tx)),
+      <<"from">>       => aec_base58c:encode(id_hash, from(Tx)),
       <<"payload">>    => Payload,
       <<"poi">>        => aec_base58c:encode(poi, aec_trees:serialize_poi(PoI)),
       <<"ttl">>        => TTL,

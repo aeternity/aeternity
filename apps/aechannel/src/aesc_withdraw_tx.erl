@@ -65,17 +65,19 @@
 %%%===================================================================
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{channel_id := ChannelIdBin,
-      to         := ToPubKey,
+new(#{channel_id := ChannelId,
+      to         := To,
       amount     := Amount,
       fee        := Fee,
       state_hash := StateHash,
       round      := Round,
       nonce      := Nonce} = Args) ->
     true = aesc_utils:check_state_hash_size(StateHash),
+    channel = aec_id:specialize_type(ChannelId),
+    account = aec_id:specialize_type(To),
     Tx = #channel_withdraw_tx{
-            channel_id = aec_id:create(channel, ChannelIdBin),
-            to         = aec_id:create(account, ToPubKey),
+            channel_id = ChannelId,
+            to         = To,
             amount     = Amount,
             ttl        = maps:get(ttl, Args, 0),
             fee        = Fee,
@@ -101,12 +103,18 @@ nonce(#channel_withdraw_tx{nonce = Nonce}) ->
 
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#channel_withdraw_tx{} = Tx) ->
-    to(Tx).
+    to_pubkey(Tx).
 
 to(#channel_withdraw_tx{to = ToId}) ->
+    ToId.
+
+to_pubkey(#channel_withdraw_tx{to = ToId}) ->
     aec_id:specialize(ToId, account).
 
 channel(#channel_withdraw_tx{channel_id = ChannelId}) ->
+    ChannelId.
+
+channel_hash(#channel_withdraw_tx{channel_id = ChannelId}) ->
     aec_id:specialize(ChannelId, channel).
 
 -spec amount(tx()) -> non_neg_integer().
@@ -120,8 +128,8 @@ check(#channel_withdraw_tx{amount       = Amount,
                            state_hash   = _StateHash,
                            round        = Round,
                            nonce        = Nonce} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
-    ChannelId = channel(Tx),
-    ToPubKey = to(Tx),
+    ChannelId = channel_hash(Tx),
+    ToPubKey = to_pubkey(Tx),
     Checks =
         [fun() -> aetx_utils:check_account(ToPubKey, Trees, Nonce, Fee) end,
          fun() -> check_channel(ChannelId, Amount, ToPubKey, Round, Trees) end],
@@ -139,8 +147,8 @@ process(#channel_withdraw_tx{amount       = Amount,
                              state_hash   = StateHash,
                              round        = Round,
                              nonce        = Nonce} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
-    ChannelId = channel(Tx),
-    ToPubKey = to(Tx),
+    ChannelId = channel_hash(Tx),
+    ToPubKey = to_pubkey(Tx),
     AccountsTree0 = aec_trees:accounts(Trees),
     ChannelsTree0 = aec_trees:channels(Trees),
 
@@ -161,7 +169,7 @@ process(#channel_withdraw_tx{amount       = Amount,
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}
                                         | {error, channel_not_found}.
 signers(#channel_withdraw_tx{} = Tx, Trees) ->
-    ChannelId = channel(Tx),
+    ChannelId = channel_hash(Tx),
     case aec_chain:get_channel(ChannelId, Trees) of
         {ok, Channel} ->
             {ok, [aesc_channels:initiator(Channel),
@@ -220,8 +228,8 @@ for_client(#channel_withdraw_tx{amount       = Amount,
                                 nonce        = Nonce} = Tx) ->
     #{<<"data_schema">> => <<"ChannelWithdrawalTxJSON">>, % swagger schema name
       <<"vsn">>         => version(),
-      <<"channel_id">>  => aec_base58c:encode(channel, channel(Tx)),
-      <<"to">>          => aec_base58c:encode(account_pubkey, to(Tx)),
+      <<"channel_id">>  => aec_base58c:encode(id_hash, channel(Tx)),
+      <<"to">>          => aec_base58c:encode(id_hash, to(Tx)),
       <<"amount">>      => Amount,
       <<"ttl">>         => TTL,
       <<"fee">>         => Fee,
@@ -240,12 +248,12 @@ serialization_template(?CHANNEL_WITHDRAW_TX_VSN) ->
     , {nonce      , int}
     ].
 
-channel_id(#channel_withdraw_tx{} = Tx) -> channel(Tx).
+channel_id(#channel_withdraw_tx{} = Tx) -> channel_hash(Tx).
 
 state_hash(#channel_withdraw_tx{state_hash = StateHash}) -> StateHash.
 
 updates(#channel_withdraw_tx{amount = Amount} = Tx) ->
-    [aesc_offchain_state:op_withdraw(to(Tx), Amount)].
+    [aesc_offchain_state:op_withdraw(to_pubkey(Tx), Amount)].
 
 round(#channel_withdraw_tx{round = Round}) ->
     Round.

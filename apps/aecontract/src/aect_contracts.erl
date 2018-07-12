@@ -100,7 +100,7 @@ store_id(C) ->
 
 -spec new(aect_create_tx:tx()) -> contract().
 new(RTx) ->
-    new(aect_create_tx:owner(RTx),
+    new(aect_create_tx:owner_pubkey(RTx),
         aect_create_tx:nonce(RTx),
         aect_create_tx:vm_version(RTx),
         aect_create_tx:code(RTx),

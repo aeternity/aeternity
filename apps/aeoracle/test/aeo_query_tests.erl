@@ -13,7 +13,7 @@
                    , expires/1
                    , fee/1
                    , id/1
-                   , new/2
+                   , new/4
                    , oracle_address/1
                    , response/1
                    , response_ttl/1
@@ -36,12 +36,19 @@ basic_test_() ->
     ].
 
 basic_serialize() ->
-    O = new(query_tx(), 1),
+    O = new_query(1),
     ?assertEqual(O, deserialize(serialize(O))),
     ok.
 
+new_query(Height) ->
+    QTx = query_tx(),
+    new(QTx,
+        aec_id:specialize(aeo_query_tx:sender(QTx), account),
+        aec_id:specialize(aeo_query_tx:oracle(QTx), oracle),
+        Height).
+
 basic_getters() ->
-    I = new(query_tx(), 1),
+    I = new_query(1),
     ?assert(is_integer(expires(I))),
     ?assert(is_integer(fee(I))),
     ?assert(is_binary(id(I))),
@@ -53,7 +60,7 @@ basic_getters() ->
     ok.
 
 basic_setters() ->
-    I = aeo_query:new(query_tx(), 1),
+    I = new_query(1),
     ?assertError({illegal, _, _}, set_expires(foo, I)),
     _ = set_expires(100, I),
     ?assertError({illegal, _, _}, set_fee(foo, I)),
@@ -74,9 +81,9 @@ query_tx() ->
     query_tx(#{}).
 
 query_tx(Override) ->
-    Map = #{ sender        => <<42:32/unit:8>>
+    Map = #{ sender        => aec_id:create(account, <<42:32/unit:8>>)
            , nonce         => 42
-           , oracle        => <<4711:32/unit:8>>
+           , oracle        => aec_id:create(oracle, <<4711:32/unit:8>>)
            , query         => <<"{foo: bar}"/utf8>>
            , query_fee     => 10
            , query_ttl     => {delta, 100}

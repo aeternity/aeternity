@@ -191,38 +191,39 @@ query_oracle_negative(Cfg) ->
 
     %% Test bad sender key
     BadSenderKey = <<42:32/unit:8>>,
-    Q1 = aeo_test_utils:query_tx(BadSenderKey, OracleKey, S2),
+    OracleId     = aec_id:create(oracle, OracleKey),
+    Q1 = aeo_test_utils:query_tx(BadSenderKey, OracleId, S2),
     {error, account_not_found} = aetx:check(Q1, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test unsufficient funds.
     S3     = aeo_test_utils:set_account_balance(SenderKey, 0, S2),
     Trees1 = aeo_test_utils:trees(S3),
-    Q2     = aeo_test_utils:query_tx(SenderKey, OracleKey, S2),
+    Q2     = aeo_test_utils:query_tx(SenderKey, OracleId, S2),
     {error, insufficient_funds} = aetx:check(Q2, Trees1, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test too high nonce in account
-    Q3 = aeo_test_utils:query_tx(SenderKey, OracleKey, #{nonce => 0}, S2),
+    Q3 = aeo_test_utils:query_tx(SenderKey, OracleId, #{nonce => 0}, S2),
     {error, account_nonce_too_high} = aetx:check(Q3, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test too low query fee
-    Q4 = aeo_test_utils:query_tx(SenderKey, OracleKey, #{fee => 0}, S2),
+    Q4 = aeo_test_utils:query_tx(SenderKey, OracleId, #{fee => 0}, S2),
     {error, too_low_fee} = aetx:check(Q4, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test bad oracle key
-    BadOracleKey = <<42:32/unit:8>>,
-    Q5 = aeo_test_utils:query_tx(SenderKey, BadOracleKey, S2),
+    BadOracleId = aec_id:create(oracle, <<42:32/unit:8>>),
+    Q5 = aeo_test_utils:query_tx(SenderKey, BadOracleId, S2),
     {error, oracle_does_not_exist} = aetx:check(Q5, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test too long query ttl
-    Q6 = aeo_test_utils:query_tx(SenderKey, OracleKey, #{ query_ttl => {block, 500} }, S2),
+    Q6 = aeo_test_utils:query_tx(SenderKey, OracleId, #{ query_ttl => {block, 500} }, S2),
     {error, too_long_ttl} = aetx:check(Q6, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test too long response ttl
-    Q7 = aeo_test_utils:query_tx(SenderKey, OracleKey, #{ response_ttl => {delta, 500} }, S2),
+    Q7 = aeo_test_utils:query_tx(SenderKey, OracleId, #{ response_ttl => {delta, 500} }, S2),
     {error, too_long_ttl} = aetx:check(Q7, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test too short TTL
-    Q8 = aeo_test_utils:query_tx(SenderKey, OracleKey, #{ ttl => CurrHeight - 1 }, S2),
+    Q8 = aeo_test_utils:query_tx(SenderKey, OracleId, #{ ttl => CurrHeight - 1 }, S2),
     {error, ttl_expired} = aetx:check(Q8, Trees, CurrHeight, ?PROTOCOL_VERSION),
     ok.
 
@@ -235,15 +236,16 @@ query_oracle(Cfg, Opts) ->
     Trees           = aeo_test_utils:trees(S2),
     CurrHeight      = ?ORACLE_QUERY_HEIGHT,
     PrivKey         = aeo_test_utils:priv_key(SenderKey, S2),
+    OracleId        = aec_id:create(oracle, OracleKey),
 
-    Q1 = aeo_test_utils:query_tx(SenderKey, OracleKey, Opts, S2),
+    Q1 = aeo_test_utils:query_tx(SenderKey, OracleId, Opts, S2),
     %% Test that QueryTX is accepted
     SignedTx = aec_test_utils:sign_tx(Q1, PrivKey),
     {ok, [SignedTx], Trees2} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, CurrHeight, ?PROTOCOL_VERSION),
     S3 = aeo_test_utils:set_trees(Trees2, S2),
     {oracle_query_tx, QTx} = aetx:specialize_type(Q1),
-    ID = aeo_query:id(aeo_query:new(QTx, CurrHeight)),
+    ID = aeo_query:id(aeo_query:new(QTx, SenderKey, OracleKey, CurrHeight)),
     {OracleKey, ID, S3}.
 
 %%%===================================================================

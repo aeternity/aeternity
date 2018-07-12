@@ -42,7 +42,9 @@ spend(Recipient, Value, State) ->
     ChainAPI   = aevm_eeevm_state:chain_api(State),
     ChainState = aevm_eeevm_state:chain_state(State),
 
-    case ChainAPI:spend(<<Recipient:256>>, Value, ChainState) of
+    %% TODO: This assumes that we are spending to an account
+    RecipientId = aec_id:create(account, <<Recipient:256>>),
+    case ChainAPI:spend(RecipientId, Value, ChainState) of
         {ok, ChainState1} ->
             UnitReturn = {ok, <<0:256>>}, %% spend returns unit
             GasSpent   = 0,         %% Already costs lots of gas

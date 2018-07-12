@@ -118,7 +118,9 @@ txs_gc(Config) ->
     ok = aecore_suite_utils:check_for_logs([dev1], Config).
 
 add_spend_tx(Node, Amount, Fee, Nonce, TTL) ->
-    Params = #{ sender => maps:get(pubkey, patron()), recipient => new_pubkey(),
+    Sender = aec_id:create(account, maps:get(pubkey, patron())),
+    Recipient = aec_id:create(account, new_pubkey()),
+    Params = #{ sender => Sender, recipient => Recipient,
                 amount => Amount, nonce => Nonce, ttl => TTL, payload => <<>>, fee => Fee },
     {ok, Tx} = aec_spend_tx:new(Params),
     STx = aec_test_utils:sign_tx(Tx, maps:get(privkey, patron())),

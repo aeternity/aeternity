@@ -160,7 +160,7 @@ handle_request('PostNamePreclaimTx', #{'NamePreclaimTx' := NamePreclaimTxObj}, _
     #{<<"commitment">> := Commitment,
       <<"fee">>        := Fee} = NamePreclaimTxObj,
     TTL = maps:get(<<"ttl">>, NamePreclaimTxObj, 0),
-     case aec_base58c:safe_decode(commitment, Commitment) of
+     case aec_base58c:safe_decode({id_hash, [commitment]}, Commitment) of
         {ok, DecodedCommitment} ->
             case aehttp_int_tx_logic:name_preclaim(DecodedCommitment,
                                                    Fee, TTL) of
@@ -199,7 +199,7 @@ handle_request('PostNameUpdateTx', #{'NameUpdateTx' := NameUpdateTxObj}, _Contex
       <<"client_ttl">> := ClientTTL,
       <<"fee">>        := Fee} = NameUpdateTxObj,
     TTL = maps:get(<<"ttl">>, NameUpdateTxObj, 0),
-    case aec_base58c:safe_decode(name, NameHash) of
+    case aec_base58c:safe_decode({id_hash, [name]}, NameHash) of
         {ok, DecodedNameHash} ->
             case aehttp_int_tx_logic:name_update(DecodedNameHash, NameTTL,
                                                  Pointers, ClientTTL, Fee, TTL) of
@@ -219,11 +219,11 @@ handle_request('PostNameTransferTx', #{'NameTransferTx' := NameTransferTxObj}, _
       <<"recipient_pubkey">> := RecipientPubKey,
       <<"fee">>              := Fee} = NameTransferTxObj,
     TTL = maps:get(<<"ttl">>, NameTransferTxObj, 0),
-    case {aec_base58c:safe_decode(name, NameHash),
-          aec_base58c:safe_decode(account_pubkey, RecipientPubKey)} of
-        {{ok, DecodedNameHash}, {ok, DecodedRecipientPubKey}} ->
-            case aehttp_int_tx_logic:name_transfer(DecodedNameHash,
-                                                   DecodedRecipientPubKey,
+    case {aec_base58c:safe_decode({id_hash, [name]}, NameHash),
+          aec_base58c:safe_decode({id_hash, [account_pubkey]}, RecipientPubKey)} of
+        {{ok, DecodedName}, {ok, DecodedRecipient}} ->
+            case aehttp_int_tx_logic:name_transfer(DecodedName,
+                                                   DecodedRecipient,
                                                    Fee, TTL) of
                 {ok, _Tx} ->
                     {200, [], #{name_hash => NameHash}};
@@ -242,9 +242,9 @@ handle_request('PostNameRevokeTx', #{'NameRevokeTx' := NameRevokeTxObj}, _Contex
     #{<<"name_hash">> := NameHash,
       <<"fee">>       := Fee} = NameRevokeTxObj,
     TTL = maps:get(<<"ttl">>, NameRevokeTxObj, 0),
-    case aec_base58c:safe_decode(name, NameHash) of
-        {ok, DecodedNameHash} ->
-            case aehttp_int_tx_logic:name_revoke(DecodedNameHash, Fee, TTL) of
+    case aec_base58c:safe_decode({id_hash, [name]}, NameHash) of
+        {ok, DecodedName} ->
+            case aehttp_int_tx_logic:name_revoke(DecodedName, Fee, TTL) of
                 {ok, _Tx} ->
                     {200, [], #{name_hash => NameHash}};
                 {error, account_not_found} ->

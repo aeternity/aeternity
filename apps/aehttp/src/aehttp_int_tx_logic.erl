@@ -31,11 +31,16 @@ sender_and_hash(STx) ->
 spend(EncodedRecipient, Amount, Fee, TTL, Payload) ->
     create_tx(
         fun(SenderPubkey, Nonce) ->
-            case aec_chain:resolve_name(account_pubkey, EncodedRecipient) of
-                {ok, DecodedRecipientPubkey} ->
+            %% Note that this is the local node's pubkey.
+            Sender = aec_id:create(account, SenderPubkey),
+            AllowedTypes = [account_pubkey, name,
+                            oracle_pubkey, contract_pubkey],
+            case aec_base58c:safe_decode({id_hash, AllowedTypes},
+                                         EncodedRecipient) of
+                {ok, DecodedRecipientId} ->
                     aec_spend_tx:new(
-                      #{sender    => SenderPubkey,
-                        recipient => DecodedRecipientPubkey,
+                      #{sender    => Sender,
+                        recipient => DecodedRecipientId,
                         amount    => Amount,
                         payload   => Payload,
                         fee       => Fee,
@@ -49,8 +54,10 @@ spend(EncodedRecipient, Amount, Fee, TTL, Payload) ->
 oracle_register(QueryFormat, ResponseFormat, QueryFee, Fee, TTLType, TTLValue, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
+            %% Note that this is the local node's pubkey.
+            Sender = aec_id:create(account, Pubkey),
             aeo_register_tx:new(
-              #{account       => Pubkey,
+              #{account       => Sender,
                 nonce         => Nonce,
                 query_spec    => QueryFormat,
                 response_spec => ResponseFormat,
@@ -63,8 +70,10 @@ oracle_register(QueryFormat, ResponseFormat, QueryFee, Fee, TTLType, TTLValue, T
 oracle_extend(Fee, TTLType, TTLValue, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
+            %% Note that this is the local node's pubkey.
+            Sender = aec_id:create(oracle, Pubkey),
             aeo_extend_tx:new(
-              #{oracle     => Pubkey,
+              #{oracle     => Sender,
                 nonce      => Nonce,
                 oracle_ttl => {TTLType, TTLValue},
                 fee        => Fee,
@@ -75,20 +84,25 @@ oracle_query(EncodedOraclePubkey, Query, QueryFee, QueryTTLType,
              QueryTTLValue, ResponseTTLValue, Fee, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
-            case aec_chain:resolve_name(oracle_pubkey, EncodedOraclePubkey) of
-                {ok, DecodedOraclePubkey} ->
+            %% Note that this is the local node's pubkey.
+            Sender = aec_id:create(account, Pubkey),
+            case aec_base58c:safe_decode({id_hash, [oracle_pubkey]},
+                                         EncodedOraclePubkey) of
+                {ok, DecodedOracleId} ->
                     {ok, Tx} =
                         aeo_query_tx:new(
-                          #{sender       => Pubkey,
+                          #{sender       => Sender,
                             nonce        => Nonce,
-                            oracle       => DecodedOraclePubkey,
+                            oracle       => DecodedOracleId,
                             query        => Query,
                             query_fee    => QueryFee,
                             query_ttl    => {QueryTTLType, QueryTTLValue},
                             response_ttl => {delta, ResponseTTLValue},
                             fee          => Fee,
                             ttl          => TTL}),
-                    QId = aeo_query:id(Pubkey, Nonce, DecodedOraclePubkey),
+                    %% NOTE: Does not work with names
+                    OraclePubkey = aec_id:specialize(DecodedOracleId, oracle),
+                    QId = aeo_query:id(Pubkey, Nonce, OraclePubkey),
                     {ok, Tx, QId};
                 {error, _} -> {error, invalid_key}
               end
@@ -97,8 +111,10 @@ oracle_query(EncodedOraclePubkey, Query, QueryFee, QueryTTLType,
 oracle_response(DecodedQueryId, Response, Fee, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
+            %% Note that this is the local node's pubkey.
+            Sender = aec_id:create(oracle, Pubkey),
             aeo_response_tx:new(
-              #{oracle   => Pubkey,
+              #{oracle   => Sender,
                 nonce    => Nonce,
                 query_id => DecodedQueryId,
                 response => Response,
@@ -135,7 +151,7 @@ name_preclaim(DecodedCommitment, Fee, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
             aens_preclaim_tx:new(
-              #{account    => Pubkey,
+              #{account    => aec_id:create(account, Pubkey),
                 nonce      => Nonce,
                 commitment => DecodedCommitment,
                 fee        => Fee,
@@ -149,7 +165,7 @@ name_claim(Name, NameSalt, Fee, TTL) ->
                 {ok, NameHash} ->
                     {ok, Tx} =
                         aens_claim_tx:new(
-                          #{account   => Pubkey,
+                          #{account   => aec_id:create(account, Pubkey),
                             nonce     => Nonce,
                             name      => Name,
                             name_salt => NameSalt,
@@ -164,7 +180,7 @@ name_update(DecodedNameHash, NameTTL, Pointers, ClientTTL, Fee, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
             aens_update_tx:new(
-              #{account    => Pubkey,
+              #{account    => aec_id:create(account, Pubkey),
                 nonce      => Nonce,
                 name_hash  => DecodedNameHash,
                 name_ttl   => NameTTL,
@@ -177,8 +193,9 @@ name_update(DecodedNameHash, NameTTL, Pointers, ClientTTL, Fee, TTL) ->
 name_transfer(DecodedNameHash, DecodedRecipientPubKey, Fee, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
+            %% Note that this is the local node's pubkey.
             aens_transfer_tx:new(
-              #{account           => Pubkey,
+              #{account           => aec_id:create(account, Pubkey),
                 nonce             => Nonce,
                 name_hash         => DecodedNameHash,
                 recipient_account => DecodedRecipientPubKey,
@@ -189,8 +206,9 @@ name_transfer(DecodedNameHash, DecodedRecipientPubKey, Fee, TTL) ->
 name_revoke(DecodedNameHash, Fee, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
+            %% Note that this is the local node's pubkey.
             aens_revoke_tx:new(
-              #{account   => Pubkey,
+              #{account   => aec_id:create(account, Pubkey),
                 nonce     => Nonce,
                 name_hash => DecodedNameHash,
                 fee       => Fee,

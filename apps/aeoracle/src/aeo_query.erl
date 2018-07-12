@@ -15,7 +15,7 @@
         , id/1
         , id/3
         , is_closed/1
-        , new/2
+        , new/4
         , oracle_address/1
         , query/1
         , response/1
@@ -71,12 +71,13 @@
 %%% API
 %%%===================================================================
 
--spec new(aeo_query_tx:tx(), aec_blocks:height()) -> query().
-new(QTx, BlockHeight) ->
+-spec new(aeo_query_tx:tx(), aec_keys:pubkey(),
+          aec_keys:pubkey(), aec_blocks:height()) -> query().
+new(QTx, SenderPubkey, OraclePubKey, BlockHeight) ->
     Expires = aeo_utils:ttl_expiry(BlockHeight, aeo_query_tx:query_ttl(QTx)),
-    I = #query{ sender_address = aeo_query_tx:sender(QTx)
+    I = #query{ sender_address = SenderPubkey
               , sender_nonce   = aeo_query_tx:nonce(QTx)
-              , oracle_address = aeo_query_tx:oracle(QTx)
+              , oracle_address = OraclePubKey
               , query          = aeo_query_tx:query(QTx)
               , response       = undefined
               , expires        = Expires

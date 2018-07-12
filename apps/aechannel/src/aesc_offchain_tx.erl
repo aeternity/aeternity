@@ -55,12 +55,13 @@
 %%%===================================================================
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{channel_id         := ChannelIdBin,
+new(#{channel_id         := ChannelId,
       state_hash         := StateHash,
       updates            := Updates,
       round              := Round}) ->
+    channel = aec_id:specialize_type(ChannelId),
     Tx = #channel_offchain_tx{
-            channel_id         = aec_id:create(channel, ChannelIdBin),
+            channel_id         = ChannelId,
             updates            = Updates,
             state_hash         = StateHash,
             round              = Round},
@@ -141,9 +142,10 @@ deserialize(?CHANNEL_OFFCHAIN_TX_VSN,
 for_client(#channel_offchain_tx{
               updates            = Updates,
               state_hash         = StateHash,
-              round              = Round} = Tx) ->
+              channel_id         = ChannelId,
+              round              = Round}) ->
     #{<<"vsn">>                => ?CHANNEL_OFFCHAIN_TX_VSN,
-      <<"channel_id">>         => aec_base58c:encode(channel, channel_id(Tx)),
+      <<"channel_id">>         => aec_base58c:encode(id_hash, ChannelId),
       <<"round">>              => Round,
       <<"updates">>            => [aesc_offchain_state:update_for_client(D) || D <- Updates],
       <<"state_hash">>         => aec_base58c:encode(state, StateHash)}.

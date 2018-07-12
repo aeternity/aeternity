@@ -11,7 +11,10 @@
 -define(TEST_MODULE, aec_spend_tx).
 
 -define(SENDER_PUBKEY, <<"_________sender_pubkey__________">>).
+-define(SENDER_ID,  aec_id:create(account, ?SENDER_PUBKEY)).
 -define(RECIPIENT_PUBKEY, <<"________recipient_pubkey________">>).
+-define(RECIPIENT_ID, aec_id:create(account, ?RECIPIENT_PUBKEY)).
+
 
 check_test_() ->
     [{"Tx fee lower than minimum fee defined in governance",
@@ -24,7 +27,8 @@ check_test_() ->
       end},
      {"Sender account does not exist in state trees",
       fun() ->
-              {ok, SpendTx} = spend_tx(#{fee => 10, sender => <<42>>,
+              BogusSender = aec_id:create(account, <<42:256>>),
+              {ok, SpendTx} = spend_tx(#{fee => 10, sender => BogusSender,
                                          payload => <<"">>}),
               StateTree = aec_test_utils:create_state_tree(),
               ?assertEqual({error, account_not_found},
@@ -32,7 +36,7 @@ check_test_() ->
       end},
      {"Sender account has insufficient funds to cover tx fee + amount",
       fun() ->
-              {ok, SpendTx} = spend_tx(#{sender => ?SENDER_PUBKEY,
+              {ok, SpendTx} = spend_tx(#{sender => ?SENDER_ID,
                                          fee => 10,
                                          amount => 50,
                                          nonce => 12,
@@ -50,7 +54,7 @@ check_test_() ->
       end},
      {"Sender account has nonce higher than tx nonce",
       fun() ->
-              {ok, SpendTx} = spend_tx(#{sender => ?SENDER_PUBKEY,
+              {ok, SpendTx} = spend_tx(#{sender => ?SENDER_ID,
                                          fee => 10,
                                          amount => 50,
                                          nonce => 12,
@@ -63,7 +67,7 @@ check_test_() ->
       end},
       {"TX TTL is too small",
       fun() ->
-              {ok, SpendTx} = spend_tx(#{sender => ?SENDER_PUBKEY,
+              {ok, SpendTx} = spend_tx(#{sender => ?SENDER_ID,
                                          fee => 10,
                                          amount => 50,
                                          ttl => 10,
@@ -83,8 +87,8 @@ process_test_() ->
               RecipientAccount = new_account(#{pubkey => ?RECIPIENT_PUBKEY, balance => 80, nonce => 12}),
               StateTree0 = aec_test_utils:create_state_tree_with_accounts([SenderAccount, RecipientAccount]),
 
-              {ok, SpendTx} = ?TEST_MODULE:new(#{sender => ?SENDER_PUBKEY,
-                                                 recipient => ?RECIPIENT_PUBKEY,
+              {ok, SpendTx} = ?TEST_MODULE:new(#{sender => ?SENDER_ID,
+                                                 recipient => ?RECIPIENT_ID,
                                                  amount => 50,
                                                  fee => 10,
                                                  nonce => 11,
@@ -107,8 +111,8 @@ process_test_() ->
               SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 100, nonce => 10}),
               StateTree0 = aec_test_utils:create_state_tree_with_accounts([SenderAccount]),
 
-              {ok, SpendTx} = ?TEST_MODULE:new(#{sender => ?SENDER_PUBKEY,
-                                                 recipient => ?SENDER_PUBKEY,
+              {ok, SpendTx} = ?TEST_MODULE:new(#{sender => ?SENDER_ID,
+                                                 recipient => ?SENDER_ID,
                                                  amount => 50,
                                                  fee => 10,
                                                  nonce => 11,
@@ -124,8 +128,8 @@ process_test_() ->
       end}].
 
 spend_tx(Data) ->
-    DefaultData = #{sender => ?SENDER_PUBKEY,
-                    recipient => ?RECIPIENT_PUBKEY,
+    DefaultData = #{sender => ?SENDER_ID,
+                    recipient => ?RECIPIENT_ID,
                     amount => 0,
                     fee => 0,
                     nonce => 0},

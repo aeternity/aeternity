@@ -64,8 +64,10 @@ sign_txs_test_() ->
 
 make_spend_tx(Sender) ->
     #{ public := OtherPubkey} = enacl:sign_keypair(),
-    {ok, _SpendTx} = aec_spend_tx:new(#{sender => Sender,
-                                        recipient => OtherPubkey,
+    SenderId = aec_id:create(account, Sender),
+    Recipient = aec_id:create(account, OtherPubkey),
+    {ok, _SpendTx} = aec_spend_tx:new(#{sender => SenderId,
+                                        recipient => Recipient,
                                         amount => 4,
                                         fee => 1,
                                         ttl => 100,
@@ -74,7 +76,8 @@ make_spend_tx(Sender) ->
 make_signed_mutual_close() ->
     #{ secret:= PrivKey1} = enacl:sign_keypair(),
     #{ secret := PrivKey2} = enacl:sign_keypair(),
-    {ok, Tx} = aesc_close_mutual_tx:new(#{channel_id        => <<0:32/unit:8>>,
+    Channel = aec_id:create(channel, <<0:32/unit:8>>),
+    {ok, Tx} = aesc_close_mutual_tx:new(#{channel_id        => Channel,
                                           initiator_amount  => 42,
                                           responder_amount  => 24,
                                           ttl               => 1000,

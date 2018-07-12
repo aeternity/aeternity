@@ -81,11 +81,13 @@ set_store(Store,  #state{ account = PubKey, trees = Trees } = State) ->
 %%    Account
 
 %% @doc Spend money from the contract account.
--spec spend(aec_keys:pubkey(), non_neg_integer(), chain_state()) ->
+-spec spend(aec_id:id(), non_neg_integer(), chain_state()) ->
           {ok, chain_state()} | {error, term()}.
 spend(Recipient, Amount, State = #state{ account = ContractKey }) ->
     Nonce = next_nonce(State),
-    {ok, SpendTx} = aec_spend_tx:new(#{ sender => ContractKey
+    %% Note: The spend is from the contract's account.
+    Sender = aec_id:create(account, ContractKey),
+    {ok, SpendTx} = aec_spend_tx:new(#{ sender => Sender
                                       , recipient => Recipient
                                       , amount => Amount
                                       , fee => 0
@@ -107,7 +109,7 @@ oracle_register(AccountKey,_Sign, QueryFee, TTL, QuerySpec, ResponseSpec,
     BinaryQuerySpec = aeso_data:to_binary(QuerySpec, 0),
     BinaryResponseSpec = aeso_data:to_binary(ResponseSpec, 0),
     Spec =
-        #{account       => AccountKey,
+        #{account       => aec_id:create(account, AccountKey),
           nonce         => Nonce,
           query_spec    => BinaryQuerySpec,
           response_spec => BinaryResponseSpec,
@@ -136,14 +138,13 @@ oracle_register(AccountKey,_Sign, QueryFee, TTL, QuerySpec, ResponseSpec,
 
 
 oracle_query(Oracle, Q, Value, QTTL, RTTL,
-             State = #state{ height  = Height,
-                             account = ContractKey } = State) ->
+             State = #state{ account = ContractKey } = State) ->
     Nonce = next_nonce(State),
     QueryData = aeso_data:to_binary(Q, 0),
     {ok, Tx} =
-        aeo_query_tx:new(#{sender        => ContractKey,
+        aeo_query_tx:new(#{sender        => aec_id:create(account, ContractKey),
                            nonce         => Nonce,
-                           oracle        => Oracle,
+                           oracle        => aec_id:create(oracle, Oracle),
                            query         => QueryData,
                            query_fee     => Value,
                            query_ttl     => {delta, QTTL},
@@ -154,8 +155,7 @@ oracle_query(Oracle, Q, Value, QTTL, RTTL,
     case apply_transaction(Tx, State) of
         {ok, State1} ->
             {oracle_query_tx, OTx} = aetx:specialize_type(Tx),
-            Query = aeo_query:new(OTx, Height),
-            Id = aeo_query:id(Query),
+            Id = aeo_query_tx:query_id(OTx),
             {ok, Id, State1};
         {error, _} = E -> E
     end.
@@ -165,7 +165,7 @@ oracle_respond(Oracle, QueryId,_Sign, Response, State) ->
     Nonce = next_nonce(Oracle, State),
 
     {ok, Tx} = aeo_response_tx:new(
-                 #{oracle   => Oracle,
+                 #{oracle   => aec_id:create(oracle, Oracle),
                    nonce    => Nonce,
                    query_id => QueryId,
                    response => aeso_data:to_binary(Response, 0),
@@ -178,7 +178,7 @@ oracle_respond(Oracle, QueryId,_Sign, Response, State) ->
 oracle_extend(Oracle,_Sign, Fee, TTL, State) ->
     Nonce = next_nonce(Oracle, State),
     {ok, Tx} =
-        aeo_extend_tx:new(#{oracle     => Oracle,
+        aeo_extend_tx:new(#{oracle     => aec_id:create(oracle, Oracle),
                             nonce      => Nonce,
                             oracle_ttl => {delta, TTL},
                             fee        => Fee,
@@ -276,9 +276,9 @@ decode_as(Type, Val) ->
 aens_preclaim(Addr, CHash, _Sign, #state{ account = ContractKey } = State) ->
     Nonce = next_nonce(Addr, State),
     {ok, Tx} =
-        aens_preclaim_tx:new(#{ account    => Addr,
+        aens_preclaim_tx:new(#{ account    => aec_id:create(account, Addr),
                                 nonce      => Nonce,
-                                commitment => CHash,
+                                commitment => aec_id:create(commitment, CHash),
                                 fee        => 0 }),
     case Addr =:= ContractKey of
         true  -> apply_transaction(Tx, State);
@@ -289,7 +289,7 @@ aens_preclaim(Addr, CHash, _Sign, #state{ account = ContractKey } = State) ->
 aens_claim(Addr, Name, Salt, _Sign, #state{ account = ContractKey } = State) ->
     Nonce = next_nonce(Addr, State),
     {ok, Tx} =
-        aens_claim_tx:new(#{ account    => Addr,
+        aens_claim_tx:new(#{ account    => aec_id:create(account, Addr),
                              nonce      => Nonce,
                              name       => Name,
                              name_salt  => Salt,
@@ -303,10 +303,10 @@ aens_claim(Addr, Name, Salt, _Sign, #state{ account = ContractKey } = State) ->
 aens_transfer(FromAddr, ToAddr, Hash, _Sign, #state{ account = ContractKey } = State) ->
     Nonce = next_nonce(FromAddr, State),
     {ok, Tx} =
-        aens_transfer_tx:new(#{ account           => FromAddr,
+        aens_transfer_tx:new(#{ account           => aec_id:create(account, FromAddr),
                                 nonce             => Nonce,
-                                name_hash         => Hash,
-                                recipient_account => ToAddr,
+                                name_hash         => aec_id:create(name, Hash),
+                                recipient_account => aec_id:create(account, ToAddr),
                                 fee               => 0 }),
     case FromAddr =:= ContractKey of
         true  -> apply_transaction(Tx, State);
@@ -317,9 +317,9 @@ aens_transfer(FromAddr, ToAddr, Hash, _Sign, #state{ account = ContractKey } = S
 aens_revoke(Addr, Hash, _Sign, #state{ account = ContractKey } = State) ->
     Nonce = next_nonce(Addr, State),
     {ok, Tx} =
-        aens_revoke_tx:new(#{ account   => Addr,
+        aens_revoke_tx:new(#{ account   => aec_id:create(account, Addr),
                               nonce     => Nonce,
-                              name_hash => Hash,
+                              name_hash => aec_id:create(name, Hash),
                               fee       => 0 }),
     case Addr =:= ContractKey of
         true  -> apply_transaction(Tx, State);
@@ -345,9 +345,9 @@ call_contract(Target, Gas, Value, CallData, CallStack,
             Nonce = aec_accounts:nonce(ContractAccount) + 1,
             VmVersion = aect_contracts:vm_version(Contract),
             {ok, CallTx} =
-                aect_call_tx:new(#{ caller     => ContractKey,
+                aect_call_tx:new(#{ caller     => aec_id:create(contract, ContractKey),
                                     nonce      => Nonce,
-                                    contract   => Target,
+                                    contract   => aec_id:create(contract, Target),
                                     vm_version => VmVersion,
                                     fee        => 0,
                                     amount     => Value,

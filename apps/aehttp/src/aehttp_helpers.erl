@@ -12,6 +12,7 @@
         , relative_ttl_decode/1
         , nameservice_pointers_decode/1
         , get_nonce/1
+        , get_nonce_from_account_id/1
         , print_state/0
         , get_contract_code/2
         , get_contract_call_object_from_tx/2
@@ -81,37 +82,23 @@ read_optional_params(Params) ->
         "Not found").
 
 base58_decode(Params) ->
-    Decode =
-        fun(Type, Encoded) ->
-            case aec_base58c:safe_decode(Type, Encoded) of
-                {error, _} ->
-                    error;
-                {ok, Hash} ->
-                    {ok, Hash}
-            end
-        end,
-    params_read_fun(Params,
-        fun({Name, Types}, _, Data) when is_list(Types) ->
-                Encoded = maps:get(Name, Data),
-                DecodedHash =
-                    lists:foldl(
-                        fun(Type, Accum) ->
-                            case Decode(Type, Encoded) of
-                                error -> Accum;
-                                {ok, Hash} -> Hash % replace
-                            end
-                        end,
-                        no_type_match,
-                        Types),
-                case DecodedHash of
-                    no_type_match -> error;
-                    Hash -> {ok, Hash}
-                end;
-           ({Name, Type}, _, Data) ->
-                Encoded = maps:get(Name, Data),
-                Decode(Type, Encoded)
-        end,
-        "Invalid hash").
+    params_read_fun(Params, fun base58_decode_read_fun/3, "Invalid hash").
+
+base58_decode_read_fun({Name, Types}, _, Data) when is_list(Types) ->
+    Encoded = maps:get(Name, Data),
+    FoldFun = fun(Type, Acc) ->
+                      case aec_base58c:safe_decode(Type, Encoded) of
+                          {error, _} -> Acc;
+                          {ok, Hash} -> {ok, Hash}
+                      end
+              end,
+    lists:foldl(FoldFun, error, Types);
+base58_decode_read_fun({Name, Type}, _, Data) ->
+    Encoded = maps:get(Name, Data),
+    case aec_base58c:safe_decode(Type, Encoded) of
+        {error, _} -> error;
+        {ok, _} = Res -> Res
+    end.
 
 hexstrings_decode(ParamNames) ->
     params_read_fun(ParamNames,
@@ -174,6 +161,26 @@ get_nonce(AccountKey) ->
         end
     end.
 
+get_nonce_from_account_id(AccountKey) ->
+    fun(Req, State) ->
+        case maps:get(nonce, Req, undefined) of
+            undefined ->
+                Pubkey = case aec_id:specialize(maps:get(AccountKey, State)) of
+                             {account, A} -> A;
+                             {oracle, O} -> O
+                         end,
+                case aec_next_nonce:pick_for_account(Pubkey) of
+                    {ok, Nonce} ->
+                        {ok, maps:put(nonce, Nonce, State)};
+                    {error, account_not_found} ->
+                        Msg = "Account of " ++ atom_to_list(AccountKey) ++ " not found",
+                        {error, {404, [], #{<<"reason">> => list_to_binary(Msg)}}}
+                end;
+            Nonce ->
+                {ok, maps:put(nonce, Nonce, State)}
+        end
+    end.
+
 print_state() ->
     fun(Req, State) ->
         lager:info("Req: ~p", [Req]),
@@ -182,7 +189,8 @@ print_state() ->
 
 get_contract_code(ContractKey, CodeKey) ->
     fun(_Req, State) ->
-        ContractPubKey = maps:get(ContractKey, State),
+        ContractId = maps:get(ContractKey, State),
+        ContractPubKey = aec_id:specialize(ContractId, contract),
         TopBlockHash = aec_chain:top_block_hash(),
         {ok, Trees} = aec_chain:get_block_state(TopBlockHash),
         Tree = aec_trees:contracts(Trees),
@@ -205,11 +213,9 @@ get_contract_call_object_from_tx(TxKey, CallKey) ->
                     case aetx:specialize_type(Tx) of
                         {TxType, _} when TxType =:= contract_create_tx;
                                          TxType =:= contract_call_tx ->
-                            {Caller, Nonce, Contract} =
-                                contract_caller_nonce_key(
-                                  TxType,
-                                  aetx:specialize_callback(Tx)),
-                            CallId = aect_call:id(Caller, Nonce, Contract),
+                            {CB, CTx} = aetx:specialize_callback(Tx),
+                            Contract  = CB:contract_pubkey(CTx),
+                            CallId    = CB:call_id(CTx),
                             case aec_chain:get_contract_call(Contract, CallId, BlockHash) of
                                 {error, Why} ->
                                     Msg = atom_to_binary(Why, utf8),
@@ -223,29 +229,39 @@ get_contract_call_object_from_tx(TxKey, CallKey) ->
             end
     end.
 
-contract_caller_nonce_key(contract_create_tx, {CB, Tx}) ->
-    Owner = CB:owner(Tx),
-    Nonce = CB:nonce(Tx),
-    Contract = aect_contracts:compute_contract_pubkey(Owner, Nonce),
-    {Owner, Nonce, Contract};
-contract_caller_nonce_key(contract_call_tx, {CB, Tx}) ->
-    {CB:caller(Tx), CB:nonce(Tx), CB:contract(Tx)}.
-
 verify_oracle_existence(OracleKey) ->
-    verify_key_in_state_tree(OracleKey, fun aec_trees:oracles/1,
-                             fun aeo_state_tree:lookup_oracle/2,
-                             "Oracle address").
+    fun(_Req, State) ->
+            case aec_id:specialize(maps:get(OracleKey, State)) of
+                {oracle, OraclePubkey} ->
+                    TopBlockHash = aec_chain:top_block_hash(),
+                    {ok, Trees} = aec_chain:get_block_state(TopBlockHash),
+                    OTree = aec_trees:oracles(Trees),
+                    case aeo_state_tree:lookup_oracle(OraclePubkey, OTree) of
+                        {value, _} -> ok;
+                        none ->
+                            Msg = "Oracle address for key " ++ atom_to_list(OracleKey) ++ " not found",
+                            {error, {404, [], #{<<"reason">> => list_to_binary(Msg)}}}
+                    end;
+                {name, _} ->
+                    ok
+            end
+    end.
 
 verify_oracle_query_existence(OracleKey, QueryKey) ->
     fun(Req, State) ->
-        OraclePubKey = maps:get(OracleKey, State),
-        Lookup =
-            fun(QId, Tree) ->
-                aeo_state_tree:lookup_query(OraclePubKey, QId, Tree)
-            end,
-        Fun = verify_key_in_state_tree(QueryKey, fun aec_trees:oracles/1,
-                                        Lookup, "Oracle query"),
-        Fun(Req, State)
+        case aec_id:specialize(maps:get(OracleKey, State)) of
+            {oracle, OraclePubKey} ->
+                Lookup =
+                    fun(QId, Tree) ->
+                            aeo_state_tree:lookup_query(OraclePubKey, QId, Tree)
+                    end,
+                Fun = verify_key_in_state_tree(QueryKey, fun aec_trees:oracles/1,
+                                               Lookup, "Oracle query"),
+                Fun(Req, State);
+            {name, _} ->
+                %% We might succeed
+                ok
+        end
     end.
 
 verify_key_in_state_tree(Key, StateTreeFun, Lookup, Entity) ->

@@ -124,17 +124,12 @@ make_update_tx(Updates, #state{signed_txs=[SignedTx|_], trees=Trees}, Opts) ->
     {Mod, TxI} = aetx:specialize_callback(Tx),
     Round = Mod:round(TxI),
     ChannelId = Mod:channel_id(TxI),
-    #{initiator          := InitiatorPubKey,
-      responder          := ResponderPubKey} = Opts,
     Trees1 = apply_updates(Updates, Trees, Opts),
     StateHash = aec_trees:hash(Trees1),
     {ok, OffchainTx} =
-        aesc_offchain_tx:new(#{channel_id     => ChannelId,
-                              initiator      => InitiatorPubKey,
-                              responder      => ResponderPubKey,
+        aesc_offchain_tx:new(#{channel_id    => aec_id:create(channel, ChannelId),
                               state_hash     => StateHash,
                               updates        => Updates,
-                              previous_round => Round,
                               round          => Round + 1}),
     OffchainTx.
 

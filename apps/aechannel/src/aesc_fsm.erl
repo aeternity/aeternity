@@ -1062,28 +1062,40 @@ dep_tx_for_signing(#{from := From} = Opts, #data{on_chain_id = ChanId, state=Sta
     Def = deposit_tx_defaults(ChanId, From, maps:get(ttl, Opts, undefined)),
     Opts1 = maps:merge(Def, Opts),
     Opts2 = maps:merge(Opts1, #{state_hash => StateHash,
-                                round      => LastRound + 1}),
+                                round      => LastRound + 1,
+                                channel_id => aec_id:create(channel, ChanId),
+                                from       => aec_id:create(account, From)
+                               }),
     lager:debug("deposit_tx Opts = ~p", [Opts2]),
     {ok, _} = Ok = aesc_deposit_tx:new(Opts2),
     Ok.
 
-wdraw_tx_for_signing(#{to := From} = Opts, #data{on_chain_id = ChanId, state=State}) ->
+wdraw_tx_for_signing(#{to := To} = Opts, #data{on_chain_id = ChanId, state=State}) ->
     StateHash = aesc_offchain_state:hash(State),
     {LastRound, _} = aesc_offchain_state:get_latest_signed_tx(State),
-    Def = withdraw_tx_defaults(ChanId, From, maps:get(ttl, Opts, undefined)),
+    Def = withdraw_tx_defaults(ChanId, To, maps:get(ttl, Opts, undefined)),
     Opts1 = maps:merge(Def, Opts),
     Opts2 = maps:merge(Opts1, #{state_hash => StateHash,
-                                round      => LastRound + 1}),
+                                round      => LastRound + 1,
+                                channel_id => aec_id:create(channel, ChanId),
+                                to         => aec_id:create(account, To)
+                               }),
     lager:debug("withdraw_tx Opts = ~p", [Opts2]),
     {ok, _} = Ok = aesc_withdraw_tx:new(Opts2),
     Ok.
 
-create_tx_for_signing(#data{opts = #{initiator := Initiator} = Opts, state=State}) ->
+create_tx_for_signing(#data{opts = #{initiator := Initiator,
+                                     responder := Responder} = Opts,
+                            state=State}) ->
     StateHash = aesc_offchain_state:hash(State),
     Def = create_tx_defaults(Initiator),
     Opts1 = maps:merge(Def, Opts),
     lager:debug("create_tx Opts = ~p", [Opts1]),
-    {ok, _} = Ok = aesc_create_tx:new(Opts1#{state_hash => StateHash}),
+    Opts2 = Opts1#{state_hash => StateHash,
+                   initiator  => aec_id:create(account, Initiator),
+                   responder  => aec_id:create(account, Responder)
+                  },
+    {ok, _} = Ok = aesc_create_tx:new(Opts2),
     Ok.
 
 create_tx_defaults(Initiator) ->
@@ -1131,7 +1143,7 @@ close_mutual_tx(Account, Nonce, _LatestSignedTx,
     {IAmt1, RAmt1} = pay_close_mutual_fee(Fee, IAmt, RAmt),
     {LastRound, _} = aesc_offchain_state:get_latest_signed_tx(State),
     StateHash = aesc_offchain_state:hash(State),
-    aesc_close_mutual_tx:new(#{ channel_id       => ChanId
+    aesc_close_mutual_tx:new(#{ channel_id       => aec_id:create(channel, ChanId)
                               , initiator_amount => IAmt1
                               , responder_amount => RAmt1
                               , ttl              => TTL

@@ -115,11 +115,9 @@ create_message_from_event(chain_tx, TxHash) ->
 create_message_from_event(oracle_query_tx, OracleQueryTx) ->
     %% TODO: Add TTL of the query to payload
     Sender = aeo_query_tx:sender(OracleQueryTx),
-    Nonce  = aeo_query_tx:nonce(OracleQueryTx),
-    Oracle = aeo_query_tx:oracle(OracleQueryTx),
-    QId    = aeo_query:id(Sender, Nonce, Oracle),
+    QId    = aeo_query_tx:query_id(OracleQueryTx),
     Payload =
-        [{sender,   aec_base58c:encode(account_pubkey, Sender)},
+        [{sender,   aec_base58c:encode(id_hash, Sender)},
          {query,    aeo_query_tx:query(OracleQueryTx)},
          {query_id, aec_base58c:encode(oracle_query_id, QId)}],
     {ok, create_message(chain, new_oracle_query, Payload)};

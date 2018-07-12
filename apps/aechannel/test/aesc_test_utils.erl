@@ -184,8 +184,8 @@ create_tx_spec(InitiatorPubKey, ResponderPubKey, Spec0, State) ->
                                       {ResponderPubKey, ResponderAmount}]],
     Trees = aec_test_utils:create_state_tree_with_accounts(Accounts, no_backend),
     StateHash = aec_trees:hash(Trees),
-    Spec#{initiator          => InitiatorPubKey,
-          responder          => ResponderPubKey,
+    Spec#{initiator          => aec_id:create(account, InitiatorPubKey),
+          responder          => aec_id:create(account, ResponderPubKey),
           state_hash         => StateHash}.
 
 create_tx_default_spec(InitiatorPubKey, State) ->
@@ -204,7 +204,7 @@ create_tx_default_spec(InitiatorPubKey, State) ->
 close_mutual_tx_spec(ChannelId, Spec0, State) ->
     Initiator = maps:get(initiator_account, Spec0),
     Spec = maps:merge(close_mutual_tx_default_spec(Initiator, State), Spec0),
-    #{channel_id        => ChannelId,
+    #{channel_id        => aec_id:create(channel, ChannelId),
       initiator_amount  => maps:get(initiator_amount, Spec),
       responder_amount  => maps:get(responder_amount, Spec),
       ttl               => maps:get(ttl, Spec, 0),
@@ -226,8 +226,8 @@ close_solo_tx_spec(ChannelId, FromPubKey, Payload, PoI, State) ->
 
 close_solo_tx_spec(ChannelId, FromPubKey, Payload, PoI, Spec0, State) ->
     Spec = maps:merge(close_solo_tx_default_spec(FromPubKey, State), Spec0),
-    #{channel_id  => ChannelId,
-      from        => FromPubKey,
+    #{channel_id  => aec_id:create(channel, ChannelId),
+      from        => aec_id:create(account, FromPubKey),
       payload     => Payload,
       poi         => PoI,
       ttl         => maps:get(ttl, Spec, 0),
@@ -247,8 +247,8 @@ deposit_tx_spec(ChannelId, FromPubKey, State) ->
 
 deposit_tx_spec(ChannelId, FromPubKey, Spec0, State) ->
     Spec = maps:merge(deposit_tx_default_spec(FromPubKey, State), Spec0),
-    #{channel_id => ChannelId,
-      from       => FromPubKey,
+    #{channel_id => aec_id:create(channel, ChannelId),
+      from       => aec_id:create(account, FromPubKey),
       amount     => maps:get(amount, Spec),
       ttl        => maps:get(ttl, Spec, 0),
       fee        => maps:get(fee, Spec),
@@ -272,8 +272,8 @@ withdraw_tx_spec(ChannelId, ToPubKey, State) ->
 
 withdraw_tx_spec(ChannelId, ToPubKey, Spec0, State) ->
     Spec = maps:merge(withdraw_tx_spec(ToPubKey, State), Spec0),
-    #{channel_id => ChannelId,
-      to         => ToPubKey,
+    #{channel_id => aec_id:create(channel, ChannelId),
+      to         => aec_id:create(account, ToPubKey),
       amount     => maps:get(amount, Spec),
       ttl        => maps:get(ttl, Spec, 0),
       fee        => maps:get(fee, Spec),
@@ -297,8 +297,8 @@ slash_tx_spec(ChannelId, FromPubKey, Payload, PoI, State) ->
 
 slash_tx_spec(ChannelId, FromPubKey, Payload, PoI, Spec0, State) ->
     Spec = maps:merge(slash_tx_default_spec(FromPubKey, State), Spec0),
-    #{channel_id  => ChannelId,
-      from        => FromPubKey,
+    #{channel_id  => aec_id:create(channel, ChannelId),
+      from        => aec_id:create(account, FromPubKey),
       payload     => Payload,
       poi         => PoI,
       ttl         => maps:get(ttl, Spec, 0),
@@ -318,8 +318,8 @@ settle_tx_spec(ChannelId, FromPubKey, State) ->
 
 settle_tx_spec(ChannelId, FromPubKey, Spec0, State) ->
     Spec = maps:merge(settle_tx_default_spec(FromPubKey, State), Spec0),
-    #{channel_id        => ChannelId,
-      from              => FromPubKey,
+    #{channel_id        => aec_id:create(channel, ChannelId),
+      from              => aec_id:create(account, FromPubKey),
       initiator_amount  => maps:get(initiator_amount, Spec),
       responder_amount  => maps:get(responder_amount, Spec),
       ttl               => maps:get(ttl, Spec, 0),
@@ -355,13 +355,8 @@ state_tx(ChannelId, Initiator, Responder, Spec0) ->
         end,
     {ok, StateTx} =
         aesc_offchain_tx:new(
-            #{channel_id         => ChannelId,
-              initiator          => Initiator,
-              responder          => Responder,
+            #{channel_id         => aec_id:create(channel, ChannelId),
               updates            => maps:get(updates, Spec, []),
-              initiator_amount   => InitiatorAmount,
-              responder_amount   => ResponderAmount,
-              state              => maps:get(state, Spec, <<>>),
               state_hash         => StateHash,
               round              => maps:get(round, Spec)}),
     StateTx.

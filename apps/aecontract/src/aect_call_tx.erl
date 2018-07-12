@@ -27,8 +27,11 @@
         ]).
 
 %% Additional getters
--export([caller/1,
+-export([call_id/1,
+         caller/1,
+         caller_pubkey/1,
          contract/1,
+         contract_pubkey/1,
          vm_version/1,
          amount/1,
          gas/1,
@@ -63,7 +66,7 @@
 -export_type([tx/0]).
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{caller     := CallerPubKey,
+new(#{caller     := Caller,
       nonce      := Nonce,
       contract   := Contract,
       vm_version := VmVersion,
@@ -74,12 +77,14 @@ new(#{caller     := CallerPubKey,
       call_data  := CallData} = Args) ->
     CallStack = maps:get(call_stack, Args, []),
     TTL = maps:get(ttl, Args, 0),
-    %% TODO: There should be a difference between a contract as caller
-    %% and an account as caller, but when this is created from
-    %% contract the transaction is never serialized.
-    Tx = #contract_call_tx{caller     = aec_id:create(account, CallerPubKey),
+    case aec_id:specialize_type(Caller) of
+        contract -> ok;
+        account  -> ok
+    end,
+    contract = aec_id:specialize_type(Contract),
+    Tx = #contract_call_tx{caller     = Caller,
                            nonce      = Nonce,
-                           contract   = aec_id:create(contract, Contract),
+                           contract   = Contract,
                            vm_version = VmVersion,
                            fee        = Fee,
                            ttl        = TTL,
@@ -108,7 +113,11 @@ nonce(#contract_call_tx{nonce = Nonce}) ->
 
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#contract_call_tx{} = Tx) ->
-    caller(Tx).
+    caller_pubkey(Tx).
+
+-spec call_id(tx()) -> aect_call:id().
+call_id(#contract_call_tx{} = Tx) ->
+    aect_call:id(caller_pubkey(Tx), nonce(Tx), contract_pubkey(Tx)).
 
 %% CallerAccount should exist, and have enough funds for the fee + gas cost
 %% Contract should exist and its vm_version should match the one in the call.
@@ -120,7 +129,7 @@ check(#contract_call_tx{nonce = Nonce,
                         call_stack = CallStack
                        } = CallTx, Context, Trees, Height, _ConsensusVersion
      ) when ?is_non_neg_integer(GasPrice) ->
-    CallerPubKey = caller(CallTx),
+    CallerPubKey = caller_pubkey(CallTx),
     Checks =
         case Context of
             aetx_transaction ->
@@ -140,7 +149,7 @@ check(#contract_call_tx{nonce = Nonce,
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(Tx, _) ->
-    {ok, [caller(Tx)]}.
+    {ok, [caller_pubkey(Tx)]}.
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()}.
@@ -149,15 +158,15 @@ process(#contract_call_tx{nonce = Nonce,
                          } = CallTx, Context, Trees1, Height, ConsensusVersion) ->
 
     %% Transfer the attached funds to the callee (before calling the contract!)
-    CallerPubKey = caller(CallTx),
-    CalleePubKey = contract(CallTx),
+    CallerPubKey = caller_pubkey(CallTx),
+    CalleePubKey = contract_pubkey(CallTx),
     Trees2 = spend(CallerPubKey, CalleePubKey, Value,
                    Nonce, Context, Height, Trees1, ConsensusVersion),
 
     %% Create the call.
-    Call0 = aect_call:new(caller(CallTx),
+    Call0 = aect_call:new(caller_pubkey(CallTx),
 			  nonce(CallTx),
-			  contract(CallTx),
+			  contract_pubkey(CallTx),
 			  Height,
                           aect_call_tx:gas_price(CallTx)),
 
@@ -188,8 +197,8 @@ process(#contract_call_tx{nonce = Nonce,
 
 spend(CallerPubKey, CalleePubKey, Value, Nonce,_Context, Height, Trees,
       ConsensusVersion) ->
-    {ok, SpendTx} = aec_spend_tx:new(#{ sender => CallerPubKey
-                                , recipient => CalleePubKey
+    {ok, SpendTx} = aec_spend_tx:new(#{ sender => aec_id:create(account, CallerPubKey)
+                                , recipient => aec_id:create(account, CalleePubKey)
                                 , amount => Value
                                 , fee => 0
                                 , nonce => Nonce
@@ -208,8 +217,8 @@ run_contract(#contract_call_tx{ nonce  = _Nonce
 			      , call_data  = CallData
 			      , call_stack = CallStack
 			      } = Tx, Call, Height, Trees) ->
-    Caller        = caller(Tx),
-    ContractPubKey= contract(Tx),
+    Caller        = caller_pubkey(Tx),
+    ContractPubKey= contract_pubkey(Tx),
     ContractsTree = aec_trees:contracts(Trees),
     Contract      = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
     Code          = aect_contracts:code(Contract),
@@ -304,9 +313,9 @@ for_client(#contract_call_tx{nonce      = Nonce,
                              call_data  = CallData} = Tx) ->
     #{<<"data_schema">> => <<"ContractCallTxObject">>, % swagger schema name
       <<"vsn">>         => version(),
-      <<"caller">>      => aec_base58c:encode(account_pubkey, caller(Tx)),
+      <<"caller">>      => aec_base58c:encode(id_hash, caller(Tx)),
       <<"nonce">>       => Nonce,
-      <<"contract">>    => aec_base58c:encode(contract_pubkey, contract(Tx)),
+      <<"contract">>    => aec_base58c:encode(id_hash, contract(Tx)),
       <<"vm_version">>  => aect_utils:hex_byte(VmVersion),
       <<"fee">>         => Fee,
       <<"ttl">>         => TTL,
@@ -317,11 +326,19 @@ for_client(#contract_call_tx{nonce      = Nonce,
 
 %% -- Getters ----------------------------------------------------------------
 
--spec caller(tx()) -> aec_keys:pubkey().
-caller(C) -> aec_id:specialize(C#contract_call_tx.caller, account).
+-spec caller(tx()) -> aec_id:id().
+caller(C) -> C#contract_call_tx.caller.
 
--spec contract(tx()) -> aec_keys:pubkey().
-contract(C) -> aec_id:specialize(C#contract_call_tx.contract, contract).
+-spec caller_pubkey(tx()) -> aec_keys:pubkey().
+caller_pubkey(C) ->
+    {_, Pubkey} = aec_id:specialize(C#contract_call_tx.caller),
+    Pubkey.
+
+-spec contract(tx()) -> aec_id:id().
+contract(C) -> C#contract_call_tx.contract.
+
+-spec contract_pubkey(tx()) -> aec_keys:pubkey().
+contract_pubkey(C) -> aec_id:specialize(C#contract_call_tx.contract, contract).
 
 -spec vm_version(tx()) -> aect_contracts:vm_version().
 vm_version(C) -> C#contract_call_tx.vm_version.
@@ -347,7 +364,7 @@ call_stack(C) -> C#contract_call_tx.call_stack.
 check_call(#contract_call_tx{ vm_version = VmVersion,
                               amount     = Value} = Tx,
                Trees, _Height) ->
-    ContractPubKey = contract(Tx),
+    ContractPubKey = contract_pubkey(Tx),
     ContractsTree = aec_trees:contracts(Trees),
     %% Dialyzer, in its infinite wisdom, complains if it thinks we're checking
     %% that something of type non_neg_integer() is negative. Since Dialyzer

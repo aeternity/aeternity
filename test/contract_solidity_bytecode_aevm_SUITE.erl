@@ -189,9 +189,9 @@ execute_counter_fun_from_bytecode(Cfg) ->
     #{} = aect_contracts:state(Contract),
     %% Call Counter:inc(1)
     CallData =  aeu_hex:hexstring_decode(<< "0x6d4ce63c" >>),
-    Spec = #{ caller     => OwnerPubKey
+    Spec = #{ caller     => aec_id:create(account, OwnerPubKey)
             , nonce      => 2
-            , contract   => ContractPubKey
+            , contract   => aec_id:create(contract, ContractPubKey)
             , vm_version => 2
             , fee        => 1
             , amount     => 0
@@ -288,7 +288,7 @@ create_tx(Override, Cfg) ->
     PubKey = ?config(my_pub_key, Cfg),
     Code = ?config(code, Cfg),
     VmVersion = ?config(vm_version, Cfg),
-    Map = #{ owner      => PubKey
+    Map = #{ owner      => aec_id:create(account, PubKey)
            , nonce      => 1
            , code       => Code
            , vm_version => VmVersion

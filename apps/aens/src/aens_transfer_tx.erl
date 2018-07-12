@@ -26,7 +26,9 @@
         ]).
 
 %% Getters
--export([recipient_account/1]).
+-ifdef(TEST).
+-export([recipient_pubkey/1]).
+-endif.
 
 %%%===================================================================
 %%% Types
@@ -53,15 +55,21 @@
 %%%===================================================================
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{account           := AccountPubKey,
+new(#{account           := Account,
       nonce             := Nonce,
-      name_hash         := NameHash,
-      recipient_account := RecipientAccountPubKey,
+      name_hash         := NameId,
+      recipient_account := RecipientAccount,
       fee               := Fee} = Args) ->
-    Tx = #ns_transfer_tx{account           = aec_id:create(account, AccountPubKey),
+    account = aec_id:specialize_type(Account),
+    name    = aec_id:specialize_type(NameId),
+    case aec_id:specialize_type(RecipientAccount) of
+        account -> ok;
+        name    -> ok
+    end,
+    Tx = #ns_transfer_tx{account           = Account,
                          nonce             = Nonce,
-                         name_hash         = aec_id:create(name, NameHash),
-                         recipient_account = aec_id:create(account, RecipientAccountPubKey),
+                         name_hash         = NameId,
+                         recipient_account = RecipientAccount,
                          fee               = Fee,
                          ttl               = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.
@@ -84,23 +92,31 @@ nonce(#ns_transfer_tx{nonce = Nonce}) ->
 
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#ns_transfer_tx{} = Tx) ->
-    account(Tx).
+    account_pubkey(Tx).
 
 account(#ns_transfer_tx{account = AccountId}) ->
+    AccountId.
+
+account_pubkey(#ns_transfer_tx{account = AccountId}) ->
     aec_id:specialize(AccountId, account).
 
 name_hash(#ns_transfer_tx{name_hash = NameId}) ->
     aec_id:specialize(NameId, name).
 
+name(#ns_transfer_tx{name_hash = NameId}) ->
+    NameId.
+
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()} | {error, term()}.
 check(#ns_transfer_tx{nonce = Nonce, fee = Fee} = Tx,
       _Context, Trees, _Height, _ConsensusVersion) ->
-    AccountPubKey = account(Tx),
+    AccountPubKey = account_pubkey(Tx),
     NameHash = name_hash(Tx),
     Checks =
         [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee) end,
-         fun() -> aens_utils:check_name_claimed_and_owned(NameHash, AccountPubKey, Trees) end],
+         fun() -> aens_utils:check_name_claimed_and_owned(NameHash, AccountPubKey, Trees) end,
+         fun() -> check_recipient_resolvement(Tx, Trees)end
+        ],
 
     case aeu_validation:run(Checks) of
         ok              -> {ok, Trees};
@@ -112,7 +128,7 @@ check(#ns_transfer_tx{nonce = Nonce, fee = Fee} = Tx,
 process(#ns_transfer_tx{fee = Fee, nonce = Nonce} = TransferTx,
         _Context, Trees0, _Height, _ConsensusVersion) ->
     NameHash = name_hash(TransferTx),
-    AccountPubKey = account(TransferTx),
+    AccountPubKey = account_pubkey(TransferTx),
     AccountsTree0 = aec_trees:accounts(Trees0),
     NamesTree0 = aec_trees:ns(Trees0),
 
@@ -121,7 +137,8 @@ process(#ns_transfer_tx{fee = Fee, nonce = Nonce} = TransferTx,
     AccountsTree1 = aec_accounts_trees:enter(Account1, AccountsTree0),
 
     Name0 = aens_state_tree:get_name(NameHash, NamesTree0),
-    Name1 = aens_names:transfer(TransferTx, Name0),
+    {ok, RecipientPubkey} = resolve_recipient(TransferTx, NamesTree0),
+    Name1 = aens_names:transfer_to(RecipientPubkey, Name0),
     NamesTree1 = aens_state_tree:enter_name(Name1, NamesTree0),
 
     Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
@@ -131,7 +148,7 @@ process(#ns_transfer_tx{fee = Fee, nonce = Nonce} = TransferTx,
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#ns_transfer_tx{} = Tx, _) ->
-    {ok, [account(Tx)]}.
+    {ok, [account_pubkey(Tx)]}.
 
 -spec serialize(tx()) -> {integer(), [{atom(), term()}]}.
 serialize(#ns_transfer_tx{account           = AccountId,
@@ -181,10 +198,10 @@ for_client(#ns_transfer_tx{nonce             = Nonce,
                            fee               = Fee,
                            ttl               = TTL} = Tx) ->
     #{<<"vsn">>              => version(),
-      <<"account">>          => aec_base58c:encode(account_pubkey, account(Tx)),
+      <<"account">>          => aec_base58c:encode(id_hash, account(Tx)),
       <<"nonce">>            => Nonce,
-      <<"name_hash">>        => aec_base58c:encode(name, name_hash(Tx)),
-      <<"recipient_pubkey">> => aec_base58c:encode(account_pubkey, recipient_account(Tx)),
+      <<"name_hash">>        => aec_base58c:encode(id_hash, name(Tx)),
+      <<"recipient_pubkey">> => aec_base58c:encode(id_hash, recipient(Tx)),
       <<"fee">>              => Fee,
       <<"ttl">>              => TTL}.
 
@@ -192,13 +209,30 @@ for_client(#ns_transfer_tx{nonce             = Nonce,
 %%% Getters
 %%%===================================================================
 
--spec recipient_account(tx()) -> aec_keys:pubkey().
-recipient_account(#ns_transfer_tx{recipient_account = Recipient}) ->
+recipient(#ns_transfer_tx{recipient_account = Recipient}) ->
+    Recipient.
+
+-ifdef(TEST).
+recipient_pubkey(#ns_transfer_tx{recipient_account = Recipient}) ->
     aec_id:specialize(Recipient, account).
+-endif.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+check_recipient_resolvement(Tx, Trees) ->
+    case resolve_recipient(Tx, aec_trees:ns(Trees)) of
+        {ok,_Pubkey} -> ok;
+        {error, _} = E -> E
+    end.
+
+resolve_recipient(Tx, NTrees) ->
+    case aec_id:specialize(recipient(Tx)) of
+        {account, Pubkey} -> {ok, Pubkey};
+        {name, NameHash} ->
+            aens:resolve_from_hash(account_pubkey, NameHash, NTrees)
+    end.
 
 version() ->
     ?NAME_TRANSFER_TX_VSN.
