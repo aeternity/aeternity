@@ -229,7 +229,7 @@ handle_request('GetTransactionInfoByHash', Params, _Config) ->
                 ],
     process_request(ParseFuns, Params);
 
-handle_request('PostTransaction', #{'Tx' := Tx} = Params, _Context) ->
+handle_request('PostTransaction', #{'Tx' := Tx}, _Context) ->
     case aehttp_api_parser:decode(tx, maps:get(<<"tx">>, Tx)) of
         {error, #{<<"tx">> := broken_tx}} ->
             {400, [], #{reason => <<"Invalid tx">>}};
@@ -240,6 +240,66 @@ handle_request('PostTransaction', #{'Tx' := Tx} = Params, _Context) ->
             aec_tx_pool:push(SignedTx),
             Hash = aetx_sign:hash(SignedTx),
             {200, [], #{<<"tx_hash">> => aec_base58c:encode(tx_hash, Hash)}}
+    end;
+
+handle_request('GetOracleByPubkey', Params, _Context) ->
+    case aec_base58c:safe_decode(oracle_pubkey, maps:get(pubkey, Params)) of
+        {ok, Pubkey} ->
+            case aec_chain:get_oracle(Pubkey) of
+                {ok, Oracle} ->
+                    {200, [], aehttp_api_parser:encode(oracle, aeo_oracles:serialize_for_client(Oracle))};
+                {error, _} ->
+                    {404, [], #{reason => <<"Oracle not found">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid public key">>}}
+    end;
+
+handle_request('GetOracleQueriesByPubkey', Params, _Context) ->
+    case aec_base58c:safe_decode(oracle_pubkey, maps:get(pubkey, Params)) of
+        {ok, Pubkey} ->
+            Limit = case maps:get(limit, Params) of
+                        N when N =/= undefined -> N;
+                        undefined -> 20
+                    end,
+            FromQueryId = case maps:get(from, Params) of
+                              Id when Id =/= undefined ->
+                                  {ok, OracleQueryId} = aec_base58c:safe_decode(oracle_query_id, Id),
+                                  OracleQueryId;
+                              undefined ->
+                                  '$first'
+                          end,
+            QueryType = case maps:get(type, Params) of
+                            T when T =/= undefined -> T;
+                            undefined -> all
+                        end,
+            case aec_chain:get_oracle_queries(Pubkey, FromQueryId, QueryType, Limit) of
+                {ok, Queries} ->
+                    Queries1 = [aeo_query:serialize_for_client(Query) || Query <- Queries],
+                    {200, [], #{oracle_queries => Queries1}};
+                {error, _} ->
+                    {200, [], #{oracle_queries => []}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid public key">>}}
+    end;
+
+handle_request('GetOracleQueryByPubkeyAndQueryId', Params, _Context) ->
+    case aec_base58c:safe_decode(oracle_pubkey, maps:get(pubkey, Params)) of
+        {ok, Pubkey} ->
+            case aec_base58c:safe_decode(oracle_query_id, maps:get('query-id', Params)) of
+                {ok, QueryId} ->
+                    case aec_chain:get_oracle_query(Pubkey, QueryId) of
+                        {ok, Query} ->
+                            {200, [], aeo_query:serialize_for_client(Query)};
+                        {error, _} ->
+                            {404, [], #{reason => <<"Query not found">>}}
+                    end;
+                {error, _} ->
+                    {400, [], #{reason => <<"Invalid public key or query ID">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid public key or query ID">>}}
     end;
 
 handle_request('GetBlockGenesis', Req, _Context) ->

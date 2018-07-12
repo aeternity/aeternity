@@ -136,7 +136,7 @@ get_oracles(From, Max) ->
     {ok, FmtOracles}.
 
 get_oracle_questions(OracleId, From, Max) ->
-    {ok, Queries} = aec_chain:get_open_oracle_queries(OracleId, From, Max),
+    {ok, Queries} = aec_chain:get_oracle_queries(OracleId, From, open, Max),
     FmtQueries =
         lists:map(
             fun(Q) -> #{<<"query_id">> => aeo_query:id(Q),

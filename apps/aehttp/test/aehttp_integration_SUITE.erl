@@ -59,6 +59,15 @@
     post_spend_tx/1
    ]).
 
+-export(
+   [
+    post_oracle_register/1,
+    get_oracle_by_pubkey/1,
+    post_oracle_extend/1,
+    post_oracle_query/1,
+    post_oracle_response/1
+   ]).
+
 %% off chain endpoints
 -export(
    [test_decode_sophia_data/1,
@@ -262,6 +271,9 @@ groups() ->
        {group, account_endpoints},
        %% /transactions/*
        {group, transaction_endpoints},
+       %% TODO: /contracts/*
+       %% /oracles/*
+       {group, oracle_endpoints},
 
        {group, off_chain_endpoints},
        {group, external_endpoints},
@@ -370,6 +382,25 @@ groups() ->
       [
        get_transaction_by_hash,
        get_transaction_info_by_hash
+      ]},
+     %% TODO: /contracts/*
+
+     %% /oracles/*
+     {oracle_endpoints, [sequence],
+      [
+       {group, nonexistent_oracle}, %% standalone
+       {group, oracle_txs}          %% standalone
+      ]},
+     {nonexistent_oracle, [],
+      [
+       get_oracle_by_pubkey
+      ]},
+     {oracle_txs, [sequence],
+      [
+       post_oracle_register,
+       post_oracle_extend,
+       post_oracle_query,
+       post_oracle_response
       ]},
 
      {off_chain_endpoints, [],
@@ -587,7 +618,9 @@ init_per_group(all, Config) ->
 init_per_group(Group, Config) when
       Group =:= block_endpoints;
       Group =:= account_endpoints;
-      Group =:= transaction_endpoints ->
+      Group =:= transaction_endpoints;
+      %%Group =:= contract_endpoint;
+      Group =:= oracle_endpoints ->
     start_node(Group, Config);
 %% block_endpoints
 init_per_group(on_genesis_block = Group, Config) ->
@@ -707,6 +740,20 @@ init_per_group(post_tx_to_mempool = Group, Config) ->
      {amount, 1},
      {fee, 1},
      {payload, <<"foo">>} | Config1];
+init_per_group(tx_info, Config) ->
+    Config;
+%% contract_endpoints
+%% oracle_endpoints
+init_per_group(nonexistent_oracle = Group, Config) ->
+    start_node(Group, Config);
+init_per_group(oracle_txs = Group, Config) ->
+    Config1 = start_node(Group, Config),
+    Node = ?config(node, Config1),
+    aecore_suite_utils:mine_key_blocks(Node, aecore_suite_utils:latest_fork_height()),
+    {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
+    true = aec_blocks:is_key_block(KeyBlock),
+    Config1;
+
 init_per_group(channel_websocket = Group, Config) ->
     Config1 = start_node(Group, Config),
     Node = ?config(node, Config1),
@@ -751,16 +798,63 @@ end_per_group(chain_with_pending_key_block, _Config) ->
     ok = rpc(aec_conductor, stop_mining, []);
 end_per_group(account_with_pending_tx, _Config) ->
     ok;
+end_per_group(oracle_txs, _Config) ->
+    ok;
 end_per_group(Group, Config) ->
     ok = stop_node(Group, Config).
 
+init_per_testcase(post_oracle_register, Config) ->
+    %% TODO: assert there is enought balance
+    {ok, Pubkey} = rpc(aec_keys, pubkey, []),
+    [{account_pubkey, aec_base58c:encode(account_pubkey, Pubkey)},
+     {oracle_pubkey, aec_base58c:encode(oracle_pubkey, Pubkey)},
+     {query_format, <<"something">>},
+     {response_format, <<"something else">>},
+     {query_fee, 1},
+     {fee, 10},
+     {oracle_ttl_type, <<"block">>},
+     {oracle_ttl_value, 2000} | init_per_testcase_all(Config)];
+init_per_testcase(post_oracle_extend, Config) ->
+    {post_oracle_register, SavedConfig} = ?config(saved_config, Config),
+    OracleTtlDelta = 500,
+    [{account_pubkey, ?config(account_pubkey, SavedConfig)},
+     {oracle_pubkey, ?config(oracle_pubkey, SavedConfig)},
+     {fee, 10},
+     {oracle_ttl_value_final, ?config(oracle_ttl_value, SavedConfig) + OracleTtlDelta},
+     {oracle_ttl_type, <<"delta">>},
+     {oracle_ttl_value, OracleTtlDelta} | init_per_testcase_all(Config)];
+init_per_testcase(post_oracle_query, Config) ->
+    {post_oracle_extend, SavedConfig} = ?config(saved_config, Config),
+    [{sender_pubkey, ?config(account_pubkey, SavedConfig)},
+     {oracle_pubkey, ?config(oracle_pubkey, SavedConfig)},
+     {query, <<"Hejsan Svejsan">>},
+     {query_fee, 2},
+     {fee, 30},
+     {query_ttl_type, <<"block">>},
+     {query_ttl_value, 20},
+     {response_ttl_type, <<"delta">>},
+     {response_ttl_value, 20} | init_per_testcase_all(Config)];
+init_per_testcase(post_oracle_response, Config) ->
+    {post_oracle_query, SavedConfig} = ?config(saved_config, Config),
+    [{sender_pubkey, ?config(sender_pubkey, SavedConfig)},
+     {oracle_pubkey, ?config(oracle_pubkey, SavedConfig)},
+     {query_id, ?config(query_id, SavedConfig)},
+     {fee, 10},
+     {response, <<"Hejsan">>} | init_per_testcase_all(Config)];
 init_per_testcase(_Case, Config) ->
-    [{tc_start, os:timestamp()}|Config].
+    init_per_testcase_all(Config).
+
+init_per_testcase_all(Config) ->
+    [{tc_start, os:timestamp()} | Config].
 
 end_per_testcase(_Case, Config) ->
+    end_per_testcase_all(Config).
+
+end_per_testcase_all(Config) ->
     Ts0 = ?config(tc_start, Config),
-    ct:log("Events during TC: ~p", [[{N, aecore_suite_utils:all_events_since(N, Ts0)}
-                                     || {_,N} <- ?config(nodes, Config)]]),
+    ct:log("Events during TC: ~p",
+           [[{N, aecore_suite_utils:all_events_since(N, Ts0)}
+             || {_,N} <- ?config(nodes, Config)]]),
     ok.
 
 start_node(Group, Config) ->
@@ -1304,7 +1398,6 @@ get_transaction_info_by_hash(_Config) ->
     {skip, not_implemented}.
 
 post_spend_tx(Config) ->
-    Node = ?config(node, Config),
     TxArgs =
         #{sender           => ?config(account_pubkey, Config),
           recipient_pubkey => ?config(recipient_pubkey, Config),
@@ -1312,10 +1405,7 @@ post_spend_tx(Config) ->
           fee              => ?config(fee, Config),
           payload          => ?config(payload, Config)},
     {TxHash, Tx} = prepare_tx(spend_tx, TxArgs),
-    {ok, 200, Resp} = post_transactions_sut(Tx),
-    {ok, [MempoolTx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
-    ?assertEqual(TxHash, maps:get(<<"tx_hash">>, Resp)),
-    ?assertEqual(TxHash, aec_base58c:encode(tx_hash, aetx_sign:hash(MempoolTx))),
+    ok = post_tx(TxHash, Tx),
     ok.
 
 get_transactions_by_hash_sut(Hash) ->
@@ -1331,8 +1421,119 @@ post_transactions_sut(Tx) ->
     Host = external_address(),
     http_request(Host, post, "transactions", #{tx => Tx}).
 
+%% /contracts/*
+
+%% /oracles/*
+
+get_oracle_by_pubkey(_Config) ->
+    RandomOraclePubkey = aec_base58c:encode(oracle_pubkey, random_hash()),
+    {ok, 404, Error} = get_oracles_by_pubkey_sut(RandomOraclePubkey),
+    ?assertEqual(<<"Oracle not found">>, maps:get(<<"reason">>, Error)),
+    ok.
+
+post_oracle_register(Config) ->
+    Node = ?config(node, Config),
+    OraclePubkey = ?config(oracle_pubkey, Config),
+    TxArgs =
+        #{account         => ?config(account_pubkey, Config),
+          query_format    => ?config(query_format, Config),
+          response_format => ?config(response_format, Config),
+          query_fee       => ?config(query_fee, Config),
+          fee             => ?config(fee, Config),
+          oracle_ttl      => #{type  => ?config(oracle_ttl_type, Config),
+                               value => ?config(oracle_ttl_value, Config)}},
+    {TxHash, Tx} = prepare_tx(oracle_register_tx, TxArgs),
+    ok = post_tx(TxHash, Tx),
+    aecore_suite_utils:mine_blocks_until(Node, fun() -> tx_in_chain(TxHash) end, 10),
+    {ok, 200, Resp} = get_oracles_by_pubkey_sut(OraclePubkey),
+    ?assertEqual(OraclePubkey, maps:get(<<"id">>, Resp)),
+    {save_config, save_config([account_pubkey, oracle_pubkey, oracle_ttl_value], Config)}.
+
+post_oracle_extend(Config) ->
+    Node = ?config(node, Config),
+    OraclePubkey = ?config(oracle_pubkey, Config),
+    TxArgs =
+        #{oracle     => OraclePubkey,
+          fee        => ?config(fee, Config),
+          oracle_ttl => #{type  => ?config(oracle_ttl_type, Config),
+                          value => ?config(oracle_ttl_value, Config)}},
+    {TxHash, Tx} = prepare_tx(oracle_extend_tx, TxArgs),
+    ok = post_tx(TxHash, Tx),
+    aecore_suite_utils:mine_blocks_until(Node, fun() -> tx_in_chain(TxHash) end, 10),
+    {ok, 200, Resp} = get_oracles_by_pubkey_sut(OraclePubkey),
+    ?assertEqual(OraclePubkey, maps:get(<<"id">>, Resp)),
+    ?assertEqual(?config(oracle_ttl_value_final, Config), maps:get(<<"expires">>, Resp)),
+    {ok, 200, Resp1} = get_oracles_queries_by_pubkey_sut(OraclePubkey, #{type => "all"}),
+    ?assertEqual([], maps:get(<<"oracle_queries">>, Resp1)),
+    {save_config, save_config([account_pubkey, oracle_pubkey], Config)}.
+
+post_oracle_query(Config) ->
+    Node = ?config(node, Config),
+    SenderPubkey = ?config(sender_pubkey, Config),
+    OraclePubkey = ?config(oracle_pubkey, Config),
+    TxArgs =
+        #{sender        => SenderPubkey,
+          oracle_pubkey => OraclePubkey,
+          query         => ?config(query, Config),
+          query_fee     => ?config(query_fee, Config),
+          fee           => ?config(fee, Config),
+          query_ttl     => #{type  => ?config(query_ttl_type, Config),
+                             value => ?config(query_ttl_value, Config)},
+          response_ttl  => #{type  => ?config(response_ttl_type, Config),
+                             value => ?config(response_ttl_value, Config)}},
+    {TxHash, Tx} = prepare_tx(oracle_query_tx, TxArgs),
+    ok = post_tx(TxHash, Tx),
+    aecore_suite_utils:mine_blocks_until(Node, fun() -> tx_in_chain(TxHash) end, 10),
+    {ok, 200, Resp} = get_oracles_queries_by_pubkey_sut(OraclePubkey, #{type => "closed"}),
+    ?assertEqual([], maps:get(<<"oracle_queries">>, Resp)),
+    {ok, 200, Resp1} = get_oracles_queries_by_pubkey_sut(OraclePubkey, #{type => "all"}),
+    ?assertEqual(1, length(maps:get(<<"oracle_queries">>, Resp1))),
+    [Query] = maps:get(<<"oracle_queries">>, Resp1),
+    ?assertEqual(SenderPubkey, maps:get(<<"sender">>, Query)),
+    ?assertEqual(OraclePubkey, maps:get(<<"oracle_id">>, Query)),
+    QueryId = maps:get(<<"query_id">>, Query),
+    Config1 = [{query_id, QueryId} | Config],
+    {save_config, save_config([sender_pubkey, oracle_pubkey, query_id], Config1)}.
+
+post_oracle_response(Config) ->
+    Node = ?config(node, Config),
+    OraclePubkey = ?config(oracle_pubkey, Config),
+    QueryId = ?config(query_id, Config),
+    Response = ?config(response, Config),
+    TxArgs =
+        #{oracle   => OraclePubkey,
+          query_id => QueryId,
+          response => Response,
+          fee      => ?config(fee, Config)},
+    {TxHash, Tx} = prepare_tx(oracle_response_tx, TxArgs),
+    ok = post_tx(TxHash, Tx),
+    aecore_suite_utils:mine_blocks_until(Node, fun() -> tx_in_chain(TxHash) end, 10),
+    {ok, 200, Resp} = get_oracles_queries_by_pubkey_sut(OraclePubkey, #{type => "open"}),
+    ?assertEqual([], maps:get(<<"oracle_queries">>, Resp)),
+    {ok, 200, Resp1} = get_oracles_query_by_pubkey_and_query_id(OraclePubkey, QueryId),
+    ?assertEqual(QueryId, maps:get(<<"query_id">>, Resp1)),
+    ?assertEqual(OraclePubkey, maps:get(<<"oracle_id">>, Resp1)),
+    ?assertEqual(Response, maps:get(<<"response">>, Resp1)),
+    ok.
+
+get_oracles_by_pubkey_sut(Pubkey) ->
+    Host = external_address(),
+    http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey), []).
+
+%% TODO: add test for 'limit' and 'from' in HTTP query
+get_oracles_queries_by_pubkey_sut(Pubkey, Params) ->
+    Host = external_address(),
+    Pubkey1 = binary_to_list(Pubkey),
+    http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey1) ++ "/queries", Params).
+
+get_oracles_query_by_pubkey_and_query_id(Pubkey, Id) ->
+    Host = external_address(),
+    Pubkey1 = binary_to_list(Pubkey),
+    Id1 = binary_to_list(Id),
+    http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey1) ++ "/queries/" ++ http_uri:encode(Id1), []).
+
 prepare_tx(TxType, Args) ->
-    assert_required_tx_fields(TxType, Args),
+    %assert_required_tx_fields(TxType, Args),
     Host = external_address(),
     Path = tx_object_http_path(TxType),
     {ok, 200, #{<<"tx">> := EncodedSerializedUnsignedTx}} = http_request(Host, post, Path, Args),
@@ -1343,14 +1544,27 @@ prepare_tx(TxType, Args) ->
     EncodedSerializedSignedTx = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)),
     {TxHash, EncodedSerializedSignedTx}.
 
-assert_required_tx_fields(TxType, Args) ->
-    lists:foreach(fun(Key) -> true = maps:is_key(Key, Args) end, required_tx_fields(TxType)).
+post_tx(TxHash, Tx) ->
+    {ok, 200, Resp} = post_transactions_sut(Tx),
+    ?assertEqual(TxHash, maps:get(<<"tx_hash">>, Resp)),
+    Fun = fun() -> tx_in_mempool(TxHash) end,
+    {ok, true} = aec_test_utils:wait_for_it_or_timeout(Fun, true, 5000),
+    ok.
 
-required_tx_fields(spend_tx) ->
-    [sender, recipient_pubkey, amount, fee, payload].
+%assert_required_tx_fields(TxType, Args) ->
+%    lists:foreach(fun(Key) -> true = maps:is_key(Key, Args) end, required_tx_fields(TxType)).
+
+%required_tx_fields(spend_tx) ->
+%    [sender, recipient_pubkey, amount, fee, payload];
+%required_tx_fields(oracle_register_tx) ->
+%    [account, query_format, response_format, query_fee, fee, oracle_ttl].
 
 %% TODO: use /debug/* when available
-tx_object_http_path(spend_tx) -> "tx/spend".
+tx_object_http_path(spend_tx) -> "tx/spend";
+tx_object_http_path(oracle_register_tx) -> "tx/oracle/register";
+tx_object_http_path(oracle_extend_tx) -> "tx/oracle/extend";
+tx_object_http_path(oracle_query_tx) -> "tx/oracle/query";
+tx_object_http_path(oracle_response_tx) -> "tx/oracle/response".
 
 hash(Block) ->
     {ok, Hash0} = aec_blocks:hash_internal_representation(Block),
@@ -1367,6 +1581,15 @@ wait_for_key_block_candidate(N) ->
             timer:sleep(10),
             wait_for_key_block_candidate(N)
     end.
+
+save_config(Keys, Config) ->
+    save_config(Keys, Config, []).
+
+save_config([Key | Rest], Config, Acc) ->
+    save_config(Rest, Config, [{Key, ?config(Key, Config)} | Acc]);
+save_config([], _Config, Acc) ->
+    Acc.
+
 
 %% enpoints
 

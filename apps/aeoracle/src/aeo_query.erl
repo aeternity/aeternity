@@ -14,6 +14,7 @@
         , fee/1
         , id/1
         , id/3
+        , is_open/1
         , is_closed/1
         , new/4
         , oracle_address/1
@@ -23,6 +24,7 @@
         , sender_address/1
         , sender_nonce/1
         , serialize/1
+        , serialize_for_client/1
         , set_expires/2
         , set_fee/2
         , set_oracle_address/2
@@ -44,8 +46,10 @@
 -type oracle_response() :: 'undefined' | aeo_oracles:response().
 -type relative_ttl()    :: aeo_oracles:relative_ttl().
 
+               %% TODO: consider renaming sender_address to sender
 -record(query, { sender_address :: aec_keys:pubkey()
                , sender_nonce   :: integer()
+               %% TODO: consider renaming oracle_address to id/oracle_id/oracle
                , oracle_address :: aec_keys:pubkey()
                , query          :: oracle_query()
                , response       :: oracle_response()
@@ -71,13 +75,12 @@
 %%% API
 %%%===================================================================
 
--spec new(aeo_query_tx:tx(), aec_keys:pubkey(),
-          aec_keys:pubkey(), aec_blocks:height()) -> query().
-new(QTx, SenderPubkey, OraclePubKey, BlockHeight) ->
+-spec new(aeo_query_tx:tx(), aec_keys:pubkey(), aec_keys:pubkey(), aec_blocks:height()) -> query().
+new(QTx, SenderPubkey, OraclePubkey, BlockHeight) ->
     Expires = aeo_utils:ttl_expiry(BlockHeight, aeo_query_tx:query_ttl(QTx)),
     I = #query{ sender_address = SenderPubkey
               , sender_nonce   = aeo_query_tx:nonce(QTx)
-              , oracle_address = OraclePubKey
+              , oracle_address = OraclePubkey
               , query          = aeo_query_tx:query(QTx)
               , response       = undefined
               , expires        = Expires
@@ -98,6 +101,10 @@ id(SenderAddress, Nonce, OracleAddress) ->
             Nonce:?NONCE_SIZE,
             OracleAddress:?PUB_SIZE/binary>>,
     aec_hash:hash(pubkey, Bin).
+
+-spec is_open(query()) -> boolean().
+is_open(#query{response = undefined}) -> true;
+is_open(#query{}) -> false.
 
 -spec is_closed(query()) -> boolean().
 %% @doc An query is closed if it is already answered.
@@ -172,6 +179,26 @@ serialization_template(?ORACLE_QUERY_VSN) ->
     , {response_ttl   , int}
     , {fee            , int}
     ].
+
+-spec serialize_for_client(query()) -> map().
+serialize_for_client(#query{} = I) ->
+    {delta, ResponseTtlValue} = response_ttl(I),
+    Response = case response(I) of
+                   undefined -> <<>>;
+                   R -> R
+               end,
+    #{ <<"query_id">>     => aec_base58c:encode(oracle_query_id, id(I))
+     , <<"sender">>       => aec_base58c:encode(account_pubkey, sender_address(I))
+     , <<"sender_nonce">> => sender_nonce(I)
+     , <<"oracle_id">>    => aec_base58c:encode(oracle_pubkey, oracle_address(I))
+     , <<"query">>        => query(I)
+     , <<"response">>     => Response
+     , <<"expires">>      => expires(I)
+     , <<"response_ttl">> => #{ <<"type">>  => <<"delta">>
+                              , <<"value">> => ResponseTtlValue
+                              }
+     , <<"fee">>          => fee(I)
+     }.
 
 %%%===================================================================
 %%% Getters

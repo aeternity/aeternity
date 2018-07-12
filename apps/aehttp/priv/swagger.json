@@ -606,6 +606,138 @@
         }
       }
     },
+    "/oracles/{pubkey}" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get an oracle by public key",
+        "operationId" : "GetOracleByPubkey",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "The public key of the oracle",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/RegisteredOracle"
+            }
+          },
+          "400" : {
+            "description" : "Invalid public key",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Oracle not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/oracles/{pubkey}/queries" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get oracle queries by public key",
+        "operationId" : "GetOracleQueriesByPubkey",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "The public key of the oracle",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "name" : "from",
+          "in" : "query",
+          "description" : "Last query id in previous page",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "name" : "limit",
+          "in" : "query",
+          "description" : "Max number of oracle queries",
+          "required" : false,
+          "type" : "integer",
+          "maximum" : 1000,
+          "minimum" : 1
+        }, {
+          "name" : "type",
+          "in" : "query",
+          "description" : "The type of a query: open, closed or all",
+          "required" : false,
+          "type" : "string",
+          "enum" : [ "open", "closed", "all" ]
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/OracleQueries"
+            }
+          },
+          "400" : {
+            "description" : "Invalid public key",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Oracle not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/oracles/{pubkey}/queries/{query-id}" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get an oracle query by public key and query ID",
+        "operationId" : "GetOracleQueryByPubkeyAndQueryId",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "The public key of the oracle",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "name" : "query-id",
+          "in" : "path",
+          "description" : "The ID of the query",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/OracleQuery"
+            }
+          },
+          "400" : {
+            "description" : "Invalid public key or query ID",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Oracle query not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/header-by-hash" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
@@ -3108,16 +3240,152 @@
         "$ref" : "#/definitions/Tx"
       }
     },
+    "RegisteredOracle" : {
+      "type" : "object",
+      "properties" : {
+        "id" : {
+          "type" : "string"
+        },
+        "query_format" : {
+          "type" : "string"
+        },
+        "response_format" : {
+          "type" : "string"
+        },
+        "query_fee" : {
+          "type" : "integer"
+        },
+        "expires" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      },
+      "example" : {
+        "expires" : 6,
+        "response_format" : "response_format",
+        "id" : "id",
+        "query_fee" : 0,
+        "query_format" : "query_format"
+      }
+    },
     "RegisteredOracles" : {
       "type" : "array",
       "items" : {
-        "$ref" : "#/definitions/RegisteredOracles_inner"
+        "$ref" : "#/definitions/RegisteredOracle"
+      }
+    },
+    "OracleQuery" : {
+      "type" : "object",
+      "properties" : {
+        "id" : {
+          "type" : "string"
+        },
+        "sender" : {
+          "type" : "string"
+        },
+        "sender_nonce" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "oracle_id" : {
+          "type" : "string"
+        },
+        "query" : {
+          "type" : "string"
+        },
+        "response" : {
+          "type" : "string"
+        },
+        "expires" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "response_ttl" : {
+          "$ref" : "#/definitions/TTL"
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      },
+      "example" : {
+        "expires" : 6,
+        "oracle_id" : "oracle_id",
+        "response_ttl" : {
+          "type" : "delta",
+          "value" : 1
+        },
+        "sender" : "sender",
+        "response" : "response",
+        "query" : "query",
+        "fee" : 5,
+        "sender_nonce" : 0,
+        "id" : "id"
+      }
+    },
+    "OracleQuestion" : {
+      "type" : "object",
+      "properties" : {
+        "query_id" : {
+          "type" : "string"
+        },
+        "query" : {
+          "type" : "string"
+        },
+        "query_fee" : {
+          "type" : "integer"
+        },
+        "expires_at" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      }
+    },
+    "OracleQueries" : {
+      "type" : "object",
+      "properties" : {
+        "oracle_queries" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/OracleQuery"
+          }
+        }
+      },
+      "example" : {
+        "oracle_queries" : [ {
+          "expires" : 6,
+          "oracle_id" : "oracle_id",
+          "response_ttl" : {
+            "type" : "delta",
+            "value" : 1
+          },
+          "sender" : "sender",
+          "response" : "response",
+          "query" : "query",
+          "fee" : 5,
+          "sender_nonce" : 0,
+          "id" : "id"
+        }, {
+          "expires" : 6,
+          "oracle_id" : "oracle_id",
+          "response_ttl" : {
+            "type" : "delta",
+            "value" : 1
+          },
+          "sender" : "sender",
+          "response" : "response",
+          "query" : "query",
+          "fee" : 5,
+          "sender_nonce" : 0,
+          "id" : "id"
+        } ]
       }
     },
     "OracleQuestions" : {
       "type" : "array",
       "items" : {
-        "$ref" : "#/definitions/OracleQuestions_inner"
+        "$ref" : "#/definitions/OracleQuestion"
       }
     },
     "SpendTx" : {
@@ -3204,13 +3472,13 @@
       },
       "example" : {
         "response_format" : "response_format",
-        "fee" : 5,
+        "fee" : 1,
         "oracle_ttl" : {
           "type" : "delta",
           "value" : 1
         },
         "query_fee" : 0,
-        "nonce" : 1,
+        "nonce" : 6,
         "ttl" : 5,
         "query_format" : "query_format",
         "account" : { }
@@ -4878,43 +5146,6 @@
       },
       "example" : {
         "pubkey" : { }
-      }
-    },
-    "RegisteredOracles_inner" : {
-      "properties" : {
-        "address" : {
-          "type" : "string"
-        },
-        "query_format" : {
-          "type" : "string"
-        },
-        "response_format" : {
-          "type" : "string"
-        },
-        "query_fee" : {
-          "type" : "integer"
-        },
-        "expires_at" : {
-          "type" : "integer",
-          "format" : "int64"
-        }
-      }
-    },
-    "OracleQuestions_inner" : {
-      "properties" : {
-        "query_id" : {
-          "type" : "string"
-        },
-        "query" : {
-          "type" : "string"
-        },
-        "query_fee" : {
-          "type" : "integer"
-        },
-        "expires_at" : {
-          "type" : "integer",
-          "format" : "int64"
-        }
       }
     }
   },
