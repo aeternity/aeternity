@@ -7,6 +7,8 @@ It:
 * Introduces new configuration parameter - `beneficiary`, that is an encoded form of account pubkey, that will receive rewards from mining on a node. This parameter is to be set in [User provided configuration](https://github.com/aeternity/epoch/wiki/User-provided-configuration) and is mandatory to start a node.
 * Adds new field - `beneficiary` - to block. This impacts consensus.
 * Improves the stability of the garbage collection of transactions in the mempool.
+* Adds a new channel transaction `channel_snapshot_solo` for unilaterally
+  providing `state_hash` and `round` to the chain.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.18.0
 
