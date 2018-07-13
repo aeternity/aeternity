@@ -428,8 +428,8 @@ add_spend_txs(Node, SenderAcct, N, NonceStart) ->
 
 add_spend_tx(Node, #{ pubkey := SendPubKey, privkey := SendSecKey }, Nonce) ->
     #{ public := RecvPubKey, secret := RecvSecKey } = enacl:sign_keypair(),
-    Params = #{ sender => SendPubKey
-              , recipient => RecvPubKey
+    Params = #{ sender => aec_id:create(account, SendPubKey)
+              , recipient => aec_id:create(account, RecvPubKey)
               , amount => 10000
               , fee => 100
               , ttl => 10000000
