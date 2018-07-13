@@ -546,6 +546,86 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /contracts/{pubkey}:
+    get:
+      tags:
+        - external
+        - transactions
+      operationId: GetContract
+      description: 'Get a contract by pubkey'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'The pubkey of the contract'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/ContractObject'
+        '400':
+          description: 'Invalid pubkey'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Contract not found'
+  /contracts/{pubkey}/code:
+    get:
+      tags:
+        - external
+        - transactions
+      operationId: GetContractCode
+      description: 'Get contract code by pubkey'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'The pubkey of the contract'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Contract code'
+          schema:
+            $ref: '#/definitions/ByteCode'
+        '400':
+          description: 'Invalid pubkey'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Contract not found'
+          schema:
+            $ref: '#/definitions/Error'
+  /contracts/{pubkey}/store:
+    get:
+      tags:
+        - external
+        - transactions
+      operationId: GetContractStore
+      description: 'Get contract store by pubkey'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'The pubkey of the contract'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Contract Store'
+          schema:
+            $ref: '#/definitions/ContractStore'
+        '400':
+          description: 'Invalid pubkey'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Contract not found'
   /oracles/{pubkey}:
     get:
       tags:
@@ -3631,6 +3711,39 @@ definitions:
     properties:
       reason:
         type: string
+  ContractObject:
+    type: object
+    properties:
+      id:
+        $ref: '#/definitions/EncodedHash'
+      owner:
+        $ref: '#/definitions/EncodedHash'
+      vm_version:
+        type: integer
+        minimum: 0
+        maximum: 255
+      log:
+        type: string
+      active:
+        type: boolean
+      referers:
+        type: array
+        items:
+          $ref: '#/definitions/EncodedHash'
+      deposit:
+        type: integer
+  ContractStore:
+    type: object
+    properties:
+      store:
+        type: array
+        items:
+          type: object
+          properties:
+            key:
+              type: string
+            value:
+              type: string
   Contract:
     type: object
     properties:
