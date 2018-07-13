@@ -14,6 +14,7 @@
         , new/1
         , new/5 %% For use without transaction
         , serialize/1
+        , serialize_for_client/1
         , compute_contract_pubkey/2
         , compute_contract_store_id/1
         , is_legal_state_fun/1
@@ -137,6 +138,16 @@ serialize(#contract{owner = OwnerId, referers = RefererIds} = C) ->
       , {referers, RefererIds}
       , {deposit, deposit(C)}
       ]).
+
+serialize_for_client(#contract{} = C) ->
+    #{ <<"id">> => aec_base58c:encode(contract_pubkey, id(C))
+     , <<"owner">> => aec_base58c:encode(account_pubkey, owner(C))
+     , <<"vm_version">> => vm_version(C)
+     , <<"log">> => log(C)
+     , <<"active">> => active(C)
+     , <<"referers">> => [ aec_base58c:encode(contract_pubkey, Ref) || Ref <- referers(C) ]
+     , <<"deposit">> => deposit(C)
+     }.
 
 -spec deserialize(id(), serialized()) -> contract().
 deserialize(Pubkey, Bin) ->

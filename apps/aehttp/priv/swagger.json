@@ -488,7 +488,7 @@
       "get" : {
         "tags" : [ "external", "gossip" ],
         "description" : "Get pending account transactions by public key",
-        "operationId" : "GetPendingAccountTransactionsByPubkey",
+        "operationId" : "GetPendingAccountTransactionsBypubkey",
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "pubkey",
@@ -602,6 +602,105 @@
             "schema" : {
               "$ref" : "#/definitions/Transactions"
             }
+          }
+        }
+      }
+    },
+    "/contracts/{pubkey}" : {
+      "get" : {
+        "tags" : [ "external", "transactions" ],
+        "description" : "Get a contract by pubkey",
+        "operationId" : "GetContract",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "The pubkey of the contract",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/ContractObject"
+            }
+          },
+          "400" : {
+            "description" : "Invalid pubkey",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Contract not found"
+          }
+        }
+      }
+    },
+    "/contracts/{pubkey}/code" : {
+      "get" : {
+        "tags" : [ "external", "transactions" ],
+        "description" : "Get contract code by pubkey",
+        "operationId" : "GetContractCode",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "The pubkey of the contract",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Contract code",
+            "schema" : {
+              "$ref" : "#/definitions/ByteCode"
+            }
+          },
+          "400" : {
+            "description" : "Invalid pubkey",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Contract not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/contracts/{pubkey}/store" : {
+      "get" : {
+        "tags" : [ "external", "transactions" ],
+        "description" : "Get contract store by pubkey",
+        "operationId" : "GetContractStore",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "The pubkey of the contract",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Contract Store",
+            "schema" : {
+              "$ref" : "#/definitions/ContractStore"
+            }
+          },
+          "400" : {
+            "description" : "Invalid pubkey",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Contract not found"
           }
         }
       }
@@ -4691,6 +4790,66 @@
         }
       }
     },
+    "ContractObject" : {
+      "type" : "object",
+      "properties" : {
+        "id" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "owner" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "vm_version" : {
+          "type" : "integer",
+          "minimum" : 0,
+          "maximum" : 255
+        },
+        "log" : {
+          "type" : "string"
+        },
+        "active" : {
+          "type" : "boolean"
+        },
+        "referers" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/EncodedHash"
+          }
+        },
+        "deposit" : {
+          "type" : "integer"
+        }
+      },
+      "example" : {
+        "owner" : null,
+        "vm_version" : 20,
+        "log" : "log",
+        "referers" : [ null, null ],
+        "active" : true,
+        "deposit" : 6,
+        "id" : { }
+      }
+    },
+    "ContractStore" : {
+      "type" : "object",
+      "properties" : {
+        "store" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/ContractStore_store"
+          }
+        }
+      },
+      "example" : {
+        "store" : [ {
+          "value" : "value",
+          "key" : "key"
+        }, {
+          "value" : "value",
+          "key" : "key"
+        } ]
+      }
+    },
     "Contract" : {
       "type" : "object",
       "properties" : {
@@ -5150,6 +5309,20 @@
       },
       "example" : {
         "pubkey" : { }
+      }
+    },
+    "ContractStore_store" : {
+      "properties" : {
+        "key" : {
+          "type" : "string"
+        },
+        "value" : {
+          "type" : "string"
+        }
+      },
+      "example" : {
+        "value" : "value",
+        "key" : "key"
       }
     }
   },
