@@ -219,7 +219,7 @@ paths:
         '200':
           description: 'Successful operation'
           schema:
-            $ref: '#definitions/MicroBlockHeader'
+            $ref: '#/definitions/MicroBlockHeader'
         '400':
           description: 'Invalid hash'
           schema:
