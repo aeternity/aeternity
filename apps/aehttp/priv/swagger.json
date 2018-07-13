@@ -1197,6 +1197,36 @@
         }
       }
     },
+    "/tx/channel/snapshot/solo" : {
+      "post" : {
+        "tags" : [ "external", "dev" ],
+        "description" : "Get a channel_snapshot_solo transaction object",
+        "operationId" : "PostChannelSnapshotSolo",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/ChannelSnapshotSoloTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UnsignedTx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/tx/channel/close/mutual" : {
       "post" : {
         "tags" : [ "external", "dev" ],
@@ -3513,7 +3543,7 @@
       "required" : [ "amount", "channel_id", "fee", "from", "nonce", "round", "state_hash" ],
       "properties" : {
         "channel_id" : {
-          "type" : "string"
+          "$ref" : "#/definitions/EncodedHash"
         },
         "from" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -3554,8 +3584,8 @@
         "round" : 0,
         "state_hash" : null,
         "fee" : 0,
-        "from" : { },
-        "channel_id" : "channel_id",
+        "from" : null,
+        "channel_id" : { },
         "ttl" : 0,
         "nonce" : 0
       }
@@ -3565,7 +3595,7 @@
       "required" : [ "amount", "channel_id", "fee", "nonce", "round", "state_hash", "to" ],
       "properties" : {
         "channel_id" : {
-          "type" : "string"
+          "$ref" : "#/definitions/EncodedHash"
         },
         "to" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -3606,182 +3636,8 @@
         "round" : 0,
         "state_hash" : null,
         "fee" : 0,
-        "to" : { },
-        "channel_id" : "channel_id",
-        "ttl" : 0,
-        "nonce" : 0
-      }
-    },
-    "ChannelCloseMutualTx" : {
-      "type" : "object",
-      "required" : [ "channel_id", "fee", "initiator_amount", "nonce", "responder_amount" ],
-      "properties" : {
-        "channel_id" : {
-          "type" : "string"
-        },
-        "initiator_amount" : {
-          "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
-        },
-        "responder_amount" : {
-          "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
-        },
-        "ttl" : {
-          "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
-        },
-        "fee" : {
-          "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
-        },
-        "nonce" : {
-          "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
-        }
-      },
-      "example" : {
-        "responder_amount" : 0,
-        "initiator_amount" : 0,
-        "fee" : 0,
-        "channel_id" : "channel_id",
-        "ttl" : 0,
-        "nonce" : 0
-      }
-    },
-    "ChannelCloseSoloTx" : {
-      "type" : "object",
-      "required" : [ "channel_id", "fee", "from", "payload", "poi" ],
-      "properties" : {
-        "channel_id" : {
-          "type" : "string"
-        },
-        "from" : {
-          "$ref" : "#/definitions/EncodedHash"
-        },
-        "payload" : {
-          "type" : "string"
-        },
-        "ttl" : {
-          "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
-        },
-        "fee" : {
-          "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
-        },
-        "nonce" : {
-          "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
-        },
-        "poi" : {
-          "type" : "string",
-          "description" : "Proof of inclusion containing information for closing the channel"
-        }
-      },
-      "example" : {
-        "payload" : "payload",
-        "fee" : 0,
-        "from" : { },
-        "poi" : "poi",
-        "channel_id" : "channel_id",
-        "ttl" : 0,
-        "nonce" : 0
-      }
-    },
-    "ChannelSlashTx" : {
-      "type" : "object",
-      "required" : [ "channel_id", "fee", "from", "payload", "poi" ],
-      "properties" : {
-        "channel_id" : {
-          "type" : "string"
-        },
-        "from" : {
-          "$ref" : "#/definitions/EncodedHash"
-        },
-        "payload" : {
-          "type" : "string"
-        },
-        "ttl" : {
-          "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
-        },
-        "fee" : {
-          "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
-        },
-        "nonce" : {
-          "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
-        },
-        "poi" : {
-          "type" : "string",
-          "description" : "Proof of inclusion containing information for closing the channel"
-        }
-      },
-      "example" : {
-        "payload" : "payload",
-        "fee" : 0,
-        "from" : { },
-        "poi" : "poi",
-        "channel_id" : "channel_id",
-        "ttl" : 0,
-        "nonce" : 0
-      }
-    },
-    "ChannelSettleTx" : {
-      "type" : "object",
-      "required" : [ "channel_id", "fee", "from", "initiator_amount", "nonce" ],
-      "properties" : {
-        "channel_id" : {
-          "type" : "string"
-        },
-        "from" : {
-          "$ref" : "#/definitions/EncodedHash"
-        },
-        "initiator_amount" : {
-          "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
-        },
-        "responder_amount" : {
-          "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
-        },
-        "ttl" : {
-          "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
-        },
-        "fee" : {
-          "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
-        },
-        "nonce" : {
-          "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
-        }
-      },
-      "example" : {
-        "responder_amount" : 0,
-        "initiator_amount" : 0,
-        "fee" : 0,
-        "from" : { },
-        "channel_id" : "channel_id",
+        "to" : null,
+        "channel_id" : { },
         "ttl" : 0,
         "nonce" : 0
       }
@@ -3791,7 +3647,7 @@
       "required" : [ "channel_id", "fee", "from", "payload" ],
       "properties" : {
         "channel_id" : {
-          "type" : "string"
+          "$ref" : "#/definitions/EncodedHash"
         },
         "from" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -3814,6 +3670,188 @@
           "format" : "int64",
           "minimum" : 0
         }
+      },
+      "example" : {
+        "payload" : "payload",
+        "fee" : 0,
+        "from" : null,
+        "channel_id" : { },
+        "ttl" : 0,
+        "nonce" : 0
+      }
+    },
+    "ChannelCloseMutualTx" : {
+      "type" : "object",
+      "required" : [ "channel_id", "fee", "initiator_amount", "nonce", "responder_amount" ],
+      "properties" : {
+        "channel_id" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "initiator_amount" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "responder_amount" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "ttl" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        }
+      },
+      "example" : {
+        "responder_amount" : 0,
+        "initiator_amount" : 0,
+        "fee" : 0,
+        "channel_id" : { },
+        "ttl" : 0,
+        "nonce" : 0
+      }
+    },
+    "ChannelCloseSoloTx" : {
+      "type" : "object",
+      "required" : [ "channel_id", "fee", "from", "payload", "poi" ],
+      "properties" : {
+        "channel_id" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "from" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "payload" : {
+          "type" : "string"
+        },
+        "ttl" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "poi" : {
+          "type" : "string",
+          "description" : "Proof of inclusion containing information for closing the channel"
+        }
+      },
+      "example" : {
+        "payload" : "payload",
+        "fee" : 0,
+        "from" : null,
+        "poi" : "poi",
+        "channel_id" : { },
+        "ttl" : 0,
+        "nonce" : 0
+      }
+    },
+    "ChannelSlashTx" : {
+      "type" : "object",
+      "required" : [ "channel_id", "fee", "from", "payload", "poi" ],
+      "properties" : {
+        "channel_id" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "from" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "payload" : {
+          "type" : "string"
+        },
+        "ttl" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "poi" : {
+          "type" : "string",
+          "description" : "Proof of inclusion containing information for closing the channel"
+        }
+      },
+      "example" : {
+        "payload" : "payload",
+        "fee" : 0,
+        "from" : null,
+        "poi" : "poi",
+        "channel_id" : { },
+        "ttl" : 0,
+        "nonce" : 0
+      }
+    },
+    "ChannelSettleTx" : {
+      "type" : "object",
+      "required" : [ "channel_id", "fee", "from", "initiator_amount", "nonce" ],
+      "properties" : {
+        "channel_id" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "from" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "initiator_amount" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "responder_amount" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "ttl" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        }
+      },
+      "example" : {
+        "responder_amount" : 0,
+        "initiator_amount" : 0,
+        "fee" : 0,
+        "from" : null,
+        "channel_id" : { },
+        "ttl" : 0,
+        "nonce" : 0
       }
     },
     "PubKey" : {

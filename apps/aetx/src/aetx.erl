@@ -279,6 +279,7 @@ type_to_cb(channel_close_solo_tx)   -> aesc_close_solo_tx;
 type_to_cb(channel_close_mutual_tx) -> aesc_close_mutual_tx;
 type_to_cb(channel_slash_tx)        -> aesc_slash_tx;
 type_to_cb(channel_settle_tx)       -> aesc_settle_tx;
+type_to_cb(channel_snapshot_solo_tx)-> aesc_snapshot_solo_tx;
 type_to_cb(channel_offchain_tx)     -> aesc_offchain_tx.
 
 -spec specialize_type(Tx :: tx()) -> {tx_type(), tx_instance()}.
@@ -313,6 +314,7 @@ tx_types() ->
     , channel_close_solo_tx
     , channel_slash_tx
     , channel_settle_tx
+    , channel_snapshot_solo_tx
     , channel_offchain_tx
     ].
 
