@@ -513,13 +513,15 @@ preempt_if_new_top(#state{ top_block_hash = OldHash,
                 KeyOrNewForkMicro ->
                     State2 = kill_all_workers_with_tag(mining, State1),
                     State3 = kill_all_workers_with_tag(micro_signing, State2),
+                    State4 = kill_all_workers_with_tag(create_key_block_candidate, State3),
+                    State5 = kill_all_workers_with_tag(micro_sleep, State4), %% in case we are the leader
                     NewTopKey = case KeyOrNewForkMicro of
                                     micro -> KeyHash;
                                     key   -> NewHash
                                 end,
-                    State4 = State3#state{ top_key_block_hash = NewTopKey,
+                    State6 = State5#state{ top_key_block_hash = NewTopKey,
                                            key_block_candidate = undefined },
-                    {changed, NewBlock, State4}
+                    {changed, NewBlock, State6}
             end
     end.
 
