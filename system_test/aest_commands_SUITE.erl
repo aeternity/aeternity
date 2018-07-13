@@ -63,7 +63,7 @@ epoch_commands(Cfg) ->
     ?assertEqual(ExpPeerKey, PeerKey),
 
     {0, Output3} = aest_nodes:run_cmd_in_node_dir(node1,
-        ["bin/epoch", "check_config", "epoch.yaml"], Cfg),
+        ["bin/epoch", "check_config", maps:get(node1, aest_nodes_mgr:get_config_paths())], Cfg),
     ?assertMatch({match, _}, re:run(Output3, "OK[\r\n]*")),
 
     {0, Output4} = aest_nodes:run_cmd_in_node_dir(node1, ["bin/epoch", "pid"], Cfg),

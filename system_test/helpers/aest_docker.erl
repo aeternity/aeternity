@@ -20,6 +20,7 @@
 -export([run_cmd_in_node_dir/3]).
 -export([connect_node/2]).
 -export([disconnect_node/2]).
+-export([get_config_path/1]).
 -export([get_log_path/1]).
 -export([export/2]).
 
@@ -372,6 +373,9 @@ disconnect_node(NetName, NodeState) ->
     log(NodeState, "Container [~s] disconnected from network [~s]",
         [ContId, NetId]),
     NodeState.
+
+-spec get_config_path(node_state()) -> binary().
+get_config_path(#{config_path := ConfigPath}) -> ConfigPath.
 
 -spec get_log_path(node_state()) -> binary().
 get_log_path(#{log_path := LogPath}) -> LogPath.
