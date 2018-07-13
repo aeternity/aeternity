@@ -37,6 +37,7 @@
          close_solo_wrong_nonce/1,
          close_solo_payload_from_another_channel/1,
          close_solo_payload_not_co_signed/1,
+         close_solo_older_payload/1,
          close_solo_missing_channel/1,
          close_solo_already_closing/1
          ]).
@@ -56,6 +57,7 @@
          slash_wrong_nonce/1,
          slash_payload_from_another_channel/1,
          slash_payload_not_co_signed/1,
+         slash_older_payload/1,
          slash_missing_channel/1
          ]).
 
@@ -73,6 +75,7 @@
          deposit_wrong_nonce/1,
          deposit_missing_channel/1,
          deposit_closing/1,
+         deposit_older_round/1,
          deposit_not_participant/1
         ]).
 
@@ -82,6 +85,7 @@
          withdraw_wrong_nonce/1,
          withdraw_missing_channel/1,
          withdraw_closing/1,
+         withdraw_older_round/1,
          withdraw_not_participant/1
         ]).
 
@@ -89,10 +93,11 @@
 % negative snapshot solo
 -export([snapshot_closed_channel/1,
          snapshot_closing_channel/1,
-         snapshot_older_state/1,
          snapshot_missing_channel/1,
          snapshot_payload_from_another_channel/1,
-         snapshot_payload_not_co_signed/1]).
+         snapshot_payload_not_co_signed/1,
+         snapshot_old_payload/1
+        ]).
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("apps/aecore/include/blocks.hrl").
@@ -144,6 +149,7 @@ groups() ->
 			 close_solo_wrong_nonce,
        close_solo_payload_from_another_channel,
        close_solo_payload_not_co_signed,
+       close_solo_older_payload,
        close_solo_missing_channel,
        close_solo_already_closing
       ]},
@@ -161,6 +167,7 @@ groups() ->
 			 slash_wrong_nonce,
        slash_payload_from_another_channel,
        slash_payload_not_co_signed,
+       slash_older_payload,
        slash_missing_channel
       ]},
      {settle_negative, [sequence],
@@ -176,6 +183,7 @@ groups() ->
        deposit_wrong_nonce,
        deposit_missing_channel,
        deposit_closing,
+       deposit_older_round,
        deposit_not_participant
       ]},
      {withdraw_negative, [sequence],
@@ -184,15 +192,16 @@ groups() ->
        withdraw_wrong_nonce,
        withdraw_missing_channel,
        withdraw_closing,
+       withdraw_older_round,
        withdraw_not_participant
       ]},
      {snapshot_solo_negative, [sequence],
       [snapshot_closed_channel,
        snapshot_closing_channel,
-       snapshot_older_state,
        snapshot_missing_channel,
        snapshot_payload_from_another_channel,
-       snapshot_payload_not_co_signed
+       snapshot_payload_not_co_signed,
+       snapshot_old_payload
       ]}
     ].
 
@@ -468,6 +477,9 @@ close_solo_payload_from_another_channel(Cfg) ->
 close_solo_payload_not_co_signed(Cfg) ->
     test_payload_not_both_signed(Cfg, fun aesc_test_utils:close_solo_tx_spec/5,
                                       fun aesc_close_solo_tx:new/1).
+
+close_solo_older_payload(Cfg) ->
+    test_both_old_round(Cfg, fun close_solo_/2).
 
 close_solo_missing_channel(Cfg) ->
     test_both_missing_channel(Cfg, fun close_solo_/2).
@@ -816,6 +828,27 @@ slash_payload_not_co_signed(Cfg) ->
                               Slasher <- ?ROLES],
     ok.
 
+slash_older_payload(Cfg) ->
+    Test =
+        fun(Closer, Slasher) ->
+            run(#{cfg => Cfg},
+               [positive(fun create_channel_/2),
+                set_from(Closer),
+                set_prop(round, 5),
+                positive(fun close_solo_/2),
+                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                    % make sure the channel is not active any more
+                    ClosedCh = aesc_test_utils:get_channel(ChannelId, S),
+                    false = aesc_channels:is_active(ClosedCh),
+                    Props
+                end,
+                set_from(Slasher),
+                set_prop(round, 4),
+                negative(fun slash_/2, {error, old_round})])
+        end,
+    [Test(Closer, Slasher) || Closer <- ?ROLES,
+                              Slasher <- ?ROLES],
+    ok.
 slash_missing_channel(Cfg) ->
     test_both_missing_channel(Cfg, fun slash_/2).
 
@@ -895,6 +928,9 @@ deposit_missing_channel(Cfg) ->
 
 deposit_closing(Cfg) ->
     test_both_missing_channel(Cfg, fun deposit_/2, #{amount => 1, fee => 1}).
+
+deposit_older_round(Cfg) ->
+    test_both_old_round(Cfg, fun deposit_/2, #{amount => 1, fee => 1}).
 
 deposit_not_participant(Cfg) ->
     run(#{cfg => Cfg, amount => 1, fee => 1},
@@ -981,6 +1017,9 @@ withdraw_missing_channel(Cfg) ->
 
 withdraw_closing(Cfg) ->
     test_both_missing_channel(Cfg, fun withdraw_/2, #{amount => 1, fee => 1}).
+
+withdraw_older_round(Cfg) ->
+    test_both_old_round(Cfg, fun withdraw_/2, #{amount => 1, fee => 1}).
 
 withdraw_not_participant(Cfg) ->
     run(#{cfg => Cfg, amount => 1, fee => 1},
@@ -1273,23 +1312,6 @@ snapshot_closed_channel(Cfg) ->
 snapshot_closing_channel(Cfg) ->
     test_both_closing_channel(Cfg, fun snapshot_solo_/2).
 
-% no one can overwrite a state, not even the one that posted it
-snapshot_older_state(Cfg) ->
-    Test =
-        fun(First, Second) ->
-            run(#{cfg => Cfg},
-               [positive(fun create_channel_/2),
-                set_prop(round, 42),
-                set_from(First),
-                positive(fun snapshot_solo_/2),
-                set_from(Second),
-                set_prop(round, 41),
-                negative(fun snapshot_solo_/2, {error, old_round})])
-        end,
-    [Test(First, Second) || First <- ?ROLES,
-                            Second <- ?ROLES],
-    ok.
-
 % snapshot_tx calls to a missing channel are rejected
 snapshot_missing_channel(Cfg) ->
     test_both_missing_channel(Cfg, fun snapshot_solo_/2).
@@ -1298,7 +1320,7 @@ snapshot_missing_channel(Cfg) ->
 snapshot_payload_from_another_channel(Cfg) ->
     test_both_payload_from_different_channel(Cfg, fun snapshot_solo_/2).
 
-% snapshot_tx calls with a payload
+% no one can overwrite a state, not even the one that posted it
 snapshot_payload_not_co_signed(Cfg) ->
     test_payload_not_both_signed(Cfg,
                                  fun(ChannelId, From, Payload, _PoI, S) ->
@@ -1308,6 +1330,10 @@ snapshot_payload_not_co_signed(Cfg) ->
                                                                            S)
                                   end,
                                   fun aesc_snapshot_solo_tx:new/1).
+
+% snapshot_tx calls with a payload from another channel are rejected
+snapshot_old_payload(Cfg) ->
+    test_both_old_round(Cfg, fun snapshot_solo_/2).
 
 %%%===================================================================
 %%% Test utils
@@ -1704,6 +1730,32 @@ test_both_payload_from_different_channel(Cfg, Fun) ->
                 negative(Fun, {error, bad_state_channel_id})])
         end,
     [Test(Role) || Role <- ?ROLES],
+    ok.
+
+test_both_old_round(Cfg, Fun) ->
+    test_both_old_round(Cfg, Fun, #{}).
+
+test_both_old_round(Cfg, Fun, Props) ->
+    Test0 =
+        fun(First, Second, R1, R2) ->
+            run(Props#{cfg => Cfg},
+               [positive(fun create_channel_/2),
+                set_prop(round, R1),
+                set_from(First),
+                set_prop(amount, 1),
+                set_prop(fee, 1),
+                positive(fun deposit_/2),
+                set_prop(round, R2),
+                set_from(Second),
+                negative(Fun, {error, old_round})])
+        end,
+    Test =
+        fun(F, S) ->
+            Test0(F, S, 42, 41),
+            Test0(F, S, 42, 40)
+        end,
+    [Test(First, Second) || First <- ?ROLES,
+                            Second <- ?ROLES],
     ok.
 
 test_payload_not_both_signed(Cfg, SpecFun, CreateTxFun) ->
