@@ -344,8 +344,8 @@ snapshot_solo_tx_spec(ChannelId, FromPubKey, Payload, State) ->
 
 snapshot_solo_tx_spec(ChannelId, FromPubKey, Payload, Spec0, State) ->
     Spec = maps:merge(snapshot_solo_tx_default_spec(FromPubKey, State), Spec0),
-    Spec#{channel_id  => ChannelId,
-          from        => FromPubKey,
+    Spec#{channel_id  => aec_id:create(channel, ChannelId),
+          from        => aec_id:create(account, FromPubKey),
           payload     => Payload,
           ttl         => maps:get(ttl, Spec, 0)}.
 
