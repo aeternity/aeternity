@@ -14,8 +14,7 @@
 %% API
 -export([start/2, start_link/2, stop/0]).
 -export([cleanup/0, dump_logs/0, setup_nodes/1, start_node/1, stop_node/2, 
-         get_service_address/2, get_hostname/1,
-         get_config_paths/0, get_log_paths/0, log/2]).
+         get_service_address/2, get_hostname/1, get_log_paths/0, log/2]).
 
 %% gen_server callbacks
 -export([ init/1
@@ -58,9 +57,6 @@ cleanup() ->
 dump_logs() ->
     gen_server:call(?SERVER, dump_logs).
 
-get_config_paths() ->
-    gen_server:call(?SERVER, get_config_paths).
-
 get_log_paths() ->
     gen_server:call(?SERVER, get_log_paths).
 
@@ -92,8 +88,6 @@ init([Backends, EnvMap]) ->
     {ok, InitialState#{backends => [{Backend, Backend:start(Opts)} || Backend <- Backends ],
                        nodes => #{} }}.
 
-handle_call(get_config_paths, _From, State) ->
-    {reply, mgr_get_config_paths(State), State};
 handle_call(get_log_paths, _From, State) ->
     {reply, mgr_get_log_paths(State), State};
 handle_call(cleanup, _From, State) ->
@@ -170,11 +164,6 @@ log(LogFun, Format, Params) when is_function(LogFun) ->
 log(#{log_fun := LogFun}, Format, Params) when is_function(LogFun) ->
     LogFun(Format, Params);
 log(_, _, _) -> ok.
-
-mgr_get_config_paths(#{nodes := Nodes}) ->
-    maps:fold(fun(NodeName, {Mod, NodeState}, Acc) ->
-        Acc#{NodeName => Mod:get_config_path(NodeState)}
-              end, #{}, Nodes).
 
 mgr_get_log_paths(#{nodes := Nodes}) ->
     maps:fold(fun(NodeName, {Mod, NodeState}, Acc) ->
