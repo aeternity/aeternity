@@ -1191,7 +1191,9 @@ settle_not_yet_closable(Cfg) ->
 
 snapshot_solo(Cfg) ->
     Round = 43,
+    OldRound = Round - 5,
     StateHashSize = aec_base58c:byte_size_for_type(state),
+    OldStateHash = <<40:StateHashSize/unit:8>>,
     StateHash = <<43:StateHashSize/unit:8>>,
     Test =
         fun(Snapshoter) ->
@@ -1211,6 +1213,38 @@ snapshot_solo(Cfg) ->
                 ])
         end,
     [Test(Role) || Role <- ?ROLES],
+
+    TestPreAction =
+        fun(PreActor, Snapshoter, Action) when is_function(Action, 2) ->
+            run(#{cfg => Cfg},
+               [positive(fun create_channel_/2),
+                set_from(PreActor),
+                set_prop(round, OldRound),
+                set_prop(amount, 1),
+                set_prop(fee, 1),
+                set_prop(state_hash, OldStateHash),
+                positive(Action),
+                set_from(Snapshoter),
+                set_prop(round, Round),
+                set_prop(state_hash, StateHash),
+                positive(fun snapshot_solo_/2),
+                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                    % ensure channel had been updated
+                    Channel = aesc_test_utils:get_channel(ChannelId, S),
+                    Round = aesc_channels:round(Channel),
+                    StateHash = aesc_channels:state_hash(Channel),
+                    Props
+                end
+                ])
+        end,
+    Actions =
+        [ fun deposit_/2,
+          fun withdraw_/2,
+          fun snapshot_solo_/2
+        ],
+    [TestPreAction(PreActor, Snapshoter, Action) || PreActor <- ?ROLES,
+                                                    Snapshoter <- ?ROLES,
+                                                    Action <- Actions],
     ok.
 
 % no one can post a snapshot_tx to a closed channel
