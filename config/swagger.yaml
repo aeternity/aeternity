@@ -575,6 +575,47 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /oracles/{pubkey}/queries:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetOracleQueriesByPubkey
+      description: 'Get oracle queries by public key'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'The public key of the oracle'
+          required: true
+          type: string
+        - in: query
+          name: from
+          description: 'Last query id in previous page'
+          required: false
+          type: string
+        - in: query
+          name: limit
+          description: 'Max number of oracle queries'
+          required: false
+          type: integer
+          minimum: 1
+          maximum: 1000
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/OracleQueries'
+        '400':
+          description: 'Invalid public key'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Oracle not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
   /header-by-hash:
     get:
       tags:
@@ -2668,20 +2709,52 @@ definitions:
     type: array
     items:
       $ref: '#/definitions/RegisteredOracle'
+  OracleQuery:
+    type: object
+    properties:
+      sender:
+        type: string
+      sender_nonce:
+        type: integer
+        format: int64
+        minimum: 0
+      oracle_id:
+        type: string
+      query:
+        type: string
+      response:
+        type: string
+      expires:
+        type: integer
+        format: int64
+      response_ttl:
+        $ref: '#/definitions/TTL'
+      fee:
+        type: integer
+        format: int64
+  OracleQuestion:
+    type: object
+    properties:
+      query_id:
+        type: string
+      query:
+        type: string
+      query_fee:
+        type: integer
+      expires_at:
+        type: integer
+        format: int64
+  OracleQueries:
+    type: object
+    properties:
+      oracle_queries:
+        type: array
+        items:
+          $ref: '#/definitions/OracleQuery'
   OracleQuestions:
     type: array
     items:
-      type: object
-      properties:
-        query_id:
-          type: string
-        query:
-          type: string
-        query_fee:
-          type: integer
-        expires_at:
-          type: integer
-          format: int64
+      $ref: '#/definitions/OracleQuestion'
   SpendTx:
     type: object
     properties:

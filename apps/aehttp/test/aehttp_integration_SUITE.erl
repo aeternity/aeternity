@@ -63,7 +63,8 @@
    [
     post_oracle_register/1,
     get_oracle_by_pubkey/1,
-    post_oracle_extend/1
+    post_oracle_extend/1,
+    post_oracle_query/1
    ]).
 
 %% off chain endpoints
@@ -396,7 +397,8 @@ groups() ->
      {oracle_txs, [sequence],
       [
        post_oracle_register,
-       post_oracle_extend
+       post_oracle_extend,
+       post_oracle_query
       ]},
 
      {off_chain_endpoints, [],
@@ -819,6 +821,17 @@ init_per_testcase(post_oracle_extend, Config) ->
      {oracle_ttl_value_final, ?config(oracle_ttl_value, SavedConfig) + OracleTtlDelta},
      {oracle_ttl_type, <<"delta">>},
      {oracle_ttl_value, OracleTtlDelta} | init_per_testcase_all(Config)];
+init_per_testcase(post_oracle_query, Config) ->
+    {post_oracle_extend, SavedConfig} = ?config(saved_config, Config),
+    [{sender_pubkey, ?config(account_pubkey, SavedConfig)},
+     {oracle_pubkey, ?config(oracle_pubkey, SavedConfig)},
+     {query, <<"Hejsan Svejsan">>},
+     {query_fee, 2},
+     {fee, 30},
+     {query_ttl_type, <<"block">>},
+     {query_ttl_value, 20},
+     {response_ttl_type, <<"delta">>},
+     {response_ttl_value, 20} | init_per_testcase_all(Config)];
 init_per_testcase(_Case, Config) ->
     init_per_testcase_all(Config).
 
@@ -1431,7 +1444,7 @@ post_oracle_extend(Config) ->
     Node = ?config(node, Config),
     OraclePubkey = ?config(oracle_pubkey, Config),
     TxArgs =
-        #{oracle     => ?config(oracle_pubkey, Config),
+        #{oracle     => OraclePubkey,
           fee        => ?config(fee, Config),
           oracle_ttl => #{type  => ?config(oracle_ttl_type, Config),
                           value => ?config(oracle_ttl_value, Config)}},
@@ -1441,11 +1454,45 @@ post_oracle_extend(Config) ->
     {ok, 200, Resp} = get_oracles_by_pubkey_sut(OraclePubkey),
     ?assertEqual(OraclePubkey, maps:get(<<"id">>, Resp)),
     ?assertEqual(?config(oracle_ttl_value_final, Config), maps:get(<<"expires">>, Resp)),
-    ok.
+    {ok, 200, Resp1} = get_oracles_queries_by_pubkey_sut(OraclePubkey),
+    ?assertEqual([], maps:get(<<"oracle_queries">>, Resp1)),
+    {save_config, save_config([account_pubkey, oracle_pubkey], Config)}.
+
+post_oracle_query(Config) ->
+    Node = ?config(node, Config),
+    SenderPubkey = ?config(sender_pubkey, Config),
+    OraclePubkey = ?config(oracle_pubkey, Config),
+    QueryId = ?config(query, Config),
+    TxArgs =
+        #{sender        => SenderPubkey,
+          oracle_pubkey => OraclePubkey,
+          query         => QueryId,
+          query_fee     => ?config(query_fee, Config),
+          fee           => ?config(fee, Config),
+          query_ttl     => #{type  => ?config(query_ttl_type, Config),
+                             value => ?config(query_ttl_value, Config)},
+          response_ttl  => #{type  => ?config(response_ttl_type, Config),
+                             value => ?config(response_ttl_value, Config)}},
+    {TxHash, Tx} = prepare_tx(oracle_query_tx, TxArgs),
+    ok = post_tx(TxHash, Tx),
+    aecore_suite_utils:mine_blocks_until(Node, fun() -> tx_in_chain(TxHash) end, 10),
+    {ok, 200, Resp} = get_oracles_queries_by_pubkey_sut(OraclePubkey),
+    ?assertEqual(1, length(maps:get(<<"oracle_queries">>, Resp))),
+    [Query] = maps:get(<<"oracle_queries">>, Resp),
+    ?assertEqual(SenderPubkey, maps:get(<<"sender">>, Query)),
+    ?assertEqual(OraclePubkey, maps:get(<<"oracle_id">>, Query)),
+    ?assertEqual(QueryId, maps:get(<<"query">>, Query)),
+    {save_config, save_config([account_pubkey, oracle_pubkey, query], Config)}.
 
 get_oracles_by_pubkey_sut(Pubkey) ->
     Host = external_address(),
     http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey), []).
+
+%% TODO: add test for 'limit' and 'from' in HTTP query
+get_oracles_queries_by_pubkey_sut(Pubkey) ->
+    Host = external_address(),
+    Pubkey1 = binary_to_list(Pubkey),
+    http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey1) ++ "/queries", []).
 
 prepare_tx(TxType, Args) ->
     %assert_required_tx_fields(TxType, Args),
@@ -1477,7 +1524,8 @@ post_tx(TxHash, Tx) ->
 %% TODO: use /debug/* when available
 tx_object_http_path(spend_tx) -> "tx/spend";
 tx_object_http_path(oracle_register_tx) -> "tx/oracle/register";
-tx_object_http_path(oracle_extend_tx) -> "tx/oracle/extend".
+tx_object_http_path(oracle_extend_tx) -> "tx/oracle/extend";
+tx_object_http_path(oracle_query_tx) -> "tx/oracle/query".
 
 hash(Block) ->
     {ok, Hash0} = aec_blocks:hash_internal_representation(Block),

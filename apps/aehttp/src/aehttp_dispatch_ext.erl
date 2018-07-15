@@ -255,6 +255,27 @@ handle_request('GetOracleByPubkey', Params, _Context) ->
             {400, [], #{reason => <<"Invalid public key">>}}
     end;
 
+handle_request('GetOracleQueriesByPubkey', Params, _Context) ->
+    case aec_base58c:safe_decode(oracle_pubkey, maps:get(pubkey, Params)) of
+        {ok, Pubkey} ->
+            Limit = case maps:get(limit, Params) of
+                        N when N =/= undefined -> N;
+                        undefined -> 20
+                    end,
+            FromQueryId = case maps:get(from, Params) of
+                              Id when Id =/= undefined ->
+                                  {ok, OracleQueryId} = aec_base58c:safe_decode(oracle_query_id, Id),
+                                  OracleQueryId;
+                              undefined ->
+                                  '$first'
+                          end,
+            {ok, OracleQueries} = aec_chain:get_open_oracle_queries(Pubkey, FromQueryId, Limit),
+            OracleQueries1 = [aeo_query:serialize_for_client(OracleQuery) || OracleQuery <- OracleQueries],
+            {200, [], #{oracle_queries => OracleQueries1}};
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid public key">>}}
+    end;
+
 handle_request('GetBlockGenesis', Req, _Context) ->
     get_block(fun aehttp_logic:get_block_genesis/0, Req, json);
 
