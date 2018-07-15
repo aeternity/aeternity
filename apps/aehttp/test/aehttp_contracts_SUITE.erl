@@ -770,7 +770,10 @@ spend_test_contract(Config) ->
     ok.
 
 %% dutch_auction_contract(Config)
-%%  Check the DutchAuction contract. This doesn't work yet.
+%%  Check the DutchAuction contract. We use 3 accounts here, Alice for
+%%  setting up the account, Carl as beneficiary and Bert as
+%%  bidder. This makes it a bit easier to keep track of the values as
+%%  we have gas loses as well.
 
 dutch_auction_contract(Config) ->
     NodeName = proplists:get_value(node_name, Config),
@@ -778,13 +781,14 @@ dutch_auction_contract(Config) ->
     #{acc_a := #{pub_key := APubkey,
 		 priv_key := APrivkey},
       acc_b := #{pub_key := BPubkey,
-		 priv_key := BPrivkey}} = proplists:get_value(accounts, Config),
-
-    ct:pal("APubkey ~p\n", [APubkey]),
+		 priv_key := BPrivkey},
+      acc_c := #{pub_key := CPubkey,
+		 priv_key := CPrivkey}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
     ABal0 = ensure_balance(APubkey, 500000),
     BBal0 = ensure_balance(BPubkey, 500000),
+    CBal0 = ensure_balance(CPubkey, 500000),
     {ok,[_]} = aecore_suite_utils:mine_blocks(NodeName, 1),
 
     %% Compile contract "dutch_auction.aes"
@@ -792,21 +796,28 @@ dutch_auction_contract(Config) ->
     BinCode = aeso_compiler:from_string(ContractString, []),
     HexCode = aeu_hex:hexstring_encode(BinCode),
 
-    %% Initialise contract owned by Alice.
-    InitArgument = args_to_binary([APubkey,50000,500]),
+    %% Initialise contract owned by Alice with Carl as benficiary.
+    InitArgument = args_to_binary([CPubkey,50000,500]),
     {EncodedContractPubkey,_,_} = create_contract(NodeName, APubkey, APrivkey,
-						  HexCode, InitArgument,
-						  #{amount => 50000}),
+						  HexCode, InitArgument),
 
     ABal1 = get_balance(APubkey),
+    BBal1 = get_balance(BPubkey),
+    CBal1 = get_balance(CPubkey),
+
+    %% Mine 10 times to decrement value by 5000.
+    {ok,_} = aecore_suite_utils:mine_blocks(NodeName, 10),
 
     %% Call the contract bid function by Bert.
     BidValue = call_func(NodeName, BPubkey, BPrivkey, EncodedContractPubkey,
-			 HexCode, <<"bid">>, <<"()">>, #{amount => 50000}),
+			 HexCode, <<"bid">>, <<"()">>, #{amount => 100000}),
 
     ct:pal("Bid value ~p\n", [BidValue]),
+
+    %% These values look reasonable.
     ct:pal("A Balances ~p, ~p, ~p\n", [ABal0,ABal1,get_balance(APubkey)]),
-    ct:pal("B Balances ~p, ~p\n", [BBal0,get_balance(BPubkey)]),
+    ct:pal("B Balances ~p, ~p, ~p\n", [BBal0,BBal1,get_balance(BPubkey)]),
+    ct:pal("C Balances ~p, ~p, ~p\n", [CBal0,CBal1,get_balance(CPubkey)]),
 
     ok.
 
@@ -1399,8 +1410,8 @@ spend_tokens(SenderPub, SenderPriv, Recip, Amount, Fee, CallerSet) ->
     {ok,200,#{<<"nonce">> := Nonce0}} = get_nonce(Address),
     Nonce = Nonce0 + 1,
 
-    Params0 = #{sender => SenderPub,
-                recipient => Recip,
+    Params0 = #{sender => aec_id:create(account, SenderPub),
+                recipient => aec_id:create(account, Recip),
                 amount => Amount,
                 fee => Fee,
                 nonce => Nonce,
