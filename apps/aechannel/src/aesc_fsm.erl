@@ -1143,14 +1143,14 @@ close_mutual_tx(Account, Nonce, _LatestSignedTx,
     {IAmt1, RAmt1} = pay_close_mutual_fee(Fee, IAmt, RAmt),
     {LastRound, _} = aesc_offchain_state:get_latest_signed_tx(State),
     StateHash = aesc_offchain_state:hash(State),
-    aesc_close_mutual_tx:new(#{ channel_id       => aec_id:create(channel, ChanId)
-                              , initiator_amount => IAmt1
-                              , responder_amount => RAmt1
-                              , ttl              => TTL
-                              , fee              => Fee
-                              , state_hash       => StateHash
-                              , round            => LastRound + 1
-                              , nonce            => Nonce }).
+    aesc_close_mutual_tx:new(#{ channel_id             => aec_id:create(channel, ChanId)
+                              , initiator_amount_final => IAmt1
+                              , responder_amount_final => RAmt1
+                              , ttl                    => TTL
+                              , fee                    => Fee
+                              , state_hash             => StateHash
+                              , round                  => LastRound + 1
+                              , nonce                  => Nonce }).
 
 pay_close_mutual_fee(Fee, IAmt, RAmt) ->
     Ceil  = trunc(math:ceil(Fee/2)),

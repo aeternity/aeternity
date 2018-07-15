@@ -2957,11 +2957,11 @@ definitions:
     properties:
       channel_id:
         $ref: '#/definitions/EncodedHash'
-      initiator_amount:
+      initiator_amount_final:
         type: integer
         format: int64
         minimum: 0
-      responder_amount:
+      responder_amount_final:
         type: integer
         format: int64
         minimum: 0
@@ -2979,8 +2979,8 @@ definitions:
         minimum: 0
     required:
     - channel_id
-    - initiator_amount
-    - responder_amount
+    - initiator_amount_final
+    - responder_amount_final
     - fee
     - nonce
   ChannelCloseSoloTx:
@@ -3050,11 +3050,11 @@ definitions:
         $ref: '#/definitions/EncodedHash'
       from:
         $ref: '#/definitions/EncodedHash'
-      initiator_amount:
+      initiator_amount_final:
         type: integer
         format: int64
         minimum: 0
-      responder_amount:
+      responder_amount_final:
         type: integer
         format: int64
         minimum: 0
@@ -3073,8 +3073,8 @@ definitions:
     required:
     - channel_id
     - from
-    - initiator_amount
-    - participant_amount
+    - initiator_amount_final
+    - responder_amount_final
     - fee
     - nonce
   ChannelSnapshotSoloTx:

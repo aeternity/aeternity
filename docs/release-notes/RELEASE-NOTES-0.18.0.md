@@ -9,6 +9,8 @@ It:
 * Improves the stability of the garbage collection of transactions in the mempool.
 * Adds a new channel transaction `channel_snapshot_solo` for unilaterally
   providing `state_hash` and `round` to the chain.
+* Refactors channels' closing transaction to add more clarity around closing
+  amounts
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.18.0
 

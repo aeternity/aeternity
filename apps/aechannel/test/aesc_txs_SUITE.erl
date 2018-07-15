@@ -520,8 +520,8 @@ close_mutual(Cfg) ->
             run(#{cfg => Cfg, initiator_amount => StartIAmt, responder_amount => StartRAmt},
                [positive(fun create_channel_/2),
                 get_onchain_balances(before_close),
-                set_prop(initiator_amount, IAmt),
-                set_prop(responder_amount, RAmt),
+                set_prop(initiator_amount_final, IAmt),
+                set_prop(responder_amount_final, RAmt),
                 set_prop(fee, Fee),
                 positive(fun close_mutual_/2),
                 get_onchain_balances(after_close),
@@ -556,8 +556,8 @@ close_mutual_wrong_amounts(Cfg) ->
         fun(IAmt, RAmt, Fee, Err) ->
             run(#{cfg => Cfg, initiator_amount => StartIAmt, responder_amount => StartRAmt},
                [positive(fun create_channel_/2),
-                set_prop(initiator_amount, IAmt),
-                set_prop(responder_amount, RAmt),
+                set_prop(initiator_amount_final, IAmt),
+                set_prop(responder_amount_final, RAmt),
                 set_prop(fee, Fee),
                 negative(fun close_mutual_/2, {error, Err})])
         end,
@@ -1444,9 +1444,9 @@ set_prop(Key, Value) ->
     end.
 
 prepare_balances_for_mutual_close() ->
-    fun(#{initiator_amount := IAmt} = Props) ->
+    fun(#{initiator_amount := IAmt, responder_amount := RAmt} = Props) ->
         Fee = maps:get(fee, Props, 1),
-        Props#{initiator_amount => IAmt - Fee, fee => Fee}
+        Props#{initiator_amount_final => IAmt - Fee, responder_amount_final => RAmt, fee => Fee}
     end.
 
 get_onchain_balances(Key) ->
@@ -1660,17 +1660,17 @@ slash_(#{channel_id        := ChannelId,
     SignedTx = aec_test_utils:sign_tx(Tx, [FromPrivkey]),
     apply_on_trees_(Props, SignedTx, S, Expected).
 
-close_mutual_(#{channel_id      := ChannelId,
-                initiator_amount  := IAmt,
-                responder_amount  := RAmt,
-                initiator_pubkey  := IPubkey,
-                fee               := Fee,
-                state             := S,
-                initiator_privkey := PrivKey1,
-                responder_privkey := PrivKey2} = Props, Expected) ->
-      Spec0 = #{initiator_amount => IAmt,
-                initiator_account => IPubkey,
-                responder_amount => RAmt,
+close_mutual_(#{channel_id              := ChannelId,
+                initiator_amount_final  := IAmt,
+                responder_amount_final  := RAmt,
+                initiator_pubkey        := IPubkey,
+                fee                     := Fee,
+                state                   := S,
+                initiator_privkey       := PrivKey1,
+                responder_privkey       := PrivKey2} = Props, Expected) ->
+      Spec0 = #{initiator_amount_final  => IAmt,
+                initiator_account       => IPubkey,
+                responder_amount_final  => RAmt,
                 fee    => Fee},
       Spec =
           case Props of

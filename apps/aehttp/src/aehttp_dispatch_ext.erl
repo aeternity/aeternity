@@ -481,7 +481,8 @@ handle_request('PostChannelSnapshotSolo', #{'ChannelSnapshotSoloTx' := Req}, _Co
 handle_request('PostChannelCloseMutual', #{'ChannelCloseMutualTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([channel_id,
-                                       initiator_amount, responder_amount,
+                                       initiator_amount_final,
+                                       responder_amount_final,
                                        fee, nonce]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  base58_decode([{channel_id, channel_id, {id_hash, [channel]}}]),
@@ -520,7 +521,8 @@ handle_request('PostChannelSlash', #{'ChannelSlashTx' := Req}, _Context) ->
 handle_request('PostChannelSettle', #{'ChannelSettleTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([channel_id, from,
-                                       initiator_amount, responder_amount,
+                                       initiator_amount_final,
+                                       responder_amount_final,
                                        fee, nonce]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  base58_decode([{channel_id, channel_id, {id_hash, [channel]}},
