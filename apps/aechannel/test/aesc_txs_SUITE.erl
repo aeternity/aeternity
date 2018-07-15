@@ -37,12 +37,18 @@
          close_solo_wrong_nonce/1,
          close_solo_payload_from_another_channel/1,
          close_solo_payload_not_co_signed/1,
+         close_solo_invalid_state_hash/1,
          close_solo_older_payload/1,
          close_solo_missing_channel/1,
-         close_solo_already_closing/1
+         close_solo_already_closing/1,
+         close_solo_delegate_not_allowed/1
          ]).
 
 % negative close mutual
+% close mutual does not have a `from` - it is always implicitly the initiator
+% thus we can not test the tx being posted from another account (not
+% participant or a delegate). If it is signed by non-participant - the
+% signature test will fail 
 -export([close_mutual_wrong_amounts/1,
          close_mutual_wrong_nonce/1,
          close_mutual_missing_channel/1,
@@ -57,6 +63,7 @@
          slash_wrong_nonce/1,
          slash_payload_from_another_channel/1,
          slash_payload_not_co_signed/1,
+         slash_invalid_state_hash/1,
          slash_older_payload/1,
          slash_missing_channel/1
          ]).
@@ -66,7 +73,9 @@
          settle_wrong_nonce/1,
          settle_missing_channel/1,
          settle_not_closing/1,
-         settle_not_yet_closable/1
+         settle_not_yet_closable/1,
+         settle_not_participant/1,
+         settle_delegate_not_allowed/1
         ]).
 
 % negative deposit
@@ -76,7 +85,8 @@
          deposit_missing_channel/1,
          deposit_closing/1,
          deposit_older_round/1,
-         deposit_not_participant/1
+         deposit_not_participant/1,
+         deposit_delegate_not_allowed/1
         ]).
 
 % negative withdraw
@@ -86,7 +96,8 @@
          withdraw_missing_channel/1,
          withdraw_closing/1,
          withdraw_older_round/1,
-         withdraw_not_participant/1
+         withdraw_not_participant/1,
+         withdraw_delegate_not_allowed/1
         ]).
 
 
@@ -96,7 +107,9 @@
          snapshot_missing_channel/1,
          snapshot_payload_from_another_channel/1,
          snapshot_payload_not_co_signed/1,
-         snapshot_old_payload/1
+         snapshot_old_payload/1,
+         snapshot_not_participant/1,
+         snapshot_delegate_not_allowed/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -149,9 +162,11 @@ groups() ->
 			 close_solo_wrong_nonce,
        close_solo_payload_from_another_channel,
        close_solo_payload_not_co_signed,
+       close_solo_invalid_state_hash,
        close_solo_older_payload,
        close_solo_missing_channel,
-       close_solo_already_closing
+       close_solo_already_closing,
+       close_solo_delegate_not_allowed
       ]},
      {close_mutual_negative, [sequence],
       [close_mutual_wrong_amounts,
@@ -167,6 +182,7 @@ groups() ->
 			 slash_wrong_nonce,
        slash_payload_from_another_channel,
        slash_payload_not_co_signed,
+       slash_invalid_state_hash,
        slash_older_payload,
        slash_missing_channel
       ]},
@@ -175,7 +191,9 @@ groups() ->
        settle_wrong_nonce,
        settle_missing_channel,
        settle_not_closing,
-       settle_not_yet_closable
+       settle_not_yet_closable,
+       settle_not_participant,
+       settle_delegate_not_allowed
       ]},
      {deposit_negative, [sequence],
       [deposit_unknown_from,
@@ -184,7 +202,8 @@ groups() ->
        deposit_missing_channel,
        deposit_closing,
        deposit_older_round,
-       deposit_not_participant
+       deposit_not_participant,
+       deposit_delegate_not_allowed
       ]},
      {withdraw_negative, [sequence],
       [withdraw_unknown_from,
@@ -193,7 +212,8 @@ groups() ->
        withdraw_missing_channel,
        withdraw_closing,
        withdraw_older_round,
-       withdraw_not_participant
+       withdraw_not_participant,
+       withdraw_delegate_not_allowed
       ]},
      {snapshot_solo_negative, [sequence],
       [snapshot_closed_channel,
@@ -201,7 +221,9 @@ groups() ->
        snapshot_missing_channel,
        snapshot_payload_from_another_channel,
        snapshot_payload_not_co_signed,
-       snapshot_old_payload
+       snapshot_old_payload,
+       snapshot_not_participant,
+       snapshot_delegate_not_allowed
       ]}
     ].
 
@@ -457,16 +479,7 @@ close_solo_wrong_amounts(Cfg) ->
 
 %% Test not a peer can not close channel
 close_solo_not_participant(Cfg) ->
-    run(#{cfg => Cfg},
-        [positive(fun create_channel_/2),
-         fun(#{state := S0} = Props) ->
-            {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-            S1 = aesc_test_utils:set_account_balance(NewAcc, 1000, S),
-            PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
-            Props#{state => S1, from => NewAcc, from_privkey => PrivKey}
-         end,
-         negative(fun close_solo_/2, {error, account_not_peer})]),
-    ok.
+    test_not_participant(Cfg, fun close_solo_/2).
 
 close_solo_wrong_nonce(Cfg) ->
     test_both_wrong_nonce(Cfg, fun close_solo_/2).
@@ -478,6 +491,9 @@ close_solo_payload_not_co_signed(Cfg) ->
     test_payload_not_both_signed(Cfg, fun aesc_test_utils:close_solo_tx_spec/5,
                                       fun aesc_close_solo_tx:new/1).
 
+close_solo_invalid_state_hash(Cfg) ->
+    test_both_invalid_poi_hash(Cfg, fun close_solo_/2).
+
 close_solo_older_payload(Cfg) ->
     test_both_old_round(Cfg, fun close_solo_/2).
 
@@ -486,6 +502,9 @@ close_solo_missing_channel(Cfg) ->
 
 close_solo_already_closing(Cfg) ->
     test_both_closing_channel(Cfg, fun close_solo_/2).
+
+close_solo_delegate_not_allowed(Cfg) ->
+    test_delegate_not_allowed(Cfg, fun close_solo_/2).
 
 %%%===================================================================
 %%% Close mutual
@@ -828,6 +847,27 @@ slash_payload_not_co_signed(Cfg) ->
                               Slasher <- ?ROLES],
     ok.
 
+slash_invalid_state_hash(Cfg) ->
+    StateHashSize = aec_base58c:byte_size_for_type(state),
+    FakeStateHash = <<42:StateHashSize/unit:8>>,
+    Test =
+        fun(Closer, Slasher) ->
+            run(#{cfg => Cfg},
+               [positive(fun create_channel_/2),
+                set_from(Closer),
+                set_prop(round, 5),
+                positive(fun close_solo_/2),
+                set_from(Slasher),
+                set_prop(round, 10),
+                set_prop(state_hash, FakeStateHash),
+                set_from(Slasher),
+                negative(fun slash_/2, {error, invalid_poi_hash})])
+        end,
+    [Test(Closer, Slasher) || Closer <- ?ROLES,
+                              Slasher <- ?ROLES],
+    ok.
+
+
 slash_older_payload(Cfg) ->
     Test =
         fun(Closer, Slasher) ->
@@ -933,17 +973,11 @@ deposit_older_round(Cfg) ->
     test_both_old_round(Cfg, fun deposit_/2, #{amount => 1, fee => 1}).
 
 deposit_not_participant(Cfg) ->
-    run(#{cfg => Cfg, amount => 1, fee => 1},
-        [positive(fun create_channel_/2),
-         fun(#{state := S0} = Props) ->
-            {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-            S1 = aesc_test_utils:set_account_balance(NewAcc, 1000, S),
-            PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
-            Props#{state => S1, from => NewAcc, from_privkey => PrivKey}
-         end,
-         negative(fun deposit_/2, {error, account_not_peer})]),
-    ok.
+    test_not_participant(Cfg, fun deposit_/2, #{amount => 1, fee => 1}).
 
+deposit_delegate_not_allowed(Cfg) ->
+    test_delegate_not_allowed(Cfg, fun deposit_/2, #{amount => 1, fee => 1}).
+    
 %%%===================================================================
 %%% Withdraw
 %%%===================================================================
@@ -1022,18 +1056,10 @@ withdraw_older_round(Cfg) ->
     test_both_old_round(Cfg, fun withdraw_/2, #{amount => 1, fee => 1}).
 
 withdraw_not_participant(Cfg) ->
-    run(#{cfg => Cfg, amount => 1, fee => 1},
-        [positive(fun create_channel_/2),
-         fun(#{state := S0} = Props) ->
-            {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-            S1 = aesc_test_utils:set_account_balance(NewAcc, 1000, S),
-            PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
-            Props#{state => S1, from => NewAcc, from_privkey => PrivKey}
-         end,
-         negative(fun withdraw_/2, {error, account_not_peer})]),
-    ok.
+    test_not_participant(Cfg, fun withdraw_/2, #{amount => 1, fee => 1}).
 
-
+withdraw_delegate_not_allowed(Cfg) ->
+    test_delegate_not_allowed(Cfg, fun withdraw_/2, #{amount => 1, fee => 1}).
 
 get_balances(K1, K2, S) ->
     {get_balance(K1, S), get_balance(K2, S)}.
@@ -1224,6 +1250,51 @@ settle_not_yet_closable(Cfg) ->
                                                 Setler <- ?ROLES],
     ok.
 
+settle_not_participant(Cfg) ->
+    Test =
+        fun(Closer) ->
+            run(#{cfg => Cfg, lock_period => 10},
+               [positive(fun create_channel_/2),
+                set_from(Closer),
+                set_prop(height, 10),
+                positive(fun close_solo_/2),
+                set_prop(height, 21),
+                fun(#{state := S0} = Props) ->
+                    {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
+                    S1 = aesc_test_utils:set_account_balance(NewAcc, 1000, S),
+                    PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
+                    Props#{state => S1, from => NewAcc, from_privkey => PrivKey}
+                end,
+                negative(fun settle_/2, {error, account_not_peer})])
+        end,
+    [Test(Closer) || Closer <- ?ROLES],
+    ok.
+
+settle_delegate_not_allowed(Cfg) ->
+    Test =
+        fun(Closer) ->
+            run(#{cfg => Cfg},
+              [fun(Props) ->
+                    {Delegate1, Delegate2, S} = create_loaded_accounts(100, 100),
+                    Props#{cfg => [{state, S} | Cfg],
+                            delegates => [aec_id:create(account, Delegate1),
+                                          aec_id:create(account, Delegate2)]}
+                end,
+                positive(fun create_channel_/2),
+                set_from(Closer),
+                set_prop(height, 10),
+                positive(fun close_solo_/2),
+                set_prop(height, 21),
+                fun(#{delegates := [D1 |_], state := S} = Props) ->
+                    D1Pubkey = aec_id:specialize(D1, account),
+                    D1PrivKey = aesc_test_utils:priv_key(D1Pubkey, S),
+                    Props#{from => D1Pubkey, from_privkey => D1PrivKey}
+                end,
+                negative(fun settle_/2, {error, account_not_peer})])
+        end,
+    [Test(Closer) || Closer <- ?ROLES],
+    ok.
+
 %%%===================================================================
 %%% Snapshot solo
 %%%===================================================================
@@ -1334,6 +1405,12 @@ snapshot_payload_not_co_signed(Cfg) ->
 % snapshot_tx calls with a payload from another channel are rejected
 snapshot_old_payload(Cfg) ->
     test_both_old_round(Cfg, fun snapshot_solo_/2).
+
+snapshot_not_participant(Cfg) ->
+    test_not_participant(Cfg, fun snapshot_solo_/2).
+
+snapshot_delegate_not_allowed(Cfg) ->
+    test_delegate_not_allowed(Cfg, fun snapshot_solo_/2).
 
 %%%===================================================================
 %%% Test utils
@@ -1521,9 +1598,14 @@ close_solo_(#{channel_id        := ChannelId,
 
     %% Create close_solo tx and apply it on state trees
     Round = maps:get(round, Props, 10),
-    PayloadSpec = #{initiator_amount => IAmt,
-                    responder_amount => RAmt,
-                    round => Round},
+    PayloadSpec0 = #{initiator_amount => IAmt,
+                     responder_amount => RAmt,
+                     round => Round},
+    PayloadSpec =
+        case maps:get(state_hash, Props, not_passed) of
+            not_passed -> PayloadSpec0;
+            Hash -> PayloadSpec0#{state_hash => Hash}
+        end,
     Payload = maps:get(payload, Props,
                         aesc_test_utils:payload(ChannelId, IPubkey, RPubkey,
                                     [IPrivkey, RPrivkey], PayloadSpec)),
@@ -1555,9 +1637,14 @@ slash_(#{channel_id        := ChannelId,
 
     %% Create slash tx and apply it on state trees
     Round = maps:get(round, Props, 10),
-    PayloadSpec = #{initiator_amount => IAmt,
-                    responder_amount => RAmt,
-                    round => Round},
+    PayloadSpec0 = #{initiator_amount => IAmt,
+                     responder_amount => RAmt,
+                     round => Round},
+    PayloadSpec =
+        case maps:get(state_hash, Props, not_passed) of
+            not_passed -> PayloadSpec0;
+            Hash -> PayloadSpec0#{state_hash => Hash}
+        end,
     Payload = maps:get(payload, Props,
                         aesc_test_utils:payload(ChannelId, IPubkey, RPubkey,
                                     [IPrivkey, RPrivkey], PayloadSpec)),
@@ -1834,3 +1921,54 @@ test_both_closing_channel(Cfg, Fun) ->
                              Poster <- ?ROLES],
     ok.
 
+test_both_invalid_poi_hash(Cfg, Fun) ->
+    test_both_invalid_poi_hash(Cfg, Fun, #{}).
+
+test_both_invalid_poi_hash(Cfg, Fun, InitProps) ->
+    StateHashSize = aec_base58c:byte_size_for_type(state),
+    FakeStateHash = <<42:StateHashSize/unit:8>>,
+    Test =
+        fun(Poster) ->
+            run(InitProps#{cfg => Cfg},
+               [positive(fun create_channel_/2),
+                set_prop(state_hash, FakeStateHash),
+                set_from(Poster),
+                negative(Fun, {error, invalid_poi_hash})])
+        end,
+    [Test(Role) || Role <- ?ROLES],
+    ok.
+
+test_delegate_not_allowed(Cfg, Fun) ->
+    test_delegate_not_allowed(Cfg, Fun, #{}).
+
+test_delegate_not_allowed(Cfg, Fun, InitProps) ->
+    run(InitProps#{cfg => Cfg},
+      [fun(Props) ->
+            {Delegate1, Delegate2, S} = create_loaded_accounts(100, 100),
+            Props#{cfg => [{state, S} | Cfg],
+                    delegates => [aec_id:create(account, Delegate1),
+                                  aec_id:create(account, Delegate2)]}
+        end,
+        positive(fun create_channel_/2),
+        fun(#{delegates := [D1 |_], state := S} = Props) ->
+            D1Pubkey = aec_id:specialize(D1, account),
+            D1PrivKey = aesc_test_utils:priv_key(D1Pubkey, S),
+            Props#{from => D1Pubkey, from_privkey => D1PrivKey}
+        end,
+        negative(Fun, {error, account_not_peer})]),
+    ok.
+
+test_not_participant(Cfg, Fun) ->
+    test_not_participant(Cfg, Fun, #{}).
+
+test_not_participant(Cfg, Fun, InitProps) ->
+    run(InitProps#{cfg => Cfg},
+        [positive(fun create_channel_/2),
+         fun(#{state := S0} = Props) ->
+            {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
+            S1 = aesc_test_utils:set_account_balance(NewAcc, 1000, S),
+            PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
+            Props#{state => S1, from => NewAcc, from_privkey => PrivKey}
+         end,
+         negative(Fun, {error, account_not_peer})]),
+    ok.
