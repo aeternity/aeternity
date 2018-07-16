@@ -64,7 +64,8 @@
     post_oracle_register/1,
     get_oracle_by_pubkey/1,
     post_oracle_extend/1,
-    post_oracle_query/1
+    post_oracle_query/1,
+    post_oracle_response/1
    ]).
 
 %% off chain endpoints
@@ -398,7 +399,8 @@ groups() ->
       [
        post_oracle_register,
        post_oracle_extend,
-       post_oracle_query
+       post_oracle_query,
+       post_oracle_response
       ]},
 
      {off_chain_endpoints, [],
@@ -832,6 +834,13 @@ init_per_testcase(post_oracle_query, Config) ->
      {query_ttl_value, 20},
      {response_ttl_type, <<"delta">>},
      {response_ttl_value, 20} | init_per_testcase_all(Config)];
+init_per_testcase(post_oracle_response, Config) ->
+    {post_oracle_query, SavedConfig} = ?config(saved_config, Config),
+    [{sender_pubkey, ?config(sender_pubkey, SavedConfig)},
+     {oracle_pubkey, ?config(oracle_pubkey, SavedConfig)},
+     {query_id, ?config(query_id, SavedConfig)},
+     {fee, 10},
+     {response, <<"Hejsan">>} | init_per_testcase_all(Config)];
 init_per_testcase(_Case, Config) ->
     init_per_testcase_all(Config).
 
@@ -1462,11 +1471,10 @@ post_oracle_query(Config) ->
     Node = ?config(node, Config),
     SenderPubkey = ?config(sender_pubkey, Config),
     OraclePubkey = ?config(oracle_pubkey, Config),
-    QueryId = ?config(query, Config),
     TxArgs =
         #{sender        => SenderPubkey,
           oracle_pubkey => OraclePubkey,
-          query         => QueryId,
+          query         => ?config(query, Config),
           query_fee     => ?config(query_fee, Config),
           fee           => ?config(fee, Config),
           query_ttl     => #{type  => ?config(query_ttl_type, Config),
@@ -1481,8 +1489,31 @@ post_oracle_query(Config) ->
     [Query] = maps:get(<<"oracle_queries">>, Resp),
     ?assertEqual(SenderPubkey, maps:get(<<"sender">>, Query)),
     ?assertEqual(OraclePubkey, maps:get(<<"oracle_id">>, Query)),
-    ?assertEqual(QueryId, maps:get(<<"query">>, Query)),
-    {save_config, save_config([account_pubkey, oracle_pubkey, query], Config)}.
+    QueryId = maps:get(<<"query_id">>, Query),
+    Config1 = [{query_id, QueryId} | Config],
+    {save_config, save_config([sender_pubkey, oracle_pubkey, query_id], Config1)}.
+
+post_oracle_response(Config) ->
+    Node = ?config(node, Config),
+    OraclePubkey = ?config(oracle_pubkey, Config),
+    QueryId = ?config(query_id, Config),
+    Response = ?config(response, Config),
+    TxArgs =
+        #{oracle   => OraclePubkey,
+          query_id => QueryId,
+          response => Response,
+          fee      => ?config(fee, Config)},
+    {TxHash, Tx} = prepare_tx(oracle_response_tx, TxArgs),
+    ok = post_tx(TxHash, Tx),
+    aecore_suite_utils:mine_blocks_until(Node, fun() -> tx_in_chain(TxHash) end, 10),
+    {ok, 200, _Resp} = get_oracles_queries_by_pubkey_sut(OraclePubkey),
+    %% TODO: why there are no queries anymore after response is sent?
+    %%?assertEqual([], maps:get(<<"oracle_queries">>, Resp)),
+    {ok, 200, Resp1} = get_oracles_query_by_pubkey_and_query_id(OraclePubkey, QueryId),
+    ?assertEqual(QueryId, maps:get(<<"query_id">>, Resp1)),
+    ?assertEqual(OraclePubkey, maps:get(<<"oracle_id">>, Resp1)),
+    ?assertEqual(Response, maps:get(<<"response">>, Resp1)),
+    ok.
 
 get_oracles_by_pubkey_sut(Pubkey) ->
     Host = external_address(),
@@ -1493,6 +1524,12 @@ get_oracles_queries_by_pubkey_sut(Pubkey) ->
     Host = external_address(),
     Pubkey1 = binary_to_list(Pubkey),
     http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey1) ++ "/queries", []).
+
+get_oracles_query_by_pubkey_and_query_id(Pubkey, Id) ->
+    Host = external_address(),
+    Pubkey1 = binary_to_list(Pubkey),
+    Id1 = binary_to_list(Id),
+    http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey1) ++ "/queries/" ++ http_uri:encode(Id1), []).
 
 prepare_tx(TxType, Args) ->
     %assert_required_tx_fields(TxType, Args),
@@ -1525,7 +1562,8 @@ post_tx(TxHash, Tx) ->
 tx_object_http_path(spend_tx) -> "tx/spend";
 tx_object_http_path(oracle_register_tx) -> "tx/oracle/register";
 tx_object_http_path(oracle_extend_tx) -> "tx/oracle/extend";
-tx_object_http_path(oracle_query_tx) -> "tx/oracle/query".
+tx_object_http_path(oracle_query_tx) -> "tx/oracle/query";
+tx_object_http_path(oracle_response_tx) -> "tx/oracle/response".
 
 hash(Block) ->
     {ok, Hash0} = aec_blocks:hash_internal_representation(Block),

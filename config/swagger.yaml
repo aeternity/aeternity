@@ -616,6 +616,40 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /oracles/{pubkey}/queries/{query-id}:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetOracleQueryByPubkeyAndQueryId
+      description: 'Get an oracle query by public key and query ID'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'The public key of the oracle'
+          required: true
+          type: string
+        - in: path
+          name: query-id
+          description: 'The ID of the query'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/OracleQuery'
+        '400':
+          description: 'Invalid public key or query ID'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Oracle query not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
   /header-by-hash:
     get:
       tags:
@@ -2712,6 +2746,8 @@ definitions:
   OracleQuery:
     type: object
     properties:
+      id:
+        type: string
       sender:
         type: string
       sender_nonce:

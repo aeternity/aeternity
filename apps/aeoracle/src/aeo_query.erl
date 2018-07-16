@@ -179,10 +179,11 @@ serialization_template(?ORACLE_QUERY_VSN) ->
 serialize_for_client(#query{} = I) ->
     {delta, ResponseTtlValue} = response_ttl(I),
     Response = case response(I) of
-                   undefined -> <<"">>;
+                   undefined -> <<>>;
                    R -> R
                end,
-    #{ <<"sender">>       => aec_base58c:encode(account_pubkey, sender_address(I))
+    #{ <<"query_id">>     => aec_base58c:encode(oracle_query_id, id(I))
+     , <<"sender">>       => aec_base58c:encode(account_pubkey, sender_address(I))
      , <<"sender_nonce">> => sender_nonce(I)
      , <<"oracle_id">>    => aec_base58c:encode(oracle_pubkey, oracle_address(I))
      , <<"query">>        => query(I)

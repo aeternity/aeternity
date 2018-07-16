@@ -690,6 +690,47 @@
         }
       }
     },
+    "/oracles/{pubkey}/queries/{query-id}" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get an oracle query by public key and query ID",
+        "operationId" : "GetOracleQueryByPubkeyAndQueryId",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "The public key of the oracle",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "name" : "query-id",
+          "in" : "path",
+          "description" : "The ID of the query",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/OracleQuery"
+            }
+          },
+          "400" : {
+            "description" : "Invalid public key or query ID",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Oracle query not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/header-by-hash" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
@@ -3233,6 +3274,9 @@
     "OracleQuery" : {
       "type" : "object",
       "properties" : {
+        "id" : {
+          "type" : "string"
+        },
         "sender" : {
           "type" : "string"
         },
@@ -3273,7 +3317,8 @@
         "response" : "response",
         "query" : "query",
         "fee" : 5,
-        "sender_nonce" : 0
+        "sender_nonce" : 0,
+        "id" : "id"
       }
     },
     "OracleQuestion" : {
@@ -3316,7 +3361,8 @@
           "response" : "response",
           "query" : "query",
           "fee" : 5,
-          "sender_nonce" : 0
+          "sender_nonce" : 0,
+          "id" : "id"
         }, {
           "expires" : 6,
           "oracle_id" : "oracle_id",
@@ -3328,7 +3374,8 @@
           "response" : "response",
           "query" : "query",
           "fee" : 5,
-          "sender_nonce" : 0
+          "sender_nonce" : 0,
+          "id" : "id"
         } ]
       }
     },

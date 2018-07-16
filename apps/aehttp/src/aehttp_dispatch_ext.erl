@@ -269,11 +269,33 @@ handle_request('GetOracleQueriesByPubkey', Params, _Context) ->
                               undefined ->
                                   '$first'
                           end,
-            {ok, OracleQueries} = aec_chain:get_open_oracle_queries(Pubkey, FromQueryId, Limit),
-            OracleQueries1 = [aeo_query:serialize_for_client(OracleQuery) || OracleQuery <- OracleQueries],
-            {200, [], #{oracle_queries => OracleQueries1}};
+            case aec_chain:get_open_oracle_queries(Pubkey, FromQueryId, Limit) of
+                {ok, Queries} ->
+                    Queries1 = [aeo_query:serialize_for_client(Query) || Query <- Queries],
+                    {200, [], #{oracle_queries => Queries1}};
+                {error, _} ->
+                    {200, [], #{oracle_queries => []}}
+            end;
         {error, _} ->
             {400, [], #{reason => <<"Invalid public key">>}}
+    end;
+
+handle_request('GetOracleQueryByPubkeyAndQueryId', Params, _Context) ->
+    case aec_base58c:safe_decode(oracle_pubkey, maps:get(pubkey, Params)) of
+        {ok, Pubkey} ->
+            case aec_base58c:safe_decode(oracle_query_id, maps:get('query-id', Params)) of
+                {ok, QueryId} ->
+                    case aec_chain:get_oracle_query(Pubkey, QueryId) of
+                        {ok, Query} ->
+                            {200, [], aeo_query:serialize_for_client(Query)};
+                        {error, _} ->
+                            {404, [], #{reason => <<"Query not found">>}}
+                    end;
+                {error, _} ->
+                    {400, [], #{reason => <<"Invalid public key or query ID">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid public key or query ID">>}}
     end;
 
 handle_request('GetBlockGenesis', Req, _Context) ->

@@ -54,6 +54,7 @@
 -export([ get_oracle/1
         , get_open_oracle_queries/3
         , get_oracles/2
+        , get_oracle_query/2
         ]).
 
 %%% Contracts API
@@ -146,6 +147,19 @@ get_oracles(From, Max) ->
             {ok, aeo_state_tree:get_oracles(From, Max, aec_trees:oracles(Trees))};
         error ->
             {error, no_state_trees}
+    end.
+
+-spec get_oracle_query(aec_keys:pubkey(), aeo_query:id()) ->
+    {ok, aeo_query:query()} | {error, no_state_tree}.
+get_oracle_query(OraclePubkey, QueryId) ->
+    case get_top_state() of
+        {ok, Trees} ->
+            case aeo_state_tree:lookup_query(OraclePubkey, QueryId, aec_trees:oracles(Trees)) of
+                {value, Query} -> {ok, Query};
+                none -> {error, not_found}
+            end;
+        error ->
+            {error, no_state_tree}
     end.
 
 %%%===================================================================
