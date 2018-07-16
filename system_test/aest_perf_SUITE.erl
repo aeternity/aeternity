@@ -111,18 +111,16 @@ startup_speed(Cfg) ->
 sync_speed(Cfg) ->
     % This tests starts 4 nodes at the pre-mined height, then adds and syncs two
     % more one at a time. Syncing is verified to not take longer than mining and
-    % then the measured time is logged. It asserts that the network does not
-    % fork.
+    % then the measured time is logged.
     [Height, MineRate] = ?cfg([height, mine_rate]),
 
     InitialNodes = [n1, n2, n3, n4],
 
-    % Only n1 mines, the other nodes just sync
     InitialNodeSpecs = [
         spec(N, InitialNodes -- [N], #{
             mine_rate => MineRate,
             source => ?cfg(source),
-            mining => #{autostart => N == n1}
+            mining => #{autostart => false}
         })
         || N <- InitialNodes
     ],
