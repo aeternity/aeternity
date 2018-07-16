@@ -207,18 +207,18 @@ create_tx_default_spec(InitiatorPubKey, State) ->
 close_mutual_tx_spec(ChannelId, Spec0, State) ->
     Initiator = maps:get(initiator_account, Spec0),
     Spec = maps:merge(close_mutual_tx_default_spec(Initiator, State), Spec0),
-    #{channel_id        => aec_id:create(channel, ChannelId),
-      initiator_amount  => maps:get(initiator_amount, Spec),
-      responder_amount  => maps:get(responder_amount, Spec),
-      ttl               => maps:get(ttl, Spec, 0),
-      fee               => maps:get(fee, Spec),
-      nonce             => maps:get(nonce, Spec)}.
+    #{channel_id              => aec_id:create(channel, ChannelId),
+      initiator_amount_final  => maps:get(initiator_amount_final, Spec),
+      responder_amount_final  => maps:get(responder_amount_final, Spec),
+      ttl                     => maps:get(ttl, Spec, 0),
+      fee                     => maps:get(fee, Spec),
+      nonce                   => maps:get(nonce, Spec)}.
 
 close_mutual_tx_default_spec(Initiator, State) ->
-    #{initiator_amount => 10,
-      responder_amount => 10,
-      fee              => 3,
-      nonce            => try next_nonce(Initiator, State) catch _:_ -> 0 end}.
+    #{initiator_amount_final => 10,
+      responder_amount_final => 10,
+      fee                    => 3,
+      nonce                  => try next_nonce(Initiator, State) catch _:_ -> 0 end}.
 
 %%%===================================================================
 %%% Close solo tx
@@ -321,13 +321,13 @@ settle_tx_spec(ChannelId, FromPubKey, State) ->
 
 settle_tx_spec(ChannelId, FromPubKey, Spec0, State) ->
     Spec = maps:merge(settle_tx_default_spec(FromPubKey, State), Spec0),
-    #{channel_id        => aec_id:create(channel, ChannelId),
-      from              => aec_id:create(account, FromPubKey),
-      initiator_amount  => maps:get(initiator_amount, Spec),
-      responder_amount  => maps:get(responder_amount, Spec),
-      ttl               => maps:get(ttl, Spec, 0),
-      fee               => maps:get(fee, Spec),
-      nonce             => maps:get(nonce, Spec)}.
+    #{channel_id              => aec_id:create(channel, ChannelId),
+      from                    => aec_id:create(account, FromPubKey),
+      initiator_amount_final  => maps:get(initiator_amount, Spec),
+      responder_amount_final  => maps:get(responder_amount, Spec),
+      ttl                     => maps:get(ttl, Spec, 0),
+      fee                     => maps:get(fee, Spec),
+      nonce                   => maps:get(nonce, Spec)}.
 
 settle_tx_default_spec(FromPubKey, State) ->
     #{initiator_amount => 10,

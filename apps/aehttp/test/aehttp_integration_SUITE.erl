@@ -1911,8 +1911,8 @@ state_channels_snapshot_solo(ChannelId, MinerPubkey) ->
 
 state_channels_close_mutual(ChannelId, InitiatorPubkey) ->
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                initiator_amount => 4,
-                responder_amount => 3,
+                initiator_amount_final => 4,
+                responder_amount_final => 3,
                 fee => 1},
     Decoded = maps:merge(Encoded,
                         #{channel_id => aec_id:create(channel, ChannelId)}),
@@ -1963,8 +1963,8 @@ state_channels_slash(ChannelId, MinerPubkey) ->
 state_channels_settle(ChannelId, MinerPubkey) ->
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
                 from => aec_base58c:encode(account_pubkey, MinerPubkey),
-                initiator_amount => 4,
-                responder_amount => 3,
+                initiator_amount_final => 4,
+                responder_amount_final => 3,
                 fee => 1},
     Decoded = maps:merge(Encoded,
                         #{from => aec_id:create(account, MinerPubkey),
@@ -3711,8 +3711,8 @@ sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
 
     ok = wait_for_signed_transaction_in_block(SignedMutualTx),
 
-    IChange = aesc_close_mutual_tx:initiator_amount(MutualTx),
-    RChange = aesc_close_mutual_tx:responder_amount(MutualTx),
+    IChange = aesc_close_mutual_tx:initiator_amount_final(MutualTx),
+    RChange = aesc_close_mutual_tx:responder_amount_final(MutualTx),
 
     assert_balance(IPubkey, IStartB + IChange),
     assert_balance(RPubkey, RStartB + RChange),

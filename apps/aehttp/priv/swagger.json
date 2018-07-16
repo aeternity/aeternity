@@ -3682,17 +3682,17 @@
     },
     "ChannelCloseMutualTx" : {
       "type" : "object",
-      "required" : [ "channel_id", "fee", "initiator_amount", "nonce", "responder_amount" ],
+      "required" : [ "channel_id", "fee", "initiator_amount_final", "nonce", "responder_amount_final" ],
       "properties" : {
         "channel_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
-        "initiator_amount" : {
+        "initiator_amount_final" : {
           "type" : "integer",
           "format" : "int64",
           "minimum" : 0
         },
-        "responder_amount" : {
+        "responder_amount_final" : {
           "type" : "integer",
           "format" : "int64",
           "minimum" : 0
@@ -3714,9 +3714,9 @@
         }
       },
       "example" : {
-        "responder_amount" : 0,
-        "initiator_amount" : 0,
+        "responder_amount_final" : 0,
         "fee" : 0,
+        "initiator_amount_final" : 0,
         "channel_id" : { },
         "ttl" : 0,
         "nonce" : 0
@@ -3810,7 +3810,7 @@
     },
     "ChannelSettleTx" : {
       "type" : "object",
-      "required" : [ "channel_id", "fee", "from", "initiator_amount", "nonce" ],
+      "required" : [ "channel_id", "fee", "from", "initiator_amount_final", "nonce", "responder_amount_final" ],
       "properties" : {
         "channel_id" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -3818,12 +3818,12 @@
         "from" : {
           "$ref" : "#/definitions/EncodedHash"
         },
-        "initiator_amount" : {
+        "initiator_amount_final" : {
           "type" : "integer",
           "format" : "int64",
           "minimum" : 0
         },
-        "responder_amount" : {
+        "responder_amount_final" : {
           "type" : "integer",
           "format" : "int64",
           "minimum" : 0
@@ -3845,9 +3845,9 @@
         }
       },
       "example" : {
-        "responder_amount" : 0,
-        "initiator_amount" : 0,
+        "responder_amount_final" : 0,
         "fee" : 0,
+        "initiator_amount_final" : 0,
         "from" : null,
         "channel_id" : { },
         "ttl" : 0,

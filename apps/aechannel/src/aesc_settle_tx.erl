@@ -35,13 +35,13 @@
 -type vsn() :: non_neg_integer().
 
 -record(channel_settle_tx, {
-          channel_id       :: aec_id:id(),
-          from             :: aec_id:id(),
-          initiator_amount :: non_neg_integer(),
-          responder_amount :: non_neg_integer(),
-          ttl              :: aetx:tx_ttl(),
-          fee              :: non_neg_integer(),
-          nonce            :: non_neg_integer()
+          channel_id              :: aec_id:id(),
+          from                    :: aec_id:id(),
+          initiator_amount_final  :: non_neg_integer(),
+          responder_amount_final  :: non_neg_integer(),
+          ttl                     :: aetx:tx_ttl(),
+          fee                     :: non_neg_integer(),
+          nonce                   :: non_neg_integer()
          }).
 
 -opaque tx() :: #channel_settle_tx{}.
@@ -53,22 +53,22 @@
 %%%===================================================================
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{channel_id        := ChannelId,
-      from              := From,
-      initiator_amount  := InitiatorAmount,
-      responder_amount  := ResponderAmount,
-      fee               := Fee,
-      nonce             := Nonce} = Args) ->
+new(#{channel_id              := ChannelId,
+      from                    := From,
+      initiator_amount_final  := InitiatorAmount,
+      responder_amount_final  := ResponderAmount,
+      fee                     := Fee,
+      nonce                   := Nonce} = Args) ->
     channel = aec_id:specialize_type(ChannelId),
     account = aec_id:specialize_type(From),
     Tx = #channel_settle_tx{
-            channel_id        = ChannelId,
-            from              = From,
-            initiator_amount  = InitiatorAmount,
-            responder_amount  = ResponderAmount,
-            ttl               = maps:get(ttl, Args, 0),
-            fee               = Fee,
-            nonce             = Nonce},
+            channel_id              = ChannelId,
+            from                    = From,
+            initiator_amount_final  = InitiatorAmount,
+            responder_amount_final  = ResponderAmount,
+            ttl                     = maps:get(ttl, Args, 0),
+            fee                     = Fee,
+            nonce                   = Nonce},
     {ok, aetx:new(?MODULE, Tx)}.
 
 type() ->
@@ -104,10 +104,10 @@ channel_hash(#channel_settle_tx{channel_id = ChannelId}) ->
 
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()} | {error, term()}.
-check(#channel_settle_tx{initiator_amount = InitiatorAmount,
-                         responder_amount = ResponderAmount,
-                         fee              = Fee,
-                         nonce            = Nonce} = Tx, _Context, Trees, Height, _ConsensusVersion) ->
+check(#channel_settle_tx{initiator_amount_final = InitiatorAmount,
+                         responder_amount_final = ResponderAmount,
+                         fee                    = Fee,
+                         nonce                  = Nonce} = Tx, _Context, Trees, Height, _ConsensusVersion) ->
     ChannelId = channel_hash(Tx),
     FromPubKey = from_pubkey(Tx),
     Checks =
@@ -123,10 +123,10 @@ check(#channel_settle_tx{initiator_amount = InitiatorAmount,
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()}.
-process(#channel_settle_tx{initiator_amount = InitiatorAmount,
-                           responder_amount = ResponderAmount,
-                           fee              = Fee,
-                           nonce            = Nonce} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
+process(#channel_settle_tx{initiator_amount_final = InitiatorAmount,
+                           responder_amount_final = ResponderAmount,
+                           fee                    = Fee,
+                           nonce                  = Nonce} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
     ChannelId = channel_hash(Tx),
     FromPubKey = from_pubkey(Tx),
     AccountsTree0 = aec_trees:accounts(Trees),
@@ -168,67 +168,67 @@ signers(#channel_settle_tx{} = Tx, _) ->
     {ok, [from_pubkey(Tx)]}.
 
 -spec serialize(tx()) -> {vsn(), list()}.
-serialize(#channel_settle_tx{channel_id       = ChannelId,
-                             from             = FromId,
-                             initiator_amount = InitiatorAmount,
-                             responder_amount = ResponderAmount,
-                             ttl              = TTL,
-                             fee              = Fee,
-                             nonce            = Nonce}) ->
+serialize(#channel_settle_tx{channel_id             = ChannelId,
+                             from                   = FromId,
+                             initiator_amount_final = InitiatorAmount,
+                             responder_amount_final = ResponderAmount,
+                             ttl                    = TTL,
+                             fee                    = Fee,
+                             nonce                  = Nonce}) ->
     {version(),
-    [ {channel_id       , ChannelId}
-    , {from             , FromId}
-    , {initiator_amount , InitiatorAmount}
-    , {responder_amount , ResponderAmount}
-    , {ttl              , TTL}
-    , {fee              , Fee}
-    , {nonce            , Nonce}
+    [ {channel_id             , ChannelId}
+    , {from                   , FromId}
+    , {initiator_amount_final , InitiatorAmount}
+    , {responder_amount_final , ResponderAmount}
+    , {ttl                    , TTL}
+    , {fee                    , Fee}
+    , {nonce                  , Nonce}
     ]}.
 
 -spec deserialize(vsn(), list()) -> tx().
 deserialize(?CHANNEL_SETTLE_TX_VSN,
-            [ {channel_id       , ChannelId}
-            , {from             , FromId}
-            , {initiator_amount , InitiatorAmount}
-            , {responder_amount , ResponderAmount}
-            , {ttl              , TTL}
-            , {fee              , Fee}
-            , {nonce            , Nonce}]) ->
+            [ {channel_id             , ChannelId}
+            , {from                   , FromId}
+            , {initiator_amount_final , InitiatorAmount}
+            , {responder_amount_final , ResponderAmount}
+            , {ttl                    , TTL}
+            , {fee                    , Fee}
+            , {nonce                  , Nonce}]) ->
     channel = aec_id:specialize_type(ChannelId),
     account = aec_id:specialize_type(FromId),
-    #channel_settle_tx{channel_id       = ChannelId,
-                       from             = FromId,
-                       initiator_amount = InitiatorAmount,
-                       responder_amount = ResponderAmount,
-                       ttl              = TTL,
-                       fee              = Fee,
-                       nonce            = Nonce}.
+    #channel_settle_tx{channel_id             = ChannelId,
+                       from                   = FromId,
+                       initiator_amount_final = InitiatorAmount,
+                       responder_amount_final = ResponderAmount,
+                       ttl                    = TTL,
+                       fee                    = Fee,
+                       nonce                  = Nonce}.
 
 -spec for_client(tx()) -> map().
-for_client(#channel_settle_tx{initiator_amount = InitiatorAmount,
-                              responder_amount = ResponderAmount,
-                              ttl              = TTL,
-                              fee              = Fee,
-                              nonce            = Nonce} = Tx) ->
-    #{<<"data_schema">>      => <<"ChannelSettleTxJSON">>, % swagger schema name
-      <<"vsn">>              => version(),
-      <<"channel_id">>       => aec_base58c:encode(id_hash, channel(Tx)),
-      <<"from">>             => aec_base58c:encode(id_hash, from(Tx)),
-      <<"initiator_amount">> => InitiatorAmount,
-      <<"responder_amount">> => ResponderAmount,
-      <<"ttl">>              => TTL,
-      <<"fee">>              => Fee,
-      <<"nonce">>            => Nonce}.
+for_client(#channel_settle_tx{initiator_amount_final = InitiatorAmount,
+                              responder_amount_final = ResponderAmount,
+                              ttl                    = TTL,
+                              fee                    = Fee,
+                              nonce                  = Nonce} = Tx) ->
+    #{<<"data_schema">>            => <<"ChannelSettleTxJSON">>, % swagger schema name
+      <<"vsn">>                    => version(),
+      <<"channel_id">>             => aec_base58c:encode(id_hash, channel(Tx)),
+      <<"from">>                   => aec_base58c:encode(id_hash, from(Tx)),
+      <<"initiator_amount_final">> => InitiatorAmount,
+      <<"responder_amount_final">> => ResponderAmount,
+      <<"ttl">>                    => TTL,
+      <<"fee">>                    => Fee,
+      <<"nonce">>                  => Nonce}.
 
 
 serialization_template(?CHANNEL_SETTLE_TX_VSN) ->
-    [ {channel_id       , id}
-    , {from             , id}
-    , {initiator_amount , int}
-    , {responder_amount , int}
-    , {ttl              , int}
-    , {fee              , int}
-    , {nonce            , int}
+    [ {channel_id             , id}
+    , {from                   , id}
+    , {initiator_amount_final , int}
+    , {responder_amount_final , int}
+    , {ttl                    , int}
+    , {fee                    , int}
+    , {nonce                  , int}
     ].
 
 %%%===================================================================
