@@ -488,7 +488,7 @@
       "get" : {
         "tags" : [ "external", "gossip" ],
         "description" : "Get pending account transactions by public key",
-        "operationId" : "GetPendingAccountTransactionsBypubkey",
+        "operationId" : "GetPendingAccountTransactionsByPubkey",
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "pubkey",
