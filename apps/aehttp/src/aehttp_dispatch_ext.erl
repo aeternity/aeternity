@@ -219,8 +219,8 @@ handle_request('GetTransactionByHash', Params, _Config) ->
 
 handle_request('GetTransactionInfoByHash', Params, _Config) ->
     ParseFuns = [read_required_params([hash]),
-                 base58_decode([{hash, hash, hash}]),
-                 get_transaction(hash, tx),
+                 base58_decode([{hash, tx_hash, tx_hash}]),
+                 get_transaction(tx_hash, tx),
                  get_contract_call_object_from_tx(tx, contract_call),
                  ok_response(
                     fun(#{contract_call := Call}) ->
