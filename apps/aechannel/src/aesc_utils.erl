@@ -17,8 +17,10 @@
          deserialize_payload/1,
          check_solo_close_payload/8,
          check_slash_payload/8,
+         check_solo_snapshot_payload/7,
          process_solo_close/8,
-         process_slash/8
+         process_slash/8,
+         process_solo_snapshot/6
         ]).
 
 %%%===================================================================
@@ -108,7 +110,7 @@ deserialize_payload(Payload) ->
 
 
 %%%===================================================================
-%%% Check payload for slash and solo close
+%%% Check payload for slash, solo close and snapshot
 %%%===================================================================
 
 check_solo_close_payload(ChannelId, FromPubKey, Nonce, Fee, Payload,
@@ -116,8 +118,8 @@ check_solo_close_payload(ChannelId, FromPubKey, Nonce, Fee, Payload,
     Checks =
         [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee) end,
          fun() ->
-                 check_close_slash_payload(ChannelId, FromPubKey, Payload, PoI,
-                                           Height, Trees, solo_close)
+                 check_payload(ChannelId, FromPubKey, Payload, PoI,
+                               Height, Trees, solo_close)
          end],
     case aeu_validation:run(Checks) of
         ok ->
@@ -131,8 +133,8 @@ check_slash_payload(ChannelId, FromPubKey, Nonce, Fee, Payload,
     Checks =
         [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee) end,
          fun() ->
-                 check_close_slash_payload(ChannelId, FromPubKey, Payload, PoI,
-                                           Height, Trees, slash)
+                 check_payload(ChannelId, FromPubKey, Payload, PoI,
+                               Height, Trees, slash)
          end],
     case aeu_validation:run(Checks) of
         ok ->
@@ -141,7 +143,22 @@ check_slash_payload(ChannelId, FromPubKey, Nonce, Fee, Payload,
             Error
     end.
 
-check_close_slash_payload(ChannelId, FromPubKey, Payload, PoI, Height, Trees, Type) ->
+check_solo_snapshot_payload(ChannelId, FromPubKey, Nonce, Fee, Payload,
+                            Height, Trees) ->
+    Checks =
+        [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee) end,
+         fun() ->
+                 check_payload(ChannelId, FromPubKey, Payload, no_poi,
+                               Height, Trees, solo_snapshot)
+         end],
+    case aeu_validation:run(Checks) of
+        ok ->
+            {ok, Trees};
+        {error, _Reason} = Error ->
+            Error
+    end.
+
+check_payload(ChannelId, FromPubKey, Payload, PoI, Height, Trees, Type) ->
     case aesc_utils:get_channel(ChannelId, Trees) of
         {error, _} = E -> E;
         {ok, Channel} ->
@@ -156,20 +173,28 @@ check_close_slash_payload(ChannelId, FromPubKey, Payload, PoI, Height, Trees, Ty
                         ],
                     aeu_validation:run(Checks);
                 {ok, SignedState, PayloadTx} ->
-                    FirstChecks =
+                    ActiveChecks =
                         case Type of
-                            solo_close -> [fun() -> check_is_active(Channel) end];
-                            slash      -> [fun() -> check_is_closing(Channel, Height) end]
+                            solo_close    -> [fun() -> check_is_active(Channel) end];
+                            slash         -> [fun() -> check_is_closing(Channel, Height) end];
+                            solo_snapshot -> [fun() -> check_is_active(Channel) end]
                         end,
-                    Checks =
-                        FirstChecks ++
+                    PayloadChecks =
                         [fun() -> check_channel_id_in_payload(Channel, PayloadTx) end,
                          fun() -> check_round_in_payload(Channel, PayloadTx) end,
-                         fun() -> check_root_hash_in_payload(PayloadTx, PoI) end,
                          fun() -> is_peer_or_delegate(ChannelId, FromPubKey, SignedState, Trees, Type) end,
-                         fun() -> aetx_sign:verify(SignedState, Trees) end,
+                         fun() -> aetx_sign:verify(SignedState, Trees) end
+                        ],
+                    PoIChecks =
+                        [fun() -> check_root_hash_in_payload(PayloadTx, PoI) end,
                          fun() -> check_peers_and_amounts_in_poi(Channel, PoI) end
                         ],
+                    Checks =
+                        case Type of
+                            T when T =:= solo_close orelse T =:= slash ->
+                                ActiveChecks ++ PayloadChecks ++ PoIChecks;
+                            solo_snapshot -> ActiveChecks ++ PayloadChecks %no poi
+                        end,
                     aeu_validation:run(Checks);
                 {error, _Reason} = Error ->
                     Error
@@ -285,6 +310,20 @@ process_slash(ChannelId, FromPubKey, Nonce, Fee,
               Payload, PoI, Height, Trees) ->
     process_solo_close_slash(ChannelId, FromPubKey, Nonce, Fee,
                              Payload, PoI, Height, Trees).
+
+process_solo_snapshot(ChannelId, FromPubKey, Nonce, Fee, Payload, Trees) ->
+    ChannelsTree0      = aec_trees:channels(Trees),
+    Channel0 = aesc_state_tree:get(ChannelId, ChannelsTree0),
+    {ok, _SignedTx, PayloadTx} = deserialize_payload(Payload),
+    Channel1 = aesc_channels:snapshot_solo(Channel0, PayloadTx),
+    ChannelsTree1 = aesc_state_tree:enter(Channel1, ChannelsTree0),
+    Trees1 = aec_trees:set_channels(Trees, ChannelsTree1),
+    AccountsTree0      = aec_trees:accounts(Trees),
+    FromAccount0       = aec_accounts_trees:get(FromPubKey, AccountsTree0),
+    {ok, FromAccount1} = aec_accounts:spend(FromAccount0, Fee, Nonce),
+    AccountsTree1      = aec_accounts_trees:enter(FromAccount1, AccountsTree0),
+    Trees2 = aec_trees:set_accounts(Trees1, AccountsTree1),
+    {ok, Trees2}.
 
 process_solo_close_slash(ChannelId, FromPubKey, Nonce, Fee,
                          Payload, PoI, Height, Trees) ->

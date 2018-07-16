@@ -1815,6 +1815,7 @@ state_channels_onchain_transactions(_Config) ->
     ChannelId = state_channel_id(AeTx),
     state_channels_deposit(ChannelId, MinerPubkey),
     state_channels_withdrawal(ChannelId, MinerPubkey),
+    state_channels_snapshot_solo(ChannelId, MinerPubkey),
     state_channels_close_mutual(ChannelId, MinerPubkey),
     state_channels_close_solo(ChannelId, MinerPubkey),
     state_channels_slash(ChannelId, MinerPubkey),
@@ -1891,6 +1892,21 @@ state_channels_withdrawal(ChannelId, MinerPubkey) ->
                             MinerPubkey},
     Encoded1 = maps:put(nonce, NextNonce, Encoded),
     test_invalid_hash({account_pubkey, MinerPubkey}, to, Encoded1, fun get_channel_withdrawal/1),
+    ok.
+
+state_channels_snapshot_solo(ChannelId, MinerPubkey) ->
+    PoI = aec_trees:new_poi(aec_trees:new_without_backend()),
+    Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
+                from => aec_base58c:encode(account_pubkey, MinerPubkey),
+                payload => <<"hejsan svejsan">>, %%TODO proper payload
+                fee => 1},
+    Decoded = maps:merge(Encoded,
+                        #{from => aec_id:create(account, MinerPubkey),
+                          channel_id => aec_id:create(channel, ChannelId)}),
+    unsigned_tx_positive_test(Decoded, Encoded,
+                               fun get_channel_snapshot_solo/1,
+                               fun aesc_snapshot_solo_tx:new/1, MinerPubkey),
+    test_invalid_hash({account_pubkey, MinerPubkey},  from, Encoded, fun get_channel_snapshot_solo/1),
     ok.
 
 state_channels_close_mutual(ChannelId, InitiatorPubkey) ->
@@ -4103,6 +4119,10 @@ get_channel_deposit(Data) ->
 get_channel_withdrawal(Data) ->
     Host = external_address(),
     http_request(Host, post, "tx/channel/withdrawal", Data).
+
+get_channel_snapshot_solo(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/channel/snapshot/solo", Data).
 
 get_channel_close_mutual(Data) ->
     Host = external_address(),

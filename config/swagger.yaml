@@ -1005,6 +1005,30 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
+  /tx/channel/snapshot/solo:
+    post:
+      tags:
+        - external
+        - dev
+      operationId: PostChannelSnapshotSolo
+      description: 'Get a channel_snapshot_solo transaction object'
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/ChannelSnapshotSoloTx'
+      responses:
+        '200':
+          description: Successful operation
+          schema:
+            $ref: '#/definitions/UnsignedTx'
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
   /tx/channel/close/mutual:
     post:
       tags:
@@ -2828,7 +2852,7 @@ definitions:
     type: object
     properties:
       channel_id:
-        type: string
+        $ref: '#/definitions/EncodedHash'
       from:
         $ref: '#/definitions/EncodedHash'
       amount:
@@ -2867,7 +2891,7 @@ definitions:
     type: object
     properties:
       channel_id:
-        type: string
+        $ref: '#/definitions/EncodedHash'
       to:
         $ref: '#/definitions/EncodedHash'
       amount:
@@ -2902,11 +2926,37 @@ definitions:
     - nonce
     - state_hash
     - round
+  ChannelSnapshotSoloTx:
+    type: object
+    properties:
+      channel_id:
+        $ref: '#/definitions/EncodedHash'
+      from:
+        $ref: '#/definitions/EncodedHash'
+      payload:
+        type: string
+      ttl:
+        type: integer
+        format: int64
+        minimum: 0
+      fee:
+        type: integer
+        format: int64
+        minimum: 0
+      nonce:
+        type: integer
+        format: int64
+        minimum: 0
+    required:
+    - channel_id
+    - from
+    - payload
+    - fee
   ChannelCloseMutualTx:
     type: object
     properties:
       channel_id:
-        type: string
+        $ref: '#/definitions/EncodedHash'
       initiator_amount:
         type: integer
         format: int64
@@ -2937,7 +2987,7 @@ definitions:
     type: object
     properties:
       channel_id:
-        type: string
+        $ref: '#/definitions/EncodedHash'
       from:
         $ref: '#/definitions/EncodedHash'
       payload:
@@ -2967,7 +3017,7 @@ definitions:
     type: object
     properties:
       channel_id:
-        type: string
+        $ref: '#/definitions/EncodedHash'
       from:
         $ref: '#/definitions/EncodedHash'
       payload:
@@ -2997,7 +3047,7 @@ definitions:
     type: object
     properties:
       channel_id:
-        type: string
+        $ref: '#/definitions/EncodedHash'
       from:
         $ref: '#/definitions/EncodedHash'
       initiator_amount:
@@ -3027,6 +3077,32 @@ definitions:
     - participant_amount
     - fee
     - nonce
+  ChannelSnapshotSoloTx:
+    type: object
+    properties:
+      channel_id:
+        $ref: '#/definitions/EncodedHash'
+      from:
+        $ref: '#/definitions/EncodedHash'
+      payload:
+        type: string
+      ttl:
+        type: integer
+        format: int64
+        minimum: 0
+      fee:
+        type: integer
+        format: int64
+        minimum: 0
+      nonce:
+        type: integer
+        format: int64
+        minimum: 0
+    required:
+    - channel_id
+    - from
+    - payload
+    - fee
   PubKey:
     type: object
     properties:

@@ -465,6 +465,19 @@ handle_request('PostChannelWithdrawal', #{'ChannelWithdrawalTx' := Req}, _Contex
                 ],
     process_request(ParseFuns, Req);
 
+handle_request('PostChannelSnapshotSolo', #{'ChannelSnapshotSoloTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([channel_id, from,
+                                       payload, fee]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 base58_decode([{channel_id, channel_id, {id_hash, [channel]}},
+                                {from, from, {id_hash, [account_pubkey]}}]),
+                 get_nonce_from_account_id(from),
+                 unsigned_tx_response(fun aesc_snapshot_solo_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+
 handle_request('PostChannelCloseMutual', #{'ChannelCloseMutualTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([channel_id,
