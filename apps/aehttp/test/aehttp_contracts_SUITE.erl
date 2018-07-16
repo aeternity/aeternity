@@ -75,7 +75,7 @@ init_per_suite(Config) ->
     ok = application:ensure_started(erlexec),
     DataDir = ?config(data_dir, Config),
     TopDir = aecore_suite_utils:top_dir(DataDir),
-    Config1 = [{symlink_name, "latest.http_endpoints"},
+    Config1 = [{symlink_name, "latest.http_contracts"},
                {top_dir, TopDir},
                {test_module, ?MODULE}] ++ Config,
     aecore_suite_utils:make_shortcut(Config1),
@@ -157,7 +157,7 @@ end_per_testcase(_Case, Config) ->
 %% ============================================================
 
 %% null(Config)
-%%  Does nothing an always succeeds.
+%%  Does nothing and always succeeds.
 
 null(_Config) ->
     ok.
@@ -191,13 +191,13 @@ spending_1(Config) ->
 
     %% Transfer money from Alice to Bert.
     TxHash = spend_tokens(APubkey, APrivkey, BPubkey, 200, 5),
-    MineUntil = fun () -> tx_in_block(TxHash) end,
+    MineUntil = fun () -> tx_in_chain(TxHash) end,
     aecore_suite_utils:mine_blocks_until(NodeName, MineUntil, 10),
 
     ct:pal("Top 2 ~p\n", [get_top()]),
 
     %% Check that tx has succeeded.
-    ?assert(tx_in_block(TxHash)),
+    ?assert(tx_in_chain(TxHash)),
 
     %% Check balances after sending.
     ABal2 = get_balance(APubkey),
@@ -226,9 +226,6 @@ spending_2(Config) ->
     BBal0 = get_balance(BPubkey),
     ct:pal("Balances 0: ~p, ~p\n", [ABal0,BBal0]),
 
-    %% Add tokens to both accounts.
-    %% {ok,200,_} = post_spend_tx(APubkey, 500, 1),
-    %% {ok,200,_} = post_spend_tx(BPubkey, 500, 1),
     {ok,[_]} = aecore_suite_utils:mine_blocks(NodeName, 1),
 
     %% Get balances after mining.
@@ -245,7 +242,7 @@ spending_2(Config) ->
     {ok,[_]} = aecore_suite_utils:mine_blocks(NodeName, 1),
 
     %% Check that tx has failed.
-    ct:pal("TxHash1 ~p\n", [tx_in_block(TxHash)]),
+    ct:pal("TxHash1 ~p\n", [tx_in_chain(TxHash)]),
 
     %% Check that there has been no transfer.
     ABal2 = get_balance(APubkey),
@@ -290,7 +287,7 @@ spending_3(Config) ->
     {ok,[_,_]} = aecore_suite_utils:mine_blocks(NodeName, 2),
 
     %% Check that tx has failed.
-    ?assertNot(tx_in_block(TxHash)),
+    ?assertNot(tx_in_chain(TxHash)),
 
     %% Check that there has been no transfer.
     ABal2 = get_balance(APubkey),
@@ -310,7 +307,7 @@ spending_3(Config) ->
     ct:pal("Balances 3: ~p, ~p\n", [ABal3,BBal3]),
 
     %% Check that tx has succeeded.
-    ?assert(tx_in_block(TxHash)),
+    ?assert(tx_in_chain(TxHash)),
 
     ok.
 
@@ -551,7 +548,8 @@ maps_contract(Config) ->
     ok.
 
 %% enironment_contract(Config)
-%%  Check the Environment contract.
+%%  Check the Environment contract. The nested calls don't seem to
+%%  work yet.
 
 environment_contract(Config) ->
     NodeName = proplists:get_value(node_name, Config),
@@ -577,7 +575,7 @@ environment_contract(Config) ->
     BinCode = aeso_compiler:from_string(ContractString, []),
     HexCode = aeu_hex:hexstring_encode(BinCode),
 
-    %% Initialise contract owned by Alice.
+    %% Initialise contract owned by Alice setting balance to 10000.
     {EncodedContractPubkey,_,_} =
 	create_contract(NodeName, APubkey, APrivkey,
 			HexCode, <<"()">>, #{amount => 10000}),
@@ -601,9 +599,10 @@ environment_contract(Config) ->
 
     %% Origin.
     ct:pal("Calling call_origin\n"),
-    CallOrigin = call_func(NodeName, APubkey, APrivkey, EncodedContractPubkey,
-			   HexCode, <<"call_origin">>, <<"()">>),
-    ct:pal("Calling nested_origin\n"),
+    call_func(NodeName, APubkey, APrivkey, EncodedContractPubkey,
+	      HexCode, <<"call_origin">>, <<"()">>),
+
+    %% ct:pal("Calling nested_origin\n"),
     %% NestedOrigin = call_func(NodeName, APubkey, APrivkey, EncodedContractPubkey,
     %% 			     HexCode, <<"nested_origin">>, <<"()">>),
 
@@ -612,8 +611,8 @@ environment_contract(Config) ->
     CallCaller = call_func(NodeName, APubkey, APrivkey, EncodedContractPubkey,
 			   HexCode, <<"call_caller">>, <<"()">>),
     ct:pal("Calling nested_caller\n"),
-    NestedCaller = call_func(NodeName, APubkey, APrivkey, EncodedContractPubkey,
-			     HexCode, <<"nested_caller">>, <<"()">>),
+    call_func(NodeName, APubkey, APrivkey, EncodedContractPubkey,
+	      HexCode, <<"nested_caller">>, <<"()">>),
 
     %% Value.
     ct:pal("Calling call_value\n"),
@@ -700,7 +699,7 @@ spend_test_contract(Config) ->
 
     %% Create 2 new accounts, Alice and Bert.
     {APubkey,APrivkey} = new_account(1000000),
-    {BPubkey,BPrivkey} = new_account(2000000),
+    {BPubkey,_BPrivkey} = new_account(2000000),
     {ok,_} = aecore_suite_utils:mine_blocks(NodeName, 3),
 
     %% Compile contract "spend_test.aes"
@@ -718,7 +717,7 @@ spend_test_contract(Config) ->
 
     aecore_suite_utils:mine_blocks(NodeName, 3),
 
-    %% Alice does all the operations on the contract and Bert.
+    %% Alice does all the operations on the contract and spends on Bert.
     %% Check the contract balances.
     GB1Ret = call_func(NodeName, APubkey, APrivkey, EncodedC1Pubkey,
 		       HexCode, <<"get_balance">>, <<"()">>),
@@ -782,8 +781,7 @@ dutch_auction_contract(Config) ->
 		 priv_key := APrivkey},
       acc_b := #{pub_key := BPubkey,
 		 priv_key := BPrivkey},
-      acc_c := #{pub_key := CPubkey,
-		 priv_key := CPrivkey}} = proplists:get_value(accounts, Config),
+      acc_c := #{pub_key := CPubkey}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
     ABal0 = ensure_balance(APubkey, 500000),
@@ -811,7 +809,6 @@ dutch_auction_contract(Config) ->
     %% Call the contract bid function by Bert.
     BidValue = call_func(NodeName, BPubkey, BPrivkey, EncodedContractPubkey,
 			 HexCode, <<"bid">>, <<"()">>, #{amount => 100000}),
-
     ct:pal("Bid value ~p\n", [BidValue]),
 
     %% These values look reasonable.
@@ -983,17 +980,9 @@ get_contract_create(Data) ->
     Host = external_address(),
     http_request(Host, post, "tx/contract/create", Data).
 
-%% call_contract_directly(Data) ->
-%%     Host = external_address(),
-%%     http_request(Host, post, "contract/call", Data).
-
 get_contract_call(Data) ->
     Host = external_address(),
     http_request(Host, post, "tx/contract/call", Data).
-
-%% get_contract_call_compute(Data) ->
-%%     Host = external_address(),
-%%     http_request(Host, post, "tx/contract/call/compute", Data).
 
 get_contract_call_object(TxHash) ->
     Host = external_address(),
@@ -1002,80 +991,6 @@ get_contract_call_object(TxHash) ->
 get_contract_decode_data(Request) ->
     Host = external_address(),
     http_request(Host, post, "contract/decode-data", Request).
-
-%% get_spend(Data) ->
-%%     Host = external_address(),
-%%     http_request(Host, post, "tx/spend", Data).
-
-%% get_name_preclaim(Data) ->
-%%     Host = external_address(),
-%%     http_request(Host, post, "tx/name/preclaim", Data).
-
-%% get_name_claim(Data) ->
-%%     Host = external_address(),
-%%     http_request(Host, post, "tx/name/claim", Data).
-
-%% get_name_update(Data) ->
-%%     Host = external_address(),
-%%     http_request(Host, post, "tx/name/update", Data).
-
-%% get_name_transfer(Data) ->
-%%     Host = external_address(),
-%%     http_request(Host, post, "tx/name/transfer", Data).
-
-%% get_name_revoke(Data) ->
-%%     Host = external_address(),
-%%     http_request(Host, post, "tx/name/revoke", Data).
-
-%% get_channel_create(Data) ->
-%%     Host = external_address(),
-%%     http_request(Host, post, "tx/channel/create", Data).
-
-%% get_channel_deposit(Data) ->
-%%     Host = external_address(),
-%%     http_request(Host, post, "tx/channel/deposit", Data).
-
-%% get_channel_withdrawal(Data) ->
-%%     Host = external_address(),
-%%     http_request(Host, post, "tx/channel/withdrawal", Data).
-
-%% get_channel_close_mutual(Data) ->
-%%     Host = external_address(),
-%%     http_request(Host, post, "tx/channel/close/mutual", Data).
-
-%% get_channel_close_solo(Data) ->
-%%     Host = external_address(),
-%%     http_request(Host, post, "tx/channel/close/solo", Data).
-
-%% get_channel_slash(Data) ->
-%%     Host = external_address(),
-%%     http_request(Host, post, "tx/channel/slash", Data).
-
-%% get_channel_settle(Data) ->
-%%     Host = external_address(),
-%%     http_request(Host, post, "tx/channel/settle", Data).
-
-%% get_block_by_height(Height, TxObjects) ->
-%%     Params = tx_encoding_param(TxObjects),
-%%     Host = external_address(),
-%%     http_request(Host, get, "block/height/" ++ integer_to_list(Height), Params).
-
-%% get_block_by_height(Height) ->
-%%     Host = external_address(),
-%%     http_request(Host, get, "block/height/" ++ integer_to_list(Height), []).
-
-%% get_block_by_hash(Hash, TxObjects) ->
-%%     Params = tx_encoding_param(TxObjects),
-%%     Host = external_address(),
-%%     http_request(Host, get, "block/hash/" ++ http_uri:encode(Hash), Params).
-
-%% get_header_by_hash(Hash) ->
-%%     Host = external_address(),
-%%     http_request(Host, get, "header-by-hash", [{hash, Hash}]).
-
-%% get_transactions() ->
-%%     Host = external_address(),
-%%     http_request(Host, get, "transactions", []).
 
 get_tx(TxHash, TxEncoding) ->
     Params = tx_encoding_param(TxEncoding),
@@ -1094,53 +1009,6 @@ post_spend_tx(Recipient, Amount, Fee, Payload) ->
                    fee => Fee,
                    payload => Payload}).
 
-%% post_name_preclaim_tx(Commitment, Fee) ->
-%%     Host = internal_address(),
-%%     http_request(Host, post, "name-preclaim-tx",
-%%                  #{commitment => aec_base58c:encode(commitment, Commitment),
-%%                    fee        => Fee}).
-
-%% post_name_claim_tx(Name, NameSalt, Fee) ->
-%%     Host = internal_address(),
-%%     http_request(Host, post, "name-claim-tx",
-%%                  #{name      => Name,
-%%                    name_salt => NameSalt,
-%%                    fee       => Fee}).
-
-%% post_name_update_tx(NameHash, NameTTL, Pointers, TTL, Fee) ->
-%%     Host = internal_address(),
-%%     http_request(Host, post, "name-update-tx",
-%%                  #{name_hash => aec_base58c:encode(name, NameHash),
-%%                    name_ttl  => NameTTL,
-%%                    pointers  => Pointers,
-%%                    ttl       => TTL,
-%%                    fee       => Fee}).
-
-%% post_name_transfer_tx(NameHash, RecipientPubKey, Fee) ->
-%%     Host = internal_address(),
-%%     http_request(Host, post, "name-transfer-tx",
-%%                  #{name_hash        => aec_base58c:encode(name, NameHash),
-%%                    recipient_pubkey => aec_base58c:encode(account_pubkey, RecipientPubKey),
-%%                    fee              => Fee}).
-
-%% post_name_revoke_tx(NameHash, Fee) ->
-%%     Host = internal_address(),
-%%     http_request(Host, post, "name-revoke-tx",
-%%                  #{name_hash => aec_base58c:encode(name, NameHash),
-%%                    fee       => Fee}).
-
-%% get_commitment_hash(Name, Salt) ->
-%%     Host = external_address(),
-%%     http_request(Host, get, "commitment-hash", [{name, Name}, {salt, Salt}]).
-
-%% get_name(Name) ->
-%%     Host = external_address(),
-%%     http_request(Host, get, "name", [{name, Name}]).
-
-get_balance_at_top() ->
-    {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_miner_pub_key(),
-    get_balance_at_top(EncodedPubKey).
-
 get_balance_at_top(EncodedPubKey) ->
     get_balance(EncodedPubKey, []).
 
@@ -1156,140 +1024,13 @@ get_nonce(EncodedPubKey, Params) ->
     Host = external_address(),
     http_request(Host, get, "account/" ++ binary_to_list(EncodedPubKey) ++ "/nonce", Params).
 
-%% get_account_transactions(EncodedPubKey, Params) ->
-%%     Host = external_address(),
-%%     http_request(Host, get, "account/" ++ binary_to_list(EncodedPubKey) ++ "/txs",
-%%                  Params).
-
-%% post_block(Block) ->
-%%     post_block_map(aehttp_api_parser:encode(block, Block)).
-
-%% post_block_map(BlockMap) ->
-%%     Host = external_address(),
-%%     http_request(Host, post, "block", BlockMap).
-
 post_tx(TxSerialized) ->
     Host = external_address(),
     http_request(Host, post, "tx", #{tx => TxSerialized}).
 
-%% get_all_accounts_balances() ->
-%%     Host = external_address(),
-%%     http_request(Host, get, "balances", []).
-
-get_miner_pub_key() ->
-    Host = internal_address(),
-    http_request(Host, get, "account/pub-key", []).
-
-%% get_peer_pub_key() ->
-%%     Host = external_address(),
-%%     http_request(Host, get, "peer/key", []).
-
-%% get_version() ->
-%%     Host = external_address(),
-%%     http_request(Host, get, "version", []).
-
-%% get_info() ->
-%%     Host = external_address(),
-%%     http_request(Host, get, "info", []).
-
-%% get_block_number() ->
-%%     Host = internal_address(),
-%%     http_request(Host, get, "block/number", []).
-
-%% get_internal_block_preset(Segment, TxObjects) ->
-%%     Params = tx_encoding_param(TxObjects),
-%%     Host = external_address(),
-%%     http_request(Host, get, "block/" ++ Segment, Params).
-
 tx_encoding_param(default) -> #{};
 tx_encoding_param(json) -> #{tx_encoding => <<"json">>};
 tx_encoding_param(message_pack) -> #{tx_encoding => <<"message_pack">>}.
-
-%% get_block_txs_count_by_height(Height) ->
-%%     Host = internal_address(),
-%%     http_request(Host, get, "block/txs/count/height/" ++ integer_to_list(Height),
-%%                  []).
-
-%% get_block_txs_count_by_hash(Hash) ->
-%%     Host = internal_address(),
-%%     http_request(Host, get, "block/txs/count/hash/" ++ http_uri:encode(Hash),
-%%                  []).
-
-%% get_block_txs_count_preset(Segment) ->
-%%     Host = internal_address(),
-%%     http_request(Host, get, "block/txs/count/" ++ Segment, []).
-
-%% get_block_tx_by_index_height(Height, Index, TxObjects) ->
-%%     Params = tx_encoding_param(TxObjects),
-%%     Host = internal_address(),
-%%     http_request(Host, get, "block/tx/height/" ++ integer_to_list(Height) ++
-%%                                        "/" ++ integer_to_list(Index), Params).
-
-%% get_block_tx_by_index_hash(Hash, Index, TxObjects) when is_binary(Hash) ->
-%%     get_block_tx_by_index_hash(binary_to_list(Hash), Index, TxObjects);
-%% get_block_tx_by_index_hash(Hash, Index, TxObjects) ->
-%%     Params = tx_encoding_param(TxObjects),
-%%     Host = internal_address(),
-%%     http_request(Host, get, "block/tx/hash/" ++ http_uri:encode(Hash) ++
-%%                                        "/" ++ integer_to_list(Index), Params).
-
-%% get_block_tx_by_index_latest(Index, TxObjects) ->
-%%     Params = tx_encoding_param(TxObjects),
-%%     Host = internal_address(),
-%%     http_request(Host, get, "block/tx/latest/" ++ integer_to_list(Index), Params).
-
-%% get_block_txs_list_by_height(From, To, TxObjects, TxTypes) ->
-%%     Params0 = tx_encoding_param(TxObjects),
-%%     Filter = make_tx_types_filter(TxTypes),
-%%     Params = maps:merge(Params0, maps:merge(Filter, #{from => From, to => To})),
-%%     Host = internal_address(),
-%%     http_request(Host, get, "block/txs/list/height", Params).
-
-%% get_block_txs_list_by_hash(From, To, TxObjects, TxTypes) ->
-%%     Params0 = tx_encoding_param(TxObjects),
-%%     Filter = make_tx_types_filter(TxTypes),
-%%     Params = maps:merge(Params0, maps:merge(Filter, #{from => From, to => To})),
-%%     Host = internal_address(),
-%%     http_request(Host, get, "block/txs/list/hash", Params).
-
-%% make_tx_types_filter(Filter) ->
-%%     Includes = maps:get(include, Filter, []),
-%%     Excludes = maps:get(exclude, Filter, []),
-%%     Encode =
-%%         fun(_, [], Res) -> Res;
-%%         (Key, TypesBin, Res) ->
-%%             Types = lists:map(fun binary_to_list/1, TypesBin),
-%%             T = list_to_binary(lists:join(",", Types)),
-%%             maps:put(Key, T, Res)
-%%         end,
-%%     R0 = Encode(tx_types, Includes, #{}),
-%%     R = Encode(exclude_tx_types, Excludes, R0),
-%%     R.
-
-%% get_list_oracles(Max) ->
-%%     get_list_oracles(undefined, Max).
-
-%% get_list_oracles(From, Max) ->
-%%     Host = internal_address(),
-%%     Params0 = #{ max => Max },
-%%     Params = case From of undefined -> Params0; _ -> Params0#{ from => From } end,
-%%     {ok, 200, Oracles} = http_request(Host, get, "oracles", Params),
-%%     Oracles.
-
-%% get_list_oracle_queries(Oracle, Max) ->
-%%     get_list_oracle_queries(Oracle, undefined, Max).
-
-%% get_list_oracle_queries(Oracle, From, Max) ->
-%%     Host = internal_address(),
-%%     Params0 = #{ max => Max, oracle_pub_key => aec_base58c:encode(oracle_pubkey, Oracle) },
-%%     Params = case From of undefined -> Params0; _ -> Params0#{ from => From } end,
-%%     {ok, 200, Queries} = http_request(Host, get, "oracle-questions", Params),
-%%     Queries.
-
-%% get_peers() ->
-%%     Host = internal_address(),
-%%     http_request(Host, get, "debug/peers", []).
-
 
 %% ============================================================
 %% private functions
@@ -1380,15 +1121,6 @@ process_http_return(R) ->
             Error
     end.
 
-populate_block(Txs) ->
-    lists:foreach(
-      fun (#{recipient := R, amount := A, fee := F}) ->
-	      {ok, 200, #{<<"tx_hash">> := TxHash}} = post_spend_tx(R, A, F),
-	      TxHash
-      end,
-      maps:get(spend_txs, Txs, [])),
-    ok.
-
 new_account(Balance) ->
     {Pubkey,Privkey} = generate_key_pair(),
     Fee = 1,
@@ -1448,8 +1180,6 @@ sign_and_post_tx(PrivKey, EncodedUnsignedTx) ->
     SendTx = aec_base58c:encode(transaction, SerializedTx),
     {ok,200,#{<<"tx_hash">> := TxHash}} = post_tx(SendTx),
     TxHash.
-
-tx_in_block(TxHash) -> tx_in_chain(TxHash).
 
 tx_in_chain(TxHash) ->
     case get_tx(TxHash, json) of
