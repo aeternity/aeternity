@@ -269,7 +269,11 @@ handle_request('GetOracleQueriesByPubkey', Params, _Context) ->
                               undefined ->
                                   '$first'
                           end,
-            case aec_chain:get_open_oracle_queries(Pubkey, FromQueryId, Limit) of
+            QueryType = case maps:get(type, Params) of
+                            T when T =/= undefined -> T;
+                            undefined -> all
+                        end,
+            case aec_chain:get_oracle_queries(Pubkey, FromQueryId, QueryType, Limit) of
                 {ok, Queries} ->
                     Queries1 = [aeo_query:serialize_for_client(Query) || Query <- Queries],
                     {200, [], #{oracle_queries => Queries1}};

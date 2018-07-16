@@ -1463,7 +1463,7 @@ post_oracle_extend(Config) ->
     {ok, 200, Resp} = get_oracles_by_pubkey_sut(OraclePubkey),
     ?assertEqual(OraclePubkey, maps:get(<<"id">>, Resp)),
     ?assertEqual(?config(oracle_ttl_value_final, Config), maps:get(<<"expires">>, Resp)),
-    {ok, 200, Resp1} = get_oracles_queries_by_pubkey_sut(OraclePubkey),
+    {ok, 200, Resp1} = get_oracles_queries_by_pubkey_sut(OraclePubkey, #{type => "all"}),
     ?assertEqual([], maps:get(<<"oracle_queries">>, Resp1)),
     {save_config, save_config([account_pubkey, oracle_pubkey], Config)}.
 
@@ -1484,9 +1484,11 @@ post_oracle_query(Config) ->
     {TxHash, Tx} = prepare_tx(oracle_query_tx, TxArgs),
     ok = post_tx(TxHash, Tx),
     aecore_suite_utils:mine_blocks_until(Node, fun() -> tx_in_chain(TxHash) end, 10),
-    {ok, 200, Resp} = get_oracles_queries_by_pubkey_sut(OraclePubkey),
-    ?assertEqual(1, length(maps:get(<<"oracle_queries">>, Resp))),
-    [Query] = maps:get(<<"oracle_queries">>, Resp),
+    {ok, 200, Resp} = get_oracles_queries_by_pubkey_sut(OraclePubkey, #{type => "closed"}),
+    ?assertEqual([], maps:get(<<"oracle_queries">>, Resp)),
+    {ok, 200, Resp1} = get_oracles_queries_by_pubkey_sut(OraclePubkey, #{type => "all"}),
+    ?assertEqual(1, length(maps:get(<<"oracle_queries">>, Resp1))),
+    [Query] = maps:get(<<"oracle_queries">>, Resp1),
     ?assertEqual(SenderPubkey, maps:get(<<"sender">>, Query)),
     ?assertEqual(OraclePubkey, maps:get(<<"oracle_id">>, Query)),
     QueryId = maps:get(<<"query_id">>, Query),
@@ -1506,9 +1508,8 @@ post_oracle_response(Config) ->
     {TxHash, Tx} = prepare_tx(oracle_response_tx, TxArgs),
     ok = post_tx(TxHash, Tx),
     aecore_suite_utils:mine_blocks_until(Node, fun() -> tx_in_chain(TxHash) end, 10),
-    {ok, 200, _Resp} = get_oracles_queries_by_pubkey_sut(OraclePubkey),
-    %% TODO: why there are no queries anymore after response is sent?
-    %%?assertEqual([], maps:get(<<"oracle_queries">>, Resp)),
+    {ok, 200, Resp} = get_oracles_queries_by_pubkey_sut(OraclePubkey, #{type => "open"}),
+    ?assertEqual([], maps:get(<<"oracle_queries">>, Resp)),
     {ok, 200, Resp1} = get_oracles_query_by_pubkey_and_query_id(OraclePubkey, QueryId),
     ?assertEqual(QueryId, maps:get(<<"query_id">>, Resp1)),
     ?assertEqual(OraclePubkey, maps:get(<<"oracle_id">>, Resp1)),
@@ -1520,10 +1521,10 @@ get_oracles_by_pubkey_sut(Pubkey) ->
     http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey), []).
 
 %% TODO: add test for 'limit' and 'from' in HTTP query
-get_oracles_queries_by_pubkey_sut(Pubkey) ->
+get_oracles_queries_by_pubkey_sut(Pubkey, Params) ->
     Host = external_address(),
     Pubkey1 = binary_to_list(Pubkey),
-    http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey1) ++ "/queries", []).
+    http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey1) ++ "/queries", Params).
 
 get_oracles_query_by_pubkey_and_query_id(Pubkey, Id) ->
     Host = external_address(),

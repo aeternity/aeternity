@@ -52,7 +52,7 @@
 
 %%% Oracles API
 -export([ get_oracle/1
-        , get_open_oracle_queries/3
+        , get_oracle_queries/4
         , get_oracles/2
         , get_oracle_query/2
         ]).
@@ -127,14 +127,13 @@ get_oracle(Pubkey) ->
             {error, no_state_trees}
     end.
 
--spec get_open_oracle_queries(aec_keys:pubkey(), binary() | '$first', non_neg_integer()) ->
-                                     {'ok', list()} |
-                                     {'error', 'no_state_trees'}.
-get_open_oracle_queries(Oracle, From, Max) ->
+-spec get_oracle_queries(aec_keys:pubkey(), binary() | '$first', open | closed | all, non_neg_integer()) ->
+    {'ok', list()} | {'error', 'no_state_trees'}.
+get_oracle_queries(Oracle, From, QueryType, Max) ->
     case get_top_state() of
         {ok, Trees} ->
             OT = aec_trees:oracles(Trees),
-            {ok, aeo_state_tree:get_open_oracle_queries(Oracle, From, Max, OT)};
+            {ok, aeo_state_tree:get_oracle_queries(Oracle, From, QueryType, Max, OT)};
         error -> {error, no_state_trees}
     end.
 

@@ -14,6 +14,7 @@
         , fee/1
         , id/1
         , id/3
+        , is_open/1
         , is_closed/1
         , new/4
         , oracle_address/1
@@ -100,6 +101,10 @@ id(SenderAddress, Nonce, OracleAddress) ->
             Nonce:?NONCE_SIZE,
             OracleAddress:?PUB_SIZE/binary>>,
     aec_hash:hash(pubkey, Bin).
+
+-spec is_open(query()) -> boolean().
+is_open(#query{response = undefined}) -> true;
+is_open(#query{}) -> false.
 
 -spec is_closed(query()) -> boolean().
 %% @doc An query is closed if it is already answered.

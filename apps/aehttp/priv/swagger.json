@@ -667,6 +667,13 @@
           "type" : "integer",
           "maximum" : 1000,
           "minimum" : 1
+        }, {
+          "name" : "type",
+          "in" : "query",
+          "description" : "The type of a query: open, closed or all",
+          "required" : false,
+          "type" : "string",
+          "enum" : [ "open", "closed", "all" ]
         } ],
         "responses" : {
           "200" : {

@@ -602,6 +602,12 @@ paths:
           type: integer
           minimum: 1
           maximum: 1000
+        - in: query
+          name: type
+          description: 'The type of a query: open, closed or all'
+          required: false
+          type: string
+          enum: [open, closed, all]
       responses:
         '200':
           description: 'Successful operation'
