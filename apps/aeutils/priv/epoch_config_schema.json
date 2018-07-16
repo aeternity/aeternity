@@ -92,12 +92,12 @@
                     "default": 3000,
                 },
                 "max_inbound" : {
-                    "description" : "Maximum number of inbound connections after which inbound connection are temporary (only used for a single ping)",
+                    "description" : "Maximum number of inbound connections after which inbound connections are temporary (only used for a single ping)",
                     "type" : "integer",
                     "default": 100,
                 },
                 "max_inbound_hard" : {
-                    "description" : "The maximum number of inbound connections",
+                    "description" : "Maximum number of inbound connections",
                     "type" : "integer",
                     "default": 1000,
                 },

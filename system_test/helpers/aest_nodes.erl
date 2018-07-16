@@ -53,7 +53,7 @@
 
 %% AWK script to keep only error, critical, alert and emergency log lines with
 %% all the extra lines following the log lines.
-%% FIXME: Temporarily ignore dispatch_worker errors, remove when PT-158762778 fixes it.
+%% FIXME: Temporarily ignore dispatch_worker errors, remove when PT-159071812 fixes it.
 %% Example of ignored lines:
 %% 2018-07-10 15:48:59.649 [error] <0.1270.0>@aec_conductor:dispatch_worker:394 Disallowing dispatch of additional create_key_block_candidate worker
 %% 2018-07-10 15:52:10.864 [error] <0.1270.0>@aec_conductor:dispatch_worker:394 Disallowing dispatch of additional micro_sleep worker
