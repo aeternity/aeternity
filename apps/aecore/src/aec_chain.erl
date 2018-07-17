@@ -51,9 +51,9 @@
         ]).
 
 %%% Oracles API
--export([ get_oracle/1
+-export([ get_oracles/2
+        , get_oracle/1
         , get_oracle_queries/4
-        , get_oracles/2
         , get_oracle_query/2
         ]).
 
@@ -114,32 +114,8 @@ all_accounts_balances_at_hash(Hash) when is_binary(Hash) ->
 %%% Oracles
 %%%===================================================================
 
--spec get_oracle(aec_keys:pubkey()) ->
-    {ok, aeo_oracles:oracle()} | {error, term()}.
-get_oracle(Pubkey) ->
-    case get_top_state() of
-        {ok, Trees} ->
-            case aeo_state_tree:lookup_oracle(Pubkey, aec_trees:oracles(Trees)) of
-                {value, Oracle} -> {ok, Oracle};
-                none -> {error, not_found}
-            end;
-        error ->
-            {error, no_state_trees}
-    end.
-
--spec get_oracle_queries(aec_keys:pubkey(), binary() | '$first', open | closed | all, non_neg_integer()) ->
-    {'ok', list()} | {'error', 'no_state_trees'}.
-get_oracle_queries(Oracle, From, QueryType, Max) ->
-    case get_top_state() of
-        {ok, Trees} ->
-            OT = aec_trees:oracles(Trees),
-            {ok, aeo_state_tree:get_oracle_queries(Oracle, From, QueryType, Max, OT)};
-        error -> {error, no_state_trees}
-    end.
-
 -spec get_oracles(binary() | '$first', non_neg_integer()) ->
-                         {'ok', list()} |
-                         {'error', 'no_state_trees'}.
+    {ok, [aeo_oracles:oracle()]} | {error, no_state_trees}.
 get_oracles(From, Max) ->
     case get_top_state() of
         {ok, Trees} ->
@@ -148,17 +124,42 @@ get_oracles(From, Max) ->
             {error, no_state_trees}
     end.
 
--spec get_oracle_query(aec_keys:pubkey(), aeo_query:id()) ->
-    {ok, aeo_query:query()} | {error, no_state_tree}.
-get_oracle_query(OraclePubkey, QueryId) ->
+-spec get_oracle(aec_keys:pubkey()) ->
+    {ok, aeo_oracles:oracle()} | {error, not_found} | {error, no_state_trees}.
+get_oracle(Pubkey) ->
+    case get_top_state() of
+        {ok, Trees} -> get_oracle(Pubkey, aec_trees:oracles(Trees));
+        error -> {error, no_state_trees}
+    end.
+
+-spec get_oracle_queries(aec_keys:pubkey(), binary() | '$first', open | closed | all, non_neg_integer()) ->
+    {ok, [aeo_query:query()]} | {error, no_state_trees}.
+get_oracle_queries(Oracle, From, QueryType, Max) ->
     case get_top_state() of
         {ok, Trees} ->
-            case aeo_state_tree:lookup_query(OraclePubkey, QueryId, aec_trees:oracles(Trees)) of
-                {value, Query} -> {ok, Query};
-                none -> {error, not_found}
-            end;
-        error ->
-            {error, no_state_tree}
+            OT = aec_trees:oracles(Trees),
+            {ok, aeo_state_tree:get_oracle_queries(Oracle, From, QueryType, Max, OT)};
+        error -> {error, no_state_trees}
+    end.
+
+-spec get_oracle_query(aec_keys:pubkey(), aeo_query:id()) ->
+    {ok, aeo_query:query()} | {error, not_found} | {error, no_state_trees}.
+get_oracle_query(Pubkey, Id) ->
+    case get_top_state() of
+        {ok, Trees} -> get_oracle_query(Pubkey, Id, aec_trees:oracles(Trees));
+        error -> {error, no_state_trees}
+    end.
+
+get_oracle(Pubkey, Trees) ->
+    case aeo_state_tree:lookup_oracle(Pubkey, Trees) of
+        {value, Oracle} -> {ok, Oracle};
+        none -> {error, not_found}
+    end.
+
+get_oracle_query(Pubkey, Id, Trees) ->
+    case aeo_state_tree:lookup_query(Pubkey, Id, Trees) of
+        {value, Query} -> {ok, Query};
+        none -> {error, not_found}
     end.
 
 %%%===================================================================
