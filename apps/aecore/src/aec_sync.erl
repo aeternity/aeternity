@@ -106,7 +106,7 @@ init([]) ->
     BlockedPeers = parse_peers(aeu_env:user_map_or_env(<<"blocked_peers">>, aecore, blocked_peers, [])),
 
     [aec_peers:block_peer(P) || P <- BlockedPeers],
-    aec_peers:add_and_ping_peers(Peers, true),
+    aec_peers:add_trusted(Peers),
 
     erlang:process_flag(trap_exit, true),
     {ok, #state{}}.
@@ -186,7 +186,8 @@ handle_cast(_, State) ->
     {noreply, State}.
 
 handle_info({gproc_ps_event, Event, #{info := Info}}, State) ->
-    PeerIds = [ aec_peers:peer_id(P) || P <- aec_peers:get_random(all) ],
+    %% FUTURE: Forward blocks only to outbound connections.
+    PeerIds = [ aec_peers:peer_id(P) || P <- aec_peers:connected_peers() ],
     NonSyncingPeerIds = [ P || P <- PeerIds, not peer_in_sync(State, P) ],
     case Event of
         block_to_publish ->

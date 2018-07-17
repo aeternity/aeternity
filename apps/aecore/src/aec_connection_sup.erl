@@ -54,13 +54,13 @@ worker(Mod) ->
 
 peer_listener_spec() ->
     NumAcceptors = acceptors(),
-    MaxConnections = max_connections(),
+    MaxInbound = max_inbound_hard(),
     {ok, PubKey} = aec_keys:peer_pubkey(),
     ranch:child_spec(aec_peer, NumAcceptors,
                      ranch_tcp, [
                          {port, sync_port()},
                          {ip, sync_listen_address()},
-                         {max_connections, MaxConnections}
+                         {max_connections, MaxInbound}
                      ],
                      aec_peer_connection, #{
                          ext_sync_port => ext_sync_port(),
@@ -86,7 +86,7 @@ child(Mod, Type, Args) ->
 -define(DEFAULT_SYNC_PORT, 3015).
 -define(DEFAULT_SYNC_LISTEN_ADDRESS, <<"0.0.0.0">>).
 -define(DEFAULT_ACCEPTORS, 10).
--define(DEFAULT_MAX_CONNECTIONS, 100).
+-define(DEFAULT_MAX_INBOUND_HARD, 1000).
 
 sync_port() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"port">>], aecore, sync_port, ?DEFAULT_SYNC_PORT).
@@ -106,7 +106,7 @@ acceptors() ->
                                aecore, sync_acceptors,
                                ?DEFAULT_ACCEPTORS).
 
-max_connections() ->
-    aeu_env:user_config_or_env([<<"sync">>, <<"max_connections">>],
-                               aecore, sync_max_connections,
-                               ?DEFAULT_MAX_CONNECTIONS).
+max_inbound_hard() ->
+    aeu_env:user_config_or_env([<<"sync">>, <<"max_inbound_hard">>],
+                               aecore, sync_max_inbound_hard,
+                               ?DEFAULT_MAX_INBOUND_HARD).

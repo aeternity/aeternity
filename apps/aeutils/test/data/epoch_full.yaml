@@ -24,14 +24,22 @@ sync:
     ping_interval: 30000
     # Number of acceptors in listening pool
     acceptors: 10
-    # The maximum number of incoming connections
-    max_connections: 1000
     # Connection timeout in miliseconds
     connect_timeout: 1000
     # Maximum time for receiving a ping in miliseconds
     first_ping_timeout: 30000
     # Maximum time for noise handshake in miliseconds
     noise_hs_timeout: 5000
+    # Maximum time for the peer to close a connection cleanly
+    close_timeout: 3000
+    # "Maximum number of inbound connections after which inbound connection are temporary (only used for a single ping)
+    max_inbound: 100
+    # The maximum number of incoming connections
+    max_inbound_hard: 1000
+    # Maximum number of outbound connections
+    max_outbound: 10
+    # If the extra outbound connections should be to nodes from different address groups (IP netmask /16)
+    single_outbound_per_group: true
 
 mempool:
     # Number of blocks before inactive TXs are garbage collected

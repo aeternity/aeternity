@@ -11,6 +11,14 @@ It:
   providing `state_hash` and `round` to the chain.
 * Refactors channels' closing transaction to add more clarity around closing
   amounts
+* Changes the strategy for peer pooling management to a stochastic pool as described in the protocol documentation; limits the maximum number of inbound and outbound connections; inbound connections over the limit are made temporary, they are only used for gossiping a ping exchange, and then they are closed.
+* Added configuration related to the new pool strategy:
+  * (`sync` > `max_inbound`) : The maximum number of inbound connections after which inbound connections are temporary (only used for a single ping); Default: 100.
+  * (`sync` > `max_inbound_hard`) : The maximum number of inbound connections; Default: 1000.
+  * (`sync` > `max_outbound`) : The maximum number of outbound connections; Default: 10.
+  * (`sync` > `single_outbound_per_group`) : If the extra outbound connections should be to nodes from different address groups (IP netmask /16); Default true.
+* Removed Configuration:
+  * (`sync` > `max_connections`) : This configuration key has been renamed to (`sync` > `max_inbound_hard`) for consistency.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.18.0
 

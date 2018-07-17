@@ -36,7 +36,7 @@
 -export([ miner_key/0
         , peer_pubkey/0]).
 
--export([ all_peers/0
+-export([ connected_peers/1
         , blocked_peers/0
         ]).
 
@@ -246,9 +246,9 @@ peer_pubkey() ->
         {error, key_not_found} = Err -> Err
     end.
 
-all_peers() -> aec_peers:all().
+connected_peers(Tag) -> aec_peers:connected_peers(Tag).
 
-blocked_peers() -> aec_peers:blocked().
+blocked_peers() -> aec_peers:blocked_peers().
 
 %% Private
 empty_fields_in_genesis() ->
