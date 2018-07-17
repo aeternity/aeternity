@@ -165,9 +165,9 @@ eunit:
 	ERL_FLAGS="-args_file $(EUNIT_VM_ARGS)" ./rebar3 do eunit $(EUNIT_TEST_FLAGS)
 
 coverage:
-	$(MAKE) EUNIT_TEST_FLAGS='--cover' eunit
-	$(MAKE) CT_TEST_FLAGS='--cover' test ## TODO Add coverage of started nodes.
-	$(MAKE) AEVM_TEST_FLAGS='--cover' aevm-test
+	$(MAKE) EUNIT_TEST_FLAGS='--cover --cover_export_name=coverage-eunit' eunit
+	$(MAKE) CT_TEST_FLAGS='--cover --cover_export_name=coverage-test' test ## TODO Add coverage of started nodes.
+	$(MAKE) AEVM_TEST_FLAGS='--cover --cover_export_name=coverage-aevm-test' aevm-test
 	./rebar3 cover --verbose
 
 all-tests: eunit test
