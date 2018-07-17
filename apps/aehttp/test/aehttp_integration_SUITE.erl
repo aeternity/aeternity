@@ -74,6 +74,11 @@
     post_oracle_response/1
    ]).
 
+-export(
+   [
+    get_name_entry_by_name/1
+   ]).
+
 %% off chain endpoints
 -export(
    [test_decode_sophia_data/1,
@@ -281,6 +286,8 @@ groups() ->
        {group, contract_endpoints},
        %% /oracles/*
        {group, oracle_endpoints},
+       %% /names/*
+       {group, name_endpoints},
 
        {group, off_chain_endpoints},
        {group, external_endpoints},
@@ -417,6 +424,21 @@ groups() ->
        post_oracle_extend,
        post_oracle_query,
        post_oracle_response
+      ]},
+
+     %% /names/*
+     {name_endpoints, [sequence],
+      [
+       {group, nonexistent_name}, %% standalone
+       {group, name_txs}          %% standalone
+      ]},
+     {nonexistent_name, [],
+      [
+       get_name_entry_by_name
+      ]},
+     {name_txs, [sequence],
+      [
+       %% TODO
       ]},
 
      {off_chain_endpoints, [],
@@ -636,7 +658,8 @@ init_per_group(Group, Config) when
       Group =:= account_endpoints;
       Group =:= transaction_endpoints;
       %%Group =:= contract_endpoint;
-      Group =:= oracle_endpoints ->
+      Group =:= oracle_endpoints;
+      Group =:= name_endpoints ->
     start_node(Group, Config);
 %% block_endpoints
 init_per_group(on_genesis_block = Group, Config) ->
@@ -769,6 +792,11 @@ init_per_group(oracle_txs = Group, Config) ->
     {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     true = aec_blocks:is_key_block(KeyBlock),
     Config1;
+%% name_endpoints
+init_per_group(nonexistent_name = Group, Config) ->
+    start_node(Group, Config);
+init_per_group(name_txs, _Config) ->
+    {skip, not_implemented};
 
 init_per_group(channel_websocket = Group, Config) ->
     Config1 = start_node(Group, Config),
@@ -1682,6 +1710,19 @@ get_oracles_query_by_pubkey_and_query_id(Pubkey, Id) ->
     Pubkey1 = binary_to_list(Pubkey),
     Id1 = binary_to_list(Id),
     http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey1) ++ "/queries/" ++ http_uri:encode(Id1), []).
+
+%% /names/*
+
+get_name_entry_by_name(_Config) ->
+    NonexistentName = <<"Nonexistent_name">>,
+    {ok, 400, _Error} = get_names_entry_by_name_sut(NonexistentName),
+    %%?assertEqual(<<"Name not found">>, maps:get(<<"reason">>, Error)),
+    ok.
+
+get_names_entry_by_name_sut(Name) ->
+    Host = external_address(),
+    Name1 = binary_to_list(Name),
+    http_request(Host, get, "names/" ++ http_uri:encode(Name1), []).
 
 prepare_tx(TxType, Args) ->
     %assert_required_tx_fields(TxType, Args),

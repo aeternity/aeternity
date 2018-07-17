@@ -340,6 +340,27 @@ handle_request('GetOracleQueryByPubkeyAndQueryId', Params, _Context) ->
             {400, [], #{reason => <<"Invalid public key or query ID">>}}
     end;
 
+handle_request('GetNameEntryByName', Params, _Context) ->
+    Name = maps:get(name, Params),
+    case aec_chain:name_entry(Name) of
+        {ok, NameEntry} ->
+            #{<<"name">>     := Name,
+              <<"hash">>     := Hash,
+              <<"name_ttl">> := NameTTL,
+              <<"pointers">> := Pointers} = NameEntry,
+            {200, [], #{name      => Name,
+                        name_hash => aec_base58c:encode(name, Hash),
+                        name_ttl  => NameTTL,
+                        pointers  => Pointers}};
+        {error, name_not_found} ->
+            {404, [], #{reason => <<"Name not found">>}};
+        {error, name_revoked} ->
+            {404, [], #{reason => <<"Name revoked">>}};
+        {error, Reason} ->
+            ReasonBin = atom_to_binary(Reason, utf8),
+            {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>}}
+    end;
+
 handle_request('GetBlockGenesis', Req, _Context) ->
     get_block(fun aehttp_logic:get_block_genesis/0, Req, json);
 
