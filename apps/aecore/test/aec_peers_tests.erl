@@ -1229,7 +1229,13 @@ conn_start(Parent, Recipient, PeerInfo) ->
     erlang:spawn_link(fun() -> proc_conn_init(Parent, Recipient, PeerInfo) end).
 
 conn_kill(Pid) ->
-    call(Pid, kill, []).
+    Ref = erlang:monitor(process, Pid),
+    call(Pid, kill, []),
+    receive
+        {'DOWN', Ref, _Type, Pid, _Info} -> ok
+    after
+        5000 -> ?fail("timout waiting for connection to get killed", [])
+    end.
 
 conn_peer_connected(Pid) ->
     call(Pid, peer_connected, []).
