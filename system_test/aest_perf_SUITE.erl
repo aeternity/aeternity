@@ -16,6 +16,7 @@
 % Test cases
 -export([
     startup_speed/1,
+    startup_speed_mining/1,
     sync_speed/1,
     stay_in_sync/1
 ]).
@@ -25,6 +26,7 @@
     spec/3,
     setup_nodes/2,
     start_node/2,
+    stop_node/3,
     kill_node/2,
     request/3,
     wait_for_value/4,
@@ -52,6 +54,7 @@ all() -> [
 groups() ->
     [{long_chain, [], [
         startup_speed,
+        startup_speed_mining,
         sync_speed,
         stay_in_sync
     ]}].
@@ -81,6 +84,7 @@ init_per_group(long_chain, InitCfg) ->
         interval => ?cfg(mine_interval)
     }),
     Tag = io_lib:format("local-h~b", [Height]),
+    stop_node(n1, 60000, Cfg), %% Ensure DB synced to disk.
     Ref = aest_nodes:export(n1, Tag, Cfg),
     [kill_node(N, Cfg) || N <- Nodes],
 
@@ -102,27 +106,29 @@ end_per_suite(_Cfg) -> ok.
 %=== TEST CASES ================================================================
 
 startup_speed(Cfg) ->
-    % This test verifies that startup does not time out (take longer than
-    % mining) and logs the time taken.
-    Height = ?cfg(height),
-    setup_nodes([spec(node, [], #{source => ?cfg(source)})], Cfg),
-    sync_node(node, Height, Cfg).
+    % This test verifies that startup does not take longer than mining
+    % and logs the time taken.  The node does not start to mine
+    % automatically.
+    int_startup_speed(false, Cfg).
+
+startup_speed_mining(Cfg) ->
+    % This test verifies that startup does not take longer than mining
+    % and logs the time taken.  The node starts to mine automatically.
+    int_startup_speed(true, Cfg).
 
 sync_speed(Cfg) ->
     % This tests starts 4 nodes at the pre-mined height, then adds and syncs two
     % more one at a time. Syncing is verified to not take longer than mining and
-    % then the measured time is logged. It asserts that the network does not
-    % fork.
+    % then the measured time is logged.
     [Height, MineRate] = ?cfg([height, mine_rate]),
 
     InitialNodes = [n1, n2, n3, n4],
 
-    % Only n1 mines, the other nodes just sync
     InitialNodeSpecs = [
         spec(N, InitialNodes -- [N], #{
             mine_rate => MineRate,
             source => ?cfg(source),
-            mining => #{autostart => N == n1}
+            mining => #{autostart => false}
         })
         || N <- InitialNodes
     ],
@@ -167,6 +173,12 @@ stay_in_sync(Cfg) ->
     [?assertEqual(AB, BB) || {AN, AB} <- Blocks, {BN, BB} <- Blocks, AN =/= BN].
 
 %=== INTERNAL FUNCTIONS ========================================================
+
+int_startup_speed(Autostart, Cfg) ->
+    Height = ?cfg(height),
+    setup_nodes([spec(node, [], #{source => ?cfg(source),
+                                  mining => #{autostart => Autostart}})], Cfg),
+    sync_node(node, Height, Cfg).
 
 sync_node(Node, Height, Cfg) ->
     start_node(Node, Cfg),
