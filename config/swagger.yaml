@@ -736,6 +736,36 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /names/{name}:
+    get:
+      tags:
+        - external
+        - name_service
+      operationId: GetNameEntryByName
+      description: 'Get name entry from naming system'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: name
+          description: 'The name key of the name entry'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/NameEntry'
+        '400':
+          description: 'Invalid name'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Name not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+
   /header-by-hash:
     get:
       tags:
