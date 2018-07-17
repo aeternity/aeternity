@@ -312,7 +312,7 @@ jobs:
           name: Test
           command: |
             epmd -daemon
-            make cover
+            make coverage
       - store_artifacts:
           path: _build/test/logs
           path: _build/test/cover
