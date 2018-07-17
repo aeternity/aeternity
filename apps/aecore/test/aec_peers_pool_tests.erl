@@ -1299,6 +1299,7 @@ validate_counters() ->
             case {rand_int(1, 8), A, S} of
                 {1, _, _} ->
                     case random_select(P, N, both, undefined) of
+                        {wait, _, P2} -> {P2, N + 500, A, S};
                         {unavailable, P2} -> {P2, N + 500, A, S};
                         {selected, {Id, _}, P2} -> {P2, N + 500, A, [Id | S]}
                     end;
