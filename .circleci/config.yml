@@ -302,6 +302,21 @@ jobs:
             make aevm-test
       - *fail_notification
 
+  coverage:
+    <<: *container_config
+    steps:
+      - checkout
+      - *restore_rebar_cache
+      - *restore_build_cache
+      - run:
+          name: Test
+          command: |
+            epmd -daemon
+            make cover
+      - store_artifacts:
+          path: _build/test/logs
+          path: _build/test/cover
+
   static_analysis:
     <<: *container_config
     steps:
@@ -627,6 +642,10 @@ workflows:
           filters:
             branches:
               only: master
+
+      - coverage:
+          requires:
+            - build
 
       - static_analysis:
           requires:

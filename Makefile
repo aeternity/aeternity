@@ -7,6 +7,8 @@ EUNIT_TEST_FLAGS ?=
 CT_TEST_FLAGS ?=
 ST_CT_FLAGS = --dir system_test --logdir system_test/logs
 
+AEVM_TEST_FLAGS ?=
+
 ifdef SUITE
 CT_TEST_FLAGS += --suite=$(SUITE)_SUITE
 unexport SUITE
@@ -160,7 +162,13 @@ test:
 	fi
 
 eunit:
-	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS)" ./rebar3 do eunit $(EUNIT_TEST_FLAGS)
+	ERL_FLAGS="-args_file $(EUNIT_VM_ARGS)" ./rebar3 do eunit $(EUNIT_TEST_FLAGS)
+
+coverage:
+	$(MAKE) EUNIT_TEST_FLAGS='--cover' eunit
+	$(MAKE) CT_TEST_FLAGS='--cover' test ## TODO Add coverage of started nodes.
+	$(MAKE) AEVM_TEST_FLAGS='--cover' aevm-test
+	./rebar3 cover --verbose
 
 all-tests: eunit test
 
@@ -195,7 +203,7 @@ TESTNET_DB_BACKUP_FILE = mnesia_18.196.250.42_uat_db_backup_1524700922.gz
 TESTNET_DB_BACKUP_BASE_URL = https://9305-99802036-gh.circle-artifacts.com/0/tmp/chain_snapshots/18.196.250.42/tmp
 
 aevm-test: aevm-test-deps
-	@./rebar3 eunit --application=aevm
+	@./rebar3 eunit $(AEVM_TEST_FLAGS) --application=aevm
 
 aevm-test-deps: $(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests
 aevm-test-deps:
@@ -340,6 +348,8 @@ internal-distclean: $$(KIND)
 	dialyzer \
 	docker docker-clean \
 	test smoke-test smoke-test-run system-test system-test-deps aevm-test-deps\
+	eunit all-test \
+	coverage \
 	kill killall \
 	clean distclean \
 	swagger swagger-docs swagger-check swagger-version-check \
