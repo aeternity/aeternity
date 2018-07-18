@@ -133,6 +133,9 @@ docker run -d -p 3013:3013 \
 Small local network (not connected to testnet) can be created with `docker-compose`.
 It runs three nodes using the `mean16s-generic` miner (fastest generic miner) and a proxy server to allow CORS.
 
+All local network nodes have `ak$25MZX3BXYP32YDPGWsJqYZ6CgWnqD93VdpCYaTk6KsThEbeFJX` set as node beneficiary (for more details on beneficiary see [configuration documentation](configuration.md#beneficiary-account)).
+Public-private keypair of `ak$25MZX3BXYP32YDPGWsJqYZ6CgWnqD93VdpCYaTk6KsThEbeFJX` beneficiary can be found [here](/docker/keys/beneficiary).
+
 Both external and internal API are exposed to the docker host, the URL pattern is as follows:
 - external API - http://$DOCKER_HOST_ADDRESS:$NODE_PORT/
 - internal API - http://$DOCKER_HOST_ADDRESS:$NODE_PORT/internal
