@@ -447,7 +447,7 @@ add_spend_tx(Node, #{ pubkey := SendPubKey, privkey := SendSecKey }, Nonce) ->
 %% network partitions, and that the network is partitiioned when the chain
 %% is already shared.
 net_split_recovery(Cfg) ->
-    Length = 10,
+    Length = 20,
 
     setup_nodes([?NET1_NODE1, ?NET1_NODE2, ?NET2_NODE1, ?NET2_NODE2], Cfg),
     Nodes = [net1_node1, net1_node2, net2_node1, net2_node2],
