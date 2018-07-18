@@ -907,6 +907,23 @@
         }
       }
     },
+    "/peers/pubkey" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get peer public key",
+        "operationId" : "GetPeerPubkey",
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/inline_response_200_3"
+            }
+          }
+        }
+      }
+    },
     "/header-by-hash" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
@@ -2734,7 +2751,7 @@
           "200" : {
             "description" : "The count of transactions in the block",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200_3"
+              "$ref" : "#/definitions/inline_response_200_4"
             }
           },
           "400" : {
@@ -2781,7 +2798,7 @@
           "200" : {
             "description" : "The count of transactions in the block",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200_3"
+              "$ref" : "#/definitions/inline_response_200_4"
             }
           },
           "404" : {
@@ -2816,7 +2833,7 @@
           "200" : {
             "description" : "The count of transactions in the genesis block",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200_3"
+              "$ref" : "#/definitions/inline_response_200_4"
             }
           }
         }
@@ -2845,7 +2862,7 @@
           "200" : {
             "description" : "The count of transactions in the latest block",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200_3"
+              "$ref" : "#/definitions/inline_response_200_4"
             }
           }
         }
@@ -2874,7 +2891,7 @@
           "200" : {
             "description" : "The count of transactions in the pending block",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200_3"
+              "$ref" : "#/definitions/inline_response_200_4"
             }
           },
           "404" : {
@@ -3149,7 +3166,7 @@
           "200" : {
             "description" : "Node's peer public key",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200_4"
+              "$ref" : "#/definitions/inline_response_200_5"
             }
           },
           "404" : {
@@ -5433,6 +5450,16 @@
     },
     "inline_response_200_3" : {
       "properties" : {
+        "pubkey" : {
+          "type" : "string"
+        }
+      },
+      "example" : {
+        "pubkey" : "pubkey"
+      }
+    },
+    "inline_response_200_4" : {
+      "properties" : {
         "count" : {
           "type" : "integer",
           "description" : "Count"
@@ -5442,7 +5469,7 @@
         "count" : 0
       }
     },
-    "inline_response_200_4" : {
+    "inline_response_200_5" : {
       "properties" : {
         "pubkey" : {
           "$ref" : "#/definitions/EncodedHash"

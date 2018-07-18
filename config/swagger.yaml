@@ -794,6 +794,25 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /peers/pubkey:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetPeerPubkey
+      description: 'Get peer public key'
+      produces:
+        - application/json
+      parameters:
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            type: object
+            properties:
+              pubkey:
+                type: string
+      security:
 
   /header-by-hash:
     get:
