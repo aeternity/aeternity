@@ -1,6 +1,6 @@
 # About this release
 
-[This release][this-release] is focused on TODOFILLMEIN.
+[This release][this-release] is focused on peer pooling.
 It:
 * Enables HTTP path `/contract/decode-data` to decode return values from Sophia contract calls.
 * Changes the Sophia syntax for record type definitions to `record` keyword (rather than `type`).
