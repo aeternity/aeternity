@@ -159,7 +159,7 @@ def start_node(name, config_filename=None):
             if not line: break
         ext_api = external_api(name)
         int_api = internal_api(name)
-        wait(lambda: node_online(ext_api, int_api), timeout_seconds=10, sleep_seconds=0.5)
+        wait(lambda: node_online(ext_api, int_api), timeout_seconds=30, sleep_seconds=0.5)
 
 def stop_node(name):
     if should_start_node(name):
