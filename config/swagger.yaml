@@ -765,6 +765,35 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /channels/{pubkey}:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetChannelByPubkey
+      description: 'Get channel by public key'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'The name key of the name entry'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/Channel'
+        '400':
+          description: 'Invalid public key'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Channel not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
 
   /header-by-hash:
     get:
@@ -3212,6 +3241,48 @@ definitions:
     properties:
       name_hash:
         type: string
+  Channel:
+    type: object
+    properties:
+      id:
+        $ref: '#/definitions/EncodedHash'
+      initiator:
+        $ref: '#/definitions/EncodedHash'
+      responder:
+        $ref: '#/definitions/EncodedHash'
+      total_amount:
+        type: integer
+        format: int64
+        minimum: 0
+      initiator_amount:
+        type: integer
+        format: int64
+        minimum: 0
+      responder_amount:
+        type: integer
+        format: int64
+        minimum: 0
+      channel_reserve:
+        type: integer
+        format: int64
+        minimum: 0
+      delegates:
+        type: array
+        items:
+          $ref: '#/definitions/EncodedHash'
+      state_hash:
+        $ref: '#/definitions/EncodedHash'
+      round:
+        type: integer
+        format: int64
+        minimum: 0
+      lock_period:
+        type: integer
+        format: int64
+        minimum: 0
+      closes_at:
+        type: integer
+        format: int64
   ChannelCreateTx:
     type: object
     properties:

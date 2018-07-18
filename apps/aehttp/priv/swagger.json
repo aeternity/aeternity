@@ -872,6 +872,41 @@
         }
       }
     },
+    "/channels/{pubkey}" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get channel by public key",
+        "operationId" : "GetChannelByPubkey",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "The name key of the name entry",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Channel"
+            }
+          },
+          "400" : {
+            "description" : "Invalid public key",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Channel not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/header-by-hash" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
@@ -4035,6 +4070,77 @@
       },
       "example" : {
         "name_hash" : "name_hash"
+      }
+    },
+    "Channel" : {
+      "type" : "object",
+      "properties" : {
+        "id" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "initiator" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "responder" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "total_amount" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "initiator_amount" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "responder_amount" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "channel_reserve" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "delegates" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/EncodedHash"
+          }
+        },
+        "state_hash" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "round" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "lock_period" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "closes_at" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      },
+      "example" : {
+        "responder_amount" : 0,
+        "initiator_amount" : 0,
+        "round" : 0,
+        "total_amount" : 0,
+        "state_hash" : null,
+        "initiator" : null,
+        "responder" : null,
+        "id" : { },
+        "delegates" : [ null, null ],
+        "closes_at" : 7,
+        "lock_period" : 0,
+        "channel_reserve" : 0
       }
     },
     "ChannelCreateTx" : {

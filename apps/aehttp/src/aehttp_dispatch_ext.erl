@@ -375,6 +375,19 @@ handle_request('GetNameEntryByName', Params, _Context) ->
             {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>}}
     end;
 
+handle_request('GetChannelByPubkey', Params, _Context) ->
+    case aec_base58c:safe_decode(channel, maps:get(pubkey, Params)) of
+        {ok, Pubkey} ->
+            case aec_chain:get_channel(Pubkey) of
+                {ok, Channel} ->
+                    {200, [], aesc_channels:serialize_for_client(Channel)};
+                {error, _} ->
+                    {404, [], #{reason => <<"Channel not found">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid public key">>}}
+    end;
+
 handle_request('GetBlockGenesis', Req, _Context) ->
     get_block(fun aehttp_logic:get_block_genesis/0, Req, json);
 

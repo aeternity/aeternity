@@ -281,6 +281,7 @@ groups() ->
        {group, oracle_endpoints},
        %% /names/*
        {group, name_endpoints},
+       %% TODO: /channels/*
 
        {group, off_chain_endpoints},
        {group, external_endpoints},
