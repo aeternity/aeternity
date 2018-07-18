@@ -374,6 +374,10 @@ handle_request('GetChannelByPubkey', Params, _Context) ->
             {400, [], #{reason => <<"Invalid public key">>}}
     end;
 
+handle_request('GetPeerPubkey', _Params, _Context) ->
+    {ok, Pubkey} = aec_keys:peer_pubkey(),
+    {200, [], #{pubkey => aec_base58c:encode(peer_pubkey, Pubkey)}};
+
 handle_request('GetBlockGenesis', Req, _Context) ->
     get_block(fun aehttp_logic:get_block_genesis/0, Req, json);
 

@@ -79,6 +79,11 @@
     get_name_entry_by_name/1
    ]).
 
+-export(
+   [
+    get_peer_pubkey/1
+   ]).
+
 %% off chain endpoints
 -export(
    [test_decode_sophia_data/1,
@@ -289,6 +294,7 @@ groups() ->
        %% /names/*
        {group, name_endpoints},
        %% TODO: /channels/*
+       {group, peer_endpoints},
 
        {group, off_chain_endpoints},
        {group, external_endpoints},
@@ -441,6 +447,13 @@ groups() ->
       [
        %% TODO
       ]},
+     %% TODO: /channels/*
+
+     %% /peers/*
+    {peer_endpoints, [],
+     [
+      get_peer_pubkey
+     ]},
 
      {off_chain_endpoints, [],
       [
@@ -660,7 +673,9 @@ init_per_group(Group, Config) when
       Group =:= transaction_endpoints;
       %%Group =:= contract_endpoint;
       Group =:= oracle_endpoints;
-      Group =:= name_endpoints ->
+      Group =:= name_endpoints;
+      %%Group =:= channel_endpoints;
+      Group =:= peer_endpoints ->
     start_node(Group, Config);
 %% block_endpoints
 init_per_group(on_genesis_block = Group, Config) ->
@@ -1724,6 +1739,18 @@ get_names_entry_by_name_sut(Name) ->
     Host = external_address(),
     Name1 = binary_to_list(Name),
     http_request(Host, get, "names/" ++ http_uri:encode(Name1), []).
+
+%% /channels/*
+
+%% /peers/*
+
+get_peer_pubkey(_Config) ->
+    {ok, 200, _PeerPubkey} = get_peers_pubkey_sut(),
+    ok.
+
+get_peers_pubkey_sut() ->
+    Host = external_address(),
+    http_request(Host, get, "peers/pubkey", []).
 
 prepare_tx(TxType, Args) ->
     %assert_required_tx_fields(TxType, Args),
