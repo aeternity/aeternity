@@ -98,12 +98,14 @@ test_peer_discovery(Cfg) ->
         ping_interval => 30000,
         max_inbound => 4
     },
+    StartupTimeout = proplists:get_value(node_startup_time, Cfg),
     setup([?NODE1, ?NODE2, ?NODE3, ?NODE4, ?NODE5], NodeConfig, Cfg),
     start_node(node1, Cfg),
     start_node(node2, Cfg),
     start_node(node3, Cfg),
     start_node(node4, Cfg),
     start_node(node5, Cfg),
+    wait_for_internal_api([node1, node2, node3, node4, node5], StartupTimeout),
 
     % Wait for two gossip ping messages.
     timer:sleep(35000 * 2),
@@ -129,12 +131,14 @@ test_inbound_limitation(Cfg) ->
     start_node(node1, Cfg),
     start_node(node2, Cfg),
     wait_for_value({height, 0}, [node1, node2], StartupTimeout, Cfg),
+    wait_for_internal_api([node1, node2], StartupTimeout),
 
     % Retrieve node1 peer address.
     #{outbound := [Node1PeerAddr]} = get_peers(node2),
 
     start_node(node3, Cfg),
     wait_for_value({height, 0}, [node1, node2, node3], StartupTimeout, Cfg),
+    wait_for_internal_api([node3], StartupTimeout),
 
     T1 = erlang:system_time(millisecond),
     wait_for_value({height, Length}, [node1, node2, node3], ?MINING_TIMEOUT * Length, Cfg),
@@ -156,6 +160,7 @@ test_inbound_limitation(Cfg) ->
     % Start 4th node that should get disconnected from node1 and connect to another one.
     start_node(node4, Cfg),
     wait_for_value({height, 0}, [node4], StartupTimeout, Cfg),
+    wait_for_internal_api([node4], StartupTimeout),
 
     T2 = erlang:system_time(millisecond),
     wait_for_value({height, Length * 2}, [node1, node2, node3, node4], ?MINING_TIMEOUT * Length, Cfg),
@@ -186,6 +191,28 @@ test_inbound_limitation(Cfg) ->
 
 setup(Nodes, Config, Cfg) ->
     setup_nodes([maps:put(config, Config, N) || N <- Nodes], Cfg).
+
+wait_for_internal_api(Nodes, Timeout) ->
+    TimerRef = erlang:start_timer(Timeout, self(), undefined),
+    wait_for_internal_api(Nodes, TimerRef, Nodes),
+    erlang:cancel_timer(TimerRef).
+
+wait_for_internal_api(_Nodes, _TimerRef, []) -> ok;
+wait_for_internal_api(AllNodes, TimerRef, [Node | Rest]) ->
+    Res = aehttp_client:request('GetPeers', #{}, [
+                {int_http, aest_nodes_mgr:get_service_address(Node, int_http)},
+                {ct_log, true}
+    ]),
+    case Res of
+        {ok, _, _} -> wait_for_internal_api(AllNodes, TimerRef, Rest);
+        _Error ->
+            receive
+                {timeout, TimerRef, _} ->
+                    ?assert(timeout_waiting_for_internal_api)
+            after 200 ->
+                wait_for_internal_api(AllNodes, TimerRef, AllNodes)
+            end
+    end.
 
 get_peers(Node) ->
     {ok, 200, Peers} = aehttp_client:request('GetPeers', #{}, [
