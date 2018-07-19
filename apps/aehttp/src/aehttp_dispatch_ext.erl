@@ -392,6 +392,43 @@ handle_request('GetPeerPubkey', _Params, _Context) ->
     {ok, Pubkey} = aec_keys:peer_pubkey(),
     {200, [], #{pubkey => aec_base58c:encode(peer_pubkey, Pubkey)}};
 
+handle_request('GetStatus', _Params, _Context) ->
+    {ok, GenesisBlockHash} =
+        aec_headers:hash_header(aec_block_genesis:genesis_header()),
+    %% TODO
+    Solutions = 0,
+    %% TODO
+    Difficulty = 0,
+    %% TODO
+    Syncing = true,
+    %% TODO
+    Listening = true,
+    Protocols =
+        maps:fold(fun(Vsn, Height, Acc) ->
+                          [#{protocol => #{version => Vsn, effective_at_height => Height}} | Acc]
+                 end, [], aec_governance:protocols()),
+    %% TODO
+    NodeVersion = aeu_info:get_version(),
+    % TODO
+    NodeRevision = aeu_info:get_revision(),
+    PeerCount = length(aec_peers:get_random(all)),
+    PendingTxsCount =
+        case aec_tx_pool:size() of
+            N when N =/= undefined -> N;
+            undefined -> 0
+        end,
+    {200, [],
+     #{<<"genesis-key-block-hash">>     => aec_base58c:encode(block_hash, GenesisBlockHash),
+       <<"solutions">>                  => Solutions,
+       <<"difficulty">>                 => Difficulty,
+       <<"syncing">>                    => Syncing,
+       <<"listening">>                  => Listening,
+       <<"protocols">>                  => Protocols,
+       <<"node-version">>               => NodeVersion,
+       <<"node-revision">>              => NodeRevision,
+       <<"peer-count">>                 => PeerCount,
+       <<"pending-transactions-count">> => PendingTxsCount}};
+
 handle_request('GetBlockGenesis', Req, _Context) ->
     get_block(fun aehttp_logic:get_block_genesis/0, Req, json);
 

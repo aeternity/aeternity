@@ -924,6 +924,23 @@
         }
       }
     },
+    "/status" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get the status of a node",
+        "operationId" : "GetStatus",
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Status"
+            }
+          }
+        }
+      }
+    },
     "/header-by-hash" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
@@ -4673,6 +4690,88 @@
       },
       "example" : {
         "height" : 0
+      }
+    },
+    "Status" : {
+      "type" : "object",
+      "properties" : {
+        "genesis-key-block-hash" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "solutions" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "difficulty" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "syncing" : {
+          "type" : "boolean"
+        },
+        "listening" : {
+          "type" : "boolean"
+        },
+        "protocols" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/Protocol"
+          }
+        },
+        "node-version" : {
+          "type" : "string"
+        },
+        "node-revision" : {
+          "type" : "string"
+        },
+        "peer-count" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "pending-transactions-count" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        }
+      },
+      "example" : {
+        "difficulty" : 6,
+        "listening" : true,
+        "syncing" : true,
+        "node-version" : "node-version",
+        "solutions" : 0,
+        "node-revision" : "node-revision",
+        "peer-count" : 0,
+        "protocols" : [ {
+          "protocol_version" : 1,
+          "effective_at_height" : 0
+        }, {
+          "protocol_version" : 1,
+          "effective_at_height" : 0
+        } ],
+        "pending-transactions-count" : 0,
+        "genesis-key-block-hash" : { }
+      }
+    },
+    "Protocol" : {
+      "type" : "object",
+      "properties" : {
+        "protocol_version" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 1
+        },
+        "effective_at_height" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        }
+      },
+      "example" : {
+        "protocol_version" : 1,
+        "effective_at_height" : 0
       }
     },
     "SingleTxObject" : {
