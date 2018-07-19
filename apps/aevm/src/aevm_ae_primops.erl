@@ -18,14 +18,13 @@
                       | {error, any()}.
 call(Value, Data, State) ->
     try
-        DecodeAs = fun(T) -> {ok, V} = aeso_data:from_binary(?BASE_ADDRESS, T, Data), V end,
-        case DecodeAs({tuple, [word]}) of
-            {?PRIM_CALL_SPEND} ->
-                {?PRIM_CALL_SPEND, Recipient} = DecodeAs({tuple, [word, word]}),
+        case get_primop(Data) of
+            ?PRIM_CALL_SPEND ->
+                [Recipient] = get_args([word], Data),
                 spend(Recipient, Value, State);
-            {PrimOp} when ?PRIM_CALL_IN_ORACLE_RANGE(PrimOp) ->
+            PrimOp when ?PRIM_CALL_IN_ORACLE_RANGE(PrimOp) ->
                 oracle_call(PrimOp, Value, Data, State);
-            {PrimOp} when ?PRIM_CALL_IN_AENS_RANGE(PrimOp) ->
+            PrimOp when ?PRIM_CALL_IN_AENS_RANGE(PrimOp) ->
                 aens_call(PrimOp, Value, Data, State)
         end
     catch _:_Err ->
@@ -217,6 +216,11 @@ aens_call_revoke(Data, State) ->
 %% ------------------------------------------------------------------
 %% Internal functions
 %% ------------------------------------------------------------------
+
+get_primop(Data) ->
+    {ok, T} = aeso_data:from_binary(?BASE_ADDRESS, {tuple, [word]}, Data),
+    {PrimOp} = T,
+    PrimOp.
 
 get_args(Types, Data) ->
     {ok, Val} = aeso_data:from_binary(?BASE_ADDRESS, {tuple, [word | Types]}, Data),
