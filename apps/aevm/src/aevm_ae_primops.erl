@@ -20,8 +20,7 @@ call(Value, Data, State) ->
     try
         case get_primop(Data) of
             ?PRIM_CALL_SPEND ->
-                [Recipient] = get_args([word], Data),
-                spend(Recipient, Value, State);
+                spend_call(Value, Data, State);
             PrimOp when ?PRIM_CALL_IN_ORACLE_RANGE(PrimOp) ->
                 oracle_call(PrimOp, Value, Data, State);
             PrimOp when ?PRIM_CALL_IN_AENS_RANGE(PrimOp) ->
@@ -36,21 +35,12 @@ call(Value, Data, State) ->
 %% Basic account operations.
 %% ------------------------------------------------------------------
 
-
-spend(Recipient, Value, State) ->
-    ChainAPI   = aevm_eeevm_state:chain_api(State),
-    ChainState = aevm_eeevm_state:chain_state(State),
-
+spend_call(Value, Data, State) ->
+    [Recipient] = get_args([word], Data),
     %% TODO: This assumes that we are spending to an account
     RecipientId = aec_id:create(account, <<Recipient:256>>),
-    case ChainAPI:spend(RecipientId, Value, ChainState) of
-        {ok, ChainState1} ->
-            UnitReturn = {ok, <<0:256>>}, %% spend returns unit
-            GasSpent   = 0,         %% Already costs lots of gas
-            {ok, UnitReturn, GasSpent,
-             aevm_eeevm_state:set_chain_state(ChainState1, State)};
-        {error, _} = Err -> Err
-    end.
+    Callback = fun(API, ChainState) -> API:spend(RecipientId, Value, ChainState) end,
+    call_chain(Callback, State).
 
 %% ------------------------------------------------------------------
 %% Oracle operations.
