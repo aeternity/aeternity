@@ -128,6 +128,7 @@ serialization_template(?ORACLE_VSN) ->
     , {expires, int}
     ].
 
+-spec serialize_for_client(oracle()) -> map().
 serialize_for_client(#oracle{} = O) ->
     #{ <<"id">>              => aec_base58c:encode(oracle_pubkey, owner(O))
      , <<"query_format">>    => query_format(O)
