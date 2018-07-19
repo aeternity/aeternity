@@ -378,6 +378,36 @@ handle_request('GetPeerPubkey', _Params, _Context) ->
     {ok, Pubkey} = aec_keys:peer_pubkey(),
     {200, [], #{pubkey => aec_base58c:encode(peer_pubkey, Pubkey)}};
 
+handle_request('GetStatus', _Params, _Context) ->
+    {ok, TopBlock} = aehttp_logic:get_top(),
+    {ok, GenesisBlockHash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
+    Solutions = 0, %% TODO
+    Difficulty = aec_blocks:difficulty(TopBlock),
+    Syncing = true, %% TODO
+    Listening = true, %% TODO
+    Protocols = maps:fold(fun(Vsn, Height, Acc) ->
+                          [#{protocol => #{version => Vsn, effective_at_height => Height}} | Acc]
+                 end, [], aec_governance:protocols()),
+    NodeVersion = aeu_info:get_version(),
+    NodeRevision = aeu_info:get_revision(),
+    PeerCount = length(aec_peers:get_random(all)),
+    PendingTxsCount =
+        case aec_tx_pool:size() of
+            N when N =/= undefined -> N;
+            undefined -> 0
+        end,
+    {200, [],
+     #{<<"genesis-key-block-hash">>     => aec_base58c:encode(block_hash, GenesisBlockHash),
+       <<"solutions">>                  => Solutions,
+       <<"difficulty">>                 => Difficulty,
+       <<"syncing">>                    => Syncing,
+       <<"listening">>                  => Listening,
+       <<"protocols">>                  => Protocols,
+       <<"node-version">>               => NodeVersion,
+       <<"node-revision">>              => NodeRevision,
+       <<"peer-count">>                 => PeerCount,
+       <<"pending-transactions-count">> => PendingTxsCount}};
+
 handle_request('GetBlockGenesis', Req, _Context) ->
     get_block(fun aehttp_logic:get_block_genesis/0, Req, json);
 
@@ -387,6 +417,7 @@ handle_request('GetBlockLatest', Req, _Context) ->
 handle_request('GetKeyBlockByHeightObsolete', Req, _Context) ->
     Height = maps:get('height', Req),
     get_block(fun() -> aehttp_logic:get_key_block_by_height(Height) end, Req, json);
+
 
 handle_request('GetBlockByHash', Req, _Context) ->
     case aec_base58c:safe_decode(block_hash, maps:get('hash', Req)) of

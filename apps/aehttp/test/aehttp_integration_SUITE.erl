@@ -84,6 +84,11 @@
     get_peer_pubkey/1
    ]).
 
+-export(
+   [
+    get_status/1
+   ]).
+
 %% off chain endpoints
 -export(
    [test_decode_sophia_data/1,
@@ -294,7 +299,10 @@ groups() ->
        %% /names/*
        {group, name_endpoints},
        %% TODO: /channels/*
+       %% /peers/*
        {group, peer_endpoints},
+       %% /status/*
+       {group, status_endpoints},
 
        {group, off_chain_endpoints},
        {group, external_endpoints},
@@ -450,10 +458,16 @@ groups() ->
      %% TODO: /channels/*
 
      %% /peers/*
-    {peer_endpoints, [],
-     [
-      get_peer_pubkey
-     ]},
+     {peer_endpoints, [],
+      [
+       get_peer_pubkey
+      ]},
+
+     %% /status/*
+     {status_endpoints, [],
+      [
+       get_status
+      ]},
 
      {off_chain_endpoints, [],
       [
@@ -675,7 +689,8 @@ init_per_group(Group, Config) when
       Group =:= oracle_endpoints;
       Group =:= name_endpoints;
       %%Group =:= channel_endpoints;
-      Group =:= peer_endpoints ->
+      Group =:= peer_endpoints;
+      Group =:= status_endpoints ->
     start_node(Group, Config);
 %% block_endpoints
 init_per_group(on_genesis_block = Group, Config) ->
@@ -1751,6 +1766,27 @@ get_peer_pubkey(_Config) ->
 get_peers_pubkey_sut() ->
     Host = external_address(),
     http_request(Host, get, "peers/pubkey", []).
+
+%% /status/*
+
+get_status(_Config) ->
+    {ok, 200, #{
+       <<"genesis-key-block-hash">>     := _,
+       <<"solutions">>                  := _,
+       <<"difficulty">>                 := _,
+       <<"syncing">>                    := _,
+       <<"listening">>                  := _,
+       <<"protocols">>                  := _,
+       <<"node-version">>               := _,
+       <<"node-revision">>              := _,
+       <<"peer-count">>                 := _,
+       <<"pending-transactions-count">> := _
+      }} = get_status_sut(),
+    ok.
+
+get_status_sut() ->
+    Host = external_address(),
+    http_request(Host, get, "status", []).
 
 prepare_tx(TxType, Args) ->
     %assert_required_tx_fields(TxType, Args),
