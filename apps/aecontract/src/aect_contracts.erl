@@ -139,6 +139,7 @@ serialize(#contract{owner = OwnerId, referers = RefererIds} = C) ->
       , {deposit, deposit(C)}
       ]).
 
+-spec serialize_for_client(contract()) -> map().
 serialize_for_client(#contract{} = C) ->
     #{ <<"id">> => aec_base58c:encode(contract_pubkey, id(C))
      , <<"owner">> => aec_base58c:encode(account_pubkey, owner(C))

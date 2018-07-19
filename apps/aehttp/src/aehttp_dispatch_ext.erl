@@ -250,7 +250,6 @@ handle_request('GetContract', Req, _Context) ->
                 {error, _} -> {404, [], #{reason => <<"Contract not found">>}};
                 {ok, Contract} ->
                     Response = aect_contracts:serialize_for_client(Contract),
-                    error_logger:error_msg("FAB RESP: ~p~n", [Response]),
                     {200, [], Response}
             end
     end;
@@ -280,19 +279,6 @@ handle_request('GetContractStore', Req, _Context) ->
                     {200, [], #{ <<"store">> => Response }}
             end
     end;
-
-handle_request('GetContractStore', _Req, _Context) ->
-    ParseFuns = [read_required_params([pubkey]),
-                 base58_decode([{pubkey, contract, contract_pubkey}]),
-                 fun(R, P) -> error_logger:error_msg("FAB: ~p => ~p~n", [R, P]), {ok, {200, a, maps:get(contract, P)}} end
-                ],
-    {_, _, C} = process_request(ParseFuns, _Req),
-    {ok, Trees} = aec_chain:get_top_state(),
-
-    ContractTrees = aec_trees:contracts(Trees),
-    Contract = aect_state_tree:get_contract(C, ContractTrees),
-    #{ <<"code">> := ByteCode }= aect_contracts:serialize_for_client(Contract),
-    {200, [], #{ <<"bytecode">> => aeu_hex:hexstring_encode(ByteCode) }};
 
 handle_request('GetOracleByPubkey', Params, _Context) ->
     case aec_base58c:safe_decode(oracle_pubkey, maps:get(pubkey, Params)) of
