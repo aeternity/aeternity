@@ -182,7 +182,7 @@ init_vm(State, Code, Mem, Store) ->
 
 call_contract(Caller, Target, CallGas, Value, Data, State) ->
     case vm_version(State) of
-        ?AEVM_01_Sophia_01 when Target == 0 ->  %% Primitive call
+        ?AEVM_01_Sophia_01 when Target == ?PRIM_CALLS_CONTRACT ->
             aevm_ae_primops:call(Value, Data, State);
         _ ->
             CallStack  = [Caller | call_stack(State)],
