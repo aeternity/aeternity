@@ -1582,7 +1582,7 @@ paths:
           schema:
             $ref: '#/definitions/Error'
 
-  /transactions:
+  /transactions-obsolete:
     get:
       tags:
         - external

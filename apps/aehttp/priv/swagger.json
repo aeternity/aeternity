@@ -590,17 +590,32 @@
       }
     },
     "/transactions" : {
-      "get" : {
+      "post" : {
         "tags" : [ "external", "transactions" ],
-        "description" : "Get transactions in the mempool",
-        "operationId" : "GetTxs",
+        "description" : "Post a new transaction",
+        "operationId" : "PostTransaction",
+        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
-        "parameters" : [ ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "The new transaction",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/Tx"
+          }
+        } ],
         "responses" : {
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Transactions"
+              "$ref" : "#/definitions/PostTxResponse"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
             }
           }
         }
@@ -1869,6 +1884,23 @@
             "description" : "Contract not found",
             "schema" : {
               "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/transactions-obsolete" : {
+      "get" : {
+        "tags" : [ "external", "transactions" ],
+        "description" : "Get transactions in the mempool",
+        "operationId" : "GetTxs",
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Transactions"
             }
           }
         }
