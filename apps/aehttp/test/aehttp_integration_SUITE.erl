@@ -1552,7 +1552,7 @@ get_transactions_info_by_hash_sut(Hash) ->
 
 post_transactions_sut(Tx) ->
     Host = external_address(),
-    http_request(Host, post, "transactions", #{tx => Tx}).
+    http_request(Host, post, "ng-transactions", #{tx => Tx}).
 
 %% /contracts/*
 
@@ -4927,7 +4927,7 @@ get_block_by_hash(Hash, TxObjects) ->
 
 get_transactions() ->
     Host = external_address(),
-    http_request(Host, get, "transactions-obsolete", []).
+    http_request(Host, get, "transactions", []).
 
 get_transactions(EncodedPubKey) ->
     Host = external_address(),
