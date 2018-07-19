@@ -49,7 +49,7 @@ run:
 ```
 docker run --entrypoint=/bin/bash \
     -v /tmp/generated_keys:/home/epoch/node/generated_keys \
-    aeternity/epoch
+    aeternity/epoch \
     -c './bin/epoch keys_gen my_password'
 ```
 Your generated keypair will be located in `/tmp/generated_keys` on your machine, and your public key to be put in the configuration file will be printed in the console.
