@@ -150,6 +150,9 @@
 
 %% Transactions are implemented as contract calls to address zero, with the
 %% first argument encoding the transaction type according to the below.
+
+-define(PRIM_CALLS_CONTRACT, 0).
+
 -define(PRIM_CALL_SPEND, 1).
 
 -define(PRIM_CALL_IN_ORACLE_RANGE(__TTYPE__), (((__TTYPE__) > 99) andalso ((__TTYPE__) < 200))).

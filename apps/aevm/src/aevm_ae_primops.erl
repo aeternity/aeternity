@@ -18,14 +18,12 @@
                       | {error, any()}.
 call(Value, Data, State) ->
     try
-        DecodeAs = fun(T) -> {ok, V} = aeso_data:from_binary(?BASE_ADDRESS, T, Data), V end,
-        case DecodeAs({tuple, [word]}) of
-            {?PRIM_CALL_SPEND} ->
-                {?PRIM_CALL_SPEND, Recipient} = DecodeAs({tuple, [word, word]}),
-                spend(Recipient, Value, State);
-            {PrimOp} when ?PRIM_CALL_IN_ORACLE_RANGE(PrimOp) ->
+        case get_primop(Data) of
+            ?PRIM_CALL_SPEND ->
+                spend_call(Value, Data, State);
+            PrimOp when ?PRIM_CALL_IN_ORACLE_RANGE(PrimOp) ->
                 oracle_call(PrimOp, Value, Data, State);
-            {PrimOp} when ?PRIM_CALL_IN_AENS_RANGE(PrimOp) ->
+            PrimOp when ?PRIM_CALL_IN_AENS_RANGE(PrimOp) ->
                 aens_call(PrimOp, Value, Data, State)
         end
     catch _:_Err ->
@@ -37,21 +35,12 @@ call(Value, Data, State) ->
 %% Basic account operations.
 %% ------------------------------------------------------------------
 
-
-spend(Recipient, Value, State) ->
-    ChainAPI   = aevm_eeevm_state:chain_api(State),
-    ChainState = aevm_eeevm_state:chain_state(State),
-
+spend_call(Value, Data, State) ->
+    [Recipient] = get_args([word], Data),
     %% TODO: This assumes that we are spending to an account
     RecipientId = aec_id:create(account, <<Recipient:256>>),
-    case ChainAPI:spend(RecipientId, Value, ChainState) of
-        {ok, ChainState1} ->
-            UnitReturn = {ok, <<0:256>>}, %% spend returns unit
-            GasSpent   = 0,         %% Already costs lots of gas
-            {ok, UnitReturn, GasSpent,
-             aevm_eeevm_state:set_chain_state(ChainState1, State)};
-        {error, _} = Err -> Err
-    end.
+    Callback = fun(API, ChainState) -> API:spend(RecipientId, Value, ChainState) end,
+    call_chain(Callback, State).
 
 %% ------------------------------------------------------------------
 %% Oracle operations.
@@ -114,7 +103,6 @@ oracle_call_register(_Value, Data, State) ->
     call_chain(Callback, State).
 
 oracle_call_query(Value, Data, State) ->
-    Value,
     [Oracle]  = get_args([word], Data),  %% We need the oracle address before we can decode the query
     OracleKey = <<Oracle:256>>,
     case call_chain1(fun(API, ChainState) -> API:oracle_query_spec(OracleKey, ChainState) end, State) of
@@ -217,6 +205,11 @@ aens_call_revoke(Data, State) ->
 %% ------------------------------------------------------------------
 %% Internal functions
 %% ------------------------------------------------------------------
+
+get_primop(Data) ->
+    {ok, T} = aeso_data:from_binary(?BASE_ADDRESS, {tuple, [word]}, Data),
+    {PrimOp} = T,
+    PrimOp.
 
 get_args(Types, Data) ->
     {ok, Val} = aeso_data:from_binary(?BASE_ADDRESS, {tuple, [word | Types]}, Data),

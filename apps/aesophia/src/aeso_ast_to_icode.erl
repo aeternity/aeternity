@@ -438,7 +438,7 @@ is_monomorphic(_) -> true.
 %% Implemented as a contract call to the contract with address 0.
 prim_call(Prim, Amount, Args, ArgTypes, OutType) ->
     #prim_call_contract{ gas      = #integer{ value = 0 },
-                         address  = #integer{ value = 0 },
+                         address  = #integer{ value = ?PRIM_CALLS_CONTRACT },
                          value    = Amount,
                          arg      = #tuple{cpts = [#integer{ value = Prim } | Args]},
                          arg_type = {tuple, [word | ArgTypes]},
