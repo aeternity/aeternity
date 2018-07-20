@@ -5,7 +5,7 @@
 %%% The genesis block does not follow the validation rules of the
 %%% other blocks because:
 %%% * Its state trees include preset accounts;
-%%% * It does not cointain a valid PoW (it is unmined);
+%%% * It does not contain a valid PoW (it is unmined);
 %%%   * It implies genesis block cannot be validated PoW wise;
 %%%   * Note: the miner account specified in the genesis block is
 %%%     still rewarded as for the other blocks.

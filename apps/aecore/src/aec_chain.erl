@@ -23,6 +23,7 @@
         , get_prev_generation/1
         , get_header/1
         , get_key_header_by_height/1
+        , get_key_hash/1
         , get_n_generation_headers_backwards_from_hash/2
         , get_at_most_n_generation_headers_forward_from_hash/2
         , get_top_N_blocks_time_summary/1
@@ -304,7 +305,7 @@ top_key_block() ->
             case aec_blocks:type(Block) of
                 key -> {ok, Block};
                 micro ->
-                    KeyHash = aec_blocks:key_hash(Block),
+                    {ok, KeyHash} = get_key_hash(Hash),
                     get_block(KeyHash)
             end;
         undefined ->
@@ -318,7 +319,9 @@ top_key_block_hash() ->
             {ok, Block} = get_block(Hash),
             case aec_blocks:type(Block) of
                 key -> Hash;
-                micro -> aec_blocks:key_hash(Block)
+                micro ->
+                    {ok, KeyHash} = get_key_hash(Hash),
+                    KeyHash
             end;
         undefined ->
             undefined
@@ -614,4 +617,14 @@ get_key_header_by_height(Height) when is_integer(Height), Height >= 0 ->
     case aec_chain_state:get_key_block_hash_at_height(Height) of
         error -> {error, chain_too_short};
         {ok, Hash} -> get_header(Hash)
+    end.
+
+%%%===================================================================
+%%% Key Hash
+%%%===================================================================
+
+get_key_hash(Hash) ->
+    case aec_db:find_block_key_hash(Hash) of
+        {value, KeyHash} -> {ok, KeyHash};
+        none -> error
     end.

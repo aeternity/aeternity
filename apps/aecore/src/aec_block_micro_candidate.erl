@@ -34,9 +34,13 @@ create(Block) ->
     case aec_blocks:is_key_block(Block) of
         true -> int_create(Block, Block);
         false ->
-            KeyBlockHash = aec_blocks:key_hash(Block),
-            case aec_chain:get_block(KeyBlockHash) of
-                {ok, KeyBlock} -> int_create(Block, KeyBlock);
+            {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
+            case aec_chain:get_key_hash(BlockHash) of
+                {ok, KeyBlockHash} ->
+                    case aec_chain:get_block(KeyBlockHash) of
+                        {ok, KeyBlock} -> int_create(Block, KeyBlock);
+                        _ -> {error, block_not_found}
+                    end;
                 _ -> {error, block_not_found}
             end
     end.
@@ -46,9 +50,8 @@ create(Block) ->
     {aec_blocks:block(), aec_trees:trees()}.
 create_with_state(Block, KeyBlock, Txs, Trees) ->
     {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
-    {ok, KeyBlockHash} = aec_blocks:hash_internal_representation(KeyBlock),
     {ok, NewBlock, #{ trees := NewTrees}} =
-        int_create_block(BlockHash, Block, KeyBlockHash, KeyBlock, Trees, Txs),
+        int_create_block(BlockHash, Block, KeyBlock, Trees, Txs),
     {NewBlock, NewTrees}.
 
 -spec apply_block_txs(list(aetx_sign:signed_tx()), aec_trees:trees(),
@@ -90,20 +93,19 @@ update(Block, Txs, BlockInfo) ->
 
 int_create(Block, KeyBlock) ->
     {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
-    {ok, KeyBlockHash} = aec_blocks:hash_internal_representation(KeyBlock),
     case aec_chain:get_block_state(BlockHash) of
         {ok, Trees} ->
-            int_create(BlockHash, Block, KeyBlockHash, KeyBlock, Trees);
+            int_create(BlockHash, Block, KeyBlock, Trees);
         error ->
             {error, block_state_not_found}
     end.
 
-int_create(BlockHash, Block, KeyBlockHash, KeyBlock, Trees) ->
+int_create(BlockHash, Block, KeyBlock, Trees) ->
     MaxN = aec_governance:max_txs_in_block(),
     {ok, Txs} = aec_tx_pool:get_candidate(MaxN, BlockHash),
-    int_create_block(BlockHash, Block, KeyBlockHash, KeyBlock, Trees, Txs).
+    int_create_block(BlockHash, Block, KeyBlock, Trees, Txs).
 
-int_create_block(PrevBlockHash, PrevBlock, KeyBlockHash, KeyBlock, Trees, Txs) ->
+int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
     PrevBlockHeight = aec_blocks:height(PrevBlock),
 
     %% Assert correctness of last block protocol version, as minimum
@@ -123,7 +125,7 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlockHash, KeyBlock, Trees, Txs) -
     TxsTree = aec_txs_trees:from_txs(Txs1),
     TxsRootHash = aec_txs_trees:pad_empty(aec_txs_trees:root_hash(TxsTree)),
 
-    NewBlock = aec_blocks:new_micro(Height, PrevBlockHash, KeyBlockHash,
+    NewBlock = aec_blocks:new_micro(Height, PrevBlockHash,
                                     aec_trees:hash(Trees2), TxsRootHash, Txs1,
                                     aeu_time:now_in_msecs(), Version),
 

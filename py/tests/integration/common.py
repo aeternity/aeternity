@@ -106,7 +106,7 @@ def make_no_mining_user_config(root_dir, file_name):
 ---
 chain:
     hard_forks:
-        "17": 0
+        "18": 0
 
 mining:
     autostart: false
@@ -125,7 +125,7 @@ def make_mining_user_config(root_dir, key_dir, file_name):
 ---
 chain:
     hard_forks:
-        "17": 0
+        "18": 0
 keys:
     dir: "{}"
 

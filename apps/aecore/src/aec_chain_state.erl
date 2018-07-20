@@ -162,7 +162,6 @@ set_top_block_hash(H, State) when is_binary(H) -> State#{top_block_hash => H}.
 -record(node, { header  :: #header{}
               , hash    :: binary()
               , type    :: block_type()
-              , key_hash :: binary()
               }).
 
 hash(#node{hash = Hash}) -> Hash.
@@ -185,8 +184,6 @@ node_miner(#node{header = H}) -> aec_headers:miner(H).
 node_beneficiary(#node{header = H}) -> aec_headers:beneficiary(H).
 
 node_type(#node{type = T}) -> T.
-
-node_key_hash(#node{key_hash = KeyHash}) -> KeyHash.
 
 node_time(#node{header = H}) -> aec_headers:time_in_msecs(H).
 
@@ -226,7 +223,6 @@ wrap_block(Block) ->
     #node{ header = Header
          , hash = Hash
          , type = aec_blocks:type(Block)
-         , key_hash = aec_headers:key_hash(Header)
          }.
 
 fake_key_node(PrevNode, Height, Miner, Beneficiary) ->
@@ -245,7 +241,6 @@ wrap_header(Header) ->
     #node{ header = Header
          , hash = Hash
          , type = aec_headers:type(Header)
-         , key_hash = aec_headers:key_hash(Header)
          }.
 
 export_header(#node{header = Header}) ->
@@ -364,7 +359,8 @@ assert_target_equal_to_prev(Node, PrevNode) ->
                       true  ->
                           PrevNode;
                       false ->
-                          {ok, KeyNode} = db_find_node(node_key_hash(PrevNode)),
+                          KeyHash = db_get_key_hash(hash(PrevNode)),
+                          {ok, KeyNode} = db_find_node(KeyHash),
                           KeyNode
                   end,
     case {node_target(Node), node_target(PrevKeyNode)} of
@@ -391,7 +387,7 @@ get_n_key_headers_from({ok, Node}, N, Acc) ->
             PrevNode = db_find_node(prev_hash(Node)),
             get_n_key_headers_from(PrevNode, N-1, [export_header(Node) | Acc]);
         micro ->
-            PrevKeyNode = db_find_node(node_key_hash(Node)),
+            PrevKeyNode = db_find_node(db_get_key_hash(hash(Node))),
             get_n_key_headers_from(PrevKeyNode, N, Acc)
     end;
 get_n_key_headers_from(error, _N, _Acc) ->
@@ -410,27 +406,13 @@ assert_micro_block_time(PrevNode, Node) ->
 time_diff_greater_than_minimal(Node, PrevNode) ->
     node_time(Node) >= node_time(PrevNode) + aec_governance:micro_block_cycle().
 
-assert_micro_block_key_hash(PrevNode, Node) ->
-    case is_micro_block(Node) of
-        true ->
-            CompareHash = case node_type(PrevNode) of
-                              key   -> hash(PrevNode);
-                              micro -> node_key_hash(PrevNode)
-                          end,
-            case node_key_hash(Node) =:= CompareHash of
-                true  -> ok;
-                false -> internal_error(wrong_key_hash)
-            end;
-        false -> ok
-    end.
-
-assert_micro_signature(PrevNode, Node) ->
+assert_micro_signature(PrevNode, Node, KeyHash) ->
     case is_micro_block(Node) of
         true ->
             {ok, KeyNode} =
                 case node_type(PrevNode) of
                     key   -> {ok, PrevNode};
-                    micro -> db_find_node(node_key_hash(Node))
+                    micro -> db_find_node(KeyHash)
                 end,
             Bin = aec_headers:serialize_to_binary(export_header(Node)),
             Sig = db_get_signature(hash(Node)),
@@ -452,6 +434,7 @@ assert_micro_signature(PrevNode, Node) ->
 -record(fork_info, { fork_id
                    , difficulty
                    , fees
+                   , latest_key_hash
                    }).
 
 update_state_tree(Node, State) ->
@@ -523,12 +506,14 @@ get_state_trees_in(Node, State) ->
              #fork_info{ difficulty = aec_block_genesis:genesis_difficulty()
                        , fork_id = hash(Node)
                        , fees = 0
+                       , latest_key_hash = aec_db:get_genesis_hash()
                        }
             };
         false ->
             PrevHash = prev_hash(Node),
             case db_find_state(PrevHash) of
-                {ok, Trees, ForkInfo} ->
+                {ok, Trees, ForkInfo0} ->
+                    ForkInfo = maybe_reset_key_hash(Node, ForkInfo0),
                     %% Reset accumulated fees if the previous block is a key block
                     %% to start accumulating the next generation.
                     case node_type(db_get_node(PrevHash)) of
@@ -537,6 +522,12 @@ get_state_trees_in(Node, State) ->
                     end;
                 error -> error
             end
+    end.
+
+maybe_reset_key_hash(Node, ForkInfo) ->
+    case node_type(Node) of
+        key   -> ForkInfo#fork_info{latest_key_hash = hash(Node)};
+        micro -> ForkInfo
     end.
 
 apply_and_store_state_trees(#node{hash = NodeHash} = Node, TreesIn, ForkInfoIn,
@@ -550,8 +541,7 @@ apply_and_store_state_trees(#node{hash = NodeHash} = Node, TreesIn, ForkInfoIn,
                 assert_previous_height(PrevNode, Node),
                 assert_calculated_target(Node),
                 assert_micro_block_time(PrevNode, Node),
-                assert_micro_block_key_hash(PrevNode, Node),
-                assert_micro_signature(PrevNode, Node)
+                assert_micro_signature(PrevNode, Node, ForkInfoIn#fork_info.latest_key_hash)
         end,
         {Trees, Fees} = apply_node_transactions(Node, TreesIn, ForkInfoIn, State),
         assert_state_hash_valid(Trees, Node),
@@ -670,7 +660,7 @@ find_prev_key_nodes({ok, Node}, N, Acc) ->
         key ->
             find_prev_key_nodes(db_find_node(prev_hash(Node)), N - 1, Acc);
         micro ->
-            find_prev_key_nodes(db_find_node(node_key_hash(Node)), N, Acc)
+            find_prev_key_nodes(db_find_node(db_get_key_hash(hash(Node))), N, Acc)
     end.
 
 grant_fees(Node, Trees, Delay, Fees, State) ->
@@ -788,19 +778,21 @@ db_find_nodes_at_height(Height) when is_integer(Height) ->
     end.
 
 db_put_state(Hash, Trees, ForkInfo) when is_binary(Hash) ->
-    #fork_info{ difficulty = Difficulty
-              , fork_id    = ForkId
-              , fees       = Fees
+    #fork_info{ difficulty      = Difficulty
+              , fork_id         = ForkId
+              , fees            = Fees
+              , latest_key_hash = KeyHash
               } = ForkInfo,
-    ok = aec_db:write_block_state(Hash, Trees, Difficulty, ForkId, Fees).
+    ok = aec_db:write_block_state(Hash, Trees, Difficulty, ForkId, Fees, KeyHash).
 
 db_find_state(Hash) ->
     case aec_db:find_block_state_and_data(Hash) of
-        {value, Trees, Difficulty, ForkId, Fees} ->
+        {value, Trees, Difficulty, ForkId, Fees, KeyHash} ->
             {ok, Trees,
              #fork_info{ difficulty = Difficulty
                        , fork_id = ForkId
                        , fees = Fees
+                       , latest_key_hash = KeyHash
                        }
             };
         none -> error
@@ -827,6 +819,10 @@ db_get_signature(Hash) when is_binary(Hash) ->
 db_get_fees(Hash) when is_binary(Hash) ->
     {value, Fees} = aec_db:find_block_fees(Hash),
     Fees.
+
+db_get_key_hash(Hash) when is_binary(Hash) ->
+    {value, KeyHash} = aec_db:find_block_key_hash(Hash),
+    KeyHash.
 
 db_get_tx_hashes(Hash) when is_binary(Hash) ->
     aec_db:get_block_tx_hashes(Hash).

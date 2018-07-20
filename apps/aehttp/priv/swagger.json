@@ -2826,9 +2826,6 @@
         "txs_hash" : {
           "$ref" : "#/definitions/EncodedHash"
         },
-        "key_hash" : {
-          "$ref" : "#/definitions/EncodedHash"
-        },
         "signature" : {
           "$ref" : "#/definitions/EncodedHash"
         },
@@ -2845,7 +2842,6 @@
         "txs_hash" : null,
         "state_hash" : null,
         "signature" : null,
-        "key_hash" : null,
         "prev_hash" : null,
         "time" : 6,
         "version" : 1,

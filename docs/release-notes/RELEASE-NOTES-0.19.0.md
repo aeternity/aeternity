@@ -2,7 +2,7 @@
 
 [This release][this-release] is focused on TODOFILLMEIN.
 It:
-* Does this.
+* Removes `key_hash` field from micro blocks. This impacts consensus.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.19.0
 
