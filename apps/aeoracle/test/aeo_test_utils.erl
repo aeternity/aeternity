@@ -75,14 +75,14 @@ register_tx(PubKey, Spec0, State) ->
     Tx.
 
 register_tx_default_spec(PubKey, State) ->
-    #{ account    => aec_id:create(account, PubKey)
-     , oracle_ttl => {delta, maps:get(oracle, ttl_defaults())}
-     , fee        => 5
-     , nonce      => try next_nonce(PubKey, State) catch _:_ -> 0 end
-     , query_fee  => 5
-     , query_spec => <<"string()">>
-     , response_spec => <<"boolean() | integer()">>
-     , ttl        => 0
+    #{ account_id      => aec_id:create(account, PubKey)
+     , oracle_ttl      => {delta, maps:get(oracle, ttl_defaults())}
+     , fee             => 5
+     , nonce           => try next_nonce(PubKey, State) catch _:_ -> 0 end
+     , query_fee       => 5
+     , query_format    => <<"string()">>
+     , response_format => <<"boolean() | integer()">>
+     , ttl             => 0
      }.
 
 %%%===================================================================
@@ -98,7 +98,7 @@ extend_tx(PubKey, Spec0, State) ->
     Tx.
 
 extend_tx_default_spec(PubKey, State) ->
-    #{ oracle     => aec_id:create(oracle, PubKey)
+    #{ oracle_id  => aec_id:create(oracle, PubKey)
      , oracle_ttl => {delta, maps:get(extend, ttl_defaults())}
      , fee        => 5
      , nonce      => try next_nonce(PubKey, State) catch _:_ -> 0 end
@@ -118,8 +118,8 @@ query_tx(PubKey, OracleKey, Spec0, State) ->
     Tx.
 
 query_tx_default_spec(PubKey, OracleKey, State) ->
-    #{ sender       => aec_id:create(account, PubKey)
-     , oracle       => OracleKey
+    #{ sender_id    => aec_id:create(account, PubKey)
+     , oracle_id    => OracleKey
      , query        => <<"Hello world">>
      , query_fee    => 5
      , query_ttl    => {delta, maps:get(query, ttl_defaults())}
@@ -141,12 +141,12 @@ response_tx(PubKey, ID, Response, Spec0, State) ->
     Tx.
 
 response_tx_default_spec(PubKey, ID, Response, State) ->
-    #{ nonce    => try next_nonce(PubKey, State) catch _:_ -> 0 end
-     , oracle   => aec_id:create(oracle, PubKey)
-     , query_id => ID
-     , response => Response
-     , fee      => 3
-     , ttl      => 0
+    #{ nonce     => try next_nonce(PubKey, State) catch _:_ -> 0 end
+     , oracle_id => aec_id:create(oracle, PubKey)
+     , query_id  => ID
+     , response  => Response
+     , fee       => 3
+     , ttl       => 0
      }.
 
 

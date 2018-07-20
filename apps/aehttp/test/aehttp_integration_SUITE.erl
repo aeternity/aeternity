@@ -773,7 +773,7 @@ init_per_group(block_info, Config) ->
 init_per_group(nonexistent_account = Group, Config) ->
     Config1 = start_node(Group, Config),
     {ok, Pubkey} = rpc(aec_keys, pubkey, []),
-    [{account_pubkey, aec_base58c:encode(account_pubkey, Pubkey)},
+    [{account_id, aec_base58c:encode(account_pubkey, Pubkey)},
      {account_exists, false} | Config1];
 init_per_group(account_with_balance = Group, Config) ->
     Config1 = start_node(Group, Config),
@@ -782,7 +782,7 @@ init_per_group(account_with_balance = Group, Config) ->
     aecore_suite_utils:mine_key_blocks(Node, aecore_suite_utils:latest_fork_height()),
     {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     true = aec_blocks:is_key_block(KeyBlock),
-    [{account_pubkey, aec_base58c:encode(account_pubkey, Pubkey)},
+    [{account_id, aec_base58c:encode(account_pubkey, Pubkey)},
      {account_exists, true} | Config1];
 init_per_group(account_with_pending_tx, Config) ->
     Node = ?config(node, Config),
@@ -830,8 +830,8 @@ init_per_group(post_tx_to_mempool = Group, Config) ->
     aecore_suite_utils:mine_key_blocks(Node, aecore_suite_utils:latest_fork_height()),
     {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     true = aec_blocks:is_key_block(KeyBlock),
-    [{account_pubkey, aec_base58c:encode(account_pubkey, Pubkey)},
-     {recipient_pubkey, aec_base58c:encode(account_pubkey, random_hash())},
+    [{sender_id, aec_base58c:encode(account_pubkey, Pubkey)},
+     {recipient_id, aec_base58c:encode(account_pubkey, random_hash())},
      {amount, 1},
      {fee, 1},
      {payload, <<"foo">>} | Config1];
@@ -906,8 +906,8 @@ end_per_group(Group, Config) ->
 init_per_testcase(post_oracle_register, Config) ->
     %% TODO: assert there is enought balance
     {ok, Pubkey} = rpc(aec_keys, pubkey, []),
-    [{account_pubkey, aec_base58c:encode(account_pubkey, Pubkey)},
-     {oracle_pubkey, aec_base58c:encode(oracle_pubkey, Pubkey)},
+    [{account_id, aec_base58c:encode(account_pubkey, Pubkey)},
+     {oracle_id, aec_base58c:encode(oracle_pubkey, Pubkey)},
      {query_format, <<"something">>},
      {response_format, <<"something else">>},
      {query_fee, 1},
@@ -917,16 +917,16 @@ init_per_testcase(post_oracle_register, Config) ->
 init_per_testcase(post_oracle_extend, Config) ->
     {post_oracle_register, SavedConfig} = ?config(saved_config, Config),
     OracleTtlDelta = 500,
-    [{account_pubkey, ?config(account_pubkey, SavedConfig)},
-     {oracle_pubkey, ?config(oracle_pubkey, SavedConfig)},
+    [{account_id, ?config(account_id, SavedConfig)},
+     {oracle_id, ?config(oracle_id, SavedConfig)},
      {fee, 10},
      {oracle_ttl_value_final, ?config(oracle_ttl_value, SavedConfig) + OracleTtlDelta},
      {oracle_ttl_type, <<"delta">>},
      {oracle_ttl_value, OracleTtlDelta} | init_per_testcase_all(Config)];
 init_per_testcase(post_oracle_query, Config) ->
     {post_oracle_extend, SavedConfig} = ?config(saved_config, Config),
-    [{sender_pubkey, ?config(account_pubkey, SavedConfig)},
-     {oracle_pubkey, ?config(oracle_pubkey, SavedConfig)},
+    [{sender_id, ?config(account_id, SavedConfig)},
+     {oracle_id, ?config(oracle_id, SavedConfig)},
      {query, <<"Hejsan Svejsan">>},
      {query_fee, 2},
      {fee, 30},
@@ -936,8 +936,8 @@ init_per_testcase(post_oracle_query, Config) ->
      {response_ttl_value, 20} | init_per_testcase_all(Config)];
 init_per_testcase(post_oracle_response, Config) ->
     {post_oracle_query, SavedConfig} = ?config(saved_config, Config),
-    [{sender_pubkey, ?config(sender_pubkey, SavedConfig)},
-     {oracle_pubkey, ?config(oracle_pubkey, SavedConfig)},
+    [{sender_id, ?config(sender_id, SavedConfig)},
+     {oracle_id, ?config(oracle_id, SavedConfig)},
      {query, ?config(query, SavedConfig)},
      {query_id, ?config(query_id, SavedConfig)},
      {fee, 10},
@@ -1445,14 +1445,14 @@ get_account_by_pubkey(Config) ->
     get_account_by_pubkey(?config(account_exists, Config), Config).
 
 get_account_by_pubkey(false, Config) ->
-    AccountPubkey = ?config(account_pubkey, Config),
-    {ok, 404, Error} = get_accounts_by_pubkey_sut(AccountPubkey),
+    AccountId = ?config(account_id, Config),
+    {ok, 404, Error} = get_accounts_by_pubkey_sut(AccountId),
     ?assertEqual(<<"Account not found">>, maps:get(<<"reason">>, Error)),
     ok;
 get_account_by_pubkey(true, Config) ->
-    AccountPubkey = ?config(account_pubkey, Config),
-    {ok, 200, Account} = get_accounts_by_pubkey_sut(AccountPubkey),
-    ?assertEqual(AccountPubkey, maps:get(<<"pubkey">>, Account)),
+    AccountId = ?config(account_id, Config),
+    {ok, 200, Account} = get_accounts_by_pubkey_sut(AccountId),
+    ?assertEqual(AccountId, maps:get(<<"id">>, Account)),
     ?assert(maps:get(<<"balance">>, Account) > 0),
     %% TODO: check nonce?
     ok.
@@ -1461,26 +1461,26 @@ get_pending_account_transactions_by_pubkey(Config) ->
     get_pending_account_transactions_by_pubkey(?config(account_exists, Config), Config).
 
 get_pending_account_transactions_by_pubkey(false, Config) ->
-    AccountPubkey = ?config(account_pubkey, Config),
-    {ok, 404, Error} = get_accounts_transactions_pending_by_pubkey_sut(AccountPubkey),
+    AccountId = ?config(account_id, Config),
+    {ok, 404, Error} = get_accounts_transactions_pending_by_pubkey_sut(AccountId),
     ?assertEqual(<<"Account not found">>, maps:get(<<"reason">>, Error)),
     ok;
 get_pending_account_transactions_by_pubkey(true, Config) ->
-    AccountPubkey = ?config(account_pubkey, Config),
+    AccountId = ?config(account_id, Config),
     PendingTxs = proplists:get_value(pending_txs, Config, []),
-    {ok, 200, Txs} = get_accounts_transactions_pending_by_pubkey_sut(AccountPubkey),
+    {ok, 200, Txs} = get_accounts_transactions_pending_by_pubkey_sut(AccountId),
     %% TODO: check txs hashes
     ?assertEqual(length(PendingTxs), length(maps:get(<<"transactions">>, Txs))),
     ok.
 
-get_accounts_by_pubkey_sut(Pubkey) ->
+get_accounts_by_pubkey_sut(Id) ->
     Host = external_address(),
-    http_request(Host, get, "accounts/" ++ http_uri:encode(Pubkey), []).
+    http_request(Host, get, "accounts/" ++ http_uri:encode(Id), []).
 
-get_accounts_transactions_pending_by_pubkey_sut(Pubkey) ->
+get_accounts_transactions_pending_by_pubkey_sut(Id) ->
     Host = external_address(),
-    Pubkey1 = binary_to_list(Pubkey),
-    http_request(Host, get, "accounts/" ++ http_uri:encode(Pubkey1) ++ "/transactions/pending", []).
+    Id1 = binary_to_list(Id),
+    http_request(Host, get, "accounts/" ++ http_uri:encode(Id1) ++ "/transactions/pending", []).
 
 %% /transactions/*
 
@@ -1512,11 +1512,11 @@ get_transaction_info_by_hash(_Config) ->
 
 post_spend_tx(Config) ->
     TxArgs =
-        #{sender           => ?config(account_pubkey, Config),
-          recipient_pubkey => ?config(recipient_pubkey, Config),
-          amount           => ?config(amount, Config),
-          fee              => ?config(fee, Config),
-          payload          => ?config(payload, Config)},
+        #{sender_id    => ?config(sender_id, Config),
+          recipient_id => ?config(recipient_id, Config),
+          amount       => ?config(amount, Config),
+          fee          => ?config(fee, Config),
+          payload      => ?config(payload, Config)},
     {TxHash, Tx} = prepare_tx(spend_tx, TxArgs),
     ok = post_tx(TxHash, Tx),
     ok.
@@ -1527,19 +1527,19 @@ post_contract_and_call_tx(_Config) ->
     {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
 
     {ok, EncodedInitCallData} = aect_sophia:encode_call_data(Code, <<"init">>, <<"()">>),
-    ValidEncoded = #{ owner => MinerAddress,
-                      code => Code,
+    ValidEncoded = #{ owner_id   => MinerAddress,
+                      code       => Code,
                       vm_version => 1,
-                      deposit => 2,
-                      amount => 1,
-                      gas => 300,
-                      gas_price => 1,
-                      fee => 1,
-                      call_data => EncodedInitCallData},
+                      deposit    => 2,
+                      amount     => 1,
+                      gas        => 300,
+                      gas_price  => 1,
+                      fee        => 1,
+                      call_data  => EncodedInitCallData},
 
     %% prepare a contract_create_tx and post it
     {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
-                <<"contract_address">> := EncodedContractPubKey}} =
+                <<"contract_id">> := EncodedContractPubKey}} =
         get_contract_create(ValidEncoded),
     %%%% {ok, ContractPubKey} = aec_base58c:safe_decode(contract_pubkey, EncodedContractPubKey),
     ContractCreateTxHash = sign_and_post_tx(EncodedUnsignedContractCreateTx),
@@ -1555,14 +1555,14 @@ post_contract_and_call_tx(_Config) ->
     ?assertMatch({ok, 200, _}, get_transactions_info_by_hash_sut(ContractCreateTxHash)),
 
     {ok, EncodedCallData} = aect_sophia:encode_call_data(Code, <<"main">>, <<"42">>),
-    ContractCallEncoded = #{ caller => MinerAddress,
-                             contract => EncodedContractPubKey,
-                             vm_version => 1,
-                             amount => 1,
-                             gas => 1000,
-                             gas_price => 1,
-                             fee => 1,
-                             call_data => EncodedCallData},
+    ContractCallEncoded = #{ caller_id   => MinerAddress,
+                             contract_id => EncodedContractPubKey,
+                             vm_version  => 1,
+                             amount      => 1,
+                             gas         => 1000,
+                             gas_price   => 1,
+                             fee         => 1,
+                             call_data   => EncodedCallData},
     {ok, 200, #{<<"tx">> := EncodedUnsignedContractCallTx}} = get_contract_call(ContractCallEncoded),
     ContractCallTxHash = sign_and_post_tx(EncodedUnsignedContractCallTx),
 
@@ -1610,19 +1610,19 @@ get_contract(_Config) ->
                                      InitArgument),
 
     ContractInitBalance = 1,
-    ValidEncoded = #{ owner => MinerAddress,
-                      code => Code,
+    ValidEncoded = #{ owner_id   => MinerAddress,
+                      code       => Code,
                       vm_version => 1,
-                      deposit => 2,
-                      amount => ContractInitBalance,
-                      gas => 300,
-                      gas_price => 1,
-                      fee => 1,
-                      call_data => EncodedInitCallData},
+                      deposit    => 2,
+                      amount     => ContractInitBalance,
+                      gas        => 300,
+                      gas_price  => 1,
+                      fee        => 1,
+                      call_data  => EncodedInitCallData},
 
     ValidDecoded = maps:merge(ValidEncoded,
-                              #{owner => aec_id:create(account, MinerPubkey),
-                                code => aeu_hex:hexstring_decode(Code),
+                              #{owner_id  => aec_id:create(account, MinerPubkey),
+                                code      => aeu_hex:hexstring_decode(Code),
                                 call_data => aeu_hex:hexstring_decode(EncodedInitCallData)}),
 
     unsigned_tx_positive_test(ValidDecoded, ValidEncoded, fun get_contract_create/1,
@@ -1630,7 +1630,7 @@ get_contract(_Config) ->
 
     %% prepare a contract_create_tx and post it
     {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
-                <<"contract_address">> := EncodedContractPubKey}} = get_contract_create(ValidEncoded),
+                <<"contract_id">> := EncodedContractPubKey}} = get_contract_create(ValidEncoded),
     ContractCreateTxHash = sign_and_post_tx(EncodedUnsignedContractCreateTx),
 
     %% Try to get the contract init call object while in mempool
@@ -1645,11 +1645,14 @@ get_contract(_Config) ->
 
     {ok, 200, #{<<"return_value">> := ReturnValue}} = get_contract_call_object(ContractCreateTxHash),
 
-    ?assertMatch({ok, 200, #{
-            <<"id">> := EncodedContractPubKey, <<"owner">> := MinerAddress,
-            <<"active">> := true, <<"deposit">> := 2, <<"vm_version">> := 1,
-            <<"referers">> := [], <<"log">> := <<>>
-        }}, get_contract_sut(EncodedContractPubKey)),
+    ?assertMatch({ok, 200, #{<<"id">>          := EncodedContractPubKey,
+                             <<"owner_id">>    := MinerAddress,
+                             <<"active">>      := true,
+                             <<"deposit">>     := 2,
+                             <<"vm_version">>  := 1,
+                             <<"referrer_ids">> := [],
+                             <<"log">>         := <<>>}},
+                 get_contract_sut(EncodedContractPubKey)),
     ?assertEqual({ok, 200, #{<<"bytecode">> => Code}}, get_contract_code_sut(EncodedContractPubKey)),
     ?assertMatch({ok, 200, #{<<"store">> := [
         #{<<"key">> := <<"0x00">>, <<"value">> := ReturnValue}
@@ -1677,10 +1680,9 @@ get_oracle_by_pubkey(_Config) ->
     ok.
 
 post_oracle_register(Config) ->
-    Node = ?config(node, Config),
-    OraclePubkey = ?config(oracle_pubkey, Config),
+    OracleId = ?config(oracle_id, Config),
     TxArgs =
-        #{account         => ?config(account_pubkey, Config),
+        #{account_id      => ?config(account_id, Config),
           query_format    => ?config(query_format, Config),
           response_format => ?config(response_format, Config),
           query_fee       => ?config(query_fee, Config),
@@ -1690,75 +1692,72 @@ post_oracle_register(Config) ->
     {TxHash, Tx} = prepare_tx(oracle_register_tx, TxArgs),
     ok = post_tx(TxHash, Tx),
     ok = wait_for_tx_hash_on_chain(TxHash),
-    {ok, 200, Resp} = get_oracles_by_pubkey_sut(OraclePubkey),
-    ?assertEqual(OraclePubkey, maps:get(<<"id">>, Resp)),
-    {save_config, save_config([account_pubkey, oracle_pubkey, oracle_ttl_value], Config)}.
+    {ok, 200, Resp} = get_oracles_by_pubkey_sut(OracleId),
+    ?assertEqual(OracleId, maps:get(<<"id">>, Resp)),
+    {save_config, save_config([account_id, oracle_id, oracle_ttl_value], Config)}.
 
 post_oracle_extend(Config) ->
-    Node = ?config(node, Config),
-    OraclePubkey = ?config(oracle_pubkey, Config),
+    OracleId = ?config(oracle_id, Config),
     TxArgs =
-        #{oracle     => OraclePubkey,
+        #{oracle_id  => OracleId,
           fee        => ?config(fee, Config),
           oracle_ttl => #{type  => ?config(oracle_ttl_type, Config),
                           value => ?config(oracle_ttl_value, Config)}},
     {TxHash, Tx} = prepare_tx(oracle_extend_tx, TxArgs),
     ok = post_tx(TxHash, Tx),
     ok = wait_for_tx_hash_on_chain(TxHash),
-    {ok, 200, Resp} = get_oracles_by_pubkey_sut(OraclePubkey),
-    ?assertEqual(OraclePubkey, maps:get(<<"id">>, Resp)),
+    {ok, 200, Resp} = get_oracles_by_pubkey_sut(OracleId),
+    ?assertEqual(OracleId, maps:get(<<"id">>, Resp)),
     ?assertEqual(?config(oracle_ttl_value_final, Config), maps:get(<<"expires">>, Resp)),
-    {ok, 200, Resp1} = get_oracles_queries_by_pubkey_sut(OraclePubkey, #{type => "all"}),
+    {ok, 200, Resp1} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "all"}),
     ?assertEqual([], maps:get(<<"oracle_queries">>, Resp1)),
-    {save_config, save_config([account_pubkey, oracle_pubkey], Config)}.
+    {save_config, save_config([account_id, oracle_id], Config)}.
 
 post_oracle_query(Config) ->
-    Node = ?config(node, Config),
-    SenderPubkey = ?config(sender_pubkey, Config),
-    OraclePubkey = ?config(oracle_pubkey, Config),
+    SenderId = ?config(sender_id, Config),
+    OracleId = ?config(oracle_id, Config),
     TxArgs =
-        #{sender        => SenderPubkey,
-          oracle_pubkey => OraclePubkey,
-          query         => ?config(query, Config),
-          query_fee     => ?config(query_fee, Config),
-          fee           => ?config(fee, Config),
-          query_ttl     => #{type  => ?config(query_ttl_type, Config),
-                             value => ?config(query_ttl_value, Config)},
-          response_ttl  => #{type  => ?config(response_ttl_type, Config),
-                             value => ?config(response_ttl_value, Config)}},
+        #{sender_id    => SenderId,
+          oracle_id    => OracleId,
+          query        => ?config(query, Config),
+          query_fee    => ?config(query_fee, Config),
+          fee          => ?config(fee, Config),
+          query_ttl    => #{type  => ?config(query_ttl_type, Config),
+                            value => ?config(query_ttl_value, Config)},
+          response_ttl => #{type  => ?config(response_ttl_type, Config),
+                            value => ?config(response_ttl_value, Config)}},
     {TxHash, Tx} = prepare_tx(oracle_query_tx, TxArgs),
     ok = post_tx(TxHash, Tx),
     ok = wait_for_tx_hash_on_chain(TxHash),
-    {ok, 200, Resp} = get_oracles_queries_by_pubkey_sut(OraclePubkey, #{type => "closed"}),
+    {ok, 200, Resp} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "closed"}),
     ?assertEqual([], maps:get(<<"oracle_queries">>, Resp)),
-    {ok, 200, Resp1} = get_oracles_queries_by_pubkey_sut(OraclePubkey, #{type => "all"}),
+    {ok, 200, Resp1} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "all"}),
     ?assertEqual(1, length(maps:get(<<"oracle_queries">>, Resp1))),
     [Query] = maps:get(<<"oracle_queries">>, Resp1),
-    ?assertEqual(SenderPubkey, maps:get(<<"sender">>, Query)),
-    ?assertEqual(OraclePubkey, maps:get(<<"oracle_id">>, Query)),
-    QueryId = maps:get(<<"query_id">>, Query),
+    ?assertEqual(SenderId, maps:get(<<"sender_id">>, Query)),
+    ?assertEqual(OracleId, maps:get(<<"oracle_id">>, Query)),
+    QueryId = maps:get(<<"id">>, Query),
     Config1 = [{query, ?config(query, Config)}, {query_id, QueryId} | Config],
-    {save_config, save_config([sender_pubkey, oracle_pubkey, query, query_id], Config1)}.
+    {save_config, save_config([sender_id, oracle_id, query, query_id], Config1)}.
 
 post_oracle_response(Config) ->
-    Node = ?config(node, Config),
-    OraclePubkey = ?config(oracle_pubkey, Config),
+    OracleId = ?config(oracle_id, Config),
     Query = ?config(query, Config),
     QueryId = ?config(query_id, Config),
     Response = ?config(response, Config),
     TxArgs =
-        #{oracle   => OraclePubkey,
-          query_id => QueryId,
-          response => Response,
-          fee      => ?config(fee, Config)},
+        #{oracle_id => OracleId,
+          query_id  => QueryId,
+          response  => Response,
+          fee       => ?config(fee, Config)},
     {TxHash, Tx} = prepare_tx(oracle_response_tx, TxArgs),
     ok = post_tx(TxHash, Tx),
     ok = wait_for_tx_hash_on_chain(TxHash),
-    {ok, 200, Resp} = get_oracles_queries_by_pubkey_sut(OraclePubkey, #{type => "open"}),
+    {ok, 200, Resp} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "open"}),
     ?assertEqual([], maps:get(<<"oracle_queries">>, Resp)),
-    {ok, 200, Resp1} = get_oracles_query_by_pubkey_and_query_id(OraclePubkey, QueryId),
-    ?assertEqual(QueryId, maps:get(<<"query_id">>, Resp1)),
-    ?assertEqual(OraclePubkey, maps:get(<<"oracle_id">>, Resp1)),
+    {ok, 200, Resp1} = get_oracles_query_by_pubkey_and_query_id(OracleId, QueryId),
+    ?assertEqual(QueryId, maps:get(<<"id">>, Resp1)),
+    ?assertEqual(OracleId, maps:get(<<"oracle_id">>, Resp1)),
     ?assertEqual({ok, Query}, aec_base58c:safe_decode(oracle_query, maps:get(<<"query">>, Resp1))),
     ?assertEqual({ok, Response}, aec_base58c:safe_decode(oracle_response, maps:get(<<"response">>, Resp1))),
     ok.
@@ -1806,15 +1805,15 @@ get_channel_by_pubkey(_Config) ->
 
     {ok, 200, #{
         <<"id">> := ChannelId,
-        <<"initiator">> := Initiator,
-        <<"responder">> := Responder,
-        <<"delegates">> := [],         %% Update needed
+        <<"initiator_id">> := InitiatorId,
+        <<"responder_id">> := ResponderId,
+        <<"delegate_ids">> := [],         %% Update needed
         <<"state_hash">> := StateHash
       }} = get_channel_by_pubkey_sut(ChannelId),
 
-    ?assertEqual({ok, IPub}, aec_base58c:safe_decode(account_pubkey, Initiator)),
-    ?assertEqual({ok, RPub}, aec_base58c:safe_decode(account_pubkey, Responder)),
-    ?assertMatch({ok, _}, aec_base58c:safe_decode(block_state_hash, StateHash)),
+    ?assertEqual({ok, IPub}, aec_base58c:safe_decode(account_pubkey, InitiatorId)),
+    ?assertEqual({ok, RPub}, aec_base58c:safe_decode(account_pubkey, ResponderId)),
+    ?assertMatch({ok, _}, aec_base58c:safe_decode(state, StateHash)),
     ok.
 
 get_channel_by_pubkey_sut(PubKey) ->
@@ -1998,7 +1997,7 @@ contract_transactions(_Config) ->    % miner has an account
                                      InitArgument),
 
     ContractInitBalance = 1,
-    ValidEncoded = #{ owner => MinerAddress,
+    ValidEncoded = #{ owner_id => MinerAddress,
                       code => Code,
                       vm_version => 1,
                       deposit => 2,
@@ -2009,7 +2008,7 @@ contract_transactions(_Config) ->    % miner has an account
                       call_data => EncodedInitCallData},
 
     ValidDecoded = maps:merge(ValidEncoded,
-                              #{owner => aec_id:create(account, MinerPubkey),
+                              #{owner_id => aec_id:create(account, MinerPubkey),
                                 code => aeu_hex:hexstring_decode(Code),
                                 call_data => aeu_hex:hexstring_decode(EncodedInitCallData)}),
 
@@ -2018,7 +2017,7 @@ contract_transactions(_Config) ->    % miner has an account
 
     %% prepare a contract_create_tx and post it
     {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
-                <<"contract_address">> := EncodedContractPubKey}} =
+                <<"contract_id">> := EncodedContractPubKey}} =
         get_contract_create(ValidEncoded),
     {ok, ContractPubKey} = aec_base58c:safe_decode(contract_pubkey, EncodedContractPubKey),
     ContractCreateTxHash = sign_and_post_tx(EncodedUnsignedContractCreateTx),
@@ -2036,10 +2035,10 @@ contract_transactions(_Config) ->    % miner has an account
 
     %% Get the contract init call object
     {ok, 200, InitCallObject} = get_contract_call_object(ContractCreateTxHash),
-    ?assertEqual(MinerAddress, maps:get(<<"caller_address">>, InitCallObject)),
+    ?assertEqual(MinerAddress, maps:get(<<"caller_id">>, InitCallObject)),
     ?assertEqual(get_tx_nonce(ContractCreateTxHash), maps:get(<<"caller_nonce">>, InitCallObject)),
     ?assertEqual(aec_base58c:encode(contract_pubkey, ContractPubKey),
-        maps:get(<<"contract_address">>, InitCallObject)),
+        maps:get(<<"contract_id">>, InitCallObject)),
     ?assertEqual(maps:get(gas_price, ValidDecoded), maps:get(<<"gas_price">>, InitCallObject)),
     ?assertMatch({Used, Limit} when
         is_integer(Used) andalso
@@ -2069,8 +2068,8 @@ contract_transactions(_Config) ->    % miner has an account
                                      Argument),
 
 
-    ContractCallEncoded = #{ caller => MinerAddress,
-                             contract => EncodedContractPubKey,
+    ContractCallEncoded = #{ caller_id => MinerAddress,
+                             contract_id => EncodedContractPubKey,
                              vm_version => 1,
                              amount => 1,
                              gas => 1000,
@@ -2079,8 +2078,8 @@ contract_transactions(_Config) ->    % miner has an account
                              call_data => EncodedCallData},
 
     ContractCallDecoded = maps:merge(ContractCallEncoded,
-                              #{caller => aec_id:create(account, MinerPubkey),
-                                contract => aec_id:create(contract, ContractPubKey),
+                              #{caller_id => aec_id:create(account, MinerPubkey),
+                                contract_id => aec_id:create(contract, ContractPubKey),
                                 call_data => aeu_hex:hexstring_decode(EncodedCallData)}),
 
     unsigned_tx_positive_test(ContractCallDecoded, ContractCallEncoded,
@@ -2100,10 +2099,10 @@ contract_transactions(_Config) ->    % miner has an account
 
     %% Get the call object
     {ok, 200, CallObject} = get_contract_call_object(ContractCallTxHash),
-    ?assertEqual(MinerAddress, maps:get(<<"caller_address">>, CallObject, <<>>)),
+    ?assertEqual(MinerAddress, maps:get(<<"caller_id">>, CallObject, <<>>)),
     ?assertEqual(get_tx_nonce(ContractCallTxHash), maps:get(<<"caller_nonce">>, CallObject)),
     ?assertEqual(aec_base58c:encode(contract_pubkey, ContractPubKey),
-                 maps:get(<<"contract_address">>, CallObject, <<>>)),
+                 maps:get(<<"contract_id">>, CallObject, <<>>)),
     ?assertEqual(maps:get(gas_price, ContractCallDecoded), maps:get(<<"gas_price">>, CallObject)),
     ?assertMatch({Used, Limit} when
       is_integer(Used) andalso
@@ -2129,8 +2128,8 @@ contract_transactions(_Config) ->    % miner has an account
     ?assertEqual(DecodedReturnValue, DecodedCallResult),
     #{<<"value">> := 42} = DecodedReturnValue,
 
-    ComputeCCallEncoded = #{ caller => MinerAddress,
-                             contract => EncodedContractPubKey,
+    ComputeCCallEncoded = #{ caller_id => MinerAddress,
+                             contract_id => EncodedContractPubKey,
                              vm_version => 1,
                              amount => 1,
                              gas => 1000,
@@ -2142,8 +2141,8 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, EncodedCallData} = aect_sophia:encode_call_data(Code, Function,
                                                          Argument),
     ComputeCCallDecoded = maps:merge(ComputeCCallEncoded,
-                              #{caller => aec_id:create(account, MinerPubkey),
-                                contract => aec_id:create(contract, ContractPubKey),
+                              #{caller_id => aec_id:create(account, MinerPubkey),
+                                contract_id => aec_id:create(contract, ContractPubKey),
                                 call_data => aeu_hex:hexstring_decode(EncodedCallData)}),
 
     unsigned_tx_positive_test(ComputeCCallDecoded, ComputeCCallEncoded,
@@ -2161,9 +2160,9 @@ contract_transactions(_Config) ->    % miner has an account
 
     %% Get the call object
     {ok, 200, CallObject1} = get_contract_call_object(ContractCallComputeTxHash),
-    ?assertEqual(MinerAddress, maps:get(<<"caller_address">>, CallObject1, <<>>)),
+    ?assertEqual(MinerAddress, maps:get(<<"caller_id">>, CallObject1, <<>>)),
     ?assertEqual(aec_base58c:encode(contract_pubkey, ContractPubKey),
-                 maps:get(<<"contract_address">>, CallObject1, <<>>)),
+                 maps:get(<<"contract_id">>, CallObject1, <<>>)),
 
     {ok, 200, #{<<"data">> := DecodedCallReturnValue}} =
         get_contract_decode_data(
@@ -2176,35 +2175,35 @@ contract_transactions(_Config) ->    % miner has an account
     %% Invalid hashes
     %% invalid owner hash
     <<_, InvalidHash/binary>> = MinerAddress,
-    {ok, 400, #{<<"reason">> := <<"Invalid hash: owner">>}} =
-        get_contract_create(maps:put(owner, InvalidHash, ValidEncoded)),
+    {ok, 400, #{<<"reason">> := <<"Invalid hash: owner_id">>}} =
+        get_contract_create(maps:put(owner_id, InvalidHash, ValidEncoded)),
     % invalid caller hash
-    {ok, 400, #{<<"reason">> := <<"Invalid hash: caller">>}} =
-        get_contract_call(maps:put(caller, InvalidHash, ContractCallEncoded)),
+    {ok, 400, #{<<"reason">> := <<"Invalid hash: caller_id">>}} =
+        get_contract_call(maps:put(caller_id, InvalidHash, ContractCallEncoded)),
     % invalid caller hash
-    {ok, 400, #{<<"reason">> := <<"Invalid hash: caller">>}} =
-        get_contract_call_compute(maps:put(caller, InvalidHash,
+    {ok, 400, #{<<"reason">> := <<"Invalid hash: caller_id">>}} =
+        get_contract_call_compute(maps:put(caller_id, InvalidHash,
                                            ComputeCCallEncoded)),
     %% account not found
     RandAddress = aec_base58c:encode(account_pubkey, random_hash()),
     RandContractAddress =aec_base58c:encode(contract_pubkey, random_hash()),
     %% owner not found
-    {ok, 404, #{<<"reason">> := <<"Account of owner not found">>}} =
-        get_contract_create(maps:put(owner, RandAddress, ValidEncoded)),
+    {ok, 404, #{<<"reason">> := <<"Account of owner_id not found">>}} =
+        get_contract_create(maps:put(owner_id, RandAddress, ValidEncoded)),
     %% caller not found
-    {ok, 404, #{<<"reason">> := <<"Account of caller not found">>}} =
-        get_contract_call(maps:put(caller, RandAddress, ContractCallEncoded)),
+    {ok, 404, #{<<"reason">> := <<"Account of caller_id not found">>}} =
+        get_contract_call(maps:put(caller_id, RandAddress, ContractCallEncoded)),
     %% contract not found
-    {ok, 404, #{<<"reason">> := <<"Contract address for key contract not found">>}} =
-        get_contract_call(maps:put(contract, RandContractAddress,
+    {ok, 404, #{<<"reason">> := <<"Contract address for key contract_id not found">>}} =
+        get_contract_call(maps:put(contract_id, RandContractAddress,
                                    ContractCallEncoded)),
     %% caller not found
-    {ok, 404, #{<<"reason">> := <<"Account of caller not found">>}} =
-        get_contract_call_compute(maps:put(caller, RandAddress,
+    {ok, 404, #{<<"reason">> := <<"Account of caller_id not found">>}} =
+        get_contract_call_compute(maps:put(caller_id, RandAddress,
                                            ComputeCCallEncoded)),
     %% contract not found
-    {ok, 404, #{<<"reason">> := <<"Contract address for key contract not found">>}} =
-        get_contract_call_compute(maps:put(contract, RandContractAddress,
+    {ok, 404, #{<<"reason">> := <<"Contract address for key contract_id not found">>}} =
+        get_contract_call_compute(maps:put(contract_id, RandContractAddress,
                                            ComputeCCallEncoded)),
 
     %% Invalid hexstrings
@@ -2252,7 +2251,7 @@ contract_create_compute_transaction(_Config) ->
     {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
 
     ContractInitBalance = 1,
-    ValidEncoded = #{ owner => MinerAddress,
+    ValidEncoded = #{ owner_id => MinerAddress,
                       code => Code,
                       vm_version => 1,
                       deposit => 2,
@@ -2264,7 +2263,7 @@ contract_create_compute_transaction(_Config) ->
 
     %% prepare a contract_create_tx and post it
     {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
-                <<"contract_address">> := EncodedContractPubKey}} =
+                <<"contract_id">> := EncodedContractPubKey}} =
         get_contract_create_compute(ValidEncoded),
 
     ContractCreateTxHash = sign_and_post_tx(EncodedUnsignedContractCreateTx),
@@ -2275,8 +2274,8 @@ contract_create_compute_transaction(_Config) ->
 
     Function = <<"main">>,
     Argument = <<"(42)">>,
-    ComputeCCallEncoded = #{ caller => MinerAddress,
-                             contract => EncodedContractPubKey,
+    ComputeCCallEncoded = #{ caller_id => MinerAddress,
+                             contract_id => EncodedContractPubKey,
                              vm_version => 1,
                              amount => 1,
                              gas => 1000,
@@ -2321,15 +2320,15 @@ contract_create_transaction_init_error(_Config) ->
         aect_sophia:encode_call_data(Code,
             InitFunction,
             InitArgument),
-    ValidEncoded = #{ owner => MinerAddress,
-        code => Code,
-        vm_version => 1,
-        deposit => 2,
-        amount => 1,
-        gas => 30,
-        gas_price => 1,
-        fee => 1,
-        call_data => EncodedInitCallData},
+    ValidEncoded = #{ owner_id   => MinerAddress,
+                      code       => Code,
+                      vm_version => 1,
+                      deposit    => 2,
+                      amount     => 1,
+                      gas        => 30,
+                      gas_price  => 1,
+                      fee        => 1,
+                      call_data  => EncodedInitCallData},
     ValidDecoded = maps:merge(ValidEncoded,
         #{owner => MinerPubkey,
             code => aeu_hex:hexstring_decode(Code),
@@ -2337,7 +2336,7 @@ contract_create_transaction_init_error(_Config) ->
 
     %% prepare a contract_create_tx and post it
     {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
-        <<"contract_address">> := EncodedContractPubKey}} =
+        <<"contract_id">> := EncodedContractPubKey}} =
         get_contract_create(ValidEncoded),
     {ok, ContractPubKey} = aec_base58c:safe_decode(contract_pubkey, EncodedContractPubKey),
     ContractCreateTxHash = sign_and_post_tx(EncodedUnsignedContractCreateTx),
@@ -2352,10 +2351,10 @@ contract_create_transaction_init_error(_Config) ->
 
     %% Get the contract init call object
     {ok, 200, InitCallObject} = get_contract_call_object(ContractCreateTxHash),
-    ?assertEqual(MinerAddress, maps:get(<<"caller_address">>, InitCallObject)),
+    ?assertEqual(MinerAddress, maps:get(<<"caller_id">>, InitCallObject)),
     ?assertEqual(get_tx_nonce(ContractCreateTxHash), maps:get(<<"caller_nonce">>, InitCallObject)),
     ?assertEqual(aec_base58c:encode(contract_pubkey, ContractPubKey),
-        maps:get(<<"contract_address">>, InitCallObject)),
+        maps:get(<<"contract_id">>, InitCallObject)),
     ?assertEqual(maps:get(gas_price, ValidDecoded), maps:get(<<"gas_price">>, InitCallObject)),
     ?assertMatch({Used, Limit} when
         is_integer(Used) andalso
@@ -2376,16 +2375,16 @@ oracle_transactions(_Config) ->
     OracleAddress = aec_base58c:encode(oracle_pubkey, MinerPubkey),
 
     % oracle_register_tx positive test
-    RegEncoded = #{account => MinerAddress,
+    RegEncoded = #{account_id => MinerAddress,
                    query_format => <<"something">>,
                    response_format => <<"something else">>,
                    query_fee => 1,
                    fee => 6,
                    oracle_ttl => #{type => <<"block">>, value => 2000}},
     RegDecoded = maps:merge(RegEncoded,
-                            #{account => aec_id:create(account, MinerPubkey),
-                              query_spec => <<"something">>,
-                              response_spec => <<"something else">>,
+                            #{account_id => aec_id:create(account, MinerPubkey),
+                              query_format => <<"something">>,
+                              response_format => <<"something else">>,
                               oracle_ttl => {block, 2000}}),
     unsigned_tx_positive_test(RegDecoded, RegEncoded,
                                fun get_oracle_register/1,
@@ -2404,27 +2403,27 @@ oracle_transactions(_Config) ->
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
 
     % oracle_extend_tx positive test
-    ExtEncoded = #{oracle => aec_base58c:encode(oracle_pubkey, MinerPubkey),
+    ExtEncoded = #{oracle_id => aec_base58c:encode(oracle_pubkey, MinerPubkey),
                    fee => 2,
                    oracle_ttl => #{type => <<"delta">>, value => 500}},
     ExtDecoded = maps:merge(ExtEncoded,
-                            #{oracle => aec_id:create(oracle, MinerPubkey),
+                            #{oracle_id => aec_id:create(oracle, MinerPubkey),
                               oracle_ttl => {delta, 500}}),
     unsigned_tx_positive_test(ExtDecoded, ExtEncoded,
                                fun get_oracle_extend/1,
                                fun aeo_extend_tx:new/1, MinerPubkey),
 
     % oracle_query_tx positive test
-    QueryEncoded = #{sender => MinerAddress,
-                     oracle_pubkey => aec_base58c:encode(oracle_pubkey, MinerPubkey),
+    QueryEncoded = #{sender_id => MinerAddress,
+                     oracle_id => aec_base58c:encode(oracle_pubkey, MinerPubkey),
                      query => <<"Hejsan Svejsan">>,
                      query_fee => 2,
                      fee => 30,
                      query_ttl => #{type => <<"block">>, value => 30},
                      response_ttl => #{type => <<"delta">>, value => 20}},
     QueryDecoded = maps:merge(QueryEncoded,
-                              #{sender => aec_id:create(account, MinerPubkey),
-                                oracle => aec_id:create(oracle, MinerPubkey),
+                              #{sender_id => aec_id:create(account, MinerPubkey),
+                                oracle_id => aec_id:create(oracle, MinerPubkey),
                                 query_ttl => {block, 30},
                                 response_ttl => {delta, 20}}),
     unsigned_tx_positive_test(QueryDecoded, QueryEncoded,
@@ -2445,13 +2444,13 @@ oracle_transactions(_Config) ->
     ok = wait_for_tx_hash_on_chain(QueryTxHash),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
 
-    ResponseEncoded = #{oracle => OracleAddress,
+    ResponseEncoded = #{oracle_id => OracleAddress,
                         query_id => aec_base58c:encode(oracle_query_id,
                                                        QueryId),
                         response => <<"Hejsan">>,
                         fee => 3},
     ResponseDecoded = maps:merge(ResponseEncoded,
-                              #{oracle => aec_id:create(oracle, MinerPubkey),
+                              #{oracle_id => aec_id:create(oracle, MinerPubkey),
                                 query_id => QueryId}),
     unsigned_tx_positive_test(ResponseDecoded, ResponseEncoded,
                                fun get_oracle_response/1,
@@ -2465,32 +2464,32 @@ oracle_transactions(_Config) ->
 
     % broken hash
     <<_, InvalidHash/binary>> = MinerAddress,
-    {ok, 400, #{<<"reason">> := <<"Invalid hash: account">>}} =
-        get_oracle_register(maps:put(account, InvalidHash, RegEncoded)),
+    {ok, 400, #{<<"reason">> := <<"Invalid hash: account_id">>}} =
+        get_oracle_register(maps:put(account_id, InvalidHash, RegEncoded)),
 
-    {ok, 400, #{<<"reason">> := <<"Invalid hash: sender">>}} =
-        get_oracle_query(maps:put(sender, InvalidHash, QueryEncoded)),
-    {ok, 400, #{<<"reason">> := <<"Invalid hash: oracle_pubkey">>}} =
-        get_oracle_query(maps:put(oracle_pubkey, InvalidHash, QueryEncoded)),
+    {ok, 400, #{<<"reason">> := <<"Invalid hash: sender_id">>}} =
+        get_oracle_query(maps:put(sender_id, InvalidHash, QueryEncoded)),
+    {ok, 400, #{<<"reason">> := <<"Invalid hash: oracle_id">>}} =
+        get_oracle_query(maps:put(oracle_id, InvalidHash, QueryEncoded)),
 
-    {ok, 400, #{<<"reason">> := <<"Invalid hash: oracle">>}} =
-        get_oracle_response(maps:put(oracle, InvalidHash, ResponseEncoded)),
+    {ok, 400, #{<<"reason">> := <<"Invalid hash: oracle_id">>}} =
+        get_oracle_response(maps:put(oracle_id, InvalidHash, ResponseEncoded)),
 
     %% account not found
     RandAddress = aec_base58c:encode(account_pubkey, random_hash()),
     RandOracleAddress = aec_base58c:encode(oracle_pubkey, random_hash()),
     RandQueryID = aec_base58c:encode(oracle_query_id, random_hash()),
-    {ok, 404, #{<<"reason">> := <<"Account of account not found">>}} =
-        get_oracle_register(maps:put(account, RandAddress, RegEncoded)),
+    {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
+        get_oracle_register(maps:put(account_id, RandAddress, RegEncoded)),
 
-    {ok, 404, #{<<"reason">> := <<"Account of sender not found">>}} =
-        get_oracle_query(maps:put(sender, RandAddress, QueryEncoded)),
+    {ok, 404, #{<<"reason">> := <<"Account of sender_id not found">>}} =
+        get_oracle_query(maps:put(sender_id, RandAddress, QueryEncoded)),
 
-    {ok, 404, #{<<"reason">> := <<"Account of oracle not found">>}} =
-        get_oracle_response(maps:put(oracle, RandOracleAddress, ResponseEncoded)),
+    {ok, 404, #{<<"reason">> := <<"Account of oracle_id not found">>}} =
+        get_oracle_response(maps:put(oracle_id, RandOracleAddress, ResponseEncoded)),
 
-    {ok, 404, #{<<"reason">> := <<"Oracle address for key oracle not found">>}} =
-        get_oracle_query(maps:put(oracle_pubkey, RandOracleAddress, QueryEncoded)),
+    {ok, 404, #{<<"reason">> := <<"Oracle address for key oracle_id not found">>}} =
+        get_oracle_query(maps:put(oracle_id, RandOracleAddress, QueryEncoded)),
 
     {ok, 404, #{<<"reason">> := <<"Oracle query for key query_id not found">>}} =
         get_oracle_response(maps:put(query_id, RandQueryID, ResponseEncoded)),
@@ -2537,18 +2536,18 @@ nameservice_transactions(_Config) ->
 
 nameservice_transaction_preclaim(MinerAddress, MinerPubkey) ->
     Commitment = random_hash(),
-    Encoded = #{account => MinerAddress,
-                commitment => aec_base58c:encode(commitment, Commitment),
+    Encoded = #{account_id => MinerAddress,
+                commitment_id => aec_base58c:encode(commitment, Commitment),
                 fee => 1},
     Decoded = maps:merge(Encoded,
-                        #{account => aec_id:create(account, MinerPubkey),
-                          commitment => aec_id:create(commitment, Commitment)}),
+                        #{account_id => aec_id:create(account, MinerPubkey),
+                          commitment_id => aec_id:create(commitment, Commitment)}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_name_preclaim/1,
                                fun aens_preclaim_tx:new/1, MinerPubkey),
-    test_invalid_hash({account_pubkey, MinerPubkey}, account, Encoded, fun get_name_preclaim/1),
-    test_invalid_hash({commitment, MinerPubkey}, commitment, Encoded, fun get_name_preclaim/1),
-    test_missing_address(account, Encoded, fun get_name_preclaim/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, account_id, Encoded, fun get_name_preclaim/1),
+    test_invalid_hash({commitment, MinerPubkey}, commitment_id, Encoded, fun get_name_preclaim/1),
+    test_missing_address(account_id, Encoded, fun get_name_preclaim/1),
     ok.
 
 test_invalid_hash({PubKeyType, PubKey}, MapKey0, Encoded, APIFun) when is_atom(PubKeyType) ->
@@ -2590,35 +2589,35 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
     Name = <<"name.test">>,
     Salt = 1234,
 
-    {ok, 200, #{<<"commitment">> := EncodedCHash}} = get_commitment_hash(Name, Salt),
+    {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = get_commitment_hash(Name, Salt),
     {ok, CHash} = aec_base58c:safe_decode(commitment, EncodedCHash),
 
     %% Submit name preclaim tx and check it is in mempool
     {ok, 200, #{<<"tx">> := EncodedUnsignedPreclaimTx}} =
-        get_name_preclaim(#{<<"commitment">> => EncodedCHash, fee => 1,
-                            account => MinerAddress}),
+        get_name_preclaim(#{<<"commitment_id">> => EncodedCHash, fee => 1,
+                            account_id => MinerAddress}),
     PreclaimTxHash = sign_and_post_tx(EncodedUnsignedPreclaimTx),
     {ok, 200, #{<<"tx">> := PreclaimTx}} = get_transactions_by_hash_sut(PreclaimTxHash),
-    ?assertEqual(EncodedCHash, maps:get(<<"commitment">>, PreclaimTx)),
+    ?assertEqual(EncodedCHash, maps:get(<<"commitment_id">>, PreclaimTx)),
 
     %% Mine enough blocks and check mempool empty again
     {ok, BS1} = aecore_suite_utils:mine_blocks_until_tx_on_chain(
                     aecore_suite_utils:node_name(?NODE), PreclaimTxHash, 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
-    Encoded = #{account => MinerAddress,
+    Encoded = #{account_id => MinerAddress,
                 name => aec_base58c:encode(name, Name),
                 name_salt => Salt,
                 fee => 1},
     Decoded = maps:merge(Encoded,
-                        #{account => aec_id:create(account, MinerPubkey),
+                        #{account_id => aec_id:create(account, MinerPubkey),
                           name => Name}),
     unsigned_tx_positive_test(Decoded, Encoded,
-                              fun get_name_claim/1,
-                              fun aens_claim_tx:new/1, MinerPubkey),
-    test_invalid_hash({account_pubkey, MinerPubkey}, account, Encoded, fun get_name_claim/1),
+                               fun get_name_claim/1,
+                               fun aens_claim_tx:new/1, MinerPubkey),
+    test_invalid_hash({account_pubkey, MinerPubkey}, account_id, Encoded, fun get_name_claim/1),
     test_invalid_hash({name, MinerPubkey}, name, Encoded, fun get_name_claim/1),
-    test_missing_address(account, Encoded, fun get_name_claim/1),
+    test_missing_address(account_id, Encoded, fun get_name_claim/1),
 
     %% missing registar
     Missing = aec_base58c:encode(name, <<"missing">>),
@@ -2631,68 +2630,67 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
 
 nameservice_transaction_update(MinerAddress, MinerPubkey) ->
     NameHash = random_hash(),
-    Pointers = [{}],
-    Encoded = #{account => MinerAddress,
-                name_hash => aec_base58c:encode(name, NameHash),
+    Pointers = [],
+    Encoded = #{account_id => MinerAddress,
+                name_id => aec_base58c:encode(name, NameHash),
                 name_ttl => 3,
                 client_ttl => 2,
-                pointers => jsx:encode(Pointers),
+                pointers => Pointers,
                 fee => 1},
     Decoded = maps:merge(Encoded,
-                        #{account => aec_id:create(account, MinerPubkey),
+                        #{account_id => aec_id:create(account, MinerPubkey),
                           pointers => Pointers,
-                          name_hash => aec_id:create(name, NameHash)}),
+                          name_id => aec_id:create(name, NameHash)}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_name_update/1,
                                fun aens_update_tx:new/1, MinerPubkey),
-    test_invalid_hash({account_pubkey, MinerPubkey}, account, Encoded, fun get_name_update/1),
-    test_invalid_hash({name, MinerPubkey}, name_hash, Encoded, fun get_name_update/1),
-    test_missing_address(account, Encoded, fun get_name_update/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, account_id, Encoded, fun get_name_update/1),
+    test_invalid_hash({name, MinerPubkey}, name_id, Encoded, fun get_name_update/1),
+    test_missing_address(account_id, Encoded, fun get_name_update/1),
     %% test broken pointers
     TestBrokenPointers =
         fun(P) ->
             {ok, 400, #{<<"reason">> := <<"Invalid pointers">>}} =
                 get_name_update(maps:put(pointers, P, Encoded))
         end,
-    TestBrokenPointers(<<"not a valid JSON">>),
-    TestBrokenPointers(<<"{\"a\":1">>),
+    TestBrokenPointers([#{<<"key">> => <<"k2">>, <<"id">> => <<"not a valid pointer">>}]),
+    TestBrokenPointers([#{<<"invalid_key">> => <<"k2">>, <<"id">> => <<"not a valid pointer">>}]),
     ok.
 
 nameservice_transaction_transfer(MinerAddress, MinerPubkey) ->
     RandAddress = random_hash(),
     NameHash = random_hash(),
-    Encoded = #{account => MinerAddress,
-                name_hash => aec_base58c:encode(name, NameHash),
-                recipient_pubkey => aec_base58c:encode(account_pubkey,
-                                                       RandAddress),
+    Encoded = #{account_id => MinerAddress,
+                name_id => aec_base58c:encode(name, NameHash),
+                recipient_id => aec_base58c:encode(account_pubkey, RandAddress),
                 fee => 1},
     Decoded = maps:merge(Encoded,
-                        #{account => aec_id:create(account, MinerPubkey),
-                          recipient_account => aec_id:create(account, RandAddress),
-                          name_hash => aec_id:create(name, NameHash)}),
+                        #{account_id => aec_id:create(account, MinerPubkey),
+                          recipient_id => aec_id:create(account, RandAddress),
+                          name_id => aec_id:create(name, NameHash)}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_name_transfer/1,
                                fun aens_transfer_tx:new/1, MinerPubkey),
-    test_invalid_hash({account_pubkey, MinerPubkey}, account, Encoded, fun get_name_transfer/1),
-    test_invalid_hash({account_pubkey, MinerPubkey}, recipient_pubkey, Encoded, fun get_name_transfer/1),
-    test_invalid_hash({name, MinerPubkey}, name_hash, Encoded, fun get_name_transfer/1),
-    test_missing_address(account, Encoded, fun get_name_transfer/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, account_id, Encoded, fun get_name_transfer/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, recipient_id, Encoded, fun get_name_transfer/1),
+    test_invalid_hash({name, MinerPubkey}, name_id, Encoded, fun get_name_transfer/1),
+    test_missing_address(account_id, Encoded, fun get_name_transfer/1),
     ok.
 
 nameservice_transaction_revoke(MinerAddress, MinerPubkey) ->
     NameHash = random_hash(),
-    Encoded = #{account => MinerAddress,
-                name_hash => aec_base58c:encode(name, NameHash),
+    Encoded = #{account_id => MinerAddress,
+                name_id => aec_base58c:encode(name, NameHash),
                 fee => 1},
     Decoded = maps:merge(Encoded,
-                        #{account => aec_id:create(account, MinerPubkey),
-                          name_hash => aec_id:create(name, NameHash)}),
+                        #{account_id => aec_id:create(account, MinerPubkey),
+                          name_id => aec_id:create(name, NameHash)}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_name_revoke/1,
                                fun aens_revoke_tx:new/1, MinerPubkey),
-    test_invalid_hash({account_pubkey, MinerPubkey}, account, Encoded, fun get_name_revoke/1),
-    test_invalid_hash({account_pubkey, MinerPubkey}, name_hash, Encoded, fun get_name_revoke/1),
-    test_missing_address(account, Encoded, fun get_name_revoke/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, account_id, Encoded, fun get_name_revoke/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, name_id, Encoded, fun get_name_revoke/1),
+    test_missing_address(account_id, Encoded, fun get_name_revoke/1),
     ok.
 
 %% tests the following
@@ -2710,55 +2708,55 @@ state_channels_onchain_transactions(_Config) ->
     ParticipantPubkey = random_hash(),
     ok = give_tokens(ParticipantPubkey, 100),
     {ok, AeTx} = state_channels_create(MinerPubkey, ParticipantPubkey),
-    ChannelId = state_channel_id(AeTx),
-    state_channels_deposit(ChannelId, MinerPubkey),
-    state_channels_withdrawal(ChannelId, MinerPubkey),
-    state_channels_snapshot_solo(ChannelId, MinerPubkey),
-    state_channels_close_mutual(ChannelId, MinerPubkey),
-    state_channels_close_solo(ChannelId, MinerPubkey),
-    state_channels_slash(ChannelId, MinerPubkey),
-    state_channels_settle(ChannelId, MinerPubkey),
+    ChannelPubKey = state_channel_pubkey(AeTx),
+    state_channels_deposit(ChannelPubKey, MinerPubkey),
+    state_channels_withdrawal(ChannelPubKey, MinerPubkey),
+    state_channels_snapshot_solo(ChannelPubKey, MinerPubkey),
+    state_channels_close_mutual(ChannelPubKey, MinerPubkey),
+    state_channels_close_solo(ChannelPubKey, MinerPubkey),
+    state_channels_slash(ChannelPubKey, MinerPubkey),
+    state_channels_settle(ChannelPubKey, MinerPubkey),
     ok.
 
-state_channel_id(Tx) ->
+state_channel_pubkey(Tx) ->
     {channel_create_tx, ChCTx} = aetx:specialize_type(Tx),
     Initiator = aesc_create_tx:initiator_pubkey(ChCTx),
     Nonce = aesc_create_tx:nonce(ChCTx),
     Responder = aesc_create_tx:responder_pubkey(ChCTx),
-    aesc_channels:id(Initiator, Nonce, Responder).
+    aesc_channels:pubkey(Initiator, Nonce, Responder).
 
 state_channels_create(MinerPubkey, ResponderPubkey) ->
-    Encoded = #{initiator => aec_base58c:encode(account_pubkey, MinerPubkey),
+    Encoded = #{initiator_id => aec_base58c:encode(account_pubkey, MinerPubkey),
                 initiator_amount => 2,
-                responder => aec_base58c:encode(account_pubkey, ResponderPubkey),
+                responder_id => aec_base58c:encode(account_pubkey, ResponderPubkey),
                 responder_amount => 3,
                 push_amount => 5, channel_reserve => 5,
                 lock_period => 20,
                 state_hash => aec_base58c:encode(state, ?BOGUS_STATE_HASH),
                 fee => 1},
     Decoded = maps:merge(Encoded,
-                        #{initiator => aec_id:create(account, MinerPubkey),
-                          responder => aec_id:create(account, ResponderPubkey),
+                        #{initiator_id => aec_id:create(account, MinerPubkey),
+                          responder_id => aec_id:create(account, ResponderPubkey),
                           state_hash => ?BOGUS_STATE_HASH}),
     {ok, Tx} = unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_create/1,
                                fun aesc_create_tx:new/1, MinerPubkey),
-    test_invalid_hash({account_pubkey, MinerPubkey}, initiator, Encoded, fun get_channel_create/1),
-    test_invalid_hash({account_pubkey, ResponderPubkey}, responder, Encoded, fun get_channel_create/1),
-    test_missing_address(initiator, Encoded, fun get_channel_create/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, initiator_id, Encoded, fun get_channel_create/1),
+    test_invalid_hash({account_pubkey, ResponderPubkey}, responder_id, Encoded, fun get_channel_create/1),
+    test_missing_address(initiator_id, Encoded, fun get_channel_create/1),
     {ok, Tx}.
 
 state_channels_deposit(ChannelId, MinerPubkey) ->
     MinerAddress = aec_base58c:encode(account_pubkey, MinerPubkey),
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                from => MinerAddress,
+                from_id => MinerAddress,
                 amount => 2,
                 state_hash => aec_base58c:encode(state, ?BOGUS_STATE_HASH),
                 round => 42,
                 fee => 1},
     Decoded = maps:merge(Encoded,
                         #{channel_id => aec_id:create(channel, ChannelId),
-                          from => aec_id:create(account, MinerPubkey),
+                          from_id => aec_id:create(account, MinerPubkey),
                           state_hash => ?BOGUS_STATE_HASH}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_deposit/1,
@@ -2767,20 +2765,20 @@ state_channels_deposit(ChannelId, MinerPubkey) ->
     {{ok, NextNonce}, _} = {rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
                             MinerPubkey},
     Encoded1 = maps:put(nonce, NextNonce, Encoded),
-    test_invalid_hash({account_pubkey, MinerPubkey}, from, Encoded1, fun get_channel_deposit/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, from_id, Encoded1, fun get_channel_deposit/1),
     ok.
 
 state_channels_withdrawal(ChannelId, MinerPubkey) ->
     MinerAddress = aec_base58c:encode(account_pubkey, MinerPubkey),
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                to => MinerAddress,
+                to_id => MinerAddress,
                 amount => 2,
                 state_hash => aec_base58c:encode(state, ?BOGUS_STATE_HASH),
                 round => 42,
                 fee => 1},
     Decoded = maps:merge(Encoded,
                         #{channel_id => aec_id:create(channel, ChannelId),
-                          to => aec_id:create(account, MinerPubkey),
+                          to_id => aec_id:create(account, MinerPubkey),
                           state_hash => ?BOGUS_STATE_HASH}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_withdrawal/1,
@@ -2789,22 +2787,22 @@ state_channels_withdrawal(ChannelId, MinerPubkey) ->
     {{ok, NextNonce}, _} = {rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
                             MinerPubkey},
     Encoded1 = maps:put(nonce, NextNonce, Encoded),
-    test_invalid_hash({account_pubkey, MinerPubkey}, to, Encoded1, fun get_channel_withdrawal/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, to_id, Encoded1, fun get_channel_withdrawal/1),
     ok.
 
 state_channels_snapshot_solo(ChannelId, MinerPubkey) ->
     PoI = aec_trees:new_poi(aec_trees:new_without_backend()),
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                from => aec_base58c:encode(account_pubkey, MinerPubkey),
+                from_id => aec_base58c:encode(account_pubkey, MinerPubkey),
                 payload => <<"hejsan svejsan">>, %%TODO proper payload
                 fee => 1},
     Decoded = maps:merge(Encoded,
-                        #{from => aec_id:create(account, MinerPubkey),
+                        #{from_id => aec_id:create(account, MinerPubkey),
                           channel_id => aec_id:create(channel, ChannelId)}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_snapshot_solo/1,
                                fun aesc_snapshot_solo_tx:new/1, MinerPubkey),
-    test_invalid_hash({account_pubkey, MinerPubkey},  from, Encoded, fun get_channel_snapshot_solo/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, from_id, Encoded, fun get_channel_snapshot_solo/1),
     ok.
 
 state_channels_close_mutual(ChannelId, InitiatorPubkey) ->
@@ -2827,45 +2825,45 @@ state_channels_close_mutual(ChannelId, InitiatorPubkey) ->
 state_channels_close_solo(ChannelId, MinerPubkey) ->
     PoI = aec_trees:new_poi(aec_trees:new_without_backend()),
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                from => aec_base58c:encode(account_pubkey, MinerPubkey),
+                from_id => aec_base58c:encode(account_pubkey, MinerPubkey),
                 payload => <<"hejsan svejsan">>, %%TODO proper payload
                 poi => aec_base58c:encode(poi, aec_trees:serialize_poi(PoI)),
                 fee => 1},
     Decoded = maps:merge(Encoded,
-                        #{from => aec_id:create(account, MinerPubkey),
+                        #{from_id => aec_id:create(account, MinerPubkey),
                           channel_id => aec_id:create(channel, ChannelId),
                           poi => PoI}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_close_solo/1,
                                fun aesc_close_solo_tx:new/1, MinerPubkey),
-    test_invalid_hash({account_pubkey, MinerPubkey},  from, Encoded, fun get_channel_close_solo/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, from_id, Encoded, fun get_channel_close_solo/1),
     ok.
 
 state_channels_slash(ChannelId, MinerPubkey) ->
     PoI = aec_trees:new_poi(aec_trees:new_without_backend()),
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                from => aec_base58c:encode(account_pubkey, MinerPubkey),
+                from_id => aec_base58c:encode(account_pubkey, MinerPubkey),
                 payload => <<"hejsan svejsan">>, %%TODO proper payload
                 poi => aec_base58c:encode(poi, aec_trees:serialize_poi(PoI)),
                 fee => 1},
     Decoded = maps:merge(Encoded,
-                        #{from => aec_id:create(account, MinerPubkey),
+                        #{from_id => aec_id:create(account, MinerPubkey),
                           channel_id => aec_id:create(channel, ChannelId),
                           poi => PoI}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_slash/1,
                                fun aesc_slash_tx:new/1, MinerPubkey),
-    test_invalid_hash({account_pubkey, MinerPubkey}, from, Encoded, fun get_channel_slash/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, from_id, Encoded, fun get_channel_slash/1),
     ok.
 
 state_channels_settle(ChannelId, MinerPubkey) ->
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                from => aec_base58c:encode(account_pubkey, MinerPubkey),
+                from_id => aec_base58c:encode(account_pubkey, MinerPubkey),
                 initiator_amount_final => 4,
                 responder_amount_final => 3,
                 fee => 1},
     Decoded = maps:merge(Encoded,
-                        #{from => aec_id:create(account, MinerPubkey),
+                        #{from_id => aec_id:create(account, MinerPubkey),
                           channel_id => aec_id:create(channel, ChannelId)}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_settle/1,
@@ -2874,7 +2872,7 @@ state_channels_settle(ChannelId, MinerPubkey) ->
     {{ok, NextNonce}, _} = {rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
                             MinerPubkey},
     Encoded1 = maps:put(nonce, NextNonce, Encoded),
-    test_invalid_hash({account_pubkey, MinerPubkey}, from, Encoded1, fun get_channel_settle/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, from_id, Encoded1, fun get_channel_settle/1),
     ok.
 
 %% tests the following
@@ -2884,25 +2882,24 @@ spend_transaction(_Config) ->
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
     RandAddress = random_hash(),
-    Encoded = #{sender => MinerAddress,
-                recipient_pubkey => aec_base58c:encode(account_pubkey,
-                                                       RandAddress),
+    Encoded = #{sender_id => MinerAddress,
+                recipient_id => aec_base58c:encode(account_pubkey, RandAddress),
                 amount => 2,
                 fee => 1,
                 ttl => 43,
                 payload => <<"hejsan svejsan">>},
     Decoded = maps:merge(Encoded,
-                        #{sender => aec_id:create(account, MinerPubkey),
-                          recipient => aec_id:create(account, RandAddress)}),
+                        #{sender_id => aec_id:create(account, MinerPubkey),
+                          recipient_id => aec_id:create(account, RandAddress)}),
     {ok, T} = unsigned_tx_positive_test(Decoded, Encoded,
                                   fun get_spend/1,
                                   fun aec_spend_tx:new/1, MinerPubkey),
     {spend_tx, SpendTx} = aetx:specialize_type(T),
     <<"hejsan svejsan">> = aec_spend_tx:payload(SpendTx),
 
-    test_invalid_hash({account_pubkey, MinerPubkey}, sender, Encoded, fun get_spend/1),
-    test_invalid_hash({account_pubkey, MinerPubkey}, {recipient_pubkey, recipient}, Encoded, fun get_spend/1),
-    test_missing_address(sender, Encoded, fun get_spend/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, sender_id, Encoded, fun get_spend/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, {recipient_id, recipient_id}, Encoded, fun get_spend/1),
+    test_missing_address(sender_id, Encoded, fun get_spend/1),
     ok.
 
 %% tests the following
@@ -2911,9 +2908,8 @@ unknown_atom_in_spend_tx(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
     RandAddress = random_hash(),
-    Encoded = #{sender => MinerAddress,
-                recipient_pubkey => aec_base58c:encode(account_pubkey,
-                                                       RandAddress),
+    Encoded = #{sender_id => MinerAddress,
+                recipient_id => aec_base58c:encode(account_pubkey, RandAddress),
                 amount => 2,
                 fee => 1,
                 %% this tests relies on this being an atom unknown to the VM
@@ -2969,9 +2965,8 @@ get_transaction(_Config) ->
 
     %% test in mempool
     RandAddress = random_hash(),
-    Encoded = #{sender => EncodedPubKey,
-                recipient_pubkey => aec_base58c:encode(account_pubkey,
-                                                       RandAddress),
+    Encoded = #{sender_id => EncodedPubKey,
+                recipient_id => aec_base58c:encode(account_pubkey, RandAddress),
                 amount => 2,
                 fee => 1,
                 payload => <<"foo">>},
@@ -3067,8 +3062,8 @@ post_correct_tx(_Config) ->
     {PubKey, Nonce} = prepare_for_spending(BlocksToMine),
     {ok, SpendTx} =
         aec_spend_tx:new(
-          #{sender => aec_id:create(account, PubKey),
-            recipient => aec_id:create(account, random_hash()),
+          #{sender_id => aec_id:create(account, PubKey),
+            recipient_id => aec_id:create(account, random_hash()),
             amount => Amount,
             fee => Fee,
             nonce => Nonce,
@@ -3086,8 +3081,8 @@ post_broken_tx(_Config) ->
     {PubKey, Nonce} = prepare_for_spending(BlocksToMine),
     {ok, SpendTx} =
         aec_spend_tx:new(
-          #{sender => aec_id:create(account, PubKey),
-            recipient => aec_id:create(account, random_hash()),
+          #{sender_id => aec_id:create(account, PubKey),
+            recipient_id => aec_id:create(account, random_hash()),
             amount => Amount,
             fee => Fee,
             nonce => Nonce,
@@ -3113,8 +3108,8 @@ post_broken_base58_tx(_Config) ->
         fun(_) ->
             {ok, SpendTx} =
                 aec_spend_tx:new(
-                  #{sender => aec_id:create(account, PubKey),
-                    recipient => aec_id:create(account, random_hash()),
+                  #{sender_id => aec_id:create(account, PubKey),
+                    recipient_id => aec_id:create(account, random_hash()),
                     amount => Amount,
                     fee => Fee,
                     nonce => Nonce,
@@ -3643,7 +3638,7 @@ naming_system_manage_name(_Config) ->
     Name        = <<"詹姆斯詹姆斯.test"/utf8>>,
     NameSalt    = 12345,
     NameTTL     = 20000,
-    Pointers    = <<"{\"account_pubkey\":\"", PubKeyEnc/binary, "\"}">>,
+    Pointers    = [#{<<"key">> => <<"account_pubkey">>, <<"id">> => PubKeyEnc}],
     TTL         = 10,
     {ok, NHash} = aens:get_name_hash(Name),
     Fee         = 2,
@@ -3659,15 +3654,15 @@ naming_system_manage_name(_Config) ->
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Get commitment hash to preclaim a name
-    {ok, 200, #{<<"commitment">> := EncodedCHash}} = get_commitment_hash(Name, NameSalt),
-    ?assertMatch({ok, _}, aec_base58c:safe_decode(commitment, EncodedCHash)),
+    {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = get_commitment_hash(Name, NameSalt),
+    {ok, _} = aec_base58c:safe_decode(commitment, EncodedCHash),
 
     %% Submit name preclaim tx and check it is in mempool
     {ok, 200, #{<<"tx">> := EncodedUnsignedPreclaimTx}} =
-        get_name_preclaim(#{<<"commitment">> => EncodedCHash, fee => Fee, account => PubKeyEnc}),
+        get_name_preclaim(#{<<"commitment_id">> => EncodedCHash, fee => Fee, account_id => PubKeyEnc}),
     PreclaimTxHash = sign_and_post_tx(EncodedUnsignedPreclaimTx),
     {ok, 200, #{<<"tx">> := PreclaimTx}} = get_transactions_by_hash_sut(PreclaimTxHash),
-    ?assertEqual(EncodedCHash, maps:get(<<"commitment">>, PreclaimTx)),
+    ?assertEqual(EncodedCHash, maps:get(<<"commitment_id">>, PreclaimTx)),
 
     %% Mine enough blocks and check mempool empty again
     {ok, BS1} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, PreclaimTxHash, 10),
@@ -3681,7 +3676,7 @@ naming_system_manage_name(_Config) ->
     %% Submit name claim tx and check it is in mempool
     {ok, 200, #{<<"tx">> := EncodedUnsignedClaimTx}} =
         get_name_claim(#{name => aec_base58c:encode(name, Name), name_salt => NameSalt,
-                         fee => Fee, account => PubKeyEnc}),
+                         fee => Fee, account_id => PubKeyEnc}),
     ClaimTxHash = sign_and_post_tx(EncodedUnsignedClaimTx),
 
     %% Mine enough blocks and check mempool empty again
@@ -3698,15 +3693,14 @@ naming_system_manage_name(_Config) ->
     %% Check that name entry is present
     EncodedNHash = aec_base58c:encode(name, NHash),
     ExpectedTTL1 = (Height2 - 1) + aec_governance:name_claim_max_expiration(),
-    {ok, 200, #{<<"name">>      := Name,
-                <<"name_hash">> := EncodedNHash,
-                <<"name_ttl">>  := ExpectedTTL1,
-                <<"pointers">>  := <<"[]">>}} = get_name(Name),
+    {ok, 200, #{<<"id">>       := EncodedNHash,
+                <<"expires">>  := ExpectedTTL1,
+                <<"pointers">> := []}} = get_name(Name),
 
     %% Submit name updated tx and check it is in mempool
     {ok, 200, #{<<"tx">> := EncodedUnsignedUpdateTx}} =
-        get_name_update(#{name_hash => EncodedNHash, name_ttl => NameTTL, client_ttl => TTL,
-                          pointers => Pointers, fee => Fee, account => PubKeyEnc}),
+        get_name_update(#{name_id => EncodedNHash, name_ttl => NameTTL, client_ttl => TTL,
+                          pointers => Pointers, fee => Fee, account_id => PubKeyEnc}),
     UpdateTxHash = sign_and_post_tx(EncodedUnsignedUpdateTx),
 
     %% Mine a block and check mempool empty again
@@ -3716,8 +3710,7 @@ naming_system_manage_name(_Config) ->
 
     %% Check that TTL and pointers got updated in name entry
     ExpectedTTL2 = (Height3 - 1) + NameTTL,
-    {ok, 200, #{<<"name">>     := Name,
-                <<"name_ttl">> := ExpectedTTL2,
+    {ok, 200, #{<<"expires">>  := ExpectedTTL2,
                 <<"pointers">> := Pointers}} = get_name(Name),
 
     %% Check mine reward
@@ -3725,8 +3718,8 @@ naming_system_manage_name(_Config) ->
     ?assertEqual(Balance3, Balance2 - Fee + (Height3 - Height2) * MineReward + Fee),
 
     {ok, 200, #{<<"tx">> := EncodedSpendTx}} =
-        get_spend(#{recipient_pubkey => EncodedNHash, amount => 77, fee => 50,
-                    payload => <<"foo">>, sender => PubKeyEnc}),
+        get_spend(#{recipient_id => EncodedNHash, amount => 77, fee => 50,
+                    payload => <<"foo">>, sender_id => PubKeyEnc}),
     SpendTxHash = sign_and_post_tx(EncodedSpendTx),
 
     {ok, BS4} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, SpendTxHash, 10),
@@ -3741,8 +3734,8 @@ naming_system_manage_name(_Config) ->
 
     %% Submit name transfer tx and check it is in mempool
     {ok, 200, #{<<"tx">> := EncodedUnsignedTransferTx}} =
-        get_name_transfer(#{name_hash => EncodedNHash, recipient_pubkey => PubKeyEnc,
-                            fee => Fee, account => PubKeyEnc}),
+        get_name_transfer(#{name_id => EncodedNHash, recipient_id => PubKeyEnc,
+                            fee => Fee, account_id => PubKeyEnc}),
     TransferTxHash = sign_and_post_tx(EncodedUnsignedTransferTx),
 
     %% Mine a block and check mempool empty again
@@ -3756,7 +3749,7 @@ naming_system_manage_name(_Config) ->
 
     %% Submit name revoke tx and check it is in mempool
     {ok, 200, #{<<"tx">> := EncodedUnsignedRevokeTx}} =
-        get_name_revoke(#{name_hash => EncodedNHash, fee => Fee, account => PubKeyEnc}),
+        get_name_revoke(#{name_id => EncodedNHash, fee => Fee, account_id => PubKeyEnc}),
     RevokeTxHash = sign_and_post_tx(EncodedUnsignedRevokeTx),
 
     %% Mine a block and check mempool empty again
@@ -3795,7 +3788,7 @@ naming_system_broken_txs(_Config) ->
     {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
         post_name_claim_tx(Name, NameSalt, Fee),
     {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
-        post_name_update_tx(NHash, 5, <<"pointers">>, 5, Fee),
+        post_name_update_tx(NHash, 5, [], 5, Fee),
     {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
         post_name_transfer_tx(NHash, random_hash(), Fee),
     {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
@@ -3886,7 +3879,7 @@ list_oracle_queries(_Config) ->
                [ aeo_query:id(APubKey, N, OPubKey2) || N <- lists:seq(5, 8) ],
 
     %% Mine a block to effect the queries
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    aecore_suite_utils:mine_micro_blocks(aecore_suite_utils:node_name(?NODE), 1),
 
     %% Now we can test the oracle query listing...
     Queriess = [ get_list_oracle_queries(OPubKey, 4) || {OPubKey, _} <- OKeyPairs ],
@@ -3914,13 +3907,13 @@ list_oracle_queries(_Config) ->
 register_oracle(ChainHeight, PubKey, PrivKey, Nonce, QueryFee, TTL) ->
     TTLFee = aeo_utils:ttl_fee(1, aeo_utils:ttl_delta(ChainHeight, TTL)),
     AccountId = aec_id:create(account, PubKey),
-    {ok, RegTx} = aeo_register_tx:new(#{account       => AccountId,
-                                        nonce         => Nonce,
-                                        query_spec    => <<"TODO">>,
-                                        response_spec => <<"TODO">>,
-                                        query_fee     => QueryFee,
-                                        oracle_ttl    => TTL,
-                                        fee           => 4 + TTLFee}),
+    {ok, RegTx} = aeo_register_tx:new(#{account_id      => AccountId,
+                                        nonce           => Nonce,
+                                        query_format    => <<"TODO">>,
+                                        response_format => <<"TODO">>,
+                                        query_fee       => QueryFee,
+                                        oracle_ttl      => TTL,
+                                        fee             => 4 + TTLFee}),
     SignedTx = aec_test_utils:sign_tx(RegTx, PrivKey),
     SendTx = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)),
     post_tx(SendTx).
@@ -3929,9 +3922,9 @@ query_oracle(ChainHeight, PubKey, PrivKey, Oracle, Nonce, Query, TTL, QueryFee) 
     TTLFee = aeo_utils:ttl_fee(1, aeo_utils:ttl_delta(ChainHeight, TTL)),
     SenderId = aec_id:create(account, PubKey),
     OracleId = aec_id:create(oracle, Oracle),
-    {ok, QueryTx} = aeo_query_tx:new(#{sender        => SenderId,
+    {ok, QueryTx} = aeo_query_tx:new(#{sender_id     => SenderId,
                                        nonce         => Nonce,
-                                       oracle        => OracleId,
+                                       oracle_id     => OracleId,
                                        query         => Query,
                                        query_fee     => QueryFee,
                                        query_ttl     => TTL,
@@ -4753,7 +4746,7 @@ sc_ws_contracts(Config) ->
             sc_ws_contract_(Config, TestName, Owner)
         end,
         [{Owner, Test} || Owner <- [initiator, responder],
-													Test  <- ["identity",
+                          Test  <- ["identity",
                                     "counter",
                                     "spend_test"]]),
     {sc_ws_update, ConfigList} = ?config(saved_config, Config),
@@ -4814,10 +4807,10 @@ sc_ws_contract_(Config, TestName, Owner) ->
             CallRound = CB1:round(Tx1),
             [U] = CB1:updates(Tx1),
             CallerPubKey = aesc_offchain_update:extract_caller(U),
-            CallerAddress = aec_base58c:encode(account_pubkey, CallerPubKey),
-            ContractAddress = aec_base58c:encode(contract_pubkey, ContractPubKey),
-            #{contract   => ContractAddress,
-              caller     => CallerAddress,
+            CallerId = aec_base58c:encode(account_pubkey, CallerPubKey),
+            ContractId = aec_base58c:encode(contract_pubkey, ContractPubKey),
+            #{contract   => ContractId,
+              caller     => CallerId,
               round      => CallRound}
         end,
     GetDecodedResult =
@@ -4831,9 +4824,9 @@ sc_ws_contract_(Config, TestName, Owner) ->
                 end,
             CallRes = GetCallResult(SenderConnPid),
             CallRes = GetCallResult(AckConnPid),
-            #{<<"caller_address">>    := CallerAddress,
+            #{<<"caller_id">>         := CallerId,
               <<"caller_nonce">>      := CallRound,
-              <<"contract_address">>  := ContractAddress,
+              <<"contract_id">>       := ContractId,
               <<"gas_price">>         := _,
               <<"gas_used">>          := _,
               <<"height">>            := CallRound,
@@ -4956,7 +4949,7 @@ contract_calls_("identity", ContractPubKey, Code, SenderConnPid, UpdateVolley,
     UnsignedStateTx;
 contract_calls_("counter", ContractPubKey, Code, SenderConnPid, UpdateVolley,
                 GetDecodedResult, _, _ , _) ->
-    TestName = "counter", 
+    TestName = "counter",
     UnsignedStateTx0 = call_a_contract(<<"get">>, <<"()">>, ContractPubKey, Code, SenderConnPid,
                     UpdateVolley),
 
@@ -5096,8 +5089,8 @@ channel_options(IPubkey, RPubkey, IAmt, RAmt) ->
 
 channel_options(IPubkey, RPubkey, IAmt, RAmt, Other) ->
     maps:merge(#{ port => 12340,
-                  initiator => aec_base58c:encode(account_pubkey, IPubkey),
-                  responder => aec_base58c:encode(account_pubkey, RPubkey),
+                  initiator_id => aec_base58c:encode(account_pubkey, IPubkey),
+                  responder_id => aec_base58c:encode(account_pubkey, RPubkey),
                   lock_period => 10,
                   push_amount => 10,
                   initiator_amount => IAmt,
@@ -5397,8 +5390,7 @@ post_spend_tx(Recipient, Amount, Fee) ->
 post_spend_tx(Recipient, Amount, Fee, Payload) ->
     Host = internal_address(),
     http_request(Host, post, "spend-tx",
-                 #{recipient_pubkey => aec_base58c:encode(
-                                         account_pubkey, Recipient),
+                 #{recipient_id => aec_base58c:encode(account_pubkey, Recipient),
                    amount => Amount,
                    fee => Fee,
                    payload => Payload}).
@@ -5406,8 +5398,8 @@ post_spend_tx(Recipient, Amount, Fee, Payload) ->
 post_name_preclaim_tx(Commitment, Fee) ->
     Host = internal_address(),
     http_request(Host, post, "name-preclaim-tx",
-                 #{commitment => aec_base58c:encode(commitment, Commitment),
-                   fee        => Fee}).
+                 #{commitment_id => aec_base58c:encode(commitment, Commitment),
+                   fee           => Fee}).
 
 post_name_claim_tx(Name, NameSalt, Fee) ->
     Host = internal_address(),
@@ -5419,7 +5411,7 @@ post_name_claim_tx(Name, NameSalt, Fee) ->
 post_name_update_tx(NameHash, NameTTL, Pointers, ClientTTL, Fee) ->
     Host = internal_address(),
     http_request(Host, post, "name-update-tx",
-                 #{name_hash  => aec_base58c:encode(name, NameHash),
+                 #{name_id    => aec_base58c:encode(name, NameHash),
                    client_ttl => ClientTTL,
                    pointers   => Pointers,
                    name_ttl   => NameTTL,
@@ -5428,15 +5420,15 @@ post_name_update_tx(NameHash, NameTTL, Pointers, ClientTTL, Fee) ->
 post_name_transfer_tx(NameHash, RecipientPubKey, Fee) ->
     Host = internal_address(),
     http_request(Host, post, "name-transfer-tx",
-                 #{name_hash        => aec_base58c:encode(name, NameHash),
-                   recipient_pubkey => aec_base58c:encode(account_pubkey, RecipientPubKey),
-                   fee              => Fee}).
+                 #{name_id      => aec_base58c:encode(name, NameHash),
+                   recipient_id => aec_base58c:encode(account_pubkey, RecipientPubKey),
+                   fee          => Fee}).
 
 post_name_revoke_tx(NameHash, Fee) ->
     Host = internal_address(),
     http_request(Host, post, "name-revoke-tx",
-                 #{name_hash => aec_base58c:encode(name, NameHash),
-                   fee       => Fee}).
+                 #{name_id => aec_base58c:encode(name, NameHash),
+                   fee     => Fee}).
 
 get_commitment_hash(Name, Salt) ->
     Host = external_address(),
@@ -5610,7 +5602,7 @@ swagger_validation_schema(_Config) ->
                         <<"error">> := <<"wrong_type">>,
                         <<"path">> := [<<"fee">>]
         }}} = http_request(Host, post, "spend-tx", #{
-                   recipient_pubkey => <<"">>,
+                   recipient_id => <<"">>,
                    amount => 0,
                    fee => <<"wrong_fee_data">>,
                    ttl => 100,
@@ -5619,7 +5611,7 @@ swagger_validation_schema(_Config) ->
             <<"reason">> := <<"validation_error">>,
             <<"parameter">> := <<"body">>,
             <<"info">> :=  #{
-                        <<"data">> := <<"recipient_pubkey">>,
+                        <<"data">> := <<"recipient_id">>,
                         <<"error">> := <<"missing_required_property">>,
                         <<"path">> := []
         }}} = http_request(Host, post, "spend-tx", #{
@@ -5635,7 +5627,7 @@ swagger_validation_schema(_Config) ->
                         <<"error">> := <<"not_in_range">>,
                         <<"path">> := [<<"amount">>]
         }}} = http_request(Host, post, "spend-tx", #{
-                   recipient_pubkey => <<"">>,
+                   recipient_id => <<"">>,
                    amount => -1,
                    fee => <<"fee">>,
                    ttl => 100,
@@ -6047,14 +6039,14 @@ add_spend_txs() ->
     Txs =
         lists:map(
             fun(_) ->
-                #{recipient => random_hash(), amount => MinimalAmount, fee => MinFee}
+                #{recipient_id => random_hash(), amount => MinimalAmount, fee => MinFee}
             end,
             lists:seq(0, TxsCnt -1)),
     populate_block(#{spend_txs => Txs}).
 
 populate_block(Txs) ->
     lists:map(
-        fun(#{recipient := R, amount := A, fee := F}) ->
+        fun(#{recipient_id := R, amount := A, fee := F}) ->
                 {ok, 200, #{<<"tx_hash">> := TxHash}} = post_spend_tx(R, A, F),
                 TxHash
         end,
@@ -6066,7 +6058,7 @@ give_tokens(RecipientPubkey, Amount) ->
     NeededBlocks = ((Amount + MinFee)  div MineReward) + 1,
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    NeededBlocks),
-    SpendData = #{recipient => RecipientPubkey,
+    SpendData = #{recipient_id => RecipientPubkey,
                   amount => Amount,
                   fee => MinFee},
     populate_block(#{spend_txs => [SpendData]}),

@@ -974,7 +974,7 @@ contract_create_tx(Pubkey, Privkey, HexCode, EncodedInitData, CallerSet) ->
     Nonce = Nonce0 + 1,
 
     %% The default init contract.
-    ContractInitEncoded0 = #{ owner => Address,
+    ContractInitEncoded0 = #{ owner_id => Address,
 			      code => HexCode,
 			      vm_version => 1,	%?AEVM_01_Sophia_01
 			      deposit => 2,
@@ -999,8 +999,8 @@ contract_call_tx(Pubkey, Privkey, EncodedContractPubkey, EncodedCallData, Caller
     Nonce = Nonce0 + 1,
 
     %% The default call contract.
-    ContractCallEncoded0 = #{ caller => Address,
-			      contract => EncodedContractPubkey,
+    ContractCallEncoded0 = #{ caller_id => Address,
+			      contract_id => EncodedContractPubkey,
 			      vm_version => 1,	%?AEVM_01_Sophia_01
 			      amount => 0,
 			      gas => 30000,	%May need a lot of gas
@@ -1053,8 +1053,7 @@ post_spend_tx(Recipient, Amount, Fee) ->
 post_spend_tx(Recipient, Amount, Fee, Payload) ->
     Host = internal_address(),
     http_request(Host, post, "spend-tx",
-                 #{recipient_pubkey => aec_base58c:encode(account_pubkey,
-							  Recipient),
+                 #{recipient_id => aec_base58c:encode(account_pubkey, Recipient),
                    amount => Amount,
                    fee => Fee,
                    payload => Payload}).
@@ -1192,8 +1191,8 @@ spend_tokens(SenderPub, SenderPriv, Recip, Amount, Fee, CallerSet) ->
     {ok,200,#{<<"nonce">> := Nonce0}} = get_nonce(Address),
     Nonce = Nonce0 + 1,
 
-    Params0 = #{sender => aec_id:create(account, SenderPub),
-                recipient => aec_id:create(account, Recip),
+    Params0 = #{sender_id => aec_id:create(account, SenderPub),
+                recipient_id => aec_id:create(account, Recip),
                 amount => Amount,
                 fee => Fee,
                 nonce => Nonce,
@@ -1210,7 +1209,7 @@ spend_tokens(SenderPub, SenderPriv, Recip, Amount, Fee, CallerSet) ->
 
 sign_and_post_create_tx(Privkey, CreateEncoded) ->
     {ok,200,#{<<"tx">> := EncodedUnsignedTx,
-              <<"contract_address">> := EncodedPubkey}} =
+              <<"contract_id">> := EncodedPubkey}} =
         get_contract_create(CreateEncoded),
     {ok,DecodedPubkey} = aec_base58c:safe_decode(contract_pubkey,
                                                  EncodedPubkey),

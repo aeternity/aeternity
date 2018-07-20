@@ -159,10 +159,15 @@ micro_block_cycle(Config) ->
     ok = aecore_suite_utils:check_for_logs([dev1], Config).
 
 add_spend_tx(Node, Amount, Fee, Nonce, TTL) ->
-    Sender = aec_id:create(account, maps:get(pubkey, patron())),
-    Recipient = aec_id:create(account, new_pubkey()),
-    Params = #{ sender => Sender, recipient => Recipient,
-                amount => Amount, nonce => Nonce, ttl => TTL, payload => <<>>, fee => Fee },
+    SenderId = aec_id:create(account, maps:get(pubkey, patron())),
+    RecipientId = aec_id:create(account, new_pubkey()),
+    Params = #{ sender_id    => SenderId,
+                recipient_id => RecipientId,
+                amount       => Amount,
+                nonce        => Nonce,
+                ttl          => TTL,
+                payload      => <<>>,
+                fee          => Fee },
     {ok, Tx} = aec_spend_tx:new(Params),
     STx = aec_test_utils:sign_tx(Tx, maps:get(privkey, patron())),
     rpc:call(Node, aec_tx_pool, push, [STx]).

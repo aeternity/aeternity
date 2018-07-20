@@ -541,13 +541,14 @@ new_tx(#{node1 := N1, node2 := N2, amount := Am, fee := Fee} = _M) ->
     Port = rpc:call(N1, aeu_env, user_config_or_env,
                     [ [<<"http">>, <<"internal">>, <<"port">>],
                       aehttp, [internal, port], 8143], 5000),
-    Params = #{sender_pubkey => PK1,
-               recipient_pubkey => aec_base58c:encode(account_pubkey, PK2),
+    Params = #{sender_id => PK1,
+               recipient_id => aec_base58c:encode(account_pubkey, PK2),
                amount => Am,
                fee => Fee,
                payload => <<"foo">>},
     %% It's internal API so ext_addr is not included here.
     Cfg = [{int_http, "http://127.0.0.1:" ++ integer_to_list(Port)}],
+    ct:log(">>> PARAMS: ~p", [Params]),
     {ok, 200, _} = aehttp_client:request('PostSpendTx', Params, Cfg),
     ok.
 

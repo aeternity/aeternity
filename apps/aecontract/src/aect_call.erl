@@ -12,8 +12,10 @@
         , id/1
         , id/3
         , new/5
-        , contract_address/1
-        , caller_address/1
+        , contract_id/1
+        , contract_pubkey/1
+        , caller_id/1
+        , caller_pubkey/1
         , caller_nonce/1
         , height/1
         , return_type/1
@@ -22,8 +24,8 @@
         , gas_used/1
         , serialize/1
         , serialize_for_client/1
-        , set_contract_address/2
-        , set_caller_address/2
+        , set_contract/2
+        , set_caller/3
         , set_caller_nonce/2
         , set_height/2
         , set_return_type/2
@@ -38,14 +40,14 @@
 %%% Types
 %%%===================================================================
 
--record(call, { caller_address   :: aec_keys:pubkey()
-              , caller_nonce     :: integer()
-              , height           :: aec_blocks:height()
-              , contract_address :: aec_keys:pubkey()
-              , gas_price        :: amount()
-              , gas_used         :: amount()
-              , return_value     :: binary()
-	      , return_type      :: ok | error | revert
+-record(call, { caller_id    :: aec_id:id()
+              , caller_nonce :: integer()
+              , height       :: aec_blocks:height()
+              , contract_id  :: aec_id:id()
+              , gas_price    :: amount()
+              , gas_used     :: amount()
+              , return_value :: binary()
+              , return_type  :: ok | error | revert
               }).
 
 -opaque call() :: #call{}.
@@ -65,55 +67,59 @@
 %%% API
 %%%===================================================================
 
--spec new(Caller::aec_keys:pubkey(), Nonce::non_neg_integer(), Address::aec_keys:pubkey(),
-	  aec_blocks:height(), amount()) -> call().
-new(Caller, Nonce, Address, BlockHeight, GasPrice) ->
-    C = #call{ caller_address   = Caller
-             , caller_nonce     = Nonce
-             , height           = BlockHeight
-             , contract_address = Address
-             , gas_price        = GasPrice
-             , gas_used         = 0     %% These are filled later
-             , return_value     = <<>>  %% in aect_call_tx:process()
-             , return_type      = ok
+-spec new(aec_id:id(), non_neg_integer(), aec_id:id(), aec_blocks:height(), amount()) -> call().
+new(CallerId, Nonce, ContractId, BlockHeight, GasPrice) ->
+    C = #call{ caller_id    = CallerId
+             , caller_nonce = Nonce
+             , height       = BlockHeight
+             , contract_id  = ContractId
+             , gas_price    = GasPrice
+             , gas_used     = 0     %% These are filled later
+             , return_value = <<>>  %% in aect_call_tx:process()
+             , return_type  = ok
              },
     assert_fields(C).
 
 -spec id(call()) -> id().
-id(I) ->
-    id(I#call.caller_address,
-       I#call.caller_nonce,
-       I#call.contract_address).
+id(#call{} = I) ->
+    id(caller_pubkey(I), caller_nonce(I), contract_pubkey(I)).
 
 -spec id(aec_keys:pubkey(), non_neg_integer(), aec_keys:pubkey()) -> id().
-id(Caller, Nonce, Contract) ->
-    Bin = <<Caller:?PUB_SIZE/binary,
-            Nonce:?NONCE_SIZE,
-            Contract:?PUB_SIZE/binary>>,
+id(CallerPubkey, CallerNonce, ContractPubkey) ->
+    Bin = <<CallerPubkey:?PUB_SIZE/binary,
+            CallerNonce:?NONCE_SIZE,
+            ContractPubkey:?PUB_SIZE/binary>>,
     aec_hash:hash(pubkey, Bin).
 
 -spec serialize(call()) -> binary().
-serialize(#call{} = I) ->
+serialize(#call{caller_id    = CallerId,
+                caller_nonce = CallerNonce,
+                height       = Height,
+                contract_id  = ContractId,
+                gas_price    = GasPrice,
+                gas_used     = GasUsed,
+                return_value = ReturnValue,
+                return_type  = ReturnType}) ->
     aec_object_serialization:serialize(
       ?CONTRACT_INTERACTION_TYPE,
       ?CONTRACT_INTERACTION_VSN,
       serialization_template(?CONTRACT_INTERACTION_VSN),
-      [ {caller_address, caller_address(I)}
-      , {caller_nonce, caller_nonce(I)}
-      , {height, height(I)}
-      , {contract_address, contract_address(I)}
-      , {gas_price, gas_price(I)}
-      , {gas_used, gas_used(I)}
-      , {return_value, return_value(I)}
-      , {return_type, serialize_return_type(return_type(I))}
+      [ {caller_id, CallerId}
+      , {caller_nonce, CallerNonce}
+      , {height, Height}
+      , {contract_id, ContractId}
+      , {gas_price, GasPrice}
+      , {gas_used, GasUsed}
+      , {return_value, ReturnValue}
+      , {return_type, serialize_return_type(ReturnType)}
      ]).
 
 -spec deserialize(binary()) -> call().
 deserialize(B) ->
-    [ {caller_address, CallerAddress}
+    [ {caller_id, CallerId}
     , {caller_nonce, CallerNonce}
     , {height, Height}
-    , {contract_address, ContractAddress}
+    , {contract_id, ContractId}
     , {gas_price, GasPrice}
     , {gas_used, GasUsed}
     , {return_value, ReturnValue}
@@ -123,21 +129,23 @@ deserialize(B) ->
           ?CONTRACT_INTERACTION_VSN,
           serialization_template(?CONTRACT_INTERACTION_VSN),
           B),
-    #call{ caller_address   = CallerAddress
-         , caller_nonce     = CallerNonce
-         , height           = Height
-         , contract_address = ContractAddress
-         , gas_price        = GasPrice
-         , gas_used         = GasUsed
-         , return_value     = ReturnValue
-         , return_type      = deserialize_return_type(ReturnType)
+    %% TODO: check caller_id type
+    contract = aec_id:specialize_type(ContractId),
+    #call{ caller_id    = CallerId
+         , caller_nonce = CallerNonce
+         , height       = Height
+         , contract_id  = ContractId
+         , gas_price    = GasPrice
+         , gas_used     = GasUsed
+         , return_value = ReturnValue
+         , return_type  = deserialize_return_type(ReturnType)
          }.
 
 serialization_template(?CONTRACT_INTERACTION_VSN) ->
-    [ {caller_address, binary}
+    [ {caller_id, id}
     , {caller_nonce, int}
     , {height, int}
-    , {contract_address, binary}
+    , {contract_id, id}
     , {gas_price, int}
     , {gas_used, int}
     , {return_value, binary}
@@ -152,51 +160,75 @@ deserialize_return_type(0) -> ok;
 deserialize_return_type(1) -> error;
 deserialize_return_type(2) -> revert.
 
-serialize_for_client(#call{} = I) ->
-    #{ <<"caller_address">>   => aec_base58c:encode(account_pubkey, caller_address(I))
-     , <<"caller_nonce">>     => caller_nonce(I)
-     , <<"height">>           => height(I)
-     , <<"contract_address">> => aec_base58c:encode(contract_pubkey, contract_address(I))
-     , <<"gas_price">>        => gas_price(I)
-     , <<"gas_used">>         => gas_used(I)
-     , <<"return_value">>     => list_to_binary(aect_utils:hex_bytes(return_value(I)))
-     , <<"return_type">>      => atom_to_binary(return_type(I), utf8)
+serialize_for_client(#call{caller_id    = CallerId,
+                           caller_nonce = CallerNonce,
+                           height       = Height,
+                           contract_id  = ContractId,
+                           gas_price    = GasPrice,
+                           gas_used     = GasUsed,
+                           return_value = ReturnValue,
+                           return_type  = ReturnType}) ->
+    #{ <<"caller_id">>    => aec_base58c:encode(id_hash, CallerId)
+     , <<"caller_nonce">> => CallerNonce
+     , <<"height">>       => Height
+     , <<"contract_id">>  => aec_base58c:encode(id_hash, ContractId)
+     , <<"gas_price">>    => GasPrice
+     , <<"gas_used">>     => GasUsed
+     , <<"return_value">> => list_to_binary(aect_utils:hex_bytes(ReturnValue))
+     , <<"return_type">>  => atom_to_binary(ReturnType, utf8)
      }.
 
 
 %%%===================================================================
 %%% Getters
 
--spec caller_address(call()) -> aec_keys:pubkey().
-caller_address(I) -> I#call.caller_address.
+-spec caller_id(call()) -> aec_id:id().
+caller_id(#call{caller_id = CallerId}) ->
+    CallerId.
+
+-spec caller_pubkey(call()) -> aec_keys:pubkey().
+caller_pubkey(#call{caller_id = CallerId}) ->
+    {_, CallerPubkey} = aec_id:specialize(CallerId),
+    CallerPubkey.
 
 -spec caller_nonce(call()) -> integer().
-caller_nonce(I) -> I#call.caller_nonce.
+caller_nonce(#call{caller_nonce = CallerNonce}) ->
+    CallerNonce.
 
 -spec height(call()) -> aec_blocks:height().
-height(I) -> I#call.height.
+height(#call{height = Height}) ->
+    Height.
 
--spec contract_address(call()) -> aec_keys:pubkey().
-contract_address(I) -> I#call.contract_address.
+-spec contract_id(call()) -> aec_id:id().
+contract_id(#call{contract_id = ContractId}) ->
+    ContractId.
+
+-spec contract_pubkey(call()) -> aec_keys:pubkey().
+contract_pubkey(#call{contract_id = ContractId}) ->
+  aec_id:specialize(ContractId, contract).
 
 -spec return_type(call()) -> ok | error | revert.
-return_type(I) -> I#call.return_type.
+return_type(#call{return_type = ReturnType}) ->
+    ReturnType.
 
 -spec return_value(call()) -> binary().
-return_value(I) -> I#call.return_value.
+return_value(#call{return_value = ReturnValue}) ->
+    ReturnValue.
 
 -spec gas_price(call()) -> amount().
-gas_price(I) -> I#call.gas_price.
+gas_price(#call{gas_price = GasPrice}) ->
+    GasPrice.
 
 -spec gas_used(call()) -> amount().
-gas_used(I) -> I#call.gas_used.
+gas_used(#call{gas_used = GasUsed}) ->
+    GasUsed.
 
 %%%===================================================================
 %%% Setters
 
--spec set_caller_address(aec_keys:pubkey(), call()) -> call().
-set_caller_address(X, I) ->
-    I#call{caller_address = assert_field(caller_address, X)}.
+-spec set_caller(aec_id:tag(), aec_keys:pubkey(), call()) -> call().
+set_caller(T, X, I) ->
+    I#call{caller_id = aec_id:create(T, assert_field(caller, X))}.
 
 -spec set_caller_nonce(integer(), call()) -> call().
 set_caller_nonce(X, I) ->
@@ -206,9 +238,9 @@ set_caller_nonce(X, I) ->
 set_height(X, I) ->
     I#call{height = assert_field(height, X)}.
 
--spec set_contract_address(aec_keys:pubkey(), call()) -> call().
-set_contract_address(X, I) ->
-    I#call{contract_address = assert_field(contract_address, X)}.
+-spec set_contract(aec_keys:pubkey(), call()) -> call().
+set_contract(X, I) ->
+    I#call{contract_id = aec_id:create(contract, assert_field(contract, X))}.
 
 -spec set_return_value(binary(), call()) -> call().
 set_return_value(X, I) ->
@@ -229,13 +261,13 @@ set_gas_used(X, I) ->
 %%%===================================================================
 
 assert_fields(I) ->
-    List = [ {caller_address,   I#call.caller_address}
-           , {caller_nonce,     I#call.caller_nonce}
-           , {height,           I#call.height}
-           , {contract_address, I#call.contract_address}
-           , {return_value,     I#call.return_value}
-           , {gas_price,        I#call.gas_price}
-           , {gas_used,         I#call.gas_used}
+    List = [ {caller,       caller_pubkey(I)}
+           , {caller_nonce, I#call.caller_nonce}
+           , {height,       I#call.height}
+           , {contract,     contract_pubkey(I)}
+           , {return_value, I#call.return_value}
+           , {gas_price,    I#call.gas_price}
+           , {gas_used,     I#call.gas_used}
            ],
     List1 = [try assert_field(X, Y), [] catch _:X -> X end
              || {X, Y} <- List],
@@ -244,10 +276,10 @@ assert_fields(I) ->
         Other -> error({missing, Other})
     end.
 
-assert_field(caller_address,   <<_:?PUB_SIZE/binary>> = X) -> X;
+assert_field(caller,           <<_:?PUB_SIZE/binary>> = X) -> X;
 assert_field(caller_nonce,     X) when is_integer(X), X >= 0 -> X;
 assert_field(height,           X) when is_integer(X), X > 0 -> X;
-assert_field(contract_address, <<_:?PUB_SIZE/binary>> = X) -> X;
+assert_field(contract,         <<_:?PUB_SIZE/binary>> = X) -> X;
 assert_field(return_value,     X) when is_binary(X) -> X;
 assert_field(gas_price,        X) when is_integer(X), X >= 0 -> X;
 assert_field(gas_used,         X) when is_integer(X), X >= 0 -> X;

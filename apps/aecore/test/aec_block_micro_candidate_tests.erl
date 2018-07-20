@@ -37,7 +37,7 @@ block_extension_test_() ->
       end,
       [{"Generate a block in one step, compared with two steps, with a spend tx",
         fun() ->
-          {ok, Tx} = aec_spend_tx:new(#{ sender => ?TEST_ID, recipient => ?TEST_ID
+          {ok, Tx} = aec_spend_tx:new(#{ sender_id => ?TEST_ID, recipient_id => ?TEST_ID
                                        , amount => 10, fee => 1, ttl => 100, nonce => 1, payload => <<>> }),
           STx = aec_test_utils:sign_tx(Tx, ?TEST_PRIV),
 
@@ -65,13 +65,13 @@ block_extension_test_() ->
           Call = aect_call:set_gas_used(
                    GasUsed,
                    aect_call:new(
-                     <<"caller_address........(32 bytes)">>,
+                     aec_id:create(account, <<"caller_address........(32 bytes)">>),
                      _CallerNonce = 1,
-                     <<"contract_address......(32 bytes)">>,
+                     aec_id:create(contract, <<"contract_address......(32 bytes)">>),
                      _BlockHeight = 42,
                      GasPrice)),
 
-          {ok, Tx} = aec_spend_tx:new(#{ sender => ?TEST_ID, recipient => ?TEST_ID
+          {ok, Tx} = aec_spend_tx:new(#{ sender_id => ?TEST_ID, recipient_id => ?TEST_ID
                                        , amount => 10, fee => 1, ttl => 100, nonce => 1, payload => <<>> }),
           STx = aec_test_utils:sign_tx(Tx, ?TEST_PRIV),
 

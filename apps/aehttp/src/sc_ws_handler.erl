@@ -596,8 +596,8 @@ read_channel_options(Params) ->
             (Fun, Accum) -> Fun(Accum)
         end,
         #{},
-        [Read(<<"initiator">>, initiator, #{type => {hash, account_pubkey}}),
-         Read(<<"responder">>, responder, #{type => {hash, account_pubkey}}),
+        [Read(<<"initiator_id">>, initiator, #{type => {hash, account_pubkey}}),
+         Read(<<"responder_id">>, responder, #{type => {hash, account_pubkey}}),
          Read(<<"existing_channel_id">>, existing_channel_id,
               #{type => {hash, channel}, mandatory => false}),
          Read(<<"offchain_tx">>, offchain_tx,

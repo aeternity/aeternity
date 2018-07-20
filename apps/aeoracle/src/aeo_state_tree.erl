@@ -109,14 +109,14 @@ enter_query(I, Tree) ->
 insert_query(I, Tree) ->
     add_query(insert, I, Tree).
 
--spec get_query(aeo_oracles:id(), aeo_query:id(), tree()) -> query().
+-spec get_query(aeo_oracles:pubkey(), aeo_query:id(), tree()) -> query().
 get_query(OracleId, Id, Tree) ->
     TreeId = <<OracleId/binary, Id/binary>>,
     Serialized = aeu_mtrees:get(TreeId, Tree#oracle_tree.otree),
     aeo_query:deserialize(Serialized).
 
--spec lookup_query(aeo_oracles:id(), aeo_query:id(), tree()) ->
-                                                {'value', query()} | none.
+-spec lookup_query(aeo_oracles:pubkey(), aeo_query:id(), tree()) ->
+    {'value', query()} | none.
 lookup_query(OracleId, Id, Tree) ->
     TreeId = <<OracleId/binary, Id/binary>>,
     case aeu_mtrees:lookup(TreeId, Tree#oracle_tree.otree) of
@@ -140,7 +140,7 @@ get_oracle(Id, Tree) ->
 get_oracle_query_ids(Id, Tree) ->
     find_oracle_query_ids(Id, Tree).
 
--spec get_oracle_queries(aeo_oracles:id(), binary() | '$first', open | closed | all,
+-spec get_oracle_queries(aeo_oracles:pubkey(), binary() | '$first', open | closed | all,
                          non_neg_integer(), tree()) -> list(query()).
 get_oracle_queries(OracleId, From, QueryType, Max, Tree) ->
     find_oracle_queries(OracleId, From, QueryType, Max, Tree).
@@ -190,30 +190,30 @@ commit_to_db(#oracle_tree{otree = OTree, cache = Cache} = Tree) ->
 %%% Internal functions
 %%%===================================================================
 add_oracle(How, O, #oracle_tree{ otree = OTree } = Tree) ->
-    Id = aeo_oracles:id(O),
+    Pubkey = aeo_oracles:pubkey(O),
     Serialized = aeo_oracles:serialize(O),
     Expires = aeo_oracles:expires(O),
 
     OTree1 = case How of
-                enter  -> aeu_mtrees:enter(Id, Serialized, OTree);
-                insert -> aeu_mtrees:insert(Id, Serialized, OTree)
+                enter  -> aeu_mtrees:enter(Pubkey, Serialized, OTree);
+                insert -> aeu_mtrees:insert(Pubkey, Serialized, OTree)
             end,
-    Cache  = cache_push({oracle, Id}, Expires, Tree#oracle_tree.cache),
+    Cache  = cache_push({oracle, Pubkey}, Expires, Tree#oracle_tree.cache),
     Tree#oracle_tree{ otree  = OTree1
                     , cache  = Cache
                     }.
 
 add_query(How, I, #oracle_tree{otree = OTree} = Tree) ->
-    OracleId    = aeo_query:oracle_address(I),
-    Id          = aeo_query:id(I),
-    TreeId      = <<OracleId/binary, Id/binary>>,
-    SerializedI = aeo_query:serialize(I),
-    Expires     = aeo_query:expires(I),
-    OTree1      = case How of
-                      enter  -> aeu_mtrees:enter(TreeId, SerializedI, OTree);
-                      insert -> aeu_mtrees:insert(TreeId, SerializedI, OTree)
+    OraclePubkey = aeo_query:oracle_pubkey(I),
+    QueryId      = aeo_query:id(I),
+    TreeId       = <<OraclePubkey/binary, QueryId/binary>>,
+    SerializedI  = aeo_query:serialize(I),
+    Expires      = aeo_query:expires(I),
+    OTree1       = case How of
+                       enter  -> aeu_mtrees:enter(TreeId, SerializedI, OTree);
+                       insert -> aeu_mtrees:insert(TreeId, SerializedI, OTree)
                   end,
-    Cache  = cache_push({query, OracleId, Id}, Expires, Tree#oracle_tree.cache),
+    Cache  = cache_push({query, OraclePubkey, QueryId}, Expires, Tree#oracle_tree.cache),
     Tree#oracle_tree{ otree  = OTree1
                     , cache  = Cache
                     }.
@@ -288,14 +288,14 @@ int_delete_query(Id, {OTree, ATree}) ->
 oracle_refund(Q, ATree) ->
     case aeo_query:is_closed(Q) of
         false ->
-            case aec_accounts_trees:lookup(aeo_query:sender_address(Q), ATree) of
+            case aec_accounts_trees:lookup(aeo_query:sender_pubkey(Q), ATree) of
                 {value, Account} ->
                     {ok, Account1} = aec_accounts:earn(Account, aeo_query:fee(Q)),
                     aec_accounts_trees:enter(Account1, ATree);
                 none ->
                     lager:error("Account ~p could not be found for refunding oracle query ~p",
-                                [aeo_query:sender_address(Q), aeo_query:id(Q)]),
-                    error({account_disappeared, aeo_query:sender_address(Q)})
+                                [aeo_query:sender_pubkey(Q), aeo_query:id(Q)]),
+                    error({account_disappeared, aeo_query:sender_pubkey(Q)})
             end;
         true ->
             ATree

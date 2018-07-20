@@ -36,7 +36,7 @@
 
 -record(channel_settle_tx, {
           channel_id              :: aec_id:id(),
-          from                    :: aec_id:id(),
+          from_id                 :: aec_id:id(),
           initiator_amount_final  :: non_neg_integer(),
           responder_amount_final  :: non_neg_integer(),
           ttl                     :: aetx:tx_ttl(),
@@ -54,16 +54,16 @@
 
 -spec new(map()) -> {ok, aetx:tx()}.
 new(#{channel_id              := ChannelId,
-      from                    := From,
+      from_id                 := FromId,
       initiator_amount_final  := InitiatorAmount,
       responder_amount_final  := ResponderAmount,
       fee                     := Fee,
       nonce                   := Nonce} = Args) ->
     channel = aec_id:specialize_type(ChannelId),
-    account = aec_id:specialize_type(From),
+    account = aec_id:specialize_type(FromId),
     Tx = #channel_settle_tx{
             channel_id              = ChannelId,
-            from                    = From,
+            from_id                 = FromId,
             initiator_amount_final  = InitiatorAmount,
             responder_amount_final  = ResponderAmount,
             ttl                     = maps:get(ttl, Args, 0),
@@ -90,16 +90,10 @@ nonce(#channel_settle_tx{nonce = Nonce}) ->
 origin(#channel_settle_tx{} = Tx) ->
     from_pubkey(Tx).
 
-from(#channel_settle_tx{from = From}) ->
-    From.
+from_pubkey(#channel_settle_tx{from_id = FromId}) ->
+    aec_id:specialize(FromId, account).
 
-from_pubkey(#channel_settle_tx{from = FromPubKey}) ->
-    aec_id:specialize(FromPubKey, account).
-
-channel(#channel_settle_tx{channel_id = ChannelId}) ->
-    ChannelId.
-
-channel_hash(#channel_settle_tx{channel_id = ChannelId}) ->
+channel_pubkey(#channel_settle_tx{channel_id = ChannelId}) ->
     aec_id:specialize(ChannelId, channel).
 
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
@@ -108,11 +102,11 @@ check(#channel_settle_tx{initiator_amount_final = InitiatorAmount,
                          responder_amount_final = ResponderAmount,
                          fee                    = Fee,
                          nonce                  = Nonce} = Tx, _Context, Trees, Height, _ConsensusVersion) ->
-    ChannelId = channel_hash(Tx),
-    FromPubKey = from_pubkey(Tx),
+    ChannelPubKey = channel_pubkey(Tx),
+    FromPubKey    = from_pubkey(Tx),
     Checks =
         [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee) end,
-         fun() -> check_channel(ChannelId, FromPubKey, InitiatorAmount,
+         fun() -> check_channel(ChannelPubKey, FromPubKey, InitiatorAmount,
                                 ResponderAmount, Height, Trees) end],
     case aeu_validation:run(Checks) of
         ok ->
@@ -128,29 +122,29 @@ process(#channel_settle_tx{initiator_amount_final = InitiatorAmount,
                            fee                    = Fee,
                            nonce                  = Nonce} = Tx, _Context,
         Trees, _Height, _ConsensusVersion, _TxHash) ->
-    ChannelId = channel_hash(Tx),
-    FromPubKey = from_pubkey(Tx),
+    ChannelPubKey = channel_pubkey(Tx),
+    FromPubKey    = from_pubkey(Tx),
     AccountsTree0 = aec_trees:accounts(Trees),
     ChannelsTree0 = aec_trees:channels(Trees),
 
-    Channel0        = aesc_state_tree:get(ChannelId, ChannelsTree0),
-    Initiator       = aesc_channels:initiator(Channel0),
+    Channel0        = aesc_state_tree:get(ChannelPubKey, ChannelsTree0),
+    InitiatorPubKey = aesc_channels:initiator_pubkey(Channel0),
     InitiatorAmount = aesc_channels:initiator_amount(Channel0), % same amt
     TotalAmount     = aesc_channels:total_amount(Channel0),
-    Responder       = aesc_channels:responder(Channel0),
+    ResponderPubKey = aesc_channels:responder_pubkey(Channel0),
     ResponderAmount = TotalAmount - InitiatorAmount, % same amt
 
-    InitiatorAccount0       = aec_accounts_trees:get(Initiator, AccountsTree0),
-    ResponderAccount0       = aec_accounts_trees:get(Responder, AccountsTree0),
+    InitiatorAccount0       = aec_accounts_trees:get(InitiatorPubKey, AccountsTree0),
+    ResponderAccount0       = aec_accounts_trees:get(ResponderPubKey, AccountsTree0),
     {ok, InitiatorAccount1} = aec_accounts:earn(InitiatorAccount0, InitiatorAmount),
     {ok, ResponderAccount1} = aec_accounts:earn(ResponderAccount0, ResponderAmount),
 
     {InitiatorAccount3, ResponderAccount3} =
         case FromPubKey of
-            Initiator ->
+            InitiatorPubKey ->
                 {ok, InitiatorAccount2} = aec_accounts:spend(InitiatorAccount1, Fee, Nonce),
                 {InitiatorAccount2, ResponderAccount1};
-            Responder ->
+            ResponderPubKey ->
                 {ok, ResponderAccount2} = aec_accounts:spend(ResponderAccount1, Fee, Nonce),
                 {InitiatorAccount1, ResponderAccount2}
         end,
@@ -158,7 +152,7 @@ process(#channel_settle_tx{initiator_amount_final = InitiatorAmount,
     AccountsTree1 = aec_accounts_trees:enter(InitiatorAccount3, AccountsTree0),
     AccountsTree2 = aec_accounts_trees:enter(ResponderAccount3, AccountsTree1),
 
-    ChannelsTree1 = aesc_state_tree:delete(aesc_channels:id(Channel0), ChannelsTree0),
+    ChannelsTree1 = aesc_state_tree:delete(aesc_channels:pubkey(Channel0), ChannelsTree0),
 
     Trees1 = aec_trees:set_accounts(Trees, AccountsTree2),
     Trees2 = aec_trees:set_channels(Trees1, ChannelsTree1),
@@ -170,7 +164,7 @@ signers(#channel_settle_tx{} = Tx, _) ->
 
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_settle_tx{channel_id             = ChannelId,
-                             from                   = FromId,
+                             from_id                = FromId,
                              initiator_amount_final = InitiatorAmount,
                              responder_amount_final = ResponderAmount,
                              ttl                    = TTL,
@@ -178,7 +172,7 @@ serialize(#channel_settle_tx{channel_id             = ChannelId,
                              nonce                  = Nonce}) ->
     {version(),
     [ {channel_id             , ChannelId}
-    , {from                   , FromId}
+    , {from_id                , FromId}
     , {initiator_amount_final , InitiatorAmount}
     , {responder_amount_final , ResponderAmount}
     , {ttl                    , TTL}
@@ -189,7 +183,7 @@ serialize(#channel_settle_tx{channel_id             = ChannelId,
 -spec deserialize(vsn(), list()) -> tx().
 deserialize(?CHANNEL_SETTLE_TX_VSN,
             [ {channel_id             , ChannelId}
-            , {from                   , FromId}
+            , {from_id                , FromId}
             , {initiator_amount_final , InitiatorAmount}
             , {responder_amount_final , ResponderAmount}
             , {ttl                    , TTL}
@@ -198,7 +192,7 @@ deserialize(?CHANNEL_SETTLE_TX_VSN,
     channel = aec_id:specialize_type(ChannelId),
     account = aec_id:specialize_type(FromId),
     #channel_settle_tx{channel_id             = ChannelId,
-                       from                   = FromId,
+                       from_id                = FromId,
                        initiator_amount_final = InitiatorAmount,
                        responder_amount_final = ResponderAmount,
                        ttl                    = TTL,
@@ -206,15 +200,17 @@ deserialize(?CHANNEL_SETTLE_TX_VSN,
                        nonce                  = Nonce}.
 
 -spec for_client(tx()) -> map().
-for_client(#channel_settle_tx{initiator_amount_final = InitiatorAmount,
+for_client(#channel_settle_tx{channel_id             = ChannelId,
+                              from_id                = FromId,
+                              initiator_amount_final = InitiatorAmount,
                               responder_amount_final = ResponderAmount,
                               ttl                    = TTL,
                               fee                    = Fee,
-                              nonce                  = Nonce} = Tx) ->
+                              nonce                  = Nonce}) ->
     #{<<"data_schema">>            => <<"ChannelSettleTxJSON">>, % swagger schema name
       <<"vsn">>                    => version(),
-      <<"channel_id">>             => aec_base58c:encode(id_hash, channel(Tx)),
-      <<"from">>                   => aec_base58c:encode(id_hash, from(Tx)),
+      <<"channel_id">>             => aec_base58c:encode(id_hash, ChannelId),
+      <<"from_id">>                => aec_base58c:encode(id_hash, FromId),
       <<"initiator_amount_final">> => InitiatorAmount,
       <<"responder_amount_final">> => ResponderAmount,
       <<"ttl">>                    => TTL,
@@ -224,7 +220,7 @@ for_client(#channel_settle_tx{initiator_amount_final = InitiatorAmount,
 
 serialization_template(?CHANNEL_SETTLE_TX_VSN) ->
     [ {channel_id             , id}
-    , {from                   , id}
+    , {from_id                , id}
     , {initiator_amount_final , int}
     , {responder_amount_final , int}
     , {ttl                    , int}
@@ -236,9 +232,9 @@ serialization_template(?CHANNEL_SETTLE_TX_VSN) ->
 %%% Internal functions
 %%%===================================================================
 
-check_channel(ChannelId, FromPubKey, InitiatorAmount, ResponderAmount, Height, Trees) ->
+check_channel(ChannelPubKey, FromPubKey, InitiatorAmount, ResponderAmount, Height, Trees) ->
     ChannelsTree = aec_trees:channels(Trees),
-    case aesc_state_tree:lookup(ChannelId, ChannelsTree) of
+    case aesc_state_tree:lookup(ChannelPubKey, ChannelsTree) of
         none ->
             {error, channel_does_not_exist};
         {value, Channel} ->
@@ -246,7 +242,7 @@ check_channel(ChannelId, FromPubKey, InitiatorAmount, ResponderAmount, Height, T
                 [fun() -> aesc_utils:check_is_peer(FromPubKey, aesc_channels:peers(Channel)) end,
                  fun() -> check_solo_closed(Channel, Height) end,
                  %% check total amount
-                 fun() -> aesc_utils:check_are_funds_in_channel(ChannelId,
+                 fun() -> aesc_utils:check_are_funds_in_channel(ChannelPubKey,
                                 InitiatorAmount + ResponderAmount, Trees) end,
                  %% check individual amounts are what is expected
                  fun() -> check_peer_amount(InitiatorAmount,

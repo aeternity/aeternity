@@ -328,12 +328,12 @@ spend(Node, FromPub, ToPub, Amount) ->
 
 spend(Node, FromPub, ToPub, Amount, Fee) ->
     {ok, Nonce} = rpc:call(Node, aec_next_nonce, pick_for_account, [FromPub]),
-    Params = #{sender => aec_id:create(account, FromPub),
-               recipient => aec_id:create(account, ToPub),
-               amount => Amount,
-               fee => Fee,
-               nonce => Nonce,
-               payload => <<"foo">>},
+    Params = #{sender_id    => aec_id:create(account, FromPub),
+               recipient_id => aec_id:create(account, ToPub),
+               amount       => Amount,
+               fee          => Fee,
+               nonce        => Nonce,
+               payload      => <<"foo">>},
     {ok, Tx} = rpc:call(Node, aec_spend_tx, new, [Params]),
     {ok, SignedTx} = rpc:call(Node, aec_keys, sign_tx, [Tx]),
     ok = rpc:call(Node, aec_tx_pool, push, [SignedTx]),

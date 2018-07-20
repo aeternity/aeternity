@@ -23,7 +23,7 @@
 
 -type channel() :: aesc_channels:channel().
 
--type chkey() :: aesc_channels:id().
+-type chkey() :: aesc_channels:pubkey().
 -type chvalue() :: aesc_channels:serialized().
 
 -opaque tree() :: aeu_mtrees:mtree(chkey(), chvalue()).
@@ -38,9 +38,9 @@
 commit_to_db(Tree) ->
     aeu_mtrees:commit_to_db(Tree).
 
--spec delete(aesc_channels:id(), tree()) -> tree().
-delete(Id, Tree) ->
-    aeu_mtrees:delete(Id, Tree).
+-spec delete(aesc_channels:pubkey(), tree()) -> tree().
+delete(PubKey, Tree) ->
+    aeu_mtrees:delete(PubKey, Tree).
 
 -spec empty() -> tree().
 empty() ->
@@ -56,18 +56,18 @@ new_with_backend(Hash) ->
 
 -spec enter(channel(), tree()) -> tree().
 enter(Channel, Tree) ->
-    Id         = aesc_channels:id(Channel),
+    PubKey     = aesc_channels:pubkey(Channel),
     Serialized = aesc_channels:serialize(Channel),
-    aeu_mtrees:enter(Id, Serialized, Tree).
+    aeu_mtrees:enter(PubKey, Serialized, Tree).
 
--spec get(aesc_channels:id(), tree()) -> aesc_channels:channel().
+-spec get(chkey(), tree()) -> aesc_channels:channel().
 get(Id, Tree) ->
     aesc_channels:deserialize(Id, aeu_mtrees:get(Id, Tree)).
 
--spec lookup(aesc_channels:id(), tree()) -> {value, channel()} | none.
-lookup(Id, Tree) ->
-    case aeu_mtrees:lookup(Id, Tree) of
-        {value, Val} -> {value, aesc_channels:deserialize(Id, Val)};
+-spec lookup(chkey(), tree()) -> {value, channel()} | none.
+lookup(PubKey, Tree) ->
+    case aeu_mtrees:lookup(PubKey, Tree) of
+        {value, Val} -> {value, aesc_channels:deserialize(PubKey, Val)};
         none         -> none
     end.
 
