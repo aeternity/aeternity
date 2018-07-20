@@ -149,3 +149,12 @@ tests: # test specific settings
         amount: 13
         fee: 1
         recipient: ak$kMPkyaK7Wqcwz2VFXaSzUREpNTnypUBXYz8mDL1BRGUFjYoZa
+  test_api_usage_contracts_counter:
+    miner_node: dev1
+    blocks_to_mine: 7
+    users:
+      a:
+        balance: 50000
+      b:
+        balance: 50000
+    min_spend_tx_fee: 1
