@@ -12,6 +12,7 @@ from swagger_client.api.external_api import ExternalApi
 from swagger_client.api.internal_api import InternalApi
 from swagger_client.api_client import ApiClient
 from swagger_client.models.balance import Balance
+from swagger_client.models.spend_tx import SpendTx
 from swagger_client.configuration import Configuration
 
 from nose.tools import assert_equals
@@ -203,6 +204,20 @@ def get_account_balance_at_height(api, int_api, height, pub_key=None):
     return _balance_from_get_account_balance(
         lambda: api.get_account_balance(_node_pub_key(int_api, pub_key),
                                         height=height))
+
+def send_tokens_to_unchanging_user(address, tokens, fee, external_api, internal_api):
+    def get_balance(k):
+        return get_account_balance(external_api, internal_api, k).balance
+    bal0 = get_balance(address)
+    spend_tx_obj = SpendTx(
+        recipient_pubkey=address,
+        amount=tokens,
+        fee=fee,
+        ttl=100,
+        payload="sending tokens")
+    internal_api.post_spend_tx(spend_tx_obj)
+    wait(lambda: get_balance(address) == (bal0 + tokens),
+         timeout_seconds=120, sleep_seconds=0.25)
 
 def _node_pub_key(int_api, k):
     return k if k is not None else int_api.get_pub_key().pub_key
