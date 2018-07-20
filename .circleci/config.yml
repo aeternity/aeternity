@@ -230,6 +230,13 @@ references:
         EXTERNAL_ADDRESS=localhost:3002 INTERNAL_ADDRESS=localhost:3002/internal ./docker/healthcheck.sh
         EXTERNAL_ADDRESS=localhost:3003 INTERNAL_ADDRESS=localhost:3003/internal ./docker/healthcheck.sh
 
+  docker_compose_logs: &docker_compose_logs
+    run:
+      name: Dump docker-compose logs
+      command: |
+        docker-compose logs
+      when: always
+
 jobs:
   build:
     <<: *container_config
@@ -420,6 +427,7 @@ jobs:
       - *docker_compose_build
       - *docker_compose_start
       - *docker_compose_healthcheck
+      - *docker_compose_logs
 
   docker_test_push_master:
     <<: *machine_config
@@ -429,6 +437,7 @@ jobs:
       - *docker_compose_build
       - *docker_compose_start
       - *docker_compose_healthcheck
+      - *docker_compose_logs
       - run:
           name: Push Docker image to DockerHub
           command: |
