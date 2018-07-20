@@ -166,6 +166,255 @@ handle_request('GetGenerationByHeight', Params, _Context) ->
         {ok, Hash} -> get_generation(Hash)
     end;
 
+handle_request('GetAccountByPubkey', Params, _Context) ->
+    case aec_base58c:safe_decode(account_pubkey, maps:get(pubkey, Params)) of
+        {ok, Pubkey} ->
+            case aehttp_logic:get_account(Pubkey) of
+                {ok, Account} ->
+                    {200, [],
+                     #{pubkey => aec_base58c:encode(account_pubkey, Pubkey),
+                       balance => aec_accounts:balance(Account),
+                       nonce => aec_accounts:nonce(Account)}};
+                {error, _} ->
+                    {404, [], #{reason => <<"Account not found">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid public key">>}}
+    end;
+
+handle_request('GetPendingAccountTransactionsByPubkey', Params, _Context) ->
+    case aec_base58c:safe_decode(account_pubkey, maps:get(pubkey, Params)) of
+        {ok, Pubkey} ->
+            case aec_chain:get_account(Pubkey) of
+                {value, _} ->
+                    {ok, Txs0} = aec_tx_pool:peek(infinity, Pubkey),
+                    Txs = [aetx_sign:serialize_for_client_pending(json, T) || T <- Txs0],
+                    JsonTxs = #{data_schema => <<"JSONTx">>,
+                                transactions => Txs},
+                    {200, [], JsonTxs};
+                _ ->
+                    {404, [], #{reason => <<"Account not found">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid public key">>}}
+    end;
+
+handle_request('GetTransactionByHash', Params, _Config) ->
+    case aec_base58c:safe_decode(tx_hash, maps:get(hash, Params)) of
+        {ok, Hash} ->
+            case aec_chain:find_tx_with_location(Hash) of
+                none ->
+                    {404, [], #{<<"reason">> => <<"Transaction not found">>}};
+                {mempool, Tx} ->
+                    JSONTx = aetx_sign:serialize_for_client_pending(json, Tx),
+                    {200, [], JSONTx};
+                {BlockHash, Tx} ->
+                    {ok, Header} = aec_chain:get_header(BlockHash),
+                    JSONTx = aetx_sign:serialize_for_client(json, Header, Tx),
+                    {200, [], JSONTx}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid hash">>}}
+    end;
+
+handle_request('GetTransactionInfoByHash', Params, _Config) ->
+    ParseFuns = [read_required_params([hash]),
+                 base58_decode([{hash, tx_hash, tx_hash}]),
+                 get_transaction(tx_hash, tx),
+                 get_contract_call_object_from_tx(tx, contract_call),
+                 ok_response(
+                    fun(#{contract_call := Call}) ->
+                            aect_call:serialize_for_client(Call)
+                    end)
+                ],
+    process_request(ParseFuns, Params);
+
+handle_request('PostTransaction', #{'Tx' := Tx}, _Context) ->
+    case aehttp_api_parser:decode(tx, maps:get(<<"tx">>, Tx)) of
+        {error, #{<<"tx">> := broken_tx}} ->
+            {400, [], #{reason => <<"Invalid tx">>}};
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid base58Check encoding">>}};
+        {ok, SignedTx} ->
+            %% TODO: lager debug log?
+            aec_tx_pool:push(SignedTx),
+            Hash = aetx_sign:hash(SignedTx),
+            {200, [], #{<<"tx_hash">> => aec_base58c:encode(tx_hash, Hash)}}
+    end;
+
+handle_request('GetContract', Req, _Context) ->
+    case aec_base58c:safe_decode(contract_pubkey, maps:get(pubkey, Req)) of
+        {error, _} -> {400, [], #{reason => <<"Invalid public key">>}};
+        {ok, PubKey} ->
+            case aec_chain:get_contract(PubKey) of
+                {error, _} -> {404, [], #{reason => <<"Contract not found">>}};
+                {ok, Contract} ->
+                    Response = aect_contracts:serialize_for_client(Contract),
+                    {200, [], Response}
+            end
+    end;
+
+handle_request('GetContractCode', Req, _Context) ->
+    case aec_base58c:safe_decode(contract_pubkey, maps:get(pubkey, Req)) of
+        {error, _} -> {400, [], #{reason => <<"Invalid public key">>}};
+        {ok, PubKey} ->
+            case aec_chain:get_contract(PubKey) of
+                {error, _} -> {404, [], #{reason => <<"Contract not found">>}};
+                {ok, Contract} ->
+                    Code = aect_contracts:code(Contract),
+                    {200, [], #{ <<"bytecode">> => aeu_hex:hexstring_encode(Code) }}
+            end
+    end;
+
+handle_request('GetContractStore', Req, _Context) ->
+    case aec_base58c:safe_decode(contract_pubkey, maps:get(pubkey, Req)) of
+        {error, _} -> {400, [], #{reason => <<"Invalid public key">>}};
+        {ok, PubKey} ->
+            case aec_chain:get_contract(PubKey) of
+                {error, _} -> {404, [], #{reason => <<"Contract not found">>}};
+                {ok, Contract} ->
+                    Response = [ #{<<"key">> => aeu_hex:hexstring_encode(K),
+                                   <<"value">> => aeu_hex:hexstring_encode(V)}
+                               || {K, V} <- maps:to_list(aect_contracts:state(Contract)) ],
+                    {200, [], #{ <<"store">> => Response }}
+            end
+    end;
+
+handle_request('GetOracleByPubkey', Params, _Context) ->
+    case aec_base58c:safe_decode(oracle_pubkey, maps:get(pubkey, Params)) of
+        {ok, Pubkey} ->
+            case aec_chain:get_oracle(Pubkey) of
+                {ok, Oracle} ->
+                    {200, [], aehttp_api_parser:encode(oracle, aeo_oracles:serialize_for_client(Oracle))};
+                {error, _} ->
+                    {404, [], #{reason => <<"Oracle not found">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid public key">>}}
+    end;
+
+handle_request('GetOracleQueriesByPubkey', Params, _Context) ->
+    case aec_base58c:safe_decode(oracle_pubkey, maps:get(pubkey, Params)) of
+        {ok, Pubkey} ->
+            Limit = case maps:get(limit, Params) of
+                        N when N =/= undefined -> N;
+                        undefined -> 20
+                    end,
+            FromQueryId = case maps:get(from, Params) of
+                              Id when Id =/= undefined ->
+                                  {ok, OracleQueryId} = aec_base58c:safe_decode(oracle_query_id, Id),
+                                  OracleQueryId;
+                              undefined ->
+                                  '$first'
+                          end,
+            QueryType = case maps:get(type, Params) of
+                            T when T =/= undefined -> T;
+                            undefined -> all
+                        end,
+            case aec_chain:get_oracle_queries(Pubkey, FromQueryId, QueryType, Limit) of
+                {ok, Queries} ->
+                    Queries1 = [aeo_query:serialize_for_client(Query) || Query <- Queries],
+                    {200, [], #{oracle_queries => Queries1}};
+                {error, _} ->
+                    {200, [], #{oracle_queries => []}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid public key">>}}
+    end;
+
+handle_request('GetOracleQueryByPubkeyAndQueryId', Params, _Context) ->
+    case aec_base58c:safe_decode(oracle_pubkey, maps:get(pubkey, Params)) of
+        {ok, Pubkey} ->
+            case aec_base58c:safe_decode(oracle_query_id, maps:get('query-id', Params)) of
+                {ok, QueryId} ->
+                    case aec_chain:get_oracle_query(Pubkey, QueryId) of
+                        {ok, Query} ->
+                            {200, [], aeo_query:serialize_for_client(Query)};
+                        {error, _} ->
+                            {404, [], #{reason => <<"Query not found">>}}
+                    end;
+                {error, _} ->
+                    {400, [], #{reason => <<"Invalid public key or query ID">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid public key or query ID">>}}
+    end;
+
+handle_request('GetNameEntryByName', Params, _Context) ->
+    Name = maps:get(name, Params),
+    case aec_chain:name_entry(Name) of
+        {ok, NameEntry} ->
+            #{<<"name">>     := Name,
+              <<"hash">>     := Hash,
+              <<"name_ttl">> := NameTTL,
+              <<"pointers">> := Pointers} = NameEntry,
+            {200, [], #{name      => Name,
+                        name_hash => aec_base58c:encode(name, Hash),
+                        name_ttl  => NameTTL,
+                        pointers  => Pointers}};
+        {error, name_not_found} ->
+            {404, [], #{reason => <<"Name not found">>}};
+        {error, name_revoked} ->
+            {404, [], #{reason => <<"Name revoked">>}};
+        {error, Reason} ->
+            ReasonBin = atom_to_binary(Reason, utf8),
+            {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>}}
+    end;
+
+handle_request('GetChannelByPubkey', Params, _Context) ->
+    case aec_base58c:safe_decode(channel, maps:get(pubkey, Params)) of
+        {ok, Pubkey} ->
+            case aec_chain:get_channel(Pubkey) of
+                {ok, Channel} ->
+                    {200, [], aesc_channels:serialize_for_client(Channel)};
+                {error, _} ->
+                    {404, [], #{reason => <<"Channel not found">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid public key">>}}
+    end;
+
+handle_request('GetPeerPubkey', _Params, _Context) ->
+    {ok, Pubkey} = aec_keys:peer_pubkey(),
+    {200, [], #{pubkey => aec_base58c:encode(peer_pubkey, Pubkey)}};
+
+handle_request('GetStatus', _Params, _Context) ->
+    {ok, GenesisBlockHash} =
+        aec_headers:hash_header(aec_block_genesis:genesis_header()),
+    %% TODO
+    Solutions = 0,
+    %% TODO
+    Difficulty = 0,
+    %% TODO
+    Syncing = true,
+    %% TODO
+    Listening = true,
+    Protocols =
+        maps:fold(fun(Vsn, Height, Acc) ->
+                          [#{protocol => #{version => Vsn, effective_at_height => Height}} | Acc]
+                 end, [], aec_governance:protocols()),
+    %% TODO
+    NodeVersion = aeu_info:get_version(),
+    % TODO
+    NodeRevision = aeu_info:get_revision(),
+    PeerCount = length(aec_peers:get_random(all)),
+    PendingTxsCount =
+        case aec_tx_pool:size() of
+            N when N =/= undefined -> N;
+            undefined -> 0
+        end,
+    {200, [],
+     #{<<"genesis-key-block-hash">>     => aec_base58c:encode(block_hash, GenesisBlockHash),
+       <<"solutions">>                  => Solutions,
+       <<"difficulty">>                 => Difficulty,
+       <<"syncing">>                    => Syncing,
+       <<"listening">>                  => Listening,
+       <<"protocols">>                  => Protocols,
+       <<"node-version">>               => NodeVersion,
+       <<"node-revision">>              => NodeRevision,
+       <<"peer-count">>                 => PeerCount,
+       <<"pending-transactions-count">> => PendingTxsCount}};
+
 handle_request('GetBlockGenesis', Req, _Context) ->
     get_block(fun aehttp_logic:get_block_genesis/0, Req, json);
 
@@ -300,12 +549,12 @@ handle_request('PostContractCallCompute', #{'ContractCallCompute' := Req}, _Cont
 
 handle_request('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([account, {query_format, query_spec},
-                                       {response_format, response_spec},
+                 read_required_params([account_id, {query_format, query_format},
+                                       {response_format, response_format},
                                        query_fee, oracle_ttl, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{account, account, {id_hash, [account_pubkey]}}]),
-                 get_nonce_from_account_id(account),
+                 base58_decode([{account_id, account_id, {id_hash, [account_pubkey]}}]),
+                 get_nonce_from_account_id(account_id),
                  ttl_decode(oracle_ttl),
                  unsigned_tx_response(fun aeo_register_tx:new/1)
                 ],
@@ -313,10 +562,10 @@ handle_request('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
 
 handle_request('PostOracleExtend', #{'OracleExtendTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([oracle, oracle_ttl, fee]),
+                 read_required_params([oracle_id, oracle_ttl, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{oracle, oracle, {id_hash, [oracle_pubkey]}}]),
-                 get_nonce_from_account_id(oracle),
+                 base58_decode([{oracle_id, oracle_id, {id_hash, [oracle_pubkey]}}]),
+                 get_nonce_from_account_id(oracle_id),
                  ttl_decode(oracle_ttl),
                  unsigned_tx_response(fun aeo_extend_tx:new/1)
                 ],
@@ -324,27 +573,27 @@ handle_request('PostOracleExtend', #{'OracleExtendTx' := Req}, _Context) ->
 
 handle_request('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([sender, oracle_pubkey, query,
+                 read_required_params([sender_id, oracle_id, query,
                                        query_fee, fee, query_ttl, response_ttl]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{sender, sender, {id_hash, [account_pubkey]}},
-                                {oracle_pubkey, oracle, {id_hash, [oracle_pubkey]}}]),
-                 get_nonce_from_account_id(sender),
+                 base58_decode([{sender_id, sender_id, {id_hash, [account_pubkey]}},
+                                {oracle_id, oracle_id, {id_hash, [oracle_pubkey]}}]),
+                 get_nonce_from_account_id(sender_id),
                  ttl_decode(query_ttl),
                  relative_ttl_decode(response_ttl),
-                 verify_oracle_existence(oracle),
+                 verify_oracle_existence(oracle_id),
                  unsigned_tx_response(fun aeo_query_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
 
 handle_request('PostOracleResponse', #{'OracleResponseTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([oracle, query_id, response, fee]),
+                 read_required_params([oracle_id, query_id, response, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{oracle, oracle, {id_hash, [oracle_pubkey]}},
+                 base58_decode([{oracle_id, oracle_id, {id_hash, [oracle_pubkey]}},
                                 {query_id, query_id, oracle_query_id}]),
-                 get_nonce_from_account_id(oracle),
-                 verify_oracle_query_existence(oracle, query_id),
+                 get_nonce_from_account_id(oracle_id),
+                 verify_oracle_query_existence(oracle_id, query_id),
                  unsigned_tx_response(fun aeo_response_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
@@ -766,3 +1015,4 @@ get_generation(Hash) ->
             },
             {200, [], Struct}
     end.
+

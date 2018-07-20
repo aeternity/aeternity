@@ -449,6 +449,513 @@
         }
       }
     },
+    "/accounts/{pubkey}" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get an account by public key",
+        "operationId" : "GetAccountByPubkey",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "The public key of the account",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Account"
+            }
+          },
+          "400" : {
+            "description" : "Invalid public key",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/accounts/{pubkey}/transactions/pending" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get pending account transactions by public key",
+        "operationId" : "GetPendingAccountTransactionsByPubkey",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "The public key of the account",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/JSONTxs"
+            }
+          },
+          "400" : {
+            "description" : "Invalid public key",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/transactions/{hash}" : {
+      "get" : {
+        "tags" : [ "external", "transactions" ],
+        "description" : "Get a transaction by hash",
+        "operationId" : "GetTransactionByHash",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "hash",
+          "in" : "path",
+          "description" : "The hash of the transaction",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SignedTxJSON"
+            }
+          },
+          "400" : {
+            "description" : "Invalid hash",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Transaction not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/transactions/{hash}/info" : {
+      "get" : {
+        "tags" : [ "external", "transactions" ],
+        "description" : "Get a transaction info by hash",
+        "operationId" : "GetTransactionInfoByHash",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "hash",
+          "in" : "path",
+          "description" : "The hash of the transaction",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/ContractCallObject"
+            }
+          },
+          "400" : {
+            "description" : "Invalid hash",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Transaction not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/transactions" : {
+      "post" : {
+        "tags" : [ "external", "transactions" ],
+        "description" : "Post a new transaction",
+        "operationId" : "PostTransaction",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "The new transaction",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/Tx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PostTxResponse"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/contracts/{pubkey}" : {
+      "get" : {
+        "tags" : [ "external", "transactions" ],
+        "description" : "Get a contract by pubkey",
+        "operationId" : "GetContract",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "The pubkey of the contract",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/ContractObject"
+            }
+          },
+          "400" : {
+            "description" : "Invalid pubkey",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Contract not found"
+          }
+        }
+      }
+    },
+    "/contracts/{pubkey}/code" : {
+      "get" : {
+        "tags" : [ "external", "transactions" ],
+        "description" : "Get contract code by pubkey",
+        "operationId" : "GetContractCode",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "The pubkey of the contract",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Contract code",
+            "schema" : {
+              "$ref" : "#/definitions/ByteCode"
+            }
+          },
+          "400" : {
+            "description" : "Invalid pubkey",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Contract not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/contracts/{pubkey}/store" : {
+      "get" : {
+        "tags" : [ "external", "transactions" ],
+        "description" : "Get contract store by pubkey",
+        "operationId" : "GetContractStore",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "The pubkey of the contract",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Contract Store",
+            "schema" : {
+              "$ref" : "#/definitions/ContractStore"
+            }
+          },
+          "400" : {
+            "description" : "Invalid pubkey",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Contract not found"
+          }
+        }
+      }
+    },
+    "/oracles/{pubkey}" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get an oracle by public key",
+        "operationId" : "GetOracleByPubkey",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "The public key of the oracle",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/RegisteredOracle"
+            }
+          },
+          "400" : {
+            "description" : "Invalid public key",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Oracle not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/oracles/{pubkey}/queries" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get oracle queries by public key",
+        "operationId" : "GetOracleQueriesByPubkey",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "The public key of the oracle",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "name" : "from",
+          "in" : "query",
+          "description" : "Last query id in previous page",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "name" : "limit",
+          "in" : "query",
+          "description" : "Max number of oracle queries",
+          "required" : false,
+          "type" : "integer",
+          "maximum" : 1000,
+          "minimum" : 1
+        }, {
+          "name" : "type",
+          "in" : "query",
+          "description" : "The type of a query: open, closed or all",
+          "required" : false,
+          "type" : "string",
+          "enum" : [ "open", "closed", "all" ]
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/OracleQueries"
+            }
+          },
+          "400" : {
+            "description" : "Invalid public key",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Oracle not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/oracles/{pubkey}/queries/{query-id}" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get an oracle query by public key and query ID",
+        "operationId" : "GetOracleQueryByPubkeyAndQueryId",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "The public key of the oracle",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "name" : "query-id",
+          "in" : "path",
+          "description" : "The ID of the query",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/OracleQuery"
+            }
+          },
+          "400" : {
+            "description" : "Invalid public key or query ID",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Oracle query not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/names/{name}" : {
+      "get" : {
+        "tags" : [ "external", "name_service" ],
+        "description" : "Get name entry from naming system",
+        "operationId" : "GetNameEntryByName",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "name",
+          "in" : "path",
+          "description" : "The name key of the name entry",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/NameEntry"
+            }
+          },
+          "400" : {
+            "description" : "Invalid name",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Name not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/channels/{pubkey}" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get channel by public key",
+        "operationId" : "GetChannelByPubkey",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "The name key of the name entry",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Channel"
+            }
+          },
+          "400" : {
+            "description" : "Invalid public key",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Channel not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/peers/pubkey" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get peer public key",
+        "operationId" : "GetPeerPubkey",
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/inline_response_200_3"
+            }
+          }
+        }
+      }
+    },
+    "/status" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get the status of a node",
+        "operationId" : "GetStatus",
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Status"
+            }
+          }
+        }
+      }
+    },
     "/header-by-hash" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
@@ -1382,7 +1889,7 @@
         }
       }
     },
-    "/transactions" : {
+    "/transactions-obsolete" : {
       "get" : {
         "tags" : [ "external", "transactions" ],
         "description" : "Get transactions in the mempool",
@@ -2293,7 +2800,7 @@
           "200" : {
             "description" : "The count of transactions in the block",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200_3"
+              "$ref" : "#/definitions/inline_response_200_4"
             }
           },
           "400" : {
@@ -2340,7 +2847,7 @@
           "200" : {
             "description" : "The count of transactions in the block",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200_3"
+              "$ref" : "#/definitions/inline_response_200_4"
             }
           },
           "404" : {
@@ -2375,7 +2882,7 @@
           "200" : {
             "description" : "The count of transactions in the genesis block",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200_3"
+              "$ref" : "#/definitions/inline_response_200_4"
             }
           }
         }
@@ -2404,7 +2911,7 @@
           "200" : {
             "description" : "The count of transactions in the latest block",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200_3"
+              "$ref" : "#/definitions/inline_response_200_4"
             }
           }
         }
@@ -2433,7 +2940,7 @@
           "200" : {
             "description" : "The count of transactions in the pending block",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200_3"
+              "$ref" : "#/definitions/inline_response_200_4"
             }
           },
           "404" : {
@@ -2708,7 +3215,7 @@
           "200" : {
             "description" : "Node's peer public key",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200_4"
+              "$ref" : "#/definitions/inline_response_200_5"
             }
           },
           "404" : {
@@ -2905,6 +3412,32 @@
         }
       } ]
     },
+    "Account" : {
+      "type" : "object",
+      "properties" : {
+        "pubkey" : {
+          "type" : "string",
+          "description" : "Public key"
+        },
+        "balance" : {
+          "type" : "integer",
+          "format" : "int64",
+          "description" : "Balance",
+          "minimum" : 0
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64",
+          "description" : "Nonce",
+          "minimum" : 0
+        }
+      },
+      "example" : {
+        "balance" : 0,
+        "nonce" : 0,
+        "pubkey" : "pubkey"
+      }
+    },
     "Balance" : {
       "type" : "object",
       "properties" : {
@@ -2946,16 +3479,152 @@
         "$ref" : "#/definitions/Tx"
       }
     },
+    "RegisteredOracle" : {
+      "type" : "object",
+      "properties" : {
+        "oracle_id" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "query_format" : {
+          "type" : "string"
+        },
+        "response_format" : {
+          "type" : "string"
+        },
+        "query_fee" : {
+          "type" : "integer"
+        },
+        "expires" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      },
+      "example" : {
+        "expires" : 6,
+        "oracle_id" : { },
+        "response_format" : "response_format",
+        "query_fee" : 0,
+        "query_format" : "query_format"
+      }
+    },
     "RegisteredOracles" : {
       "type" : "array",
       "items" : {
-        "$ref" : "#/definitions/RegisteredOracles_inner"
+        "$ref" : "#/definitions/RegisteredOracle"
+      }
+    },
+    "OracleQuery" : {
+      "type" : "object",
+      "properties" : {
+        "query_id" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "sender_id" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "sender_nonce" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "oracle_id" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "query" : {
+          "type" : "string"
+        },
+        "response" : {
+          "type" : "string"
+        },
+        "expires" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "response_ttl" : {
+          "$ref" : "#/definitions/TTL"
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      },
+      "example" : {
+        "expires" : 6,
+        "oracle_id" : null,
+        "response_ttl" : {
+          "type" : "delta",
+          "value" : 1
+        },
+        "query_id" : { },
+        "response" : "response",
+        "query" : "query",
+        "fee" : 5,
+        "sender_nonce" : 0,
+        "sender_id" : null
+      }
+    },
+    "OracleQuestion" : {
+      "type" : "object",
+      "properties" : {
+        "query_id" : {
+          "type" : "string"
+        },
+        "query" : {
+          "type" : "string"
+        },
+        "query_fee" : {
+          "type" : "integer"
+        },
+        "expires_at" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      }
+    },
+    "OracleQueries" : {
+      "type" : "object",
+      "properties" : {
+        "oracle_queries" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/OracleQuery"
+          }
+        }
+      },
+      "example" : {
+        "oracle_queries" : [ {
+          "expires" : 6,
+          "oracle_id" : null,
+          "response_ttl" : {
+            "type" : "delta",
+            "value" : 1
+          },
+          "query_id" : { },
+          "response" : "response",
+          "query" : "query",
+          "fee" : 5,
+          "sender_nonce" : 0,
+          "sender_id" : null
+        }, {
+          "expires" : 6,
+          "oracle_id" : null,
+          "response_ttl" : {
+            "type" : "delta",
+            "value" : 1
+          },
+          "query_id" : { },
+          "response" : "response",
+          "query" : "query",
+          "fee" : 5,
+          "sender_nonce" : 0,
+          "sender_id" : null
+        } ]
       }
     },
     "OracleQuestions" : {
       "type" : "array",
       "items" : {
-        "$ref" : "#/definitions/OracleQuestions_inner"
+        "$ref" : "#/definitions/OracleQuestion"
       }
     },
     "SpendTx" : {
@@ -3024,7 +3693,7 @@
         "oracle_ttl" : {
           "$ref" : "#/definitions/TTL"
         },
-        "account" : {
+        "account_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "nonce" : {
@@ -3042,16 +3711,16 @@
       },
       "example" : {
         "response_format" : "response_format",
-        "fee" : 5,
+        "account_id" : { },
+        "fee" : 1,
         "oracle_ttl" : {
           "type" : "delta",
           "value" : 1
         },
         "query_fee" : 0,
-        "nonce" : 1,
+        "nonce" : 6,
         "ttl" : 5,
-        "query_format" : "query_format",
-        "account" : { }
+        "query_format" : "query_format"
       }
     },
     "OracleRegisterResponse" : {
@@ -3080,7 +3749,7 @@
         "oracle_ttl" : {
           "$ref" : "#/definitions/TTL"
         },
-        "oracle" : {
+        "oracle_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "nonce" : {
@@ -3093,7 +3762,7 @@
         }
       },
       "example" : {
-        "oracle" : { },
+        "oracle_id" : { },
         "fee" : 0,
         "oracle_ttl" : {
           "type" : "delta",
@@ -3105,10 +3774,10 @@
     },
     "OracleQueryTx" : {
       "type" : "object",
-      "required" : [ "fee", "oracle_pubkey", "query", "query_fee", "query_ttl", "response_ttl" ],
+      "required" : [ "fee", "oracle_id", "query", "query_fee", "query_ttl", "response_ttl" ],
       "properties" : {
-        "oracle_pubkey" : {
-          "type" : "string"
+        "oracle_id" : {
+          "$ref" : "#/definitions/EncodedHash"
         },
         "query" : {
           "type" : "string"
@@ -3131,7 +3800,7 @@
           "type" : "integer",
           "format" : "int64"
         },
-        "sender" : {
+        "sender_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "nonce" : {
@@ -3141,11 +3810,11 @@
         }
       },
       "example" : {
+        "oracle_id" : { },
         "response_ttl" : {
           "type" : "delta",
           "value" : 1
         },
-        "sender" : { },
         "query" : "query",
         "query_ttl" : {
           "type" : "delta",
@@ -3155,7 +3824,7 @@
         "query_fee" : 0,
         "ttl" : 5,
         "nonce" : 5,
-        "oracle_pubkey" : "oracle_pubkey"
+        "sender_id" : null
       }
     },
     "OracleResponseTx" : {
@@ -3176,7 +3845,7 @@
           "type" : "integer",
           "format" : "int64"
         },
-        "oracle" : {
+        "oracle_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "nonce" : {
@@ -3186,7 +3855,7 @@
         }
       },
       "example" : {
-        "oracle" : null,
+        "oracle_id" : null,
         "query_id" : { },
         "response" : "response",
         "fee" : 0,
@@ -3467,6 +4136,77 @@
       },
       "example" : {
         "name_hash" : "name_hash"
+      }
+    },
+    "Channel" : {
+      "type" : "object",
+      "properties" : {
+        "id" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "initiator" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "responder" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "total_amount" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "initiator_amount" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "responder_amount" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "channel_reserve" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "delegates" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/EncodedHash"
+          }
+        },
+        "state_hash" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "round" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "lock_period" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "closes_at" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      },
+      "example" : {
+        "responder_amount" : 0,
+        "initiator_amount" : 0,
+        "round" : 0,
+        "total_amount" : 0,
+        "state_hash" : null,
+        "initiator" : null,
+        "responder" : null,
+        "id" : { },
+        "delegates" : [ null, null ],
+        "closes_at" : 7,
+        "lock_period" : 0,
+        "channel_reserve" : 0
       }
     },
     "ChannelCreateTx" : {
@@ -3984,6 +4724,88 @@
         "height" : 0
       }
     },
+    "Status" : {
+      "type" : "object",
+      "properties" : {
+        "genesis-key-block-hash" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "solutions" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "difficulty" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "syncing" : {
+          "type" : "boolean"
+        },
+        "listening" : {
+          "type" : "boolean"
+        },
+        "protocols" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/Protocol"
+          }
+        },
+        "node-version" : {
+          "type" : "string"
+        },
+        "node-revision" : {
+          "type" : "string"
+        },
+        "peer-count" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "pending-transactions-count" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        }
+      },
+      "example" : {
+        "difficulty" : 6,
+        "listening" : true,
+        "syncing" : true,
+        "node-version" : "node-version",
+        "solutions" : 0,
+        "node-revision" : "node-revision",
+        "peer-count" : 0,
+        "protocols" : [ {
+          "protocol_version" : 1,
+          "effective_at_height" : 0
+        }, {
+          "protocol_version" : 1,
+          "effective_at_height" : 0
+        } ],
+        "pending-transactions-count" : 0,
+        "genesis-key-block-hash" : { }
+      }
+    },
+    "Protocol" : {
+      "type" : "object",
+      "properties" : {
+        "protocol_version" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 1
+        },
+        "effective_at_height" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        }
+      },
+      "example" : {
+        "protocol_version" : 1,
+        "effective_at_height" : 0
+      }
+    },
     "SingleTxObject" : {
       "type" : "object",
       "required" : [ "data_schema" ],
@@ -4255,6 +5077,66 @@
         "reason" : {
           "type" : "string"
         }
+      }
+    },
+    "ContractObject" : {
+      "type" : "object",
+      "properties" : {
+        "id" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "owner" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "vm_version" : {
+          "type" : "integer",
+          "minimum" : 0,
+          "maximum" : 255
+        },
+        "log" : {
+          "type" : "string"
+        },
+        "active" : {
+          "type" : "boolean"
+        },
+        "referers" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/EncodedHash"
+          }
+        },
+        "deposit" : {
+          "type" : "integer"
+        }
+      },
+      "example" : {
+        "owner" : null,
+        "vm_version" : 20,
+        "log" : "log",
+        "referers" : [ null, null ],
+        "active" : true,
+        "deposit" : 6,
+        "id" : { }
+      }
+    },
+    "ContractStore" : {
+      "type" : "object",
+      "properties" : {
+        "store" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/ContractStore_store"
+          }
+        }
+      },
+      "example" : {
+        "store" : [ {
+          "value" : "value",
+          "key" : "key"
+        }, {
+          "value" : "value",
+          "key" : "key"
+        } ]
       }
     },
     "Contract" : {
@@ -4699,6 +5581,16 @@
     },
     "inline_response_200_3" : {
       "properties" : {
+        "pubkey" : {
+          "type" : "string"
+        }
+      },
+      "example" : {
+        "pubkey" : "pubkey"
+      }
+    },
+    "inline_response_200_4" : {
+      "properties" : {
         "count" : {
           "type" : "integer",
           "description" : "Count"
@@ -4708,7 +5600,7 @@
         "count" : 0
       }
     },
-    "inline_response_200_4" : {
+    "inline_response_200_5" : {
       "properties" : {
         "pubkey" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -4718,41 +5610,18 @@
         "pubkey" : { }
       }
     },
-    "RegisteredOracles_inner" : {
+    "ContractStore_store" : {
       "properties" : {
-        "address" : {
+        "key" : {
           "type" : "string"
         },
-        "query_format" : {
+        "value" : {
           "type" : "string"
-        },
-        "response_format" : {
-          "type" : "string"
-        },
-        "query_fee" : {
-          "type" : "integer"
-        },
-        "expires_at" : {
-          "type" : "integer",
-          "format" : "int64"
         }
-      }
-    },
-    "OracleQuestions_inner" : {
-      "properties" : {
-        "query_id" : {
-          "type" : "string"
-        },
-        "query" : {
-          "type" : "string"
-        },
-        "query_fee" : {
-          "type" : "integer"
-        },
-        "expires_at" : {
-          "type" : "integer",
-          "format" : "int64"
-        }
+      },
+      "example" : {
+        "value" : "value",
+        "key" : "key"
       }
     }
   },

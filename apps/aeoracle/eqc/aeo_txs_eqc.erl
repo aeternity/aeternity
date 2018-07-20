@@ -303,7 +303,7 @@ check_accounts(As, Trees) ->
 check_oracles(ModelOs, Trees, Height) ->
     OTree = aec_trees:oracles(Trees),
     ExpectedOs = [ O#oracle.address || O <- ModelOs, not oracle_expired(O, Height) ],
-    ActualOs   = [ aeo_oracles:owner(O) || O <- aeo_state_tree:oracle_list(OTree)],
+    ActualOs   = [ aeo_oracles:pubkey(O) || O <- aeo_state_tree:oracle_list(OTree)],
     case {ExpectedOs -- ActualOs, ActualOs -- ExpectedOs} of
         {[], []}   -> true;
         {[], Os}   -> {extra_oracles_in_state_tree, Os};

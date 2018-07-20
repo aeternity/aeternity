@@ -645,7 +645,7 @@ get_block_hash_optionally_by_hash_or_height(PutKey) ->
             {error, not_found} ->
                 {error, {404, [], #{<<"reason">> => <<"Block not found">>}}};
             {error, Why} ->
-                Msg = 
+                Msg =
                     case Why of
                         invalid_hash -> <<"Invalid block hash">>;
                         blocks_mismatch -> <<"Invalid height and hash combination">>
