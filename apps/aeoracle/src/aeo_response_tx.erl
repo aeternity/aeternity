@@ -27,7 +27,8 @@
         ]).
 
 %% Additional getters
--export([oracle/1,
+-export([oracle_id/1,
+         oracle_pubkey/1,
          query_id/1,
          response/1]).
 
@@ -37,46 +38,47 @@
 -define(ORACLE_RESPONSE_TX_FEE, 2).
 
 -record(oracle_response_tx, {
-          oracle   :: aec_id:id(),
-          nonce    :: integer(),
-          query_id :: aeo_query:id(),
-          response :: aeo_oracles:response(),
-          fee      :: integer(),
-          ttl      :: aetx:tx_ttl()
+          oracle_id :: aec_id:id(),
+          nonce     :: integer(),
+          query_id  :: aeo_query:id(),
+          response  :: aeo_oracles:response(),
+          fee       :: integer(),
+          ttl       :: aetx:tx_ttl()
           }).
 
 -opaque tx() :: #oracle_response_tx{}.
 
 -export_type([tx/0]).
 
--spec oracle(tx()) -> aec_id:id().
-oracle(#oracle_response_tx{oracle = Oracle}) ->
-    Oracle.
+-spec oracle_id(tx()) -> aec_id:id().
+oracle_id(#oracle_response_tx{oracle_id = OracleId}) ->
+    OracleId.
 
-oracle_pubkey(#oracle_response_tx{oracle = Oracle}) ->
-    aec_id:specialize(Oracle, oracle).
+-spec oracle_pubkey(tx()) -> aec_keys:pubkey().
+oracle_pubkey(#oracle_response_tx{oracle_id = OracleId}) ->
+    aec_id:specialize(OracleId, oracle).
 
 -spec query_id(tx()) -> aeo_query:id().
-query_id(#oracle_response_tx{query_id = QId}) ->
-    QId.
+query_id(#oracle_response_tx{query_id = QueryId}) ->
+    QueryId.
 
 -spec response(tx()) -> aeo_query:oracle_response().
 response(#oracle_response_tx{response = Response}) ->
     Response.
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{oracle   := Oracle,
-      nonce    := Nonce,
-      query_id := QId,
-      response := Response,
-      fee      := Fee} = Args) ->
-    oracle = aec_id:specialize_type(Oracle),
-    Tx = #oracle_response_tx{oracle   = Oracle,
-                             nonce    = Nonce,
-                             query_id = QId,
-                             response = Response,
-                             fee      = Fee,
-                             ttl      = maps:get(ttl, Args, 0)},
+new(#{oracle_id := OracleId,
+      nonce     := Nonce,
+      query_id  := QueryId,
+      response  := Response,
+      fee       := Fee} = Args) ->
+    oracle = aec_id:specialize_type(OracleId),
+    Tx = #oracle_response_tx{oracle_id = OracleId,
+                             nonce     = Nonce,
+                             query_id  = QueryId,
+                             response  = Response,
+                             fee       = Fee,
+                             ttl       = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -103,10 +105,10 @@ origin(#oracle_response_tx{} = Tx) ->
 %% QueryId id should match oracle.
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()} | {error, term()}.
-check(#oracle_response_tx{nonce = Nonce, query_id = QId, fee = Fee} = Tx,
+check(#oracle_response_tx{nonce = Nonce, query_id = QueryId, fee = Fee} = Tx,
       Context, Trees, Height, _ConsensusVersion) ->
     OraclePubKey = oracle_pubkey(Tx),
-    case fetch_query(OraclePubKey, QId, Trees) of
+    case fetch_query(OraclePubKey, QueryId, Trees) of
         {value, I} ->
             ResponseTTL = aeo_query:response_ttl(I),
             QueryFee    = aeo_query:fee(I),
@@ -134,14 +136,14 @@ signers(#oracle_response_tx{} = Tx, _) ->
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()}.
-process(#oracle_response_tx{nonce = Nonce, query_id = QId, response = Response,
+process(#oracle_response_tx{nonce = Nonce, query_id = QueryId, response = Response,
                             fee = Fee} = Tx,
         _Context, Trees0, Height, _ConsensusVersion) ->
     OraclePubKey  = oracle_pubkey(Tx),
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),
 
-    Query0 = aeo_state_tree:get_query(OraclePubKey, QId, OraclesTree0),
+    Query0 = aeo_state_tree:get_query(OraclePubKey, QueryId, OraclesTree0),
     Query1 = aeo_query:add_response(Height, Response, Query0),
     OraclesTree1 = aeo_state_tree:enter_query(Query1, OraclesTree0),
 
@@ -156,38 +158,38 @@ process(#oracle_response_tx{nonce = Nonce, query_id = QId, response = Response,
 
     {ok, Trees2}.
 
-serialize(#oracle_response_tx{oracle   = OracleId,
-                              nonce    = Nonce,
-                              query_id = QId,
-                              response = Response,
-                              fee      = Fee,
-                              ttl      = TTL}) ->
+serialize(#oracle_response_tx{oracle_id = OracleId,
+                              nonce     = Nonce,
+                              query_id  = QueryId,
+                              response  = Response,
+                              fee       = Fee,
+                              ttl       = TTL}) ->
     {version(),
-    [ {oracle, OracleId}
+    [ {oracle_id, OracleId}
     , {nonce, Nonce}
-    , {query_id, QId}
+    , {query_id, QueryId}
     , {response, Response}
     , {fee, Fee}
     , {ttl, TTL}
     ]}.
 
 deserialize(?ORACLE_RESPONSE_TX_VSN,
-            [ {oracle, OracleId}
+            [ {oracle_id, OracleId}
             , {nonce, Nonce}
-            , {query_id, QId}
+            , {query_id, QueryId}
             , {response, Response}
             , {fee, Fee}
             , {ttl, TTL}]) ->
     oracle = aec_id:specialize_type(OracleId),
-    #oracle_response_tx{oracle   = OracleId,
-                        nonce    = Nonce,
-                        query_id = QId,
-                        response = Response,
-                        fee      = Fee,
-                        ttl      = TTL}.
+    #oracle_response_tx{oracle_id = OracleId,
+                        nonce     = Nonce,
+                        query_id  = QueryId,
+                        response  = Response,
+                        fee       = Fee,
+                        ttl       = TTL}.
 
 serialization_template(?ORACLE_RESPONSE_TX_VSN) ->
-    [ {oracle, id}
+    [ {oracle_id, id}
     , {nonce, int}
     , {query_id, binary}
     , {response, binary}
@@ -199,32 +201,33 @@ serialization_template(?ORACLE_RESPONSE_TX_VSN) ->
 version() ->
     ?ORACLE_RESPONSE_TX_VSN.
 
-for_client(#oracle_response_tx{ nonce    = Nonce,
-                                query_id = QId,
-                                response = Response,
-                                fee      = Fee,
-                                ttl      = TTL} = Tx) ->
+for_client(#oracle_response_tx{oracle_id = OracleId,
+                               nonce     = Nonce,
+                               query_id  = QueryId,
+                               response  = Response,
+                               fee       = Fee,
+                               ttl       = TTL}) ->
     #{<<"data_schema">> => <<"OracleResponseTxJSON">>, % swagger schema name
-      <<"vsn">> => version(),
-      <<"oracle">> => aec_base58c:encode(id_hash, oracle(Tx)),
-      <<"nonce">> => Nonce,
-      <<"query_id">> => aec_base58c:encode(oracle_query_id, QId),
-      <<"response">> => Response,
-      <<"fee">> => Fee,
-      <<"ttl">> => TTL}.
+      <<"vsn">>         => version(),
+      <<"oracle_id">>   => aec_base58c:encode(id_hash, OracleId),
+      <<"nonce">>       => Nonce,
+      <<"query_id">>    => aec_base58c:encode(oracle_query_id, QueryId),
+      <<"response">>    => Response,
+      <<"fee">>         => Fee,
+      <<"ttl">>         => TTL}.
 
 %% -- Local functions  -------------------------------------------------------
 
-fetch_query(OId, QId, Trees) ->
+fetch_query(OraclePubkey, QueryId, Trees) ->
     OraclesTree  = aec_trees:oracles(Trees),
-    aeo_state_tree:lookup_query(OId, QId, OraclesTree).
+    aeo_state_tree:lookup_query(OraclePubkey, QueryId, OraclesTree).
 
 check_query(OraclePubKey, I) ->
-    case OraclePubKey == aeo_query:oracle_address(I) of
+    case OraclePubKey == aeo_query:oracle_pubkey(I) of
         true  ->
-            case aeo_query:is_closed(I) of
-                true  -> {error, oracle_closed_for_response};
-                false -> ok
+            case aeo_query:is_open(I) of
+                true -> ok;
+                false  -> {error, oracle_closed_for_response}
             end;
         false -> {error, oracle_does_not_match_query_id}
     end.

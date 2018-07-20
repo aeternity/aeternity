@@ -25,7 +25,7 @@
 -record(state, { subscribed = #sub{} }).
 
 -type id() :: {ws, ws_handler:id()}.
--type aeo_event() :: {query, aeo_oracles:id()}
+-type aeo_event() :: {query, aeo_oracles:pubkey()}
                    | {response, aeo_query:id()}.
 -type event() :: {oracle, aeo_event()}.
 

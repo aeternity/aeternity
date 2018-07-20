@@ -881,8 +881,8 @@ end_per_group(Group, Config) ->
 init_per_testcase(post_oracle_register, Config) ->
     %% TODO: assert there is enought balance
     {ok, Pubkey} = rpc(aec_keys, pubkey, []),
-    [{account_pubkey, aec_base58c:encode(account_pubkey, Pubkey)},
-     {oracle_pubkey, aec_base58c:encode(oracle_pubkey, Pubkey)},
+    [{account_id, aec_base58c:encode(account_pubkey, Pubkey)},
+     {oracle_id, aec_base58c:encode(oracle_pubkey, Pubkey)},
      {query_format, <<"something">>},
      {response_format, <<"something else">>},
      {query_fee, 1},
@@ -892,16 +892,16 @@ init_per_testcase(post_oracle_register, Config) ->
 init_per_testcase(post_oracle_extend, Config) ->
     {post_oracle_register, SavedConfig} = ?config(saved_config, Config),
     OracleTtlDelta = 500,
-    [{account_pubkey, ?config(account_pubkey, SavedConfig)},
-     {oracle_pubkey, ?config(oracle_pubkey, SavedConfig)},
+    [{account_id, ?config(account_id, SavedConfig)},
+     {oracle_id, ?config(oracle_id, SavedConfig)},
      {fee, 10},
      {oracle_ttl_value_final, ?config(oracle_ttl_value, SavedConfig) + OracleTtlDelta},
      {oracle_ttl_type, <<"delta">>},
      {oracle_ttl_value, OracleTtlDelta} | init_per_testcase_all(Config)];
 init_per_testcase(post_oracle_query, Config) ->
     {post_oracle_extend, SavedConfig} = ?config(saved_config, Config),
-    [{sender_pubkey, ?config(account_pubkey, SavedConfig)},
-     {oracle_pubkey, ?config(oracle_pubkey, SavedConfig)},
+    [{sender_id, ?config(account_id, SavedConfig)},
+     {oracle_id, ?config(oracle_id, SavedConfig)},
      {query, <<"Hejsan Svejsan">>},
      {query_fee, 2},
      {fee, 30},
@@ -911,8 +911,8 @@ init_per_testcase(post_oracle_query, Config) ->
      {response_ttl_value, 20} | init_per_testcase_all(Config)];
 init_per_testcase(post_oracle_response, Config) ->
     {post_oracle_query, SavedConfig} = ?config(saved_config, Config),
-    [{sender_pubkey, ?config(sender_pubkey, SavedConfig)},
-     {oracle_pubkey, ?config(oracle_pubkey, SavedConfig)},
+    [{sender_id, ?config(sender_id, SavedConfig)},
+     {oracle_id, ?config(oracle_id, SavedConfig)},
      {query_id, ?config(query_id, SavedConfig)},
      {fee, 10},
      {response, <<"Hejsan">>} | init_per_testcase_all(Config)];
@@ -1643,9 +1643,9 @@ get_oracle_by_pubkey(_Config) ->
 
 post_oracle_register(Config) ->
     Node = ?config(node, Config),
-    OraclePubkey = ?config(oracle_pubkey, Config),
+    OracleId = ?config(oracle_id, Config),
     TxArgs =
-        #{account         => ?config(account_pubkey, Config),
+        #{account_id      => ?config(account_id, Config),
           query_format    => ?config(query_format, Config),
           response_format => ?config(response_format, Config),
           query_fee       => ?config(query_fee, Config),
@@ -1655,74 +1655,74 @@ post_oracle_register(Config) ->
     {TxHash, Tx} = prepare_tx(oracle_register_tx, TxArgs),
     ok = post_tx(TxHash, Tx),
     aecore_suite_utils:mine_blocks_until(Node, fun() -> tx_in_chain(TxHash) end, 10),
-    {ok, 200, Resp} = get_oracles_by_pubkey_sut(OraclePubkey),
-    ?assertEqual(OraclePubkey, maps:get(<<"id">>, Resp)),
-    {save_config, save_config([account_pubkey, oracle_pubkey, oracle_ttl_value], Config)}.
+    {ok, 200, Resp} = get_oracles_by_pubkey_sut(OracleId),
+    ?assertEqual(OracleId, maps:get(<<"oracle_id">>, Resp)),
+    {save_config, save_config([account_id, oracle_id, oracle_ttl_value], Config)}.
 
 post_oracle_extend(Config) ->
     Node = ?config(node, Config),
-    OraclePubkey = ?config(oracle_pubkey, Config),
+    OracleId = ?config(oracle_id, Config),
     TxArgs =
-        #{oracle     => OraclePubkey,
+        #{oracle_id  => OracleId,
           fee        => ?config(fee, Config),
           oracle_ttl => #{type  => ?config(oracle_ttl_type, Config),
                           value => ?config(oracle_ttl_value, Config)}},
     {TxHash, Tx} = prepare_tx(oracle_extend_tx, TxArgs),
     ok = post_tx(TxHash, Tx),
     aecore_suite_utils:mine_blocks_until(Node, fun() -> tx_in_chain(TxHash) end, 10),
-    {ok, 200, Resp} = get_oracles_by_pubkey_sut(OraclePubkey),
-    ?assertEqual(OraclePubkey, maps:get(<<"id">>, Resp)),
+    {ok, 200, Resp} = get_oracles_by_pubkey_sut(OracleId),
+    ?assertEqual(OracleId, maps:get(<<"oracle_id">>, Resp)),
     ?assertEqual(?config(oracle_ttl_value_final, Config), maps:get(<<"expires">>, Resp)),
-    {ok, 200, Resp1} = get_oracles_queries_by_pubkey_sut(OraclePubkey, #{type => "all"}),
+    {ok, 200, Resp1} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "all"}),
     ?assertEqual([], maps:get(<<"oracle_queries">>, Resp1)),
-    {save_config, save_config([account_pubkey, oracle_pubkey], Config)}.
+    {save_config, save_config([account_id, oracle_id], Config)}.
 
 post_oracle_query(Config) ->
     Node = ?config(node, Config),
-    SenderPubkey = ?config(sender_pubkey, Config),
-    OraclePubkey = ?config(oracle_pubkey, Config),
+    SenderId = ?config(sender_id, Config),
+    OracleId = ?config(oracle_id, Config),
     TxArgs =
-        #{sender        => SenderPubkey,
-          oracle_pubkey => OraclePubkey,
-          query         => ?config(query, Config),
-          query_fee     => ?config(query_fee, Config),
-          fee           => ?config(fee, Config),
-          query_ttl     => #{type  => ?config(query_ttl_type, Config),
-                             value => ?config(query_ttl_value, Config)},
-          response_ttl  => #{type  => ?config(response_ttl_type, Config),
-                             value => ?config(response_ttl_value, Config)}},
+        #{sender_id    => SenderId,
+          oracle_id    => OracleId,
+          query        => ?config(query, Config),
+          query_fee    => ?config(query_fee, Config),
+          fee          => ?config(fee, Config),
+          query_ttl    => #{type  => ?config(query_ttl_type, Config),
+                            value => ?config(query_ttl_value, Config)},
+          response_ttl => #{type  => ?config(response_ttl_type, Config),
+                            value => ?config(response_ttl_value, Config)}},
     {TxHash, Tx} = prepare_tx(oracle_query_tx, TxArgs),
     ok = post_tx(TxHash, Tx),
     aecore_suite_utils:mine_blocks_until(Node, fun() -> tx_in_chain(TxHash) end, 10),
-    {ok, 200, Resp} = get_oracles_queries_by_pubkey_sut(OraclePubkey, #{type => "closed"}),
+    {ok, 200, Resp} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "closed"}),
     ?assertEqual([], maps:get(<<"oracle_queries">>, Resp)),
-    {ok, 200, Resp1} = get_oracles_queries_by_pubkey_sut(OraclePubkey, #{type => "all"}),
+    {ok, 200, Resp1} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "all"}),
     ?assertEqual(1, length(maps:get(<<"oracle_queries">>, Resp1))),
     [Query] = maps:get(<<"oracle_queries">>, Resp1),
-    ?assertEqual(SenderPubkey, maps:get(<<"sender">>, Query)),
-    ?assertEqual(OraclePubkey, maps:get(<<"oracle_id">>, Query)),
+    ?assertEqual(SenderId, maps:get(<<"sender_id">>, Query)),
+    ?assertEqual(OracleId, maps:get(<<"oracle_id">>, Query)),
     QueryId = maps:get(<<"query_id">>, Query),
     Config1 = [{query_id, QueryId} | Config],
-    {save_config, save_config([sender_pubkey, oracle_pubkey, query_id], Config1)}.
+    {save_config, save_config([sender_id, oracle_id, query_id], Config1)}.
 
 post_oracle_response(Config) ->
     Node = ?config(node, Config),
-    OraclePubkey = ?config(oracle_pubkey, Config),
+    OracleId = ?config(oracle_id, Config),
     QueryId = ?config(query_id, Config),
     Response = ?config(response, Config),
     TxArgs =
-        #{oracle   => OraclePubkey,
-          query_id => QueryId,
-          response => Response,
-          fee      => ?config(fee, Config)},
+        #{oracle_id => OracleId,
+          query_id  => QueryId,
+          response  => Response,
+          fee       => ?config(fee, Config)},
     {TxHash, Tx} = prepare_tx(oracle_response_tx, TxArgs),
     ok = post_tx(TxHash, Tx),
     aecore_suite_utils:mine_blocks_until(Node, fun() -> tx_in_chain(TxHash) end, 10),
-    {ok, 200, Resp} = get_oracles_queries_by_pubkey_sut(OraclePubkey, #{type => "open"}),
+    {ok, 200, Resp} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "open"}),
     ?assertEqual([], maps:get(<<"oracle_queries">>, Resp)),
-    {ok, 200, Resp1} = get_oracles_query_by_pubkey_and_query_id(OraclePubkey, QueryId),
+    {ok, 200, Resp1} = get_oracles_query_by_pubkey_and_query_id(OracleId, QueryId),
     ?assertEqual(QueryId, maps:get(<<"query_id">>, Resp1)),
-    ?assertEqual(OraclePubkey, maps:get(<<"oracle_id">>, Resp1)),
+    ?assertEqual(OracleId, maps:get(<<"oracle_id">>, Resp1)),
     ?assertEqual(Response, maps:get(<<"response">>, Resp1)),
     ok.
 
@@ -2239,16 +2239,16 @@ oracle_transactions(_Config) ->
     OracleAddress = aec_base58c:encode(oracle_pubkey, MinerPubkey),
 
     % oracle_register_tx positive test
-    RegEncoded = #{account => MinerAddress,
+    RegEncoded = #{account_id => MinerAddress,
                    query_format => <<"something">>,
                    response_format => <<"something else">>,
                    query_fee => 1,
                    fee => 6,
                    oracle_ttl => #{type => <<"block">>, value => 2000}},
     RegDecoded = maps:merge(RegEncoded,
-                            #{account => aec_id:create(account, MinerPubkey),
-                              query_spec => <<"something">>,
-                              response_spec => <<"something else">>,
+                            #{account_id => aec_id:create(account, MinerPubkey),
+                              query_format => <<"something">>,
+                              response_format => <<"something else">>,
                               oracle_ttl => {block, 2000}}),
     unsigned_tx_positive_test(RegDecoded, RegEncoded,
                                fun get_oracle_register/1,
@@ -2268,27 +2268,27 @@ oracle_transactions(_Config) ->
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
 
     % oracle_extend_tx positive test
-    ExtEncoded = #{oracle => aec_base58c:encode(oracle_pubkey, MinerPubkey),
+    ExtEncoded = #{oracle_id => aec_base58c:encode(oracle_pubkey, MinerPubkey),
                    fee => 2,
                    oracle_ttl => #{type => <<"delta">>, value => 500}},
     ExtDecoded = maps:merge(ExtEncoded,
-                            #{oracle => aec_id:create(oracle, MinerPubkey),
+                            #{oracle_id => aec_id:create(oracle, MinerPubkey),
                               oracle_ttl => {delta, 500}}),
     unsigned_tx_positive_test(ExtDecoded, ExtEncoded,
                                fun get_oracle_extend/1,
                                fun aeo_extend_tx:new/1, MinerPubkey),
 
     % oracle_query_tx positive test
-    QueryEncoded = #{sender => MinerAddress,
-                     oracle_pubkey => aec_base58c:encode(oracle_pubkey, MinerPubkey),
+    QueryEncoded = #{sender_id => MinerAddress,
+                     oracle_id => aec_base58c:encode(oracle_pubkey, MinerPubkey),
                      query => <<"Hejsan Svejsan">>,
                      query_fee => 2,
                      fee => 30,
                      query_ttl => #{type => <<"block">>, value => 20},
                      response_ttl => #{type => <<"delta">>, value => 20}},
     QueryDecoded = maps:merge(QueryEncoded,
-                              #{sender => aec_id:create(account, MinerPubkey),
-                                oracle => aec_id:create(oracle, MinerPubkey),
+                              #{sender_id => aec_id:create(account, MinerPubkey),
+                                oracle_id => aec_id:create(oracle, MinerPubkey),
                                 query_ttl => {block, 20},
                                 response_ttl => {delta, 20}}),
     unsigned_tx_positive_test(QueryDecoded, QueryEncoded,
@@ -2310,13 +2310,13 @@ oracle_transactions(_Config) ->
     aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun1, 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
 
-    ResponseEncoded = #{oracle => OracleAddress,
+    ResponseEncoded = #{oracle_id => OracleAddress,
                         query_id => aec_base58c:encode(oracle_query_id,
                                                        QueryId),
                         response => <<"Hejsan">>,
                         fee => 3},
     ResponseDecoded = maps:merge(ResponseEncoded,
-                              #{oracle => aec_id:create(oracle, MinerPubkey),
+                              #{oracle_id => aec_id:create(oracle, MinerPubkey),
                                 query_id => QueryId}),
     unsigned_tx_positive_test(ResponseDecoded, ResponseEncoded,
                                fun get_oracle_response/1,
@@ -2331,32 +2331,32 @@ oracle_transactions(_Config) ->
 
     % broken hash
     <<_, InvalidHash/binary>> = MinerAddress,
-    {ok, 400, #{<<"reason">> := <<"Invalid hash: account">>}} =
-        get_oracle_register(maps:put(account, InvalidHash, RegEncoded)),
+    {ok, 400, #{<<"reason">> := <<"Invalid hash: account_id">>}} =
+        get_oracle_register(maps:put(account_id, InvalidHash, RegEncoded)),
 
-    {ok, 400, #{<<"reason">> := <<"Invalid hash: sender">>}} =
-        get_oracle_query(maps:put(sender, InvalidHash, QueryEncoded)),
-    {ok, 400, #{<<"reason">> := <<"Invalid hash: oracle_pubkey">>}} =
-        get_oracle_query(maps:put(oracle_pubkey, InvalidHash, QueryEncoded)),
+    {ok, 400, #{<<"reason">> := <<"Invalid hash: sender_id">>}} =
+        get_oracle_query(maps:put(sender_id, InvalidHash, QueryEncoded)),
+    {ok, 400, #{<<"reason">> := <<"Invalid hash: oracle_id">>}} =
+        get_oracle_query(maps:put(oracle_id, InvalidHash, QueryEncoded)),
 
-    {ok, 400, #{<<"reason">> := <<"Invalid hash: oracle">>}} =
-        get_oracle_response(maps:put(oracle, InvalidHash, ResponseEncoded)),
+    {ok, 400, #{<<"reason">> := <<"Invalid hash: oracle_id">>}} =
+        get_oracle_response(maps:put(oracle_id, InvalidHash, ResponseEncoded)),
 
     %% account not found
     RandAddress = aec_base58c:encode(account_pubkey, random_hash()),
     RandOracleAddress = aec_base58c:encode(oracle_pubkey, random_hash()),
     RandQueryID = aec_base58c:encode(oracle_query_id, random_hash()),
-    {ok, 404, #{<<"reason">> := <<"Account of account not found">>}} =
-        get_oracle_register(maps:put(account, RandAddress, RegEncoded)),
+    {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
+        get_oracle_register(maps:put(account_id, RandAddress, RegEncoded)),
 
-    {ok, 404, #{<<"reason">> := <<"Account of sender not found">>}} =
-        get_oracle_query(maps:put(sender, RandAddress, QueryEncoded)),
+    {ok, 404, #{<<"reason">> := <<"Account of sender_id not found">>}} =
+        get_oracle_query(maps:put(sender_id, RandAddress, QueryEncoded)),
 
-    {ok, 404, #{<<"reason">> := <<"Account of oracle not found">>}} =
-        get_oracle_response(maps:put(oracle, RandOracleAddress, ResponseEncoded)),
+    {ok, 404, #{<<"reason">> := <<"Account of oracle_id not found">>}} =
+        get_oracle_response(maps:put(oracle_id, RandOracleAddress, ResponseEncoded)),
 
-    {ok, 404, #{<<"reason">> := <<"Oracle address for key oracle not found">>}} =
-        get_oracle_query(maps:put(oracle_pubkey, RandOracleAddress, QueryEncoded)),
+    {ok, 404, #{<<"reason">> := <<"Oracle address for key oracle_id not found">>}} =
+        get_oracle_query(maps:put(oracle_id, RandOracleAddress, QueryEncoded)),
 
     {ok, 404, #{<<"reason">> := <<"Oracle query for key query_id not found">>}} =
         get_oracle_response(maps:put(query_id, RandQueryID, ResponseEncoded)),
@@ -3757,7 +3757,7 @@ list_oracle_queries(_Config) ->
 register_oracle(ChainHeight, PubKey, PrivKey, Nonce, QueryFee, TTL) ->
     TTLFee = aeo_utils:ttl_fee(1, aeo_utils:ttl_delta(ChainHeight, TTL)),
     AccountId = aec_id:create(account, PubKey),
-    {ok, RegTx} = aeo_register_tx:new(#{account       => AccountId,
+    {ok, RegTx} = aeo_register_tx:new(#{account_id    => AccountId,
                                         nonce         => Nonce,
                                         query_spec    => <<"TODO">>,
                                         response_spec => <<"TODO">>,
@@ -3772,9 +3772,9 @@ query_oracle(ChainHeight, PubKey, PrivKey, Oracle, Nonce, Query, TTL, QueryFee) 
     TTLFee = aeo_utils:ttl_fee(1, aeo_utils:ttl_delta(ChainHeight, TTL)),
     SenderId = aec_id:create(account, PubKey),
     OracleId = aec_id:create(oracle, Oracle),
-    {ok, QueryTx} = aeo_query_tx:new(#{sender        => SenderId,
+    {ok, QueryTx} = aeo_query_tx:new(#{sender_id     => SenderId,
                                        nonce         => Nonce,
-                                       oracle        => OracleId,
+                                       oracle_id     => OracleId,
                                        query         => Query,
                                        query_fee     => QueryFee,
                                        query_ttl     => TTL,

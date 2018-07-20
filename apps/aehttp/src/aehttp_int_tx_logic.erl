@@ -126,7 +126,7 @@ get_oracles(From, Max) ->
     {ok, Oracles} = aec_chain:get_oracles(From, Max),
     FmtOracles =
         lists:map(
-            fun(O) -> #{<<"address">> => aeo_oracles:id(O),
+            fun(O) -> #{<<"address">> => aeo_oracles:pubkey(O),
                         query_format => aeo_oracles:query_format(O),
                         response_format => aeo_oracles:response_format(O),
                         query_fee => aeo_oracles:query_fee(O),
