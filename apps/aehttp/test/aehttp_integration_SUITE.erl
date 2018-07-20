@@ -56,7 +56,13 @@
    [
     get_transaction_by_hash/1,
     get_transaction_info_by_hash/1,
-    post_spend_tx/1
+    post_spend_tx/1,
+    post_contract_and_call_tx/1
+   ]).
+
+-export(
+   [
+    get_contract/1
    ]).
 
 -export(
@@ -286,7 +292,8 @@ groups() ->
        {group, account_endpoints},
        %% /transactions/*
        {group, transaction_endpoints},
-       %% TODO: /contracts/*
+       %% /contracts/*
+       {group, contract_endpoints},
        %% /oracles/*
        {group, oracle_endpoints},
        %% /names/*
@@ -382,7 +389,8 @@ groups() ->
        {group, nonexistent_tx},    %% standalone
        {group, tx_is_pending},     %% standalone
        {group, tx_is_on_chain},    %% standalone
-       {group, post_tx_to_mempool} %% standalone
+       {group, post_tx_to_mempool},%% standalone
+       {group, contract_txs}
       ]},
      {nonexistent_tx, [],
       [
@@ -405,7 +413,15 @@ groups() ->
        get_transaction_by_hash,
        get_transaction_info_by_hash
       ]},
-     %% TODO: /contracts/*
+     {contract_txs, [sequence],
+      [
+       post_contract_and_call_tx
+      ]},
+     %% /contracts/*
+     {contract_endpoints, [sequence],
+      [
+       get_contract
+      ]},
 
      %% /oracles/*
      {oracle_endpoints, [sequence],
@@ -1467,6 +1483,64 @@ post_spend_tx(Config) ->
     ok = post_tx(TxHash, Tx),
     ok.
 
+post_contract_and_call_tx(_Config) ->
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    SophiaCode = <<"contract Identity = function main (x:int) = x">>,
+    {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
+
+    {ok, EncodedInitCallData} = aect_sophia:encode_call_data(Code, <<"init">>, <<"()">>),
+    ValidEncoded = #{ owner => MinerAddress,
+                      code => Code,
+                      vm_version => 1,
+                      deposit => 2,
+                      amount => 1,
+                      gas => 300,
+                      gas_price => 1,
+                      fee => 1,
+                      call_data => EncodedInitCallData},
+
+    %% prepare a contract_create_tx and post it
+    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
+                <<"contract_address">> := EncodedContractPubKey}} =
+        get_contract_create(ValidEncoded),
+    %%%% {ok, ContractPubKey} = aec_base58c:safe_decode(contract_pubkey, EncodedContractPubKey),
+    ContractCreateTxHash = sign_and_post_tx(EncodedUnsignedContractCreateTx),
+
+    ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCreateTxHash)),
+    ?assertEqual({ok, 400, #{<<"reason">> => <<"Tx not mined">>}}, get_transactions_info_by_hash_sut(ContractCreateTxHash)),
+
+    % mine
+    Fun1 = fun() -> tx_in_chain(ContractCreateTxHash) end,
+    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun1, 10),
+    ?assert(tx_in_chain(ContractCreateTxHash)),
+
+    ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCreateTxHash)),
+    ?assertMatch({ok, 200, _}, get_transactions_info_by_hash_sut(ContractCreateTxHash)),
+
+    {ok, EncodedCallData} = aect_sophia:encode_call_data(Code, <<"main">>, <<"42">>),
+    ContractCallEncoded = #{ caller => MinerAddress,
+                             contract => EncodedContractPubKey,
+                             vm_version => 1,
+                             amount => 1,
+                             gas => 1000,
+                             gas_price => 1,
+                             fee => 1,
+                             call_data => EncodedCallData},
+    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCallTx}} = get_contract_call(ContractCallEncoded),
+    ContractCallTxHash = sign_and_post_tx(EncodedUnsignedContractCallTx),
+
+    ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCallTxHash)),
+    ?assertEqual({ok, 400, #{<<"reason">> => <<"Tx not mined">>}}, get_transactions_info_by_hash_sut(ContractCallTxHash)),
+
+    % mine
+    Fun2 = fun() -> tx_in_chain(ContractCallTxHash) end,
+    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun2, 10),
+    ?assert(tx_in_chain(ContractCallTxHash)),
+
+    ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCallTxHash)),
+    ?assertMatch({ok, 200, _}, get_transactions_info_by_hash_sut(ContractCallTxHash)),
+    ok.
+
 get_transactions_by_hash_sut(Hash) ->
     Host = external_address(),
     http_request(Host, get, "transactions/" ++ http_uri:encode(Hash), []).
@@ -1474,13 +1548,90 @@ get_transactions_by_hash_sut(Hash) ->
 get_transactions_info_by_hash_sut(Hash) ->
     Host = external_address(),
     Hash1 = http_uri:encode(Hash),
-    http_request(Host, get, "transactions/" ++ Hash1, []).
+    http_request(Host, get, "transactions/" ++ binary_to_list(Hash1) ++ "/info", []).
 
 post_transactions_sut(Tx) ->
     Host = external_address(),
     http_request(Host, post, "transactions", #{tx => Tx}).
 
 %% /contracts/*
+
+get_contract(_Config) ->
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 1),
+
+    {ok, 200, _} = get_balance_at_top(),
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+    SophiaCode = <<"contract Identity = function main (x:int) = x">>,
+    {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
+
+    % contract_create_tx positive test
+    InitFunction = <<"init">>,
+    InitArgument = <<"()">>,
+    {ok, EncodedInitCallData} =
+        aect_sophia:encode_call_data(Code,
+                                     InitFunction,
+                                     InitArgument),
+
+    ContractInitBalance = 1,
+    ValidEncoded = #{ owner => MinerAddress,
+                      code => Code,
+                      vm_version => 1,
+                      deposit => 2,
+                      amount => ContractInitBalance,
+                      gas => 300,
+                      gas_price => 1,
+                      fee => 1,
+                      call_data => EncodedInitCallData},
+
+    ValidDecoded = maps:merge(ValidEncoded,
+                              #{owner => aec_id:create(account, MinerPubkey),
+                                code => aeu_hex:hexstring_decode(Code),
+                                call_data => aeu_hex:hexstring_decode(EncodedInitCallData)}),
+
+    unsigned_tx_positive_test(ValidDecoded, ValidEncoded, fun get_contract_create/1,
+                               fun aect_create_tx:new/1, MinerPubkey),
+
+    %% prepare a contract_create_tx and post it
+    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
+                <<"contract_address">> := EncodedContractPubKey}} = get_contract_create(ValidEncoded),
+    ContractCreateTxHash = sign_and_post_tx(EncodedUnsignedContractCreateTx),
+
+    %% Try to get the contract init call object while in mempool
+    {ok, 400, #{<<"reason">> := <<"Tx not mined">>}} = get_contract_call_object(ContractCreateTxHash),
+
+    {ok, 404, #{<<"reason">> := <<"Proof for contract not found">>}} = get_contract_poi(EncodedContractPubKey),
+    ?assertEqual({ok, 404, #{<<"reason">> => <<"Account not found">>}}, get_balance_at_top(EncodedContractPubKey)),
+
+    % mine a block
+    Fun1 = fun() -> tx_in_chain(ContractCreateTxHash) end,
+    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun1, 10),
+    ?assert(tx_in_chain(ContractCreateTxHash)),
+
+    {ok, 200, #{<<"return_value">> := ReturnValue}} = get_contract_call_object(ContractCreateTxHash),
+
+    ?assertMatch({ok, 200, #{
+            <<"id">> := EncodedContractPubKey, <<"owner">> := MinerAddress,
+            <<"active">> := true, <<"deposit">> := 2, <<"vm_version">> := 1,
+            <<"referers">> := [], <<"log">> := <<>>
+        }}, get_contract_sut(EncodedContractPubKey)),
+    ?assertEqual({ok, 200, #{<<"bytecode">> => Code}}, get_contract_code_sut(EncodedContractPubKey)),
+    ?assertMatch({ok, 200, #{<<"store">> := [
+        #{<<"key">> := <<"0x00">>, <<"value">> := ReturnValue}
+        ]}}, get_contract_store_sut(EncodedContractPubKey)),
+    ok.
+
+get_contract_sut(PubKey) ->
+    Host = external_address(),
+    http_request(Host, get, "contracts/" ++ binary_to_list(PubKey), []).
+
+get_contract_code_sut(PubKey) ->
+    Host = external_address(),
+    http_request(Host, get, "contracts/" ++ binary_to_list(PubKey) ++ "/code", []).
+
+get_contract_store_sut(PubKey) ->
+    Host = external_address(),
+    http_request(Host, get, "contracts/" ++ binary_to_list(PubKey) ++ "/store", []).
 
 %% /oracles/*
 
