@@ -10,6 +10,7 @@
     aetx,
     sext
    ]},
+  {mod,{aesc_app,[]}},
   {env,[]},
   {modules, []},
   {maintainers, []},

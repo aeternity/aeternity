@@ -303,10 +303,10 @@ process_incoming(Msg, _State) ->
 process_fsm(#{type := sign,
               tag  := Tag,
               info := Tx}) when Tag =:= create_tx
-                         orelse Tag =:= deposit_tx 
-                         orelse Tag =:= deposit_created 
-                         orelse Tag =:= withdraw_tx 
-                         orelse Tag =:= withdraw_created 
+                         orelse Tag =:= deposit_tx
+                         orelse Tag =:= deposit_created
+                         orelse Tag =:= withdraw_tx
+                         orelse Tag =:= withdraw_created
                          orelse Tag =:= shutdown
                          orelse Tag =:= shutdown_ack
                          orelse Tag =:= funding_created
@@ -332,7 +332,9 @@ process_fsm(#{type := report,
                             orelse Tag =:= update
                             orelse Tag =:= conflict
                             orelse Tag =:= message
+                            orelse Tag =:= leave
                             orelse Tag =:= error
+                            orelse Tag =:= debug
                             orelse Tag =:= on_chain_tx ->
     Payload =
         case {Tag, Event} of
@@ -342,7 +344,7 @@ process_fsm(#{type := report,
                 EncodedTx = aec_base58c:encode(transaction,
                                                aetx_sign:serialize_to_binary(Tx)),
                 #{tx => EncodedTx};
-            {update, NewState} ->
+            {_, NewState} when Tag == update; Tag == leave ->
                 Bin = aec_base58c:encode(transaction,
                                          aetx_sign:serialize_to_binary(NewState)),
                 #{state => Bin};
@@ -358,7 +360,8 @@ process_fsm(#{type := report,
                                from => aec_base58c:encode(account_pubkey, From),
                                to => aec_base58c:encode(account_pubkey, To),
                                info => Info}};
-            {error, Msg} -> #{message => Msg}
+            {error, Msg} -> #{message => Msg};
+            {debug, Msg} -> #{message => Msg}
         end,
     Action = atom_to_binary(Tag, utf8),
     {reply, #{action => Action,

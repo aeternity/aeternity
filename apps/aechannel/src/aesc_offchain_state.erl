@@ -22,7 +22,8 @@
 -export([ new/1                       %%  (Opts) -> {ok, Tx, State}
         , check_initial_update_tx/3   %%  (SignedTx, State, Opts)
         , check_update_tx/3           %%  (SignedTx, State, Opts)
-        , check_reestablish_tx/3      %%  (SignedTx, Channel, Opts)
+        , check_reestablish_tx/2      %%  (SignedTx, State) -> {ok,NewSt} | error()
+        , is_latest_signed_tx/2       %%  (SignedTx, State) -> bookean()
         , verify_signatures/2         %%  (SignedTx, State)
         , make_update_tx/3            %%  (Updates, State, Opts) -> Tx
         , add_signed_tx/3             %%  (SignedTx, State0, Opts) -> State
@@ -43,10 +44,21 @@
 -spec new(map()) -> {ok, state()}.
 new(Opts) ->
     lager:debug("offchain_tx:new(~p)", [Opts]),
-    #{initiator          := InitiatorPubKey,
-      responder          := ResponderPubKey,
-      initiator_amount   := InitiatorAmount,
-      responder_amount   := ResponderAmount} = Opts,
+    case Opts of
+        #{existing_channel_id := _
+         , offchain_tx        := _ } ->
+            recover_from_offchain_tx(Opts);
+        #{initiator          := _,
+          responder          := _,
+          initiator_amount   := _,
+          responder_amount   := _} ->
+            new_(Opts)
+    end.
+
+new_(#{ initiator          := InitiatorPubKey
+      , responder          := ResponderPubKey
+      , initiator_amount   := InitiatorAmount
+      , responder_amount   := ResponderAmount }) ->
     Trees0 = aec_trees:new_without_backend(),
     Accounts =
         lists:foldl(
@@ -60,9 +72,32 @@ new(Opts) ->
     Trees = aec_trees:set_accounts(Trees0, Accounts),
     {ok, #state{trees=Trees}}.
 
+recover_from_offchain_tx(#{ existing_channel_id := ChId
+                          , offchain_tx         := SignedTx } = Opts) ->
+    case aesc_state_cache:fetch(ChId, my_pubkey(Opts)) of
+        {ok, #state{} = State} ->
+            case is_latest_signed_tx(SignedTx, State) of
+                true ->
+                    {ok, State};
+                false ->
+                    {error, latest_state_mismatch}
+            end;
+        error ->
+            {error, state_tree_missing}
+    end.
+
 -spec hash(state()) -> binary().
 hash(#state{trees=Trees}) ->
     aec_trees:hash(Trees).
+
+my_pubkey(#{role := responder, responder := R}) -> R;
+my_pubkey(#{role := initiator, initiator := I}) -> I.
+
+is_latest_signed_tx(SignedTx, #state{signed_txs = [LatestSignedTx|_]}) ->
+    aetx_sign:serialize_to_binary(SignedTx)
+        == aetx_sign:serialize_to_binary(LatestSignedTx);
+is_latest_signed_tx(_, _) ->
+    false.
 
 %% update_tx checks
 check_initial_state({previous_round, N}, _) ->
@@ -80,35 +115,19 @@ assert(false, Error) -> Error.
 check_initial_update_tx(SignedTx, State, Opts) ->
     check_update_tx(fun check_initial_state/2, SignedTx, State, Opts).
 
--spec check_reestablish_tx(aetx_sign:signed_tx(), aesc_channels:channel(), map()) -> {ok, state()} | {error, atom()}.
-check_reestablish_tx(SignedTx, Channel, Opts) ->
+-spec check_reestablish_tx(aetx_sign:signed_tx(), state()) -> {ok, state()} | {error, atom()}.
+check_reestablish_tx(SignedTx, State) ->
     lager:debug("check_reestablish_tx()", []),
     case mutually_signed(SignedTx) of
         true ->
-            check_mutually_signed_reestablish_tx(SignedTx, Channel, Opts);
+            case is_latest_signed_tx(SignedTx, State) of
+                true ->
+                    {ok, State};
+                false ->
+                    {error, not_latest_state}
+            end;
         false ->
             {error, not_mutually_signed}
-    end.
-
-check_mutually_signed_reestablish_tx(SignedTx, Channel, Opts) ->
-    {ok, St0} = new(Opts#{initiator_amount => 0, responder_amount => 0}),
-    St1 = add_signed_tx(SignedTx, St0, Opts),
-    #{ initiator := Initiator
-     , responder := Responder } = Opts, 
-    TotalAmount = (balance(Initiator, St1)
-                   + balance(Responder, St1)),
-    Tx = aetx_sign:tx(SignedTx),
-    {Mod, TxI} = aetx:specialize_callback(Tx),
-    lager:debug("Tx = ~p", [Tx]),
-    case {{Mod:state_hash(TxI), aesc_channels:state_hash(Channel)},
-          {TotalAmount        , aesc_channels:total_amount(Channel)},
-          {Mod:round(TxI)     , aesc_channels:round(Channel)}} of
-        {{H, H}, {A, A}, {Rt, Rc}} when is_integer(Rt), Rt >= Rc ->
-            {ok, St1};
-        {{A, B}, _, _} when A =/= B -> {error, state_hash_mismatch};
-        {_, {A, B}, _} when A =/= B -> {error, total_amount_mismatch};
-        {_, _, _} ->
-            {error, illegal_round}
     end.
 
 -spec check_update_tx(aetx_sign:signed_tx(), state(), map()) -> ok | {error, atom()}.
