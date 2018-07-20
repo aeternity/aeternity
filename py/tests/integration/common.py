@@ -142,15 +142,14 @@ mining:
 """.format(key_dir)
     return install_user_config(root_dir, file_name, conf)
 
-def start_node(name, config_filename=None):
+def start_node(name, config_filename):
     if should_start_node(name):
         print("\nNode " + name + " starting")
         config_prefix = ""
-        if config_filename != None:
-            if config_filename[0] == "/": # absolute path
-                config_prefix =  'EPOCH_CONFIG="' + config_filename + '" '
-            else:
-                config_prefix =  'EPOCH_CONFIG="`pwd`/' + config_filename + '" '
+        if config_filename[0] == "/": # absolute path
+            config_prefix =  'EPOCH_CONFIG="' + config_filename + '" '
+        else:
+            config_prefix =  'EPOCH_CONFIG="`pwd`/' + config_filename + '" '
 
         print("Starting node with config prefix " + config_prefix)
         p = os.popen("(cd .. && " + config_prefix + "make " + name + "-start;)","r")
