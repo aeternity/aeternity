@@ -26,7 +26,7 @@ def test_not_enough_tokens():
     # they are in is confirmed.
     test_settings = settings["test_not_enough_tokens"]
     coinbase_reward = common.coinbase_reward()
-    (root_dir, bob_node, bob_api, bob_top) = setup_node_with_tokens(test_settings, "bob")
+    (bob_node, (root_dir, bob_api, bob_top)) = setup_node_with_tokens(test_settings, "bob")
     bob_internal_api = common.internal_api(bob_node)
 
     def get_bob_balance(height):
@@ -84,7 +84,7 @@ def test_send_by_name():
     # Bob registers a name 'bob.aet'
     # Alice should be able to send tokens to Bob using that name
     test_settings = settings["test_send_by_name"]
-    (root_dir, node, ext_api, top) = setup_node_with_tokens(test_settings, "miner")
+    (node, (root_dir, ext_api, top)) = setup_node_with_tokens(test_settings, "miner")
     int_api = common.internal_api(node)
 
     alice_private_key = keys.new_private()
@@ -142,7 +142,8 @@ def test_send_by_name():
     shutil.rmtree(root_dir)
 
 def setup_node_with_tokens(test_settings, node_name):
-    return common.setup_node_with_tokens(test_settings["nodes"][node_name], test_settings["blocks_to_mine"])
+    node = test_settings["nodes"][node_name]
+    return node, common.setup_node_with_tokens(node, test_settings["blocks_to_mine"])
 
 def miner_send_tokens(address, amount, internal_api, external_api):
     spend_tx_obj = SpendTx(

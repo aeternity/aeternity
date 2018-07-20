@@ -37,7 +37,7 @@ def read_id_contract(api):
 
 def test_contract_create():
     test_settings = settings["test_contract_create"]
-    (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node")
+    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, "node")
     internal_api = common.internal_api(node)
 
     private_key = keys.new_private()
@@ -90,7 +90,7 @@ def test_contract_create():
 def test_contract_call():
     test_settings = settings["test_contract_call"]
     create_settings = settings["test_contract_create"]
-    (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node")
+    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, "node")
     internal_api = common.internal_api(node)
 
     private_key = keys.new_private()
@@ -172,7 +172,7 @@ def test_contract_call():
 def test_contract_on_chain_call_off_chain():
     test_settings = settings["test_contract_call"]
     create_settings = settings["test_contract_create"]
-    (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node")
+    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, "node")
     internal_api = common.internal_api(node)
 
     private_key = keys.new_private()
@@ -221,7 +221,7 @@ def test_spend():
 
     # Setup
     test_settings = settings["test_spend"]
-    (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node")
+    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, "node")
     internal_api = common.internal_api(node)
 
     private_key = keys.new_private()
@@ -281,7 +281,8 @@ def cleanup(node, root_dir):
     shutil.rmtree(root_dir)
 
 def setup_node_with_tokens(test_settings, node_name):
-    return common.setup_node_with_tokens(test_settings["nodes"][node_name], test_settings["blocks_to_mine"])
+    node = test_settings["nodes"][node_name]
+    return node, common.setup_node_with_tokens(node, test_settings["blocks_to_mine"])
 
 def send_tokens_to_user(user, test_settings, external_api, internal_api):
     return send_tokens_to_user_(test_settings[user]["pubkey"],

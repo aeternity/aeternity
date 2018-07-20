@@ -83,7 +83,7 @@ def setup_node_with_tokens(node, blocks_to_mine):
     assert_equals(top.height >= blocks_to_mine, True)
     # Now the node has at least blocks_to_mine blocks mined
 
-    return (root_dir, node, api, top)
+    return (root_dir, api, top)
 
 def _copy_sign_keys(root_dir, keys):
     # Copy the right keys
