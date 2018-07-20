@@ -245,7 +245,7 @@ query_oracle(Cfg, Opts) ->
         aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, CurrHeight, ?PROTOCOL_VERSION),
     S3 = aeo_test_utils:set_trees(Trees2, S2),
     {oracle_query_tx, QTx} = aetx:specialize_type(Q1),
-    ID = aeo_query:id(aeo_query:new(QTx, SenderKey, OracleKey, CurrHeight)),
+    ID = aeo_query:id(aeo_query:new(QTx, CurrHeight)),
     {OracleKey, ID, S3}.
 
 %%%===================================================================
@@ -325,7 +325,7 @@ prune_oracle(Cfg) ->
     %% Test that the oracle remains
     Left      = prune_from_until(?GENESIS_HEIGHT, Expires, Trees),
     Oracle    = aeo_state_tree:get_oracle(OracleKey, aec_trees:oracles(Left)),
-    OracleKey = aeo_oracles:owner(Oracle),
+    OracleKey = aeo_oracles:pubkey(Oracle),
     ok.
 
 prune_oracle_extend(Cfg) ->
@@ -335,7 +335,7 @@ prune_oracle_extend(Cfg) ->
     %% Test that the oracle is not pruned prematurely
     Left1 = prune_from_until(?GENESIS_HEIGHT, Exp1 + 1, Trees),
     Oracle0   = aeo_state_tree:get_oracle(OracleKey, aec_trees:oracles(Left1)),
-    OracleKey = aeo_oracles:owner(Oracle0),
+    OracleKey = aeo_oracles:pubkey(Oracle0),
 
     %% Test that the oracle is pruned
     Gone  = prune_from_until(?GENESIS_HEIGHT, Exp2 + 1, Trees),
@@ -344,7 +344,7 @@ prune_oracle_extend(Cfg) ->
     %% Test that the oracle remains
     Left2     = prune_from_until(?GENESIS_HEIGHT, Exp2, Trees),
     Oracle2   = aeo_state_tree:get_oracle(OracleKey, aec_trees:oracles(Left2)),
-    OracleKey = aeo_oracles:owner(Oracle2),
+    OracleKey = aeo_oracles:pubkey(Oracle2),
     ok.
 
 prune_query(Cfg) ->
@@ -353,7 +353,7 @@ prune_query(Cfg) ->
     OTrees             = aec_trees:oracles(Trees),
     OIO                = aeo_state_tree:get_query(OracleKey, ID, OTrees),
     Expires            = ?ORACLE_QUERY_HEIGHT + maps:get(query, aeo_test_utils:ttl_defaults()),
-    SenderKey          = aeo_query:sender_address(OIO),
+    SenderKey          = aeo_query:sender_pubkey(OIO),
 
     %% Test that the query is pruned
     Gone  = prune_from_until(?GENESIS_HEIGHT, Expires + 1, Trees),
@@ -382,7 +382,7 @@ prune_response(Cfg, QueryOpts = #{ response_ttl := {delta, RTTL} }) ->
     OTrees             = aec_trees:oracles(Trees),
     OIO                = aeo_state_tree:get_query(OracleKey, ID, OTrees),
     Expires            = ?ORACLE_RSP_HEIGHT + RTTL,
-    SenderKey          = aeo_query:sender_address(OIO),
+    SenderKey          = aeo_query:sender_pubkey(OIO),
 
     %% Test that the query is pruned
     Gone  = prune_from_until(?GENESIS_HEIGHT, Expires + 1, Trees),

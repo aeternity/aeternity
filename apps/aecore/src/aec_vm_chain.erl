@@ -20,10 +20,10 @@
           oracle_get_question/3,
           oracle_query/6,
           oracle_query_fee/2,
-          oracle_query_spec/2,
+          oracle_query_format/2,
           oracle_register/7,
           oracle_respond/5,
-          oracle_response_spec/2,
+          oracle_response_format/2,
           aens_resolve/4,
           aens_preclaim/4,
           aens_claim/5,
@@ -112,24 +112,24 @@ spend(Recipient, Amount, State = #state{ account = ContractKey }) ->
 -spec oracle_register(aec_keys:pubkey(), binary(), non_neg_integer(),
                       non_neg_integer(), aeso_sophia:type(), aeso_sophia:type(), chain_state()) ->
     {ok, aec_keys:pubkey(), chain_state()} | {error, term()}.
-oracle_register(AccountKey,_Sign, QueryFee, TTL, QuerySpec, ResponseSpec,
+oracle_register(AccountKey,_Sign, QueryFee, TTL, QueryFormat, ResponseFormat,
                 State = #state{account = ContractKey}) ->
     Nonce = next_nonce(AccountKey, State),
     %% Note: The nonce of the account is incremented.
     %% This means that if you register an oracle for an account other than
     %% the contract account through a contract that contract nonce is incremented
     %% "behind your back".
-    BinaryQuerySpec = aeso_data:to_binary(QuerySpec, 0),
-    BinaryResponseSpec = aeso_data:to_binary(ResponseSpec, 0),
+    BinaryQueryFormat = aeso_data:to_binary(QueryFormat, 0),
+    BinaryResponseFormat = aeso_data:to_binary(ResponseFormat, 0),
     Spec =
-        #{account       => aec_id:create(account, AccountKey),
-          nonce         => Nonce,
-          query_spec    => BinaryQuerySpec,
-          response_spec => BinaryResponseSpec,
-          query_fee     => QueryFee,
-          oracle_ttl    => {delta, TTL},
-          ttl           => 0, %% Not used.
-          fee           => 0},
+        #{account_id      => aec_id:create(account, AccountKey),
+          nonce           => Nonce,
+          query_format    => BinaryQueryFormat,
+          response_format => BinaryResponseFormat,
+          query_fee       => QueryFee,
+          oracle_ttl      => {delta, TTL},
+          ttl             => 0, %% Not used.
+          fee             => 0},
     {ok, Tx} = aeo_register_tx:new(Spec),
 
     %% TODO: To register an oracle for another account than the contract
@@ -155,9 +155,9 @@ oracle_query(Oracle, Q, Value, QTTL, RTTL,
     Nonce = next_nonce(State),
     QueryData = aeso_data:to_binary(Q, 0),
     {ok, Tx} =
-        aeo_query_tx:new(#{sender        => aec_id:create(account, ContractKey),
+        aeo_query_tx:new(#{sender_id     => aec_id:create(account, ContractKey),
                            nonce         => Nonce,
-                           oracle        => aec_id:create(oracle, Oracle),
+                           oracle_id     => aec_id:create(oracle, Oracle),
                            query         => QueryData,
                            query_fee     => Value,
                            query_ttl     => {delta, QTTL},
@@ -178,12 +178,12 @@ oracle_respond(Oracle, QueryId,_Sign, Response, State) ->
     Nonce = next_nonce(Oracle, State),
 
     {ok, Tx} = aeo_response_tx:new(
-                 #{oracle   => aec_id:create(oracle, Oracle),
-                   nonce    => Nonce,
-                   query_id => QueryId,
-                   response => aeso_data:to_binary(Response, 0),
-                   fee      => 0,
-                   ttl      => 0 %% Not used
+                 #{oracle_id => aec_id:create(oracle, Oracle),
+                   nonce     => Nonce,
+                   query_id  => QueryId,
+                   response  => aeso_data:to_binary(Response, 0),
+                   fee       => 0,
+                   ttl       => 0 %% Not used
                   }),
 
     apply_transaction(Tx, State).
@@ -191,7 +191,7 @@ oracle_respond(Oracle, QueryId,_Sign, Response, State) ->
 oracle_extend(Oracle,_Sign, TTL, State) ->
     Nonce = next_nonce(Oracle, State),
     {ok, Tx} =
-        aeo_extend_tx:new(#{oracle     => aec_id:create(oracle, Oracle),
+        aeo_extend_tx:new(#{oracle_id  => aec_id:create(oracle, Oracle),
                             nonce      => Nonce,
                             oracle_ttl => {delta, TTL},
                             fee        => 0,
@@ -236,7 +236,7 @@ oracle_query_fee(Oracle, #state{trees = Trees} =_State) ->
             {ok, none}
     end.
 
-oracle_query_spec(Oracle, #state{ trees   = Trees} =_State) ->
+oracle_query_format(Oracle, #state{ trees   = Trees} =_State) ->
     case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
         {value, O} ->
             BinaryFormat = aeo_oracles:query_format(O),
@@ -253,7 +253,7 @@ oracle_query_spec(Oracle, #state{ trees   = Trees} =_State) ->
 
 
 
-oracle_response_spec(Oracle, #state{ trees   = Trees} =_State) ->
+oracle_response_format(Oracle, #state{ trees   = Trees} =_State) ->
     case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
         {value, O} ->
             BinaryFormat = aeo_oracles:response_format(O),

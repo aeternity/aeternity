@@ -567,12 +567,12 @@ handle_request('PostContractCallCompute', #{'ContractCallCompute' := Req}, _Cont
 
 handle_request('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([account, {query_format, query_spec},
-                                       {response_format, response_spec},
+                 read_required_params([account_id, {query_format, query_format},
+                                       {response_format, response_format},
                                        query_fee, oracle_ttl, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{account, account, {id_hash, [account_pubkey]}}]),
-                 get_nonce_from_account_id(account),
+                 base58_decode([{account_id, account_id, {id_hash, [account_pubkey]}}]),
+                 get_nonce_from_account_id(account_id),
                  ttl_decode(oracle_ttl),
                  unsigned_tx_response(fun aeo_register_tx:new/1)
                 ],
@@ -580,10 +580,10 @@ handle_request('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
 
 handle_request('PostOracleExtend', #{'OracleExtendTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([oracle, oracle_ttl, fee]),
+                 read_required_params([oracle_id, oracle_ttl, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{oracle, oracle, {id_hash, [oracle_pubkey]}}]),
-                 get_nonce_from_account_id(oracle),
+                 base58_decode([{oracle_id, oracle_id, {id_hash, [oracle_pubkey]}}]),
+                 get_nonce_from_account_id(oracle_id),
                  ttl_decode(oracle_ttl),
                  unsigned_tx_response(fun aeo_extend_tx:new/1)
                 ],
@@ -591,27 +591,27 @@ handle_request('PostOracleExtend', #{'OracleExtendTx' := Req}, _Context) ->
 
 handle_request('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([sender, oracle_pubkey, query,
+                 read_required_params([sender_id, oracle_id, query,
                                        query_fee, fee, query_ttl, response_ttl]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{sender, sender, {id_hash, [account_pubkey]}},
-                                {oracle_pubkey, oracle, {id_hash, [oracle_pubkey]}}]),
-                 get_nonce_from_account_id(sender),
+                 base58_decode([{sender_id, sender_id, {id_hash, [account_pubkey]}},
+                                {oracle_id, oracle_id, {id_hash, [oracle_pubkey]}}]),
+                 get_nonce_from_account_id(sender_id),
                  ttl_decode(query_ttl),
                  relative_ttl_decode(response_ttl),
-                 verify_oracle_existence(oracle),
+                 verify_oracle_existence(oracle_id),
                  unsigned_tx_response(fun aeo_query_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
 
 handle_request('PostOracleResponse', #{'OracleResponseTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([oracle, query_id, response, fee]),
+                 read_required_params([oracle_id, query_id, response, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{oracle, oracle, {id_hash, [oracle_pubkey]}},
+                 base58_decode([{oracle_id, oracle_id, {id_hash, [oracle_pubkey]}},
                                 {query_id, query_id, oracle_query_id}]),
-                 get_nonce_from_account_id(oracle),
-                 verify_oracle_query_existence(oracle, query_id),
+                 get_nonce_from_account_id(oracle_id),
+                 verify_oracle_query_existence(oracle_id, query_id),
                  unsigned_tx_response(fun aeo_response_tx:new/1)
                 ],
     process_request(ParseFuns, Req);

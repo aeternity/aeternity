@@ -57,14 +57,14 @@ oracle_register(QueryFormat, ResponseFormat, QueryFee, Fee, TTLType, TTLValue, T
             %% Note that this is the local node's pubkey.
             Sender = aec_id:create(account, Pubkey),
             aeo_register_tx:new(
-              #{account       => Sender,
-                nonce         => Nonce,
-                query_spec    => QueryFormat,
-                response_spec => ResponseFormat,
-                query_fee     => QueryFee,
-                oracle_ttl    => {TTLType, TTLValue},
-                fee           => Fee,
-                ttl           => TTL})
+              #{account_id      => Sender,
+                nonce           => Nonce,
+                query_format    => QueryFormat,
+                response_format => ResponseFormat,
+                query_fee       => QueryFee,
+                oracle_ttl      => {TTLType, TTLValue},
+                fee             => Fee,
+                ttl             => TTL})
           end).
 
 oracle_extend(Fee, TTLType, TTLValue, TTL) ->
@@ -73,7 +73,7 @@ oracle_extend(Fee, TTLType, TTLValue, TTL) ->
             %% Note that this is the local node's pubkey.
             Sender = aec_id:create(oracle, Pubkey),
             aeo_extend_tx:new(
-              #{oracle     => Sender,
+              #{oracle_id  => Sender,
                 nonce      => Nonce,
                 oracle_ttl => {TTLType, TTLValue},
                 fee        => Fee,
@@ -91,9 +91,9 @@ oracle_query(EncodedOraclePubkey, Query, QueryFee, QueryTTLType,
                 {ok, DecodedOracleId} ->
                     {ok, Tx} =
                         aeo_query_tx:new(
-                          #{sender       => Sender,
+                          #{sender_id    => Sender,
                             nonce        => Nonce,
-                            oracle       => DecodedOracleId,
+                            oracle_id    => DecodedOracleId,
                             query        => Query,
                             query_fee    => QueryFee,
                             query_ttl    => {QueryTTLType, QueryTTLValue},
@@ -114,19 +114,19 @@ oracle_response(DecodedQueryId, Response, Fee, TTL) ->
             %% Note that this is the local node's pubkey.
             Sender = aec_id:create(oracle, Pubkey),
             aeo_response_tx:new(
-              #{oracle   => Sender,
-                nonce    => Nonce,
-                query_id => DecodedQueryId,
-                response => Response,
-                fee      => Fee,
-                ttl      => TTL})
+              #{oracle_id => Sender,
+                nonce     => Nonce,
+                query_id  => DecodedQueryId,
+                response  => Response,
+                fee       => Fee,
+                ttl       => TTL})
           end).
 
 get_oracles(From, Max) ->
     {ok, Oracles} = aec_chain:get_oracles(From, Max),
     FmtOracles =
         lists:map(
-            fun(O) -> #{<<"address">> => aeo_oracles:id(O),
+            fun(O) -> #{<<"address">> => aeo_oracles:pubkey(O),
                         query_format => aeo_oracles:query_format(O),
                         response_format => aeo_oracles:response_format(O),
                         query_fee => aeo_oracles:query_fee(O),

@@ -303,7 +303,7 @@ check_accounts(As, Trees) ->
 check_oracles(ModelOs, Trees, Height) ->
     OTree = aec_trees:oracles(Trees),
     ExpectedOs = [ O#oracle.address || O <- ModelOs, not oracle_expired(O, Height) ],
-    ActualOs   = [ aeo_oracles:owner(O) || O <- aeo_state_tree:oracle_list(OTree)],
+    ActualOs   = [ aeo_oracles:pubkey(O) || O <- aeo_state_tree:oracle_list(OTree)],
     case {ExpectedOs -- ActualOs, ActualOs -- ExpectedOs} of
         {[], []}   -> true;
         {[], Os}   -> {extra_oracles_in_state_tree, Os};
@@ -393,36 +393,36 @@ mk_spend_tx(Sender, Receiver) ->
 mk_oracle_register_tx(#account{ pubkey = PK, nonce = N },
                       #oracle{ fee = QF, ttl = TTL }) ->
     {ok, Tx} =
-        aeo_register_tx:new(#{account       => PK,
-                              nonce         => N + 1,
-                              query_spec    => <<"string()">>,
-                              response_spec => <<"boolean() | integer()">>,
-                              query_fee     => QF,
-                              ttl           => TTL,
-                              fee           => 4 + ttl_fee(TTL)}),
+        aeo_register_tx:new(#{account_id      => PK,
+                              nonce           => N + 1,
+                              query_format    => <<"string()">>,
+                              response_format => <<"boolean() | integer()">>,
+                              query_fee       => QF,
+                              ttl             => TTL,
+                              fee             => 4 + ttl_fee(TTL)}),
     Tx.
 
 mk_oracle_query_tx(#account{ pubkey = PK, nonce = N },
                    #query{ fee = QF, query_ttl = TTL, response_ttl = RTTL, oracle = O, query = Q }) ->
     {ok, Tx} =
-        aeo_query_tx:new(#{sender        => PK,
-                           nonce         => N + 1,
-                           oracle        => O,
-                           query         => list_to_binary(Q),
-                           query_fee     => QF,
-                           query_ttl     => TTL,
-                           response_ttl  => RTTL,
-                           fee           => 2 + ttl_fee(TTL)}),
+        aeo_query_tx:new(#{sender_id    => PK,
+                           nonce        => N + 1,
+                           oracle_id    => O,
+                           query        => list_to_binary(Q),
+                           query_fee    => QF,
+                           query_ttl    => TTL,
+                           response_ttl => RTTL,
+                           fee          => 2 + ttl_fee(TTL)}),
     Tx.
 
 mk_oracle_response_tx(#account{ pubkey = PK, nonce = N },
                       #query{ response_ttl = TTL, id = Id }, R) ->
     {ok, Tx} =
-        aeo_response_tx:new(#{oracle   => PK,
-                              nonce    => N + 1,
-                              query_id => Id,
-                              response => R,
-                              fee      => 2 + ttl_fee(TTL)}),
+        aeo_response_tx:new(#{oracle_id => PK,
+                              nonce     => N + 1,
+                              query_id  => Id,
+                              response  => R,
+                              fee       => 2 + ttl_fee(TTL)}),
     Tx.
 
 ttl_fee(_) -> 1.

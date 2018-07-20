@@ -2937,7 +2937,7 @@ definitions:
     type: object
     properties:
       id:
-        type: string
+        $ref: '#/definitions/EncodedHash'
       query_format:
         type: string
       response_format:
@@ -2955,15 +2955,15 @@ definitions:
     type: object
     properties:
       id:
-        type: string
-      sender:
-        type: string
+        $ref: '#/definitions/EncodedHash'
+      sender_id:
+        $ref: '#/definitions/EncodedHash'
       sender_nonce:
         type: integer
         format: int64
         minimum: 0
       oracle_id:
-        type: string
+        $ref: '#/definitions/EncodedHash'
       query:
         type: string
       response:
@@ -3043,7 +3043,7 @@ definitions:
         format: int64
       oracle_ttl:
         $ref: '#/definitions/TTL'
-      account:
+      account_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
@@ -3075,7 +3075,7 @@ definitions:
         format: int64
       oracle_ttl:
         $ref: '#/definitions/TTL'
-      oracle:
+      oracle_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
@@ -3089,8 +3089,8 @@ definitions:
   OracleQueryTx:
     type: object
     properties:
-      oracle_pubkey:
-        type: string
+      oracle_id:
+        $ref: '#/definitions/EncodedHash'
       query:
         type: string
       query_fee:
@@ -3106,14 +3106,14 @@ definitions:
       ttl:
         type: integer
         format: int64
-      sender:
+      sender_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
         format: int64
         description: Sender nonce
     required:
-    - oracle_pubkey
+    - oracle_id
     - query
     - query_fee
     - query_ttl
@@ -3132,7 +3132,7 @@ definitions:
       ttl:
         type: integer
         format: int64
-      oracle:
+      oracle_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
