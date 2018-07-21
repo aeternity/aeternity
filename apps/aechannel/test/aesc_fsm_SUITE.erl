@@ -196,6 +196,7 @@ deposit(Cfg) ->
                 , responder := _PubR }} = create_channel_([{port, 9327}|Cfg]),
     ct:log("I = ~p", [I]),
     #{initiator_amount := IAmt0, responder_amount := RAmt0} = I,
+    {IAmt0, RAmt0, _, _Round0 = 1} = check_fsm_state(FsmI),
     check_info(),
     ok = rpc(dev1, aesc_fsm, upd_deposit, [FsmI, #{amount => Deposit}]),
     check_info(),
@@ -204,7 +205,13 @@ deposit(Cfg) ->
     SignedTx = await_on_chain_report(I1, ?TIMEOUT),
     SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
     wait_for_signed_transaction_in_block(dev1, SignedTx),
+    {IAmt0, RAmt0, _, _Round1 = 1} = check_fsm_state(FsmI),
     mine_blocks(dev1, ?MINIMUM_DEPTH),
+    {IAmt, RAmt0, StateHash, Round2 = 2} = check_fsm_state(FsmI),
+    {IAmt, _} = {IAmt0 + Deposit, IAmt}, %% assert correct amounts
+    {channel_deposit_tx, DepositTx} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
+    Round2 = aesc_deposit_tx:round(DepositTx), %% assert correct round
+    StateHash = aesc_deposit_tx:state_hash(DepositTx), %% assert correct state hash
     ct:log("I2 = ~p", [I1]),
     #{initiator_amount := IAmt2, responder_amount := RAmt2} = I1,
     Expected = {IAmt2, RAmt2},
@@ -219,6 +226,7 @@ withdraw(Cfg) ->
                 , responder := _PubR }} = create_channel_([{port, 9328}|Cfg]),
     ct:log("I = ~p", [I]),
     #{initiator_amount := IAmt0, responder_amount := RAmt0} = I,
+    {IAmt0, RAmt0, _, _Round0 = 1} = check_fsm_state(FsmI),
     check_info(),
     ok = rpc(dev1, aesc_fsm, upd_withdraw, [FsmI, #{amount => Withdrawal}]),
     check_info(),
@@ -227,7 +235,13 @@ withdraw(Cfg) ->
     SignedTx = await_on_chain_report(I1, ?TIMEOUT),
     SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
     wait_for_signed_transaction_in_block(dev1, SignedTx),
+    {IAmt0, RAmt0, _, _Round0 = 1} = check_fsm_state(FsmI),
     mine_blocks(dev1, ?MINIMUM_DEPTH),
+    {IAmt, RAmt0, StateHash, Round2 = 2} = check_fsm_state(FsmI),
+    {IAmt, _} = {IAmt0 - Withdrawal, IAmt}, %% assert correct amounts
+    {channel_withdraw_tx, WithdrawalTx} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
+    Round2 = aesc_withdraw_tx:round(WithdrawalTx), %% assert correct round
+    StateHash = aesc_withdraw_tx:state_hash(WithdrawalTx), %% assert correct state hash
     #{initiator_amount := IAmt2, responder_amount := RAmt2} = I1,
     Expected = {IAmt2, RAmt2},
     {Expected, Expected} = {{IAmt0 - Withdrawal, RAmt0}, Expected},
@@ -335,7 +349,7 @@ create_channel_(Cfg, Debug) ->
                        error(Err, erlang:get_stacktrace())
                end,
     log(Debug, "mining blocks on dev1 for minimum depth", []),
-    CurrentHeight = 
+    CurrentHeight =
         case rpc(dev1, aec_chain, top_header, []) of
             undefined -> 0;
             Header -> aec_headers:height(Header)
@@ -584,3 +598,19 @@ wait_for_signed_transaction_in_block(Node, SignedTx) ->
                 end
         end,
     ok = MineTx(5).
+
+check_fsm_state(Fsm) ->
+    {ok, #{initiator := Initiator,
+           responder := Responder,
+           init_amt  := IAmt,
+           resp_amt  := RAmt,
+           state_hash:= StateHash,
+           round     := Round}} = aesc_fsm:get_state(Fsm),
+    Trees =
+        aec_test_utils:create_state_tree_with_accounts(
+            [aec_accounts:new(Pubkey, Balance) ||
+                {Pubkey, Balance} <- [{Initiator, IAmt}, {Responder, RAmt}]],
+            no_backend),
+    Hash = aec_trees:hash(Trees),
+    StateHash = Hash, %% assert same root hash
+    {IAmt, RAmt, StateHash, Round}.

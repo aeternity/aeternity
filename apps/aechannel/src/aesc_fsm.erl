@@ -11,7 +11,8 @@
          upd_withdraw/2, %% (fsm() , map())
          shutdown/1,     %% (fsm())
          client_died/1,  %% (fsm())
-         inband_msg/3]).
+         inband_msg/3,
+         get_state/1]).
 
 %% Used by noise session
 -export([message/2]).
@@ -266,6 +267,10 @@ inband_msg(Fsm, To, Msg) ->
     lager:debug("inband_msg(~p, ~p, ~p)", [Fsm, To, Msg]),
     gen_statem:call(Fsm, {inband_msg, To, Msg}).
 
+-spec get_state(pid()) -> {ok, #{}}.
+get_state(Fsm) ->
+    gen_statem:call(Fsm, get_state).
+
 shutdown(Fsm) ->
     lager:debug("shutdown(~p)", [Fsm]),
     gen_statem:call(Fsm, shutdown).
@@ -403,7 +408,9 @@ awaiting_open(cast, {?CH_OPEN, Msg}, #data{role = responder} = D) ->
 awaiting_open(timeout, awaiting_open = T, D) ->
     close({timeout, T}, D);
 awaiting_open(cast, {?DISCONNECT, _Msg}, D) ->
-    close(disconnect, D).
+    close(disconnect, D);
+awaiting_open({call, From}, Req, D) ->
+    handle_call(awaiting_open, Req, From, D).
 
 initialized(enter, _OldSt, _D) -> keep_state_and_data;
 initialized(cast, {?CH_ACCEPT, Msg}, #data{role = initiator} = D) ->
@@ -651,7 +658,9 @@ awaiting_locked(cast, {?WDRAW_LOCKED, _Msg}, D) ->
 awaiting_locked(cast, {?DISCONNECT, _Msg}, D) ->
     close(disconnect, D);
 awaiting_locked(timeout, awaiting_locked = T, D) ->
-    close({timeout, T}, D).
+    close({timeout, T}, D);
+awaiting_locked({call, From}, Req, D) ->
+    handle_call(awaiting_locked, Req, From, D).
 
 awaiting_initial_state(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_initial_state(cast, {?UPDATE, Msg}, #data{role = responder} = D) ->
@@ -671,6 +680,8 @@ awaiting_initial_state(cast, {?DISCONNECT, _Msg}, D) ->
     close(disconnect, D);
 awaiting_initial_state(timeout, awaiting_initial_state = T, D) ->
     close({timeout, T}, D);
+awaiting_initial_state({call, From}, Req, D) ->
+    handle_call(awaiting_initial_state, Req, From, D);
 awaiting_initial_state(Evt, Msg, D) ->
     lager:debug("unexpected: awaiting_initial_state(~p, ~p, ~p)",
                 [Evt, Msg, D]),
@@ -718,6 +729,8 @@ awaiting_deposit_update(cast, {?DISCONNECT, _Msg}, D) ->
     close(disconnect, D);
 awaiting_deposit_update(timeout, awaiting_deposit_update = T, D) ->
     close({timeout, T}, D);
+awaiting_deposit_update({call, From}, Req, D) ->
+    handle_call(awaiting_deposit_update, Req, From, D);
 awaiting_deposit_update(Evt, Msg, D) ->
     lager:debug("unexpected: awaiting_deposit_update(~p, ~p, ~p)", [Evt, Msg, D]),
     close({unexpected, Msg}, D).
@@ -737,6 +750,8 @@ awaiting_withdraw_update(cast, {?DISCONNECT, _Msg}, D) ->
     close(disconnect, D);
 awaiting_withdraw_update(timeout, awaiting_withdraw_update = T, D) ->
     close({timeout, T}, D);
+awaiting_withdraw_update({call, From}, Req, D) ->
+    handle_call(awaiting_withdraw_update, Req, From, D);
 awaiting_withdraw_update(Evt, Msg, D) ->
     lager:debug("unexpected: awaiting_withdraw_update(~p, ~p, ~p)", [Evt, Msg, D]),
     close({unexpected, Msg}, D).
@@ -935,6 +950,24 @@ handle_call_(open, {inband_msg, ToPub, Msg}, From, #data{} = D) ->
         _ ->
             keep_state(D, [{reply, From, {error, unknown_recipient}}])
     end;
+handle_call_(_, get_state, From, #data{ on_chain_id = ChanId
+                                      , opts        = Opts
+                                      , state       = State} = D) ->
+    #{initiator := Initiator,
+      responder := Responder} = Opts,
+    {ok, IAmt} = aesc_offchain_state:balance(Initiator, State),
+    {ok, RAmt} = aesc_offchain_state:balance(Responder, State),
+    StateHash = aesc_offchain_state:hash(State),
+    {Round, _} = aesc_offchain_state:get_latest_signed_tx(State),
+    Result =
+        #{channel_id=> ChanId,
+          initiator => Initiator,
+          responder => Responder,
+          init_amt  => IAmt,
+          resp_amt  => RAmt,
+          state_hash=> StateHash,
+          round     => Round},
+    keep_state(D, [{reply, From, {ok, Result}}]);
 handle_call_(St, _Req, _From, D) when ?TRANSITION_STATE(St) ->
     postpone(D);
 handle_call_(_St, _Req, From, D) ->
@@ -1056,8 +1089,13 @@ check_accept_msg(#{ chain_hash           := ChainHash
             {error, chain_hash_mismatch}
     end.
 
-dep_tx_for_signing(#{from := From} = Opts, #data{on_chain_id = ChanId, state=State}) ->
-    StateHash = aesc_offchain_state:hash(State),
+dep_tx_for_signing(#{from := From, amount := Amount} = Opts,
+                   #data{on_chain_id = ChanId, state=State}) ->
+    Updates = [aesc_offchain_state:op_deposit(From, Amount)],
+    UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State, Opts),
+    {channel_offchain_tx, UpdatedOffchainTx} = aetx:specialize_type(UpdatedStateTx),
+    StateHash = aesc_offchain_tx:state_hash(UpdatedOffchainTx),
+
     {LastRound, _} = aesc_offchain_state:get_latest_signed_tx(State),
     Def = deposit_tx_defaults(ChanId, From, maps:get(ttl, Opts, undefined)),
     Opts1 = maps:merge(Def, Opts),
@@ -1070,8 +1108,13 @@ dep_tx_for_signing(#{from := From} = Opts, #data{on_chain_id = ChanId, state=Sta
     {ok, _} = Ok = aesc_deposit_tx:new(Opts2),
     Ok.
 
-wdraw_tx_for_signing(#{to := To} = Opts, #data{on_chain_id = ChanId, state=State}) ->
-    StateHash = aesc_offchain_state:hash(State),
+wdraw_tx_for_signing(#{to := To, amount := Amount} = Opts,
+                     #data{on_chain_id = ChanId, state=State}) ->
+    Updates = [aesc_offchain_state:op_withdraw(To, Amount)],
+    UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State, Opts),
+    {channel_offchain_tx, UpdatedOffchainTx} = aetx:specialize_type(UpdatedStateTx),
+    StateHash = aesc_offchain_tx:state_hash(UpdatedOffchainTx),
+
     {LastRound, _} = aesc_offchain_state:get_latest_signed_tx(State),
     Def = withdraw_tx_defaults(ChanId, To, maps:get(ttl, Opts, undefined)),
     Opts1 = maps:merge(Def, Opts),
