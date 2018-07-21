@@ -1,6 +1,7 @@
 -module(aesc_offchain_state).
 
 -include_lib("apps/aecore/include/blocks.hrl").
+-include("apps/aecontract/src/aecontract.hrl").
 
 -record(state, { trees                  :: aec_trees:trees()
                , signed_txs = []        :: [aetx_sign:signed_tx()]
@@ -9,13 +10,21 @@
 
 -opaque state() :: #state{}.
 
--define(OP_TRANSFER, 0).
--define(OP_WITHDRAW, 1).
--define(OP_DEPOSIT , 2).
+-define(UPDATE_VSN, 1).
 
--type operation() :: ?OP_TRANSFER | ?OP_WITHDRAW | ?OP_DEPOSIT.
+-define(OP_TRANSFER,        0).
+-define(OP_WITHDRAW,        1).
+-define(OP_DEPOSIT ,        2).
+-define(OP_CREATE_CONTRACT, 3).
+-define(OP_CALL_CONTRACT,   4).
 
--opaque update() :: {operation(), aec_keys:pubkey(), aec_keys:pubkey(), non_neg_integer()}.
+-type transfer_operation() :: ?OP_TRANSFER | ?OP_WITHDRAW | ?OP_DEPOSIT.
+
+-opaque update() :: {transfer_operation(), aec_keys:pubkey(), aec_keys:pubkey(), non_neg_integer()}
+        | {?OP_CREATE_CONTRACT, aec_keys:pubkey(), aect_contracts:vm_version(), binary(),
+           non_neg_integer(), binary()}
+        | {?OP_CALL_CONTRACT, aec_keys:pubkey(), aect_contracts:id(), aect_contracts:vm_version(),
+           non_neg_integer(), aect_call:call(), [non_neg_integer()]}.
 
 -export_type([state/0, update/0]).
 
@@ -36,10 +45,18 @@
         , update_for_client/1
         , balance/2                   %%  (Pubkey, State) -> Balance
         ]).
+
+-export([get_contract_call/4
+        ]).
 -export([ op_transfer/3
         , op_deposit/2
         , op_withdraw/2
+        , op_new_contract/5
+        , op_call_contract/6
         ]).
+
+-export([serialize_update/1,
+         deserialize_update/1]).
 
 -spec new(map()) -> {ok, state()}.
 new(Opts) ->
@@ -174,58 +191,56 @@ check_update_tx_(F, Mod, RefTx, #state{} = State, Opts) ->
 verify_signatures(SignedTx, #state{trees = Trees}) ->
     aetx_sign:verify(SignedTx, Trees).
 
+get_contract_call(Contract, Caller, Round, #state{trees=Trees}) ->
+    aect_channel_contract:get_call(Contract, Caller, Round, Trees).
+
 -spec make_update_tx(list(update()), state(), map()) -> aetx:tx().
 make_update_tx(Updates, #state{signed_txs=[SignedTx|_], trees=Trees}, Opts) ->
     Tx = aetx_sign:tx(SignedTx),
     {Mod, TxI} = aetx:specialize_callback(Tx),
-    Round = Mod:round(TxI),
     ChannelId = Mod:channel_id(TxI),
-    Trees1 = apply_updates(Updates, Trees, Opts),
+
+    NextRound = Mod:round(TxI) + 1,
+
+    Trees1 = apply_updates(Updates, NextRound, Trees, Opts),
     StateHash = aec_trees:hash(Trees1),
     {ok, OffchainTx} =
         aesc_offchain_tx:new(#{channel_id    => aec_id:create(channel, ChannelId),
                               state_hash     => StateHash,
                               updates        => Updates,
-                              round          => Round + 1}),
+                              round          => NextRound}),
     OffchainTx.
 
-apply_updates(Updates, Trees, Opts) ->
+apply_updates(Updates, Round, Trees, Opts) ->
     lists:foldl(
-        fun(U, AccumTrees) -> modify_trees(U, AccumTrees, Opts) end,
+        fun(U, AccumTrees) -> modify_trees(U, AccumTrees, Round, Opts) end,
         Trees,
         Updates).
 
--spec modify_trees(update(), aec_trees:trees(), map()) -> aec_trees:trees().
-modify_trees({?OP_TRANSFER, From, To, Amount}, Trees0, Opts) ->
-    AccountTrees = aec_trees:accounts(Trees0),
-    AccFrom0 = aec_accounts_trees:get(From, AccountTrees),
-    AccTo0 = aec_accounts_trees:get(To, AccountTrees),
-    FromBalance = aec_accounts:balance(AccFrom0),
-    check_min_amt(FromBalance - Amount, Opts),
-    Nonce = aec_accounts:nonce(AccFrom0),
-    {ok, AccFrom} = aec_accounts:spend(AccFrom0, Amount, Nonce + 1),
-    {ok, AccTo} = aec_accounts:earn(AccTo0, Amount),
-    AccountTrees1 =
-        lists:foldl(
-            fun(Acc, Accum) -> aec_accounts_trees:enter(Acc, Accum) end,
-            AccountTrees,
-            [AccFrom, AccTo]),
-    aec_trees:set_accounts(Trees0, AccountTrees1);
-modify_trees({?OP_DEPOSIT, To, To, Amount}, Trees, _Opts) ->
-    AccountTrees = aec_trees:accounts(Trees),
-    AccTo0 = aec_accounts_trees:get(To, AccountTrees),
-    {ok, AccTo} = aec_accounts:earn(AccTo0, Amount),
-    AccountTrees1 = aec_accounts_trees:enter(AccTo, AccountTrees),
-    aec_trees:set_accounts(Trees, AccountTrees1);
-modify_trees({?OP_WITHDRAW, From, From, Amount}, Trees, Opts) ->
-    AccountTrees = aec_trees:accounts(Trees),
-    AccFrom0 = aec_accounts_trees:get(From, AccountTrees),
-    FromBalance = aec_accounts:balance(AccFrom0),
-    check_min_amt(FromBalance - Amount, Opts),
-    Nonce = aec_accounts:nonce(AccFrom0),
-    {ok, AccFrom} = aec_accounts:spend(AccFrom0, Amount, Nonce), %no nonce bump
-    AccountTrees1 = aec_accounts_trees:enter(AccFrom, AccountTrees),
-    aec_trees:set_accounts(Trees, AccountTrees1).
+-spec modify_trees(update(), aec_trees:trees(), non_neg_integer(), map()) -> aec_trees:trees().
+modify_trees({?OP_TRANSFER, From, To, Amount}, Trees0, _, Opts) ->
+    Trees1 = remove_tokens(From, Amount, Trees0, Opts),
+    add_tokens(To, Amount, Trees1);
+modify_trees({?OP_DEPOSIT, To, To, Amount}, Trees, _, _Opts) ->
+    add_tokens(To, Amount, Trees);
+modify_trees({?OP_WITHDRAW, From, From, Amount}, Trees, _, Opts) ->
+    remove_tokens(From, Amount, Trees, Opts);
+modify_trees({?OP_CREATE_CONTRACT, Owner, VmVersion, Code, Deposit, CallData}, Trees, Round, Opts) ->
+    {ContractPubKey, _Contract, Trees1} =
+        aect_channel_contract:new(Owner, Round, VmVersion, Code, Deposit, Trees),
+    Trees2 = remove_tokens(Owner, Deposit, Trees1, Opts),
+    Trees3 = create_account(ContractPubKey, Trees2),
+    Trees4 = add_tokens(ContractPubKey, Deposit, Trees3),
+    Call = aect_call:new(Owner, Round, ContractPubKey, Round, 0),
+    _Trees = aect_channel_contract:run_new(ContractPubKey, Call, CallData,
+                                           Round, Trees4);
+modify_trees({?OP_CALL_CONTRACT, Caller, ContractPubKey, VmVersion, Amount, CallData, CallStack},
+             Trees, Round, Opts) ->
+    Trees1 = remove_tokens(Caller, Amount, Trees, Opts),
+    Trees2 = add_tokens(ContractPubKey, Amount, Trees1),
+    Call = aect_call:new(Caller, Round, ContractPubKey, Round, 0),
+    _Trees = aect_channel_contract:run(ContractPubKey, VmVersion, Call,
+                                       CallData, CallStack, Round, Trees2).
 
 check_min_amt(Amt, Opts) ->
     Reserve = maps:get(channel_reserve, Opts, 0),
@@ -257,7 +272,7 @@ add_signed_tx(SignedTx, #state{signed_txs=Txs0}=State, Opts) ->
             Trees =
                 lists:foldl(
                     fun(Update, TrAccum) ->
-                        TrAccum1 = modify_trees(Update, TrAccum, Opts),
+                        TrAccum1 = modify_trees(Update, TrAccum, Mod:round(TxI), Opts),
                         TrAccum1
                     end,
                     State#state.trees,
@@ -292,6 +307,17 @@ op_deposit(Acct, Amount) ->
 -spec op_withdraw(aec_keys:pubkey(), non_neg_integer()) -> update().
 op_withdraw(Acct, Amount) ->
     {?OP_WITHDRAW, Acct, Acct, Amount}.
+
+-spec op_new_contract(aec_keys:pubkey(), aect_contracts:vm_version(), binary(),
+           non_neg_integer(), binary()) -> update().
+op_new_contract(Owner, VmVersion, Code, Deposit, CallData) ->
+    {?OP_CREATE_CONTRACT, Owner, VmVersion, Code, Deposit, CallData}.
+
+
+-spec op_call_contract(aec_keys:pubkey(), aect_contracts:id(), aect_contracts:vm_version(),
+                       non_neg_integer(), aect_call:call(), [non_neg_integer()]) -> update().
+op_call_contract(Caller, ContractPubKey, VmVersion, Amount, CallData, CallStack) ->
+    {?OP_CALL_CONTRACT, Caller, ContractPubKey, VmVersion, Amount, CallData, CallStack}.
 
 tx_round(Tx) ->
     {Mod, TxI} = aetx:specialize_callback(Tx),
@@ -329,8 +355,143 @@ update_for_client({?OP_DEPOSIT, From, From, Amount}) ->
 -spec balance(aec_keys:pubkey(), state()) -> {ok, non_neg_integer()}
                                            | {error, not_found}.
 balance(Pubkey, #state{trees=Trees}) ->
-    AccTrees = aec_trees:accounts(Trees), 
+    AccTrees = aec_trees:accounts(Trees),
     case aec_accounts_trees:lookup(Pubkey, AccTrees) of
         none -> {error, not_found};
         {value, Account} -> {ok, aec_accounts:balance(Account)}
     end.
+
+create_account(Pubkey, Trees) ->
+    AccountTrees = aec_trees:accounts(Trees),
+    %TODO none = aec_accounts_trees:lookup(Pubkey, Trees),
+    Acc = aec_accounts:new(Pubkey, 0),
+    AccountTrees1 = aec_accounts_trees:enter(Acc, AccountTrees),
+    aec_trees:set_accounts(Trees, AccountTrees1).
+
+
+add_tokens(Pubkey, Amount, Trees) ->
+    AccountTrees = aec_trees:accounts(Trees),
+    Acc0 = aec_accounts_trees:get(Pubkey, AccountTrees), %% enforce account is present
+    {ok, Acc} = aec_accounts:earn(Acc0, Amount),
+    AccountTrees1 = aec_accounts_trees:enter(Acc, AccountTrees),
+    aec_trees:set_accounts(Trees, AccountTrees1).
+
+remove_tokens(Pubkey, Amount, Trees, Opts) ->
+    AccountTrees = aec_trees:accounts(Trees),
+    Acc0 = aec_accounts_trees:get(Pubkey, AccountTrees),
+    Balance = aec_accounts:balance(Acc0),
+    check_min_amt(Balance - Amount, Opts),
+    Nonce = aec_accounts:nonce(Acc0),
+    {ok, Acc} = aec_accounts:spend(Acc0, Amount, Nonce), %no nonce bump
+    AccountTrees1 = aec_accounts_trees:enter(Acc, AccountTrees),
+    aec_trees:set_accounts(Trees, AccountTrees1).
+
+
+serialize_update(Update) ->
+    Fields = update2fields(Update),
+    Vsn = ?UPDATE_VSN,
+    UpdateType = element(1, Update),
+    aec_object_serialization:serialize(
+      ut2type(UpdateType),
+      Vsn,
+      update_serialization_template(Vsn, UpdateType),
+      Fields).
+
+deserialize_update(Bin) ->
+    {Type, Vsn, RawFields} =
+        aec_object_serialization:deserialize_type_and_vsn(Bin),
+    UpdateType = type2ut(Type),
+    Template = update_serialization_template(Vsn, UpdateType),
+    Fields = aec_serialization:decode_fields(Template, RawFields),
+    fields2update(UpdateType, Fields).
+
+update2fields({?OP_TRANSFER, From, To, Amount}) ->
+    [ {from,    From},
+      {to,      To},
+      {amount,  Amount}];
+update2fields({?OP_DEPOSIT, From, From, Amount}) ->
+    [ {from,    From},
+      {to,      From},
+      {amount,  Amount}];
+update2fields({?OP_WITHDRAW, To, To, Amount}) ->
+    [ {from,    To},
+      {to,      To},
+      {amount,  Amount}];
+update2fields({?OP_CREATE_CONTRACT, Owner, VmVersion, Code, Deposit, CallData}) ->
+    [ {owner, Owner},
+      {vm_version, VmVersion},
+      {code, Code},
+      {deposit, Deposit},
+      {call_data, CallData}];
+update2fields({?OP_CALL_CONTRACT, Caller, ContractPubKey, VmVersion, Amount, CallData, CallStack}) ->
+    [ {caller, Caller},
+      {contract, ContractPubKey},
+      {vm_version, VmVersion},
+      {amount, Amount},
+      {call_data, CallData},
+      {call_stack, CallStack}].
+
+fields2update(?OP_TRANSFER, [{from,   From},
+                             {to,     To},
+                             {amount, Amount}]) ->
+    op_transfer(From, To, Amount);
+fields2update(?OP_DEPOSIT, [{from,   From},
+                            {to,     From},
+                            {amount, Amount}]) ->
+    op_deposit(From, Amount);
+fields2update(?OP_DEPOSIT, [{from,   To},
+                            {to,     To},
+                            {amount, Amount}]) ->
+    op_withdraw(To, Amount);
+fields2update(?OP_CREATE_CONTRACT, [{owner, Owner},
+                                    {vm_version, VmVersion},
+                                    {code, Code},
+                                    {deposit, Deposit},
+                                    {call_data, CallData}]) ->
+    op_new_contract(Owner, VmVersion, Code, Deposit, CallData);
+fields2update(?OP_CALL_CONTRACT, [ {caller, Caller},
+                                    {contract, ContractPubKey},
+                                    {vm_version, VmVersion},
+                                    {amount, Amount},
+                                    {call_data, CallData},
+                                    {call_stack, CallStack}]) ->
+    op_call_contract(Caller, ContractPubKey, VmVersion, Amount, CallData, CallStack).
+
+
+ut2type(?OP_TRANSFER)         -> channel_offchain_update_transfer;
+ut2type(?OP_DEPOSIT)          -> channel_offchain_update_deposit;
+ut2type(?OP_WITHDRAW)         -> channel_offchain_update_withdraw;
+ut2type(?OP_CREATE_CONTRACT)  -> channel_offchain_update_create_contract;
+ut2type(?OP_CALL_CONTRACT)    -> channel_offchain_update_call_contract.
+
+type2ut(channel_offchain_update_transfer)         -> ?OP_TRANSFER;
+type2ut(channel_offchain_update_deposit)          -> ?OP_DEPOSIT;
+type2ut(channel_offchain_update_withdraw)         -> ?OP_WITHDRAW;
+type2ut(channel_offchain_update_create_contract)  -> ?OP_CREATE_CONTRACT;
+type2ut(channel_offchain_update_call_contract)    -> ?OP_CALL_CONTRACT.
+
+update_serialization_template(?UPDATE_VSN, ?OP_TRANSFER) ->
+    [ {from,    binary},
+      {to,      binary},
+      {amount,  int}];
+update_serialization_template(?UPDATE_VSN, ?OP_DEPOSIT) ->
+    [ {from,    binary},
+      {to,      binary},
+      {amount,  int}];
+update_serialization_template(?UPDATE_VSN, ?OP_WITHDRAW) ->
+    [ {from,    binary},
+      {to,      binary},
+      {amount,  int}];
+update_serialization_template(?UPDATE_VSN, ?OP_CREATE_CONTRACT) ->
+    [ {owner,       binary},
+      {vm_version,  int},
+      {code,        binary},
+      {deposit,     int},
+      {call_data,   binary}];
+update_serialization_template(?UPDATE_VSN, ?OP_CALL_CONTRACT) ->
+    [ {caller,      binary},
+      {contract,    binary},
+      {vm_version,  int},
+      {amount,      int},
+      {call_data,   binary},
+      {call_stack,  [int]}].

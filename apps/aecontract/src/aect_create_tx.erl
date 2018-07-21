@@ -208,7 +208,7 @@ signers(#contract_create_tx{} = Tx, _) ->
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()}.
 process(#contract_create_tx{nonce      = Nonce,
-			    vm_version = _VmVersion,
+                            vm_version = _VmVersion,
                             amount     = Amount,
                             gas        = _Gas,
                             gas_price  = GasPrice,
@@ -287,30 +287,30 @@ spend(SenderPubKey, ReceiverPubKey, Value, Fee, Nonce,
 
 
 run_contract(#contract_create_tx{ nonce      =_Nonce
-				, code       = Code
-				, vm_version = VmVersion
-				, amount     =_Amount
-				, gas        = Gas
-				, gas_price  = GasPrice
-				, call_data  = CallData
-				} = Tx,
-	     Call, Height, Trees,_Contract, ContractPubKey)->
+                                , code       = Code
+                                , vm_version = VmVersion
+                                , amount     =_Amount
+                                , gas        = Gas
+                                , gas_price  = GasPrice
+                                , call_data  = CallData
+                                } = Tx,
+            Call, Height, Trees,_Contract, ContractPubKey)->
     Caller = owner_pubkey(Tx),
     CallStack = [], %% TODO: should we have a call stack for create_tx also
                     %% when creating a contract in a contract.
 
     CallDef = #{ caller     => Caller
-	       , contract   => ContractPubKey
-	       , gas        => Gas
-	       , gas_price  => GasPrice
-	       , call_data  => CallData
-	       , amount     => 0 %% Initial call takes no amount
-	       , call_stack => CallStack
-	       , code       => Code
-	       , call       => Call
-	       , height     => Height
-	       , trees      => Trees
-	       },
+               , contract   => ContractPubKey
+               , gas        => Gas
+               , gas_price  => GasPrice
+               , call_data  => CallData
+               , amount     => 0 %% Initial call takes no amount
+               , call_stack => CallStack
+               , code       => Code
+               , call       => Call
+               , height     => Height
+               , trees      => Trees
+               },
 
     aect_dispatch:run(VmVersion, CallDef).
 

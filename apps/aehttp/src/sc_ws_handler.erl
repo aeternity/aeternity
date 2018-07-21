@@ -249,6 +249,64 @@ process_incoming(#{<<"action">> := <<"update">>,
             end;
         _ -> {reply, error_response(R, broken_encoding)}
     end;
+process_incoming(#{<<"action">> := <<"update">>,
+                   <<"tag">> := <<"new_contract">>,
+                   <<"payload">> := #{<<"vm_version">> := VmVersion,
+                                      <<"deposit">>    := Deposit,
+                                      <<"code">>       := CodeE,
+                                      <<"call_data">>  := CallDataE}} = R, State) ->
+    case {hex_decode(CodeE), hex_decode(CallDataE)} of
+        {{ok, Code}, {ok, CallData}} ->
+            case aesc_fsm:upd_create_contract(fsm_pid(State),
+                                              #{vm_version => VmVersion,
+                                                deposit    => Deposit,
+                                                code       => Code,
+                                                call_data  => CallData}) of
+                ok -> no_reply;
+                {error, Reason} ->
+                    {reply, error_response(R, Reason)}
+            end;
+        _ -> {reply, error_response(R, broken_hexcode)}
+    end;
+process_incoming(#{<<"action">> := <<"update">>,
+                   <<"tag">> := <<"call_contract">>,
+                   <<"payload">> := #{<<"contract">>   := ContractE,
+                                      <<"vm_version">> := VmVersion,
+                                      <<"amount">>     := Amount,
+                                      <<"call_data">>  := CallDataE}} = R, State) ->
+  case {aec_base58c:safe_decode(contract_pubkey, ContractE), hex_decode(CallDataE)} of
+      {{ok, Contract}, {ok, CallData}} ->
+            case aesc_fsm:upd_call_contract(fsm_pid(State),
+                                            #{contract   => Contract,
+                                              vm_version => VmVersion,
+                                              amount     => Amount,
+                                              call_data  => CallData}) of
+                ok -> no_reply;
+                {error, Reason} ->
+                    {reply, error_response(R, Reason)}
+            end;
+        _ -> {reply, error_response(R, broken_hexcode)}
+    end;
+process_incoming(#{<<"action">> := <<"get">>,
+                   <<"tag">> := <<"contract_call">>,
+                   <<"payload">> := #{<<"contract">>   := ContractE,
+                                      <<"caller">>     := CallerE,
+                                      <<"round">>      := Round}} = R, State) ->
+  case {aec_base58c:safe_decode(contract_pubkey, ContractE),
+        aec_base58c:safe_decode(account_pubkey, CallerE)} of
+      {{ok, Contract}, {ok, Caller}} ->
+            case aesc_fsm:get_contract_call(fsm_pid(State),
+                                            Contract, Caller, Round) of
+                {ok, Call} ->
+                    Resp = #{action => <<"get">>,
+                             tag => <<"contract_call">>,
+                             payload => aect_call:serialize_for_client(Call)},
+                    {reply, Resp};
+                {error, Reason} ->
+                    {reply, error_response(R, Reason)}
+            end;
+        _ -> {reply, error_response(R, broken_hexcode)}
+    end;
 process_incoming(#{<<"action">> := <<"message">>,
                    <<"payload">> := #{<<"to">>    := ToB,
                                       <<"info">>  := Msg}} = R, State) ->
@@ -292,7 +350,7 @@ process_incoming(#{<<"action">> := <<"shutdown">>}, State) ->
     lager:warning("Channel WS: closing channel message received"),
     aesc_fsm:shutdown(fsm_pid(State)),
     no_reply;
-process_incoming(#{<<"action">> := Unhandled}, _State) ->
+process_incoming(#{<<"action">> := _} = Unhandled, _State) ->
     lager:warning("Channel WS: unhandled action received ~p", [Unhandled]),
     {error, unhandled};
 process_incoming(Msg, _State) ->
@@ -464,3 +522,8 @@ error_response(Req, Reason) ->
     #{<<"action">>  => <<"error">>,
       <<"payload">> => #{<<"request">> => Req,
                          <<"reason">> => Reason}}.
+
+hex_decode(Hex) ->
+    try {ok, aeu_hex:hexstring_decode(Hex)}
+    catch _:_ -> error
+    end.

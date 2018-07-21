@@ -115,9 +115,10 @@ signers(#channel_offchain_tx{} = Tx, Trees) ->
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_offchain_tx{
              channel_id         = ChannelId,
-             updates            = Updates,
+             updates            = Updates0,
              state_hash         = StateHash,
              round              = Round}) ->
+    Updates = [aesc_offchain_state:serialize_update(U) || U <- Updates0],
     {version(),
      [ {channel_id        , ChannelId}
      , {round             , Round}
@@ -129,9 +130,10 @@ serialize(#channel_offchain_tx{
 deserialize(?CHANNEL_OFFCHAIN_TX_VSN,
             [ {channel_id        , ChannelId}
             , {round             , Round}
-            , {updates           , Updates}
+            , {updates           , Updates0}
             , {state_hash        , StateHash}]) ->
     channel = aec_id:specialize_type(ChannelId),
+    Updates = [aesc_offchain_state:deserialize_update(U) || U <- Updates0],
     #channel_offchain_tx{
        channel_id         = ChannelId,
        updates            = Updates,
@@ -153,7 +155,7 @@ for_client(#channel_offchain_tx{
 serialization_template(?CHANNEL_OFFCHAIN_TX_VSN) ->
     [ {channel_id        , id}
     , {round             , int}
-    , {updates           , [{int,binary,binary,int}]}
+    , {updates           , [binary]}
     , {state_hash        , binary}
     ].
 

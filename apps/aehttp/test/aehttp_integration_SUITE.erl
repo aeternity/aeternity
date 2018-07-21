@@ -272,7 +272,8 @@
     sc_ws_deposit_initiator_and_close/1,
     sc_ws_deposit_responder_and_close/1,
     sc_ws_withdraw_initiator_and_close/1,
-    sc_ws_withdraw_responder_and_close/1
+    sc_ws_withdraw_responder_and_close/1,
+    sc_ws_contracts/1
    ]).
 
 
@@ -660,7 +661,11 @@ groups() ->
        % responder can make a withdrawal
        sc_ws_open,
        sc_ws_update,
-       sc_ws_withdraw_responder_and_close
+       sc_ws_withdraw_responder_and_close,
+       % responder can make a withdrawal
+       sc_ws_open,
+       sc_ws_update,
+       sc_ws_contracts
       ]}
     ].
 
@@ -4113,8 +4118,8 @@ sc_ws_open(Config) ->
                  get_balance_at_top(aec_base58c:encode(account_pubkey, IPubkey)),
     {ok, 200, #{<<"balance">> := RStartAmt}} =
                  get_balance_at_top(aec_base58c:encode(account_pubkey, RPubkey)),
-    IAmt = 7,
-    RAmt = 4,
+    IAmt = 70,
+    RAmt = 40,
 
     {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
 
@@ -4593,7 +4598,7 @@ sc_ws_withdraw_responder_and_close(Config) ->
 sc_ws_withdraw_and_close(Config, Origin) when Origin =:= initiator
                             orelse Origin =:= responder ->
     {sc_ws_update, ConfigList} = ?config(saved_config, Config),
-    Participants= proplists:get_value(participants, ConfigList),
+    Participants = proplists:get_value(participants, ConfigList),
     Clients = proplists:get_value(channel_clients, ConfigList),
     {SenderRole, AckRole} =
         case Origin of
@@ -4635,6 +4640,169 @@ sc_ws_withdraw_and_close(Config, Origin) when Origin =:= initiator
     ok = ?WS:stop(SenderConnPid),
     ok = ?WS:stop(AckConnPid),
     ok.
+
+sc_ws_contracts(Config) ->
+    lists:foreach(
+        fun({Owner, TestName}) ->
+            sc_ws_contract_(Config, TestName, Owner)
+        end,
+        [{Owner, Test} || Owner <- [initiator, responder],
+													Test  <- ["identity",
+                                    "counter"]]),
+    {sc_ws_update, ConfigList} = ?config(saved_config, Config),
+    #{initiator := IConnPid,
+      responder := RConnPid } = proplists:get_value(channel_clients, ConfigList),
+    ok = ?WS:stop(IConnPid),
+    ok = ?WS:stop(RConnPid),
+    ok.
+
+sc_ws_contract_(Config, TestName, Owner) ->
+    ct:log("Start processing contract ~p, initated by ~p", [TestName, Owner]),
+    {sc_ws_update, ConfigList} = ?config(saved_config, Config),
+    Participants = proplists:get_value(participants, ConfigList),
+    Clients = proplists:get_value(channel_clients, ConfigList),
+    {SenderRole, AckRole} =
+        case Owner of
+            initiator -> {initiator, responder};
+            responder -> {responder, initiator}
+        end,
+    #{pub_key := SenderPubkey,
+      priv_key:= SenderPrivkey} = maps:get(SenderRole, Participants),
+    #{pub_key := AckPubkey,
+      priv_key:= AckPrivkey} = maps:get(AckRole, Participants),
+    SenderConnPid = maps:get(SenderRole, Clients),
+    AckConnPid = maps:get(AckRole, Clients),
+
+    ok = ?WS:register_test_for_channel_events(SenderConnPid, [sign, info, get]),
+    ok = ?WS:register_test_for_channel_events(AckConnPid, [sign, info, get]),
+
+    %% helper lambda for update
+    UpdateVolley =
+        fun() ->
+            UnsignedStateTx = channel_sign_tx(SenderConnPid, SenderPrivkey, <<"update">>),
+
+            % acknowledger signs update_ack
+            {ok, #{<<"event">> := <<"update">>}} = ?WS:wait_for_channel_event(AckConnPid, info),
+            UnsignedStateTx = channel_sign_tx(AckConnPid, AckPrivkey, <<"update_ack">>)
+        end,
+
+        
+
+    % trigger new contract
+    {UnsignedStateTx, Code} = create_contract_(TestName, SenderConnPid, UpdateVolley),
+
+    ContractPubKey = contract_id_from_create_update(SenderPubkey,
+                                                    UnsignedStateTx),
+
+    %% helper lambda for decoded result
+    GetDecodedResult =
+        fun(Type, UnsignedStateTx00) ->
+            {CB1, Tx1} = aetx:specialize_callback(UnsignedStateTx00),
+            CallRound = CB1:round(Tx1),
+            CallerAddress = aec_base58c:encode(account_pubkey, SenderPubkey),
+            ContractAddress = aec_base58c:encode(contract_pubkey, ContractPubKey),
+            GetCallResult =
+                fun(ConnPid) ->
+                    ?WS:send_tagged(ConnPid, <<"get">>, <<"contract_call">>,
+                                    #{contract   => ContractAddress,
+                                      caller     => CallerAddress,
+                                      round      => CallRound}),
+
+                    {ok, <<"contract_call">>, Res} = ?WS:wait_for_channel_event(ConnPid, get),
+                    Res
+                end,
+            CallRes = GetCallResult(SenderConnPid),
+            CallRes = GetCallResult(AckConnPid),
+            #{<<"caller_address">>    := CallerAddress,
+              <<"caller_nonce">>      := CallRound, 
+              <<"contract_address">>  := ContractAddress,
+              <<"gas_price">>         := _,
+              <<"gas_used">>          := _,
+              <<"height">>            := CallRound,
+              <<"return_type">>       := <<"ok">>,
+              <<"return_value">>      := ReturnValue} = CallRes,
+            {ok, 200, #{<<"data">> := #{<<"type">> := <<"word">>, <<"value">> := DecodedCallResult00}}} =
+                get_contract_decode_data(#{'sophia-type' => Type, data => ReturnValue}),
+            DecodedCallResult00
+      end,
+    % trigger call contract
+
+    contract_calls_(TestName, ContractPubKey, Code, SenderConnPid, UpdateVolley,
+                    GetDecodedResult),
+
+
+    ok = ?WS:unregister_test_for_channel_events(SenderConnPid, [sign, info, get]),
+    ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, get]),
+    ok.
+
+contract_id_from_create_update(Owner, OffchainTx) ->
+    {CB, Tx} = aetx:specialize_callback(OffchainTx),
+    Round = CB:round(Tx),
+    aect_contracts:compute_contract_pubkey(Owner, Round).
+
+
+create_contract_(TestName, SenderConnPid, UpdateVolley) ->
+		Code = contract_byte_code(TestName),
+    InitArgument = contract_create_init_arg(TestName),
+    {ok, EncodedInitData} = aect_sophia:encode_call_data(Code, <<"init">>,
+                                                         InitArgument),
+    ?WS:send_tagged(SenderConnPid, <<"update">>, <<"new_contract">>,
+                    #{vm_version => 1,
+                      deposit    => 1,
+                      code       => Code,
+                      call_data  => EncodedInitData}),
+    UnsignedStateTx = UpdateVolley(),
+    {UnsignedStateTx, Code}.
+
+contract_calls_("identity", ContractPubKey, Code, SenderConnPid, UpdateVolley,
+                GetDecodedResult) ->
+    UnsignedStateTx = call_a_contract(<<"main">>, <<"(42)">>, ContractPubKey, Code, SenderConnPid,
+                    UpdateVolley),
+    ExpectedResult = 42,
+    DecodedCallResult = GetDecodedResult(<<"int">>, UnsignedStateTx),
+    {ExpectedResult, _} = {DecodedCallResult, ExpectedResult},
+    ok;
+contract_calls_("counter", ContractPubKey, Code, SenderConnPid, UpdateVolley,
+                GetDecodedResult) ->
+
+    UnsignedStateTx0 = call_a_contract(<<"get">>, <<"()">>, ContractPubKey, Code, SenderConnPid,
+                    UpdateVolley),
+
+    InitResult = GetDecodedResult(<<"int">>, UnsignedStateTx0),
+    call_a_contract(<<"tick">>, <<"()">>, ContractPubKey, Code, SenderConnPid,
+                    UpdateVolley),
+
+    UnsignedStateTx = call_a_contract(<<"get">>, <<"()">>, ContractPubKey, Code, SenderConnPid,
+                    UpdateVolley),
+
+    ExpectedResult = InitResult + 1,
+    DecodedCallResult = GetDecodedResult(<<"int">>, UnsignedStateTx),
+    {ExpectedResult, _} = {DecodedCallResult, ExpectedResult},
+    ok.
+
+call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid, UpdateVolley) ->
+    {ok, EncodedMainData} = aect_sophia:encode_call_data(Code,
+                                                         Function,
+                                                         Argument),
+    ?WS:send_tagged(SenderConnPid, <<"update">>, <<"call_contract">>,
+                    #{contract   => aec_base58c:encode(contract_pubkey, ContractPubKey),
+                      vm_version => 1,
+                      amount     => 0,
+                      call_data  => EncodedMainData}),
+    _UnsignedStateTx = UpdateVolley().
+
+
+contract_byte_code(TestName) ->
+    %% Compile contract TesName ++ ".aes"
+    ContractString = aeso_test_utils:read_contract(TestName),
+    BinCode = aeso_compiler:from_string(ContractString, []),
+    HexCode = aeu_hex:hexstring_encode(BinCode),
+		HexCode.
+
+contract_create_init_arg("identity") ->
+		<<"()">>;
+contract_create_init_arg("counter") ->
+		<<"(21)">>.
 
 wait_for_signed_transaction_in_pool(SignedTx) ->
     TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),

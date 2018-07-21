@@ -104,15 +104,15 @@ call_common(#{ caller     := Caller
     Exec = maps:get(exec, Spec),
     try aevm_eeevm_state:init(
 	  Spec#{ exec => Exec#{ code       => Code,
-                                address    => Address,
-                                caller     => CallerAddr,
-                                data       => CallData,
-                                gas        => Gas,
-                                gasPrice   => GasPrice,
-                                origin     => CallerAddr,
-                                value      => Value,
-                                call_stack => CallStack
-                              }
+                          address    => Address,
+                          caller     => CallerAddr,
+                          data       => CallData,
+                          gas        => Gas,
+                          gasPrice   => GasPrice,
+                          origin     => CallerAddr,
+                          value      => Value,
+                          call_stack => CallStack
+                          }
                },
           #{
             trace => false
