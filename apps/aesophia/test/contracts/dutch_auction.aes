@@ -10,14 +10,16 @@ contract DutchAuction =
                    sold         : bool }
 
   // Add to work around current lack of predefined functions
-  private function abort(err) = abort(err)
   private function spend(to, amount) =
     let total = Contract.balance
     raw_spend(to, amount)
     total - amount
 
+  private function abort(err : string) =
+    switch(0) 1 => ()
+
   private function require(b : bool, err : string) =
-    if( !b ) abort(err)
+    if(!b) abort(err)
 
   // TTL set by user on posting contract, typically (start - end ) div dec
   public function init(beneficiary, start, decrease) : state =
