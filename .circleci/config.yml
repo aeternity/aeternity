@@ -626,11 +626,6 @@ workflows:
             tags:
               only: /^v.*$/
 
-      - uat_chain_snapshot:
-          filters:
-            branches:
-              only: env/dev1
-
       - linux_package:
           filters:
             tags:
