@@ -91,8 +91,8 @@ def _copy_sign_keys(root_dir, keys):
     curr_dir = os.getcwd()
     key_dir  = os.path.join(root_dir, keys)
     os.makedirs(key_dir)
-    shutil.copy(os.path.join(curr_dir, "tests", "sign_keys", keys, "sign_key"), key_dir)
-    shutil.copy(os.path.join(curr_dir, "tests", "sign_keys", keys, "sign_key.pub"), key_dir)
+    shutil.copy(os.path.join(curr_dir, "sign_keys", keys, "sign_key"), key_dir)
+    shutil.copy(os.path.join(curr_dir, "sign_keys", keys, "sign_key.pub"), key_dir)
     return key_dir
 
 def install_user_config(root_dir, file_name, conf):
@@ -153,7 +153,7 @@ def start_node(name, config_filename):
             config_prefix =  'EPOCH_CONFIG="`pwd`/' + config_filename + '" '
 
         print("Starting node with config prefix " + config_prefix)
-        p = os.popen("(cd .. && " + config_prefix + "make " + name + "-start;)","r")
+        p = os.popen("(cd ../.. && " + config_prefix + "make " + name + "-start;)","r")
         while 1:
             line = p.readline()
             if not line: break
@@ -164,7 +164,7 @@ def start_node(name, config_filename):
 def stop_node(name):
     if should_start_node(name):
         print("Node " + name + " stopping")
-        p = os.popen("(cd .. && make " + name + "-stop;)","r")
+        p = os.popen("(cd ../.. && make " + name + "-stop;)","r")
         while 1:
             line = p.readline()
             if not line: break

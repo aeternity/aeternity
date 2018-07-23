@@ -4,7 +4,7 @@ def globs(globs):
     def read_file(name):
         with open(name, 'rt') as f:
             return f.read()
-    globs['counter_contract'] = read_file("../apps/aesophia/test/contracts/counter.aes")
+    globs['counter_contract'] = read_file("../../apps/aesophia/test/contracts/counter.aes")
     return globs
 
 def setup_test(test):
