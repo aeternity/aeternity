@@ -238,8 +238,8 @@ def test_spend():
 
     # Alice creates spend tx
     spend_data_obj = SpendTx(
-            sender=alice_address,
-            recipient_pubkey=bob_address,
+            sender_id=alice_address,
+            recipient_id=bob_address,
             amount=test_settings["spend_tx"]["amount"],
             fee=test_settings["spend_tx"]["fee"],
             ttl=100,

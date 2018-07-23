@@ -381,8 +381,8 @@ a_signed_tx(Sender, Recipient, Nonce, Fee) ->
     a_signed_tx(Sender, Recipient, Nonce, Fee,0).
 
 a_signed_tx(Sender, Recipient, Nonce, Fee, TTL) ->
-    {ok, Tx} = aec_spend_tx:new(#{sender => acct(Sender),
-                                  recipient => acct(Recipient),
+    {ok, Tx} = aec_spend_tx:new(#{sender_id => acct(Sender),
+                                  recipient_id => acct(Recipient),
                                   amount => 1,
                                   nonce => Nonce,
                                   fee => Fee,

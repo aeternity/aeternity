@@ -196,12 +196,12 @@ process(#contract_call_tx{caller_id   = CallerId,
 
 spend(CallerPubkey, ContractPubkey, Value, Nonce,_Context, Height, Trees, ConsensusVersion) ->
     {ok, SpendTx} =
-        aec_spend_tx:new(#{ sender => aec_id:create(account, CallerPubkey)
-                          , recipient => aec_id:create(account, ContractPubkey)
-                          , amount => Value
-                          , fee => 0
-                          , nonce => Nonce
-                          , payload => <<>>}),
+        aec_spend_tx:new(#{ sender_id    => aec_id:create(account, CallerPubkey)
+                          , recipient_id => aec_id:create(account, ContractPubkey)
+                          , amount       => Value
+                          , fee          => 0
+                          , nonce        => Nonce
+                          , payload      => <<>>}),
     {ok, Trees1} =
         aetx:check_from_contract(SpendTx, Trees, Height, ConsensusVersion),
     {ok, Trees2} =

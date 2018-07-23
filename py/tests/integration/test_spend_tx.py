@@ -47,7 +47,7 @@ def test_not_enough_tokens():
 
     # Bob tries to send some tokens to Alice
     spend_tx_obj = SpendTx(
-        recipient_pubkey=test_settings["spend_tx"]["alice_pubkey"],
+        recipient_id=test_settings["spend_tx"]["alice_pubkey"],
         amount=spend_tx_amt,
         fee=spend_tx_fee,
         ttl=100,
@@ -147,7 +147,7 @@ def setup_node_with_tokens(test_settings, node_name):
 
 def miner_send_tokens(address, amount, internal_api, external_api):
     spend_tx_obj = SpendTx(
-        recipient_pubkey=address,
+        recipient_id=address,
         amount=amount,
         fee=1,
         ttl=100,
@@ -208,7 +208,7 @@ def send_tokens_to_name(name, tokens, sender_address, private_key, external_api)
 
     unsigned_spend = common.base58_decode(\
         external_api.post_spend(\
-            SpendTx(sender=sender_address, recipient_pubkey=resolved_address, amount=tokens, fee=1,\
+            SpendTx(sender_id=sender_address, recipient_id=resolved_address, amount=tokens, fee=1,\
                     ttl=100, payload="foo")).tx)
     signed_spend = keys.sign_encode_tx(unsigned_spend, private_key)
 

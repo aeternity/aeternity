@@ -144,12 +144,12 @@ spend_to_name(_Cfg) ->
     Fee    = 1,
     {S2, NameId} = register_name(Pubkey2, S1),
     S3 = update_pointers(account_pubkey, Pubkey2, Pubkey2, NameId, 3, S2),
-    {ok, Spend} = aec_spend_tx:new(#{ sender    => account_id(Pubkey1)
-                                    , recipient => NameId
-                                    , amount    => Amount
-                                    , fee       => Fee
-                                    , nonce     => 1
-                                    , payload   => <<>>}),
+    {ok, Spend} = aec_spend_tx:new(#{ sender_id    => account_id(Pubkey1)
+                                    , recipient_id => NameId
+                                    , amount       => Amount
+                                    , fee          => Fee
+                                    , nonce        => 1
+                                    , payload      => <<>>}),
 
     S4 = apply_txs([Spend], S3),
     ?assertEqual(balance(Pubkey2, S3) + Amount,

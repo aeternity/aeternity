@@ -264,13 +264,13 @@ create_contract(CreateTx, Trees0) ->
 spend(SenderPubKey, ReceiverPubKey, Value, Fee, Nonce,
       Context, Height, Trees, ConsensusVersion) ->
     {ok, SpendTx} = aec_spend_tx:new(
-                      #{ sender => aec_id:create(account, SenderPubKey)
-                       , recipient => aec_id:create(account, ReceiverPubKey)
-                       , amount => Value
-                       , fee => Fee
-                       , ttl => Height
-                       , nonce => Nonce
-                       , payload => <<>>}),
+                      #{ sender_id    => aec_id:create(account, SenderPubKey)
+                       , recipient_id => aec_id:create(account, ReceiverPubKey)
+                       , amount       => Value
+                       , fee          => Fee
+                       , ttl          => Height
+                       , nonce        => Nonce
+                       , payload      => <<>>}),
     Trees1 = aec_trees:ensure_account(ReceiverPubKey, Trees),
     case Context of
         aetx_contract ->

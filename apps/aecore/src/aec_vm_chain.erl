@@ -96,16 +96,16 @@ set_store(Store,  #state{ account = PubKey, trees = Trees } = State) ->
 %% @doc Spend money from the contract account.
 -spec spend(aec_id:id(), non_neg_integer(), chain_state()) ->
           {ok, chain_state()} | {error, term()}.
-spend(Recipient, Amount, State = #state{ account = ContractKey }) ->
+spend(RecipientId, Amount, State = #state{ account = ContractKey }) ->
     Nonce = next_nonce(State),
     %% Note: The spend is from the contract's account.
-    Sender = aec_id:create(account, ContractKey),
-    {ok, SpendTx} = aec_spend_tx:new(#{ sender => Sender
-                                      , recipient => Recipient
-                                      , amount => Amount
-                                      , fee => 0
-                                      , nonce => Nonce
-                                      , payload => <<>>}),
+    SenderId = aec_id:create(account, ContractKey),
+    {ok, SpendTx} = aec_spend_tx:new(#{ sender_id    => SenderId
+                                      , recipient_id => RecipientId
+                                      , amount       => Amount
+                                      , fee          => 0
+                                      , nonce        => Nonce
+                                      , payload      => <<>>}),
     apply_transaction(SpendTx, State).
 
 %%    Oracle

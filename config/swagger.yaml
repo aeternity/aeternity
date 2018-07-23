@@ -3002,7 +3002,7 @@ definitions:
   SpendTx:
     type: object
     properties:
-      recipient_pubkey:
+      recipient_id:
         $ref: '#/definitions/EncodedHash'
       amount:
         type: integer
@@ -3014,7 +3014,7 @@ definitions:
       ttl:
         type: integer
         format: int64
-      sender:
+      sender_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
@@ -3022,7 +3022,7 @@ definitions:
       payload:
         type: string
     required:
-    - recipient_pubkey
+    - recipient_id
     - amount
     - fee
     - payload

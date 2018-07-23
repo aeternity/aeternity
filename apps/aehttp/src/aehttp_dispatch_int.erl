@@ -17,7 +17,7 @@
                    ) -> {Status :: cowboy:http_status(), Headers :: list(), Body :: map()}.
 
 handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
-    #{<<"recipient_pubkey">> := EncodedRecipientPubkey,
+    #{<<"recipient_id">>     := EncodedRecipientPubkey,
       <<"amount">>           := Amount,
       <<"fee">>              := Fee,
       <<"payload">>          := Payload} = SpendTxObj,

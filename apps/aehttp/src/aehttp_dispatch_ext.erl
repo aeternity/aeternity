@@ -432,7 +432,7 @@ handle_request('GetHeaderByHash', Req, _Context) ->
         {error, _} ->
             {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
-            case aehttp_logic:get_block_by_hash(Hash) of
+           case aehttp_logic:get_block_by_hash(Hash) of
                 {ok, Block} ->
                     {200, [], aehttp_api_parser:encode(header, Block)};
                 {error, block_not_found} ->
@@ -679,14 +679,14 @@ handle_request('PostNameRevoke', #{'NameRevokeTx' := Req}, _Context) ->
 handle_request('PostSpend', #{'SpendTx' := Req}, _Context) ->
     AllowedRecipients = [account_pubkey, name, oracle_pubkey, contract_pubkey],
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([sender,
-                                       {recipient_pubkey, recipient},
+                 read_required_params([sender_id,
+                                       {recipient_id, recipient_id},
                                         amount, fee, payload]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{sender, sender, {id_hash, [account_pubkey]}},
-                                {recipient, recipient,
+                 base58_decode([{sender_id, sender_id, {id_hash, [account_pubkey]}},
+                                {recipient_id, recipient_id,
                                  {id_hash, AllowedRecipients}}]),
-                 get_nonce_from_account_id(sender),
+                 get_nonce_from_account_id(sender_id),
                  unsigned_tx_response(fun aec_spend_tx:new/1)
                 ],
     process_request(ParseFuns, Req);

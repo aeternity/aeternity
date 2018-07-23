@@ -383,11 +383,11 @@ apply_tx(Tx) ->
 
 mk_spend_tx(Sender, Receiver) ->
     {ok, Tx} =
-        aec_spend_tx:new(#{ sender    => Sender#account.pubkey,
-                            recipient => Receiver#account.pubkey,
-                            amount    => Receiver#account.balance,
-                            fee       => 1,
-                            nonce     => Sender#account.nonce + 1 }),
+        aec_spend_tx:new(#{ sender_id    => Sender#account.pubkey,
+                            recipient_id => Receiver#account.pubkey,
+                            amount       => Receiver#account.balance,
+                            fee          => 1,
+                            nonce        => Sender#account.nonce + 1 }),
     Tx.
 
 mk_oracle_register_tx(#account{ pubkey = PK, nonce = N },

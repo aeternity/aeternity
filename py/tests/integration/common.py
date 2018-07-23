@@ -212,7 +212,7 @@ def send_tokens_to_unchanging_user(address, tokens, fee, external_api, internal_
         return get_account_balance(external_api, internal_api, k).balance
     bal0 = get_balance(address)
     spend_tx_obj = SpendTx(
-        recipient_pubkey=address,
+        recipient_id=address,
         amount=tokens,
         fee=fee,
         ttl=100,
