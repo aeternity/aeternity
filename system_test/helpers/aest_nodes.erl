@@ -23,8 +23,10 @@
 -export([get_service_address/3]).
 -export([get_node_pubkey/2]).
 -export([export/3]).
+-export([read_metric/3]).
 
 %% Helper function exports
+-export([read_last_metric/2]).
 -export([cluster/2]).
 -export([spec/3]).
 -export([request/3]).
@@ -265,7 +267,28 @@ http_get(NodeName, Service, Path, Query, Ctx) ->
 export(NodeName, Name, Ctx) ->
     call(ctx2pid(Ctx), {export, NodeName, Name}).
 
+read_metric(NodeName, MetricName, Ctx) ->
+    call(ctx2pid(Ctx), {read_metric, NodeName, MetricName}).
+
 %=== HELPER FUNCTIONS ==========================================================
+
+read_last_metric(NodeName, MetricName) ->
+    LogPath = aest_nodes_mgr:get_log_path(NodeName),
+    MetricsLogPath = binary_to_list(filename:join(LogPath, "epoch_metrics.log")),
+    case filelib:is_file(MetricsLogPath) of
+        false -> undefined;
+        true ->
+            EscapedName = escap_for_regex(MetricName),
+            Command = "grep '[0-9:\\.]* " ++ EscapedName ++ ":.*' '"
+                ++ MetricsLogPath ++ "' | tail -n 1 | sed 's/^[0-9:\\.]*.*:\\([0-9]*\\)|.*$/\\1/'",
+            case os:cmd(Command) of
+                "" -> undefined;
+                ValueStr ->
+                    ValueStripped = string:strip(ValueStr, right, $\n),
+                    list_to_integer(ValueStripped)
+            end
+    end.
+
 
 cluster(Names, Spec) -> [spec(N, Names -- [N], Spec) || N <- Names].
 
@@ -373,6 +396,10 @@ time_to_ms({minutes, Time})            -> Time * 1000 * 60;
 time_to_ms({hours, Time})              -> Time * 1000 * 60 * 60.
 
 %=== INTERNAL FUNCTIONS ========================================================
+
+escap_for_regex(Str) ->
+    lists:flatten(re:replace(Str, "[\\\\^\\$\\.\\|\\(\\)\\?\\*\\+\\{\\-\\[\\]]",
+                             "\\\\&", [global, {return, list}])).
 
 uid() ->
     iolist_to_binary([[io_lib:format("~2.16.0B",[X])
