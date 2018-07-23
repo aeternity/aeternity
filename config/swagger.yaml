@@ -2899,8 +2899,8 @@ definitions:
   Account:
     type: object
     properties:
-      pubkey:
-        type: string
+      id:
+        $ref: '#/definitions/EncodedHash'
         description: 'Public key'
       balance:
         type: integer

@@ -773,7 +773,7 @@ init_per_group(block_info, Config) ->
 init_per_group(nonexistent_account = Group, Config) ->
     Config1 = start_node(Group, Config),
     {ok, Pubkey} = rpc(aec_keys, pubkey, []),
-    [{account_pubkey, aec_base58c:encode(account_pubkey, Pubkey)},
+    [{account_id, aec_base58c:encode(account_pubkey, Pubkey)},
      {account_exists, false} | Config1];
 init_per_group(account_with_balance = Group, Config) ->
     Config1 = start_node(Group, Config),
@@ -782,7 +782,7 @@ init_per_group(account_with_balance = Group, Config) ->
     aecore_suite_utils:mine_key_blocks(Node, aecore_suite_utils:latest_fork_height()),
     {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     true = aec_blocks:is_key_block(KeyBlock),
-    [{account_pubkey, aec_base58c:encode(account_pubkey, Pubkey)},
+    [{account_id, aec_base58c:encode(account_pubkey, Pubkey)},
      {account_exists, true} | Config1];
 init_per_group(account_with_pending_tx, Config) ->
     Node = ?config(node, Config),
@@ -1445,14 +1445,14 @@ get_account_by_pubkey(Config) ->
     get_account_by_pubkey(?config(account_exists, Config), Config).
 
 get_account_by_pubkey(false, Config) ->
-    AccountPubkey = ?config(account_pubkey, Config),
-    {ok, 404, Error} = get_accounts_by_pubkey_sut(AccountPubkey),
+    AccountId = ?config(account_id, Config),
+    {ok, 404, Error} = get_accounts_by_pubkey_sut(AccountId),
     ?assertEqual(<<"Account not found">>, maps:get(<<"reason">>, Error)),
     ok;
 get_account_by_pubkey(true, Config) ->
-    AccountPubkey = ?config(account_pubkey, Config),
-    {ok, 200, Account} = get_accounts_by_pubkey_sut(AccountPubkey),
-    ?assertEqual(AccountPubkey, maps:get(<<"pubkey">>, Account)),
+    AccountId = ?config(account_id, Config),
+    {ok, 200, Account} = get_accounts_by_pubkey_sut(AccountId),
+    ?assertEqual(AccountId, maps:get(<<"id">>, Account)),
     ?assert(maps:get(<<"balance">>, Account) > 0),
     %% TODO: check nonce?
     ok.
@@ -1461,26 +1461,26 @@ get_pending_account_transactions_by_pubkey(Config) ->
     get_pending_account_transactions_by_pubkey(?config(account_exists, Config), Config).
 
 get_pending_account_transactions_by_pubkey(false, Config) ->
-    AccountPubkey = ?config(account_pubkey, Config),
-    {ok, 404, Error} = get_accounts_transactions_pending_by_pubkey_sut(AccountPubkey),
+    AccountId = ?config(account_id, Config),
+    {ok, 404, Error} = get_accounts_transactions_pending_by_pubkey_sut(AccountId),
     ?assertEqual(<<"Account not found">>, maps:get(<<"reason">>, Error)),
     ok;
 get_pending_account_transactions_by_pubkey(true, Config) ->
-    AccountPubkey = ?config(account_pubkey, Config),
+    AccountId = ?config(account_id, Config),
     PendingTxs = proplists:get_value(pending_txs, Config, []),
-    {ok, 200, Txs} = get_accounts_transactions_pending_by_pubkey_sut(AccountPubkey),
+    {ok, 200, Txs} = get_accounts_transactions_pending_by_pubkey_sut(AccountId),
     %% TODO: check txs hashes
     ?assertEqual(length(PendingTxs), length(maps:get(<<"transactions">>, Txs))),
     ok.
 
-get_accounts_by_pubkey_sut(Pubkey) ->
+get_accounts_by_pubkey_sut(Id) ->
     Host = external_address(),
-    http_request(Host, get, "accounts/" ++ http_uri:encode(Pubkey), []).
+    http_request(Host, get, "accounts/" ++ http_uri:encode(Id), []).
 
-get_accounts_transactions_pending_by_pubkey_sut(Pubkey) ->
+get_accounts_transactions_pending_by_pubkey_sut(Id) ->
     Host = external_address(),
-    Pubkey1 = binary_to_list(Pubkey),
-    http_request(Host, get, "accounts/" ++ http_uri:encode(Pubkey1) ++ "/transactions/pending", []).
+    Id1 = binary_to_list(Id),
+    http_request(Host, get, "accounts/" ++ http_uri:encode(Id1) ++ "/transactions/pending", []).
 
 %% /transactions/*
 

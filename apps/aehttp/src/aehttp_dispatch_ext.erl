@@ -170,13 +170,10 @@ handle_request('GetGenerationByHeight', Params, _Context) ->
 handle_request('GetAccountByPubkey', Params, _Context) ->
     case aec_base58c:safe_decode(account_pubkey, maps:get(pubkey, Params)) of
         {ok, Pubkey} ->
-            case aehttp_logic:get_account(Pubkey) of
-                {ok, Account} ->
-                    {200, [],
-                     #{pubkey => aec_base58c:encode(account_pubkey, Pubkey),
-                       balance => aec_accounts:balance(Account),
-                       nonce => aec_accounts:nonce(Account)}};
-                {error, _} ->
+            case aec_chain:get_account(Pubkey) of
+                {value, Account} ->
+                    {200, [], aec_accounts:serialize_for_client(Account)};
+                none ->
                     {404, [], #{reason => <<"Account not found">>}}
             end;
         {error, _} ->
@@ -432,7 +429,7 @@ handle_request('GetHeaderByHash', Req, _Context) ->
         {error, _} ->
             {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
-           case aehttp_logic:get_block_by_hash(Hash) of
+            case aehttp_logic:get_block_by_hash(Hash) of
                 {ok, Block} ->
                     {200, [], aehttp_api_parser:encode(header, Block)};
                 {error, block_not_found} ->

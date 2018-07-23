@@ -3448,9 +3448,9 @@
     "Account" : {
       "type" : "object",
       "properties" : {
-        "pubkey" : {
-          "type" : "string",
-          "description" : "Public key"
+        "id" : {
+          "description" : "Public key",
+          "$ref" : "#/definitions/EncodedHash"
         },
         "balance" : {
           "type" : "integer",
@@ -3467,8 +3467,8 @@
       },
       "example" : {
         "balance" : 0,
-        "nonce" : 0,
-        "pubkey" : "pubkey"
+        "id" : { },
+        "nonce" : 0
       }
     },
     "Balance" : {
