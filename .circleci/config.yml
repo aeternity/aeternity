@@ -14,6 +14,11 @@ references:
       S3_BUILDS_BUCKET: aeternity-epoch-builds
       S3_RELEASES_BUCKET: aeternity-epoch-releases
 
+  infrastructure_config: &infrastructure_config
+    docker:
+      - image: aeternity/infrastructure
+    working_directory: ~/epoch
+
   machine_config: &machine_config
     machine:
       docker_layer_caching: true
@@ -88,25 +93,6 @@ references:
     restore_cache:
       key: *build_cache_key
 
-  pip_cache_key: &pip_cache_key pip-v1-{{ checksum "deployment/ansible/pip-requirements.txt" }}
-  restore_pip_cache: &restore_pip_cache
-    restore_cache:
-      keys:
-        - *pip_cache_key
-        - pip-v1
-
-  save_pip_cache: &save_pip_cache
-    save_cache:
-      key: *pip_cache_key
-      paths:
-        - ~/.cache/pip
-
-  install_pip_requirements: &install_pip_requirements
-    run:
-      name: Install PIP Requirements
-      command: |
-        pip install --user -r deployment/ansible/pip-requirements.txt
-
   packages_workspace: &packages_workspace /tmp/packages
   set_package_path: &set_package_path
     run:
@@ -157,9 +143,6 @@ references:
   deploy_steps: &deploy_steps
     - checkout
     - *set_package_path
-    - *restore_pip_cache
-    - *install_pip_requirements
-    - *save_pip_cache
     - attach_workspace:
         at: *packages_workspace
     - run:
@@ -167,14 +150,8 @@ references:
         environment:
           PACKAGES_DIR: *packages_workspace
         command: |
-          LIMIT="tag_role_epoch:&tag_env_${DEPLOY_ENV:?}"
-          if [ -n "$DEPLOY_COLOR" ]; then
-            LIMIT+=":&tag_color_${DEPLOY_COLOR}"
-          fi
-          cd deployment/ansible
-          ansible-playbook --limit="${LIMIT:?}" \
-            --extra-vars "package=${PACKAGE_TARBALL:?} hosts_group=tag_env_${DEPLOY_ENV:?} env=${DEPLOY_ENV:?} downtime=${DEPLOY_DOWNTIME:-0}" \
-            deploy.yml
+          export PACKAGE=${PACKAGE_TARBALL:?}
+          cd /infrastructure && make deploy
 
   upload_github_release_asset: &upload_github_release_asset
     run:
@@ -460,19 +437,16 @@ jobs:
             ~/bin/docker push ${DOCKERHUB_REPO:?}:latest
 
   uat_chain_snapshot:
-    <<: *container_config
+    <<: *infrastructure_config
     steps:
-      - checkout
-      - *restore_pip_cache
-      - *install_pip_requirements
-      - *save_pip_cache
       - run:
           name: Snapshot of UAT blockchain
+          environment:
+            - BACKUP_ENV: uat
+            - BACKUP_DIR: /tmp/chain_snapshots
           command: |
-            cd deployment/ansible
-            ansible-playbook --limit="tag_role_epoch:&tag_env_uat" \
-              --extra-vars "download_dir=/tmp/chain_snapshots backup_suffix=uat_db_backup_$(date +%s)" \
-              mnesia_backup.yml
+            export BACKUP_SUFFIX=uat_db_backup_$(date +%s)
+            cd /infrastructure && make mnesia_backup
       - store_artifacts:
           path: /tmp/chain_snapshots
 
@@ -504,26 +478,26 @@ jobs:
           path: system_test/logs
 
   deploy_integration:
-    <<: *container_config
+    <<: *infrastructure_config
     environment:
       - DEPLOY_ENV: integration
       - DEPLOY_DOWNTIME: 900 #15M
     steps: *deploy_steps
 
   deploy_dev1:
-    <<: *container_config
+    <<: *infrastructure_config
     environment:
       - DEPLOY_ENV: dev1
     steps: *deploy_steps
 
   deploy_dev2:
-    <<: *container_config
+    <<: *infrastructure_config
     environment:
       - DEPLOY_ENV: dev2
     steps: *deploy_steps
 
   deploy_uat_blue:
-    <<: *container_config
+    <<: *infrastructure_config
     environment:
       - DEPLOY_ENV: uat
       - DEPLOY_COLOR: blue
@@ -531,7 +505,7 @@ jobs:
     steps: *deploy_steps
 
   deploy_uat_green:
-    <<: *container_config
+    <<: *infrastructure_config
     environment:
       - DEPLOY_ENV: uat
       - DEPLOY_COLOR: green
@@ -539,7 +513,7 @@ jobs:
     steps: *deploy_steps
 
   deploy_fast_integration:
-    <<: *container_config
+    <<: *infrastructure_config
     environment:
       - DEPLOY_ENV: fast_integration
       - DEPLOY_DOWNTIME: 900 #15M
