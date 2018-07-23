@@ -49,7 +49,7 @@ Bob computes - off-chain, using the epoch API - the unsigned contract create tra
 
 >>> from swagger_client.models.contract_create_data import ContractCreateData
 >>> raw_unsigned_contract_create_tx = epoch_node['external_api'].post_contract_create(ContractCreateData(
-...   owner=users['b']['encoded_pub_key'],
+...   owner_id=users['b']['encoded_pub_key'],
 ...   nonce=1,
 ...   code=contract_bytecode,
 ...   vm_version=1,
@@ -59,8 +59,8 @@ Bob computes - off-chain, using the epoch API - the unsigned contract create tra
 ...   gas_price=1,
 ...   fee=1,
 ...   call_data=encoded_init_call_data))
->>> contract_address = raw_unsigned_contract_create_tx.contract_address
->>> print(contract_address) # doctest: +ELLIPSIS
+>>> contract_id = raw_unsigned_contract_create_tx.contract_id
+>>> print(contract_id) # doctest: +ELLIPSIS
 ct$...
 >>> print(raw_unsigned_contract_create_tx.tx) # doctest: +ELLIPSIS
 tx$...
@@ -113,9 +113,9 @@ Alice computes - off-chain, using the epoch API - the unsigned contract call tra
 >>> contract_call_data = {'f': "get", 'arg': "()"}
 >>> from swagger_client.models.contract_call_compute import ContractCallCompute
 >>> unsigned_contract_call_tx = base58.b58decode_check(epoch_node['external_api'].post_contract_call_compute(ContractCallCompute(
-...   caller=users['a']['encoded_pub_key'],
+...   caller_id=users['a']['encoded_pub_key'],
 ...   nonce=1,
-...   contract=contract_address,
+...   contract_id=contract_id,
 ...   vm_version=1,
 ...   fee=1,
 ...   amount=0,

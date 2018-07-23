@@ -12,19 +12,19 @@ new(Owner, Round, VmVersion, Code, Deposit, Trees0) ->
     %%   The public key for the contract is generated from the owners pubkey
     %%   and the nonce, so that no one has the private key.
     Contract        = aect_contracts:new(Owner, Round, VmVersion, Code, Deposit),
-    ContractPubKey  = aect_contracts:pubkey(Contract),
+    ContractId      = aect_contracts:id(Contract),
     ContractsTree0  = aec_trees:contracts(Trees0),
     ContractsTree1  = aect_state_tree:insert_contract(Contract, ContractsTree0),
     Trees1          = aec_trees:set_contracts(Trees0, ContractsTree1),
-    {ContractPubKey, Contract, Trees1}.
+    {ContractId, Contract, Trees1}.
 
--spec run_new(aect_contracts:id(), aect_call:call(), binary(),
+-spec run_new(aect_contracts:pubkey(), aect_call:call(), binary(),
               non_neg_integer(), aec_trees:trees())
     -> aec_trees:trees().
 run_new(ContractPubKey, Call, CallData, Round, Trees0) ->
     ContractsTree  = aec_trees:contracts(Trees0),
     Contract = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
-    Owner = aect_contracts:owner(Contract),
+    Owner = aect_contracts:owner_pubkey(Contract),
     Code = aect_contracts:code(Contract),
     CallStack = [], %% TODO: should we have a call stack for create_tx also
                     %% when creating a contract in a contract.
@@ -66,13 +66,13 @@ run_new(ContractPubKey, Call, CallData, Round, Trees0) ->
             Trees0
     end.
 
--spec run(aect_contracts:id(), aect_contracts:vm_version(), aect_call:call(),
+-spec run(aect_contracts:pubkey(), aect_contracts:vm_version(), aect_call:call(),
           binary(), [non_neg_integer()], non_neg_integer(), aec_trees:trees())
     -> aec_trees:trees().
 run(ContractPubKey, VmVersion, Call, CallData, CallStack, Round, Trees0) ->
     ContractsTree  = aec_trees:contracts(Trees0),
     Contract = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
-    Owner = aect_contracts:owner(Contract),
+    Owner = aect_contracts:owner_pubkey(Contract),
     Code = aect_contracts:code(Contract),
     case aect_contracts:vm_version(Contract) =:= VmVersion of
         true  -> ok;

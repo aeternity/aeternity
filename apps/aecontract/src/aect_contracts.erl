@@ -9,7 +9,6 @@
 
 %% API
 -export([ deserialize/2
-        , id/1
         , store_id/1
         , new/1
         , new/5 %% For use without transaction
@@ -19,14 +18,16 @@
         , compute_contract_store_id/1
         , is_legal_state_fun/1
           %% Getters
+        , id/1
         , pubkey/1
-        , owner/1
+        , owner_id/1
+        , owner_pubkey/1
         , vm_version/1
         , code/1
         , state/1
         , log/1
         , active/1
-        , referers/1
+        , referrer_ids/1
         , deposit/1
           %% Setters
         , set_pubkey/2
@@ -35,7 +36,7 @@
         , set_state/2
         , set_log/2
         , set_active/2
-        , set_referers/2
+        , set_referrers/2
         , set_deposit/2
         ]).
 
@@ -55,20 +56,21 @@
 
 -record(contract, {
         %% Normal account fields
-        id         :: aec_id:id(),
-        owner      :: aec_id:id(),
-        vm_version :: vm_version(),
-        code       :: binary(),     %% The byte code
-        store      :: store(),      %% The current state/store (stored in a subtree in mpt)
-        log        :: binary(),     %% The current event log
-        active     :: boolean(),    %% false when disabled, but don't remove unless referers == []
-        referers   :: [aec_id:id()],%% List of contracts depending on this contract
-        deposit    :: amount()
+        id           :: aec_id:id(),
+        owner_id     :: aec_id:id(),
+        vm_version   :: vm_version(),
+        code         :: binary(),     %% The byte code
+        store        :: store(),      %% The current state/store (stored in a subtree in mpt)
+        log          :: binary(),     %% The current event log
+        active       :: boolean(),    %% false when disabled, but don't remove unless referrer_ids == []
+        referrer_ids :: list(aec_id:id()), %% List of contracts depending on this contract
+        deposit      :: amount()
     }).
 
 -opaque contract() :: #contract{}.
 
--type id() :: aec_keys:pubkey().
+-type id() :: aec_id:id().
+-type pubkey() :: aec_keys:pubkey().
 -type store_id() :: binary().
 -type serialized() :: binary().
 -type vm_version() :: byte().
@@ -76,6 +78,7 @@
 -export_type([ contract/0
              , amount/0
              , id/0
+             , pubkey/0
              , serialized/0
              , vm_version/0
              , store/0
@@ -90,10 +93,6 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
-
--spec id(contract()) -> id().
-id(C) ->
-  pubkey(C).
 
 -spec store_id(contract()) -> store_id().
 store_id(C) ->
@@ -111,53 +110,65 @@ new(RTx) ->
 %% NOTE: Should only be used for contract execution without transaction
 new(Owner, Nonce, VmVersion, Code, Deposit) ->
     Pubkey = compute_contract_pubkey(Owner, Nonce),
-    C = #contract{ id         = aec_id:create(contract, Pubkey),
-                   owner      = aec_id:create(account, Owner),
-                   vm_version = VmVersion,
-                   code       = Code,
-                   store      = #{},
-                   log        = <<>>,
-                   active     = true,
-                   referers   = [],
-                   deposit    = Deposit
+    C = #contract{ id           = aec_id:create(contract, Pubkey),
+                   owner_id     = aec_id:create(account, Owner),
+                   vm_version   = VmVersion,
+                   code         = Code,
+                   store        = #{},
+                   log          = <<>>,
+                   active       = true,
+                   referrer_ids = [],
+                   deposit      = Deposit
                  },
     C = assert_fields(C),
     C.
 
 -spec serialize(contract()) -> serialized().
-serialize(#contract{owner = OwnerId, referers = RefererIds} = C) ->
+serialize(#contract{owner_id     = OwnerId,
+                    vm_version   = VmVersion,
+                    code         = Code,
+                    log          = Log,
+                    active       = Active,
+                    referrer_ids = ReferrerIds,
+                    deposit      = Deposit}) ->
     aec_object_serialization:serialize(
       ?CONTRACT_TYPE,
       ?CONTRACT_VSN,
       serialization_template(?CONTRACT_VSN),
-      [ {owner, OwnerId}
-      , {vm_version, vm_version(C)}
-      , {code, code(C)}
-      , {log, log(C)}
-      , {active, active(C)}
-      , {referers, RefererIds}
-      , {deposit, deposit(C)}
+      [ {owner_id, OwnerId}
+      , {vm_version, VmVersion}
+      , {code, Code}
+      , {log, Log}
+      , {active, Active}
+      , {referrer_ids, ReferrerIds}
+      , {deposit, Deposit}
       ]).
 
 -spec serialize_for_client(contract()) -> map().
-serialize_for_client(#contract{} = C) ->
-    #{ <<"id">> => aec_base58c:encode(contract_pubkey, id(C))
-     , <<"owner">> => aec_base58c:encode(account_pubkey, owner(C))
-     , <<"vm_version">> => vm_version(C)
-     , <<"log">> => log(C)
-     , <<"active">> => active(C)
-     , <<"referers">> => [ aec_base58c:encode(contract_pubkey, Ref) || Ref <- referers(C) ]
-     , <<"deposit">> => deposit(C)
+serialize_for_client(#contract{id           = Id,
+                               owner_id     = OwnerId,
+                               vm_version   = VmVersion,
+                               log          = Log,
+                               active       = Active,
+                               referrer_ids = ReferrerIds,
+                               deposit      = Deposit}) ->
+    #{ <<"id">>           => aec_base58c:encode(id_hash, Id)
+     , <<"owner_id">>     => aec_base58c:encode(id_hash, OwnerId)
+     , <<"vm_version">>   => VmVersion
+     , <<"log">>          => Log
+     , <<"active">>       => Active
+     , <<"referrer_ids">> => [aec_base58c:encode(id_hash, RId) || RId <- ReferrerIds]
+     , <<"deposit">>      => Deposit
      }.
 
--spec deserialize(id(), serialized()) -> contract().
+-spec deserialize(pubkey(), serialized()) -> contract().
 deserialize(Pubkey, Bin) ->
-    [ {owner, OwnerId}
+    [ {owner_id, OwnerId}
     , {vm_version, VmVersion}
     , {code, Code}
     , {log, Log}
     , {active, Active}
-    , {referers, RefererIds}
+    , {referrer_ids, ReferrerIds}
     , {deposit, Deposit}
     ] = aec_object_serialization:deserialize(
           ?CONTRACT_TYPE,
@@ -165,30 +176,31 @@ deserialize(Pubkey, Bin) ->
           serialization_template(?CONTRACT_VSN),
           Bin
           ),
-    [contract = aec_id:specialize_type(R) || R <- RefererIds],
+    [contract = aec_id:specialize_type(R) || R <- ReferrerIds],
     account = aec_id:specialize_type(OwnerId),
-    #contract{ id         = aec_id:create(contract, Pubkey)
-             , owner      = OwnerId
-             , vm_version = VmVersion
-             , code       = Code
-             , store      = #{}
-             , log        = Log
-             , active     = Active
-             , referers   = RefererIds
-             , deposit    = Deposit
+    #contract{ id           = aec_id:create(contract, Pubkey)
+             , owner_id     = OwnerId
+             , vm_version   = VmVersion
+             , code         = Code
+             , store        = #{}
+             , log          = Log
+             , active       = Active
+             , referrer_ids = ReferrerIds
+             , deposit      = Deposit
              }.
 
 serialization_template(?CONTRACT_VSN) ->
-    [ {owner, id}
+    [ {owner_id, id}
     , {vm_version, int}
     , {code, binary}
     , {log, binary}
     , {active, bool}
-    , {referers, [id]}
+    , {referrer_ids, [id]}
     , {deposit, int}
     ].
 
--spec compute_contract_pubkey(aec_keys:pubkey(), non_neg_integer()) -> id().
+-spec compute_contract_pubkey(aec_keys:pubkey(), non_neg_integer()) ->
+    aec_keys:pubkey().
 compute_contract_pubkey(<<_:?PUB_SIZE/binary>> = Owner, Nonce) when Nonce >= 0  ->
     NonceBin = binary:encode_unsigned(Nonce),
     aec_hash:hash(pubkey, <<Owner/binary, NonceBin/binary>>).
@@ -212,52 +224,71 @@ is_legal_state_fun(Contract) ->
 %%%===================================================================
 %%% Getters
 
+%% The Id if the contract.
+-spec id(contract()) -> id().
+id(#contract{id = Id}) ->
+   Id.
+
 %% The address of the contract account.
--spec pubkey(contract()) -> id().
-pubkey(C) -> aec_id:specialize(C#contract.id, contract).
+-spec pubkey(contract()) -> pubkey().
+pubkey(#contract{id = Id}) ->
+    aec_id:specialize(Id, contract).
+
+%% The id of the owner.
+-spec owner_id(contract()) -> aec_id:id().
+owner_id(#contract{owner_id = OwnerId}) ->
+    OwnerId.
 
 %% The owner of the contract is (initially) the account that created it.
--spec owner(contract()) -> aec_keys:pubkey().
-owner(C) -> aec_id:specialize(C#contract.owner, account).
+-spec owner_pubkey(contract()) -> aec_keys:pubkey().
+owner_pubkey(#contract{owner_id = OwnerId}) ->
+    aec_id:specialize(OwnerId, account).
 
 %% The VM version used by the contract.
 -spec vm_version(contract()) -> vm_version().
-vm_version(C) -> C#contract.vm_version.
+vm_version(#contract{vm_version = VmVersion}) ->
+    VmVersion.
 
 %% The contract byte code.
 -spec code(contract()) -> binary().
-code(C) -> C#contract.code.
+code(#contract{code = Code}) ->
+    Code.
 
 %% The representation of the contract state data.
 -spec state(contract()) -> store().
-state(C) -> C#contract.store.
+state(#contract{store = Store}) ->
+    Store.
 
 %% The log of the contract.
 -spec log(contract()) -> binary().
-log(C) -> C#contract.log.
+log(#contract{log = Log}) ->
+    Log.
 
 %% Is the contract active or has it been deactivated?
 -spec active(contract()) -> boolean().
-active(C) -> C#contract.active.
+active(#contract{active = Active}) ->
+    Active.
 
 %% A list of other contracts referring to this contract.
--spec referers(contract()) -> [id()].
-referers(C) -> [aec_id:specialize(X, contract) || X <- C#contract.referers].
+-spec referrer_ids(contract()) -> list(aec_id:id()).
+referrer_ids(#contract{referrer_ids = ReferrerIds}) ->
+    ReferrerIds.
 
 %% The amount deposited at contract creation.
 -spec deposit(contract()) -> amount().
-deposit(C) -> C#contract.deposit.
+deposit(#contract{deposit = Deposit}) ->
+    Deposit.
 
 %%%===================================================================
 %%% Setters
 
--spec set_pubkey(id(), contract()) -> contract().
+-spec set_pubkey(pubkey(), contract()) -> contract().
 set_pubkey(X, C) ->
     C#contract{id = aec_id:create(contract, assert_field(pubkey, X))}.
 
 -spec set_owner(aec_keys:pubkey(), contract()) -> contract().
 set_owner(X, C) ->
-    C#contract{owner = aec_id:create(account, assert_field(pubkey, X))}.
+    C#contract{owner_id = aec_id:create(account, assert_field(pubkey, X))}.
 
 -spec set_vm_version(vm_version(), contract()) -> contract().
 set_vm_version(X, C) ->
@@ -282,10 +313,10 @@ set_log(X, C) ->
 set_active(X, C) ->
     C#contract{active = assert_field(active, X)}.
 
--spec set_referers([id()], contract()) -> contract().
-set_referers(X, C) ->
-    C#contract{referers = [aec_id:create(contract, Y)
-                           || Y <- assert_field(referers, X)]}.
+-spec set_referrers([id()], contract()) -> contract().
+set_referrers(X, C) ->
+    C#contract{referrer_ids = [aec_id:create(contract, Y)
+                               || Y <- assert_field(referrers, X)]}.
 
 -spec set_deposit(amount(), contract()) -> contract().
 set_deposit(X, C) ->
@@ -297,13 +328,13 @@ set_deposit(X, C) ->
 
 assert_fields(C) ->
     List = [ {pubkey,     pubkey(C)}
-           , {owner,      owner(C)}
+           , {owner,      owner_pubkey(C)}
            , {vm_version, C#contract.vm_version}
            , {code,       C#contract.code}
            , {store,      C#contract.store}
            , {log,        C#contract.log}
            , {active,     C#contract.active}
-           , {referers,   referers(C)}
+           , {referrers,  referrer_ids(C)}
            , {deposit,    C#contract.deposit}
            ],
     List1 = [try assert_field(X, Y, C), [] catch _:X -> X end
@@ -325,10 +356,10 @@ assert_field(vm_version, X) when is_integer(X), X > 0,
 assert_field(code, X)       when is_binary(X)            -> X;
 assert_field(log, X)        when is_binary(X)            -> X;
 assert_field(active, X)     when X =:= true; X =:= false -> X;
-assert_field(referers = Field, X) ->
-    try [ assert_field(referer, Y) || Y <- X ]
+assert_field(referrers = Field, X) ->
+    try [ assert_field(referrer, Y) || Y <- X ]
     catch _:_ -> error({illegal, Field, X}) end;
-assert_field(referer, <<_:?PUB_SIZE/binary>> = X)        -> X;
+assert_field(referrer, <<_:?PUB_SIZE/binary>> = X)       -> X;
 assert_field(deposit, X)    when is_integer(X), X >= 0   -> X;
 assert_field(Field, X) -> error({illegal, Field, X}).
 

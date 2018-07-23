@@ -250,7 +250,7 @@ def decode_unsigned_tx(encoded_tx):
     if (tag == bytes(bytearray([42])) and vsn == bytes(bytearray([1]))):
         ownerid = decode_id(fields[0])
         return {'type': 'contract_create_tx',
-                'owner': ownerid['pubkey'],
+                'owner_id': ownerid['pubkey'],
                 'nonce': bytes_to_int(fields[1]),
                 'code': fields[2],
                 'vm_version': bytes_to_int(fields[3]),

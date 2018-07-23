@@ -100,19 +100,30 @@ set_env(ContractPubKey, Height, Trees, API, VmVersion) ->
       chainAPI          => API,
       vm_version        => VmVersion}.
 
-call_common(#{gas := Gas, call := Call, trees := Trees} = CallDef, Spec) ->
-    <<Address:?PUB_SIZE/unit:8>> = maps:get(contract, CallDef),
-    <<CallerAddr:?PUB_SIZE/unit:8>> = maps:get(caller, CallDef),
+call_common(#{ caller     := CallerPubKey
+             , contract   := ContractPubKey
+             , gas        := Gas
+             , gas_price  := GasPrice
+             , call_data  := CallData
+             , amount     := Value
+             , call_stack := CallStack
+             , code       := Code
+             , call       := Call
+             , height     :=_Height
+             , trees      := Trees
+             }, Spec) ->
+    <<Address:?PUB_SIZE/unit:8>> = ContractPubKey,
+    <<CallerAddr:?PUB_SIZE/unit:8>> = CallerPubKey,
     Exec = maps:merge(maps:get(exec, Spec), #{
-        code       => maps:get(code, CallDef),
+        code       => Code,
         address    => Address,
         caller     => CallerAddr,
-        data       => maps:get(call_data, CallDef),
+        data       => CallData,
         gas        => Gas,
-        gasPrice   => maps:get(gas_price, CallDef),
+        gasPrice   => GasPrice,
         origin     => CallerAddr,
-        value      => maps:get(amount, CallDef),
-        call_stack => maps:get(call_stack, CallDef)
+        value      => Value,
+        call_stack => CallStack
     }),
     try aevm_eeevm_state:init(Spec#{exec => Exec}, #{trace => false}) of
         InitState ->

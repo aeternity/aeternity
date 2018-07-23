@@ -17,8 +17,8 @@ trunc_test() ->
     St2 = #{<<"2">> => <<"b">>},
 
     C0 = new_contract(),
-    C1 = new_contract(#{owner => Owner1}),
-    C2 = new_contract(#{owner => Owner2}),
+    C1 = new_contract(#{owner_id => Owner1}),
+    C2 = new_contract(#{owner_id => Owner2}),
 
     T1  = ?TESTED_MODULE:insert_contract(C0, T0),
     T2  = ?TESTED_MODULE:insert_contract(C1, T1),
@@ -38,7 +38,7 @@ new_contract() ->
     new_contract(#{}).
 
 new_contract(Override) ->
-    Map = #{ owner      => aec_id:create(account, <<4711:32/unit:8>>)
+    Map = #{ owner_id   => aec_id:create(account, <<4711:32/unit:8>>)
            , nonce      => 42
            , code       => <<"THIS IS NOT ACTUALLY PROPER BYTE CODE">>
            , vm_version => 2

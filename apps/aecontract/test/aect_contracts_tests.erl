@@ -10,10 +10,11 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -import(aect_contracts, [ deserialize/2
-                        , id/1
                         , new/2
-                        , owner/1
+                        , id/1
                         , pubkey/1
+                        , owner_id/1
+                        , owner_pubkey/1
                         , state/1
                         , serialize/1
                         , set_owner/2
@@ -35,9 +36,10 @@ basic_serialize() ->
 
 basic_getters() ->
     C = aect_contracts:new(create_tx()),
-    ?assert(is_binary(id(C))),
-    ?assert(is_binary(owner(C))),
+    ?assert(aec_id:is_id(id(C))),
     ?assert(is_binary(pubkey(C))),
+    ?assert(aec_id:is_id(owner_id(C))),
+    ?assert(is_binary(owner_pubkey(C))),
     ok.
 
 basic_setters() ->
@@ -66,7 +68,7 @@ create_tx() ->
     create_tx(#{}).
 
 create_tx(Override) ->
-    Map = #{ owner      => aec_id:create(account, <<4711:32/unit:8>>)
+    Map = #{ owner_id   => aec_id:create(account, <<4711:32/unit:8>>)
            , nonce      => 42
            , code       => <<"THIS IS NOT ACTUALLY PROPER BYTE CODE">>
            , vm_version => 2

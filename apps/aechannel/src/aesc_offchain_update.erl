@@ -78,12 +78,13 @@ apply_on_trees({?OP_WITHDRAW, FromId, Amount}, Trees, _, Opts) ->
     remove_tokens(From, Amount, Trees, Opts);
 apply_on_trees({?OP_CREATE_CONTRACT, OwnerId, VmVersion, Code, Deposit, CallData}, Trees, Round, Opts) ->
     Owner = account_pubkey(OwnerId),
-    {ContractPubKey, _Contract, Trees1} =
+    {ContractId, _Contract, Trees1} =
         aect_channel_contract:new(Owner, Round, VmVersion, Code, Deposit, Trees),
+    ContractPubKey = contract_pubkey(ContractId),
     Trees2 = remove_tokens(Owner, Deposit, Trees1, Opts),
     Trees3 = create_account(ContractPubKey, Trees2),
     Trees4 = add_tokens(ContractPubKey, Deposit, Trees3),
-    Call = aect_call:new(Owner, Round, ContractPubKey, Round, 0),
+    Call = aect_call:new(OwnerId, Round, ContractId, Round, 0),
     _Trees = aect_channel_contract:run_new(ContractPubKey, Call, CallData,
                                            Round, Trees4);
 apply_on_trees({?OP_CALL_CONTRACT, CallerId, ContractId, VmVersion, Amount, CallData, CallStack},
@@ -92,7 +93,7 @@ apply_on_trees({?OP_CALL_CONTRACT, CallerId, ContractId, VmVersion, Amount, Call
     ContractPubKey = contract_pubkey(ContractId),
     Trees1 = remove_tokens(Caller, Amount, Trees, Opts),
     Trees2 = add_tokens(ContractPubKey, Amount, Trees1),
-    Call = aect_call:new(Caller, Round, ContractPubKey, Round, 0),
+    Call = aect_call:new(CallerId, Round, ContractId, Round, 0),
     _Trees = aect_channel_contract:run(ContractPubKey, VmVersion, Call,
                                        CallData, CallStack, Round, Trees2).
 

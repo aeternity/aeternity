@@ -60,9 +60,9 @@ new_with_backend(Hash) ->
 
 -spec insert_contract(aect_contracts:contract(), tree()) -> tree().
 insert_contract(Contract, Tree = #contract_tree{ contracts = CtTree }) ->
-    Id         = aect_contracts:id(Contract),
+    Pubkey     = aect_contracts:pubkey(Contract),
     Serialized = aect_contracts:serialize(Contract),
-    CtTree1    = aeu_mtrees:insert(Id, Serialized, CtTree),
+    CtTree1    = aeu_mtrees:insert(Pubkey, Serialized, CtTree),
     CtTree2    = insert_store(Contract, CtTree1),
     Tree#contract_tree{ contracts = CtTree2 }.
 
@@ -82,12 +82,12 @@ insert_store_nodes(Prefix, Store, CtTree) ->
 %% @doc Update an existing contract.
 -spec enter_contract(aect_contracts:contract(), tree()) -> tree().
 enter_contract(Contract, Tree = #contract_tree{ contracts = CtTree }) ->
-    Id         = aect_contracts:id(Contract),
-    Serialized = aect_contracts:serialize(Contract),
-    CtTree1    = aeu_mtrees:enter(Id, Serialized, CtTree),
-    OldContract = get_contract(Id, Tree),
-    OldStore = aect_contracts:state(OldContract),
-    CtTree2    = enter_store(Contract, OldStore, CtTree1),
+    Pubkey      = aect_contracts:pubkey(Contract),
+    Serialized  = aect_contracts:serialize(Contract),
+    CtTree1     = aeu_mtrees:enter(Pubkey, Serialized, CtTree),
+    OldContract = get_contract(Pubkey, Tree),
+    OldStore    = aect_contracts:state(OldContract),
+    CtTree2     = enter_store(Contract, OldStore, CtTree1),
     Tree#contract_tree{ contracts = CtTree2 }.
 
 enter_store(Contract, OldStore, CtTree) ->
@@ -111,9 +111,9 @@ enter_store_nodes(Prefix, MergedStore, Store, OldStore, CtTree) ->
              end,
      maps:fold(Insert, CtTree, MergedStore).
 
--spec get_contract(aect_contracts:id(), tree()) -> aect_contracts:contract().
-get_contract(Id, #contract_tree{ contracts = CtTree }) ->
-    Contract = aect_contracts:deserialize(Id, aeu_mtrees:get(Id, CtTree)),
+-spec get_contract(aect_contracts:pubkey(), tree()) -> aect_contracts:contract().
+get_contract(Pubkey, #contract_tree{ contracts = CtTree }) ->
+    Contract = aect_contracts:deserialize(Pubkey, aeu_mtrees:get(Pubkey, CtTree)),
     add_store(Contract, CtTree).
 
 add_store(Contract, CtTree) ->
@@ -133,11 +133,11 @@ find_store_keys(Id, {PrefixedKey, Val, Iter}, PrefixSize, Store) ->
     find_store_keys(Id, Next, PrefixSize, Store1).
 
 
--spec lookup_contract(aect_contracts:id(), tree()) -> {value, aect_contracts:contract()} | none.
-lookup_contract(Id, Tree) ->
+-spec lookup_contract(aect_contracts:pubkey(), tree()) -> {value, aect_contracts:contract()} | none.
+lookup_contract(Pubkey, Tree) ->
     CtTree = Tree#contract_tree.contracts,
-    case aeu_mtrees:lookup(Id, CtTree) of
-        {value, Val} -> {value, add_store(aect_contracts:deserialize(Id, Val), CtTree)};
+    case aeu_mtrees:lookup(Pubkey, CtTree) of
+        {value, Val} -> {value, add_store(aect_contracts:deserialize(Pubkey, Val), CtTree)};
         none         -> none
     end.
 
@@ -147,14 +147,14 @@ lookup_contract(Id, Tree) ->
 root_hash(#contract_tree{contracts = CtTree}) ->
     aeu_mtrees:root_hash(CtTree).
 
--spec add_poi(aect_contracts:id(), aect_state_tree:tree(), aec_poi:poi()) ->
+-spec add_poi(aect_contracts:pubkey(), aect_state_tree:tree(), aec_poi:poi()) ->
                      {'ok', aec_poi:poi()}
                    | {'error', 'not_present' | 'wrong_root_hash'}.
-add_poi(Id, #contract_tree{contracts = CtTree}, Poi) ->
-    case aec_poi:add_poi(Id, CtTree, Poi) of
+add_poi(Pubkey, #contract_tree{contracts = CtTree}, Poi) ->
+    case aec_poi:add_poi(Pubkey, CtTree, Poi) of
         {ok, ContractPoi} ->
             add_store_to_poi(
-              aect_contracts:compute_contract_store_id(Id),
+              aect_contracts:compute_contract_store_id(Pubkey),
               CtTree,
               ContractPoi);
         {error, _} = Error -> Error
@@ -183,15 +183,15 @@ add_store_keys_poi(Id, {PrefixedKey, _Val, Iter}, PrefixSize, Poi, CtTree) ->
 
 
 
--spec verify_poi(aect_contracts:id(), aect_contracts:contract(), aec_poi:poi()) ->
+-spec verify_poi(aect_contracts:pubkey(), aect_contracts:contract(), aec_poi:poi()) ->
                         'ok' | {'error', term()}.
-verify_poi(Id, Contract, Poi) ->
+verify_poi(Pubkey, Contract, Poi) ->
     %% Hardcode expectation on specified contract object key being
     %% equal to key in internal representation of contract.  The key
     %% is not part of the contract serialization so this shall never
     %% happen.
-    Id = aect_contracts:id(Contract),
-    case aec_poi:verify(Id, aect_contracts:serialize(Contract), Poi) of
+    Pubkey = aect_contracts:pubkey(Contract),
+    case aec_poi:verify(Pubkey, aect_contracts:serialize(Contract), Poi) of
         {error, _} = E -> E; %% More fine grained error reason than lookup.
         ok ->
             verify_store_poi(aect_contracts:store_id(Contract),
@@ -218,12 +218,12 @@ verify_store_poi(Id, Store, IsLegalStoreFun, Poi) ->
             end
     end.
 
--spec lookup_poi(aect_contracts:id(), aec_poi:poi()) ->
+-spec lookup_poi(aect_contracts:pubkey(), aec_poi:poi()) ->
                         {'ok', aect_contracts:contract()} | {'error', not_found}.
-lookup_poi(Id, Poi) ->
-    case aec_poi:lookup(Id, Poi) of
+lookup_poi(Pubkey, Poi) ->
+    case aec_poi:lookup(Pubkey, Poi) of
         {ok, Val} ->
-            Contract = aect_contracts:deserialize(Id, Val),
+            Contract = aect_contracts:deserialize(Pubkey, Val),
             case lookup_store_poi(aect_contracts:store_id(Contract), Poi) of
                 {error, _} = E -> E;
                 {ok, Store} -> {ok, aect_contracts:set_state(Store, Contract)}

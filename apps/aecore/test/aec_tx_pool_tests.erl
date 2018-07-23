@@ -394,7 +394,7 @@ a_signed_tx(Sender, Recipient, Nonce, Fee, TTL) ->
 signed_ct_create_tx(Sender, Nonce, Fee, GasPrice) ->
     Spec =
         #{ fee        => Fee
-         , owner      => aec_id:create(account, Sender)
+         , owner_id   => aec_id:create(account, Sender)
          , nonce      => Nonce
          , code       => <<"NOT PROPER BYTE CODE">>
          , vm_version => 1
@@ -410,11 +410,11 @@ signed_ct_create_tx(Sender, Nonce, Fee, GasPrice) ->
     STx.
 
 signed_ct_call_tx(Sender, Nonce, Fee, GasPrice) ->
-    Contract = aec_id:create(contract, <<"contract_address......(32 bytes)">>),
+    ContractId = aec_id:create(contract, <<"contract_address......(32 bytes)">>),
     Spec =
         #{ fee         => Fee
-         , contract    => Contract
-         , caller      => aec_id:create(account, Sender)
+         , contract_id => ContractId
+         , caller_id   => aec_id:create(account, Sender)
          , nonce       => Nonce
          , vm_version  => 1
          , amount      => 100

@@ -3888,13 +3888,13 @@ definitions:
   ContractCallObject:
     type: object
     properties:
-      caller_address:
+      caller_id:
         $ref: '#/definitions/EncodedHash'
       caller_nonce:
         type: integer
       height:
         type: integer
-      contract_address:
+      contract_id:
         $ref: '#/definitions/EncodedHash'
       gas_price:
         type: integer
@@ -3907,10 +3907,10 @@ definitions:
         description: The status of the call 'ok | error | revert'.
         type: string
     required:
-      - caller_address
+      - caller_id
       - caller_nonce
       - height
-      - contract_address
+      - contract_id
       - gas_price
       - gas_used
       - return_value
@@ -3925,7 +3925,7 @@ definitions:
     properties:
       id:
         $ref: '#/definitions/EncodedHash'
-      owner:
+      owner_id:
         $ref: '#/definitions/EncodedHash'
       vm_version:
         type: integer
@@ -3935,7 +3935,7 @@ definitions:
         type: string
       active:
         type: boolean
-      referers:
+      referrer_ids:
         type: array
         items:
           $ref: '#/definitions/EncodedHash'
@@ -4022,8 +4022,8 @@ definitions:
   ContractCreateData:
     type: object
     properties:
-      owner:
-        type: string
+      owner_id:
+        $ref: '#/definitions/EncodedHash'
         description: Contract owner pub_key
       nonce:
         description: 'Owner''s nonce'
@@ -4064,7 +4064,7 @@ definitions:
         description: Contract call data
         type: string
     required:
-    - owner
+    - owner_id
     - code
     - vm_version
     - deposit
@@ -4076,7 +4076,7 @@ definitions:
   ContractCreateCompute:
     type: object
     properties:
-      owner:
+      owner_id:
         type: string
         description: Contract owner pub_key
       nonce:
@@ -4118,7 +4118,7 @@ definitions:
         description: Contract call data init function arguments
         type: string
     required:
-    - owner
+    - owner_id
     - code
     - vm_version
     - deposit
@@ -4130,15 +4130,15 @@ definitions:
   ContractCallData:
     type: object
     properties:
-      caller:
+      caller_id:
+        $ref: '#/definitions/EncodedHash'
         description: Contract caller pub_key
-        type: string
       nonce:
         description: 'Caller''s nonce'
         type: integer
-      contract:
+      contract_id:
+        $ref: '#/definitions/EncodedHash'
         description: 'Contract''s pub_key'
-        type: string
       vm_version:
         description: 'Virtual machine''s version'
         type: integer
@@ -4168,8 +4168,8 @@ definitions:
         description: Contract call data
         type: string
     required:
-    - caller
-    - contract
+    - caller_id
+    - contract_id
     - vm_version
     - fee
     - amount
@@ -4179,15 +4179,15 @@ definitions:
   ContractCallCompute:
     type: object
     properties:
-      caller:
+      caller_id:
+        $ref: '#/definitions/EncodedHash'
         description: Contract caller pub_key
-        type: string
       nonce:
         description: 'Caller''s nonce'
         type: integer
-      contract:
+      contract_id:
+        $ref: '#/definitions/EncodedHash'
         description: 'Contract''s pub_key'
-        type: string
       vm_version:
         description: 'Virtual machine''s version'
         type: integer
@@ -4220,8 +4220,8 @@ definitions:
         description: Contract call data function arguments
         type: string
     required:
-    - caller
-    - contract
+    - caller_id
+    - contract_id
     - vm_version
     - fee
     - amount
@@ -4250,11 +4250,11 @@ definitions:
       - $ref: '#/definitions/UnsignedTx'
       - type: object
         properties:
-          contract_address:
+          contract_id:
+            $ref: '#/definitions/EncodedHash'
             description: Address of the contract to be created
-            type: string
         required:
-        - contract_address
+        - contract_id
   PoI:
     type: object
     properties:

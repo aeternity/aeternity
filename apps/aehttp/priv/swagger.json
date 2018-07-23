@@ -5065,9 +5065,9 @@
     },
     "ContractCallObject" : {
       "type" : "object",
-      "required" : [ "caller_address", "caller_nonce", "contract_address", "gas_price", "gas_used", "height", "return_type", "return_value" ],
+      "required" : [ "caller_id", "caller_nonce", "contract_id", "gas_price", "gas_used", "height", "return_type", "return_value" ],
       "properties" : {
-        "caller_address" : {
+        "caller_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "caller_nonce" : {
@@ -5076,7 +5076,7 @@
         "height" : {
           "type" : "integer"
         },
-        "contract_address" : {
+        "contract_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "gas_price" : {
@@ -5097,11 +5097,11 @@
       "example" : {
         "gas_price" : 1,
         "return_type" : "return_type",
-        "caller_address" : { },
         "return_value" : "return_value",
+        "caller_id" : { },
+        "contract_id" : null,
         "gas_used" : 5,
         "caller_nonce" : 0,
-        "contract_address" : null,
         "height" : 6
       }
     },
@@ -5119,7 +5119,7 @@
         "id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
-        "owner" : {
+        "owner_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "vm_version" : {
@@ -5133,7 +5133,7 @@
         "active" : {
           "type" : "boolean"
         },
-        "referers" : {
+        "referrer_ids" : {
           "type" : "array",
           "items" : {
             "$ref" : "#/definitions/EncodedHash"
@@ -5144,12 +5144,12 @@
         }
       },
       "example" : {
-        "owner" : null,
         "vm_version" : 20,
         "log" : "log",
-        "referers" : [ null, null ],
+        "owner_id" : null,
         "active" : true,
         "deposit" : 6,
+        "referrer_ids" : [ null, null ],
         "id" : { }
       }
     },
@@ -5302,11 +5302,11 @@
     },
     "ContractCreateData" : {
       "type" : "object",
-      "required" : [ "amount", "call_data", "code", "deposit", "fee", "gas", "gas_price", "owner", "vm_version" ],
+      "required" : [ "amount", "call_data", "code", "deposit", "fee", "gas", "gas_price", "owner_id", "vm_version" ],
       "properties" : {
-        "owner" : {
-          "type" : "string",
-          "description" : "Contract owner pub_key"
+        "owner_id" : {
+          "description" : "Contract owner pub_key",
+          "$ref" : "#/definitions/EncodedHash"
         },
         "nonce" : {
           "type" : "integer",
@@ -5358,12 +5358,12 @@
         }
       },
       "example" : {
-        "owner" : "owner",
         "gas_price" : 0,
         "vm_version" : 153,
         "amount" : 0,
         "code" : "code",
         "call_data" : "call_data",
+        "owner_id" : { },
         "fee" : 0,
         "gas" : 0,
         "deposit" : 0,
@@ -5373,9 +5373,9 @@
     },
     "ContractCreateCompute" : {
       "type" : "object",
-      "required" : [ "amount", "arguments", "code", "deposit", "fee", "gas", "gas_price", "owner", "vm_version" ],
+      "required" : [ "amount", "arguments", "code", "deposit", "fee", "gas", "gas_price", "owner_id", "vm_version" ],
       "properties" : {
-        "owner" : {
+        "owner_id" : {
           "type" : "string",
           "description" : "Contract owner pub_key"
         },
@@ -5429,11 +5429,11 @@
         }
       },
       "example" : {
-        "owner" : "owner",
         "gas_price" : 0,
         "vm_version" : 153,
         "amount" : 0,
         "code" : "code",
+        "owner_id" : "owner_id",
         "fee" : 0,
         "gas" : 0,
         "deposit" : 0,
@@ -5444,19 +5444,19 @@
     },
     "ContractCallData" : {
       "type" : "object",
-      "required" : [ "amount", "call_data", "caller", "contract", "fee", "gas", "gas_price", "vm_version" ],
+      "required" : [ "amount", "call_data", "caller_id", "contract_id", "fee", "gas", "gas_price", "vm_version" ],
       "properties" : {
-        "caller" : {
-          "type" : "string",
-          "description" : "Contract caller pub_key"
+        "caller_id" : {
+          "description" : "Contract caller pub_key",
+          "$ref" : "#/definitions/EncodedHash"
         },
         "nonce" : {
           "type" : "integer",
           "description" : "Caller's nonce"
         },
-        "contract" : {
-          "type" : "string",
-          "description" : "Contract's pub_key"
+        "contract_id" : {
+          "description" : "Contract's pub_key",
+          "$ref" : "#/definitions/EncodedHash"
         },
         "vm_version" : {
           "type" : "integer",
@@ -5496,11 +5496,11 @@
       },
       "example" : {
         "gas_price" : 0,
-        "caller" : "caller",
         "vm_version" : 153,
         "amount" : 0,
         "call_data" : "call_data",
-        "contract" : "contract",
+        "caller_id" : { },
+        "contract_id" : null,
         "fee" : 0,
         "gas" : 0,
         "nonce" : 0,
@@ -5509,19 +5509,19 @@
     },
     "ContractCallCompute" : {
       "type" : "object",
-      "required" : [ "amount", "arguments", "caller", "contract", "fee", "function", "gas", "gas_price", "vm_version" ],
+      "required" : [ "amount", "arguments", "caller_id", "contract_id", "fee", "function", "gas", "gas_price", "vm_version" ],
       "properties" : {
-        "caller" : {
-          "type" : "string",
-          "description" : "Contract caller pub_key"
+        "caller_id" : {
+          "description" : "Contract caller pub_key",
+          "$ref" : "#/definitions/EncodedHash"
         },
         "nonce" : {
           "type" : "integer",
           "description" : "Caller's nonce"
         },
-        "contract" : {
-          "type" : "string",
-          "description" : "Contract's pub_key"
+        "contract_id" : {
+          "description" : "Contract's pub_key",
+          "$ref" : "#/definitions/EncodedHash"
         },
         "vm_version" : {
           "type" : "integer",
@@ -5565,10 +5565,10 @@
       },
       "example" : {
         "gas_price" : 0,
-        "caller" : "caller",
         "vm_version" : 153,
         "amount" : 0,
-        "contract" : "contract",
+        "caller_id" : { },
+        "contract_id" : null,
         "fee" : 0,
         "function" : "function",
         "gas" : 0,
@@ -5608,11 +5608,11 @@
         "$ref" : "#/definitions/UnsignedTx"
       }, {
         "type" : "object",
-        "required" : [ "contract_address" ],
+        "required" : [ "contract_id" ],
         "properties" : {
-          "contract_address" : {
-            "type" : "string",
-            "description" : "Address of the contract to be created"
+          "contract_id" : {
+            "description" : "Address of the contract to be created",
+            "$ref" : "#/definitions/EncodedHash"
           }
         }
       } ]

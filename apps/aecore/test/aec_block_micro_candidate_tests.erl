@@ -65,9 +65,9 @@ block_extension_test_() ->
           Call = aect_call:set_gas_used(
                    GasUsed,
                    aect_call:new(
-                     <<"caller_address........(32 bytes)">>,
+                     aec_id:create(account, <<"caller_address........(32 bytes)">>),
                      _CallerNonce = 1,
-                     <<"contract_address......(32 bytes)">>,
+                     aec_id:create(contract, <<"contract_address......(32 bytes)">>),
                      _BlockHeight = 42,
                      GasPrice)),
 

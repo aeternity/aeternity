@@ -27,7 +27,7 @@
         ]).
 
 %% Additional getters
--export([owner/1,
+-export([owner_id/1,
          owner_pubkey/1,
          code/1,
          contract_pubkey/1,
@@ -49,7 +49,7 @@
 -define(is_non_neg_integer(X), (is_integer(X) andalso (X >= 0))).
 
 -record(contract_create_tx, {
-          owner      :: aec_id:id(),
+          owner_id   :: aec_id:id(),
           nonce      :: non_neg_integer(),
           code       :: binary(),
           vm_version :: aect_contracts:vm_version(),
@@ -71,12 +71,12 @@
 %%%===================================================================
 %%% Getters
 
--spec owner(tx()) -> aec_id:id().
-owner(#contract_create_tx{owner = OwnerId}) ->
+-spec owner_id(tx()) -> aec_id:id().
+owner_id(#contract_create_tx{owner_id = OwnerId}) ->
     OwnerId.
 
 -spec owner_pubkey(tx()) -> aec_keys:pubkey().
-owner_pubkey(#contract_create_tx{owner = OwnerId}) ->
+owner_pubkey(#contract_create_tx{owner_id = OwnerId}) ->
     aec_id:specialize(OwnerId, account).
 
 -spec code(tx()) -> binary().
@@ -127,7 +127,7 @@ ttl(#contract_create_tx{ttl = TTL}) ->
     TTL.
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{owner      := Owner,
+new(#{owner_id   := OwnerId,
       nonce      := Nonce,
       code       := Code,
       vm_version := VmVersion,
@@ -137,8 +137,8 @@ new(#{owner      := Owner,
       gas_price  := GasPrice,
       call_data  := CallData,
       fee        := Fee} = Args) ->
-    account = aec_id:specialize_type(Owner),
-    Tx = #contract_create_tx{owner      = Owner,
+    account = aec_id:specialize_type(OwnerId),
+    Tx = #contract_create_tx{owner_id   = OwnerId,
                              nonce      = Nonce,
                              code       = Code,
                              vm_version = VmVersion,
@@ -167,7 +167,7 @@ origin(#contract_create_tx{} = Tx) ->
 %% the deposit and the gas
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
                    {ok, aec_trees:trees()} | {error, term()}.
-check(#contract_create_tx{nonce = Nonce,
+check(#contract_create_tx{nonce      = Nonce,
                           vm_version = VmVersion,
                           call_data  = CallData,
                           amount     = Amount,
@@ -206,17 +206,17 @@ signers(#contract_create_tx{} = Tx, _) ->
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
               non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
-process(#contract_create_tx{nonce      = Nonce,
-                            vm_version = _VmVersion,
+process(#contract_create_tx{owner_id   = OwnerId,
+                            nonce      = Nonce,
                             amount     = Amount,
-                            gas        = _Gas,
                             gas_price  = GasPrice,
-                            deposit    = _Deposit,
                             fee        = Fee} = CreateTx,
         Context, Trees0, Height, ConsensusVersion, _TxHash) ->
     OwnerPubKey = owner_pubkey(CreateTx),
 
-    {ContractPubKey, Contract, Trees1} = create_contract(CreateTx, Trees0),
+    {Contract, Trees1} = create_contract(CreateTx, Trees0),
+    ContractId = aect_contracts:id(Contract),
+    ContractPubKey  = aect_contracts:pubkey(Contract),
 
     %% Charge the fee to the contract owner (caller)
     %% and transfer the funds (amount) to the contract account.
@@ -225,7 +225,7 @@ process(#contract_create_tx{nonce      = Nonce,
               Nonce, Context, Height, Trees1, ConsensusVersion),
 
     %% Create the init call.
-    Call0 = aect_call:new(OwnerPubKey, Nonce, ContractPubKey, Height, GasPrice),
+    Call0 = aect_call:new(OwnerId, Nonce, ContractId, Height, GasPrice),
     %% Execute init calQl to get the contract state and return value
     {CallRes, Trees3} =
         run_contract(CreateTx, Call0, Height, Trees2, Contract, ContractPubKey),
@@ -255,11 +255,10 @@ create_contract(CreateTx, Trees0) ->
     %%   The public key for the contract is generated from the owners pubkey
     %%   and the nonce, so that no one has the private key.
     Contract        = aect_contracts:new(CreateTx),
-    ContractPubKey  = aect_contracts:pubkey(Contract),
     ContractsTree0  = aec_trees:contracts(Trees0),
     ContractsTree1  = aect_state_tree:insert_contract(Contract, ContractsTree0),
     Trees1          = aec_trees:set_contracts(Trees0, ContractsTree1),
-    {ContractPubKey, Contract, Trees1}.
+    {Contract, Trees1}.
 
 
 spend(SenderPubKey, ReceiverPubKey, Value, Fee, Nonce,
@@ -293,7 +292,7 @@ run_contract(#contract_create_tx{ nonce      =_Nonce
                                 , gas_price  = GasPrice
                                 , call_data  = CallData
                                 } = Tx,
-            Call, Height, Trees,_Contract, ContractPubKey)->
+             Call, Height, Trees,_Contract, ContractPubKey)->
     Caller = owner_pubkey(Tx),
     CallStack = [], %% TODO: should we have a call stack for create_tx also
                     %% when creating a contract in a contract.
@@ -310,7 +309,6 @@ run_contract(#contract_create_tx{ nonce      =_Nonce
                , height     => Height
                , trees      => Trees
                },
-
     aect_dispatch:run(VmVersion, CallDef).
 
 initialize_contract(#contract_create_tx{nonce      = Nonce,
@@ -358,7 +356,7 @@ initialize_contract(#contract_create_tx{nonce      = Nonce,
 
 
 
-serialize(#contract_create_tx{owner      = OwnerId,
+serialize(#contract_create_tx{owner_id   = OwnerId,
                               nonce      = Nonce,
                               code       = Code,
                               vm_version = VmVersion,
@@ -370,7 +368,7 @@ serialize(#contract_create_tx{owner      = OwnerId,
                               gas_price  = GasPrice,
                               call_data  = CallData}) ->
     {version(),
-     [ {owner, OwnerId}
+     [ {owner_id, OwnerId}
      , {nonce, Nonce}
      , {code, Code}
      , {vm_version, VmVersion}
@@ -384,7 +382,7 @@ serialize(#contract_create_tx{owner      = OwnerId,
      ]}.
 
 deserialize(?CONTRACT_CREATE_TX_VSN,
-            [ {owner, OwnerId}
+            [ {owner_id, OwnerId}
             , {nonce, Nonce}
             , {code, Code}
             , {vm_version, VmVersion}
@@ -396,7 +394,7 @@ deserialize(?CONTRACT_CREATE_TX_VSN,
             , {gas_price, GasPrice}
             , {call_data, CallData}]) ->
     account = aec_id:specialize_type(OwnerId),
-    #contract_create_tx{owner      = OwnerId,
+    #contract_create_tx{owner_id   = OwnerId,
                         nonce      = Nonce,
                         code       = Code,
                         vm_version = VmVersion,
@@ -409,7 +407,7 @@ deserialize(?CONTRACT_CREATE_TX_VSN,
                         call_data  = CallData}.
 
 serialization_template(?CONTRACT_CREATE_TX_VSN) ->
-    [ {owner, id}
+    [ {owner_id, id}
     , {nonce, int}
     , {code, binary}
     , {vm_version, int}
@@ -422,7 +420,8 @@ serialization_template(?CONTRACT_CREATE_TX_VSN) ->
     , {call_data, binary}
     ].
 
-for_client(#contract_create_tx{ nonce      = Nonce,
+for_client(#contract_create_tx{ owner_id   = OwnerId,
+                                nonce      = Nonce,
                                 code       = Code,
                                 vm_version = VmVersion,
                                 fee        = Fee,
@@ -431,10 +430,10 @@ for_client(#contract_create_tx{ nonce      = Nonce,
                                 amount     = Amount,
                                 gas        = Gas,
                                 gas_price  = GasPrice,
-                                call_data  = CallData} = Tx) ->
+                                call_data  = CallData}) ->
     #{<<"data_schema">> => <<"ContractCreateTxObject">>, % swagger schema name
       <<"vsn">>         => version(),
-      <<"owner">>       => aec_base58c:encode(id_hash, owner(Tx)),
+      <<"owner_id">>    => aec_base58c:encode(id_hash, OwnerId),
       <<"nonce">>       => Nonce,
       <<"code">>        => aect_utils:hex_bytes(Code),
       <<"vm_version">>  => aect_utils:hex_byte(VmVersion),

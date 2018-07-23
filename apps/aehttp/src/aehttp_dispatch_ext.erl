@@ -492,11 +492,11 @@ handle_request('PostTx', #{'Tx' := Tx} = Req, _Context) ->
 
 handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([owner, code, vm_version, deposit,
+                 read_required_params([owner_id, code, vm_version, deposit,
                                        amount, gas, gas_price, fee, call_data]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{owner, owner, {id_hash, [account_pubkey]}}]),
-                 get_nonce_from_account_id(owner),
+                 base58_decode([{owner_id, owner_id, {id_hash, [account_pubkey]}}]),
+                 get_nonce_from_account_id(owner_id),
                  hexstrings_decode([code, call_data]),
                  ok_response(
                     fun(Data) ->
@@ -505,7 +505,7 @@ handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) -
                         ContractPubKey = CB:contract_pubkey(CTx),
                         #{tx => aec_base58c:encode(transaction,
                                                   aetx:serialize_to_binary(Tx)),
-                          contract_address =>
+                          contract_id =>
                               aec_base58c:encode(contract_pubkey, ContractPubKey)
                          }
                     end)
@@ -514,12 +514,12 @@ handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) -
 
 handle_request('PostContractCreateCompute', #{'ContractCreateCompute' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([owner, code, vm_version, deposit,
+                 read_required_params([owner_id, code, vm_version, deposit,
                                        amount, gas, gas_price, fee,
                                        arguments]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{owner, owner, {id_hash, [account_pubkey]}}]),
-                 get_nonce_from_account_id(owner),
+                 base58_decode([{owner_id, owner_id, {id_hash, [account_pubkey]}}]),
+                 get_nonce_from_account_id(owner_id),
                  hexstrings_decode([code]),
                  compute_contract_create_data(),
                  ok_response(
@@ -529,7 +529,7 @@ handle_request('PostContractCreateCompute', #{'ContractCreateCompute' := Req}, _
                         ContractPubKey = CB:contract_pubkey(CTx),
                         #{tx => aec_base58c:encode(transaction,
                                                   aetx:serialize_to_binary(Tx)),
-                          contract_address =>
+                          contract_id =>
                               aec_base58c:encode(contract_pubkey, ContractPubKey)
                          }
                     end)
@@ -538,13 +538,13 @@ handle_request('PostContractCreateCompute', #{'ContractCreateCompute' := Req}, _
 
 handle_request('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([caller, contract, vm_version,
+                 read_required_params([caller_id, contract_id, vm_version,
                                        amount, gas, gas_price, fee, call_data]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{caller, caller, {id_hash, [account_pubkey]}},
-                                {contract, contract, {id_hash, [contract_pubkey]}}]),
-                 get_nonce_from_account_id(caller),
-                 get_contract_code(contract, contract_code),
+                 base58_decode([{caller_id, caller_id, {id_hash, [account_pubkey]}},
+                                {contract_id, contract_id, {id_hash, [contract_pubkey]}}]),
+                 get_nonce_from_account_id(caller_id),
+                 get_contract_code(contract_id, contract_code),
                  hexstrings_decode([call_data]),
                  unsigned_tx_response(fun aect_call_tx:new/1)
                 ],
@@ -552,14 +552,14 @@ handle_request('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
 
 handle_request('PostContractCallCompute', #{'ContractCallCompute' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([caller, contract, vm_version,
+                 read_required_params([caller_id, contract_id, vm_version,
                                        amount, gas, gas_price, fee,
                                        function, arguments]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{caller, caller, {id_hash, [account_pubkey]}},
-                                {contract, contract, {id_hash, [contract_pubkey]}}]),
-                 get_nonce_from_account_id(caller),
-                 get_contract_code(contract, contract_code),
+                 base58_decode([{caller_id, caller_id, {id_hash, [account_pubkey]}},
+                                {contract_id, contract_id, {id_hash, [contract_pubkey]}}]),
+                 get_nonce_from_account_id(caller_id),
+                 get_contract_code(contract_id, contract_code),
                  compute_contract_call_data(),
                  unsigned_tx_response(fun aect_call_tx:new/1)
                 ],

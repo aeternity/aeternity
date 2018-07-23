@@ -204,11 +204,11 @@ create_contract_init_error(_Cfg) ->
     InitCallId = aect_call:id(PubKey, aetx:nonce(Tx), ContractKey),
     {value, InitCall} = aect_call_state_tree:lookup_call(ContractKey, InitCallId, aect_test_utils:calls(S2)),
     %% Check that the created init call has the correct details from the contract create tx
-    ?assertEqual(PubKey, aect_call:caller_address(InitCall)),
+    ?assertEqual(PubKey, aect_call:caller_pubkey(InitCall)),
     ?assertEqual(aetx:nonce(Tx), aect_call:caller_nonce(InitCall)),
     ?assertEqual(aect_create_tx:gas_price(aetx:tx(Tx)), aect_call:gas_price(InitCall)),
     %% Check that the created init call has the correct details not from the contract create tx
-    ?assertEqual(ContractKey, aect_call:contract_address(InitCall)), %% Contract not created.
+    ?assertEqual(ContractKey, aect_call:contract_pubkey(InitCall)), %% Contract not created.
     ?assertMatch(X when X > 0, aect_call:gas_used(InitCall)),
     ?assertEqual(error, aect_call:return_type(InitCall)),
     _ = aect_call:return_value(InitCall),
@@ -240,10 +240,10 @@ create_contract_(ContractCreateTxGasPrice) ->
     IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
     CallData     = aeso_abi:create_calldata(IdContract, "init", "()"),
     Overrides    = #{ code => IdContract
-        , call_data => CallData
-        , gas => 10000
-        , gas_price => ContractCreateTxGasPrice
-    },
+                    , call_data => CallData
+                    , gas => 10000
+                    , gas_price => ContractCreateTxGasPrice
+                    },
     Tx           = aect_test_utils:create_tx(PubKey, Overrides, S1),
     ?assertEqual(ContractCreateTxGasPrice, aect_create_tx:gas_price(aetx:tx(Tx))),
 
@@ -253,25 +253,25 @@ create_contract_(ContractCreateTxGasPrice) ->
     ContractKey = aect_contracts:compute_contract_pubkey(PubKey, aetx:nonce(Tx)),
     {{value, Contract}, _} = lookup_contract_by_id(ContractKey, S2),
     %% Check that the created contract has the correct details from the contract create tx
-    ?assertEqual(PubKey, aect_contracts:owner(Contract)),
+    ?assertEqual(PubKey, aect_contracts:owner_pubkey(Contract)),
     ?assertEqual(aect_create_tx:vm_version(aetx:tx(Tx)), aect_contracts:vm_version(Contract)),
     ?assertEqual(aect_create_tx:code(aetx:tx(Tx)), aect_contracts:code(Contract)),
     ?assertEqual(aect_create_tx:deposit(aetx:tx(Tx)), aect_contracts:deposit(Contract)),
     %% Check that the created contract has the correct details not from the contract create tx
     _ = aect_contracts:log(Contract),
     ?assert(aect_contracts:active(Contract)),
-    ?assertEqual([], aect_contracts:referers(Contract)),
+    ?assertEqual([], aect_contracts:referrer_ids(Contract)),
     %% Check that the contract init call is created
     ?assertEqual([], aect_call_state_tree:to_list(aect_test_utils:calls(S1))),
     ?assertMatch([_], aect_call_state_tree:to_list(aect_test_utils:calls(S2))),
     InitCallId = aect_call:id(PubKey, aetx:nonce(Tx), ContractKey),
     {value, InitCall} = aect_call_state_tree:lookup_call(ContractKey, InitCallId, aect_test_utils:calls(S2)),
     %% Check that the created init call has the correct details from the contract create tx
-    ?assertEqual(PubKey, aect_call:caller_address(InitCall)),
+    ?assertEqual(PubKey, aect_call:caller_pubkey(InitCall)),
     ?assertEqual(aetx:nonce(Tx), aect_call:caller_nonce(InitCall)),
     ?assertEqual(aect_create_tx:gas_price(aetx:tx(Tx)), aect_call:gas_price(InitCall)),
     %% Check that the created init call has the correct details not from the contract create tx
-    ?assertEqual(ContractKey, aect_call:contract_address(InitCall)),
+    ?assertEqual(ContractKey, aect_call:contract_pubkey(InitCall)),
     _ = aect_call:height(InitCall), %% Unclear if this needed.
     ?assertMatch(X when X > 0, aect_call:gas_used(InitCall)),
     ?assertEqual(ok, aect_call:return_type(InitCall)),
@@ -365,10 +365,10 @@ call_contract_(ContractCallTxGasPrice) ->
     IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
     CallDataInit = aeso_abi:create_calldata(IdContract, "init", "()"),
     Overrides    = #{ code => IdContract
-		    , call_data => CallDataInit
-		    , gas => 10000
+                    , call_data => CallDataInit
+                    , gas => 10000
                     , gas_price => 1
-		    },
+                    },
     CreateTx     = aect_test_utils:create_tx(Owner, Overrides, S2),
     ?assertEqual(1, aect_create_tx:gas_price(aetx:tx(CreateTx))),
 
@@ -396,10 +396,10 @@ call_contract_(ContractCallTxGasPrice) ->
     ok = aect_call:return_type(Call),
     <<42:256>> = aect_call:return_value(Call),
     %% Check that the stored call has the correct rest of the details
-    ?assertEqual(Caller, aect_call:caller_address(Call)),
+    ?assertEqual(Caller, aect_call:caller_pubkey(Call)),
     ?assertEqual(aetx:nonce(CallTx), aect_call:caller_nonce(Call)),
     _ = aect_call:height(Call), %% Unclear if this needed.
-    ?assertEqual(ContractKey, aect_call:contract_address(Call)),
+    ?assertEqual(ContractKey, aect_call:contract_pubkey(Call)),
     ?assertEqual(aect_call_tx:gas_price(aetx:tx(CallTx)), aect_call:gas_price(Call)),
     ?assertMatch(X when X > 0, aect_call:gas_used(Call)),
 
@@ -458,7 +458,8 @@ make_contract(PubKey, Code, S) ->
     aect_contracts:new(CTx).
 
 make_call(PubKey, ContractKey,_Call,_S) ->
-    aect_call:new(PubKey, 0, ContractKey, 1, 1).
+    aect_call:new(aec_id:create(account, PubKey), 0,
+                  aec_id:create(contract, ContractKey), 1, 1).
 
 state()  -> get(the_state).
 state(S) -> put(the_state, S).
@@ -494,15 +495,15 @@ insert_contract(Account, Code, S) ->
     {Contract, aect_test_utils:set_contracts(Contracts, S)}.
 
 insert_call(Sender, Contract, Fun, S) ->
-    ContractId = aect_contracts:id(Contract),
-    Call       = make_call(Sender, ContractId, Fun, S),
-    CallTree   = aect_call_state_tree:insert_call(Call, aect_test_utils:calls(S)),
+    ContractPubkey = aect_contracts:pubkey(Contract),
+    Call           = make_call(Sender, ContractPubkey, Fun, S),
+    CallTree       = aect_call_state_tree:insert_call(Call, aect_test_utils:calls(S)),
     {Call, aect_test_utils:set_calls(CallTree, S)}.
 
 get_contract(Contract0, S) ->
-    ContractKey = aect_contracts:id(Contract0),
-    Contracts   = aect_test_utils:contracts(S),
-    Contract    = aect_state_tree:get_contract(ContractKey, Contracts),
+    ContractPubkey = aect_contracts:pubkey(Contract0),
+    Contracts      = aect_test_utils:contracts(S),
+    Contract       = aect_state_tree:get_contract(ContractPubkey, Contracts),
     {Contract, S}.
 
 lookup_contract_by_id(ContractKey, S) ->
@@ -511,10 +512,10 @@ lookup_contract_by_id(ContractKey, S) ->
     {X, S}.
 
 get_call(Contract0, Call0, S) ->
-    CallId     = aect_call:id(Call0),
-    ContractId = aect_contracts:id(Contract0),
-    CallTree   = aect_test_utils:calls(S),
-    Call       = aect_call_state_tree:get_call(ContractId, CallId, CallTree),
+    CallId         = aect_call:id(Call0),
+    ContractPubkey = aect_contracts:pubkey(Contract0),
+    CallTree       = aect_test_utils:calls(S),
+    Call           = aect_call_state_tree:get_call(ContractPubkey, CallId, CallTree),
     {Call, S}.
 
 state_tree(_Cfg) ->
@@ -584,6 +585,7 @@ call_contract(Caller, ContractKey, Fun, Type, Args0, Options, S) ->
     CallKey  = aect_call:id(Caller, Nonce, ContractKey),
     CallTree = aect_test_utils:calls(S1),
     Call     = aect_call_state_tree:get_call(ContractKey, CallKey, CallTree),
+    ct:log(">>>> CALL: ~p", [Call]),
     Result   =
         case aect_call:return_type(Call) of
             ok     -> {ok, Res} = aeso_data:from_binary(Type, aect_call:return_value(Call)),

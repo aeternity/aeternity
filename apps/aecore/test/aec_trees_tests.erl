@@ -111,7 +111,7 @@ poi_test_() ->
                             ?TEST_MODULE:add_poi(accounts, AccountPubkey,
                                                  Trees0, Poi0)),
 
-               ContractPubkey = aect_contracts:id(make_contract(AccountPubkey)),
+               ContractPubkey = aect_contracts:pubkey(make_contract(AccountPubkey)),
                ?assertEqual({error, not_present},
                             ?TEST_MODULE:add_poi(contracts, ContractPubkey,
                                                  Trees0, Poi0))
@@ -137,7 +137,7 @@ poi_test_() ->
                AccountPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
                Account = aec_accounts:new(AccountPubkey, 0),
                Contract = make_contract(AccountPubkey),
-               ContractId = aect_contracts:id(Contract),
+               ContractPubkey = aect_contracts:pubkey(Contract),
 
                %% Check that empty PoI does not prove object.
                Trees0 = aec_test_utils:create_state_tree(),
@@ -145,7 +145,7 @@ poi_test_() ->
                ?assertMatch({error, _},
                             aec_trees:verify_poi(accounts, AccountPubkey, Account, Poi0)),
                ?assertMatch({error, _},
-                            aec_trees:verify_poi(contracts, ContractId, Contract, Poi0)),
+                            aec_trees:verify_poi(contracts, ContractPubkey, Contract, Poi0)),
 
                %% Check that non-empty PoI that does not include
                %% object does not prove it.
@@ -155,13 +155,13 @@ poi_test_() ->
                Poi1A = ?TEST_MODULE:new_poi(Trees1A),
                {ok, Poi1A1} = ?TEST_MODULE:add_poi(accounts, AccountPubkey, Trees1A, Poi1A),
                ?assertMatch({error, _},
-                            aec_trees:verify_poi(contracts, ContractId, Contract, Poi1A1)),
+                            aec_trees:verify_poi(contracts, ContractPubkey, Contract, Poi1A1)),
                %%
                Trees1C = aec_trees:set_contracts(
                            Trees0,
                            aect_state_tree:insert_contract(Contract, aec_trees:contracts(Trees0))),
                Poi1C = ?TEST_MODULE:new_poi(Trees1C),
-               {ok, Poi1C1} = ?TEST_MODULE:add_poi(contracts, ContractId, Trees1C, Poi1C),
+               {ok, Poi1C1} = ?TEST_MODULE:add_poi(contracts, ContractPubkey, Trees1C, Poi1C),
                ?assertMatch({error, _},
                             aec_trees:verify_poi(accounts, AccountPubkey, Account, Poi1C1)),
 
@@ -173,14 +173,14 @@ poi_test_() ->
                Contract = aect_contracts:set_state(#{<<1>> => <<"v1">>,
                                                      <<2>> => <<"v2">>},
                                                    make_contract(OwnerPubkey)),
-               ContractId = aect_contracts:id(Contract),
+               ContractPubkey = aect_contracts:pubkey(Contract),
 
                Trees0 = aec_test_utils:create_state_tree(),
                Trees1 = aec_trees:set_contracts(
                           Trees0,
                           aect_state_tree:insert_contract(Contract, aec_trees:contracts(Trees0))),
                Poi1 = ?TEST_MODULE:new_poi(Trees1),
-               {ok, Poi11} = ?TEST_MODULE:add_poi(contracts, ContractId, Trees1, Poi1),
+               {ok, Poi11} = ?TEST_MODULE:add_poi(contracts, ContractPubkey, Trees1, Poi1),
                Poi11Fields = aec_trees:internal_serialize_poi_fields(Poi11),
 
                PoiFromFieldsF =
@@ -191,7 +191,7 @@ poi_test_() ->
 
                %% The identified PoI fields lead to PoI that proves object.
                ?assertEqual(ok,
-                            aec_trees:verify_poi(contracts, ContractId, Contract,
+                            aec_trees:verify_poi(contracts, ContractPubkey, Contract,
                                                  PoiFromFieldsF(Poi11Fields))),
 
                %% Check that removing a node from PoI makes object inclusion not proved.
@@ -210,7 +210,7 @@ poi_test_() ->
                                  end,
                                  Poi11Fields)),
                          ?assertMatch({error, _},
-                                      aec_trees:verify_poi(contracts, ContractId, Contract,
+                                      aec_trees:verify_poi(contracts, ContractPubkey, Contract,
                                                            BrokenSerializedPoi))
                  end,
                  Poi11ProofKVs),
@@ -469,7 +469,7 @@ assert_not_equal_poi(PoIExpect, PoIExpr) ->
                     ?TEST_MODULE:serialize_poi(PoIExpr)).
 
 check_poi_for_one_contract(Contract, ChangeContractFun) ->
-    ContractKeyF = fun(C) -> aect_contracts:id(C) end,
+    ContractKeyF = fun(C) -> aect_contracts:pubkey(C) end,
     InsertContractF =
         fun(Ts, C) ->
                 Cs = aec_trees:contracts(Ts),
@@ -484,7 +484,7 @@ check_poi_for_one_contract(Contract, ChangeContractFun) ->
       Contract).
 
 check_poi_for_a_contract_among_others(Contract, OtherContracts) ->
-    ContractKeyF = fun(C) -> aect_contracts:id(C) end,
+    ContractKeyF = fun(C) -> aect_contracts:pubkey(C) end,
     InsertContractF =
         fun(Ts, C) ->
                 Cs = aec_trees:contracts(Ts),
@@ -595,9 +595,9 @@ check_poi_for_contract_with_invalid_store_with_binary_keys(
     ValidContract = make_contract(OwnerPubkey, VmVersion),
     InvalidContract = aect_contracts:internal_set_state(InvalidStore,
                                                         ValidContract),
-    ContractId = aect_contracts:id(InvalidContract),
+    ContractPubkey = aect_contracts:pubkey(InvalidContract),
     ?assertNotEqual(ValidContract, InvalidContract), %% Hardcoded expectation on test data.
-    ?assertEqual(aect_contracts:id(ValidContract), ContractId), %% Hardcoded expectation on test data.
+    ?assertEqual(aect_contracts:pubkey(ValidContract), ContractPubkey), %% Hardcoded expectation on test data.
 
     %% Include invalid contract in state trees.
     Trees0 = aec_test_utils:create_state_tree(),
@@ -608,7 +608,7 @@ check_poi_for_contract_with_invalid_store_with_binary_keys(
 
     %% Generate PoI for invalid contract.
     {ok, InvalidPoi0} = ?TEST_MODULE:add_poi(
-                           contracts, ContractId,
+                           contracts, ContractPubkey,
                            InvalidTrees,
                            ?TEST_MODULE:new_poi(InvalidTrees)),
     InvalidSerializedPoi0 = ?TEST_MODULE:serialize_poi(InvalidPoi0),
@@ -620,16 +620,16 @@ check_poi_for_contract_with_invalid_store_with_binary_keys(
                    Trees0,
                    aect_state_tree:insert_contract(
                      ValidContract, aec_trees:contracts(Trees0))),
-    {ok, ValidPoi} = ?TEST_MODULE:add_poi(contracts, ContractId,
+    {ok, ValidPoi} = ?TEST_MODULE:add_poi(contracts, ContractPubkey,
                                           ValidTrees,
                                           ?TEST_MODULE:new_poi(ValidTrees)),
     assert_not_equal_poi(ValidPoi, InvalidPoi),
     ?assertEqual({error, bad_proof},
-                 aec_trees:verify_poi(contracts, ContractId,
+                 aec_trees:verify_poi(contracts, ContractPubkey,
                                       InvalidContract,
                                       InvalidPoi)),
     ?assertEqual({error, bad_proof},
-                 aec_trees:verify_poi(contracts, ContractId,
+                 aec_trees:verify_poi(contracts, ContractPubkey,
                                       ValidContract,
                                       InvalidPoi)),
     ok.
@@ -658,7 +658,7 @@ make_contract(Owner, VmVersion) ->
 ct_create_tx(Sender, VmVersion) ->
     Spec =
         #{ fee        => 5
-         , owner      => aec_id:create(account, Sender)
+         , owner_id   => aec_id:create(account, Sender)
          , nonce      => 0
          , code       => <<"NOT PROPER BYTE CODE">>
          , vm_version => VmVersion

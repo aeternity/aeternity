@@ -119,8 +119,8 @@ new_poi(Trees) ->
                                                                      | {'error', term()}.
 add_poi(accounts, PubKey, Trees, #poi{} = Poi) ->
     internal_add_accounts_poi(PubKey, accounts(Trees), Poi);
-add_poi(contracts, Id, Trees, #poi{} = Poi) ->
-    internal_add_contracts_poi(Id, contracts(Trees), Poi);
+add_poi(contracts, Pubkey, Trees, #poi{} = Poi) ->
+    internal_add_contracts_poi(Pubkey, contracts(Trees), Poi);
 add_poi(Type,_PubKey,_Trees, #poi{} =_Poi) ->
     error({nyi, Type}).
 
