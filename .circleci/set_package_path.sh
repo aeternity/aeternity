@@ -1,4 +1,6 @@
-#!/bin/sh
+#!/bin/bash
+
+set -e
 
 if [ "$(uname -s)" == "Darwin" ]; then
     PKG_SUFFIX="osx-$(sw_vers -productVersion)"
@@ -7,11 +9,8 @@ elif [ "$(uname -s)" == "Linux" ]; then
 fi
 
 VERSION=${CIRCLE_SHA1:-unknown}
-if test -n $CIRCLE_TAG; then
-    MATCH=$(echo $CIRCLE_TAG | grep -E "^v([0-9]+\.[0-9]+\.[0-9]+)$")
-    if test $? -eq 0; then
-        VERSION=$MATCH
-    fi
+if [[ -n $CIRCLE_TAG && $CIRCLE_TAG =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+    VERSION=${BASH_REMATCH[1]}
 fi
 
 PACKAGE_TARBALL=${PACKAGES_DIR:?}/epoch-${VERSION}-${PKG_SUFFIX}.tar.gz
