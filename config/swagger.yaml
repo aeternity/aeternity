@@ -3309,9 +3309,9 @@ definitions:
     properties:
       id:
         $ref: '#/definitions/EncodedHash'
-      initiator:
+      initiator_id:
         $ref: '#/definitions/EncodedHash'
-      responder:
+      responder_id:
         $ref: '#/definitions/EncodedHash'
       total_amount:
         type: integer
@@ -3329,7 +3329,7 @@ definitions:
         type: integer
         format: int64
         minimum: 0
-      delegates:
+      delegate_ids:
         type: array
         items:
           $ref: '#/definitions/EncodedHash'
@@ -3349,13 +3349,13 @@ definitions:
   ChannelCreateTx:
     type: object
     properties:
-      initiator:
+      initiator_id:
         $ref: '#/definitions/EncodedHash'
       initiator_amount:
         type: integer
         format: int64
         minimum: 0
-      responder:
+      responder_id:
         $ref: '#/definitions/EncodedHash'
       responder_amount:
         type: integer
@@ -3389,9 +3389,9 @@ definitions:
         description: 'Root hash of the channel''s internal state tree'
         $ref: '#/definitions/EncodedHash'
     required:
-    - initiator
+    - initiator_id
     - initiator_amount
-    - responder
+    - responder_id
     - responder_amount
     - push_amount
     - channel_reserve
@@ -3403,7 +3403,7 @@ definitions:
     properties:
       channel_id:
         $ref: '#/definitions/EncodedHash'
-      from:
+      from_id:
         $ref: '#/definitions/EncodedHash'
       amount:
         type: integer
@@ -3431,7 +3431,7 @@ definitions:
         description: 'Channel''s next round'
     required:
     - channel_id
-    - from
+    - from_id
     - amount
     - fee
     - nonce
@@ -3442,7 +3442,7 @@ definitions:
     properties:
       channel_id:
         $ref: '#/definitions/EncodedHash'
-      to:
+      to_id:
         $ref: '#/definitions/EncodedHash'
       amount:
         type: integer
@@ -3470,7 +3470,7 @@ definitions:
         description: 'Channel''s next round'
     required:
     - channel_id
-    - to
+    - to_id
     - amount
     - fee
     - nonce
@@ -3481,7 +3481,7 @@ definitions:
     properties:
       channel_id:
         $ref: '#/definitions/EncodedHash'
-      from:
+      from_id:
         $ref: '#/definitions/EncodedHash'
       payload:
         type: string
@@ -3538,7 +3538,7 @@ definitions:
     properties:
       channel_id:
         $ref: '#/definitions/EncodedHash'
-      from:
+      from_id:
         $ref: '#/definitions/EncodedHash'
       payload:
         type: string
@@ -3559,7 +3559,7 @@ definitions:
         description: 'Proof of inclusion containing information for closing the channel'
     required:
     - channel_id
-    - from
+    - from_id
     - payload
     - fee
     - poi
@@ -3568,7 +3568,7 @@ definitions:
     properties:
       channel_id:
         $ref: '#/definitions/EncodedHash'
-      from:
+      from_id:
         $ref: '#/definitions/EncodedHash'
       payload:
         type: string
@@ -3589,7 +3589,7 @@ definitions:
         description: 'Proof of inclusion containing information for closing the channel'
     required:
     - channel_id
-    - from
+    - from_id
     - payload
     - fee
     - poi
@@ -3598,7 +3598,7 @@ definitions:
     properties:
       channel_id:
         $ref: '#/definitions/EncodedHash'
-      from:
+      from_id:
         $ref: '#/definitions/EncodedHash'
       initiator_amount_final:
         type: integer
@@ -3622,7 +3622,7 @@ definitions:
         minimum: 0
     required:
     - channel_id
-    - from
+    - from_id
     - initiator_amount_final
     - responder_amount_final
     - fee
@@ -3632,7 +3632,7 @@ definitions:
     properties:
       channel_id:
         $ref: '#/definitions/EncodedHash'
-      from:
+      from_id:
         $ref: '#/definitions/EncodedHash'
       payload:
         type: string

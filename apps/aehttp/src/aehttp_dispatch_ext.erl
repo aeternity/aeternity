@@ -690,28 +690,28 @@ handle_request('PostSpend', #{'SpendTx' := Req}, _Context) ->
 
 handle_request('PostChannelCreate', #{'ChannelCreateTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([initiator, initiator_amount,
+                 read_required_params([initiator_id, initiator_amount,
                                        state_hash,
-                                       responder, responder_amount,
+                                       responder_id, responder_amount,
                                        push_amount, channel_reserve,
                                        lock_period, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{initiator, initiator, {id_hash, [account_pubkey]}},
-                                {responder, responder, {id_hash, [account_pubkey]}},
+                 base58_decode([{initiator_id, initiator_id, {id_hash, [account_pubkey]}},
+                                {responder_id, responder_id, {id_hash, [account_pubkey]}},
                                 {state_hash, state_hash, state}
                                ]),
-                 get_nonce_from_account_id(initiator),
+                 get_nonce_from_account_id(initiator_id),
                  unsigned_tx_response(fun aesc_create_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
 
 handle_request('PostChannelDeposit', #{'ChannelDepositTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([channel_id, from,
+                 read_required_params([channel_id, from_id,
                                        amount, fee, state_hash, round, nonce]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  base58_decode([{channel_id, channel_id, {id_hash, [channel]}},
-                                {from, from, {id_hash, [account_pubkey]}},
+                                {from_id, from_id, {id_hash, [account_pubkey]}},
                                 {state_hash, state_hash, state}]),
                  unsigned_tx_response(fun aesc_deposit_tx:new/1)
                 ],
@@ -719,11 +719,11 @@ handle_request('PostChannelDeposit', #{'ChannelDepositTx' := Req}, _Context) ->
 
 handle_request('PostChannelWithdrawal', #{'ChannelWithdrawalTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([channel_id, to,
+                 read_required_params([channel_id, to_id,
                                        amount, fee, state_hash, round, nonce]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  base58_decode([{channel_id, channel_id, {id_hash, [channel]}},
-                                {to, to, {id_hash, [account_pubkey]}},
+                                {to_id, to_id, {id_hash, [account_pubkey]}},
                                 {state_hash, state_hash, state}]),
                  unsigned_tx_response(fun aesc_withdraw_tx:new/1)
                 ],
@@ -731,12 +731,12 @@ handle_request('PostChannelWithdrawal', #{'ChannelWithdrawalTx' := Req}, _Contex
 
 handle_request('PostChannelSnapshotSolo', #{'ChannelSnapshotSoloTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([channel_id, from,
+                 read_required_params([channel_id, from_id,
                                        payload, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  base58_decode([{channel_id, channel_id, {id_hash, [channel]}},
-                                {from, from, {id_hash, [account_pubkey]}}]),
-                 get_nonce_from_account_id(from),
+                                {from_id, from_id, {id_hash, [account_pubkey]}}]),
+                 get_nonce_from_account_id(from_id),
                  unsigned_tx_response(fun aesc_snapshot_solo_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
@@ -756,13 +756,13 @@ handle_request('PostChannelCloseMutual', #{'ChannelCloseMutualTx' := Req}, _Cont
 
 handle_request('PostChannelCloseSolo', #{'ChannelCloseSoloTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([channel_id, from,
+                 read_required_params([channel_id, from_id,
                                        payload, poi, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  base58_decode([{channel_id, channel_id, {id_hash, [channel]}},
-                                {from, from, {id_hash, [account_pubkey]}},
+                                {from_id, from_id, {id_hash, [account_pubkey]}},
                                 {poi, poi, poi}]),
-                 get_nonce_from_account_id(from),
+                 get_nonce_from_account_id(from_id),
                  poi_decode(poi),
                  unsigned_tx_response(fun aesc_close_solo_tx:new/1)
                 ],
@@ -770,13 +770,13 @@ handle_request('PostChannelCloseSolo', #{'ChannelCloseSoloTx' := Req}, _Context)
 
 handle_request('PostChannelSlash', #{'ChannelSlashTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([channel_id, from,
+                 read_required_params([channel_id, from_id,
                                        payload, poi, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  base58_decode([{channel_id, channel_id, {id_hash, [channel]}},
-                                {from, from, {id_hash, [account_pubkey]}},
+                                {from_id, from_id, {id_hash, [account_pubkey]}},
                                 {poi, poi, poi}]),
-                 get_nonce_from_account_id(from),
+                 get_nonce_from_account_id(from_id),
                  poi_decode(poi),
                  unsigned_tx_response(fun aesc_slash_tx:new/1)
                 ],
@@ -784,13 +784,13 @@ handle_request('PostChannelSlash', #{'ChannelSlashTx' := Req}, _Context) ->
 
 handle_request('PostChannelSettle', #{'ChannelSettleTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([channel_id, from,
+                 read_required_params([channel_id, from_id,
                                        initiator_amount_final,
                                        responder_amount_final,
                                        fee, nonce]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  base58_decode([{channel_id, channel_id, {id_hash, [channel]}},
-                                {from, from, {id_hash, [account_pubkey]}}]),
+                                {from_id, from_id, {id_hash, [account_pubkey]}}]),
                  unsigned_tx_response(fun aesc_settle_tx:new/1)
                 ],
     process_request(ParseFuns, Req);

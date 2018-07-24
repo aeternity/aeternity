@@ -1805,15 +1805,15 @@ get_channel_by_pubkey(_Config) ->
 
     {ok, 200, #{
         <<"id">> := ChannelId,
-        <<"initiator">> := Initiator,
-        <<"responder">> := Responder,
-        <<"delegates">> := [],         %% Update needed
+        <<"initiator_id">> := InitiatorId,
+        <<"responder_id">> := ResponderId,
+        <<"delegate_ids">> := [],         %% Update needed
         <<"state_hash">> := StateHash
       }} = get_channel_by_pubkey_sut(ChannelId),
 
-    ?assertEqual({ok, IPub}, aec_base58c:safe_decode(account_pubkey, Initiator)),
-    ?assertEqual({ok, RPub}, aec_base58c:safe_decode(account_pubkey, Responder)),
-    ?assertMatch({ok, _}, aec_base58c:safe_decode(block_state_hash, StateHash)),
+    ?assertEqual({ok, IPub}, aec_base58c:safe_decode(account_pubkey, InitiatorId)),
+    ?assertEqual({ok, RPub}, aec_base58c:safe_decode(account_pubkey, ResponderId)),
+    ?assertMatch({ok, _}, aec_base58c:safe_decode(state, StateHash)),
     ok.
 
 get_channel_by_pubkey_sut(PubKey) ->
@@ -2709,55 +2709,55 @@ state_channels_onchain_transactions(_Config) ->
     ParticipantPubkey = random_hash(),
     ok = give_tokens(ParticipantPubkey, 100),
     {ok, AeTx} = state_channels_create(MinerPubkey, ParticipantPubkey),
-    ChannelId = state_channel_id(AeTx),
-    state_channels_deposit(ChannelId, MinerPubkey),
-    state_channels_withdrawal(ChannelId, MinerPubkey),
-    state_channels_snapshot_solo(ChannelId, MinerPubkey),
-    state_channels_close_mutual(ChannelId, MinerPubkey),
-    state_channels_close_solo(ChannelId, MinerPubkey),
-    state_channels_slash(ChannelId, MinerPubkey),
-    state_channels_settle(ChannelId, MinerPubkey),
+    ChannelPubKey = state_channel_pubkey(AeTx),
+    state_channels_deposit(ChannelPubKey, MinerPubkey),
+    state_channels_withdrawal(ChannelPubKey, MinerPubkey),
+    state_channels_snapshot_solo(ChannelPubKey, MinerPubkey),
+    state_channels_close_mutual(ChannelPubKey, MinerPubkey),
+    state_channels_close_solo(ChannelPubKey, MinerPubkey),
+    state_channels_slash(ChannelPubKey, MinerPubkey),
+    state_channels_settle(ChannelPubKey, MinerPubkey),
     ok.
 
-state_channel_id(Tx) ->
+state_channel_pubkey(Tx) ->
     {channel_create_tx, ChCTx} = aetx:specialize_type(Tx),
     Initiator = aesc_create_tx:initiator_pubkey(ChCTx),
     Nonce = aesc_create_tx:nonce(ChCTx),
     Responder = aesc_create_tx:responder_pubkey(ChCTx),
-    aesc_channels:id(Initiator, Nonce, Responder).
+    aesc_channels:pubkey(Initiator, Nonce, Responder).
 
 state_channels_create(MinerPubkey, ResponderPubkey) ->
-    Encoded = #{initiator => aec_base58c:encode(account_pubkey, MinerPubkey),
+    Encoded = #{initiator_id => aec_base58c:encode(account_pubkey, MinerPubkey),
                 initiator_amount => 2,
-                responder => aec_base58c:encode(account_pubkey, ResponderPubkey),
+                responder_id => aec_base58c:encode(account_pubkey, ResponderPubkey),
                 responder_amount => 3,
                 push_amount => 5, channel_reserve => 5,
                 lock_period => 20,
                 state_hash => aec_base58c:encode(state, ?BOGUS_STATE_HASH),
                 fee => 1},
     Decoded = maps:merge(Encoded,
-                        #{initiator => aec_id:create(account, MinerPubkey),
-                          responder => aec_id:create(account, ResponderPubkey),
+                        #{initiator_id => aec_id:create(account, MinerPubkey),
+                          responder_id => aec_id:create(account, ResponderPubkey),
                           state_hash => ?BOGUS_STATE_HASH}),
     {ok, Tx} = unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_create/1,
                                fun aesc_create_tx:new/1, MinerPubkey),
-    test_invalid_hash({account_pubkey, MinerPubkey}, initiator, Encoded, fun get_channel_create/1),
-    test_invalid_hash({account_pubkey, ResponderPubkey}, responder, Encoded, fun get_channel_create/1),
-    test_missing_address(initiator, Encoded, fun get_channel_create/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, initiator_id, Encoded, fun get_channel_create/1),
+    test_invalid_hash({account_pubkey, ResponderPubkey}, responder_id, Encoded, fun get_channel_create/1),
+    test_missing_address(initiator_id, Encoded, fun get_channel_create/1),
     {ok, Tx}.
 
 state_channels_deposit(ChannelId, MinerPubkey) ->
     MinerAddress = aec_base58c:encode(account_pubkey, MinerPubkey),
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                from => MinerAddress,
+                from_id => MinerAddress,
                 amount => 2,
                 state_hash => aec_base58c:encode(state, ?BOGUS_STATE_HASH),
                 round => 42,
                 fee => 1},
     Decoded = maps:merge(Encoded,
                         #{channel_id => aec_id:create(channel, ChannelId),
-                          from => aec_id:create(account, MinerPubkey),
+                          from_id => aec_id:create(account, MinerPubkey),
                           state_hash => ?BOGUS_STATE_HASH}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_deposit/1,
@@ -2766,20 +2766,20 @@ state_channels_deposit(ChannelId, MinerPubkey) ->
     {{ok, NextNonce}, _} = {rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
                             MinerPubkey},
     Encoded1 = maps:put(nonce, NextNonce, Encoded),
-    test_invalid_hash({account_pubkey, MinerPubkey}, from, Encoded1, fun get_channel_deposit/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, from_id, Encoded1, fun get_channel_deposit/1),
     ok.
 
 state_channels_withdrawal(ChannelId, MinerPubkey) ->
     MinerAddress = aec_base58c:encode(account_pubkey, MinerPubkey),
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                to => MinerAddress,
+                to_id => MinerAddress,
                 amount => 2,
                 state_hash => aec_base58c:encode(state, ?BOGUS_STATE_HASH),
                 round => 42,
                 fee => 1},
     Decoded = maps:merge(Encoded,
                         #{channel_id => aec_id:create(channel, ChannelId),
-                          to => aec_id:create(account, MinerPubkey),
+                          to_id => aec_id:create(account, MinerPubkey),
                           state_hash => ?BOGUS_STATE_HASH}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_withdrawal/1,
@@ -2788,22 +2788,22 @@ state_channels_withdrawal(ChannelId, MinerPubkey) ->
     {{ok, NextNonce}, _} = {rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
                             MinerPubkey},
     Encoded1 = maps:put(nonce, NextNonce, Encoded),
-    test_invalid_hash({account_pubkey, MinerPubkey}, to, Encoded1, fun get_channel_withdrawal/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, to_id, Encoded1, fun get_channel_withdrawal/1),
     ok.
 
 state_channels_snapshot_solo(ChannelId, MinerPubkey) ->
     PoI = aec_trees:new_poi(aec_trees:new_without_backend()),
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                from => aec_base58c:encode(account_pubkey, MinerPubkey),
+                from_id => aec_base58c:encode(account_pubkey, MinerPubkey),
                 payload => <<"hejsan svejsan">>, %%TODO proper payload
                 fee => 1},
     Decoded = maps:merge(Encoded,
-                        #{from => aec_id:create(account, MinerPubkey),
+                        #{from_id => aec_id:create(account, MinerPubkey),
                           channel_id => aec_id:create(channel, ChannelId)}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_snapshot_solo/1,
                                fun aesc_snapshot_solo_tx:new/1, MinerPubkey),
-    test_invalid_hash({account_pubkey, MinerPubkey},  from, Encoded, fun get_channel_snapshot_solo/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, from_id, Encoded, fun get_channel_snapshot_solo/1),
     ok.
 
 state_channels_close_mutual(ChannelId, InitiatorPubkey) ->
@@ -2826,45 +2826,45 @@ state_channels_close_mutual(ChannelId, InitiatorPubkey) ->
 state_channels_close_solo(ChannelId, MinerPubkey) ->
     PoI = aec_trees:new_poi(aec_trees:new_without_backend()),
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                from => aec_base58c:encode(account_pubkey, MinerPubkey),
+                from_id => aec_base58c:encode(account_pubkey, MinerPubkey),
                 payload => <<"hejsan svejsan">>, %%TODO proper payload
                 poi => aec_base58c:encode(poi, aec_trees:serialize_poi(PoI)),
                 fee => 1},
     Decoded = maps:merge(Encoded,
-                        #{from => aec_id:create(account, MinerPubkey),
+                        #{from_id => aec_id:create(account, MinerPubkey),
                           channel_id => aec_id:create(channel, ChannelId),
                           poi => PoI}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_close_solo/1,
                                fun aesc_close_solo_tx:new/1, MinerPubkey),
-    test_invalid_hash({account_pubkey, MinerPubkey},  from, Encoded, fun get_channel_close_solo/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, from_id, Encoded, fun get_channel_close_solo/1),
     ok.
 
 state_channels_slash(ChannelId, MinerPubkey) ->
     PoI = aec_trees:new_poi(aec_trees:new_without_backend()),
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                from => aec_base58c:encode(account_pubkey, MinerPubkey),
+                from_id => aec_base58c:encode(account_pubkey, MinerPubkey),
                 payload => <<"hejsan svejsan">>, %%TODO proper payload
                 poi => aec_base58c:encode(poi, aec_trees:serialize_poi(PoI)),
                 fee => 1},
     Decoded = maps:merge(Encoded,
-                        #{from => aec_id:create(account, MinerPubkey),
+                        #{from_id => aec_id:create(account, MinerPubkey),
                           channel_id => aec_id:create(channel, ChannelId),
                           poi => PoI}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_slash/1,
                                fun aesc_slash_tx:new/1, MinerPubkey),
-    test_invalid_hash({account_pubkey, MinerPubkey}, from, Encoded, fun get_channel_slash/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, from_id, Encoded, fun get_channel_slash/1),
     ok.
 
 state_channels_settle(ChannelId, MinerPubkey) ->
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                from => aec_base58c:encode(account_pubkey, MinerPubkey),
+                from_id => aec_base58c:encode(account_pubkey, MinerPubkey),
                 initiator_amount_final => 4,
                 responder_amount_final => 3,
                 fee => 1},
     Decoded = maps:merge(Encoded,
-                        #{from => aec_id:create(account, MinerPubkey),
+                        #{from_id => aec_id:create(account, MinerPubkey),
                           channel_id => aec_id:create(channel, ChannelId)}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_settle/1,
@@ -2873,7 +2873,7 @@ state_channels_settle(ChannelId, MinerPubkey) ->
     {{ok, NextNonce}, _} = {rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
                             MinerPubkey},
     Encoded1 = maps:put(nonce, NextNonce, Encoded),
-    test_invalid_hash({account_pubkey, MinerPubkey}, from, Encoded1, fun get_channel_settle/1),
+    test_invalid_hash({account_pubkey, MinerPubkey}, from_id, Encoded1, fun get_channel_settle/1),
     ok.
 
 %% tests the following
@@ -4755,7 +4755,7 @@ sc_ws_contracts(Config) ->
             sc_ws_contract_(Config, TestName, Owner)
         end,
         [{Owner, Test} || Owner <- [initiator, responder],
-													Test  <- ["identity",
+                          Test  <- ["identity",
                                     "counter",
                                     "spend_test"]]),
     {sc_ws_update, ConfigList} = ?config(saved_config, Config),
@@ -4816,10 +4816,10 @@ sc_ws_contract_(Config, TestName, Owner) ->
             CallRound = CB1:round(Tx1),
             [U] = CB1:updates(Tx1),
             CallerPubKey = aesc_offchain_update:extract_caller(U),
-            CallerAddress = aec_base58c:encode(account_pubkey, CallerPubKey),
-            ContractAddress = aec_base58c:encode(contract_pubkey, ContractPubKey),
-            #{contract   => ContractAddress,
-              caller     => CallerAddress,
+            CallerId = aec_base58c:encode(account_pubkey, CallerPubKey),
+            ContractId = aec_base58c:encode(contract_pubkey, ContractPubKey),
+            #{contract   => ContractId,
+              caller     => CallerId,
               round      => CallRound}
         end,
     GetDecodedResult =
@@ -4833,9 +4833,9 @@ sc_ws_contract_(Config, TestName, Owner) ->
                 end,
             CallRes = GetCallResult(SenderConnPid),
             CallRes = GetCallResult(AckConnPid),
-            #{<<"caller_id">>         := CallerAddress,
+            #{<<"caller_id">>         := CallerId,
               <<"caller_nonce">>      := CallRound,
-              <<"contract_id">>       := ContractAddress,
+              <<"contract_id">>       := ContractId,
               <<"gas_price">>         := _,
               <<"gas_used">>          := _,
               <<"height">>            := CallRound,
@@ -4958,7 +4958,7 @@ contract_calls_("identity", ContractPubKey, Code, SenderConnPid, UpdateVolley,
     UnsignedStateTx;
 contract_calls_("counter", ContractPubKey, Code, SenderConnPid, UpdateVolley,
                 GetDecodedResult, _, _ , _) ->
-    TestName = "counter", 
+    TestName = "counter",
     UnsignedStateTx0 = call_a_contract(<<"get">>, <<"()">>, ContractPubKey, Code, SenderConnPid,
                     UpdateVolley),
 
@@ -5098,8 +5098,8 @@ channel_options(IPubkey, RPubkey, IAmt, RAmt) ->
 
 channel_options(IPubkey, RPubkey, IAmt, RAmt, Other) ->
     maps:merge(#{ port => 12340,
-                  initiator => aec_base58c:encode(account_pubkey, IPubkey),
-                  responder => aec_base58c:encode(account_pubkey, RPubkey),
+                  initiator_id => aec_base58c:encode(account_pubkey, IPubkey),
+                  responder_id => aec_base58c:encode(account_pubkey, RPubkey),
                   lock_period => 10,
                   push_amount => 10,
                   initiator_amount => IAmt,

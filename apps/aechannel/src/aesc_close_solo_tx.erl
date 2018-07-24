@@ -35,7 +35,7 @@
 
 -record(channel_close_solo_tx, {
           channel_id :: aec_id:id(),
-          from       :: aec_id:id(),
+          from_id    :: aec_id:id(),
           payload    :: binary(),
           poi        :: aec_trees:poi(),
           ttl        :: aetx:tx_ttl(),
@@ -53,16 +53,16 @@
 
 -spec new(map()) -> {ok, aetx:tx()}.
 new(#{channel_id := ChannelId,
-      from       := From,
+      from_id    := FromId,
       payload    := Payload,
       poi        := PoI,
       fee        := Fee,
       nonce      := Nonce} = Args) ->
     channel = aec_id:specialize_type(ChannelId),
-    account = aec_id:specialize_type(From),
+    account = aec_id:specialize_type(FromId),
     Tx = #channel_close_solo_tx{
             channel_id = ChannelId,
-            from       = From,
+            from_id    = FromId,
             payload    = Payload,
             poi        = PoI,
             ttl        = maps:get(ttl, Args, 0),
@@ -89,16 +89,10 @@ nonce(#channel_close_solo_tx{nonce = Nonce}) ->
 origin(#channel_close_solo_tx{} = Tx) ->
     from_pubkey(Tx).
 
-channel(#channel_close_solo_tx{channel_id = ChannelId}) ->
-    ChannelId.
-
-channel_hash(#channel_close_solo_tx{channel_id = ChannelId}) ->
+channel_pubkey(#channel_close_solo_tx{channel_id = ChannelId}) ->
     aec_id:specialize(ChannelId, channel).
 
-from(#channel_close_solo_tx{from = From}) ->
-    From.
-
-from_pubkey(#channel_close_solo_tx{from = FromPubKey}) ->
+from_pubkey(#channel_close_solo_tx{from_id = FromPubKey}) ->
     aec_id:specialize(FromPubKey, account).
 
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
@@ -107,9 +101,9 @@ check(#channel_close_solo_tx{payload    = Payload,
                              poi        = PoI,
                              fee        = Fee,
                              nonce      = Nonce} = Tx, _Context, Trees, Height, _ConsensusVersion) ->
-    ChannelId  = channel_hash(Tx),
-    FromPubKey = from_pubkey(Tx),
-    aesc_utils:check_solo_close_payload(ChannelId, FromPubKey, Nonce, Fee,
+    ChannelPubKey  = channel_pubkey(Tx),
+    FromPubKey     = from_pubkey(Tx),
+    aesc_utils:check_solo_close_payload(ChannelPubKey, FromPubKey, Nonce, Fee,
                                         Payload, PoI, Height, Trees).
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
@@ -119,9 +113,9 @@ process(#channel_close_solo_tx{payload    = Payload,
                                fee        = Fee,
                                nonce      = Nonce} = Tx, _Context, Trees,
         Height, _ConsensusVersion, _TxHash) ->
-    ChannelId  = channel_hash(Tx),
-    FromPubKey = from_pubkey(Tx),
-    aesc_utils:process_solo_close(ChannelId, FromPubKey, Nonce, Fee,
+    ChannelPubKey  = channel_pubkey(Tx),
+    FromPubKey     = from_pubkey(Tx),
+    aesc_utils:process_solo_close(ChannelPubKey, FromPubKey, Nonce, Fee,
                                   Payload, PoI, Height, Trees).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
@@ -130,7 +124,7 @@ signers(#channel_close_solo_tx{} = Tx, _) ->
 
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_close_solo_tx{channel_id = ChannelId,
-                                 from       = FromId,
+                                 from_id    = FromId,
                                  payload    = Payload,
                                  poi        = PoI,
                                  ttl        = TTL,
@@ -138,7 +132,7 @@ serialize(#channel_close_solo_tx{channel_id = ChannelId,
                                  nonce      = Nonce}) ->
     {version(),
      [ {channel_id, ChannelId}
-     , {from      , FromId}
+     , {from_id   , FromId}
      , {payload   , Payload}
      , {poi       , aec_trees:serialize_poi(PoI)}
      , {ttl       , TTL}
@@ -149,7 +143,7 @@ serialize(#channel_close_solo_tx{channel_id = ChannelId,
 -spec deserialize(vsn(), list()) -> tx().
 deserialize(?CHANNEL_CLOSE_SOLO_TX_VSN,
             [ {channel_id, ChannelId}
-            , {from      , FromId}
+            , {from_id   , FromId}
             , {payload   , Payload}
             , {poi       , PoI}
             , {ttl       , TTL}
@@ -158,7 +152,7 @@ deserialize(?CHANNEL_CLOSE_SOLO_TX_VSN,
     channel = aec_id:specialize_type(ChannelId),
     account = aec_id:specialize_type(FromId),
     #channel_close_solo_tx{channel_id = ChannelId,
-                           from       = FromId,
+                           from_id    = FromId,
                            payload    = Payload,
                            poi        = aec_trees:deserialize_poi(PoI),
                            ttl        = TTL,
@@ -166,15 +160,17 @@ deserialize(?CHANNEL_CLOSE_SOLO_TX_VSN,
                            nonce      = Nonce}.
 
 -spec for_client(tx()) -> map().
-for_client(#channel_close_solo_tx{payload    = Payload,
+for_client(#channel_close_solo_tx{channel_id = ChannelId,
+                                  from_id    = FromId,
+                                  payload    = Payload,
                                   poi        = PoI,
                                   ttl        = TTL,
                                   fee        = Fee,
-                                  nonce      = Nonce} = Tx) ->
+                                  nonce      = Nonce}) ->
     #{<<"data_schema">> => <<"ChannelCloseSoloTxJSON">>, % swagger schema name
       <<"vsn">>         => version(),
-      <<"channel_id">>  => aec_base58c:encode(id_hash, channel(Tx)),
-      <<"from">>        => aec_base58c:encode(id_hash, from(Tx)),
+      <<"channel_id">>  => aec_base58c:encode(id_hash, ChannelId),
+      <<"from_id">>     => aec_base58c:encode(id_hash, FromId),
       <<"payload">>     => Payload,
       <<"poi">>         => aec_base58c:encode(poi, aec_trees:serialize_poi(PoI)),
       <<"ttl">>         => TTL,
@@ -183,7 +179,7 @@ for_client(#channel_close_solo_tx{payload    = Payload,
 
 serialization_template(?CHANNEL_CLOSE_SOLO_TX_VSN) ->
     [ {channel_id, id}
-    , {from      , id}
+    , {from_id   , id}
     , {payload   , binary}
     , {poi       , binary}
     , {ttl       , int}

@@ -184,17 +184,17 @@ prune_calls(State) ->
 make_update_tx(Updates, #state{signed_txs=[SignedTx|_], trees=Trees}, Opts) ->
     Tx = aetx_sign:tx(SignedTx),
     {Mod, TxI} = aetx:specialize_callback(Tx),
-    ChannelId = Mod:channel_id(TxI),
+    ChannelPubKey = Mod:channel_pubkey(TxI),
 
-    NextRound = Mod:round(TxI) + 1,
+    NextRound     = Mod:round(TxI) + 1,
 
     Trees1 = apply_updates(Updates, NextRound, Trees, Opts),
     StateHash = aec_trees:hash(Trees1),
     {ok, OffchainTx} =
-        aesc_offchain_tx:new(#{channel_id    => aec_id:create(channel, ChannelId),
-                              state_hash     => StateHash,
-                              updates        => Updates,
-                              round          => NextRound}),
+        aesc_offchain_tx:new(#{channel_id => aec_id:create(channel, ChannelPubKey),
+                               state_hash => StateHash,
+                               updates    => Updates,
+                               round      => NextRound}),
     OffchainTx.
 
 apply_updates(Updates, Round, Trees, Opts) ->

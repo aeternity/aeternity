@@ -4177,10 +4177,10 @@
         "id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
-        "initiator" : {
+        "initiator_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
-        "responder" : {
+        "responder_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "total_amount" : {
@@ -4203,7 +4203,7 @@
           "format" : "int64",
           "minimum" : 0
         },
-        "delegates" : {
+        "delegate_ids" : {
           "type" : "array",
           "items" : {
             "$ref" : "#/definitions/EncodedHash"
@@ -4229,14 +4229,14 @@
       },
       "example" : {
         "responder_amount" : 0,
+        "delegate_ids" : [ null, null ],
         "initiator_amount" : 0,
         "round" : 0,
+        "initiator_id" : null,
+        "responder_id" : null,
         "total_amount" : 0,
         "state_hash" : null,
-        "initiator" : null,
-        "responder" : null,
         "id" : { },
-        "delegates" : [ null, null ],
         "closes_at" : 7,
         "lock_period" : 0,
         "channel_reserve" : 0
@@ -4244,9 +4244,9 @@
     },
     "ChannelCreateTx" : {
       "type" : "object",
-      "required" : [ "channel_reserve", "fee", "initiator", "initiator_amount", "lock_period", "push_amount", "responder", "responder_amount", "state_hash" ],
+      "required" : [ "channel_reserve", "fee", "initiator_amount", "initiator_id", "lock_period", "push_amount", "responder_amount", "responder_id", "state_hash" ],
       "properties" : {
-        "initiator" : {
+        "initiator_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "initiator_amount" : {
@@ -4254,7 +4254,7 @@
           "format" : "int64",
           "minimum" : 0
         },
-        "responder" : {
+        "responder_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "responder_amount" : {
@@ -4300,10 +4300,10 @@
       "example" : {
         "responder_amount" : 0,
         "initiator_amount" : 0,
+        "initiator_id" : { },
+        "responder_id" : null,
         "state_hash" : null,
-        "initiator" : { },
         "fee" : 0,
-        "responder" : null,
         "push_amount" : 0,
         "ttl" : 0,
         "nonce" : 0,
@@ -4313,12 +4313,12 @@
     },
     "ChannelDepositTx" : {
       "type" : "object",
-      "required" : [ "amount", "channel_id", "fee", "from", "nonce", "round", "state_hash" ],
+      "required" : [ "amount", "channel_id", "fee", "from_id", "nonce", "round", "state_hash" ],
       "properties" : {
         "channel_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
-        "from" : {
+        "from_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "amount" : {
@@ -4354,10 +4354,10 @@
       },
       "example" : {
         "amount" : 0,
+        "from_id" : null,
         "round" : 0,
         "state_hash" : null,
         "fee" : 0,
-        "from" : null,
         "channel_id" : { },
         "ttl" : 0,
         "nonce" : 0
@@ -4365,12 +4365,12 @@
     },
     "ChannelWithdrawalTx" : {
       "type" : "object",
-      "required" : [ "amount", "channel_id", "fee", "nonce", "round", "state_hash", "to" ],
+      "required" : [ "amount", "channel_id", "fee", "nonce", "round", "state_hash", "to_id" ],
       "properties" : {
         "channel_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
-        "to" : {
+        "to_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "amount" : {
@@ -4409,7 +4409,7 @@
         "round" : 0,
         "state_hash" : null,
         "fee" : 0,
-        "to" : null,
+        "to_id" : null,
         "channel_id" : { },
         "ttl" : 0,
         "nonce" : 0
@@ -4417,12 +4417,12 @@
     },
     "ChannelSnapshotSoloTx" : {
       "type" : "object",
-      "required" : [ "channel_id", "fee", "from", "payload" ],
+      "required" : [ "channel_id", "fee", "payload" ],
       "properties" : {
         "channel_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
-        "from" : {
+        "from_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "payload" : {
@@ -4445,9 +4445,9 @@
         }
       },
       "example" : {
+        "from_id" : null,
         "payload" : "payload",
         "fee" : 0,
-        "from" : null,
         "channel_id" : { },
         "ttl" : 0,
         "nonce" : 0
@@ -4497,12 +4497,12 @@
     },
     "ChannelCloseSoloTx" : {
       "type" : "object",
-      "required" : [ "channel_id", "fee", "from", "payload", "poi" ],
+      "required" : [ "channel_id", "fee", "from_id", "payload", "poi" ],
       "properties" : {
         "channel_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
-        "from" : {
+        "from_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "payload" : {
@@ -4529,9 +4529,9 @@
         }
       },
       "example" : {
+        "from_id" : null,
         "payload" : "payload",
         "fee" : 0,
-        "from" : null,
         "poi" : "poi",
         "channel_id" : { },
         "ttl" : 0,
@@ -4540,12 +4540,12 @@
     },
     "ChannelSlashTx" : {
       "type" : "object",
-      "required" : [ "channel_id", "fee", "from", "payload", "poi" ],
+      "required" : [ "channel_id", "fee", "from_id", "payload", "poi" ],
       "properties" : {
         "channel_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
-        "from" : {
+        "from_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "payload" : {
@@ -4572,9 +4572,9 @@
         }
       },
       "example" : {
+        "from_id" : null,
         "payload" : "payload",
         "fee" : 0,
-        "from" : null,
         "poi" : "poi",
         "channel_id" : { },
         "ttl" : 0,
@@ -4583,12 +4583,12 @@
     },
     "ChannelSettleTx" : {
       "type" : "object",
-      "required" : [ "channel_id", "fee", "from", "initiator_amount_final", "nonce", "responder_amount_final" ],
+      "required" : [ "channel_id", "fee", "from_id", "initiator_amount_final", "nonce", "responder_amount_final" ],
       "properties" : {
         "channel_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
-        "from" : {
+        "from_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "initiator_amount_final" : {
@@ -4618,10 +4618,10 @@
         }
       },
       "example" : {
+        "from_id" : null,
         "responder_amount_final" : 0,
         "fee" : 0,
         "initiator_amount_final" : 0,
-        "from" : null,
         "channel_id" : { },
         "ttl" : 0,
         "nonce" : 0

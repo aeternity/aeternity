@@ -167,23 +167,23 @@ get_oracle_query(Pubkey, Id, Trees) ->
 %%% State channels
 %%%===================================================================
 
--spec get_channel(aesc_channels:id()) ->
+-spec get_channel(aesc_channels:pubkey()) ->
                          {'ok', aesc_channels:channel()} |
                          {'error', 'no_state_trees'|'not_found'}.
-get_channel(ChannelId) ->
+get_channel(ChannelPubkey) ->
     case get_top_state() of
         {ok, Trees} ->
-            get_channel(ChannelId, Trees);
+            get_channel(ChannelPubkey, Trees);
         error ->
             {error, no_state_trees}
     end.
 
 
--spec get_channel(aesc_channels:id(), aec_trees:trees()) ->
+-spec get_channel(aesc_channels:pubkey(), aec_trees:trees()) ->
                          {'ok', aesc_channels:channel()} |
                          {'error', 'no_state_trees'|'not_found'}.
-get_channel(ChannelId, Trees) ->
-    case aesc_state_tree:lookup(ChannelId, aec_trees:channels(Trees)) of
+get_channel(ChannelPubkey, Trees) ->
+    case aesc_state_tree:lookup(ChannelPubkey, aec_trees:channels(Trees)) of
         {value, Channel} -> {ok, Channel};
         none -> {error, not_found}
     end.
