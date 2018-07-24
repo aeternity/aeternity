@@ -26,6 +26,7 @@
 -export([read_metric/3]).
 
 %% Helper function exports
+-export([shared_temp_file/2]).
 -export([read_last_metric/2]).
 -export([cluster/2]).
 -export([spec/3]).
@@ -272,8 +273,18 @@ read_metric(NodeName, MetricName, Ctx) ->
 
 %=== HELPER FUNCTIONS ==========================================================
 
+%% @doc Return a tuple with the path of a temporary file in the given node
+%% context and in the host context. This temporary file will ve in the log
+%% directory for now.
+-spec shared_temp_file(atom(), string() | binary()) -> {binary(), binary()}.
+shared_temp_file(NodeName, FileName) ->
+    {HostLogPath, GuestLogPath} = aest_nodes_mgr:get_log_path(NodeName),
+    HostFilePath = filename:join(HostLogPath, FileName),
+    GuestFilePath = filename:join(GuestLogPath, FileName),
+    {HostFilePath, GuestFilePath}.
+
 read_last_metric(NodeName, MetricName) ->
-    LogPath = aest_nodes_mgr:get_log_path(NodeName),
+    {LogPath, _} = aest_nodes_mgr:get_log_path(NodeName),
     MetricsLogPath = binary_to_list(filename:join(LogPath, "epoch_metrics.log")),
     case filelib:is_file(MetricsLogPath) of
         false -> undefined;
@@ -491,7 +502,7 @@ decode_json(Data) ->
 
 validate_logs(Cfg) ->
     Logs = aest_nodes_mgr:get_log_paths(),
-    maps:fold(fun(NodeName, LogPath, Result) ->
+    maps:fold(fun(NodeName, {LogPath, _}, Result) ->
         Result1 = check_crash_log(NodeName, LogPath, Cfg, Result),
         Result2 = check_log_for_errors(NodeName, LogPath, "epoch.log", Cfg, Result1),
         Result3 = check_log_for_errors(NodeName, LogPath, "epoch_sync.log", Cfg, Result2),
