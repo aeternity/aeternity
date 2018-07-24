@@ -2397,8 +2397,6 @@ definitions:
         $ref: '#/definitions/EncodedHash'
       txs_hash:
         $ref: '#/definitions/EncodedHash'
-      key_hash:
-        $ref: '#/definitions/EncodedHash'
       signature:
         $ref: '#/definitions/EncodedHash'
       time:

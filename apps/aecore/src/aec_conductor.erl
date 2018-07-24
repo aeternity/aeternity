@@ -504,7 +504,7 @@ preempt_if_new_top(#state{ top_block_hash = OldHash,
             aec_metrics:try_update([ae,epoch,aecore,chain,height],
                                    aec_blocks:height(NewBlock)),
             State1 = State#state{top_block_hash = NewHash},
-            KeyHash = aec_blocks:key_hash(NewBlock),
+            {ok, KeyHash} = aec_chain:get_key_hash(NewHash),
             %% A new micro block from the same generation should
             %% not cause a pre-emption or full re-generation of key-block.
             case aec_blocks:type(NewBlock) of
@@ -910,7 +910,8 @@ is_leader(NewTopBlock) ->
         case aec_blocks:type(NewTopBlock) of
             key   -> aec_blocks:miner(NewTopBlock);
             micro ->
-                {ok, Block} = aec_chain:get_block(aec_blocks:key_hash(NewTopBlock)),
+                {ok, KeyHash} = aec_chain:get_key_hash(aec_blocks:hash_internal_representation(NewTopBlock)),
+                {ok, Block} = aec_chain:get_block(KeyHash),
                 aec_blocks:miner(Block)
         end,
     case aec_keys:pubkey() of

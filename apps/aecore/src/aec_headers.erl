@@ -12,7 +12,6 @@
          time_in_msecs/1,
          miner/1,
          beneficiary/1,
-         key_hash/1,
          serialize_to_binary/1,
          serialize_to_map/1,
          deserialize_from_binary/1,
@@ -71,9 +70,6 @@ miner(Header) ->
 beneficiary(Header) ->
     Header#header.beneficiary.
 
-key_hash(Header) ->
-    Header#header.key_hash.
-
 -spec serialize_to_map(header()) -> {ok, map()}.
 serialize_to_map(#header{} = Header) ->
     serialize_to_map(type(Header), Header).
@@ -98,7 +94,6 @@ serialize_to_map(micro, Header) ->
         <<"prev_hash">> => Header#header.prev_hash,
         <<"state_hash">> => Header#header.root_hash,
         <<"txs_hash">> => Header#header.txs_hash,
-        <<"key_hash">> => Header#header.key_hash,
         <<"time">> => Header#header.time,
         <<"version">> => Header#header.version
       },
@@ -129,14 +124,12 @@ deserialize_from_map(#{<<"height">> := Height,
                        <<"prev_hash">> := PrevHash,
                        <<"state_hash">> := RootHash,
                        <<"txs_hash">> := TxsHash,
-                       <<"key_hash">> := KeyHash,
                        <<"time">> := Time,
                        <<"version">> := Version}) ->
     #header{height = Height,
             prev_hash = PrevHash,
             root_hash = RootHash,
             txs_hash = TxsHash,
-            key_hash = KeyHash,
             time = Time,
             version = Version}.
 
@@ -163,7 +156,6 @@ serialize_to_binary(micro, Header) ->
       (Header#header.prev_hash)/binary,
       (Header#header.root_hash)/binary,
       (Header#header.txs_hash)/binary,
-      (Header#header.key_hash)/binary,
       (Header#header.time):64>>.
 
 -spec deserialize_from_binary(deterministic_header_binary()) -> header().
@@ -193,13 +185,11 @@ deserialize_from_binary(<<Version:64,
                           PrevHash:32/binary,
                           RootHash:32/binary,
                           TxsHash:32/binary,
-                          KeyHash:32/binary,
                           Time:64>>) ->
     #header{height = Height,
             prev_hash = PrevHash,
             root_hash = RootHash,
             txs_hash = TxsHash,
-            key_hash = KeyHash,
             time = Time,
             version = Version}.
 

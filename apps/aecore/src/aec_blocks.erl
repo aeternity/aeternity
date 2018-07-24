@@ -19,10 +19,9 @@
          set_pow/3,
          signature/1,
          set_signature/2,
-         key_hash/1,
          set_target/2,
          new_key/9,
-         new_micro/8,
+         new_micro/7,
          from_header_txs_and_signature/3,
          to_header/1,
          serialize_to_binary/1,
@@ -107,10 +106,6 @@ pow(Block) ->
 set_signature(Block, Signature) ->
     Block#block{signature = Signature}.
 
--spec key_hash(block()) -> binary().
-key_hash(Block) ->
-    Block#block.key_hash.
-
 -spec signature(block()) -> binary() | undefined.
 signature(Block) ->
     Block#block.signature.
@@ -142,12 +137,11 @@ new_key(Height, PrevHash, RootHash, Target, Nonce, Time, Version, Miner, Benefic
           , miner       = Miner
           , beneficiary = Beneficiary }.
 
--spec new_micro(height(), block_header_hash(), block_header_hash(), state_hash(), txs_hash(),
+-spec new_micro(height(), block_header_hash(), state_hash(), txs_hash(),
                 list(aetx_sign:signed_tx()), non_neg_integer(), non_neg_integer()) -> block().
-new_micro(Height, PrevHash, KeyBlockHash, RootHash, TxsHash, Txs, Time, Version) ->
+new_micro(Height, PrevHash, RootHash, TxsHash, Txs, Time, Version) ->
     #block{ height    = Height
           , prev_hash = PrevHash
-          , key_hash  = KeyBlockHash
           , root_hash = RootHash
           , txs_hash  = TxsHash
           , txs       = Txs
@@ -182,14 +176,12 @@ to_header(micro, #block{height = Height,
                         prev_hash = PrevHash,
                         root_hash = RootHash,
                         txs_hash = TxsHash,
-                        key_hash = KeyHash,
                         time = Time,
                         version = Version}) ->
     #header{height = Height,
             prev_hash = PrevHash,
             root_hash = RootHash,
             txs_hash = TxsHash,
-            key_hash = KeyHash,
             time = Time,
             version = Version}.
 
@@ -220,14 +212,12 @@ from_header_txs_and_signature(micro, #header{height = Height,
                                              prev_hash = PrevHash,
                                              root_hash = RootHash,
                                              txs_hash = TxsHash,
-                                             key_hash = KeyHash,
                                              time = Time,
                                              version = Version}, Txs, Signature) ->
     #block{height = Height,
            prev_hash = PrevHash,
            root_hash = RootHash,
            txs_hash = TxsHash,
-           key_hash = KeyHash,
            signature = Signature,
            time = Time,
            version = Version,
@@ -308,7 +298,6 @@ serialize_to_map(micro, Block) ->
       <<"prev_hash">> => Block#block.prev_hash,
       <<"state_hash">> => Block#block.root_hash,
       <<"txs_hash">> => Block#block.txs_hash,
-      <<"key_hash">> => Block#block.key_hash,
       <<"time">> => Block#block.time,
       <<"version">> => Block#block.version,
       <<"transactions">> => Block#block.txs,
@@ -347,7 +336,6 @@ deserialize_from_map(#{<<"height">> := Height,
                        <<"prev_hash">> := PrevHash,
                        <<"state_hash">> := RootHash,
                        <<"txs_hash">> := TxsHash,
-                       <<"key_hash">> := KeyHash,
                        <<"time">> := Time,
                        <<"version">> := Version,
                        <<"transactions">> := Txs,
@@ -357,7 +345,6 @@ deserialize_from_map(#{<<"height">> := Height,
             prev_hash = PrevHash,
             root_hash = RootHash,
             txs_hash = TxsHash,
-            key_hash = KeyHash,
             signature = Signature,
             time = Time,
             version = Version,
