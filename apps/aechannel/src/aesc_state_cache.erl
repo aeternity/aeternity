@@ -22,7 +22,8 @@
         ]).
 
 -export([
-         table_specs/1
+          table_specs/1
+        , check_tables/1
         ]).
 
 %% for diagnostics
@@ -73,6 +74,12 @@ table_specs(Mode) ->
                , {user_properties, [{vsn, table_vsn(pch)}]}
                ]}
     ].
+
+check_tables(Acc) ->
+    lists:foldl(
+      fun({Tab, Spec}, Acc1) ->
+              aec_db:check_table(Tab, Spec, Acc1)
+      end, Acc, table_specs(disc)).
 
 table_vsn(_) -> 1.
 
