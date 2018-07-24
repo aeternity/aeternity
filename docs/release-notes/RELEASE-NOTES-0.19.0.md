@@ -4,7 +4,8 @@
 It:
 * Removes `key_hash` field from micro blocks. This impacts consensus.
 * Fixes a bug when a trusted peer changes its IP, it was crashing instead of just ignoring the change.
-* Does this.
+* Fine tunes deposit and withdrawal channel transactions being produced for the user.
+  This does not impact channels' protocol
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.19.0
 
