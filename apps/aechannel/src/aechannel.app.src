@@ -12,7 +12,8 @@
    ]},
   {mod,{aesc_app,[]}},
   {env,[
-        {'$aec_db_create_tables', {aesc_db, create_tables}}
+         {'$aec_db_create_tables', {aesc_db, create_tables}}
+       , {'$aec_db_check_tables' , {aesc_db, check_tables}}
        ]},
   {modules, []},
   {maintainers, []},

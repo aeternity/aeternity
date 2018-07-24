@@ -2013,15 +2013,12 @@ default_minimum_depth(responder) -> ?MINIMUM_DEPTH.
 
 start_min_depth_watcher(Type, SignedTx,
                         #data{watcher = Watcher0,
-                              opts = #{initiator     := Initiator,
-                                       responder     := Responder,
-                                       minimum_depth := MinDepth}} = D) ->
+                              opts = #{minimum_depth := MinDepth}} = D) ->
     Tx = aetx_sign:tx(SignedTx),
     TxHash = aetx_sign:hash(SignedTx),
     evt({tx_hash, TxHash}),
     Nonce = aetx:nonce(Tx),
     evt({nonce, Nonce}),
-    %% {OnChainId, D1} = on_chain_id(D, Initiator, Nonce, Responder),
     {OnChainId, D1} = on_chain_id(D, Tx),
     case {Type, Watcher0} of
         {funding, undefined} ->

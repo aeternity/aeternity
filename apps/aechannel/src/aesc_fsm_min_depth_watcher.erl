@@ -49,10 +49,10 @@ handle_info({gproc_ps_event, top_changed, _},
             #{callback_mod := Mod, parent := Parent, chan_id := ChanId} = St,
             case Mod:minimum_depth_achieved(
                    Parent, ChanId, close, undefined) of
-                continue ->
-                    {noreply, St};
-                stop ->
-                    {stop, normal, St}
+                ok ->
+                    {noreply, St}
+                %% stop ->
+                %%     {stop, normal, St}
             end;
         _ ->
             {noreply, St}
@@ -119,9 +119,9 @@ check_status(#{parent := Parent, chan_id := ChanId,
                 ok ->
                     {noreply, St#{funding_locked => true,
                                   type    => undefined,
-                                  tx_hash => undefined}};
-                stop ->
-                    {stop, normal, St}
+                                  tx_hash => undefined}}
+                %% stop ->
+                %%     {stop, normal, St}
             end;
         _ ->
             lager:debug("min_depth not yet achieved", []),
