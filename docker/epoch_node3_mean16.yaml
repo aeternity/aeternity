@@ -21,7 +21,7 @@ chain:
     persist: true
 
 mining:
-    beneficiary: "ak$25MZX3BXYP32YDPGWsJqYZ6CgWnqD93VdpCYaTk6KsThEbeFJX"
+    beneficiary: "ak$25eTK8PaiLpREqBkP3yDNWJAwXjWSR8tbn3zu8SXaNx824A1AJ"
     autostart: true
     cuckoo:
         miner:
