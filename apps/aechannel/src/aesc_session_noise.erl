@@ -95,7 +95,10 @@ accept(Port, Opts) ->
 init({Parent, Op}) ->
     %% trap exits to avoid ugly crash reports. We rely on the monitor to
     %% ensure that we close when the fsm dies
-    process_flag(trap_exit, true),
+    %%
+    %% TODO: For some reason, trapping exits causes
+    %% aehttp_integration_SUITE:sc_ws_open/1 to fail. Investigate why.
+    %% process_flag(trap_exit, true),
     proc_lib:init_ack(Parent, {ok, self()}),
     ParentMonRef = monitor(process, Parent),
     St = establish(Op, #st{parent = Parent,
@@ -168,6 +171,7 @@ handle_cast_(_Msg, St) ->
 %% FSM had died
 handle_info({'DOWN', Ref, process, Pid, _Reason},
             #st{parent_mon_ref=Ref, parent=Pid}=St) ->
+    lager:debug("Got DOWN from parent (~p)", [Pid]),
     {stop, close, St};
 handle_info(Msg, St) ->
     try handle_info_(Msg, St)
@@ -184,6 +188,7 @@ handle_info_({noise, EConn, Data}, #st{econn = EConn} = St) ->
     enoise:set_active(EConn, once),
     {noreply, St};
 handle_info_(_Msg, St) ->
+    lager:debug("Unknown handle_info_(~p)", [_Msg]),
     {noreply, St}.
 
 terminate(_Reason, #st{econn = EConn}) ->
