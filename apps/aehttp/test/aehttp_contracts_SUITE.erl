@@ -893,10 +893,6 @@ ensure_balance(Pubkey, NewBalance) ->
             NewBalance
     end.
 
-assert_balance(Pubkey, ExpectedBalance) ->
-    Address = aec_base58c:encode(account_pubkey, Pubkey),
-    {ok,200,#{<<"balance">> := ExpectedBalance}} = get_balance_at_top(Address).
-
 decode_data(Type, EncodedData) ->
     {ok,200,#{<<"data">> := DecodedData}} =
 	 get_contract_decode_data(#{'sophia-type' => Type,
@@ -973,9 +969,6 @@ call_encoded(NodeName, Pubkey, Privkey, EncodedContractPubkey, EncodedData,
     #{<<"return_type">> := <<"ok">>,<<"return_value">> := Value} = CallReturn,
     {Value,CallReturn}.
 
-contract_create_tx(Pubkey, Privkey, HexCode, EncodedInitData) ->
-    contract_create_tx(Pubkey, Privkey, HexCode, EncodedInitData, #{}).
-
 contract_create_tx(Pubkey, Privkey, HexCode, EncodedInitData, CallerSet) ->
     Address = aec_base58c:encode(account_pubkey, Pubkey),
     %% Generate a nonce.
@@ -997,9 +990,6 @@ contract_create_tx(Pubkey, Privkey, HexCode, EncodedInitData, CallerSet) ->
     ContractInitEncoded = maps:merge(ContractInitEncoded0, CallerSet),
     sign_and_post_create_tx(Privkey, ContractInitEncoded).
 
-
-contract_call_tx(Pubkey, Privkey, EncodedContractPubkey, EncodedCallData) ->
-    contract_call_tx(Pubkey, Privkey, EncodedContractPubkey, EncodedCallData, #{}).
 
 contract_call_tx(Pubkey, Privkey, EncodedContractPubkey, EncodedCallData, CallerSet) ->
     Address = aec_base58c:encode(account_pubkey, Pubkey),
