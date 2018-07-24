@@ -23,7 +23,7 @@
         , check_initial_update_tx/3   %%  (SignedTx, State, Opts)
         , check_update_tx/3           %%  (SignedTx, State, Opts)
         , check_reestablish_tx/2      %%  (SignedTx, State) -> {ok,NewSt} | error()
-        , is_latest_signed_tx/2       %%  (SignedTx, State) -> bookean()
+        , is_latest_signed_tx/2       %%  (SignedTx, State) -> boolean()
         , verify_signatures/2         %%  (SignedTx, State)
         , make_update_tx/3            %%  (Updates, State, Opts) -> Tx
         , add_signed_tx/3             %%  (SignedTx, State0, Opts) -> State
