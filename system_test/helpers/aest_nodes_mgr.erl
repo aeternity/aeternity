@@ -14,7 +14,8 @@
 %% API
 -export([start/2, start_link/2, stop/0]).
 -export([cleanup/0, dump_logs/0, setup_nodes/1, start_node/1, stop_node/2, 
-         get_service_address/2, get_hostname/1, get_log_paths/0, log/2]).
+         get_service_address/2, get_hostname/1,
+         get_log_path/1, get_log_paths/0, log/2]).
 
 %% gen_server callbacks
 -export([ init/1
@@ -60,6 +61,9 @@ dump_logs() ->
 get_log_paths() ->
     gen_server:call(?SERVER, get_log_paths).
 
+get_log_path(NodeName) ->
+    gen_server:call(?SERVER, {get_log_path, NodeName}).
+
 setup_nodes(NodeSpecs) ->
     gen_server:call(?SERVER, {setup_nodes, NodeSpecs}).
 
@@ -90,6 +94,8 @@ init([Backends, EnvMap]) ->
 
 handle_call(get_log_paths, _From, State) ->
     {reply, mgr_get_log_paths(State), State};
+handle_call({get_log_path, NodeName}, _From, State) ->
+    {reply, mgr_get_log_path(State, NodeName), State};
 handle_call(cleanup, _From, State) ->
     CleanState = mgr_cleanup(State),
     {reply, ok, CleanState};
@@ -111,7 +117,7 @@ handle_call({get_service_address, NodeName, Service}, _From, #{nodes := Nodes} =
     ServiceAddress = Mod:get_service_address(Service, NodeState),
     {reply, ServiceAddress, State};
 handle_call({get_hostname, NodeName}, _From, #{nodes := Nodes} = State) ->
-    #{NodeName := {Mod, NodeState}} = Nodes,
+    #{NodeName := {_Mod, _NodeState}} = Nodes,
     %% for the moment only localhost supported
     {reply, "localhost", State};
 handle_call({start_node, NodeName}, _From, #{nodes := Nodes} = State) ->
@@ -169,6 +175,10 @@ mgr_get_log_paths(#{nodes := Nodes}) ->
     maps:fold(fun(NodeName, {Mod, NodeState}, Acc) ->
         Acc#{NodeName => Mod:get_log_path(NodeState)}
     end, #{}, Nodes).
+
+mgr_get_log_path(#{nodes := Nodes}, NodeName) ->
+    #{NodeName := {Mod, NodeState}} = Nodes,
+    Mod:get_log_path(NodeState).
 
 mgr_cleanup(State) ->
     %% Node cleanup can be disabled for debugging,

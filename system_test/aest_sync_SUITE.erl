@@ -16,7 +16,8 @@
     stop_and_continue_sync/1,
     tx_pool_sync/1,
     net_split_recovery/1,
-    quick_start_stop/1
+    quick_start_stop/1,
+    net_split_mining_power/1
 ]).
 
 -import(aest_nodes, [
@@ -91,7 +92,27 @@
     networks => [net2]
 }).
 
+%% By default, this node only connects to network `net2` even though
+%% it has a `net1_node1` as a peer. It means that if it is not connected
+%% explicitly to `net1` it will not be able to connect to `net1_node1`.
+-define(NET2_NODE3, #{
+    name    => net2_node3,
+    peers   => [net1_node1, net2_node1],
+    backend => aest_docker,
+    source  => {pull, "aeternity/epoch:local"},
+    networks => [net2]
+}).
 
+%% By default, this node only connects to network `net2` even though
+%% it has a `net1_node1` as a peer. It means that if it is not connected
+%% explicitly to `net1` it will not be able to connect to `net1_node1`.
+-define(NET2_NODE4, #{
+    name    => net2_node4,
+    peers   => [net1_node1, net2_node1],
+    backend => aest_docker,
+    source  => {pull, "aeternity/epoch:local"},
+    networks => [net2]
+}).
 
 %=== COMMON TEST FUNCTIONS =====================================================
 
@@ -103,7 +124,8 @@ all() -> [
     stop_and_continue_sync,
     tx_pool_sync,
     net_split_recovery,
-    quick_start_stop
+    quick_start_stop,
+    net_split_mining_power
 ].
 
 init_per_suite(Config) ->
@@ -560,6 +582,91 @@ net_split_recovery(Cfg) ->
 
     ok.
 
+net_split_mining_power(Cfg) ->
+    SplitLength = 40,
+    SyncLength = 20,
+    ExtraLength = 3,
+
+    Net1Nodes = [net1_node1, net1_node2],
+    Net2Nodes = [net2_node1, net2_node2, net2_node3, net2_node4],
+    AllNodes = Net1Nodes ++ Net2Nodes,
+
+    setup_nodes([?NET1_NODE1, ?NET1_NODE2, ?NET2_NODE1,
+                 ?NET2_NODE2, ?NET2_NODE3, ?NET2_NODE4], Cfg),
+
+    lists:foreach(fun(N) -> start_node(N, Cfg) end, Net2Nodes),
+    lists:foreach(fun(N) -> start_node(N, Cfg) end, Net1Nodes),
+
+    TargetHeight1 = SplitLength,
+    %% Wait for one extra block for resolving potential fork caused by nodes mining distinct blocks at the same time.
+    MinedHeight1 = ExtraLength + TargetHeight1,
+    wait_for_value({height, MinedHeight1}, AllNodes,
+                   (ExtraLength + SplitLength) * ?MINING_TIMEOUT, Cfg),
+
+    Net1BlocksA = lists:foldl(fun(N, Acc) ->
+        [get_block(N, TargetHeight1) | Acc]
+    end, [], Net1Nodes),
+
+    [N1A1 | N1As] = Net1BlocksA,
+    ?assertNotEqual(undefined, N1A1),
+    lists:foreach(fun(A) -> ?assertEqual(N1A1, A) end, N1As),
+
+    Net2BlocksA = lists:foldl(fun(N, Acc) ->
+        [get_block(N, TargetHeight1) | Acc]
+    end, [], Net2Nodes),
+
+    [N2A1 | N2As] = Net2BlocksA,
+    ?assertNotEqual(undefined, N2A1),
+    lists:foreach(fun(A) -> ?assertEqual(N2A1, A) end, N2As),
+
+    %% Check that the chains are different
+    ?assertNotEqual(N1A1, N2A1),
+
+    % Check that the 4 node cluster has more mining power.
+    Net1MinedBlocks1 = node_mined_retries(Net1Nodes),
+    Net2MinedBlocks1 = node_mined_retries(Net2Nodes),
+    ?assert(Net1MinedBlocks1 < Net2MinedBlocks1),
+
+    %% Join all the nodes
+    lists:foreach(fun(N) -> connect_node(N, net2, Cfg) end, Net1Nodes),
+    lists:foreach(fun(N) -> connect_node(N, net1, Cfg) end, Net2Nodes),
+    T0 = erlang:system_time(millisecond),
+
+    %% Mine Length blocks, this may take longer than ping interval
+    %% if so, the chains should be in sync when it's done.
+    TargetHeight2 = MinedHeight1 + SyncLength,
+    %% Wait for one extra block for resolving potential fork caused by nodes mining distinct blocks at the same time.
+    wait_for_value({height, ExtraLength + TargetHeight2}, AllNodes,
+                   (ExtraLength + SyncLength) * ?MINING_TIMEOUT, Cfg),
+
+    %% Wait at least as long as the ping timer can take
+    try_until(T0 + 2 * ping_interval(),
+            fun() ->
+                BlocksB = lists:foldl(fun(N, Acc) ->
+                    [get_block(N, TargetHeight2) | Acc]
+                end, [], AllNodes),
+
+                [B1 | Bs] = BlocksB,
+                ?assertNotEqual(undefined, B1),
+                lists:foreach(fun(B) -> ?assertEqual(B1, B) end, Bs)
+            end),
+
+    {ok, 200, #{height := Top2}} = request(net1_node1, 'GetTop', #{}),
+    ct:log("Height reached ~p", [Top2]),
+
+    % Check that the 4 node cluster has still more mining power.
+    Net1MinedBlocks2 = node_mined_retries(Net1Nodes),
+    Net2MinedBlocks2 = node_mined_retries(Net2Nodes),
+    ?assert(Net1MinedBlocks2 < Net2MinedBlocks2),
+
+    % Check the cluster with more mining power win.
+
+    lists:foreach(fun(N) ->
+        ?assertEqual(N2A1, get_block(N, TargetHeight1))
+    end, AllNodes),
+
+    ok.
+
 quick_start_stop(Cfg) ->
     setup_nodes(cluster([n1, n2], #{}), Cfg),
     start_node(n2, Cfg),
@@ -570,6 +677,17 @@ quick_start_stop(Cfg) ->
     ok.
 
 %% helper functions
+
+node_mined_retries(Nodes) ->
+    Metric = "ae.epoch.aecore.mining.retries.value",
+    lists:foldl(fun(N, Acc) ->
+        case aest_nodes:read_last_metric(N, Metric) of
+            undefined -> Acc;
+            Num ->
+                io:format(user, "~p: ~p~n", [N, Num]),
+                Acc + Num
+        end
+    end, 0, Nodes).
 
 ping_interval() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"ping_interval">>],

@@ -864,7 +864,7 @@ on_peer_accepted(PeerAddr, PeerInfo, Pid, State0) ->
                                     "from ~s to ~s; rejecting connection",
                                     [ppp(PeerId), format_address(OldPeer),
                                      format_address({PeerAddr, Port})]),
-                    {error, trusted_address_changed}
+                    {{error, trusted_address_changed}, State}
             end
     end.
 
