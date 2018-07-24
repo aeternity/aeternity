@@ -622,7 +622,7 @@ net_split_mining_power(Cfg) ->
     %% Check that the chains are different
     ?assertNotEqual(N1A1, N2A1),
 
-    % Check that the 6 node cluster has more mining power.
+    % Check that the 4 node cluster has more mining power.
     Net1MinedBlocks1 = node_mined_retries(Net1Nodes),
     Net2MinedBlocks1 = node_mined_retries(Net2Nodes),
     ?assert(Net1MinedBlocks1 < Net2MinedBlocks1),
@@ -654,7 +654,7 @@ net_split_mining_power(Cfg) ->
     {ok, 200, #{height := Top2}} = request(net1_node1, 'GetTop', #{}),
     ct:log("Height reached ~p", [Top2]),
 
-    % Check that the 6 node cluster has still more mining power.
+    % Check that the 4 node cluster has still more mining power.
     Net1MinedBlocks2 = node_mined_retries(Net1Nodes),
     Net2MinedBlocks2 = node_mined_retries(Net2Nodes),
     ?assert(Net1MinedBlocks2 < Net2MinedBlocks2),
