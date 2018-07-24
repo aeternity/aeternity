@@ -45,6 +45,9 @@
 
 -define(MINIMUM_DEPTH, 3).
 
+-define(SLOGAN, {slogan, {?FUNCTION_NAME, ?LINE}}).
+-define(SLOGAN(I), {slogan, {?FUNCTION_NAME, ?LINE, I}}).
+
 all() ->
     [{group, all_tests}].
 
@@ -52,7 +55,8 @@ groups() ->
     [
      {all_tests, [sequence], [{group, transactions}]},
      {transactions, [sequence],
-      [ create_channel
+      [
+        create_channel
       , inband_msgs
       , upd_transfer
       , deposit
@@ -131,7 +135,7 @@ stop_node(N, Config) ->
 create_channel(Cfg) ->
     Debug = get_debug(Cfg),
     #{ i := #{fsm := FsmI, channel_id := ChannelId} = I
-     , r := #{} = R} = create_channel_([{port, 9325}|Cfg]),
+     , r := #{} = R} = create_channel_([{port, 9325},?SLOGAN|Cfg]),
     ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
     _ = await_signing_request(shutdown, I, ?TIMEOUT, Debug),
     _ = await_signing_request(shutdown_ack, R, ?TIMEOUT, Debug),
@@ -146,7 +150,8 @@ inband_msgs(Cfg) ->
     #{ i := #{fsm := FsmI} = I
      , r := #{} = R
      , spec := #{ initiator := _PubI
-                , responder := PubR }} = create_channel_([{port,9326}|Cfg]),
+                , responder := PubR }} = create_channel_(
+                                           [{port,9326},?SLOGAN|Cfg]),
     ok = rpc(dev1, aesc_fsm, inband_msg, [FsmI, PubR, <<"i2r hello">>]),
     {ok,_} =receive_from_fsm(
               message, R,
@@ -159,7 +164,8 @@ upd_transfer(Cfg) ->
     #{ i := #{fsm := FsmI, channel_id := ChannelId} = I
      , r := #{} = R
      , spec := #{ initiator := PubI
-                , responder := PubR }} = create_channel_([{port,9326}|Cfg]),
+                , responder := PubR }} = create_channel_(
+                                           [{port,9326},?SLOGAN|Cfg]),
     {I0, R0} = do_update(PubI, PubR, 2, I, R, true),
     {I1, R1} = update_bench(I0, R0),
     ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
@@ -208,7 +214,8 @@ deposit(Cfg) ->
     #{ i := #{fsm := FsmI} = I
      , r := #{} = R
      , spec := #{ initiator := _PubI
-                , responder := _PubR }} = create_channel_([{port, 9327}|Cfg]),
+                , responder := _PubR }} = create_channel_(
+                                            [{port, 9327},?SLOGAN|Cfg]),
     ct:log("I = ~p", [I]),
     #{initiator_amount := IAmt0, responder_amount := RAmt0} = I,
     {IAmt0, RAmt0, _, _Round0 = 1} = check_fsm_state(FsmI),
@@ -237,7 +244,8 @@ withdraw(Cfg) ->
     #{ i := #{fsm := FsmI} = I
      , r := #{} = R
      , spec := #{ initiator := _PubI
-                , responder := _PubR }} = create_channel_([{port, 9328}|Cfg]),
+                , responder := _PubR }} = create_channel_(
+                                            [{port, 9328},?SLOGAN|Cfg]),
     ct:log("I = ~p", [I]),
     #{initiator_amount := IAmt0, responder_amount := RAmt0} = I,
     {IAmt0, RAmt0, _, _Round0 = 1} = check_fsm_state(FsmI),
@@ -264,6 +272,9 @@ leave_reestablish(Cfg) ->
     leave_reestablish(9329, Cfg).
 
 leave_reestablish(Port, Cfg) ->
+    leave_reestablish_(Port, [?SLOGAN|Cfg]).
+
+leave_reestablish_(Port, Cfg) ->
     Debug = get_debug(Cfg),
     {I0, R0, Spec0} = channel_spec(Cfg),
     #{ i := #{fsm := FsmI} = I
@@ -272,6 +283,10 @@ leave_reestablish(Port, Cfg) ->
                 , responder := _PubR }} =
         create_channel_from_spec(I0, R0, Spec0, Port, Debug),
     ct:log("I = ~p", [I]),
+    ChId = maps:get(channel_id, I),
+    Cache1 = cache_status(ChId),
+    [_,_] = in_ram(Cache1),
+    false = on_disk(Cache1),
     ok = rpc(dev1, aesc_fsm, leave, [FsmI]),
     {ok,Li} = await_leave(I, ?TIMEOUT, Debug),
     {ok,Lr} = await_leave(R, ?TIMEOUT, Debug),
@@ -279,6 +294,12 @@ leave_reestablish(Port, Cfg) ->
     SignedTx = maps:get(info, Lr),
     {ok,_} = receive_from_fsm(info, I, fun died_normal/1, ?TIMEOUT, Debug),
     {ok,_} = receive_from_fsm(info, R, fun died_normal/1, ?TIMEOUT, Debug),
+    retry(3, 100,
+          fun() ->
+                  Cache2 = cache_status(ChId),
+                  [] = in_ram(Cache2),
+                  true = on_disk(Cache2)
+          end),
     %%
     %% reestablish
     %%
@@ -289,14 +310,29 @@ leave_reestablish(Port, Cfg) ->
 
 leave_reestablish_close(Cfg) ->
     Debug = get_debug(Cfg),
-    #{i := I, r := R, spec := Spec} = leave_reestablish(9332, Cfg),
+    #{i := I, r := R, spec := Spec} = leave_reestablish_(9332, [?SLOGAN|Cfg]),
     #{initiator := PubI, responder := PubR} = Spec,
     {I1, R1} = do_update(PubI, PubR, 1, I, R, Debug),
-    shutdown_(I1, R1).
+    ChId = maps:get(channel_id, I1),
+    Cache1 = cache_status(ChId),
+    [_,_] = in_ram(Cache1),
+    false = on_disk(Cache1),
+    shutdown_(I1, R1),
+    retry(3, 100,
+          fun() ->
+                  Cache2 = cache_status(ChId),
+                  []   = in_ram(Cache2),
+                  true = on_disk(Cache2)
+          end),
+    mine_blocks(dev1, 5),
+    Cache3 = cache_status(ChId),
+    []    = in_ram(Cache3),
+    false = on_disk(Cache3).
+
 
 change_config_get_history(Cfg) ->
     #{ i := #{fsm := FsmI} = I
-     , r := #{} = R } = create_channel_([{port,9335}|Cfg]),
+     , r := #{} = R } = create_channel_([{port,9335},?SLOGAN|Cfg]),
     Log = rpc(dev1, aesc_fsm, get_history, [FsmI]),
     ok = check_history(Log),
     ok = rpc(dev1, aesc_fsm, change_config, [FsmI, log_keep, 17]),
@@ -358,11 +394,16 @@ died_normal(#{info := {died,normal}}) -> ok.
 
 multiple_channels(Cfg) ->
     ct:log("spawning multiple channels", []),
+    Initiator = maps:get(pub, ?config(initiator, Cfg)),
+    ct:log("Initiator: ~p", [Initiator]),
     Me = self(),
     NumCs = 10,
+    {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [Initiator]),
     Cs = [create_multi_channel([{port, 9330 + N},
-                                {ack_to, Me}|Cfg], #{mine_blocks => {ask, Me},
-                                                     debug => false})
+                                {ack_to, Me},
+                                {nonce, Nonce + N - 1},
+                                ?SLOGAN(N)|Cfg], #{mine_blocks => {ask, Me},
+                                                   debug => false})
           || N <- lists:seq(1, NumCs)],
     ct:log("channels spawned", []),
     Cs = collect_acks(Cs, mine_blocks, NumCs),
@@ -392,6 +433,29 @@ shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R) ->
     wait_for_signed_transaction_in_block(dev1, SignedTx),
     verify_close_mutual_tx(SignedTx, ChannelId),
     ok.
+
+%% Retry N times, T ms apart, if F() raises an exception.
+%% Used in places where there could be a race.
+%%
+retry(N, T, F) ->
+    retry(N, T, F, undefined, []).
+
+retry(0, _, _, E, T) ->
+    error(E, T);
+retry(N, T, F, _, _) when N > 0 ->
+    try F()
+    catch
+        error:E ->
+            timer:sleep(T),
+            retry(N-1, T, F, E, erlang:get_stacktrace())
+    end.
+
+
+cache_status(ChId) ->
+    rpc(dev1, aesc_state_cache, cache_status, [ChId]).
+
+in_ram(St)  ->  proplists:get_value(in_ram, St).
+on_disk(St) ->  proplists:get_value(on_disk, St).
 
 
 collect_acks([Pid | Pids], Tag, N) ->
@@ -454,8 +518,16 @@ channel_spec(Cfg) ->
              client           => self(),
              noise            => [{noise, Proto}],
              timeouts         => #{idle => 20000},
+             slogan           => slogan(Cfg),
              report           => #{debug => true} },
-    {I, R, Spec}.
+    Spec1 = case ?config(nonce, Cfg) of
+                undefined -> Spec;
+                Nonce     -> Spec#{nonce => Nonce}
+            end,
+    {I, R, Spec1}.
+
+slogan(Cfg) ->
+    ?config(slogan, Cfg).
 
 create_channel_from_spec(
   I, R, #{initiator_amount := IAmt, responder_amount := RAmt} = Spec, Port, Debug) ->

@@ -200,8 +200,10 @@ signing_response(Fsm, Tag, Obj) ->
 minimum_depth_achieved(Fsm, ChanId, Type, TxHash) ->
     gen_statem:cast(Fsm, {?MIN_DEPTH_ACHIEVED, ChanId, Type, TxHash}).
 
-where(ChanId, Role) ->
-    gproc:where(gproc_name(ChanId, Role)).
+where(ChanId, Role) when Role == initiator; Role == responder ->
+    gproc:where(gproc_name_by_role(ChanId, Role));
+where(ChanId, Pubkey) when is_binary(Pubkey) ->
+    gproc:where(gproc_name_by_pubkey(ChanId, Pubkey)).
 
 %% ======================================================================
 %% Default timer values
@@ -576,6 +578,7 @@ awaiting_signature(cast, {?SIGNED, ?FND_CREATED, SignedTx} = Msg,
            log(rcv, ?SIGNED, Msg, D#data{create_tx = NewSignedTx})),
     report(on_chain_tx, NewSignedTx, D1),
     {ok, D2} = start_min_depth_watcher(?WATCH_FND, NewSignedTx, D1),
+    gproc_register_on_chain_id(D2),
     next_state(awaiting_locked, D2);
 awaiting_signature(cast, {?SIGNED, ?DEP_CREATED, SignedTx} = Msg,
                    #data{latest = {sign, ?DEP_CREATED, HSCTx}} = D) ->
@@ -2018,7 +2021,8 @@ start_min_depth_watcher(Type, SignedTx,
     evt({tx_hash, TxHash}),
     Nonce = aetx:nonce(Tx),
     evt({nonce, Nonce}),
-    {OnChainId, D1} = on_chain_id(D, Initiator, Nonce, Responder),
+    %% {OnChainId, D1} = on_chain_id(D, Initiator, Nonce, Responder),
+    {OnChainId, D1} = on_chain_id(D, Tx),
     case {Type, Watcher0} of
         {funding, undefined} ->
             {ok, Watcher1} = aesc_fsm_min_depth_watcher:start_link(
@@ -2031,19 +2035,36 @@ start_min_depth_watcher(Type, SignedTx,
             {ok, D1#data{latest = {watch, Type, TxHash, SignedTx}}}
     end.
 
-on_chain_id(#data{on_chain_id = ID} = D, _, _, _) when ID =/= undefined ->
+
+on_chain_id(#data{on_chain_id = ID} = D, _) when ID =/= undefined ->
     {ID, D};
-on_chain_id(D, Initiator, Nonce, Responder) ->
-    ID = aesc_channels:id(Initiator, Nonce, Responder),
-    evt({on_chain_id, ID}),
+on_chain_id(D, Tx) ->
+    {Mod, Txi} = aetx:specialize_callback(Tx),
+    ID = Mod:channel_id(Txi),
     {ID, D#data{on_chain_id = ID}}.
 
+gproc_register(#data{role = Role, channel_id = ChanId} = D) ->
+    gproc_register_(ChanId, Role, D).
 
-gproc_register(#data{role = Role, channel_id = ChanId}) ->
-    gproc:reg(gproc_name(ChanId, Role)).
+gproc_register_on_chain_id(#data{role = Role, on_chain_id = Id} = D)
+  when Id =/= undefined ->
+    gproc_register_(Id, Role, D).
 
-gproc_name(Id, Role) ->
-    {n, l, {aesc_channel, {Id, Role}}}.
+gproc_register_(ChanId, Role, D) ->
+    Pubkey = my_account(D),
+    Nbr = gproc_name_by_role(ChanId, Role),
+    Nbp = gproc_name_by_pubkey(ChanId, Pubkey),
+    lager:debug("gproc:reg() Nbr = ~p; Nbp = ~p; prev = ~p",
+                [Nbr, Nbp, gproc:info(self(), gproc)]),
+    gproc:reg(Nbr, Pubkey),
+    gproc:reg(Nbp).
+
+
+gproc_name_by_role(Id, Role) ->
+    {n, l, {aesc_channel, {Id, role, Role}}}.
+
+gproc_name_by_pubkey(Id, Pubkey) ->
+    {n, l, {aesc_channel, {Id, key, Pubkey}}}.
 
 evt(_Msg) ->
     ok.

@@ -74,7 +74,7 @@ new_(#{ initiator          := InitiatorPubKey
 
 recover_from_offchain_tx(#{ existing_channel_id := ChId
                           , offchain_tx         := SignedTx } = Opts) ->
-    case aesc_state_cache:fetch(ChId, my_pubkey(Opts)) of
+    case aesc_state_cache:reestablish(ChId, my_pubkey(Opts)) of
         {ok, #state{} = State} ->
             case is_latest_signed_tx(SignedTx, State) of
                 true ->

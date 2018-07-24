@@ -11,7 +11,9 @@
     sext
    ]},
   {mod,{aesc_app,[]}},
-  {env,[]},
+  {env,[
+        {'$aec_db_create_tables', {aesc_db, create_tables}}
+       ]},
   {modules, []},
   {maintainers, []},
   {licenses, []},

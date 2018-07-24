@@ -93,6 +93,9 @@ accept(Port, Opts) ->
       ?MODULE, {self(), {accept, Port, Opts}}, ?GEN_SERVER_OPTS).
 
 init({Parent, Op}) ->
+    %% trap exits to avoid ugly crash reports. We rely on the monitor to
+    %% ensure that we close when the fsm dies
+    process_flag(trap_exit, true),
     proc_lib:init_ack(Parent, {ok, self()}),
     ParentMonRef = monitor(process, Parent),
     St = establish(Op, #st{parent = Parent,

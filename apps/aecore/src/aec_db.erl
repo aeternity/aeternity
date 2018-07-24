@@ -12,6 +12,7 @@
          load_database/0,               % called in aecore app start phase
          tables/1,                      % for e.g. test database setup
          clear_db/0,                    % mostly for test purposes
+         tab_copies/1,                  % for create_tables hooks
          persisted_valid_genesis_block/0
         ]).
 
