@@ -258,8 +258,8 @@ def copy_peer_keys(root_dir, keys):
     curr_dir = os.getcwd()
     key_dir  = os.path.join(root_dir, keys)
     os.makedirs(key_dir)
-    shutil.copy(os.path.join(curr_dir, "tests", "peer_keys", keys, "peer_key"), key_dir)
-    shutil.copy(os.path.join(curr_dir, "tests", "peer_keys", keys, "peer_key.pub"), key_dir)
+    shutil.copy(os.path.join(curr_dir, "peer_keys", keys, "peer_key"), key_dir)
+    shutil.copy(os.path.join(curr_dir, "peer_keys", keys, "peer_key.pub"), key_dir)
     return key_dir
 
 def make_peers_user_config(root_dir, file_name, keys, sync_port, peers, mining):

@@ -12,6 +12,7 @@ from swagger_client.api.external_api import ExternalApi
 from swagger_client.api.internal_api import InternalApi
 from swagger_client.api_client import ApiClient
 from swagger_client.models.balance import Balance
+from swagger_client.models.spend_tx import SpendTx
 from swagger_client.configuration import Configuration
 
 from nose.tools import assert_equals
@@ -83,15 +84,15 @@ def setup_node_with_tokens(node, blocks_to_mine):
     assert_equals(top.height >= blocks_to_mine, True)
     # Now the node has at least blocks_to_mine blocks mined
 
-    return (root_dir, node, api, top)
+    return (root_dir, api, top)
 
 def _copy_sign_keys(root_dir, keys):
     # Copy the right keys
     curr_dir = os.getcwd()
     key_dir  = os.path.join(root_dir, keys)
     os.makedirs(key_dir)
-    shutil.copy(os.path.join(curr_dir, "tests", "sign_keys", keys, "sign_key"), key_dir)
-    shutil.copy(os.path.join(curr_dir, "tests", "sign_keys", keys, "sign_key.pub"), key_dir)
+    shutil.copy(os.path.join(curr_dir, "sign_keys", keys, "sign_key"), key_dir)
+    shutil.copy(os.path.join(curr_dir, "sign_keys", keys, "sign_key.pub"), key_dir)
     return key_dir
 
 def install_user_config(root_dir, file_name, conf):
@@ -142,18 +143,17 @@ mining:
 """.format(key_dir)
     return install_user_config(root_dir, file_name, conf)
 
-def start_node(name, config_filename=None):
+def start_node(name, config_filename):
     if should_start_node(name):
         print("\nNode " + name + " starting")
         config_prefix = ""
-        if config_filename != None:
-            if config_filename[0] == "/": # absolute path
-                config_prefix =  'EPOCH_CONFIG="' + config_filename + '" '
-            else:
-                config_prefix =  'EPOCH_CONFIG="`pwd`/' + config_filename + '" '
+        if config_filename[0] == "/": # absolute path
+            config_prefix =  'EPOCH_CONFIG="' + config_filename + '" '
+        else:
+            config_prefix =  'EPOCH_CONFIG="`pwd`/' + config_filename + '" '
 
         print("Starting node with config prefix " + config_prefix)
-        p = os.popen("(cd .. && " + config_prefix + "make " + name + "-start;)","r")
+        p = os.popen("(cd ../.. && " + config_prefix + "make " + name + "-start;)","r")
         while 1:
             line = p.readline()
             if not line: break
@@ -164,7 +164,7 @@ def start_node(name, config_filename=None):
 def stop_node(name):
     if should_start_node(name):
         print("Node " + name + " stopping")
-        p = os.popen("(cd .. && make " + name + "-stop;)","r")
+        p = os.popen("(cd ../.. && make " + name + "-stop;)","r")
         while 1:
             line = p.readline()
             if not line: break
@@ -204,6 +204,20 @@ def get_account_balance_at_height(api, int_api, height, pub_key=None):
     return _balance_from_get_account_balance(
         lambda: api.get_account_balance(_node_pub_key(int_api, pub_key),
                                         height=height))
+
+def send_tokens_to_unchanging_user(address, tokens, fee, external_api, internal_api):
+    def get_balance(k):
+        return get_account_balance(external_api, internal_api, k).balance
+    bal0 = get_balance(address)
+    spend_tx_obj = SpendTx(
+        recipient_pubkey=address,
+        amount=tokens,
+        fee=fee,
+        ttl=100,
+        payload="sending tokens")
+    internal_api.post_spend_tx(spend_tx_obj)
+    wait(lambda: get_balance(address) == (bal0 + tokens),
+         timeout_seconds=120, sleep_seconds=0.25)
 
 def _node_pub_key(int_api, k):
     return k if k is not None else int_api.get_pub_key().pub_key

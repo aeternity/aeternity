@@ -37,7 +37,7 @@ def read_id_contract(api):
 
 def test_contract_create():
     test_settings = settings["test_contract_create"]
-    (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node")
+    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, "node")
     internal_api = common.internal_api(node)
 
     private_key = keys.new_private()
@@ -90,7 +90,7 @@ def test_contract_create():
 def test_contract_call():
     test_settings = settings["test_contract_call"]
     create_settings = settings["test_contract_create"]
-    (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node")
+    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, "node")
     internal_api = common.internal_api(node)
 
     private_key = keys.new_private()
@@ -172,7 +172,7 @@ def test_contract_call():
 def test_contract_on_chain_call_off_chain():
     test_settings = settings["test_contract_call"]
     create_settings = settings["test_contract_create"]
-    (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node")
+    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, "node")
     internal_api = common.internal_api(node)
 
     private_key = keys.new_private()
@@ -221,7 +221,7 @@ def test_spend():
 
     # Setup
     test_settings = settings["test_spend"]
-    (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node")
+    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, "node")
     internal_api = common.internal_api(node)
 
     private_key = keys.new_private()
@@ -281,28 +281,15 @@ def cleanup(node, root_dir):
     shutil.rmtree(root_dir)
 
 def setup_node_with_tokens(test_settings, node_name):
-    return common.setup_node_with_tokens(test_settings["nodes"][node_name], test_settings["blocks_to_mine"])
+    node = test_settings["nodes"][node_name]
+    return node, common.setup_node_with_tokens(node, test_settings["blocks_to_mine"])
 
 def send_tokens_to_user(user, test_settings, external_api, internal_api):
-    return send_tokens_to_user_(test_settings[user]["pubkey"],
-                                test_settings[user]["amount"],
-                                test_settings[user]["fee"],
-                                external_api,
-                                internal_api)
-
-def send_tokens_to_user_(address, tokens, fee, external_api, internal_api):
-    def get_balance(k):
-        return common.get_account_balance(external_api, internal_api, k).balance
-    bal0 = get_balance(address)
-    spend_tx_obj = SpendTx(
-        recipient_pubkey=address,
-        amount=tokens,
-        fee=fee,
-        ttl=100,
-        payload="sending tokens")
-    internal_api.post_spend_tx(spend_tx_obj)
-    wait(lambda: get_balance(address) == (bal0 + tokens),
-         timeout_seconds=120, sleep_seconds=0.25)
+    return common.send_tokens_to_unchanging_user(test_settings[user]["pubkey"],
+                                                 test_settings[user]["amount"],
+                                                 test_settings[user]["fee"],
+                                                 external_api,
+                                                 internal_api)
 
 def get_unsigned_contract_create(owner, contract, external_api):
     bytecode = read_id_contract(external_api)

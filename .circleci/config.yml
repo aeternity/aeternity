@@ -405,9 +405,9 @@ jobs:
             make python-uats
       - run:
           name: Prepare JUnit Report
-          command: mv py/nosetests.xml py/junit.xml
+          command: mv py/tests/nosetests.xml py/tests/junit.xml
       - store_test_results:
-          path: py
+          path: py/tests
       - store_artifacts:
           path: _build/dev1/rel/epoch/log
           destination: node1/
