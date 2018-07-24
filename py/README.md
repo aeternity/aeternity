@@ -27,6 +27,6 @@ be run
 
 * execute all user acceptance tests: `make python-uats`
 
-* execute a singe acceptance tests group:
+* execute a single acceptance tests group:
   * `make python-single-uat TEST_NAME=test_use_cases.py` would run `test_use_cases.py` tests
   * `make python-single-uat TEST_NAME=test_api_usage_contracts_counter.rst` would run `test_api_usage_contracts_counter.rst` test
