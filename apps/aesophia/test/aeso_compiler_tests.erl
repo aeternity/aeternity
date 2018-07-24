@@ -39,6 +39,7 @@ compilable_contracts() ->
      "factorial",
      "fundme",
      "identity",
+     "maps",
      "remote_call",
      "simple",
      "simple_storage",
