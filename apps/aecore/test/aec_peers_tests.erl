@@ -296,7 +296,8 @@ test_multiple_normal_peers() ->
     {ok, Conn2} = ?assertCalled(connect, [#{ r_pubkey := PubKey2 }], {ok, _}, 3500),
     {ok, Conn3} = ?assertCalled(connect, [#{ r_pubkey := PubKey3 }], {ok, _}, 3500),
     B = erlang:system_time(millisecond),
-    ?assertEqual({(B - A), true}, {(B - A), ((B - A) =< 3500)}),
+    Delta = B - A,
+    ?assertEqual({Delta, true}, {Delta, (Delta =< 3500)}),
 
     ok = conn_peer_connected(Conn1),
     ok = conn_peer_connected(Conn2),
