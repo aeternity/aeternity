@@ -151,6 +151,7 @@ references:
           PACKAGES_DIR: *packages_workspace
         command: |
           export PACKAGE=${PACKAGE_TARBALL:?}
+          export DEPLOY_DB_VERSION=$(cat deployment/DB_VERSION)
           cd /infrastructure && make deploy
 
   upload_github_release_asset: &upload_github_release_asset
