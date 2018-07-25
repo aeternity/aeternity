@@ -18,9 +18,8 @@
 -define(OP_CREATE_CONTRACT, 3).
 -define(OP_CALL_CONTRACT,   4).
 
--type transfer_operation() :: ?OP_TRANSFER | ?OP_WITHDRAW | ?OP_DEPOSIT.
-
--opaque update() :: {transfer_operation(), aec_keys:pubkey(), aec_keys:pubkey(), non_neg_integer()}
+-opaque update() :: {?OP_TRANSFER, aec_keys:pubkey(), aec_keys:pubkey(), non_neg_integer()}
+        | {?OP_WITHDRAW | ?OP_DEPOSIT, aec_keys:pubkey(), non_neg_integer()}
         | {?OP_CREATE_CONTRACT, aec_keys:pubkey(), aect_contracts:vm_version(), binary(),
            non_neg_integer(), binary()}
         | {?OP_CALL_CONTRACT, aec_keys:pubkey(), aect_contracts:id(), aect_contracts:vm_version(),
@@ -221,9 +220,9 @@ apply_updates(Updates, Round, Trees, Opts) ->
 modify_trees({?OP_TRANSFER, From, To, Amount}, Trees0, _, Opts) ->
     Trees1 = remove_tokens(From, Amount, Trees0, Opts),
     add_tokens(To, Amount, Trees1);
-modify_trees({?OP_DEPOSIT, To, To, Amount}, Trees, _, _Opts) ->
+modify_trees({?OP_DEPOSIT, To, Amount}, Trees, _, _Opts) ->
     add_tokens(To, Amount, Trees);
-modify_trees({?OP_WITHDRAW, From, From, Amount}, Trees, _, Opts) ->
+modify_trees({?OP_WITHDRAW, From, Amount}, Trees, _, Opts) ->
     remove_tokens(From, Amount, Trees, Opts);
 modify_trees({?OP_CREATE_CONTRACT, Owner, VmVersion, Code, Deposit, CallData}, Trees, Round, Opts) ->
     {ContractPubKey, _Contract, Trees1} =
@@ -302,11 +301,11 @@ op_transfer(From, To, Amount) ->
 
 -spec op_deposit(aec_keys:pubkey(), non_neg_integer()) -> update().
 op_deposit(Acct, Amount) ->
-    {?OP_DEPOSIT, Acct, Acct, Amount}.
+    {?OP_DEPOSIT, Acct, Amount}.
 
 -spec op_withdraw(aec_keys:pubkey(), non_neg_integer()) -> update().
 op_withdraw(Acct, Amount) ->
-    {?OP_WITHDRAW, Acct, Acct, Amount}.
+    {?OP_WITHDRAW, Acct, Amount}.
 
 -spec op_new_contract(aec_keys:pubkey(), aect_contracts:vm_version(), binary(),
            non_neg_integer(), binary()) -> update().
@@ -343,11 +342,11 @@ update_for_client({?OP_TRANSFER, From, To, Amount}) ->
       <<"from">> => From,
       <<"to">>   => To,
       <<"am">>   => Amount};
-update_for_client({?OP_WITHDRAW, To, To, Amount}) ->
+update_for_client({?OP_WITHDRAW, To, Amount}) ->
     #{<<"op">> => <<"withdraw">>,
       <<"to">>   => To,
       <<"am">>   => Amount};
-update_for_client({?OP_DEPOSIT, From, From, Amount}) ->
+update_for_client({?OP_DEPOSIT, From, Amount}) ->
     #{<<"op">> => <<"deposit">>,
       <<"from">>   => From,
       <<"am">>   => Amount}.
@@ -409,13 +408,11 @@ update2fields({?OP_TRANSFER, From, To, Amount}) ->
     [ {from,    From},
       {to,      To},
       {amount,  Amount}];
-update2fields({?OP_DEPOSIT, From, From, Amount}) ->
+update2fields({?OP_DEPOSIT, From, Amount}) ->
     [ {from,    From},
-      {to,      From},
       {amount,  Amount}];
-update2fields({?OP_WITHDRAW, To, To, Amount}) ->
-    [ {from,    To},
-      {to,      To},
+update2fields({?OP_WITHDRAW, To, Amount}) ->
+    [ {to,      To},
       {amount,  Amount}];
 update2fields({?OP_CREATE_CONTRACT, Owner, VmVersion, Code, Deposit, CallData}) ->
     [ {owner, Owner},
@@ -436,11 +433,9 @@ fields2update(?OP_TRANSFER, [{from,   From},
                              {amount, Amount}]) ->
     op_transfer(From, To, Amount);
 fields2update(?OP_DEPOSIT, [{from,   From},
-                            {to,     From},
                             {amount, Amount}]) ->
     op_deposit(From, Amount);
-fields2update(?OP_DEPOSIT, [{from,   To},
-                            {to,     To},
+fields2update(?OP_DEPOSIT, [{to,     To},
                             {amount, Amount}]) ->
     op_withdraw(To, Amount);
 fields2update(?OP_CREATE_CONTRACT, [{owner, Owner},
@@ -476,11 +471,9 @@ update_serialization_template(?UPDATE_VSN, ?OP_TRANSFER) ->
       {amount,  int}];
 update_serialization_template(?UPDATE_VSN, ?OP_DEPOSIT) ->
     [ {from,    binary},
-      {to,      binary},
       {amount,  int}];
 update_serialization_template(?UPDATE_VSN, ?OP_WITHDRAW) ->
-    [ {from,    binary},
-      {to,      binary},
+    [ {to,      binary},
       {amount,  int}];
 update_serialization_template(?UPDATE_VSN, ?OP_CREATE_CONTRACT) ->
     [ {owner,       binary},
