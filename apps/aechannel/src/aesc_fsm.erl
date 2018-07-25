@@ -1432,7 +1432,7 @@ check_accept_msg(#{ chain_hash           := ChainHash
 
 dep_tx_for_signing(#{from := From, amount := Amount} = Opts,
                    #data{on_chain_id = ChanId, state=State}) ->
-    Updates = [aesc_offchain_state:op_deposit(From, Amount)],
+    Updates = [aesc_offchain_update:op_deposit(From, Amount)],
     UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State, Opts),
     {channel_offchain_tx, UpdatedOffchainTx} = aetx:specialize_type(UpdatedStateTx),
     StateHash = aesc_offchain_tx:state_hash(UpdatedOffchainTx),
@@ -1451,7 +1451,7 @@ dep_tx_for_signing(#{from := From, amount := Amount} = Opts,
 
 wdraw_tx_for_signing(#{to := To, amount := Amount} = Opts,
                      #data{on_chain_id = ChanId, state=State}) ->
-    Updates = [aesc_offchain_state:op_withdraw(To, Amount)],
+    Updates = [aesc_offchain_update:op_withdraw(To, Amount)],
     UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State, Opts),
     {channel_offchain_tx, UpdatedOffchainTx} = aetx:specialize_type(UpdatedStateTx),
     StateHash = aesc_offchain_tx:state_hash(UpdatedOffchainTx),
@@ -1476,9 +1476,8 @@ new_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts 
       call_data   := CallData} = Opts,
     Updates = [aesc_offchain_update:op_new_contract(Owner, VmVersion, Code, Deposit, CallData)],
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State, ChannelOpts),
-         ok = request_signing(?UPDATE, Tx1, D),
+         D1 = request_signing(?UPDATE, Tx1, D),
          gen_statem:reply(From, ok),
-         D1 = D#data{latest = {sign, ?UPDATE, Tx1}},
          next_state(awaiting_signature, D1)
     catch
         error:Reason ->
@@ -1495,9 +1494,8 @@ call_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts
       call_stack  := CallStack} = Opts,
     Updates = [aesc_offchain_update:op_call_contract(Caller, ContractPubKey, VmVersion, Amount, CallData, CallStack)],
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State, ChannelOpts),
-         ok = request_signing(?UPDATE, Tx1, D),
+         D1 = request_signing(?UPDATE, Tx1, D),
          gen_statem:reply(From, ok),
-         D1 = D#data{latest = {sign, ?UPDATE, Tx1}},
          next_state(awaiting_signature, D1)
     catch
         error:Reason ->
