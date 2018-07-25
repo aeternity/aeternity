@@ -1966,7 +1966,7 @@
           "200" : {
             "description" : "Calculated commitment hash",
             "schema" : {
-              "$ref" : "#/definitions/NameCommitmentHash"
+              "$ref" : "#/definitions/CommitmentHash"
             }
           },
           "400" : {
@@ -2264,7 +2264,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/NameCommitmentHash"
+              "$ref" : "#/definitions/CommitmentHash"
             }
           },
           "400" : {
@@ -3950,33 +3950,38 @@
     "NameEntry" : {
       "type" : "object",
       "properties" : {
-        "name" : {
-          "type" : "string"
+        "id" : {
+          "$ref" : "#/definitions/EncodedHash"
         },
-        "name_hash" : {
-          "type" : "string"
-        },
-        "name_ttl" : {
+        "expires" : {
           "type" : "integer",
           "format" : "int64"
         },
         "pointers" : {
-          "type" : "string"
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/NamePointer"
+          }
         }
       },
       "example" : {
-        "name_ttl" : 0,
-        "name_hash" : "name_hash",
-        "name" : "name",
-        "pointers" : "pointers"
+        "expires" : 0,
+        "id" : { },
+        "pointers" : [ {
+          "id" : null,
+          "key" : "key"
+        }, {
+          "id" : null,
+          "key" : "key"
+        } ]
       }
     },
     "NamePreclaimTx" : {
       "type" : "object",
-      "required" : [ "commitment", "fee" ],
+      "required" : [ "commitment_id", "fee" ],
       "properties" : {
-        "commitment" : {
-          "type" : "string"
+        "commitment_id" : {
+          "$ref" : "#/definitions/EncodedHash"
         },
         "fee" : {
           "type" : "integer",
@@ -3986,7 +3991,7 @@
           "type" : "integer",
           "format" : "int64"
         },
-        "account" : {
+        "account_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "nonce" : {
@@ -3995,11 +4000,11 @@
         }
       },
       "example" : {
+        "commitment_id" : { },
+        "account_id" : null,
         "fee" : 0,
-        "commitment" : "commitment",
         "ttl" : 6,
-        "nonce" : 1,
-        "account" : { }
+        "nonce" : 1
       }
     },
     "NameClaimTx" : {
@@ -4021,7 +4026,7 @@
           "type" : "integer",
           "format" : "int64"
         },
-        "account" : {
+        "account_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "nonce" : {
@@ -4031,26 +4036,29 @@
       },
       "example" : {
         "name_salt" : 0,
+        "account_id" : { },
         "fee" : 6,
         "name" : "name",
         "ttl" : 1,
-        "nonce" : 5,
-        "account" : { }
+        "nonce" : 5
       }
     },
     "NameUpdateTx" : {
       "type" : "object",
-      "required" : [ "client_ttl", "fee", "name_hash", "name_ttl", "pointers" ],
+      "required" : [ "client_ttl", "fee", "name_id", "name_ttl", "pointers" ],
       "properties" : {
-        "name_hash" : {
-          "type" : "string"
+        "name_id" : {
+          "$ref" : "#/definitions/EncodedHash"
         },
         "name_ttl" : {
           "type" : "integer",
           "format" : "int64"
         },
         "pointers" : {
-          "type" : "string"
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/NamePointer"
+          }
         },
         "client_ttl" : {
           "type" : "integer",
@@ -4064,7 +4072,7 @@
           "type" : "integer",
           "format" : "int64"
         },
-        "account" : {
+        "account_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "nonce" : {
@@ -4075,23 +4083,29 @@
       "example" : {
         "name_ttl" : 0,
         "client_ttl" : 6,
-        "name_hash" : "name_hash",
+        "account_id" : null,
         "fee" : 1,
+        "name_id" : { },
         "ttl" : 5,
         "nonce" : 5,
-        "pointers" : "pointers",
-        "account" : { }
+        "pointers" : [ {
+          "id" : null,
+          "key" : "key"
+        }, {
+          "id" : null,
+          "key" : "key"
+        } ]
       }
     },
     "NameTransferTx" : {
       "type" : "object",
-      "required" : [ "fee", "name_hash", "recipient_pubkey" ],
+      "required" : [ "fee", "name_id", "recipient_id" ],
       "properties" : {
-        "name_hash" : {
-          "type" : "string"
+        "name_id" : {
+          "$ref" : "#/definitions/EncodedHash"
         },
-        "recipient_pubkey" : {
-          "type" : "string"
+        "recipient_id" : {
+          "$ref" : "#/definitions/EncodedHash"
         },
         "fee" : {
           "type" : "integer",
@@ -4101,7 +4115,7 @@
           "type" : "integer",
           "format" : "int64"
         },
-        "account" : {
+        "account_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "nonce" : {
@@ -4110,20 +4124,20 @@
         }
       },
       "example" : {
-        "name_hash" : "name_hash",
+        "account_id" : null,
         "fee" : 0,
-        "recipient_pubkey" : "recipient_pubkey",
+        "name_id" : { },
         "ttl" : 6,
         "nonce" : 1,
-        "account" : { }
+        "recipient_id" : null
       }
     },
     "NameRevokeTx" : {
       "type" : "object",
-      "required" : [ "fee", "name_hash" ],
+      "required" : [ "fee", "name_id" ],
       "properties" : {
-        "name_hash" : {
-          "type" : "string"
+        "name_id" : {
+          "$ref" : "#/definitions/EncodedHash"
         },
         "fee" : {
           "type" : "integer",
@@ -4133,7 +4147,7 @@
           "type" : "integer",
           "format" : "int64"
         },
-        "account" : {
+        "account_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "nonce" : {
@@ -4142,33 +4156,48 @@
         }
       },
       "example" : {
-        "name_hash" : "name_hash",
+        "account_id" : null,
         "fee" : 0,
+        "name_id" : { },
         "ttl" : 6,
-        "nonce" : 1,
-        "account" : { }
+        "nonce" : 1
       }
     },
-    "NameCommitmentHash" : {
+    "CommitmentHash" : {
       "type" : "object",
       "properties" : {
-        "commitment" : {
-          "type" : "string"
+        "commitment_id" : {
+          "$ref" : "#/definitions/EncodedHash"
         }
       },
       "example" : {
-        "commitment" : "commitment"
+        "commitment_id" : { }
       }
     },
     "NameHash" : {
       "type" : "object",
       "properties" : {
-        "name_hash" : {
-          "type" : "string"
+        "name_id" : {
+          "$ref" : "#/definitions/EncodedHash"
         }
       },
       "example" : {
-        "name_hash" : "name_hash"
+        "name_id" : { }
+      }
+    },
+    "NamePointer" : {
+      "type" : "object",
+      "properties" : {
+        "key" : {
+          "type" : "string"
+        },
+        "id" : {
+          "$ref" : "#/definitions/EncodedHash"
+        }
+      },
+      "example" : {
+        "id" : null,
+        "key" : "key"
       }
     },
     "Channel" : {

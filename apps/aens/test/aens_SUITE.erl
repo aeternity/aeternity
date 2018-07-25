@@ -89,8 +89,8 @@ preclaim(Cfg) ->
     %% Check commitment created
     Trees2 = aens_test_utils:trees(S2),
     {value, C} = aens_state_tree:lookup_commitment(CHash, aec_trees:ns(Trees2)),
-    CHash      = aens_commitments:id(C),
-    PubKey     = aens_commitments:owner(C),
+    CHash      = aens_commitments:hash(C),
+    PubKey     = aens_commitments:owner_pubkey(C),
 
     {PubKey, Name, NameSalt, S2}.
 
@@ -148,7 +148,7 @@ claim(Cfg) ->
 
     %% Check commitment present
     {value, C} = aens_state_tree:lookup_commitment(CHash, aec_trees:ns(Trees)),
-    CHash      = aens_commitments:id(C),
+    CHash      = aens_commitments:hash(C),
 
     %% Create Claim tx and apply it on trees
     TxSpec = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, S1),
@@ -164,8 +164,8 @@ claim(Cfg) ->
     NTrees = aec_trees:ns(Trees2),
     none       = aens_state_tree:lookup_commitment(CHash, NTrees),
     {value, N} = aens_state_tree:lookup_name(NHash, NTrees),
-    NHash   = aens_names:id(N),
-    PubKey  = aens_names:owner(N),
+    NHash   = aens_names:hash(N),
+    PubKey  = aens_names:owner_pubkey(N),
     claimed = aens_names:status(N),
     {PubKey, NHash, S2}.
 
@@ -252,7 +252,7 @@ update(Cfg) ->
     0  = aens_names:client_ttl(N),
 
     %% Create Update tx and apply it on trees
-    Pointers = [{<<"account_pubkey">>, <<"aecore_suite_utils">>}],
+    Pointers = [aens_pointer:new(<<"account_pubkey">>, aec_id:create(account, <<1:256>>))],
     NameTTL  = 40000,
     TxSpec = aens_test_utils:update_tx_spec(
                PubKey, NHash, #{pointers => Pointers, name_ttl => NameTTL}, S1),
@@ -345,7 +345,7 @@ transfer(Cfg) ->
 
     %% Check name present
     {value, N} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees)),
-    PubKey = aens_names:owner(N),
+    PubKey = aens_names:owner_pubkey(N),
 
     %% Create Transfer tx and apply it on trees
     {PubKey2, S2} = aens_test_utils:setup_new_account(S1),
@@ -360,7 +360,7 @@ transfer(Cfg) ->
 
     %% Check name new owner
     {value, N1} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees2)),
-    PubKey2 = aens_names:owner(N1),
+    PubKey2 = aens_names:owner_pubkey(N1),
     ok.
 
 transfer_negative(Cfg) ->
@@ -502,8 +502,8 @@ prune_preclaim(Cfg) ->
     CHash = aens_hash:commitment_hash(NameAscii, NameSalt),
     Trees2 = aens_test_utils:trees(S1),
     {value, C} = aens_state_tree:lookup_commitment(CHash, aec_trees:ns(Trees2)),
-    CHash      = aens_commitments:id(C),
-    PubKey     = aens_commitments:owner(C),
+    CHash      = aens_commitments:hash(C),
+    PubKey     = aens_commitments:owner_pubkey(C),
 
     Expires = aens_commitments:expires(C),
     NSTree = do_prune_until(?GENESIS_HEIGHT, Expires + 1, aec_trees:ns(Trees2)),
@@ -518,16 +518,16 @@ prune_claim(Cfg) ->
     NTrees = aec_trees:ns(Trees2),
     {value, N} = aens_state_tree:lookup_name(NHash, NTrees),
 
-    NHash    = aens_names:id(N),
-    PubKey   = aens_names:owner(N),
+    NHash    = aens_names:hash(N),
+    PubKey   = aens_names:owner_pubkey(N),
     claimed  = aens_names:status(N),
     Expires1 = aens_names:expires(N),
 
 
     NTree2 = aens_state_tree:prune(Expires1+1, NTrees),
     {value, N2} = aens_state_tree:lookup_name(NHash, NTree2),
-    NHash    = aens_names:id(N2),
-    PubKey   = aens_names:owner(N2),
+    NHash    = aens_names:hash(N2),
+    PubKey   = aens_names:owner_pubkey(N2),
     revoked  = aens_names:status(N2),
     Expires2 = aens_names:expires(N2),
 

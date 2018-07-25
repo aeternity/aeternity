@@ -87,11 +87,11 @@ name_id(NameHash) ->
 commitment_id(CommitmentHash) ->
     aec_id:create(commitment, CommitmentHash).
 
-name_owner(NameID, #{trees := Trees}) ->
+name_owner_pubkey(NameID, #{trees := Trees}) ->
     NameHash = aec_id:specialize(NameID, name),
     NSTrees = aec_trees:ns(Trees),
     case aens_state_tree:lookup_name(NameHash, NSTrees) of
-        {value, Name} -> aens_names:owner(Name);
+        {value, Name} -> aens_names:owner_pubkey(Name);
         none -> error(name_not_found)
     end.
 
@@ -105,14 +105,14 @@ register_name(Pubkey, Name, S) ->
     {ok, Ascii} = aens_utils:to_ascii(Name),
     Hash   = aens_hash:name_hash(Ascii),
     Salt   = 42,
-    Commitment = commitment_id(aens_hash:commitment_hash(Ascii, Salt)),
-    PreclaimSpec = #{ account => account_id(Pubkey)
-                    , commitment => Commitment
+    CommitmentId = commitment_id(aens_hash:commitment_hash(Ascii, Salt)),
+    PreclaimSpec = #{ account_id => account_id(Pubkey)
+                    , commitment_id => CommitmentId
                     , fee  => 1
                     , nonce => 1
                     },
     {ok, Preclaim} = aens_preclaim_tx:new(PreclaimSpec),
-    ClaimSpec  = #{ account => account_id(Pubkey)
+    ClaimSpec  = #{ account_id => account_id(Pubkey)
                   , name => Name
                   , name_salt => Salt
                   , fee  => 1
@@ -122,10 +122,11 @@ register_name(Pubkey, Name, S) ->
     {apply_txs([Claim], apply_txs([Preclaim], S)), name_id(Hash)}.
 
 update_pointers(Tag, ToPubkey, Pubkey, NameID, Nonce, S) ->
-    Pointers    = [{atom_to_binary(Tag, utf8), aec_base58c:encode(Tag, ToPubkey)}],
-    UpdateSpec  = #{ account => account_id(Pubkey)
+    IdType      = type2id(Tag),
+    Pointers    = [aens_pointer:new(atom_to_binary(Tag, utf8), aec_id:create(IdType, ToPubkey))],
+    UpdateSpec  = #{ account_id => account_id(Pubkey)
                    , nonce => Nonce
-                   , name_hash => NameID
+                   , name_id => NameID
                    , name_ttl => 100
                    , pointers => Pointers
                    , client_ttl => 100
@@ -133,6 +134,14 @@ update_pointers(Tag, ToPubkey, Pubkey, NameID, Nonce, S) ->
                    },
     {ok, Update} = aens_update_tx:new(UpdateSpec),
     apply_txs([Update], S).
+
+%% TODO: it'd be nice not to have different atoms for ids and encoding.
+type2id(account_pubkey)  -> account;
+type2id(channel)         -> channel;
+type2id(commitment)      -> commitment;
+type2id(contract_pubkey) -> contract;
+type2id(name)            -> name;
+type2id(oracle_pubkey)   -> oracle.
 
 %%%===================================================================
 %%% Spend tests
@@ -173,16 +182,16 @@ transfer_name_to_named_account(_Cfg) ->
     {S4, NameId2} = register_name(Pubkey2, <<"bar.test"/utf8>>, S3),
 
     %% Pubkey2 now transfers the name to Pubkey3 by referencing its name
-    TransferSpec = #{ account => account_id(Pubkey2)
+    TransferSpec = #{ account_id => account_id(Pubkey2)
                     , nonce   => 3
-                    , name_hash => NameId2
-                    , recipient_account => NameId1
+                    , name_id => NameId2
+                    , recipient_id => NameId1
                     , fee => 5
                     },
     {ok, Transfer} = aens_transfer_tx:new(TransferSpec),
     S5 = apply_txs([Transfer], S4),
 
     %% Check that the transfer happened
-    ?assertEqual(Pubkey2, name_owner(NameId2, S4)),
-    ?assertEqual(Pubkey3, name_owner(NameId2, S5)),
+    ?assertEqual(Pubkey2, name_owner_pubkey(NameId2, S4)),
+    ?assertEqual(Pubkey3, name_owner_pubkey(NameId2, S5)),
     ok.

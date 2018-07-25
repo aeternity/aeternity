@@ -151,11 +151,11 @@ name_preclaim(DecodedCommitment, Fee, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
             aens_preclaim_tx:new(
-              #{account    => aec_id:create(account, Pubkey),
-                nonce      => Nonce,
-                commitment => DecodedCommitment,
-                fee        => Fee,
-                ttl        => TTL})
+              #{account_id    => aec_id:create(account, Pubkey),
+                nonce         => Nonce,
+                commitment_id => DecodedCommitment,
+                fee           => Fee,
+                ttl           => TTL})
           end).
 
 name_claim(Name, NameSalt, Fee, TTL) ->
@@ -165,12 +165,12 @@ name_claim(Name, NameSalt, Fee, TTL) ->
                 {ok, NameHash} ->
                     {ok, Tx} =
                         aens_claim_tx:new(
-                          #{account   => aec_id:create(account, Pubkey),
-                            nonce     => Nonce,
-                            name      => Name,
-                            name_salt => NameSalt,
-                            fee       => Fee,
-                            ttl       => TTL}),
+                          #{account_id => aec_id:create(account, Pubkey),
+                            nonce      => Nonce,
+                            name       => Name,
+                            name_salt  => NameSalt,
+                            fee        => Fee,
+                            ttl        => TTL}),
                     {ok, Tx, NameHash};
                 {error, _Reason} = Err -> Err
             end
@@ -180,14 +180,14 @@ name_update(DecodedNameHash, NameTTL, Pointers, ClientTTL, Fee, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
             aens_update_tx:new(
-              #{account    => aec_id:create(account, Pubkey),
-                nonce      => Nonce,
-                name_hash  => DecodedNameHash,
-                name_ttl   => NameTTL,
-                pointers   => jsx:decode(Pointers),
-                client_ttl => ClientTTL,
-                fee        => Fee,
-                ttl        => TTL})
+              #{account_id  => aec_id:create(account, Pubkey),
+                nonce       => Nonce,
+                name_id     => DecodedNameHash,
+                name_ttl    => NameTTL,
+                pointers    => Pointers,
+                client_ttl  => ClientTTL,
+                fee         => Fee,
+                ttl         => TTL})
           end).
 
 name_transfer(DecodedNameHash, DecodedRecipientPubKey, Fee, TTL) ->
@@ -195,12 +195,12 @@ name_transfer(DecodedNameHash, DecodedRecipientPubKey, Fee, TTL) ->
         fun(Pubkey, Nonce) ->
             %% Note that this is the local node's pubkey.
             aens_transfer_tx:new(
-              #{account           => aec_id:create(account, Pubkey),
-                nonce             => Nonce,
-                name_hash         => DecodedNameHash,
-                recipient_account => DecodedRecipientPubKey,
-                fee               => Fee,
-                ttl               => TTL})
+              #{account_id   => aec_id:create(account, Pubkey),
+                nonce        => Nonce,
+                name_id      => DecodedNameHash,
+                recipient_id => DecodedRecipientPubKey,
+                fee          => Fee,
+                ttl          => TTL})
           end).
 
 name_revoke(DecodedNameHash, Fee, TTL) ->
@@ -208,11 +208,11 @@ name_revoke(DecodedNameHash, Fee, TTL) ->
         fun(Pubkey, Nonce) ->
             %% Note that this is the local node's pubkey.
             aens_revoke_tx:new(
-              #{account   => aec_id:create(account, Pubkey),
-                nonce     => Nonce,
-                name_hash => DecodedNameHash,
-                fee       => Fee,
-                ttl       => TTL})
+              #{account_id => aec_id:create(account, Pubkey),
+                nonce      => Nonce,
+                name_id    => DecodedNameHash,
+                fee        => Fee,
+                ttl        => TTL})
           end).
 
 %% Internals

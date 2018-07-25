@@ -8,31 +8,32 @@
 -module(aens_commitments).
 
 %% API
--export([id/1,
-         new/3,
+-export([new/3,
          serialize/1,
          deserialize/2
         ]).
 
 %% Getters
--export([expires/1,
-         created/1,
-         hash/1,
-         owner/1]).
+-export([hash/1,
+         owner_pubkey/1,
+         expires/1,
+         created/1]).
 
 %%%===================================================================
 %%% Types
 %%%===================================================================
 -record(commitment,
-        {id      :: aec_id:id(),
-         owner   :: aec_keys:pubkey(),
-         created :: aec_blocks:height(),
-         expires :: aec_blocks:height()
+        {id       :: aec_id:id(),
+         owner_id :: aec_id:id(),
+         created  :: aec_blocks:height(),
+         expires  :: aec_blocks:height()
          }).
 
 -opaque commitment() :: #commitment{}.
 
--type id() :: binary().
+-type id() :: aec_id:id().
+-type hash() :: aens_hash:commitment_hash().
+-type pubkey() :: aec_keys:pubkey().
 -type serialized() :: binary().
 
 -export_type([id/0,
@@ -46,34 +47,33 @@
 %%% API
 %%%===================================================================
 
--spec id(commitment()) -> aens_hash:commitment_hash().
-id(C) ->
-    hash(C).
-
 -spec new(aens_preclaim_tx:tx(), non_neg_integer(), aec_blocks:height()) -> commitment().
-new(PreclaimTx, Expiration, BlockHeight) ->
-    Expires = BlockHeight + Expiration,
+new(PreclaimTx, ExpirationHeight, BlockHeight) ->
     %% TODO: add assertions on fields, similarily to what is done in aeo_oracles:new/2
-    Id = aens_preclaim_tx:commitment(PreclaimTx),
+    Id      = aens_preclaim_tx:commitment_id(PreclaimTx),
+    OwnerId = aens_preclaim_tx:account_id(PreclaimTx),
     commitment = aec_id:specialize_type(Id),
-    #commitment{id      = Id,
-                owner   = aens_preclaim_tx:account_pubkey(PreclaimTx),
-                created = BlockHeight,
-                expires = Expires}.
+    account    = aec_id:specialize_type(OwnerId),
+    #commitment{id       = Id,
+                owner_id = OwnerId,
+                created  = BlockHeight,
+                expires  = BlockHeight + ExpirationHeight}.
 
 -spec serialize(commitment()) -> binary().
-serialize(#commitment{} = C) ->
+serialize(#commitment{owner_id = OwnerId,
+                      created  = Created,
+                      expires  = Expires}) ->
     aec_object_serialization:serialize(
       ?COMMITMENT_TYPE,
       ?COMMITMENT_VSN,
       serialization_template(?COMMITMENT_VSN),
-      [ {owner, owner(C)}
-      , {created, created(C)}
-      , {expires, expires(C)}]).
+      [ {owner_id, OwnerId}
+      , {created, Created}
+      , {expires, Expires}]).
 
--spec deserialize(aens_hash:commitment_hash(), binary()) -> commitment().
-deserialize(Hash, Bin) ->
-    [ {owner, Owner}
+-spec deserialize(hash(), binary()) -> commitment().
+deserialize(CommitmentHash, Bin) ->
+    [ {owner_id, OwnerId}
     , {created, Created}
     , {expires, Expires}
     ] = aec_object_serialization:deserialize(
@@ -81,13 +81,13 @@ deserialize(Hash, Bin) ->
           ?COMMITMENT_VSN,
           serialization_template(?COMMITMENT_VSN),
           Bin),
-    #commitment{id      = aec_id:create(commitment, Hash),
-                owner   = Owner,
-                created = Created,
-                expires = Expires}.
+    #commitment{id       = aec_id:create(commitment, CommitmentHash),
+                owner_id = OwnerId,
+                created  = Created,
+                expires  = Expires}.
 
 serialization_template(?COMMITMENT_VSN) ->
-    [ {owner, binary}
+    [ {owner_id, id}
     , {created, int}
     , {expires, int}
     ].
@@ -96,14 +96,19 @@ serialization_template(?COMMITMENT_VSN) ->
 %%% Getters
 %%%===================================================================
 
+-spec hash(commitment()) -> hash().
+hash(#commitment{id = Id}) ->
+    aec_id:specialize(Id, commitment).
+
+-spec owner_pubkey(commitment()) -> pubkey().
+owner_pubkey(#commitment{owner_id = OwnerId}) ->
+    aec_id:specialize(OwnerId, account).
+
 -spec expires(commitment()) -> aec_blocks:height().
-expires(C) -> C#commitment.expires.
+expires(#commitment{expires = Expires}) ->
+    Expires.
 
 -spec created(commitment()) -> aec_blocks:height().
-created(C) -> C#commitment.created.
+created(#commitment{created = Created}) ->
+    Created.
 
--spec hash(commitment()) -> aens_hash:commitment_hash().
-hash(C) -> aec_id:specialize(C#commitment.id, commitment).
-
--spec owner(commitment()) -> aec_keys:pubkey().
-owner(C) -> C#commitment.owner.

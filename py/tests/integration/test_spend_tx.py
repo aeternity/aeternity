@@ -10,6 +10,7 @@ from swagger_client.models.spend_tx import SpendTx
 from swagger_client.models.name_preclaim_tx import NamePreclaimTx
 from swagger_client.models.name_claim_tx import NameClaimTx
 from swagger_client.models.name_update_tx import NameUpdateTx
+from swagger_client.models.name_pointer import NamePointer
 
 import keys
 
@@ -161,12 +162,12 @@ def miner_send_tokens(address, amount, internal_api, external_api):
 
 def register_name(name, address, external_api, private_key):
     salt = 42
-    commitment = external_api.get_commitment_hash(name, salt).commitment
+    commitment_id = external_api.get_commitment_hash(name, salt).commitment_id
 
     # preclaim
     unsigned_preclaim = common.base58_decode(\
         external_api.post_name_preclaim(\
-            NamePreclaimTx(commitment=commitment, fee=1, ttl=100, account=address)).tx)
+            NamePreclaimTx(commitment_id=commitment_id, fee=1, ttl=100, account_id=address)).tx)
     signed_preclaim = keys.sign_encode_tx(unsigned_preclaim, private_key)
 
     external_api.post_tx(Tx(tx=signed_preclaim))
@@ -177,33 +178,33 @@ def register_name(name, address, external_api, private_key):
     encoded_name = common.encode_name(name)
     unsigned_claim = common.base58_decode(\
         external_api.post_name_claim(\
-            NameClaimTx(name=encoded_name, name_salt=salt, fee=1, ttl=100, account=address)).tx)
+            NameClaimTx(name=encoded_name, name_salt=salt, fee=1, ttl=100, account_id=address)).tx)
     signed_claim = keys.sign_encode_tx(unsigned_claim, private_key)
 
     external_api.post_tx(Tx(tx=signed_claim))
     top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
     name_entry0 = external_api.get_name(name)
-    print("Name " + name_entry0.name + " has been claimed and has hash " + name_entry0.name_hash)
 
     # set pointers
-    pointers_str = json.dumps({'account_pubkey': address})
+    pointers = [ NamePointer(key='account_pubkey', id=address) ]
     unsigned_update = common.base58_decode(\
         external_api.post_name_update(\
-            NameUpdateTx(name_hash=name_entry0.name_hash, name_ttl=6000, client_ttl=50,\
-                pointers=pointers_str, fee=1, ttl=100, account=address)).tx)
+            NameUpdateTx(name_id=name_entry0.id, name_ttl=6000, client_ttl=50,\
+                pointers=pointers, fee=1, ttl=100, account_id=address)).tx)
     signed_update = keys.sign_encode_tx(unsigned_update, private_key)
 
     external_api.post_tx(Tx(tx=signed_update))
     top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
     name_entry = external_api.get_name(name)
-    received_pointers = json.loads(name_entry.pointers)
-    assert_equals(address, received_pointers['account_pubkey'])
+    received_pointers = name_entry.pointers[0]
+    assert_equals('account_pubkey', received_pointers.key)
+    assert_equals(address, received_pointers.id)
 
 def send_tokens_to_name(name, tokens, sender_address, private_key, external_api):
     name_entry = external_api.get_name(name)
-    resolved_address = json.loads(name_entry.pointers)['account_pubkey']
+    resolved_address = name_entry.pointers[0].id
     print("Name " + name + " resolved to address " + resolved_address)
 
     unsigned_spend = common.base58_decode(\

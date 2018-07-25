@@ -157,15 +157,14 @@ handle_request('GetOracleQuestions', Req, _Context) ->
 
 
 handle_request('PostNamePreclaimTx', #{'NamePreclaimTx' := NamePreclaimTxObj}, _Context) ->
-    #{<<"commitment">> := Commitment,
-      <<"fee">>        := Fee} = NamePreclaimTxObj,
+    #{<<"commitment_id">> := CommitmentId,
+      <<"fee">>           := Fee} = NamePreclaimTxObj,
     TTL = maps:get(<<"ttl">>, NamePreclaimTxObj, 0),
-     case aec_base58c:safe_decode({id_hash, [commitment]}, Commitment) of
+     case aec_base58c:safe_decode({id_hash, [commitment]}, CommitmentId) of
         {ok, DecodedCommitment} ->
-            case aehttp_int_tx_logic:name_preclaim(DecodedCommitment,
-                                                   Fee, TTL) of
+            case aehttp_int_tx_logic:name_preclaim(DecodedCommitment, Fee, TTL) of
                 {ok, _Tx} ->
-                    {200, [], #{commitment => Commitment}};
+                    {200, [], #{commitment_id => CommitmentId}};
                 {error, account_not_found} ->
                     {404, [], #{reason => <<"Account not found">>}};
                 {error, key_not_found} ->
@@ -182,7 +181,7 @@ handle_request('PostNameClaimTx', #{'NameClaimTx' := NameClaimTxObj}, _Context) 
     TTL = maps:get(<<"ttl">>, NameClaimTxObj, 0),
     case aehttp_int_tx_logic:name_claim(Name, NameSalt, Fee, TTL) of
         {ok, _Tx, NameHash} ->
-            {200, [], #{name_hash => aec_base58c:encode(name, NameHash)}};
+            {200, [], #{name_id => aec_base58c:encode(name, NameHash)}};
         {error, account_not_found} ->
             {404, [], #{reason => <<"Account not found">>}};
         {error, key_not_found} ->
@@ -193,40 +192,44 @@ handle_request('PostNameClaimTx', #{'NameClaimTx' := NameClaimTxObj}, _Context) 
     end;
 
 handle_request('PostNameUpdateTx', #{'NameUpdateTx' := NameUpdateTxObj}, _Context) ->
-    #{<<"name_hash">>  := NameHash,
-      <<"name_ttl">>   := NameTTL,
-      <<"pointers">>   := Pointers,
-      <<"client_ttl">> := ClientTTL,
-      <<"fee">>        := Fee} = NameUpdateTxObj,
+    #{<<"name_id">>     := NameId,
+      <<"name_ttl">>    := NameTTL,
+      <<"pointers">>    := Pointers,
+      <<"client_ttl">>  := ClientTTL,
+      <<"fee">>         := Fee} = NameUpdateTxObj,
     TTL = maps:get(<<"ttl">>, NameUpdateTxObj, 0),
-    case aec_base58c:safe_decode({id_hash, [name]}, NameHash) of
+    case aec_base58c:safe_decode({id_hash, [name]}, NameId) of
         {ok, DecodedNameHash} ->
-            case aehttp_int_tx_logic:name_update(DecodedNameHash, NameTTL,
-                                                 Pointers, ClientTTL, Fee, TTL) of
-                {ok, _Tx} ->
-                    {200, [], #{name_hash => NameHash}};
-                {error, account_not_found} ->
-                    {404, [], #{reason => <<"Account not found">>}};
-                {error, key_not_found} ->
-                    {400, [], #{reason => <<"Keys not configured">>}}
+            case aehttp_helpers:decode_pointers(Pointers) of
+                {ok, Pointers1} ->
+                    case aehttp_int_tx_logic:name_update(DecodedNameHash, NameTTL, Pointers1, ClientTTL, Fee, TTL) of
+                        {ok, _Tx} ->
+                            {200, [], #{name_id => NameId}};
+                        {error, account_not_found} ->
+                            {404, [], #{reason => <<"Account not found">>}};
+                        {error, key_not_found} ->
+                            {400, [], #{reason => <<"Keys not configured">>}}
+                    end;
+                {error, _Reason} ->
+                    {400, [], #{reason => <<"Invalid pointers">>}}
             end;
         {error, _Reason} ->
             {400, [], #{reason => <<"Invalid name hash">>}}
     end;
 
 handle_request('PostNameTransferTx', #{'NameTransferTx' := NameTransferTxObj}, _Context) ->
-    #{<<"name_hash">>        := NameHash,
-      <<"recipient_pubkey">> := RecipientPubKey,
+    #{<<"name_id">>          := NameId,
+      <<"recipient_id">>     := RecipientId,
       <<"fee">>              := Fee} = NameTransferTxObj,
     TTL = maps:get(<<"ttl">>, NameTransferTxObj, 0),
-    case {aec_base58c:safe_decode({id_hash, [name]}, NameHash),
-          aec_base58c:safe_decode({id_hash, [account_pubkey]}, RecipientPubKey)} of
+    case {aec_base58c:safe_decode({id_hash, [name]}, NameId),
+          aec_base58c:safe_decode({id_hash, [account_pubkey]}, RecipientId)} of
         {{ok, DecodedName}, {ok, DecodedRecipient}} ->
             case aehttp_int_tx_logic:name_transfer(DecodedName,
                                                    DecodedRecipient,
                                                    Fee, TTL) of
                 {ok, _Tx} ->
-                    {200, [], #{name_hash => NameHash}};
+                    {200, [], #{name_id => NameId}};
                 {error, account_not_found} ->
                     {404, [], #{reason => <<"Account not found">>}};
                 {error, key_not_found} ->
@@ -239,14 +242,14 @@ handle_request('PostNameTransferTx', #{'NameTransferTx' := NameTransferTxObj}, _
     end;
 
 handle_request('PostNameRevokeTx', #{'NameRevokeTx' := NameRevokeTxObj}, _Context) ->
-    #{<<"name_hash">> := NameHash,
-      <<"fee">>       := Fee} = NameRevokeTxObj,
+    #{<<"name_id">> := NameId,
+      <<"fee">>     := Fee} = NameRevokeTxObj,
     TTL = maps:get(<<"ttl">>, NameRevokeTxObj, 0),
-    case aec_base58c:safe_decode({id_hash, [name]}, NameHash) of
+    case aec_base58c:safe_decode({id_hash, [name]}, NameId) of
         {ok, DecodedName} ->
             case aehttp_int_tx_logic:name_revoke(DecodedName, Fee, TTL) of
                 {ok, _Tx} ->
-                    {200, [], #{name_hash => NameHash}};
+                    {200, [], #{name_id => NameId}};
                 {error, account_not_found} ->
                     {404, [], #{reason => <<"Account not found">>}};
                 {error, key_not_found} ->

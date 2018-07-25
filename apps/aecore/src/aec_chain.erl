@@ -201,11 +201,11 @@ name_entry(Name) ->
         error -> {error, no_state_trees}
     end.
 
--spec resolve_name(atom(), binary()) -> {'ok', binary()} |
-                                        {error, atom()}.
-resolve_name(Type, Name) ->
+-spec resolve_name(binary(), binary()) ->
+    {'ok', binary()} | {error, atom()}.
+resolve_name(Key, Name) ->
     case get_top_state() of
-        {ok, Trees} -> aens:resolve(Type, Name, aec_trees:ns(Trees));
+        {ok, Trees} -> aens:resolve(Key, Name, aec_trees:ns(Trees));
         error -> {error, no_state_trees}
     end.
 

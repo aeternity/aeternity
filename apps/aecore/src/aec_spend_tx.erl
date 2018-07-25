@@ -114,12 +114,35 @@ sender_pubkey(#spend_tx{sender_id = SenderId}) ->
 recipient_id(#spend_tx{recipient_id = RecipientId}) ->
     RecipientId.
 
+resolve_recipient_pubkey(Tx, Trees) ->
+    case resolve_recipient(Tx, Trees) of
+        {id, Id} ->
+            {_IdType, Pubkey} = aec_id:specialize(Id),
+            {ok, Pubkey};
+        {pubkey, Pubkey} ->
+            {ok, Pubkey};
+        {error, _Rsn} = Error ->
+            Error
+    end.
+
 resolve_recipient(#spend_tx{recipient_id = RecipientId}, Trees) ->
     case aec_id:specialize(RecipientId) of
-        {account,  RecipientPubkey} -> {ok, RecipientPubkey};
-        {oracle,   RecipientPubkey} -> {ok, RecipientPubkey};
-        {contract, RecipientPubkey} -> {ok, RecipientPubkey};
-        {name, NameHash} -> aens:resolve_from_hash(account_pubkey, NameHash, aec_trees:ns(Trees))
+        {account, RecipientPubkey} ->
+            {pubkey, RecipientPubkey};
+        {oracle, RecipientPubkey} ->
+            {pubkey, RecipientPubkey};
+        {contract, RecipientPubkey} ->
+            {pubkey, RecipientPubkey};
+        %% TODO: A registered name has pointers, a pointer has a key of type binary() and
+        %% id of type aec_id:id(). To find out what id to get from all the pointers related
+        %% to the name we need the key. <<"account_pubkey">> is hard-coded and might not be present
+        %% for the given name/namehash.
+        {name, NameHash} ->
+            Key = <<"account_pubkey">>,
+            case aens:resolve_from_hash(Key, NameHash, aec_trees:ns(Trees)) of
+                {ok, Id} -> {id, Id};
+                {error, _Rsn} = Error -> Error
+            end
     end.
 
 -spec payload(tx()) -> binary().
@@ -132,7 +155,7 @@ check(#spend_tx{} = SpendTx, _Context, Trees, Height, _ConsensusVersion) ->
     Checks = [fun check_sender_account/3],
     case aeu_validation:run(Checks, [SpendTx, Trees, Height]) of
         ok ->
-            case resolve_recipient(SpendTx, Trees) of
+            case resolve_recipient_pubkey(SpendTx, Trees) of
                 {ok, RecipientPubkey} ->
                     {ok, aec_trees:ensure_account(RecipientPubkey, Trees)};
                 {error, _} = E ->
@@ -153,7 +176,7 @@ process(#spend_tx{amount = Amount,
         _ConsensusVersion,
         _TxHash) ->
     SenderPubkey = sender_pubkey(Tx),
-    {ok, RecipientPubkey} = resolve_recipient(Tx, Trees0),
+    {ok, RecipientPubkey} = resolve_recipient_pubkey(Tx, Trees0),
     AccountsTrees0 = aec_trees:accounts(Trees0),
 
     {value, SenderAccount0} = aec_accounts_trees:lookup(SenderPubkey, AccountsTrees0),
