@@ -12,6 +12,8 @@
          load_database/0,               % called in aecore app start phase
          tables/1,                      % for e.g. test database setup
          clear_db/0,                    % mostly for test purposes
+         tab_copies/1,                  % for create_tables hooks
+         check_table/3,                 % for check_tables hooks
          persisted_valid_genesis_block/0
         ]).
 
@@ -624,21 +626,24 @@ ensure_mnesia_tables(Mode, Storage) ->
     end.
 
 check_mnesia_tables([{Table, Spec}|Left], Acc) ->
-    NewAcc = try mnesia:table_info(Table, user_properties) of
-                 [{vsn, Vsn}] ->
-                     case proplists:get_value(user_properties, Spec) of
-                         [{vsn, Vsn}] -> Acc;
-                         [{vsn, Old}] -> [{vsn_fail, Table,
-                                           [{expected, Vsn},
-                                            {got, Old}]}
-                                          |Acc]
-                     end;
-                 Other -> [{missing_version, Table, Other}|Acc]
-             catch _:_ -> [{missing_table, Table}|Acc]
-             end,
+    NewAcc = check_table(Table, Spec, Acc),
     check_mnesia_tables(Left, NewAcc);
 check_mnesia_tables([], Acc) ->
     fold_hooks('$aec_db_check_tables', Acc).
+
+check_table(Table, Spec, Acc) ->
+    try mnesia:table_info(Table, user_properties) of
+        [{vsn, Vsn}] ->
+            case proplists:get_value(user_properties, Spec) of
+                [{vsn, Vsn}] -> Acc;
+                [{vsn, Old}] -> [{vsn_fail, Table,
+                                  [{expected, Vsn},
+                                   {got, Old}]}
+                                 |Acc]
+            end;
+        Other -> [{missing_version, Table, Other}|Acc]
+    catch _:_ -> [{missing_table, Table}|Acc]
+    end.
 
 ensure_schema_storage_mode(ram) ->
     case disc_db_exists() of

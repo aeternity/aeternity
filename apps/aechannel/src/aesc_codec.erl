@@ -39,6 +39,7 @@
 enc(?CH_OPEN      , Msg) -> enc_ch_open(Msg);
 enc(?CH_ACCEPT    , Msg) -> enc_ch_accept(Msg);
 enc(?CH_REESTABL  , Msg) -> enc_ch_reestabl(Msg);
+enc(?CH_REEST_ACK , Msg) -> enc_ch_reestabl_ack(Msg);
 enc(?FND_CREATED  , Msg) -> enc_fnd_created(Msg);
 enc(?FND_SIGNED   , Msg) -> enc_fnd_signed(Msg);
 enc(?FND_LOCKED   , Msg) -> enc_fnd_locked(Msg);
@@ -54,6 +55,8 @@ enc(?WDRAW_SIGNED , Msg) -> enc_wdraw_signed(Msg);
 enc(?WDRAW_LOCKED , Msg) -> enc_wdraw_locked(Msg);
 enc(?WDRAW_ERR    , Msg) -> enc_wdraw_err(Msg);
 enc(?ERROR        , Msg) -> enc_error(Msg);
+enc(?LEAVE        , Msg) -> enc_leave(Msg);
+enc(?LEAVE_ACK    , Msg) -> enc_leave_ack(Msg);
 enc(?SHUTDOWN     , Msg) -> enc_shutdown(Msg);
 enc(?SHUTDOWN_ACK , Msg) -> enc_shutdown_ack(Msg);
 enc(?INBAND_MSG   , Msg) -> enc_inband_msg(Msg).
@@ -63,6 +66,7 @@ enc(?INBAND_MSG   , Msg) -> enc_inband_msg(Msg).
 dec(<<?c(?ID_CH_OPEN)      , B/bytes>>) -> {?CH_OPEN     , dec_ch_open(B)};
 dec(<<?c(?ID_CH_ACCEPT)    , B/bytes>>) -> {?CH_ACCEPT   , dec_ch_accept(B)};
 dec(<<?c(?ID_CH_REESTABL)  , B/bytes>>) -> {?CH_REESTABL , dec_ch_reestabl(B)};
+dec(<<?c(?ID_CH_REEST_ACK) , B/bytes>>) -> {?CH_REEST_ACK, dec_ch_reest_ack(B)};
 dec(<<?c(?ID_FND_CREATED)  , B/bytes>>) -> {?FND_CREATED , dec_fnd_created(B)};
 dec(<<?c(?ID_FND_SIGNED)   , B/bytes>>) -> {?FND_SIGNED  , dec_fnd_signed(B)};
 dec(<<?c(?ID_FND_LOCKED)   , B/bytes>>) -> {?FND_LOCKED  , dec_fnd_locked(B)};
@@ -78,6 +82,8 @@ dec(<<?c(?ID_WDRAW_SIGNED) , B/bytes>>) -> {?WDRAW_SIGNED, dec_wdraw_signed(B)};
 dec(<<?c(?ID_WDRAW_LOCKED) , B/bytes>>) -> {?WDRAW_LOCKED, dec_wdraw_locked(B)};
 dec(<<?c(?ID_WDRAW_ERR)    , B/bytes>>) -> {?WDRAW_ERR   , dec_wdraw_err(B)};
 dec(<<?c(?ID_ERROR)        , B/bytes>>) -> {?ERROR       , dec_error(B)};
+dec(<<?c(?ID_LEAVE)        , B/bytes>>) -> {?LEAVE       , dec_leave(B)};
+dec(<<?c(?ID_LEAVE_ACK)    , B/bytes>>) -> {?LEAVE_ACK   , dec_leave_ack(B)};
 dec(<<?c(?ID_SHUTDOWN)     , B/bytes>>) -> {?SHUTDOWN    , dec_shutdown(B)};
 dec(<<?c(?ID_SHUTDOWN_ACK) , B/bytes>>) -> {?SHUTDOWN_ACK, dec_shutdown_ack(B)};
 dec(<<?c(?ID_INBAND_MSG)   , B/bytes>>) -> {?INBAND_MSG  , dec_inband_msg(B)}.
@@ -171,24 +177,64 @@ dec_ch_accept(<< ChainHash      :32/binary
      , responder            => Responder}.
 
 
--type ch_reestabl_msg() :: #{temporary_channel_id := chan_id()}.
+-type ch_reestabl_msg() :: #{ chain_hash := hash()
+                            , channel_id := chan_id()
+                            , data := binary() }.
 
 -spec enc_ch_reestabl(ch_reestabl_msg()) -> binary().
-enc_ch_reestabl(#{temporary_channel_id := ChanId}) ->
+enc_ch_reestabl(#{ chain_hash := ChainHash
+                 , channel_id := ChanId
+                 , data       := Data }) ->
+    Length = byte_size(Data),
     << ?ID_CH_REESTABL:1 /unit:8
-     , ChanId         :32/binary >>.
+     , ChainHash      :32/binary
+     , ChanId         :32/binary
+     , Length         :2 /unit:8
+     , Data           :Length/bytes>>.
 
 -spec dec_ch_reestabl(binary()) -> ch_reestabl_msg().
-dec_ch_reestabl(<< ChanId:32/binary >>) ->
-    #{temporary_channel_id => ChanId}.
+dec_ch_reestabl(<< ChainHash:32/binary
+                 , ChanId   :32/binary
+                 , Length   :2 /unit:8
+                 , Data/binary >>) ->
+    Length = byte_size(Data),
+    #{ chain_hash => ChainHash
+     , channel_id => ChanId
+     , data       => Data }.
+
+
+-type ch_reestabl_ack_msg() :: #{ chain_hash := hash()
+                                , channel_id := chan_id()
+                                , data := binary() }.
+
+-spec enc_ch_reestabl_ack(ch_reestabl_ack_msg()) -> binary().
+enc_ch_reestabl_ack(#{ chain_hash := ChainHash
+                     , channel_id := ChanId
+                     , data       := Data }) ->
+    Length = byte_size(Data),
+    << ?ID_CH_REEST_ACK:1 /unit:8
+     , ChainHash       :32/binary
+     , ChanId          :32/binary
+     , Length          :2 /unit:8
+     , Data            :Length/bytes>>.
+
+-spec dec_ch_reest_ack(binary()) -> ch_reestabl_ack_msg().
+dec_ch_reest_ack(<< ChainHash:32/binary
+                  , ChanId   :32/binary
+                  , Length   :2 /unit:8
+                  , Data/binary >>) ->
+    Length = byte_size(Data),
+    #{ chain_hash => ChainHash
+     , channel_id => ChanId
+     , data       => Data }.
 
 
 -type fnd_created_msg() :: #{ temporary_channel_id := chan_id()
                             , data                 := binary()}.
 
 -spec enc_fnd_created(fnd_created_msg()) -> binary().
-enc_fnd_created(#{temporary_channel_id := ChanId,
-                  data                 := Data}) ->
+enc_fnd_created(#{ temporary_channel_id := ChanId
+                 , data                 := Data }) ->
     Length = byte_size(Data),
     << ?ID_FND_CREATED:1 /unit:8
      , ChanId         :32/binary
@@ -453,6 +499,28 @@ dec_error(<< ChanId:32/binary
     #{ channel_id => ChanId
      , data       => Data }.
 
+-type leave_msg() :: #{channel_id := chan_id()}.
+
+-spec enc_leave(leave_msg()) -> binary().
+enc_leave(#{channel_id := ChanId}) ->
+    << ?ID_LEAVE:1 /unit:8
+     , ChanId   :32/binary >>.
+
+-spec dec_leave(binary()) -> leave_msg().
+dec_leave(<< ChanId:32/binary >>) ->
+    #{ channel_id => ChanId }.
+
+-type leave_ack_msg() :: #{channel_id := chan_id()}.
+
+-spec enc_leave_ack(leave_ack_msg()) -> binary().
+enc_leave_ack(#{channel_id := ChanId}) ->
+    << ?ID_LEAVE_ACK:1 /unit:8
+     , ChanId       :32/binary >>.
+
+-spec dec_leave_ack(binary()) -> leave_ack_msg().
+dec_leave_ack(<< ChanId:32/binary >>) ->
+    #{ channel_id => ChanId }.
+
 -type shutdown_msg() :: #{channel_id := chan_id(),
                           data       := binary() }.
 
@@ -471,7 +539,7 @@ dec_shutdown(<< ChanId:32/binary
               , Data/bytes >>) ->
     Length = byte_size(Data),
     #{ channel_id => ChanId
-     , data                 => Data }.
+     , data       => Data }.
 
 -type shutdown_ack_msg() :: #{channel_id := chan_id(),
                               data       := binary() }.
