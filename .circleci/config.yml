@@ -635,7 +635,11 @@ workflows:
             - build
           filters:
             branches:
-              only: master
+              ignore:
+                - env/dev1
+                - env/dev2
+            tags:
+              only: /^v.*$/
 
       - static_analysis:
           requires:
