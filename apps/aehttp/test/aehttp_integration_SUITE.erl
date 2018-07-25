@@ -338,7 +338,7 @@ groups() ->
       ]},
      {chain_with_pending_key_block, [],
       [
-       {group, block_info}
+       get_pending_key_block
       ]},
      {block_info, [sequence],
       [
