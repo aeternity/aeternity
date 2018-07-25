@@ -81,7 +81,8 @@
     exposed_ports := #{service_label() => pos_integer()},
     local_ports := #{service_label() => pos_integer()},
     sockets := [gen_tcp:socket()], % Reserved socket to prevent port clash
-    log_path := binary()        % Path where the node logs are
+    % Tuple of host/guest paths where the node logs are
+    log_path := {binary(), binary()}
 }.
 
 -type start_options() :: #{
@@ -270,7 +271,7 @@ setup_node(Spec, BackendState) ->
         container_name => Hostname,
         container_id => ContId,
         config_path => ConfigFilePath,
-        log_path => LogPath
+        log_path => {LogPath, list_to_binary(?EPOCH_LOG_FOLDER)}
     }.
 
 -spec delete_node(node_state()) -> ok.

@@ -80,6 +80,10 @@ epoch_commands(Cfg) ->
     {match, [EncodedPubKey]} = re:run(Output7, "ak\\$[A-Za-z0-9]*", [{capture, first, binary}]),
     ?assertMatch({ok, _}, aec_base58c:safe_decode(account_pubkey, EncodedPubKey)),
 
+    {HostPath, GuestPath} = aest_nodes:shared_temp_file(node1, "chain.dlog"),
+    {0, _Output8} = aest_nodes:run_cmd_in_node_dir(node1, ["bin/epoch", "export", GuestPath], Cfg),
+    ?assert(filelib:is_regular(HostPath)),
+
     ok.
 
 
