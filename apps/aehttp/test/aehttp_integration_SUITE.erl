@@ -1189,7 +1189,7 @@ contract_transactions(_Config) ->    % miner has an account
     ContractCreateTxHash = sign_and_post_tx(EncodedUnsignedContractCreateTx),
 
     %% Try to get the contract init call object while in mempool
-    {ok, 400, #{<<"reason">> := <<"Tx not mined">>}} =
+    {ok, 404, #{<<"reason">> := <<"Tx not mined">>}} =
         get_contract_call_object(ContractCreateTxHash),
 
     {ok, 404, #{<<"reason">> := <<"Proof for contract not found">>}} = get_contract_poi(EncodedContractPubKey),
@@ -1257,7 +1257,7 @@ contract_transactions(_Config) ->    % miner has an account
     ContractCallTxHash = sign_and_post_tx(EncodedUnsignedContractCallTx),
 
     %% Try to get the call object while in mempool
-    {ok, 400, #{<<"reason">> := <<"Tx not mined">>}} =
+    {ok, 404, #{<<"reason">> := <<"Tx not mined">>}} =
         get_contract_call_object(ContractCallTxHash),
 
     % mine blocks
@@ -1445,7 +1445,7 @@ contract_create_transaction_init_error(_Config) ->
     ContractCreateTxHash = sign_and_post_tx(EncodedUnsignedContractCreateTx),
 
     %% Try to get the contract init call object while in mempool
-    {ok, 400, #{<<"reason">> := <<"Tx not mined">>}} =
+    {ok, 404, #{<<"reason">> := <<"Tx not mined">>}} =
         get_contract_call_object(ContractCreateTxHash),
 
     % mine blocks

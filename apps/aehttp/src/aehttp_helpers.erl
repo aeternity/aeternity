@@ -207,7 +207,7 @@ get_contract_call_object_from_tx(TxKey, CallKey) ->
     fun(_Req, State) ->
             case maps:get(TxKey, State) of
                 #{tx_block_hash := mempool} ->
-                    {error, {400, [], #{<<"reason">> => <<"Tx not mined">>}}};
+                    {error, {404, [], #{<<"reason">> => <<"Tx not mined">>}}};
                 #{tx_block_hash := BlockHash, tx := STx} ->
                     Tx = aetx_sign:tx(STx),
                     case aetx:specialize_type(Tx) of
