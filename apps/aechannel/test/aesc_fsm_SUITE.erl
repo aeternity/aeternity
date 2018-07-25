@@ -141,7 +141,7 @@ create_channel(Cfg) ->
     _ = await_signing_request(shutdown_ack, R, ?TIMEOUT, Debug),
     SignedTx = await_on_chain_report(I, ?TIMEOUT),
     SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
-    wait_for_signed_transaction_in_block(dev1, SignedTx),
+    wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
     verify_close_mutual_tx(SignedTx, ChannelId),
     check_info(500),
     ok.
@@ -161,6 +161,7 @@ inband_msgs(Cfg) ->
     check_info(500).
 
 upd_transfer(Cfg) ->
+    Debug = get_debug(Cfg),
     #{ i := #{fsm := FsmI, channel_id := ChannelId} = I
      , r := #{} = R
      , spec := #{ initiator := PubI
@@ -173,7 +174,7 @@ upd_transfer(Cfg) ->
     {_R2, _} = await_signing_request(shutdown_ack, R1),
     SignedTx = await_on_chain_report(I, ?TIMEOUT),
     SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
-    wait_for_signed_transaction_in_block(dev1, SignedTx),
+    wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
     verify_close_mutual_tx(SignedTx, ChannelId),
     check_info(500),
     ok.
@@ -210,6 +211,7 @@ do_update(From, To, Amount, #{fsm := FsmI} = I, R, Debug) ->
     {I1, R1}.
 
 deposit(Cfg) ->
+    Debug = get_debug(Cfg),
     Deposit = 10,
     #{ i := #{fsm := FsmI} = I
      , r := #{} = R
@@ -225,7 +227,7 @@ deposit(Cfg) ->
     {_R1, _} = await_signing_request(deposit_created, R),
     SignedTx = await_on_chain_report(I1, ?TIMEOUT),
     SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
-    wait_for_signed_transaction_in_block(dev1, SignedTx),
+    wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
     {IAmt0, RAmt0, _, _Round1 = 1} = check_fsm_state(FsmI),
     mine_blocks(dev1, ?MINIMUM_DEPTH),
     {IAmt, RAmt0, StateHash, Round2 = 2} = check_fsm_state(FsmI),
@@ -240,6 +242,7 @@ deposit(Cfg) ->
     check_info(500).
 
 withdraw(Cfg) ->
+    Debug = get_debug(Cfg),
     Withdrawal = 2,
     #{ i := #{fsm := FsmI} = I
      , r := #{} = R
@@ -255,7 +258,7 @@ withdraw(Cfg) ->
     {_R1, _} = await_signing_request(withdraw_created, R),
     SignedTx = await_on_chain_report(I1, ?TIMEOUT),
     SignedTx = await_on_chain_report(R, ?TIMEOUT), % same tx
-    wait_for_signed_transaction_in_block(dev1, SignedTx),
+    wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
     {IAmt0, RAmt0, _, _Round0 = 1} = check_fsm_state(FsmI),
     mine_blocks(dev1, ?MINIMUM_DEPTH),
     {IAmt, RAmt0, StateHash, Round2 = 2} = check_fsm_state(FsmI),
@@ -557,7 +560,7 @@ create_channel_from_spec(
         end,
     SignedTx = await_on_chain_report(I2, ?TIMEOUT),
     SignedTx = await_on_chain_report(R2, ?TIMEOUT), % same tx
-    wait_for_signed_transaction_in_block(dev1, SignedTx),
+    wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
     mine_blocks(dev1, ?MINIMUM_DEPTH, Debug),
     %% in case of multiple channels starting in parallel - the mining above
     %% has no effect (the blocks are mined in another process)
@@ -875,6 +878,11 @@ role(Pubkey, #{pub               := MyKey
     end.
 
 wait_for_signed_transaction_in_block(Node, SignedTx) ->
+    wait_for_signed_transaction_in_block(Node, SignedTx, true).
+
+wait_for_signed_transaction_in_block(_, _, #{mine_blocks := {ask,_}}) ->
+    ok;
+wait_for_signed_transaction_in_block(Node, SignedTx, _Debug) ->
     TxHash = aetx_sign:hash(SignedTx),
     MineTx =
         fun Try(0) -> did_not_mine;
