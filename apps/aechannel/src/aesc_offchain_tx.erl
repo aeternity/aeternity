@@ -41,7 +41,7 @@
 
 -record(channel_offchain_tx, {
           channel_id         :: aec_id:id(),
-          updates            :: [aesc_offchain_state:update()],
+          updates            :: [aesc_offchain_update:update()],
           state_hash         :: binary(),
           round              :: non_neg_integer()
          }).
@@ -118,7 +118,7 @@ serialize(#channel_offchain_tx{
              updates            = Updates0,
              state_hash         = StateHash,
              round              = Round}) ->
-    Updates = [aesc_offchain_state:serialize_update(U) || U <- Updates0],
+    Updates = [aesc_offchain_update:serialize(U) || U <- Updates0],
     {version(),
      [ {channel_id        , ChannelId}
      , {round             , Round}
@@ -133,7 +133,7 @@ deserialize(?CHANNEL_OFFCHAIN_TX_VSN,
             , {updates           , Updates0}
             , {state_hash        , StateHash}]) ->
     channel = aec_id:specialize_type(ChannelId),
-    Updates = [aesc_offchain_state:deserialize_update(U) || U <- Updates0],
+    Updates = [aesc_offchain_update:deserialize(U) || U <- Updates0],
     #channel_offchain_tx{
        channel_id         = ChannelId,
        updates            = Updates,
@@ -149,7 +149,7 @@ for_client(#channel_offchain_tx{
     #{<<"vsn">>                => ?CHANNEL_OFFCHAIN_TX_VSN,
       <<"channel_id">>         => aec_base58c:encode(id_hash, ChannelId),
       <<"round">>              => Round,
-      <<"updates">>            => [aesc_offchain_state:update_for_client(D) || D <- Updates],
+      <<"updates">>            => [aesc_offchain_update:for_client(D) || D <- Updates],
       <<"state_hash">>         => aec_base58c:encode(state, StateHash)}.
 
 serialization_template(?CHANNEL_OFFCHAIN_TX_VSN) ->
@@ -167,7 +167,7 @@ serialization_template(?CHANNEL_OFFCHAIN_TX_VSN) ->
 channel_id(#channel_offchain_tx{channel_id = ChannelId}) ->
     aec_id:specialize(ChannelId, channel).
 
--spec updates(tx()) -> [aesc_offchain_state:update()].
+-spec updates(tx()) -> [aesc_offchain_update:update()].
 updates(#channel_offchain_tx{updates = Updates}) ->
     Updates.
 

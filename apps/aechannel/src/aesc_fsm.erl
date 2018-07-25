@@ -1474,7 +1474,7 @@ new_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts 
       code        := Code,
       deposit     := Deposit,
       call_data   := CallData} = Opts,
-    Updates = [aesc_offchain_state:op_new_contract(Owner, VmVersion, Code, Deposit, CallData)],
+    Updates = [aesc_offchain_update:op_new_contract(Owner, VmVersion, Code, Deposit, CallData)],
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State, ChannelOpts),
          ok = request_signing(?UPDATE, Tx1, D),
          gen_statem:reply(From, ok),
@@ -1493,7 +1493,7 @@ call_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts
       amount      := Amount,
       call_data   := CallData,
       call_stack  := CallStack} = Opts,
-    Updates = [aesc_offchain_state:op_call_contract(Caller, ContractPubKey, VmVersion, Amount, CallData, CallStack)],
+    Updates = [aesc_offchain_update:op_call_contract(Caller, ContractPubKey, VmVersion, Amount, CallData, CallStack)],
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State, ChannelOpts),
          ok = request_signing(?UPDATE, Tx1, D),
          gen_statem:reply(From, ok),
@@ -1715,7 +1715,7 @@ check_deposit_update_msg(#{ channel_id := ChanId
                                      aetx_sign:tx(SignedDepTx)),
                     From = ModD:origin(TxDI),
                     Amount = ModD:amount(TxDI),
-                    Updates = [aesc_offchain_state:op_deposit(From, Amount)],
+                    Updates = [aesc_offchain_update:op_deposit(From, Amount)],
                     NewStTx = aesc_offchain_state:make_update_tx(Updates, State, Opts),
                     case NewStTx == UpdTx of
                         true ->
@@ -1799,7 +1799,7 @@ check_withdraw_update_msg(#{ channel_id := ChanId
                                      aetx_sign:tx(SignedDepTx)),
                     From = ModD:origin(TxDI),
                     Amount = ModD:amount(TxDI),
-                    Updates = [aesc_offchain_state:op_withdraw(From, Amount)],
+                    Updates = [aesc_offchain_update:op_withdraw(From, Amount)],
                     NewStTx = aesc_offchain_state:make_update_tx(Updates, State, Opts),
                     case NewStTx == UpdTx of
                         true ->
@@ -1907,7 +1907,7 @@ check_update_ack_(SignedTx, HalfSignedTx) ->
 
 handle_upd_transfer(FromPub, ToPub, Amount, From, #data{ state = State
                                                        , opts = Opts } = D) ->
-    Updates = [aesc_offchain_state:op_transfer(FromPub, ToPub, Amount)],
+    Updates = [aesc_offchain_update:op_transfer(FromPub, ToPub, Amount)],
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State, Opts),
          D1 = request_signing(?UPDATE, Tx1, D),
          gen_statem:reply(From, ok),
