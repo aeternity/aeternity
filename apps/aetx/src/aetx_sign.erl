@@ -160,6 +160,9 @@ serialize_for_client(Encoding, Header, #signed_tx{}=S) ->
 serialize_for_client_pending(Encoding, #signed_tx{}=S) ->
     serialize_for_client(Encoding, S, -1, <<>>, hash(S)).
 
+-spec serialize_for_client(json|message_pack, aetx_sign:signed_tx(),
+                           integer(), binary(), binary()) ->
+                              binary() | map().
 serialize_for_client(message_pack, #signed_tx{}=S, BlockHeight, BlockHash0,
                      TxHash) ->
     BlockHash = case BlockHash0 of
