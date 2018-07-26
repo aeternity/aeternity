@@ -1507,7 +1507,7 @@ post_contract_and_call_tx(_Config) ->
     ContractCreateTxHash = sign_and_post_tx(EncodedUnsignedContractCreateTx),
 
     ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCreateTxHash)),
-    ?assertEqual({ok, 400, #{<<"reason">> => <<"Tx not mined">>}}, get_transactions_info_by_hash_sut(ContractCreateTxHash)),
+    ?assertEqual({ok, 404, #{<<"reason">> => <<"Tx not mined">>}}, get_transactions_info_by_hash_sut(ContractCreateTxHash)),
 
     % mine
     Fun1 = fun() -> tx_in_chain(ContractCreateTxHash) end,
@@ -1530,7 +1530,7 @@ post_contract_and_call_tx(_Config) ->
     ContractCallTxHash = sign_and_post_tx(EncodedUnsignedContractCallTx),
 
     ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCallTxHash)),
-    ?assertEqual({ok, 400, #{<<"reason">> => <<"Tx not mined">>}}, get_transactions_info_by_hash_sut(ContractCallTxHash)),
+    ?assertEqual({ok, 404, #{<<"reason">> => <<"Tx not mined">>}}, get_transactions_info_by_hash_sut(ContractCallTxHash)),
 
     % mine
     Fun2 = fun() -> tx_in_chain(ContractCallTxHash) end,
@@ -1598,7 +1598,7 @@ get_contract(_Config) ->
     ContractCreateTxHash = sign_and_post_tx(EncodedUnsignedContractCreateTx),
 
     %% Try to get the contract init call object while in mempool
-    {ok, 400, #{<<"reason">> := <<"Tx not mined">>}} = get_contract_call_object(ContractCreateTxHash),
+    {ok, 404, #{<<"reason">> := <<"Tx not mined">>}} = get_contract_call_object(ContractCreateTxHash),
 
     {ok, 404, #{<<"reason">> := <<"Proof for contract not found">>}} = get_contract_poi(EncodedContractPubKey),
     ?assertEqual({ok, 404, #{<<"reason">> => <<"Account not found">>}}, get_balance_at_top(EncodedContractPubKey)),
