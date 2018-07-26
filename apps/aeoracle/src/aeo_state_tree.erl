@@ -337,10 +337,10 @@ find_oracle_queries(Iterator, QueryType, N, Acc) when N > 0 ->
             end;
         %% Either end_of_table or next Oracle
         _Other ->
-            Acc
+            lists:reverse(Acc)
     end;
 find_oracle_queries(_Iterator, _QueryType, 0, Acc) ->
-    Acc.
+    lists:reverse(Acc).
 
 find_oracles(FromOracleId, Max, #oracle_tree{otree = T}) ->
     %% Only allow paths that match the size of an OracleId - Queries have
