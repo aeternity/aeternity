@@ -40,7 +40,7 @@
 %%% Types
 %%%===================================================================
 
--type oracle_query()    :: aeo_oracles:response().
+-type oracle_query()    :: aeo_oracles:query().
 -type oracle_response() :: 'undefined' | aeo_oracles:response().
 -type relative_ttl()    :: aeo_oracles:relative_ttl().
 
