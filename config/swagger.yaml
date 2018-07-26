@@ -2257,7 +2257,7 @@ paths:
         - external
         - dev
       operationId: 'DecodeData'
-      description: 'Decode Sophia data encoded according to Sophia ABI.'
+      description: 'Decode Sophia return data encoded according to Sophia ABI.'
       consumes:
         - application/json
       produces:

@@ -2635,7 +2635,7 @@
     "/contract/decode-data" : {
       "post" : {
         "tags" : [ "external", "dev" ],
-        "description" : "Decode Sophia data encoded according to Sophia ABI.",
+        "description" : "Decode Sophia return data encoded according to Sophia ABI.",
         "operationId" : "DecodeData",
         "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
