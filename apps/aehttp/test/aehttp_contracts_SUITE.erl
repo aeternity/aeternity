@@ -893,10 +893,6 @@ ensure_balance(Pubkey, NewBalance) ->
             NewBalance
     end.
 
-assert_balance(Pubkey, ExpectedBalance) ->
-    Address = aec_base58c:encode(account_pubkey, Pubkey),
-    {ok,200,#{<<"balance">> := ExpectedBalance}} = get_balance_at_top(Address).
-
 decode_data(Type, EncodedData) ->
     {ok,200,#{<<"data">> := DecodedData}} =
 	 get_contract_decode_data(#{'sophia-type' => Type,
@@ -973,8 +969,8 @@ call_encoded(NodeName, Pubkey, Privkey, EncodedContractPubkey, EncodedData,
     #{<<"return_type">> := <<"ok">>,<<"return_value">> := Value} = CallReturn,
     {Value,CallReturn}.
 
-contract_create_tx(Pubkey, Privkey, HexCode, EncodedInitData) ->
-    contract_create_tx(Pubkey, Privkey, HexCode, EncodedInitData, #{}).
+%% contract_create_tx(Pubkey, Privkey, HexCode, EncodedInitData) ->
+%%     contract_create_tx(Pubkey, Privkey, HexCode, EncodedInitData, #{}).
 
 contract_create_tx(Pubkey, Privkey, HexCode, EncodedInitData, CallerSet) ->
     Address = aec_base58c:encode(account_pubkey, Pubkey),
@@ -998,8 +994,8 @@ contract_create_tx(Pubkey, Privkey, HexCode, EncodedInitData, CallerSet) ->
     sign_and_post_create_tx(Privkey, ContractInitEncoded).
 
 
-contract_call_tx(Pubkey, Privkey, EncodedContractPubkey, EncodedCallData) ->
-    contract_call_tx(Pubkey, Privkey, EncodedContractPubkey, EncodedCallData, #{}).
+%% contract_call_tx(Pubkey, Privkey, EncodedContractPubkey, EncodedCallData) ->
+%%     contract_call_tx(Pubkey, Privkey, EncodedContractPubkey, EncodedCallData, #{}).
 
 contract_call_tx(Pubkey, Privkey, EncodedContractPubkey, EncodedCallData, CallerSet) ->
     Address = aec_base58c:encode(account_pubkey, Pubkey),
@@ -1265,10 +1261,13 @@ generate_key_pair() ->
 
 %% args_to_list(Args) -> string().
 %%  Take a list of arguments in "erlang format" and generate an
-%%  argument binary string.
+%%  argument binary string. We don't do strings yet.
 
 args_to_binary(Args) ->
-    list_to_binary([$(,args_to_list(Args),$)]).
+    %% ct:pal("Args ~tp\n", [Args]),
+    BinArgs = list_to_binary([$(,args_to_list(Args),$)]),
+    %% ct:pal("BinArgs ~tp\n", [BinArgs]),
+    BinArgs.
 
 args_to_list([A]) -> [arg_to_list(A)];		%The last one
 args_to_list([A1|Rest]) ->
@@ -1277,8 +1276,6 @@ args_to_list([]) -> [].
 
 %%arg_to_list(<<N:256>>) -> integer_to_list(N);
 arg_to_list(N) when is_integer(N) -> integer_to_list(N);
-arg_to_list(<<$",_/binary>>=B) -> 		%A string
-    binary_to_list(B);
 arg_to_list(B) when is_binary(B) ->		%A key
     aect_utils:hex_bytes(B);
 arg_to_list(T) when is_tuple(T) ->
