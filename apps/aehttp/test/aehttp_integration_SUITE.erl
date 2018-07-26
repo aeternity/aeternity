@@ -4118,8 +4118,8 @@ sc_ws_open(Config) ->
                  get_balance_at_top(aec_base58c:encode(account_pubkey, IPubkey)),
     {ok, 200, #{<<"balance">> := RStartAmt}} =
                  get_balance_at_top(aec_base58c:encode(account_pubkey, RPubkey)),
-    IAmt = 70,
-    RAmt = 40,
+    IAmt = 700,
+    RAmt = 400,
 
     {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
 
@@ -4648,7 +4648,8 @@ sc_ws_contracts(Config) ->
         end,
         [{Owner, Test} || Owner <- [initiator, responder],
 													Test  <- ["identity",
-                                    "counter"]]),
+                                    "counter",
+                                    "spend_test"]]),
     {sc_ws_update, ConfigList} = ?config(saved_config, Config),
     #{initiator := IConnPid,
       responder := RConnPid } = proplists:get_value(channel_clients, ConfigList),
@@ -4728,7 +4729,7 @@ sc_ws_contract_(Config, TestName, Owner) ->
     % trigger call contract
 
     contract_calls_(TestName, ContractPubKey, Code, SenderConnPid, UpdateVolley,
-                    GetDecodedResult),
+                    GetDecodedResult, AckConnPid, SenderPubkey, AckPubkey),
 
 
     ok = ?WS:unregister_test_for_channel_events(SenderConnPid, [sign, info, get]),
@@ -4748,14 +4749,14 @@ create_contract_(TestName, SenderConnPid, UpdateVolley) ->
                                                          InitArgument),
     ?WS:send_tagged(SenderConnPid, <<"update">>, <<"new_contract">>,
                     #{vm_version => 1,
-                      deposit    => 1,
+                      deposit    => 10,
                       code       => Code,
                       call_data  => EncodedInitData}),
     UnsignedStateTx = UpdateVolley(),
     {UnsignedStateTx, Code}.
 
 contract_calls_("identity", ContractPubKey, Code, SenderConnPid, UpdateVolley,
-                GetDecodedResult) ->
+                GetDecodedResult, _, _ , _) ->
     UnsignedStateTx = call_a_contract(<<"main">>, <<"(42)">>, ContractPubKey, Code, SenderConnPid,
                     UpdateVolley),
     ExpectedResult = 42,
@@ -4763,7 +4764,7 @@ contract_calls_("identity", ContractPubKey, Code, SenderConnPid, UpdateVolley,
     {ExpectedResult, _} = {DecodedCallResult, ExpectedResult},
     ok;
 contract_calls_("counter", ContractPubKey, Code, SenderConnPid, UpdateVolley,
-                GetDecodedResult) ->
+                GetDecodedResult, _, _ , _) ->
 
     UnsignedStateTx0 = call_a_contract(<<"get">>, <<"()">>, ContractPubKey, Code, SenderConnPid,
                     UpdateVolley),
@@ -4778,6 +4779,46 @@ contract_calls_("counter", ContractPubKey, Code, SenderConnPid, UpdateVolley,
     ExpectedResult = InitResult + 1,
     DecodedCallResult = GetDecodedResult(<<"int">>, UnsignedStateTx),
     {ExpectedResult, _} = {DecodedCallResult, ExpectedResult},
+    ok;
+contract_calls_("spend_test", ContractPubKey, Code, SenderConnPid, UpdateVolley,
+                GetDecodedResult, _AckConnPid, SenderPubkey, AckPubkey) ->
+    GetBalance =
+        fun(Args) ->
+            FunName =
+                case Args of
+                    <<"()">> -> <<"get_balance">>;
+                    _ -> <<"get_balance_of">>
+                end,
+            UsStateTx = call_a_contract(FunName, Args, ContractPubKey, Code, SenderConnPid,
+                            UpdateVolley),
+            _DecodedCallResult = GetDecodedResult(<<"int">>, UsStateTx)
+        end,
+    10 = GetBalance(<<"()">>),
+
+    SenderB0 = GetBalance(list_to_binary("(" ++ aect_utils:hex_bytes(SenderPubkey) ++ ")")),
+    AckB0 = GetBalance(list_to_binary("(" ++ aect_utils:hex_bytes(AckPubkey) ++ ")")),
+
+    SpendFun =
+        fun(To, Amt) ->
+            SpendArgs = list_to_binary("(" ++ aect_utils:hex_bytes(To) ++
+                                       ", " ++ integer_to_list(Amt) ++ ")"),
+            _SpendStateTx = call_a_contract(<<"spend">>, SpendArgs, ContractPubKey, Code, SenderConnPid,
+                                  UpdateVolley)
+        end,
+
+    SpendAmt = 3,
+    SpendFun(SenderPubkey, SpendAmt),
+    7 = GetBalance(<<"()">>),
+    SenderB = GetBalance(list_to_binary("(" ++ aect_utils:hex_bytes(SenderPubkey) ++ ")")),
+    AckB0 = GetBalance(list_to_binary("(" ++ aect_utils:hex_bytes(AckPubkey) ++ ")")),
+    SenderB = SenderB0 + SpendAmt,
+
+    SpendAmt2 = 2,
+    SpendFun(AckPubkey, SpendAmt2),
+    5 = GetBalance(<<"()">>),
+    SenderB = GetBalance(list_to_binary("(" ++ aect_utils:hex_bytes(SenderPubkey) ++ ")")),
+    AckB = GetBalance(list_to_binary("(" ++ aect_utils:hex_bytes(AckPubkey) ++ ")")),
+    AckB = AckB0 + SpendAmt2,
     ok.
 
 call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid, UpdateVolley) ->
@@ -4802,7 +4843,9 @@ contract_byte_code(TestName) ->
 contract_create_init_arg("identity") ->
 		<<"()">>;
 contract_create_init_arg("counter") ->
-		<<"(21)">>.
+		<<"(21)">>;
+contract_create_init_arg("spend_test") ->
+		<<"()">>.
 
 wait_for_signed_transaction_in_pool(SignedTx) ->
     TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
