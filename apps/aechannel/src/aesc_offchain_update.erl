@@ -8,11 +8,11 @@
 -define(OP_CREATE_CONTRACT, 3).
 -define(OP_CALL_CONTRACT,   4).
 
--opaque update() :: {?OP_TRANSFER, aec_keys:pubkey(), aec_keys:pubkey(), non_neg_integer()}
-        | {?OP_WITHDRAW | ?OP_DEPOSIT, aec_keys:pubkey(), non_neg_integer()}
-        | {?OP_CREATE_CONTRACT, aec_keys:pubkey(), aect_contracts:vm_version(), binary(),
+-opaque update() :: {?OP_TRANSFER, aec_id:id(), aec_id:id(), non_neg_integer()}
+        | {?OP_WITHDRAW | ?OP_DEPOSIT, aec_id:id(), non_neg_integer()}
+        | {?OP_CREATE_CONTRACT, aec_id:id(), aect_contracts:vm_version(), binary(),
            non_neg_integer(), binary()}
-        | {?OP_CALL_CONTRACT, aec_keys:pubkey(), aect_contracts:id(), aect_contracts:vm_version(),
+        | {?OP_CALL_CONTRACT, aec_id:id(), aec_id:id(), aect_contracts:vm_version(),
            non_neg_integer(), aect_call:call(), [non_neg_integer()]}.
 
 -export_type([update/0]).
@@ -29,38 +29,50 @@
          for_client/1,
          apply_on_trees/4]).
 
--spec op_transfer(aec_keys:pubkey(), aec_keys:pubkey(), non_neg_integer()) -> update().
+-spec op_transfer(aec_id:id(), aec_id:id(), non_neg_integer()) -> update().
 op_transfer(From, To, Amount) ->
+    account = aec_id:specialize_type(From),
+    account = aec_id:specialize_type(To),
     {?OP_TRANSFER, From, To, Amount}.
 
--spec op_deposit(aec_keys:pubkey(), non_neg_integer()) -> update().
+-spec op_deposit(aec_id:id(), non_neg_integer()) -> update().
 op_deposit(Acct, Amount) ->
+    account = aec_id:specialize_type(Acct),
     {?OP_DEPOSIT, Acct, Amount}.
 
--spec op_withdraw(aec_keys:pubkey(), non_neg_integer()) -> update().
+-spec op_withdraw(aec_id:id(), non_neg_integer()) -> update().
 op_withdraw(Acct, Amount) ->
+    account = aec_id:specialize_type(Acct),
     {?OP_WITHDRAW, Acct, Amount}.
 
--spec op_new_contract(aec_keys:pubkey(), aect_contracts:vm_version(), binary(),
+-spec op_new_contract(aec_id:id(), aect_contracts:vm_version(), binary(),
            non_neg_integer(), binary()) -> update().
 op_new_contract(Owner, VmVersion, Code, Deposit, CallData) ->
+    account = aec_id:specialize_type(Owner),
     {?OP_CREATE_CONTRACT, Owner, VmVersion, Code, Deposit, CallData}.
 
 
--spec op_call_contract(aec_keys:pubkey(), aect_contracts:id(), aect_contracts:vm_version(),
+-spec op_call_contract(aec_id:id(), aec_id:id(), aect_contracts:vm_version(),
                        non_neg_integer(), aect_call:call(), [non_neg_integer()]) -> update().
 op_call_contract(Caller, ContractPubKey, VmVersion, Amount, CallData, CallStack) ->
+    account = aec_id:specialize_type(Caller),
+    contract = aec_id:specialize_type(ContractPubKey),
     {?OP_CALL_CONTRACT, Caller, ContractPubKey, VmVersion, Amount, CallData, CallStack}.
 
 -spec apply_on_trees(update(), aec_trees:trees(), non_neg_integer(), map()) -> aec_trees:trees().
-apply_on_trees({?OP_TRANSFER, From, To, Amount}, Trees0, _, Opts) ->
+apply_on_trees({?OP_TRANSFER, FromId, ToId, Amount}, Trees0, _, Opts) ->
+    From = account_pubkey(FromId),
+    To = account_pubkey(ToId),
     Trees1 = remove_tokens(From, Amount, Trees0, Opts),
     add_tokens(To, Amount, Trees1);
-apply_on_trees({?OP_DEPOSIT, To, Amount}, Trees, _, _Opts) ->
+apply_on_trees({?OP_DEPOSIT, ToId, Amount}, Trees, _, _Opts) ->
+    To = account_pubkey(ToId),
     add_tokens(To, Amount, Trees);
-apply_on_trees({?OP_WITHDRAW, From, Amount}, Trees, _, Opts) ->
+apply_on_trees({?OP_WITHDRAW, FromId, Amount}, Trees, _, Opts) ->
+    From = account_pubkey(FromId),
     remove_tokens(From, Amount, Trees, Opts);
-apply_on_trees({?OP_CREATE_CONTRACT, Owner, VmVersion, Code, Deposit, CallData}, Trees, Round, Opts) ->
+apply_on_trees({?OP_CREATE_CONTRACT, OwnerId, VmVersion, Code, Deposit, CallData}, Trees, Round, Opts) ->
+    Owner = account_pubkey(OwnerId),
     {ContractPubKey, _Contract, Trees1} =
         aect_channel_contract:new(Owner, Round, VmVersion, Code, Deposit, Trees),
     Trees2 = remove_tokens(Owner, Deposit, Trees1, Opts),
@@ -69,8 +81,10 @@ apply_on_trees({?OP_CREATE_CONTRACT, Owner, VmVersion, Code, Deposit, CallData},
     Call = aect_call:new(Owner, Round, ContractPubKey, Round, 0),
     _Trees = aect_channel_contract:run_new(ContractPubKey, Call, CallData,
                                            Round, Trees4);
-apply_on_trees({?OP_CALL_CONTRACT, Caller, ContractPubKey, VmVersion, Amount, CallData, CallStack},
+apply_on_trees({?OP_CALL_CONTRACT, CallerId, ContractId, VmVersion, Amount, CallData, CallStack},
              Trees, Round, Opts) ->
+    Caller = account_pubkey(CallerId),
+    ContractPubKey = contract_pubkey(ContractId),
     Trees1 = remove_tokens(Caller, Amount, Trees, Opts),
     Trees2 = add_tokens(ContractPubKey, Amount, Trees1),
     Call = aect_call:new(Caller, Round, ContractPubKey, Round, 0),
@@ -80,28 +94,28 @@ apply_on_trees({?OP_CALL_CONTRACT, Caller, ContractPubKey, VmVersion, Amount, Ca
 -spec for_client(update()) -> map().
 for_client({?OP_TRANSFER, From, To, Amount}) ->
     #{<<"op">> => <<"transfer">>,
-      <<"from">> => From,
-      <<"to">>   => To,
+      <<"from">> => aec_base58c:encode(id_hash, From),
+      <<"to">> => aec_base58c:encode(id_hash, To),
       <<"am">>   => Amount};
 for_client({?OP_WITHDRAW, To, Amount}) ->
     #{<<"op">> => <<"withdraw">>,
-      <<"to">>   => To,
+      <<"to">> => aec_base58c:encode(id_hash, To),
       <<"am">>   => Amount};
 for_client({?OP_DEPOSIT, From, Amount}) ->
     #{<<"op">> => <<"deposit">>,
-      <<"from">>   => From,
+      <<"from">> => aec_base58c:encode(id_hash, From),
       <<"am">>   => Amount};
 for_client({?OP_CREATE_CONTRACT, Owner, VmVersion, Code, Deposit, CallData}) ->
     #{<<"op">>          => <<"new_contract">>,
-      <<"owner">>       => Owner,
+      <<"owner">>       => aec_base58c:encode(id_hash, Owner),
       <<"vm_version">>  => VmVersion,
       <<"code">>        => Code,
       <<"deposit">>     => Deposit,
       <<"call_data">>   => CallData};
-for_client({?OP_CALL_CONTRACT, Caller, ContractPubKey, VmVersion, Amount, CallData, CallStack}) ->
+for_client({?OP_CALL_CONTRACT, Caller, ContractId, VmVersion, Amount, CallData, CallStack}) ->
     #{<<"op">>          => <<"contract_call">>,
-      <<"caller">>      => Caller,
-      <<"contract">>    => ContractPubKey,
+      <<"caller">>      => aec_base58c:encode(id_hash, Caller),
+      <<"contract">>    => aec_base58c:encode(id_hash, ContractId),
       <<"vm_version">>  => VmVersion,
       <<"amount">>      => Amount,
       <<"call_data">>   => CallData,
@@ -189,24 +203,24 @@ type2ut(channel_offchain_update_create_contract)  -> ?OP_CREATE_CONTRACT;
 type2ut(channel_offchain_update_call_contract)    -> ?OP_CALL_CONTRACT.
 
 update_serialization_template(?UPDATE_VSN, ?OP_TRANSFER) ->
-    [ {from,    binary},
-      {to,      binary},
+    [ {from,    id},
+      {to,      id},
       {amount,  int}];
 update_serialization_template(?UPDATE_VSN, ?OP_DEPOSIT) ->
-    [ {from,    binary},
+    [ {from,    id},
       {amount,  int}];
 update_serialization_template(?UPDATE_VSN, ?OP_WITHDRAW) ->
-    [ {to,      binary},
+    [ {to,      id},
       {amount,  int}];
 update_serialization_template(?UPDATE_VSN, ?OP_CREATE_CONTRACT) ->
-    [ {owner,       binary},
+    [ {owner,       id},
       {vm_version,  int},
       {code,        binary},
       {deposit,     int},
       {call_data,   binary}];
 update_serialization_template(?UPDATE_VSN, ?OP_CALL_CONTRACT) ->
-    [ {caller,      binary},
-      {contract,    binary},
+    [ {caller,      id},
+      {contract,    id},
       {vm_version,  int},
       {amount,      int},
       {call_data,   binary},
@@ -245,5 +259,8 @@ remove_tokens(Pubkey, Amount, Trees, Opts) ->
     AccountTrees1 = aec_accounts_trees:enter(Acc, AccountTrees),
     aec_trees:set_accounts(Trees, AccountTrees1).
 
+account_pubkey(Id) ->
+    aec_id:specialize(Id, account).
 
-
+contract_pubkey(Id) ->
+    aec_id:specialize(Id, contract).

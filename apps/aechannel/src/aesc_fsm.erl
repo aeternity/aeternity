@@ -1432,7 +1432,7 @@ check_accept_msg(#{ chain_hash           := ChainHash
 
 dep_tx_for_signing(#{from := From, amount := Amount} = Opts,
                    #data{on_chain_id = ChanId, state=State}) ->
-    Updates = [aesc_offchain_update:op_deposit(From, Amount)],
+    Updates = [aesc_offchain_update:op_deposit(aec_id:create(account, From), Amount)],
     UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State, Opts),
     {channel_offchain_tx, UpdatedOffchainTx} = aetx:specialize_type(UpdatedStateTx),
     StateHash = aesc_offchain_tx:state_hash(UpdatedOffchainTx),
@@ -1451,7 +1451,7 @@ dep_tx_for_signing(#{from := From, amount := Amount} = Opts,
 
 wdraw_tx_for_signing(#{to := To, amount := Amount} = Opts,
                      #data{on_chain_id = ChanId, state=State}) ->
-    Updates = [aesc_offchain_update:op_withdraw(To, Amount)],
+    Updates = [aesc_offchain_update:op_withdraw(aec_id:create(account, To), Amount)],
     UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State, Opts),
     {channel_offchain_tx, UpdatedOffchainTx} = aetx:specialize_type(UpdatedStateTx),
     StateHash = aesc_offchain_tx:state_hash(UpdatedOffchainTx),
@@ -1474,7 +1474,8 @@ new_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts 
       code        := Code,
       deposit     := Deposit,
       call_data   := CallData} = Opts,
-    Updates = [aesc_offchain_update:op_new_contract(Owner, VmVersion, Code, Deposit, CallData)],
+    Updates = [aesc_offchain_update:op_new_contract(aec_id:create(account, Owner),
+                                                    VmVersion, Code, Deposit, CallData)],
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State, ChannelOpts),
          D1 = request_signing(?UPDATE, Tx1, D),
          gen_statem:reply(From, ok),
@@ -1492,7 +1493,9 @@ call_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts
       amount      := Amount,
       call_data   := CallData,
       call_stack  := CallStack} = Opts,
-    Updates = [aesc_offchain_update:op_call_contract(Caller, ContractPubKey, VmVersion, Amount, CallData, CallStack)],
+    Updates = [aesc_offchain_update:op_call_contract(aec_id:create(account, Caller),
+                                                     aec_id:create(contract, ContractPubKey),
+                                                     VmVersion, Amount, CallData, CallStack)],
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State, ChannelOpts),
          D1 = request_signing(?UPDATE, Tx1, D),
          gen_statem:reply(From, ok),
@@ -1713,7 +1716,7 @@ check_deposit_update_msg(#{ channel_id := ChanId
                                      aetx_sign:tx(SignedDepTx)),
                     From = ModD:origin(TxDI),
                     Amount = ModD:amount(TxDI),
-                    Updates = [aesc_offchain_update:op_deposit(From, Amount)],
+                    Updates = [aesc_offchain_update:op_deposit(aec_id:create(account, From), Amount)],
                     NewStTx = aesc_offchain_state:make_update_tx(Updates, State, Opts),
                     case NewStTx == UpdTx of
                         true ->
@@ -1797,7 +1800,7 @@ check_withdraw_update_msg(#{ channel_id := ChanId
                                      aetx_sign:tx(SignedDepTx)),
                     From = ModD:origin(TxDI),
                     Amount = ModD:amount(TxDI),
-                    Updates = [aesc_offchain_update:op_withdraw(From, Amount)],
+                    Updates = [aesc_offchain_update:op_withdraw(aec_id:create(account, From), Amount)],
                     NewStTx = aesc_offchain_state:make_update_tx(Updates, State, Opts),
                     case NewStTx == UpdTx of
                         true ->
@@ -1905,7 +1908,8 @@ check_update_ack_(SignedTx, HalfSignedTx) ->
 
 handle_upd_transfer(FromPub, ToPub, Amount, From, #data{ state = State
                                                        , opts = Opts } = D) ->
-    Updates = [aesc_offchain_update:op_transfer(FromPub, ToPub, Amount)],
+    Updates = [aesc_offchain_update:op_transfer(aec_id:create(account, FromPub),
+                                                aec_id:create(account, ToPub), Amount)],
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State, Opts),
          D1 = request_signing(?UPDATE, Tx1, D),
          gen_statem:reply(From, ok),
