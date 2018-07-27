@@ -25,7 +25,7 @@
 -export([ spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2,
           oracle_register/7, oracle_query/6, oracle_query_spec/2, oracle_response_spec/2,
           oracle_query_oracle/2, oracle_respond/5, oracle_get_answer/3,
-          oracle_query_fee/2, oracle_get_question/3, oracle_extend/5]).
+          oracle_query_fee/2, oracle_get_question/3, oracle_extend/4]).
 
 -include("apps/aecontract/src/aecontract.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -327,7 +327,7 @@ oracles(_Cfg) ->
     Env0 = initial_state(#{}),
     Env1 = create_contract(101, Code, "()", Env0),
     QFee = 100,
-    {101, Env2} = successful_call(101, word, registerOracle, "(101, 3, 4, "++ integer_to_list(QFee) ++", 10)", Env1),
+    {101, Env2} = successful_call(101, word, registerOracle, "(101, 3, "++ integer_to_list(QFee) ++", 10)", Env1),
     {Q, Env3}   = successful_call(101, word, createQuery, "(101, \"why?\", "++ integer_to_list(QFee) ++", 10, 11)", Env2, #{value => QFee}),
     QArg        = integer_to_list(Q),
     OandQArg    = "(101, "++ QArg ++")",
@@ -336,7 +336,7 @@ oracles(_Cfg) ->
     {some, 42}  = successful_call_(101, {option, word}, getAnswer, OandQArg, Env4),
     <<"why?">>  = successful_call_(101, string, getQuestion, OandQArg, Env4),
     QFee        = successful_call_(101, word, queryFee, "101", Env4),
-    {{}, Env5}  = successful_call(101, {tuple, []}, extendOracle, "(101, 1111, 10, 100)", Env4),
+    {{}, Env5}  = successful_call(101, {tuple, []}, extendOracle, "(101, 1111, 100)", Env4),
     #{oracles :=
           #{101 := #{
              nonce := 1,
@@ -439,8 +439,8 @@ oracle_respond(<<_Oracle:256>>, <<Query:256>>, Sign, R, State) ->
         _ -> {error, {no_such_query, Query}}
     end.
 
-oracle_extend(<<Oracle:256>>,_Sign,_Fee, TTL, State) ->
-    io:format("oracle_extend(~p, ~p, ~p, ~p)\n", [Oracle,_Sign,_Fee, TTL]),
+oracle_extend(<<Oracle:256>>,_Sign, TTL, State) ->
+    io:format("oracle_extend(~p, ~p, ~p)\n", [Oracle,_Sign, TTL]),
     case maps:get(oracles, State, #{}) of
         #{Oracle := O} = Oracles ->
             State1 = State#{ oracles := Oracles#{ Oracle := O#{ ttl => TTL } } },

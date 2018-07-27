@@ -59,12 +59,12 @@ global_env() ->
      {"state", State},
      {"put",   Fun1(State, Unit)},
      %% Oracles
-     {["Oracle", "register"],     Fun([Address, Signature, Fee, Fee, TTL], Oracle(Q, R))},
+     {["Oracle", "register"],     Fun([Address, Signature, Fee, TTL], Oracle(Q, R))},
      {["Oracle", "query_fee"],    Fun([Oracle(Q, R)], Fee)},
      {["Oracle", "query"],        Fun([Oracle(Q, R), Q, Fee, TTL, TTL], Query(Q, R))},
      {["Oracle", "get_question"], Fun([Oracle(Q, R), Query(Q, R)], Q)},
      {["Oracle", "respond"],      Fun([Oracle(Q, R), Query(Q, R), Signature, R], Unit)},
-     {["Oracle", "extend"],       Fun([Oracle(Q, R), Signature, Fee, TTL], Unit)},
+     {["Oracle", "extend"],       Fun([Oracle(Q, R), Signature, TTL], Unit)},
      {["Oracle", "get_answer"],   Fun([Oracle(Q, R), Query(Q, R)], option_t(Ann, R))},
      %% Name service
      {["AENS", "resolve"],  Fun([String, String], option_t(Ann, A))},

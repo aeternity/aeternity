@@ -153,8 +153,8 @@ ast_body({id, _, "put"}, _Icode) ->
     error({underapplied_primitive, put});   %% TODO: eta
 
 %% Oracles
-ast_body(?qid_app(["Oracle", "register"], [Acct, Sign, Fee, QFee, TTL], _, ?oracle_t(QType, RType)), Icode) ->
-    prim_call(?PRIM_CALL_ORACLE_REGISTER, ast_body(Fee, Icode),
+ast_body(?qid_app(["Oracle", "register"], [Acct, Sign, QFee, TTL], _, ?oracle_t(QType, RType)), Icode) ->
+    prim_call(?PRIM_CALL_ORACLE_REGISTER, #integer{value = 0},
               [ast_body(Acct, Icode), ast_body(Sign, Icode), ast_body(QFee, Icode), ast_body(TTL, Icode),
                ast_type_value(QType, Icode), ast_type_value(RType, Icode)],
               [word, word, word, word, typerep, typerep], word);
@@ -168,10 +168,10 @@ ast_body(?qid_app(["Oracle", "query"], [Oracle, Q, QFee, QTTL, RTTL], [_, QType,
               [ast_body(Oracle, Icode), ast_body(Q, Icode), ast_body(QTTL, Icode), ast_body(RTTL, Icode)],
               [word, ast_type(QType, Icode), word, word], word);
 
-ast_body(?qid_app(["Oracle", "extend"], [Oracle, Sign, Fee, TTL], _, _), Icode) ->
+ast_body(?qid_app(["Oracle", "extend"], [Oracle, Sign, TTL], _, _), Icode) ->
     prim_call(?PRIM_CALL_ORACLE_EXTEND, #integer{value = 0},
-              [ast_body(Oracle, Icode), ast_body(Sign, Icode), ast_body(Fee, Icode), ast_body(TTL, Icode)],
-              [word, word, word, word], {tuple, []});
+              [ast_body(Oracle, Icode), ast_body(Sign, Icode), ast_body(TTL, Icode)],
+              [word, word, word], {tuple, []});
 
 ast_body(?qid_app(["Oracle", "respond"], [Oracle, Query, Sign, R], [_, _, _, RType], _), Icode) ->
     prim_call(?PRIM_CALL_ORACLE_RESPOND, #integer{value = 0},
