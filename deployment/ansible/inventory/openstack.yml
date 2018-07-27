@@ -1,3 +1,0 @@
-plugin: openstack
-inventory_hostname: 'name'
-fail_on_errors: true
