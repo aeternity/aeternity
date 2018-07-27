@@ -1,0 +1,45 @@
+contract RemoteOracles =
+
+  public function callRegisterOracle(
+    r : address,
+    acct : address,
+    sign : signature,
+    qfee : int,
+    ttl  : int) : oracle(string, int) =
+    raw_call(r, "registerOracle", 1234567890, 0, (acct, sign, qfee, ttl))
+
+  public function callCreateQuery(
+    r : address,
+    value : int,
+    o    : oracle(string, int),
+    q    : string,
+    qfee : int,
+    qttl : int,
+    rttl : int) : oracle_query(string, int) =
+    require(value =< Call.value, "insufficient value")
+    raw_call(r, "createQuery", 1234567890, value, (o, q, qfee, qttl, rttl))
+
+  // Do not use in production!
+  public function callUnsafeCreateQuery(
+    r : address,
+    value : int,
+    o    : oracle(string, int),
+    q    : string,
+    qfee : int,
+    qttl : int,
+    rttl : int) : oracle_query(string, int) =
+    raw_call(r, "unsafeCreateQuery", 1234567890, value, (o, q, qfee, qttl, rttl))
+
+  public function callRespond(
+    r : address,
+    o    : oracle(string, int),
+    q    : oracle_query(string, int),
+    sign : signature,
+    qr   : int) =
+    raw_call(r, "respond", 1234567890, 0, (o, q, sign, qr))
+
+  private function abort(err : string) =
+    switch(0) 1 => ()
+
+  private function require(b : bool, err : string) =
+    if(!b) abort(err)

@@ -17,6 +17,14 @@ contract Oracles =
     require(qfee =< Call.value, "insufficient value for qfee")
     Oracle.query(o, q, qfee, qttl, rttl)
 
+  // Do not use in production!
+  function unsafeCreateQuery(o    : oracle(string, int),
+                       q    : string,
+                       qfee  : int,
+                       qttl : int,
+                       rttl : int) : oracle_query(string, int) =
+    Oracle.query(o, q, qfee, qttl, rttl)
+
   function extendOracle(o    : oracle(string, int),
                         sign : signature,   // Signed oracle address
                         ttl  : int) : () =
