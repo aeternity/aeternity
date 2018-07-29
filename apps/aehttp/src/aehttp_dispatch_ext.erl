@@ -236,8 +236,7 @@ handle_request('PostTransaction', #{'Tx' := Tx}, _Context) ->
         {error, _} ->
             {400, [], #{reason => <<"Invalid base58Check encoding">>}};
         {ok, SignedTx} ->
-            %% TODO: lager debug log?
-            aec_tx_pool:push(SignedTx),
+            ok = aec_tx_pool:push(SignedTx), %% TODO Add proper error handling
             Hash = aetx_sign:hash(SignedTx),
             {200, [], #{<<"tx_hash">> => aec_base58c:encode(tx_hash, Hash)}}
     end;
