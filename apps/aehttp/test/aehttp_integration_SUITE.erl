@@ -1723,7 +1723,7 @@ post_oracle_response(Config) ->
     {ok, 200, Resp1} = get_oracles_query_by_pubkey_and_query_id(OraclePubkey, QueryId),
     ?assertEqual(QueryId, maps:get(<<"query_id">>, Resp1)),
     ?assertEqual(OraclePubkey, maps:get(<<"oracle_id">>, Resp1)),
-    ?assertEqual(Response, maps:get(<<"response">>, Resp1)),
+    ?assertEqual(aec_base58c:encode(Response), maps:get(<<"response">>, Resp1)),
     ok.
 
 get_oracles_by_pubkey_sut(Pubkey) ->
