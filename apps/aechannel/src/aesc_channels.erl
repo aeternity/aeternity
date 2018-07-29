@@ -228,15 +228,15 @@ serialization_template(?CHANNEL_VSN) ->
 
 -spec serialize_for_client(channel()) -> map().
 serialize_for_client(#channel{} = Ch) ->
-    #{<<"id">>               => id(Ch),
-      <<"initiator">>        => initiator(Ch),
-      <<"responder">>        => responder(Ch),
+    #{<<"id">>               => aec_base58c:encode(channel, id(Ch)),
+      <<"initiator">>        => aec_base58c:encode(account_pubkey, initiator(Ch)),
+      <<"responder">>        => aec_base58c:encode(account_pubkey, responder(Ch)),
       <<"total_amount">>     => total_amount(Ch),
       <<"initiator_amount">> => initiator_amount(Ch),
       <<"responder_amount">> => responder_amount(Ch),
       <<"channel_reserve">>  => channel_reserve(Ch),
-      <<"delegates">>        => delegates(Ch),
-      <<"state_hash">>       => state_hash(Ch),
+      <<"delegates">>        => [aec_base58c:encode(account_pubkey, D) || D <- delegates(Ch)],
+      <<"state_hash">>       => aec_base58c:encode(block_state_hash, state_hash(Ch)),
       <<"round">>            => round(Ch),
       <<"lock_period">>      => lock_period(Ch),
       <<"closes_at">>        => closes_at(Ch)}.

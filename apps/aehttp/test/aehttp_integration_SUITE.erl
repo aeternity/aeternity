@@ -81,6 +81,11 @@
 
 -export(
    [
+    get_channel_by_pubkey/1
+   ]).
+
+-export(
+   [
     get_peer_pubkey/1
    ]).
 
@@ -298,7 +303,8 @@ groups() ->
        {group, oracle_endpoints},
        %% /names/*
        {group, name_endpoints},
-       %% TODO: /channels/*
+       %% /channels/*
+       {group, channel_endpoints},
        %% /peers/*
        {group, peer_endpoints},
        %% /status/*
@@ -455,7 +461,11 @@ groups() ->
       [
        %% TODO
       ]},
-     %% TODO: /channels/*
+     %% /channels/*
+     {channel_endpoints, [],
+      [
+       get_channel_by_pubkey
+      ]},
 
      %% /peers/*
      {peer_endpoints, [],
@@ -1756,6 +1766,34 @@ get_names_entry_by_name_sut(Name) ->
     http_request(Host, get, "names/" ++ http_uri:encode(Name1), []).
 
 %% /channels/*
+
+get_channel_by_pubkey(_Config) ->
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    ?assertEqual({ok, 400, #{<<"reason">> => <<"Invalid public key">>}},
+                 get_channel_by_pubkey_sut(<<"InvalidKey">>)),
+
+    #{i := #{channel_id := ChannelId0, pub := IPub},
+      r := #{pub := RPub}
+     } = aesc_fsm_SUITE:create_channel_on_port(9311),
+    ChannelId = aec_base58c:encode(channel, ChannelId0),
+
+    {ok, 200, #{
+        <<"id">> := ChannelId,
+        <<"initiator">> := Initiator,
+        <<"responder">> := Responder,
+        <<"delegates">> := [],         %% Update needed
+        <<"state_hash">> := StateHash
+      }} = get_channel_by_pubkey_sut(ChannelId),
+
+    ?assertEqual({ok, IPub}, aec_base58c:safe_decode(account_pubkey, Initiator)),
+    ?assertEqual({ok, RPub}, aec_base58c:safe_decode(account_pubkey, Responder)),
+    ?assertMatch({ok, _}, aec_base58c:safe_decode(block_state_hash, StateHash)),
+    ok.
+
+get_channel_by_pubkey_sut(PubKey) ->
+    Host = external_address(),
+    PubKey1 = binary_to_list(PubKey),
+    http_request(Host, get, "channels/" ++ http_uri:encode(PubKey1), []).
 
 %% /peers/*
 
