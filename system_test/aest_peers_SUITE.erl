@@ -143,7 +143,7 @@ test_inbound_limitation(Cfg) ->
     T1 = erlang:system_time(millisecond),
     wait_for_value({height, Length}, [node1, node2, node3], ?MINING_TIMEOUT * Length, Cfg),
 
-    try_until(T1 + 2 * ping_interval(),
+    try_until(T1 + 3 * ping_interval(),
             fun() ->
                 B1a = get_block(node1, Length),
                 B2a = get_block(node2, Length),
@@ -165,7 +165,7 @@ test_inbound_limitation(Cfg) ->
     T2 = erlang:system_time(millisecond),
     wait_for_value({height, Length * 2}, [node1, node2, node3, node4], ?MINING_TIMEOUT * Length, Cfg),
 
-    try_until(T2 + 2 * ping_interval(),
+    try_until(T2 + 3 * ping_interval(),
             fun() ->
                 B1b = get_block(node1, Length * 2),
                 B2b = get_block(node2, Length * 2),

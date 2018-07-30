@@ -683,9 +683,7 @@ node_mined_retries(Nodes) ->
     lists:foldl(fun(N, Acc) ->
         case aest_nodes:read_last_metric(N, Metric) of
             undefined -> Acc;
-            Num ->
-                io:format(user, "~p: ~p~n", [N, Num]),
-                Acc + Num
+            Num -> Acc + Num
         end
     end, 0, Nodes).
 
