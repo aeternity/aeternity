@@ -2086,9 +2086,9 @@ conflict_msg_type(?WDRAW_CREATED) -> ?WDRAW_ERR.
 send_conflict_msg(?UPDATE, Sn, Msg) ->
     aesc_session_noise:update_error(Sn, Msg);
 send_conflict_msg(?DEP_CREATED, Sn, Msg) ->
-    aesc_session_noise:deposit_error(Sn, Msg);
+    aesc_session_noise:dep_error(Sn, Msg);
 send_conflict_msg(?WDRAW_CREATED, Sn, Msg) ->
-    aesc_session_noise:withdraw_error(Sn,Msg).
+    aesc_session_noise:wdraw_error(Sn,Msg).
 
 
 check_update_err_msg(#{ channel_id := ChanId
