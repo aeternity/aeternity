@@ -268,8 +268,7 @@ for_client(#oracle_query_tx{sender_id = SenderId,
                             ttl = TTL} = Tx) ->
     {QueryTLLType, QueryTTLValue} = query_ttl(Tx),
     {ResponseTTLType = delta, ResponseTTLValue} = response_ttl(Tx),
-    #{<<"data_schema">>  => <<"OracleQueryTxJSON">>, % swagger schema name
-      <<"vsn">>          => version(),
+    #{<<"vsn">>          => version(),
       <<"sender_id">>    => aec_base58c:encode(id_hash, SenderId),
       <<"nonce">>        => Nonce,
       <<"oracle_id">>    => aec_base58c:encode(id_hash, OracleId),

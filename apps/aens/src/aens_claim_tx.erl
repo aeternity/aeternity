@@ -199,7 +199,6 @@ for_client(#ns_claim_tx{account_id = AccountId,
                         fee        = Fee,
                         ttl        = TTL}) ->
     #{<<"vsn">>        => version(),
-      <<"data_schema">> => <<"NameClaimTxObject">>, % swagger schema name
       <<"account_id">> => aec_base58c:encode(id_hash, AccountId),
       <<"nonce">>      => Nonce,
       <<"name">>       => Name,

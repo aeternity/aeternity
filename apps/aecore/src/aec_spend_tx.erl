@@ -249,7 +249,6 @@ for_client(#spend_tx{sender_id    = SenderId,
                      nonce        = Nonce,
                      payload      = Payload}) ->
     #{<<"sender_id">>    => aec_base58c:encode(id_hash, SenderId),
-      <<"data_schema">>  => <<"SpendTxJSON">>, % swagger schema name
       <<"recipient_id">> => aec_base58c:encode(id_hash, RecipientId),
       <<"amount">>       => Amount,
       <<"fee">>          => Fee,

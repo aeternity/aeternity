@@ -203,7 +203,6 @@ for_client(#ns_update_tx{account_id = AccountId,
                          fee        = Fee,
                          ttl        = TTL}) ->
     #{<<"vsn">>        => version(),
-      <<"data_schema">> => <<"NameUpdateTxObject">>, % swagger schema name
       <<"account_id">> => aec_base58c:encode(id_hash, AccountId),
       <<"nonce">>      => Nonce,
       <<"name_id">>    => aec_base58c:encode(id_hash, NameId),

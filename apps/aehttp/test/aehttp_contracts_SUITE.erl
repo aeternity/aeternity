@@ -1049,10 +1049,9 @@ get_contract_decode_data(Request) ->
     Host = external_address(),
     http_request(Host, post, "contract/decode-data", Request).
 
-get_tx(TxHash, TxEncoding) ->
-    Params = tx_encoding_param(TxEncoding),
+get_tx(TxHash) ->
     Host = external_address(),
-    http_request(Host, get, "tx/" ++ binary_to_list(TxHash), Params).
+    http_request(Host, get, "tx/" ++ binary_to_list(TxHash), []).
 
 post_spend_tx(Recipient, Amount, Fee) ->
     post_spend_tx(Recipient, Amount, Fee, <<"post spend tx">>).
@@ -1083,10 +1082,6 @@ get_nonce(EncodedPubKey, Params) ->
 post_tx(TxSerialized) ->
     Host = external_address(),
     http_request(Host, post, "tx", #{tx => TxSerialized}).
-
-tx_encoding_param(default) -> #{};
-tx_encoding_param(json) -> #{tx_encoding => <<"json">>};
-tx_encoding_param(message_pack) -> #{tx_encoding => <<"message_pack">>}.
 
 %% ============================================================
 %% private functions
@@ -1238,7 +1233,7 @@ sign_and_post_tx(PrivKey, EncodedUnsignedTx) ->
     TxHash.
 
 tx_in_chain(TxHash) ->
-    case get_tx(TxHash, json) of
+    case get_tx(TxHash) of
         {ok, 200, #{<<"transaction">> := #{<<"block_hash">> := <<"none">>}}} ->
             ct:log("Tx not mined, but in mempool"),
             false;

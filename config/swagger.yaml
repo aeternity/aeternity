@@ -248,7 +248,7 @@ paths:
         '200':
           description: 'Successful operation'
           schema:
-            $ref: '#/definitions/JSONTxs'
+            $ref: '#/definitions/GenericTxs'
         '400':
           description: 'Invalid hash'
           schema:
@@ -283,7 +283,7 @@ paths:
         '200':
           description: 'Successful operation'
           schema:
-            $ref: '#/definitions/SignedTxJSON'
+            $ref: '#/definitions/GenericSignedTx'
         '400':
           description: 'Invalid hash or index'
           schema:
@@ -450,7 +450,7 @@ paths:
         '200':
           description: 'Successful operation'
           schema:
-            $ref: '#/definitions/JSONTxs'
+            $ref: '#/definitions/GenericTxs'
         '400':
           description: 'Invalid public key'
           schema:
@@ -479,7 +479,7 @@ paths:
         '200':
           description: 'Successful operation'
           schema:
-            $ref: '#/definitions/SignedTxJSON'
+            $ref: '#/definitions/GenericSignedTx'
         '400':
           description: 'Invalid hash'
           schema:
@@ -928,17 +928,11 @@ paths:
           description: Hash of the transaction to get
           required: true
           type: string
-        - in: query
-          name: tx_encoding
-          description: 'Transaction encoding'
-          type: string
-          enum: [message_pack, json]
-          default: message_pack
       responses:
         '200':
           description: The transaction found
           schema:
-            $ref: '#/definitions/SingleTxObject'
+            $ref: '#/definitions/SingleTx'
         '400':
           description: Invalid transaction
           schema:
@@ -2281,12 +2275,6 @@ paths:
           description: 'Height of the block to fetch'
           required: true
           type : integer
-        - in: query
-          name: tx_encoding
-          description: 'Transactions encoding'
-          type: string
-          enum: [message_pack, json]
-          default: json
       responses:
         '200':
           description: The block being found
@@ -2312,12 +2300,6 @@ paths:
           description: 'Hash of the block to fetch'
           required: true
           type : string
-        - in: query
-          name: tx_encoding
-          description: 'Transactions encoding'
-          type: string
-          enum: [message_pack, json]
-          default: json
       responses:
         '200':
           description: The block being found
@@ -2341,13 +2323,6 @@ paths:
       description: 'Get the genesis block'
       produces:
         - application/json
-      parameters:
-        - in: query
-          name: tx_encoding
-          description: 'Transactions encoding'
-          type: string
-          enum: [message_pack, json]
-          default: json
       responses:
         '200':
           description: The genesis block
@@ -2363,13 +2338,6 @@ paths:
       description: 'Get the top block'
       produces:
         - application/json
-      parameters:
-        - in: query
-          name: tx_encoding
-          description: 'Transactions encoding'
-          type: string
-          enum: [message_pack, json]
-          default: json
       responses:
         '200':
           description: The top block
@@ -2572,17 +2540,11 @@ paths:
           description: 'Index of the transaction in the block'
           required: true
           type: integer
-        - in: query
-          name: tx_encoding
-          description: 'Transactions encoding'
-          type: string
-          enum: [message_pack, json]
-          default: message_pack
       responses:
         '200':
           description: The transaction found
           schema:
-            $ref: '#/definitions/SingleTxObject'
+            $ref: '#/definitions/SingleTx'
         '404':
           description: Block or transaction not found
           schema:
@@ -2608,17 +2570,11 @@ paths:
           description: 'Index of the transaction in the block'
           required: true
           type: integer
-        - in: query
-          name: tx_encoding
-          description: 'Transactions encoding'
-          type: string
-          enum: [message_pack, json]
-          default: message_pack
       responses:
         '200':
           description: The transaction found
           schema:
-            $ref: '#/definitions/SingleTxObject'
+            $ref: '#/definitions/SingleTx'
         '404':
           description: Block or transaction not found
           schema:
@@ -2639,17 +2595,11 @@ paths:
           description: 'Index of the transaction in the block'
           required: true
           type: integer
-        - in: query
-          name: tx_encoding
-          description: 'Transactions encoding'
-          type: string
-          enum: [message_pack, json]
-          default: message_pack
       responses:
         '200':
           description: The transaction found
           schema:
-            $ref: '#/definitions/SingleTxObject'
+            $ref: '#/definitions/SingleTx'
         '404':
           description: Block or transaction not found
           schema:
@@ -2833,14 +2783,9 @@ definitions:
     allOf:
       - $ref: '#/definitions/Header'
       - type: object
-        discriminator: data_schema
         properties:
-          data_schema:
-            type: string
           hash:
             $ref: '#/definitions/EncodedHash'
-        required:
-        - data_schema
   MicroBlockHeader:
     type: object
     properties:
@@ -2870,32 +2815,13 @@ definitions:
         properties:
           hash:
             type: string
-  TxObjects:
+  GenericTxs:
     type: object
-    discriminator: data_schema
     properties:
-      data_schema:
-        type: string
-    required:
-    - data_schema
-  MsgPackTxs:
-    allOf:
-      - $ref: '#/definitions/TxObjects'
-      - type: object
-        properties:
-          transactions:
-            type: array
-            items:
-              $ref: '#/definitions/Tx'
-  JSONTxs:
-    allOf:
-      - $ref: '#/definitions/TxObjects'
-      - type: object
-        properties:
-          transactions:
-            type: array
-            items:
-              $ref: '#/definitions/SignedTxJSON'
+      transactions:
+        type: array
+        items:
+            $ref: '#/definitions/GenericSignedTx'
   Account:
     type: object
     properties:
@@ -3487,32 +3413,6 @@ definitions:
     - nonce
     - state_hash
     - round
-  ChannelSnapshotSoloTx:
-    type: object
-    properties:
-      channel_id:
-        $ref: '#/definitions/EncodedHash'
-      from_id:
-        $ref: '#/definitions/EncodedHash'
-      payload:
-        type: string
-      ttl:
-        type: integer
-        format: int64
-        minimum: 0
-      fee:
-        type: integer
-        format: int64
-        minimum: 0
-      nonce:
-        type: integer
-        format: int64
-        minimum: 0
-    required:
-    - channel_id
-    - from
-    - payload
-    - fee
   ChannelCloseMutualTx:
     type: object
     properties:
@@ -3766,37 +3666,18 @@ definitions:
         type: integer
         format: int64
         minimum: 0
-  SingleTxObject:
+  SingleTx:
     type: object
-    discriminator: data_schema
     properties:
-      data_schema:
-        type: string
+      transaction:
+        $ref: '#/definitions/GenericSignedTx'
     required:
-    - data_schema
-  SingleTxJSON:
-    allOf:
-    - $ref: '#/definitions/SingleTxObject'
-    - type: object
-      properties:
-        transaction:
-          $ref: '#/definitions/SignedTxJSON'
-      required:
       - transaction
-  SingleTxMsgPack:
-    allOf:
-    - $ref: '#/definitions/SingleTxObject'
-    - type: object
-      properties:
-        transaction:
-          $ref: '#/definitions/Tx'
-      required:
-      - transaction
-  SignedTxJSON:
+  GenericSignedTx:
     type: object
     properties:
       tx:
-        $ref: '#/definitions/JSONTx'
+        $ref: '#/definitions/GenericTx'
       block_height:
         type: integer
       block_hash:
@@ -3809,92 +3690,93 @@ definitions:
         minItems: 1
         items:
           type: string
+  GenericTx:
+    type: object
+    discriminator: type
+    properties:
+      vsn:
+        type: integer
+        format: int64
+      type:
+        type: string
+    required:
+      - vsn
+      - type
   ChannelCreateTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ChannelCreateTx'
   ChannelDepositTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ChannelDepositTx'
   ChannelWithdrawalTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ChannelWithdrawalTx'
   ChannelCloseMutualTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ChannelCloseMutualTx'
   ChannelCloseSoloTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ChannelCloseSoloTx'
   ChannelSlashTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ChannelSlashTx'
   ChannelSettleTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ChannelSettleTx'
-## readable JSON objects for transactions:
-  JSONTx:
-    type: object
-    discriminator: data_schema
-    properties:
-      data_schema:
-        type: string
-      vsn:
-        type: integer
-    required:
-    - data_schema
   SpendTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/SpendTx'
   OracleRegisterTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/OracleRegisterTx'
   OracleExtendTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/OracleExtendTx'
   OracleQueryTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/OracleQueryTx'
   OracleResponseTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/OracleResponseTx'
   NamePreclaimTxObject:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/NamePreclaimTx'
   NameClaimTxObject:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/NameClaimTx'
   NameUpdateTxObject:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/NameUpdateTx'
   NameTransferTxObject:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/NameTransferTx'
   NameRevokeTxObject:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/NameRevokeTx'
   ContractCreateTxObject:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ContractCreateData'
   ContractCallTxObject:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ContractCallData'
   ContractCallObject:
     type: object
