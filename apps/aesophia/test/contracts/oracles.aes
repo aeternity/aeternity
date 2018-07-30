@@ -12,10 +12,10 @@ contract Oracles =
 
   function createQuery(o    : oracle(string, int),
                        q    : string,
-                       fee  : int,
+                       qfee  : int,
                        qttl : int,
                        rttl : int) : oracle_query(string, int) =
-    Oracle.query(o, q, fee, qttl, rttl)
+    Oracle.query(o, q, qfee, qttl, rttl)
 
   function extendOracle(o    : oracle(string, int),
                         sign : signature,   // Signed oracle address

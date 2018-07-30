@@ -136,7 +136,7 @@ oracle_call_query(Value, Data, State) ->
             ArgumentTypes = [word, QueryType, word, word],
             [_Oracle, Q, QTTL, RTTL] = get_args(ArgumentTypes, Data),
             Callback = fun(API, ChainState) ->
-                case API:oracle_query(OracleKey, Q, Value, QTTL, RTTL, ChainState) of
+                case API:oracle_query(OracleKey, Q, _QFee=Value, QTTL, RTTL, ChainState) of
                     {ok, <<QKey:256>>, ChainState1} -> {ok, QKey, ChainState1};
                     {error, _} = Err                -> Err
                 end end,
