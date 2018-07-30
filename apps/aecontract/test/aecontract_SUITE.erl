@@ -618,7 +618,7 @@ sophia_oracles(_Cfg) ->
     TTL               = 15,
     CtId              = ?call(call_contract, Acc, Ct, registerOracle, word, {CtId, 0, 10, QueryFee, TTL}),
     Question          = <<"Manchester United vs Brommapojkarna">>,
-    QId               = ?call(call_contract, Acc, Ct, createQuery, word, {Ct, Question, QueryFee, 5, 5}),
+    QId               = ?call(call_contract, Acc, Ct, createQuery, word, {Ct, Question, QueryFee, 5, 5}, #{amount => QueryFee}),
     Question          = ?call(call_contract, Acc, Ct, getQuestion, string, {CtId, QId}),
     QueryFee          = ?call(call_contract, Acc, Ct, queryFee, word, Ct),
     none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
