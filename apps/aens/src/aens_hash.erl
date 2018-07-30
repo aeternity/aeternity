@@ -30,7 +30,7 @@
 
 -spec commitment_hash(binary(), integer()) -> commitment_hash().
 commitment_hash(NameAscii, Salt) ->
-    NameHash = hash(NameAscii),
+    NameHash = name_hash(NameAscii),
     SaltBin = int_to_bin(Salt),
     hash(<<NameHash/binary, SaltBin/binary>>).
 
