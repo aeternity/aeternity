@@ -29,6 +29,8 @@
          for_client/1,
          apply_on_trees/4]).
 
+-export([extract_caller/1]).
+
 -spec op_transfer(aec_id:id(), aec_id:id(), non_neg_integer()) -> update().
 op_transfer(From, To, Amount) ->
     account = aec_id:specialize_type(From),
@@ -264,3 +266,6 @@ account_pubkey(Id) ->
 
 contract_pubkey(Id) ->
     aec_id:specialize(Id, contract).
+
+extract_caller({?OP_CALL_CONTRACT, Caller, _, _, _, _, _}) ->
+    account_pubkey(Caller).
