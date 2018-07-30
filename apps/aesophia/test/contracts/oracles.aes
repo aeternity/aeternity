@@ -15,6 +15,7 @@ contract Oracles =
                        qfee  : int,
                        qttl : int,
                        rttl : int) : oracle_query(string, int) =
+    require(qfee =< Call.value, "insufficient value for qfee")
     Oracle.query(o, q, qfee, qttl, rttl)
 
   function extendOracle(o    : oracle(string, int),
@@ -52,3 +53,8 @@ contract Oracles =
     Oracle.respond(o, q, sig, Answer(question, "magic", 1337))
     Oracle.get_answer(o, q)
 
+  private function abort(err : string) =
+    switch(0) 1 => ()
+
+  private function require(b : bool, err : string) =
+    if(!b) abort(err)
