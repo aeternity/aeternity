@@ -402,6 +402,434 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /accounts/{pubkey}:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetAccountByPubkey
+      description: 'Get an account by public key'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'The public key of the account'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/Account'
+        '400':
+          description: 'Invalid public key'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Account not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /accounts/{pubkey}/transactions/pending:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetPendingAccountTransactionsByPubkey
+      description: 'Get pending account transactions by public key'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'The public key of the account'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/JSONTxs'
+        '400':
+          description: 'Invalid public key'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Account not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /transactions/{hash}:
+    get:
+      tags:
+        - external
+        - transactions
+      operationId: GetTransactionByHash
+      description: 'Get a transaction by hash'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: hash
+          description: 'The hash of the transaction'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/SignedTxJSON'
+        '400':
+          description: 'Invalid hash'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Transaction not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /transactions/{hash}/info:
+    get:
+      tags:
+        - external
+        - transactions
+      operationId: GetTransactionInfoByHash
+      description: 'Get a transaction info by hash'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: hash
+          description: 'The hash of the transaction'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/ContractCallObject'
+        '400':
+          description: 'Invalid hash'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Transaction not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /ng-transactions:
+    post:
+      tags:
+        - external
+        - transactions
+      operationId: PostTransaction
+      description: 'Post a new transaction'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: 'The new transaction'
+          required: true
+          schema:
+            $ref: '#/definitions/Tx'
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/PostTxResponse'
+        '400':
+          description: 'Invalid transaction'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /contracts/{pubkey}:
+    get:
+      tags:
+        - external
+        - transactions
+      operationId: GetContract
+      description: 'Get a contract by pubkey'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'The pubkey of the contract'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/ContractObject'
+        '400':
+          description: 'Invalid pubkey'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Contract not found'
+  /contracts/{pubkey}/code:
+    get:
+      tags:
+        - external
+        - transactions
+      operationId: GetContractCode
+      description: 'Get contract code by pubkey'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'The pubkey of the contract'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Contract code'
+          schema:
+            $ref: '#/definitions/ByteCode'
+        '400':
+          description: 'Invalid pubkey'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Contract not found'
+          schema:
+            $ref: '#/definitions/Error'
+  /contracts/{pubkey}/store:
+    get:
+      tags:
+        - external
+        - transactions
+      operationId: GetContractStore
+      description: 'Get contract store by pubkey'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'The pubkey of the contract'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Contract Store'
+          schema:
+            $ref: '#/definitions/ContractStore'
+        '400':
+          description: 'Invalid pubkey'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Contract not found'
+  /oracles/{pubkey}:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetOracleByPubkey
+      description: 'Get an oracle by public key'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'The public key of the oracle'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/RegisteredOracle'
+        '400':
+          description: 'Invalid public key'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Oracle not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /oracles/{pubkey}/queries:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetOracleQueriesByPubkey
+      description: 'Get oracle queries by public key'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'The public key of the oracle'
+          required: true
+          type: string
+        - in: query
+          name: from
+          description: 'Last query id in previous page'
+          required: false
+          type: string
+        - in: query
+          name: limit
+          description: 'Max number of oracle queries'
+          required: false
+          type: integer
+          minimum: 1
+          maximum: 1000
+        - in: query
+          name: type
+          description: 'The type of a query: open, closed or all'
+          required: false
+          type: string
+          enum: [open, closed, all]
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/OracleQueries'
+        '400':
+          description: 'Invalid public key'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Oracle not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /oracles/{pubkey}/queries/{query-id}:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetOracleQueryByPubkeyAndQueryId
+      description: 'Get an oracle query by public key and query ID'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'The public key of the oracle'
+          required: true
+          type: string
+        - in: path
+          name: query-id
+          description: 'The ID of the query'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/OracleQuery'
+        '400':
+          description: 'Invalid public key or query ID'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Oracle query not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /names/{name}:
+    get:
+      tags:
+        - external
+        - name_service
+      operationId: GetNameEntryByName
+      description: 'Get name entry from naming system'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: name
+          description: 'The name key of the name entry'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/NameEntry'
+        '400':
+          description: 'Invalid name'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Name not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /channels/{pubkey}:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetChannelByPubkey
+      description: 'Get channel by public key'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'The pubkey of the channel'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/Channel'
+        '400':
+          description: 'Invalid public key'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Channel not found'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /peers/pubkey:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetPeerPubkey
+      description: 'Get peer public key'
+      produces:
+        - application/json
+      parameters:
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            type: object
+            properties:
+              pubkey:
+                type: string
+      security:
+  /status:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetStatus
+      description: 'Get the status of a node'
+      produces:
+        - application/json
+      parameters:
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/Status'
+      security:
+
   /header-by-hash:
     get:
       tags:
@@ -2438,6 +2866,22 @@ definitions:
             type: array
             items:
               $ref: '#/definitions/SignedTxJSON'
+  Account:
+    type: object
+    properties:
+      pubkey:
+        type: string
+        description: 'Public key'
+      balance:
+        type: integer
+        description: 'Balance'
+        format: int64
+        minimum: 0
+      nonce:
+        type: integer
+        description: 'Nonce'
+        format: int64
+        minimum: 0
   Balance:
     type: object
     properties:
@@ -2459,36 +2903,72 @@ definitions:
     type: array
     items:
       $ref: '#/definitions/Tx'
+  RegisteredOracle:
+    type: object
+    properties:
+      id:
+        type: string
+      query_format:
+        type: string
+      response_format:
+        type: string
+      query_fee:
+        type: integer
+      expires:
+        type: integer
+        format: int64
   RegisteredOracles:
     type: array
     items:
-      type: object
-      properties:
-        address:
-          type: string
-        query_format:
-          type: string
-        response_format:
-          type: string
-        query_fee:
-          type: integer
-        expires_at:
-          type: integer
-          format: int64
+      $ref: '#/definitions/RegisteredOracle'
+  OracleQuery:
+    type: object
+    properties:
+      id:
+        type: string
+      sender:
+        type: string
+      sender_nonce:
+        type: integer
+        format: int64
+        minimum: 0
+      oracle_id:
+        type: string
+      query:
+        type: string
+      response:
+        type: string
+      expires:
+        type: integer
+        format: int64
+      response_ttl:
+        $ref: '#/definitions/TTL'
+      fee:
+        type: integer
+        format: int64
+  OracleQuestion:
+    type: object
+    properties:
+      query_id:
+        type: string
+      query:
+        type: string
+      query_fee:
+        type: integer
+      expires_at:
+        type: integer
+        format: int64
+  OracleQueries:
+    type: object
+    properties:
+      oracle_queries:
+        type: array
+        items:
+          $ref: '#/definitions/OracleQuery'
   OracleQuestions:
     type: array
     items:
-      type: object
-      properties:
-        query_id:
-          type: string
-        query:
-          type: string
-        query_fee:
-          type: integer
-        expires_at:
-          type: integer
-          format: int64
+      $ref: '#/definitions/OracleQuestion'
   SpendTx:
     type: object
     properties:
@@ -2794,6 +3274,48 @@ definitions:
     properties:
       name_hash:
         type: string
+  Channel:
+    type: object
+    properties:
+      id:
+        $ref: '#/definitions/EncodedHash'
+      initiator:
+        $ref: '#/definitions/EncodedHash'
+      responder:
+        $ref: '#/definitions/EncodedHash'
+      total_amount:
+        type: integer
+        format: int64
+        minimum: 0
+      initiator_amount:
+        type: integer
+        format: int64
+        minimum: 0
+      responder_amount:
+        type: integer
+        format: int64
+        minimum: 0
+      channel_reserve:
+        type: integer
+        format: int64
+        minimum: 0
+      delegates:
+        type: array
+        items:
+          $ref: '#/definitions/EncodedHash'
+      state_hash:
+        $ref: '#/definitions/EncodedHash'
+      round:
+        type: integer
+        format: int64
+        minimum: 0
+      lock_period:
+        type: integer
+        format: int64
+        minimum: 0
+      closes_at:
+        type: integer
+        format: int64
   ChannelCreateTx:
     type: object
     properties:
@@ -3160,7 +3682,49 @@ definitions:
         description: 'Blocks''s height'
     required:
     - height
-
+  Status:
+    type: object
+    properties:
+      genesis-key-block-hash:
+        $ref: '#/definitions/EncodedHash'
+      solutions:
+        type: integer
+        format: int64
+        minimum: 0
+      difficulty:
+        type: number
+        format: int64
+      syncing:
+        type: boolean
+      listening:
+        type: boolean
+      protocols:
+        type: array
+        items:
+          $ref: '#/definitions/Protocol'
+      node-version:
+        type: string
+      node-revision:
+        type: string
+      peer-count:
+        type: integer
+        format: int64
+        minimum: 0
+      pending-transactions-count:
+        type: integer
+        format: int64
+        minimum: 0
+  Protocol:
+    type: object
+    properties:
+      protocol_version:
+        type: integer
+        format: int64
+        minimum: 1
+      effective_at_height:
+        type: integer
+        format: int64
+        minimum: 0
   SingleTxObject:
     type: object
     discriminator: data_schema
@@ -3325,6 +3889,39 @@ definitions:
     properties:
       reason:
         type: string
+  ContractObject:
+    type: object
+    properties:
+      id:
+        $ref: '#/definitions/EncodedHash'
+      owner:
+        $ref: '#/definitions/EncodedHash'
+      vm_version:
+        type: integer
+        minimum: 0
+        maximum: 255
+      log:
+        type: string
+      active:
+        type: boolean
+      referers:
+        type: array
+        items:
+          $ref: '#/definitions/EncodedHash'
+      deposit:
+        type: integer
+  ContractStore:
+    type: object
+    properties:
+      store:
+        type: array
+        items:
+          type: object
+          properties:
+            key:
+              type: string
+            value:
+              type: string
   Contract:
     type: object
     properties:
@@ -3559,7 +4156,7 @@ definitions:
     type: object
     properties:
       tx_hash:
-        description: Hash of a signed transaction
+        description: 'Hash of a signed transaction'
         $ref: '#/definitions/EncodedHash'
     required:
     - tx_hash

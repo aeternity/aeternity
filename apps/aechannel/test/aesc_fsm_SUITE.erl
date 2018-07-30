@@ -32,6 +32,11 @@
         , multiple_channels/1
         ]).
 
+%% exports for aehttp_integration_SUITE
+-export([
+          create_channel_on_port/1
+        ]).
+
 -include_lib("common_test/include/ct.hrl").
 
 -define(TIMEOUT, 10000).
@@ -492,6 +497,13 @@ ch_loop(I, R, Parent) ->
             ch_loop(I1, R1, Parent);
         die -> ok
     end.
+
+create_channel_on_port(Port) ->
+    Node = dev1,
+    I = prep_initiator(Node),
+    R = prep_responder(I, Node),
+    Cfg = [{port, Port}, {initiator, I}, {responder, R}, ?SLOGAN],
+    create_channel_(Cfg, get_debug(Cfg)).
 
 create_channel_(Cfg) ->
     create_channel_(Cfg, get_debug(Cfg)).

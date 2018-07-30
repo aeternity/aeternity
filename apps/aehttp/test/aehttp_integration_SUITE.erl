@@ -16,17 +16,6 @@
     init_per_testcase/2, end_per_testcase/2
    ]).
 
-%% Endpoint calls
--export([]).
-
-%% off chain endpoints
--export(
-   [test_decode_sophia_data/1,
-    test_decode_sophia_data2/1,
-    broken_decode_sophia_data/1
-   ]).
-
-
 -export(
    [
     get_top_block/1
@@ -56,6 +45,61 @@
      get_generation_by_hash/1,
      get_generation_by_height/1
     ]).
+
+-export(
+   [
+    get_account_by_pubkey/1,
+    get_pending_account_transactions_by_pubkey/1
+   ]).
+
+-export(
+   [
+    get_transaction_by_hash/1,
+    get_transaction_info_by_hash/1,
+    post_spend_tx/1,
+    post_contract_and_call_tx/1
+   ]).
+
+-export(
+   [
+    get_contract/1
+   ]).
+
+-export(
+   [
+    post_oracle_register/1,
+    get_oracle_by_pubkey/1,
+    post_oracle_extend/1,
+    post_oracle_query/1,
+    post_oracle_response/1
+   ]).
+
+-export(
+   [
+    get_name_entry_by_name/1
+   ]).
+
+-export(
+   [
+    get_channel_by_pubkey/1
+   ]).
+
+-export(
+   [
+    get_peer_pubkey/1
+   ]).
+
+-export(
+   [
+    get_status/1
+   ]).
+
+%% off chain endpoints
+-export(
+   [test_decode_sophia_data/1,
+    test_decode_sophia_data2/1,
+    broken_decode_sophia_data/1
+   ]).
 
 %% test case exports
 %% external endpoints
@@ -247,9 +291,25 @@ groups() ->
     [
      {all, [sequence],
       [
-       {group, on_genesis_block},
-       {group, on_key_block},
-       {group, on_micro_block},
+       %% /key-blocks/* /micro-blocks/* /generations/*
+       {group, block_endpoints},
+       %% /accounts/*
+       {group, account_endpoints},
+       %% /transactions/*
+       {group, transaction_endpoints},
+       %% /contracts/*
+       {group, contract_endpoints},
+       %% /oracles/*
+       {group, oracle_endpoints},
+       %% /names/*
+       {group, name_endpoints},
+       %% /channels/*
+       {group, channel_endpoints},
+       %% /peers/*
+       {group, peer_endpoints},
+       %% /status/*
+       {group, status_endpoints},
+
        {group, off_chain_endpoints},
        {group, external_endpoints},
        {group, internal_endpoints},
@@ -259,31 +319,40 @@ groups() ->
        {group, naming},
        {group, channel_websocket}
       ]},
-     {on_genesis_block, [],
+
+     %% /key-blocks/* /micro-blocks/* /generations/*
+     {block_endpoints, [sequence],
       [
-       {group, get_block_info},
-       {group, with_pending_key_block}
+       {group, on_genesis_block}, %% standalone
+       {group, on_key_block},     %% standalone
+       {group, on_micro_block}    %% standalone
       ]},
-     {on_key_block, [],
+     {on_genesis_block, [sequence],
       [
-       {group, get_block_info},
-       {group, with_pending_key_block}
+       {group, block_info},
+       {group, chain_with_pending_key_block}
       ]},
-     {on_micro_block, [],
+     {on_key_block, [sequence],
       [
-       {group, get_block_info},
-       {group, with_pending_key_block}
+       {group, block_info},
+       {group, chain_with_pending_key_block}
       ]},
-     {with_pending_key_block, [],
+     {on_micro_block, [sequence],
+      [
+       {group, block_info},
+       {group, chain_with_pending_key_block}
+      ]},
+     {chain_with_pending_key_block, [],
       [
        get_pending_key_block
       ]},
-     {get_block_info, [sequence],
+     {block_info, [sequence],
       [
        get_top_block,
        get_current_key_block,
        get_current_key_block_hash,
        get_current_key_block_height,
+       get_pending_key_block,
        get_key_block_by_hash,
        get_key_block_by_height,
        get_micro_block_header_by_hash,
@@ -294,6 +363,122 @@ groups() ->
        get_generation_by_hash,
        get_generation_by_height
       ]},
+
+     %% /accounts/*
+     {account_endpoints, [sequence],
+      [
+       {group, nonexistent_account}, %% standalone
+       {group, account_with_balance} %% standalone
+      ]},
+     {nonexistent_account, [],
+      [
+       {group, account_info}
+      ]},
+     {account_with_balance, [sequence],
+      [
+       {group, account_info},
+       {group, account_with_pending_tx}
+      ]},
+     {account_with_pending_tx, [],
+      [
+       {group, account_info}
+      ]},
+     {account_info, [sequence],
+      [
+       get_account_by_pubkey,
+       get_pending_account_transactions_by_pubkey
+      ]},
+
+     %% /transactions/*
+     {transaction_endpoints, [sequence],
+      [
+       {group, nonexistent_tx},    %% standalone
+       {group, tx_is_pending},     %% standalone
+       {group, tx_is_on_chain},    %% standalone
+       {group, post_tx_to_mempool},%% standalone
+       {group, contract_txs}
+      ]},
+     {nonexistent_tx, [],
+      [
+       {group, tx_info}
+      ]},
+     {tx_is_pending, [],
+      [
+       {group, tx_info}
+      ]},
+     {tx_is_on_chain, [],
+      [
+       {group, tx_info}
+      ]},
+     {post_tx_to_mempool, [],
+      [
+       post_spend_tx
+      ]},
+     {tx_info, [sequence],
+      [
+       get_transaction_by_hash,
+       get_transaction_info_by_hash
+      ]},
+     {contract_txs, [sequence],
+      [
+       post_contract_and_call_tx
+      ]},
+     %% /contracts/*
+     {contract_endpoints, [sequence],
+      [
+       get_contract
+      ]},
+
+     %% /oracles/*
+     {oracle_endpoints, [sequence],
+      [
+       {group, nonexistent_oracle}, %% standalone
+       {group, oracle_txs}          %% standalone
+      ]},
+     {nonexistent_oracle, [],
+      [
+       get_oracle_by_pubkey
+      ]},
+     {oracle_txs, [sequence],
+      [
+       post_oracle_register,
+       post_oracle_extend,
+       post_oracle_query,
+       post_oracle_response
+      ]},
+
+     %% /names/*
+     {name_endpoints, [sequence],
+      [
+       {group, nonexistent_name}, %% standalone
+       {group, name_txs}          %% standalone
+      ]},
+     {nonexistent_name, [],
+      [
+       get_name_entry_by_name
+      ]},
+     {name_txs, [sequence],
+      [
+       %% TODO
+      ]},
+     %% /channels/*
+     {channel_endpoints, [],
+      [
+       get_channel_by_pubkey
+      ]},
+
+     %% /peers/*
+     {peer_endpoints, [],
+      [
+       get_peer_pubkey
+      ]},
+
+     %% /status/*
+     {status_endpoints, [],
+      [
+       get_status
+      ]},
+
      {off_chain_endpoints, [],
       [
        test_decode_sophia_data,
@@ -506,27 +691,39 @@ end_per_suite(_Config) ->
 
 init_per_group(all, Config) ->
     Config;
-init_per_group(on_genesis_block, Config) ->
-    {ok, Node} = init_node(Config),
+init_per_group(Group, Config) when
+      Group =:= block_endpoints;
+      Group =:= account_endpoints;
+      Group =:= transaction_endpoints;
+      %%Group =:= contract_endpoint;
+      Group =:= oracle_endpoints;
+      Group =:= name_endpoints;
+      %%Group =:= channel_endpoints;
+      Group =:= peer_endpoints;
+      Group =:= status_endpoints ->
+    start_node(Group, Config);
+%% block_endpoints
+init_per_group(on_genesis_block = Group, Config) ->
+    Config1 = start_node(Group, Config),
     GenesisBlock = rpc(aec_chain, genesis_block, []),
-    [{node, Node},
-     {current_block, GenesisBlock},
+    [{current_block, GenesisBlock},
      {current_block_hash, hash(GenesisBlock)},
      {current_block_height, 0},
-     {current_block_type, genesis_block} | Config];
-init_per_group(on_key_block, Config) ->
-    {ok, Node} = init_node(Config),
+     {current_block_type, genesis_block} | Config1];
+init_per_group(on_key_block = Group, Config) ->
+    Config1 = start_node(Group, Config),
+    Node = ?config(node, Config1),
     %% Mine at least 1 key block (fork height may be 0).
     aecore_suite_utils:mine_key_blocks(Node, aecore_suite_utils:latest_fork_height()),
     {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     true = aec_blocks:is_key_block(KeyBlock),
-    [{node, Node},
-     {current_block, KeyBlock},
+    [{current_block, KeyBlock},
      {current_block_hash, hash(KeyBlock)},
      {current_block_height, aec_blocks:height(KeyBlock)},
-     {current_block_type, key_block} | Config];
-init_per_group(on_micro_block, Config) ->
-    {ok, Node} = init_node(Config),
+     {current_block_type, key_block} | Config1];
+init_per_group(on_micro_block = Group, Config) ->
+    Config1 = start_node(Group, Config),
+    Node = ?config(node, Config1),
     %% Mine at least 1 key block (fork height may be 0).
     aecore_suite_utils:mine_key_blocks(Node, aecore_suite_utils:latest_fork_height()),
     {ok, [_KeyBlock0]} = aecore_suite_utils:mine_key_blocks(Node, 1),
@@ -538,25 +735,113 @@ init_per_group(on_micro_block, Config) ->
     {ok, []} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
     true = aec_blocks:is_key_block(KeyBlock),
     false = aec_blocks:is_key_block(MicroBlock),
-    [{node, Node},
-     {prev_key_block, KeyBlock},
+    [{prev_key_block, KeyBlock},
      {prev_key_block_hash, hash(KeyBlock)},
      {prev_key_block_height, aec_blocks:height(KeyBlock)},
      {current_block, MicroBlock},
      {current_block_hash, hash(MicroBlock)},
      {current_block_height, aec_blocks:height(KeyBlock)},
      {current_block_txs, [Tx]},
-     {current_block_type, micro_block} | Config];
-init_per_group(with_pending_key_block, Config) ->
+     {current_block_type, micro_block} | Config1];
+init_per_group(chain_with_pending_key_block, Config) ->
     %% Expect a key block each hour.
     MineRate = 60 * 60 * 1000,
     ok = rpc(application, set_env, [aecore, expected_mine_rate, MineRate]),
     ok = rpc(aec_conductor, start_mining, []),
-    ok = wait_for_key_block_candidate(),
-    [{expected_mine_rate, MineRate}, {pending_key_block, true} | Config];
-init_per_group(channel_websocket, Config) ->
-    aecore_suite_utils:start_node(?NODE, Config),
-    aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
+    {ok, PendingKeyBlock} = wait_for_key_block_candidate(),
+    [{expected_mine_rate, MineRate},
+     {pending_key_block, PendingKeyBlock},
+     {pending_key_block_hash, hash(PendingKeyBlock)} | Config];
+init_per_group(block_info, Config) ->
+    Config;
+%% account_endpoints
+init_per_group(nonexistent_account = Group, Config) ->
+    Config1 = start_node(Group, Config),
+    {ok, Pubkey} = rpc(aec_keys, pubkey, []),
+    [{account_pubkey, aec_base58c:encode(account_pubkey, Pubkey)},
+     {account_exists, false} | Config1];
+init_per_group(account_with_balance = Group, Config) ->
+    Config1 = start_node(Group, Config),
+    Node = ?config(node, Config1),
+    {ok, Pubkey} = rpc(aec_keys, pubkey, []),
+    aecore_suite_utils:mine_key_blocks(Node, aecore_suite_utils:latest_fork_height()),
+    {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
+    true = aec_blocks:is_key_block(KeyBlock),
+    [{account_pubkey, aec_base58c:encode(account_pubkey, Pubkey)},
+     {account_exists, true} | Config1];
+init_per_group(account_with_pending_tx, Config) ->
+    Node = ?config(node, Config),
+    {ok, Pubkey} = rpc(aec_keys, pubkey, []),
+    {ok, Tx} = aecore_suite_utils:spend(Node, Pubkey, Pubkey, 1),
+    {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+    [{pending_txs, [{aec_base58c:encode(tx_hash, aetx_sign:hash(Tx)), Tx}]},
+     {block_with_txs, undefined},
+     {block_with_txs_hash, <<"none">>},
+     {block_with_txs_height, -1} | Config];
+init_per_group(account_info, Config) ->
+    Config;
+%% transaction_endpoints
+init_per_group(nonexistent_tx = Group, Config) ->
+    start_node(Group, Config);
+init_per_group(tx_is_pending = Group, Config) ->
+    Config1 = start_node(Group, Config),
+    Node = ?config(node, Config1),
+    {ok, Pubkey} = rpc(aec_keys, pubkey, []),
+    aecore_suite_utils:mine_key_blocks(Node, aecore_suite_utils:latest_fork_height()),
+    {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
+    true = aec_blocks:is_key_block(KeyBlock),
+    {ok, Tx} = aecore_suite_utils:spend(Node, Pubkey, Pubkey, 1),
+    {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+    [{pending_txs, [{aec_base58c:encode(tx_hash, aetx_sign:hash(Tx)), Tx}]},
+     {block_with_txs, undefined},
+     {block_with_txs_hash, <<"none">>},
+     {block_with_txs_height, -1} | Config];
+init_per_group(tx_is_on_chain = Group, Config) ->
+    Config1 = start_node(Group, Config),
+    Node = ?config(node, Config1),
+    {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
+    {ok, []} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+    true = aec_blocks:is_key_block(KeyBlock),
+    false = aec_blocks:is_key_block(MicroBlock),
+    [Tx] = aec_blocks:txs(MicroBlock),
+    [{on_chain_txs, [{aec_base58c:encode(tx_hash, aetx_sign:hash(Tx)), Tx}]},
+     {block_with_txs, MicroBlock},
+     {block_with_txs_hash, hash(MicroBlock)},
+     {block_with_txs_height, aec_blocks:height(KeyBlock)} | Config1];
+init_per_group(post_tx_to_mempool = Group, Config) ->
+    Config1 = start_node(Group, Config),
+    Node = ?config(node, Config1),
+    {ok, Pubkey} = rpc(aec_keys, pubkey, []),
+    aecore_suite_utils:mine_key_blocks(Node, aecore_suite_utils:latest_fork_height()),
+    {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
+    true = aec_blocks:is_key_block(KeyBlock),
+    [{account_pubkey, aec_base58c:encode(account_pubkey, Pubkey)},
+     {recipient_pubkey, aec_base58c:encode(account_pubkey, random_hash())},
+     {amount, 1},
+     {fee, 1},
+     {payload, <<"foo">>} | Config1];
+init_per_group(tx_info, Config) ->
+    Config;
+%% contract_endpoints
+%% oracle_endpoints
+init_per_group(nonexistent_oracle = Group, Config) ->
+    start_node(Group, Config);
+init_per_group(oracle_txs = Group, Config) ->
+    Config1 = start_node(Group, Config),
+    Node = ?config(node, Config1),
+    aecore_suite_utils:mine_key_blocks(Node, aecore_suite_utils:latest_fork_height()),
+    {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
+    true = aec_blocks:is_key_block(KeyBlock),
+    Config1;
+%% name_endpoints
+init_per_group(nonexistent_name = Group, Config) ->
+    start_node(Group, Config);
+init_per_group(name_txs, _Config) ->
+    {skip, not_implemented};
+
+init_per_group(channel_websocket = Group, Config) ->
+    Config1 = start_node(Group, Config),
+    Node = ?config(node, Config1),
     {ok, 404, _} = get_balance_at_top(),
     %% prepare participants
     {IPubkey, IPrivkey} = generate_key_pair(),
@@ -566,12 +851,11 @@ init_per_group(channel_websocket, Config) ->
     Fee = 1,
     BlocksToMine = 1,
 
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), BlocksToMine),
+    aecore_suite_utils:mine_key_blocks(Node, BlocksToMine),
 
     {ok, 200, _} = post_spend_tx(IPubkey, IStartAmt, Fee),
     {ok, 200, _} = post_spend_tx(RPubkey, RStartAmt, Fee),
-    {ok, [_KeyBlock, MicroBlock]} = aecore_suite_utils:mine_blocks(
-                                      aecore_suite_utils:node_name(?NODE), 2),
+    {ok, [_KeyBlock, MicroBlock]} = aecore_suite_utils:mine_blocks(Node, 2),
     [_Spend1, _Spend2] = aec_blocks:txs(MicroBlock),
     assert_balance(IPubkey, IStartAmt),
     assert_balance(RPubkey, RStartAmt),
@@ -581,44 +865,111 @@ init_per_group(channel_websocket, Config) ->
                      responder => #{pub_key => RPubkey,
                                     priv_key => RPrivkey,
                                     start_amt => RStartAmt}},
-    [{participants, Participants} | Config];
-init_per_group(get_block_info, Config) ->
-    Config;
-init_per_group(_Group, Config) ->
-    {ok, Node} = init_node(Config),
+    [{participants, Participants} | Config1];
+init_per_group(Group, Config) ->
+    Config1 = start_node(Group, Config),
+    Node = ?config(node, Config1),
     BlocksToMine = aecore_suite_utils:latest_fork_height(),
     aecore_suite_utils:mine_blocks(Node, BlocksToMine),
-    Config.
+    Config1.
 
-end_per_group(all, _Config) ->
+end_per_group(Group, _Config) when
+      Group =:= all;
+      Group =:= block_info;
+      Group =:= account_info;
+      Group =:= tx_info ->
     ok;
-end_per_group(with_pending_key_block, _Config) ->
+end_per_group(chain_with_pending_key_block, _Config) ->
     ok = rpc(aec_conductor, stop_mining, []);
-end_per_group(get_block_info, _Config) ->
+end_per_group(account_with_pending_tx, _Config) ->
     ok;
-end_per_group(_Group, Config) ->
-    ok = stop_node(Config).
+end_per_group(oracle_txs, _Config) ->
+    ok;
+end_per_group(Group, Config) ->
+    ok = stop_node(Group, Config).
 
+init_per_testcase(post_oracle_register, Config) ->
+    %% TODO: assert there is enought balance
+    {ok, Pubkey} = rpc(aec_keys, pubkey, []),
+    [{account_pubkey, aec_base58c:encode(account_pubkey, Pubkey)},
+     {oracle_pubkey, aec_base58c:encode(oracle_pubkey, Pubkey)},
+     {query_format, <<"something">>},
+     {response_format, <<"something else">>},
+     {query_fee, 1},
+     {fee, 10},
+     {oracle_ttl_type, <<"block">>},
+     {oracle_ttl_value, 2000} | init_per_testcase_all(Config)];
+init_per_testcase(post_oracle_extend, Config) ->
+    {post_oracle_register, SavedConfig} = ?config(saved_config, Config),
+    OracleTtlDelta = 500,
+    [{account_pubkey, ?config(account_pubkey, SavedConfig)},
+     {oracle_pubkey, ?config(oracle_pubkey, SavedConfig)},
+     {fee, 10},
+     {oracle_ttl_value_final, ?config(oracle_ttl_value, SavedConfig) + OracleTtlDelta},
+     {oracle_ttl_type, <<"delta">>},
+     {oracle_ttl_value, OracleTtlDelta} | init_per_testcase_all(Config)];
+init_per_testcase(post_oracle_query, Config) ->
+    {post_oracle_extend, SavedConfig} = ?config(saved_config, Config),
+    [{sender_pubkey, ?config(account_pubkey, SavedConfig)},
+     {oracle_pubkey, ?config(oracle_pubkey, SavedConfig)},
+     {query, <<"Hejsan Svejsan">>},
+     {query_fee, 2},
+     {fee, 30},
+     {query_ttl_type, <<"block">>},
+     {query_ttl_value, 20},
+     {response_ttl_type, <<"delta">>},
+     {response_ttl_value, 20} | init_per_testcase_all(Config)];
+init_per_testcase(post_oracle_response, Config) ->
+    {post_oracle_query, SavedConfig} = ?config(saved_config, Config),
+    [{sender_pubkey, ?config(sender_pubkey, SavedConfig)},
+     {oracle_pubkey, ?config(oracle_pubkey, SavedConfig)},
+     {query_id, ?config(query_id, SavedConfig)},
+     {fee, 10},
+     {response, <<"Hejsan">>} | init_per_testcase_all(Config)];
 init_per_testcase(_Case, Config) ->
-    [{tc_start, os:timestamp()}|Config].
+    init_per_testcase_all(Config).
+
+init_per_testcase_all(Config) ->
+    [{tc_start, os:timestamp()} | Config].
 
 end_per_testcase(_Case, Config) ->
+    end_per_testcase_all(Config).
+
+end_per_testcase_all(Config) ->
     Ts0 = ?config(tc_start, Config),
-    ct:log("Events during TC: ~p", [[{N, aecore_suite_utils:all_events_since(N, Ts0)}
-                                     || {_,N} <- ?config(nodes, Config)]]),
+    ct:log("Events during TC: ~p",
+           [[{N, aecore_suite_utils:all_events_since(N, Ts0)}
+             || {_,N} <- ?config(nodes, Config)]]),
     ok.
 
-init_node(Config) ->
+start_node(Group, Config) ->
+    start_node(proplists:is_defined(node, Config), Group, Config).
+
+start_node(true, _Group, Config) ->
+    Config;
+start_node(false, Group, Config) ->
+    %% TODO: consider reinint_chain to speed up tests
     aecore_suite_utils:start_node(?NODE, Config),
     Node = aecore_suite_utils:node_name(?NODE),
     aecore_suite_utils:connect(Node),
-    {ok, Node}.
+    [{node, Node}, {node_start_group, Group} | Config].
 
-stop_node(Config) ->
-    RpcFun = fun(M, F, A) -> rpc(?NODE, M, F, A) end,
-    {ok, DbCfg} = aecore_suite_utils:get_node_db_config(RpcFun),
-    aecore_suite_utils:stop_node(?NODE, Config),
-    aecore_suite_utils:delete_node_db_if_persisted(DbCfg),
+stop_node(Group, Config) ->
+    stop_node(proplists:is_defined(node, Config), Group, Config).
+
+stop_node(true, Group, Config) ->
+    NodeStartGroup = ?config(node_start_group, Config),
+    case Group =:= NodeStartGroup of
+        true ->
+            RpcFun = fun(M, F, A) -> rpc(?NODE, M, F, A) end,
+            {ok, DbCfg} = aecore_suite_utils:get_node_db_config(RpcFun),
+            aecore_suite_utils:stop_node(?NODE, Config),
+            aecore_suite_utils:delete_node_db_if_persisted(DbCfg),
+            ok;
+        false ->
+            ok
+    end;
+stop_node(false, _Group, _Config) ->
     ok.
 
 %% ============================================================
@@ -805,14 +1156,14 @@ get_current_key_block_height(_CurrentBlockType, Config) ->
 
 get_pending_key_block(Config) ->
     CurrentBlockType = ?config(current_block_type, Config),
-    PendingKeyBlockOpt = {pending_key_block, proplists:get_value(pending_key_block, Config, false)},
-    get_pending_key_block(PendingKeyBlockOpt, CurrentBlockType, Config).
+    get_pending_key_block(proplists:is_defined(pending_key_block, Config), CurrentBlockType, Config).
 
-get_pending_key_block({pending_key_block, false}, _CurrentBlockType, _Config) ->
+get_pending_key_block(false, _CurrentBlockType, _Config) ->
     {ok, 404, Error} = get_key_blocks_pending_sut(),
     ?assertEqual(<<"Not mining, no pending block">>, maps:get(<<"reason">>, Error)),
+    %% TODO: "miner is starting" error may occur - remove this error
     ok;
-get_pending_key_block({pending_key_block, true}, _CurrentBlockType, Config) ->
+get_pending_key_block(true, _CurrentBlockType, Config) ->
     CurrentBlockHash = ?config(current_block_hash, Config),
     CurrentBlockHeight = ?config(current_block_height, Config),
     {ok, 200, Block} = get_key_blocks_pending_sut(),
@@ -976,22 +1327,6 @@ get_micro_blocks_transactions_by_hash_by_index_sut(Hash, Index) ->
     Path = "micro-blocks/hash/" ++ http_uri:encode(Hash1) ++ "/transactions/index/" ++ Index1,
     http_request(Host, get, Path, []).
 
-hash(Block) ->
-    {ok, Hash0} = aec_blocks:hash_internal_representation(Block),
-    aec_base58c:encode(block_hash, Hash0).
-
-wait_for_key_block_candidate() -> wait_for_key_block_candidate(10).
-
-wait_for_key_block_candidate(0) -> {error, miner_starting};
-wait_for_key_block_candidate(N) ->
-    case rpc(aec_conductor, get_key_block_candidate, []) of
-        {ok, _} -> ok;
-        {error, not_mining} -> {error, not_mining};
-        {error, miner_starting} ->
-            timer:sleep(10),
-            wait_for_key_block_candidate(N)
-    end.
-
 %% /generations/*
 
 get_generation_current(Config) ->
@@ -1075,6 +1410,480 @@ get_generation_by_hash_sut(Hash) ->
 get_generation_by_height_sut(Height) ->
     Host = external_address(),
     http_request(Host, get, "generations/height/" ++ integer_to_list(Height), []).
+
+%% /accounts/*
+
+get_account_by_pubkey(Config) ->
+    get_account_by_pubkey(?config(account_exists, Config), Config).
+
+get_account_by_pubkey(false, Config) ->
+    AccountPubkey = ?config(account_pubkey, Config),
+    {ok, 404, Error} = get_accounts_by_pubkey_sut(AccountPubkey),
+    ?assertEqual(<<"Account not found">>, maps:get(<<"reason">>, Error)),
+    ok;
+get_account_by_pubkey(true, Config) ->
+    AccountPubkey = ?config(account_pubkey, Config),
+    {ok, 200, Account} = get_accounts_by_pubkey_sut(AccountPubkey),
+    ?assertEqual(AccountPubkey, maps:get(<<"pubkey">>, Account)),
+    ?assert(maps:get(<<"balance">>, Account) > 0),
+    %% TODO: check nonce?
+    ok.
+
+get_pending_account_transactions_by_pubkey(Config) ->
+    get_pending_account_transactions_by_pubkey(?config(account_exists, Config), Config).
+
+get_pending_account_transactions_by_pubkey(false, Config) ->
+    AccountPubkey = ?config(account_pubkey, Config),
+    {ok, 404, Error} = get_accounts_transactions_pending_by_pubkey_sut(AccountPubkey),
+    ?assertEqual(<<"Account not found">>, maps:get(<<"reason">>, Error)),
+    ok;
+get_pending_account_transactions_by_pubkey(true, Config) ->
+    AccountPubkey = ?config(account_pubkey, Config),
+    PendingTxs = proplists:get_value(pending_txs, Config, []),
+    {ok, 200, Txs} = get_accounts_transactions_pending_by_pubkey_sut(AccountPubkey),
+    %% TODO: check txs hashes
+    ?assertEqual(length(PendingTxs), length(maps:get(<<"transactions">>, Txs))),
+    ok.
+
+get_accounts_by_pubkey_sut(Pubkey) ->
+    Host = external_address(),
+    http_request(Host, get, "accounts/" ++ http_uri:encode(Pubkey), []).
+
+get_accounts_transactions_pending_by_pubkey_sut(Pubkey) ->
+    Host = external_address(),
+    Pubkey1 = binary_to_list(Pubkey),
+    http_request(Host, get, "accounts/" ++ http_uri:encode(Pubkey1) ++ "/transactions/pending", []).
+
+%% /transactions/*
+
+get_transaction_by_hash(Config) ->
+    PendingTxs = proplists:get_value(pending_txs, Config, []),
+    OnChainTxs = proplists:get_value(on_chain_txs, Config, []),
+    case {PendingTxs, OnChainTxs} of
+        {[], []} -> get_transaction_by_hash([], Config);
+        {[_], []} -> get_transaction_by_hash(PendingTxs, Config);
+        {[], [_]} -> get_transaction_by_hash(OnChainTxs, Config)
+    end.
+
+get_transaction_by_hash([], _Config) ->
+    RandomTxHash = aec_base58c:encode(tx_hash, random_hash()),
+    {ok, 404, Error} = get_transactions_by_hash_sut(RandomTxHash),
+    ?assertEqual(<<"Transaction not found">>, maps:get(<<"reason">>, Error)),
+    ok;
+get_transaction_by_hash([{TxHash, _ExpectedTx}], Config) ->
+    BlockWithTxsHash = ?config(block_with_txs_hash, Config),
+    BlockWithTxsHeight = ?config(block_with_txs_height, Config),
+    {ok, 200, Tx} = get_transactions_by_hash_sut(TxHash),
+    ?assertEqual(TxHash, maps:get(<<"hash">>, Tx)),
+    ?assertEqual(BlockWithTxsHash, maps:get(<<"block_hash">>, Tx)),
+    ?assertEqual(BlockWithTxsHeight, maps:get(<<"block_height">>, Tx)),
+    ok.
+
+get_transaction_info_by_hash(_Config) ->
+    {skip, not_implemented}.
+
+post_spend_tx(Config) ->
+    TxArgs =
+        #{sender           => ?config(account_pubkey, Config),
+          recipient_pubkey => ?config(recipient_pubkey, Config),
+          amount           => ?config(amount, Config),
+          fee              => ?config(fee, Config),
+          payload          => ?config(payload, Config)},
+    {TxHash, Tx} = prepare_tx(spend_tx, TxArgs),
+    ok = post_tx(TxHash, Tx),
+    ok.
+
+post_contract_and_call_tx(_Config) ->
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    SophiaCode = <<"contract Identity = function main (x:int) = x">>,
+    {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
+
+    {ok, EncodedInitCallData} = aect_sophia:encode_call_data(Code, <<"init">>, <<"()">>),
+    ValidEncoded = #{ owner => MinerAddress,
+                      code => Code,
+                      vm_version => 1,
+                      deposit => 2,
+                      amount => 1,
+                      gas => 300,
+                      gas_price => 1,
+                      fee => 1,
+                      call_data => EncodedInitCallData},
+
+    %% prepare a contract_create_tx and post it
+    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
+                <<"contract_address">> := EncodedContractPubKey}} =
+        get_contract_create(ValidEncoded),
+    %%%% {ok, ContractPubKey} = aec_base58c:safe_decode(contract_pubkey, EncodedContractPubKey),
+    ContractCreateTxHash = sign_and_post_tx(EncodedUnsignedContractCreateTx),
+
+    ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCreateTxHash)),
+    ?assertEqual({ok, 404, #{<<"reason">> => <<"Tx not mined">>}}, get_transactions_info_by_hash_sut(ContractCreateTxHash)),
+
+    % mine
+    Fun1 = fun() -> tx_in_chain(ContractCreateTxHash) end,
+    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun1, 10),
+    ?assert(tx_in_chain(ContractCreateTxHash)),
+
+    ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCreateTxHash)),
+    ?assertMatch({ok, 200, _}, get_transactions_info_by_hash_sut(ContractCreateTxHash)),
+
+    {ok, EncodedCallData} = aect_sophia:encode_call_data(Code, <<"main">>, <<"42">>),
+    ContractCallEncoded = #{ caller => MinerAddress,
+                             contract => EncodedContractPubKey,
+                             vm_version => 1,
+                             amount => 1,
+                             gas => 1000,
+                             gas_price => 1,
+                             fee => 1,
+                             call_data => EncodedCallData},
+    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCallTx}} = get_contract_call(ContractCallEncoded),
+    ContractCallTxHash = sign_and_post_tx(EncodedUnsignedContractCallTx),
+
+    ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCallTxHash)),
+    ?assertEqual({ok, 404, #{<<"reason">> => <<"Tx not mined">>}}, get_transactions_info_by_hash_sut(ContractCallTxHash)),
+
+    % mine
+    Fun2 = fun() -> tx_in_chain(ContractCallTxHash) end,
+    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun2, 10),
+    ?assert(tx_in_chain(ContractCallTxHash)),
+
+    ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCallTxHash)),
+    ?assertMatch({ok, 200, _}, get_transactions_info_by_hash_sut(ContractCallTxHash)),
+    ok.
+
+get_transactions_by_hash_sut(Hash) ->
+    Host = external_address(),
+    http_request(Host, get, "transactions/" ++ http_uri:encode(Hash), []).
+
+get_transactions_info_by_hash_sut(Hash) ->
+    Host = external_address(),
+    Hash1 = http_uri:encode(Hash),
+    http_request(Host, get, "transactions/" ++ binary_to_list(Hash1) ++ "/info", []).
+
+post_transactions_sut(Tx) ->
+    Host = external_address(),
+    http_request(Host, post, "ng-transactions", #{tx => Tx}).
+
+%% /contracts/*
+
+get_contract(_Config) ->
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 1),
+
+    {ok, 200, _} = get_balance_at_top(),
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+    SophiaCode = <<"contract Identity = function main (x:int) = x">>,
+    {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
+
+    % contract_create_tx positive test
+    InitFunction = <<"init">>,
+    InitArgument = <<"()">>,
+    {ok, EncodedInitCallData} =
+        aect_sophia:encode_call_data(Code,
+                                     InitFunction,
+                                     InitArgument),
+
+    ContractInitBalance = 1,
+    ValidEncoded = #{ owner => MinerAddress,
+                      code => Code,
+                      vm_version => 1,
+                      deposit => 2,
+                      amount => ContractInitBalance,
+                      gas => 300,
+                      gas_price => 1,
+                      fee => 1,
+                      call_data => EncodedInitCallData},
+
+    ValidDecoded = maps:merge(ValidEncoded,
+                              #{owner => aec_id:create(account, MinerPubkey),
+                                code => aeu_hex:hexstring_decode(Code),
+                                call_data => aeu_hex:hexstring_decode(EncodedInitCallData)}),
+
+    unsigned_tx_positive_test(ValidDecoded, ValidEncoded, fun get_contract_create/1,
+                               fun aect_create_tx:new/1, MinerPubkey),
+
+    %% prepare a contract_create_tx and post it
+    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
+                <<"contract_address">> := EncodedContractPubKey}} = get_contract_create(ValidEncoded),
+    ContractCreateTxHash = sign_and_post_tx(EncodedUnsignedContractCreateTx),
+
+    %% Try to get the contract init call object while in mempool
+    {ok, 404, #{<<"reason">> := <<"Tx not mined">>}} = get_contract_call_object(ContractCreateTxHash),
+
+    {ok, 404, #{<<"reason">> := <<"Proof for contract not found">>}} = get_contract_poi(EncodedContractPubKey),
+    ?assertEqual({ok, 404, #{<<"reason">> => <<"Account not found">>}}, get_balance_at_top(EncodedContractPubKey)),
+
+    % mine a block
+    Fun1 = fun() -> tx_in_chain(ContractCreateTxHash) end,
+    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun1, 10),
+    ?assert(tx_in_chain(ContractCreateTxHash)),
+
+    {ok, 200, #{<<"return_value">> := ReturnValue}} = get_contract_call_object(ContractCreateTxHash),
+
+    ?assertMatch({ok, 200, #{
+            <<"id">> := EncodedContractPubKey, <<"owner">> := MinerAddress,
+            <<"active">> := true, <<"deposit">> := 2, <<"vm_version">> := 1,
+            <<"referers">> := [], <<"log">> := <<>>
+        }}, get_contract_sut(EncodedContractPubKey)),
+    ?assertEqual({ok, 200, #{<<"bytecode">> => Code}}, get_contract_code_sut(EncodedContractPubKey)),
+    ?assertMatch({ok, 200, #{<<"store">> := [
+        #{<<"key">> := <<"0x00">>, <<"value">> := ReturnValue}
+        ]}}, get_contract_store_sut(EncodedContractPubKey)),
+    ok.
+
+get_contract_sut(PubKey) ->
+    Host = external_address(),
+    http_request(Host, get, "contracts/" ++ binary_to_list(PubKey), []).
+
+get_contract_code_sut(PubKey) ->
+    Host = external_address(),
+    http_request(Host, get, "contracts/" ++ binary_to_list(PubKey) ++ "/code", []).
+
+get_contract_store_sut(PubKey) ->
+    Host = external_address(),
+    http_request(Host, get, "contracts/" ++ binary_to_list(PubKey) ++ "/store", []).
+
+%% /oracles/*
+
+get_oracle_by_pubkey(_Config) ->
+    RandomOraclePubkey = aec_base58c:encode(oracle_pubkey, random_hash()),
+    {ok, 404, Error} = get_oracles_by_pubkey_sut(RandomOraclePubkey),
+    ?assertEqual(<<"Oracle not found">>, maps:get(<<"reason">>, Error)),
+    ok.
+
+post_oracle_register(Config) ->
+    Node = ?config(node, Config),
+    OraclePubkey = ?config(oracle_pubkey, Config),
+    TxArgs =
+        #{account         => ?config(account_pubkey, Config),
+          query_format    => ?config(query_format, Config),
+          response_format => ?config(response_format, Config),
+          query_fee       => ?config(query_fee, Config),
+          fee             => ?config(fee, Config),
+          oracle_ttl      => #{type  => ?config(oracle_ttl_type, Config),
+                               value => ?config(oracle_ttl_value, Config)}},
+    {TxHash, Tx} = prepare_tx(oracle_register_tx, TxArgs),
+    ok = post_tx(TxHash, Tx),
+    aecore_suite_utils:mine_blocks_until(Node, fun() -> tx_in_chain(TxHash) end, 10),
+    {ok, 200, Resp} = get_oracles_by_pubkey_sut(OraclePubkey),
+    ?assertEqual(OraclePubkey, maps:get(<<"id">>, Resp)),
+    {save_config, save_config([account_pubkey, oracle_pubkey, oracle_ttl_value], Config)}.
+
+post_oracle_extend(Config) ->
+    Node = ?config(node, Config),
+    OraclePubkey = ?config(oracle_pubkey, Config),
+    TxArgs =
+        #{oracle     => OraclePubkey,
+          fee        => ?config(fee, Config),
+          oracle_ttl => #{type  => ?config(oracle_ttl_type, Config),
+                          value => ?config(oracle_ttl_value, Config)}},
+    {TxHash, Tx} = prepare_tx(oracle_extend_tx, TxArgs),
+    ok = post_tx(TxHash, Tx),
+    aecore_suite_utils:mine_blocks_until(Node, fun() -> tx_in_chain(TxHash) end, 10),
+    {ok, 200, Resp} = get_oracles_by_pubkey_sut(OraclePubkey),
+    ?assertEqual(OraclePubkey, maps:get(<<"id">>, Resp)),
+    ?assertEqual(?config(oracle_ttl_value_final, Config), maps:get(<<"expires">>, Resp)),
+    {ok, 200, Resp1} = get_oracles_queries_by_pubkey_sut(OraclePubkey, #{type => "all"}),
+    ?assertEqual([], maps:get(<<"oracle_queries">>, Resp1)),
+    {save_config, save_config([account_pubkey, oracle_pubkey], Config)}.
+
+post_oracle_query(Config) ->
+    Node = ?config(node, Config),
+    SenderPubkey = ?config(sender_pubkey, Config),
+    OraclePubkey = ?config(oracle_pubkey, Config),
+    TxArgs =
+        #{sender        => SenderPubkey,
+          oracle_pubkey => OraclePubkey,
+          query         => ?config(query, Config),
+          query_fee     => ?config(query_fee, Config),
+          fee           => ?config(fee, Config),
+          query_ttl     => #{type  => ?config(query_ttl_type, Config),
+                             value => ?config(query_ttl_value, Config)},
+          response_ttl  => #{type  => ?config(response_ttl_type, Config),
+                             value => ?config(response_ttl_value, Config)}},
+    {TxHash, Tx} = prepare_tx(oracle_query_tx, TxArgs),
+    ok = post_tx(TxHash, Tx),
+    aecore_suite_utils:mine_blocks_until(Node, fun() -> tx_in_chain(TxHash) end, 10),
+    {ok, 200, Resp} = get_oracles_queries_by_pubkey_sut(OraclePubkey, #{type => "closed"}),
+    ?assertEqual([], maps:get(<<"oracle_queries">>, Resp)),
+    {ok, 200, Resp1} = get_oracles_queries_by_pubkey_sut(OraclePubkey, #{type => "all"}),
+    ?assertEqual(1, length(maps:get(<<"oracle_queries">>, Resp1))),
+    [Query] = maps:get(<<"oracle_queries">>, Resp1),
+    ?assertEqual(SenderPubkey, maps:get(<<"sender">>, Query)),
+    ?assertEqual(OraclePubkey, maps:get(<<"oracle_id">>, Query)),
+    QueryId = maps:get(<<"query_id">>, Query),
+    Config1 = [{query_id, QueryId} | Config],
+    {save_config, save_config([sender_pubkey, oracle_pubkey, query_id], Config1)}.
+
+post_oracle_response(Config) ->
+    Node = ?config(node, Config),
+    OraclePubkey = ?config(oracle_pubkey, Config),
+    QueryId = ?config(query_id, Config),
+    Response = ?config(response, Config),
+    TxArgs =
+        #{oracle   => OraclePubkey,
+          query_id => QueryId,
+          response => Response,
+          fee      => ?config(fee, Config)},
+    {TxHash, Tx} = prepare_tx(oracle_response_tx, TxArgs),
+    ok = post_tx(TxHash, Tx),
+    aecore_suite_utils:mine_blocks_until(Node, fun() -> tx_in_chain(TxHash) end, 10),
+    {ok, 200, Resp} = get_oracles_queries_by_pubkey_sut(OraclePubkey, #{type => "open"}),
+    ?assertEqual([], maps:get(<<"oracle_queries">>, Resp)),
+    {ok, 200, Resp1} = get_oracles_query_by_pubkey_and_query_id(OraclePubkey, QueryId),
+    ?assertEqual(QueryId, maps:get(<<"query_id">>, Resp1)),
+    ?assertEqual(OraclePubkey, maps:get(<<"oracle_id">>, Resp1)),
+    ?assertEqual(aec_base58c:encode(Response), maps:get(<<"response">>, Resp1)),
+    ok.
+
+get_oracles_by_pubkey_sut(Pubkey) ->
+    Host = external_address(),
+    http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey), []).
+
+%% TODO: add test for 'limit' and 'from' in HTTP query
+get_oracles_queries_by_pubkey_sut(Pubkey, Params) ->
+    Host = external_address(),
+    Pubkey1 = binary_to_list(Pubkey),
+    http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey1) ++ "/queries", Params).
+
+get_oracles_query_by_pubkey_and_query_id(Pubkey, Id) ->
+    Host = external_address(),
+    Pubkey1 = binary_to_list(Pubkey),
+    Id1 = binary_to_list(Id),
+    http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey1) ++ "/queries/" ++ http_uri:encode(Id1), []).
+
+%% /names/*
+
+get_name_entry_by_name(_Config) ->
+    NonexistentName = <<"Nonexistent_name">>,
+    {ok, 400, _Error} = get_names_entry_by_name_sut(NonexistentName),
+    %%?assertEqual(<<"Name not found">>, maps:get(<<"reason">>, Error)),
+    ok.
+
+get_names_entry_by_name_sut(Name) ->
+    Host = external_address(),
+    Name1 = binary_to_list(Name),
+    http_request(Host, get, "names/" ++ http_uri:encode(Name1), []).
+
+%% /channels/*
+
+get_channel_by_pubkey(_Config) ->
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    ?assertEqual({ok, 400, #{<<"reason">> => <<"Invalid public key">>}},
+                 get_channel_by_pubkey_sut(<<"InvalidKey">>)),
+
+    #{i := #{channel_id := ChannelId0, pub := IPub},
+      r := #{pub := RPub}
+     } = aesc_fsm_SUITE:create_channel_on_port(9311),
+    ChannelId = aec_base58c:encode(channel, ChannelId0),
+
+    {ok, 200, #{
+        <<"id">> := ChannelId,
+        <<"initiator">> := Initiator,
+        <<"responder">> := Responder,
+        <<"delegates">> := [],         %% Update needed
+        <<"state_hash">> := StateHash
+      }} = get_channel_by_pubkey_sut(ChannelId),
+
+    ?assertEqual({ok, IPub}, aec_base58c:safe_decode(account_pubkey, Initiator)),
+    ?assertEqual({ok, RPub}, aec_base58c:safe_decode(account_pubkey, Responder)),
+    ?assertMatch({ok, _}, aec_base58c:safe_decode(block_state_hash, StateHash)),
+    ok.
+
+get_channel_by_pubkey_sut(PubKey) ->
+    Host = external_address(),
+    PubKey1 = binary_to_list(PubKey),
+    http_request(Host, get, "channels/" ++ http_uri:encode(PubKey1), []).
+
+%% /peers/*
+
+get_peer_pubkey(_Config) ->
+    {ok, 200, _PeerPubkey} = get_peers_pubkey_sut(),
+    ok.
+
+get_peers_pubkey_sut() ->
+    Host = external_address(),
+    http_request(Host, get, "peers/pubkey", []).
+
+%% /status/*
+
+get_status(_Config) ->
+    {ok, 200, #{
+       <<"genesis-key-block-hash">>     := _,
+       <<"solutions">>                  := _,
+       <<"difficulty">>                 := _,
+       <<"syncing">>                    := _,
+       <<"listening">>                  := _,
+       <<"protocols">>                  := _,
+       <<"node-version">>               := _,
+       <<"node-revision">>              := _,
+       <<"peer-count">>                 := _,
+       <<"pending-transactions-count">> := _
+      }} = get_status_sut(),
+    ok.
+
+get_status_sut() ->
+    Host = external_address(),
+    http_request(Host, get, "status", []).
+
+prepare_tx(TxType, Args) ->
+    %assert_required_tx_fields(TxType, Args),
+    Host = external_address(),
+    Path = tx_object_http_path(TxType),
+    {ok, 200, #{<<"tx">> := EncodedSerializedUnsignedTx}} = http_request(Host, post, Path, Args),
+    {ok, SerializedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedSerializedUnsignedTx),
+    UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
+    {ok, SignedTx} = rpc(aec_keys, sign_tx, [UnsignedTx]),
+    TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
+    EncodedSerializedSignedTx = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)),
+    {TxHash, EncodedSerializedSignedTx}.
+
+post_tx(TxHash, Tx) ->
+    {ok, 200, Resp} = post_transactions_sut(Tx),
+    ?assertEqual(TxHash, maps:get(<<"tx_hash">>, Resp)),
+    Fun = fun() -> tx_in_mempool(TxHash) end,
+    {ok, true} = aec_test_utils:wait_for_it_or_timeout(Fun, true, 5000),
+    ok.
+
+%assert_required_tx_fields(TxType, Args) ->
+%    lists:foreach(fun(Key) -> true = maps:is_key(Key, Args) end, required_tx_fields(TxType)).
+
+%required_tx_fields(spend_tx) ->
+%    [sender, recipient_pubkey, amount, fee, payload];
+%required_tx_fields(oracle_register_tx) ->
+%    [account, query_format, response_format, query_fee, fee, oracle_ttl].
+
+%% TODO: use /debug/* when available
+tx_object_http_path(spend_tx) -> "tx/spend";
+tx_object_http_path(oracle_register_tx) -> "tx/oracle/register";
+tx_object_http_path(oracle_extend_tx) -> "tx/oracle/extend";
+tx_object_http_path(oracle_query_tx) -> "tx/oracle/query";
+tx_object_http_path(oracle_response_tx) -> "tx/oracle/response".
+
+hash(Block) ->
+    {ok, Hash0} = aec_blocks:hash_internal_representation(Block),
+    aec_base58c:encode(block_hash, Hash0).
+
+wait_for_key_block_candidate() -> wait_for_key_block_candidate(10).
+
+wait_for_key_block_candidate(0) -> {error, miner_starting};
+wait_for_key_block_candidate(N) ->
+    case rpc(aec_conductor, get_key_block_candidate, []) of
+        {ok, Block} -> {ok, Block};
+        {error, not_mining} -> {error, not_mining};
+        {error, miner_starting} ->
+            timer:sleep(10),
+            wait_for_key_block_candidate(N)
+    end.
+
+save_config(Keys, Config) ->
+    save_config(Keys, Config, []).
+
+save_config([Key | Rest], Config, Acc) ->
+    save_config(Rest, Config, [{Key, ?config(Key, Config)} | Acc]);
+save_config([], _Config, Acc) ->
+    Acc.
+
 
 %% enpoints
 

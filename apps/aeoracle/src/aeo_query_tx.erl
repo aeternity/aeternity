@@ -281,9 +281,9 @@ for_client(#oracle_query_tx{nonce         = Nonce,
 
 %% -- Local functions  -------------------------------------------------------
 
-check_query(Q, SenderPubKey, OraclePubKey, Trees, Height) ->
+check_query(Q, SenderPubkey, OraclePubkey, Trees, Height) ->
     Oracles  = aec_trees:oracles(Trees),
-    I        = aeo_query:new(Q, SenderPubKey, OraclePubKey, Height),
+    I        = aeo_query:new(Q, SenderPubkey, OraclePubkey, Height),
     OracleId = aeo_query:oracle_address(I),
     Id       = aeo_query:id(I),
     case aeo_state_tree:lookup_query(OracleId, Id, Oracles) of

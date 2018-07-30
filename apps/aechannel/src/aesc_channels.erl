@@ -16,6 +16,7 @@
          peers/1,
          delegates/1,
          serialize/1,
+         serialize_for_client/1,
          close_solo/3,
          close_solo/4,
          snapshot_solo/2,
@@ -225,6 +226,21 @@ serialization_template(?CHANNEL_VSN) ->
     , {closes_at        , int}
     ].
 
+-spec serialize_for_client(channel()) -> map().
+serialize_for_client(#channel{} = Ch) ->
+    #{<<"id">>               => aec_base58c:encode(channel, id(Ch)),
+      <<"initiator">>        => aec_base58c:encode(account_pubkey, initiator(Ch)),
+      <<"responder">>        => aec_base58c:encode(account_pubkey, responder(Ch)),
+      <<"total_amount">>     => total_amount(Ch),
+      <<"initiator_amount">> => initiator_amount(Ch),
+      <<"responder_amount">> => responder_amount(Ch),
+      <<"channel_reserve">>  => channel_reserve(Ch),
+      <<"delegates">>        => [aec_base58c:encode(account_pubkey, D) || D <- delegates(Ch)],
+      <<"state_hash">>       => aec_base58c:encode(block_state_hash, state_hash(Ch)),
+      <<"round">>            => round(Ch),
+      <<"lock_period">>      => lock_period(Ch),
+      <<"closes_at">>        => closes_at(Ch)}.
+
 -spec withdraw(channel(), amount(), seq_number(), binary()) -> channel().
 withdraw(#channel{total_amount = TotalAmount} = Ch, Amount, Round, StateHash) ->
     Ch#channel{total_amount = TotalAmount - Amount,
@@ -289,4 +305,4 @@ fetch_amount_from_poi(PoI, Pubkey) ->
     {ok, Account} = aec_trees:lookup_poi(accounts, Pubkey, PoI),
     aec_accounts:balance(Account).
 
-    
+

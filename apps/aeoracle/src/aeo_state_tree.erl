@@ -13,7 +13,7 @@
         , get_query/3
         , get_oracle/2
         , get_oracle_query_ids/2
-        , get_open_oracle_queries/4
+        , get_oracle_queries/5
         , get_oracles/3
         , empty/0
         , empty_with_backend/0
@@ -140,12 +140,10 @@ get_oracle(Id, Tree) ->
 get_oracle_query_ids(Id, Tree) ->
     find_oracle_query_ids(Id, Tree).
 
--spec get_open_oracle_queries(aeo_oracles:id(),
-                              binary() | '$first',
-                              non_neg_integer(),
-                              tree()) -> list(query()).
-get_open_oracle_queries(OracleId, From, Max, Tree) ->
-    find_open_oracle_queries(OracleId, From, Max, Tree).
+-spec get_oracle_queries(aeo_oracles:id(), binary() | '$first', open | closed | all,
+                         non_neg_integer(), tree()) -> list(query()).
+get_oracle_queries(OracleId, From, QueryType, Max, Tree) ->
+    find_oracle_queries(OracleId, From, QueryType, Max, Tree).
 
 -spec get_oracles(binary() | '$first', non_neg_integer(), tree()) -> list(oracle()).
 get_oracles(From, Max, Tree) ->
@@ -313,25 +311,36 @@ find_oracle_query_tree_ids(OracleId, Tree) ->
 find_oracle_query_ids(OracleId, Tree) ->
     find_oracle_query_ids(OracleId, Tree, id).
 
-find_open_oracle_queries(OracleId, FromQueryId, Max, #oracle_tree{otree = T}) ->
+find_oracle_queries(OracleId, FromQueryId, QueryType, Max, #oracle_tree{otree = T}) ->
     IteratorKey = case FromQueryId of
                       '$first' -> OracleId;
                       _        -> <<OracleId/binary, FromQueryId/binary>>
                   end,
     Iterator = aeu_mtrees:iterator_from(IteratorKey, T),
-    find_open_oracle_queries(Iterator, Max).
+    find_oracle_queries(Iterator, QueryType, Max, []).
 
-find_open_oracle_queries(_Iterator, 0) -> [];
-find_open_oracle_queries(Iterator, N) ->
+find_oracle_queries(Iterator, QueryType, N, Acc) when N > 0 ->
     case aeu_mtrees:iterator_next(Iterator) of
         {Key, Value, NextIterator} when byte_size(Key) > ?PUB_SIZE ->
             Query = aeo_query:deserialize(Value),
-            case aeo_query:is_closed(Query) of
-                false -> [Query | find_open_oracle_queries(NextIterator, N-1)];
-                true  -> find_open_oracle_queries(NextIterator, N)
+            case {QueryType, aeo_query:is_open(Query)} of
+                {open, true} ->
+                    find_oracle_queries(NextIterator, QueryType, N - 1, [Query | Acc]);
+                {open, false} ->
+                    find_oracle_queries(NextIterator, QueryType, N, Acc);
+                {closed, true} ->
+                    find_oracle_queries(NextIterator, QueryType, N, Acc);
+                {closed, false} ->
+                    find_oracle_queries(NextIterator, QueryType, N - 1, [Query | Acc]);
+                {all, _} ->
+                    find_oracle_queries(NextIterator, QueryType, N - 1, [Query | Acc])
             end;
-        _Other -> [] %% Either end_of_table or next Oracle
-    end.
+        %% Either end_of_table or next Oracle
+        _Other ->
+            lists:reverse(Acc)
+    end;
+find_oracle_queries(_Iterator, _QueryType, 0, Acc) ->
+    lists:reverse(Acc).
 
 find_oracles(FromOracleId, Max, #oracle_tree{otree = T}) ->
     %% Only allow paths that match the size of an OracleId - Queries have

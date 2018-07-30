@@ -1,6 +1,7 @@
 -module(aec_base58c).
 
--export([encode/2,
+-export([encode/1,
+         encode/2,
          decode/1,
          safe_decode/2,
          byte_size_for_type/1]).
@@ -27,6 +28,10 @@
 
 -type payload() :: binary().
 -type encoded() :: binary().
+
+-spec encode(payload()) -> encoded().
+encode(Payload) ->
+    base58_check(Payload).
 
 -spec encode(known_type(), payload() | aec_id:id()) -> encoded().
 encode(id_hash, Payload) ->
