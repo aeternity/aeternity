@@ -920,6 +920,8 @@ handle_tx_pool_sync_rsp(S, Action, {tx_pool, From, _TRef}, MsgObj) ->
 
 send_send_block(#{ status := error }, _Block) ->
     ok;
+send_send_block(#{ status := {disconnecting, _ESock} }, _Block) ->
+    ok;
 send_send_block(S = #{ status := {connected, _ESock} }, Block) ->
     SerBlock = aec_blocks:serialize_to_binary(Block),
     Msg = aec_peer_messages:serialize(block, #{ block => SerBlock }),
@@ -940,6 +942,8 @@ handle_new_block(S, Msg) ->
 %% -- Send TX --------------------------------------------------------------
 
 send_send_tx(#{ status := error }, _Tx) ->
+    ok;
+send_send_tx(#{ status := {disconnecting, _ESock} }, _Tx) ->
     ok;
 send_send_tx(S = #{ status := {connected, _ESock} }, Tx) ->
     TxSerialized = aetx_sign:serialize_to_binary(Tx),
