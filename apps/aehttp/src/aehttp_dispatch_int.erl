@@ -3,8 +3,7 @@
 -export([handle_request/3]).
 
 -import(aeu_debug, [pp/1]).
--import(aehttp_helpers, [ read_tx_encoding_param/1
-                        , parse_filter_param/2
+-import(aehttp_helpers, [ parse_filter_param/2
                         , get_block/2
                         , get_block/3
                         , get_block_from_chain/1
@@ -408,21 +407,8 @@ get_block_tx_by_index(Fun, Index, Req) when is_function(Fun, 0) ->
                 not_found ->
                     {404, [], #{reason => <<"Transaction not found">>}};
                 {ok, Tx} ->
-                    case read_tx_encoding_param(Req) of
-                        {error, Err} ->
-                            Err;
-                        {ok, TxEncoding} ->
-                            DataSchema =
-                                case TxEncoding of
-                                    json ->
-                                        <<"SingleTxJSON">>;
-                                    message_pack ->
-                                        <<"SingleTxMsgPack">>
-                                end,
-                            H = aec_blocks:to_header(Block),
-                            {200, [], #{transaction => aetx_sign:serialize_for_client(TxEncoding, H, Tx),
-                                        data_schema => DataSchema}}
-                    end
+                    H = aec_blocks:to_header(Block),
+                    {200, [], #{transaction => aetx_sign:serialize_for_client(H, Tx)}}
             end;
         {_Code, _, _Reason} = Err ->
             Err
@@ -430,54 +416,41 @@ get_block_tx_by_index(Fun, Index, Req) when is_function(Fun, 0) ->
 
 
 get_block_range(GetFun, Req) when is_function(GetFun, 0) ->
-    case read_tx_encoding_param(Req) of
-        {error, Err} ->
-            Err;
-        {ok, TxEncoding} ->
-            DataSchema =
-                case TxEncoding of
-                    json ->
-                        <<"JSONTxs">>;
-                    message_pack ->
-                        <<"MsgPackTxs">>
-                end,
-            case GetFun() of
-                {error, invalid_range} ->
-                    {400, [], #{reason => <<"From's height is bigger than To's">>}};
-                {error, range_too_big} ->
-                    {400, [], #{reason => <<"Range too big">>}};
-                {error, chain_too_short} ->
-                    {404, [], #{reason => <<"Chain too short">>}};
-                {error, block_not_found} ->
-                    {404, [], #{reason => <<"Block not found">>}};
-                {error, not_found} ->
-                    {404, [], #{reason => <<"Block not found">>}};
-                {ok, Blocks} ->
-                    Txs = lists:foldl(
-                        fun(_Block, {error, _} = Err) ->
+    case GetFun() of
+        {error, invalid_range} ->
+            {400, [], #{reason => <<"From's height is bigger than To's">>}};
+        {error, range_too_big} ->
+            {400, [], #{reason => <<"Range too big">>}};
+        {error, chain_too_short} ->
+            {404, [], #{reason => <<"Chain too short">>}};
+        {error, block_not_found} ->
+            {404, [], #{reason => <<"Block not found">>}};
+        {error, not_found} ->
+            {404, [], #{reason => <<"Block not found">>}};
+        {ok, Blocks} ->
+            Txs = lists:foldl(
+                fun(_Block, {error, _} = Err) ->
+                    Err;
+                    (Block, Accum) ->
+                    case filter_transaction_list(Req, aec_blocks:txs(Block)) of
+                        {error, unknown_type} = Err ->
                             Err;
-                           (Block, Accum) ->
-                            case filter_transaction_list(Req, aec_blocks:txs(Block)) of
-                                {error, unknown_type} = Err ->
-                                    Err;
-                                {ok, FilteredTxs} ->
-                                    H = aec_blocks:to_header(Block),
-                                    lists:map(
-                                        fun(Tx) ->
-                                            aetx_sign:serialize_for_client(TxEncoding, H, Tx)
-                                        end,
-                                        FilteredTxs) ++ Accum
-                            end
-                        end,
-                        [],
-                        Blocks),
-                    case Txs of
-                        {error, unknown_type} ->
-                            {400, [], #{reason => <<"Unknown transaction type">>}};
-                        _ ->
-                            {200, [], #{transactions => Txs,
-                                        data_schema => DataSchema}}
+                        {ok, FilteredTxs} ->
+                            H = aec_blocks:to_header(Block),
+                            lists:map(
+                                fun(Tx) ->
+                                    aetx_sign:serialize_for_client(H, Tx)
+                                end,
+                                FilteredTxs) ++ Accum
                     end
-              end
-
+                end,
+                [],
+                Blocks),
+            case Txs of
+                {error, unknown_type} ->
+                    {400, [], #{reason => <<"Unknown transaction type">>}};
+                _ ->
+                    {200, [], #{transactions => Txs}}
+            end
     end.
+

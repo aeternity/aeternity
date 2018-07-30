@@ -8,7 +8,6 @@
         , hexstrings_decode/1
         , ttl_decode/1
         , poi_decode/1
-        , parse_tx_encoding/1
         , relative_ttl_decode/1
         , nameservice_pointers_decode/1
         , get_nonce/1
@@ -21,19 +20,17 @@
         , verify_name/1
         , compute_contract_create_data/0
         , compute_contract_call_data/0
-        , read_tx_encoding_param/1
         , read_optional_param/3
         , parse_filter_param/2
         , get_block/2
         , get_block/3
-        , get_block/4
         , get_poi/3
         , get_block_from_chain/1
         , get_block_hash_optionally_by_hash_or_height/1
         ]).
 
 -export([ get_transaction/2
-        , encode_transaction/3
+        , encode_transaction/2
         , decode_pointers/1
         ]).
 
@@ -465,64 +462,19 @@ get_transaction(TxKey, TxStateKey) ->
         end
     end.
 
-parse_tx_encoding(TxEncodingKey) ->
-    fun(_Req, State) ->
-        TxEncoding = maps:get(TxEncodingKey, State),
-        case lists:member(TxEncoding, [message_pack, json]) of
-            true ->
-                {ok, maps:put(TxEncodingKey, TxEncoding, State)};
-            false ->
-                {error, {400, [], #{reason => <<"Unsupported transaction encoding">>}}}
-        end
-    end.
-
-encode_transaction(TxKey, TxEncodingKey, EncodedTxKey) ->
+encode_transaction(TxKey, EncodedTxKey) ->
     fun(_Req, State) ->
         #{tx := Tx,
           tx_block_hash := BlockHash} = maps:get(TxKey, State),
-        TxEncoding = maps:get(TxEncodingKey, State),
-        DataSchema =
-            case TxEncoding of
-                json ->
-                    <<"SingleTxJSON">>;
-                message_pack ->
-                    <<"SingleTxMsgPack">>
-            end,
         T =
             case BlockHash of
                 mempool ->
-                    aetx_sign:serialize_for_client_pending(TxEncoding, Tx);
+                    aetx_sign:serialize_for_client_pending(Tx);
                 _ when is_binary(BlockHash) ->
                     {ok, H} = aec_chain:get_header(BlockHash),
-                    aetx_sign:serialize_for_client(TxEncoding, H, Tx)
+                    aetx_sign:serialize_for_client(H, Tx)
             end,
-        {ok, maps:put(EncodedTxKey, #{tx => T, schema => DataSchema}, State)}
-    end.
-
--spec read_tx_encoding_param(map()) -> {ok, json | message_pack} |
-                                       {error, {integer(), list(), map()}}.
-read_tx_encoding_param(Req) ->
-    read_tx_encoding_param(Req, message_pack).
-
--spec read_tx_encoding_param(map(), DefaultEncoding :: json | message_pack) ->
-                                    {ok, json | message_pack} |
-                                    {error, {integer(), list(), map()}}.
-read_tx_encoding_param(Req, DefaultEncoding) ->
-    case read_optional_enum_param(tx_encoding, Req, DefaultEncoding,
-                                  [message_pack, json]) of
-        {error, unexpected_value} ->
-            {error, {404, [], #{reason => <<"Unsupported transaction encoding">>}}};
-        {ok, Encoding} ->
-            {ok, Encoding}
-    end.
-
--spec read_optional_enum_param(atom(), map(), term(), list()) -> {ok, term()} |
-                                                                 {error, atom()}.
-read_optional_enum_param(Key, Req, Default, Enums) ->
-    Val = read_optional_param(Key, Req, Default),
-    case lists:member(Val, Enums) of
-        true -> {ok, Val};
-        false -> {error, unexpected_value}
+        {ok, maps:put(EncodedTxKey, #{tx => T}, State)}
     end.
 
 -spec read_optional_param(atom(), map(), term()) -> term().
@@ -573,41 +525,23 @@ get_block_from_chain(Fun) when is_function(Fun, 0) ->
     end.
 
 get_block(Fun, Req) ->
-    get_block(Fun, Req, message_pack, true).
+    get_block(Fun, Req, true).
 
-get_block(Fun, Req, DefaultEncoding) ->
-    get_block(Fun, Req, DefaultEncoding, true).
-
-get_block(Fun, Req, DefaultEncoding, AddHash) when is_function(Fun, 0) ->
+get_block(Fun, _Req, AddHash) when is_function(Fun, 0) ->
     case get_block_from_chain(Fun) of
         {ok, Block} ->
-            case read_tx_encoding_param(Req, DefaultEncoding) of
-                {error, Err} ->
-                    Err;
-                {ok, TxEncoding} ->
-                    DataSchema =
-                        case TxEncoding of
-                            message_pack ->
-                                <<"BlockWithMsgPackTxs">>;
-                            json ->
-                                <<"BlockWithJSONTxs">>
-                        end,
-                    Resp0 = aehttp_logic:cleanup_genesis(
-                        aehttp_api_parser:encode_client_readable_block(Block, TxEncoding)),
-                    % we add swagger's definition name to the object so the
-                    % result could be validated against the schema
-                    Resp1 = Resp0#{data_schema => DataSchema},
-                    Resp =
-                        case AddHash of
-                            true ->
-                                {ok, Hash} = aec_blocks:hash_internal_representation(Block),
-                                Resp1#{hash => aec_base58c:encode(block_hash, Hash)};
-                            false ->
-                                Resp1
-                        end,
-                    lager:debug("Resp = ~p", [pp(Resp)]),
-                    {200, [], Resp}
-              end;
+            Resp0 = aehttp_logic:cleanup_genesis(
+                aehttp_api_parser:encode_client_readable_block(Block)),
+            Resp =
+                case AddHash of
+                    true ->
+                        {ok, Hash} = aec_blocks:hash_internal_representation(Block),
+                        Resp0#{hash => aec_base58c:encode(block_hash, Hash)};
+                    false ->
+                        Resp0
+                end,
+            lager:debug("Resp = ~p", [pp(Resp)]),
+            {200, [], Resp};
         {_Code, _, _Reason} = Err ->
             Err
     end.

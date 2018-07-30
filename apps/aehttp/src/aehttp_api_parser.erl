@@ -2,8 +2,8 @@
 
 -export([encode/2,
          encode/3,
-         encode_client_readable_key_block/2,
-         encode_client_readable_block/2,
+         encode_client_readable_key_block/1,
+         encode_client_readable_block/1,
          decode/2]).
 
 -include_lib("apps/aecore/include/blocks.hrl").
@@ -60,20 +60,14 @@
                                     Err -> Err
                                 end
                             end},
-                   client_key_block => {fun(Block, TxEncoding) ->
+                   client_key_block => {fun(Block) ->
                                                 Resp = aehttp_logic:cleanup_genesis(
-                                                  encode_block_for_client(Block, TxEncoding)),
-                                                Resp#{
-                                                  data_schema => encode(tx_encoding, TxEncoding),
-                                                  hash => encode(block_hash, Block)}
+                                                  encode_block_for_client(Block)),
+                                                Resp#{hash => encode(block_hash, Block)}
                                         end,
                                         fun(_) -> {error, not_implemented} end},
-                   client_block => {fun encode_block_for_client/2,
+                   client_block => {fun encode_block_for_client/1,
                                     fun(_) -> {error, not_implemented} end},
-                   tx_encoding => {fun(message_pack) -> <<"BlockWithMsgPackTxs">>;
-                                      (json) -> <<"BlockWithJSONTxs">>
-                                   end,
-                                   fun(_) -> {error, not_implemented} end},
                    tx => {fun(Tx) ->
                               #{<<"tx">> => aec_base58c:encode(transaction,
                                   aetx_sign:serialize_to_binary(Tx))}
@@ -106,11 +100,11 @@
 encode(ObjectType, Data) ->
     encode(ObjectType, Data, []).
 
-encode_client_readable_key_block(Block, TxEncoding) ->
-    encode(client_key_block, Block, TxEncoding).
+encode_client_readable_key_block(Block) ->
+    encode(client_key_block, Block, []).
 
-encode_client_readable_block(Block, TxEncoding) ->
-    encode(client_block, Block, TxEncoding).
+encode_client_readable_block(Block) ->
+    encode(client_block, Block, []).
 
 encode(ObjectType, Data, Params) ->
     Rule = parsing_rules(ObjectType),
@@ -226,13 +220,13 @@ rule_type({list, _Type}) -> list;
 rule_type({_, _}) -> value;
 rule_type(L) when is_list(L) -> object.
 
-encode_block_for_client(Block, Encoding) ->
+encode_block_for_client(Block) ->
     Header = aec_blocks:to_header(Block),
     EncodedHeader = encode(header, Block),
     Txs =
         lists:map(
             fun(Tx) ->
-                aetx_sign:serialize_for_client(Encoding, Header, Tx)
+                aetx_sign:serialize_for_client(Header, Tx)
             end,
             aec_blocks:txs(Block)),
     maps:put(<<"transactions">>, Txs, EncodedHeader).

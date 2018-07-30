@@ -233,8 +233,7 @@ for_client(#oracle_register_tx{account_id      = AccountId,
                                fee             = Fee,
                                ttl             = TTL} = Tx) ->
     {TTLType, TTLValue} = oracle_ttl(Tx),
-    #{<<"data_schema">>     => <<"OracleRegisterTxJSON">>, % swagger schema name
-      <<"vsn">>             => version(),
+    #{<<"vsn">>             => version(),
       <<"account_id">>      => aec_base58c:encode(id_hash, AccountId),
       <<"nonce">>           => Nonce,
       <<"query_format">>    => QueryFormat,

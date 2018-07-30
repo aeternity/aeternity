@@ -173,7 +173,6 @@ for_client(#ns_preclaim_tx{account_id    = AccountId,
                            fee           = Fee,
                            ttl           = TTL}) ->
     #{<<"vsn">>           => version(),
-      <<"data_schema">> => <<"NamePreclaimTxObject">>, % swagger schema name
       <<"account_id">>    => aec_base58c:encode(id_hash, AccountId),
       <<"nonce">>         => Nonce,
       <<"commitment_id">> => aec_base58c:encode(id_hash, CommitmentId),
