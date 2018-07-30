@@ -163,8 +163,8 @@ ast_body(?qid_app(["Oracle", "query_fee"], [Oracle], _, _), Icode) ->
     prim_call(?PRIM_CALL_ORACLE_QUERY_FEE, #integer{value = 0},
               [ast_body(Oracle, Icode)], [word], word);
 
-ast_body(?qid_app(["Oracle", "query"], [Oracle, Q, Fee, QTTL, RTTL], [_, QType, _, _, _], _), Icode) ->
-    prim_call(?PRIM_CALL_ORACLE_QUERY, ast_body(Fee, Icode),
+ast_body(?qid_app(["Oracle", "query"], [Oracle, Q, QFee, QTTL, RTTL], [_, QType, _, _, _], _), Icode) ->
+    prim_call(?PRIM_CALL_ORACLE_QUERY, ast_body(QFee, Icode),
               [ast_body(Oracle, Icode), ast_body(Q, Icode), ast_body(QTTL, Icode), ast_body(RTTL, Icode)],
               [word, ast_type(QType, Icode), word, word], word);
 
