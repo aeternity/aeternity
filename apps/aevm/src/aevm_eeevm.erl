@@ -1450,6 +1450,7 @@ spend_gas_common(_Resource, Cost, State) ->
 %% equals the bit of index j (indexed from 0) in the byte array x.
 
 log(Topics, MemAddress, Length, State) ->
+    io:format("Log ~p~n", [Topics]),
     Logs = aevm_eeevm_state:logs(State),
     AccountAddress = aevm_eeevm_state:address(State),
     Header = log_topics(AccountAddress, Topics),
@@ -1457,6 +1458,7 @@ log(Topics, MemAddress, Length, State) ->
                        MemAddress, Length, State),
     LogEntry = <<Header/binary, Body/binary>>,
     NewLogs = [LogEntry|Logs],
+    io:format("NewLog ~p~n", [NewLogs]),
     aevm_eeevm_state:set_logs(NewLogs, State1).
 
 

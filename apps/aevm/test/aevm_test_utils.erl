@@ -79,6 +79,7 @@ testcase({Path, Name, Opts}, #{ pre := Pre, exec := Exec} = Spec) ->
                       validate_out(State, Spec1),
                       validate_gas(State, Spec1, Opts),
                       validate_callcreates(State, Spec1),
+                      validate_log(State, Spec1),
                       {ok, State};
                   {error, What, State} ->
                       %% Handle execution exceptions gracefully here.
@@ -106,7 +107,7 @@ validate_no_post(#{post := _} = Spec) ->
 validate_no_post(#{}) ->
     ok.
 
-validate_storage(State, #{exec := #{address := Addr}} = Spec) ->
+validate_storage(State, #{exec := #{ address := Addr}} = Spec) ->
     case Spec of
         #{ post := Post} ->
             PostStorage =
@@ -118,6 +119,14 @@ validate_storage(State, #{exec := #{address := Addr}} = Spec) ->
             ?assertEqual(PostStorage, Storage);
         _ -> true
     end.
+
+validate_log(State, #{logs := Logs} = Spec) ->
+    GeneratedLogs = aevm_eeevm_state:logs(State),
+    ?assertEqual(Logs, logs_to_string(GeneratedLogs));
+validate_log(_,_) -> true.
+
+logs_to_string(Logs) ->
+    aeu_hex:hexstring_encode(lists:foldr(fun (A, B) ->  << A/binary, B/binary>> end, <<>>, Logs)).
 
 validate_out(State, #{out := SpecOut} =_Spec) ->
     Out  = aevm_eeevm_state:out(State),
