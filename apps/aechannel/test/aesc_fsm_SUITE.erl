@@ -24,6 +24,12 @@
           create_channel/1
         , inband_msgs/1
         , upd_transfer/1
+        , update_with_conflict/1
+        , deposit_with_conflict/1
+        , withdraw_with_conflict/1
+        , upd_dep_with_conflict/1
+        , upd_wdraw_with_conflict/1
+        , dep_wdraw_with_conflict/1
         , deposit/1
         , withdraw/1
         , leave_reestablish/1
@@ -64,6 +70,12 @@ groups() ->
         create_channel
       , inband_msgs
       , upd_transfer
+      , update_with_conflict
+      , deposit_with_conflict
+      , withdraw_with_conflict
+      , upd_dep_with_conflict
+      , upd_wdraw_with_conflict
+      , dep_wdraw_with_conflict
       , deposit
       , withdraw
       , leave_reestablish
@@ -171,7 +183,7 @@ upd_transfer(Cfg) ->
      , r := #{} = R
      , spec := #{ initiator := PubI
                 , responder := PubR }} = create_channel_(
-                                           [{port,9326},?SLOGAN|Cfg]),
+                                           [{port,9327},?SLOGAN|Cfg]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
     {I0, R0} = do_update(PubI, PubR, 2, I, R, true),
     {BalI1, BalR1} = get_both_balances(FsmI, PubI, PubR),
@@ -188,6 +200,151 @@ upd_transfer(Cfg) ->
     check_info(500),
     ok.
 
+update_with_conflict(Cfg) ->
+    Debug = true,
+    #{ i := #{fsm := FsmI} = I
+     , r := #{fsm := FsmR} = R
+     , spec := #{ initiator := PubI
+                , responder := PubR }} = create_channel_(
+                                           [{port,9328},?SLOGAN|Cfg]),
+    {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
+    {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
+    rpc(dev1, aesc_fsm, upd_transfer, [FsmI, PubI, PubR, 1]),
+    rpc(dev1, aesc_fsm, upd_transfer, [FsmR, PubR, PubI, 2]),
+    {_I1, _} = await_signing_request(update, I, Debug),
+    %% FsmR should now detect a conflict
+    {ok, _} = receive_from_fsm(update, R, signing_req(), ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(conflict, I, any_msg(), ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(conflict, R, any_msg(), ?TIMEOUT, Debug),
+    {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
+    {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
+    check_info(500),
+    ok.
+
+deposit_with_conflict(Cfg) ->
+    Debug = true,
+    #{ i := #{fsm := FsmI} = I
+     , r := #{fsm := FsmR} = R
+     , spec := #{ initiator := PubI
+                , responder := PubR }} = create_channel_(
+                                           [{port,9329},?SLOGAN|Cfg]),
+    {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
+    {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
+    rpc(dev1, aesc_fsm, upd_deposit, [FsmI, #{amount => 1}]),
+    rpc(dev1, aesc_fsm, upd_deposit, [FsmR, #{amount => 2}]),
+    {_I1, _} = await_signing_request(deposit_tx, I, Debug),
+    %% FsmR should now detect a conflict
+    {ok, _} = receive_from_fsm(deposit_tx, R, signing_req(), ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(conflict, I, any_msg(), ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(conflict, R, any_msg(), ?TIMEOUT, Debug),
+    {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
+    {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
+    check_info(500),
+    ok.
+
+withdraw_with_conflict(Cfg) ->
+    Debug = true,
+    #{ i := #{fsm := FsmI} = I
+     , r := #{fsm := FsmR} = R
+     , spec := #{ initiator := PubI
+                , responder := PubR }} = create_channel_(
+                                           [{port,9330},?SLOGAN|Cfg]),
+    {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
+    {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
+    rpc(dev1, aesc_fsm, upd_withdraw, [FsmI, #{amount => 1}]),
+    rpc(dev1, aesc_fsm, upd_withdraw, [FsmR, #{amount => 2}]),
+    {_I1, _} = await_signing_request(withdraw_tx, I, Debug),
+    %% FsmR should now detect a conflict
+    {ok, _} = receive_from_fsm(withdraw_tx, R, signing_req(), ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(conflict, I, any_msg(), ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(conflict, R, any_msg(), ?TIMEOUT, Debug),
+    {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
+    {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
+    check_info(500),
+    ok.
+
+upd_dep_with_conflict(Cfg) ->
+    Debug = true,
+    #{ i := #{fsm := FsmI} = I
+     , r := #{fsm := FsmR} = R
+     , spec := #{ initiator := PubI
+                , responder := PubR }} = create_channel_(
+                                           [{port,9331},?SLOGAN|Cfg]),
+    {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
+    {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
+    rpc(dev1, aesc_fsm, upd_transfer, [FsmI, PubI, PubR, 1]),
+    rpc(dev1, aesc_fsm, upd_deposit, [FsmR, #{amount => 2}]),
+    {_I1, _} = await_signing_request(update, I, Debug),
+    %% FsmR should now detect a conflict
+    {ok, _} = receive_from_fsm(deposit_tx, R, signing_req(), ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(conflict, I, any_msg(), ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(conflict, R, any_msg(), ?TIMEOUT, Debug),
+    {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
+    {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
+    check_info(500),
+    ok.
+
+upd_wdraw_with_conflict(Cfg) ->
+    Debug = true,
+    #{ i := #{fsm := FsmI} = I
+     , r := #{fsm := FsmR} = R
+     , spec := #{ initiator := PubI
+                , responder := PubR }} = create_channel_(
+                                           [{port,9332},?SLOGAN|Cfg]),
+    {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
+    {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
+    rpc(dev1, aesc_fsm, upd_transfer, [FsmI, PubI, PubR, 1]),
+    rpc(dev1, aesc_fsm, upd_withdraw, [FsmR, #{amount => 2}]),
+    {_I1, _} = await_signing_request(update, I, Debug),
+    %% FsmR should now detect a conflict
+    {ok, _} = receive_from_fsm(withdraw_tx, R, signing_req(), ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(conflict, I, any_msg(), ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(conflict, R, any_msg(), ?TIMEOUT, Debug),
+    {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
+    {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
+    check_info(500),
+    ok.
+
+dep_wdraw_with_conflict(Cfg) ->
+    Debug = true,
+    #{ i := #{fsm := FsmI} = I
+     , r := #{fsm := FsmR} = R
+     , spec := #{ initiator := PubI
+                , responder := PubR }} = create_channel_(
+                                           [{port,9333},?SLOGAN|Cfg]),
+    {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
+    {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
+    rpc(dev1, aesc_fsm, upd_deposit, [FsmI, #{amount => 1}]),
+    rpc(dev1, aesc_fsm, upd_withdraw, [FsmR, #{amount => 2}]),
+    {_I1, _} = await_signing_request(deposit_tx, I, Debug),
+    %% FsmR should now detect a conflict
+    {ok, _} = receive_from_fsm(withdraw_tx, R, signing_req(), ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(conflict, I, any_msg(), ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(conflict, R, any_msg(), ?TIMEOUT, Debug),
+    {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
+    {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
+    check_info(500),
+    ok.
+
+signing_req() ->
+    fun(#{type := sign}) -> true;
+       (_) -> false
+    end.
+
+any_msg() ->
+    fun(_) -> true end.
+
+%% update_with_conflict(PKi, PKr,
+%%                      #fsm{fsm := FsmI} = I,
+%%                      #fsm{fsm := FsmR} = R, Debug) ->
+%%     #{ i := #{fsm := FsmI, channel_id := ChannelId} = I
+%%      , r := #{} = R
+%%      , spec := #{ initiator := PubI
+%%                 , responder := PubR }} = create_channel_(
+%%                                            [{port,9326},?SLOGAN|Cfg]),
+%%     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
+%%     rpc(dev1, aesc_fsm, upd_transfer, [FsmI, PKi, PKr, 1], Debug),
+%%     foo.
 
 update_bench(I, R) ->
     {Time, I1, R1} = do_n(1000, fun update_volley/2, I, R),
@@ -226,7 +383,7 @@ deposit(Cfg) ->
      , r := #{} = R
      , spec := #{ initiator := _PubI
                 , responder := _PubR }} = create_channel_(
-                                            [{port, 9327},?SLOGAN|Cfg]),
+                                            [{port, 9340},?SLOGAN|Cfg]),
     ct:log("I = ~p", [I]),
     #{initiator_amount := IAmt0, responder_amount := RAmt0} = I,
     {IAmt0, RAmt0, _, _Round0 = 1} = check_fsm_state(FsmI),
@@ -257,7 +414,7 @@ withdraw(Cfg) ->
      , r := #{} = R
      , spec := #{ initiator := _PubI
                 , responder := _PubR }} = create_channel_(
-                                            [{port, 9328},?SLOGAN|Cfg]),
+                                            [{port, 9341},?SLOGAN|Cfg]),
     ct:log("I = ~p", [I]),
     #{initiator_amount := IAmt0, responder_amount := RAmt0} = I,
     {IAmt0, RAmt0, _, _Round0 = 1} = check_fsm_state(FsmI),
@@ -281,7 +438,7 @@ withdraw(Cfg) ->
     check_info(500).
 
 leave_reestablish(Cfg) ->
-    leave_reestablish(9329, Cfg).
+    leave_reestablish(9350, Cfg).
 
 leave_reestablish(Port, Cfg) ->
     leave_reestablish_(Port, [?SLOGAN|Cfg]).
@@ -322,7 +479,7 @@ leave_reestablish_(Port, Cfg) ->
 
 leave_reestablish_close(Cfg) ->
     Debug = get_debug(Cfg),
-    #{i := I, r := R, spec := Spec} = leave_reestablish_(9332, [?SLOGAN|Cfg]),
+    #{i := I, r := R, spec := Spec} = leave_reestablish_(9352, [?SLOGAN|Cfg]),
     #{initiator := PubI, responder := PubR} = Spec,
     {I1, R1} = do_update(PubI, PubR, 1, I, R, Debug),
     ChId = maps:get(channel_id, I1),
@@ -344,7 +501,7 @@ leave_reestablish_close(Cfg) ->
 
 change_config_get_history(Cfg) ->
     #{ i := #{fsm := FsmI} = I
-     , r := #{} = R } = create_channel_([{port,9335},?SLOGAN|Cfg]),
+     , r := #{} = R } = create_channel_([{port,9354},?SLOGAN|Cfg]),
     Log = rpc(dev1, aesc_fsm, get_history, [FsmI]),
     ok = check_history(Log),
     ok = rpc(dev1, aesc_fsm, change_config, [FsmI, log_keep, 17]),
@@ -415,7 +572,7 @@ multiple_channels(Cfg) ->
     Me = self(),
     NumCs = 10,
     {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [Initiator]),
-    Cs = [create_multi_channel([{port, 9330 + N},
+    Cs = [create_multi_channel([{port, 9360 + N},
                                 {ack_to, Me},
                                 {nonce, Nonce + N - 1},
                                 ?SLOGAN(N)|Cfg], #{mine_blocks => {ask, Me},

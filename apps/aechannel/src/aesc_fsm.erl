@@ -23,7 +23,8 @@
 %% Inspection and configuration functions
 -export([ get_history/1     %% (fsm()) -> [Event]
         , change_config/3   %% (fsm(), key(), value()) -> ok | {error,_}
-        , get_balances/2    %% (fsm(), [key()]) -> [{key(), amount()}]
+        , get_balances/2    %% (fsm(), {ok, [key()]) -> [{key(), amount()}]} | {error, _}
+        , get_round/1       %% (fsm()) -> {ok, round()} | {error, _}
         ]).
 
 %% Used by noise session
@@ -379,6 +380,9 @@ check_change_config(_, _) ->
 get_balances(Fsm, Accounts) ->
     gen_statem:call(Fsm, {get_balances, Accounts}).
 
+get_round(Fsm) ->
+    gen_statem:call(Fsm, get_round).
+
 %% ======================================================================
 %% FSM initialization
 
@@ -591,9 +595,10 @@ reestablish_init({call, From}, Req, D) ->
     handle_call(reestablish_init, Req, From, D).
 
 awaiting_signature(enter, _OldSt, _D) -> keep_state_and_data;
-awaiting_signature(cast, {Op, _}, #data{ongoing_update = true} = D)
+awaiting_signature(cast, {Op, _} = Msg, #data{ongoing_update = true} = D)
   when ?UPDATE_OP(Op) ->
     %% Race detection!
+    lager:debug("race detected: ~p", [Msg]),
     handle_update_conflict(Op, D);
 awaiting_signature(cast, {?SIGNED, create_tx, Tx} = Msg,
                    #data{role = initiator, latest = {sign, create_tx, _CTx}} = D) ->
@@ -720,9 +725,10 @@ half_signed({call, From}, Req, D) ->
     handle_call(half_signed, Req, From, D).
 
 dep_half_signed(enter, _OldSt, _D) -> keep_state_and_data;
-dep_half_signed(cast, {Op, _}, D) when ?UPDATE_OP(Op) ->
+dep_half_signed(cast, {Op, _} = Msg, D) when ?UPDATE_OP(Op) ->
     %% This might happen if a request is sent before our ?DEP_CREATED msg
     %% arrived.
+    lager:debug("race detected: ~p", [Msg]),
     handle_update_conflict(Op, D);
 dep_half_signed(cast, {?DEP_SIGNED, Msg}, D) ->
     case check_deposit_signed_msg(Msg, D) of
@@ -731,6 +737,19 @@ dep_half_signed(cast, {?DEP_SIGNED, Msg}, D) ->
             ok = aec_tx_pool:push(SignedTx),
             {ok, D2} = start_min_depth_watcher(deposit, SignedTx, D1),
             next_state(awaiting_locked, D2)
+    end;
+dep_half_signed(cast, {?DEP_ERR, Msg}, D) ->
+    lager:debug("received deposit_error: ~p", [Msg]),
+    case check_deposit_error_msg(Msg, D) of
+        {ok, ?ERR_CONFLICT, D1} ->
+            report(conflict, Msg, D1),
+            next_state(open, D1);
+        {ok, _ErrorCode, D1} ->
+            %% TODO: send a different kind of report (e.g. validation error)
+            report(conflict, Msg, D1),
+            next_state(open, D1);
+        {error, _} = Error ->
+            close(Error, D)
     end;
 dep_half_signed(timeout, dep_half_signed = T, D) ->
     close({timeout, T}, D);
@@ -762,9 +781,10 @@ deposit_locked_complete(SignedTx, #data{state = State, opts = Opts} = D) ->
     next_state(open, D1).
 
 wdraw_half_signed(enter, _OldSt, _D) -> keep_state_and_data;
-wdraw_half_signed(cast, {Op,_}, D) when ?UPDATE_OP(Op) ->
+wdraw_half_signed(cast, {Op,_} = Msg, D) when ?UPDATE_OP(Op) ->
     %% This might happen if a request is sent before our ?WDRAW_CREATED msg
     %% arrived.
+    lager:debug("race detected: ~p", [Msg]),
     handle_update_conflict(Op, D);
 wdraw_half_signed(cast, {?WDRAW_SIGNED, Msg}, D) ->
     case check_withdraw_signed_msg(Msg, D) of
@@ -773,6 +793,19 @@ wdraw_half_signed(cast, {?WDRAW_SIGNED, Msg}, D) ->
             ok = aec_tx_pool:push(SignedTx),
             {ok, D2} = start_min_depth_watcher(withdraw, SignedTx, D1),
             next_state(awaiting_locked, D2)
+    end;
+wdraw_half_signed(cast, {?WDRAW_ERR, Msg}, D) ->
+    lager:debug("received withdraw_error: ~p", [Msg]),
+    case check_withdraw_error_msg(Msg, D) of
+        {ok, ?ERR_CONFLICT, D1} ->
+            report(conflict, Msg, D1),
+            next_state(open, D1);
+        {ok, _ErrorCode, D1} ->
+            %% TODO: send a different kind of report (e.g. validation error)
+            report(conflict, Msg, D1),
+            next_state(open, D1);
+        {error, _} = Error ->
+            close(Error, D)
     end;
 wdraw_half_signed(timeout, wdraw_half_signed = T, D) ->
     close({timeout, T}, D);
@@ -869,9 +902,10 @@ awaiting_initial_state(Evt, Msg, D) ->
     close({unexpected, Msg}, D).
 
 awaiting_update_ack(enter, _OldSt, _D) -> keep_state_and_data;
-awaiting_update_ack(cast, {Op,_}, #data{} = D) when ?UPDATE_OP(Op) ->
+awaiting_update_ack(cast, {Op,_} = Msg, #data{} = D) when ?UPDATE_OP(Op) ->
     %% This might happen if a request is sent before our signed ?UPDATE msg
     %% arrived.
+    lager:debug("race detected: ~p", [Msg]),
     handle_update_conflict(Op, D);
 awaiting_update_ack(cast, {?UPDATE_ACK, Msg}, #data{} = D) ->
     case check_update_ack_msg(Msg, D) of
@@ -880,12 +914,17 @@ awaiting_update_ack(cast, {?UPDATE_ACK, Msg}, #data{} = D) ->
         {error, _} = Error ->
             close(Error, D)
     end;
-awaiting_update_ack(cast, {?UPDATE, _Msg}, D) ->
+awaiting_update_ack(cast, {?UPDATE, _} = Msg, D) ->
+    lager:debug("race detected: ~p", [Msg]),
     handle_update_conflict(?UPDATE, D);
 awaiting_update_ack(cast, {?UPDATE_ERR, Msg}, D) ->
     lager:debug("received update_err: ~p", [Msg]),
     case check_update_err_msg(Msg, D) of
-        {ok, D1} ->
+        {ok, ?ERR_CONFLICT, D1} ->
+            report(conflict, Msg, D1),
+            next_state(open, D1);
+        {ok, _ErrorCode, D1} ->
+            %% TODO: send a different kind of report (e.g. validation error)
             report(conflict, Msg, D1),
             next_state(open, D1);
         {error, _} = Error ->
@@ -1216,6 +1255,14 @@ handle_call_(_, {get_balances, Accounts}, From, #data{ state = State } = D) ->
         end,
     lager:debug("get_balances(~p) -> ~p", [Accounts, Result]),
     keep_state(D, [{reply, From, Result}]);
+handle_call_(_, get_round, From, #data{ state = State } = D) ->
+    Res = try  {Round, _} = aesc_offchain_state:get_latest_signed_tx(State),
+               {ok, Round}
+          catch
+              error:_ ->
+                  {error, no_state}
+          end,
+    keep_state(D, [{reply, From, Res}]);
 handle_call_(St, _Req, _From, D) when ?TRANSITION_STATE(St) ->
     postpone(D);
 handle_call_(_St, _Req, From, D) ->
@@ -1709,37 +1756,32 @@ check_deposit_locked_msg(#{ channel_id := ChanId
             {error, channel_id_mismatch}
     end.
 
-check_deposit_update_msg(#{ channel_id := ChanId
-                          , data       := TxBin } = Msg,
-                         #data{ on_chain_id = ChanId
-                              , latest = {deposit, SignedDepTx}
-                              , state = State
-                              , opts  = Opts } = D) ->
-    try aetx_sign:deserialize_from_binary(TxBin) of
-        SignedUpdTx ->
-            UpdTx = aetx_sign:tx(SignedUpdTx),
-            {ModU, TxUI} = aetx:specialize_callback(aetx_sign:tx(SignedUpdTx)),
-            PrevRound = ModU:previous_round(TxUI),
-            case aesc_offchain_state:get_latest_signed_tx(State) of
-                {PrevRound, _SignedStTx} ->
-                    {ModD, TxDI} = aetx:specialize_callback(
-                                     aetx_sign:tx(SignedDepTx)),
-                    From = ModD:origin(TxDI),
-                    Amount = ModD:amount(TxDI),
-                    Updates = [aesc_offchain_update:op_deposit(aec_id:create(account, From), Amount)],
-                    NewStTx = aesc_offchain_state:make_update_tx(Updates, State, Opts),
-                    case NewStTx == UpdTx of
-                        true ->
-                            {ok, SignedUpdTx, log(rcv, ?UPDATE, Msg, D)};
-                        false ->
-                            {error, invalid_deposit_update}
-                    end;
-                _ ->
-                    {error, invalid_previous_round}
-            end
-    catch
-        error:E ->
-            lager:error("CAUGHT ~p, trace = ~p", [E, erlang:get_stacktrace()])
+check_deposit_error_msg(Msg, D) ->
+    check_op_error_msg(?DEP_ERR, Msg, D).
+
+check_withdraw_error_msg(Msg, D) ->
+    check_op_error_msg(?WDRAW_ERR, Msg, D).
+
+check_op_error_msg(Op, #{ channel_id := ChanId
+                        , round      := Round
+                        , error_code := ErrCode } = Msg,
+                        #data{on_chain_id = ChanId0,
+                              state = State} = D) ->
+    case ChanId == ChanId0 of
+        true ->
+            case aesc_offchain_state:get_fallback_state(State) of
+                {Round, State1} ->
+                    {ok, ErrCode,
+                     D#data{state = State1,
+                            log = log_msg(
+                                    rcv, Op, Msg, D#data.log)}};
+                _Other ->
+                    lager:debug("Fallback state mismatch: ~p/~p",
+                                [Round, _Other]),
+                    {error, fallback_state_mismatch}
+            end;
+        false ->
+            {error, chain_id_mismatch}
     end.
 
 send_withdraw_created_msg(SignedTx, #data{on_chain_id = Ch,
@@ -1791,39 +1833,6 @@ check_withdraw_locked_msg(#{ channel_id := ChanId
             end;
         false ->
             {error, channel_id_mismatch}
-    end.
-
-check_withdraw_update_msg(#{ channel_id := ChanId
-                           , data       := TxBin } = Msg,
-                          #data{ on_chain_id = ChanId
-                               , latest = {withdraw, SignedDepTx}
-                               , state = State
-                               , opts  = Opts } = D) ->
-    try aetx_sign:deserialize_from_binary(TxBin) of
-        SignedUpdTx ->
-            UpdTx = aetx_sign:tx(SignedUpdTx),
-            {ModU, TxUI} = aetx:specialize_callback(aetx_sign:tx(SignedUpdTx)),
-            PrevRound = ModU:previous_round(TxUI),
-            case aesc_offchain_state:get_latest_signed_tx(State) of
-                {PrevRound, _SignedStTx} ->
-                    {ModD, TxDI} = aetx:specialize_callback(
-                                     aetx_sign:tx(SignedDepTx)),
-                    From = ModD:origin(TxDI),
-                    Amount = ModD:amount(TxDI),
-                    Updates = [aesc_offchain_update:op_withdraw(aec_id:create(account, From), Amount)],
-                    NewStTx = aesc_offchain_state:make_update_tx(Updates, State, Opts),
-                    case NewStTx == UpdTx of
-                        true ->
-                            {ok, SignedUpdTx, log(rcv, ?UPDATE, Msg, D)};
-                        false ->
-                            {error, invalid_withdraw_update}
-                    end;
-                _ ->
-                    {error, invalid_previous_round}
-            end
-    catch
-        error:E ->
-            lager:error("CAUGHT ~p, trace = ~p", [E, erlang:get_stacktrace()])
     end.
 
 send_update_msg(SignedTx, #data{ on_chain_id = OnChainId
@@ -2074,7 +2083,8 @@ send_conflict_err_msg(Op, #data{ state = State
     {_, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
     Round = tx_round(aetx_sign:tx(SignedTx)),
     Msg = #{ channel_id => ChanId
-           , round      => Round },
+           , round      => Round
+           , error_code => ?ERR_CONFLICT },
     send_conflict_msg(Op, Sn, Msg),
     report(conflict, Msg, Data),
     log(snd, conflict_msg_type(Op), Msg, Data).
@@ -2091,25 +2101,8 @@ send_conflict_msg(?WDRAW_CREATED, Sn, Msg) ->
     aesc_session_noise:wdraw_error(Sn,Msg).
 
 
-check_update_err_msg(#{ channel_id := ChanId
-                      , round      := Round } = Msg,
-                     #data{on_chain_id = ChanId0,
-                           state = State} = D) ->
-    case ChanId == ChanId0 of
-        true ->
-            case aesc_offchain_state:get_fallback_state(State) of
-                {Round, State1} ->
-                    {ok, D#data{state = State1,
-                                log = log_msg(
-                                        rcv, ?UPDATE_ERR, Msg, D#data.log)}};
-                _Other ->
-                    lager:debug("Fallback state mismatch: ~p/~p",
-                                [Round, _Other]),
-                    {error, fallback_state_mismatch}
-            end;
-        false ->
-            {error, chain_id_mismatch}
-    end.
+check_update_err_msg(Msg, D) ->
+    check_op_error_msg(?UPDATE_ERR, Msg, D).
 
 request_signing(Tag, Obj, #data{} = D) ->
     request_signing(Tag, Obj, Obj, D).

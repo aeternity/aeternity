@@ -33,6 +33,7 @@
 %% -type length()      :: i2bytes().
 -type amount()      :: i8bytes().
 -type pubkey()      :: bin32().
+-type error_code()  :: i2bytes().
 
 -define(PUBKEY_SIZE, 32).
 
@@ -324,20 +325,25 @@ dec_update_ack(<< ChanId:32/binary
      , data   => Data }.
 
 -type update_err_msg() :: #{ channel_id := chan_id()
-                           , round      := non_neg_integer() }.
+                           , round      := non_neg_integer()
+                           , error_code := error_code() }.
 
 -spec enc_update_err(update_err_msg()) -> binary().
 enc_update_err(#{ channel_id := ChanId
-                , round      := Round }) ->
+                , round      := Round
+                , error_code := ErrCode }) ->
     << ?ID_UPDATE_ERR:1 /unit:8
      , ChanId        :32/binary
-     , Round         :4 /unit:8 >>.
+     , Round         :4 /unit:8
+     , ErrCode       :2 /unit:8 >>.
 
 -spec dec_update_err(binary()) -> update_err_msg().
-dec_update_err(<< ChanId:32/binary
-                , Round :4/unit:8 >>) ->
+dec_update_err(<< ChanId :32/binary
+                , Round  :4/unit:8
+                , ErrCode:2/unit:8 >>) ->
     #{ channel_id => ChanId
-     , round      => Round }.
+     , round      => Round
+     , error_code => ErrCode }.
 
 -type deposit_msg() :: #{ channel_id := chan_id()
                         , data       := binary()}.
@@ -394,20 +400,25 @@ dec_dep_locked(<< ChanId:32/binary
      , data       => Data }.
 
 -type dep_err_msg() :: #{ channel_id := chan_id()
-                        , round      := non_neg_integer() }.
+                        , round      := non_neg_integer()
+                        , error_code := error_code() }.
 
 -spec enc_dep_err(dep_err_msg()) -> binary().
 enc_dep_err(#{ channel_id := ChanId
-             , round      := Round }) ->
+             , round      := Round
+             , error_code := ErrCode }) ->
     << ?ID_DEP_ERR:1 /unit:8
      , ChanId        :32/binary
-     , Round         :4 /unit:8 >>.
+     , Round         :4 /unit:8
+     , ErrCode       :2 /unit:8 >>.
 
 -spec dec_dep_err(binary()) -> dep_err_msg().
-dec_dep_err(<< ChanId:32/binary
-             , Round :4 /unit:8 >>) ->
+dec_dep_err(<< ChanId :32/binary
+             , Round  :4 /unit:8
+             , ErrCode:2 /unit:8 >>) ->
     #{ channel_id => ChanId
-     , round      => Round }.
+     , round      => Round
+     , error_code => ErrCode }.
 
 -type withdrawal_msg() :: #{ channel_id := chan_id()
                            , data       := binary()}.
@@ -464,20 +475,25 @@ dec_wdraw_locked(<< ChanId:32/binary
      , data       => Data }.
 
 -type wdraw_err_msg() :: #{ channel_id := chan_id()
-                          , round      := non_neg_integer() }.
+                          , round      := non_neg_integer()
+                          , error_code := error_code() }.
 
 -spec enc_wdraw_err(wdraw_err_msg()) -> binary().
 enc_wdraw_err(#{ channel_id := ChanId
-               , round      := Round }) ->
+               , round      := Round
+               , error_code := ErrCode }) ->
     << ?ID_WDRAW_ERR:1 /unit:8
      , ChanId       :32/binary
-     , Round        :4 /unit:8 >>.
+     , Round        :4 /unit:8
+     , ErrCode      :2 /unit:8 >>.
 
 -spec dec_wdraw_err(binary()) -> wdraw_err_msg().
-dec_wdraw_err(<< ChanId:32/binary
-               , Round:4 /unit:8 >>) ->
+dec_wdraw_err(<< ChanId :32/binary
+               , Round  :4 /unit:8
+               , ErrCode:2 /unit:8 >>) ->
     #{ channel_id => ChanId
-     , round      => Round }.
+     , round      => Round
+     , error_code => ErrCode }.
 
 -type error_msg() :: #{ channel_id := chan_id()
                       , data       := binary() }.
