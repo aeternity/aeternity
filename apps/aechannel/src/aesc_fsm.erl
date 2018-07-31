@@ -20,8 +20,9 @@
          get_state/1]).
 
 %% Inspection and configuration functions
--export([get_history/1,    %% (fsm()) -> [Event]
-         change_config/3   %% (fsm(), key(), value()) -> ok | {error,_}
+-export([ get_history/1     %% (fsm()) -> [Event]
+        , change_config/3   %% (fsm(), key(), value()) -> ok | {error,_}
+        , get_balances/2    %% (fsm(), [key()]) -> [{key(), amount()}]
         ]).
 
 %% Used by noise session
@@ -364,6 +365,14 @@ check_change_config(log_keep, Keep) when is_integer(Keep), Keep >= 0 ->
     {ok, log_keep, Keep};
 check_change_config(_, _) ->
     {error, invalid_config}.
+
+%% Returns a list of [{Pubkey, Balance}], where keys are ordered the same
+%% way as in Accounts. If a key doesn't correspond to an existing account,
+%% it doesn't show up in the result. Thus, unknown accounts are recognized
+%% by their absense in the response.
+%%
+get_balances(Fsm, Accounts) ->
+    gen_statem:call(Fsm, {get_balances, Accounts}).
 
 %% ======================================================================
 %% FSM initialization
@@ -1206,6 +1215,23 @@ handle_call_(_St, {change_config, Key, Value}, From, D) ->
         {error, _} = Error ->
             keep_state(D, [{reply, From, Error}])
     end;
+handle_call_(_, {get_balances, Accounts}, From, #data{ state = State } = D) ->
+    Result =
+        try {ok, lists:foldr(
+                   fun(Acct, Acc) ->
+                           case aesc_offchain_state:balance(Acct, State) of
+                               {ok, Amt} ->
+                                   [{Acct, Amt}|Acc];
+                               {error, not_found} ->
+                                   Acc
+                           end
+                   end, [], Accounts)}
+        catch
+            error:_ ->
+                {error, invalid_arguments}
+        end,
+    lager:debug("get_balances(~p) -> ~p", [Accounts, Result]),
+    keep_state(D, [{reply, From, Result}]);
 handle_call_(St, _Req, _From, D) when ?TRANSITION_STATE(St) ->
     postpone(D);
 handle_call_(_St, _Req, From, D) ->
