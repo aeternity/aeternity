@@ -424,7 +424,7 @@ assert_micro_signature(PrevNode, Node, KeyHash) ->
             ok
     end.
 
-%% Transitively compute new state trees iff
+%% Transitively compute new state trees if
 %%   - We can find the state trees of the previous node; and
 %%   - The new node is a block.
 %%
@@ -476,7 +476,7 @@ update_next_state_tree(Node, Trees, ForkInfo, State) ->
         [] -> {State1, ForkInfo#fork_info.difficulty};
         [Child|Left] ->
             %% If there is only one child, it inherits the fork id.
-            %% For more than one child, we neeed new fork_ids, which are
+            %% For more than one child, we need new fork_ids, which are
             %% the first node hash of each new fork.
             Children = [{Child, ForkInfo}|
                         [{C, ForkInfo#fork_info{fork_id = hash(C)}}
@@ -530,9 +530,10 @@ maybe_reset_key_hash(Node, ForkInfo) ->
         micro -> ForkInfo
     end.
 
-apply_and_store_state_trees(#node{hash = NodeHash} = Node, TreesIn, ForkInfoIn,
+apply_and_store_state_trees(#node{hash = NodeHash} = Node, TreesIn, ForkInfoIn0,
                             #{currently_adding := Hash} = State) ->
     try
+        ForkInfoIn = maybe_reset_key_hash(Node, ForkInfoIn0),
         case db_find_node(prev_hash(Node)) of
             error ->
                 %% This must be the genesis node
