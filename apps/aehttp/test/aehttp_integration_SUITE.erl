@@ -4764,6 +4764,26 @@ sc_ws_contract_(Config, TestName, Owner) ->
     contract_calls_(TestName, ContractPubKey, Code, AckConnPid, UpdateVolleyReverse,
                     GetDecodedResult, SenderConnPid, AckPubkey, SenderPubkey),
 
+    GetPoI =
+        fun(ConnPid) ->
+            ?WS:send_tagged(ConnPid, <<"get">>, <<"poi">>,
+                            #{contracts   => [aec_base58c:encode(contract_pubkey, ContractPubKey)],
+                              accounts    => [aec_base58c:encode(account_pubkey, SenderPubkey),
+                                              aec_base58c:encode(account_pubkey, AckPubkey)]
+                            }),
+
+                    {ok, <<"poi">>, #{<<"poi">> := P}} = ?WS:wait_for_channel_event(ConnPid, get),
+                    P
+                end,
+
+    EncodedPoI = GetPoI(SenderConnPid),
+    EncodedPoI = GetPoI(AckConnPid),
+    {ok, PoIBin} = aec_base58c:safe_decode(poi, EncodedPoI),
+    PoI = aec_trees:deserialize_poi(PoIBin),
+    {ok, _SenderAcc} = aec_trees:lookup_poi(accounts, SenderPubkey, PoI),
+    {ok, _AckAcc} = aec_trees:lookup_poi(accounts, AckPubkey, PoI),
+    {ok, _ContractAcc} = aec_trees:lookup_poi(accounts, ContractPubKey, PoI),
+    {ok, _ContractObj} = aec_trees:lookup_poi(contracts, ContractPubKey, PoI),
 
     ok = ?WS:unregister_test_for_channel_events(SenderConnPid, [sign, info, get]),
     ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, get]),

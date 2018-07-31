@@ -11,6 +11,8 @@ It:
 * Adds a database table for caching state channel data on disk
 * Fixes commitment hash calculations in naming system, to be `Hash(NameHash(name) + name_salt)` instead of `Hash(Hash(name + name_salt))`. This impacts consensus.
 * Adds a contracts in channels initial functionality.
+* Enriches channels WebSocket API with functionality for getting balances and
+  proof of inclusion.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.19.0
 
