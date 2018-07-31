@@ -4393,10 +4393,16 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
                 {RConnPid, IConnPid, RPubkey, RPrivkey,
                                     IPubkey, IPrivkey}
         end,
-    ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, update]),
+    ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, update, get]),
     ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, update]),
 
     %% sender initiates an update
+    GetBothBalances = fun(ConnPid) ->
+                              sc_ws_get_both_balances(
+                                ConnPid, StarterPubkey, AcknowledgerPubkey)
+                      end,
+    {ok, {Ba0, Bb0} = Bal0} = GetBothBalances(IConnPid),
+    ct:log("Balances before: ~p", [Bal0]),
     ?WS:send_tagged(StarterPid, <<"update">>, <<"new">>,
         #{from => aec_base58c:encode(account_pubkey, StarterPubkey),
           to => aec_base58c:encode(account_pubkey, AcknowledgerPubkey),
@@ -4430,7 +4436,12 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
     {UnsignedStateTx, _} = % same transaction that was signed
         {aetx_sign:tx(SignedStateTx), UnsignedStateTx},
 
-    ok = ?WS:unregister_test_for_channel_events(IConnPid, [sign, info, update]),
+    {ok, {Ba1, Bb1} = Bal1} = GetBothBalances(IConnPid),
+    ct:log("Balances after: ~p", [Bal1]),
+    Ba1 = Ba0 - Amount,
+    Bb1 = Bb0 + Amount,
+
+    ok = ?WS:unregister_test_for_channel_events(IConnPid, [sign, info, update, get]),
     ok = ?WS:unregister_test_for_channel_events(RConnPid, [sign, info, update]),
 
     ok.
@@ -4473,6 +4484,15 @@ sc_ws_close(Config) ->
     ok = ?WS:stop(RConnPid),
     ok.
 
+sc_ws_get_both_balances(ConnPid, PubKeyI, PubKeyR) ->
+    AccountI = aec_base58c:encode(account_pubkey, PubKeyI),
+    AccountR = aec_base58c:encode(account_pubkey, PubKeyR),
+    ?WS:send_tagged(ConnPid, <<"get">>, <<"balances">>,
+                    #{<<"accounts">> => [AccountI, AccountR]}),
+    {ok, <<"balances">>, Res} = ?WS:wait_for_channel_event(ConnPid, get),
+    [#{<<"account">> := AccountI, <<"balance">> := BI},
+     #{<<"account">> := AccountR, <<"balance">> := BR}] = Res,
+    {ok, {BI, BR}}.
 
 sc_ws_close_mutual_inititator(Config) ->
     sc_ws_close_mutual(Config, initiator).

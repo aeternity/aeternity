@@ -97,7 +97,7 @@ websocket_info({aesc_fsm, FsmPid, Msg}, #handler{fsm_pid=FsmPid}=H) ->
         {reply, Resp} -> {reply, {text, jsx:encode(Resp)}, H1}
     end;
 websocket_info(_Info, State) ->
-	  {ok, State}.
+    {ok, State}.
 
 set_channel_id(#{} = Msg, #handler{channel_id = ChId} = H) ->
     H#handler{channel_id = set_chid_if_undefined(
@@ -306,6 +306,28 @@ process_incoming(#{<<"action">> := <<"get">>,
                     {reply, error_response(R, Reason)}
             end;
         _ -> {reply, error_response(R, broken_hexcode)}
+    end;
+process_incoming(#{<<"action">> := <<"get">>,
+                   <<"tag">>    := <<"balances">>,
+                   <<"payload">> := #{<<"accounts">> := Accounts}} = R, State) ->
+    case safe_decode_account_keys(Accounts) of
+        {ok, AccountKeys} ->
+            case aesc_fsm:get_balances(
+                   fsm_pid(State), [K || {_,K} <- AccountKeys]) of
+                {ok, Balances} ->
+                    Resp = #{action  => <<"get">>,
+                             tag     => <<"balances">>,
+                             payload => [#{<<"account">> => Ai,
+                                           <<"balance">> => B}
+                                         || {Ai, A} <- AccountKeys,
+                                            {Ab, B} <- Balances,
+                                            A =:= Ab]},
+                    {reply, Resp};
+                {error, Reason} ->
+                    {reply, error_response(R, Reason)}
+            end;
+        {error, _} ->
+            {reply, error_response(R, invalid_arguments)}
     end;
 process_incoming(#{<<"action">> := <<"message">>,
                    <<"payload">> := #{<<"to">>    := ToB,
@@ -526,4 +548,15 @@ error_response(Req, Reason) ->
 hex_decode(Hex) ->
     try {ok, aeu_hex:hexstring_decode(Hex)}
     catch _:_ -> error
+    end.
+
+safe_decode_account_keys(Keys) ->
+    try {ok, lists:foldr(
+               fun(K, Acc) ->
+                       {ok, Res} = aec_base58c:safe_decode(account_pubkey, K),
+                       [{K, Res}|Acc]
+               end, [], Keys)}
+    catch
+        error:_ ->
+            {error, invalid_pubkey}
     end.

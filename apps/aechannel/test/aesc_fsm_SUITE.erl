@@ -172,7 +172,11 @@ upd_transfer(Cfg) ->
      , spec := #{ initiator := PubI
                 , responder := PubR }} = create_channel_(
                                            [{port,9326},?SLOGAN|Cfg]),
+    {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
     {I0, R0} = do_update(PubI, PubR, 2, I, R, true),
+    {BalI1, BalR1} = get_both_balances(FsmI, PubI, PubR),
+    BalI1 = BalI - 2,
+    BalR1 = BalR + 2,
     {I1, R1} = update_bench(I0, R0),
     ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
     {_I2, _} = await_signing_request(shutdown, I1),
@@ -386,6 +390,10 @@ match_tuple(F, [H|T]) ->
     end;
 match_tuple(_, _) -> error.
 
+get_both_balances(Fsm, PubI, PubR) ->
+    {ok, [{PubI, BalI},
+          {PubR, BalR}]} = rpc(dev1, aesc_fsm, get_balances, [Fsm, [PubI, PubR]]),
+    {BalI, BalR}.
 
 check_log([{Op, Type}|T], [{Op, Type, _, _}|T1]) ->
     check_log(T, T1);
