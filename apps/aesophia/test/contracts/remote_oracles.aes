@@ -1,0 +1,43 @@
+contract RemoteOracles =
+
+  public function callRegisterOracle(
+    r : address,
+    acct : address,
+    sign : signature,
+    qfee : int,
+    ttl  : int) : oracle(string, int) =
+    let f = "registerOracle"
+    let args = (acct, sign, qfee, ttl)
+    call(r, f, 0, args)
+
+  public function callCreateQuery(
+    r : address,
+    value : int,
+    o    : oracle(string, int),
+    q    : string,
+    qfee : int,
+    qttl : int,
+    rttl : int) : oracle_query(string, int) =
+    let f = "createQuery"
+    let args = (o, q, qfee, qttl, rttl)
+    require(value =< Call.value, "insufficient value")
+    call(r, f, value, args)
+
+  public function callRespond(
+    r : address,
+    o    : oracle(string, int),
+    q    : oracle_query(string, int),
+    sign : signature,
+    r    : int) =
+    let f = "respond"
+    let args = (o, q, sign, r)
+    call(r, f, 0, args)
+
+  private function call(r : address, f : string, value : int, args) =
+    raw_call(r, f, 1234567890, value, args) // TODO Use Call.gas when available
+
+  private function abort(err : string) =
+    switch(0) 1 => ()
+
+  private function require(b : bool, err : string) =
+    if(!b) abort(err)
