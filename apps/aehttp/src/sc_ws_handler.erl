@@ -317,11 +317,11 @@ process_incoming(#{<<"action">> := <<"get">>,
                 {ok, Balances} ->
                     Resp = #{action  => <<"get">>,
                              tag     => <<"balances">>,
-                             payload => [#{<<"account">> => Ai,
-                                           <<"balance">> => B}
-                                         || {Ai, A} <- AccountKeys,
-                                            {Ab, B} <- Balances,
-                                            A =:= Ab]},
+                             payload => [#{<<"account">> => AcctExt,
+                                           <<"balance">> => Bal}
+                                         || {AcctExt, AcctInt} <- AccountKeys,
+                                            {Acct, Bal} <- Balances,
+                                            AcctInt =:= Acct]},
                     {reply, Resp};
                 {error, Reason} ->
                     {reply, error_response(R, Reason)}
