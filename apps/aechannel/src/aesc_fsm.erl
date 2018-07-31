@@ -4,14 +4,18 @@
 -export([start_link/1]).
 
 %% API
--export([initiate/3,     %% (host(), port(), Opts :: #{})
-         respond/2,      %% (port(), Opts :: #{})
-         upd_transfer/4, %% (fsm() , from(), to(), amount())
-         upd_deposit/2,  %% (fsm() , map())
-         upd_withdraw/2, %% (fsm() , map())
+
+-export([initiate/3,              %% (host(), port(), Opts :: #{}
+         respond/2,               %% (port(), Opts :: #{})
+         upd_transfer/4,          %% (fsm() , from(), to(), amount())
+         upd_deposit/2,           %% (fsm() , map())
+         upd_withdraw/2,          %% (fsm() , map())
+         upd_create_contract/2,   %%
+         upd_call_contract/2,     %%
+         get_contract_call/4,     %% (fsm(), contract_id(), caller(), round())
          leave/1,
-         shutdown/1,     %% (fsm())
-         client_died/1,  %% (fsm())
+         shutdown/1,              %% (fsm())
+         client_died/1,           %% (fsm())
          inband_msg/3,
          get_state/1]).
 
@@ -294,6 +298,26 @@ upd_deposit(Fsm, #{amount := Amt} = Opts) when is_integer(Amt), Amt > 0 ->
 upd_withdraw(Fsm, #{amount := Amt} = Opts) when is_integer(Amt), Amt > 0 ->
     lager:debug("upd_withdraw(~p)", [Opts]),
     gen_statem:call(Fsm, {upd_withdraw, Opts}).
+
+upd_create_contract(Fsm, #{vm_version := _,
+                           deposit    := Amt,
+                           code       := _,
+                           call_data  := _} = Opts) when is_integer(Amt), Amt >= 0 ->
+    lager:debug("upd_create_contract(~p)", [Opts]),
+    gen_statem:call(Fsm, {upd_create_contract, Opts}).
+
+
+upd_call_contract(Fsm, #{contract    := _,
+                         vm_version  := _,
+                         amount      := Amt,
+                         call_data  := _} = Opts) when is_integer(Amt), Amt >= 0 ->
+    lager:debug("upd_call_contract(~p)", [Opts]),
+    CallStack = maps:get(call_stack, Opts, []),
+    gen_statem:call(Fsm, {upd_call_contract, Opts#{call_stack => CallStack}}).
+
+get_contract_call(Fsm, Contract, Caller, Round) when is_integer(Round), Round > 0 ->
+    lager:debug("get_contract_call(~p, ~p, ~p)", [Contract, Caller, Round]),
+    gen_statem:call(Fsm, {get_contract_call, Contract, Caller, Round}).
 
 inband_msg(Fsm, To, Msg) ->
     lager:debug("inband_msg(~p, ~p, ~p)", [Fsm, To, Msg]),
@@ -1114,6 +1138,30 @@ handle_call_(open, leave, From, #data{} = D) ->
     D1 = send_leave_msg(D),
     gen_statem:reply(From, ok),
     next_state(awaiting_leave_ack, D1);
+handle_call_(open, {upd_create_contract, Opts}, From, #data{} = D) ->
+    FromPub = my_account(D),
+    case maps:find(from, Opts) of
+        {ok, FromPub} -> ok;
+        {ok, _Other}  -> error(conflicting_accounts);
+        error         -> ok
+    end,
+    new_contract_tx_for_signing(Opts#{owner => FromPub}, From, D);
+handle_call_(open, {upd_call_contract, Opts}, From, #data{} = D) ->
+    FromPub = my_account(D),
+    case maps:find(from, Opts) of
+        {ok, FromPub} -> ok;
+        {ok, _Other}  -> error(conflicting_accounts);
+        error         -> ok
+    end,
+    call_contract_tx_for_signing(Opts#{caller => FromPub}, From, D);
+handle_call_(open, {get_contract_call, Contract, Caller, Round}, From,
+             #data{state = State} = D) ->
+    Response =
+        case aesc_offchain_state:get_contract_call(Contract, Caller, Round, State) of
+            {error, call_not_found} -> {error, call_not_found};
+            {ok, Call} -> {ok, Call}
+        end,
+    keep_state(D, [{reply, From, Response}]);
 handle_call_(open, shutdown, From, #data{state = State} = D) ->
     try  {_Round, Latest} = aesc_offchain_state:get_latest_signed_tx(State),
          {ok, CloseTx} = close_mutual_tx(Latest, D),
@@ -1384,7 +1432,7 @@ check_accept_msg(#{ chain_hash           := ChainHash
 
 dep_tx_for_signing(#{from := From, amount := Amount} = Opts,
                    #data{on_chain_id = ChanId, state=State}) ->
-    Updates = [aesc_offchain_state:op_deposit(From, Amount)],
+    Updates = [aesc_offchain_update:op_deposit(aec_id:create(account, From), Amount)],
     UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State, Opts),
     {channel_offchain_tx, UpdatedOffchainTx} = aetx:specialize_type(UpdatedStateTx),
     StateHash = aesc_offchain_tx:state_hash(UpdatedOffchainTx),
@@ -1403,7 +1451,7 @@ dep_tx_for_signing(#{from := From, amount := Amount} = Opts,
 
 wdraw_tx_for_signing(#{to := To, amount := Amount} = Opts,
                      #data{on_chain_id = ChanId, state=State}) ->
-    Updates = [aesc_offchain_state:op_withdraw(To, Amount)],
+    Updates = [aesc_offchain_update:op_withdraw(aec_id:create(account, To), Amount)],
     UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State, Opts),
     {channel_offchain_tx, UpdatedOffchainTx} = aetx:specialize_type(UpdatedStateTx),
     StateHash = aesc_offchain_tx:state_hash(UpdatedOffchainTx),
@@ -1419,6 +1467,44 @@ wdraw_tx_for_signing(#{to := To, amount := Amount} = Opts,
     lager:debug("withdraw_tx Opts = ~p", [Opts2]),
     {ok, _} = Ok = aesc_withdraw_tx:new(Opts2),
     Ok.
+
+new_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts } = D) ->
+    #{owner       := Owner,
+      vm_version  := VmVersion,
+      code        := Code,
+      deposit     := Deposit,
+      call_data   := CallData} = Opts,
+    Updates = [aesc_offchain_update:op_new_contract(aec_id:create(account, Owner),
+                                                    VmVersion, Code, Deposit, CallData)],
+    try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State, ChannelOpts),
+         D1 = request_signing(?UPDATE, Tx1, D),
+         gen_statem:reply(From, ok),
+         next_state(awaiting_signature, D1)
+    catch
+        error:Reason ->
+            lager:error("CAUGHT ~p, trace = ~p", [Reason, erlang:get_stacktrace()]),
+            keep_state(D, [{reply, From, {error, Reason}}])
+    end.
+
+call_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts } = D) ->
+    #{caller      := Caller,
+      contract    := ContractPubKey,
+      vm_version  := VmVersion,
+      amount      := Amount,
+      call_data   := CallData,
+      call_stack  := CallStack} = Opts,
+    Updates = [aesc_offchain_update:op_call_contract(aec_id:create(account, Caller),
+                                                     aec_id:create(contract, ContractPubKey),
+                                                     VmVersion, Amount, CallData, CallStack)],
+    try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State, ChannelOpts),
+         D1 = request_signing(?UPDATE, Tx1, D),
+         gen_statem:reply(From, ok),
+         next_state(awaiting_signature, D1)
+    catch
+        error:Reason ->
+            lager:error("CAUGHT ~p, trace = ~p", [Reason, erlang:get_stacktrace()]),
+            keep_state(D, [{reply, From, {error, Reason}}])
+    end.
 
 create_tx_for_signing(#data{opts = #{initiator := Initiator,
                                      responder := Responder} = Opts,
@@ -1630,7 +1716,7 @@ check_deposit_update_msg(#{ channel_id := ChanId
                                      aetx_sign:tx(SignedDepTx)),
                     From = ModD:origin(TxDI),
                     Amount = ModD:amount(TxDI),
-                    Updates = [aesc_offchain_state:op_deposit(From, Amount)],
+                    Updates = [aesc_offchain_update:op_deposit(aec_id:create(account, From), Amount)],
                     NewStTx = aesc_offchain_state:make_update_tx(Updates, State, Opts),
                     case NewStTx == UpdTx of
                         true ->
@@ -1714,7 +1800,7 @@ check_withdraw_update_msg(#{ channel_id := ChanId
                                      aetx_sign:tx(SignedDepTx)),
                     From = ModD:origin(TxDI),
                     Amount = ModD:amount(TxDI),
-                    Updates = [aesc_offchain_state:op_withdraw(From, Amount)],
+                    Updates = [aesc_offchain_update:op_withdraw(aec_id:create(account, From), Amount)],
                     NewStTx = aesc_offchain_state:make_update_tx(Updates, State, Opts),
                     case NewStTx == UpdTx of
                         true ->
@@ -1822,7 +1908,8 @@ check_update_ack_(SignedTx, HalfSignedTx) ->
 
 handle_upd_transfer(FromPub, ToPub, Amount, From, #data{ state = State
                                                        , opts = Opts } = D) ->
-    Updates = [aesc_offchain_state:op_transfer(FromPub, ToPub, Amount)],
+    Updates = [aesc_offchain_update:op_transfer(aec_id:create(account, FromPub),
+                                                aec_id:create(account, ToPub), Amount)],
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State, Opts),
          D1 = request_signing(?UPDATE, Tx1, D),
          gen_statem:reply(From, ok),

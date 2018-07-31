@@ -1,6 +1,7 @@
 -module(aesc_offchain_state).
 
 -include_lib("apps/aecore/include/blocks.hrl").
+-include("apps/aecontract/src/aecontract.hrl").
 
 -record(state, { trees                  :: aec_trees:trees()
                , signed_txs = []        :: [aetx_sign:signed_tx()]
@@ -9,15 +10,7 @@
 
 -opaque state() :: #state{}.
 
--define(OP_TRANSFER, 0).
--define(OP_WITHDRAW, 1).
--define(OP_DEPOSIT , 2).
-
--type operation() :: ?OP_TRANSFER | ?OP_WITHDRAW | ?OP_DEPOSIT.
-
--opaque update() :: {operation(), aec_keys:pubkey(), aec_keys:pubkey(), non_neg_integer()}.
-
--export_type([state/0, update/0]).
+-export_type([state/0]).
 
 -export([ new/1                       %%  (Opts) -> {ok, Tx, State}
         , check_initial_update_tx/3   %%  (SignedTx, State, Opts)
@@ -33,12 +26,10 @@
         , get_fallback_state/1        %%  (State) -> {Round, State'}
         , fallback_to_stable_state/1  %%  (State) -> State'
         , hash/1                      %%  (State) -> hash()
-        , update_for_client/1
         , balance/2                   %%  (Pubkey, State) -> Balance
         ]).
--export([ op_transfer/3
-        , op_deposit/2
-        , op_withdraw/2
+
+-export([get_contract_call/4
         ]).
 
 -spec new(map()) -> {ok, state()}.
@@ -174,66 +165,35 @@ check_update_tx_(F, Mod, RefTx, #state{} = State, Opts) ->
 verify_signatures(SignedTx, #state{trees = Trees}) ->
     aetx_sign:verify(SignedTx, Trees).
 
--spec make_update_tx(list(update()), state(), map()) -> aetx:tx().
+-spec get_contract_call(aect_contracts:id(), aec_keys:pubkey(),
+                        non_neg_integer(), state()) -> {error, call_not_found}
+                                                    |  {ok, aect_call:call()}.
+
+get_contract_call(Contract, Caller, Round, #state{trees=Trees}) ->
+    aect_channel_contract:get_call(Contract, Caller, Round, Trees).
+
+-spec make_update_tx(list(aesc_offchain_update:update()), state(), map()) -> aetx:tx().
 make_update_tx(Updates, #state{signed_txs=[SignedTx|_], trees=Trees}, Opts) ->
     Tx = aetx_sign:tx(SignedTx),
     {Mod, TxI} = aetx:specialize_callback(Tx),
-    Round = Mod:round(TxI),
     ChannelId = Mod:channel_id(TxI),
-    Trees1 = apply_updates(Updates, Trees, Opts),
+
+    NextRound = Mod:round(TxI) + 1,
+
+    Trees1 = apply_updates(Updates, NextRound, Trees, Opts),
     StateHash = aec_trees:hash(Trees1),
     {ok, OffchainTx} =
         aesc_offchain_tx:new(#{channel_id    => aec_id:create(channel, ChannelId),
                               state_hash     => StateHash,
                               updates        => Updates,
-                              round          => Round + 1}),
+                              round          => NextRound}),
     OffchainTx.
 
-apply_updates(Updates, Trees, Opts) ->
+apply_updates(Updates, Round, Trees, Opts) ->
     lists:foldl(
-        fun(U, AccumTrees) -> modify_trees(U, AccumTrees, Opts) end,
+        fun(U, AccumTrees) -> aesc_offchain_update:apply_on_trees(U, AccumTrees, Round, Opts) end,
         Trees,
         Updates).
-
--spec modify_trees(update(), aec_trees:trees(), map()) -> aec_trees:trees().
-modify_trees({?OP_TRANSFER, From, To, Amount}, Trees0, Opts) ->
-    AccountTrees = aec_trees:accounts(Trees0),
-    AccFrom0 = aec_accounts_trees:get(From, AccountTrees),
-    AccTo0 = aec_accounts_trees:get(To, AccountTrees),
-    FromBalance = aec_accounts:balance(AccFrom0),
-    check_min_amt(FromBalance - Amount, Opts),
-    Nonce = aec_accounts:nonce(AccFrom0),
-    {ok, AccFrom} = aec_accounts:spend(AccFrom0, Amount, Nonce + 1),
-    {ok, AccTo} = aec_accounts:earn(AccTo0, Amount),
-    AccountTrees1 =
-        lists:foldl(
-            fun(Acc, Accum) -> aec_accounts_trees:enter(Acc, Accum) end,
-            AccountTrees,
-            [AccFrom, AccTo]),
-    aec_trees:set_accounts(Trees0, AccountTrees1);
-modify_trees({?OP_DEPOSIT, To, To, Amount}, Trees, _Opts) ->
-    AccountTrees = aec_trees:accounts(Trees),
-    AccTo0 = aec_accounts_trees:get(To, AccountTrees),
-    {ok, AccTo} = aec_accounts:earn(AccTo0, Amount),
-    AccountTrees1 = aec_accounts_trees:enter(AccTo, AccountTrees),
-    aec_trees:set_accounts(Trees, AccountTrees1);
-modify_trees({?OP_WITHDRAW, From, From, Amount}, Trees, Opts) ->
-    AccountTrees = aec_trees:accounts(Trees),
-    AccFrom0 = aec_accounts_trees:get(From, AccountTrees),
-    FromBalance = aec_accounts:balance(AccFrom0),
-    check_min_amt(FromBalance - Amount, Opts),
-    Nonce = aec_accounts:nonce(AccFrom0),
-    {ok, AccFrom} = aec_accounts:spend(AccFrom0, Amount, Nonce), %no nonce bump
-    AccountTrees1 = aec_accounts_trees:enter(AccFrom, AccountTrees),
-    aec_trees:set_accounts(Trees, AccountTrees1).
-
-check_min_amt(Amt, Opts) ->
-    Reserve = maps:get(channel_reserve, Opts, 0),
-    if Amt < Reserve ->
-            erlang:error(insufficient_balance);
-       true ->
-            Amt
-    end.
 
 run_extra_checks(none, _, _) -> ok;
 run_extra_checks(F, Mod, Tx) when is_function(F, 2) ->
@@ -257,7 +217,7 @@ add_signed_tx(SignedTx, #state{signed_txs=Txs0}=State, Opts) ->
             Trees =
                 lists:foldl(
                     fun(Update, TrAccum) ->
-                        TrAccum1 = modify_trees(Update, TrAccum, Opts),
+                        TrAccum1 = aesc_offchain_update:apply_on_trees(Update, TrAccum, Mod:round(TxI), Opts),
                         TrAccum1
                     end,
                     State#state.trees,
@@ -281,18 +241,6 @@ get_latest_signed_tx(#state{signed_txs=[SignedTx|_]}) ->
 get_fallback_state(#state{signed_txs=[SignedTx|_]}=State) -> %% half_signed_txs= []?
     {tx_round(aetx_sign:tx(SignedTx)), State#state{half_signed_txs=[]}}.
 
--spec op_transfer(aec_keys:pubkey(), aec_keys:pubkey(), non_neg_integer()) -> update().
-op_transfer(From, To, Amount) ->
-    {?OP_TRANSFER, From, To, Amount}.
-
--spec op_deposit(aec_keys:pubkey(), non_neg_integer()) -> update().
-op_deposit(Acct, Amount) ->
-    {?OP_DEPOSIT, Acct, Acct, Amount}.
-
--spec op_withdraw(aec_keys:pubkey(), non_neg_integer()) -> update().
-op_withdraw(Acct, Amount) ->
-    {?OP_WITHDRAW, Acct, Acct, Amount}.
-
 tx_round(Tx) ->
     {Mod, TxI} = aetx:specialize_callback(Tx),
     Mod:round(TxI).
@@ -311,26 +259,12 @@ mutually_signed(SignedTx) ->
             false
     end.
 
--spec update_for_client(update()) -> map().
-update_for_client({?OP_TRANSFER, From, To, Amount}) ->
-    #{<<"op">> => <<"transfer">>,
-      <<"from">> => From,
-      <<"to">>   => To,
-      <<"am">>   => Amount};
-update_for_client({?OP_WITHDRAW, To, To, Amount}) ->
-    #{<<"op">> => <<"withdraw">>,
-      <<"to">>   => To,
-      <<"am">>   => Amount};
-update_for_client({?OP_DEPOSIT, From, From, Amount}) ->
-    #{<<"op">> => <<"deposit">>,
-      <<"from">>   => From,
-      <<"am">>   => Amount}.
-
 -spec balance(aec_keys:pubkey(), state()) -> {ok, non_neg_integer()}
                                            | {error, not_found}.
 balance(Pubkey, #state{trees=Trees}) ->
-    AccTrees = aec_trees:accounts(Trees), 
+    AccTrees = aec_trees:accounts(Trees),
     case aec_accounts_trees:lookup(Pubkey, AccTrees) of
         none -> {error, not_found};
         {value, Account} -> {ok, aec_accounts:balance(Account)}
     end.
+

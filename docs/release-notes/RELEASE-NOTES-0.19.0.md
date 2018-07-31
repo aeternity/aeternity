@@ -10,6 +10,7 @@ It:
 * Refines status code 400 as 404 for call object retrieval API `/tx/{tx_hash}/contract-call` when transaction still pending.
 * Adds a database table for caching state channel data on disk
 * Fixes commitment hash calculations in naming system, to be `Hash(NameHash(name) + name_salt)` instead of `Hash(Hash(name + name_salt))`. This impacts consensus.
+* Adds a contracts in channels initial functionality.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.19.0
 

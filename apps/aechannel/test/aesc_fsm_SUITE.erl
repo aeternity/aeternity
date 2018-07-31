@@ -867,7 +867,9 @@ if_debug(_, _, Y) -> Y.
 
 apply_updates([], R) ->
     R;
-apply_updates([{?OP_TRANSFER, From, To, Amount} | T], R) ->
+apply_updates([{?OP_TRANSFER, FromId, ToId, Amount} | T], R) ->
+    From = aec_id:specialize(FromId, account),
+    To = aec_id:specialize(ToId, account),
     #{ initiator_amount := IAmt0
      , responder_amount := RAmt0 } = R,
     {IAmt, RAmt} =

@@ -12,5 +12,5 @@
 
 -callback round(aetx:tx_instance()) -> aesc_channels:seq_number().
 
--callback updates(aetx:tx_instance()) -> [aesc_offchain_state:update()].
+-callback updates(aetx:tx_instance()) -> [aesc_offchain_update:update()].
 

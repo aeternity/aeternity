@@ -253,7 +253,7 @@ channel_id(#channel_withdraw_tx{} = Tx) -> channel_hash(Tx).
 state_hash(#channel_withdraw_tx{state_hash = StateHash}) -> StateHash.
 
 updates(#channel_withdraw_tx{amount = Amount} = Tx) ->
-    [aesc_offchain_state:op_withdraw(to_pubkey(Tx), Amount)].
+    [aesc_offchain_update:op_withdraw(to(Tx), Amount)].
 
 round(#channel_withdraw_tx{round = Round}) ->
     Round.

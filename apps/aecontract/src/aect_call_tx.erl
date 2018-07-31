@@ -165,9 +165,9 @@ process(#contract_call_tx{nonce = Nonce,
 
     %% Create the call.
     Call0 = aect_call:new(caller_pubkey(CallTx),
-			  nonce(CallTx),
-			  contract_pubkey(CallTx),
-			  Height,
+                          nonce(CallTx),
+                          contract_pubkey(CallTx),
+                          Height,
                           aect_call_tx:gas_price(CallTx)),
 
     %% Run the contract code. Also computes the amount of gas left and updates
@@ -210,30 +210,30 @@ spend(CallerPubKey, CalleePubKey, Value, Nonce,_Context, Height, Trees,
     Trees2.
 
 run_contract(#contract_call_tx{ nonce  = _Nonce
-			      , vm_version = VmVersion
-			      , amount     = Amount
-			      , gas        = Gas
-			      , gas_price  = GasPrice
-			      , call_data  = CallData
-			      , call_stack = CallStack
-			      } = Tx, Call, Height, Trees) ->
+            , vm_version = VmVersion
+            , amount     = Amount
+            , gas        = Gas
+            , gas_price  = GasPrice
+            , call_data  = CallData
+            , call_stack = CallStack
+            } = Tx, Call, Height, Trees) ->
     Caller        = caller_pubkey(Tx),
     ContractPubKey= contract_pubkey(Tx),
     ContractsTree = aec_trees:contracts(Trees),
     Contract      = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
     Code          = aect_contracts:code(Contract),
     CallDef = #{ caller     => Caller
-	       , contract   => ContractPubKey
-	       , gas        => Gas
-	       , gas_price  => GasPrice
-	       , call_data  => CallData
-	       , amount     => Amount
-	       , call_stack => CallStack
-	       , code       => Code
-	       , call       => Call
-	       , height     => Height
-	       , trees      => Trees
-	       },
+         , contract   => ContractPubKey
+         , gas        => Gas
+         , gas_price  => GasPrice
+         , call_data  => CallData
+         , amount     => Amount
+         , call_stack => CallStack
+         , code       => Code
+         , call       => Call
+         , height     => Height
+         , trees      => Trees
+         },
     aect_dispatch:run(VmVersion, CallDef).
 
 serialize(#contract_call_tx{caller     = CallerId,

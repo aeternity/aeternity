@@ -253,7 +253,7 @@ channel_id(#channel_deposit_tx{} = Tx) -> channel_hash(Tx).
 state_hash(#channel_deposit_tx{state_hash = StateHash}) -> StateHash.
 
 updates(#channel_deposit_tx{amount = Amount} = Tx) ->
-    [aesc_offchain_state:op_deposit(from_pubkey(Tx), Amount)].
+    [aesc_offchain_update:op_deposit(from(Tx), Amount)].
 
 round(#channel_deposit_tx{round = Round}) ->
     Round.
