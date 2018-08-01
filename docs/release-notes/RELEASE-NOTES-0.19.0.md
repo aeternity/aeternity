@@ -14,6 +14,9 @@ It:
   no forcing progress on-chain yet - this does not impact consesus.
 * Enriches channels WebSocket API with functionality for getting balances and
   proof of inclusion.
+* Expands race detection in channels and adds an error_code field to the
+  channel protocol error messages for future improvements in error handling.
+  This does not affect the on-chain protocol.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.19.0
 
