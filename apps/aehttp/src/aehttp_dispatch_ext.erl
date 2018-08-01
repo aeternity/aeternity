@@ -848,25 +848,6 @@ handle_request('GetAccountsBalances', _Req, _Context) ->
             {403, [], #{reason => <<"Balances not enabled">>}}
     end;
 
-handle_request('GetVersion', _Req, _Context) ->
-    {ok, Version} = aehttp_logic:version(),
-    {ok, Revision} = aehttp_logic:revision(),
-    {ok, GenHash} = aehttp_logic:get_genesis_hash(),
-    Resp = #{<<"version">> => Version,
-             <<"revision">> => Revision,
-             <<"genesis_hash">> => GenHash},
-    {200, [], aehttp_api_parser:encode(node_version, Resp)};
-
-handle_request('GetInfo', _Req, _Context) ->
-    case aeu_env:user_config_or_env([<<"http">>, <<"debug">>],
-                                    aehttp, enable_debug_endpoints, false) of
-        true ->
-            {ok, TimeSummary} = aehttp_logic:get_top_blocks_time_summary(30),
-            {200, [], #{last_30_blocks_time => TimeSummary}};
-        false ->
-            {403, [], #{reason => <<"Info not enabled">>}}
-    end;
-
 handle_request('CompileContract', Req, _Context) ->
     case Req of
         #{'Contract' :=

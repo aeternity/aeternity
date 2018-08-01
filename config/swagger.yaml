@@ -2116,42 +2116,6 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
-  /version:
-    get:
-      tags:
-        - external
-        - debug
-      operationId: GetVersion
-      description: 'Get node''s version'
-      produces:
-        - application/json
-      parameters:
-      responses:
-        '200':
-          description: successful operation
-          schema:
-            $ref: '#/definitions/Version'
-      security:
-  /info:
-    get:
-      tags:
-        - external
-        - debug
-      operationId: GetInfo
-      description: 'Get node info'
-      produces:
-        - application/json
-      parameters:
-      responses:
-        '200':
-          description: successful operation
-          schema:
-            $ref: '#/definitions/Info'
-        '403':
-          description: Info not enabled
-          schema:
-            $ref: '#/definitions/Error'
-      security:
   /debug/peers:
     get:
       tags:
@@ -2278,29 +2242,6 @@ paths:
             $ref: '#/definitions/Calldata'
         '403':
           description: Invalid contract
-          schema:
-            $ref: '#/definitions/Error'
-  /peer/key:
-    get:
-      tags:
-        - external
-        - gossip
-      operationId: 'GetPeerKey'
-      description: 'Get node''s public peer key'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      responses:
-        '200':
-          description: 'Node''s peer public key'
-          schema:
-            type: object
-            properties:
-              pubkey:
-                $ref: '#/definitions/EncodedHash'
-        '404':
-          description: No key pair
           schema:
             $ref: '#/definitions/Error'
 
@@ -3140,36 +3081,6 @@ definitions:
       balance:
         type: integer
         format: int64
-  Version:
-    type: object
-    properties:
-      version:
-        type: string
-      revision:
-        type: string
-      genesis_hash:
-        type: string
-  Info:
-    type: object
-    properties:
-      last_30_blocks_time:
-        type: array
-        items:
-          $ref: '#/definitions/BlockTimeSummary'
-  BlockTimeSummary:
-    type: object
-    properties:
-      height:
-        type: integer
-        format: int64
-      time:
-        type: integer
-        format: int64
-      time_delta_to_parent:
-        type: integer
-        format: int64
-      difficulty:
-        type: number
   Status:
     type: object
     properties:
