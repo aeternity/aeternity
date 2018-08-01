@@ -1677,8 +1677,8 @@ lookup_sample_test() ->
 bucket_index_test_() -> [
     {"Unverified bucket index selection for same source group",
      {timeout, 100, fun test_unverified_bucket_source_group_selection/0}},
-    {"Unverified bucket index selection for same souce and peer group",
-     {timeout, 100, fun test_unverified_bucker_groups_selection/0}},
+    {"Unverified bucket index selection for same source and peer group",
+     {timeout, 100, fun test_unverified_bucket_groups_selection/0}},
     {"Verified bucket index selection for same peer group",
      {timeout, 100, fun test_verified_bucket_peer_group_selection/0}}
 ].
@@ -1711,7 +1711,7 @@ test_unverified_bucket_source_group_selection() ->
 %% Tests that for the same source group and peer group, there is at most 4
 %% possible unverified buckets selected.
 %% Checks that at least 90% of the buckets get selected during the test.
-test_unverified_bucker_groups_selection() ->
+test_unverified_bucket_groups_selection() ->
     PoolOpts = [
         {unver_bcount, 1024},
         {unver_source_shard, 64},
