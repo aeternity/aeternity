@@ -393,49 +393,6 @@ handle_request('GetStatus', _Params, _Context) ->
        <<"peer-count">>                 => PeerCount,
        <<"pending-transactions-count">> => PendingTxsCount}};
 
-handle_request('GetBlockGenesis', Req, _Context) ->
-    get_block(fun aehttp_logic:get_block_genesis/0, Req);
-
-handle_request('GetBlockLatest', Req, _Context) ->
-    get_block(fun aehttp_logic:get_block_latest/0, Req);
-
-handle_request('GetKeyBlockByHeightObsolete', Req, _Context) ->
-    Height = maps:get('height', Req),
-    get_block(fun() -> aehttp_logic:get_key_block_by_height(Height) end, Req);
-
-
-handle_request('GetBlockByHash', Req, _Context) ->
-    case aec_base58c:safe_decode(block_hash, maps:get('hash', Req)) of
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid hash">>}};
-        {ok, Hash} ->
-            get_block(fun() -> aehttp_logic:get_block_by_hash(Hash) end, Req)
-    end;
-
-handle_request('GetHeaderByHash', Req, _Context) ->
-    case aec_base58c:safe_decode(block_hash, maps:get('hash', Req)) of
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid hash">>}};
-        {ok, Hash} ->
-            case aehttp_logic:get_block_by_hash(Hash) of
-                {ok, Block} ->
-                    {200, [], aehttp_api_parser:encode(header, Block)};
-                {error, block_not_found} ->
-                    {404, [], #{reason => <<"Header not found">>}}
-            end
-    end;
-
-handle_request('GetKeyHeaderByHeight', Req, _Context) ->
-    Height = maps:get('height', Req),
-    case aehttp_logic:get_key_block_by_height(Height) of
-        {ok, Block} ->
-            Resp = aehttp_api_parser:encode(header, Block),
-            lager:debug("Resp = ~p", [pp(Resp)]),
-            {200, [], Resp};
-        {error, chain_too_short} ->
-            {400, [], #{reason => <<"Chain too short">>}}
-    end;
-
 handle_request('GetTxs', _Req, _Context) ->
     {ok, Txs0} = aec_tx_pool:peek(infinity),
     lager:debug("GetTxs : ~p", [pp(Txs0)]),
