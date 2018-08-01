@@ -928,6 +928,7 @@ init_per_testcase(post_oracle_response, Config) ->
     {post_oracle_query, SavedConfig} = ?config(saved_config, Config),
     [{sender_pubkey, ?config(sender_pubkey, SavedConfig)},
      {oracle_pubkey, ?config(oracle_pubkey, SavedConfig)},
+     {query, ?config(query, SavedConfig)},
      {query_id, ?config(query_id, SavedConfig)},
      {fee, 10},
      {response, <<"Hejsan">>} | init_per_testcase_all(Config)];
@@ -1717,12 +1718,13 @@ post_oracle_query(Config) ->
     ?assertEqual(SenderPubkey, maps:get(<<"sender">>, Query)),
     ?assertEqual(OraclePubkey, maps:get(<<"oracle_id">>, Query)),
     QueryId = maps:get(<<"query_id">>, Query),
-    Config1 = [{query_id, QueryId} | Config],
-    {save_config, save_config([sender_pubkey, oracle_pubkey, query_id], Config1)}.
+    Config1 = [{query, ?config(query, Config)}, {query_id, QueryId} | Config],
+    {save_config, save_config([sender_pubkey, oracle_pubkey, query, query_id], Config1)}.
 
 post_oracle_response(Config) ->
     Node = ?config(node, Config),
     OraclePubkey = ?config(oracle_pubkey, Config),
+    Query = ?config(query, Config),
     QueryId = ?config(query_id, Config),
     Response = ?config(response, Config),
     TxArgs =
@@ -1738,7 +1740,8 @@ post_oracle_response(Config) ->
     {ok, 200, Resp1} = get_oracles_query_by_pubkey_and_query_id(OraclePubkey, QueryId),
     ?assertEqual(QueryId, maps:get(<<"query_id">>, Resp1)),
     ?assertEqual(OraclePubkey, maps:get(<<"oracle_id">>, Resp1)),
-    ?assertEqual(aec_base58c:encode(Response), maps:get(<<"response">>, Resp1)),
+    ?assertEqual({ok, Query}, aec_base58c:safe_decode(oracle_query, maps:get(<<"query">>, Resp1))),
+    ?assertEqual({ok, Response}, aec_base58c:safe_decode(oracle_response, maps:get(<<"response">>, Resp1))),
     ok.
 
 get_oracles_by_pubkey_sut(Pubkey) ->

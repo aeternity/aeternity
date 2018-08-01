@@ -1,7 +1,6 @@
 -module(aec_base58c).
 
--export([encode/1,
-         encode/2,
+-export([encode/2,
          decode/1,
          safe_decode/2,
          byte_size_for_type/1]).
@@ -14,7 +13,9 @@
                     | transaction
                     | tx_hash
                     | oracle_pubkey
+                    | oracle_query
                     | oracle_query_id
+                    | oracle_response
                     | account_pubkey
                     | signature
                     | name
@@ -28,10 +29,6 @@
 
 -type payload() :: binary().
 -type encoded() :: binary().
-
--spec encode(payload()) -> encoded().
-encode(Payload) ->
-    base58_check(Payload).
 
 -spec encode(known_type(), payload() | aec_id:id()) -> encoded().
 encode(id_hash, Payload) ->
@@ -140,7 +137,9 @@ type2pfx(contract_pubkey)  -> <<"ct">>;
 type2pfx(transaction)      -> <<"tx">>;
 type2pfx(tx_hash)          -> <<"th">>;
 type2pfx(oracle_pubkey)    -> <<"ok">>;
+type2pfx(oracle_query)     -> <<"ov">>;
 type2pfx(oracle_query_id)  -> <<"oq">>;
+type2pfx(oracle_response)  -> <<"or">>;
 type2pfx(account_pubkey)   -> <<"ak">>;
 type2pfx(signature)        -> <<"sg">>;
 type2pfx(commitment)       -> <<"cm">>;
@@ -157,7 +156,9 @@ pfx2type(<<"ct">>) -> contract_pubkey;
 pfx2type(<<"tx">>) -> transaction;
 pfx2type(<<"th">>) -> tx_hash;
 pfx2type(<<"ok">>) -> oracle_pubkey;
+pfx2type(<<"ov">>) -> oracle_query;
 pfx2type(<<"oq">>) -> oracle_query_id;
+pfx2type(<<"or">>) -> oracle_response;
 pfx2type(<<"ak">>) -> account_pubkey;
 pfx2type(<<"sg">>) -> signature;
 pfx2type(<<"cm">>) -> commitment;
@@ -176,7 +177,9 @@ byte_size_for_type(contract_pubkey)  -> 32;
 byte_size_for_type(transaction)      -> not_applicable;
 byte_size_for_type(tx_hash)          -> 32;
 byte_size_for_type(oracle_pubkey)    -> 32;
+byte_size_for_type(oracle_query)     -> not_applicable;
 byte_size_for_type(oracle_query_id)  -> 32;
+byte_size_for_type(oracle_response)  -> not_applicable;
 byte_size_for_type(account_pubkey)   -> 32;
 byte_size_for_type(signature)        -> 64;
 byte_size_for_type(name)             -> not_applicable;

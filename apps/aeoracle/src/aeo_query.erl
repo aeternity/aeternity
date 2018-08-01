@@ -191,8 +191,8 @@ serialize_for_client(#query{} = I) ->
      , <<"sender">>       => aec_base58c:encode(account_pubkey, sender_address(I))
      , <<"sender_nonce">> => sender_nonce(I)
      , <<"oracle_id">>    => aec_base58c:encode(oracle_pubkey, oracle_address(I))
-     , <<"query">>        => aec_base58c:encode(query(I))
-     , <<"response">>     => aec_base58c:encode(Response)
+     , <<"query">>        => aec_base58c:encode(oracle_query, query(I))
+     , <<"response">>     => aec_base58c:encode(oracle_response, Response)
      , <<"expires">>      => expires(I)
      , <<"response_ttl">> => #{ <<"type">>  => <<"delta">>
                               , <<"value">> => ResponseTtlValue
