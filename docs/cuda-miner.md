@@ -7,7 +7,7 @@ The release packages do not ship with a CUDA miner, but you can build it yoursel
 - Epoch node configuration
 
 The documentation below is tested on:
-- Epoch version 0.17.0
+- Epoch version 0.19.0
 - CUDA toolkit version 9.2
 - AWS p2.xlarge instance with 16GB EBS
 - Ubuntu 16.04.4
@@ -41,7 +41,7 @@ Epoch source code can be downloaded by cloning the git repository:
 ```bash
 cd ~
 git clone https://github.com/aeternity/epoch.git epoch && cd epoch
-git checkout tags/v0.17.0
+git checkout tags/v0.19.0
 ```
 
 The documentation below assumes that the `epoch` source code resides in `~/epoch` directory.
