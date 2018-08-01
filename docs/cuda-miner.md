@@ -56,13 +56,13 @@ Compilation of CUDA miner is done by invoking:
 
 ```bash
 cd apps/aecuckoo && make c_src/.git
-cd c_src/src && make libblake2b.so cuda28
+cd c_src/src && make libblake2b.so cuda30
 ```
 
 Finally the actual installation of the miner binary is copying it to the node corresponding path, the documentation assumes the `epoch` node is installed in `~/node` directory.
 
 ```bash
-cp cuda28 ~/node/lib/aecuckoo-0.1.0/priv/bin
+cp cuda30 ~/node/lib/aecuckoo-0.1.0/priv/bin
 ```
 
 ## Configuration
@@ -73,9 +73,9 @@ Once the CUDA miner is in place, one should change the node configuration to sta
 mining:
     cuckoo:
         miner:
-            executable: cuda28
+            executable: cuda30
             extra_args: ""
-            node_bits: 28
+            node_bits: 30
 ```
 
 After configuration could be started (or restarted if it's already running):
@@ -92,9 +92,9 @@ The address of a GPU device used by the miner can be set with `-d` argument, for
 mining:
     cuckoo:
         miner:
-            executable: cuda28
+            executable: cuda30
             extra_args: "-d 0"
-            node_bits: 28
+            node_bits: 30
 ```
 
 The address of the device can be obtained by running `nvidia-smi`

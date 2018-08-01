@@ -36,7 +36,7 @@ SRC_LIBBLAKE = $(patsubst priv/lib/%,c_src/src/%,$(LIBBLAKE))
 SRC_ARCH_FLAGS = -m64
 
 REPO = https://github.com/aeternity/cuckoo.git
-COMMIT = 04d68259d3a277e338edf9162d42ceb2991a18fe
+COMMIT = 042735e184ff85f1a53ffe2197ced8efccf37df6
 
 .PHONY: all
 all: $(LIBBLAKE) $(EXECUTABLES)
