@@ -1,6 +1,6 @@
 # About this release
 
-[This release][this-release] is focused on TODOFILLMEIN.
+[This release][this-release] is focused on smart contracts in state channels.
 It:
 * Removes `key_hash` field from micro blocks. This impacts consensus.
 * Fixes a bug when a trusted peer changes its IP, it was crashing instead of just ignoring the change.
