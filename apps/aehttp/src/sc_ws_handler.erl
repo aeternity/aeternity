@@ -77,7 +77,7 @@ websocket_handle({text, MsgBin}, State) ->
           {ok, State}
     end;
 websocket_handle(_Data, State) ->
-	  {ok, State}.
+    {ok, State}.
 
 websocket_info({push, ChannelId, Data, Options}, State) ->
     case ChannelId =:= channel_id(State) of
@@ -87,7 +87,7 @@ websocket_info({push, ChannelId, Data, Options}, State) ->
         true ->
             process_response(ok, Options),
             Msg = jsx:encode(Data),
-	          {reply, {text, Msg}, State}
+            {reply, {text, Msg}, State}
     end;
 websocket_info({aesc_fsm, FsmPid, Msg}, #handler{fsm_pid=FsmPid}=H) ->
     H1 = set_channel_id(Msg, H),
@@ -274,8 +274,8 @@ process_incoming(#{<<"action">> := <<"update">>,
                                       <<"vm_version">> := VmVersion,
                                       <<"amount">>     := Amount,
                                       <<"call_data">>  := CallDataE}} = R, State) ->
-  case {aec_base58c:safe_decode(contract_pubkey, ContractE), hex_decode(CallDataE)} of
-      {{ok, Contract}, {ok, CallData}} ->
+    case {aec_base58c:safe_decode(contract_pubkey, ContractE), hex_decode(CallDataE)} of
+        {{ok, Contract}, {ok, CallData}} ->
             case aesc_fsm:upd_call_contract(fsm_pid(State),
                                             #{contract   => Contract,
                                               vm_version => VmVersion,
@@ -292,9 +292,9 @@ process_incoming(#{<<"action">> := <<"get">>,
                    <<"payload">> := #{<<"contract">>   := ContractE,
                                       <<"caller">>     := CallerE,
                                       <<"round">>      := Round}} = R, State) ->
-  case {aec_base58c:safe_decode(contract_pubkey, ContractE),
-        aec_base58c:safe_decode(account_pubkey, CallerE)} of
-      {{ok, Contract}, {ok, Caller}} ->
+    case {aec_base58c:safe_decode(contract_pubkey, ContractE),
+          aec_base58c:safe_decode(account_pubkey, CallerE)} of
+        {{ok, Contract}, {ok, Caller}} ->
             case aesc_fsm:get_contract_call(fsm_pid(State),
                                             Contract, Caller, Round) of
                 {ok, Call} ->
@@ -328,6 +328,45 @@ process_incoming(#{<<"action">> := <<"get">>,
             end;
         {error, _} ->
             {reply, error_response(R, invalid_arguments)}
+    end;
+process_incoming(#{<<"action">> := <<"get">>,
+                   <<"tag">> := <<"poi">>,
+                   <<"payload">> := Filter} = R, State) ->
+    AccountsE   = maps:get(<<"accounts">>, Filter, []),
+    ContractsE  = maps:get(<<"contracts">>, Filter, []),
+    Parse =
+        fun(T, Keys) ->
+            try {ok, lists:foldr(
+                      fun(K, Acc) ->
+                              {ok, Res} = aec_base58c:safe_decode(T, K),
+                              [Res | Acc]
+                      end, [], Keys)}
+            catch
+                error:_ ->
+                    {error, invalid_pubkey}
+            end
+        end,
+    BrokenEncodingReply =
+        fun(What) ->
+            {reply, error_response(R, <<"broken_encoding: ", What/binary>>)}
+        end,
+    case {Parse(account_pubkey, AccountsE), Parse(contract_pubkey, ContractsE)} of
+        {{ok, Accounts0}, {ok, Contracts0}} ->
+            Accounts = [{account, A} || A <- Accounts0 ++ Contracts0],
+            Contracts = [{contract, C} || C <- Contracts0],
+            case aesc_fsm:get_poi(fsm_pid(State), Accounts ++ Contracts) of
+                {ok, PoI} ->
+                    Resp = #{action => <<"get">>,
+                             tag => <<"poi">>,
+                             payload => #{
+                                <<"poi">> => aec_base58c:encode(poi, aec_trees:serialize_poi(PoI))}},
+                    {reply, Resp};
+                {error, Reason} ->
+                    {reply, error_response(R, Reason)}
+            end;
+      {{error, _},  {ok, _}}    -> BrokenEncodingReply(<<"accounts">>);
+      {{ok, _},     {error, _}} -> BrokenEncodingReply(<<"contracts">>);
+      {{error, _},  {error, _}} -> BrokenEncodingReply(<<"accounts, contracts">>)
     end;
 process_incoming(#{<<"action">> := <<"message">>,
                    <<"payload">> := #{<<"to">>    := ToB,

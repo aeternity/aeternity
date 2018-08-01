@@ -27,6 +27,7 @@
         , fallback_to_stable_state/1  %%  (State) -> State'
         , hash/1                      %%  (State) -> hash()
         , balance/2                   %%  (Pubkey, State) -> Balance
+        , poi/2                       %%  (Filter, State) -> {ok, PoI} | {error, not_found}
         ]).
 
 -export([get_contract_call/4
@@ -267,4 +268,19 @@ balance(Pubkey, #state{trees=Trees}) ->
         none -> {error, not_found};
         {value, Account} -> {ok, aec_accounts:balance(Account)}
     end.
+
+-spec poi(list(), state()) -> {ok, aec_trees:poi()}
+                            | {error, not_found}.
+poi(Filter, #state{trees=Trees}) ->
+    lists:foldl(
+        fun(_, {error, _} = Err) -> Err;
+           ({account, Pubkey}, {ok, PoI}) -> aec_trees:add_poi(accounts,
+                                                               Pubkey, Trees,
+                                                               PoI);
+           ({contract, Id}, {ok, PoI}) -> aec_trees:add_poi(contracts,
+                                                            Id, Trees,
+                                                            PoI)
+        end,
+        {ok, aec_trees:new_poi(Trees)},
+        Filter).
 
