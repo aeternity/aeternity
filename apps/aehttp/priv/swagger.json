@@ -43,23 +43,6 @@
   } ],
   "schemes" : [ "http" ],
   "paths" : {
-    "/top" : {
-      "get" : {
-        "tags" : [ "external", "gossip" ],
-        "description" : "Get the top block (either key or micro block)",
-        "operationId" : "GetTop",
-        "produces" : [ "application/json" ],
-        "parameters" : [ ],
-        "responses" : {
-          "200" : {
-            "description" : "Successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/Top"
-            }
-          }
-        }
-      }
-    },
     "/blocks/top" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
@@ -71,7 +54,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Top"
+              "$ref" : "#/definitions/KeyBlock"
             }
           }
         }
@@ -88,7 +71,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/GenericBlock"
+              "$ref" : "#/definitions/KeyBlock"
             }
           }
         }
@@ -139,7 +122,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/GenericBlock"
+              "$ref" : "#/definitions/KeyBlock"
             }
           },
           "404" : {
@@ -168,7 +151,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/GenericBlock"
+              "$ref" : "#/definitions/KeyBlock"
             }
           },
           "400" : {
@@ -203,7 +186,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/GenericBlock"
+              "$ref" : "#/definitions/KeyBlock"
             }
           },
           "404" : {
@@ -951,71 +934,6 @@
             "description" : "Successful operation",
             "schema" : {
               "$ref" : "#/definitions/Status"
-            }
-          }
-        }
-      }
-    },
-    "/header-by-hash" : {
-      "get" : {
-        "tags" : [ "external", "gossip" ],
-        "description" : "Get a header by hash",
-        "operationId" : "GetHeaderByHash",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "hash",
-          "in" : "query",
-          "description" : "Hash of the block header to fetch",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "The header found",
-            "schema" : {
-              "$ref" : "#/definitions/Header"
-            }
-          },
-          "400" : {
-            "description" : "Invalid hash",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          },
-          "404" : {
-            "description" : "Header not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/header-by-height" : {
-      "get" : {
-        "tags" : [ "external", "gossip" ],
-        "description" : "Get a key header by its height in the chain",
-        "operationId" : "GetKeyHeaderByHeight",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "height",
-          "in" : "query",
-          "description" : "Height of the header to fetch",
-          "required" : true,
-          "type" : "integer",
-          "minimum" : 0
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "The header found",
-            "schema" : {
-              "$ref" : "#/definitions/Header"
-            }
-          },
-          "400" : {
-            "description" : "Header not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
             }
           }
         }
@@ -2653,401 +2571,6 @@
         }
       }
     },
-    "/block/number" : {
-      "get" : {
-        "tags" : [ "internal", "chain" ],
-        "description" : "Get the current block's height",
-        "operationId" : "GetBlockNumber",
-        "produces" : [ "application/json" ],
-        "parameters" : [ ],
-        "responses" : {
-          "200" : {
-            "description" : "The current block's height",
-            "schema" : {
-              "$ref" : "#/definitions/BlockHeight"
-            }
-          }
-        }
-      }
-    },
-    "/block/height/{height}" : {
-      "get" : {
-        "tags" : [ "external", "chain" ],
-        "description" : "Get a key block by height",
-        "operationId" : "GetKeyBlockByHeightObsolete",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "height",
-          "in" : "path",
-          "description" : "Height of the block to fetch",
-          "required" : true,
-          "type" : "integer"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "The block being found",
-            "schema" : {
-              "$ref" : "#/definitions/GenericBlock"
-            }
-          },
-          "404" : {
-            "description" : "Block not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/block/hash/{hash}" : {
-      "get" : {
-        "tags" : [ "external", "chain" ],
-        "description" : "Get a block by hash",
-        "operationId" : "GetBlockByHash",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "hash",
-          "in" : "path",
-          "description" : "Hash of the block to fetch",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "The block being found",
-            "schema" : {
-              "$ref" : "#/definitions/GenericBlock"
-            }
-          },
-          "400" : {
-            "description" : "Invalid hash",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          },
-          "404" : {
-            "description" : "Block not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/block/genesis" : {
-      "get" : {
-        "tags" : [ "external", "chain" ],
-        "description" : "Get the genesis block",
-        "operationId" : "GetBlockGenesis",
-        "produces" : [ "application/json" ],
-        "parameters" : [ ],
-        "responses" : {
-          "200" : {
-            "description" : "The genesis block",
-            "schema" : {
-              "$ref" : "#/definitions/GenericBlock"
-            }
-          }
-        }
-      }
-    },
-    "/block/latest" : {
-      "get" : {
-        "tags" : [ "external", "chain" ],
-        "description" : "Get the top block",
-        "operationId" : "GetBlockLatest",
-        "produces" : [ "application/json" ],
-        "parameters" : [ ],
-        "responses" : {
-          "200" : {
-            "description" : "The top block",
-            "schema" : {
-              "$ref" : "#/definitions/GenericBlock"
-            }
-          }
-        }
-      }
-    },
-    "/block/txs/count/hash/{hash}" : {
-      "get" : {
-        "tags" : [ "internal", "chain" ],
-        "description" : "Get a block transactions count by hash",
-        "operationId" : "GetBlockTxsCountByHash",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "hash",
-          "in" : "path",
-          "description" : "Hash of the block to fetch",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "name" : "tx_types",
-          "in" : "query",
-          "description" : "Transactions types to show. Comma separated",
-          "required" : false,
-          "type" : "string"
-        }, {
-          "name" : "exclude_tx_types",
-          "in" : "query",
-          "description" : "Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.",
-          "required" : false,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "The count of transactions in the block",
-            "schema" : {
-              "$ref" : "#/definitions/inline_response_200_4"
-            }
-          },
-          "400" : {
-            "description" : "Invalid hash",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          },
-          "404" : {
-            "description" : "Block not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/block/txs/count/height/{height}" : {
-      "get" : {
-        "tags" : [ "internal", "chain" ],
-        "description" : "Get a block transactions count by height",
-        "operationId" : "GetBlockTxsCountByHeight",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "height",
-          "in" : "path",
-          "description" : "Height of the block to fetch",
-          "required" : true,
-          "type" : "integer"
-        }, {
-          "name" : "tx_types",
-          "in" : "query",
-          "description" : "Transactions types to show. Comma separated",
-          "required" : false,
-          "type" : "string"
-        }, {
-          "name" : "exclude_tx_types",
-          "in" : "query",
-          "description" : "Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.",
-          "required" : false,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "The count of transactions in the block",
-            "schema" : {
-              "$ref" : "#/definitions/inline_response_200_4"
-            }
-          },
-          "404" : {
-            "description" : "Block not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/block/txs/count/genesis" : {
-      "get" : {
-        "tags" : [ "internal", "chain" ],
-        "description" : "Get the genesis block transactions count",
-        "operationId" : "GetGenesisBlockTxsCount",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "tx_types",
-          "in" : "query",
-          "description" : "Transactions types to show. Comma separated",
-          "required" : false,
-          "type" : "string"
-        }, {
-          "name" : "exclude_tx_types",
-          "in" : "query",
-          "description" : "Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.",
-          "required" : false,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "The count of transactions in the genesis block",
-            "schema" : {
-              "$ref" : "#/definitions/inline_response_200_4"
-            }
-          }
-        }
-      }
-    },
-    "/block/txs/count/latest" : {
-      "get" : {
-        "tags" : [ "internal", "chain" ],
-        "description" : "Get the latest block transactions count",
-        "operationId" : "GetLatestBlockTxsCount",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "tx_types",
-          "in" : "query",
-          "description" : "Transactions types to show. Comma separated",
-          "required" : false,
-          "type" : "string"
-        }, {
-          "name" : "exclude_tx_types",
-          "in" : "query",
-          "description" : "Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.",
-          "required" : false,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "The count of transactions in the latest block",
-            "schema" : {
-              "$ref" : "#/definitions/inline_response_200_4"
-            }
-          }
-        }
-      }
-    },
-    "/block/txs/count/pending" : {
-      "get" : {
-        "tags" : [ "internal", "chain" ],
-        "description" : "Get the pending block transactions count",
-        "operationId" : "GetPendingBlockTxsCount",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "tx_types",
-          "in" : "query",
-          "description" : "Transactions types to show. Comma separated",
-          "required" : false,
-          "type" : "string"
-        }, {
-          "name" : "exclude_tx_types",
-          "in" : "query",
-          "description" : "Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.",
-          "required" : false,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "The count of transactions in the pending block",
-            "schema" : {
-              "$ref" : "#/definitions/inline_response_200_4"
-            }
-          },
-          "404" : {
-            "description" : "Pending block not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/block/tx/height/{height}/{tx_index}" : {
-      "get" : {
-        "tags" : [ "internal", "chain" ],
-        "description" : "Get a transaction by index in the block by height",
-        "operationId" : "GetTransactionFromBlockHeight",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "height",
-          "in" : "path",
-          "description" : "Height of the block to search for",
-          "required" : true,
-          "type" : "integer"
-        }, {
-          "name" : "tx_index",
-          "in" : "path",
-          "description" : "Index of the transaction in the block",
-          "required" : true,
-          "type" : "integer"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "The transaction found",
-            "schema" : {
-              "$ref" : "#/definitions/SingleTx"
-            }
-          },
-          "404" : {
-            "description" : "Block or transaction not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/block/tx/hash/{hash}/{tx_index}" : {
-      "get" : {
-        "tags" : [ "internal", "chain" ],
-        "description" : "Get a transaction by index in the block by hash",
-        "operationId" : "GetTransactionFromBlockHash",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "hash",
-          "in" : "path",
-          "description" : "Hash of the block to search for",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "name" : "tx_index",
-          "in" : "path",
-          "description" : "Index of the transaction in the block",
-          "required" : true,
-          "type" : "integer"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "The transaction found",
-            "schema" : {
-              "$ref" : "#/definitions/SingleTx"
-            }
-          },
-          "404" : {
-            "description" : "Block or transaction not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/block/tx/latest/{tx_index}" : {
-      "get" : {
-        "tags" : [ "internal", "chain" ],
-        "description" : "Get a transaction by index in the latest block",
-        "operationId" : "GetTransactionFromBlockLatest",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "tx_index",
-          "in" : "path",
-          "description" : "Index of the transaction in the block",
-          "required" : true,
-          "type" : "integer"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "The transaction found",
-            "schema" : {
-              "$ref" : "#/definitions/SingleTx"
-            }
-          },
-          "404" : {
-            "description" : "Block or transaction not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
     "/contract/compile" : {
       "post" : {
         "tags" : [ "external", "dev" ],
@@ -3188,7 +2711,7 @@
           "200" : {
             "description" : "Node's peer public key",
             "schema" : {
-              "$ref" : "#/definitions/inline_response_200_5"
+              "$ref" : "#/definitions/inline_response_200_4"
             }
           },
           "404" : {
@@ -3215,9 +2738,12 @@
     "Uri" : {
       "type" : "string"
     },
-    "Header" : {
+    "KeyBlock" : {
       "type" : "object",
       "properties" : {
+        "hash" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
         "height" : {
           "type" : "integer",
           "format" : "int64"
@@ -3237,14 +2763,15 @@
         },
         "nonce" : {
           "type" : "integer",
-          "format" : "uint64"
+          "format" : "int64"
         },
         "time" : {
           "type" : "integer",
           "format" : "int64"
         },
         "version" : {
-          "type" : "integer"
+          "type" : "integer",
+          "format" : "int64"
         },
         "pow" : {
           "$ref" : "#/definitions/Pow"
@@ -3260,27 +2787,16 @@
         "txs_hash" : null,
         "beneficiary" : null,
         "state_hash" : null,
-        "prev_hash" : { },
+        "prev_hash" : null,
         "pow" : "",
         "time" : 5,
         "nonce" : 1,
         "version" : 5,
+        "hash" : { },
         "miner" : null,
         "height" : 0,
         "target" : 6
       }
-    },
-    "GenericBlock" : {
-      "allOf" : [ {
-        "$ref" : "#/definitions/Header"
-      }, {
-        "type" : "object",
-        "properties" : {
-          "hash" : {
-            "$ref" : "#/definitions/EncodedHash"
-          }
-        }
-      } ]
     },
     "MicroBlockHeader" : {
       "type" : "object",
@@ -3323,18 +2839,6 @@
         "hash" : { },
         "height" : 0
       }
-    },
-    "Top" : {
-      "allOf" : [ {
-        "$ref" : "#/definitions/Header"
-      }, {
-        "type" : "object",
-        "properties" : {
-          "hash" : {
-            "type" : "string"
-          }
-        }
-      } ]
     },
     "GenericTxs" : {
       "type" : "object",
@@ -4695,20 +4199,6 @@
         "height" : 0
       }
     },
-    "BlockHeight" : {
-      "type" : "object",
-      "required" : [ "height" ],
-      "properties" : {
-        "height" : {
-          "type" : "integer",
-          "format" : "int64",
-          "description" : "Blocks's height"
-        }
-      },
-      "example" : {
-        "height" : 0
-      }
-    },
     "Status" : {
       "type" : "object",
       "properties" : {
@@ -5569,7 +5059,7 @@
       "type" : "object",
       "properties" : {
         "key_block" : {
-          "$ref" : "#/definitions/GenericBlock"
+          "$ref" : "#/definitions/KeyBlock"
         },
         "micro_blocks" : {
           "type" : "array",
@@ -5580,7 +5070,20 @@
       },
       "example" : {
         "micro_blocks" : [ { }, { } ],
-        "key_block" : ""
+        "key_block" : {
+          "txs_hash" : null,
+          "beneficiary" : null,
+          "state_hash" : null,
+          "prev_hash" : null,
+          "pow" : "",
+          "time" : 5,
+          "nonce" : 1,
+          "version" : 5,
+          "hash" : { },
+          "miner" : null,
+          "height" : 0,
+          "target" : 6
+        }
       }
     },
     "inline_response_200" : {
@@ -5630,17 +5133,6 @@
       }
     },
     "inline_response_200_4" : {
-      "properties" : {
-        "count" : {
-          "type" : "integer",
-          "description" : "Count"
-        }
-      },
-      "example" : {
-        "count" : 0
-      }
-    },
-    "inline_response_200_5" : {
       "properties" : {
         "pubkey" : {
           "$ref" : "#/definitions/EncodedHash"

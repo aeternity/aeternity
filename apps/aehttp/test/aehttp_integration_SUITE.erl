@@ -105,16 +105,6 @@
 %% external endpoints
 -export(
    [
-    % get block-s
-    block_genesis/1,
-    block_pending/1,
-    block_latest/1,
-    block_by_height/1,
-    block_not_found_by_height/1,
-    block_by_hash/1,
-    block_not_found_by_broken_hash/1,
-    block_not_found_by_hash/1,
-
     % non signed txs
     contract_transactions/1,
     contract_create_compute_transaction/1,
@@ -157,23 +147,6 @@
     miner_pub_key/1,
 
     %% requested Endpoints
-    block_number/1,
-
-    block_txs_count_by_height/1,
-    block_txs_count_by_hash/1,
-    block_txs_count_genesis/1,
-    block_txs_count_latest/1,
-    block_txs_count_pending/1,
-
-    block_txs_count_by_height_not_found/1,
-    block_txs_count_by_hash_not_found/1,
-    block_txs_count_by_broken_hash/1,
-
-    block_tx_index_by_height/1,
-    block_tx_index_by_hash/1,
-    block_tx_index_latest/1,
-    block_tx_index_not_founds/1,
-
     naming_system_manage_name/1,
     naming_system_broken_txs/1,
 
@@ -189,8 +162,11 @@
     swagger_validation_body/1,
     %% swagger_validation_enum/1,
     swagger_validation_required/1,
-    swagger_validation_schema/1,
-    swagger_validation_types/1
+    swagger_validation_schema/1
+    %% TODO: validate that API expects some type but gets
+    %% a different type
+    %%swagger_validation_types/1
+
     ]).
 
 %%
@@ -212,9 +188,6 @@
     wrong_http_method_name_update/1,
     wrong_http_method_name_transfer/1,
     wrong_http_method_name_revoke/1,
-    wrong_http_method_block_by_height/1,
-    wrong_http_method_block_by_hash/1,
-    wrong_http_method_header_by_hash/1,
     wrong_http_method_transactions/1,
     wrong_http_method_tx_id/1,
     wrong_http_method_spend_tx/1,
@@ -231,17 +204,6 @@
     wrong_http_method_miner_pub_key/1,
     wrong_http_method_version/1,
     wrong_http_method_info/1,
-    wrong_http_method_block_number/1,
-    wrong_http_method_block_latest/1,
-    wrong_http_method_block_genesis/1,
-    wrong_http_method_block_txs_count_by_height/1,
-    wrong_http_method_block_txs_count_by_hash/1,
-    wrong_http_method_block_txs_count_latest/1,
-    wrong_http_method_block_txs_count_genesis/1,
-    wrong_http_method_block_txs_count_pending/1,
-    wrong_http_method_block_tx_by_index_height/1,
-    wrong_http_method_block_tx_by_index_hash/1,
-    wrong_http_method_block_tx_by_index_latest/1,
     wrong_http_method_list_oracles/1,
     wrong_http_method_list_oracle_queries/1,
     wrong_http_method_peers/1
@@ -491,16 +453,6 @@ groups() ->
       ]},
      {external_endpoints, [sequence],
       [
-        % get block-s
-        block_genesis,
-        %block_pending,  TODO: delete the test case in the next PR
-        block_latest,
-
-        block_by_height,
-        block_not_found_by_height,
-        block_by_hash,
-        block_not_found_by_hash,
-
         % non signed txs
         contract_transactions,
         contract_create_compute_transaction,
@@ -540,23 +492,6 @@ groups() ->
         miner_pub_key,
 
         % requested Endpoints
-        block_number,
-
-        block_txs_count_by_height,
-        block_txs_count_by_hash,
-        block_txs_count_genesis,
-        block_txs_count_latest,
-        block_txs_count_pending,
-
-        block_txs_count_by_height_not_found,
-        block_txs_count_by_hash_not_found,
-        block_txs_count_by_broken_hash,
-
-        block_tx_index_by_height,
-        block_tx_index_by_hash,
-        block_tx_index_latest,
-        block_tx_index_not_founds,
-
         list_oracles,
         list_oracle_queries,
 
@@ -566,8 +501,8 @@ groups() ->
         swagger_validation_body,
         %% swagger_validation_enum,
         swagger_validation_required,
-        swagger_validation_schema,
-        swagger_validation_types
+        swagger_validation_schema
+        %%swagger_validation_types
       ]},
      {wrong_http_method_endpoints, [], [
         wrong_http_method_top,
@@ -585,9 +520,6 @@ groups() ->
         wrong_http_method_name_update,
         wrong_http_method_name_transfer,
         wrong_http_method_name_revoke,
-        wrong_http_method_block_by_height,
-        wrong_http_method_block_by_hash,
-        wrong_http_method_header_by_hash,
         wrong_http_method_transactions,
         wrong_http_method_tx_id,
         wrong_http_method_spend_tx,
@@ -604,17 +536,6 @@ groups() ->
         wrong_http_method_miner_pub_key,
         wrong_http_method_version,
         wrong_http_method_info,
-        wrong_http_method_block_number,
-        wrong_http_method_block_latest,
-        wrong_http_method_block_genesis,
-        wrong_http_method_block_txs_count_by_height,
-        wrong_http_method_block_txs_count_by_hash,
-        wrong_http_method_block_txs_count_latest,
-        wrong_http_method_block_txs_count_genesis,
-        wrong_http_method_block_txs_count_pending,
-        wrong_http_method_block_tx_by_index_height,
-        wrong_http_method_block_tx_by_index_hash,
-        wrong_http_method_block_tx_by_index_latest,
         wrong_http_method_list_oracles,
         wrong_http_method_list_oracle_queries,
         wrong_http_method_peers
@@ -1913,63 +1834,13 @@ save_config([], _Config, Acc) ->
 
 %% enpoints
 
-block_by_height(_Config) ->
-    GetExpectedBlockFun =
-        fun(H) -> rpc(aec_chain, get_key_block_by_height, [H]) end,
-    CallApiFun = fun get_block_by_height/1,
-    internal_get_block_generic(GetExpectedBlockFun, CallApiFun).
-
-block_not_found_by_height(_Config) ->
-    ok = rpc(aec_conductor, reinit_chain, []),
-    lists:foreach(
-        fun(H) ->
-            {ok, 404, #{<<"reason">> := <<"Chain too short">>}} =
-                get_block_by_height(H)
-        end,
-        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
-
-    ToMine = aecore_suite_utils:latest_fork_height(),
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), ToMine),
-    ok.
-
-block_not_found_by_hash(_Config) ->
-    lists:foreach(
-        fun(_Height) ->
-            H = random_hash(),
-            error = rpc(aec_chain, get_block, [H]),
-            Hash = aec_base58c:encode(block_hash, H),
-            {ok, 404, #{<<"reason">> := <<"Block not found">>}}
-                = get_block_by_hash(Hash)
-        end,
-        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
-    ok.
-
-block_not_found_by_broken_hash(_Config) ->
-    lists:foreach(
-        fun(_) ->
-            <<_, BrokenHash/binary>> = aec_base58c:encode(block_hash, random_hash()),
-            {ok, 400, #{<<"reason">> := <<"Invalid hash">>}} =
-                get_block_by_hash(BrokenHash)
-        end,
-        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
-    ok.
-
-block_by_hash(_Config) ->
-    GetExpectedBlockFun =
-        fun(H) -> rpc(aec_chain, get_key_block_by_height, [H]) end,
-    CallApiFun =
-        fun(H) ->
-            {ok, Hash} = block_hash_by_height(H),
-            get_block_by_hash(Hash)
-        end,
-    internal_get_block_generic(GetExpectedBlockFun, CallApiFun).
-
 %% tests the following
 %% GET contract_create_tx unsigned transaction
 %% GET contract_call_tx unsigned transaction
 %% due to complexity of contract_call_tx (needs a contract in the state tree)
 %% both positive and negative cases are tested in this test
 contract_transactions(_Config) ->    % miner has an account
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 1),
     {ok, 200, _} = get_balance_at_top(),
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
@@ -3234,320 +3105,6 @@ peer_pub_key(_Config) ->
     {ok, PeerPubKey} = aec_base58c:safe_decode(peer_pubkey, EncodedPubKey),
     ok.
 
-block_number(_Config) ->
-    ok = rpc(aec_conductor, reinit_chain, []),
-    ForkHeight = aecore_suite_utils:latest_fork_height(),
-    TopHeader = rpc(aec_chain, top_header, []),
-    0 = aec_headers:height(TopHeader),
-    {ok, 200, #{<<"height">> := 0}} = get_block_number(),
-    lists:foreach(
-        fun(ExpectedNum) ->
-            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-            {ok, 200, #{<<"height">> := Num}} = get_block_number(),
-            ExpectedNum = Num
-        end,
-        lists:seq(1, max(?DEFAULT_TESTS_COUNT, ForkHeight))),
-    ok.
-
-block_genesis(_Config) ->
-    GetExpectedBlockFun =
-        fun(_H) ->
-            GenesisBlock = rpc(aec_chain, genesis_block, []),
-            {ok, GenesisBlock}
-        end,
-    CallApiFun =
-        fun(_H) ->
-            get_internal_block_preset("genesis")
-        end,
-    internal_get_block_generic(GetExpectedBlockFun, CallApiFun).
-
-block_latest(_Config) ->
-    GetExpectedBlockFun =
-        fun(_H) ->
-            TopBlock = rpc(aec_chain, top_block, []),
-            {ok, TopBlock}
-        end,
-    CallApiFun =
-        fun(_H) ->
-            get_internal_block_preset("latest")
-        end,
-    internal_get_block_generic(GetExpectedBlockFun, CallApiFun).
-
-%% we need really slow mining; since mining speed is not modified for the
-%% first X blocks, we need to premine them before the test
-block_pending(_Config) ->
-    BlocksToPremine = rpc(aec_governance, key_blocks_to_check_difficulty_count, []),
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
-                                       BlocksToPremine),
-    {ok, 404, #{<<"reason">> := <<"Not mining, no pending block">>}} =
-            get_internal_block_preset("pending"),
-    ok = rpc(application, set_env, [aecore, expected_mine_rate,
-                                    60 * 60 * 1000]), % aim at one block an hour
-    add_spend_txs(),
-    rpc(aec_conductor, start_mining, []),
-    timer:sleep(100),% so the miner is started
-    {ok, PendingBlock} = get_pending_block(),
-    ct:log("Expected pending block ~p", [block_to_endpoint_map(PendingBlock)]),
-    rpc(aec_conductor, stop_mining, []),
-    ok.
-
-internal_get_block_generic(GetExpectedBlockFun, CallApiFun) ->
-    ok = rpc(aec_conductor, reinit_chain, []),
-    ForkHeight = aecore_suite_utils:latest_fork_height(),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   ForkHeight),
-    BlocksToCheck = 4,
-    CheckAtHeight =
-        fun(Height) ->
-            {ok, ExpectedBlock} = GetExpectedBlockFun(Height),
-            Specific =
-                fun(DataSchema) ->
-                    {ok, Hash} =
-                        aec_blocks:hash_internal_representation(ExpectedBlock),
-                    #{<<"hash">> => aec_base58c:encode(block_hash, Hash)}
-                end,
-            ExpectedBlockMap = maps:merge(Specific(<<"BlockWithMsgPackTxs">>),
-                block_to_endpoint_map(ExpectedBlock)),
-            {ok, 200, BlockMap} = CallApiFun(Height),
-            ct:log("ExpectedBlockMap ~p, BlockMap: ~p", [ExpectedBlockMap,
-                                                         BlockMap])
-        end,
-    MinBlockHeightToCheck =
-        case ForkHeight of
-            0 ->
-                aecore_suite_utils:mine_blocks(
-                  aecore_suite_utils:node_name(?NODE), 1),
-                1; % from first block with reward
-            _ when is_integer(ForkHeight), ForkHeight > 0 ->
-                ForkHeight % from latest fork
-        end,
-    lists:foreach(
-        fun(Height) ->
-            {ok, 200, #{<<"height">> := Height}} = get_top(),
-            CheckAtHeight(Height),
-            % prepare the next block
-            add_spend_txs(),
-            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1)
-        end,
-        lists:seq(MinBlockHeightToCheck, ForkHeight + BlocksToCheck)),
-    ok.
-
-block_txs_count_by_height(_Config) ->
-    generic_counts_test(fun(H) -> rpc(aec_chain, get_key_block_by_height,
-                                     [H]) end,
-                        fun get_block_txs_count_by_height/1).
-
-block_txs_count_by_hash(_Config) ->
-    CallApiFun =
-        fun(H) ->
-            {ok, Hash} = block_hash_by_height(H),
-            get_block_txs_count_by_hash(Hash)
-        end,
-    generic_counts_test(fun(H) -> rpc(aec_chain, get_key_block_by_height,
-                                     [H]) end,
-                        CallApiFun).
-
-block_txs_count_genesis(_Config) ->
-    generic_counts_test(
-        fun(_H) -> {ok, rpc(aec_chain, genesis_block, [])} end,
-        fun(_) -> get_block_txs_count_preset("genesis") end).
-
-block_txs_count_latest(_Config) ->
-    generic_counts_test(
-        fun(_H) ->
-            TopBlock = rpc(aec_chain, top_block, []),
-            {ok, TopBlock}
-        end,
-        fun(_) -> get_block_txs_count_preset("latest") end).
-
-block_txs_count_pending(_Config) ->
-    BlocksToPremine = rpc(aec_governance, key_blocks_to_check_difficulty_count, []),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   BlocksToPremine),
-        {ok, 404, #{<<"reason">> := <<"Not mining, no pending block">>}} =
-                    get_block_txs_count_preset("pending"),
-    ok = rpc(application, set_env, [aecore, expected_mine_rate,
-                                    60 * 60 * 1000]), % aim at one block an hour
-
-    InsertedTxsCount = length(add_spend_txs()),
-    %% NG: here we start mining again, but the first block must be a key block.
-    %% get_block_txs_count_preset returns the current block candidate - the key block
-    %% being mined which doesn't include any txs.
-    rpc(aec_conductor, start_mining, []),
-    %GetPending =
-    %    fun()->
-    %        aec_test_utils:exec_with_timeout(
-    %           fun TryGetting() ->
-    %              case get_block_txs_count_preset("pending") of
-    %                  {ok, 200, B} -> B;
-    %                  {ok, 404, _} ->
-    %                      timer:sleep(100),
-    %                      TryGetting()
-    %              end
-    %           end,
-    %           10000)
-    %    end,
-    %% NG: in order to get the number of pending txs, we check the mempool
-    GetPending = fun() ->
-                         {ok, 200, Txs} = get_transactions(),
-                         {ok, #{<<"count">> => length(Txs)}}
-                 end,
-    {ok, #{<<"count">> := TxsCount}} = GetPending(),
-    ct:log("Inserted transactions count ~p, transactions count in the pending block ~p",
-           [InsertedTxsCount, TxsCount]),
-    ?assertEqual(InsertedTxsCount, TxsCount),
-    rpc(aec_conductor, stop_mining, []),
-    ok.
-
-generic_counts_test(GetBlock, CallApi) ->
-    BlocksToMine = 5,
-    {ok, 200, #{<<"height">> := ChainHeight}} = get_top(),
-
-    Check = fun(H) ->
-                    {ok, B} = GetBlock(H),
-                    case aec_blocks:type(B) of
-                        'micro' ->
-                            TxsCount = length(aec_blocks:txs(B)),
-                            {ok, 200, #{<<"count">> := TxsCount}} = CallApi(H),
-                            ok;
-                        'key'   ->
-                            ok
-                    end
-            end,
-
-    %% Check genesis
-    Check(aec_block_genesis:height()),
-
-    %% Check BlocksToMine blocks
-    lists:foreach(
-        fun(Height) ->
-            add_spend_txs(),
-            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
-            Check(Height + 1)
-        end,
-        lists:seq(ChainHeight, ChainHeight + BlocksToMine)),
-    ok.
-
-block_txs_count_by_height_not_found(_Config) ->
-    InitialHeight = aec_blocks:height(rpc(aec_chain, top_block, [])),
-    lists:foreach(
-        fun(H) ->
-            {ok, 404, #{<<"reason">> := <<"Chain too short">>}}
-                        = get_block_txs_count_by_height(H)
-        end,
-        lists:seq(InitialHeight + 1, InitialHeight + ?DEFAULT_TESTS_COUNT)),
-    ok.
-
-block_txs_count_by_hash_not_found(_Config) ->
-    lists:foreach(
-        fun(_Height) ->
-            H = random_hash(),
-            error = rpc(aec_chain, get_block, [H]),
-            Hash = aec_base58c:encode(block_hash, H),
-            {ok, 404, #{<<"reason">> := <<"Block not found">>}}
-                = get_block_txs_count_by_hash(Hash)
-        end,
-        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
-    ok.
-
-block_txs_count_by_broken_hash(_Config) ->
-    lists:foreach(
-        fun(_) ->
-            <<_, BrokenHash/binary>> = aec_base58c:encode(block_hash, random_hash()),
-            {ok, 400, #{<<"reason">> := <<"Invalid hash">>}} =
-                get_block_txs_count_by_hash(BrokenHash)
-        end,
-        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
-    ok.
-
-block_tx_index_by_height(_Config) ->
-    generic_block_tx_index_test(fun get_block_tx_by_index_height/2).
-
-block_tx_index_by_hash(_Config) ->
-    CallApiFun =
-        fun(H, Index) ->
-            {ok, Hash} = block_hash_by_height(H),
-            get_block_tx_by_index_hash(Hash, Index)
-        end,
-    generic_block_tx_index_test(CallApiFun).
-
-block_tx_index_latest(_Config) ->
-    generic_block_tx_index_test(
-        fun(_, Index) ->
-            get_block_tx_by_index_latest(Index)
-        end).
-
-block_tx_index_not_founds(_Config) ->
-    InitialHeight = aec_blocks:height(rpc(aec_chain, top_block, [])),
-    RandomHeight = InitialHeight + rand:uniform(999) + 1, % CurrentTop + 1..1000
-    Test =
-        fun(Code, ErrMsg, Fun, Cases) ->
-            lists:foreach(
-                fun({H, I}) ->
-                    {ok, Code, #{<<"reason">> := ErrMsg}} = Fun(H, I)
-                end,
-                Cases)
-        end,
-    Test(404, <<"Chain too short">>, fun get_block_tx_by_index_height/2,
-         [{RandomHeight, 0},
-          {RandomHeight, 1},
-          {RandomHeight + 1, 0},
-          {RandomHeight + 1, 1}]),
-    Test(404, <<"Block not found">>, fun get_block_tx_by_index_hash/2,
-         [{aec_base58c:encode(block_hash, random_hash()), 0},
-          {aec_base58c:encode(block_hash, random_hash()), 1}]),
-    BlocksToMine = 3,
-    lists:foreach(
-        fun(Height) ->
-            {ok, 200, #{<<"count">> := TxsCount}} = get_block_txs_count_by_height(Height),
-            Test(404, <<"Transaction not found">>, fun get_block_tx_by_index_height/2,
-                [{Height, TxsCount + 1},
-                 {Height, TxsCount + 2},
-                 {Height, TxsCount + rand:uniform(1000) + 1}
-                ]),
-            {ok, Hash} = block_hash_by_height(Height),
-            Test(404, <<"Transaction not found">>, fun get_block_tx_by_index_hash/2,
-                [{Hash, TxsCount + 1},
-                 {Hash, TxsCount + 2},
-                 {Hash, TxsCount + rand:uniform(1000) + 1}
-                ]),
-            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
-            add_spend_txs()
-        end, lists:seq(0, BlocksToMine)),
-
-    ok.
-
-
-generic_block_tx_index_test(CallApi) when is_function(CallApi, 2)->
-    ok = rpc(aec_conductor, reinit_chain, []),
-    ForkHeight = aecore_suite_utils:latest_fork_height(),
-    %% ForkHeight can be 0, so no blocks are mined.
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), ForkHeight),
-    GenerationCount = ?DEFAULT_TESTS_COUNT,
-    lists:foreach(
-        fun(Height) ->
-            {ok, 200, BlockMap} = get_block_by_height(Height),
-            AllTxs = maps:get(<<"transactions">>, BlockMap, []),
-            TxsIdxs = case length(AllTxs) of
-                    0 -> [];
-                    TxsLength -> lists:seq(1, TxsLength)
-                end,
-            lists:foreach(
-                fun({Tx, Index}) ->
-                    ct:log("Index: ~p, Transaction: ~p", [Index, Tx]),
-                    {ok, 200, #{<<"transaction">> := Tx}} =
-                        CallApi(Height, Index)
-                end,
-                lists:zip(AllTxs, TxsIdxs)),
-            %% The first generation (ForkHeight) is just 1 key block to get some
-            %% reward to be able to send txs in subsequent generations.
-            BlockCount = if Height == ForkHeight -> 1; true -> 2 end,
-            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), BlockCount),
-            add_spend_txs()
-        end,
-        lists:seq(ForkHeight, ForkHeight + GenerationCount)), % from latest fork
-    ok.
-
 naming_system_manage_name(_Config) ->
     {ok, PubKey} = rpc(aec_keys, pubkey, []),
     PubKeyEnc   = aec_base58c:encode(account_pubkey, PubKey),
@@ -3859,7 +3416,7 @@ ws_get_genesis(_Config) ->
     {ok, ConnPid} = ws_start_link(),
     {_Tag, #{ <<"block">> := Block }} =
         ws_chain_get(ConnPid, #{height => 0, type => block}),
-    {ok, 200, BlockMap} = get_block_by_height(0),
+    {ok, 200, BlockMap} = get_key_blocks_by_height_sut(0),
     ExpectedBlockMap = maps:remove(<<"hash">>, BlockMap),
     ?assertEqual(ExpectedBlockMap, Block),
 
@@ -5158,10 +4715,6 @@ ws_mine_key_and_micro_block(ConnPid, Node) ->
 %% HTTP Requests
 %% ============================================================
 
-get_top() ->
-    Host = external_address(),
-    http_request(Host, get, "blocks/top", []).
-
 get_contract_create(Data) ->
     Host = external_address(),
     http_request(Host, post, "tx/contract/create", Data).
@@ -5266,14 +4819,6 @@ get_channel_slash(Data) ->
 get_channel_settle(Data) ->
     Host = external_address(),
     http_request(Host, post, "tx/channel/settle", Data).
-
-get_block_by_height(Height) ->
-    Host = external_address(),
-    http_request(Host, get, "block/height/" ++ integer_to_list(Height), []).
-
-get_block_by_hash(Hash) ->
-    Host = external_address(),
-    http_request(Host, get, "block/hash/" ++ http_uri:encode(Hash), []).
 
 get_transactions() ->
     Host = external_address(),
@@ -5386,44 +4931,6 @@ get_info() ->
     Host = external_address(),
     http_request(Host, get, "info", []).
 
-get_block_number() ->
-    Host = internal_address(),
-    http_request(Host, get, "block/number", []).
-
-get_internal_block_preset(Segment) ->
-    Host = external_address(),
-    http_request(Host, get, "block/" ++ Segment, []).
-
-get_block_txs_count_by_height(Height) ->
-    Host = internal_address(),
-    http_request(Host, get, "block/txs/count/height/" ++ integer_to_list(Height),
-                 []).
-
-get_block_txs_count_by_hash(Hash) ->
-    Host = internal_address(),
-    http_request(Host, get, "block/txs/count/hash/" ++ http_uri:encode(Hash),
-                 []).
-
-get_block_txs_count_preset(Segment) ->
-    Host = internal_address(),
-    http_request(Host, get, "block/txs/count/" ++ Segment, []).
-
-get_block_tx_by_index_height(Height, Index) ->
-    Host = internal_address(),
-    http_request(Host, get, "block/tx/height/" ++ integer_to_list(Height) ++
-                                       "/" ++ integer_to_list(Index), []).
-
-get_block_tx_by_index_hash(Hash, Index) when is_binary(Hash) ->
-    get_block_tx_by_index_hash(binary_to_list(Hash), Index);
-get_block_tx_by_index_hash(Hash, Index) ->
-    Host = internal_address(),
-    http_request(Host, get, "block/tx/hash/" ++ http_uri:encode(Hash) ++
-                                       "/" ++ integer_to_list(Index), []).
-
-get_block_tx_by_index_latest(Index) ->
-    Host = internal_address(),
-    http_request(Host, get, "block/tx/latest/" ++ integer_to_list(Index), []).
-
 get_list_oracles(Max) ->
     get_list_oracles(undefined, Max).
 
@@ -5534,15 +5041,19 @@ swagger_validation_schema(_Config) ->
                    ttl => 100,
                    payload => <<"">>}).
 
-swagger_validation_types(_Config) ->
-    Host = internal_address(),
-    {ok, 400, #{
-            <<"reason">> := <<"validation_error">>,
-            <<"parameter">> := <<"height">>,
-            <<"info">> :=  #{
-                        <<"data">> := <<"not_integer">>,
-                        <<"error">> := <<"wrong_type">>
-        }}} = http_request(Host, get, "block/txs/count/height/not_integer", []).
+%%swagger_validation_types(_Config) ->
+%%    Host = internal_address(),
+%%    {ok, 400, #{
+%%            <<"reason">> := <<"validation_error">>,
+%%            <<"parameter">> := <<"height">>,
+%%            <<"info">> :=  #{
+%%                        <<"data">> := <<"not_integer">>,
+%%                        <<"error">> := <<"wrong_type">>
+%%        }}} = http_request(Host, get,
+%%                           "micro-blocks/hash/" ++
+%%                           "bh$11111111111111111111111111111111" ++
+%%                           "/transactions/index/" ++
+%%                           "not_integer", []).
 
 %% ============================================================
 %% HTTP Requests with wrong method
@@ -5608,14 +5119,6 @@ wrong_http_method_name_revoke(_Config) ->
     Host = external_address(),
     {ok, 405, _} = http_request(Host, get, "tx/name/revoke", []).
 
-wrong_http_method_block_by_hash(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "block/hash/123", []).
-
-wrong_http_method_header_by_hash(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "header-by-hash", []).
-
 wrong_http_method_transactions(_Config) ->
     Host = external_address(),
     {ok, 405, _} = http_request(Host, post, "transactions", []).
@@ -5679,54 +5182,6 @@ wrong_http_method_version(_Config) ->
 wrong_http_method_info(_Config) ->
     Host = external_address(),
     {ok, 405, _} = http_request(Host, post, "info", []).
-
-wrong_http_method_block_number(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "block/number", []).
-
-wrong_http_method_block_by_height(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "block/height/123", []).
-
-wrong_http_method_block_latest(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "block/latest", []).
-
-wrong_http_method_block_genesis(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "block/genesis", []).
-
-wrong_http_method_block_txs_count_by_height(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "block/txs/count/height/123", []).
-
-wrong_http_method_block_txs_count_by_hash(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "block/txs/count/hash/123", []).
-
-wrong_http_method_block_txs_count_latest(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "block/txs/count/latest", []).
-
-wrong_http_method_block_txs_count_genesis(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "block/txs/count/genesis", []).
-
-wrong_http_method_block_txs_count_pending(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "block/txs/count/pending", []).
-
-wrong_http_method_block_tx_by_index_height(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "block/tx/height/123/123", []).
-
-wrong_http_method_block_tx_by_index_hash(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "block/tx/hash/123/123", []).
-
-wrong_http_method_block_tx_by_index_latest(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "block/tx/latest/123", []).
 
 wrong_http_method_list_oracles(_Config) ->
     Host = internal_address(),
@@ -5856,35 +5311,6 @@ process_http_return(R) ->
             Error
     end.
 
-block_to_endpoint_map(Block) ->
-    BMap = aehttp_api_parser:encode_client_readable_block(Block),
-    Expected = aehttp_logic:cleanup_genesis(BMap),
-
-    %% Validate that all transactions have the correct block height and hash
-    ExpectedTxs = maps:get(<<"transactions">>, Expected, []),
-    case aec_blocks:type(Block) of
-        key ->
-            ?assertEqual([], ExpectedTxs),
-            Expected;
-        micro ->
-            BlockHeight = aec_blocks:height(Block),
-            {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
-            {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
-            lists:foreach(
-              fun({EncodedTx, SignedTx}) ->
-                      #{block_hash := TxBlockHash,
-                        block_height := TxBlockHeight,
-                        hash := Hash} =
-                          aetx_sign:meta_data_from_client_serialized(EncodedTx),
-                      {BlockHeight, TxBlockHeight} = {TxBlockHeight, BlockHeight},
-                      {BlockHash, TxBlockHash} = {TxBlockHash, BlockHash},
-                      TxHash = aetx_sign:hash(SignedTx),
-                      {Hash, TxHash} = {TxHash, Hash}
-              end,
-              lists:zip(ExpectedTxs, aec_blocks:txs(Block))),
-            Expected
-    end.
-
 random_hash() ->
     HList =
         lists:map(
@@ -5906,23 +5332,6 @@ block_hash_by_height(Height) ->
     {ok, HBin} = aec_blocks:hash_internal_representation(B),
     Hash = binary_to_list(aec_base58c:encode(block_hash, HBin)),
     {ok, Hash}.
-
--spec get_pending_block() -> {error, no_candidate}
-                           | {error, not_mining}
-                           | {ok, term()}.
-get_pending_block() ->
-    aec_test_utils:exec_with_timeout(
-        fun TryGetting() ->
-            case rpc(aec_conductor, get_key_block_candidate, []) of
-                {ok, OK} -> OK;
-                {error, not_mining} = Err->
-                    Err;
-                {error, miner_starting} ->
-                    timer:sleep(10),
-                    TryGetting()
-            end
-        end,
-        10000).
 
 add_spend_txs() ->
     MineReward = rpc(aec_governance, block_mine_reward, []),

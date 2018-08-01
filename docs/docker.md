@@ -79,7 +79,7 @@ docker run -d --name epoch_node0 -p 3013:3013 \
 
 Verify the node is running:
 ```bash
-curl localhost:3013/v2/top
+curl localhost:3013/v2/blocks/top
 ```
 
 #### Node arguments

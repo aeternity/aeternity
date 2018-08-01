@@ -266,58 +266,6 @@ handle_request('GetPubKey', _, _Context) ->
             {404, [], #{reason => <<"Keys not configured">>}}
     end;
 
-handle_request('GetBlockNumber', _Req, _Context) ->
-    {ok, Height} = aehttp_logic:get_top_height(),
-    {200, [], #{height => Height}};
-
-handle_request('GetBlockTxsCountByHash', Req, _Context) ->
-    case aec_base58c:safe_decode(block_hash, maps:get('hash', Req)) of
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid hash">>}};
-        {ok, Hash} ->
-            get_block_txs_count(fun() -> aehttp_logic:get_block_by_hash(Hash) end,
-                               Req)
-    end;
-
-handle_request('GetBlockTxsCountByHeight', Req, _Context) ->
-    Height = maps:get('height', Req),
-    get_block_txs_count(fun() -> aehttp_logic:get_key_block_by_height(Height) end,
-                       Req);
-
-handle_request('GetGenesisBlockTxsCount', Req, _Context) ->
-    get_block_txs_count(fun aehttp_logic:get_block_genesis/0, Req);
-
-handle_request('GetLatestBlockTxsCount', Req, _Context) ->
-    get_block_txs_count(fun aehttp_logic:get_block_latest/0, Req);
-
-handle_request('GetPendingBlockTxsCount', Req, _Context) ->
-    get_block_txs_count(fun aehttp_logic:get_block_pending/0, Req);
-
-handle_request('GetTransactionFromBlockHeight', Req, _Context) ->
-    Height = maps:get('height', Req),
-    Index = maps:get('tx_index', Req),
-    get_block_tx_by_index(fun() -> aehttp_logic:get_key_block_by_height(Height) end,
-                          Index,
-                          Req);
-
-handle_request('GetTransactionFromBlockHash', Req, _Context) ->
-    case aec_base58c:safe_decode(block_hash, maps:get('hash', Req)) of
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid hash">>}};
-        {ok, Hash} ->
-            Index = maps:get('tx_index', Req),
-            get_block_tx_by_index(
-                fun() -> aehttp_logic:get_block_by_hash(Hash) end,
-                Index,
-                Req)
-    end;
-
-handle_request('GetTransactionFromBlockLatest', Req, _Context) ->
-    Index = maps:get('tx_index', Req),
-    get_block_tx_by_index(fun aehttp_logic:get_block_latest/0,
-        Index,
-        Req);
-
 handle_request('GetTxsListFromBlockRangeByHeight', Req, _Context) ->
     HeightFrom = maps:get('from', Req),
     HeightTo = maps:get('to', Req),
@@ -363,21 +311,6 @@ handle_request(OperationID, Req, Context) ->
     {501, [], #{}}.
 
 %% Internals
-get_block_txs_count(Fun, Req) when is_function(Fun, 0) ->
-    case get_block_from_chain(Fun) of
-        {ok, Block} ->
-            Txs = aehttp_helpers:safe_get_txs(Block),
-            case filter_transaction_list(Req, Txs) of
-                {ok, TxsList} ->
-                    Count = length(TxsList),
-                    {200, [], #{count => Count}};
-                {error, unknown_type} ->
-                    {400, [], #{reason => <<"Unknown transaction type">>}}
-            end;
-        {_Code, _, _Reason} = Err ->
-            Err
-    end.
-
 filter_transaction_list(Req, TxList) ->
     case {parse_filter_param(tx_types, Req),
           parse_filter_param(exclude_tx_types, Req)} of
@@ -399,22 +332,6 @@ filter_transaction_list(Req, TxList) ->
                     TxList),
             {ok, Filtered}
     end.
-
-get_block_tx_by_index(Fun, Index, _Req) when is_function(Fun, 0) ->
-    case get_block_from_chain(Fun) of
-        {ok, Block} ->
-            Txs = aehttp_helpers:safe_get_txs(Block),
-            case try {ok, lists:nth(Index, Txs)} catch _:_ -> not_found end of
-                not_found ->
-                    {404, [], #{reason => <<"Transaction not found">>}};
-                {ok, Tx} ->
-                    H = aec_blocks:to_header(Block),
-                    {200, [], #{transaction => aetx_sign:serialize_for_client(H, Tx)}}
-            end;
-        {_Code, _, _Reason} = Err ->
-            Err
-    end.
-
 
 get_block_range(GetFun, Req) when is_function(GetFun, 0) ->
     case GetFun() of

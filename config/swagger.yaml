@@ -37,22 +37,6 @@ paths:
 ## External APIs definitions
 ###
 
-  /top:
-    get:
-      tags:
-        - external
-        - gossip
-      operationId: GetTop
-      description: 'Get the top block (either key or micro block)'
-      produces:
-        - application/json
-      parameters:
-      responses:
-        '200':
-          description: 'Successful operation'
-          schema:
-            $ref: '#/definitions/Top'
-      security:
   /blocks/top:
     get:
       tags:
@@ -67,7 +51,7 @@ paths:
         '200':
           description: 'Successful operation'
           schema:
-            $ref: '#/definitions/Top'
+            $ref: '#/definitions/KeyBlock'
       security:
   /key-blocks/current:
     get:
@@ -83,7 +67,7 @@ paths:
         '200':
           description: 'Successful operation'
           schema:
-            $ref: '#/definitions/GenericBlock'
+            $ref: '#/definitions/KeyBlock'
       security:
   /key-blocks/current/hash:
     get:
@@ -140,7 +124,7 @@ paths:
         '200':
           description: 'Successful operation'
           schema:
-            $ref: '#/definitions/GenericBlock'
+            $ref: '#/definitions/KeyBlock'
         '404':
           description: 'No pending block (node not mining)'
           schema:
@@ -165,7 +149,7 @@ paths:
         '200':
           description: 'Successful operation'
           schema:
-            $ref: '#/definitions/GenericBlock'
+            $ref: '#/definitions/KeyBlock'
         '400':
           description: 'Invalid hash'
           schema:
@@ -194,7 +178,7 @@ paths:
         '200':
           description: 'Successful operation'
           schema:
-            $ref: '#/definitions/GenericBlock'
+            $ref: '#/definitions/KeyBlock'
         '404':
           description: 'Block not found'
           schema:
@@ -830,61 +814,6 @@ paths:
             $ref: '#/definitions/Status'
       security:
 
-  /header-by-hash:
-    get:
-      tags:
-        - external
-        - gossip
-      operationId: GetHeaderByHash
-      description: 'Get a header by hash'
-      produces:
-        - application/json
-      parameters:
-        - in: query
-          name: hash
-          description: 'Hash of the block header to fetch'
-          required: true
-          type: string
-      responses:
-        '200':
-          description: The header found
-          schema:
-            $ref: '#/definitions/Header'
-        '400':
-          description: Invalid hash
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Header not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /header-by-height:
-    get:
-      tags:
-        - external
-        - gossip
-      operationId: GetKeyHeaderByHeight
-      description: 'Get a key header by its height in the chain'
-      produces:
-        - application/json
-      parameters:
-        - in: query
-          name: height
-          description: 'Height of the header to fetch'
-          required: true
-          type: integer
-          minimum: 0
-      responses:
-        '200':
-          description: The header found
-          schema:
-            $ref: '#/definitions/Header'
-        '400':
-          description: Header not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
   /tx:
     post:
       tags:
@@ -2243,368 +2172,6 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
-
-  /block/number:
-    get:
-      tags:
-        - internal
-        - chain
-      operationId: GetBlockNumber
-      description: 'Get the current block''s height'
-      produces:
-        - application/json
-      parameters:
-      responses:
-        '200':
-          description: 'The current block''s height'
-          schema:
-            $ref: '#/definitions/BlockHeight'
-      security:
-  /block/height/{height}:
-    get:
-      tags:
-        - external
-        - chain
-      operationId: GetKeyBlockByHeightObsolete
-      description: 'Get a key block by height'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: height
-          description: 'Height of the block to fetch'
-          required: true
-          type : integer
-      responses:
-        '200':
-          description: The block being found
-          schema:
-            $ref: '#/definitions/GenericBlock'
-        '404':
-          description: Block not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /block/hash/{hash}:
-    get:
-      tags:
-        - external
-        - chain
-      operationId: GetBlockByHash
-      description: 'Get a block by hash'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: hash
-          description: 'Hash of the block to fetch'
-          required: true
-          type : string
-      responses:
-        '200':
-          description: The block being found
-          schema:
-            $ref: '#/definitions/GenericBlock'
-        '400':
-          description: Invalid hash
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Block not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /block/genesis:
-    get:
-      tags:
-        - external
-        - chain
-      operationId: GetBlockGenesis
-      description: 'Get the genesis block'
-      produces:
-        - application/json
-      responses:
-        '200':
-          description: The genesis block
-          schema:
-            $ref: '#/definitions/GenericBlock'
-      security:
-  /block/latest:
-    get:
-      tags:
-        - external
-        - chain
-      operationId: GetBlockLatest
-      description: 'Get the top block'
-      produces:
-        - application/json
-      responses:
-        '200':
-          description: The top block
-          schema:
-            $ref: '#/definitions/GenericBlock'
-      security:
-  /block/txs/count/hash/{hash}:
-    get:
-      tags:
-        - internal
-        - chain
-      operationId: GetBlockTxsCountByHash
-      description: 'Get a block transactions count by hash'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: hash
-          description: 'Hash of the block to fetch'
-          required: true
-          type : string
-        - in: query
-          name: tx_types
-          description: 'Transactions types to show. Comma separated'
-          required: false
-          type : string
-        - in: query
-          name: exclude_tx_types
-          description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
-          required: false
-          type : string
-      responses:
-        '200':
-          description: The count of transactions in the block
-          schema:
-            type: object
-            properties:
-              count:
-                type: integer
-                description: Count
-        '400':
-          description: Invalid hash
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Block not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /block/txs/count/height/{height}:
-    get:
-      tags:
-        - internal
-        - chain
-      operationId: GetBlockTxsCountByHeight
-      description: 'Get a block transactions count by height'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: height
-          description: 'Height of the block to fetch'
-          required: true
-          type : integer
-        - in: query
-          name: tx_types
-          description: 'Transactions types to show. Comma separated'
-          required: false
-          type : string
-        - in: query
-          name: exclude_tx_types
-          description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
-          required: false
-          type : string
-      responses:
-        '200':
-          description: The count of transactions in the block
-          schema:
-            type: object
-            properties:
-              count:
-                type: integer
-                description: Count
-        '404':
-          description: Block not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /block/txs/count/genesis:
-    get:
-      tags:
-        - internal
-        - chain
-      operationId: GetGenesisBlockTxsCount
-      description: 'Get the genesis block transactions count'
-      produces:
-        - application/json
-      parameters:
-        - in: query
-          name: tx_types
-          description: 'Transactions types to show. Comma separated'
-          required: false
-          type : string
-        - in: query
-          name: exclude_tx_types
-          description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
-          required: false
-          type : string
-      responses:
-        '200':
-          description: The count of transactions in the genesis block
-          schema:
-            type: object
-            properties:
-              count:
-                type: integer
-                description: Count
-      security:
-  /block/txs/count/latest:
-    get:
-      tags:
-        - internal
-        - chain
-      operationId: GetLatestBlockTxsCount
-      description: 'Get the latest block transactions count'
-      produces:
-        - application/json
-      parameters:
-        - in: query
-          name: tx_types
-          description: 'Transactions types to show. Comma separated'
-          required: false
-          type : string
-        - in: query
-          name: exclude_tx_types
-          description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
-          required: false
-          type : string
-      responses:
-        '200':
-          description: The count of transactions in the latest block
-          schema:
-            type: object
-            properties:
-              count:
-                type: integer
-                description: Count
-      security:
-  /block/txs/count/pending:
-    get:
-      tags:
-        - internal
-        - chain
-      operationId: GetPendingBlockTxsCount
-      description: 'Get the pending block transactions count'
-      produces:
-        - application/json
-      parameters:
-        - in: query
-          name: tx_types
-          description: 'Transactions types to show. Comma separated'
-          required: false
-          type : string
-        - in: query
-          name: exclude_tx_types
-          description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
-          required: false
-          type : string
-      responses:
-        '200':
-          description: The count of transactions in the pending block
-          schema:
-            type: object
-            properties:
-              count:
-                type: integer
-                description: Count
-        '404':
-          description: Pending block not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /block/tx/height/{height}/{tx_index}:
-    get:
-      tags:
-        - internal
-        - chain
-      operationId: GetTransactionFromBlockHeight
-      description: 'Get a transaction by index in the block by height'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: height
-          description: 'Height of the block to search for'
-          required: true
-          type: integer
-        - in: path
-          name: tx_index
-          description: 'Index of the transaction in the block'
-          required: true
-          type: integer
-      responses:
-        '200':
-          description: The transaction found
-          schema:
-            $ref: '#/definitions/SingleTx'
-        '404':
-          description: Block or transaction not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /block/tx/hash/{hash}/{tx_index}:
-    get:
-      tags:
-        - internal
-        - chain
-      operationId: GetTransactionFromBlockHash
-      description: 'Get a transaction by index in the block by hash'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: hash
-          description: 'Hash of the block to search for'
-          required: true
-          type: string
-        - in: path
-          name: tx_index
-          description: 'Index of the transaction in the block'
-          required: true
-          type: integer
-      responses:
-        '200':
-          description: The transaction found
-          schema:
-            $ref: '#/definitions/SingleTx'
-        '404':
-          description: Block or transaction not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /block/tx/latest/{tx_index}:
-    get:
-      tags:
-        - internal
-        - chain
-      operationId: GetTransactionFromBlockLatest
-      description: 'Get a transaction by index in the latest block'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: tx_index
-          description: 'Index of the transaction in the block'
-          required: true
-          type: integer
-      responses:
-        '200':
-          description: The transaction found
-          schema:
-            $ref: '#/definitions/SingleTx'
-        '404':
-          description: Block or transaction not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
   /contract/compile:
     post:
       tags:
@@ -2750,9 +2317,11 @@ definitions:
   Uri:
     type: string
     ## format: uri
-  Header:
+  KeyBlock:
     type: object
     properties:
+      hash:
+        $ref: '#/definitions/EncodedHash'
       height:
         type: integer
         format: int64
@@ -2767,25 +2336,19 @@ definitions:
         format: int64
       nonce:
         type: integer
-        format: uint64
+        format: int64
       time:
         type: integer
         format: int64
       version:
         type: integer
+        format: int64
       pow:
         $ref: '#/definitions/Pow'
       miner:
         $ref: '#/definitions/EncodedHash'
       beneficiary:
         $ref: '#/definitions/EncodedHash'
-  GenericBlock:
-    allOf:
-      - $ref: '#/definitions/Header'
-      - type: object
-        properties:
-          hash:
-            $ref: '#/definitions/EncodedHash'
   MicroBlockHeader:
     type: object
     properties:
@@ -2808,13 +2371,6 @@ definitions:
       version:
         type: integer
         format: int64
-  Top:
-    allOf:
-      - $ref: '#/definitions/Header'
-      - type: object
-        properties:
-          hash:
-            type: string
   GenericTxs:
     type: object
     properties:
@@ -3614,15 +3170,6 @@ definitions:
         format: int64
       difficulty:
         type: number
-  BlockHeight:
-    type: object
-    properties:
-      height:
-        type: integer
-        format: int64
-        description: 'Blocks''s height'
-    required:
-    - height
   Status:
     type: object
     properties:
@@ -4160,7 +3707,7 @@ definitions:
     type: object
     properties:
       key_block:
-        $ref: '#/definitions/GenericBlock'
+        $ref: '#/definitions/KeyBlock'
       micro_blocks:
         type: array
         items:
