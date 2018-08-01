@@ -54,3 +54,7 @@
 -define(DISCONNECT, disconnect).
 -define(SIGNED, signed).
 -define(MIN_DEPTH_ACHIEVED, minimum_depth_achieved).
+
+%% Error codes
+-define(ERR_VALIDATION, 1).
+-define(ERR_CONFLICT  , 2).
