@@ -6,7 +6,7 @@ It:
 * Fixes a bug when a trusted peer changes its IP, it was crashing instead of just ignoring the change.
 * Fine-tunes deposit and withdrawal channel transactions being produced for the user.
   This does not impact channels' protocol
-* Adds export command to epoch. The chain can be exported in a binary format (Erlang disk_log of serialized blocks) using the command `epoch export FILENAME`. The first record in the log is a map containing the genesis hash, the hostname and the date and time; the blocks are stored from top to genesis.
+* Adds export command to epoch. The chain can be exported in a binary format (Erlang disk_log of serialized blocks) using the command `bin/epoch export FILENAME`. The first record in the log is a map containing the genesis hash, the hostname and the date and time; the blocks are stored from top to genesis.
 * Refines status code 400 as 404 for call object retrieval API `/tx/{tx_hash}/contract-call` when transaction still pending.
 * Adds a database table for caching state channel data on disk
 * Fixes commitment hash calculations in naming system, to be `Hash(NameHash(name) + name_salt)` instead of `Hash(Hash(name + name_salt))`. This impacts consensus.
