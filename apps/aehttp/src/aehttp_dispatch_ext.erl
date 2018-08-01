@@ -781,18 +781,6 @@ handle_request('GetName', Req, _Context) ->
             {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>}}
     end;
 
-handle_request('GetAccountsBalances', _Req, _Context) ->
-    case aeu_env:user_config_or_env([<<"http">>, <<"debug">>],
-                                    aehttp, enable_debug_endpoints, false) of
-        true ->
-            {ok, AccountsBalances} = aehttp_logic:get_all_accounts_balances(),
-            {200, [], #{accounts_balances =>
-                        aehttp_api_parser:encode(account_balances,
-                                                 AccountsBalances)}};
-        false ->
-            {403, [], #{reason => <<"Balances not enabled">>}}
-    end;
-
 handle_request('CompileContract', Req, _Context) ->
     case Req of
         #{'Contract' :=

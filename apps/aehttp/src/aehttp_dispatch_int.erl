@@ -118,12 +118,13 @@ handle_request('PostOracleResponseTx', #{'OracleResponseTx' := OracleResponseTxO
             {404, [], #{reason => <<"Invalid Query Id">>}}
     end;
 
-handle_request('GetPubKey', _, _Context) ->
-    case aehttp_logic:miner_key() of
+handle_request('GetNodePubkey', _, _Context) ->
+    case aec_keys:pubkey() of
         {ok, Pubkey} ->
+            %% TODO: rename pub_key to pubkey
             {200, [], #{pub_key => aec_base58c:encode(account_pubkey, Pubkey)}};
         {error, key_not_found} ->
-            {404, [], #{reason => <<"Keys not configured">>}}
+            {404, [], #{reason => <<"Public key not found">>}}
     end;
 
 handle_request('GetCommitmentId', Req, _Context) ->
