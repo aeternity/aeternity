@@ -48,7 +48,7 @@
 % close mutual does not have a `from` - it is always implicitly the initiator
 % thus we can not test the tx being posted from another account (not
 % participant or a delegate). If it is signed by non-participant - the
-% signature test will fail 
+% signature test will fail
 -export([close_mutual_wrong_amounts/1,
          close_mutual_wrong_nonce/1,
          close_mutual_missing_channel/1,

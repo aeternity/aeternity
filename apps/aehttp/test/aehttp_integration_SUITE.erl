@@ -4694,8 +4694,8 @@ sc_ws_contract_(Config, TestName, Owner) ->
     SenderConnPid = maps:get(SenderRole, Clients),
     AckConnPid = maps:get(AckRole, Clients),
 
-    ok = ?WS:register_test_for_channel_events(SenderConnPid, [sign, info, get]),
-    ok = ?WS:register_test_for_channel_events(AckConnPid, [sign, info, get]),
+    ok = ?WS:register_test_for_channel_events(SenderConnPid, [sign, info, get, error]),
+    ok = ?WS:register_test_for_channel_events(AckConnPid, [sign, info, get, error]),
 
     %% helper lambda for update
     UpdateVolley0 =
@@ -4776,8 +4776,36 @@ sc_ws_contract_(Config, TestName, Owner) ->
                     P
                 end,
 
+    GetMissingPoI =
+        fun(ConnPid, Accs, Cts) ->
+            ?WS:send_tagged(ConnPid, <<"get">>, <<"poi">>,
+                            #{contracts   => [aec_base58c:encode(contract_pubkey, C) || C <- Cts],
+                              accounts    => [aec_base58c:encode(account_pubkey, Acc) || Acc <- Accs]
+                            }),
+
+                    {ok, #{<<"reason">> := R}} = ?WS:wait_for_channel_event(ConnPid, error),
+                    R
+                end,
+
     EncodedPoI = GetPoI(SenderConnPid),
     EncodedPoI = GetPoI(AckConnPid),
+
+    NegativePoiTests =
+        fun(ConnPid) ->
+            <<"broken_encoding: accounts">> = GetMissingPoI(ConnPid, [<<123456789>>], []),
+            <<"broken_encoding: contracts">> = GetMissingPoI(ConnPid, [], [<<123456789>>]),
+            <<"broken_encoding: accounts, contracts">> = GetMissingPoI(ConnPid, [<<123456789>>], [<<123456789>>]),
+            AccountByteSize = aec_base58c:byte_size_for_type(account_pubkey),
+            FakeAccountId = <<42:AccountByteSize/unit:8>>,
+            <<"not_found">> = GetMissingPoI(ConnPid, [FakeAccountId], []),
+            ContractByteSize = aec_base58c:byte_size_for_type(contract_pubkey),
+            FakeContractId = <<42:ContractByteSize/unit:8>>,
+            <<"not_found">> = GetMissingPoI(ConnPid, [], [FakeContractId])
+        end,
+
+    NegativePoiTests(SenderConnPid),
+    NegativePoiTests(AckConnPid),
+
     {ok, PoIBin} = aec_base58c:safe_decode(poi, EncodedPoI),
     PoI = aec_trees:deserialize_poi(PoIBin),
     {ok, _SenderAcc} = aec_trees:lookup_poi(accounts, SenderPubkey, PoI),
@@ -4785,8 +4813,8 @@ sc_ws_contract_(Config, TestName, Owner) ->
     {ok, _ContractAcc} = aec_trees:lookup_poi(accounts, ContractPubKey, PoI),
     {ok, _ContractObj} = aec_trees:lookup_poi(contracts, ContractPubKey, PoI),
 
-    ok = ?WS:unregister_test_for_channel_events(SenderConnPid, [sign, info, get]),
-    ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, get]),
+    ok = ?WS:unregister_test_for_channel_events(SenderConnPid, [sign, info, get, error]),
+    ok = ?WS:unregister_test_for_channel_events(AckConnPid, [sign, info, get, error]),
     ok.
 
 contract_id_from_create_update(Owner, OffchainTx) ->

@@ -1215,7 +1215,7 @@ handle_call_(_, {get_poi, Filter}, From, #data{state = State} = D) ->
     Response =
         case aesc_offchain_state:poi(Filter, State) of
             {ok, PoI} -> {ok, PoI};
-            {error, not_found} -> {error, not_found}
+            {error, _} -> {error, not_found}
         end,
     keep_state(D, [{reply, From, Response}]);
 handle_call_(_St, get_history, From, #data{log = Log} = D) ->

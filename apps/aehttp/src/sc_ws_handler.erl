@@ -331,8 +331,9 @@ process_incoming(#{<<"action">> := <<"get">>,
     end;
 process_incoming(#{<<"action">> := <<"get">>,
                    <<"tag">> := <<"poi">>,
-                   <<"payload">> := #{<<"accounts">>  := AccountsE,
-                                      <<"contracts">>  := ContractsE}} = R, State) ->
+                   <<"payload">> := Filter} = R, State) ->
+    AccountsE   = maps:get(<<"accounts">>, Filter, []),
+    ContractsE  = maps:get(<<"contracts">>, Filter, []),
     Parse =
         fun(T, Keys) ->
             try {ok, lists:foldr(
@@ -344,6 +345,10 @@ process_incoming(#{<<"action">> := <<"get">>,
                 error:_ ->
                     {error, invalid_pubkey}
             end
+        end,
+    BrokenEncodingReply =
+        fun(What) ->
+            {reply, error_response(R, <<"broken_encoding: ", What/binary>>)}
         end,
     case {Parse(account_pubkey, AccountsE), Parse(contract_pubkey, ContractsE)} of
         {{ok, Accounts0}, {ok, Contracts0}} ->
@@ -359,7 +364,9 @@ process_incoming(#{<<"action">> := <<"get">>,
                 {error, Reason} ->
                     {reply, error_response(R, Reason)}
             end;
-        _ -> {reply, error_response(R, broken_hexcode)}
+      {{error, _},  {ok, _}}    -> BrokenEncodingReply(<<"accounts">>);
+      {{ok, _},     {error, _}} -> BrokenEncodingReply(<<"contracts">>);
+      {{error, _},  {error, _}} -> BrokenEncodingReply(<<"accounts, contracts">>)
     end;
 process_incoming(#{<<"action">> := <<"message">>,
                    <<"payload">> := #{<<"to">>    := ToB,
