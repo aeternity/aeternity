@@ -1701,7 +1701,7 @@ test_unverified_bucket_source_group_selection() ->
                    || {S, P} <- Addresses],
         BucketCount = length(lists:usort(Buckets)),
         % At least 55 different bucket indexes
-        ?assert((BucketCount =< 64) and (BucketCount >= 55)),
+        ?assertMatch(_ when (BucketCount =< 64) and (BucketCount >= 55), BucketCount),
         Buckets
     end, SourceGroups),
     SelectedBucketsCount = length(lists:usort(lists:flatten(SelectedBuckets))),
@@ -1750,7 +1750,7 @@ test_verified_bucket_peer_group_selection() ->
                    || P <- Addresses],
         BucketCount = length(lists:usort(Buckets)),
         % At least 5 different bucket indexes
-        ?assert((BucketCount =< 8) and (BucketCount >= 5)),
+        ?assertMatch(_ when (BucketCount =< 8) and (BucketCount >= 5), BucketCount),
         Buckets
     end, SourceGroups),
     SelectedBucketsCount = length(lists:usort(lists:flatten(SelectedBuckets))),
