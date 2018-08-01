@@ -87,7 +87,6 @@ probe_setopts(_Entry, Opts, S) ->
 probe_handle_msg({'DOWN', Ref, _, _, SampleRes}, #st{ref = Ref} = S) ->
     case SampleRes of
         {sample, Data} ->
-            lager:debug("got sample: ~p", [Data]),
             {ok, S#st{ref = undefined, data = Data}};
         Other ->
             lager:debug("sampler died: ~p", [Other]),
@@ -95,23 +94,19 @@ probe_handle_msg({'DOWN', Ref, _, _, SampleRes}, #st{ref = Ref} = S) ->
     end;
 probe_handle_msg({gproc_ps_event, block_created, #{time := T}},
                  #st{last_time_block_created = LastT} = S) ->
-    lager:debug("Got event 'block_created', T=~p", [T]),
     if LastT =:= undefined ->
             ok;
        true ->
             Diff = max(0, timer:now_diff(T, LastT) div 1000),
-            lager:debug("Diff = ~p (LastT=~p)", [Diff, LastT]),
             aec_metrics:try_update([ae,epoch,aecore,mining,interval], Diff)
     end,
     {ok, S#st{last_time_block_created = T}};
 probe_handle_msg({gproc_ps_event, top_changed, #{time := T}},
                  #st{last_time_top_changed = LastT} = S) ->
-    lager:debug("Got event 'top_changed', T=~p", [T]),
     if LastT =:= undefined ->
             ok;
        true ->
             Diff = max(0, timer:now_diff(T, LastT) div 1000),
-            lager:debug("Diff = ~p (LastT=~p", [Diff, LastT]),
             aec_metrics:try_update(
               [ae,epoch,aecore,chain,top_change,interval], Diff)
     end,

@@ -81,7 +81,6 @@ probe_setopts(_Entry, Opts, S) ->
 probe_handle_msg({'DOWN', Ref, _, _, SampleRes}, #st{ref = Ref} = S) ->
     case SampleRes of
         {sample, Data} ->
-            lager:debug("got sample: ~p", [Data]),
             {ok, S#st{ref = undefined, data = Data}};
         Other ->
             lager:debug("sampler died: ~p", [Other]),
