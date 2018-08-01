@@ -456,7 +456,7 @@ call_contract(Caller, ContractKey, Fun, Type, Args0, Options, S) ->
         case aect_call:return_type(Call) of
             ok     -> {ok, Res} = aeso_data:from_binary(Type, aect_call:return_value(Call)),
                       Res;
-            error  -> error;
+            error  -> {error, aect_call:return_value(Call)};
             revert -> revert
         end,
     {Result, S1}.
@@ -516,7 +516,7 @@ sophia_state(_Cfg) ->
     <<"top">>    = ?call(call_contract, Acc1, Stack, pop, string, {}),
     <<"middle">> = ?call(call_contract, Acc1, Stack, pop, string, {}),
     <<"bottom">> = ?call(call_contract, Acc1, Stack, pop, string, {}),
-    error        = ?call(call_contract, Acc1, Stack, pop, string, {}),
+    {error, <<"out_of_gas">>} = ?call(call_contract, Acc1, Stack, pop, string, {}),
     ok.
 
 sophia_spend(_Cfg) ->
@@ -599,10 +599,11 @@ sophia_maps(_Cfg) ->
 
     MkOption = fun(undefined) -> none; (X) -> {some, X} end,
 
+    OogErr = {error, <<"out_of_gas">>},
     Calls = lists:append(
         %% get
-        [ [{Fn,  Pt, {K, Map}, maps:get(K, Map, error)},
-           {FnS, Pt, K,        maps:get(K, Map, error)}]
+        [ [{Fn,  Pt, {K, Map}, maps:get(K, Map, OogErr)},
+           {FnS, Pt, K,        maps:get(K, Map, OogErr)}]
          || {Fn, FnS, Map, Err} <- [{get_i, get_state_i, MapI, 4},
                                     {get_s, get_state_s, MapS, <<"four">>}],
             K <- maps:keys(Map) ++ [Err] ] ++
@@ -629,12 +630,12 @@ sophia_maps(_Cfg) ->
                                         {set_s, StrMap, MapS, <<"four">>, {7, 8}}],
             K <- maps:keys(Map) ++ [New] ] ++
         %% setx (not setx_state)
-        [ [{Fn, Type, {K, V, Map}, case Map of #{K := {_, Y}} -> Map#{K => {V, Y}}; _ -> error end}]
+        [ [{Fn, Type, {K, V, Map}, case Map of #{K := {_, Y}} -> Map#{K => {V, Y}}; _ -> OogErr end}]
          || {Fn, Type, Map, New, V} <- [{setx_i, IntMap, MapI, 4, 7},
                                         {setx_s, StrMap, MapS, <<"four">>, 7}],
             K <- maps:keys(Map) ++ [New] ] ++
         %% addx (not addx_state)
-        [ [{Fn, Type, {K, V, Map}, case Map of #{K := {X, Y}} -> Map#{K => {X + V, Y}}; _ -> error end}]
+        [ [{Fn, Type, {K, V, Map}, case Map of #{K := {X, Y}} -> Map#{K => {X + V, Y}}; _ -> OogErr end}]
          || {Fn, Type, Map, New, V} <- [{addx_i, IntMap, MapI, 4, 7},
                                         {addx_s, StrMap, MapS, <<"four">>, 7}],
             K <- maps:keys(Map) ++ [New] ] ++
@@ -693,7 +694,7 @@ sophia_maps(_Cfg) ->
     _ = [ begin
             T   = if is_integer(K) -> i; true -> s end,
             Fn  = list_to_atom(lists:concat([Op, "x_state_", T])),
-            Res = case maps:is_key(K, Map) of true -> {}; false -> error end,
+            Res = case maps:is_key(K, Map) of true -> {}; false -> OogErr end,
             Res = Call(Fn, Unit, {K, V})
           end || {Map, Delta} <- [{MapI1, DeltaI2}, {MapS1, DeltaS2}],
                {Op, K, V} <- Delta ],
@@ -798,7 +799,7 @@ run_scenario(#fundme_scenario
     %% Check results
     ExpectedResult =
         fun({withdraw, _, _, ok})       -> {};
-           ({withdraw, _, _, error})    -> error;
+           ({withdraw, _, _, error})    -> {error, <<"out_of_gas">>};
            ({contribute, _, _, Height}) -> Height < Deadline end,
     lists:foreach(fun({E, Res}) ->
         Expect = ExpectedResult(E),
@@ -963,7 +964,7 @@ sophia_aens(_Cfg) ->
     {} = ?call(call_contract, Acc, Ct, transfer, {tuple, []}, {Ct, Acc, NHash, 0},   #{ height => 12 }),
     ok = ?call(aens_update, Acc, NHash, Pointers),
     {some, URL} = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name1, <<"name">>}),
-    error       = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Ct, NHash, 0}, #{ height => 13 }),
+    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Ct, NHash, 0}, #{ height => 13 }),
 
     ok.
 
