@@ -131,10 +131,6 @@
     balance_negative_cases/1,
 
     % infos
-    version/1,
-    info_disabled/1,
-    info_empty/1,
-
     peer_pub_key/1
    ]).
 
@@ -202,8 +198,6 @@
     wrong_http_method_tx/1,
     wrong_http_method_all_accounts_balances/1,
     wrong_http_method_miner_pub_key/1,
-    wrong_http_method_version/1,
-    wrong_http_method_info/1,
     wrong_http_method_list_oracles/1,
     wrong_http_method_list_oracle_queries/1,
     wrong_http_method_peers/1
@@ -479,10 +473,6 @@ groups() ->
         balance_negative_cases,
 
         % infos
-        version,
-        info_disabled,
-        info_empty,
-
         peer_pub_key
       ]},
      {internal_endpoints, [sequence],
@@ -534,8 +524,6 @@ groups() ->
         wrong_http_method_tx,
         wrong_http_method_all_accounts_balances,
         wrong_http_method_miner_pub_key,
-        wrong_http_method_version,
-        wrong_http_method_info,
         wrong_http_method_list_oracles,
         wrong_http_method_list_oracle_queries,
         wrong_http_method_peers
@@ -3042,41 +3030,6 @@ all_accounts_balances_disabled(_Config) ->
     {ok, 403, #{<<"reason">> := <<"Balances not enabled">>}} = get_all_accounts_balances(),
     ok.
 
-version(_Config) ->
-    {ok, 200, #{<<"version">> := V,
-                <<"revision">> := Rev,
-                <<"genesis_hash">> := EncodedGH}} = get_version(),
-    V0 = rpc(aeu_info, get_version, []),
-    Rev0 = rpc(aeu_info, get_revision, []),
-    GenHash0 = rpc(aec_chain, genesis_hash, []),
-    % asserts
-    V = V0,
-    Rev = Rev0,
-    {block_hash, GenHash0} = aec_base58c:decode(EncodedGH),
-    ok.
-
-info_disabled(_Config) ->
-    rpc(application, set_env, [aehttp, enable_debug_endpoints, false]),
-    {ok, 403, #{<<"reason">> := <<"Info not enabled">>}} = get_info(),
-    ok.
-
-info_empty(_Config) ->
-    ok = rpc(aec_conductor, reinit_chain, []),
-    rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
-    ExpectedEmpty = #{<<"last_30_blocks_time">> => [ #{<<"difficulty">> => 1.0,
-                                                       <<"height">> => 0,
-                                                       <<"time">>  => 0}]},
-    {ok, 200, ExpectedEmpty} = get_info(),
-
-    ForkHeight = aecore_suite_utils:latest_fork_height(),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   ForkHeight),
-    ok.
-
-
-
-
-
 %% positive test of spend_tx is handled in pending_transactions test
 broken_spend_tx(_Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
@@ -3099,7 +3052,7 @@ miner_pub_key(_Config) ->
 
 peer_pub_key(_Config) ->
     {ok, PeerPubKey} = rpc(aec_keys, peer_pubkey, []),
-    {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_peer_pub_key(),
+    {ok, 200, #{<<"pubkey">> := EncodedPubKey}} = get_peer_pub_key(),
     ct:log("PeerPubkey = ~p~nEncodedPubKey = ~p", [PeerPubKey,
                                                     EncodedPubKey]),
     {ok, PeerPubKey} = aec_base58c:safe_decode(peer_pubkey, EncodedPubKey),
@@ -4921,15 +4874,7 @@ get_miner_pub_key() ->
 
 get_peer_pub_key() ->
     Host = external_address(),
-    http_request(Host, get, "peer/key", []).
-
-get_version() ->
-    Host = external_address(),
-    http_request(Host, get, "version", []).
-
-get_info() ->
-    Host = external_address(),
-    http_request(Host, get, "info", []).
+    http_request(Host, get, "peers/pubkey", []).
 
 get_list_oracles(Max) ->
     get_list_oracles(undefined, Max).
@@ -5174,14 +5119,6 @@ wrong_http_method_all_accounts_balances(_Config) ->
 wrong_http_method_miner_pub_key(_Config) ->
     Host = internal_address(),
     {ok, 405, _} = http_request(Host, post, "account/pub-key", []).
-
-wrong_http_method_version(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "version", []).
-
-wrong_http_method_info(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "info", []).
 
 wrong_http_method_list_oracles(_Config) ->
     Host = internal_address(),
