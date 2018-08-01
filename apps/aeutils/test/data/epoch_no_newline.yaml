@@ -70,11 +70,11 @@ mining:
     cuckoo:
         miner:
             # Executable binary of the miner.
-            executable: lean28
+            executable: mean30
             # Extra arguments to pass to the miner executable binary.
-            extra_args: ""
+            extra_args: "-t 5"
             # Number of bits used for representing a node in the Cuckoo Cycle problem.
-            node_bits: 28
+            node_bits: 30
 
 logging:
     # Controls the overload protection in the logs.

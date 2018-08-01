@@ -17,6 +17,7 @@ It:
 * Expands race detection in channels and adds an error_code field to the
   channel protocol error messages for future improvements in error handling.
   This does not affect the on-chain protocol.
+* Change PoW to 2^30 node graph. This impacts consensus.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.19.0
 

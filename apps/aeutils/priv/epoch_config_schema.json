@@ -338,9 +338,9 @@
                             ],
                             "properties" : {
                                 "executable" : {
-                                    "description" : "Executable binary of the miner. Options are: \"mean28s-generic\" (memory-intensive), \"mean28s-avx2\" (memory-intensive, benefits from faster CPU supporting AVX2 instructions), \"lean28\" (CPU-intensive, useful if memory-constrained).",
+                                    "description" : "Executable binary of the miner. Options are: \"mean30s-generic\" (memory-intensive), \"mean30s-avx2\" (memory-intensive, benefits from faster CPU supporting AVX2 instructions), \"lean30\" (CPU-intensive, useful if memory-constrained).",
                                     "type" : "string",
-                                    "default": "mean28s-generic"
+                                    "default": "mean30s-generic"
                                 },
                                 "extra_args" : {
                                     "description" : "Extra arguments to pass to the miner executable binary. The safest choice is specifying no arguments i.e. empty string.",
@@ -350,7 +350,7 @@
                                 "node_bits" : {
                                     "description" : "Number of bits used for representing a node in the Cuckoo Cycle problem. It affects both PoW generation (mining) and verification. WARNING: Changing this makes the node incompatible with the chain of other nodes in the network, do not change from the default unless you know what you are doing.",
                                     "type": "integer",
-                                    "default": 28
+                                    "default": 30
                                 },
                                 "hex_encoded_header" : {
                                     "description" : "Hexadecimal encode the header argument that is send to the miner executable. CUDA executables expect hex encoded header.",
