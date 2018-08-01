@@ -82,7 +82,7 @@
 -define(WATCH_DEP, deposit).
 -define(WATCH_WDRAW, withdraw).
 
--define(UPDATE_OP(Op), Op==?UPDATE; Op==?DEP_CREATED; Op==?WDRAW_CREATED).
+-define(UPDATE_REQ(R), R==?UPDATE; R==?DEP_CREATED; R==?WDRAW_CREATED).
 
 
 -define(KEEP, 10).
@@ -595,11 +595,11 @@ reestablish_init({call, From}, Req, D) ->
     handle_call(reestablish_init, Req, From, D).
 
 awaiting_signature(enter, _OldSt, _D) -> keep_state_and_data;
-awaiting_signature(cast, {Op, _} = Msg, #data{ongoing_update = true} = D)
-  when ?UPDATE_OP(Op) ->
+awaiting_signature(cast, {Req, _} = Msg, #data{ongoing_update = true} = D)
+  when ?UPDATE_REQ(Req) ->
     %% Race detection!
     lager:debug("race detected: ~p", [Msg]),
-    handle_update_conflict(Op, D);
+    handle_update_conflict(Req, D);
 awaiting_signature(cast, {?SIGNED, create_tx, Tx} = Msg,
                    #data{role = initiator, latest = {sign, create_tx, _CTx}} = D) ->
     next_state(half_signed,
@@ -725,11 +725,11 @@ half_signed({call, From}, Req, D) ->
     handle_call(half_signed, Req, From, D).
 
 dep_half_signed(enter, _OldSt, _D) -> keep_state_and_data;
-dep_half_signed(cast, {Op, _} = Msg, D) when ?UPDATE_OP(Op) ->
+dep_half_signed(cast, {Req, _} = Msg, D) when ?UPDATE_REQ(Req) ->
     %% This might happen if a request is sent before our ?DEP_CREATED msg
     %% arrived.
     lager:debug("race detected: ~p", [Msg]),
-    handle_update_conflict(Op, D);
+    handle_update_conflict(Req, D);
 dep_half_signed(cast, {?DEP_SIGNED, Msg}, D) ->
     case check_deposit_signed_msg(Msg, D) of
         {ok, SignedTx, D1} ->
@@ -781,11 +781,11 @@ deposit_locked_complete(SignedTx, #data{state = State, opts = Opts} = D) ->
     next_state(open, D1).
 
 wdraw_half_signed(enter, _OldSt, _D) -> keep_state_and_data;
-wdraw_half_signed(cast, {Op,_} = Msg, D) when ?UPDATE_OP(Op) ->
+wdraw_half_signed(cast, {Req,_} = Msg, D) when ?UPDATE_REQ(Req) ->
     %% This might happen if a request is sent before our ?WDRAW_CREATED msg
     %% arrived.
     lager:debug("race detected: ~p", [Msg]),
-    handle_update_conflict(Op, D);
+    handle_update_conflict(Req, D);
 wdraw_half_signed(cast, {?WDRAW_SIGNED, Msg}, D) ->
     case check_withdraw_signed_msg(Msg, D) of
         {ok, SignedTx, D1} ->
@@ -902,11 +902,11 @@ awaiting_initial_state(Evt, Msg, D) ->
     close({unexpected, Msg}, D).
 
 awaiting_update_ack(enter, _OldSt, _D) -> keep_state_and_data;
-awaiting_update_ack(cast, {Op,_} = Msg, #data{} = D) when ?UPDATE_OP(Op) ->
+awaiting_update_ack(cast, {Req,_} = Msg, #data{} = D) when ?UPDATE_REQ(Req) ->
     %% This might happen if a request is sent before our signed ?UPDATE msg
     %% arrived.
     lager:debug("race detected: ~p", [Msg]),
-    handle_update_conflict(Op, D);
+    handle_update_conflict(Req, D);
 awaiting_update_ack(cast, {?UPDATE_ACK, Msg}, #data{} = D) ->
     case check_update_ack_msg(Msg, D) of
         {ok, D1} ->
@@ -2073,21 +2073,21 @@ send_update_ack_msg(SignedTx, #data{ on_chain_id = OnChainId
     aesc_session_noise:update_ack(Sn, Msg),
     log(snd, ?UPDATE_ACK, Msg, Data).
 
-handle_update_conflict(Op, D) when ?UPDATE_OP(Op) ->
-    D1 = send_conflict_err_msg(Op, fallback_to_stable_state(D)),
+handle_update_conflict(Req, D) when ?UPDATE_REQ(Req) ->
+    D1 = send_conflict_err_msg(Req, fallback_to_stable_state(D)),
     next_state(open, D1).
 
-send_conflict_err_msg(Op, #data{ state = State
-                               , on_chain_id = ChanId
-                               , session     = Sn } = Data) ->
+send_conflict_err_msg(Req, #data{ state = State
+                                , on_chain_id = ChanId
+                                , session     = Sn } = Data) ->
     {_, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
     Round = tx_round(aetx_sign:tx(SignedTx)),
     Msg = #{ channel_id => ChanId
            , round      => Round
            , error_code => ?ERR_CONFLICT },
-    send_conflict_msg(Op, Sn, Msg),
+    send_conflict_msg(Req, Sn, Msg),
     report(conflict, Msg, Data),
-    log(snd, conflict_msg_type(Op), Msg, Data).
+    log(snd, conflict_msg_type(Req), Msg, Data).
 
 conflict_msg_type(?UPDATE)        -> ?UPDATE_ERR;
 conflict_msg_type(?DEP_CREATED)   -> ?DEP_ERR;
