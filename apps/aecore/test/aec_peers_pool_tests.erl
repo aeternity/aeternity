@@ -1727,7 +1727,7 @@ test_unverified_bucket_groups_selection() ->
                    || {S, P} <- Addresses],
         BucketCount = length(lists:usort(Buckets)),
         % At least 3 different bucket indexes
-        ?assert((BucketCount =< 4) and (BucketCount >= 3)),
+        ?assertMatch(_ when (BucketCount =< 4) and (BucketCount >= 3), BucketCount),
         Buckets
     end, Groups),
     SelectedBucketsCount = length(lists:usort(lists:flatten(SelectedBuckets))),
