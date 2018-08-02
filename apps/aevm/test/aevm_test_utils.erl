@@ -120,13 +120,15 @@ validate_storage(State, #{exec := #{ address := Addr}} = Spec) ->
         _ -> true
     end.
 
-validate_log(State, #{logs := Logs} = Spec) ->
+validate_log(State, #{logs := Logs} =_Spec) ->
     GeneratedLogs = aevm_eeevm_state:logs(State),
-    ?assertEqual(Logs, logs_to_string(GeneratedLogs));
+    RLPLogs = aeu_rlp:encode(GeneratedLogs),
+    ?assertEqual(Logs, logs_to_string( aec_hash:hash(evm,RLPLogs)));
 validate_log(_,_) -> true.
 
 logs_to_string(Logs) ->
-    aeu_hex:hexstring_encode(lists:foldr(fun (A, B) ->  << A/binary, B/binary>> end, <<>>, Logs)).
+    aeu_hex:hexstring_encode(Logs).
+
 
 validate_out(State, #{out := SpecOut} =_Spec) ->
     Out  = aevm_eeevm_state:out(State),

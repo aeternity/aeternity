@@ -1408,64 +1408,20 @@ spend_gas_common(_Resource, Cost, State) ->
 %% LOGS
 %% ------------------------------------------------------------------------
 %%
-%% TODO: Should account address be 160 or 256 bits?
-%% TODO: Implement log bloom filter/.. q
-%%
-%% The transaction receipt is a tuple of four items comprising
-%% the post-transaction state, Rσ, the cumulative gas
-%% used in the block containing the transaction receipt as of
-%% immediately after the transaction has happened, Ru, the
-%% set of logs created through execution of the transaction, Rl
-%% and the Bloom filter composed from information in those
-%% logs, Rb:
-%% (18) R ≡ (Rσ, Ru, Rb, Rl)
-%% The function LR trivially prepares a transaction receipt
-%% for being transformed into an RLP-serialised byte array:
-%% (19) LR(R) ≡ (TRIE(LS(Rσ)), Ru, Rb, Rl)
-%% thus the post-transaction state, Rσ is encoded into a trie
-%% structure, the root of which forms the first item.
-%% We assert Ru, the cumulative gas used is a positive integer
-%% and that the logs Bloom, Rb, is a hash of size 2048
-%% bits (256 bytes):
-%% (20) Ru ∈ P ∧ Rb ∈ B256
-%% The log entries, Rl, is a series of log entries, termed,
-%% for example, (O0, O1, ...). A log entry, O, is a tuple of a
-%% logger’s address, Oa, a series of 32-bytes log topics, Ot
-%% and some number of bytes of data, Od:
-%% (21) O ≡ (Oa,(Ot0, Ot1, ...), Od)
-%% (22) Oa ∈ B20 ∧ ∀t∈Ot : t ∈ B32 ∧ Od ∈ B
-%% We define the Bloom filter function, M, to reduce a log
-%% entry into a single 256-byte hash:
-%% (23) M(O) ≡ V_(t∈{Oa}∪Ot) (M3:2048(t))
-%% where M3:2048 is a specialised Bloom filter that sets
-%% three bits out of 2048, given an arbitrary byte sequence.
-%% It does this through taking the low-order 11 bits of each
-%% of the first three pairs of bytes in a Keccak-256 hash of
-%% the byte sequence. Formally:
-%% (24) M3:2048(x : x ∈ B) ≡ y : y ∈ B256 where:
-%% (25) y = (0, 0, ..., 0) except:
-%% (26) ∀i∈{0,2,4} : Bm(x,i)(y) = 1
-%% (27) m(x, i) ≡ KEC(x)[i, i + 1] mod 2048
-%% where B is the bit reference function such that Bj (x)
-%% equals the bit of index j (indexed from 0) in the byte array x.
-
+%% The log entries, Rl, is a series of log entries, termed, for
+%% example, (O0, O1, ...).
 log(Topics, MemAddress, Length, State) ->
-    io:format("Log ~p~n", [Topics]),
-    Logs = aevm_eeevm_state:logs(State),
     AccountAddress = aevm_eeevm_state:address(State),
-    Header = log_topics(AccountAddress, Topics),
     {Body, State1} = aevm_eeevm_memory:get_area(
-                       MemAddress, Length, State),
-    LogEntry = <<Header/binary, Body/binary>>,
-    NewLogs = [LogEntry|Logs],
-    io:format("NewLog ~p~n", [NewLogs]),
-    aevm_eeevm_state:set_logs(NewLogs, State1).
+		       MemAddress, Length, State),
+    LogEntry = log_entry(AccountAddress, Topics, Body),
+    aevm_eeevm_state:add_log(LogEntry, State1).
 
-
-log_topics(AccountAddress, Topics) ->
-    Bytes = << << X:256>> || X <- tuple_to_list(Topics) >>,
-    <<AccountAddress:256, Bytes/binary >>.
-
+%% A log entry, O, is a tuple of a logger’s address, Oa, a series of
+%% 32-bytes log topics, Ot and some number of bytes of data, Od: (21)
+%% O ≡ (Oa,(Ot0, Ot1, ...), Od)
+log_entry(Address, Topics, Data) ->
+    [<<Address:160>>, [<<T:256>> || T <- tuple_to_list(Topics)], Data].
 
 %% ------------------------------------------------------------------------
 %% Account Functions
