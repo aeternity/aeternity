@@ -269,7 +269,10 @@ check_channel(ChannelPubKey, FromPubKey, Round, Trees) ->
             Checks =
                 [fun() -> aesc_utils:check_is_active(Channel) end,
                  fun() -> aesc_utils:check_is_peer(FromPubKey, aesc_channels:peers(Channel)) end,
-                 fun() -> aesc_utils:check_round_greater_than_last(Channel, Round) end
+                 fun() -> aesc_utils:check_round_greater_than_last(Channel,
+                                                                   Round,
+                                                                   deposit)
+                 end
                 ],
             aeu_validation:run(Checks);
         none ->

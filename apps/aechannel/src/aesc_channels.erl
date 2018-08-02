@@ -12,12 +12,15 @@
          is_active/1,
          is_solo_closed/2,
          is_solo_closing/2,
+         can_force_progress/2,
+         is_last_state_forced/1,
          new/1,
          peers/1,
          serialize/1,
          serialize_for_client/1,
          close_solo/3,
          close_solo/4,
+         force_progress/5,
          snapshot_solo/2,
          withdraw/4]).
 
@@ -31,7 +34,7 @@
          responder_pubkey/1,
          delegate_ids/1,
          delegate_pubkeys/1,
-         total_amount/1,
+         channel_amount/1,
          initiator_amount/1,
          responder_amount/1,
          channel_reserve/1,
@@ -51,17 +54,19 @@
 -type seq_number() :: non_neg_integer().
 -type payload() :: aesc_offchain_tx:tx() | <<>>.
 
--record(channel, {id               :: aec_id:id(),
-                  initiator_id     :: aec_id:id(),
-                  responder_id     :: aec_id:id(),
-                  delegate_ids     :: [aec_id:id()],
-                  total_amount     :: amount(),
-                  initiator_amount :: amount(),
-                  channel_reserve  :: amount(),
-                  state_hash       :: binary(),
-                  round            :: seq_number(),
-                  lock_period      :: non_neg_integer(),
-                  closes_at        :: aec_blocks:height()}).
+-record(channel, {id                  :: aec_id:id(),
+                  initiator_id        :: aec_id:id(),
+                  responder_id        :: aec_id:id(),
+                  delegate_ids        :: [aec_id:id()],
+                  channel_amount      :: amount(),
+                  initiator_amount    :: amount(),
+                  responder_amount    :: amount(),
+                  channel_reserve     :: amount(),
+                  state_hash          :: binary(),
+                  round               :: seq_number(),
+                  lock_period         :: non_neg_integer(),
+                  force_blocked_until :: aec_blocks:height(),
+                  closes_at           :: aec_blocks:height()}).
 
 -opaque channel() :: #channel{}.
 
@@ -103,30 +108,34 @@ close_solo_int(#channel{lock_period = LockPeriod} = Ch, PoI, Height, Round, Stat
     ClosesAt = Height + LockPeriod,
     InitiatorAmt = fetch_amount_from_poi(PoI, InitiatorPubKey),
     ResponderAmt = fetch_amount_from_poi(PoI, ResponderPubKey),
-    Ch#channel{initiator_amount = InitiatorAmt,
-               total_amount     = InitiatorAmt + ResponderAmt,
-               round            = Round,
-               state_hash       = StateHash,
-               closes_at        = ClosesAt}.
+    Ch#channel{initiator_amount   = InitiatorAmt,
+               responder_amount   = ResponderAmt,
+               round              = Round,
+               state_hash         = StateHash,
+               force_blocked_until= 0,
+               closes_at          = ClosesAt}.
 
 -spec deposit(channel(), amount(), seq_number(), binary()) -> channel().
-deposit(#channel{total_amount = TotalAmount} = Ch, Amount, Round, StateHash) ->
-    Ch#channel{total_amount = TotalAmount + Amount,
-               state_hash = StateHash,
-               round = Round}.
+deposit(#channel{channel_amount = ChannelAmount} = Ch, Amount, Round, StateHash) ->
+    Ch#channel{channel_amount     = ChannelAmount + Amount,
+               state_hash         = StateHash,
+               force_blocked_until= 0,
+               round              = Round}.
 
--spec deserialize(aec_keys:pubkey(), binary()) -> channel().
-deserialize(PubKey, Bin) ->
-    [ {initiator_id     , InitiatorId}
-    , {responder_id     , ResponderId}
-    , {total_amount     , TotalAmount}
-    , {initiator_amount , InitiatorAmount}
-    , {channel_reserve  , ChannelReserve}
-    , {delegate_ids     , DelegateIds}
-    , {state_hash       , StateHash}
-    , {round            , Round}
-    , {lock_period      , LockPeriod}
-    , {closes_at        , ClosesAt}
+-spec deserialize(pubkey(), binary()) -> channel().
+deserialize(IdBin, Bin) ->
+    [ {initiator_id       , InitiatorId}
+    , {responder_id       , ResponderId}
+    , {channel_amount     , ChannelAmount}
+    , {initiator_amount   , InitiatorAmount}
+    , {responder_amount   , ResponderAmount}
+    , {channel_reserve    , ChannelReserve}
+    , {delegate_ids       , DelegateIds}
+    , {state_hash         , StateHash}
+    , {round              , Round}
+    , {lock_period        , LockPeriod}
+    , {force_blocked_until, ForceBlockedUntil}
+    , {closes_at          , ClosesAt}
     ] = aec_object_serialization:deserialize(
           ?CHANNEL_TYPE,
           ?CHANNEL_VSN,
@@ -135,25 +144,41 @@ deserialize(PubKey, Bin) ->
     account = aec_id:specialize_type(InitiatorId),
     account = aec_id:specialize_type(ResponderId),
     [account = aec_id:specialize_type(D) || D <- DelegateIds],
-    #channel{id               = aec_id:create(channel, PubKey),
-             initiator_id     = InitiatorId,
-             responder_id     = ResponderId,
-             delegate_ids     = DelegateIds,
-             total_amount     = TotalAmount,
-             initiator_amount = InitiatorAmount,
-             channel_reserve  = ChannelReserve,
-             state_hash       = StateHash,
-             round            = Round,
-             lock_period      = LockPeriod,
-             closes_at        = ClosesAt}.
+    #channel{id                 = aec_id:create(channel, IdBin),
+             initiator_id       = InitiatorId,
+             responder_id       = ResponderId,
+             delegate_ids       = DelegateIds,
+             channel_amount     = ChannelAmount,
+             initiator_amount   = InitiatorAmount,
+             responder_amount   = ResponderAmount,
+             channel_reserve    = ChannelReserve,
+             state_hash         = StateHash,
+             round              = Round,
+             lock_period        = LockPeriod,
+             force_blocked_until= ForceBlockedUntil,
+             closes_at          = ClosesAt}.
 
-%% close solo with a payload
+%% set a new state
 -spec snapshot_solo(channel(), aesc_offchain_tx:tx()) -> channel().
 snapshot_solo(Ch, PayloadTx) ->
     Round = aesc_offchain_tx:round(PayloadTx),
     StateHash = aesc_offchain_tx:state_hash(PayloadTx),
-    Ch#channel{round            = Round,
-               state_hash       = StateHash}.
+    Ch#channel{round              = Round,
+               force_blocked_until= 0,
+               state_hash         = StateHash}.
+
+-spec force_progress(channel(), aesc_offchain_tx:tx(), 
+                     amount(), amount(),
+                     aec_blocks:height()) -> channel().
+force_progress(Ch0, PayloadTx, IAmt, RAmt, Height) ->
+    Ch = snapshot_solo(Ch0, PayloadTx),
+    Ch1 = Ch#channel{force_blocked_until = Height + lock_period(Ch0),
+                     initiator_amount    = IAmt,
+                     responder_amount    = RAmt},
+    case is_active(Ch1) of
+        true -> Ch1;
+        false -> Ch1#channel{closes_at = Height + lock_period(Ch0)}
+    end.
 
 -spec is_active(channel()) -> boolean().
 is_active(#channel{closes_at = ClosesAt}) ->
@@ -175,6 +200,14 @@ pubkey(<<_:?PUB_SIZE/binary>> = InitiatorPubKey, Nonce,
             ResponderPubKey:?PUB_SIZE/binary>>,
     aec_hash:hash(pubkey, Bin).
 
+-spec can_force_progress(channel(), aec_blocks:height()) -> boolean().
+can_force_progress(#channel{force_blocked_until = FBU} = Ch, Height) ->
+    not is_last_state_forced(Ch) orelse FBU < Height.
+
+-spec is_last_state_forced(channel()) -> boolean().
+is_last_state_forced(#channel{force_blocked_until = FBU}) ->
+    FBU =/= 0.
+
 -spec new(aesc_create_tx:tx()) -> channel().
 new(ChCTx) ->
     PubKey = pubkey(aesc_create_tx:initiator_pubkey(ChCTx),
@@ -184,17 +217,19 @@ new(ChCTx) ->
     ResponderAmount = aesc_create_tx:responder_amount(ChCTx),
     DelegatePubkeys = aesc_create_tx:delegate_pubkeys(ChCTx),
     StateHash = aesc_create_tx:state_hash(ChCTx),
-    #channel{id               = aec_id:create(channel, PubKey),
-             initiator_id     = aesc_create_tx:initiator_id(ChCTx),
-             responder_id     = aesc_create_tx:responder_id(ChCTx),
-             total_amount     = InitiatorAmount + ResponderAmount,
-             initiator_amount = InitiatorAmount,
-             channel_reserve  = aesc_create_tx:channel_reserve(ChCTx),
-             delegate_ids     = [aec_id:create(account, D) || D <- DelegatePubkeys],
-             state_hash       = StateHash,
-             round            = 0,
-             closes_at        = 0,
-             lock_period      = aesc_create_tx:lock_period(ChCTx)}.
+    #channel{id                   = aec_id:create(channel, PubKey),
+             initiator_id         = aesc_create_tx:initiator_id(ChCTx),
+             responder_id         = aesc_create_tx:responder_id(ChCTx),
+             channel_amount       = InitiatorAmount + ResponderAmount,
+             initiator_amount     = InitiatorAmount,
+             responder_amount     = ResponderAmount,
+             channel_reserve      = aesc_create_tx:channel_reserve(ChCTx),
+             delegate_ids         = [aec_id:create(account, D) || D <- DelegatePubkeys],
+             state_hash           = StateHash,
+             round                = 0,
+             force_blocked_until  = 0,
+             closes_at            = 0,
+             lock_period          = aesc_create_tx:lock_period(ChCTx)}.
 
 -spec peers(channel()) -> list(aec_keys:pubkey()).
 peers(#channel{} = Ch) ->
@@ -207,60 +242,68 @@ serialize(#channel{initiator_id = InitiatorId,
     aec_object_serialization:serialize(
       ?CHANNEL_TYPE, ?CHANNEL_VSN,
       serialization_template(?CHANNEL_VSN),
-      [ {initiator_id     , InitiatorId}
-      , {responder_id     , ResponderId}
-      , {total_amount     , total_amount(Ch)}
-      , {initiator_amount , initiator_amount(Ch)}
-      , {channel_reserve  , channel_reserve(Ch)}
-      , {delegate_ids     , DelegateIds}
-      , {state_hash       , state_hash(Ch)}
-      , {round            , round(Ch)}
-      , {lock_period      , lock_period(Ch)}
-      , {closes_at        , closes_at(Ch)}
+      [ {initiator_id       , InitiatorId}
+      , {responder_id       , ResponderId}
+      , {channel_amount     , channel_amount(Ch)}
+      , {initiator_amount   , initiator_amount(Ch)}
+      , {responder_amount   , responder_amount(Ch)}
+      , {channel_reserve    , channel_reserve(Ch)}
+      , {delegate_ids       , DelegateIds}
+      , {state_hash         , state_hash(Ch)}
+      , {round              , round(Ch)}
+      , {lock_period        , lock_period(Ch)}
+      , {force_blocked_until, forcing_blocked_until(Ch)}
+      , {closes_at          , closes_at(Ch)}
       ]).
 
 serialization_template(?CHANNEL_VSN) ->
-    [ {initiator_id     , id}
-    , {responder_id     , id}
-    , {total_amount     , int}
-    , {initiator_amount , int}
-    , {channel_reserve  , int}
-    , {delegate_ids     , [id]}
-    , {state_hash       , binary}
-    , {round            , int}
-    , {lock_period      , int}
-    , {closes_at        , int}
+    [ {initiator_id       , id}
+    , {responder_id       , id}
+    , {channel_amount     , int}
+    , {initiator_amount   , int}
+    , {responder_amount   , int}
+    , {channel_reserve    , int}
+    , {delegate_ids       , [id]}
+    , {state_hash         , binary}
+    , {round              , int}
+    , {lock_period        , int}
+    , {force_blocked_until, int}
+    , {closes_at          , int}
     ].
 
 -spec serialize_for_client(channel()) -> map().
-serialize_for_client(#channel{id               = Id,
-                              initiator_id     = InitiatorId,
-                              responder_id     = ResponderId,
-                              total_amount     = TotalAmount,
-                              initiator_amount = InitiatorAmount,
-                              channel_reserve  = ChannelReserve,
-                              delegate_ids     = Delegates,
-                              state_hash       = StateHash,
-                              round            = Round,
-                              lock_period      = LockPeriod,
-                              closes_at        = ClosesAt}) ->
-    #{<<"id">>               => aec_base58c:encode(id_hash, Id),
-      <<"initiator_id">>     => aec_base58c:encode(id_hash, InitiatorId),
-      <<"responder_id">>     => aec_base58c:encode(id_hash, ResponderId),
-      <<"total_amount">>     => TotalAmount,
-      <<"initiator_amount">> => InitiatorAmount,
-      <<"responder_amount">> => TotalAmount - InitiatorAmount,
-      <<"channel_reserve">>  => ChannelReserve,
-      <<"delegate_ids">>     => [aec_base58c:encode(id_hash, D) || D <- Delegates],
-      <<"state_hash">>       => aec_base58c:encode(state, StateHash),
-      <<"round">>            => Round,
-      <<"lock_period">>      => LockPeriod,
-      <<"closes_at">>        => ClosesAt}.
+serialize_for_client(#channel{id                  = Id,
+                              initiator_id        = InitiatorId,
+                              responder_id        = ResponderId,
+                              channel_amount      = ChannelAmount,
+                              initiator_amount    = InitiatorAmount,
+                              responder_amount    = ResponderAmount,
+                              channel_reserve     = ChannelReserve,
+                              delegate_ids        = Delegates,
+                              state_hash          = StateHash,
+                              round               = Round,
+                              lock_period         = LockPeriod,
+                              force_blocked_until = ForceBlockedUntil,
+                              closes_at           = ClosesAt}) ->
+    #{<<"id">>                    => aec_base58c:encode(id_hash, Id),
+      <<"initiator_id">>          => aec_base58c:encode(id_hash, InitiatorId),
+      <<"responder_id">>          => aec_base58c:encode(id_hash, ResponderId),
+      <<"channel_amount">>        => ChannelAmount,
+      <<"initiator_amount">>      => InitiatorAmount,
+      <<"responder_amount">>      => ResponderAmount,
+      <<"channel_reserve">>       => ChannelReserve,
+      <<"delegate_ids">>          => [aec_base58c:encode(id_hash, D) || D <- Delegates],
+      <<"state_hash">>            => aec_base58c:encode(state, StateHash),
+      <<"round">>                 => Round,
+      <<"lock_period">>           => LockPeriod,
+      <<"forcing_blocked_until">> => ForceBlockedUntil,
+      <<"closes_at">>             => ClosesAt}.
 
 -spec withdraw(channel(), amount(), seq_number(), binary()) -> channel().
-withdraw(#channel{total_amount = TotalAmount} = Ch, Amount, Round, StateHash) ->
-    Ch#channel{total_amount = TotalAmount - Amount,
+withdraw(#channel{channel_amount = ChannelAmount} = Ch, Amount, Round, StateHash) ->
+    Ch#channel{channel_amount = ChannelAmount - Amount,
                state_hash = StateHash,
+               force_blocked_until = 0,
                round = Round}.
 
 %%%===================================================================
@@ -270,6 +313,10 @@ withdraw(#channel{total_amount = TotalAmount} = Ch, Amount, Round, StateHash) ->
 -spec closes_at(channel()) -> undefined | aec_blocks:height().
 closes_at(#channel{closes_at = ClosesAt}) ->
     ClosesAt.
+
+-spec forcing_blocked_until(channel()) -> undefined | aec_blocks:height().
+forcing_blocked_until(#channel{force_blocked_until = FBU}) ->
+    FBU.
 
 -spec id(channel()) -> aec_id:id().
 id(#channel{id = Id}) ->
@@ -295,18 +342,17 @@ responder_id(#channel{responder_id = ResponderId}) ->
 responder_pubkey(#channel{responder_id = ResponderId}) ->
     aec_id:specialize(ResponderId, account).
 
--spec total_amount(channel()) -> amount().
-total_amount(#channel{total_amount = TotalAmount}) ->
-    TotalAmount.
+-spec channel_amount(channel()) -> amount().
+channel_amount(#channel{channel_amount = ChannelAmount}) ->
+    ChannelAmount.
 
 -spec initiator_amount(channel()) -> amount().
 initiator_amount(#channel{initiator_amount = InitiatorAmount}) ->
     InitiatorAmount.
 
 -spec responder_amount(channel()) -> amount().
-responder_amount(#channel{initiator_amount = InitiatorAmount,
-                          total_amount = TotalAmount}) ->
-    TotalAmount - InitiatorAmount.
+responder_amount(#channel{responder_amount = ResponderAmount}) ->
+    ResponderAmount.
 
 -spec channel_reserve(channel()) -> amount().
 channel_reserve(#channel{channel_reserve = ChannelReserve}) ->

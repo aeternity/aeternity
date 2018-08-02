@@ -129,9 +129,8 @@ process(#channel_settle_tx{initiator_amount_final = InitiatorAmount,
     Channel0        = aesc_state_tree:get(ChannelPubKey, ChannelsTree0),
     InitiatorPubKey = aesc_channels:initiator_pubkey(Channel0),
     InitiatorAmount = aesc_channels:initiator_amount(Channel0), % same amt
-    TotalAmount     = aesc_channels:total_amount(Channel0),
     ResponderPubKey = aesc_channels:responder_pubkey(Channel0),
-    ResponderAmount = TotalAmount - InitiatorAmount, % same amt
+    ResponderAmount = aesc_channels:responder_amount(Channel0), % same amt
 
     InitiatorAccount0       = aec_accounts_trees:get(InitiatorPubKey, AccountsTree0),
     ResponderAccount0       = aec_accounts_trees:get(ResponderPubKey, AccountsTree0),

@@ -9,7 +9,9 @@
         , calls/1
         , set_calls/2
         , contracts/1
+        , get_call/3
         , set_contracts/2
+        , get_contract/2
         , priv_key/2
         , call_tx/3
         , call_tx/4
@@ -77,6 +79,12 @@ assert_state_equal(Exp, Act) ->
 calls(State) ->
     aec_trees:calls(trees(State)).
 
+get_call(ContractId, CallId, State) ->
+    Calls = aec_trees:calls(trees(State)),
+    {value, Call} = aect_call_state_tree:lookup_call(ContractId, CallId,
+                                                     Calls),
+    Call.
+
 set_calls(Calls, State) ->
     Trees = trees(State),
     set_trees(aec_trees:set_calls(Trees, Calls), State).
@@ -87,6 +95,10 @@ contracts(State) ->
 set_contracts(Contracts, State) ->
     Trees = trees(State),
     set_trees(aec_trees:set_contracts(Trees, Contracts), State).
+
+get_contract(ContractId, State) ->
+    Trees = aec_trees:contracts(trees(State)),
+    aect_state_tree:get_contract(ContractId, Trees).
 
 %%%===================================================================
 %%% Register tx

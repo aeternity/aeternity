@@ -23,6 +23,7 @@
          add_signatures/2,
          tx/1,
          verify/2,
+         verify_incomplete/2,
          signatures/1]).
 
 %% API that should be avoided to be used
@@ -88,6 +89,11 @@ verify(#signed_tx{tx = Tx, signatures = Sigs}, Trees) ->
         {error, _Reason} ->
             {error, signature_check_failed}
     end.
+
+-spec verify_incomplete(signed_tx(), [aec_keys:pubkey()]) -> ok | {error, signature_check_failed}.
+verify_incomplete(#signed_tx{tx = Tx, signatures = Sigs}, Signers) ->
+    Bin = aetx:serialize_to_binary(Tx),
+    verify_signatures(Signers, Bin, Sigs).
 
 verify_signatures([PubKey|Left], Bin, Sigs) ->
     case verify_one_pubkey(Sigs, PubKey, Bin) of

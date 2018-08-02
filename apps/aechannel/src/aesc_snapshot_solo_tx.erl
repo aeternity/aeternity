@@ -96,11 +96,14 @@ from_pubkey(#channel_snapshot_solo_tx{from_id = FromId}) ->
         {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_snapshot_solo_tx{payload    = Payload,
                                 fee        = Fee,
-                                nonce      = Nonce} = Tx, _Context, Trees, Height, _ConsensusVersion) ->
+                                nonce      = Nonce} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
     ChannelPubKey = channel_pubkey(Tx),
     FromPubKey    = from_pubkey(Tx),
-    aesc_utils:check_solo_snapshot_payload(ChannelPubKey, FromPubKey, Nonce, Fee,
-                                           Payload, Height, Trees).
+    case aesc_utils:check_solo_snapshot_payload(ChannelPubKey, FromPubKey, Nonce, Fee,
+                                        Payload, Trees) of
+        ok -> {ok, Trees};
+        Err -> Err
+    end.
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
               non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
