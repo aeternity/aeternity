@@ -178,17 +178,11 @@
     wrong_http_method_oracle_response/1,
     wrong_http_method_name_preclaim/1,
     wrong_http_method_name_claim/1,
-    wrong_http_method_name_update/1,
     wrong_http_method_name_transfer/1,
     wrong_http_method_name_revoke/1,
     wrong_http_method_transactions/1,
     wrong_http_method_tx_id/1,
     wrong_http_method_spend_tx/1,
-    wrong_http_method_name_preclaim_tx/1,
-    wrong_http_method_name_claim_tx/1,
-    wrong_http_method_name_update_tx/1,
-    wrong_http_method_name_transfer_tx/1,
-    wrong_http_method_name_revoke_tx/1,
     wrong_http_method_commitment_hash/1,
     wrong_http_method_name/1,
     wrong_http_method_balance/1,
@@ -499,17 +493,11 @@ groups() ->
         wrong_http_method_oracle_response,
         wrong_http_method_name_preclaim,
         wrong_http_method_name_claim,
-        wrong_http_method_name_update,
         wrong_http_method_name_transfer,
         wrong_http_method_name_revoke,
         wrong_http_method_transactions,
         wrong_http_method_tx_id,
         wrong_http_method_spend_tx,
-        wrong_http_method_name_preclaim_tx,
-        wrong_http_method_name_claim_tx,
-        wrong_http_method_name_update_tx,
-        wrong_http_method_name_transfer_tx,
-        wrong_http_method_name_revoke_tx,
         wrong_http_method_commitment_hash,
         wrong_http_method_name,
         wrong_http_method_balance,
@@ -2426,18 +2414,19 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
     Name = <<"name.test">>,
     Salt = 1234,
 
-    {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = get_commitment_hash(Name, Salt),
+    {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = get_commitment_id(Name, Salt),
     {ok, CHash} = aec_base58c:safe_decode(commitment, EncodedCHash),
 
     %% Submit name preclaim tx and check it is in mempool
-    {ok, 200, #{<<"tx">> := EncodedUnsignedPreclaimTx}} =
-        get_name_preclaim(#{<<"commitment_id">> => EncodedCHash, fee => 1,
-                            account_id => MinerAddress}),
-    PreclaimTxHash = sign_and_post_tx(EncodedUnsignedPreclaimTx),
+    PreclaimData = #{commitment_id => EncodedCHash,
+                     fee           => 1,
+                     account_id    => MinerAddress},
+    {ok, 200, #{<<"tx">> := PreclaimTxEnc}} = get_name_preclaim(PreclaimData),
+    PreclaimTxHash = sign_and_post_tx(PreclaimTxEnc),
     {ok, 200, #{<<"tx">> := PreclaimTx}} = get_transactions_by_hash_sut(PreclaimTxHash),
     ?assertEqual(EncodedCHash, maps:get(<<"commitment_id">>, PreclaimTx)),
 
-    %% Mine enough blocks and check mempool empty again
+    %% Mine a block and check mempool empty again
     {ok, BS1} = aecore_suite_utils:mine_blocks_until_tx_on_chain(
                     aecore_suite_utils:node_name(?NODE), PreclaimTxHash, 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
@@ -3070,17 +3059,19 @@ naming_system_manage_name(_Config) ->
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Get commitment hash to preclaim a name
-    {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = get_commitment_hash(Name, NameSalt),
-    {ok, _} = aec_base58c:safe_decode(commitment, EncodedCHash),
+    {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = get_commitment_id(Name, NameSalt),
+    {ok, CHash} = aec_base58c:safe_decode(commitment, EncodedCHash),
 
     %% Submit name preclaim tx and check it is in mempool
-    {ok, 200, #{<<"tx">> := EncodedUnsignedPreclaimTx}} =
-        get_name_preclaim(#{<<"commitment_id">> => EncodedCHash, fee => Fee, account_id => PubKeyEnc}),
-    PreclaimTxHash = sign_and_post_tx(EncodedUnsignedPreclaimTx),
+    PreclaimData = #{commitment_id => EncodedCHash,
+                     fee           => Fee,
+                     account_id    => PubKeyEnc},
+    {ok, 200, #{<<"tx">> := PreclaimTxEnc}} = get_name_preclaim(PreclaimData),
+    PreclaimTxHash = sign_and_post_tx(PreclaimTxEnc),
     {ok, 200, #{<<"tx">> := PreclaimTx}} = get_transactions_by_hash_sut(PreclaimTxHash),
     ?assertEqual(EncodedCHash, maps:get(<<"commitment_id">>, PreclaimTx)),
 
-    %% Mine enough blocks and check mempool empty again
+    %% Mine a block and check mempool empty again
     {ok, BS1} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, PreclaimTxHash, 10),
     Height1 = Height0 + length(BS1),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
@@ -3090,12 +3081,14 @@ naming_system_manage_name(_Config) ->
     ?assertEqual(Balance1, Balance - Fee + (Height1 - Height0) * MineReward + Fee),
 
     %% Submit name claim tx and check it is in mempool
-    {ok, 200, #{<<"tx">> := EncodedUnsignedClaimTx}} =
-        get_name_claim(#{name => aec_base58c:encode(name, Name), name_salt => NameSalt,
-                         fee => Fee, account_id => PubKeyEnc}),
-    ClaimTxHash = sign_and_post_tx(EncodedUnsignedClaimTx),
+    ClaimData = #{account_id => PubKeyEnc,
+                  name       => aec_base58c:encode(name, Name),
+                  name_salt  => NameSalt,
+                  fee        => Fee},
+    {ok, 200, #{<<"tx">> := ClaimTxEnc}} = get_name_claim(ClaimData),
+    ClaimTxHash = sign_and_post_tx(ClaimTxEnc),
 
-    %% Mine enough blocks and check mempool empty again
+    %% Mine a block and check mempool empty again
     {ok, BS2} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, ClaimTxHash, 10),
     Height2 = Height1 + length(BS2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
@@ -3114,10 +3107,14 @@ naming_system_manage_name(_Config) ->
                 <<"pointers">> := []}} = get_name(Name),
 
     %% Submit name updated tx and check it is in mempool
-    {ok, 200, #{<<"tx">> := EncodedUnsignedUpdateTx}} =
-        get_name_update(#{name_id => EncodedNHash, name_ttl => NameTTL, client_ttl => TTL,
-                          pointers => Pointers, fee => Fee, account_id => PubKeyEnc}),
-    UpdateTxHash = sign_and_post_tx(EncodedUnsignedUpdateTx),
+    NameUpdateData = #{account_id => PubKeyEnc,
+                       name_id    => aec_base58c:encode(name, NHash),
+                       client_ttl => TTL,
+                       pointers   => Pointers,
+                       name_ttl   => NameTTL,
+                       fee        => Fee},
+    {ok, 200, #{<<"tx">> := UpdateEnc}} = get_name_update(NameUpdateData),
+    UpdateTxHash = sign_and_post_tx(UpdateEnc),
 
     %% Mine a block and check mempool empty again
     {ok, BS3} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, UpdateTxHash, 10),
@@ -3149,10 +3146,12 @@ naming_system_manage_name(_Config) ->
     ?assertEqual(Balance4, Balance3 + (Height4 - Height3) * MineReward),
 
     %% Submit name transfer tx and check it is in mempool
-    {ok, 200, #{<<"tx">> := EncodedUnsignedTransferTx}} =
-        get_name_transfer(#{name_id => EncodedNHash, recipient_id => PubKeyEnc,
-                            fee => Fee, account_id => PubKeyEnc}),
-    TransferTxHash = sign_and_post_tx(EncodedUnsignedTransferTx),
+    TransferData = #{account_id   => PubKeyEnc,
+                     recipient_id => PubKeyEnc,
+                     name_id      => aec_base58c:encode(name, NHash),
+                     fee          => Fee},
+    {ok, 200, #{<<"tx">> := TransferEnc}} = get_name_transfer(TransferData),
+    TransferTxHash = sign_and_post_tx(TransferEnc),
 
     %% Mine a block and check mempool empty again
     {ok, BS5} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, TransferTxHash, 10),
@@ -3164,9 +3163,11 @@ naming_system_manage_name(_Config) ->
     ?assertEqual(Balance5, Balance4 + (Height5 - Height4) * MineReward),
 
     %% Submit name revoke tx and check it is in mempool
-    {ok, 200, #{<<"tx">> := EncodedUnsignedRevokeTx}} =
-        get_name_revoke(#{name_id => EncodedNHash, fee => Fee, account_id => PubKeyEnc}),
-    RevokeTxHash = sign_and_post_tx(EncodedUnsignedRevokeTx),
+    RevokeData = #{account_id => PubKeyEnc,
+                   name_id => aec_base58c:encode(name, NHash),
+                   fee => Fee},
+    {ok, 200, #{<<"tx">> := RevokeEnc}} = get_name_revoke(RevokeData),
+    RevokeTxHash = sign_and_post_tx(RevokeEnc),
 
     %% Mine a block and check mempool empty again
     {ok, BS6} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, RevokeTxHash, 10),
@@ -3196,20 +3197,34 @@ naming_system_broken_txs(_Config) ->
     %% Try to submit txs with empty account
 
     {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: registrar_unknown">>}} =
-        get_commitment_hash(<<"abcd.badregistrar">>, 123),
+        get_commitment_id(<<"abcd.badregistrar">>, 123),
     {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: registrar_unknown">>}} =
         get_name(<<"abcd.badregistrar">>),
-    {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
-        post_name_preclaim_tx(CHash, Fee),
-    {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
-        post_name_claim_tx(Name, NameSalt, Fee),
-    {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
-        post_name_update_tx(NHash, 5, [], 5, Fee),
-    {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
-        post_name_transfer_tx(NHash, random_hash(), Fee),
-    {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
-        post_name_revoke_tx(NHash, Fee),
-
+    {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
+        get_name_preclaim(#{commitment_id => aec_base58c:encode(commitment, CHash),
+                            fee => Fee,
+                            account_id => aec_base58c:encode(account_pubkey, random_hash())}),
+    {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
+        get_name_claim(#{name => aec_base58c:encode(name, Name),
+                         name_salt => NameSalt,
+                         account_id => aec_base58c:encode(account_pubkey, random_hash()),
+                         fee => Fee}),
+    {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
+        get_name_update(#{account_id => aec_base58c:encode(account_pubkey, random_hash()),
+                          name_id => aec_base58c:encode(name, NHash),
+                          name_ttl => 5,
+                          pointers => [],
+                          client_ttl => 5,
+                          fee => Fee}),
+    {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
+        get_name_transfer(#{account_id => aec_base58c:encode(account_pubkey, random_hash()),
+                            recipient_id => aec_base58c:encode(account_pubkey, random_hash()),
+                            name_id => aec_base58c:encode(name, NHash),
+                            fee => Fee}),
+    {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
+        get_name_revoke(#{account_id => aec_base58c:encode(account_pubkey, random_hash()),
+                          name_id => aec_base58c:encode(name, NHash),
+                          fee => Fee}),
     %% Check mempool still empty
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
     ForkHeight = aecore_suite_utils:latest_fork_height(),
@@ -4657,44 +4672,9 @@ post_spend_tx(Recipient, Amount, Fee, Payload) ->
                    fee => Fee,
                    payload => Payload}).
 
-post_name_preclaim_tx(Commitment, Fee) ->
+get_commitment_id(Name, Salt) ->
     Host = internal_address(),
-    http_request(Host, post, "name-preclaim-tx",
-                 #{commitment_id => aec_base58c:encode(commitment, Commitment),
-                   fee           => Fee}).
-
-post_name_claim_tx(Name, NameSalt, Fee) ->
-    Host = internal_address(),
-    http_request(Host, post, "name-claim-tx",
-                 #{name      => Name,
-                   name_salt => NameSalt,
-                   fee       => Fee}).
-
-post_name_update_tx(NameHash, NameTTL, Pointers, ClientTTL, Fee) ->
-    Host = internal_address(),
-    http_request(Host, post, "name-update-tx",
-                 #{name_id    => aec_base58c:encode(name, NameHash),
-                   client_ttl => ClientTTL,
-                   pointers   => Pointers,
-                   name_ttl   => NameTTL,
-                   fee        => Fee}).
-
-post_name_transfer_tx(NameHash, RecipientPubKey, Fee) ->
-    Host = internal_address(),
-    http_request(Host, post, "name-transfer-tx",
-                 #{name_id      => aec_base58c:encode(name, NameHash),
-                   recipient_id => aec_base58c:encode(account_pubkey, RecipientPubKey),
-                   fee          => Fee}).
-
-post_name_revoke_tx(NameHash, Fee) ->
-    Host = internal_address(),
-    http_request(Host, post, "name-revoke-tx",
-                 #{name_id => aec_base58c:encode(name, NameHash),
-                   fee     => Fee}).
-
-get_commitment_hash(Name, Salt) ->
-    Host = external_address(),
-    http_request(Host, get, "commitment-hash", [{name, Name}, {salt, Salt}]).
+    http_request(Host, get, "debug/names/commitment-id", [{name, Name}, {salt, Salt}]).
 
 get_name(Name) ->
     Host = external_address(),
@@ -4888,10 +4868,6 @@ wrong_http_method_name_claim(_Config) ->
     Host = external_address(),
     {ok, 405, _} = http_request(Host, get, "tx/name/claim", []).
 
-wrong_http_method_name_update(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "tx/name/update", []).
-
 wrong_http_method_name_transfer(_Config) ->
     Host = external_address(),
     {ok, 405, _} = http_request(Host, get, "tx/name/transfer", []).
@@ -4912,29 +4888,9 @@ wrong_http_method_spend_tx(_Config) ->
     Host = internal_address(),
     {ok, 405, _} = http_request(Host, get, "spend-tx", []).
 
-wrong_http_method_name_preclaim_tx(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, get, "name-preclaim-tx", []).
-
-wrong_http_method_name_claim_tx(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, get, "name-claim-tx", []).
-
-wrong_http_method_name_update_tx(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, get, "name-update-tx", []).
-
-wrong_http_method_name_transfer_tx(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, get, "name-transfer-tx", []).
-
-wrong_http_method_name_revoke_tx(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, get, "name-revoke-tx", []).
-
 wrong_http_method_commitment_hash(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "commitment-hash", []).
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "debug/names/commitment-id", []).
 
 wrong_http_method_name(_Config) ->
     Host = external_address(),
