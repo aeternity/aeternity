@@ -1167,14 +1167,26 @@ get_pending_key_block(Config) ->
 get_pending_key_block(false, _CurrentBlockType, _Config) ->
     {ok, 404, Error} = get_key_blocks_pending_sut(),
     ?assertEqual(<<"Not mining, no pending block">>, maps:get(<<"reason">>, Error)),
-    %% TODO: "miner is starting" error may occur - remove this error
     ok;
 get_pending_key_block(true, _CurrentBlockType, Config) ->
     CurrentBlockHash = ?config(current_block_hash, Config),
     CurrentBlockHeight = ?config(current_block_height, Config),
-    {ok, 200, Block} = get_key_blocks_pending_sut(),
-    ?assertEqual(CurrentBlockHeight + 1, maps:get(<<"height">>, Block)),
-    ?assertEqual(CurrentBlockHash, maps:get(<<"prev_hash">>, Block)),
+    Pred =
+        fun({ok, 200, _}) ->
+                true;
+           ({ok, 404,
+             #{<<"reason">> :=
+                   <<"Starting mining, pending block not available yet">>}}) ->
+                false
+        end,
+    {ok, {ok, 200, Block}} = aec_test_utils:wait_for_pred_or_timeout(
+                               fun get_key_blocks_pending_sut/0, Pred, 20000),
+    case maps:get(<<"height">>, Block) of
+        H when H =:= (CurrentBlockHeight + 1) ->
+            ?assertEqual(CurrentBlockHash, maps:get(<<"prev_hash">>, Block));
+        H when is_integer(H), H > CurrentBlockHeight ->
+            ?assertNotEqual(CurrentBlockHash, maps:get(<<"prev_hash">>, Block))
+    end,
     ok.
 
 get_key_block_by_hash(Config) ->
