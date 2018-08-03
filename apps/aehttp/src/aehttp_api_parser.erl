@@ -89,7 +89,6 @@
                    node_version => [{<<"genesis_hash">>, block_hash}],
 
                    oracle => [{<<"address">>, oracle_pubkey}],
-                   oracle_list => {list, oracle},
 
                    oracle_query => [{<<"query_id">>, oracle_query_id}],
                    oracle_queries_list => {list, oracle_query}
