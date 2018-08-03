@@ -23,6 +23,12 @@
         , sophia_state/1
         , sophia_spend/1
         , sophia_oracles/1
+        , sophia_oracles_qfee__basic__ct/1
+        , sophia_oracles_qfee__query_tx_value_below_qfee_errs__ct/1
+        , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_not_taken_from_oracle__ct/1
+        , sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__ct/1
+        , sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__ct/1
+        , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__ct/1
         , sophia_maps/1
         , sophia_variant_types/1
         , sophia_fundme/1
@@ -70,10 +76,20 @@ groups() ->
                                  sophia_state,
                                  sophia_spend,
                                  sophia_oracles,
+                                 {group, sophia_oracles_fees},
                                  sophia_maps,
                                  sophia_variant_types,
                                  sophia_fundme,
                                  sophia_aens ]}
+    , {sophia_oracles_fees, [],
+       [ %% TODO Analogous test cases sophia_oracles_qfee__*__remct calling oracle contract from remote contract.
+         sophia_oracles_qfee__basic__ct,
+         sophia_oracles_qfee__query_tx_value_below_qfee_errs__ct,
+         sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_not_taken_from_oracle__ct,
+         sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__ct,
+         sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__ct,
+         sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__ct
+       ]}
     , {store, [sequence], [ create_store
                           , update_store
                           , read_store
@@ -550,15 +566,15 @@ sophia_oracles(_Cfg) ->
     Ct = <<CtId:256>> = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
     QueryFee          = 100,
     TTL               = 15,
-    CtId              = ?call(call_contract, Acc, Ct, registerOracle, word, {CtId, 0, 10, QueryFee, TTL}),
+    CtId              = ?call(call_contract, Acc, Ct, registerOracle, word, {CtId, 0, QueryFee, TTL}),
     Question          = <<"Manchester United vs Brommapojkarna">>,
-    QId               = ?call(call_contract, Acc, Ct, createQuery, word, {Ct, Question, QueryFee, 5, 5}),
+    QId               = ?call(call_contract, Acc, Ct, createQuery, word, {Ct, Question, QueryFee, 5, 5}, #{amount => QueryFee}),
     Question          = ?call(call_contract, Acc, Ct, getQuestion, string, {CtId, QId}),
     QueryFee          = ?call(call_contract, Acc, Ct, queryFee, word, Ct),
     none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
     {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {CtId, QId, 0, 4001}),
     {some, 4001}      = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
-    {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Ct, 0, 10, TTL + 10}),
+    {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Ct, 0, TTL + 10}),
 
     %% Test complex answers
     Ct1 = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
@@ -568,6 +584,231 @@ sophia_oracles(_Cfg) ->
     Answer       = {yesAnswer, {how, <<"birds fly?">>}, <<"magic">>, 1337},
     {some, Answer} = ?call(call_contract, Acc, Ct1, complexOracle, {option, AnswerType}, {Question1, 0}),
     ok.
+
+register_oracle_by_contract(OperatorAcc, InitialContractBalance, QueryFee, S) ->
+    {OCt = <<OCtId:256>>, S1} = create_contract(OperatorAcc, oracles, {}, #{amount => InitialContractBalance}, S),
+    {OCtId, S2} = call_contract(OperatorAcc, OCt, registerOracle, word, {OCtId, 0, QueryFee, 15}, #{amount => 0}, S1),
+    {{OCt, OCt}, S2}.
+
+create_oracle_query_by_contract(UserAcc, TxFee, OCt, OCt, Value, QueryFee, Question, S) ->
+    call_contract(UserAcc, OCt, createQuery, word, {OCt, Question, QueryFee, 5, 5}, #{fee => TxFee, gas_price => 0, amount => Value}, S).
+
+check_and_respond_oracle_query_by_contract(OperatorAcc, TxFee, OCt, OCt, QueryId, Question, S) ->
+    <<OCtId:256>> = OCt,
+    {Question, _} = call_contract(OperatorAcc, OCt, getQuestion, string, {OCtId, QueryId}, S),
+    {{}, S1} = call_contract(OperatorAcc, OCt, respond, {tuple, []}, {OCtId, QueryId, 0, 4001}, #{fee => TxFee, gas_price => 0, amount => 0}, S),
+    {{some, 4001}, _} = call_contract(OperatorAcc, OCt, getAnswer, {option, word}, {OCtId, QueryId}, S1),
+    {ok, S1}.
+
+sophia_oracles_qfee__basic__ct(_Cfg) ->
+    {{OperatorAcc, UserAcc, {OracleAcc, OracleAcc}},
+     {TxFee, QueryFee},
+     {S1, %% State after oracle registration.
+      S2, %% State after query.
+      S3} %% State after response.
+    } = sophia_oracles_qfee__basic(
+          fun register_oracle_by_contract/4,
+          fun create_oracle_query_by_contract/8,
+          fun check_and_respond_oracle_query_by_contract/7),
+
+    Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
+
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryFee), Bal(UserAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1)                   , Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(OperatorAcc, S1)                 , Bal(OperatorAcc, S2)),
+
+    ?assertEqual(Bal(UserAcc, S2)             , Bal(UserAcc, S3)),
+    ?assertEqual(Bal(OracleAcc, S2) + QueryFee, Bal(OracleAcc, S3)),
+    ?assertEqual(Bal(OperatorAcc, S2) - TxFee , Bal(OperatorAcc, S3)).
+
+%% Reference case i.e. all of the following items are equal:
+%% * Query fee specified when registering oracle
+%% * Query fee specified when creating query
+%% * Value specified in call tx creating query
+sophia_oracles_qfee__basic(RegisterOracle, CreateQuery, CheckAndRespondQuery) ->
+    QueryFee = 100,
+    TxFee = 2,
+    Question = <<"why?">>,
+
+    {OperatorAcc, S0Op} = new_account(1000000, aect_test_utils:new_state()),
+    {UserAcc, S0}       = new_account(1000000, S0Op),
+    {{OracleAcc, CallingCt}, S1} = RegisterOracle(OperatorAcc, 0, QueryFee, S0),
+    {QId, S2} = CreateQuery(UserAcc, TxFee, CallingCt, OracleAcc, QueryFee, QueryFee, Question, S1),
+    {ok, S3} = CheckAndRespondQuery(OperatorAcc, TxFee, CallingCt, OracleAcc, QId, Question, S2),
+    {{OperatorAcc, UserAcc, {OracleAcc, CallingCt}},
+     {TxFee, QueryFee},
+     {S1, S2, S3}}.
+
+sophia_oracles_qfee__query_tx_value_below_qfee_errs__ct(_Cfg) ->
+    {{OperatorAcc, UserAcc, {OracleAcc, OracleAcc}},
+     {TxFee, _QueryFee, QueryTxValue},
+     {S1, %% State after oracle registration.
+      S2} %% State after query.
+    } = sophia_oracles_qfee__query_tx_value_below_qfee_errs__ct(
+          fun register_oracle_by_contract/4,
+          fun create_oracle_query_by_contract/8),
+
+    Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
+
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue        , Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)).
+
+%% Tx value specified when creating query less than query fee.
+sophia_oracles_qfee__query_tx_value_below_qfee_errs__ct(RegisterOracle, CreateQuery) ->
+    QueryFee = 100,
+    QueryTxValue = QueryFee - 1,
+    TxFee = 2,
+    Question = <<"why?">>,
+
+    {OperatorAcc, S0Op} = new_account(1000000, aect_test_utils:new_state()),
+    {UserAcc, S0}       = new_account(1000000, S0Op),
+    {{OracleAcc, CallingCt}, S1} = RegisterOracle(OperatorAcc, 0, QueryFee, S0),
+    {error, S2} = CreateQuery(UserAcc, TxFee, CallingCt, OracleAcc, QueryTxValue, QueryFee, Question, S1),
+    {{OperatorAcc, UserAcc, {OracleAcc, CallingCt}},
+     {TxFee, QueryFee, QueryTxValue},
+     {S1, S2}}.
+
+sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_not_taken_from_oracle__ct(_Cfg) ->
+    {{OperatorAcc, UserAcc, {OracleAcc, OracleAcc}},
+     {TxFee, QueryFee, _QueryFeeExcess},
+     {S1, %% State after oracle registration.
+      S2} %% State after query.
+    } = sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_not_taken_from_oracle(
+          fun register_oracle_by_contract/4,
+          fun create_oracle_query_by_contract/8),
+
+    Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
+
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryFee), Bal(UserAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1) + QueryFee,         Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(OperatorAcc, S1),                  Bal(OperatorAcc, S2)).
+
+%% Excessive query fee not covered by call tx value does not use
+%% contract balance.
+sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_not_taken_from_oracle(RegisterOracle, CreateQuery) ->
+    QueryFee = 100,
+    QueryFeeExcess = 1,
+    ExcessiveQueryFee = QueryFeeExcess + QueryFee,
+    TxFee = 2,
+    Question = <<"why?">>,
+
+    {OperatorAcc, S0Op} = new_account(1000000, aect_test_utils:new_state()),
+    {UserAcc, S0}       = new_account(1000000, S0Op),
+    {{OracleAcc, CallingCt}, S1} = RegisterOracle(OperatorAcc, QueryFeeExcess + 10, QueryFee, S0),
+    {error, S2} = CreateQuery(UserAcc, TxFee, CallingCt, OracleAcc, QueryFee, ExcessiveQueryFee, Question, S1),
+    {{OperatorAcc, UserAcc, {OracleAcc, CallingCt}},
+     {TxFee, QueryFee, QueryFeeExcess},
+     {S1, S2}}.
+
+sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__ct(_Cfg) ->
+    {{OperatorAcc, UserAcc, {OracleAcc, OracleAcc}},
+     {TxFee, _QueryFee, SmallerQueryFee},
+     {S1, %% State after oracle registration.
+      S2} %% State after query.
+    } = sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs(
+          fun register_oracle_by_contract/4,
+          fun create_oracle_query_by_contract/8),
+
+    Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
+
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + SmallerQueryFee), Bal(UserAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1) + SmallerQueryFee        , Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(OperatorAcc, S1)                        , Bal(OperatorAcc, S2)).
+
+%% User attempting to create query with query fee smaller than the one
+%% requested by the oracle.
+sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs(RegisterOracle, CreateQuery) ->
+    QueryFee = 100,
+    SmallerQueryFee = QueryFee - 1,
+    TxFee = 2,
+    Question = <<"why?">>,
+
+    {OperatorAcc, S0Op} = new_account(1000000, aect_test_utils:new_state()),
+    {UserAcc, S0}       = new_account(1000000, S0Op),
+    {{OracleAcc, CallingCt}, S1} = RegisterOracle(OperatorAcc, 0, QueryFee, S0),
+    {error, S2} = CreateQuery(UserAcc, TxFee, CallingCt, OracleAcc, SmallerQueryFee, SmallerQueryFee, Question, S1),
+    {{OperatorAcc, UserAcc, {OracleAcc, CallingCt}},
+     {TxFee, QueryFee, SmallerQueryFee},
+     {S1, S2}}.
+
+sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__ct(_Cfg) ->
+    {{OperatorAcc, UserAcc, {OracleAcc, OracleAcc}},
+     {TxFee, QueryFee, QueryFeeExcess},
+     {S1, %% State after oracle registration.
+      S2, %% State after query.
+      S3} %% State after response.
+    } = sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle(
+          fun register_oracle_by_contract/4,
+          fun create_oracle_query_by_contract/8,
+          fun check_and_respond_oracle_query_by_contract/7),
+
+    Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
+
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryFee + QueryFeeExcess), Bal(UserAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1) + QueryFeeExcess                   , Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(OperatorAcc, S1)                                  , Bal(OperatorAcc, S2)),
+
+    ?assertEqual(Bal(UserAcc, S2)             , Bal(UserAcc, S3)),
+    ?assertEqual(Bal(OracleAcc, S2) + QueryFee, Bal(OracleAcc, S3)),
+    ?assertEqual(Bal(OperatorAcc, S2) - TxFee , Bal(OperatorAcc, S3)).
+
+%% Call tx value in excess of query fee specified in same query tx
+%% ends up in oracle contract.
+sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle(RegisterOracle, CreateQuery, CheckAndRespondQuery) ->
+    QueryFee = 100,
+    QueryFeeExcess = 1,
+    ExcessiveQueryFee = QueryFeeExcess + QueryFee,
+    TxFee = 2,
+    Question = <<"why?">>,
+
+    {OperatorAcc, S0Op} = new_account(1000000, aect_test_utils:new_state()),
+    {UserAcc, S0}       = new_account(1000000, S0Op),
+    {{OracleAcc, CallingCt}, S1} = RegisterOracle(OperatorAcc, 0, QueryFee, S0),
+    {QId, S2} = CreateQuery(UserAcc, TxFee, CallingCt, OracleAcc, ExcessiveQueryFee, QueryFee, Question, S1),
+    {ok, S3} = CheckAndRespondQuery(OperatorAcc, TxFee, CallingCt, OracleAcc, QId, Question, S2),
+    {{OperatorAcc, UserAcc, {OracleAcc, CallingCt}},
+     {TxFee, QueryFee, QueryFeeExcess},
+     {S1, S2, S3}}.
+
+sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__ct(_Cfg) ->
+    {{OperatorAcc, UserAcc, {OracleAcc, OracleAcc}},
+     {TxFee, QueryFee, QueryFeeExcess},
+     {S1, %% State after oracle registration.
+      S2, %% State after query.
+      S3} %% State after response.
+    } = sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle(
+          fun register_oracle_by_contract/4,
+          fun create_oracle_query_by_contract/8,
+          fun check_and_respond_oracle_query_by_contract/7),
+
+    Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
+
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryFee + QueryFeeExcess), Bal(UserAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1)                                    , Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(OperatorAcc, S1)                                  , Bal(OperatorAcc, S2)),
+
+    ?assertEqual(Bal(UserAcc, S2)                              , Bal(UserAcc, S3)),
+    ?assertEqual(Bal(OracleAcc, S2) + QueryFee + QueryFeeExcess, Bal(OracleAcc, S3)),
+    ?assertEqual(Bal(OperatorAcc, S2) - TxFee                  , Bal(OperatorAcc, S3)).
+
+%% Excessive query fee (covered by call tx value) is awarded to oracle
+%% contract.
+sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle(RegisterOracle, CreateQuery, CheckAndRespondQuery) ->
+    QueryFee = 100,
+    QueryFeeExcess = 1,
+    ExcessiveQueryFee = QueryFeeExcess + QueryFee,
+    TxFee = 2,
+    Question = <<"why?">>,
+
+    {OperatorAcc, S0Op} = new_account(1000000, aect_test_utils:new_state()),
+    {UserAcc, S0}       = new_account(1000000, S0Op),
+    {{OracleAcc, CallingCt}, S1} = RegisterOracle(OperatorAcc, 0, QueryFee, S0),
+    {QId, S2} = CreateQuery(UserAcc, TxFee, CallingCt, OracleAcc, ExcessiveQueryFee, ExcessiveQueryFee, Question, S1),
+    {ok, S3} = CheckAndRespondQuery(OperatorAcc, TxFee, CallingCt, OracleAcc, QId, Question, S2),
+    {{OperatorAcc, UserAcc, {OracleAcc, CallingCt}},
+     {TxFee, QueryFee, QueryFeeExcess},
+     {S1, S2, S3}}.
 
 %% Testing map functions and primitives
 sophia_maps(_Cfg) ->

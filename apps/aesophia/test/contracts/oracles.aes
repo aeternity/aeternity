@@ -2,26 +2,25 @@ contract Oracles =
 
   function registerOracle(acct : address,
                           sign : signature,   // Signed account address
-                          fee  : int,
                           qfee : int,
                           ttl  : int) : oracle(string, int) =
-     Oracle.register(acct, sign, fee, qfee, ttl)
+     Oracle.register(acct, sign, qfee, ttl)
 
   function queryFee(o : oracle(string, int)) : int =
     Oracle.query_fee(o)
 
   function createQuery(o    : oracle(string, int),
                        q    : string,
-                       fee  : int,
+                       qfee  : int,
                        qttl : int,
                        rttl : int) : oracle_query(string, int) =
-    Oracle.query(o, q, fee, qttl, rttl)
+    require(qfee =< Call.value, "insufficient value for qfee")
+    Oracle.query(o, q, qfee, qttl, rttl)
 
   function extendOracle(o    : oracle(string, int),
                         sign : signature,   // Signed oracle address
-                        fee  : int,
                         ttl  : int) : () =
-    Oracle.extend(o, sign, fee, ttl)
+    Oracle.extend(o, sign, ttl)
 
   function respond(o    : oracle(string, int),
                    q    : oracle_query(string, int),
@@ -47,8 +46,13 @@ contract Oracles =
   datatype complexAnswer   = NoAnswer | Answer(complexQuestion, string, int)
 
   function complexOracle(question, sig) =
-    let o = Oracle.register(Contract.address, sig, 0, 0, 1000) : oracle(complexQuestion, complexAnswer)
+    let o = Oracle.register(Contract.address, sig, 0, 1000) : oracle(complexQuestion, complexAnswer)
     let q = Oracle.query(o, question, 0, 100, 100)
     Oracle.respond(o, q, sig, Answer(question, "magic", 1337))
     Oracle.get_answer(o, q)
 
+  private function abort(err : string) =
+    switch(0) 1 => ()
+
+  private function require(b : bool, err : string) =
+    if(!b) abort(err)
