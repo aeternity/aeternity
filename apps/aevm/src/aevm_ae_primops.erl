@@ -13,10 +13,27 @@
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 
 -define(BASE_ADDRESS, 32). %% Byte offset for data
+
+-ifdef(COMMON_TEST).
+-define(TEST_LOG(Format, Data), ct:log(Format, Data)).
+-else.
+-define(TEST_LOG(Format, Data), ok).
+-endif.
+
 -spec call( non_neg_integer(), binary(), aevm_eeevm_state:state()) ->
                   {ok, binary(), non_neg_integer(), aevm_eeevm_state:state()}
                       | {error, any()}.
 call(Value, Data, State) ->
+    case call_(Value, Data, State) of
+        {ok, _, _, _} = Ok ->
+            Ok;
+        {error, _} = Err ->
+            ?TEST_LOG("Primop call error ~p~n~p:~p(~p, ~p, State)",
+                      [Err, ?MODULE, ?FUNCTION_NAME, Value, Data]),
+            Err
+    end.
+
+call_(Value, Data, State) ->
     try
         case get_primop(Data) of
             ?PRIM_CALL_SPEND ->
@@ -26,7 +43,11 @@ call(Value, Data, State) ->
             PrimOp when ?PRIM_CALL_IN_AENS_RANGE(PrimOp) ->
                 aens_call(PrimOp, Value, Data, State)
         end
-    catch _:_Err ->
+    catch T:Err ->
+        ?TEST_LOG("Primop illegal call ~p:~p:~p~n~p:~p(~p, ~p, State)",
+                  [T, Err,
+                   erlang:get_stacktrace(), %% Absent from non-test bytecode.
+                   ?MODULE, ?FUNCTION_NAME, Value, Data]),
 	%% TODO: Better error for illegal call.
         {error, out_of_gas}
     end.

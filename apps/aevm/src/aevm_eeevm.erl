@@ -32,6 +32,12 @@
 -define(REVERT_SIGNAL(___State___),
         ?AEVM_SIGNAL(revert, ___State___)).
 
+-ifdef(COMMON_TEST).
+-define(TEST_LOG(Format, Data), ct:log(Format, Data)).
+-else.
+-define(TEST_LOG(Format, Data), ok).
+-endif.
+
 
 %% Main eval loop.
 %%
@@ -57,6 +63,7 @@ eval_code(State) ->
     try {ok, loop(valid_jumpdests(State))}
     catch
         throw:?aevm_eval_error(What, StateOut) ->
+            ?TEST_LOG("CP ~p~nCode ~p", [aevm_eeevm_state:cp(StateOut), aevm_eeevm_state:code(StateOut)]),
 	    %% Throw away new storage on error.
             {error, What, old_store(State, StateOut)};
 	throw:?AEVM_SIGNAL(Signal, StateOut) ->
@@ -1368,7 +1375,7 @@ inc_cp(Amount, State) ->
 spend_call_gas(State, OP) when OP =:= ?CALL;
                                OP =:= ?CALLCODE;
                                OP =:= ?DELEGATECALL ->
-    spend_gas_common(aevm_gas:op_cost(?CALL, State), State).
+    spend_gas_common({call_op, OP}, aevm_gas:op_cost(?CALL, State), State).
 
 spend_op_gas(?CALL, State) ->
     %% Delay this until the actual operation
@@ -1377,16 +1384,18 @@ spend_op_gas(?CALLCODE, State) ->
     %% Delay this until the actual operation
     State;
 spend_op_gas(Op, State) ->
-    spend_gas_common(aevm_gas:op_cost(Op, State), State).
+    spend_gas_common({op, Op}, aevm_gas:op_cost(Op, State), State).
 
 spend_mem_gas(StateWithOpGas, StateOut) ->
-    spend_gas_common(aevm_gas:mem_cost(StateWithOpGas, StateOut), StateOut).
+    spend_gas_common({mem}, aevm_gas:mem_cost(StateWithOpGas, StateOut), StateOut).
 
-spend_gas_common(Cost, State) ->
+spend_gas_common(Resource, Cost, State) ->
     Gas  = aevm_eeevm_state:gas(State),
     case Gas >= Cost of
 	true ->  aevm_eeevm_state:set_gas(Gas - Cost, State);
-	false -> eval_error(out_of_gas, State)
+	false ->
+            ?TEST_LOG("Out of gas spending ~p gas for ~p", [Cost, Resource]),
+            eval_error(out_of_gas, State)
     end.
 
 %% ------------------------------------------------------------------------
@@ -1509,7 +1518,9 @@ recursive_call1(StateIn, Op) ->
     CallGas = Stipend + Gas,
     case GasAfterSpend >= 0 of
         true  -> ok;
-        false -> eval_error(out_of_gas, State7)
+        false ->
+            ?TEST_LOG("Out of gas before call", []),
+            eval_error(out_of_gas, State7)
     end,
     Caller = case Op of
                  ?CALL -> aevm_eeevm_state:address(State8);
