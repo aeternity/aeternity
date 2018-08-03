@@ -146,9 +146,6 @@
     naming_system_manage_name/1,
     naming_system_broken_txs/1,
 
-    list_oracles/1,
-    list_oracle_queries/1,
-
     peers/1
    ]).
 
@@ -198,8 +195,6 @@
     wrong_http_method_tx/1,
     wrong_http_method_all_accounts_balances/1,
     wrong_http_method_miner_pub_key/1,
-    wrong_http_method_list_oracles/1,
-    wrong_http_method_list_oracle_queries/1,
     wrong_http_method_peers/1
     ]).
 
@@ -482,9 +477,6 @@ groups() ->
         miner_pub_key,
 
         % requested Endpoints
-        list_oracles,
-        list_oracle_queries,
-
         peers
       ]},
      {swagger_validation, [], [
@@ -524,8 +516,6 @@ groups() ->
         wrong_http_method_tx,
         wrong_http_method_all_accounts_balances,
         wrong_http_method_miner_pub_key,
-        wrong_http_method_list_oracles,
-        wrong_http_method_list_oracle_queries,
         wrong_http_method_peers
      ]},
      {naming, [sequence],
@@ -3227,140 +3217,6 @@ naming_system_broken_txs(_Config) ->
                                    ForkHeight),
     ok.
 
-list_oracles(_Config) ->
-    %% Mine a blocks to get some funds
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-
-    KeyPair = fun() ->
-                  #{ public := Pub, secret := Priv } = enacl:sign_keypair(),
-                  {Pub, Priv}
-              end,
-    KeyPairs = [ KeyPair() || _ <- lists:seq(1, 5) ],
-
-    %% Transfer some funds to these accounts
-    [ post_spend_tx(Receiver, 9, 1) || {Receiver, _} <- KeyPairs ],
-
-    %% Mine a block to effect this
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
-
-    %% Now register those accounts as oracles...
-    [ register_oracle(6, PubKey, PrivKey, 1, 4, {delta, 50})
-      || {PubKey, PrivKey} <- KeyPairs ],
-
-    %% Mine a block to effect the registrations
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
-
-    %% Now we can test the oracle listing...
-    Oracles = get_list_oracles(5),
-    Os1 = lists:sort([aec_base58c:encode(oracle_pubkey, PubKey) ||  {PubKey, _} <- KeyPairs ]),
-    Os2 = lists:sort([ maps:get(<<"address">>, O) || O <- Oracles ]),
-
-    ct:log("Os1 = ~p\nOs2 = ~p", [Os1, Os2]),
-    Os1 = Os2,
-
-    %% Try pagination
-    Oracles1 = [_, O2] = get_list_oracles(2),
-    Oracles2 = get_list_oracles(maps:get(<<"address">>, O2), 3),
-    Os3 = lists:sort([ maps:get(<<"address">>, O) || O <- Oracles1 ++ Oracles2 ]),
-
-    ct:log("Os3 = ~p\nOs2 = ~p", [Os3, Os2]),
-    Os3 = Os2,
-
-    ok.
-
-list_oracle_queries(_Config) ->
-    %% Mine a block to get some funds
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-
-    KeyPair = fun() ->
-                  #{ public := Pub, secret := Priv } = enacl:sign_keypair(),
-                  {Pub, Priv}
-              end,
-    OKeyPairs = [ KeyPair() || _ <- lists:seq(1, 2) ],
-
-    {APubKey, APrivKey} = KeyPair(),
-
-    %% Transfer some funds to these accounts
-    [ post_spend_tx(Receiver, 9, 1) || {Receiver, _} <- OKeyPairs ],
-    post_spend_tx(APubKey, 79, 1),
-
-    %% Mine a block to effect this
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
-
-    %% Now register both accounts as oracles...
-    [ register_oracle(2, PubKey, PrivKey, 1, 3, {delta, 50})
-      || {PubKey, PrivKey} <- OKeyPairs ],
-
-    %% Mine a block to effect the registrations
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
-
-    %% Query each oracle four times
-    [{OPubKey1, _}, {OPubKey2, _}] = OKeyPairs,
-    [ query_oracle(3, APubKey, APrivKey, OPubKey1, N, <<"a query">>, {delta, 20}, 3)
-      || N <- lists:seq(1, 4) ],
-    [ query_oracle(3, APubKey, APrivKey, OPubKey2, N, <<"a query">>, {delta, 20}, 3)
-      || N <- lists:seq(5, 8) ],
-
-    QueryIds = [ aeo_query:id(APubKey, N, OPubKey1) || N <- lists:seq(1, 4) ] ++
-               [ aeo_query:id(APubKey, N, OPubKey2) || N <- lists:seq(5, 8) ],
-
-    %% Mine a block to effect the queries
-    aecore_suite_utils:mine_micro_blocks(aecore_suite_utils:node_name(?NODE), 1),
-
-    %% Now we can test the oracle query listing...
-    Queriess = [ get_list_oracle_queries(OPubKey, 4) || {OPubKey, _} <- OKeyPairs ],
-
-    QS1 = lists:sort([ aec_base58c:encode(oracle_query_id, QId) || QId <- QueryIds ]),
-    QS2 = lists:sort([ maps:get(<<"query_id">>, Q) || Qs <- Queriess, Q <- Qs ]),
-
-    ct:log("Qs1 = ~p\nQs2 = ~p", [QS1, QS2]),
-    QS1 = QS2,
-
-    %% Try pagination
-    Queries1 = [_, Q2] = get_list_oracle_queries(OPubKey1, 2),
-    Queries2 = get_list_oracle_queries(OPubKey1, maps:get(<<"query_id">>, Q2), 3),
-    Queries3 = [Q4] = get_list_oracle_queries(OPubKey2, 1),
-    Queries4 = get_list_oracle_queries(OPubKey2, maps:get(<<"query_id">>, Q4), 3),
-
-    QS3 = lists:sort([ maps:get(<<"query_id">>, Q)
-                       || Q <- Queries1 ++ Queries2 ++ Queries3 ++ Queries4 ]),
-
-    ct:log("Qs3 = ~p\nQs2 = ~p", [QS3, QS2]),
-    QS3 = QS2,
-
-    ok.
-
-register_oracle(ChainHeight, PubKey, PrivKey, Nonce, QueryFee, TTL) ->
-    TTLFee = aeo_utils:ttl_fee(1, aeo_utils:ttl_delta(ChainHeight, TTL)),
-    AccountId = aec_id:create(account, PubKey),
-    {ok, RegTx} = aeo_register_tx:new(#{account_id      => AccountId,
-                                        nonce           => Nonce,
-                                        query_format    => <<"TODO">>,
-                                        response_format => <<"TODO">>,
-                                        query_fee       => QueryFee,
-                                        oracle_ttl      => TTL,
-                                        fee             => 4 + TTLFee}),
-    SignedTx = aec_test_utils:sign_tx(RegTx, PrivKey),
-    SendTx = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)),
-    post_tx(SendTx).
-
-query_oracle(ChainHeight, PubKey, PrivKey, Oracle, Nonce, Query, TTL, QueryFee) ->
-    TTLFee = aeo_utils:ttl_fee(1, aeo_utils:ttl_delta(ChainHeight, TTL)),
-    SenderId = aec_id:create(account, PubKey),
-    OracleId = aec_id:create(oracle, Oracle),
-    {ok, QueryTx} = aeo_query_tx:new(#{sender_id     => SenderId,
-                                       nonce         => Nonce,
-                                       oracle_id     => OracleId,
-                                       query         => Query,
-                                       query_fee     => QueryFee,
-                                       query_ttl     => TTL,
-                                       response_ttl  => {delta, 10},
-                                       fee           => QueryFee + 2 + TTLFee }),
-    SignedTx = aec_test_utils:sign_tx(QueryTx, PrivKey),
-    SendTx = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)),
-    {ok, 200, Res} = post_tx(SendTx),
-    Res.
-
 %% ============================================================
 %% Websocket tests
 %% ============================================================
@@ -4876,26 +4732,6 @@ get_peer_pub_key() ->
     Host = external_address(),
     http_request(Host, get, "peers/pubkey", []).
 
-get_list_oracles(Max) ->
-    get_list_oracles(undefined, Max).
-
-get_list_oracles(From, Max) ->
-    Host = internal_address(),
-    Params0 = #{ max => Max },
-    Params = case From of undefined -> Params0; _ -> Params0#{ from => From } end,
-    {ok, 200, Oracles} = http_request(Host, get, "oracles", Params),
-    Oracles.
-
-get_list_oracle_queries(Oracle, Max) ->
-    get_list_oracle_queries(Oracle, undefined, Max).
-
-get_list_oracle_queries(Oracle, From, Max) ->
-    Host = internal_address(),
-    Params0 = #{ max => Max, oracle_pub_key => aec_base58c:encode(oracle_pubkey, Oracle) },
-    Params = case From of undefined -> Params0; _ -> Params0#{ from => From } end,
-    {ok, 200, Queries} = http_request(Host, get, "oracle-questions", Params),
-    Queries.
-
 get_peers() ->
     Host = internal_address(),
     http_request(Host, get, "debug/peers", []).
@@ -5119,14 +4955,6 @@ wrong_http_method_all_accounts_balances(_Config) ->
 wrong_http_method_miner_pub_key(_Config) ->
     Host = internal_address(),
     {ok, 405, _} = http_request(Host, post, "account/pub-key", []).
-
-wrong_http_method_list_oracles(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "oracles", []).
-
-wrong_http_method_list_oracle_queries(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "oracle-questions", []).
 
 wrong_http_method_peers(_Config) ->
     Host = internal_address(),

@@ -1641,71 +1641,6 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
-  /oracles:
-    get:
-      tags:
-        - internal
-        - obsolete
-      operationId: GetActiveRegisteredOracles
-      description: 'Get active registered oracles'
-      produces:
-        - application/json
-      parameters:
-        - in: query
-          name: from
-          description: 'Last oracle in previous page'
-          required: false
-          type: string
-        - in: query
-          name: max
-          description: 'Max number of active oracles received'
-          required: false
-          type: integer
-          minimum: 1
-          maximum: 1000
-      responses:
-        '200':
-          description: Active registered oracles
-          schema:
-            $ref: '#/definitions/RegisteredOracles'
-      security:
-  /oracle-questions:
-    get:
-      tags:
-        - internal
-        - obsolete
-      operationId: GetOracleQuestions
-      description: 'Get active oracle questions'
-      produces:
-        - application/json
-      parameters:
-        - in: query
-          name: oracle_pub_key
-          description: 'Oracle public key'
-          required: true
-          type : string
-        - in: query
-          name: from
-          description: 'Last query id in previous page'
-          required: false
-          type: string
-        - in: query
-          name: max
-          description: 'Max number of oracle queries received'
-          required: false
-          type: integer
-          minimum: 1
-          maximum: 1000
-      responses:
-        '200':
-          description: Active oracle questions
-          schema:
-            $ref: '#/definitions/OracleQuestions'
-        '400':
-          description: Invalid parameters
-          schema:
-            $ref: '#/definitions/Error'
-      security:
   /oracle-register-tx:
     post:
       tags:
@@ -2370,10 +2305,6 @@ definitions:
       expires:
         type: integer
         format: int64
-  RegisteredOracles:
-    type: array
-    items:
-      $ref: '#/definitions/RegisteredOracle'
   OracleQuery:
     type: object
     properties:
@@ -2399,18 +2330,6 @@ definitions:
       fee:
         type: integer
         format: int64
-  OracleQuestion:
-    type: object
-    properties:
-      query_id:
-        type: string
-      query:
-        type: string
-      query_fee:
-        type: integer
-      expires_at:
-        type: integer
-        format: int64
   OracleQueries:
     type: object
     properties:
@@ -2418,10 +2337,6 @@ definitions:
         type: array
         items:
           $ref: '#/definitions/OracleQuery'
-  OracleQuestions:
-    type: array
-    items:
-      $ref: '#/definitions/OracleQuestion'
   SpendTx:
     type: object
     properties:

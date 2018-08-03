@@ -1952,80 +1952,6 @@
         }
       }
     },
-    "/oracles" : {
-      "get" : {
-        "tags" : [ "internal", "obsolete" ],
-        "description" : "Get active registered oracles",
-        "operationId" : "GetActiveRegisteredOracles",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "from",
-          "in" : "query",
-          "description" : "Last oracle in previous page",
-          "required" : false,
-          "type" : "string"
-        }, {
-          "name" : "max",
-          "in" : "query",
-          "description" : "Max number of active oracles received",
-          "required" : false,
-          "type" : "integer",
-          "maximum" : 1000,
-          "minimum" : 1
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "Active registered oracles",
-            "schema" : {
-              "$ref" : "#/definitions/RegisteredOracles"
-            }
-          }
-        }
-      }
-    },
-    "/oracle-questions" : {
-      "get" : {
-        "tags" : [ "internal", "obsolete" ],
-        "description" : "Get active oracle questions",
-        "operationId" : "GetOracleQuestions",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "oracle_pub_key",
-          "in" : "query",
-          "description" : "Oracle public key",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "name" : "from",
-          "in" : "query",
-          "description" : "Last query id in previous page",
-          "required" : false,
-          "type" : "string"
-        }, {
-          "name" : "max",
-          "in" : "query",
-          "description" : "Max number of oracle queries received",
-          "required" : false,
-          "type" : "integer",
-          "maximum" : 1000,
-          "minimum" : 1
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "Active oracle questions",
-            "schema" : {
-              "$ref" : "#/definitions/OracleQuestions"
-            }
-          },
-          "400" : {
-            "description" : "Invalid parameters",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
     "/oracle-register-tx" : {
       "post" : {
         "tags" : [ "internal", "obsolete" ],
@@ -2903,12 +2829,6 @@
         "query_format" : "query_format"
       }
     },
-    "RegisteredOracles" : {
-      "type" : "array",
-      "items" : {
-        "$ref" : "#/definitions/RegisteredOracle"
-      }
-    },
     "OracleQuery" : {
       "type" : "object",
       "properties" : {
@@ -2959,24 +2879,6 @@
         "sender_id" : null
       }
     },
-    "OracleQuestion" : {
-      "type" : "object",
-      "properties" : {
-        "query_id" : {
-          "type" : "string"
-        },
-        "query" : {
-          "type" : "string"
-        },
-        "query_fee" : {
-          "type" : "integer"
-        },
-        "expires_at" : {
-          "type" : "integer",
-          "format" : "int64"
-        }
-      }
-    },
     "OracleQueries" : {
       "type" : "object",
       "properties" : {
@@ -3015,12 +2917,6 @@
           "id" : { },
           "sender_id" : null
         } ]
-      }
-    },
-    "OracleQuestions" : {
-      "type" : "array",
-      "items" : {
-        "$ref" : "#/definitions/OracleQuestion"
       }
     },
     "SpendTx" : {
