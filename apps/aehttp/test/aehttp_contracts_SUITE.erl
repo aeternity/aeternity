@@ -181,10 +181,15 @@ spending_1(Config) ->
     ct:pal("Balances 0: ~p, ~p\n", [ABal0,BBal0]),
 
     %% Add tokens to both accounts and wait until done.
-    {ok,200,#{<<"tx_hash">> := ATxHash}} = post_spend_tx(APubkey, 500, 1),
-    {ok,200,#{<<"tx_hash">> := BTxHash}} = post_spend_tx(BPubkey, 500, 1),
-
+    {ok,200,#{<<"tx">> := ATx}} = post_spend_tx(APubkey, 500, 1),
+    SignedATx = sign_tx(ATx),
+    {ok, 200, #{<<"tx_hash">> := ATxHash}} = post_tx(SignedATx),
     ok = wait_for_tx_hash_on_chain(NodeName, ATxHash),
+
+    {ok,200,#{<<"tx">> := BTx}} = post_spend_tx(BPubkey, 500, 1),
+    SignedBTx = sign_tx(BTx),
+    {ok, 200, #{<<"tx_hash">> := BTxHash}} = post_tx(SignedBTx),
+
     ok = wait_for_tx_hash_on_chain(NodeName, BTxHash),
 
     %% Get balances after mining.
@@ -301,7 +306,10 @@ spending_3(Config) ->
     ct:pal("Balances 2: ~p, ~p\n", [ABal2,BBal2]),
 
     %% Now we add enough tokens to acc_a so it can do the spend tx.
-    {ok,200,#{<<"tx_hash">> := PostTxHash}} = post_spend_tx(APubkey, 500, 1),
+    {ok,200,#{<<"tx">> := PostTx}} = post_spend_tx(APubkey, 500, 1),
+    SignedPostTx = sign_tx(PostTx),
+    {ok, 200, #{<<"tx_hash">> := PostTxHash}} = post_tx(SignedPostTx),
+
     ok = wait_for_tx_hash_on_chain(NodeName, PostTxHash),
     ok = wait_for_tx_hash_on_chain(NodeName, SpendTxHash),
 
@@ -886,7 +894,9 @@ ensure_balance(Pubkey, NewBalance) ->
             %% Get more tokens from the miner.
             Fee = 1,
             Incr = NewBalance - Balance + Fee,  %Include the fee
-            {ok,200,_} = post_spend_tx(Pubkey, Incr, Fee),
+            {ok,200,#{<<"tx">> := SpendTx}} = post_spend_tx(Pubkey, Incr, Fee),
+            SignedSpendTx = sign_tx(SpendTx),
+            {ok, 200, _} = post_tx(SignedSpendTx),
             NewBalance
     end.
 
@@ -1044,15 +1054,17 @@ get_contract_decode_data(Request) ->
 
 get_tx(TxHash) ->
     Host = external_address(),
-    http_request(Host, get, "tx/" ++ binary_to_list(TxHash), []).
+    http_request(Host, get, "transactions/" ++ binary_to_list(TxHash), []).
 
 post_spend_tx(Recipient, Amount, Fee) ->
     post_spend_tx(Recipient, Amount, Fee, <<"post spend tx">>).
 
 post_spend_tx(Recipient, Amount, Fee, Payload) ->
     Host = internal_address(),
-    http_request(Host, post, "spend-tx",
-                 #{recipient_id => aec_base58c:encode(account_pubkey, Recipient),
+    {ok, Sender} = rpc(aec_keys, pubkey, []),
+    http_request(Host, post, "debug/transactions/spend",
+                 #{sender_id => aec_base58c:encode(account_pubkey, Sender),
+                   recipient_id => aec_base58c:encode(account_pubkey, Recipient),
                    amount => Amount,
                    fee => Fee,
                    payload => Payload}).
@@ -1063,7 +1075,13 @@ get_account(Id) ->
 
 post_tx(TxSerialized) ->
     Host = external_address(),
-    http_request(Host, post, "tx", #{tx => TxSerialized}).
+    http_request(Host, post, "transactions", #{tx => TxSerialized}).
+
+sign_tx(Tx) ->
+    {ok, TxDec} = aec_base58c:safe_decode(transaction, Tx),
+    UnsignedTx = aetx:deserialize_from_binary(TxDec),
+    {ok, SignedTx} = rpc(aec_keys, sign_tx, [UnsignedTx]),
+    aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)).
 
 %% ============================================================
 %% private functions
@@ -1157,8 +1175,10 @@ process_http_return(R) ->
 new_account(Balance) ->
     {Pubkey,Privkey} = generate_key_pair(),
     Fee = 1,
-    {ok,200,#{<<"tx_hash">> := TxHash}} = post_spend_tx(Pubkey, Balance, Fee),
-    {Pubkey,Privkey,TxHash}.
+    {ok, 200, #{<<"tx">> := SpendTx}} = post_spend_tx(Pubkey, Balance, Fee),
+    SignedSpendTx = sign_tx(SpendTx),
+    {ok, 200, #{<<"tx_hash">> := SpendTxHash}} = post_tx(SignedSpendTx),
+    {Pubkey,Privkey,SpendTxHash}.
 
 %% spend_tokens(SenderPubkey, SenderPrivkey, Recipient, Amount, Fee) ->
 %% spend_tokens(SenderPubkey, SenderPrivkey, Recipient, Amount, Fee, CallerSet) ->
@@ -1216,10 +1236,10 @@ sign_and_post_tx(PrivKey, EncodedUnsignedTx) ->
 
 tx_in_chain(TxHash) ->
     case get_tx(TxHash) of
-        {ok, 200, #{<<"transaction">> := #{<<"block_hash">> := <<"none">>}}} ->
+        {ok, 200, #{<<"block_hash">> := <<"none">>}} ->
             ct:log("Tx not mined, but in mempool"),
             false;
-        {ok, 200, #{<<"transaction">> := #{<<"block_hash">> := _}}} -> true;
+        {ok, 200, #{<<"block_hash">> := _}} -> true;
         {ok, 404, _} -> false
     end.
 

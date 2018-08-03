@@ -393,12 +393,6 @@ handle_request('GetStatus', _Params, _Context) ->
        <<"peer-count">>                 => PeerCount,
        <<"pending-transactions-count">> => PendingTxsCount}};
 
-handle_request('GetTxs', _Req, _Context) ->
-    {ok, Txs0} = aec_tx_pool:peek(infinity),
-    lager:debug("GetTxs : ~p", [pp(Txs0)]),
-    Txs = [aehttp_api_parser:encode(tx, T) || T <- Txs0],
-    {200, [], Txs};
-
 handle_request('PostBlock', Req, _Context) ->
     case aehttp_api_parser:decode(block, maps:get('Block', Req)) of
         {error, Reason} ->
@@ -415,21 +409,6 @@ handle_request('PostBlock', Req, _Context) ->
                     lager:info("Post block failed: ~p", [Reason]),
                     {400, [], #{reason => <<"Block rejected">>}}
             end
-    end;
-
-handle_request('PostTx', #{'Tx' := Tx} = Req, _Context) ->
-    lager:debug("Got PostTx; Req = ~p", [pp(Req)]),
-    case aehttp_api_parser:decode(tx, maps:get(<<"tx">>, Tx)) of
-        {error, #{<<"tx">> := broken_tx}} ->
-            {400, [], #{reason => <<"Invalid tx">>}};
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid base58Check encoding">>}};
-        {ok, SignedTx} ->
-            lager:debug("deserialized: ~p", [pp(SignedTx)]),
-            PushRes = aec_tx_pool:push(SignedTx),
-            lager:debug("PushRes = ~p", [pp(PushRes)]),
-            Hash = aetx_sign:hash(SignedTx),
-            {200, [], #{<<"tx_hash">> => aec_base58c:encode(tx_hash, Hash)}}
     end;
 
 handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) ->
@@ -615,21 +594,6 @@ handle_request('PostNameRevoke', #{'NameRevokeTx' := Req}, _Context) ->
                                 {name_id, name_id, {id_hash, [name]}}]),
                  get_nonce_from_account_id(account_id),
                  unsigned_tx_response(fun aens_revoke_tx:new/1)
-                ],
-    process_request(ParseFuns, Req);
-
-handle_request('PostSpend', #{'SpendTx' := Req}, _Context) ->
-    AllowedRecipients = [account_pubkey, name, oracle_pubkey, contract_pubkey],
-    ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([sender_id,
-                                       {recipient_id, recipient_id},
-                                        amount, fee, payload]),
-                 read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{sender_id, sender_id, {id_hash, [account_pubkey]}},
-                                {recipient_id, recipient_id,
-                                 {id_hash, AllowedRecipients}}]),
-                 get_nonce_from_account_id(sender_id),
-                 unsigned_tx_response(fun aec_spend_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
 
@@ -842,18 +806,6 @@ handle_request('DecodeData', Req, _Context) ->
                     {400, [], #{reason => ErrorMsg}}
             end
     end;
-
-handle_request('GetTx', Req, _Context) ->
-    ParseFuns = [read_required_params([tx_hash]),
-                 base58_decode([{tx_hash, tx_hash, tx_hash}]),
-                 get_transaction(tx_hash, tx),
-                 encode_transaction(tx, encoded_tx),
-                 ok_response(
-                    fun(#{encoded_tx := #{tx := Tx}}) ->
-                        #{transaction => Tx}
-                    end)
-                ],
-    process_request(ParseFuns, Req);
 
 handle_request('GetPeerKey', _Req, _Context) ->
     case aehttp_logic:peer_pubkey() of

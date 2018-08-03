@@ -589,7 +589,7 @@
         }
       }
     },
-    "/ng-transactions" : {
+    "/transactions" : {
       "post" : {
         "tags" : [ "external", "transactions" ],
         "description" : "Post a new transaction",
@@ -951,73 +951,6 @@
             "description" : "Successful operation",
             "schema" : {
               "$ref" : "#/definitions/Status"
-            }
-          }
-        }
-      }
-    },
-    "/tx" : {
-      "post" : {
-        "tags" : [ "external", "gossip" ],
-        "description" : "Post a new transaction",
-        "operationId" : "PostTx",
-        "consumes" : [ "application/json" ],
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "in" : "body",
-          "name" : "body",
-          "description" : "A new transaction",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/Tx"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "Successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/PostTxResponse"
-            }
-          },
-          "400" : {
-            "description" : "Invalid transaction",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/tx/{tx_hash}" : {
-      "get" : {
-        "tags" : [ "external", "transactions" ],
-        "description" : "Get a transaction by hash",
-        "operationId" : "GetTx",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "tx_hash",
-          "in" : "path",
-          "description" : "Hash of the transaction to get",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "The transaction found",
-            "schema" : {
-              "$ref" : "#/definitions/SingleTx"
-            }
-          },
-          "400" : {
-            "description" : "Invalid transaction",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          },
-          "404" : {
-            "description" : "Transaction not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
             }
           }
         }
@@ -1534,9 +1467,9 @@
         }
       }
     },
-    "/tx/spend" : {
+    "/debug/transactions/spend" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Get a spend transaction object",
         "operationId" : "PostSpend",
         "consumes" : [ "application/json" ],
@@ -1853,18 +1786,18 @@
         }
       }
     },
-    "/transactions" : {
+    "/debug/transactions/pending" : {
       "get" : {
-        "tags" : [ "external", "transactions" ],
-        "description" : "Get transactions in the mempool",
-        "operationId" : "GetTxs",
+        "tags" : [ "internal", "transactions" ],
+        "description" : "Get pending transactions",
+        "operationId" : "GetPendingTransactions",
         "produces" : [ "application/json" ],
         "parameters" : [ ],
         "responses" : {
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Transactions"
+              "$ref" : "#/definitions/GenericTxs"
             }
           }
         }
@@ -1933,35 +1866,6 @@
           },
           "404" : {
             "description" : "Name not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/spend-tx" : {
-      "post" : {
-        "tags" : [ "internal", "obsolete" ],
-        "description" : "Create spend transaction",
-        "operationId" : "PostSpendTx",
-        "consumes" : [ "application/json" ],
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "in" : "body",
-          "name" : "body",
-          "description" : "Creates new spend transaction",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/SpendTx"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation"
-          },
-          "404" : {
-            "description" : "Spend transaction validation error",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -2457,12 +2361,6 @@
         "tx" : "tx"
       }
     },
-    "Transactions" : {
-      "type" : "array",
-      "items" : {
-        "$ref" : "#/definitions/Tx"
-      }
-    },
     "RegisteredOracle" : {
       "type" : "object",
       "properties" : {
@@ -2620,14 +2518,6 @@
         "nonce" : 5,
         "sender_id" : null,
         "recipient_id" : { }
-      }
-    },
-    "SpendTxResponse" : {
-      "type" : "object",
-      "properties" : {
-        "tx_hash" : {
-          "$ref" : "#/definitions/EncodedHash"
-        }
       }
     },
     "OracleRegisterTx" : {
@@ -3665,27 +3555,6 @@
       "example" : {
         "protocol_version" : 1,
         "effective_at_height" : 0
-      }
-    },
-    "SingleTx" : {
-      "type" : "object",
-      "required" : [ "transaction" ],
-      "properties" : {
-        "transaction" : {
-          "$ref" : "#/definitions/GenericSignedTx"
-        }
-      },
-      "example" : {
-        "transaction" : {
-          "tx" : {
-            "vsn" : 0,
-            "type" : "type"
-          },
-          "block_hash" : { },
-          "block_height" : 6,
-          "hash" : null,
-          "signatures" : [ "signatures", "signatures" ]
-        }
       }
     },
     "GenericSignedTx" : {

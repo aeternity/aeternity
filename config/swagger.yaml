@@ -518,7 +518,7 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
-  /ng-transactions:
+  /transactions:
     post:
       tags:
         - external
@@ -830,63 +830,6 @@ paths:
             $ref: '#/definitions/Status'
       security:
 
-  /tx:
-    post:
-      tags:
-        - external
-        - gossip
-      operationId: PostTx
-      description: 'Post a new transaction'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: A new transaction
-          required: true
-          schema:
-            $ref: '#/definitions/Tx'
-      responses:
-        '200':
-          description: Successful operation
-          schema:
-            $ref: '#/definitions/PostTxResponse'
-        '400':
-          description: Invalid transaction
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /tx/{tx_hash}:
-    get:
-      tags:
-        - external
-        - transactions
-      operationId: GetTx
-      description: 'Get a transaction by hash'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: tx_hash
-          description: Hash of the transaction to get
-          required: true
-          type: string
-      responses:
-        '200':
-          description: The transaction found
-          schema:
-            $ref: '#/definitions/SingleTx'
-        '400':
-          description: Invalid transaction
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Transaction not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
   /tx/{tx_hash}/contract-call:
     get:
       tags:
@@ -1295,10 +1238,10 @@ paths:
           description: Account or name not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/spend:
+  /debug/transactions/spend:
     post:
       tags:
-        - external
+        - internal
         - dev
       operationId: PostSpend
       description: 'Get a spend transaction object'
@@ -1551,13 +1494,13 @@ paths:
           schema:
             $ref: '#/definitions/Error'
 
-  /transactions:
+  /debug/transactions/pending:
     get:
       tags:
-        - external
+        - internal
         - transactions
-      operationId: GetTxs
-      description: 'Get transactions in the mempool'
+      operationId: GetPendingTransactions
+      description: 'Get pending transactions'
       produces:
         - application/json
       parameters:
@@ -1565,7 +1508,7 @@ paths:
         '200':
           description: 'Successful operation'
           schema:
-            $ref: '#/definitions/Transactions'
+            $ref: '#/definitions/GenericTxs'
   /debug/names/commitment-id:
     get:
       tags:
@@ -1630,33 +1573,6 @@ paths:
 ## Internal APIs definitions
 ###
 
-  /spend-tx:
-    post:
-      tags:
-        - internal
-        - obsolete
-      operationId: PostSpendTx
-      description: 'Create spend transaction'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: Creates new spend transaction
-          required: true
-          schema:
-            $ref: '#/definitions/SpendTx'
-      responses:
-        '200':
-          description: successful operation
-          schema: '#/definitions/SpendTxResponse'
-        '404':
-          description: Spend transaction validation error
-          schema:
-            $ref: '#/definitions/Error'
-      security:
   /oracle-register-tx:
     post:
       tags:
@@ -2013,10 +1929,6 @@ definitions:
     properties:
        tx:
          type: string
-  Transactions:
-    type: array
-    items:
-      $ref: '#/definitions/Tx'
   RegisteredOracle:
     type: object
     properties:
@@ -2090,11 +2002,6 @@ definitions:
     - amount
     - fee
     - payload
-  SpendTxResponse:
-    type: object
-    properties:
-      tx_hash:
-        $ref: '#/definitions/EncodedHash'
   OracleRegisterTx:
     type: object
     properties:
@@ -2750,13 +2657,6 @@ definitions:
         type: integer
         format: int64
         minimum: 0
-  SingleTx:
-    type: object
-    properties:
-      transaction:
-        $ref: '#/definitions/GenericSignedTx'
-    required:
-      - transaction
   GenericSignedTx:
     type: object
     properties:
