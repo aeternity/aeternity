@@ -64,10 +64,7 @@ apply_block_txs(Txs, Trees, Height, Version) ->
                              aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, list(aetx_sign:signed_tx()), aec_trees:trees()} | {error, term()}.
 apply_block_txs_strict(Txs, Trees, Height, Version) ->
-    case int_apply_block_txs(Txs, Trees, Height, Version, true) of
-        Err = {error, _}      -> Err;
-        {ok, Txs1, Trees1} -> {ok, Txs1, Trees1}
-    end.
+    int_apply_block_txs(Txs, Trees, Height, Version, true).
 
 %% TODO NG: handle update after new keyblock in higher layer to get depth of microfork
 -spec update(aec_blocks:block(), nonempty_list(aetx_sign:signed_tx()),

@@ -87,87 +87,60 @@ set_env(ContractPubKey, Height, Trees, API, VmVersion) ->
       chainAPI          => API,
       vm_version        => VmVersion}.
 
-call_common(#{ caller     := Caller
-             , contract   := ContractPubKey
-             , gas        := Gas
-             , gas_price  := GasPrice
-             , call_data  := CallData
-             , amount     := Value
-             , call_stack := CallStack
-             , code       := Code
-             , call       := Call
-             , height     :=_Height
-             , trees      := Trees
-             }, Spec) ->
-    <<Address:?PUB_SIZE/unit:8>> = ContractPubKey,
-    <<CallerAddr:?PUB_SIZE/unit:8>> = Caller,
-    Exec = maps:get(exec, Spec),
-    try aevm_eeevm_state:init(
-	  Spec#{ exec => Exec#{ code       => Code,
-                          address    => Address,
-                          caller     => CallerAddr,
-                          data       => CallData,
-                          gas        => Gas,
-                          gasPrice   => GasPrice,
-                          origin     => CallerAddr,
-                          value      => Value,
-                          call_stack => CallStack
-                          }
-               },
-          #{
-            trace => false
-           })
-    of
-	InitState ->
-	    %% TODO: Nicer error handling - do more in check.
-	    %% Update gas_used depending on exit type.
-	    try aevm_eeevm:eval(InitState) of
-		%% Succesful execution
-		{ok, #{ gas := GasLeft
-		      , out := ReturnValue
-		      , chain_state := ChainState1
-		      } =_State} ->
-		    {aect_call:set_gas_used(
-		       Gas - GasLeft,
-		       aect_call:set_return_type(
-			 ok,
-			 aect_call:set_return_value(ReturnValue, Call))),
-		     aec_vm_chain:get_trees(ChainState1)};
-		{revert, #{ gas := GasLeft
-			  , out := ReturnValue
-			  , chain_state := ChainState1
-			  } =_State} ->
-		    {aect_call:set_gas_used(
-		       Gas - GasLeft,
-		       aect_call:set_return_type(
-			 revert,
-			 aect_call:set_return_value(ReturnValue, Call))),
-		     aec_vm_chain:get_trees(ChainState1)};
-		%% Execution resulting in VM exeception.
-		%% Gas used, but other state not affected.
-		%% TODO: Use up the right amount of gas depending on error
-		%% TODO: Store errorcode in state tree
-		{error, Error, #{ gas :=_GasLeft}} ->
-		    {aect_call:set_gas_used(
-		       Gas,
-		       aect_call:set_return_type(
-			 error,
-			 aect_call:set_return_value(error_to_binary(Error), Call))), Trees}
-	    catch T:E ->
-                    lager:debug("Return error ~p:~p~n", [T,E]),
-                    {aect_call:set_gas_used(
-                       Gas,
-                       aect_call:set_return_type(error, Call)),
-                     Trees}
-	    end
+call_common(#{gas := Gas, call := Call, trees := Trees} = CallDef, Spec) ->
+    <<Address:?PUB_SIZE/unit:8>> = maps:get(contract, CallDef),
+    <<CallerAddr:?PUB_SIZE/unit:8>> = maps:get(caller, CallDef),
+    Exec = maps:merge(maps:get(exec, Spec), #{
+        code       => maps:get(code, CallDef),
+        address    => Address,
+        caller     => CallerAddr,
+        data       => maps:get(call_data, CallDef),
+        gas        => Gas,
+        gasPrice   => maps:get(gas_price, CallDef),
+        origin     => CallerAddr,
+        value      => maps:get(amount, CallDef),
+        call_stack => maps:get(call_stack, CallDef)
+    }),
+    try aevm_eeevm_state:init(Spec#{exec => Exec}, #{trace => false}) of
+        InitState ->
+            %% TODO: Nicer error handling - do more in check.
+            %% Update gas_used depending on exit type.
+            try aevm_eeevm:eval(InitState) of
+                {ok, #{gas := GasLeft, out := Out, chain_state := ChainState}} ->
+                    {
+                        create_call(Gas - GasLeft, ok, Out, Call),
+                        aec_vm_chain:get_trees(ChainState)
+                    };
+                {revert, #{gas := GasLeft, out := Out, chain_state := ChainState}} ->
+                    {
+                        create_call(Gas - GasLeft, revert, Out, Call),
+                        aec_vm_chain:get_trees(ChainState)
+                    };
+                {error, Error, _} ->
+                    %% Execution resulting in VM exception.
+                    %% Gas used, but other state not affected.
+                    %% TODO: Use up the right amount of gas depending on error
+                    %% TODO: Store error code in state tree
+                    {create_call(Gas, error, Error, Call), Trees}
+            catch T:E ->
+                lager:debug("Return error ~p:~p~n", [T,E]),
+                {create_call(Gas, error, Call), Trees}
+            end
     catch T:E ->
             %% TODO: Clarify whether this case can be reached with valid chain state and sanitized input transaction.
             lager:debug("Init error ~p:~p~n", [T,E]),
-            {aect_call:set_gas_used(
-               Gas,
-               aect_call:set_return_type(error, Call)),
-             Trees}
+            {create_call(Gas, error, Call), Trees}
     end.
+
+create_call(Gas, Type, Value, Call) when Type == ok; Type == revert ->
+    Return = aect_call:set_return_value(Value, Call),
+    create_call(Gas, Type, Return);
+create_call(Gas, error = Type, Value, Call)  ->
+    Return = aect_call:set_return_value(error_to_binary(Value), Call),
+    create_call(Gas, Type, Return).
+
+create_call(Gas, Type, Value) ->
+    aect_call:set_gas_used(Gas, aect_call:set_return_type(Type, Value)).
 
 error_to_binary(out_of_gas) -> <<"out_of_gas">>;
 error_to_binary(out_of_stack) -> <<"out_of_stack">>;
