@@ -20,6 +20,7 @@
         , unmock_genesis/0
         , wait_for_it/2
         , wait_for_it_or_timeout/3
+        , wait_for_pred_or_timeout/3
         , exec_with_timeout/2
         , start_chain_db/0
         , stop_chain_db/0
@@ -145,8 +146,25 @@ wait_for_it(Fun, Value, Sleep) ->
             wait_for_it(Fun, Value, Sleep + 10)
     end.
 
+wait_for_pred(Fun, Pred) ->
+    wait_for_pred(Fun, Pred, 0).
+
+wait_for_pred(Fun, Pred, Sleep) ->
+    Value = Fun(),
+    case Pred(Value) of
+        true ->
+            Value;
+        false ->
+            ?ifDebugFmt("Waiting for predicate got ~p~n",[Value]),
+            timer:sleep(Sleep),
+            wait_for_pred(Fun, Pred, Sleep + 10)
+    end.
+
 wait_for_it_or_timeout(Fun, Value, Timeout) ->
     exec_with_timeout(fun() -> wait_for_it(Fun, Value) end, Timeout).
+
+wait_for_pred_or_timeout(Fun, Pred, Timeout) ->
+    exec_with_timeout(fun() -> wait_for_pred(Fun, Pred) end, Timeout).
 
 exec_with_timeout(Fun, Timeout)  when is_function(Fun, 0) ->
     Pid = self(),
