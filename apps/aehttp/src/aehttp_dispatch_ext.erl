@@ -163,8 +163,10 @@ handle_request('GetGenerationByHeight', Params, _Context) ->
     end;
 
 handle_request('GetAccountByPubkey', Params, _Context) ->
-    case aec_base58c:safe_decode(account_pubkey, maps:get(pubkey, Params)) of
-        {ok, Pubkey} ->
+    AllowedTypes = [account_pubkey, contract_pubkey],
+    case aec_base58c:safe_decode({id_hash, AllowedTypes}, maps:get(pubkey, Params)) of
+        {ok, Id} ->
+            {_IdType, Pubkey} = aec_id:specialize(Id),
             case aec_chain:get_account(Pubkey) of
                 {value, Account} ->
                     {200, [], aec_accounts:serialize_for_client(Account)};
