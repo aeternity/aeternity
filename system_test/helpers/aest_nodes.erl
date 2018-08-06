@@ -396,7 +396,7 @@ wait_for_time(height, NodeNames, TimeUnit, Opts) ->
     maps:get(height, Block).
 
 wait_for_startup(Nodes, Height, Cfg) ->
-    StartupTimeout = proplists:get_value(startup_timeout, Cfg),
+    StartupTimeout = proplists:get_value(startup_timeout, Cfg, 20000),
     wait_for_value({height, Height}, Nodes, StartupTimeout, Cfg).
 
 repeat(Fun, Interval, Max) ->

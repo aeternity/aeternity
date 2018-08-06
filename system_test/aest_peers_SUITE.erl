@@ -78,9 +78,7 @@ all() -> [
 ].
 
 init_per_suite(Config) ->
-    [ {node_startup_time, 20000}, %% Time may take to get the node to respond to http
-      {node_shutdown_time, 20000} %% Time it may take to stop node cleanly
-    | Config].
+    [{node_shutdown_time, 20000}|Config]. %% Max time to stop node cleanly
 
 init_per_testcase(_TC, Config) ->
     aest_nodes:ct_setup(Config).
@@ -97,7 +95,7 @@ test_peer_discovery(Cfg) ->
         ping_interval => 5000,
         max_inbound => 4
     },
-    StartupTimeout = proplists:get_value(node_startup_time, Cfg),
+    StartupTimeout = proplists:get_value(startup_timeout, Cfg),
     setup([?NODE1, ?NODE2, ?NODE3, ?NODE4, ?NODE5], NodeConfig, Cfg),
     start_node(node1, Cfg),
     start_node(node2, Cfg),

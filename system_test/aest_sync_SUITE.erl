@@ -246,7 +246,7 @@ new_node_joins_network(Cfg) ->
 %% that we had in the chain before stopping: data is persistent.
 docker_keeps_data(Cfg) ->
     Length = 20,
-    NodeShutdownTime = proplists:get_value(node_shutdown_time, Cfg),
+    ShutdownTimeout = proplists:get_value(shutdown_timeout, Cfg),
 
     setup_nodes([?STANDALONE_NODE], Cfg),
 
@@ -264,7 +264,7 @@ docker_keeps_data(Cfg) ->
     %% Get all blocks before stopping
     A = [get_block(standalone_node, H) || H <- lists:seq(1, Length)],
 
-    stop_node(standalone_node, NodeShutdownTime, Cfg),
+    stop_node(standalone_node, ShutdownTimeout, Cfg),
     %% This requires some time
 
     start_node(standalone_node, Cfg),
@@ -296,7 +296,7 @@ docker_keeps_data(Cfg) ->
     %% Get all blocks before stopping
     C = [get_block(standalone_node, H) || H <- lists:seq(1, Length + 10)],
 
-    stop_node(standalone_node, NodeShutdownTime, Cfg),
+    stop_node(standalone_node, ShutdownTimeout, Cfg),
     start_node(standalone_node, Cfg),
     wait_for_startup([standalone_node], 0, Cfg),
 
@@ -391,8 +391,6 @@ stop_and_continue_sync(Cfg) ->
     end.
 
 tx_pool_sync(Cfg) ->
-    NodeStartupTime = proplists:get_value(node_startup_time, Cfg),
-
     setup_nodes([#{ name    => node1,
                     peers   => [node2],
                     backend => aest_docker,
@@ -405,7 +403,7 @@ tx_pool_sync(Cfg) ->
                   }], Cfg),
 
     start_node(node1, Cfg),
-    wait_for_value({height, 0}, [node1], NodeStartupTime, Cfg),
+    wait_for_startup([node1], 0, Cfg),
 
     %% Let's post a bunch of transactions, preferrably some valid
     %% and some "not yet valid"
@@ -430,7 +428,7 @@ tx_pool_sync(Cfg) ->
 
     %% Start 2nd node and let it sync
     start_node(node2, Cfg),
-    wait_for_value({height, 0}, [node2], NodeStartupTime, Cfg),
+    wait_for_startup([node2], 0, Cfg),
 
     %% Give the sync a moment to finish
     #{ height := Height1 } = get_top(node1),
@@ -448,7 +446,7 @@ tx_pool_sync(Cfg) ->
     %% Start node1 and make sure that Tx is synced.
     %% TODO: Automate check that _only_ this Tx is synced.
     start_node(node1, Cfg),
-    wait_for_value({height, 0}, [node1], NodeStartupTime, Cfg),
+    wait_for_startup([node1], 0, Cfg),
 
     %% Give the sync a moment to finish
     #{ height := Height2 } = get_top(node2),
@@ -721,7 +719,7 @@ abrupt_stop_new_node(Cfg) ->
 
 abrupt_stop_mining_node(Cfg) ->
     RepairTimeout = 30000, % Time allowed for node to repair DB and finish sync
-    NodeShutdownTime = proplists:get_value(node_shutdown_time, Cfg),
+    ShutdownTimeout = proplists:get_value(shutdown_timeout, Cfg),
     Nodes = [n1, n2],
     setup_nodes(cluster(Nodes, #{}), Cfg),
     % Start both nodes
@@ -730,7 +728,7 @@ abrupt_stop_mining_node(Cfg) ->
     Blocks = wait_for_value({height, 5}, Nodes, 5 * ?MINING_TIMEOUT, Cfg),
     assert_in_sync(Blocks),
     % Stop node 2
-    stop_node(n2, NodeShutdownTime, Cfg),
+    stop_node(n2, ShutdownTimeout, Cfg),
     % Start node 2
     start_node(n2, Cfg),
     % Stop node 2 abruptly
