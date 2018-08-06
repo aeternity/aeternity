@@ -31,10 +31,17 @@
     available/2
 ]).
 
+%=== MACROS ====================================================================
+
+-define(USE_FIXED_SEED, true).
+-define(RANDOM_PROCESS_SEED, {1533,565972,58584}).
+-define(RANDOM_POOL_SEED, {1533,565990,602018}).
+
 %=== TEST CASES ================================================================
 
 %% Tests pool behavior when empty.
 empty_pool_test() ->
+    seed_process_random(),
     P = new([]),
     A = random_peer_id(),
     Now = erlang:system_time(millisecond),
@@ -77,6 +84,7 @@ empty_pool_test() ->
 
 %% Tests pool behaviour with a single normal peer.
 add_single_normal_test() ->
+    seed_process_random(),
     P = new([]),
     Id1 = random_peer_id(),
     Addr1 = random_address(),
@@ -130,6 +138,7 @@ add_single_normal_test() ->
 
 %% Tests pool behavior with a single trusted peer.
 add_single_trusted_test() ->
+    seed_process_random(),
     P = new([]),
     Id1 = random_peer_id(),
     Addr1 = random_address(),
@@ -182,6 +191,7 @@ add_single_trusted_test() ->
 
 %% Tests adding multiple peers both normal and trusted.
 multiple_peers_subset_test() ->
+    seed_process_random(),
     TotalCount = 1000,
     VerifCount = 50,
     ExcludedCount = 100,
@@ -271,6 +281,7 @@ multiple_peers_subset_test() ->
 
 %% Test peer selection behavior.
 multiple_peers_select_test() ->
+    seed_process_random(),
     TotalCount = 1000,
     VerifCount = 50,
     ExcludedCount = 100,
@@ -323,6 +334,7 @@ multiple_peers_select_test() ->
 
 %% Tests that selected peers cannot be selected.
 peer_selection_unavailability_test() ->
+    seed_process_random(),
     UnverCount = 500,
     VerifCount = 500,
 
@@ -440,6 +452,7 @@ peer_selection_unavailability_test() ->
 
 %% Tests peer release behavior.
 peer_release_test() ->
+    seed_process_random(),
     Now = erlang:system_time(millisecond),
     Pool1 = new([]),
     Peers = make_peers(6, 3),
@@ -532,6 +545,7 @@ peer_release_test() ->
 
 %% Tests peer rejection behavior.
 peer_rejection_test() ->
+    seed_process_random(),
     % Assumes backoff delays are [5, 15, 30, 60, 120, 300, 600]
     Now1 = erlang:system_time(millisecond),
     Pool1 = new([]),
@@ -653,6 +667,7 @@ peer_rejection_test() ->
 
 %% Tests peer downgrading behavior.
 rejection_downgrade_test() ->
+    seed_process_random(),
     % Assumes backoff delays are [5, 15, 30, 60, 120, 300, 600]
     Now1 = erlang:system_time(millisecond),
     Pool1 = new([]),
@@ -718,6 +733,7 @@ rejection_downgrade_test() ->
 
 %% Tests peer verification behavior.
 basic_verification_test() ->
+    seed_process_random(),
     Now = erlang:system_time(millisecond),
     Pool1 = new([]),
 
@@ -752,6 +768,7 @@ basic_verification_test() ->
 
 %% Tests the verification of a selected peer.
 verification_of_selected_peer_test() ->
+    seed_process_random(),
     Now = erlang:system_time(millisecond),
     Pool1 = new([]),
 
@@ -785,6 +802,7 @@ verification_of_selected_peer_test() ->
 
 %% Tests the verification of a peer on standby.
 verification_of_standby_peer_test() ->
+    seed_process_random(),
     Now = erlang:system_time(millisecond),
     Pool1 = new([]),
 
@@ -815,6 +833,7 @@ verification_of_standby_peer_test() ->
 %% Tests when no free space can be allocated in the target bucket
 %% of a new verified peer; the peer should stay in the unverified pool.
 verification_canceled_test() ->
+    seed_process_random(),
     PoolOpts = [{verif_bcount, 1}, {verif_bsize, 1}],
     Pool1 = new(PoolOpts),
     Now = erlang:system_time(millisecond),
@@ -850,6 +869,7 @@ verification_canceled_test() ->
 %% allocate space in the unverified pool, or the peer address/trusted status
 %% changed.
 update_ignored_test() ->
+    seed_process_random(),
     PoolOpts = [{unver_bcount, 1}, {unver_bsize, 1}],
     Pool1 = new(PoolOpts),
     Now = erlang:system_time(millisecond),
@@ -895,6 +915,7 @@ update_ignored_test() ->
 %% Tests when a peer evicted from the verified pool cannot be added to its
 %% target bucket in the unverified pool due to not being able to free space.
 downgrade_to_bucket_with_no_eviction_possible_test() ->
+    seed_process_random(),
     PoolOpts = [
         {verif_bcount, 1}, {verif_bsize, 1},
         {unver_bcount, 1}, {unver_bsize, 1}
@@ -937,6 +958,7 @@ downgrade_to_bucket_with_no_eviction_possible_test() ->
 
 %% Tests explicit peer selection behavior.
 manual_selection_of_standby_peer_test() ->
+    seed_process_random(),
     Now = erlang:system_time(millisecond),
     Pool1 = new([]),
 
@@ -961,6 +983,7 @@ manual_selection_of_standby_peer_test() ->
 
 %% Tests that selected peers are not evicted from the unverified pool.
 unverified_selected_are_not_evicted_test() ->
+    seed_process_random(),
     % Use a single bucket of 10 peers to simplify testing.
     PoolOpts = [{unver_bcount, 1}, {unver_bsize, 10}],
     Pool1 = new(PoolOpts),
@@ -1012,6 +1035,7 @@ unverified_selected_are_not_evicted_test() ->
 %% Tests that peers not updates since a configured time are removed from
 %% the pool when trying to free space in a bucket.
 unverified_old_peers_are_removed_test() ->
+    seed_process_random(),
     % Use a single bucket of 10 peers to simplify testing.
     PoolOpts = [
         {unver_bcount, 1}, {unver_bsize, 10},
@@ -1066,6 +1090,7 @@ unverified_old_peers_are_removed_test() ->
 
 %% Tests the multi-reference handling in the unverified pool.
 unverified_multiple_references_test() ->
+    seed_process_random(),
     % Use only 10 buckets to make it faster.
     PoolOpts = [{unver_bcount, 10}, {unver_bsize, 10}],
     MaxRefs = 8,
@@ -1100,6 +1125,7 @@ unverified_multiple_references_test() ->
 
 %% Tests evicting references do not delete the peer in the unverified pool.
 unverified_reference_eviction_test() ->
+    seed_process_random(),
     % Use only 2 buckets to make it faster.
     PoolOpts = [{unver_bcount, 2}, {unver_bsize, 1}],
     Pool1 = new(PoolOpts),
@@ -1141,6 +1167,7 @@ unverified_reference_eviction_test() ->
 
 %% Tests that selected and trusted peers are not evicted from the verified pool.
 verified_selected_and_trusted_peers_are_not_evicted_test() ->
+    seed_process_random(),
     PoolOpts = [{verif_bcount, 1}, {verif_bsize, 10},
               {unver_bcount, 5}, {unver_bsize, 10}],
     Pool1 = new(PoolOpts),
@@ -1208,6 +1235,7 @@ verified_selected_and_trusted_peers_are_not_evicted_test() ->
 %% Tests that peers not updated for a configurable time are removed from the
 %% verified pool buckets when trying to free space.
 verified_old_peers_are_removed_test() ->
+    seed_process_random(),
     % Use a single bucket of 10 peers to simplify testing.
     PoolOpts = [
         {verif_bcount, 1}, {verif_bsize, 10},
@@ -1280,6 +1308,7 @@ validate_counters_test_() ->
      {timeout, 100, fun validate_counters/0}}.
 
 validate_counters() ->
+    seed_process_random(),
     PoolOpts = [
         {verif_bcount, 256},
         {verif_bsize, 32},
@@ -1365,6 +1394,7 @@ validate_counters() ->
 
 %% Tests the internal pool data structure.
 pool_buckets_manipulation_test() ->
+    seed_process_random(),
     P1 = aec_peers_pool:pool_new(3, 4, 1, 1.2),
     ?assertEqual(0, aec_peers_pool:pool_bucket_size(P1, 0)),
     ?assertEqual(0, aec_peers_pool:pool_bucket_size(P1, 1)),
@@ -1397,6 +1427,7 @@ pool_buckets_manipulation_test() ->
     ok.
 
 pool_make_space_test() ->
+    seed_process_random(),
     RandState = rand_state(),
     KFilterFun = fun
         (V) when (V rem 2) =:= 0 -> keep;
@@ -1464,6 +1495,7 @@ pool_make_space_test() ->
 
 %% Tests the growth/shrink of the internal data structure for lookup.
 lookup_growth_test() ->
+    seed_process_random(),
     % Assumes minimum internal size is 8 and maximum size increment is 128.
     StartSize = 8,
     MaxInc = 128,
@@ -1502,6 +1534,7 @@ lookup_growth_test() ->
 
 %% Tests the lookup internal data structure swapping of elements.
 lookup_swap_test() ->
+    seed_process_random(),
     Lookup1 = lists:foldl(fun(V, L) ->
         {V, L2} = aec_peers_pool:lookup_append(L, V * 3),
         L2
@@ -1517,6 +1550,7 @@ lookup_swap_test() ->
 
 %% Tests adding elements to the internal lookup data structure.
 lookup_randomized_add_test() ->
+    seed_process_random(),
     lists:foldl(fun(V, {L, R}) ->
         case aec_peers_pool:lookup_add(L, R, V * 3) of
             {0, undefined, R2, L2} ->
@@ -1535,6 +1569,7 @@ lookup_randomized_add_test() ->
 
 %% Tests deleting elements from the internal lookup data structure.
 lookup_randomized_del_test() ->
+    seed_process_random(),
     L1 = aec_peers_pool:lookup_new(),
     {0, L2} = aec_peers_pool:lookup_append(L1, foo),
     {1, L3} = aec_peers_pool:lookup_append(L2, bar),
@@ -1569,6 +1604,7 @@ lookup_randomized_del_test() ->
 
 %% Test the internal lookup data structure selection.
 lookup_select_test() ->
+    seed_process_random(),
     R = rand_state(),
     Excluded = [0, 1, 2, 6, 18, 22, 27],
     ExcludeFun = make_int_exclude_filter(Excluded),
@@ -1612,6 +1648,7 @@ lookup_select_test() ->
 
 %% Tests the internal lookup data structure sampling.
 lookup_sample_test() ->
+    seed_process_random(),
     R = rand_state(),
     Excluded = [0, 1, 2, 6, 18, 22, 27],
     ExcludeFun = make_int_exclude_filter(Excluded),
@@ -1687,6 +1724,7 @@ bucket_index_test_() -> [
 %% unverified buckets selected.
 %% Checks that at least 90% of the buckets get selected during the test.
 test_unverified_bucket_source_group_selection() ->
+    seed_process_random(),
     PoolOpts = [
         {unver_bcount, 1024},
         {unver_source_shard, 64},
@@ -1712,6 +1750,7 @@ test_unverified_bucket_source_group_selection() ->
 %% possible unverified buckets selected.
 %% Checks that at least 90% of the buckets get selected during the test.
 test_unverified_bucket_groups_selection() ->
+    seed_process_random(),
     PoolOpts = [
         {unver_bcount, 1024},
         {unver_source_shard, 64},
@@ -1738,6 +1777,7 @@ test_unverified_bucket_groups_selection() ->
 %% buckets selected.
 %% Verifies that at least 90% of the buckets get selected during the test.
 test_verified_bucket_peer_group_selection() ->
+    seed_process_random(),
     PoolOpts = [
         {verif_bcount, 256},
         {verif_group_shard, 8}
@@ -1759,8 +1799,23 @@ test_verified_bucket_peer_group_selection() ->
 
 %=== INTERNAL FUNCTIONS ========================================================
 
+-ifdef(USE_FIXED_SEED).
+
+seed_process_random() ->
+    rand:seed(exsplus, ?RANDOM_PROCESS_SEED).
+
+rand_state() ->
+    rand:seed_s(exsplus, ?RANDOM_POOL_SEED).
+
+-else.
+
+seed_process_random() ->
+    rand:seed(exsplus).
+
 rand_state() ->
     rand:seed_s(exsplus).
+
+-endif.
 
 rand_byte() ->
     rand:uniform(256) - 1.
