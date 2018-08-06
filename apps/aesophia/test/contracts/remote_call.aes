@@ -11,5 +11,15 @@ contract RemoteCall =
     function staged_call(r1 : address, r2 : address, x : int) =
         raw_call(r1, "call", 20000, 0, (r2, x))
 
+    function call_multi_args_with_variable(r1 : address, r2 : address, x : int) =
+        let args = (r2, x)
+        raw_call(r1, "call", 20000, 0, args)
+
+    function call_multi_args_with_private_function(r1 : address, r2 : address, x : int) =
+        call_raw_call(r1, "call", 20000, 0, (r2, x))
+
+    private function call_raw_call(r : address, f : string, gas : int, value : int, args) =
+        raw_call(r, f, gas, value, args)
+
     function plus(x, y) = x + y
 
