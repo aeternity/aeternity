@@ -15,7 +15,12 @@
 -define(BASE_ADDRESS, 32). %% Byte offset for data
 
 -ifdef(COMMON_TEST).
--define(TEST_LOG(Format, Data), ct:log(Format, Data)).
+-define(TEST_LOG(Format, Data),
+        try ct:log(Format, Data)
+        catch
+            %% Enable setting up node with "test" rebar profile.
+            error:undef -> ok
+        end).
 -else.
 -define(TEST_LOG(Format, Data), ok).
 -endif.
