@@ -1287,9 +1287,9 @@
         }
       }
     },
-    "/tx/name/preclaim" : {
+    "/debug/names/preclaim" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Get a name_preclaim transaction object",
         "operationId" : "PostNamePreclaim",
         "produces" : [ "application/json" ],
@@ -1323,9 +1323,9 @@
         }
       }
     },
-    "/tx/name/claim" : {
+    "/debug/names/claim" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Get a name_claim transaction object",
         "operationId" : "PostNameClaim",
         "produces" : [ "application/json" ],
@@ -1359,9 +1359,9 @@
         }
       }
     },
-    "/tx/name/update" : {
+    "/debug/names/update" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Get a name_update transaction object",
         "operationId" : "PostNameUpdate",
         "produces" : [ "application/json" ],
@@ -1395,9 +1395,9 @@
         }
       }
     },
-    "/tx/name/transfer" : {
+    "/debug/names/transfer" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Get a name_transfer transaction object",
         "operationId" : "PostNameTransfer",
         "produces" : [ "application/json" ],
@@ -1431,9 +1431,9 @@
         }
       }
     },
-    "/tx/name/revoke" : {
+    "/debug/names/revoke" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Get a name_revoke transaction object",
         "operationId" : "PostNameRevoke",
         "produces" : [ "application/json" ],
@@ -1831,41 +1831,6 @@
           },
           "400" : {
             "description" : "Invalid name",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/name" : {
-      "get" : {
-        "tags" : [ "external", "name_service" ],
-        "description" : "Get name entry from Naming System",
-        "operationId" : "GetName",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "name",
-          "in" : "query",
-          "description" : "Name to get entry from Naming System",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "Name data",
-            "schema" : {
-              "$ref" : "#/definitions/NameEntry"
-            }
-          },
-          "400" : {
-            "description" : "Name validation failed",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          },
-          "404" : {
-            "description" : "Name not found",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
