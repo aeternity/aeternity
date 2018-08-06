@@ -34,8 +34,8 @@
          websocket_terminate/3
         ]).
 
--define(DEFAULT_EVENT_TIMEOUT, 5000).
--define(DEFAULT_SUB_TIMEOUT, 1000).
+-define(DEFAULT_EVENT_TIMEOUT, 12000).
+-define(DEFAULT_SUB_TIMEOUT, 8000).
 
 -define(CHANNEL, channel).
 
@@ -62,7 +62,7 @@ start_link_channel(Host, Port, RoleA, Opts) when is_atom(RoleA) ->
 start_channel(Host, Port, RoleA, Opts) when is_atom(RoleA) ->
     Role = atom_to_binary(RoleA, utf8),
     WsAddress = make_channel_connect_address(Host, Port, Role, Opts),
-    ct:log("connecting to Channel ~p as ~p", [WsAddress, Role]),
+    ct:log("connecting to Channel ~s as ~p", [iolist_to_binary(WsAddress), Role]),
     {ok, Pid} = websocket_client:start(WsAddress, ?MODULE, self()),
     case wait_for_connect(Pid) of
         {ok, Pid} = Res ->

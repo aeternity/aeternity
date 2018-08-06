@@ -15,6 +15,7 @@
 -export([node_logs/1]).
 -export([get_peer_address/1]).
 -export([get_service_address/2]).
+-export([get_internal_address/2]).
 -export([get_node_pubkey/1]).
 -export([extract_archive/3]).
 -export([run_cmd_in_node_dir/3]).
@@ -170,7 +171,8 @@ setup_node(Spec, BackendState) ->
         sync => ?EXT_SYNC_PORT,
         ext_http => ?EXT_HTTP_PORT,
         int_http => ?INT_HTTP_PORT,
-        int_ws => ?INT_WS_PORT
+        int_ws => ?INT_WS_PORT,
+        ext_ws => ?EXT_WS_PORT
     },
     {LocalPorts, Sockets} = allocate_ports([sync, ext_http, int_http, int_ws, ext_ws]),
     NodeState = #{
@@ -320,12 +322,7 @@ node_logs(#{container_id := ID} = _NodeState) ->
 
 -spec get_peer_address(node_state()) -> binary().
 get_peer_address(NodeState) ->
-    #{hostname := Hostname,
-      exposed_ports := #{sync := Port},
-      pubkey := Key} = NodeState,
-    aec_peers:encode_peer_address(#{host => Hostname,
-                                    port => Port,
-                                    pubkey => Key}).
+    get_internal_address(sync, NodeState).
 
 -spec get_service_address(service_label(), node_state()) -> binary().
 get_service_address(sync, NodeState) ->
@@ -337,10 +334,27 @@ get_service_address(Service, NodeState)
   when Service == ext_http; Service == int_http ->
     #{local_ports := #{Service := Port}} = NodeState,
     format("http://localhost:~w/", [Port]);
-get_service_address(Service, NodeState) 
+get_service_address(Service, NodeState)
   when Service == ext_ws; Service == int_ws ->
     #{local_ports := #{Service := Port}} = NodeState,
     format("ws://localhost:~w/", [Port]).
+
+-spec get_internal_address(service_label(), node_state()) -> binary().
+get_internal_address(sync, NodeState) ->
+    #{hostname := Hostname,
+      exposed_ports := #{sync := Port},
+      pubkey := Key} = NodeState,
+    aec_peers:encode_peer_address(#{host => Hostname,
+                                    port => Port,
+                                    pubkey => Key});
+get_internal_address(Service, NodeState)
+  when Service == ext_http; Service == int_http ->
+    #{hostname := Hostname, exposed_ports := #{Service := Port}} = NodeState,
+    format("http://~s:~w/", [Hostname, Port]);
+get_internal_address(Service, NodeState)
+  when Service == ext_ws; Service == int_ws ->
+    #{hostname := Hostname, exposed_ports := #{Service := Port}} = NodeState,
+    format("ws://~s:~w/", [Hostname, Port]).
 
 -spec get_node_pubkey(node_state()) -> binary().
 get_node_pubkey(#{pubkey := PubKey}) -> PubKey.

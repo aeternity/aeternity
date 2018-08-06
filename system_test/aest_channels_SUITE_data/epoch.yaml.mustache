@@ -1,0 +1,42 @@
+{{#epoch_config}}
+---
+peers: {{^peers}}[]{{/peers}}
+{{#peers}}
+    - {{peer}}
+{{/peers}}
+
+sync:
+    port: {{services.sync.port}}
+    single_outbound_per_group: false
+
+http:
+    external:
+        port: {{services.ext_http.port}}
+    internal:
+        listen_address: 0.0.0.0
+        port: {{services.int_http.port}}
+    endpoints:
+        debug: true
+        dev: true
+
+websocket:
+    internal:
+        listen_address: 0.0.0.0
+        port: {{services.int_ws.port}}
+
+keys:
+    password: {{key_password}}
+    dir: ./keys
+
+chain:
+    persist: true
+
+mining:
+    autostart: true
+    beneficiary: {{config.beneficiary}}
+    cuckoo:
+        miner:
+            executable: mean16s-generic
+            extra_args: ""
+            node_bits: 16
+{{/epoch_config}}
