@@ -424,26 +424,6 @@ handle_request('GetCommitmentId', Req, _Context) ->
             {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>}}
     end;
 
-handle_request('GetTxsListFromBlockRangeByHeight', Req, _Context) ->
-    HeightFrom = maps:get('from', Req),
-    HeightTo = maps:get('to', Req),
-    get_block_range(
-        fun() ->
-            aehttp_logic:get_block_range_by_height(HeightFrom, HeightTo)
-        end, Req);
-
-handle_request('GetTxsListFromBlockRangeByHash', Req, _Context) ->
-    case {aec_base58c:safe_decode(block_hash, maps:get('from', Req)),
-          aec_base58c:safe_decode(block_hash, maps:get('to', Req))} of
-        {{ok, HashFrom}, {ok, HashTo}} ->
-            get_block_range(
-                fun() ->
-                    aehttp_logic:get_block_range_by_hash(HashFrom, HashTo)
-                end, Req);
-        _ ->
-            {400, [], #{reason => <<"Invalid hash">>}}
-    end;
-
 handle_request('GetPendingTransactions', _Req, _Context) ->
     {ok, Txs} = aec_tx_pool:peek(infinity),
     {200, [], #{transactions => [aetx_sign:serialize_for_client_pending(T) || T <- Txs]}};
@@ -471,66 +451,4 @@ handle_request(OperationID, Req, Context) ->
       [{OperationID, Req, Context}]
      ),
     {501, [], #{}}.
-
-%% Internals
-filter_transaction_list(Req, TxList) ->
-    case {parse_filter_param(tx_types, Req),
-          parse_filter_param(exclude_tx_types, Req)} of
-        {{error, unknown_type} = Err, _} ->
-            Err;
-        {_, {error, unknown_type} = Err} ->
-            Err;
-        {{ok, KeepTxTypes}, {ok, DropTxTypes}} ->
-            Filtered =
-                lists:filter(
-                    fun(SignedTx) ->
-                        Tx = aetx_sign:tx(SignedTx),
-                        TxType = aetx:tx_type(Tx),
-                        Drop = lists:member(TxType, DropTxTypes),
-                        Keep = KeepTxTypes =:= []
-                            orelse lists:member(TxType, KeepTxTypes),
-                        Keep andalso not Drop
-                    end,
-                    TxList),
-            {ok, Filtered}
-    end.
-
-get_block_range(GetFun, Req) when is_function(GetFun, 0) ->
-    case GetFun() of
-        {error, invalid_range} ->
-            {400, [], #{reason => <<"From's height is bigger than To's">>}};
-        {error, range_too_big} ->
-            {400, [], #{reason => <<"Range too big">>}};
-        {error, chain_too_short} ->
-            {404, [], #{reason => <<"Chain too short">>}};
-        {error, block_not_found} ->
-            {404, [], #{reason => <<"Block not found">>}};
-        {error, not_found} ->
-            {404, [], #{reason => <<"Block not found">>}};
-        {ok, Blocks} ->
-            Txs = lists:foldl(
-                fun(_Block, {error, _} = Err) ->
-                    Err;
-                    (Block, Accum) ->
-                    case filter_transaction_list(Req, aec_blocks:txs(Block)) of
-                        {error, unknown_type} = Err ->
-                            Err;
-                        {ok, FilteredTxs} ->
-                            H = aec_blocks:to_header(Block),
-                            lists:map(
-                                fun(Tx) ->
-                                    aetx_sign:serialize_for_client(H, Tx)
-                                end,
-                                FilteredTxs) ++ Accum
-                    end
-                end,
-                [],
-                Blocks),
-            case Txs of
-                {error, unknown_type} ->
-                    {400, [], #{reason => <<"Unknown transaction type">>}};
-                _ ->
-                    {200, [], #{transactions => Txs}}
-            end
-    end.
 

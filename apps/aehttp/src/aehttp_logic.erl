@@ -12,8 +12,6 @@
         , get_block_latest/0
         , get_block_pending/0
         , get_block_genesis/0
-        , get_block_range_by_hash/2
-        , get_block_range_by_height/2
         , get_genesis_hash/0
         , get_top_blocks_time_summary/1
         ]).
@@ -130,12 +128,6 @@ get_micro_block_by_hash(Hash) ->
         error ->
             {error, block_not_found}
     end.
-
-get_block_range_by_hash(HashFrom, HashTo) ->
-    aec_chain:get_block_range_by_hash(HashFrom, HashTo).
-
-get_block_range_by_height(HeightFrom, HeightTo) ->
-    aec_chain:get_block_range_by_height(HeightFrom, HeightTo).
 
 -spec get_account(binary()) -> {ok, map()} | {error, account_not_found}.
 get_account(Pubkey) ->

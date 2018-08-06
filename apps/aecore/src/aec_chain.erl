@@ -16,8 +16,6 @@
         , genesis_header/0
         , get_block/1
         , get_key_block_by_height/1
-        , get_block_range_by_hash/2
-        , get_block_range_by_height/2
         , get_block_state/1
         , get_generation/1
         , get_prev_generation/1
@@ -75,10 +73,6 @@
 %%% Difficulty API
 -export([ difficulty_at_hash/1
         , difficulty_at_top_block/0
-        ]).
-
-%%% For tests
--export([ max_block_range/0
         ]).
 
 %%%===================================================================
@@ -441,61 +435,6 @@ get_n_generation_headers_backwards_from_hash(Hash, N) when is_binary(Hash), is_i
     case get_header(Hash) of
         {ok, Header} -> aec_chain_state:get_n_key_headers_backward_from(Header, N);
         error        -> error
-    end.
-
-%%%===================================================================
-%%% Get a block range
-%%%===================================================================
--define(MAXIMUM_BLOCK_RANGE, 10).
-
-max_block_range() -> ?MAXIMUM_BLOCK_RANGE.
-
-get_block_range_by_height(H1, H2) ->
-    Fun = fun() -> {get_key_block_by_height(H1), get_key_block_by_height(H2)} end,
-    case aec_db:ensure_transaction(Fun) of
-        {{ok, B1}, {ok, B2}} -> get_block_range(H1, H2, B1, B2);
-        {{error, Err}, _} -> {error, Err};
-        {_, {error, Err}} -> {error, Err}
-    end.
-
-get_block_range_by_hash(Hash1, Hash2) ->
-    case {get_block(Hash1), get_block(Hash2)} of
-        {{ok, B1}, {ok, B2}} ->
-            H1 = aec_blocks:height(B1),
-            H2 = aec_blocks:height(B2),
-            get_block_range(H1, H2, B1, B2);
-        {error, _} -> {error, block_not_found};
-        {_, error} -> {error, block_not_found}
-    end.
-
-get_block_range(Height1, Height2, B1, B2) ->
-    case validate_block_range(Height1, Height2) of
-        ok -> get_block_range(Height1, Height2, B1, {ok, B2}, []);
-        {error, _} = E -> E
-    end.
-
-get_block_range(_Height1,_Height2,_B, error,_Acc) ->
-    {error, block_not_found};
-get_block_range(Height, Height, B, {ok, B}, Acc) ->
-    {ok, [B|Acc]};
-get_block_range(Height, Height, _, _,_Acc) ->
-    {error, invalid_range};
-get_block_range(Height1, Height2, B1, {ok, B2}, Acc) when Height2 > Height1 ->
-    NewAcc = [B2|Acc],
-    PrevHash = aec_blocks:prev_hash(B2),
-    case aec_blocks:is_key_block(B2) of
-        true -> get_block_range(Height1, Height2 - 1, B1, get_block(PrevHash), NewAcc);
-        false -> get_block_range(Height1, Height2, B1, get_block(PrevHash), NewAcc)
-    end.
-
-validate_block_range(HeightFrom, HeightTo) when HeightFrom > HeightTo ->
-    {error, invalid_range};
-validate_block_range(HeightFrom, HeightTo) ->
-    case (HeightTo - HeightFrom) > max_block_range() of
-        true ->
-            {error, range_too_big};
-        false ->
-            ok
     end.
 
 %%%===================================================================
