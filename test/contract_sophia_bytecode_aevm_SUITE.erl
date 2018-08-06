@@ -11,6 +11,8 @@
    , sophia_factorial/1
    , simple_multi_argument_call/1
    , remote_multi_argument_call/1
+   , remote_multi_argument_call2/1
+   , remote_multi_argument_call3/1
    , spend_tests/1
    , complex_types/1
    , environment/1
@@ -35,6 +37,8 @@ all() -> [ execute_identity_fun_from_sophia_file,
            sophia_factorial,
            simple_multi_argument_call,
            remote_multi_argument_call,
+           remote_multi_argument_call2,
+           remote_multi_argument_call3,
            spend_tests,
            complex_types,
            environment,
@@ -167,6 +171,20 @@ remote_multi_argument_call(_Cfg) ->
     RemoteCode = compile_contract(remote_call),
     Env        = initial_state(#{ 101 => IdCode, 102 => RemoteCode, 103 => RemoteCode }),
     42         = successful_call_(102, word, staged_call, "(102,101,42)", Env),
+    ok.
+
+remote_multi_argument_call2(_Cfg) ->
+    IdCode     = compile_contract(identity),
+    RemoteCode = compile_contract(remote_call),
+    Env        = initial_state(#{ 101 => IdCode, 102 => RemoteCode, 103 => RemoteCode }),
+    42         = successful_call_(102, word, call_multi_args_with_variable, "(102,101,42)", Env),
+    ok.
+
+remote_multi_argument_call3(_Cfg) ->
+    IdCode     = compile_contract(identity),
+    RemoteCode = compile_contract(remote_call),
+    Env        = initial_state(#{ 101 => IdCode, 102 => RemoteCode, 103 => RemoteCode }),
+    42         = successful_call_(102, word, call_multi_args_with_private_function, "(102,101,42)", Env),
     ok.
 
 spend_tests(_Cfg) ->
