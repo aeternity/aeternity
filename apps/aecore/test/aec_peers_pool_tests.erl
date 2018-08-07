@@ -43,7 +43,8 @@
 
 -define(RANDOM_PROCESS_SEED, {1533,565972,58584}).
 -define(RANDOM_POOL_SEED, {1533,565990,602018}).
--define(POOL_OPTS, [{disable_strong_random, true},
+-define(POOL_OPTS, [{secret, <<"some fixed secret">>},
+                    {disable_strong_random, true},
                     {seed, ?RANDOM_POOL_SEED}]).
 
 -else.
