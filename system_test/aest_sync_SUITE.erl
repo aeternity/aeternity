@@ -311,7 +311,7 @@ stop_and_continue_sync(Cfg) ->
     NodeStartupTime = proplists:get_value(node_startup_time, Cfg),
 
     %% Create a chain long enough to need 10 seconds to fetch it
-    Length = BlocksPerSecond * 30,
+    Length = BlocksPerSecond * 50,
 
     setup_nodes([#{ name    => node1,
                     peers   => [node2],

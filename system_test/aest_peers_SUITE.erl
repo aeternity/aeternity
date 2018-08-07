@@ -120,7 +120,7 @@ test_peer_discovery(Cfg) ->
     ok.
 
 test_inbound_limitation(Cfg) ->
-    Length = 30,
+    Length = 50,
     StartupTimeout = proplists:get_value(node_startup_time, Cfg),
     NodeConfig = #{
         ping_interval => 5000,
