@@ -134,7 +134,7 @@ init_per_group(_Group, Config) ->
     aecore_suite_utils:connect(NodeName),
     ToMine = aecore_suite_utils:latest_fork_height(),
     ct:pal("ToMine ~p\n", [ToMine]),
-    aecore_suite_utils:mine_blocks(NodeName, ToMine),
+    aecore_suite_utils:mine_key_blocks(NodeName, ToMine),
     [{node_name,NodeName}|Config].
 
 end_per_group(test_group, _Config) ->
@@ -230,7 +230,7 @@ spending_2(Config) ->
     BBal0 = get_balance(BPubkey),
     ct:pal("Balances 0: ~p, ~p\n", [ABal0,BBal0]),
 
-    {ok,[_]} = aecore_suite_utils:mine_blocks(NodeName, 1),
+    {ok,[_]} = aecore_suite_utils:mine_key_blocks(NodeName, 1),
 
     %% Get balances after mining.
     ABal1 = get_balance(APubkey),
@@ -243,10 +243,10 @@ spending_2(Config) ->
     %% Transfer money from Alice to Bert, but more than Alice has.
     TTL =  #{ttl => Height + 2},
     TxHash = spend_tokens(APubkey, APrivkey, BPubkey, ABal1 + 100, 5, TTL),
-    {ok,[_]} = aecore_suite_utils:mine_blocks(NodeName, 1),
+    {ok,[_, _]} = aecore_suite_utils:mine_key_blocks(NodeName, 2),
 
     %% Check that tx has failed.
-    ct:pal("TxHash1 ~p\n", [tx_in_chain(TxHash)]),
+    ?assertNot(tx_in_chain(TxHash)),
 
     %% Check that there has been no transfer.
     ABal2 = get_balance(APubkey),
@@ -256,10 +256,10 @@ spending_2(Config) ->
     ct:pal("Balances 2: ~p, ~p\n", [ABal2,BBal2]),
 
     %% Wait until TTL has been passed.
-    {ok,[_,_,_]} = aecore_suite_utils:mine_blocks(NodeName, 3),
+    {ok,[_,_]} = aecore_suite_utils:mine_blocks(NodeName, 2),
 
     %% Check that tx has failed.
-    ct:pal("TxHash2 ~p\n", [tx_in_chain(TxHash)]),
+    ?assertNot(tx_in_chain(TxHash)),
 
     ok.
 
@@ -279,7 +279,7 @@ spending_3(Config) ->
     BBal0 = get_balance(BPubkey),
     ct:pal("Balances 0: ~p, ~p\n", [ABal0,BBal0]),
 
-    {ok,[_,_]} = aecore_suite_utils:mine_blocks(NodeName, 2),
+    {ok,[_,_]} = aecore_suite_utils:mine_key_blocks(NodeName, 2),
 
     %% Get balances after mining.
     ABal1 = get_balance(APubkey),
@@ -288,7 +288,7 @@ spending_3(Config) ->
 
     %% Transfer money from Alice to Bert, but more than Alice has.
     SpendTxHash = spend_tokens(APubkey, APrivkey, BPubkey, ABal1 + 200, 5),
-    {ok,[_,_]} = aecore_suite_utils:mine_blocks(NodeName, 2),
+    {ok,[_,_]} = aecore_suite_utils:mine_key_blocks(NodeName, 2),
 
     %% Check that tx has failed.
     ?assertNot(tx_in_chain(SpendTxHash)),
@@ -329,7 +329,7 @@ identity_contract(Config) ->
     %% Make sure accounts have enough tokens.
     ensure_balance(CPubkey, 50000),
     ensure_balance(DPubkey, 50000),
-    {ok,[_]} = aecore_suite_utils:mine_blocks(NodeName, 1),
+    {ok,[_]} = aecore_suite_utils:mine_key_blocks(NodeName, 1),
 
     %% Compile contract "identity.aes"
     ContractString = aeso_test_utils:read_contract("identity"),
@@ -375,11 +375,11 @@ simple_storage_contract(Config) ->
                  priv_key := DPrivkey}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
-    ABal0 = ensure_balance(APubkey, 50000),
-    BBal0 = ensure_balance(BPubkey, 50000),
-    CBal0 = ensure_balance(CPubkey, 50000),
-    DBal0 = ensure_balance(DPubkey, 50000),
-    {ok,[_]} = aecore_suite_utils:mine_blocks(NodeName, 1),
+    _ABal0 = ensure_balance(APubkey, 50000),
+    _BBal0 = ensure_balance(BPubkey, 50000),
+    _CBal0 = ensure_balance(CPubkey, 50000),
+    _DBal0 = ensure_balance(DPubkey, 50000),
+    {ok,[_]} = aecore_suite_utils:mine_key_blocks(NodeName, 1),
 
     %% Compile contract "simple_storage.aes"
     ContractString = aeso_test_utils:read_contract("simple_storage"),
@@ -529,11 +529,11 @@ maps_contract(Config) ->
       acc_d := #{pub_key := DPubkey}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
-    ABal0 = ensure_balance(APubkey, 500000),
-    BBal0 = ensure_balance(BPubkey, 500000),
-    CBal0 = ensure_balance(CPubkey, 500000),
-    DBal0 = ensure_balance(DPubkey, 500000),
-    {ok,[_]} = aecore_suite_utils:mine_blocks(NodeName, 1),
+    _ABal0 = ensure_balance(APubkey, 500000),
+    _BBal0 = ensure_balance(BPubkey, 500000),
+    _CBal0 = ensure_balance(CPubkey, 500000),
+    _DBal0 = ensure_balance(DPubkey, 500000),
+    {ok,[_]} = aecore_suite_utils:mine_key_blocks(NodeName, 1),
 
     %% Compile contract "maps.aes" but a simple test first.
     ContractString = aeso_test_utils:read_contract("maps"),
@@ -592,7 +592,7 @@ environment_contract(Config) ->
     BBal0 = ensure_balance(BPubkey, 50000),
     CBal0 = ensure_balance(CPubkey, 50000),
     DBal0 = ensure_balance(DPubkey, 50000),
-    {ok,[_]} = aecore_suite_utils:mine_blocks(NodeName, 1),
+    {ok,[_]} = aecore_suite_utils:mine_key_blocks(NodeName, 1),
 
     %% Compile contract "environment.aes"
     ContractString = aeso_test_utils:read_contract("environment"),
@@ -717,7 +717,7 @@ environment_contract(Config) ->
     #{<<"value">> := GasLimit} = decode_data(<<"int">>, GLValue),
     ct:pal("Gas limit ~p\n", [GasLimit]),
 
-    aecore_suite_utils:mine_blocks(NodeName, 3),
+    aecore_suite_utils:mine_key_blocks(NodeName, 3),
 
     ct:pal("A Balances ~p, ~p, ~p\n", [ABal0,ABal1,get_balance(APubkey)]),
     ct:pal("B Balances ~p, ~p\n", [BBal0,get_balance(BPubkey)]),
@@ -752,7 +752,7 @@ spend_test_contract(Config) ->
 	create_contract(NodeName, APubkey, APrivkey, HexCode,
 			<<"()">>, #{amount => 20000}),
 
-    aecore_suite_utils:mine_blocks(NodeName, 3),
+    aecore_suite_utils:mine_key_blocks(NodeName, 3),
 
     %% Alice does all the operations on the contract and spends on Bert.
     %% Check the contract balances.
@@ -769,7 +769,7 @@ spend_test_contract(Config) ->
 			     HexCode, <<"spend">>, Sp1Arg),
     #{<<"value">> := 5000} = decode_data(<<"int">>, Sp1Value),
 
-    aecore_suite_utils:mine_blocks(NodeName, 3),
+    aecore_suite_utils:mine_key_blocks(NodeName, 3),
 
     %% Check that contract spent it.
     GBO1Arg = args_to_binary([DecodedC2Pubkey]),
@@ -789,7 +789,7 @@ spend_test_contract(Config) ->
 			     HexCode, <<"spend_from">>, SF1Arg),
     #{<<"value">> := 2021000} = decode_data(<<"int">>, SF1Value),
 
-    aecore_suite_utils:mine_blocks(NodeName, 3),
+    aecore_suite_utils:mine_key_blocks(NodeName, 3),
 
     %% Check that Bert got it.
     GBO3Arg = args_to_binary([BPubkey]),
@@ -821,10 +821,10 @@ dutch_auction_contract(Config) ->
       acc_c := #{pub_key := CPubkey}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
-    ABal0 = ensure_balance(APubkey, 500000),
-    BBal0 = ensure_balance(BPubkey, 500000),
-    CBal0 = ensure_balance(CPubkey, 500000),
-    {ok,[_]} = aecore_suite_utils:mine_blocks(NodeName, 1),
+    _ABal0 = ensure_balance(APubkey, 500000),
+    _BBal0 = ensure_balance(BPubkey, 500000),
+    _CBal0 = ensure_balance(CPubkey, 500000),
+    {ok,[_]} = aecore_suite_utils:mine_key_blocks(NodeName, 1),
 
     %% Compile contract "dutch_auction.aes"
     ContractString = aeso_test_utils:read_contract("dutch_auction"),
@@ -843,9 +843,9 @@ dutch_auction_contract(Config) ->
     #{<<"height">> := Height0} = InitReturn,
 
     %% Mine 10 times to decrement value.
-    {ok,_} = aecore_suite_utils:mine_blocks(NodeName, 10),
+    {ok,_} = aecore_suite_utils:mine_key_blocks(NodeName, 10),
 
-    ABal1 = get_balance(APubkey),
+    _ABal1 = get_balance(APubkey),
     BBal1 = get_balance(BPubkey),
     CBal1 = get_balance(CPubkey),
 
@@ -996,7 +996,7 @@ contract_call_tx(Pubkey, Privkey, EncodedContractPubkey, EncodedCallData, Caller
     %% Generate a nonce.
     {ok,200,#{<<"nonce">> := Nonce0}} = get_nonce(Address),
     Nonce = Nonce0 + 1,
- 
+
     %% The default call contract.
     ContractCallEncoded0 = #{ caller => Address,
 			      contract => EncodedContractPubkey,

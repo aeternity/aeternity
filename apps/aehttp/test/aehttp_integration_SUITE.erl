@@ -1924,8 +1924,7 @@ block_not_found_by_height(_Config) ->
         lists:seq(1, ?DEFAULT_TESTS_COUNT)),
 
     ToMine = aecore_suite_utils:latest_fork_height(),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   ToMine),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), ToMine),
     ok.
 
 block_not_found_by_hash(_Config) ->
@@ -2538,8 +2537,8 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
                         #{account => aec_id:create(account, MinerPubkey),
                           name => Name}),
     unsigned_tx_positive_test(Decoded, Encoded,
-                               fun get_name_claim/1,
-                               fun aens_claim_tx:new/1, MinerPubkey),
+                              fun get_name_claim/1,
+                              fun aens_claim_tx:new/1, MinerPubkey),
     test_invalid_hash({account_pubkey, MinerPubkey}, account, Encoded, fun get_name_claim/1),
     test_invalid_hash({name, MinerPubkey}, name, Encoded, fun get_name_claim/1),
     test_missing_address(account, Encoded, fun get_name_claim/1),
@@ -2879,9 +2878,9 @@ unsigned_tx_positive_test(Data, Params0, HTTPCallFun, NewFun, Pubkey,
 
 get_transaction(_Config) ->
     {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_miner_pub_key(),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 2),
     TxHashes = add_spend_txs(),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 2),
     Encodings = [default, message_pack, json],
     lists:foreach(
         fun(TxHash) ->
@@ -2919,7 +2918,7 @@ get_transaction(_Config) ->
         end,
         Encodings),
 
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 2),
     ok.
 
 %% Maybe this test should be broken into a couple of smaller tests
@@ -2941,10 +2940,10 @@ pending_transactions(_Config) ->
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), BlocksToMine),
     {ok, 200, #{<<"balance">> := Bal0}} = get_balance_at_top(),
 
-    ct:log("Bal0: ~p, Initial Balance: ~p, Blocks to mine: ~p, Mine reward: ~p, Fee: ~p",
-           [Bal0, InitialBalance, BlocksToMine, MineReward, Fee]),
-    {Bal0, _, _} = {InitialBalance + Fee + BlocksToMine * MineReward, Bal0,
-                 {InitialBalance, BlocksToMine, MineReward, Fee}},
+    ct:log("Bal0: ~p, Initial Balance: ~p, Blocks to mine: ~p, Mine reward: ~p",
+           [Bal0, InitialBalance, BlocksToMine, MineReward]),
+    {Bal0, _, _} = {InitialBalance + BlocksToMine * MineReward, Bal0,
+                    {InitialBalance, BlocksToMine, MineReward}},
     true = (is_integer(Bal0) andalso Bal0 > AmountToSpent + Fee),
 
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % still empty
@@ -2971,14 +2970,14 @@ pending_transactions(_Config) ->
                   get_balance_at_top(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
 
 
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 3),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 3),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty again
     {ok, 200, []} = get_transactions(),
 
     {ok, 200, #{<<"balance">> := Bal1}} = get_balance_at_top(),
     ct:log("Bal1: ~p, Bal0: ~p, Mine reward: ~p, Fee: ~p, Amount to spend: ~p",
-           [Bal1, Bal0, 2 * MineReward, Fee, AmountToSpent]),
-    {Bal1, _} = {Bal0 + 2 * MineReward + Fee - Fee - AmountToSpent, Bal1},
+           [Bal1, Bal0, 3 * MineReward, Fee, AmountToSpent]),
+    {Bal1, _} = {Bal0 + 3 * MineReward + Fee - Fee - AmountToSpent, Bal1},
     {ok, 200, #{<<"balance">> := AmountToSpent}} =
                  get_balance_at_top(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
     ok.
@@ -4770,7 +4769,7 @@ sc_ws_contract_(Config, TestName, Owner) ->
             CallRes = GetCallResult(SenderConnPid),
             CallRes = GetCallResult(AckConnPid),
             #{<<"caller_address">>    := CallerAddress,
-              <<"caller_nonce">>      := CallRound, 
+              <<"caller_nonce">>      := CallRound,
               <<"contract_address">>  := ContractAddress,
               <<"gas_price">>         := _,
               <<"gas_used">>          := _,

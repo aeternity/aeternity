@@ -204,13 +204,13 @@ start_third_node(Config) ->
 mine_on_first_up_to_latest_consensus_protocol(Config) ->
     [ Dev1 | _ ] = proplists:get_value(devs, Config),
     N = aecore_suite_utils:node_name(Dev1),
-    aecore_suite_utils:mine_blocks(N, aecore_suite_utils:latest_fork_height()),
+    aecore_suite_utils:mine_key_blocks(N, aecore_suite_utils:latest_fork_height()),
     ok.
 
 mine_on_first(Config) ->
     [ Dev1 | _ ] = proplists:get_value(devs, Config),
     N = aecore_suite_utils:node_name(Dev1),
-    aecore_suite_utils:mine_blocks(N, 1),
+    aecore_suite_utils:mine_key_blocks(N, 1),
     ok.
 
 start_blocked_second(Config) ->
@@ -332,13 +332,13 @@ crash_syncing_worker(Config) ->
     aecore_suite_utils:stop_node(Dev2, Config),
 
     %% Hotfix - make sure mempool is empty
-    aecore_suite_utils:mine_blocks(N1, 4),
+    aecore_suite_utils:mine_key_blocks(N1, 4),
     {ok, []} = rpc:call(N1, aec_tx_pool, peek, [infinity], 5000),
 
     Top1 = rpc:call(N1, aec_chain, top_block, [], 5000),
     ct:log("top at Dev1 = ~p", [Top1]),
     ExtraBlocks = 5,  %% Might need more if CPU is really fast!
-    aecore_suite_utils:mine_blocks(N1, ExtraBlocks),
+    aecore_suite_utils:mine_key_blocks(N1, ExtraBlocks),
     H1 = aec_blocks:height(Top1) + ExtraBlocks,
 
     %% Ensure compatible notation of uri:
@@ -413,8 +413,8 @@ mine_on_third(Config) ->
 mine_and_compare(N1, Config) ->
     AllNodes = [N || {_, N} <- ?config(nodes, Config)],
     PrevTop = rpc:call(N1, aec_chain, top_block, [], 5000),
-    %% If there are txs in the mempool, the second block will be a micro block.
-    {ok, [KeyBlock, _KeyOrMicroBlock]} = aecore_suite_utils:mine_blocks(N1, 2),
+    %% If there are txs in the mempool, there will be an additional micro block.
+    {ok, [KeyBlock | _Blocks]} = aecore_suite_utils:mine_key_blocks(N1, 2),
     true = aec_blocks:is_key_block(KeyBlock),
     NewTop = rpc:call(N1, aec_chain, top_block, [], 5000),
     true = (NewTop =/= PrevTop),

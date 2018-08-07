@@ -952,7 +952,7 @@ prep_initiator(Node) ->
     {ok, PubKey} = rpc(Node, aec_keys, pubkey, []),
     {ok, PrivKey} = rpc(Node, aec_keys, sign_privkey, []),
     ct:log("initiator Pubkey = ~p", [PubKey]),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(Node), 1),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(Node), 1),
     ct:log("initiator: 1 block mined on ~p", [Node]),
     {ok, Balance} = rpc(Node, aehttp_logic, get_account_balance, [PubKey]),
     #{role => initiator,
