@@ -1062,19 +1062,12 @@ wait_for_signed_transaction_in_block(Node, SignedTx) ->
 wait_for_signed_transaction_in_block(_, _, #{mine_blocks := {ask,_}}) ->
     ok;
 wait_for_signed_transaction_in_block(Node, SignedTx, _Debug) ->
-    TxHash = aetx_sign:hash(SignedTx),
-    MineTx =
-        fun Try(0) -> did_not_mine;
-            Try(Attempts) ->
-                aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(Node), 2),
-                case rpc(Node, aec_chain, find_tx_location, [TxHash]) of
-                    none -> erlang:error(tx_not_found);
-                    not_found -> erlang:error(tx_not_found);
-                    mempool -> Try(Attempts - 1);
-                    BlockHash when is_binary(BlockHash) -> ok
-                end
-        end,
-    ok = MineTx(5).
+    TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
+    NodeName = aecore_suite_utils:node_name(Node),
+    case aecore_suite_utils:mine_blocks_until_tx_on_chain(NodeName, TxHash, 10) of
+        {ok, _Blocks} -> ok;
+        {error, _Reason} -> did_not_mine
+    end.
 
 check_fsm_state(Fsm) ->
     {ok, #{initiator := Initiator,
