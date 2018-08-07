@@ -78,10 +78,9 @@ all() -> [
 ].
 
 init_per_suite(Config) ->
-    [
-        {node_startup_time, 20000}, %% Time may take to get the node to respond to http
-        {node_shutdown_time, 20000} %% Time it may take to stop node cleanly
-    |Config].
+    [ {node_startup_time, 20000}, %% Time may take to get the node to respond to http
+      {node_shutdown_time, 20000} %% Time it may take to stop node cleanly
+    | Config].
 
 init_per_testcase(_TC, Config) ->
     aest_nodes:ct_setup(Config).
