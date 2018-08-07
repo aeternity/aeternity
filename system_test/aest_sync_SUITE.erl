@@ -39,7 +39,6 @@
 %=== MACROS ====================================================================
 
 -define(MINING_TIMEOUT,   3000).
--define(SYNC_TIMEOUT,      100).
 
 -define(STANDALONE_NODE, #{
     name    => standalone_node,
