@@ -268,8 +268,10 @@
     sc_ws_send_messages_and_close/1,
     sc_ws_conflict_and_close/1,
     sc_ws_close/1,
-    sc_ws_close_mutual_inititator/1,
+    sc_ws_close_mutual_initiator/1,
     sc_ws_close_mutual_responder/1,
+    sc_ws_leave/1,
+    sc_ws_reestablish/1,
     sc_ws_deposit_initiator_and_close/1,
     sc_ws_deposit_responder_and_close/1,
     sc_ws_withdraw_initiator_and_close/1,
@@ -643,11 +645,17 @@ groups() ->
       % initiator can start close mutual
        sc_ws_open,
        sc_ws_update,
-       sc_ws_close_mutual_inititator,
+       sc_ws_close_mutual_initiator,
        % responder can start close mutual
        sc_ws_open,
        sc_ws_update,
        sc_ws_close_mutual_responder,
+       % possible to leave and reestablish channel
+       sc_ws_open,
+       sc_ws_leave,
+       sc_ws_reestablish,
+       sc_ws_update,
+       sc_ws_close_mutual_initiator,
        % initiator can make a deposit
        sc_ws_open,
        sc_ws_update,
@@ -4159,7 +4167,8 @@ sc_ws_open(Config) ->
 
     ChannelClients = #{initiator => IConnPid,
                        responder => RConnPid},
-    {save_config, [{channel_clients, ChannelClients} | Config]}.
+    {save_config, [{channel_clients, ChannelClients},
+                   {channel_options, ChannelOpts} | Config]}.
 
 
 channel_send_conn_open_infos(RConnPid, IConnPid) ->
@@ -4225,7 +4234,8 @@ channel_create(Config, IConnPid, RConnPid) ->
     ChannelCreateFee.
 
 sc_ws_update(Config) ->
-    {sc_ws_open, ConfigList} = ?config(saved_config, Config),
+    {ok, ConfigList} = get_saved_config(
+                         Config, [sc_ws_open, sc_ws_reestablish]),
     Participants = proplists:get_value(participants, Config),
     Conns = proplists:get_value(channel_clients, ConfigList),
     lists:foldl(
@@ -4504,7 +4514,7 @@ sc_ws_get_both_balances(ConnPid, PubKeyI, PubKeyR) ->
      #{<<"account">> := AccountR, <<"balance">> := BR}] = Res,
     {ok, {BI, BR}}.
 
-sc_ws_close_mutual_inititator(Config) ->
+sc_ws_close_mutual_initiator(Config) ->
     sc_ws_close_mutual(Config, initiator).
 
 sc_ws_close_mutual_responder(Config) ->
@@ -4513,6 +4523,7 @@ sc_ws_close_mutual_responder(Config) ->
 sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
                                  orelse Closer =:= responder ->
     {sc_ws_update, ConfigList} = ?config(saved_config, Config),
+    ct:log("ConfigList = ~p", [ConfigList]),
     #{initiator := #{pub_key := IPubkey,
                     priv_key := IPrivkey},
       responder := #{pub_key := RPubkey,
@@ -4564,6 +4575,71 @@ sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
     % ensure tx is not hanging in mempool
     {ok, 200, []} = get_transactions(),
     ok.
+
+sc_ws_leave(Config) ->
+    {sc_ws_open, ConfigList} = ?config(saved_config, Config),
+    #{initiator := #{pub_key  := IPubkey,
+                     priv_key := IPrivkey},
+      responder := #{pub_key  := RPubkey,
+                     priv_key := RPrivkey}} = proplists:get_value(participants,
+                                                                  ConfigList),
+    #{initiator := IConnPid,
+      responder := RConnPid} = proplists:get_value(channel_clients, ConfigList),
+    ok = ?WS:register_test_for_channel_events(IConnPid, [leave, info]),
+    ok = ?WS:register_test_for_channel_events(RConnPid, [leave, info]),
+    ok = ?WS:register_test_for_events(IConnPid, websocket, [closed]),
+    ok = ?WS:register_test_for_events(RConnPid, websocket, [closed]),
+    %%
+    ok = ?WS:send(IConnPid, <<"leave">>, #{}),
+    %%
+    {ok, #{ <<"channel_id">> := IDi,
+            <<"payload">> := Pi }} =
+        ?WS:wait_for_channel_msg(IConnPid, leave),
+    #{ <<"state">> := StI } = Pi,
+    {ok, #{<<"channel_id">> := IDr,
+           <<"payload">> := Pr }} =
+        ?WS:wait_for_channel_msg(RConnPid, leave),
+    #{ <<"state">> := StR } = Pr,
+    {IDi, IDr} = {IDr, IDi},
+    {StI, StR} = {StR, StI},
+    {ok, #{<<"event">> := <<"died">>}} = ?WS:wait_for_channel_event(IConnPid, info),
+    {ok, #{<<"event">> := <<"died">>}} = ?WS:wait_for_channel_event(RConnPid, info),
+    ok = ?WS:wait_for_event(IConnPid, websocket, closed),
+    ok = ?WS:wait_for_event(RConnPid, websocket, closed),
+    %%
+    Options = proplists:get_value(channel_options, ConfigList),
+    Port = maps:get(port, Options),
+    RPort = Port+1,
+    ReestablOptions = maps:merge(Options, #{existing_channel_id => IDi,
+                                            offchain_tx => StI,
+                                            port => RPort}),
+    {save_config, [{channel_reestabl_options, ReestablOptions} | Config]}.
+
+
+sc_ws_reestablish(Config) ->
+    {sc_ws_leave, ConfigList} = ?config(saved_config, Config),
+    ReestablOptions = proplists:get_value(channel_reestabl_options, ConfigList),
+    {ok, RrConnPid} = channel_ws_start(responder, ReestablOptions),
+    {ok, IrConnPid} = channel_ws_start(initiator, maps:put(
+                                                    host, <<"localhost">>,
+                                                    ReestablOptions)),
+    ok = ?WS:register_test_for_channel_events(
+            RrConnPid, [info, update]),
+    ok = ?WS:register_test_for_channel_events(
+            IrConnPid, [info, update]),
+    {ok, #{<<"event">> := <<"channel_reestablished">>}} =
+        ?WS:wait_for_channel_event(IrConnPid, info),
+    {ok, #{<<"event">> := <<"channel_reestablished">>}} =
+        ?WS:wait_for_channel_event(RrConnPid, info),
+    {ok, #{<<"event">> := <<"open">>}} =
+        ?WS:wait_for_channel_event(IrConnPid, info),
+    {ok, #{<<"event">> := <<"open">>}} =
+        ?WS:wait_for_channel_event(RrConnPid, info),
+    ChannelClients = #{initiator => IrConnPid,
+                       responder => RrConnPid},
+    {save_config, [{channel_clients, ChannelClients},
+                   {channel_options, ReestablOptions} | Config]}.
+
 
 sc_ws_deposit_initiator_and_close(Config) ->
     sc_ws_deposit_and_close(Config, initiator).
@@ -5820,6 +5896,19 @@ uenc(I) when is_integer(I) ->
     uenc(integer_to_list(I));
 uenc(V) ->
     http_uri:encode(V).
+
+get_saved_config(Config, Names) ->
+    case ?config(saved_config, Config) of
+        {Name, ConfigList} ->
+            case lists:member(Name, Names) of
+                true ->
+                    {ok, ConfigList};
+                false ->
+                    erlang:error({unexpected_saved_config, Name})
+            end;
+        Other ->
+            erlang:error({unexpected, Other})
+    end.
 
 process_http_return(R) ->
     case R of

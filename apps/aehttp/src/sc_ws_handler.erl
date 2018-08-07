@@ -12,7 +12,9 @@
 -export([terminate/3]).
 
 -record(handler, {fsm_pid            :: pid() | undefined,
+                  fsm_mref           :: reference() | undefined,
                   channel_id         :: aesc_channels:id() | undefined,
+                  enc_channel_id     :: aec_base58c:encoded() | undefined,
                   job_id             :: term(),
                   role               :: initiator | responder | undefined,
                   host               :: binary() | undefined,
@@ -40,7 +42,8 @@
                                 <<"update">> -> update;
                                 <<"update_ack">> -> update_ack;
                                 <<"shutdown_sign">> -> shutdown;
-                                <<"shutdown_sign_ack">> -> shutdown_ack
+                                <<"shutdown_sign_ack">> -> shutdown_ack;
+                                <<"leave">> -> leave
                             end).
 
 init(Req, _Opts) ->
@@ -60,7 +63,8 @@ websocket_init(Params) ->
         {Handler, ChannelOpts} ->
             lager:debug("Starting Channel WS with params ~p", [Params]),
             {ok, FsmPid} = start_link_fsm(Handler, ChannelOpts),
-            {ok, Handler#handler{fsm_pid = FsmPid}}
+            MRef = erlang:monitor(process, FsmPid),
+            {ok, Handler#handler{fsm_pid = FsmPid, fsm_mref = MRef}}
     end.
 
 -spec websocket_handle(term(), handler()) -> {ok, handler()}.
@@ -91,22 +95,31 @@ websocket_info({push, ChannelId, Data, Options}, State) ->
     end;
 websocket_info({aesc_fsm, FsmPid, Msg}, #handler{fsm_pid=FsmPid}=H) ->
     H1 = set_channel_id(Msg, H),
-    case process_fsm(Msg) of
+    case process_fsm(Msg, H) of
         %no_reply -> {ok, H1};
         %{error, _} -> {ok, H1}
         {reply, Resp} -> {reply, {text, jsx:encode(Resp)}, H1}
     end;
+websocket_info({'DOWN', MRef, _, _, _}, #handler{fsm_mref = MRef} = H) ->
+    {stop, H};
 websocket_info(_Info, State) ->
     {ok, State}.
 
-set_channel_id(#{} = Msg, #handler{channel_id = ChId} = H) ->
-    H#handler{channel_id = set_chid_if_undefined(
-                             ChId, maps:get(channel_id, Msg, undefined))}.
+set_channel_id(#{channel_id := Id},
+               #handler{channel_id = undefined} = H) when Id =/= undefined ->
+    H#handler{channel_id = Id,
+              enc_channel_id = aec_base58c:encode(channel, Id)};
+set_channel_id(#{channel_id := A}, #handler{channel_id = B})
+  when A =/= undefined, A =/= B ->
+    erlang:error({channel_id_mismatch, [A, B]});
+set_channel_id(_Msg, H) ->
+    H.
 
-set_chid_if_undefined(undefined, V) -> V;
-set_chid_if_undefined(V, V) -> V;
-set_chid_if_undefined(A, B) ->
-    erlang:error({channel_id_mismatch, [A, B]}).
+reply(Msg, #handler{enc_channel_id = Id}) ->
+    case Id of
+        undefined -> {reply, Msg};
+        _         -> {reply, maps:merge(#{channel_id => Id}, Msg)}
+    end.
 
 terminate(_Reason, _PartialReq, #{} = _State) ->
     % not initialized yet
@@ -231,6 +244,17 @@ parse_by_type({hash, Type}, V, RecordField) when is_binary(V) ->
         {error, _} ->
             {error, {RecordField, broken_encoding}};
         {ok, _} = OK -> OK
+    end;
+parse_by_type(serialized_tx, V, RecordField) when is_binary(V) ->
+    case aec_base58c:safe_decode(transaction, V) of
+        {ok, TxBin} ->
+            try {ok, aetx_sign:deserialize_from_binary(TxBin)}
+            catch
+                error:_ ->
+                    {error, {RecordField, invalid_tx_serialization}}
+            end;
+        {error, _} ->
+            {error, {RecordField, broken_encoding}}
     end.
 
 -spec process_incoming(map(), handler()) -> no_reply | {reply, map()} | {error, atom()}.
@@ -407,6 +431,10 @@ process_incoming(#{<<"action">> := Action,
              aesc_fsm:signing_response(fsm_pid(State), Tag, SignedTx),
              no_reply
     end;
+process_incoming(#{<<"action">> := <<"leave">>}, State) ->
+    lager:debug("Channel WS: leave channel message received"),
+    aesc_fsm:leave(fsm_pid(State)),
+    no_reply;
 process_incoming(#{<<"action">> := <<"shutdown">>}, State) ->
     lager:warning("Channel WS: closing channel message received"),
     aesc_fsm:shutdown(fsm_pid(State)),
@@ -418,19 +446,19 @@ process_incoming(Msg, _State) ->
     lager:warning("Channel WS: missing action received ~p", [Msg]),
     {error, unhandled}.
 
--spec process_fsm(term()) -> no_reply | {reply, map()} | {error, atom()}.
+-spec process_fsm(term(), handler()) -> no_reply | {reply, map()} | {error, atom()}.
 process_fsm(#{type := sign,
               tag  := Tag,
-              info := Tx}) when Tag =:= create_tx
-                         orelse Tag =:= deposit_tx
-                         orelse Tag =:= deposit_created
-                         orelse Tag =:= withdraw_tx
-                         orelse Tag =:= withdraw_created
-                         orelse Tag =:= shutdown
-                         orelse Tag =:= shutdown_ack
-                         orelse Tag =:= funding_created
-                         orelse Tag =:= update
-                         orelse Tag =:= update_ack ->
+              info := Tx}, H) when Tag =:= create_tx
+                            orelse Tag =:= deposit_tx
+                            orelse Tag =:= deposit_created
+                            orelse Tag =:= withdraw_tx
+                            orelse Tag =:= withdraw_created
+                            orelse Tag =:= shutdown
+                            orelse Tag =:= shutdown_ack
+                            orelse Tag =:= funding_created
+                            orelse Tag =:= update
+                            orelse Tag =:= update_ack ->
     EncTx = aec_base58c:encode(transaction, aetx:serialize_to_binary(Tx)),
     Tag1 =
         case Tag of
@@ -442,19 +470,19 @@ process_fsm(#{type := sign,
             withdraw_created -> <<"withdraw_ack">>;
             T -> T
         end,
-    {reply, #{action => <<"sign">>,
-              tag => Tag1,
-              payload => #{tx => EncTx}}};
+    reply(#{action => <<"sign">>,
+            tag => Tag1,
+            payload => #{tx => EncTx}}, H);
 process_fsm(#{type := report,
               tag  := Tag,
-              info := Event}) when Tag =:= info
-                            orelse Tag =:= update
-                            orelse Tag =:= conflict
-                            orelse Tag =:= message
-                            orelse Tag =:= leave
-                            orelse Tag =:= error
-                            orelse Tag =:= debug
-                            orelse Tag =:= on_chain_tx ->
+              info := Event}, H) when Tag =:= info
+                               orelse Tag =:= update
+                               orelse Tag =:= conflict
+                               orelse Tag =:= message
+                               orelse Tag =:= leave
+                               orelse Tag =:= error
+                               orelse Tag =:= debug
+                               orelse Tag =:= on_chain_tx ->
     Payload =
         case {Tag, Event} of
             {info, {died, _}} -> #{event => <<"died">>};
@@ -483,9 +511,9 @@ process_fsm(#{type := report,
             {debug, Msg} -> #{message => Msg}
         end,
     Action = atom_to_binary(Tag, utf8),
-    {reply, #{action => Action,
-              payload => Payload}};
-process_fsm(#{type := Type, tag := Tag, info := Event}) ->
+    reply(#{action => Action,
+            payload => Payload}, H);
+process_fsm(#{type := Type, tag := Tag, info := Event}, _H) ->
     error({unparsed_fsm_event, Type, Tag, Event}).
 
 prepare_handler(Params) ->
@@ -567,6 +595,10 @@ read_channel_options(Params) ->
         #{},
         [Read(<<"initiator">>, initiator, #{type => {hash, account_pubkey}}),
          Read(<<"responder">>, responder, #{type => {hash, account_pubkey}}),
+         Read(<<"existing_channel_id">>, existing_channel_id,
+              #{type => {hash, channel}, mandatory => false}),
+         Read(<<"offchain_tx">>, offchain_tx,
+              #{type => serialized_tx, mandatory => false}),
          Read(<<"lock_period">>, lock_period, #{type => integer}),
          Read(<<"push_amount">>, push_amount, #{type => integer}),
          Read(<<"initiator_amount">>, initiator_amount, #{type => integer}),

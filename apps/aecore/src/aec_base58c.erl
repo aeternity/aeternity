@@ -5,6 +5,8 @@
          safe_decode/2,
          byte_size_for_type/1]).
 
+-export_type([encoded/0]).
+
 -type known_type() :: block_hash
                     | block_tx_hash
                     | block_state_hash
