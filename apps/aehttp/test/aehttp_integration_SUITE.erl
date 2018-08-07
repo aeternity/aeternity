@@ -1538,8 +1538,7 @@ post_contract_and_call_tx(_Config) ->
     ?assertEqual({ok, 404, #{<<"reason">> => <<"Tx not mined">>}}, get_transactions_info_by_hash_sut(ContractCreateTxHash)),
 
     % mine
-    Fun1 = fun() -> tx_in_chain(ContractCreateTxHash) end,
-    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun1, 10),
+    ok = wait_for_tx_hash_on_chain(ContractCreateTxHash),
     ?assert(tx_in_chain(ContractCreateTxHash)),
 
     ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCreateTxHash)),
@@ -1561,8 +1560,7 @@ post_contract_and_call_tx(_Config) ->
     ?assertEqual({ok, 404, #{<<"reason">> => <<"Tx not mined">>}}, get_transactions_info_by_hash_sut(ContractCallTxHash)),
 
     % mine
-    Fun2 = fun() -> tx_in_chain(ContractCallTxHash) end,
-    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun2, 10),
+    ok = wait_for_tx_hash_on_chain(ContractCallTxHash),
     ?assert(tx_in_chain(ContractCallTxHash)),
 
     ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCallTxHash)),
@@ -1632,8 +1630,7 @@ get_contract(_Config) ->
     ?assertEqual({ok, 404, #{<<"reason">> => <<"Account not found">>}}, get_balance_at_top(EncodedContractPubKey)),
 
     % mine a block
-    Fun1 = fun() -> tx_in_chain(ContractCreateTxHash) end,
-    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun1, 10),
+    ok = wait_for_tx_hash_on_chain(ContractCreateTxHash),
     ?assert(tx_in_chain(ContractCreateTxHash)),
 
     {ok, 200, #{<<"return_value">> := ReturnValue}} = get_contract_call_object(ContractCreateTxHash),
@@ -1682,7 +1679,7 @@ post_oracle_register(Config) ->
                                value => ?config(oracle_ttl_value, Config)}},
     {TxHash, Tx} = prepare_tx(oracle_register_tx, TxArgs),
     ok = post_tx(TxHash, Tx),
-    aecore_suite_utils:mine_blocks_until(Node, fun() -> tx_in_chain(TxHash) end, 10),
+    ok = wait_for_tx_hash_on_chain(TxHash),
     {ok, 200, Resp} = get_oracles_by_pubkey_sut(OraclePubkey),
     ?assertEqual(OraclePubkey, maps:get(<<"id">>, Resp)),
     {save_config, save_config([account_pubkey, oracle_pubkey, oracle_ttl_value], Config)}.
@@ -1697,7 +1694,7 @@ post_oracle_extend(Config) ->
                           value => ?config(oracle_ttl_value, Config)}},
     {TxHash, Tx} = prepare_tx(oracle_extend_tx, TxArgs),
     ok = post_tx(TxHash, Tx),
-    aecore_suite_utils:mine_blocks_until(Node, fun() -> tx_in_chain(TxHash) end, 10),
+    ok = wait_for_tx_hash_on_chain(TxHash),
     {ok, 200, Resp} = get_oracles_by_pubkey_sut(OraclePubkey),
     ?assertEqual(OraclePubkey, maps:get(<<"id">>, Resp)),
     ?assertEqual(?config(oracle_ttl_value_final, Config), maps:get(<<"expires">>, Resp)),
@@ -1721,7 +1718,7 @@ post_oracle_query(Config) ->
                              value => ?config(response_ttl_value, Config)}},
     {TxHash, Tx} = prepare_tx(oracle_query_tx, TxArgs),
     ok = post_tx(TxHash, Tx),
-    aecore_suite_utils:mine_blocks_until(Node, fun() -> tx_in_chain(TxHash) end, 10),
+    ok = wait_for_tx_hash_on_chain(TxHash),
     {ok, 200, Resp} = get_oracles_queries_by_pubkey_sut(OraclePubkey, #{type => "closed"}),
     ?assertEqual([], maps:get(<<"oracle_queries">>, Resp)),
     {ok, 200, Resp1} = get_oracles_queries_by_pubkey_sut(OraclePubkey, #{type => "all"}),
@@ -1746,7 +1743,7 @@ post_oracle_response(Config) ->
           fee      => ?config(fee, Config)},
     {TxHash, Tx} = prepare_tx(oracle_response_tx, TxArgs),
     ok = post_tx(TxHash, Tx),
-    aecore_suite_utils:mine_blocks_until(Node, fun() -> tx_in_chain(TxHash) end, 10),
+    ok = wait_for_tx_hash_on_chain(TxHash),
     {ok, 200, Resp} = get_oracles_queries_by_pubkey_sut(OraclePubkey, #{type => "open"}),
     ?assertEqual([], maps:get(<<"oracle_queries">>, Resp)),
     {ok, 200, Resp1} = get_oracles_query_by_pubkey_and_query_id(OraclePubkey, QueryId),
@@ -2025,8 +2022,7 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, 404, #{<<"reason">> := <<"Account not found">>}} =  get_balance_at_top(EncodedContractPubKey),
 
     % mine a block
-    Fun1 = fun() -> tx_in_chain(ContractCreateTxHash) end,
-    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun1, 10),
+    ok = wait_for_tx_hash_on_chain(ContractCreateTxHash),
     ?assert(tx_in_chain(ContractCreateTxHash)),
 
     %% Get the contract init call object
@@ -2090,8 +2086,7 @@ contract_transactions(_Config) ->    % miner has an account
         get_contract_call_object(ContractCallTxHash),
 
     % mine blocks
-    Fun2 = fun() -> tx_in_chain(ContractCallTxHash) end,
-    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun2, 10),
+    ok = wait_for_tx_hash_on_chain(ContractCallTxHash),
     ?assert(tx_in_chain(ContractCallTxHash)),
 
     %% Get the call object
@@ -2152,8 +2147,7 @@ contract_transactions(_Config) ->    % miner has an account
         sign_and_post_tx(EncodedUnsignedContractCallComputeTx),
 
     % mine a block
-    Fun3 = fun() -> tx_in_chain(ContractCallComputeTxHash)end,
-    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun3, 10),
+    ok = wait_for_tx_hash_on_chain(ContractCallComputeTxHash),
     ?assert(tx_in_chain(ContractCallComputeTxHash)),
 
     %% Get the call object
@@ -2230,8 +2224,7 @@ contract_transactions(_Config) ->    % miner has an account
 
     %% Call objects
     {ok, 200, #{<<"tx_hash">> := SpendTxHash}} = post_spend_tx(MinerPubkey, 1, 1),
-    Fun4 = fun() -> tx_in_chain(SpendTxHash)end,
-    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun4, 10),
+    ok = wait_for_tx_hash_on_chain(SpendTxHash),
     {ok, 400, #{<<"reason">> := <<"Tx is not a create or call">>}} =
         get_contract_call_object(SpendTxHash),
 
@@ -2278,8 +2271,7 @@ contract_create_transaction_init_error(_Config) ->
         get_contract_call_object(ContractCreateTxHash),
 
     % mine blocks
-    Fun = fun() -> tx_in_chain(ContractCreateTxHash)end,
-    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun, 10),
+    ok = wait_for_tx_hash_on_chain(ContractCreateTxHash),
     ?assert(tx_in_chain(ContractCreateTxHash)),
 
     %% Get the contract init call object
@@ -2331,8 +2323,7 @@ oracle_transactions(_Config) ->
 
     % mine blocks to include it
     ct:log("Before oracle registered nonce is ~p", [rpc(aec_next_nonce, pick_for_account, [MinerPubkey])]),
-    Fun = fun() -> tx_in_chain(RegisterTxHash)end,
-    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun, 10),
+    ok = wait_for_tx_hash_on_chain(RegisterTxHash),
     ct:log("Oracle registered nonce is ~p", [rpc(aec_next_nonce, pick_for_account, [MinerPubkey])]),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
 
@@ -2375,8 +2366,7 @@ oracle_transactions(_Config) ->
     QueryTxHash = sign_and_post_tx(QueryTx),
 
     % mine blocks to include it
-    Fun1 = fun() -> tx_in_chain(QueryTxHash)end,
-    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun1, 10),
+    ok = wait_for_tx_hash_on_chain(QueryTxHash),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
 
     ResponseEncoded = #{oracle => OracleAddress,
@@ -2393,8 +2383,7 @@ oracle_transactions(_Config) ->
     {ok, 200, #{<<"tx">> := ResponseTx}} = get_oracle_response(ResponseEncoded),
     ResponseTxHash = sign_and_post_tx(ResponseTx),
     % mine a block to include it
-    Fun2 = fun() -> tx_in_chain(ResponseTxHash)end,
-    aecore_suite_utils:mine_blocks_until(aecore_suite_utils:node_name(?NODE), Fun2, 10),
+    ok = wait_for_tx_hash_on_chain(ResponseTxHash),
 
     %% negative tests
 
@@ -2529,14 +2518,18 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
     {ok, CHash} = aec_base58c:safe_decode(commitment, EncodedCHash),
 
     %% Submit name preclaim tx and check it is in mempool
-    {ok, 200, _}                   = post_name_preclaim_tx(CHash, 1),
-    {ok, [PreclaimTx0]}            = rpc(aec_tx_pool, peek, [infinity]),
-    {name_preclaim_tx, PreclaimTx} = aetx:specialize_type(aetx_sign:tx(PreclaimTx0)),
-    CHash                          = aens_preclaim_tx:commitment_hash(PreclaimTx),
+    {ok, 200, #{<<"tx">> := EncodedUnsignedPreclaimTx}} =
+        get_name_preclaim(#{<<"commitment">> => EncodedCHash, fee => 1,
+                            account => MinerAddress}),
+    PreclaimTxHash = sign_and_post_tx(EncodedUnsignedPreclaimTx),
+    {ok, 200, #{<<"tx">> := PreclaimTx}} = get_transactions_by_hash_sut(PreclaimTxHash),
+    ?assertEqual(EncodedCHash, maps:get(<<"commitment">>, PreclaimTx)),
 
-    %% Mine a block and check mempool empty again
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    %% Mine enough blocks and check mempool empty again
+    {ok, BS1} = aecore_suite_utils:mine_blocks_until_tx_on_chain(
+                    aecore_suite_utils:node_name(?NODE), PreclaimTxHash, 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
     Encoded = #{account => MinerAddress,
                 name => aec_base58c:encode(name, Name),
                 name_salt => Salt,

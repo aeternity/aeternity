@@ -183,10 +183,9 @@ spending_1(Config) ->
     %% Add tokens to both accounts and wait until done.
     {ok,200,#{<<"tx_hash">> := ATxHash}} = post_spend_tx(APubkey, 500, 1),
     {ok,200,#{<<"tx_hash">> := BTxHash}} = post_spend_tx(BPubkey, 500, 1),
-    MineUntilPosts = fun () ->
-			     tx_in_chain(ATxHash) and tx_in_chain(BTxHash)
-		     end,
-    aecore_suite_utils:mine_blocks_until(NodeName, MineUntilPosts, 10),
+
+    ok = wait_for_tx_hash_on_chain(NodeName, ATxHash),
+    ok = wait_for_tx_hash_on_chain(NodeName, BTxHash),
 
     %% Get balances after mining.
     ABal1 = get_balance(APubkey),
@@ -199,8 +198,7 @@ spending_1(Config) ->
 
     %% Transfer money from Alice to Bert.
     TxHash = spend_tokens(APubkey, APrivkey, BPubkey, Amount, Fee),
-    MineUntilSpend = fun () -> tx_in_chain(TxHash) end,
-    aecore_suite_utils:mine_blocks_until(NodeName, MineUntilSpend, 10),
+    ok = wait_for_tx_hash_on_chain(NodeName, TxHash),
 
     %% Check that tx has succeeded.
     ?assert(tx_in_chain(TxHash)),
@@ -304,8 +302,7 @@ spending_3(Config) ->
 
     %% Now we add enough tokens to acc_a so it can do the spend tx.
     {ok,200,#{<<"tx_hash">> := PostTxHash}} = post_spend_tx(APubkey, 500, 1),
-    MineUntil = fun () -> tx_in_chain(PostTxHash) end,
-    aecore_suite_utils:mine_blocks_until(NodeName, MineUntil, 10),
+    ok = wait_for_tx_hash_on_chain(NodeName, PostTxHash),
 
     %% Check that tx has succeeded.
     ?assert(tx_in_chain(SpendTxHash)),
@@ -738,10 +735,9 @@ spend_test_contract(Config) ->
     %% Create 2 new accounts, Alice and Bert.
     {APubkey,APrivkey,ATxHash} = new_account(1000000),
     {BPubkey,_BPrivkey,BTxHash} = new_account(2000000),
-    MineUntil = fun () ->
-			tx_in_chain(ATxHash) and tx_in_chain(BTxHash)
-		end,
-    {ok,_} = aecore_suite_utils:mine_blocks_until(NodeName, MineUntil, 10),
+
+    ok = wait_for_tx_hash_on_chain(NodeName, ATxHash),
+    ok = wait_for_tx_hash_on_chain(NodeName, BTxHash),
 
     %% Compile contract "spend_test.aes"
     ContractString = aeso_test_utils:read_contract("spend_test"),
@@ -915,8 +911,7 @@ create_contract(NodeName, Pubkey, Privkey, HexCode, InitArgument, CallerSet) ->
         contract_create_tx(Pubkey, Privkey, HexCode, EncodedInitData, CallerSet),
 
     %% Mine blocks and check that it is in the chain.
-    MineUntil = fun () -> tx_in_chain(ContractCreateTxHash) end,
-    aecore_suite_utils:mine_blocks_until(NodeName, MineUntil, 10),
+    ok = wait_for_tx_hash_on_chain(NodeName, ContractCreateTxHash),
     ?assert(tx_in_chain(ContractCreateTxHash)),
 
     %% Get value of last call.
@@ -958,8 +953,7 @@ call_encoded(NodeName, Pubkey, Privkey, EncodedContractPubkey, EncodedData,
 					  EncodedContractPubkey,
 					  EncodedData, CallerSet),
     %% Mine blocks and check that it is in the chain.
-    MineUntil = fun () -> tx_in_chain(ContractCallTxHash) end,
-    aecore_suite_utils:mine_blocks_until(NodeName, MineUntil, 10),
+    ok = wait_for_tx_hash_on_chain(NodeName, ContractCallTxHash),
     ?assert(tx_in_chain(ContractCallTxHash)),
 
     %% Get the call object and return value.
@@ -1243,6 +1237,16 @@ tx_in_chain(TxHash) ->
             false;
         {ok, 200, #{<<"transaction">> := #{<<"block_hash">> := _}}} -> true;
         {ok, 404, _} -> false
+    end.
+
+wait_for_tx_hash_on_chain(Node, TxHash) ->
+    case tx_in_chain(TxHash) of
+        true -> ok;
+        false ->
+            case aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, TxHash, 10) of
+                {ok, _Blocks} -> ok;
+                {error, _Reason} -> did_not_mine
+            end
     end.
 
 %% make_params(L) ->
