@@ -1168,6 +1168,43 @@
         }
       }
     },
+    "/tx/contract/create/compute" : {
+      "post" : {
+        "tags" : [ "external", "dev" ],
+        "description" : "Compute the call_data for SOPHIA and get a contract_create transaction object",
+        "operationId" : "PostContractCreateCompute",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/ContractCreateCompute"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/CreateContractUnsignedTx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Owner account not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/tx/contract/call" : {
       "post" : {
         "tags" : [ "external", "dev" ],
@@ -3284,17 +3321,17 @@
         }
       },
       "example" : {
-        "txs_hash" : null,
-        "beneficiary" : null,
-        "state_hash" : null,
-        "prev_hash" : { },
-        "pow" : "",
-        "time" : 5,
-        "nonce" : 1,
-        "version" : 5,
         "miner" : null,
+        "txs_hash" : null,
+        "time" : 5,
+        "pow" : "",
         "height" : 0,
-        "target" : 6
+        "nonce" : 1,
+        "target" : 6,
+        "state_hash" : null,
+        "beneficiary" : null,
+        "version" : 5,
+        "prev_hash" : { }
       }
     },
     "GenericBlock" : {
@@ -3347,13 +3384,13 @@
       },
       "example" : {
         "txs_hash" : null,
+        "time" : 6,
+        "height" : 0,
+        "hash" : { },
         "state_hash" : null,
         "signature" : null,
-        "prev_hash" : null,
-        "time" : 6,
         "version" : 1,
-        "hash" : { },
-        "height" : 0
+        "prev_hash" : null
       }
     },
     "Top" : {
@@ -3496,10 +3533,10 @@
         }
       },
       "example" : {
-        "expires" : 6,
-        "response_format" : "response_format",
         "id" : "id",
         "query_fee" : 0,
+        "expires" : 6,
+        "response_format" : "response_format",
         "query_format" : "query_format"
       }
     },
@@ -3545,18 +3582,18 @@
         }
       },
       "example" : {
-        "expires" : 6,
-        "oracle_id" : "oracle_id",
-        "response_ttl" : {
-          "type" : "delta",
-          "value" : 1
-        },
-        "sender" : "sender",
-        "response" : "response",
-        "query" : "query",
         "fee" : 5,
-        "sender_nonce" : 0,
-        "id" : "id"
+        "response" : "response",
+        "sender" : "sender",
+        "id" : "id",
+        "response_ttl" : {
+          "value" : 1,
+          "type" : "delta"
+        },
+        "oracle_id" : "oracle_id",
+        "expires" : 6,
+        "query" : "query",
+        "sender_nonce" : 0
       }
     },
     "OracleQuestion" : {
@@ -3589,31 +3626,31 @@
       },
       "example" : {
         "oracle_queries" : [ {
-          "expires" : 6,
-          "oracle_id" : "oracle_id",
-          "response_ttl" : {
-            "type" : "delta",
-            "value" : 1
-          },
-          "sender" : "sender",
-          "response" : "response",
-          "query" : "query",
           "fee" : 5,
-          "sender_nonce" : 0,
-          "id" : "id"
+          "response" : "response",
+          "sender" : "sender",
+          "id" : "id",
+          "response_ttl" : {
+            "value" : 1,
+            "type" : "delta"
+          },
+          "oracle_id" : "oracle_id",
+          "expires" : 6,
+          "query" : "query",
+          "sender_nonce" : 0
         }, {
-          "expires" : 6,
-          "oracle_id" : "oracle_id",
-          "response_ttl" : {
-            "type" : "delta",
-            "value" : 1
-          },
-          "sender" : "sender",
-          "response" : "response",
-          "query" : "query",
           "fee" : 5,
-          "sender_nonce" : 0,
-          "id" : "id"
+          "response" : "response",
+          "sender" : "sender",
+          "id" : "id",
+          "response_ttl" : {
+            "value" : 1,
+            "type" : "delta"
+          },
+          "oracle_id" : "oracle_id",
+          "expires" : 6,
+          "query" : "query",
+          "sender_nonce" : 0
         } ]
       }
     },
@@ -3655,13 +3692,13 @@
         }
       },
       "example" : {
-        "amount" : 0,
         "sender" : null,
-        "payload" : "payload",
         "fee" : 6,
+        "amount" : 0,
+        "nonce" : 5,
+        "payload" : "payload",
         "recipient_pubkey" : { },
-        "ttl" : 1,
-        "nonce" : 5
+        "ttl" : 1
       }
     },
     "SpendTxResponse" : {
@@ -3706,17 +3743,17 @@
         }
       },
       "example" : {
-        "response_format" : "response_format",
         "fee" : 1,
-        "oracle_ttl" : {
-          "type" : "delta",
-          "value" : 1
-        },
         "query_fee" : 0,
         "nonce" : 6,
+        "account" : { },
+        "response_format" : "response_format",
         "ttl" : 5,
         "query_format" : "query_format",
-        "account" : { }
+        "oracle_ttl" : {
+          "value" : 1,
+          "type" : "delta"
+        }
       }
     },
     "OracleRegisterResponse" : {
@@ -3758,14 +3795,14 @@
         }
       },
       "example" : {
-        "oracle" : { },
         "fee" : 0,
-        "oracle_ttl" : {
-          "type" : "delta",
-          "value" : 1
-        },
         "nonce" : 6,
-        "ttl" : 1
+        "ttl" : 1,
+        "oracle" : { },
+        "oracle_ttl" : {
+          "value" : 1,
+          "type" : "delta"
+        }
       }
     },
     "OracleQueryTx" : {
@@ -3806,20 +3843,20 @@
         }
       },
       "example" : {
-        "response_ttl" : {
-          "type" : "delta",
-          "value" : 1
-        },
         "sender" : { },
-        "query" : "query",
-        "query_ttl" : {
-          "type" : "delta",
-          "value" : 1
-        },
         "fee" : 1,
+        "response_ttl" : {
+          "value" : 1,
+          "type" : "delta"
+        },
         "query_fee" : 0,
-        "ttl" : 5,
         "nonce" : 5,
+        "query" : "query",
+        "ttl" : 5,
+        "query_ttl" : {
+          "value" : 1,
+          "type" : "delta"
+        },
         "oracle_pubkey" : "oracle_pubkey"
       }
     },
@@ -3851,12 +3888,12 @@
         }
       },
       "example" : {
-        "oracle" : null,
-        "query_id" : { },
-        "response" : "response",
         "fee" : 0,
+        "response" : "response",
+        "nonce" : 1,
+        "oracle" : null,
         "ttl" : 6,
-        "nonce" : 1
+        "query_id" : { }
       }
     },
     "OracleQueryResponse" : {
@@ -3870,8 +3907,8 @@
         }
       },
       "example" : {
-        "query_id" : null,
-        "tx_hash" : { }
+        "tx_hash" : { },
+        "query_id" : null
       }
     },
     "TTL" : {
@@ -3888,8 +3925,8 @@
         }
       },
       "example" : {
-        "type" : "delta",
-        "value" : 1
+        "value" : 1,
+        "type" : "delta"
       }
     },
     "RelativeTTL" : {
@@ -3906,8 +3943,8 @@
         }
       },
       "example" : {
-        "type" : "delta",
-        "value" : 1
+        "value" : 1,
+        "type" : "delta"
       }
     },
     "NameEntry" : {
@@ -3929,9 +3966,9 @@
       },
       "example" : {
         "name_ttl" : 0,
-        "name_hash" : "name_hash",
+        "pointers" : "pointers",
         "name" : "name",
-        "pointers" : "pointers"
+        "name_hash" : "name_hash"
       }
     },
     "NamePreclaimTx" : {
@@ -3959,10 +3996,10 @@
       },
       "example" : {
         "fee" : 0,
-        "commitment" : "commitment",
-        "ttl" : 6,
         "nonce" : 1,
-        "account" : { }
+        "commitment" : "commitment",
+        "account" : { },
+        "ttl" : 6
       }
     },
     "NameClaimTx" : {
@@ -3993,12 +4030,12 @@
         }
       },
       "example" : {
-        "name_salt" : 0,
         "fee" : 6,
-        "name" : "name",
-        "ttl" : 1,
         "nonce" : 5,
-        "account" : { }
+        "name_salt" : 0,
+        "name" : "name",
+        "account" : { },
+        "ttl" : 1
       }
     },
     "NameUpdateTx" : {
@@ -4036,14 +4073,14 @@
         }
       },
       "example" : {
-        "name_ttl" : 0,
-        "client_ttl" : 6,
-        "name_hash" : "name_hash",
         "fee" : 1,
-        "ttl" : 5,
+        "name_ttl" : 0,
         "nonce" : 5,
         "pointers" : "pointers",
-        "account" : { }
+        "account" : { },
+        "name_hash" : "name_hash",
+        "ttl" : 5,
+        "client_ttl" : 6
       }
     },
     "NameTransferTx" : {
@@ -4073,12 +4110,12 @@
         }
       },
       "example" : {
-        "name_hash" : "name_hash",
         "fee" : 0,
-        "recipient_pubkey" : "recipient_pubkey",
-        "ttl" : 6,
         "nonce" : 1,
-        "account" : { }
+        "account" : { },
+        "recipient_pubkey" : "recipient_pubkey",
+        "name_hash" : "name_hash",
+        "ttl" : 6
       }
     },
     "NameRevokeTx" : {
@@ -4105,11 +4142,11 @@
         }
       },
       "example" : {
-        "name_hash" : "name_hash",
         "fee" : 0,
-        "ttl" : 6,
         "nonce" : 1,
-        "account" : { }
+        "account" : { },
+        "name_hash" : "name_hash",
+        "ttl" : 6
       }
     },
     "NameCommitmentHash" : {
@@ -4191,18 +4228,18 @@
         }
       },
       "example" : {
+        "lock_period" : 0,
+        "total_amount" : 0,
+        "id" : { },
+        "channel_reserve" : 0,
+        "initiator" : null,
+        "closes_at" : 7,
         "responder_amount" : 0,
         "initiator_amount" : 0,
         "round" : 0,
-        "total_amount" : 0,
         "state_hash" : null,
-        "initiator" : null,
-        "responder" : null,
-        "id" : { },
         "delegates" : [ null, null ],
-        "closes_at" : 7,
-        "lock_period" : 0,
-        "channel_reserve" : 0
+        "responder" : null
       }
     },
     "ChannelCreateTx" : {
@@ -4261,17 +4298,17 @@
         }
       },
       "example" : {
+        "fee" : 0,
+        "lock_period" : 0,
+        "channel_reserve" : 0,
+        "nonce" : 0,
+        "initiator" : { },
         "responder_amount" : 0,
         "initiator_amount" : 0,
-        "state_hash" : null,
-        "initiator" : { },
-        "fee" : 0,
-        "responder" : null,
         "push_amount" : 0,
+        "state_hash" : null,
         "ttl" : 0,
-        "nonce" : 0,
-        "lock_period" : 0,
-        "channel_reserve" : 0
+        "responder" : null
       }
     },
     "ChannelDepositTx" : {
@@ -4316,14 +4353,14 @@
         }
       },
       "example" : {
-        "amount" : 0,
-        "round" : 0,
-        "state_hash" : null,
         "fee" : 0,
+        "amount" : 0,
+        "nonce" : 0,
+        "round" : 0,
         "from" : null,
-        "channel_id" : { },
+        "state_hash" : null,
         "ttl" : 0,
-        "nonce" : 0
+        "channel_id" : { }
       }
     },
     "ChannelWithdrawalTx" : {
@@ -4368,14 +4405,14 @@
         }
       },
       "example" : {
+        "fee" : 0,
         "amount" : 0,
+        "to" : null,
+        "nonce" : 0,
         "round" : 0,
         "state_hash" : null,
-        "fee" : 0,
-        "to" : null,
-        "channel_id" : { },
         "ttl" : 0,
-        "nonce" : 0
+        "channel_id" : { }
       }
     },
     "ChannelSnapshotSoloTx" : {
@@ -4408,12 +4445,12 @@
         }
       },
       "example" : {
-        "payload" : "payload",
         "fee" : 0,
+        "nonce" : 0,
+        "payload" : "payload",
         "from" : null,
-        "channel_id" : { },
         "ttl" : 0,
-        "nonce" : 0
+        "channel_id" : { }
       }
     },
     "ChannelCloseMutualTx" : {
@@ -4450,12 +4487,12 @@
         }
       },
       "example" : {
-        "responder_amount_final" : 0,
         "fee" : 0,
+        "nonce" : 0,
         "initiator_amount_final" : 0,
-        "channel_id" : { },
+        "responder_amount_final" : 0,
         "ttl" : 0,
-        "nonce" : 0
+        "channel_id" : { }
       }
     },
     "ChannelCloseSoloTx" : {
@@ -4492,13 +4529,13 @@
         }
       },
       "example" : {
-        "payload" : "payload",
-        "fee" : 0,
-        "from" : null,
         "poi" : "poi",
-        "channel_id" : { },
+        "fee" : 0,
+        "nonce" : 0,
+        "payload" : "payload",
+        "from" : null,
         "ttl" : 0,
-        "nonce" : 0
+        "channel_id" : { }
       }
     },
     "ChannelSlashTx" : {
@@ -4535,13 +4572,13 @@
         }
       },
       "example" : {
-        "payload" : "payload",
-        "fee" : 0,
-        "from" : null,
         "poi" : "poi",
-        "channel_id" : { },
+        "fee" : 0,
+        "nonce" : 0,
+        "payload" : "payload",
+        "from" : null,
         "ttl" : 0,
-        "nonce" : 0
+        "channel_id" : { }
       }
     },
     "ChannelSettleTx" : {
@@ -4581,13 +4618,13 @@
         }
       },
       "example" : {
-        "responder_amount_final" : 0,
         "fee" : 0,
+        "nonce" : 0,
         "initiator_amount_final" : 0,
+        "responder_amount_final" : 0,
         "from" : null,
-        "channel_id" : { },
         "ttl" : 0,
-        "nonce" : 0
+        "channel_id" : { }
       }
     },
     "PubKey" : {
@@ -4651,9 +4688,9 @@
         }
       },
       "example" : {
+        "revision" : "revision",
         "genesis_hash" : "genesis_hash",
-        "version" : "version",
-        "revision" : "revision"
+        "version" : "version"
       }
     },
     "Info" : {
@@ -4668,15 +4705,15 @@
       },
       "example" : {
         "last_30_blocks_time" : [ {
-          "difficulty" : 5.962133916683182377482808078639209270477294921875,
           "time" : 6,
-          "time_delta_to_parent" : 1,
-          "height" : 0
+          "height" : 0,
+          "difficulty" : 5.962133916683182377482808078639209270477294921875,
+          "time_delta_to_parent" : 1
         }, {
-          "difficulty" : 5.962133916683182377482808078639209270477294921875,
           "time" : 6,
-          "time_delta_to_parent" : 1,
-          "height" : 0
+          "height" : 0,
+          "difficulty" : 5.962133916683182377482808078639209270477294921875,
+          "time_delta_to_parent" : 1
         } ]
       }
     },
@@ -4700,10 +4737,10 @@
         }
       },
       "example" : {
-        "difficulty" : 5.962133916683182377482808078639209270477294921875,
         "time" : 6,
-        "time_delta_to_parent" : 1,
-        "height" : 0
+        "height" : 0,
+        "difficulty" : 5.962133916683182377482808078639209270477294921875,
+        "time_delta_to_parent" : 1
       }
     },
     "BlockHeight" : {
@@ -4765,22 +4802,22 @@
         }
       },
       "example" : {
+        "syncing" : true,
+        "node-revision" : "node-revision",
+        "solutions" : 0,
+        "protocols" : [ {
+          "effective_at_height" : 0,
+          "protocol_version" : 1
+        }, {
+          "effective_at_height" : 0,
+          "protocol_version" : 1
+        } ],
         "difficulty" : 6.02745618307040320615897144307382404804229736328125,
         "listening" : true,
-        "syncing" : true,
+        "genesis-key-block-hash" : { },
         "node-version" : "node-version",
-        "solutions" : 0,
-        "node-revision" : "node-revision",
-        "peer-count" : 0,
-        "protocols" : [ {
-          "protocol_version" : 1,
-          "effective_at_height" : 0
-        }, {
-          "protocol_version" : 1,
-          "effective_at_height" : 0
-        } ],
         "pending-transactions-count" : 0,
-        "genesis-key-block-hash" : { }
+        "peer-count" : 0
       }
     },
     "Protocol" : {
@@ -4798,8 +4835,8 @@
         }
       },
       "example" : {
-        "protocol_version" : 1,
-        "effective_at_height" : 0
+        "effective_at_height" : 0,
+        "protocol_version" : 1
       }
     },
     "SingleTxObject" : {
@@ -4866,12 +4903,12 @@
       },
       "example" : {
         "tx" : {
-          "vsn" : 0,
-          "data_schema" : "data_schema"
+          "data_schema" : "data_schema",
+          "vsn" : 0
         },
-        "block_hash" : { },
         "block_height" : 6,
         "hash" : null,
+        "block_hash" : { },
         "signatures" : [ "signatures", "signatures" ]
       }
     },
@@ -4937,8 +4974,8 @@
         }
       },
       "example" : {
-        "vsn" : 0,
-        "data_schema" : "data_schema"
+        "data_schema" : "data_schema",
+        "vsn" : 0
       }
     },
     "SpendTxJSON" : {
@@ -5057,14 +5094,14 @@
         }
       },
       "example" : {
-        "gas_price" : 1,
-        "return_type" : "return_type",
-        "caller_address" : { },
-        "return_value" : "return_value",
         "gas_used" : 5,
-        "caller_nonce" : 0,
         "contract_address" : null,
-        "height" : 6
+        "height" : 6,
+        "return_value" : "return_value",
+        "caller_address" : { },
+        "return_type" : "return_type",
+        "gas_price" : 1,
+        "caller_nonce" : 0
       }
     },
     "Error" : {
@@ -5106,13 +5143,13 @@
         }
       },
       "example" : {
-        "owner" : null,
-        "vm_version" : 20,
-        "log" : "log",
-        "referers" : [ null, null ],
-        "active" : true,
+        "id" : { },
         "deposit" : 6,
-        "id" : { }
+        "referers" : [ null, null ],
+        "owner" : null,
+        "active" : true,
+        "vm_version" : 20,
+        "log" : "log"
       }
     },
     "ContractStore" : {
@@ -5178,10 +5215,10 @@
         }
       },
       "example" : {
-        "code" : "code",
-        "function" : "function",
         "arg" : "arg",
-        "abi" : "abi"
+        "abi" : "abi",
+        "code" : "code",
+        "function" : "function"
       }
     },
     "CallResult" : {
@@ -5258,8 +5295,8 @@
         }
       },
       "example" : {
-        "blocked" : [ null, null ],
-        "peers" : [ { }, { } ]
+        "peers" : [ { }, { } ],
+        "blocked" : [ null, null ]
       }
     },
     "ContractCreateData" : {
@@ -5320,17 +5357,88 @@
         }
       },
       "example" : {
-        "owner" : "owner",
-        "gas_price" : 0,
-        "vm_version" : 153,
-        "amount" : 0,
-        "code" : "code",
-        "call_data" : "call_data",
         "fee" : 0,
         "gas" : 0,
+        "amount" : 0,
         "deposit" : 0,
         "nonce" : 0,
-        "ttl" : 0
+        "call_data" : "call_data",
+        "owner" : "owner",
+        "code" : "code",
+        "ttl" : 0,
+        "vm_version" : 153,
+        "gas_price" : 0
+      }
+    },
+    "ContractCreateCompute" : {
+      "type" : "object",
+      "required" : [ "amount", "arguments", "code", "deposit", "fee", "gas", "gas_price", "owner", "vm_version" ],
+      "properties" : {
+        "owner" : {
+          "type" : "string",
+          "description" : "Contract owner pub_key"
+        },
+        "nonce" : {
+          "type" : "integer",
+          "description" : "Owner's nonce"
+        },
+        "code" : {
+          "type" : "string",
+          "description" : "Contract's code"
+        },
+        "vm_version" : {
+          "type" : "integer",
+          "description" : "Virtual machine's version",
+          "minimum" : 0,
+          "maximum" : 255
+        },
+        "deposit" : {
+          "type" : "integer",
+          "description" : "Deposit",
+          "minimum" : 0
+        },
+        "amount" : {
+          "type" : "integer",
+          "description" : "Amount",
+          "minimum" : 0
+        },
+        "gas" : {
+          "type" : "integer",
+          "description" : "Contract gas",
+          "minimum" : 0
+        },
+        "gas_price" : {
+          "type" : "integer",
+          "description" : "Gas price",
+          "minimum" : 0
+        },
+        "fee" : {
+          "type" : "integer",
+          "description" : "Transaction fee",
+          "minimum" : 0
+        },
+        "ttl" : {
+          "type" : "integer",
+          "description" : "Transaction TTL",
+          "minimum" : 0
+        },
+        "arguments" : {
+          "type" : "string",
+          "description" : "Contract call data init function arguments"
+        }
+      },
+      "example" : {
+        "fee" : 0,
+        "gas" : 0,
+        "amount" : 0,
+        "arguments" : "arguments",
+        "deposit" : 0,
+        "nonce" : 0,
+        "owner" : "owner",
+        "code" : "code",
+        "ttl" : 0,
+        "vm_version" : 153,
+        "gas_price" : 0
       }
     },
     "ContractCallData" : {
@@ -5386,16 +5494,16 @@
         }
       },
       "example" : {
-        "gas_price" : 0,
-        "caller" : "caller",
-        "vm_version" : 153,
-        "amount" : 0,
-        "call_data" : "call_data",
-        "contract" : "contract",
-        "fee" : 0,
         "gas" : 0,
+        "amount" : 0,
+        "fee" : 0,
+        "caller" : "caller",
+        "contract" : "contract",
         "nonce" : 0,
-        "ttl" : 0
+        "call_data" : "call_data",
+        "ttl" : 0,
+        "vm_version" : 153,
+        "gas_price" : 0
       }
     },
     "ContractCallCompute" : {
@@ -5427,7 +5535,7 @@
         },
         "ttl" : {
           "type" : "integer",
-          "description" : "Transaction fee",
+          "description" : "Transaction TTL",
           "minimum" : 0
         },
         "amount" : {
@@ -5455,17 +5563,17 @@
         }
       },
       "example" : {
-        "gas_price" : 0,
-        "caller" : "caller",
-        "vm_version" : 153,
-        "amount" : 0,
-        "contract" : "contract",
-        "fee" : 0,
-        "function" : "function",
         "gas" : 0,
+        "amount" : 0,
+        "fee" : 0,
+        "caller" : "caller",
         "arguments" : "arguments",
+        "contract" : "contract",
         "nonce" : 0,
-        "ttl" : 0
+        "ttl" : 0,
+        "vm_version" : 153,
+        "gas_price" : 0,
+        "function" : "function"
       }
     },
     "UnsignedTx" : {
