@@ -198,6 +198,7 @@ for_client(#ns_transfer_tx{nonce             = Nonce,
                            fee               = Fee,
                            ttl               = TTL} = Tx) ->
     #{<<"vsn">>              => version(),
+      <<"data_schema">> => <<"NameTransferTxObject">>, % swagger schema name
       <<"account">>          => aec_base58c:encode(id_hash, account(Tx)),
       <<"nonce">>            => Nonce,
       <<"name_hash">>        => aec_base58c:encode(id_hash, name(Tx)),
