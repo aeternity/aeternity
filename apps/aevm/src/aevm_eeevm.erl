@@ -1555,7 +1555,8 @@ recursive_call1(StateIn, Op) ->
             {OutGas, ReturnState, R} =
                 case aevm_eeevm_state:call_contract(Caller, Dest, CallGas, Value, I, State8) of
                     {ok, Res, GasSpent, OutState1} -> {CallGas - GasSpent, OutState1, Res};
-                    {error, _Err} -> %% Invalid call
+                    {error, _Err} ->
+                        ?TEST_LOG("Invalid call error ~p", [_Err]),
                         {0, State8, {error, invalid_call}}
                 end,
             %% TODO: how to handle trace of call?
