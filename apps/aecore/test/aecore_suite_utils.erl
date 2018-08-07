@@ -20,8 +20,8 @@
          delete_node_db_if_persisted/1,
          mine_blocks/2,
          mine_blocks/3,
-         mine_blocks_until/3,
-         mine_blocks_until/4,
+         mine_blocks_until_tx_on_chain/3,
+         mine_blocks_until_txs_on_chain/3,
          mine_key_blocks/2,
          mine_micro_blocks/2,
          wait_for_height/2,
@@ -198,22 +198,24 @@ mine_blocks(Node, NumBlocksToMine, MiningRate, Type) ->
             erlang:error(Reason)
     end.
 
-mine_blocks_until(Node, ConditionFun, Max) ->
-    mine_blocks_until(Node, ConditionFun, 100, Max).
 
-mine_blocks_until(Node, ConditionFun, MiningRate, Max) ->
+mine_blocks_until_tx_on_chain(Node, TxHash, MaxBlocks) ->
+    mine_blocks_until_txs_on_chain(Node, [TxHash], 100, MaxBlocks).
+
+mine_blocks_until_txs_on_chain(Node, TxHashes, MaxBlocks) ->
+    mine_blocks_until_txs_on_chain(Node, TxHashes, 100, MaxBlocks).
+
+mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max) ->
     ok = rpc:call(
            Node, application, set_env, [aecore, expected_mine_rate, MiningRate],
            5000),
     aecore_suite_utils:subscribe(Node, block_created),
-    aecore_suite_utils:subscribe(Node, micro_block_created),
     StartRes = rpc:call(Node, aec_conductor, start_mining, [], 5000),
     ct:log("aec_conductor:start_mining() (~p) -> ~p", [Node, StartRes]),
-    Res = mine_blocks_until_loop(ConditionFun, Max),
+    Res = mine_blocks_until_txs_on_chain_loop(Node, TxHashes, Max, []),
     StopRes = rpc:call(Node, aec_conductor, stop_mining, [], 5000),
     ct:log("aec_conductor:stop_mining() (~p) -> ~p", [Node, StopRes]),
     aecore_suite_utils:unsubscribe(Node, block_created),
-    aecore_suite_utils:unsubscribe(Node, micro_block_created),
     case Res of
         {ok, BlocksReverse} ->
             {ok, lists:reverse(BlocksReverse)};
@@ -221,22 +223,37 @@ mine_blocks_until(Node, ConditionFun, MiningRate, Max) ->
             erlang:error(Reason)
     end.
 
-mine_blocks_until_loop(ConditionFun, Max) ->
-    mine_blocks_until_loop(ConditionFun, Max, []).
-
-mine_blocks_until_loop(_ConditionFun, 0,_Acc) ->
+mine_blocks_until_txs_on_chain_loop(_Node, _TxHashes, 0, _Acc) ->
     {error, max_reached};
-mine_blocks_until_loop(ConditionFun, Max, Acc) ->
+mine_blocks_until_txs_on_chain_loop(Node, TxHashes, Max, Acc) ->
     case mine_blocks_loop(1, key) of
-        {ok, Blocks} ->
-            NewAcc = Blocks ++ Acc,
-            case ConditionFun() of
-                true  -> {ok, NewAcc};
-                false ->
-                    mine_blocks_until_loop(ConditionFun, Max - 1, NewAcc)
+        {ok, [Block]} -> %% We are only observing key blocks
+            NewAcc = [Block | Acc],
+            case txs_not_on_chain(Node, Block, TxHashes) of
+                []        -> {ok, NewAcc};
+                TxHashes1 -> mine_blocks_until_txs_on_chain_loop(Node, TxHashes1, Max - 1, NewAcc)
             end;
         {error, _} = Error -> Error
     end.
+
+txs_not_on_chain(Node, Block, TxHashes) ->
+    {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
+    case rpc:call(Node, aec_chain, get_prev_generation, [BlockHash]) of
+        error -> TxHashes;
+        {ok, Block, MicroBlocks} -> txs_not_in_generation(MicroBlocks, TxHashes)
+    end.
+
+txs_not_in_generation([], TxHashes) -> TxHashes;
+txs_not_in_generation([MB | MBs], TxHashes) ->
+    txs_not_in_generation(MBs, txs_not_in_microblock(MB, TxHashes)).
+
+txs_not_in_microblock(MB, TxHashes) ->
+    [ TxHash || TxHash <- TxHashes, not tx_in_microblock(MB, TxHash) ].
+
+tx_in_microblock(MB, TxHash) ->
+    lists:any(fun(STx) ->
+                aec_base58c:encode(tx_hash, aetx_sign:hash(STx)) == TxHash
+              end, aec_blocks:txs(MB)).
 
 mine_blocks_loop(Cnt, Type) ->
     mine_blocks_loop([], Cnt, Type).
