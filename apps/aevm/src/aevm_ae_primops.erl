@@ -48,9 +48,9 @@ call_(Value, Data, State) ->
             PrimOp when ?PRIM_CALL_IN_AENS_RANGE(PrimOp) ->
                 aens_call(PrimOp, Value, Data, State)
         end
-    catch T:Err ->
+    catch _T:_Err ->
         ?TEST_LOG("Primop illegal call ~p:~p:~p~n~p:~p(~p, ~p, State)",
-                  [T, Err,
+                  [_T, _Err,
                    erlang:get_stacktrace(), %% Absent from non-test bytecode.
                    ?MODULE, ?FUNCTION_NAME, Value, Data]),
 	%% TODO: Better error for illegal call.

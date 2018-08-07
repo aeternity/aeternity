@@ -1397,12 +1397,12 @@ spend_op_gas(Op, State) ->
 spend_mem_gas(StateWithOpGas, StateOut) ->
     spend_gas_common({mem}, aevm_gas:mem_cost(StateWithOpGas, StateOut), StateOut).
 
-spend_gas_common(Resource, Cost, State) ->
+spend_gas_common(_Resource, Cost, State) ->
     Gas  = aevm_eeevm_state:gas(State),
     case Gas >= Cost of
 	true ->  aevm_eeevm_state:set_gas(Gas - Cost, State);
 	false ->
-            ?TEST_LOG("Out of gas spending ~p gas for ~p", [Cost, Resource]),
+            ?TEST_LOG("Out of gas spending ~p gas for ~p", [Cost, _Resource]),
             eval_error(out_of_gas, State)
     end.
 
