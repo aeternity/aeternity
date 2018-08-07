@@ -1473,9 +1473,10 @@ recursive_call(State, Op) ->
 recursive_call1(StateIn, Op) ->
     %% Message-call into an account.
     %% i ≡ µm[µs[3] . . .(µs[3] + µs[4] − 1)]
-    State0            = spend_call_gas(StateIn, Op),
+    State0            = spend_call_gas(StateIn, Op), %% TODO Subtract memory expansion cost from gas before computing this.
+    Gascap            = aevm_gas:call_cap(Op, StateIn), %% TODO Subtract memory expansion cost from gas before computing this.
 
-    {Gas, State1}     = pop(State0),
+    {_Gas, State1}    = pop(State0), %% Peeked elsewhere.
     {To, State2}      = pop(State1),
     {Value, State3}   = case Op of
                             ?CALL         -> pop(State2);
@@ -1506,7 +1507,7 @@ recursive_call1(StateIn, Op) ->
                   true -> ?GCALLSTIPEND;
                   false -> 0
               end,
-    CallGas = Stipend + Gas,
+    CallGas = Stipend + Gascap,
     case GasAfterSpend >= 0 of
         true  -> ok;
         false -> eval_error(out_of_gas, State7)
