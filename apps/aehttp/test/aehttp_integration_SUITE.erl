@@ -3572,9 +3572,11 @@ naming_system_manage_name(_Config) ->
     {ok, NHash} = aens:get_name_hash(Name),
     Fee         = 2,
     MineReward  = rpc(aec_governance, block_mine_reward, []),
+    Node        = aecore_suite_utils:node_name(?NODE),
 
     %% Mine a block to get some funds
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    aecore_suite_utils:mine_key_blocks(Node, 1),
+    Height0 = 1,
     {ok, 200, #{<<"balance">> := Balance}} = get_balance_at_top(),
 
     %% Check mempool empty
@@ -3582,96 +3584,113 @@ naming_system_manage_name(_Config) ->
 
     %% Get commitment hash to preclaim a name
     {ok, 200, #{<<"commitment">> := EncodedCHash}} = get_commitment_hash(Name, NameSalt),
-    {ok, CHash} = aec_base58c:safe_decode(commitment, EncodedCHash),
+    ?assertMatch({ok, _}, aec_base58c:safe_decode(commitment, EncodedCHash)),
 
     %% Submit name preclaim tx and check it is in mempool
-    {ok, 200, _}                   = post_name_preclaim_tx(CHash, Fee),
-    {ok, [PreclaimTx0]}            = rpc(aec_tx_pool, peek, [infinity]),
-    {name_preclaim_tx, PreclaimTx} = aetx:specialize_type(aetx_sign:tx(PreclaimTx0)),
-    CHash                          = aens_preclaim_tx:commitment_hash(PreclaimTx),
+    {ok, 200, #{<<"tx">> := EncodedUnsignedPreclaimTx}} =
+        get_name_preclaim(#{<<"commitment">> => EncodedCHash, fee => Fee, account => PubKeyEnc}),
+    PreclaimTxHash = sign_and_post_tx(EncodedUnsignedPreclaimTx),
+    {ok, 200, #{<<"tx">> := PreclaimTx}} = get_transactions_by_hash_sut(PreclaimTxHash),
+    ?assertEqual(EncodedCHash, maps:get(<<"commitment">>, PreclaimTx)),
 
-    %% Mine a block and check mempool empty again
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 3),
+    %% Mine enough blocks and check mempool empty again
+    {ok, BS1} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, PreclaimTxHash, 10),
+    Height1 = Height0 + length(BS1),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Check fee taken from account, then mine reward and fee added to account
     {ok, 200, #{<<"balance">> := Balance1}} = get_balance_at_top(),
-    {Balance1, _} = {Balance - Fee + 2 * MineReward + Fee, Balance1},
+    ?assertEqual(Balance1, Balance - Fee + (Height1 - Height0) * MineReward + Fee),
 
     %% Submit name claim tx and check it is in mempool
-    {ok, 200, _}             = post_name_claim_tx(Name, NameSalt, Fee),
-    {ok, [ClaimTx0]}         = rpc(aec_tx_pool, peek, [infinity]),
-    {name_claim_tx, ClaimTx} = aetx:specialize_type(aetx_sign:tx(ClaimTx0)),
-    Name                     = aens_claim_tx:name(ClaimTx),
+    {ok, 200, #{<<"tx">> := EncodedUnsignedClaimTx}} =
+        get_name_claim(#{name => aec_base58c:encode(name, Name), name_salt => NameSalt,
+                         fee => Fee, account => PubKeyEnc}),
+    ClaimTxHash = sign_and_post_tx(EncodedUnsignedClaimTx),
 
-    %% Mine a block and check mempool empty again
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 3),
+    %% Mine enough blocks and check mempool empty again
+    {ok, BS2} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, ClaimTxHash, 10),
+    Height2 = Height1 + length(BS2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Check tx fee taken from account, claim fee burned,
     %% then mine reward and fee added to account
     ClaimBurnedFee = rpc(aec_governance, name_claim_burned_fee, []),
     {ok, 200, #{<<"balance">> := Balance2}} = get_balance_at_top(),
-    Balance2 = Balance1 - Fee + 2 * MineReward + Fee - ClaimBurnedFee,
+    ?assertEqual(Balance2, Balance1 - Fee + (Height2 - Height1) * MineReward + Fee - ClaimBurnedFee),
 
     %% Check that name entry is present
     EncodedNHash = aec_base58c:encode(name, NHash),
-    ExpectedTTL1 = 4 + aec_governance:name_claim_max_expiration(),
+    ExpectedTTL1 = (Height2 - 1) + aec_governance:name_claim_max_expiration(),
     {ok, 200, #{<<"name">>      := Name,
                 <<"name_hash">> := EncodedNHash,
                 <<"name_ttl">>  := ExpectedTTL1,
                 <<"pointers">>  := <<"[]">>}} = get_name(Name),
 
     %% Submit name updated tx and check it is in mempool
-    {ok, 200, _}               = post_name_update_tx(NHash, NameTTL, Pointers, TTL, Fee),
-    {ok, [UpdateTx0]}          = rpc(aec_tx_pool, peek, [infinity]),
-    {name_update_tx, UpdateTx} = aetx:specialize_type(aetx_sign:tx(UpdateTx0)),
-    NameTTL                    = aens_update_tx:name_ttl(UpdateTx),
+    {ok, 200, #{<<"tx">> := EncodedUnsignedUpdateTx}} =
+        get_name_update(#{name_hash => EncodedNHash, name_ttl => NameTTL, client_ttl => TTL,
+                          pointers => Pointers, fee => Fee, account => PubKeyEnc}),
+    UpdateTxHash = sign_and_post_tx(EncodedUnsignedUpdateTx),
 
     %% Mine a block and check mempool empty again
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 3),
+    {ok, BS3} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, UpdateTxHash, 10),
+    Height3 = Height2 + length(BS3),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Check that TTL and pointers got updated in name entry
-    ExpectedTTL2 = 6 + NameTTL,
+    ExpectedTTL2 = (Height3 - 1) + NameTTL,
     {ok, 200, #{<<"name">>     := Name,
                 <<"name_ttl">> := ExpectedTTL2,
                 <<"pointers">> := Pointers}} = get_name(Name),
 
+    %% Check mine reward
     {ok, 200, #{<<"balance">> := Balance3}} = get_balance_at_top(),
-    Host = internal_address(),
-    {ok, 200, _} = http_request(Host, post, "spend-tx",
-                                #{recipient_pubkey => EncodedNHash,
-                                  amount           => 77,
-                                  fee              => 50,
-                                  payload          => <<"foo">>}),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 3),
+    ?assertEqual(Balance3, Balance2 - Fee + (Height3 - Height2) * MineReward + Fee),
+
+    {ok, 200, #{<<"tx">> := EncodedSpendTx}} =
+        get_spend(#{recipient_pubkey => EncodedNHash, amount => 77, fee => 50,
+                    payload => <<"foo">>, sender => PubKeyEnc}),
+    SpendTxHash = sign_and_post_tx(EncodedSpendTx),
+
+    {ok, BS4} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, SpendTxHash, 10),
+    Height4 = Height3 + length(BS4),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Nothing gets lost as recipient = sender = miner
     %% This tests 'resolve_name' because recipient is expressed by name label
     %% This tests passes with 1 block confirmation due to lack of miner's reward delay
-    {ok, 200, #{<<"balance">> := FinalBalance}} = get_balance_at_top(),
-    {FinalBalance, _} = {Balance3 + 2 * MineReward, FinalBalance},
+    {ok, 200, #{<<"balance">> := Balance4}} = get_balance_at_top(),
+    ?assertEqual(Balance4, Balance3 + (Height4 - Height3) * MineReward),
 
     %% Submit name transfer tx and check it is in mempool
-    {ok, DecodedPubkey}            = aec_base58c:safe_decode(account_pubkey, PubKeyEnc),
-    {ok, 200, _}                   = post_name_transfer_tx(NHash, DecodedPubkey, Fee),
-    {ok, [TransferTx0]}            = rpc(aec_tx_pool, peek, [infinity]),
-    {name_transfer_tx, TransferTx} = aetx:specialize_type(aetx_sign:tx(TransferTx0)),
-    DecodedPubkey                  = aens_transfer_tx:recipient_pubkey(TransferTx),
+    {ok, 200, #{<<"tx">> := EncodedUnsignedTransferTx}} =
+        get_name_transfer(#{name_hash => EncodedNHash, recipient_pubkey => PubKeyEnc,
+                            fee => Fee, account => PubKeyEnc}),
+    TransferTxHash = sign_and_post_tx(EncodedUnsignedTransferTx),
 
     %% Mine a block and check mempool empty again
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    {ok, BS5} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, TransferTxHash, 10),
+    Height5 = Height4 + length(BS5),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    %% Check balance
+    {ok, 200, #{<<"balance">> := Balance5}} = get_balance_at_top(),
+    ?assertEqual(Balance5, Balance4 + (Height5 - Height4) * MineReward),
 
     %% Submit name revoke tx and check it is in mempool
-    {ok, 200, _}      = post_name_revoke_tx(NHash, Fee),
-    {ok, [_RevokeTx]} = rpc(aec_tx_pool, peek, [infinity]),
+    {ok, 200, #{<<"tx">> := EncodedUnsignedRevokeTx}} =
+        get_name_revoke(#{name_hash => EncodedNHash, fee => Fee, account => PubKeyEnc}),
+    RevokeTxHash = sign_and_post_tx(EncodedUnsignedRevokeTx),
 
     %% Mine a block and check mempool empty again
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    {ok, BS6} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, RevokeTxHash, 10),
+    Height6 = Height5 + length(BS6),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    %% Check balance
+    {ok, 200, #{<<"balance">> := Balance6}} = get_balance_at_top(),
+    ?assertEqual(Balance6, Balance5 + (Height6 - Height5) * MineReward),
 
     %% Check the name got expired
     {ok, 404, #{<<"reason">> := <<"Name revoked">>}} = get_name(Name),
@@ -4958,16 +4977,14 @@ wait_for_signed_transaction_in_pool(SignedTx) ->
 
 wait_for_signed_transaction_in_block(SignedTx) ->
     TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
-    MineTx =
-        fun Try(0) -> did_not_mine;
-            Try(Attempts) ->
-                aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 2),
-                case tx_in_chain(TxHash) of
-                    true  -> ok;
-                    false -> Try(Attempts - 1)
-                end
-        end,
-    ok = MineTx(5).
+    wait_for_tx_hash_on_chain(TxHash).
+
+wait_for_tx_hash_on_chain(TxHash) ->
+    case aecore_suite_utils:mine_blocks_until_tx_on_chain(
+            aecore_suite_utils:node_name(?NODE), TxHash, 10) of
+        {ok, _Blocks} -> ok;
+        {error, _Reason} -> did_not_mine
+    end.
 
 sc_ws_timeout_open(Config) ->
     #{initiator := #{pub_key := IPubkey},
