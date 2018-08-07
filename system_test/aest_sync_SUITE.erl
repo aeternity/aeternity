@@ -153,9 +153,7 @@ end_per_suite(_Config) -> ok.
 %% A node with a newer version of the code can join and synchronize
 %% to a cluster of older nodes.
 new_node_joins_network(Cfg) ->
-    Length = 20,
     NodeStartupTime = proplists:get_value(node_startup_time, Cfg),
-
     Compatible = "aeternity/epoch:local", %% Latest version it should be compatible with
                                           %% Change if comptibility with previous version
                                           %% should be guaranteed
@@ -184,7 +182,12 @@ new_node_joins_network(Cfg) ->
     %% Starts a chain with two nodes
     start_node(old_node1, Cfg),
     start_node(old_node2, Cfg),
+    T0 = erlang:system_time(seconds),
     wait_for_value({height, 0}, [old_node1, old_node2], NodeStartupTime, Cfg),
+    StartupTime = erlang:system_time(seconds) - T0,
+
+    Length = max(20, 5 + proplists:get_value(blocks_per_second, Cfg) * StartupTime),
+
 
     %% Mines for 20 blocks and calculate the average mining time
     StartTime = os:timestamp(),
