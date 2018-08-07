@@ -211,9 +211,9 @@ new_node_joins_network(Cfg) ->
     %% Starts a third node and check it synchronize with the first two
     start_node(new_node1, Cfg),
     wait_for_value({height, 0}, [new_node1], NodeStartupTime, Cfg),
-    ct:log("Node 3 ready to go"),
 
-    %% Waits enough for node 3 to sync but not for it to build a new chain
+    %% Starting http interface takes more time than sync, but:
+    %% Wait enough for node 3 to sync but not for it to build a new chain
     wait_for_value({height, Length}, [new_node1], MiningTime * 3, Cfg),
     ct:log("Node 3 on same height"),
     Height3 = get_block(new_node1, Length),
