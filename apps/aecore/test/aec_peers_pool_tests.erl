@@ -33,16 +33,31 @@
 
 %=== MACROS ====================================================================
 
+%% Some tests are statistical tests, for example `bucket_index_test_` that
+%% validate the bucket indexes cover enough of the bucket space.
+%% These tests may fail randomly for some seeds so fixing the seed make the
+%% test more reliable on CI.
 -define(USE_FIXED_SEED, true).
+
+-ifdef(USE_FIXED_SEED).
+
 -define(RANDOM_PROCESS_SEED, {1533,565972,58584}).
 -define(RANDOM_POOL_SEED, {1533,565990,602018}).
+-define(POOL_OPTS, [{disable_strong_random, true},
+                    {seed, ?RANDOM_POOL_SEED}]).
+
+-else.
+
+-define(POOL_OPTS, []).
+
+-endif.
 
 %=== TEST CASES ================================================================
 
 %% Tests pool behavior when empty.
 empty_pool_test() ->
     seed_process_random(),
-    P = new([]),
+    P = new(?POOL_OPTS),
     A = random_peer_id(),
     Now = erlang:system_time(millisecond),
     FilterFun = make_ext_exclude_filter([]),
@@ -85,7 +100,7 @@ empty_pool_test() ->
 %% Tests pool behaviour with a single normal peer.
 add_single_normal_test() ->
     seed_process_random(),
-    P = new([]),
+    P = new(?POOL_OPTS),
     Id1 = random_peer_id(),
     Addr1 = random_address(),
     Now = erlang:system_time(millisecond),
@@ -139,7 +154,7 @@ add_single_normal_test() ->
 %% Tests pool behavior with a single trusted peer.
 add_single_trusted_test() ->
     seed_process_random(),
-    P = new([]),
+    P = new(?POOL_OPTS),
     Id1 = random_peer_id(),
     Addr1 = random_address(),
     Now = erlang:system_time(millisecond),
@@ -197,7 +212,7 @@ multiple_peers_subset_test() ->
     ExcludedCount = 100,
 
     Now = erlang:system_time(millisecond),
-    Pool1 = new([]),
+    Pool1 = new(?POOL_OPTS),
     Peers = make_peers(TotalCount, VerifCount),
     ExcludedKeys = rand_int_list(1, TotalCount + 1, ExcludedCount),
     ExcludedIds = [maps:get(id, maps:get(K, Peers)) || K <- ExcludedKeys],
@@ -287,7 +302,7 @@ multiple_peers_select_test() ->
     ExcludedCount = 100,
 
     Now = erlang:system_time(millisecond),
-    Pool1 = new([]),
+    Pool1 = new(?POOL_OPTS),
     Peers = make_peers(TotalCount, VerifCount),
     ExcludedKeys = rand_int_list(1, TotalCount + 1, ExcludedCount),
     ExcludedIds = [maps:get(id, maps:get(K, Peers)) || K <- ExcludedKeys],
@@ -340,7 +355,7 @@ peer_selection_unavailability_test() ->
 
     TotalCount = UnverCount + VerifCount,
     Now = erlang:system_time(millisecond),
-    Pool1 = new([]),
+    Pool1 = new(?POOL_OPTS),
     Peers = make_peers(TotalCount, VerifCount),
 
     Pool2 = maps:fold(fun(_, Peer, P) ->
@@ -454,7 +469,7 @@ peer_selection_unavailability_test() ->
 peer_release_test() ->
     seed_process_random(),
     Now = erlang:system_time(millisecond),
-    Pool1 = new([]),
+    Pool1 = new(?POOL_OPTS),
     Peers = make_peers(6, 3),
 
     Pool2 = maps:fold(fun(_, Peer, P) ->
@@ -548,7 +563,7 @@ peer_rejection_test() ->
     seed_process_random(),
     % Assumes backoff delays are [5, 15, 30, 60, 120, 300, 600]
     Now1 = erlang:system_time(millisecond),
-    Pool1 = new([]),
+    Pool1 = new(?POOL_OPTS),
     Peers = make_peers(3, 1),
 
     Pool2 = maps:fold(fun(_, Peer, P) ->
@@ -670,7 +685,7 @@ rejection_downgrade_test() ->
     seed_process_random(),
     % Assumes backoff delays are [5, 15, 30, 60, 120, 300, 600]
     Now1 = erlang:system_time(millisecond),
-    Pool1 = new([]),
+    Pool1 = new(?POOL_OPTS),
 
     Id = random_peer_id(),
     Addr = random_address(),
@@ -735,7 +750,7 @@ rejection_downgrade_test() ->
 basic_verification_test() ->
     seed_process_random(),
     Now = erlang:system_time(millisecond),
-    Pool1 = new([]),
+    Pool1 = new(?POOL_OPTS),
 
     Id = random_peer_id(),
     Addr = random_address(),
@@ -770,7 +785,7 @@ basic_verification_test() ->
 verification_of_selected_peer_test() ->
     seed_process_random(),
     Now = erlang:system_time(millisecond),
-    Pool1 = new([]),
+    Pool1 = new(?POOL_OPTS),
 
     Id = random_peer_id(),
     Addr = random_address(),
@@ -804,7 +819,7 @@ verification_of_selected_peer_test() ->
 verification_of_standby_peer_test() ->
     seed_process_random(),
     Now = erlang:system_time(millisecond),
-    Pool1 = new([]),
+    Pool1 = new(?POOL_OPTS),
 
     Id = random_peer_id(),
     Addr = random_address(),
@@ -834,7 +849,7 @@ verification_of_standby_peer_test() ->
 %% of a new verified peer; the peer should stay in the unverified pool.
 verification_canceled_test() ->
     seed_process_random(),
-    PoolOpts = [{verif_bcount, 1}, {verif_bsize, 1}],
+    PoolOpts = [{verif_bcount, 1}, {verif_bsize, 1} | ?POOL_OPTS],
     Pool1 = new(PoolOpts),
     Now = erlang:system_time(millisecond),
 
@@ -870,7 +885,7 @@ verification_canceled_test() ->
 %% changed.
 update_ignored_test() ->
     seed_process_random(),
-    PoolOpts = [{unver_bcount, 1}, {unver_bsize, 1}],
+    PoolOpts = [{unver_bcount, 1}, {unver_bsize, 1} | ?POOL_OPTS],
     Pool1 = new(PoolOpts),
     Now = erlang:system_time(millisecond),
 
@@ -919,6 +934,7 @@ downgrade_to_bucket_with_no_eviction_possible_test() ->
     PoolOpts = [
         {verif_bcount, 1}, {verif_bsize, 1},
         {unver_bcount, 1}, {unver_bsize, 1}
+        | ?POOL_OPTS
     ],
     Pool1 = new(PoolOpts),
     Now = erlang:system_time(millisecond),
@@ -960,7 +976,7 @@ downgrade_to_bucket_with_no_eviction_possible_test() ->
 manual_selection_of_standby_peer_test() ->
     seed_process_random(),
     Now = erlang:system_time(millisecond),
-    Pool1 = new([]),
+    Pool1 = new(?POOL_OPTS),
 
     Id = random_peer_id(),
     Addr = random_address(),
@@ -985,7 +1001,7 @@ manual_selection_of_standby_peer_test() ->
 unverified_selected_are_not_evicted_test() ->
     seed_process_random(),
     % Use a single bucket of 10 peers to simplify testing.
-    PoolOpts = [{unver_bcount, 1}, {unver_bsize, 10}],
+    PoolOpts = [{unver_bcount, 1}, {unver_bsize, 10} | ?POOL_OPTS],
     Pool1 = new(PoolOpts),
 
     Now1 = erlang:system_time(millisecond),
@@ -1040,6 +1056,7 @@ unverified_old_peers_are_removed_test() ->
     PoolOpts = [
         {unver_bcount, 1}, {unver_bsize, 10},
         {max_update_lapse, 30000}
+        | ?POOL_OPTS
     ],
     Pool1 = new(PoolOpts),
 
@@ -1092,7 +1109,7 @@ unverified_old_peers_are_removed_test() ->
 unverified_multiple_references_test() ->
     seed_process_random(),
     % Use only 10 buckets to make it faster.
-    PoolOpts = [{unver_bcount, 10}, {unver_bsize, 10}],
+    PoolOpts = [{unver_bcount, 10}, {unver_bsize, 10} | ?POOL_OPTS],
     MaxRefs = 8,
 
     Pool1 = new(PoolOpts),
@@ -1127,7 +1144,7 @@ unverified_multiple_references_test() ->
 unverified_reference_eviction_test() ->
     seed_process_random(),
     % Use only 2 buckets to make it faster.
-    PoolOpts = [{unver_bcount, 2}, {unver_bsize, 1}],
+    PoolOpts = [{unver_bcount, 2}, {unver_bsize, 1} | ?POOL_OPTS],
     Pool1 = new(PoolOpts),
     Now = erlang:system_time(millisecond),
 
@@ -1168,8 +1185,11 @@ unverified_reference_eviction_test() ->
 %% Tests that selected and trusted peers are not evicted from the verified pool.
 verified_selected_and_trusted_peers_are_not_evicted_test() ->
     seed_process_random(),
-    PoolOpts = [{verif_bcount, 1}, {verif_bsize, 10},
-              {unver_bcount, 5}, {unver_bsize, 10}],
+    PoolOpts = [
+        {verif_bcount, 1}, {verif_bsize, 10},
+        {unver_bcount, 5}, {unver_bsize, 10}
+        | ?POOL_OPTS
+    ],
     Pool1 = new(PoolOpts),
 
     Now = erlang:system_time(millisecond),
@@ -1240,6 +1260,7 @@ verified_old_peers_are_removed_test() ->
     PoolOpts = [
         {verif_bcount, 1}, {verif_bsize, 10},
         {max_update_lapse, 30000}
+        | ?POOL_OPTS
     ],
     Pool1 = new(PoolOpts),
 
@@ -1318,6 +1339,7 @@ validate_counters() ->
         {unver_group_shard, 4},
         {unver_max_refs, 8},
         {max_update_lapse, 80000 * 500} % for the last 20000 rounds
+        | ?POOL_OPTS
     ],
     Pool1 = new(PoolOpts),
 
@@ -1729,6 +1751,7 @@ test_unverified_bucket_source_group_selection() ->
         {unver_bcount, 1024},
         {unver_source_shard, 64},
         {unver_group_shard, 4}
+        | ?POOL_OPTS
     ],
     Pool = new(PoolOpts),
     SourceGroups = [{rand_byte(), rand_byte()} || _  <- lists:seq(1, 100)],
@@ -1755,6 +1778,7 @@ test_unverified_bucket_groups_selection() ->
         {unver_bcount, 1024},
         {unver_source_shard, 64},
         {unver_group_shard, 4}
+        | ?POOL_OPTS
     ],
     Pool = new(PoolOpts),
     Groups = [{rand_byte(), rand_byte(), rand_byte(), rand_byte()}
@@ -1781,6 +1805,7 @@ test_verified_bucket_peer_group_selection() ->
     PoolOpts = [
         {verif_bcount, 256},
         {verif_group_shard, 8}
+        | ?POOL_OPTS
     ],
     Pool = new(PoolOpts),
     SourceGroups = [{rand_byte(), rand_byte()} || _  <- lists:seq(1, 1000)],
@@ -1802,18 +1827,18 @@ test_verified_bucket_peer_group_selection() ->
 -ifdef(USE_FIXED_SEED).
 
 seed_process_random() ->
-    rand:seed(exsplus, ?RANDOM_PROCESS_SEED).
+    rand:seed(exrop, ?RANDOM_PROCESS_SEED).
 
 rand_state() ->
-    rand:seed_s(exsplus, ?RANDOM_POOL_SEED).
+    rand:seed_s(exrop, ?RANDOM_POOL_SEED).
 
 -else.
 
 seed_process_random() ->
-    rand:seed(exsplus).
+    rand:seed(exrop).
 
 rand_state() ->
-    rand:seed_s(exsplus).
+    rand:seed_s(exrop).
 
 -endif.
 
