@@ -130,11 +130,10 @@ all() -> [
 init_per_suite(Config) ->
     %% Some parameters depend on the speed and capacity of the docker containers:
     %% timers must be less than gen_server:call timeout.
-    [
-        {blocks_per_second, 3},
-        {node_startup_time, 20000}, %% Time may take to get the node to respond to http
-        {node_shutdown_time, 20000} %% Time it may take to stop node cleanly
-    |Config].
+    [ {blocks_per_second, 3},
+      {node_startup_time, 10000}, %% Time may take to get the node to respond to http
+      {node_shutdown_time, 20000} %% Time it may take to stop node cleanly
+    | Config].
 
 init_per_testcase(quick_start_stop, Config) ->
     aest_nodes:ct_setup([{verify_logs, false}|Config]);
