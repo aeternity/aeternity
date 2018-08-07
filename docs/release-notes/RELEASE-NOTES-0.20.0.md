@@ -2,7 +2,7 @@
 
 [This release][this-release] is focused on TODOFILLMEIN.
 It:
-* Does this.
+* Removes the support for oracles in WS API. This functionality is going to be moved to the middleware.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.20.0
 
