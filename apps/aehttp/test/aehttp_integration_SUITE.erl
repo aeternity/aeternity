@@ -117,6 +117,7 @@
 
     % non signed txs
     contract_transactions/1,
+    contract_create_compute_transaction/1,
     contract_create_transaction_init_error/1,
     oracle_transactions/1,
     nameservice_transactions/1,
@@ -198,6 +199,7 @@
 -export([
     wrong_http_method_top/1,
     wrong_http_method_contract_create/1,
+    wrong_http_method_contract_create_compute/1,
     wrong_http_method_contract_call/1,
     wrong_http_method_contract_call_compute/1,
     wrong_http_method_spend/1,
@@ -499,6 +501,7 @@ groups() ->
 
         % non signed txs
         contract_transactions,
+        contract_create_compute_transaction,
         contract_create_transaction_init_error,
         oracle_transactions,
         nameservice_transactions,
@@ -567,6 +570,7 @@ groups() ->
      {wrong_http_method_endpoints, [], [
         wrong_http_method_top,
         wrong_http_method_contract_create,
+        wrong_http_method_contract_create_compute,
         wrong_http_method_contract_call,
         wrong_http_method_contract_call_compute,
         wrong_http_method_spend,
@@ -2224,6 +2228,73 @@ contract_transactions(_Config) ->    % miner has an account
     ok = wait_for_tx_hash_on_chain(SpendTxHash),
     {ok, 400, #{<<"reason">> := <<"Tx is not a create or call">>}} =
         get_contract_call_object(SpendTxHash),
+
+    ok.
+
+%% Tests the following
+%% GET contract_create_compute_tx unsigned transaction
+%% GET contract_call_compute_tx unsigned transaction
+%% No testing of negative cases as these are same as for "normal" create.
+contract_create_compute_transaction(_Config) ->
+    NodeName = aecore_suite_utils:node_name(?NODE),
+
+    {ok, 200, _} = get_balance_at_top(),
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    SophiaCode = <<"contract Identity = function main (x:int) = x">>,
+    {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
+
+    ContractInitBalance = 1,
+    ValidEncoded = #{ owner => MinerAddress,
+                      code => Code,
+                      vm_version => 1,
+                      deposit => 2,
+                      amount => ContractInitBalance,
+                      gas => 300,
+                      gas_price => 1,
+                      fee => 1,
+                      arguments => <<"()">> },
+
+    %% prepare a contract_create_tx and post it
+    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
+                <<"contract_address">> := EncodedContractPubKey}} =
+        get_contract_create_compute(ValidEncoded),
+
+    ContractCreateTxHash = sign_and_post_tx(EncodedUnsignedContractCreateTx),
+
+    % mine a block
+    wait_for_tx_hash_on_chain(ContractCreateTxHash),
+    ?assert(tx_in_chain(ContractCreateTxHash)),
+
+    Function = <<"main">>,
+    Argument = <<"(42)">>,
+    ComputeCCallEncoded = #{ caller => MinerAddress,
+                             contract => EncodedContractPubKey,
+                             vm_version => 1,
+                             amount => 1,
+                             gas => 1000,
+                             gas_price => 1,
+                             fee => 1,
+                             function => Function,
+                             arguments => Argument},
+
+    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCallComputeTx}} =
+        get_contract_call_compute(ComputeCCallEncoded),
+    ContractCallComputeTxHash =
+        sign_and_post_tx(EncodedUnsignedContractCallComputeTx),
+
+    % mine a block
+    wait_for_tx_hash_on_chain(ContractCallComputeTxHash),
+    ?assert(tx_in_chain(ContractCallComputeTxHash)),
+
+
+    %% Get the call object
+    {ok, 200, CallObject} = get_contract_call_object(ContractCallComputeTxHash),
+
+    {ok, 200, #{<<"data">> := DecodedCallReturnValue}} =
+        get_contract_decode_data(
+          #{ 'sophia-type' => <<"int">>,
+             data => maps:get(<<"return_value">>, CallObject)}),
+    #{ <<"type">> := <<"word">>, <<"value">> := 42 } = DecodedCallReturnValue,
 
     ok.
 
@@ -5079,6 +5150,9 @@ get_contract_create(Data) ->
     Host = external_address(),
     http_request(Host, post, "tx/contract/create", Data).
 
+get_contract_create_compute(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/contract/create/compute", Data).
 
 get_contract_bytecode(SourceCode) ->
     Host = external_address(),
@@ -5480,6 +5554,10 @@ wrong_http_method_top(_Config) ->
 wrong_http_method_contract_create(_Config) ->
     Host = external_address(),
     {ok, 405, _} = http_request(Host, get, "tx/contract/create", []).
+
+wrong_http_method_contract_create_compute(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, get, "tx/contract/create/compute", []).
 
 wrong_http_method_contract_call(_Config) ->
     Host = external_address(),
