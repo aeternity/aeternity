@@ -130,18 +130,16 @@ test_inbound_limitation(Cfg) ->
     setup([?NODE1, ?NODE2, ?NODE3, ?NODE4], NodeConfig, Cfg),
     start_node(node1, Cfg),
     start_node(node2, Cfg),
-    wait_for_value({height, 0}, [node1, node2], StartupTimeout, Cfg),
     wait_for_internal_api([node1, node2], StartupTimeout),
 
     % Retrieve node1 peer address.
     #{outbound := [Node1PeerAddr]} = get_peers(node2),
 
     start_node(node3, Cfg),
-    wait_for_value({height, 0}, [node1, node2, node3], StartupTimeout, Cfg),
     wait_for_internal_api([node3], StartupTimeout),
 
     T1 = erlang:system_time(millisecond),
-    wait_for_value({height, Length}, [node1, node2, node3], ?MINING_TIMEOUT * Length, Cfg),
+    wait_for_value({height, Length + 1}, [node1, node2, node3], ?MINING_TIMEOUT * Length, Cfg),
 
     try_until(T1 + 3 * ping_interval(),
             fun() ->
