@@ -33,6 +33,8 @@
 
 %=== MACROS ====================================================================
 
+-define(BASE_POOL_OPTS, []).
+
 %% Some tests are statistical tests, for example `bucket_index_test_` that
 %% validate the bucket indexes cover enough of the bucket space.
 %% These tests may fail randomly for some seeds so fixing the seed make the
@@ -45,11 +47,12 @@
 -define(RANDOM_POOL_SEED, {1533,565990,602018}).
 -define(POOL_OPTS, [{secret, <<"some fixed secret">>},
                     {disable_strong_random, true},
-                    {seed, ?RANDOM_POOL_SEED}]).
+                    {seed, ?RANDOM_POOL_SEED}
+                    | ?BASE_POOL_OPTS]).
 
 -else.
 
--define(POOL_OPTS, []).
+-define(POOL_OPTS, ?BASE_POOL_OPTS).
 
 -endif.
 
@@ -57,8 +60,7 @@
 
 %% Tests pool behavior when empty.
 empty_pool_test() ->
-    seed_process_random(),
-    P = new(?POOL_OPTS),
+    P = new(?BASE_POOL_OPTS),
     A = random_peer_id(),
     Now = erlang:system_time(millisecond),
     FilterFun = make_ext_exclude_filter([]),
@@ -100,8 +102,7 @@ empty_pool_test() ->
 
 %% Tests pool behaviour with a single normal peer.
 add_single_normal_test() ->
-    seed_process_random(),
-    P = new(?POOL_OPTS),
+    P = new(?BASE_POOL_OPTS),
     Id1 = random_peer_id(),
     Addr1 = random_address(),
     Now = erlang:system_time(millisecond),
@@ -154,8 +155,7 @@ add_single_normal_test() ->
 
 %% Tests pool behavior with a single trusted peer.
 add_single_trusted_test() ->
-    seed_process_random(),
-    P = new(?POOL_OPTS),
+    P = new(?BASE_POOL_OPTS),
     Id1 = random_peer_id(),
     Addr1 = random_address(),
     Now = erlang:system_time(millisecond),
@@ -297,13 +297,12 @@ multiple_peers_subset_test() ->
 
 %% Test peer selection behavior.
 multiple_peers_select_test() ->
-    seed_process_random(),
     TotalCount = 1000,
     VerifCount = 50,
     ExcludedCount = 100,
 
     Now = erlang:system_time(millisecond),
-    Pool1 = new(?POOL_OPTS),
+    Pool1 = new(?BASE_POOL_OPTS),
     Peers = make_peers(TotalCount, VerifCount),
     ExcludedKeys = rand_int_list(1, TotalCount + 1, ExcludedCount),
     ExcludedIds = [maps:get(id, maps:get(K, Peers)) || K <- ExcludedKeys],
