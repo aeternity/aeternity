@@ -14,7 +14,7 @@
 %% API
 -export([start/2, start_link/2, stop/0]).
 -export([cleanup/0, dump_logs/0, setup_nodes/1, start_node/1, stop_node/2, 
-         get_service_address/2, get_hostname/1,
+         get_service_address/2, get_internal_address/2, get_hostname/1,
          get_log_path/1, get_log_paths/0, log/2]).
 
 %% gen_server callbacks
@@ -76,6 +76,9 @@ stop_node(NodeName, Timeout) ->
 get_service_address(NodeName, Service) ->
     gen_server:call(?SERVER, {get_service_address, NodeName, Service}).
 
+get_internal_address(NodeName, Service) ->
+    gen_server:call(?SERVER, {get_internal_address, NodeName, Service}).
+
 get_hostname(NodeName) ->
     gen_server:call(?SERVER, {get_hostname, NodeName}).
 
@@ -115,6 +118,10 @@ handle_call({get_node_pubkey, NodeName}, _From, State) ->
 handle_call({get_service_address, NodeName, Service}, _From, #{nodes := Nodes} = State) ->
     #{NodeName := {Mod, NodeState}} = Nodes,
     ServiceAddress = Mod:get_service_address(Service, NodeState),
+    {reply, ServiceAddress, State};
+handle_call({get_internal_address, NodeName, Service}, _From, #{nodes := Nodes} = State) ->
+    #{NodeName := {Mod, NodeState}} = Nodes,
+    ServiceAddress = Mod:get_internal_address(Service, NodeState),
     {reply, ServiceAddress, State};
 handle_call({get_hostname, NodeName}, _From, #{nodes := Nodes} = State) ->
     #{NodeName := {_Mod, _NodeState}} = Nodes,

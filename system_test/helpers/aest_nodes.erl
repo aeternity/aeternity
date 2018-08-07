@@ -21,6 +21,7 @@
 -export([connect_node/3]).
 -export([disconnect_node/3]).
 -export([get_service_address/3]).
+-export([get_internal_address/3]).
 -export([get_node_pubkey/2]).
 -export([export/3]).
 -export([read_metric/3]).
@@ -143,6 +144,8 @@
     privkey => binary()
 }.
 
+-export_type([test_ctx/0]).
+
 %=== COMMON TEST API FUNCTIONS =================================================
 
 %% @doc Setups the the node manager for Common Test.
@@ -253,6 +256,11 @@ disconnect_node(NodeName, NetName, Ctx) ->
 -spec get_service_address(atom(), node_service(), test_ctx()) -> binary().
 get_service_address(NodeName, Service, Ctx) ->
     call(ctx2pid(Ctx), {get_service_address, NodeName, Service}).
+
+%% @doc Retrieves the internal address of a given node's service.
+-spec get_internal_address(atom(), node_service(), test_ctx()) -> binary().
+get_internal_address(NodeName, Service, Ctx) ->
+    call(ctx2pid(Ctx), {get_internal_address, NodeName, Service}).
 
 -spec get_node_pubkey(atom(), test_ctx()) -> binary().
 get_node_pubkey(NodeName, Ctx) ->
