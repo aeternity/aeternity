@@ -20,16 +20,13 @@
 
 -define(SERVER, ?MODULE).
 
--record(sub, { chain = [], chain_tx = [],
-               oracle_query = [], oracle_response = [] }).
+-record(sub, { chain = [], chain_tx = [] }).
 -record(state, { subscribed = #sub{} }).
 
 -type id() :: {ws, ws_handler:id()}.
--type aeo_event() :: {query, aeo_oracles:id()}
-                   | {response, aeo_query:id()}.
--type event() :: {oracle, aeo_event()}.
+-type event() :: {chain | chain_tx, term()}.
 
--export_type([event/0, id/0]).
+-export_type([id/0]).
 
 %%%===================================================================
 %%% API
@@ -106,30 +103,19 @@ add_subscribed(Id, {chain, Event}, Sub = #sub{ chain = Cs }) ->
     Sub#sub{ chain = [{Id, Event} | Cs] };
 add_subscribed(Id, {chain_tx, Event}, Sub = #sub{ chain_tx = CTs }) ->
     Sub#sub{ chain_tx = [{Id, Event} | CTs] };
-add_subscribed(Id, Event = {oracle, {query, _}}, Sub = #sub{ oracle_query = OQs }) ->
-    Sub#sub{ oracle_query = [{Id, Event} | OQs] };
-add_subscribed(Id, Event = {oracle, {response, _}}, Sub = #sub{ oracle_response = ORs }) ->
-    Sub#sub{ oracle_response = [{Id, Event} | ORs] };
 add_subscribed(Id, Event, Sub) ->
     lager:error("Unhandled subscription event kind ~p from ~p", [Event, Id]),
     Sub.
 
-del_subscribed(Id, Sub = #sub{ chain = Cs, chain_tx = Ts,
-                               oracle_query = OQs, oracle_response = ORs }) ->
+del_subscribed(Id, Sub = #sub{ chain = Cs, chain_tx = Ts }) ->
     NotId = fun({IdX, _}) -> IdX =/= Id end,
     Sub#sub{ chain           = lists:filter(NotId, Cs),
-             chain_tx        = lists:filter(NotId, Ts),
-             oracle_query    = lists:filter(NotId, OQs),
-             oracle_response = lists:filter(NotId, ORs) }.
+             chain_tx        = lists:filter(NotId, Ts) }.
 
 del_subscribed(Id, {chain, Event}, Sub = #sub{ chain = Cs }) ->
     Sub#sub{ chain = lists:delete({Id, Event}, Cs) };
 del_subscribed(Id, {chain_tx, Event}, Sub = #sub{ chain_tx = Ts }) ->
     Sub#sub{ chain_tx = lists:delete({Id, Event}, Ts) };
-del_subscribed(Id, Event = {oracle, {query, _}}, Sub = #sub{ oracle_query = OQs }) ->
-    Sub#sub{ oracle_query = lists:delete({Id, Event}, OQs) };
-del_subscribed(Id, Event = {oracle, {response, _}}, Sub = #sub{ oracle_response = ORs }) ->
-    Sub#sub{ oracle_response = lists:delete({Id, Event}, ORs) };
 del_subscribed(Id, Event, Sub) ->
     lager:error("Unhandled unsubscribe event kind ~p from ~p", [Event, Id]),
     Sub.
@@ -137,13 +123,7 @@ del_subscribed(Id, Event, Sub) ->
 notify_tx_subscribers([], _Sub) ->
     ok;
 notify_tx_subscribers([SignedTx | Rest], Sub) ->
-    Tx = aetx_sign:tx(SignedTx),
     notify_tx(SignedTx, Sub#sub.chain_tx),
-    case aetx:tx_type(Tx) of
-        <<"oracle_query_tx">>    -> aeo_subscription:notify_query_tx(Tx, Sub#sub.oracle_query);
-        <<"oracle_response_tx">> -> aeo_subscription:notify_response_tx(Tx, Sub#sub.oracle_response);
-        _Other                -> ok
-    end,
     notify_tx_subscribers(Rest, Sub).
 
 notify_chain_subscribers(block_created, Block, #sub{ chain = Cs }) ->
