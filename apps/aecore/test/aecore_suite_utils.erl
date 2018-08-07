@@ -351,7 +351,7 @@ node_name(N) when N == dev1; N == dev2; N == dev3 ->
     list_to_atom("epoch_" ++ atom_to_list(N) ++ "@" ++ H).
 
 connect(N) ->
-    connect(N, 5),
+    connect(N, 100),
     report_node_config(N).
 
 subscribe(N, Event) ->
@@ -431,7 +431,8 @@ check_event(#{sender := From, info := Info}, Nodes) ->
 %%% Internal functions
 %%%=============================================================================
 
-connect(N, Tries) when Tries > 0 ->
+connect(N, Timeout) when Timeout < 10000 ->
+    timer:sleep(Timeout),
     case net_kernel:hidden_connect(N) of
         true ->
             ct:log("hidden_connect(~p) -> true", [N]),
@@ -439,8 +440,7 @@ connect(N, Tries) when Tries > 0 ->
             true;
         false ->
             ct:log("hidden_connect(~p) -> false, retrying ...", [N]),
-            timer:sleep(2000),
-            connect(N, Tries-1)
+            connect(N, Timeout * 2)
     end;
 connect(N, _) ->
     ct:log("exhausted retries (~p)", [N]),
