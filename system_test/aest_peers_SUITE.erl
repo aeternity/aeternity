@@ -95,7 +95,7 @@ end_per_suite(_Config) -> ok.
 
 test_peer_discovery(Cfg) ->
     NodeConfig = #{
-        ping_interval => 30000,
+        ping_interval => 5000,
         max_inbound => 4
     },
     StartupTimeout = proplists:get_value(node_startup_time, Cfg),
@@ -108,7 +108,7 @@ test_peer_discovery(Cfg) ->
     wait_for_internal_api([node1, node2, node3, node4, node5], StartupTimeout),
 
     % Wait for two gossip ping messages.
-    timer:sleep(35000 * 2),
+    timer:sleep(ping_interval() * 2 + 500),
 
     lists:foreach(fun(N) ->
         {ok, 200, Peers} = aehttp_client:request('GetPeers', #{}, [
@@ -124,7 +124,7 @@ test_inbound_limitation(Cfg) ->
     Length = 30,
     StartupTimeout = proplists:get_value(node_startup_time, Cfg),
     NodeConfig = #{
-        ping_interval => 30000,
+        ping_interval => 5000,
         max_inbound => 2
     },
     setup([?NODE1, ?NODE2, ?NODE3, ?NODE4], NodeConfig, Cfg),
@@ -153,8 +153,8 @@ test_inbound_limitation(Cfg) ->
                 ?assertNotEqual(undefined, B1a)
             end),
 
-    % Wait for pings so the nodes discover each others and interconnect.
-    TimeForPing1 = max(0, 35000 - (erlang:system_time(millisecond) - T1)),
+    % Ensure a ping between start node3 and starting next.
+    TimeForPing1 = max(0, ping_interval() - (erlang:system_time(millisecond) - T1)),
     timer:sleep(TimeForPing1),
 
     % Start 4th node that should get disconnected from node1 and connect to another one.
@@ -177,8 +177,8 @@ test_inbound_limitation(Cfg) ->
                 ?assertNotEqual(undefined, B1b)
             end),
 
-    % Wait for pings so the last nodes discover the others and interconnect.
-    TimeForPing2 = max(0, 35000 - (erlang:system_time(millisecond) - T2)),
+    % Ensure a ping between start node4 and checking status.
+    TimeForPing2 = max(0, ping_interval() - (erlang:system_time(millisecond) - T2)),
     timer:sleep(TimeForPing2),
 
     % Check node4 do not have an outbound connection to node1 anymore.
@@ -223,7 +223,7 @@ get_peers(Node) ->
 
 ping_interval() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"ping_interval">>],
-                               aecore, ping_interval, 120000).
+                               aecore, ping_interval, 5000).
 
 try_until(MSec, F) ->
     try F()
