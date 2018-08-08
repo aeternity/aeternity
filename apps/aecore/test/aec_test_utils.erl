@@ -359,17 +359,23 @@ next_block_with_state([{PB, PBS} | _] = Chain, Target, Time0, TxsFun, Nonce,
                       PubKey, PrivKey, BeneficiaryPubKey) ->
     Height = aec_blocks:height(PB) + 1,
     Txs = TxsFun(Height),
-    %% NG: if a block X used to have Txs, now put them in a microblock just before
-    %% the key-block at height X.
+    %% NG: if a block X used to have Txs, now put them in micro-blocks just before
+    %% the key-block at height X. Every transaction is put in separate micro-block.
     Chain1 =
         case Txs of
             [] -> Chain;
-            _  -> [create_micro_block(PB, PrivKey, Txs, PBS) | Chain]
+            _  -> create_micro_blocks(Chain, PrivKey, lists:reverse(Txs))
     end,
     {B, S} = create_keyblock_with_state(Chain1, PubKey, BeneficiaryPubKey),
     [{B#block{ target = Target, nonce  = Nonce,
                    time   = case Time0 of undefined -> B#block.time; _ -> Time0 end },
       S} | Chain1].
+
+create_micro_blocks(Chain, _PrivKey, []) ->
+    Chain;
+create_micro_blocks([{PB, PBS} | _] = Chain, PrivKey, [Tx | Rest]) ->
+    Chain1 = [create_micro_block(PB, PrivKey, [Tx], PBS) | Chain],
+    create_micro_blocks(Chain1, PrivKey, Rest).
 
 %% @doc Given a transaction Tx, a private key or list of keys,
 %% return the cryptographically signed transaction using the default crypto

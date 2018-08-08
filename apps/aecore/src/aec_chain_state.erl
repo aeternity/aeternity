@@ -851,7 +851,14 @@ db_node_has_sibling_blocks(Node) ->
     Height   = node_height(Node),
     PrevHash = prev_hash(Node),
     %% NOTE: Micro blocks have the same height.
-    length([1 || Header <- aec_db:find_headers_at_height(Height)
-                     ++ aec_db:find_headers_at_height(Height - 1),
+    %% For key blocks siblings at Height and Height - 1
+    %% and for micro blocks siblings at Height and Height + 1
+    OtherHeight =
+        case node_type(Node) of
+            micro -> Height + 1;
+            key   -> Height - 1
+        end,
+    length([x || Header <- aec_db:find_headers_at_height(Height)
+                           ++ aec_db:find_headers_at_height(OtherHeight),
                  aec_headers:prev_hash(Header) =:= PrevHash]) > 1.
 

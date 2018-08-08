@@ -605,6 +605,7 @@ forking_test_() ->
      , {"Test if hash is connected to genesis", fun fork_is_connected_to_genesis/0}
      , {"Test if hash is in main chain", fun fork_is_in_main_chain/0}
      , {"Get a transaction from the right fork", fun fork_get_transaction/0}
+     , {"Fork on micro-block", fun fork_on_micro_block/0}
      ]}.
 
 fork_on_genesis() ->
@@ -779,6 +780,50 @@ fork_get_transaction() ->
                  aec_chain:find_tx_with_location(HardButLastTxHash)),
     ?assertEqual({block_hash(HardTopBlock), HardSpend},
                  aec_chain:find_tx_with_location(HardTxHash)),
+
+    ok.
+
+fork_on_micro_block() ->
+    #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
+    PresetAccounts = [{PubKey, 1000}],
+    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+
+    %% Create main chain with both key and micro blocks
+    TxsFun = fun(2) ->
+                     Tx1 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 1), PrivKey),
+                     Tx2 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 2, PubKey, 1), PrivKey),
+                     [Tx1, Tx2];
+                (_) ->
+                     []
+             end,
+    [B0, B1, B2, _, _, _] =
+        Chain0 = gen_block_chain_with_state_by_target(
+                   PresetAccounts,
+                   [?HIGHEST_TARGET_SCI, ?HIGHEST_TARGET_SCI, ?HIGHEST_TARGET_SCI], 1, TxsFun),
+    [KB0, KB1, MB1, MB2, KB2, KB3] = blocks_only_chain(Chain0),
+
+    %% Create fork, which starts on a micro block
+    CommonChain = [B0, B1, B2],
+    Fork = extend_chain_with_state(CommonChain, [?HIGHEST_TARGET_SCI], 1),
+    [KB0, KB1, MB1, KB2Fork] = blocks_only_chain(Fork),
+
+    %% Insert fork first
+    ok = insert_block(KB0),
+    ok = insert_block(KB1),
+    ok = insert_block(MB1),
+    ok = insert_block(KB2Fork),
+
+    {ok, KB2ForkHash} = aec_blocks:hash_internal_representation(KB2Fork),
+    ?assertEqual(KB2ForkHash, aec_chain:top_block_hash()),
+
+    %% Insert main chain
+    ok = insert_block(MB2),
+    ok = insert_block(KB2),
+    ok = insert_block(KB3),
+
+    %% Check main chain took over
+    {ok, KB3Hash} = aec_blocks:hash_internal_representation(KB3),
+    ?assertEqual(KB3Hash, aec_chain:top_block_hash()),
 
     ok.
 

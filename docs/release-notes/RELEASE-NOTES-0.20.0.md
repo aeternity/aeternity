@@ -4,6 +4,7 @@
 It:
 * Removes the support for oracles in WS API. This functionality is going to be moved to the middleware.
 * Adds http API interface `/tx/contract/create/compute` for creating contracts.
+* Fixes a bug in internal DB storage of micro forks.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.20.0
 
