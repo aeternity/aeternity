@@ -132,7 +132,8 @@ do_start_generation(S = #state{ generating = false }) ->
     S1#state{ generating = true };
 do_start_generation(S = #state{ candidate = Candidate }) ->
     %% If we are asked to start generation and already have a block, signal this.
-    [ publish_candidate(Candidate) || Candidate /= undefined ],
+    [ publish_candidate(Candidate)
+      || Candidate /= undefined andalso aec_blocks:txs(Candidate) /= [] ],
     S.
 
 do_stop_generation(S = #state{ generating = true }) ->
@@ -198,8 +199,6 @@ create_block_candidate(BlockOrBlockHash) ->
         {error, Reason} ->
             failed_attempt(Reason)
     end,
-    %% NG: GC initially disabled. (And this is the wrong place...)
-    %% aec_tx_pool:garbage_collect(),
     ok.
 
 update_block_candidate(Block, BlockInfo, Txs) ->
