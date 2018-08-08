@@ -39,7 +39,6 @@
 %=== MACROS ====================================================================
 
 -define(MINING_TIMEOUT,   3000).
--define(SYNC_TIMEOUT,      100).
 
 -define(STANDALONE_NODE, #{
     name    => standalone_node,
@@ -131,11 +130,10 @@ all() -> [
 init_per_suite(Config) ->
     %% Some parameters depend on the speed and capacity of the docker containers:
     %% timers must be less than gen_server:call timeout.
-    [
-        {blocks_per_second, 3},
-        {node_startup_time, 20000}, %% Time may take to get the node to respond to http
-        {node_shutdown_time, 20000} %% Time it may take to stop node cleanly
-    |Config].
+    [ {blocks_per_second, 3},
+      {node_startup_time, 10000}, %% Time may take to get the node to respond to http
+      {node_shutdown_time, 20000} %% Time it may take to stop node cleanly
+    | Config].
 
 init_per_testcase(quick_start_stop, Config) ->
     aest_nodes:ct_setup([{verify_logs, false}|Config]);
@@ -155,9 +153,7 @@ end_per_suite(_Config) -> ok.
 %% A node with a newer version of the code can join and synchronize
 %% to a cluster of older nodes.
 new_node_joins_network(Cfg) ->
-    Length = 20,
     NodeStartupTime = proplists:get_value(node_startup_time, Cfg),
-
     Compatible = "aeternity/epoch:local", %% Latest version it should be compatible with
                                           %% Change if comptibility with previous version
                                           %% should be guaranteed
@@ -186,7 +182,12 @@ new_node_joins_network(Cfg) ->
     %% Starts a chain with two nodes
     start_node(old_node1, Cfg),
     start_node(old_node2, Cfg),
+    T0 = erlang:system_time(seconds),
     wait_for_value({height, 0}, [old_node1, old_node2], NodeStartupTime, Cfg),
+    StartupTime = erlang:system_time(seconds) - T0,
+
+    Length = max(20, 5 + proplists:get_value(blocks_per_second, Cfg) * StartupTime),
+
 
     %% Mines for 20 blocks and calculate the average mining time
     StartTime = os:timestamp(),
@@ -210,9 +211,9 @@ new_node_joins_network(Cfg) ->
     %% Starts a third node and check it synchronize with the first two
     start_node(new_node1, Cfg),
     wait_for_value({height, 0}, [new_node1], NodeStartupTime, Cfg),
-    ct:log("Node 3 ready to go"),
 
-    %% Waits enough for node 3 to sync but not for it to build a new chain
+    %% Starting http interface takes more time than sync, but:
+    %% Wait enough for node 3 to sync but not for it to build a new chain
     wait_for_value({height, Length}, [new_node1], MiningTime * 3, Cfg),
     ct:log("Node 3 on same height"),
     Height3 = get_block(new_node1, Length),
@@ -311,7 +312,7 @@ stop_and_continue_sync(Cfg) ->
     NodeStartupTime = proplists:get_value(node_startup_time, Cfg),
 
     %% Create a chain long enough to need 10 seconds to fetch it
-    Length = BlocksPerSecond * 30,
+    Length = BlocksPerSecond * 50,
 
     setup_nodes([#{ name    => node1,
                     peers   => [node2],
@@ -348,19 +349,22 @@ stop_and_continue_sync(Cfg) ->
          false ->
             start_node(node1, Cfg),
             %% should sync with about 10 blocks per second, hence 100ms per block
-            wait_for_value({height, Length}, [node2], (Length - Height) * ?MINING_TIMEOUT, Cfg),
+            wait_for_value({height, Length + 1}, [node2], (Length - Height) * ?MINING_TIMEOUT, Cfg),
             B2 = get_block(node2, Length),
             C1 = get_block(node1, Length),
             ct:log("Node 2 at height ~p: ~p and  Node 1 at same height ~p~n", [Length, B2, C1]),
             if C1 == B1 ->
-                ct:log("This test showed that sync can be interrupted");
-               C1 =/= B2 ->
-                ct:log("Tested non-interesting branch, node2 synced with node1")
-                %% skip here?
-            end,
-            ?assertEqual(C1, B2),
-            ?assertNotEqual(undefined, C1),
-            ?assertNotEqual(undefined, B2)
+                  ct:log("This tests sync can be interrupted, node1 unchanged"),
+                  ?assertEqual(C1, B2);
+               C1 == B2 ->
+                  ?assertNotEqual(undefined, C1),
+                  ?assertNotEqual(undefined, B2),
+                  ct:log("Tested non-interesting branch, node1 copied node2"),
+                  {skip, need_longer_chain};
+               true ->
+                  ct:log("Nodes not in sync, that's an error"),
+                  ?assertEqual(C1, B2)
+            end
     end.
 
 tx_pool_sync(Cfg) ->
