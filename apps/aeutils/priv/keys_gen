@@ -8,6 +8,9 @@ main([[]]) ->
     io:fwrite("Usage: keys_gen PASSWORD~n"),
     halt(1);
 main([Password]) ->
+    % add all the sibling library `ebin` dirs to the code path
+    % in order to ensure runtime dependencies are met
+    ok = ensure_code_path(),
     ok = ensure_dir(?KEYS_DIR),
     {PubFile, PrivFile} = gen_keypair_filenames(?KEYS_DIR),
     case ensure_keypair_not_present(PubFile, PrivFile) of
@@ -60,3 +63,11 @@ encrypt_key(Password, Bin) ->
 
 hash(Bin) ->
     crypto:hash(sha256, Bin).
+
+ensure_code_path() ->
+    PrivDir = filename:dirname(escript:script_name()),
+    Dirs = filelib:wildcard(filename:join([PrivDir, "..", "..", "*"])),
+    lists:foreach(fun(Dir) ->
+                    true = code:add_pathz(filename:join([Dir, "ebin"]))
+                  end, Dirs),
+    ok.
