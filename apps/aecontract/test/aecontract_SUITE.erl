@@ -336,13 +336,17 @@ state()  -> get(the_state).
 state(S) -> put(the_state, S).
 
 call(Name, Fun, Xs) ->
-    S = state(),
     Fmt = string:join(lists:duplicate(length(Xs), "~p"), ", "),
     io:format("~p(" ++ Fmt ++ ") ->\n", [Name | Xs]),
+    R = call(Fun, Xs),
+    io:format("  ~p\n", [R]),
+    R.
+
+call(Fun, Xs) when is_function(Fun, 1 + length(Xs)) ->
+    S = state(),
     {R, S1} = try apply(Fun, Xs ++ [S])
               catch _:Reason -> {{'EXIT', Reason, erlang:get_stacktrace()}, S}
               end,
-    io:format("  ~p\n", [R]),
     state(S1),
     R.
 
