@@ -119,7 +119,7 @@
 %% The size in bytes of the generated secret.
 -define(SECRET_SIZE, 128).
 %% The algorithm to use for weak random number generator.
--define(RAND_ALGO, exsplus).
+-define(RAND_ALGO, exrop).
 %% The initial size of the lookup tables.
 -define(LOOKUP_START_SIZE, 8).
 %% The maximum increment of size of the lookup tables underlying arrays;
