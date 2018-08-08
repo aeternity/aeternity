@@ -200,8 +200,8 @@ def node_is_online(api):
     except Exception as e:
         return False
 
-def wait_all_nodes_are_online(apis):
-    wait(lambda: all([node_is_online(api) for api in apis]), timeout_seconds=30, sleep_seconds=0.5)
+def wait_all_nodes_are_online(apis, timeout_seconds):
+    wait(lambda: all([node_is_online(api) for api in apis]), timeout_seconds, sleep_seconds=1)
 
 def executable(temp_dir):
     return os.path.join(temp_dir, "bin", "epoch")
@@ -319,7 +319,7 @@ def main(argv):
         empty_config.host = SETUP[n]["host"]
         node_objs.append(ExternalApi(ApiClient(configuration=empty_config)))
 
-    wait_all_nodes_are_online(node_objs)
+    wait_all_nodes_are_online(node_objs, 30)
 
     top = node_objs[0].get_top_block()
     height = top.height
@@ -345,7 +345,7 @@ def main(argv):
     if not test_failed:
         print("Checking that nodes are able to start with persisted non-empty DB")
         [start_node(d) for d in node_dirs]
-        wait_all_nodes_are_online(node_objs)
+        wait_all_nodes_are_online(node_objs, 60)
         [stop_node(d) for d in node_dirs]
 
     if test_failed:
