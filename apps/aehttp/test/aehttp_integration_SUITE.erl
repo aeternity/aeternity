@@ -253,7 +253,8 @@
     ws_request_tag/1,
     ws_block_mined/1,
     ws_micro_block_added/1,
-    ws_refused_on_limit_reached/1
+    ws_refused_on_limit_reached/1,
+    ws_tx_on_chain/1
    ]).
 
 %% channel websocket endpoints
@@ -620,7 +621,8 @@ groups() ->
        ws_request_tag,
        ws_block_mined,
        ws_micro_block_added,
-       ws_refused_on_limit_reached
+       ws_refused_on_limit_reached,
+       ws_tx_on_chain
       ]},
      {channel_websocket, [sequence],
       [sc_ws_timeout_open,
@@ -3990,6 +3992,33 @@ ws_refused_on_limit_reached(_Config) ->
     {ok, 0} =
         aec_test_utils:wait_for_it_or_timeout(fun open_websockets_count/0,
                                               0, WSDieTimeout),
+    ok.
+
+ws_tx_on_chain(_Config) ->
+    {ok, ConnPid} = ws_start_link(),
+
+    %% Register for events when a block is mined!
+    ws_subscribe(ConnPid, #{ type => mined_block }),
+
+    %% Mine a block to make sure the Pubkey has some funds!
+    ws_mine_key_block(ConnPid, ?NODE, 1),
+
+    %% Fetch the pubkey via HTTP
+    {ok, 200, #{ <<"pub_key">> := PK }} = get_miner_pub_key(),
+
+    %% Post spend tx
+    {ok, 200, #{<<"tx_hash">> := TxHash}} = post_spend_tx(random_hash(), 3, 1),
+
+    %% Subscribe for an event once the Tx goes onto the chain...
+    ws_subscribe(ConnPid, #{ type => tx, tx_hash => TxHash }),
+    ok = ?WS:register_test_for_event(ConnPid, chain, tx_chain),
+
+    %% Mine a block and check that an event is receieved corresponding to
+    %% the Tx.
+    ws_mine_key_block(ConnPid, ?NODE, 2),
+    {ok, #{<<"tx_hash">> := TxHash }} = ?WS:wait_for_event(ConnPid, chain, tx_chain),
+
+    ok = aehttp_ws_test_utils:stop(ConnPid),
     ok.
 
 %%
