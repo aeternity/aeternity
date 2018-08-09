@@ -24,14 +24,19 @@
         , sophia_spend/1
         , sophia_oracles/1
         , sophia_oracles_qfee__basic/1
-        , sophia_oracles_qfee__query_tx_value_below_qfee_errs/1
-        , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_not_taken_from_oracle/1
+        , sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle/1
+        , sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_rich_oracle_thanks_to_contract_check/1
+        , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_taken_from_rich_oracle/1
+        , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_not_taken_from_poor_oracle/1
+        , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_not_taken_from_rich_oracle_thanks_to_contract_check/1
         , sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs/1
         , sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle/1
         , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle/1
         , sophia_oracles_qfee__basic__remote/1
-        , sophia_oracles_qfee__query_tx_value_below_qfee_errs__remote/1
-        , sophia_oracles_qfee__remote_contract_query_value_below_qfee_errs__remote/1
+        , sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__remote/1
+        , sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_rich_oracle_thanks_to_contract_check__remote/1
+        , sophia_oracles_qfee__remote_contract_query_value_below_qfee_takes_from_rich_oracle__remote/1
+        , sophia_oracles_qfee__remote_contract_query_value_below_qfee_does_not_take_from_rich_oracle_thanks_to_contract_check__remote/1
         , sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__remote/1
         , sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__remote/1
         , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__remote/1
@@ -91,8 +96,11 @@ groups() ->
     , {sophia_oracles_fees, [],
        [ %% Test query fee handling from txs calling contract that calls oracle builtins.
          sophia_oracles_qfee__basic
-       , sophia_oracles_qfee__query_tx_value_below_qfee_errs
-       , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_not_taken_from_oracle
+       , sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle
+       , sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_rich_oracle_thanks_to_contract_check
+       , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_taken_from_rich_oracle
+       , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_not_taken_from_poor_oracle
+       , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_not_taken_from_rich_oracle_thanks_to_contract_check
        , sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs
        , sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle
        , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle
@@ -100,8 +108,10 @@ groups() ->
     , {sophia_oracles_fees_remote, [],
        [ %% Test query fee handling from txs calling contract that calls contract that calls oracle builtins.
          sophia_oracles_qfee__basic__remote
-       , sophia_oracles_qfee__query_tx_value_below_qfee_errs__remote
-       , sophia_oracles_qfee__remote_contract_query_value_below_qfee_errs__remote
+       , sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__remote
+       , sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_rich_oracle_thanks_to_contract_check__remote
+       , sophia_oracles_qfee__remote_contract_query_value_below_qfee_takes_from_rich_oracle__remote
+       , sophia_oracles_qfee__remote_contract_query_value_below_qfee_does_not_take_from_rich_oracle_thanks_to_contract_check__remote
        , sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__remote
        , sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__remote
        , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__remote
@@ -631,14 +641,22 @@ oracle_register_from_remote_contract(OperatorAcc, RCt, OCt, Opts, TxOpts, S) ->
     {ok, S1}.
 
 oracle_query_from_contract(UserAcc, OCt, OCt, Opts, TxOpts, S) ->
+    oracle_query_from_contract_(createQuery, UserAcc, OCt, OCt, Opts, TxOpts, S).
+oracle_unsafe_query_from_contract(UserAcc, OCt, OCt, Opts, TxOpts, S) ->
+    oracle_query_from_contract_(unsafeCreateQuery, UserAcc, OCt, OCt, Opts, TxOpts, S).
+oracle_query_from_contract_(Fun, UserAcc, OCt, OCt, Opts, TxOpts, S) ->
     QueryFee = maps:get(qfee, Opts),
     Question = maps:get(question, Opts, <<"why?">>),
     ?assertMatch(_ when is_binary(Question), Question),
     QTtl = maps:get(qttl, Opts, 5),
     RTtl = maps:get(rttl, Opts, 5),
-    call_contract(UserAcc, OCt, createQuery, word, {OCt, Question, QueryFee, QTtl, RTtl}, TxOpts, S).
+    call_contract(UserAcc, OCt, Fun, word, {OCt, Question, QueryFee, QTtl, RTtl}, TxOpts, S).
 
 oracle_query_from_remote_contract(UserAcc, RCt, OCt, Opts, TxOpts, S) ->
+    oracle_query_from_remote_contract_(callCreateQuery, UserAcc, RCt, OCt, Opts, TxOpts, S).
+oracle_unsafe_query_from_remote_contract(UserAcc, RCt, OCt, Opts, TxOpts, S) ->
+    oracle_query_from_remote_contract_(callUnsafeCreateQuery, UserAcc, RCt, OCt, Opts, TxOpts, S).
+oracle_query_from_remote_contract_(Fun, UserAcc, RCt, OCt, Opts, TxOpts, S) ->
     QueryFee = maps:get(qfee, Opts),
     Question = maps:get(question, Opts, <<"why?">>),
     QTtl = maps:get(qttl, Opts, 5),
@@ -647,7 +665,7 @@ oracle_query_from_remote_contract(UserAcc, RCt, OCt, Opts, TxOpts, S) ->
                 {ok, V} -> V;
                 error -> maps:get(amount, TxOpts)
             end,
-    call_contract(UserAcc, RCt, callCreateQuery, word, {OCt, Value, OCt, Question, QueryFee, QTtl, RTtl}, TxOpts, S).
+    call_contract(UserAcc, RCt, Fun, word, {OCt, Value, OCt, Question, QueryFee, QTtl, RTtl}, TxOpts, S).
 
 oracle_check_and_respond_from_contract(OperatorAcc, OCt, OCt, QueryId, Opts, TxOpts, S) ->
     ?assertMatch({Question, _} when is_binary(Question), call_contract(OperatorAcc, OCt, getQuestion, string, {OCt, QueryId}, S)),
@@ -666,20 +684,22 @@ oracle_check_and_respond_from_remote_contract(OperatorAcc, RCt, OCt, QueryId, Op
 
 -record(oracle_cbs, {init, register, query, respond}).
 %%
--define(ORACLE_CBS,
+-define(ORACLE_SAFE_CBS,
         #oracle_cbs{
            init = fun oracle_init_from_contract/3,
            register = fun oracle_register_from_contract/6,
            query = fun oracle_query_from_contract/6,
            respond = fun oracle_check_and_respond_from_contract/7
           }).
--define(ORACLE_REMOTE_CBS,
+-define(ORACLE_UNSAFE_CBS, ?ORACLE_SAFE_CBS#oracle_cbs{query = fun oracle_unsafe_query_from_contract/6}).
+-define(ORACLE_SAFE_REMOTE_CBS,
         #oracle_cbs{
            init = fun oracle_init_from_remote_contract/3,
            register = fun oracle_register_from_remote_contract/6,
            query = fun oracle_query_from_remote_contract/6,
            respond = fun oracle_check_and_respond_from_remote_contract/7
           }).
+-define(ORACLE_UNSAFE_REMOTE_CBS, ?ORACLE_SAFE_REMOTE_CBS#oracle_cbs{query = fun oracle_unsafe_query_from_remote_contract/6}).
 %%
 closed_oracle_cbs(Cbs,
                   OperatorAcc, UserAcc,
@@ -806,7 +826,7 @@ sophia_oracles_qfee__basic(_Cfg) ->
       S1, %% State after oracle registration.
       S2] %% State after query.
     } = sophia_oracles_qfee__flow_up_to_respond_(
-          ?ORACLE_CBS,
+          ?ORACLE_UNSAFE_CBS, %% Safe or unsafe query does not matter here.
           TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
           RespondOpts),
     S3 = state(),
@@ -839,7 +859,7 @@ sophia_oracles_qfee__basic__remote(_Cfg) ->
       S1, %% State after oracle registration.
       S2] %% State after query.
     } = sophia_oracles_qfee__flow_up_to_respond_(
-          ?ORACLE_REMOTE_CBS,
+          ?ORACLE_UNSAFE_REMOTE_CBS, %% Safe or unsafe query does not matter here.
           TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
           RespondOpts),
     S3 = state(),
@@ -861,17 +881,44 @@ sophia_oracles_qfee__basic__remote(_Cfg) ->
     ?assertEqual(Bal(CallingCt, S2)                 , Bal(CallingCt, S3)),
     ?assertEqual(Bal(UserAcc, S2)                   , Bal(UserAcc, S3)).
 
-%% Tx value specified when creating query less than query fee.
-sophia_oracles_qfee__query_tx_value_below_qfee_errs__data_() ->
+%% Attempt to create query with call tx value smaller than query fee
+%% uses oracle contract balance: oracle contract should implement
+%% safety mechanism.
+sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_() ->
+    ValueLack = 1,
     RegisterTxQFee = 100,
-    {_InitialOracleCtBalance = 0,
+    {_InitialOracleCtBalance = 10 + ValueLack,
      RegisterTxQFee,
-     _QueryTxValue = RegisterTxQFee - 1,
+     _QueryTxValue = RegisterTxQFee - ValueLack,
      _QueryTxQFee = RegisterTxQFee}.
 %%
-sophia_oracles_qfee__query_tx_value_below_qfee_errs(_Cfg) ->
+sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
-        sophia_oracles_qfee__query_tx_value_below_qfee_errs__data_(),
+        sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
+
+    TxFee = 2,
+    RegisterOpts = #{qfee => RegisterTxQFee},
+    QueryOpts = #{qfee => QueryTxQFee},
+    RespondOpts = #{},
+    {{OperatorAcc, UserAcc},
+     {OracleAcc, OracleAcc = _CallingCt},
+     [_S0, %% State before oracle registration.
+      S1, %% State after oracle registration.
+      S2] %% State after query.
+    } = sophia_oracles_qfee__flow_up_to_respond_(
+          ?ORACLE_UNSAFE_CBS, %% Unsafe query.
+          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
+          RespondOpts),
+
+    Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
+
+    ?assertEqual(Bal(OperatorAcc, S1)                             , Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1) - (QueryTxQFee - QueryTxValue), Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue)        , Bal(UserAcc, S2)).
+%%
+sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_rich_oracle_thanks_to_contract_check(_Cfg) ->
+    {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
+        sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
 
     TxFee = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
@@ -881,7 +928,7 @@ sophia_oracles_qfee__query_tx_value_below_qfee_errs(_Cfg) ->
      [_S0, %% State before oracle registration.
       S1] %% State after oracle registration.
     } = sophia_oracles_qfee__flow_up_to_query_(
-          ?ORACLE_CBS,
+          ?ORACLE_SAFE_CBS, %% Safe query.
           TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
     S2 = state(),
 
@@ -891,9 +938,34 @@ sophia_oracles_qfee__query_tx_value_below_qfee_errs(_Cfg) ->
     ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue        , Bal(OracleAcc, S2)),
     ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)).
 %%
-sophia_oracles_qfee__query_tx_value_below_qfee_errs__remote(_Cfg) ->
+sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__remote(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
-        sophia_oracles_qfee__query_tx_value_below_qfee_errs__data_(),
+        sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
+
+    TxFee = 2,
+    RegisterOpts = #{qfee => RegisterTxQFee},
+    QueryOpts = #{qfee => QueryTxQFee},
+    RespondOpts = #{},
+    {{OperatorAcc, UserAcc},
+     {OracleAcc, CallingCt},
+     [_S0, %% State before oracle registration.
+      S1, %% State after oracle registration.
+      S2] %% State after query.
+    } = sophia_oracles_qfee__flow_up_to_respond_(
+          ?ORACLE_UNSAFE_REMOTE_CBS, %% Unsafe query.
+          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
+          RespondOpts),
+
+    Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
+
+    ?assertEqual(Bal(OperatorAcc, S1)                             , Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1) - (QueryTxQFee - QueryTxValue), Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(CallingCt, S1)                               , Bal(CallingCt, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue)        , Bal(UserAcc, S2)).
+%%
+sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_rich_oracle_thanks_to_contract_check__remote(_Cfg) ->
+    {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
+        sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
 
     TxFee = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
@@ -903,20 +975,47 @@ sophia_oracles_qfee__query_tx_value_below_qfee_errs__remote(_Cfg) ->
      [_S0, %% State before oracle registration.
       S1] %% State after oracle registration.
     } = sophia_oracles_qfee__flow_up_to_query_(
-          ?ORACLE_REMOTE_CBS,
+          ?ORACLE_SAFE_REMOTE_CBS, %% Safe query.
           TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
     S2 = state(),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
     ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1)                       , Bal(OracleAcc, S2)), %% TODO Shall QueryTxValue be assigned to oracle account rather than to calling contract?
+    ?assertEqual(Bal(OracleAcc, S1)                       , Bal(OracleAcc, S2)),
     ?assertEqual(Bal(CallingCt, S1) + QueryTxValue        , Bal(CallingCt, S2)),
     ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)).
 %%
-sophia_oracles_qfee__remote_contract_query_value_below_qfee_errs__remote(_Cfg) ->
+sophia_oracles_qfee__remote_contract_query_value_below_qfee_takes_from_rich_oracle__remote(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue0, QueryTxQFee} =
-        sophia_oracles_qfee__query_tx_value_below_qfee_errs__data_(),
+        sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
+    QueryTxValue = RegisterTxQFee,
+    QueryRemoteCtValue = QueryTxValue0,
+
+    TxFee = 2,
+    RegisterOpts = #{qfee => RegisterTxQFee},
+    QueryOpts = #{qfee => QueryTxQFee, remote_value => QueryRemoteCtValue},
+    RespondOpts = #{},
+    {{OperatorAcc, UserAcc},
+     {OracleAcc, CallingCt},
+     [_S0, %% State before oracle registration.
+      S1, %% State after oracle registration.
+      S2] %% State after query.
+    } = sophia_oracles_qfee__flow_up_to_respond_(
+          ?ORACLE_UNSAFE_REMOTE_CBS, %% Unsafe query.
+          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
+          RespondOpts),
+
+    Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
+
+    ?assertEqual(Bal(OperatorAcc, S1)                                    , Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1) - (QueryTxValue - QueryRemoteCtValue), Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(CallingCt, S1) + (QueryTxValue - QueryRemoteCtValue), Bal(CallingCt, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue)               , Bal(UserAcc, S2)).
+%%
+sophia_oracles_qfee__remote_contract_query_value_below_qfee_does_not_take_from_rich_oracle_thanks_to_contract_check__remote(_Cfg) ->
+    {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue0, QueryTxQFee} =
+        sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
     QueryTxValue = RegisterTxQFee,
     QueryRemoteCtValue = QueryTxValue0,
 
@@ -928,7 +1027,7 @@ sophia_oracles_qfee__remote_contract_query_value_below_qfee_errs__remote(_Cfg) -
      [_S0, %% State before oracle registration.
       S1] %% State after oracle registration.
     } = sophia_oracles_qfee__flow_up_to_query_(
-          ?ORACLE_REMOTE_CBS,
+          ?ORACLE_SAFE_REMOTE_CBS, %% Safe query.
           TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
     S2 = state(),
 
@@ -939,15 +1038,46 @@ sophia_oracles_qfee__remote_contract_query_value_below_qfee_errs__remote(_Cfg) -
     ?assertEqual(Bal(CallingCt, S1) + QueryTxValue        , Bal(CallingCt, S2)),
     ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)).
 
-%% Excessive query fee not covered by call tx value does not use
-%% contract balance.
-sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_not_taken_from_oracle(_Cfg) ->
+%% Attempt to create query with query fee larger than the one
+%% requested by the oracle but not covered by call tx value uses
+%% oracle contract balance: oracle contract should implement safety
+%% mechanism.
+sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_taken_from_rich_oracle__data_() ->
     QFeeExcess = 1,
-
-    InitialOracleCtBalance = 10 + QFeeExcess,
     RegisterTxQFee = 100,
-    QueryTxValue = RegisterTxQFee,
-    QueryTxQFee = QFeeExcess + RegisterTxQFee,
+    {_InitialOracleCtBalance = 10 + QFeeExcess,
+     RegisterTxQFee,
+     _QueryTxValue = RegisterTxQFee,
+     _QueryTxQFee = QFeeExcess + RegisterTxQFee}.
+%%%
+sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_taken_from_rich_oracle(_Cfg) ->
+    {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
+        sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_taken_from_rich_oracle__data_(),
+
+    TxFee = 2,
+    RegisterOpts = #{qfee => RegisterTxQFee},
+    QueryOpts = #{qfee => QueryTxQFee},
+    RespondOpts = #{},
+    {{OperatorAcc, UserAcc},
+     {OracleAcc, OracleAcc = _CallingCt},
+     [_S0, %% State before oracle registration.
+      S1, %% State after oracle registration.
+      S2] %% State after query.
+    } = sophia_oracles_qfee__flow_up_to_respond_(
+          ?ORACLE_UNSAFE_CBS, %% Unsafe query.
+          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
+          RespondOpts),
+
+    Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
+
+    ?assertEqual(Bal(OperatorAcc, S1)                               , Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1) - (QueryTxQFee - RegisterTxQFee), Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue)          , Bal(UserAcc, S2)).
+%%%
+sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_not_taken_from_poor_oracle(_Cfg) ->
+    {_InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
+        sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_taken_from_rich_oracle__data_(),
+    InitialOracleCtBalance = 0,
 
     TxFee = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
@@ -957,18 +1087,46 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_not_taken_from_oracle
      [_S0, %% State before oracle registration.
       S1] %% State after oracle registration.
     } = sophia_oracles_qfee__flow_up_to_query_(
-          ?ORACLE_CBS,
+          ?ORACLE_UNSAFE_CBS, %% Unsafe query.
           TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
     S2 = state(),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(OperatorAcc, S1)                       , Bal(OperatorAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1) + RegisterTxQFee        , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + RegisterTxQFee), Bal(UserAcc, S2)).
+    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue        , Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)).
+%%%
+sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_not_taken_from_rich_oracle_thanks_to_contract_check(_Cfg) ->
+    {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
+        sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_taken_from_rich_oracle__data_(),
 
-%% User attempting to create query with query fee smaller than the one
-%% requested by the oracle.
+    TxFee = 2,
+    RegisterOpts = #{qfee => RegisterTxQFee},
+    QueryOpts = #{qfee => QueryTxQFee},
+    {{OperatorAcc, UserAcc},
+     {OracleAcc, OracleAcc = _CallingCt},
+     [_S0, %% State before oracle registration.
+      S1] %% State after oracle registration.
+    } = sophia_oracles_qfee__flow_up_to_query_(
+          ?ORACLE_SAFE_CBS, %% Safe query.
+          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
+    S2 = state(),
+
+    Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
+
+    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue        , Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)).
+
+%% Attempt to create query with query fee smaller than the one
+%% requested by the oracle fails.
+%%
+%% Call tx value is assigned to recipient of (i.e. first contract
+%% called from) query call tx.
+%%
+%% TODO Review assignee - if anyone - of tx value on (create and?) call tx in cases of outer and inner exceptional halting.
+%% TODO Review VM call exceptional halting, specifically 1 or 0 returned by CALL opcode.
 sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__data_() ->
     RegisterTxQFee = 100,
     QueryTxQFee = RegisterTxQFee - 1,
@@ -989,7 +1147,7 @@ sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs(_Cfg) ->
      [_S0, %% State before oracle registration.
       S1] %% State after oracle registration.
     } = sophia_oracles_qfee__flow_up_to_query_(
-          ?ORACLE_CBS,
+          ?ORACLE_UNSAFE_CBS, %% Safe or unsafe query does not matter here.
           TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
     S2 = state(),
 
@@ -1011,7 +1169,7 @@ sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__remote(_Cfg) ->
      [_S0, %% State before oracle registration.
       S1] %% State after oracle registration.
     } = sophia_oracles_qfee__flow_up_to_query_(
-          ?ORACLE_REMOTE_CBS,
+          ?ORACLE_UNSAFE_REMOTE_CBS, %% Safe or unsafe query does not matter here.
           TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
     S2 = state(),
 
@@ -1022,8 +1180,8 @@ sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__remote(_Cfg) ->
     ?assertEqual(Bal(CallingCt, S1) + QueryTxValue        , Bal(CallingCt, S2)),
     ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)).
 
-%% Call tx value in excess of query fee specified in same query tx
-%% ends up in oracle contract.
+%% Call tx value in excess of query fee specified in same query call
+%% tx ends up in oracle contract (at query creation).
 sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__data_() ->
     QFeeExcess = 1,
     RegisterTxQFee = 100,
@@ -1046,20 +1204,20 @@ sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle(_Cfg) ->
       S1, %% State after oracle registration.
       S2] %% State after query.
     } = sophia_oracles_qfee__flow_up_to_respond_(
-          ?ORACLE_CBS,
+          ?ORACLE_UNSAFE_CBS, %% Safe or unsafe query does not matter here.
           TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
           RespondOpts),
     S3 = state(),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue)           , Bal(UserAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1) + (QueryTxValue - RegisterTxQFee), Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(OperatorAcc, S1)                                , Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue)        , Bal(UserAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1) + (QueryTxValue - QueryTxQFee), Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(OperatorAcc, S1)                             , Bal(OperatorAcc, S2)),
 
-    ?assertEqual(Bal(UserAcc, S2)                   , Bal(UserAcc, S3)),
-    ?assertEqual(Bal(OracleAcc, S2) + RegisterTxQFee, Bal(OracleAcc, S3)),
-    ?assertEqual(Bal(OperatorAcc, S2) - TxFee       , Bal(OperatorAcc, S3)).
+    ?assertEqual(Bal(UserAcc, S2)                , Bal(UserAcc, S3)),
+    ?assertEqual(Bal(OracleAcc, S2) + QueryTxQFee, Bal(OracleAcc, S3)),
+    ?assertEqual(Bal(OperatorAcc, S2) - TxFee    , Bal(OperatorAcc, S3)).
 %%
 sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__remote(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
@@ -1075,25 +1233,25 @@ sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__remote(_
       S1, %% State after oracle registration.
       S2] %% State after query.
     } = sophia_oracles_qfee__flow_up_to_respond_(
-          ?ORACLE_REMOTE_CBS,
+          ?ORACLE_UNSAFE_REMOTE_CBS, %% Safe or unsafe query does not matter here.
           TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
           RespondOpts),
     S3 = state(),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue)           , Bal(UserAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1) + (QueryTxValue - RegisterTxQFee), Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(CallingCt, S1)                                  , Bal(CallingCt, S2)),
-    ?assertEqual(Bal(OperatorAcc, S1)                                , Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue)        , Bal(UserAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1) + (QueryTxValue - QueryTxQFee), Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(CallingCt, S1)                               , Bal(CallingCt, S2)),
+    ?assertEqual(Bal(OperatorAcc, S1)                             , Bal(OperatorAcc, S2)),
 
-    ?assertEqual(Bal(UserAcc, S2)                   , Bal(UserAcc, S3)),
-    ?assertEqual(Bal(OracleAcc, S2) + RegisterTxQFee, Bal(OracleAcc, S3)),
-    ?assertEqual(Bal(CallingCt, S2)                 , Bal(CallingCt, S3)),
-    ?assertEqual(Bal(OperatorAcc, S2) - TxFee       , Bal(OperatorAcc, S3)).
+    ?assertEqual(Bal(UserAcc, S2)                , Bal(UserAcc, S3)),
+    ?assertEqual(Bal(OracleAcc, S2) + QueryTxQFee, Bal(OracleAcc, S3)),
+    ?assertEqual(Bal(CallingCt, S2)              , Bal(CallingCt, S3)),
+    ?assertEqual(Bal(OperatorAcc, S2) - TxFee    , Bal(OperatorAcc, S3)).
 
 %% Excessive query fee (covered by call tx value) is awarded to oracle
-%% contract.
+%% contract after respond.
 sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__data_() ->
     QFeeExcess = 1,
     RegisterTxQFee = 100,
@@ -1117,7 +1275,7 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle(_Cf
       S1, %% State after oracle registration.
       S2] %% State after query.
     } = sophia_oracles_qfee__flow_up_to_respond_(
-          ?ORACLE_CBS,
+          ?ORACLE_UNSAFE_CBS, %% Safe or unsafe query does not matter here.
           TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
           RespondOpts),
     S3 = state(),
@@ -1146,7 +1304,7 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__re
       S1, %% State after oracle registration.
       S2] %% State after query.
     } = sophia_oracles_qfee__flow_up_to_respond_(
-          ?ORACLE_REMOTE_CBS,
+          ?ORACLE_UNSAFE_REMOTE_CBS, %% Safe or unsafe query does not matter here.
           TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
           RespondOpts),
     S3 = state(),
