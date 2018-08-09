@@ -31,6 +31,7 @@
         , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle/1
         , sophia_oracles_qfee__basic__remote/1
         , sophia_oracles_qfee__query_tx_value_below_qfee_errs__remote/1
+        , sophia_oracles_qfee__remote_contract_query_value_below_qfee_errs__remote/1
         , sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__remote/1
         , sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__remote/1
         , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__remote/1
@@ -100,6 +101,7 @@ groups() ->
        [ %% Test query fee handling from txs calling contract that calls contract that calls oracle builtins.
          sophia_oracles_qfee__basic__remote
        , sophia_oracles_qfee__query_tx_value_below_qfee_errs__remote
+       , sophia_oracles_qfee__remote_contract_query_value_below_qfee_errs__remote
        , sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__remote
        , sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__remote
        , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__remote
@@ -641,7 +643,10 @@ oracle_query_from_remote_contract(UserAcc, RCt, OCt, Opts, TxOpts, S) ->
     Question = maps:get(question, Opts, <<"why?">>),
     QTtl = maps:get(qttl, Opts, 5),
     RTtl = maps:get(rttl, Opts, 5),
-    Value = maps:get(amount, TxOpts), %% TODO Enable specifying it from Opts for more advanced test cases.
+    Value = case maps:find(remote_value, Opts) of
+                {ok, V} -> V;
+                error -> maps:get(amount, TxOpts)
+            end,
     call_contract(UserAcc, RCt, callCreateQuery, word, {OCt, Value, OCt, Question, QueryFee, QTtl, RTtl}, TxOpts, S).
 
 oracle_check_and_respond_from_contract(OperatorAcc, OCt, OCt, QueryId, Opts, TxOpts, S) ->
@@ -908,7 +913,31 @@ sophia_oracles_qfee__query_tx_value_below_qfee_errs__remote(_Cfg) ->
     ?assertEqual(Bal(OracleAcc, S1)                       , Bal(OracleAcc, S2)), %% TODO Shall QueryTxValue be assigned to oracle account rather than to calling contract?
     ?assertEqual(Bal(CallingCt, S1) + QueryTxValue        , Bal(CallingCt, S2)),
     ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)).
-%% TODO Test case of enough value in outer tx though value in bridge contract below qfee.
+%%
+sophia_oracles_qfee__remote_contract_query_value_below_qfee_errs__remote(_Cfg) ->
+    {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue0, QueryTxQFee} =
+        sophia_oracles_qfee__query_tx_value_below_qfee_errs__data_(),
+    QueryTxValue = RegisterTxQFee,
+    QueryRemoteCtValue = QueryTxValue0,
+
+    TxFee = 2,
+    RegisterOpts = #{qfee => RegisterTxQFee},
+    QueryOpts = #{qfee => QueryTxQFee, remote_value => QueryRemoteCtValue},
+    {{OperatorAcc, UserAcc},
+     {OracleAcc, CallingCt},
+     [_S0, %% State before oracle registration.
+      S1] %% State after oracle registration.
+    } = sophia_oracles_qfee__flow_up_to_query_(
+          ?ORACLE_REMOTE_CBS,
+          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
+    S2 = state(),
+
+    Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
+
+    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1)                       , Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(CallingCt, S1) + QueryTxValue        , Bal(CallingCt, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)).
 
 %% Excessive query fee not covered by call tx value does not use
 %% contract balance.
