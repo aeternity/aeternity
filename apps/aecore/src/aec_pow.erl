@@ -10,6 +10,7 @@
          pick_nonce/0,
          next_nonce/1,
          target_to_difficulty/1,
+         engine/0,
 
          scientific_to_integer/1,
          integer_to_scientific/1]).
@@ -22,11 +23,15 @@
 
 %% 10^24, approx. 2^80
 -define(NONCE_RANGE, 1000000000000000000000000).
--define(POW_MODULE, aec_pow_cuckoo).
+-define(DEFAULT_POW_ENGINE, aec_pow_cuckoo).
 
 %% 0..?MAX_NONCE
 -type nonce() :: 0..16#ffffffffffffffff.
 -export_type([nonce/0]).
+
+-type engine() :: aec_pow_cuckoo |
+                  aec_pow_test.
+-export_type([engine/0]).
 
 %%------------------------------------------------------------------------------
 %%                      Target threshold and difficulty
@@ -131,6 +136,12 @@ pick_nonce() ->
 -spec next_nonce(aec_pow:nonce()) -> aec_pow:nonce().
 next_nonce(N) ->
     (N + 1) band ?MAX_NONCE.
+
+-spec engine() -> aec_pow:engine().
+engine() ->
+    aeu_env:user_config_or_env([<<"mining">>, <<"engine">>],
+                               aecore, engine,
+                               ?DEFAULT_POW_ENGINE).
 
 %%------------------------------------------------------------------------------
 %% Test if binary is under the target threshold

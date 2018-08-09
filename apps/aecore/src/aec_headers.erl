@@ -265,7 +265,8 @@ validate_pow({#header{nonce        = Nonce,
     %% got hashed.
     Header1 = Header#header{nonce = 0, pow_evidence = no_value},
     HeaderBinary = serialize_to_binary(Header1),
-    case aec_pow_cuckoo:verify(HeaderBinary, Nonce, Evd, Target) of
+    Engine = aec_pow:engine(),
+    case Engine:verify(HeaderBinary, Nonce, Evd, Target) of
         true ->
             ok;
         false ->
