@@ -633,14 +633,14 @@ oracle_query_from_contract(UserAcc, OCt, OCt, Opts, TxOpts, S) ->
     Question = maps:get(question, Opts, <<"why?">>),
     ?assertMatch(_ when is_binary(Question), Question),
     QTtl = maps:get(qttl, Opts, 5),
-    RTtl = maps:get(tttl, Opts, 5),
+    RTtl = maps:get(rttl, Opts, 5),
     call_contract(UserAcc, OCt, createQuery, word, {OCt, Question, QueryFee, QTtl, RTtl}, TxOpts, S).
 
 oracle_query_from_remote_contract(UserAcc, RCt, OCt, Opts, TxOpts, S) ->
     QueryFee = maps:get(qfee, Opts),
     Question = maps:get(question, Opts, <<"why?">>),
     QTtl = maps:get(qttl, Opts, 5),
-    RTtl = maps:get(tttl, Opts, 5),
+    RTtl = maps:get(rttl, Opts, 5),
     Value = maps:get(amount, TxOpts), %% TODO Enable specifying it from Opts for more advanced test cases.
     call_contract(UserAcc, RCt, callCreateQuery, word, {OCt, Value, OCt, Question, QueryFee, QTtl, RTtl}, TxOpts, S).
 
