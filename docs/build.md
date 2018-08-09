@@ -48,7 +48,7 @@ curl -fsSL -o libsodium-src.tar.gz "$LIBSODIUM_DOWNLOAD_URL" \
 && cd libsodium-src \
 && ./configure && make -j$(nproc) \
 && sudo make install \
-&& sudo ldconfig
+&& sudo ldconfig \
 && cd ..
 ```
 
