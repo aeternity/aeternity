@@ -254,8 +254,7 @@
     ws_block_mined/1,
     ws_micro_block_added/1,
     ws_refused_on_limit_reached/1,
-    ws_tx_on_chain/1,
-    ws_oracles/1
+    ws_tx_on_chain/1
    ]).
 
 %% channel websocket endpoints
@@ -623,8 +622,7 @@ groups() ->
        ws_block_mined,
        ws_micro_block_added,
        ws_refused_on_limit_reached,
-       ws_tx_on_chain,
-       ws_oracles
+       ws_tx_on_chain
       ]},
      {channel_websocket, [sequence],
       [sc_ws_timeout_open,
@@ -4019,17 +4017,8 @@ ws_tx_on_chain(_Config) ->
     %% Fetch the pubkey via HTTP
     {ok, 200, #{ <<"pub_key">> := PK }} = get_miner_pub_key(),
 
-    %% Register an oracle
-    RegisterData =
-        #{ type => 'OracleRegisterTxObject',
-           account => PK,
-           query_format => <<"the query spec">>,
-           response_format => <<"the response spec">>,
-           query_fee => 4,
-           oracle_ttl => #{ type => delta, value => 500 },
-           fee => 5 },
-    #{<<"result">> := <<"ok">>,
-      <<"tx_hash">> := TxHash } = ws_do_request(ConnPid, oracle, register, RegisterData),
+    %% Post spend tx
+    {ok, 200, #{<<"tx_hash">> := TxHash}} = post_spend_tx(random_hash(), 3, 1),
 
     %% Subscribe for an event once the Tx goes onto the chain...
     ws_subscribe(ConnPid, #{ type => tx, tx_hash => TxHash }),
@@ -4043,82 +4032,6 @@ ws_tx_on_chain(_Config) ->
     ok = aehttp_ws_test_utils:stop(ConnPid),
     ok.
 
-ws_oracles(_Config) ->
-    {ok, ConnPid} = ws_start_link(),
-
-    %% Register for events when a block is mined!
-    ws_subscribe(ConnPid, #{ type => mined_block }),
-
-    %% Mine a block to make sure the Pubkey has some funds!
-    ws_mine_key_block(ConnPid, ?NODE, 2),
-
-    %% Fetch the pubkey via HTTP
-    {ok, 200, #{ <<"pub_key">> := PK }} = get_miner_pub_key(),
-
-    %% The account is already an oracle from an earlier test case.
-    {account_pubkey, ActualPK} = aec_base58c:decode(PK),
-    OId = aec_base58c:encode(oracle_pubkey, ActualPK),
-
-    %% Mine a block to get the oracle onto the chain
-    ws_mine_key_block(ConnPid, ?NODE, 1),
-
-    %% Register for events when the freshly registered oracle is queried!
-    ws_subscribe(ConnPid, #{ type => oracle_query, oracle_id => OId }),
-    ok = ?WS:register_test_for_event(ConnPid, chain, new_oracle_query),
-
-    %% Post a query
-    QueryData =
-        #{ type => 'OracleQueryTxObject',
-           oracle_pubkey => OId,
-           query_ttl => #{ type => delta, value => 10 },
-           response_ttl => #{ type => delta, value => 10 },
-           query => <<"How are you doing?">>,
-           query_fee => 4,
-           fee => 7 },
-    #{<<"result">> := <<"ok">>,
-      <<"query_id">> := QId } = ws_do_request(ConnPid, oracle, query, QueryData),
-
-    %% Mine a block and check that an event is receieved corresponding to
-    %% the query.
-    ws_mine_key_block(ConnPid, ?NODE, 2),
-    {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(ConnPid, chain, new_oracle_query),
-
-    %% Subscribe to responses to the query.
-    ws_subscribe(ConnPid, #{ type => oracle_response, query_id => QId }),
-    ok = ?WS:register_test_for_event(ConnPid, chain, new_oracle_response),
-
-    %% Post a response to the query
-    ResponseData = #{ type => 'OracleResponseTxObject',
-                      query_id => QId,
-                      response => <<"I am fine, thank you!">>,
-                      fee => 3 },
-    #{<<"result">> := <<"ok">>,
-      <<"query_id">> := QId } = ws_do_request(ConnPid, oracle, response, ResponseData),
-
-    %% Mine a block and check that an event is received
-    ws_mine_key_block(ConnPid, ?NODE, 2),
-    {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(ConnPid, chain, new_oracle_response),
-
-    %% Check that we can extend the oracle TTL
-    ExtendData =
-        #{ type => 'OracleExtendTxObject',
-           oracle => OId,
-           oracle_ttl => #{ type => delta, value => 50 },
-           fee => 2 },
-    #{<<"result">> := <<"ok">>,
-      <<"tx_hash">> := ExtendTxHash,
-      <<"oracle_id">> := OId } = ws_do_request(ConnPid, oracle, extend, ExtendData),
-
-    %% Subscribe for an event once the Tx goes onto the chain...
-    ws_subscribe(ConnPid, #{ type => tx, tx_hash => ExtendTxHash }),
-    ok = ?WS:register_test_for_event(ConnPid, chain, tx_chain),
-
-    %% Mine a block and check that the extend tx made it onto the chain
-    ws_mine_key_block(ConnPid, ?NODE, 2),
-    {ok, #{<<"tx_hash">> := ExtendTxHash }} = ?WS:wait_for_event(ConnPid, chain, tx_chain),
-
-    ok = aehttp_ws_test_utils:stop(ConnPid),
-    ok.
 %%
 %% Channels
 %%
@@ -5117,13 +5030,6 @@ peers(_Config) ->
 %% ============================================================
 %% WebSocket helpers
 %% ============================================================
-
-ws_do_request(ConnPid, Target, Action, Args) ->
-    ok = ?WS:register_test_for_event(ConnPid, Target, Action),
-    ?WS:send(ConnPid, Target, Action, Args),
-    {ok, _, Res} = ?WS:wait_for_event(ConnPid, Target, Action),
-    ok = ?WS:unregister_test_for_event(ConnPid, Target, Action),
-    Res.
 
 ws_subscribe(ConnPid, PayLoad) ->
     ok = ?WS:register_test_for_event(ConnPid, chain, subscribe),

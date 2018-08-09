@@ -61,14 +61,6 @@ do_execute(chain, SubUnSub, SubscribeData)
         #{<<"type">> := SubType, <<"ws_pid">> := WsPid} = SubscribeData,
         Event =
             case SubType of
-                <<"oracle_query">> ->
-                    #{<<"oracle_id">> := EncodedOId} = SubscribeData,
-                    {ok, OId} = aec_base58c:safe_decode(oracle_pubkey, EncodedOId),
-                    {oracle, {query, OId}};
-                <<"oracle_response">> ->
-                    #{<<"query_id">> := EncodedQId} = SubscribeData,
-                    {ok, QId} = aec_base58c:safe_decode(oracle_query_id, EncodedQId),
-                    {oracle, {response, QId}};
                 <<"mined_block">> ->
                     {chain, mined_block};
                 <<"added_micro_block">> ->
@@ -87,58 +79,6 @@ do_execute(chain, SubUnSub, SubscribeData)
         {ok, chain, SubUnSub, [{result, ok}, {subscribed_to, maps:remove(<<"ws_pid">>, SubscribeData)}]}
     catch _:_ ->
         {error, <<"Bad subscription request">>}
-    end;
-do_execute(oracle, register, RegisterData) ->
-    try
-        case aehttp_dispatch_int:handle_request('PostOracleRegisterTx',
-                                                #{'OracleRegisterTx' => RegisterData},
-                                                #{}) of
-            {200, _, #{oracle_id := OId, tx_hash := TxHash}} ->
-                {ok, oracle, register, [{result, ok}, {oracle_id, OId}, {tx_hash, TxHash}]};
-            {_, _, #{reason := Reason}} ->
-                {error, Reason}
-        end
-    catch _:_ ->
-        {error, <<"Bad Oracle register request">>}
-    end;
-do_execute(oracle, extend, ExtendData) ->
-    try
-        case aehttp_dispatch_int:handle_request('PostOracleExtendTx',
-                                                #{'OracleExtendTx' => ExtendData},
-                                                #{}) of
-            {200, _, #{oracle_id := OId, tx_hash := TxHash}} ->
-                {ok, oracle, extend, [{result, ok}, {oracle_id, OId}, {tx_hash, TxHash}]};
-            {_, _, #{reason := Reason}} ->
-                {error, Reason}
-        end
-    catch _:_ ->
-        {error, <<"Bad Oracle extend request">>}
-    end;
-do_execute(oracle, query, QueryData) ->
-    try
-        case aehttp_dispatch_int:handle_request('PostOracleQueryTx',
-                                                #{'OracleQueryTx' => QueryData},
-                                                #{}) of
-            {200, _, #{query_id := QId, tx_hash := TxHash}} ->
-                {ok, oracle, query, [{result, ok}, {query_id, QId}, {tx_hash, TxHash}]};
-            {_, _, #{reason := Reason}} ->
-                {error, Reason}
-        end
-    catch _:_ ->
-        {error, <<"Bad Oracle query request">>}
-    end;
-do_execute(oracle, response, ResponseData) ->
-    try
-        case aehttp_dispatch_int:handle_request('PostOracleResponseTx',
-                                                #{'OracleResponseTx' => ResponseData},
-                                                #{}) of
-            {200, _, #{query_id := QId, tx_hash := TxHash}} ->
-                {ok, oracle, response, [{result, ok}, {query_id, QId}, {tx_hash, TxHash}]};
-            {_, _, #{reason := Reason}} ->
-                {error, Reason}
-        end
-    catch _:_ ->
-        {error, <<"Bad Oracle response request">>}
     end;
 do_execute(_, _, _) -> % a catch all for a prettier error when action is missing
     {error, <<"Missing action">>}.

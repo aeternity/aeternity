@@ -112,22 +112,6 @@ create_message_from_event(BlockEvent, {BlockHeight, BlockHash})
 create_message_from_event(chain_tx, TxHash) ->
     Payload = [{tx_hash, aec_base58c:encode(tx_hash, TxHash)}],
     {ok, create_message(chain, tx_chain, Payload)};
-create_message_from_event(oracle_query_tx, OracleQueryTx) ->
-    %% TODO: Add TTL of the query to payload
-    Sender = aeo_query_tx:sender(OracleQueryTx),
-    QId    = aeo_query_tx:query_id(OracleQueryTx),
-    Payload =
-        [{sender,   aec_base58c:encode(id_hash, Sender)},
-         {query,    aeo_query_tx:query(OracleQueryTx)},
-         {query_id, aec_base58c:encode(oracle_query_id, QId)}],
-    {ok, create_message(chain, new_oracle_query, Payload)};
-create_message_from_event(oracle_response_tx, OracleResponseTx) ->
-    %% TODO: Add TTL of the response to payload
-    QId = aeo_response_tx:query_id(OracleResponseTx),
-    Payload =
-        [{query_id, aec_base58c:encode(oracle_query_id, QId)},
-         {response, aeo_response_tx:response(OracleResponseTx)}],
-    {ok, create_message(chain, new_oracle_response, Payload)};
 create_message_from_event(Event, _EventData) ->
     lager:error("Unexpected event: ~p", [Event]),
     {error, bad_event}.
