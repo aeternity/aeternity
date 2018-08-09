@@ -130,7 +130,7 @@ all() -> [
 init_per_suite(Config) ->
     %% Some parameters depend on the speed and capacity of the docker containers:
     %% timers must be less than gen_server:call timeout.
-    [ {blocks_per_second, 3},
+    [ {blocks_per_second, 1},
       {node_startup_time, 10000}, %% Time may take to get the node to respond to http
       {node_shutdown_time, 20000} %% Time it may take to stop node cleanly
     | Config].
@@ -312,7 +312,7 @@ stop_and_continue_sync(Cfg) ->
     NodeStartupTime = proplists:get_value(node_startup_time, Cfg),
 
     %% Create a chain long enough to need 10 seconds to fetch it
-    Length = BlocksPerSecond * 50,
+    Length = 150,
 
     setup_nodes([#{ name    => node1,
                     peers   => [node2],
