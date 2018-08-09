@@ -30,6 +30,7 @@
 -define(BLOCKS_TO_CHECK_DIFFICULTY_COUNT, 10).
 -define(EXPECTED_BLOCK_MINE_RATE, 300000). %% 60secs * 1000ms * 5 = 300000msecs
 -define(BLOCK_MINE_REWARD, 10000000000000000000).
+-define(MICRO_BLOCK_CYCLE, 3000). %% in msecs
 
 
 %% Maps consensus protocol version to minimum height at which such
@@ -75,6 +76,11 @@ minimum_gas_price() ->
 miner_reward_delay() ->
     0.
 
+%% In milliseconds
+micro_block_cycle() ->
+    aeu_env:user_config_or_env([<<"mining">>, <<"micro_block_cycle">>],
+                               aecore, micro_block_cycle, ?MICRO_BLOCK_CYCLE).
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Naming system variables
 
@@ -95,7 +101,3 @@ name_claim_preclaim_delta() ->
 
 name_registrars() ->
     [<<"aet">>, <<"test">>].
-
-micro_block_cycle() ->
-    %% Miliseconds
-    3000.
