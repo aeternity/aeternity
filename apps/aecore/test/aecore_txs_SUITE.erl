@@ -12,14 +12,15 @@
 
 %% test case exports
 -export(
-   [ txs_gc/1
+   [ txs_gc/1, micro_block_cycle/1
    ]).
 
 
 -include_lib("common_test/include/ct.hrl").
 
 all() ->
-    [ txs_gc
+    [ txs_gc,
+      micro_block_cycle
     ].
 
 init_per_suite(Config) ->
@@ -117,6 +118,34 @@ txs_gc(Config) ->
 
     ok = aecore_suite_utils:check_for_logs([dev1], Config).
 
+
+micro_block_cycle(Config) ->
+    MBC = aec_governance:micro_block_cycle(),
+    aecore_suite_utils:start_node(dev1, Config),
+    N1 = aecore_suite_utils:node_name(dev1),
+    aecore_suite_utils:connect(N1),
+
+    %% Mine a block to get some funds. Height=1
+    aecore_suite_utils:mine_key_blocks(N1, 1),
+
+    StartRes = rpc:call(N1, aec_conductor, start_mining, [], 5000),
+    ct:log("aec_conductor:start_mining() (~p) -> ~p", [N1, StartRes]),
+
+    [ begin
+        add_spend_tx(N1, 1000, 1,  Nonce, 10000),
+        timer:sleep(MBC div 100)
+      end || Nonce <- lists:seq(1,20) ],
+
+    timer:sleep(2*MBC),
+    StopRes = rpc:call(N1, aec_conductor, stop_mining, [], 5000),
+    ct:log("aec_conductor:stop_mining() (~p) -> ~p", [N1, StopRes]),
+
+    MicroBlocks = aecore_suite_utils:events_since(N1, micro_block_created, ?config(tc_start, Config)),
+    %% Below fails until micro_block_cycle is correctly implemented
+    %% ok = timediff(MBC, [ {aec_blocks:time_in_msecs(B), aec_blocks:height(B)} || #{info := B} <- MicroBlocks ]),
+
+    ok = aecore_suite_utils:check_for_logs([dev1], Config).
+
 add_spend_tx(Node, Amount, Fee, Nonce, TTL) ->
     Sender = aec_id:create(account, maps:get(pubkey, patron())),
     Recipient = aec_id:create(account, new_pubkey()),
@@ -125,6 +154,22 @@ add_spend_tx(Node, Amount, Fee, Nonce, TTL) ->
     {ok, Tx} = aec_spend_tx:new(Params),
     STx = aec_test_utils:sign_tx(Tx, maps:get(privkey, patron())),
     rpc:call(Node, aec_tx_pool, push, [STx]).
+
+timediff(Ms, []) ->
+  ok;
+timediff(Ms, [_]) ->
+  ok;
+timediff(Ms, [{T1, H1}, {T2, H1} | Rest]) ->
+  Delta = Ms div 10,  %% 10% off is fine
+  case T1 + Ms =< T2 + Delta of
+    true -> timediff(Ms, [{T2, H1} | Rest]);
+    false -> {error, {{T1, H1}, {T2, H1}}}
+  end;
+timediff(Ms, [_ | Rest]) ->
+  timediff(Ms, Rest).
+
+
+
 
 new_pubkey() ->
     #{ public := PubKey } = enacl:sign_keypair(),
