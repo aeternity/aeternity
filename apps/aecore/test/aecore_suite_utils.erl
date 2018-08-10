@@ -97,12 +97,22 @@ create_configs(CTConfig, CustomConfig, Options) ->
 create_config(Node, CTConfig, CustomConfig, Options) ->
     EpochCfgPath = epoch_config_dir(Node, CTConfig),
     ok = filelib:ensure_dir(EpochCfgPath),
-    MergedCfg = maps:merge(default_config(Node, CTConfig), CustomConfig),
+    MergedCfg = maps_merge(default_config(Node, CTConfig), CustomConfig),
     MergedCfg1 = aec_metrics_test_utils:set_statsd_port_config(
                    Node, MergedCfg, CTConfig),
     Config = config_apply_options(Node, MergedCfg1, Options),
     write_keys(Node, Config),
     write_config(EpochCfgPath, Config).
+
+maps_merge(V1, V2) when not is_map(V1); not is_map(V2) ->
+    V2;
+maps_merge(Map1, Map2) ->
+    lists:foldl(fun({K, V}, Map) ->
+                    case maps:is_key(K, Map) of
+                        false -> Map#{K => V};
+                        true  -> Map#{K => maps_merge(V, maps:get(K, Map))}
+                    end
+                end, Map2, maps:to_list(Map1)). 
 
 make_multi(Config) ->
     make_multi(Config, [dev1, dev2, dev3]).

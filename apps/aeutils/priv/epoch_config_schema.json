@@ -324,6 +324,12 @@
                     "default": 300000,
                     "minimum" : 1
                 },
+                "micro_block_cycle" : {
+                    "description" : "Expected rate (milliseconds) between micro-blocks. Used in governance.",
+                    "type" : "integer",
+                    "default": 3000,
+                    "minimum" : 1
+                },
                 "cuckoo" : {
                     "type" : "object",
                     "additionalProperties" : false,
