@@ -213,15 +213,15 @@ handle_call(stop_mining,_From, State = #state{ consensus = Cons }) ->
 handle_call(start_mining,_From, #state{mining_state = 'running'} = State) ->
     epoch_mining:info("Mining running"),
     {reply, ok, State};
-handle_call(start_mining,_From, State) ->
+handle_call(start_mining,_From, State = #state{ consensus = Cons }) ->
     epoch_mining:info("Mining started"),
-    State1 = start_mining(State#state{mining_state = 'running', consensus = #consensus{leader = false}}),
+    State1 = start_mining(State#state{mining_state = 'running', consensus = Cons#consensus{leader = false}}),
     {reply, ok, State1};
 handle_call(get_mining_state,_From, State) ->
     {reply, State#state.mining_state, State};
 handle_call(get_mining_workers, _From, State) ->
     {reply, worker_pids_by_tag(mining, State), State};
-handle_call(reinit_chain, _From, State1) ->
+handle_call(reinit_chain, _From, State1 = #state{ consensus = Cons }) ->
     %% NOTE: ONLY FOR TEST
     ok = reinit_chain_state(),
     TopBlockHash = aec_chain:top_block_hash(),
@@ -238,10 +238,9 @@ handle_call(reinit_chain, _From, State1) ->
                 hard_reset_block_generator(),
                 epoch_mining:info("Mining started"),
                 start_mining(State3#state{mining_state = running,
-                                          new_micro_candidate_available = false,
                                           micro_block_candidate = undefined,
                                           key_block_candidate = undefined,
-                                          consensus = #consensus{leader = false}})
+                                          consensus = Cons#consensus{leader = false}})
         end,
     {reply, ok, State};
 handle_call(Request, _From, State) ->
@@ -257,18 +256,12 @@ handle_info({gproc_ps_event, candidate_block, _}, State = #state{consensus = #co
     %% ignore new candidates if we are not a leader any more.
     {noreply, State};
 handle_info({gproc_ps_event, candidate_block, #{info := new_candidate}}, State) ->
-    case State#state.micro_block_candidate of
-        undefined ->
-            case try_fetch_and_make_candidate() of
-                {ok, Candidate} ->
-                    State1 = State#state{ micro_block_candidate = Candidate },
-                    {noreply, start_micro_signing(State1)};
-                {error, no_candidate} ->
-                    {noreply, State}
-            end;
-        #candidate{} ->
-            State1 = State#state{ new_micro_candidate_available = true },
-            {noreply, State1}
+    case try_fetch_and_make_candidate() of
+        {ok, Candidate} ->
+            State1 = State#state{ micro_block_candidate = Candidate },
+            {noreply, start_micro_signing(State1)};
+        {error, no_candidate} ->
+            {noreply, State#state{ micro_block_candidate = undefined }}
     end;
 handle_info(init_continue, State) ->
     {noreply, start_mining(State)};
@@ -432,8 +425,6 @@ spawn_worker(Tag, Fun) ->
 
 worker_timeout(create_key_block_candidate) ->
     infinity;
-worker_timeout(micro_signing) ->
-    infinity;
 worker_timeout(micro_sleep) ->
     infinity; %% TODO NG: pull from governance and add buffer
 worker_timeout(mining) ->
@@ -481,8 +472,6 @@ worker_reply(create_key_block_candidate, Res, State) ->
     handle_key_block_candidate_reply(Res, State);
 worker_reply(mining, Res, State) ->
     handle_mining_reply(Res, State);
-worker_reply(micro_signing, Res, State) ->
-    handle_micro_signing_reply(Res, State);
 worker_reply(micro_sleep, Res, State) ->
     handle_micro_sleep_reply(Res, State);
 worker_reply(wait_for_keys, Res, State) ->
@@ -512,16 +501,15 @@ preempt_if_new_top(#state{ top_block_hash = OldHash,
                     {micro_changed, State1};
                 KeyOrNewForkMicro ->
                     State2 = kill_all_workers_with_tag(mining, State1),
-                    State3 = kill_all_workers_with_tag(micro_signing, State2),
-                    State4 = kill_all_workers_with_tag(create_key_block_candidate, State3),
-                    State5 = kill_all_workers_with_tag(micro_sleep, State4), %% in case we are the leader
+                    State3 = kill_all_workers_with_tag(create_key_block_candidate, State2),
+                    State4 = kill_all_workers_with_tag(micro_sleep, State3), %% in case we are the leader
                     NewTopKey = case KeyOrNewForkMicro of
                                     micro -> KeyHash;
                                     key   -> NewHash
                                 end,
-                    State6 = State5#state{ top_key_block_hash = NewTopKey,
+                    State5 = State4#state{ top_key_block_hash = NewTopKey,
                                            key_block_candidate = undefined },
-                    {changed, NewBlock, State6}
+                    {changed, NewBlock, State5}
             end
     end.
 
@@ -726,15 +714,6 @@ start_micro_signing(#state{mining_state = 'stopped'} = State) ->
 start_micro_signing(#state{consensus = #consensus{leader = true}, micro_block_candidate = undefined} = State) ->
     %% We have to wait for a new block candidate first.
     State;
-start_micro_signing(#state{consensus = #consensus{leader = true}, new_micro_candidate_available = true} = State) ->
-    State1 =
-        case try_fetch_and_make_candidate() of
-            {ok, Candidate} ->
-                State#state{micro_block_candidate = Candidate};
-            {error, no_candidate} ->
-                State
-        end,
-    start_micro_signing(State1#state{ new_micro_candidate_available = false });
 start_micro_signing(#state{consensus = #consensus{leader = true},
                     micro_block_candidate = #candidate{top_hash = MicroBlockHash},
                     top_block_hash = TopHash} = State) when MicroBlockHash =/= TopHash ->
@@ -743,13 +722,23 @@ start_micro_signing(#state{consensus = #consensus{leader = true},
     State#state{micro_block_candidate = undefined};
 start_micro_signing(#state{consensus = #consensus{leader = true},
                            micro_block_candidate = #candidate{block = MicroBlock}} = State) ->
-    epoch_mining:info("Starting signing round"),
-    Info      = [{top_block_hash, State#state.top_block_hash}],
-    aec_events:publish(start_micro_signing, Info),
-    Fun = fun() ->
-        aec_keys:sign_micro_block(MicroBlock)
-    end,
-    dispatch_worker(micro_signing, Fun, State);
+    case is_tag_blocked(micro_sleep, State) of
+        true ->
+            epoch_mining:debug("Too early to sign micro block, wait a bit longer"),
+            State;
+        false ->
+            epoch_mining:info("Signing microblock"),
+            AdjMicroBlock = aec_blocks:set_time_in_msecs(MicroBlock, aeu_time:now_in_msecs()),
+            {ok, SignedMicroBlock} = aec_keys:sign_micro_block(AdjMicroBlock),
+            State1 = State#state{micro_block_candidate = undefined},
+            case handle_signed_block(SignedMicroBlock, State1) of
+                {ok, State2} ->
+                    State2;
+                {{error, Reason}, State2} ->
+                    epoch_mining:error("Block insertion failed: ~p.", [Reason]),
+                    start_micro_signing(State2)
+            end
+    end;
 start_micro_signing(#state{consensus = Consensus,
                            micro_block_candidate = MicroCandidate,
                            key_block_candidate = KeyBlockCandidate,
@@ -760,23 +749,6 @@ start_micro_signing(#state{consensus = Consensus,
                        [MicroCandidate, KeyBlockCandidate, SeenHash, Consensus]),
     State.
 
-handle_micro_signing_reply(_Reply, #state{micro_block_candidate = undefined} = State) ->
-    %% Something invalidated the block candidate already.
-    start_micro_signing(State);
-handle_micro_signing_reply({ok, SignedMicroBlock}, State) ->
-    aec_metrics:try_update([ae,epoch,aecore,mining,blocks_micro_signed], 1),
-    State1 = State#state{micro_block_candidate = undefined},
-    case handle_signed_block(SignedMicroBlock, State1) of
-        {ok, State2} ->
-            State2;
-        {{error, Reason}, State2} ->
-            epoch_mining:error("Block insertion failed: ~p.", [Reason]),
-            start_micro_signing(State2)
-    end;
-handle_micro_signing_reply({{error, Reason}, _}, State) ->
-    epoch_mining:error("Failed to sign micro block error: ~p", [Reason]),
-    start_micro_signing(State).
-
 %%%===================================================================
 %%% Worker: Timer for sleep between micro blocks
 
@@ -785,12 +757,11 @@ start_micro_sleep(#state{consensus = #consensus{leader = true, micro_block_cycle
     Info      = [{start_micro_sleep, State#state.top_block_hash}],
     aec_events:publish(start_micro_sleep, Info),
     Fun = fun() ->
-                  timer:sleep(Timeout) %% TODO: remove 'timer' dependency
+                  timer:sleep(Timeout)
           end,
     dispatch_worker(micro_sleep, Fun, State);
 start_micro_sleep(State) ->
     State.
-
 
 handle_micro_sleep_reply(ok, State) ->
     start_micro_signing(State).
@@ -932,8 +903,8 @@ flush_candidate() ->
         ok
     end.
 
-setup_loop(State, RestartMining, IsLeader, Origin) ->
-    State1 = State#state{ consensus = #consensus{ leader = IsLeader } },
+setup_loop(State = #state{ consensus = Cons }, RestartMining, IsLeader, Origin) ->
+    State1 = State#state{ consensus = Cons#consensus{ leader = IsLeader } },
     State2 =
         case Origin of
             block_created when IsLeader ->

@@ -15,8 +15,6 @@
 -type workers() :: orddict:orddict(pid(), worker_info()).
 -type mining_state() :: 'running' | 'stopped'.
 
--define(NG_MICROBLOCK_TIMOUT, 100).
-
 -record(candidate, {block     :: aec_blocks:block(),
                     bin       :: binary(), %% Serialized for hash
                     nonce     :: aec_pow:nonce() | 'undefined',
@@ -24,13 +22,12 @@
                     top_hash  :: binary()
                    }).
 
--record(consensus, {leader             = false                 :: boolean(),
-                    micro_block_cycle  = ?NG_MICROBLOCK_TIMOUT :: integer()
+-record(consensus, {leader             = false    :: boolean(),
+                    micro_block_cycle             :: integer()
                     }).
 
 -record(state, {key_block_candidate                       :: #candidate{} | 'undefined',
                 micro_block_candidate                     :: #candidate{} | 'undefined',
-                new_micro_candidate_available = false     :: boolean(),
                 blocked_tags            = []              :: ordsets:ordset(atom()),
                 keys_ready              = false           :: boolean(),
                 mining_state            = running         :: mining_state(),
