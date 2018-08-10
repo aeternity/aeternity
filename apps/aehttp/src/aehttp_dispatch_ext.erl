@@ -21,6 +21,7 @@
                         , ttl_decode/1
                         , poi_decode/1
                         , parse_tx_encoding/1
+                        , compute_contract_create_data/0
                         , compute_contract_call_data/0
                         , relative_ttl_decode/1
                         , unsigned_tx_response/1
@@ -511,6 +512,30 @@ handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) -
                 ],
     process_request(ParseFuns, Req);
 
+handle_request('PostContractCreateCompute', #{'ContractCreateCompute' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([owner, code, vm_version, deposit,
+                                       amount, gas, gas_price, fee,
+                                       arguments]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 base58_decode([{owner, owner, {id_hash, [account_pubkey]}}]),
+                 get_nonce_from_account_id(owner),
+                 hexstrings_decode([code]),
+                 compute_contract_create_data(),
+                 ok_response(
+                    fun(Data) ->
+                        {ok, Tx} = aect_create_tx:new(Data),
+                        {CB, CTx} = aetx:specialize_callback(Tx),
+                        ContractPubKey = CB:contract_pubkey(CTx),
+                        #{tx => aec_base58c:encode(transaction,
+                                                  aetx:serialize_to_binary(Tx)),
+                          contract_address =>
+                              aec_base58c:encode(contract_pubkey, ContractPubKey)
+                         }
+                    end)
+                ],
+    process_request(ParseFuns, Req);
+
 handle_request('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([caller, contract, vm_version,
@@ -941,7 +966,7 @@ handle_request('EncodeCalldata', Req, _Context) ->
     case Req of
         #{'ContractCallInput' :=
               #{ <<"abi">>  := ABI
-	       , <<"code">> := Code
+               , <<"code">> := Code
                , <<"function">> := Function
                , <<"arg">> := Argument }} ->
             %% TODO: Handle other languages
@@ -958,7 +983,7 @@ handle_request('DecodeData', Req, _Context) ->
     case Req of
         #{'SophiaBinaryData' :=
               #{ <<"sophia-type">>  := Type
-	       , <<"data">>  := Data
+               , <<"data">>  := Data
                }} ->
             case aehttp_logic:contract_decode_data(Type, Data) of
                 {ok, Result} ->

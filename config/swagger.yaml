@@ -1006,6 +1006,36 @@ paths:
           description: Owner account not found
           schema:
             $ref: '#/definitions/Error'
+  /tx/contract/create/compute:
+    post:
+      tags:
+        - external
+        - dev
+      operationId: PostContractCreateCompute
+      description: 'Compute the call_data for SOPHIA and get a contract_create transaction object'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/ContractCreateCompute'
+      responses:
+        '200':
+          description: Successful operation
+          schema:
+            $ref: '#/definitions/CreateContractUnsignedTx'
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Owner account not found
+          schema:
+            $ref: '#/definitions/Error'
   /tx/contract/call:
     post:
       tags:
@@ -4042,6 +4072,60 @@ definitions:
     - gas_price
     - fee
     - call_data
+  ContractCreateCompute:
+    type: object
+    properties:
+      owner:
+        type: string
+        description: Contract owner pub_key
+      nonce:
+        description: 'Owner''s nonce'
+        type: integer
+      code:
+        description: 'Contract''s code'
+        type: string
+      vm_version:
+        description: 'Virtual machine''s version'
+        type: integer
+        minimum: 0
+        maximum: 255
+      deposit:
+        description: Deposit
+        type: integer
+        minimum: 0
+      amount:
+        description: Amount
+        type: integer
+        minimum: 0
+      gas:
+        description: Contract gas
+        type: integer
+        minimum: 0
+      gas_price:
+        description: Gas price
+        type: integer
+        minimum: 0
+      fee:
+        description: Transaction fee
+        type: integer
+        minimum: 0
+      ttl:
+        description: Transaction TTL
+        type: integer
+        minimum: 0
+      arguments:
+        description: Contract call data init function arguments
+        type: string
+    required:
+    - owner
+    - code
+    - vm_version
+    - deposit
+    - amount
+    - gas
+    - gas_price
+    - fee
+    - arguments
   ContractCallData:
     type: object
     properties:
@@ -4113,7 +4197,7 @@ definitions:
         type: integer
         minimum: 0
       ttl:
-        description: Transaction fee
+        description: Transaction TTL
         type: integer
         minimum: 0
       amount:

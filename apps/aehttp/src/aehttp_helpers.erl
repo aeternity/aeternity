@@ -19,6 +19,7 @@
         , verify_oracle_existence/1
         , verify_oracle_query_existence/2
         , verify_name/1
+        , compute_contract_create_data/0
         , compute_contract_call_data/0
         , read_tx_encoding_param/1
         , read_optional_param/3
@@ -47,7 +48,8 @@ process_request([], _Req, {Code, _, _Response} = Result)
     when is_integer(Code) ->
     Result;
 process_request([Fun | T], Req, Result0) ->
-    case Fun(Req, Result0) of
+    Res = Fun(Req, Result0),
+    case Res of
         ok ->
             process_request(T, Req, Result0);
         {ok, Result} ->
@@ -393,13 +395,29 @@ unsigned_tx_response(NewTxFun) when is_function(NewTxFun, 1) ->
         end,
     ok_response(RespFun).
 
+compute_contract_create_data() ->
+    fun(_Req, State) ->
+        #{code := Code,
+          arguments := Argument} = State,
+        case aect_dispatch:encode_call_data(<<"sophia">>, Code,
+                                            <<"init">>, Argument) of
+          {ok, HexCallData} ->
+              CallData = aeu_hex:hexstring_decode(HexCallData),
+              {ok, maps:put(call_data, CallData, State)};
+          {error, ErrorMsg} when is_binary(ErrorMsg) ->
+                Reason = <<"Failed to compute create_data, reason: ",
+                                        ErrorMsg/binary>>,
+                {error, {400, [], #{<<"reason">> => Reason}}}
+        end
+    end.
+
 compute_contract_call_data() ->
     fun(_Req, State) ->
         #{contract_code := Code,
             function := Function,
             arguments := Argument} = State,
-        case aect_dispatch:encode_call_data(<<"sophia">>,
-                      Code, Function, Argument) of
+        case aect_dispatch:encode_call_data(<<"sophia">>, Code,
+                                            Function, Argument) of
           {ok, HexCallData} ->
               CallData = aeu_hex:hexstring_decode(HexCallData),
               {ok, maps:put(call_data, CallData, State)};

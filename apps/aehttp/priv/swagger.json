@@ -1168,6 +1168,43 @@
         }
       }
     },
+    "/tx/contract/create/compute" : {
+      "post" : {
+        "tags" : [ "external", "dev" ],
+        "description" : "Compute the call_data for SOPHIA and get a contract_create transaction object",
+        "operationId" : "PostContractCreateCompute",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/ContractCreateCompute"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/CreateContractUnsignedTx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Owner account not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/tx/contract/call" : {
       "post" : {
         "tags" : [ "external", "dev" ],
@@ -5333,6 +5370,77 @@
         "ttl" : 0
       }
     },
+    "ContractCreateCompute" : {
+      "type" : "object",
+      "required" : [ "amount", "arguments", "code", "deposit", "fee", "gas", "gas_price", "owner", "vm_version" ],
+      "properties" : {
+        "owner" : {
+          "type" : "string",
+          "description" : "Contract owner pub_key"
+        },
+        "nonce" : {
+          "type" : "integer",
+          "description" : "Owner's nonce"
+        },
+        "code" : {
+          "type" : "string",
+          "description" : "Contract's code"
+        },
+        "vm_version" : {
+          "type" : "integer",
+          "description" : "Virtual machine's version",
+          "minimum" : 0,
+          "maximum" : 255
+        },
+        "deposit" : {
+          "type" : "integer",
+          "description" : "Deposit",
+          "minimum" : 0
+        },
+        "amount" : {
+          "type" : "integer",
+          "description" : "Amount",
+          "minimum" : 0
+        },
+        "gas" : {
+          "type" : "integer",
+          "description" : "Contract gas",
+          "minimum" : 0
+        },
+        "gas_price" : {
+          "type" : "integer",
+          "description" : "Gas price",
+          "minimum" : 0
+        },
+        "fee" : {
+          "type" : "integer",
+          "description" : "Transaction fee",
+          "minimum" : 0
+        },
+        "ttl" : {
+          "type" : "integer",
+          "description" : "Transaction TTL",
+          "minimum" : 0
+        },
+        "arguments" : {
+          "type" : "string",
+          "description" : "Contract call data init function arguments"
+        }
+      },
+      "example" : {
+        "owner" : "owner",
+        "gas_price" : 0,
+        "vm_version" : 153,
+        "amount" : 0,
+        "code" : "code",
+        "fee" : 0,
+        "gas" : 0,
+        "deposit" : 0,
+        "arguments" : "arguments",
+        "nonce" : 0,
+        "ttl" : 0
+      }
+    },
     "ContractCallData" : {
       "type" : "object",
       "required" : [ "amount", "call_data", "caller", "contract", "fee", "gas", "gas_price", "vm_version" ],
@@ -5427,7 +5535,7 @@
         },
         "ttl" : {
           "type" : "integer",
-          "description" : "Transaction fee",
+          "description" : "Transaction TTL",
           "minimum" : 0
         },
         "amount" : {
