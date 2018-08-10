@@ -154,7 +154,7 @@ micro_block_cycle(Config) ->
 
     MicroBlocks = aecore_suite_utils:events_since(N1, micro_block_created, ?config(tc_start, Config)),
     %% Below fails until micro_block_cycle is correctly implemented
-    %% ok = timediff(MBC, [ {aec_blocks:time_in_msecs(B), aec_blocks:height(B)} || #{info := B} <- MicroBlocks ]),
+    ok = timediff(MBC, [ {aec_blocks:time_in_msecs(B), aec_blocks:height(B)} || #{info := B} <- MicroBlocks ]),
 
     ok = aecore_suite_utils:check_for_logs([dev1], Config).
 
