@@ -236,7 +236,7 @@ get_blockhash_fun(Opts, Env, H) ->
 
 
 init_trace_fun(Opts) ->
-    maps:get(trace_fun, Opts, fun(S,A) -> io:format(S,A) end).
+    maps:get(trace_fun, Opts, fun(S,A) -> lager:debug(S,A) end).
 
 
 accountbalance(Address, State) ->

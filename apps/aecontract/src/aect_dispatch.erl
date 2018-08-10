@@ -15,6 +15,19 @@
 
 -define(PUB_SIZE, 32).
 
+-ifdef(COMMON_TEST).
+-define(TEST_LOG(Format, Data),
+        try ct:log(Format, Data)
+        catch
+            %% Enable setting up node with "test" rebar profile.
+            error:undef -> ok
+        end).
+-define(DEBUG_LOG(Format, Data), begin lager:debug(Format, Data), ?TEST_LOG(Format, Data) end).
+-else.
+-define(TEST_LOG(Format, Data), ok).
+-define(DEBUG_LOG(Format, Data), lager:debug(Format, Data)).
+-endif.
+
 %% -- Running contract code off chain ---------------------------------------
 
 %% TODO: replace language string with vm_version number.
@@ -123,12 +136,12 @@ call_common(#{gas := Gas, call := Call, trees := Trees} = CallDef, Spec) ->
                     %% TODO: Store error code in state tree
                     {create_call(Gas, error, Error, Call), Trees}
             catch T:E ->
-                lager:debug("Return error ~p:~p~n", [T,E]),
+                ?DEBUG_LOG("Return error ~p:~p~n", [T,E]),
                 {create_call(Gas, error, Call), Trees}
             end
     catch T:E ->
             %% TODO: Clarify whether this case can be reached with valid chain state and sanitized input transaction.
-            lager:debug("Init error ~p:~p~n", [T,E]),
+            ?DEBUG_LOG("Init error ~p:~p~n", [T,E]),
             {create_call(Gas, error, Call), Trees}
     end.
 
@@ -145,5 +158,5 @@ create_call(Gas, Type, Value) ->
 error_to_binary(out_of_gas) -> <<"out_of_gas">>;
 error_to_binary(out_of_stack) -> <<"out_of_stack">>;
 error_to_binary(E) ->
-    io:format("Unknown error: ~p\n", [E]),
+    ?DEBUG_LOG("Unknown error: ~p\n", [E]),
     <<"unknown_error">>.
