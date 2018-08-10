@@ -49,6 +49,10 @@ set_last_generation_in_sync() ->
 schedule_ping(PeerId) ->
     gen_server:cast(?MODULE, {schedule_ping, PeerId}).
 
+%% Only used by test
+worker_for_peer(PeerId) ->
+    gen_server:call(?MODULE, {worker_for_peer, PeerId}).
+
 sync_in_progress(PeerId) ->
     gen_server:call(?MODULE, {sync_in_progress, PeerId}).
 
@@ -111,6 +115,8 @@ init([]) ->
     erlang:process_flag(trap_exit, true),
     {ok, #state{}}.
 
+handle_call({worker_for_peer, PeerId}, _, State) ->
+    {reply, get_worker_for_peer(State, PeerId), State};
 handle_call({sync_in_progress, PeerId}, _, State) ->
     {reply, peer_in_sync(State, PeerId), State};
 handle_call({known_chain, Chain0 = #{ chain_id := CId0 }, NewChainInfo}, _From, State0) ->
@@ -203,7 +209,7 @@ handle_info({'EXIT', Pid, Reason}, State) ->
     if Reason =/= normal -> epoch_sync:info("worker stopped with reason: ~p", [Reason]);
        true -> ok
     end,
-    {noreply, do_terminate_worker(Pid, State)};
+    {noreply, do_terminate_worker(Pid, State, Reason)};
 handle_info(_, State) ->
     {noreply, State}.
 
@@ -457,17 +463,24 @@ do_handle_worker({change_worker, PeerId, OldPid, NewPid}, ST = #sync_task{ worke
     epoch_sync:debug("Update worker ~p (was ~p) for peer ~p", [NewPid, OldPid, ppp(PeerId)]),
     ST#sync_task{ workers = lists:keystore(PeerId, 1, Ws, {PeerId, NewPid}) }.
 
-do_terminate_worker(Pid, S = #state{ sync_tasks = STs }) ->
+do_terminate_worker(Pid, S = #state{ sync_tasks = STs }, Reason) ->
     case [ ST || ST <- STs, lists:keyfind(Pid, 2, ST#sync_task.workers) /= false ] of
         [ST] ->
-            set_sync_task(do_terminate_worker(Pid, ST), S);
+            {Peer, ST1} = do_terminate_worker(Pid, ST),
+            S1 = set_sync_task(ST1, S),
+            %% If abnormal termination, update sync task accordingly
+            case Reason of
+                normal -> S1;
+                _ -> do_update_sync_task(S1, ST#sync_task.id, {error, Peer})
+            end;
         [] ->
             S
-    end;
+    end.
+
 do_terminate_worker(Pid, ST = #sync_task{ workers = Ws }) ->
     {Peer, _} = lists:keyfind(Pid, 2, Ws),
     epoch_sync:debug("Terminating worker ~p for peer ~p", [Pid, ppp(Peer)]),
-    ST#sync_task{ workers = lists:keydelete(Pid, 2, Ws) }.
+    {Peer, ST#sync_task{ workers = lists:keydelete(Pid, 2, Ws) }}.
 
 %%%=============================================================================
 %%% Jobs worker
@@ -774,3 +787,8 @@ parse_peer(P) ->
 peer_in_sync(#state{ sync_tasks = STs }, PeerId) ->
     lists:member(PeerId, lists:append([ Ps || #sync_task{ chain = #{ peers := Ps } } <- STs ])).
 
+get_worker_for_peer(#state{ sync_tasks = STs }, PeerId) ->
+    case [ Pid || #sync_task{ workers = Ws } <- STs, {PeerId0, Pid} <- Ws, PeerId0 == PeerId ] of
+        [] -> false;
+        [Pid | _] -> {ok, Pid}
+    end.

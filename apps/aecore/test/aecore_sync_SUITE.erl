@@ -342,7 +342,8 @@ crash_syncing_worker(Config) ->
     H1 = aec_blocks:height(Top1) + ExtraBlocks,
 
     %% Ensure compatible notation of uri:
-    PeerId = aec_peers:peer_id(aecore_suite_utils:peer_info(Dev1)),
+    {ok, PeerInfo} = aec_peers:parse_peer_address(aecore_suite_utils:peer_info(Dev1)),
+    PeerId = aec_peers:peer_id(PeerInfo),
     ct:log("PeerId of Dev1 ~p", [PeerId]),
 
     spawn_link(fun() -> kill_sync_worker(N2, PeerId) end),
@@ -367,17 +368,16 @@ crash_syncing_worker(Config) ->
     ok.
 
 kill_sync_worker(N, PeerId) ->
-    case rpc:call(N, aec_sync, sync_in_progress, [PeerId], 5000) of
+    case rpc:call(N, aec_sync, worker_for_peer, [PeerId], 5000) of
         false ->
             timer:sleep(10),
             kill_sync_worker(N, PeerId);
         {badrpc, _} ->
             timer:sleep(20),
             kill_sync_worker(N, PeerId);
-        SyncPeer ->
-            Pid = element(7, SyncPeer),
+        {ok, Pid} ->
             exit(Pid, kill),
-            ct:log("killed worker ~p", [SyncPeer])
+            ct:log("killed worker ~p", [Pid])
     end.
 
 mine_again_on_first(Config) ->
