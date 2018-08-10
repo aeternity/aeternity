@@ -15,6 +15,7 @@
          difficulty/1,
          is_key_block/1,
          time_in_msecs/1,
+         set_time_in_msecs/2,
          pow/1,
          set_pow/3,
          signature/1,
@@ -78,6 +79,9 @@ is_key_block(#block{miner = Miner, height = Height}) ->
 
 time_in_msecs(Block) ->
     Block#block.time.
+
+set_time_in_msecs(Block, Time) ->
+    Block#block{ time = Time }.
 
 -spec root_hash(block()) -> binary().
 root_hash(Block) ->
