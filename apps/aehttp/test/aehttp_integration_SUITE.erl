@@ -4808,21 +4808,24 @@ sc_ws_contract_(Config, TestName, Owner) ->
                                                     UnsignedStateTx),
 
     %% helper lambda for decoded result
-    GetDecodedResult =
-        fun(Type, UnsignedStateTx00) ->
+    GetCallParams =
+        fun(UnsignedStateTx00) ->
             {CB1, Tx1} = aetx:specialize_callback(UnsignedStateTx00),
             CallRound = CB1:round(Tx1),
             [U] = CB1:updates(Tx1),
             CallerPubKey = aesc_offchain_update:extract_caller(U),
             CallerAddress = aec_base58c:encode(account_pubkey, CallerPubKey),
             ContractAddress = aec_base58c:encode(contract_pubkey, ContractPubKey),
+            #{contract   => ContractAddress,
+              caller     => CallerAddress,
+              round      => CallRound}
+        end,
+    GetDecodedResult =
+        fun(Type, UnsignedStateTx00) ->
             GetCallResult =
                 fun(ConnPid) ->
                     ?WS:send_tagged(ConnPid, <<"get">>, <<"contract_call">>,
-                                    #{contract   => ContractAddress,
-                                      caller     => CallerAddress,
-                                      round      => CallRound}),
-
+                                    GetCallParams(UnsignedStateTx00)),
                     {ok, <<"contract_call">>, Res} = ?WS:wait_for_channel_event(ConnPid, get),
                     Res
                 end,
@@ -4841,10 +4844,31 @@ sc_ws_contract_(Config, TestName, Owner) ->
             _R = contract_result_parse(TestName, Data)
       end,
 
+    %% helper lambdas for pruning and call not found
+    PruneCalls =
+        fun(ConnPid) ->
+            ok = ?WS:register_test_for_channel_events(ConnPid, [calls_prunned]),
+            ?WS:send(ConnPid, <<"clean_contract_calls">>, #{}),
+            ok = ?WS:wait_for_channel_event(ConnPid, calls_prunned),
+            ok = ?WS:unregister_test_for_channel_events(ConnPid, [calls_prunned])
+        end,
+    CallMissingCall =
+        fun(UnsignedStateTx00, ConnPid) ->
+            ?WS:send_tagged(ConnPid, <<"get">>, <<"contract_call">>,
+                            GetCallParams(UnsignedStateTx00)),
+            {ok, #{<<"reason">> := <<"call_not_found">>}} = ?WS:wait_for_channel_event(ConnPid, error),
+            ok
+        end,
+
     % trigger call contract
     % owner can call a contract
-    contract_calls_(TestName, ContractPubKey, Code, SenderConnPid, UpdateVolley,
+    SomeUnsignedStateTx = contract_calls_(TestName, ContractPubKey, Code, SenderConnPid, UpdateVolley,
                     GetDecodedResult, AckConnPid, SenderPubkey, AckPubkey),
+
+    _ = GetDecodedResult(contract_return_type(TestName), SomeUnsignedStateTx),
+    ok = PruneCalls(SenderConnPid),
+    ok = CallMissingCall(SomeUnsignedStateTx, SenderConnPid),
+    % state is still usable
 
     % acknowledger can call a contract
     contract_calls_(TestName, ContractPubKey, Code, AckConnPid, UpdateVolleyReverse,
@@ -4927,26 +4951,30 @@ contract_calls_("identity", ContractPubKey, Code, SenderConnPid, UpdateVolley,
     UnsignedStateTx = call_a_contract(<<"main">>, <<"(42)">>, ContractPubKey, Code, SenderConnPid,
                     UpdateVolley),
     ExpectedResult = 42,
-    DecodedCallResult = GetDecodedResult(<<"int">>, UnsignedStateTx),
+    DecodedCallResult = GetDecodedResult(contract_return_type("identity"), UnsignedStateTx),
     {ExpectedResult, _} = {DecodedCallResult, ExpectedResult},
-    ok;
+    UnsignedStateTx;
 contract_calls_("counter", ContractPubKey, Code, SenderConnPid, UpdateVolley,
                 GetDecodedResult, _, _ , _) ->
-
+    TestName = "counter", 
     UnsignedStateTx0 = call_a_contract(<<"get">>, <<"()">>, ContractPubKey, Code, SenderConnPid,
                     UpdateVolley),
 
-    InitResult = GetDecodedResult(<<"int">>, UnsignedStateTx0),
+    InitResult = GetDecodedResult(contract_return_type(TestName), UnsignedStateTx0),
     call_a_contract(<<"tick">>, <<"()">>, ContractPubKey, Code, SenderConnPid,
                     UpdateVolley),
 
-    UnsignedStateTx = call_a_contract(<<"get">>, <<"()">>, ContractPubKey, Code, SenderConnPid,
+    UnsignedStateTx1 = call_a_contract(<<"get">>, <<"()">>, ContractPubKey, Code, SenderConnPid,
+                    UpdateVolley),
+
+    UnsignedStateTx2 = call_a_contract(<<"get">>, <<"()">>, ContractPubKey, Code, SenderConnPid,
                     UpdateVolley),
 
     ExpectedResult = InitResult + 1,
-    DecodedCallResult = GetDecodedResult(<<"int">>, UnsignedStateTx),
+    DecodedCallResult = GetDecodedResult(contract_return_type(TestName), UnsignedStateTx1),
+    DecodedCallResult = GetDecodedResult(contract_return_type(TestName), UnsignedStateTx2),
     {ExpectedResult, _} = {DecodedCallResult, ExpectedResult},
-    ok;
+    UnsignedStateTx0;
 contract_calls_("spend_test", ContractPubKey, Code, SenderConnPid, UpdateVolley,
                 GetDecodedResult, _AckConnPid, SenderPubkey, AckPubkey) ->
     GetBalance =
@@ -4958,7 +4986,7 @@ contract_calls_("spend_test", ContractPubKey, Code, SenderConnPid, UpdateVolley,
                 end,
             UsStateTx = call_a_contract(FunName, Args, ContractPubKey, Code, SenderConnPid,
                             UpdateVolley),
-            _DecodedCallResult = GetDecodedResult(<<"int">>, UsStateTx)
+            _DecodedCallResult = GetDecodedResult(contract_return_type("spend_test"), UsStateTx)
         end,
     ContractBalance0 = GetBalance(<<"()">>),
 
@@ -4982,13 +5010,13 @@ contract_calls_("spend_test", ContractPubKey, Code, SenderConnPid, UpdateVolley,
     SenderB = SenderB0 + SpendAmt,
 
     SpendAmt2 = 2,
-    SpendFun(AckPubkey, SpendAmt2),
+    UnsignedStateTx = SpendFun(AckPubkey, SpendAmt2),
     ContractBalance1 = GetBalance(<<"()">>),
     {ContractBalance1, _} = {ContractBalance - SpendAmt2, ContractBalance1},
     SenderB = GetBalance(list_to_binary("(" ++ aect_utils:hex_bytes(SenderPubkey) ++ ")")),
     AckB = GetBalance(list_to_binary("(" ++ aect_utils:hex_bytes(AckPubkey) ++ ")")),
     AckB = AckB0 + SpendAmt2,
-    ok.
+    UnsignedStateTx.
 
 call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid, UpdateVolley) ->
     {ok, EncodedMainData} = aect_sophia:encode_call_data(Code,
@@ -5008,6 +5036,10 @@ contract_byte_code(TestName) ->
     BinCode = aeso_compiler:from_string(ContractString, []),
     HexCode = aeu_hex:hexstring_encode(BinCode),
 		HexCode.
+
+
+contract_return_type(_) ->
+		<<"int">>.
 
 contract_create_init_arg("identity") ->
 		<<"()">>;

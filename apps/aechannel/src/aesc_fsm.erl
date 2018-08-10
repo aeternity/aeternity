@@ -25,6 +25,7 @@
         , change_config/3   %% (fsm(), key(), value()) -> ok | {error,_}
         , get_balances/2    %% (fsm(), {ok, [key()]) -> [{key(), amount()}]} | {error, _}
         , get_round/1       %% (fsm()) -> {ok, round()} | {error, _}
+        , prune_local_calls/1  %% (fsm()) -> {ok, round()} | {error, _}
         ]).
 
 %% Used by noise session
@@ -382,6 +383,9 @@ get_balances(Fsm, Accounts) ->
 
 get_round(Fsm) ->
     gen_statem:call(Fsm, get_round).
+
+prune_local_calls(Fsm) ->
+    gen_statem:call(Fsm, prune_local_calls).
 
 %% ======================================================================
 %% FSM initialization
@@ -1263,6 +1267,9 @@ handle_call_(_, get_round, From, #data{ state = State } = D) ->
                   {error, no_state}
           end,
     keep_state(D, [{reply, From, Res}]);
+handle_call_(_, prune_local_calls, From, #data{ state = State0 } = D) ->
+    State = aesc_offchain_state:prune_calls(State0),
+    keep_state(D#data{state = State}, [{reply, From, ok}]);
 handle_call_(St, _Req, _From, D) when ?TRANSITION_STATE(St) ->
     postpone(D);
 handle_call_(_St, _Req, From, D) ->

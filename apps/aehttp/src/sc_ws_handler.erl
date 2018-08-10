@@ -331,6 +331,9 @@ process_incoming(#{<<"action">> := <<"get">>,
             end;
         _ -> {reply, error_response(R, broken_hexcode)}
     end;
+process_incoming(#{<<"action">> := <<"clean_contract_calls">>}, State) ->
+    ok = aesc_fsm:prune_local_calls(fsm_pid(State)),
+    {reply, ok_response(calls_prunned)};
 process_incoming(#{<<"action">> := <<"get">>,
                    <<"tag">>    := <<"balances">>,
                    <<"payload">> := #{<<"accounts">> := Accounts}} = R, State) ->
@@ -615,6 +618,9 @@ error_response(Req, Reason) ->
     #{<<"action">>  => <<"error">>,
       <<"payload">> => #{<<"request">> => Req,
                          <<"reason">> => Reason}}.
+
+ok_response(Action) ->
+    #{<<"action">>  => Action}.
 
 hex_decode(Hex) ->
     try {ok, aeu_hex:hexstring_decode(Hex)}
