@@ -27,14 +27,24 @@ init_per_suite(Config) ->
     ok = application:ensure_started(erlexec),
     DataDir = ?config(data_dir, Config),
     TopDir = aecore_suite_utils:top_dir(DataDir),
+    MicroBlockCycle = 100,
     Config1 = [{symlink_name, "latest.txs"},
                {top_dir, TopDir},
-               {test_module, ?MODULE}] ++ Config,
+               {test_module, ?MODULE},
+               {micro_block_cycle, MicroBlockCycle}] ++ Config,
     aecore_suite_utils:make_shortcut(Config1),
     ct:log("Environment = ~p", [[{args, init:get_arguments()},
                                  {node, node()},
                                  {cookie, erlang:get_cookie()}]]),
-    aecore_suite_utils:create_configs(Config1),
+    DefCfg = #{
+        <<"chain">> => #{
+            <<"persist">> => false
+        },
+        <<"mining">> => #{
+            <<"micro_block_cycle">> => MicroBlockCycle
+        }
+    },
+    aecore_suite_utils:create_configs(Config1, DefCfg),
     aecore_suite_utils:make_multi(Config1),
     [{nodes, [aecore_suite_utils:node_tuple(dev1)]} | Config1].
 
@@ -120,7 +130,7 @@ txs_gc(Config) ->
 
 
 micro_block_cycle(Config) ->
-    MBC = aec_governance:micro_block_cycle(),
+    MBC = ?config(micro_block_cycle, Config),
     aecore_suite_utils:start_node(dev1, Config),
     N1 = aecore_suite_utils:node_name(dev1),
     aecore_suite_utils:connect(N1),
@@ -131,10 +141,12 @@ micro_block_cycle(Config) ->
     StartRes = rpc:call(N1, aec_conductor, start_mining, [], 5000),
     ct:log("aec_conductor:start_mining() (~p) -> ~p", [N1, StartRes]),
 
+    timer:sleep(1000), %% Make sure we're leader
+
     [ begin
         add_spend_tx(N1, 1000, 1,  Nonce, 10000),
-        timer:sleep(MBC div 100)
-      end || Nonce <- lists:seq(1,20) ],
+        timer:sleep(MBC div 3)
+      end || Nonce <- lists:seq(1,30) ],
 
     timer:sleep(2*MBC),
     StopRes = rpc:call(N1, aec_conductor, stop_mining, [], 5000),
@@ -155,18 +167,20 @@ add_spend_tx(Node, Amount, Fee, Nonce, TTL) ->
     STx = aec_test_utils:sign_tx(Tx, maps:get(privkey, patron())),
     rpc:call(Node, aec_tx_pool, push, [STx]).
 
-timediff(Ms, []) ->
-  ok;
-timediff(Ms, [_]) ->
-  ok;
+%% We assume that equence is time ordered and only check Micro Block Cycle time
+%% for micro blocks in same generation
+timediff(_Ms, []) ->
+    ok;
+timediff(_Ms, [_]) ->
+    ok;
 timediff(Ms, [{T1, H1}, {T2, H1} | Rest]) ->
-  Delta = Ms div 10,  %% 10% off is fine
-  case T1 + Ms =< T2 + Delta of
-    true -> timediff(Ms, [{T2, H1} | Rest]);
-    false -> {error, {{T1, H1}, {T2, H1}}}
-  end;
+    %% Nodes should validate that there is MBC time between micro blocks.
+    case T1 + Ms =< T2 of
+        true -> timediff(Ms, [{T2, H1} | Rest]);
+        false -> {error, {{T1, H1}, {T2, H1}}}
+    end;
 timediff(Ms, [_ | Rest]) ->
-  timediff(Ms, Rest).
+    timediff(Ms, Rest).
 
 
 
