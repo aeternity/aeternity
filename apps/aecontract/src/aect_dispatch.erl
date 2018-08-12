@@ -87,8 +87,8 @@ call_AEVM_01_Solidity_01(#{ contract   := ContractPubKey
 
 set_env(ContractPubKey, Height, Trees, API, VmVersion) ->
     ChainState = aec_vm_chain:new_state(Trees, Height, ContractPubKey),
-    MiningBeneficiarry = aec_conductor:get_beneficiary(),
-    #{currentCoinbase   => MiningBeneficiarry,
+    {ok, <<MiningBeneficiary:?PUB_SIZE/unit:8>>} = aec_conductor:get_beneficiary(),
+    #{currentCoinbase   => MiningBeneficiary,
       %% TODO: get the right difficulty (Tracked as #159522571)
       currentDifficulty => 0,
       %% TODO: implement gas limit in governance and blocks. (Tracked as #159427123)
@@ -125,7 +125,9 @@ call_common(#{ caller     := CallerPubKey
         value      => Value,
         call_stack => CallStack
     }),
-    try aevm_eeevm_state:init(Spec#{exec => Exec}, #{trace => false}) of
+    try aevm_eeevm_state:init(Spec#{exec => Exec},
+			      #{trace => false
+			       }) of
         InitState ->
             %% Update gas_used depending on exit type.
             try aevm_eeevm:eval(InitState) of

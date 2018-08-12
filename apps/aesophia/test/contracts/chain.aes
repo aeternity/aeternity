@@ -1,0 +1,4 @@
+// Try to test chain interactions
+
+contract Chain =
+  function miner() = Chain.coinbase
