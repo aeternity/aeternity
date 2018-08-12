@@ -8,6 +8,8 @@
 %% common_test exports
 -export([ all/0
         , groups/0
+        , init_per_suite/1
+        , end_per_suite/1
         ]).
 
 %% test case exports
@@ -52,6 +54,7 @@
         , sophia_oracles_qfee__outer_error_after_primop__remote/1
         , sophia_maps/1
         , sophia_variant_types/1
+        , sophia_chain/1
         , sophia_fundme/1
         , sophia_aens/1
         , create_store/1
@@ -70,9 +73,30 @@
 
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
 
+
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
+init_per_suite(Cfg) ->
+    OldBeneficiary = application:get_env(aecore, beneficiary),
+    ok = setup_minimal(),
+    [ {old_beneficiary, OldBeneficiary}
+      | Cfg].
+
+end_per_suite(Cfg) ->
+    case proplists:get_value(old_beneficiary, Cfg) of
+        undefined ->
+            ok = application:unset_env(aecore, beneficiary);
+        {ok, Old} ->
+            application:set_env(aecore, beneficiary, Old)
+    end,
+    Cfg.
+
+setup_minimal() ->
+    ok = application:set_env(aecore, beneficiary,
+                             aec_base58c:encode(account_pubkey, ?MINER_PUBKEY)),
+    ok.
+
 
 all() ->
     [{group, all_tests}
@@ -107,6 +131,7 @@ groups() ->
                                  {group, sophia_oracles_query_fee_unhappy_path_remote},
                                  sophia_maps,
                                  sophia_variant_types,
+                                 sophia_chain,
                                  sophia_fundme,
                                  sophia_aens ]}
     , {sophia_oracles_query_fee_happy_path, [],
@@ -1788,6 +1813,17 @@ sophia_variant_types(_Cfg) ->
     {grey, 0} = Call(get_color, Color, {}),
     {}        = Call(set_color, Unit, {{1}}),   %% green has tag 1
     {started, {AccId, 123, green}} = Call(get_state, State, {}),
+    ok.
+
+
+sophia_chain(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = <<AccId:256>> = ?call(new_account, 1000000),
+    ok = application:set_env(aecore, beneficiary,
+                             aec_base58c:encode(account_pubkey, Acc)),
+    {ok, Acc} = aec_conductor:get_beneficiary(),
+    Ct1       = ?call(create_contract, Acc, chain, {}, #{amount => 10000}),
+    AccId     = ?call(call_contract, Acc, Ct1, miner, word, {}),
     ok.
 
 
