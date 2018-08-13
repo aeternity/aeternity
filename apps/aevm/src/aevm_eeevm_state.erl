@@ -31,7 +31,6 @@
         , gas/1
         , gaslimit/1
         , gasprice/1
-        , init/1
         , init/2
         , jumpdests/1
         , logs/1
@@ -70,9 +69,6 @@
 -type state() :: map().
 
 -export_type([state/0]).
-
--spec init(map()) -> state().
-init(Spec) -> init(Spec, #{}).
 
 -spec save_store(state()) -> state().
 save_store(#{ chain_state := ChainState
@@ -149,7 +145,7 @@ init(#{ env  := Env
          },
 
     init_vm(State,
-            maps:get(code, Exec, #{}),
+            maps:get(code, Exec),
             maps:get(mem, Exec, #{mem_size => 0}),
             ChainAPI:get_store(ChainState)).
 
