@@ -142,7 +142,9 @@ references:
       name: Upload release artifacts to central repository (AWS)
       command: |
         aws s3 cp ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/
+        aws s3 cp ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/epoch-latest-ubuntu-x86_64.tar.gz
         aws s3api put-obejct-acl --acl public-read --bucket ${S3_RELEASES_BUCKET:?} --key ${PACKAGE_TARBALL:?}
+        aws s3api put-obejct-acl --acl public-read --bucket ${S3_RELEASES_BUCKET:?} --key epoch-latest-ubuntu-x86_64.tar.gz
 
   deploy_steps: &deploy_steps
     - checkout
