@@ -303,6 +303,12 @@
             "type" : "object",
             "additionalProperties" : false,
             "properties" : {
+                "engine" : {
+                    "description" :
+                    "PoW Engine module",
+                    "type" : "string",
+                    "default": "aec_pow_cuckoo"
+                },
                 "autostart" : {
                     "description" :
                     "If true, the node will start mining automatically.",

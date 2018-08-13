@@ -139,9 +139,10 @@ next_nonce(N) ->
 
 -spec engine() -> aec_pow:engine().
 engine() ->
-    aeu_env:user_config_or_env([<<"mining">>, <<"engine">>],
-                               aecore, engine,
-                               ?DEFAULT_POW_ENGINE).
+    Engine = aeu_env:user_config_or_env([<<"mining">>, <<"engine">>],
+                                         aecore, engine,
+                                         ?DEFAULT_POW_ENGINE),
+    to_existing_atom(Engine).
 
 %%------------------------------------------------------------------------------
 %% Test if binary is under the target threshold
@@ -216,3 +217,11 @@ break_up_scientific(S) ->
         _ ->
             {-Exp, Significand - 16#800000}
     end.
+
+-spec to_existing_atom(binary() | atom()) -> atom().
+
+to_existing_atom(Bin) when is_binary(Bin) ->
+    binary_to_existing_atom(Bin, utf8);
+to_existing_atom(Atom) when is_atom(Atom) ->
+    Atom.
+

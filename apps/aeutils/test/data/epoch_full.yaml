@@ -96,6 +96,8 @@ chain:
       "21": 0
 
 mining:
+    # PoW engine
+    engine: aec_pow_cuckoo
     # Start mining automatically.
     autostart: true
     # Maximum time (milliseconds) for each attempt to mine a block with a specific nonce.
