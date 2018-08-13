@@ -527,16 +527,31 @@ create_record_types(Defs) ->
     ets:new(record_types, [public, named_table, set]),
     %% A relation from field names to types
     ets:new(record_fields, [public, named_table, bag]),
-    [begin
-         ets:insert(record_types, {Name, Args, Fields}),
-         [ets:insert(record_fields, {FieldName, FieldType, {app_t, Attrs, Id, Args}})
-          || {field_t, _, {id, _, FieldName}, FieldType} <- Fields]
-     end
-     || {type_def, Attrs, Id={id, _, Name}, Args, {record_t, Fields}} <- Defs].
+    [ insert_typedef(Id, Args, Typedef)
+     || {type_def, _Attrs, Id, Args, Typedef} <- Defs].
 
 destroy_record_types() ->
     ets:delete(record_types),
     ets:delete(record_fields).
+
+-spec insert_typedef(aeso_syntax:id(), [aeso_syntax:tvar()], aeso_syntax:typedef()) -> ok.
+insert_typedef(Id = {id, Attrs, Name}, Args, Typedef) ->
+    case Typedef of
+        {record_t, Fields} ->
+            ets:insert(record_types, {Name, Args, Fields}),
+            [ets:insert(record_fields, {FieldName, FieldType, {app_t, Attrs, Id, Args}})
+             || {field_t, _, {id, _, FieldName}, FieldType} <- Fields];
+        {variant_t, _} -> ok;
+        {alias_t, _} -> ok
+    end,
+    ok.
+
+-spec lookup_type(string()) -> false | {[aeso_syntax:tvar()], aeso_syntax:typedef()}.
+lookup_type(Name) ->
+    case ets:lookup(record_types, Name) of
+        []                       -> false;
+        [{Name, Params, Fields}] -> {Params, {record_t, Fields}}
+    end.
 
 create_field_constraints() ->
     %% A relation from uvars to constraints
@@ -603,12 +618,9 @@ solve_known_record_types(Constraints) ->
          || {RecordType, FieldName, FieldType, When} <- Constraints],
     SolvedConstraints =
         [begin
-             RecId = {id, Attrs, RecName} = record_type_name(RecType),
-             case ets:lookup(record_types, RecName) of
-                 [] ->
-                     type_error({not_a_record_type, RecId, When}),
-                     not_solved;
-                 [{RecName, Formals, Fields}] ->
+            RecId = {id, Attrs, RecName} = record_type_name(RecType),
+            case lookup_type(RecName) of
+                {Formals, {record_t, Fields}} ->
                      FieldTypes = [{Name, Type} || {field_t, _, {id, _, Name}, Type} <- Fields],
                      {id, _, FieldString} = FieldName,
                      case proplists:get_value(FieldString, FieldTypes) of
@@ -623,7 +635,10 @@ solve_known_record_types(Constraints) ->
                              unify(FreshFldType, FieldType, {todo, {solve_field_constraint_field, When}}),
                              unify(FreshRecType, RecType, {todo, {solve_field_constraint_record, When}}),
                              {RecType, FieldName, FieldType, When}
-                     end
+                     end;
+                false ->
+                     type_error({not_a_record_type, RecId, When}),
+                     not_solved
              end
          end
          || {RecType, FieldName, FieldType, When} <- DerefConstraints,
@@ -656,10 +671,10 @@ solve_for_uvar(UVar = {uvar, Attrs, _}, Fields) ->
     FieldNames = [ Name || {id, _, Name} <- Fields ],
     UniqueFields = lists:usort(FieldNames),
     Candidates = [RecName || {_, _, {app_t, _, {id, _, RecName}, _}} <- ets:lookup(record_fields, hd(FieldNames))],
-    TypesAndFields = [case ets:lookup(record_types, RecName) of
-                          [{RecName, _, RecFields}] ->
+    TypesAndFields = [case lookup_type(RecName) of
+                          {_, {record_t, RecFields}} ->
                               {RecName, [Field || {field_t, _, {id, _, Field}, _} <- RecFields]};
-                          [] ->
+                          _ -> %% impossible?
                               error({no_definition_for, RecName, in, Candidates})
                       end
                       || RecName <- Candidates],
@@ -669,7 +684,7 @@ solve_for_uvar(UVar = {uvar, Attrs, _}, Fields) ->
         [] ->
             {no_records_with_all_fields, Fields};
         [RecName] ->
-            [{RecName, Formals, _}] = ets:lookup(record_types, RecName),
+            {Formals, {record_t, _}} = lookup_type(RecName),
             create_freshen_tvars(),
             FreshRecType = freshen({app_t, Attrs, {id, Attrs, RecName}, Formals}),
             destroy_freshen_tvars(),
@@ -701,8 +716,8 @@ unfold_record_types(X) ->
     X.
 
 unfold_record_types_in_type({app_t, Ann, Id = {id, _, RecName}, Args}) ->
-    case ets:lookup(record_types, RecName) of
-        [{RecName, Formals, Fields}] when length(Formals) == length(Args) ->
+    case lookup_type(RecName) of
+        {Formals, {record_t, Fields}} when length(Formals) == length(Args) ->
             {record_t,
              unfold_record_types_in_type(
                subst_tvars(lists:zip(Formals, Args), Fields))};
@@ -712,10 +727,9 @@ unfold_record_types_in_type({app_t, Ann, Id = {id, _, RecName}, Args}) ->
     end;
 unfold_record_types_in_type(Type={id, _, RecName}) ->
     %% Like the case above, but for record types without parameters.
-    case ets:lookup(record_types, RecName) of
-        [{RecName, [], Fields}] ->
-            {record_t,
-             unfold_record_types_in_type(Fields)};
+    case lookup_type(RecName) of
+        {[], {record_t, Fields}} ->
+            {record_t, unfold_record_types_in_type(Fields)};
         _ ->
             %% Not a record type, or ill-formed record type
             Type
