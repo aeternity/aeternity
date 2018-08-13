@@ -13,6 +13,7 @@
 %% test case exports
 -export([ call_contract/1
         , call_contract_with_gas_price_zero/1
+        , call_contract_negative_insufficient_funds/1
         , call_contract_negative/1
         , create_contract/1
         , create_contract_with_gas_price_zero/1
@@ -63,6 +64,7 @@ groups() ->
                          , create_contract_negative
                          , call_contract
                          , call_contract_with_gas_price_zero
+                         , call_contract_negative_insufficient_funds
                          , call_contract_negative
                          ]}
     , {state_tree, [sequence], [ state_tree ]}
@@ -245,6 +247,26 @@ sign_and_apply_transaction_strict(Tx, PrivKey, S1, Height) ->
 %%%===================================================================
 %%% Call contract
 %%%===================================================================
+
+call_contract_negative_insufficient_funds(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1 = call(fun new_account/2, [1000000]),
+    IdC = call(fun create_contract/4, [Acc1, identity, {}]),
+
+    Fee = 1,
+    Value = 10,
+    Bal = 9 = Fee + Value - 2,
+    S = aect_test_utils:set_account_balance(Acc1, Bal, state()),
+    Arg = <<"(42)">>,
+    CallData = aect_sophia:create_call(IdC, <<"main">>, Arg),
+    CallTx = aect_test_utils:call_tx(Acc1, IdC,
+                                     #{call_data => CallData,
+                                       gas_price => 0,
+                                       amount    => Value,
+                                       fee       => Fee}, S),
+    {error, _} = sign_and_apply_transaction(CallTx, aect_test_utils:priv_key(Acc1, S), S),
+    {error, insufficient_funds} = aetx:check(CallTx, aect_test_utils:trees(S), _CurrHeight = 1, ?PROTOCOL_VERSION),
+    ok.
 
 call_contract_negative(_Cfg) ->
     %% PLACEHOLDER
