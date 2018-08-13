@@ -4847,10 +4847,10 @@ sc_ws_contract_(Config, TestName, Owner) ->
     %% helper lambdas for pruning and call not found
     PruneCalls =
         fun(ConnPid) ->
-            ok = ?WS:register_test_for_channel_events(ConnPid, [calls_prunned]),
+            ok = ?WS:register_test_for_channel_events(ConnPid, [calls_pruned]),
             ?WS:send(ConnPid, <<"clean_contract_calls">>, #{}),
-            ok = ?WS:wait_for_channel_event(ConnPid, calls_prunned),
-            ok = ?WS:unregister_test_for_channel_events(ConnPid, [calls_prunned])
+            ok = ?WS:wait_for_channel_event(ConnPid, calls_pruned),
+            ok = ?WS:unregister_test_for_channel_events(ConnPid, [calls_pruned])
         end,
     CallMissingCall =
         fun(UnsignedStateTx00, ConnPid) ->

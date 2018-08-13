@@ -333,7 +333,7 @@ process_incoming(#{<<"action">> := <<"get">>,
     end;
 process_incoming(#{<<"action">> := <<"clean_contract_calls">>}, State) ->
     ok = aesc_fsm:prune_local_calls(fsm_pid(State)),
-    {reply, ok_response(calls_prunned)};
+    {reply, ok_response(calls_pruned)};
 process_incoming(#{<<"action">> := <<"get">>,
                    <<"tag">>    := <<"balances">>,
                    <<"payload">> := #{<<"accounts">> := Accounts}} = R, State) ->
