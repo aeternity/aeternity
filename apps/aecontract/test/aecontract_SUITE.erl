@@ -146,6 +146,11 @@ create_contract_init_error(_Cfg) ->
     _ = aect_call:return_value(InitCall),
 
     %% Check that contract create transaction sender got charged correctly.
+    %%
+    %% In particular, check that amount and deposit (are positive and)
+    %% returned to the miner.
+    ?assertMatch(D when D > 0, aect_create_tx:deposit(aetx:tx(Tx))), %% Check on test data.
+    ?assertMatch(A when A > 0, aect_create_tx:amount(aetx:tx(Tx))), %% Check on test data.
     ?assertEqual(aec_accounts:balance(aect_test_utils:get_account(PubKey, S1))
                  - aect_create_tx:fee(aetx:tx(Tx))
                  - aect_create_tx:gas_price(aetx:tx(Tx)) * aect_call:gas_used(InitCall),
