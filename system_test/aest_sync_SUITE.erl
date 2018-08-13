@@ -147,6 +147,15 @@ end_per_suite(_Config) -> ok.
 
 %=== TEST CASES ================================================================
 
+%% This is keypair of an account set in genesis config file
+%% (see https://github.com/aeternity/epoch/blob/master/data/aecore/.genesis/accounts.json),
+%% so beneficiary configuration in epoch.yaml (mining > beneficiary param) does not matter.
+patron() ->
+    #{ pubkey => <<206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>,
+       privkey => <<230,169,29,99,60,119,207,87,113,50,157,51,84,179,188,239,27,197,224,50,196,61,112,182,211,90,249,35,206,30,183,77,206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>
+     }.
+
+
 %% A few tests that verify that our assumptions are right for docker timings and
 %% API.
 
@@ -188,9 +197,13 @@ new_node_joins_network(Cfg) ->
 
     Length = max(20, 5 + proplists:get_value(blocks_per_second, Cfg) * StartupTime),
 
-
     %% Mines for 20 blocks and calculate the average mining time
     StartTime = os:timestamp(),
+
+
+    inject_spend_txs(old_node1, patron(), 20, 1, 100),
+    inject_spend_txs(old_node2, patron(), 20, 21, 100),
+
     wait_for_value({height, Length}, [old_node1, old_node2], Length * ?MINING_TIMEOUT, Cfg),
     EndTime = os:timestamp(),
     %% Average mining time per block plus 50% extra
@@ -210,11 +223,14 @@ new_node_joins_network(Cfg) ->
 
     %% Starts a third node and check it synchronize with the first two
     start_node(new_node1, Cfg),
+
+    inject_spend_txs(old_node1, patron(), 20, 41, 100), 
+
     wait_for_value({height, 0}, [new_node1], NodeStartupTime, Cfg),
 
     %% Starting http interface takes more time than sync, but:
     %% Wait enough for node 3 to sync but not for it to build a new chain
-    wait_for_value({height, Length}, [new_node1], MiningTime * 3, Cfg),
+    wait_for_value({height, Length}, [new_node1], MiningTime * 2, Cfg),
     ct:log("Node 3 on same height"),
     Height3 = get_block(new_node1, Length),
     ct:log("Node 3 at height ~p: ~p", [Length, Height3]),
@@ -308,7 +324,6 @@ docker_keeps_data(Cfg) ->
 %% Note that Node1 must be considerably ahead to make sure Node2 does not
 %% create a fork with higher difficulty in the time Node1 restarts.
 stop_and_continue_sync(Cfg) ->
-    BlocksPerSecond = proplists:get_value(blocks_per_second, Cfg),
     NodeStartupTime = proplists:get_value(node_startup_time, Cfg),
 
     %% Create a chain long enough to need 10 seconds to fetch it
@@ -328,6 +343,8 @@ stop_and_continue_sync(Cfg) ->
     start_node(node1, Cfg),
     wait_for_value({height, 0}, [node1], NodeStartupTime, Cfg),
 
+    inject_spend_txs(node1, patron(), 50, 1, 100),
+
     wait_for_value({height, Length}, [node1], Length * ?MINING_TIMEOUT, Cfg),
 
     B1 = get_block(node1, Length),
@@ -336,6 +353,9 @@ stop_and_continue_sync(Cfg) ->
 
     %% Start fetching the chain
     start_node(node2, Cfg),
+
+    inject_spend_txs(node1, patron(), 20, 51, 100),
+
     wait_for_value({height, 0}, [node2], NodeStartupTime, Cfg),
     ct:log("Node 2 ready to go"),
 
@@ -349,6 +369,9 @@ stop_and_continue_sync(Cfg) ->
          false ->
             start_node(node1, Cfg),
             %% should sync with about 10 blocks per second, hence 100ms per block
+
+            inject_spend_txs(node2, patron(), 20, 71, 100),
+
             wait_for_value({height, Length + 1}, [node2], (Length - Height) * ?MINING_TIMEOUT, Cfg),
             B2 = get_block(node2, Length),
             C1 = get_block(node1, Length),
@@ -387,12 +410,7 @@ tx_pool_sync(Cfg) ->
     %% Let's post a bunch of transactions, preferrably some valid
     %% and some "not yet valid"
 
-    %% This is keypair of an account set in genesis config file
-    %% (see https://github.com/aeternity/epoch/blob/master/data/aecore/.genesis/accounts.json),
-    %% so beneficiary configuration in epoch.yaml (mining > beneficiary param) does not matter.
-    Patron = #{ pubkey => <<206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>,
-                privkey => <<230,169,29,99,60,119,207,87,113,50,157,51,84,179,188,239,27,197,224,50,196,61,112,182,211,90,249,35,206,30,183,77,206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>
-              },
+    Patron = patron(),
 
     %% Add 5 valid spend transactions
     ValidTxs = add_spend_txs(node1, Patron, 5, 1),
@@ -449,18 +467,26 @@ tx_pool_sync(Cfg) ->
 
     ok.
 
+
+inject_spend_txs(Node, SenderAcct, N, NonceStart, TimeDelay) ->
+    [ begin 
+          add_spend_tx(Node, SenderAcct, Nonce),
+          timer:sleep(TimeDelay)
+      end || Nonce <- lists:seq(NonceStart, NonceStart + N - 1) ].
+
 add_spend_txs(Node, SenderAcct, N, NonceStart) ->
     [ add_spend_tx(Node, SenderAcct, Nonce) || Nonce <- lists:seq(NonceStart, NonceStart + N - 1) ].
 
 add_spend_tx(Node, #{ pubkey := SendPubKey, privkey := SendSecKey }, Nonce) ->
     #{ public := RecvPubKey, secret := RecvSecKey } = enacl:sign_keypair(),
+    PayLoad = iolist_to_binary(io_lib:format("~p", [Node])),
     Params = #{ sender => aec_id:create(account, SendPubKey)
               , recipient => aec_id:create(account, RecvPubKey)
               , amount => 10000
               , fee => 100
               , ttl => 10000000
               , nonce => Nonce
-              , payload => <<>> },
+              , payload => PayLoad },
     {ok, Tx} = aec_spend_tx:new(Params),
     SignedTx = aec_test_utils:sign_tx(Tx, SendSecKey),
     SerSignTx = aetx_sign:serialize_to_binary(SignedTx),
@@ -483,6 +509,11 @@ net_split_recovery(Cfg) ->
     start_node(net2_node2, Cfg),
 
     %% Starts with a net split
+    wait_for_value({height, 0}, [net1_node1, net2_node1], proplists:get_value(node_startup_time, Cfg), Cfg),
+
+    inject_spend_txs(net1_node1, patron(), 20, 1, 100),
+    inject_spend_txs(net2_node1, patron(), 20, 1, 100),
+
     TargetHeight1 = Length,
     %% Wait for one extra block for resolving potential fork caused by nodes mining distinct blocks at the same time.
     MinedHeight1 = 1 + TargetHeight1,
@@ -506,6 +537,9 @@ net_split_recovery(Cfg) ->
     connect_node(net2_node1, net1, Cfg),
     connect_node(net2_node2, net1, Cfg),
     T0 = erlang:system_time(millisecond),
+
+    inject_spend_txs(net1_node1, patron(), 20, 21, 100),
+    inject_spend_txs(net2_node1, patron(), 20, 21, 100),
 
     %% Mine Length blocks, this may take longer than ping interval
     %% if so, the chains should be in sync when it's done.

@@ -116,6 +116,9 @@ init_per_suite(Config) ->
         },
         <<"sync">> => #{
             <<"single_outbound_per_group">> => false
+        },
+        <<"mining">> => #{
+            <<"micro_block_cycle">> => 100
         }
     },
     Config2 = aec_metrics_test_utils:make_port_map([dev1, dev2, dev3], Config1),
