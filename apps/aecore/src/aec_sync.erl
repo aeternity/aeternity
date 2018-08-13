@@ -49,9 +49,11 @@ set_last_generation_in_sync() ->
 schedule_ping(PeerId) ->
     gen_server:cast(?MODULE, {schedule_ping, PeerId}).
 
+-ifdef(TEST).
 %% Only used by test
 worker_for_peer(PeerId) ->
     gen_server:call(?MODULE, {worker_for_peer, PeerId}).
+-endif.
 
 sync_in_progress(PeerId) ->
     gen_server:call(?MODULE, {sync_in_progress, PeerId}).
