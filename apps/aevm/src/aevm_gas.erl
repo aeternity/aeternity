@@ -11,6 +11,8 @@
 -export([ op_cost/2
         , mem_cost/2
         ]).
+-export([ call_cap/2
+        ]).
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("aevm_eeevm.hrl").
@@ -36,6 +38,16 @@ mem_cost(State1, State2) ->
             After  = Size2*?GMEMORY + round(math:floor((Size2 * Size2)/512)),
             After - Before
     end.
+
+call_cap(?CALL, State) ->
+    {CGascap, _} = call_dynamic_cost_components(State),
+    CGascap;
+call_cap(?CALLCODE, State) ->
+    {CGascap, _} = call_dynamic_cost_components(State),
+    CGascap;
+call_cap(?DELEGATECALL, State) -> %% TODO This is a placeholder.
+    {CGascap, _} = call_dynamic_cost_components(State),
+    CGascap.
 
 op_dynamic_cost(?CALL, State) ->
     call_dynamic_cost(State);
@@ -78,6 +90,10 @@ op_dynamic_cost(_Op,_State) ->
 %%====================================================================
 
 call_dynamic_cost(State) ->
+    {CGascap, CExtra} = call_dynamic_cost_components(State),
+    CGascap + CExtra.
+
+call_dynamic_cost_components(State) ->
     Gas = aevm_eeevm_state:gas(State),
     Us0 = peek(0, State),
     %%Us1 = peek(1, State), %% TODO: Needed for CNEW.
@@ -90,9 +106,9 @@ call_dynamic_cost(State) ->
     CExtra = CNew + CXfer + ?GCALL,
     CGascap = case Gas >= CExtra of
                   true  -> min(all_but_one_64th(Gas - CExtra), Us0);
-                  false -> Us0
+                  false -> Us0 %% TODO Can this case ever happen without causing out-of-gas when subtracting CExtra?
               end,
-    CGascap + CExtra.
+    {CGascap, CExtra}.
 
 all_but_one_64th(X) ->
     X - round(floor(X/64)).

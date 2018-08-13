@@ -15,7 +15,7 @@
           get_balance/2,
           get_store/1,
           set_store/2,
-          oracle_extend/5,
+          oracle_extend/4,
           oracle_get_answer/3,
           oracle_get_question/3,
           oracle_query/6,
@@ -188,13 +188,13 @@ oracle_respond(Oracle, QueryId,_Sign, Response, State) ->
 
     apply_transaction(Tx, State).
 
-oracle_extend(Oracle,_Sign, Fee, TTL, State) ->
+oracle_extend(Oracle,_Sign, TTL, State) ->
     Nonce = next_nonce(Oracle, State),
     {ok, Tx} =
         aeo_extend_tx:new(#{oracle     => aec_id:create(oracle, Oracle),
                             nonce      => Nonce,
                             oracle_ttl => {delta, TTL},
-                            fee        => Fee,
+                            fee        => 0,
                             ttl        => 0 %% Not used
                            }),
     apply_transaction(Tx, State).
