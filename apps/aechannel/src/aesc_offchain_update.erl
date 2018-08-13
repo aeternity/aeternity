@@ -29,7 +29,10 @@
          for_client/1,
          apply_on_trees/4]).
 
--export([extract_caller/1]).
+-export([is_call/1,
+         is_contract_create/1,
+         extract_call/1,
+         extract_caller/1]).
 
 -spec op_transfer(aec_id:id(), aec_id:id(), non_neg_integer()) -> update().
 op_transfer(From, To, Amount) ->
@@ -49,17 +52,17 @@ op_withdraw(Acct, Amount) ->
 
 -spec op_new_contract(aec_id:id(), aect_contracts:vm_version(), binary(),
            non_neg_integer(), binary()) -> update().
-op_new_contract(Owner, VmVersion, Code, Deposit, CallData) ->
-    account = aec_id:specialize_type(Owner),
-    {?OP_CREATE_CONTRACT, Owner, VmVersion, Code, Deposit, CallData}.
+op_new_contract(OwnerId, VmVersion, Code, Deposit, CallData) ->
+    account = aec_id:specialize_type(OwnerId),
+    {?OP_CREATE_CONTRACT, OwnerId, VmVersion, Code, Deposit, CallData}.
 
 
 -spec op_call_contract(aec_id:id(), aec_id:id(), aect_contracts:vm_version(),
                        non_neg_integer(), aect_call:call(), [non_neg_integer()]) -> update().
-op_call_contract(Caller, ContractPubKey, VmVersion, Amount, CallData, CallStack) ->
-    account = aec_id:specialize_type(Caller),
-    contract = aec_id:specialize_type(ContractPubKey),
-    {?OP_CALL_CONTRACT, Caller, ContractPubKey, VmVersion, Amount, CallData, CallStack}.
+op_call_contract(CallerId, ContractId, VmVersion, Amount, CallData, CallStack) ->
+    account = aec_id:specialize_type(CallerId),
+    contract = aec_id:specialize_type(ContractId),
+    {?OP_CALL_CONTRACT, CallerId, ContractId, VmVersion, Amount, CallData, CallStack}.
 
 -spec apply_on_trees(update(), aec_trees:trees(), non_neg_integer(), map()) -> aec_trees:trees().
 apply_on_trees({?OP_TRANSFER, FromId, ToId, Amount}, Trees0, _, Opts) ->
@@ -107,16 +110,16 @@ for_client({?OP_DEPOSIT, From, Amount}) ->
     #{<<"op">> => <<"deposit">>,
       <<"from">> => aec_base58c:encode(id_hash, From),
       <<"am">>   => Amount};
-for_client({?OP_CREATE_CONTRACT, Owner, VmVersion, Code, Deposit, CallData}) ->
+for_client({?OP_CREATE_CONTRACT, OwnerId, VmVersion, Code, Deposit, CallData}) ->
     #{<<"op">>          => <<"new_contract">>,
-      <<"owner">>       => aec_base58c:encode(id_hash, Owner),
+      <<"owner">>       => aec_base58c:encode(id_hash, OwnerId),
       <<"vm_version">>  => VmVersion,
       <<"code">>        => Code,
       <<"deposit">>     => Deposit,
       <<"call_data">>   => CallData};
-for_client({?OP_CALL_CONTRACT, Caller, ContractId, VmVersion, Amount, CallData, CallStack}) ->
+for_client({?OP_CALL_CONTRACT, CallerId, ContractId, VmVersion, Amount, CallData, CallStack}) ->
     #{<<"op">>          => <<"contract_call">>,
-      <<"caller">>      => aec_base58c:encode(id_hash, Caller),
+      <<"caller">>      => aec_base58c:encode(id_hash, CallerId),
       <<"contract">>    => aec_base58c:encode(id_hash, ContractId),
       <<"vm_version">>  => VmVersion,
       <<"amount">>      => Amount,
@@ -153,15 +156,15 @@ update2fields({?OP_DEPOSIT, From, Amount}) ->
 update2fields({?OP_WITHDRAW, To, Amount}) ->
     [ {to,      To},
       {amount,  Amount}];
-update2fields({?OP_CREATE_CONTRACT, Owner, VmVersion, Code, Deposit, CallData}) ->
-    [ {owner, Owner},
+update2fields({?OP_CREATE_CONTRACT, OwnerId, VmVersion, Code, Deposit, CallData}) ->
+    [ {owner, OwnerId},
       {vm_version, VmVersion},
       {code, Code},
       {deposit, Deposit},
       {call_data, CallData}];
-update2fields({?OP_CALL_CONTRACT, Caller, ContractPubKey, VmVersion, Amount, CallData, CallStack}) ->
-    [ {caller, Caller},
-      {contract, ContractPubKey},
+update2fields({?OP_CALL_CONTRACT, CallerId, ContractId, VmVersion, Amount, CallData, CallStack}) ->
+    [ {caller, CallerId},
+      {contract, ContractId},
       {vm_version, VmVersion},
       {amount, Amount},
       {call_data, CallData},
@@ -177,19 +180,19 @@ fields2update(?OP_DEPOSIT, [{from,   From},
 fields2update(?OP_DEPOSIT, [{to,     To},
                             {amount, Amount}]) ->
     op_withdraw(To, Amount);
-fields2update(?OP_CREATE_CONTRACT, [{owner, Owner},
+fields2update(?OP_CREATE_CONTRACT, [{owner, OwnerId},
                                     {vm_version, VmVersion},
                                     {code, Code},
                                     {deposit, Deposit},
                                     {call_data, CallData}]) ->
-    op_new_contract(Owner, VmVersion, Code, Deposit, CallData);
-fields2update(?OP_CALL_CONTRACT, [ {caller, Caller},
-                                    {contract, ContractPubKey},
+    op_new_contract(OwnerId, VmVersion, Code, Deposit, CallData);
+fields2update(?OP_CALL_CONTRACT, [ {caller, CallerId},
+                                    {contract, ContractId},
                                     {vm_version, VmVersion},
                                     {amount, Amount},
                                     {call_data, CallData},
                                     {call_stack, CallStack}]) ->
-    op_call_contract(Caller, ContractPubKey, VmVersion, Amount, CallData, CallStack).
+    op_call_contract(CallerId, ContractId, VmVersion, Amount, CallData, CallStack).
 
 
 ut2type(?OP_TRANSFER)         -> channel_offchain_update_transfer;
@@ -267,5 +270,30 @@ account_pubkey(Id) ->
 contract_pubkey(Id) ->
     aec_id:specialize(Id, contract).
 
-extract_caller({?OP_CALL_CONTRACT, Caller, _, _, _, _, _}) ->
-    account_pubkey(Caller).
+-spec extract_caller(update()) -> aec_keys:pubkey().
+extract_caller({?OP_CALL_CONTRACT, CallerId, _, _, _, _, _}) ->
+    account_pubkey(CallerId);
+extract_caller({?OP_CREATE_CONTRACT, OwnerId, _, _, _, _}) ->
+    account_pubkey(OwnerId).
+
+-spec is_call(update()) -> boolean().
+is_call({?OP_CALL_CONTRACT, _, _, _, _, _, _}) ->
+      true;
+is_call(_) ->
+      false.
+
+-spec is_contract_create(update()) -> boolean().
+is_contract_create({?OP_CREATE_CONTRACT, _, _, _, _, _}) ->
+      true;
+is_contract_create(_) ->
+      false.
+
+-spec extract_call(aesc_offchain_update:update()) -> {aect_contracts:id(), aec_keys:pubkey()}
+                                                     | not_call.
+extract_call(Update) ->
+    case Update of
+        {?OP_CALL_CONTRACT, CallerId, ContractId, _, _, _, _} ->
+            {contract_pubkey(ContractId), account_pubkey(CallerId)};
+        _ -> not_call
+    end.
+

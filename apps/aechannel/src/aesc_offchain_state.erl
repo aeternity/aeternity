@@ -4,6 +4,7 @@
 -include("apps/aecontract/src/aecontract.hrl").
 
 -record(state, { trees                  :: aec_trees:trees()
+               , calls                  :: aect_call_state_tree:tree()
                , signed_txs = []        :: [aetx_sign:signed_tx()]
                , half_signed_txs = []   :: [aetx_sign:signed_tx()]
               }).
@@ -30,7 +31,8 @@
         , poi/2                       %%  (Filter, State) -> {ok, PoI} | {error, not_found}
         ]).
 
--export([get_contract_call/4
+-export([get_contract_call/4,
+         prune_calls/1
         ]).
 
 -spec new(map()) -> {ok, state()}.
@@ -62,7 +64,7 @@ new_(#{ initiator          := InitiatorPubKey
         [{InitiatorPubKey, InitiatorAmount},
          {ResponderPubKey, ResponderAmount}]),
     Trees = aec_trees:set_accounts(Trees0, Accounts),
-    {ok, #state{trees=Trees}}.
+    {ok, #state{trees=Trees, calls = aect_call_state_tree:empty()}}.
 
 recover_from_offchain_tx(#{ existing_channel_id := ChId
                           , offchain_tx         := SignedTx } = Opts) ->
@@ -170,8 +172,13 @@ verify_signatures(SignedTx, #state{trees = Trees}) ->
                         non_neg_integer(), state()) -> {error, call_not_found}
                                                     |  {ok, aect_call:call()}.
 
-get_contract_call(Contract, Caller, Round, #state{trees=Trees}) ->
-    aect_channel_contract:get_call(Contract, Caller, Round, Trees).
+get_contract_call(Contract, Caller, Round, #state{calls=CallsTree}) ->
+    aect_channel_contract:get_call(Contract, Caller, Round, CallsTree).
+
+-spec prune_calls(state()) -> state().
+prune_calls(State) ->
+    Calls = aect_call_state_tree:empty(),
+    State#state{calls = Calls}.
 
 -spec make_update_tx(list(aesc_offchain_update:update()), state(), map()) -> aetx:tx().
 make_update_tx(Updates, #state{signed_txs=[SignedTx|_], trees=Trees}, Opts) ->
@@ -215,15 +222,27 @@ add_signed_tx(SignedTx, #state{signed_txs=Txs0}=State, Opts) ->
         {aesc_create_tx, _} ->
             State#state{signed_txs=[SignedTx | Txs0], half_signed_txs=[]};
         {Mod, TxI} ->
-            Trees =
+            {Trees, Calls} =
                 lists:foldl(
-                    fun(Update, TrAccum) ->
+                    fun(Update, {TrAccum, CallsAccum}) ->
                         TrAccum1 = aesc_offchain_update:apply_on_trees(Update, TrAccum, Mod:round(TxI), Opts),
-                        TrAccum1
+                        IsCall = aesc_offchain_update:is_call(Update),
+                        IsNewContract = aesc_offchain_update:is_contract_create(Update),
+                        case IsNewContract orelse IsCall of
+                            false -> {TrAccum1, CallsAccum};
+                            true ->
+                                CallsAccum1 =  move_call(Update,
+                                                         Mod:round(TxI),
+                                                         CallsAccum,
+                                                         TrAccum1),
+                                {TrAccum1, CallsAccum1}
+                        end
                     end,
-                    State#state.trees,
+                    {aect_call_state_tree:prune_without_backend(State#state.trees),
+                     State#state.calls},
                     Mod:updates(TxI)),
-            State#state{signed_txs=[SignedTx | Txs0], half_signed_txs=[], trees=Trees}
+            State#state{signed_txs=[SignedTx | Txs0], half_signed_txs=[],
+                        trees=Trees, calls=Calls}
     end.
 
 -spec add_half_signed_tx(aetx_sign:signed_tx(), state()) -> state().
@@ -283,4 +302,24 @@ poi(Filter, #state{trees=Trees}) ->
         end,
         {ok, aec_trees:new_poi(Trees)},
         Filter).
+
+-spec move_call(aesc_offchain_update:update(), non_neg_integer(), aect_call_state_tree:tree(),
+                aec_trees:trees()) -> aect_call_state_tree:tree().
+move_call(Update, Round, Calls, Trees) ->
+    IsCall = aesc_offchain_update:is_call(Update),
+    IsNewContract = aesc_offchain_update:is_contract_create(Update),
+    {ContractPubkey, Caller} =
+        case IsNewContract of
+            true ->
+                Owner = aesc_offchain_update:extract_caller(Update),
+                ContractPk = aect_contracts:compute_contract_pubkey(Owner, Round),
+                {ContractPk, Owner};
+            false when IsCall ->
+                aesc_offchain_update:extract_call(Update)
+        end,
+    {ok, Call} = aect_channel_contract:get_call(ContractPubkey,
+                                                Caller,
+                                                Round,
+                                                aec_trees:calls(Trees)),
+    aect_call_state_tree:insert_call(Call, Calls).
 

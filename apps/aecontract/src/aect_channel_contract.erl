@@ -93,12 +93,10 @@ run(ContractPubKey, VmVersion, Call, CallData, CallStack, Round, Trees0) ->
     {CallRes, Trees} = aect_dispatch:run(VmVersion, CallDef),
     aect_utils:insert_call_in_trees(CallRes, Trees).
 
-get_call(Contract, Caller, Round, Trees) ->
-    CallsTree = aec_trees:calls(Trees),
+get_call(Contract, Caller, Round, CallsTree) ->
     CallId = aect_call:id(Caller, Round, Contract),
     case aect_call_state_tree:lookup_call(Contract, CallId, CallsTree) of
         none -> {error, call_not_found};
         {value, Call} -> {ok, Call}
     end.
-
 

@@ -17,6 +17,7 @@
         , new_with_backend/1
         , iterator/1
         , prune/2
+        , prune_without_backend/1
         , root_hash/1]).
 
 -ifdef(TEST).
@@ -59,6 +60,10 @@ new_with_backend(Hash) ->
 -spec prune(aec_blocks:height(), aec_trees:trees()) -> aec_trees:trees().
 prune(_,Trees) ->
     aec_trees:set_calls(Trees, empty_with_backend()).
+
+-spec prune_without_backend(aec_trees:trees()) -> aec_trees:trees().
+prune_without_backend(Trees) ->
+    aec_trees:set_calls(Trees, empty()).
 
 -spec insert_call(aect_call:call(), tree()) -> tree().
 insert_call(Call, Tree = #call_tree{ calls = CtTree}) ->
