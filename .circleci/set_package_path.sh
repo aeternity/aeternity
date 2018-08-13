@@ -14,5 +14,4 @@ if [[ -n $CIRCLE_TAG && $CIRCLE_TAG =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
 fi
 
 PACKAGE_TARBALL=${PACKAGES_DIR:?}/epoch-${VERSION}-${PKG_SUFFIX}.tar.gz
-echo "export PACKAGE_TARBALL_FILE=epoch-${VERSION}-${PKG_SUFFIX}.tar.gz" >> $BASH_ENV
 echo "export PACKAGE_TARBALL=${PACKAGE_TARBALL}" >> $BASH_ENV
