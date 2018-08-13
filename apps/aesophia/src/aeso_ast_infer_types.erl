@@ -93,19 +93,19 @@ infer([]) ->
 
 infer_contract(Defs0) ->
     Defs = desugar(Defs0),
-    create_record_types(Defs),
+    create_type_defs(Defs),
     C = unfold_record_types(infer_contract(global_env(), Defs)),
-    destroy_record_types(),
+    destroy_type_defs(),
     C.
 
 infer_constant({letval, Attrs,_Pattern, Type, E}) ->
-    create_record_types([]),
+    create_type_defs([]),
     ets:new(type_vars, [set, named_table, public]),
     {typed, _, _, PatType} =
         infer_expr(global_env(), {typed, Attrs, E, arg_type(Type)}),
     T = instantiate(PatType),
     ets:delete(type_vars),
-    destroy_record_types(),
+    destroy_type_defs(),
     T.
 
 %% infer_contract takes a proplist mapping global names to types, and
@@ -522,35 +522,35 @@ free_vars(L) when is_list(L) ->
 
 %% Record types
 
-create_record_types(Defs) ->
+create_type_defs(Defs) ->
     %% A map from type names to definitions
-    ets:new(record_types, [public, named_table, set]),
+    ets:new(type_defs, [public, named_table, set]),
     %% A relation from field names to types
     ets:new(record_fields, [public, named_table, bag]),
     [ insert_typedef(Id, Args, Typedef)
      || {type_def, _Attrs, Id, Args, Typedef} <- Defs].
 
-destroy_record_types() ->
-    ets:delete(record_types),
+destroy_type_defs() ->
+    ets:delete(type_defs),
     ets:delete(record_fields).
 
 -spec insert_typedef(aeso_syntax:id(), [aeso_syntax:tvar()], aeso_syntax:typedef()) -> ok.
 insert_typedef(Id = {id, Attrs, Name}, Args, Typedef) ->
+    ets:insert(type_defs, {Name, Args, Typedef}),
     case Typedef of
         {record_t, Fields} ->
-            ets:insert(record_types, {Name, Args, Fields}),
             [ets:insert(record_fields, {FieldName, FieldType, {app_t, Attrs, Id, Args}})
-             || {field_t, _, {id, _, FieldName}, FieldType} <- Fields];
+             || {field_t, _, {id, _, FieldName}, FieldType} <- Fields],
+            ok;
         {variant_t, _} -> ok;
         {alias_t, _} -> ok
-    end,
-    ok.
+    end.
 
 -spec lookup_type(string()) -> false | {[aeso_syntax:tvar()], aeso_syntax:typedef()}.
 lookup_type(Name) ->
-    case ets:lookup(record_types, Name) of
+    case ets:lookup(type_defs, Name) of
         []                       -> false;
-        [{Name, Params, Fields}] -> {Params, {record_t, Fields}}
+        [{Name, Params, Typedef}] -> {Params, Typedef}
     end.
 
 create_field_constraints() ->
@@ -698,49 +698,61 @@ solve_for_uvar(UVar = {uvar, Attrs, _}, Fields) ->
 %% names. But, before we pass the typed program to the code generator,
 %% we replace record types annotating expressions with their
 %% definition. This enables the code generator to see the fields.
-unfold_record_types({typed, Attr, E, Type}) ->
-    {typed, Attr, unfold_record_types(E), unfold_record_types_in_type(Type)};
-unfold_record_types({arg, Attr, Id, Type}) ->
-    {arg, Attr, Id, unfold_record_types_in_type(Type)};
-unfold_record_types({type_sig, Args, Ret}) ->
-    {type_sig, unfold_record_types_in_type(Args), unfold_record_types_in_type(Ret)};
-unfold_record_types({type_def, Ann, Name, Args, Def}) ->
-    {type_def, Ann, Name, Args, unfold_record_types_in_type(Def)};
-unfold_record_types({letfun, Ann, Name, Args, Type, Body}) ->
-    {letfun, Ann, Name, unfold_record_types(Args), unfold_record_types_in_type(Type), unfold_record_types(Body)};
-unfold_record_types(T) when is_tuple(T) ->
-    list_to_tuple(unfold_record_types(tuple_to_list(T)));
-unfold_record_types([H|T]) ->
-    [unfold_record_types(H)|unfold_record_types(T)];
-unfold_record_types(X) ->
+unfold_record_types(T) ->
+    unfold_types(T, [unfold_record_types]).
+
+unfold_types({typed, Attr, E, Type}, Options) ->
+    {typed, Attr, unfold_types(E, Options), unfold_types_in_type(Type, Options)};
+unfold_types({arg, Attr, Id, Type}, Options) ->
+    {arg, Attr, Id, unfold_types_in_type(Type, Options)};
+unfold_types({type_sig, Args, Ret}, Options) ->
+    {type_sig, unfold_types_in_type(Args, Options), unfold_types_in_type(Ret, Options)};
+unfold_types({type_def, Ann, Name, Args, Def}, Options) ->
+    {type_def, Ann, Name, Args, unfold_types_in_type(Def, Options)};
+unfold_types({letfun, Ann, Name, Args, Type, Body}, Options) ->
+    {letfun, Ann, Name, unfold_types(Args, Options), unfold_types_in_type(Type, Options), unfold_types(Body, Options)};
+unfold_types(T, Options) when is_tuple(T) ->
+    list_to_tuple(unfold_types(tuple_to_list(T), Options));
+unfold_types([H|T], Options) ->
+    [unfold_types(H, Options)|unfold_types(T, Options)];
+unfold_types(X, _Options) ->
     X.
 
-unfold_record_types_in_type({app_t, Ann, Id = {id, _, RecName}, Args}) ->
+unfold_types_in_type(T) ->
+    unfold_types_in_type(T, []).
+
+unfold_types_in_type({app_t, Ann, Id = {id, _, RecName}, Args}, Options) ->
+    UnfoldRecords = proplists:get_value(unfold_record_types, Options, false),
     case lookup_type(RecName) of
-        {Formals, {record_t, Fields}} when length(Formals) == length(Args) ->
+        {Formals, {record_t, Fields}} when UnfoldRecords, length(Formals) == length(Args) ->
             {record_t,
-             unfold_record_types_in_type(
-               subst_tvars(lists:zip(Formals, Args), Fields))};
+             unfold_types_in_type(
+               subst_tvars(lists:zip(Formals, Args), Fields), Options)};
+        {Formals, {alias_t, Type}} when length(Formals) == length(Args) ->
+            unfold_types_in_type(subst_tvars(lists:zip(Formals, Args), Type), Options);
         _ ->
             %% Not a record type, or ill-formed record type.
-            {app_t, Ann, Id, unfold_record_types_in_type(Args)}
+            {app_t, Ann, Id, unfold_types_in_type(Args, Options)}
     end;
-unfold_record_types_in_type(Type={id, _, RecName}) ->
-    %% Like the case above, but for record types without parameters.
+unfold_types_in_type(Type={id, _, RecName}, Options) ->
+    %% Like the case above, but for types without parameters.
+    UnfoldRecords = proplists:get_value(unfold_record_types, Options, false),
     case lookup_type(RecName) of
-        {[], {record_t, Fields}} ->
-            {record_t, unfold_record_types_in_type(Fields)};
+        {[], {record_t, Fields}} when UnfoldRecords ->
+            {record_t, unfold_types_in_type(Fields, Options)};
+        {[], {alias_t, Type1}} ->
+            unfold_types_in_type(Type1, Options);
         _ ->
             %% Not a record type, or ill-formed record type
             Type
     end;
-unfold_record_types_in_type({field_t, Attr, Name, Type}) ->
-    {field_t, Attr, Name, unfold_record_types_in_type(Type)};
-unfold_record_types_in_type(T) when is_tuple(T) ->
-    list_to_tuple(unfold_record_types_in_type(tuple_to_list(T)));
-unfold_record_types_in_type([H|T]) ->
-    [unfold_record_types_in_type(H)|unfold_record_types_in_type(T)];
-unfold_record_types_in_type(X) ->
+unfold_types_in_type({field_t, Attr, Name, Type}, Options) ->
+    {field_t, Attr, Name, unfold_types_in_type(Type, Options)};
+unfold_types_in_type(T, Options) when is_tuple(T) ->
+    list_to_tuple(unfold_types_in_type(tuple_to_list(T), Options));
+unfold_types_in_type([H|T], Options) ->
+    [unfold_types_in_type(H, Options)|unfold_types_in_type(T, Options)];
+unfold_types_in_type(X, _Options) ->
     X.
 
 
@@ -763,7 +775,7 @@ unify({id, _, "_"}, _, _When) ->
 unify(_, {id, _, "_"}, _When) ->
   true;
 unify(T1, T2, When) ->
-  unify1(dereference(T1), dereference(T2), When).
+  unify1(dereference(unfold_types_in_type(T1)), dereference(unfold_types_in_type(T2)), When).
 
 unify1({uvar, _, R}, {uvar, _, R}, _When) ->
     true;
