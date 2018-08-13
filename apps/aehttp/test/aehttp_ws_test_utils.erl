@@ -20,6 +20,9 @@
          wait_for_event/3,
          wait_for_event/4,
          wait_for_channel_event/2,
+         wait_for_msg/4,
+         wait_for_channel_msg/2,
+         wait_for_channel_msg/3,
          wait_for_connect/1,
          wait_for_connect_any/0,
          stop/1]).
@@ -208,16 +211,35 @@ wait_for_event(ConnPid, Origin, Action) ->
 
 -spec wait_for_event(pid(), atom(), atom(), integer()) -> ok | {ok, map()} | timeout.
 wait_for_event(ConnPid, Origin, Action, Timeout) ->
+    wait_for_msg(payload, ConnPid, Origin, Action, Timeout).
+
+%% Whereas wait_for_event() only returns the <<"payload">> value, wait_for_msg()
+%% returns the whole msg.
+wait_for_msg(ConnPid, Origin, Action, Timeout) ->
+    wait_for_msg(msg, ConnPid, Origin, Action, Timeout).
+
+-spec wait_for_msg(pid(), atom(), atom(), integer()) -> ok | {ok, map()} | timeout.
+wait_for_msg(Type, ConnPid, Origin, Action, Timeout) ->
     receive
-        {ConnPid, websocket_event, Origin, Action, Tag, Payload} ->
-            {ok, Tag, Payload};
-        {ConnPid, websocket_event, Origin, Action, Payload} ->
-            {ok, Payload};
+        {ConnPid, websocket_event, Origin, Action, Tag, Msg} ->
+            {ok, Tag, msg_data(Type, Msg)};
+        {ConnPid, websocket_event, Origin, Action, Msg} ->
+            {ok, msg_data(Type, Msg)};
         {ConnPid, websocket_event, Origin, Action} ->
             ok
     after Timeout ->
         timeout
     end.
+
+wait_for_channel_msg(ConnPid, Action) ->
+    wait_for_channel_msg(ConnPid, Action, ?DEFAULT_EVENT_TIMEOUT).
+
+wait_for_channel_msg(ConnPid, Action, Timeout) ->
+    wait_for_msg(ConnPid, ?CHANNEL, Action, Timeout).
+
+msg_data(payload, #{<<"payload">> := P}) -> P;
+msg_data(payload, Msg) -> Msg;
+msg_data(msg, Msg) -> Msg.
 
 %% consumes messages from the mailbox:
 %% {Sender::pid(), websocket_event, Origin::atom(), Action::atom()}
@@ -229,6 +251,22 @@ wait_for_channel_event(ConnPid, Action) ->
 -spec wait_for_channel_event(pid(), atom(), integer()) -> ok | {ok, map()} | timeout.
 wait_for_channel_event(ConnPid, Action, Timeout) ->
     wait_for_event(ConnPid, ?CHANNEL, Action, Timeout).
+
+
+inform(Origin, Action, #state{} = State) ->
+    inform(Origin, Action, undefined, [], State).
+
+inform(Origin, Action, Tag, Payload, #state{regs = Register}) ->
+    RegisteredPids = get_registered_pids({Origin, Action}, Register),
+    lists:foreach(
+      fun(Pid) -> inform_registered(Pid, Origin, Action, Tag, Payload) end,
+      RegisteredPids),
+    %% for easier debugging
+    case RegisteredPids == [] of
+        true -> ct:log("No test registered for this event");
+        false -> pass
+    end.
+
 
 inform_registered(RegisteredPid, Origin, Action) ->
     inform_registered(RegisteredPid, Origin, Action, undefined, []).
@@ -282,10 +320,9 @@ websocket_handle({text, MsgBin}, _ConnState, #state{regs=Register, role=Role}=St
                                               atom_to_binary(?CHANNEL, utf8)), utf8),
     Action = binary_to_existing_atom(maps:get(<<"action">>, Msg), utf8),
     Tag = maps:get(<<"tag">>, Msg, undefined),
-    Payload = maps:get(<<"payload">>, Msg, []),
     RegisteredPids = get_registered_pids({Origin, Action}, Register),
     lists:foreach(
-        fun(Pid) -> inform_registered(Pid, Origin, Action, Tag, Payload) end,
+        fun(Pid) -> inform_registered(Pid, Origin, Action, Tag, Msg) end,
         RegisteredPids),
 
     % for easier debugging
@@ -344,6 +381,7 @@ websocket_info({send_to_client, Msg}, _ConnState, #state{role=Role}=State) ->
 websocket_terminate(Reason, _ConnState, State) ->
     ct:log("Websocket closed in state ~p wih reason ~p~n",
               [State, Reason]),
+    inform(websocket, closed, State),
     ok.
 
 get_registered_pids(Event, #register{events=Events}) ->
@@ -395,7 +433,7 @@ delete_pid(RegPid, #register{events=Events0} = Register0) ->
             fun(Event, Pids0, Acc) ->
                 case lists:filter(fun(Pid) -> Pid =/= RegPid end, Pids0) of
                     [] -> Acc; % no more pids for that event
-                    Pids -> maps:put(Event, Pids)
+                    Pids -> maps:put(Event, Pids, Acc)
                 end
             end,
             #{},
