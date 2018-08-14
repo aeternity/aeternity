@@ -303,6 +303,7 @@ spending_3(Config) ->
     %% Now we add enough tokens to acc_a so it can do the spend tx.
     {ok,200,#{<<"tx_hash">> := PostTxHash}} = post_spend_tx(APubkey, 500, 1),
     ok = wait_for_tx_hash_on_chain(NodeName, PostTxHash),
+    ok = wait_for_tx_hash_on_chain(NodeName, SpendTxHash),
 
     %% Check that tx has succeeded.
     ?assert(tx_in_chain(SpendTxHash)),
