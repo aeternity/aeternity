@@ -46,5 +46,6 @@ compilable_contracts() ->
      "simple_storage",
      "spend_test",
      "stack",
-     "test"
+     "test",
+     "builtin_bug"
     ].
