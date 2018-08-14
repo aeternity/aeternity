@@ -67,7 +67,7 @@ tx$...
 >>> import base58
 >>> unsigned_contract_create_tx = base58.b58decode_check(raw_unsigned_contract_create_tx.tx[3:])
 
-Bob signs - locally - the contract create tx.
+Bob signs - locally - the contract create transaction.
 
 >>> import keys
 >>> encoded_signed_contract_create_tx = keys.sign_verify_encode_tx(unsigned_contract_create_tx, users['b']['priv_key'], users['b']['pub_key'])
@@ -124,19 +124,19 @@ Alice computes - off-chain, using the epoch API - the unsigned contract call tra
 ...   function=contract_call_data['f'],
 ...   arguments=contract_call_data['arg'])).tx[3:])
 
-Alice signs - locally - the contract call tx.
+Alice signs - locally - the contract call transaction.
 
 >>> encoded_signed_contract_call_tx = keys.sign_verify_encode_tx(unsigned_contract_call_tx, users['a']['priv_key'], users['a']['pub_key'])
 >>> print(encoded_signed_contract_call_tx) # doctest: +ELLIPSIS
 tx$...
 
-Alice publishes the signed contract create transaction to an epoch node for inclusion in the chain.
+Alice publishes the signed contract call transaction to an epoch node for inclusion in the chain.
 
 >>> contract_call_tx_hash = epoch_node['external_api'].post_tx(Tx(encoded_signed_contract_call_tx)).tx_hash
 >>> print(contract_call_tx_hash) # doctest: +ELLIPSIS
 th$...
 
-Alice ensures that the published contract create transaction is included in the chain.
+Alice ensures that the published contract call transaction is included in the chain.
 
 >>> def call_status(sync_call_api_with_http_info_fun):
 ...   from swagger_client.rest import ApiException
