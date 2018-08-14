@@ -8,6 +8,33 @@
 
 -export([infer/1, infer_constant/1]).
 
+-type utype() :: {fun_t, aeso_syntax:ann(), [utype()], utype()}
+               | {app_t, aeso_syntax:ann(), utype(), [utype()]}
+               | {tuple_t, aeso_syntax:ann(), [utype()]}
+               | aeso_syntax:id()  | aeso_syntax:qid()
+               | aeso_syntax:con() | aeso_syntax:qcon()  %% contracts
+               | aeso_syntax:tvar()
+               | {uvar, aeso_syntax:ann(), reference()}.
+
+-type why_record() :: aeso_syntax:field(aeso_syntax:expr())
+                    | {proj, aeso_syntax:ann(), aeso_syntax:expr(), aeso_syntax:id()}.
+
+-record(field_constraint,
+    { record_t :: utype()
+    , field    :: aeso_syntax:id()
+    , field_t  :: utype()
+    , kind     :: project | create | update %% Projection constraints can match contract
+    , context  :: why_record() }).          %% types, but field constraints only record types.
+
+-type field_constraint() :: #field_constraint{}.
+
+-record(field_info,
+    { field_t  :: utype()
+    , record_t :: utype()
+    , kind     :: contract | record }).
+
+-type field_info() :: #field_info{}.
+
 %% Environment containing language primitives
 -spec global_env() -> [{string(), aeso_syntax:type()}].
 global_env() ->
@@ -353,8 +380,14 @@ infer_expr(Env, {record, Attrs, Fields}) ->
     RecordType = fresh_uvar(Attrs),
     NewFields = [{field, A, FieldName, infer_expr(Env, Expr)}
                  || {field, A, FieldName, Expr} <- Fields],
-    constrain([case LV of
-                [{proj, _, FieldName}] -> {RecordType, FieldName, T, Fld}
+    constrain([begin
+                [{proj, _, FieldName}] = LV,
+                #field_constraint{
+                    record_t = RecordType,
+                    field    = FieldName,
+                    field_t  = T,
+                    kind     = create,
+                    context  = Fld}
                end || {Fld, {field, _, LV, {typed, _, _, T}}} <- lists:zip(Fields, NewFields)]),
     {typed, Attrs, {record, Attrs, NewFields}, RecordType};
 infer_expr(Env, {record, Attrs, Record, Update}) ->
@@ -364,7 +397,12 @@ infer_expr(Env, {record, Attrs, Record, Update}) ->
 infer_expr(Env, {proj, Attrs, Record, FieldName}) ->
     NewRecord = {typed, _, _, RecordType} = infer_expr(Env, Record),
     FieldType = fresh_uvar(Attrs),
-    constrain({RecordType, FieldName, FieldType, {proj, Attrs, Record, FieldName}}),
+    constrain([#field_constraint{
+        record_t = RecordType,
+        field    = FieldName,
+        field_t  = FieldType,
+        kind     = project,
+        context  = {proj, Attrs, Record, FieldName} }]),
     {typed, Attrs, {proj, Attrs, NewRecord, FieldName}, FieldType};
 %% Maps
 infer_expr(Env, {map_get, Attrs, Map, Key}) ->  %% map lookup
@@ -423,7 +461,12 @@ check_record_update(Env, RecordType, Fld) ->
                 FunType = {fun_t, Ann1, [FldType], FldType},
                 {field_upd, Ann, LV, check_expr(Env, Fun, FunType)}
         end,
-    constrain([{RecordType, FieldName, FldType, Fld}]),
+    constrain([#field_constraint{
+        record_t = RecordType,
+        field    = FieldName,
+        field_t  = FldType,
+        kind     = update,
+        context  = Fld }]),
     Fld1.
 
 infer_op(Env, As, Op, Args, InferOp) ->
@@ -539,7 +582,9 @@ insert_typedef(Id = {id, Attrs, Name}, Args, Typedef) ->
     ets:insert(type_defs, {Name, Args, Typedef}),
     case Typedef of
         {record_t, Fields} ->
-            [ets:insert(record_fields, {FieldName, FieldType, {app_t, Attrs, Id, Args}})
+            [insert_record_field(FieldName, #field_info{ kind     = record,
+                                                         field_t  = FieldType,
+                                                         record_t = {app_t, Attrs, Id, Args} })
              || {field_t, _, {id, _, FieldName}, FieldType} <- Fields],
             ok;
         {variant_t, _} -> ok;
@@ -553,6 +598,14 @@ lookup_type(Name) ->
         [{Name, Params, Typedef}] -> {Params, Typedef}
     end.
 
+-spec insert_record_field(string(), field_info()) -> true.
+insert_record_field(FieldName, FieldInfo) ->
+    ets:insert(record_fields, {FieldName, FieldInfo}).
+
+-spec lookup_record_field(string()) -> [{string(), field_info()}].
+lookup_record_field(FieldName) ->
+    ets:lookup(record_fields, FieldName).
+
 create_field_constraints() ->
     %% A relation from uvars to constraints
     ets:new(field_constraints, [public, named_table, bag]).
@@ -560,20 +613,30 @@ create_field_constraints() ->
 destroy_field_constraints() ->
     ets:delete(field_constraints).
 
+-spec constrain([field_constraint()]) -> true.
 constrain(FieldConstraints) ->
     ets:insert(field_constraints, FieldConstraints).
 
-solve_field_constraints() ->
-    solve_field_constraints(ets:tab2list(field_constraints)).
+-spec get_field_constraints() -> [field_constraint()].
+get_field_constraints() ->
+    ets:tab2list(field_constraints).
 
+solve_field_constraints() ->
+    solve_field_constraints(get_field_constraints()).
+
+-spec solve_field_constraints([field_constraint()]) -> ok.
 solve_field_constraints(Constraints) ->
     %% First look for record fields that appear in only one type definition
-    IsAmbiguous = fun({RecordType, Field={id, _Attrs, FieldName}, FieldType, When}) ->
-        case ets:lookup(record_fields, FieldName) of
+    IsAmbiguous = fun(#field_constraint{
+                        record_t = RecordType,
+                        field    = Field={id, _Attrs, FieldName},
+                        field_t  = FieldType,
+                        context  = When }) ->
+        case lookup_record_field(FieldName) of
             [] ->
                 type_error({undefined_field, Field}),
                 false;
-            [{FieldName, FldType, RecType}] ->
+            [{FieldName, #field_info{field_t = FldType, record_t = RecType}}] ->
                 create_freshen_tvars(),
                 FreshFldType = freshen(FldType),
                 FreshRecType = freshen(RecType),
@@ -588,6 +651,7 @@ solve_field_constraints(Constraints) ->
     AmbiguousConstraints = lists:filter(IsAmbiguous, Constraints),
     solve_ambiguous_field_constraints(AmbiguousConstraints).
 
+-spec solve_ambiguous_field_constraints([field_constraint()]) -> ok.
 solve_ambiguous_field_constraints(Constraints) ->
     Unknown = solve_known_record_types(Constraints),
     if Unknown == [] -> ok;
@@ -602,9 +666,10 @@ solve_ambiguous_field_constraints(Constraints) ->
             end
     end.
 
+-spec solve_unknown_record_types([field_constraint()]) -> true | [tuple()].
 solve_unknown_record_types(Unknown) ->
-    UVars = lists:usort([UVar || {UVar = {uvar, _, _}, _, _, _} <- Unknown]),
-    Solutions = [solve_for_uvar(UVar, [Field || {U, Field, _, _} <- Unknown,
+    UVars = lists:usort([UVar || #field_constraint{record_t = UVar = {uvar, _, _}} <- Unknown]),
+    Solutions = [solve_for_uvar(UVar, [Field || #field_constraint{record_t = U, field = Field} <- Unknown,
                                                 U == UVar])
                  || UVar <- UVars],
     case lists:member(true, Solutions) of
@@ -612,12 +677,17 @@ solve_unknown_record_types(Unknown) ->
         false -> Solutions
     end.
 
+-spec solve_known_record_types([field_constraint()]) -> [field_constraint()].
 solve_known_record_types(Constraints) ->
     DerefConstraints =
-        [{dereference(RecordType), FieldName, FieldType, When}
-         || {RecordType, FieldName, FieldType, When} <- Constraints],
+        [ C#field_constraint{record_t = dereference(RecordType)}
+         || C = #field_constraint{record_t = RecordType} <- Constraints ],
     SolvedConstraints =
         [begin
+            #field_constraint{record_t = RecType,
+                              field    = FieldName,
+                              field_t  = FieldType,
+                              context  = When} = C,
             RecId = {id, Attrs, RecName} = record_type_name(RecType),
             case lookup_type(RecName) of
                 {Formals, {record_t, Fields}} ->
@@ -634,22 +704,22 @@ solve_known_record_types(Constraints) ->
                              destroy_freshen_tvars(),
                              unify(FreshFldType, FieldType, {todo, {solve_field_constraint_field, When}}),
                              unify(FreshRecType, RecType, {todo, {solve_field_constraint_record, When}}),
-                             {RecType, FieldName, FieldType, When}
+                             C
                      end;
                 false ->
                      type_error({not_a_record_type, RecId, When}),
                      not_solved
              end
          end
-         || {RecType, FieldName, FieldType, When} <- DerefConstraints,
-            case RecType of
+         || C <- DerefConstraints,
+            case C#field_constraint.record_t of
                 {uvar, _, _} -> false;
                 _          -> true
             end],
     DerefConstraints--SolvedConstraints.
 
 destroy_and_report_unsolved_field_constraints() ->
-    Unsolved = ets:tab2list(field_constraints),
+    Unsolved = get_field_constraints(),
     Unknown  = solve_known_record_types(Unsolved),
     if Unknown == [] -> ok;
        true ->
@@ -670,7 +740,7 @@ solve_for_uvar(UVar = {uvar, Attrs, _}, Fields) ->
     %% Does this set of fields uniquely identify a record type?
     FieldNames = [ Name || {id, _, Name} <- Fields ],
     UniqueFields = lists:usort(FieldNames),
-    Candidates = [RecName || {_, _, {app_t, _, {id, _, RecName}, _}} <- ets:lookup(record_fields, hd(FieldNames))],
+    Candidates = [RecName || {_, #field_info{record_t = {app_t, _, {id, _, RecName}, _}}} <- lookup_record_field(hd(FieldNames))],
     TypesAndFields = [case lookup_type(RecName) of
                           {_, {record_t, RecFields}} ->
                               {RecName, [Field || {field_t, _, {id, _, Field}, _} <- RecFields]};
@@ -1031,6 +1101,7 @@ pp_when({check_expr, Expr, Inferred0, Expected0}) ->
                    pp_type("  ", Expected)]);
 pp_when(unknown) -> "".
 
+-spec pp_why_record(why_record()) -> iolist().
 pp_why_record(Fld = {field, _Ann, LV, _Id, _E}) ->
     io_lib:format("arising from an assignment of the field ~s (at ~s)",
         [pp_expr("", {lvalue, [], LV}),
