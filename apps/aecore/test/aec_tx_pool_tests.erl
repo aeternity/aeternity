@@ -27,6 +27,7 @@ tx_pool_test_() ->
              %% Start `aec_keys` merely for generating realistic test
              %% signed txs - as a node would do.
              ets:new(?TAB, [public, ordered_set, named_table]),
+             meck:new(aeu_time, [passthrough]),
              TmpKeysDir
      end,
      fun(TmpKeysDir) ->
@@ -38,6 +39,7 @@ tx_pool_test_() ->
              aec_test_utils:unmock_genesis(),
              aec_test_utils:unmock_block_target_validation(), %% Unloads aec_governance mock.
              ok = aec_tx_pool:stop(),
+             meck:unload(aeu_time),
              ok
      end,
      [{"No txs in mempool",
@@ -121,6 +123,8 @@ tx_pool_test_() ->
                %% Create a fork
                %% First add a chain of two micro blocks with key blocks
                %% on top of each of them
+               %% Ensure micro_block_cycle time
+               meck:expect(aeu_time, now_in_msecs, fun() -> meck:passthrough([]) + 3000 end),
                STx3 = a_signed_tx(PubKey2, new_pubkey(), 1, 1),
                ?assertEqual(ok, aec_tx_pool:push(STx3)),
                {ok, USCandidate3, _} = aec_block_micro_candidate:create(aec_chain:top_block()),
@@ -131,6 +135,7 @@ tx_pool_test_() ->
                {ok, KeyBlock2} = aec_block_key_candidate:create(TopBlockFork1, PubKey1),
                {ok, CHashFork1} = aec_blocks:hash_internal_representation(KeyBlock2),
 
+               meck:expect(aeu_time, now_in_msecs, fun() -> meck:passthrough([]) + 6000 end),
                STx4 = a_signed_tx(PubKey2, new_pubkey(), 2, 1),
                ?assertEqual(ok, aec_tx_pool:push(STx4)),
                {ok, USCandidate4, _} = aec_block_micro_candidate:create(aec_chain:top_block()),

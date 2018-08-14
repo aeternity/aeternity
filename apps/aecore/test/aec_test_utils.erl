@@ -344,10 +344,11 @@ extend_block_chain_with_state(Chain,
 blocks_only_chain(Chain) ->
     lists:map(fun({B, _S}) -> B end, Chain).
 
-create_micro_block(PrevBlock, PrivKey, Txs, Trees) ->
+create_micro_block(PrevBlock, PrivKey, Txs, Trees, Offset) ->
     {Block1, Trees1} =
         aec_block_micro_candidate:create_with_state(PrevBlock, PrevBlock, Txs, Trees),
-    SignedMicroBlock = sign_micro_block(Block1, PrivKey),
+    Block2 = aec_blocks:set_time_in_msecs(Block1, Offset + aec_blocks:time_in_msecs(Block1)),
+    SignedMicroBlock = sign_micro_block(Block2, PrivKey),
     {SignedMicroBlock, Trees1}.
 
 sign_micro_block(MicroBlock, PrivKey) ->
@@ -361,21 +362,20 @@ next_block_with_state([{PB, PBS} | _] = Chain, Target, Time0, TxsFun, Nonce,
     Txs = TxsFun(Height),
     %% NG: if a block X used to have Txs, now put them in micro-blocks just before
     %% the key-block at height X. Every transaction is put in separate micro-block.
-    Chain1 =
-        case Txs of
-            [] -> Chain;
-            _  -> create_micro_blocks(Chain, PrivKey, lists:reverse(Txs))
-    end,
+    Chain1 = create_micro_blocks(Chain, PrivKey, lists:reverse(Txs)),
     {B, S} = create_keyblock_with_state(Chain1, PubKey, BeneficiaryPubKey),
     [{B#block{ target = Target, nonce  = Nonce,
                    time   = case Time0 of undefined -> B#block.time; _ -> Time0 end },
       S} | Chain1].
 
-create_micro_blocks(Chain, _PrivKey, []) ->
+create_micro_blocks(Chain, PrivKey, Txs) ->
+    create_micro_blocks(Chain, PrivKey, Txs, 0).
+
+create_micro_blocks(Chain, _PrivKey, [], _Offset) ->
     Chain;
-create_micro_blocks([{PB, PBS} | _] = Chain, PrivKey, [Tx | Rest]) ->
-    Chain1 = [create_micro_block(PB, PrivKey, [Tx], PBS) | Chain],
-    create_micro_blocks(Chain1, PrivKey, Rest).
+create_micro_blocks([{PB, PBS} | _] = Chain, PrivKey, [Tx | Rest], Offset) ->
+    Chain1 = [create_micro_block(PB, PrivKey, [Tx], PBS, Offset) | Chain],
+    create_micro_blocks(Chain1, PrivKey, Rest, Offset + aec_governance:micro_block_cycle()).
 
 %% @doc Given a transaction Tx, a private key or list of keys,
 %% return the cryptographically signed transaction using the default crypto
