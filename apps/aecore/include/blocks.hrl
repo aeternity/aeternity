@@ -3,15 +3,13 @@
 -define(PROTOCOL_VERSION, 21).
 -define(GENESIS_VERSION, ?PROTOCOL_VERSION).
 -define(GENESIS_HEIGHT, 0).
+-define(GENESIS_TIME, 0).
 
 -define(BLOCK_HEADER_HASH_BYTES, 32).
 -define(TXS_HASH_BYTES, 32).
 -define(STATE_HASH_BYTES, 32).
 -define(MINER_PUB_BYTES, 32).
 -define(BENEFICIARY_PUB_BYTES, 32).
-
--define(ACCEPTED_FUTURE_KEY_BLOCK_TIME_SHIFT, 30 * 60 * 1000). %% 30 min
--define(ACCEPTED_MICRO_BLOCK_MIN_TIME_DIFF, 3 * 1000). %% 3 secs
 
 -define(STORAGE_TYPE_BLOCK,  0).
 -define(STORAGE_TYPE_HEADER, 1).
@@ -33,7 +31,7 @@
           txs = []                :: list(aetx_sign:signed_tx()),
           target = ?HIGHEST_TARGET_SCI :: aec_pow:sci_int(),
           nonce = 0               :: non_neg_integer(),
-          time = 0                :: non_neg_integer(),
+          time = ?GENESIS_TIME    :: non_neg_integer(),
           version                 :: non_neg_integer(),
           pow_evidence = no_value :: aec_pow:pow_evidence(),
           miner = <<0:?MINER_PUB_BYTES/unit:8>> :: miner_pubkey(),
@@ -47,7 +45,7 @@
           root_hash = <<>>        :: state_hash(),
           target = ?HIGHEST_TARGET_SCI :: aec_pow:sci_int(),
           nonce = 0               :: non_neg_integer(),
-          time = 0                :: non_neg_integer(),
+          time = ?GENESIS_TIME    :: non_neg_integer(),
           version                 :: non_neg_integer(),
           pow_evidence = no_value :: aec_pow:pow_evidence(),
           miner = <<0:?MINER_PUB_BYTES/unit:8>> :: miner_pubkey(), %% TODO: remove default, confusing

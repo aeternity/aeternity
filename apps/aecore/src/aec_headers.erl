@@ -232,13 +232,16 @@ validate_key_block_header(Header) ->
 
     Validators = [fun validate_version/1,
                   fun validate_pow/1,
-                  fun validate_time/1],
+                  fun validate_max_time/1,
+                  fun validate_median_time/1],
     aeu_validation:run(Validators, [{Header, ProtocolVersions}]).
 
 validate_micro_block_header(Header) ->
     ProtocolVersions = aec_hard_forks:protocols(aec_governance:protocols()),
 
-    Validators = [fun validate_version/1],
+    Validators = [fun validate_version/1,
+                  fun validate_micro_block_cycle_time/1,
+                  fun validate_max_time/1],
     aeu_validation:run(Validators, [{Header, ProtocolVersions}]).
 
 -spec validate_version({header(), aec_governance:protocols()}) ->
@@ -272,10 +275,37 @@ validate_pow({#header{nonce        = Nonce,
             {error, incorrect_pow}
     end.
 
--spec validate_time({header(), aec_governance:protocols()}) ->
-                           ok | {error, block_from_the_future}.
-validate_time({#header{time = Time}, _}) ->
-    MaxAcceptedTime = aeu_time:now_in_msecs() + ?ACCEPTED_FUTURE_KEY_BLOCK_TIME_SHIFT,
+-spec validate_median_time({header(), aec_governance:protocols()}) ->
+        ok | {error, block_from_the_past}.
+validate_median_time({Header = #header{time = Time}, _}) ->
+    case aec_chain_state:median_timestamp(Header) of
+        {ok, MTime} when Time > MTime -> ok;
+        {ok, _MTime}                  -> {error, block_from_the_past};
+        error                         -> ok %% We can't know yet - checked later
+    end.
+
+-spec validate_micro_block_cycle_time({header(), aec_governance:protocols()}) ->
+        ok | {error, bad_micro_block_interval}.
+validate_micro_block_cycle_time({#header{time = Time, prev_hash = PrevHash}, _}) ->
+    case aec_chain:get_header(PrevHash) of
+        {ok, PrevHeader = #header{ time = PrevTime }} ->
+            MinAccepted =
+                case aec_headers:type(PrevHeader) of
+                    micro -> PrevTime + aec_governance:micro_block_cycle();
+                    key   -> PrevTime + 1
+                end,
+            case Time >= MinAccepted of
+                true  -> ok;
+                false -> {error, bad_micro_block_interval}
+            end;
+        error ->
+            ok %% We don't know yet - checked later
+    end.
+
+-spec validate_max_time({header(), aec_governance:protocols()}) ->
+        ok | {error, block_from_the_future}.
+validate_max_time({#header{time = Time}, _}) ->
+    MaxAcceptedTime = aeu_time:now_in_msecs() + aec_governance:accepted_future_block_time_shift(),
     case Time < MaxAcceptedTime of
         true ->
             ok;
