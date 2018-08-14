@@ -121,7 +121,7 @@ paths:
           schema:
             type: object
             properties:
-              hash:
+              height:
                 type: integer
                 description: 'Height'
                 format: int64
