@@ -83,11 +83,15 @@ th$...
 
 Bob ensures that the published contract create transaction is included in the chain.
 
->>> import time
->>> time.sleep(5)
+>>> def is_tx_confirmed(ext_api, tx_hash, min_confirmations):
+...  top_key_height = ext_api.get_current_key_block_height().height
+...  tx_block_hash = ext_api.get_transaction_by_hash(tx_hash).block_hash
+...  if "none" == tx_block_hash:
+...    return False
+...  tx_height = ext_api.get_micro_block_header_by_hash(tx_block_hash).height
+...  return (top_key_height - tx_height) >= min_confirmations
 >>> from waiting import wait
->>> wait(lambda: 200 == epoch_node['external_api'].get_contract_call_from_tx_with_http_info(contract_create_tx_hash,
-...                                                                                         _return_http_data_only=False)[1],
+>>> wait(lambda: is_tx_confirmed(epoch_node['external_api'], contract_create_tx_hash, 2),
 ...      timeout_seconds=30)
 True
 >>> contract_init_call_object = epoch_node['external_api'].get_contract_call_from_tx(contract_create_tx_hash)
@@ -141,9 +145,7 @@ Alice ensures that the published contract create transaction is included in the 
 ...     return status
 ...   except ApiException as e:
 ...     return e.status
->>> time.sleep(5)
->>> wait(lambda: 200 == call_status(lambda: epoch_node['external_api'].get_contract_call_from_tx_with_http_info(contract_call_tx_hash,
-...                                                                                                             _return_http_data_only=False)),
+>>> wait(lambda: is_tx_confirmed(epoch_node['external_api'], contract_call_tx_hash, 2),
 ...      timeout_seconds=30)
 True
 >>> contract_call_object = epoch_node['external_api'].get_contract_call_from_tx(contract_call_tx_hash)
