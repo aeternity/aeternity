@@ -20,9 +20,12 @@
 
 -type named_args_t() :: uvar() | [{named_arg_t, aeso_syntax:ann(), aeso_syntax:id(), utype(), aeso_syntax:expr()}].
 
--type type_id() :: aeso_syntax:id() | aeso_syntax:qid().
+-type type_id() :: aeso_syntax:id() | aeso_syntax:qid() | aeso_syntax:con() | aeso_syntax:qcon().
 
--define(is_type_id(T), element(1, T) =:= id orelse element(1, T) =:= qid).
+-define(is_type_id(T), element(1, T) =:= id orelse
+                       element(1, T) =:= qid orelse
+                       element(1, T) =:= con orelse
+                       element(1, T) =:= qcon).
 
 -type why_record() :: aeso_syntax:field(aeso_syntax:expr())
                     | {proj, aeso_syntax:ann(), aeso_syntax:expr(), aeso_syntax:id()}.
@@ -124,19 +127,28 @@ global_env() ->
      {["Map", "size"],      Fun1(Map(K, V), Int)}
     ].
 
+global_type_env() ->
+    _As = [{origin, system}],
+    [].
+
 option_t(As, T) -> {app_t, As, {id, As, "option"}, [T]}.
 map_t(As, K, V) -> {app_t, As, {id, As, "map"}, [K, V]}.
 
 -spec infer(aeso_syntax:ast()) -> aeso_syntax:ast().
-infer([{contract, Attribs, ConName, Code}|Rest]) ->
+infer(Contracts) ->
+    infer(global_type_env(), Contracts).
+
+infer(TypeEnv, [Contract = {contract, Attribs, ConName, Code}|Rest]) ->
     %% do type inference on each contract independently.
-    [{contract, Attribs, ConName, infer_contract(Code)}|infer(Rest)];
-infer([]) ->
+    Contract1 = {contract, Attribs, ConName, infer_contract_top(TypeEnv, Code)},
+    TypeEnv1  = [Contract | TypeEnv],
+    [Contract1 | infer(TypeEnv1, Rest)];
+infer(_, []) ->
     [].
 
-infer_contract(Defs0) ->
+infer_contract_top(TypeEnv, Defs0) ->
     Defs = desugar(Defs0),
-    create_type_defs(Defs),
+    create_type_defs(TypeEnv ++ Defs),
     C = unfold_record_types(infer_contract(global_env(), Defs)),
     destroy_type_defs(),
     C.
@@ -159,7 +171,6 @@ infer_contract(Env, Defs) ->
               ({fun_decl, _, _, _})     -> prototype
            end,
     Get = fun(K) -> [ Def || Def <- Defs, Kind(Def) == K ] end,
-    %% TODO: handle type defs
     {Env1, TypeDefs} = check_typedefs(Env, Get(type)),
     ProtoSigs = [ check_fundecl(Env1, Decl) || Decl <- Get(prototype) ],
     Env2      = ProtoSigs ++ Env1,
@@ -603,8 +614,14 @@ create_type_defs(Defs) ->
     ets:new(type_defs, [public, named_table, set]),
     %% A relation from field names to types
     ets:new(record_fields, [public, named_table, bag]),
-    [ insert_typedef(Id, Args, Typedef)
-     || {type_def, _Attrs, Id, Args, Typedef} <- Defs].
+    [ case Def of
+        {type_def, _Attrs, Id, Args, Typedef} ->
+            insert_typedef(Id, Args, Typedef);
+        {contract, _Attrs, Id, Contents} ->
+            insert_contract(Id, Contents);
+        _ -> ok
+      end || Def <- Defs],
+    ok.
 
 destroy_type_defs() ->
     ets:delete(type_defs),
@@ -612,8 +629,25 @@ destroy_type_defs() ->
 
 %% Key used in type_defs ets table.
 -spec type_key(type_id()) -> [string()].
-type_key({id, _, Name})   -> [Name];
-type_key({qid, _, QName}) -> QName.
+type_key({Tag, _, Name})  when Tag =:= id;  Tag =:= con  -> [Name];
+type_key({Tag, _, QName}) when Tag =:= qid; Tag =:= qcon -> QName.
+
+%% Contract entrypoints take two named arguments (gas : int = Call.gas_left(), value : int = 0).
+contract_call_type({fun_t, Ann, [], Args, Ret}) ->
+    Named = fun(Name, Default) -> {named_arg_t, Ann, {id, Ann, Name}, {id, Ann, "int"}, Default} end,
+    {fun_t, Ann, [Named("gas",   {app, Ann, {qid, Ann, ["Call", "gas_left"]}, []}),
+                  Named("value", {int, Ann, 0})], Args, Ret}.
+
+insert_contract(Id, Contents) ->
+    Key = type_key(Id),
+    Fields = [ {field_t, Ann, Entrypoint, contract_call_type(Type)}
+                || {fun_decl, Ann, Entrypoint, Type} <- Contents ],
+    ets:insert(type_defs, {Key, [], {contract_t, Fields}}),
+    %% TODO: types defined in other contracts
+    [insert_record_field(Entrypoint, #field_info{ kind     = contract,
+                                                  field_t  = Type,
+                                                  record_t = Id })
+     || {field_t, _, {id, _, Entrypoint}, Type} <- Fields ].
 
 -spec insert_typedef(type_id(), [aeso_syntax:tvar()], aeso_syntax:typedef()) -> ok.
 insert_typedef(Id, Args, Typedef) ->
@@ -634,7 +668,7 @@ insert_typedef(Id, Args, Typedef) ->
 -spec lookup_type(type_id()) -> false | {[aeso_syntax:tvar()], aeso_syntax:typedef()}.
 lookup_type(Id) ->
     case ets:lookup(type_defs, type_key(Id)) of
-        []                       -> false;
+        []                        -> false;
         [{_Key, Params, Typedef}] -> {Params, Typedef}
     end.
 
@@ -645,6 +679,11 @@ insert_record_field(FieldName, FieldInfo) ->
 -spec lookup_record_field(string()) -> [{string(), field_info()}].
 lookup_record_field(FieldName) ->
     ets:lookup(record_fields, FieldName).
+
+%% For 'create' or 'update' constraints we don't consider contract types.
+lookup_record_field(FieldName, Kind) ->
+    [ Fld || Fld = {_, #field_info{ kind = K }} <- lookup_record_field(FieldName),
+             Kind == project orelse K /= contract ].
 
 %% -- Constraints --
 
@@ -733,8 +772,9 @@ solve_field_constraints(Constraints) ->
                         record_t = RecordType,
                         field    = Field={id, _Attrs, FieldName},
                         field_t  = FieldType,
+                        kind     = Kind,
                         context  = When }) ->
-        case lookup_record_field(FieldName) of
+        case lookup_record_field(FieldName, Kind) of
             [] ->
                 type_error({undefined_field, Field}),
                 false;
@@ -806,8 +846,8 @@ solve_known_record_types(Constraints) ->
                              FreshFldType = freshen(FldType),
                              FreshRecType = freshen({app_t, Attrs, RecId, Formals}),
                              destroy_freshen_tvars(),
-                             unify(FreshFldType, FieldType, {todo, {solve_field_constraint_field, When}}),
-                             unify(FreshRecType, RecType, {todo, {solve_field_constraint_record, When}}),
+                             unify(FreshFldType, FieldType, {field_constraint, FreshFldType, FieldType, When}),
+                             unify(FreshRecType, RecType, {record_constraint, FreshRecType, RecType, When}),
                              C
                      end;
                 false ->
@@ -976,7 +1016,11 @@ unify1(X, X, _When) ->
     true;
 unify1({id, _, Name}, {id, _, Name}, _When) ->
     true;
+unify1({con, _, Name}, {con, _, Name}, _When) ->
+    true;
 unify1({qid, _, Name}, {qid, _, Name}, _When) ->
+    true;
+unify1({qcon, _, Name}, {qcon, _, Name}, _When) ->
     true;
 unify1({fun_t, _, Named1, Args1, Result1}, {fun_t, _, Named2, Args2, Result2}, When) ->
     unify(Named1, Named2, When) andalso
@@ -1021,6 +1065,9 @@ occurs_check(R, T) ->
 
 occurs_check1(R, {uvar, _, R1}) -> R == R1;
 occurs_check1(_, {id, _, _}) -> false;
+occurs_check1(_, {con, _, _}) -> false;
+occurs_check1(_, {qid, _, _}) -> false;
+occurs_check1(_, {qcon, _, _}) -> false;
 occurs_check1(_, {tvar, _, _}) -> false;
 occurs_check1(R, {fun_t, _, Named, Args, Res}) ->
     occurs_check(R, [Res, Named | Args]);
@@ -1115,6 +1162,8 @@ pp_error({cannot_unify, A, B, When}) ->
                   "~s", [pp(instantiate(A)), pp(instantiate(B)), pp_when(When)]);
 pp_error({unbound_variable, Id}) ->
     io_lib:format("Unbound variable ~s at ~s\n", [pp(Id), pp_loc(Id)]);
+pp_error({undefined_field, Id}) ->
+    io_lib:format("Unbound field ~s at ~s\n", [pp(Id), pp_loc(Id)]);
 pp_error({not_a_record_type, Type, Why}) ->
     io_lib:format("~s\n~s\n", [pp_type("Not a record type: ", Type), pp_why_record(Why)]);
 pp_error({non_linear_pattern, Pattern, Nonlinear}) ->

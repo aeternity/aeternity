@@ -24,6 +24,7 @@
         , sophia_identity/1
         , sophia_state/1
         , sophia_spend/1
+        , sophia_typed_calls/1
         , sophia_oracles/1
         , sophia_oracles_qfee__basic/1
         , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle/1
@@ -96,6 +97,7 @@ groups() ->
     , {sophia,     [sequence], [ sophia_identity,
                                  sophia_state,
                                  sophia_spend,
+                                 sophia_typed_calls,
                                  sophia_oracles,
                                  {group, sophia_oracles_query_fee_happy_path},
                                  {group, sophia_oracles_query_fee_happy_path_remote},
@@ -665,6 +667,21 @@ sophia_spend(_Cfg) ->
     2021000      = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Acc2),
     4000         = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Ct1),
     5000         = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Ct2),
+    ok.
+
+sophia_typed_calls(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc    = ?call(new_account, 1000000),
+    Server = ?call(create_contract, Acc, multiplication_server, {}),
+    Client = ?call(create_contract, Acc, contract_types, Server, #{amount => 1000}),
+    2      = ?call(call_contract, Acc, Client, get_n, word, {}),
+    {}     = ?call(call_contract, Acc, Client, square, {tuple, []}, {}),
+    4      = ?call(call_contract, Acc, Client, get_n, word, {}),
+    {}     = ?call(call_contract, Acc, Client, square, {tuple, []}, {}),
+    16     = ?call(call_contract, Acc, Client, get_n, word, {}),
+    {}     = ?call(call_contract, Acc, Client, square, {tuple, []}, {}),
+    256    = ?call(call_contract, Acc, Client, get_n, word, {}),
+    300    = ?call(account_balance, Server),
     ok.
 
 %% Oracles tests

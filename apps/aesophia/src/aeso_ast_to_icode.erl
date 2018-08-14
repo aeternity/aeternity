@@ -316,6 +316,29 @@ ast_body({app, _, {typed, _, {con, _, "Some"}, _}, [Elem]}, Icode) ->
 ast_body({typed, _, {con, _, "Some"}, {fun_t, _, _, [A], _}}, Icode) ->
     #lambda{ args = [#arg{name = "x", type = ast_type(A, Icode)}]
            , body = #tuple{cpts = [#var_ref{name = "x"}]} };
+%% Typed contract calls
+ast_body({app, _, {typed, _, {proj, _, {typed, _, Addr, {con, _, Contract}}, {id, _, FunName}}, {fun_t, _, ArgsT, OutT}}, Args0}, Icode) ->
+    NamedArgs = [Arg || Arg = {named_arg, _, _, _} <- Args0],
+    Args      = Args0 -- NamedArgs,
+    ArgOpts   = [ {Name, ast_body(Value, Icode)} || {named_arg, _, {id, _, Name}, Value} <- NamedArgs ],
+    %% TODO: eta expand
+    [ error({underapplied_contract_call, string:join([Contract, FunName], ".")})
+        || length(Args) /= length(ArgsT) ],
+    ArgsI = [ ast_body(Arg, Icode) || Arg <- Args ],
+    ArgType = ast_typerep({tuple_t, [], ArgsT}),
+    Gas    = proplists:get_value("gas", ArgOpts, prim_gas_left),
+    Value  = proplists:get_value("value", ArgOpts, #integer{ value = 0 }),
+    Fun    = ast_body({string, [], list_to_binary(FunName)}, Icode),
+    #prim_call_contract{
+        address  = ast_body(Addr, Icode),
+        gas      = Gas,
+        value    = Value,
+        arg      = #tuple{cpts = [Fun, #tuple{ cpts = ArgsI }]},
+        arg_type = {tuple, [string, ArgType]},
+        out_type = ast_typerep(OutT, Icode) };
+ast_body({proj, _, {typed, _, _, {con, _, Contract}}, {id, _, FunName}}, _Icode) ->
+    error({underapplied_contract_call, string:join([Contract, FunName], ".")});
+
 ast_body({con, _, Name}, Icode) ->
     Tag = aeso_icode:get_constructor_tag(Name, Icode),
     #tuple{cpts = [#integer{value = Tag}]};
@@ -458,6 +481,8 @@ ast_typerep(Type) -> ast_typerep(Type, aeso_icode:new([])).
 
 ast_typerep({id, _, Name}, Icode) ->
     lookup_type_id(Name, [], Icode);
+ast_typerep({con, _, _}, _) ->
+    word;   %% Contract type
 ast_typerep({app_t, _, {id, _, Name}, Args}, Icode) ->
     ArgReps = [ ast_typerep(Arg, Icode) || Arg <- Args ],
     lookup_type_id(Name, ArgReps, Icode);
