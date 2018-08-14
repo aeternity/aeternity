@@ -30,6 +30,30 @@ contract RemoteOracles =
     rttl : int) : oracle_query(string, int) =
     raw_call(r, "unsafeCreateQuery", 1234567890, value, (o, q, qfee, qttl, rttl))
 
+  // Do not use in production!
+  public function callUnsafeCreateQueryThenErr(
+    r : address,
+    value : int,
+    o    : oracle(string, int),
+    q    : string,
+    qfee : int,
+    qttl : int,
+    rttl : int) : oracle_query(string, int) =
+    raw_call(r, "unsafeCreateQueryThenErr", 1234567890, value, (o, q, qfee, qttl, rttl))
+
+  // Do not use in production!
+  public function callUnsafeCreateQueryAndThenErr(
+    r : address,
+    value : int,
+    o    : oracle(string, int),
+    q    : string,
+    qfee : int,
+    qttl : int,
+    rttl : int) : oracle_query(string, int) =
+    let x = raw_call(r, "unsafeCreateQuery", 1234567890, value, (o, q, qfee, qttl, rttl))
+    switch(0) 1 => ()
+    x // Never reached.
+
   public function callRespond(
     r : address,
     o    : oracle(string, int),

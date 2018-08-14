@@ -25,6 +25,7 @@
         , trees/1
         , compile_contract/1
         , assert_state_equal/2
+        , get_oracle_queries/2
         ]).
 
 %%%===================================================================
@@ -182,3 +183,12 @@ new_key_pair() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
     {PubKey, PrivKey}.
 
+%%%===================================================================
+%%% Oracles
+%%%===================================================================
+
+get_oracle_queries(OracleId, State) ->
+    get_oracle_queries(OracleId, 1000, State).
+
+get_oracle_queries(OracleId, Max, State) ->
+    aeo_state_tree:get_oracle_queries(OracleId, '$first', all, Max, aec_trees:oracles(trees(State))).
