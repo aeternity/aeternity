@@ -83,6 +83,8 @@ th$...
 
 Bob ensures that the published contract create transaction is included in the chain.
 
+>>> import time
+>>> time.sleep(5)
 >>> from waiting import wait
 >>> wait(lambda: 200 == epoch_node['external_api'].get_contract_call_from_tx_with_http_info(contract_create_tx_hash,
 ...                                                                                         _return_http_data_only=False)[1],
@@ -139,6 +141,7 @@ Alice ensures that the published contract create transaction is included in the 
 ...     return status
 ...   except ApiException as e:
 ...     return e.status
+>>> time.sleep(5)
 >>> wait(lambda: 200 == call_status(lambda: epoch_node['external_api'].get_contract_call_from_tx_with_http_info(contract_call_tx_hash,
 ...                                                                                                             _return_http_data_only=False)),
 ...      timeout_seconds=30)
