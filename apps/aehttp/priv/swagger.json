@@ -4888,6 +4888,7 @@
           "type" : "integer"
         },
         "block_hash" : {
+          "description" : "Value \"none\" means no block in the chain includes the transaction",
           "$ref" : "#/definitions/EncodedHash"
         },
         "hash" : {
