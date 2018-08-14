@@ -537,8 +537,8 @@ dep_closure(Deps) ->
         Deps1 -> lists:umerge(Deps, dep_closure(Deps1))
     end.
 
-used_builtins(#funcall{ function = #var_ref{ name = {builtin, Builtin} } }) ->
-    dep_closure([Builtin]);
+used_builtins(#funcall{ function = #var_ref{ name = {builtin, Builtin} }, args = Args }) ->
+    lists:umerge(dep_closure([Builtin]), used_builtins(Args));
 used_builtins([H|T]) ->
   lists:umerge(used_builtins(H), used_builtins(T));
 used_builtins(T) when is_tuple(T) ->
