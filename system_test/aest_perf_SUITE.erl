@@ -67,6 +67,7 @@ init_per_suite(Cfg) ->
         {mine_interval, {seconds, 30}}, % Interval to check mining height
         {mine_rate, MineRate},          % Mine rate configuration for nodes
         {mine_timeout, MineRate * 2},   % Per block
+        {startup_timeout, 20000},       % Timeout until HTTP API responds
         {sync_timeout, 1000}            % Per block
     ].
 
