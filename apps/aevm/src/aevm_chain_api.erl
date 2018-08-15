@@ -67,7 +67,6 @@
 
 -callback oracle_extend(Oracle :: pubkey(),
                         Sign :: binary(),
-                        Fee :: non_neg_integer(),
                         TTL :: non_neg_integer(),
                         ChainState :: chain_state()) ->
     {ok, chain_state()} | {error, term()}.

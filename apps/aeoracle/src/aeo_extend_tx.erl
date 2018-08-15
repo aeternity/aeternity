@@ -95,12 +95,16 @@ origin(#oracle_extend_tx{} = Tx) ->
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
     {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_extend_tx{nonce = Nonce, oracle_ttl = OTTL, fee = Fee} = Tx,
-      _Context, Trees, Height, _ConsensusVersion) ->
+      Context, Trees, Height, _ConsensusVersion) ->
     OraclePK = oracle_pubkey(Tx),
     Checks =
         [fun() -> aetx_utils:check_account(OraclePK, Trees, Nonce, Fee) end,
-         fun() -> ensure_oracle(OraclePK, Trees) end,
-         fun() -> aeo_utils:check_ttl_fee(Height, OTTL, Fee - ?ORACLE_EXTEND_TX_FEE) end],
+         fun() -> ensure_oracle(OraclePK, Trees) end
+         | case Context of
+               aetx_contract -> []; %% TODO Cater for TTL fee from contract.
+               aetx_transaction ->
+                   [fun() -> aeo_utils:check_ttl_fee(Height, OTTL, Fee - ?ORACLE_EXTEND_TX_FEE) end]
+           end],
 
     case aeu_validation:run(Checks) of
         ok              -> {ok, Trees};
