@@ -254,7 +254,7 @@ handle_last_result(ST = #sync_task{ pool = [] }, {hash_pool, HashPool}) ->
     ST#sync_task{ pool = HashPool, agreed = #{ height => Height, hash => Hash } };
 handle_last_result(ST, {hash_pool, _HashPool}) ->
     ST;
-handle_last_result(ST = #sync_task{ pool = Pool }, {get_block, Height, Hash, PeerId, {ok, Block}}) ->
+handle_last_result(ST = #sync_task{ pool = Pool }, {get_generation, Height, Hash, PeerId, {ok, Block}}) ->
     Pool1 = lists:keyreplace(Height, 1, Pool, {Height, Hash, {PeerId, Block}}),
     ST#sync_task{ pool = Pool1 };
 handle_last_result(ST, {post_blocks, ok}) ->
@@ -316,7 +316,7 @@ get_next_work_item(ST = #sync_task{ pool = [{_, _, false} | _] = Pool }) ->
     Random = rand:uniform(length(PickFrom)),
     {PickH, PickHash, false} = lists:nth(Random, PickFrom),
     epoch_sync:debug("Get block at height ~p", [PickH]),
-    {{get_block, PickH, PickHash}, ST};
+    {{get_generation, PickH, PickHash}, ST};
 get_next_work_item(ST) ->
     epoch_sync:info("Nothing to do: ~p", [ST]),
     {take_a_break, ST}.
@@ -639,12 +639,12 @@ do_work_on_sync_task(PeerId, Task, LastResult) ->
         {post_blocks, Blocks} ->
             Res = post_blocks(Blocks),
             do_work_on_sync_task(PeerId, Task, {post_blocks, Res});
-        {get_block, Height, Hash} ->
+        {get_generation, Height, Hash} ->
             Res =
-                case do_fetch_block(PeerId, Hash) of
-                    {ok, false, _Block} -> {get_block, Height, Hash, PeerId, {ok, local}};
-                    {ok, true, Block}   -> {get_block, Height, Hash, PeerId, {ok, Block}};
-                    {error, Reason}     -> {error, {get_block, Reason}}
+                case do_fetch_generation(PeerId, Hash) of
+                    {ok, local}     -> {get_generation, Height, Hash, PeerId, {ok, local}};
+                    {ok, Block}     -> {get_generation, Height, Hash, PeerId, {ok, Block}};
+                    {error, Reason} -> {error, {get_generation, Reason}}
                 end,
             do_work_on_sync_task(PeerId, Task, Res);
         abort_work ->
@@ -737,16 +737,16 @@ do_get_generation(PeerId, LastHash) ->
             Err
     end.
 
-do_fetch_block(PeerId, Hash) ->
-    case aec_chain:get_block(Hash) of
-        {ok, Block} ->
+do_fetch_generation(PeerId, Hash) ->
+    case has_generation(Hash) of
+        true ->
             epoch_sync:debug("block ~p already fetched, using local copy", [pp(Hash)]),
-            {ok, false, Block};
-        error ->
-            do_fetch_block_ext(Hash, PeerId)
+            {ok, local};
+        false ->
+            do_fetch_generation_ext(Hash, PeerId)
     end.
 
-do_fetch_block_ext(Hash, PeerId) ->
+do_fetch_generation_ext(Hash, PeerId) ->
     epoch_sync:debug("we don't have the block -fetching (~p)", [pp(Hash)]),
     case aec_peer_connection:get_generation(PeerId, Hash, backward) of
         {ok, KeyBlock, MicroBlocks, backward} ->
@@ -754,9 +754,9 @@ do_fetch_block_ext(Hash, PeerId) ->
                 true ->
                     epoch_sync:debug("block fetched from ~p (~p); ~p",
                                      [ppp(PeerId), pp(Hash), pp(KeyBlock)]),
-                    {ok, true, #{ key_block    => KeyBlock,
-                                  micro_blocks => MicroBlocks,
-                                  dir          => backward }};
+                    {ok, #{ key_block    => KeyBlock,
+                            micro_blocks => MicroBlocks,
+                            dir          => backward }};
                 false ->
                     {error, hash_mismatch}
             end;
@@ -769,6 +769,15 @@ do_fetch_block_ext(Hash, PeerId) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+
+has_generation(KeyBlockHash) ->
+    %% We are looking for the generation backwards from this Hash
+    %% Possibly optimize by implementing aec_chain:has_generation operating on
+    %% headers only
+    case aec_chain:get_prev_generation(KeyBlockHash) of
+        {ok, _KeyBlock, _MicroBlocks} -> true;
+        error                         -> false
+    end.
 
 header_hash(Block) ->
     Header = aec_blocks:to_header(Block),

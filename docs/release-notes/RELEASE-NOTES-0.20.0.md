@@ -12,6 +12,7 @@ It:
 * Adds block timestamp validation - see [Consensus](https://github.com/aeternity/protocol/blob/master/consensus/consensus.md) for details.
   This affects consensus.
 * Implements a micro block cycle time (currently 3 seconds between micro blocks) to adhere to the added validation.
+* Fix a bug in sync algorithm, the sync could get stuck on a missing micro block.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.20.0
 
