@@ -11,6 +11,7 @@
          get/2,
          lookup/2,
          new_with_backend/1,
+         truncate_no_backend/1,
          enter/2]).
 
 %% API - Merkle tree
@@ -47,6 +48,15 @@ empty_with_backend() ->
 -spec new_with_backend(aeu_mtrees:root_hash() | 'empty') -> tree().
 new_with_backend(Hash) ->
     aeu_mtrees:new_with_backend(Hash, aec_db_backends:accounts_backend()).
+
+-spec truncate_no_backend(tree()) -> tree().
+truncate_no_backend(Tree0) ->
+    lists:foldl(
+        fun({Key, Value}, Tree) ->
+            aeu_mtrees:enter(Key, Value, Tree)
+        end,
+        empty(),
+        aeu_mtrees:to_list(Tree0)).
 
 -spec get(aec_keys:pubkey(), tree()) -> aec_accounts:account().
 get(Pubkey, Tree) ->

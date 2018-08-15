@@ -11,6 +11,7 @@
 -export([ commit_to_db/1
         , empty/0
         , empty_with_backend/0
+        , truncate_no_backend/1
         , get_contract/2
         , insert_contract/2
         , enter_contract/2
@@ -50,6 +51,18 @@ empty() ->
 empty_with_backend() ->
     CtTree = aeu_mtrees:empty_with_backend(aec_db_backends:contracts_backend()),
     #contract_tree{contracts = CtTree}.
+
+-spec truncate_no_backend(tree()) -> tree().
+truncate_no_backend(Tree0) ->
+    Empty = empty(),
+    Contracts =
+        lists:foldl(
+            fun({Key, Value}, Tree) ->
+                aeu_mtrees:enter(Key, Value, Tree)
+            end,
+            Empty#contract_tree.contracts,
+            aeu_mtrees:to_list(Tree0#contract_tree.contracts)),
+    #contract_tree{contracts = Contracts}.
 
 -spec new_with_backend(aeu_mtrees:root_hash() | 'empty') -> tree().
 new_with_backend(Hash) ->
