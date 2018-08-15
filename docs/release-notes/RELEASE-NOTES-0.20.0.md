@@ -9,6 +9,9 @@ It:
 * Adds support for pruning contract calls in state channels. It is up to the
   channel participant when to do it.
 * Fine-tune oracle Sophia builtins and related VM primops (remove fee argument from `Oracle.register` Sophia builtin; remove fee argument from `Oracle.extend` Sophia builtin; remove fee argument from oracle extend VM primop). This impacts consensus.
+* Adds block timestamp validation - see [Consensus](https://github.com/aeternity/protocol/blob/master/consensus/consensus.md) for details.
+  This affects consensus.
+* Implements a micro block cycle time (currently 3 seconds between micro blocks) to adhere to the added validation.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.20.0
 

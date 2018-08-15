@@ -33,11 +33,14 @@ validate_test_() ->
      fun() ->
              meck:new(aec_governance, [passthrough]),
              meck:new(aec_pow_cuckoo, [passthrough]),
+             meck:new(aec_chain, [passthrough]),
+             meck:expect(aec_chain, get_header, 1, error),
              meck:new(aeu_time, [passthrough])
      end,
      fun(_) ->
              meck:unload(aec_pow_cuckoo),
              meck:unload(aeu_time),
+             meck:unload(aec_chain),
              meck:unload(aec_governance)
      end,
      [fun() ->
@@ -95,8 +98,24 @@ validate_test_() ->
       end,
       fun() ->
               meck:expect(aec_pow_cuckoo, verify, 4, true),
-              Header = #header{height = ?GENESIS_HEIGHT, version = ?GENESIS_VERSION},
+              Header = #header{height = ?GENESIS_HEIGHT, version = ?GENESIS_VERSION, time = ?GENESIS_TIME + 1},
               ?assertEqual(ok, ?TEST_MODULE:validate_key_block_header(Header))
+      end,
+      fun() ->
+              meck:expect(aec_pow_cuckoo, verify, 4, false),
+              Header = #header{height = ?GENESIS_HEIGHT, version = ?GENESIS_VERSION, time = ?GENESIS_TIME + 1},
+              ?assertEqual({error, incorrect_pow}, ?TEST_MODULE:validate_key_block_header(Header))
+      end,
+      fun() ->
+              meck:expect(aec_pow_cuckoo, verify, 4, true),
+              Header = #header{height = ?GENESIS_HEIGHT, version = ?GENESIS_VERSION},
+              ?assertEqual({error, block_from_the_past}, ?TEST_MODULE:validate_key_block_header(Header))
+      end,
+      fun() ->
+              meck:expect(aec_pow_cuckoo, verify, 4, true),
+              Header = #header{height = ?GENESIS_HEIGHT, version = ?GENESIS_VERSION,
+                               time = aeu_time:now_in_msecs() + aec_governance:accepted_future_block_time_shift() + 100},
+              ?assertEqual({error, block_from_the_future}, ?TEST_MODULE:validate_key_block_header(Header))
       end,
       fun() ->
               meck:expect(aec_pow_cuckoo, verify, 4, true),
@@ -109,4 +128,13 @@ validate_test_() ->
               Header = #header{nonce = 16#1ffffffffffffffff,
                                height = ?GENESIS_HEIGHT, version = ?GENESIS_VERSION},
               ?assertError(function_clause, ?TEST_MODULE:validate_key_block_header(Header))
+      end,
+      fun() ->
+              Header = #header{height = ?GENESIS_HEIGHT, version = ?GENESIS_VERSION},
+              ?assertEqual(ok, ?TEST_MODULE:validate_micro_block_header(Header))
+      end,
+      fun() ->
+              Header = #header{height = ?GENESIS_HEIGHT, version = ?GENESIS_VERSION,
+                               time = aeu_time:now_in_msecs() + aec_governance:accepted_future_block_time_shift() + 100},
+              ?assertEqual({error, block_from_the_future}, ?TEST_MODULE:validate_micro_block_header(Header))
       end]}.

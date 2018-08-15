@@ -53,10 +53,13 @@ validate_test_() ->
              TmpKeysDir = aec_test_utils:aec_keys_setup(),
              meck:new(enacl, [passthrough]),
              meck:expect(enacl, sign_verify_detached, 3, {ok, <<>>}),
+             meck:new(aec_chain, [passthrough]),
+             meck:expect(aec_chain, get_header, 1, error),
              TmpKeysDir
      end,
      fun(TmpKeysDir) ->
              ok = aec_test_utils:aec_keys_cleanup(TmpKeysDir),
+             meck:unload(aec_chain),
              meck:unload(enacl)
      end,
      [ {"Malformed txs merkle tree hash",

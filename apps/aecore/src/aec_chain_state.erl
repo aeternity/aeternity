@@ -15,6 +15,7 @@
         , hash_is_connected_to_genesis/1
         , hash_is_in_main_chain/1
         , insert_block/1
+        , median_timestamp/1
         ]).
 
 %% For tests
@@ -41,6 +42,22 @@ get_key_block_hash_at_height(Height) when is_integer(Height), Height >= 0 ->
 get_n_key_headers_backward_from(Header, N) ->
     Node = wrap_header(Header),
     get_n_key_headers_from(Node, N).
+
+%% Compute the median timestamp for last aec_governance:median_timestamp_key_blocks()
+-spec median_timestamp(aec_headers:header()) -> {ok, integer()} | 'error'.
+median_timestamp(Header) ->
+    TimeStampKeyBlocks = aec_governance:median_timestamp_key_blocks(),
+    case aec_headers:height(Header) =< TimeStampKeyBlocks of
+        true ->
+            {ok, ?GENESIS_TIME};
+        false ->
+            case get_n_key_headers_from(wrap_header(Header), TimeStampKeyBlocks + 1) of
+                {ok, Headers} ->
+                    {ok, median([ TS || #header{ time = TS } <- lists:droplast(Headers) ])};
+                error ->
+                    error
+            end
+    end.
 
 -spec insert_block(#block{} | map()) -> 'ok' | {'error', any()}.
 insert_block(#{ key_block := KeyBlock, micro_blocks := MicroBlocks, dir := forward }) ->
@@ -387,18 +404,42 @@ get_n_key_headers_from({ok, Node}, N, Acc) ->
             PrevNode = db_find_node(prev_hash(Node)),
             get_n_key_headers_from(PrevNode, N-1, [export_header(Node) | Acc]);
         micro ->
-            PrevKeyNode = db_find_node(db_get_key_hash(hash(Node))),
-            get_n_key_headers_from(PrevKeyNode, N, Acc)
+            try
+                PrevKeyNode = db_find_node(db_get_key_hash(hash(Node))),
+                get_n_key_headers_from(PrevKeyNode, N, Acc)
+            catch _:_ ->
+                error
+            end
     end;
 get_n_key_headers_from(error, _N, _Acc) ->
     error.
 
+assert_key_block_time(_PrevNode, Node) ->
+    case is_key_block(Node) of
+        true ->
+            Time = node_time(Node),
+            case median_timestamp(export_header(Node)) of
+                {ok, Median} when Time > Median -> ok;
+                {ok, _Median} -> internal_error(key_block_from_the_past);
+                error -> internal_error(key_block_median_time_error)
+            end;
+        false -> ok
+    end.
+
 assert_micro_block_time(PrevNode, Node) ->
     case is_micro_block(Node) of
         true ->
-            case time_diff_greater_than_minimal(Node, PrevNode) of
-                true  -> ok;
-                false -> ok %internal_error(micro_block_time_too_low)
+            case is_micro_block(PrevNode) of
+                true ->
+                    case time_diff_greater_than_minimal(Node, PrevNode) of
+                        true  -> ok;
+                        false -> internal_error(micro_block_time_too_low)
+                    end;
+                false ->
+                    case node_time(Node) > node_time(PrevNode) of
+                        true  -> ok;
+                        false -> internal_error(micro_block_time_too_low)
+                    end
             end;
         false -> ok
     end.
@@ -542,6 +583,7 @@ apply_and_store_state_trees(#node{hash = NodeHash} = Node, TreesIn, ForkInfoIn0,
                 assert_previous_height(PrevNode, Node),
                 assert_calculated_target(Node),
                 assert_micro_block_time(PrevNode, Node),
+                assert_key_block_time(PrevNode, Node),
                 assert_micro_signature(PrevNode, Node, ForkInfoIn#fork_info.latest_key_hash)
         end,
         {Trees, Fees} = apply_node_transactions(Node, TreesIn, ForkInfoIn, State),
@@ -751,6 +793,13 @@ do_find_micro_fork_point(Hash1, Hash2) ->
         true  -> error;
         false -> do_find_micro_fork_point(db_get_prev_hash(Hash1), Hash2)
     end.
+
+median(Xs) ->
+    Sorted = lists:sort(Xs),
+    Length = length(Sorted),
+    Mid = Length div 2,
+    Rem = Length rem 2,
+    (lists:nth(Mid+Rem, Sorted) + lists:nth(Mid+1, Sorted)) div 2.
 
 %%%-------------------------------------------------------------------
 %%% Internal interface for the db
