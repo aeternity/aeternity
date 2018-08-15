@@ -1,0 +1,11 @@
+contract RemoteValueOnErr =
+
+  public function callErr(
+    r : address,
+    value : int) : int =
+    raw_call(r, "err", 1234567890, value, ())
+
+  public function callOk(
+    r : address,
+    value : int) : int =
+    raw_call(r, "ok", 1234567890, value, ())

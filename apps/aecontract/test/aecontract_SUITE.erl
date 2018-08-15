@@ -13,6 +13,7 @@
 %% test case exports
 -export([ call_contract/1
         , call_contract_with_gas_price_zero/1
+        , call_contract_error_value/1
         , call_contract_negative_insufficient_funds/1
         , call_contract_negative/1
         , create_contract/1
@@ -64,6 +65,7 @@ groups() ->
                          , create_contract_negative
                          , call_contract
                          , call_contract_with_gas_price_zero
+                         , call_contract_error_value
                          , call_contract_negative_insufficient_funds
                          , call_contract_negative
                          ]}
@@ -146,6 +148,11 @@ create_contract_init_error(_Cfg) ->
     _ = aect_call:return_value(InitCall),
 
     %% Check that contract create transaction sender got charged correctly.
+    %%
+    %% In particular, check that amount and deposit (are positive and)
+    %% returned to the miner.
+    ?assertMatch(D when D > 0, aect_create_tx:deposit(aetx:tx(Tx))), %% Check on test data.
+    ?assertMatch(A when A > 0, aect_create_tx:amount(aetx:tx(Tx))), %% Check on test data.
     ?assertEqual(aec_accounts:balance(aect_test_utils:get_account(PubKey, S1))
                  - aect_create_tx:fee(aetx:tx(Tx))
                  - aect_create_tx:gas_price(aetx:tx(Tx)) * aect_call:gas_used(InitCall),
@@ -340,6 +347,39 @@ call_contract_(ContractCallTxGasPrice) ->
                  aec_accounts:balance(aect_test_utils:get_account(ContractKey, S4))),
 
     {ok, S4}.
+
+%% Check behaviour of contract call error - especially re value / amount.
+call_contract_error_value(_Cfg) ->
+    F = 1,
+    DefaultOpts = #{fee => F, gas_price => 0, amount => 0},
+    Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
+    %% Initialization.
+    state(aect_test_utils:new_state()),
+    Acc1 = call(fun new_account/2, [1000000]),
+    IdC = call(fun create_contract/5, [Acc1, value_on_err, {}, DefaultOpts#{deposit => 0}]),
+    RemC = call(fun create_contract/5, [Acc1, remote_value_on_err, {}, DefaultOpts#{deposit => 0}]),
+    0 = call(fun account_balance/2, [IdC]),
+    0 = call(fun account_balance/2, [RemC]),
+    %% Sanity check: value is transferred as expected in calls that do not err.
+    S0 = state(),
+    {11, S1} = call_contract(Acc1, IdC, ok, word, {}, DefaultOpts#{amount := 3}, S0),
+    ?assertEqual(Bal(Acc1, S0) - (F + 3), Bal(Acc1, S1)),
+    ?assertEqual(Bal(RemC, S0), Bal(RemC, S1)),
+    ?assertEqual(Bal(IdC, S0) + 3, Bal(IdC, S1)),
+    {11, S2} = call_contract(Acc1, RemC, callOk, word, {IdC, 10}, DefaultOpts#{amount := 14}, S1),
+    ?assertEqual(Bal(Acc1, S1) - (F + 14), Bal(Acc1, S2)),
+    ?assertEqual(Bal(RemC, S1) + (14 - 10), Bal(RemC, S2)),
+    ?assertEqual(Bal(IdC, S1) + 10, Bal(IdC, S2)),
+    %% Check tranfer of value in calls that err.
+    {{error, <<"out_of_gas">>}, S3} = call_contract(Acc1, IdC, err, word, {}, DefaultOpts#{amount := 5}, S2),
+    ?assertEqual(Bal(Acc1, S2) - (F + 5), Bal(Acc1, S3)),
+    ?assertEqual(Bal(RemC, S2), Bal(RemC, S3)),
+    ?assertEqual(Bal(IdC, S2) + 5, Bal(IdC, S3)),
+    {{error, <<"out_of_gas">>}, S4} = call_contract(Acc1, RemC, callErr, word, {IdC, 7}, DefaultOpts#{amount := 13}, S3),
+    ?assertEqual(Bal(Acc1, S3) - (F + 13), Bal(Acc1, S4)),
+    ?assertEqual(Bal(RemC, S3) + 13, Bal(RemC, S4)),
+    ?assertEqual(Bal(IdC, S3), Bal(IdC, S4)),
+    ok.
 
 %%%===================================================================
 %%% State trees
