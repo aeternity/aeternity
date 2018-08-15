@@ -369,7 +369,7 @@ next_block_with_state([{PB, PBS} | _] = Chain, Target, Time0, TxsFun, Nonce,
       S} | Chain1].
 
 create_micro_blocks(Chain, PrivKey, Txs) ->
-    create_micro_blocks(Chain, PrivKey, Txs, 0).
+    create_micro_blocks(Chain, PrivKey, Txs, 1).
 
 create_micro_blocks(Chain, _PrivKey, [], _Offset) ->
     Chain;

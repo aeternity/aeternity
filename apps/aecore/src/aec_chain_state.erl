@@ -53,7 +53,7 @@ median_timestamp(Header) ->
         false ->
             case get_n_key_headers_from(wrap_header(Header), TimeStampKeyBlocks + 1) of
                 {ok, Headers} ->
-                    {ok, median([ TS || #header{ time = TS } <- tl(Headers) ])};
+                    {ok, median([ TS || #header{ time = TS } <- lists:droplast(Headers) ])};
                 error ->
                     error
             end
@@ -427,11 +427,19 @@ assert_key_block_time(_PrevNode, Node) ->
     end.
 
 assert_micro_block_time(PrevNode, Node) ->
-    case is_micro_block(Node) andalso is_micro_block(PrevNode) of
+    case is_micro_block(Node) of
         true ->
-            case time_diff_greater_than_minimal(Node, PrevNode) of
-                true  -> ok;
-                false -> internal_error(micro_block_time_too_low)
+            case is_micro_block(PrevNode) of
+                true ->
+                    case time_diff_greater_than_minimal(Node, PrevNode) of
+                        true  -> ok;
+                        false -> internal_error(micro_block_time_too_low)
+                    end;
+                false ->
+                    case node_time(Node) > node_time(PrevNode) of
+                        true  -> ok;
+                        false -> internal_error(micro_block_time_too_low)
+                    end
             end;
         false -> ok
     end.
