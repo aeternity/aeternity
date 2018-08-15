@@ -1,6 +1,6 @@
 # About this release
 
-[This release][this-release] is focused on TODOFILLMEIN.
+[This][this-release] is a maintenance release.
 It:
 * Removes the support for oracles in WS API. This functionality is going to be moved to the middleware.
 * Adds http API interface `/tx/contract/create/compute` for creating contracts.
@@ -9,13 +9,14 @@ It:
 * Adds support for pruning contract calls in state channels. It is up to the
   channel participant when to do it.
 * Fine-tune oracle Sophia builtins and related VM primops (remove fee argument from `Oracle.register` Sophia builtin; remove fee argument from `Oracle.extend` Sophia builtin; remove fee argument from oracle extend VM primop). This impacts consensus.
-* Adds block timestamp validation - see [Consensus](https://github.com/aeternity/protocol/blob/master/consensus/consensus.md) for details.
+* Adds block timestamp validation - see [Consensus][consensus] for details.
   This affects consensus.
 * Implements a micro block cycle time (currently 3 seconds between micro blocks) to adhere to the added validation.
 * Fixes a bug in sync algorithm, the sync could get stuck on a missing micro block.
 * Fixes a Sophia compiler bug with builtin map functions.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.20.0
+[consensus]: https://github.com/aeternity/protocol/blob/epoch-v0.20.0/consensus/consensus.md
 
 This release introduces backward incompatible changes in the chain format:
 * After upgrading your node, you will not have your previous balance (even if you keep your key pair);
