@@ -121,7 +121,7 @@ paths:
           schema:
             type: object
             properties:
-              hash:
+              height:
                 type: integer
                 description: 'Height'
                 format: int64
@@ -3789,6 +3789,7 @@ definitions:
       block_height:
         type: integer
       block_hash:
+        description: 'Value "none" means no block in the chain includes the transaction'
         $ref: '#/definitions/EncodedHash'
       hash:
         $ref: '#/definitions/EncodedHash'

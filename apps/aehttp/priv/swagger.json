@@ -4888,6 +4888,7 @@
           "type" : "integer"
         },
         "block_hash" : {
+          "description" : "Value \"none\" means no block in the chain includes the transaction",
           "$ref" : "#/definitions/EncodedHash"
         },
         "hash" : {
@@ -5660,14 +5661,14 @@
     },
     "inline_response_200_1" : {
       "properties" : {
-        "hash" : {
+        "height" : {
           "type" : "integer",
           "format" : "int64",
           "description" : "Height"
         }
       },
       "example" : {
-        "hash" : 0
+        "height" : 0
       }
     },
     "inline_response_200_2" : {
