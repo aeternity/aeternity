@@ -246,7 +246,7 @@ new_node_joins_network(Cfg) ->
 %% that we had in the chain before stopping: data is persistent.
 docker_keeps_data(Cfg) ->
     Length = 20,
-    ShutdownTimeout = proplists:get_value(shutdown_timeout, Cfg),
+    ShutdownTimeout = proplists:get_value(node_shutdown_time, Cfg),
 
     setup_nodes([?STANDALONE_NODE], Cfg),
 
@@ -719,7 +719,7 @@ abrupt_stop_new_node(Cfg) ->
 
 abrupt_stop_mining_node(Cfg) ->
     RepairTimeout = 30000, % Time allowed for node to repair DB and finish sync
-    ShutdownTimeout = proplists:get_value(shutdown_timeout, Cfg),
+    ShutdownTimeout = proplists:get_value(node_shutdown_time, Cfg),
     Nodes = [n1, n2],
     setup_nodes(cluster(Nodes, #{}), Cfg),
     % Start both nodes

@@ -341,7 +341,8 @@ get(NodeName, Service, Path, Query, Ctx) ->
 get_block(NodeName, Height) ->
     case request(NodeName, 'GetKeyBlockByHeight', #{height => Height}) of
         {ok, 200, Block} -> Block;
-        {ok, 404, _} -> undefined
+        {ok, 404, _} -> undefined;
+        Other -> erlang:error({NodeName, Other})
     end.
 
 get_top(NodeName) ->
