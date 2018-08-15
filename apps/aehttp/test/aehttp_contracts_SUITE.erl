@@ -1034,7 +1034,7 @@ contract_call_tx(Pubkey, Privkey, EncodedContractPubkey, EncodedCallData, Caller
 
 get_top() ->
     Host = external_address(),
-    http_request(Host, get, "top", []).
+    http_request(Host, get, "blocks/top", []).
 
 get_contract_create(Data) ->
     Host = internal_address(),

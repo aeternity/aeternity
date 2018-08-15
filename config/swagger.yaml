@@ -37,22 +37,6 @@ paths:
 ## External APIs definitions
 ###
 
-  /top:
-    get:
-      tags:
-        - external
-        - gossip
-      operationId: GetTop
-      description: 'Get the top block (either key or micro block)'
-      produces:
-        - application/json
-      parameters:
-      responses:
-        '200':
-          description: 'Successful operation'
-          schema:
-            $ref: '#/definitions/KeyBlock'
-      security:
   /blocks/top:
     get:
       tags:
