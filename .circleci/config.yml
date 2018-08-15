@@ -133,12 +133,16 @@ references:
   upload_build_artifacts: &upload_build_artifacts
     run:
       name: Upload build artifacts to central repository (AWS)
-      command: aws s3 cp ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/
+      command: |
+        aws s3 cp ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/
+        aws s3api put-object-acl --acl public-read --bucket ${S3_BUILDS_BUCKET:?} --key `basename ${PACKAGE_TARBALL:?}`
 
   upload_release_artifacts: &upload_release_artifacts
     run:
       name: Upload release artifacts to central repository (AWS)
-      command: aws s3 cp ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/
+      command: |
+        aws s3 cp ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/
+        aws s3api put-object-acl --acl public-read --bucket ${S3_RELEASES_BUCKET:?} --key `basename ${PACKAGE_TARBALL:?}`
 
   deploy_steps: &deploy_steps
     - checkout
