@@ -842,7 +842,7 @@ handle_get_generation_rsp(S, {get_generation, From, _TRef}, Msg) ->
     SerMicroBlocks = maps:get(micro_blocks, Msg),
     Dir = case maps:get(forward, Msg) of true -> forward; false -> backward end,
     Res =
-        case aec_blocks:deserialize_from_binary(SerKeyBlock) of
+        case deserialize_key_block(SerKeyBlock) of
             {ok, KeyBlock} ->
                 case deserialize_micro_blocks(SerMicroBlocks, []) of
                     {ok, MicroBlocks} ->
@@ -856,10 +856,30 @@ handle_get_generation_rsp(S, {get_generation, From, _TRef}, Msg) ->
     gen_server:reply(From, Res),
     remove_request_fld(S, get_generation).
 
+deserialize_key_block(SKB) ->
+    case aec_blocks:deserialize_from_binary(SKB) of
+        Err = {error, _} -> Err;
+        {ok, KB} ->
+            case aec_blocks:type(KB) of
+                key -> KB;
+                micro -> {error, {not_key_block, KB}}
+            end
+    end.
+
+deserialize_micro_block(SMB) ->
+    case aec_blocks:deserialize_from_binary(SMB) of
+        Err = {error, _} -> Err;
+        {ok, MB} ->
+            case aec_blocks:type(MB) of
+                micro -> MB;
+                key -> {error, {not_key_block, MB}}
+            end
+    end.
+
 deserialize_micro_blocks([], Acc) ->
     {ok, lists:reverse(Acc)};
 deserialize_micro_blocks([SMB | SMBs], Acc) ->
-    case aec_blocks:deserialize_from_binary(SMB) of
+    case deserialize_micro_block(SMB) of
         {ok, MB}         -> deserialize_micro_blocks(SMBs, [MB | Acc]);
         Err = {error, _} -> Err
     end.
