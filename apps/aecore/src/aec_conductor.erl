@@ -833,14 +833,14 @@ as_hex(S) ->
 
 handle_add_block(#{ key_block := KeyBlock } = Block, #state{} = State, Origin) ->
     Header = aec_blocks:to_header(KeyBlock),
-    handle_add_block(Header, Block, State, Origin);
+    handle_add_block(Header, fun aec_sync:has_generation/1, Block, State, Origin);
 handle_add_block(Block, #state{} = State, Origin) ->
     Header = aec_blocks:to_header(Block),
-    handle_add_block(Header, Block, State, Origin).
+    handle_add_block(Header, fun aec_chain:has_block/1, Block, State, Origin).
 
-handle_add_block(Header, Block, State, Origin) ->
+handle_add_block(Header, CheckFun, Block, State, Origin) ->
     {ok, Hash} = aec_headers:hash_header(Header),
-    case aec_chain:has_block(Hash) of
+    case CheckFun(Hash) of
         true ->
             epoch_mining:debug("Block already in chain", []),
             {ok, State};
