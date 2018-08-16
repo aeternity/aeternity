@@ -739,12 +739,20 @@ do_get_generation(PeerId, LastHash) ->
     end.
 
 do_fetch_generation(PeerId, Hash) ->
-    case has_generation(Hash) of
-        true ->
-            epoch_sync:debug("block ~p already fetched, using local copy", [pp(Hash)]),
-            {ok, local};
-        false ->
-            do_fetch_generation_ext(Hash, PeerId)
+    case aec_db:find_block(Hash) of
+        none -> do_fetch_generation_ext(Hash, PeerId);
+        {value, Block} ->
+            case aec_blocks:is_key_block(Block) of
+                true ->
+                    case has_generation(Hash) of
+                        true ->
+                            epoch_sync:debug("block ~p already fetched, using local copy", [pp(Hash)]),
+                            {ok, local};
+                        false ->
+                            do_fetch_generation_ext(Hash, PeerId)
+                    end;
+                false -> {error, not_key_block} %% TODO Review.
+            end
     end.
 
 do_fetch_generation_ext(Hash, PeerId) ->
