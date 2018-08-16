@@ -605,11 +605,17 @@ get_prev_generation(KeyBlockHash) ->
     case aec_db:find_block(KeyBlockHash) of
         none -> error;
         {value, KeyBlock} ->
-            case get_prev_generation(aec_blocks:prev_hash(KeyBlock), []) of
-                {ok, MicroBlocks} ->
-                    {ok, KeyBlock, MicroBlocks};
-                error ->
-                    error
+            GenesisHeight = aec_block_genesis:height(),
+            case aec_blocks:height(KeyBlock) of
+                GenesisHeight ->
+                    {ok, KeyBlock, []};
+                KeyHeight when KeyHeight > GenesisHeight ->
+                    case get_prev_generation(aec_blocks:prev_hash(KeyBlock), []) of
+                        {ok, MicroBlocks} ->
+                            {ok, KeyBlock, MicroBlocks};
+                        error ->
+                            error
+                    end
             end
     end.
 
