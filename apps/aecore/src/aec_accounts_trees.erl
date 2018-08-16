@@ -51,12 +51,20 @@ new_with_backend(Hash) ->
 
 -spec truncate_no_backend(tree()) -> tree().
 truncate_no_backend(Tree0) ->
+    Keys = sets:to_list(sets:from_list([K ||
+                                        {K, _} <- aeu_mtrees:to_list(Tree0)])),
     lists:foldl(
-        fun({Key, Value}, Tree) ->
-            aeu_mtrees:enter(Key, Value, Tree)
+        fun(Key, Tree) ->
+            {value, Value} = aeu_mtrees:lookup(Key, Tree0),
+            case Value =/= <<>> of % deleted
+                true ->
+                    aeu_mtrees:enter(Key, Value, Tree);
+                false ->
+                    Tree
+            end
         end,
         empty(),
-        aeu_mtrees:to_list(Tree0)).
+        Keys).
 
 -spec get(aec_keys:pubkey(), tree()) -> aec_accounts:account().
 get(Pubkey, Tree) ->
