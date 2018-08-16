@@ -703,6 +703,8 @@ net_split_mining_power(Cfg) ->
 
     ok.
 
+abrupt_stop_new_node(_Cfg) ->
+    {skip, database_restart_needs_fix};
 abrupt_stop_new_node(Cfg) ->
     RepairTimeout = 30000, % Time allowed for node to repair DB and finish sync
     Nodes = [n1, n2],
@@ -717,6 +719,8 @@ abrupt_stop_new_node(Cfg) ->
     Blocks = wait_for_value({height, 5}, Nodes, RepairTimeout, Cfg),
     assert_in_sync(Blocks).
 
+abrupt_stop_mining_node(_Cfg) ->
+    {skip, database_restart_needs_fix};
 abrupt_stop_mining_node(Cfg) ->
     RepairTimeout = 30000, % Time allowed for node to repair DB and finish sync
     ShutdownTimeout = proplists:get_value(node_shutdown_time, Cfg),
