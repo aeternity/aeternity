@@ -222,7 +222,7 @@ add_signed_tx(SignedTx, #state{signed_txs=Txs0}=State, Opts) ->
         {aesc_create_tx, _} ->
             State#state{signed_txs=[SignedTx | Txs0], half_signed_txs=[]};
         {Mod, TxI} ->
-            {Trees0, Calls} =
+            {Trees, Calls} =
                 lists:foldl(
                     fun(Update, {TrAccum, CallsAccum}) ->
                         TrAccum1 = aesc_offchain_update:apply_on_trees(Update, TrAccum, Mod:round(TxI), Opts),
@@ -242,12 +242,6 @@ add_signed_tx(SignedTx, #state{signed_txs=Txs0}=State, Opts) ->
                      State#state.calls},
                     Mod:updates(TxI)),
 
-            Trees1 = aec_trees:set_accounts(Trees0,
-                                             aec_accounts_trees:truncate_no_backend(
-                                                aec_trees:accounts(Trees0))),
-            Trees = aec_trees:set_contracts(Trees1,
-                                            aect_state_tree:truncate_no_backend(
-                                                aec_trees:contracts(Trees1))),
             State#state{signed_txs=[SignedTx | Txs0], half_signed_txs=[],
                         trees=Trees, calls=Calls}
     end.

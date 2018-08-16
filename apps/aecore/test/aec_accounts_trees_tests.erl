@@ -59,3 +59,31 @@ get_all_accounts_balances_test() ->
                 {<<"_______________k1_______________">>, 11}],
     Actual   = aec_accounts_trees:get_all_accounts_balances(T2),
     ?assertEqual(lists:sort(Actual), lists:sort(Expected)).
+
+trunc_test() ->
+    T0 = aec_accounts_trees:empty(),
+
+    K1 = <<"_______________k1_______________">>,
+    K2 = <<"_______________k2_______________">>,
+
+    A10 = aec_accounts:new(K1, 11),
+    A11 = aec_accounts:new(K1, 5),
+    A2  = aec_accounts:new(K2, 13),
+
+    T1  = aec_accounts_trees:enter(A10, T0),
+    T2  = aec_accounts_trees:enter(A2, T1),
+    T30 = aec_accounts_trees:enter(A11, T2),
+    {ok, T3Hash} = aec_accounts_trees:root_hash(T30),
+
+    CleanT1 = aec_accounts_trees:enter(A11, T0),
+    CleanT2 = aec_accounts_trees:enter(A2, CleanT1),
+    {ok, CleanT2Hash} = aec_accounts_trees:root_hash(CleanT2),
+    ?assertEqual(T3Hash, CleanT2Hash),
+
+    T11  = aeu_mtrees:delete(K2, T2),
+    {ok, T11Hash} = aec_accounts_trees:root_hash(T11),
+    {ok, T1Hash} = aec_accounts_trees:root_hash(T1),
+    ?assertEqual(T1Hash, T11Hash).
+
+
+
