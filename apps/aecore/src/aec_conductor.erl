@@ -833,7 +833,14 @@ as_hex(S) ->
 
 handle_add_block(#{ key_block := KeyBlock } = Block, #state{} = State, Origin) ->
     Header = aec_blocks:to_header(KeyBlock),
-    handle_add_block(Header, fun aec_sync:has_generation/1, Block, State, Origin);
+    case aec_blocks:is_key_block(KeyBlock) of
+        false ->
+            {ok, Hash} = aec_headers:hash_header(Header),
+            epoch_mining:debug("Not key block: ~p", [Hash]),
+            {{error, {not_key_block, Hash}}, State};
+        true ->
+            handle_add_block(Header, fun aec_sync:has_generation/1, Block, State, Origin)
+    end;
 handle_add_block(Block, #state{} = State, Origin) ->
     Header = aec_blocks:to_header(Block),
     handle_add_block(Header, fun aec_chain:has_block/1, Block, State, Origin).
