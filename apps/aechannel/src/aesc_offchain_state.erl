@@ -241,7 +241,6 @@ add_signed_tx(SignedTx, #state{signed_txs=Txs0}=State, Opts) ->
                     {aect_call_state_tree:prune_without_backend(State#state.trees),
                      State#state.calls},
                     Mod:updates(TxI)),
-
             State#state{signed_txs=[SignedTx | Txs0], half_signed_txs=[],
                         trees=Trees, calls=Calls}
     end.
