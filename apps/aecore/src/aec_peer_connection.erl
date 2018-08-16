@@ -861,7 +861,7 @@ deserialize_key_block(SKB) ->
         Err = {error, _} -> Err;
         {ok, KB} ->
             case aec_blocks:type(KB) of
-                key -> KB;
+                key -> {ok, KB};
                 micro -> {error, {not_key_block, KB}}
             end
     end.
@@ -871,7 +871,7 @@ deserialize_micro_block(SMB) ->
         Err = {error, _} -> Err;
         {ok, MB} ->
             case aec_blocks:type(MB) of
-                micro -> MB;
+                micro -> {ok, MB};
                 key -> {error, {not_micro_block, MB}}
             end
     end.
