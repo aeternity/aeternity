@@ -872,7 +872,7 @@ deserialize_micro_block(SMB) ->
         {ok, MB} ->
             case aec_blocks:type(MB) of
                 micro -> MB;
-                key -> {error, {not_key_block, MB}}
+                key -> {error, {not_micro_block, MB}}
             end
     end.
 
