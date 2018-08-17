@@ -832,6 +832,7 @@ as_hex(S) ->
     [io_lib:format("~2.16.0b", [X]) || <<X:8>> <= S].
 
 handle_add_block(#{ key_block := KeyBlock } = Block, #state{} = State, Origin) ->
+    %% Network layer (peer_connection, sync) sanitized KeyBlock to be key block. TODO Use distinct internal representation for key block and micro block so to make this evident.
     Header = aec_blocks:to_header(KeyBlock),
     handle_add_block(Header, fun aec_sync:has_generation/1, Block, State, Origin);
 handle_add_block(Block, #state{} = State, Origin) ->
