@@ -1,26 +1,14 @@
 # About this release
 
-[This][this-release] is a maintenance release.
+[This release][this-release] is focused on TODOFILLMEIN.
 It:
-* Removes the support for oracles in WS API. This functionality is going to be moved to the middleware.
-* Adds http API interface `/tx/contract/create/compute` for creating contracts.
-* Fixes a bug in internal DB storage of micro forks.
-* Caps the gas operand of the `CALL` opcode in the VM with the available machine gas before performing the inner call. This impacts consensus.
-* Adds support for pruning contract calls in state channels. It is up to the
-  channel participant when to do it.
-* Fine-tune oracle Sophia builtins and related VM primops (remove fee argument from `Oracle.register` Sophia builtin; remove fee argument from `Oracle.extend` Sophia builtin; remove fee argument from oracle extend VM primop). This impacts consensus.
-* Adds block timestamp validation - see [Consensus][consensus] for details.
-  This affects consensus.
-* Implements a micro block cycle time (currently 3 seconds between micro blocks) to adhere to the added validation.
-* Fixes a bug in sync algorithm, the sync could get stuck on a missing micro block.
-* Fixes a Sophia compiler bug with builtin map functions.
+* Does this.
 
-[this-release]: https://github.com/aeternity/epoch/releases/tag/v0.20.0
-[consensus]: https://github.com/aeternity/protocol/blob/epoch-v0.20.0/consensus/consensus.md
+[this-release]: https://github.com/aeternity/epoch/releases/tag/v0.21.0
 
 This release introduces backward incompatible changes in the chain format:
 * After upgrading your node, you will not have your previous balance (even if you keep your key pair);
-* Please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.19.x".
+* Please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.20.x".
 
 Please join the testnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/epoch/wiki/Troubleshooting).
@@ -37,8 +25,8 @@ You can run a node by either:
 * Running the published [Docker image `aeternity/epoch`][docker]; or
 * [Building a release binary from source][build].
 
-[docker]: https://github.com/aeternity/epoch/blob/v0.20.0/docs/docker.md
-[build]: https://github.com/aeternity/epoch/blob/v0.20.0/docs/build.md
+[docker]: https://github.com/aeternity/epoch/blob/v0.21.0/docs/docker.md
+[build]: https://github.com/aeternity/epoch/blob/v0.21.0/docs/build.md
 
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration).
 For specifying configuration using the Docker image, please refer to [its documentation][docker].
@@ -51,9 +39,9 @@ The node user API is documented:
 * WebSocket API endpoints are [specified online][api-doc];
 * The intended usage of the user API (HTTP and WebSocket) is [documented online][api-doc].
 
-[swagger-yaml]: https://github.com/aeternity/epoch/blob/v0.20.0/config/swagger.yaml
-[swagger-ui]: https://aeternity.github.io/epoch-api-docs/?config=https://raw.githubusercontent.com/aeternity/epoch/v0.20.0/apps/aehttp/priv/swagger.json
-[api-doc]: https://github.com/aeternity/protocol/blob/epoch-v0.20.0/epoch/api/README.md
+[swagger-yaml]: https://github.com/aeternity/epoch/blob/v0.21.0/config/swagger.yaml
+[swagger-ui]: https://aeternity.github.io/epoch-api-docs/?config=https://raw.githubusercontent.com/aeternity/epoch/v0.21.0/apps/aehttp/priv/swagger.json
+[api-doc]: https://github.com/aeternity/protocol/blob/epoch-v0.21.0/epoch/api/README.md
 
 ## Install node
 
