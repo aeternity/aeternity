@@ -48,7 +48,7 @@
 
 %% API only to be used by aec_peer_connection.
 -export([peer_connected/2]).
--export([peer_accepted/2]).
+-export([peer_accepted/3]).
 -export([connection_failed/2]).
 -export([connection_closed/2]).
 
@@ -299,15 +299,10 @@ peer_connected(PeerId, PeerCon) ->
 %% @doc Informs that an inbound connection has been accepted.
 %% If it returns `temporary' the connection should be closed as soon as
 %% the first ping has been responded.
--spec peer_accepted(peer_info(), pid())
+-spec peer_accepted(peer_info(), inet:ip_address(), pid())
     -> permanent | temporary | {error, term()}.
-peer_accepted(PeerInfo, PeerCon) ->
-    #{ host := Host } = PeerInfo,
-    case inet:getaddr(to_list(Host), inet) of
-        {error, _} = Error -> Error;
-        {ok, Addr} ->
-            gen_server:call(?MODULE, {peer_accepted, Addr, PeerInfo, PeerCon})
-    end.
+peer_accepted(PeerInfo, Addr, PeerCon) ->
+    gen_server:call(?MODULE, {peer_accepted, Addr, PeerInfo, PeerCon}).
 
 %% @doc Informs that a connection failed unexpectedly; either when connecting
 %% or while already being connected.

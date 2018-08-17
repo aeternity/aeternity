@@ -635,7 +635,7 @@ handle_first_ping(S, RemotePingObj) ->
             end,
 
             NewS = maps:remove(first_ping_tref, S#{ port => Port }),
-            case aec_peers:peer_accepted(PeerInfo, self()) of
+            case aec_peers:peer_accepted(PeerInfo, maps:get(address, NewS), self()) of
                 {error, _} = Error ->
                     gen_server:cast(self(), stop),
                     {Error, NewS};
