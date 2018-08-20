@@ -60,6 +60,8 @@ get_all_accounts_balances_test() ->
     Actual   = aec_accounts_trees:get_all_accounts_balances(T2),
     ?assertEqual(lists:sort(Actual), lists:sort(Expected)).
 
+% channels' rely on accounts with a dict backend being reproducable with
+% only the latest state
 trunc_test() ->
     T0 = aec_accounts_trees:empty(),
 
@@ -80,7 +82,7 @@ trunc_test() ->
     {ok, CleanT2Hash} = aec_accounts_trees:root_hash(CleanT2),
     ?assertEqual(T3Hash, CleanT2Hash),
 
-    T11  = aeu_mtrees:delete(K2, T2),
+    T11  = aec_accounts_trees:delete(K2, T2),
     {ok, T11Hash} = aec_accounts_trees:root_hash(T11),
     {ok, T1Hash} = aec_accounts_trees:root_hash(T1),
     ?assertEqual(T1Hash, T11Hash).
