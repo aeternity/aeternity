@@ -281,7 +281,7 @@ spend(SenderPubKey, ReceiverPubKey, Value, Fee, Nonce,
             Trees2;
         aetx_transaction ->
             {ok, Trees2} =
-                aetx:process_no_tx_hash(SpendTx, Trees1, Height, ConsensusVersion),
+                aetx:process(SpendTx, Trees1, Height, ConsensusVersion),
             Trees2
     end.
 

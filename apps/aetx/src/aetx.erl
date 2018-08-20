@@ -15,8 +15,8 @@
         , new/2
         , nonce/1
         , origin/1
-        , process_no_tx_hash/4
-        , process/5
+        , process/4
+        , process_with_tx_hash/5
         , process_from_contract/4
         , serialize_for_client/1
         , serialize_to_binary/1
@@ -222,16 +222,16 @@ check_from_contract(#aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion) 
     CB:check(Tx, aetx_contract, Trees, Height, ConsensusVersion).
 
 
--spec process_no_tx_hash(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer(),
+-spec process(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer(),
               ConsensusVersion :: non_neg_integer()) ->
     {ok, NewTrees :: aec_trees:trees()}.
-process_no_tx_hash(Tx, Trees, Height, ConsensusVersion) ->
-    process(Tx, Trees, Height, ConsensusVersion, no_tx_hash).
+process(Tx, Trees, Height, ConsensusVersion) ->
+    process_with_tx_hash(Tx, Trees, Height, ConsensusVersion, no_tx_hash).
 
--spec process(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer(),
+-spec process_with_tx_hash(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer(),
               ConsensusVersion :: non_neg_integer(), TxHash :: binary() | no_tx_hash) ->
     {ok, NewTrees :: aec_trees:trees()}.
-process(#aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion, TxHash) ->
+process_with_tx_hash(#aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion, TxHash) ->
     CB:process(Tx, aetx_transaction, Trees, Height, ConsensusVersion, TxHash).
 
 -spec process_from_contract(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer(),
