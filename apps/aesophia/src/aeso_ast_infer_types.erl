@@ -16,6 +16,10 @@
                | aeso_syntax:tvar()
                | {uvar, aeso_syntax:ann(), reference()}.
 
+-type type_id() :: aeso_syntax:id() | aeso_syntax:qid().
+
+-define(is_type_id(T), element(1, T) =:= id orelse element(1, T) =:= qid).
+
 -type why_record() :: aeso_syntax:field(aeso_syntax:expr())
                     | {proj, aeso_syntax:ann(), aeso_syntax:expr(), aeso_syntax:id()}.
 
@@ -577,9 +581,16 @@ destroy_type_defs() ->
     ets:delete(type_defs),
     ets:delete(record_fields).
 
--spec insert_typedef(aeso_syntax:id(), [aeso_syntax:tvar()], aeso_syntax:typedef()) -> ok.
-insert_typedef(Id = {id, Attrs, Name}, Args, Typedef) ->
-    ets:insert(type_defs, {Name, Args, Typedef}),
+%% Key used in type_defs ets table.
+-spec type_key(type_id()) -> [string()].
+type_key({id, _, Name})   -> [Name];
+type_key({qid, _, QName}) -> QName.
+
+-spec insert_typedef(type_id(), [aeso_syntax:tvar()], aeso_syntax:typedef()) -> ok.
+insert_typedef(Id, Args, Typedef) ->
+    Attrs = aeso_syntax:get_ann(Id),
+    Key   = type_key(Id),
+    ets:insert(type_defs, {Key, Args, Typedef}),
     case Typedef of
         {record_t, Fields} ->
             [insert_record_field(FieldName, #field_info{ kind     = record,
@@ -591,11 +602,11 @@ insert_typedef(Id = {id, Attrs, Name}, Args, Typedef) ->
         {alias_t, _} -> ok
     end.
 
--spec lookup_type(string()) -> false | {[aeso_syntax:tvar()], aeso_syntax:typedef()}.
-lookup_type(Name) ->
-    case ets:lookup(type_defs, Name) of
+-spec lookup_type(type_id()) -> false | {[aeso_syntax:tvar()], aeso_syntax:typedef()}.
+lookup_type(Id) ->
+    case ets:lookup(type_defs, type_key(Id)) of
         []                       -> false;
-        [{Name, Params, Typedef}] -> {Params, Typedef}
+        [{_Key, Params, Typedef}] -> {Params, Typedef}
     end.
 
 -spec insert_record_field(string(), field_info()) -> true.
@@ -688,14 +699,15 @@ solve_known_record_types(Constraints) ->
                               field    = FieldName,
                               field_t  = FieldType,
                               context  = When} = C,
-            RecId = {id, Attrs, RecName} = record_type_name(RecType),
-            case lookup_type(RecName) of
+            RecId = record_type_name(RecType),
+            Attrs = aeso_syntax:get_ann(RecId),
+            case lookup_type(RecId) of
                 {Formals, {record_t, Fields}} ->
                      FieldTypes = [{Name, Type} || {field_t, _, {id, _, Name}, Type} <- Fields],
                      {id, _, FieldString} = FieldName,
                      case proplists:get_value(FieldString, FieldTypes) of
                          undefined ->
-                             type_error({missing_field, FieldName, RecName}),
+                             type_error({missing_field, FieldName, RecId}),
                              not_solved;
                          FldType ->
                              create_freshen_tvars(),
@@ -731,16 +743,16 @@ destroy_and_report_unsolved_field_constraints() ->
     destroy_field_constraints(),
     ok.
 
-record_type_name({app_t, _Attrs, RecId={id, _, _}, _Args}) ->
+record_type_name({app_t, _Attrs, RecId, _Args}) when ?is_type_id(RecId) ->
     RecId;
-record_type_name(RecId={id, _, _}) ->
+record_type_name(RecId) when ?is_type_id(RecId) ->
     RecId.
 
 solve_for_uvar(UVar = {uvar, Attrs, _}, Fields) ->
     %% Does this set of fields uniquely identify a record type?
     FieldNames = [ Name || {id, _, Name} <- Fields ],
     UniqueFields = lists:usort(FieldNames),
-    Candidates = [RecName || {_, #field_info{record_t = {app_t, _, {id, _, RecName}, _}}} <- lookup_record_field(hd(FieldNames))],
+    Candidates = [record_type_name(RecType) || {_, #field_info{record_t = RecType}} <- lookup_record_field(hd(FieldNames))],
     TypesAndFields = [case lookup_type(RecName) of
                           {_, {record_t, RecFields}} ->
                               {RecName, [Field || {field_t, _, {id, _, Field}, _} <- RecFields]};
@@ -753,10 +765,10 @@ solve_for_uvar(UVar = {uvar, Attrs, _}, Fields) ->
     case Solutions of
         [] ->
             {no_records_with_all_fields, Fields};
-        [RecName] ->
-            {Formals, {record_t, _}} = lookup_type(RecName),
+        [RecId] ->
+            {Formals, {record_t, _}} = lookup_type(RecId),
             create_freshen_tvars(),
-            FreshRecType = freshen({app_t, Attrs, {id, Attrs, RecName}, Formals}),
+            FreshRecType = freshen({app_t, Attrs, RecId, Formals}),
             destroy_freshen_tvars(),
             unify(UVar, FreshRecType, {solve_rec_type, UVar, Fields}),
             true;
@@ -791,9 +803,9 @@ unfold_types(X, _Options) ->
 unfold_types_in_type(T) ->
     unfold_types_in_type(T, []).
 
-unfold_types_in_type({app_t, Ann, Id = {id, _, RecName}, Args}, Options) ->
+unfold_types_in_type({app_t, Ann, Id, Args}, Options) when ?is_type_id(Id) ->
     UnfoldRecords = proplists:get_value(unfold_record_types, Options, false),
-    case lookup_type(RecName) of
+    case lookup_type(Id) of
         {Formals, {record_t, Fields}} when UnfoldRecords, length(Formals) == length(Args) ->
             {record_t,
              unfold_types_in_type(
@@ -804,17 +816,17 @@ unfold_types_in_type({app_t, Ann, Id = {id, _, RecName}, Args}, Options) ->
             %% Not a record type, or ill-formed record type.
             {app_t, Ann, Id, unfold_types_in_type(Args, Options)}
     end;
-unfold_types_in_type(Type={id, _, RecName}, Options) ->
+unfold_types_in_type(Id, Options) when ?is_type_id(Id) ->
     %% Like the case above, but for types without parameters.
     UnfoldRecords = proplists:get_value(unfold_record_types, Options, false),
-    case lookup_type(RecName) of
+    case lookup_type(Id) of
         {[], {record_t, Fields}} when UnfoldRecords ->
             {record_t, unfold_types_in_type(Fields, Options)};
         {[], {alias_t, Type1}} ->
             unfold_types_in_type(Type1, Options);
         _ ->
             %% Not a record type, or ill-formed record type
-            Type
+            Id
     end;
 unfold_types_in_type({field_t, Attr, Name, Type}, Options) ->
     {field_t, Attr, Name, unfold_types_in_type(Type, Options)};
@@ -866,6 +878,8 @@ unify1([A|B], [C|D], When) ->
 unify1(X, X, _When) ->
     true;
 unify1({id, _, Name}, {id, _, Name}, _When) ->
+    true;
+unify1({qid, _, Name}, {qid, _, Name}, _When) ->
     true;
 unify1({fun_t, _, Args1, Result1}, {fun_t, _, Args2, Result2}, When) ->
     unify(Args1, Args2, When) andalso unify(Result1, Result2, When);
@@ -1004,7 +1018,7 @@ pp_error({ambiguous_record, Fields, Candidates}) ->
                    pp_loc(hd(Fields)),
                    string:join([ C || C <- Candidates ], ", ")]);
 pp_error({missing_field, Field, Rec}) ->
-    io_lib:format("Record type ~s does not have field ~s (at ~s)\n", [Rec, pp(Field), pp_loc(Field)]);
+    io_lib:format("Record type ~s does not have field ~s (at ~s)\n", [pp(Rec), pp(Field), pp_loc(Field)]);
 pp_error({no_records_with_all_fields, Fields}) ->
     S = [ "s" || length(Fields) > 1 ],
     io_lib:format("No record type with field~s ~s (at ~s)\n",
