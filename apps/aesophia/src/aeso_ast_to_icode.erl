@@ -124,6 +124,8 @@ ast_body(?qid_app(["Chain", "balance"], [Address], _, _), Icode) ->
     #prim_balance{ address = ast_body(Address, Icode) };
 ast_body(?qid_app(["Chain", "block_hash"], [Height], _, _), Icode) ->
     #prim_block_hash{ height = ast_body(Height, Icode) };
+ast_body(?qid_app(["Call", "gas_left"], [], _, _), _Icode) ->
+    prim_gas_left;
 ast_body({qid, _, ["Contract", "address"]}, _Icode)      -> prim_contract_address;
 ast_body({qid, _, ["Contract", "balance"]}, _Icode)      -> #prim_balance{ address = prim_contract_address };
 ast_body({qid, _, ["Call",     "origin"]}, _Icode)       -> prim_call_origin;

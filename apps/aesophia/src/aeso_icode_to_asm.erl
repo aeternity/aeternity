@@ -372,6 +372,8 @@ assemble_expr(_Funs, _Stack, _Tail, prim_call_value) ->
     [i(?CALLVALUE)];
 assemble_expr(_Funs, _Stack, _Tail, prim_gas_price) ->
     [i(?GASPRICE)];
+assemble_expr(_Funs, _Stack, _Tail, prim_gas_left) ->
+    [i(?GAS)];
 assemble_expr(_Funs, _Stack, _Tail, prim_coinbase) ->
     [i(?COINBASE)];
 assemble_expr(_Funs, _Stack, _Tail, prim_timestamp) ->

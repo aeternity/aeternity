@@ -79,6 +79,7 @@ global_env() ->
      {["Call",     "caller"],       Address},
      {["Call",     "value"],        Int},
      {["Call",     "gas_price"],    Int},
+     {["Call",     "gas_left"],     Fun([], Int)},
      {["Chain",    "balance"],      Fun1(Address, Int)},
      {["Chain",    "block_hash"],   Fun1(Int, Int)},
      {["Chain",    "coinbase"],     Address},
