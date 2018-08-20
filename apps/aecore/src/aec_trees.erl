@@ -353,7 +353,9 @@ apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees0, Height
             Tx = aetx_sign:tx(SignedTx),
             case aetx:check(Tx, Trees0, Height, ConsensusVersion) of
                 {ok, Trees1} ->
-                    {ok, Trees2} = aetx:process(Tx, Trees1, Height, ConsensusVersion),
+                    {ok, Trees2} = aetx:process(Tx, Trees1, Height,
+                                                ConsensusVersion,
+                                                aetx_sign:hash(SignedTx)),
                     apply_txs_on_state_trees(Rest, [SignedTx | ValidTxs], InvalidTxs,
                                              Trees2, Height, ConsensusVersion, Strict);
                 {error, Reason} when Strict ->

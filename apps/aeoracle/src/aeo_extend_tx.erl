@@ -18,7 +18,7 @@
          nonce/1,
          origin/1,
          check/5,
-         process/5,
+         process/6,
          signers/2,
          serialize/1,
          serialization_template/1,
@@ -115,10 +115,11 @@ check(#oracle_extend_tx{nonce = Nonce, oracle_ttl = OTTL, fee = Fee} = Tx,
 signers(#oracle_extend_tx{} = Tx, _) ->
     {ok, [oracle_pubkey(Tx)]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
+              non_neg_integer(), binary()) ->
         {ok, aec_trees:trees()}.
 process(#oracle_extend_tx{nonce = Nonce, fee = Fee, oracle_ttl = OTTL} = Tx,
-        _Context, Trees0, _Height, _ConsensusVersion) ->
+        _Context, Trees0, _Height, _ConsensusVersion, _TxHash) ->
     OraclePK      = aec_id:specialize(oracle(Tx), oracle),
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),

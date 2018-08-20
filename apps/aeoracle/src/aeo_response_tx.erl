@@ -18,7 +18,7 @@
          nonce/1,
          origin/1,
          check/5,
-         process/5,
+         process/6,
          signers/2,
          serialization_template/1,
          serialize/1,
@@ -132,11 +132,12 @@ check(#oracle_response_tx{nonce = Nonce, query_id = QId, fee = Fee} = Tx,
 signers(#oracle_response_tx{} = Tx, _) ->
     {ok, [oracle_pubkey(Tx)]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
+              non_neg_integer(), binary()) ->
         {ok, aec_trees:trees()}.
 process(#oracle_response_tx{nonce = Nonce, query_id = QId, response = Response,
                             fee = Fee} = Tx,
-        _Context, Trees0, Height, _ConsensusVersion) ->
+        _Context, Trees0, Height, _ConsensusVersion, _TxHash) ->
     OraclePubKey  = oracle_pubkey(Tx),
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),

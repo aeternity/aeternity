@@ -95,7 +95,8 @@ process_test_() ->
                                                  payload => <<"foo">>}),
               <<"foo">> = aec_spend_tx:payload(aetx:tx(SpendTx)),
               {ok, StateTree0} = aetx:check(SpendTx, StateTree0, 20, ?PROTOCOL_VERSION),
-              {ok, StateTree} = aetx:process(SpendTx, StateTree0, 20, ?PROTOCOL_VERSION),
+              {ok, StateTree} = aetx:process_no_tx_hash(SpendTx, StateTree0, 20,
+                                             ?PROTOCOL_VERSION),
 
               ResultAccountsTree = aec_trees:accounts(StateTree),
               {value, ResultSenderAccount} = aec_accounts_trees:lookup(?SENDER_PUBKEY, ResultAccountsTree),
@@ -118,7 +119,8 @@ process_test_() ->
                                                  nonce => 11,
                                                  payload => <<"foo">>}),
               {ok, StateTree0} = aetx:check(SpendTx, StateTree0, 20, ?PROTOCOL_VERSION),
-              {ok, StateTree} = aetx:process(SpendTx, StateTree0, 20, ?PROTOCOL_VERSION),
+              {ok, StateTree} = aetx:process_no_tx_hash(SpendTx, StateTree0, 20,
+                                             ?PROTOCOL_VERSION),
 
               ResultAccountsTree = aec_trees:accounts(StateTree),
               {value, ResultAccount} = aec_accounts_trees:lookup(?SENDER_PUBKEY, ResultAccountsTree),

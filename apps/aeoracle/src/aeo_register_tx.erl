@@ -18,7 +18,7 @@
          nonce/1,
          origin/1,
          check/5,
-         process/5,
+         process/6,
          signers/2,
          serialization_template/1,
          serialize/1,
@@ -139,10 +139,11 @@ check(#oracle_register_tx{nonce = Nonce, oracle_ttl = OTTL, fee = Fee} = Tx,
 signers(#oracle_register_tx{} = Tx, _) ->
     {ok, [account_pubkey(Tx)]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
+              non_neg_integer(), binary()) ->
         {ok, aec_trees:trees()}.
 process(#oracle_register_tx{nonce = Nonce, fee = Fee} = RegisterTx,
-        _Ctxt, Trees0, Height, _ConsensusVersion) ->
+        _Ctxt, Trees0, Height, _ConsensusVersion, _TxHash) ->
     AccountPubKey = aec_id:specialize(account(RegisterTx), account),
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),

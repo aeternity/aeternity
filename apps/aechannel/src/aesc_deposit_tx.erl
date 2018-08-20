@@ -18,7 +18,7 @@
          origin/1,
          amount/1,
          check/5,
-         process/5,
+         process/6,
          signers/2,
          serialization_template/1,
          serialize/1,
@@ -142,13 +142,15 @@ check(#channel_deposit_tx{amount     = Amount,
             Error
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
+              non_neg_integer(), binary()) ->
         {ok, aec_trees:trees()}.
 process(#channel_deposit_tx{amount     = Amount,
                             fee        = Fee,
                             state_hash = StateHash,
                             round      = Round,
-                            nonce      = Nonce} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
+                            nonce      = Nonce} = Tx, _Context, Trees,
+        _Height, _ConsensusVersion, _TxHash) ->
     ChannelId = channel_hash(Tx),
     FromPubKey = from_pubkey(Tx),
     AccountsTree0 = aec_trees:accounts(Trees),
