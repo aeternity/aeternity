@@ -681,8 +681,9 @@ solve_ambiguous_field_constraints(Constraints) ->
 -spec solve_unknown_record_types([field_constraint()]) -> true | [tuple()].
 solve_unknown_record_types(Unknown) ->
     UVars = lists:usort([UVar || #field_constraint{record_t = UVar = {uvar, _, _}} <- Unknown]),
-    Solutions = [solve_for_uvar(UVar, [Field || #field_constraint{record_t = U, field = Field} <- Unknown,
-                                                U == UVar])
+    Solutions = [solve_for_uvar(UVar, [{Kind, Field}
+                                        || #field_constraint{record_t = U, field = Field, kind = Kind} <- Unknown,
+                                           U == UVar])
                  || UVar <- UVars],
     case lists:member(true, Solutions) of
         true  -> true;
@@ -720,8 +721,8 @@ solve_known_record_types(Constraints) ->
                              C
                      end;
                 false ->
-                     type_error({not_a_record_type, RecId, When}),
-                     not_solved
+                    type_error({not_a_record_type, RecId, When}),
+                    not_solved
              end
          end
          || C <- DerefConstraints,
@@ -750,8 +751,10 @@ record_type_name(RecId) when ?is_type_id(RecId) ->
     RecId.
 
 solve_for_uvar(UVar = {uvar, Attrs, _}, Fields) ->
+    %% If we have 'create' constraints they must be complete.
+    Covering = lists:usort([ Name || {create, {id, _, Name}} <- Fields ]),
     %% Does this set of fields uniquely identify a record type?
-    FieldNames = [ Name || {id, _, Name} <- Fields ],
+    FieldNames = [ Name || {_Kind, {id, _, Name}} <- Fields ],
     UniqueFields = lists:usort(FieldNames),
     Candidates = [record_type_name(RecType) || {_, #field_info{record_t = RecType}} <- lookup_record_field(hd(FieldNames))],
     TypesAndFields = [case lookup_type(RecName) of
@@ -762,7 +765,8 @@ solve_for_uvar(UVar = {uvar, Attrs, _}, Fields) ->
                       end
                       || RecName <- Candidates],
     Solutions = lists:sort([RecName || {RecName, RecFields} <- TypesAndFields,
-                                       UniqueFields -- RecFields == []]),
+                                       UniqueFields -- RecFields == [],
+                                       Covering == [] orelse RecFields -- Covering == []]),
     case Solutions of
         [] ->
             {no_records_with_all_fields, Fields};
