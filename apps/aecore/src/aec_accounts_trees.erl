@@ -74,6 +74,7 @@ lookup(Pubkey, Tree) ->
 enter(Account, Tree) ->
     aeu_mtrees:enter(key(Account), value(Account), Tree).
 
+-dialyzer({nowarn_function, delete/2}).
 -spec delete(aec_keys:pubkey(), tree()) -> tree().
 delete(Pubkey, Tree) ->
     aeu_mtrees:delete(Pubkey, Tree).
