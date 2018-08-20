@@ -131,7 +131,7 @@
 -callback process(Tx :: tx_instance(), Context :: tx_context(),
                   Trees :: aec_trees:trees(), Height :: non_neg_integer(),
                   ConsensusVersion :: non_neg_integer(),
-                  TxHash :: binary()) ->
+                  TxHash :: binary() | no_tx_hash) ->
     {ok, NewTrees :: aec_trees:trees()}.
 
 -callback serialize(Tx :: tx_instance()) ->
@@ -226,10 +226,10 @@ check_from_contract(#aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion) 
               ConsensusVersion :: non_neg_integer()) ->
     {ok, NewTrees :: aec_trees:trees()}.
 process_no_tx_hash(Tx, Trees, Height, ConsensusVersion) ->
-    process(Tx, Trees, Height, ConsensusVersion, <<>>).
+    process(Tx, Trees, Height, ConsensusVersion, no_tx_hash).
 
 -spec process(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer(),
-              ConsensusVersion :: non_neg_integer(), TxHash :: binary()) ->
+              ConsensusVersion :: non_neg_integer(), TxHash :: binary() | no_tx_hash) ->
     {ok, NewTrees :: aec_trees:trees()}.
 process(#aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion, TxHash) ->
     CB:process(Tx, aetx_transaction, Trees, Height, ConsensusVersion, TxHash).
@@ -239,7 +239,7 @@ process(#aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion, TxHash) ->
     {ok, NewTrees :: aec_trees:trees()}.
 
 process_from_contract(#aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion) ->
-    CB:process(Tx, aetx_contract, Trees, Height, ConsensusVersion, <<>>).
+    CB:process(Tx, aetx_contract, Trees, Height, ConsensusVersion, no_tx_hash).
 
 -spec serialize_for_client(Tx :: tx()) -> map().
 serialize_for_client(#aetx{ cb = CB, type = Type, tx = Tx }) ->

@@ -124,8 +124,7 @@ check(#ns_transfer_tx{nonce = Nonce, fee = Fee} = Tx,
     end.
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
-              non_neg_integer(), binary()) ->
-        {ok, aec_trees:trees()}.
+              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
 process(#ns_transfer_tx{fee = Fee, nonce = Nonce} = TransferTx,
         _Context, Trees0, _Height, _ConsensusVersion, _TxHash) ->
     NameHash = name_hash(TransferTx),

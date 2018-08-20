@@ -122,8 +122,7 @@ check(#channel_settle_tx{initiator_amount_final = InitiatorAmount,
     end.
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
-              non_neg_integer(), binary()) ->
-        {ok, aec_trees:trees()}.
+              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
 process(#channel_settle_tx{initiator_amount_final = InitiatorAmount,
                            responder_amount_final = ResponderAmount,
                            fee                    = Fee,

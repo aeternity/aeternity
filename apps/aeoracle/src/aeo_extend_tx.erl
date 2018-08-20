@@ -116,8 +116,7 @@ signers(#oracle_extend_tx{} = Tx, _) ->
     {ok, [oracle_pubkey(Tx)]}.
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
-              non_neg_integer(), binary()) ->
-        {ok, aec_trees:trees()}.
+              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
 process(#oracle_extend_tx{nonce = Nonce, fee = Fee, oracle_ttl = OTTL} = Tx,
         _Context, Trees0, _Height, _ConsensusVersion, _TxHash) ->
     OraclePK      = aec_id:specialize(oracle(Tx), oracle),

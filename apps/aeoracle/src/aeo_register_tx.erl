@@ -140,8 +140,7 @@ signers(#oracle_register_tx{} = Tx, _) ->
     {ok, [account_pubkey(Tx)]}.
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
-              non_neg_integer(), binary()) ->
-        {ok, aec_trees:trees()}.
+              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
 process(#oracle_register_tx{nonce = Nonce, fee = Fee} = RegisterTx,
         _Ctxt, Trees0, Height, _ConsensusVersion, _TxHash) ->
     AccountPubKey = aec_id:specialize(account(RegisterTx), account),

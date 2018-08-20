@@ -115,8 +115,7 @@ check(#ns_claim_tx{nonce = Nonce, fee = Fee, name = Name, name_salt = NameSalt} 
     end.
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
-              non_neg_integer(), binary()) ->
-        {ok, aec_trees:trees()}.
+              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
 process(#ns_claim_tx{nonce = Nonce, fee = Fee, name = PlainName,
                      name_salt = NameSalt} = ClaimTx,
         _Context, Trees0, Height, _ConsensusVersion, _TxHash) ->

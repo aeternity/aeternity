@@ -152,8 +152,7 @@ signers(Tx, _) ->
     {ok, [caller_pubkey(Tx)]}.
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
-              non_neg_integer(), binary()) ->
-        {ok, aec_trees:trees()}.
+              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
 process(#contract_call_tx{nonce = Nonce,
                           fee = Fee, gas =_Gas, gas_price = GasPrice, amount = Value
                          } = CallTx, Context, Trees1, Height,
