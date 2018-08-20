@@ -2,7 +2,7 @@
 
 [This release][this-release] is focused on TODOFILLMEIN.
 It:
-* Does this.
+* Adds support for type aliases to the Sophia compiler.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.21.0
 

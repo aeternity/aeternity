@@ -1,53 +1,62 @@
 contract Oracles =
 
+  type fee = int
+  type ttl = int
+
+  type query_t  = string
+  type answer_t = int
+
+  type oracle_id = oracle(query_t, answer_t)
+  type query_id  = oracle_query(query_t, answer_t)
+
   function registerOracle(acct : address,
                           sign : signature,   // Signed account address
-                          qfee : int,
-                          ttl  : int) : oracle(string, int) =
+                          qfee : fee,
+                          ttl  : ttl) : oracle_id =
      Oracle.register(acct, sign, qfee, ttl)
 
-  function queryFee(o : oracle(string, int)) : int =
+  function queryFee(o : oracle_id) : fee =
     Oracle.query_fee(o)
 
-  function createQuery(o    : oracle(string, int),
-                       q    : string,
-                       qfee  : int,
-                       qttl : int,
-                       rttl : int) : oracle_query(string, int) =
+  function createQuery(o    : oracle_id,
+                       q    : query_t,
+                       qfee : fee,
+                       qttl : ttl,
+                       rttl : ttl) : query_id =
     require(qfee =< Call.value, "insufficient value for qfee")
     Oracle.query(o, q, qfee, qttl, rttl)
 
   // Do not use in production!
-  function unsafeCreateQuery(o    : oracle(string, int),
-                       q    : string,
-                       qfee  : int,
-                       qttl : int,
-                       rttl : int) : oracle_query(string, int) =
+  function unsafeCreateQuery(o    : oracle_id,
+                       q    : query_t,
+                       qfee : fee,
+                       qttl : ttl,
+                       rttl : ttl) : query_id =
     Oracle.query(o, q, qfee, qttl, rttl)
 
-  function extendOracle(o    : oracle(string, int),
+  function extendOracle(o    : oracle_id,
                         sign : signature,   // Signed oracle address
-                        ttl  : int) : () =
+                        ttl  : ttl) : () =
     Oracle.extend(o, sign, ttl)
 
-  function respond(o    : oracle(string, int),
-                   q    : oracle_query(string, int),
+  function respond(o    : oracle_id,
+                   q    : query_id,
                    sign : signature,
-                   r    : int) =
+                   r    : answer_t) =
     Oracle.respond(o, q, sign, r)
 
-  function getQuestion(o : oracle(string, int),
-                       q : oracle_query(string, int)) : string =
+  function getQuestion(o : oracle_id,
+                       q : query_id) : query_t =
     Oracle.get_question(o, q)
 
-  function hasAnswer(o : oracle(string, int),
-                     q : oracle_query(string, int)) =
+  function hasAnswer(o : oracle_id,
+                     q : query_id) =
     switch(Oracle.get_answer(o, q))
       None    => false
       Some(_) => true
 
-  function getAnswer(o : oracle(string, int),
-                     q : oracle_query(string, int)) : option(int) =
+  function getAnswer(o : oracle_id,
+                     q : query_id) : option(answer_t) =
     Oracle.get_answer(o, q)
 
   datatype complexQuestion = Why(int) | How(string)

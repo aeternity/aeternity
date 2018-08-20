@@ -1,10 +1,12 @@
 // Testing more interesting state types
 contract Stack =
 
-  record state = { stack : list(string),
+  type stack('a) = list('a)
+
+  record state = { stack : stack(string),
                    size  : int }
 
-  function init(ss) = { stack = ss, size = length(ss) }
+  function init(ss : list(string)) = { stack = ss, size = length(ss) }
 
   private function length(xs) =
     switch(xs)
