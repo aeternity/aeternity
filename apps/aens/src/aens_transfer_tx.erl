@@ -17,7 +17,7 @@
          nonce/1,
          origin/1,
          check/5,
-         process/5,
+         process/6,
          signers/2,
          serialization_template/1,
          serialize/1,
@@ -123,10 +123,10 @@ check(#ns_transfer_tx{nonce = Nonce, fee = Fee} = Tx,
         {error, Reason} -> {error, Reason}
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
-        {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
+              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
 process(#ns_transfer_tx{fee = Fee, nonce = Nonce} = TransferTx,
-        _Context, Trees0, _Height, _ConsensusVersion) ->
+        _Context, Trees0, _Height, _ConsensusVersion, _TxHash) ->
     NameHash = name_hash(TransferTx),
     AccountPubKey = account_pubkey(TransferTx),
     AccountsTree0 = aec_trees:accounts(Trees0),

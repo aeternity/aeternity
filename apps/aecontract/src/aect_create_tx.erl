@@ -18,7 +18,7 @@
          nonce/1,
          origin/1,
          check/5,
-         process/5,
+         process/6,
          signers/2,
          serialization_template/1,
          serialize/1,
@@ -205,8 +205,8 @@ check(#contract_create_tx{nonce = Nonce,
 signers(#contract_create_tx{} = Tx, _) ->
     {ok, [owner_pubkey(Tx)]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
-        {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
+              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
 process(#contract_create_tx{nonce      = Nonce,
                             vm_version = _VmVersion,
                             amount     = Amount,
@@ -214,7 +214,7 @@ process(#contract_create_tx{nonce      = Nonce,
                             gas_price  = GasPrice,
                             deposit    = _Deposit,
                             fee        = Fee} = CreateTx,
-        Context, Trees0, Height, ConsensusVersion) ->
+        Context, Trees0, Height, ConsensusVersion, _TxHash) ->
     OwnerPubKey = owner_pubkey(CreateTx),
 
     {ContractPubKey, Contract, Trees1} = create_contract(CreateTx, Trees0),

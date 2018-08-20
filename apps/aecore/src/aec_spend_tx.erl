@@ -13,7 +13,7 @@
          origin/1,
          recipient/1,
          check/5,
-         process/5,
+         process/6,
          signers/2,
          serialization_template/1,
          serialize/1,
@@ -142,10 +142,13 @@ check(#spend_tx{} = SpendTx, _Context, Trees, Height, _ConsensusVersion) ->
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#spend_tx{} = Tx, _) -> {ok, [sender_pubkey(Tx)]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
+              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
 process(#spend_tx{amount = Amount,
                   fee = Fee,
-                  nonce = Nonce} = Tx, _Context, Trees0, _Height, _ConsensusVersion) ->
+                  nonce = Nonce} = Tx, _Context, Trees0, _Height,
+        _ConsensusVersion,
+        _TxHash) ->
     SenderPubkey = sender_pubkey(Tx),
     {ok, RecipientPubkey} = resolve_recipient(Tx, Trees0),
     AccountsTrees0 = aec_trees:accounts(Trees0),

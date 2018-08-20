@@ -16,7 +16,7 @@
          nonce/1,
          origin/1,
          check/5,
-         process/5,
+         process/6,
          signers/2,
          serialization_template/1,
          serialize/1,
@@ -121,12 +121,13 @@ check(#channel_settle_tx{initiator_amount_final = InitiatorAmount,
             Error
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
-        {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
+              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
 process(#channel_settle_tx{initiator_amount_final = InitiatorAmount,
                            responder_amount_final = ResponderAmount,
                            fee                    = Fee,
-                           nonce                  = Nonce} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
+                           nonce                  = Nonce} = Tx, _Context,
+        Trees, _Height, _ConsensusVersion, _TxHash) ->
     ChannelId = channel_hash(Tx),
     FromPubKey = from_pubkey(Tx),
     AccountsTree0 = aec_trees:accounts(Trees),

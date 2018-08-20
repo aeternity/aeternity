@@ -17,7 +17,7 @@
          nonce/1,
          origin/1,
          check/5,
-         process/5,
+         process/6,
          signers/2,
          serialization_template/1,
          serialize/1,
@@ -145,14 +145,14 @@ check(#channel_create_tx{initiator_amount   = InitiatorAmount,
             Error
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
-        {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
+              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
 process(#channel_create_tx{initiator_amount   = InitiatorAmount,
                            responder_amount   = ResponderAmount,
                            fee                = Fee,
                            state_hash         = _StateHash,
                            nonce              = Nonce} = CreateTx, _Context, Trees0, _Height,
-                                                  _ConsensusVersion) ->
+        _ConsensusVersion, _TxHash) ->
     InitiatorPubKey = initiator_pubkey(CreateTx),
     ResponderPubKey = responder_pubkey(CreateTx),
 

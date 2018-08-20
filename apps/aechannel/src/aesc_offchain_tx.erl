@@ -11,7 +11,7 @@
          nonce/1,
          origin/1,
          check/5,
-         process/5,
+         process/6,
          signers/2,
          serialization_template/1,
          serialize/1,
@@ -99,9 +99,10 @@ check(#channel_offchain_tx{
     %% TODO: implement checks relevant to off-chain
     {ok, Trees}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
-        {ok, aec_trees:trees()}.
-process(#channel_offchain_tx{}, _Context, _Trees, _Height, _ConsensusVersion) ->
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
+              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
+process(#channel_offchain_tx{}, _Context, _Trees, _Height, _ConsensusVersion,
+       _TxHash) ->
     error(off_chain_tx).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.

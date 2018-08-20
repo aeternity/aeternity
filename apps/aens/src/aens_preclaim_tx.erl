@@ -17,7 +17,7 @@
          nonce/1,
          origin/1,
          check/5,
-         process/5,
+         process/6,
          signers/2,
          serialization_template/1,
          serialize/1,
@@ -104,10 +104,10 @@ check(#ns_preclaim_tx{nonce = Nonce, fee = Fee} = Tx,
         {error, Reason} -> {error, Reason}
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
-        {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
+              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
 process(#ns_preclaim_tx{fee = Fee, nonce = Nonce} = PreclaimTx,
-        _Context, Trees0, Height, _ConsensusVersion) ->
+        _Context, Trees0, Height, _ConsensusVersion, _TxHash) ->
     AccountPubKey = account_pubkey(PreclaimTx),
     AccountsTree0 = aec_trees:accounts(Trees0),
     NSTree0 = aec_trees:ns(Trees0),

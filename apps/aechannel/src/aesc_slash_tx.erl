@@ -16,7 +16,7 @@
          nonce/1,
          origin/1,
          check/5,
-         process/5,
+         process/6,
          signers/2,
          serialization_template/1,
          serialize/1,
@@ -114,12 +114,13 @@ check(#channel_slash_tx{payload    = Payload,
                                    Payload, PoI, Height, Trees).
 
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
-        {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
+              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
 process(#channel_slash_tx{payload    = Payload,
                           poi        = PoI,
                           fee        = Fee,
-                          nonce      = Nonce} = Tx, _Context, Trees, Height, _ConsensusVersion) ->
+                          nonce      = Nonce} = Tx, _Context, Trees, Height,
+        _ConsensusVersion, _TxHash) ->
     ChannelId  = channel_hash(Tx),
     FromPubKey = from_pubkey(Tx),
     aesc_utils:process_slash(ChannelId, FromPubKey, Nonce, Fee,

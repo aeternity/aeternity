@@ -18,7 +18,7 @@
          nonce/1,
          origin/1,
          check/5,
-         process/5,
+         process/6,
          signers/2,
          serialization_template/1,
          serialize/1,
@@ -151,11 +151,12 @@ check(#contract_call_tx{nonce = Nonce,
 signers(Tx, _) ->
     {ok, [caller_pubkey(Tx)]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
-        {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
+              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
 process(#contract_call_tx{nonce = Nonce,
                           fee = Fee, gas =_Gas, gas_price = GasPrice, amount = Value
-                         } = CallTx, Context, Trees1, Height, ConsensusVersion) ->
+                         } = CallTx, Context, Trees1, Height,
+        ConsensusVersion, _TxHash) ->
 
     %% Transfer the attached funds to the callee (before calling the contract!)
     CallerPubKey = caller_pubkey(CallTx),

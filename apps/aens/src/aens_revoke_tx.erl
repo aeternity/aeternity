@@ -16,7 +16,7 @@
          nonce/1,
          origin/1,
          check/5,
-         process/5,
+         process/6,
          signers/2,
          serialization_template/1,
          serialize/1,
@@ -108,10 +108,10 @@ check(#ns_revoke_tx{nonce = Nonce, fee = Fee} = Tx,
         {error, Reason} -> {error, Reason}
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
-        {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
+              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
 process(#ns_revoke_tx{fee = Fee, nonce = Nonce} = Tx,
-        _Context, Trees0, Height, _ConsensusVersion) ->
+        _Context, Trees0, Height, _ConsensusVersion, _TxHash) ->
     AccountPubKey = account_pubkey(Tx),
     NameHash = name_hash(Tx),
     AccountsTree0 = aec_trees:accounts(Trees0),
