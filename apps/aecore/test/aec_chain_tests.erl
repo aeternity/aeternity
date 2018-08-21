@@ -198,8 +198,8 @@ broken_chain_test_() ->
      ]}.
 
 broken_chain_postponed_validation() ->
-    MainBC = gen_blocks_only_chain_by_target([?GENESIS_TARGET, 2, 5], 111),
-    AltChain = [B0, B1, B2, B3] = gen_blocks_only_chain_by_target([?GENESIS_TARGET, 2, 1], 222),
+    MainBC = gen_blocks_only_chain_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, 5], 111),
+    AltChain = [B0, B1, B2, B3] = gen_blocks_only_chain_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, 1], 222),
 
     %% Assert that we are creating a fork
     ?assertNotEqual(MainBC, AltChain),
@@ -372,22 +372,22 @@ n_headers_forwards(Hdrs, Hashes, M, N) ->
 
 
 n_headers_forwards_fork() ->
-    EasyChain = gen_blocks_only_chain_by_target([?GENESIS_TARGET, 2, 2, 2, 1], 111),
-    HardChain = gen_blocks_only_chain_by_target([?GENESIS_TARGET, 1, 1, 1], 111),
+    EasyChain = gen_blocks_only_chain_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, 2, 2, 2, 1], 111),
+    HardChain = gen_blocks_only_chain_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, 1, 1, 1], 111),
     EasyHdrs = [ aec_blocks:to_header(B) || B <- EasyChain ],
     HardHdrs = [ aec_blocks:to_header(B) || B <- HardChain ],
 
     ok = write_blocks_to_chain(EasyChain),
     Hash = aec_chain:genesis_hash(),
     %% We should now get the headers from the easy chain.
-    ?assertEqual({ok, lists:sublist(EasyHdrs, 3)},
-                 aec_chain:get_at_most_n_generation_headers_forward_from_hash(Hash, 3)),
+    ?assertEqual({ok, lists:sublist(EasyHdrs, 4)},
+                 aec_chain:get_at_most_n_generation_headers_forward_from_hash(Hash, 4)),
 
     %% Write the hard chain, that will take over as main fork.
     %% We should now get the headers from the hard chain.
     ok = write_blocks_to_chain(HardChain),
-    ?assertEqual({ok, lists:sublist(HardHdrs, 3)},
-                 aec_chain:get_at_most_n_generation_headers_forward_from_hash(Hash, 3)),
+    ?assertEqual({ok, lists:sublist(HardHdrs, 4)},
+                 aec_chain:get_at_most_n_generation_headers_forward_from_hash(Hash, 4)),
 
     %% If we try to get headers forward in the easy chain, we should
     %% get an error since the function is only defined on the main chain.
@@ -416,8 +416,8 @@ target_validation_test_() ->
              aec_test_utils:mock_difficulty_as_target(),
              meck:new(aec_governance, [passthrough]),
              meck:new(aec_pow, [passthrough]),
-             meck:expect(aec_governance, key_blocks_to_check_difficulty_count, 0, 3),
-             meck:expect(aec_governance, expected_block_mine_rate, 0, 3000000), %% 50 mins
+             meck:expect(aec_governance, key_blocks_to_check_difficulty_count, 0, 2),
+             meck:expect(aec_governance, expected_block_mine_rate, 0, 1800000), %% 50 mins
              aec_test_utils:mock_genesis(),
              aec_test_utils:aec_keys_setup()
      end,
@@ -474,9 +474,9 @@ constant_target_at_the_beginning_of_the_chain() ->
     ok.
 
 target_verified_based_on_calculations() ->
-    Good4 = 536926835,
-    Bad4  = 536926853,
-    Good5 = 520235910,
+    Good4 = 553697371,
+    Bad4  = 553697352,
+    Good5 = 553690381,
     T0    = aeu_time:now_in_msecs(),
     ChainData =
         #{ targets    => [?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET, Good4, Good5],
@@ -505,8 +505,8 @@ target_verified_based_on_calculations() ->
 
 test_postponed_target_verification() ->
     CommonTargets = [?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET],
-    MainTargets = CommonTargets ++ [536926835, 520235910, 503676955],
-    AltTargets  = CommonTargets ++ [536926835, 168427524, 503676955],
+    MainTargets = CommonTargets ++ [553697371, 553690381, 553682302],
+    AltTargets  = CommonTargets ++ [553697371, 168427524, 553682302],
 
     T0 = aeu_time:now_in_msecs(),
     TS = [T0, T0 + 10000, T0 + 20000, T0 + 30000, T0 + 40000, T0 + 50000],
@@ -565,7 +565,7 @@ total_difficulty_only_genesis() ->
 
 total_difficulty_in_chain() ->
     %% In order to pass target validation, block after genesis has to have the same target as genesis block
-    [B0, B1, B2, B3, B4] = Chain = gen_blocks_only_chain_by_target([?GENESIS_TARGET, 1, 1, 1], 111),
+    [B0, B1, B2, B3, B4] = Chain = gen_blocks_only_chain_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, 1, 1], 111),
     ok = write_blocks_to_chain(Chain),
     {ok, DiffTopB} = difficulty_at_top_block(),
     {ok, Diff0} = difficulty_at_hash(block_hash(B0)),
@@ -575,12 +575,12 @@ total_difficulty_in_chain() ->
     {ok, Diff4} = difficulty_at_hash(block_hash(B4)),
 
     %% Mecked difficulty = ?FACTOR / target
-    ?assertDifficultyEq(2 * ?GENESIS_DIFFICULTY + 3 * ?FACTOR, DiffTopB),
-    ?assertDifficultyEq(1 * ?GENESIS_DIFFICULTY + 0          , Diff0),
-    ?assertDifficultyEq(2 * ?GENESIS_DIFFICULTY + 0          , Diff1),
-    ?assertDifficultyEq(2 * ?GENESIS_DIFFICULTY + 1 * ?FACTOR, Diff2),
-    ?assertDifficultyEq(2 * ?GENESIS_DIFFICULTY + 2 * ?FACTOR, Diff3),
-    ?assertDifficultyEq(2 * ?GENESIS_DIFFICULTY + 3 * ?FACTOR, Diff4),
+    ?assertDifficultyEq(3 * ?GENESIS_DIFFICULTY + 2 * ?FACTOR, DiffTopB),
+    ?assertDifficultyEq(1 * ?GENESIS_DIFFICULTY + 0 * ?FACTOR, Diff0),
+    ?assertDifficultyEq(2 * ?GENESIS_DIFFICULTY + 0 * ?FACTOR, Diff1),
+    ?assertDifficultyEq(3 * ?GENESIS_DIFFICULTY + 0 * ?FACTOR, Diff2),
+    ?assertDifficultyEq(3 * ?GENESIS_DIFFICULTY + 1 * ?FACTOR, Diff3),
+    ?assertDifficultyEq(3 * ?GENESIS_DIFFICULTY + 2 * ?FACTOR, Diff4),
 
     ok.
 
@@ -609,19 +609,19 @@ forking_test_() ->
      ]}.
 
 fork_on_genesis() ->
-    EasyChain = gen_blocks_only_chain_by_target([?GENESIS_TARGET, 2, 2, 2], 111),
-    HardChain = gen_blocks_only_chain_by_target([?GENESIS_TARGET, 1, 1, 1], 111),
+    EasyChain = gen_blocks_only_chain_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, 2, 2], 111),
+    HardChain = gen_blocks_only_chain_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, 1, 1], 111),
     fork_common(EasyChain, HardChain).
 
 fork_on_last_block() ->
-    CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, 1, 1], 111),
+    CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, 1, 1], 111),
     EasyChain = extend_chain_with_state(CommonChain, [2], 111),
     HardChain = extend_chain_with_state(CommonChain, [1], 222),
     fork_common(blocks_only_chain(EasyChain), blocks_only_chain(HardChain)).
 
 fork_on_shorter() ->
-    EasyChain = gen_blocks_only_chain_by_target([?GENESIS_TARGET, 2, 2, 4], 111),
-    HardChain = gen_blocks_only_chain_by_target([?GENESIS_TARGET, 1, 1], 111),
+    EasyChain = gen_blocks_only_chain_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, 2, 2, 4], 111),
+    HardChain = gen_blocks_only_chain_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, 1, 1], 111),
     fork_common(EasyChain, HardChain).
 
 fork_common(EasyChain, HardChain) ->
@@ -651,7 +651,7 @@ fork_common_block(EasyChain, TopHashEasy, HardChain, TopHashHard) ->
     ok.
 
 fork_out_of_order() ->
-    CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, 1, 1], 111),
+    CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, 1, 1], 111),
     EasyChain = extend_chain_with_state(CommonChain, [2], 111),
     HardChain = extend_chain_with_state(CommonChain, [1], 222),
 
@@ -669,24 +669,24 @@ fork_out_of_order() ->
 
 
 fork_get_by_height() ->
-    CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, 1, 1], 111),
+    CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, 1, 1], 111),
     EasyChain = blocks_only_chain(extend_chain_with_state(CommonChain, [2], 111)),
     HardChain = blocks_only_chain(extend_chain_with_state(CommonChain, [1], 222)),
 
     ok = write_blocks_to_chain(EasyChain),
     ?assertEqual({ok, block_hash(lists:last(EasyChain))},
-                 aec_chain_state:get_key_block_hash_at_height(4)),
+                 aec_chain_state:get_key_block_hash_at_height(5)),
 
     ok = write_blocks_to_chain(HardChain),
     ?assertEqual({ok, block_hash(lists:last(HardChain))},
-                 aec_chain_state:get_key_block_hash_at_height(4)),
+                 aec_chain_state:get_key_block_hash_at_height(5)),
 
-    ?assertEqual(error, aec_chain_state:get_key_block_hash_at_height(5)),
+    ?assertEqual(error, aec_chain_state:get_key_block_hash_at_height(6)),
 
     ok.
 
 fork_is_connected_to_genesis() ->
-    CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, 1, 1], 111),
+    CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, 1, 1], 111),
     EasyChain = blocks_only_chain(extend_chain_with_state(CommonChain, [2, 2], 111)),
     HardChain = blocks_only_chain(extend_chain_with_state(CommonChain, [1, 1], 222)),
 
@@ -710,7 +710,7 @@ fork_is_connected_to_genesis() ->
     ok.
 
 fork_is_in_main_chain() ->
-    CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, 1, 1], 111),
+    CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, 1, 1], 111),
     EasyChain = blocks_only_chain(extend_chain_with_state(CommonChain, [2, 2], 111)),
     HardChain = blocks_only_chain(extend_chain_with_state(CommonChain, [1, 1], 222)),
 
@@ -738,7 +738,7 @@ fork_get_transaction() ->
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
     Spend1 = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
     Spend2 = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 2, RecipientPubKey), SenderPrivKey),
-    CommonChainTargets = [?GENESIS_TARGET, 1, 1],
+    CommonChainTargets = [?GENESIS_TARGET, ?GENESIS_TARGET, 1, 1],
     EasyChainExtensionTargets = [2, 2],
     HardChainExtensionTargets = [1, 1, 1],
     EasyChainTopHeight = ?GENESIS_HEIGHT + length(CommonChainTargets ++ EasyChainExtensionTargets),
@@ -861,7 +861,7 @@ time_summary_only_genesis() ->
 
 time_summary_N_blocks() ->
     [B0, B1, B2, B3, B4] = Chain =
-        gen_blocks_only_chain_by_target([?GENESIS_TARGET, 1, 1, 1], 111),
+        gen_blocks_only_chain_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, 1, 1], 111),
     ok = write_blocks_to_chain(Chain),
 
     B0Time = aec_blocks:time_in_msecs(B0),

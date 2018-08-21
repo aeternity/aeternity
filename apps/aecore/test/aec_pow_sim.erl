@@ -30,7 +30,7 @@ adjust_target(Top, Chain) ->
     case aec_headers:height(Top) =< ?ADJUST_WINDOW of
         true  -> Top;
         false ->
-            Target = aec_target:recalculate(Top, lists:sublist(Chain, ?ADJUST_WINDOW)),
+            Target = aec_target:recalculate(lists:sublist(Chain, ?ADJUST_WINDOW)),
             aec_headers:set_target(Top, Target)
     end.
 
