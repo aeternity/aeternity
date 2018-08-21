@@ -10,37 +10,50 @@
 
 -include("blocks.hrl").
 
+-import(aec_headers, [raw_header/0]).
+
 %% -- Block API --------------------------------------------------------------
 
 -define(ADJUST_WINDOW, 10).
 
 genesis_block() ->
-    #header{ height = 0, time = 0, target = ?HIGHEST_TARGET_SCI }.
+    H0 = aec_headers:set_version_and_height(raw_header(), ?PROTOCOL_VERSION, 0),
+    H1 = aec_headers:set_time_in_msecs(H0, 0),
+    aec_headers:set_target(H1, ?HIGHEST_TARGET_SCI).
 
-new_block(_Prev = #header{ height = H, time = _T }, Now) ->
-    #header{ height = H + 1, time   = Now }.
+new_block(Prev, Now) ->
+    H0 = raw_header(),
+    H1 = aec_headers:set_height(H0, aec_headers:height(Prev) + 1),
+    aec_headers:set_time_in_msecs(H1, Now).
 
-adjust_target(Top, _) when Top#header.height =< ?ADJUST_WINDOW -> Top;
 adjust_target(Top, Chain) ->
-    Target = aec_target:recalculate(Top, lists:sublist(Chain, ?ADJUST_WINDOW)),
-    Top#header{ target = Target }.
+    case aec_headers:height(Top) =< ?ADJUST_WINDOW of
+        true  -> Top;
+        false ->
+            Target = aec_target:recalculate(Top, lists:sublist(Chain, ?ADJUST_WINDOW)),
+            aec_headers:set_target(Top, Target)
+    end.
 
 difficulty(Hd) ->
-    aec_pow:target_to_difficulty(Hd#header.target).
+    aec_pow:target_to_difficulty(aec_headers:target(Hd)).
 
 %% -- Chain simulation -------------------------------------------------------
 
 test_chain(N, PC) ->
     Chain = mine_chain(N, PC),
-    [ io:format("~10.2fs (+~8.2fs, rate: ~8.2fs) Block ~3b: difficulty ~9.2f\n",
-        [H#header.time / 1000, (H#header.time - HP#header.time) / 1000, rate([H | lists:sublist(Prev, 50)]),
-         H#header.height, difficulty(H)])
-    || [H | Prev = [HP | _]] <- tails(Chain) ],
+    [begin
+         Time1 = aec_headers:time_in_msecs(H),
+         Time2 = aec_headers:time_in_msecs(HP),
+         io:format("~10.2fs (+~8.2fs, rate: ~8.2fs) Block ~3b: difficulty ~9.2f\n",
+                   [Time1 / 1000, (Time1 - Time2) / 1000, rate([H | lists:sublist(Prev, 50)]),
+                    aec_headers:height(H), difficulty(H)])
+     end
+     || [H | Prev = [HP | _]] <- tails(Chain) ],
     ok.
 
 rate(Xs) ->
-    T0 = (lists:last(Xs))#header.time,
-    T1 = (hd(Xs))#header.time,
+    T0 = aec_headers:time_in_msecs(lists:last(Xs)),
+    T1 = aec_headers:time_in_msecs(hd(Xs)),
     (T1 - T0) / (length(Xs) - 1) / 1000.
 
 mine_chain(N, PC) -> mine_chain([genesis_block()], N, PC, 24 * 60 * 60 * 1000).

@@ -152,10 +152,9 @@ int_update(MaxNTxs, Block, Txs, BlockInfo) ->
             Txs0 = aec_blocks:txs(Block),
             TxsTree1 = aec_txs_trees:add_txs(Txs1, length(Txs0), maps:get(txs_tree, BlockInfo)),
             {ok, TxsRootHash} = aec_txs_trees:root_hash(TxsTree1),
-            NewBlock = Block#block{ txs_hash = TxsRootHash
-                                  , root_hash = aec_trees:hash(Trees1)
-                                  , txs =  Txs0 ++ Txs1
-                                  , time = aeu_time:now_in_msecs() },
+            NewBlock = aec_blocks:update_micro_candidate(
+                         Block, TxsRootHash, aec_trees:hash(Trees1),
+                         Txs0 ++ Txs1, aeu_time:now_in_msecs()),
             NewBlockInfo = BlockInfo#{ trees => Trees1
                                      , txs_tree => TxsTree1 },
             {ok, NewBlock, NewBlockInfo}

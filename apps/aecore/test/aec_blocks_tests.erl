@@ -10,6 +10,9 @@
 
 -include("blocks.hrl").
 
+-import(aec_blocks, [raw_block/0
+                    ]).
+
 -define(TEST_MODULE, aec_blocks).
 -define(MINER_PUBKEY, <<42:?MINER_PUB_BYTES/unit:8>>).
 -define(MINER_SECKEY, <<42:?MINER_PUB_BYTES/unit:16>>).
@@ -18,33 +21,29 @@
 network_serialization_test_() ->
     [{"Serialize/deserialize block with min nonce",
       fun() ->
-              B = #block{nonce = 0,
-                         version = ?PROTOCOL_VERSION},
+              B = aec_blocks:set_nonce(raw_block(), 0),
               SB = #{} = ?TEST_MODULE:serialize_to_map(B),
               ?assertEqual({ok, B}, ?TEST_MODULE:deserialize_from_map(SB))
       end
      },
      {"Serialize/deserialize block with max nonce",
       fun() ->
-              B = #block{nonce = ?MAX_NONCE,
-                         version = ?PROTOCOL_VERSION},
+              B = aec_blocks:set_nonce(raw_block(), ?MAX_NONCE),
               SB = #{} = ?TEST_MODULE:serialize_to_map(B),
               ?assertEqual({ok, B}, ?TEST_MODULE:deserialize_from_map(SB))
       end
      },
      {"try to deserialize a blocks with out-of-range nonce",
       fun() ->
-             Block1 = #block{nonce = ?MAX_NONCE + 1,
-                             version = ?PROTOCOL_VERSION},
-             SerializedBlock1 = #{} = ?TEST_MODULE:serialize_to_map(Block1),
-             ?assertEqual({error,bad_nonce},
-                          ?TEST_MODULE:deserialize_from_map(SerializedBlock1)),
+              Block1 = aec_blocks:set_nonce(raw_block(), ?MAX_NONCE + 1),
+              SerializedBlock1 = #{} = ?TEST_MODULE:serialize_to_map(Block1),
+              ?assertEqual({error,bad_nonce},
+                           ?TEST_MODULE:deserialize_from_map(SerializedBlock1)),
 
-             Block2 = #block{nonce = -1,
-                             version = ?PROTOCOL_VERSION},
-             SerializedBlock2 = #{} = ?TEST_MODULE:serialize_to_map(Block2),
-             ?assertEqual({error,bad_nonce},
-                          ?TEST_MODULE:deserialize_from_map(SerializedBlock2))
+              Block2 = aec_blocks:set_nonce(raw_block(), -1),
+              SerializedBlock2 = #{} = ?TEST_MODULE:serialize_to_map(Block2),
+              ?assertEqual({error,bad_nonce},
+                           ?TEST_MODULE:deserialize_from_map(SerializedBlock2))
      end}].
 
 validate_test_() ->
@@ -89,20 +88,26 @@ validate_test_malformed_txs_root_hash() ->
 
     MalformedTxs = [SignedSpend, BadSignedSpend],
     MalformedTree = aec_txs_trees:from_txs(MalformedTxs),
-    {ok, MalformedRootHash} = aec_txs_trees:root_hash(MalformedTree),
-    Block = #block{txs = [SignedSpend], txs_hash = MalformedRootHash,
-                   version = ?PROTOCOL_VERSION},
-
+    {ok, MalformedTxsRootHash} = aec_txs_trees:root_hash(MalformedTree),
+    RawBlock = raw_block(),
+    Block = aec_blocks:update_micro_candidate(
+              RawBlock, MalformedTxsRootHash,
+              aec_blocks:root_hash(RawBlock),
+              [SignedSpend],
+              aec_blocks:time_in_msecs(RawBlock)),
     ?assertEqual({error, {block, malformed_txs_hash}},
                  ?TEST_MODULE:validate_micro_block(Block, ?MINER_SECKEY)).
 
 validate_test_pass_validation_no_txs() ->
     Txs = [],
     Tree = aec_txs_trees:from_txs(Txs),
-    RootHash = aec_txs_trees:pad_empty(aec_txs_trees:root_hash(Tree)),
-    Block = #block{txs = Txs, txs_hash = RootHash,
-        version = ?PROTOCOL_VERSION},
-
+    TxsRootHash = aec_txs_trees:pad_empty(aec_txs_trees:root_hash(Tree)),
+    RawBlock = raw_block(),
+    Block = aec_blocks:update_micro_candidate(
+              RawBlock, TxsRootHash,
+              aec_blocks:root_hash(RawBlock),
+              [],
+              aec_blocks:time_in_msecs(RawBlock)),
     ?assertEqual(ok, ?TEST_MODULE:validate_micro_block(Block, ?MINER_SECKEY)).
 
 validate_test_pass_validation() ->
@@ -115,9 +120,13 @@ validate_test_pass_validation() ->
             payload => <<>>}),
     Txs = [SignedSpend],
     Tree = aec_txs_trees:from_txs(Txs),
-    {ok, RootHash} = aec_txs_trees:root_hash(Tree),
-    Block = #block{txs = Txs, txs_hash = RootHash,
-                   version = ?PROTOCOL_VERSION},
+    {ok, TxsRootHash} = aec_txs_trees:root_hash(Tree),
+    RawBlock = raw_block(),
+    Block = aec_blocks:update_micro_candidate(
+              RawBlock, TxsRootHash,
+              aec_blocks:root_hash(RawBlock),
+              Txs,
+              aec_blocks:time_in_msecs(RawBlock)),
 
     ?assertEqual(ok, ?TEST_MODULE:validate_micro_block(Block, ?MINER_SECKEY)).
 

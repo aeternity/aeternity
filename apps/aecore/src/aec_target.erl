@@ -74,7 +74,8 @@ determine_delta_header_height(Header) ->
 -spec recalculate(aec_headers:header(), nonempty_list(aec_headers:header())) -> non_neg_integer().
 recalculate(Top, PrevHeaders0) ->
     %% Ensure the list of previous headers are in order - oldest first.
-    PrevHeaders              = lists:keysort(#header.height, PrevHeaders0),
+    SortFun                  = fun(H1, H2) -> aec_headers:height(H1) =< aec_headers:height(H2) end,
+    PrevHeaders              = lists:sort(SortFun, PrevHeaders0),
     K                        = aec_pow:scientific_to_integer(?HIGHEST_TARGET_SCI) * (1 bsl 32),
     SumKDivTargets           = lists:sum([ K div aec_pow:scientific_to_integer(aec_headers:target(Hd))
                                            || Hd <- PrevHeaders ]),

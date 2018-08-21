@@ -210,11 +210,11 @@ broken_chain_postponed_validation() ->
     TopHash = top_block_hash(),
 
     %% Insert the second block of the fork with a bad root hash
-    Bad = B2#block{root_hash = <<"I'm not really a hash">>},
+    Bad = aec_blocks:set_root_hash(B2, <<"I'm not really a hash">>),
     ok = insert_block(Bad),
 
     {ok, Hash} = aec_blocks:hash_internal_representation(Bad),
-    B3Bad = B3#block{prev_hash = Hash},
+    B3Bad = aec_blocks:set_prev_hash(B3, Hash),
     ok = insert_block(B3Bad),
 
     %% Try to insert the first block of the fork
@@ -241,9 +241,9 @@ broken_chain_wrong_height() ->
 
     %% Change the height of the last block to an incompatible height.
     ?assertEqual({error, height_inconsistent_for_keyblock_with_previous_hash},
-                 insert_block(B2#block{height = 4})),
+                 insert_block(aec_blocks:set_height(B2, 4))),
     ?assertEqual({error, height_inconsistent_for_keyblock_with_previous_hash},
-                 insert_block(B2#block{height = 1})),
+                 insert_block(aec_blocks:set_height(B2, 1))),
     ok.
 
 broken_chain_wrong_state_hash() ->
@@ -256,14 +256,14 @@ broken_chain_wrong_state_hash() ->
     ?assertEqual(ok, insert_block(B2)),
 
     %% Change the state hash to something wrong.
-    Hash = B2#block.root_hash,
+    Hash = aec_blocks:root_hash(B2),
     Bogus = case <<1:(bit_size(Hash))>> =:= Hash of
                 true  -> <<0:(bit_size(Hash))>>;
                 false -> <<1:(bit_size(Hash))>>
             end,
     ?assertNotEqual(Hash, Bogus),
     ?assertMatch({error, {root_hash_mismatch, _, _}},
-                 insert_block(B2#block{root_hash = Bogus})),
+                 insert_block(aec_blocks:set_root_hash(B2, Bogus))),
     ok.
 
 broken_chain_invalid_transaction() ->
@@ -282,7 +282,7 @@ broken_chain_invalid_transaction() ->
     ok = write_blocks_to_chain([B0, B1]),
 
     %% Add invalid transaction with too high nonce to last block
-    Txs = MB1#block.txs,
+    Txs = aec_blocks:txs(MB1),
     BogusSpendTx = aec_test_utils:signed_spend_tx(
                      #{recipient => aec_id:create(account, <<1:32/unit:8>>),
                        amount => 0,
@@ -293,7 +293,7 @@ broken_chain_invalid_transaction() ->
 
     ?assertNotEqual(Txs, BogusTxs),
     ?assertMatch({error, invalid_transactions_in_block},
-                 insert_block(MB1#block{txs = BogusTxs})),
+                 insert_block(aec_blocks:set_txs(MB1, BogusTxs))),
 
     %% Check that we can insert the unmodified last block
     ?assertEqual(ok, insert_block(MB1)),
@@ -449,7 +449,7 @@ constant_target_at_the_beginning_of_the_chain() ->
     ok = insert_block(B0),
 
     %% Do not allow too low target
-    B1TooLowTarget = B1#block{target = trunc(?GENESIS_TARGET / 2)},
+    B1TooLowTarget = aec_blocks:set_target(B1, trunc(?GENESIS_TARGET / 2)),
     ?assertMatch({error, {target_not_equal_to_parent, _, _, _}},
                  insert_block(B1TooLowTarget)),
 
@@ -457,7 +457,7 @@ constant_target_at_the_beginning_of_the_chain() ->
     ok = insert_block(B2),
 
     %% Do not allow too high target
-    B3TooHighTarget = B3#block{target = 2 * ?GENESIS_TARGET},
+    B3TooHighTarget = aec_blocks:set_target(B3, 2 * ?GENESIS_TARGET),
     ?assertMatch({error, {target_not_equal_to_parent, _, _, _}},
                  insert_block(B3TooHighTarget)),
 
@@ -492,7 +492,7 @@ target_verified_based_on_calculations() ->
     ok = insert_block(B3),
 
     %% Try to insert block with height=4 with an incorrect target
-    BadB4 = B4#block{target = Bad4},
+    BadB4 = aec_blocks:set_target(B4, Bad4),
     ?assertMatch({error, {wrong_target, _, _, _}},
                  insert_block(BadB4)),
 

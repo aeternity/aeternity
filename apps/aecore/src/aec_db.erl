@@ -224,7 +224,7 @@ get_block_signature(Hash) ->
            Sig
        end).
 
-
+-spec get_block(binary()) -> aec_blocks:block().
 get_block(Hash) ->
     ?t(begin
            [#aec_headers{value = Header}] =
@@ -259,6 +259,7 @@ has_block(Hash) ->
         [_] -> true
     end.
 
+-spec find_block(binary()) -> 'none' | {'value', aec_blocks:block()}.
 find_block(Hash) ->
     ?t(case mnesia:read(aec_blocks, Hash) of
            [#aec_blocks{txs = TxHashes, sig = Sig}] ->
@@ -272,12 +273,14 @@ find_block(Hash) ->
            [] -> none
        end).
 
+-spec find_header(binary()) -> 'none' | {'value', aec_headers:header()}.
 find_header(Hash) ->
     case ?t(mnesia:read(aec_headers, Hash)) of
         [#aec_headers{value = Header}] -> {value, Header};
         [] -> none
     end.
 
+-spec find_headers_at_height(pos_integer()) -> [aec_headers:header()].
 find_headers_at_height(Height) when is_integer(Height), Height >= 0 ->
     ?t([H || #aec_headers{value = H}
                  <- mnesia:index_read(aec_headers, Height, height)]).

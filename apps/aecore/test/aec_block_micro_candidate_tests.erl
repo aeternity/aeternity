@@ -19,6 +19,8 @@
                      49,94,251,20,75,9,85,29,82,35,178,98,75,188,72,242,141>>).
 -define(TEST_ID, aec_id:create(account, ?TEST_PUB)).
 
+-import(aec_headers, [raw_header/0]).
+
 difficulty_recalculation_test_() ->
       [ {"For good mining speed mine block with the same difficulty",
          fun() ->
@@ -28,14 +30,14 @@ difficulty_recalculation_test_() ->
 
                  Block0 = aec_blocks:new_key(BlockHeight, <<0:32/unit:8>>, <<0:32/unit:8>>, undefined,
                                              12345, Now, ?PROTOCOL_VERSION, ?TEST_PUB, ?TEST_PUB),
-                 Chain = lists:duplicate(10, #header{height = 20,
-                                                     target = ?HIGHEST_TARGET_SCI,
-                                                     time = Now - (10 * OneBlockExpectedMineTime),
-                                                     version = ?PROTOCOL_VERSION}),
-
+                 Header0 = aec_headers:set_version_and_height(raw_header(), 20, ?PROTOCOL_VERSION),
+                 Header1 = aec_headers:set_time_in_msecs(Header0,
+                                                         Now - (10 * OneBlockExpectedMineTime)),
+                 Header2 = aec_headers:set_target(Header1, ?HIGHEST_TARGET_SCI),
+                 Chain = lists:duplicate(10, Header2),
                  {ok, Block} = aec_block_key_candidate:adjust_target(Block0, Chain),
 
-                 ?assertEqual(?HIGHEST_TARGET_SCI, Block#block.target)
+                 ?assertEqual(?HIGHEST_TARGET_SCI, aec_blocks:target(Block))
          end},
         {"Too few blocks mined in time increases new block's target threshold",
          fun() ->
@@ -43,15 +45,21 @@ difficulty_recalculation_test_() ->
                  BlockHeight = 200,
                  TS  = [ {X, Now - X * 300001} || X <- lists:seq(1, 10) ], %% Almost perfect timing!!
                  PastTarget = aec_pow:integer_to_scientific(?HIGHEST_TARGET_INT div 2),
-                 Chain = [ #header{ height = BlockHeight - I, target = PastTarget, time = T,
-                                    version = ?PROTOCOL_VERSION } || {I, T} <- TS ],
+                 RawHeader = raw_header(),
+                 Chain = [ begin
+                               H1 = aec_headers:set_version_and_height(
+                                      RawHeader, ?PROTOCOL_VERSION, BlockHeight - I),
+                               H2 = aec_headers:set_target(H1, PastTarget),
+                               aec_headers:set_time_in_msecs(H2, T)
+                           end
+                           || {I, T} <- TS ],
                  Block0 = aec_blocks:new_key(BlockHeight, <<0:32/unit:8>>, <<0:32/unit:8>>, undefined,
                                              12345, Now, ?PROTOCOL_VERSION, ?TEST_PUB, ?TEST_PUB),
 
                  {ok, Block} = aec_block_key_candidate:adjust_target(Block0, Chain),
 
-                 ?assertEqual(true, PastTarget < Block#block.target),
-                 ?assertEqual(true, ?HIGHEST_TARGET_SCI >= Block#block.target)
+                 ?assertEqual(true, PastTarget < aec_blocks:target(Block)),
+                 ?assertEqual(true, ?HIGHEST_TARGET_SCI >= aec_blocks:target(Block))
          end}
       ].
 

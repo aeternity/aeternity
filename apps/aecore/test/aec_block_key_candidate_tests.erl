@@ -9,6 +9,8 @@
 
 -include("blocks.hrl").
 
+-import(aec_blocks, [raw_block/0]).
+
 -define(PREV_MINER_PUBKEY, <<85:?MINER_PUB_BYTES/unit:8>>).
 -define(MINER_PUBKEY, <<42:?MINER_PUB_BYTES/unit:8>>).
 -define(BENEFICIARY_PUBKEY, <<123:?MINER_PUB_BYTES/unit:8>>).
@@ -18,9 +20,10 @@ new_key_block_test_() ->
      fun() ->
              %% Previous block is a key block, so it
              %% has miner and height.
-             PrevBlock = #block{height = 11, target = 17,
-                                miner = ?PREV_MINER_PUBKEY,
-                                version = ?GENESIS_VERSION},
+             RawBlock  = raw_block(),
+             PrevBlock1 = aec_blocks:set_height(RawBlock, 11),
+             PrevBlock2 = aec_blocks:set_target(PrevBlock1, 17),
+             PrevBlock = aec_blocks:set_miner(PrevBlock2, ?MINER_PUBKEY),
              BlockHeader = aec_blocks:to_header(PrevBlock),
 
              {NewBlock, _} = aec_test_utils:create_keyblock_with_state(
@@ -30,11 +33,11 @@ new_key_block_test_() ->
              SerializedBlockHeader = aec_headers:serialize_to_binary(BlockHeader),
              ?assertEqual(aec_hash:hash(header, SerializedBlockHeader),
                           aec_blocks:prev_hash(NewBlock)),
-             ?assertEqual([], NewBlock#block.txs),
-             ?assertEqual(17, NewBlock#block.target),
-             ?assertEqual(?GENESIS_VERSION, NewBlock#block.version),
-             ?assertEqual(?MINER_PUBKEY, NewBlock#block.miner),
-             ?assertEqual(?BENEFICIARY_PUBKEY, NewBlock#block.beneficiary)
+             ?assertEqual([], aec_blocks:txs(NewBlock)),
+             ?assertEqual(17, aec_blocks:target(NewBlock)),
+             ?assertEqual(?GENESIS_VERSION, aec_blocks:version(NewBlock)),
+             ?assertEqual(?MINER_PUBKEY, aec_blocks:miner(NewBlock)),
+             ?assertEqual(?BENEFICIARY_PUBKEY, aec_blocks:beneficiary(NewBlock))
      end}.
 
 -endif.

@@ -25,7 +25,7 @@
 }.
 -type fold_init_fun() :: fun((header()) ->
     {ok, State :: term()} | {error, Reason :: term()}).
--type fold_block_fun() :: fun((Block :: #block{}, State :: term()) ->
+-type fold_block_fun() :: fun((Block :: aec_blocks:block(), State :: term()) ->
     {ok, State :: term()} | {error, Reason :: term()}).
 
 %=== API FUNCTIONS =============================================================

@@ -21,35 +21,7 @@
 -type(beneficiary_pubkey() :: <<_:(?BENEFICIARY_PUB_BYTES*8)>>).
 -type(block_header_hash() :: <<_:(?BLOCK_HEADER_HASH_BYTES*8)>>).
 
--type(block_type() :: key | micro).
-
--record(block, {
-          height = 0              :: aec_blocks:height(),
-          prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
-          root_hash = <<0:?STATE_HASH_BYTES/unit:8>> :: state_hash(), % Hash of all state Merkle trees
-          txs_hash = <<0:?TXS_HASH_BYTES/unit:8>> :: txs_hash(),
-          txs = []                :: list(aetx_sign:signed_tx()),
-          target = ?HIGHEST_TARGET_SCI :: aec_pow:sci_int(),
-          nonce = 0               :: non_neg_integer(),
-          time = ?GENESIS_TIME    :: non_neg_integer(),
-          version                 :: non_neg_integer(),
-          pow_evidence = no_value :: aec_pow:pow_evidence(),
-          miner = <<0:?MINER_PUB_BYTES/unit:8>> :: miner_pubkey(),
-          signature = undefined   :: binary() | undefined,
-          beneficiary = <<0:?BENEFICIARY_PUB_BYTES/unit:8>> :: beneficiary_pubkey()}).
-
--record(header, {
-          height = 0              :: aec_blocks:height(),
-          prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
-          txs_hash = <<0:?TXS_HASH_BYTES/unit:8>> :: txs_hash(),
-          root_hash = <<>>        :: state_hash(),
-          target = ?HIGHEST_TARGET_SCI :: aec_pow:sci_int(),
-          nonce = 0               :: non_neg_integer(),
-          time = ?GENESIS_TIME    :: non_neg_integer(),
-          version                 :: non_neg_integer(),
-          pow_evidence = no_value :: aec_pow:pow_evidence(),
-          miner = <<0:?MINER_PUB_BYTES/unit:8>> :: miner_pubkey(), %% TODO: remove default, confusing
-          beneficiary = <<0:?BENEFICIARY_PUB_BYTES/unit:8>> :: beneficiary_pubkey()}). %% TODO: separate records for key and micro blocks..
+-type(block_type() :: 'key' | 'micro').
 
 -type(header_binary() :: binary()).
 -type(deterministic_header_binary() :: binary()).
