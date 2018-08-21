@@ -3,8 +3,10 @@
 [This release][this-release] is focused on TODOFILLMEIN.
 It:
 * Adds support for type aliases to the Sophia compiler.
+* Changes the target (difficulty) calculation algorithm to use [DigiShield v3][digishield_v3]. This impacts consensus.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.21.0
+[digishield_v3]: https://github.com/zawy12/difficulty-algorithms/issues/9
 
 This release introduces backward incompatible changes in the chain format:
 * After upgrading your node, you will not have your previous balance (even if you keep your key pair);
