@@ -7,7 +7,8 @@
 
 -export_type([encoded/0]).
 
--type known_type() :: block_hash
+-type known_type() :: key_block_hash
+                    | micro_block_hash
                     | block_tx_hash
                     | block_state_hash
                     | channel
@@ -131,7 +132,8 @@ type2id(name)            -> name;
 type2id(oracle_pubkey)   -> oracle.
 
 
-type2pfx(block_hash)       -> <<"bh">>;
+type2pfx(key_block_hash)   -> <<"kh">>;
+type2pfx(micro_block_hash) -> <<"mh">>;
 type2pfx(block_tx_hash)    -> <<"bx">>;
 type2pfx(block_state_hash) -> <<"bs">>;
 type2pfx(channel)          -> <<"ch">>;
@@ -150,7 +152,8 @@ type2pfx(name)             -> <<"nm">>;
 type2pfx(state)            -> <<"st">>;
 type2pfx(poi)              -> <<"pi">>.
 
-pfx2type(<<"bh">>) -> block_hash;
+pfx2type(<<"kh">>) -> key_block_hash;
+pfx2type(<<"mh">>) -> micro_block_hash;
 pfx2type(<<"bx">>) -> block_tx_hash;
 pfx2type(<<"bs">>) -> block_state_hash;
 pfx2type(<<"ch">>) -> channel;
@@ -171,7 +174,8 @@ pfx2type(<<"pi">>) -> poi.
 
 -spec byte_size_for_type(known_type()) -> non_neg_integer() | not_applicable.
 
-byte_size_for_type(block_hash)       -> 32;
+byte_size_for_type(key_block_hash)   -> 32;
+byte_size_for_type(micro_block_hash) -> 32;
 byte_size_for_type(block_tx_hash)    -> 32;
 byte_size_for_type(block_state_hash) -> 32;
 byte_size_for_type(channel)          -> 32;

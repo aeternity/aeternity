@@ -34,7 +34,7 @@ do_execute(chain, get, QueryPayload) ->
             #{<<"height">> := Height} ->
                 {aec_chain:get_key_block_by_height(Height), {height, Height}};
             #{<<"hash">> := Hash0} ->
-                {ok, Hash} = aec_base58c:safe_decode(block_hash, Hash0),
+                Hash = decode_block_hash(Hash0),
                 {aec_chain:get_block(Hash), {hash, Hash0}}
         end,
     case BlockFound of
@@ -42,13 +42,21 @@ do_execute(chain, get, QueryPayload) ->
         {error, ErrMsg} ->
             {error, ErrMsg};
         {ok, Block} ->
+            Header = aec_blocks:to_header(Block),
             Val =
-                  case Type of
-                      <<"header">> ->
-                          aehttp_api_parser:encode(header, Block);
-                      <<"block">> ->
-                          aehttp_api_parser:encode(block, Block)
-                  end,
+                case aec_blocks:height(Block) of
+                    0 ->
+                        aec_headers:serialize_for_client(Header, key);
+                    _ ->
+                        PrevBlockHash = aec_blocks:prev_hash(Block),
+                        case aec_chain:get_block(PrevBlockHash) of
+                            {ok, PrevBlock} ->
+                                PrevBlockType = aec_blocks:type(PrevBlock),
+                                aec_headers:serialize_for_client(Header, PrevBlockType);
+                            error ->
+                                #{reason => <<"Block not found">>}
+                        end
+                end,
             {ok, chain, requested_data, [{type, Type}, Query, {Type, Val}]}
     end;
 do_execute(chain, unsubscribe_all, Data) ->
@@ -82,3 +90,17 @@ do_execute(chain, SubUnSub, SubscribeData)
     end;
 do_execute(_, _, _) -> % a catch all for a prettier error when action is missing
     {error, <<"Missing action">>}.
+
+%% TODO: add a function in base58c to find out what type the hash is?
+decode_block_hash(Hash) ->
+    case aec_base58c:safe_decode(key_block_hash, Hash) of
+        {ok, KeyBlockHash} ->
+            KeyBlockHash;
+        {error, _Rsn} ->
+            case aec_base58c:safe_decode(micro_block_hash, Hash) of
+                {ok, MicroBlockHash} ->
+                    MicroBlockHash;
+                {error, _Rsn} = Err ->
+                    Err
+            end
+    end.

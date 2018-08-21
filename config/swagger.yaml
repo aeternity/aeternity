@@ -52,6 +52,10 @@ paths:
           description: 'Successful operation'
           schema:
             $ref: '#/definitions/KeyBlock'
+        '404':
+          description: 'Block not found'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /key-blocks/current:
     get:
@@ -68,6 +72,10 @@ paths:
           description: 'Successful operation'
           schema:
             $ref: '#/definitions/KeyBlock'
+        '404':
+          description: 'Block not found'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /key-blocks/current/hash:
     get:
@@ -88,6 +96,10 @@ paths:
               hash:
                 type: string
                 description: 'Hash'
+        '404':
+          description: 'Block not found'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /key-blocks/current/height:
     get:
@@ -109,6 +121,10 @@ paths:
                 type: integer
                 description: 'Height'
                 format: int64
+        '404':
+          description: 'Block not found'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /key-blocks/pending:
     get:
@@ -126,7 +142,7 @@ paths:
           schema:
             $ref: '#/definitions/KeyBlock'
         '404':
-          description: 'No pending block (node not mining)'
+          description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
       security:
