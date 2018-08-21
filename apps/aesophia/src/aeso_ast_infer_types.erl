@@ -76,13 +76,10 @@ global_env() ->
     Signature = {id, Ann, "signature"},
     TTL       = Int,
     Fee       = Int,
-    [A, B, Q, R, K, V] = lists:map(TVar, ["a", "b", "q", "r", "k", "v"]),
+    [A, Q, R, K, V] = lists:map(TVar, ["a", "q", "r", "k", "v"]),
      %% Option constructors
     [{"None", Option(A)},
      {"Some", Fun1(A, Option(A))},
-     %% Placeholder for inter-contract calls until we get proper type checking
-     %% of contracts.
-     {"raw_call", Fun([Address, String, Int, Int, A], B)},
      %% Spend transaction. Also not the proper version.
      {"raw_spend", Fun([Address, Int], Unit)},
      %% Environment variables

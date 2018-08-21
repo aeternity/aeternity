@@ -631,7 +631,7 @@ sophia_identity(_Cfg) ->
     42    = ?call(call_contract,   Acc1, IdC, main, word, 42),
     99    = ?call(call_contract,   Acc1, RemC, call, word, {IdC, 99}),
     RemC2 = ?call(create_contract, Acc1, remote_call, {}, #{amount => 100}),
-    77    = ?call(call_contract,   Acc1, RemC2, staged_call, word, {RemC, IdC, 77}),
+    77    = ?call(call_contract,   Acc1, RemC2, staged_call, word, {IdC, RemC, 77}),
     ok.
 
 sophia_state(_Cfg) ->

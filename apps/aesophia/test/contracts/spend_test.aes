@@ -1,4 +1,7 @@
 
+contract SpendContract =
+  function withdraw : (int) => int
+
 contract SpendTest =
 
   function spend(to, amount) =
@@ -10,12 +13,11 @@ contract SpendTest =
     spend(Call.caller, amount)
 
   function withdraw_from(account, amount) =
-    // Pretend (amount, 0 ) is a 1 tuple.
-    raw_call(account, "withdraw", 12000, 0, amount)
+    account.withdraw(amount)
     withdraw(amount)
 
   function spend_from(from, to, amount) =
-    raw_call(from, "withdraw", 12000, 0, amount)
+    from.withdraw(amount)
     raw_spend(to, amount)
     Chain.balance(to)
 

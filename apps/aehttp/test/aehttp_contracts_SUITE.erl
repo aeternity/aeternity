@@ -603,20 +603,27 @@ environment_contract(Config) ->
     ContractBalance = 10000,
 
     %% Initialise contract owned by Alice setting balance to 10000.
-    {EncodedContractPubkey,_,_} =
+    {EncodedContractPubkey,ContractPubKey,_} =
 	create_contract(NodeName, APubkey, APrivkey,
-			HexCode, <<"()">>, #{amount => ContractBalance}),
+			HexCode, <<"0">>, #{amount => ContractBalance}),
+
+    %% Get the pubkey of the contract in a form that we can pass to contract
+    %% calls (i.e. as a binary string containing the integer value of the key).
+    PubKeyToArg = fun(<<N:256>>) -> list_to_binary(integer_to_list(N)) end,
+    ContractPubKeyArg = PubKeyToArg(ContractPubKey),
 
     ABal1 = get_balance(APubkey),
+
+    call_func(NodeName, APubkey, APrivkey, EncodedContractPubkey, HexCode,
+	      <<"set_remote">>, ContractPubKeyArg),
 
     %% Address.
     ct:pal("Calling contract_address\n"),
     call_func(NodeName, APubkey, APrivkey, EncodedContractPubkey, HexCode,
 	      <<"contract_address">>, <<"()">>),
-    %% ct:pal("Calling nested_address\n"),
-    %% call_func(NodeName, APubkey, APrivkey, EncodedContractPubkey, HexCode,
-    %% 	      <<"nested_address">>,
-    %% 	      list_to_binary([$(,aect_utils:hex_bytes(BPubkey),$)])),
+    ct:pal("Calling nested_address\n"),
+    call_func(NodeName, APubkey, APrivkey, EncodedContractPubkey, HexCode,
+    	      <<"nested_address">>, ContractPubKeyArg),
 
     %% Balance.
     ct:pal("Calling contract_balance\n"),
@@ -629,9 +636,9 @@ environment_contract(Config) ->
     call_func(NodeName, APubkey, APrivkey, EncodedContractPubkey,
 	      HexCode, <<"call_origin">>, <<"()">>),
 
-    %% ct:pal("Calling nested_origin\n"),
-    %% NestedOrigin = call_func(NodeName, APubkey, APrivkey, EncodedContractPubkey,
-    %% 			     HexCode, <<"nested_origin">>, <<"()">>),
+    ct:pal("Calling nested_origin\n"),
+    _NestedOrigin = call_func(NodeName, APubkey, APrivkey, EncodedContractPubkey,
+                              HexCode, <<"nested_origin">>, <<"()">>),
 
     %% Caller.
     ct:pal("Calling call_caller\n"),
@@ -648,10 +655,10 @@ environment_contract(Config) ->
 			    HexCode, <<"call_value">>, <<"()">>),
     #{<<"value">> := CallValue} = decode_data(<<"int">>, CVValue),
     ct:pal("Call value ~p\n", [CallValue]),
-    %% ct:pal("Calling nested_value\n"),
-    %% NestedValue = call_func(NodeName, BPubkey, BPrivkey, EncodedContractPubkey,
-    %% 			    HexCode, <<"nested_value">>, <<"(42)">>),
-    %% ct:pal("Nested value ~p\n", [NestedValue]),
+    ct:pal("Calling nested_value\n"),
+    NestedValue = call_func(NodeName, BPubkey, BPrivkey, EncodedContractPubkey,
+    			    HexCode, <<"nested_value">>, <<"(42)">>),
+    ct:pal("Nested value ~p\n", [NestedValue]),
 
     %% Gas price.
     ct:pal("Calling call_gas_price\n"),

@@ -1,66 +1,103 @@
+contract Oracles =
+
+  function registerOracle :
+    (address,
+     signature,
+     int,
+     int) => oracle(string, int)
+
+  function createQuery :
+    (oracle(string, int),
+     string,
+     int,
+     int,
+     int) => oracle_query(string, int)
+
+  function unsafeCreateQuery :
+    (oracle(string, int),
+     string,
+     int,
+     int,
+     int) => oracle_query(string, int)
+
+  function respond :
+    (oracle(string, int),
+     oracle_query(string, int),
+     signature,
+     int) => ()
+
+contract OraclesErr =
+
+  function unsafeCreateQueryThenErr :
+    (oracle(string, int),
+     string,
+     int,
+     int,
+     int) => oracle_query(string, int)
+
 contract RemoteOracles =
 
   public function callRegisterOracle(
-    r : address,
-    acct : address,
-    sign : signature,
-    qfee : int,
-    ttl  : int) : oracle(string, int) =
-    raw_call(r, "registerOracle", 1234567890, 0, (acct, sign, qfee, ttl))
+      r    : Oracles,
+      acct : address,
+      sign : signature,
+      qfee : int,
+      ttl  : int) : oracle(string, int) =
+    r.registerOracle(acct, sign, qfee, ttl)
 
   public function callCreateQuery(
-    r : address,
+    r     : Oracles,
     value : int,
-    o    : oracle(string, int),
-    q    : string,
-    qfee : int,
-    qttl : int,
-    rttl : int) : oracle_query(string, int) =
+    o     : oracle(string, int),
+    q     : string,
+    qfee  : int,
+    qttl  : int,
+    rttl  : int) : oracle_query(string, int) =
     require(value =< Call.value, "insufficient value")
-    raw_call(r, "createQuery", 1234567890, value, (o, q, qfee, qttl, rttl))
+    r.createQuery(value = value, o, q, qfee, qttl, rttl)
 
   // Do not use in production!
   public function callUnsafeCreateQuery(
-    r : address,
+    r     : Oracles,
     value : int,
-    o    : oracle(string, int),
-    q    : string,
-    qfee : int,
-    qttl : int,
-    rttl : int) : oracle_query(string, int) =
-    raw_call(r, "unsafeCreateQuery", 1234567890, value, (o, q, qfee, qttl, rttl))
+    o     : oracle(string, int),
+    q     : string,
+    qfee  : int,
+    qttl  : int,
+    rttl  : int) : oracle_query(string, int) =
+    r.unsafeCreateQuery(value = value, o, q, qfee, qttl, rttl)
 
   // Do not use in production!
   public function callUnsafeCreateQueryThenErr(
-    r : address,
+    r     : OraclesErr,
     value : int,
-    o    : oracle(string, int),
-    q    : string,
-    qfee : int,
-    qttl : int,
-    rttl : int) : oracle_query(string, int) =
-    raw_call(r, "unsafeCreateQueryThenErr", 1234567890, value, (o, q, qfee, qttl, rttl))
+    o     : oracle(string, int),
+    q     : string,
+    qfee  : int,
+    qttl  : int,
+    rttl  : int) : oracle_query(string, int) =
+    r.unsafeCreateQueryThenErr(value = value, o, q, qfee, qttl, rttl)
 
   // Do not use in production!
   public function callUnsafeCreateQueryAndThenErr(
-    r : address,
+    r     : Oracles,
     value : int,
-    o    : oracle(string, int),
-    q    : string,
-    qfee : int,
-    qttl : int,
-    rttl : int) : oracle_query(string, int) =
-    let x = raw_call(r, "unsafeCreateQuery", 1234567890, value, (o, q, qfee, qttl, rttl))
+    o     : oracle(string, int),
+    q     : string,
+    qfee  : int,
+    qttl  : int,
+    rttl  : int) : oracle_query(string, int) =
+    let x = r.unsafeCreateQuery(value = value, o, q, qfee, qttl, rttl)
     switch(0) 1 => ()
     x // Never reached.
 
   public function callRespond(
-    r : address,
+    r    : Oracles,
     o    : oracle(string, int),
     q    : oracle_query(string, int),
     sign : signature,
     qr   : int) =
-    raw_call(r, "respond", 1234567890, 0, (o, q, sign, qr))
+    r.respond(o, q, sign, qr)
 
   private function abort(err : string) =
     switch(0) 1 => ()

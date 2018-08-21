@@ -147,13 +147,15 @@ sophia_remote_call(_Cfg) ->
     IdCode     = compile_contract(identity),
     CallerCode = compile_contract(remote_call),
     Env        = initial_state(#{ 1234 => IdCode, 1 => CallerCode }),
-    42         = successful_call_(1, word, call42, "1234", Env),
+    42         = successful_call_(1, word, call, "(1234,42)", Env),
     ok.
 
 sophia_factorial(_Cfg) ->
     Code    = compile_contract(factorial),
-    Env     = initial_state(#{ 999001 => Code, 999002 => Code }),
-    3628800 = successful_call_(999001, word, main, "999002", Env),
+    Env     = create_contract(999001, Code, "999002",
+              create_contract(999002, Code, "999001",
+                initial_state(#{}))),
+    3628800 = successful_call_(999001, word, fac, "10", Env),
     ok.
 
 simple_multi_argument_call(_Cfg) ->
@@ -166,7 +168,7 @@ remote_multi_argument_call(_Cfg) ->
     IdCode     = compile_contract(identity),
     RemoteCode = compile_contract(remote_call),
     Env        = initial_state(#{ 101 => IdCode, 102 => RemoteCode, 103 => RemoteCode }),
-    42         = successful_call_(102, word, staged_call, "(102,101,42)", Env),
+    42         = successful_call_(102, word, staged_call, "(101,102,42)", Env),
     ok.
 
 spend_tests(_Cfg) ->
@@ -187,7 +189,8 @@ spend_tests(_Cfg) ->
 
 complex_types(_Cfg) ->
     Code = compile_contract(complex_types),
-    Env  = initial_state(#{101 => Code}),
+    Env0 = initial_state(#{}),
+    Env  = create_contract(101, Code, "101", Env0),
     21                      = successful_call_(101, word, sum, "[1,2,3,4,5,6]", Env),
     [1, 2, 3, 4, 5, 6]      = successful_call_(101, {list, word}, up_to, "6", Env),
     [1, 2, 3, 4, 5, 6]      = successful_call_(101, {list, word}, remote_list, "6", Env),
@@ -233,8 +236,10 @@ environment(_Cfg) ->
                , currentDifficulty => Difficulty
                , currentGasLimit   => GasLimit
                },
-    State = initial_state(#{Address => Code, Address2 => Code, environment => ChainEnv},
-                          #{Address => Balance, Caller => CallerBalance}),
+    State0 = initial_state(#{environment => ChainEnv},
+                           #{Address => Balance, Caller => CallerBalance}),
+    State   = create_contract(Address2, Code, integer_to_list(Address),
+              create_contract(Address, Code, integer_to_list(Address2), State0)),
     Options = maps:merge(#{ caller => Caller, value  => Value }, ChainEnv),
     Call1   = fun(Fun, Arg) -> successful_call_(Address, word, Fun, integer_to_list(Arg), State, Options) end,
     Call    = fun(Fun)      -> successful_call_(Address, word, Fun, "()", State, Options) end,
@@ -248,7 +253,7 @@ environment(_Cfg) ->
     Caller   = Call(call_caller),
     Address  = Call(nested_caller),
     Value    = Call(call_value),
-    99       = Call1(nested_value, 99),
+    49       = Call1(nested_value, 99),
     GasPrice = Call(call_gas_price),
 
     CallerBalance = Call1(get_balance, Caller),
