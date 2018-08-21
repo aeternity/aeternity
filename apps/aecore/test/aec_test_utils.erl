@@ -196,11 +196,15 @@ mock_difficulty_as_target() ->
     meck:new(aec_headers, [passthrough]),
     meck:new(aec_blocks, [passthrough]),
     meck:expect(aec_headers, difficulty,
-                fun(#header{target = T}) when is_integer(T) ->
+                fun(H) ->
+                        T = aec_headers:target(H),
+                        true = is_integer(T),
                         float(trunc(?FACTOR / T))
                 end),
     meck:expect(aec_blocks, difficulty,
-                fun(#block{target = T}) when is_integer(T) ->
+                fun(B) ->
+                        T = aec_blocks:target(B),
+                        true = is_integer(T),
                         float(trunc(?FACTOR / T))
                 end).
 
@@ -356,7 +360,7 @@ sign_micro_block(MicroBlock, PrivKey) ->
     Signature = enacl:sign_detached(Bin, PrivKey),
     aec_blocks:set_signature(MicroBlock, Signature).
 
-next_block_with_state([{PB, PBS} | _] = Chain, Target, Time0, TxsFun, Nonce,
+next_block_with_state([{PB,_PBS} | _] = Chain, Target, Time0, TxsFun, Nonce,
                       PubKey, PrivKey, BeneficiaryPubKey) ->
     Height = aec_blocks:height(PB) + 1,
     Txs = TxsFun(Height),
@@ -364,9 +368,16 @@ next_block_with_state([{PB, PBS} | _] = Chain, Target, Time0, TxsFun, Nonce,
     %% the key-block at height X. Every transaction is put in separate micro-block.
     Chain1 = create_micro_blocks(Chain, PrivKey, lists:reverse(Txs)),
     {B, S} = create_keyblock_with_state(Chain1, PubKey, BeneficiaryPubKey),
-    [{B#block{ target = Target, nonce  = Nonce,
-                   time   = case Time0 of undefined -> B#block.time; _ -> Time0 end },
-      S} | Chain1].
+    [begin
+         B1 = aec_blocks:set_target(B, Target),
+         B2 = aec_blocks:set_nonce(B1, Nonce),
+         Time = case Time0 of
+                    undefined -> aec_blocks:time_in_msecs(B);
+                    _ -> Time0
+                end,
+         {aec_blocks:set_time_in_msecs(B2, Time), S}
+      end
+      | Chain1].
 
 create_micro_blocks(Chain, PrivKey, Txs) ->
     create_micro_blocks(Chain, PrivKey, Txs, 1).

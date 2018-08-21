@@ -27,7 +27,7 @@
 -type fold_open_fun() :: fun((header()) ->
     {ok, State :: term()} | {error, Reason :: term()}).
 -type fold_close_fun() :: fun((State :: term()) -> {ok, Result :: term()}).
--type fold_block_fun() :: fun((Block :: #block{}, State :: term()) ->
+-type fold_block_fun() :: fun((Block :: aec_blocks:block(), State :: term()) ->
     {ok, State :: term()} | {error, Reason :: term()}).
 
 %=== API FUNCTIONS =============================================================
@@ -55,7 +55,7 @@ to_disklog(FilePath) ->
                     {ok, Log} -> {ok, {Log, 0}}
                 end
             end,
-            BlockFun = fun(#block{} = Block, {Log, Count}) ->
+            BlockFun = fun(Block, {Log, Count}) ->
                 Data = aec_blocks:serialize_to_binary(Block),
                 case disk_log:blog(Log, Data) of
                     {error, _Reason} = Error -> Error;
@@ -81,7 +81,8 @@ validate_file_path(FilePath) ->
             end
     end.
 
-prev_block(#block{ prev_hash = Hash }) ->
+prev_block(Block) ->
+    Hash = aec_blocks:prev_hash(Block),
     {ok, Block} = aec_chain:get_block(Hash),
     Block.
 
@@ -113,12 +114,12 @@ exporter_call(#{ caller := Caller, ref := Ref }, Tag, Value) ->
 exporter_init(#{ open_fun := OpenFun } = State) ->
     GenesisHash = aec_chain:genesis_hash(),
     {ok, Genesis} = aec_chain:get_block(GenesisHash),
-    TopBlock = #block{ height = Height } = aec_chain:top_block(),
+    TopBlock = aec_chain:top_block(),
     {ok, Hostname} = inet:gethostname(),
     DateTime = calendar:universal_time(),
     Header = #{
         genesis => GenesisHash,
-        height => Height,
+        height => aec_blocks:height(TopBlock),
         hostname => Hostname,
         time => DateTime
     },

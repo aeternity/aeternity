@@ -190,7 +190,9 @@ target_adj_test_() ->
           Window = 20,
           AvgDiffWindow = lists:sum(lists:sublist(Difficulties, Window)) / Window,
           RateWindow = 50,
-          AvgRate = 60 * 1000 * RateWindow / (Top#block.time - (lists:nth(RateWindow + 1, Chain))#block.time),
+          Time1 = aec_blocks:time_in_msecs(Top),
+          Time2 = aec_blocks:time_in_msecs(lists:nth(RateWindow + 1, Chain)),
+          AvgRate = 60 * 1000 * RateWindow / (Time1 - Time2),
 
           ?assertMatch(N when 0.5 < N andalso N < 2.0, AvgDiffWindow/ExpectedDifficulty),
           ?assertMatch(N when 0.75 < N andalso N < 1.25, AvgRate/TargetSpeed)
@@ -222,9 +224,10 @@ mine_chain_with_state(Chain, N, PC) ->
 mining_step(Chain = [{Top, _} | _], PoWCapacity) ->
     {Block, BlockState} = aec_test_utils:create_keyblock_with_state(Chain, ?MINER_PUBKEY),
     MiningTime = mining_time(Chain, PoWCapacity),
+    TopTime    = aec_blocks:time_in_msecs(Top),
     {ok, NewBlock} =
         aec_block_key_candidate:adjust_target(
-          Block#block{ time = Top#block.time + MiningTime },
+          aec_blocks:set_time_in_msecs(Block, TopTime + MiningTime),
           [ aec_blocks:to_header(B) || B <- lists:sublist(aec_test_utils:blocks_only_chain(Chain), 10) ]),
     {NewBlock, BlockState}.
 

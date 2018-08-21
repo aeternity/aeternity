@@ -127,8 +127,9 @@ handoff_leader() ->
 %%%===================================================================
 %%% Chain API
 
--spec post_block(#block{}) -> 'ok' | {'error', any()}.
-post_block(#block{} = Block) ->
+-spec post_block(aec_blocks:block()) -> 'ok' | {'error', any()}.
+post_block(Block) ->
+    aec_blocks:assert_block(Block),
     gen_server:call(?SERVER, {post_block, Block}).
 
 -spec add_synced_block(map()) -> 'ok' | {'error', any()}.

@@ -148,7 +148,7 @@ serialization_template(?SIG_TX_VSN) ->
     , {transaction, binary}
     ].
 
--spec serialize_for_client(json|message_pack, #header{}, aetx_sign:signed_tx()) ->
+-spec serialize_for_client(json|message_pack, aec_headers:header(), aetx_sign:signed_tx()) ->
                               binary() | map().
 serialize_for_client(Encoding, Header, #signed_tx{}=S) ->
     {ok, BlockHash} = aec_headers:hash_header(Header),

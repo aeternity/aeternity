@@ -38,7 +38,7 @@ get_key_block_hash_at_height(Height) when is_integer(Height), Height >= 0 ->
     get_key_block_hash_at_height(Height, new_state_from_persistence()).
 
 -spec get_n_key_headers_backward_from(aec_headers:header(), non_neg_integer()) ->
-        {ok, [#header{}]} | 'error'.
+        {ok, [aec_headers:header()]} | 'error'.
 get_n_key_headers_backward_from(Header, N) ->
     Node = wrap_header(Header),
     get_n_key_headers_from(Node, N).
@@ -53,13 +53,14 @@ median_timestamp(Header) ->
         false ->
             case get_n_key_headers_from(wrap_header(Header), TimeStampKeyBlocks + 1) of
                 {ok, Headers} ->
-                    {ok, median([ TS || #header{ time = TS } <- lists:droplast(Headers) ])};
+                    {ok, median([ aec_headers:time_in_msecs(H)
+                                  || H <- lists:droplast(Headers) ])};
                 error ->
                     error
             end
     end.
 
--spec insert_block(#block{} | map()) -> 'ok' | {'error', any()}.
+-spec insert_block(aec_blocks:block() | map()) -> 'ok' | {'error', any()}.
 insert_block(#{ key_block := KeyBlock, micro_blocks := MicroBlocks, dir := forward }) ->
     %% First insert key_block
     case insert_block(KeyBlock) of
@@ -176,7 +177,7 @@ set_top_block_hash(H, State) when is_binary(H) -> State#{top_block_hash => H}.
 %%% Internal ADT for differing between blocks and headers
 %%%-------------------------------------------------------------------
 
--record(node, { header  :: #header{}
+-record(node, { header  :: aec_headers:header()
               , hash    :: binary()
               , type    :: block_type()
               }).
@@ -805,7 +806,7 @@ median(Xs) ->
 %%% Internal interface for the db
 %%%-------------------------------------------------------------------
 
-db_put_node(#block{} = Block, Hash) when is_binary(Hash) ->
+db_put_node(Block, Hash) when is_binary(Hash) ->
     ok = aec_db:write_block(Block).
 
 %% NG-INFO Heigh/Hash queries have sense in context of key blocks. For non-key height = 0
