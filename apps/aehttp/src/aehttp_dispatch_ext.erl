@@ -29,8 +29,6 @@
                         , ok_response/1
                         , parse_filter_param/2
                         , read_optional_param/3
-                        , get_block/2
-                        , get_block/3
                         , get_poi/3
                         , get_block_hash_optionally_by_hash_or_height/1
                         ]).
@@ -325,15 +323,18 @@ handle_request('GetTransactionInfoByHash', Params, _Config) ->
     process_request(ParseFuns, Params);
 
 handle_request('PostTransaction', #{'Tx' := Tx}, _Context) ->
-    case aehttp_api_parser:decode(tx, maps:get(<<"tx">>, Tx)) of
-        {error, #{<<"tx">> := broken_tx}} ->
-            {400, [], #{reason => <<"Invalid tx">>}};
+    case aec_base58c:safe_decode(transaction, maps:get(<<"tx">>, Tx)) of
+        {ok, TxDec} ->
+            case deserialize_transaction(TxDec) of
+                {ok, SignedTx} ->
+                    ok = aec_tx_pool:push(SignedTx), %% TODO Add proper error handling
+                    Hash = aetx_sign:hash(SignedTx),
+                    {200, [], #{<<"tx_hash">> => aec_base58c:encode(tx_hash, Hash)}};
+                {error, broken_tx} ->
+                    {400, [], #{reason => <<"Invalid tx">>}}
+            end;
         {error, _} ->
-            {400, [], #{reason => <<"Invalid base58Check encoding">>}};
-        {ok, SignedTx} ->
-            ok = aec_tx_pool:push(SignedTx), %% TODO Add proper error handling
-            Hash = aetx_sign:hash(SignedTx),
-            {200, [], #{<<"tx_hash">> => aec_base58c:encode(tx_hash, Hash)}}
+            {400, [], #{reason => <<"Invalid base58Check encoding">>}}
     end;
 
 handle_request('GetContract', Req, _Context) ->
@@ -379,7 +380,7 @@ handle_request('GetOracleByPubkey', Params, _Context) ->
         {ok, Pubkey} ->
             case aec_chain:get_oracle(Pubkey) of
                 {ok, Oracle} ->
-                    {200, [], aehttp_api_parser:encode(oracle, aeo_oracles:serialize_for_client(Oracle))};
+                    {200, [], aeo_oracles:serialize_for_client(Oracle)};
                 {error, _} ->
                     {404, [], #{reason => <<"Oracle not found">>}}
             end;
@@ -564,4 +565,12 @@ encode_generation(KeyBlock, MicroBlocks, PrevBlockType) ->
                            {ok, Hash} = aec_blocks:hash_internal_representation(M),
                            aec_base58c:encode(micro_block_hash, Hash)
                        end || M <- MicroBlocks]}.
+
+
+deserialize_transaction(Tx) ->
+    try
+        {ok, aetx_sign:deserialize_from_binary(Tx)}
+    catch
+        _:_ -> {error, broken_tx}
+    end.
 

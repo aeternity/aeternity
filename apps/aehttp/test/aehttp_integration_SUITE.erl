@@ -2914,7 +2914,7 @@ post_broken_tx(_Config) ->
                   end,
     EncodedBrokenTx = aec_base58c:encode(transaction, BrokenTxBin),
     EncodedSignedTx = aec_base58c:encode(transaction, SignedTxBin),
-    {ok, 400, #{<<"reason">> := <<"Invalid base58Check encoding">>}} = post_transactions_sut(EncodedBrokenTx),
+    {ok, 400, #{<<"reason">> := <<"Invalid tx">>}} = post_transactions_sut(EncodedBrokenTx),
     {ok, 200, _} = post_transactions_sut(EncodedSignedTx),
     ok.
 
