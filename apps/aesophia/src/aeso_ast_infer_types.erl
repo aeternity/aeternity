@@ -8,13 +8,17 @@
 
 -export([infer/1, infer_constant/1]).
 
--type utype() :: {fun_t, aeso_syntax:ann(), [utype()], utype()}
+-type utype() :: {fun_t, aeso_syntax:ann(), named_args_t(), [utype()], utype()}
                | {app_t, aeso_syntax:ann(), utype(), [utype()]}
                | {tuple_t, aeso_syntax:ann(), [utype()]}
                | aeso_syntax:id()  | aeso_syntax:qid()
                | aeso_syntax:con() | aeso_syntax:qcon()  %% contracts
                | aeso_syntax:tvar()
-               | {uvar, aeso_syntax:ann(), reference()}.
+               | uvar().
+
+-type uvar() :: {uvar, aeso_syntax:ann(), reference()}.
+
+-type named_args_t() :: uvar() | [{named_arg_t, aeso_syntax:ann(), aeso_syntax:id(), utype(), aeso_syntax:expr()}].
 
 -type type_id() :: aeso_syntax:id() | aeso_syntax:qid().
 
@@ -22,6 +26,13 @@
 
 -type why_record() :: aeso_syntax:field(aeso_syntax:expr())
                     | {proj, aeso_syntax:ann(), aeso_syntax:expr(), aeso_syntax:id()}.
+
+-record(named_argument_constraint,
+    {args :: named_args_t(),
+     name :: aeso_syntax:id(),
+     type :: utype()}).
+
+-type named_argument_constraint() :: #named_argument_constraint{}.
 
 -record(field_constraint,
     { record_t :: utype()
@@ -56,7 +67,7 @@ global_env() ->
     Option  = fun(T) -> {app_t, Ann, {id, Ann, "option"}, [T]} end,
     Map     = fun(A, B) -> {app_t, Ann, {id, Ann, "map"}, [A, B]} end,
     Pair    = fun(A, B) -> {tuple_t, Ann, [A, B]} end,
-    Fun     = fun(Ts, T) -> {type_sig, Ts, T} end,
+    Fun     = fun(Ts, T) -> {type_sig, [], Ts, T} end,
     Fun1    = fun(S, T) -> Fun([S], T) end,
     TVar    = fun(X) -> {tvar, Ann, "'" ++ X} end,
     Signature = {id, Ann, "signature"},
@@ -182,7 +193,7 @@ check_typedef_sccs(Env, TypeMap, [{acyclic, Name} | SCCs]) ->
                 {record_t, _} -> check_typedef_sccs(Env, TypeMap, SCCs); %%       and these
                 {variant_t, Cons} ->
                     Target   = {app_t, Ann, D, Xs},
-                    ConType  = fun([]) -> Target; (Args) -> {type_sig, Args, Target} end,
+                    ConType  = fun([]) -> Target; (Args) -> {type_sig, [], Args, Target} end,
                     ConTypes = [ begin
                                     {constr_t, _, {con, _, Con}, Args} = ConDef,
                                     {Con, ConType(Args)}
@@ -201,7 +212,7 @@ check_constructor_overlap(Env, Con = {con, _, Name}, NewType) ->
     case proplists:get_value(Name, Env) of
         undefined -> ok;
         Type ->
-            OldType = case Type of {type_sig, _, T} -> T;
+            OldType = case Type of {type_sig, _, _, T} -> T;
                                    _ -> Type end,
             OldCon  = {con, aeso_syntax:get_ann(OldType), Name},    %% TODO: we don't have the location of the old constructor here
             type_error({repeated_constructor, [{OldCon, OldType}, {Con, NewType}]})
@@ -232,30 +243,30 @@ check_sccs(Env, Funs, [{cyclic, Xs} | SCCs], Acc) ->
     Env1 = TypeSigs ++ Env,
     check_sccs(Env1, Funs, SCCs, Defs1 ++ Acc).
 
-check_fundecl(_Env, {fun_decl, _Attrib, {id, _NameAttrib, Name}, {fun_t, _, Args, Ret}}) ->
-    {Name, {type_sig, Args, Ret}};  %% TODO: actually check that the type makes sense!
+check_fundecl(_Env, {fun_decl, _Attrib, {id, _NameAttrib, Name}, {fun_t, _, Named, Args, Ret}}) ->
+    {Name, {type_sig, Named, Args, Ret}};  %% TODO: actually check that the type makes sense!
 check_fundecl(_, {fun_decl, _Attrib, {id, _, Name}, Type}) ->
     error({fundecl_must_have_funtype, Name, Type}).
 
 infer_nonrec(Env, LetFun) ->
     ets:new(type_vars, [set, named_table, public]),
     create_type_errors(),
-    create_field_constraints(),
+    create_constraints(),
     NewLetFun = infer_letfun(Env, LetFun),
-    solve_field_constraints(),
+    solve_constraints(),
+    destroy_and_report_unsolved_constraints(),
     Result = {TypeSig, _} = instantiate(NewLetFun),
     destroy_and_report_type_errors(),
-    destroy_field_constraints(),
     ets:delete(type_vars),
     print_typesig(TypeSig),
     Result.
 
-typesig_to_fun_t({type_sig, Args, Res}) -> {fun_t, [], Args, Res}.
+typesig_to_fun_t({type_sig, Named, Args, Res}) -> {fun_t, [], Named, Args, Res}.
 
 infer_letrec(Env, {letrec, Attrs, Defs}) ->
     ets:new(type_vars, [set, named_table, public]),
     create_type_errors(),
-    create_field_constraints(),
+    create_constraints(),
     Env1 = [{Name, fresh_uvar(A)}
                  || {letfun, _, {id, A, Name}, _, _, _} <- Defs],
     ExtendEnv = Env1 ++ Env,
@@ -269,7 +280,7 @@ infer_letrec(Env, {letrec, Attrs, Defs}) ->
             io:format("Checked ~s : ~s\n", [Name, pp(dereference_deep(Got))]),
             Res
           end || LF <- Defs ],
-    destroy_and_report_unsolved_field_constraints(),
+    destroy_and_report_unsolved_constraints(),
     destroy_and_report_type_errors(),
     TypeSigs = instantiate([Sig || {Sig, _} <- Inferred]),
     NewDefs  = instantiate([D || {_, D} <- Inferred]),
@@ -283,7 +294,8 @@ infer_letfun(Env, {letfun, Attrib, {id, NameAttrib, Name}, Args, What, Body}) ->
     NewBody={typed, _, _, ResultType} = check_expr(ArgTypes ++ Env, Body, ExpectedType),
     NewArgs = [{arg, A1, {id, A2, ArgName}, T}
                || {{ArgName, T}, {arg, A1, {id, A2, ArgName}, _}} <- lists:zip(ArgTypes, Args)],
-    TypeSig = {type_sig, [T || {arg, _, _, T} <- NewArgs], ResultType},
+    NamedArgs = [],
+    TypeSig = {type_sig, NamedArgs, [T || {arg, _, _, T} <- NewArgs], ResultType},
     {{Name, TypeSig},
      {letfun, Attrib, {id, NameAttrib, Name}, NewArgs, ResultType, NewBody}}.
 
@@ -309,7 +321,7 @@ lookup_name(Env, As, Name, Options) ->
                  end,
             type_error({unbound_variable, Id}),
             fresh_uvar(As);
-        {type_sig, _, _} = Type ->
+        {type_sig, _, _, _} = Type ->
             freshen_type(typesig_to_fun_t(Type));
         Type ->
             case proplists:get_value(freshen, Options, false) of
@@ -355,19 +367,26 @@ infer_expr(Env, {list, As, Elems}) ->
 infer_expr(Env, {typed, As, Body, Type}) ->
     {typed, _, NewBody, NewType} = check_expr(Env, Body, Type),
     {typed, As, NewBody, NewType};
-infer_expr(Env, {app, As, Fun, Args}) ->
-    case aeso_syntax:get_ann(format, As) of
+infer_expr(Env, {app, Ann, Fun, Args0}) ->
+    %% TODO: fix parser to give proper annotation for normal applications!
+    FunAnn     = aeso_syntax:get_ann(Fun),
+    NamedArgs  = [ Arg || Arg = {named_arg, _, _, _} <- Args0 ],
+    Args       = Args0 -- NamedArgs,
+    case aeso_syntax:get_ann(format, Ann) of
         infix ->
-            infer_op(Env, As, Fun, Args, fun infer_infix/1);
+            infer_op(Env, Ann, Fun, Args, fun infer_infix/1);
         prefix ->
-            infer_op(Env, As, Fun, Args, fun infer_prefix/1);
+            infer_op(Env, Ann, Fun, Args, fun infer_prefix/1);
         _ ->
+            NamedArgsVar = fresh_uvar(FunAnn),
+            NamedArgs1 = [ infer_named_arg(Env, NamedArgsVar, Arg) || Arg <- NamedArgs ],
+            %% TODO: named args constraints
             NewFun={typed, _, _, FunType} = infer_expr(Env, Fun),
             NewArgs = [infer_expr(Env, A) || A <- Args],
             ArgTypes = [T || {typed, _, _, T} <- NewArgs],
-            ResultType = fresh_uvar(As),
-            unify(FunType, {fun_t, [], ArgTypes, ResultType}, {infer_app, Fun, Args, FunType, ArgTypes}),
-            {typed, As, {app, As, NewFun, NewArgs}, dereference(ResultType)}
+            ResultType = fresh_uvar(FunAnn),
+            unify(FunType, {fun_t, [], NamedArgsVar, ArgTypes, ResultType}, {infer_app, Fun, Args, FunType, ArgTypes}),
+            {typed, FunAnn, {app, Ann, NewFun, NamedArgs1 ++ NewArgs}, dereference(ResultType)}
     end;
 infer_expr(Env, {'if', Attrs, Cond, Then, Else}) ->
     NewCond = check_expr(Env, Cond, {id, Attrs, "bool"}),
@@ -441,14 +460,23 @@ infer_expr(Env, {lam, Attrs, Args, Body}) ->
     {'case', _, {typed, _, {tuple, _, NewArgPatterns}, _}, NewBody} =
         infer_case(Env, Attrs, {tuple, Attrs, ArgPatterns}, {tuple_t, Attrs, ArgTypes}, Body, ResultType),
     NewArgs = [{arg, As, NewPat, NewT} || {typed, As, NewPat, NewT} <- NewArgPatterns],
-    {typed, Attrs, {lam, Attrs, NewArgs, NewBody}, {fun_t, Attrs, ArgTypes, ResultType}}.
+    {typed, Attrs, {lam, Attrs, NewArgs, NewBody}, {fun_t, Attrs, [], ArgTypes, ResultType}}.
+
+infer_named_arg(Env, NamedArgs, {named_arg, Ann, Id, E}) ->
+    CheckedExpr = {typed, _, _, ArgType} = infer_expr(Env, E),
+    add_named_argument_constraint(
+        #named_argument_constraint{
+            args = NamedArgs,
+            name = Id,
+            type = ArgType }),
+    {named_arg, Ann, Id, CheckedExpr}.
 
 check_map_update(Env, {field, Ann, [{map_get, Ann1, Key}], Val}, KeyType, ValType) ->
     Key1 = check_expr(Env, Key, KeyType),
     Val1 = check_expr(Env, Val, ValType),
     {field, Ann, [{map_get, Ann1, Key1}], Val1};
 check_map_update(Env, {field, Ann, [{map_get, Ann1, Key}], Id, Val}, KeyType, ValType) ->
-    FunType = {fun_t, Ann, [ValType], ValType},
+    FunType = {fun_t, Ann, [], [ValType], ValType},
     Key1    = check_expr(Env, Key, KeyType),
     Fun     = check_expr(Env, {lam, Ann1, [{arg, Ann1, Id, ValType}], Val}, FunType),
     {field_upd, Ann, [{map_get, Ann1, Key1}], Fun};
@@ -463,7 +491,7 @@ check_record_update(Env, RecordType, Fld) ->
                 {field, Ann, LV, check_expr(Env, Expr, FldType)};
             [Id, Expr] ->
                 Fun     = {lam, Ann1, [{arg, Ann1, Id, FldType}], Expr},
-                FunType = {fun_t, Ann1, [FldType], FldType},
+                FunType = {fun_t, Ann1, [], [FldType], FldType},
                 {field_upd, Ann, LV, check_expr(Env, Fun, FunType)}
         end,
     constrain([#field_constraint{
@@ -477,7 +505,7 @@ check_record_update(Env, RecordType, Fld) ->
 infer_op(Env, As, Op, Args, InferOp) ->
     TypedArgs = [infer_expr(Env, A) || A <- Args],
     ArgTypes = [T || {typed, _, _, T} <- TypedArgs],
-    Inferred = {fun_t, _, OperandTypes, ResultType} = InferOp(Op),
+    Inferred = {fun_t, _, _, OperandTypes, ResultType} = InferOp(Op),
     unify(ArgTypes, OperandTypes, {infer_app, Op, Args, Inferred, ArgTypes}),
     {typed, As, {app, As, Op, TypedArgs}, ResultType}.
 
@@ -516,31 +544,31 @@ infer_block(Env, Attrs, [E|Rest], BlockType) ->
 infer_infix({BoolOp, As})
   when BoolOp =:= '&&'; BoolOp =:= '||' ->
     Bool = {id, As, "bool"},
-    {fun_t, As, [Bool,Bool], Bool};
+    {fun_t, As, [], [Bool,Bool], Bool};
 infer_infix({IntOp, As})
   when IntOp == '+';    IntOp == '-';   IntOp == '*'; IntOp == '/';
        IntOp == 'band'; IntOp == 'bor'; IntOp == 'bxor' ->
     Int = {id, As, "int"},
-    {fun_t, As, [Int, Int], Int};
+    {fun_t, As, [], [Int, Int], Int};
 infer_infix({RelOp, As})
   when RelOp == '=='; RelOp == '!=';
        RelOp == '<';  RelOp == '>';
        RelOp == '<='; RelOp == '=<'; RelOp == '>=' ->
     T = fresh_uvar(As),     %% allow any type here, check in ast_to_icode that we have comparison for it
     Bool = {id, As, "bool"},
-    {fun_t, As, [T, T], Bool};
+    {fun_t, As, [], [T, T], Bool};
 infer_infix({'::', As}) ->
     ElemType = fresh_uvar(As),
     ListType = {app_t, As, {id, As, "list"}, [ElemType]},
-    {fun_t, As, [ElemType, ListType], ListType}.
+    {fun_t, As, [], [ElemType, ListType], ListType}.
 
 infer_prefix({'!',As}) ->
     Bool = {id, As, "bool"},
-    {fun_t, As, [Bool], Bool};
+    {fun_t, As, [], [Bool], Bool};
 infer_prefix({IntOp,As})
   when IntOp =:= '-'; IntOp =:= 'bnot' ->
     Int = {id, As, "int"},
-    {fun_t, As, [Int], Int}.
+    {fun_t, As, [], [Int], Int}.
 
 free_vars({int, _, _}) ->
     [];
@@ -617,6 +645,68 @@ insert_record_field(FieldName, FieldInfo) ->
 -spec lookup_record_field(string()) -> [{string(), field_info()}].
 lookup_record_field(FieldName) ->
     ets:lookup(record_fields, FieldName).
+
+%% -- Constraints --
+
+create_constraints() ->
+    create_named_argument_constraints(),
+    create_field_constraints().
+
+solve_constraints() ->
+    solve_named_argument_constraints(),
+    solve_field_constraints().
+
+destroy_and_report_unsolved_constraints() ->
+    destroy_and_report_unsolved_field_constraints(),
+    destroy_and_report_unsolved_named_argument_constraints().
+
+%% -- Named argument constraints --
+
+create_named_argument_constraints() ->
+    ets:new(named_argument_constraints, [public, named_table, bag]).
+
+destroy_named_argument_constraints() ->
+    ets:delete(named_argument_constraints).
+
+get_named_argument_constraints() ->
+    ets:tab2list(named_argument_constraints).
+
+-spec add_named_argument_constraint(named_argument_constraint()) -> ok.
+add_named_argument_constraint(Constraint) ->
+    ets:insert(named_argument_constraints, Constraint),
+    ok.
+
+solve_named_argument_constraints() ->
+    Unsolved = solve_named_argument_constraints(get_named_argument_constraints()),
+    Unsolved == [].
+
+-spec solve_named_argument_constraints([named_argument_constraint()]) -> [named_argument_constraint()].
+solve_named_argument_constraints(Constraints0) ->
+    [ C || C <- dereference_deep(Constraints0),
+           unsolved == check_named_argument_constraint(C) ].
+
+%% If false, a type error have been emitted, so it's safe to drop the constraint.
+-spec check_named_argument_constraint(named_argument_constraint()) -> true | false | unsolved.
+check_named_argument_constraint(#named_argument_constraint{ args = {uvar, _, _} }) ->
+    unsolved;
+check_named_argument_constraint(
+        C = #named_argument_constraint{ args = Args,
+                                        name = Id = {id, _, Name},
+                                        type = Type }) ->
+    case [ T || {named_arg_t, _, {id, _, Name1}, T, _} <- Args, Name1 == Name ] of
+        []  ->
+            type_error({bad_named_argument, Args, Id}),
+            false;
+        [T] -> unify(T, Type, {check_named_arg_constraint, C}), true
+    end.
+
+destroy_and_report_unsolved_named_argument_constraints() ->
+    Unsolved = solve_named_argument_constraints(get_named_argument_constraints()),
+    [ type_error({unsolved_named_argument_constraint, C}) || C <- Unsolved ],
+    destroy_named_argument_constraints(),
+    ok.
+
+%% -- Field constraints --
 
 create_field_constraints() ->
     %% A relation from uvars to constraints
@@ -704,7 +794,7 @@ solve_known_record_types(Constraints) ->
             RecId = record_type_name(RecType),
             Attrs = aeso_syntax:get_ann(RecId),
             case lookup_type(RecId) of
-                {Formals, {record_t, Fields}} ->
+                {Formals, {What, Fields}} when What =:= record_t; What =:= contract_t ->
                      FieldTypes = [{Name, Type} || {field_t, _, {id, _, Name}, Type} <- Fields],
                      {id, _, FieldString} = FieldName,
                      case proplists:get_value(FieldString, FieldTypes) of
@@ -792,8 +882,10 @@ unfold_types({typed, Attr, E, Type}, Options) ->
     {typed, Attr, unfold_types(E, Options), unfold_types_in_type(Type, Options)};
 unfold_types({arg, Attr, Id, Type}, Options) ->
     {arg, Attr, Id, unfold_types_in_type(Type, Options)};
-unfold_types({type_sig, Args, Ret}, Options) ->
-    {type_sig, unfold_types_in_type(Args, Options), unfold_types_in_type(Ret, Options)};
+unfold_types({type_sig, NamedArgs, Args, Ret}, Options) ->
+    {type_sig, unfold_types_in_type(NamedArgs, Options),
+               unfold_types_in_type(Args, Options),
+               unfold_types_in_type(Ret, Options)};
 unfold_types({type_def, Ann, Name, Args, Def}, Options) ->
     {type_def, Ann, Name, Args, unfold_types_in_type(Def, Options)};
 unfold_types({letfun, Ann, Name, Args, Type, Body}, Options) ->
@@ -857,12 +949,12 @@ subst_tvars1(_Env, X) ->
 
 %% Unification
 
-unify({id, _, "_"}, _, _When) ->
-  true;
-unify(_, {id, _, "_"}, _When) ->
-  true;
-unify(T1, T2, When) ->
-  unify1(dereference(unfold_types_in_type(T1)), dereference(unfold_types_in_type(T2)), When).
+unify({id, _, "_"}, _, _When) -> true;
+unify(_, {id, _, "_"}, _When) -> true;
+unify(A, B, When) ->
+    A1 = dereference(unfold_types_in_type(A)),
+    B1 = dereference(unfold_types_in_type(B)),
+    unify1(A1, B1, When).
 
 unify1({uvar, _, R}, {uvar, _, R}, _When) ->
     true;
@@ -886,7 +978,8 @@ unify1({id, _, Name}, {id, _, Name}, _When) ->
     true;
 unify1({qid, _, Name}, {qid, _, Name}, _When) ->
     true;
-unify1({fun_t, _, Args1, Result1}, {fun_t, _, Args2, Result2}, When) ->
+unify1({fun_t, _, Named1, Args1, Result1}, {fun_t, _, Named2, Args2, Result2}, When) ->
+    unify(Named1, Named2, When) andalso
     unify(Args1, Args2, When) andalso unify(Result1, Result2, When);
 unify1({app_t, _, {id, _, F}, Args1}, {app_t, _, {id, _, F}, Args2}, When)
   when length(Args1) == length(Args2) ->
@@ -929,12 +1022,14 @@ occurs_check(R, T) ->
 occurs_check1(R, {uvar, _, R1}) -> R == R1;
 occurs_check1(_, {id, _, _}) -> false;
 occurs_check1(_, {tvar, _, _}) -> false;
-occurs_check1(R, {fun_t, _, Args, Res}) ->
-    occurs_check(R, [Res | Args]);
+occurs_check1(R, {fun_t, _, Named, Args, Res}) ->
+    occurs_check(R, [Res, Named | Args]);
 occurs_check1(R, {app_t, _, T, Ts}) ->
     occurs_check(R, [T | Ts]);
 occurs_check1(R, {tuple_t, _, Ts}) ->
     occurs_check(R, Ts);
+occurs_check1(R, {named_arg_t, _, _, T, _}) ->
+    occurs_check(R, T);
 occurs_check1(R, [H | T]) ->
     occurs_check(R, H) orelse occurs_check(R, T);
 occurs_check1(_, []) -> false.
@@ -980,6 +1075,16 @@ instantiate1({uvar, Attr, R}) ->
     TVar = {tvar, Attr, "'" ++ integer_to_list(Next)},
     ets:insert(type_vars, [{next, Next + 1}, {R, TVar}]),
     TVar;
+instantiate1({fun_t, Ann, Named, Args, Ret}) ->
+    case dereference(Named) of
+        {uvar, _, R} ->
+            %% Uninstantiated named args map to the empty list
+            NoNames = [],
+            ets:insert(type_vars, [{R, NoNames}]),
+            {fun_t, Ann, NoNames, instantiate(Args), instantiate(Ret)};
+        Named1 ->
+            {fun_t, Ann, instantiate1(Named1), instantiate(Args), instantiate(Ret)}
+    end;
 instantiate1(T) when is_tuple(T) ->
     list_to_tuple(instantiate1(tuple_to_list(T)));
 instantiate1([A|B]) ->
@@ -1037,6 +1142,17 @@ pp_error({recursive_types_not_implemented, Types}) ->
 pp_error({repeated_constructor, Cs}) ->
     io_lib:format("Variant types must have distinct constructor names\n~s",
                   [[ io_lib:format("~s  (at ~s)\n", [pp_typed("  - ", C, T), pp_loc(C)]) || {C, T} <- Cs ]]);
+pp_error({bad_named_argument, [], Name}) ->
+    io_lib:format("Named argument ~s (at ~s) supplied to function expecting no named arguments.\n",
+                  [pp(Name), pp_loc(Name)]);
+pp_error({bad_named_argument, Args, Name}) ->
+    io_lib:format("Named argument ~s (at ~s) is not one of the expected named arguments\n~s",
+                  [pp(Name), pp_loc(Name),
+                   [ io_lib:format("~s\n", [pp_typed("  - ", Arg, Type)])
+                     || {named_arg_t, _, Arg, Type, _} <- Args ]]);
+pp_error({unsolved_named_argument_constraint, #named_argument_constraint{name = Name, type = Type}}) ->
+    io_lib:format("Named argument ~s (at ~s) supplied to function with unknown named arguments.\n",
+                  [pp_typed("", Name, Type), pp_loc(Name)]);
 pp_error(Err) ->
     io_lib:format("Unknown error: ~p\n", [Err]).
 
@@ -1142,7 +1258,7 @@ if_branches(If = {'if', Ann, _, Then, Else}) ->
     end;
 if_branches(E) -> [E].
 
-pp_typed(Label, E, T = {type_sig, _, _}) -> pp_typed(Label, E, typesig_to_fun_t(T));
+pp_typed(Label, E, T = {type_sig, _, _, _}) -> pp_typed(Label, E, typesig_to_fun_t(T));
 pp_typed(Label, {typed, _, Expr, _}, Type) ->
     pp_typed(Label, Expr, Type);
 pp_typed(Label, Expr, Type) ->
@@ -1164,8 +1280,8 @@ pp_loc(T) ->
     {Line, Col} = loc(T),
     io_lib:format("line ~p, column ~p", [Line, Col]).
 
-pp({type_sig, As, B}) ->
-    ["(", pp(As), ") => ", pp(B)];
+pp(T = {type_sig, _, _, _}) ->
+    pp(typesig_to_fun_t(T));
 pp([]) ->
     "";
 pp([T]) ->
@@ -1188,8 +1304,12 @@ pp({app_t, _, T, []}) ->
     pp(T);
 pp({app_t, _, {id, _, Name}, Args}) ->
     [Name, "(", pp(Args), ")"];
-pp({fun_t, _, As, B}) ->
-    ["(", pp(As), ") => ", pp(B)].
+pp({named_arg_t, _, Name, Type, Default}) ->
+    [pp(Name), " : ", pp(Type), " = ", pp(Default)];
+pp({fun_t, _, Named = {uvar, _, _}, As, B}) ->
+    ["(", pp(Named), " | ", pp(As), ") => ", pp(B)];
+pp({fun_t, _, Named, As, B}) when is_list(Named) ->
+    ["(", pp(Named ++ As), ") => ", pp(B)].
 
 %% -- Pre-type checking desugaring -------------------------------------------
 

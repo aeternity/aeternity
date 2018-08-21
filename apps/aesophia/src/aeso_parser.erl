@@ -190,11 +190,16 @@ exprAtom() ->
         ])
     end).
 
+arg_expr() ->
+    ?LAZY_P(
+        choice([ ?RULE(id(), tok('='), expr(), {named_arg, [], _1, _3})
+               , expr() ])).
+
 elim() ->
     ?LAZY_P(
     choice(
     [ {proj, keyword('.'), id()}
-    , ?RULE(paren_list(expr()), {app, [], _1})
+    , ?RULE(paren_list(arg_expr()), {app, [], _1})
     , ?RULE(keyword('{'), comma_sep(field_assignment()), tok('}'), {rec_upd, _1, _2})
     , ?RULE(keyword('['), expr(), keyword(']'), {map_get, _1, _2})
     ])).
@@ -373,7 +378,7 @@ tuple_t(_Ann, [Type]) -> Type;  %% Not a tuple
 tuple_t(Ann, Types)   -> {tuple_t, Ann, Types}.
 
 fun_t(Domains, Type) ->
-    lists:foldr(fun({Dom, Ann}, T) -> {fun_t, Ann, Dom, T} end,
+    lists:foldr(fun({Dom, Ann}, T) -> {fun_t, Ann, [], Dom, T} end,
                 Type, Domains).
 
 tuple_e(Ann, [])      -> {unit, Ann};

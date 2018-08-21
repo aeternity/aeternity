@@ -15,7 +15,7 @@
 -export_type([bin_op/0, un_op/0]).
 -export_type([decl/0, letbind/0, typedef/0]).
 -export_type([arg/0, field_t/0, constructor_t/0]).
--export_type([type/0, constant/0, expr/0, field/1, stmt/0, alt/0, lvalue/0, pat/0]).
+-export_type([type/0, constant/0, expr/0, arg_expr/0, field/1, stmt/0, alt/0, lvalue/0, pat/0]).
 -export_type([ast/0]).
 
 -type ast() :: [decl()].
@@ -56,12 +56,14 @@
 
 -type constructor_t() :: {constr_t, ann(), con(), [type()]}.
 
--type type() :: {fun_t, ann(), [type()], type()}
+-type type() :: {fun_t, ann(), [named_arg_t()], [type()], type()}
               | {app_t, ann(), type(), [type()]}
               | {tuple_t, ann(), [type()]}
               | id()  | qid()
               | con() | qcon()  %% contracts
               | tvar().
+
+-type named_arg_t() :: {named_arg_t, ann(), id(), type(), expr()}.
 
 -type constant()
     :: {int, ann(), integer()}
@@ -82,7 +84,7 @@
     :: {lam, ann(), [arg()], expr()}
      | {'if', ann(), expr(), expr(), expr()}
      | {switch, ann(), expr(), [alt()]}
-     | {app, ann(), expr(), [expr()]}
+     | {app, ann(), expr(), [arg_expr()]}
      | {proj, ann(), expr(), id()}
      | {tuple, ann(), [expr()]}
      | {list, ann(), [expr()]}
@@ -96,6 +98,8 @@
      | {op(), ann()}
      | id() | qid() | con() | qcon()
      | constant().
+
+-type arg_expr() :: expr() | {named_arg, ann(), id(), expr()}.
 
 %% When lvalue is a projection this is sugar for accessing fields in nested
 %% records. For instance,

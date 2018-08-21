@@ -92,10 +92,10 @@ ast_type(T, Icode) ->
     ast_typerep(T, Icode).
 
 -define(id_app(Fun, Args, ArgTypes, OutType),
-    {app, _, {typed, _, {id, _, Fun}, {fun_t, _, ArgTypes, OutType}}, Args}).
+    {app, _, {typed, _, {id, _, Fun}, {fun_t, _, _, ArgTypes, OutType}}, Args}).
 
 -define(qid_app(Fun, Args, ArgTypes, OutType),
-    {app, _, {typed, _, {qid, _, Fun}, {fun_t, _, ArgTypes, OutType}}, Args}).
+    {app, _, {typed, _, {qid, _, Fun}, {fun_t, _, _, ArgTypes, OutType}}, Args}).
 
 -define(oracle_t(Q, R), {app_t, _, {id, _, "oracle"}, [Q, R]}).
 -define(query_t(Q, R),  {app_t, _, {id, _, "oracle_query"}, [Q, R]}).
@@ -313,7 +313,7 @@ ast_body({con, _, "None"}, _Icode) ->
     #list{elems = []};
 ast_body({app, _, {typed, _, {con, _, "Some"}, _}, [Elem]}, Icode) ->
     #tuple{cpts = [ast_body(Elem, Icode)]};
-ast_body({typed, _, {con, _, "Some"}, {fun_t, _, [A], _}}, Icode) ->
+ast_body({typed, _, {con, _, "Some"}, {fun_t, _, _, [A], _}}, Icode) ->
     #lambda{ args = [#arg{name = "x", type = ast_type(A, Icode)}]
            , body = #tuple{cpts = [#var_ref{name = "x"}]} };
 ast_body({con, _, Name}, Icode) ->
@@ -473,7 +473,7 @@ ast_typerep({record_t,Fields}, Icode) ->
                 {field_t, _, _, T} = Field,
                 ast_typerep(T, Icode)
               end || Field <- Fields]};
-ast_typerep({fun_t,_,_,_}, _Icode) ->
+ast_typerep({fun_t,_,_,_,_}, _Icode) ->
     function;
 ast_typerep({alias_t, T}, Icode) -> ast_typerep(T, Icode);
 ast_typerep({variant_t, Cons}, Icode) ->
