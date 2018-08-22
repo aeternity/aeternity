@@ -16,8 +16,9 @@
     stop_and_continue_sync/1,
     tx_pool_sync/1,
     net_split_recovery/1,
-    quick_start_stop/1,
-    net_split_mining_power/1
+    net_split_mining_power/1,
+    abrupt_stop_new_node/1,
+    abrupt_stop_mining_node/1
 ]).
 
 -import(aest_nodes, [
@@ -27,9 +28,11 @@
     stop_node/3,
     connect_node/3, disconnect_node/3,
     wait_for_value/4,
+    wait_for_startup/3,
     get_block/2,
     get_top/1,
-    request/3
+    request/3,
+    assert_in_sync/1
 ]).
 
 %=== INCLUDES ==================================================================
@@ -123,15 +126,16 @@ all() -> [
     stop_and_continue_sync,
     tx_pool_sync,
     net_split_recovery,
-    quick_start_stop,
-    net_split_mining_power
+    net_split_mining_power,
+    abrupt_stop_new_node,
+    abrupt_stop_mining_node
 ].
 
 init_per_suite(Config) ->
     %% Some parameters depend on the speed and capacity of the docker containers:
     %% timers must be less than gen_server:call timeout.
     [ {blocks_per_second, 1},
-      {node_startup_time, 10000}, %% Time may take to get the node to respond to http
+      {node_startup_time, 20000}, %% Time may take to get the node to respond to http
       {node_shutdown_time, 20000} %% Time it may take to stop node cleanly
     | Config].
 
@@ -162,7 +166,6 @@ patron() ->
 %% A node with a newer version of the code can join and synchronize
 %% to a cluster of older nodes.
 new_node_joins_network(Cfg) ->
-    NodeStartupTime = proplists:get_value(node_startup_time, Cfg),
     Compatible = "aeternity/epoch:local", %% Latest version it should be compatible with
                                           %% Change if comptibility with previous version
                                           %% should be guaranteed
@@ -192,23 +195,23 @@ new_node_joins_network(Cfg) ->
     start_node(old_node1, Cfg),
     start_node(old_node2, Cfg),
     T0 = erlang:system_time(seconds),
-    wait_for_value({height, 0}, [old_node1, old_node2], NodeStartupTime, Cfg),
+    wait_for_startup([old_node1, old_node2], 0, Cfg),
     StartupTime = erlang:system_time(seconds) - T0,
 
-    Length = max(20, 5 + proplists:get_value(blocks_per_second, Cfg) * StartupTime),
+    Length = max(30, 5 + proplists:get_value(blocks_per_second, Cfg) * StartupTime),
 
     %% Mines for 20 blocks and calculate the average mining time
-    StartTime = os:timestamp(),
+    StartTime = erlang:system_time(seconds),
 
 
-    inject_spend_txs(old_node1, patron(), 20, 1, 100),
-    inject_spend_txs(old_node2, patron(), 20, 21, 100),
+    inject_spend_txs(old_node1, patron(), 5, 1, 100),
+    inject_spend_txs(old_node2, patron(), 5, 6, 100),
 
     wait_for_value({height, Length}, [old_node1, old_node2], Length * ?MINING_TIMEOUT, Cfg),
-    EndTime = os:timestamp(),
-    %% Average mining time per block plus 50% extra
-    MiningTime = round(timer:now_diff(EndTime, StartTime) * 1.5)
-                 div (1000 * Length),
+    EndTime = erlang:system_time(seconds),
+    %% Average mining time per block
+    MiningTime = ((EndTime - StartTime) * 1000) div Length,
+    ct:log("Mining time per block ~p for ~p blocks", [MiningTime, Length]),
 
     Top1 = get_top(old_node1),
     ct:log("Node 1 top: ~p", [Top1]),
@@ -224,13 +227,14 @@ new_node_joins_network(Cfg) ->
     %% Starts a third node and check it synchronize with the first two
     start_node(new_node1, Cfg),
 
-    inject_spend_txs(old_node1, patron(), 20, 41, 100), 
+    inject_spend_txs(old_node1, patron(), 5, 11, 100), 
 
-    wait_for_value({height, 0}, [new_node1], NodeStartupTime, Cfg),
+    wait_for_startup([new_node1], 0, Cfg),
 
     %% Starting http interface takes more time than sync, but:
     %% Wait enough for node 3 to sync but not for it to build a new chain
-    wait_for_value({height, Length}, [new_node1], MiningTime * 2, Cfg),
+    %% Half the length in minging time is not enough to build the complete chain.
+    wait_for_value({height, Length}, [new_node1], MiningTime * (Length div 2), Cfg),
     ct:log("Node 3 on same height"),
     Height3 = get_block(new_node1, Length),
     ct:log("Node 3 at height ~p: ~p", [Length, Height3]),
@@ -243,35 +247,33 @@ new_node_joins_network(Cfg) ->
 %% that we had in the chain before stopping: data is persistent.
 docker_keeps_data(Cfg) ->
     Length = 20,
-    NodeStartupTime = proplists:get_value(node_startup_time, Cfg),
-    NodeShutdownTime = proplists:get_value(node_shutdown_time, Cfg),
+    ShutdownTimeout = proplists:get_value(node_shutdown_time, Cfg),
 
     setup_nodes([?STANDALONE_NODE], Cfg),
 
     start_node(standalone_node, Cfg),
-    wait_for_value({height, 0}, [standalone_node], NodeStartupTime, Cfg),
+    wait_for_startup([standalone_node], 0, Cfg),
 
     %% Mines for 20 blocks and calculate the average mining time
-    StartTime = os:timestamp(),
+    StartTime = erlang:system_time(seconds),
     wait_for_value({height, Length}, [standalone_node], Length * ?MINING_TIMEOUT, Cfg),
-    EndTime = os:timestamp(),
-    %% Average mining time per block plus 50% extra
-    MiningTime = round(timer:now_diff(EndTime, StartTime) * 1.5)
-                 div (1000 * Length),
+    EndTime = erlang:system_time(seconds),
+    %% Average mining time per block
+    MiningTime = ((EndTime - StartTime) * 1000) div Length,
 
     %% Get all blocks before stopping
     A = [get_block(standalone_node, H) || H <- lists:seq(1, Length)],
 
-    stop_node(standalone_node, NodeShutdownTime, Cfg),
+    stop_node(standalone_node, ShutdownTimeout, Cfg),
     %% This requires some time
 
     start_node(standalone_node, Cfg),
-    wait_for_value({height, 0}, [standalone_node], NodeStartupTime, Cfg),
+    wait_for_startup([standalone_node], 0, Cfg),
 
     ct:log("Node restarted and ready to go"),
 
     %% Give it time to read from disk, but not enough to build a new chain of same length
-    timer:sleep(MiningTime * 8),
+    timer:sleep(MiningTime * (Length div 2)),
 
     %% Get all blocks after restarting
     B = [get_block(standalone_node, H) || H <- lists:seq(1, Length)],
@@ -289,17 +291,17 @@ docker_keeps_data(Cfg) ->
     ?assertEqual([], Diff),
 
     %% Mines 10 more blocks
-    wait_for_value({height, Length + 10}, [standalone_node], MiningTime * 10, Cfg),
+    wait_for_value({height, Length + 10}, [standalone_node], 10 * ?MINING_TIMEOUT, Cfg),
 
     %% Get all blocks before stopping
     C = [get_block(standalone_node, H) || H <- lists:seq(1, Length + 10)],
 
-    stop_node(standalone_node, NodeShutdownTime, Cfg),
+    stop_node(standalone_node, ShutdownTimeout, Cfg),
     start_node(standalone_node, Cfg),
-    wait_for_value({height, 0}, [standalone_node], NodeStartupTime, Cfg),
+    wait_for_startup([standalone_node], 0, Cfg),
 
     %% Give it time to read from disk, but not enough to build a new chain of same length
-    timer:sleep(MiningTime * 5),
+    timer:sleep(MiningTime * (Length div 2)),
 
     %% Get all blocks after restarting
     D = [get_block(standalone_node, H) || H <- lists:seq(1, Length + 10)],
@@ -324,8 +326,6 @@ docker_keeps_data(Cfg) ->
 %% Note that Node1 must be considerably ahead to make sure Node2 does not
 %% create a fork with higher difficulty in the time Node1 restarts.
 stop_and_continue_sync(Cfg) ->
-    NodeStartupTime = proplists:get_value(node_startup_time, Cfg),
-
     %% Create a chain long enough to need 10 seconds to fetch it
     Length = 150,
 
@@ -341,9 +341,9 @@ stop_and_continue_sync(Cfg) ->
                   }], Cfg),
 
     start_node(node1, Cfg),
-    wait_for_value({height, 0}, [node1], NodeStartupTime, Cfg),
+    wait_for_startup([node1], 0, Cfg),
 
-    inject_spend_txs(node1, patron(), 50, 1, 100),
+    inject_spend_txs(node1, patron(), 40, 1, 100),
 
     wait_for_value({height, Length}, [node1], Length * ?MINING_TIMEOUT, Cfg),
 
@@ -354,9 +354,10 @@ stop_and_continue_sync(Cfg) ->
     %% Start fetching the chain
     start_node(node2, Cfg),
 
-    inject_spend_txs(node1, patron(), 20, 51, 100),
+    %% Don't add many txs here, it will give additional time to sync
+    inject_spend_txs(node1, patron(), 4, 41, 100),
 
-    wait_for_value({height, 0}, [node2], NodeStartupTime, Cfg),
+    wait_for_startup([node2], 0, Cfg),
     ct:log("Node 2 ready to go"),
 
     %% we are fetching blocks, abruptly stop node1 now
@@ -391,8 +392,6 @@ stop_and_continue_sync(Cfg) ->
     end.
 
 tx_pool_sync(Cfg) ->
-    NodeStartupTime = proplists:get_value(node_startup_time, Cfg),
-
     setup_nodes([#{ name    => node1,
                     peers   => [node2],
                     backend => aest_docker,
@@ -405,7 +404,7 @@ tx_pool_sync(Cfg) ->
                   }], Cfg),
 
     start_node(node1, Cfg),
-    wait_for_value({height, 0}, [node1], NodeStartupTime, Cfg),
+    wait_for_startup([node1], 0, Cfg),
 
     %% Let's post a bunch of transactions, preferrably some valid
     %% and some "not yet valid"
@@ -430,7 +429,7 @@ tx_pool_sync(Cfg) ->
 
     %% Start 2nd node and let it sync
     start_node(node2, Cfg),
-    wait_for_value({height, 0}, [node2], NodeStartupTime, Cfg),
+    wait_for_startup([node2], 0, Cfg),
 
     %% Give the sync a moment to finish
     #{ height := Height1 } = get_top(node1),
@@ -448,7 +447,7 @@ tx_pool_sync(Cfg) ->
     %% Start node1 and make sure that Tx is synced.
     %% TODO: Automate check that _only_ this Tx is synced.
     start_node(node1, Cfg),
-    wait_for_value({height, 0}, [node1], NodeStartupTime, Cfg),
+    wait_for_startup([node1], 0, Cfg),
 
     %% Give the sync a moment to finish
     #{ height := Height2 } = get_top(node2),
@@ -499,7 +498,10 @@ add_spend_tx(Node, #{ pubkey := SendPubKey, privkey := SendSecKey }, Nonce) ->
 %% network partitions, and that the network is partitiioned when the chain
 %% is already shared.
 net_split_recovery(Cfg) ->
-    Length = 20,
+    Length = 40,  
+    %% It takes up to 20 seconds on some machines to connect docker containers
+    %% This means we need more than 20 seconds (or blocks) to at all observe a
+    %% synced chain of machines on the same net.
 
     setup_nodes([?NET1_NODE1, ?NET1_NODE2, ?NET2_NODE1, ?NET2_NODE2], Cfg),
     Nodes = [net1_node1, net1_node2, net2_node1, net2_node2],
@@ -511,8 +513,8 @@ net_split_recovery(Cfg) ->
     %% Starts with a net split
     wait_for_value({height, 0}, [net1_node1, net2_node1], proplists:get_value(node_startup_time, Cfg), Cfg),
 
-    inject_spend_txs(net1_node1, patron(), 20, 1, 100),
-    inject_spend_txs(net2_node1, patron(), 20, 1, 100),
+    inject_spend_txs(net1_node1, patron(), 5, 1, 100),
+    inject_spend_txs(net2_node1, patron(), 5, 1, 100),
 
     TargetHeight1 = Length,
     %% Wait for one extra block for resolving potential fork caused by nodes mining distinct blocks at the same time.
@@ -538,8 +540,8 @@ net_split_recovery(Cfg) ->
     connect_node(net2_node2, net1, Cfg),
     T0 = erlang:system_time(millisecond),
 
-    inject_spend_txs(net1_node1, patron(), 20, 21, 100),
-    inject_spend_txs(net2_node1, patron(), 20, 21, 100),
+    inject_spend_txs(net1_node1, patron(), 5, 6, 100),
+    inject_spend_txs(net2_node1, patron(), 5, 11, 100),
 
     %% Mine Length blocks, this may take longer than ping interval
     %% if so, the chains should be in sync when it's done.
@@ -600,6 +602,7 @@ net_split_recovery(Cfg) ->
     TargetHeight4 = MinedHeight3 + Length,
     %% Wait for one extra block for resolving potential fork caused by nodes mining distinct blocks at the same time.
     wait_for_value({height, 1 + TargetHeight4}, Nodes, (1 + Length) * ?MINING_TIMEOUT, Cfg),
+    ct:log("Ping interval set to ~p", [ping_interval()]),
 
     try_until(T1 + 2 * ping_interval(),
             fun() ->
@@ -625,18 +628,22 @@ net_split_mining_power(Cfg) ->
     SyncLength = 20,
     ExtraLength = 3,
 
-    Net1Nodes = [net1_node1, net1_node2],
-    Net2Nodes = [net2_node1, net2_node2, net2_node3, net2_node4],
+    Net1Nodes = [net1_node1],
+    Net2Nodes = [net2_node1, net2_node2, net2_node3],
     AllNodes = Net1Nodes ++ Net2Nodes,
 
-    setup_nodes([?NET1_NODE1, ?NET1_NODE2, ?NET2_NODE1,
-                 ?NET2_NODE2, ?NET2_NODE3, ?NET2_NODE4], Cfg),
+    %% We don't use node NET1_NODE2 but it needs to be configured to have NET1_NODE
+    %% start at all.
+    setup_nodes([?NET1_NODE1, ?NET1_NODE2,
+                 ?NET2_NODE1, ?NET2_NODE2, ?NET2_NODE3], Cfg),
 
     lists:foreach(fun(N) -> start_node(N, Cfg) end, Net2Nodes),
     lists:foreach(fun(N) -> start_node(N, Cfg) end, Net1Nodes),
 
+    wait_for_startup(AllNodes, 0, Cfg),
+
     TargetHeight1 = SplitLength,
-    %% Wait for one extra block for resolving potential fork caused by nodes mining distinct blocks at the same time.
+    %% Wait for some extra blocks for resolving potential fork caused by nodes mining distinct blocks at the same time.
     MinedHeight1 = ExtraLength + TargetHeight1,
     wait_for_value({height, MinedHeight1}, AllNodes,
                    (ExtraLength + SplitLength) * ?MINING_TIMEOUT, Cfg),
@@ -660,7 +667,7 @@ net_split_mining_power(Cfg) ->
     %% Check that the chains are different
     ?assertNotEqual(N1A1, N2A1),
 
-    % Check that the 4 node cluster has more mining power.
+    % Check that the larger cluster has more mining power.
     Net1MinedBlocks1 = node_mined_retries(Net1Nodes),
     Net2MinedBlocks1 = node_mined_retries(Net2Nodes),
     ?assert(Net1MinedBlocks1 < Net2MinedBlocks1),
@@ -677,6 +684,8 @@ net_split_mining_power(Cfg) ->
     wait_for_value({height, ExtraLength + TargetHeight2}, AllNodes,
                    (ExtraLength + SyncLength) * ?MINING_TIMEOUT, Cfg),
 
+    ct:log("Ping interval set to ~p", [ping_interval()]),
+
     %% Wait at least as long as the ping timer can take
     try_until(T0 + 2 * ping_interval(),
             fun() ->
@@ -692,7 +701,7 @@ net_split_mining_power(Cfg) ->
     {ok, 200, #{height := Top2}} = request(net1_node1, 'GetTop', #{}),
     ct:log("Height reached ~p", [Top2]),
 
-    % Check that the 4 node cluster has still more mining power.
+    % Check that the larger cluster has still more mining power.
     Net1MinedBlocks2 = node_mined_retries(Net1Nodes),
     Net2MinedBlocks2 = node_mined_retries(Net2Nodes),
     ?assert(Net1MinedBlocks2 < Net2MinedBlocks2),
@@ -705,14 +714,48 @@ net_split_mining_power(Cfg) ->
 
     ok.
 
-quick_start_stop(Cfg) ->
-    setup_nodes(cluster([n1, n2], #{}), Cfg),
-    start_node(n2, Cfg),
-    start_node(n1, Cfg),
+abrupt_stop_new_node(_Cfg) ->
+    {skip, database_restart_needs_fix};
+abrupt_stop_new_node(Cfg) ->
+    RepairTimeout = 30000, % Time allowed for node to repair DB and finish sync
+    Nodes = [n1, n2],
+    setup_nodes(cluster(Nodes, #{}), Cfg),
+    % Start both nodes
+    [start_node(N, Cfg) || N <- Nodes],
+    % Stop node 2 abruptly
     stop_node(n2, 2000, Cfg),
-    timer:sleep(2000),
+    % Restart node 2
     start_node(n2, Cfg),
-    ok.
+    % Check that they synchronize
+    Blocks = wait_for_value({height, 5}, Nodes, RepairTimeout, Cfg),
+    assert_in_sync(Blocks).
+
+abrupt_stop_mining_node(_Cfg) ->
+    {skip, database_restart_needs_fix};
+abrupt_stop_mining_node(Cfg) ->
+    RepairTimeout = 30000, % Time allowed for node to repair DB and finish sync
+    ShutdownTimeout = proplists:get_value(node_shutdown_time, Cfg),
+    Nodes = [n1, n2],
+    setup_nodes(cluster(Nodes, #{}), Cfg),
+    % Start both nodes
+    [start_node(N, Cfg) || N <- Nodes],
+    % Let them build some chain
+    Blocks = wait_for_value({height, 5}, Nodes, 5 * ?MINING_TIMEOUT, Cfg),
+    assert_in_sync(Blocks),
+    % Stop node 2
+    stop_node(n2, ShutdownTimeout, Cfg),
+    % Start node 2
+    start_node(n2, Cfg),
+    % Stop node 2 abruptly
+    stop_node(n2, 2000, Cfg),
+    % Restart node 2
+    start_node(n2, Cfg),
+    % Check that they synchronize
+    NewBlocks = wait_for_value({height, 5}, Nodes, RepairTimeout, Cfg),
+    ?assertEqual(Blocks, NewBlocks),
+    % Check that they continue mining
+    LatestBlocks = wait_for_value({height, 10}, Nodes, 5 * ?MINING_TIMEOUT, Cfg),
+    assert_in_sync(LatestBlocks).
 
 %% helper functions
 

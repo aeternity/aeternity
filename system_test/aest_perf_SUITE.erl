@@ -32,6 +32,7 @@
     wait_for_value/4,
     wait_for_time/4,
     get_block/2,
+    wait_for_startup/3,
     time_to_ms/1
 ]).
 
@@ -66,7 +67,7 @@ init_per_suite(Cfg) ->
         {mine_interval, {seconds, 30}}, % Interval to check mining height
         {mine_rate, MineRate},          % Mine rate configuration for nodes
         {mine_timeout, MineRate * 2},   % Per block
-        {startup_timeout, 20000},       % Timeout until HTTP API responds
+        {node_startup_timeout, 20000},  % Timeout until HTTP API responds
         {sync_timeout, 1000}            % Per block
     ].
 
@@ -117,12 +118,12 @@ startup_speed_mining(Cfg) ->
     int_startup_speed(true, Cfg).
 
 sync_speed(Cfg) ->
-    % This tests starts 4 nodes at the pre-mined height, then adds and syncs two
+    % This tests starts 3 nodes at the pre-mined height, then adds and syncs two
     % more one at a time. Syncing is verified to not take longer than mining and
     % then the measured time is logged.
     [Height, MineRate] = ?cfg([height, mine_rate]),
 
-    InitialNodes = [n1, n2, n3, n4],
+    InitialNodes = [n1, n2, n3],
 
     InitialNodeSpecs = [
         spec(N, InitialNodes -- [N], #{
@@ -153,23 +154,21 @@ sync_speed(Cfg) ->
     [?assertEqual(AB, BB) || {AN, AB} <- Blocks, {BN, BB} <- Blocks, AN =/= BN].
 
 stay_in_sync(Cfg) ->
-    % This test starts 6 nodes at the pre-mined height and then mines for an
+    % This test starts N nodes at the pre-mined height and then mines for an
     % additional 20% of the original mining time. It asserts that the network
     % does not fork.
     Height = ?cfg(height),
-    Nodes = [n1, n2, n3, n4, n5, n6],
+    Nodes = [n1, n2, n3, n4, n5],
     setup_nodes(cluster(Nodes, #{
         mine_rate => ?cfg(mine_rate),
         source => ?cfg(source)
     }), Cfg),
     [start_node(N, Cfg) || N <- Nodes],
     wait_for_startup(Nodes, Height, Cfg),
-    Fifth = floor(time_to_ms(?cfg(mine_time)) / 5),
-    Reached = wait_for_time(height, Nodes, Fifth, #{
-        interval => ?cfg(mine_interval)
-    }),
 
-    Blocks = [{N, get_block(N, Reached)} || N <- Nodes],
+    wait_for_value({height, Height + 41}, Nodes, 41*2000, Cfg),
+
+    Blocks = [{N, get_block(N, Height + 40)} || N <- Nodes],
     [?assertEqual(AB, BB) || {AN, AB} <- Blocks, {BN, BB} <- Blocks, AN =/= BN].
 
 %=== INTERNAL FUNCTIONS ========================================================
@@ -190,10 +189,6 @@ sync_node(Node, Height, Cfg) ->
     % Sanity check that syncing does not take longer than mining
     ?assert(End - Start =< time_to_ms(?cfg(mine_time))),
     Block.
-
-wait_for_startup(Nodes, Height, Cfg) ->
-    StartupTimeout = proplists:get_value(startup_timeout, Cfg),
-    wait_for_value({height, Height}, Nodes, StartupTimeout, Cfg).
 
 wait_for_sync(Nodes, Height, Cfg) ->
     SyncTimeout = proplists:get_value(sync_timeout, Cfg),
