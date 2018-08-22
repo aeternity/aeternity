@@ -247,7 +247,7 @@ fake_key_node(PrevNode, Height, Miner, Beneficiary) ->
     Block = aec_blocks:new_key(Height,
                                hash(PrevNode),
                                <<123:?STATE_HASH_BYTES/unit:8>>,
-                               node_target(PrevNode),
+                               ?HIGHEST_TARGET_SCI,
                                0, aeu_time:now_in_msecs(),
                                ?PROTOCOL_VERSION,
                                Miner,

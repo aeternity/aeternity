@@ -9,7 +9,7 @@
 
 -include("blocks.hrl").
 
--import(aec_headers, [raw_header/0]).
+-import(aec_headers, [raw_key_header/0]).
 -import(aec_blocks, [raw_key_block/0]).
 
 -define(PREV_MINER_PUBKEY, <<85:?MINER_PUB_BYTES/unit:8>>).
@@ -108,7 +108,7 @@ difficulty_recalculation_test_() ->
 compute_chain(Now, Height, Target, MiningOffset) ->
     MineTime = aec_governance:expected_block_mine_rate() + MiningOffset,
     N        = aec_governance:key_blocks_to_check_difficulty_count(),
-    RawHeader = raw_header(),
+    RawHeader = raw_key_header(),
     lists:foldr(fun(H, Bs) ->
                     H1 = aec_headers:set_version_and_height(RawHeader, ?PROTOCOL_VERSION, H),
                     H2 = aec_headers:set_target(H1, Target),
