@@ -83,8 +83,8 @@ validate_file_path(FilePath) ->
 
 prev_block(Block) ->
     Hash = aec_blocks:prev_hash(Block),
-    {ok, Block} = aec_chain:get_block(Hash),
-    Block.
+    {ok, PrevBlock} = aec_chain:get_block(Hash),
+    PrevBlock.
 
 exporter_start(Caller, OpenFun, BlockFun, CloseFun) ->
     CallRef = erlang:make_ref(),
