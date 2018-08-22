@@ -630,6 +630,34 @@ paths:
             $ref: '#/definitions/Error'
         '404':
           description: 'Contract not found'
+  /contracts/{pubkey}/poi:
+    get:
+      tags:
+        - external
+        - contract
+      operationId: GetContractPoI
+      description: 'Get a proof of inclusion for a contract'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'Contract pubkey to get proof for'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: Successful operation
+          schema:
+            $ref: '#/definitions/PoI'
+        '400':
+          description: Invalid contract key
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Contract not found
+          schema:
+            $ref: '#/definitions/Error'
   /oracles/{pubkey}:
     get:
       tags:
@@ -1463,36 +1491,6 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
-  ## TODO: shall it be removed?
-  /poi/contract/{contract}:
-    get:
-      tags:
-        - external
-        - chain
-      operationId: GetContractPoI
-      description: 'Get a proof of inclusion for a contract'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: contract
-          description: 'Contract pubkey to get proof for'
-          required: true
-          type: string
-      responses:
-        '200':
-          description: Successful operation
-          schema:
-            $ref: '#/definitions/PoI'
-        '400':
-          description: Invalid contract key
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Contract not found
-          schema:
-            $ref: '#/definitions/Error'
-
   /debug/transactions/pending:
     get:
       tags:

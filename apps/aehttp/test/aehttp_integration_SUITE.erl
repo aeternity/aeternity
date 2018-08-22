@@ -4546,7 +4546,7 @@ get_peers() ->
 
 get_contract_poi(ContractAddress) ->
     Host = external_address(),
-    http_request(Host, get, "poi/contract/" ++ binary_to_list(ContractAddress), []).
+    http_request(Host, get, "contracts/" ++ binary_to_list(ContractAddress) ++ "/poi", []).
 
 %% ============================================================
 %% Test swagger validation errors

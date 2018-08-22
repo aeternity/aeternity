@@ -375,6 +375,17 @@ handle_request('GetContractStore', Req, _Context) ->
             end
     end;
 
+handle_request('GetContractPoI', Req, _Context) ->
+    ParseFuns = [read_required_params([pubkey]),
+                 base58_decode([{pubkey, pubkey, contract_pubkey}]),
+                 get_poi(contracts, pubkey, poi),
+                 ok_response(
+                    fun(#{poi := PoI}) ->
+                        #{poi => aec_base58c:encode(poi, aec_trees:serialize_poi(PoI))}
+                    end)
+                ],
+    process_request(ParseFuns, Req);
+
 handle_request('GetOracleByPubkey', Params, _Context) ->
     case aec_base58c:safe_decode(oracle_pubkey, maps:get(pubkey, Params)) of
         {ok, Pubkey} ->
@@ -500,17 +511,6 @@ handle_request('GetStatus', _Params, _Context) ->
        <<"node-revision">>              => NodeRevision,
        <<"peer-count">>                 => PeerCount,
        <<"pending-transactions-count">> => PendingTxsCount}};
-
-handle_request('GetContractPoI', Req, _Context) ->
-    ParseFuns = [read_required_params([contract]),
-                 base58_decode([{contract, contract, contract_pubkey}]),
-                 get_poi(contracts, contract, poi),
-                 ok_response(
-                    fun(#{poi := PoI}) ->
-                        #{poi => aec_base58c:encode(poi, aec_trees:serialize_poi(PoI))}
-                    end)
-                ],
-    process_request(ParseFuns, Req);
 
 handle_request('GetContractCallFromTx', Req, _Context) ->
     ParseFuns = [read_required_params([tx_hash]),
