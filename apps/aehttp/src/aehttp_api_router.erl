@@ -5,8 +5,8 @@
 -type init_args()  :: {
     Operations :: atom(),
     Method :: binary(),
-    LogicHandler :: atom(),
-    ValidatorState :: jesse_state:state()
+    LogicHandler :: atom()
+
 }.
 
 -spec get_paths(Target :: atom(), LogicHandler :: atom()) -> [{
@@ -18,14 +18,14 @@
 get_paths(Target, LogicHandler) ->
     {ok, EnabledGroups} = application:get_env(aehttp, enabled_endpoint_groups),
     JsonSpec = aehttp_api_validate:json_spec(),
-    Validator = aehttp_api_validate:validator(JsonSpec),
 
     Paths = [{path(Path), aehttp_api_handler,
-        {OperationId, method(Method), LogicHandler, Validator}}
+        {OperationId, method(Method), LogicHandler}}
         || {OperationId, Spec} <- maps:to_list(endpoints:operations()),
             {Method, #{path := Path, tags := Tags}} <- maps:to_list(Spec),
             is_enabled(Target, Tags, EnabledGroups)
     ],
+
   %% Dirty hack to make sure /tx is not matched before /tx/{hash} is evaluated:
   %% sort it and reverse, such that longest part is matched first
   lists:reverse(lists:sort(Paths)) ++
