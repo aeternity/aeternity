@@ -366,7 +366,7 @@ next_block_with_state([{PB,_PBS} | _] = Chain, Target, Time0, TxsFun, Nonce,
     Txs = TxsFun(Height),
     %% NG: if a block X used to have Txs, now put them in micro-blocks just before
     %% the key-block at height X. Every transaction is put in separate micro-block.
-    Chain1 = create_micro_blocks(Chain, PrivKey, lists:reverse(Txs)),
+    Chain1 = create_micro_blocks(Chain, PrivKey, Txs),
     {B, S} = create_keyblock_with_state(Chain1, PubKey, BeneficiaryPubKey),
     [begin
          B1 = aec_blocks:set_target(B, Target),

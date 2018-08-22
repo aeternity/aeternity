@@ -591,8 +591,7 @@ apply_and_store_state_trees(#node{hash = NodeHash} = Node, TreesIn, ForkInfoIn0,
         assert_state_hash_valid(Trees, Node),
         DifficultyOut = ForkInfoIn#fork_info.difficulty
             + node_difficulty(Node),
-        FeesInNode = Fees + ForkInfoIn#fork_info.fees,
-        ForkInfoInNode = ForkInfoIn#fork_info{ fees = FeesInNode
+        ForkInfoInNode = ForkInfoIn#fork_info{ fees = Fees
                                              , difficulty = DifficultyOut
                                              },
         ok = db_put_state(hash(Node), Trees, ForkInfoInNode),
