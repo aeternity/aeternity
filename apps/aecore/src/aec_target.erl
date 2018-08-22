@@ -1,31 +1,10 @@
 -module(aec_target).
 
 %% API
--export([recalculate/2,
-         determine_delta_header_height/1,
+-export([recalculate/1,
          verify/2]).
 
 -include("blocks.hrl").
-
-%% Return height of the header to be used as a start point for target calculations,
-%% based on the following formula:
-%% delta_height(Header) = Header.height - aec_governance:key_blocks_to_check_difficulty_count().
-%% Returns {error | chain_too_short_to_recalculate_target} if initial height is a negative value
-%% or it points to genesis block.
--spec determine_delta_header_height(
-        aec_headers:header()) -> {ok, non_neg_integer()}
-                         | {error, chain_too_short_to_recalculate_target}.
-determine_delta_header_height(Header) ->
-    Height = aec_headers:height(Header),
-    BlocksCount = aec_governance:key_blocks_to_check_difficulty_count(),
-    InitialHeight = Height - BlocksCount,
-    GenesisHeight = aec_block_genesis:height(),
-    case InitialHeight > GenesisHeight of
-        true ->
-            {ok, InitialHeight};
-        false ->
-            {error, chain_too_short_to_recalculate_target}
-    end.
 
 %% Target recalculation.
 %%
@@ -39,7 +18,7 @@ determine_delta_header_height(Header) ->
 %%    DesiredRate              = 1 / DesiredTimeBetweenBlocks
 %%
 %% The basic idea of the algorithm is to estimate the current network capacity
-%% based on the `N` (= 10) previous blocks and use that to set the new
+%% based on the `N` (= 17) previous blocks and use that to set the new
 %% target:
 %%
 %%    NewDifficulty = EstimatedCapacity / DesiredRate
@@ -49,7 +28,7 @@ determine_delta_header_height(Header) ->
 %% We can estimate the network capacity used to mine a given block `i` as
 %%
 %%    EstimatedCapacity[i] = Difficulty[i] / MiningTime[i]
-%%    MiningTime[i]        = Time[i + 1] - Time[i]
+%%    MiningTime[i]        = Time[i] - Time[i - 1]
 %%
 %% The estimated capacity across all `N` blocks is then the weighted (by time)
 %% average of the estimated capacities for each block.
@@ -58,38 +37,53 @@ determine_delta_header_height(Header) ->
 %%                      = Sum(Difficulty[i]) / TotalTime
 %%                      = Sum(HIGHEST_TARGET / Target[i]) / TotalTime
 %%
+%% To get a good trade-off between response time and stability we use the
+%% DigiShield v3 algorithm (https://github.com/zawy12/difficulty-algorithms/issues/9)
+%% and therefore we compute a tempered TotalTime (total solve time in ^^):
+%%
+%%    TotalTime'        = Sum(SolveTime[i])
+%%    SolveTime[i]      = max(-FTL, min(6 * DesiredTimeBetweenBlocks, Time[i] - Time[i-1]))
+%%    TemperedTotalTime = 0.75 * N * DesiredTimeBetweenBlocks + 0.2523 * TotalTime    %% DigiShield v3
+%%
+%% Where FTL = Future Time Limit - i.e. the time a block is allowed to be
+%% "from the future". We use 10 minutes (600 s).
+%%
 %% Now, the problem is that we can't do any floating point arithmetic (to
 %% ensure the calculation can be verified by other nodes), so we pick a
 %% reasonably big integer K (= HIGHEST_TARGET * 2^32) and compute
 %%
 %%    EstimatedCapacity ≈ Sum(K * HIGHEST_TARGET div Target[i]) / TotalTime / K
+%%    TemperedTotalTime ≈ (3 * N * DesiredTimeBetweenBlocks) div 4 +
+%%                           (2523 * TotalTime') div 10000
 %%
 %% Then
 %%
 %%    NewTarget = HIGHEST_TARGET * DesiredRate / EstimatedCapacity
-%%              ≈ HIGHEST_TARGET * DesiredRate * TotalTime * K / Sum(K * HIGHEST_TARGET div Target[i])
-%%              ≈ DesiredRate * TotalTime * K / Sum(K div Target[i])
-%%              ≈ TotalTime * K div (DesiredTimeBetweenBlocks * Sum(K div Target[i]))
+%%              ≈ HIGHEST_TARGET * DesiredRate * TemperedTotalTime * K / Sum(K * HIGHEST_TARGET div Target[i])
+%%              ≈ DesiredRate * TemperedTotalTime * K / Sum(K div Target[i])
+%%              ≈ TemperedTotalTime * K div (DesiredTimeBetweenBlocks * Sum(K div Target[i]))
 %%
--spec recalculate(aec_headers:header(), nonempty_list(aec_headers:header())) -> non_neg_integer().
-recalculate(Top, PrevHeaders0) ->
+-spec recalculate(nonempty_list(aec_headers:header())) -> non_neg_integer().
+recalculate(PrevHeaders0) ->
+    N                        = aec_governance:key_blocks_to_check_difficulty_count(),
+    N                        = length(PrevHeaders0) - 1, %% Sanity check.
     %% Ensure the list of previous headers are in order - oldest first.
     SortFun                  = fun(H1, H2) -> aec_headers:height(H1) =< aec_headers:height(H2) end,
     PrevHeaders              = lists:sort(SortFun, PrevHeaders0),
     K                        = aec_pow:scientific_to_integer(?HIGHEST_TARGET_SCI) * (1 bsl 32),
     SumKDivTargets           = lists:sum([ K div aec_pow:scientific_to_integer(aec_headers:target(Hd))
-                                           || Hd <- PrevHeaders ]),
+                                           || Hd <- tl(PrevHeaders) ]),
     DesiredTimeBetweenBlocks = aec_governance:expected_block_mine_rate(),
-    Last                     = hd(PrevHeaders), %% Oldest first!
-    TotalTime                = mining_time_between(Last, Top),
-    NewTargetInt             = TotalTime * K div (DesiredTimeBetweenBlocks * SumKDivTargets),
+    TotalSolveTime           = total_solve_time(PrevHeaders),
+    TemperedTST              = (3 * N * DesiredTimeBetweenBlocks) div 4 + (2523 * TotalSolveTime) div 10000,
+    NewTargetInt             = TemperedTST * K div (DesiredTimeBetweenBlocks * SumKDivTargets),
     min(?HIGHEST_TARGET_SCI, aec_pow:integer_to_scientific(NewTargetInt)).
 
 -spec verify(aec_headers:header(), nonempty_list(aec_headers:header())) ->
           ok | {error, {wrong_target, non_neg_integer(), non_neg_integer()}}.
 verify(Top, PrevHeaders) ->
     HeaderTarget = aec_headers:target(Top),
-    ExpectedTarget = recalculate(Top, PrevHeaders),
+    ExpectedTarget = recalculate(PrevHeaders),
     case HeaderTarget == ExpectedTarget of
         true ->
             ok;
@@ -99,9 +93,19 @@ verify(Top, PrevHeaders) ->
 
 %% Internals
 
--spec mining_time_between(aec_headers:header(), aec_headers:header()) -> integer().
-mining_time_between(Header1, Header2) ->
-    Time1 = aec_headers:time_in_msecs(Header1),
-    Time2 = aec_headers:time_in_msecs(Header2),
-    max(1, Time2 - Time1).
+-spec total_solve_time([aec_headers:header()]) -> integer().
+total_solve_time(Headers) ->
+    Min = -aec_governance:accepted_future_block_time_shift(),
+    Max = 6 * aec_governance:expected_block_mine_rate(),
+    total_solve_time(Headers, {Min, Max}, 0).
+
+total_solve_time([_], _MinMax, Acc) -> Acc;
+total_solve_time([Hdr2 | [Hdr1 | _] = Hdrs], MinMax = {Min, Max}, Acc) ->
+    SolveTime0 = aec_headers:time_in_msecs(Hdr1) - aec_headers:time_in_msecs(Hdr2),
+    SolveTime =
+        if SolveTime0 < Min -> Min;
+           SolveTime0 > Max -> Max;
+           true             -> SolveTime0
+        end,
+    total_solve_time(Hdrs, MinMax, Acc + SolveTime).
 

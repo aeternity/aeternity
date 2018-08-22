@@ -34,13 +34,13 @@ create(Block, Beneficiary) ->
                            {ok, aec_blocks:block()} | {error, term()}.
 adjust_target(Block, AdjHeaders) ->
     Header = aec_blocks:to_header(Block),
-    DeltaHeight = aec_governance:key_blocks_to_check_difficulty_count(),
+    DeltaHeight = aec_governance:key_blocks_to_check_difficulty_count() + 1,
     case aec_headers:height(Header) =< DeltaHeight of
         true ->
             %% For the first DeltaHeight blocks, use pre-defined target
             {ok, Block};
         false when DeltaHeight == length(AdjHeaders) ->
-            CalculatedTarget = aec_target:recalculate(Header, AdjHeaders),
+            CalculatedTarget = aec_target:recalculate(AdjHeaders),
             Block1 = aec_blocks:set_target(Block, CalculatedTarget),
             {ok, Block1};
         false -> %% Wrong number of headers in AdjHeaders...
@@ -50,7 +50,7 @@ adjust_target(Block, AdjHeaders) ->
 %% -- Internal functions -----------------------------------------------------
 
 int_create(BlockHash, Block, Beneficiary) ->
-    N = aec_governance:key_blocks_to_check_difficulty_count(),
+    N = aec_governance:key_blocks_to_check_difficulty_count() + 1,
     case aec_blocks:height(Block) < N of
         true  ->
             int_create(BlockHash, Block, Beneficiary, []);

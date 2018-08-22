@@ -360,7 +360,7 @@ assert_key_block_target(Node) ->
     case db_find_node(prev_hash(Node)) of
         error -> ok;
         {ok, PrevNode} ->
-            Delta         = aec_governance:key_blocks_to_check_difficulty_count(),
+            Delta         = aec_governance:key_blocks_to_check_difficulty_count() + 1,
             Height        = node_height(Node),
             GenesisHeight = aec_headers:height(aec_block_genesis:genesis_header()),
             case Delta >= Height - GenesisHeight of
