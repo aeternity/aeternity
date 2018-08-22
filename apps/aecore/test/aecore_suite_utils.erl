@@ -112,7 +112,7 @@ maps_merge(Map1, Map2) ->
                         false -> Map#{K => V};
                         true  -> Map#{K => maps_merge(V, maps:get(K, Map))}
                     end
-                end, Map2, maps:to_list(Map1)). 
+                end, Map2, maps:to_list(Map1)).
 
 make_multi(Config) ->
     make_multi(Config, [dev1, dev2, dev3]).

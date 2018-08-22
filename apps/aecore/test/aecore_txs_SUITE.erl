@@ -72,54 +72,73 @@ txs_gc(Config) ->
 
     %% Mine a block to get some funds. Height=1
     aecore_suite_utils:mine_key_blocks(N1, 1),
+    Height0 = 1,
 
     %% Add a bunch of transactions...
-    add_spend_tx(N1, 1000, 1,  1,  10), %% Ok
-    add_spend_tx(N1, 1000, 1,  2,  10), %% Should expire ?EXPIRE_TX_TTL after
-                                        %% next TX is on chain = 2 + 2 = 4
-    add_spend_tx(N1, 1000, 10, 2,  10), %% Duplicate should be preferred
-    add_spend_tx(N1, 1000, 1,  3,  10), %% Ok
+    {ok, TxH1} = add_spend_tx(N1, 1000, 1,  1,  10), %% Ok
+    {ok, _}    = add_spend_tx(N1, 1000, 1,  2,  10), %% Should expire ?EXPIRE_TX_TTL after
+                                                     %% next TX is on chain = 2 + 2 = 4
+    {ok, TxH2} = add_spend_tx(N1, 1000, 10, 2,  10), %% Duplicate should be preferred
+    {ok, TxH3} = add_spend_tx(N1, 1000, 1,  3,  10), %% Ok
 
-    add_spend_tx(N1, 1000, 1,  5,  10), %% Non consecutive nonce
-    add_spend_tx(N1, 1000, 1,  7,  10), %% Non consecutive nonce
-    add_spend_tx(N1, 1000, 1,  8,  5),  %% Short TTL - expires at 5 + 2 = 7
+    {ok, TxH5} = add_spend_tx(N1, 1000, 1,  5,  10), %% Non consecutive nonce
+    {ok, _}    = add_spend_tx(N1, 1000, 1,  7,  10), %% Non consecutive nonce
+    {ok, _}    = add_spend_tx(N1, 1000, 1,  8,  5),  %% Short TTL - expires at 5 + 2 = 7
 
     %% Now there should be 7 transactions in mempool
     {ok, Txs1} = rpc:call(N1, aec_tx_pool, peek, [infinity]),
     {7, _} = {length(Txs1), Txs1},
 
-    %% Mine two key blocks to get a micro-block in between. Height=3
-    aecore_suite_utils:mine_key_blocks(N1, 2),
+    %% Mine to get TxH1-3 onto chain
+    {ok, Blocks1} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2, TxH3], 10),
+    Height1 = Height0 + length(Blocks1), %% Very unlikely to be > 4...
 
-    %% Now there should be 4 transactions in mempool
+    %% Now there should be 3 or 4 transactions in mempool
     {ok, Txs2} = rpc:call(N1, aec_tx_pool, peek, [infinity]),
-    {4, _} = {length(Txs2), Txs2},
+    case Height1 of
+        3              -> {4, _} = {length(Txs2), Txs2};
+        N1 when N1 > 3 -> ct:log("Skipping assert; micro fork advanced height to far...")
+    end,
 
-    %% Mine 1 more key blocks then one TX should be GC:ed. Height=4
-    aecore_suite_utils:mine_key_blocks(N1, 1),
+    %% Mine 1 more key block if Height is 3 ensure one TX should be GC:ed.
+    [ aecore_suite_utils:mine_key_blocks(N1, 1) || Height1 == 3 ],
 
-    %% Now there should be 3 transactions in mempool
+    Height2 = max(Height1, 4),
+
+    %% Now unless Height2 > 4, there should be 3 transactions in mempool
     {ok, Txs3} = rpc:call(N1, aec_tx_pool, peek, [infinity]),
-    {3, _} = {length(Txs3), Txs3},
+    case Height2 of
+        4              -> {3, _} = {length(Txs3), Txs3};
+        N2 when N2 > 4 -> ct:log("Skipping assert; micro fork advanced height to far...")
+    end,
 
     %% Add the missing tx
-    add_spend_tx(N1, 1000, 1,  4,  10), %% consecutive nonce
+    {ok, TxH4} = add_spend_tx(N1, 1000, 1,  4,  10), %% consecutive nonce
 
-    %% Mine 2 block - should _consume_ two Txs i.e. two left. Height=6
-    aecore_suite_utils:mine_key_blocks(N1, 2),
+    %% Mine to get TxH4-5 onto chain
+    {ok, Blocks2} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH4, TxH5], 10),
+    Height3 = Height2 + length(Blocks2),
 
-    %% Now there should be 2 transactions in mempool
+    %% Now at height 6 there should be 2 transactions in mempool
     {ok, Txs4} = rpc:call(N1, aec_tx_pool, peek, [infinity]),
-    {2, _} = {length(Txs4), Txs4},
+    case Height3 of
+        6              -> {2, _} = {length(Txs4), Txs4};
+        N3 when N3 > 6 -> ct:log("Skipping assert; micro fork advanced height to far...")
+    end,
 
-    %% Mine 1 more blocks then another TX should be GC:ed. Height=7
-    aecore_suite_utils:mine_key_blocks(N1, 1),
+    %% Mine 1 more key block if Height is 6 ensure one TX should be GC:ed.
+    [ aecore_suite_utils:mine_key_blocks(N1, 1) || Height3 == 6 ],
+
+    Height4 = max(Height3, 7),
 
     %% Now there should be 1 transaction in mempool
     {ok, Txs5} = rpc:call(N1, aec_tx_pool, peek, [infinity]),
-    {1, _} = {length(Txs5), Txs5},
+    case Height4 of
+        7              -> {1, _} = {length(Txs5), Txs5};
+        N4 when N4 > 7 -> ct:log("Skipping assert; micro fork advanced height to far...")
+    end,
 
-    %% Mine 2 more blocks then all TXs should be GC:ed. Height=9
+    %% Mine 2 more blocks then all TXs should be GC:ed. Height>=9
     aecore_suite_utils:mine_key_blocks(N1, 2),
 
     %% Now there should be no transactions in mempool
@@ -165,7 +184,8 @@ add_spend_tx(Node, Amount, Fee, Nonce, TTL) ->
                 amount => Amount, nonce => Nonce, ttl => TTL, payload => <<>>, fee => Fee },
     {ok, Tx} = aec_spend_tx:new(Params),
     STx = aec_test_utils:sign_tx(Tx, maps:get(privkey, patron())),
-    rpc:call(Node, aec_tx_pool, push, [STx]).
+    Res = rpc:call(Node, aec_tx_pool, push, [STx]),
+    {Res, aec_base58c:encode(tx_hash, aetx_sign:hash(STx))}.
 
 %% We assume that equence is time ordered and only check Micro Block Cycle time
 %% for micro blocks in same generation
