@@ -16,7 +16,11 @@
     validator :: jesse_state:state()
 }).
 
-init(Req, {OperationId, AllowedMethod, LogicHandler, Validator}) ->
+init(Req, {OperationId, AllowedMethod, LogicHandler}) ->
+    %% TODO: make this validator a proper service.
+    JsonSpec = aehttp_api_validate:json_spec(),
+    Validator = aehttp_api_validate:validator(JsonSpec),
+
     State = #state{
         operation_id = OperationId,
         allowed_method = AllowedMethod,
