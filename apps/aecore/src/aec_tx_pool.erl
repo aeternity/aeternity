@@ -408,9 +408,15 @@ update_pool_from_blocks(Ancestor, Current, Info, Handled) ->
     lists:foreach(fun(TxHash) ->
                           update_pool_on_tx_hash(TxHash, Info, Handled)
                   end,
-                  aec_db:get_block_tx_hashes(Current)),
+                  safe_get_tx_hashes(Current)),
     Prev = aec_chain:prev_hash_from_hash(Current),
     update_pool_from_blocks(Ancestor, Prev, Info, Handled).
+
+safe_get_tx_hashes(Hash) ->
+    case aec_db:find_block_tx_hashes(Hash) of
+        none -> [];
+        {value, Hashes} -> Hashes
+    end.
 
 update_pool_on_tx_hash(TxHash, {Db, GCDb, GCHeight}, Handled) ->
     case ets:member(Handled, TxHash) of

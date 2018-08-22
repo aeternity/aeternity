@@ -26,7 +26,7 @@ mine_block_test_() ->
        {timeout, 60,
         {"Find a new block",
          fun() ->
-                 RawBlock = aec_blocks:raw_block(),
+                 RawBlock = aec_blocks:raw_key_block(),
                  TopBlock = aec_blocks:set_height(RawBlock, ?GENESIS_HEIGHT),
                  % if there is a change in the structure of the block
                  % this will result in a change in the hash of the header
@@ -46,15 +46,13 @@ mine_block_test_() ->
                  Block = aec_blocks:set_pow(BlockCandidate, Nonce1, Evd),
 
                  ?assertEqual(1, aec_blocks:height(Block)),
-                 ?assertEqual(0, length(aec_blocks:txs(Block))),
-
                  ?assertEqual(ok, aec_headers:validate_key_block_header(
                                     aec_blocks:to_header(Block)))
          end}},
        {timeout, 60,
         {"Proof of work fails with no_solution",
          fun() ->
-                 RawBlock = aec_blocks:raw_block(),
+                 RawBlock = aec_blocks:raw_key_block(),
                  TopBlock = aec_blocks:set_height(RawBlock, ?GENESIS_HEIGHT),
                  meck:expect(aec_pow, pick_nonce, 0, 18),
                  {BlockCandidate,_} = aec_test_utils:create_keyblock_with_state(

@@ -10,7 +10,8 @@
 
 -include("blocks.hrl").
 
--import(aec_blocks, [raw_block/0
+-import(aec_blocks, [raw_key_block/0,
+                     raw_micro_block/0
                     ]).
 
 -define(TEST_MODULE, aec_blocks).
@@ -21,26 +22,26 @@
 network_serialization_test_() ->
     [{"Serialize/deserialize block with min nonce",
       fun() ->
-              B = aec_blocks:set_nonce(raw_block(), 0),
+              B = aec_blocks:set_nonce(raw_key_block(), 0),
               SB = #{} = ?TEST_MODULE:serialize_to_map(B),
               ?assertEqual({ok, B}, ?TEST_MODULE:deserialize_from_map(SB))
       end
      },
      {"Serialize/deserialize block with max nonce",
       fun() ->
-              B = aec_blocks:set_nonce(raw_block(), ?MAX_NONCE),
+              B = aec_blocks:set_nonce(raw_key_block(), ?MAX_NONCE),
               SB = #{} = ?TEST_MODULE:serialize_to_map(B),
               ?assertEqual({ok, B}, ?TEST_MODULE:deserialize_from_map(SB))
       end
      },
      {"try to deserialize a blocks with out-of-range nonce",
       fun() ->
-              Block1 = aec_blocks:set_nonce(raw_block(), ?MAX_NONCE + 1),
+              Block1 = aec_blocks:set_nonce(raw_key_block(), ?MAX_NONCE + 1),
               SerializedBlock1 = #{} = ?TEST_MODULE:serialize_to_map(Block1),
               ?assertEqual({error,bad_nonce},
                            ?TEST_MODULE:deserialize_from_map(SerializedBlock1)),
 
-              Block2 = aec_blocks:set_nonce(raw_block(), -1),
+              Block2 = aec_blocks:set_nonce(raw_key_block(), -1),
               SerializedBlock2 = #{} = ?TEST_MODULE:serialize_to_map(Block2),
               ?assertEqual({error,bad_nonce},
                            ?TEST_MODULE:deserialize_from_map(SerializedBlock2))
@@ -89,7 +90,7 @@ validate_test_malformed_txs_root_hash() ->
     MalformedTxs = [SignedSpend, BadSignedSpend],
     MalformedTree = aec_txs_trees:from_txs(MalformedTxs),
     {ok, MalformedTxsRootHash} = aec_txs_trees:root_hash(MalformedTree),
-    RawBlock = raw_block(),
+    RawBlock = raw_micro_block(),
     Block = aec_blocks:update_micro_candidate(
               RawBlock, MalformedTxsRootHash,
               aec_blocks:root_hash(RawBlock),
@@ -102,7 +103,7 @@ validate_test_pass_validation_no_txs() ->
     Txs = [],
     Tree = aec_txs_trees:from_txs(Txs),
     TxsRootHash = aec_txs_trees:pad_empty(aec_txs_trees:root_hash(Tree)),
-    RawBlock = raw_block(),
+    RawBlock = raw_micro_block(),
     Block = aec_blocks:update_micro_candidate(
               RawBlock, TxsRootHash,
               aec_blocks:root_hash(RawBlock),
@@ -121,7 +122,7 @@ validate_test_pass_validation() ->
     Txs = [SignedSpend],
     Tree = aec_txs_trees:from_txs(Txs),
     {ok, TxsRootHash} = aec_txs_trees:root_hash(Tree),
-    RawBlock = raw_block(),
+    RawBlock = raw_micro_block(),
     Block = aec_blocks:update_micro_candidate(
               RawBlock, TxsRootHash,
               aec_blocks:root_hash(RawBlock),

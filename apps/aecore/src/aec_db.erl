@@ -31,11 +31,11 @@
          write_top_block_hash/1,
          write_top_block_height/1,
          find_block/1,
+         find_block_tx_hashes/1,
          find_header/1,
          find_headers_at_height/1,
          get_block/1,
          get_block_signature/1,
-         get_block_tx_hashes/1,
          get_header/1,
          get_genesis_hash/0,
          get_signed_tx/1,
@@ -199,23 +199,31 @@ delete(Tab, Key) ->
 write_block(Block) ->
     Header = aec_blocks:to_header(Block),
     Height = aec_headers:height(Header),
-    Txs    = aec_blocks:txs(Block),
-    Sig    = aec_blocks:signature(Block),
     {ok, Hash} = aec_headers:hash_header(Header),
-    ?t(begin
-           TxHashes = [begin
-                           STxHash = aetx_sign:hash(STx),
-                           write_signed_tx(STxHash, STx),
-                           STxHash
-                       end
-                       || STx <- Txs],
-           mnesia:write(#aec_blocks{key = Hash,
-                                    txs = TxHashes,
-                                    sig = Sig}),
-           mnesia:write(#aec_headers{key = Hash,
-                                     value = Header,
-                                     height = Height})
-       end).
+    case aec_blocks:type(Block) of
+        key ->
+            ?t(mnesia:write(#aec_headers{key = Hash,
+                                         value = Header,
+                                         height = Height})),
+            ok;
+        micro ->
+            Txs = aec_blocks:txs(Block),
+            Sig = aec_blocks:signature(Block),
+            ?t(begin
+                   TxHashes = [begin
+                                   STxHash = aetx_sign:hash(STx),
+                                   write_signed_tx(STxHash, STx),
+                                   STxHash
+                               end
+                               || STx <- Txs],
+                   mnesia:write(#aec_blocks{key = Hash,
+                                            txs = TxHashes,
+                                            sig = Sig}),
+                   mnesia:write(#aec_headers{key = Hash,
+                                             value = Header,
+                                             height = Height})
+               end)
+    end.
 
 get_block_signature(Hash) ->
     ?t(begin
@@ -229,21 +237,25 @@ get_block(Hash) ->
     ?t(begin
            [#aec_headers{value = Header}] =
                mnesia:read(aec_headers, Hash),
-           [#aec_blocks{txs = TxHashes, sig = Sig}] =
-               mnesia:read(aec_blocks, Hash),
-           Txs = [begin
-                      [#aec_signed_tx{value = STx}] =
-                          mnesia:read(aec_signed_tx, TxHash),
-                      STx
-                  end || TxHash <- TxHashes],
-           aec_blocks:from_header_txs_and_signature(Header, Txs, Sig)
+           case aec_headers:type(Header) of
+               key ->
+                   aec_headers:to_key_block(Header);
+               micro ->
+                   [#aec_blocks{txs = TxHashes, sig = Sig}] =
+                       mnesia:read(aec_blocks, Hash),
+                   Txs = [begin
+                              [#aec_signed_tx{value = STx}] =
+                                  mnesia:read(aec_signed_tx, TxHash),
+                              STx
+                          end || TxHash <- TxHashes],
+                   aec_headers:to_micro_block(Header, Txs, Sig)
+           end
        end).
 
-get_block_tx_hashes(Hash) ->
-    ?t(begin
-           [#aec_blocks{txs = TxHashes}] =
-               mnesia:read(aec_blocks, Hash),
-           TxHashes
+find_block_tx_hashes(Hash) ->
+    ?t(case mnesia:read(aec_blocks, Hash) of
+           [#aec_blocks{txs = TxHashes}] -> {value, TxHashes};
+           [] -> none
        end).
 
 get_header(Hash) ->
@@ -261,15 +273,20 @@ has_block(Hash) ->
 
 -spec find_block(binary()) -> 'none' | {'value', aec_blocks:block()}.
 find_block(Hash) ->
-    ?t(case mnesia:read(aec_blocks, Hash) of
-           [#aec_blocks{txs = TxHashes, sig = Sig}] ->
-               Txs = [begin
-                          [#aec_signed_tx{value = STx}] =
-                              mnesia:read(aec_signed_tx, TxHash),
-                          STx
-                      end || TxHash <- TxHashes],
-               [#aec_headers{value = Header}] = mnesia:read(aec_headers, Hash),
-               {value, aec_blocks:from_header_txs_and_signature(Header, Txs, Sig)};
+    ?t(case mnesia:read(aec_headers, Hash) of
+           [#aec_headers{value = Header}] ->
+               case aec_headers:type(Header) of
+                   key   -> {value, aec_headers:to_key_block(Header)};
+                   micro ->
+                       [#aec_blocks{txs = TxHashes, sig = Sig}]
+                           = mnesia:read(aec_blocks, Hash),
+                       Txs = [begin
+                                  [#aec_signed_tx{value = STx}] =
+                                      mnesia:read(aec_signed_tx, TxHash),
+                                  STx
+                              end || TxHash <- TxHashes],
+                       {value, aec_headers:to_micro_block(Header, Txs, Sig)}
+               end;
            [] -> none
        end).
 

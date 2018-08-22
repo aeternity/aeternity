@@ -234,7 +234,7 @@ encode_block_for_client(Block, Encoding) ->
             fun(Tx) ->
                 aetx_sign:serialize_for_client(Encoding, Header, Tx)
             end,
-            aec_blocks:txs(Block)),
+            aehttp_helpers:safe_get_txs(Block)),
     maps:put(<<"transactions">>, Txs, EncodedHeader).
 
 decode_miner(Miner) ->

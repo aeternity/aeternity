@@ -38,7 +38,8 @@ adjust_target(Block, AdjHeaders) ->
     case aec_headers:height(Header) =< DeltaHeight of
         true ->
             %% For the first DeltaHeight blocks, use pre-defined target
-            {ok, Block};
+            Target = aec_block_genesis:target(),
+            {ok, aec_blocks:set_target(Block, Target)};
         false when DeltaHeight == length(AdjHeaders) ->
             CalculatedTarget = aec_target:recalculate(AdjHeaders),
             Block1 = aec_blocks:set_target(Block, CalculatedTarget),
@@ -94,5 +95,5 @@ int_create_block(PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees) ->
     Version = aec_hard_forks:protocol_effective_at_height(Height),
 
     aec_blocks:new_key(Height, PrevBlockHash, aec_trees:hash(Trees),
-                       aec_blocks:target(PrevBlock),
+                       ?HIGHEST_TARGET_SCI,
                        0, aeu_time:now_in_msecs(), Version, Miner, Beneficiary).

@@ -82,7 +82,10 @@ handle_info({gproc_ps_event, Event = micro_block_created, #{ info := Block }}, S
 
 notify_subscribers(top_changed = Event, Block, State = #state{ subscribed = Subs }) ->
     notify_chain_subscribers(Event, Block, Subs),
-    notify_tx_subscribers(aec_blocks:txs(Block), Subs),
+    case aec_blocks:type(Block) of
+        micro -> notify_tx_subscribers(aec_blocks:txs(Block), Subs);
+        key   -> ok
+    end,
     {noreply, State};
 notify_subscribers(block_created = Event, Block, State = #state{ subscribed = Subs }) ->
     notify_chain_subscribers(Event, Block, Subs),
