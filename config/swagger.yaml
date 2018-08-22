@@ -13,18 +13,22 @@ tags:
     description: External API
   - name: internal
     description: Internal API
-  - name: gossip
-    description: Gossip protocol API
-  - name: name_service
-    description: Name resolution API
   - name: chain
-    description: Chain state inspection endpoints
-  - name: transactions
-    description: Transactions inspection endpoints
-  - name: node_operator
-    description: Node operator endpoints
-  - name: dev
-    description: Development only API - for validation of client implementations. Should not be used in real life scenrios
+    description: Chain related endpoints
+  - name: transaction
+    description: Transaction related endpoints
+  - name: account
+    description: Account related endpoints
+  - name: contract
+    description: Contract related endpoints
+  - name: oracle
+    description: Oracle related endpoints
+  - name: name_service
+    description: Name service related endpoints
+  - name: channel
+    description: State channel related endpoints
+  - name: node_info
+    description: Node information related endpoints
   - name: debug
     description: Debug endpoints
   - name: obsolete
@@ -41,7 +45,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetTopBlock
       description: 'Get the top block (either key or micro block)'
       produces:
@@ -61,7 +65,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetCurrentKeyBlock
       description: 'Get the current key block'
       produces:
@@ -81,7 +85,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetCurrentKeyBlockHash
       description: 'Get the hash of the current key block'
       produces:
@@ -105,7 +109,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetCurrentKeyBlockHeight
       description: 'Get the height of the current key block'
       produces:
@@ -130,7 +134,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetPendingKeyBlock
       description: 'Get the pending key block'
       produces:
@@ -150,7 +154,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetKeyBlockByHash
       description: 'Get a key block by hash'
       produces:
@@ -179,7 +183,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetKeyBlockByHeight
       description: 'Get a key block by height'
       produces:
@@ -204,7 +208,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetMicroBlockHeaderByHash
       description: 'Get a micro block header by hash'
       produces:
@@ -233,7 +237,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetMicroBlockTransactionsByHash
       description: 'Get micro block transactions by hash'
       produces:
@@ -262,7 +266,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetMicroBlockTransactionByHashAndIndex
       description: 'Get a micro block transaction by hash and index'
       produces:
@@ -297,7 +301,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetMicroBlockTransactionsCountByHash
       description: 'Get micro block transaction count by hash'
       produces:
@@ -332,7 +336,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetCurrentGeneration
       description: 'Get the current generation'
       produces:
@@ -352,7 +356,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetGenerationByHash
       description: 'Get a generation by hash'
       produces:
@@ -381,7 +385,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetGenerationByHeight
       description: 'Get a generation by height'
       produces:
@@ -406,7 +410,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - account
       operationId: GetAccountByPubkey
       description: 'Get an account by public key'
       produces:
@@ -435,7 +439,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - account
       operationId: GetPendingAccountTransactionsByPubkey
       description: 'Get pending account transactions by public key'
       produces:
@@ -464,7 +468,7 @@ paths:
     get:
       tags:
         - external
-        - transactions
+        - transaction
       operationId: GetTransactionByHash
       description: 'Get a transaction by hash'
       produces:
@@ -493,7 +497,7 @@ paths:
     get:
       tags:
         - external
-        - transactions
+        - transaction
       operationId: GetTransactionInfoByHash
       description: 'Get a transaction info by hash'
       produces:
@@ -522,7 +526,7 @@ paths:
     post:
       tags:
         - external
-        - transactions
+        - transaction
       operationId: PostTransaction
       description: 'Post a new transaction'
       consumes:
@@ -550,7 +554,7 @@ paths:
     get:
       tags:
         - external
-        - transactions
+        - contract
       operationId: GetContract
       description: 'Get a contract by pubkey'
       produces:
@@ -576,7 +580,7 @@ paths:
     get:
       tags:
         - external
-        - transactions
+        - contract
       operationId: GetContractCode
       description: 'Get contract code by pubkey'
       produces:
@@ -604,7 +608,7 @@ paths:
     get:
       tags:
         - external
-        - transactions
+        - contract
       operationId: GetContractStore
       description: 'Get contract store by pubkey'
       produces:
@@ -630,7 +634,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - oracle
       operationId: GetOracleByPubkey
       description: 'Get an oracle by public key'
       produces:
@@ -659,7 +663,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - oracle
       operationId: GetOracleQueriesByPubkey
       description: 'Get oracle queries by public key'
       produces:
@@ -706,7 +710,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - oracle
       operationId: GetOracleQueryByPubkeyAndQueryId
       description: 'Get an oracle query by public key and query ID'
       produces:
@@ -769,7 +773,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - channel
       operationId: GetChannelByPubkey
       description: 'Get channel by public key'
       produces:
@@ -798,7 +802,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - node_info
       operationId: GetPeerPubkey
       description: 'Get peer public key'
       produces:
@@ -817,7 +821,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - node_info
       operationId: GetStatus
       description: 'Get the status of a node'
       produces:
@@ -834,7 +838,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - contract
+        - debug
       operationId: PostContractCreate
       description: 'Get a contract_create transaction object'
       consumes:
@@ -864,7 +869,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - contract
+        - debug
       operationId: PostContractCreateCompute
       description: 'Compute the call_data for SOPHIA and get a contract_create transaction object'
       consumes:
@@ -894,7 +900,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - contract
+        - debug
       operationId: PostContractCall
       description: 'Get a contract_call transaction object'
       consumes:
@@ -924,7 +931,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - contract
+        - debug
       operationId: PostContractCallCompute
       description: 'Compute the call_data for SOPHIA and get contract_call transaction object'
       consumes:
@@ -954,7 +962,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - oracle
+        - debug
       operationId: PostOracleRegister
       description: 'Get a oracle_register transaction object'
       consumes:
@@ -984,7 +993,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - oracle
+        - debug
       operationId: PostOracleExtend
       description: 'Get an oracle_extend transaction object'
       consumes:
@@ -1014,7 +1024,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - oracle
+        - debug
       operationId: PostOracleQuery
       description: 'Get an oracle_query transaction object'
       consumes:
@@ -1044,7 +1055,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - oracle
+        - debug
       operationId: PostOracleRespond
       description: 'Get an oracle_response transaction object'
       consumes:
@@ -1074,7 +1086,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - name_service
+        - debug
       operationId: PostNamePreclaim
       description: 'Get a name_preclaim transaction object'
       produces:
@@ -1102,7 +1115,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - name_service
+        - debug
       operationId: PostNameClaim
       description: 'Get a name_claim transaction object'
       produces:
@@ -1130,7 +1144,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - name_service
+        - debug
       operationId: PostNameUpdate
       description: 'Get a name_update transaction object'
       produces:
@@ -1158,7 +1173,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - name_service
+        - debug
       operationId: PostNameTransfer
       description: 'Get a name_transfer transaction object'
       produces:
@@ -1186,7 +1202,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - name_service
+        - debug
       operationId: PostNameRevoke
       description: 'Get a name_revoke transaction object'
       produces:
@@ -1214,7 +1231,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - transaction
+        - debug
       operationId: PostSpend
       description: 'Get a spend transaction object'
       consumes:
@@ -1245,7 +1263,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - channel
+        - debug
       operationId: PostChannelCreate
       description: 'Get a channel_create transaction object'
       produces:
@@ -1273,7 +1292,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - channel
+        - debug
       operationId: PostChannelDeposit
       description: 'Get a channel_deposit transaction object'
       produces:
@@ -1297,7 +1317,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - channel
+        - debug
       operationId: PostChannelWithdraw
       description: 'Get a channel_withdrawal transaction object'
       produces:
@@ -1321,7 +1342,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - channel
+        - debug
       operationId: PostChannelSnapshotSolo
       description: 'Get a channel_snapshot_solo transaction object'
       produces:
@@ -1345,7 +1367,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - channel
+        - debug
       operationId: PostChannelCloseMutual
       description: 'Get a channel_close_mutual transaction object'
       produces:
@@ -1369,7 +1392,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - channel
+        - debug
       operationId: PostChannelCloseSolo
       description: 'Get a channel_close_solo transaction object'
       produces:
@@ -1393,7 +1417,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - channel
+        - debug
       operationId: PostChannelSlash
       description: 'Get a channel_slash transaction object'
       produces:
@@ -1417,7 +1442,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - channel
+        - debug
       operationId: PostChannelSettle
       description: 'Get a channel_settle transaction object'
       produces:
@@ -1437,6 +1463,7 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
+  ## TODO: shall it be removed?
   /poi/contract/{contract}:
     get:
       tags:
@@ -1470,7 +1497,8 @@ paths:
     get:
       tags:
         - internal
-        - transactions
+        - transaction
+        - debug
       operationId: GetPendingTransactions
       description: 'Get pending transactions'
       produces:
@@ -1485,7 +1513,8 @@ paths:
     get:
       tags:
         - internal
-        - dev
+        - name_service
+        - debug
       operationId: GetCommitmentId
       description: 'Compute commitment ID for a given salt and name'
       produces:
@@ -1511,16 +1540,12 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
-
-###
-## Internal APIs definitions
-###
-
   /debug/accounts/node:
     get:
       tags:
         - internal
-        - node_operator
+        - node_info
+        - debug
       operationId: GetNodePubkey
       description: 'Get node''s public key'
       produces:
@@ -1540,6 +1565,7 @@ paths:
     get:
       tags:
         - internal
+        - node_info
         - debug
       operationId: GetPeers
       description: 'Get node Peers'
@@ -1560,7 +1586,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - contract
+        - debug
       operationId: 'CompileContract'
       description: 'Compile a sophia contract from source and return byte code'
       consumes:
@@ -1587,7 +1614,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - contract
+        - debug
       operationId: 'CallContract'
       description: 'Call a sophia function with a given name and argument in the given bytecode off chain.'
       consumes:
@@ -1614,7 +1642,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - contract
+        - debug
       operationId: 'DecodeData'
       description: 'Decode Sophia return data encoded according to Sophia ABI.'
       consumes:
@@ -1641,7 +1670,8 @@ paths:
     post:
       tags:
         - internal
-        - dev
+        - contract
+        - debug
       operationId: 'EncodeCalldata'
       description: 'Encode sophia data and function name according to sophia ABI.'
       consumes:
@@ -1664,6 +1694,11 @@ paths:
           description: Invalid contract
           schema:
             $ref: '#/definitions/Error'
+
+
+##
+## Definitions
+##
 
 definitions:
   EncodedHash:
