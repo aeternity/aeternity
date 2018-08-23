@@ -904,11 +904,15 @@ fees_test_() ->
              teardown_meck_and_keys(TmpDir)
      end,
      [{"Check fee division between three beneficiaries",
-       fun fees_three_beneficiaries/0}
+       fun fees_three_beneficiaries/0},
+      {"Check reward is delayed",
+       fun fees_delayed_reward/0}
      ]
     }.
 
 fees_three_beneficiaries() ->
+    meck:expect(aec_governance, beneficiary_reward_delay, 0, 0),
+
     %% Two accounts to act as sender and receiver.
     #{ public := PubKey1, secret := PrivKey1 } = enacl:sign_keypair(),
     #{ public := PubKey2, secret :=_PrivKey2 } = enacl:sign_keypair(),
@@ -984,6 +988,68 @@ fees_three_beneficiaries() ->
     ?assertEqual(error, orddict:find(PubKey3, DictBal2)),
     ?assertEqual(error, orddict:find(PubKey4, DictBal2)),
     ?assertEqual(error, orddict:find(PubKey5, DictBal2)),
+    ok.
+
+fees_delayed_reward() ->
+    %% Delay reward by 2 key blocks / generations.
+    meck:expect(aec_governance, beneficiary_reward_delay, 0, 2),
+
+    %% Two accounts to act as sender and receiver.
+    #{ public := PubKey1, secret := PrivKey1 } = enacl:sign_keypair(),
+    #{ public := PubKey2, secret :=_PrivKey2 } = enacl:sign_keypair(),
+
+    PresetAccounts = [{PubKey1, 1000}],
+    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+
+    %% An account to act as a beneficiary
+    #{ public := PubKey3, secret := _PrivKey3 } = enacl:sign_keypair(),
+
+    %% Add transactions in different micro blocks to collect fees from
+    Fee1 = 10,
+    Fee2 = 20,
+    Fee3 = 40,
+    TxsFun = fun(2) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey1, 1, PubKey2, Fee1) ,PrivKey1)];
+                (3) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey1, 2, PubKey2, Fee2), PrivKey1)];
+                (4) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey1, 3, PubKey2, Fee3), PrivKey1)];
+                (5) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey1, 4, PubKey2, Fee3), PrivKey1)];
+                (_) -> []
+             end,
+
+    Miners = [{PubKey1, PrivKey1} || _X <- lists:seq(1, 5)],
+    Beneficiaries = [PubKey3 || _X <- lists:seq(1, 5)],
+    Chain0 = gen_block_chain_with_state_by_actors(PresetAccounts, Miners, Beneficiaries, TxsFun),
+    [KB0, KB1, MB1, KB2, MB2, KB3, MB3, KB4, MB4, KB5] = blocks_only_chain(Chain0),
+
+    MiningReward = aec_governance:block_mine_reward(),
+
+    %% Write first part of the chain
+    ok = write_blocks_to_chain([KB0, KB1, MB1, KB2, MB2, KB3, MB3]),
+    Hash1 = aec_chain:top_block_hash(),
+    {ok, Balances1} = aec_chain:all_accounts_balances_at_hash(Hash1),
+    DictBal1 = orddict:from_list(Balances1),
+
+    %% Check only beneficiary of K1 gets rewards, without any rewards / fees of the next generations
+    ?assertEqual({ok, MiningReward}, orddict:find(PubKey3, DictBal1)),
+
+    %% Insert KB4
+    ok = write_blocks_to_chain([KB4]),
+    Hash2 = aec_chain:top_block_hash(),
+    {ok, Balances2} = aec_chain:all_accounts_balances_at_hash(Hash2),
+    DictBal2 = orddict:from_list(Balances2),
+
+    %% Check rewards are granted for the first two key blocks, with fees of first generation
+    ?assertEqual({ok, 2 * MiningReward + Fee1},
+                 orddict:find(PubKey3, DictBal2)),
+
+    %% Insert the rest of the chain
+    ok = write_blocks_to_chain([MB4, KB5]),
+    Hash3 = aec_chain:top_block_hash(),
+    {ok, Balances3} = aec_chain:all_accounts_balances_at_hash(Hash3),
+    DictBal3 = orddict:from_list(Balances3),
+
+    %% Check rewards are granted for the first three key blocks, with fees of first two generations
+    ?assertEqual({ok, 3 * MiningReward + Fee1 + Fee2},
+                 orddict:find(PubKey3, DictBal3)),
     ok.
 
 %%%===================================================================

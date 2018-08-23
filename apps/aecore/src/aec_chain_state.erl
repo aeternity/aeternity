@@ -682,7 +682,7 @@ apply_node_transactions(Node, Trees, #fork_info{fees = FeesIn}, State) ->
             GasFees = calculate_gas_fee(aec_trees:calls(Trees)),
             TotalFees = GasFees + FeesIn,
             Trees1 = aec_trees:perform_pre_transformations(Trees, node_height(Node)),
-            Delay  = aec_governance:miner_reward_delay(),
+            Delay  = aec_governance:beneficiary_reward_delay(),
             case node_height(Node) > aec_block_genesis:height() + Delay of
                 true  -> {grant_fees(Node, Trees1, Delay, TotalFees, State), TotalFees};
                 false -> {Trees1, TotalFees}

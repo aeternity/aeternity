@@ -8,7 +8,7 @@
          expected_block_mine_rate/0,
          block_mine_reward/0,
          max_txs_in_block/0,
-         miner_reward_delay/0,
+         beneficiary_reward_delay/0,
          minimum_tx_fee/0,
          minimum_gas_price/0,
          name_preclaim_expiration/0,
@@ -33,6 +33,7 @@
 -define(TIMESTAMP_MEDIAN_BLOCKS, 11).
 -define(EXPECTED_BLOCK_MINE_RATE, 3 * 60 * 1000). %% 60secs * 1000ms * 3 = 180000msecs
 -define(BLOCK_MINE_REWARD, 10000000000000000000).
+-define(BENEFICIARY_REWARD_DELAY, 180). %% in key blocks / generations
 -define(MICRO_BLOCK_CYCLE, 3000). %% in msecs
 
 -define(ACCEPTED_FUTURE_BLOCK_TIME_SHIFT, 10 * 60 * 1000). %% 10 min
@@ -80,8 +81,10 @@ minimum_tx_fee() ->
 minimum_gas_price() ->
     0.
 
-miner_reward_delay() ->
-    0.
+%% In key blocks / generations
+beneficiary_reward_delay() ->
+    aeu_env:user_config_or_env([<<"mining">>, <<"beneficiary_reward_delay">>],
+                               aecore, beneficiary_reward_delay, ?BENEFICIARY_REWARD_DELAY).
 
 %% In milliseconds
 micro_block_cycle() ->
