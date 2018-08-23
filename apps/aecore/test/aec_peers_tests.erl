@@ -184,12 +184,6 @@ test_single_normal_peer() ->
 
     aec_peers:add_peers(Source, Peer),
 
-    ?assertMatch([Peer], aec_peers:available_peers()),
-    ?assertMatch([Peer], aec_peers:available_peers(both)),
-    ?assertMatch([], aec_peers:available_peers(verified)),
-    ?assertMatch([Peer], aec_peers:available_peers(unverified)),
-    ?assertEqual(1, aec_peers:count(available)),
-
     {ok, Conn} = ?assertCalled(connect, [#{ r_pubkey := PubKey }], {ok, _}, 200),
 
     ?assertMatch([], aec_peers:connected_peers()),
