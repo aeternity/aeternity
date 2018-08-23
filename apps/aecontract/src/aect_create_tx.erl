@@ -42,7 +42,6 @@
 
 -define(CONTRACT_CREATE_TX_VSN, 1).
 -define(CONTRACT_CREATE_TX_TYPE, contract_create_tx).
--define(CONTRACT_CREATE_TX_FEE, 4).
 
 %% Should this be in a header file somewhere?
 -define(PUB_SIZE, 32).
