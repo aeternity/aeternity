@@ -30,7 +30,6 @@
 
 -define(CHANNEL_SLASH_TX_VSN, 1).
 -define(CHANNEL_SLASH_TX_TYPE, channel_slash_tx).
--define(CHANNEL_SLASH_TX_FEE, 0).
 
 -type vsn() :: non_neg_integer().
 

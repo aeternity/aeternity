@@ -37,7 +37,6 @@
 
 -define(CHANNEL_DEPOSIT_TX_VSN, 1).
 -define(CHANNEL_DEPOSIT_TX_TYPE, channel_deposit_tx).
--define(CHANNEL_DEPOSIT_TX_FEE, 4).
 
 -type vsn() :: non_neg_integer().
 

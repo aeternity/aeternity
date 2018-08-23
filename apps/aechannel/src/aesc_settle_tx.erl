@@ -30,7 +30,6 @@
 
 -define(CHANNEL_SETTLE_TX_VSN, 1).
 -define(CHANNEL_SETTLE_TX_TYPE, channel_settle_tx).
--define(CHANNEL_SETTLE_TX_FEE, 4).
 
 -type vsn() :: non_neg_integer().
 

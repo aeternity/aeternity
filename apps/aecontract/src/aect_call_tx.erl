@@ -41,7 +41,6 @@
 
 -define(CONTRACT_CALL_TX_VSN, 1).
 -define(CONTRACT_CALL_TX_TYPE, contract_call_tx).
--define(CONTRACT_CALL_TX_FEE, 2).
 
 -define(is_non_neg_integer(X), (is_integer(X) andalso (X >= 0))).
 
