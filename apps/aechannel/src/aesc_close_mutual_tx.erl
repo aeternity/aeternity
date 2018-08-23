@@ -34,7 +34,6 @@
 
 -define(CHANNEL_CLOSE_MUTUAL_TX_VSN, 1).
 -define(CHANNEL_CLOSE_MUTUAL_TX_TYPE, channel_close_mutual_tx).
--define(CHANNEL_CLOSE_MUTUAL_TX_FEE, 4).
 
 -record(channel_close_mutual_tx, {
           channel_id              :: aec_id:id(),

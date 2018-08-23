@@ -30,7 +30,6 @@
 
 -define(CHANNEL_SNAPSHOT_SOLO_TX_VSN, 1).
 -define(CHANNEL_SNAPSHOT_SOLO_TX_TYPE, channel_snapshot_solo_tx).
--define(CHANNEL_SNAPSHOT_SOLO_TX_FEE, 4).
 
 -type vsn() :: non_neg_integer().
 

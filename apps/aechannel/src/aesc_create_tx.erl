@@ -48,7 +48,6 @@
 
 -define(CHANNEL_CREATE_TX_VSN, 1).
 -define(CHANNEL_CREATE_TX_TYPE, channel_create_tx).
--define(CHANNEL_CREATE_TX_FEE, 4).
 
 -type vsn() :: non_neg_integer().
 
