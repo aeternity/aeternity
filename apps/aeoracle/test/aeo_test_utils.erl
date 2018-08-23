@@ -77,7 +77,7 @@ register_tx(PubKey, Spec0, State) ->
 register_tx_default_spec(PubKey, State) ->
     #{ account    => aec_id:create(account, PubKey)
      , oracle_ttl => {delta, maps:get(oracle, ttl_defaults())}
-     , fee        => 5
+     , fee        => 2
      , nonce      => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , query_fee  => 5
      , query_spec => <<"string()">>
@@ -124,7 +124,7 @@ query_tx_default_spec(PubKey, OracleKey, State) ->
      , query_fee    => 5
      , query_ttl    => {delta, maps:get(query, ttl_defaults())}
      , response_ttl => {delta, maps:get(response, ttl_defaults())}
-     , fee          => 5
+     , fee          => 4
      , nonce        => try next_nonce(PubKey, State) catch _:_ -> 0 end
      }.
 
@@ -145,7 +145,7 @@ response_tx_default_spec(PubKey, ID, Response, State) ->
      , oracle   => aec_id:create(oracle, PubKey)
      , query_id => ID
      , response => Response
-     , fee      => 3
+     , fee      => 2
      , ttl      => 0
      }.
 

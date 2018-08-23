@@ -32,7 +32,6 @@
 
 -define(ORACLE_EXTEND_TX_VSN, 1).
 -define(ORACLE_EXTEND_TX_TYPE, oracle_extend_tx).
--define(ORACLE_EXTEND_TX_FEE, 1).
 
 -record(oracle_extend_tx, {
           oracle     :: aec_id:id(),
@@ -103,7 +102,7 @@ check(#oracle_extend_tx{nonce = Nonce, oracle_ttl = OTTL, fee = Fee} = Tx,
          | case Context of
                aetx_contract -> []; %% TODO Cater for TTL fee from contract.
                aetx_transaction ->
-                   [fun() -> aeo_utils:check_ttl_fee(Height, OTTL, Fee - ?ORACLE_EXTEND_TX_FEE) end]
+                   [fun() -> aeo_utils:check_ttl_fee(Height, OTTL, Fee - aec_governance:minimum_tx_fee()) end]
            end],
 
     case aeu_validation:run(Checks) of
