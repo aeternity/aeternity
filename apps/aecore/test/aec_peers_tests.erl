@@ -724,7 +724,7 @@ test_inbound_connections() ->
 
     lists:foldl(fun(Peer, Acc) ->
         {ok, Conn} = test_mgr_start_inbound(Peer),
-        ?assertEqual(permanent, conn_peer_accepted(Conn)),
+        ?assertEqual(permanent, conn_peer_accepted(Conn, maps:get(host, Peer))),
         PeerId = aec_peers:peer_id(Peer),
         Acc#{ PeerId => Conn }
     end, #{}, Peers),
@@ -746,7 +746,7 @@ test_inbound_connections() ->
     % Check the inbound connection limit.
     Peer11 = peer(11, "10.1.0.1", 11),
     {ok, Conn11a} = test_mgr_start_inbound(Peer11),
-    ?assertEqual(temporary, conn_peer_accepted(Conn11a)),
+    ?assertEqual(temporary, conn_peer_accepted(Conn11a, maps:get(host, Peer11))),
     ?assertEqual(11, aec_peers:count(connections)),
     conn_connection_closed(Conn11a),
 
@@ -860,7 +860,7 @@ test_connection_conflict() ->
     ?assertEqual(1, aec_peers:count(peers)),
 
     {ok, Conn2} = test_mgr_start_inbound(Peer1),
-    ?assertEqual({error, already_connected}, conn_peer_accepted(Conn2)),
+    ?assertEqual({error, already_connected}, conn_peer_accepted(Conn2, maps:get(host, Peer1))),
 
     ?assertEqual(1, aec_peers:count(connections)),
     ?assertEqual(0, aec_peers:count(inbound)),
@@ -885,7 +885,7 @@ test_connection_conflict() ->
     ?assertEqual(1, aec_peers:count(peers)),
 
     {ok, Conn4} = test_mgr_start_inbound(Peer2),
-    ?assertEqual(permanent, conn_peer_accepted(Conn4)),
+    ?assertEqual(permanent, conn_peer_accepted(Conn4, maps:get(host, Peer2))),
     ?assertCalled(disconnect, [Conn3], ok, 100),
 
     ?assertEqual(1, aec_peers:count(connections)),
@@ -902,7 +902,7 @@ test_connection_conflict() ->
     {ok, Conn5} = ?assertCalled(connect, [#{ r_pubkey := PubKey1 }], {ok, _}, 1200),
 
     {ok, Conn6} = test_mgr_start_inbound(Peer1),
-    ?assertEqual(permanent, conn_peer_accepted(Conn6)),
+    ?assertEqual(permanent, conn_peer_accepted(Conn6, maps:get(host, Peer1))),
     ?assertCalled(disconnect, [Conn5], ok, 100),
 
     ?assertEqual(1, aec_peers:count(connections)),
@@ -940,7 +940,7 @@ test_blocking() ->
     ?assertEqual(0, aec_peers:count(connections)),
 
     {ok, Conn1} = test_mgr_start_inbound(Peer1),
-    ?assertEqual({error, blocked}, conn_peer_accepted(Conn1)),
+    ?assertEqual({error, blocked}, conn_peer_accepted(Conn1, maps:get(host, Peer1))),
     ?assertEqual(0, aec_peers:count(peers)),
     ?assertEqual(0, aec_peers:count(connections)),
 
@@ -974,7 +974,7 @@ test_blocking() ->
     ?assertEqual(0, aec_peers:count(connections)),
 
     {ok, Conn4} = test_mgr_start_inbound(Peer4),
-    ?assertEqual(permanent, conn_peer_accepted(Conn4)),
+    ?assertEqual(permanent, conn_peer_accepted(Conn4, maps:get(host, Peer4))),
     ?assertEqual(1, aec_peers:count(peers)),
     ?assertEqual(1, aec_peers:count(connections)),
 
@@ -1018,13 +1018,13 @@ test_blocking() ->
 
     aec_peers:block_peer(Peer1),
     {ok, Conn6} = test_mgr_start_inbound(Peer1),
-    ?assertEqual({error, blocked}, conn_peer_accepted(Conn6)),
+    ?assertEqual({error, blocked}, conn_peer_accepted(Conn6, maps:get(host, Peer1))),
     timer:sleep(1000),
     {ok, Conn7} = test_mgr_start_inbound(Peer1),
-    ?assertEqual({error, blocked}, conn_peer_accepted(Conn7)),
+    ?assertEqual({error, blocked}, conn_peer_accepted(Conn7, maps:get(host, Peer1))),
     timer:sleep(1100),
     {ok, Conn8} = test_mgr_start_inbound(Peer1),
-    ?assertEqual(permanent, conn_peer_accepted(Conn8)),
+    ?assertEqual(permanent, conn_peer_accepted(Conn8, maps:get(host, Peer1))),
 
     % Test peers are unblocked when connecting to a peer after interval.
 
@@ -1241,8 +1241,8 @@ conn_kill(Pid) ->
 conn_peer_connected(Pid) ->
     call(Pid, peer_connected, []).
 
-conn_peer_accepted(Pid) ->
-    call(Pid, peer_accepted, []).
+conn_peer_accepted(Pid, Host) ->
+    call(Pid, peer_accepted, [Host]).
 
 conn_connection_failed(Pid) ->
     call(Pid, connection_failed, []).
@@ -1284,9 +1284,10 @@ proc_conn_loop(S) ->
                     cast(Parent, stopped, self()),
                     reply(From, Result)
             end;
-        {From, peer_accepted, []} ->
+        {From, peer_accepted, [Host]} ->
             #{ parent := Parent, info := Info } = S,
-            case aec_peers:peer_accepted(Info, self()) of
+            {ok, Addr} = inet:parse_address(Host),
+            case aec_peers:peer_accepted(Info, Addr, self()) of
                 R when R =:= permanent; R =:= temporary ->
                     S2 = S#{ connected := true },
                     reply(From, R),
