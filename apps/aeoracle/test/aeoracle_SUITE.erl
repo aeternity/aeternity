@@ -272,7 +272,7 @@ query_response_negative(Cfg) ->
     RTx3 = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, #{fee => 0}, S1),
     {error, too_low_fee} = aetx:check(RTx3, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
-    %% Test fee too low
+    %% Test too short TTL
     RTx4 = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, #{ttl => CurrHeight - 1}, S1),
     {error, ttl_expired} = aetx:check(RTx4, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
