@@ -25,8 +25,11 @@
         , inband_msgs/1
         , upd_transfer/1
         , update_with_conflict/1
+        , update_with_soft_reject/1
         , deposit_with_conflict/1
+        , deposit_with_soft_reject/1
         , withdraw_with_conflict/1
+        , withdraw_with_soft_reject/1
         , upd_dep_with_conflict/1
         , upd_wdraw_with_conflict/1
         , dep_wdraw_with_conflict/1
@@ -71,8 +74,11 @@ groups() ->
       , inband_msgs
       , upd_transfer
       , update_with_conflict
+      , update_with_soft_reject
       , deposit_with_conflict
+      , deposit_with_soft_reject
       , withdraw_with_conflict
+      , withdraw_with_soft_reject
       , upd_dep_with_conflict
       , upd_wdraw_with_conflict
       , dep_wdraw_with_conflict
@@ -221,13 +227,37 @@ update_with_conflict(Cfg) ->
     check_info(500),
     ok.
 
+update_with_soft_reject(Cfg) ->
+    Debug = true,
+    #{ i := #{fsm := FsmI} = I
+     , r := #{}            = R
+     , spec := #{ initiator := PubI
+                , responder := PubR }} = create_channel_(
+                                           [{port,9329},?SLOGAN|Cfg]),
+    {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
+    {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
+    rpc(dev1, aesc_fsm, upd_transfer, [FsmI, PubI, PubR, 1]),
+    {I1, _} = await_signing_request(update, I, Debug),
+    Reject = fun(_Tag, #{fsm := Fsm1} = Rx, SignedTx) ->
+                     {error, conflict} = rpc(dev1, aesc_fsm, upd_transfer,
+                                             [Fsm1, PubR, PubI, 1]),
+                     {Rx, SignedTx}
+             end,
+    {R1, _} = await_signing_request(update_ack, R, Reject, ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(conflict, I1, any_msg(), ?TIMEOUT, Debug),
+    {ok, _} = receive_from_fsm(conflict, R1, any_msg(), ?TIMEOUT, Debug),
+    {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
+    {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
+    check_info(500),
+         ok.
+
 deposit_with_conflict(Cfg) ->
     Debug = true,
     #{ i := #{fsm := FsmI} = I
      , r := #{fsm := FsmR} = R
      , spec := #{ initiator := PubI
                 , responder := PubR }} = create_channel_(
-                                           [{port,9329},?SLOGAN|Cfg]),
+                                           [{port,9330},?SLOGAN|Cfg]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     rpc(dev1, aesc_fsm, upd_deposit, [FsmI, #{amount => 1}]),
@@ -242,13 +272,37 @@ deposit_with_conflict(Cfg) ->
     check_info(500),
     ok.
 
+deposit_with_soft_reject(Cfg) ->
+    Debug = true,
+    #{ i := #{fsm := FsmI} = I
+     , r := #{}            = R
+     , spec := #{ initiator := PubI
+                , responder := PubR }} = create_channel_(
+                                           [{port,9331},?SLOGAN|Cfg]),
+    {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
+    {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
+    rpc(dev1, aesc_fsm, upd_deposit, [FsmI, #{amount => 1}]),
+    {I1, _} = await_signing_request(deposit_tx, I, Debug),
+    Reject = fun(_Tag, #{fsm := Fsm1} = Rx, SignedTx) ->
+                     {error, conflict} = rpc(dev1, aesc_fsm, upd_transfer,
+                                             [Fsm1, PubR, PubI, 1]),
+                     {Rx, SignedTx}
+             end,
+    {R1, _} = await_signing_request(deposit_created, R, Reject, ?TIMEOUT, Debug),
+    {ok,_} = receive_from_fsm(conflict, I1, any_msg(), ?TIMEOUT, Debug),
+    {ok,_} = receive_from_fsm(conflict, R1, any_msg(), ?TIMEOUT, Debug),
+    {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
+    {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
+    check_info(500),
+    ok.
+
 withdraw_with_conflict(Cfg) ->
     Debug = true,
     #{ i := #{fsm := FsmI} = I
      , r := #{fsm := FsmR} = R
      , spec := #{ initiator := PubI
                 , responder := PubR }} = create_channel_(
-                                           [{port,9330},?SLOGAN|Cfg]),
+                                           [{port,9332},?SLOGAN|Cfg]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     rpc(dev1, aesc_fsm, upd_withdraw, [FsmI, #{amount => 1}]),
@@ -263,13 +317,37 @@ withdraw_with_conflict(Cfg) ->
     check_info(500),
     ok.
 
+withdraw_with_soft_reject(Cfg) ->
+    Debug = true,
+    #{ i := #{fsm := FsmI} = I
+     , r := #{}            = R
+     , spec := #{ initiator := PubI
+                , responder := PubR }} = create_channel_(
+                                           [{port,9333},?SLOGAN|Cfg]),
+    {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
+    {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
+    rpc(dev1, aesc_fsm, upd_withdraw, [FsmI, #{amount => 1}]),
+    {I1, _} = await_signing_request(withdraw_tx, I, Debug),
+    Reject = fun(_Tag, #{fsm := Fsm1} = Rx, SignedTx) ->
+                     {error, conflict} = rpc(dev1, aesc_fsm, upd_transfer,
+                                             [Fsm1, PubR, PubI, 1]),
+                     {Rx, SignedTx}
+             end,
+    {R1, _} = await_signing_request(withdraw_created, R, Reject, ?TIMEOUT, Debug),
+    {ok,_} = receive_from_fsm(conflict, I1, any_msg(), ?TIMEOUT, Debug),
+    {ok,_} = receive_from_fsm(conflict, R1, any_msg(), ?TIMEOUT, Debug),
+    {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
+    {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
+    check_info(500),
+    ok.
+
 upd_dep_with_conflict(Cfg) ->
     Debug = true,
     #{ i := #{fsm := FsmI} = I
      , r := #{fsm := FsmR} = R
      , spec := #{ initiator := PubI
                 , responder := PubR }} = create_channel_(
-                                           [{port,9331},?SLOGAN|Cfg]),
+                                           [{port,9334},?SLOGAN|Cfg]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     rpc(dev1, aesc_fsm, upd_transfer, [FsmI, PubI, PubR, 1]),
@@ -290,7 +368,7 @@ upd_wdraw_with_conflict(Cfg) ->
      , r := #{fsm := FsmR} = R
      , spec := #{ initiator := PubI
                 , responder := PubR }} = create_channel_(
-                                           [{port,9332},?SLOGAN|Cfg]),
+                                           [{port,9335},?SLOGAN|Cfg]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     rpc(dev1, aesc_fsm, upd_transfer, [FsmI, PubI, PubR, 1]),
@@ -311,7 +389,7 @@ dep_wdraw_with_conflict(Cfg) ->
      , r := #{fsm := FsmR} = R
      , spec := #{ initiator := PubI
                 , responder := PubR }} = create_channel_(
-                                           [{port,9333},?SLOGAN|Cfg]),
+                                           [{port,9336},?SLOGAN|Cfg]),
     {BalI, BalR} = get_both_balances(FsmI, PubI, PubR),
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmI]),
     rpc(dev1, aesc_fsm, upd_deposit, [FsmI, #{amount => 1}]),
@@ -823,15 +901,23 @@ await_signing_request(Tag, R) ->
 await_signing_request(Tag, R, Debug) ->
     await_signing_request(Tag, R, ?TIMEOUT, Debug).
 
-await_signing_request(Tag, #{fsm := Fsm, priv := Priv} = R, Timeout, Debug) ->
+await_signing_request(Tag, R, Timeout, Debug) ->
+    Action = fun sign_signing_request/3,
+    await_signing_request(Tag, R, Action, Timeout, Debug).
+
+await_signing_request(Tag, #{fsm := Fsm, priv := Priv} = R,
+                      Action, Timeout, Debug) ->
     receive {aesc_fsm, Fsm, #{type := sign, tag := Tag, info := Tx} = Msg} ->
             log(Debug, "await_signing(~p, ~p) <- ~p", [Tag, Fsm, Msg]),
             SignedTx = aec_test_utils:sign_tx(Tx, [Priv]),
-            aesc_fsm:signing_response(Fsm, Tag, SignedTx),
-            {check_amounts(R, SignedTx), SignedTx}
+            Action(Tag, R, SignedTx)
     after Timeout ->
             error(timeout)
     end.
+
+sign_signing_request(Tag, #{fsm := Fsm} = R, SignedTx) ->
+    aesc_fsm:signing_response(Fsm, Tag, SignedTx),
+    {check_amounts(R, SignedTx), SignedTx}.
 
 await_on_chain_report(#{fsm := Fsm}, Timeout) ->
     receive {aesc_fsm, Fsm, #{type := report, tag := on_chain_tx, info := SignedTx}} ->
@@ -934,6 +1020,8 @@ check_info(Timeout, Debug) ->
             log(Debug, "UNEXPECTED: ~p", [Msg]),
             [Msg|check_info(Timeout, Debug)]
     after Timeout ->
+            log(Debug, "unconsumed msgs: ~p",
+                [element(2,process_info(self(),messages))]),
             []
     end.
 
