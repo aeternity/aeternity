@@ -10,19 +10,19 @@
 
 -include("blocks.hrl").
 
--import(aec_headers, [raw_header/0]).
+-import(aec_headers, [raw_key_header/0]).
 
 %% -- Block API --------------------------------------------------------------
 
 -define(ADJUST_WINDOW, 10).
 
 genesis_block() ->
-    H0 = aec_headers:set_version_and_height(raw_header(), ?PROTOCOL_VERSION, 0),
+    H0 = aec_headers:set_version_and_height(raw_key_header(), ?PROTOCOL_VERSION, 0),
     H1 = aec_headers:set_time_in_msecs(H0, 0),
     aec_headers:set_target(H1, ?HIGHEST_TARGET_SCI).
 
 new_block(Prev, Now) ->
-    H0 = raw_header(),
+    H0 = raw_key_header(),
     H1 = aec_headers:set_height(H0, aec_headers:height(Prev) + 1),
     aec_headers:set_time_in_msecs(H1, Now).
 

@@ -48,7 +48,7 @@
                                         BMap = aehttp_logic:cleanup_genesis(BMap0),
                                         encode(header_map, BMap);
                                     micro ->
-                                        {ok, HMap} = aec_headers:serialize_to_map(aec_blocks:to_header(Block)),
+                                        HMap = aec_headers:serialize_to_map(aec_blocks:to_header(Block)),
                                         encode(header_map, HMap#{<<"signature">> => aec_blocks:signature(Block)})
                                 end
                             end,
@@ -234,7 +234,7 @@ encode_block_for_client(Block, Encoding) ->
             fun(Tx) ->
                 aetx_sign:serialize_for_client(Encoding, Header, Tx)
             end,
-            aec_blocks:txs(Block)),
+            aehttp_helpers:safe_get_txs(Block)),
     maps:put(<<"transactions">>, Txs, EncodedHeader).
 
 decode_miner(Miner) ->

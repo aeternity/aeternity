@@ -664,7 +664,7 @@ handle_mining_reply({{ok, {Nonce, Evd}}, HeaderBin}, #state{} = State) ->
         true ->
             aec_metrics:try_update([ae,epoch,aecore,mining,blocks_mined], 1),
             State1 = State#state{key_block_candidate = undefined},
-            Block = aec_blocks:set_pow(Candidate#candidate.block, Nonce, Evd),
+            Block = aec_blocks:set_nonce_and_pow(Candidate#candidate.block, Nonce, Evd),
             case handle_mined_block(Block, State1) of
                 {ok, State2} ->
                     State2;

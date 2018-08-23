@@ -572,13 +572,9 @@ get_key_block_by_height(Height) when is_integer(Height), Height >= 0 ->
 
 -spec get_generation(binary()) -> 'error' | {'ok', aec_blocks:block(), [aec_blocks:block()]}.
 get_generation(KeyBlockHash) ->
-    case aec_db:find_block(KeyBlockHash) of
+    case aec_db:find_key_block(KeyBlockHash) of
         none -> error;
-        {value, KeyBlock} ->
-            case aec_blocks:is_key_block(KeyBlock) of
-                true -> get_generation_(KeyBlock);
-                false -> error
-            end
+        {value, KeyBlock} -> get_generation_(KeyBlock)
     end.
 
 get_generation_(KeyBlock) ->
@@ -602,23 +598,19 @@ get_generation_(KeyBlock) ->
 
 -spec get_prev_generation(binary()) -> 'error' | {'ok', aec_blocks:block(), [aec_blocks:block()]}.
 get_prev_generation(KeyBlockHash) ->
-    case aec_db:find_block(KeyBlockHash) of
+    case aec_db:find_key_block(KeyBlockHash) of
         none -> error;
         {value, KeyBlock} ->
-            case aec_blocks:is_key_block(KeyBlock) of
-                false -> error;
-                true ->
-                    GenesisHeight = aec_block_genesis:height(),
-                    case aec_blocks:height(KeyBlock) of
-                        GenesisHeight ->
-                            {ok, KeyBlock, []};
-                        KeyHeight when KeyHeight > GenesisHeight ->
-                            case get_prev_generation(aec_blocks:prev_hash(KeyBlock), []) of
-                                {ok, MicroBlocks} ->
-                                    {ok, KeyBlock, MicroBlocks};
-                                error ->
-                                    error
-                            end
+            GenesisHeight = aec_block_genesis:height(),
+            case aec_blocks:height(KeyBlock) of
+                GenesisHeight ->
+                    {ok, KeyBlock, []};
+                KeyHeight when KeyHeight > GenesisHeight ->
+                    case get_prev_generation(aec_blocks:prev_hash(KeyBlock), []) of
+                        {ok, MicroBlocks} ->
+                            {ok, KeyBlock, MicroBlocks};
+                        error ->
+                            error
                     end
             end
     end.

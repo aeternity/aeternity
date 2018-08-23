@@ -247,7 +247,7 @@ fake_key_node(PrevNode, Height, Miner, Beneficiary) ->
     Block = aec_blocks:new_key(Height,
                                hash(PrevNode),
                                <<123:?STATE_HASH_BYTES/unit:8>>,
-                               node_target(PrevNode),
+                               ?HIGHEST_TARGET_SCI,
                                0, aeu_time:now_in_msecs(),
                                ?PROTOCOL_VERSION,
                                Miner,
@@ -653,7 +653,7 @@ remove_locations(StopHash, CurrentHash) ->
     lists:foreach(fun(TxHash) ->
                           aec_db:remove_tx_location(TxHash),
                           aec_db:add_tx_hash_to_mempool(TxHash)
-                  end, db_get_tx_hashes(CurrentHash)),
+                  end, db_safe_get_tx_hashes(CurrentHash)),
     remove_locations(StopHash, db_get_prev_hash(CurrentHash)).
 
 add_locations(Hash, Hash) ->
@@ -662,7 +662,7 @@ add_locations(StopHash, CurrentHash) ->
     lists:foreach(fun(TxHash) ->
                           aec_db:add_tx_location(TxHash, CurrentHash),
                           aec_db:remove_tx_from_mempool(TxHash)
-                  end, db_get_tx_hashes(CurrentHash)),
+                  end, db_safe_get_tx_hashes(CurrentHash)),
     add_locations(StopHash, db_get_prev_hash(CurrentHash)).
 
 
@@ -874,8 +874,11 @@ db_get_key_hash(Hash) when is_binary(Hash) ->
     {value, KeyHash} = aec_db:find_block_key_hash(Hash),
     KeyHash.
 
-db_get_tx_hashes(Hash) when is_binary(Hash) ->
-    aec_db:get_block_tx_hashes(Hash).
+db_safe_get_tx_hashes(Hash) when is_binary(Hash) ->
+    case aec_db:find_block_tx_hashes(Hash) of
+        none -> [];
+        {value, Hashes} -> Hashes
+    end.
 
 db_get_prev_hash(Hash) when is_binary(Hash) ->
     {value, PrevHash} = db_find_prev_hash(Hash),

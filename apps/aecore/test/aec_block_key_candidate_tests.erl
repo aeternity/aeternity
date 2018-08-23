@@ -9,9 +9,8 @@
 
 -include("blocks.hrl").
 
--import(aec_headers, [raw_header/0]).
-
--import(aec_blocks, [raw_block/0]).
+-import(aec_headers, [raw_key_header/0]).
+-import(aec_blocks, [raw_key_block/0]).
 
 -define(PREV_MINER_PUBKEY, <<85:?MINER_PUB_BYTES/unit:8>>).
 -define(MINER_PUBKEY, <<42:?MINER_PUB_BYTES/unit:8>>).
@@ -22,7 +21,7 @@ new_key_block_test_() ->
      fun() ->
              %% Previous block is a key block, so it
              %% has miner and height.
-             RawBlock  = raw_block(),
+             RawBlock  = raw_key_block(),
              PrevBlock1 = aec_blocks:set_height(RawBlock, 11),
              PrevBlock2 = aec_blocks:set_target(PrevBlock1, 17),
              PrevBlock = aec_blocks:set_miner(PrevBlock2, ?MINER_PUBKEY),
@@ -35,7 +34,7 @@ new_key_block_test_() ->
              SerializedBlockHeader = aec_headers:serialize_to_binary(BlockHeader),
              ?assertEqual(aec_hash:hash(header, SerializedBlockHeader),
                           aec_blocks:prev_hash(NewBlock)),
-             ?assertEqual([], aec_blocks:txs(NewBlock)),
+             ?assertError(_, aec_blocks:txs(NewBlock)),
              ?assertEqual(17, aec_blocks:target(NewBlock)),
              ?assertEqual(?GENESIS_VERSION, aec_blocks:version(NewBlock)),
              ?assertEqual(?MINER_PUBKEY, aec_blocks:miner(NewBlock)),
@@ -109,7 +108,7 @@ difficulty_recalculation_test_() ->
 compute_chain(Now, Height, Target, MiningOffset) ->
     MineTime = aec_governance:expected_block_mine_rate() + MiningOffset,
     N        = aec_governance:key_blocks_to_check_difficulty_count(),
-    RawHeader = raw_header(),
+    RawHeader = raw_key_header(),
     lists:foldr(fun(H, Bs) ->
                     H1 = aec_headers:set_version_and_height(RawHeader, ?PROTOCOL_VERSION, H),
                     H2 = aec_headers:set_target(H1, Target),

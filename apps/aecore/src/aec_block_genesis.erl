@@ -32,6 +32,7 @@
 -export([prev_hash/0,
          height/0,
          pow/0,
+         target/0,
          txs_hash/0,
          transactions/0,
          beneficiary/0,
@@ -71,6 +72,8 @@ miner() -> <<0:?MINER_PUB_BYTES/unit:8>>.
 
 beneficiary() -> <<0:?BENEFICIARY_PUB_BYTES/unit:8>>.
 
+target() -> ?HIGHEST_TARGET_SCI.
+
 %% Returns the genesis block and the state trees.
 %%
 %% The current implementation of state trees causes a new Erlang term,
@@ -89,7 +92,7 @@ genesis_block_with_state(Map) ->
                                                          height(), ?GENESIS_VERSION),
 
     Block = aec_blocks:new_key(height(), prev_hash(), aec_trees:hash(Trees),
-                               ?HIGHEST_TARGET_SCI, 0, 0, ?GENESIS_VERSION, miner(), beneficiary()),
+                               target(), 0, 0, ?GENESIS_VERSION, miner(), beneficiary()),
     {Block, Trees}.
 
 %% Returns state trees at genesis block.

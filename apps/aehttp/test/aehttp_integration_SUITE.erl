@@ -3489,9 +3489,15 @@ generic_counts_test(GetBlock, CallApi) ->
     {ok, 200, #{<<"height">> := ChainHeight}} = get_top(),
 
     Check = fun(H) ->
-                {ok, B} = GetBlock(H),
-                TxsCount = length(aec_blocks:txs(B)),
-                {ok, 200, #{<<"count">> := TxsCount}} = CallApi(H)
+                    {ok, B} = GetBlock(H),
+                    case aec_blocks:type(B) of
+                        'micro' ->
+                            TxsCount = length(aec_blocks:txs(B)),
+                            {ok, 200, #{<<"count">> := TxsCount}} = CallApi(H),
+                            ok;
+                        'key'   ->
+                            ok
+                    end
             end,
 
     %% Check genesis
@@ -5973,21 +5979,27 @@ block_to_endpoint_map(Block, Options) ->
 
     %% Validate that all transactions have the correct block height and hash
     ExpectedTxs = maps:get(<<"transactions">>, Expected, []),
-    BlockHeight = aec_blocks:height(Block),
-    {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
-    lists:foreach(
-        fun({EncodedTx, SignedTx}) ->
-            #{block_hash := TxBlockHash,
-              block_height := TxBlockHeight,
-              hash := Hash} =
-                  aetx_sign:meta_data_from_client_serialized(Encoding, EncodedTx),
-            {BlockHeight, TxBlockHeight} = {TxBlockHeight, BlockHeight},
-            {BlockHash, TxBlockHash} = {TxBlockHash, BlockHash},
-            TxHash = aetx_sign:hash(SignedTx),
-            {Hash, TxHash} = {TxHash, Hash}
-        end,
-        lists:zip(ExpectedTxs, aec_blocks:txs(Block))),
-    Expected.
+    case aec_blocks:type(Block) of
+        key ->
+            ?assertEqual([], ExpectedTxs),
+            Expected;
+        micro ->
+            BlockHeight = aec_blocks:height(Block),
+            {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
+            lists:foreach(
+              fun({EncodedTx, SignedTx}) ->
+                      #{block_hash := TxBlockHash,
+                        block_height := TxBlockHeight,
+                        hash := Hash} =
+                          aetx_sign:meta_data_from_client_serialized(Encoding, EncodedTx),
+                      {BlockHeight, TxBlockHeight} = {TxBlockHeight, BlockHeight},
+                      {BlockHash, TxBlockHash} = {TxBlockHash, BlockHash},
+                      TxHash = aetx_sign:hash(SignedTx),
+                      {Hash, TxHash} = {TxHash, Hash}
+              end,
+              lists:zip(ExpectedTxs, aec_blocks:txs(Block))),
+            Expected
+    end.
 
 random_hash() ->
     HList =

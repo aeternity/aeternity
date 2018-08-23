@@ -30,6 +30,7 @@
         , get_poi/3
         , get_block_from_chain/1
         , get_block_hash_optionally_by_hash_or_height/1
+        , safe_get_txs/1
         ]).
 
 -export([ get_transaction/2
@@ -672,4 +673,10 @@ get_block_hash_optionally_by_hash_or_height(PutKey) ->
           {ok, BlockHash} ->
                 {ok, maps:put(PutKey, BlockHash, State)}
         end
+    end.
+
+safe_get_txs(Block) ->
+    case aec_blocks:type(Block) of
+        'key' -> [];
+        'micro' -> aec_blocks:txs(Block)
     end.

@@ -364,7 +364,8 @@ handle_request(OperationID, Req, Context) ->
 get_block_txs_count(Fun, Req) when is_function(Fun, 0) ->
     case get_block_from_chain(Fun) of
         {ok, Block} ->
-            case filter_transaction_list(Req, aec_blocks:txs(Block)) of
+            Txs = aehttp_helpers:safe_get_txs(Block),
+            case filter_transaction_list(Req, Txs) of
                 {ok, TxsList} ->
                     Count = length(TxsList),
                     {200, [], #{count => Count}};
@@ -400,7 +401,7 @@ filter_transaction_list(Req, TxList) ->
 get_block_tx_by_index(Fun, Index, Req) when is_function(Fun, 0) ->
     case get_block_from_chain(Fun) of
         {ok, Block} ->
-            Txs = aec_blocks:txs(Block),
+            Txs = aehttp_helpers:safe_get_txs(Block),
             case try {ok, lists:nth(Index, Txs)} catch _:_ -> not_found end of
                 not_found ->
                     {404, [], #{reason => <<"Transaction not found">>}};
@@ -454,7 +455,8 @@ get_block_range(GetFun, Req) when is_function(GetFun, 0) ->
                         fun(_Block, {error, _} = Err) ->
                             Err;
                            (Block, Accum) ->
-                            case filter_transaction_list(Req, aec_blocks:txs(Block)) of
+                            Txs = aehttp_helpers:safe_get_txs(Block),
+                            case filter_transaction_list(Req, Txs) of
                                 {error, unknown_type} = Err ->
                                     Err;
                                 {ok, FilteredTxs} ->

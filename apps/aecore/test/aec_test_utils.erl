@@ -305,9 +305,10 @@ create_keyblock_with_state([{PrevBlock, TreesIn} | _] = Chain, MinerAccount, Ben
     Trees1 = aec_trees:perform_pre_transformations(TreesIn, Height),
     Delay = aec_governance:miner_reward_delay(),
     %% Dummy block to calculate the fees.
+    Target = pick_prev_target(Chain),
     Block0 = aec_blocks:new_key(Height, PrevBlockHash, aec_trees:hash(TreesIn),
-                                aec_blocks:target(PrevBlock),
-                                0, aeu_time:now_in_msecs(), Version, MinerAccount, BeneficiaryAccount),
+                                Target, 0, aeu_time:now_in_msecs(), Version,
+                                MinerAccount, BeneficiaryAccount),
     Trees2 = case Height > Delay of
                  true ->
                      Reward = aec_governance:block_mine_reward(),
@@ -317,9 +318,17 @@ create_keyblock_with_state([{PrevBlock, TreesIn} | _] = Chain, MinerAccount, Ben
                      Trees1
              end,
     Block = aec_blocks:new_key(Height, PrevBlockHash, aec_trees:hash(Trees2),
-                               aec_blocks:target(PrevBlock),
-                               0, aeu_time:now_in_msecs(), Version, MinerAccount, BeneficiaryAccount),
+                               Target, 0, aeu_time:now_in_msecs(), Version,
+                               MinerAccount, BeneficiaryAccount),
     {Block, Trees2}.
+
+pick_prev_target([{Block, _}|Left]) ->
+    case aec_blocks:type(Block) of
+        key   -> aec_blocks:target(Block);
+        micro -> pick_prev_target(Left)
+    end;
+pick_prev_target([]) ->
+    aec_block_genesis:target().
 
 extend_block_chain_with_state(Chain, Data) ->
     {ok, Pubkey} = wait_for_pubkey(),
