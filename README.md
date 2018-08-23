@@ -29,3 +29,7 @@ We publish packages in github for major platforms: [Releases](https://github.com
 
 The best way to start is to install the package and connect to testnet.
 We try to document the process in [Release Notes][release-notes]
+
+Additional resources
+---
+* [Threat Model](https://github.com/aeternity/aetmodel/blob/master/ThreatModel.md)
