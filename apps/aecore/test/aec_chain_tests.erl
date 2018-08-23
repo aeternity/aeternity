@@ -926,15 +926,17 @@ fees_three_beneficiaries() ->
     #{ public := PubKey7, secret := _PrivKey7 } = enacl:sign_keypair(),
     #{ public := PubKey8, secret := _PrivKey8 } = enacl:sign_keypair(),
 
-    %% Add two transactions in different blocks to collect fees from
+    %% Add transactions in different micro blocks to collect fees from
     Fee1 = 10,
-    Fee2 = 100,
+    Fee2 = 30,
+    Fee3 = 100,
     TxsFun = fun(2) ->
-                     Tx = make_spend_tx(PubKey1, 1, PubKey2, Fee1),
-                     [aec_test_utils:sign_tx(Tx, PrivKey1)];
+                     Tx1 = aec_test_utils:sign_tx(make_spend_tx(PubKey1, 1, PubKey2, Fee1) ,PrivKey1),
+                     Tx2 = aec_test_utils:sign_tx(make_spend_tx(PubKey1, 2, PubKey2, Fee2), PrivKey1),
+                     [Tx1, Tx2];
                 (3) ->
-                     Tx = make_spend_tx(PubKey1, 2, PubKey2, Fee2),
-                     [aec_test_utils:sign_tx(Tx, PrivKey1)];
+                     Tx = aec_test_utils:sign_tx(make_spend_tx(PubKey1, 3, PubKey2, Fee3), PrivKey1),
+                     [Tx];
                 (_) ->
                      []
              end,
@@ -963,19 +965,19 @@ fees_three_beneficiaries() ->
     %% Before the last generation is closed, only the two first beneficiaries
     %% should have collected rewards
     MiningReward = aec_governance:block_mine_reward(),
-    ?assertEqual(MiningReward + round(Fee1 * 0.4),
+    ?assertEqual(MiningReward + round((Fee1 + Fee2) * 0.4),
                  orddict:fetch(PubKey6, DictBal1)),
-    ?assertEqual(MiningReward + round(Fee1 * 0.6),
+    ?assertEqual(MiningReward + round((Fee1 + Fee2) * 0.6),
                  orddict:fetch(PubKey7, DictBal1)),
     ?assertEqual(false, orddict:is_key(PubKey5, DictBal1)),
 
     %% When the last generation is closed, the last transaction fee should
     %% also have been collected.
-    ?assertEqual(MiningReward + round(Fee1 * 0.4),
+    ?assertEqual(MiningReward + round((Fee1 + Fee2) * 0.4),
                  orddict:fetch(PubKey6, DictBal2)),
-    ?assertEqual(MiningReward + round(Fee1 * 0.6) + round(Fee2 * 0.4),
+    ?assertEqual(MiningReward + round((Fee1 + Fee2) * 0.6) + round(Fee3 * 0.4),
                  orddict:fetch(PubKey7, DictBal2)),
-    ?assertEqual(MiningReward + round(Fee2 * 0.6),
+    ?assertEqual(MiningReward + round(Fee3 * 0.6),
                  orddict:fetch(PubKey8, DictBal2)),
 
     %% Miners' balances did not change, since beneficiaries took the rewards.
