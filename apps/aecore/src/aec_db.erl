@@ -34,6 +34,7 @@
          find_block_tx_hashes/1,
          find_header/1,
          find_headers_at_height/1,
+         find_key_block/1,
          get_block/1,
          get_block_signature/1,
          get_header/1,
@@ -286,6 +287,17 @@ find_block(Hash) ->
                                   STx
                               end || TxHash <- TxHashes],
                        {value, aec_blocks:new_micro_from_header(Header, Txs, Sig)}
+               end;
+           [] -> none
+       end).
+
+-spec find_key_block(binary()) -> 'none' | {'value', aec_blocks:key_block()}.
+find_key_block(Hash) ->
+    ?t(case mnesia:read(aec_headers, Hash) of
+           [#aec_headers{value = Header}] ->
+               case aec_headers:type(Header) of
+                   key   -> {value, aec_blocks:new_key_from_header(Header)};
+                   micro -> none
                end;
            [] -> none
        end).
