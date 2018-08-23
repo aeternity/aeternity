@@ -43,7 +43,7 @@ mine_block_test_() ->
                  Target = aec_blocks:target(BlockCandidate),
                  {ok, {Nonce1, Evd}} = ?TEST_MODULE:mine(HeaderBin, Target, Nonce),
 
-                 Block = aec_blocks:set_pow(BlockCandidate, Nonce1, Evd),
+                 Block = aec_blocks:set_nonce_and_pow(BlockCandidate, Nonce1, Evd),
 
                  ?assertEqual(1, aec_blocks:height(Block)),
                  ?assertEqual(ok, aec_headers:validate_key_block_header(

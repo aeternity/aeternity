@@ -48,7 +48,7 @@
                                         BMap = aehttp_logic:cleanup_genesis(BMap0),
                                         encode(header_map, BMap);
                                     micro ->
-                                        {ok, HMap} = aec_headers:serialize_to_map(aec_blocks:to_header(Block)),
+                                        HMap = aec_headers:serialize_to_map(aec_blocks:to_header(Block)),
                                         encode(header_map, HMap#{<<"signature">> => aec_blocks:signature(Block)})
                                 end
                             end,

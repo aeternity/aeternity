@@ -239,7 +239,7 @@ get_block(Hash) ->
                mnesia:read(aec_headers, Hash),
            case aec_headers:type(Header) of
                key ->
-                   aec_headers:to_key_block(Header);
+                   aec_blocks:new_key_from_header(Header);
                micro ->
                    [#aec_blocks{txs = TxHashes, sig = Sig}] =
                        mnesia:read(aec_blocks, Hash),
@@ -248,7 +248,7 @@ get_block(Hash) ->
                                   mnesia:read(aec_signed_tx, TxHash),
                               STx
                           end || TxHash <- TxHashes],
-                   aec_headers:to_micro_block(Header, Txs, Sig)
+                   aec_blocks:new_micro_from_header(Header, Txs, Sig)
            end
        end).
 
@@ -276,7 +276,7 @@ find_block(Hash) ->
     ?t(case mnesia:read(aec_headers, Hash) of
            [#aec_headers{value = Header}] ->
                case aec_headers:type(Header) of
-                   key   -> {value, aec_headers:to_key_block(Header)};
+                   key   -> {value, aec_blocks:new_key_from_header(Header)};
                    micro ->
                        [#aec_blocks{txs = TxHashes, sig = Sig}]
                            = mnesia:read(aec_blocks, Hash),
@@ -285,7 +285,7 @@ find_block(Hash) ->
                                       mnesia:read(aec_signed_tx, TxHash),
                                   STx
                               end || TxHash <- TxHashes],
-                       {value, aec_headers:to_micro_block(Header, Txs, Sig)}
+                       {value, aec_blocks:new_micro_from_header(Header, Txs, Sig)}
                end;
            [] -> none
        end).

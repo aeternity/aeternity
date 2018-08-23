@@ -1,7 +1,16 @@
+%%% -*- erlang-indent-level:4; indent-tabs-mode: nil -*-
+%%%-------------------------------------------------------------------
+%%% @copyright (C) 2017, Aeternity Anstalt
+%%% @doc
+%%% API for headers
+%%% @end
+%%%-------------------------------------------------------------------
 -module(aec_headers).
 
 %% API
--export([beneficiary/1,
+-export([assert_key_header/1,
+         assert_micro_header/1,
+         beneficiary/1,
          deserialize_from_binary/1,
          deserialize_from_map/1,
          deserialize_pow_evidence/1,
@@ -12,19 +21,26 @@
          new_key_header/10,
          new_micro_header/6,
          nonce/1,
+         pow/1,
          prev_hash/1,
          root_hash/1,
          serialize_pow_evidence/1,
          serialize_to_binary/1,
          serialize_to_map/1,
+         set_height/2,
+         set_miner/2,
+         set_nonce/2,
+         set_nonce_and_pow/3,
+         set_prev_hash/2,
+         set_root_hash/2,
          set_target/2,
          set_time_in_msecs/2,
          target/1,
          time_in_msecs/1,
          time_in_secs/1,
-         to_key_block/1,
-         to_micro_block/3,
+         txs_hash/1,
          type/1,
+         update_micro_candidate/4,
          validate_key_block_header/1,
          validate_micro_block_header/1,
          version/1
@@ -32,16 +48,19 @@
 
 -include("blocks.hrl").
 
+%%%===================================================================
+%%% Records and types
+%%%===================================================================
+
 -type height() :: aec_blocks:height().
 
 -record(mic_header, {
-          height    = 0                                     :: height(),
-          prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
-          root_hash = <<0:?STATE_HASH_BYTES/unit:8>>        :: state_hash(),
-          txs_hash  = <<0:?TXS_HASH_BYTES/unit:8>>          :: txs_hash(),
-          time      = ?GENESIS_TIME                         :: non_neg_integer(),
-          version                                           :: non_neg_integer(),
-          signature = undefined                             :: binary() | undefined
+          height       = 0                                     :: height(),
+          prev_hash    = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
+          root_hash    = <<0:?STATE_HASH_BYTES/unit:8>>        :: state_hash(),
+          txs_hash     = <<0:?TXS_HASH_BYTES/unit:8>>          :: txs_hash(),
+          time         = ?GENESIS_TIME                         :: non_neg_integer(),
+          version                                              :: non_neg_integer()
          }).
 
 -record(key_header, {
@@ -68,11 +87,14 @@
 
 -define(POW_EV_SIZE, 42).
 
+%%%===================================================================
+%%% Test interface
+%%%===================================================================
+
 -ifdef(TEST).
 
 -export([ raw_key_header/0
         , raw_micro_header/0
-        , set_nonce/2
         , set_version/2
         , set_version_and_height/3
         ]).
@@ -85,9 +107,6 @@ raw_micro_header() ->
   #mic_header{ root_hash = <<0:32/unit:8>>,
                version = ?PROTOCOL_VERSION }.
 
-set_nonce(Header, Nonce) ->
-    Header#key_header{nonce = Nonce}.
-
 set_version(#key_header{} = H, Version) -> H#key_header{version = Version};
 set_version(#mic_header{} = H, Version) -> H#mic_header{version = Version}.
 
@@ -97,6 +116,26 @@ set_version_and_height(#mic_header{} = H, Version, Height) ->
     H#mic_header{version = Version, height = Height}.
 
 -endif. %% TEST
+
+%%%===================================================================
+%%% Header structure
+%%%===================================================================
+
+-spec assert_key_header(key_header()) -> ok.
+assert_key_header(#key_header{}) -> ok;
+assert_key_header(Other) -> error({illegal_key_header, Other}).
+
+-spec assert_micro_header(micro_header()) -> ok.
+assert_micro_header(#mic_header{}) -> ok;
+assert_micro_header(Other) -> error({illegal_key_header, Other}).
+
+-spec type(header()) -> block_type().
+type(#key_header{}) -> key;
+type(#mic_header{}) -> micro.
+
+%%%===================================================================
+%%% Constructors
+%%%===================================================================
 
 -spec new_key_header(height(), block_header_hash(), state_hash(),
                      miner_pubkey(), beneficiary_pubkey(),
@@ -129,44 +168,73 @@ new_micro_header(Height, PrevHash, RootHash, Time, TxsHash, Version) ->
                 version   = Version
                }.
 
--spec to_key_block(header()) -> aec_blocks:block().
-to_key_block(#key_header{height = Height,
-                         prev_hash = PrevHash,
-                         root_hash = RootHash,
-                         miner = Miner,
-                         beneficiary = Beneficiary,
-                         target = Target,
-                         pow_evidence = Evd,
-                         nonce = Nonce,
-                         time = Time,
-                         version = Version}) ->
-    aec_blocks:new_key_with_evidence(Height, PrevHash, RootHash, Target, Nonce,
-                                     Time, Version, Miner, Beneficiary, Evd).
+%%%===================================================================
+%%% Header hash
+%%%===================================================================
 
--spec to_micro_block(header(), [aetx_sign:signed_tx()], binary()) ->
-                            aec_blocks:block().
-to_micro_block(#mic_header{height = Height,
-                           prev_hash = PrevHash,
-                           root_hash = RootHash,
-                           txs_hash = TxsHash,
-                           time = Time,
-                           version = Version}, Txs, Signature) ->
-    aec_blocks:new_signed_micro(Height, PrevHash, RootHash, TxsHash, Txs, Time, Version, Signature).
+-spec hash_header(header()) -> {ok, aec_blocks:block_header_hash()}.
+hash_header(H) ->
+    BinaryH = serialize_to_binary(H),
+    {ok, aec_hash:hash(header, BinaryH)}.
 
--spec prev_hash(header()) -> block_header_hash().
-prev_hash(#key_header{prev_hash = H}) -> H;
-prev_hash(#mic_header{prev_hash = H}) -> H.
+%%%===================================================================
+%%% Getters and setters
+%%%===================================================================
+
+-spec beneficiary(key_header()) -> beneficiary_pubkey().
+beneficiary(Header) ->
+    Header#key_header.beneficiary.
 
 -spec height(header()) -> height().
 height(#key_header{height = H}) -> H;
 height(#mic_header{height = H}) -> H.
 
--spec version(header()) -> non_neg_integer().
-version(#key_header{version = V}) -> V;
-version(#mic_header{version = V}) -> V.
+-spec set_height(header(), height()) -> header().
+set_height(#key_header{} = H, Height) -> H#key_header{height = Height};
+set_height(#mic_header{} = H, Height) -> H#mic_header{height = Height}.
+
+-spec prev_hash(header()) -> block_header_hash().
+prev_hash(#key_header{prev_hash = H}) -> H;
+prev_hash(#mic_header{prev_hash = H}) -> H.
+
+-spec miner(key_header()) -> miner_pubkey().
+miner(Header) ->
+    Header#key_header.miner.
+
+-spec set_miner(key_header(), aec_keys:pubkey()) -> header().
+set_miner(#key_header{} = H, Miner) -> H#key_header{miner = Miner}.
 
 -spec nonce(key_header()) -> non_neg_integer().
 nonce(#key_header{nonce = N}) -> N.
+
+-spec set_nonce(key_header(), non_neg_integer()) -> key_header().
+set_nonce(Header, Nonce) ->
+    Header#key_header{nonce = Nonce}.
+
+-spec set_prev_hash(header(), block_header_hash()) -> header().
+set_prev_hash(#key_header{} = H, Hash) -> H#key_header{prev_hash = Hash};
+set_prev_hash(#mic_header{} = H, Hash) -> H#mic_header{prev_hash = Hash}.
+
+-spec pow(key_header()) -> aec_pow:pow_evidence().
+pow(#key_header{pow_evidence = Evd}) ->
+    Evd.
+
+-spec root_hash(header()) -> state_hash().
+root_hash(#key_header{root_hash = H}) -> H;
+root_hash(#mic_header{root_hash = H}) -> H.
+
+-spec set_root_hash(header(), state_hash()) -> header().
+set_root_hash(#key_header{} = H, Hash) -> H#key_header{root_hash = Hash};
+set_root_hash(#mic_header{} = H, Hash) -> H#mic_header{root_hash = Hash}.
+
+-spec set_nonce_and_pow(key_header(), aec_pow:nonce(), aec_pow:pow_evidence()
+                       ) -> key_header().
+set_nonce_and_pow(#key_header{} = H, Nonce, Evd) ->
+    H#key_header{nonce = Nonce, pow_evidence = Evd}.
+
+-spec difficulty(key_header()) -> aec_pow:difficulty().
+difficulty(Header) ->
+    aec_pow:target_to_difficulty(target(Header)).
 
 -spec target(key_header()) -> aec_pow:sci_int().
 target(Header) ->
@@ -176,13 +244,13 @@ target(Header) ->
 set_target(Header, NewTarget) ->
     Header#key_header{ target = NewTarget }.
 
--spec difficulty(key_header()) -> aec_pow:difficulty().
-difficulty(Header) ->
-    aec_pow:target_to_difficulty(target(Header)).
+-spec txs_hash(micro_header()) -> txs_hash().
+txs_hash(#mic_header{txs_hash = Hash}) ->
+    Hash.
 
--spec root_hash(header()) -> state_hash().
-root_hash(#key_header{root_hash = H}) -> H;
-root_hash(#mic_header{root_hash = H}) -> H.
+-spec version(header()) -> non_neg_integer().
+version(#key_header{version = V}) -> V;
+version(#mic_header{version = V}) -> V.
 
 -spec time_in_secs(header()) -> non_neg_integer().
 time_in_secs(#key_header{time = T}) -> aeu_time:msecs_to_secs(T);
@@ -196,41 +264,39 @@ time_in_msecs(#mic_header{time = T}) -> T.
 set_time_in_msecs(#key_header{} = H, Time) -> H#key_header{time = Time};
 set_time_in_msecs(#mic_header{} = H, Time) -> H#mic_header{time = Time}.
 
--spec miner(key_header()) -> miner_pubkey().
-miner(Header) ->
-    Header#key_header.miner.
+-spec update_micro_candidate(micro_header(), txs_hash(), state_hash(),
+                             non_neg_integer()) -> micro_header().
+update_micro_candidate(#mic_header{} = H, TxsRootHash, RootHash, TimeMSecs) ->
+    H#mic_header{txs_hash = TxsRootHash,
+                 root_hash = RootHash,
+                 time = TimeMSecs
+                }.
 
--spec beneficiary(key_header()) -> beneficiary_pubkey().
-beneficiary(Header) ->
-    Header#key_header.beneficiary.
+%%%===================================================================
+%%% Serialization
+%%%===================================================================
 
--spec serialize_to_map(header()) -> {ok, map()}.
+-spec serialize_to_map(header()) -> map().
 serialize_to_map(#key_header{} = Header) ->
-    Serialized =
-      #{<<"height">> => Header#key_header.height,
-        <<"prev_hash">> => Header#key_header.prev_hash,
-        <<"state_hash">> => Header#key_header.root_hash,
-        <<"miner">> => Header#key_header.miner,
-        <<"beneficiary">> => Header#key_header.beneficiary,
-        <<"target">> => Header#key_header.target,
-        <<"pow">> => Header#key_header.pow_evidence,
-        <<"nonce">> => Header#key_header.nonce,
-        <<"time">> => Header#key_header.time,
-        <<"version">> => Header#key_header.version
-      },
-    {ok, Serialized};
+    #{<<"height">> => Header#key_header.height,
+      <<"prev_hash">> => Header#key_header.prev_hash,
+      <<"state_hash">> => Header#key_header.root_hash,
+      <<"miner">> => Header#key_header.miner,
+      <<"beneficiary">> => Header#key_header.beneficiary,
+      <<"target">> => Header#key_header.target,
+      <<"pow">> => Header#key_header.pow_evidence,
+      <<"nonce">> => Header#key_header.nonce,
+      <<"time">> => Header#key_header.time,
+      <<"version">> => Header#key_header.version};
 serialize_to_map(#mic_header{} = Header) ->
-    Serialized =
-      #{<<"height">> => Header#mic_header.height,
-        <<"prev_hash">> => Header#mic_header.prev_hash,
-        <<"state_hash">> => Header#mic_header.root_hash,
-        <<"txs_hash">> => Header#mic_header.txs_hash,
-        <<"time">> => Header#mic_header.time,
-        <<"version">> => Header#mic_header.version
-      },
-    {ok, Serialized}.
+    #{<<"height">> => Header#mic_header.height,
+      <<"prev_hash">> => Header#mic_header.prev_hash,
+      <<"state_hash">> => Header#mic_header.root_hash,
+      <<"txs_hash">> => Header#mic_header.txs_hash,
+      <<"time">> => Header#mic_header.time,
+      <<"version">> => Header#mic_header.version}.
 
--spec deserialize_from_map(map()) -> header().
+-spec deserialize_from_map(map()) -> {'ok', header()} | {'error', term()}.
 deserialize_from_map(#{<<"height">> := Height,
                        <<"prev_hash">> := PrevHash,
                        <<"state_hash">> := RootHash,
@@ -241,28 +307,35 @@ deserialize_from_map(#{<<"height">> := Height,
                        <<"nonce">> := Nonce,
                        <<"time">> := Time,
                        <<"version">> := Version}) ->
-    #key_header{height = Height,
-                prev_hash = PrevHash,
-                root_hash = RootHash,
-                miner = Miner,
-                beneficiary = Beneficiary,
-                target = Target,
-                pow_evidence = PowEvidence,
-                nonce = Nonce,
-                time = Time,
-                version = Version};
+    %% Prevent forging a solution without performing actual work by prefixing digits
+    %% to a valid nonce (produces valid PoW after truncating to the allowed range)
+    case Nonce of
+        N when N < 0; N > ?MAX_NONCE ->
+            {error, bad_nonce};
+        _ ->
+            {ok, #key_header{height = Height,
+                             prev_hash = PrevHash,
+                             root_hash = RootHash,
+                             miner = Miner,
+                             beneficiary = Beneficiary,
+                             target = Target,
+                             pow_evidence = PowEvidence,
+                             nonce = Nonce,
+                             time = Time,
+                             version = Version}}
+    end;
 deserialize_from_map(#{<<"height">> := Height,
                        <<"prev_hash">> := PrevHash,
                        <<"state_hash">> := RootHash,
                        <<"txs_hash">> := TxsHash,
                        <<"time">> := Time,
                        <<"version">> := Version}) ->
-    #mic_header{height = Height,
-                prev_hash = PrevHash,
-                root_hash = RootHash,
-                txs_hash = TxsHash,
-                time = Time,
-                version = Version}.
+    {ok, #mic_header{height = Height,
+                     prev_hash = PrevHash,
+                     root_hash = RootHash,
+                     txs_hash = TxsHash,
+                     time = Time,
+                     version = Version}}.
 
 -spec serialize_to_binary(header()) -> deterministic_header_binary().
 serialize_to_binary(#key_header{} = Header) ->
@@ -321,11 +394,6 @@ deserialize_from_binary(<<Version:64,
                 time = Time,
                 version = Version}.
 
--spec hash_header(header()) -> {ok, aec_blocks:block_header_hash()}.
-hash_header(H) ->
-    BinaryH = serialize_to_binary(H),
-    {ok, aec_hash:hash(header, BinaryH)}.
-
 serialize_pow_evidence_to_binary(Ev) ->
    << <<E:32>> || E <- serialize_pow_evidence(Ev) >>.
 
@@ -354,6 +422,10 @@ deserialize_pow_evidence(L) when is_list(L) ->
     end;
 deserialize_pow_evidence(_) ->
     'no_value'.
+
+%%%===================================================================
+%%% Validation
+%%%===================================================================
 
 validate_key_block_header(Header) ->
     ProtocolVersions = aec_hard_forks:protocols(aec_governance:protocols()),
@@ -447,7 +519,3 @@ validate_max_time({Header, _}) ->
         false ->
             {error, block_from_the_future}
     end.
-
--spec type(header()) -> block_type().
-type(#key_header{}) -> key;
-type(#mic_header{}) -> micro.

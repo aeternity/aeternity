@@ -1,7 +1,10 @@
+%%% -*- erlang-indent-level:4; indent-tabs-mode: nil -*-
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2017, Aeternity Anstalt
+%%% @doc
+%%% API for blocks
+%%% @end
 %%%-------------------------------------------------------------------
-
 -module(aec_blocks).
 
 %% API
@@ -16,9 +19,9 @@
          is_key_block/1,
          miner/1,
          new_key/9,
-         new_key_with_evidence/10,
+         new_key_from_header/1,
          new_micro/7,
-         new_signed_micro/8,
+         new_micro_from_header/3,
          pow/1,
          prev_hash/1,
          root_hash/1,
@@ -27,7 +30,7 @@
          set_height/2,
          set_miner/2,
          set_nonce/2,
-         set_pow/3,
+         set_nonce_and_pow/3,
          set_prev_hash/2,
          set_root_hash/2,
          set_signature/2,
@@ -48,47 +51,37 @@
          version/1
         ]).
 
--import(aec_hard_forks, [protocol_effective_at_height/1]).
-
--ifdef(TEST).
--compile([export_all, nowarn_export_all]).
--endif.
-
 -include("blocks.hrl").
 
+%%%===================================================================
+%%% Records and types
+%%%===================================================================
+
 -record(mic_block, {
-          height    = 0                                     :: height(),
-          prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
-          root_hash = <<0:?STATE_HASH_BYTES/unit:8>>        :: state_hash(),
-          txs_hash  = <<0:?TXS_HASH_BYTES/unit:8>>          :: txs_hash(),
-          txs       = []                                    :: [aetx_sign:signed_tx()],
-          time      = ?GENESIS_TIME                         :: non_neg_integer(),
-          version                                           :: non_neg_integer(),
-          signature = undefined                             :: binary() | undefined
+          header    :: aec_headers:micro_header(),
+          signature :: 'undefined' | binary(),
+          txs = []  :: tx_list()
          }).
 
 -record(key_block, {
-          height       = 0                                     :: height(),
-          prev_hash    = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
-          root_hash    = <<0:?STATE_HASH_BYTES/unit:8>>        :: state_hash(),
-          target       = ?HIGHEST_TARGET_SCI                   :: aec_pow:sci_int(),
-          nonce        = 0                                     :: non_neg_integer(),
-          time         = ?GENESIS_TIME                         :: non_neg_integer(),
-          version                                              :: non_neg_integer(),
-          pow_evidence = no_value                              :: aec_pow:pow_evidence(),
-          miner        = <<0:?MINER_PUB_BYTES/unit:8>>         :: miner_pubkey(),
-          beneficiary  = <<0:?BENEFICIARY_PUB_BYTES/unit:8>>   :: beneficiary_pubkey()}).
+          header    :: aec_headers:key_header()
+         }).
 
 -opaque key_block()   :: #key_block{}.
 -opaque micro_block() :: #mic_block{}.
 -type   block()       :: key_block() | micro_block().
 -type   height()      :: non_neg_integer().
+-type   tx_list()     :: list(aetx_sign:signed_tx()).
 
 -export_type([key_block/0,
               micro_block/0,
               block_header_hash/0,
               height/0
              ]).
+
+%%%===================================================================
+%%% Test interface
+%%%===================================================================
 
 -ifdef(TEST).
 
@@ -97,40 +90,38 @@
         ]).
 
 raw_key_block() ->
-    #key_block{version = ?PROTOCOL_VERSION}.
+    #key_block{header = aec_headers:raw_key_header()}.
 
 raw_micro_block() ->
-    #mic_block{version = ?PROTOCOL_VERSION}.
+    #mic_block{header = aec_headers:raw_micro_header()}.
 
 -endif. %% TEST
 
--spec beneficiary(key_block()) -> aec_keys:pubkey().
-beneficiary(Block) ->
-    Block#key_block.beneficiary.
+%%%===================================================================
+%%% Handling connection to headers
+%%%===================================================================
 
--spec prev_hash(block()) -> block_header_hash().
-prev_hash(#key_block{prev_hash = H}) -> H;
-prev_hash(#mic_block{prev_hash = H}) -> H.
+-spec to_header(block()) -> aec_headers:header().
+to_header(#mic_block{header = H}) -> H;
+to_header(#key_block{header = H}) -> H.
 
--spec set_prev_hash(block(), block_header_hash()) -> block().
-set_prev_hash(#key_block{} = B, H) -> B#key_block{prev_hash = H};
-set_prev_hash(#mic_block{} = B, H) -> B#mic_block{prev_hash = H}.
+-spec to_key_header(key_block()) -> aec_headers:key_header().
+to_key_header(#key_block{header = H}) -> H.
 
--spec height(block()) -> height().
-height(#mic_block{height = H}) -> H;
-height(#key_block{height = H}) -> H.
+-spec to_micro_header(micro_block()) -> aec_headers:micro_header().
+to_micro_header(#mic_block{header = H}) -> H.
 
--spec set_height(block(), height()) -> block().
-set_height(#key_block{} = Block, Height) -> Block#key_block{height = Height};
-set_height(#mic_block{} = Block, Height) -> Block#mic_block{height = Height}.
+%% Internal: DO NOT EXPORT
+set_header(#mic_block{} = B, H) ->
+    aec_headers:assert_micro_header(H),
+    B#mic_block{header = H};
+set_header(#key_block{} = B, H) ->
+    aec_headers:assert_key_header(H),
+    B#key_block{header = H}.
 
--spec target(key_block()) -> integer().
-target(Block) ->
-    Block#key_block.target.
-
--spec difficulty(key_block()) -> float().
-difficulty(Block) ->
-    aec_pow:target_to_difficulty(target(Block)).
+%%%===================================================================
+%%% Block structure
+%%%===================================================================
 
 -spec assert_block(block()) -> ok.
 assert_block(#key_block{}) -> ok;
@@ -146,152 +137,174 @@ is_block(_       ) -> false.
 is_key_block(#key_block{}) -> true;
 is_key_block(#mic_block{}) -> false.
 
+-spec type(block()) -> block_type().
+type(#key_block{}) -> 'key';
+type(#mic_block{}) -> 'micro'.
+
+%%%===================================================================
+%%% Constructors
+%%%===================================================================
+
+-spec new_key(height(), block_header_hash(), state_hash(), aec_pow:sci_int(),
+              non_neg_integer(), non_neg_integer(), non_neg_integer(),
+              miner_pubkey(), beneficiary_pubkey()
+             ) -> key_block().
+new_key(Height, PrevHash, RootHash, Target,
+        Nonce, Time, Version, Miner, Beneficiary) ->
+    H = aec_headers:new_key_header(Height, PrevHash, RootHash,
+                                   Miner, Beneficiary, Target,
+                                   no_value, Nonce, Time, Version),
+    #key_block{header = H}.
+
+-spec new_key_from_header(aec_headers:key_header()) -> key_block().
+new_key_from_header(Header) ->
+    aec_headers:assert_key_header(Header),
+    #key_block{header = Header}.
+
+-spec new_micro(height(), block_header_hash(), state_hash(), txs_hash(),
+                tx_list(), non_neg_integer(),
+                non_neg_integer()) -> micro_block().
+new_micro(Height, PrevHash, RootHash, TxsHash, Txs, Time, Version) ->
+    H = aec_headers:new_micro_header(Height, PrevHash, RootHash, Time,
+                                     TxsHash, Version),
+    #mic_block{header    = H,
+               signature = undefined,
+               txs       = Txs
+              }.
+
+-spec new_micro_from_header(aec_headers:micro_header(), tx_list(), binary()
+                           )-> micro_block().
+
+new_micro_from_header(Header, Txs, Sig) ->
+    aec_headers:assert_micro_header(Header),
+    #mic_block{header    = Header,
+               signature = Sig,
+               txs       = Txs
+              }.
+
+%%%===================================================================
+%%% Block hash
+%%%===================================================================
+
+-spec hash_internal_representation(block()) -> {ok, block_header_hash()}.
+hash_internal_representation(B) ->
+    aec_headers:hash_header(to_header(B)).
+
+%%%===================================================================
+%%% Getters and setters
+%%%===================================================================
+
+-spec beneficiary(key_block()) -> aec_keys:pubkey().
+beneficiary(Block) ->
+    aec_headers:beneficiary(to_header(Block)).
+
+-spec prev_hash(block()) -> block_header_hash().
+prev_hash(Block) ->
+    aec_headers:prev_hash(to_header(Block)).
+
+-spec set_prev_hash(block(), block_header_hash()) -> block().
+set_prev_hash(Block, PrevHash) ->
+    set_header(Block, aec_headers:set_prev_hash(to_header(Block), PrevHash)).
+
+-spec height(block()) -> height().
+height(Block) ->
+    aec_headers:height(to_header(Block)).
+
+-spec set_height(block(), height()) -> block().
+set_height(Block, Height) ->
+    set_header(Block, aec_headers:set_height(to_header(Block), Height)).
+
+-spec difficulty(key_block()) -> float().
+difficulty(Block) ->
+    aec_pow:target_to_difficulty(target(Block)).
+
 -spec time_in_msecs(block()) -> non_neg_integer().
-time_in_msecs(#mic_block{time = T}) -> T;
-time_in_msecs(#key_block{time = T}) -> T.
+time_in_msecs(Block) ->
+    aec_headers:time_in_msecs(to_header(Block)).
 
 -spec set_time_in_msecs(block(), non_neg_integer()) -> block().
-set_time_in_msecs(#mic_block{} = B, T) -> B#mic_block{time = T};
-set_time_in_msecs(#key_block{} = B, T) -> B#key_block{time = T}.
+set_time_in_msecs(Block, T) ->
+    set_header(Block, aec_headers:set_time_in_msecs(to_header(Block), T)).
 
 -spec root_hash(block()) -> binary().
-root_hash(#mic_block{root_hash = H}) -> H;
-root_hash(#key_block{root_hash = H}) -> H.
+root_hash(Block) ->
+    aec_headers:root_hash(to_header(Block)).
 
 -spec set_root_hash(block(), binary()) -> block().
-set_root_hash(#mic_block{} = B, H) -> B#mic_block{root_hash = H};
-set_root_hash(#key_block{} = B, H) -> B#key_block{root_hash = H}.
+set_root_hash(Block, H) ->
+    set_header(Block, aec_headers:set_root_hash(to_header(Block), H)).
 
 -spec miner(key_block()) -> aec_keys:pubkey().
-miner(#key_block{miner = M}) -> M.
+miner(Block) ->
+    aec_headers:miner(to_header(Block)).
 
 -spec set_miner(key_block(), aec_keys:pubkey()) -> key_block().
-set_miner(#key_block{} = B, M) -> B#key_block{miner = M}.
+set_miner(Block, M) ->
+    set_header(Block, aec_headers:set_miner(to_key_header(Block), M)).
 
 -spec version(block()) -> non_neg_integer().
-version(#mic_block{version = V}) -> V;
-version(#key_block{version = V}) -> V.
-
-%% Sets the evidence of PoW,too,  for Cuckoo Cycle
--spec set_pow(key_block(), aec_pow:nonce(), aec_pow:pow_evidence()) -> key_block().
-set_pow(Block, Nonce, Evd) ->
-    Block#key_block{nonce = Nonce,
-                    pow_evidence = Evd}.
+version(Block) ->
+    aec_headers:version(to_header(Block)).
 
 -spec set_nonce(key_block(), aec_pow:nonce()) -> key_block().
 set_nonce(Block, Nonce) ->
-    Block#key_block{nonce = Nonce}.
+    set_header(Block, aec_headers:set_nonce(to_key_header(Block), Nonce)).
 
 -spec pow(key_block()) -> aec_pow:pow_evidence().
 pow(Block) ->
-    Block#key_block.pow_evidence.
+    aec_headers:pow(to_key_header(Block)).
 
-%% Sets the signature for microblock
--spec set_signature(micro_block(), binary()) -> micro_block().
-set_signature(Block, Signature) ->
-    Block#mic_block{signature = Signature}.
+-spec set_nonce_and_pow(key_block(), aec_pow:nonce(), aec_pow:pow_evidence()
+                       ) -> key_block().
+set_nonce_and_pow(Block, Nonce, Evd) ->
+    H = aec_headers:set_nonce_and_pow(to_key_header(Block), Nonce, Evd),
+    set_header(Block, H).
 
 -spec signature(micro_block()) -> binary() | undefined.
-signature(Block) ->
-    Block#mic_block.signature.
+signature(#mic_block{signature = Signature}) ->
+    Signature.
+
+-spec set_signature(micro_block(), binary()) -> micro_block().
+set_signature(#mic_block{} = Block, Signature) ->
+    Block#mic_block{signature = Signature}.
+
+-spec target(key_block()) -> integer().
+target(Block) ->
+    aec_headers:target(to_key_header(Block)).
 
 -spec set_target(key_block(), non_neg_integer()) -> key_block().
 set_target(Block, Target) ->
-    Block#key_block{target = Target}.
+    set_header(Block, aec_headers:set_target(to_header(Block), Target)).
 
-%% TODO: have a spec for list of transactions
--spec txs(micro_block()) -> list(aetx_sign:signed_tx()).
+-spec txs(micro_block()) -> tx_list().
 txs(Block) ->
     Block#mic_block.txs.
 
--spec set_txs(micro_block(), list(aetx_sign:signed_tx())) -> micro_block().
+-spec set_txs(micro_block(), tx_list()) -> micro_block().
 set_txs(Block, Txs) ->
     Block#mic_block{txs = Txs}.
 
 -spec txs_hash(micro_block()) -> binary().
 txs_hash(Block) ->
-    Block#mic_block.txs_hash.
-
--spec new_key(height(), block_header_hash(), state_hash(), aec_pow:sci_int(),
-              non_neg_integer(), non_neg_integer(), non_neg_integer(),
-              miner_pubkey(), beneficiary_pubkey()) -> key_block().
-new_key(Height, PrevHash, RootHash, Target, Nonce, Time, Version, Miner, Beneficiary) ->
-    new_key_with_evidence(Height, PrevHash, RootHash, Target, Nonce,
-                          Time, Version, Miner, Beneficiary, no_value).
-
--spec new_key_with_evidence(height(), block_header_hash(), state_hash(), aec_pow:sci_int(),
-              non_neg_integer(), non_neg_integer(), non_neg_integer(),
-              miner_pubkey(), beneficiary_pubkey(), aec_pow:pow_evidence()) -> key_block().
-new_key_with_evidence(Height, PrevHash, RootHash, Target, Nonce, Time, Version, Miner, Beneficiary, Evd) ->
-    #key_block{ height       = Height
-              , prev_hash    = PrevHash
-              , root_hash    = RootHash
-              , target       = Target
-              , nonce        = Nonce
-              , pow_evidence = Evd
-              , time         = Time
-              , version      = Version
-              , miner        = Miner
-              , beneficiary  = Beneficiary }.
-
--spec new_micro(height(), block_header_hash(), state_hash(), txs_hash(),
-                list(aetx_sign:signed_tx()), non_neg_integer(),
-                non_neg_integer()) -> micro_block().
-new_micro(Height, PrevHash, RootHash, TxsHash, Txs, Time, Version) ->
-    #mic_block{ height    = Height
-              , prev_hash = PrevHash
-              , root_hash = RootHash
-              , txs_hash  = TxsHash
-              , txs       = Txs
-              , time      = Time
-              , version   = Version }.
-
--spec new_signed_micro(height(), block_header_hash(), state_hash(), txs_hash(),
-                list(aetx_sign:signed_tx()), non_neg_integer(), non_neg_integer(),
-                binary()) -> micro_block().
-new_signed_micro(Height, PrevHash, RootHash, TxsHash, Txs, Time, Version, Signature) ->
-    #mic_block{ height    = Height
-              , prev_hash = PrevHash
-              , root_hash = RootHash
-              , signature = Signature
-              , txs_hash  = TxsHash
-              , txs       = Txs
-              , time      = Time
-              , version   = Version }.
+    aec_headers:txs_hash(to_micro_header(Block)).
 
 -spec update_micro_candidate(micro_block(), txs_hash(), state_hash(),
                              [aetx_sign:signed_tx()], non_neg_integer()
                             ) -> micro_block().
 update_micro_candidate(#mic_block{} = Block, TxsRootHash, RootHash, Txs, TimeMSecs) ->
-    Block#mic_block{ root_hash = RootHash
-                   , txs_hash  = TxsRootHash
-                   , txs       = Txs
-                   , time      = TimeMSecs}.
+    H = aec_headers:update_micro_candidate(to_micro_header(Block),
+                                           TxsRootHash, RootHash, TimeMSecs),
+    Block#mic_block{ header = H
+                   , txs    = Txs
+                   }.
 
--spec to_header(block()) -> aec_headers:header().
-to_header(#key_block{height = Height,
-                     prev_hash = PrevHash,
-                     root_hash = RootHash,
-                     miner = Miner,
-                     beneficiary = Beneficiary,
-                     target = Target,
-                     pow_evidence = Evd,
-                     nonce = Nonce,
-                     time = Time,
-                     version = Version}) ->
-    aec_headers:new_key_header(Height, PrevHash, RootHash, Miner, Beneficiary, Target,
-                               Evd, Nonce, Time, Version);
-to_header(#mic_block{height = Height,
-                     prev_hash = PrevHash,
-                     root_hash = RootHash,
-                     txs_hash = TxsHash,
-                     time = Time,
-                     version = Version}) ->
-    aec_headers:new_micro_header(Height, PrevHash, RootHash, Time, TxsHash, Version).
+%%%===================================================================
+%%% Serialization
+%%%===================================================================
 
 -spec serialize_to_binary(block()) -> binary().
 serialize_to_binary(#key_block{} = Block) ->
-    Hdr = aec_headers:serialize_to_binary(to_header(Block)),
+    Hdr = aec_headers:serialize_to_binary(to_key_header(Block)),
     Vsn = version(Block),
     {ok, Template} = serialization_template(key, Vsn),
     aec_object_serialization:serialize(
@@ -300,7 +313,7 @@ serialize_to_binary(#key_block{} = Block) ->
       Template,
       [{header, Hdr}]);
 serialize_to_binary(#mic_block{} = Block) ->
-    Hdr = aec_headers:serialize_to_binary(to_header(Block)),
+    Hdr = aec_headers:serialize_to_binary(to_micro_header(Block)),
     Txs = [ aetx_sign:serialize_to_binary(Tx) || Tx <- txs(Block)],
     Vsn = version(Block),
     {ok, Template} = serialization_template(micro, Vsn),
@@ -319,7 +332,7 @@ deserialize_from_binary(Bin) ->
                     [{header, Hdr0}] =
                         aec_object_serialization:deserialize(key_block, Vsn, Template, Bin),
                     Hdr = aec_headers:deserialize_from_binary(Hdr0),
-                    {ok, aec_headers:to_key_block(Hdr)};
+                    {ok, #key_block{header = Hdr}};
                 Err = {error, _} ->
                     Err
             end;
@@ -330,7 +343,9 @@ deserialize_from_binary(Bin) ->
                         aec_object_serialization:deserialize(micro_block, Vsn, Template, Bin),
                     Hdr = aec_headers:deserialize_from_binary(Hdr0),
                     Txs = [ aetx_sign:deserialize_from_binary(Tx) || Tx <- Txs0 ],
-                    {ok, aec_headers:to_micro_block(Hdr, Txs, Sig)};
+                    {ok, #mic_block{header    = Hdr,
+                                    signature = Sig,
+                                    txs       = Txs}};
                 Err = {error, _} ->
                     Err
             end
@@ -345,83 +360,36 @@ serialization_template(_BlockType, Vsn) ->
 
 -spec serialize_to_map(block()) -> map().
 serialize_to_map(#key_block{} = Block) ->
-    #{<<"height">> => Block#key_block.height,
-      <<"prev_hash">> => Block#key_block.prev_hash,
-      <<"state_hash">> => Block#key_block.root_hash,
-      <<"miner">> => Block#key_block.miner,
-      <<"beneficiary">> => Block#key_block.beneficiary,
-      <<"target">> => Block#key_block.target,
-      <<"pow">> => Block#key_block.pow_evidence,
-      <<"nonce">> => Block#key_block.nonce,
-      <<"time">> => Block#key_block.time,
-      <<"version">> => Block#key_block.version
-     };
+    aec_headers:serialize_to_map(to_key_header(Block));
 serialize_to_map(#mic_block{} = Block) ->
-    #{<<"height">> => Block#mic_block.height,
-      <<"prev_hash">> => Block#mic_block.prev_hash,
-      <<"state_hash">> => Block#mic_block.root_hash,
-      <<"txs_hash">> => Block#mic_block.txs_hash,
-      <<"time">> => Block#mic_block.time,
-      <<"version">> => Block#mic_block.version,
-      <<"transactions">> => Block#mic_block.txs,
-      <<"signature">> => Block#mic_block.signature
-     }.
+    H   = to_micro_header(Block),
+    Map = aec_headers:serialize_to_map(H),
+    Map#{<<"transactions">> => Block#mic_block.txs,
+         <<"signature">>    => Block#mic_block.signature
+        }.
 
 -spec deserialize_from_map(map()) -> {'error', term()} | {'ok', block()}.
-deserialize_from_map(#{<<"height">> := Height,
-                       <<"prev_hash">> := PrevHash,
-                       <<"state_hash">> := RootHash,
-                       <<"miner">> := Miner,
-                       <<"beneficiary">> := Beneficiary,
-                       <<"target">> := Target,
-                       <<"pow">> := PowEvidence,
-                       <<"nonce">> := Nonce,
-                       <<"time">> := Time,
-                       <<"version">> := Version}) ->
-    case Nonce of
-    %% Prevent forging a solution without performing actual work by prefixing digits
-    %% to a valid nonce (produces valid PoW after truncating to the allowed range)
-        N when N < 0; N > ?MAX_NONCE ->
-            {error, bad_nonce};
-        _ ->
-            {ok, #key_block{
-                    height = Height,
-                    prev_hash = PrevHash,
-                    root_hash = RootHash,
-                    miner = Miner,
-                    beneficiary = Beneficiary,
-                    target = Target,
-                    pow_evidence = PowEvidence,
-                    nonce = Nonce,
-                    time = Time,
-                    version = Version}}
-    end;
-deserialize_from_map(#{<<"height">> := Height,
-                       <<"prev_hash">> := PrevHash,
-                       <<"state_hash">> := RootHash,
-                       <<"txs_hash">> := TxsHash,
-                       <<"time">> := Time,
-                       <<"version">> := Version,
-                       <<"transactions">> := Txs,
-                       <<"signature">> := Signature}) ->
-    {ok, #mic_block{
-            height = Height,
-            prev_hash = PrevHash,
-            root_hash = RootHash,
-            txs_hash = TxsHash,
-            signature = Signature,
-            time = Time,
-            version = Version,
-            txs = Txs}}.
+deserialize_from_map(Map) ->
+    case aec_headers:deserialize_from_map(Map) of
+        {ok, H} ->
+            case aec_headers:type(H) of
+                micro ->
+                    {ok, #mic_block{header    = H,
+                                    signature = maps:get(<<"signature">>, Map),
+                                    txs       = maps:get(<<"transactions">>, Map)}};
+                key ->
+                    {ok, #key_block{header = H}}
+            end;
+        {error, _} = E -> E
+    end.
 
--spec hash_internal_representation(block()) -> {ok, block_header_hash()}.
-hash_internal_representation(B) ->
-    aec_headers:hash_header(to_header(B)).
-
+%%%===================================================================
+%%% Validation
+%%%===================================================================
 
 -spec validate_key_block(key_block()) -> 'ok' | {'error', {'header', term()}}.
 validate_key_block(#key_block{} = Block) ->
-    case aec_headers:validate_key_block_header(to_header(Block)) of
+    case aec_headers:validate_key_block_header(to_key_header(Block)) of
         ok -> ok;
         {error, Reason} -> {error, {header, Reason}}
     end.
@@ -441,7 +409,7 @@ validate_micro_block(#mic_block{} = Block, LeaderKey) ->
 validate_micro_block(Block, LeaderKey, Validators) ->
     % since trees are required for transaction signature validation, this is
     % performed while applying transactions
-    case aec_headers:validate_micro_block_header(to_header(Block)) of
+    case aec_headers:validate_micro_block_header(to_micro_header(Block)) of
         ok ->
             case aeu_validation:run(Validators, [{Block, LeaderKey}]) of
                 ok              -> ok;
@@ -452,7 +420,8 @@ validate_micro_block(Block, LeaderKey, Validators) ->
     end.
 
 -spec validate_signature({block(), binary()}) -> ok | {error, signature_verification_failed}.
-validate_signature({#mic_block{signature = Sig} = Block, LeaderKey}) ->
+validate_signature({#mic_block{} = Block, LeaderKey}) ->
+    Sig = signature(Block),
     Bin = aec_headers:serialize_to_binary(to_header(Block)),
     case enacl:sign_verify_detached(Sig, Bin, LeaderKey) of
         {ok, _}    -> ok;
@@ -460,14 +429,11 @@ validate_signature({#mic_block{signature = Sig} = Block, LeaderKey}) ->
     end.
 
 -spec validate_txs_hash({block(), binary()}) -> ok | {error, malformed_txs_hash}.
-validate_txs_hash({#mic_block{txs = Txs, txs_hash = BlockTxsHash}, _}) ->
+validate_txs_hash({#mic_block{txs = Txs} = Block, _}) ->
+    BlockTxsHash = aec_headers:txs_hash(to_micro_header(Block)),
     case aec_txs_trees:pad_empty(aec_txs_trees:root_hash(aec_txs_trees:from_txs(Txs))) of
         BlockTxsHash ->
             ok;
         _Other ->
             {error, malformed_txs_hash}
     end.
-
--spec type(block()) -> block_type().
-type(#key_block{}) -> 'key';
-type(#mic_block{}) -> 'micro'.
