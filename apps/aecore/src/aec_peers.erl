@@ -983,7 +983,7 @@ on_resolve_hostname(Ref, Host, #state{ hostnames = HostMap } = State) ->
 -spec on_add_peer(inet:ip_address(), peer(), state()) -> state().
 on_add_peer(SourceAddr, Peer, State0) ->
     #state{ hostnames = HostMap } = State0,
-    State = maybe_unblock(State0#state{hostnames = maps:remove(Peer#peer.host, HostMap)}),
+    State = maybe_unblock(State0#state{hostnames = maps:remove(to_list(Peer#peer.host), HostMap)}),
     PeerId  = peer_id(Peer),
     #peer{ pubkey = PPK, address = PA, port = PP } = Peer,
     case is_local(PeerId, State) orelse is_blocked(PeerId, State) of
