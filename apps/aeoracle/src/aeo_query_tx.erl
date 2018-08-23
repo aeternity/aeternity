@@ -39,7 +39,6 @@
 
 -define(ORACLE_QUERY_TX_VSN, 1).
 -define(ORACLE_QUERY_TX_TYPE, oracle_query_tx).
--define(ORACLE_QUERY_TX_FEE, 2).
 
 -record(oracle_query_tx, {
           sender       :: aec_id:id(),
@@ -151,7 +150,7 @@ check(#oracle_query_tx{nonce = Nonce, query_fee = QFee, query_ttl = QTTL,
          | case Context of
                aetx_contract -> [];
                aetx_transaction ->
-                   [fun() -> aeo_utils:check_ttl_fee(Height, QTTL, Fee - ?ORACLE_QUERY_TX_FEE) end]
+                   [fun() -> aeo_utils:check_ttl_fee(Height, QTTL, Fee - aec_governance:minimum_tx_fee()) end]
            end
         ],
 

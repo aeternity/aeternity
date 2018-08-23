@@ -34,7 +34,6 @@
 
 -define(ORACLE_RESPONSE_TX_VSN, 1).
 -define(ORACLE_RESPONSE_TX_TYPE, oracle_response_tx).
--define(ORACLE_RESPONSE_TX_FEE, 2).
 
 -record(oracle_response_tx, {
           oracle   :: aec_id:id(),
@@ -119,7 +118,7 @@ check(#oracle_response_tx{nonce = Nonce, query_id = QId, fee = Fee} = Tx,
                          [fun() -> aetx_utils:check_account(OraclePubKey, Trees,
                                                             Nonce, Fee - QueryFee) end,
                           fun() -> aeo_utils:check_ttl_fee(Height, ResponseTTL,
-                                                           Fee - ?ORACLE_RESPONSE_TX_FEE) end]
+                                                           Fee - aec_governance:minimum_tx_fee()) end]
                  end],
             case aeu_validation:run(Checks) of
                 ok              -> {ok, Trees};

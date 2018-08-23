@@ -35,7 +35,6 @@
 
 -define(ORACLE_REGISTER_TX_VSN, 1).
 -define(ORACLE_REGISTER_TX_TYPE, oracle_register_tx).
--define(ORACLE_REGISTER_TX_FEE, 4).
 
 -record(oracle_register_tx, {
           account                                     :: aec_id:id(),
@@ -127,7 +126,7 @@ check(#oracle_register_tx{nonce = Nonce, oracle_ttl = OTTL, fee = Fee} = Tx,
                %% Contract is paying tx fee as gas.
                aetx_contract -> [];
                aetx_transaction ->
-                   [fun() -> aeo_utils:check_ttl_fee(Height, OTTL, Fee - ?ORACLE_REGISTER_TX_FEE) end]
+                   [fun() -> aeo_utils:check_ttl_fee(Height, OTTL, Fee - aec_governance:minimum_tx_fee()) end]
            end],
 
     case aeu_validation:run(Checks) of

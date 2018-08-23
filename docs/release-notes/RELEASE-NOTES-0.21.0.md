@@ -5,6 +5,7 @@ It:
 * Adds support for type aliases to the Sophia compiler.
 * Changes the target (difficulty) calculation algorithm to use [DigiShield v3][digishield_v3]. This impacts consensus.
 * Fixes miner fee reward calculations, was too generous before. This impacts consensus.
+* Modifies the minimum static component of the fee of oracle transactions to `1` - as for all other transactions. This impacts consensus.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.21.0
 [digishield_v3]: https://github.com/zawy12/difficulty-algorithms/issues/9
