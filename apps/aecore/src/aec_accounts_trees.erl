@@ -24,6 +24,11 @@
         , lookup_poi/2
         ]).
 
+-ifdef(TEST).
+-export([delete/2]).
+-endif.
+
+
 %% API - misc
 -export([get_all_accounts_balances/1]).
 
@@ -68,6 +73,11 @@ lookup(Pubkey, Tree) ->
 -spec enter(aec_accounts:account(), tree()) -> tree().
 enter(Account, Tree) ->
     aeu_mtrees:enter(key(Account), value(Account), Tree).
+
+-dialyzer({nowarn_function, delete/2}).
+-spec delete(aec_keys:pubkey(), tree()) -> tree().
+delete(Pubkey, Tree) ->
+    aeu_mtrees:delete(Pubkey, Tree).
 
 %%%===================================================================
 %%% API - Merkle tree
