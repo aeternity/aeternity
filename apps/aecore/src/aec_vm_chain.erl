@@ -20,10 +20,10 @@
           oracle_get_question/3,
           oracle_query/6,
           oracle_query_fee/2,
-          oracle_query_spec/2,
+          oracle_query_format/2,
           oracle_register/7,
           oracle_respond/5,
-          oracle_response_spec/2,
+          oracle_response_format/2,
           aens_resolve/4,
           aens_preclaim/4,
           aens_claim/5,
@@ -96,40 +96,40 @@ set_store(Store,  #state{ account = PubKey, trees = Trees } = State) ->
 %% @doc Spend money from the contract account.
 -spec spend(aec_id:id(), non_neg_integer(), chain_state()) ->
           {ok, chain_state()} | {error, term()}.
-spend(Recipient, Amount, State = #state{ account = ContractKey }) ->
+spend(RecipientId, Amount, State = #state{ account = ContractKey }) ->
     Nonce = next_nonce(State),
     %% Note: The spend is from the contract's account.
-    Sender = aec_id:create(account, ContractKey),
-    {ok, SpendTx} = aec_spend_tx:new(#{ sender => Sender
-                                      , recipient => Recipient
-                                      , amount => Amount
-                                      , fee => 0
-                                      , nonce => Nonce
-                                      , payload => <<>>}),
+    SenderId = aec_id:create(account, ContractKey),
+    {ok, SpendTx} = aec_spend_tx:new(#{ sender_id    => SenderId
+                                      , recipient_id => RecipientId
+                                      , amount       => Amount
+                                      , fee          => 0
+                                      , nonce        => Nonce
+                                      , payload      => <<>>}),
     apply_transaction(SpendTx, State).
 
 %%    Oracle
 -spec oracle_register(aec_keys:pubkey(), binary(), non_neg_integer(),
                       non_neg_integer(), aeso_sophia:type(), aeso_sophia:type(), chain_state()) ->
     {ok, aec_keys:pubkey(), chain_state()} | {error, term()}.
-oracle_register(AccountKey,_Sign, QueryFee, TTL, QuerySpec, ResponseSpec,
+oracle_register(AccountKey,_Sign, QueryFee, TTL, QueryFormat, ResponseFormat,
                 State = #state{account = ContractKey}) ->
     Nonce = next_nonce(AccountKey, State),
     %% Note: The nonce of the account is incremented.
     %% This means that if you register an oracle for an account other than
     %% the contract account through a contract that contract nonce is incremented
     %% "behind your back".
-    BinaryQuerySpec = aeso_data:to_binary(QuerySpec, 0),
-    BinaryResponseSpec = aeso_data:to_binary(ResponseSpec, 0),
+    BinaryQueryFormat = aeso_data:to_binary(QueryFormat, 0),
+    BinaryResponseFormat = aeso_data:to_binary(ResponseFormat, 0),
     Spec =
-        #{account       => aec_id:create(account, AccountKey),
-          nonce         => Nonce,
-          query_spec    => BinaryQuerySpec,
-          response_spec => BinaryResponseSpec,
-          query_fee     => QueryFee,
-          oracle_ttl    => {delta, TTL},
-          ttl           => 0, %% Not used.
-          fee           => 0},
+        #{account_id      => aec_id:create(account, AccountKey),
+          nonce           => Nonce,
+          query_format    => BinaryQueryFormat,
+          response_format => BinaryResponseFormat,
+          query_fee       => QueryFee,
+          oracle_ttl      => {delta, TTL},
+          ttl             => 0, %% Not used.
+          fee             => 0},
     {ok, Tx} = aeo_register_tx:new(Spec),
 
     %% TODO: To register an oracle for another account than the contract
@@ -155,9 +155,9 @@ oracle_query(Oracle, Q, Value, QTTL, RTTL,
     Nonce = next_nonce(State),
     QueryData = aeso_data:to_binary(Q, 0),
     {ok, Tx} =
-        aeo_query_tx:new(#{sender        => aec_id:create(account, ContractKey),
+        aeo_query_tx:new(#{sender_id     => aec_id:create(account, ContractKey),
                            nonce         => Nonce,
-                           oracle        => aec_id:create(oracle, Oracle),
+                           oracle_id     => aec_id:create(oracle, Oracle),
                            query         => QueryData,
                            query_fee     => Value,
                            query_ttl     => {delta, QTTL},
@@ -178,12 +178,12 @@ oracle_respond(Oracle, QueryId,_Sign, Response, State) ->
     Nonce = next_nonce(Oracle, State),
 
     {ok, Tx} = aeo_response_tx:new(
-                 #{oracle   => aec_id:create(oracle, Oracle),
-                   nonce    => Nonce,
-                   query_id => QueryId,
-                   response => aeso_data:to_binary(Response, 0),
-                   fee      => 0,
-                   ttl      => 0 %% Not used
+                 #{oracle_id => aec_id:create(oracle, Oracle),
+                   nonce     => Nonce,
+                   query_id  => QueryId,
+                   response  => aeso_data:to_binary(Response, 0),
+                   fee       => 0,
+                   ttl       => 0 %% Not used
                   }),
 
     apply_transaction(Tx, State).
@@ -191,7 +191,7 @@ oracle_respond(Oracle, QueryId,_Sign, Response, State) ->
 oracle_extend(Oracle,_Sign, TTL, State) ->
     Nonce = next_nonce(Oracle, State),
     {ok, Tx} =
-        aeo_extend_tx:new(#{oracle     => aec_id:create(oracle, Oracle),
+        aeo_extend_tx:new(#{oracle_id  => aec_id:create(oracle, Oracle),
                             nonce      => Nonce,
                             oracle_ttl => {delta, TTL},
                             fee        => 0,
@@ -236,7 +236,7 @@ oracle_query_fee(Oracle, #state{trees = Trees} =_State) ->
             {ok, none}
     end.
 
-oracle_query_spec(Oracle, #state{ trees   = Trees} =_State) ->
+oracle_query_format(Oracle, #state{ trees   = Trees} =_State) ->
     case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
         {value, O} ->
             BinaryFormat = aeo_oracles:query_format(O),
@@ -253,7 +253,7 @@ oracle_query_spec(Oracle, #state{ trees   = Trees} =_State) ->
 
 
 
-oracle_response_spec(Oracle, #state{ trees   = Trees} =_State) ->
+oracle_response_format(Oracle, #state{ trees   = Trees} =_State) ->
     case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
         {value, O} ->
             BinaryFormat = aeo_oracles:response_format(O),
@@ -275,9 +275,12 @@ get_query_type(OracleId, OraclesTree) ->
 %%    AENS
 
 aens_resolve(Name, Key, Type, #state{ trees = Trees } = _State) ->
-    case aens:resolve(list_to_atom(binary_to_list(Key)), Name, aec_trees:ns(Trees)) of
-        {ok, Val}  -> decode_as(Type, Val);
-        {error, _} -> {ok, none}
+    case aens:resolve(Key, Name, aec_trees:ns(Trees)) of
+        {ok, Id}  ->
+            {_IdType, IdValue} = aec_id:specialize(Id),
+            decode_as(Type, IdValue);
+        {error, _} ->
+            {ok, none}
     end.
 
 decode_as(word, <<N:256>>) -> {ok, {some, N}};
@@ -289,10 +292,10 @@ decode_as(Type, Val) ->
 aens_preclaim(Addr, CHash, _Sign, #state{ account = ContractKey } = State) ->
     Nonce = next_nonce(Addr, State),
     {ok, Tx} =
-        aens_preclaim_tx:new(#{ account    => aec_id:create(account, Addr),
-                                nonce      => Nonce,
-                                commitment => aec_id:create(commitment, CHash),
-                                fee        => 0 }),
+        aens_preclaim_tx:new(#{ account_id    => aec_id:create(account, Addr),
+                                nonce         => Nonce,
+                                commitment_id => aec_id:create(commitment, CHash),
+                                fee           => 0 }),
     case Addr =:= ContractKey of
         true  -> apply_transaction(Tx, State);
         false -> %% TODO: check signature for external account
@@ -302,7 +305,7 @@ aens_preclaim(Addr, CHash, _Sign, #state{ account = ContractKey } = State) ->
 aens_claim(Addr, Name, Salt, _Sign, #state{ account = ContractKey } = State) ->
     Nonce = next_nonce(Addr, State),
     {ok, Tx} =
-        aens_claim_tx:new(#{ account    => aec_id:create(account, Addr),
+        aens_claim_tx:new(#{ account_id => aec_id:create(account, Addr),
                              nonce      => Nonce,
                              name       => Name,
                              name_salt  => Salt,
@@ -316,11 +319,11 @@ aens_claim(Addr, Name, Salt, _Sign, #state{ account = ContractKey } = State) ->
 aens_transfer(FromAddr, ToAddr, Hash, _Sign, #state{ account = ContractKey } = State) ->
     Nonce = next_nonce(FromAddr, State),
     {ok, Tx} =
-        aens_transfer_tx:new(#{ account           => aec_id:create(account, FromAddr),
-                                nonce             => Nonce,
-                                name_hash         => aec_id:create(name, Hash),
-                                recipient_account => aec_id:create(account, ToAddr),
-                                fee               => 0 }),
+        aens_transfer_tx:new(#{ account_id   => aec_id:create(account, FromAddr),
+                                nonce        => Nonce,
+                                name_id      => aec_id:create(name, Hash),
+                                recipient_id => aec_id:create(account, ToAddr),
+                                fee          => 0 }),
     case FromAddr =:= ContractKey of
         true  -> apply_transaction(Tx, State);
         false -> %% TODO: check signature for external account
@@ -330,10 +333,10 @@ aens_transfer(FromAddr, ToAddr, Hash, _Sign, #state{ account = ContractKey } = S
 aens_revoke(Addr, Hash, _Sign, #state{ account = ContractKey } = State) ->
     Nonce = next_nonce(Addr, State),
     {ok, Tx} =
-        aens_revoke_tx:new(#{ account   => aec_id:create(account, Addr),
-                              nonce     => Nonce,
-                              name_hash => aec_id:create(name, Hash),
-                              fee       => 0 }),
+        aens_revoke_tx:new(#{ account_id => aec_id:create(account, Addr),
+                              nonce      => Nonce,
+                              name_id    => aec_id:create(name, Hash),
+                              fee        => 0 }),
     case Addr =:= ContractKey of
         true  -> apply_transaction(Tx, State);
         false -> %% TODO: check signature for external account
@@ -358,16 +361,16 @@ call_contract(Target, Gas, Value, CallData, CallStack,
             Nonce = aec_accounts:nonce(ContractAccount) + 1,
             VmVersion = aect_contracts:vm_version(Contract),
             {ok, CallTx} =
-                aect_call_tx:new(#{ caller     => aec_id:create(contract, ContractKey),
-                                    nonce      => Nonce,
-                                    contract   => aec_id:create(contract, Target),
-                                    vm_version => VmVersion,
-                                    fee        => 0,
-                                    amount     => Value,
-                                    gas        => Gas,
-                                    gas_price  => 0,
-                                    call_data  => CallData,
-                                    call_stack => CallStack }),
+                aect_call_tx:new(#{ caller_id   => aec_id:create(contract, ContractKey),
+                                    nonce       => Nonce,
+                                    contract_id => aec_id:create(contract, Target),
+                                    vm_version  => VmVersion,
+                                    fee         => 0,
+                                    amount      => Value,
+                                    gas         => Gas,
+                                    gas_price   => 0,
+                                    call_data   => CallData,
+                                    call_stack  => CallStack }),
             case apply_transaction(CallTx, State) of
                 {ok, State1 = #state{ trees = Trees1 }} ->
                     CallId  = aect_call:id(ContractKey, Nonce, Target),

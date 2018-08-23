@@ -13,18 +13,22 @@ tags:
     description: External API
   - name: internal
     description: Internal API
-  - name: gossip
-    description: Gossip protocol API
-  - name: name_service
-    description: Name resolution API
   - name: chain
-    description: Chain state inspection endpoints
-  - name: transactions
-    description: Transactions inspection endpoints
-  - name: node_operator
-    description: Node operator endpoints
-  - name: dev
-    description: Development only API - for validation of client implementations. Should not be used in real life scenrios
+    description: Chain related endpoints
+  - name: transaction
+    description: Transaction related endpoints
+  - name: account
+    description: Account related endpoints
+  - name: contract
+    description: Contract related endpoints
+  - name: oracle
+    description: Oracle related endpoints
+  - name: name_service
+    description: Name service related endpoints
+  - name: channel
+    description: State channel related endpoints
+  - name: node_info
+    description: Node information related endpoints
   - name: debug
     description: Debug endpoints
   - name: obsolete
@@ -37,27 +41,11 @@ paths:
 ## External APIs definitions
 ###
 
-  /top:
-    get:
-      tags:
-        - external
-        - gossip
-      operationId: GetTop
-      description: 'Get the top block (either key or micro block)'
-      produces:
-        - application/json
-      parameters:
-      responses:
-        '200':
-          description: 'Successful operation'
-          schema:
-            $ref: '#/definitions/Top'
-      security:
   /blocks/top:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetTopBlock
       description: 'Get the top block (either key or micro block)'
       produces:
@@ -67,13 +55,17 @@ paths:
         '200':
           description: 'Successful operation'
           schema:
-            $ref: '#/definitions/Top'
+            $ref: '#/definitions/KeyBlock'
+        '404':
+          description: 'Block not found'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /key-blocks/current:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetCurrentKeyBlock
       description: 'Get the current key block'
       produces:
@@ -83,13 +75,17 @@ paths:
         '200':
           description: 'Successful operation'
           schema:
-            $ref: '#/definitions/GenericBlock'
+            $ref: '#/definitions/KeyBlock'
+        '404':
+          description: 'Block not found'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /key-blocks/current/hash:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetCurrentKeyBlockHash
       description: 'Get the hash of the current key block'
       produces:
@@ -104,12 +100,16 @@ paths:
               hash:
                 type: string
                 description: 'Hash'
+        '404':
+          description: 'Block not found'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /key-blocks/current/height:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetCurrentKeyBlockHeight
       description: 'Get the height of the current key block'
       produces:
@@ -125,12 +125,16 @@ paths:
                 type: integer
                 description: 'Height'
                 format: int64
+        '404':
+          description: 'Block not found'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /key-blocks/pending:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetPendingKeyBlock
       description: 'Get the pending key block'
       produces:
@@ -140,9 +144,9 @@ paths:
         '200':
           description: 'Successful operation'
           schema:
-            $ref: '#/definitions/GenericBlock'
+            $ref: '#/definitions/KeyBlock'
         '404':
-          description: 'No pending block (node not mining)'
+          description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
       security:
@@ -150,7 +154,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetKeyBlockByHash
       description: 'Get a key block by hash'
       produces:
@@ -165,7 +169,7 @@ paths:
         '200':
           description: 'Successful operation'
           schema:
-            $ref: '#/definitions/GenericBlock'
+            $ref: '#/definitions/KeyBlock'
         '400':
           description: 'Invalid hash'
           schema:
@@ -179,7 +183,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetKeyBlockByHeight
       description: 'Get a key block by height'
       produces:
@@ -194,7 +198,7 @@ paths:
         '200':
           description: 'Successful operation'
           schema:
-            $ref: '#/definitions/GenericBlock'
+            $ref: '#/definitions/KeyBlock'
         '404':
           description: 'Block not found'
           schema:
@@ -204,7 +208,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetMicroBlockHeaderByHash
       description: 'Get a micro block header by hash'
       produces:
@@ -233,7 +237,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetMicroBlockTransactionsByHash
       description: 'Get micro block transactions by hash'
       produces:
@@ -248,7 +252,7 @@ paths:
         '200':
           description: 'Successful operation'
           schema:
-            $ref: '#/definitions/JSONTxs'
+            $ref: '#/definitions/GenericTxs'
         '400':
           description: 'Invalid hash'
           schema:
@@ -262,7 +266,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetMicroBlockTransactionByHashAndIndex
       description: 'Get a micro block transaction by hash and index'
       produces:
@@ -283,7 +287,7 @@ paths:
         '200':
           description: 'Successful operation'
           schema:
-            $ref: '#/definitions/SignedTxJSON'
+            $ref: '#/definitions/GenericSignedTx'
         '400':
           description: 'Invalid hash or index'
           schema:
@@ -297,7 +301,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetMicroBlockTransactionsCountByHash
       description: 'Get micro block transaction count by hash'
       produces:
@@ -332,7 +336,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetCurrentGeneration
       description: 'Get the current generation'
       produces:
@@ -352,7 +356,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetGenerationByHash
       description: 'Get a generation by hash'
       produces:
@@ -381,7 +385,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - chain
       operationId: GetGenerationByHeight
       description: 'Get a generation by height'
       produces:
@@ -406,7 +410,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - account
       operationId: GetAccountByPubkey
       description: 'Get an account by public key'
       produces:
@@ -435,7 +439,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - account
       operationId: GetPendingAccountTransactionsByPubkey
       description: 'Get pending account transactions by public key'
       produces:
@@ -450,7 +454,7 @@ paths:
         '200':
           description: 'Successful operation'
           schema:
-            $ref: '#/definitions/JSONTxs'
+            $ref: '#/definitions/GenericTxs'
         '400':
           description: 'Invalid public key'
           schema:
@@ -464,7 +468,7 @@ paths:
     get:
       tags:
         - external
-        - transactions
+        - transaction
       operationId: GetTransactionByHash
       description: 'Get a transaction by hash'
       produces:
@@ -479,7 +483,7 @@ paths:
         '200':
           description: 'Successful operation'
           schema:
-            $ref: '#/definitions/SignedTxJSON'
+            $ref: '#/definitions/GenericSignedTx'
         '400':
           description: 'Invalid hash'
           schema:
@@ -493,7 +497,7 @@ paths:
     get:
       tags:
         - external
-        - transactions
+        - transaction
       operationId: GetTransactionInfoByHash
       description: 'Get a transaction info by hash'
       produces:
@@ -518,11 +522,11 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
-  /ng-transactions:
+  /transactions:
     post:
       tags:
         - external
-        - transactions
+        - transaction
       operationId: PostTransaction
       description: 'Post a new transaction'
       consumes:
@@ -550,7 +554,7 @@ paths:
     get:
       tags:
         - external
-        - transactions
+        - contract
       operationId: GetContract
       description: 'Get a contract by pubkey'
       produces:
@@ -576,7 +580,7 @@ paths:
     get:
       tags:
         - external
-        - transactions
+        - contract
       operationId: GetContractCode
       description: 'Get contract code by pubkey'
       produces:
@@ -604,7 +608,7 @@ paths:
     get:
       tags:
         - external
-        - transactions
+        - contract
       operationId: GetContractStore
       description: 'Get contract store by pubkey'
       produces:
@@ -626,11 +630,39 @@ paths:
             $ref: '#/definitions/Error'
         '404':
           description: 'Contract not found'
+  /contracts/{pubkey}/poi:
+    get:
+      tags:
+        - external
+        - contract
+      operationId: GetContractPoI
+      description: 'Get a proof of inclusion for a contract'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'Contract pubkey to get proof for'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: Successful operation
+          schema:
+            $ref: '#/definitions/PoI'
+        '400':
+          description: Invalid contract key
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Contract not found
+          schema:
+            $ref: '#/definitions/Error'
   /oracles/{pubkey}:
     get:
       tags:
         - external
-        - gossip
+        - oracle
       operationId: GetOracleByPubkey
       description: 'Get an oracle by public key'
       produces:
@@ -659,7 +691,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - oracle
       operationId: GetOracleQueriesByPubkey
       description: 'Get oracle queries by public key'
       produces:
@@ -706,7 +738,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - oracle
       operationId: GetOracleQueryByPubkeyAndQueryId
       description: 'Get an oracle query by public key and query ID'
       produces:
@@ -769,7 +801,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - channel
       operationId: GetChannelByPubkey
       description: 'Get channel by public key'
       produces:
@@ -798,7 +830,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - node_info
       operationId: GetPeerPubkey
       description: 'Get peer public key'
       produces:
@@ -817,7 +849,7 @@ paths:
     get:
       tags:
         - external
-        - gossip
+        - node_info
       operationId: GetStatus
       description: 'Get the status of a node'
       produces:
@@ -830,157 +862,12 @@ paths:
             $ref: '#/definitions/Status'
       security:
 
-  /header-by-hash:
-    get:
-      tags:
-        - external
-        - gossip
-      operationId: GetHeaderByHash
-      description: 'Get a header by hash'
-      produces:
-        - application/json
-      parameters:
-        - in: query
-          name: hash
-          description: 'Hash of the block header to fetch'
-          required: true
-          type: string
-      responses:
-        '200':
-          description: The header found
-          schema:
-            $ref: '#/definitions/Header'
-        '400':
-          description: Invalid hash
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Header not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /header-by-height:
-    get:
-      tags:
-        - external
-        - gossip
-      operationId: GetKeyHeaderByHeight
-      description: 'Get a key header by its height in the chain'
-      produces:
-        - application/json
-      parameters:
-        - in: query
-          name: height
-          description: 'Height of the header to fetch'
-          required: true
-          type: integer
-          minimum: 0
-      responses:
-        '200':
-          description: The header found
-          schema:
-            $ref: '#/definitions/Header'
-        '400':
-          description: Header not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /tx:
+  /debug/contracts/create:
     post:
       tags:
-        - external
-        - gossip
-      operationId: PostTx
-      description: 'Post a new transaction'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: A new transaction
-          required: true
-          schema:
-            $ref: '#/definitions/Tx'
-      responses:
-        '200':
-          description: Successful operation
-          schema:
-            $ref: '#/definitions/PostTxResponse'
-        '400':
-          description: Invalid transaction
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /tx/{tx_hash}:
-    get:
-      tags:
-        - external
-        - transactions
-      operationId: GetTx
-      description: 'Get a transaction by hash'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: tx_hash
-          description: Hash of the transaction to get
-          required: true
-          type: string
-        - in: query
-          name: tx_encoding
-          description: 'Transaction encoding'
-          type: string
-          enum: [message_pack, json]
-          default: message_pack
-      responses:
-        '200':
-          description: The transaction found
-          schema:
-            $ref: '#/definitions/SingleTxObject'
-        '400':
-          description: Invalid transaction
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Transaction not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /tx/{tx_hash}/contract-call:
-    get:
-      tags:
-        - external
-        - transactions
-      operationId: GetContractCallFromTx
-      description: 'Get the call result for a contract_create or contract_call transaction'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: tx_hash
-          description: Hash of the transaction
-          required: true
-          type: string
-      responses:
-        '200':
-          description: The contract call result was found
-          schema:
-            $ref: '#/definitions/ContractCallObject'
-        '400':
-          description: Invalid transaction
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Transaction not found
-          schema:
-            $ref: '#/definitions/Error'
-  /tx/contract/create:
-    post:
-      tags:
-        - external
-        - dev
+        - internal
+        - contract
+        - debug
       operationId: PostContractCreate
       description: 'Get a contract_create transaction object'
       consumes:
@@ -1006,11 +893,12 @@ paths:
           description: Owner account not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/contract/create/compute:
+  /debug/contracts/create/compute:
     post:
       tags:
-        - external
-        - dev
+        - internal
+        - contract
+        - debug
       operationId: PostContractCreateCompute
       description: 'Compute the call_data for SOPHIA and get a contract_create transaction object'
       consumes:
@@ -1036,11 +924,12 @@ paths:
           description: Owner account not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/contract/call:
+  /debug/contracts/call:
     post:
       tags:
-        - external
-        - dev
+        - internal
+        - contract
+        - debug
       operationId: PostContractCall
       description: 'Get a contract_call transaction object'
       consumes:
@@ -1066,11 +955,12 @@ paths:
           description: Caller account or contract not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/contract/call/compute:
+  /debug/contracts/call/compute:
     post:
       tags:
-        - external
-        - dev
+        - internal
+        - contract
+        - debug
       operationId: PostContractCallCompute
       description: 'Compute the call_data for SOPHIA and get contract_call transaction object'
       consumes:
@@ -1096,11 +986,12 @@ paths:
           description: Caller account or contract not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/oracle/register:
+  /debug/oracles/register:
     post:
       tags:
-        - external
-        - dev
+        - internal
+        - oracle
+        - debug
       operationId: PostOracleRegister
       description: 'Get a oracle_register transaction object'
       consumes:
@@ -1126,11 +1017,12 @@ paths:
           description: Account not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/oracle/extend:
+  /debug/oracles/extend:
     post:
       tags:
-        - external
-        - dev
+        - internal
+        - oracle
+        - debug
       operationId: PostOracleExtend
       description: 'Get an oracle_extend transaction object'
       consumes:
@@ -1156,11 +1048,12 @@ paths:
           description: Account not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/oracle/query:
+  /debug/oracles/query:
     post:
       tags:
-        - external
-        - dev
+        - internal
+        - oracle
+        - debug
       operationId: PostOracleQuery
       description: 'Get an oracle_query transaction object'
       consumes:
@@ -1186,12 +1079,13 @@ paths:
           description: Account or oracle not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/oracle/response:
+  /debug/oracles/respond:
     post:
       tags:
-        - external
-        - dev
-      operationId: PostOracleResponse
+        - internal
+        - oracle
+        - debug
+      operationId: PostOracleRespond
       description: 'Get an oracle_response transaction object'
       consumes:
         - application/json
@@ -1202,7 +1096,7 @@ paths:
           name: body
           required: true
           schema:
-            $ref: '#/definitions/OracleResponseTx'
+            $ref: '#/definitions/OracleRespondTx'
       responses:
         '200':
           description: Successful operation
@@ -1216,11 +1110,12 @@ paths:
           description: Oracle or query not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/name/preclaim:
+  /debug/names/preclaim:
     post:
       tags:
-        - external
-        - dev
+        - internal
+        - name_service
+        - debug
       operationId: PostNamePreclaim
       description: 'Get a name_preclaim transaction object'
       produces:
@@ -1244,11 +1139,12 @@ paths:
           description: Account not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/name/claim:
+  /debug/names/claim:
     post:
       tags:
-        - external
-        - dev
+        - internal
+        - name_service
+        - debug
       operationId: PostNameClaim
       description: 'Get a name_claim transaction object'
       produces:
@@ -1272,11 +1168,12 @@ paths:
           description: Account or name not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/name/update:
+  /debug/names/update:
     post:
       tags:
-        - external
-        - dev
+        - internal
+        - name_service
+        - debug
       operationId: PostNameUpdate
       description: 'Get a name_update transaction object'
       produces:
@@ -1300,11 +1197,12 @@ paths:
           description: Account or oracle not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/name/transfer:
+  /debug/names/transfer:
     post:
       tags:
-        - external
-        - dev
+        - internal
+        - name_service
+        - debug
       operationId: PostNameTransfer
       description: 'Get a name_transfer transaction object'
       produces:
@@ -1328,11 +1226,12 @@ paths:
           description: Account or name not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/name/revoke:
+  /debug/names/revoke:
     post:
       tags:
-        - external
-        - dev
+        - internal
+        - name_service
+        - debug
       operationId: PostNameRevoke
       description: 'Get a name_revoke transaction object'
       produces:
@@ -1356,11 +1255,12 @@ paths:
           description: Account or name not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/spend:
+  /debug/transactions/spend:
     post:
       tags:
-        - external
-        - dev
+        - internal
+        - transaction
+        - debug
       operationId: PostSpend
       description: 'Get a spend transaction object'
       consumes:
@@ -1387,11 +1287,12 @@ paths:
           description: Sender account not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/channel/create:
+  /debug/channels/create:
     post:
       tags:
-        - external
-        - dev
+        - internal
+        - channel
+        - debug
       operationId: PostChannelCreate
       description: 'Get a channel_create transaction object'
       produces:
@@ -1415,11 +1316,12 @@ paths:
           description: Initiator not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/channel/deposit:
+  /debug/channels/deposit:
     post:
       tags:
-        - external
-        - dev
+        - internal
+        - channel
+        - debug
       operationId: PostChannelDeposit
       description: 'Get a channel_deposit transaction object'
       produces:
@@ -1439,12 +1341,13 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
-  /tx/channel/withdrawal:
+  /debug/channels/withdraw:
     post:
       tags:
-        - external
-        - dev
-      operationId: PostChannelWithdrawal
+        - internal
+        - channel
+        - debug
+      operationId: PostChannelWithdraw
       description: 'Get a channel_withdrawal transaction object'
       produces:
         - application/json
@@ -1453,7 +1356,7 @@ paths:
           name: body
           required: true
           schema:
-            $ref: '#/definitions/ChannelWithdrawalTx'
+            $ref: '#/definitions/ChannelWithdrawTx'
       responses:
         '200':
           description: Successful operation
@@ -1463,11 +1366,12 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
-  /tx/channel/snapshot/solo:
+  /debug/channels/snapshot/solo:
     post:
       tags:
-        - external
-        - dev
+        - internal
+        - channel
+        - debug
       operationId: PostChannelSnapshotSolo
       description: 'Get a channel_snapshot_solo transaction object'
       produces:
@@ -1487,11 +1391,12 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
-  /tx/channel/close/mutual:
+  /debug/channels/close/mutual:
     post:
       tags:
-        - external
-        - dev
+        - internal
+        - channel
+        - debug
       operationId: PostChannelCloseMutual
       description: 'Get a channel_close_mutual transaction object'
       produces:
@@ -1511,11 +1416,12 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
-  /tx/channel/close/solo:
+  /debug/channels/close/solo:
     post:
       tags:
-        - external
-        - dev
+        - internal
+        - channel
+        - debug
       operationId: PostChannelCloseSolo
       description: 'Get a channel_close_solo transaction object'
       produces:
@@ -1535,11 +1441,12 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
-  /tx/channel/slash:
+  /debug/channels/slash:
     post:
       tags:
-        - external
-        - dev
+        - internal
+        - channel
+        - debug
       operationId: PostChannelSlash
       description: 'Get a channel_slash transaction object'
       produces:
@@ -1559,11 +1466,12 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
-  /tx/channel/settle:
+  /debug/channels/settle:
     post:
       tags:
-        - external
-        - dev
+        - internal
+        - channel
+        - debug
       operationId: PostChannelSettle
       description: 'Get a channel_settle transaction object'
       produces:
@@ -1583,42 +1491,14 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
-  /poi/contract/{contract}:
+  /debug/transactions/pending:
     get:
       tags:
-        - external
-        - chain
-      operationId: GetContractPoI
-      description: 'Get a proof of inclusion for a contract'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: contract
-          description: 'Contract pubkey to get proof for'
-          required: true
-          type: string
-      responses:
-        '200':
-          description: Successful operation
-          schema:
-            $ref: '#/definitions/PoI'
-        '400':
-          description: Invalid contract key
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Contract not found
-          schema:
-            $ref: '#/definitions/Error'
-
-  /transactions:
-    get:
-      tags:
-        - external
-        - transactions
-      operationId: GetTxs
-      description: 'Get transactions in the mempool'
+        - internal
+        - transaction
+        - debug
+      operationId: GetPendingTransactions
+      description: 'Get pending transactions'
       produces:
         - application/json
       parameters:
@@ -1626,606 +1506,56 @@ paths:
         '200':
           description: 'Successful operation'
           schema:
-            $ref: '#/definitions/Transactions'
-  /commitment-hash:
+            $ref: '#/definitions/GenericTxs'
+  /debug/names/commitment-id:
     get:
       tags:
-        - external
-        - dev
-      operationId: GetCommitmentHash
-      description: 'Compute commitment hash for a given salt and name. Commitment hash must be computed client side. This endpoint is for verifying client''s implementations.'
+        - internal
+        - name_service
+        - debug
+      operationId: GetCommitmentId
+      description: 'Compute commitment ID for a given salt and name'
       produces:
         - application/json
       parameters:
         - in: query
           name: name
-          description: 'Name to put into the hash'
+          description: 'Name'
           required: true
           type: string
         - in: query
           name: salt
-          description: 'Salt to put into the hash'
+          description: 'Salt'
           required: true
           type: integer
       responses:
         '200':
-          description: Calculated commitment hash
+          description: 'Successful operation'
           schema:
-            $ref: '#/definitions/NameCommitmentHash'
+            $ref: '#/definitions/CommitmentId'
         '400':
-          description: Name validation failed
+          description: 'Invalid name'
           schema:
             $ref: '#/definitions/Error'
       security:
-  /name:
-    get:
-      tags:
-        - external
-        - name_service
-      operationId: GetName
-      description: 'Get name entry from Naming System'
-      produces:
-        - application/json
-      parameters:
-        - in: query
-          name: name
-          description: 'Name to get entry from Naming System'
-          required: true
-          type : string
-      responses:
-        '200':
-          description: Name data
-          schema:
-            $ref: '#/definitions/NameEntry'
-        '400':
-          description: Name validation failed
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Name not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-
-###
-## Internal APIs definitions
-###
-
-  /spend-tx:
-    post:
-      tags:
-        - internal
-        - obsolete
-      operationId: PostSpendTx
-      description: 'Create spend transaction'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: Creates new spend transaction
-          required: true
-          schema:
-            $ref: '#/definitions/SpendTx'
-      responses:
-        '200':
-          description: successful operation
-          schema: '#/definitions/SpendTxResponse'
-        '404':
-          description: Spend transaction validation error
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /oracles:
+  /debug/accounts/node:
     get:
       tags:
         - internal
-        - obsolete
-      operationId: GetActiveRegisteredOracles
-      description: 'Get active registered oracles'
-      produces:
-        - application/json
-      parameters:
-        - in: query
-          name: from
-          description: 'Last oracle in previous page'
-          required: false
-          type: string
-        - in: query
-          name: max
-          description: 'Max number of active oracles received'
-          required: false
-          type: integer
-          minimum: 1
-          maximum: 1000
-      responses:
-        '200':
-          description: Active registered oracles
-          schema:
-            $ref: '#/definitions/RegisteredOracles'
-      security:
-  /oracle-questions:
-    get:
-      tags:
-        - internal
-        - obsolete
-      operationId: GetOracleQuestions
-      description: 'Get active oracle questions'
-      produces:
-        - application/json
-      parameters:
-        - in: query
-          name: oracle_pub_key
-          description: 'Oracle public key'
-          required: true
-          type : string
-        - in: query
-          name: from
-          description: 'Last query id in previous page'
-          required: false
-          type: string
-        - in: query
-          name: max
-          description: 'Max number of oracle queries received'
-          required: false
-          type: integer
-          minimum: 1
-          maximum: 1000
-      responses:
-        '200':
-          description: Active oracle questions
-          schema:
-            $ref: '#/definitions/OracleQuestions'
-        '400':
-          description: Invalid parameters
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /oracle-register-tx:
-    post:
-      tags:
-        - internal
-        - obsolete
-      operationId: PostOracleRegisterTx
-      description: 'Create oracle register transaction'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: Creates new oracle register transaction
-          required: true
-          schema:
-            $ref: '#/definitions/OracleRegisterTx'
-      responses:
-        '200':
-          description: successful operation
-          schema:
-            $ref: '#/definitions/OracleRegisterResponse'
-        '404':
-          description: Oracle register transaction validation error
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /oracle-extend-tx:
-    post:
-      tags:
-        - internal
-        - obsolete
-      operationId: PostOracleExtendTx
-      description: 'Create oracle extend transaction'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: Creates new oracle extend transaction
-          required: true
-          schema:
-            $ref: '#/definitions/OracleExtendTx'
-      responses:
-        '200':
-          description: successful operation
-          schema:
-            $ref: '#/definitions/OracleRegisterResponse'
-        '404':
-          description: Oracle register transaction validation error
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /oracle-query-tx:
-    post:
-      tags:
-        - internal
-        - obsolete
-      operationId: PostOracleQueryTx
-      description: 'Create oracle query transaction'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: Creates new oracle query transaction
-          required: true
-          schema:
-            $ref: '#/definitions/OracleQueryTx'
-      responses:
-        '200':
-          description: successful operation
-          schema:
-            $ref: '#/definitions/OracleQueryResponse'
-        '404':
-          description: Oracle query transaction validation error
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /oracle-response-tx:
-    post:
-      tags:
-        - internal
-        - obsolete
-      operationId: PostOracleResponseTx
-      description: 'Create oracle response transaction'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: Creates new oracle response transaction
-          required: true
-          schema:
-            $ref: '#/definitions/OracleResponseTx'
-      responses:
-        '200':
-          description: successful operation
-          schema:
-            $ref: '#/definitions/OracleQueryResponse'
-        '404':
-          description: Oracle response transaction validation error
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /name-preclaim-tx:
-    post:
-      tags:
-        - internal
-        - obsolete
-      operationId: PostNamePreclaimTx
-      description: 'Create name preclaim transaction'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: Creates new name preclaim transaction
-          required: true
-          schema:
-            $ref: '#/definitions/NamePreclaimTx'
-      responses:
-        '200':
-          description: successful operation
-          schema:
-            $ref: '#/definitions/NameCommitmentHash'
-        '400':
-          description: Name preclaim transaction validation error
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Account not found error
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /name-claim-tx:
-    post:
-      tags:
-        - internal
-        - obsolete
-      operationId: PostNameClaimTx
-      description: 'Create name claim transaction'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: Creates new name claim transaction
-          required: true
-          schema:
-            $ref: '#/definitions/NameClaimTx'
-      responses:
-        '200':
-          description: successful operation
-          schema:
-            $ref: '#/definitions/NameHash'
-        '400':
-          description: Name claim transaction validation error
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Account not found error
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /name-update-tx:
-    post:
-      tags:
-        - internal
-        - obsolete
-      operationId: PostNameUpdateTx
-      description: 'Create name update transaction'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: Creates new name update transaction
-          required: true
-          schema:
-            $ref: '#/definitions/NameUpdateTx'
-      responses:
-        '200':
-          description: successful operation
-          schema:
-            $ref: '#/definitions/NameHash'
-        '400':
-          description: Name update transaction validation error
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Account not found error
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /name-transfer-tx:
-    post:
-      tags:
-        - internal
-        - obsolete
-      operationId: PostNameTransferTx
-      description: 'Create name transfer transaction'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: Creates new name transfer transaction
-          required: true
-          schema:
-            $ref: '#/definitions/NameTransferTx'
-      responses:
-        '200':
-          description: successful operation
-          schema:
-            $ref: '#/definitions/NameHash'
-        '400':
-          description: Name transfer transaction validation error
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Account not found error
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /name-revoke-tx:
-    post:
-      tags:
-        - internal
-        - obsolete
-      operationId: PostNameRevokeTx
-      description: 'Create name revoke transaction'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: Creates new name revoke transaction
-          required: true
-          schema:
-            $ref: '#/definitions/NameRevokeTx'
-      responses:
-        '200':
-          description: successful operation
-          schema:
-            $ref: '#/definitions/NameHash'
-        '400':
-          description: Name revoke transaction validation error
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Account not found error
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /account/pub-key:
-    get:
-      tags:
-        - internal
-        - node_operator
-      operationId: GetPubKey
-      description: 'Get user''s public key address'
+        - node_info
+        - debug
+      operationId: GetNodePubkey
+      description: 'Get node''s public key'
       produces:
         - application/json
       parameters:
       responses:
         '200':
-          description: successful operation
+          description: 'Successful operation'
           schema:
             $ref: '#/definitions/PubKey'
         '404':
-          description: No key pair
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /account/{address}/balance:
-    get:
-      tags:
-        - external
-        - chain
-      operationId: GetAccountBalance
-      description: 'Get accounts''s balance'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: address
-          description: 'Address to show balance for; it can be either account or contract'
-          required: true
-          type: string
-        - in: query
-          name: height
-          description: 'Height of the block to show balance at'
-          required: false
-          type: integer
-          minimum: 0
-        - in: query
-          name: hash
-          description: 'Hash of the block to show balance at'
-          required: false
-          type: string
-      responses:
-        '200':
-          description: successful operation
-          schema:
-            $ref: '#/definitions/Balance'
-        '400':
-          description: Invalid block hash or hash and height combination
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Block or account not found
-          schema:
-            $ref: '#/definitions/Error'
-  /account/{account_pubkey}/nonce:
-    get:
-      tags:
-        - external
-        - chain
-      operationId: GetAccountNonce
-      description: 'Get accounts''s last used nonce on chain'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: account_pubkey
-          description: 'Account pubkey to show nonce for'
-          required: true
-          type: string
-      responses:
-        '200':
-          description: successful operation
-          schema:
-            $ref: '#/definitions/Nonce'
-        '400':
-          description: Invalid account_pubkey provided
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Account not found
-          schema:
-            $ref: '#/definitions/Error'
-
-  /account/{account_pubkey}/pending_transactions:
-    get:
-      tags:
-        - external
-        - transactions
-      operationId: GetAccountPendingTransactions
-      description: 'Get accounts''s pending transactions from the mempool'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: account_pubkey
-          description: 'Account pubkey to search for in mempool'
-          required: true
-          type: string
-      responses:
-        '200':
-          description: successful operation
-          schema:
-            $ref: '#/definitions/Transactions'
-        '400':
-          description: Invalid account_pubkey provided
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Account not found
-          schema:
-            $ref: '#/definitions/Error'
-
-## CAUTION: debug endpoints, implementation may be inefficient
-  /balances:
-    get:
-      tags:
-        - external
-        - debug
-      operationId: GetAccountsBalances
-      description: 'Get all users'' balances'
-      produces:
-        - application/json
-      parameters:
-      responses:
-        '200':
-          description: successful operation
-          schema:
-            $ref: '#/definitions/AccountsBalances'
-        '403':
-          description: Balances not enabled
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /version:
-    get:
-      tags:
-        - external
-        - debug
-      operationId: GetVersion
-      description: 'Get node''s version'
-      produces:
-        - application/json
-      parameters:
-      responses:
-        '200':
-          description: successful operation
-          schema:
-            $ref: '#/definitions/Version'
-      security:
-  /info:
-    get:
-      tags:
-        - external
-        - debug
-      operationId: GetInfo
-      description: 'Get node info'
-      produces:
-        - application/json
-      parameters:
-      responses:
-        '200':
-          description: successful operation
-          schema:
-            $ref: '#/definitions/Info'
-        '403':
-          description: Info not enabled
+          description: 'Public key not found'
           schema:
             $ref: '#/definitions/Error'
       security:
@@ -2233,6 +1563,7 @@ paths:
     get:
       tags:
         - internal
+        - node_info
         - debug
       operationId: GetPeers
       description: 'Get node Peers'
@@ -2249,417 +1580,12 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
-
-  /block/number:
-    get:
-      tags:
-        - internal
-        - chain
-      operationId: GetBlockNumber
-      description: 'Get the current block''s height'
-      produces:
-        - application/json
-      parameters:
-      responses:
-        '200':
-          description: 'The current block''s height'
-          schema:
-            $ref: '#/definitions/BlockHeight'
-      security:
-  /block/height/{height}:
-    get:
-      tags:
-        - external
-        - chain
-      operationId: GetKeyBlockByHeightObsolete
-      description: 'Get a key block by height'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: height
-          description: 'Height of the block to fetch'
-          required: true
-          type : integer
-        - in: query
-          name: tx_encoding
-          description: 'Transactions encoding'
-          type: string
-          enum: [message_pack, json]
-          default: json
-      responses:
-        '200':
-          description: The block being found
-          schema:
-            $ref: '#/definitions/GenericBlock'
-        '404':
-          description: Block not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /block/hash/{hash}:
-    get:
-      tags:
-        - external
-        - chain
-      operationId: GetBlockByHash
-      description: 'Get a block by hash'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: hash
-          description: 'Hash of the block to fetch'
-          required: true
-          type : string
-        - in: query
-          name: tx_encoding
-          description: 'Transactions encoding'
-          type: string
-          enum: [message_pack, json]
-          default: json
-      responses:
-        '200':
-          description: The block being found
-          schema:
-            $ref: '#/definitions/GenericBlock'
-        '400':
-          description: Invalid hash
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Block not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /block/genesis:
-    get:
-      tags:
-        - external
-        - chain
-      operationId: GetBlockGenesis
-      description: 'Get the genesis block'
-      produces:
-        - application/json
-      parameters:
-        - in: query
-          name: tx_encoding
-          description: 'Transactions encoding'
-          type: string
-          enum: [message_pack, json]
-          default: json
-      responses:
-        '200':
-          description: The genesis block
-          schema:
-            $ref: '#/definitions/GenericBlock'
-      security:
-  /block/latest:
-    get:
-      tags:
-        - external
-        - chain
-      operationId: GetBlockLatest
-      description: 'Get the top block'
-      produces:
-        - application/json
-      parameters:
-        - in: query
-          name: tx_encoding
-          description: 'Transactions encoding'
-          type: string
-          enum: [message_pack, json]
-          default: json
-      responses:
-        '200':
-          description: The top block
-          schema:
-            $ref: '#/definitions/GenericBlock'
-      security:
-  /block/txs/count/hash/{hash}:
-    get:
-      tags:
-        - internal
-        - chain
-      operationId: GetBlockTxsCountByHash
-      description: 'Get a block transactions count by hash'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: hash
-          description: 'Hash of the block to fetch'
-          required: true
-          type : string
-        - in: query
-          name: tx_types
-          description: 'Transactions types to show. Comma separated'
-          required: false
-          type : string
-        - in: query
-          name: exclude_tx_types
-          description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
-          required: false
-          type : string
-      responses:
-        '200':
-          description: The count of transactions in the block
-          schema:
-            type: object
-            properties:
-              count:
-                type: integer
-                description: Count
-        '400':
-          description: Invalid hash
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Block not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /block/txs/count/height/{height}:
-    get:
-      tags:
-        - internal
-        - chain
-      operationId: GetBlockTxsCountByHeight
-      description: 'Get a block transactions count by height'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: height
-          description: 'Height of the block to fetch'
-          required: true
-          type : integer
-        - in: query
-          name: tx_types
-          description: 'Transactions types to show. Comma separated'
-          required: false
-          type : string
-        - in: query
-          name: exclude_tx_types
-          description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
-          required: false
-          type : string
-      responses:
-        '200':
-          description: The count of transactions in the block
-          schema:
-            type: object
-            properties:
-              count:
-                type: integer
-                description: Count
-        '404':
-          description: Block not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /block/txs/count/genesis:
-    get:
-      tags:
-        - internal
-        - chain
-      operationId: GetGenesisBlockTxsCount
-      description: 'Get the genesis block transactions count'
-      produces:
-        - application/json
-      parameters:
-        - in: query
-          name: tx_types
-          description: 'Transactions types to show. Comma separated'
-          required: false
-          type : string
-        - in: query
-          name: exclude_tx_types
-          description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
-          required: false
-          type : string
-      responses:
-        '200':
-          description: The count of transactions in the genesis block
-          schema:
-            type: object
-            properties:
-              count:
-                type: integer
-                description: Count
-      security:
-  /block/txs/count/latest:
-    get:
-      tags:
-        - internal
-        - chain
-      operationId: GetLatestBlockTxsCount
-      description: 'Get the latest block transactions count'
-      produces:
-        - application/json
-      parameters:
-        - in: query
-          name: tx_types
-          description: 'Transactions types to show. Comma separated'
-          required: false
-          type : string
-        - in: query
-          name: exclude_tx_types
-          description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
-          required: false
-          type : string
-      responses:
-        '200':
-          description: The count of transactions in the latest block
-          schema:
-            type: object
-            properties:
-              count:
-                type: integer
-                description: Count
-      security:
-  /block/txs/count/pending:
-    get:
-      tags:
-        - internal
-        - chain
-      operationId: GetPendingBlockTxsCount
-      description: 'Get the pending block transactions count'
-      produces:
-        - application/json
-      parameters:
-        - in: query
-          name: tx_types
-          description: 'Transactions types to show. Comma separated'
-          required: false
-          type : string
-        - in: query
-          name: exclude_tx_types
-          description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
-          required: false
-          type : string
-      responses:
-        '200':
-          description: The count of transactions in the pending block
-          schema:
-            type: object
-            properties:
-              count:
-                type: integer
-                description: Count
-        '404':
-          description: Pending block not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /block/tx/height/{height}/{tx_index}:
-    get:
-      tags:
-        - internal
-        - chain
-      operationId: GetTransactionFromBlockHeight
-      description: 'Get a transaction by index in the block by height'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: height
-          description: 'Height of the block to search for'
-          required: true
-          type: integer
-        - in: path
-          name: tx_index
-          description: 'Index of the transaction in the block'
-          required: true
-          type: integer
-        - in: query
-          name: tx_encoding
-          description: 'Transactions encoding'
-          type: string
-          enum: [message_pack, json]
-          default: message_pack
-      responses:
-        '200':
-          description: The transaction found
-          schema:
-            $ref: '#/definitions/SingleTxObject'
-        '404':
-          description: Block or transaction not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /block/tx/hash/{hash}/{tx_index}:
-    get:
-      tags:
-        - internal
-        - chain
-      operationId: GetTransactionFromBlockHash
-      description: 'Get a transaction by index in the block by hash'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: hash
-          description: 'Hash of the block to search for'
-          required: true
-          type: string
-        - in: path
-          name: tx_index
-          description: 'Index of the transaction in the block'
-          required: true
-          type: integer
-        - in: query
-          name: tx_encoding
-          description: 'Transactions encoding'
-          type: string
-          enum: [message_pack, json]
-          default: message_pack
-      responses:
-        '200':
-          description: The transaction found
-          schema:
-            $ref: '#/definitions/SingleTxObject'
-        '404':
-          description: Block or transaction not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /block/tx/latest/{tx_index}:
-    get:
-      tags:
-        - internal
-        - chain
-      operationId: GetTransactionFromBlockLatest
-      description: 'Get a transaction by index in the latest block'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: tx_index
-          description: 'Index of the transaction in the block'
-          required: true
-          type: integer
-        - in: query
-          name: tx_encoding
-          description: 'Transactions encoding'
-          type: string
-          enum: [message_pack, json]
-          default: message_pack
-      responses:
-        '200':
-          description: The transaction found
-          schema:
-            $ref: '#/definitions/SingleTxObject'
-        '404':
-          description: Block or transaction not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /contract/compile:
+  /debug/contracts/code/compile:
     post:
       tags:
-        - external
-        - dev
+        - internal
+        - contract
+        - debug
       operationId: 'CompileContract'
       description: 'Compile a sophia contract from source and return byte code'
       consumes:
@@ -2682,11 +1608,12 @@ paths:
           description: Invalid contract
           schema:
             $ref: '#/definitions/Error'
-  /contract/call:
+  /debug/contracts/code/call:
     post:
       tags:
-        - external
-        - dev
+        - internal
+        - contract
+        - debug
       operationId: 'CallContract'
       description: 'Call a sophia function with a given name and argument in the given bytecode off chain.'
       consumes:
@@ -2709,11 +1636,12 @@ paths:
           description: Invalid contract
           schema:
             $ref: '#/definitions/Error'
-  /contract/decode-data:
+  /debug/contracts/code/decode-data:
     post:
       tags:
-        - external
-        - dev
+        - internal
+        - contract
+        - debug
       operationId: 'DecodeData'
       description: 'Decode Sophia return data encoded according to Sophia ABI.'
       consumes:
@@ -2736,11 +1664,12 @@ paths:
           description: Invalid data
           schema:
             $ref: '#/definitions/Error'
-  /contract/encode-calldata:
+  /debug/contracts/code/encode-calldata:
     post:
       tags:
-        - external
-        - dev
+        - internal
+        - contract
+        - debug
       operationId: 'EncodeCalldata'
       description: 'Encode sophia data and function name according to sophia ABI.'
       consumes:
@@ -2763,29 +1692,11 @@ paths:
           description: Invalid contract
           schema:
             $ref: '#/definitions/Error'
-  /peer/key:
-    get:
-      tags:
-        - external
-        - gossip
-      operationId: 'GetPeerKey'
-      description: 'Get node''s public peer key'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      responses:
-        '200':
-          description: 'Node''s peer public key'
-          schema:
-            type: object
-            properties:
-              pubkey:
-                $ref: '#/definitions/EncodedHash'
-        '404':
-          description: No key pair
-          schema:
-            $ref: '#/definitions/Error'
+
+
+##
+## Definitions
+##
 
 definitions:
   EncodedHash:
@@ -2800,9 +1711,11 @@ definitions:
   Uri:
     type: string
     ## format: uri
-  Header:
+  KeyBlock:
     type: object
     properties:
+      hash:
+        $ref: '#/definitions/EncodedHash'
       height:
         type: integer
         format: int64
@@ -2817,30 +1730,19 @@ definitions:
         format: int64
       nonce:
         type: integer
-        format: uint64
+        format: int64
       time:
         type: integer
         format: int64
       version:
         type: integer
+        format: int64
       pow:
         $ref: '#/definitions/Pow'
       miner:
         $ref: '#/definitions/EncodedHash'
       beneficiary:
         $ref: '#/definitions/EncodedHash'
-  GenericBlock:
-    allOf:
-      - $ref: '#/definitions/Header'
-      - type: object
-        discriminator: data_schema
-        properties:
-          data_schema:
-            type: string
-          hash:
-            $ref: '#/definitions/EncodedHash'
-        required:
-        - data_schema
   MicroBlockHeader:
     type: object
     properties:
@@ -2863,44 +1765,18 @@ definitions:
       version:
         type: integer
         format: int64
-  Top:
-    allOf:
-      - $ref: '#/definitions/Header'
-      - type: object
-        properties:
-          hash:
-            type: string
-  TxObjects:
+  GenericTxs:
     type: object
-    discriminator: data_schema
     properties:
-      data_schema:
-        type: string
-    required:
-    - data_schema
-  MsgPackTxs:
-    allOf:
-      - $ref: '#/definitions/TxObjects'
-      - type: object
-        properties:
-          transactions:
-            type: array
-            items:
-              $ref: '#/definitions/Tx'
-  JSONTxs:
-    allOf:
-      - $ref: '#/definitions/TxObjects'
-      - type: object
-        properties:
-          transactions:
-            type: array
-            items:
-              $ref: '#/definitions/SignedTxJSON'
+      transactions:
+        type: array
+        items:
+            $ref: '#/definitions/GenericSignedTx'
   Account:
     type: object
     properties:
-      pubkey:
-        type: string
+      id:
+        $ref: '#/definitions/EncodedHash'
         description: 'Public key'
       balance:
         type: integer
@@ -2912,32 +1788,16 @@ definitions:
         description: 'Nonce'
         format: int64
         minimum: 0
-  Balance:
-    type: object
-    properties:
-      balance:
-        type: integer
-        format: int64
-  Nonce:
-    type: object
-    properties:
-      nonce:
-        type: integer
-        format: int64
   Tx:
     type: object
     properties:
        tx:
          type: string
-  Transactions:
-    type: array
-    items:
-      $ref: '#/definitions/Tx'
   RegisteredOracle:
     type: object
     properties:
       id:
-        type: string
+        $ref: '#/definitions/EncodedHash'
       query_format:
         type: string
       response_format:
@@ -2947,23 +1807,19 @@ definitions:
       expires:
         type: integer
         format: int64
-  RegisteredOracles:
-    type: array
-    items:
-      $ref: '#/definitions/RegisteredOracle'
   OracleQuery:
     type: object
     properties:
       id:
-        type: string
-      sender:
-        type: string
+        $ref: '#/definitions/EncodedHash'
+      sender_id:
+        $ref: '#/definitions/EncodedHash'
       sender_nonce:
         type: integer
         format: int64
         minimum: 0
       oracle_id:
-        type: string
+        $ref: '#/definitions/EncodedHash'
       query:
         type: string
       response:
@@ -2976,18 +1832,6 @@ definitions:
       fee:
         type: integer
         format: int64
-  OracleQuestion:
-    type: object
-    properties:
-      query_id:
-        type: string
-      query:
-        type: string
-      query_fee:
-        type: integer
-      expires_at:
-        type: integer
-        format: int64
   OracleQueries:
     type: object
     properties:
@@ -2995,14 +1839,10 @@ definitions:
         type: array
         items:
           $ref: '#/definitions/OracleQuery'
-  OracleQuestions:
-    type: array
-    items:
-      $ref: '#/definitions/OracleQuestion'
   SpendTx:
     type: object
     properties:
-      recipient_pubkey:
+      recipient_id:
         $ref: '#/definitions/EncodedHash'
       amount:
         type: integer
@@ -3014,7 +1854,7 @@ definitions:
       ttl:
         type: integer
         format: int64
-      sender:
+      sender_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
@@ -3022,15 +1862,10 @@ definitions:
       payload:
         type: string
     required:
-    - recipient_pubkey
+    - recipient_id
     - amount
     - fee
     - payload
-  SpendTxResponse:
-    type: object
-    properties:
-      tx_hash:
-        $ref: '#/definitions/EncodedHash'
   OracleRegisterTx:
     type: object
     properties:
@@ -3043,7 +1878,7 @@ definitions:
         format: int64
       oracle_ttl:
         $ref: '#/definitions/TTL'
-      account:
+      account_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
@@ -3060,13 +1895,6 @@ definitions:
     - query_fee
     - fee
     - oracle_ttl
-  OracleRegisterResponse:
-    type: object
-    properties:
-      tx_hash:
-        $ref: '#/definitions/EncodedHash'
-      oracle_id:
-        $ref: '#/definitions/EncodedHash'
   OracleExtendTx:
     type: object
     properties:
@@ -3075,7 +1903,7 @@ definitions:
         format: int64
       oracle_ttl:
         $ref: '#/definitions/TTL'
-      oracle:
+      oracle_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
@@ -3089,8 +1917,8 @@ definitions:
   OracleQueryTx:
     type: object
     properties:
-      oracle_pubkey:
-        type: string
+      oracle_id:
+        $ref: '#/definitions/EncodedHash'
       query:
         type: string
       query_fee:
@@ -3106,20 +1934,20 @@ definitions:
       ttl:
         type: integer
         format: int64
-      sender:
+      sender_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
         format: int64
         description: Sender nonce
     required:
-    - oracle_pubkey
+    - oracle_id
     - query
     - query_fee
     - query_ttl
     - response_ttl
     - fee
-  OracleResponseTx:
+  OracleRespondTx:
     type: object
     properties:
       query_id:
@@ -3132,7 +1960,7 @@ definitions:
       ttl:
         type: integer
         format: int64
-      oracle:
+      oracle_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
@@ -3142,13 +1970,6 @@ definitions:
     - query_id
     - response
     - fee
-  OracleQueryResponse:
-    type: object
-    properties:
-      tx_hash:
-        $ref: '#/definitions/EncodedHash'
-      query_id:
-        $ref: '#/definitions/EncodedHash'
   TTL:
     type: object
     properties:
@@ -3172,33 +1993,34 @@ definitions:
   NameEntry:
     type: object
     properties:
-      name:
-        type: string
-      name_hash:
-        type: string
-      name_ttl:
+      id:
+        $ref: '#/definitions/EncodedHash'
+      expires:
         type: integer
         format: int64
       pointers:
-        type: string
+        type: array
+        items:
+          $ref: '#/definitions/NamePointer'
   NamePreclaimTx:
     type: object
     properties:
-      commitment:
+      commitment_id:
         type: string
+        $ref: '#/definitions/EncodedHash'
       fee:
         type: integer
         format: int64
       ttl:
         type: integer
         format: int64
-      account:
+      account_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
         format: int64
     required:
-    - commitment
+    - commitment_id
     - fee
   NameClaimTx:
     type: object
@@ -3214,7 +2036,7 @@ definitions:
       ttl:
         type: integer
         format: int64
-      account:
+      account_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
@@ -3226,13 +2048,16 @@ definitions:
   NameUpdateTx:
     type: object
     properties:
-      name_hash:
+      name_id:
+        $ref: '#/definitions/EncodedHash'
         type: string
       name_ttl:
         type: integer
         format: int64
       pointers:
-        type: string
+        type: array
+        items:
+          $ref: '#/definitions/NamePointer'
       client_ttl:
         type: integer
         format: int64
@@ -3242,13 +2067,13 @@ definitions:
       ttl:
         type: integer
         format: int64
-      account:
+      account_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
         format: int64
     required:
-    - name_hash
+    - name_id
     - name_ttl
     - client_ttl
     - pointers
@@ -3256,62 +2081,69 @@ definitions:
   NameTransferTx:
     type: object
     properties:
-      name_hash:
-        type: string
-      recipient_pubkey:
-        type: string
+      name_id:
+        $ref: '#/definitions/EncodedHash'
+      recipient_id:
+        $ref: '#/definitions/EncodedHash'
       fee:
         type: integer
         format: int64
       ttl:
         type: integer
         format: int64
-      account:
+      account_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
         format: int64
     required:
-    - name_hash
-    - recipient_pubkey
+    - name_id
+    - recipient_id
     - fee
   NameRevokeTx:
     type: object
     properties:
-      name_hash:
-        type: string
+      name_id:
+        $ref: '#/definitions/EncodedHash'
       fee:
         type: integer
         format: int64
       ttl:
         type: integer
         format: int64
-      account:
+      account_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
         format: int64
     required:
-    - name_hash
+    - name_id
     - fee
-  NameCommitmentHash:
+  CommitmentId:
     type: object
     properties:
-      commitment:
-        type: string
+      commitment_id:
+        $ref: '#/definitions/EncodedHash'
   NameHash:
     type: object
     properties:
-      name_hash:
+      name_id:
+        $ref: '#/definitions/EncodedHash'
+  NamePointer:
+    type: object
+    properties:
+      key:
         type: string
+      id:
+        $ref: '#/definitions/EncodedHash'
   Channel:
     type: object
     properties:
       id:
         $ref: '#/definitions/EncodedHash'
-      initiator:
+      initiator_id:
         $ref: '#/definitions/EncodedHash'
-      responder:
+      responder_id:
         $ref: '#/definitions/EncodedHash'
       total_amount:
         type: integer
@@ -3329,7 +2161,7 @@ definitions:
         type: integer
         format: int64
         minimum: 0
-      delegates:
+      delegate_ids:
         type: array
         items:
           $ref: '#/definitions/EncodedHash'
@@ -3349,13 +2181,13 @@ definitions:
   ChannelCreateTx:
     type: object
     properties:
-      initiator:
+      initiator_id:
         $ref: '#/definitions/EncodedHash'
       initiator_amount:
         type: integer
         format: int64
         minimum: 0
-      responder:
+      responder_id:
         $ref: '#/definitions/EncodedHash'
       responder_amount:
         type: integer
@@ -3389,9 +2221,9 @@ definitions:
         description: 'Root hash of the channel''s internal state tree'
         $ref: '#/definitions/EncodedHash'
     required:
-    - initiator
+    - initiator_id
     - initiator_amount
-    - responder
+    - responder_id
     - responder_amount
     - push_amount
     - channel_reserve
@@ -3403,7 +2235,7 @@ definitions:
     properties:
       channel_id:
         $ref: '#/definitions/EncodedHash'
-      from:
+      from_id:
         $ref: '#/definitions/EncodedHash'
       amount:
         type: integer
@@ -3431,18 +2263,18 @@ definitions:
         description: 'Channel''s next round'
     required:
     - channel_id
-    - from
+    - from_id
     - amount
     - fee
     - nonce
     - state_hash
     - round
-  ChannelWithdrawalTx:
+  ChannelWithdrawTx:
     type: object
     properties:
       channel_id:
         $ref: '#/definitions/EncodedHash'
-      to:
+      to_id:
         $ref: '#/definitions/EncodedHash'
       amount:
         type: integer
@@ -3470,38 +2302,12 @@ definitions:
         description: 'Channel''s next round'
     required:
     - channel_id
-    - to
+    - to_id
     - amount
     - fee
     - nonce
     - state_hash
     - round
-  ChannelSnapshotSoloTx:
-    type: object
-    properties:
-      channel_id:
-        $ref: '#/definitions/EncodedHash'
-      from:
-        $ref: '#/definitions/EncodedHash'
-      payload:
-        type: string
-      ttl:
-        type: integer
-        format: int64
-        minimum: 0
-      fee:
-        type: integer
-        format: int64
-        minimum: 0
-      nonce:
-        type: integer
-        format: int64
-        minimum: 0
-    required:
-    - channel_id
-    - from
-    - payload
-    - fee
   ChannelCloseMutualTx:
     type: object
     properties:
@@ -3538,7 +2344,7 @@ definitions:
     properties:
       channel_id:
         $ref: '#/definitions/EncodedHash'
-      from:
+      from_id:
         $ref: '#/definitions/EncodedHash'
       payload:
         type: string
@@ -3559,7 +2365,7 @@ definitions:
         description: 'Proof of inclusion containing information for closing the channel'
     required:
     - channel_id
-    - from
+    - from_id
     - payload
     - fee
     - poi
@@ -3568,7 +2374,7 @@ definitions:
     properties:
       channel_id:
         $ref: '#/definitions/EncodedHash'
-      from:
+      from_id:
         $ref: '#/definitions/EncodedHash'
       payload:
         type: string
@@ -3589,7 +2395,7 @@ definitions:
         description: 'Proof of inclusion containing information for closing the channel'
     required:
     - channel_id
-    - from
+    - from_id
     - payload
     - fee
     - poi
@@ -3598,7 +2404,7 @@ definitions:
     properties:
       channel_id:
         $ref: '#/definitions/EncodedHash'
-      from:
+      from_id:
         $ref: '#/definitions/EncodedHash'
       initiator_amount_final:
         type: integer
@@ -3622,7 +2428,7 @@ definitions:
         minimum: 0
     required:
     - channel_id
-    - from
+    - from_id
     - initiator_amount_final
     - responder_amount_final
     - fee
@@ -3632,7 +2438,7 @@ definitions:
     properties:
       channel_id:
         $ref: '#/definitions/EncodedHash'
-      from:
+      from_id:
         $ref: '#/definitions/EncodedHash'
       payload:
         type: string
@@ -3658,60 +2464,6 @@ definitions:
     properties:
       pub_key:
         type: string
-  AccountsBalances:
-    type: object
-    properties:
-      accounts_balances:
-        type: array
-        items:
-          $ref: '#/definitions/AccountBalance'
-  AccountBalance:
-    type: object
-    properties:
-      pub_key:
-        type: string
-      balance:
-        type: integer
-        format: int64
-  Version:
-    type: object
-    properties:
-      version:
-        type: string
-      revision:
-        type: string
-      genesis_hash:
-        type: string
-  Info:
-    type: object
-    properties:
-      last_30_blocks_time:
-        type: array
-        items:
-          $ref: '#/definitions/BlockTimeSummary'
-  BlockTimeSummary:
-    type: object
-    properties:
-      height:
-        type: integer
-        format: int64
-      time:
-        type: integer
-        format: int64
-      time_delta_to_parent:
-        type: integer
-        format: int64
-      difficulty:
-        type: number
-  BlockHeight:
-    type: object
-    properties:
-      height:
-        type: integer
-        format: int64
-        description: 'Blocks''s height'
-    required:
-    - height
   Status:
     type: object
     properties:
@@ -3755,37 +2507,11 @@ definitions:
         type: integer
         format: int64
         minimum: 0
-  SingleTxObject:
-    type: object
-    discriminator: data_schema
-    properties:
-      data_schema:
-        type: string
-    required:
-    - data_schema
-  SingleTxJSON:
-    allOf:
-    - $ref: '#/definitions/SingleTxObject'
-    - type: object
-      properties:
-        transaction:
-          $ref: '#/definitions/SignedTxJSON'
-      required:
-      - transaction
-  SingleTxMsgPack:
-    allOf:
-    - $ref: '#/definitions/SingleTxObject'
-    - type: object
-      properties:
-        transaction:
-          $ref: '#/definitions/Tx'
-      required:
-      - transaction
-  SignedTxJSON:
+  GenericSignedTx:
     type: object
     properties:
       tx:
-        $ref: '#/definitions/JSONTx'
+        $ref: '#/definitions/GenericTx'
       block_height:
         type: integer
       block_hash:
@@ -3798,103 +2524,104 @@ definitions:
         minItems: 1
         items:
           type: string
+  GenericTx:
+    type: object
+    discriminator: type
+    properties:
+      vsn:
+        type: integer
+        format: int64
+      type:
+        type: string
+    required:
+      - vsn
+      - type
   ChannelCreateTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ChannelCreateTx'
   ChannelDepositTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ChannelDepositTx'
   ChannelWithdrawalTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
-      - $ref: '#/definitions/ChannelWithdrawalTx'
+      - $ref: '#/definitions/GenericTx'
+      - $ref: '#/definitions/ChannelWithdrawTx'
   ChannelCloseMutualTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ChannelCloseMutualTx'
   ChannelCloseSoloTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ChannelCloseSoloTx'
   ChannelSlashTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ChannelSlashTx'
   ChannelSettleTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ChannelSettleTx'
-## readable JSON objects for transactions:
-  JSONTx:
-    type: object
-    discriminator: data_schema
-    properties:
-      data_schema:
-        type: string
-      vsn:
-        type: integer
-    required:
-    - data_schema
   SpendTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/SpendTx'
   OracleRegisterTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/OracleRegisterTx'
   OracleExtendTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/OracleExtendTx'
   OracleQueryTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/OracleQueryTx'
   OracleResponseTxJSON:
     allOf:
-      - $ref: '#/definitions/JSONTx'
-      - $ref: '#/definitions/OracleResponseTx'
+      - $ref: '#/definitions/GenericTx'
+      - $ref: '#/definitions/OracleRespondTx'
   NamePreclaimTxObject:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/NamePreclaimTx'
   NameClaimTxObject:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/NameClaimTx'
   NameUpdateTxObject:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/NameUpdateTx'
   NameTransferTxObject:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/NameTransferTx'
   NameRevokeTxObject:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/NameRevokeTx'
   ContractCreateTxObject:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ContractCreateData'
   ContractCallTxObject:
     allOf:
-      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ContractCallData'
   ContractCallObject:
     type: object
     properties:
-      caller_address:
+      caller_id:
         $ref: '#/definitions/EncodedHash'
       caller_nonce:
         type: integer
       height:
         type: integer
-      contract_address:
+      contract_id:
         $ref: '#/definitions/EncodedHash'
       gas_price:
         type: integer
@@ -3907,10 +2634,10 @@ definitions:
         description: The status of the call 'ok | error | revert'.
         type: string
     required:
-      - caller_address
+      - caller_id
       - caller_nonce
       - height
-      - contract_address
+      - contract_id
       - gas_price
       - gas_used
       - return_value
@@ -3925,7 +2652,7 @@ definitions:
     properties:
       id:
         $ref: '#/definitions/EncodedHash'
-      owner:
+      owner_id:
         $ref: '#/definitions/EncodedHash'
       vm_version:
         type: integer
@@ -3935,7 +2662,7 @@ definitions:
         type: string
       active:
         type: boolean
-      referers:
+      referrer_ids:
         type: array
         items:
           $ref: '#/definitions/EncodedHash'
@@ -4022,8 +2749,8 @@ definitions:
   ContractCreateData:
     type: object
     properties:
-      owner:
-        type: string
+      owner_id:
+        $ref: '#/definitions/EncodedHash'
         description: Contract owner pub_key
       nonce:
         description: 'Owner''s nonce'
@@ -4064,7 +2791,7 @@ definitions:
         description: Contract call data
         type: string
     required:
-    - owner
+    - owner_id
     - code
     - vm_version
     - deposit
@@ -4076,7 +2803,7 @@ definitions:
   ContractCreateCompute:
     type: object
     properties:
-      owner:
+      owner_id:
         type: string
         description: Contract owner pub_key
       nonce:
@@ -4118,7 +2845,7 @@ definitions:
         description: Contract call data init function arguments
         type: string
     required:
-    - owner
+    - owner_id
     - code
     - vm_version
     - deposit
@@ -4130,15 +2857,15 @@ definitions:
   ContractCallData:
     type: object
     properties:
-      caller:
+      caller_id:
+        $ref: '#/definitions/EncodedHash'
         description: Contract caller pub_key
-        type: string
       nonce:
         description: 'Caller''s nonce'
         type: integer
-      contract:
+      contract_id:
+        $ref: '#/definitions/EncodedHash'
         description: 'Contract''s pub_key'
-        type: string
       vm_version:
         description: 'Virtual machine''s version'
         type: integer
@@ -4168,8 +2895,8 @@ definitions:
         description: Contract call data
         type: string
     required:
-    - caller
-    - contract
+    - caller_id
+    - contract_id
     - vm_version
     - fee
     - amount
@@ -4179,15 +2906,15 @@ definitions:
   ContractCallCompute:
     type: object
     properties:
-      caller:
+      caller_id:
+        $ref: '#/definitions/EncodedHash'
         description: Contract caller pub_key
-        type: string
       nonce:
         description: 'Caller''s nonce'
         type: integer
-      contract:
+      contract_id:
+        $ref: '#/definitions/EncodedHash'
         description: 'Contract''s pub_key'
-        type: string
       vm_version:
         description: 'Virtual machine''s version'
         type: integer
@@ -4220,8 +2947,8 @@ definitions:
         description: Contract call data function arguments
         type: string
     required:
-    - caller
-    - contract
+    - caller_id
+    - contract_id
     - vm_version
     - fee
     - amount
@@ -4250,11 +2977,11 @@ definitions:
       - $ref: '#/definitions/UnsignedTx'
       - type: object
         properties:
-          contract_address:
+          contract_id:
+            $ref: '#/definitions/EncodedHash'
             description: Address of the contract to be created
-            type: string
         required:
-        - contract_address
+        - contract_id
   PoI:
     type: object
     properties:
@@ -4267,7 +2994,7 @@ definitions:
     type: object
     properties:
       key_block:
-        $ref: '#/definitions/GenericBlock'
+        $ref: '#/definitions/KeyBlock'
       micro_blocks:
         type: array
         items:

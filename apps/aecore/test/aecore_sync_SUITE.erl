@@ -538,17 +538,24 @@ get_pool(N) ->
 new_tx(#{node1 := N1, node2 := N2, amount := Am, fee := Fee} = _M) ->
     PK1 = ok(get_pubkey(N1)),
     PK2 = ok(get_pubkey(N2)),
-    Port = rpc:call(N1, aeu_env, user_config_or_env,
-                    [ [<<"http">>, <<"internal">>, <<"port">>],
-                      aehttp, [internal, port], 8143], 5000),
-    Params = #{sender_pubkey => PK1,
-               recipient_pubkey => aec_base58c:encode(account_pubkey, PK2),
+    ExtPort = rpc:call(N1, aeu_env, user_config_or_env,
+                       [ [<<"http">>, <<"external">>, <<"port">>],
+                         aehttp, [external, port], 8043], 5000),
+    IntPort = rpc:call(N1, aeu_env, user_config_or_env,
+                       [ [<<"http">>, <<"internal">>, <<"port">>],
+                         aehttp, [internal, port], 8143], 5000),
+    Params = #{sender_id => aec_base58c:encode(account_pubkey, PK1),
+               recipient_id => aec_base58c:encode(account_pubkey, PK2),
                amount => Am,
                fee => Fee,
                payload => <<"foo">>},
     %% It's internal API so ext_addr is not included here.
-    Cfg = [{int_http, "http://127.0.0.1:" ++ integer_to_list(Port)}],
-    {ok, 200, _} = aehttp_client:request('PostSpendTx', Params, Cfg),
+    Cfg = [{ext_http, "http://127.0.0.1:" ++ integer_to_list(ExtPort)},
+           {int_http, "http://127.0.0.1:" ++ integer_to_list(IntPort)}],
+    ct:log(">>> PARAMS: ~p", [Params]),
+    {ok, 200, #{tx := SpendTx}} = aehttp_client:request('PostSpend', Params, Cfg),
+    SignedSpendTx = sign_tx(N1, SpendTx),
+    {ok, 200, _} = aehttp_client:request('PostTransaction', #{tx => SignedSpendTx}, Cfg),
     ok.
 
 ensure_new_tx(N, Tx) ->
@@ -583,3 +590,10 @@ node_db_cfg(Node) ->
                                   M, F, A, 5000)
                     end),
     {ok, DbCfg}.
+
+sign_tx(Node, Tx) ->
+    {ok, TxDec} = aec_base58c:safe_decode(transaction, Tx),
+    UnsignedTx = aetx:deserialize_from_binary(TxDec),
+    {ok, SignedTx} = rpc:call(Node, aec_keys, sign_tx, [UnsignedTx]),
+    aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)).
+

@@ -16,22 +16,24 @@
         , id/3
         , is_open/1
         , is_closed/1
-        , new/4
-        , oracle_address/1
+        , new/2
+        , oracle_id/1
+        , oracle_pubkey/1
         , query/1
         , response/1
         , response_ttl/1
-        , sender_address/1
+        , sender_id/1
+        , sender_pubkey/1
         , sender_nonce/1
         , serialize/1
         , serialize_for_client/1
         , set_expires/2
         , set_fee/2
-        , set_oracle_address/2
+        , set_oracle/2
         , set_query/2
         , set_response/2
         , set_response_ttl/2
-        , set_sender_address/2
+        , set_sender/2
         , set_sender_nonce/2
         ]).
 
@@ -46,16 +48,14 @@
 -type oracle_response() :: 'undefined' | aeo_oracles:response().
 -type relative_ttl()    :: aeo_oracles:relative_ttl().
 
-               %% TODO: consider renaming sender_address to sender
--record(query, { sender_address :: aec_keys:pubkey()
-               , sender_nonce   :: integer()
-               %% TODO: consider renaming oracle_address to id/oracle_id/oracle
-               , oracle_address :: aec_keys:pubkey()
-               , query          :: oracle_query()
-               , response       :: oracle_response()
-               , expires        :: aec_blocks:height()
-               , response_ttl   :: relative_ttl()
-               , fee            :: integer()
+-record(query, { sender_id    :: aec_id:id()
+               , sender_nonce :: integer()
+               , oracle_id    :: aec_id:id()
+               , query        :: oracle_query()
+               , response     :: oracle_response()
+               , expires      :: aec_blocks:height()
+               , response_ttl :: relative_ttl()
+               , fee          :: integer()
                }).
 
 -opaque query() :: #query{}.
@@ -75,32 +75,19 @@
 %%% API
 %%%===================================================================
 
--spec new(aeo_query_tx:tx(), aec_keys:pubkey(), aec_keys:pubkey(), aec_blocks:height()) -> query().
-new(QTx, SenderPubkey, OraclePubkey, BlockHeight) ->
+-spec new(aeo_query_tx:tx(), aec_blocks:height()) -> query().
+new(QTx, BlockHeight) ->
     Expires = aeo_utils:ttl_expiry(BlockHeight, aeo_query_tx:query_ttl(QTx)),
-    I = #query{ sender_address = SenderPubkey
-              , sender_nonce   = aeo_query_tx:nonce(QTx)
-              , oracle_address = OraclePubkey
-              , query          = aeo_query_tx:query(QTx)
-              , response       = undefined
-              , expires        = Expires
-              , response_ttl   = aeo_query_tx:response_ttl(QTx)
-              , fee            = aeo_query_tx:query_fee(QTx)
+    I = #query{ sender_id    = aeo_query_tx:sender_id(QTx)
+              , sender_nonce = aeo_query_tx:nonce(QTx)
+              , oracle_id    = aeo_query_tx:oracle_id(QTx)
+              , query        = aeo_query_tx:query(QTx)
+              , response     = undefined
+              , expires      = Expires
+              , response_ttl = aeo_query_tx:response_ttl(QTx)
+              , fee          = aeo_query_tx:query_fee(QTx)
               },
     assert_fields(I).
-
--spec id(query()) -> id().
-id(I) ->
-    id(I#query.sender_address,
-       I#query.sender_nonce,
-       I#query.oracle_address).
-
--spec id(binary(), non_neg_integer(), binary()) -> binary().
-id(SenderAddress, Nonce, OracleAddress) ->
-    Bin = <<SenderAddress:?PUB_SIZE/binary,
-            Nonce:?NONCE_SIZE,
-            OracleAddress:?PUB_SIZE/binary>>,
-    aec_hash:hash(pubkey, Bin).
 
 -spec is_open(query()) -> boolean().
 is_open(#query{response = undefined}) -> true;
@@ -128,9 +115,9 @@ serialize(#query{} = I) ->
     aec_object_serialization:serialize(
       ?ORACLE_QUERY_TYPE, ?ORACLE_QUERY_VSN,
       serialization_template(?ORACLE_QUERY_VSN),
-      [ {sender_address, sender_address(I)}
+      [ {sender_id, sender_id(I)}
       , {sender_nonce, sender_nonce(I)}
-      , {oracle_address, oracle_address(I)}
+      , {oracle_id, oracle_id(I)}
       , {query, query(I)}
       , {has_response, HasRresponse}
       , {response, Response}
@@ -141,9 +128,9 @@ serialize(#query{} = I) ->
 
 -spec deserialize(binary()) -> query().
 deserialize(B) ->
-    [ {sender_address, SenderAddress}
+    [ {sender_id, SenderId}
     , {sender_nonce, SenderNonce}
-    , {oracle_address, OracleAddress}
+    , {oracle_id, OracleId}
     , {query, Query}
     , {has_response, HasResponse}
     , {response, Response0}
@@ -158,9 +145,9 @@ deserialize(B) ->
                    false -> undefined;
                    true -> Response0
                end,
-    #query{ sender_address = SenderAddress
+    #query{ sender_id      = SenderId
           , sender_nonce   = SenderNonce
-          , oracle_address = OracleAddress
+          , oracle_id      = OracleId
           , query          = Query
           , response       = Response
           , expires        = Expires
@@ -169,78 +156,111 @@ deserialize(B) ->
           }.
 
 serialization_template(?ORACLE_QUERY_VSN) ->
-    [ {sender_address , binary}
-    , {sender_nonce   , int}
-    , {oracle_address , binary}
-    , {query          , binary}
-    , {has_response   , bool}
-    , {response       , binary}
-    , {expires        , int}
-    , {response_ttl   , int}
-    , {fee            , int}
+    [ {sender_id    , id}
+    , {sender_nonce , int}
+    , {oracle_id    , id}
+    , {query        , binary}
+    , {has_response , bool}
+    , {response     , binary}
+    , {expires      , int}
+    , {response_ttl , int}
+    , {fee          , int}
     ].
 
 -spec serialize_for_client(query()) -> map().
-serialize_for_client(#query{} = I) ->
+serialize_for_client(#query{sender_id    = SenderId,
+                            sender_nonce = SenderNonce,
+                            oracle_id    = OracleId,
+                            query        = Query,
+                            expires      = Expires,
+                            fee          = Fee} = I) ->
     {delta, ResponseTtlValue} = response_ttl(I),
-    Response = case response(I) of
-                   undefined -> <<>>;
-                   R -> R
-               end,
-    #{ <<"query_id">>     => aec_base58c:encode(oracle_query_id, id(I))
-     , <<"sender">>       => aec_base58c:encode(account_pubkey, sender_address(I))
-     , <<"sender_nonce">> => sender_nonce(I)
-     , <<"oracle_id">>    => aec_base58c:encode(oracle_pubkey, oracle_address(I))
-     , <<"query">>        => aec_base58c:encode(oracle_query, query(I))
+    Response =
+        case response(I) of
+            R when R =/= undefined -> R;
+            undefined -> <<>>
+        end,
+    #{ <<"id">>           => aec_base58c:encode(oracle_query_id, id(I))
+     , <<"sender_id">>    => aec_base58c:encode(id_hash, SenderId)
+     , <<"sender_nonce">> => SenderNonce
+     , <<"oracle_id">>    => aec_base58c:encode(id_hash, OracleId)
+     , <<"query">>        => aec_base58c:encode(oracle_query, Query)
      , <<"response">>     => aec_base58c:encode(oracle_response, Response)
-     , <<"expires">>      => expires(I)
+     , <<"expires">>      => Expires
      , <<"response_ttl">> => #{ <<"type">>  => <<"delta">>
                               , <<"value">> => ResponseTtlValue
                               }
-     , <<"fee">>          => fee(I)
+     , <<"fee">>          => Fee
      }.
 
 %%%===================================================================
 %%% Getters
 
--spec sender_address(query()) -> aec_keys:pubkey().
-sender_address(I) -> I#query.sender_address.
+-spec id(query()) -> id().
+id(#query{} = Q) ->
+    id(sender_pubkey(Q), sender_nonce(Q), oracle_pubkey(Q)).
+
+-spec id(aec_keys:pubkey(), non_neg_integer(), aec_keys:pubkey()) -> id().
+id(SenderPubkey, Nonce, OraclePubkey) ->
+    Bin = <<SenderPubkey:?PUB_SIZE/binary,
+            Nonce:?NONCE_SIZE,
+            OraclePubkey:?PUB_SIZE/binary>>,
+    aec_hash:hash(pubkey, Bin).
+
+-spec sender_id(query()) -> aec_id:id().
+sender_id(#query{sender_id = SenderId}) ->
+    SenderId.
+
+-spec sender_pubkey(query()) -> aec_keys:pubkey().
+sender_pubkey(#query{sender_id = SenderId}) ->
+    aec_id:specialize(SenderId, account).
 
 -spec sender_nonce(query()) -> integer().
-sender_nonce(I) -> I#query.sender_nonce.
+sender_nonce(#query{sender_nonce = Nonce}) ->
+    Nonce.
 
--spec oracle_address(query()) -> aec_keys:pubkey().
-oracle_address(I) -> I#query.oracle_address.
+-spec oracle_id(query()) -> aec_id:id().
+oracle_id(#query{oracle_id = OracleId}) ->
+    OracleId.
+
+-spec oracle_pubkey(query()) -> aec_keys:pubkey().
+oracle_pubkey(#query{oracle_id = OracleId}) ->
+    aec_id:specialize(OracleId, oracle).
 
 -spec query(query()) -> oracle_query().
-query(I) -> I#query.query.
+query(#query{query = Query}) ->
+    Query.
 
 -spec response(query()) -> oracle_response().
-response(I) -> I#query.response.
+response(#query{response = Response}) ->
+    Response.
 
 -spec expires(query()) -> aec_blocks:height().
-expires(I) -> I#query.expires.
+expires(#query{expires = Expires}) ->
+    Expires.
 
 -spec response_ttl(query()) -> relative_ttl().
-response_ttl(I) -> I#query.response_ttl.
+response_ttl(#query{response_ttl = ResponseTtl}) ->
+    ResponseTtl.
 
 -spec fee(query()) -> integer().
-fee(I) -> I#query.fee.
+fee(#query{fee = Fee}) ->
+    Fee.
 
 %%%===================================================================
 %%% Setters
 
--spec set_sender_address(aec_keys:pubkey(), query()) -> query().
-set_sender_address(X, I) ->
-    I#query{sender_address = assert_field(sender_address, X)}.
+-spec set_sender(aec_keys:pubkey(), query()) -> query().
+set_sender(X, I) ->
+    I#query{sender_id = aec_id:create(account, assert_field(sender, X))}.
 
 -spec set_sender_nonce(integer(), query()) -> query().
 set_sender_nonce(X, I) ->
     I#query{sender_nonce = assert_field(sender_nonce, X)}.
 
--spec set_oracle_address(aec_keys:pubkey(), query()) -> query().
-set_oracle_address(X, I) ->
-    I#query{oracle_address = assert_field(oracle_address, X)}.
+-spec set_oracle(aec_keys:pubkey(), query()) -> query().
+set_oracle(X, I) ->
+    I#query{oracle_id = aec_id:create(oracle, assert_field(oracle, X))}.
 
 -spec set_query(oracle_query(), query()) -> query().
 set_query(X, I) ->
@@ -267,14 +287,14 @@ set_fee(X, I) ->
 %%%===================================================================
 
 assert_fields(I) ->
-    List = [ {sender_address, I#query.sender_address}
-           , {sender_nonce  , I#query.sender_nonce}
-           , {oracle_address, I#query.oracle_address}
-           , {query         , I#query.query}
-           , {response      , I#query.response}
-           , {expires       , I#query.expires}
-           , {response_ttl  , I#query.response_ttl}
-           , {fee           , I#query.fee}
+    List = [ {sender       , sender_pubkey(I)}
+           , {sender_nonce , I#query.sender_nonce}
+           , {oracle       , oracle_pubkey(I)}
+           , {query        , I#query.query}
+           , {response     , I#query.response}
+           , {expires      , I#query.expires}
+           , {response_ttl , I#query.response_ttl}
+           , {fee          , I#query.fee}
            ],
     List1 = [try assert_field(X, Y), [] catch _:X -> X end
              || {X, Y} <- List],
@@ -283,13 +303,13 @@ assert_fields(I) ->
         Other -> error({missing, Other})
     end.
 
-assert_field(sender_address, <<_:?PUB_SIZE/binary>> = X) -> X;
-assert_field(sender_nonce  , X) when is_integer(X), X >= 0 -> X;
-assert_field(oracle_address, <<_:?PUB_SIZE/binary>> = X) -> X;
-assert_field(query         , X) when is_binary(X) -> X;
-assert_field(response      , X) when X =:= 'undefined' -> X;
-assert_field(response      , X) when is_binary(X) -> X;
-assert_field(expires       , X) when is_integer(X), X >= 0 -> X;
-assert_field(response_ttl  , {delta, I} = X) when is_integer(I), I > 0 -> X;
-assert_field(fee           , X) when is_integer(X), X >= 0 -> X;
-assert_field(Field,          X) -> error({illegal, Field, X}).
+assert_field(sender       , <<_:?PUB_SIZE/binary>> = X) -> X;
+assert_field(sender_nonce , X) when is_integer(X), X >= 0 -> X;
+assert_field(oracle       , <<_:?PUB_SIZE/binary>> = X) -> X;
+assert_field(query        , X) when is_binary(X) -> X;
+assert_field(response     , X) when X =:= 'undefined' -> X;
+assert_field(response     , X) when is_binary(X) -> X;
+assert_field(expires      , X) when is_integer(X), X >= 0 -> X;
+assert_field(response_ttl , {delta, I} = X) when is_integer(I), I > 0 -> X;
+assert_field(fee          , X) when is_integer(X), X >= 0 -> X;
+assert_field(Field,         X) -> error({illegal, Field, X}).

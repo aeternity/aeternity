@@ -16,7 +16,7 @@
          root_hash/1,
          serialize_pow_evidence/1,
          serialize_to_binary/1,
-         serialize_to_map/1,
+         serialize_for_client/2,
          set_target/2,
          set_time_in_msecs/2,
          target/1,
@@ -183,35 +183,40 @@ miner(Header) ->
 beneficiary(Header) ->
     Header#header.beneficiary.
 
--spec serialize_to_map(header()) -> {ok, map()}.
-serialize_to_map(#header{} = Header) ->
-    serialize_to_map(type(Header), Header).
+-spec serialize_for_client(header(), key | micro) -> map().
+serialize_for_client(#header{} = Header, PrevBlockType) ->
+    Type = type(Header),
+    serialize_for_client(Type, Header, PrevBlockType).
 
--spec serialize_to_map(block_type(), header()) -> {ok, map()}.
-serialize_to_map(key, Header) ->
-    Serialized =
-      #{<<"height">> => Header#header.height,
-        <<"prev_hash">> => Header#header.prev_hash,
-        <<"state_hash">> => Header#header.root_hash,
-        <<"miner">> => Header#header.miner,
-        <<"beneficiary">> => Header#header.beneficiary,
-        <<"target">> => Header#header.target,
-        <<"pow">> => Header#header.pow_evidence,
-        <<"nonce">> => Header#header.nonce,
-        <<"time">> => Header#header.time,
-        <<"version">> => Header#header.version
-      },
-    {ok, Serialized};
-serialize_to_map(micro, Header) ->
-    Serialized =
-      #{<<"height">> => Header#header.height,
-        <<"prev_hash">> => Header#header.prev_hash,
-        <<"state_hash">> => Header#header.root_hash,
-        <<"txs_hash">> => Header#header.txs_hash,
-        <<"time">> => Header#header.time,
-        <<"version">> => Header#header.version
-      },
-    {ok, Serialized}.
+serialize_for_client(key, Header, PrevBlockType) ->
+    {ok, Hash} = hash_header(Header),
+    #{<<"hash">>        => encode_block_hash(key, Hash),
+      <<"height">>      => Header#header.height,
+      <<"prev_hash">>   => encode_block_hash(PrevBlockType, Header#header.prev_hash),
+      <<"state_hash">>  => aec_base58c:encode(block_state_hash, Header#header.root_hash),
+      <<"miner">>       => aec_base58c:encode(account_pubkey, Header#header.miner),
+      <<"beneficiary">> => aec_base58c:encode(account_pubkey, Header#header.beneficiary),
+      <<"target">>      => Header#header.target,
+      <<"pow">>         => serialize_pow_evidence(Header#header.pow_evidence),
+      <<"nonce">>       => Header#header.nonce,
+      <<"time">>        => Header#header.time,
+      <<"version">>     => Header#header.version
+     };
+serialize_for_client(micro, Header, PrevBlockType) ->
+    {ok, Hash} = hash_header(Header),
+    #{<<"hash">>       => encode_block_hash(micro, Hash),
+      <<"height">>     => Header#header.height,
+      <<"prev_hash">>  => encode_block_hash(PrevBlockType, Header#header.prev_hash),
+      <<"state_hash">> => aec_base58c:encode(block_state_hash, Header#header.root_hash),
+      <<"txs_hash">>   => aec_base58c:encode(block_tx_hash, Header#header.txs_hash),
+      <<"time">>       => Header#header.time,
+      <<"version">>    => Header#header.version
+     }.
+
+encode_block_hash(key, Hash) ->
+    aec_base58c:encode(key_block_hash, Hash);
+encode_block_hash(micro, Hash) ->
+    aec_base58c:encode(micro_block_hash, Hash).
 
 -spec deserialize_from_map(map()) -> header().
 deserialize_from_map(#{<<"height">> := Height,
@@ -308,6 +313,7 @@ deserialize_from_binary(<<Version:64,
             version = Version}.
 
 -spec hash_header(header()) -> {ok, aec_blocks:block_header_hash()}.
+
 hash_header(H) ->
     BinaryH = serialize_to_binary(H),
     {ok, aec_hash:hash(header, BinaryH)}.

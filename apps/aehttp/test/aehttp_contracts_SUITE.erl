@@ -181,10 +181,15 @@ spending_1(Config) ->
     ct:pal("Balances 0: ~p, ~p\n", [ABal0,BBal0]),
 
     %% Add tokens to both accounts and wait until done.
-    {ok,200,#{<<"tx_hash">> := ATxHash}} = post_spend_tx(APubkey, 500, 1),
-    {ok,200,#{<<"tx_hash">> := BTxHash}} = post_spend_tx(BPubkey, 500, 1),
-
+    {ok,200,#{<<"tx">> := ATx}} = post_spend_tx(APubkey, 500, 1),
+    SignedATx = sign_tx(ATx),
+    {ok, 200, #{<<"tx_hash">> := ATxHash}} = post_tx(SignedATx),
     ok = wait_for_tx_hash_on_chain(NodeName, ATxHash),
+
+    {ok,200,#{<<"tx">> := BTx}} = post_spend_tx(BPubkey, 500, 1),
+    SignedBTx = sign_tx(BTx),
+    {ok, 200, #{<<"tx_hash">> := BTxHash}} = post_tx(SignedBTx),
+
     ok = wait_for_tx_hash_on_chain(NodeName, BTxHash),
 
     %% Get balances after mining.
@@ -301,7 +306,10 @@ spending_3(Config) ->
     ct:pal("Balances 2: ~p, ~p\n", [ABal2,BBal2]),
 
     %% Now we add enough tokens to acc_a so it can do the spend tx.
-    {ok,200,#{<<"tx_hash">> := PostTxHash}} = post_spend_tx(APubkey, 500, 1),
+    {ok,200,#{<<"tx">> := PostTx}} = post_spend_tx(APubkey, 500, 1),
+    SignedPostTx = sign_tx(PostTx),
+    {ok, 200, #{<<"tx_hash">> := PostTxHash}} = post_tx(SignedPostTx),
+
     ok = wait_for_tx_hash_on_chain(NodeName, PostTxHash),
     ok = wait_for_tx_hash_on_chain(NodeName, SpendTxHash),
 
@@ -875,7 +883,7 @@ dutch_auction_contract(Config) ->
 
 get_balance(Pubkey) ->
     Addr = aec_base58c:encode(account_pubkey, Pubkey),
-    {ok,200,#{<<"balance">> := Balance}} = get_balance_at_top(Addr),
+    {ok,200,#{<<"balance">> := Balance}} = get_account(Addr),
     Balance.
 
 ensure_balance(Pubkey, NewBalance) ->
@@ -886,7 +894,9 @@ ensure_balance(Pubkey, NewBalance) ->
             %% Get more tokens from the miner.
             Fee = 1,
             Incr = NewBalance - Balance + Fee,  %Include the fee
-            {ok,200,_} = post_spend_tx(Pubkey, Incr, Fee),
+            {ok,200,#{<<"tx">> := SpendTx}} = post_spend_tx(Pubkey, Incr, Fee),
+            SignedSpendTx = sign_tx(SpendTx),
+            {ok, 200, _} = post_tx(SignedSpendTx),
             NewBalance
     end.
 
@@ -970,11 +980,11 @@ call_encoded(NodeName, Pubkey, Privkey, EncodedContractPubkey, EncodedData,
 contract_create_tx(Pubkey, Privkey, HexCode, EncodedInitData, CallerSet) ->
     Address = aec_base58c:encode(account_pubkey, Pubkey),
     %% Generate a nonce.
-    {ok,200,#{<<"nonce">> := Nonce0}} = get_nonce(Address),
+    {ok,200,#{<<"nonce">> := Nonce0}} = get_account(Address),
     Nonce = Nonce0 + 1,
 
     %% The default init contract.
-    ContractInitEncoded0 = #{ owner => Address,
+    ContractInitEncoded0 = #{ owner_id => Address,
 			      code => HexCode,
 			      vm_version => 1,	%?AEVM_01_Sophia_01
 			      deposit => 2,
@@ -995,12 +1005,12 @@ contract_create_tx(Pubkey, Privkey, HexCode, EncodedInitData, CallerSet) ->
 contract_call_tx(Pubkey, Privkey, EncodedContractPubkey, EncodedCallData, CallerSet) ->
     Address = aec_base58c:encode(account_pubkey, Pubkey),
     %% Generate a nonce.
-    {ok,200,#{<<"nonce">> := Nonce0}} = get_nonce(Address),
+    {ok,200,#{<<"nonce">> := Nonce0}} = get_account(Address),
     Nonce = Nonce0 + 1,
 
     %% The default call contract.
-    ContractCallEncoded0 = #{ caller => Address,
-			      contract => EncodedContractPubkey,
+    ContractCallEncoded0 = #{ caller_id => Address,
+			      contract_id => EncodedContractPubkey,
 			      vm_version => 1,	%?AEVM_01_Sophia_01
 			      amount => 0,
 			      gas => 30000,	%May need a lot of gas
@@ -1024,63 +1034,54 @@ contract_call_tx(Pubkey, Privkey, EncodedContractPubkey, EncodedCallData, Caller
 
 get_top() ->
     Host = external_address(),
-    http_request(Host, get, "top", []).
+    http_request(Host, get, "blocks/top", []).
 
 get_contract_create(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/contract/create", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/contracts/create", Data).
 
 get_contract_call(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/contract/call", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/contracts/call", Data).
 
 get_contract_call_object(TxHash) ->
     Host = external_address(),
-    http_request(Host, get, "tx/"++binary_to_list(TxHash)++"/contract-call", []).
+    http_request(Host, get, "transactions/"++binary_to_list(TxHash)++"/info", []).
 
 get_contract_decode_data(Request) ->
-    Host = external_address(),
-    http_request(Host, post, "contract/decode-data", Request).
+    Host = internal_address(),
+    http_request(Host, post, "debug/contracts/code/decode-data", Request).
 
-get_tx(TxHash, TxEncoding) ->
-    Params = tx_encoding_param(TxEncoding),
+get_tx(TxHash) ->
     Host = external_address(),
-    http_request(Host, get, "tx/" ++ binary_to_list(TxHash), Params).
+    http_request(Host, get, "transactions/" ++ binary_to_list(TxHash), []).
 
 post_spend_tx(Recipient, Amount, Fee) ->
     post_spend_tx(Recipient, Amount, Fee, <<"post spend tx">>).
 
 post_spend_tx(Recipient, Amount, Fee, Payload) ->
     Host = internal_address(),
-    http_request(Host, post, "spend-tx",
-                 #{recipient_pubkey => aec_base58c:encode(account_pubkey,
-							  Recipient),
+    {ok, Sender} = rpc(aec_keys, pubkey, []),
+    http_request(Host, post, "debug/transactions/spend",
+                 #{sender_id => aec_base58c:encode(account_pubkey, Sender),
+                   recipient_id => aec_base58c:encode(account_pubkey, Recipient),
                    amount => Amount,
                    fee => Fee,
                    payload => Payload}).
 
-get_balance_at_top(EncodedPubKey) ->
-    get_balance(EncodedPubKey, []).
-
-get_balance(EncodedPubKey, Params) ->
+get_account(Id) ->
     Host = external_address(),
-    http_request(Host, get, "account/" ++ binary_to_list(EncodedPubKey) ++ "/balance",
-                 Params).
-
-get_nonce(EncodedPubKey) ->
-    get_nonce(EncodedPubKey, []).
-
-get_nonce(EncodedPubKey, Params) ->
-    Host = external_address(),
-    http_request(Host, get, "account/" ++ binary_to_list(EncodedPubKey) ++ "/nonce", Params).
+    http_request(Host, get, "accounts/" ++ http_uri:encode(Id), []).
 
 post_tx(TxSerialized) ->
     Host = external_address(),
-    http_request(Host, post, "tx", #{tx => TxSerialized}).
+    http_request(Host, post, "transactions", #{tx => TxSerialized}).
 
-tx_encoding_param(default) -> #{};
-tx_encoding_param(json) -> #{tx_encoding => <<"json">>};
-tx_encoding_param(message_pack) -> #{tx_encoding => <<"message_pack">>}.
+sign_tx(Tx) ->
+    {ok, TxDec} = aec_base58c:safe_decode(transaction, Tx),
+    UnsignedTx = aetx:deserialize_from_binary(TxDec),
+    {ok, SignedTx} = rpc(aec_keys, sign_tx, [UnsignedTx]),
+    aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)).
 
 %% ============================================================
 %% private functions
@@ -1174,8 +1175,10 @@ process_http_return(R) ->
 new_account(Balance) ->
     {Pubkey,Privkey} = generate_key_pair(),
     Fee = 1,
-    {ok,200,#{<<"tx_hash">> := TxHash}} = post_spend_tx(Pubkey, Balance, Fee),
-    {Pubkey,Privkey,TxHash}.
+    {ok, 200, #{<<"tx">> := SpendTx}} = post_spend_tx(Pubkey, Balance, Fee),
+    SignedSpendTx = sign_tx(SpendTx),
+    {ok, 200, #{<<"tx_hash">> := SpendTxHash}} = post_tx(SignedSpendTx),
+    {Pubkey,Privkey,SpendTxHash}.
 
 %% spend_tokens(SenderPubkey, SenderPrivkey, Recipient, Amount, Fee) ->
 %% spend_tokens(SenderPubkey, SenderPrivkey, Recipient, Amount, Fee, CallerSet) ->
@@ -1189,11 +1192,11 @@ spend_tokens(SenderPub, SenderPriv, Recip, Amount, Fee) ->
 spend_tokens(SenderPub, SenderPriv, Recip, Amount, Fee, CallerSet) ->
     %% Generate a nonce.
     Address = aec_base58c:encode(account_pubkey, SenderPub),
-    {ok,200,#{<<"nonce">> := Nonce0}} = get_nonce(Address),
+    {ok,200,#{<<"nonce">> := Nonce0}} = get_account(Address),
     Nonce = Nonce0 + 1,
 
-    Params0 = #{sender => aec_id:create(account, SenderPub),
-                recipient => aec_id:create(account, Recip),
+    Params0 = #{sender_id => aec_id:create(account, SenderPub),
+                recipient_id => aec_id:create(account, Recip),
                 amount => Amount,
                 fee => Fee,
                 nonce => Nonce,
@@ -1210,7 +1213,7 @@ spend_tokens(SenderPub, SenderPriv, Recip, Amount, Fee, CallerSet) ->
 
 sign_and_post_create_tx(Privkey, CreateEncoded) ->
     {ok,200,#{<<"tx">> := EncodedUnsignedTx,
-              <<"contract_address">> := EncodedPubkey}} =
+              <<"contract_id">> := EncodedPubkey}} =
         get_contract_create(CreateEncoded),
     {ok,DecodedPubkey} = aec_base58c:safe_decode(contract_pubkey,
                                                  EncodedPubkey),
@@ -1232,11 +1235,11 @@ sign_and_post_tx(PrivKey, EncodedUnsignedTx) ->
     TxHash.
 
 tx_in_chain(TxHash) ->
-    case get_tx(TxHash, json) of
-        {ok, 200, #{<<"transaction">> := #{<<"block_hash">> := <<"none">>}}} ->
+    case get_tx(TxHash) of
+        {ok, 200, #{<<"block_hash">> := <<"none">>}} ->
             ct:log("Tx not mined, but in mempool"),
             false;
-        {ok, 200, #{<<"transaction">> := #{<<"block_hash">> := _}}} -> true;
+        {ok, 200, #{<<"block_hash">> := _}} -> true;
         {ok, 404, _} -> false
     end.
 

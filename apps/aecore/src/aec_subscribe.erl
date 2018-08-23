@@ -139,9 +139,10 @@ notify_chain_subscribers(micro_block_created, Block, #sub{ chain = Cs }) ->
         || {{ws, Ws}, added_micro_block} <- Cs ],
     ok;
 notify_chain_subscribers(top_changed, Block, #sub{ chain = Cs }) ->
+    BlockType = aec_blocks:type(Block),
     BlockHeight = aec_blocks:height(Block),
     {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
-    [ Ws ! {event, new_block, {BlockHeight, BlockHash}}
+    [ Ws ! {event, new_block, {BlockType, BlockHeight, BlockHash}}
       || {{ws, Ws}, new_block} <- Cs ],
     ok.
 

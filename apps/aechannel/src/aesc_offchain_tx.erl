@@ -20,7 +20,7 @@
         ]).
 
 %% Getters
--export([channel_id/1,
+-export([channel_pubkey/1,
          updates/1,
          round/1,
          state_hash/1]).
@@ -107,9 +107,10 @@ process(#channel_offchain_tx{}, _Context, _Trees, _Height, _ConsensusVersion,
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
 signers(#channel_offchain_tx{} = Tx, Trees) ->
-    case aec_chain:get_channel(channel_id(Tx), Trees) of
+    case aec_chain:get_channel(channel_pubkey(Tx), Trees) of
         {ok, Channel} ->
-            {ok, [aesc_channels:initiator(Channel), aesc_channels:responder(Channel)]};
+            {ok, [aesc_channels:initiator_pubkey(Channel),
+                  aesc_channels:responder_pubkey(Channel)]};
         {error, not_found} -> {error, channel_does_not_exist}
     end.
 
@@ -164,8 +165,8 @@ serialization_template(?CHANNEL_OFFCHAIN_TX_VSN) ->
 %%% Getters
 %%%===================================================================
 
--spec channel_id(tx()) -> aesc_channels:id().
-channel_id(#channel_offchain_tx{channel_id = ChannelId}) ->
+-spec channel_pubkey(tx()) -> aesc_channels:pubkey().
+channel_pubkey(#channel_offchain_tx{channel_id = ChannelId}) ->
     aec_id:specialize(ChannelId, channel).
 
 -spec updates(tx()) -> [aesc_offchain_update:update()].

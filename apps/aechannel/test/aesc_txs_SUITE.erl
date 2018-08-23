@@ -352,9 +352,9 @@ close_solo(Cfg) ->
                [positive(fun create_channel_/2),
                 set_from(Closer),
                 positive(fun close_solo_/2),
-                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % make sure the channel is not active any more
-                    ClosedCh = aesc_test_utils:get_channel(ChannelId, S),
+                    ClosedCh = aesc_test_utils:get_channel(ChannelPubKey, S),
                     false = aesc_channels:is_active(ClosedCh),
                     Props
                 end])
@@ -372,9 +372,9 @@ close_solo(Cfg) ->
                 set_prop(payload, <<>>),
                 calc_poi(IStartAmt, RStartAmt),
                 positive(fun close_solo_/2),
-                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % make sure the channel is not active any more
-                    ClosedCh = aesc_test_utils:get_channel(ChannelId, S),
+                    ClosedCh = aesc_test_utils:get_channel(ChannelPubKey, S),
                     false = aesc_channels:is_active(ClosedCh),
                     Props
                 end])
@@ -400,9 +400,9 @@ close_solo(Cfg) ->
                 set_from(Closer),
                 set_prop(payload, <<>>),
                 positive(fun close_solo_/2),
-                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % make sure the channel is not active any more
-                    ClosedCh = aesc_test_utils:get_channel(ChannelId, S),
+                    ClosedCh = aesc_test_utils:get_channel(ChannelPubKey, S),
                     false = aesc_channels:is_active(ClosedCh),
                     Props
                 end])
@@ -427,9 +427,9 @@ close_solo(Cfg) ->
                 set_from(Closer),
                 set_prop(payload, <<>>),
                 positive(fun close_solo_/2),
-                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % make sure the channel is not active any more
-                    ClosedCh = aesc_test_utils:get_channel(ChannelId, S),
+                    ClosedCh = aesc_test_utils:get_channel(ChannelPubKey, S),
                     false = aesc_channels:is_active(ClosedCh),
                     Props
                 end])
@@ -449,7 +449,7 @@ close_solo_unknown_from(Cfg) ->
     PrivKey = aesc_test_utils:priv_key(MissingAccount, S),
     run(#{cfg => Cfg},
         [positive(fun create_channel_/2),
-         set_prop(from, MissingAccount),
+         set_prop(from_pubkey, MissingAccount),
          set_prop(from_privkey, PrivKey),
          negative(fun close_solo_/2, {error, account_not_found})]),
     ok.
@@ -593,12 +593,12 @@ close_mutual_wrong_nonce(Cfg) ->
 
 close_mutual_missing_channel(Cfg) ->
     ChannelHashSize = aec_base58c:byte_size_for_type(channel),
-    FakeChannelId = <<42:ChannelHashSize/unit:8>>,
+    FakeChannelPubKey = <<42:ChannelHashSize/unit:8>>,
     run(#{cfg => Cfg},
         [positive(fun create_channel_/2),
          %% prepare balances and a fee..
          prepare_balances_for_mutual_close(),
-         set_prop(channel_id, FakeChannelId),
+         set_prop(channel_pubkey, FakeChannelPubKey),
          negative(fun close_mutual_/2, {error, channel_does_not_exist})]),
     ok.
 
@@ -609,9 +609,9 @@ close_mutual_already_closing(Cfg) ->
                [positive(fun create_channel_/2),
                 set_from(Closer),
                 positive(fun close_solo_/2),
-                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % make sure the channel is not active any more
-                    ClosedCh = aesc_test_utils:get_channel(ChannelId, S),
+                    ClosedCh = aesc_test_utils:get_channel(ChannelPubKey, S),
                     false = aesc_channels:is_active(ClosedCh),
                     Props
                 end,
@@ -633,9 +633,9 @@ slash(Cfg) ->
                 set_from(Closer),
                 set_prop(round, Round0),
                 positive(fun close_solo_/2),
-                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % make sure the channel is not active any more
-                    ClosedCh = aesc_test_utils:get_channel(ChannelId, S),
+                    ClosedCh = aesc_test_utils:get_channel(ChannelPubKey, S),
                     false = aesc_channels:is_active(ClosedCh),
                     Props
                 end,
@@ -663,24 +663,24 @@ slash_by_delegate(Cfg) ->
                [fun(Props) ->
                     {Delegate1, Delegate2, S} = create_loaded_accounts(100, 100),
                     Props#{cfg => [{state, S} | Cfg],
-                           delegates => [aec_id:create(account, Delegate1),
-                                         aec_id:create(account, Delegate2)]}
+                           delegate_ids => [aec_id:create(account, Delegate1),
+                                            aec_id:create(account, Delegate2)]}
                 end,
                 positive(fun create_channel_/2),
                 set_from(Closer),
                 set_prop(round, Round0),
                 positive(fun close_solo_/2),
-                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % make sure the channel is not active any more
-                    ClosedCh = aesc_test_utils:get_channel(ChannelId, S),
+                    ClosedCh = aesc_test_utils:get_channel(ChannelPubKey, S),
                     false = aesc_channels:is_active(ClosedCh),
                     Props
                 end,
                 set_prop(round, Round1),
-                fun(#{delegates := [D1 |_], state := S} = Props) ->
+                fun(#{delegate_ids := [D1 |_], state := S} = Props) ->
                     D1Pubkey = aec_id:specialize(D1, account),
                     D1PrivKey = aesc_test_utils:priv_key(D1Pubkey, S),
-                    Props#{from => D1Pubkey, from_privkey => D1PrivKey}
+                    Props#{from_pubkey => D1Pubkey, from_privkey => D1PrivKey}
                 end,
                 positive(fun slash_/2)])
         end,
@@ -713,7 +713,7 @@ slash_unknown_from(Cfg) ->
                 [positive(fun create_channel_/2),
                  set_from(Closer),
                  positive(fun close_solo_/2),
-                 set_prop(from, MissingAccount),
+                 set_prop(from_pubkey, MissingAccount),
                  set_prop(from_privkey, PrivKey),
                  negative(fun slash_/2, {error, account_not_found})])
         end,
@@ -768,7 +768,7 @@ slash_not_participant(Cfg) ->
                     {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
                     S1 = aesc_test_utils:set_account_balance(NewAcc, 1000, S),
                     PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
-                    Props#{state => S1, from => NewAcc, from_privkey => PrivKey}
+                    Props#{state => S1, from_pubkey => NewAcc, from_privkey => PrivKey}
                  end,
                  set_prop(round, 10),
                  negative(fun slash_/2, {error, account_not_peer_or_delegate})])
@@ -797,7 +797,7 @@ slash_payload_from_another_channel(Cfg) ->
                     Props#{payload => Payload}
                 end,
                 set_from(Slasher),
-                negative(fun slash_/2, {error, bad_state_channel_id})])
+                negative(fun slash_/2, {error, bad_state_channel_pubkey})])
         end,
     [Test(Closer, Slasher) || Closer <- ?ROLES,
                               Slasher <- ?ROLES],
@@ -813,25 +813,25 @@ slash_payload_not_co_signed(Cfg) ->
                 positive(fun close_solo_/2),
                 set_prop(round, 10),
                 set_from(Slasher),
-                fun(#{channel_id        := ChannelId,
+                fun(#{channel_pubkey    := ChannelPubKey,
                       initiator_pubkey  := I,
                       responder_pubkey  := R,
                       initiator_privkey := IPriv,
                       responder_privkey := RPriv,
                       initiator_amount  := IAmt,
                       responder_amount  := RAmt,
-                      from              := From,
+                      from_pubkey       := FromPubKey,
                       state             := S,
                       height            := Height}) ->
                     lists:foreach(
                         fun(PrivKeys) ->
                             PayloadSpec = #{initiator_amount => IAmt,
                                             responder_amount => RAmt},
-                            PayloadMissingS = aesc_test_utils:payload(ChannelId, I, R,
+                            PayloadMissingS = aesc_test_utils:payload(ChannelPubKey, I, R,
                                                           PrivKeys, PayloadSpec),
                             PoI = aesc_test_utils:proof_of_inclusion([{I, IAmt},
                                                                       {R, RAmt}]),
-                            TxSpecMissingS = aesc_test_utils:slash_tx_spec(ChannelId, From,
+                            TxSpecMissingS = aesc_test_utils:slash_tx_spec(ChannelPubKey, FromPubKey,
                                                     PayloadMissingS, PoI, S),
                             {ok, TxMissingS} = aesc_slash_tx:new(TxSpecMissingS),
                             Trees = aesc_test_utils:trees(S),
@@ -876,9 +876,9 @@ slash_older_payload(Cfg) ->
                 set_from(Closer),
                 set_prop(round, 5),
                 positive(fun close_solo_/2),
-                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % make sure the channel is not active any more
-                    ClosedCh = aesc_test_utils:get_channel(ChannelId, S),
+                    ClosedCh = aesc_test_utils:get_channel(ChannelPubKey, S),
                     false = aesc_channels:is_active(ClosedCh),
                     Props
                 end,
@@ -930,7 +930,7 @@ deposit_unknown_from(Cfg) ->
     PrivKey = aesc_test_utils:priv_key(MissingAccount, S),
     run(#{cfg => Cfg},
         [positive(fun create_channel_/2),
-         set_prop(from, MissingAccount),
+         set_prop(from_pubkey, MissingAccount),
          set_prop(from_privkey, PrivKey),
          set_prop(amount, 10),
          negative(fun deposit_/2, {error, account_not_found})]),
@@ -943,8 +943,8 @@ deposit_insufficent_funds(Cfg) ->
             run(#{cfg => Cfg},
                 [positive(fun create_channel_/2),
                  set_from(Depositor),
-                 fun(#{state := S0, from := From} = Props) ->
-                    S1 = aesc_test_utils:set_account_balance(From, TotalAmount, S0),
+                 fun(#{state := S0, from_pubkey := FromPubKey} = Props) ->
+                    S1 = aesc_test_utils:set_account_balance(FromPubKey, TotalAmount, S0),
                     Props#{state => S1}
                  end,
                  set_prop(amount, TestAmount),
@@ -977,7 +977,7 @@ deposit_not_participant(Cfg) ->
 
 deposit_delegate_not_allowed(Cfg) ->
     test_delegate_not_allowed(Cfg, fun deposit_/2, #{amount => 1, fee => 1}).
-    
+
 %%%===================================================================
 %%% Withdraw
 %%%===================================================================
@@ -1015,7 +1015,7 @@ withdraw_unknown_from(Cfg) ->
     PrivKey = aesc_test_utils:priv_key(MissingAccount, S),
     run(#{cfg => Cfg},
         [positive(fun create_channel_/2),
-         set_prop(from, MissingAccount),
+         set_prop(from_pubkey, MissingAccount),
          set_prop(from_privkey, PrivKey),
          set_prop(amount, 10),
          negative(fun withdraw_/2, {error, account_not_found})]),
@@ -1152,7 +1152,7 @@ settle_wrong_amounts(Cfg) ->
 
 settle_missing_channel(Cfg) ->
     ChannelHashSize = aec_base58c:byte_size_for_type(channel),
-    FakeChannelId = <<42:ChannelHashSize/unit:8>>,
+    FakeChannelPubKey = <<42:ChannelHashSize/unit:8>>,
     Test =
         fun(Closer, Settler) ->
             run(#{cfg => Cfg},
@@ -1162,7 +1162,7 @@ settle_missing_channel(Cfg) ->
                 positive(fun close_solo_/2),
                 set_from(Settler),
                 set_prop(height, 21),
-                set_prop(channel_id, FakeChannelId),
+                set_prop(channel_pubkey, FakeChannelPubKey),
                 negative(fun settle_/2, {error, channel_does_not_exist})])
         end,
     [Test(Closer, Setler) || Closer <- ?ROLES,
@@ -1263,7 +1263,7 @@ settle_not_participant(Cfg) ->
                     {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
                     S1 = aesc_test_utils:set_account_balance(NewAcc, 1000, S),
                     PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
-                    Props#{state => S1, from => NewAcc, from_privkey => PrivKey}
+                    Props#{state => S1, from_pubkey => NewAcc, from_privkey => PrivKey}
                 end,
                 negative(fun settle_/2, {error, account_not_peer})])
         end,
@@ -1277,18 +1277,18 @@ settle_delegate_not_allowed(Cfg) ->
               [fun(Props) ->
                     {Delegate1, Delegate2, S} = create_loaded_accounts(100, 100),
                     Props#{cfg => [{state, S} | Cfg],
-                            delegates => [aec_id:create(account, Delegate1),
-                                          aec_id:create(account, Delegate2)]}
+                            delegate_ids => [aec_id:create(account, Delegate1),
+                                             aec_id:create(account, Delegate2)]}
                 end,
                 positive(fun create_channel_/2),
                 set_from(Closer),
                 set_prop(height, 10),
                 positive(fun close_solo_/2),
                 set_prop(height, 21),
-                fun(#{delegates := [D1 |_], state := S} = Props) ->
+                fun(#{delegate_ids := [D1 |_], state := S} = Props) ->
                     D1Pubkey = aec_id:specialize(D1, account),
                     D1PrivKey = aesc_test_utils:priv_key(D1Pubkey, S),
-                    Props#{from => D1Pubkey, from_privkey => D1PrivKey}
+                    Props#{from_pubkey => D1Pubkey, from_privkey => D1PrivKey}
                 end,
                 negative(fun settle_/2, {error, account_not_peer})])
         end,
@@ -1313,9 +1313,9 @@ snapshot_solo(Cfg) ->
                 set_prop(round, Round),
                 set_prop(state_hash, StateHash),
                 positive(fun snapshot_solo_/2),
-                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % ensure channel had been updated
-                    Channel = aesc_test_utils:get_channel(ChannelId, S),
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
                     Round = aesc_channels:round(Channel),
                     StateHash = aesc_channels:state_hash(Channel),
                     Props
@@ -1338,9 +1338,9 @@ snapshot_solo(Cfg) ->
                 set_prop(round, Round),
                 set_prop(state_hash, StateHash),
                 positive(fun snapshot_solo_/2),
-                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % ensure channel had been updated
-                    Channel = aesc_test_utils:get_channel(ChannelId, S),
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
                     Round = aesc_channels:round(Channel),
                     StateHash = aesc_channels:state_hash(Channel),
                     Props
@@ -1367,9 +1367,9 @@ snapshot_closed_channel(Cfg) ->
                 set_prop(fee, 1),
                 prepare_balances_for_mutual_close(),
                 positive(fun close_mutual_/2),
-                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % ensure channel is closed
-                    none = aesc_test_utils:lookup_channel(ChannelId, S),
+                    none = aesc_test_utils:lookup_channel(ChannelPubKey, S),
                     Props
                 end,
                 set_from(Snapshoter),
@@ -1394,9 +1394,9 @@ snapshot_payload_from_another_channel(Cfg) ->
 % no one can overwrite a state, not even the one that posted it
 snapshot_payload_not_co_signed(Cfg) ->
     test_payload_not_both_signed(Cfg,
-                                 fun(ChannelId, From, Payload, _PoI, S) ->
-                                     aesc_test_utils:snapshot_solo_tx_spec(ChannelId,
-                                                                           From,
+                                 fun(ChannelPubKey, FromPubKey, Payload, _PoI, S) ->
+                                     aesc_test_utils:snapshot_solo_tx_spec(ChannelPubKey,
+                                                                           FromPubKey,
                                                                            Payload,
                                                                            S)
                                   end,
@@ -1435,7 +1435,7 @@ set_from(Role) ->
             end,
         PubKey = maps:get(KeyPub, Props),
         PrivKey = maps:get(KeyPriv, Props),
-        Props#{from => PubKey, from_privkey => PrivKey}
+        Props#{from_pubkey => PubKey, from_privkey => PrivKey}
     end.
 
 set_prop(Key, Value) ->
@@ -1466,7 +1466,7 @@ create_payload() ->
     create_payload(payload).
 
 create_payload(Key) ->
-    fun(#{channel_id        := ChannelId,
+    fun(#{channel_pubkey    := ChannelPubKey,
           initiator_amount  := IAmt,
           responder_amount  := RAmt,
           initiator_pubkey  := IPubkey,
@@ -1475,7 +1475,7 @@ create_payload(Key) ->
           responder_privkey := RPrivkey} = Props) ->
         PayloadSpec = #{initiator_amount => IAmt,
                         responder_amount => RAmt},
-        Payload = aesc_test_utils:payload(ChannelId, IPubkey, RPubkey,
+        Payload = aesc_test_utils:payload(ChannelPubKey, IPubkey, RPubkey,
                                         [IPrivkey, RPrivkey], PayloadSpec),
         Props#{Key => Payload}
     end.
@@ -1526,10 +1526,10 @@ create_from_state(S, DefaultSpec) ->
 
     %% Check channel created
     Trees2 = aesc_test_utils:trees(S3),
-    ChannelId = aesc_channels:id(PubKey1, 1, PubKey2),
-    {value, Ch} = aesc_state_tree:lookup(ChannelId, aec_trees:channels(Trees2)),
-    PubKey1 = aesc_channels:initiator(Ch),
-    PubKey2 = aesc_channels:responder(Ch),
+    ChannelPubKey = aesc_channels:pubkey(PubKey1, 1, PubKey2),
+    {value, Ch} = aesc_state_tree:lookup(ChannelPubKey, aec_trees:channels(Trees2)),
+    PubKey1 = aesc_channels:initiator_pubkey(Ch),
+    PubKey2 = aesc_channels:responder_pubkey(Ch),
     0       = aesc_channels:round(Ch),
     true    = aesc_channels:is_active(Ch),
 
@@ -1546,7 +1546,7 @@ create_from_state(S, DefaultSpec) ->
     ?assertEqual(aec_accounts:nonce(AccountBefore2),
                  aec_accounts:nonce(AccountAfter2)),
 
-    {PubKey1, PubKey2, ChannelId, SignedTx, S3}.
+    {PubKey1, PubKey2, ChannelPubKey, SignedTx, S3}.
 
 %%%
 %%% create and apply transactions
@@ -1558,10 +1558,10 @@ create_channel_(#{cfg := Cfg} = Props, _) ->
                                                  responder_amount,
                                                  channel_reserve,
                                                  lock_period,
-                                                 delegates])
+                                                 delegate_ids])
                    end,
                    Props),
-    {PubKey1, PubKey2, ChannelId, _, S0} = create_(Cfg, CreateOpts),
+    {PubKey1, PubKey2, ChannelPubKey, _, S0} = create_(Cfg, CreateOpts),
     PrivKey1 = aesc_test_utils:priv_key(PubKey1, S0),
     PrivKey2 = aesc_test_utils:priv_key(PubKey2, S0),
 
@@ -1573,7 +1573,7 @@ create_channel_(#{cfg := Cfg} = Props, _) ->
     RAmt = maps:get(responder_amount, Props, 70),
     Fee = maps:get(fee, Props, 2),
 
-    Props#{ channel_id        => ChannelId,
+    Props#{ channel_pubkey    => ChannelPubKey,
             initiator_amount  => IAmt,
             responder_amount  => RAmt,
             initiator_pubkey  => PubKey1,
@@ -1584,8 +1584,8 @@ create_channel_(#{cfg := Cfg} = Props, _) ->
             initiator_privkey => PrivKey1,
             responder_privkey => PrivKey2}.
 
-close_solo_(#{channel_id        := ChannelId,
-              from              := From,
+close_solo_(#{channel_pubkey    := ChannelPubKey,
+              from_pubkey       := FromPubKey,
               from_privkey      := FromPrivkey,
               initiator_amount  := IAmt,
               responder_amount  := RAmt,
@@ -1607,8 +1607,8 @@ close_solo_(#{channel_id        := ChannelId,
             Hash -> PayloadSpec0#{state_hash => Hash}
         end,
     Payload = maps:get(payload, Props,
-                        aesc_test_utils:payload(ChannelId, IPubkey, RPubkey,
-                                    [IPrivkey, RPrivkey], PayloadSpec)),
+                       aesc_test_utils:payload(ChannelPubKey, IPubkey, RPubkey,
+                                               [IPrivkey, RPrivkey], PayloadSpec)),
     PoI =  maps:get(poi, Props,
                     aesc_test_utils:proof_of_inclusion([{IPubkey, IAmt},
                                                         {RPubkey, RAmt}])),
@@ -1617,14 +1617,14 @@ close_solo_(#{channel_id        := ChannelId,
             #{nonce := Nonce} -> #{fee => Fee, nonce => Nonce};
             _ -> #{fee => Fee}
         end,
-    TxSpec = aesc_test_utils:close_solo_tx_spec(ChannelId, From, Payload,
-                                            PoI, Spec, S),
+    TxSpec = aesc_test_utils:close_solo_tx_spec(ChannelPubKey, FromPubKey, Payload,
+                                                PoI, Spec, S),
     {ok, Tx} = aesc_close_solo_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, [FromPrivkey]),
     apply_on_trees_(Props, SignedTx, S, Expected).
 
-slash_(#{channel_id        := ChannelId,
-         from              := From,
+slash_(#{channel_pubkey    := ChannelPubKey,
+         from_pubkey       := FromPubKey,
          from_privkey      := FromPrivkey,
          initiator_amount  := IAmt,
          responder_amount  := RAmt,
@@ -1646,7 +1646,7 @@ slash_(#{channel_id        := ChannelId,
             Hash -> PayloadSpec0#{state_hash => Hash}
         end,
     Payload = maps:get(payload, Props,
-                        aesc_test_utils:payload(ChannelId, IPubkey, RPubkey,
+                        aesc_test_utils:payload(ChannelPubKey, IPubkey, RPubkey,
                                     [IPrivkey, RPrivkey], PayloadSpec)),
     PoI = aesc_test_utils:proof_of_inclusion([{IPubkey, IAmt}, {RPubkey, RAmt}]),
     Spec =
@@ -1654,13 +1654,13 @@ slash_(#{channel_id        := ChannelId,
             #{nonce := Nonce} -> #{fee => Fee, nonce => Nonce};
             _ -> #{fee => Fee}
         end,
-    TxSpec = aesc_test_utils:slash_tx_spec(ChannelId, From, Payload,
+    TxSpec = aesc_test_utils:slash_tx_spec(ChannelPubKey, FromPubKey, Payload,
                                             PoI, Spec, S),
     {ok, Tx} = aesc_slash_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, [FromPrivkey]),
     apply_on_trees_(Props, SignedTx, S, Expected).
 
-close_mutual_(#{channel_id              := ChannelId,
+close_mutual_(#{channel_pubkey          := ChannelPubKey,
                 initiator_amount_final  := IAmt,
                 responder_amount_final  := RAmt,
                 initiator_pubkey        := IPubkey,
@@ -1678,13 +1678,13 @@ close_mutual_(#{channel_id              := ChannelId,
               _ -> Spec0
           end,
 
-      TxSpec = aesc_test_utils:close_mutual_tx_spec(ChannelId, Spec, S),
+      TxSpec = aesc_test_utils:close_mutual_tx_spec(ChannelPubKey, Spec, S),
       {ok, Tx} = aesc_close_mutual_tx:new(TxSpec),
       SignedTx = aec_test_utils:sign_tx(Tx, [PrivKey1, PrivKey2]),
       apply_on_trees_(Props, SignedTx, S, Expected).
 
-snapshot_solo_(#{ channel_id        := ChannelId,
-                  from              := From,
+snapshot_solo_(#{ channel_pubkey    := ChannelPubKey,
+                  from_pubkey       := FromPubKey,
                   from_privkey      := FromPrivkey,
                   initiator_amount  := IAmt,
                   responder_amount  := RAmt,
@@ -1702,10 +1702,10 @@ snapshot_solo_(#{ channel_id        := ChannelId,
                     state_hash       => StateHash,
                     round            => Round},
     Payload = maps:get(payload, Props,
-                       aesc_test_utils:payload(ChannelId, IPubkey, RPubkey,
+                       aesc_test_utils:payload(ChannelPubKey, IPubkey, RPubkey,
                                       [IPrivkey, RPrivkey], PayloadSpec)),
 
-    SnapshotTxSpec = aesc_test_utils:snapshot_solo_tx_spec(ChannelId, From,
+    SnapshotTxSpec = aesc_test_utils:snapshot_solo_tx_spec(ChannelPubKey, FromPubKey,
                            Payload, #{fee => Fee},S),
     {ok, SnapshotTx} = aesc_snapshot_solo_tx:new(SnapshotTxSpec),
 
@@ -1713,8 +1713,8 @@ snapshot_solo_(#{ channel_id        := ChannelId,
     apply_on_trees_(Props, SignedTx, S, Expected).
 
 
-settle_(#{channel_id        := ChannelId,
-          from              := From,
+settle_(#{channel_pubkey    := ChannelPubKey,
+          from_pubkey       := FromPubKey,
           from_privkey      := FromPrivkey,
           initiator_amount  := IAmt,
           responder_amount  := RAmt,
@@ -1729,13 +1729,13 @@ settle_(#{channel_id        := ChannelId,
             #{nonce := Nonce} -> Spec0#{nonce => Nonce};
             _ -> Spec0
         end,
-    TxSpec = aesc_test_utils:settle_tx_spec(ChannelId, From, Spec, S),
+    TxSpec = aesc_test_utils:settle_tx_spec(ChannelPubKey, FromPubKey, Spec, S),
     {ok, Tx} = aesc_settle_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, [FromPrivkey]),
     apply_on_trees_(Props, SignedTx, S, Expected).
 
-deposit_(#{channel_id        := ChannelId,
-           from              := From,
+deposit_(#{channel_pubkey    := ChannelPubKey,
+           from_pubkey       := FromPubKey,
            from_privkey      := FromPrivkey,
            fee               := Fee,
            amount            := Amount,
@@ -1750,13 +1750,13 @@ deposit_(#{channel_id        := ChannelId,
             end,
             #{amount => Amount, fee => Fee},
             [nonce, state_hash]),
-    TxSpec = aesc_test_utils:deposit_tx_spec(ChannelId, From, Spec, S),
+    TxSpec = aesc_test_utils:deposit_tx_spec(ChannelPubKey, FromPubKey, Spec, S),
     {ok, Tx} = aesc_deposit_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, [FromPrivkey]),
     apply_on_trees_(Props, SignedTx, S, Expected).
 
-withdraw_(#{channel_id        := ChannelId,
-            from              := From,
+withdraw_(#{channel_pubkey    := ChannelPubKey,
+            from_pubkey       := FromPubKey,
             from_privkey      := FromPrivkey,
             fee               := Fee,
             amount            := Amount,
@@ -1771,7 +1771,7 @@ withdraw_(#{channel_id        := ChannelId,
             end,
             #{amount => Amount, fee => Fee},
             [nonce, state_hash]),
-    TxSpec = aesc_test_utils:withdraw_tx_spec(ChannelId, From,
+    TxSpec = aesc_test_utils:withdraw_tx_spec(ChannelPubKey, FromPubKey,
                                               Spec, S),
     {ok, Tx} = aesc_withdraw_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, [FromPrivkey]),
@@ -1787,8 +1787,8 @@ test_both_wrong_nonce(Cfg, Fun, InitProps) ->
             run(InitProps#{cfg => Cfg},
                 [positive(fun create_channel_/2),
                  set_from(Poster),
-                 fun(#{state := S0, from := From} = Props) ->
-                    S = aesc_test_utils:set_account_nonce(From, AccountNonce, S0),
+                 fun(#{state := S0, from_pubkey := FromPubKey} = Props) ->
+                    S = aesc_test_utils:set_account_nonce(FromPubKey, AccountNonce, S0),
                     Props#{state => S}
                  end,
                  set_prop(nonce, TestNonce),
@@ -1814,7 +1814,7 @@ test_both_payload_from_different_channel(Cfg, Fun) ->
                 positive(fun create_channel_/2),
                 set_from(Poster),
                 % use the payload of channelA in a snapshot_tx for channelB
-                negative(Fun, {error, bad_state_channel_id})])
+                negative(Fun, {error, bad_state_channel_pubkey})])
         end,
     [Test(Role) || Role <- ?ROLES],
     ok.
@@ -1851,25 +1851,25 @@ test_payload_not_both_signed(Cfg, SpecFun, CreateTxFun) ->
             run(#{cfg => Cfg},
                [positive(fun create_channel_/2), % create a channelA
                 set_from(Poster),
-                fun(#{channel_id        := ChannelId,
+                fun(#{channel_pubkey    := ChannelPubKey,
                       initiator_pubkey  := I,
                       responder_pubkey  := R,
                       initiator_privkey := IPriv,
                       responder_privkey := RPriv,
                       initiator_amount  := IAmt,
                       responder_amount  := RAmt,
-                      from              := From,
+                      from_pubkey       := FromPubKey,
                       state             := S,
                       height            := Height}) ->
                     lists:foreach(
                         fun(PrivKeys) ->
                             PayloadSpec = #{initiator_amount => IAmt,
                                             responder_amount => RAmt},
-                            PayloadMissingS = aesc_test_utils:payload(ChannelId, I, R,
+                            PayloadMissingS = aesc_test_utils:payload(ChannelPubKey, I, R,
                                                           PrivKeys, PayloadSpec),
                             PoI = aesc_test_utils:proof_of_inclusion([{I, IAmt},
                                                                       {R, RAmt}]),
-                            TxSpecMissingS = SpecFun(ChannelId, From,
+                            TxSpecMissingS = SpecFun(ChannelPubKey, FromPubKey,
                                                     PayloadMissingS, PoI, S),
                             {ok, TxMissingS} = CreateTxFun(TxSpecMissingS),
                             Trees = aesc_test_utils:trees(S),
@@ -1889,12 +1889,12 @@ test_both_missing_channel(Cfg, Fun) ->
 
 test_both_missing_channel(Cfg, Fun, InitProps) ->
     ChannelHashSize = aec_base58c:byte_size_for_type(channel),
-    FakeChannelId = <<42:ChannelHashSize/unit:8>>,
+    FakeChannelPubKey = <<42:ChannelHashSize/unit:8>>,
     Test =
         fun(Poster) ->
             run(InitProps#{cfg => Cfg},
                [positive(fun create_channel_/2),
-                set_prop(channel_id, FakeChannelId),
+                set_prop(channel_pubkey, FakeChannelPubKey),
                 set_from(Poster),
                 negative(Fun, {error, channel_does_not_exist})])
         end,
@@ -1908,9 +1908,9 @@ test_both_closing_channel(Cfg, Fun) ->
                [positive(fun create_channel_/2),
                 set_from(Closer),
                 positive(fun close_solo_/2),
-                fun(#{channel_id := ChannelId, state := S} = Props) ->
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
                     % make sure the channel is not active any more
-                    ClosedCh = aesc_test_utils:get_channel(ChannelId, S),
+                    ClosedCh = aesc_test_utils:get_channel(ChannelPubKey, S),
                     false = aesc_channels:is_active(ClosedCh),
                     Props
                 end,
@@ -1946,14 +1946,14 @@ test_delegate_not_allowed(Cfg, Fun, InitProps) ->
       [fun(Props) ->
             {Delegate1, Delegate2, S} = create_loaded_accounts(100, 100),
             Props#{cfg => [{state, S} | Cfg],
-                    delegates => [aec_id:create(account, Delegate1),
-                                  aec_id:create(account, Delegate2)]}
+                    delegate_ids => [aec_id:create(account, Delegate1),
+                                     aec_id:create(account, Delegate2)]}
         end,
         positive(fun create_channel_/2),
-        fun(#{delegates := [D1 |_], state := S} = Props) ->
+        fun(#{delegate_ids := [D1 |_], state := S} = Props) ->
             D1Pubkey = aec_id:specialize(D1, account),
             D1PrivKey = aesc_test_utils:priv_key(D1Pubkey, S),
-            Props#{from => D1Pubkey, from_privkey => D1PrivKey}
+            Props#{from_pubkey => D1Pubkey, from_privkey => D1PrivKey}
         end,
         negative(Fun, {error, account_not_peer})]),
     ok.
@@ -1968,7 +1968,7 @@ test_not_participant(Cfg, Fun, InitProps) ->
             {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
             S1 = aesc_test_utils:set_account_balance(NewAcc, 1000, S),
             PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
-            Props#{state => S1, from => NewAcc, from_privkey => PrivKey}
+            Props#{state => S1, from_pubkey => NewAcc, from_privkey => PrivKey}
          end,
          negative(Fun, {error, account_not_peer})]),
     ok.

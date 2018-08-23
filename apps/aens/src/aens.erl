@@ -24,90 +24,87 @@
 %%% API
 %%%===================================================================
 
--spec resolve(atom(), binary(), aens_state_tree:tree()) -> {ok, binary()} | {error, atom()}.
-resolve(Type, Binary, NSTree) ->
-    case is_name(Binary) of
-        false ->
-            aec_base58c:safe_decode(Type, Binary);
+-spec resolve(binary(), binary(), aens_state_tree:tree()) ->
+    {ok, aec_id:id()} | {error, atom()}.
+resolve(Key, Name, NSTree) when is_binary(Key), is_binary(Name) ->
+    case is_name(Name) of
         true ->
-            case get_name(Binary, NSTree) of
-                {ok, #{<<"pointers">> := Pointers}} ->
-                    case proplists:get_value(atom_to_binary(Type, utf8), Pointers) of
-                        undefined -> {error, type_not_found};
-                        Val       -> aec_base58c:safe_decode(Type, Val)
-                    end;
-                {error, _Reason} = Error ->
-                    Error
-            end
-    end.
-
-resolve_from_hash(Type, NameHash, NSTree) ->
-    case aens_state_tree:lookup_name(NameHash, NSTree) of
-        {value, Name} ->
-            Pointers = aens_names:pointers(Name),
-            case proplists:get_value(atom_to_binary(Type, utf8), Pointers) of
-                undefined -> {error, type_not_found};
-                Val       -> aec_base58c:safe_decode(Type, Val)
+            case name_to_name_hash(Name) of
+                {ok, NameHash} -> resolve_from_hash(Key, NameHash, NSTree);
+                {error, _Rsn} = Error -> Error
             end;
-        none ->
-            {error, hash_not_found}
+        false ->
+            AllowedTypes = [account_pubkey, oracle_pubkey, contract_pubkey, channel],
+            aec_base58c:safe_decode({id_hash, AllowedTypes}, Name)
     end.
 
--spec get_commitment_hash(binary(), integer()) -> {ok, aens_hash:commitment_hash()} |
-                                                  {error, atom()}.
+
+-spec resolve_from_hash(binary(), aens_hash:name_hash(), aens_state_tree:tree()) ->
+    {ok, aec_id:id()} | {error, atom()}.
+resolve_from_hash(Key, NameHash, NSTree) when is_binary(Key), is_binary(NameHash) ->
+    case name_hash_to_name_entry(NameHash, NSTree) of
+        {ok, #{pointers := Pointers}} -> find_pointer_id(Key, Pointers);
+        {error, _Rsn} = Error -> Error
+    end.
+
+-spec get_commitment_hash(binary(), integer()) ->
+    {ok, aens_hash:commitment_hash()} | {error, atom()}.
 get_commitment_hash(Name, Salt) when is_binary(Name) andalso is_integer(Salt) ->
     case aens_utils:to_ascii(Name) of
         {ok, NameAscii} -> {ok, aens_hash:commitment_hash(NameAscii, Salt)};
         {error, _} = E  -> E
     end.
 
--spec get_name_entry(binary(), aens_state_tree:tree()) -> {ok, map()} | {error, atom()}.
-get_name_entry(Name, NSTree) ->
-    case get_name(Name, NSTree) of
-        {ok, #{<<"name">>     := Name,
-               <<"hash">>     := Hash,
-               <<"name_ttl">> := TTL,
-               <<"pointers">> := Pointers}} ->
-            {ok, #{<<"name">>     => Name,
-                   <<"hash">>     => Hash,
-                   <<"name_ttl">> => TTL,
-                   <<"pointers">> => jsx:encode(Pointers)}};
-        {error, _} = E ->
-            E
+-spec get_name_entry(binary(), aens_state_tree:tree()) ->
+    {ok, map()} | {error, atom()}.
+get_name_entry(Name, NSTree) when is_binary(Name) ->
+    case name_to_name_hash(Name) of
+        {ok, NameHash} -> name_hash_to_name_entry(NameHash, NSTree);
+        {error, _} = Error -> Error
     end.
 
--spec get_name_hash(binary()) -> {ok, binary()} |
-                                 {error, atom()}.
+-spec get_name_hash(binary()) ->
+    {ok, aens_hash:name_hash()} | {error, atom()}.
 get_name_hash(Name) when is_binary(Name) ->
-    case aens_utils:to_ascii(Name) of
-        {ok, NameAscii} -> {ok, aens_hash:name_hash(NameAscii)};
-        {error, _} = E  -> E
-    end.
+    name_to_name_hash(Name).
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
-is_name(Binary) ->
-    length(binary:split(Binary, ?LABEL_SEPARATOR)) > 1.
+is_name(Bin) ->
+    length(binary:split(Bin, ?LABEL_SEPARATOR)) > 1.
 
-get_name(Name, NSTree) ->
-    case get_name_hash(Name) of
-        {ok, NameHash} ->
-            case aens_state_tree:lookup_name(NameHash, NSTree) of
-                {value, N} ->
-                    case aens_utils:is_revoked(N) of
-                        true ->
-                            {error, name_revoked};
-                        false ->
-                            {ok, #{<<"name">>     => Name,
-                                   <<"hash">>     => NameHash,
-                                   <<"name_ttl">> => aens_names:expires(N),
-                                   <<"pointers">> => aens_names:pointers(N)}}
-                    end;
-                none ->
-                    {error, name_not_found}
-            end;
-        {error, _} = E ->
-            E
+name_to_name_hash(Name) ->
+    case aens_utils:to_ascii(Name) of
+        {ok, NameAscii} ->
+            NameHash = aens_hash:name_hash(NameAscii),
+            {ok, NameHash};
+        {error, _Rsn} = Error ->
+            Error
     end.
+
+name_hash_to_name_entry(NameHash, NSTree) ->
+    case aens_state_tree:lookup_name(NameHash, NSTree) of
+        {value, NameRecord} -> name_entry(NameRecord);
+        none -> {error, name_not_found}
+    end.
+
+name_entry(NameRecord) ->
+    case aens_names:status(NameRecord) of
+        claimed ->
+            {ok, #{id       => aens_names:id(NameRecord),
+                   expires  => aens_names:expires(NameRecord),
+                   pointers => aens_names:pointers(NameRecord)}};
+        revoked ->
+            {error, name_revoked}
+    end.
+
+find_pointer_id(Key, [Pointer | Rest]) ->
+    case Key =:= aens_pointer:key(Pointer) of
+        true -> {ok, aens_pointer:id(Pointer)};
+        false -> find_pointer_id(Key, Rest)
+    end;
+find_pointer_id(_Key, []) ->
+    {error, pointer_id_not_found}.
+

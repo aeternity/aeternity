@@ -101,21 +101,21 @@ run_elapsed([{aens_commitments, Id, Serialized}|Expired], Tree, Height) ->
 
 -spec enter_commitment(commitment(), tree()) -> tree().
 enter_commitment(Commitment, Tree) ->
-    Id = aens_commitments:id(Commitment),
+    CommitmentHash = aens_commitments:hash(Commitment),
     Serialized = aens_commitments:serialize(Commitment),
     Expiration = aens_commitments:expires(Commitment),
     %% TODO: consider two trees (names vs pre-claims/commitments)
-    Cache1 = cache_push(Expiration, Id, aens_commitments, Tree#ns_tree.cache),
-    MTree1 = aeu_mtrees:insert(Id, Serialized, Tree#ns_tree.mtree),
+    Cache1 = cache_push(Expiration, CommitmentHash, aens_commitments, Tree#ns_tree.cache),
+    MTree1 = aeu_mtrees:insert(CommitmentHash, Serialized, Tree#ns_tree.mtree),
     Tree#ns_tree{cache = Cache1, mtree = MTree1}.
 
 -spec enter_name(name(), tree()) -> tree().
 enter_name(Name, Tree) ->
-    Id = aens_names:id(Name),
+    NameHash = aens_names:hash(Name),
     Serialized = aens_names:serialize(Name),
     Expiration = aens_names:expires(Name),
-    Cache1 = cache_push(Expiration, Id, aens_names, Tree#ns_tree.cache),
-    MTree1 = aeu_mtrees:enter(Id, Serialized, Tree#ns_tree.mtree),
+    Cache1 = cache_push(Expiration, NameHash, aens_names, Tree#ns_tree.cache),
+    MTree1 = aeu_mtrees:enter(NameHash, Serialized, Tree#ns_tree.mtree),
     Tree#ns_tree{cache = Cache1, mtree = MTree1}.
 
 -spec get_name(binary(), tree()) -> name().
@@ -218,21 +218,21 @@ run_elapsed_name(Name, NamesTree0, NextBlockHeight) ->
             %%       Name was updated and we triggered old cache event.
             {ok, NamesTree0};
         true when Status =:= claimed ->
-            NameHash = aens_names:id(Name),
+            NameHash = aens_names:hash(Name),
             Name0    = aens_state_tree:get_name(NameHash, NamesTree0),
             TTL      = aec_governance:name_protection_period(),
             Name1    = aens_names:revoke(Name0, TTL, ExpirationBlockHeight),
             {ok, aens_state_tree:enter_name(Name1, NamesTree0)};
         true when Status =:= revoked ->
-            NameHash = aens_names:id(Name),
+            NameHash = aens_names:hash(Name),
             {ok, aens_state_tree:delete_name(NameHash, NamesTree0)}
     end.
 
 run_elapsed_commitment(Commitment, NamesTree0) ->
     %% INFO: We delete in both cases when name is claimed or not claimed
     %%       when it expires
-    Hash = aens_commitments:id(Commitment),
-    NamesTree1 = aens_state_tree:delete_commitment(Hash, NamesTree0),
+    CommitmentHash = aens_commitments:hash(Commitment),
+    NamesTree1 = aens_state_tree:delete_commitment(CommitmentHash, NamesTree0),
     {ok, NamesTree1}.
 
 %%%===================================================================
@@ -240,8 +240,8 @@ run_elapsed_commitment(Commitment, NamesTree0) ->
 %%%===================================================================
 -define(DUMMY_VAL, <<0>>).
 
-cache_push(Expires, Id, Mod, C) ->
-    SExt = sext:encode({Expires, Id, Mod}),
+cache_push(Expires, Hash, Mod, C) ->
+    SExt = sext:encode({Expires, Hash, Mod}),
     aeu_mtrees:enter(SExt, ?DUMMY_VAL, C).
 
 cache_safe_peek(C) ->
