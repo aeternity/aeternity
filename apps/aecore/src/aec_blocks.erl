@@ -73,10 +73,11 @@
 -type   height()      :: non_neg_integer().
 -type   tx_list()     :: list(aetx_sign:signed_tx()).
 
--export_type([key_block/0,
-              micro_block/0,
+-export_type([block/0,
               block_header_hash/0,
-              height/0
+              height/0,
+              key_block/0,
+              micro_block/0
              ]).
 
 %%%===================================================================
