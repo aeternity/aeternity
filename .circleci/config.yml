@@ -191,6 +191,29 @@ references:
         fi
       when: on_fail
 
+  fail_notification_system_test: &fail_notification_system_test
+    run:
+      name: Send failure notification on system test
+      environment:
+        NOTIFY_BRANCH: master
+        HOOK_TEMPLATE: |
+          {
+            "text": "CircleCI job **%s** failed on branch **%s** by @%s",
+            "attachments": [
+              {
+                "title": "Build Link",
+                "title_link": "%s",
+                "color": "#FAD6D6"
+              }
+            ]
+          }
+      command: |
+        if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "${NOTIFY_BRANCH:?}" ]; then
+          HOOK_DATA=$(printf "$HOOK_TEMPLATE" "${CIRCLE_JOB:?}" "${CIRCLE_BRANCH:?}" "${CIRCLE_USERNAME:-unknown}" "${CIRCLE_BUILD_URL:?}")
+          curl -X POST -H 'Content-Type: application/json' ${ROCKET_HOOK_URL_SYSTEM_TEST:?} --data "${HOOK_DATA:?}"
+        fi
+      when: on_fail
+
   docker_compose_build: &docker_compose_build
     run:
       name: Build latest docker image
@@ -476,7 +499,7 @@ jobs:
           no_output_timeout: 2h
           command: |
             sudo -u ubuntu -E -H make system-test
-      - *fail_notification
+      - *fail_notification_system_test
       - store_test_results:
           path: system_test/logs
       - store_artifacts:
