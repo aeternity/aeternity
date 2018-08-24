@@ -9,8 +9,8 @@ contract Identity =
   // Check that we can use zip_with at different types
 
   function foo() =
-    zip_with((x, y) => x + y, [1, 2, 3], [4, 5, 6])
+    zip_with((x, y) => x + y, [1, 2, 3], [4, 5, 6, 7])
 
   function bar() =
-    zip_with((x, y) => if(x) y else 0, [true, false, true], [1, 2, 3])
+    zip_with((x, y) => if(x) y else 0, [true, false, true, false], [1, 2, 3])
 

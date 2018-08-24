@@ -571,8 +571,9 @@ assemble_pattern(Succeed, Fail, {binop, '::', A, B}) ->
     %% Make sure it's not [], then match as tuple.
     NotNil = make_ref(),
     {Vars, Code} = assemble_pattern(Succeed, Fail, {tuple, [A, B]}),
-    {Vars, [dup(1), push(1), i(?ADD),
-            jump_if(NotNil),
+    {Vars, [dup(1), push(1), i(?ADD),   %% Check for [] without consuming the value
+            jump_if(NotNil),            %% so it's still there when matching the tuple.
+            pop(1),                     %% It was [] so discard the saved value.
             jump(Fail),
             jumpdest(NotNil),
             Code]}.
