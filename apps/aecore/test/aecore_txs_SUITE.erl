@@ -96,8 +96,8 @@ txs_gc(Config) ->
     %% Now there should be 3 or 4 transactions in mempool
     {ok, Txs2} = rpc:call(N1, aec_tx_pool, peek, [infinity]),
     case Height1 of
-        3              -> {4, _} = {length(Txs2), Txs2};
-        N1 when N1 > 3 -> ct:log("Skipping assert; micro fork advanced height to far...")
+        3                -> {4, _} = {length(Txs2), Txs2};
+        HH1 when HH1 > 3 -> ct:log("Skipping assert; micro fork advanced height to far...")
     end,
 
     %% Mine 1 more key block if Height is 3 ensure one TX should be GC:ed.
@@ -108,8 +108,8 @@ txs_gc(Config) ->
     %% Now unless Height2 > 4, there should be 3 transactions in mempool
     {ok, Txs3} = rpc:call(N1, aec_tx_pool, peek, [infinity]),
     case Height2 of
-        4              -> {3, _} = {length(Txs3), Txs3};
-        N2 when N2 > 4 -> ct:log("Skipping assert; micro fork advanced height to far...")
+        4                -> {3, _} = {length(Txs3), Txs3};
+        HH2 when HH2 > 4 -> ct:log("Skipping assert; micro fork advanced height to far...")
     end,
 
     %% Add the missing tx
@@ -122,8 +122,8 @@ txs_gc(Config) ->
     %% Now at height 6 there should be 2 transactions in mempool
     {ok, Txs4} = rpc:call(N1, aec_tx_pool, peek, [infinity]),
     case Height3 of
-        6              -> {2, _} = {length(Txs4), Txs4};
-        N3 when N3 > 6 -> ct:log("Skipping assert; micro fork advanced height to far...")
+        6                -> {2, _} = {length(Txs4), Txs4};
+        HH3 when HH3 > 6 -> ct:log("Skipping assert; micro fork advanced height to far...")
     end,
 
     %% Mine 1 more key block if Height is 6 ensure one TX should be GC:ed.
@@ -134,8 +134,8 @@ txs_gc(Config) ->
     %% Now there should be 1 transaction in mempool
     {ok, Txs5} = rpc:call(N1, aec_tx_pool, peek, [infinity]),
     case Height4 of
-        7              -> {1, _} = {length(Txs5), Txs5};
-        N4 when N4 > 7 -> ct:log("Skipping assert; micro fork advanced height to far...")
+        7                -> {1, _} = {length(Txs5), Txs5};
+        HH4 when HH4 > 7 -> ct:log("Skipping assert; micro fork advanced height to far...")
     end,
 
     %% Mine 2 more blocks then all TXs should be GC:ed. Height>=9
