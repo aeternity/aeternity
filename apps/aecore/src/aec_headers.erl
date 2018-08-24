@@ -391,15 +391,14 @@ serialize_to_binary(#mic_header{} = Header) ->
 
 -spec deserialize_from_binary(deterministic_header_binary()) -> header().
 
-deserialize_from_binary(Bin) ->
-    case deserialize_micro_from_binary(Bin, any) of
-        {ok, H} -> H;
-        {error, _} ->
-            case deserialize_key_from_binary(Bin, any) of
-                {ok, H} -> H;
-                {error, _} -> error({malformed_header, Bin})
-            end
-    end.
+-define(KEY_HEADER_BYTES, 336).
+-define(MIC_HEADER_BYTES, 184).
+deserialize_from_binary(Bin) when byte_size(Bin) =:= ?KEY_HEADER_BYTES ->
+    {ok, H} = deserialize_key_from_binary(Bin, any),
+    H;
+deserialize_from_binary(Bin) when byte_size(Bin) =:= ?MIC_HEADER_BYTES ->
+    {ok, H} = deserialize_micro_from_binary(Bin, any),
+    H.
 
 -spec deserialize_key_from_binary(deterministic_header_binary(),
                                   'any' | non_neg_integer()) ->
