@@ -847,7 +847,7 @@ handle_add_block(Header, CheckFun, Block, State, Origin) ->
             epoch_mining:debug("Block already in chain", []),
             {ok, State};
         false ->
-            case aec_validation:validate_block_no_signature(Block) of
+            case aec_validation:validate_block(Block) of
                 ok ->
                     case aec_chain_state:insert_block(Block) of
                         ok ->

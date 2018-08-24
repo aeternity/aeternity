@@ -197,6 +197,8 @@ node_target(#node{header = H}) -> aec_headers:target(H).
 
 node_root_hash(#node{header = H}) -> aec_headers:root_hash(H).
 
+node_signature(#node{header = H}) -> aec_headers:signature(H).
+
 node_miner(#node{header = H}) -> aec_headers:miner(H).
 
 node_beneficiary(#node{header = H}) -> aec_headers:beneficiary(H).
@@ -456,8 +458,8 @@ assert_micro_signature(PrevNode, Node, KeyHash) ->
                     key   -> {ok, PrevNode};
                     micro -> db_find_node(KeyHash)
                 end,
-            Bin = aec_headers:serialize_to_binary(export_header(Node)),
-            Sig = db_get_signature(hash(Node)),
+            Bin = aec_headers:serialize_to_signature_binary(export_header(Node)),
+            Sig = node_signature(Node),
             case enacl:sign_verify_detached(Sig, Bin, node_miner(KeyNode)) of
                 {ok, _}    -> ok;
                 {error, _} -> {error, signature_verification_failed}
@@ -862,9 +864,6 @@ db_find_fork_id(Hash) when is_binary(Hash) ->
 
 db_get_txs(Hash) when is_binary(Hash) ->
     aec_blocks:txs(aec_db:get_block(Hash)).
-
-db_get_signature(Hash) when is_binary(Hash) ->
-    aec_db:get_block_signature(Hash).
 
 db_get_fees(Hash) when is_binary(Hash) ->
     {value, Fees} = aec_db:find_block_fees(Hash),

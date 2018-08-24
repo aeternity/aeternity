@@ -13,6 +13,8 @@
          beneficiary/1,
          deserialize_from_binary/1,
          deserialize_from_map/1,
+         deserialize_key_from_binary/2,
+         deserialize_micro_from_binary/2,
          deserialize_pow_evidence/1,
          difficulty/1,
          hash_header/1,
@@ -27,14 +29,17 @@
          serialize_pow_evidence/1,
          serialize_to_binary/1,
          serialize_to_map/1,
+         serialize_to_signature_binary/1,
          set_height/2,
          set_miner/2,
          set_nonce/2,
          set_nonce_and_pow/3,
          set_prev_hash/2,
          set_root_hash/2,
+         set_signature/2,
          set_target/2,
          set_time_in_msecs/2,
+         signature/1,
          target/1,
          time_in_msecs/1,
          time_in_secs/1,
@@ -58,6 +63,7 @@
           height       = 0                                     :: height(),
           prev_hash    = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
           root_hash    = <<0:?STATE_HASH_BYTES/unit:8>>        :: state_hash(),
+          signature    = <<0:?BLOCK_SIGNATURE_BYTES/unit:8>>   :: block_signature(),
           txs_hash     = <<0:?TXS_HASH_BYTES/unit:8>>          :: txs_hash(),
           time         = ?GENESIS_TIME                         :: non_neg_integer(),
           version                                              :: non_neg_integer()
@@ -236,6 +242,14 @@ set_nonce_and_pow(#key_header{} = H, Nonce, Evd) ->
 difficulty(Header) ->
     aec_pow:target_to_difficulty(target(Header)).
 
+-spec signature(micro_header()) -> block_signature().
+signature(Header) ->
+    Header#mic_header.signature.
+
+-spec set_signature(micro_header(), block_signature()) -> micro_header().
+set_signature(#mic_header{} = Header, Sig) ->
+    Header#mic_header{signature = Sig}.
+
 -spec target(key_header()) -> aec_pow:sci_int().
 target(Header) ->
     Header#key_header.target.
@@ -291,6 +305,7 @@ serialize_to_map(#key_header{} = Header) ->
 serialize_to_map(#mic_header{} = Header) ->
     #{<<"height">> => Header#mic_header.height,
       <<"prev_hash">> => Header#mic_header.prev_hash,
+      <<"signature">> => Header#mic_header.signature,
       <<"state_hash">> => Header#mic_header.root_hash,
       <<"txs_hash">> => Header#mic_header.txs_hash,
       <<"time">> => Header#mic_header.time,
@@ -326,6 +341,7 @@ deserialize_from_map(#{<<"height">> := Height,
     end;
 deserialize_from_map(#{<<"height">> := Height,
                        <<"prev_hash">> := PrevHash,
+                       <<"signature">> := Signature,
                        <<"state_hash">> := RootHash,
                        <<"txs_hash">> := TxsHash,
                        <<"time">> := Time,
@@ -333,9 +349,22 @@ deserialize_from_map(#{<<"height">> := Height,
     {ok, #mic_header{height = Height,
                      prev_hash = PrevHash,
                      root_hash = RootHash,
+                     signature = Signature,
                      txs_hash = TxsHash,
                      time = Time,
                      version = Version}}.
+
+-spec serialize_to_signature_binary(micro_header()
+                                   ) -> deterministic_header_binary().
+serialize_to_signature_binary(#mic_header{signature = Sig} = H) ->
+    case Sig of
+        <<0:?BLOCK_SIGNATURE_BYTES/unit:8>> ->
+            serialize_to_binary(H);
+        <<_:?BLOCK_SIGNATURE_BYTES/unit:8>> ->
+            Blank  = <<0:?BLOCK_SIGNATURE_BYTES/unit:8>>,
+            serialize_to_binary(set_signature(H, Blank))
+    end.
+
 
 -spec serialize_to_binary(header()) -> deterministic_header_binary().
 serialize_to_binary(#key_header{} = Header) ->
@@ -357,42 +386,83 @@ serialize_to_binary(#mic_header{} = Header) ->
       (Header#mic_header.prev_hash)/binary,
       (Header#mic_header.root_hash)/binary,
       (Header#mic_header.txs_hash)/binary,
-      (Header#mic_header.time):64>>.
+      (Header#mic_header.time):64,
+      (Header#mic_header.signature)/binary>>.
 
 -spec deserialize_from_binary(deterministic_header_binary()) -> header().
-deserialize_from_binary(<<Version:64,
-                          Height:64,
-                          PrevHash:32/binary,
-                          RootHash:32/binary,
-                          Miner:32/binary,
-                          Beneficiary:32/binary,
-                          Target:64,
-                          PowEvidenceBin:168/binary,
-                          Nonce:64,
-                          Time:64 >>) ->
-    PowEvidence = deserialize_pow_evidence_from_binary(PowEvidenceBin),
-    #key_header{height = Height,
-                prev_hash = PrevHash,
-                root_hash = RootHash,
-                miner = Miner,
-                beneficiary = Beneficiary,
-                target = Target,
-                pow_evidence = PowEvidence,
-                nonce = Nonce,
-                time = Time,
-                version = Version};
-deserialize_from_binary(<<Version:64,
-                          Height:64,
-                          PrevHash:32/binary,
-                          RootHash:32/binary,
-                          TxsHash:32/binary,
-                          Time:64>>) ->
-    #mic_header{height = Height,
-                prev_hash = PrevHash,
-                root_hash = RootHash,
-                txs_hash = TxsHash,
-                time = Time,
-                version = Version}.
+
+deserialize_from_binary(Bin) ->
+    case deserialize_micro_from_binary(Bin, any) of
+        {ok, H} -> H;
+        {error, _} ->
+            case deserialize_key_from_binary(Bin, any) of
+                {ok, H} -> H;
+                {error, _} -> error({malformed_header, Bin})
+            end
+    end.
+
+-spec deserialize_key_from_binary(deterministic_header_binary(),
+                                  'any' | non_neg_integer()) ->
+                                         {'ok', key_header()}
+                                       | {'error', term()}.
+deserialize_key_from_binary(<<Version:64,
+                              Height:64,
+                              PrevHash:?BLOCK_HEADER_HASH_BYTES/binary,
+                              RootHash:?STATE_HASH_BYTES/binary,
+                              Miner:32/binary,
+                              Beneficiary:32/binary,
+                              Target:64,
+                              PowEvidenceBin:168/binary,
+                              Nonce:64,
+                              Time:64 >>, Vsn) ->
+    case (Vsn =:= any) orelse (Vsn =:= Version) of
+        false ->
+            {error, malformed_vsn};
+        true ->
+            PowEvidence = deserialize_pow_evidence_from_binary(PowEvidenceBin),
+            H = #key_header{height = Height,
+                            prev_hash = PrevHash,
+                            root_hash = RootHash,
+                            miner = Miner,
+                            beneficiary = Beneficiary,
+                            target = Target,
+                            pow_evidence = PowEvidence,
+                            nonce = Nonce,
+                            time = Time,
+                            version = Version},
+            {ok, H}
+    end;
+deserialize_key_from_binary(_Other,_Vsn) ->
+    {error, malformed_header}.
+
+
+-spec deserialize_micro_from_binary(deterministic_header_binary(),
+                                    'any' | non_neg_integer()) ->
+                                           {'ok', micro_header()}
+                                         | {'error', term()}.
+deserialize_micro_from_binary(<<Version:64,
+                                Height:64,
+                                PrevHash:?BLOCK_HEADER_HASH_BYTES/binary,
+                                RootHash:?STATE_HASH_BYTES/binary,
+                                TxsHash:?TXS_HASH_BYTES/binary,
+                                Time:64,
+                                Signature:?BLOCK_SIGNATURE_BYTES/binary
+                              >>, Vsn) ->
+    case (Vsn =:= any) orelse (Vsn =:= Version) of
+        false ->
+            {error, malformed_vsn};
+        true ->
+            H = #mic_header{height = Height,
+                            prev_hash = PrevHash,
+                            root_hash = RootHash,
+                            signature = Signature,
+                            txs_hash = TxsHash,
+                            time = Time,
+                            version = Version},
+            {ok, H}
+    end;
+deserialize_micro_from_binary(_Other,_Vsn) ->
+    {error, malformed_header}.
 
 serialize_pow_evidence_to_binary(Ev) ->
    << <<E:32>> || E <- serialize_pow_evidence(Ev) >>.
@@ -437,11 +507,14 @@ validate_key_block_header(Header) ->
     aeu_validation:run(Validators, [{Header, ProtocolVersions}]).
 
 validate_micro_block_header(Header) ->
+    %% NOTE: The signature is not validated since we don't know the leader key
+    %%       This check is performed when adding the header to the chain.
     ProtocolVersions = aec_hard_forks:protocols(aec_governance:protocols()),
 
     Validators = [fun validate_version/1,
                   fun validate_micro_block_cycle_time/1,
-                  fun validate_max_time/1],
+                  fun validate_max_time/1
+                 ],
     aeu_validation:run(Validators, [{Header, ProtocolVersions}]).
 
 -spec validate_version({header(), aec_governance:protocols()}) ->
@@ -463,8 +536,8 @@ validate_version({Header, Protocols}) ->
 -spec validate_pow({header(), aec_governance:protocols()}) ->
                           ok | {error, incorrect_pow}.
 validate_pow({#key_header{nonce        = Nonce,
-                      pow_evidence = Evd,
-                      target       = Target} = Header, _})
+                          pow_evidence = Evd,
+                          target       = Target} = Header, _})
  when Nonce >= 0, Nonce =< ?MAX_NONCE ->
     %% Zero nonce and pow_evidence before hashing, as this is how the mined block
     %% got hashed.

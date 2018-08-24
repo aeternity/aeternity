@@ -15,8 +15,6 @@
                     ]).
 
 -define(TEST_MODULE, aec_blocks).
--define(MINER_PUBKEY, <<42:?MINER_PUB_BYTES/unit:8>>).
--define(MINER_SECKEY, <<42:?MINER_PUB_BYTES/unit:16>>).
 -define(FAKE_TXS_TREE_HASH, <<42:?TXS_HASH_BYTES/unit:8>>).
 
 network_serialization_test_() ->
@@ -97,7 +95,7 @@ validate_test_malformed_txs_root_hash() ->
               [SignedSpend],
               aec_blocks:time_in_msecs(RawBlock)),
     ?assertEqual({error, {block, malformed_txs_hash}},
-                 ?TEST_MODULE:validate_micro_block(Block, ?MINER_SECKEY)).
+                 ?TEST_MODULE:validate_micro_block(Block)).
 
 validate_test_pass_validation_no_txs() ->
     Txs = [],
@@ -109,7 +107,7 @@ validate_test_pass_validation_no_txs() ->
               aec_blocks:root_hash(RawBlock),
               [],
               aec_blocks:time_in_msecs(RawBlock)),
-    ?assertEqual(ok, ?TEST_MODULE:validate_micro_block(Block, ?MINER_SECKEY)).
+    ?assertEqual(ok, ?TEST_MODULE:validate_micro_block(Block)).
 
 validate_test_pass_validation() ->
     SignedSpend =
@@ -129,6 +127,6 @@ validate_test_pass_validation() ->
               Txs,
               aec_blocks:time_in_msecs(RawBlock)),
 
-    ?assertEqual(ok, ?TEST_MODULE:validate_micro_block(Block, ?MINER_SECKEY)).
+    ?assertEqual(ok, ?TEST_MODULE:validate_micro_block(Block)).
 
 -endif.

@@ -10,6 +10,7 @@
 -define(STATE_HASH_BYTES, 32).
 -define(MINER_PUB_BYTES, 32).
 -define(BENEFICIARY_PUB_BYTES, 32).
+-define(BLOCK_SIGNATURE_BYTES, 64).
 
 -define(STORAGE_TYPE_BLOCK,  0).
 -define(STORAGE_TYPE_HEADER, 1).
@@ -20,6 +21,7 @@
 -type(miner_pubkey() :: <<_:(?MINER_PUB_BYTES*8)>>).
 -type(beneficiary_pubkey() :: <<_:(?BENEFICIARY_PUB_BYTES*8)>>).
 -type(block_header_hash() :: <<_:(?BLOCK_HEADER_HASH_BYTES*8)>>).
+-type(block_signature() :: <<_:(?BLOCK_SIGNATURE_BYTES*8)>>).
 
 -type(block_type() :: 'key' | 'micro').
 

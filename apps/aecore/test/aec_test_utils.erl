@@ -370,7 +370,7 @@ create_micro_block(PrevBlock, PrivKey, Txs, Trees, Offset) ->
     {SignedMicroBlock, Trees1}.
 
 sign_micro_block(MicroBlock, PrivKey) ->
-    Bin = aec_headers:serialize_to_binary(aec_blocks:to_header(MicroBlock)),
+    Bin = aec_headers:serialize_to_signature_binary(aec_blocks:to_header(MicroBlock)),
     Signature = enacl:sign_detached(Bin, PrivKey),
     aec_blocks:set_signature(MicroBlock, Signature).
 
