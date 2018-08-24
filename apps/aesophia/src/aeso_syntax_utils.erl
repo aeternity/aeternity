@@ -29,6 +29,7 @@ used_ids({letfun, _, _, Args, _, E}) -> used_ids({bind, Args, E});
 used_ids({letrec, _, Decls})         -> used_ids(Decls);
 %% Args
 used_ids({arg, _, X, _}) -> used_ids(X);
+used_ids({named_arg, _, _, E}) -> used_ids(E);
 %% Constants
 used_ids({int, _, _})    -> none();
 used_ids({bool, _, _})   -> none();
@@ -81,7 +82,8 @@ used_types({record_t, Fs})         -> used_types(Fs);
 used_types({variant_t, Cs})        -> used_types(Cs);
 used_types({field_t, _, _, T})     -> used_types(T);
 used_types({constr_t, _, _, Ts})   -> used_types(Ts);
-used_types({fun_t, _, Args, T})    -> used_types([T | Args]);
+used_types({fun_t, _, Named, Args, T}) -> used_types([T | Named ++ Args]);
+used_types({named_arg_t, _, _, T, _}) -> used_types(T);
 used_types({app_t, _, T, Ts})      -> used_types([T | Ts]);
 used_types({tuple_t, _, Ts})       -> used_types(Ts);
 used_types({id, _, X})             -> one(X);

@@ -1,11 +1,15 @@
+contract ValueOnErr =
+  function err : () => int
+  function ok  : () => int
+
 contract RemoteValueOnErr =
 
   public function callErr(
-    r : address,
+    r : ValueOnErr,
     value : int) : int =
-    raw_call(r, "err", 1234567890, value, ())
+    r.err(value = value)
 
   public function callOk(
-    r : address,
+    r : ValueOnErr,
     value : int) : int =
-    raw_call(r, "ok", 1234567890, value, ())
+    r.ok(value = value)

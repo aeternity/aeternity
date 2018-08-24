@@ -42,7 +42,7 @@ contract Oracles =
   function respond(o    : oracle_id,
                    q    : query_id,
                    sign : signature,
-                   r    : answer_t) =
+                   r    : answer_t) : () =
     Oracle.respond(o, q, sign, r)
 
   function getQuestion(o : oracle_id,

@@ -222,14 +222,17 @@ type(Type, Options) ->
     with_options(Options, fun() -> type(Type) end).
 
 -spec type(aeso_syntax:type()) -> doc().
-type({fun_t, _, Args, Ret}) ->
-    follow(hsep(tuple_type(Args), text("=>")), type(Ret));
+type({fun_t, _, Named, Args, Ret}) ->
+    follow(hsep(tuple_type(Named ++ Args), text("=>")), type(Ret));
 type({app_t, _, Type, []}) ->
     type(Type);
 type({app_t, _, Type, Args}) ->
     beside(type(Type), tuple_type(Args));
 type({tuple_t, _, Args}) ->
     tuple_type(Args);
+type({named_arg_t, _, Name, Type, Default}) ->
+    follow(hsep(typed(name(Name), Type), text("=")), expr(Default));
+
 type(R = {record_t, _}) -> typedef(R);
 type(T = {id, _, _})   -> name(T);
 type(T = {qid, _, _})  -> name(T);
@@ -240,6 +243,11 @@ type(T = {tvar, _, _}) -> name(T).
 -spec tuple_type([aeso_syntax:type()]) -> doc().
 tuple_type(Args) ->
     tuple(lists:map(fun type/1, Args)).
+
+-spec arg_expr(aeso_syntax:arg_expr()) -> doc().
+arg_expr({named_arg, _, Name, E}) ->
+    follow(hsep(expr(Name), text("=")), expr(E));
+arg_expr(E) -> expr(E).
 
 -spec expr_p(integer(), aeso_syntax:expr()) -> doc().
 expr_p(P, {lam, _, Args, E}) ->
@@ -372,7 +380,7 @@ prefix(P, Op, A) ->
 app(P, F, Args) ->
     paren(P > 900,
     beside(expr_p(900, F),
-           tuple(lists:map(fun expr/1, Args)))).
+           tuple(lists:map(fun arg_expr/1, Args)))).
 
 field({field, _, LV, E}) ->
     follow(hsep(lvalue(LV), text("=")), expr(E));

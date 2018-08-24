@@ -92,31 +92,17 @@ ast_type(T, Icode) ->
     ast_typerep(T, Icode).
 
 -define(id_app(Fun, Args, ArgTypes, OutType),
-    {app, _, {typed, _, {id, _, Fun}, {fun_t, _, ArgTypes, OutType}}, Args}).
+    {app, _, {typed, _, {id, _, Fun}, {fun_t, _, _, ArgTypes, OutType}}, Args}).
 
 -define(qid_app(Fun, Args, ArgTypes, OutType),
-    {app, _, {typed, _, {qid, _, Fun}, {fun_t, _, ArgTypes, OutType}}, Args}).
+    {app, _, {typed, _, {qid, _, Fun}, {fun_t, _, _, ArgTypes, OutType}}, Args}).
 
 -define(oracle_t(Q, R), {app_t, _, {id, _, "oracle"}, [Q, R]}).
 -define(query_t(Q, R),  {app_t, _, {id, _, "oracle_query"}, [Q, R]}).
 -define(option_t(A),    {app_t, _, {id, _, "option"}, [A]}).
 -define(map_t(K, V),    {app_t, _, {id, _, "map"}, [K, V]}).
 
-ast_body(?id_app("raw_call", [To, Fun, Gas, Value, {typed, _, Arg, ArgT}], _, OutT), Icode) ->
-    %% TODO: temp hack before we have contract calls properly in the type checker
-    {Args, ArgTypes} =
-        case Arg of %% Hack: pack unary argument in tuple
-            %% Already a tuple.
-            {tuple, _,_Elems} -> {Arg, ArgT};
-            _ -> {{tuple, [], [Arg]}, {tuple_t, [], [ArgT]}}
-        end,
-    #prim_call_contract{ gas      = ast_body(Gas, Icode),
-                         address  = ast_body(To, Icode),
-                         value    = ast_body(Value, Icode),
-                         arg      = #tuple{cpts = [ast_body(X, Icode) || X <- [Fun , Args]]},
-                         arg_type = {tuple, [string , ast_typerep(ArgTypes, Icode)]},
-                         out_type = ast_typerep(OutT, Icode) };
-ast_body(?id_app("raw_spend", [To, Amount], _, _), Icode) ->
+ast_body(?qid_app(["Chain","spend"], [To, Amount], _, _), Icode) ->
     prim_call(?PRIM_CALL_SPEND, ast_body(Amount, Icode), [ast_body(To, Icode)], [word], {tuple, []});
 
 %% Chain environment
@@ -124,6 +110,8 @@ ast_body(?qid_app(["Chain", "balance"], [Address], _, _), Icode) ->
     #prim_balance{ address = ast_body(Address, Icode) };
 ast_body(?qid_app(["Chain", "block_hash"], [Height], _, _), Icode) ->
     #prim_block_hash{ height = ast_body(Height, Icode) };
+ast_body(?qid_app(["Call", "gas_left"], [], _, _), _Icode) ->
+    prim_gas_left;
 ast_body({qid, _, ["Contract", "address"]}, _Icode)      -> prim_contract_address;
 ast_body({qid, _, ["Contract", "balance"]}, _Icode)      -> #prim_balance{ address = prim_contract_address };
 ast_body({qid, _, ["Call",     "origin"]}, _Icode)       -> prim_call_origin;
@@ -140,10 +128,8 @@ ast_body({qid, _, ["Chain", "balance"]}, _Icode) ->
     error({underapplied_primitive, 'Chain.balance'});
 ast_body({qid, _, ["Chain", "block_hash"]}, _Icode) ->
     error({underapplied_primitive, 'Chain.block_hash'});
-ast_body({id, _, "raw_call"}, _Icode) ->
-    error({underapplied_primitive, raw_call});
-ast_body({id, _, "raw_spend"}, _Icode) ->
-    error({underapplied_primitive, raw_spend});
+ast_body({qid, _, ["Chain", "spend"]}, _Icode) ->
+    error({underapplied_primitive, 'Chain.spend'});
 
 %% State
 ast_body({id, _, "state"}, _Icode) -> prim_state;
@@ -311,9 +297,36 @@ ast_body({con, _, "None"}, _Icode) ->
     #list{elems = []};
 ast_body({app, _, {typed, _, {con, _, "Some"}, _}, [Elem]}, Icode) ->
     #tuple{cpts = [ast_body(Elem, Icode)]};
-ast_body({typed, _, {con, _, "Some"}, {fun_t, _, [A], _}}, Icode) ->
+ast_body({typed, _, {con, _, "Some"}, {fun_t, _, _, [A], _}}, Icode) ->
     #lambda{ args = [#arg{name = "x", type = ast_type(A, Icode)}]
            , body = #tuple{cpts = [#var_ref{name = "x"}]} };
+%% Typed contract calls
+ast_body({proj, _, {typed, _, Addr, {con, _, _}}, {id, _, "address"}}, Icode) ->
+    ast_body(Addr, Icode);  %% Values of contract types _are_ addresses.
+ast_body({app, _, {typed, _, {proj, _, {typed, _, Addr, {con, _, Contract}}, {id, _, FunName}},
+                             {fun_t, _, NamedT, ArgsT, OutT}}, Args0}, Icode) ->
+    NamedArgs = [Arg || Arg = {named_arg, _, _, _} <- Args0],
+    Args      = Args0 -- NamedArgs,
+    ArgOpts   = [ {Name, ast_body(Value, Icode)}   || {named_arg,   _, {id, _, Name}, Value} <- NamedArgs ],
+    Defaults  = [ {Name, ast_body(Default, Icode)} || {named_arg_t, _, {id, _, Name}, _, Default} <- NamedT ],
+    %% TODO: eta expand
+    [ error({underapplied_contract_call, string:join([Contract, FunName], ".")})
+        || length(Args) /= length(ArgsT) ],
+    ArgsI = [ ast_body(Arg, Icode) || Arg <- Args ],
+    ArgType = ast_typerep({tuple_t, [], ArgsT}),
+    Gas    = proplists:get_value("gas",   ArgOpts ++ Defaults),
+    Value  = proplists:get_value("value", ArgOpts ++ Defaults),
+    Fun    = ast_body({string, [], list_to_binary(FunName)}, Icode),
+    #prim_call_contract{
+        address  = ast_body(Addr, Icode),
+        gas      = Gas,
+        value    = Value,
+        arg      = #tuple{cpts = [Fun, #tuple{ cpts = ArgsI }]},
+        arg_type = {tuple, [string, ArgType]},
+        out_type = ast_typerep(OutT, Icode) };
+ast_body({proj, _, {typed, _, _, {con, _, Contract}}, {id, _, FunName}}, _Icode) ->
+    error({underapplied_contract_call, string:join([Contract, FunName], ".")});
+
 ast_body({con, _, Name}, Icode) ->
     Tag = aeso_icode:get_constructor_tag(Name, Icode),
     #tuple{cpts = [#integer{value = Tag}]};
@@ -456,6 +469,8 @@ ast_typerep(Type) -> ast_typerep(Type, aeso_icode:new([])).
 
 ast_typerep({id, _, Name}, Icode) ->
     lookup_type_id(Name, [], Icode);
+ast_typerep({con, _, _}, _) ->
+    word;   %% Contract type
 ast_typerep({app_t, _, {id, _, Name}, Args}, Icode) ->
     ArgReps = [ ast_typerep(Arg, Icode) || Arg <- Args ],
     lookup_type_id(Name, ArgReps, Icode);
@@ -471,7 +486,7 @@ ast_typerep({record_t,Fields}, Icode) ->
                 {field_t, _, _, T} = Field,
                 ast_typerep(T, Icode)
               end || Field <- Fields]};
-ast_typerep({fun_t,_,_,_}, _Icode) ->
+ast_typerep({fun_t,_,_,_,_}, _Icode) ->
     function;
 ast_typerep({alias_t, T}, Icode) -> ast_typerep(T, Icode);
 ast_typerep({variant_t, Cons}, Icode) ->

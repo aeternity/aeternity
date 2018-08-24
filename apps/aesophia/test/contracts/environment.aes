@@ -1,14 +1,25 @@
 
 // Testing primitives for accessing the block chain environment
+contract Interface =
+  function contract_address : () => address
+  function call_origin      : () => address
+  function call_caller      : () => address
+  function call_value       : () => int
 
 contract Environment =
+
+  record state = {remote : Interface}
+
+  function init(remote) = {remote = remote}
+
+  function set_remote(remote) = put({remote = remote})
 
   // -- Information about the this contract ---
 
   // Address
   function contract_address() : address = Contract.address
   function nested_address(who) : address =
-    raw_call(who, "contract_address", 1000, 0, ())
+    who.contract_address(gas = 1000)
 
   // Balance
   function contract_balance() : int = Contract.balance
@@ -18,17 +29,17 @@ contract Environment =
   // Origin
   function call_origin()   : address = Call.origin
   function nested_origin() : address =
-    raw_call(Contract.address, "call_origin", 1000, 0, ())
+    state.remote.call_origin()
 
   // Caller
   function call_caller() : address = Call.caller
   function nested_caller() : address =
-    raw_call(Contract.address, "call_caller", 1000, 0, ())
+    state.remote.call_caller()
 
   // Value
   function call_value() : int = Call.value
   function nested_value(value : int) : int =
-    raw_call(Contract.address, "call_value", 1000, value, ())
+    state.remote.call_value(value = value / 2)
 
   // Gas price
   function call_gas_price() : int = Call.gas_price

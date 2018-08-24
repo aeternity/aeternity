@@ -1,15 +1,17 @@
 
+contract Remote1 =
+  function main : (int) => int
+
+contract Remote2 =
+  function call : (Remote1, int) => int
+
 contract RemoteCall =
 
-    function call(r : address, x : int) : int =
-        let gas   = 10000
-        let value = 10
-        raw_call(r, "main", gas, value, x)
+    function call(r : Remote1, x : int) : int =
+        r.main(gas = 10000, value = 10, x)
 
-    function call42(r : address) : int = call(r, 42)
-
-    function staged_call(r1 : address, r2 : address, x : int) =
-        raw_call(r1, "call", 20000, 0, (r2, x))
+    function staged_call(r1 : Remote1, r2 : Remote2, x : int) =
+        r2.call(r1, x)
 
     function plus(x, y) = x + y
 

@@ -1,5 +1,18 @@
 
+contract Remote =
+  function up_to       : (int)               => list(int)
+  function sum         : (list(int))         => int
+  function some_string : ()                  => string
+  function pair        : (int, string)       => (int, string)
+  function squares     : (int)               => list((int, int))
+  function filter_some : (list(option(int))) => list(int)
+  function all_some    : (list(option(int))) => option(list(int))
+
 contract ComplexTypes =
+
+  record state = { worker : Remote }
+
+  function init(worker) = {worker = worker}
 
   function sum_acc(xs, n) =
     switch(xs)
@@ -20,22 +33,22 @@ contract ComplexTypes =
   record answer('a) = {label : string, result : 'a}
 
   function remote_triangle(worker, n) : answer(int) =
-    let xs = raw_call(worker, "up_to", 100000, 0, n) : list(int)
-    let t  = raw_call(worker, "sum",   100000, 0, xs)
+    let xs = worker.up_to(gas = 100000, n)
+    let t  = worker.sum(xs)
     { label = "answer:", result = t }
 
   function remote_list(n) : list(int) =
-    raw_call(Contract.address, "up_to", 100000, 0, n)
+    state.worker.up_to(n)
 
   function some_string() = "string"
 
   function remote_string() : string =
-    raw_call(Contract.address, "some_string", 10000, 0, ())
+    state.worker.some_string()
 
   function pair(x : int, y : string) = (x, y)
 
   function remote_pair(n : int, s : string) : (int, string) =
-    raw_call(Contract.address, "pair", 10000, 0, (n, s))
+    state.worker.pair(gas = 10000, n, s)
 
   function map(f, xs) =
     switch(xs)
@@ -46,7 +59,7 @@ contract ComplexTypes =
     map((i) => (i, i * i), up_to(n))
 
   function remote_squares(n) : list((int, int)) =
-    raw_call(Contract.address, "squares", 10000, 0, n)
+    state.worker.squares(n)
 
   // option types
 
@@ -57,7 +70,7 @@ contract ComplexTypes =
       Some(x) :: ys => x :: filter_some(ys)
 
   function remote_filter_some(xs : list(option(int))) : list(int) =
-    raw_call(Contract.address, "filter_some", 10000, 0, xs)
+    state.worker.filter_some(xs)
 
   function all_some(xs : list(option(int))) : option(list(int)) =
     switch(xs)
@@ -69,5 +82,5 @@ contract ComplexTypes =
           Some(xs) => Some(x :: xs)
 
   function remote_all_some(xs : list(option(int))) : option(list(int)) =
-    raw_call(Contract.address, "all_some", 10000, 0, xs)
+    state.worker.all_some(gas = 10000, xs)
 
