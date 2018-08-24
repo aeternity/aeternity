@@ -634,7 +634,8 @@ default_config(N, Config) ->
           #{<<"hwm">> => 500},
       <<"mining">> =>
           #{<<"autostart">> => false,
-            <<"beneficiary">> => aec_base58c:encode(account_pubkey, PubKey)},
+            <<"beneficiary">> => aec_base58c:encode(account_pubkey, PubKey),
+            <<"beneficiary_reward_delay">> => 0},
       <<"chain">> =>
           #{<<"persist">> => true},
       <<"websocket">> =>

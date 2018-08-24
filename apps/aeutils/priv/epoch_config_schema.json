@@ -330,6 +330,12 @@
                     "default": 3000,
                     "minimum" : 1
                 },
+                "beneficiary_reward_delay" : {
+                    "description" : "Delay (in key blocks / generations) for getting mining rewards. Used in governance.",
+                    "type" : "integer",
+                    "default": 180,
+                    "minimum" : 0
+                },
                 "cuckoo" : {
                     "type" : "object",
                     "additionalProperties" : false,

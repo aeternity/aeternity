@@ -290,7 +290,12 @@ fees_at_height(N, [{B, S} | Chain], Acc, Beneficiary) ->
                     fees_at_height(N, Chain, Acc + TxFees, Beneficiary)
             end;
         Height =:= N + 1 ->
-            fees_at_height(N, Chain, Acc, aec_blocks:beneficiary(B));
+            case aec_blocks:type(B) of
+                key ->
+                    fees_at_height(N, Chain, Acc, aec_blocks:beneficiary(B));
+                micro ->
+                    fees_at_height(N, Chain, Acc, Beneficiary)
+            end;
         Height > N + 1 ->
             fees_at_height(N, Chain, Acc, Beneficiary)
     end.
@@ -303,7 +308,7 @@ create_keyblock_with_state([{PrevBlock, TreesIn} | _] = Chain, MinerAccount, Ben
     Height = aec_blocks:height(PrevBlock) + 1,
     Version = aec_hard_forks:protocol_effective_at_height(Height),
     Trees1 = aec_trees:perform_pre_transformations(TreesIn, Height),
-    Delay = aec_governance:miner_reward_delay(),
+    Delay = aec_governance:beneficiary_reward_delay(),
     %% Dummy block to calculate the fees.
     Target = pick_prev_target(Chain),
     Block0 = aec_blocks:new_key(Height, PrevBlockHash, aec_trees:hash(TreesIn),
@@ -374,7 +379,7 @@ next_block_with_state([{PB,_PBS} | _] = Chain, Target, Time0, TxsFun, Nonce,
     Height = aec_blocks:height(PB) + 1,
     Txs = TxsFun(Height),
     %% NG: if a block X used to have Txs, now put them in micro-blocks just before
-    %% the key-block at height X. Every transaction is put in separate micro-block.
+    %% the key-block at height X. Every transaction is put in a separate micro-block.
     Chain1 = create_micro_blocks(Chain, PrivKey, Txs),
     {B, S} = create_keyblock_with_state(Chain1, PubKey, BeneficiaryPubKey),
     [begin
