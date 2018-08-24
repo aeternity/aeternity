@@ -19,7 +19,7 @@ contract FundMe =
     if(!b) abort(err)
 
   private function spend(args : spend_args) =
-    raw_spend(args.recipient, args.amount)
+    Chain.spend(args.recipient, args.amount)
 
   public function init(beneficiary, deadline, goal) : state =
     { contributions = {},

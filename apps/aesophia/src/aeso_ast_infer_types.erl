@@ -80,8 +80,8 @@ global_env() ->
      %% Option constructors
     [{"None", Option(A)},
      {"Some", Fun1(A, Option(A))},
-     %% Spend transaction. Also not the proper version.
-     {"raw_spend", Fun([Address, Int], Unit)},
+     %% Spend transaction.
+     {["Chain","spend"], Fun([Address, Int], Unit)},
      %% Environment variables
      %% {["Contract", "owner"],   Int},    %% Not in EVM?
      {["Contract", "address"],      Address},

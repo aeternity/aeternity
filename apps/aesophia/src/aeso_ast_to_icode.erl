@@ -102,7 +102,7 @@ ast_type(T, Icode) ->
 -define(option_t(A),    {app_t, _, {id, _, "option"}, [A]}).
 -define(map_t(K, V),    {app_t, _, {id, _, "map"}, [K, V]}).
 
-ast_body(?id_app("raw_spend", [To, Amount], _, _), Icode) ->
+ast_body(?qid_app(["Chain","spend"], [To, Amount], _, _), Icode) ->
     prim_call(?PRIM_CALL_SPEND, ast_body(Amount, Icode), [ast_body(To, Icode)], [word], {tuple, []});
 
 %% Chain environment
@@ -128,8 +128,8 @@ ast_body({qid, _, ["Chain", "balance"]}, _Icode) ->
     error({underapplied_primitive, 'Chain.balance'});
 ast_body({qid, _, ["Chain", "block_hash"]}, _Icode) ->
     error({underapplied_primitive, 'Chain.block_hash'});
-ast_body({id, _, "raw_spend"}, _Icode) ->
-    error({underapplied_primitive, raw_spend});
+ast_body({qid, _, ["Chain", "spend"]}, _Icode) ->
+    error({underapplied_primitive, 'Chain.spend'});
 
 %% State
 ast_body({id, _, "state"}, _Icode) -> prim_state;

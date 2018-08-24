@@ -6,7 +6,7 @@ contract SpendTest =
 
   function spend(to, amount) =
     let total = Contract.balance
-    raw_spend(to, amount)
+    Chain.spend(to, amount)
     total - amount
 
   function withdraw(amount) : int =
@@ -18,7 +18,7 @@ contract SpendTest =
 
   function spend_from(from, to, amount) =
     from.withdraw(amount)
-    raw_spend(to, amount)
+    Chain.spend(to, amount)
     Chain.balance(to)
 
   function get_balance() = Contract.balance
