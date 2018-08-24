@@ -153,9 +153,11 @@ infer_contract_top(TypeEnv, Defs0) ->
 infer_constant({letval, Attrs,_Pattern, Type, E}) ->
     create_type_defs([]),
     ets:new(type_vars, [set, named_table, public]),
+    create_type_errors(),
     {typed, _, _, PatType} =
         infer_expr(global_env(), {typed, Attrs, E, arg_type(Type)}),
     T = instantiate(PatType),
+    destroy_and_report_type_errors(),
     ets:delete(type_vars),
     destroy_type_defs(),
     T.
