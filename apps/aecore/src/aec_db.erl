@@ -35,6 +35,7 @@
          find_header/1,
          find_headers_at_height/1,
          find_key_block/1,
+         find_signed_tx/1,
          get_block/1,
          get_header/1,
          get_genesis_hash/0,
@@ -480,6 +481,12 @@ gc_tx(TxHash) ->
 get_signed_tx(Hash) ->
     [#aec_signed_tx{value = STx}] = ?t(read(aec_signed_tx, Hash)),
     STx.
+
+find_signed_tx(Hash) ->
+    case ?t(read(aec_signed_tx, Hash)) of
+        []                            -> none;
+        [#aec_signed_tx{value = STx}] -> {value, STx}
+    end.
 
 add_tx_location(STxHash, BlockHash) when is_binary(STxHash),
                                          is_binary(BlockHash) ->
