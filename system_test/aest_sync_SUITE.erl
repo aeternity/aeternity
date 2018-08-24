@@ -451,7 +451,7 @@ tx_pool_sync(Cfg) ->
 
     %% Give the sync a moment to finish
     #{ height := Height2 } = get_top(node2),
-    wait_for_value({height, Height2 + 5}, [node1], 5 * ?MINING_TIMEOUT, Cfg),
+    wait_for_value({height, Height2 + 8}, [node1], 8 * ?MINING_TIMEOUT, Cfg),
 
     {ok, 200, MempoolTxs1B} = request(node1, 'GetTxs', #{}),
     {11, _} = {length(MempoolTxs1B), MempoolTxs1B},
