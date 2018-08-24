@@ -241,6 +241,8 @@ pp_error({{validation_failed, Errors}, _}) ->
 pp_error(Other) ->
     Other.
 
+pp_error_({error, {schema_file_not_found, Schema}}) ->
+    io:fwrite("Schema not found : ~s~n", [Schema]);
 pp_error_({error, [{data_invalid, Schema, Type, Value, Pos}]}) ->
     SchemaStr = jsx:prettify(jsx:encode(Schema)),
     PosStr = pp_pos(Pos),
@@ -392,7 +394,12 @@ check_validation(Res, _JSON, F, Mode) ->
     end.
 
 validate_(Schema, JSON) ->
-    jesse:validate_with_schema(load_schema(Schema), JSON, []).
+    case filelib:is_regular(Schema) of
+        true ->
+            jesse:validate_with_schema(load_schema(Schema), JSON, []);
+        false ->
+            {error, {schema_file_not_found, Schema}}
+    end.
 
 schema() ->
     filename:join(code:priv_dir(aeutils),
