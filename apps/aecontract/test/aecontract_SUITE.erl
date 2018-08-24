@@ -23,6 +23,7 @@
         , state_tree/1
         , sophia_identity/1
         , sophia_state/1
+        , sophia_match_bug/1
         , sophia_spend/1
         , sophia_oracles/1
         , sophia_oracles_qfee__basic/1
@@ -95,6 +96,7 @@ groups() ->
     , {state_tree, [sequence], [ state_tree ]}
     , {sophia,     [sequence], [ sophia_identity,
                                  sophia_state,
+                                 sophia_match_bug,
                                  sophia_spend,
                                  sophia_oracles,
                                  {group, sophia_oracles_query_fee_happy_path},
@@ -645,6 +647,16 @@ sophia_state(_Cfg) ->
     <<"middle">> = ?call(call_contract, Acc1, Stack, pop, string, {}),
     <<"bottom">> = ?call(call_contract, Acc1, Stack, pop, string, {}),
     {error, <<"out_of_gas">>} = ?call(call_contract, Acc1, Stack, pop, string, {}),
+    ok.
+
+%% There was a bug matching on _::_.
+sophia_match_bug(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1      = ?call(new_account, 1000000),
+    Poly      = ?call(create_contract, Acc1, polymorphism_test, {}),
+    [5, 7, 9] = ?call(call_contract, Acc1, Poly, foo, {list, word}, {}),
+    [1, 0, 3] = ?call(call_contract, Acc1, Poly, bar, {list, word}, {}),
+    %% invalid_jumpdest
     ok.
 
 sophia_spend(_Cfg) ->
