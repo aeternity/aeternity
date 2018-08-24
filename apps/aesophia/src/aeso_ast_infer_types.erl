@@ -173,6 +173,7 @@ infer_contract(Env, Defs) ->
     Env2      = ProtoSigs ++ Env1,
     Functions = Get(function),
     FunMap    = maps:from_list([ {Fun, Def} || Def = {letfun, _, {id, _, Fun}, _, _, _} <- Functions ]),
+    check_reserved_entrypoints(FunMap),
     DepGraph  = maps:map(fun(_, Def) -> aeso_syntax_utils:used_ids(Def) end, FunMap),
     SCCs      = aeso_utils:scc(DepGraph),
     io:format("Dependency sorted functions:\n  ~p\n", [SCCs]),
@@ -250,6 +251,13 @@ check_sccs(Env, Funs, [{cyclic, Xs} | SCCs], Acc) ->
     {TypeSigs, {letrec, _, Defs1}} = infer_letrec(Env, {letrec, [], Defs}),
     Env1 = TypeSigs ++ Env,
     check_sccs(Env1, Funs, SCCs, Defs1 ++ Acc).
+
+check_reserved_entrypoints(Funs) ->
+    Reserved = ["address"],
+    create_type_errors(),
+    [ type_error({reserved_entrypoint, Name, Def})
+        || {Name, Def} <- maps:to_list(Funs), lists:member(Name, Reserved) ],
+    destroy_and_report_type_errors().
 
 check_fundecl(_Env, {fun_decl, _Attrib, {id, _NameAttrib, Name}, {fun_t, _, Named, Args, Ret}}) ->
     {Name, {type_sig, Named, Args, Ret}};  %% TODO: actually check that the type makes sense!
@@ -642,8 +650,11 @@ contract_call_type({fun_t, Ann, [], Args, Ret}) ->
 
 insert_contract(Id, Contents) ->
     Key = type_key(Id),
+    Sys    = [{origin, system}],
     Fields = [ {field_t, Ann, Entrypoint, contract_call_type(Type)}
-                || {fun_decl, Ann, Entrypoint, Type} <- Contents ],
+                || {fun_decl, Ann, Entrypoint, Type} <- Contents ] ++
+              %% Predefined fields
+             [ {field_t, Sys, {id, Sys, "address"}, {id, Sys, "address"}} ],
     ets:insert(type_defs, {Key, [], {contract_t, Fields}}),
     %% TODO: types defined in other contracts
     [insert_record_field(Entrypoint, #field_info{ kind     = contract,
@@ -1204,6 +1215,9 @@ pp_error({bad_named_argument, Args, Name}) ->
 pp_error({unsolved_named_argument_constraint, #named_argument_constraint{name = Name, type = Type}}) ->
     io_lib:format("Named argument ~s (at ~s) supplied to function with unknown named arguments.\n",
                   [pp_typed("", Name, Type), pp_loc(Name)]);
+pp_error({reserved_entrypoint, Name, Def}) ->
+    io_lib:format("The name '~s' is reserved and cannot be used for a\ntop-level contract function (at ~s).\n",
+                  [Name, pp_loc(Def)]);
 pp_error(Err) ->
     io_lib:format("Unknown error: ~p\n", [Err]).
 

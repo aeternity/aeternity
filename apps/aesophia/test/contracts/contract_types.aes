@@ -15,3 +15,6 @@ contract ThisContract =
 
   function get_n() = state.n
 
+  function tip_server() =
+    Chain.spend(state.server.address, Call.value)
+

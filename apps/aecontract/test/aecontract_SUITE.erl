@@ -681,7 +681,8 @@ sophia_typed_calls(_Cfg) ->
     16     = ?call(call_contract, Acc, Client, get_n, word, {}),
     {}     = ?call(call_contract, Acc, Client, square, {tuple, []}, {}),
     256    = ?call(call_contract, Acc, Client, get_n, word, {}),
-    300    = ?call(account_balance, Server),
+    {}     = ?call(call_contract, Acc, Client, tip_server, {tuple, []}, {}, #{amount => 100}),
+    400    = ?call(account_balance, Server),
     ok.
 
 %% Oracles tests

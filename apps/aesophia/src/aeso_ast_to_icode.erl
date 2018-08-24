@@ -301,6 +301,8 @@ ast_body({typed, _, {con, _, "Some"}, {fun_t, _, _, [A], _}}, Icode) ->
     #lambda{ args = [#arg{name = "x", type = ast_type(A, Icode)}]
            , body = #tuple{cpts = [#var_ref{name = "x"}]} };
 %% Typed contract calls
+ast_body({proj, _, {typed, _, Addr, {con, _, _}}, {id, _, "address"}}, Icode) ->
+    ast_body(Addr, Icode);  %% Values of contract types _are_ addresses.
 ast_body({app, _, {typed, _, {proj, _, {typed, _, Addr, {con, _, Contract}}, {id, _, FunName}},
                              {fun_t, _, NamedT, ArgsT, OutT}}, Args0}, Icode) ->
     NamedArgs = [Arg || Arg = {named_arg, _, _, _} <- Args0],
