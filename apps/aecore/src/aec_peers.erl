@@ -48,7 +48,7 @@
 
 %% API only to be used by aec_peer_connection.
 -export([peer_connected/2]).
--export([peer_accepted/2]).
+-export([peer_accepted/3]).
 -export([connection_failed/2]).
 -export([connection_closed/2]).
 
@@ -155,7 +155,7 @@ check_env() ->
 add_trusted(PeerInfos) when is_list(PeerInfos) ->
     lists:foreach(fun(I) -> add_trusted(I) end, PeerInfos);
 add_trusted(PeerInfo) ->
-    api_add_peer(undefined, PeerInfo, true).
+    async_add_peer(undefined, PeerInfo, true).
 
 %% @doc Adds a normal peer or a list of normal peers.
 %% The IP address of the node that gave us this peer must be specified.
@@ -163,7 +163,7 @@ add_trusted(PeerInfo) ->
 add_peers(SourceAddr, PeerInfos) when is_list(PeerInfos) ->
     lists:foreach(fun(I) -> add_peers(SourceAddr, I) end, PeerInfos);
 add_peers(SourceAddr, PeerInfo) ->
-    api_add_peer(SourceAddr, PeerInfo, false).
+    async_add_peer(SourceAddr, PeerInfo, false).
 
 %% @doc Removes a peer; if connected, closes the connection.
 %% At the moment also removes peer from the blocked list.
@@ -299,15 +299,10 @@ peer_connected(PeerId, PeerCon) ->
 %% @doc Informs that an inbound connection has been accepted.
 %% If it returns `temporary' the connection should be closed as soon as
 %% the first ping has been responded.
--spec peer_accepted(peer_info(), pid())
+-spec peer_accepted(peer_info(), inet:ip_address(), pid())
     -> permanent | temporary | {error, term()}.
-peer_accepted(PeerInfo, PeerCon) ->
-    #{ host := Host } = PeerInfo,
-    case inet:getaddr(to_list(Host), inet) of
-        {error, _} = Error -> Error;
-        {ok, Addr} ->
-            gen_server:call(?MODULE, {peer_accepted, Addr, PeerInfo, PeerCon})
-    end.
+peer_accepted(PeerInfo, Addr, PeerCon) ->
+    gen_server:call(?MODULE, {peer_accepted, Addr, PeerInfo, PeerCon}).
 
 %% @doc Informs that a connection failed unexpectedly; either when connecting
 %% or while already being connected.
@@ -481,16 +476,6 @@ is_local(PeerId, State) ->
 peer_info(#peer{ host = H, port = P, pubkey = PK }) ->
     #{ host => H, port => P, pubkey => PK }.
 
-%% Creates a peer record from peer's information map.
--spec peer(peer_info(), boolean())
-    -> {ok, peer()} | {error, term()}.
-peer(PeerInfo, IsTrusted) ->
-    #{ host := Host } = PeerInfo,
-    case inet:getaddr(to_list(Host), inet) of
-        {error, _} = Error -> Error;
-        {ok, Addr} -> {ok, peer(Addr, PeerInfo, IsTrusted)}
-    end.
-
 %% Creates a peer record from peer's information and resolved address.
 -spec peer(inet:ip_address(), peer_info(), boolean()) -> peer().
 peer(PeerAddr, PeerInfo, IsTrusted) ->
@@ -559,22 +544,31 @@ update_ping_metrics(Outcome) ->
 %--- API CALLS HELPER FUNCTIONS ------------------------------------------------
 
 %% Adds or update a peer; called in the caller's process.
--spec api_add_peer(inet:ip_address() | undefined, peer_info(), boolean()) -> ok.
-api_add_peer(SourceAddr0, PeerInfo, IsTrusted) ->
-    case peer(PeerInfo, IsTrusted) of
-        {error, nxdomain} ->
-            #{ host := Host } = PeerInfo,
-            epoch_sync:info("Peer ~p - failed to resolve hostname ~p; "
-                            "retrying later", [ppp(PeerInfo), Host]),
-            gen_server:cast(?MODULE, {resolve_peer, SourceAddr0,
-                                      PeerInfo, IsTrusted});
-        {ok, Peer} ->
-            SourceAddr = case SourceAddr0 of
-                undefined -> Peer#peer.address;
-                _ -> SourceAddr0
-            end,
-            gen_server:cast(?MODULE, {add_peer, SourceAddr, Peer})
-    end.
+%% We should not block the caller, so we just spawn to make this happen in 
+%% the background. If the process silently fails in the background, we 
+%% will be able to detect that in the logs since we won't be able to
+%% connect.
+-spec async_add_peer(inet:ip_address() | undefined, peer_info(), boolean()) -> ok.
+async_add_peer(SourceAddr0, #{ host := Host} = PeerInfo, IsTrusted) ->
+    spawn(fun() ->
+             case inet:getaddr(to_list(Host), inet) of
+                 {error, nxdomain} ->
+                     epoch_sync:info("Peer ~p - failed to resolve hostname ~p; "
+                                     "retrying later", [ppp(PeerInfo), Host]),
+                     gen_server:cast(?MODULE, {resolve_peer, SourceAddr0,
+                                               PeerInfo, IsTrusted});
+                 {ok, Addr} when SourceAddr0 == undefined ->
+                     epoch_sync:info("PEER undefined address ~p ~p -> ~p", [Host, SourceAddr0, Addr]),
+                     Peer = peer(Addr, PeerInfo, IsTrusted),
+                     gen_server:cast(?MODULE, {add_peer, Addr, Peer});
+                 {ok, Addr} when SourceAddr0 =/= undefined ->
+                     %% IP address has changed
+                     epoch_sync:info("IP address of peer changed ~p ~p -> ~p", [Host, SourceAddr0, Addr]),
+                     Peer = peer(Addr, PeerInfo, IsTrusted),
+                     gen_server:cast(?MODULE, {add_peer, SourceAddr0, Peer})
+             end
+          end), 
+    ok.
 
 -spec count(connections | inbound | outbound | blocked | peers
             | verified | unverified | available | standby | hostnames, state())
@@ -973,30 +967,14 @@ on_resolve_peer(SourceAddr, PeerInfo, IsTrusted, State) ->
             State#state{ hostnames = HostMap2 }
     end.
 
-%% Handles hostname resolution event.
+%% Handles timeout of hostname resolution event.
 -spec on_resolve_hostname(reference(), string(), state()) -> state().
-on_resolve_hostname(Ref, Host, State) ->
-    #state{ hostnames = HostMap } = State,
+on_resolve_hostname(Ref, Host, #state{ hostnames = HostMap } = State) ->
     case maps:find(Host, HostMap) of
         {ok, {Ref, RetryCount, PeerMap}} ->
-            case inet:getaddr(Host, inet) of
-                {error, nxdomain} ->
-                    epoch_sync:info("Failed to resolve hostname ~p", [Host]),
-                    HostData = {undefined, RetryCount + 1, PeerMap},
-                    HostMap2 = resolver_schedule(Host, HostData, HostMap),
-                    State#state{ hostnames = HostMap2 };
-                {ok, Addr} ->
-                    HostMap2 = maps:remove(Host, HostMap),
-                    State2 = State#state{ hostnames = HostMap2 },
-                    maps:fold(fun
-                        (_, {undefined, PeerInfo, IsTrusted}, S) ->
-                            Peer = peer(Addr, PeerInfo, IsTrusted),
-                            on_add_peer(Addr, Peer, S);
-                        (_, {SourceAddr, PeerInfo, IsTrusted}, S) ->
-                            Peer = peer(Addr, PeerInfo, IsTrusted),
-                            on_add_peer(SourceAddr, Peer, S)
-                    end, State2, PeerMap)
-            end;
+            [ async_add_peer(SourceAddr, PeerInfo, IsTrusted) || 
+                {SourceAddr, PeerInfo, IsTrusted} <- maps:values(PeerMap) ],
+            State#state{ hostnames = HostMap#{ Host => {undefined, RetryCount + 1, PeerMap}}};
         _ ->
             State
     end.
@@ -1004,7 +982,8 @@ on_resolve_hostname(Ref, Host, State) ->
 %% Handles event adding a new peer to the pool.
 -spec on_add_peer(inet:ip_address(), peer(), state()) -> state().
 on_add_peer(SourceAddr, Peer, State0) ->
-    State = maybe_unblock(State0),
+    #state{ hostnames = HostMap } = State0,
+    State = maybe_unblock(State0#state{hostnames = maps:remove(to_list(Peer#peer.host), HostMap)}),
     PeerId  = peer_id(Peer),
     #peer{ pubkey = PPK, address = PA, port = PP } = Peer,
     case is_local(PeerId, State) orelse is_blocked(PeerId, State) of

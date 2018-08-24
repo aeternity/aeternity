@@ -34,6 +34,26 @@ end()).
     end
 end()).
 
+-define(assertInteractiveMessage(MSG, RESP, TIMEOUT), fun() ->
+    receive
+        {From, Ref, (MSG)} ->
+            From ! {Ref, (RESP)},
+            ok
+    after (TIMEOUT) ->
+        dump_messages(),
+        ?fail("Message ~s not received", [(??MSG)])
+    end
+end()).
+
+-define(assertNoInteractiveMessage(MSG, TIMEOUT), fun() ->
+    receive
+        {From, Ref, (MSG)} ->
+            From ! {Ref, error},
+            ?fail("~s called unexpectedly", [(??MSG)])
+    after (TIMEOUT) -> ok
+    end
+end()).
+
 -define(assertCalled(LABEL, ARGS, RESULT, TIMEOUT), fun() ->
     receive
         {(LABEL), (ARGS), Result} ->
@@ -74,6 +94,17 @@ aec_peers_test_() ->
                 ]) end,
                 fun teardown/1,
                 fun test_invalid_hostname/0},
+        {setup, fun() -> setup([{sync_single_outbound_per_group, false, true}]) end,
+                fun teardown/1,
+                fun test_multiple_peers_same_hostname/0},
+        {setup, fun() -> setup([
+                    {sync_single_outbound_per_group, false, true},
+                    {sync_resolver_max_retries, 3, ?DEFAULT_RESOLVE_MAX_RETRY},
+                    {sync_resolver_backoff_times, [100, 200, 300], ?DEFAULT_RESOLVE_BACKOFF_TIMES},
+                    {peer_pool, [{standby_times, [100]}], []}
+                ]) end,
+                fun teardown/1,
+                fun test_multiple_peers_same_hostname_failures/0},
         {setup, fun setup/0, fun teardown/1, fun test_address_group_selection/0},
         {setup, fun() -> setup([
                     {sync_single_outbound_per_group, false, true}
@@ -183,12 +214,6 @@ test_single_normal_peer() ->
     Peer = peer(PubKey, <<"10.1.0.1">>, 4000),
 
     aec_peers:add_peers(Source, Peer),
-
-    ?assertMatch([Peer], aec_peers:available_peers()),
-    ?assertMatch([Peer], aec_peers:available_peers(both)),
-    ?assertMatch([], aec_peers:available_peers(verified)),
-    ?assertMatch([Peer], aec_peers:available_peers(unverified)),
-    ?assertEqual(1, aec_peers:count(available)),
 
     {ok, Conn} = ?assertCalled(connect, [#{ r_pubkey := PubKey }], {ok, _}, 200),
 
@@ -416,6 +441,126 @@ test_invalid_hostname() ->
     ?assertCalled(connect, [#{ r_pubkey := PubKey2 }], {ok, _}, 200),
     ?assertCalled(connect, [#{ r_pubkey := PubKey1 }], {ok, _}, 1200),
 
+    ok.
+
+%% Test that adding multiple peers with the same hostname works.
+test_multiple_peers_same_hostname() ->
+    test_mgr_set_recipient(self()),
+    setup_mock_getaddr(),
+
+    Source = {192, 168, 0, 1},
+    PubKey1 = <<"ef42d46eace742cd">>,
+    Peer1 = peer(PubKey1, <<"aeternity.com">>, 4000),
+    PubKey2 = <<"52af7b3a5d2c460b">>,
+    Peer2 = peer(PubKey2, <<"aeternity.com">>, 4001),
+    PubKey3 = <<"d59e8323509a49da">>,
+    Peer3 = peer(PubKey3, <<"aeternity.com">>, 4002),
+
+    mock_getaddr({ok, {192, 168, 0, 10}}),
+
+    aec_peers:add_peers(Source, Peer1),
+    aec_peers:add_peers(Source, Peer2),
+    aec_peers:add_peers(Source, Peer3),
+
+    ?assertMessage({getaddr, "aeternity.com"}, 50),
+    ?assertMessage({getaddr, "aeternity.com"}, 50),
+    ?assertMessage({getaddr, "aeternity.com"}, 50),
+
+    {ok, Conn1} = ?assertCalled(connect, _, {ok, _}, 300),
+    ok = conn_peer_connected(Conn1),
+    {ok, Conn2} = ?assertCalled(connect, _, {ok, _}, 1200),
+    ok = conn_peer_connected(Conn2),
+    {ok, Conn3} = ?assertCalled(connect, _, {ok, _}, 2200),
+    ok = conn_peer_connected(Conn3),
+
+    ?assertMatch(0, aec_peers:count(hostnames)),
+    ?assertEqual(3, aec_peers:count(connections)),
+    ?assertEqual(0, aec_peers:count(inbound)),
+    ?assertEqual(3, aec_peers:count(outbound)),
+    ?assertEqual(3, aec_peers:count(peers)),
+    ?assertEqual(3, aec_peers:count(verified)),
+    ?assertEqual(0, aec_peers:count(unverified)),
+    ?assertEqual(0, aec_peers:count(standby)),
+    ok.
+
+%% Test that when resolving multiple peers with the same hostname,
+%% that if some fails they are retried.
+test_multiple_peers_same_hostname_failures() ->
+    test_mgr_set_recipient(self()),
+    setup_mock_getaddr(),
+    mock_interactive_getaddr(),
+
+    Source = {192, 168, 0, 1},
+    PubKey1 = <<"ef42d46eace742cd">>,
+    Peer1 = peer(PubKey1, <<"aeternity.com">>, 4000),
+    PubKey2 = <<"52af7b3a5d2c460b">>,
+    Peer2 = peer(PubKey2, <<"aeternity.com">>, 4001),
+    PubKey3 = <<"d59e8323509a49da">>,
+    Peer3 = peer(PubKey3, <<"aeternity.com">>, 4002),
+
+    aec_peers:add_peers(Source, Peer1),
+    aec_peers:add_peers(Source, Peer2),
+    aec_peers:add_peers(Source, Peer3),
+
+    ?assertInteractiveMessage({getaddr, "aeternity.com"},
+                              {100, {ok, {192, 168, 0, 10}}}, 50),
+    ?assertInteractiveMessage({getaddr, "aeternity.com"},
+                              {150, {error, nxdomain}}, 50),
+    ?assertInteractiveMessage({getaddr, "aeternity.com"},
+                              {150, {error, nxdomain}}, 50),
+
+    {ok, Conn1} = ?assertCalled(connect, _, {ok, _}, 300),
+    ok = conn_peer_connected(Conn1),
+
+    ?assertEqual(1, aec_peers:count(connections)),
+    ?assertEqual(0, aec_peers:count(inbound)),
+    ?assertEqual(1, aec_peers:count(outbound)),
+    ?assertEqual(1, aec_peers:count(peers)),
+    ?assertEqual(1, aec_peers:count(verified)),
+    ?assertEqual(0, aec_peers:count(unverified)),
+    ?assertEqual(0, aec_peers:count(standby)),
+
+    %% Retry counter is reset when a peer is resolved;
+    %% check first try of the remaining peers.
+    ?assertInteractiveMessage({getaddr, "aeternity.com"},
+                              {50, {error, nxdomain}}, 200),
+    ?assertInteractiveMessage({getaddr, "aeternity.com"},
+                              {50, {error, nxdomain}}, 200),
+
+    %% Check second try of the remaining peers;
+    %% one of them resolve successfully.
+    ?assertInteractiveMessage({getaddr, "aeternity.com"},
+                              {50, {ok, {192, 168, 0, 10}}}, 300),
+    ?assertInteractiveMessage({getaddr, "aeternity.com"},
+                              {50, {error, nxdomain}}, 300),
+
+    {ok, Conn2} = ?assertCalled(connect, _, {ok, _}, 1200),
+    ok = conn_peer_connected(Conn2),
+
+    %% Retry counter is reset when a peer is resolved;
+    %% check first try of the remaining peer.
+    ?assertInteractiveMessage({getaddr, "aeternity.com"},
+                              {50, {error, nxdomain}}, 200),
+
+    %% Check second try of the remaining peer.
+    ?assertInteractiveMessage({getaddr, "aeternity.com"},
+                              {50, {error, nxdomain}}, 300),
+
+    %% Check third try of the remaining peer.
+    ?assertInteractiveMessage({getaddr, "aeternity.com"},
+                              {50, {error, nxdomain}}, 400),
+
+    %% The resolution is not tried anymore.
+    ?assertNoInteractiveMessage({getaddr, "aeternity.com"}, 500),
+
+    ?assertMatch(0, aec_peers:count(hostnames)),
+    ?assertEqual(2, aec_peers:count(connections)),
+    ?assertEqual(0, aec_peers:count(inbound)),
+    ?assertEqual(2, aec_peers:count(outbound)),
+    ?assertEqual(2, aec_peers:count(peers)),
+    ?assertEqual(2, aec_peers:count(verified)),
+    ?assertEqual(0, aec_peers:count(unverified)),
+    ?assertEqual(0, aec_peers:count(standby)),
     ok.
 
 test_address_group_selection() ->
@@ -724,7 +869,7 @@ test_inbound_connections() ->
 
     lists:foldl(fun(Peer, Acc) ->
         {ok, Conn} = test_mgr_start_inbound(Peer),
-        ?assertEqual(permanent, conn_peer_accepted(Conn)),
+        ?assertEqual(permanent, conn_peer_accepted(Conn, maps:get(host, Peer))),
         PeerId = aec_peers:peer_id(Peer),
         Acc#{ PeerId => Conn }
     end, #{}, Peers),
@@ -746,7 +891,7 @@ test_inbound_connections() ->
     % Check the inbound connection limit.
     Peer11 = peer(11, "10.1.0.1", 11),
     {ok, Conn11a} = test_mgr_start_inbound(Peer11),
-    ?assertEqual(temporary, conn_peer_accepted(Conn11a)),
+    ?assertEqual(temporary, conn_peer_accepted(Conn11a, maps:get(host, Peer11))),
     ?assertEqual(11, aec_peers:count(connections)),
     conn_connection_closed(Conn11a),
 
@@ -860,7 +1005,7 @@ test_connection_conflict() ->
     ?assertEqual(1, aec_peers:count(peers)),
 
     {ok, Conn2} = test_mgr_start_inbound(Peer1),
-    ?assertEqual({error, already_connected}, conn_peer_accepted(Conn2)),
+    ?assertEqual({error, already_connected}, conn_peer_accepted(Conn2, maps:get(host, Peer1))),
 
     ?assertEqual(1, aec_peers:count(connections)),
     ?assertEqual(0, aec_peers:count(inbound)),
@@ -885,7 +1030,7 @@ test_connection_conflict() ->
     ?assertEqual(1, aec_peers:count(peers)),
 
     {ok, Conn4} = test_mgr_start_inbound(Peer2),
-    ?assertEqual(permanent, conn_peer_accepted(Conn4)),
+    ?assertEqual(permanent, conn_peer_accepted(Conn4, maps:get(host, Peer2))),
     ?assertCalled(disconnect, [Conn3], ok, 100),
 
     ?assertEqual(1, aec_peers:count(connections)),
@@ -902,7 +1047,7 @@ test_connection_conflict() ->
     {ok, Conn5} = ?assertCalled(connect, [#{ r_pubkey := PubKey1 }], {ok, _}, 1200),
 
     {ok, Conn6} = test_mgr_start_inbound(Peer1),
-    ?assertEqual(permanent, conn_peer_accepted(Conn6)),
+    ?assertEqual(permanent, conn_peer_accepted(Conn6, maps:get(host, Peer1))),
     ?assertCalled(disconnect, [Conn5], ok, 100),
 
     ?assertEqual(1, aec_peers:count(connections)),
@@ -940,7 +1085,7 @@ test_blocking() ->
     ?assertEqual(0, aec_peers:count(connections)),
 
     {ok, Conn1} = test_mgr_start_inbound(Peer1),
-    ?assertEqual({error, blocked}, conn_peer_accepted(Conn1)),
+    ?assertEqual({error, blocked}, conn_peer_accepted(Conn1, maps:get(host, Peer1))),
     ?assertEqual(0, aec_peers:count(peers)),
     ?assertEqual(0, aec_peers:count(connections)),
 
@@ -974,7 +1119,7 @@ test_blocking() ->
     ?assertEqual(0, aec_peers:count(connections)),
 
     {ok, Conn4} = test_mgr_start_inbound(Peer4),
-    ?assertEqual(permanent, conn_peer_accepted(Conn4)),
+    ?assertEqual(permanent, conn_peer_accepted(Conn4, maps:get(host, Peer4))),
     ?assertEqual(1, aec_peers:count(peers)),
     ?assertEqual(1, aec_peers:count(connections)),
 
@@ -1018,13 +1163,13 @@ test_blocking() ->
 
     aec_peers:block_peer(Peer1),
     {ok, Conn6} = test_mgr_start_inbound(Peer1),
-    ?assertEqual({error, blocked}, conn_peer_accepted(Conn6)),
+    ?assertEqual({error, blocked}, conn_peer_accepted(Conn6, maps:get(host, Peer1))),
     timer:sleep(1000),
     {ok, Conn7} = test_mgr_start_inbound(Peer1),
-    ?assertEqual({error, blocked}, conn_peer_accepted(Conn7)),
+    ?assertEqual({error, blocked}, conn_peer_accepted(Conn7, maps:get(host, Peer1))),
     timer:sleep(1100),
     {ok, Conn8} = test_mgr_start_inbound(Peer1),
-    ?assertEqual(permanent, conn_peer_accepted(Conn8)),
+    ?assertEqual(permanent, conn_peer_accepted(Conn8, maps:get(host, Peer1))),
 
     % Test peers are unblocked when connecting to a peer after interval.
 
@@ -1145,6 +1290,22 @@ setup_mock_getaddr() ->
 cleanup_mock_getaddr() ->
     catch meck:unload(inet).
 
+mock_interactive_getaddr() ->
+    Self = self(),
+    ok = meck:expect(inet, getaddr, fun(Hostname, _) ->
+        Ref = erlang:make_ref(),
+        Self ! {self(), Ref, {getaddr, Hostname}},
+        receive
+            {Ref, error} ->
+                throw(test_intervactive_call_error);
+            {Ref, {Delay, Result}} ->
+                timer:sleep(Delay),
+                Result
+        after 5000 ->
+            throw(test_intervactive_call_timeout)
+        end
+    end).
+
 mock_getaddr(Result) ->
     Self = self(),
     ok = meck:expect(inet, getaddr, fun(Hostname, _) ->
@@ -1241,8 +1402,8 @@ conn_kill(Pid) ->
 conn_peer_connected(Pid) ->
     call(Pid, peer_connected, []).
 
-conn_peer_accepted(Pid) ->
-    call(Pid, peer_accepted, []).
+conn_peer_accepted(Pid, Host) ->
+    call(Pid, peer_accepted, [Host]).
 
 conn_connection_failed(Pid) ->
     call(Pid, connection_failed, []).
@@ -1284,9 +1445,10 @@ proc_conn_loop(S) ->
                     cast(Parent, stopped, self()),
                     reply(From, Result)
             end;
-        {From, peer_accepted, []} ->
+        {From, peer_accepted, [Host]} ->
             #{ parent := Parent, info := Info } = S,
-            case aec_peers:peer_accepted(Info, self()) of
+            {ok, Addr} = inet:parse_address(Host),
+            case aec_peers:peer_accepted(Info, Addr, self()) of
                 R when R =:= permanent; R =:= temporary ->
                     S2 = S#{ connected := true },
                     reply(From, R),

@@ -211,7 +211,7 @@ new_node_joins_network(Cfg) ->
     EndTime = erlang:system_time(seconds),
     %% Average mining time per block
     MiningTime = ((EndTime - StartTime) * 1000) div Length,
-    ct:log("Mining time per block ~p for ~p blocks", [MiningTime, Length]),
+    ct:log("Mining time per block ~p ms for ~p blocks", [MiningTime, Length]),
 
     Top1 = get_top(old_node1),
     ct:log("Node 1 top: ~p", [Top1]),
