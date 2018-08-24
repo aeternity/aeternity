@@ -83,7 +83,13 @@
 -define(WATCH_DEP, deposit).
 -define(WATCH_WDRAW, withdraw).
 
--define(UPDATE_REQ(R), R==?UPDATE; R==?DEP_CREATED; R==?WDRAW_CREATED).
+-define(UPDATE_CAST(R), R==?UPDATE; R==?DEP_CREATED; R==?WDRAW_CREATED).
+-define(UPDATE_REQ(R),
+          R==upd_transfer
+        ; R==upd_deposit
+        ; R==upd_withdraw
+        ; R==upd_create_contract
+        ; R==upd_call_contract).
 
 
 -define(KEEP, 10).
@@ -600,7 +606,7 @@ reestablish_init({call, From}, Req, D) ->
 
 awaiting_signature(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_signature(cast, {Req, _} = Msg, #data{ongoing_update = true} = D)
-  when ?UPDATE_REQ(Req) ->
+  when ?UPDATE_CAST(Req) ->
     %% Race detection!
     lager:debug("race detected: ~p", [Msg]),
     handle_update_conflict(Req, D);
@@ -644,7 +650,7 @@ awaiting_signature(cast, {?SIGNED, ?WDRAW_CREATED, SignedTx} = Msg,
                    #data{latest = {sign, ?WDRAW_CREATED, HSCTx}} = D) ->
     NewSignedTx = aetx_sign:add_signatures(
                     HSCTx, aetx_sign:signatures(SignedTx)),
-    D1 = send_withdraw_signed_msg(NewSignedTx, D),
+    D1 = send_withdraw_signed_msg(NewSignedTx, D#data{latest = undefined}),
     report(on_chain_tx, NewSignedTx, D1),
     {ok, D2} = start_min_depth_watcher(?WATCH_WDRAW, NewSignedTx, D1),
     next_state(awaiting_locked, log(rcv, ?SIGNED, Msg, D2));
@@ -662,7 +668,8 @@ awaiting_signature(cast, {?SIGNED, ?UPDATE_ACK, SignedTx} = Msg,
     D1 = send_update_ack_msg(NewSignedTx, D),
     State = aesc_offchain_state:add_signed_tx(NewSignedTx, D1#data.state, Opts),
     D2 = D1#data{log   = log_msg(rcv, ?SIGNED, Msg, D1#data.log),
-                 state = State},
+                 state = State,
+                 latest = undefined},
     next_state(open, D2);
 awaiting_signature(cast, {?SIGNED, ?SHUTDOWN, SignedTx} = Msg, D) ->
     D1 = send_shutdown_msg(SignedTx, D),
@@ -729,7 +736,7 @@ half_signed({call, From}, Req, D) ->
     handle_call(half_signed, Req, From, D).
 
 dep_half_signed(enter, _OldSt, _D) -> keep_state_and_data;
-dep_half_signed(cast, {Req, _} = Msg, D) when ?UPDATE_REQ(Req) ->
+dep_half_signed(cast, {Req, _} = Msg, D) when ?UPDATE_CAST(Req) ->
     %% This might happen if a request is sent before our ?DEP_CREATED msg
     %% arrived.
     lager:debug("race detected: ~p", [Msg]),
@@ -785,7 +792,7 @@ deposit_locked_complete(SignedTx, #data{state = State, opts = Opts} = D) ->
     next_state(open, D1).
 
 wdraw_half_signed(enter, _OldSt, _D) -> keep_state_and_data;
-wdraw_half_signed(cast, {Req,_} = Msg, D) when ?UPDATE_REQ(Req) ->
+wdraw_half_signed(cast, {Req,_} = Msg, D) when ?UPDATE_CAST(Req) ->
     %% This might happen if a request is sent before our ?WDRAW_CREATED msg
     %% arrived.
     lager:debug("race detected: ~p", [Msg]),
@@ -906,7 +913,7 @@ awaiting_initial_state(Evt, Msg, D) ->
     close({unexpected, Msg}, D).
 
 awaiting_update_ack(enter, _OldSt, _D) -> keep_state_and_data;
-awaiting_update_ack(cast, {Req,_} = Msg, #data{} = D) when ?UPDATE_REQ(Req) ->
+awaiting_update_ack(cast, {Req,_} = Msg, #data{} = D) when ?UPDATE_CAST(Req) ->
     %% This might happen if a request is sent before our signed ?UPDATE msg
     %% arrived.
     lager:debug("race detected: ~p", [Msg]),
@@ -1009,7 +1016,7 @@ open(cast, {?UPDATE, Msg}, D) ->
             report(info, update, D1),
             D2 = request_signing(
                    ?UPDATE_ACK, aetx_sign:tx(SignedTx), SignedTx, D1),
-            next_state(awaiting_signature, D2);
+            next_state(awaiting_signature, set_ongoing(D2));
         {error,_} = Error ->
             %% TODO: do we do a dispute challenge here?
             close(Error, D)
@@ -1021,7 +1028,7 @@ open(cast, {?DEP_CREATED, Msg}, D) ->
             lager:debug("deposit_created: ~p", [SignedTx]),
             D2 = request_signing(
                    ?DEP_CREATED, aetx_sign:tx(SignedTx), SignedTx, D1),
-            next_state(awaiting_signature, D2)
+            next_state(awaiting_signature, set_ongoing(D2))
     end;
 open(cast, {?WDRAW_CREATED, Msg}, D) ->
     case check_withdraw_created_msg(Msg, D) of
@@ -1030,7 +1037,7 @@ open(cast, {?WDRAW_CREATED, Msg}, D) ->
             lager:debug("withdraw_created: ~p", [SignedTx]),
             D2 = request_signing(
                    ?WDRAW_CREATED, aetx_sign:tx(SignedTx), SignedTx, D1),
-            next_state(awaiting_signature, D2)
+            next_state(awaiting_signature, set_ongoing(D2))
     end;
 open(cast, {?INBAND_MSG, Msg}, D) ->
     NewD = case check_inband_msg(Msg, D) of
@@ -1183,6 +1190,15 @@ handle_call_(open, {upd_call_contract, Opts}, From, #data{} = D) ->
         error         -> ok
     end,
     call_contract_tx_for_signing(Opts#{caller => FromPub}, From, D);
+handle_call_(awaiting_signature, Msg, From,
+             #data{ongoing_update = true} = D)
+  when ?UPDATE_REQ(element(1,Msg)) ->
+    %% Race detection!
+    lager:debug("race detected: ~p", [Msg]),
+    {sign, OngoingOp, _} = D#data.latest,
+    gen_statem:reply(From, {error, conflict}),
+    lager:debug("calling handle_update_conflict", []),
+    handle_update_conflict(OngoingOp, D#data{latest = undefined});
 handle_call_(open, {get_contract_call, Contract, Caller, Round}, From,
              #data{state = State} = D) ->
     Response =
@@ -1291,6 +1307,7 @@ error_binary(E) when is_atom(E) ->
 
 
 terminate(Reason, _State, Data) ->
+    lager:debug("terminate(~p, ~p, _)", [Reason, _State]),
     report(info, {died, Reason}, Data),
     report(debug, {log, win_to_list(Data#data.log)}, Data),
     ok.
@@ -1543,7 +1560,7 @@ new_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts 
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State, ChannelOpts),
          D1 = request_signing(?UPDATE, Tx1, D),
          gen_statem:reply(From, ok),
-         next_state(awaiting_signature, D1)
+         next_state(awaiting_signature, set_ongoing(D1))
     catch
         error:Reason ->
             lager:error("CAUGHT ~p, trace = ~p", [Reason, erlang:get_stacktrace()]),
@@ -1563,7 +1580,7 @@ call_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State, ChannelOpts),
          D1 = request_signing(?UPDATE, Tx1, D),
          gen_statem:reply(From, ok),
-         next_state(awaiting_signature, D1)
+         next_state(awaiting_signature, set_ongoing(D1))
     catch
         error:Reason ->
             lager:error("CAUGHT ~p, trace = ~p", [Reason, erlang:get_stacktrace()]),
@@ -2080,9 +2097,17 @@ send_update_ack_msg(SignedTx, #data{ on_chain_id = OnChainId
     aesc_session_noise:update_ack(Sn, Msg),
     log(snd, ?UPDATE_ACK, Msg, Data).
 
-handle_update_conflict(Req, D) when ?UPDATE_REQ(Req) ->
-    D1 = send_conflict_err_msg(Req, fallback_to_stable_state(D)),
-    next_state(open, D1).
+handle_update_conflict(Req, D) ->
+    lager:debug("handle_update_conflict(~p, D)", [Req]),
+    try
+        D1 = send_conflict_err_msg(Req, fallback_to_stable_state(D)),
+        lager:debug("conflict_err_msg sent", []),
+        next_state(open, D1)
+    catch
+        error:Err ->
+            lager:debug("CAUGHT ~p / ~p", [Err, erlang:get_stacktrace()]),
+            erlang:error(Err)
+    end.
 
 send_conflict_err_msg(Req, #data{ state = State
                                 , on_chain_id = ChanId
@@ -2092,19 +2117,26 @@ send_conflict_err_msg(Req, #data{ state = State
     Msg = #{ channel_id => ChanId
            , round      => Round
            , error_code => ?ERR_CONFLICT },
-    send_conflict_msg(Req, Sn, Msg),
+    Type = conflict_msg_type(Req),
+    send_conflict_msg(Type, Sn, Msg),
     report(conflict, Msg, Data),
     log(snd, conflict_msg_type(Req), Msg, Data).
 
 conflict_msg_type(?UPDATE)        -> ?UPDATE_ERR;
+conflict_msg_type(?UPDATE_ACK)    -> ?UPDATE_ERR;
 conflict_msg_type(?DEP_CREATED)   -> ?DEP_ERR;
-conflict_msg_type(?WDRAW_CREATED) -> ?WDRAW_ERR.
+conflict_msg_type(deposit_tx)     -> ?DEP_ERR;
+conflict_msg_type(?WDRAW_CREATED) -> ?WDRAW_ERR;
+conflict_msg_type(withdraw_tx)    -> ?WDRAW_ERR.
 
-send_conflict_msg(?UPDATE, Sn, Msg) ->
+send_conflict_msg(?UPDATE_ERR, Sn, Msg) ->
+    lager:debug("send update_error: ~p", [Msg]),
     aesc_session_noise:update_error(Sn, Msg);
-send_conflict_msg(?DEP_CREATED, Sn, Msg) ->
+send_conflict_msg(?DEP_ERR, Sn, Msg) ->
+    lager:debug("send deposit_error: ~p", [Msg]),
     aesc_session_noise:dep_error(Sn, Msg);
-send_conflict_msg(?WDRAW_CREATED, Sn, Msg) ->
+send_conflict_msg(?WDRAW_ERR, Sn, Msg) ->
+    lager:debug("send withdraw_error: ~p", [Msg]),
     aesc_session_noise:wdraw_error(Sn,Msg).
 
 
