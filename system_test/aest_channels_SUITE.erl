@@ -18,7 +18,8 @@
 -import(aest_nodes, [
     setup_nodes/2,
     start_node/2,
-    wait_for_value/4
+    wait_for_value/4,
+    wait_for_startup/3
 ]).
 
 -import(aest_api, [
@@ -137,6 +138,7 @@ simple_channel_test(ChannelOpts, Cfg) ->
     NodeNames = [node1, node2],
     start_node(node1, Cfg),
     start_node(node2, Cfg),
+    wait_for_startup([node1, node2], 4, Cfg),  %% make sure there is some money in accounts
     wait_balance(NodeNames, ?MIKE, 1000, 10000, Cfg),
 
     tx_spend(node1, ?MIKE, IAccount, 200, 1, Cfg),
