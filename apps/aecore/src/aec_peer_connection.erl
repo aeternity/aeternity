@@ -1004,7 +1004,7 @@ handle_get_block_txs(S, Msg) ->
             SerTxs = [ aetx_sign:serialize_to_binary(Tx) || Tx <- Txs ],
             send_response(S, block_txs, {ok, #{ hash => Hash, txs => SerTxs }});
         Err = {error, _} ->
-            send_response(S, txs, Err)
+            send_response(S, block_txs, Err)
     end,
     S.
 
