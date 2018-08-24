@@ -631,9 +631,14 @@ type_key({Tag, _, QName}) when Tag =:= qid; Tag =:= qcon -> QName.
 
 %% Contract entrypoints take two named arguments (gas : int = Call.gas_left(), value : int = 0).
 contract_call_type({fun_t, Ann, [], Args, Ret}) ->
-    Named = fun(Name, Default) -> {named_arg_t, Ann, {id, Ann, Name}, {id, Ann, "int"}, Default} end,
-    {fun_t, Ann, [Named("gas",   {app, Ann, {qid, Ann, ["Call", "gas_left"]}, []}),
-                  Named("value", {int, Ann, 0})], Args, Ret}.
+    Id    = fun(X) -> {id, Ann, X} end,
+    Int   = Id("int"),
+    Typed = fun(E, T) -> {typed, Ann, E, T} end,
+    Named = fun(Name, Default) -> {named_arg_t, Ann, Id(Name), Int, Default} end,
+    {fun_t, Ann, [Named("gas",   Typed({app, Ann, Typed({qid, Ann, ["Call", "gas_left"]},
+                                                        {fun_t, Ann, [], [], Int}),
+                                        []}, Int)),
+                  Named("value", Typed({int, Ann, 0}, Int))], Args, Ret}.
 
 insert_contract(Id, Contents) ->
     Key = type_key(Id),

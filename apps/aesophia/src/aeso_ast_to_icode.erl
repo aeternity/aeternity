@@ -301,17 +301,19 @@ ast_body({typed, _, {con, _, "Some"}, {fun_t, _, _, [A], _}}, Icode) ->
     #lambda{ args = [#arg{name = "x", type = ast_type(A, Icode)}]
            , body = #tuple{cpts = [#var_ref{name = "x"}]} };
 %% Typed contract calls
-ast_body({app, _, {typed, _, {proj, _, {typed, _, Addr, {con, _, Contract}}, {id, _, FunName}}, {fun_t, _, ArgsT, OutT}}, Args0}, Icode) ->
+ast_body({app, _, {typed, _, {proj, _, {typed, _, Addr, {con, _, Contract}}, {id, _, FunName}},
+                             {fun_t, _, NamedT, ArgsT, OutT}}, Args0}, Icode) ->
     NamedArgs = [Arg || Arg = {named_arg, _, _, _} <- Args0],
     Args      = Args0 -- NamedArgs,
-    ArgOpts   = [ {Name, ast_body(Value, Icode)} || {named_arg, _, {id, _, Name}, Value} <- NamedArgs ],
+    ArgOpts   = [ {Name, ast_body(Value, Icode)}   || {named_arg,   _, {id, _, Name}, Value} <- NamedArgs ],
+    Defaults  = [ {Name, ast_body(Default, Icode)} || {named_arg_t, _, {id, _, Name}, _, Default} <- NamedT ],
     %% TODO: eta expand
     [ error({underapplied_contract_call, string:join([Contract, FunName], ".")})
         || length(Args) /= length(ArgsT) ],
     ArgsI = [ ast_body(Arg, Icode) || Arg <- Args ],
     ArgType = ast_typerep({tuple_t, [], ArgsT}),
-    Gas    = proplists:get_value("gas", ArgOpts, prim_gas_left),
-    Value  = proplists:get_value("value", ArgOpts, #integer{ value = 0 }),
+    Gas    = proplists:get_value("gas",   ArgOpts ++ Defaults),
+    Value  = proplists:get_value("value", ArgOpts ++ Defaults),
     Fun    = ast_body({string, [], list_to_binary(FunName)}, Icode),
     #prim_call_contract{
         address  = ast_body(Addr, Icode),
