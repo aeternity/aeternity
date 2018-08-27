@@ -267,7 +267,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/JSONTxs"
+              "$ref" : "#/definitions/GenericTxs"
             }
           },
           "400" : {
@@ -309,7 +309,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/SignedTxJSON"
+              "$ref" : "#/definitions/GenericSignedTx"
             }
           },
           "400" : {
@@ -501,7 +501,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/JSONTxs"
+              "$ref" : "#/definitions/GenericTxs"
             }
           },
           "400" : {
@@ -536,7 +536,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/SignedTxJSON"
+              "$ref" : "#/definitions/GenericSignedTx"
             }
           },
           "400" : {
@@ -1065,20 +1065,12 @@
           "description" : "Hash of the transaction to get",
           "required" : true,
           "type" : "string"
-        }, {
-          "name" : "tx_encoding",
-          "in" : "query",
-          "description" : "Transaction encoding",
-          "required" : false,
-          "type" : "string",
-          "default" : "message_pack",
-          "enum" : [ "message_pack", "json" ]
         } ],
         "responses" : {
           "200" : {
             "description" : "The transaction found",
             "schema" : {
-              "$ref" : "#/definitions/SingleTxObject"
+              "$ref" : "#/definitions/SingleTx"
             }
           },
           "400" : {
@@ -2690,14 +2682,6 @@
           "description" : "Height of the block to fetch",
           "required" : true,
           "type" : "integer"
-        }, {
-          "name" : "tx_encoding",
-          "in" : "query",
-          "description" : "Transactions encoding",
-          "required" : false,
-          "type" : "string",
-          "default" : "json",
-          "enum" : [ "message_pack", "json" ]
         } ],
         "responses" : {
           "200" : {
@@ -2727,14 +2711,6 @@
           "description" : "Hash of the block to fetch",
           "required" : true,
           "type" : "string"
-        }, {
-          "name" : "tx_encoding",
-          "in" : "query",
-          "description" : "Transactions encoding",
-          "required" : false,
-          "type" : "string",
-          "default" : "json",
-          "enum" : [ "message_pack", "json" ]
         } ],
         "responses" : {
           "200" : {
@@ -2764,15 +2740,7 @@
         "description" : "Get the genesis block",
         "operationId" : "GetBlockGenesis",
         "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "tx_encoding",
-          "in" : "query",
-          "description" : "Transactions encoding",
-          "required" : false,
-          "type" : "string",
-          "default" : "json",
-          "enum" : [ "message_pack", "json" ]
-        } ],
+        "parameters" : [ ],
         "responses" : {
           "200" : {
             "description" : "The genesis block",
@@ -2789,15 +2757,7 @@
         "description" : "Get the top block",
         "operationId" : "GetBlockLatest",
         "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "tx_encoding",
-          "in" : "query",
-          "description" : "Transactions encoding",
-          "required" : false,
-          "type" : "string",
-          "default" : "json",
-          "enum" : [ "message_pack", "json" ]
-        } ],
+        "parameters" : [ ],
         "responses" : {
           "200" : {
             "description" : "The top block",
@@ -3007,20 +2967,12 @@
           "description" : "Index of the transaction in the block",
           "required" : true,
           "type" : "integer"
-        }, {
-          "name" : "tx_encoding",
-          "in" : "query",
-          "description" : "Transactions encoding",
-          "required" : false,
-          "type" : "string",
-          "default" : "message_pack",
-          "enum" : [ "message_pack", "json" ]
         } ],
         "responses" : {
           "200" : {
             "description" : "The transaction found",
             "schema" : {
-              "$ref" : "#/definitions/SingleTxObject"
+              "$ref" : "#/definitions/SingleTx"
             }
           },
           "404" : {
@@ -3050,20 +3002,12 @@
           "description" : "Index of the transaction in the block",
           "required" : true,
           "type" : "integer"
-        }, {
-          "name" : "tx_encoding",
-          "in" : "query",
-          "description" : "Transactions encoding",
-          "required" : false,
-          "type" : "string",
-          "default" : "message_pack",
-          "enum" : [ "message_pack", "json" ]
         } ],
         "responses" : {
           "200" : {
             "description" : "The transaction found",
             "schema" : {
-              "$ref" : "#/definitions/SingleTxObject"
+              "$ref" : "#/definitions/SingleTx"
             }
           },
           "404" : {
@@ -3087,20 +3031,12 @@
           "description" : "Index of the transaction in the block",
           "required" : true,
           "type" : "integer"
-        }, {
-          "name" : "tx_encoding",
-          "in" : "query",
-          "description" : "Transactions encoding",
-          "required" : false,
-          "type" : "string",
-          "default" : "message_pack",
-          "enum" : [ "message_pack", "json" ]
         } ],
         "responses" : {
           "200" : {
             "description" : "The transaction found",
             "schema" : {
-              "$ref" : "#/definitions/SingleTxObject"
+              "$ref" : "#/definitions/SingleTx"
             }
           },
           "404" : {
@@ -3339,12 +3275,7 @@
         "$ref" : "#/definitions/Header"
       }, {
         "type" : "object",
-        "required" : [ "data_schema" ],
-        "discriminator" : "data_schema",
         "properties" : {
-          "data_schema" : {
-            "type" : "string"
-          },
           "hash" : {
             "$ref" : "#/definitions/EncodedHash"
           }
@@ -3405,45 +3336,37 @@
         }
       } ]
     },
-    "TxObjects" : {
+    "GenericTxs" : {
       "type" : "object",
-      "required" : [ "data_schema" ],
-      "discriminator" : "data_schema",
       "properties" : {
-        "data_schema" : {
-          "type" : "string"
+        "transactions" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/GenericSignedTx"
+          }
         }
+      },
+      "example" : {
+        "transactions" : [ {
+          "tx" : {
+            "vsn" : 0,
+            "type" : "type"
+          },
+          "block_hash" : { },
+          "block_height" : 6,
+          "hash" : null,
+          "signatures" : [ "signatures", "signatures" ]
+        }, {
+          "tx" : {
+            "vsn" : 0,
+            "type" : "type"
+          },
+          "block_hash" : { },
+          "block_height" : 6,
+          "hash" : null,
+          "signatures" : [ "signatures", "signatures" ]
+        } ]
       }
-    },
-    "MsgPackTxs" : {
-      "allOf" : [ {
-        "$ref" : "#/definitions/TxObjects"
-      }, {
-        "type" : "object",
-        "properties" : {
-          "transactions" : {
-            "type" : "array",
-            "items" : {
-              "$ref" : "#/definitions/Tx"
-            }
-          }
-        }
-      } ]
-    },
-    "JSONTxs" : {
-      "allOf" : [ {
-        "$ref" : "#/definitions/TxObjects"
-      }, {
-        "type" : "object",
-        "properties" : {
-          "transactions" : {
-            "type" : "array",
-            "items" : {
-              "$ref" : "#/definitions/SignedTxJSON"
-            }
-          }
-        }
-      } ]
     },
     "Account" : {
       "type" : "object",
@@ -4444,44 +4367,6 @@
         "nonce" : 0
       }
     },
-    "ChannelSnapshotSoloTx" : {
-      "type" : "object",
-      "required" : [ "channel_id", "fee", "payload" ],
-      "properties" : {
-        "channel_id" : {
-          "$ref" : "#/definitions/EncodedHash"
-        },
-        "from_id" : {
-          "$ref" : "#/definitions/EncodedHash"
-        },
-        "payload" : {
-          "type" : "string"
-        },
-        "ttl" : {
-          "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
-        },
-        "fee" : {
-          "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
-        },
-        "nonce" : {
-          "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
-        }
-      },
-      "example" : {
-        "from_id" : null,
-        "payload" : "payload",
-        "fee" : 0,
-        "channel_id" : { },
-        "ttl" : 0,
-        "nonce" : 0
-      }
-    },
     "ChannelCloseMutualTx" : {
       "type" : "object",
       "required" : [ "channel_id", "fee", "initiator_amount_final", "nonce", "responder_amount_final" ],
@@ -4651,6 +4536,44 @@
         "responder_amount_final" : 0,
         "fee" : 0,
         "initiator_amount_final" : 0,
+        "channel_id" : { },
+        "ttl" : 0,
+        "nonce" : 0
+      }
+    },
+    "ChannelSnapshotSoloTx" : {
+      "type" : "object",
+      "required" : [ "channel_id", "fee", "payload" ],
+      "properties" : {
+        "channel_id" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "from_id" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "payload" : {
+          "type" : "string"
+        },
+        "ttl" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        }
+      },
+      "example" : {
+        "from_id" : null,
+        "payload" : "payload",
+        "fee" : 0,
         "channel_id" : { },
         "ttl" : 0,
         "nonce" : 0
@@ -4868,50 +4791,32 @@
         "effective_at_height" : 0
       }
     },
-    "SingleTxObject" : {
+    "SingleTx" : {
       "type" : "object",
-      "required" : [ "data_schema" ],
-      "discriminator" : "data_schema",
+      "required" : [ "transaction" ],
       "properties" : {
-        "data_schema" : {
-          "type" : "string"
+        "transaction" : {
+          "$ref" : "#/definitions/GenericSignedTx"
         }
       },
       "example" : {
-        "data_schema" : "data_schema"
+        "transaction" : {
+          "tx" : {
+            "vsn" : 0,
+            "type" : "type"
+          },
+          "block_hash" : { },
+          "block_height" : 6,
+          "hash" : null,
+          "signatures" : [ "signatures", "signatures" ]
+        }
       }
     },
-    "SingleTxJSON" : {
-      "allOf" : [ {
-        "$ref" : "#/definitions/SingleTxObject"
-      }, {
-        "type" : "object",
-        "required" : [ "transaction" ],
-        "properties" : {
-          "transaction" : {
-            "$ref" : "#/definitions/SignedTxJSON"
-          }
-        }
-      } ]
-    },
-    "SingleTxMsgPack" : {
-      "allOf" : [ {
-        "$ref" : "#/definitions/SingleTxObject"
-      }, {
-        "type" : "object",
-        "required" : [ "transaction" ],
-        "properties" : {
-          "transaction" : {
-            "$ref" : "#/definitions/Tx"
-          }
-        }
-      } ]
-    },
-    "SignedTxJSON" : {
+    "GenericSignedTx" : {
       "type" : "object",
       "properties" : {
         "tx" : {
-          "$ref" : "#/definitions/JSONTx"
+          "$ref" : "#/definitions/GenericTx"
         },
         "block_height" : {
           "type" : "integer"
@@ -4934,7 +4839,7 @@
       "example" : {
         "tx" : {
           "vsn" : 0,
-          "data_schema" : "data_schema"
+          "type" : "type"
         },
         "block_hash" : { },
         "block_height" : 6,
@@ -4942,152 +4847,153 @@
         "signatures" : [ "signatures", "signatures" ]
       }
     },
+    "GenericTx" : {
+      "type" : "object",
+      "required" : [ "type", "vsn" ],
+      "discriminator" : "type",
+      "properties" : {
+        "vsn" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "type" : {
+          "type" : "string"
+        }
+      },
+      "example" : {
+        "vsn" : 0,
+        "type" : "type"
+      }
+    },
     "ChannelCreateTxJSON" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/JSONTx"
+        "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/ChannelCreateTx"
       } ]
     },
     "ChannelDepositTxJSON" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/JSONTx"
+        "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/ChannelDepositTx"
       } ]
     },
     "ChannelWithdrawalTxJSON" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/JSONTx"
+        "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/ChannelWithdrawalTx"
       } ]
     },
     "ChannelCloseMutualTxJSON" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/JSONTx"
+        "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/ChannelCloseMutualTx"
       } ]
     },
     "ChannelCloseSoloTxJSON" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/JSONTx"
+        "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/ChannelCloseSoloTx"
       } ]
     },
     "ChannelSlashTxJSON" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/JSONTx"
+        "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/ChannelSlashTx"
       } ]
     },
     "ChannelSettleTxJSON" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/JSONTx"
+        "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/ChannelSettleTx"
       } ]
     },
-    "JSONTx" : {
-      "type" : "object",
-      "required" : [ "data_schema" ],
-      "discriminator" : "data_schema",
-      "properties" : {
-        "data_schema" : {
-          "type" : "string"
-        },
-        "vsn" : {
-          "type" : "integer"
-        }
-      },
-      "example" : {
-        "vsn" : 0,
-        "data_schema" : "data_schema"
-      }
-    },
     "SpendTxJSON" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/JSONTx"
+        "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/SpendTx"
       } ]
     },
     "OracleRegisterTxJSON" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/JSONTx"
+        "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/OracleRegisterTx"
       } ]
     },
     "OracleExtendTxJSON" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/JSONTx"
+        "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/OracleExtendTx"
       } ]
     },
     "OracleQueryTxJSON" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/JSONTx"
+        "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/OracleQueryTx"
       } ]
     },
     "OracleResponseTxJSON" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/JSONTx"
+        "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/OracleResponseTx"
       } ]
     },
     "NamePreclaimTxObject" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/JSONTx"
+        "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/NamePreclaimTx"
       } ]
     },
     "NameClaimTxObject" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/JSONTx"
+        "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/NameClaimTx"
       } ]
     },
     "NameUpdateTxObject" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/JSONTx"
+        "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/NameUpdateTx"
       } ]
     },
     "NameTransferTxObject" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/JSONTx"
+        "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/NameTransferTx"
       } ]
     },
     "NameRevokeTxObject" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/JSONTx"
+        "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/NameRevokeTx"
       } ]
     },
     "ContractCreateTxObject" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/JSONTx"
+        "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/ContractCreateData"
       } ]
     },
     "ContractCallTxObject" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/JSONTx"
+        "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/ContractCallData"
       } ]

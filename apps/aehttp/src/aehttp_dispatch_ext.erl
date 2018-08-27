@@ -20,19 +20,17 @@
                         , verify_name/1
                         , ttl_decode/1
                         , poi_decode/1
-                        , parse_tx_encoding/1
                         , compute_contract_create_data/0
                         , compute_contract_call_data/0
                         , relative_ttl_decode/1
                         , unsigned_tx_response/1
                         , get_transaction/2
-                        , encode_transaction/3
+                        , encode_transaction/2
                         , ok_response/1
-                        , read_tx_encoding_param/1
                         , parse_filter_param/2
                         , read_optional_param/3
+                        , get_block/2
                         , get_block/3
-                        , get_block/4
                         , get_poi/3
                         , get_block_hash_optionally_by_hash_or_height/1
                         ]).
@@ -55,7 +53,7 @@ handle_request('GetTopBlock', _, _Context) ->
     {200, [], maps:put(<<"hash">>, EncodedHash, EncodedHeader)};
 
 handle_request('GetCurrentKeyBlock', Req, _Context) ->
-    get_block(fun() -> aec_chain:top_key_block() end, Req, json);
+    get_block(fun() -> aec_chain:top_key_block() end, Req);
 
 handle_request('GetCurrentKeyBlockHash', _, _Context) ->
     Hash = aec_chain:top_key_block_hash(),
@@ -68,18 +66,18 @@ handle_request('GetCurrentKeyBlockHeight', _, _Context) ->
     {200, [], #{height => Height}};
 
 handle_request('GetPendingKeyBlock', Req, _Context) ->
-    get_block(fun aehttp_logic:get_block_pending/0, Req, json, false);
+    get_block(fun aehttp_logic:get_block_pending/0, Req, false);
 
 handle_request('GetKeyBlockByHash', Params, _Context) ->
     case aec_base58c:safe_decode(block_hash, maps:get('hash', Params)) of
         {error, _} -> {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
-            get_block(fun() -> aehttp_logic:get_key_block_by_hash(Hash) end, Params, json)
+            get_block(fun() -> aehttp_logic:get_key_block_by_hash(Hash) end, Params)
     end;
 
 handle_request('GetKeyBlockByHeight', Params, _Context) ->
     Height = maps:get(height, Params),
-    get_block(fun() -> aehttp_logic:get_key_block_by_height(Height) end, Params, json);
+    get_block(fun() -> aehttp_logic:get_key_block_by_height(Height) end, Params);
 
 handle_request('GetMicroBlockHeaderByHash', Params, _Context) ->
     case aec_base58c:safe_decode(block_hash, maps:get(hash, Params)) of
@@ -101,11 +99,9 @@ handle_request('GetMicroBlockTransactionsByHash', Params, _Context) ->
             case aehttp_logic:get_micro_block_by_hash(Hash) of
                 {ok, Block} ->
                     Header = aec_blocks:to_header(Block),
-                    Txs = [ aetx_sign:serialize_for_client(json, Header, Tx)
+                    Txs = [ aetx_sign:serialize_for_client(Header, Tx)
                             || Tx <- aec_blocks:txs(Block)],
-                    JsonTxs = #{data_schema => <<"JSONTx">>,
-                                transactions => Txs},
-                    {200, [], JsonTxs};
+                    {200, [], #{transactions => Txs}};
                 {error, block_not_found} ->
                     {404, [], #{reason => <<"Block not found">>}}
             end;
@@ -126,8 +122,7 @@ handle_request('GetMicroBlockTransactionByHashAndIndex', Params, _Context) ->
                         I when I > 0, I =< TxsCount ->
                             Header = aec_blocks:to_header(Block),
                             Tx = lists:nth(I, Txs),
-                            SingleTxJSON = aetx_sign:serialize_for_client(json, Header, Tx),
-                            {200, [], SingleTxJSON};
+                            {200, [], aetx_sign:serialize_for_client(Header, Tx)};
                         _Other ->
                             {400, [], #{reason => <<"Invalid hash or index">>}}
                     end;
@@ -186,10 +181,8 @@ handle_request('GetPendingAccountTransactionsByPubkey', Params, _Context) ->
             case aec_chain:get_account(Pubkey) of
                 {value, _} ->
                     {ok, Txs0} = aec_tx_pool:peek(infinity, Pubkey),
-                    Txs = [aetx_sign:serialize_for_client_pending(json, T) || T <- Txs0],
-                    JsonTxs = #{data_schema => <<"JSONTx">>,
-                                transactions => Txs},
-                    {200, [], JsonTxs};
+                    Txs = [aetx_sign:serialize_for_client_pending(T) || T <- Txs0],
+                    {200, [], #{transactions => Txs}};
                 _ ->
                     {404, [], #{reason => <<"Account not found">>}}
             end;
@@ -204,12 +197,10 @@ handle_request('GetTransactionByHash', Params, _Config) ->
                 none ->
                     {404, [], #{<<"reason">> => <<"Transaction not found">>}};
                 {mempool, Tx} ->
-                    JSONTx = aetx_sign:serialize_for_client_pending(json, Tx),
-                    {200, [], JSONTx};
+                    {200, [], aetx_sign:serialize_for_client_pending(Tx)};
                 {BlockHash, Tx} ->
                     {ok, Header} = aec_chain:get_header(BlockHash),
-                    JSONTx = aetx_sign:serialize_for_client(json, Header, Tx),
-                    {200, [], JSONTx}
+                    {200, [], aetx_sign:serialize_for_client(Header, Tx)}
             end;
         {error, _} ->
             {400, [], #{reason => <<"Invalid hash">>}}
@@ -403,14 +394,14 @@ handle_request('GetStatus', _Params, _Context) ->
        <<"pending-transactions-count">> => PendingTxsCount}};
 
 handle_request('GetBlockGenesis', Req, _Context) ->
-    get_block(fun aehttp_logic:get_block_genesis/0, Req, json);
+    get_block(fun aehttp_logic:get_block_genesis/0, Req);
 
 handle_request('GetBlockLatest', Req, _Context) ->
-    get_block(fun aehttp_logic:get_block_latest/0, Req, json);
+    get_block(fun aehttp_logic:get_block_latest/0, Req);
 
 handle_request('GetKeyBlockByHeightObsolete', Req, _Context) ->
     Height = maps:get('height', Req),
-    get_block(fun() -> aehttp_logic:get_key_block_by_height(Height) end, Req, json);
+    get_block(fun() -> aehttp_logic:get_key_block_by_height(Height) end, Req);
 
 
 handle_request('GetBlockByHash', Req, _Context) ->
@@ -418,7 +409,7 @@ handle_request('GetBlockByHash', Req, _Context) ->
         {error, _} ->
             {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
-            get_block(fun() -> aehttp_logic:get_block_by_hash(Hash) end, Req, json)
+            get_block(fun() -> aehttp_logic:get_block_by_hash(Hash) end, Req)
     end;
 
 handle_request('GetHeaderByHash', Req, _Context) ->
@@ -986,15 +977,12 @@ handle_request('DecodeData', Req, _Context) ->
 
 handle_request('GetTx', Req, _Context) ->
     ParseFuns = [read_required_params([tx_hash]),
-                 read_optional_params([{tx_encoding, tx_encoding, message_pack}]),
-                 parse_tx_encoding(tx_encoding),
                  base58_decode([{tx_hash, tx_hash, tx_hash}]),
                  get_transaction(tx_hash, tx),
-                 encode_transaction(tx, tx_encoding, encoded_tx),
+                 encode_transaction(tx, encoded_tx),
                  ok_response(
-                    fun(#{encoded_tx := #{tx := Tx, schema := Schema}}) ->
-                        #{transaction => Tx,
-                          data_schema => Schema}
+                    fun(#{encoded_tx := #{tx := Tx}}) ->
+                        #{transaction => Tx}
                     end)
                 ],
     process_request(ParseFuns, Req);
@@ -1019,7 +1007,7 @@ get_generation(Hash) ->
         error -> {404, [], #{reason => <<"Block not found">>}};
         {ok, KeyBlock, MicroBlocks} ->
             Struct = #{
-              key_block => aehttp_api_parser:encode_client_readable_key_block(KeyBlock, json),
+              key_block => aehttp_api_parser:encode_client_readable_key_block(KeyBlock),
               micro_blocks => [ aehttp_api_parser:encode(block_hash, Micro) || Micro <- MicroBlocks ]
             },
             {200, [], Struct}

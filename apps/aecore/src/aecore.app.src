@@ -30,7 +30,6 @@
     yamerl,
     lager,
     aeutils,
-    msgpack,
     base58,
     sha3,
     enacl,

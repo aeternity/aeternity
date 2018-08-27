@@ -184,8 +184,7 @@ for_client(#oracle_extend_tx{oracle_id = OracleId,
                              fee       = Fee,
                              ttl       = TTL} = Tx) ->
     {delta = TTLType, TTLValue} = oracle_ttl(Tx),
-    #{<<"data_schema">> => <<"OracleExtendTxJSON">>, % swagger schema name
-      <<"vsn">>         => version(),
+    #{<<"vsn">>         => version(),
       <<"oracle_id">>   => aec_base58c:encode(id_hash, OracleId),
       <<"nonce">>       => Nonce,
       <<"oracle_ttl">>  => #{<<"type">>  => TTLType,
