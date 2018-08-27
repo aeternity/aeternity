@@ -47,17 +47,17 @@ def test_contract_create():
 
     test_settings["alice"]["pubkey"] = alice_address
     send_tokens_to_user("alice", test_settings, external_api, internal_api)
-    encoded_tx, contract_address = get_unsigned_contract_create(alice_address, test_settings["create_contract"], external_api)
+    encoded_tx, contract_id = get_unsigned_contract_create(alice_address, test_settings["create_contract"], external_api)
 
     print("Unsigned encoded transaction: " + encoded_tx)
-    print("Contract address: " + contract_address)
+    print("Contract id: " + contract_id)
     unsigned_tx = common.base58_decode(encoded_tx)
     tx = common.decode_unsigned_tx(unsigned_tx)
     print("Unsigned decoded transaction: " + str(tx))
 
     # make sure same tx
     assert_equals(tx['type'], 'contract_create_tx')
-    assert_equals(tx['owner'], common.base58_decode(test_settings["alice"]["pubkey"]))
+    assert_equals(tx['owner_id'], common.base58_decode(test_settings["alice"]["pubkey"]))
     assert_equals(tx['vm_version'], test_settings["create_contract"]["vm_version"])
     assert_equals(tx['deposit'], test_settings["create_contract"]["deposit"])
     assert_equals(tx['amount'], test_settings["create_contract"]["amount"])
@@ -102,7 +102,7 @@ def test_contract_call():
     send_tokens_to_user("alice", test_settings, external_api, internal_api)
 
     ## create contract
-    encoded_tx, encoded_contract_address = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api)
+    encoded_tx, encoded_contract_id = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api)
     unsigned_tx = common.base58_decode(encoded_tx)
 
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
@@ -130,8 +130,8 @@ def test_contract_call():
                                              call_contract["data"]["argument"])
     result = external_api.call_contract(call_input)
     contract_call_obj = ContractCallData(
-        caller=test_settings["alice"]["pubkey"],
-        contract=encoded_contract_address,
+        caller_id=test_settings["alice"]["pubkey"],
+        contract_id=encoded_contract_id,
         vm_version=call_contract["vm_version"],
         fee=call_contract["fee"],
         ttl=100,
@@ -184,7 +184,7 @@ def test_contract_on_chain_call_off_chain():
     send_tokens_to_user("alice", test_settings, external_api, internal_api)
 
     ## create contract
-    encoded_tx, encoded_contract_address = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api)
+    encoded_tx, encoded_contract_id = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api)
     unsigned_tx = common.base58_decode(encoded_tx)
 
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
@@ -197,7 +197,7 @@ def test_contract_on_chain_call_off_chain():
     common.wait_until_height(external_api, top.height + 3)
 
     call_contract = test_settings["contract_call"]
-    call_input = ContractCallInput("sophia-address", encoded_contract_address,\
+    call_input = ContractCallInput("sophia-address", encoded_contract_id,\
                                    call_contract["data"]["function"],\
                                    call_contract["data"]["argument"])
     result = external_api.call_contract(call_input)
@@ -238,8 +238,8 @@ def test_spend():
 
     # Alice creates spend tx
     spend_data_obj = SpendTx(
-            sender=alice_address,
-            recipient_pubkey=bob_address,
+            sender_id=alice_address,
+            recipient_id=bob_address,
             amount=test_settings["spend_tx"]["amount"],
             fee=test_settings["spend_tx"]["fee"],
             ttl=100,
@@ -291,7 +291,7 @@ def send_tokens_to_user(user, test_settings, external_api, internal_api):
                                                  external_api,
                                                  internal_api)
 
-def get_unsigned_contract_create(owner, contract, external_api):
+def get_unsigned_contract_create(owner_id, contract, external_api):
     bytecode = read_id_contract(external_api)
     call_input = ContractCallInput("sophia",
                                    bytecode,
@@ -302,7 +302,7 @@ def get_unsigned_contract_create(owner, contract, external_api):
     call_data = result.calldata
 
     contract_create_data_obj = ContractCreateData(
-        owner=owner,
+        owner_id=owner_id,
         code=bytecode,
         vm_version=contract["vm_version"],
         deposit=contract["deposit"],
@@ -313,4 +313,4 @@ def get_unsigned_contract_create(owner, contract, external_api):
         ttl=100,
         call_data=call_data)
     tx_obj = external_api.post_contract_create(contract_create_data_obj)
-    return (tx_obj.tx, tx_obj.contract_address)
+    return (tx_obj.tx, tx_obj.contract_id)

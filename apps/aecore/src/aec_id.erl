@@ -12,6 +12,7 @@
         , specialize/1
         , specialize/2
         , specialize_type/1
+        , is_id/1
         ]).
 
 %% For aec_serialization
@@ -73,6 +74,10 @@ specialize(#id{tag = Tag, val = Val}, Tag) when ?IS_TAG(Tag), ?IS_VAL(Val) ->
 -spec specialize_type(id()) -> tag().
 specialize_type(#id{tag = Tag}) when ?IS_TAG(Tag) ->
     Tag.
+
+-spec is_id(term()) -> boolean().
+is_id(#id{}) -> true;
+is_id(_) -> false.
 
 -spec encode(id()) -> binary().
 encode(#id{tag = Tag, val = Val}) ->

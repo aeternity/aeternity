@@ -23,7 +23,7 @@
 
 %% chain API exports
 -export([ spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2,
-          oracle_register/7, oracle_query/6, oracle_query_spec/2, oracle_response_spec/2,
+          oracle_register/7, oracle_query/6, oracle_query_format/2, oracle_response_format/2,
           oracle_query_oracle/2, oracle_respond/5, oracle_get_answer/3,
           oracle_query_fee/2, oracle_get_question/3, oracle_extend/4]).
 
@@ -345,8 +345,8 @@ oracles(_Cfg) ->
     #{oracles :=
           #{101 := #{
              nonce := 1,
-             query_spec := string,
-             response_spec := word,
+             query_format := string,
+             response_format := word,
              sign := 3,
              ttl := 100}},
       oracle_queries :=
@@ -411,16 +411,16 @@ call_contract(<<Contract:256>>, _Gas, Value, CallData, _, S = #{running := Calle
             {error, {no_such_contract, Contract}}
     end.
 
-oracle_register(PubKey = <<Account:256>>, <<Sign:256>>, QueryFee, TTL, QuerySpec, ResponseSpec, State) ->
-    io:format("oracle_register(~p, ~p, ~p, ~p, ~p, ~p)\n", [Account, Sign, QueryFee, TTL, QuerySpec, ResponseSpec]),
+oracle_register(PubKey = <<Account:256>>, <<Sign:256>>, QueryFee, TTL, QueryFormat, ResponseFormat, State) ->
+    io:format("oracle_register(~p, ~p, ~p, ~p, ~p, ~p)\n", [Account, Sign, QueryFee, TTL, QueryFormat, ResponseFormat]),
     Oracles = maps:get(oracles, State, #{}),
     State1 = State#{ oracles => Oracles#{ Account =>
-                        #{sign          => Sign,
-                          nonce         => 1,
-                          query_fee     => QueryFee,
-                          query_spec    => QuerySpec,
-                          response_spec => ResponseSpec,
-                          ttl           => TTL} } },
+                        #{sign            => Sign,
+                          nonce           => 1,
+                          query_fee       => QueryFee,
+                          query_format    => QueryFormat,
+                          response_format => ResponseFormat,
+                          ttl             => TTL} } },
     {ok, PubKey, State1}.
 
 oracle_query(<<Oracle:256>>, Q, Value, QTTL, RTTL, State) ->
@@ -477,15 +477,15 @@ oracle_query_fee(<<Oracle:256>>, State) ->
         _ -> {error, {no_such_oracle, Oracle}}
     end.
 
-oracle_query_spec(<<Oracle:256>>, State) ->
+oracle_query_format(<<Oracle:256>>, State) ->
     case maps:get(oracles, State, []) of
-        #{ Oracle := #{query_spec := Spec} } -> {ok, Spec};
+        #{ Oracle := #{query_format := Format} } -> {ok, Format};
         _ -> {error, {no_such_oracle, Oracle}}
     end.
 
-oracle_response_spec(<<Oracle:256>>, State) ->
+oracle_response_format(<<Oracle:256>>, State) ->
     case maps:get(oracles, State, #{}) of
-        #{ Oracle := #{response_spec := Spec} } -> {ok, Spec};
+        #{ Oracle := #{response_format := Format} } -> {ok, Format};
         _ -> {error, {no_such_oracle, Oracle}}
     end.
 

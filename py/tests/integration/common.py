@@ -212,7 +212,7 @@ def send_tokens_to_unchanging_user(address, tokens, fee, external_api, internal_
         return get_account_balance(external_api, internal_api, k).balance
     bal0 = get_balance(address)
     spend_tx_obj = SpendTx(
-        recipient_pubkey=address,
+        recipient_id=address,
         amount=tokens,
         fee=fee,
         ttl=100,
@@ -250,7 +250,7 @@ def decode_unsigned_tx(encoded_tx):
     if (tag == bytes(bytearray([42])) and vsn == bytes(bytearray([1]))):
         ownerid = decode_id(fields[0])
         return {'type': 'contract_create_tx',
-                'owner': ownerid['pubkey'],
+                'owner_id': ownerid['pubkey'],
                 'nonce': bytes_to_int(fields[1]),
                 'code': fields[2],
                 'vm_version': bytes_to_int(fields[3]),

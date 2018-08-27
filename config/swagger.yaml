@@ -1651,7 +1651,7 @@ paths:
         '200':
           description: Calculated commitment hash
           schema:
-            $ref: '#/definitions/NameCommitmentHash'
+            $ref: '#/definitions/CommitmentHash'
         '400':
           description: Name validation failed
           schema:
@@ -1917,7 +1917,7 @@ paths:
         '200':
           description: successful operation
           schema:
-            $ref: '#/definitions/NameCommitmentHash'
+            $ref: '#/definitions/CommitmentHash'
         '400':
           description: Name preclaim transaction validation error
           schema:
@@ -2899,8 +2899,8 @@ definitions:
   Account:
     type: object
     properties:
-      pubkey:
-        type: string
+      id:
+        $ref: '#/definitions/EncodedHash'
         description: 'Public key'
       balance:
         type: integer
@@ -2937,7 +2937,7 @@ definitions:
     type: object
     properties:
       id:
-        type: string
+        $ref: '#/definitions/EncodedHash'
       query_format:
         type: string
       response_format:
@@ -2955,15 +2955,15 @@ definitions:
     type: object
     properties:
       id:
-        type: string
-      sender:
-        type: string
+        $ref: '#/definitions/EncodedHash'
+      sender_id:
+        $ref: '#/definitions/EncodedHash'
       sender_nonce:
         type: integer
         format: int64
         minimum: 0
       oracle_id:
-        type: string
+        $ref: '#/definitions/EncodedHash'
       query:
         type: string
       response:
@@ -3002,7 +3002,7 @@ definitions:
   SpendTx:
     type: object
     properties:
-      recipient_pubkey:
+      recipient_id:
         $ref: '#/definitions/EncodedHash'
       amount:
         type: integer
@@ -3014,7 +3014,7 @@ definitions:
       ttl:
         type: integer
         format: int64
-      sender:
+      sender_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
@@ -3022,7 +3022,7 @@ definitions:
       payload:
         type: string
     required:
-    - recipient_pubkey
+    - recipient_id
     - amount
     - fee
     - payload
@@ -3043,7 +3043,7 @@ definitions:
         format: int64
       oracle_ttl:
         $ref: '#/definitions/TTL'
-      account:
+      account_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
@@ -3075,7 +3075,7 @@ definitions:
         format: int64
       oracle_ttl:
         $ref: '#/definitions/TTL'
-      oracle:
+      oracle_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
@@ -3089,8 +3089,8 @@ definitions:
   OracleQueryTx:
     type: object
     properties:
-      oracle_pubkey:
-        type: string
+      oracle_id:
+        $ref: '#/definitions/EncodedHash'
       query:
         type: string
       query_fee:
@@ -3106,14 +3106,14 @@ definitions:
       ttl:
         type: integer
         format: int64
-      sender:
+      sender_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
         format: int64
         description: Sender nonce
     required:
-    - oracle_pubkey
+    - oracle_id
     - query
     - query_fee
     - query_ttl
@@ -3132,7 +3132,7 @@ definitions:
       ttl:
         type: integer
         format: int64
-      oracle:
+      oracle_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
@@ -3172,33 +3172,34 @@ definitions:
   NameEntry:
     type: object
     properties:
-      name:
-        type: string
-      name_hash:
-        type: string
-      name_ttl:
+      id:
+        $ref: '#/definitions/EncodedHash'
+      expires:
         type: integer
         format: int64
       pointers:
-        type: string
+        type: array
+        items:
+          $ref: '#/definitions/NamePointer'
   NamePreclaimTx:
     type: object
     properties:
-      commitment:
+      commitment_id:
         type: string
+        $ref: '#/definitions/EncodedHash'
       fee:
         type: integer
         format: int64
       ttl:
         type: integer
         format: int64
-      account:
+      account_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
         format: int64
     required:
-    - commitment
+    - commitment_id
     - fee
   NameClaimTx:
     type: object
@@ -3214,7 +3215,7 @@ definitions:
       ttl:
         type: integer
         format: int64
-      account:
+      account_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
@@ -3226,13 +3227,16 @@ definitions:
   NameUpdateTx:
     type: object
     properties:
-      name_hash:
+      name_id:
+        $ref: '#/definitions/EncodedHash'
         type: string
       name_ttl:
         type: integer
         format: int64
       pointers:
-        type: string
+        type: array
+        items:
+          $ref: '#/definitions/NamePointer'
       client_ttl:
         type: integer
         format: int64
@@ -3242,13 +3246,13 @@ definitions:
       ttl:
         type: integer
         format: int64
-      account:
+      account_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
         format: int64
     required:
-    - name_hash
+    - name_id
     - name_ttl
     - client_ttl
     - pointers
@@ -3256,62 +3260,69 @@ definitions:
   NameTransferTx:
     type: object
     properties:
-      name_hash:
-        type: string
-      recipient_pubkey:
-        type: string
+      name_id:
+        $ref: '#/definitions/EncodedHash'
+      recipient_id:
+        $ref: '#/definitions/EncodedHash'
       fee:
         type: integer
         format: int64
       ttl:
         type: integer
         format: int64
-      account:
+      account_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
         format: int64
     required:
-    - name_hash
-    - recipient_pubkey
+    - name_id
+    - recipient_id
     - fee
   NameRevokeTx:
     type: object
     properties:
-      name_hash:
-        type: string
+      name_id:
+        $ref: '#/definitions/EncodedHash'
       fee:
         type: integer
         format: int64
       ttl:
         type: integer
         format: int64
-      account:
+      account_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
         format: int64
     required:
-    - name_hash
+    - name_id
     - fee
-  NameCommitmentHash:
+  CommitmentHash:
     type: object
     properties:
-      commitment:
-        type: string
+      commitment_id:
+        $ref: '#/definitions/EncodedHash'
   NameHash:
     type: object
     properties:
-      name_hash:
+      name_id:
+        $ref: '#/definitions/EncodedHash'
+  NamePointer:
+    type: object
+    properties:
+      key:
         type: string
+      id:
+        $ref: '#/definitions/EncodedHash'
   Channel:
     type: object
     properties:
       id:
         $ref: '#/definitions/EncodedHash'
-      initiator:
+      initiator_id:
         $ref: '#/definitions/EncodedHash'
-      responder:
+      responder_id:
         $ref: '#/definitions/EncodedHash'
       total_amount:
         type: integer
@@ -3329,7 +3340,7 @@ definitions:
         type: integer
         format: int64
         minimum: 0
-      delegates:
+      delegate_ids:
         type: array
         items:
           $ref: '#/definitions/EncodedHash'
@@ -3349,13 +3360,13 @@ definitions:
   ChannelCreateTx:
     type: object
     properties:
-      initiator:
+      initiator_id:
         $ref: '#/definitions/EncodedHash'
       initiator_amount:
         type: integer
         format: int64
         minimum: 0
-      responder:
+      responder_id:
         $ref: '#/definitions/EncodedHash'
       responder_amount:
         type: integer
@@ -3389,9 +3400,9 @@ definitions:
         description: 'Root hash of the channel''s internal state tree'
         $ref: '#/definitions/EncodedHash'
     required:
-    - initiator
+    - initiator_id
     - initiator_amount
-    - responder
+    - responder_id
     - responder_amount
     - push_amount
     - channel_reserve
@@ -3403,7 +3414,7 @@ definitions:
     properties:
       channel_id:
         $ref: '#/definitions/EncodedHash'
-      from:
+      from_id:
         $ref: '#/definitions/EncodedHash'
       amount:
         type: integer
@@ -3431,7 +3442,7 @@ definitions:
         description: 'Channel''s next round'
     required:
     - channel_id
-    - from
+    - from_id
     - amount
     - fee
     - nonce
@@ -3442,7 +3453,7 @@ definitions:
     properties:
       channel_id:
         $ref: '#/definitions/EncodedHash'
-      to:
+      to_id:
         $ref: '#/definitions/EncodedHash'
       amount:
         type: integer
@@ -3470,7 +3481,7 @@ definitions:
         description: 'Channel''s next round'
     required:
     - channel_id
-    - to
+    - to_id
     - amount
     - fee
     - nonce
@@ -3481,7 +3492,7 @@ definitions:
     properties:
       channel_id:
         $ref: '#/definitions/EncodedHash'
-      from:
+      from_id:
         $ref: '#/definitions/EncodedHash'
       payload:
         type: string
@@ -3538,7 +3549,7 @@ definitions:
     properties:
       channel_id:
         $ref: '#/definitions/EncodedHash'
-      from:
+      from_id:
         $ref: '#/definitions/EncodedHash'
       payload:
         type: string
@@ -3559,7 +3570,7 @@ definitions:
         description: 'Proof of inclusion containing information for closing the channel'
     required:
     - channel_id
-    - from
+    - from_id
     - payload
     - fee
     - poi
@@ -3568,7 +3579,7 @@ definitions:
     properties:
       channel_id:
         $ref: '#/definitions/EncodedHash'
-      from:
+      from_id:
         $ref: '#/definitions/EncodedHash'
       payload:
         type: string
@@ -3589,7 +3600,7 @@ definitions:
         description: 'Proof of inclusion containing information for closing the channel'
     required:
     - channel_id
-    - from
+    - from_id
     - payload
     - fee
     - poi
@@ -3598,7 +3609,7 @@ definitions:
     properties:
       channel_id:
         $ref: '#/definitions/EncodedHash'
-      from:
+      from_id:
         $ref: '#/definitions/EncodedHash'
       initiator_amount_final:
         type: integer
@@ -3622,7 +3633,7 @@ definitions:
         minimum: 0
     required:
     - channel_id
-    - from
+    - from_id
     - initiator_amount_final
     - responder_amount_final
     - fee
@@ -3632,7 +3643,7 @@ definitions:
     properties:
       channel_id:
         $ref: '#/definitions/EncodedHash'
-      from:
+      from_id:
         $ref: '#/definitions/EncodedHash'
       payload:
         type: string
@@ -3888,13 +3899,13 @@ definitions:
   ContractCallObject:
     type: object
     properties:
-      caller_address:
+      caller_id:
         $ref: '#/definitions/EncodedHash'
       caller_nonce:
         type: integer
       height:
         type: integer
-      contract_address:
+      contract_id:
         $ref: '#/definitions/EncodedHash'
       gas_price:
         type: integer
@@ -3907,10 +3918,10 @@ definitions:
         description: The status of the call 'ok | error | revert'.
         type: string
     required:
-      - caller_address
+      - caller_id
       - caller_nonce
       - height
-      - contract_address
+      - contract_id
       - gas_price
       - gas_used
       - return_value
@@ -3925,7 +3936,7 @@ definitions:
     properties:
       id:
         $ref: '#/definitions/EncodedHash'
-      owner:
+      owner_id:
         $ref: '#/definitions/EncodedHash'
       vm_version:
         type: integer
@@ -3935,7 +3946,7 @@ definitions:
         type: string
       active:
         type: boolean
-      referers:
+      referrer_ids:
         type: array
         items:
           $ref: '#/definitions/EncodedHash'
@@ -4022,8 +4033,8 @@ definitions:
   ContractCreateData:
     type: object
     properties:
-      owner:
-        type: string
+      owner_id:
+        $ref: '#/definitions/EncodedHash'
         description: Contract owner pub_key
       nonce:
         description: 'Owner''s nonce'
@@ -4064,7 +4075,7 @@ definitions:
         description: Contract call data
         type: string
     required:
-    - owner
+    - owner_id
     - code
     - vm_version
     - deposit
@@ -4076,7 +4087,7 @@ definitions:
   ContractCreateCompute:
     type: object
     properties:
-      owner:
+      owner_id:
         type: string
         description: Contract owner pub_key
       nonce:
@@ -4118,7 +4129,7 @@ definitions:
         description: Contract call data init function arguments
         type: string
     required:
-    - owner
+    - owner_id
     - code
     - vm_version
     - deposit
@@ -4130,15 +4141,15 @@ definitions:
   ContractCallData:
     type: object
     properties:
-      caller:
+      caller_id:
+        $ref: '#/definitions/EncodedHash'
         description: Contract caller pub_key
-        type: string
       nonce:
         description: 'Caller''s nonce'
         type: integer
-      contract:
+      contract_id:
+        $ref: '#/definitions/EncodedHash'
         description: 'Contract''s pub_key'
-        type: string
       vm_version:
         description: 'Virtual machine''s version'
         type: integer
@@ -4168,8 +4179,8 @@ definitions:
         description: Contract call data
         type: string
     required:
-    - caller
-    - contract
+    - caller_id
+    - contract_id
     - vm_version
     - fee
     - amount
@@ -4179,15 +4190,15 @@ definitions:
   ContractCallCompute:
     type: object
     properties:
-      caller:
+      caller_id:
+        $ref: '#/definitions/EncodedHash'
         description: Contract caller pub_key
-        type: string
       nonce:
         description: 'Caller''s nonce'
         type: integer
-      contract:
+      contract_id:
+        $ref: '#/definitions/EncodedHash'
         description: 'Contract''s pub_key'
-        type: string
       vm_version:
         description: 'Virtual machine''s version'
         type: integer
@@ -4220,8 +4231,8 @@ definitions:
         description: Contract call data function arguments
         type: string
     required:
-    - caller
-    - contract
+    - caller_id
+    - contract_id
     - vm_version
     - fee
     - amount
@@ -4250,11 +4261,11 @@ definitions:
       - $ref: '#/definitions/UnsignedTx'
       - type: object
         properties:
-          contract_address:
+          contract_id:
+            $ref: '#/definitions/EncodedHash'
             description: Address of the contract to be created
-            type: string
         required:
-        - contract_address
+        - contract_id
   PoI:
     type: object
     properties:

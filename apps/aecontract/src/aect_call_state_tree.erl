@@ -68,7 +68,7 @@ prune_without_backend(Trees) ->
 -spec insert_call(aect_call:call(), tree()) -> tree().
 insert_call(Call, Tree = #call_tree{ calls = CtTree}) ->
     %% Construct the Id to store in the tree.
-    CtId       = aect_call:contract_address(Call),
+    CtId       = aect_call:contract_pubkey(Call),
     CallId     = aect_call:id(Call),
     CallTreeId = call_tree_id(CtId, CallId),
 
@@ -79,9 +79,10 @@ insert_call(Call, Tree = #call_tree{ calls = CtTree}) ->
     %% Update the calls tree
     Tree#call_tree{ calls = CtTree1}.
 
--spec lookup_call(aect_contracts:id(), aect_call:id(), tree()) -> {value, aect_call:call()} | none.
-lookup_call(CtId, CallId, Tree) ->
-    case aeu_mtrees:lookup(call_tree_id(CtId, CallId), Tree#call_tree.calls) of
+-spec lookup_call(aect_contracts:pubkey(), aect_call:id(), tree()) ->
+    {value, aect_call:call()} | none.
+lookup_call(CtPubkey, CallId, Tree) ->
+    case aeu_mtrees:lookup(call_tree_id(CtPubkey, CallId), Tree#call_tree.calls) of
         {value, Val} -> {value, aect_call:deserialize(Val)};
         none         -> none
     end.
@@ -90,9 +91,10 @@ lookup_call(CtId, CallId, Tree) ->
 iterator(Tree) ->
     aeu_mtrees:iterator(Tree#call_tree.calls).
 
--spec get_call(aect_contracts:id(), aect_call:id(), tree()) -> aect_call:call().
-get_call(CtId, CallId, #call_tree{ calls = CtTree }) ->
-    CallTreeId = call_tree_id(CtId, CallId),
+-spec get_call(aect_contracts:pubkey(), aect_call:id(), tree()) ->
+    aect_call:call().
+get_call(CtPubkey, CallId, #call_tree{ calls = CtTree }) ->
+    CallTreeId = call_tree_id(CtPubkey, CallId),
     aect_call:deserialize(aeu_mtrees:get(CallTreeId, CtTree)).
 
 -ifdef(TEST).

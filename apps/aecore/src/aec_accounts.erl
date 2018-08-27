@@ -7,6 +7,7 @@
 
 %% API
 -export([new/2,
+         id/1,
          pubkey/1,
          balance/1,
          nonce/1,
@@ -15,8 +16,8 @@
          spend_without_nonce_bump/2,
          set_nonce/2,
          serialize/1,
-         deserialize/2]).
-
+         deserialize/2,
+         serialize_for_client/1]).
 
 -define(ACCOUNT_VSN, 1).
 -define(ACCOUNT_TYPE, account).
@@ -35,6 +36,10 @@
 new(Pubkey, Balance) ->
     Id = aec_id:create(account, Pubkey),
     #account{id = Id, balance = Balance}.
+
+-spec id(account()) -> aec_id:id().
+id(#account{id = Id}) ->
+    Id.
 
 -spec pubkey(account()) -> aec_keys:pubkey().
 pubkey(#account{id = Id}) ->
@@ -95,3 +100,12 @@ serialization_template(?ACCOUNT_VSN) ->
     [ {nonce, int}
     , {balance, int}
     ].
+
+-spec serialize_for_client(account()) -> map().
+serialize_for_client(#account{id      = Id,
+                              balance = Balance,
+                              nonce   = Nonce}) ->
+    #{<<"id">>      => aec_base58c:encode(id_hash, Id),
+      <<"balance">> => Balance,
+      <<"nonce">>   => Nonce}.
+

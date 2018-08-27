@@ -35,6 +35,7 @@
 
 -export([ get_transaction/2
         , encode_transaction/3
+        , decode_pointers/1
         ]).
 
 -export([ ok_response/1
@@ -298,11 +299,35 @@ verify_name(NameKey) ->
 nameservice_pointers_decode(PointersKey) ->
     fun(_Req, State) ->
         Pointers = maps:get(PointersKey, State),
-        try {ok, maps:put(PointersKey, jsx:decode(Pointers), State)}
-        catch _:_ ->
-            {error, {400, [], #{<<"reason">> => <<"Invalid pointers">>}}}
+        try
+            {ok, Pointers1} = decode_pointers(Pointers),
+            {ok, maps:put(PointersKey, Pointers1, State)}
+        catch
+            _:_ -> {error, {400, [], #{<<"reason">> => <<"Invalid pointers">>}}}
         end
     end.
+
+decode_pointers(Pointers) ->
+    %% TODO: some request decodes keys to atoms, the other to
+    %% binaries. Refactoring needed.
+    Pointers1 = lists:map(fun(#{key := K, id := I}) ->
+                                  #{<<"key">> => K, <<"id">> => I};
+                             (Other) ->
+                                  Other
+                          end, Pointers),
+    decode_pointers(Pointers1, []).
+
+decode_pointers([#{<<"key">> := Key, <<"id">> := IdEnc} | Rest], Acc) ->
+    case decode_pointer_id(IdEnc) of
+        {ok, Id} -> decode_pointers(Rest, [aens_pointer:new(Key, Id) | Acc]);
+        {error, _Rsn} = Error -> Error
+    end;
+decode_pointers([], Acc) ->
+    {ok, Acc}.
+
+decode_pointer_id(IdEnc) ->
+    AllowedTypes = [account_pubkey, channel, contract_pubkey, oracle_pubkey],
+    aec_base58c:safe_decode({id_hash, AllowedTypes}, IdEnc).
 
 parse_map_to_atom_keys() ->
     fun(Req, State) ->
@@ -664,7 +689,7 @@ get_block_hash_optionally_by_hash_or_height(PutKey) ->
             {error, not_found} ->
                 {error, {404, [], #{<<"reason">> => <<"Block not found">>}}};
             {error, Why} ->
-                Msg = 
+                Msg =
                     case Why of
                         invalid_hash -> <<"Invalid block hash">>;
                         blocks_mismatch -> <<"Invalid height and hash combination">>

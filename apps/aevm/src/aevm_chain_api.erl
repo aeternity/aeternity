@@ -88,12 +88,12 @@
                    | {list, type_spec()}
                    | {tuple, [type_spec()]}.
 
--callback oracle_query_spec(Oracle :: pubkey(),
-                            ChainState :: chain_state()) ->
+-callback oracle_query_format(Oracle :: pubkey(),
+                              ChainState :: chain_state()) ->
     {ok, type_spec()} | {error, term()}.
 
--callback oracle_response_spec(Oracle :: pubkey(),
-                               ChainState :: chain_state()) ->
+-callback oracle_response_format(Oracle :: pubkey(),
+                                 ChainState :: chain_state()) ->
     {ok, type_spec()} | {error, term()}.
 
 -callback oracle_query_fee(Oracle :: pubkey(),

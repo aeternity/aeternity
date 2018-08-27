@@ -27,14 +27,15 @@
         ]).
 
 %% Additional getters
--export([oracle/1,
+-export([oracle_id/1,
+         oracle_pubkey/1,
          oracle_ttl/1]).
 
 -define(ORACLE_EXTEND_TX_VSN, 1).
 -define(ORACLE_EXTEND_TX_TYPE, oracle_extend_tx).
 
 -record(oracle_extend_tx, {
-          oracle     :: aec_id:id(),
+          oracle_id  :: aec_id:id(),
           nonce      :: integer(),
           oracle_ttl :: aeo_oracles:relative_ttl(),
           fee        :: integer(),
@@ -45,12 +46,13 @@
 
 -export_type([tx/0]).
 
--spec oracle(tx()) -> aec_id:id().
-oracle(#oracle_extend_tx{oracle = Oracle}) ->
-    Oracle.
+-spec oracle_id(tx()) -> aec_id:id().
+oracle_id(#oracle_extend_tx{oracle_id = OracleId}) ->
+    OracleId.
 
-oracle_pubkey(#oracle_extend_tx{} = Tx) ->
-    aec_id:specialize(oracle(Tx), oracle).
+-spec oracle_pubkey(tx()) -> aec_keys:pubkey().
+oracle_pubkey(#oracle_extend_tx{oracle_id = OracleId}) ->
+    aec_id:specialize(OracleId, oracle).
 
 -spec oracle_ttl(tx()) -> aeo_oracles:relative_ttl().
 oracle_ttl(#oracle_extend_tx{oracle_ttl = OTTL}) ->
@@ -65,12 +67,12 @@ ttl(#oracle_extend_tx{ttl = TTL}) ->
     TTL.
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{oracle     := Oracle,
+new(#{oracle_id  := OracleId,
       nonce      := Nonce,
       oracle_ttl := OracleTTL,
       fee        := Fee} = Args) ->
-    oracle = aec_id:specialize_type(Oracle),
-    Tx = #oracle_extend_tx{oracle     = Oracle,
+    oracle = aec_id:specialize_type(OracleId),
+    Tx = #oracle_extend_tx{oracle_id  = OracleId,
                            nonce      = Nonce,
                            oracle_ttl = OracleTTL,
                            fee        = Fee,
@@ -87,7 +89,7 @@ nonce(#oracle_extend_tx{nonce = Nonce}) ->
 
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#oracle_extend_tx{} = Tx) ->
-    aec_id:specialize(oracle(Tx), oracle).
+    oracle_pubkey(Tx).
 
 %% Account should exist, and have enough funds for the fee
 %% Oracle should exist.
@@ -118,7 +120,7 @@ signers(#oracle_extend_tx{} = Tx, _) ->
               non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
 process(#oracle_extend_tx{nonce = Nonce, fee = Fee, oracle_ttl = OTTL} = Tx,
         _Context, Trees0, _Height, _ConsensusVersion, _TxHash) ->
-    OraclePK      = aec_id:specialize(oracle(Tx), oracle),
+    OraclePK      = oracle_pubkey(Tx),
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),
 
@@ -136,13 +138,13 @@ process(#oracle_extend_tx{nonce = Nonce, fee = Fee, oracle_ttl = OTTL} = Tx,
 
     {ok, Trees2}.
 
-serialize(#oracle_extend_tx{oracle     = OracleId,
+serialize(#oracle_extend_tx{oracle_id  = OracleId,
                             nonce      = Nonce,
                             oracle_ttl = {?ttl_delta_atom, TTLValue},
                             fee        = Fee,
                             ttl        = TTL}) ->
     {version(),
-    [ {oracle, OracleId}
+    [ {oracle_id, OracleId}
     , {nonce, Nonce}
     , {oracle_ttl_type, ?ttl_delta_int}
     , {oracle_ttl_value, TTLValue}
@@ -151,21 +153,21 @@ serialize(#oracle_extend_tx{oracle     = OracleId,
     ]}.
 
 deserialize(?ORACLE_EXTEND_TX_VSN,
-           [ {oracle, OracleId}
+           [ {oracle_id, OracleId}
            , {nonce, Nonce}
            , {oracle_ttl_type, ?ttl_delta_int}
            , {oracle_ttl_value, TTLValue}
            , {fee, Fee}
            , {ttl, TTL}]) ->
     oracle = aec_id:specialize_type(OracleId),
-    #oracle_extend_tx{oracle     = OracleId,
+    #oracle_extend_tx{oracle_id  = OracleId,
                       nonce      = Nonce,
                       oracle_ttl = {?ttl_delta_atom, TTLValue},
                       fee        = Fee,
                       ttl        = TTL}.
 
 serialization_template(?ORACLE_EXTEND_TX_VSN) ->
-    [ {oracle, id}
+    [ {oracle_id, id}
     , {nonce, int}
     , {oracle_ttl_type, int}
     , {oracle_ttl_value, int}
@@ -177,17 +179,19 @@ serialization_template(?ORACLE_EXTEND_TX_VSN) ->
 version() ->
     ?ORACLE_EXTEND_TX_VSN.
 
-for_client(#oracle_extend_tx{ nonce      = Nonce,
-                              oracle_ttl = {delta = TTLType, TTLValue},
-                              fee        = Fee,
-                              ttl        = TTL} = Tx) ->
+for_client(#oracle_extend_tx{oracle_id = OracleId,
+                             nonce     = Nonce,
+                             fee       = Fee,
+                             ttl       = TTL} = Tx) ->
+    {delta = TTLType, TTLValue} = oracle_ttl(Tx),
     #{<<"data_schema">> => <<"OracleExtendTxJSON">>, % swagger schema name
-      <<"vsn">> => version(),
-      <<"account">> => aec_base58c:encode(id_hash, oracle(Tx)),
-      <<"nonce">> => Nonce,
-      <<"oracle_ttl">> => #{<<"type">> => TTLType, <<"value">> => TTLValue},
-      <<"fee">> => Fee,
-      <<"ttl">> => TTL}.
+      <<"vsn">>         => version(),
+      <<"oracle_id">>   => aec_base58c:encode(id_hash, OracleId),
+      <<"nonce">>       => Nonce,
+      <<"oracle_ttl">>  => #{<<"type">>  => TTLType,
+                             <<"value">> => TTLValue},
+      <<"fee">>         => Fee,
+      <<"ttl">>         => TTL}.
 
 %% -- Local functions  -------------------------------------------------------
 

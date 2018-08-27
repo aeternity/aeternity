@@ -168,12 +168,12 @@ check_update_tx_(F, Mod, RefTx, #state{} = State, Opts) ->
 verify_signatures(SignedTx, #state{trees = Trees}) ->
     aetx_sign:verify(SignedTx, Trees).
 
--spec get_contract_call(aect_contracts:id(), aec_keys:pubkey(),
+-spec get_contract_call(aect_contracts:pubkey(), aec_keys:pubkey(),
                         non_neg_integer(), state()) -> {error, call_not_found}
                                                     |  {ok, aect_call:call()}.
 
-get_contract_call(Contract, Caller, Round, #state{calls=CallsTree}) ->
-    aect_channel_contract:get_call(Contract, Caller, Round, CallsTree).
+get_contract_call(ContractPubkey, CallerPubkey, Round, #state{calls=CallsTree}) ->
+    aect_channel_contract:get_call(ContractPubkey, CallerPubkey, Round, CallsTree).
 
 -spec prune_calls(state()) -> state().
 prune_calls(State) ->
@@ -184,17 +184,17 @@ prune_calls(State) ->
 make_update_tx(Updates, #state{signed_txs=[SignedTx|_], trees=Trees}, Opts) ->
     Tx = aetx_sign:tx(SignedTx),
     {Mod, TxI} = aetx:specialize_callback(Tx),
-    ChannelId = Mod:channel_id(TxI),
+    ChannelPubKey = Mod:channel_pubkey(TxI),
 
-    NextRound = Mod:round(TxI) + 1,
+    NextRound     = Mod:round(TxI) + 1,
 
     Trees1 = apply_updates(Updates, NextRound, Trees, Opts),
     StateHash = aec_trees:hash(Trees1),
     {ok, OffchainTx} =
-        aesc_offchain_tx:new(#{channel_id    => aec_id:create(channel, ChannelId),
-                              state_hash     => StateHash,
-                              updates        => Updates,
-                              round          => NextRound}),
+        aesc_offchain_tx:new(#{channel_id => aec_id:create(channel, ChannelPubKey),
+                               state_hash => StateHash,
+                               updates    => Updates,
+                               round      => NextRound}),
     OffchainTx.
 
 apply_updates(Updates, Round, Trees, Opts) ->

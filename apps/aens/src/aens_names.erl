@@ -8,8 +8,7 @@
 -module(aens_names).
 
 %% API
--export([id/1,
-         new/3,
+-export([new/3,
          update/3,
          revoke/3,
          transfer_to/2,
@@ -18,7 +17,9 @@
         ]).
 
 %% Getters
--export([owner/1,
+-export([id/1,
+         hash/1,
+         owner_pubkey/1,
          status/1,
          expires/1,
          pointers/1,
@@ -28,23 +29,23 @@
 %%% Types
 %%%===================================================================
 
--type name_status() :: claimed | revoked.
-
--record(name,
-        {id              :: aec_id:id(),
-         owner           :: aec_keys:pubkey(),
-         expires         :: aec_blocks:height(),
-         status          :: name_status(),
-         client_ttl = 0  :: integer(),
-         pointers   = [] :: list()}).
-
--opaque name() :: #name{}.
-
--type id() :: binary().
+-type id()         :: aec_id:id().
+-type status()     :: claimed | revoked.
 -type serialized() :: binary().
 
--export_type([id/0,
-              name/0,
+-record(name,
+        {id         :: id(),
+         owner_id   :: id(),
+         expires    :: aec_blocks:height(),
+         status     :: status(),
+         client_ttl :: integer(),
+         pointers   :: list(aens_pointer:pointer())}).
+
+-opaque name()      :: #name{}.
+
+-export_type([name/0,
+              id/0,
+              status/0,
               serialized/0]).
 
 -define(NAME_TYPE, name).
@@ -54,20 +55,18 @@
 %%% API
 %%%===================================================================
 
--spec id(name()) -> aens_hash:name_hash().
-id(N) ->
-    hash(N).
-
 -spec new(aens_claim_tx:tx(), non_neg_integer(), aec_blocks:height()) -> name().
 new(ClaimTx, Expiration, BlockHeight) ->
     Expires    = BlockHeight + Expiration,
     Name       = aens_claim_tx:name(ClaimTx),
-    {ok, Hash} = aens:get_name_hash(Name),
+    {ok, NameHash} = aens:get_name_hash(Name),
     %% TODO: add assertions on fields, similarily to what is done in aeo_oracles:new/2
-    #name{id      = aec_id:create(name, Hash),
-          owner   = aens_claim_tx:account_pubkey(ClaimTx),
-          expires = Expires,
-          status  = claimed}.
+    #name{id         = aec_id:create(name, NameHash),
+          owner_id   = aens_claim_tx:account_id(ClaimTx),
+          expires    = Expires,
+          status     = claimed,
+          client_ttl = 0,
+          pointers   = []}.
 
 -spec update(aens_update_tx:tx(), name(), aec_blocks:height()) -> name().
 update(UpdateTx, Name, BlockHeight) ->
@@ -84,70 +83,80 @@ revoke(Name, Expiration, BlockHeight) ->
 
 -spec transfer_to(aec_keys:pubkey(), name()) -> name().
 transfer_to(Pubkey, Name) ->
-    Name#name{owner = Pubkey}.
+    Name#name{owner_id = aec_id:create(account, Pubkey)}.
 
 -spec serialize(name()) -> binary().
-serialize(#name{} = N) ->
+serialize(#name{owner_id   = OwnerId,
+                expires    = Expires,
+                status     = Status,
+                client_ttl = ClientTTL,
+                pointers   = Pointers}) ->
     aec_object_serialization:serialize(
       ?NAME_TYPE,
       ?NAME_VSN,
       serialization_template(?NAME_VSN),
-      [ {owner, owner(N)}
-      , {expires, expires(N)}
-      , {status, atom_to_binary(status(N), utf8)}
-      , {client_ttl, client_ttl(N)}
-      , {pointers, jsx:encode(pointers(N))}]). %% TODO: This might be ambigous
+      [ {owner_id, OwnerId}
+      , {expires, Expires}
+      , {status, atom_to_binary(Status, utf8)}
+      , {client_ttl, ClientTTL}
+      , {pointers, [{aens_pointer:key(P), aens_pointer:id(P)} || P <- Pointers]}]).
 
 -spec deserialize(aens_hash:name_hash(), binary()) -> name().
-deserialize(Hash, Bin) ->
-    [ {owner, Owner}
+deserialize(NameHash, Bin) ->
+    [ {owner_id, OwnerId}
     , {expires, Expires}
     , {status, Status}
-    , {client_ttl, CTTL}
+    , {client_ttl, ClientTTL}
     , {pointers, Pointers}
     ] = aec_object_serialization:deserialize(
           ?NAME_TYPE,
           ?NAME_VSN,
           serialization_template(?NAME_VSN),
           Bin),
-    #name{id         = aec_id:create(name, Hash),
-          owner      = Owner,
+    #name{id         = aec_id:create(name, NameHash),
+          owner_id   = OwnerId,
           expires    = Expires,
           status     = binary_to_existing_atom(Status, utf8),
-          client_ttl = CTTL,
-          pointers   = jsx:decode(Pointers)}. %% TODO: This might be ambigous
+          client_ttl = ClientTTL,
+          pointers   = [aens_pointer:new(Key, Id) || {Key, Id} <- Pointers]}.
 
 serialization_template(?NAME_VSN) ->
-    [ {owner, binary}
+    [ {owner_id, id}
     , {expires, int}
     , {status, binary}
     , {client_ttl, int}
-    , {pointers, binary} %% TODO: This needs to be stricter
+    , {pointers, [{binary, id}]}
     ].
 
 %%%===================================================================
 %%% Getters
 %%%===================================================================
 
--spec owner(name()) -> aec_keys:pubkey().
-owner(N) -> N#name.owner.
-
--spec status(name()) -> name_status().
-status(N) -> N#name.status.
-
--spec expires(name()) -> aec_blocks:height().
-expires(N) -> N#name.expires.
-
--spec pointers(name()) -> list().
-pointers(N) -> N#name.pointers.
-
--spec client_ttl(name()) -> integer().
-client_ttl(N) -> N#name.client_ttl.
-
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
+-spec id(name()) -> id().
+id(#name{id = Id}) ->
+    Id.
 
 -spec hash(name()) -> aens_hash:name_hash().
-hash(N) ->
-    aec_id:specialize(N#name.id, name).
+hash(#name{id = Id}) ->
+    aec_id:specialize(Id, name).
+
+-spec owner_pubkey(name()) -> aec_keys:pubkey().
+owner_pubkey(#name{owner_id = OwnerId}) ->
+    aec_id:specialize(OwnerId, account).
+
+-spec status(name()) -> status().
+status(#name{status = Status}) ->
+    Status.
+
+-spec expires(name()) -> aec_blocks:height().
+expires(#name{expires = Expires}) ->
+    Expires.
+
+-spec pointers(name()) -> list(aens_pointer:pointer()).
+pointers(#name{pointers = Pointers}) ->
+    Pointers.
+
+-spec client_ttl(name()) -> integer().
+client_ttl(#name{client_ttl = ClientTTL}) ->
+    ClientTTL.
+

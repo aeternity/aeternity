@@ -32,11 +32,11 @@
 -define(NAME_REVOKE_TX_TYPE, name_revoke_tx).
 
 -record(ns_revoke_tx, {
-          account   :: aec_id:id(),
-          nonce     :: integer(),
-          name_hash :: aec_id:id(),
-          fee       :: integer(),
-          ttl       :: aetx:tx_ttl()
+          account_id :: aec_id:id(),
+          nonce      :: integer(),
+          name_id    :: aec_id:id(),
+          fee        :: integer(),
+          ttl        :: aetx:tx_ttl()
          }).
 
 -opaque tx() :: #ns_revoke_tx{}.
@@ -48,17 +48,17 @@
 %%%===================================================================
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{account   := Account,
-      nonce     := Nonce,
-      name_hash := NameId,
-      fee       := Fee} = Args) ->
-    account = aec_id:specialize_type(Account),
+new(#{account_id := AccountId,
+      nonce      := Nonce,
+      name_id    := NameId,
+      fee        := Fee} = Args) ->
+    account = aec_id:specialize_type(AccountId),
     name    = aec_id:specialize_type(NameId),
-    Tx = #ns_revoke_tx{account   = Account,
-                       nonce     = Nonce,
-                       name_hash = NameId,
-                       fee       = Fee,
-                       ttl       = maps:get(ttl, Args, 0)},
+    Tx = #ns_revoke_tx{account_id = AccountId,
+                       nonce      = Nonce,
+                       name_id    = NameId,
+                       fee        = Fee,
+                       ttl        = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -81,24 +81,13 @@ nonce(#ns_revoke_tx{nonce = Nonce}) ->
 origin(#ns_revoke_tx{} = Tx) ->
     account_pubkey(Tx).
 
-account(#ns_revoke_tx{account = AccountId}) ->
-    AccountId.
-
-account_pubkey(#ns_revoke_tx{account = AccountId}) ->
-    aec_id:specialize(AccountId, account).
-
-name(#ns_revoke_tx{name_hash = NameId}) ->
-    NameId.
-
-name_hash(#ns_revoke_tx{name_hash = NameId}) ->
-    aec_id:specialize(NameId, name).
-
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()} | {error, term()}.
-check(#ns_revoke_tx{nonce = Nonce, fee = Fee} = Tx,
-      _Context, Trees, _Height, _ConsensusVersion) ->
+check(#ns_revoke_tx{nonce = Nonce,
+                    fee   = Fee} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
     AccountPubKey = account_pubkey(Tx),
     NameHash = name_hash(Tx),
+
     Checks =
         [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee) end,
          fun() -> aens_utils:check_name_claimed_and_owned(NameHash, AccountPubKey, Trees) end],
@@ -136,57 +125,66 @@ signers(#ns_revoke_tx{} = Tx, _) ->
     {ok, [account_pubkey(Tx)]}.
 
 -spec serialize(tx()) -> {integer(), [{atom(), term()}]}.
-serialize(#ns_revoke_tx{account   = AccountId,
-                        nonce     = Nonce,
-                        name_hash = NameId,
-                        fee       = Fee,
-                        ttl       = TTL}) ->
+serialize(#ns_revoke_tx{account_id = AccountId,
+                        nonce      = Nonce,
+                        name_id    = NameId,
+                        fee        = Fee,
+                        ttl        = TTL}) ->
     {version(),
-     [ {account, AccountId}
+     [ {account_id, AccountId}
      , {nonce, Nonce}
-     , {hash, NameId}
+     , {name_id, NameId}
      , {fee, Fee}
      , {ttl, TTL}
      ]}.
 
 -spec deserialize(Vsn :: integer(), list({atom(), term()})) -> tx().
 deserialize(?NAME_REVOKE_TX_VSN,
-            [ {account, AccountId}
+            [ {account_id, AccountId}
             , {nonce, Nonce}
-            , {hash, NameId}
+            , {name_id, NameId}
             , {fee, Fee}
             , {ttl, TTL}]) ->
     account = aec_id:specialize_type(AccountId),
-    {name, _}    = aec_id:specialize(NameId),
-    #ns_revoke_tx{account   = AccountId,
-                  nonce     = Nonce,
-                  name_hash = NameId,
-                  fee       = Fee,
-                  ttl       = TTL}.
+    name    = aec_id:specialize_type(NameId),
+    #ns_revoke_tx{account_id = AccountId,
+                  nonce      = Nonce,
+                  name_id    = NameId,
+                  fee        = Fee,
+                  ttl        = TTL}.
 
 serialization_template(?NAME_REVOKE_TX_VSN) ->
-    [ {account, id}
+    [ {account_id, id}
     , {nonce, int}
-    , {hash, id}
+    , {name_id, id}
     , {fee, int}
     , {ttl, int}
     ].
 
 -spec for_client(tx()) -> map().
-for_client(#ns_revoke_tx{nonce     = Nonce,
-                         fee       = Fee,
-                         ttl       = TTL} = Tx) ->
-    #{<<"vsn">>       => version(),
+for_client(#ns_revoke_tx{account_id = AccountId,
+                         nonce      = Nonce,
+                         name_id    = NameId,
+                         fee        = Fee,
+                         ttl        = TTL}) ->
+    #{<<"vsn">>        => version(),
       <<"data_schema">> => <<"NameRevokeTxObject">>, % swagger schema name
-      <<"account">>   => aec_base58c:encode(id_hash, account(Tx)),
-      <<"nonce">>     => Nonce,
-      <<"name_hash">> => aec_base58c:encode(id_hash, name(Tx)),
-      <<"fee">>       => Fee,
-      <<"ttl">>       => TTL}.
+      <<"account_id">> => aec_base58c:encode(id_hash, AccountId),
+      <<"nonce">>      => Nonce,
+      <<"name_id">>    => aec_base58c:encode(id_hash, NameId),
+      <<"fee">>        => Fee,
+      <<"ttl">>        => TTL}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
+account_pubkey(#ns_revoke_tx{account_id = AccountId}) ->
+    aec_id:specialize(AccountId, account).
+
+name_hash(#ns_revoke_tx{name_id = NameId}) ->
+    aec_id:specialize(NameId, name).
+
 version() ->
     ?NAME_REVOKE_TX_VSN.
+

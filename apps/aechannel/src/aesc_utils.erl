@@ -27,11 +27,11 @@
 %%% API
 %%%===================================================================
 
--spec get_channel(aesc_channels:id(), aec_trees:trees()) ->
+-spec get_channel(aesc_channels:pubkey(), aec_trees:trees()) ->
                          {error, term()} | ok.
-get_channel(ChannelId, Trees) ->
+get_channel(ChannelPubKey, Trees) ->
     ChannelsTree = aec_trees:channels(Trees),
-    case aesc_state_tree:lookup(ChannelId, ChannelsTree) of
+    case aesc_state_tree:lookup(ChannelPubKey, ChannelsTree) of
         none ->
             {error, channel_does_not_exist};
         {value, Ch} ->
@@ -75,11 +75,11 @@ check_is_peer(PubKey, Peers) ->
         false -> {error, account_not_peer}
     end.
 
--spec check_are_funds_in_channel(aesc_channels:id(), non_neg_integer(), aec_trees:trees()) ->
+-spec check_are_funds_in_channel(aesc_channels:pubkey(), non_neg_integer(), aec_trees:trees()) ->
                                         ok | {error, insufficient_channel_funds}.
-check_are_funds_in_channel(ChannelId, Amount, Trees) ->
+check_are_funds_in_channel(ChannelPubKey, Amount, Trees) ->
     ChannelsTree = aec_trees:channels(Trees),
-    Channel      = aesc_state_tree:get(ChannelId, ChannelsTree),
+    Channel      = aesc_state_tree:get(ChannelPubKey, ChannelsTree),
     case aesc_channels:total_amount(Channel) >= Amount of
         true  -> ok;
         false -> {error, insufficient_channel_funds}
@@ -113,12 +113,12 @@ deserialize_payload(Payload) ->
 %%% Check payload for slash, solo close and snapshot
 %%%===================================================================
 
-check_solo_close_payload(ChannelId, FromPubKey, Nonce, Fee, Payload,
+check_solo_close_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
                          PoI, Height, Trees) ->
     Checks =
         [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee) end,
          fun() ->
-                 check_payload(ChannelId, FromPubKey, Payload, PoI,
+                 check_payload(ChannelPubKey, FromPubKey, Payload, PoI,
                                Height, Trees, solo_close)
          end],
     case aeu_validation:run(Checks) of
@@ -128,12 +128,12 @@ check_solo_close_payload(ChannelId, FromPubKey, Nonce, Fee, Payload,
             Error
     end.
 
-check_slash_payload(ChannelId, FromPubKey, Nonce, Fee, Payload,
+check_slash_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
                     PoI, Height, Trees) ->
     Checks =
         [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee) end,
          fun() ->
-                 check_payload(ChannelId, FromPubKey, Payload, PoI,
+                 check_payload(ChannelPubKey, FromPubKey, Payload, PoI,
                                Height, Trees, slash)
          end],
     case aeu_validation:run(Checks) of
@@ -143,12 +143,12 @@ check_slash_payload(ChannelId, FromPubKey, Nonce, Fee, Payload,
             Error
     end.
 
-check_solo_snapshot_payload(ChannelId, FromPubKey, Nonce, Fee, Payload,
+check_solo_snapshot_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
                             Height, Trees) ->
     Checks =
         [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee) end,
          fun() ->
-                 check_payload(ChannelId, FromPubKey, Payload, no_poi,
+                 check_payload(ChannelPubKey, FromPubKey, Payload, no_poi,
                                Height, Trees, solo_snapshot)
          end],
     case aeu_validation:run(Checks) of
@@ -158,8 +158,8 @@ check_solo_snapshot_payload(ChannelId, FromPubKey, Nonce, Fee, Payload,
             Error
     end.
 
-check_payload(ChannelId, FromPubKey, Payload, PoI, Height, Trees, Type) ->
-    case aesc_utils:get_channel(ChannelId, Trees) of
+check_payload(ChannelPubKey, FromPubKey, Payload, PoI, Height, Trees, Type) ->
+    case aesc_utils:get_channel(ChannelPubKey, Trees) of
         {error, _} = E -> E;
         {ok, Channel} ->
             case aesc_utils:deserialize_payload(Payload) of
@@ -182,7 +182,7 @@ check_payload(ChannelId, FromPubKey, Payload, PoI, Height, Trees, Type) ->
                     PayloadChecks =
                         [fun() -> check_channel_id_in_payload(Channel, PayloadTx) end,
                          fun() -> check_round_in_payload(Channel, PayloadTx) end,
-                         fun() -> is_peer_or_delegate(ChannelId, FromPubKey, SignedState, Trees, Type) end,
+                         fun() -> is_peer_or_delegate(ChannelPubKey, FromPubKey, SignedState, Trees, Type) end,
                          fun() -> aetx_sign:verify(SignedState, Trees) end
                         ],
                     PoIChecks =
@@ -202,8 +202,8 @@ check_payload(ChannelId, FromPubKey, Payload, PoI, Height, Trees, Type) ->
     end.
 
 check_peers_and_amounts_in_poi(Channel, PoI) ->
-    InitiatorPubKey   = aesc_channels:initiator(Channel),
-    ResponderPubKey   = aesc_channels:responder(Channel),
+    InitiatorPubKey   = aesc_channels:initiator_pubkey(Channel),
+    ResponderPubKey   = aesc_channels:responder_pubkey(Channel),
     ChannelAmount     = aesc_channels:total_amount(Channel),
     case aesc_utils:accounts_in_poi([InitiatorPubKey, ResponderPubKey], PoI) of
         {error, _} = Err -> Err;
@@ -217,13 +217,13 @@ check_peers_and_amounts_in_poi(Channel, PoI) ->
             end
     end.
 
-is_peer_or_delegate(ChannelId, FromPubKey, SignedState, Trees, Type) ->
+is_peer_or_delegate(ChannelPubKey, FromPubKey, SignedState, Trees, Type) ->
     case is_peer(FromPubKey, SignedState, Trees) of
         ok -> ok;
         {error, account_not_peer} = E0 ->
             case is_delegatable_tx_type(Type) of
                 true ->
-                    case is_delegate(ChannelId, FromPubKey, Trees) of
+                    case is_delegate(ChannelPubKey, FromPubKey, Trees) of
                         ok -> ok;
                         {error, account_not_delegate} ->
                             {error, account_not_peer_or_delegate};
@@ -252,28 +252,28 @@ is_delegatable_tx_type(Type) ->
 delegatable_tx_types() ->
     [slash].
 
-is_delegate(ChannelId, FromPubKey, Trees) ->
+is_delegate(ChannelPubKey, FromPubKey, Trees) ->
     with_channel(fun(Channel) ->
                          is_delegate_(Channel, FromPubKey)
-                 end, ChannelId, Trees).
+                 end, ChannelPubKey, Trees).
 
 is_delegate_(Channel, FromPubKey) ->
-    case lists:member(FromPubKey, aesc_channels:delegates(Channel)) of
+    case lists:member(FromPubKey, aesc_channels:delegate_pubkeys(Channel)) of
         true ->
             ok;
         false ->
             {error, account_not_delegate}
     end.
 
-with_channel(F, ChannelId, Trees) ->
-    case get_channel(ChannelId, Trees) of
+with_channel(F, ChannelPubKey, Trees) ->
+    case get_channel(ChannelPubKey, Trees) of
         {ok, Channel}  -> F(Channel);
         {error, _} = E -> E
     end.
 
 check_channel_id_in_payload(Channel, PayloadTx) ->
-    case aesc_channels:id(Channel) =:= aesc_offchain_tx:channel_id(PayloadTx) of
-        false -> {error, bad_state_channel_id};
+    case aesc_channels:pubkey(Channel) =:= aesc_offchain_tx:channel_pubkey(PayloadTx) of
+        false -> {error, bad_state_channel_pubkey};
         true -> ok
     end.
 
@@ -300,20 +300,20 @@ check_root_hash_in_channel(Channel, PoI) ->
 %%% Process payload for slash and solo close
 %%%===================================================================
 
-process_solo_close(ChannelId, FromPubKey, Nonce, Fee,
+process_solo_close(ChannelPubKey, FromPubKey, Nonce, Fee,
                    Payload, PoI, Height, Trees) ->
-    process_solo_close_slash(ChannelId, FromPubKey, Nonce, Fee,
+    process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
                              Payload, PoI, Height, Trees).
 
 
-process_slash(ChannelId, FromPubKey, Nonce, Fee,
+process_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
               Payload, PoI, Height, Trees) ->
-    process_solo_close_slash(ChannelId, FromPubKey, Nonce, Fee,
+    process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
                              Payload, PoI, Height, Trees).
 
-process_solo_snapshot(ChannelId, FromPubKey, Nonce, Fee, Payload, Trees) ->
+process_solo_snapshot(ChannelPubKey, FromPubKey, Nonce, Fee, Payload, Trees) ->
     ChannelsTree0      = aec_trees:channels(Trees),
-    Channel0 = aesc_state_tree:get(ChannelId, ChannelsTree0),
+    Channel0 = aesc_state_tree:get(ChannelPubKey, ChannelsTree0),
     {ok, _SignedTx, PayloadTx} = deserialize_payload(Payload),
     Channel1 = aesc_channels:snapshot_solo(Channel0, PayloadTx),
     ChannelsTree1 = aesc_state_tree:enter(Channel1, ChannelsTree0),
@@ -325,7 +325,7 @@ process_solo_snapshot(ChannelId, FromPubKey, Nonce, Fee, Payload, Trees) ->
     Trees2 = aec_trees:set_accounts(Trees1, AccountsTree1),
     {ok, Trees2}.
 
-process_solo_close_slash(ChannelId, FromPubKey, Nonce, Fee,
+process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
                          Payload, PoI, Height, Trees) ->
     AccountsTree0      = aec_trees:accounts(Trees),
     ChannelsTree0      = aec_trees:channels(Trees),
@@ -333,7 +333,7 @@ process_solo_close_slash(ChannelId, FromPubKey, Nonce, Fee,
     {ok, FromAccount1} = aec_accounts:spend(FromAccount0, Fee, Nonce),
     AccountsTree1      = aec_accounts_trees:enter(FromAccount1, AccountsTree0),
 
-    Channel0 = aesc_state_tree:get(ChannelId, ChannelsTree0),
+    Channel0 = aesc_state_tree:get(ChannelPubKey, ChannelsTree0),
     Channel1 =
         case aesc_utils:deserialize_payload(Payload) of
             {ok, _SignedTx, PayloadTx} ->

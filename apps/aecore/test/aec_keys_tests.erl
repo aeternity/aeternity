@@ -29,8 +29,8 @@ all_test_() ->
                         Sender = aec_id:create(account, PubKey),
                         Receiver = aec_id:create(account, RecipientPubkey),
                         {ok, Tx} =
-                            aec_spend_tx:new(#{sender => Sender,
-                                               recipient => Receiver,
+                            aec_spend_tx:new(#{sender_id => Sender,
+                                               recipient_id => Receiver,
                                                amount => 10,
                                                fee => 2,
                                                nonce => 3,

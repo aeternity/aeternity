@@ -26,9 +26,9 @@
         ]).
 
 %% Getters
--export([account/1,
-         account_pubkey/1,
-         name/1]).
+-export([account_id/1,
+         name/1
+        ]).
 
 %%%===================================================================
 %%% Types
@@ -38,12 +38,12 @@
 -define(NAME_CLAIM_TX_TYPE, name_claim_tx).
 
 -record(ns_claim_tx, {
-          account   :: aec_id:id(),
-          nonce     :: integer(),
-          name      :: binary(),
-          name_salt :: integer(),
-          fee       :: integer(),
-          ttl       :: aetx:tx_ttl()
+          account_id :: aec_id:id(),
+          nonce      :: integer(),
+          name       :: binary(),
+          name_salt  :: integer(),
+          fee        :: integer(),
+          ttl        :: aetx:tx_ttl()
          }).
 
 -opaque tx() :: #ns_claim_tx{}.
@@ -55,18 +55,18 @@
 %%%===================================================================
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{account   := Account,
-      nonce     := Nonce,
-      name      := Name,
-      name_salt := NameSalt,
-      fee       := Fee} = Args) ->
-    account = aec_id:specialize_type(Account),
-    Tx = #ns_claim_tx{account   = Account,
-                      nonce     = Nonce,
-                      name      = Name,
-                      name_salt = NameSalt,
-                      fee       = Fee,
-                      ttl       = maps:get(ttl, Args, 0)},
+new(#{account_id := AccountId,
+      nonce      := Nonce,
+      name       := Name,
+      name_salt  := NameSalt,
+      fee        := Fee} = Args) ->
+    account = aec_id:specialize_type(AccountId),
+    Tx = #ns_claim_tx{account_id = AccountId,
+                      nonce      = Nonce,
+                      name       = Name,
+                      name_salt  = NameSalt,
+                      fee        = Fee,
+                      ttl        = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -91,8 +91,10 @@ origin(#ns_claim_tx{} = Tx) ->
 
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()} | {error, term()}.
-check(#ns_claim_tx{nonce = Nonce, fee = Fee, name = Name, name_salt = NameSalt} = Tx,
-      _Context, Trees, Height, _ConsensusVersion) ->
+check(#ns_claim_tx{nonce     = Nonce,
+                   name      = Name,
+                   name_salt = NameSalt,
+                   fee       = Fee} = Tx, _Context, Trees, Height, _ConsensusVersion) ->
     AccountPubKey = account_pubkey(Tx),
     case aens_utils:to_ascii(Name) of
         {ok, NameAscii} ->
@@ -116,8 +118,10 @@ check(#ns_claim_tx{nonce = Nonce, fee = Fee, name = Name, name_salt = NameSalt} 
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
               non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
-process(#ns_claim_tx{nonce = Nonce, fee = Fee, name = PlainName,
-                     name_salt = NameSalt} = ClaimTx,
+process(#ns_claim_tx{nonce     = Nonce,
+                     name      = PlainName,
+                     name_salt = NameSalt,
+                     fee       = Fee} = ClaimTx,
         _Context, Trees0, Height, _ConsensusVersion, _TxHash) ->
     AccountPubKey = account_pubkey(ClaimTx),
     AccountsTree0 = aec_trees:accounts(Trees0),
@@ -146,14 +150,14 @@ signers(#ns_claim_tx{} = Tx, _) ->
     {ok, [account_pubkey(Tx)]}.
 
 -spec serialize(tx()) -> {integer(), [{atom(), term()}]}.
-serialize(#ns_claim_tx{account   = AccountId,
-                       nonce     = None,
-                       name      = Name,
-                       name_salt = NameSalt,
-                       fee       = Fee,
-                       ttl       = TTL}) ->
+serialize(#ns_claim_tx{account_id = AccountId,
+                       nonce      = None,
+                       name       = Name,
+                       name_salt  = NameSalt,
+                       fee        = Fee,
+                       ttl        = TTL}) ->
     {version(),
-     [ {account, AccountId}
+     [ {account_id, AccountId}
      , {nonce, None}
      , {name, Name}
      , {name_salt, NameSalt}
@@ -163,22 +167,22 @@ serialize(#ns_claim_tx{account   = AccountId,
 
 -spec deserialize(Vsn :: integer(), list({atom(), term()})) -> tx().
 deserialize(?NAME_CLAIM_TX_VSN,
-            [ {account, AccountId}
+            [ {account_id, AccountId}
             , {nonce, Nonce}
             , {name, Name}
             , {name_salt, NameSalt}
             , {fee, Fee}
             , {ttl, TTL}]) ->
     account = aec_id:specialize_type(AccountId),
-    #ns_claim_tx{account   = AccountId,
-                 nonce     = Nonce,
-                 name      = Name,
-                 name_salt = NameSalt,
-                 fee       = Fee,
-                 ttl       = TTL}.
+    #ns_claim_tx{account_id = AccountId,
+                 nonce      = Nonce,
+                 name       = Name,
+                 name_salt  = NameSalt,
+                 fee        = Fee,
+                 ttl        = TTL}.
 
 serialization_template(?NAME_CLAIM_TX_VSN) ->
-    [ {account, id}
+    [ {account_id, id}
     , {nonce, int}
     , {name, binary}
     , {name_salt, int}
@@ -188,32 +192,28 @@ serialization_template(?NAME_CLAIM_TX_VSN) ->
 
 
 -spec for_client(tx()) -> map().
-for_client(#ns_claim_tx{nonce     = Nonce,
-                        name      = Name,
-                        name_salt = NameSalt,
-                        fee       = Fee,
-                        ttl       = TTL,
-                        account   = Account}) ->
-    #{<<"vsn">>       => version(),
+for_client(#ns_claim_tx{account_id = AccountId,
+                        nonce      = Nonce,
+                        name       = Name,
+                        name_salt  = NameSalt,
+                        fee        = Fee,
+                        ttl        = TTL}) ->
+    #{<<"vsn">>        => version(),
       <<"data_schema">> => <<"NameClaimTxObject">>, % swagger schema name
-      <<"account">>   => aec_base58c:encode(id_hash, Account),
-      <<"nonce">>     => Nonce,
-      <<"name">>      => Name,
-      <<"name_salt">> => NameSalt,
-      <<"fee">>       => Fee,
-      <<"ttl">>       => TTL}.
+      <<"account_id">> => aec_base58c:encode(id_hash, AccountId),
+      <<"nonce">>      => Nonce,
+      <<"name">>       => Name,
+      <<"name_salt">>  => NameSalt,
+      <<"fee">>        => Fee,
+      <<"ttl">>        => TTL}.
 
 %%%===================================================================
 %%% Getters
 %%%===================================================================
 
--spec account(tx()) -> aec_id:id().
-account(#ns_claim_tx{account = Account}) ->
-    Account.
-
--spec account_pubkey(tx()) -> aec_keys:pubkey().
-account_pubkey(#ns_claim_tx{account = AccountPubKey}) ->
-    aec_id:specialize(AccountPubKey, account).
+-spec account_id(tx()) -> aec_id:id().
+account_id(#ns_claim_tx{account_id = AccountId}) ->
+    AccountId.
 
 -spec name(tx()) -> binary().
 name(#ns_claim_tx{name = Name}) ->
@@ -223,16 +223,19 @@ name(#ns_claim_tx{name = Name}) ->
 %%% Internal functions
 %%%===================================================================
 
+account_pubkey(#ns_claim_tx{account_id = AccountId}) ->
+    aec_id:specialize(AccountId, account).
+
 check_commitment(NameAscii, NameSalt, AccountPubKey, Trees, Height) ->
     NSTree = aec_trees:ns(Trees),
-    CH = aens_hash:commitment_hash(NameAscii, NameSalt),
-    case aens_state_tree:lookup_commitment(CH, NSTree) of
-        {value, C} ->
-            case aens_commitments:owner(C) =:= AccountPubKey of
+    CommitmentHash = aens_hash:commitment_hash(NameAscii, NameSalt),
+    case aens_state_tree:lookup_commitment(CommitmentHash, NSTree) of
+        {value, Commitment} ->
+            case aens_commitments:owner_pubkey(Commitment) =:= AccountPubKey of
                 true  ->
-                    CreatedAt = aens_commitments:created(C),
+                    Created = aens_commitments:created(Commitment),
                     Delta = aec_governance:name_claim_preclaim_delta(),
-                    if CreatedAt + Delta =< Height -> ok;
+                    if Created + Delta =< Height -> ok;
                        true -> {error, commitment_delta_too_small}
                     end;
                 false -> {error, commitment_not_owned}
@@ -251,6 +254,6 @@ check_name(NameAscii, Trees) ->
             ok
     end.
 
-
 version() ->
     ?NAME_CLAIM_TX_VSN.
+
