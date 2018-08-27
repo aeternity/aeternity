@@ -59,20 +59,27 @@ start_link_channel(Host, Port, RoleA, Opts) when is_atom(RoleA) ->
     Role = atom_to_binary(RoleA, utf8),
     WsAddress = make_channel_connect_address(Host, Port, Role, Opts),
     ct:log("connecting to Channel ~p as ~p", [WsAddress, Role]),
-    {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, self()),
+    {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, self(),
+                                            extra_headers()),
     wait_for_connect(Pid).
 
 start_channel(Host, Port, RoleA, Opts) when is_atom(RoleA) ->
     Role = atom_to_binary(RoleA, utf8),
     WsAddress = make_channel_connect_address(Host, Port, Role, Opts),
     ct:log("connecting to Channel ~s as ~p", [iolist_to_binary(WsAddress), Role]),
-    {ok, Pid} = websocket_client:start(WsAddress, ?MODULE, self()),
+    %% There is no websocket_client:start/4 ...
+    {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, self(),
+                                            extra_headers()),
+    unlink(Pid),
     case wait_for_connect(Pid) of
         {ok, Pid} = Res ->
             set_role(Pid, RoleA),
             Res;
         {error, _} = Err -> Err
     end.
+
+extra_headers() ->
+    [{extra_headers, [{<<"Content-Type">>, <<"application/jsonrpc">>}]}].
 
 
 make_channel_connect_address(Host, Port, Role, Opts0) ->
@@ -316,9 +323,9 @@ websocket_handle({text, MsgBin}, _ConnState, #state{regs=Register, role=Role}=St
         _ ->
             ct:log("[~p] Received msg ~p~n", [Role, Msg])
     end,
-    Origin = binary_to_existing_atom(maps:get(<<"origin">>, Msg,
-                                              atom_to_binary(?CHANNEL, utf8)), utf8),
-    Action = binary_to_existing_atom(maps:get(<<"action">>, Msg), utf8),
+    Origin = binary_to_atom(maps:get(<<"origin">>, Msg,
+                                     atom_to_binary(?CHANNEL, utf8)), utf8),
+    Action = binary_to_atom(maps:get(<<"action">>, Msg), utf8),
     Tag = maps:get(<<"tag">>, Msg, undefined),
     RegisteredPids = get_registered_pids({Origin, Action}, Register),
     lists:foreach(

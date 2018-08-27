@@ -16,38 +16,43 @@
                   channel_id         :: aesc_channels:id() | undefined,
                   enc_channel_id     :: aec_base58c:encoded() | undefined,
                   job_id             :: term(),
+                  protocol           :: legacy | jsonrpc | undefined,
+                  orig_request       :: map() | undefined,
                   role               :: initiator | responder | undefined,
                   host               :: binary() | undefined,
                   port               :: non_neg_integer() | undefined}).
 
 -opaque handler() :: #handler{}.
 -export_type([handler/0]).
--define(ACTION_SIGNED(Action), Action =:= <<"initiator_sign">>;
-                               Action =:= <<"deposit_tx">>;
-                               Action =:= <<"deposit_ack">>;
-                               Action =:= <<"withdraw_tx">>;
-                               Action =:= <<"withdraw_ack">>;
-                               Action =:= <<"responder_sign">>;
-                               Action =:= <<"shutdown_sign">>;
-                               Action =:= <<"shutdown_sign_ack">>;
-                               Action =:= <<"update">>;
-                               Action =:= <<"update_ack">>).
--define(ACTION_TAG(Action), case Action of
-                                <<"initiator_sign">> -> create_tx;
-                                <<"deposit_tx">> -> deposit_tx;
-                                <<"deposit_ack">> -> deposit_created;
-                                <<"withdraw_tx">> -> withdraw_tx;
-                                <<"withdraw_ack">> -> withdraw_created;
-                                <<"responder_sign">> -> funding_created;
-                                <<"update">> -> update;
-                                <<"update_ack">> -> update_ack;
-                                <<"shutdown_sign">> -> shutdown;
-                                <<"shutdown_sign_ack">> -> shutdown_ack;
-                                <<"leave">> -> leave
+-define(METHOD_SIGNED(Method), Method =:= <<"channels.initiator_sign">>;
+                               Method =:= <<"channels.deposit_tx">>;
+                               Method =:= <<"channels.deposit_ack">>;
+                               Method =:= <<"channels.withdraw_tx">>;
+                               Method =:= <<"channels.withdraw_ack">>;
+                               Method =:= <<"channels.responder_sign">>;
+                               Method =:= <<"channels.shutdown_sign">>;
+                               Method =:= <<"channels.shutdown_sign_ack">>;
+                               Method =:= <<"channels.update">>;
+                               Method =:= <<"channels.update_ack">>).
+-define(METHOD_TAG(Method), case Method of
+                                <<"channels.initiator_sign">>    -> create_tx;
+                                <<"channels.deposit_tx">>        -> deposit_tx;
+                                <<"channels.deposit_ack">>       -> deposit_created;
+                                <<"channels.withdraw_tx">>       -> withdraw_tx;
+                                <<"channels.withdraw_ack">>      -> withdraw_created;
+                                <<"channels.responder_sign">>    -> funding_created;
+                                <<"channels.update">>            -> update;
+                                <<"channels.update_ack">>        -> update_ack;
+                                <<"channels.shutdown_sign">>     -> shutdown;
+                                <<"channels.shutdown_sign_ack">> -> shutdown_ack;
+                                <<"channels.leave">>             -> leave
                             end).
 
 init(Req, _Opts) ->
-    {cowboy_websocket, Req, maps:from_list(cowboy_req:parse_qs(Req))}.
+    lager:debug("init(~p, ~p)", [Req, _Opts]),
+    {cowboy_websocket, Req,
+     maps:merge(#{protocol => <<"legacy">>},
+                maps:from_list(cowboy_req:parse_qs(Req)))}.
 
 -spec websocket_init(map()) -> {ok, handler()} | {stop, undefined}.
 websocket_init(Params) ->
@@ -68,42 +73,67 @@ websocket_init(Params) ->
     end.
 
 -spec websocket_handle(term(), handler()) -> {ok, handler()}.
-websocket_handle({text, MsgBin}, State) ->
-    try jsx:decode(MsgBin, [return_maps]) of
-        Msg ->
-            case process_incoming(Msg, State) of
-                no_reply -> {ok, State};
-                {reply, Resp} -> {reply, {text, jsx:encode(Resp)}, State};
-                {error, _} -> {ok, State}
+websocket_handle({text, MsgBin}, #handler{protocol = P} = H) ->
+    try unpack_request(P, jsx:decode(MsgBin, [return_maps]), H) of
+        {Msg, H1} ->
+            try process_incoming(Msg, H1) of
+                no_reply -> {ok, H};
+                {reply, Resp} ->
+                    {reply, {text, jsx:encode(Resp)}, H};
+                {error, _} -> {ok, H}
+            catch
+                error:E1 ->
+                    lager:debug("CAUGHT E1=~p / ~p", [E1, erlang:get_stacktrace()]),
+                    throw({die_anyway, E1})
             end
     catch
-      error:_ ->
-          {ok, State}
+        error:E ->
+            lager:debug("Caught E=~p / ~p", [E, erlang:get_stacktrace()]),
+            {ok, H};
+        throw:{die_anyway, E1_} ->
+            erlang:error(E1_)
     end;
-websocket_handle(_Data, State) ->
-    {ok, State}.
+websocket_handle(_Data, H) ->
+    {ok, H}.
 
-websocket_info({push, ChannelId, Data, Options}, State) ->
-    case ChannelId =:= channel_id(State) of
+websocket_info(Msg, #handler{protocol = P} = H) ->
+    try unpack_info(P, Msg, H) of
+        {Msg1, H1} ->
+            try websocket_info_(Msg1, H1)
+            catch
+                error:E1 ->
+                    lager:debug("CAUGHT E1=~p / ~p",
+                                [E1, erlang:get_stacktrace()]),
+                    {stop, H}
+            end
+    catch
+        error:E ->
+            lager:debug("CAUGHT E=~p / ~p", [E, erlang:get_stacktrace()]);
+        throw:{die_anyway, E1_} ->
+            erlang:error(E1_)
+    end.
+
+websocket_info_({push, ChannelId, Data, Options}, H) ->
+    case ChannelId =:= channel_id(H) of
         false ->
             process_response({error, wrong_channel_id}, Options),
-            {ok, State};
+            {ok, H};
         true ->
             process_response(ok, Options),
             Msg = jsx:encode(Data),
-            {reply, {text, Msg}, State}
+            {reply, {text, Msg}, H}
     end;
-websocket_info({aesc_fsm, FsmPid, Msg}, #handler{fsm_pid=FsmPid}=H) ->
+websocket_info_({aesc_fsm, FsmPid, Msg}, #handler{fsm_pid=FsmPid}=H) ->
     H1 = set_channel_id(Msg, H),
     case process_fsm(Msg, H) of
         %no_reply -> {ok, H1};
         %{error, _} -> {ok, H1}
         {reply, Resp} -> {reply, {text, jsx:encode(Resp)}, H1}
     end;
-websocket_info({'DOWN', MRef, _, _, _}, #handler{fsm_mref = MRef} = H) ->
+websocket_info_({'DOWN', MRef, _, _, _}, #handler{fsm_mref = MRef} = H) ->
     {stop, H#handler{fsm_pid = undefined,
                      fsm_mref = undefined}};
-websocket_info(_Info, State) ->
+websocket_info_(_Info, State) ->
     {ok, State}.
 
 set_channel_id(#{channel_id := Id},
@@ -116,13 +146,13 @@ set_channel_id(#{channel_id := A}, #handler{channel_id = B})
 set_channel_id(_Msg, H) ->
     H.
 
-reply(Msg, #handler{enc_channel_id = Id}) ->
+fsm_reply(Msg, #handler{enc_channel_id = Id}) ->
     case Id of
         undefined -> {reply, Msg};
         _         -> {reply, maps:merge(#{channel_id => Id}, Msg)}
     end.
 
-terminate(_Reason, _PartialReq, #{} = _State) ->
+terminate(_Reason, _PartialReq, #{} = _H) ->
     % not initialized yet
     ok;
 terminate(Reason, _PartialReq, State) ->
@@ -262,107 +292,97 @@ parse_by_type(serialized_tx, V, RecordField) when is_binary(V) ->
     end.
 
 -spec process_incoming(map(), handler()) -> no_reply | {reply, map()} | {error, atom()}.
-process_incoming(#{<<"action">> := <<"update">>,
-                   <<"tag">> := <<"new">>,
-                   <<"payload">> := #{<<"from">>    := FromB,
-                                      <<"to">>      := ToB,
-                                      <<"amount">>  := Amount}} = R, State) ->
+process_incoming(#{<<"method">> := <<"channels.update.new">>,
+                   <<"params">> := #{<<"from">>    := FromB,
+                                     <<"to">>      := ToB,
+                                     <<"amount">>  := Amount}}, H) ->
     case {aec_base58c:safe_decode(account_pubkey, FromB),
           aec_base58c:safe_decode(account_pubkey, ToB)} of
         {{ok, From}, {ok, To}} ->
-            case aesc_fsm:upd_transfer(fsm_pid(State), From, To, Amount) of
-                ok -> no_reply;
+            case aesc_fsm:upd_transfer(fsm_pid(H), From, To, Amount) of
+                ok -> reply(ok, H, no_reply);
                 {error, Reason} ->
-                    {reply, error_response(R, Reason)}
+                    error_response(Reason, H)
             end;
-        _ -> {reply, error_response(R, broken_encoding)}
+        _ -> error_response(broken_encoding, H)
     end;
-process_incoming(#{<<"action">> := <<"update">>,
-                   <<"tag">> := <<"new_contract">>,
-                   <<"payload">> := #{<<"vm_version">> := VmVersion,
-                                      <<"deposit">>    := Deposit,
-                                      <<"code">>       := CodeE,
-                                      <<"call_data">>  := CallDataE}} = R, State) ->
+process_incoming(#{<<"method">> := <<"channels.update.new_contract">>,
+                   <<"params">> := #{<<"vm_version">> := VmVersion,
+                                     <<"deposit">>    := Deposit,
+                                     <<"code">>       := CodeE,
+                                     <<"call_data">>  := CallDataE}}, H) ->
     case {bytearray_decode(CodeE), bytearray_decode(CallDataE)} of
         {{ok, Code}, {ok, CallData}} ->
-            case aesc_fsm:upd_create_contract(fsm_pid(State),
+            case aesc_fsm:upd_create_contract(fsm_pid(H),
                                               #{vm_version => VmVersion,
                                                 deposit    => Deposit,
                                                 code       => Code,
                                                 call_data  => CallData}) of
-                ok -> no_reply;
+                ok -> reply(ok, H, no_reply);
                 {error, Reason} ->
-                    {reply, error_response(R, Reason)}
+                    error_response(Reason, H)
             end;
-        _ -> {reply, error_response(R, broken_code)}
+        _ -> error_response(broken_code, H)
     end;
-process_incoming(#{<<"action">> := <<"update">>,
-                   <<"tag">> := <<"call_contract">>,
-                   <<"payload">> := #{<<"contract">>   := ContractE,
-                                      <<"vm_version">> := VmVersion,
-                                      <<"amount">>     := Amount,
-                                      <<"call_data">>  := CallDataE}} = R, State) ->
-    case {aec_base58c:safe_decode(contract_pubkey, ContractE), bytearray_decode(CallDataE)} of
+process_incoming(#{<<"method">> := <<"channels.update.call_contract">>,
+                   <<"params">> := #{<<"contract">>   := ContractE,
+                                     <<"vm_version">> := VmVersion,
+                                     <<"amount">>     := Amount,
+                                     <<"call_data">>  := CallDataE}}, H) ->
+    case {aec_base58c:safe_decode(contract_pubkey, ContractE),
+          bytearray_decode(CallDataE)} of
         {{ok, Contract}, {ok, CallData}} ->
-            case aesc_fsm:upd_call_contract(fsm_pid(State),
+            case aesc_fsm:upd_call_contract(fsm_pid(H),
                                             #{contract   => Contract,
                                               vm_version => VmVersion,
                                               amount     => Amount,
                                               call_data  => CallData}) of
-                ok -> no_reply;
+                ok -> reply(ok, H, no_reply);
                 {error, Reason} ->
-                    {reply, error_response(R, Reason)}
+                    error_response(Reason, H)
             end;
-        _ -> {reply, error_response(R, broken_code)}
+        _ -> error_response(broken_code, H)
     end;
-process_incoming(#{<<"action">> := <<"get">>,
-                   <<"tag">> := <<"contract_call">>,
-                   <<"payload">> := #{<<"contract">>   := ContractE,
-                                      <<"caller">>     := CallerE,
-                                      <<"round">>      := Round}} = R, State) ->
+process_incoming(#{<<"method">> := <<"channels.get.contract_call">>,
+                   <<"params">> := #{<<"contract">>   := ContractE,
+                                     <<"caller">>     := CallerE,
+                                     <<"round">>      := Round}}, H) ->
     case {aec_base58c:safe_decode(contract_pubkey, ContractE),
           aec_base58c:safe_decode(account_pubkey, CallerE)} of
         {{ok, Contract}, {ok, Caller}} ->
-            case aesc_fsm:get_contract_call(fsm_pid(State),
+            case aesc_fsm:get_contract_call(fsm_pid(H),
                                             Contract, Caller, Round) of
                 {ok, Call} ->
-                    Resp = #{action => <<"get">>,
-                             tag => <<"contract_call">>,
-                             payload => aect_call:serialize_for_client(Call)},
-                    {reply, Resp};
+                    reply(aect_call:serialize_for_client(Call), H);
                 {error, Reason} ->
-                    {reply, error_response(R, Reason)}
+                    error_response(Reason, H)
             end;
-        _ -> {reply, error_response(R, broken_code)}
+        _ -> error_response(broken_code, H)
     end;
-process_incoming(#{<<"action">> := <<"clean_contract_calls">>}, State) ->
-    ok = aesc_fsm:prune_local_calls(fsm_pid(State)),
-    {reply, ok_response(calls_pruned)};
-process_incoming(#{<<"action">> := <<"get">>,
-                   <<"tag">>    := <<"balances">>,
-                   <<"payload">> := #{<<"accounts">> := Accounts}} = R, State) ->
+process_incoming(#{<<"method">> := <<"channels.clean_contract_calls">>}, H) ->
+    ok = aesc_fsm:prune_local_calls(fsm_pid(H)),
+    reply(ok_response(calls_pruned), H);
+process_incoming(#{<<"method">> := <<"channels.get.balances">>,
+                   <<"params">> := #{<<"accounts">> := Accounts}}, H) ->
     case safe_decode_account_keys(Accounts) of
         {ok, AccountKeys} ->
             case aesc_fsm:get_balances(
-                   fsm_pid(State), [K || {_,K} <- AccountKeys]) of
+                   fsm_pid(H), [K || {_,K} <- AccountKeys]) of
                 {ok, Balances} ->
-                    Resp = #{action  => <<"get">>,
-                             tag     => <<"balances">>,
-                             payload => [#{<<"account">> => AcctExt,
-                                           <<"balance">> => Bal}
-                                         || {AcctExt, AcctInt} <- AccountKeys,
-                                            {Acct, Bal} <- Balances,
-                                            AcctInt =:= Acct]},
-                    {reply, Resp};
+                    Resp = [#{<<"account">> => AcctExt,
+                              <<"balance">> => Bal}
+                            || {AcctExt, AcctInt} <- AccountKeys,
+                               {Acct, Bal} <- Balances,
+                               AcctInt =:= Acct],
+                    reply(Resp, H);
                 {error, Reason} ->
-                    {reply, error_response(R, Reason)}
+                    error_response(Reason, H)
             end;
         {error, _} ->
-            {reply, error_response(R, invalid_arguments)}
+            error_response(invalid_arguments, H)
     end;
-process_incoming(#{<<"action">> := <<"get">>,
-                   <<"tag">> := <<"poi">>,
-                   <<"payload">> := Filter} = R, State) ->
+process_incoming(#{<<"method">> := <<"channels.get.poi">>,
+                   <<"params">> := Filter}, H) ->
     AccountsE   = maps:get(<<"accounts">>, Filter, []),
     ContractsE  = maps:get(<<"contracts">>, Filter, []),
     Parse =
@@ -379,79 +399,78 @@ process_incoming(#{<<"action">> := <<"get">>,
         end,
     BrokenEncodingReply =
         fun(What) ->
-            {reply, error_response(R, <<"broken_encoding: ", What/binary>>)}
+                error_response(<<"broken_encoding: ", What/binary>>, H)
         end,
     case {Parse(account_pubkey, AccountsE), Parse(contract_pubkey, ContractsE)} of
         {{ok, Accounts0}, {ok, Contracts0}} ->
             Accounts = [{account, A} || A <- Accounts0 ++ Contracts0],
             Contracts = [{contract, C} || C <- Contracts0],
-            case aesc_fsm:get_poi(fsm_pid(State), Accounts ++ Contracts) of
+            case aesc_fsm:get_poi(fsm_pid(H), Accounts ++ Contracts) of
                 {ok, PoI} ->
-                    Resp = #{action => <<"get">>,
-                             tag => <<"poi">>,
-                             payload => #{
-                                <<"poi">> => aec_base58c:encode(poi, aec_trees:serialize_poi(PoI))}},
-                    {reply, Resp};
+                    Resp = #{
+                      <<"poi">> => aec_base58c:encode(
+                                     poi, aec_trees:serialize_poi(PoI))},
+                    reply(Resp, H);
                 {error, Reason} ->
-                    {reply, error_response(R, Reason)}
+                    error_response(Reason, H)
             end;
       {{error, _},  {ok, _}}    -> BrokenEncodingReply(<<"accounts">>);
       {{ok, _},     {error, _}} -> BrokenEncodingReply(<<"contracts">>);
       {{error, _},  {error, _}} -> BrokenEncodingReply(<<"accounts, contracts">>)
     end;
-process_incoming(#{<<"action">> := <<"message">>,
-                   <<"payload">> := #{<<"to">>    := ToB,
-                                      <<"info">>  := Msg}} = R, State) ->
+process_incoming(#{<<"method">> := <<"channels.message">>,
+                   <<"params">> := #{<<"to">>    := ToB,
+                                     <<"info">>  := Msg}}, H) ->
     case aec_base58c:safe_decode(account_pubkey, ToB) of
         {ok, To} ->
-            case aesc_fsm:inband_msg(fsm_pid(State), To, Msg) of
-                ok -> no_reply;
+            case aesc_fsm:inband_msg(fsm_pid(H), To, Msg) of
+                ok -> reply(ok, H, no_reply);
                 {error, Reason} ->
-                    {reply, error_response(R, Reason)}
+                    error_response(Reason, H)
             end;
-        _ -> {reply, error_response(R, broken_encoding)}
+        _ -> error_response(broken_encoding, H)
     end;
-process_incoming(#{<<"action">> := <<"deposit">>,
-                   <<"payload">> := #{<<"amount">>  := Amount}} = R, State) ->
-    case aesc_fsm:upd_deposit(fsm_pid(State), #{amount => Amount}) of
-        ok -> no_reply;
+process_incoming(#{<<"method">> := <<"channels.deposit">>,
+                   <<"params">> := #{<<"amount">>  := Amount}}, H) ->
+    case aesc_fsm:upd_deposit(fsm_pid(H), #{amount => Amount}) of
+        ok -> reply(ok, H, no_reply);
         {error, Reason} ->
-            {reply, error_response(R, Reason)}
+            error_response(Reason, H)
     end;
-process_incoming(#{<<"action">> := <<"withdraw">>,
-                   <<"payload">> := #{<<"amount">>  := Amount}} = R, State) ->
-    case aesc_fsm:upd_withdraw(fsm_pid(State), #{amount => Amount}) of
-        ok -> no_reply;
+process_incoming(#{<<"method">> := <<"channels.withdraw">>,
+                   <<"params">> := #{<<"amount">>  := Amount}}, H) ->
+    case aesc_fsm:upd_withdraw(fsm_pid(H), #{amount => Amount}) of
+        ok -> reply(ok, H, no_reply);
         {error, Reason} ->
-            {reply, error_response(R, Reason)}
+            error_response(Reason, H)
     end;
-process_incoming(#{<<"action">> := Action,
-                   <<"payload">> := #{<<"tx">> := EncodedTx}}, State)
-    when ?ACTION_SIGNED(Action) ->
-    Tag = ?ACTION_TAG(Action),
+process_incoming(#{<<"method">> := Method,
+                   <<"params">> := #{<<"tx">> := EncodedTx}}, H)
+    when ?METHOD_SIGNED(Method) ->
+    Tag = ?METHOD_TAG(Method),
     case aec_base58c:safe_decode(transaction, EncodedTx) of
         {error, _} ->
-            lager:warning("Channel WS: broken ~p tx ~p", [Action, EncodedTx]),
-            {error, invalid_tx};
+            lager:warning("Channel WS: broken ~p tx ~p", [Method, EncodedTx]),
+            error_response(invalid_tx, H);
         {ok, TxBin} ->
-             SignedTx = aetx_sign:deserialize_from_binary(TxBin),%TODO: check tx
-             aesc_fsm:signing_response(fsm_pid(State), Tag, SignedTx),
-             no_reply
+            SignedTx = aetx_sign:deserialize_from_binary(TxBin),%TODO: check tx
+            aesc_fsm:signing_response(fsm_pid(H), Tag, SignedTx),
+            reply(ok, H, no_reply)
     end;
-process_incoming(#{<<"action">> := <<"leave">>}, State) ->
+process_incoming(#{<<"method">> := <<"channels.leave">>}, H) ->
     lager:debug("Channel WS: leave channel message received"),
-    aesc_fsm:leave(fsm_pid(State)),
-    no_reply;
-process_incoming(#{<<"action">> := <<"shutdown">>}, State) ->
+    aesc_fsm:leave(fsm_pid(H)),
+    reply(ok, H, no_reply);
+process_incoming(#{<<"method">> := <<"channels.shutdown">>}, H) ->
     lager:warning("Channel WS: closing channel message received"),
-    aesc_fsm:shutdown(fsm_pid(State)),
-    no_reply;
-process_incoming(#{<<"action">> := _} = Unhandled, _State) ->
+    aesc_fsm:shutdown(fsm_pid(H)),
+    reply(ok, H, no_reply);
+process_incoming(#{<<"method">> := _} = Unhandled, H) ->
     lager:warning("Channel WS: unhandled action received ~p", [Unhandled]),
-    {error, unhandled};
-process_incoming(Msg, _State) ->
+    error_response(unhandled, H);
+process_incoming(Msg, H) ->
     lager:warning("Channel WS: missing action received ~p", [Msg]),
-    {error, unhandled}.
+    error_response(unhandled, H).
 
 -spec process_fsm(term(), handler()) -> no_reply | {reply, map()} | {error, atom()}.
 process_fsm(#{type := sign,
@@ -477,7 +496,7 @@ process_fsm(#{type := sign,
             withdraw_created -> <<"withdraw_ack">>;
             T -> T
         end,
-    reply(#{action => <<"sign">>,
+    reply(#{action  => <<"sign">>,
             tag => Tag1,
             payload => #{tx => EncTx}}, H);
 process_fsm(#{type := report,
@@ -518,12 +537,13 @@ process_fsm(#{type := report,
             {debug, Msg} -> #{message => Msg}
         end,
     Action = atom_to_binary(Tag, utf8),
-    reply(#{action => Action,
-            payload => Payload}, H);
+    fsm_reply(#{action => Action,
+                payload => Payload}, H);
 process_fsm(#{type := Type, tag := Tag, info := Event}, _H) ->
     error({unparsed_fsm_event, Type, Tag, Event}).
 
 prepare_handler(Params) ->
+    lager:debug("prepare_handler() Params = ~p", [Params]),
     Read =
         fun(Key, RecordField, Opts) ->
             fun(H) ->
@@ -559,7 +579,17 @@ prepare_handler(Params) ->
         fun(_, {error, _} = Err) -> Err;
             (Fun, Accum) -> Fun(Accum)
         end,
-        #handler{}, Validators).
+        #handler{protocol = protocol(Params)}, Validators).
+
+protocol(#{protocol := P}) ->
+    case P of
+        <<"legacy">>  -> legacy;
+        <<"jsonrpc">> -> jsonrpc;
+        _ when P==legacy;
+               P==jsonrpc -> P;
+        _Other ->
+            erlang:error(invalid_protocol)
+    end.
 
 read_channel_options(Params) ->
     Read =
@@ -618,13 +648,24 @@ read_channel_options(Params) ->
           ++ lists:map(ReadReport, aesc_fsm:report_tags())
      ).
 
-error_response(Req, Reason) ->
-    #{<<"action">>  => <<"error">>,
-      <<"payload">> => #{<<"request">> => Req,
-                         <<"reason">> => Reason}}.
+error_response(Reason, #handler{protocol = legacy, orig_request = Req}) ->
+    {reply, #{ <<"action">>  => <<"error">>
+             , <<"payload">> => #{ <<"request">> => Req
+                                 , <<"reason">> => Reason} }
+    };
+error_response(Reason, #handler{protocol = jsonrpc, orig_request = Req}) ->
+    case Req of
+        #{<<"id">> := Id} ->
+            {reply, #{ <<"jsonrpc">> => <<"2.0">>
+                     , <<"id">>      => Id
+                     , <<"error">>   => Reason }
+            };
+        _ ->
+            noreply
+    end.
 
 ok_response(Action) ->
-    #{<<"action">>  => Action}.
+    #{action => Action}.
 
 bytearray_decode(Bytearray) ->
     aec_base58c:safe_decode(contract_bytearray, Bytearray).
@@ -639,3 +680,103 @@ safe_decode_account_keys(Keys) ->
         error:_ ->
             {error, invalid_pubkey}
     end.
+
+unpack_request(jsonrpc, #{ <<"jsonrpc">> := <<"2.0">>
+                         , <<"method">>  := _Method } = Req, H) ->
+    { Req, H#handler{orig_request = Req} };
+unpack_request(legacy, #{ <<"action">>  := Action
+                        , <<"tag">>     := Tag
+                        , <<"payload">> := Payload } = Req, H) ->
+    Method = legacy_to_method_in(Action, Tag),
+    { #{ <<"method">> => Method
+       , <<"params">> => Payload }
+    , H#handler{ orig_request = Req#{<<"method">> => Method} } };
+unpack_request(legacy, #{ <<"action">>  := Action
+                        , <<"payload">> := Payload } = Req, H) ->
+    Method = legacy_to_method_in(Action),
+    { #{ <<"method">> => Method
+       , <<"params">> => Payload }
+    , H#handler{ orig_request = Req#{<<"method">> => Method} } };
+unpack_request(legacy, #{ <<"action">> := Action } = Req, H) ->
+    Method = legacy_to_method_in(Action),
+    { #{ <<"method">> => Method }
+    , H#handler{ orig_request = Req#{<<"method">> => Method} } }.
+
+unpack_info(Protocol, Msg, H) ->
+    Req = info_to_req(Protocol, Msg),
+    { Msg, H#handler{orig_request = Req} }.
+
+info_to_req(_, {aesc_fsm, _, #{type := Type, tag := Tag} = Req})
+  when Type == report; Type == info; Type == sign ->
+    Method = iolist_to_binary(["channels.", atom_to_list(Type), ".", atom_to_list(Tag)]),
+    #{ <<"method">> => Method
+     , <<"params">> => Req };
+info_to_req(_, _) ->
+    undefined.
+
+reply(Payload, #handler{protocol = legacy, orig_request = undefined}) ->
+    {reply, Payload};
+reply(Payload, #handler{protocol = legacy, orig_request = #{<<"method">> := Method}}) ->
+    {reply, legacy_notify(Method, Payload)};
+reply(Reply, #handler{protocol = jsonrpc} = H) ->
+    json_rpc_reply(Reply, H).
+
+legacy_notify(Method, Reply) ->
+    case binary:split(Method, [<<".">>], [global]) of
+        [<<"channels">>, Action, Tag] ->
+            Action1 = opt_maps_get(action, Reply, Action),
+            Tag1 = case find_tag(Reply) of
+                       {ok, T} -> T;
+                       error   -> Tag
+                   end,
+            add_payload(Reply, #{ <<"action">>  => Action1
+                                , <<"tag">>     => Tag1 });
+        [<<"channels">>, Action] ->
+            Action1 = opt_maps_get(action, Reply, Action),
+            case find_tag(Reply) of
+                {ok, Tag} ->
+                    add_payload(Reply, #{ <<"action">>  => Action1
+                                        , <<"tag">>     => Tag});
+                error ->
+                    add_payload(Reply, #{ <<"action">>  => Action1 })
+            end
+    end.
+
+opt_maps_get(Key, Map, Default) when is_map(Map) ->
+    maps:get(Key, Map, Default);
+opt_maps_get(_ , _, Default) ->
+    Default.
+
+find_tag(#{tag := Tag}) -> {ok, Tag};
+find_tag(_)             -> error.
+
+add_payload(#{payload := Payload}, Msg) -> Msg#{<<"payload">> => Payload};
+add_payload(#{action := _}       , Msg) -> Msg;
+add_payload(Reply                , Msg) -> Msg#{<<"payload">> => Reply}.
+
+json_rpc_reply(#{payload := Payload} = Reply, #handler{orig_request = Req}) ->
+    case Req of
+        #{id := Id} ->
+            {reply, #{ <<"jsonrpc">> => <<"2.0">>
+                     , <<"id">>      => Id
+                     , <<"result">>  => Payload }
+            };
+        _ ->
+            {reply, #{ <<"jsonrpc">> => <<"2.0">>
+                     , <<"method">>  => legacy_to_method_out(Reply)
+                     , <<"params">>  => Payload }}
+    end.
+
+legacy_to_method_in(Action) ->
+    <<"channels.", Action/binary>>.
+
+legacy_to_method_in(Action, Tag) ->
+    <<"channels.", Action/binary, ".", Tag/binary>>.
+
+legacy_to_method_out(#{action := Action, tag := Tag}) ->
+    <<"channels.", Action/binary, ".", Tag/binary>>.
+
+reply(_, #handler{protocol = legacy}, no_reply) ->
+    no_reply;
+reply(Reply, #handler{protocol = jsonrpc} = H, _) ->
+    json_rpc_reply(Reply, H).
