@@ -18,6 +18,7 @@ It:
 * Changes micro block gossip to use Light micro blocks, containing only Tx hashes. In most cases the receiving node
   has already seen all transactions so this saves bandwidth. This bumps the P2P_PROTOCOL_VSN.
 * Fine-tunes the determinism of the computation of the dynamic component of the fee of oracle transactions related to TTL of objects (oracles, queries, responses) on state trees, moving floating point computations to integer based ones. This impacts consensus.
+* Fixes coinbase instruction in aevm. This impacts consensus.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.21.0
 [digishield_v3]: https://github.com/zawy12/difficulty-algorithms/issues/9
