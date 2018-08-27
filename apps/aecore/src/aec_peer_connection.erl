@@ -44,7 +44,7 @@
 
 -import(aeu_debug, [pp/1]).
 
--define(P2P_PROTOCOL_VSN, 3).
+-define(P2P_PROTOCOL_VSN, 4).
 
 -define(DEFAULT_CONNECT_TIMEOUT, 1000).
 -define(DEFAULT_FIRST_PING_TIMEOUT, 30000).
@@ -226,6 +226,8 @@ handle_cast({send_tx, Hash}, State) ->
 handle_cast({send_block, Hash}, State) ->
     send_send_block(State, Hash),
     {noreply, State};
+handle_cast({expand_micro_block, MicroBlockFragment}, State) ->
+    {noreply, expand_micro_block(State, MicroBlockFragment)};
 handle_cast(stop, State) ->
     State1 = cleanup_connection(State),
     {stop, normal, State1};
@@ -419,7 +421,7 @@ handle_request_timeout(S, Ref, Kind) ->
     case get_request(S, Kind) of
         {_MappedKind, From, Ref} ->
             epoch_sync:info("~p request timeout, stopping peer_connection", [Kind]),
-            gen_server:reply(From, {error, request_timeout}),
+            do_reply(From, {error, request_timeout}),
             handle_general_error(S);
         _Other ->
             %% We got a stale timeout
@@ -482,7 +484,7 @@ cleanup_connection(State) ->
 cleanup_requests(State) ->
     Reqs = maps:to_list(maps:get(requests, State, #{})),
     [ begin
-        gen_server:reply(From, {error, disconnected}),
+        do_reply(From, {error, disconnected}),
         erlang:cancel_timer(TRef)
       end || {_, {_, From, TRef}} <- Reqs ],
     maps:remove(requests, State).
@@ -508,12 +510,19 @@ handle_fragment(S = #{ fragments := Fragments }, N, M, _Fragment) ->
 handle_msg(S, MsgType, IsResponse, Result) ->
     handle_msg(S, MsgType, IsResponse, get_request(S, MsgType), Result).
 
+do_reply(From = {Pid, _Tag}, Msg) when is_pid(Pid) ->
+    gen_server:reply(From, Msg);
+do_reply(_Other, _Msg) ->
+    ok.
+
+handle_msg(S, block_txs, true, none, Result) ->
+    handle_get_block_txs_rsp(S, Result);
 handle_msg(S, MsgType, true, none, Result) ->
     epoch_sync:info("Peer ~p got unexpected ~p response - ~p",
                     [peer_id(S), MsgType, Result]),
     S;
 handle_msg(S, _MsgType, true, {RequestFld, From, _TRef}, {error, Reason}) ->
-    gen_server:reply(From, {error, Reason}),
+    do_reply(From, {error, Reason}),
     remove_request_fld(S, RequestFld);
 handle_msg(S, MsgType, false, Request, {ok, Vsn, Msg}) ->
     case MsgType of
@@ -522,7 +531,9 @@ handle_msg(S, MsgType, false, Request, {ok, Vsn, Msg}) ->
         get_header_by_height -> handle_get_header_by_height(S, Vsn, Msg);
         get_n_successors     -> handle_get_n_successors(S, Vsn, Msg);
         get_generation       -> handle_get_generation(S, Msg);
-        block                -> handle_new_block(S, Msg);
+        get_block_txs        -> handle_get_block_txs(S, Msg);
+        key_block            -> handle_new_key_block(S, Msg);
+        micro_block          -> handle_new_micro_block(S, Msg);
         txs                  -> handle_new_txs(S, Msg);
         txps_init            -> handle_tx_pool_sync_init(S, Msg);
         txps_unfold          -> handle_tx_pool_sync_unfold(S, Msg);
@@ -823,8 +834,8 @@ handle_get_generation(S, Msg) ->
     Response =
         case do_get_generation(maps:get(hash, Msg), Forward) of
             {ok, KeyBlock, MicroBlocks} ->
-                SerKeyBlock = aec_blocks:serialize_to_binary(KeyBlock),
-                SerMicroBlocks = [ aec_blocks:serialize_to_binary(B) || B <- MicroBlocks ],
+                SerKeyBlock = serialize_key_block(KeyBlock),
+                SerMicroBlocks = [ serialize_micro_block(B) || B <- MicroBlocks ],
                 {ok, #{key_block => SerKeyBlock, micro_blocks => SerMicroBlocks, forward => Forward }};
             error ->
                 {error, block_not_found}
@@ -855,34 +866,6 @@ handle_get_generation_rsp(S, {get_generation, From, _TRef}, Msg) ->
         end,
     gen_server:reply(From, Res),
     remove_request_fld(S, get_generation).
-
-deserialize_key_block(SKB) ->
-    case aec_blocks:deserialize_from_binary(SKB) of
-        Err = {error, _} -> Err;
-        {ok, KB} ->
-            case aec_blocks:type(KB) of
-                key -> {ok, KB};
-                micro -> {error, {not_key_block, KB}}
-            end
-    end.
-
-deserialize_micro_block(SMB) ->
-    case aec_blocks:deserialize_from_binary(SMB) of
-        Err = {error, _} -> Err;
-        {ok, MB} ->
-            case aec_blocks:type(MB) of
-                micro -> {ok, MB};
-                key -> {error, {not_micro_block, MB}}
-            end
-    end.
-
-deserialize_micro_blocks([], Acc) ->
-    {ok, lists:reverse(Acc)};
-deserialize_micro_blocks([SMB | SMBs], Acc) ->
-    case deserialize_micro_block(SMB) of
-        {ok, MB}         -> deserialize_micro_blocks(SMBs, [MB | Acc]);
-        Err = {error, _} -> Err
-    end.
 
 %% -- TX Pool ----------------------------------------------------------------
 
@@ -943,21 +926,140 @@ send_send_block(#{ status := error }, _Block) ->
 send_send_block(#{ status := {disconnecting, _ESock} }, _Block) ->
     ok;
 send_send_block(S = #{ status := {connected, _ESock} }, Block) ->
-    SerBlock = aec_blocks:serialize_to_binary(Block),
-    Msg = aec_peer_messages:serialize(block, #{ block => SerBlock }),
-    send_msg(S, block, Msg).
+    {MsgType, Msg} =
+        case aec_blocks:type(Block) of
+            key   -> {key_block, #{ key_block => serialize_key_block(Block) }};
+            micro -> {micro_block, #{ micro_block => serialize_light_micro_block(Block),
+                                      light => true }}
+        end,
+    send_msg(S, MsgType, aec_peer_messages:serialize(MsgType, Msg)).
 
-handle_new_block(S, Msg) ->
+handle_new_key_block(S, Msg) ->
     try
-        {ok, Block} = aec_blocks:deserialize_from_binary(maps:get(block, Msg)),
-        Header = aec_blocks:to_header(Block),
+        {ok, KeyBlock} = deserialize_key_block(maps:get(key_block, Msg)),
+        Header = aec_blocks:to_header(KeyBlock),
         {ok, HH} = aec_headers:hash_header(Header),
         epoch_sync:debug("Got new block: ~s", [pp(HH)]),
-        aec_conductor:post_block(Block)
+        aec_conductor:post_block(KeyBlock)
     catch _:_ ->
         ok
     end,
     S.
+
+handle_new_micro_block(S, Msg) ->
+    try
+        case maps:get(light, Msg, false) of
+            false ->
+                {ok, MicroBlock} = deserialize_micro_block(maps:get(micro_block, Msg)),
+                Header = aec_blocks:to_header(MicroBlock),
+                {ok, HH} = aec_headers:hash_header(Header),
+                epoch_sync:debug("Got new block: ~s", [pp(HH)]),
+                aec_conductor:post_block(MicroBlock);
+            true ->
+                {ok, #{ header := Header, tx_hashes := TxHashes }} =
+                    deserialize_light_micro_block(maps:get(micro_block, Msg)),
+                case get_micro_block_txs(TxHashes) of
+                    {all, Txs} ->
+                        MicroBlock = aec_blocks:new_micro_from_header(Header, Txs),
+                        {ok, HH} = aec_headers:hash_header(Header),
+                        epoch_sync:debug("Got new block: ~s", [pp(HH)]),
+                        aec_conductor:post_block(MicroBlock);
+                    {some, TxsAndTxHashes} ->
+                        epoch_sync:info("Missing txs: ~p",
+                                        [[ TH || TH <- TxsAndTxHashes, is_binary(TH) ]]),
+                        cast(self(), {expand_micro_block, #{ header => Header,
+                                                             tx_data => TxsAndTxHashes }}),
+                        ok
+                end
+        end
+    catch _:_ ->
+        ok
+    end,
+    S.
+
+%% -- Get block txs ----------------------------------------------------------
+
+expand_micro_block(State, #{ header := Header,
+                             tx_data := TxsAndTxHashes } = MicroBlockFragment) ->
+    {ok, Hash} = aec_headers:hash_header(Header),
+    case get_request(State, {expand, Hash}) of
+        none ->
+            MissingTxs = [ T || T <- TxsAndTxHashes, is_binary(T) ],
+            MsgData    = #{ hash => Hash, tx_hashes => MissingTxs },
+            Msg = aec_peer_messages:serialize(get_block_txs, MsgData),
+            send_msg(State, get_block_txs, Msg),
+            set_request(State, {expand, Hash}, MicroBlockFragment);
+        {_, _, _} ->
+            %% Already working on this one
+            epoch_sync:info("Got the same block twice from the same source (Hash: ~s)",
+                            [pp(Hash)]),
+            State
+    end.
+
+handle_get_block_txs(S, Msg) ->
+    Hash = maps:get(hash, Msg),
+    TxHashes = maps:get(tx_hashes, Msg),
+    case find_txs(TxHashes) of
+        {ok, Txs} ->
+            SerTxs = [ aetx_sign:serialize_to_binary(Tx) || Tx <- Txs ],
+            send_response(S, block_txs, {ok, #{ hash => Hash, txs => SerTxs }});
+        Err = {error, _} ->
+            send_response(S, block_txs, Err)
+    end,
+    S.
+
+find_txs(TxHashes) ->
+    find_txs(TxHashes, []).
+
+find_txs([], Acc) ->
+    {ok, lists:reverse(Acc)};
+find_txs([TxHash | TxHashes], Acc) ->
+    case aec_db:find_signed_tx(TxHash) of
+        none ->
+            %% TODO: this is perhaps not a true error
+            epoch_sync:error("Missing TX ~s", [pp(TxHash)]),
+            {error, tx_missing};
+        {value, Tx} ->
+            find_txs(TxHashes, [Tx | Acc])
+    end.
+
+handle_get_block_txs_rsp(State, {error, _}) ->
+    State; %% We can't do any cleanup - the request will timeout later
+handle_get_block_txs_rsp(State, {ok, _Vsn, Msg}) ->
+    Hash = maps:get(hash, Msg),
+    case get_request(State, {expand, Hash}) of
+        none ->
+            epoch_sync:info("Got unexpected 'block_txs' message for ~s", [pp(Hash)]),
+            State;
+        {{expand, Hash}, MicroBlockFragment, _TRef} ->
+            Txs = [ aetx_sign:deserialize_from_binary(STx) || STx <- maps:get(txs, Msg) ],
+            #{ header := Header, tx_data := TxsAndTxHashes } = MicroBlockFragment,
+            case fill_txs(TxsAndTxHashes, Txs) of
+                {ok, AllTxs} ->
+                    MB = aec_blocks:new_micro_from_header(Header, AllTxs),
+                    epoch_sync:info("Assembled new block: ~s", [pp(Hash)]),
+                    aec_conductor:post_block(MB);
+                error ->
+                    epoch_sync:info("Failed to assemble micro block ~s", [pp(Hash)])
+            end
+    end,
+    remove_request_fld(State, {expand, Hash}).
+
+fill_txs(TATHs, Txs) ->
+    fill_txs(TATHs, Txs, []).
+
+fill_txs([], _, Acc) ->
+    {ok, lists:reverse(Acc)};
+fill_txs([Tx | TATHs], Txs, Acc) when not is_binary(Tx) ->
+    fill_txs(TATHs, Txs, [Tx | Acc]);
+fill_txs([TH | TATHs], [Tx | Txs], Acc) ->
+    case aetx_sign:hash(Tx) == TH of
+        true -> fill_txs(TATHs, Txs, [Tx | Acc]);
+        false -> error
+    end;
+fill_txs([_TH | _TATHs], [], _Acc) ->
+    error.
+
 
 %% -- Send TX --------------------------------------------------------------
 
@@ -1050,4 +1152,74 @@ close_timeout() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"close_timeout">>],
                                aecore, sync_close_timeout,
                                ?DEFAULT_CLOSE_TIMEOUT).
+%% -- Helper functions -------------------------------------------------------
 
+serialize_key_block(KeyBlock) ->
+    key = aec_blocks:type(KeyBlock),
+    aec_blocks:serialize_to_binary(KeyBlock).
+
+serialize_micro_block(MicroBlock) ->
+    micro = aec_blocks:type(MicroBlock),
+    aec_blocks:serialize_to_binary(MicroBlock).
+
+serialize_light_micro_block(MicroBlock) ->
+    micro = aec_blocks:type(MicroBlock),
+    Hdr = aec_headers:serialize_to_binary(aec_blocks:to_header(MicroBlock)),
+    TxHashes = [ aetx_sign:hash(STx) || STx <- aec_blocks:txs(MicroBlock) ],
+    Vsn = aec_blocks:version(MicroBlock),
+    Template = light_micro_template(),
+    aec_object_serialization:serialize(
+        light_micro_block, Vsn, Template,
+        [{header, Hdr}, {tx_hashes, TxHashes}]).
+
+light_micro_template() ->
+    [{header, binary}, {tx_hashes, [binary]}].
+
+deserialize_key_block(SKB) ->
+    deserialize_block(key, SKB).
+
+deserialize_micro_block(SMB) ->
+    deserialize_block(micro, SMB).
+
+deserialize_light_micro_block(SSMB) ->
+    deserialize_block(light_micro, SSMB).
+
+deserialize_block(light_micro, Binary) ->
+    case aec_object_serialization:deserialize_type_and_vsn(Binary) of
+        {light_micro_block, Vsn, _RawFlds} ->
+            Template = light_micro_template(),
+            [{header, SerHdr}, {tx_hashes, TxHashes}] =
+                aec_object_serialization:deserialize(light_micro_block, Vsn, Template, Binary),
+            Hdr = aec_headers:deserialize_from_binary(SerHdr),
+            {ok, #{ header => Hdr, tx_hashes => TxHashes }};
+        _ ->
+            {error, bad_light_micro_block}
+    end;
+deserialize_block(Type, Binary) ->
+    case aec_blocks:deserialize_from_binary(Binary) of
+        Err = {error, _} -> Err;
+        {ok, Block} ->
+            case aec_blocks:type(Block) of
+                Type      -> {ok, Block};
+                WrongType -> {error, {wrong_block_type, WrongType, expected, Type}}
+            end
+    end.
+
+deserialize_micro_blocks([], Acc) ->
+    {ok, lists:reverse(Acc)};
+deserialize_micro_blocks([SMB | SMBs], Acc) ->
+    case deserialize_micro_block(SMB) of
+        {ok, MB}         -> deserialize_micro_blocks(SMBs, [MB | Acc]);
+        Err = {error, _} -> Err
+    end.
+
+get_micro_block_txs(TxHashes) ->
+    get_micro_block_txs(TxHashes, all, []).
+
+get_micro_block_txs([], State, Acc) ->
+    {State, lists:reverse(Acc)};
+get_micro_block_txs([TxHash | TxHashes], State, Acc) ->
+    case aec_db:find_signed_tx(TxHash) of
+        none         -> get_micro_block_txs(TxHashes, some, [TxHash | Acc]);
+        {value, STx} -> get_micro_block_txs(TxHashes, State, [STx | Acc])
+    end.

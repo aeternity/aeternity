@@ -54,6 +54,9 @@ schedule_ping(PeerId) ->
 %% Only used by test
 worker_for_peer(PeerId) ->
     gen_server:call(?MODULE, {worker_for_peer, PeerId}).
+
+gossip_txs(GossipTxs) ->
+    gen_server:call(?MODULE, {gossip_txs, GossipTxs}).
 -endif.
 
 sync_in_progress(PeerId) ->
@@ -99,6 +102,7 @@ handle_worker(Task, Action) ->
 -record(state, { sync_tasks = []                 :: [#sync_task{}]
                , last_generation_in_sync = false :: boolean()
                , top_target = 0                  :: aec_blocks:height()
+               , gossip_txs = true               :: boolean()
                }).
 
 start_link() ->
@@ -151,6 +155,8 @@ handle_call({next_work_item, STId, PeerId, LastResult}, _From, State) ->
     State1 = handle_last_result(State, STId, LastResult),
     {Reply, State2} = get_next_work_item(State1, STId, PeerId),
     {reply, Reply, State2};
+handle_call({gossip_txs, GossipTxs}, _From, State) ->
+    {reply, ok, State#state{ gossip_txs = GossipTxs }};
 handle_call(_, _From, State) ->
     {reply, error, State}.
 
@@ -194,7 +200,8 @@ handle_cast({handle_worker, STId, Action}, State) ->
 handle_cast(_, State) ->
     {noreply, State}.
 
-handle_info({gproc_ps_event, Event, #{info := Info}}, State) ->
+handle_info({gproc_ps_event, Event, #{info := Info}},
+            State = #state{ gossip_txs = GossipTxs }) ->
     %% FUTURE: Forward blocks only to outbound connections.
     PeerIds = [ aec_peers:peer_id(P) || P <- aec_peers:connected_peers() ],
     NonSyncingPeerIds = [ P || P <- PeerIds, not peer_in_sync(State, P) ],
@@ -202,8 +209,10 @@ handle_info({gproc_ps_event, Event, #{info := Info}}, State) ->
         block_to_publish ->
             Block = Info,
             enqueue(block, Block, NonSyncingPeerIds);
-        tx_created    -> enqueue(tx, Info, PeerIds);
-        tx_received   -> enqueue(tx, Info, PeerIds);
+        tx_created when GossipTxs ->
+            enqueue(tx, Info, PeerIds);
+        tx_received when GossipTxs ->
+            enqueue(tx, Info, PeerIds);
         _             -> ignore
     end,
     {noreply, State};

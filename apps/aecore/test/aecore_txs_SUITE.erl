@@ -12,15 +12,18 @@
 
 %% test case exports
 -export(
-   [ txs_gc/1, micro_block_cycle/1
+   [ micro_block_cycle/1
+   , missing_tx_gossip/1
+   , txs_gc/1
    ]).
 
 
 -include_lib("common_test/include/ct.hrl").
 
 all() ->
-    [ txs_gc,
-      micro_block_cycle
+    [ micro_block_cycle
+    , missing_tx_gossip
+    , txs_gc
     ].
 
 init_per_suite(Config) ->
@@ -46,10 +49,10 @@ init_per_suite(Config) ->
     },
     aecore_suite_utils:create_configs(Config1, DefCfg),
     aecore_suite_utils:make_multi(Config1),
-    [{nodes, [aecore_suite_utils:node_tuple(dev1)]} | Config1].
+    [{nodes, [aecore_suite_utils:node_tuple(dev1),
+              aecore_suite_utils:node_tuple(dev2)]} | Config1].
 
-end_per_suite(Config) ->
-    aecore_suite_utils:stop_node(dev1, Config),
+end_per_suite(_Config) ->
     ok.
 
 init_per_testcase(_Case, Config) ->
@@ -60,6 +63,8 @@ end_per_testcase(_Case, Config) ->
     Ts0 = ?config(tc_start, Config),
     ct:log("Events during TC: ~p", [[{N, aecore_suite_utils:all_events_since(N, Ts0)}
                                      || {_,N} <- ?config(nodes, Config)]]),
+    aecore_suite_utils:stop_node(dev1, Config),
+    aecore_suite_utils:stop_node(dev2, Config),
     ok.
 
 %% ============================================================
@@ -146,6 +151,37 @@ txs_gc(Config) ->
     {0, _} = {length(Txs6), Txs6},
 
     ok = aecore_suite_utils:check_for_logs([dev1], Config).
+
+missing_tx_gossip(Config) ->
+    aecore_suite_utils:start_node(dev1, Config),
+    aecore_suite_utils:start_node(dev2, Config),
+
+    N1 = aecore_suite_utils:node_name(dev1),
+    N2 = aecore_suite_utils:node_name(dev2),
+
+    aecore_suite_utils:connect(N1),
+    aecore_suite_utils:connect(N2),
+
+    %% Both nodes are up, now turn off gossiping of TXs
+    %% Also (virtually) disable ping
+    rpc:call(N1, aec_sync, gossip_txs, [false], 5000),
+    rpc:call(N2, aec_sync, gossip_txs, [false], 5000),
+    rpc:call(N1, application, set_env, [aecore, ping_interval, 1000000], 5000),
+    rpc:call(N2, application, set_env, [aecore, ping_interval, 1000000], 5000),
+
+    %% Ping interval was 500 ms, wait that long
+    timer:sleep(2 * 500),
+
+    {ok, TxH1} = add_spend_tx(N1, 1000, 1,  1,  100), %% Ok
+    {ok, TxH2} = add_spend_tx(N1, 1000, 1,  2,  100), %% Ok
+    {ok, TxH3} = add_spend_tx(N1, 1000, 1,  3,  100), %% Ok
+    {ok, TxH4} = add_spend_tx(N1, 1000, 1,  4,  100), %% Ok
+    {ok, TxH5} = add_spend_tx(N2, 1000, 1,  5,  100), %% Ok
+
+    {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2, TxH3, TxH4], 5),
+    {ok, _} = aecore_suite_utils:mine_blocks_until_tx_on_chain(N2, TxH5, 5),
+
+    ok.
 
 
 micro_block_cycle(Config) ->

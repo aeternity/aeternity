@@ -52,12 +52,18 @@ serialize(get_n_successors, GetNSucc, Vsn = ?GET_N_SUCCESSORS_VSN) ->
 serialize(header_hashes, HeaderHashes, Vsn = ?HEADER_HASHES_VSN) ->
     #{ header_hashes := HHs } = HeaderHashes,
     serialize_flds(header_hashes, Vsn, [{header_hashes, HHs}]);
-serialize(get_block, GetBlock, Vsn = ?GET_BLOCK_VSN) ->
-    #{ hash := Hash } = GetBlock,
-    serialize_flds(get_block, Vsn, [{hash, Hash}]);
-serialize(block, Block, Vsn = ?BLOCK_VSN) ->
-    #{ block := Blk } = Block,
-    serialize_flds(block, Vsn, [{block,Blk}]);
+serialize(block_txs, BlockTxs, Vsn = ?BLOCK_TXS_VSN) ->
+    #{ hash := Hash, txs := Txs } = BlockTxs,
+    serialize_flds(block_txs, Vsn, [{hash, Hash}, {txs, Txs}]);
+serialize(get_block_txs, GetBlockTxs, Vsn = ?GET_BLOCK_TXS_VSN) ->
+    #{ hash := Hash, tx_hashes := TxHashes } = GetBlockTxs,
+    serialize_flds(get_block_txs, Vsn, [{hash, Hash}, {tx_hashes, TxHashes}]);
+serialize(key_block, KeyBlock, Vsn = ?KEY_BLOCK_VSN) ->
+    #{ key_block := KeyBlk } = KeyBlock,
+    serialize_flds(key_block, Vsn, [{key_block, KeyBlk}]);
+serialize(micro_block, MicroBlock, Vsn = ?MICRO_BLOCK_VSN) ->
+    #{ micro_block := MicroBlk, light := Light } = MicroBlock,
+    serialize_flds(micro_block, Vsn, [{micro_block, MicroBlk}, {light, Light}]);
 serialize(get_generation, GetGeneration, Vsn = ?GET_GENERATION_VSN) ->
     #{ hash := Hash, forward := Fwd } = GetGeneration,
     serialize_flds(get_generation, Vsn, [{hash, Hash}, {forward, Fwd}]);
@@ -118,11 +124,13 @@ tag(get_header_by_height) -> ?MSG_GET_HEADER_BY_HEIGHT;
 tag(header)               -> ?MSG_HEADER;
 tag(get_n_successors)     -> ?MSG_GET_N_SUCCESSORS;
 tag(header_hashes)        -> ?MSG_HEADER_HASHES;
-tag(get_block)            -> ?MSG_GET_BLOCK;
-tag(block)                -> ?MSG_BLOCK;
+tag(get_block_txs)        -> ?MSG_GET_BLOCK_TXS;
+tag(key_block)            -> ?MSG_KEY_BLOCK;
+tag(micro_block)          -> ?MSG_MICRO_BLOCK;
 tag(get_generation)       -> ?MSG_GET_GENERATION;
 tag(generation)           -> ?MSG_GENERATION;
 tag(txs)                  -> ?MSG_TXS;
+tag(block_txs)            -> ?MSG_BLOCK_TXS;
 tag(response)             -> ?MSG_P2P_RESPONSE;
 tag(txps_init)            -> ?MSG_TX_POOL_SYNC_INIT;
 tag(txps_unfold)          -> ?MSG_TX_POOL_SYNC_UNFOLD;
@@ -136,11 +144,13 @@ rev_tag(?MSG_GET_HEADER_BY_HEIGHT) -> get_header_by_height;
 rev_tag(?MSG_HEADER)               -> header;
 rev_tag(?MSG_GET_N_SUCCESSORS)     -> get_n_successors;
 rev_tag(?MSG_HEADER_HASHES)        -> header_hashes;
-rev_tag(?MSG_GET_BLOCK)            -> get_block;
-rev_tag(?MSG_BLOCK)                -> block;
+rev_tag(?MSG_GET_BLOCK_TXS)        -> get_block_txs;
+rev_tag(?MSG_KEY_BLOCK)            -> key_block;
+rev_tag(?MSG_MICRO_BLOCK)          -> micro_block;
 rev_tag(?MSG_GET_GENERATION)       -> get_generation;
 rev_tag(?MSG_GENERATION)           -> generation;
 rev_tag(?MSG_TXS)                  -> txs;
+rev_tag(?MSG_BLOCK_TXS)            -> block_txs;
 rev_tag(?MSG_P2P_RESPONSE)         -> response;
 rev_tag(?MSG_TX_POOL_SYNC_INIT)    -> txps_init;
 rev_tag(?MSG_TX_POOL_SYNC_UNFOLD)  -> txps_unfold;
@@ -154,11 +164,13 @@ latest_vsn(get_header_by_height) -> ?GET_HEADER_BY_HEIGHT_VSN;
 latest_vsn(header)               -> ?HEADER_VSN;
 latest_vsn(get_n_successors)     -> ?GET_N_SUCCESSORS_VSN;
 latest_vsn(header_hashes)        -> ?HEADER_HASHES_VSN;
-latest_vsn(get_block)            -> ?GET_BLOCK_VSN;
-latest_vsn(block)                -> ?BLOCK_VSN;
+latest_vsn(get_block_txs)        -> ?GET_BLOCK_TXS_VSN;
+latest_vsn(key_block)            -> ?KEY_BLOCK_VSN;
+latest_vsn(micro_block)          -> ?MICRO_BLOCK_VSN;
 latest_vsn(get_generation)       -> ?GET_GENERATION_VSN;
 latest_vsn(generation)           -> ?GENERATION_VSN;
 latest_vsn(txs)                  -> ?TXS_VSN;
+latest_vsn(block_txs)            -> ?BLOCK_TXS_VSN;
 latest_vsn(response)             -> ?RESPONSE_VSN;
 latest_vsn(txps_init)            -> ?TX_POOL_SYNC_INIT_VSN;
 latest_vsn(txps_unfold)          -> ?TX_POOL_SYNC_UNFOLD_VSN;
@@ -214,14 +226,22 @@ deserialize(header_hashes, Vsn, HeaderHashesFlds) when Vsn == ?HEADER_HASHES_VSN
     [{header_hashes, HHs}] = aec_serialization:decode_fields(
                        serialization_template(header_hashes, Vsn), HeaderHashesFlds),
     {header_hashes, Vsn, #{ header_hashes => HHs }};
-deserialize(get_block, Vsn, GetBlockFlds) when Vsn == ?GET_BLOCK_VSN ->
-    [{hash, Hash}] =  aec_serialization:decode_fields(
-                         serialization_template(get_block, Vsn), GetBlockFlds),
-    {get_block, Vsn, #{ hash => Hash }};
-deserialize(block, Vsn, BlockFlds) when Vsn == ?BLOCK_VSN ->
-    [{block, Block}] =
-        aec_serialization:decode_fields(serialization_template(block, Vsn), BlockFlds),
-    {block, Vsn, #{ block => Block }};
+deserialize(block_txs, Vsn, BlockTxsFlds) when Vsn == ?BLOCK_TXS_VSN ->
+    [{hash, Hash}, {txs, Txs}] =
+        aec_serialization:decode_fields(serialization_template(block_txs, Vsn), BlockTxsFlds),
+    {block_txs, Vsn, #{ hash => Hash, txs => Txs }};
+deserialize(get_block_txs, Vsn, GetBlockTxsFlds) when Vsn == ?GET_BLOCK_TXS_VSN ->
+    [{hash, Hash}, {tx_hashes, TxHashes}] =
+        aec_serialization:decode_fields(serialization_template(get_block_txs, Vsn), GetBlockTxsFlds),
+    {get_block_txs, Vsn, #{ hash => Hash, tx_hashes => TxHashes }};
+deserialize(key_block, Vsn, KeyBlockFlds) when Vsn == ?KEY_BLOCK_VSN ->
+    [{key_block, KeyBlock}] =
+        aec_serialization:decode_fields(serialization_template(key_block, Vsn), KeyBlockFlds),
+    {key_block, Vsn, #{ key_block => KeyBlock }};
+deserialize(micro_block, Vsn, MicroBlockFlds) when Vsn == ?MICRO_BLOCK_VSN ->
+    [{micro_block, MicroBlock}, {light, Light}] =
+        aec_serialization:decode_fields(serialization_template(micro_block, Vsn), MicroBlockFlds),
+    {micro_block, Vsn, #{ micro_block => MicroBlock, light => Light }};
 deserialize(get_generation, Vsn, GetGenFlds) when Vsn == ?GET_GENERATION_VSN ->
     [{hash, Hash}, {forward, Fwd}] =
         aec_serialization:decode_fields(serialization_template(get_generation, Vsn), GetGenFlds),
@@ -299,10 +319,14 @@ serialization_template(get_n_successors, ?GET_N_SUCCESSORS_VSN) ->
     [{from_hash, binary}, {target_hash, binary}, {n, int}];
 serialization_template(header_hashes, ?HEADER_HASHES_VSN) ->
     [{header_hashes, [binary]}];
-serialization_template(get_block, ?GET_BLOCK_VSN) ->
-    [{hash, binary}];
-serialization_template(block, ?BLOCK_VSN) ->
-    [{block, binary}];
+serialization_template(block_txs, ?BLOCK_TXS_VSN) ->
+    [{hash, binary}, {txs, [binary]}];
+serialization_template(get_block_txs, ?GET_BLOCK_TXS_VSN) ->
+    [{hash, binary}, {tx_hashes, [binary]}];
+serialization_template(key_block, ?KEY_BLOCK_VSN) ->
+    [{key_block, binary}];
+serialization_template(micro_block, ?MICRO_BLOCK_VSN) ->
+    [{micro_block, binary}, {light, bool}];
 serialization_template(get_generation, ?GET_GENERATION_VSN) ->
     [{hash, binary}, {forward, bool}];
 serialization_template(generation, ?GENERATION_VSN) ->
