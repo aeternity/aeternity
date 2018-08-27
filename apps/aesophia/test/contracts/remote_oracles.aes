@@ -4,21 +4,21 @@ contract Oracles =
     (address,
      signature,
      int,
-     int) => oracle(string, int)
+     Chain.ttl) => oracle(string, int)
 
   function createQuery :
     (oracle(string, int),
      string,
      int,
-     int,
-     int) => oracle_query(string, int)
+     Chain.ttl,
+     Chain.ttl) => oracle_query(string, int)
 
   function unsafeCreateQuery :
     (oracle(string, int),
      string,
      int,
-     int,
-     int) => oracle_query(string, int)
+     Chain.ttl,
+     Chain.ttl) => oracle_query(string, int)
 
   function respond :
     (oracle(string, int),
@@ -32,8 +32,8 @@ contract OraclesErr =
     (oracle(string, int),
      string,
      int,
-     int,
-     int) => oracle_query(string, int)
+     Chain.ttl,
+     Chain.ttl) => oracle_query(string, int)
 
 contract RemoteOracles =
 
@@ -42,7 +42,7 @@ contract RemoteOracles =
       acct : address,
       sign : signature,
       qfee : int,
-      ttl  : int) : oracle(string, int) =
+      ttl  : Chain.ttl) : oracle(string, int) =
     r.registerOracle(acct, sign, qfee, ttl)
 
   public function callCreateQuery(
@@ -51,8 +51,8 @@ contract RemoteOracles =
     o     : oracle(string, int),
     q     : string,
     qfee  : int,
-    qttl  : int,
-    rttl  : int) : oracle_query(string, int) =
+    qttl  : Chain.ttl,
+    rttl  : Chain.ttl) : oracle_query(string, int) =
     require(value =< Call.value, "insufficient value")
     r.createQuery(value = value, o, q, qfee, qttl, rttl)
 
@@ -63,8 +63,8 @@ contract RemoteOracles =
     o     : oracle(string, int),
     q     : string,
     qfee  : int,
-    qttl  : int,
-    rttl  : int) : oracle_query(string, int) =
+    qttl  : Chain.ttl,
+    rttl  : Chain.ttl) : oracle_query(string, int) =
     r.unsafeCreateQuery(value = value, o, q, qfee, qttl, rttl)
 
   // Do not use in production!
@@ -74,8 +74,8 @@ contract RemoteOracles =
     o     : oracle(string, int),
     q     : string,
     qfee  : int,
-    qttl  : int,
-    rttl  : int) : oracle_query(string, int) =
+    qttl  : Chain.ttl,
+    rttl  : Chain.ttl) : oracle_query(string, int) =
     r.unsafeCreateQueryThenErr(value = value, o, q, qfee, qttl, rttl)
 
   // Do not use in production!
@@ -85,8 +85,8 @@ contract RemoteOracles =
     o     : oracle(string, int),
     q     : string,
     qfee  : int,
-    qttl  : int,
-    rttl  : int) : oracle_query(string, int) =
+    qttl  : Chain.ttl,
+    rttl  : Chain.ttl) : oracle_query(string, int) =
     let x = r.unsafeCreateQuery(value = value, o, q, qfee, qttl, rttl)
     switch(0) 1 => ()
     x // Never reached.

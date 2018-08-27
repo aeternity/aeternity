@@ -724,19 +724,22 @@ sophia_typed_calls(_Cfg) ->
 %%  - Failing calls
 sophia_oracles(_Cfg) ->
     state(aect_test_utils:new_state()),
+    RelativeTTL       = fun(Delta)  -> {variant, 0, [Delta]} end,
+    FixedTTL          = fun(Height) -> {variant, 1, [Height]} end,
     Acc               = ?call(new_account, 1000000),
     Ct = <<CtId:256>> = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
     QueryFee          = 100,
     TTL               = 15,
-    CtId              = ?call(call_contract, Acc, Ct, registerOracle, word, {CtId, 0, QueryFee, TTL}),
+    CtId              = ?call(call_contract, Acc, Ct, registerOracle, word, {CtId, 0, QueryFee, FixedTTL(TTL)}),
     Question          = <<"Manchester United vs Brommapojkarna">>,
-    QId               = ?call(call_contract, Acc, Ct, createQuery, word, {Ct, Question, QueryFee, 5, 5}, #{amount => QueryFee}),
+    QId               = ?call(call_contract, Acc, Ct, createQuery, word,
+                                {Ct, Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
     Question          = ?call(call_contract, Acc, Ct, getQuestion, string, {CtId, QId}),
     QueryFee          = ?call(call_contract, Acc, Ct, queryFee, word, Ct),
     none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
     {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {CtId, QId, 0, 4001}),
     {some, 4001}      = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
-    {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Ct, 0, TTL + 10}),
+    {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Ct, 0, FixedTTL(TTL + 10)}),
 
     %% Test complex answers
     Ct1 = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),

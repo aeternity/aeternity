@@ -143,7 +143,7 @@ ast_body(?qid_app(["Oracle", "register"], [Acct, Sign, QFee, TTL], _, ?oracle_t(
     prim_call(?PRIM_CALL_ORACLE_REGISTER, #integer{value = 0},
               [ast_body(Acct, Icode), ast_body(Sign, Icode), ast_body(QFee, Icode), ast_body(TTL, Icode),
                ast_type_value(QType, Icode), ast_type_value(RType, Icode)],
-              [word, word, word, word, typerep, typerep], word);
+              [word, word, word, ttl_t(Icode), typerep, typerep], word);
 
 ast_body(?qid_app(["Oracle", "query_fee"], [Oracle], _, _), Icode) ->
     prim_call(?PRIM_CALL_ORACLE_QUERY_FEE, #integer{value = 0},
@@ -152,12 +152,12 @@ ast_body(?qid_app(["Oracle", "query_fee"], [Oracle], _, _), Icode) ->
 ast_body(?qid_app(["Oracle", "query"], [Oracle, Q, QFee, QTTL, RTTL], [_, QType, _, _, _], _), Icode) ->
     prim_call(?PRIM_CALL_ORACLE_QUERY, ast_body(QFee, Icode),
               [ast_body(Oracle, Icode), ast_body(Q, Icode), ast_body(QTTL, Icode), ast_body(RTTL, Icode)],
-              [word, ast_type(QType, Icode), word, word], word);
+              [word, ast_type(QType, Icode), ttl_t(Icode), ttl_t(Icode)], word);
 
 ast_body(?qid_app(["Oracle", "extend"], [Oracle, Sign, TTL], _, _), Icode) ->
     prim_call(?PRIM_CALL_ORACLE_EXTEND, #integer{value = 0},
               [ast_body(Oracle, Icode), ast_body(Sign, Icode), ast_body(TTL, Icode)],
-              [word, word, word], {tuple, []});
+              [word, word, ttl_t(Icode)], {tuple, []});
 
 ast_body(?qid_app(["Oracle", "respond"], [Oracle, Query, Sign, R], [_, _, _, RType], _), Icode) ->
     prim_call(?PRIM_CALL_ORACLE_RESPOND, #integer{value = 0},
@@ -469,6 +469,8 @@ ast_typerep(Type) -> ast_typerep(Type, aeso_icode:new([])).
 
 ast_typerep({id, _, Name}, Icode) ->
     lookup_type_id(Name, [], Icode);
+ast_typerep({qid, _, Name}, Icode) ->
+    lookup_type_id(Name, [], Icode);
 ast_typerep({con, _, _}, _) ->
     word;   %% Contract type
 ast_typerep({app_t, _, {id, _, Name}, Args}, Icode) ->
@@ -494,6 +496,9 @@ ast_typerep({variant_t, Cons}, Icode) ->
                   {constr_t, _, _, Args} = Con,
                   [ ast_typerep(Arg, Icode) || Arg <- Args ]
                 end || Con <- Cons ]}.
+
+ttl_t(Icode) ->
+    ast_typerep({qid, [], ["Chain", "ttl"]}, Icode).
 
 lookup_type_id(Name, Args, #{ types := Types }) ->
     case maps:get(Name, Types, undefined) of

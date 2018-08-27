@@ -110,7 +110,7 @@ spend(RecipientId, Amount, State = #state{ account = ContractKey }) ->
 
 %%    Oracle
 -spec oracle_register(aec_keys:pubkey(), binary(), non_neg_integer(),
-                      non_neg_integer(), aeso_sophia:type(), aeso_sophia:type(), chain_state()) ->
+                      aeo_oracles:ttl(), aeso_sophia:type(), aeso_sophia:type(), chain_state()) ->
     {ok, aec_keys:pubkey(), chain_state()} | {error, term()}.
 oracle_register(AccountKey,_Sign, QueryFee, TTL, QueryFormat, ResponseFormat,
                 State = #state{account = ContractKey}) ->
@@ -127,7 +127,7 @@ oracle_register(AccountKey,_Sign, QueryFee, TTL, QueryFormat, ResponseFormat,
           query_format    => BinaryQueryFormat,
           response_format => BinaryResponseFormat,
           query_fee       => QueryFee,
-          oracle_ttl      => {delta, TTL},
+          oracle_ttl      => TTL,
           ttl             => 0, %% Not used.
           fee             => 0},
     {ok, Tx} = aeo_register_tx:new(Spec),
@@ -160,8 +160,8 @@ oracle_query(Oracle, Q, Value, QTTL, RTTL,
                            oracle_id     => aec_id:create(oracle, Oracle),
                            query         => QueryData,
                            query_fee     => Value,
-                           query_ttl     => {delta, QTTL},
-                           response_ttl  => {delta, RTTL},
+                           query_ttl     => QTTL,
+                           response_ttl  => RTTL,
                            fee           => 0,
                            ttl           => 0 %% Not used
                           }),
@@ -193,7 +193,7 @@ oracle_extend(Oracle,_Sign, TTL, State) ->
     {ok, Tx} =
         aeo_extend_tx:new(#{oracle_id  => aec_id:create(oracle, Oracle),
                             nonce      => Nonce,
-                            oracle_ttl => {delta, TTL},
+                            oracle_ttl => TTL,
                             fee        => 0,
                             ttl        => 0 %% Not used
                            }),

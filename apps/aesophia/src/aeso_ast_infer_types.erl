@@ -74,12 +74,15 @@ global_env() ->
     Fun1    = fun(S, T) -> Fun([S], T) end,
     TVar    = fun(X) -> {tvar, Ann, "'" ++ X} end,
     Signature = {id, Ann, "signature"},
-    TTL       = Int,
+    TTL       = {qid, Ann, ["Chain", "ttl"]},
     Fee       = Int,
     [A, Q, R, K, V] = lists:map(TVar, ["a", "q", "r", "k", "v"]),
      %% Option constructors
     [{"None", Option(A)},
      {"Some", Fun1(A, Option(A))},
+     %% TTL constructors
+     {"RelativeTTL", Fun1(Int, TTL)},
+     {"FixedTTL",    Fun1(Int, TTL)},
      %% Spend transaction.
      {["Chain","spend"], Fun([Address, Int], Unit)},
      %% Environment variables

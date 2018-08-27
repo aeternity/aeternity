@@ -118,8 +118,12 @@ call_chain(Callback, State) ->
         {error, _} = Err -> Err
     end.
 
+%% Sophia representation of aeo_oracles:ttl().
+oracle_ttl_t() ->
+    {variant_t, [{delta, [word]}, {block, [word]}]}.
+
 oracle_call_register(_Value, Data, State) ->
-    ArgumentTypes = [word, word, word, word, typerep, typerep],
+    ArgumentTypes = [word, word, word, oracle_ttl_t(), typerep, typerep],
     [Acct, Sign, QFee, TTL, QType, RType] = get_args(ArgumentTypes, Data),
     Callback =
         fun(API, ChainState) ->
@@ -134,7 +138,7 @@ oracle_call_query(Value, Data, State) ->
     OracleKey = <<Oracle:256>>,
     case call_chain1(fun(API, ChainState) -> API:oracle_query_format(OracleKey, ChainState) end, State) of
         {ok, QueryType} ->
-            ArgumentTypes = [word, QueryType, word, word],
+            ArgumentTypes = [word, QueryType, oracle_ttl_t(), oracle_ttl_t()],
             [_Oracle, Q, QTTL, RTTL] = get_args(ArgumentTypes, Data),
             Callback = fun(API, ChainState) ->
                 case API:oracle_query(OracleKey, Q, _QFee=Value, QTTL, RTTL, ChainState) of
@@ -161,7 +165,7 @@ oracle_call_respond(_Value, Data, State) ->
 
 
 oracle_call_extend(_Value, Data, State) ->
-    ArgumentTypes = [word, word, word],
+    ArgumentTypes = [word, word, oracle_ttl_t()],
     [Oracle, Sign, TTL] = get_args(ArgumentTypes, Data),
     Callback = fun(API, ChainState) -> API:oracle_extend(<<Oracle:256>>, Sign, TTL, ChainState) end,
     call_chain(Callback, State).
