@@ -104,7 +104,7 @@ mining:
     expected_mine_rate: 300000
     micro_block_cycle: 3000
     # Public key of beneficiary account that will receive fees from mining on a node.
-    beneficiary: "encoded_beneficiary_pubkey_to_be_replaced"
+    beneficiary: "ak$2VoAhMd7tVJrDYM5vPJwFRjueZyirDJumVJNeBWL9j1eNTHsRx"
     cuckoo:
         miner:
             # Executable binary of the miner.

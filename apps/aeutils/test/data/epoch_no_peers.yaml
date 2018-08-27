@@ -1,2 +1,6 @@
 ---
 peers: []
+
+mining:
+    beneficiary: "ak$2VoAhMd7tVJrDYM5vPJwFRjueZyirDJumVJNeBWL9j1eNTHsRx"
+
