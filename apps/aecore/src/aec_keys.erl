@@ -110,7 +110,8 @@
 
 -spec sign_micro_block(block()) -> {ok, block()} | {error, term()}.
 sign_micro_block(MicroBlock) ->
-    Bin = aec_headers:serialize_to_binary(aec_blocks:to_header(MicroBlock)),
+    Header = aec_blocks:to_micro_header(MicroBlock),
+    Bin = aec_headers:serialize_to_signature_binary(Header),
     {ok, Signature} = gen_server:call(?MODULE, {sign, Bin}),
     {ok, aec_blocks:set_signature(MicroBlock, Signature)}.
 
