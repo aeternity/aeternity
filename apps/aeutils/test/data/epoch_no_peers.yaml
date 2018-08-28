@@ -1,2 +1,6 @@
 ---
 peers: []
+
+mining:
+    beneficiary: "ak$DummyPubKeyDoNotEverUse999999999999999999999999999"
+
