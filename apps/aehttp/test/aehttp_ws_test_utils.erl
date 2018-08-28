@@ -71,7 +71,7 @@ start_channel(Host, Port, RoleA, Opts) when is_atom(RoleA) ->
         {ok, Pid} = Res ->
             set_role(Pid, RoleA),
             Res;
-        {error, _, _} = Err -> Err
+        {error, _} = Err -> Err
     end.
 
 
@@ -95,7 +95,7 @@ wait_for_connect(Pid) ->
         timeout ->
             case process_info(Pid) of
                 undefined -> {error, rejected};
-                _ -> {error, still_connecting, Pid}
+                _ -> {error, {still_connecting, Pid}}
             end
     end.
 
