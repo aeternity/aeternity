@@ -101,7 +101,7 @@ init_per_group(contracts, Config) ->
     aecore_suite_utils:start_node(?NODE, Config),
     aecore_suite_utils:connect(NodeName),
 
-    aecore_suite_utils:mine_key_blocks(NodeName, 1),
+    aecore_suite_utils:mine_key_blocks(NodeName, 3),
 
     %% Prepare accounts, Alice, Bert, Carl and Diana.
 
@@ -133,7 +133,7 @@ init_per_group(_Group, Config) ->
     NodeName = aecore_suite_utils:node_name(?NODE),
     aecore_suite_utils:start_node(?NODE, Config),
     aecore_suite_utils:connect(NodeName),
-    ToMine = aecore_suite_utils:latest_fork_height(),
+    ToMine = max(2, aecore_suite_utils:latest_fork_height()),
     ct:pal("ToMine ~p\n", [ToMine]),
     aecore_suite_utils:mine_key_blocks(NodeName, ToMine),
     [{node_name,NodeName}|Config].

@@ -114,8 +114,9 @@ chain:
 mining:
     autostart: false
     expected_mine_rate: 100
+
     beneficiary: "ak_2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
-    beneficiary_reward_delay: 0
+    beneficiary_reward_delay: 2
     cuckoo:
         miner:
             executable: mean16s-generic
@@ -138,7 +139,7 @@ mining:
     expected_mine_rate: 100
     # Beneficiary matches pubkey from sign_keys/dev1/sign_key.pub
     beneficiary: "{}"
-    beneficiary_reward_delay: 0
+    beneficiary_reward_delay: 2
     cuckoo:
         miner:
             executable: mean16s-generic

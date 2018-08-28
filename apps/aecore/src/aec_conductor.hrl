@@ -35,5 +35,6 @@
                 top_key_block_hash                        :: binary() | 'undefined',
                 workers                 = []              :: workers(),
                 consensus                                 :: #consensus{},
-                beneficiary                               :: <<_:(32*8)>>  % Maybe move beneficiary out of conductor's state
+                beneficiary                               :: <<_:(32*8)>>,  % Maybe move beneficiary out of conductor's state
+                fraud_list              = []              :: list({binary(), aec_pof:pof()})
                }).

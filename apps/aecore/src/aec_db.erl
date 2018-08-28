@@ -27,12 +27,14 @@
 -export([has_block/1,
          write_block/1,
          write_block/2,
-         write_block_state/5,
+         write_block_state/6,
+         write_discovered_pof/2,
          write_genesis_hash/1,
          write_top_block_hash/1,
          write_top_block_height/1,
          find_block/1,
          find_block_tx_hashes/1,
+         find_discovered_pof/1,
          find_header/1,
          find_headers_at_height/1,
          find_headers_and_hash_at_height/1,
@@ -87,6 +89,7 @@
         , find_block_difficulty/1
         , find_block_fees/1
         , find_block_fork_id/1
+        , find_block_fraud_status/1
         , find_block_state_and_data/1
         ]).
 
@@ -133,6 +136,7 @@ tables(Mode) ->
    , ?TAB(aec_signed_tx)
    , ?TAB(aec_tx_location)
    , ?TAB(aec_tx_pool)
+   , ?TAB(aec_discovered_pof)
     ].
 
 tab(Mode, Record, Attributes, Extra) ->
@@ -222,7 +226,9 @@ write_block(Block, Hash) ->
                                end
                                || STx <- Txs],
                    mnesia:write(#aec_blocks{key = Hash,
-                                            txs = TxHashes}),
+                                            txs = TxHashes,
+                                            pof = aec_blocks:pof(Block)
+                                           }),
                    mnesia:write(#aec_headers{key = Hash,
                                              value = Header,
                                              height = Height})
@@ -238,14 +244,14 @@ get_block(Hash) ->
                key ->
                    aec_blocks:new_key_from_header(Header);
                micro ->
-                   [#aec_blocks{txs = TxHashes}] =
+                   [#aec_blocks{txs = TxHashes, pof = PoF}] =
                        mnesia:read(aec_blocks, Hash),
                    Txs = [begin
                               [#aec_signed_tx{value = STx}] =
                                   mnesia:read(aec_signed_tx, TxHash),
                               STx
                           end || TxHash <- TxHashes],
-                   aec_blocks:new_micro_from_header(Header, Txs)
+                   aec_blocks:new_micro_from_header(Header, Txs, PoF)
            end
        end).
 
@@ -275,14 +281,14 @@ find_block(Hash) ->
                case aec_headers:type(Header) of
                    key   -> {value, aec_blocks:new_key_from_header(Header)};
                    micro ->
-                       [#aec_blocks{txs = TxHashes}]
+                       [#aec_blocks{txs = TxHashes, pof = PoF}]
                            = mnesia:read(aec_blocks, Hash),
                        Txs = [begin
                                   [#aec_signed_tx{value = STx}] =
                                       mnesia:read(aec_signed_tx, TxHash),
                                   STx
                               end || TxHash <- TxHashes],
-                       {value, aec_blocks:new_micro_from_header(Header, Txs)}
+                       {value, aec_blocks:new_micro_from_header(Header, Txs, PoF)}
                end;
            [] -> none
        end).
@@ -316,15 +322,25 @@ find_headers_and_hash_at_height(Height) when is_integer(Height), Height >= 0 ->
     ?t([{H, K} || #aec_headers{key = K, value = H}
                  <- mnesia:index_read(aec_headers, Height, height)]).
 
-write_block_state(Hash, Trees, AccDifficulty, ForkId, Fees) ->
+find_discovered_pof(Hash) ->
+    case ?t(read(aec_discovered_pof, Hash)) of
+        [#aec_discovered_pof{value = PoF}] -> {value, PoF};
+        [] -> none
+    end.
+
+write_discovered_pof(Hash, PoF) ->
+    ?t(mnesia:write(#aec_discovered_pof{key = Hash, value = PoF})).
+
+write_block_state(Hash, Trees, AccDifficulty, ForkId, Fees, Fraud) ->
     ?t(begin
            Trees1 = aec_trees:serialize_for_db(aec_trees:commit_to_db(Trees)),
            mnesia:write(#aec_block_state{key = Hash, value = Trees1,
                                          difficulty = AccDifficulty,
                                          fork_id = ForkId,
-                                         fees = Fees
+                                         fees = Fees,
+                                         fraud = Fraud
                                         })
-               end
+       end
       ).
 
 write_accounts_node(Hash, Node) ->
@@ -401,11 +417,18 @@ find_block_fork_id(Hash) ->
         [] -> none
     end.
 
+find_block_fraud_status(Hash) ->
+    case ?t(mnesia:read(aec_block_state, Hash)) of
+        [#aec_block_state{fraud = FS}] -> {value, FS};
+        [] -> none
+    end.
+
 find_block_state_and_data(Hash) ->
     case ?t(mnesia:read(aec_block_state, Hash)) of
         [#aec_block_state{value = Trees, difficulty = D,
-                          fork_id = FId, fees = Fees}] ->
-            {value, aec_trees:deserialize_from_db(Trees), D, FId, Fees};
+                          fork_id = FId, fees = Fees,
+                          fraud = Fraud}] ->
+            {value, aec_trees:deserialize_from_db(Trees), D, FId, Fees, Fraud};
         [] -> none
     end.
 

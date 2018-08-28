@@ -24,6 +24,7 @@ block_extension_test_() ->
       fun() ->
         meck:new(aeu_time, [passthrough]),
         meck:new(aec_chain, [passthrough]),
+        meck:new(aec_db, [passthrough]),
         meck:new(aec_keys, [passthrough]),
         meck:new(aec_tx_pool, [passthrough]),
         meck:new(aec_trees, [passthrough])
@@ -33,6 +34,7 @@ block_extension_test_() ->
         meck:unload(aec_tx_pool),
         meck:unload(aec_keys),
         meck:unload(aec_chain),
+        meck:unload(aec_db),
         meck:unload(aeu_time)
       end,
       [{"Generate a block in one step, compared with two steps, with a spend tx",
@@ -48,6 +50,7 @@ block_extension_test_() ->
           meck:expect(aec_chain, get_block_state, 1, {ok, Trees0}),
           meck:expect(aec_tx_pool, get_candidate, 2, {ok, [STx]}),
           meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
+          meck:expect(aec_db, find_discovered_pof, 1, none),
           {ok, Block1A, #{ trees := _Trees1A }} = aec_block_micro_candidate:create(Block0),
 
           meck:expect(aec_tx_pool, get_candidate, 2, {ok, []}),
@@ -82,6 +85,7 @@ block_extension_test_() ->
           meck:expect(aec_chain, get_block_state, 1, {ok, Trees0}),
           meck:expect(aec_tx_pool, get_candidate, 2, {ok, [STx]}),
           meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
+          meck:expect(aec_db, find_discovered_pof, 1, none),
 
           {ok,_Block1A, #{ trees := Trees1A }} = aec_block_micro_candidate:create(Block0),
 
