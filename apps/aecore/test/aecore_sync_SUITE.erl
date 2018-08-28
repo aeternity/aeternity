@@ -76,6 +76,8 @@ groups() ->
        mine_on_first_up_to_latest_consensus_protocol,
        mine_on_first,
        start_second_node,
+       mine_on_second, %% We need to make sure first
+       mine_on_second, %% doesn't get a delayed reward
        ensure_tx_pools_empty,
        tx_first_pays_second_more_it_can_afford,
        mine_on_second,
@@ -216,7 +218,7 @@ mine_on_first_up_to_latest_consensus_protocol(Config) ->
 mine_on_first(Config) ->
     [ Dev1 | _ ] = proplists:get_value(devs, Config),
     N = aecore_suite_utils:node_name(Dev1),
-    aecore_suite_utils:mine_key_blocks(N, 1),
+    aecore_suite_utils:mine_key_blocks(N, 3),
     ok.
 
 start_blocked_second(Config) ->

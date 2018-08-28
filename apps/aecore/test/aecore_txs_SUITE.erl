@@ -259,8 +259,11 @@ micro_block_cycle(Config) ->
     ok = aecore_suite_utils:check_for_logs([dev1], Config).
 
 add_spend_tx(Node, Amount, Fee, Nonce, TTL) ->
-    SenderId = aec_id:create(account, maps:get(pubkey, patron())),
-    RecipientId = aec_id:create(account, new_pubkey()),
+    add_spend_tx(Node, Amount, Fee, Nonce, TTL, patron(), new_pubkey()).
+
+add_spend_tx(Node, Amount, Fee, Nonce, TTL, Sender, Recipient) ->
+    SenderId = aec_id:create(account, maps:get(pubkey, Sender)),
+    RecipientId = aec_id:create(account, Recipient),
     Params = #{ sender_id    => SenderId,
                 recipient_id => RecipientId,
                 amount       => Amount,
@@ -269,9 +272,10 @@ add_spend_tx(Node, Amount, Fee, Nonce, TTL) ->
                 payload      => <<>>,
                 fee          => Fee },
     {ok, Tx} = aec_spend_tx:new(Params),
-    STx = aec_test_utils:sign_tx(Tx, maps:get(privkey, patron())),
+    STx = aec_test_utils:sign_tx(Tx, maps:get(privkey, Sender)),
     Res = rpc:call(Node, aec_tx_pool, push, [STx]),
     {Res, aec_base58c:encode(tx_hash, aetx_sign:hash(STx))}.
+
 
 create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
     OwnerKey = maps:get(pubkey, patron()),
@@ -336,9 +340,6 @@ timediff(Ms, [{T1, H1}, {T2, H1} | Rest]) ->
     end;
 timediff(Ms, [_ | Rest]) ->
     timediff(Ms, Rest).
-
-
-
 
 new_pubkey() ->
     #{ public := PubKey } = enacl:sign_keypair(),

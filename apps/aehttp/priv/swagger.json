@@ -2108,6 +2108,10 @@
           "type" : "integer",
           "format" : "int64"
         },
+        "pof_hash" : {
+          "type" : "string",
+          "description" : "\"no_fraud\" | base58c encoded Proof of Fraud hash"
+        },
         "prev_hash" : {
           "$ref" : "#/definitions/EncodedHash"
         },
@@ -2136,6 +2140,7 @@
         "txs_hash" : null,
         "state_hash" : null,
         "signature" : null,
+        "pof_hash" : "pof_hash",
         "prev_hash" : null,
         "prev_key_hash" : null,
         "time" : 6,

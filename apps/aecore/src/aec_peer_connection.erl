@@ -957,7 +957,7 @@ handle_new_micro_block(S, Msg) ->
                 %% in the full micro block case - conductor will do the necessary checks
                 aec_conductor:post_block(MicroBlock);
             true ->
-                {ok, #{ header := Header, tx_hashes := TxHashes }} =
+                {ok, #{ header := Header, tx_hashes := TxHashes, pof := PoF }} =
                     deserialize_light_micro_block(maps:get(micro_block, Msg)),
                 %% Before assembling the block, check if it is known, and valid
                 case pre_assembly_check(Header) of
@@ -970,7 +970,7 @@ handle_new_micro_block(S, Msg) ->
                     ok ->
                         case get_micro_block_txs(TxHashes) of
                             {all, Txs} ->
-                                MicroBlock = aec_blocks:new_micro_from_header(Header, Txs),
+                                MicroBlock = aec_blocks:new_micro_from_header(Header, Txs, PoF),
                                 {ok, HH} = aec_headers:hash_header(Header),
                                 epoch_sync:debug("Got new block: ~s", [pp(HH)]),
                                 aec_conductor:post_block(MicroBlock);
@@ -978,7 +978,9 @@ handle_new_micro_block(S, Msg) ->
                                 epoch_sync:info("Missing txs: ~p",
                                                 [[ TH || TH <- TxsAndTxHashes, is_binary(TH) ]]),
                                 cast(self(), {expand_micro_block, #{ header => Header,
-                                                                     tx_data => TxsAndTxHashes }}),
+                                                                     tx_data => TxsAndTxHashes,
+                                                                     pof => PoF
+                                                                   }}),
                                 ok
                         end
                 end
@@ -1044,10 +1046,10 @@ handle_get_block_txs_rsp(State, {ok, _Vsn, Msg}) ->
             State;
         {{expand, Hash}, MicroBlockFragment, _TRef} ->
             Txs = [ aetx_sign:deserialize_from_binary(STx) || STx <- maps:get(txs, Msg) ],
-            #{ header := Header, tx_data := TxsAndTxHashes } = MicroBlockFragment,
+            #{ header := Header, tx_data := TxsAndTxHashes, pof := PoF } = MicroBlockFragment,
             case fill_txs(TxsAndTxHashes, Txs) of
                 {ok, AllTxs} ->
-                    MB = aec_blocks:new_micro_from_header(Header, AllTxs),
+                    MB = aec_blocks:new_micro_from_header(Header, AllTxs, PoF),
                     epoch_sync:info("Assembled new block: ~s", [pp(Hash)]),
                     aec_conductor:post_block(MB);
                 error ->
@@ -1188,14 +1190,15 @@ serialize_light_micro_block(MicroBlock) ->
     micro = aec_blocks:type(MicroBlock),
     Hdr = aec_headers:serialize_to_binary(aec_blocks:to_header(MicroBlock)),
     TxHashes = [ aetx_sign:hash(STx) || STx <- aec_blocks:txs(MicroBlock) ],
+    PoF = aec_blocks:pof(MicroBlock),
     Vsn = aec_blocks:version(MicroBlock),
     Template = light_micro_template(),
     aec_object_serialization:serialize(
         light_micro_block, Vsn, Template,
-        [{header, Hdr}, {tx_hashes, TxHashes}]).
+        [{header, Hdr}, {tx_hashes, TxHashes}, {pof, aec_pof:serialize(PoF)}]).
 
 light_micro_template() ->
-    [{header, binary}, {tx_hashes, [binary]}].
+    [{header, binary}, {tx_hashes, [binary]}, {pof, [binary]}].
 
 deserialize_key_block(SKB) ->
     deserialize_block(key, SKB).
@@ -1210,10 +1213,11 @@ deserialize_block(light_micro, Binary) ->
     case aec_object_serialization:deserialize_type_and_vsn(Binary) of
         {light_micro_block, Vsn, _RawFlds} ->
             Template = light_micro_template(),
-            [{header, SerHdr}, {tx_hashes, TxHashes}] =
+            [{header, SerHdr}, {tx_hashes, TxHashes}, {pof, SerPof}] =
                 aec_object_serialization:deserialize(light_micro_block, Vsn, Template, Binary),
             Hdr = aec_headers:deserialize_from_binary(SerHdr),
-            {ok, #{ header => Hdr, tx_hashes => TxHashes }};
+            PoF = aec_pof:deserialize(SerPof),
+            {ok, #{ header => Hdr, tx_hashes => TxHashes, pof => PoF}};
         _ ->
             {error, bad_light_micro_block}
     end;

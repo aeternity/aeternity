@@ -19,7 +19,8 @@
          name_claim_preclaim_delta/0,
          name_registrars/0,
          micro_block_cycle/0,
-         accepted_future_block_time_shift/0]).
+         accepted_future_block_time_shift/0,
+         fraud_report_reward/0]).
 
 -export_type([protocols/0]).
 
@@ -39,6 +40,7 @@
 -define(BLOCK_GAS_LIMIT, 1600000).
 %% Taken from Ethereum - a simple tx to send Eth is about 21000 gas.
 -define(TX_GAS, 21000).
+-define(POF_REWARD       , 500000000000000000). %% (?BLOCK_MINE_REWARD / 100) * 5
 -define(BENEFICIARY_REWARD_DELAY, 180). %% in key blocks / generations
 -define(MICRO_BLOCK_CYCLE, 3000). %% in msecs
 
@@ -91,9 +93,15 @@ minimum_gas_price() ->
     0.
 
 %% In key blocks / generations
+%%
+%% NOTE: The delay must cover at least the time frame where fraud can
+%% be reported to avoid premature payout.
 beneficiary_reward_delay() ->
-    aeu_env:user_config_or_env([<<"mining">>, <<"beneficiary_reward_delay">>],
-                               aecore, beneficiary_reward_delay, ?BENEFICIARY_REWARD_DELAY).
+    Delay = aeu_env:user_config_or_env([<<"mining">>, <<"beneficiary_reward_delay">>],
+                                       aecore, beneficiary_reward_delay, ?BENEFICIARY_REWARD_DELAY),
+    [error({beneficiary_reward_delay_too_low, Delay})
+     || Delay < aec_chain_state:proof_of_fraud_report_delay()],
+    Delay.
 
 %% In milliseconds
 micro_block_cycle() ->
@@ -123,3 +131,6 @@ name_claim_preclaim_delta() ->
 
 name_registrars() ->
     [<<"aet">>, <<"test">>].
+
+fraud_report_reward() ->
+    ?POF_REWARD.

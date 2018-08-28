@@ -121,12 +121,34 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
     TxsTree = aec_txs_trees:from_txs(Txs1),
     TxsRootHash = aec_txs_trees:pad_empty(aec_txs_trees:root_hash(TxsTree)),
 
+    PoF = get_pof(KeyBlock, PrevBlockHash, PrevBlock),
+
     NewBlock = aec_blocks:new_micro(Height, PrevBlockHash, PrevKeyHash,
                                     aec_trees:hash(Trees2), TxsRootHash, Txs1,
-                                    aeu_time:now_in_msecs(), Version),
+                                    aeu_time:now_in_msecs(), PoF, Version),
 
     BlockInfo = #{ trees => Trees2, txs_tree => TxsTree },
     {ok, NewBlock, BlockInfo}.
+
+get_pof(KeyBlock, PrevBlockHash, PrevBlock) ->
+    %% NOTE: If the restriction of reporting a miner in the next
+    %% generation is lifted, we need to do something more elaborate.
+    MaybeFraudHash = aec_blocks:prev_key_hash(KeyBlock),
+    case aec_db:find_discovered_pof(MaybeFraudHash) of
+        none -> no_fraud;
+        {value, PoF} ->
+            %% Make sure we didn't report it already.
+            case aec_blocks:type(PrevBlock) of
+                key ->
+                    PoF;
+                micro ->
+                    case aec_db:find_block_fraud_status(PrevBlockHash) of
+                        {value, true}  -> no_fraud;
+                        {value, false} -> PoF
+                    end
+            end
+    end.
+
 
 %% Non-strict
 int_apply_block_txs(Txs, Trees, Height, Version, false) ->
