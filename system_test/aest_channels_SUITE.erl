@@ -106,10 +106,10 @@ end_per_suite(_Config) -> ok.
 test_simple_same_node_channel(Cfg) ->
     ChannelOpts = #{
         initiator_node => node1,
-        initiator_account => ?BOB,
+        initiator_id => ?BOB,
         initiator_amount => 80,
         responder_node => node1,
-        responder_account => ?ALICE,
+        responder_id => ?ALICE,
         responder_amount => 80
     },
     simple_channel_test(ChannelOpts, Cfg).
@@ -117,19 +117,19 @@ test_simple_same_node_channel(Cfg) ->
 test_simple_different_nodes_channel(Cfg) ->
     ChannelOpts = #{
         initiator_node => node1,
-        initiator_account => ?BOB,
+        initiator_id   => ?BOB,
         initiator_amount => 80,
         responder_node => node2,
-        responder_account => ?ALICE,
+        responder_id => ?ALICE,
         responder_amount => 80
     },
     simple_channel_test(ChannelOpts, Cfg).
 
 simple_channel_test(ChannelOpts, Cfg) ->
     #{
-        initiator_account := IAccount,
+        initiator_id     := IAccount,
         initiator_amount := IAmt,
-        responder_account := RAccount,
+        responder_id     := RAccount,
         responder_amount := RAmt
     } = ChannelOpts,
 
