@@ -1550,33 +1550,33 @@ paths:
           description: 'Successful operation'
           schema:
             $ref: '#/definitions/Transactions'
-  /commitment-hash:
+  /debug/names/commitment-id:
     get:
       tags:
-        - external
+        - internal
         - dev
-      operationId: GetCommitmentHash
-      description: 'Compute commitment hash for a given salt and name. Commitment hash must be computed client side. This endpoint is for verifying client''s implementations.'
+      operationId: GetCommitmentId
+      description: 'Compute commitment ID for a given salt and name'
       produces:
         - application/json
       parameters:
         - in: query
           name: name
-          description: 'Name to put into the hash'
+          description: 'Name'
           required: true
           type: string
         - in: query
           name: salt
-          description: 'Salt to put into the hash'
+          description: 'Salt'
           required: true
           type: integer
       responses:
         '200':
-          description: Calculated commitment hash
+          description: 'Successful operation'
           schema:
-            $ref: '#/definitions/CommitmentHash'
+            $ref: '#/definitions/CommitmentId'
         '400':
-          description: Name validation failed
+          description: 'Invalid name'
           schema:
             $ref: '#/definitions/Error'
       security:
@@ -1750,166 +1750,6 @@ paths:
             $ref: '#/definitions/OracleQueryResponse'
         '404':
           description: Oracle response transaction validation error
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /name-preclaim-tx:
-    post:
-      tags:
-        - internal
-        - obsolete
-      operationId: PostNamePreclaimTx
-      description: 'Create name preclaim transaction'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: Creates new name preclaim transaction
-          required: true
-          schema:
-            $ref: '#/definitions/NamePreclaimTx'
-      responses:
-        '200':
-          description: successful operation
-          schema:
-            $ref: '#/definitions/CommitmentHash'
-        '400':
-          description: Name preclaim transaction validation error
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Account not found error
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /name-claim-tx:
-    post:
-      tags:
-        - internal
-        - obsolete
-      operationId: PostNameClaimTx
-      description: 'Create name claim transaction'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: Creates new name claim transaction
-          required: true
-          schema:
-            $ref: '#/definitions/NameClaimTx'
-      responses:
-        '200':
-          description: successful operation
-          schema:
-            $ref: '#/definitions/NameHash'
-        '400':
-          description: Name claim transaction validation error
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Account not found error
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /name-update-tx:
-    post:
-      tags:
-        - internal
-        - obsolete
-      operationId: PostNameUpdateTx
-      description: 'Create name update transaction'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: Creates new name update transaction
-          required: true
-          schema:
-            $ref: '#/definitions/NameUpdateTx'
-      responses:
-        '200':
-          description: successful operation
-          schema:
-            $ref: '#/definitions/NameHash'
-        '400':
-          description: Name update transaction validation error
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Account not found error
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /name-transfer-tx:
-    post:
-      tags:
-        - internal
-        - obsolete
-      operationId: PostNameTransferTx
-      description: 'Create name transfer transaction'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: Creates new name transfer transaction
-          required: true
-          schema:
-            $ref: '#/definitions/NameTransferTx'
-      responses:
-        '200':
-          description: successful operation
-          schema:
-            $ref: '#/definitions/NameHash'
-        '400':
-          description: Name transfer transaction validation error
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Account not found error
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /name-revoke-tx:
-    post:
-      tags:
-        - internal
-        - obsolete
-      operationId: PostNameRevokeTx
-      description: 'Create name revoke transaction'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: Creates new name revoke transaction
-          required: true
-          schema:
-            $ref: '#/definitions/NameRevokeTx'
-      responses:
-        '200':
-          description: successful operation
-          schema:
-            $ref: '#/definitions/NameHash'
-        '400':
-          description: Name revoke transaction validation error
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Account not found error
           schema:
             $ref: '#/definitions/Error'
       security:
@@ -2636,7 +2476,7 @@ definitions:
     required:
     - name_id
     - fee
-  CommitmentHash:
+  CommitmentId:
     type: object
     properties:
       commitment_id:

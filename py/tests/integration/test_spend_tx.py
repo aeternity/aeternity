@@ -115,7 +115,7 @@ def test_send_by_name():
     print("Bob address is " + bob_address)
 
     bob_name = test_settings["name_register"]["name"]
-    register_name(bob_name, bob_address, ext_api, bob_private_key)
+    register_name(bob_name, bob_address, ext_api, int_api, bob_private_key)
 
     print("Bob has registered " + bob_name)
     bob_balance1 = common.get_account_balance(ext_api, int_api, pub_key=bob_address).balance
@@ -160,9 +160,9 @@ def miner_send_tokens(address, amount, internal_api, external_api):
     top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
 
-def register_name(name, address, external_api, private_key):
+def register_name(name, address, external_api, internal_api, private_key):
     salt = 42
-    commitment_id = external_api.get_commitment_hash(name, salt).commitment_id
+    commitment_id = internal_api.get_commitment_id(name, salt).commitment_id
 
     # preclaim
     unsigned_preclaim = common.base58_decode(\

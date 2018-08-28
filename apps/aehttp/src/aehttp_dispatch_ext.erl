@@ -794,18 +794,6 @@ handle_request('GetAccountNonce', Req, _Context) ->
             {400, [], #{reason => <<"Invalid account hash">>}}
     end;
 
-handle_request('GetCommitmentHash', Req, _Context) ->
-    Name         = maps:get('name', Req),
-    Salt         = maps:get('salt', Req),
-    case aens:get_commitment_hash(Name, Salt) of
-        {ok, CHash} ->
-            EncodedCHash = aec_base58c:encode(commitment, CHash),
-            {200, [], #{commitment_id => EncodedCHash}};
-        {error, Reason} ->
-            ReasonBin = atom_to_binary(Reason, utf8),
-            {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>}}
-    end;
-
 handle_request('GetContractCallFromTx', Req, _Context) ->
     ParseFuns = [read_required_params([tx_hash]),
                  base58_decode([{tx_hash, tx_hash, tx_hash}]),

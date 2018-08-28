@@ -13,13 +13,6 @@
         , oracle_response/4
        ]).
 
--export([ name_preclaim/3
-        , name_claim/4
-        , name_update/6
-        , name_transfer/4
-        , name_revoke/3
-       ]).
-
 sender_and_hash(STx) ->
     Tx     = aetx_sign:tx(STx),
     Sender = aetx:origin(Tx),
@@ -118,74 +111,6 @@ oracle_response(DecodedQueryId, Response, Fee, TTL) ->
                 response  => Response,
                 fee       => Fee,
                 ttl       => TTL})
-          end).
-
-name_preclaim(DecodedCommitment, Fee, TTL) ->
-    create_tx(
-        fun(Pubkey, Nonce) ->
-            aens_preclaim_tx:new(
-              #{account_id    => aec_id:create(account, Pubkey),
-                nonce         => Nonce,
-                commitment_id => DecodedCommitment,
-                fee           => Fee,
-                ttl           => TTL})
-          end).
-
-name_claim(Name, NameSalt, Fee, TTL) ->
-    create_tx(
-        fun(Pubkey, Nonce) ->
-            case aens:get_name_hash(Name) of
-                {ok, NameHash} ->
-                    {ok, Tx} =
-                        aens_claim_tx:new(
-                          #{account_id => aec_id:create(account, Pubkey),
-                            nonce      => Nonce,
-                            name       => Name,
-                            name_salt  => NameSalt,
-                            fee        => Fee,
-                            ttl        => TTL}),
-                    {ok, Tx, NameHash};
-                {error, _Reason} = Err -> Err
-            end
-          end).
-
-name_update(DecodedNameHash, NameTTL, Pointers, ClientTTL, Fee, TTL) ->
-    create_tx(
-        fun(Pubkey, Nonce) ->
-            aens_update_tx:new(
-              #{account_id  => aec_id:create(account, Pubkey),
-                nonce       => Nonce,
-                name_id     => DecodedNameHash,
-                name_ttl    => NameTTL,
-                pointers    => Pointers,
-                client_ttl  => ClientTTL,
-                fee         => Fee,
-                ttl         => TTL})
-          end).
-
-name_transfer(DecodedNameHash, DecodedRecipientPubKey, Fee, TTL) ->
-    create_tx(
-        fun(Pubkey, Nonce) ->
-            %% Note that this is the local node's pubkey.
-            aens_transfer_tx:new(
-              #{account_id   => aec_id:create(account, Pubkey),
-                nonce        => Nonce,
-                name_id      => DecodedNameHash,
-                recipient_id => DecodedRecipientPubKey,
-                fee          => Fee,
-                ttl          => TTL})
-          end).
-
-name_revoke(DecodedNameHash, Fee, TTL) ->
-    create_tx(
-        fun(Pubkey, Nonce) ->
-            %% Note that this is the local node's pubkey.
-            aens_revoke_tx:new(
-              #{account_id => aec_id:create(account, Pubkey),
-                nonce      => Nonce,
-                name_id    => DecodedNameHash,
-                fee        => Fee,
-                ttl        => TTL})
           end).
 
 %% Internals
