@@ -198,9 +198,6 @@ system-test:
 system-test-deps:
 #	docker pull aeternity/epoch:latest
 
-TESTNET_DB_BACKUP_FILE = mnesia_18.196.250.42_uat_db_backup_1524700922.gz
-TESTNET_DB_BACKUP_BASE_URL = https://9305-99802036-gh.circle-artifacts.com/0/tmp/chain_snapshots/18.196.250.42/tmp
-
 aevm-test: aevm-test-deps
 	@./rebar3 eunit --application=aevm
 
