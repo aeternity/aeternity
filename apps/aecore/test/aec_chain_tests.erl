@@ -134,42 +134,58 @@ restart_chain_db() ->
     aec_test_utils:start_chain_db().
 
 out_of_order_test_block_chain() ->
-    %% Create a chain that we are going to use.
-    Chain = [B0, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
-    [B0H,_B1H, B2H] = [block_hash(H) || H <- Chain],
+    %% Create a chain with both key and micro blocks
+    #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
+    TxsFun = fun(1) ->
+                     Tx1 = make_spend_tx(PubKey, 1, PubKey, 1),
+                     Tx2 = make_spend_tx(PubKey, 2, PubKey, 1),
+                     [aec_test_utils:sign_tx(Tx1, PrivKey),
+                      aec_test_utils:sign_tx(Tx2, PrivKey)
+                     ];
+                (_) ->
+                     []
+             end,
+    PresetAccounts = [{PubKey, 1000}],
+    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    Chain0 = gen_block_chain_with_state_by_target(
+               PresetAccounts,
+               [?HIGHEST_TARGET_SCI, ?HIGHEST_TARGET_SCI], 1, TxsFun),
+    [KB0, KB1, MB1, MB2, KB2] = blocks_only_chain(Chain0),
+    {ok, KB0Hash} = aec_blocks:hash_internal_representation(KB0),
+    {ok, KB1Hash} = aec_blocks:hash_internal_representation(KB1),
+    {ok, KB2Hash} = aec_blocks:hash_internal_representation(KB2),
+    {ok, MB1Hash} = aec_blocks:hash_internal_representation(MB1),
+    {ok, MB2Hash} = aec_blocks:hash_internal_representation(MB2),
 
-    %% Insert the blocks in different order and assert
-    %% that the end result is the same
-    write_blocks_to_chain([B0, B1, B2]),
-    ?assertEqual(B2H, top_block_hash()),
+    ?assertEqual(true , aec_blocks:is_key_block(KB0)),
+    ?assertEqual(true , aec_blocks:is_key_block(KB1)),
+    ?assertEqual(false, aec_blocks:is_key_block(MB1)),
+    ?assertEqual(false, aec_blocks:is_key_block(MB2)),
+    ?assertEqual(true,  aec_blocks:is_key_block(KB2)),
 
-    restart_chain_db(),
-    write_blocks_to_chain([B0, B2, B1]),
-    ?assertEqual(B2H, top_block_hash()),
+    %% We should not be able to skip ahead for key blocks
+    ok = insert_block(KB0),
+    ?assertEqual(KB0Hash, top_block_hash()),
+    ?assertMatch({error, {illegal_orphan, _}}, insert_block(KB2)),
 
-    restart_chain_db(),
-    write_blocks_to_chain([B1, B0, B2]),
-    ?assertEqual(B2H, top_block_hash()),
+    %% We should not be able to skip ahead for micro blocks
+    ?assertMatch({error, {illegal_orphan, _}}, insert_block(MB1)),
 
-    restart_chain_db(),
-    write_blocks_to_chain([B1, B2, B0]),
-    ?assertEqual(B2H, top_block_hash()),
+    %% ... even if we have the corresponding key block
+    ok = insert_block(KB1),
+    ?assertEqual(KB1Hash, top_block_hash()),
+    ?assertMatch({error, {illegal_orphan, _}}, insert_block(MB2)),
 
-    restart_chain_db(),
-    write_blocks_to_chain([B2, B0, B1]),
-    ?assertEqual(B2H, top_block_hash()),
+    %% Check that we can insert them all if they are connected.
+    ok = insert_block(MB1),
+    ?assertEqual(MB1Hash, top_block_hash()),
 
-    restart_chain_db(),
-    write_blocks_to_chain([B2, B1, B0]),
-    ?assertEqual(B2H, top_block_hash()),
+    ok = insert_block(MB2),
+    ?assertEqual(MB2Hash, top_block_hash()),
 
-    %% Check that the top block is not moving if the chain is not complete.
-    restart_chain_db(),
-    write_blocks_to_chain([B0, B2]),
-    ?assertEqual(B0H, top_block_hash()),
-    restart_chain_db(),
-    write_blocks_to_chain([B1, B2]),
-    ?assertEqual(undefined, top_block_hash()),
+    ok = insert_block(KB2),
+    ?assertEqual(KB2Hash, top_block_hash()),
+
     ok.
 
 %%%===================================================================
@@ -185,9 +201,8 @@ broken_chain_test_() ->
              teardown_meck_and_keys(TmpDir),
              aec_test_utils:stop_chain_db()
      end,
-     [{"Test that an invalid block in a different fork is validated "
-       "even if it arrives before the predecessor",
-       fun broken_chain_postponed_validation/0},
+     [{"Test that an invalid block in a different fork is validated",
+       fun broken_chain_broken_fork/0},
       {"Add a block that points to the wrong place in the main chain"
        " because of its height",
        fun broken_chain_wrong_height/0},
@@ -201,7 +216,7 @@ broken_chain_test_() ->
        fun broken_chain_invalid_micro_block_signature/0}
      ]}.
 
-broken_chain_postponed_validation() ->
+broken_chain_broken_fork() ->
     MainBC = gen_blocks_only_chain_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, 5], 111),
     AltChain = [B0, B1, B2, B3] = gen_blocks_only_chain_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, 1], 222),
 
@@ -213,23 +228,19 @@ broken_chain_postponed_validation() ->
     ok = write_blocks_to_chain(MainBC),
     TopHash = top_block_hash(),
 
-    %% Insert the second block of the fork with a bad root hash
-    Bad = aec_blocks:set_root_hash(B2, <<"I'm not really a hash">>),
-    ok = insert_block(Bad),
+    %% Insert the first block of the fork
+    %% It should succeed since the B1 and B2 block are not the faulty one
+    ok = write_blocks_to_chain([B1, B2]),
 
-    {ok, Hash} = aec_blocks:hash_internal_representation(Bad),
-    B3Bad = aec_blocks:set_prev_hash(B3, Hash),
-    ok = insert_block(B3Bad),
-
-    %% Try to insert the first block of the fork
-    %% It should succeed since the B1 block is not the faulty one...
-    ok = insert_block(B1),
-
-    %% ... but the top should not have changed...
+    %% The top should not have changed
     ?assertEqual(TopHash, top_block_hash()),
 
+    %% Try to insert the second block of the fork with a bad root hash
+    Bad = aec_blocks:set_root_hash(B3, <<"I'm not really a hash">>),
+    ?assertMatch({error, _}, insert_block(Bad)),
+
     %% ... and the faulty block should not have a stored state.
-    ?assertEqual(error, get_block_state(Hash)),
+    ?assertEqual(error, get_block_state(block_hash(Bad))),
 
     ok.
 
@@ -497,10 +508,7 @@ target_validation_test_() ->
        fun constant_target_at_the_beginning_of_the_chain/0},
       {"Ensure target is verified based on calculations"
        " after (key_blocks_to_check_difficulty_count + 1) headers/blocks",
-       fun target_verified_based_on_calculations/0},
-      {"Test target is verified even for blocks coming"
-       " in different order, hence fork is rejected",
-       fun test_postponed_target_verification/0}
+       fun target_verified_based_on_calculations/0}
      ]}.
 
 constant_target_at_the_beginning_of_the_chain() ->
@@ -566,41 +574,6 @@ target_verified_based_on_calculations() ->
     ?assertEqual(block_hash(lists:last(Chain)), top_block_hash()),
     ok.
 
-test_postponed_target_verification() ->
-    CommonTargets = [?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET],
-    MainTargets = CommonTargets ++ [553697371, 553690381, 553682302],
-    AltTargets  = CommonTargets ++ [553697371, 168427524, 553682302],
-
-    T0 = aeu_time:now_in_msecs(),
-    TS = [T0, T0 + 10000, T0 + 20000, T0 + 30000, T0 + 40000, T0 + 50000],
-    MainBC = gen_blocks_only_chain(#{ targets => MainTargets, nonce => 111, timestamps => TS, txs_by_height_fun => fun(_) -> [] end }),
-    AltChain = [_, B1, B2, B3, B4, B5, B6] =
-        gen_blocks_only_chain(#{ targets => AltTargets, nonce => 222, timestamps => TS, txs_by_height_fun => fun(_) -> [] end }),
-
-    %% Assert that we are creating a fork
-    ?assertNotEqual(MainBC, AltChain),
-
-    %% Insert the main chain
-    ok = write_blocks_to_chain(MainBC),
-    {ok, TopBlockHash} = aec_blocks:hash_internal_representation(lists:last(MainBC)),
-    ?assertEqual(TopBlockHash, top_block_hash()),
-
-    %% Insert all blocks of alt chain chain except B4 (which prevents from target validation)
-    ok = insert_block(B1),
-    ok = insert_block(B2),
-    ok = insert_block(B3),
-    ok = insert_block(B5),
-    ok = insert_block(B6),
-
-    %% Insert B4, which should make AltChain take over...
-    ok = insert_block(B4),
-
-    %% ... but already inserted B5 has too high target (it was mined too easily)
-    ?assertEqual(TopBlockHash, top_block_hash()),
-
-    ok.
-
-
 %%%===================================================================
 %%% Total difficulty test
 
@@ -663,12 +636,11 @@ forking_test_() ->
      [ {"Fork on genesis", fun fork_on_genesis/0}
      , {"Fork on shorter chain because of difficulty", fun fork_on_shorter/0}
      , {"Fork on last block", fun fork_on_last_block/0}
-     , {"Fork and out of order", fun fork_out_of_order/0}
      , {"Get by height in forks", fun fork_get_by_height/0}
-     , {"Test if hash is connected to genesis", fun fork_is_connected_to_genesis/0}
      , {"Test if hash is in main chain", fun fork_is_in_main_chain/0}
      , {"Get a transaction from the right fork", fun fork_get_transaction/0}
      , {"Fork on micro-block", fun fork_on_micro_block/0}
+     , {"Fork on old fork point", fun fork_on_old_fork_point/0}
      ]}.
 
 fork_on_genesis() ->
@@ -692,9 +664,6 @@ fork_common(EasyChain, HardChain) ->
     TopHashHard = block_hash(lists:last(HardChain)),
     %% Insert blocks
     ok = fork_common_block(EasyChain, TopHashEasy, HardChain, TopHashHard),
-    %% Out of order
-    ok = fork_common_block(lists:reverse(EasyChain), TopHashEasy,
-                           lists:reverse(HardChain), TopHashHard),
     ok.
 
 fork_common_block(EasyChain, TopHashEasy, HardChain, TopHashHard) ->
@@ -713,24 +682,6 @@ fork_common_block(EasyChain, TopHashEasy, HardChain, TopHashHard) ->
     ?assertEqual(TopHashHard, top_block_hash()),
     ok.
 
-fork_out_of_order() ->
-    CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, 1, 1], 111),
-    EasyChain = extend_chain_with_state(CommonChain, [2], 111),
-    HardChain = extend_chain_with_state(CommonChain, [1], 222),
-
-    restart_chain_db(),
-    %% Add the chain with the fork node as the last entry.
-    ok = write_blocks_to_chain(lists:droplast(blocks_only_chain(CommonChain))),
-    ok = insert_block(lists:last(blocks_only_chain(EasyChain))),
-    ok = insert_block(lists:last(blocks_only_chain(HardChain))),
-
-    %% The last block to enter is the last common node.
-    ok = insert_block(lists:last(blocks_only_chain(CommonChain))),
-    ?assertEqual(block_hash(lists:last(blocks_only_chain(HardChain))),
-                 top_block_hash()),
-    ok.
-
-
 fork_get_by_height() ->
     CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, 1, 1], 111),
     EasyChain = blocks_only_chain(extend_chain_with_state(CommonChain, [2], 111)),
@@ -746,30 +697,6 @@ fork_get_by_height() ->
 
     ?assertEqual(error, aec_chain_state:get_key_block_hash_at_height(6)),
 
-    ok.
-
-fork_is_connected_to_genesis() ->
-    CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, 1, 1], 111),
-    EasyChain = blocks_only_chain(extend_chain_with_state(CommonChain, [2, 2], 111)),
-    HardChain = blocks_only_chain(extend_chain_with_state(CommonChain, [1, 1], 222)),
-
-    %% Add the easy chain
-    ok = write_blocks_to_chain(EasyChain),
-    [?assertEqual(true, aec_chain:hash_is_connected_to_genesis(block_hash(B)))
-     || B <- EasyChain],
-
-    %% Add only the top of the hard chain
-    HardTop = lists:last(HardChain),
-    HardTopHash = block_hash(HardTop),
-    ok = write_blocks_to_chain([HardTop]),
-    ?assertEqual(false, aec_chain:hash_is_connected_to_genesis(HardTopHash)),
-
-    %% Add the rest of the hard chain.
-    ok = write_blocks_to_chain(HardChain),
-    [?assertEqual(true, aec_chain:hash_is_connected_to_genesis(block_hash(B)))
-     || B <- EasyChain],
-    [?assertEqual(true, aec_chain:hash_is_connected_to_genesis(block_hash(B)))
-     || B <- HardChain],
     ok.
 
 fork_is_in_main_chain() ->
@@ -888,6 +815,24 @@ fork_on_micro_block() ->
     {ok, KB3Hash} = aec_blocks:hash_internal_representation(KB3),
     ?assertEqual(KB3Hash, aec_chain:top_block_hash()),
 
+    ok.
+
+fork_on_old_fork_point() ->
+    CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, ?GENESIS_TARGET], 111),
+    OriginalChain = extend_chain_with_state(CommonChain, [2, 2, 2, 2, 2, 2, 2, 2], 111),
+    ForkChain = extend_chain_with_state(CommonChain, [1], 222),
+    ForkBlock = lists:last(blocks_only_chain(ForkChain)),
+
+    %% Add the original chain
+    ok = write_blocks_to_chain(blocks_only_chain(OriginalChain)),
+
+    %% If we try to add the fork block trough gossip, it should be refused.
+    ?assertMatch({error, {too_far_below_top, _, _}}, insert_block(ForkBlock)),
+
+    %% But if we add it through sync, it is allowed
+    ?assertEqual(ok, insert_block(#{key_block => ForkBlock,
+                                    micro_blocks => [],
+                                    dir => backward})),
     ok.
 
 %%%===================================================================

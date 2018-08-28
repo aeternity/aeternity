@@ -3,6 +3,58 @@
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%% @doc
 %%% ADT for keeping the state of the chain service
+%%%
+%%% This module is responsible for tracking the structure of the
+%%% chain. The building blocks of the chain is abstracted to Nodes. A
+%%% node is either a key block or a micro block.
+%%%
+%%% The chain starts with the genesis block and ends with the top_block.
+%%%
+%%% A node is only added to the chain (and the db) if it passes full
+%%% validation. The full validation of a node can only be done if the
+%%% full validation of its immediate predecessor (prev_hash) has
+%%% passed. By transitivity, a node can only be validated if it has a
+%%% fully validated chain to the genesis node. This also means that
+%%% orphan nodes cannot be added to the chain (or to the db).
+%%%
+%%% When a node is added, it might create a fork, extend a fork, or
+%%% extend the main chain. The fork with the highest accumulated
+%%% difficulty is considered the main chain. Only key blocks add to
+%%% the difficulty.
+%%%
+%%% If a micro block is added to the top of the chain, this is
+%%% considered the top block, even if it doesn't increase the
+%%% difficulty. If a micro block is added to a fork with the same
+%%% difficulty as the main chain, the top block will not chain.
+%%%
+%%% Forks in the structure are labeled by fork id. The fork id is
+%%% local to each epoch instance and cannot be used to reason about
+%%% structure across peers. The fork id is the hash of the first node
+%%% in a fork in the local system. In particular, the genesis node's
+%%% hash is the first fork id. A node inherits its parent's fork id,
+%%% unless there is already a sibling with this fork id. In that case,
+%%% a new fork id is created with the hash of the new node.
+%%%
+%%% Fork ids help reasoning about the chain structure since they allow
+%%% for skipping to the beginning of a fork when traversing the
+%%% chain. For example, if two nodes with the same fork id, one must
+%%% be the ancestor of the other. If this is not the case, we can skip
+%%% to the previous fork of the higher node and compare again.
+%%%
+%%% Information is accumulated in the chain and is stored
+%%% corresponding to a node. For example, the accumulated difficulty,
+%%% the fork id, the accumulated fee for a generation (between two
+%%% key blocks) and the full state trees at a node. Currently, this
+%%% information is not garbage collected in any way, and it is
+%%% indefinitely retrievable. This might change in the future.
+%%%
+%%% When adding a node, we make a difference if the node was added
+%%% through gossip or sync. A gossiped node is not allowed to be
+%%% further below the current top than some height delta. This to
+%%% prevent malicious nodes from creating ancient forks. Sync is
+%%% making a slightly more informed decision when creating forks, so
+%%% it is allowed to create older forks.
+%%%
 %%% @end
 %%%-------------------------------------------------------------------
 
@@ -63,9 +115,9 @@ median_timestamp(Header) ->
 -spec insert_block(aec_blocks:block() | map()) -> 'ok' | {'error', any()}.
 insert_block(#{ key_block := KeyBlock, micro_blocks := MicroBlocks, dir := forward }) ->
     %% First insert key_block
-    case insert_block(KeyBlock) of
+    case insert_block(KeyBlock, sync) of
         ok ->
-            lists:foldl(fun(MB, ok) -> insert_block(MB);
+            lists:foldl(fun(MB, ok) -> insert_block(MB, sync);
                            (_MB, Err = {error, _}) -> Err
                         end, ok, MicroBlocks);
         Err = {error, _} ->
@@ -73,17 +125,20 @@ insert_block(#{ key_block := KeyBlock, micro_blocks := MicroBlocks, dir := forwa
     end;
 insert_block(#{ key_block := KeyBlock, micro_blocks := MicroBlocks, dir := backward }) ->
     %% First insert micro_blocks
-    case lists:foldl(fun(MB, ok) -> insert_block(MB);
+    case lists:foldl(fun(MB, ok) -> insert_block(MB, sync);
                         (_MB, Err = {error, _}) -> Err
                      end, ok, MicroBlocks) of
         ok ->
-            insert_block(KeyBlock);
+            insert_block(KeyBlock, sync);
         Err = {error, _} ->
             Err
     end;
 insert_block(Block) ->
+    insert_block(Block, undefined).
+
+insert_block(Block, Origin) ->
     Node = wrap_block(Block),
-    try internal_insert(Node, Block)
+    try internal_insert(Node, Block, Origin)
     catch throw:?internal_error(What) -> {error, What}
     end.
 
@@ -265,6 +320,9 @@ fake_key_node(PrevNode, Height, Miner, Beneficiary) ->
 
 wrap_header(Header) ->
     {ok, Hash} = aec_headers:hash_header(Header),
+    wrap_header(Header, Hash).
+
+wrap_header(Header, Hash) ->
     #node{ header = Header
          , hash = Hash
          , type = aec_headers:type(Header)
@@ -286,7 +344,7 @@ get_key_block_hash_at_height(Height, State) when is_integer(Height), Height >= 0
             case Height > TopHeight of
                 true  -> error;
                 false ->
-                    case db_find_nodes_at_height(Height) of
+                    case db_find_key_nodes_at_height(Height) of
                         error -> error({broken_chain, Height});
                         {ok, [Node]} -> {ok, hash(Node)};
                         {ok, [_|_] = Nodes} ->
@@ -295,10 +353,8 @@ get_key_block_hash_at_height(Height, State) when is_integer(Height), Height >= 0
             end
     end.
 
-%% TODO: this function relies that both key blocks and micro blocks share the
-%% same index; this can change when they are indexed separately
 keyblock_hash_in_main_chain([Node|Left], TopHash) ->
-    case is_key_block(Node) andalso hash_is_in_main_chain(hash(Node), TopHash) of
+    case hash_is_in_main_chain(hash(Node), TopHash) of
         true  -> {ok, hash(Node)};
         false -> keyblock_hash_in_main_chain(Left, TopHash)
     end;
@@ -316,30 +372,72 @@ hash_is_in_main_chain(Hash, TopHash) ->
 %%% Chain operations
 %%%-------------------------------------------------------------------
 
-internal_insert(Node, Block) ->
+internal_insert(Node, Block, Origin) ->
     case db_find_node(hash(Node)) of
         error ->
             %% To preserve the invariants of the chain,
             %% Only add the block if we can do the whole
             %% transitive operation (i.e., calculate all the state
             %% trees, and update the pointers)
-            Fun = fun() ->
-                          State = new_state_from_persistence(),
-                          %% Keep track of which node we are actually
-                          %% adding to avoid giving spurious error
-                          %% messages.
-                          State1 = State#{ currently_adding => hash(Node)},
-                          assert_not_new_genesis(Node, State1),
-                          ok = db_put_node(Block, hash(Node)),
-                          State2 = update_state_tree(Node, maybe_add_genesis_hash(State1, Node)),
-                          persist_state(State2),
-                          ok
+            Fun = fun() -> internal_insert_transaction(Node, Block, Origin)
                   end,
             try aec_db:ensure_transaction(Fun)
             catch exit:{aborted, {throw, ?internal_error(What)}} -> internal_error(What)
             end;
         {ok, Node} -> ok;
         {ok, Old} -> internal_error({same_key_different_content, Node, Old})
+    end.
+
+internal_insert_transaction(Node, Block, Origin) ->
+    State1 = new_state_from_persistence(),
+    assert_not_new_genesis(Node, State1),
+    State2 = maybe_add_genesis_hash(State1, Node),
+    case node_is_genesis(Node, State2) of
+        true ->
+            ok;
+        false ->
+            assert_not_illegal_fork_or_orphan(Node, Origin, State2),
+            PrevNode = db_get_node(prev_hash(Node)),
+            assert_previous_height(PrevNode, Node),
+            assert_previous_key_block_hash(PrevNode, Node),
+            assert_micro_block_time(PrevNode, Node),
+            assert_micro_signature(PrevNode, Node),
+            %% TODO: The key header chain should only be read once.
+            assert_key_block_time(Node),
+            assert_calculated_target(Node)
+    end,
+    ok = db_put_node(Block, hash(Node)),
+    State3 = update_state_tree(Node, State2),
+    persist_state(State3),
+    ok.
+
+assert_not_illegal_fork_or_orphan(Node, Origin, State) ->
+    case node_is_genesis(Node, State) of
+        true -> ok;
+        false ->
+            assert_connection_to_chain(Node),
+            case Origin of
+                sync -> ok;
+                undefined -> assert_height_delta(Node, State)
+            end
+    end.
+
+assert_connection_to_chain(Node) ->
+    case hash_is_connected_to_genesis(prev_hash(Node)) of
+        true  -> ok;
+        false -> internal_error({illegal_orphan, hash(Node)})
+    end.
+
+%% TODO: Should this be configurable?
+-define(ALLOWED_HEIGHT_DELTA, 5).
+
+assert_height_delta(Node, State) ->
+    Top       = db_get_node(get_top_block_hash(State)),
+    TopHeight = node_height(Top),
+    Height    = node_height(Node),
+    case Height >= TopHeight - ?ALLOWED_HEIGHT_DELTA of
+        false -> internal_error({too_far_below_top, Height, TopHeight});
+        true -> ok
     end.
 
 %% NG-INFO: micro blocks inherit the height from the last key block
@@ -435,7 +533,7 @@ get_n_key_headers_from({ok, Node}, N, Acc) ->
 get_n_key_headers_from(error, _N, _Acc) ->
     error.
 
-assert_key_block_time(_PrevNode, Node) ->
+assert_key_block_time(Node) ->
     case is_key_block(Node) of
         true ->
             Time = node_time(Node),
@@ -478,20 +576,14 @@ assert_micro_signature(PrevNode, Node) ->
                 end,
             Bin = aec_headers:serialize_to_signature_binary(export_header(Node)),
             Sig = node_signature(Node),
-            case enacl:sign_verify_detached(Sig, Bin, node_miner(KeyNode)) of
-                {ok, _}    -> ok;
-                {error, _} -> internal_error(signature_verification_failed)
+            Miner = node_miner(KeyNode),
+            case enacl:sign_verify_detached(Sig, Bin, Miner) of
+                {ok, _} -> ok;
+                {error,_What} -> internal_error(signature_verification_failed)
             end;
         false ->
             ok
     end.
-
-%% Transitively compute new state trees if
-%%   - We can find the state trees of the previous node; and
-%%   - The new node is a block.
-%%
-%% This should be called on the newly added node.
-%% It will fail if called on a node that already has its state computed.
 
 -record(fork_info, { fork_id
                    , difficulty
@@ -499,64 +591,29 @@ assert_micro_signature(PrevNode, Node) ->
                    }).
 
 update_state_tree(Node, State) ->
-    case get_state_trees_in(Node, State) of
-        error -> State;
-        {ok, Trees, ForkInfoIn} ->
-            ForkInfo =
-                case node_is_genesis(Node, State) of
-                    true  -> ForkInfoIn;
-                    false ->
-                        case db_node_has_sibling_blocks(Node) of
-                            true  -> ForkInfoIn#fork_info{fork_id = hash(Node)};
-                            false -> ForkInfoIn
-                        end
-                end,
-            {State1, NewTopDifficulty} =
-                update_state_tree(Node, Trees, ForkInfo, State),
-            OldTopHash = get_top_block_hash(State),
-            handle_top_block_change(OldTopHash, NewTopDifficulty, State1)
-    end.
+    {ok, Trees, ForkInfoIn} = get_state_trees_in(Node, State),
+    ForkInfo = maybe_set_new_fork_id(Node, ForkInfoIn, State),
+    {State1, NewTopDifficulty} = update_state_tree(Node, Trees, ForkInfo, State),
+    OldTopHash = get_top_block_hash(State),
+    handle_top_block_change(OldTopHash, NewTopDifficulty, State1).
 
 update_state_tree(Node, TreesIn, ForkInfo, State) ->
     case db_find_state(hash(Node)) of
         {ok,_Trees,_ForkInfo} ->
+            %% NOTE: This is an internal inconsistency check,
+            %% so don't use internal_error
             error({found_already_calculated_state, hash(Node)});
         error ->
-            case apply_and_store_state_trees(Node, TreesIn, ForkInfo, State) of
-                {ok, TreesOut, ForkInfoOut} ->
-                    update_next_state_tree(Node, TreesOut, ForkInfoOut, State);
-                error ->
-                    {State, ForkInfo#fork_info.difficulty}
-            end
+            DifficultyOut = apply_and_store_state_trees(Node, TreesIn, ForkInfo, State),
+            State1 = set_top_block_hash(hash(Node), State),
+            {State1, DifficultyOut}
     end.
 
-update_next_state_tree(Node, Trees, ForkInfo, State) ->
-    Hash = hash(Node),
-    State1 = set_top_block_hash(Hash, State),
-    case db_children(Node) of
-        [] -> {State1, ForkInfo#fork_info.difficulty};
-        [Child|Left] ->
-            %% If there is only one child, it inherits the fork id.
-            %% For more than one child, we need new fork_ids, which are
-            %% the first node hash of each new fork.
-            Children = [{Child, ForkInfo}|
-                        [{C, ForkInfo#fork_info{fork_id = hash(C)}}
-                         || C <- Left]
-                       ],
-            Difficulty = ForkInfo#fork_info.difficulty,
-            update_next_state_tree_children(Children, Trees, Difficulty, State1)
-    end.
-
-update_next_state_tree_children([],_Trees, Max, State) ->
-    {State, Max};
-update_next_state_tree_children([{Child, ForkInfo}|Left], Trees, Max, State) ->
-    {State1, Max1} = update_state_tree(Child, Trees, ForkInfo, State),
-    case Max1 > Max of
-        true ->
-            update_next_state_tree_children(Left, Trees, Max1, State1);
-        false ->
-            State2 = set_top_block_hash(get_top_block_hash(State), State1),
-            update_next_state_tree_children(Left, Trees, Max, State2)
+maybe_set_new_fork_id(Node, ForkInfoIn, State) ->
+    case (node_is_genesis(Node, State) =:= false
+          andalso db_node_has_sibling_blocks(Node)) of
+        true  -> ForkInfoIn#fork_info{fork_id = hash(Node)};
+        false -> ForkInfoIn
     end.
 
 get_state_trees_in(Node, State) ->
@@ -583,41 +640,15 @@ get_state_trees_in(Node, State) ->
             end
     end.
 
-apply_and_store_state_trees(#node{hash = NodeHash} = Node, TreesIn, ForkInfoIn,
-                            #{currently_adding := Hash} = State) ->
-    try
-        case db_find_node(prev_hash(Node)) of
-            error ->
-                %% This must be the genesis node
-                ok;
-            {ok, PrevNode} ->
-                assert_previous_height(PrevNode, Node),
-                assert_previous_key_block_hash(PrevNode, Node),
-                assert_calculated_target(Node),
-                assert_micro_block_time(PrevNode, Node),
-                assert_key_block_time(PrevNode, Node),
-                assert_micro_signature(PrevNode, Node)
-        end,
-        {Trees, Fees} = apply_node_transactions(Node, TreesIn, ForkInfoIn, State),
-        assert_state_hash_valid(Trees, Node),
-        DifficultyOut = ForkInfoIn#fork_info.difficulty
-            + node_difficulty(Node),
-        ForkInfoInNode = ForkInfoIn#fork_info{ fees = Fees
-                                             , difficulty = DifficultyOut
-                                             },
-        ok = db_put_state(hash(Node), Trees, ForkInfoInNode),
-        case node_type(Node) of
-            key   -> {ok, Trees, ForkInfoInNode#fork_info{fees = 0}};
-            micro -> {ok, Trees, ForkInfoInNode}
-        end
-    catch
-        %% Only catch this if the current node is NOT the one added in
-        %% the call. We don't want to give an error message for any
-        %% other node that that. But we want to make progress in the
-        %% chain state even if a successor or predecessor to the
-        %% currently added node is faulty.
-        throw:?internal_error(_) when NodeHash =/= Hash -> error
-    end.
+apply_and_store_state_trees(Node, TreesIn, ForkInfoIn, State) ->
+    {Trees, Fees} = apply_node_transactions(Node, TreesIn, ForkInfoIn, State),
+    assert_state_hash_valid(Trees, Node),
+    DifficultyOut = ForkInfoIn#fork_info.difficulty + node_difficulty(Node),
+    ForkInfoInNode = ForkInfoIn#fork_info{ fees = Fees
+                                         , difficulty = DifficultyOut
+                                         },
+    ok = db_put_state(hash(Node), Trees, ForkInfoInNode),
+    DifficultyOut.
 
 handle_top_block_change(OldTopHash, NewTopDifficulty, State) ->
     case get_top_block_hash(State) of
@@ -815,12 +846,11 @@ median(Xs) ->
 %%%-------------------------------------------------------------------
 
 db_put_node(Block, Hash) when is_binary(Hash) ->
-    ok = aec_db:write_block(Block).
+    ok = aec_db:write_block(Block, Hash).
 
-%% NG-INFO Heigh/Hash queries have sense in context of key blocks. For non-key height = 0
 db_find_node(Hash) when is_binary(Hash) ->
     case aec_db:find_header(Hash) of
-        {value, Header} -> {ok, wrap_header(Header)};
+        {value, Header} -> {ok, wrap_header(Header, Hash)};
         none -> error
     end.
 
@@ -828,11 +858,13 @@ db_get_node(Hash) when is_binary(Hash) ->
     {ok, Node} = db_find_node(Hash),
     Node.
 
-%% NG-INFO Heigh/Hash queries have sense in context of key blocks. For non-key height = 0
-db_find_nodes_at_height(Height) when is_integer(Height) ->
-    case aec_db:find_headers_at_height(Height) of
+db_find_key_nodes_at_height(Height) when is_integer(Height) ->
+    case aec_db:find_headers_and_hash_at_height(Height) of
         [_|_] = Headers ->
-            {ok, lists:map(fun(Header) -> wrap_header(Header) end, Headers)};
+            case [wrap_header(H, Hash) || {H, Hash} <- Headers, aec_headers:type(H) =:= key] of
+                [] -> error;
+                List -> {ok, List}
+            end;
         [] -> error
     end.
 
@@ -889,15 +921,6 @@ db_find_prev_hash(Hash) when is_binary(Hash) ->
         {value, Header} -> {value, aec_headers:prev_hash(Header)};
         none -> none
     end.
-
-db_children(#node{} = Node) ->
-    Height = node_height(Node),
-    Hash   = hash(Node),
-    %% NOTE: Micro blocks have the same height.
-    [wrap_header(Header)
-     || Header <- aec_db:find_headers_at_height(Height + 1)
-            ++ aec_db:find_headers_at_height(Height),
-        aec_headers:prev_hash(Header) =:= Hash].
 
 db_node_has_sibling_blocks(Node) ->
     Height   = node_height(Node),

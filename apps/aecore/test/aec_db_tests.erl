@@ -93,19 +93,18 @@ write_chain_test_() ->
                ?assertEqual(GHash, TopBlockHash),
 
                %% Add one block
-               ?assertEqual(ok, aec_conductor:post_block(B2)),
-
-               %% GB should still be top block
-               NewTopBlockHash = aec_db:get_top_block_hash(),
-               ?assertEqual(GHash, NewTopBlockHash),
-
-               %% Add missing block
                ?assertEqual(ok, aec_conductor:post_block(B1)),
+
+               %% B1 should be the top block
+               NewTopBlockHash = aec_db:get_top_block_hash(),
+               ?assertEqual(block_hash(B1), NewTopBlockHash),
+
+               %% Add another block
+               ?assertEqual(ok, aec_conductor:post_block(B2)),
 
                %% Now B2 should be the top block
                LastTopBlockHash = aec_db:get_top_block_hash(),
-               B2Hash = block_hash(B2),
-               ?assertEqual(B2Hash, LastTopBlockHash),
+               ?assertEqual(block_hash(B2), LastTopBlockHash),
 
                ok
        end}
