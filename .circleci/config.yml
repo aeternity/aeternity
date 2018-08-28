@@ -491,10 +491,6 @@ jobs:
           command: |
             docker build -t ${DOCKERHUB_REPO:?}:local .
       - run:
-          name: Install system tests dependancies
-          command: |
-            sudo -u ubuntu -E -H make system-test-deps
-      - run:
           name: System Tests
           no_output_timeout: 2h
           command: |
