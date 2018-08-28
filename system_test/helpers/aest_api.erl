@@ -32,10 +32,10 @@
 
 -type sc_open_params() :: #{
     initiator_node    := atom(),
-    initiator_account := account(),
+    initiator_id      := account(),
     initiator_amount  := non_neg_integer(),
     responder_node    := atom(),
-    responder_account := account(),
+    responder_id      := account(),
     responder_amount  := non_neg_integer(),
     responder_port    => pos_integer()
 }.
@@ -56,8 +56,8 @@ tx_spend(NodeName, From, To, Amount, Fee, Cfg) ->
     #{ pubkey := FromPubKey } = From,
     #{ pubkey := ToPubKey } = To,
     TxArgs = #{
-        sender           => FromPubKey,
-        recipient_pubkey => ToPubKey,
+        sender_id        => FromPubKey,
+        recipient_id     => ToPubKey,
         amount           => Amount,
         fee              => Fee,
         payload          => <<"foo">>
@@ -67,7 +67,7 @@ tx_spend(NodeName, From, To, Amount, Fee, Cfg) ->
 
 -spec tx_state(atom(), binary(), aest_nodes:test_ctx()) -> tx_state().
 tx_state(NodeName, TxHash, Cfg) ->
-    case api_get_tx(NodeName, TxHash, json, Cfg) of
+    case api_get_tx(NodeName, TxHash, Cfg) of
         {ok, 404, _} ->
             undefined;
         {ok, 200, #{ <<"transaction">> := #{ <<"block_hash">> := <<"none">> }} } ->
@@ -87,10 +87,10 @@ tx_wait(NodeNames, TxHash, Status, Timeout, Cfg) ->
     -> {ok, channel(), binary(), pos_integer()}.
 sc_open(Params, Cfg) ->
     #{
-        initiator_node    := INodeName,
-        initiator_account := IAccount,
-        responder_node    := RNodeName,
-        responder_account := RAccount
+        initiator_node := INodeName,
+        initiator_id   := IAccount,
+        responder_node := RNodeName,
+        responder_id   := RAccount
     } = Params,
     #{ pubkey := IPubKey, privkey := IPrivKey } = IAccount,
     #{ pubkey := RPubKey, privkey := RPrivKey } = RAccount,
@@ -221,10 +221,10 @@ node_ws_ext_addr(NodeName, Cfg) ->
 
 sc_options(Params, ExtraOpts, Cfg) ->
     #{
-        initiator_account := IAccount,
+        initiator_id      := IAccount,
         initiator_amount  := IAmt,
         responder_node    := RNodeName,
-        responder_account := RAccount,
+        responder_id      := RAccount,
         responder_amount  := RAmt
     } = Params,
     #{ pubkey := IPubKey } = IAccount,
@@ -234,8 +234,8 @@ sc_options(Params, ExtraOpts, Cfg) ->
     Opts = #{
         host => Host,
         port => maps:get(responder_port, Params, 9000),
-        initiator => IPubKey,
-        responder => RPubKey,
+        initiator_id => IPubKey,
+        responder_id => RPubKey,
         lock_period => maps:get(lock_period, Params, 10),
         push_amount => maps:get(push_amount, Params, 10),
         initiator_amount => IAmt,
@@ -324,10 +324,6 @@ tx_post(NodeName, TxHash, Tx, Cfg) ->
     ?assertEqual(TxHash, maps:get(<<"tx_hash">>, Resp)),
     TxHash.
 
-tx_encoding_param(default) -> #{};
-tx_encoding_param(json) -> #{tx_encoding => <<"json">>};
-tx_encoding_param(message_pack) -> #{tx_encoding => <<"message_pack">>}.
-
 %--- HTTP API FUNCTIONS --------------------------------------------------------
 
 api_path(spend_tx) -> "tx/spend".
@@ -343,10 +339,9 @@ api_get_balance(NodeName, #{ pubkey := PubKey }, Cfg) ->
     {ok, 200, #{ <<"balance">> := Bal }} = http_request(BaseUrl, get, Path, []),
     Bal.
 
-api_get_tx(NodeName, TxHash, TxEncoding, Cfg) ->
-    Params = tx_encoding_param(TxEncoding),
+api_get_tx(NodeName, TxHash, Cfg) ->
     BaseUrl = node_http_base_url(NodeName, Cfg),
-    http_request(BaseUrl, get, "tx/" ++ binary_to_list(TxHash), Params).
+    http_request(BaseUrl, get, "tx/" ++ binary_to_list(TxHash), #{}).
 
 api_post_tx(NodeName, Tx, Cfg) ->
     BaseUrl = node_http_base_url(NodeName, Cfg),

@@ -3953,7 +3953,7 @@ ws_refused_on_limit_reached(_Config) ->
             fun(_) ->
                 %% try to connect a WS client; assert it does not connect and
                 %% is waiting
-                {error, still_connecting, WaitingPid} = ws_start_link(),
+                {error, {still_connecting, WaitingPid}} = ws_start_link(),
                 MaxWsCount = open_websockets_count(),
                 WaitingPid
             end,
