@@ -68,7 +68,7 @@ mining:
     # Expected mine rate (milliseconds) between blocks. Used in governance.
     expected_mine_rate: 300000
     # Public key of beneficiary account that will receive fees from mining on a node.
-    beneficiary: "ak$2VoAhMd7tVJrDYM5vPJwFRjueZyirDJumVJNeBWL9j1eNTHsRx"
+    beneficiary: "ak$DummyPubKeyDoNotEverUse999999999999999999999999999"
     cuckoo:
         miner:
             # Executable binary of the miner.

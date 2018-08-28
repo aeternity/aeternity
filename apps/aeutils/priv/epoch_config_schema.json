@@ -318,7 +318,7 @@
                     "description" :
                     "Public key of beneficiary account that will receive fees from mining on a node.",
                     "type" : "string",
-                    "example" : "ak$2VoAhMd7tVJrDYM5vPJwFRjueZyirDJumVJNeBWL9j1eNTHsRx",
+                    "example" : "ak$DummyPubKeyDoNotEverUse999999999999999999999999999",
                     "pattern": "^ak\$[1-9A-HJ-NP-Za-km-z]*$"
                 },
                 "expected_mine_rate" : {
