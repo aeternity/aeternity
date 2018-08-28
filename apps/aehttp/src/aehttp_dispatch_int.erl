@@ -7,6 +7,15 @@
                         , get_block/2
                         , get_block/3
                         , get_block_from_chain/1
+                        , parse_map_to_atom_keys/0
+                        , read_required_params/1
+                        , read_optional_params/1
+                        , base58_decode/1
+                        , get_nonce_from_account_id/1
+                        , verify_name/1
+                        , nameservice_pointers_decode/1
+                        , unsigned_tx_response/1
+                        , process_request/2
                         ]).
 
 -spec handle_request(
@@ -31,6 +40,66 @@ handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
         {error, key_not_found} ->
             {404, [], #{reason => <<"Keys not configured">>}}
     end;
+
+handle_request('PostNamePreclaim', #{'NamePreclaimTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([account_id, commitment_id, fee]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 base58_decode([{account_id, account_id, {id_hash, [account_pubkey]}},
+                                {commitment_id, commitment_id, {id_hash, [commitment]}}]),
+                 get_nonce_from_account_id(account_id),
+                 unsigned_tx_response(fun aens_preclaim_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request('PostNameUpdate', #{'NameUpdateTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([account_id, name_id, name_ttl,
+                                       pointers, client_ttl, fee]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 base58_decode([{account_id, account_id, {id_hash, [account_pubkey]}},
+                                {name_id, name_id, {id_hash, [name]}}]),
+                 nameservice_pointers_decode(pointers),
+                 get_nonce_from_account_id(account_id),
+                 unsigned_tx_response(fun aens_update_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request('PostNameClaim', #{'NameClaimTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([account_id, name, name_salt, fee]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 base58_decode([{account_id, account_id, {id_hash, [account_pubkey]}},
+                                {name, name, name}]),
+                 get_nonce_from_account_id(account_id),
+                 verify_name(name),
+                 unsigned_tx_response(fun aens_claim_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request('PostNameTransfer', #{'NameTransferTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([account_id, name_id, recipient_id, fee]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 base58_decode([{account_id, account_id, {id_hash, [account_pubkey]}},
+                                {recipient_id, recipient_id,
+                                 {id_hash, [account_pubkey, name]}},
+                                {name_id, name_id, {id_hash, [name]}}]),
+                 get_nonce_from_account_id(account_id),
+                 unsigned_tx_response(fun aens_transfer_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request('PostNameRevoke', #{'NameRevokeTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([account_id, name_id, fee]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 base58_decode([{account_id, account_id, {id_hash, [account_pubkey]}},
+                                {name_id, name_id, {id_hash, [name]}}]),
+                 get_nonce_from_account_id(account_id),
+                 unsigned_tx_response(fun aens_revoke_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
 
 handle_request('PostOracleRegisterTx', #{'OracleRegisterTx' := OracleRegisterTxObj}, _Context) ->
     #{<<"query_format">>    := QueryFormat,

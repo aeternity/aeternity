@@ -557,66 +557,6 @@ handle_request('PostOracleResponse', #{'OracleResponseTx' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('PostNamePreclaim', #{'NamePreclaimTx' := Req}, _Context) ->
-    ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([account_id, commitment_id, fee]),
-                 read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{account_id, account_id, {id_hash, [account_pubkey]}},
-                                {commitment_id, commitment_id, {id_hash, [commitment]}}]),
-                 get_nonce_from_account_id(account_id),
-                 unsigned_tx_response(fun aens_preclaim_tx:new/1)
-                ],
-    process_request(ParseFuns, Req);
-
-handle_request('PostNameClaim', #{'NameClaimTx' := Req}, _Context) ->
-    ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([account_id, name, name_salt, fee]),
-                 read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{account_id, account_id, {id_hash, [account_pubkey]}},
-                                {name, name, name}]),
-                 get_nonce_from_account_id(account_id),
-                 verify_name(name),
-                 unsigned_tx_response(fun aens_claim_tx:new/1)
-                ],
-    process_request(ParseFuns, Req);
-
-handle_request('PostNameUpdate', #{'NameUpdateTx' := Req}, _Context) ->
-    ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([account_id, name_id, name_ttl,
-                                       pointers, client_ttl, fee]),
-                 read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{account_id, account_id, {id_hash, [account_pubkey]}},
-                                {name_id, name_id, {id_hash, [name]}}]),
-                 nameservice_pointers_decode(pointers),
-                 get_nonce_from_account_id(account_id),
-                 unsigned_tx_response(fun aens_update_tx:new/1)
-                ],
-    process_request(ParseFuns, Req);
-
-handle_request('PostNameTransfer', #{'NameTransferTx' := Req}, _Context) ->
-    ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([account_id, name_id, recipient_id, fee]),
-                 read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{account_id, account_id, {id_hash, [account_pubkey]}},
-                                {recipient_id, recipient_id,
-                                 {id_hash, [account_pubkey, name]}},
-                                {name_id, name_id, {id_hash, [name]}}]),
-                 get_nonce_from_account_id(account_id),
-                 unsigned_tx_response(fun aens_transfer_tx:new/1)
-                ],
-    process_request(ParseFuns, Req);
-
-handle_request('PostNameRevoke', #{'NameRevokeTx' := Req}, _Context) ->
-    ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([account_id, name_id, fee]),
-                 read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{account_id, account_id, {id_hash, [account_pubkey]}},
-                                {name_id, name_id, {id_hash, [name]}}]),
-                 get_nonce_from_account_id(account_id),
-                 unsigned_tx_response(fun aens_revoke_tx:new/1)
-                ],
-    process_request(ParseFuns, Req);
-
 handle_request('PostSpend', #{'SpendTx' := Req}, _Context) ->
     AllowedRecipients = [account_pubkey, name, oracle_pubkey, contract_pubkey],
     ParseFuns = [parse_map_to_atom_keys(),
@@ -761,24 +701,6 @@ handle_request('GetContractCallFromTx', Req, _Context) ->
                     end)
                 ],
     process_request(ParseFuns, Req);
-
-handle_request('GetName', Req, _Context) ->
-    Name = maps:get('name', Req),
-    case aec_chain:name_entry(Name) of
-        {ok, #{id       := Id,
-               expires  := Expires,
-               pointers := Pointers}} ->
-            {200, [], #{<<"id">>       => aec_base58c:encode(id_hash, Id),
-                        <<"expires">>  => Expires,
-                        <<"pointers">> => [aens_pointer:serialize_for_client(P) || P <- Pointers]}};
-        {error, name_not_found} ->
-            {404, [], #{reason => <<"Name not found">>}};
-        {error, name_revoked} ->
-            {404, [], #{reason => <<"Name revoked">>}};
-        {error, Reason} ->
-            ReasonBin = atom_to_binary(Reason, utf8),
-            {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>}}
-    end;
 
 handle_request('CompileContract', Req, _Context) ->
     case Req of

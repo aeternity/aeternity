@@ -166,7 +166,7 @@ def register_name(name, address, external_api, internal_api, private_key):
 
     # preclaim
     unsigned_preclaim = common.base58_decode(\
-        external_api.post_name_preclaim(\
+        internal_api.post_name_preclaim(\
             NamePreclaimTx(commitment_id=commitment_id, fee=1, ttl=100, account_id=address)).tx)
     signed_preclaim = keys.sign_encode_tx(unsigned_preclaim, private_key)
 
@@ -177,19 +177,19 @@ def register_name(name, address, external_api, internal_api, private_key):
     # claim
     encoded_name = common.encode_name(name)
     unsigned_claim = common.base58_decode(\
-        external_api.post_name_claim(\
+        internal_api.post_name_claim(\
             NameClaimTx(name=encoded_name, name_salt=salt, fee=1, ttl=100, account_id=address)).tx)
     signed_claim = keys.sign_encode_tx(unsigned_claim, private_key)
 
     external_api.post_tx(Tx(tx=signed_claim))
     top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
-    name_entry0 = external_api.get_name(name)
+    name_entry0 = external_api.get_name_entry_by_name(name)
 
     # set pointers
     pointers = [ NamePointer(key='account_pubkey', id=address) ]
     unsigned_update = common.base58_decode(\
-        external_api.post_name_update(\
+        internal_api.post_name_update(\
             NameUpdateTx(name_id=name_entry0.id, name_ttl=6000, client_ttl=50,\
                 pointers=pointers, fee=1, ttl=100, account_id=address)).tx)
     signed_update = keys.sign_encode_tx(unsigned_update, private_key)
@@ -197,13 +197,13 @@ def register_name(name, address, external_api, internal_api, private_key):
     external_api.post_tx(Tx(tx=signed_update))
     top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
-    name_entry = external_api.get_name(name)
+    name_entry = external_api.get_name_entry_by_name(name)
     received_pointers = name_entry.pointers[0]
     assert_equals('account_pubkey', received_pointers.key)
     assert_equals(address, received_pointers.id)
 
 def send_tokens_to_name(name, tokens, sender_address, private_key, external_api):
-    name_entry = external_api.get_name(name)
+    name_entry = external_api.get_name_entry_by_name(name)
     resolved_address = name_entry.pointers[0].id
     print("Name " + name + " resolved to address " + resolved_address)
 

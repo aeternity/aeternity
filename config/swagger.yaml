@@ -1139,10 +1139,10 @@ paths:
           description: Oracle or query not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/name/preclaim:
+  /debug/names/preclaim:
     post:
       tags:
-        - external
+        - internal
         - dev
       operationId: PostNamePreclaim
       description: 'Get a name_preclaim transaction object'
@@ -1167,10 +1167,10 @@ paths:
           description: Account not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/name/claim:
+  /debug/names/claim:
     post:
       tags:
-        - external
+        - internal
         - dev
       operationId: PostNameClaim
       description: 'Get a name_claim transaction object'
@@ -1195,10 +1195,10 @@ paths:
           description: Account or name not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/name/update:
+  /debug/names/update:
     post:
       tags:
-        - external
+        - internal
         - dev
       operationId: PostNameUpdate
       description: 'Get a name_update transaction object'
@@ -1223,10 +1223,10 @@ paths:
           description: Account or oracle not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/name/transfer:
+  /debug/names/transfer:
     post:
       tags:
-        - external
+        - internal
         - dev
       operationId: PostNameTransfer
       description: 'Get a name_transfer transaction object'
@@ -1251,10 +1251,10 @@ paths:
           description: Account or name not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/name/revoke:
+  /debug/names/revoke:
     post:
       tags:
-        - external
+        - internal
         - dev
       operationId: PostNameRevoke
       description: 'Get a name_revoke transaction object'
@@ -1577,35 +1577,6 @@ paths:
             $ref: '#/definitions/CommitmentId'
         '400':
           description: 'Invalid name'
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /name:
-    get:
-      tags:
-        - external
-        - name_service
-      operationId: GetName
-      description: 'Get name entry from Naming System'
-      produces:
-        - application/json
-      parameters:
-        - in: query
-          name: name
-          description: 'Name to get entry from Naming System'
-          required: true
-          type : string
-      responses:
-        '200':
-          description: Name data
-          schema:
-            $ref: '#/definitions/NameEntry'
-        '400':
-          description: Name validation failed
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Name not found
           schema:
             $ref: '#/definitions/Error'
       security:
