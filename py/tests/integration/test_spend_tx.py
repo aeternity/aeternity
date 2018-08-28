@@ -30,21 +30,21 @@ def test_not_enough_tokens():
     (bob_node, (root_dir, bob_api, bob_top)) = setup_node_with_tokens(test_settings, "bob")
     bob_internal_api = common.internal_api(bob_node)
 
-    def get_bob_balance(height):
-        return common.get_account_balance_at_height(bob_api, bob_internal_api, height)
-    def get_alice_balance(height):
+    def get_bob_balance():
+        return common.get_account_balance(bob_api, bob_internal_api)
+    def get_alice_balance():
         k = test_settings["spend_tx"]["alice_pubkey"]
-        return common.get_account_balance_at_height(bob_api, bob_internal_api, height, pub_key=k)
+        return common.get_account_balance(bob_api, bob_internal_api, pub_key=k)
 
     spend_tx_amt = test_settings["spend_tx"]["amount"]
     spend_tx_fee = test_settings["spend_tx"]["fee"]
-    bob_balance = get_bob_balance(bob_top.height)
+    bob_balance = get_bob_balance()
     bob_has_not_enough_tokens = bob_balance.balance < spend_tx_amt + spend_tx_fee
     assert_equals(bob_has_not_enough_tokens, True)
     print("Bob initial balance is " + str(bob_balance.balance) +
             " and he will try to spend " + str(spend_tx_amt + spend_tx_fee))
 
-    alice_balance0 = get_alice_balance(bob_top.height)
+    alice_balance0 = get_alice_balance()
 
     # Bob tries to send some tokens to Alice
     spend_tx_obj = SpendTx(
@@ -63,7 +63,7 @@ def test_not_enough_tokens():
     common.wait_until_height(bob_api, checked_height)
 
     # ensure Alice balance had not changed
-    alice_balance1 = get_alice_balance(checked_height)
+    alice_balance1 = get_alice_balance()
     print("Alice's balance is now " + str(alice_balance1.balance))
     assert_equals(alice_balance1.balance, alice_balance0.balance)
 
@@ -73,7 +73,7 @@ def test_not_enough_tokens():
     print("Coinbase reward is " + str(coinbase_reward) + ", had mined " +
           str(blocks_mined) + " blocks")
     expected_balance = bob_balance.balance + coinbase_reward * blocks_mined
-    bob_new_balance = get_bob_balance(checked_height)
+    bob_new_balance = get_bob_balance()
     print("Bob's balance (with coinbase rewards) is now " + str(bob_new_balance.balance))
     assert_equals(bob_new_balance.balance, expected_balance)
 

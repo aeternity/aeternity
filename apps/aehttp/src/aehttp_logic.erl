@@ -20,8 +20,6 @@
 
 -export([ get_account/1
         , get_account_balance/1
-        , get_account_balance_at_hash/2
-        , get_all_accounts_balances/0
         ]).
 
 -export([ version/0
@@ -34,8 +32,7 @@
         , contract_encode_call_data/4
         ]).
 
--export([ miner_key/0
-        , peer_pubkey/0]).
+-export([peer_pubkey/0]).
 
 -export([ connected_peers/1
         , blocked_peers/0
@@ -157,25 +154,6 @@ get_account_balance(Pubkey) when is_binary(Pubkey) ->
             {error, account_not_found}
     end.
 
-get_account_balance_at_hash(AccountPubkey, Hash) ->
-    case aec_chain:get_account_at_hash(AccountPubkey, Hash) of
-        {error, no_state_trees} -> {error, not_on_main_chain};
-        none                    -> {error, account_not_found};
-        {value, Account}        -> {ok, aec_accounts:balance(Account)}
-    end.
-
--spec get_all_accounts_balances() -> {ok, [map()]}.
-get_all_accounts_balances() ->
-    {ok, AccountsBalances} =
-        aec_chain:all_accounts_balances_at_hash(aec_chain:top_block_hash()),
-    FormattedBalances =
-        lists:foldl(
-          fun({Pubkey, Balance}, Acc) ->
-              [#{<<"pub_key">> => Pubkey,
-                 <<"balance">> => Balance} | Acc]
-          end, [], AccountsBalances),
-    {ok, FormattedBalances}.
-
 version() -> {ok, aeu_info:get_version()}.
 
 revision() -> {ok, aeu_info:get_revision()}.
@@ -240,12 +218,6 @@ contract_encode_call_data(ABI, Code, Function, Argument) ->
     case aect_dispatch:encode_call_data(ABI, Code, Function, Argument) of
         {ok, _Result} = OK -> OK;
         {error, _ErrorMsg} = Err -> Err
-    end.
-
-miner_key() ->
-    case aec_keys:pubkey() of
-        {ok, _Pubkey} = OK -> OK;
-        {error, key_not_found} = Err -> Err
     end.
 
 peer_pubkey() ->

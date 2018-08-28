@@ -160,8 +160,10 @@ handle_request('GetGenerationByHeight', Params, _Context) ->
     end;
 
 handle_request('GetAccountByPubkey', Params, _Context) ->
-    case aec_base58c:safe_decode(account_pubkey, maps:get(pubkey, Params)) of
-        {ok, Pubkey} ->
+    AllowedTypes = [account_pubkey, contract_pubkey],
+    case aec_base58c:safe_decode({id_hash, AllowedTypes}, maps:get(pubkey, Params)) of
+        {ok, Id} ->
+            {_IdType, Pubkey} = aec_id:specialize(Id),
             case aec_chain:get_account(Pubkey) of
                 {value, Account} ->
                     {200, [], aec_accounts:serialize_for_client(Account)};
@@ -748,52 +750,6 @@ handle_request('GetContractPoI', Req, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('GetAccountBalance', Req, _Context) ->
-    ParseFuns = [read_required_params([address]),
-                 base58_decode([{address, address, [account_pubkey,
-                                                    contract_pubkey]}]),
-                 get_block_hash_optionally_by_hash_or_height(block_hash),
-                 fun(_, #{address := Pubkey, block_hash := AtHash}) ->
-                      case aehttp_logic:get_account_balance_at_hash(Pubkey, AtHash) of
-                          {error, account_not_found} ->
-                              {error, {404, [], #{reason => <<"Account not found">>}}};
-                          {error, not_on_main_chain} ->
-                              {error, {400, [], #{reason => <<"Block not on the main chain">>}}};
-                          {ok, Balance} ->
-                              {ok, {200, [], #{balance => Balance}}}
-                      end
-                end
-                ],
-    process_request(ParseFuns, Req);
-
-handle_request('GetAccountPendingTransactions', Req, _Context) ->
-    case aec_base58c:safe_decode(account_pubkey, maps:get('account_pubkey', Req)) of
-        {ok, AccountPubkey} ->
-            case aec_chain:get_account(AccountPubkey) of
-                {value, _} ->
-                    {ok, Txs0} = aec_tx_pool:peek(infinity, AccountPubkey),
-                    Txs = [aehttp_api_parser:encode(tx, T) || T <- Txs0],
-                    {200, [], Txs};
-                _ ->
-                    {404, [], #{reason => <<"Account not found">>}}
-            end;
-        _ ->
-            {400, [], #{reason => <<"Invalid account hash">>}}
-    end;
-
-handle_request('GetAccountNonce', Req, _Context) ->
-    case aec_base58c:safe_decode(account_pubkey, maps:get('account_pubkey', Req)) of
-        {ok, AccountPubkey} ->
-            case aec_chain:get_account(AccountPubkey) of
-                {value, Account} ->
-                    {200, [], #{nonce => aec_accounts:nonce(Account)}};
-                _ ->
-                    {404, [], #{reason => <<"Account not found">>}}
-            end;
-        _ ->
-            {400, [], #{reason => <<"Invalid account hash">>}}
-    end;
-
 handle_request('GetContractCallFromTx', Req, _Context) ->
     ParseFuns = [read_required_params([tx_hash]),
                  base58_decode([{tx_hash, tx_hash, tx_hash}]),
@@ -822,18 +778,6 @@ handle_request('GetName', Req, _Context) ->
         {error, Reason} ->
             ReasonBin = atom_to_binary(Reason, utf8),
             {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>}}
-    end;
-
-handle_request('GetAccountsBalances', _Req, _Context) ->
-    case aeu_env:user_config_or_env([<<"http">>, <<"debug">>],
-                                    aehttp, enable_debug_endpoints, false) of
-        true ->
-            {ok, AccountsBalances} = aehttp_logic:get_all_accounts_balances(),
-            {200, [], #{accounts_balances =>
-                        aehttp_api_parser:encode(account_balances,
-                                                 AccountsBalances)}};
-        false ->
-            {403, [], #{reason => <<"Balances not enabled">>}}
     end;
 
 handle_request('CompileContract', Req, _Context) ->

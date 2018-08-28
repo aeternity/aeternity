@@ -11,7 +11,7 @@ from swagger_client.rest import ApiException
 from swagger_client.api.external_api import ExternalApi
 from swagger_client.api.internal_api import InternalApi
 from swagger_client.api_client import ApiClient
-from swagger_client.models.balance import Balance
+from swagger_client.models.account import Account
 from swagger_client.models.spend_tx import SpendTx
 from swagger_client.configuration import Configuration
 
@@ -49,7 +49,7 @@ def node_online(ext_api, int_api):
             return False
     def is_int_online():
         try:
-            key = int_api.get_pub_key()
+            key = int_api.get_node_pubkey()
             return key.pub_key is not None
         except Exception as e:
             return False
@@ -199,13 +199,8 @@ def wait_until_height(api, height):
     wait(lambda: api.get_top_block().height >= height, timeout_seconds=120, sleep_seconds=0.25)
 
 def get_account_balance(api, int_api, pub_key=None):
-    return _balance_from_get_account_balance(
-        lambda: api.get_account_balance(_node_pub_key(int_api, pub_key)))
-
-def get_account_balance_at_height(api, int_api, height, pub_key=None):
-    return _balance_from_get_account_balance(
-        lambda: api.get_account_balance(_node_pub_key(int_api, pub_key),
-                                        height=height))
+    return _balance_from_get_account(
+        lambda: api.get_account_by_pubkey(_node_pub_key(int_api, pub_key)))
 
 def send_tokens_to_unchanging_user(address, tokens, fee, external_api, internal_api):
     def get_balance(k):
@@ -222,15 +217,15 @@ def send_tokens_to_unchanging_user(address, tokens, fee, external_api, internal_
          timeout_seconds=120, sleep_seconds=0.25)
 
 def _node_pub_key(int_api, k):
-    return k if k is not None else int_api.get_pub_key().pub_key
+    return k if k is not None else int_api.get_node_pubkey().pub_key
 
-def _balance_from_get_account_balance(get_account_balance_fun):
-    balance = Balance(balance=0)
+def _balance_from_get_account(get_account_fun):
+    account = Account(balance=0)
     try:
-        balance = get_account_balance_fun()
+        account = get_account_fun()
     except ApiException as e:
         assert_equals(e.status, 404) # no account yet
-    return balance
+    return account
 
 def base58_decode(encoded):
     if encoded[2] != '$':
