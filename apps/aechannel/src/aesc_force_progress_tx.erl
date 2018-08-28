@@ -204,8 +204,7 @@ for_client(#channel_force_progress_tx{payload       = Payload,
                                       ttl           = TTL,
                                       fee           = Fee,
                                       nonce         = Nonce} = Tx) ->
-    #{<<"data_schema">> => <<"ChannelForceProgressTxJSON">>, % swagger schema name
-      <<"vsn">>           => version(),
+    #{<<"vsn">>           => version(),
       <<"channel_id">>    => aec_base58c:encode(id_hash, channel(Tx)),
       <<"from_id">>       => aec_base58c:encode(id_hash, from_id(Tx)),
       <<"payload">>       => Payload,

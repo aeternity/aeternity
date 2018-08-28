@@ -2805,7 +2805,7 @@
         "responder_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
-        "total_amount" : {
+        "channel_amount" : {
           "type" : "integer",
           "format" : "int64",
           "minimum" : 0
@@ -2844,23 +2844,28 @@
           "format" : "int64",
           "minimum" : 0
         },
+        "forcing_blocked_until" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
         "closes_at" : {
           "type" : "integer",
           "format" : "int64"
         }
       },
       "example" : {
-        "responder_amount" : 0,
         "delegate_ids" : [ null, null ],
+        "responder_id" : null,
+        "lock_period" : 0,
+        "responder_amount" : 0,
         "initiator_amount" : 0,
         "round" : 0,
         "initiator_id" : null,
-        "responder_id" : null,
-        "total_amount" : 0,
         "state_hash" : null,
+        "forcing_blocked_until" : 7,
         "id" : { },
-        "closes_at" : 7,
-        "lock_period" : 0,
+        "closes_at" : 9,
+        "channel_amount" : 0,
         "channel_reserve" : 0
       }
     },
@@ -3035,6 +3040,50 @@
         "channel_id" : { },
         "ttl" : 0,
         "nonce" : 0
+      }
+    },
+    "ChannelForceProgressTx" : {
+      "type" : "object",
+      "required" : [ "addresses", "channel_id", "fee", "from_id", "payload", "poi", "solo_payload" ],
+      "properties" : {
+        "channel_id" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "from_id" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "payload" : {
+          "type" : "string"
+        },
+        "solo_payload" : {
+          "type" : "string"
+        },
+        "addresses" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/EncodedHash"
+          },
+          "minItems" : 1
+        },
+        "poi" : {
+          "type" : "string",
+          "description" : "Proof of inclusion containing information for closing the channel"
+        },
+        "ttl" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        }
       }
     },
     "ChannelCloseMutualTx" : {
@@ -3414,6 +3463,13 @@
         "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/ChannelWithdrawTx"
+      } ]
+    },
+    "ChannelForceProgressTxJSON" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/GenericTx"
+      }, {
+        "$ref" : "#/definitions/ChannelForceProgressTx"
       } ]
     },
     "ChannelCloseMutualTxJSON" : {
