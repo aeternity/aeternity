@@ -14,6 +14,10 @@
                         , get_nonce_from_account_id/1
                         , verify_name/1
                         , nameservice_pointers_decode/1
+                        , ttl_decode/1
+                        , relative_ttl_decode/1
+                        , verify_oracle_existence/1
+                        , verify_oracle_query_existence/2
                         , poi_decode/1
                         , unsigned_tx_response/1
                         , process_request/2
@@ -208,91 +212,56 @@ handle_request('PostChannelSettle', #{'ChannelSettleTx' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('PostOracleRegisterTx', #{'OracleRegisterTx' := OracleRegisterTxObj}, _Context) ->
-    #{<<"query_format">>    := QueryFormat,
-      <<"response_format">> := ResponseFormat,
-      <<"query_fee">>       := QueryFee,
-      <<"oracle_ttl">>      := OracleTTL,
-      <<"fee">>             := Fee} = OracleRegisterTxObj,
-    TTL = maps:get(<<"ttl">>, OracleRegisterTxObj, 0),
-    TTLType = binary_to_existing_atom(maps:get(<<"type">>, OracleTTL), utf8),
-    TTLValue = maps:get(<<"value">>, OracleTTL),
-    case aehttp_int_tx_logic:oracle_register(QueryFormat, ResponseFormat,
-                                             QueryFee, Fee, TTLType, TTLValue, TTL) of
-        {ok, Tx} ->
-            {Pubkey, TxHash} = aehttp_int_tx_logic:sender_and_hash(Tx),
-            {200, [], #{oracle_id => aec_base58c:encode(oracle_pubkey, Pubkey),
-                        tx_hash => aec_base58c:encode(tx_hash, TxHash)}};
-        {error, account_not_found} ->
-            {404, [], #{reason => <<"Account not found">>}};
-        {error, key_not_found} ->
-            {404, [], #{reason => <<"Keys not configured">>}}
-    end;
+handle_request('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([account_id, {query_format, query_format},
+                                       {response_format, response_format},
+                                       query_fee, oracle_ttl, fee]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 base58_decode([{account_id, account_id, {id_hash, [account_pubkey]}}]),
+                 get_nonce_from_account_id(account_id),
+                 ttl_decode(oracle_ttl),
+                 unsigned_tx_response(fun aeo_register_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
 
-handle_request('PostOracleExtendTx', #{'OracleExtendTx' := OracleExtendTxObj}, _Context) ->
-    #{<<"oracle_ttl">> := OracleTTL,
-      <<"fee">>        := Fee} = OracleExtendTxObj,
-    TTL = maps:get(<<"ttl">>, OracleExtendTxObj, 0),
-    TTLType = delta,
-    TTLValue = maps:get(<<"value">>, OracleTTL),
-    case aehttp_int_tx_logic:oracle_extend(Fee, TTLType, TTLValue, TTL) of
-        {ok, Tx} ->
-            {Pubkey, TxHash} = aehttp_int_tx_logic:sender_and_hash(Tx),
-            {200, [], #{oracle_id => aec_base58c:encode(oracle_pubkey, Pubkey),
-                        tx_hash => aec_base58c:encode(tx_hash, TxHash)}};
-        {error, account_not_found} ->
-            {404, [], #{reason => <<"Account not found">>}};
-        {error, key_not_found} ->
-            {404, [], #{reason => <<"Keys not configured">>}}
-    end;
+handle_request('PostOracleExtend', #{'OracleExtendTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([oracle_id, oracle_ttl, fee]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 base58_decode([{oracle_id, oracle_id, {id_hash, [oracle_pubkey]}}]),
+                 get_nonce_from_account_id(oracle_id),
+                 ttl_decode(oracle_ttl),
+                 unsigned_tx_response(fun aeo_extend_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
 
-handle_request('PostOracleQueryTx', #{'OracleQueryTx' := OracleQueryTxObj}, _Context) ->
-    #{<<"oracle_pubkey">> := EncodedOraclePubkey,
-      <<"query">>         := Query,
-      <<"query_fee">>     := QueryFee,
-      <<"query_ttl">>     := QueryTTL,
-      <<"response_ttl">>  :=
-          #{<<"type">>    := <<"delta">>,
-            <<"value">>   := ResponseTTLValue},
-      <<"fee">>           := Fee} = OracleQueryTxObj,
-    TTL = maps:get(<<"ttl">>, OracleQueryTxObj, 0),
-    QueryTTLType = binary_to_existing_atom(maps:get(<<"type">>, QueryTTL), utf8),
-    QueryTTLValue= maps:get(<<"value">>, QueryTTL),
-    case aehttp_int_tx_logic:oracle_query(EncodedOraclePubkey, Query, QueryFee, QueryTTLType,
-             QueryTTLValue, ResponseTTLValue, Fee, TTL) of
-        {ok, Tx, QId} ->
-            {_, TxHash} = aehttp_int_tx_logic:sender_and_hash(Tx),
-            {200, [], #{query_id => aec_base58c:encode(oracle_query_id, QId),
-                        tx_hash => aec_base58c:encode(tx_hash, TxHash)}};
-        {error, invalid_key} ->
-            {404, [], #{reason => <<"Invalid key">>}};
-        {error, account_not_found} ->
-            {404, [], #{reason => <<"Account not found">>}};
-        {error, key_not_found} ->
-            {404, [], #{reason => <<"Keys not configured">>}}
-    end;
+handle_request('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([sender_id, oracle_id, query,
+                                       query_fee, fee, query_ttl, response_ttl]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 base58_decode([{sender_id, sender_id, {id_hash, [account_pubkey]}},
+                                {oracle_id, oracle_id, {id_hash, [oracle_pubkey]}}]),
+                 get_nonce_from_account_id(sender_id),
+                 ttl_decode(query_ttl),
+                 relative_ttl_decode(response_ttl),
+                 verify_oracle_existence(oracle_id),
+                 unsigned_tx_response(fun aeo_query_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
 
-handle_request('PostOracleResponseTx', #{'OracleResponseTx' := OracleResponseTxObj}, _Context) ->
-    #{<<"query_id">> := EncodedQueryId,
-      <<"response">> := Response,
-      <<"fee">>      := Fee} = OracleResponseTxObj,
-    TTL = maps:get(<<"ttl">>, OracleResponseTxObj, 0),
-    case aec_base58c:safe_decode(oracle_query_id, EncodedQueryId) of
-        {ok, DecodedQueryId} ->
-            case aehttp_int_tx_logic:oracle_response(DecodedQueryId, Response,
-                                                     Fee, TTL) of
-                {ok, Tx} ->
-                    {_, TxHash} = aehttp_int_tx_logic:sender_and_hash(Tx),
-                    {200, [], #{query_id => EncodedQueryId,
-                                tx_hash => aec_base58c:encode(tx_hash, TxHash)}};
-                {error, account_not_found} ->
-                    {404, [], #{reason => <<"Account not found">>}};
-                {error, key_not_found} ->
-                    {404, [], #{reason => <<"Keys not configured">>}}
-            end;
-        {error, _} ->
-            {404, [], #{reason => <<"Invalid Query Id">>}}
-    end;
+handle_request('PostOracleRespond', #{'OracleRespondTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([oracle_id, query_id, response, fee]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 base58_decode([{oracle_id, oracle_id, {id_hash, [oracle_pubkey]}},
+                                {query_id, query_id, oracle_query_id}]),
+                 get_nonce_from_account_id(oracle_id),
+                 verify_oracle_query_existence(oracle_id, query_id),
+                 unsigned_tx_response(fun aeo_response_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
 
 handle_request('GetNodePubkey', _, _Context) ->
     case aec_keys:pubkey() of

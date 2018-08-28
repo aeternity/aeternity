@@ -1189,9 +1189,9 @@
         }
       }
     },
-    "/tx/oracle/register" : {
+    "/debug/oracles/register" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Get a oracle_register transaction object",
         "operationId" : "PostOracleRegister",
         "consumes" : [ "application/json" ],
@@ -1226,9 +1226,9 @@
         }
       }
     },
-    "/tx/oracle/extend" : {
+    "/debug/oracles/extend" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Get an oracle_extend transaction object",
         "operationId" : "PostOracleExtend",
         "consumes" : [ "application/json" ],
@@ -1263,9 +1263,9 @@
         }
       }
     },
-    "/tx/oracle/query" : {
+    "/debug/oracles/query" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Get an oracle_query transaction object",
         "operationId" : "PostOracleQuery",
         "consumes" : [ "application/json" ],
@@ -1300,11 +1300,11 @@
         }
       }
     },
-    "/tx/oracle/response" : {
+    "/debug/oracles/respond" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Get an oracle_response transaction object",
-        "operationId" : "PostOracleResponse",
+        "operationId" : "PostOracleRespond",
         "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {
@@ -1312,7 +1312,7 @@
           "name" : "body",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/OracleResponseTx"
+            "$ref" : "#/definitions/OracleRespondTx"
           }
         } ],
         "responses" : {
@@ -1917,134 +1917,6 @@
         }
       }
     },
-    "/oracle-register-tx" : {
-      "post" : {
-        "tags" : [ "internal", "obsolete" ],
-        "description" : "Create oracle register transaction",
-        "operationId" : "PostOracleRegisterTx",
-        "consumes" : [ "application/json" ],
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "in" : "body",
-          "name" : "body",
-          "description" : "Creates new oracle register transaction",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/OracleRegisterTx"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/OracleRegisterResponse"
-            }
-          },
-          "404" : {
-            "description" : "Oracle register transaction validation error",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/oracle-extend-tx" : {
-      "post" : {
-        "tags" : [ "internal", "obsolete" ],
-        "description" : "Create oracle extend transaction",
-        "operationId" : "PostOracleExtendTx",
-        "consumes" : [ "application/json" ],
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "in" : "body",
-          "name" : "body",
-          "description" : "Creates new oracle extend transaction",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/OracleExtendTx"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/OracleRegisterResponse"
-            }
-          },
-          "404" : {
-            "description" : "Oracle register transaction validation error",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/oracle-query-tx" : {
-      "post" : {
-        "tags" : [ "internal", "obsolete" ],
-        "description" : "Create oracle query transaction",
-        "operationId" : "PostOracleQueryTx",
-        "consumes" : [ "application/json" ],
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "in" : "body",
-          "name" : "body",
-          "description" : "Creates new oracle query transaction",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/OracleQueryTx"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/OracleQueryResponse"
-            }
-          },
-          "404" : {
-            "description" : "Oracle query transaction validation error",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/oracle-response-tx" : {
-      "post" : {
-        "tags" : [ "internal", "obsolete" ],
-        "description" : "Create oracle response transaction",
-        "operationId" : "PostOracleResponseTx",
-        "consumes" : [ "application/json" ],
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "in" : "body",
-          "name" : "body",
-          "description" : "Creates new oracle response transaction",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/OracleResponseTx"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/OracleQueryResponse"
-            }
-          },
-          "404" : {
-            "description" : "Oracle response transaction validation error",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
     "/debug/accounts/node" : {
       "get" : {
         "tags" : [ "internal", "node_operator" ],
@@ -2625,21 +2497,6 @@
         "query_format" : "query_format"
       }
     },
-    "OracleRegisterResponse" : {
-      "type" : "object",
-      "properties" : {
-        "tx_hash" : {
-          "$ref" : "#/definitions/EncodedHash"
-        },
-        "oracle_id" : {
-          "$ref" : "#/definitions/EncodedHash"
-        }
-      },
-      "example" : {
-        "oracle_id" : null,
-        "tx_hash" : { }
-      }
-    },
     "OracleExtendTx" : {
       "type" : "object",
       "required" : [ "fee", "oracle_ttl" ],
@@ -2729,7 +2586,7 @@
         "sender_id" : null
       }
     },
-    "OracleResponseTx" : {
+    "OracleRespondTx" : {
       "type" : "object",
       "required" : [ "fee", "query_id", "response" ],
       "properties" : {
@@ -2763,21 +2620,6 @@
         "fee" : 0,
         "ttl" : 6,
         "nonce" : 1
-      }
-    },
-    "OracleQueryResponse" : {
-      "type" : "object",
-      "properties" : {
-        "tx_hash" : {
-          "$ref" : "#/definitions/EncodedHash"
-        },
-        "query_id" : {
-          "$ref" : "#/definitions/EncodedHash"
-        }
-      },
-      "example" : {
-        "query_id" : null,
-        "tx_hash" : { }
       }
     },
     "TTL" : {
@@ -3770,7 +3612,7 @@
       "allOf" : [ {
         "$ref" : "#/definitions/GenericTx"
       }, {
-        "$ref" : "#/definitions/OracleResponseTx"
+        "$ref" : "#/definitions/OracleRespondTx"
       } ]
     },
     "NamePreclaimTxObject" : {
