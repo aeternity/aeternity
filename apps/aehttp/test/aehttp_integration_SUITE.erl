@@ -4450,36 +4450,36 @@ get_name_revoke(Data) ->
     http_request(Host, post, "debug/names/revoke", Data).
 
 get_channel_create(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/channel/create", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/channels/create", Data).
 
 get_channel_deposit(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/channel/deposit", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/channels/deposit", Data).
 
 get_channel_withdrawal(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/channel/withdrawal", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/channels/withdraw", Data).
 
 get_channel_snapshot_solo(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/channel/snapshot/solo", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/channels/snapshot/solo", Data).
 
 get_channel_close_mutual(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/channel/close/mutual", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/channels/close/mutual", Data).
 
 get_channel_close_solo(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/channel/close/solo", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/channels/close/solo", Data).
 
 get_channel_slash(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/channel/slash", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/channels/slash", Data).
 
 get_channel_settle(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/channel/settle", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/channels/settle", Data).
 
 get_transactions() ->
     Host = external_address(),

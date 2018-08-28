@@ -1555,9 +1555,9 @@
         }
       }
     },
-    "/tx/channel/create" : {
+    "/debug/channels/create" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Get a channel_create transaction object",
         "operationId" : "PostChannelCreate",
         "produces" : [ "application/json" ],
@@ -1591,9 +1591,9 @@
         }
       }
     },
-    "/tx/channel/deposit" : {
+    "/debug/channels/deposit" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Get a channel_deposit transaction object",
         "operationId" : "PostChannelDeposit",
         "produces" : [ "application/json" ],
@@ -1621,18 +1621,18 @@
         }
       }
     },
-    "/tx/channel/withdrawal" : {
+    "/debug/channels/withdraw" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Get a channel_withdrawal transaction object",
-        "operationId" : "PostChannelWithdrawal",
+        "operationId" : "PostChannelWithdraw",
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "in" : "body",
           "name" : "body",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/ChannelWithdrawalTx"
+            "$ref" : "#/definitions/ChannelWithdrawTx"
           }
         } ],
         "responses" : {
@@ -1651,9 +1651,9 @@
         }
       }
     },
-    "/tx/channel/snapshot/solo" : {
+    "/debug/channels/snapshot/solo" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Get a channel_snapshot_solo transaction object",
         "operationId" : "PostChannelSnapshotSolo",
         "produces" : [ "application/json" ],
@@ -1681,9 +1681,9 @@
         }
       }
     },
-    "/tx/channel/close/mutual" : {
+    "/debug/channels/close/mutual" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Get a channel_close_mutual transaction object",
         "operationId" : "PostChannelCloseMutual",
         "produces" : [ "application/json" ],
@@ -1711,9 +1711,9 @@
         }
       }
     },
-    "/tx/channel/close/solo" : {
+    "/debug/channels/close/solo" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Get a channel_close_solo transaction object",
         "operationId" : "PostChannelCloseSolo",
         "produces" : [ "application/json" ],
@@ -1741,9 +1741,9 @@
         }
       }
     },
-    "/tx/channel/slash" : {
+    "/debug/channels/slash" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Get a channel_slash transaction object",
         "operationId" : "PostChannelSlash",
         "produces" : [ "application/json" ],
@@ -1771,9 +1771,9 @@
         }
       }
     },
-    "/tx/channel/settle" : {
+    "/debug/channels/settle" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Get a channel_settle transaction object",
         "operationId" : "PostChannelSettle",
         "produces" : [ "application/json" ],
@@ -3258,7 +3258,7 @@
         "nonce" : 0
       }
     },
-    "ChannelWithdrawalTx" : {
+    "ChannelWithdrawTx" : {
       "type" : "object",
       "required" : [ "amount", "channel_id", "fee", "nonce", "round", "state_hash", "to_id" ],
       "properties" : {
@@ -3707,7 +3707,7 @@
       "allOf" : [ {
         "$ref" : "#/definitions/GenericTx"
       }, {
-        "$ref" : "#/definitions/ChannelWithdrawalTx"
+        "$ref" : "#/definitions/ChannelWithdrawTx"
       } ]
     },
     "ChannelCloseMutualTxJSON" : {
