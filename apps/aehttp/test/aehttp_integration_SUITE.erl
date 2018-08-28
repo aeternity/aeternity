@@ -4376,37 +4376,37 @@ ws_mine_key_and_micro_block(ConnPid, Node) ->
 %% ============================================================
 
 get_contract_create(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/contract/create", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/contracts/create", Data).
 
 get_contract_create_compute(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/contract/create/compute", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/contracts/create/compute", Data).
 
 get_contract_bytecode(SourceCode) ->
-    Host = external_address(),
-    http_request(Host, post, "contract/compile", #{ <<"code">> => SourceCode
-                                                  , <<"options">> => <<>>}).
+    Host = internal_address(),
+    http_request(Host, post, "debug/contracts/code/compile",
+                 #{ <<"code">> => SourceCode, <<"options">> => <<>>}).
 
 call_contract_directly(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "contract/call", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/contracts/code/call", Data).
 
 get_contract_call(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/contract/call", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/contracts/call", Data).
 
 get_contract_call_compute(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/contract/call/compute", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/contracts/call/compute", Data).
 
 get_contract_call_object(TxHash) ->
     Host = external_address(),
-    http_request(Host, get, "tx/"++binary_to_list(TxHash)++"/contract-call", []).
+    http_request(Host, get, "transactions/"++binary_to_list(TxHash)++"/info", []).
 
 get_contract_decode_data(Request) ->
-    Host = external_address(),
-    http_request(Host, post, "contract/decode-data", Request).
+    Host = internal_address(),
+    http_request(Host, post, "debug/contracts/code/decode-data", Request).
 
 get_spend(Data) ->
     Host = external_address(),
@@ -4529,7 +4529,7 @@ get_peers() ->
 
 get_contract_poi(ContractAddress) ->
     Host = external_address(),
-    http_request(Host, get, "poi/contract/" ++ binary_to_list(ContractAddress), []).
+    http_request(Host, get, "contracts/" ++ binary_to_list(ContractAddress) ++ "/poi", []).
 
 %% ============================================================
 %% Test swagger validation errors
@@ -4637,20 +4637,20 @@ wrong_http_method_top(_Config) ->
     {ok, 405, _} = http_request(Host, post, "blocks/top", []).
 
 wrong_http_method_contract_create(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "tx/contract/create", []).
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "debug/contracts/create", []).
 
 wrong_http_method_contract_create_compute(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "tx/contract/create/compute", []).
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "debug/contracts/create/compute", []).
 
 wrong_http_method_contract_call(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "tx/contract/call", []).
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "debug/contracts/call", []).
 
 wrong_http_method_contract_call_compute(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "tx/contract/call/compute", []).
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "debug/contracts/call/compute", []).
 
 wrong_http_method_spend(_Config) ->
     Host = external_address(),

@@ -47,7 +47,7 @@ def test_contract_create():
 
     test_settings["alice"]["pubkey"] = alice_address
     send_tokens_to_user("alice", test_settings, external_api, internal_api)
-    encoded_tx, contract_id = get_unsigned_contract_create(alice_address, test_settings["create_contract"], external_api)
+    encoded_tx, contract_id = get_unsigned_contract_create(alice_address, test_settings["create_contract"], external_api, internal_api)
 
     print("Unsigned encoded transaction: " + encoded_tx)
     print("Contract id: " + contract_id)
@@ -102,7 +102,7 @@ def test_contract_call():
     send_tokens_to_user("alice", test_settings, external_api, internal_api)
 
     ## create contract
-    encoded_tx, encoded_contract_id = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api)
+    encoded_tx, encoded_contract_id = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api, internal_api)
     unsigned_tx = common.base58_decode(encoded_tx)
 
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
@@ -124,11 +124,11 @@ def test_contract_call():
                   + create_settings["create_contract"]["deposit"]
                   + create_settings["create_contract"]["amount"])
 
-    bytecode = read_id_contract(external_api)
+    bytecode = read_id_contract(internal_api)
     call_input = ContractCallInput("sophia", bytecode,
                                              call_contract["data"]["function"],
                                              call_contract["data"]["argument"])
-    result = external_api.call_contract(call_input)
+    result = internal_api.call_contract(call_input)
     contract_call_obj = ContractCallData(
         caller_id=test_settings["alice"]["pubkey"],
         contract_id=encoded_contract_id,
@@ -141,7 +141,7 @@ def test_contract_call():
         call_data=result.out)
 
 
-    call_tx_obj = external_api.post_contract_call(contract_call_obj)
+    call_tx_obj = internal_api.post_contract_call(contract_call_obj)
     encoded_call_tx = call_tx_obj.tx
 
     print("Unsigned encoded transaction: " + encoded_call_tx)
@@ -184,7 +184,7 @@ def test_contract_on_chain_call_off_chain():
     send_tokens_to_user("alice", test_settings, external_api, internal_api)
 
     ## create contract
-    encoded_tx, encoded_contract_id = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api)
+    encoded_tx, encoded_contract_id = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api, internal_api)
     unsigned_tx = common.base58_decode(encoded_tx)
 
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
@@ -200,7 +200,7 @@ def test_contract_on_chain_call_off_chain():
     call_input = ContractCallInput("sophia-address", encoded_contract_id,\
                                    call_contract["data"]["function"],\
                                    call_contract["data"]["argument"])
-    result = external_api.call_contract(call_input)
+    result = internal_api.call_contract(call_input)
 
     assert_equals('0x000000000000000000000000000000000000000000000000000000000000002a',
                    result.out)
@@ -291,16 +291,17 @@ def send_tokens_to_user(user, test_settings, external_api, internal_api):
                                                  external_api,
                                                  internal_api)
 
-def get_unsigned_contract_create(owner_id, contract, external_api):
-    bytecode = read_id_contract(external_api)
+def get_unsigned_contract_create(owner_id, contract, external_api, internal_api):
+    bytecode = read_id_contract(internal_api)
     call_input = ContractCallInput("sophia",
                                    bytecode,
                                    contract["function"],
                                    contract["argument"])
     print("Call input:", call_input)
-    result = external_api.encode_calldata(call_input)
+    result = internal_api.encode_calldata(call_input)
     call_data = result.calldata
 
+    print("OWNERID", owner_id)
     contract_create_data_obj = ContractCreateData(
         owner_id=owner_id,
         code=bytecode,
@@ -312,5 +313,5 @@ def get_unsigned_contract_create(owner_id, contract, external_api):
         fee=contract["fee"],
         ttl=100,
         call_data=call_data)
-    tx_obj = external_api.post_contract_create(contract_create_data_obj)
+    tx_obj = internal_api.post_contract_create(contract_create_data_obj)
     return (tx_obj.tx, tx_obj.contract_id)

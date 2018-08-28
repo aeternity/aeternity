@@ -32,13 +32,14 @@ def test_compile_and_call_id():
     # Alice should be able to compile a sophia contract with an identity
     # function into bytecode and call it.
     test_settings = settings["test_compile_and_call_id"]
-    (root_dir, node, api) = setup_node(test_settings, "alice")
+    (root_dir, node, external_api) = setup_node(test_settings, "alice")
+    internal_api = common.internal_api(node)
 
-    bytecode = read_id_contract(api)
+    bytecode = read_id_contract(internal_api)
 
     # Call contract bytecode
     call_input = ContractCallInput("sophia", bytecode, "main", "42")
-    call_result = api.call_contract(call_input)
+    call_result = internal_api.call_contract(call_input)
     assert_regexp_matches(call_result.out, '0x.*')
 
     # stop node
@@ -50,12 +51,13 @@ def test_encode_id_call():
     # a sophia contract.
 
     test_settings = settings["test_encode_id_call"]
-    (root_dir, node, api) = setup_node(test_settings, "alice")
+    (root_dir, node, external_api) = setup_node(test_settings, "alice")
+    internal_api = common.internal_api(node)
 
-    bytecode = read_id_contract(api)
+    bytecode = read_id_contract(internal_api)
 
     call_input = ContractCallInput("sophia", bytecode, "main", "42")
-    result = api.encode_calldata(call_input)
+    result = internal_api.encode_calldata(call_input)
 
     calldata = '0x0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000000046d61696e00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002a'
     assert_equals(result.calldata, calldata)
@@ -69,12 +71,13 @@ def test_id_call():
     # an Id contract.
 
     test_settings = settings["test_id_call"]
-    (root_dir, node, api) = setup_node(test_settings, "alice")
+    (root_dir, node, external_api) = setup_node(test_settings, "alice")
+    internal_api = common.internal_api(node)
 
-    bytecode = read_id_contract(api)
+    bytecode = read_id_contract(internal_api)
 
     call_input = ContractCallInput("sophia", bytecode, "main", "42")
-    result = api.call_contract(call_input)
+    result = internal_api.call_contract(call_input)
     print(result)
 
     retval = '0x000000000000000000000000000000000000000000000000000000000000002a'
@@ -90,12 +93,13 @@ def test_solidity_greeter():
 
     test_settings = settings["test_id_call"]
     (root_dir, node, api) = setup_node(test_settings, "alice")
+    internal_api = common.internal_api(node)
 
     bytecode = greeter_code()
 
 
     call_input = ContractCallInput("evm", bytecode, "", "0x00")
-    result = api.call_contract(call_input)
+    result = internal_api.call_contract(call_input)
     print(result)
 
     generatedcode = greeter_generated_code()
@@ -111,13 +115,14 @@ def test_call_solidity_greeter():
 
     test_settings = settings["test_id_call"]
     (root_dir, node, api) = setup_node(test_settings, "alice")
+    internal_api = common.internal_api(node)
 
     bytecode = greeter_generated_code()
 
     setGreeting = "0xa4136862"
     HelloWorld = "0000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000d48656c6c6c6f20576f726c642100000000000000000000000000000000000000"
     call_input = ContractCallInput("evm", bytecode, "", setGreeting + HelloWorld)
-    result = api.call_contract(call_input)
+    result = internal_api.call_contract(call_input)
     print(result)
 
     generatedcode = greeter_generated_code()

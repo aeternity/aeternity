@@ -703,6 +703,41 @@
         }
       }
     },
+    "/contracts/{pubkey}/poi" : {
+      "get" : {
+        "tags" : [ "external", "transactions" ],
+        "description" : "Get a proof of inclusion for a contract",
+        "operationId" : "GetContractPoI",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pubkey",
+          "in" : "path",
+          "description" : "Contract pubkey to get proof for",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PoI"
+            }
+          },
+          "400" : {
+            "description" : "Invalid contract key",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Contract not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/oracles/{pubkey}" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
@@ -1006,44 +1041,9 @@
         }
       }
     },
-    "/tx/{tx_hash}/contract-call" : {
-      "get" : {
-        "tags" : [ "external", "transactions" ],
-        "description" : "Get the call result for a contract_create or contract_call transaction",
-        "operationId" : "GetContractCallFromTx",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "tx_hash",
-          "in" : "path",
-          "description" : "Hash of the transaction",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "The contract call result was found",
-            "schema" : {
-              "$ref" : "#/definitions/ContractCallObject"
-            }
-          },
-          "400" : {
-            "description" : "Invalid transaction",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          },
-          "404" : {
-            "description" : "Transaction not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/tx/contract/create" : {
+    "/debug/contracts/create" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Get a contract_create transaction object",
         "operationId" : "PostContractCreate",
         "consumes" : [ "application/json" ],
@@ -1078,9 +1078,9 @@
         }
       }
     },
-    "/tx/contract/create/compute" : {
+    "/debug/contracts/create/compute" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Compute the call_data for SOPHIA and get a contract_create transaction object",
         "operationId" : "PostContractCreateCompute",
         "consumes" : [ "application/json" ],
@@ -1115,9 +1115,9 @@
         }
       }
     },
-    "/tx/contract/call" : {
+    "/debug/contracts/call" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Get a contract_call transaction object",
         "operationId" : "PostContractCall",
         "consumes" : [ "application/json" ],
@@ -1152,9 +1152,9 @@
         }
       }
     },
-    "/tx/contract/call/compute" : {
+    "/debug/contracts/call/compute" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Compute the call_data for SOPHIA and get contract_call transaction object",
         "operationId" : "PostContractCallCompute",
         "consumes" : [ "application/json" ],
@@ -1801,41 +1801,6 @@
         }
       }
     },
-    "/poi/contract/{contract}" : {
-      "get" : {
-        "tags" : [ "external", "chain" ],
-        "description" : "Get a proof of inclusion for a contract",
-        "operationId" : "GetContractPoI",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "contract",
-          "in" : "path",
-          "description" : "Contract pubkey to get proof for",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "Successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/PoI"
-            }
-          },
-          "400" : {
-            "description" : "Invalid contract key",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          },
-          "404" : {
-            "description" : "Contract not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
     "/transactions" : {
       "get" : {
         "tags" : [ "external", "transactions" ],
@@ -1963,9 +1928,9 @@
         }
       }
     },
-    "/contract/compile" : {
+    "/debug/contracts/code/compile" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Compile a sophia contract from source and return byte code",
         "operationId" : "CompileContract",
         "consumes" : [ "application/json" ],
@@ -1995,9 +1960,9 @@
         }
       }
     },
-    "/contract/call" : {
+    "/debug/contracts/code/call" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Call a sophia function with a given name and argument in the given bytecode off chain.",
         "operationId" : "CallContract",
         "consumes" : [ "application/json" ],
@@ -2027,9 +1992,9 @@
         }
       }
     },
-    "/contract/decode-data" : {
+    "/debug/contracts/code/decode-data" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Decode Sophia return data encoded according to Sophia ABI.",
         "operationId" : "DecodeData",
         "consumes" : [ "application/json" ],
@@ -2059,9 +2024,9 @@
         }
       }
     },
-    "/contract/encode-calldata" : {
+    "/debug/contracts/code/encode-calldata" : {
       "post" : {
-        "tags" : [ "external", "dev" ],
+        "tags" : [ "internal", "dev" ],
         "description" : "Encode sophia data and function name according to sophia ABI.",
         "operationId" : "EncodeCalldata",
         "consumes" : [ "application/json" ],

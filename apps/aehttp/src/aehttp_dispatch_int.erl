@@ -12,6 +12,9 @@
                         , read_optional_params/1
                         , base58_decode/1
                         , get_nonce_from_account_id/1
+                        , get_contract_code/2
+                        , compute_contract_create_data/0
+                        , compute_contract_call_data/0
                         , verify_name/1
                         , nameservice_pointers_decode/1
                         , ttl_decode/1
@@ -19,7 +22,9 @@
                         , verify_oracle_existence/1
                         , verify_oracle_query_existence/2
                         , poi_decode/1
+                        , hexstrings_decode/1
                         , unsigned_tx_response/1
+                        , ok_response/1
                         , process_request/2
                         ]).
 
@@ -44,6 +49,143 @@ handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
             {404, [], #{reason => <<"Account not found">>}};
         {error, key_not_found} ->
             {404, [], #{reason => <<"Keys not configured">>}}
+    end;
+
+handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([owner_id, code, vm_version, deposit,
+                                       amount, gas, gas_price, fee, call_data]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 base58_decode([{owner_id, owner_id, {id_hash, [account_pubkey]}}]),
+                 get_nonce_from_account_id(owner_id),
+                 hexstrings_decode([code, call_data]),
+                 ok_response(
+                    fun(Data) ->
+                        {ok, Tx} = aect_create_tx:new(Data),
+                        {CB, CTx} = aetx:specialize_callback(Tx),
+                        ContractPubKey = CB:contract_pubkey(CTx),
+                        #{tx => aec_base58c:encode(transaction,
+                                                  aetx:serialize_to_binary(Tx)),
+                          contract_id =>
+                              aec_base58c:encode(contract_pubkey, ContractPubKey)
+                         }
+                    end)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request('PostContractCreateCompute', #{'ContractCreateCompute' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([owner_id, code, vm_version, deposit,
+                                       amount, gas, gas_price, fee,
+                                       arguments]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 base58_decode([{owner_id, owner_id, {id_hash, [account_pubkey]}}]),
+                 get_nonce_from_account_id(owner_id),
+                 hexstrings_decode([code]),
+                 compute_contract_create_data(),
+                 ok_response(
+                    fun(Data) ->
+                        {ok, Tx} = aect_create_tx:new(Data),
+                        {CB, CTx} = aetx:specialize_callback(Tx),
+                        ContractPubKey = CB:contract_pubkey(CTx),
+                        #{tx => aec_base58c:encode(transaction,
+                                                  aetx:serialize_to_binary(Tx)),
+                          contract_id =>
+                              aec_base58c:encode(contract_pubkey, ContractPubKey)
+                         }
+                    end)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([caller_id, contract_id, vm_version,
+                                       amount, gas, gas_price, fee, call_data]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 base58_decode([{caller_id, caller_id, {id_hash, [account_pubkey]}},
+                                {contract_id, contract_id, {id_hash, [contract_pubkey]}}]),
+                 get_nonce_from_account_id(caller_id),
+                 get_contract_code(contract_id, contract_code),
+                 hexstrings_decode([call_data]),
+                 unsigned_tx_response(fun aect_call_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request('PostContractCallCompute', #{'ContractCallCompute' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([caller_id, contract_id, vm_version,
+                                       amount, gas, gas_price, fee,
+                                       function, arguments]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 base58_decode([{caller_id, caller_id, {id_hash, [account_pubkey]}},
+                                {contract_id, contract_id, {id_hash, [contract_pubkey]}}]),
+                 get_nonce_from_account_id(caller_id),
+                 get_contract_code(contract_id, contract_code),
+                 compute_contract_call_data(),
+                 unsigned_tx_response(fun aect_call_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request('CompileContract', Req, _Context) ->
+    case Req of
+        #{'Contract' :=
+              #{ <<"code">> := Code
+               , <<"options">> := Options }} ->
+            %% TODO: Handle other languages
+            case aehttp_logic:contract_compile(Code, Options) of
+                 {ok, ByteCode} ->
+                     {200, [], #{ bytecode => ByteCode}};
+                 {error, ErrorMsg} ->
+                     {403, [], #{reason => ErrorMsg}}
+             end;
+        _ -> {403, [], #{reason => <<"Bad request">>}}
+    end;
+
+handle_request('CallContract', Req, _Context) ->
+    case Req of
+        #{'ContractCallInput' :=
+              #{ <<"abi">> := ABI
+               , <<"code">> := Code
+               , <<"function">> := Function
+               , <<"arg">> := Argument }}  ->
+            case aehttp_logic:contract_call(ABI, Code, Function, Argument) of
+                {ok, Result} ->
+                    {200, [], #{ out => Result}};
+                {error, ErrorMsg} ->
+                    {403, [], #{reason => ErrorMsg}}
+            end;
+        _ -> {403, [], #{reason => <<"Bad request">>}}
+    end;
+
+handle_request('DecodeData', Req, _Context) ->
+    case Req of
+        #{'SophiaBinaryData' :=
+              #{ <<"sophia-type">>  := Type
+               , <<"data">>  := Data
+               }} ->
+            case aehttp_logic:contract_decode_data(Type, Data) of
+                {ok, Result} ->
+                    {200, [], #{ data => Result}};
+                {error, ErrorMsg} ->
+                    {400, [], #{reason => ErrorMsg}}
+            end
+    end;
+
+handle_request('EncodeCalldata', Req, _Context) ->
+    case Req of
+        #{'ContractCallInput' :=
+              #{ <<"abi">>  := ABI
+               , <<"code">> := Code
+               , <<"function">> := Function
+               , <<"arg">> := Argument }} ->
+            %% TODO: Handle other languages
+            case aehttp_logic:contract_encode_call_data(ABI, Code, Function, Argument) of
+                {ok, Result} ->
+                    {200, [], #{ calldata => Result}};
+                {error, ErrorMsg} ->
+                    {403, [], #{reason => ErrorMsg}}
+            end;
+        _ -> {403, [], #{reason => <<"Bad request">>}}
     end;
 
 handle_request('PostNamePreclaim', #{'NamePreclaimTx' := Req}, _Context) ->

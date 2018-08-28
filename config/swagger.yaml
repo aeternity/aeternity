@@ -610,6 +610,34 @@ paths:
             $ref: '#/definitions/Error'
         '404':
           description: 'Contract not found'
+  /contracts/{pubkey}/poi:
+    get:
+      tags:
+        - external
+        - transactions
+      operationId: GetContractPoI
+      description: 'Get a proof of inclusion for a contract'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'Contract pubkey to get proof for'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: Successful operation
+          schema:
+            $ref: '#/definitions/PoI'
+        '400':
+          description: Invalid contract key
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Contract not found
+          schema:
+            $ref: '#/definitions/Error'
   /oracles/{pubkey}:
     get:
       tags:
@@ -871,38 +899,10 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
-  /tx/{tx_hash}/contract-call:
-    get:
-      tags:
-        - external
-        - transactions
-      operationId: GetContractCallFromTx
-      description: 'Get the call result for a contract_create or contract_call transaction'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: tx_hash
-          description: Hash of the transaction
-          required: true
-          type: string
-      responses:
-        '200':
-          description: The contract call result was found
-          schema:
-            $ref: '#/definitions/ContractCallObject'
-        '400':
-          description: Invalid transaction
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Transaction not found
-          schema:
-            $ref: '#/definitions/Error'
-  /tx/contract/create:
+  /debug/contracts/create:
     post:
       tags:
-        - external
+        - internal
         - dev
       operationId: PostContractCreate
       description: 'Get a contract_create transaction object'
@@ -929,10 +929,10 @@ paths:
           description: Owner account not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/contract/create/compute:
+  /debug/contracts/create/compute:
     post:
       tags:
-        - external
+        - internal
         - dev
       operationId: PostContractCreateCompute
       description: 'Compute the call_data for SOPHIA and get a contract_create transaction object'
@@ -959,10 +959,10 @@ paths:
           description: Owner account not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/contract/call:
+  /debug/contracts/call:
     post:
       tags:
-        - external
+        - internal
         - dev
       operationId: PostContractCall
       description: 'Get a contract_call transaction object'
@@ -989,10 +989,10 @@ paths:
           description: Caller account or contract not found
           schema:
             $ref: '#/definitions/Error'
-  /tx/contract/call/compute:
+  /debug/contracts/call/compute:
     post:
       tags:
-        - external
+        - internal
         - dev
       operationId: PostContractCallCompute
       description: 'Compute the call_data for SOPHIA and get contract_call transaction object'
@@ -1506,35 +1506,6 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
-  /poi/contract/{contract}:
-    get:
-      tags:
-        - external
-        - chain
-      operationId: GetContractPoI
-      description: 'Get a proof of inclusion for a contract'
-      produces:
-        - application/json
-      parameters:
-        - in: path
-          name: contract
-          description: 'Contract pubkey to get proof for'
-          required: true
-          type: string
-      responses:
-        '200':
-          description: Successful operation
-          schema:
-            $ref: '#/definitions/PoI'
-        '400':
-          description: Invalid contract key
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Contract not found
-          schema:
-            $ref: '#/definitions/Error'
-
   /transactions:
     get:
       tags:
@@ -1652,10 +1623,10 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
-  /contract/compile:
+  /debug/contracts/code/compile:
     post:
       tags:
-        - external
+        - internal
         - dev
       operationId: 'CompileContract'
       description: 'Compile a sophia contract from source and return byte code'
@@ -1679,10 +1650,10 @@ paths:
           description: Invalid contract
           schema:
             $ref: '#/definitions/Error'
-  /contract/call:
+  /debug/contracts/code/call:
     post:
       tags:
-        - external
+        - internal
         - dev
       operationId: 'CallContract'
       description: 'Call a sophia function with a given name and argument in the given bytecode off chain.'
@@ -1706,10 +1677,10 @@ paths:
           description: Invalid contract
           schema:
             $ref: '#/definitions/Error'
-  /contract/decode-data:
+  /debug/contracts/code/decode-data:
     post:
       tags:
-        - external
+        - internal
         - dev
       operationId: 'DecodeData'
       description: 'Decode Sophia return data encoded according to Sophia ABI.'
@@ -1733,10 +1704,10 @@ paths:
           description: Invalid data
           schema:
             $ref: '#/definitions/Error'
-  /contract/encode-calldata:
+  /debug/contracts/code/encode-calldata:
     post:
       tags:
-        - external
+        - internal
         - dev
       operationId: 'EncodeCalldata'
       description: 'Encode sophia data and function name according to sophia ABI.'

@@ -34,7 +34,7 @@ Assumption: Bob has enough tokens.
 Bob computes - off-chain, using the epoch API - the bytecode of the contract.
 
 >>> from swagger_client.models.contract import Contract
->>> contract_bytecode = epoch_node['external_api'].compile_contract(Contract(counter_contract, options="")).bytecode
+>>> contract_bytecode = epoch_node['internal_api'].compile_contract(Contract(counter_contract, options="")).bytecode
 >>> print(contract_bytecode) # doctest: +ELLIPSIS
 0x...
 
@@ -43,12 +43,12 @@ Bob computes - off-chain, using the epoch API - the initialization call data.
 >>> counter_init_value = 21
 >>> contract_init_call_data = {'f': "init", 'arg': "({})".format(counter_init_value)}
 >>> from swagger_client.models.contract_call_input import ContractCallInput
->>> encoded_init_call_data = epoch_node['external_api'].encode_calldata(ContractCallInput("sophia", contract_bytecode, contract_init_call_data['f'], contract_init_call_data['arg'])).calldata
+>>> encoded_init_call_data = epoch_node['internal_api'].encode_calldata(ContractCallInput("sophia", contract_bytecode, contract_init_call_data['f'], contract_init_call_data['arg'])).calldata
 
 Bob computes - off-chain, using the epoch API - the unsigned contract create transaction.
 
 >>> from swagger_client.models.contract_create_data import ContractCreateData
->>> raw_unsigned_contract_create_tx = epoch_node['external_api'].post_contract_create(ContractCreateData(
+>>> raw_unsigned_contract_create_tx = epoch_node['internal_api'].post_contract_create(ContractCreateData(
 ...   owner_id=users['b']['encoded_pub_key'],
 ...   nonce=1,
 ...   code=contract_bytecode,
@@ -94,7 +94,7 @@ Bob ensures that the published contract create transaction is included in the ch
 >>> wait(lambda: is_tx_confirmed(epoch_node['external_api'], contract_create_tx_hash, 2),
 ...      timeout_seconds=30)
 True
->>> contract_init_call_object = epoch_node['external_api'].get_contract_call_from_tx(contract_create_tx_hash)
+>>> contract_init_call_object = epoch_node['external_api'].get_transaction_info_by_hash(contract_create_tx_hash)
 >>> print(contract_init_call_object.return_type)
 ok
 
@@ -112,7 +112,7 @@ Alice computes - off-chain, using the epoch API - the unsigned contract call tra
 
 >>> contract_call_data = {'f': "get", 'arg': "()"}
 >>> from swagger_client.models.contract_call_compute import ContractCallCompute
->>> unsigned_contract_call_tx = base58.b58decode_check(epoch_node['external_api'].post_contract_call_compute(ContractCallCompute(
+>>> unsigned_contract_call_tx = base58.b58decode_check(epoch_node['internal_api'].post_contract_call_compute(ContractCallCompute(
 ...   caller_id=users['a']['encoded_pub_key'],
 ...   nonce=1,
 ...   contract_id=contract_id,
@@ -148,7 +148,7 @@ Alice ensures that the published contract call transaction is included in the ch
 >>> wait(lambda: is_tx_confirmed(epoch_node['external_api'], contract_call_tx_hash, 2),
 ...      timeout_seconds=30)
 True
->>> contract_call_object = epoch_node['external_api'].get_contract_call_from_tx(contract_call_tx_hash)
+>>> contract_call_object = epoch_node['external_api'].get_transaction_info_by_hash(contract_call_tx_hash)
 >>> print(contract_call_object.return_type)
 ok
 
@@ -157,6 +157,6 @@ Alice decodes the return value - off-chain, using the epoch API.
 >>> print(contract_call_object.return_value) # doctest: +ELLIPSIS
 0x...
 >>> from swagger_client.models.sophia_binary_data import SophiaBinaryData
->>> epoch_node['external_api'].decode_data(SophiaBinaryData(sophia_type=counter_contract_get_function_return_value_type,
+>>> epoch_node['internal_api'].decode_data(SophiaBinaryData(sophia_type=counter_contract_get_function_return_value_type,
 ...                                                         data=contract_call_object.return_value)).data
 {u'type': u'word', u'value': 21}

@@ -1034,20 +1034,20 @@ get_top() ->
     http_request(Host, get, "blocks/top", []).
 
 get_contract_create(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/contract/create", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/contracts/create", Data).
 
 get_contract_call(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/contract/call", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/contracts/call", Data).
 
 get_contract_call_object(TxHash) ->
     Host = external_address(),
-    http_request(Host, get, "tx/"++binary_to_list(TxHash)++"/contract-call", []).
+    http_request(Host, get, "transactions/"++binary_to_list(TxHash)++"/info", []).
 
 get_contract_decode_data(Request) ->
-    Host = external_address(),
-    http_request(Host, post, "contract/decode-data", Request).
+    Host = internal_address(),
+    http_request(Host, post, "debug/contracts/code/decode-data", Request).
 
 get_tx(TxHash) ->
     Host = external_address(),
