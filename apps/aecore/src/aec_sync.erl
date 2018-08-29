@@ -784,9 +784,9 @@ has_generation(KeyBlockHash) ->
     %% We are looking for the generation backwards from this Hash
     %% Possibly optimize by implementing aec_chain:has_generation operating on
     %% headers only
-    case aec_chain:get_prev_generation(KeyBlockHash) of
-        {ok, _KeyBlock, _MicroBlocks} -> true;
-        error                         -> false
+    case aec_chain:get_generation_by_hash(KeyBlockHash, backward) of
+        {ok, _Generation} -> true;
+        error             -> false
     end.
 
 header_hash(Block) ->
