@@ -50,6 +50,7 @@
         , start_mining/0
         , stop_mining/0
         , handoff_leader/0
+        , get_beneficiary/0
         ]).
 
 %% Chain API
