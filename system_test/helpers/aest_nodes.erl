@@ -38,6 +38,7 @@
 -export([get/5]).
 -export([get_block/2]).
 -export([get_top/1]).
+-export([get_mempool/1]).
 -export([wait_for_value/4]).
 -export([wait_for_time/3]).
 -export([wait_for_time/4]).
@@ -184,7 +185,7 @@ ct_cleanup(Ctx) ->
     wait_for_exit(Pid, ?CALL_TIMEOUT),
     case Result of
         {error, Reason} ->
-            %% returning fail will cause common test to see it as test failure 
+            %% returning fail will cause common test to see it as test failure
             {fail, Reason};
         ok -> ok
     end.
@@ -321,6 +322,7 @@ spec(Name, Peers, Spec) ->
 request(Node, Id, Params) ->
     aehttp_client:request(Id, Params, [
         {ext_http, aest_nodes_mgr:get_service_address(Node, ext_http)},
+        {int_http, aest_nodes_mgr:get_service_address(Node, int_http)},
         {ct_log, true}
     ]).
 
@@ -346,8 +348,17 @@ get_block(NodeName, Height) ->
     end.
 
 get_top(NodeName) ->
-    {ok, 200, Top} = request(NodeName, 'GetTop', #{}),
+    {ok, 200, Top} = request(NodeName, 'GetTopBlock', #{}),
     Top.
+
+get_mempool(NodeName) ->
+    {ok, 200, Txs} = request(NodeName, 'GetPendingTransactions', #{}),
+    case {maps:get(<<"transactions">>, Txs, undefined),
+          maps:get(transactions, Txs, undefined)} of
+        {undefined, Mempool} -> Mempool; %% future proof
+        {Mempool, undefined} -> Mempool
+        %% nomatch if none of the two
+    end.
 
 -spec wait_for_value({balance, binary(), non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok;
                     ({contract_tx, binary(), non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok;
@@ -355,7 +366,7 @@ get_top(NodeName) ->
 wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, _Ctx) ->
     CheckF =
         fun(Node) ->
-                case request(Node, 'GetAccountBalance', #{address => PubKey}) of
+                 case request(Node, 'GetAccountByPubkey', #{pubkey => PubKey}) of
                     {ok, 200, #{balance := Balance}} when Balance >= MinBalance -> {done, #{PubKey => Balance}};
                     _ -> wait
                 end

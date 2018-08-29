@@ -31,6 +31,7 @@
     wait_for_startup/3,
     get_block/2,
     get_top/1,
+    get_mempool/1,
     request/3,
     assert_in_sync/1
 ]).
@@ -207,7 +208,7 @@ new_node_joins_network(Cfg) ->
     inject_spend_txs(old_node1, patron(), 5, 1, 100),
     inject_spend_txs(old_node2, patron(), 5, 6, 100),
 
-    wait_for_value({height, Length}, [old_node1, old_node2], Length * ?MINING_TIMEOUT, Cfg),
+    wait_for_value({height, Length + 1}, [old_node1, old_node2], Length * ?MINING_TIMEOUT, Cfg),
     EndTime = erlang:system_time(seconds),
     %% Average mining time per block
     MiningTime = ((EndTime - StartTime) * 1000) div Length,
@@ -227,7 +228,7 @@ new_node_joins_network(Cfg) ->
     %% Starts a third node and check it synchronize with the first two
     start_node(new_node1, Cfg),
 
-    inject_spend_txs(old_node1, patron(), 5, 11, 100), 
+    inject_spend_txs(old_node1, patron(), 5, 11, 100),
 
     wait_for_startup([new_node1], 0, Cfg),
 
@@ -424,7 +425,7 @@ tx_pool_sync(Cfg) ->
                    [node1], 5 * ?MINING_TIMEOUT, Cfg),
 
     %% Check that the mempool has the other transactions
-    {ok, 200, MempoolTxs1} = request(node1, 'GetTxs', #{}),
+    MempoolTxs1 = get_mempool(node1),
     {10, _} = {length(MempoolTxs1), MempoolTxs1},
 
     %% Start 2nd node and let it sync
@@ -435,7 +436,7 @@ tx_pool_sync(Cfg) ->
     #{ height := Height1 } = get_top(node1),
     wait_for_value({height, Height1 + 5}, [node2], 5 * ?MINING_TIMEOUT, Cfg),
 
-    {ok, 200, MempoolTxs2} = request(node2, 'GetTxs', #{}),
+    MempoolTxs2 = get_mempool(node2),
     {10, _} = {length(MempoolTxs2), MempoolTxs2},
 
     %% Stop node1
@@ -453,7 +454,7 @@ tx_pool_sync(Cfg) ->
     #{ height := Height2 } = get_top(node2),
     wait_for_value({height, Height2 + 8}, [node1], 8 * ?MINING_TIMEOUT, Cfg),
 
-    {ok, 200, MempoolTxs1B} = request(node1, 'GetTxs', #{}),
+    MempoolTxs1B  = get_mempool(node1),
     {11, _} = {length(MempoolTxs1B), MempoolTxs1B},
 
     %% Now add a Tx that unlocks 5 more...
@@ -468,7 +469,7 @@ tx_pool_sync(Cfg) ->
 
 
 inject_spend_txs(Node, SenderAcct, N, NonceStart, TimeDelay) ->
-    [ begin 
+    [ begin
           add_spend_tx(Node, SenderAcct, Nonce),
           timer:sleep(TimeDelay)
       end || Nonce <- lists:seq(NonceStart, NonceStart + N - 1) ].
@@ -489,7 +490,7 @@ add_spend_tx(Node, #{ pubkey := SendPubKey, privkey := SendSecKey }, Nonce) ->
     {ok, Tx} = aec_spend_tx:new(Params),
     SignedTx = aec_test_utils:sign_tx(Tx, SendSecKey),
     SerSignTx = aetx_sign:serialize_to_binary(SignedTx),
-    {ok, 200, #{ tx_hash := TxHash }} = request(Node, 'PostTx', #{ tx => aec_base58c:encode(transaction, SerSignTx) }),
+    {ok, 200, #{ tx_hash := TxHash }} = request(Node, 'PostTransaction', #{ tx => aec_base58c:encode(transaction, SerSignTx) }),
     #{ receiver => RecvPubKey, receiver_sec => RecvSecKey, amount => 10000, tx_hash => TxHash }.
 
 %% Test that two disconnected clusters of nodes are able to recover and merge
@@ -498,7 +499,7 @@ add_spend_tx(Node, #{ pubkey := SendPubKey, privkey := SendSecKey }, Nonce) ->
 %% network partitions, and that the network is partitiioned when the chain
 %% is already shared.
 net_split_recovery(Cfg) ->
-    Length = 40,  
+    Length = 40,
     %% It takes up to 20 seconds on some machines to connect docker containers
     %% This means we need more than 20 seconds (or blocks) to at all observe a
     %% synced chain of machines on the same net.
@@ -565,7 +566,7 @@ net_split_recovery(Cfg) ->
               ?assertNotEqual(undefined, B1)
             end),
 
-    {ok, 200, #{height := Top2}} = request(net1_node1, 'GetTop', #{}),
+    #{height := Top2} = get_top(net1_node1),
     ct:log("Height reached ~p", [Top2]),
 
     %% Split again the nodes in two cluster of 2 nodes
@@ -618,7 +619,7 @@ net_split_recovery(Cfg) ->
               ?assertNotEqual(undefined, D1)
             end),
 
-    {ok, 200,#{height := Top3}} = request(net1_node1, 'GetTop', #{}),
+    #{height := Top3} = get_top(net1_node1),
     ct:log("Top reached ~p", [Top3]),
 
     ok.
@@ -698,7 +699,7 @@ net_split_mining_power(Cfg) ->
                 lists:foreach(fun(B) -> ?assertEqual(B1, B) end, Bs)
             end),
 
-    {ok, 200, #{height := Top2}} = request(net1_node1, 'GetTop', #{}),
+    #{height := Top2} = get_top(net1_node1),
     ct:log("Height reached ~p", [Top2]),
 
     % Check that the larger cluster has still more mining power.
