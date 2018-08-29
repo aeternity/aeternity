@@ -37,6 +37,7 @@
          set_prev_hash/2,
          set_root_hash/2,
          set_signature/2,
+         serialize_for_client/2,
          set_target/2,
          set_time_in_msecs/2,
          signature/1,
@@ -311,6 +312,37 @@ serialize_to_map(#mic_header{} = Header) ->
       <<"time">> => Header#mic_header.time,
       <<"version">> => Header#mic_header.version}.
 
+-spec serialize_for_client(header(), block_type()) -> map().
+serialize_for_client(#key_header{} = Header, PrevBlockType) ->
+    {ok, Hash} = hash_header(Header),
+    #{<<"hash">>        => encode_block_hash(key, Hash),
+      <<"height">>      => Header#key_header.height,
+      <<"prev_hash">>   => encode_block_hash(PrevBlockType, Header#key_header.prev_hash),
+      <<"state_hash">>  => aec_base58c:encode(block_state_hash, Header#key_header.root_hash),
+      <<"miner">>       => aec_base58c:encode(account_pubkey, Header#key_header.miner),
+      <<"beneficiary">> => aec_base58c:encode(account_pubkey, Header#key_header.beneficiary),
+      <<"target">>      => Header#key_header.target,
+      <<"pow">>         => serialize_pow_evidence(Header#key_header.pow_evidence),
+      <<"nonce">>       => Header#key_header.nonce,
+      <<"time">>        => Header#key_header.time,
+      <<"version">>     => Header#key_header.version
+     };
+serialize_for_client(#mic_header{} = Header, PrevBlockType) ->
+    {ok, Hash} = hash_header(Header),
+    #{<<"hash">>       => encode_block_hash(micro, Hash),
+      <<"height">>     => Header#mic_header.height,
+      <<"prev_hash">>  => encode_block_hash(PrevBlockType, Header#mic_header.prev_hash),
+      <<"state_hash">> => aec_base58c:encode(block_state_hash, Header#mic_header.root_hash),
+      <<"txs_hash">>   => aec_base58c:encode(block_tx_hash, Header#mic_header.txs_hash),
+      <<"time">>       => Header#mic_header.time,
+      <<"version">>    => Header#mic_header.version
+     }.
+
+encode_block_hash(key, Hash) ->
+    aec_base58c:encode(key_block_hash, Hash);
+encode_block_hash(micro, Hash) ->
+    aec_base58c:encode(micro_block_hash, Hash).
+
 -spec deserialize_from_map(map()) -> {'ok', header()} | {'error', term()}.
 deserialize_from_map(#{<<"height">> := Height,
                        <<"prev_hash">> := PrevHash,
@@ -462,6 +494,7 @@ deserialize_micro_from_binary(<<Version:64,
     end;
 deserialize_micro_from_binary(_Other,_Vsn) ->
     {error, malformed_header}.
+
 
 serialize_pow_evidence_to_binary(Ev) ->
    << <<E:32>> || E <- serialize_pow_evidence(Ev) >>.

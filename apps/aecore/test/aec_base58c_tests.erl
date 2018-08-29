@@ -7,7 +7,8 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -define(TEST_MODULE, aec_base58c).
--define(TYPES, [ {block_hash        , 32}
+-define(TYPES, [ {key_block_hash    , 32}
+               , {micro_block_hash  , 32}
                , {block_tx_hash     , 32}
                , {block_state_hash  , 32}
                , {channel           , 32}
