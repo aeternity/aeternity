@@ -242,6 +242,14 @@ references:
         docker-compose logs
       when: always
 
+  install_system_test_deps: &install_system_test_deps
+    run:
+      name: Build local docker image
+      command: |
+        docker build -t ${DOCKERHUB_REPO:?}:local .
+
+  system_test_logs: &system_test_logs system_test/logs
+
 jobs:
   build:
     <<: *container_config
@@ -486,14 +494,7 @@ jobs:
       - *install_otp
       - *install_libsodium
       - *prepare_ubuntu_user
-      - run:
-          name: Build local docker image
-          command: |
-            docker build -t ${DOCKERHUB_REPO:?}:local .
-      - run:
-          name: Install system tests dependancies
-          command: |
-            sudo -u ubuntu -E -H make system-test-deps
+      - *install_system_test_deps
       - run:
           name: System Tests
           no_output_timeout: 2h
@@ -501,9 +502,29 @@ jobs:
             sudo -u ubuntu -E -H make system-test
       - *fail_notification_system_test
       - store_test_results:
-          path: system_test/logs
+          path: *system_test_logs
       - store_artifacts:
-          path: system_test/logs
+          path: *system_test_logs
+
+  docker_system_smoke_tests:
+    <<: *machine_config
+    steps:
+      - checkout
+      - *install_os_deps
+      - *install_otp
+      - *install_libsodium
+      - *prepare_ubuntu_user
+      - *install_system_test_deps
+      - run:
+          name: System Smoke Tests
+          no_output_timeout: 1h
+          command: |
+            sudo -u ubuntu -E -H make smoke-test-run
+      - *fail_notification_system_test
+      - store_test_results:
+          path: *system_test_logs
+      - store_artifacts:
+          path: *system_test_logs
 
   deploy_integration:
     <<: *infrastructure_config
@@ -599,6 +620,11 @@ workflows:
             tags:
               only: /^v.*$/
 
+      - docker_system_smoke_tests:
+          filters:
+            branches:
+              only: master
+
       - test:
           requires:
             - build
@@ -607,8 +633,6 @@ workflows:
               ignore:
                 - env/dev1
                 - env/dev2
-            tags:
-              only: /^v.*$/
 
       - eunit:
           requires:
@@ -779,8 +803,8 @@ workflows:
   chain_snapshots:
     triggers:
       - schedule:
-          # run At minute 0 past hour 0 and 12. UTC
-          cron: "0 0,12 * * *"
+          # run At minute 0 past hour 0. UTC
+          cron: "0 0 * * *"
           filters:
             branches:
               only:

@@ -187,19 +187,13 @@ docker-clean:
 	@echo "Deleting images..."
 	@docker image prune -a -f $(ST_DOCKER_FILTER)
 
-smoke-test: system-test-deps docker smoke-test-run
+smoke-test: docker smoke-test-run
 
 smoke-test-run:
 	@./rebar3 as system_test do ct $(ST_CT_FLAGS) --suite=aest_sync_SUITE,aest_commands_SUITE,aest_peers_SUITE
 
 system-test:
 	@./rebar3 as system_test do ct $(ST_CT_FLAGS) $(CT_TEST_FLAGS)
-
-system-test-deps:
-#	docker pull aeternity/epoch:latest
-
-TESTNET_DB_BACKUP_FILE = mnesia_18.196.250.42_uat_db_backup_1524700922.gz
-TESTNET_DB_BACKUP_BASE_URL = https://9305-99802036-gh.circle-artifacts.com/0/tmp/chain_snapshots/18.196.250.42/tmp
 
 aevm-test: aevm-test-deps
 	@./rebar3 eunit --application=aevm
@@ -346,7 +340,7 @@ internal-distclean: $$(KIND)
 	internal-start internal-stop internal-attach internal-clean internal-compile-deps \
 	dialyzer \
 	docker docker-clean \
-	test smoke-test smoke-test-run system-test system-test-deps aevm-test-deps\
+	test smoke-test smoke-test-run system-test aevm-test-deps\
 	kill killall \
 	clean distclean \
 	swagger swagger-docs swagger-check swagger-version-check \
