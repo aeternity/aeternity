@@ -332,9 +332,10 @@ serialize_for_client(#mic_header{} = Header, PrevBlockType) ->
     #{<<"hash">>       => encode_block_hash(micro, Hash),
       <<"height">>     => Header#mic_header.height,
       <<"prev_hash">>  => encode_block_hash(PrevBlockType, Header#mic_header.prev_hash),
+      <<"signature">>  => aec_base58c:encode(signature, Header#mic_header.signature),
       <<"state_hash">> => aec_base58c:encode(block_state_hash, Header#mic_header.root_hash),
-      <<"txs_hash">>   => aec_base58c:encode(block_tx_hash, Header#mic_header.txs_hash),
       <<"time">>       => Header#mic_header.time,
+      <<"txs_hash">>   => aec_base58c:encode(block_tx_hash, Header#mic_header.txs_hash),
       <<"version">>    => Header#mic_header.version
      }.
 

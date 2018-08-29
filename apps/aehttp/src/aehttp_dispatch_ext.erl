@@ -52,18 +52,9 @@ handle_request('GetTopBlock', _, _Context) ->
                     PrevBlockHash = aec_blocks:prev_hash(Block),
                     case aec_chain:get_block(PrevBlockHash) of
                         {ok, PrevBlock} ->
-                            BlockType = aec_blocks:type(Block),
                             PrevBlockType = aec_blocks:type(PrevBlock),
                             Header = aec_blocks:to_header(Block),
-                            Result =
-                                case BlockType of
-                                    key ->
-                                        aec_headers:serialize_for_client(Header, PrevBlockType);
-                                    micro ->
-                                        R = aec_headers:serialize_for_client(Header, PrevBlockType),
-                                        R#{<<"signature">> => aec_blocks:signature(Block)}
-                                end,
-                            {200, [], Result};
+                            {200, [], aec_headers:serialize_for_client(Header, PrevBlockType)};
                         error ->
                             {404, [], #{reason => <<"Block not found">>}}
                     end
@@ -182,9 +173,7 @@ handle_request('GetMicroBlockHeaderByHash', Params, _Context) ->
                         {ok, PrevBlock} ->
                             PrevBlockType = aec_blocks:type(PrevBlock),
                             Header = aec_blocks:to_header(Block),
-                            Resp = aec_headers:serialize_for_client(Header, PrevBlockType),
-                            Resp1 = Resp#{<<"signature">> => aec_blocks:signature(Block)},
-                            {200, [], Resp1};
+                            {200, [], aec_headers:serialize_for_client(Header, PrevBlockType)};
                         error ->
                             {404, [], #{reason => <<"Block not found">>}}
                     end;
