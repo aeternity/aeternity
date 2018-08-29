@@ -13,6 +13,7 @@
 %% test case exports
 -export([ extend_oracle/1
         , extend_oracle_negative/1
+        , extend_oracle_negative_dynamic_fee/1
         , prune_oracle/1
         , prune_oracle_extend/1
         , prune_query/1
@@ -20,13 +21,17 @@
         , prune_response_long/1
         , query_oracle/1
         , query_oracle_negative/1
+        , query_oracle_negative_dynamic_fee/1
         , query_response/1
         , query_response_negative/1
+        , query_response_negative_dynamic_fee/1
         , register_oracle/1
         , register_oracle_negative/1
+        , register_oracle_negative_dynamic_fee/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
+-include_lib("stdlib/include/assert.hrl").
 
 -include_lib("apps/aecore/include/blocks.hrl").
 -include_lib("apps/aeoracle/include/oracle_txs.hrl").
@@ -45,12 +50,16 @@ groups() ->
                               ]}
     , {transactions, [sequence], [ register_oracle
                                  , register_oracle_negative
+                                 , register_oracle_negative_dynamic_fee
                                  , extend_oracle
                                  , extend_oracle_negative
+                                 , extend_oracle_negative_dynamic_fee
                                  , query_oracle
                                  , query_oracle_negative
+                                 , query_oracle_negative_dynamic_fee
                                  , query_response
                                  , query_response_negative
+                                 , query_response_negative_dynamic_fee
                                  ]}
     , {state_tree, [ prune_oracle
                    , prune_oracle_extend
@@ -96,9 +105,33 @@ register_oracle_negative(_Cfg) ->
     {error, ttl_expired} = aetx:check(RTx5, Trees, 2, ?PROTOCOL_VERSION),
     ok.
 
-register_oracle(_Cfg) ->
+register_oracle_negative_dynamic_fee(_Cfg) ->
     {PubKey, S1} = aeo_test_utils:setup_new_account(aeo_test_utils:new_state()),
-    Tx           = aeo_test_utils:register_tx(PubKey, S1),
+    Trees        = aeo_test_utils:trees(S1),
+    CurrHeight   = ?ORACLE_REG_HEIGHT,
+
+    F = fun(RegTxOpts) -> aetx:check(aeo_test_utils:register_tx(PubKey, RegTxOpts, S1), Trees, CurrHeight, ?PROTOCOL_VERSION) end,
+    1 = MinFee = aec_governance:minimum_tx_fee(),
+
+    %% Test minimum fee for increasing TTL.
+    ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 0}, fee => 0})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 0}, fee => MinFee})),
+    ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 1}, fee => MinFee})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1}, fee => 1 + MinFee})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 999}, fee => 1 + MinFee})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1000}, fee => 1 + MinFee})),
+    ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 1001}, fee => 1 + MinFee})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1001}, fee => 2 + MinFee})),
+    %% Test more than minimum fee considering TTL.
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1001}, fee => 3 + MinFee})),
+    ok.
+
+register_oracle(Cfg) ->
+    register_oracle(Cfg, #{}).
+
+register_oracle(_Cfg, RegTxOpts) ->
+    {PubKey, S1} = aeo_test_utils:setup_new_account(aeo_test_utils:new_state()),
+    Tx           = aeo_test_utils:register_tx(PubKey, RegTxOpts, S1),
     PrivKey      = aeo_test_utils:priv_key(PubKey, S1),
 
     %% Test that RegisterTX is accepted
@@ -153,6 +186,27 @@ extend_oracle_negative(Cfg) ->
     %% Test too low TTL
     RTx6 = aeo_test_utils:extend_tx(OracleKey, #{ttl => CurrHeight2 - 1}, S2),
     {error, ttl_expired} = aetx:check(RTx6, Trees2, CurrHeight2, ?PROTOCOL_VERSION),
+    ok.
+
+extend_oracle_negative_dynamic_fee(Cfg) ->
+    {OracleKey, S2} = register_oracle(Cfg),
+    Trees2          = aeo_test_utils:trees(S2),
+    CurrHeight2     = ?ORACLE_EXT_HEIGHT,
+
+    F = fun(ExtTxOpts) -> aetx:check(aeo_test_utils:extend_tx(OracleKey, ExtTxOpts, S2), Trees2, CurrHeight2, ?PROTOCOL_VERSION) end,
+    1 = MinFee = aec_governance:minimum_tx_fee(),
+
+    %% Test minimum fee for increasing TTL.
+    ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 0}, fee => 0})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 0}, fee => MinFee})),
+    ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 1}, fee => MinFee})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1}, fee => 1 + MinFee})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 999}, fee => 1 + MinFee})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1000}, fee => 1 + MinFee})),
+    ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 1001}, fee => 1 + MinFee})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1001}, fee => 2 + MinFee})),
+    %% Test more than minimum fee considering TTL.
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1001}, fee => 3 + MinFee})),
     ok.
 
 extend_oracle(Cfg) ->
@@ -227,18 +281,41 @@ query_oracle_negative(Cfg) ->
     {error, ttl_expired} = aetx:check(Q8, Trees, CurrHeight, ?PROTOCOL_VERSION),
     ok.
 
-query_oracle(Cfg) ->
-    query_oracle(Cfg, #{}).
+query_oracle_negative_dynamic_fee(Cfg) ->
+    {OracleKey, S}  = register_oracle(Cfg, #{oracle_ttl => {block, 2000 + ?ORACLE_QUERY_HEIGHT}, fee => 25}),
+    OracleId        = aec_id:create(oracle, OracleKey),
+    {SenderKey, S2} = aeo_test_utils:setup_new_account(S),
+    Trees           = aeo_test_utils:trees(S2),
+    CurrHeight      = ?ORACLE_QUERY_HEIGHT,
 
-query_oracle(Cfg, Opts) ->
-    {OracleKey, S1} = register_oracle(Cfg),
+    F = fun(QTxOpts) -> aetx:check(aeo_test_utils:query_tx(SenderKey, OracleId, QTxOpts, S2), Trees, CurrHeight, ?PROTOCOL_VERSION) end,
+    1 = MinFee = aec_governance:minimum_tx_fee(),
+
+    %% Test minimum fee for increasing TTL.
+    ?assertEqual({error, too_low_fee}, F(#{query_ttl => {delta, 0}, fee => 0})),
+    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 0}, fee => MinFee})),
+    ?assertEqual({error, too_low_fee}, F(#{query_ttl => {delta, 1}, fee => MinFee})),
+    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 1}, fee => 1 + MinFee})),
+    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 999}, fee => 1 + MinFee})),
+    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 1000}, fee => 1 + MinFee})),
+    ?assertEqual({error, too_low_fee}, F(#{query_ttl => {delta, 1001}, fee => 1 + MinFee})),
+    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 1001}, fee => 2 + MinFee})),
+    %% Test more than minimum fee considering TTL.
+    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 1001}, fee => 3 + MinFee})),
+    ok.
+
+query_oracle(Cfg) ->
+    query_oracle(Cfg, #{}, #{}).
+
+query_oracle(Cfg, RegTxOpts, QueryTxOpts) ->
+    {OracleKey, S1} = register_oracle(Cfg, RegTxOpts),
     {SenderKey, S2} = aeo_test_utils:setup_new_account(S1),
     Trees           = aeo_test_utils:trees(S2),
     CurrHeight      = ?ORACLE_QUERY_HEIGHT,
     PrivKey         = aeo_test_utils:priv_key(SenderKey, S2),
     OracleId        = aec_id:create(oracle, OracleKey),
 
-    Q1 = aeo_test_utils:query_tx(SenderKey, OracleId, Opts, S2),
+    Q1 = aeo_test_utils:query_tx(SenderKey, OracleId, QueryTxOpts, S2),
     %% Test that QueryTX is accepted
     SignedTx = aec_test_utils:sign_tx(Q1, PrivKey),
     {ok, [SignedTx], Trees2} =
@@ -272,7 +349,7 @@ query_response_negative(Cfg) ->
     RTx3 = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, #{fee => 0}, S1),
     {error, too_low_fee} = aetx:check(RTx3, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
-    %% Test fee too low
+    %% Test too short TTL
     RTx4 = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, #{ttl => CurrHeight - 1}, S1),
     {error, ttl_expired} = aetx:check(RTx4, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
@@ -284,11 +361,33 @@ query_response_negative(Cfg) ->
         aetx:check(RTx5, Trees, CurrHeight, ?PROTOCOL_VERSION),
     ok.
 
+query_response_negative_dynamic_fee(Cfg) ->
+    F = fun(QTxSpec, RTxSpec) ->
+                {OracleKey, ID, S1}  = query_oracle(Cfg, #{oracle_ttl => {block, 2000 + ?ORACLE_RSP_HEIGHT}, fee => 25}, QTxSpec),
+                Trees                = aeo_test_utils:trees(S1),
+                CurrHeight           = ?ORACLE_RSP_HEIGHT,
+                aetx:check(aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, RTxSpec, S1), Trees, CurrHeight, ?PROTOCOL_VERSION)
+        end,
+    1 = MinFee = aec_governance:minimum_tx_fee(),
+
+    %% Test minimum fee for increasing TTL.
+    ?assertException(error, {illegal,response_ttl,{delta,0}}, F(#{response_ttl => {delta, 0}}, #{fee => 0})),
+    ?assertException(error, {illegal,response_ttl,{delta,0}}, F(#{response_ttl => {delta, 0}}, #{fee => MinFee})),
+    ?assertEqual({error, too_low_fee}, F(#{response_ttl => {delta, 1}}, #{fee => MinFee})),
+    ?assertMatch({ok, _}             , F(#{response_ttl => {delta, 1}}, #{fee => 1 + MinFee})),
+    ?assertMatch({ok, _}             , F(#{response_ttl => {delta, 999}}, #{fee => 1 + MinFee})),
+    ?assertMatch({ok, _}             , F(#{response_ttl => {delta, 1000}}, #{fee => 1 + MinFee})),
+    ?assertEqual({error, too_low_fee}, F(#{response_ttl => {delta, 1001}}, #{fee => 1 + MinFee})),
+    ?assertMatch({ok, _}             , F(#{response_ttl => {delta, 1001}}, #{fee => 2 + MinFee})),
+    %% Test more than minimum fee considering TTL.
+    ?assertMatch({ok, _}             , F(#{response_ttl => {delta, 1001}}, #{fee => 3 + MinFee})),
+    ok.
+
 query_response(Cfg) ->
     query_response(Cfg, #{}).
 
 query_response(Cfg, QueryOpts) ->
-    {OracleKey, ID, S1} = query_oracle(Cfg, QueryOpts),
+    {OracleKey, ID, S1} = query_oracle(Cfg, #{}, QueryOpts),
     Trees               = aeo_test_utils:trees(S1),
     CurrHeight          = ?ORACLE_RSP_HEIGHT,
 

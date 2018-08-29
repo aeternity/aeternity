@@ -12,7 +12,7 @@
          ttl_expiry/2,
          ttl_fee/2]).
 
--define(ORACLE_TTL_FEE, 0.001).
+-define(ORACLE_TTL_FEE, {1, 1000}). %% One part over a thousand.
 
 %% TODO: This should also include size of the thing that has a TTL
 -spec check_ttl_fee(aec_blocks:height(), aeo_oracles:ttl(), non_neg_integer()) ->
@@ -41,6 +41,10 @@ ttl_expiry(CurrentHeight, TTL) ->
     CurrentHeight + ttl_delta(CurrentHeight, TTL).
 
 -spec ttl_fee(non_neg_integer(), non_neg_integer()) -> non_neg_integer().
-ttl_fee(_Size, NBlocks) ->
-    ceil(NBlocks * ?ORACLE_TTL_FEE).
-
+ttl_fee(_Size, NBlocks) when is_integer(NBlocks), NBlocks >= 0 ->
+    {Part, Whole} = ?ORACLE_TTL_FEE,
+    TmpNBlocks = Part * NBlocks,
+    (TmpNBlocks div Whole) + (case (TmpNBlocks rem Whole) of
+                                  0                           -> 0;
+                                  X when is_integer(X), X > 0 -> 1
+                              end).
