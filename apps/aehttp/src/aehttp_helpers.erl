@@ -22,8 +22,6 @@
         , compute_contract_call_data/0
         , read_optional_param/3
         , parse_filter_param/2
-        , get_block/2
-        , get_block/3
         , get_poi/3
         , get_block_from_chain/1
         , get_block_hash_optionally_by_hash_or_height/1
@@ -523,28 +521,6 @@ get_block_from_chain(Fun) when is_function(Fun, 0) ->
             {404, [], #{reason => <<"Starting mining, pending block not available yet">>}};
         {error, not_mining} ->
             {404, [], #{reason => <<"Not mining, no pending block">>}}
-    end.
-
-get_block(Fun, Req) ->
-    get_block(Fun, Req, true).
-
-get_block(Fun, _Req, AddHash) when is_function(Fun, 0) ->
-    case get_block_from_chain(Fun) of
-        {ok, Block} ->
-            Resp0 = aehttp_logic:cleanup_genesis(
-                aehttp_api_parser:encode_client_readable_block(Block)),
-            Resp =
-                case AddHash of
-                    true ->
-                        {ok, Hash} = aec_blocks:hash_internal_representation(Block),
-                        Resp0#{hash => aec_base58c:encode(block_hash, Hash)};
-                    false ->
-                        Resp0
-                end,
-            lager:debug("Resp = ~p", [pp(Resp)]),
-            {200, [], Resp};
-        {_Code, _, _Reason} = Err ->
-            Err
     end.
 
 get_poi(Subtree, KeyName, PutKey) when Subtree =:= accounts

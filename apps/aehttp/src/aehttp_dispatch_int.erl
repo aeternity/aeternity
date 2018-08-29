@@ -4,8 +4,6 @@
 
 -import(aeu_debug, [pp/1]).
 -import(aehttp_helpers, [ parse_filter_param/2
-                        , get_block/2
-                        , get_block/3
                         , get_block_from_chain/1
                         , parse_map_to_atom_keys/0
                         , read_required_params/1
