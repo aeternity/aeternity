@@ -38,6 +38,7 @@
 -export([get/5]).
 -export([get_block/2]).
 -export([get_top/1]).
+-export([get_mempool/1]).
 -export([wait_for_value/4]).
 -export([wait_for_time/3]).
 -export([wait_for_time/4]).
@@ -349,6 +350,15 @@ get_block(NodeName, Height) ->
 get_top(NodeName) ->
     {ok, 200, Top} = request(NodeName, 'GetTopBlock', #{}),
     Top.
+
+get_mempool(NodeName) ->
+    {ok, 200, Txs} = request(NodeName, 'GetPendingTransactions', #{}),
+    case {maps:get(<<"transactions">>, Txs, undefined),
+          maps:get(transactions, Txs, undefined)} of
+        {undefined, Mempool} -> Mempool; %% future proof
+        {Mempool, undefined} -> Mempool
+        %% nomatch if none of the two
+    end.
 
 -spec wait_for_value({balance, binary(), non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok;
                     ({contract_tx, binary(), non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok;
