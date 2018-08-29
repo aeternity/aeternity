@@ -152,7 +152,6 @@ check_solo_close_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
                 ],
             aeu_validation:run(Checks);
         {ok, [Channel, {SignedState, PayloadTx}]} ->
-            ChannelId = aesc_channels:id(Channel),
             Checks =
                 [ fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce,
                                                     Fee) end,
@@ -242,6 +241,16 @@ check_force_progress_(PayloadHash, PayloadRound,
           end,
           fun() -> validate_addresses(Addresses, PoI, Channel) end,
           fun() -> check_root_hash_of_poi(PayloadHash, PoI) end,
+          fun() -> % check produced tree has the same root hash as the poi 
+              %% TODO: this might be a lot of work. Shall we consume gas?
+              PoITrees = trees_from_poi(Addresses, PoI),
+              PoICallsHash = aec_trees:poi_calls_hash(PoI),
+              case aec_trees:hash(PoITrees, {calls, PoICallsHash}) =:= aec_trees:poi_hash(PoI) of
+                  true -> % expected hash, no missing keys
+                      ok;
+                  false -> {error, incomplete_poi}
+              end
+          end,
           fun() -> check_call_and_caller(SoloPayloadTx, FromPubKey,
                                         Addresses)
           end,

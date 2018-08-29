@@ -2560,37 +2560,8 @@ fp_missing_account_address(Cfg) ->
                     (create_contract_call_payload(ContractId, <<"main">>,
                                                   <<"42">>, 1))(Props)
                 end,
-                set_prop(fee, 1),
-                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
-                    % ensure channel had been updated
-                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
-                    OldRound = aesc_channels:round(Channel),
-                    OldHash = aesc_channels:state_hash(Channel),
-                    (different_state_hash_produced(OldRound, OldHash))(Props)
-                end,
-                fun(#{state := S,
-                      signed_force_progress := SignedForceProgressTx,
-                      solo_payload := SoloPayload} = Props) ->
-                    SignedTx = aetx_sign:deserialize_from_binary(SoloPayload),
-                    Tx       = aetx_sign:tx(SignedTx),
-                    {channel_offchain_tx, PayloadTx} = aetx:specialize_type(Tx),
-                    [Update] = aesc_offchain_tx:updates(PayloadTx),
-                    Round = aesc_offchain_tx:round(PayloadTx), %assert
-                    {_ContractId, Caller} = aesc_offchain_update:extract_call(Update),
-                    TxHashContractPubkey = aesc_utils:tx_hash_to_contract_pubkey(
-                                          aetx_sign:hash(SignedForceProgressTx)),
-                    CallId = aect_call:id(Caller,
-                                          Round,
-                                          TxHashContractPubkey),
-                    Call = aect_test_utils:get_call(TxHashContractPubkey, CallId,
-                                                    S),
-
-                    % test expected return
-                    error = aect_call:return_type(Call),
-                    <<"invalid_call">> = aect_call:return_value(Call),
-                    Props
-                end
-                ])
+                negative_force_progress_sequence(Round, Forcer,
+                                                 incomplete_poi)])
         end,
     [T(Owner, Forcer) || Owner  <- ?ROLES,
                          Forcer <- ?ROLES],
@@ -2625,7 +2596,7 @@ fp_missing_contract_address(Cfg) ->
                 end,
                 set_prop(fee, 1),
                 negative_force_progress_sequence(Round, Forcer,
-                                                 contract_missing)])
+                                                incomplete_poi)])
         end,
     [T(Owner, Forcer) || Owner  <- ?ROLES,
                          Forcer <- ?ROLES],
