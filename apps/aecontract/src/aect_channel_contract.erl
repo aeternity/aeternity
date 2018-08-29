@@ -1,4 +1,5 @@
 -module(aect_channel_contract).
+-include_lib("apps/aecore/include/blocks.hrl").
 -include("aecontract.hrl").
 
 -export([new/6,
@@ -44,7 +45,7 @@ run_new(ContractPubKey, Call, CallData, Round, Trees0) ->
                  %% We do not want the execution off chain and
                  %% on chain to be different so the coinbase
                  %% instruction will allways return 0.
-               , beneficiary => 0
+               , beneficiary => <<0:?BENEFICIARY_PUB_BYTES/unit:8>>
                },
     {CallRes, Trees} = aect_dispatch:run(VmVersion, CallDef),
     case aect_call:return_type(CallRes) of
@@ -99,7 +100,7 @@ run(ContractPubKey, VmVersion, Call, CallData, CallStack, Round, Trees0,
                  %% We do not want the execution off chain and
                  %% on chain to be different so the coinbase
                  %% instruction will allways return 0.
-               , beneficiary => 0
+               , beneficiary => <<0:?BENEFICIARY_PUB_BYTES/unit:8>>
                },
     {CallRes, Trees} = aect_dispatch:run(VmVersion, CallDef),
     aect_utils:insert_call_in_trees(CallRes, Trees).
