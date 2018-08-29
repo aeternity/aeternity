@@ -190,7 +190,7 @@ docker-clean:
 smoke-test: docker smoke-test-run
 
 smoke-test-run:
-	@./rebar3 as system_test do ct $(ST_CT_FLAGS) --suite=aest_sync_SUITE,aest_commands_SUITE,aest_peers_SUITE
+	@./rebar3 as system_test do ct $(ST_CT_FLAGS) --suite=aest_sync_SUITE,aest_commands_SUITE,aest_peers_SUITE,aest_channels_SUITE
 
 system-test:
 	@./rebar3 as system_test do ct $(ST_CT_FLAGS) $(CT_TEST_FLAGS)
