@@ -558,25 +558,12 @@ fold_mempool(FunIn, InitAcc) ->
 
 load_database() ->
     lager:debug("load_database()", []),
-    try
-        wait_for_tables()
-    catch
-        error:E ->
-            erlang:error({E, erlang:get_stacktrace()});
-        exit:E ->
-            exit({E, erlang:get_stacktrace()})
-    end.
+    wait_for_tables().
 
 wait_for_tables() ->
     Tabs = mnesia:system_info(tables) -- [schema],
     lager:debug("wait_for_tables (~p)", [Tabs]),
-    case wait_for_tables(Tabs, 0, _TimePeriods = 5, _MaxWait = 60) of
-        ok -> ok;
-        {timeout, Mins, NotLoaded} ->
-            lager:error("Tables not loaded after ~p minutes: ~p",
-                        [Mins, NotLoaded]),
-            init:stop()
-    end.
+    wait_for_tables(Tabs, 0, _TimePeriods = 5, _MaxWait = 60).
 
 wait_for_tables(Tabs, Sofar, Period, Max) when Sofar < Max ->
     case mnesia:wait_for_tables(Tabs, timer:minutes(Period)) of
@@ -588,7 +575,11 @@ wait_for_tables(Tabs, Sofar, Period, Max) when Sofar < Max ->
             wait_for_tables(NotLoaded, Sofar + Period, Period, Max)
     end;
 wait_for_tables(Tabs, Sofar, _, _) ->
-    {timeout, Sofar, Tabs}.
+    lager:error("Tables not loaded after ~p minutes: ~p", [Sofar, Tabs]),
+    %% This is serious and user intervention needed. Stop the system instead 
+    %% of keeping retrying, but also raise an error for the crash log.
+    init:stop(),
+    error({tables_not_loaded, Tabs}).
 
 %% Initialization routines
 

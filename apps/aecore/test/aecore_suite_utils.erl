@@ -38,7 +38,8 @@
          unsubscribe/2,
          events_since/3,
          all_events_since/2,
-         check_for_logs/2]).
+         check_for_logs/2,
+         errors_in_logs/2]).
 
 -export([proxy/0,
          start_proxy/0,
@@ -378,16 +379,14 @@ events_since(N, EvType, TS) ->
     call_proxy(N, {events, EvType, TS}).
 
 check_for_logs(Nodes, Config) ->
-    [] = [{N, Fs} || {N, Fs} <- [{N1, check_for_missing_logs(N1, Config)}
-                                 || N1 <- Nodes],
-                     Fs =/= []],
+    [] = [{N, F} || N <- Nodes,
+                    F <- expected_logs(),
+                    is_missing_log(N, F, Config)],
     ok.
 
-check_for_missing_logs(N, Config) ->
+is_missing_log(N, F, Config) ->
     LogDir = log_dir(N, Config),
-    [{missing, F}
-     || F <- expected_logs(),
-        file_missing(filename:join(LogDir, F))].
+    file_missing(filename:join(LogDir, F)).
 
 file_missing(F) ->
     case file:read_link_info(F) of
@@ -396,6 +395,21 @@ file_missing(F) ->
         _ ->
             true
     end.
+
+errors_in_logs(Nodes, Config) ->
+    [{N, Errs} || N <- Nodes, 
+                  Errs <- check_errors_logs(N, Config)].
+
+check_errors_logs(Node, Config) ->
+    LogDir = log_dir(Node, Config),
+    [{F, Errs} || F <- expected_logs(),
+                  Errs <- grep_error(filename:join(LogDir, F))].
+
+grep_error(FileName) ->
+    {ok, Bin} = file:read_file(FileName),
+    Entries = string:lexemes(Bin, [$\r,$\n]),
+    [ Entry || Entry <- Entries,
+               string:find(Entry, "[error]") =/= nomatch ]. 
 
 expected_logs() ->
     ["epoch.log", "epoch_mining.log", "epoch_sync.log",

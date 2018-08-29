@@ -15,8 +15,7 @@
 
 -include_lib("common_test/include/ct.hrl").
 
--define(STARTED_APPS_WHITELIST, [{erlexec,"OS Process Manager","1.7.1"},
-                                 {mnesia, "MNESIA  CXC 138 12", "4.15.1"}]).
+-define(STARTED_APPS_WHITELIST, [erlexec]).
 -define(TO_BE_STOPPED_APPS_BLACKLIST, [erlexec]).
 -define(REGISTERED_PROCS_WHITELIST,
         [cover_server, timer_server,
@@ -36,6 +35,7 @@ end_per_suite(_Config) ->
 init_per_testcase(_TC, Config) ->
     lager_common_test_backend:bounce(error),
     Apps = application:which_applications(),
+    ct:log("Applications running at test start: ~p", [Apps]),
     Names = registered(),
     [{running_apps, Apps},
      {regnames, Names}|Config].
@@ -43,7 +43,10 @@ init_per_testcase(_TC, Config) ->
 end_per_testcase(_TC, Config) ->
     Apps0 = ?config(running_apps, Config),
     Names0 = ?config(regnames, Config),
-    Apps = application:which_applications() -- ?STARTED_APPS_WHITELIST,
+    Apps = lists:foldl(fun(A, Acc) ->
+                               lists:keydelete(A, 1, Acc)
+                       end,
+                       application:which_applications(), ?STARTED_APPS_WHITELIST),
     Names = registered() -- ?REGISTERED_PROCS_WHITELIST,
     case {(Apps -- Apps0), Names -- Names0, lager_common_test_backend:get_logs()} of
         {[], [], []} ->
@@ -89,7 +92,7 @@ application_test(Config) ->
     application:set_env(aecore, password, <<"secret">>),
     application:set_env(aecore, beneficiary, aec_base58c:encode(account_pubkey, <<"_________my_public_key__________">>)),
 
-    {ok, Started} = application:ensure_all_started(aehttp),
+    {ok, Started} = application:ensure_all_started(App),
     application:stop(aehttp),
     application:stop(aecore),
     application:stop(mnesia), % started by aecore
