@@ -403,24 +403,6 @@ handle_request('GetStatus', _Params, _Context) ->
        <<"peer-count">>                 => PeerCount,
        <<"pending-transactions-count">> => PendingTxsCount}};
 
-handle_request('PostBlock', Req, _Context) ->
-    case aehttp_api_parser:decode(block, maps:get('Block', Req)) of
-        {error, Reason} ->
-            lager:info("Post block failed: ~p", [Reason]),
-            {400, [], #{reason => <<"Block rejected">>}};
-        {ok, Block} ->
-            %% Only for logging
-            Header = aec_blocks:to_header(Block),
-            {ok, HH} = aec_headers:hash_header(Header),
-            lager:debug("'PostBlock'; header hash: ~p", [HH]),
-            case aec_conductor:post_block(Block) of
-                ok -> {200, [], #{}};
-                {error, Reason} ->
-                    lager:info("Post block failed: ~p", [Reason]),
-                    {400, [], #{reason => <<"Block rejected">>}}
-            end
-    end;
-
 handle_request('GetContractCallFromTx', Req, _Context) ->
     ParseFuns = [read_required_params([tx_hash]),
                  base58_decode([{tx_hash, tx_hash, tx_hash}]),
