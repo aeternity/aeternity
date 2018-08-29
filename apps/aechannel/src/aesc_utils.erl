@@ -462,8 +462,7 @@ process_force_progress(ChannelId, FromPubKey, Nonce, Fee,
     NextRound = aesc_offchain_tx:round(SoloPayloadTx),
     PoITrees =
         try aesc_offchain_update:apply_on_trees(Update, PoITrees0, NextRound,
-                                                      Reserve) of
-            UpdatedPoITrees -> UpdatedPoITrees
+                                                      Reserve)
         catch _:_ ->
           {_Amount, GasPrice, GasLimit} = aesc_offchain_update:extract_amounts(Update),
             CallsTrees =
