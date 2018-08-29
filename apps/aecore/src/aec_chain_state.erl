@@ -462,7 +462,7 @@ assert_micro_signature(PrevNode, Node, KeyHash) ->
             Sig = node_signature(Node),
             case enacl:sign_verify_detached(Sig, Bin, node_miner(KeyNode)) of
                 {ok, _}    -> ok;
-                {error, _} -> {error, signature_verification_failed}
+                {error, _} -> internal_error(signature_verification_failed)
             end;
         false ->
             ok
