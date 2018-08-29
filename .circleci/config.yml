@@ -623,9 +623,7 @@ workflows:
       - docker_system_smoke_tests:
           filters:
             branches:
-              ignore:
-                - env/dev1
-                - env/dev2
+              only: master
 
       - test:
           requires:
