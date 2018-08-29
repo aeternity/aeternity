@@ -276,13 +276,13 @@ broken_chain_invalid_transaction() ->
     Chain0 = gen_block_chain_with_state_by_target(PresetAccounts, [?GENESIS_TARGET], 111),
 
     TxsFun = fun(_) -> [Spend] end,
-    [B0, B1, MB1, _B2] = blocks_only_chain(extend_chain_with_state(Chain0, [?GENESIS_TARGET], 111, TxsFun)),
+    [B0, B1, B2, MB2] = blocks_only_chain(extend_chain_with_state(Chain0, [?GENESIS_TARGET], 111, TxsFun)),
 
     %% Insert up to last block.
-    ok = write_blocks_to_chain([B0, B1]),
+    ok = write_blocks_to_chain([B0, B1, B2]),
 
     %% Add invalid transaction with too high nonce to last block
-    Txs = aec_blocks:txs(MB1),
+    Txs = aec_blocks:txs(MB2),
     BogusSpendTx = aec_test_utils:signed_spend_tx(
                      #{recipient_id => aec_id:create(account, <<1:32/unit:8>>),
                        amount => 0,
@@ -293,10 +293,10 @@ broken_chain_invalid_transaction() ->
 
     ?assertNotEqual(Txs, BogusTxs),
     ?assertMatch({error, invalid_transactions_in_block},
-                 insert_block(aec_blocks:set_txs(MB1, BogusTxs))),
+                 insert_block(aec_blocks:set_txs(MB2, BogusTxs))),
 
     %% Check that we can insert the unmodified last block
-    ?assertEqual(ok, insert_block(MB1)),
+    ?assertEqual(ok, insert_block(MB2)),
     ok.
 
 %%%===================================================================
@@ -753,16 +753,16 @@ fork_get_transaction() ->
     EasyChain = blocks_only_chain(extend_chain_with_state(CommonChain, EasyChainExtensionTargets, 111, TxsFun)),
     HardChain = blocks_only_chain(extend_chain_with_state(CommonChain, HardChainExtensionTargets, 222, TxsFun)),
 
-    %% Txs is in second to last (micro-)block
-    EasyTopBlock = lists:last(lists:droplast(EasyChain)),
+    %% Txs is in the last (micro-)block
+    EasyTopBlock = lists:last(EasyChain),
     [EasySpend] = aec_blocks:txs(EasyTopBlock),
     EasyTxHash = aetx_sign:hash(EasySpend),
 
-    HardTopBlock = lists:last(lists:droplast(HardChain)),
+    HardTopBlock = lists:last(HardChain),
     [HardSpend] = aec_blocks:txs(HardTopBlock),
     HardTxHash = aetx_sign:hash(HardSpend),
 
-    HardButLastBlock = lists:last(lists:sublist(HardChain, 1, length(HardChain) - 3)),
+    HardButLastBlock = lists:last(lists:sublist(HardChain, 1, length(HardChain) - 2)),
     [HardButLastSpend] = aec_blocks:txs(HardButLastBlock),
     HardButLastTxHash = aetx_sign:hash(HardButLastSpend),
 
@@ -789,7 +789,7 @@ fork_on_micro_block() ->
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
 
     %% Create main chain with both key and micro blocks
-    TxsFun = fun(2) ->
+    TxsFun = fun(1) ->
                      Tx1 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 1), PrivKey),
                      Tx2 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 2, PubKey, 1), PrivKey),
                      [Tx1, Tx2];
@@ -934,11 +934,11 @@ fees_three_beneficiaries() ->
     Fee1 = 10,
     Fee2 = 30,
     Fee3 = 100,
-    TxsFun = fun(2) ->
+    TxsFun = fun(1) ->
                      Tx1 = aec_test_utils:sign_tx(make_spend_tx(PubKey1, 1, PubKey2, Fee1) ,PrivKey1),
                      Tx2 = aec_test_utils:sign_tx(make_spend_tx(PubKey1, 2, PubKey2, Fee2), PrivKey1),
                      [Tx1, Tx2];
-                (3) ->
+                (2) ->
                      Tx = aec_test_utils:sign_tx(make_spend_tx(PubKey1, 3, PubKey2, Fee3), PrivKey1),
                      [Tx];
                 (_) ->
@@ -1008,10 +1008,10 @@ fees_delayed_reward() ->
     Fee1 = 10,
     Fee2 = 20,
     Fee3 = 40,
-    TxsFun = fun(2) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey1, 1, PubKey2, Fee1) ,PrivKey1)];
-                (3) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey1, 2, PubKey2, Fee2), PrivKey1)];
-                (4) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey1, 3, PubKey2, Fee3), PrivKey1)];
-                (5) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey1, 4, PubKey2, Fee3), PrivKey1)];
+    TxsFun = fun(1) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey1, 1, PubKey2, Fee1) ,PrivKey1)];
+                (2) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey1, 2, PubKey2, Fee2), PrivKey1)];
+                (3) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey1, 3, PubKey2, Fee3), PrivKey1)];
+                (4) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey1, 4, PubKey2, Fee3), PrivKey1)];
                 (_) -> []
              end,
 
@@ -1077,10 +1077,10 @@ key_hash_test_() ->
 key_hash_orphaned_chain() ->
     %% Create a chain with both key and micro blocks
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
-    TxsFun = fun(2) ->
+    TxsFun = fun(1) ->
                      Tx = make_spend_tx(PubKey, 1, PubKey, 1),
                      [aec_test_utils:sign_tx(Tx, PrivKey)];
-                (3) ->
+                (2) ->
                      Tx = make_spend_tx(PubKey, 2, PubKey, 1),
                      [aec_test_utils:sign_tx(Tx, PrivKey)];
                 (_) ->

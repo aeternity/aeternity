@@ -378,20 +378,21 @@ next_block_with_state([{PB,_PBS} | _] = Chain, Target, Time0, TxsFun, Nonce,
                       PubKey, PrivKey, BeneficiaryPubKey) ->
     Height = aec_blocks:height(PB) + 1,
     Txs = TxsFun(Height),
-    %% NG: if a block X used to have Txs, now put them in micro-blocks just before
+    %% NG: if a block X used to have Txs, now put them in micro-blocks after
     %% the key-block at height X. Every transaction is put in a separate micro-block.
-    Chain1 = create_micro_blocks(Chain, PrivKey, Txs),
-    {B, S} = create_keyblock_with_state(Chain1, PubKey, BeneficiaryPubKey),
-    [begin
-         B1 = aec_blocks:set_target(B, Target),
-         B2 = aec_blocks:set_nonce(B1, Nonce),
-         Time = case Time0 of
-                    undefined -> aec_blocks:time_in_msecs(B);
-                    _ -> Time0
-                end,
-         {aec_blocks:set_time_in_msecs(B2, Time), S}
-      end
-      | Chain1].
+    {B, S} = create_keyblock_with_state(Chain, PubKey, BeneficiaryPubKey),
+    Chain1 = [begin
+                  B1 = aec_blocks:set_target(B, Target),
+                  B2 = aec_blocks:set_nonce(B1, Nonce),
+                  Time = case Time0 of
+                             undefined -> aec_blocks:time_in_msecs(B);
+                             _ -> Time0
+                         end,
+                  {aec_blocks:set_time_in_msecs(B2, Time), S}
+              end
+              | Chain],
+    create_micro_blocks(Chain1, PrivKey, Txs).
+
 
 create_micro_blocks(Chain, PrivKey, Txs) ->
     create_micro_blocks(Chain, PrivKey, Txs, 1).
