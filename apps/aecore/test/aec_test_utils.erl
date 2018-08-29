@@ -47,6 +47,7 @@
         , create_temp_key_dir/0
         , remove_temp_key_dir/1
         , copy_genesis_dir/2
+        , sign_micro_block/2
         , sign_tx/2
         , signed_spend_tx/1
         , fake_start_aehttp/0

@@ -194,7 +194,9 @@ broken_chain_test_() ->
       {"Add a block with the wrong state hash",
        fun broken_chain_wrong_state_hash/0},
       {"Add a block with invalid transaction",
-       fun broken_chain_invalid_transaction/0}
+       fun broken_chain_invalid_transaction/0},
+      {"Add a block with invalid micro block signature",
+       fun broken_chain_invalid_micro_block_signature/0}
      ]}.
 
 broken_chain_postponed_validation() ->
@@ -298,6 +300,33 @@ broken_chain_invalid_transaction() ->
     %% Check that we can insert the unmodified last block
     ?assertEqual(ok, insert_block(MB2)),
     ok.
+
+broken_chain_invalid_micro_block_signature() ->
+    #{ public := SenderPubKey, secret := SenderPrivKey } = enacl:sign_keypair(),
+    #{ secret := BogusPrivKey } = enacl:sign_keypair(),
+
+    RecipientPubKey = <<42:32/unit:8>>,
+    PresetAccounts = [{SenderPubKey, 100}],
+    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    Spend = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
+
+    Chain0 = gen_block_chain_with_state_by_target(PresetAccounts, [?GENESIS_TARGET], 111),
+
+    TxsFun = fun(_) -> [Spend] end,
+    [B0, B1, B2, MB] = blocks_only_chain(extend_chain_with_state(Chain0, [?GENESIS_TARGET], 111, TxsFun)),
+
+    %% Insert up to last block.
+    ok = write_blocks_to_chain([B0, B1, B2]),
+
+    %% Mess up the signature of the last block
+    BogusMB = aec_test_utils:sign_micro_block(MB, BogusPrivKey),
+
+    ?assertMatch({error, signature_verification_failed}, insert_block(BogusMB)),
+
+    %% Check that we can insert the unmodified last block
+    ?assertEqual(ok, insert_block(MB)),
+    ok.
+
 
 %%%===================================================================
 %%% Block candidate test
