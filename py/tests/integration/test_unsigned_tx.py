@@ -37,7 +37,8 @@ def read_id_contract(api):
 
 def test_contract_create():
     test_settings = settings["test_contract_create"]
-    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, "node")
+    beneficiary = common.setup_beneficiary()
+    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "node")
     internal_api = common.internal_api(node)
 
     private_key = keys.new_private()
@@ -46,8 +47,8 @@ def test_contract_create():
     alice_address = keys.address(public_key)
 
     test_settings["alice"]["pubkey"] = alice_address
-    send_tokens_to_user("alice", test_settings, external_api, internal_api)
-    encoded_tx, contract_id = get_unsigned_contract_create(alice_address, test_settings["create_contract"], external_api)
+    send_tokens_to_user(beneficiary, "alice", test_settings, external_api, internal_api)
+    encoded_tx, contract_id = get_unsigned_contract_create(alice_address, test_settings["create_contract"], external_api, internal_api)
 
     print("Unsigned encoded transaction: " + encoded_tx)
     print("Contract id: " + contract_id)
@@ -70,7 +71,7 @@ def test_contract_create():
 
     alice_balance0 = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
     tx_object = Tx(tx=signed)
-    external_api.post_tx(tx_object)
+    external_api.post_transaction(tx_object)
 
     top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
@@ -90,7 +91,8 @@ def test_contract_create():
 def test_contract_call():
     test_settings = settings["test_contract_call"]
     create_settings = settings["test_contract_create"]
-    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, "node")
+    beneficiary = common.setup_beneficiary()
+    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "node")
     internal_api = common.internal_api(node)
 
     private_key = keys.new_private()
@@ -99,17 +101,17 @@ def test_contract_call():
     alice_address = keys.address(public_key)
 
     test_settings["alice"]["pubkey"] = alice_address
-    send_tokens_to_user("alice", test_settings, external_api, internal_api)
+    send_tokens_to_user(beneficiary, "alice", test_settings, external_api, internal_api)
 
     ## create contract
-    encoded_tx, encoded_contract_id = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api)
+    encoded_tx, encoded_contract_id = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api, internal_api)
     unsigned_tx = common.base58_decode(encoded_tx)
 
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
 
     alice_balance0 = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
     tx_object = Tx(tx=signed)
-    external_api.post_tx(tx_object)
+    external_api.post_transaction(tx_object)
 
     top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
@@ -124,11 +126,11 @@ def test_contract_call():
                   + create_settings["create_contract"]["deposit"]
                   + create_settings["create_contract"]["amount"])
 
-    bytecode = read_id_contract(external_api)
+    bytecode = read_id_contract(internal_api)
     call_input = ContractCallInput("sophia", bytecode,
                                              call_contract["data"]["function"],
                                              call_contract["data"]["argument"])
-    result = external_api.call_contract(call_input)
+    result = internal_api.call_contract(call_input)
     contract_call_obj = ContractCallData(
         caller_id=test_settings["alice"]["pubkey"],
         contract_id=encoded_contract_id,
@@ -141,7 +143,7 @@ def test_contract_call():
         call_data=result.out)
 
 
-    call_tx_obj = external_api.post_contract_call(contract_call_obj)
+    call_tx_obj = internal_api.post_contract_call(contract_call_obj)
     encoded_call_tx = call_tx_obj.tx
 
     print("Unsigned encoded transaction: " + encoded_call_tx)
@@ -152,7 +154,7 @@ def test_contract_call():
     print("Signed transaction: " + signed_call)
     alice_balance0 = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
     tx_object = Tx(tx=signed_call)
-    external_api.post_tx(tx_object)
+    external_api.post_transaction(tx_object)
 
     top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
@@ -172,7 +174,8 @@ def test_contract_call():
 def test_contract_on_chain_call_off_chain():
     test_settings = settings["test_contract_call"]
     create_settings = settings["test_contract_create"]
-    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, "node")
+    beneficiary = common.setup_beneficiary()
+    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "node")
     internal_api = common.internal_api(node)
 
     private_key = keys.new_private()
@@ -181,17 +184,17 @@ def test_contract_on_chain_call_off_chain():
     alice_address = keys.address(public_key)
 
     test_settings["alice"]["pubkey"] = alice_address
-    send_tokens_to_user("alice", test_settings, external_api, internal_api)
+    send_tokens_to_user(beneficiary, "alice", test_settings, external_api, internal_api)
 
     ## create contract
-    encoded_tx, encoded_contract_id = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api)
+    encoded_tx, encoded_contract_id = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api, internal_api)
     unsigned_tx = common.base58_decode(encoded_tx)
 
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
 
     alice_balance0 = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
     tx_object = Tx(tx=signed)
-    external_api.post_tx(tx_object)
+    external_api.post_transaction(tx_object)
 
     top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
@@ -200,7 +203,7 @@ def test_contract_on_chain_call_off_chain():
     call_input = ContractCallInput("sophia-address", encoded_contract_id,\
                                    call_contract["data"]["function"],\
                                    call_contract["data"]["argument"])
-    result = external_api.call_contract(call_input)
+    result = internal_api.call_contract(call_input)
 
     assert_equals('0x000000000000000000000000000000000000000000000000000000000000002a',
                    result.out)
@@ -221,7 +224,8 @@ def test_spend():
 
     # Setup
     test_settings = settings["test_spend"]
-    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, "node")
+    beneficiary = common.setup_beneficiary()
+    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "node")
     internal_api = common.internal_api(node)
 
     private_key = keys.new_private()
@@ -231,7 +235,7 @@ def test_spend():
     bob_address = test_settings["spend_tx"]["recipient"]
 
     test_settings["alice"]["pubkey"] = alice_address
-    send_tokens_to_user("alice", test_settings, external_api, internal_api)
+    send_tokens_to_user(beneficiary, "alice", test_settings, external_api, internal_api)
 
     alice_balance0 = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
     bob_balance0 = common.get_account_balance(external_api, internal_api, pub_key=bob_address).balance
@@ -244,7 +248,7 @@ def test_spend():
             fee=test_settings["spend_tx"]["fee"],
             ttl=100,
             payload="foo")
-    unsigned_spend_obj = external_api.post_spend(spend_data_obj)
+    unsigned_spend_obj = internal_api.post_spend(spend_data_obj)
     unsigned_spend_enc = unsigned_spend_obj.tx
     unsigned_tx = common.base58_decode(unsigned_spend_enc)
 
@@ -256,13 +260,13 @@ def test_spend():
 
     # Alice posts spend tx
     tx_object = Tx(tx=signed)
-    external_api.post_tx(tx_object)
-    _ = external_api.get_tx(tx_hash=tx_hash) # it is there - either in mempool or in a block
+    external_api.post_transaction(tx_object)
+    _ = external_api.get_transaction_by_hash(tx_hash) # it is there - either in mempool or in a block
 
     # Wait until spend tx is mined
     wait(lambda: common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance < alice_balance0,
          timeout_seconds=120, sleep_seconds=0.25)
-    _ = external_api.get_tx(tx_hash=tx_hash) # it is there - shall be in a block
+    _ = external_api.get_transaction_by_hash(tx_hash) # it is there - shall be in a block
     print("Tx in chain ")
 
     # Check that Alice was debited and Bob was credited
@@ -280,27 +284,29 @@ def cleanup(node, root_dir):
     common.stop_node(node)
     shutil.rmtree(root_dir)
 
-def setup_node_with_tokens(test_settings, node_name):
+def setup_node_with_tokens(test_settings, beneficiary, node_name):
     node = test_settings["nodes"][node_name]
-    return node, common.setup_node_with_tokens(node, test_settings["blocks_to_mine"])
+    return node, common.setup_node_with_tokens(node, beneficiary, test_settings["blocks_to_mine"])
 
-def send_tokens_to_user(user, test_settings, external_api, internal_api):
-    return common.send_tokens_to_unchanging_user(test_settings[user]["pubkey"],
+def send_tokens_to_user(beneficiary, user, test_settings, external_api, internal_api):
+    return common.send_tokens_to_unchanging_user(beneficiary,
+                                                 test_settings[user]["pubkey"],
                                                  test_settings[user]["amount"],
                                                  test_settings[user]["fee"],
                                                  external_api,
                                                  internal_api)
 
-def get_unsigned_contract_create(owner_id, contract, external_api):
-    bytecode = read_id_contract(external_api)
+def get_unsigned_contract_create(owner_id, contract, external_api, internal_api):
+    bytecode = read_id_contract(internal_api)
     call_input = ContractCallInput("sophia",
                                    bytecode,
                                    contract["function"],
                                    contract["argument"])
     print("Call input:", call_input)
-    result = external_api.encode_calldata(call_input)
+    result = internal_api.encode_calldata(call_input)
     call_data = result.calldata
 
+    print("OWNERID", owner_id)
     contract_create_data_obj = ContractCreateData(
         owner_id=owner_id,
         code=bytecode,
@@ -312,5 +318,5 @@ def get_unsigned_contract_create(owner_id, contract, external_api):
         fee=contract["fee"],
         ttl=100,
         call_data=call_data)
-    tx_obj = external_api.post_contract_create(contract_create_data_obj)
+    tx_obj = internal_api.post_contract_create(contract_create_data_obj)
     return (tx_obj.tx, tx_obj.contract_id)

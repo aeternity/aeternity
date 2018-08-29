@@ -9,15 +9,20 @@ def globs(globs):
 
 def setup_test(test):
     import common
+    import keys
     test_settings = _test_settings_(test)
     node = test_settings['miner_node']
-    node_root_dir = _setup_node_(node, test_settings['blocks_to_mine'])
+    beneficiary = common.setup_beneficiary()
+
+    node_root_dir = _setup_node_(node, beneficiary, test_settings['blocks_to_mine'])
     ext_api = common.external_api(node)
     int_api = common.internal_api(node)
+
     users = {k: {'encoded_pub_key': v['key_pair']['enc_pubk'],
                  'pub_key': v['key_pair']['pubk'],
                  'priv_key': v['key_pair']['privk']
-                 } for (k, v) in _setup_users_(test_settings['users'],
+                 } for (k, v) in _setup_users_(beneficiary,
+                                               test_settings['users'],
                                                test_settings['min_spend_tx_fee'],
                                                ext_api, int_api).items()}
     test.globs['epoch_node'] = {'_root_dir_': node_root_dir,
@@ -50,9 +55,9 @@ def _test_name_from_test_path_(test_path):
     (test_name, _) = os.path.splitext(os.path.basename(test_path))
     return test_name
 
-def _setup_node_(node_makefile_id, blocks_to_mine):
+def _setup_node_(node_makefile_id, beneficiary, blocks_to_mine):
     import common
-    (node_root_dir, _, _) = common.setup_node_with_tokens(node_makefile_id, blocks_to_mine)
+    (node_root_dir, _, _) = common.setup_node_with_tokens(node_makefile_id, beneficiary, blocks_to_mine)
     return node_root_dir
 
 def _cleanup_node_(node_makefile_id, node_root_dir):
@@ -61,7 +66,7 @@ def _cleanup_node_(node_makefile_id, node_root_dir):
     common.stop_node(node_makefile_id)
     shutil.rmtree(node_root_dir)
 
-def _setup_users_(user_settings, spend_tx_fee, ext_api, int_api):
+def _setup_users_(beneficiary, user_settings, spend_tx_fee, ext_api, int_api):
     def key_pair():
         import keys
         priv = keys.new_private()
@@ -74,7 +79,8 @@ def _setup_users_(user_settings, spend_tx_fee, ext_api, int_api):
                  'key_pair': key_pair()
                  } for (k, v) in user_settings.items()}
     for (_, u) in users.items():
-        common.send_tokens_to_unchanging_user(u['key_pair']['enc_pubk'],
+        common.send_tokens_to_unchanging_user(beneficiary,
+                                              u['key_pair']['enc_pubk'],
                                               u['bal'],
                                               spend_tx_fee,
                                               ext_api, int_api)

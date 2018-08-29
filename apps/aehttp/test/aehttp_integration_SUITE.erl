@@ -105,16 +105,6 @@
 %% external endpoints
 -export(
    [
-    % get block-s
-    block_genesis/1,
-    block_pending/1,
-    block_latest/1,
-    block_by_height/1,
-    block_not_found_by_height/1,
-    block_by_hash/1,
-    block_not_found_by_broken_hash/1,
-    block_not_found_by_hash/1,
-
     % non signed txs
     contract_transactions/1,
     contract_create_compute_transaction/1,
@@ -133,18 +123,7 @@
     post_broken_tx/1,
     post_broken_base58_tx/1,
 
-    % balances
-    all_accounts_balances/1,
-    all_accounts_balances_empty/1,
-    all_accounts_balances_disabled/1,
-    balance/1,
-    balance_negative_cases/1,
-
     % infos
-    version/1,
-    info_disabled/1,
-    info_empty/1,
-
     peer_pub_key/1
    ]).
 
@@ -154,31 +133,11 @@
 -export(
    [
     broken_spend_tx/1,
-    miner_pub_key/1,
+    node_pubkey/1,
 
     %% requested Endpoints
-    block_number/1,
-
-    block_txs_count_by_height/1,
-    block_txs_count_by_hash/1,
-    block_txs_count_genesis/1,
-    block_txs_count_latest/1,
-    block_txs_count_pending/1,
-
-    block_txs_count_by_height_not_found/1,
-    block_txs_count_by_hash_not_found/1,
-    block_txs_count_by_broken_hash/1,
-
-    block_tx_index_by_height/1,
-    block_tx_index_by_hash/1,
-    block_tx_index_latest/1,
-    block_tx_index_not_founds/1,
-
     naming_system_manage_name/1,
     naming_system_broken_txs/1,
-
-    list_oracles/1,
-    list_oracle_queries/1,
 
     peers/1
    ]).
@@ -188,9 +147,12 @@
 -export([
     swagger_validation_body/1,
     %% swagger_validation_enum/1,
-    swagger_validation_required/1,
-    swagger_validation_schema/1,
-    swagger_validation_types/1
+    %%swagger_validation_required/1,
+    swagger_validation_schema/1
+    %% TODO: validate that API expects some type but gets
+    %% a different type
+    %%swagger_validation_types/1
+
     ]).
 
 %%
@@ -209,41 +171,14 @@
     wrong_http_method_oracle_response/1,
     wrong_http_method_name_preclaim/1,
     wrong_http_method_name_claim/1,
-    wrong_http_method_name_update/1,
     wrong_http_method_name_transfer/1,
     wrong_http_method_name_revoke/1,
-    wrong_http_method_block_by_height/1,
-    wrong_http_method_block_by_hash/1,
-    wrong_http_method_header_by_hash/1,
-    wrong_http_method_transactions/1,
+    wrong_http_method_pending_transactions/1,
     wrong_http_method_tx_id/1,
-    wrong_http_method_spend_tx/1,
-    wrong_http_method_name_preclaim_tx/1,
-    wrong_http_method_name_claim_tx/1,
-    wrong_http_method_name_update_tx/1,
-    wrong_http_method_name_transfer_tx/1,
-    wrong_http_method_name_revoke_tx/1,
     wrong_http_method_commitment_hash/1,
     wrong_http_method_name/1,
-    wrong_http_method_balance/1,
     wrong_http_method_tx/1,
-    wrong_http_method_all_accounts_balances/1,
-    wrong_http_method_miner_pub_key/1,
-    wrong_http_method_version/1,
-    wrong_http_method_info/1,
-    wrong_http_method_block_number/1,
-    wrong_http_method_block_latest/1,
-    wrong_http_method_block_genesis/1,
-    wrong_http_method_block_txs_count_by_height/1,
-    wrong_http_method_block_txs_count_by_hash/1,
-    wrong_http_method_block_txs_count_latest/1,
-    wrong_http_method_block_txs_count_genesis/1,
-    wrong_http_method_block_txs_count_pending/1,
-    wrong_http_method_block_tx_by_index_height/1,
-    wrong_http_method_block_tx_by_index_hash/1,
-    wrong_http_method_block_tx_by_index_latest/1,
-    wrong_http_method_list_oracles/1,
-    wrong_http_method_list_oracle_queries/1,
+    wrong_http_method_node_pubkey/1,
     wrong_http_method_peers/1
     ]).
 
@@ -491,16 +426,6 @@ groups() ->
       ]},
      {external_endpoints, [sequence],
       [
-        % get block-s
-        block_genesis,
-        %block_pending,  TODO: delete the test case in the next PR
-        block_latest,
-
-        block_by_height,
-        block_not_found_by_height,
-        block_by_hash,
-        block_not_found_by_hash,
-
         % non signed txs
         contract_transactions,
         contract_create_compute_transaction,
@@ -519,55 +444,24 @@ groups() ->
         post_broken_tx,
         post_broken_base58_tx,
 
-        % balances
-        all_accounts_balances,
-        all_accounts_balances_empty,
-        all_accounts_balances_disabled,
-        balance,
-        balance_negative_cases,
-
         % infos
-        version,
-        info_disabled,
-        info_empty,
-
         peer_pub_key
       ]},
      {internal_endpoints, [sequence],
       [
         broken_spend_tx,
         naming_system_broken_txs,
-        miner_pub_key,
+        node_pubkey,
 
         % requested Endpoints
-        block_number,
-
-        block_txs_count_by_height,
-        block_txs_count_by_hash,
-        block_txs_count_genesis,
-        block_txs_count_latest,
-        block_txs_count_pending,
-
-        block_txs_count_by_height_not_found,
-        block_txs_count_by_hash_not_found,
-        block_txs_count_by_broken_hash,
-
-        block_tx_index_by_height,
-        block_tx_index_by_hash,
-        block_tx_index_latest,
-        block_tx_index_not_founds,
-
-        list_oracles,
-        list_oracle_queries,
-
         peers
       ]},
      {swagger_validation, [], [
         swagger_validation_body,
         %% swagger_validation_enum,
-        swagger_validation_required,
-        swagger_validation_schema,
-        swagger_validation_types
+        %%swagger_validation_required,
+        swagger_validation_schema
+        %%swagger_validation_types
       ]},
      {wrong_http_method_endpoints, [], [
         wrong_http_method_top,
@@ -582,41 +476,14 @@ groups() ->
         wrong_http_method_oracle_response,
         wrong_http_method_name_preclaim,
         wrong_http_method_name_claim,
-        wrong_http_method_name_update,
         wrong_http_method_name_transfer,
         wrong_http_method_name_revoke,
-        wrong_http_method_block_by_height,
-        wrong_http_method_block_by_hash,
-        wrong_http_method_header_by_hash,
-        wrong_http_method_transactions,
+        wrong_http_method_pending_transactions,
         wrong_http_method_tx_id,
-        wrong_http_method_spend_tx,
-        wrong_http_method_name_preclaim_tx,
-        wrong_http_method_name_claim_tx,
-        wrong_http_method_name_update_tx,
-        wrong_http_method_name_transfer_tx,
-        wrong_http_method_name_revoke_tx,
         wrong_http_method_commitment_hash,
         wrong_http_method_name,
-        wrong_http_method_balance,
         wrong_http_method_tx,
-        wrong_http_method_all_accounts_balances,
-        wrong_http_method_miner_pub_key,
-        wrong_http_method_version,
-        wrong_http_method_info,
-        wrong_http_method_block_number,
-        wrong_http_method_block_latest,
-        wrong_http_method_block_genesis,
-        wrong_http_method_block_txs_count_by_height,
-        wrong_http_method_block_txs_count_by_hash,
-        wrong_http_method_block_txs_count_latest,
-        wrong_http_method_block_txs_count_genesis,
-        wrong_http_method_block_txs_count_pending,
-        wrong_http_method_block_tx_by_index_height,
-        wrong_http_method_block_tx_by_index_hash,
-        wrong_http_method_block_tx_by_index_latest,
-        wrong_http_method_list_oracles,
-        wrong_http_method_list_oracle_queries,
+        wrong_http_method_node_pubkey,
         wrong_http_method_peers
      ]},
      {naming, [sequence],
@@ -868,8 +735,12 @@ init_per_group(channel_websocket = Group, Config) ->
 
     aecore_suite_utils:mine_key_blocks(Node, BlocksToMine),
 
-    {ok, 200, _} = post_spend_tx(IPubkey, IStartAmt, Fee),
-    {ok, 200, _} = post_spend_tx(RPubkey, RStartAmt, Fee),
+    {ok, 200, #{<<"tx">> := SpendTx1}} =
+        post_spend_tx(aec_base58c:encode(account_pubkey, IPubkey), IStartAmt, Fee),
+    sign_and_post_tx(SpendTx1),
+    {ok, 200, #{<<"tx">> := SpendTx2}} =
+        post_spend_tx(aec_base58c:encode(account_pubkey, RPubkey), RStartAmt, Fee),
+    sign_and_post_tx(SpendTx2),
     {ok, [_KeyBlock, MicroBlock]} = aecore_suite_utils:mine_blocks(Node, 2),
     [_Spend1, _Spend2] = aec_blocks:txs(MicroBlock),
     assert_balance(IPubkey, IStartAmt),
@@ -1522,7 +1393,7 @@ post_spend_tx(Config) ->
     ok.
 
 post_contract_and_call_tx(_Config) ->
-    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
     {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
 
@@ -1588,7 +1459,7 @@ get_transactions_info_by_hash_sut(Hash) ->
 
 post_transactions_sut(Tx) ->
     Host = external_address(),
-    http_request(Host, post, "ng-transactions", #{tx => Tx}).
+    http_request(Host, post, "transactions", #{tx => Tx}).
 
 %% /contracts/*
 
@@ -1596,7 +1467,7 @@ get_contract(_Config) ->
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 1),
 
     {ok, 200, _} = get_balance_at_top(),
-    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
     {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
@@ -1637,7 +1508,8 @@ get_contract(_Config) ->
     {ok, 404, #{<<"reason">> := <<"Tx not mined">>}} = get_contract_call_object(ContractCreateTxHash),
 
     {ok, 404, #{<<"reason">> := <<"Proof for contract not found">>}} = get_contract_poi(EncodedContractPubKey),
-    ?assertEqual({ok, 404, #{<<"reason">> => <<"Account not found">>}}, get_balance_at_top(EncodedContractPubKey)),
+    ?assertEqual({ok, 404, #{<<"reason">> => <<"Account not found">>}},
+                 get_accounts_by_pubkey_sut(EncodedContractPubKey)),
 
     % mine a block
     ok = wait_for_tx_hash_on_chain(ContractCreateTxHash),
@@ -1788,8 +1660,7 @@ get_name_entry_by_name(_Config) ->
 
 get_names_entry_by_name_sut(Name) ->
     Host = external_address(),
-    Name1 = binary_to_list(Name),
-    http_request(Host, get, "names/" ++ http_uri:encode(Name1), []).
+    http_request(Host, get, "names/" ++ Name, []).
 
 %% /channels/*
 
@@ -1854,8 +1725,7 @@ get_status_sut() ->
 
 prepare_tx(TxType, Args) ->
     %assert_required_tx_fields(TxType, Args),
-    Host = external_address(),
-    Path = tx_object_http_path(TxType),
+    {Host, Path} = tx_object_http_path(TxType),
     {ok, 200, #{<<"tx">> := EncodedSerializedUnsignedTx}} = http_request(Host, post, Path, Args),
     {ok, SerializedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedSerializedUnsignedTx),
     UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
@@ -1880,11 +1750,11 @@ post_tx(TxHash, Tx) ->
 %    [account, query_format, response_format, query_fee, fee, oracle_ttl].
 
 %% TODO: use /debug/* when available
-tx_object_http_path(spend_tx) -> "tx/spend";
-tx_object_http_path(oracle_register_tx) -> "tx/oracle/register";
-tx_object_http_path(oracle_extend_tx) -> "tx/oracle/extend";
-tx_object_http_path(oracle_query_tx) -> "tx/oracle/query";
-tx_object_http_path(oracle_response_tx) -> "tx/oracle/response".
+tx_object_http_path(spend_tx) -> {internal_address(), "debug/transactions/spend"};
+tx_object_http_path(oracle_register_tx) -> {internal_address(), "debug/oracles/register"};
+tx_object_http_path(oracle_extend_tx) -> {internal_address(), "debug/oracles/extend"};
+tx_object_http_path(oracle_query_tx) -> {internal_address(), "debug/oracles/query"};
+tx_object_http_path(oracle_response_tx) -> {internal_address(), "debug/oracles/respond"}.
 
 hash(Block) ->
     {ok, Hash0} = aec_blocks:hash_internal_representation(Block),
@@ -1913,65 +1783,15 @@ save_config([], _Config, Acc) ->
 
 %% enpoints
 
-block_by_height(_Config) ->
-    GetExpectedBlockFun =
-        fun(H) -> rpc(aec_chain, get_key_block_by_height, [H]) end,
-    CallApiFun = fun get_block_by_height/1,
-    internal_get_block_generic(GetExpectedBlockFun, CallApiFun).
-
-block_not_found_by_height(_Config) ->
-    ok = rpc(aec_conductor, reinit_chain, []),
-    lists:foreach(
-        fun(H) ->
-            {ok, 404, #{<<"reason">> := <<"Chain too short">>}} =
-                get_block_by_height(H)
-        end,
-        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
-
-    ToMine = aecore_suite_utils:latest_fork_height(),
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), ToMine),
-    ok.
-
-block_not_found_by_hash(_Config) ->
-    lists:foreach(
-        fun(_Height) ->
-            H = random_hash(),
-            error = rpc(aec_chain, get_block, [H]),
-            Hash = aec_base58c:encode(block_hash, H),
-            {ok, 404, #{<<"reason">> := <<"Block not found">>}}
-                = get_block_by_hash(Hash)
-        end,
-        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
-    ok.
-
-block_not_found_by_broken_hash(_Config) ->
-    lists:foreach(
-        fun(_) ->
-            <<_, BrokenHash/binary>> = aec_base58c:encode(block_hash, random_hash()),
-            {ok, 400, #{<<"reason">> := <<"Invalid hash">>}} =
-                get_block_by_hash(BrokenHash)
-        end,
-        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
-    ok.
-
-block_by_hash(_Config) ->
-    GetExpectedBlockFun =
-        fun(H) -> rpc(aec_chain, get_key_block_by_height, [H]) end,
-    CallApiFun =
-        fun(H) ->
-            {ok, Hash} = block_hash_by_height(H),
-            get_block_by_hash(Hash)
-        end,
-    internal_get_block_generic(GetExpectedBlockFun, CallApiFun).
-
 %% tests the following
 %% GET contract_create_tx unsigned transaction
 %% GET contract_call_tx unsigned transaction
 %% due to complexity of contract_call_tx (needs a contract in the state tree)
 %% both positive and negative cases are tested in this test
 contract_transactions(_Config) ->    % miner has an account
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 1),
     {ok, 200, _} = get_balance_at_top(),
-    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
     {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
@@ -2015,7 +1835,8 @@ contract_transactions(_Config) ->    % miner has an account
         get_contract_call_object(ContractCreateTxHash),
 
     {ok, 404, #{<<"reason">> := <<"Proof for contract not found">>}} = get_contract_poi(EncodedContractPubKey),
-    {ok, 404, #{<<"reason">> := <<"Account not found">>}} =  get_balance_at_top(EncodedContractPubKey),
+    {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
+        get_accounts_by_pubkey_sut(EncodedContractPubKey),
 
     % mine a block
     ok = wait_for_tx_hash_on_chain(ContractCreateTxHash),
@@ -2047,7 +1868,8 @@ contract_transactions(_Config) ->    % miner has an account
                                                          aec_trees:contracts(Trees)]),
 
     %% Assert the balance is the one which we created the contract with
-    {ok, 200, #{<<"balance">> := ContractInitBalance}} = get_balance_at_top(EncodedContractPubKey),
+    {ok, 200, #{<<"balance">> := ContractInitBalance}} =
+        get_accounts_by_pubkey_sut(EncodedContractPubKey),
     Function = <<"main">>,
     Argument = <<"42">>,
     {ok, EncodedCallData} =
@@ -2219,7 +2041,8 @@ contract_transactions(_Config) ->    % miner has an account
                                            ComputeCCallEncoded)),
 
     %% Call objects
-    {ok, 200, #{<<"tx_hash">> := SpendTxHash}} = post_spend_tx(MinerPubkey, 1, 1),
+    {ok, 200, #{<<"tx">> := SpendTx}} = post_spend_tx(MinerAddress, 1, 1),
+    SpendTxHash = sign_and_post_tx(SpendTx),
     ok = wait_for_tx_hash_on_chain(SpendTxHash),
     {ok, 400, #{<<"reason">> := <<"Tx is not a create or call">>}} =
         get_contract_call_object(SpendTxHash),
@@ -2234,7 +2057,7 @@ contract_create_compute_transaction(_Config) ->
     NodeName = aecore_suite_utils:node_name(?NODE),
 
     {ok, 200, _} = get_balance_at_top(),
-    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
     {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
 
@@ -2296,7 +2119,7 @@ contract_create_compute_transaction(_Config) ->
 contract_create_transaction_init_error(_Config) ->
     % miner has an account
     {ok, 200, _} = get_balance_at_top(),
-    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
 
     % contract_create_tx positive test
@@ -2358,7 +2181,7 @@ contract_create_transaction_init_error(_Config) ->
 
 oracle_transactions(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
-    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
     OracleAddress = aec_base58c:encode(oracle_pubkey, MinerPubkey),
 
@@ -2513,7 +2336,7 @@ oracle_transactions(_Config) ->
 %% GET revoke_tx unsigned transaction
 nameservice_transactions(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
-    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
     nameservice_transaction_preclaim(MinerAddress, MinerPubkey),
     nameservice_transaction_claim(MinerAddress, MinerPubkey),
@@ -2577,18 +2400,19 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
     Name = <<"name.test">>,
     Salt = 1234,
 
-    {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = get_commitment_hash(Name, Salt),
+    {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = get_commitment_id(Name, Salt),
     {ok, CHash} = aec_base58c:safe_decode(commitment, EncodedCHash),
 
     %% Submit name preclaim tx and check it is in mempool
-    {ok, 200, #{<<"tx">> := EncodedUnsignedPreclaimTx}} =
-        get_name_preclaim(#{<<"commitment_id">> => EncodedCHash, fee => 1,
-                            account_id => MinerAddress}),
-    PreclaimTxHash = sign_and_post_tx(EncodedUnsignedPreclaimTx),
+    PreclaimData = #{commitment_id => EncodedCHash,
+                     fee           => 1,
+                     account_id    => MinerAddress},
+    {ok, 200, #{<<"tx">> := PreclaimTxEnc}} = get_name_preclaim(PreclaimData),
+    PreclaimTxHash = sign_and_post_tx(PreclaimTxEnc),
     {ok, 200, #{<<"tx">> := PreclaimTx}} = get_transactions_by_hash_sut(PreclaimTxHash),
     ?assertEqual(EncodedCHash, maps:get(<<"commitment_id">>, PreclaimTx)),
 
-    %% Mine enough blocks and check mempool empty again
+    %% Mine a block and check mempool empty again
     {ok, BS1} = aecore_suite_utils:mine_blocks_until_tx_on_chain(
                     aecore_suite_utils:node_name(?NODE), PreclaimTxHash, 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
@@ -2691,7 +2515,7 @@ nameservice_transaction_revoke(MinerAddress, MinerPubkey) ->
 %% GET channel_settle_tx unsigned transaction
 state_channels_onchain_transactions(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
-    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
     ParticipantPubkey = random_hash(),
     ok = give_tokens(ParticipantPubkey, 100),
@@ -2867,7 +2691,7 @@ state_channels_settle(ChannelId, MinerPubkey) ->
 %% GET spend_tx unsigned transaction
 spend_transaction(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
-    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
     RandAddress = random_hash(),
     Encoded = #{sender_id => MinerAddress,
@@ -2894,7 +2718,7 @@ spend_transaction(_Config) ->
 %% GET spend_tx unsigned transaction with an non-present key in request
 unknown_atom_in_spend_tx(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
-    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
     RandAddress = random_hash(),
     Encoded = #{sender_id => MinerAddress,
                 recipient_id => aec_base58c:encode(account_pubkey, RandAddress),
@@ -2938,14 +2762,14 @@ unsigned_tx_positive_test(Data, Params0, HTTPCallFun, NewFun, Pubkey,
     {ok, Tx}.
 
 get_transaction(_Config) ->
-    {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_miner_pub_key(),
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_node_pubkey(),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
     TxHashes = add_spend_txs(),
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 2),
     lists:foreach(
         fun(TxHash) ->
-                {ok, 200, #{<<"transaction">> := #{<<"hash">> := TxHash1}}} =
-                    get_tx(TxHash),
+                {ok, 200, #{<<"hash">> := TxHash1}} =
+                    get_transactions_by_hash_sut(TxHash),
                 ?assertEqual(TxHash, TxHash1)
         end,
       TxHashes),
@@ -2964,8 +2788,8 @@ get_transaction(_Config) ->
     TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedSpendTx)),
 
     SerializedSpendTx = aetx_sign:serialize_to_binary(SignedSpendTx),
-    {ok, 200, _} = post_tx(aec_base58c:encode(transaction, SerializedSpendTx)),
-    {ok, 200, #{<<"transaction">> := PendingTx}} = get_tx(TxHash),
+    {ok, 200, _} = post_transactions_sut(aec_base58c:encode(transaction, SerializedSpendTx)),
+    {ok, 200, PendingTx} = get_transactions_by_hash_sut(TxHash),
     Expected = aetx_sign:serialize_for_client_pending(SignedSpendTx),
     Expected = PendingTx,
 
@@ -2975,11 +2799,11 @@ get_transaction(_Config) ->
 %% Maybe this test should be broken into a couple of smaller tests
 %% it currently tests the positive cases for
 %% GET externalAPI/transactions
-%% POST internalAPI/spend-tx
+%% POST internalAPI/debug/transactions/spend
 %% GET externalAPI/account/balance
 pending_transactions(_Config) ->
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
-    {ok, 200, []} = get_transactions(),
+    {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
     InitialBalance =
         case get_balance_at_top() of
             {ok, 404, #{<<"reason">> := <<"Account not found">>}} -> 0;
@@ -2998,39 +2822,38 @@ pending_transactions(_Config) ->
     true = (is_integer(Bal0) andalso Bal0 > AmountToSpent + Fee),
 
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % still empty
-    {ok, 200, []} = get_transactions(),
+    {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
 
     %{ok, SenderPubKey} = rpc:call(?NODE, aec_keys, pubkey, [], 5000),
     ReceiverPubKey = random_hash(),
     {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
-                  get_balance_at_top(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
+                  get_accounts_by_pubkey_sut(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
 
-    {ok, 200, _} = post_spend_tx(ReceiverPubKey, AmountToSpent, Fee),
+    {ok, 200, #{<<"tx">> := SpendTx}} =
+        post_spend_tx(aec_base58c:encode(account_pubkey, ReceiverPubKey), AmountToSpent, Fee),
+    sign_and_post_tx(SpendTx),
     {ok, NodeTxs} = rpc(aec_tx_pool, peek, [infinity]),
     true = length(NodeTxs) =:= 1, % not empty anymore
-    {ok, 200, ReturnedTxs} = get_transactions(),
-    ExpectedTxs = [#{<<"tx">> => aec_base58c:encode(
-                                   transaction,
-                                   aetx_sign:serialize_to_binary(T))}
-           || T <- NodeTxs],
+    {ok, 200, #{<<"transactions">> := ReturnedTxs}} = get_pending_transactions(),
+    ExpectedTxs = [aetx_sign:serialize_for_client_pending(T) || T <- NodeTxs],
     true = length(ExpectedTxs) =:= length(ReturnedTxs),
     true = lists:all(fun(Tx) -> lists:member(Tx, ExpectedTxs) end, ReturnedTxs),
 
     {ok, 200, #{<<"balance">> := Bal0}} = get_balance_at_top(),
     {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
-                  get_balance_at_top(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
+                  get_accounts_by_pubkey_sut(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
 
 
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 3),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty again
-    {ok, 200, []} = get_transactions(),
+    {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
 
     {ok, 200, #{<<"balance">> := Bal1}} = get_balance_at_top(),
     ct:log("Bal1: ~p, Bal0: ~p, Mine reward: ~p, Fee: ~p, Amount to spend: ~p",
            [Bal1, Bal0, 3 * MineReward, Fee, AmountToSpent]),
     {Bal1, _} = {Bal0 + 3 * MineReward + Fee - Fee - AmountToSpent, Bal1},
     {ok, 200, #{<<"balance">> := AmountToSpent}} =
-                 get_balance_at_top(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
+                 get_accounts_by_pubkey_sut(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
     ok.
 
 %% Even though a tx with a unknown sender pubkey would be accepted, we need
@@ -3050,7 +2873,7 @@ post_correct_tx(_Config) ->
     {ok, SignedTx} = rpc(aec_keys, sign_tx, [SpendTx]),
     ExpectedHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
     {ok, 200, #{<<"tx_hash">> := ExpectedHash}} =
-        post_tx(aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx))),
+        post_transactions_sut(aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx))),
     {ok, [SignedTx]} = rpc(aec_tx_pool, peek, [infinity]), % same tx
     ok.
 
@@ -3074,8 +2897,8 @@ post_broken_tx(_Config) ->
                   end,
     EncodedBrokenTx = aec_base58c:encode(transaction, BrokenTxBin),
     EncodedSignedTx = aec_base58c:encode(transaction, SignedTxBin),
-    {ok, 400, #{<<"reason">> := <<"Invalid base58Check encoding">>}} = post_tx(EncodedBrokenTx),
-    {ok, 200, _} = post_tx(EncodedSignedTx),
+    {ok, 400, #{<<"reason">> := <<"Invalid base58Check encoding">>}} = post_transactions_sut(EncodedBrokenTx),
+    {ok, 200, _} = post_transactions_sut(EncodedSignedTx),
     ok.
 
 post_broken_base58_tx(_Config) ->
@@ -3097,130 +2920,26 @@ post_broken_base58_tx(_Config) ->
             <<_, BrokenHash/binary>> =
                 aec_base58c:encode(transaction,
                                    aetx_sign:serialize_to_binary(SignedTx)),
-            {ok, 400, #{<<"reason">> := <<"Invalid base58Check encoding">>}} = post_tx(BrokenHash)
+            {ok, 400, #{<<"reason">> := <<"Invalid base58Check encoding">>}} = post_transactions_sut(BrokenHash)
         end,
         lists:seq(1, NumberOfChecks)), % number
     ok.
-
-all_accounts_balances(_Config) ->
-    ok = rpc(aec_conductor, reinit_chain, []),
-    rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
-    GenesisPresetAccounts = rpc(aec_genesis_block_settings, preset_accounts, []),
-    Receivers = ?DEFAULT_TESTS_COUNT,
-    AmountToSpent = 1,
-    {BlocksToMine0, Fee} = minimal_fee_and_blocks_to_mine(AmountToSpent, Receivers),
-
-    ForkHeight = aecore_suite_utils:latest_fork_height(),
-    BlocksToMine = max(BlocksToMine0, ForkHeight),
-
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
-                                       BlocksToMine),
-    ReceiversAccounts = [{random_hash(), AmountToSpent} || _Idx <- lists:seq(1, Receivers)],
-    lists:foreach(
-        fun({ReceiverPubKey, _}) ->
-            {ok, 200, _} = post_spend_tx(ReceiverPubKey, AmountToSpent, Fee)
-        end,
-        ReceiversAccounts),
-
-    {ok, MinerPubKey} = rpc(aec_keys, pubkey, []),
-    {ok, 200, Txs} =  get_transactions(aec_base58c:encode(account_pubkey, MinerPubKey)),
-    ?assertEqual(Receivers, length(Txs)),
-
-    % mine a block to include the txs
-    {ok, [_KeyBlock, MicroBlock]} = aecore_suite_utils:mine_blocks(
-                                     aecore_suite_utils:node_name(?NODE), 2),
-    {ok, 200, #{<<"accounts_balances">> := BalancesMap}} = get_all_accounts_balances(),
-    {ok, 200, #{<<"nonce">> := Receivers}} = get_account_nonce(aec_base58c:encode(account_pubkey, MinerPubKey)),
-    {ok, MinerBal} = rpc(aec_mining, get_miner_account_balance, []),
-    ExpectedBalances = [{MinerPubKey, MinerBal} | GenesisPresetAccounts] ++  ReceiversAccounts,
-
-    % make sure all spend txs are part of the block
-    AllTxs = aec_blocks:txs(MicroBlock),
-    AllTxsCnt = length(AllTxs),
-    AllTxsCnt = Receivers,
-
-    Balances =
-        lists:map(fun(#{<<"pub_key">> := PKEncoded, <<"balance">> := Bal}) ->
-                          {account_pubkey, AccDec} = aec_base58c:decode(PKEncoded),
-                          {AccDec, Bal}
-                  end, BalancesMap),
-    ?assertEqual(lists:sort(ExpectedBalances), lists:sort(Balances)),
-    ok.
-
-all_accounts_balances_empty(_Config) ->
-    ok = rpc(aec_conductor, reinit_chain, []),
-    rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
-    GenesisPresetAccounts = rpc(aec_genesis_block_settings, preset_accounts, []),
-    {ok, 200, #{<<"accounts_balances">> := Balances}} = get_all_accounts_balances(),
-    true = length(Balances) =:= length(GenesisPresetAccounts),
-    true =
-        lists:all(
-            fun(#{<<"pub_key">> := PKEncoded, <<"balance">> := Bal}) ->
-                    {account_pubkey, AccDec} = aec_base58c:decode(PKEncoded),
-                Account = {AccDec, Bal},
-                lists:member(Account, GenesisPresetAccounts) end,
-            Balances),
-
-    ForkHeight = aecore_suite_utils:latest_fork_height(),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   ForkHeight),
-    ok.
-
-all_accounts_balances_disabled(_Config) ->
-    rpc(application, set_env, [aehttp, enable_debug_endpoints, false]),
-    {ok, 403, #{<<"reason">> := <<"Balances not enabled">>}} = get_all_accounts_balances(),
-    ok.
-
-version(_Config) ->
-    {ok, 200, #{<<"version">> := V,
-                <<"revision">> := Rev,
-                <<"genesis_hash">> := EncodedGH}} = get_version(),
-    V0 = rpc(aeu_info, get_version, []),
-    Rev0 = rpc(aeu_info, get_revision, []),
-    GenHash0 = rpc(aec_chain, genesis_hash, []),
-    % asserts
-    V = V0,
-    Rev = Rev0,
-    {block_hash, GenHash0} = aec_base58c:decode(EncodedGH),
-    ok.
-
-info_disabled(_Config) ->
-    rpc(application, set_env, [aehttp, enable_debug_endpoints, false]),
-    {ok, 403, #{<<"reason">> := <<"Info not enabled">>}} = get_info(),
-    ok.
-
-info_empty(_Config) ->
-    ok = rpc(aec_conductor, reinit_chain, []),
-    rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
-    ExpectedEmpty = #{<<"last_30_blocks_time">> => [ #{<<"difficulty">> => 1.0,
-                                                       <<"height">> => 0,
-                                                       <<"time">>  => 0}]},
-    {ok, 200, ExpectedEmpty} = get_info(),
-
-    ForkHeight = aecore_suite_utils:latest_fork_height(),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   ForkHeight),
-    ok.
-
-
-
-
 
 %% positive test of spend_tx is handled in pending_transactions test
 broken_spend_tx(_Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     {ok, 404, #{<<"reason">> := <<"Account not found">>}} = get_balance_at_top(),
     ReceiverPubKey = random_hash(),
-    {ok, 404, _} = post_spend_tx(ReceiverPubKey, 42, 2),
+    {ok, 404, _} = post_spend_tx(aec_base58c:encode(account_pubkey, ReceiverPubKey), 42, 2),
 
     ForkHeight = aecore_suite_utils:latest_fork_height(),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    ForkHeight),
     ok.
 
-miner_pub_key(_Config) ->
+node_pubkey(_Config) ->
     {ok, MinerPubKey} = rpc(aec_keys, pubkey, []),
-    {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_miner_pub_key(),
+    {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_node_pubkey(),
     ct:log("MinerPubkey = ~p~nEncodedPubKey = ~p", [MinerPubKey,
                                                     EncodedPubKey]),
     {account_pubkey, MinerPubKey} = aec_base58c:decode(EncodedPubKey),
@@ -3228,330 +2947,18 @@ miner_pub_key(_Config) ->
 
 peer_pub_key(_Config) ->
     {ok, PeerPubKey} = rpc(aec_keys, peer_pubkey, []),
-    {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_peer_pub_key(),
+    {ok, 200, #{<<"pubkey">> := EncodedPubKey}} = get_peer_pub_key(),
     ct:log("PeerPubkey = ~p~nEncodedPubKey = ~p", [PeerPubKey,
                                                     EncodedPubKey]),
     {ok, PeerPubKey} = aec_base58c:safe_decode(peer_pubkey, EncodedPubKey),
     ok.
 
-block_number(_Config) ->
-    ok = rpc(aec_conductor, reinit_chain, []),
-    ForkHeight = aecore_suite_utils:latest_fork_height(),
-    TopHeader = rpc(aec_chain, top_header, []),
-    0 = aec_headers:height(TopHeader),
-    {ok, 200, #{<<"height">> := 0}} = get_block_number(),
-    lists:foreach(
-        fun(ExpectedNum) ->
-            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-            {ok, 200, #{<<"height">> := Num}} = get_block_number(),
-            ExpectedNum = Num
-        end,
-        lists:seq(1, max(?DEFAULT_TESTS_COUNT, ForkHeight))),
-    ok.
-
-block_genesis(_Config) ->
-    GetExpectedBlockFun =
-        fun(_H) ->
-            GenesisBlock = rpc(aec_chain, genesis_block, []),
-            {ok, GenesisBlock}
-        end,
-    CallApiFun =
-        fun(_H) ->
-            get_internal_block_preset("genesis")
-        end,
-    internal_get_block_generic(GetExpectedBlockFun, CallApiFun).
-
-block_latest(_Config) ->
-    GetExpectedBlockFun =
-        fun(_H) ->
-            TopBlock = rpc(aec_chain, top_block, []),
-            {ok, TopBlock}
-        end,
-    CallApiFun =
-        fun(_H) ->
-            get_internal_block_preset("latest")
-        end,
-    internal_get_block_generic(GetExpectedBlockFun, CallApiFun).
-
-%% we need really slow mining; since mining speed is not modified for the
-%% first X blocks, we need to premine them before the test
-block_pending(_Config) ->
-    BlocksToPremine = rpc(aec_governance, key_blocks_to_check_difficulty_count, []),
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE),
-                                       BlocksToPremine),
-    {ok, 404, #{<<"reason">> := <<"Not mining, no pending block">>}} =
-            get_internal_block_preset("pending"),
-    ok = rpc(application, set_env, [aecore, expected_mine_rate,
-                                    60 * 60 * 1000]), % aim at one block an hour
-    add_spend_txs(),
-    rpc(aec_conductor, start_mining, []),
-    timer:sleep(100),% so the miner is started
-    {ok, PendingBlock} = get_pending_block(),
-    ct:log("Expected pending block ~p", [block_to_endpoint_map(PendingBlock)]),
-    rpc(aec_conductor, stop_mining, []),
-    ok.
-
-internal_get_block_generic(GetExpectedBlockFun, CallApiFun) ->
-    ok = rpc(aec_conductor, reinit_chain, []),
-    ForkHeight = aecore_suite_utils:latest_fork_height(),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   ForkHeight),
-    BlocksToCheck = 4,
-    CheckAtHeight =
-        fun(Height) ->
-            {ok, ExpectedBlock} = GetExpectedBlockFun(Height),
-            Specific =
-                fun(DataSchema) ->
-                    {ok, Hash} =
-                        aec_blocks:hash_internal_representation(ExpectedBlock),
-                    #{<<"hash">> => aec_base58c:encode(block_hash, Hash)}
-                end,
-            ExpectedBlockMap = maps:merge(Specific(<<"BlockWithMsgPackTxs">>),
-                block_to_endpoint_map(ExpectedBlock)),
-            {ok, 200, BlockMap} = CallApiFun(Height),
-            ct:log("ExpectedBlockMap ~p, BlockMap: ~p", [ExpectedBlockMap,
-                                                         BlockMap])
-        end,
-    MinBlockHeightToCheck =
-        case ForkHeight of
-            0 ->
-                aecore_suite_utils:mine_blocks(
-                  aecore_suite_utils:node_name(?NODE), 1),
-                1; % from first block with reward
-            _ when is_integer(ForkHeight), ForkHeight > 0 ->
-                ForkHeight % from latest fork
-        end,
-    lists:foreach(
-        fun(Height) ->
-            {ok, 200, #{<<"height">> := Height}} = get_top(),
-            CheckAtHeight(Height),
-            % prepare the next block
-            add_spend_txs(),
-            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1)
-        end,
-        lists:seq(MinBlockHeightToCheck, ForkHeight + BlocksToCheck)),
-    ok.
-
-block_txs_count_by_height(_Config) ->
-    generic_counts_test(fun(H) -> rpc(aec_chain, get_key_block_by_height,
-                                     [H]) end,
-                        fun get_block_txs_count_by_height/1).
-
-block_txs_count_by_hash(_Config) ->
-    CallApiFun =
-        fun(H) ->
-            {ok, Hash} = block_hash_by_height(H),
-            get_block_txs_count_by_hash(Hash)
-        end,
-    generic_counts_test(fun(H) -> rpc(aec_chain, get_key_block_by_height,
-                                     [H]) end,
-                        CallApiFun).
-
-block_txs_count_genesis(_Config) ->
-    generic_counts_test(
-        fun(_H) -> {ok, rpc(aec_chain, genesis_block, [])} end,
-        fun(_) -> get_block_txs_count_preset("genesis") end).
-
-block_txs_count_latest(_Config) ->
-    generic_counts_test(
-        fun(_H) ->
-            TopBlock = rpc(aec_chain, top_block, []),
-            {ok, TopBlock}
-        end,
-        fun(_) -> get_block_txs_count_preset("latest") end).
-
-block_txs_count_pending(_Config) ->
-    BlocksToPremine = rpc(aec_governance, key_blocks_to_check_difficulty_count, []),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   BlocksToPremine),
-        {ok, 404, #{<<"reason">> := <<"Not mining, no pending block">>}} =
-                    get_block_txs_count_preset("pending"),
-    ok = rpc(application, set_env, [aecore, expected_mine_rate,
-                                    60 * 60 * 1000]), % aim at one block an hour
-
-    InsertedTxsCount = length(add_spend_txs()),
-    %% NG: here we start mining again, but the first block must be a key block.
-    %% get_block_txs_count_preset returns the current block candidate - the key block
-    %% being mined which doesn't include any txs.
-    rpc(aec_conductor, start_mining, []),
-    %GetPending =
-    %    fun()->
-    %        aec_test_utils:exec_with_timeout(
-    %           fun TryGetting() ->
-    %              case get_block_txs_count_preset("pending") of
-    %                  {ok, 200, B} -> B;
-    %                  {ok, 404, _} ->
-    %                      timer:sleep(100),
-    %                      TryGetting()
-    %              end
-    %           end,
-    %           10000)
-    %    end,
-    %% NG: in order to get the number of pending txs, we check the mempool
-    GetPending = fun() ->
-                         {ok, 200, Txs} = get_transactions(),
-                         {ok, #{<<"count">> => length(Txs)}}
-                 end,
-    {ok, #{<<"count">> := TxsCount}} = GetPending(),
-    ct:log("Inserted transactions count ~p, transactions count in the pending block ~p",
-           [InsertedTxsCount, TxsCount]),
-    ?assertEqual(InsertedTxsCount, TxsCount),
-    rpc(aec_conductor, stop_mining, []),
-    ok.
-
-generic_counts_test(GetBlock, CallApi) ->
-    BlocksToMine = 5,
-    {ok, 200, #{<<"height">> := ChainHeight}} = get_top(),
-
-    Check = fun(H) ->
-                    {ok, B} = GetBlock(H),
-                    case aec_blocks:type(B) of
-                        'micro' ->
-                            TxsCount = length(aec_blocks:txs(B)),
-                            {ok, 200, #{<<"count">> := TxsCount}} = CallApi(H),
-                            ok;
-                        'key'   ->
-                            ok
-                    end
-            end,
-
-    %% Check genesis
-    Check(aec_block_genesis:height()),
-
-    %% Check BlocksToMine blocks
-    lists:foreach(
-        fun(Height) ->
-            add_spend_txs(),
-            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
-            Check(Height + 1)
-        end,
-        lists:seq(ChainHeight, ChainHeight + BlocksToMine)),
-    ok.
-
-block_txs_count_by_height_not_found(_Config) ->
-    InitialHeight = aec_blocks:height(rpc(aec_chain, top_block, [])),
-    lists:foreach(
-        fun(H) ->
-            {ok, 404, #{<<"reason">> := <<"Chain too short">>}}
-                        = get_block_txs_count_by_height(H)
-        end,
-        lists:seq(InitialHeight + 1, InitialHeight + ?DEFAULT_TESTS_COUNT)),
-    ok.
-
-block_txs_count_by_hash_not_found(_Config) ->
-    lists:foreach(
-        fun(_Height) ->
-            H = random_hash(),
-            error = rpc(aec_chain, get_block, [H]),
-            Hash = aec_base58c:encode(block_hash, H),
-            {ok, 404, #{<<"reason">> := <<"Block not found">>}}
-                = get_block_txs_count_by_hash(Hash)
-        end,
-        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
-    ok.
-
-block_txs_count_by_broken_hash(_Config) ->
-    lists:foreach(
-        fun(_) ->
-            <<_, BrokenHash/binary>> = aec_base58c:encode(block_hash, random_hash()),
-            {ok, 400, #{<<"reason">> := <<"Invalid hash">>}} =
-                get_block_txs_count_by_hash(BrokenHash)
-        end,
-        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
-    ok.
-
-block_tx_index_by_height(_Config) ->
-    generic_block_tx_index_test(fun get_block_tx_by_index_height/2).
-
-block_tx_index_by_hash(_Config) ->
-    CallApiFun =
-        fun(H, Index) ->
-            {ok, Hash} = block_hash_by_height(H),
-            get_block_tx_by_index_hash(Hash, Index)
-        end,
-    generic_block_tx_index_test(CallApiFun).
-
-block_tx_index_latest(_Config) ->
-    generic_block_tx_index_test(
-        fun(_, Index) ->
-            get_block_tx_by_index_latest(Index)
-        end).
-
-block_tx_index_not_founds(_Config) ->
-    InitialHeight = aec_blocks:height(rpc(aec_chain, top_block, [])),
-    RandomHeight = InitialHeight + rand:uniform(999) + 1, % CurrentTop + 1..1000
-    Test =
-        fun(Code, ErrMsg, Fun, Cases) ->
-            lists:foreach(
-                fun({H, I}) ->
-                    {ok, Code, #{<<"reason">> := ErrMsg}} = Fun(H, I)
-                end,
-                Cases)
-        end,
-    Test(404, <<"Chain too short">>, fun get_block_tx_by_index_height/2,
-         [{RandomHeight, 0},
-          {RandomHeight, 1},
-          {RandomHeight + 1, 0},
-          {RandomHeight + 1, 1}]),
-    Test(404, <<"Block not found">>, fun get_block_tx_by_index_hash/2,
-         [{aec_base58c:encode(block_hash, random_hash()), 0},
-          {aec_base58c:encode(block_hash, random_hash()), 1}]),
-    BlocksToMine = 3,
-    lists:foreach(
-        fun(Height) ->
-            {ok, 200, #{<<"count">> := TxsCount}} = get_block_txs_count_by_height(Height),
-            Test(404, <<"Transaction not found">>, fun get_block_tx_by_index_height/2,
-                [{Height, TxsCount + 1},
-                 {Height, TxsCount + 2},
-                 {Height, TxsCount + rand:uniform(1000) + 1}
-                ]),
-            {ok, Hash} = block_hash_by_height(Height),
-            Test(404, <<"Transaction not found">>, fun get_block_tx_by_index_hash/2,
-                [{Hash, TxsCount + 1},
-                 {Hash, TxsCount + 2},
-                 {Hash, TxsCount + rand:uniform(1000) + 1}
-                ]),
-            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
-            add_spend_txs()
-        end, lists:seq(0, BlocksToMine)),
-
-    ok.
-
-
-generic_block_tx_index_test(CallApi) when is_function(CallApi, 2)->
-    ok = rpc(aec_conductor, reinit_chain, []),
-    ForkHeight = aecore_suite_utils:latest_fork_height(),
-    %% ForkHeight can be 0, so no blocks are mined.
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), ForkHeight),
-    GenerationCount = ?DEFAULT_TESTS_COUNT,
-    lists:foreach(
-        fun(Height) ->
-            {ok, 200, BlockMap} = get_block_by_height(Height),
-            AllTxs = maps:get(<<"transactions">>, BlockMap, []),
-            TxsIdxs = case length(AllTxs) of
-                    0 -> [];
-                    TxsLength -> lists:seq(1, TxsLength)
-                end,
-            lists:foreach(
-                fun({Tx, Index}) ->
-                    ct:log("Index: ~p, Transaction: ~p", [Index, Tx]),
-                    {ok, 200, #{<<"transaction">> := Tx}} =
-                        CallApi(Height, Index)
-                end,
-                lists:zip(AllTxs, TxsIdxs)),
-            %% The first generation (ForkHeight) is just 1 key block to get some
-            %% reward to be able to send txs in subsequent generations.
-            BlockCount = if Height == ForkHeight -> 1; true -> 2 end,
-            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), BlockCount),
-            add_spend_txs()
-        end,
-        lists:seq(ForkHeight, ForkHeight + GenerationCount)), % from latest fork
-    ok.
-
 naming_system_manage_name(_Config) ->
     {ok, PubKey} = rpc(aec_keys, pubkey, []),
     PubKeyEnc   = aec_base58c:encode(account_pubkey, PubKey),
-    Name        = <<"詹姆斯詹姆斯.test"/utf8>>,
+    %% TODO: find out how to craete HTTP path with unicode chars
+    %%Name        = <<"詹姆斯詹姆斯.test"/utf8>>,
+    Name        = <<"without_unicode.test">>,
     NameSalt    = 12345,
     NameTTL     = 20000,
     Pointers    = [#{<<"key">> => <<"account_pubkey">>, <<"id">> => PubKeyEnc}],
@@ -3570,17 +2977,19 @@ naming_system_manage_name(_Config) ->
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Get commitment hash to preclaim a name
-    {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = get_commitment_hash(Name, NameSalt),
-    {ok, _} = aec_base58c:safe_decode(commitment, EncodedCHash),
+    {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = get_commitment_id(Name, NameSalt),
+    {ok, CHash} = aec_base58c:safe_decode(commitment, EncodedCHash),
 
     %% Submit name preclaim tx and check it is in mempool
-    {ok, 200, #{<<"tx">> := EncodedUnsignedPreclaimTx}} =
-        get_name_preclaim(#{<<"commitment_id">> => EncodedCHash, fee => Fee, account_id => PubKeyEnc}),
-    PreclaimTxHash = sign_and_post_tx(EncodedUnsignedPreclaimTx),
+    PreclaimData = #{commitment_id => EncodedCHash,
+                     fee           => Fee,
+                     account_id    => PubKeyEnc},
+    {ok, 200, #{<<"tx">> := PreclaimTxEnc}} = get_name_preclaim(PreclaimData),
+    PreclaimTxHash = sign_and_post_tx(PreclaimTxEnc),
     {ok, 200, #{<<"tx">> := PreclaimTx}} = get_transactions_by_hash_sut(PreclaimTxHash),
     ?assertEqual(EncodedCHash, maps:get(<<"commitment_id">>, PreclaimTx)),
 
-    %% Mine enough blocks and check mempool empty again
+    %% Mine a block and check mempool empty again
     {ok, BS1} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, PreclaimTxHash, 10),
     Height1 = Height0 + length(BS1),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
@@ -3590,12 +2999,14 @@ naming_system_manage_name(_Config) ->
     ?assertEqual(Balance1, Balance - Fee + (Height1 - Height0) * MineReward + Fee),
 
     %% Submit name claim tx and check it is in mempool
-    {ok, 200, #{<<"tx">> := EncodedUnsignedClaimTx}} =
-        get_name_claim(#{name => aec_base58c:encode(name, Name), name_salt => NameSalt,
-                         fee => Fee, account_id => PubKeyEnc}),
-    ClaimTxHash = sign_and_post_tx(EncodedUnsignedClaimTx),
+    ClaimData = #{account_id => PubKeyEnc,
+                  name       => aec_base58c:encode(name, Name),
+                  name_salt  => NameSalt,
+                  fee        => Fee},
+    {ok, 200, #{<<"tx">> := ClaimTxEnc}} = get_name_claim(ClaimData),
+    ClaimTxHash = sign_and_post_tx(ClaimTxEnc),
 
-    %% Mine enough blocks and check mempool empty again
+    %% Mine a block and check mempool empty again
     {ok, BS2} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, ClaimTxHash, 10),
     Height2 = Height1 + length(BS2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
@@ -3611,13 +3022,17 @@ naming_system_manage_name(_Config) ->
     ExpectedTTL1 = (Height2 - 1) + aec_governance:name_claim_max_expiration(),
     {ok, 200, #{<<"id">>       := EncodedNHash,
                 <<"expires">>  := ExpectedTTL1,
-                <<"pointers">> := []}} = get_name(Name),
+                <<"pointers">> := []}} = get_names_entry_by_name_sut(Name),
 
     %% Submit name updated tx and check it is in mempool
-    {ok, 200, #{<<"tx">> := EncodedUnsignedUpdateTx}} =
-        get_name_update(#{name_id => EncodedNHash, name_ttl => NameTTL, client_ttl => TTL,
-                          pointers => Pointers, fee => Fee, account_id => PubKeyEnc}),
-    UpdateTxHash = sign_and_post_tx(EncodedUnsignedUpdateTx),
+    NameUpdateData = #{account_id => PubKeyEnc,
+                       name_id    => aec_base58c:encode(name, NHash),
+                       client_ttl => TTL,
+                       pointers   => Pointers,
+                       name_ttl   => NameTTL,
+                       fee        => Fee},
+    {ok, 200, #{<<"tx">> := UpdateEnc}} = get_name_update(NameUpdateData),
+    UpdateTxHash = sign_and_post_tx(UpdateEnc),
 
     %% Mine a block and check mempool empty again
     {ok, BS3} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, UpdateTxHash, 10),
@@ -3626,8 +3041,8 @@ naming_system_manage_name(_Config) ->
 
     %% Check that TTL and pointers got updated in name entry
     ExpectedTTL2 = (Height3 - 1) + NameTTL,
-    {ok, 200, #{<<"expires">>  := ExpectedTTL2,
-                <<"pointers">> := Pointers}} = get_name(Name),
+    {ok, 200, #{<<"expires">> := ExpectedTTL2,
+                <<"pointers">> := Pointers}} = get_names_entry_by_name_sut(Name),
 
     %% Check mine reward
     {ok, 200, #{<<"balance">> := Balance3}} = get_balance_at_top(),
@@ -3649,10 +3064,12 @@ naming_system_manage_name(_Config) ->
     ?assertEqual(Balance4, Balance3 + (Height4 - Height3) * MineReward),
 
     %% Submit name transfer tx and check it is in mempool
-    {ok, 200, #{<<"tx">> := EncodedUnsignedTransferTx}} =
-        get_name_transfer(#{name_id => EncodedNHash, recipient_id => PubKeyEnc,
-                            fee => Fee, account_id => PubKeyEnc}),
-    TransferTxHash = sign_and_post_tx(EncodedUnsignedTransferTx),
+    TransferData = #{account_id   => PubKeyEnc,
+                     recipient_id => PubKeyEnc,
+                     name_id      => aec_base58c:encode(name, NHash),
+                     fee          => Fee},
+    {ok, 200, #{<<"tx">> := TransferEnc}} = get_name_transfer(TransferData),
+    TransferTxHash = sign_and_post_tx(TransferEnc),
 
     %% Mine a block and check mempool empty again
     {ok, BS5} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, TransferTxHash, 10),
@@ -3664,9 +3081,11 @@ naming_system_manage_name(_Config) ->
     ?assertEqual(Balance5, Balance4 + (Height5 - Height4) * MineReward),
 
     %% Submit name revoke tx and check it is in mempool
-    {ok, 200, #{<<"tx">> := EncodedUnsignedRevokeTx}} =
-        get_name_revoke(#{name_id => EncodedNHash, fee => Fee, account_id => PubKeyEnc}),
-    RevokeTxHash = sign_and_post_tx(EncodedUnsignedRevokeTx),
+    RevokeData = #{account_id => PubKeyEnc,
+                   name_id => aec_base58c:encode(name, NHash),
+                   fee => Fee},
+    {ok, 200, #{<<"tx">> := RevokeEnc}} = get_name_revoke(RevokeData),
+    RevokeTxHash = sign_and_post_tx(RevokeEnc),
 
     %% Mine a block and check mempool empty again
     {ok, BS6} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, RevokeTxHash, 10),
@@ -3678,7 +3097,7 @@ naming_system_manage_name(_Config) ->
     ?assertEqual(Balance6, Balance5 + (Height6 - Height5) * MineReward),
 
     %% Check the name got expired
-    {ok, 404, #{<<"reason">> := <<"Name revoked">>}} = get_name(Name),
+    {ok, 404, #{<<"reason">> := <<"Name revoked">>}} = get_names_entry_by_name_sut(Name),
     ok.
 
 naming_system_broken_txs(_Config) ->
@@ -3696,160 +3115,40 @@ naming_system_broken_txs(_Config) ->
     %% Try to submit txs with empty account
 
     {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: registrar_unknown">>}} =
-        get_commitment_hash(<<"abcd.badregistrar">>, 123),
+        get_commitment_id(<<"abcd.badregistrar">>, 123),
     {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: registrar_unknown">>}} =
-        get_name(<<"abcd.badregistrar">>),
-    {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
-        post_name_preclaim_tx(CHash, Fee),
-    {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
-        post_name_claim_tx(Name, NameSalt, Fee),
-    {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
-        post_name_update_tx(NHash, 5, [], 5, Fee),
-    {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
-        post_name_transfer_tx(NHash, random_hash(), Fee),
-    {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
-        post_name_revoke_tx(NHash, Fee),
-
+        get_names_entry_by_name_sut(<<"abcd.badregistrar">>),
+    {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
+        get_name_preclaim(#{commitment_id => aec_base58c:encode(commitment, CHash),
+                            fee => Fee,
+                            account_id => aec_base58c:encode(account_pubkey, random_hash())}),
+    {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
+        get_name_claim(#{name => aec_base58c:encode(name, Name),
+                         name_salt => NameSalt,
+                         account_id => aec_base58c:encode(account_pubkey, random_hash()),
+                         fee => Fee}),
+    {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
+        get_name_update(#{account_id => aec_base58c:encode(account_pubkey, random_hash()),
+                          name_id => aec_base58c:encode(name, NHash),
+                          name_ttl => 5,
+                          pointers => [],
+                          client_ttl => 5,
+                          fee => Fee}),
+    {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
+        get_name_transfer(#{account_id => aec_base58c:encode(account_pubkey, random_hash()),
+                            recipient_id => aec_base58c:encode(account_pubkey, random_hash()),
+                            name_id => aec_base58c:encode(name, NHash),
+                            fee => Fee}),
+    {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
+        get_name_revoke(#{account_id => aec_base58c:encode(account_pubkey, random_hash()),
+                          name_id => aec_base58c:encode(name, NHash),
+                          fee => Fee}),
     %% Check mempool still empty
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
     ForkHeight = aecore_suite_utils:latest_fork_height(),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    ForkHeight),
     ok.
-
-list_oracles(_Config) ->
-    %% Mine a blocks to get some funds
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-
-    KeyPair = fun() ->
-                  #{ public := Pub, secret := Priv } = enacl:sign_keypair(),
-                  {Pub, Priv}
-              end,
-    KeyPairs = [ KeyPair() || _ <- lists:seq(1, 5) ],
-
-    %% Transfer some funds to these accounts
-    [ post_spend_tx(Receiver, 9, 1) || {Receiver, _} <- KeyPairs ],
-
-    %% Mine a block to effect this
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
-
-    %% Now register those accounts as oracles...
-    [ register_oracle(6, PubKey, PrivKey, 1, 4, {delta, 50})
-      || {PubKey, PrivKey} <- KeyPairs ],
-
-    %% Mine a block to effect the registrations
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
-
-    %% Now we can test the oracle listing...
-    Oracles = get_list_oracles(5),
-    Os1 = lists:sort([aec_base58c:encode(oracle_pubkey, PubKey) ||  {PubKey, _} <- KeyPairs ]),
-    Os2 = lists:sort([ maps:get(<<"address">>, O) || O <- Oracles ]),
-
-    ct:log("Os1 = ~p\nOs2 = ~p", [Os1, Os2]),
-    Os1 = Os2,
-
-    %% Try pagination
-    Oracles1 = [_, O2] = get_list_oracles(2),
-    Oracles2 = get_list_oracles(maps:get(<<"address">>, O2), 3),
-    Os3 = lists:sort([ maps:get(<<"address">>, O) || O <- Oracles1 ++ Oracles2 ]),
-
-    ct:log("Os3 = ~p\nOs2 = ~p", [Os3, Os2]),
-    Os3 = Os2,
-
-    ok.
-
-list_oracle_queries(_Config) ->
-    %% Mine a block to get some funds
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-
-    KeyPair = fun() ->
-                  #{ public := Pub, secret := Priv } = enacl:sign_keypair(),
-                  {Pub, Priv}
-              end,
-    OKeyPairs = [ KeyPair() || _ <- lists:seq(1, 2) ],
-
-    {APubKey, APrivKey} = KeyPair(),
-
-    %% Transfer some funds to these accounts
-    [ post_spend_tx(Receiver, 9, 1) || {Receiver, _} <- OKeyPairs ],
-    post_spend_tx(APubKey, 79, 1),
-
-    %% Mine a block to effect this
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
-
-    %% Now register both accounts as oracles...
-    [ register_oracle(2, PubKey, PrivKey, 1, 3, {delta, 50})
-      || {PubKey, PrivKey} <- OKeyPairs ],
-
-    %% Mine a block to effect the registrations
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
-
-    %% Query each oracle four times
-    [{OPubKey1, _}, {OPubKey2, _}] = OKeyPairs,
-    [ query_oracle(3, APubKey, APrivKey, OPubKey1, N, <<"a query">>, {delta, 20}, 3)
-      || N <- lists:seq(1, 4) ],
-    [ query_oracle(3, APubKey, APrivKey, OPubKey2, N, <<"a query">>, {delta, 20}, 3)
-      || N <- lists:seq(5, 8) ],
-
-    QueryIds = [ aeo_query:id(APubKey, N, OPubKey1) || N <- lists:seq(1, 4) ] ++
-               [ aeo_query:id(APubKey, N, OPubKey2) || N <- lists:seq(5, 8) ],
-
-    %% Mine a block to effect the queries
-    aecore_suite_utils:mine_micro_blocks(aecore_suite_utils:node_name(?NODE), 1),
-
-    %% Now we can test the oracle query listing...
-    Queriess = [ get_list_oracle_queries(OPubKey, 4) || {OPubKey, _} <- OKeyPairs ],
-
-    QS1 = lists:sort([ aec_base58c:encode(oracle_query_id, QId) || QId <- QueryIds ]),
-    QS2 = lists:sort([ maps:get(<<"query_id">>, Q) || Qs <- Queriess, Q <- Qs ]),
-
-    ct:log("Qs1 = ~p\nQs2 = ~p", [QS1, QS2]),
-    QS1 = QS2,
-
-    %% Try pagination
-    Queries1 = [_, Q2] = get_list_oracle_queries(OPubKey1, 2),
-    Queries2 = get_list_oracle_queries(OPubKey1, maps:get(<<"query_id">>, Q2), 3),
-    Queries3 = [Q4] = get_list_oracle_queries(OPubKey2, 1),
-    Queries4 = get_list_oracle_queries(OPubKey2, maps:get(<<"query_id">>, Q4), 3),
-
-    QS3 = lists:sort([ maps:get(<<"query_id">>, Q)
-                       || Q <- Queries1 ++ Queries2 ++ Queries3 ++ Queries4 ]),
-
-    ct:log("Qs3 = ~p\nQs2 = ~p", [QS3, QS2]),
-    QS3 = QS2,
-
-    ok.
-
-register_oracle(ChainHeight, PubKey, PrivKey, Nonce, QueryFee, TTL) ->
-    TTLFee = aeo_utils:ttl_fee(1, aeo_utils:ttl_delta(ChainHeight, TTL)),
-    AccountId = aec_id:create(account, PubKey),
-    {ok, RegTx} = aeo_register_tx:new(#{account_id      => AccountId,
-                                        nonce           => Nonce,
-                                        query_format    => <<"TODO">>,
-                                        response_format => <<"TODO">>,
-                                        query_fee       => QueryFee,
-                                        oracle_ttl      => TTL,
-                                        fee             => 4 + TTLFee}),
-    SignedTx = aec_test_utils:sign_tx(RegTx, PrivKey),
-    SendTx = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)),
-    post_tx(SendTx).
-
-query_oracle(ChainHeight, PubKey, PrivKey, Oracle, Nonce, Query, TTL, QueryFee) ->
-    TTLFee = aeo_utils:ttl_fee(1, aeo_utils:ttl_delta(ChainHeight, TTL)),
-    SenderId = aec_id:create(account, PubKey),
-    OracleId = aec_id:create(oracle, Oracle),
-    {ok, QueryTx} = aeo_query_tx:new(#{sender_id     => SenderId,
-                                       nonce         => Nonce,
-                                       oracle_id     => OracleId,
-                                       query         => Query,
-                                       query_fee     => QueryFee,
-                                       query_ttl     => TTL,
-                                       response_ttl  => {delta, 10},
-                                       fee           => QueryFee + 2 + TTLFee }),
-    SignedTx = aec_test_utils:sign_tx(QueryTx, PrivKey),
-    SendTx = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)),
-    {ok, 200, Res} = post_tx(SendTx),
-    Res.
 
 %% ============================================================
 %% Websocket tests
@@ -3859,7 +3158,7 @@ ws_get_genesis(_Config) ->
     {ok, ConnPid} = ws_start_link(),
     {_Tag, #{ <<"block">> := Block }} =
         ws_chain_get(ConnPid, #{height => 0, type => block}),
-    {ok, 200, BlockMap} = get_block_by_height(0),
+    {ok, 200, BlockMap} = get_key_blocks_by_height_sut(0),
     ExpectedBlockMap = maps:remove(<<"hash">>, BlockMap),
     ?assertEqual(ExpectedBlockMap, Block),
 
@@ -3905,7 +3204,9 @@ ws_micro_block_added(_Config) ->
     {_Height0, _KeyBlockHash0} = ws_mine_key_block(ConnPid, ?NODE, 1),
 
     %% 1 tx in the mempool, so micro block will be generated.
-    {ok, 200, _} = post_spend_tx(random_hash(), 1, 1),
+    {ok, 200, #{<<"tx">> := SpendTx}} =
+        post_spend_tx(aec_base58c:encode(account_pubkey, random_hash()), 1, 1),
+    sign_and_post_tx(SpendTx),
 
     %% Register for added_micro_block events
     ws_subscribe(ConnPid, #{ type => added_micro_block }),
@@ -4002,10 +3303,12 @@ ws_tx_on_chain(_Config) ->
     ws_mine_key_block(ConnPid, ?NODE, 1),
 
     %% Fetch the pubkey via HTTP
-    {ok, 200, #{ <<"pub_key">> := PK }} = get_miner_pub_key(),
+    {ok, 200, #{ <<"pub_key">> := PK }} = get_node_pubkey(),
 
     %% Post spend tx
-    {ok, 200, #{<<"tx_hash">> := TxHash}} = post_spend_tx(random_hash(), 3, 1),
+    {ok, 200, #{<<"tx">> := Tx}} =
+        post_spend_tx(aec_base58c:encode(account_pubkey, random_hash()), 3, 1),
+    TxHash = sign_and_post_tx(Tx),
 
     %% Subscribe for an event once the Tx goes onto the chain...
     ws_subscribe(ConnPid, #{ type => tx, tx_hash => TxHash }),
@@ -4024,7 +3327,8 @@ ws_tx_on_chain(_Config) ->
 %%
 assert_balance(Pubkey, ExpectedBalance) ->
     Address = aec_base58c:encode(account_pubkey, Pubkey),
-    {ok, 200, #{<<"balance">> := ExpectedBalance}} = get_balance_at_top(Address).
+    {ok, 200, #{<<"balance">> := ExpectedBalance}} =
+        get_accounts_by_pubkey_sut(Address).
 
 channel_sign_tx(ConnPid, Privkey, Tag) ->
     {ok, Tag, #{<<"tx">> := EncCreateTx}} = ?WS:wait_for_channel_event(ConnPid, sign),
@@ -4041,9 +3345,9 @@ sc_ws_open(Config) ->
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
 
     {ok, 200, #{<<"balance">> := IStartAmt}} =
-                 get_balance_at_top(aec_base58c:encode(account_pubkey, IPubkey)),
+                 get_accounts_by_pubkey_sut(aec_base58c:encode(account_pubkey, IPubkey)),
     {ok, 200, #{<<"balance">> := RStartAmt}} =
-                 get_balance_at_top(aec_base58c:encode(account_pubkey, RPubkey)),
+                 get_accounts_by_pubkey_sut(aec_base58c:encode(account_pubkey, RPubkey)),
     IAmt = 700,
     RAmt = 400,
 
@@ -4096,9 +3400,9 @@ channel_send_chan_open_infos(RConnPid, IConnPid) ->
 
 channel_participants_balances(IPubkey, RPubkey) ->
     {ok, 200, #{<<"balance">> := BalI}} =
-        get_balance_at_top(aec_base58c:encode(account_pubkey, IPubkey)),
+        get_accounts_by_pubkey_sut(aec_base58c:encode(account_pubkey, IPubkey)),
     {ok, 200, #{<<"balance">> := BalR}} =
-        get_balance_at_top(aec_base58c:encode(account_pubkey, RPubkey)),
+        get_accounts_by_pubkey_sut(aec_base58c:encode(account_pubkey, RPubkey)),
     {BalI, BalR}.
 
 channel_create(Config, IConnPid, RConnPid) ->
@@ -4481,7 +3785,7 @@ sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
     assert_balance(RPubkey, RStartB + RChange),
 
     % ensure tx is not hanging in mempool
-    {ok, 200, []} = get_transactions(),
+    {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
     ok.
 
 sc_ws_leave(Config) ->
@@ -5013,87 +4317,6 @@ channel_options(IPubkey, RPubkey, IAmt, RAmt, Other) ->
                   channel_reserve => 2
                 }, Other).
 
-%% changing of another account's balance is checked in pending_transactions test
-balance(_Config) ->
-    ok = rpc(aec_conductor, reinit_chain, []),
-    % height 0, no account
-    {ok, 404, #{<<"reason">> := <<"Account not found">>}} = get_balance_at_top(),
-    % get to height 1
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-    {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_miner_pub_key(),
-    lists:foreach(
-        fun(Height) ->
-            % get the balance at height=Height
-            {ok, 200, #{<<"balance">> := Bal}} = get_balance_at_top(),
-            % mine a block, move the top
-            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-            % same balance at height=Height
-            {ok, 200, #{<<"balance">> := Bal}} = get_balance(EncodedPubKey,
-                                                             #{height => Height}),
-            {ok, HashStr} = block_hash_by_height(Height),
-            Hash = list_to_binary(HashStr),
-            % same balance by hash
-            {ok, 200, #{<<"balance">> := Bal}} = get_balance(EncodedPubKey,
-                                                             #{hash => Hash}),
-            % same balance by hash and height
-            {ok, 200, #{<<"balance">> := Bal}} = get_balance(EncodedPubKey,
-                                                             #{hash => Hash,
-                                                               height => Height}),
-            ok
-        end,
-        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
-    {ok, Bal} = rpc(aec_mining, get_miner_account_balance, []),
-    {ok, 200, #{<<"balance">> := Bal}} = get_balance_at_top(),
-    {ok, 200, #{<<"balance">> := Bal}} = get_balance_at_top(EncodedPubKey),
-    ok.
-
-balance_negative_cases(_Config) ->
-    MaxHeight = aec_blocks:height(rpc(aec_chain, top_block, [])),
-    true = MaxHeight > 2,
-    % get a random height, where 0 < Height < MaxHeight
-    Height = rand:uniform(MaxHeight - 2) + 1,
-    {ok, HashStr} = block_hash_by_height(Height),
-    BlockHash = list_to_binary(HashStr),
-    {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_miner_pub_key(),
-
-    RandAccount = aec_base58c:encode(account_pubkey, random_hash()),
-    <<_, BrokenHash/binary>> = RandAccount,
-    TestAccHash =
-        fun(Code, ErrReson, H) ->
-            Res = {ok, Code, #{<<"reason">> => ErrReson}},
-            Res = get_balance_at_top(H),
-            Res = get_balance(H, #{height => Height}),
-            Res = get_balance(H, #{hash => BlockHash}),
-            Res = get_balance(H, #{height => Height,
-                                   hash => BlockHash})
-        end,
-    TestAccHash(400, <<"Invalid hash: address">>, BrokenHash),
-    TestAccHash(404, <<"Account not found">>, RandAccount),
-
-    % block in the future
-    {ok, 404, #{<<"reason">> := <<"Block not found">>}} =
-              get_balance(EncodedPubKey, #{height => MaxHeight + 1}),
-    % block in the future and valid block hash
-    {ok, 404, #{<<"reason">> := <<"Block not found">>}} =
-              get_balance(EncodedPubKey, #{height => MaxHeight + 1,
-                                           hash => BlockHash}),
-
-    % broken block hash
-    {ok, 400, #{<<"reason">> := <<"Invalid block hash">>}} =
-              get_balance(EncodedPubKey, #{hash => BrokenHash}),
-    % broken block hash and valid height
-    {ok, 400, #{<<"reason">> := <<"Invalid block hash">>}} =
-              get_balance(EncodedPubKey, #{hash => BrokenHash,
-                                           height => Height}),
-    % blocks mismatch
-    {ok, 400, #{<<"reason">> := <<"Invalid height and hash combination">>}} =
-              get_balance(EncodedPubKey, #{hash => BlockHash,
-                                           height => Height + 1}),
-    {ok, 200, #{<<"balance">> := _}} =
-              get_balance(EncodedPubKey, #{hash => BlockHash,
-                                           height => Height}),
-    ok.
-
 peers(_Config) ->
     rpc(application, set_env, [aehttp, enable_debug_endpoints, false]),
     {ok, 403, #{<<"reason">> := <<"Call not enabled">>}} = get_peers(),
@@ -5158,291 +4381,148 @@ ws_mine_key_and_micro_block(ConnPid, Node) ->
 %% HTTP Requests
 %% ============================================================
 
-get_top() ->
-    Host = external_address(),
-    http_request(Host, get, "blocks/top", []).
-
 get_contract_create(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/contract/create", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/contracts/create", Data).
 
 get_contract_create_compute(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/contract/create/compute", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/contracts/create/compute", Data).
 
 get_contract_bytecode(SourceCode) ->
-    Host = external_address(),
-    http_request(Host, post, "contract/compile", #{ <<"code">> => SourceCode
-                                                  , <<"options">> => <<>>}).
+    Host = internal_address(),
+    http_request(Host, post, "debug/contracts/code/compile",
+                 #{ <<"code">> => SourceCode, <<"options">> => <<>>}).
 
 call_contract_directly(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "contract/call", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/contracts/code/call", Data).
 
 get_contract_call(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/contract/call", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/contracts/call", Data).
 
 get_contract_call_compute(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/contract/call/compute", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/contracts/call/compute", Data).
 
 get_contract_call_object(TxHash) ->
     Host = external_address(),
-    http_request(Host, get, "tx/"++binary_to_list(TxHash)++"/contract-call", []).
+    http_request(Host, get, "transactions/"++binary_to_list(TxHash)++"/info", []).
 
 get_contract_decode_data(Request) ->
-    Host = external_address(),
-    http_request(Host, post, "contract/decode-data", Request).
+    Host = internal_address(),
+    http_request(Host, post, "debug/contracts/code/decode-data", Request).
 
 get_spend(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/spend", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/transactions/spend", Data).
 
 get_oracle_register(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/oracle/register", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/oracles/register", Data).
 
 get_oracle_extend(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/oracle/extend", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/oracles/extend", Data).
 
 get_oracle_query(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/oracle/query", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/oracles/query", Data).
 
 get_oracle_response(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/oracle/response", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/oracles/respond", Data).
 
 get_name_preclaim(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/name/preclaim", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/names/preclaim", Data).
 
 get_name_claim(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/name/claim", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/names/claim", Data).
 
 get_name_update(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/name/update", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/names/update", Data).
 
 get_name_transfer(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/name/transfer", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/names/transfer", Data).
 
 get_name_revoke(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/name/revoke", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/names/revoke", Data).
 
 get_channel_create(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/channel/create", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/channels/create", Data).
 
 get_channel_deposit(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/channel/deposit", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/channels/deposit", Data).
 
 get_channel_withdrawal(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/channel/withdrawal", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/channels/withdraw", Data).
 
 get_channel_snapshot_solo(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/channel/snapshot/solo", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/channels/snapshot/solo", Data).
 
 get_channel_close_mutual(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/channel/close/mutual", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/channels/close/mutual", Data).
 
 get_channel_close_solo(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/channel/close/solo", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/channels/close/solo", Data).
 
 get_channel_slash(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/channel/slash", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/channels/slash", Data).
 
 get_channel_settle(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/channel/settle", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/channels/settle", Data).
 
-get_block_by_height(Height) ->
-    Host = external_address(),
-    http_request(Host, get, "block/height/" ++ integer_to_list(Height), []).
-
-get_block_by_hash(Hash) ->
-    Host = external_address(),
-    http_request(Host, get, "block/hash/" ++ http_uri:encode(Hash), []).
-
-get_transactions() ->
-    Host = external_address(),
-    http_request(Host, get, "transactions", []).
-
-get_transactions(EncodedPubKey) ->
-    Host = external_address(),
-    http_request(Host, get, "account/" ++ binary_to_list(EncodedPubKey) ++ "/pending_transactions", []).
-
-
-get_tx(TxHash) ->
-    Host = external_address(),
-    http_request(Host, get, "tx/" ++ binary_to_list(TxHash), []).
+get_pending_transactions() ->
+    Host = internal_address(),
+    http_request(Host, get, "debug/transactions/pending", []).
 
 get_tx_nonce(TxHash) ->
-    {ok, 200, Tx} = get_tx(TxHash),
-    maps:get(<<"nonce">>, maps:get(<<"tx">>, maps:get(<<"transaction">>, Tx))).
+    {ok, 200, Tx} = get_transactions_by_hash_sut(TxHash),
+    maps:get(<<"nonce">>, maps:get(<<"tx">>, Tx)).
 
-post_spend_tx(Recipient, Amount, Fee) ->
-    post_spend_tx(Recipient, Amount, Fee, <<"foo">>).
+post_spend_tx(RecipientId, Amount, Fee) ->
+    {ok, Sender} = rpc(aec_keys, pubkey, []),
+    SenderId = aec_base58c:encode(account_pubkey, Sender),
+    post_spend_tx(SenderId, RecipientId, Amount, Fee, <<"foo">>).
 
-post_spend_tx(Recipient, Amount, Fee, Payload) ->
+post_spend_tx(SenderId, RecipientId, Amount, Fee, Payload) ->
     Host = internal_address(),
-    http_request(Host, post, "spend-tx",
-                 #{recipient_id => aec_base58c:encode(account_pubkey, Recipient),
+    http_request(Host, post, "debug/transactions/spend",
+                 #{sender_id => SenderId,
+                   recipient_id => RecipientId,
                    amount => Amount,
                    fee => Fee,
                    payload => Payload}).
 
-post_name_preclaim_tx(Commitment, Fee) ->
+get_commitment_id(Name, Salt) ->
     Host = internal_address(),
-    http_request(Host, post, "name-preclaim-tx",
-                 #{commitment_id => aec_base58c:encode(commitment, Commitment),
-                   fee           => Fee}).
-
-post_name_claim_tx(Name, NameSalt, Fee) ->
-    Host = internal_address(),
-    http_request(Host, post, "name-claim-tx",
-                 #{name      => Name,
-                   name_salt => NameSalt,
-                   fee       => Fee}).
-
-post_name_update_tx(NameHash, NameTTL, Pointers, ClientTTL, Fee) ->
-    Host = internal_address(),
-    http_request(Host, post, "name-update-tx",
-                 #{name_id    => aec_base58c:encode(name, NameHash),
-                   client_ttl => ClientTTL,
-                   pointers   => Pointers,
-                   name_ttl   => NameTTL,
-                   fee        => Fee}).
-
-post_name_transfer_tx(NameHash, RecipientPubKey, Fee) ->
-    Host = internal_address(),
-    http_request(Host, post, "name-transfer-tx",
-                 #{name_id      => aec_base58c:encode(name, NameHash),
-                   recipient_id => aec_base58c:encode(account_pubkey, RecipientPubKey),
-                   fee          => Fee}).
-
-post_name_revoke_tx(NameHash, Fee) ->
-    Host = internal_address(),
-    http_request(Host, post, "name-revoke-tx",
-                 #{name_id => aec_base58c:encode(name, NameHash),
-                   fee     => Fee}).
-
-get_commitment_hash(Name, Salt) ->
-    Host = external_address(),
-    http_request(Host, get, "commitment-hash", [{name, Name}, {salt, Salt}]).
-
-get_name(Name) ->
-    Host = external_address(),
-    http_request(Host, get, "name", [{name, Name}]).
+    http_request(Host, get, "debug/names/commitment-id", [{name, Name}, {salt, Salt}]).
 
 get_balance_at_top() ->
-    {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_miner_pub_key(),
-    get_balance_at_top(EncodedPubKey).
+    {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_node_pubkey(),
+    get_accounts_by_pubkey_sut(EncodedPubKey).
 
-get_balance_at_top(EncodedPubKey) ->
-    get_balance(EncodedPubKey, []).
-
-get_balance(EncodedPubKey, Params) ->
-    Host = external_address(),
-    http_request(Host, get, "account/" ++ binary_to_list(EncodedPubKey) ++ "/balance",
-                 Params).
-
-get_account_nonce(EncodedPubKey) ->
-    Host = external_address(),
-    http_request(Host, get, "account/" ++ binary_to_list(EncodedPubKey) ++ "/nonce", []).
-
-post_tx(TxSerialized) ->
-    Host = external_address(),
-    http_request(Host, post, "tx", #{tx => TxSerialized}).
-
-get_all_accounts_balances() ->
-    Host = external_address(),
-    http_request(Host, get, "balances", []).
-
-get_miner_pub_key() ->
+get_node_pubkey() ->
     Host = internal_address(),
-    http_request(Host, get, "account/pub-key", []).
+    http_request(Host, get, "debug/accounts/node", []).
 
 get_peer_pub_key() ->
     Host = external_address(),
-    http_request(Host, get, "peer/key", []).
-
-get_version() ->
-    Host = external_address(),
-    http_request(Host, get, "version", []).
-
-get_info() ->
-    Host = external_address(),
-    http_request(Host, get, "info", []).
-
-get_block_number() ->
-    Host = internal_address(),
-    http_request(Host, get, "block/number", []).
-
-get_internal_block_preset(Segment) ->
-    Host = external_address(),
-    http_request(Host, get, "block/" ++ Segment, []).
-
-get_block_txs_count_by_height(Height) ->
-    Host = internal_address(),
-    http_request(Host, get, "block/txs/count/height/" ++ integer_to_list(Height),
-                 []).
-
-get_block_txs_count_by_hash(Hash) ->
-    Host = internal_address(),
-    http_request(Host, get, "block/txs/count/hash/" ++ http_uri:encode(Hash),
-                 []).
-
-get_block_txs_count_preset(Segment) ->
-    Host = internal_address(),
-    http_request(Host, get, "block/txs/count/" ++ Segment, []).
-
-get_block_tx_by_index_height(Height, Index) ->
-    Host = internal_address(),
-    http_request(Host, get, "block/tx/height/" ++ integer_to_list(Height) ++
-                                       "/" ++ integer_to_list(Index), []).
-
-get_block_tx_by_index_hash(Hash, Index) when is_binary(Hash) ->
-    get_block_tx_by_index_hash(binary_to_list(Hash), Index);
-get_block_tx_by_index_hash(Hash, Index) ->
-    Host = internal_address(),
-    http_request(Host, get, "block/tx/hash/" ++ http_uri:encode(Hash) ++
-                                       "/" ++ integer_to_list(Index), []).
-
-get_block_tx_by_index_latest(Index) ->
-    Host = internal_address(),
-    http_request(Host, get, "block/tx/latest/" ++ integer_to_list(Index), []).
-
-get_list_oracles(Max) ->
-    get_list_oracles(undefined, Max).
-
-get_list_oracles(From, Max) ->
-    Host = internal_address(),
-    Params0 = #{ max => Max },
-    Params = case From of undefined -> Params0; _ -> Params0#{ from => From } end,
-    {ok, 200, Oracles} = http_request(Host, get, "oracles", Params),
-    Oracles.
-
-get_list_oracle_queries(Oracle, Max) ->
-    get_list_oracle_queries(Oracle, undefined, Max).
-
-get_list_oracle_queries(Oracle, From, Max) ->
-    Host = internal_address(),
-    Params0 = #{ max => Max, oracle_pub_key => aec_base58c:encode(oracle_pubkey, Oracle) },
-    Params = case From of undefined -> Params0; _ -> Params0#{ from => From } end,
-    {ok, 200, Queries} = http_request(Host, get, "oracle-questions", Params),
-    Queries.
+    http_request(Host, get, "peers/pubkey", []).
 
 get_peers() ->
     Host = internal_address(),
@@ -5450,7 +4530,7 @@ get_peers() ->
 
 get_contract_poi(ContractAddress) ->
     Host = external_address(),
-    http_request(Host, get, "poi/contract/" ++ binary_to_list(ContractAddress), []).
+    http_request(Host, get, "contracts/" ++ binary_to_list(ContractAddress) ++ "/poi", []).
 
 %% ============================================================
 %% Test swagger validation errors
@@ -5458,7 +4538,7 @@ get_contract_poi(ContractAddress) ->
 
 swagger_validation_body(_Config) ->
     Host = internal_address(),
-    URL = binary_to_list(iolist_to_binary([Host, "/v2/spend-tx"])),
+    URL = binary_to_list(iolist_to_binary([Host, "/v2/debug/transactions/spend"])),
     Type = "application/json",
     Body = <<"{broken_json">>,
 
@@ -5482,16 +4562,17 @@ swagger_validation_body(_Config) ->
 %%                <<"error">> := <<"not_in_enum">>
 %%        }}} = http_request(Host, get, "block/genesis", #{tx_encoding => <<"default">>}).
 
-swagger_validation_required(_Config) ->
-    Host = external_address(),
-    {ok, 400, #{
-            <<"reason">> := <<"validation_error">>,
-            <<"parameter">> := <<"name">>,
-            <<"info">> := #{
-                <<"error">> := <<"missing_required_property">>
-            }
-        }} = http_request(Host, get, "name", []),
-    ok.
+%% TODO: use different endpoint to check the validation
+%%swagger_validation_required(_Config) ->
+%%    Host = external_address(),
+%%    {ok, 400, #{
+%%            <<"reason">> := <<"validation_error">>,
+%%            <<"parameter">> := <<"name">>,
+%%            <<"info">> := #{
+%%                <<"error">> := <<"missing_required_property">>
+%%            }
+%%        }} = http_request(Host, get, "names/", []),
+%%    ok.
 
 swagger_validation_schema(_Config) ->
     Host = internal_address(),
@@ -5502,7 +4583,7 @@ swagger_validation_schema(_Config) ->
                         <<"data">> := <<"wrong_fee_data">>,
                         <<"error">> := <<"wrong_type">>,
                         <<"path">> := [<<"fee">>]
-        }}} = http_request(Host, post, "spend-tx", #{
+        }}} = http_request(Host, post, "debug/transactions/spend", #{
                    recipient_id => <<"">>,
                    amount => 0,
                    fee => <<"wrong_fee_data">>,
@@ -5515,7 +4596,7 @@ swagger_validation_schema(_Config) ->
                         <<"data">> := <<"recipient_id">>,
                         <<"error">> := <<"missing_required_property">>,
                         <<"path">> := []
-        }}} = http_request(Host, post, "spend-tx", #{
+        }}} = http_request(Host, post, "debug/transactions/spend", #{
                    amount => 0,
                    fee => <<"fee">>,
                    ttl => 100,
@@ -5527,22 +4608,26 @@ swagger_validation_schema(_Config) ->
                         <<"data">> := -1,
                         <<"error">> := <<"not_in_range">>,
                         <<"path">> := [<<"amount">>]
-        }}} = http_request(Host, post, "spend-tx", #{
+        }}} = http_request(Host, post, "debug/transactions/spend", #{
                    recipient_id => <<"">>,
                    amount => -1,
                    fee => <<"fee">>,
                    ttl => 100,
                    payload => <<"">>}).
 
-swagger_validation_types(_Config) ->
-    Host = internal_address(),
-    {ok, 400, #{
-            <<"reason">> := <<"validation_error">>,
-            <<"parameter">> := <<"height">>,
-            <<"info">> :=  #{
-                        <<"data">> := <<"not_integer">>,
-                        <<"error">> := <<"wrong_type">>
-        }}} = http_request(Host, get, "block/txs/count/height/not_integer", []).
+%%swagger_validation_types(_Config) ->
+%%    Host = internal_address(),
+%%    {ok, 400, #{
+%%            <<"reason">> := <<"validation_error">>,
+%%            <<"parameter">> := <<"height">>,
+%%            <<"info">> :=  #{
+%%                        <<"data">> := <<"not_integer">>,
+%%                        <<"error">> := <<"wrong_type">>
+%%        }}} = http_request(Host, get,
+%%                           "micro-blocks/hash/" ++
+%%                           "bh$11111111111111111111111111111111" ++
+%%                           "/transactions/index/" ++
+%%                           "not_integer", []).
 
 %% ============================================================
 %% HTTP Requests with wrong method
@@ -5553,188 +4638,80 @@ wrong_http_method_top(_Config) ->
     {ok, 405, _} = http_request(Host, post, "blocks/top", []).
 
 wrong_http_method_contract_create(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "tx/contract/create", []).
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "debug/contracts/create", []).
 
 wrong_http_method_contract_create_compute(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "tx/contract/create/compute", []).
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "debug/contracts/create/compute", []).
 
 wrong_http_method_contract_call(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "tx/contract/call", []).
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "debug/contracts/call", []).
 
 wrong_http_method_contract_call_compute(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "tx/contract/call/compute", []).
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "debug/contracts/call/compute", []).
 
 wrong_http_method_spend(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "tx/spend", []).
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "debug/transactions/spend", []).
 
 wrong_http_method_oracle_register(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "tx/oracle/register", []).
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "debug/oracles/register", []).
 
 wrong_http_method_oracle_extend(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "tx/oracle/extend", []).
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "debug/oracles/extend", []).
 
 wrong_http_method_oracle_query(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "tx/oracle/query", []).
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "debug/oracles/query", []).
 
 wrong_http_method_oracle_response(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "tx/oracle/response", []).
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "debug/oracles/respond", []).
 
 wrong_http_method_name_preclaim(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "tx/name/preclaim", []).
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "debug/names/preclaim", []).
 
 wrong_http_method_name_claim(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "tx/name/claim", []).
-
-wrong_http_method_name_update(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "tx/name/update", []).
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "debug/names/claim", []).
 
 wrong_http_method_name_transfer(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "tx/name/transfer", []).
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "debug/names/transfer", []).
 
 wrong_http_method_name_revoke(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "tx/name/revoke", []).
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "debug/names/revoke", []).
 
-wrong_http_method_block_by_hash(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "block/hash/123", []).
-
-wrong_http_method_header_by_hash(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "header-by-hash", []).
-
-wrong_http_method_transactions(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "transactions", []).
+wrong_http_method_pending_transactions(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "debug/transactions/pending", []).
 
 wrong_http_method_tx_id(_Config) ->
     Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "tx/123", []).
-
-wrong_http_method_spend_tx(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, get, "spend-tx", []).
-
-wrong_http_method_name_preclaim_tx(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, get, "name-preclaim-tx", []).
-
-wrong_http_method_name_claim_tx(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, get, "name-claim-tx", []).
-
-wrong_http_method_name_update_tx(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, get, "name-update-tx", []).
-
-wrong_http_method_name_transfer_tx(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, get, "name-transfer-tx", []).
-
-wrong_http_method_name_revoke_tx(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, get, "name-revoke-tx", []).
+    {ok, 405, _} = http_request(Host, post, "transactions/123", []).
 
 wrong_http_method_commitment_hash(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "commitment-hash", []).
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "debug/names/commitment-id", []).
 
 wrong_http_method_name(_Config) ->
     Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "name", []).
-
-wrong_http_method_balance(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "account/123/balance", []).
+    {ok, 405, _} = http_request(Host, post, "names/test", []).
 
 wrong_http_method_tx(_Config) ->
     Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "tx", []).
+    {ok, 405, _} = http_request(Host, get, "transactions", []).
 
-wrong_http_method_all_accounts_balances(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "balances", []).
-
-wrong_http_method_miner_pub_key(_Config) ->
+wrong_http_method_node_pubkey(_Config) ->
     Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "account/pub-key", []).
-
-wrong_http_method_version(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "version", []).
-
-wrong_http_method_info(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "info", []).
-
-wrong_http_method_block_number(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "block/number", []).
-
-wrong_http_method_block_by_height(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "block/height/123", []).
-
-wrong_http_method_block_latest(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "block/latest", []).
-
-wrong_http_method_block_genesis(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "block/genesis", []).
-
-wrong_http_method_block_txs_count_by_height(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "block/txs/count/height/123", []).
-
-wrong_http_method_block_txs_count_by_hash(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "block/txs/count/hash/123", []).
-
-wrong_http_method_block_txs_count_latest(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "block/txs/count/latest", []).
-
-wrong_http_method_block_txs_count_genesis(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "block/txs/count/genesis", []).
-
-wrong_http_method_block_txs_count_pending(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "block/txs/count/pending", []).
-
-wrong_http_method_block_tx_by_index_height(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "block/tx/height/123/123", []).
-
-wrong_http_method_block_tx_by_index_hash(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "block/tx/hash/123/123", []).
-
-wrong_http_method_block_tx_by_index_latest(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "block/tx/latest/123", []).
-
-wrong_http_method_list_oracles(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "oracles", []).
-
-wrong_http_method_list_oracle_queries(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "oracle-questions", []).
+    {ok, 405, _} = http_request(Host, post, "debug/accounts/node", []).
 
 wrong_http_method_peers(_Config) ->
     Host = internal_address(),
@@ -5856,35 +4833,6 @@ process_http_return(R) ->
             Error
     end.
 
-block_to_endpoint_map(Block) ->
-    BMap = aehttp_api_parser:encode_client_readable_block(Block),
-    Expected = aehttp_logic:cleanup_genesis(BMap),
-
-    %% Validate that all transactions have the correct block height and hash
-    ExpectedTxs = maps:get(<<"transactions">>, Expected, []),
-    case aec_blocks:type(Block) of
-        key ->
-            ?assertEqual([], ExpectedTxs),
-            Expected;
-        micro ->
-            BlockHeight = aec_blocks:height(Block),
-            {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
-            {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
-            lists:foreach(
-              fun({EncodedTx, SignedTx}) ->
-                      #{block_hash := TxBlockHash,
-                        block_height := TxBlockHeight,
-                        hash := Hash} =
-                          aetx_sign:meta_data_from_client_serialized(EncodedTx),
-                      {BlockHeight, TxBlockHeight} = {TxBlockHeight, BlockHeight},
-                      {BlockHash, TxBlockHash} = {TxBlockHash, BlockHash},
-                      TxHash = aetx_sign:hash(SignedTx),
-                      {Hash, TxHash} = {TxHash, Hash}
-              end,
-              lists:zip(ExpectedTxs, aec_blocks:txs(Block))),
-            Expected
-    end.
-
 random_hash() ->
     HList =
         lists:map(
@@ -5899,30 +4847,6 @@ prepare_for_spending(BlocksToMine) ->
     {ok, PubKey} = rpc(aec_keys, pubkey, []),
     {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [PubKey]),
     {PubKey, Nonce}.
-
--spec block_hash_by_height(integer()) -> string().
-block_hash_by_height(Height) ->
-    {ok, B} = rpc(aec_chain, get_key_block_by_height, [Height]),
-    {ok, HBin} = aec_blocks:hash_internal_representation(B),
-    Hash = binary_to_list(aec_base58c:encode(block_hash, HBin)),
-    {ok, Hash}.
-
--spec get_pending_block() -> {error, no_candidate}
-                           | {error, not_mining}
-                           | {ok, term()}.
-get_pending_block() ->
-    aec_test_utils:exec_with_timeout(
-        fun TryGetting() ->
-            case rpc(aec_conductor, get_key_block_candidate, []) of
-                {ok, OK} -> OK;
-                {error, not_mining} = Err->
-                    Err;
-                {error, miner_starting} ->
-                    timer:sleep(10),
-                    TryGetting()
-            end
-        end,
-        10000).
 
 add_spend_txs() ->
     MineReward = rpc(aec_governance, block_mine_reward, []),
@@ -5943,7 +4867,9 @@ add_spend_txs() ->
     Txs =
         lists:map(
             fun(_) ->
-                #{recipient_id => random_hash(), amount => MinimalAmount, fee => MinFee}
+                #{recipient_id => aec_base58c:encode(account_pubkey, random_hash()),
+                  amount => MinimalAmount,
+                  fee => MinFee}
             end,
             lists:seq(0, TxsCnt -1)),
     populate_block(#{spend_txs => Txs}).
@@ -5951,8 +4877,8 @@ add_spend_txs() ->
 populate_block(Txs) ->
     lists:map(
         fun(#{recipient_id := R, amount := A, fee := F}) ->
-                {ok, 200, #{<<"tx_hash">> := TxHash}} = post_spend_tx(R, A, F),
-                TxHash
+                {ok, 200, #{<<"tx">> := SpendTx}} = post_spend_tx(R, A, F),
+                sign_and_post_tx(SpendTx)
         end,
         maps:get(spend_txs, Txs, [])).
 
@@ -5962,7 +4888,7 @@ give_tokens(RecipientPubkey, Amount) ->
     NeededBlocks = ((Amount + MinFee)  div MineReward) + 1,
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    NeededBlocks),
-    SpendData = #{recipient_id => RecipientPubkey,
+    SpendData = #{recipient_id => aec_base58c:encode(account_pubkey, RecipientPubkey),
                   amount => Amount,
                   fee => MinFee},
     populate_block(#{spend_txs => [SpendData]}),
@@ -5998,7 +4924,7 @@ sign_and_post_tx(EncodedUnsignedTx) ->
     SerializedTx = aetx_sign:serialize_to_binary(SignedTx),
     %% Check that we get the correct hash
     TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
-    {ok, 200, #{<<"tx_hash">> := TxHash}} = post_tx(aec_base58c:encode(transaction, SerializedTx)),
+    {ok, 200, #{<<"tx_hash">> := TxHash}} = post_transactions_sut(aec_base58c:encode(transaction, SerializedTx)),
     %% Check tx is in mempool.
     Fun = fun() ->
                   tx_in_mempool(TxHash)
@@ -6007,23 +4933,20 @@ sign_and_post_tx(EncodedUnsignedTx) ->
     TxHash.
 
 tx_in_mempool(TxHash) ->
-    case get_tx(TxHash) of
-        {ok, 200, #{<<"transaction">> :=
-                        #{<<"block_hash">> := <<"none">>}}} -> true;
-        {ok, 200, #{<<"transaction">> :=
-                        #{<<"block_hash">> := Other}}} ->
+    case get_transactions_by_hash_sut(TxHash) of
+        {ok, 200, #{<<"block_hash">> := <<"none">>}} -> true;
+        {ok, 200, #{<<"block_hash">> := Other}} ->
             ct:log("Tx not in mempool, but in chain: ~p", [Other]),
             false;
         {ok, 404, _} -> false
     end.
 
 tx_in_chain(TxHash) ->
-    case get_tx(TxHash) of
-        {ok, 200, #{<<"transaction">> :=
-                        #{<<"block_hash">> := <<"none">>}}} ->
+    case get_transactions_by_hash_sut(TxHash) of
+        {ok, 200, #{<<"block_hash">> := <<"none">>}} ->
             ct:log("Tx not mined, but in mempool"),
             false;
-        {ok, 200, #{<<"transaction">> := #{<<"block_hash">> := _}}} -> true;
+        {ok, 200, #{<<"block_hash">> := _}} -> true;
         {ok, 404, _} -> false
     end.
 

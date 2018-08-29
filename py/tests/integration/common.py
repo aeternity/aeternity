@@ -11,7 +11,8 @@ from swagger_client.rest import ApiException
 from swagger_client.api.external_api import ExternalApi
 from swagger_client.api.internal_api import InternalApi
 from swagger_client.api_client import ApiClient
-from swagger_client.models.balance import Balance
+from swagger_client.models.account import Account
+from swagger_client.models.tx import Tx
 from swagger_client.models.spend_tx import SpendTx
 from swagger_client.configuration import Configuration
 
@@ -43,13 +44,13 @@ def internal_api(name):
 def node_online(ext_api, int_api):
     def is_ext_online():
         try:
-            top = ext_api.get_top_block()
+            top = ext_api.get_current_key_block()
             return top.height > -1
         except Exception as e:
             return False
     def is_int_online():
         try:
-            key = int_api.get_pub_key()
+            key = int_api.get_node_pubkey()
             return key.pub_key is not None
         except Exception as e:
             return False
@@ -66,21 +67,21 @@ def setup_node(node):
 
     return (root_dir, node, api)
 
-def setup_node_with_tokens(node, blocks_to_mine):
+def setup_node_with_tokens(node, beneficiary, blocks_to_mine):
     # prepare a dir to hold the configs and the keys
     root_dir = tempfile.mkdtemp()
 
     key_dir = _copy_sign_keys(root_dir, node)
 
     # setup the dir with mining node
-    user_config = make_mining_user_config(root_dir, key_dir, "epoch.yaml")
+    user_config = make_mining_user_config(root_dir, key_dir, beneficiary, "epoch.yaml")
     start_node(node, user_config)
     api = external_api(node)
 
     # populate the chain so node had mined some blocks and has tokens
     # to spend
     wait_until_height(api, blocks_to_mine)
-    top = api.get_top_block()
+    top = api.get_current_key_block()
     assert_equals(top.height >= blocks_to_mine, True)
     # Now the node has at least blocks_to_mine blocks mined
 
@@ -122,7 +123,7 @@ mining:
 """
     return install_user_config(root_dir, file_name, conf)
 
-def make_mining_user_config(root_dir, key_dir, file_name):
+def make_mining_user_config(root_dir, key_dir, beneficiary, file_name):
     conf = """\
 ---
 chain:
@@ -135,14 +136,14 @@ mining:
     autostart: true
     expected_mine_rate: 100
     # Beneficiary matches pubkey from sign_keys/dev1/sign_key.pub
-    beneficiary: "ak$28qVPdhuiaKZTtSgqovgLCvHDZoLxv8PpdVy1cfcAo71Uw5Nva"
+    beneficiary: "{}"
     beneficiary_reward_delay: 0
     cuckoo:
         miner:
             executable: mean16s-generic
             extra_args: "-t 5"
             node_bits: 16
-""".format(key_dir)
+""".format(key_dir, beneficiary['enc_pubk'])
     return install_user_config(root_dir, file_name, conf)
 
 def start_node(name, config_filename):
@@ -187,7 +188,7 @@ def tool_settings(test_name):
     return config['tools'][test_name]
 
 def genesis_hash(api):
-    top = api.get_top_block()
+    top = api.get_current_key_block()
     if top.height == 0:
         return top.hash
     block = api.get_block_by_hash(top.hash)
@@ -196,41 +197,41 @@ def genesis_hash(api):
     return block.prev_hash
 
 def wait_until_height(api, height):
-    wait(lambda: api.get_top_block().height >= height, timeout_seconds=120, sleep_seconds=0.25)
+    wait(lambda: api.get_current_key_block().height >= height, timeout_seconds=120, sleep_seconds=0.25)
 
 def get_account_balance(api, int_api, pub_key=None):
-    return _balance_from_get_account_balance(
-        lambda: api.get_account_balance(_node_pub_key(int_api, pub_key)))
+    return _balance_from_get_account(
+        lambda: api.get_account_by_pubkey(_node_pub_key(int_api, pub_key)))
 
-def get_account_balance_at_height(api, int_api, height, pub_key=None):
-    return _balance_from_get_account_balance(
-        lambda: api.get_account_balance(_node_pub_key(int_api, pub_key),
-                                        height=height))
-
-def send_tokens_to_unchanging_user(address, tokens, fee, external_api, internal_api):
+def send_tokens_to_unchanging_user(beneficiary, address, tokens, fee, external_api, internal_api):
+    import keys
     def get_balance(k):
         return get_account_balance(external_api, internal_api, k).balance
     bal0 = get_balance(address)
     spend_tx_obj = SpendTx(
+        sender_id=beneficiary['enc_pubk'],
         recipient_id=address,
         amount=tokens,
         fee=fee,
         ttl=100,
         payload="sending tokens")
-    internal_api.post_spend_tx(spend_tx_obj)
+    spend_tx = internal_api.post_spend(spend_tx_obj).tx
+    unsigned_tx = base58_decode(spend_tx)
+    signed_tx = keys.sign_encode_tx(unsigned_tx, beneficiary['privk'])
+    external_api.post_transaction(Tx(tx=signed_tx))
     wait(lambda: get_balance(address) == (bal0 + tokens),
-         timeout_seconds=120, sleep_seconds=0.25)
+         timeout_seconds=20, sleep_seconds=0.25)
 
-def _node_pub_key(int_api, k):
-    return k if k is not None else int_api.get_pub_key().pub_key
+def _node_pub_key(int_api, k=None):
+    return k if k is not None else int_api.get_node_pubkey().pub_key
 
-def _balance_from_get_account_balance(get_account_balance_fun):
-    balance = Balance(balance=0)
+def _balance_from_get_account(get_account_fun):
+    account = Account(balance=0)
     try:
-        balance = get_account_balance_fun()
+        account = get_account_fun()
     except ApiException as e:
         assert_equals(e.status, 404) # no account yet
-    return balance
+    return account
 
 def base58_decode(encoded):
     if encoded[2] != '$':
@@ -282,5 +283,13 @@ def encode_name(name):
 def encode_tx_hash(txhash):
     str = base58.b58encode_check(txhash)
     return "th$" + str
+
+def setup_beneficiary():
+    import keys
+    ben_priv = keys.new_private()
+    ben_pub = keys.public_key(ben_priv)
+    beneficiary = {'privk': ben_priv, 'pubk': ben_pub,
+           'enc_pubk': keys.address(ben_pub)}
+    return beneficiary
 
 logging.getLogger("urllib3").setLevel(logging.ERROR)
