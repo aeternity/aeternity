@@ -221,6 +221,8 @@ run_contract(#contract_call_tx{ nonce  = _Nonce
     ContractsTree  = aec_trees:contracts(Trees),
     Contract       = aect_state_tree:get_contract(ContractPubkey, ContractsTree),
     Code           = aect_contracts:code(Contract),
+    {ok, KeyBlock} = aec_chain:get_key_block_by_height(Height),
+    Beneficiary = aec_blocks:beneficiary(KeyBlock),
     CallDef = #{ caller     => CallerPubkey
                , contract   => ContractPubkey
                , gas        => Gas
@@ -232,6 +234,7 @@ run_contract(#contract_call_tx{ nonce  = _Nonce
                , call       => Call
                , height     => Height
                , trees      => Trees
+               , beneficiary => Beneficiary
                },
     aect_dispatch:run(VmVersion, CallDef).
 

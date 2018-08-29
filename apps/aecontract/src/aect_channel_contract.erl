@@ -30,17 +30,21 @@ run_new(ContractPubKey, Call, CallData, Round, Trees0) ->
     CallStack = [], %% TODO: should we have a call stack for create_tx also
                     %% when creating a contract in a contract.
     VmVersion = aect_contracts:vm_version(Contract),
-    CallDef = #{ caller     => OwnerPubKey
-               , contract   => ContractPubKey
-               , gas        => 10000000
-               , gas_price  => 1
-               , call_data  => CallData
-               , amount     => 0
-               , call_stack => CallStack
-               , code       => Code
-               , call       => Call
-               , height     => Round
-               , trees      => Trees0
+    CallDef = #{ caller      => OwnerPubKey
+               , contract    => ContractPubKey
+               , gas         => 10000000
+               , gas_price   => 1
+               , call_data   => CallData
+               , amount      => 0
+               , call_stack  => CallStack
+               , code        => Code
+               , call        => Call
+               , height      => Round
+               , trees       => Trees0
+                 %% We do not want the execution off chain and
+                 %% on chain to be different so the coinbase
+                 %% instruction will allways return 0.
+               , beneficiary => 0
                },
     {CallRes, Trees} = aect_dispatch:run(VmVersion, CallDef),
     case aect_call:return_type(CallRes) of
@@ -92,6 +96,10 @@ run(ContractPubKey, VmVersion, Call, CallData, CallStack, Round, Trees0,
                , call       => Call
                , height     => Round
                , trees      => Trees0
+                 %% We do not want the execution off chain and
+                 %% on chain to be different so the coinbase
+                 %% instruction will allways return 0.
+               , beneficiary => 0
                },
     {CallRes, Trees} = aect_dispatch:run(VmVersion, CallDef),
     aect_utils:insert_call_in_trees(CallRes, Trees).

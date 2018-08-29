@@ -8,8 +8,6 @@
 %% common_test exports
 -export([ all/0
         , groups/0
-        , init_per_suite/1
-        , end_per_suite/1
         ]).
 
 %% test case exports
@@ -72,31 +70,12 @@
 -include_lib("apps/aecontract/src/aecontract.hrl").
 
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
+-define(BENEFICIARY_PUBKEY, <<12345:?BENEFICIARY_PUB_BYTES/unit:8>>).
 
 
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
-init_per_suite(Cfg) ->
-    OldBeneficiary = application:get_env(aecore, beneficiary),
-    ok = setup_minimal(),
-    [ {old_beneficiary, OldBeneficiary}
-      | Cfg].
-
-end_per_suite(Cfg) ->
-    case proplists:get_value(old_beneficiary, Cfg) of
-        undefined ->
-            ok = application:unset_env(aecore, beneficiary);
-        {ok, Old} ->
-            application:set_env(aecore, beneficiary, Old)
-    end,
-    Cfg.
-
-setup_minimal() ->
-    ok = application:set_env(aecore, beneficiary,
-                             aec_base58c:encode(account_pubkey, ?MINER_PUBKEY)),
-    ok.
-
 
 all() ->
     [{group, all_tests}
@@ -183,6 +162,7 @@ groups() ->
 %%%===================================================================
 
 create_contract_negative(_Cfg) ->
+    mock(),
     {PubKey, S1} = aect_test_utils:setup_new_account(aect_test_utils:new_state()),
     Trees        = aect_test_utils:trees(S1),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
@@ -207,9 +187,11 @@ create_contract_negative(_Cfg) ->
     {error, S1} = sign_and_apply_transaction(RTx3, PrivKey, S1),
     {error, account_nonce_too_high} = aetx:check(RTx3, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
+    unmock(),
     ok.
 
 create_contract_init_error(_Cfg) ->
+    mock(),
     S  = aect_test_utils:new_state(),
     S0 = aect_test_utils:setup_miner_account(?MINER_PUBKEY, S),
     {PubKey, S1} = aect_test_utils:setup_new_account(S0),
@@ -248,13 +230,18 @@ create_contract_init_error(_Cfg) ->
                  - aect_create_tx:fee(aetx:tx(Tx))
                  - aect_create_tx:gas_price(aetx:tx(Tx)) * aect_call:gas_used(InitCall),
                  aec_accounts:balance(aect_test_utils:get_account(PubKey, S2))),
+    unmock(),
     ok.
 
 create_contract(_Cfg) ->
-    create_contract_(1).
+    mock(),
+    create_contract_(1),
+    unmock().
 
 create_contract_with_gas_price_zero(_Cfg) ->
-    create_contract_(0).
+    mock(),
+    create_contract_(0),
+    unmock().
 
 create_contract_(ContractCreateTxGasPrice) ->
     S  = aect_test_utils:new_state(),
@@ -347,6 +334,7 @@ sign_and_apply_transaction_strict(Tx, PrivKey, S1, Height) ->
 %%%===================================================================
 
 call_contract_negative_insufficient_funds(_Cfg) ->
+    mock(),
     state(aect_test_utils:new_state()),
     Acc1 = call(fun new_account/2, [1000000]),
     IdC = call(fun create_contract/4, [Acc1, identity, {}]),
@@ -364,6 +352,7 @@ call_contract_negative_insufficient_funds(_Cfg) ->
                                        fee       => Fee}, S),
     {error, _} = sign_and_apply_transaction(CallTx, aect_test_utils:priv_key(Acc1, S), S),
     {error, insufficient_funds} = aetx:check(CallTx, aect_test_utils:trees(S), _CurrHeight = 1, ?PROTOCOL_VERSION),
+    unmock(),
     ok.
 
 call_contract_negative(_Cfg) ->
@@ -371,10 +360,14 @@ call_contract_negative(_Cfg) ->
     ok.
 
 call_contract(_Cfg) ->
-    call_contract_(2).
+    mock(),
+    call_contract_(2),
+    unmock().
 
 call_contract_with_gas_price_zero(_Cfg) ->
-    call_contract_(0).
+    mock(),
+    call_contract_(0),
+    unmock().
 
 call_contract_(ContractCallTxGasPrice) ->
     S  = aect_test_utils:new_state(),
@@ -441,6 +434,7 @@ call_contract_(ContractCallTxGasPrice) ->
 
 %% Check behaviour of contract call error - especially re value / amount.
 call_contract_error_value(_Cfg) ->
+    mock(),
     F = 1,
     DefaultOpts = #{fee => F, gas_price => 0, amount => 0},
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
@@ -470,6 +464,7 @@ call_contract_error_value(_Cfg) ->
     ?assertEqual(Bal(Acc1, S3) - (F + 13), Bal(Acc1, S4)),
     ?assertEqual(Bal(RemC, S3) + 13, Bal(RemC, S4)),
     ?assertEqual(Bal(IdC, S3), Bal(IdC, S4)),
+    unmock(),
     ok.
 
 %%%===================================================================
@@ -544,6 +539,7 @@ get_call(Contract0, Call0, S) ->
     {Call, S}.
 
 state_tree(_Cfg) ->
+    mock(),
     state(aect_test_utils:new_state()),
     Acc1  = ?call(new_account, 100),
     Ct1   = ?call(insert_contract, Acc1, <<"Code for C1">>),
@@ -559,6 +555,7 @@ state_tree(_Cfg) ->
     Call2 = ?call(get_call, Ct1, Call2),
     Ct1   = ?call(get_contract, Ct1),
     <<"Code for C1">> = aect_contracts:code(Ct1),
+    unmock(),
     ok.
 
 %%%===================================================================
@@ -651,6 +648,7 @@ args_to_list(M) when is_map(M) ->
     ["{", string:join(Elems, ","), "}"].
 
 sophia_identity(_Cfg) ->
+    mock(),
     state(aect_test_utils:new_state()),
     Acc1 = ?call(new_account, 1000000),
     %% Remote calling the identity contract
@@ -660,9 +658,11 @@ sophia_identity(_Cfg) ->
     99    = ?call(call_contract,   Acc1, RemC, call, word, {IdC, 99}),
     RemC2 = ?call(create_contract, Acc1, remote_call, {}, #{amount => 100}),
     77    = ?call(call_contract,   Acc1, RemC2, staged_call, word, {IdC, RemC, 77}),
+    unmock(),
     ok.
 
 sophia_state(_Cfg) ->
+    mock(),
     state(aect_test_utils:new_state()),
     Acc1         = ?call(new_account, 1000000),
     InitStack    = [<<"top">>, <<"middle">>, <<"bottom">>],
@@ -675,19 +675,23 @@ sophia_state(_Cfg) ->
     <<"middle">> = ?call(call_contract, Acc1, Stack, pop, string, {}),
     <<"bottom">> = ?call(call_contract, Acc1, Stack, pop, string, {}),
     {error, <<"out_of_gas">>} = ?call(call_contract, Acc1, Stack, pop, string, {}),
+    unmock(),
     ok.
 
 %% There was a bug matching on _::_.
 sophia_match_bug(_Cfg) ->
+    mock(),
     state(aect_test_utils:new_state()),
     Acc1      = ?call(new_account, 1000000),
     Poly      = ?call(create_contract, Acc1, polymorphism_test, {}),
     [5, 7, 9] = ?call(call_contract, Acc1, Poly, foo, {list, word}, {}),
     [1, 0, 3] = ?call(call_contract, Acc1, Poly, bar, {list, word}, {}),
     %% invalid_jumpdest
+    unmock(),
     ok.
 
 sophia_spend(_Cfg) ->
+    mock(),
     state(aect_test_utils:new_state()),
     Acc1         = ?call(new_account, 1000000),
     Acc2         = ?call(new_account, 2000000),
@@ -705,9 +709,11 @@ sophia_spend(_Cfg) ->
     2021000      = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Acc2),
     4000         = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Ct1),
     5000         = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Ct2),
+    unmock(),
     ok.
 
 sophia_typed_calls(_Cfg) ->
+    mock(),
     state(aect_test_utils:new_state()),
     Acc    = ?call(new_account, 1000000),
     Server = ?call(create_contract, Acc, multiplication_server, {}),
@@ -721,6 +727,7 @@ sophia_typed_calls(_Cfg) ->
     256    = ?call(call_contract, Acc, Client, get_n, word, {}),
     {}     = ?call(call_contract, Acc, Client, tip_server, {tuple, []}, {}, #{amount => 100}),
     400    = ?call(account_balance, Server),
+    unmock(),
     ok.
 
 %% Oracles tests
@@ -731,6 +738,7 @@ sophia_typed_calls(_Cfg) ->
 %%  - Handling of fees
 %%  - Failing calls
 sophia_oracles(_Cfg) ->
+    mock(),
     state(aect_test_utils:new_state()),
     Acc               = ?call(new_account, 1000000),
     Ct = <<CtId:256>> = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
@@ -753,6 +761,7 @@ sophia_oracles(_Cfg) ->
     Question1    = {1, <<"birds fly?">>},
     Answer       = {yesAnswer, {how, <<"birds fly?">>}, <<"magic">>, 1337},
     {some, Answer} = ?call(call_contract, Acc, Ct1, complexOracle, {option, AnswerType}, {Question1, 0}),
+    unmock(),
     ok.
 
 oracle_init_from_contract(OperatorAcc, InitialOracleContractBalance, S) ->
@@ -965,6 +974,7 @@ sophia_oracles_qfee__basic__data_() ->
      _QueryTxQFee = RegisterTxQFee}.
 %%
 sophia_oracles_qfee__basic(_Cfg) ->
+    mock(),
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__basic__data_(),
 
@@ -999,9 +1009,11 @@ sophia_oracles_qfee__basic(_Cfg) ->
 
     ?assertEqual([], aect_test_utils:get_oracle_queries(OracleAcc, S1)),
     ?assertMatch([_], aect_test_utils:get_oracle_queries(OracleAcc, S2)),
-    ?assertMatch([_], aect_test_utils:get_oracle_queries(OracleAcc, S3)).
+    ?assertMatch([_], aect_test_utils:get_oracle_queries(OracleAcc, S3)),
+    unmock().
 %%
 sophia_oracles_qfee__basic__remote(_Cfg) ->
+    mock(),
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__basic__data_(),
 
@@ -1039,7 +1051,8 @@ sophia_oracles_qfee__basic__remote(_Cfg) ->
 
     ?assertEqual([], aect_test_utils:get_oracle_queries(OracleAcc, S1)),
     ?assertMatch([_], aect_test_utils:get_oracle_queries(OracleAcc, S2)),
-    ?assertMatch([_], aect_test_utils:get_oracle_queries(OracleAcc, S3)).
+    ?assertMatch([_], aect_test_utils:get_oracle_queries(OracleAcc, S3)),
+    unmock().
 
 %% Excessive query fee (covered by call tx value) is awarded to oracle
 %% contract after respond.
@@ -1053,6 +1066,7 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__da
      QueryTxQFee}.
 %%
 sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle(_Cfg) ->
+    mock(),
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__data_(),
 
@@ -1079,9 +1093,11 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle(_Cf
 
     ?assertEqual(Bal(UserAcc, S2)                , Bal(UserAcc, S3)),
     ?assertEqual(Bal(OracleAcc, S2) + QueryTxQFee, Bal(OracleAcc, S3)),
-    ?assertEqual(Bal(OperatorAcc, S2) - TxFee    , Bal(OperatorAcc, S3)).
+    ?assertEqual(Bal(OperatorAcc, S2) - TxFee    , Bal(OperatorAcc, S3)),
+    unmock().
 %%
 sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__remote(_Cfg) ->
+    mock(),
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__data_(),
 
@@ -1110,7 +1126,8 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__re
     ?assertEqual(Bal(UserAcc, S2)                , Bal(UserAcc, S3)),
     ?assertEqual(Bal(OracleAcc, S2) + QueryTxQFee, Bal(OracleAcc, S3)),
     ?assertEqual(Bal(CallingCt, S2)              , Bal(CallingCt, S3)),
-    ?assertEqual(Bal(OperatorAcc, S2) - TxFee    , Bal(OperatorAcc, S3)).
+    ?assertEqual(Bal(OperatorAcc, S2) - TxFee    , Bal(OperatorAcc, S3)),
+    unmock().
 
 %% Call tx value in excess of query fee specified in same query call
 %% tx ends up in oracle contract (at query creation).
@@ -1123,6 +1140,7 @@ sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__data_() 
      _QueryTxQFee = RegisterTxQFee}.
 %%
 sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle(_Cfg) ->
+    mock(),
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__data_(),
 
@@ -1149,9 +1167,11 @@ sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle(_Cfg) ->
 
     ?assertEqual(Bal(UserAcc, S2)                , Bal(UserAcc, S3)),
     ?assertEqual(Bal(OracleAcc, S2) + QueryTxQFee, Bal(OracleAcc, S3)),
-    ?assertEqual(Bal(OperatorAcc, S2) - TxFee    , Bal(OperatorAcc, S3)).
+    ?assertEqual(Bal(OperatorAcc, S2) - TxFee    , Bal(OperatorAcc, S3)),
+    unmock().
 %%
 sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__remote(_Cfg) ->
+    mock(),
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__data_(),
 
@@ -1180,7 +1200,8 @@ sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__remote(_
     ?assertEqual(Bal(UserAcc, S2)                , Bal(UserAcc, S3)),
     ?assertEqual(Bal(OracleAcc, S2) + QueryTxQFee, Bal(OracleAcc, S3)),
     ?assertEqual(Bal(CallingCt, S2)              , Bal(CallingCt, S3)),
-    ?assertEqual(Bal(OperatorAcc, S2) - TxFee    , Bal(OperatorAcc, S3)).
+    ?assertEqual(Bal(OperatorAcc, S2) - TxFee    , Bal(OperatorAcc, S3)),
+    unmock().
 
 %% Attempt to create query with query fee smaller than the one
 %% requested by the oracle fails.
@@ -1196,6 +1217,7 @@ sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__data_() ->
      QueryTxQFee}.
 %%
 sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs(_Cfg) ->
+    mock(),
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__data_(),
 
@@ -1215,9 +1237,11 @@ sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs(_Cfg) ->
 
     ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue        , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)).
+    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
+    unmock().
 %%
 sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__remote(_Cfg) ->
+    mock(),
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__data_(),
 
@@ -1238,7 +1262,8 @@ sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__remote(_Cfg) ->
     ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1)                       , Bal(OracleAcc, S2)),
     ?assertEqual(Bal(CallingCt, S1) + QueryTxValue        , Bal(CallingCt, S2)),
-    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)).
+    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
+    unmock().
 
 %% Attempt to create query with call tx value smaller than query fee
 %% uses oracle contract balance: oracle contract should implement
@@ -1252,6 +1277,7 @@ sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_() -
      _QueryTxQFee = RegisterTxQFee}.
 %%
 sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle(_Cfg) ->
+    mock(),
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
 
@@ -1273,9 +1299,11 @@ sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle(_Cfg) ->
 
     ?assertEqual(Bal(OperatorAcc, S1)                             , Bal(OperatorAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1) - (QueryTxQFee - QueryTxValue), Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue)        , Bal(UserAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue)        , Bal(UserAcc, S2)),
+    unmock().
 %%
 sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_poor_oracle(_Cfg) ->
+    mock(),
     {_InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
     InitialOracleCtBalance = 0,
@@ -1296,9 +1324,11 @@ sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_poor_oracle(_C
 
     ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue        , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)),
+    unmock().
 %%
 sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_rich_oracle_thanks_to_contract_check(_Cfg) ->
+    mock(),
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
 
@@ -1318,9 +1348,11 @@ sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_rich_oracle_th
 
     ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue        , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)),
+    unmock().
 %%
 sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__remote(_Cfg) ->
+    mock(),
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
 
@@ -1343,9 +1375,11 @@ sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__remote(_C
     ?assertEqual(Bal(OperatorAcc, S1)                             , Bal(OperatorAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1) - (QueryTxQFee - QueryTxValue), Bal(OracleAcc, S2)),
     ?assertEqual(Bal(CallingCt, S1)                               , Bal(CallingCt, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue)        , Bal(UserAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue)        , Bal(UserAcc, S2)),
+    unmock().
 %%
 sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_poor_oracle__remote(_Cfg) ->
+    mock(),
     {_InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
     InitialOracleCtBalance = 0,
@@ -1367,9 +1401,11 @@ sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_poor_oracle__r
     ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1)                       , Bal(OracleAcc, S2)),
     ?assertEqual(Bal(CallingCt, S1) + QueryTxValue        , Bal(CallingCt, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)),
+    unmock().
 %%
 sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_rich_oracle_thanks_to_contract_check__remote(_Cfg) ->
+    mock(),
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
 
@@ -1390,9 +1426,11 @@ sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_rich_oracle_th
     ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1)                       , Bal(OracleAcc, S2)),
     ?assertEqual(Bal(CallingCt, S1) + QueryTxValue        , Bal(CallingCt, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)),
+    unmock().
 %%
 sophia_oracles_qfee__remote_contract_query_value_below_qfee_takes_from_rich_oracle__remote(_Cfg) ->
+    mock(),
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue0, QueryTxQFee} =
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
     QueryTxValue = RegisterTxQFee,
@@ -1417,9 +1455,11 @@ sophia_oracles_qfee__remote_contract_query_value_below_qfee_takes_from_rich_orac
     ?assertEqual(Bal(OperatorAcc, S1)                                    , Bal(OperatorAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1) - (QueryTxValue - QueryRemoteCtValue), Bal(OracleAcc, S2)),
     ?assertEqual(Bal(CallingCt, S1) + (QueryTxValue - QueryRemoteCtValue), Bal(CallingCt, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue)               , Bal(UserAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue)               , Bal(UserAcc, S2)),
+    unmock().
 %%
 sophia_oracles_qfee__remote_contract_query_value_below_qfee_does_not_take_from_poor_oracle__remote(_Cfg) ->
+    mock(),
     {_InitialOracleCtBalance, RegisterTxQFee, QueryTxValue0, QueryTxQFee} =
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
     InitialOracleCtBalance = 0,
@@ -1443,9 +1483,11 @@ sophia_oracles_qfee__remote_contract_query_value_below_qfee_does_not_take_from_p
     ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1)                       , Bal(OracleAcc, S2)),
     ?assertEqual(Bal(CallingCt, S1) + QueryTxValue        , Bal(CallingCt, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)),
+    unmock().
 %%
 sophia_oracles_qfee__remote_contract_query_value_below_qfee_does_not_take_from_rich_oracle_thanks_to_contract_check__remote(_Cfg) ->
+    mock(),
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue0, QueryTxQFee} =
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
     QueryTxValue = RegisterTxQFee,
@@ -1468,7 +1510,8 @@ sophia_oracles_qfee__remote_contract_query_value_below_qfee_does_not_take_from_r
     ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1)                       , Bal(OracleAcc, S2)),
     ?assertEqual(Bal(CallingCt, S1) + QueryTxValue        , Bal(CallingCt, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)),
+    unmock().
 
 %% Attempt to create query with query fee larger than the one
 %% requested by the oracle but not covered by call tx value uses
@@ -1481,8 +1524,10 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_takes_from_rich_oracle__
      RegisterTxQFee,
      _QueryTxValue = RegisterTxQFee,
      _QueryTxQFee = QFeeExcess + RegisterTxQFee}.
+
 %%
 sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_takes_from_rich_oracle(_Cfg) ->
+    mock(),
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_takes_from_rich_oracle__data_(),
 
@@ -1504,9 +1549,11 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_takes_from_rich_oracle(_
 
     ?assertEqual(Bal(OperatorAcc, S1)                               , Bal(OperatorAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1) - (QueryTxQFee - RegisterTxQFee), Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue)          , Bal(UserAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue)          , Bal(UserAcc, S2)),
+    unmock().
 %%
 sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_does_not_take_from_poor_oracle(_Cfg) ->
+    mock(),
     {_InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_takes_from_rich_oracle__data_(),
     InitialOracleCtBalance = 0,
@@ -1527,9 +1574,11 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_does_not_take_from_poor_
 
     ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue        , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)),
+    unmock().
 %%
 sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_does_not_take_from_rich_oracle_thanks_to_contract_check(_Cfg) ->
+    mock(),
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_takes_from_rich_oracle__data_(),
 
@@ -1549,10 +1598,12 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_does_not_take_from_rich_
 
     ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue        , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)),
+    unmock().
 
 %% Failure after query creation primop succeeds.
 sophia_oracles_qfee__error_after_primop(_Cfg) ->
+    mock(),
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__basic__data_(),
 
@@ -1582,9 +1633,11 @@ sophia_oracles_qfee__error_after_primop(_Cfg) ->
 
     ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue        , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)).
+    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
+    unmock().
 %%
 sophia_oracles_qfee__inner_error_after_primop__remote(_Cfg) ->
+    mock(),
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__basic__data_(),
 
@@ -1621,9 +1674,11 @@ sophia_oracles_qfee__inner_error_after_primop__remote(_Cfg) ->
     ?assertEqual(Bal(OracleAcc, S1)                       , Bal(OracleAcc, S2)),
     ?assertEqual(Bal(CallingCt, S1) + QueryTxValue        , Bal(CallingCt, S2)),
     ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
-    ?assertEqual(Bal(TmpAcc, S1)                          , Bal(TmpAcc, S2)).
+    ?assertEqual(Bal(TmpAcc, S1)                          , Bal(TmpAcc, S2)),
+    unmock().
 %%
 sophia_oracles_qfee__outer_error_after_primop__remote(_Cfg) ->
+    mock(),
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__basic__data_(),
 
@@ -1654,10 +1709,12 @@ sophia_oracles_qfee__outer_error_after_primop__remote(_Cfg) ->
     ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1)                       , Bal(OracleAcc, S2)),
     ?assertEqual(Bal(CallingCt, S1) + QueryTxValue        , Bal(CallingCt, S2)),
-    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)).
+    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
+    unmock().
 
 %% Testing map functions and primitives
 sophia_maps(_Cfg) ->
+    mock(),
     state(aect_test_utils:new_state()),
     Acc = ?call(new_account, 1000000000),
     Ct  = ?call(create_contract, Acc, maps, {}),
@@ -1796,10 +1853,11 @@ sophia_maps(_Cfg) ->
             || {Fn, Ks} <- [{delete_state_i, DeltaI3}, {delete_state_s, DeltaS3}],
                K <- Ks ],
     {MapI3, MapS3} = Call(get_state, State, {}),
-
+    unmock(),
     ok.
 
 sophia_variant_types(_Cfg) ->
+    mock(),
     state(aect_test_utils:new_state()),
     Acc = <<AccId:256>> = ?call(new_account, 1000000),
     Ct  = ?call(create_contract, Acc, variant_types, {}),
@@ -1813,17 +1871,18 @@ sophia_variant_types(_Cfg) ->
     {grey, 0} = Call(get_color, Color, {}),
     {}        = Call(set_color, Unit, {{1}}),   %% green has tag 1
     {started, {AccId, 123, green}} = Call(get_state, State, {}),
+    unmock(),
     ok.
 
 
 sophia_chain(_Cfg) ->
+    mock(),
     state(aect_test_utils:new_state()),
-    Acc = <<AccId:256>> = ?call(new_account, 1000000),
-    ok = application:set_env(aecore, beneficiary,
-                             aec_base58c:encode(account_pubkey, Acc)),
-    {ok, Acc} = aec_conductor:get_beneficiary(),
-    Ct1       = ?call(create_contract, Acc, chain, {}, #{amount => 10000}),
-    AccId     = ?call(call_contract, Acc, Ct1, miner, word, {}),
+    Acc         = ?call(new_account, 1000000),
+    <<Beneficiary:?BENEFICIARY_PUB_BYTES/unit:8>> = ?BENEFICIARY_PUBKEY,
+    Ct1         = ?call(create_contract, Acc, chain, {}, #{amount => 10000}),
+    Beneficiary = ?call(call_contract, Acc, Ct1, miner, word, {}),
+    unmock(),
     ok.
 
 
@@ -1922,6 +1981,7 @@ run_scenario(#fundme_scenario
     ok.
 
 sophia_fundme(_Cfg) ->
+    mock(),
     Funded = #fundme_scenario{
         name     = funded_scenario,
         goal     = 10,
@@ -1947,7 +2007,8 @@ sophia_fundme(_Cfg) ->
             [{withdraw, {investor, 3}, 2300, error}] },
 
     run_scenario(Funded),
-    run_scenario(NotFunded).
+    run_scenario(NotFunded),
+    unmock().
 
 %% AENS tests
 
@@ -2031,6 +2092,7 @@ aens_update(PubKey, NameHash, Pointers, Options, S) ->
     {ok, S1}.
 
 sophia_aens(_Cfg) ->
+    mock(),
     state(aect_test_utils:new_state()),
     Acc      = ?call(new_account, 1000000),
     Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
@@ -2064,7 +2126,7 @@ sophia_aens(_Cfg) ->
     ok = ?call(aens_update, Acc, NHash, Pointers),
     {some, OPubkey} = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name1, <<"oracle_pubkey">>}),
     {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Ct, NHash, 0}, #{ height => 13 }),
-
+    unmock(),
     ok.
 
 
@@ -2073,14 +2135,17 @@ sophia_aens(_Cfg) ->
 %%%===================================================================
 
 create_store(_Cfg) ->
+    mock(),
     state(aect_test_utils:new_state()),
     Acc1  = ?call(new_account, 100),
     Ct1   = ?call(insert_contract, Acc1, <<"Code for C1">>),
     Ct1   = ?call(get_contract, Ct1),
     #{}   = aect_contracts:state(Ct1),
+    unmock(),
     ok.
 
 update_store(_Cfg) ->
+    mock(),
     state(aect_test_utils:new_state()),
     Acc1   = ?call(new_account, 100),
     Ct1    = ?call(insert_contract, Acc1, <<"Code for C1">>),
@@ -2089,9 +2154,11 @@ update_store(_Cfg) ->
     Ct2    = aect_contracts:set_state(Store1, Ct1),
     Ct2    = ?call(enter_contract, Ct2),
     Ct2    = ?call(get_contract, Ct2),
+    unmock(),
     ok.
 
 read_store(_Cfg) ->
+    mock(),
     state(aect_test_utils:new_state()),
     Acc1   = ?call(new_account, 100),
     Ct1    = ?call(insert_contract, Acc1, <<"Code for C1">>),
@@ -2101,10 +2168,12 @@ read_store(_Cfg) ->
     Ct2    = ?call(enter_contract, Ct2),
     Ct2    = ?call(get_contract, Ct2),
     Store1 = aect_contracts:state(Ct2),
+    unmock(),
     ok.
 
 
 store_zero_value(_Cfg) ->
+    mock(),
     state(aect_test_utils:new_state()),
     Acc1   = ?call(new_account, 100),
     Ct1    = ?call(insert_contract, Acc1, <<"Code for C1">>),
@@ -2119,9 +2188,11 @@ store_zero_value(_Cfg) ->
     Store2 = #{ <<0>> => <<42>>
               , <<1>> => <<0>>},
     Store2 = aect_contracts:state(Ct3),
+    unmock(),
     ok.
 
 merge_new_zero_value(_Cfg) ->
+    mock(),
     state(aect_test_utils:new_state()),
     Acc1   = ?call(new_account, 100),
     Ct1    = ?call(insert_contract, Acc1, <<"Code for C1">>),
@@ -2142,10 +2213,12 @@ merge_new_zero_value(_Cfg) ->
     Store3 = #{ <<0>> => <<0>>
               , <<2>> => <<42>>},
     Store3 = aect_contracts:state(Ct5),
+    unmock(),
     ok.
 
 
 merge_missing_keys(_Cfg) ->
+    mock(),
     state(aect_test_utils:new_state()),
     Acc1   = ?call(new_account, 100),
     Ct1    = ?call(insert_contract, Acc1, <<"Code for C1">>),
@@ -2165,9 +2238,29 @@ merge_missing_keys(_Cfg) ->
     Store3 = #{ <<2>> => <<42>>
               , <<3>> => <<1,2,3,4>>},
     Store3 = aect_contracts:state(Ct5),
+    unmock(),
     ok.
 
 
 enter_contract(Contract, S) ->
     Contracts = aect_state_tree:enter_contract(Contract, aect_test_utils:contracts(S)),
     {Contract, aect_test_utils:set_contracts(Contracts, S)}.
+
+
+%%% Utils
+mock() ->
+    meck:new(aec_chain, [passthrough]),
+    meck:expect(aec_chain, get_key_block_by_height, 1,
+                fun (_) -> {ok, none} end),
+    ok = meck:new(aec_blocks, [passthrough]),
+    meck:expect(aec_blocks, beneficiary, 1,
+                fun (none) -> ?BENEFICIARY_PUBKEY;
+                    (Block) ->
+                        aec_headers:beneficiary(aec_blocks:to_header(Block))
+                end).
+
+
+unmock() ->
+    meck:unload(aec_blocks),
+    meck:unload(aec_chain),
+    ok.
