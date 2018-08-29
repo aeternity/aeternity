@@ -102,13 +102,23 @@ create_message_(SenderName, Action, Payload, Msg0) ->
             maps:put(payload, Payload, MsgWithoutPayload)
     end.
 
-create_message_from_event(BlockEvent, {BlockHeight, BlockHash})
-        when BlockEvent == mined_block;
-             BlockEvent == added_micro_block;
-             BlockEvent == new_block ->
+create_message_from_event(mined_block, {BlockHeight, BlockHash}) ->
     Payload = [{height, BlockHeight},
-               {hash, aec_base58c:encode(block_hash, BlockHash)}],
-    {ok, create_message(chain, BlockEvent, Payload)};
+               {hash, aec_base58c:encode(key_block_hash, BlockHash)}],
+    {ok, create_message(chain, mined_block, Payload)};
+create_message_from_event(added_micro_block, {BlockHeight, BlockHash}) ->
+    Payload = [{height, BlockHeight},
+               {hash, aec_base58c:encode(micro_block_hash, BlockHash)}],
+    {ok, create_message(chain, added_micro_block, Payload)};
+create_message_from_event(new_block, {BlockType, BlockHeight, BlockHash}) ->
+    BlockHash1 =
+        case BlockType of
+            key -> aec_base58c:encode(key_block_hash, BlockHash);
+            micro -> aec_base58c:encode(micro_block_hash, BlockHash)
+        end,
+    Payload = [{height, BlockHeight},
+               {hash, BlockHash1}],
+    {ok, create_message(chain, new_block, Payload)};
 create_message_from_event(chain_tx, TxHash) ->
     Payload = [{tx_hash, aec_base58c:encode(tx_hash, TxHash)}],
     {ok, create_message(chain, tx_chain, Payload)};

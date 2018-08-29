@@ -29,8 +29,6 @@
                         , ok_response/1
                         , parse_filter_param/2
                         , read_optional_param/3
-                        , get_block/2
-                        , get_block/3
                         , get_poi/3
                         , get_block_hash_optionally_by_hash_or_height/1
                         ]).
@@ -44,17 +42,52 @@
        ) -> {Status :: cowboy:http_status(), Headers :: list(), Body :: map()}.
 
 handle_request('GetTopBlock', _, _Context) ->
-    {ok, TopBlock} = aehttp_logic:get_top(),
-    EncodedHash = aehttp_api_parser:encode(block_hash, TopBlock),
-    EncodedHeader = aehttp_api_parser:encode(header, TopBlock),
-    {200, [], maps:put(<<"hash">>, EncodedHash, EncodedHeader)};
+    case aec_chain:top_block() of
+        Block when Block =/= undefined ->
+            case aec_blocks:height(Block) of
+                0 ->
+                    Header = aec_blocks:to_header(Block),
+                    {200, [], aec_headers:serialize_for_client(Header, key)};
+                _ ->
+                    PrevBlockHash = aec_blocks:prev_hash(Block),
+                    case aec_chain:get_block(PrevBlockHash) of
+                        {ok, PrevBlock} ->
+                            PrevBlockType = aec_blocks:type(PrevBlock),
+                            Header = aec_blocks:to_header(Block),
+                            {200, [], aec_headers:serialize_for_client(Header, PrevBlockType)};
+                        error ->
+                            {404, [], #{reason => <<"Block not found">>}}
+                    end
+            end;
+        undefined ->
+            {404, [], #{reason => <<"Block not found">>}}
+    end;
 
-handle_request('GetCurrentKeyBlock', Req, _Context) ->
-    get_block(fun() -> aec_chain:top_key_block() end, Req);
+handle_request('GetCurrentKeyBlock', _Req, _Context) ->
+    case aec_chain:top_key_block() of
+        {ok, Block} ->
+            case aec_blocks:height(Block) of
+                0 ->
+                    Header = aec_blocks:to_header(Block),
+                    {200, [], aec_headers:serialize_for_client(Header, key)};
+                _ ->
+                    PrevBlockHash = aec_blocks:prev_hash(Block),
+                    case aec_chain:get_block(PrevBlockHash) of
+                        {ok, PrevBlock} ->
+                            PrevBlockType = aec_blocks:type(PrevBlock),
+                            Header = aec_blocks:to_header(Block),
+                            {200, [], aec_headers:serialize_for_client(Header, PrevBlockType)};
+                        error ->
+                            {404, [], #{reason => <<"Block not found">>}}
+                    end
+            end;
+        error ->
+            {404, [], #{reason => <<"Block not found">>}}
+    end;
 
 handle_request('GetCurrentKeyBlockHash', _, _Context) ->
     Hash = aec_chain:top_key_block_hash(),
-    EncodedHash = aec_base58c:encode(block_hash, Hash),
+    EncodedHash = aec_base58c:encode(key_block_hash, Hash),
     {200, [], #{hash => EncodedHash}};
 
 handle_request('GetCurrentKeyBlockHeight', _, _Context) ->
@@ -62,27 +95,88 @@ handle_request('GetCurrentKeyBlockHeight', _, _Context) ->
     Height = aec_blocks:height(TopBlock),
     {200, [], #{height => Height}};
 
-handle_request('GetPendingKeyBlock', Req, _Context) ->
-    get_block(fun aehttp_logic:get_block_pending/0, Req, false);
+handle_request('GetPendingKeyBlock', _Req, _Context) ->
+    case aec_conductor:get_key_block_candidate() of
+        {ok, Block} ->
+            PrevBlockHash = aec_blocks:prev_hash(Block),
+            case aec_chain:get_block(PrevBlockHash) of
+                {ok, PrevBlock} ->
+                    PrevBlockType = aec_blocks:type(PrevBlock),
+                    Header = aec_blocks:to_header(Block),
+                    {200, [], aec_headers:serialize_for_client(Header, PrevBlockType)};
+                error ->
+                    {404, [], #{reason => <<"Block not found">>}}
+            end;
+        {error, _} ->
+            {404, [], #{reason => <<"Block not found">>}}
+    end;
 
 handle_request('GetKeyBlockByHash', Params, _Context) ->
-    case aec_base58c:safe_decode(block_hash, maps:get('hash', Params)) of
+    case aec_base58c:safe_decode(key_block_hash, maps:get('hash', Params)) of
         {error, _} -> {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
-            get_block(fun() -> aehttp_logic:get_key_block_by_hash(Hash) end, Params)
+            case aec_chain:get_block(Hash) of
+                {ok, Block} ->
+                    case aec_blocks:is_key_block(Block) of
+                        true ->
+                            Header = aec_blocks:to_header(Block),
+                            case aec_blocks:height(Block) of
+                                0 ->
+                                    {200, [], aec_headers:serialize_for_client(Header, key)};
+                                _ ->
+                                    PrevBlockHash = aec_blocks:prev_hash(Block),
+                                    case aec_chain:get_block(PrevBlockHash) of
+                                        {ok, PrevBlock} ->
+                                            PrevBlockType = aec_blocks:type(PrevBlock),
+                                            {200, [], aec_headers:serialize_for_client(Header, PrevBlockType)};
+                                        error ->
+                                            {404, [], #{reason => <<"Block not found">>}}
+                                    end
+                            end;
+                        false ->
+                            {404, [], #{reason => <<"Block not fond">>}}
+                    end;
+                error ->
+                    {404, [], #{reason => <<"Block not fond">>}}
+            end
     end;
 
 handle_request('GetKeyBlockByHeight', Params, _Context) ->
     Height = maps:get(height, Params),
-    get_block(fun() -> aehttp_logic:get_key_block_by_height(Height) end, Params);
+    case aec_chain:get_key_block_by_height(Height) of
+        {ok, Block} ->
+            Header = aec_blocks:to_header(Block),
+            case aec_blocks:height(Block) of
+                0 ->
+                    {200, [], aec_headers:serialize_for_client(Header, key)};
+                _ ->
+                    PrevBlockHash = aec_blocks:prev_hash(Block),
+                    case aec_chain:get_block(PrevBlockHash) of
+                        {ok, PrevBlock} ->
+                            PrevBlockType = aec_blocks:type(PrevBlock),
+                            {200, [], aec_headers:serialize_for_client(Header, PrevBlockType)};
+                        error ->
+                            {404, [], #{reason => <<"Block not found">>}}
+                    end
+            end;
+        {error, _Rsn} ->
+            {404, [], #{reason => <<"Block not found">>}}
+    end;
 
 handle_request('GetMicroBlockHeaderByHash', Params, _Context) ->
-    case aec_base58c:safe_decode(block_hash, maps:get(hash, Params)) of
+    case aec_base58c:safe_decode(micro_block_hash, maps:get(hash, Params)) of
         {ok, Hash} ->
             case aehttp_logic:get_micro_block_by_hash(Hash) of
                 {ok, Block} ->
-                    Resp = aehttp_api_parser:encode(header, Block),
-                    {200, [], Resp#{hash => aec_base58c:encode(block_hash, Hash)}};
+                    PrevBlockHash = aec_blocks:prev_hash(Block),
+                    case aec_chain:get_block(PrevBlockHash) of
+                        {ok, PrevBlock} ->
+                            PrevBlockType = aec_blocks:type(PrevBlock),
+                            Header = aec_blocks:to_header(Block),
+                            {200, [], aec_headers:serialize_for_client(Header, PrevBlockType)};
+                        error ->
+                            {404, [], #{reason => <<"Block not found">>}}
+                    end;
                 {error, block_not_found} ->
                     {404, [], #{reason => <<"Block not found">>}}
             end;
@@ -91,7 +185,7 @@ handle_request('GetMicroBlockHeaderByHash', Params, _Context) ->
     end;
 
 handle_request('GetMicroBlockTransactionsByHash', Params, _Context) ->
-    case aec_base58c:safe_decode(block_hash, maps:get(hash, Params)) of
+    case aec_base58c:safe_decode(micro_block_hash, maps:get(hash, Params)) of
         {ok, Hash} ->
             case aehttp_logic:get_micro_block_by_hash(Hash) of
                 {ok, Block} ->
@@ -107,7 +201,7 @@ handle_request('GetMicroBlockTransactionsByHash', Params, _Context) ->
     end;
 
 handle_request('GetMicroBlockTransactionByHashAndIndex', Params, _Context) ->
-    HashDec = aec_base58c:safe_decode(block_hash, maps:get(hash, Params)),
+    HashDec = aec_base58c:safe_decode(micro_block_hash, maps:get(hash, Params)),
     IndexDec = maps:get(index, Params),
     case {HashDec, IndexDec} of
         {{ok, Hash}, Index} when is_integer(Index) ->
@@ -132,7 +226,7 @@ handle_request('GetMicroBlockTransactionByHashAndIndex', Params, _Context) ->
 
 
 handle_request('GetMicroBlockTransactionsCountByHash', Params, _Context) ->
-    case aec_base58c:safe_decode(block_hash, maps:get(hash, Params)) of
+    case aec_base58c:safe_decode(micro_block_hash, maps:get(hash, Params)) of
         {ok, Hash} ->
             case aehttp_logic:get_micro_block_by_hash(Hash) of
                 {ok, Block} ->
@@ -148,7 +242,7 @@ handle_request('GetCurrentGeneration', _, _Context) ->
     get_generation(aec_chain:top_key_block_hash());
 
 handle_request('GetGenerationByHash', Params, _Context) ->
-    case aec_base58c:safe_decode(block_hash, maps:get('hash', Params)) of
+    case aec_base58c:safe_decode(key_block_hash, maps:get('hash', Params)) of
         {error, _} -> {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} -> get_generation(Hash)
     end;
@@ -218,15 +312,18 @@ handle_request('GetTransactionInfoByHash', Params, _Config) ->
     process_request(ParseFuns, Params);
 
 handle_request('PostTransaction', #{'Tx' := Tx}, _Context) ->
-    case aehttp_api_parser:decode(tx, maps:get(<<"tx">>, Tx)) of
-        {error, #{<<"tx">> := broken_tx}} ->
-            {400, [], #{reason => <<"Invalid tx">>}};
+    case aec_base58c:safe_decode(transaction, maps:get(<<"tx">>, Tx)) of
+        {ok, TxDec} ->
+            case deserialize_transaction(TxDec) of
+                {ok, SignedTx} ->
+                    ok = aec_tx_pool:push(SignedTx), %% TODO Add proper error handling
+                    Hash = aetx_sign:hash(SignedTx),
+                    {200, [], #{<<"tx_hash">> => aec_base58c:encode(tx_hash, Hash)}};
+                {error, broken_tx} ->
+                    {400, [], #{reason => <<"Invalid tx">>}}
+            end;
         {error, _} ->
-            {400, [], #{reason => <<"Invalid base58Check encoding">>}};
-        {ok, SignedTx} ->
-            ok = aec_tx_pool:push(SignedTx), %% TODO Add proper error handling
-            Hash = aetx_sign:hash(SignedTx),
-            {200, [], #{<<"tx_hash">> => aec_base58c:encode(tx_hash, Hash)}}
+            {400, [], #{reason => <<"Invalid base58Check encoding">>}}
     end;
 
 handle_request('GetContract', Req, _Context) ->
@@ -283,7 +380,7 @@ handle_request('GetOracleByPubkey', Params, _Context) ->
         {ok, Pubkey} ->
             case aec_chain:get_oracle(Pubkey) of
                 {ok, Oracle} ->
-                    {200, [], aehttp_api_parser:encode(oracle, aeo_oracles:serialize_for_client(Oracle))};
+                    {200, [], aeo_oracles:serialize_for_client(Oracle)};
                 {error, _} ->
                     {404, [], #{reason => <<"Oracle not found">>}}
             end;
@@ -392,7 +489,7 @@ handle_request('GetStatus', _Params, _Context) ->
             undefined -> 0
         end,
     {200, [],
-     #{<<"genesis-key-block-hash">>     => aec_base58c:encode(block_hash, GenesisBlockHash),
+     #{<<"genesis-key-block-hash">>     => aec_base58c:encode(key_block_hash, GenesisBlockHash),
        <<"solutions">>                  => Solutions,
        <<"difficulty">>                 => Difficulty,
        <<"syncing">>                    => Syncing,
@@ -434,10 +531,34 @@ get_generation(Hash) ->
     case aec_chain:get_generation(Hash) of
         error -> {404, [], #{reason => <<"Block not found">>}};
         {ok, KeyBlock, MicroBlocks} ->
-            Struct = #{
-              key_block => aehttp_api_parser:encode_client_readable_key_block(KeyBlock),
-              micro_blocks => [ aehttp_api_parser:encode(block_hash, Micro) || Micro <- MicroBlocks ]
-            },
-            {200, [], Struct}
+            case aec_blocks:height(KeyBlock) of
+                0 ->
+                    {200, [], encode_generation(KeyBlock, MicroBlocks, key)};
+                _ ->
+                    PrevBlockHash = aec_blocks:prev_hash(KeyBlock),
+                    case aec_chain:get_block(PrevBlockHash) of
+                        {ok, PrevBlock} ->
+                            PrevBlockType = aec_blocks:type(PrevBlock),
+                            {200, [], encode_generation(KeyBlock, MicroBlocks, PrevBlockType)};
+                        error ->
+                            {404, [], #{reason => <<"Block not found">>}}
+                    end
+            end
+    end.
+
+encode_generation(KeyBlock, MicroBlocks, PrevBlockType) ->
+    Header = aec_blocks:to_header(KeyBlock),
+    #{key_block => aec_headers:serialize_for_client(Header, PrevBlockType),
+      micro_blocks => [begin
+                           {ok, Hash} = aec_blocks:hash_internal_representation(M),
+                           aec_base58c:encode(micro_block_hash, Hash)
+                       end || M <- MicroBlocks]}.
+
+
+deserialize_transaction(Tx) ->
+    try
+        {ok, aetx_sign:deserialize_from_binary(Tx)}
+    catch
+        _:_ -> {error, broken_tx}
     end.
 

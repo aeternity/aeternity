@@ -162,7 +162,7 @@ serialize_for_client_pending(#signed_tx{}=S) ->
 serialize_for_client(#signed_tx{tx = Tx, signatures = Sigs}, BlockHeight, BlockHash0, TxHash) ->
     BlockHash = case BlockHash0 of
                     <<>> -> <<"none">>;
-                    _ -> aec_base58c:encode(block_hash, BlockHash0)
+                    _ -> aec_base58c:encode(micro_block_hash, BlockHash0)
                 end,
     #{<<"tx">>           => aetx:serialize_for_client(Tx),
       <<"block_height">> => BlockHeight,
