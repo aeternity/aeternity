@@ -36,9 +36,6 @@
         , blocked_peers/0
         ]).
 
--export([cleanup_genesis/1,
-         add_missing_to_genesis_block/1]).
-
 -spec get_top() -> {ok, aec_blocks:block()}.
 get_top() ->
     Block = aec_chain:top_block(),
@@ -221,34 +218,3 @@ peer_pubkey() ->
 connected_peers(Tag) -> aec_peers:connected_peers(Tag).
 
 blocked_peers() -> aec_peers:blocked_peers().
-
-%% Private
-empty_fields_in_genesis() ->
-    [ <<"prev_hash">>,
-      <<"pow">>,
-      <<"txs_hash">>,
-      <<"transactions">>].
-
-% assuming no transactions in genesis block
-% if this changes - both functions should be changes:
-% empty_fields_in_genesis/0 and values_for_empty_fields_in_genesis/0
-values_for_empty_fields_in_genesis() ->
-    true = lists:member(<<"transactions">>, empty_fields_in_genesis()),
-    #{<<"prev_hash">> => aec_base58c:encode(
-                           block_hash, aec_block_genesis:prev_hash()),
-      <<"pow">> => aec_headers:serialize_pow_evidence(aec_block_genesis:pow()),
-      <<"txs_hash">> => aec_base58c:encode(
-                          block_tx_hash, aec_block_genesis:txs_hash()),
-      <<"transactions">> => aec_block_genesis:transactions()}.
-
-%% to be used for both headers and blocks
-cleanup_genesis(#{<<"height">> := 0} = Genesis) ->
-    maps:without(empty_fields_in_genesis(), Genesis);
-cleanup_genesis(Val) ->
-    Val.
-
-add_missing_to_genesis_block(#{<<"height">> := 0} = Block) ->
-    maps:merge(Block, values_for_empty_fields_in_genesis());
-add_missing_to_genesis_block(Val) ->
-    Val.
-
