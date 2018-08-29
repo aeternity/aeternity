@@ -77,7 +77,7 @@ tx$...
 Bob publishes the signed contract create transaction to an epoch node for inclusion in the chain.
 
 >>> from swagger_client.models.tx import Tx
->>> contract_create_tx_hash = epoch_node['external_api'].post_tx(Tx(encoded_signed_contract_create_tx)).tx_hash
+>>> contract_create_tx_hash = epoch_node['external_api'].post_transaction(Tx(encoded_signed_contract_create_tx)).tx_hash
 >>> print(contract_create_tx_hash) # doctest: +ELLIPSIS
 th$...
 
@@ -132,7 +132,7 @@ tx$...
 
 Alice publishes the signed contract call transaction to an epoch node for inclusion in the chain.
 
->>> contract_call_tx_hash = epoch_node['external_api'].post_tx(Tx(encoded_signed_contract_call_tx)).tx_hash
+>>> contract_call_tx_hash = epoch_node['external_api'].post_transaction(Tx(encoded_signed_contract_call_tx)).tx_hash
 >>> print(contract_call_tx_hash) # doctest: +ELLIPSIS
 th$...
 

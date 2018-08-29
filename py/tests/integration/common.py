@@ -12,6 +12,7 @@ from swagger_client.api.external_api import ExternalApi
 from swagger_client.api.internal_api import InternalApi
 from swagger_client.api_client import ApiClient
 from swagger_client.models.account import Account
+from swagger_client.models.tx import Tx
 from swagger_client.models.spend_tx import SpendTx
 from swagger_client.configuration import Configuration
 
@@ -66,14 +67,14 @@ def setup_node(node):
 
     return (root_dir, node, api)
 
-def setup_node_with_tokens(node, blocks_to_mine):
+def setup_node_with_tokens(node, beneficiary, blocks_to_mine):
     # prepare a dir to hold the configs and the keys
     root_dir = tempfile.mkdtemp()
 
     key_dir = _copy_sign_keys(root_dir, node)
 
     # setup the dir with mining node
-    user_config = make_mining_user_config(root_dir, key_dir, "epoch.yaml")
+    user_config = make_mining_user_config(root_dir, key_dir, beneficiary, "epoch.yaml")
     start_node(node, user_config)
     api = external_api(node)
 
@@ -122,7 +123,7 @@ mining:
 """
     return install_user_config(root_dir, file_name, conf)
 
-def make_mining_user_config(root_dir, key_dir, file_name):
+def make_mining_user_config(root_dir, key_dir, beneficiary, file_name):
     conf = """\
 ---
 chain:
@@ -135,14 +136,14 @@ mining:
     autostart: true
     expected_mine_rate: 100
     # Beneficiary matches pubkey from sign_keys/dev1/sign_key.pub
-    beneficiary: "ak$28qVPdhuiaKZTtSgqovgLCvHDZoLxv8PpdVy1cfcAo71Uw5Nva"
+    beneficiary: "{}"
     beneficiary_reward_delay: 0
     cuckoo:
         miner:
             executable: mean16s-generic
             extra_args: "-t 5"
             node_bits: 16
-""".format(key_dir)
+""".format(key_dir, beneficiary['enc_pubk'])
     return install_user_config(root_dir, file_name, conf)
 
 def start_node(name, config_filename):
@@ -202,21 +203,26 @@ def get_account_balance(api, int_api, pub_key=None):
     return _balance_from_get_account(
         lambda: api.get_account_by_pubkey(_node_pub_key(int_api, pub_key)))
 
-def send_tokens_to_unchanging_user(address, tokens, fee, external_api, internal_api):
+def send_tokens_to_unchanging_user(beneficiary, address, tokens, fee, external_api, internal_api):
+    import keys
     def get_balance(k):
         return get_account_balance(external_api, internal_api, k).balance
     bal0 = get_balance(address)
     spend_tx_obj = SpendTx(
+        sender_id=beneficiary['enc_pubk'],
         recipient_id=address,
         amount=tokens,
         fee=fee,
         ttl=100,
         payload="sending tokens")
-    internal_api.post_spend_tx(spend_tx_obj)
+    spend_tx = internal_api.post_spend(spend_tx_obj).tx
+    unsigned_tx = base58_decode(spend_tx)
+    signed_tx = keys.sign_encode_tx(unsigned_tx, beneficiary['privk'])
+    external_api.post_transaction(Tx(tx=signed_tx))
     wait(lambda: get_balance(address) == (bal0 + tokens),
-         timeout_seconds=120, sleep_seconds=0.25)
+         timeout_seconds=20, sleep_seconds=0.25)
 
-def _node_pub_key(int_api, k):
+def _node_pub_key(int_api, k=None):
     return k if k is not None else int_api.get_node_pubkey().pub_key
 
 def _balance_from_get_account(get_account_fun):
@@ -277,5 +283,13 @@ def encode_name(name):
 def encode_tx_hash(txhash):
     str = base58.b58encode_check(txhash)
     return "th$" + str
+
+def setup_beneficiary():
+    import keys
+    ben_priv = keys.new_private()
+    ben_pub = keys.public_key(ben_priv)
+    beneficiary = {'privk': ben_priv, 'pubk': ben_pub,
+           'enc_pubk': keys.address(ben_pub)}
+    return beneficiary
 
 logging.getLogger("urllib3").setLevel(logging.ERROR)

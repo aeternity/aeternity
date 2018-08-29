@@ -27,14 +27,16 @@ def test_not_enough_tokens():
     # they are in is confirmed.
     test_settings = settings["test_not_enough_tokens"]
     coinbase_reward = common.coinbase_reward()
-    (bob_node, (root_dir, bob_api, bob_top)) = setup_node_with_tokens(test_settings, "bob")
+    bob = common.setup_beneficiary()
+    (bob_node, (root_dir, bob_api, bob_top)) = setup_node_with_tokens(test_settings, bob, "bob")
     bob_internal_api = common.internal_api(bob_node)
-
+    bob_pub_key = bob['enc_pubk']
+    alice_pub_key = test_settings["spend_tx"]["alice_pubkey"]
     def get_bob_balance():
-        return common.get_account_balance(bob_api, bob_internal_api)
+        return common.get_account_balance(bob_api, bob_internal_api, pub_key=bob_pub_key)
     def get_alice_balance():
-        k = test_settings["spend_tx"]["alice_pubkey"]
-        return common.get_account_balance(bob_api, bob_internal_api, pub_key=k)
+        return common.get_account_balance(bob_api, bob_internal_api, pub_key=alice_pub_key)
+
 
     spend_tx_amt = test_settings["spend_tx"]["amount"]
     spend_tx_fee = test_settings["spend_tx"]["fee"]
@@ -48,13 +50,14 @@ def test_not_enough_tokens():
 
     # Bob tries to send some tokens to Alice
     spend_tx_obj = SpendTx(
-        recipient_id=test_settings["spend_tx"]["alice_pubkey"],
+        sender_id=bob_pub_key,
+        recipient_id=alice_pub_key,
         amount=spend_tx_amt,
         fee=spend_tx_fee,
         ttl=100,
         payload="foo")
     print("Bob's spend_tx is " + str(spend_tx_obj))
-    bob_internal_api.post_spend_tx(spend_tx_obj)
+    bob_internal_api.post_spend(spend_tx_obj)
     print("Transaction sent")
     bob_top_after_tx = bob_api.get_top_block()
 
@@ -85,7 +88,8 @@ def test_send_by_name():
     # Bob registers a name 'bob.aet'
     # Alice should be able to send tokens to Bob using that name
     test_settings = settings["test_send_by_name"]
-    (node, (root_dir, ext_api, top)) = setup_node_with_tokens(test_settings, "miner")
+    beneficiary = common.setup_beneficiary()
+    (node, (root_dir, ext_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "miner")
     int_api = common.internal_api(node)
 
     alice_private_key = keys.new_private()
@@ -101,8 +105,8 @@ def test_send_by_name():
     bob_init_balance = test_settings["send_tokens"]["bob"]
 
     # populate accounts with tokens
-    miner_send_tokens(alice_address, alice_init_balance, int_api, ext_api)
-    miner_send_tokens(bob_address, bob_init_balance, int_api, ext_api)
+    miner_send_tokens(beneficiary, alice_address, alice_init_balance, int_api, ext_api)
+    miner_send_tokens(beneficiary, bob_address, bob_init_balance, int_api, ext_api)
 
     # validate balances
     alice_balance0 = common.get_account_balance(ext_api, int_api, pub_key=alice_address).balance
@@ -123,7 +127,7 @@ def test_send_by_name():
 
     tokens_to_send = test_settings["spend_tx"]["amount"]
     print("Alice is about to send " + str(tokens_to_send) + " to " + bob_name)
-    send_tokens_to_name(bob_name, tokens_to_send, alice_address, alice_private_key, ext_api)
+    send_tokens_to_name(bob_name, tokens_to_send, alice_address, alice_private_key, int_api, ext_api)
 
     # validate balances
     alice_balance2 = common.get_account_balance(ext_api, int_api, pub_key=alice_address).balance
@@ -142,12 +146,13 @@ def test_send_by_name():
     common.stop_node(node)
     shutil.rmtree(root_dir)
 
-def setup_node_with_tokens(test_settings, node_name):
+def setup_node_with_tokens(test_settings, beneficiary, node_name):
     node = test_settings["nodes"][node_name]
-    return node, common.setup_node_with_tokens(node, test_settings["blocks_to_mine"])
+    return node, common.setup_node_with_tokens(node, beneficiary, test_settings["blocks_to_mine"])
 
-def miner_send_tokens(address, amount, internal_api, external_api):
+def miner_send_tokens(beneficiary, address, amount, internal_api, external_api):
     spend_tx_obj = SpendTx(
+        sender_id=beneficiary['enc_pubk'],
         recipient_id=address,
         amount=amount,
         fee=1,
@@ -155,7 +160,10 @@ def miner_send_tokens(address, amount, internal_api, external_api):
         payload="sending tokens")
 
     # populate account
-    internal_api.post_spend_tx(spend_tx_obj)
+    spend_tx = internal_api.post_spend(spend_tx_obj).tx
+    unsigned_tx = common.base58_decode(spend_tx)
+    signed_tx = keys.sign_encode_tx(unsigned_tx, beneficiary['privk'])
+    external_api.post_transaction(Tx(tx=signed_tx))
 
     top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
@@ -170,7 +178,7 @@ def register_name(name, address, external_api, internal_api, private_key):
             NamePreclaimTx(commitment_id=commitment_id, fee=1, ttl=100, account_id=address)).tx)
     signed_preclaim = keys.sign_encode_tx(unsigned_preclaim, private_key)
 
-    external_api.post_tx(Tx(tx=signed_preclaim))
+    external_api.post_transaction(Tx(tx=signed_preclaim))
     top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
 
@@ -181,7 +189,7 @@ def register_name(name, address, external_api, internal_api, private_key):
             NameClaimTx(name=encoded_name, name_salt=salt, fee=1, ttl=100, account_id=address)).tx)
     signed_claim = keys.sign_encode_tx(unsigned_claim, private_key)
 
-    external_api.post_tx(Tx(tx=signed_claim))
+    external_api.post_transaction(Tx(tx=signed_claim))
     top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
     name_entry0 = external_api.get_name_entry_by_name(name)
@@ -194,7 +202,7 @@ def register_name(name, address, external_api, internal_api, private_key):
                 pointers=pointers, fee=1, ttl=100, account_id=address)).tx)
     signed_update = keys.sign_encode_tx(unsigned_update, private_key)
 
-    external_api.post_tx(Tx(tx=signed_update))
+    external_api.post_transaction(Tx(tx=signed_update))
     top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
     name_entry = external_api.get_name_entry_by_name(name)
@@ -202,17 +210,17 @@ def register_name(name, address, external_api, internal_api, private_key):
     assert_equals('account_pubkey', received_pointers.key)
     assert_equals(address, received_pointers.id)
 
-def send_tokens_to_name(name, tokens, sender_address, private_key, external_api):
+def send_tokens_to_name(name, tokens, sender_address, private_key, internal_api, external_api):
     name_entry = external_api.get_name_entry_by_name(name)
     resolved_address = name_entry.pointers[0].id
     print("Name " + name + " resolved to address " + resolved_address)
 
     unsigned_spend = common.base58_decode(\
-        external_api.post_spend(\
+        internal_api.post_spend(\
             SpendTx(sender_id=sender_address, recipient_id=resolved_address, amount=tokens, fee=1,\
                     ttl=100, payload="foo")).tx)
     signed_spend = keys.sign_encode_tx(unsigned_spend, private_key)
 
-    external_api.post_tx(Tx(tx=signed_spend))
+    external_api.post_transaction(Tx(tx=signed_spend))
     top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)

@@ -34,22 +34,20 @@
         Context :: #{}
                    ) -> {Status :: cowboy:http_status(), Headers :: list(), Body :: map()}.
 
-handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
-    #{<<"recipient_id">>     := EncodedRecipientPubkey,
-      <<"amount">>           := Amount,
-      <<"fee">>              := Fee,
-      <<"payload">>          := Payload} = SpendTxObj,
-    TTL = maps:get(<<"ttl">>, SpendTxObj, 0),
-    case aehttp_int_tx_logic:spend(EncodedRecipientPubkey, Amount, Fee, TTL, Payload) of
-        {ok, STx} ->
-            {200, [], #{<<"tx_hash">> => aec_base58c:encode(tx_hash, aetx_sign:hash(STx))}};
-        {error, invalid_key} ->
-            {404, [], #{reason => <<"Invalid key">>}};
-        {error, account_not_found} ->
-            {404, [], #{reason => <<"Account not found">>}};
-        {error, key_not_found} ->
-            {404, [], #{reason => <<"Keys not configured">>}}
-    end;
+handle_request('PostSpend', #{'SpendTx' := Req}, _Context) ->
+    AllowedRecipients = [account_pubkey, name, oracle_pubkey, contract_pubkey],
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([sender_id,
+                                       {recipient_id, recipient_id},
+                                        amount, fee, payload]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 base58_decode([{sender_id, sender_id, {id_hash, [account_pubkey]}},
+                                {recipient_id, recipient_id,
+                                 {id_hash, AllowedRecipients}}]),
+                 get_nonce_from_account_id(sender_id),
+                 unsigned_tx_response(fun aec_spend_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
 
 handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
@@ -445,6 +443,10 @@ handle_request('GetTxsListFromBlockRangeByHash', Req, _Context) ->
         _ ->
             {400, [], #{reason => <<"Invalid hash">>}}
     end;
+
+handle_request('GetPendingTransactions', _Req, _Context) ->
+    {ok, Txs} = aec_tx_pool:peek(infinity),
+    {200, [], #{transactions => [aetx_sign:serialize_for_client_pending(T) || T <- Txs]}};
 
 handle_request('GetPeers', _Req, _Context) ->
     case aeu_env:user_config_or_env([<<"http">>, <<"debug">>],

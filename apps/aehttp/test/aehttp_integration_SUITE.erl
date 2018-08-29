@@ -173,9 +173,8 @@
     wrong_http_method_name_claim/1,
     wrong_http_method_name_transfer/1,
     wrong_http_method_name_revoke/1,
-    wrong_http_method_transactions/1,
+    wrong_http_method_pending_transactions/1,
     wrong_http_method_tx_id/1,
-    wrong_http_method_spend_tx/1,
     wrong_http_method_commitment_hash/1,
     wrong_http_method_name/1,
     wrong_http_method_tx/1,
@@ -479,9 +478,8 @@ groups() ->
         wrong_http_method_name_claim,
         wrong_http_method_name_transfer,
         wrong_http_method_name_revoke,
-        wrong_http_method_transactions,
+        wrong_http_method_pending_transactions,
         wrong_http_method_tx_id,
-        wrong_http_method_spend_tx,
         wrong_http_method_commitment_hash,
         wrong_http_method_name,
         wrong_http_method_tx,
@@ -737,8 +735,12 @@ init_per_group(channel_websocket = Group, Config) ->
 
     aecore_suite_utils:mine_key_blocks(Node, BlocksToMine),
 
-    {ok, 200, _} = post_spend_tx(IPubkey, IStartAmt, Fee),
-    {ok, 200, _} = post_spend_tx(RPubkey, RStartAmt, Fee),
+    {ok, 200, #{<<"tx">> := SpendTx1}} =
+        post_spend_tx(aec_base58c:encode(account_pubkey, IPubkey), IStartAmt, Fee),
+    sign_and_post_tx(SpendTx1),
+    {ok, 200, #{<<"tx">> := SpendTx2}} =
+        post_spend_tx(aec_base58c:encode(account_pubkey, RPubkey), RStartAmt, Fee),
+    sign_and_post_tx(SpendTx2),
     {ok, [_KeyBlock, MicroBlock]} = aecore_suite_utils:mine_blocks(Node, 2),
     [_Spend1, _Spend2] = aec_blocks:txs(MicroBlock),
     assert_balance(IPubkey, IStartAmt),
@@ -1457,7 +1459,7 @@ get_transactions_info_by_hash_sut(Hash) ->
 
 post_transactions_sut(Tx) ->
     Host = external_address(),
-    http_request(Host, post, "ng-transactions", #{tx => Tx}).
+    http_request(Host, post, "transactions", #{tx => Tx}).
 
 %% /contracts/*
 
@@ -1748,7 +1750,7 @@ post_tx(TxHash, Tx) ->
 %    [account, query_format, response_format, query_fee, fee, oracle_ttl].
 
 %% TODO: use /debug/* when available
-tx_object_http_path(spend_tx) -> {external_address(), "tx/spend"};
+tx_object_http_path(spend_tx) -> {internal_address(), "debug/transactions/spend"};
 tx_object_http_path(oracle_register_tx) -> {internal_address(), "debug/oracles/register"};
 tx_object_http_path(oracle_extend_tx) -> {internal_address(), "debug/oracles/extend"};
 tx_object_http_path(oracle_query_tx) -> {internal_address(), "debug/oracles/query"};
@@ -2039,7 +2041,8 @@ contract_transactions(_Config) ->    % miner has an account
                                            ComputeCCallEncoded)),
 
     %% Call objects
-    {ok, 200, #{<<"tx_hash">> := SpendTxHash}} = post_spend_tx(MinerPubkey, 1, 1),
+    {ok, 200, #{<<"tx">> := SpendTx}} = post_spend_tx(MinerAddress, 1, 1),
+    SpendTxHash = sign_and_post_tx(SpendTx),
     ok = wait_for_tx_hash_on_chain(SpendTxHash),
     {ok, 400, #{<<"reason">> := <<"Tx is not a create or call">>}} =
         get_contract_call_object(SpendTxHash),
@@ -2765,8 +2768,8 @@ get_transaction(_Config) ->
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 2),
     lists:foreach(
         fun(TxHash) ->
-                {ok, 200, #{<<"transaction">> := #{<<"hash">> := TxHash1}}} =
-                    get_tx(TxHash),
+                {ok, 200, #{<<"hash">> := TxHash1}} =
+                    get_transactions_by_hash_sut(TxHash),
                 ?assertEqual(TxHash, TxHash1)
         end,
       TxHashes),
@@ -2785,8 +2788,8 @@ get_transaction(_Config) ->
     TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedSpendTx)),
 
     SerializedSpendTx = aetx_sign:serialize_to_binary(SignedSpendTx),
-    {ok, 200, _} = post_tx(aec_base58c:encode(transaction, SerializedSpendTx)),
-    {ok, 200, #{<<"transaction">> := PendingTx}} = get_tx(TxHash),
+    {ok, 200, _} = post_transactions_sut(aec_base58c:encode(transaction, SerializedSpendTx)),
+    {ok, 200, PendingTx} = get_transactions_by_hash_sut(TxHash),
     Expected = aetx_sign:serialize_for_client_pending(SignedSpendTx),
     Expected = PendingTx,
 
@@ -2796,11 +2799,11 @@ get_transaction(_Config) ->
 %% Maybe this test should be broken into a couple of smaller tests
 %% it currently tests the positive cases for
 %% GET externalAPI/transactions
-%% POST internalAPI/spend-tx
+%% POST internalAPI/debug/transactions/spend
 %% GET externalAPI/account/balance
 pending_transactions(_Config) ->
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
-    {ok, 200, []} = get_transactions(),
+    {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
     InitialBalance =
         case get_balance_at_top() of
             {ok, 404, #{<<"reason">> := <<"Account not found">>}} -> 0;
@@ -2819,21 +2822,20 @@ pending_transactions(_Config) ->
     true = (is_integer(Bal0) andalso Bal0 > AmountToSpent + Fee),
 
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % still empty
-    {ok, 200, []} = get_transactions(),
+    {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
 
     %{ok, SenderPubKey} = rpc:call(?NODE, aec_keys, pubkey, [], 5000),
     ReceiverPubKey = random_hash(),
     {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
                   get_accounts_by_pubkey_sut(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
 
-    {ok, 200, _} = post_spend_tx(ReceiverPubKey, AmountToSpent, Fee),
+    {ok, 200, #{<<"tx">> := SpendTx}} =
+        post_spend_tx(aec_base58c:encode(account_pubkey, ReceiverPubKey), AmountToSpent, Fee),
+    sign_and_post_tx(SpendTx),
     {ok, NodeTxs} = rpc(aec_tx_pool, peek, [infinity]),
     true = length(NodeTxs) =:= 1, % not empty anymore
-    {ok, 200, ReturnedTxs} = get_transactions(),
-    ExpectedTxs = [#{<<"tx">> => aec_base58c:encode(
-                                   transaction,
-                                   aetx_sign:serialize_to_binary(T))}
-           || T <- NodeTxs],
+    {ok, 200, #{<<"transactions">> := ReturnedTxs}} = get_pending_transactions(),
+    ExpectedTxs = [aetx_sign:serialize_for_client_pending(T) || T <- NodeTxs],
     true = length(ExpectedTxs) =:= length(ReturnedTxs),
     true = lists:all(fun(Tx) -> lists:member(Tx, ExpectedTxs) end, ReturnedTxs),
 
@@ -2844,7 +2846,7 @@ pending_transactions(_Config) ->
 
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 3),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty again
-    {ok, 200, []} = get_transactions(),
+    {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
 
     {ok, 200, #{<<"balance">> := Bal1}} = get_balance_at_top(),
     ct:log("Bal1: ~p, Bal0: ~p, Mine reward: ~p, Fee: ~p, Amount to spend: ~p",
@@ -2871,7 +2873,7 @@ post_correct_tx(_Config) ->
     {ok, SignedTx} = rpc(aec_keys, sign_tx, [SpendTx]),
     ExpectedHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
     {ok, 200, #{<<"tx_hash">> := ExpectedHash}} =
-        post_tx(aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx))),
+        post_transactions_sut(aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx))),
     {ok, [SignedTx]} = rpc(aec_tx_pool, peek, [infinity]), % same tx
     ok.
 
@@ -2895,8 +2897,8 @@ post_broken_tx(_Config) ->
                   end,
     EncodedBrokenTx = aec_base58c:encode(transaction, BrokenTxBin),
     EncodedSignedTx = aec_base58c:encode(transaction, SignedTxBin),
-    {ok, 400, #{<<"reason">> := <<"Invalid base58Check encoding">>}} = post_tx(EncodedBrokenTx),
-    {ok, 200, _} = post_tx(EncodedSignedTx),
+    {ok, 400, #{<<"reason">> := <<"Invalid base58Check encoding">>}} = post_transactions_sut(EncodedBrokenTx),
+    {ok, 200, _} = post_transactions_sut(EncodedSignedTx),
     ok.
 
 post_broken_base58_tx(_Config) ->
@@ -2918,7 +2920,7 @@ post_broken_base58_tx(_Config) ->
             <<_, BrokenHash/binary>> =
                 aec_base58c:encode(transaction,
                                    aetx_sign:serialize_to_binary(SignedTx)),
-            {ok, 400, #{<<"reason">> := <<"Invalid base58Check encoding">>}} = post_tx(BrokenHash)
+            {ok, 400, #{<<"reason">> := <<"Invalid base58Check encoding">>}} = post_transactions_sut(BrokenHash)
         end,
         lists:seq(1, NumberOfChecks)), % number
     ok.
@@ -2928,7 +2930,7 @@ broken_spend_tx(_Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     {ok, 404, #{<<"reason">> := <<"Account not found">>}} = get_balance_at_top(),
     ReceiverPubKey = random_hash(),
-    {ok, 404, _} = post_spend_tx(ReceiverPubKey, 42, 2),
+    {ok, 404, _} = post_spend_tx(aec_base58c:encode(account_pubkey, ReceiverPubKey), 42, 2),
 
     ForkHeight = aecore_suite_utils:latest_fork_height(),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
@@ -3202,7 +3204,9 @@ ws_micro_block_added(_Config) ->
     {_Height0, _KeyBlockHash0} = ws_mine_key_block(ConnPid, ?NODE, 1),
 
     %% 1 tx in the mempool, so micro block will be generated.
-    {ok, 200, _} = post_spend_tx(random_hash(), 1, 1),
+    {ok, 200, #{<<"tx">> := SpendTx}} =
+        post_spend_tx(aec_base58c:encode(account_pubkey, random_hash()), 1, 1),
+    sign_and_post_tx(SpendTx),
 
     %% Register for added_micro_block events
     ws_subscribe(ConnPid, #{ type => added_micro_block }),
@@ -3302,7 +3306,9 @@ ws_tx_on_chain(_Config) ->
     {ok, 200, #{ <<"pub_key">> := PK }} = get_node_pubkey(),
 
     %% Post spend tx
-    {ok, 200, #{<<"tx_hash">> := TxHash}} = post_spend_tx(random_hash(), 3, 1),
+    {ok, 200, #{<<"tx">> := Tx}} =
+        post_spend_tx(aec_base58c:encode(account_pubkey, random_hash()), 3, 1),
+    TxHash = sign_and_post_tx(Tx),
 
     %% Subscribe for an event once the Tx goes onto the chain...
     ws_subscribe(ConnPid, #{ type => tx, tx_hash => TxHash }),
@@ -3779,7 +3785,7 @@ sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
     assert_balance(RPubkey, RStartB + RChange),
 
     % ensure tx is not hanging in mempool
-    {ok, 200, []} = get_transactions(),
+    {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
     ok.
 
 sc_ws_leave(Config) ->
@@ -4409,8 +4415,8 @@ get_contract_decode_data(Request) ->
     http_request(Host, post, "debug/contracts/code/decode-data", Request).
 
 get_spend(Data) ->
-    Host = external_address(),
-    http_request(Host, post, "tx/spend", Data).
+    Host = internal_address(),
+    http_request(Host, post, "debug/transactions/spend", Data).
 
 get_oracle_register(Data) ->
     Host = internal_address(),
@@ -4480,25 +4486,24 @@ get_channel_settle(Data) ->
     Host = internal_address(),
     http_request(Host, post, "debug/channels/settle", Data).
 
-get_transactions() ->
-    Host = external_address(),
-    http_request(Host, get, "transactions", []).
-
-get_tx(TxHash) ->
-    Host = external_address(),
-    http_request(Host, get, "tx/" ++ binary_to_list(TxHash), []).
+get_pending_transactions() ->
+    Host = internal_address(),
+    http_request(Host, get, "debug/transactions/pending", []).
 
 get_tx_nonce(TxHash) ->
-    {ok, 200, Tx} = get_tx(TxHash),
-    maps:get(<<"nonce">>, maps:get(<<"tx">>, maps:get(<<"transaction">>, Tx))).
+    {ok, 200, Tx} = get_transactions_by_hash_sut(TxHash),
+    maps:get(<<"nonce">>, maps:get(<<"tx">>, Tx)).
 
-post_spend_tx(Recipient, Amount, Fee) ->
-    post_spend_tx(Recipient, Amount, Fee, <<"foo">>).
+post_spend_tx(RecipientId, Amount, Fee) ->
+    {ok, Sender} = rpc(aec_keys, pubkey, []),
+    SenderId = aec_base58c:encode(account_pubkey, Sender),
+    post_spend_tx(SenderId, RecipientId, Amount, Fee, <<"foo">>).
 
-post_spend_tx(Recipient, Amount, Fee, Payload) ->
+post_spend_tx(SenderId, RecipientId, Amount, Fee, Payload) ->
     Host = internal_address(),
-    http_request(Host, post, "spend-tx",
-                 #{recipient_id => aec_base58c:encode(account_pubkey, Recipient),
+    http_request(Host, post, "debug/transactions/spend",
+                 #{sender_id => SenderId,
+                   recipient_id => RecipientId,
                    amount => Amount,
                    fee => Fee,
                    payload => Payload}).
@@ -4510,10 +4515,6 @@ get_commitment_id(Name, Salt) ->
 get_balance_at_top() ->
     {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_node_pubkey(),
     get_accounts_by_pubkey_sut(EncodedPubKey).
-
-post_tx(TxSerialized) ->
-    Host = external_address(),
-    http_request(Host, post, "tx", #{tx => TxSerialized}).
 
 get_node_pubkey() ->
     Host = internal_address(),
@@ -4537,7 +4538,7 @@ get_contract_poi(ContractAddress) ->
 
 swagger_validation_body(_Config) ->
     Host = internal_address(),
-    URL = binary_to_list(iolist_to_binary([Host, "/v2/spend-tx"])),
+    URL = binary_to_list(iolist_to_binary([Host, "/v2/debug/transactions/spend"])),
     Type = "application/json",
     Body = <<"{broken_json">>,
 
@@ -4582,7 +4583,7 @@ swagger_validation_schema(_Config) ->
                         <<"data">> := <<"wrong_fee_data">>,
                         <<"error">> := <<"wrong_type">>,
                         <<"path">> := [<<"fee">>]
-        }}} = http_request(Host, post, "spend-tx", #{
+        }}} = http_request(Host, post, "debug/transactions/spend", #{
                    recipient_id => <<"">>,
                    amount => 0,
                    fee => <<"wrong_fee_data">>,
@@ -4595,7 +4596,7 @@ swagger_validation_schema(_Config) ->
                         <<"data">> := <<"recipient_id">>,
                         <<"error">> := <<"missing_required_property">>,
                         <<"path">> := []
-        }}} = http_request(Host, post, "spend-tx", #{
+        }}} = http_request(Host, post, "debug/transactions/spend", #{
                    amount => 0,
                    fee => <<"fee">>,
                    ttl => 100,
@@ -4607,7 +4608,7 @@ swagger_validation_schema(_Config) ->
                         <<"data">> := -1,
                         <<"error">> := <<"not_in_range">>,
                         <<"path">> := [<<"amount">>]
-        }}} = http_request(Host, post, "spend-tx", #{
+        }}} = http_request(Host, post, "debug/transactions/spend", #{
                    recipient_id => <<"">>,
                    amount => -1,
                    fee => <<"fee">>,
@@ -4653,8 +4654,8 @@ wrong_http_method_contract_call_compute(_Config) ->
     {ok, 405, _} = http_request(Host, get, "debug/contracts/call/compute", []).
 
 wrong_http_method_spend(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "tx/spend", []).
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "debug/transactions/spend", []).
 
 wrong_http_method_oracle_register(_Config) ->
     Host = internal_address(),
@@ -4688,17 +4689,13 @@ wrong_http_method_name_revoke(_Config) ->
     Host = internal_address(),
     {ok, 405, _} = http_request(Host, get, "debug/names/revoke", []).
 
-wrong_http_method_transactions(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "transactions", []).
+wrong_http_method_pending_transactions(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "debug/transactions/pending", []).
 
 wrong_http_method_tx_id(_Config) ->
     Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "tx/123", []).
-
-wrong_http_method_spend_tx(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, get, "spend-tx", []).
+    {ok, 405, _} = http_request(Host, post, "transactions/123", []).
 
 wrong_http_method_commitment_hash(_Config) ->
     Host = internal_address(),
@@ -4710,7 +4707,7 @@ wrong_http_method_name(_Config) ->
 
 wrong_http_method_tx(_Config) ->
     Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "tx", []).
+    {ok, 405, _} = http_request(Host, get, "transactions", []).
 
 wrong_http_method_node_pubkey(_Config) ->
     Host = internal_address(),
@@ -4870,7 +4867,9 @@ add_spend_txs() ->
     Txs =
         lists:map(
             fun(_) ->
-                #{recipient_id => random_hash(), amount => MinimalAmount, fee => MinFee}
+                #{recipient_id => aec_base58c:encode(account_pubkey, random_hash()),
+                  amount => MinimalAmount,
+                  fee => MinFee}
             end,
             lists:seq(0, TxsCnt -1)),
     populate_block(#{spend_txs => Txs}).
@@ -4878,8 +4877,8 @@ add_spend_txs() ->
 populate_block(Txs) ->
     lists:map(
         fun(#{recipient_id := R, amount := A, fee := F}) ->
-                {ok, 200, #{<<"tx_hash">> := TxHash}} = post_spend_tx(R, A, F),
-                TxHash
+                {ok, 200, #{<<"tx">> := SpendTx}} = post_spend_tx(R, A, F),
+                sign_and_post_tx(SpendTx)
         end,
         maps:get(spend_txs, Txs, [])).
 
@@ -4889,7 +4888,7 @@ give_tokens(RecipientPubkey, Amount) ->
     NeededBlocks = ((Amount + MinFee)  div MineReward) + 1,
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    NeededBlocks),
-    SpendData = #{recipient_id => RecipientPubkey,
+    SpendData = #{recipient_id => aec_base58c:encode(account_pubkey, RecipientPubkey),
                   amount => Amount,
                   fee => MinFee},
     populate_block(#{spend_txs => [SpendData]}),
@@ -4925,7 +4924,7 @@ sign_and_post_tx(EncodedUnsignedTx) ->
     SerializedTx = aetx_sign:serialize_to_binary(SignedTx),
     %% Check that we get the correct hash
     TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
-    {ok, 200, #{<<"tx_hash">> := TxHash}} = post_tx(aec_base58c:encode(transaction, SerializedTx)),
+    {ok, 200, #{<<"tx_hash">> := TxHash}} = post_transactions_sut(aec_base58c:encode(transaction, SerializedTx)),
     %% Check tx is in mempool.
     Fun = fun() ->
                   tx_in_mempool(TxHash)
@@ -4934,23 +4933,20 @@ sign_and_post_tx(EncodedUnsignedTx) ->
     TxHash.
 
 tx_in_mempool(TxHash) ->
-    case get_tx(TxHash) of
-        {ok, 200, #{<<"transaction">> :=
-                        #{<<"block_hash">> := <<"none">>}}} -> true;
-        {ok, 200, #{<<"transaction">> :=
-                        #{<<"block_hash">> := Other}}} ->
+    case get_transactions_by_hash_sut(TxHash) of
+        {ok, 200, #{<<"block_hash">> := <<"none">>}} -> true;
+        {ok, 200, #{<<"block_hash">> := Other}} ->
             ct:log("Tx not in mempool, but in chain: ~p", [Other]),
             false;
         {ok, 404, _} -> false
     end.
 
 tx_in_chain(TxHash) ->
-    case get_tx(TxHash) of
-        {ok, 200, #{<<"transaction">> :=
-                        #{<<"block_hash">> := <<"none">>}}} ->
+    case get_transactions_by_hash_sut(TxHash) of
+        {ok, 200, #{<<"block_hash">> := <<"none">>}} ->
             ct:log("Tx not mined, but in mempool"),
             false;
-        {ok, 200, #{<<"transaction">> := #{<<"block_hash">> := _}}} -> true;
+        {ok, 200, #{<<"block_hash">> := _}} -> true;
         {ok, 404, _} -> false
     end.
 
