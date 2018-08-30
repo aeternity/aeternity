@@ -1883,6 +1883,9 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, Trees} = rpc(aec_chain, get_top_state, []),
     ContractInPoI = rpc(aect_state_tree, get_contract, [ContractPubKey,
                                                          aec_trees:contracts(Trees)]),
+    {ok, ContractAccInPoI} = aec_trees:lookup_poi(accounts, ContractPubKey, PoI),
+    ContractAccInPoI = rpc(aec_accounts_trees, get, [ContractPubKey,
+                                                     aec_trees:accounts(Trees)]),
 
     %% Assert the balance is the one which we created the contract with
     {ok, 200, #{<<"balance">> := ContractInitBalance}} =

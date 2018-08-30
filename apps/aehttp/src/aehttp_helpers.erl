@@ -523,23 +523,43 @@ get_block_from_chain(Fun) when is_function(Fun, 0) ->
             {404, [], #{reason => <<"Not mining, no pending block">>}}
     end.
 
-get_poi(Subtree, KeyName, PutKey) when Subtree =:= accounts
-                                orelse Subtree =:= contracts ->
+get_poi(Type, KeyName, PutKey) when Type =:= account
+                             orelse Type =:= contract ->
     fun(_Req, State) ->
         PubKey = maps:get(KeyName, State),
         {ok, Trees} = aec_chain:get_top_state(),
-        EmptyPoI = aec_trees:new_poi(Trees),
-        case aec_trees:add_poi(Subtree, PubKey, Trees, EmptyPoI) of
+        AddToPoI =
+            fun(Subtree, PoI0) -> 
+                case aec_trees:add_poi(Subtree, PubKey, Trees, PoI0) of
+                    {ok, PoI} ->
+                        {ok, PoI};
+                    {error, _} ->
+                        SingularName =
+                            case Subtree of
+                                accounts -> "account";
+                                contracts -> "contract"
+                            end,
+                        Msg = "Proof for " ++ SingularName ++ " not found",
+                        {error, list_to_binary(Msg)}
+                end
+            end,
+        SubTrees =
+            case Type of
+                account -> [accounts];
+                contract -> [contracts, accounts]
+            end,
+        Res =
+            lists:foldl(
+                fun(_, {error, _} = Err) -> Err;
+                   (T, {ok, PoI}) -> AddToPoI(T, PoI)
+                end,
+                {ok, aec_trees:new_poi(Trees)},
+                SubTrees),
+        case Res of
             {ok, PoI} ->
                 {ok, maps:put(PutKey, PoI, State)};
-            {error, _} ->
-                SingularName =
-                    case Subtree of
-                        accounts -> "account";
-                        contracts -> "contract"
-                    end,
-                Msg = "Proof for " ++ SingularName ++ " not found",
-                {error, {404, [], #{<<"reason">> => list_to_binary(Msg)}}}
+            {error, Msg} ->
+                {error, {404, [], #{<<"reason">> => Msg}}}
         end
     end.
 
