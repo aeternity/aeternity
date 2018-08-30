@@ -53,6 +53,7 @@
         , sophia_maps/1
         , sophia_variant_types/1
         , sophia_chain/1
+        , sophia_savecoinbase/1
         , sophia_fundme/1
         , sophia_aens/1
         , create_store/1
@@ -111,6 +112,7 @@ groups() ->
                                  sophia_maps,
                                  sophia_variant_types,
                                  sophia_chain,
+                                 sophia_savecoinbase,
                                  sophia_fundme,
                                  sophia_aens ]}
     , {sophia_oracles_query_fee_happy_path, [],
@@ -483,6 +485,11 @@ make_call(PubKey, ContractKey,_Call,_S) ->
 
 state()  -> get(the_state).
 state(S) -> put(the_state, S).
+
+get_contract_state(Contract) ->
+    S = state(),
+    {{value, C}, _} = lookup_contract_by_id(Contract, S),
+    aect_contracts:state(C).
 
 call(Name, Fun, Xs) ->
     Fmt = string:join(lists:duplicate(length(Xs), "~p"), ", "),
@@ -1884,6 +1891,27 @@ sophia_chain(_Cfg) ->
     Beneficiary = ?call(call_contract, Acc, Ct1, miner, word, {}),
     unmock(),
     ok.
+
+sophia_savecoinbase(_Cfg) ->
+    mock(),
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000),
+    <<Beneficiary:?BENEFICIARY_PUB_BYTES/unit:8>> = ?BENEFICIARY_PUBKEY,
+
+    %% Create chain contract and check that address is stored.
+    Ct1 = ?call(create_contract, Acc, chain, {}, #{amount => 10000}),
+    #{<<0>> := Val1} = get_contract_state(Ct1),
+    {ok, {LastBf}} = aeso_data:from_binary(0, {tuple, [word]}, Val1),
+    <<LastBf:?BENEFICIARY_PUB_BYTES/unit:8>> = Ct1,
+
+    %% Call chain.save_coinbase() and make sure beneficiary is stored.
+    ?call(call_contract, Acc, Ct1, save_coinbase, word, {}),
+    #{<<0>> := Val2}  = get_contract_state(Ct1),
+    {ok, {LastBf2}} = aeso_data:from_binary(0, {tuple, [word]}, Val2),
+    Beneficiary = LastBf2,
+    unmock(),
+    ok.
+
 
 
 %% The crowd funding example.
