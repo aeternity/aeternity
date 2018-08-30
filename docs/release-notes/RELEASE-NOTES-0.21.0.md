@@ -1,6 +1,6 @@
 # About this release
 
-[This release][this-release] is focused on TODOFILLMEIN.
+[This release][this-release] is focused on the user API.
 It:
 * Adds support for type aliases and typed contract calls to the Sophia compiler.
 * Changes the target (difficulty) calculation algorithm to use [DigiShield v3][digishield_v3]. This impacts consensus.
