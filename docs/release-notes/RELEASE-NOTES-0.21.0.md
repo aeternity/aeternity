@@ -2,7 +2,7 @@
 
 [This release][this-release] is focused on the user API.
 It:
-* Removes support for message pack.
+* Removes support for MessagePack encoding in the user HTTP API.
 * Makes HTTP API more consistent by using IDs in all blockchain components (accounts, contracts, oracles, ...) and unifying endpoint paths.
 * Cleans up unused HTTP endpoints that signed transactions inside node.
 * Adds support for type aliases and typed contract calls to the Sophia compiler.
