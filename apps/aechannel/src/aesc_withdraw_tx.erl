@@ -266,7 +266,10 @@ check_channel(ChannelPubKey, Amount, ToPubKey, Round, Trees) ->
                 [fun() -> aesc_utils:check_is_active(Channel) end,
                  fun() -> aesc_utils:check_is_peer(ToPubKey, aesc_channels:peers(Channel)) end,
                  fun() -> check_amount(Channel, Amount) end,
-                 fun() -> aesc_utils:check_round_greater_than_last(Channel, Round) end
+                 fun() -> aesc_utils:check_round_greater_than_last(Channel,
+                                                                   Round,
+                                                                   withdrawal)
+                 end
                 ],
             aeu_validation:run(Checks);
         none ->
@@ -276,7 +279,7 @@ check_channel(ChannelPubKey, Amount, ToPubKey, Round, Trees) ->
 -spec check_amount(aesc_channels:channel(), aesc_channels:amount()) ->
                           ok | {error, not_enough_channel_funds}.
 check_amount(Channel, Amount) ->
-    MaxWithdrawableAmt = aesc_channels:total_amount(Channel) -
+    MaxWithdrawableAmt = aesc_channels:channel_amount(Channel) -
                          2 * aesc_channels:channel_reserve(Channel),
     case MaxWithdrawableAmt >= Amount of
         true ->

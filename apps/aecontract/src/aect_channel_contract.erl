@@ -3,8 +3,9 @@
 
 -export([new/6,
          run_new/5,
-         run/7,
-         get_call/4
+         run/10,
+         get_call/4,
+         insert_failed_call/6
         ]).
 
 new(Owner, Round, VmVersion, Code, Deposit, Trees0) ->
@@ -67,9 +68,11 @@ run_new(ContractPubKey, Call, CallData, Round, Trees0) ->
     end.
 
 -spec run(aect_contracts:pubkey(), aect_contracts:vm_version(), aect_call:call(),
-          binary(), [non_neg_integer()], non_neg_integer(), aec_trees:trees())
+          binary(), [non_neg_integer()], non_neg_integer(), aec_trees:trees(),
+          non_neg_integer(), non_neg_integer(), non_neg_integer())
     -> aec_trees:trees().
-run(ContractPubKey, VmVersion, Call, CallData, CallStack, Round, Trees0) ->
+run(ContractPubKey, VmVersion, Call, CallData, CallStack, Round, Trees0,
+    Amount, GasPrice, Gas) ->
     ContractsTree  = aec_trees:contracts(Trees0),
     Contract = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
     OwnerPubKey = aect_contracts:owner_pubkey(Contract),
@@ -80,10 +83,10 @@ run(ContractPubKey, VmVersion, Call, CallData, CallStack, Round, Trees0) ->
     end,
     CallDef = #{ caller     => OwnerPubKey
                , contract   => ContractPubKey
-               , gas        => 10000000
-               , gas_price  => 0
+               , gas        => Gas
+               , gas_price  => GasPrice
                , call_data  => CallData
-               , amount     => 0
+               , amount     => Amount
                , call_stack => CallStack
                , code       => Code
                , call       => Call
@@ -100,3 +103,15 @@ get_call(ContractPubkey, CallerPubkey, Round, CallsTree) ->
         {value, Call} -> {ok, Call}
     end.
 
+-spec insert_failed_call(aect_contracts:pubkey(), aec_keys:pubkey(),
+                         non_neg_integer(), non_neg_integer(),
+                         non_neg_integer(), aect_call_state_tree:tree()) ->
+                         aect_call_state_tree:tree().
+insert_failed_call(ContractPubkey, CallerPubkey, Round, GasPrice, GasLimit, CallsTree) ->
+    Caller = aec_id:create(account, CallerPubkey),
+    Contract = aec_id:create(contract, ContractPubkey),
+    Call0 = aect_call:new(Caller, Round, Contract, Round, GasPrice),
+    Call1 = aect_call:set_gas_used(GasLimit, Call0), % all gas is consumed
+    Call2 = aect_call:set_return_type(error, Call1),
+    Call = aect_call:set_return_value(<<"invalid_call">>, Call2),
+    aect_call_state_tree:insert_call(Call, CallsTree).

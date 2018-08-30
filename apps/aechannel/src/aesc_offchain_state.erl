@@ -188,7 +188,8 @@ make_update_tx(Updates, #state{signed_txs=[SignedTx|_], trees=Trees}, Opts) ->
 
     NextRound     = Mod:round(TxI) + 1,
 
-    Trees1 = apply_updates(Updates, NextRound, Trees, Opts),
+    Reserve = maps:get(channel_reserve, Opts, 0),
+    Trees1 = apply_updates(Updates, NextRound, Trees, Reserve),
     StateHash = aec_trees:hash(Trees1),
     {ok, OffchainTx} =
         aesc_offchain_tx:new(#{channel_id => aec_id:create(channel, ChannelPubKey),
@@ -197,9 +198,11 @@ make_update_tx(Updates, #state{signed_txs=[SignedTx|_], trees=Trees}, Opts) ->
                                round      => NextRound}),
     OffchainTx.
 
-apply_updates(Updates, Round, Trees, Opts) ->
+apply_updates(Updates, Round, Trees, Reserve) ->
     lists:foldl(
-        fun(U, AccumTrees) -> aesc_offchain_update:apply_on_trees(U, AccumTrees, Round, Opts) end,
+        fun(U, AccumTrees) ->
+            aesc_offchain_update:apply_on_trees(U, AccumTrees, Round, Reserve)
+        end,
         Trees,
         Updates).
 
@@ -222,10 +225,14 @@ add_signed_tx(SignedTx, #state{signed_txs=Txs0}=State, Opts) ->
         {aesc_create_tx, _} ->
             State#state{signed_txs=[SignedTx | Txs0], half_signed_txs=[]};
         {Mod, TxI} ->
+            Reserve = maps:get(channel_reserve, Opts, 0),
             {Trees, Calls} =
                 lists:foldl(
                     fun(Update, {TrAccum, CallsAccum}) ->
-                        TrAccum1 = aesc_offchain_update:apply_on_trees(Update, TrAccum, Mod:round(TxI), Opts),
+                        TrAccum1 = aesc_offchain_update:apply_on_trees(Update,
+                                                                       TrAccum,
+                                                                       Mod:round(TxI),
+                                                                       Reserve),
                         IsCall = aesc_offchain_update:is_call(Update),
                         IsNewContract = aesc_offchain_update:is_contract_create(Update),
                         case IsNewContract orelse IsCall of

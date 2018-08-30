@@ -53,6 +53,7 @@
                  | channel_create_tx
                  | channel_deposit_tx
                  | channel_withdraw_tx
+                 | channel_force_progress_tx
                  | channel_close_mutual_tx
                  | channel_close_solo_tx
                  | channel_slash_tx
@@ -75,6 +76,7 @@
                      | aesc_create_tx:tx()
                      | aesc_deposit_tx:tx()
                      | aesc_withdraw_tx:tx()
+                     | aesc_force_progress_tx:tx()
                      | aesc_close_mutual_tx:tx()
                      | aesc_close_solo_tx:tx()
                      | aesc_slash_tx:tx()
@@ -269,28 +271,29 @@ deserialize_from_binary(Bin) ->
     Fields = aec_serialization:decode_fields(Template, RawFields),
     #aetx{cb = CB, type = Type, tx = CB:deserialize(Vsn, Fields)}.
 
-type_to_cb(spend_tx)                -> aec_spend_tx;
-type_to_cb(oracle_register_tx)      -> aeo_register_tx;
-type_to_cb(oracle_extend_tx)        -> aeo_extend_tx;
-type_to_cb(oracle_query_tx)         -> aeo_query_tx;
-type_to_cb(oracle_response_tx)      -> aeo_response_tx;
-type_to_cb(name_preclaim_tx)        -> aens_preclaim_tx;
-type_to_cb(name_claim_tx)           -> aens_claim_tx;
-type_to_cb(name_transfer_tx)        -> aens_transfer_tx;
-type_to_cb(name_update_tx)          -> aens_update_tx;
-type_to_cb(name_revoke_tx)          -> aens_revoke_tx;
-type_to_cb(name_create_tx)          -> aens_create_tx;
-type_to_cb(contract_call_tx)        -> aect_call_tx;
-type_to_cb(contract_create_tx)      -> aect_create_tx;
-type_to_cb(channel_create_tx)       -> aesc_create_tx;
-type_to_cb(channel_deposit_tx)      -> aesc_deposit_tx;
-type_to_cb(channel_withdraw_tx)     -> aesc_withdraw_tx;
-type_to_cb(channel_close_solo_tx)   -> aesc_close_solo_tx;
-type_to_cb(channel_close_mutual_tx) -> aesc_close_mutual_tx;
-type_to_cb(channel_slash_tx)        -> aesc_slash_tx;
-type_to_cb(channel_settle_tx)       -> aesc_settle_tx;
-type_to_cb(channel_snapshot_solo_tx)-> aesc_snapshot_solo_tx;
-type_to_cb(channel_offchain_tx)     -> aesc_offchain_tx.
+type_to_cb(spend_tx)                  -> aec_spend_tx;
+type_to_cb(oracle_register_tx)        -> aeo_register_tx;
+type_to_cb(oracle_extend_tx)          -> aeo_extend_tx;
+type_to_cb(oracle_query_tx)           -> aeo_query_tx;
+type_to_cb(oracle_response_tx)        -> aeo_response_tx;
+type_to_cb(name_preclaim_tx)          -> aens_preclaim_tx;
+type_to_cb(name_claim_tx)             -> aens_claim_tx;
+type_to_cb(name_transfer_tx)          -> aens_transfer_tx;
+type_to_cb(name_update_tx)            -> aens_update_tx;
+type_to_cb(name_revoke_tx)            -> aens_revoke_tx;
+type_to_cb(name_create_tx)            -> aens_create_tx;
+type_to_cb(contract_call_tx)          -> aect_call_tx;
+type_to_cb(contract_create_tx)        -> aect_create_tx;
+type_to_cb(channel_create_tx)         -> aesc_create_tx;
+type_to_cb(channel_deposit_tx)        -> aesc_deposit_tx;
+type_to_cb(channel_withdraw_tx)       -> aesc_withdraw_tx;
+type_to_cb(channel_force_progress_tx) -> aesc_force_progress_tx;
+type_to_cb(channel_close_solo_tx)     -> aesc_close_solo_tx;
+type_to_cb(channel_close_mutual_tx)   -> aesc_close_mutual_tx;
+type_to_cb(channel_slash_tx)          -> aesc_slash_tx;
+type_to_cb(channel_settle_tx)         -> aesc_settle_tx;
+type_to_cb(channel_snapshot_solo_tx)  -> aesc_snapshot_solo_tx;
+type_to_cb(channel_offchain_tx)       -> aesc_offchain_tx.
 
 -spec specialize_type(Tx :: tx()) -> {tx_type(), tx_instance()}.
 specialize_type(#aetx{ type = Type, tx = Tx }) -> {Type, Tx}.
@@ -320,6 +323,7 @@ tx_types() ->
     , channel_create_tx
     , channel_deposit_tx
     , channel_withdraw_tx
+    , channel_force_progress_tx
     , channel_close_mutual_tx
     , channel_close_solo_tx
     , channel_slash_tx

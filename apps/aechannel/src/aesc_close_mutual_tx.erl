@@ -119,8 +119,8 @@ check(#channel_close_mutual_tx{initiator_amount_final = InitiatorAmount,
                     end
                 end,
                 fun() -> % check amounts
-                    ChannelAmt = aesc_channels:total_amount(Channel),
-                    ok_or_error(ChannelAmt =:= InitiatorAmount + ResponderAmount + Fee,
+                    ChannelAmt = aesc_channels:channel_amount(Channel),
+                    ok_or_error(ChannelAmt >= InitiatorAmount + ResponderAmount + Fee,
                                 wrong_amounts)
                 end
                 ],

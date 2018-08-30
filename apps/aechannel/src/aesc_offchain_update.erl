@@ -13,7 +13,8 @@
         | {?OP_CREATE_CONTRACT, aec_id:id(), aect_contracts:vm_version(), binary(),
            non_neg_integer(), binary()}
         | {?OP_CALL_CONTRACT, aec_id:id(), aec_id:id(), aect_contracts:vm_version(),
-           non_neg_integer(), aect_call:call(), [non_neg_integer()]}.
+           non_neg_integer(), aect_call:call(), [non_neg_integer()],
+           non_neg_integer(), non_neg_integer()}.
 
 -export_type([update/0]).
 
@@ -22,6 +23,7 @@
         , op_withdraw/2
         , op_new_contract/5
         , op_call_contract/6
+        , op_call_contract/8
         ]).
 
 -export([serialize/1,
@@ -32,7 +34,9 @@
 -export([is_call/1,
          is_contract_create/1,
          extract_call/1,
-         extract_caller/1]).
+         extract_caller/1,
+         extract_contract_pubkey/1,
+         extract_amounts/1]).
 
 -spec op_transfer(aec_id:id(), aec_id:id(), non_neg_integer()) -> update().
 op_transfer(From, To, Amount) ->
@@ -60,42 +64,58 @@ op_new_contract(OwnerId, VmVersion, Code, Deposit, CallData) ->
 -spec op_call_contract(aec_id:id(), aec_id:id(), aect_contracts:vm_version(),
                        non_neg_integer(), aect_call:call(), [non_neg_integer()]) -> update().
 op_call_contract(CallerId, ContractId, VmVersion, Amount, CallData, CallStack) ->
+    op_call_contract(CallerId, ContractId, VmVersion, Amount, CallData,
+                     CallStack, 1, 1000000).
+-spec op_call_contract(aec_id:id(), aec_id:id(), aect_contracts:vm_version(),
+                       non_neg_integer(), aect_call:call(),
+                       [non_neg_integer()],
+                       non_neg_integer(), non_neg_integer()) -> update().
+op_call_contract(CallerId, ContractId, VmVersion, Amount, CallData, CallStack,
+                 GasPrice, Gas) ->
     account = aec_id:specialize_type(CallerId),
     contract = aec_id:specialize_type(ContractId),
-    {?OP_CALL_CONTRACT, CallerId, ContractId, VmVersion, Amount, CallData, CallStack}.
+    {?OP_CALL_CONTRACT, CallerId, ContractId, VmVersion, Amount, CallData,
+     CallStack, GasPrice, Gas}.
 
--spec apply_on_trees(update(), aec_trees:trees(), non_neg_integer(), map()) -> aec_trees:trees().
-apply_on_trees({?OP_TRANSFER, FromId, ToId, Amount}, Trees0, _, Opts) ->
-    From = account_pubkey(FromId),
-    To = account_pubkey(ToId),
-    Trees1 = remove_tokens(From, Amount, Trees0, Opts),
-    add_tokens(To, Amount, Trees1);
-apply_on_trees({?OP_DEPOSIT, ToId, Amount}, Trees, _, _Opts) ->
-    To = account_pubkey(ToId),
-    add_tokens(To, Amount, Trees);
-apply_on_trees({?OP_WITHDRAW, FromId, Amount}, Trees, _, Opts) ->
-    From = account_pubkey(FromId),
-    remove_tokens(From, Amount, Trees, Opts);
-apply_on_trees({?OP_CREATE_CONTRACT, OwnerId, VmVersion, Code, Deposit, CallData}, Trees, Round, Opts) ->
-    Owner = account_pubkey(OwnerId),
-    {ContractId, _Contract, Trees1} =
-        aect_channel_contract:new(Owner, Round, VmVersion, Code, Deposit, Trees),
-    ContractPubKey = contract_pubkey(ContractId),
-    Trees2 = remove_tokens(Owner, Deposit, Trees1, Opts),
-    Trees3 = create_account(ContractPubKey, Trees2),
-    Trees4 = add_tokens(ContractPubKey, Deposit, Trees3),
-    Call = aect_call:new(OwnerId, Round, ContractId, Round, 0),
-    _Trees = aect_channel_contract:run_new(ContractPubKey, Call, CallData,
-                                           Round, Trees4);
-apply_on_trees({?OP_CALL_CONTRACT, CallerId, ContractId, VmVersion, Amount, CallData, CallStack},
-             Trees, Round, Opts) ->
-    Caller = account_pubkey(CallerId),
-    ContractPubKey = contract_pubkey(ContractId),
-    Trees1 = remove_tokens(Caller, Amount, Trees, Opts),
-    Trees2 = add_tokens(ContractPubKey, Amount, Trees1),
-    Call = aect_call:new(CallerId, Round, ContractId, Round, 0),
-    _Trees = aect_channel_contract:run(ContractPubKey, VmVersion, Call,
-                                       CallData, CallStack, Round, Trees2).
+-spec apply_on_trees(aesc_offchain_update:update(), aec_trees:trees(), non_neg_integer(),
+                     non_neg_integer()) -> aec_trees:trees().
+apply_on_trees(Update, Trees0, Round, Reserve) ->
+    case Update of
+        {?OP_TRANSFER, FromId, ToId, Amount} ->
+            From = account_pubkey(FromId),
+            To = account_pubkey(ToId),
+            Trees = remove_tokens(From, Amount, Trees0, Reserve),
+            add_tokens(To, Amount, Trees);
+        {?OP_DEPOSIT, ToId, Amount} ->
+            To = account_pubkey(ToId),
+            add_tokens(To, Amount, Trees0);
+        {?OP_WITHDRAW, FromId, Amount} ->
+            From = account_pubkey(FromId),
+            remove_tokens(From, Amount, Trees0, Reserve);
+        {?OP_CREATE_CONTRACT, OwnerId, VmVersion, Code, Deposit, CallData} ->
+            Owner = account_pubkey(OwnerId),
+            {ContractId, _Contract, Trees1} =
+                aect_channel_contract:new(Owner, Round, VmVersion, Code,
+                                          Deposit, Trees0),
+            ContractPubKey = contract_pubkey(ContractId),
+            Trees2 = remove_tokens(Owner, Deposit, Trees1, Reserve),
+            Trees3 = create_account(ContractPubKey, Trees2),
+            Trees4 = add_tokens(ContractPubKey, Deposit, Trees3),
+            Call = aect_call:new(OwnerId, Round, ContractId, Round, 0),
+            _Trees = aect_channel_contract:run_new(ContractPubKey, Call, CallData,
+                                                  Round, Trees4);
+        {?OP_CALL_CONTRACT, CallerId, ContractId, VmVersion, Amount, CallData,
+         CallStack, GasPrice, Gas} ->
+            Caller = account_pubkey(CallerId),
+            ContractPubKey = contract_pubkey(ContractId),
+            Trees1 = remove_tokens(Caller, Amount, Trees0, Reserve),
+            Trees2 = add_tokens(ContractPubKey, Amount, Trees1),
+            Call = aect_call:new(CallerId, Round, ContractId, Round,
+                                 GasPrice),
+            _Trees = aect_channel_contract:run(ContractPubKey, VmVersion, Call,
+                                              CallData, CallStack, Round,
+                                              Trees2, Amount, GasPrice, Gas)
+    end.
 
 -spec for_client(update()) -> map().
 for_client({?OP_TRANSFER, From, To, Amount}) ->
@@ -118,12 +138,15 @@ for_client({?OP_CREATE_CONTRACT, OwnerId, VmVersion, Code, Deposit, CallData}) -
       <<"code">>        => Code,
       <<"deposit">>     => Deposit,
       <<"call_data">>   => CallData};
-for_client({?OP_CALL_CONTRACT, CallerId, ContractId, VmVersion, Amount, CallData, CallStack}) ->
+for_client({?OP_CALL_CONTRACT, CallerId, ContractId, VmVersion, Amount,
+            CallData, CallStack, GasPrice, Gas}) ->
     #{<<"op">>          => <<"contract_call">>,
       <<"caller">>      => aec_base58c:encode(id_hash, CallerId),
       <<"contract">>    => aec_base58c:encode(id_hash, ContractId),
       <<"vm_version">>  => VmVersion,
       <<"amount">>      => Amount,
+      <<"gas">>         => Gas,
+      <<"gas_price">>   => GasPrice,
       <<"call_data">>   => CallData,
       <<"call_stack">>  => CallStack}.
 
@@ -163,11 +186,14 @@ update2fields({?OP_CREATE_CONTRACT, OwnerId, VmVersion, Code, Deposit, CallData}
       {code, Code},
       {deposit, Deposit},
       {call_data, CallData}];
-update2fields({?OP_CALL_CONTRACT, CallerId, ContractId, VmVersion, Amount, CallData, CallStack}) ->
+update2fields({?OP_CALL_CONTRACT, CallerId, ContractId, VmVersion, Amount,
+               CallData, CallStack, GasPrice, Gas}) ->
     [ {caller, CallerId},
       {contract, ContractId},
       {vm_version, VmVersion},
       {amount, Amount},
+      {gas, Gas},
+      {gas_price, GasPrice},
       {call_data, CallData},
       {call_stack, CallStack}].
 
@@ -178,7 +204,7 @@ fields2update(?OP_TRANSFER, [{from,   From},
 fields2update(?OP_DEPOSIT, [{from,   From},
                             {amount, Amount}]) ->
     op_deposit(From, Amount);
-fields2update(?OP_DEPOSIT, [{to,     To},
+fields2update(?OP_WITHDRAW, [{to,    To},
                             {amount, Amount}]) ->
     op_withdraw(To, Amount);
 fields2update(?OP_CREATE_CONTRACT, [{owner, OwnerId},
@@ -191,9 +217,12 @@ fields2update(?OP_CALL_CONTRACT, [ {caller, CallerId},
                                     {contract, ContractId},
                                     {vm_version, VmVersion},
                                     {amount, Amount},
+                                    {gas, Gas},
+                                    {gas_price, GasPrice},
                                     {call_data, CallData},
                                     {call_stack, CallStack}]) ->
-    op_call_contract(CallerId, ContractId, VmVersion, Amount, CallData, CallStack).
+    op_call_contract(CallerId, ContractId, VmVersion, Amount, CallData,
+                     CallStack, GasPrice, Gas).
 
 
 ut2type(?OP_TRANSFER)         -> channel_offchain_update_transfer;
@@ -229,11 +258,12 @@ update_serialization_template(?UPDATE_VSN, ?OP_CALL_CONTRACT) ->
       {contract,    id},
       {vm_version,  int},
       {amount,      int},
+      {gas,         int},
+      {gas_price,   int},
       {call_data,   binary},
       {call_stack,  [int]}].
 
-check_min_amt(Amt, Opts) ->
-    Reserve = maps:get(channel_reserve, Opts, 0),
+check_min_amt(Amt, Reserve) ->
     if Amt < Reserve ->
             erlang:error(insufficient_balance);
        true ->
@@ -255,11 +285,11 @@ add_tokens(Pubkey, Amount, Trees) ->
     AccountTrees1 = aec_accounts_trees:enter(Acc, AccountTrees),
     aec_trees:set_accounts(Trees, AccountTrees1).
 
-remove_tokens(Pubkey, Amount, Trees, Opts) ->
+remove_tokens(Pubkey, Amount, Trees, Reserve) ->
     AccountTrees = aec_trees:accounts(Trees),
     Acc0 = aec_accounts_trees:get(Pubkey, AccountTrees),
     Balance = aec_accounts:balance(Acc0),
-    check_min_amt(Balance - Amount, Opts),
+    check_min_amt(Balance - Amount, Reserve),
     Nonce = aec_accounts:nonce(Acc0),
     {ok, Acc} = aec_accounts:spend(Acc0, Amount, Nonce), %no nonce bump
     AccountTrees1 = aec_accounts_trees:enter(Acc, AccountTrees),
@@ -272,13 +302,13 @@ contract_pubkey(Id) ->
     aec_id:specialize(Id, contract).
 
 -spec extract_caller(update()) -> aec_keys:pubkey().
-extract_caller({?OP_CALL_CONTRACT, CallerId, _, _, _, _, _}) ->
+extract_caller({?OP_CALL_CONTRACT, CallerId, _, _, _, _, _, _, _}) ->
     account_pubkey(CallerId);
 extract_caller({?OP_CREATE_CONTRACT, OwnerId, _, _, _, _}) ->
     account_pubkey(OwnerId).
 
 -spec is_call(update()) -> boolean().
-is_call({?OP_CALL_CONTRACT, _, _, _, _, _, _}) ->
+is_call({?OP_CALL_CONTRACT, _, _, _, _, _, _, _, _}) ->
       true;
 is_call(_) ->
       false.
@@ -289,12 +319,26 @@ is_contract_create({?OP_CREATE_CONTRACT, _, _, _, _, _}) ->
 is_contract_create(_) ->
       false.
 
--spec extract_call(aesc_offchain_update:update()) -> {aect_contracts:id(), aec_keys:pubkey()}
+-spec extract_call(aesc_offchain_update:update()) -> {aect_contracts:pubkey(), aec_keys:pubkey()}
                                                      | not_call.
 extract_call(Update) ->
     case Update of
-        {?OP_CALL_CONTRACT, CallerId, ContractId, _, _, _, _} ->
+        {?OP_CALL_CONTRACT, CallerId, ContractId, _, _, _, _, _, _} ->
             {contract_pubkey(ContractId), account_pubkey(CallerId)};
+        _ -> not_call
+    end.
+
+-spec extract_contract_pubkey(update()) -> aect_contracts:pubkey().
+extract_contract_pubkey({?OP_CALL_CONTRACT, _, Contract, _, _, _, _, _, _}) ->
+    contract_pubkey(Contract).
+
+-spec extract_amounts(update()) -> {non_neg_integer(),
+                                    non_neg_integer(),
+                                    non_neg_integer()} | not_call.
+extract_amounts(Update) ->
+    case Update of
+        {?OP_CALL_CONTRACT, _, _, _, Amount, _, _, GasPrice, Gas} ->
+            {Amount, GasPrice, Gas};
         _ -> not_call
     end.
 

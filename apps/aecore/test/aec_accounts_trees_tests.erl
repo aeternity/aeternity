@@ -87,5 +87,3 @@ trunc_test() ->
     {ok, T1Hash} = aec_accounts_trees:root_hash(T1),
     ?assertEqual(T1Hash, T11Hash).
 
-
-

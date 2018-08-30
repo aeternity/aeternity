@@ -2145,7 +2145,7 @@ definitions:
         $ref: '#/definitions/EncodedHash'
       responder_id:
         $ref: '#/definitions/EncodedHash'
-      total_amount:
+      channel_amount:
         type: integer
         format: int64
         minimum: 0
@@ -2175,6 +2175,9 @@ definitions:
         type: integer
         format: int64
         minimum: 0
+      forcing_blocked_until:
+        type: integer
+        format: int64
       closes_at:
         type: integer
         format: int64
@@ -2308,6 +2311,48 @@ definitions:
     - nonce
     - state_hash
     - round
+  ChannelForceProgressTx:
+    type: object
+    properties:
+      channel_id:
+        $ref: '#/definitions/EncodedHash'
+      from_id:
+        $ref: '#/definitions/EncodedHash'
+      payload:
+        type: string
+      solo_payload:
+        type: string
+      addresses:
+        type: array
+        minItems: 1
+        items:
+          $ref: '#/definitions/EncodedHash'
+      poi:
+        type: string
+      ttl:
+        type: integer
+        format: int64
+        minimum: 0
+      fee:
+        type: integer
+        format: int64
+        minimum: 0
+      nonce:
+        type: integer
+        format: int64
+        minimum: 0
+      poi:
+        type: string
+        description: 'Proof of inclusion containing information for closing the channel'
+    required:
+    - channel_id
+    - from_id
+    - payload
+    - solo_payload
+    - addresses
+    - poi
+    - fee
+    - poi
   ChannelCloseMutualTx:
     type: object
     properties:
@@ -2548,6 +2593,10 @@ definitions:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ChannelWithdrawTx'
+  ChannelForceProgressTxJSON:
+    allOf:
+      - $ref: '#/definitions/GenericTx'
+      - $ref: '#/definitions/ChannelForceProgressTx'
   ChannelCloseMutualTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'

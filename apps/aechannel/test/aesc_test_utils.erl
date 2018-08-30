@@ -48,7 +48,11 @@
          settle_tx_spec/4,
 
          snapshot_solo_tx_spec/4,
-         snapshot_solo_tx_spec/5]).
+         snapshot_solo_tx_spec/5,
+
+         force_progress_tx_spec/7,
+         force_progress_tx_spec/8
+        ]).
 
 -define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
 
@@ -86,7 +90,7 @@ insert_key_pair(Pub, Priv, S) ->
 -define(PRIV_SIZE, 32).
 
 setup_new_account(State) ->
-    setup_new_account(1000, State).
+    setup_new_account(1000000000000, State).
 
 set_account_balance(PubKey, NewBalance, State) ->
     A        = get_account(PubKey, State),
@@ -133,13 +137,13 @@ close_solo(Ch, Params) ->
             #{initiator_amount := IAmt, responder_amount := RAmt} ->
                 {IAmt, RAmt};
             _ ->
-                ChannelAmount = aesc_channels:total_amount(Ch),
+                ChannelAmount = aesc_channels:channel_amount(Ch),
                 IAmt = rand:uniform(ChannelAmount),
                 RAmt = ChannelAmount - IAmt,
                 {IAmt, RAmt}
         end,
 
-    DummyState = state_tx(aesc_channels:id(Ch),
+    DummyState = state_tx(aesc_channels:pubkey(Ch),
                           aesc_channels:initiator(Ch),
                           aesc_channels:responder(Ch),
                           maps:merge(Params, #{initiator_amount => InitiatorEndBalance,
@@ -407,4 +411,28 @@ proof_of_inclusion(Participants) ->
         end,
         aec_trees:new_poi(Trees),
         Participants).
+
+%%%===================================================================
+%%% Force progress
+%%%===================================================================
+
+force_progress_tx_spec(ChannelId, FromPubKey, Payload, SoloPayload, PoI,
+                       Addresses, State) ->
+    force_progress_tx_spec(ChannelId, FromPubKey, Payload, SoloPayload, PoI,
+                           Addresses, #{}, State).
+
+force_progress_tx_spec(ChannelId, FromPubKey, Payload, SoloPayload, PoI,
+                      Addresses, Spec0, State) ->
+    Spec = maps:merge(force_progress_default_spec(FromPubKey, State), Spec0),
+    Spec#{channel_id  => aec_id:create(channel, ChannelId),
+          from_id     => aec_id:create(account, FromPubKey),
+          payload     => Payload,
+          solo_payload=> SoloPayload,
+          addresses   => Addresses,
+          poi         => PoI,
+          ttl         => maps:get(ttl, Spec, 0)}.
+
+force_progress_default_spec(FromPubKey, State) ->
+    #{fee              => 3,
+      nonce            => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
 

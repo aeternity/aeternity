@@ -12,6 +12,7 @@
 -export([accounts/1,
          commit_to_db/1,
          hash/1,
+         hash/2,
          new/0,
          new_without_backend/0,
          channels/1,
@@ -45,6 +46,7 @@
          deserialize_poi/1,
          new_poi/1,
          poi_hash/1,
+         poi_calls_hash/1,
          serialize_poi/1,
          verify_poi/4
         ]).
@@ -137,6 +139,10 @@ lookup_poi(contracts, PubKey, #poi{} = Poi) ->
 poi_hash(#poi{} = Poi) ->
     internal_poi_hash(Poi).
 
+-spec poi_calls_hash(poi()) -> binary().
+poi_calls_hash(Poi) ->
+    part_poi_hash(Poi#poi.calls).
+
 -spec serialize_poi(poi()) -> binary().
 serialize_poi(#poi{} = Poi) ->
     internal_serialize_poi(Poi).
@@ -163,6 +169,9 @@ commit_to_db(Trees) ->
 
 hash(Trees) ->
     internal_hash(Trees).
+
+hash(Trees, {calls, CallsHash}) ->
+    internal_hash(Trees, {calls_hash, CallsHash}).
 
 -spec accounts(trees()) -> aec_accounts_trees:tree().
 accounts(Trees) ->
@@ -289,10 +298,13 @@ db_deserialize_hash({Field, []}) -> {Field, empty}.
 %%%=============================================================================
 
 internal_hash(Trees) ->
+    internal_hash(Trees, {calls_hash, pad_empty(calls_hash(Trees))}).
+
+internal_hash(Trees, {calls_hash, CallsRootHash}) ->
     %% Note that all hash sizes are checked in pad_empty/2
     Bin = <<?PROTOCOL_VERSION:64,
             (pad_empty(accounts_hash(Trees)))  /binary,
-            (pad_empty(calls_hash(Trees)))     /binary,
+            CallsRootHash                      /binary,
             (pad_empty(channels_hash(Trees)))  /binary,
             (pad_empty(contracts_hash(Trees))) /binary,
             (pad_empty(ns_hash(Trees)))        /binary,
