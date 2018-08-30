@@ -15,6 +15,7 @@
    [ micro_block_cycle/1
    , missing_tx_gossip/1
    , txs_gc/1
+   , check_coinbase_validation/1
    ]).
 
 
@@ -24,6 +25,7 @@ all() ->
     [ micro_block_cycle
     , missing_tx_gossip
     , txs_gc
+    , check_coinbase_validation
     ].
 
 init_per_suite(Config) ->
@@ -183,6 +185,39 @@ missing_tx_gossip(Config) ->
 
     ok.
 
+check_coinbase_validation(Config) ->
+    aecore_suite_utils:start_node(dev1, Config),
+    aecore_suite_utils:start_node(dev2, Config),
+
+    N1 = aecore_suite_utils:node_name(dev1),
+    N2 = aecore_suite_utils:node_name(dev2),
+
+    aecore_suite_utils:connect(N1),
+    aecore_suite_utils:connect(N2),
+
+    %% Both nodes are up, now turn off gossiping of TXs
+    %% Also (virtually) disable ping
+    rpc:call(N1, aec_sync, gossip_txs, [false], 5000),
+    rpc:call(N2, aec_sync, gossip_txs, [false], 5000),
+    rpc:call(N1, application, set_env, [aecore, ping_interval, 1000000], 5000),
+    rpc:call(N2, application, set_env, [aecore, ping_interval, 1000000], 5000),
+
+    %% Ping interval was 500 ms, wait that long
+    timer:sleep(2 * 500),
+
+    {ok, TxH1, Ct1} =
+        create_contract_tx(N1, chain, <<"()">>,  1,  1,  100),
+    {ok, TxH2} =
+        call_contract_tx(N1, Ct1, "save_coinbase", "()", 1,  2,  100),
+
+    {ok, _} =
+        aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2], 2),
+    %% TODO TxH" should show up on node 2. Check why this isn't happening/.
+    %% {ok, _} = aecore_suite_utils:mine_blocks_until_tx_on_chain(N2, TxH2, 200),
+
+    ok.
+
+
 
 micro_block_cycle(Config) ->
     MBC = ?config(micro_block_cycle, Config),
@@ -227,6 +262,55 @@ add_spend_tx(Node, Amount, Fee, Nonce, TTL) ->
     STx = aec_test_utils:sign_tx(Tx, maps:get(privkey, patron())),
     Res = rpc:call(Node, aec_tx_pool, push, [STx]),
     {Res, aec_base58c:encode(tx_hash, aetx_sign:hash(STx))}.
+
+create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
+    OwnerKey = maps:get(pubkey, patron()),
+    Owner    = aec_id:create(account, OwnerKey),
+    Code     = compile_contract(lists:concat(["contracts/", Name, ".aes"])),
+    CallData = aect_sophia:create_call(Code, <<"init">>, Args),
+    {ok, CreateTx} = aect_create_tx:new(#{ nonce      => Nonce
+                                         , vm_version => 1
+                                         , code       => Code
+                                         , call_data  => CallData
+                                         , fee        => Fee
+                                         , deposit    => 0
+                                         , amount     => 0
+                                         , gas        => 100000000
+                                         , owner_id   => Owner
+                                         , gas_price  => 1
+                                         , ttl        => TTL
+                                         }),
+    CTx = aec_test_utils:sign_tx(CreateTx, maps:get(privkey, patron())),
+    Res = rpc:call(Node, aec_tx_pool, push, [CTx]),
+    ContractKey = aect_contracts:compute_contract_pubkey(OwnerKey, Nonce),
+    {Res, aec_base58c:encode(tx_hash, aetx_sign:hash(CTx)), ContractKey}.
+
+compile_contract(File) ->
+    CodeDir = code:lib_dir(aesophia, test),
+    FileName = filename:join(CodeDir, File),
+    {ok, ContractBin} = file:read_file(FileName),
+    Contract = binary_to_list(ContractBin),
+    aeso_compiler:from_string(Contract, [pp_icode]).
+
+call_contract_tx(Node, Contract, Function, Args, Fee, Nonce, TTL) ->
+    Caller       = aec_id:create(account, maps:get(pubkey, patron())),
+    ContractID   = aec_id:create(contract, Contract),
+    CallData     = aeso_abi:create_calldata(<<>>, Function, Args),
+    {ok, CallTx} = aect_call_tx:new(#{ nonce       => Nonce
+                                     , caller_id   => Caller
+                                     , vm_version  => 1
+                                     , contract_id => ContractID
+                                     , fee         => Fee
+                                     , amount      => 0
+                                     , gas         => 10000000
+                                     , gas_price   => 1
+                                     , call_data   => CallData
+                                     , ttl         => TTL
+                                     }),
+    CTx = aec_test_utils:sign_tx(CallTx, maps:get(privkey, patron())),
+    Res = rpc:call(Node, aec_tx_pool, push, [CTx]),
+    {Res, aec_base58c:encode(tx_hash, aetx_sign:hash(CTx))}.
+
 
 %% We assume that equence is time ordered and only check Micro Block Cycle time
 %% for micro blocks in same generation
