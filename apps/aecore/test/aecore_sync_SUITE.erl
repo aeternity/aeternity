@@ -117,6 +117,9 @@ init_per_suite(Config) ->
         <<"sync">> => #{
             <<"single_outbound_per_group">> => false
         },
+        <<"mempool">> => #{
+            <<"tx_ttl">> => 100
+        },
         <<"mining">> => #{
             <<"micro_block_cycle">> => 100
         }
