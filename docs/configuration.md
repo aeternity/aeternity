@@ -60,7 +60,7 @@ This is just an example value to show what public key format you should expect a
 
 ### Signing keys management
 
-In order for your node to sign and verify transactions, you need to specify in the configuration file the location of your public-private key pair.
+In order for your node to participate in mining, you need to specify in the configuration file the location of your public-private key pair.
 The storage of the key pair by the node is basic:
 * Each node handles one key pair;
 * The key pair is stored on disk;
