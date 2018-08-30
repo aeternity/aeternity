@@ -1,7 +1,10 @@
 # About this release
 
-[This release][this-release] is focused on TODOFILLMEIN.
+[This release][this-release] is focused on the user API.
 It:
+* Removes support for MessagePack encoding in the user HTTP API.
+* Makes HTTP API more consistent by using IDs in all blockchain components (accounts, contracts, oracles, ...) and unifying endpoint paths.
+* Cleans up unused HTTP endpoints that signed transactions inside node.
 * Adds support for type aliases and typed contract calls to the Sophia compiler.
 * Changes the target (difficulty) calculation algorithm to use [DigiShield v3][digishield_v3]. This impacts consensus.
 * Fixes miner fee reward calculations, was too generous before. This impacts consensus.
