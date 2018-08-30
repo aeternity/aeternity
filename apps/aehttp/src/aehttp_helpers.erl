@@ -356,8 +356,13 @@ parse_map_to_atom_keys() ->
 poi_decode(PoIKey) ->
     fun(_Req, State) ->
         PoIBin = maps:get(PoIKey, State),
-        PoI = aec_trees:deserialize_poi(PoIBin),
-        {ok, maps:put(PoIKey, PoI, State)}
+        try aec_trees:deserialize_poi(PoIBin) of
+            PoI ->
+                {ok, maps:put(PoIKey, PoI, State)}
+        catch
+            _:_ ->
+                {error, {400, [], #{<<"reason">> => <<"Invalid proof of inclusion">>}}}
+        end
     end.
 
 
