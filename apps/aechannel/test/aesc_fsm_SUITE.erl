@@ -659,7 +659,8 @@ multiple_channels(Cfg) ->
     ct:log("channels spawned", []),
     Cs = collect_acks(Cs, mine_blocks, NumCs),
     ct:log("mining requests collected", []),
-    mine_blocks(dev1, 10),
+    mine_all_transactions(dev1, _MaxAttempts = 20),
+    mine_blocks(dev1, ?MINIMUM_DEPTH),
     Cs = collect_acks(Cs, channel_ack, NumCs),
     ct:log("channel pids collected: ~p", [Cs]),
     [P ! {transfer, 100} || P <- Cs],
@@ -1034,6 +1035,20 @@ mine_blocks(_, _, #{mine_blocks := false}) ->
     ok;
 mine_blocks(Node, N, _) ->
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(Node), N).
+
+mine_all_transactions(_Node, MaxAttempts) when MaxAttempts =< 0 ->
+    ran_out_of_attempts;
+mine_all_transactions(Node, MaxAttempts) ->
+    {ok, Txs} = rpc(Node, aec_tx_pool, peek, [infinity]),
+    case length(Txs) =:= 0 of
+        true -> ok;
+        false ->
+            aecore_suite_utils:mine_micro_blocks(
+                aecore_suite_utils:node_name(Node),
+                1),
+            mine_all_transactions(Node, MaxAttempts - 1)
+    end.
+
 
 
 prep_initiator(Node) ->
