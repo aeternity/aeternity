@@ -69,7 +69,8 @@ handle_cast(start_generation, State) ->
 handle_cast(stop_generation, State) ->
     lager:debug("stop_generation"),
     {noreply, do_stop_generation(State)};
-handle_cast({new_candidate, Candidate, CandidateState}, State) ->
+handle_cast({worker_done, Pid, {candidate, Candidate, CandidateState}},
+            State = #state{ worker = {Pid, _} }) ->
     %% Only publish non-empty micro-blocks
     case aec_blocks:txs(Candidate) of
         [] ->
@@ -83,10 +84,13 @@ handle_cast({new_candidate, Candidate, CandidateState}, State) ->
     State2 = State1#state{ candidate = Candidate
                          , candidate_state = CandidateState },
     {noreply, maybe_start_worker_txs(State2)};
-handle_cast({worker_done, Result}, State = #state{ worker = {Pid, _}}) ->
+handle_cast({worker_done, Pid, {failed, Reason}}, State = #state{ worker = {Pid, _}}) ->
     State1 = finish_worker(State),
-    lager:debug("Candidate worker ~p done ~p", [Pid, Result]),
+    lager:debug("Candidate worker ~p failed ~p", [Pid, Reason]),
     {noreply, State1};
+handle_cast({worker_done, OldPid, Result}, State) ->
+    lager:debug("Ignored stale worker reply ~p (from worker ~p)", [Result, OldPid]),
+    {noreply, State};
 handle_cast(Msg, State) ->
     lager:info("Unexpected message ~p", [Msg]),
     {noreply, State}.
@@ -162,9 +166,7 @@ stop_worker(S) ->
 
 finish_worker(S = #state{ worker = {_WPid, WRef} }) ->
     erlang:demonitor(WRef, [flush]),
-    S#state{ worker = undefined };
-finish_worker(S) ->
-    S.
+    S#state{ worker = undefined }.
 
 start_worker(S) ->
     case aec_chain:top_block() of
@@ -194,8 +196,8 @@ maybe_start_worker_txs(S) ->
 %% Generate block candidate
 create_block_candidate(BlockOrBlockHash) ->
     case aec_block_micro_candidate:create(BlockOrBlockHash) of
-        {ok, NewBlock, BlockInfo} ->
-            gen_server:cast(?MODULE, {new_candidate, NewBlock, BlockInfo});
+        {ok, NewBlock, NewBlockInfo} ->
+            new_candidate(NewBlock, NewBlockInfo);
         {error, Reason} ->
             failed_attempt(Reason)
     end,
@@ -203,14 +205,17 @@ create_block_candidate(BlockOrBlockHash) ->
 
 update_block_candidate(Block, BlockInfo, Txs) ->
     case aec_block_micro_candidate:update(Block, Txs, BlockInfo) of
+        {ok, NewBlock, NewBlockInfo} ->
+            new_candidate(NewBlock, NewBlockInfo);
         {error, Reason} ->
-            failed_attempt(Reason);
-        {ok, AdjBlock, NewBlockInfo} ->
-            gen_server:cast(?MODULE, {new_candidate, AdjBlock, NewBlockInfo})
+            failed_attempt(Reason)
     end.
 
 failed_attempt(Reason) ->
-    gen_server:cast(?MODULE, {worker_done, {failed, Reason}}).
+    gen_server:cast(?MODULE, {worker_done, self(), {failed, Reason}}).
+
+new_candidate(NewBlock, NewBlockInfo) ->
+    gen_server:cast(?MODULE, {worker_done, self(), {candidate, NewBlock, NewBlockInfo}}).
 
 publish_candidate(_Block) ->
     aec_events:publish(candidate_block, new_candidate).
