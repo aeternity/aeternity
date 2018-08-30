@@ -1,28 +1,14 @@
 # About this release
 
-[This release][this-release] is focused on the user API.
+[This release][this-release] is focused on TODOFILLMEIN.
 It:
-* Removes support for MessagePack encoding in the user HTTP API.
-* Makes HTTP API more consistent by using IDs in all blockchain components (accounts, contracts, oracles, ...) and unifying endpoint paths.
-* Cleans up unused HTTP endpoints that signed transactions inside node.
-* Adds support for type aliases and typed contract calls to the Sophia compiler.
-* Changes the target (difficulty) calculation algorithm to use [DigiShield v3][digishield_v3]. This impacts consensus.
-* Fixes miner fee reward calculations, was too generous before. This impacts consensus.
-* Modifies the minimum static component of the fee of oracle transactions to `1` - as for all other transactions. This impacts consensus.
-* Increases beneficiary reward delay to 180 key blocks / generations. This impacts consensus.
-* Fixed sporadically seen timeout errors in sync when inet:getaddr took too much time to resolve
-* Detects more possible race conditions in state channel updates, thereby also making it possible to "softly reject" an update, by requesting a competing update in response to a signing request. This should be seen as a temporary measure until support for rejecting a signing request is implemented.
-* Changes the serialization format of micro headers to include the signature. This changes both what is signed by the miner, and how the block hash for micro blocks is computed. This affects consensus.
-* Changes micro block gossip to use Light micro blocks, containing only Tx hashes. In most cases the receiving node
-  has already seen all transactions so this saves bandwidth. This bumps the P2P_PROTOCOL_VSN.
-* Fine-tunes the determinism of the computation of the dynamic component of the fee of oracle transactions related to TTL of objects (oracles, queries, responses) on state trees, moving floating point computations to integer based ones. This impacts consensus.
+* Does all the things temporarily located at https://github.com/aeternity/epoch/wiki/Release-notes-next
 
-[this-release]: https://github.com/aeternity/epoch/releases/tag/v0.21.0
-[digishield_v3]: https://github.com/zawy12/difficulty-algorithms/issues/9
+[this-release]: https://github.com/aeternity/epoch/releases/tag/v0.22.0
 
 This release introduces backward incompatible changes in the chain format:
 * After upgrading your node, you will not have your previous balance (even if you keep your key pair);
-* Please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.20.x".
+* Please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.21.x".
 
 Please join the testnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/epoch/wiki/Troubleshooting).
@@ -39,8 +25,8 @@ You can run a node by either:
 * Running the published [Docker image `aeternity/epoch`][docker]; or
 * [Building a release binary from source][build].
 
-[docker]: https://github.com/aeternity/epoch/blob/v0.21.0/docs/docker.md
-[build]: https://github.com/aeternity/epoch/blob/v0.21.0/docs/build.md
+[docker]: https://github.com/aeternity/epoch/blob/v0.22.0/docs/docker.md
+[build]: https://github.com/aeternity/epoch/blob/v0.22.0/docs/build.md
 
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration).
 For specifying configuration using the Docker image, please refer to [its documentation][docker].
@@ -53,9 +39,9 @@ The node user API is documented:
 * WebSocket API endpoints are [specified online][api-doc];
 * The intended usage of the user API (HTTP and WebSocket) is [documented online][api-doc].
 
-[swagger-yaml]: https://github.com/aeternity/epoch/blob/v0.21.0/config/swagger.yaml
-[swagger-ui]: https://aeternity.github.io/epoch-api-docs/?config=https://raw.githubusercontent.com/aeternity/epoch/v0.21.0/apps/aehttp/priv/swagger.json
-[api-doc]: https://github.com/aeternity/protocol/blob/epoch-v0.21.0/epoch/api/README.md
+[swagger-yaml]: https://github.com/aeternity/epoch/blob/v0.22.0/config/swagger.yaml
+[swagger-ui]: https://aeternity.github.io/epoch-api-docs/?config=https://raw.githubusercontent.com/aeternity/epoch/v0.22.0/apps/aehttp/priv/swagger.json
+[api-doc]: https://github.com/aeternity/protocol/blob/epoch-v0.22.0/epoch/api/README.md
 
 ## Install node
 
