@@ -212,12 +212,29 @@ check_coinbase_validation(Config) ->
 
     {ok, _} =
         aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2], 2),
-    %% TODO TxH" should show up on node 2. Check why this isn't happening/.
-    %% {ok, _} = aecore_suite_utils:mine_blocks_until_tx_on_chain(N2, TxH2, 200),
 
+
+    {ok, Tx1Hash} = aec_base58c:safe_decode(tx_hash, TxH1),
+    {ok, Tx2Hash} = aec_base58c:safe_decode(tx_hash, TxH2),
+    wait_till_hash_on_node(N2, Tx2Hash, 1000),
+    {BlockHash1, _} = rpc:call(N1, aec_chain, find_tx_with_location, [Tx1Hash]),
+    {BlockHash2, _} = rpc:call(N1, aec_chain, find_tx_with_location, [Tx2Hash]),
+    {BlockHash1, _} = rpc:call(N2, aec_chain, find_tx_with_location, [Tx1Hash]),
+    {BlockHash2, _} = rpc:call(N2, aec_chain, find_tx_with_location, [Tx2Hash]),
+    true = is_binary(BlockHash1),
+    true = is_binary(BlockHash2),
     ok.
 
+wait_till_hash_on_node(_Node,_TxHash, 0) -> exit(tx_not_syncing);
+wait_till_hash_on_node(Node, TxHash, Limit) ->
+    try rpc:call(Node, aec_chain, find_tx_with_location, [TxHash]) of
+        {_Block, _} -> ok;
+        _ -> yield(), wait_till_hash_on_node(Node, TxHash, Limit-1)
+    catch
+        _:_ -> yield(), wait_till_hash_on_node(Node, TxHash, Limit-1)
+    end.
 
+yield() -> timer:sleep(10).
 
 micro_block_cycle(Config) ->
     MBC = ?config(micro_block_cycle, Config),
