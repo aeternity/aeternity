@@ -863,8 +863,11 @@ handle_add_block(Header, CheckFun, Block, State, Origin) ->
                                     [ aec_tx_pool:garbage_collect() || not IsLeader ],
                                     {ok, setup_loop(State1, true, IsLeader, Origin)}
                             end;
+                        {error, Reason} when Origin == block_created; Origin == micro_block_created ->
+                            lager:error("Couldn't insert created block (~p)", [Reason]),
+                            {{error, Reason}, State};
                         {error, Reason} ->
-                            lager:error("Couldn't insert block (~p)", [Reason]),
+                            lager:info("Couldn't insert received block (~p)", [Reason]),
                             {{error, Reason}, State}
                     end;
                 {error, {header, Reason}} ->
