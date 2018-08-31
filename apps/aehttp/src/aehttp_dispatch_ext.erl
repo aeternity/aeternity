@@ -239,18 +239,22 @@ handle_request('GetMicroBlockTransactionsCountByHash', Params, _Context) ->
     end;
 
 handle_request('GetCurrentGeneration', _, _Context) ->
-    get_generation(aec_chain:top_key_block_hash());
+    generation_rsp(aec_chain:get_current_generation());
 
 handle_request('GetGenerationByHash', Params, _Context) ->
     case aec_base58c:safe_decode(key_block_hash, maps:get('hash', Params)) of
         {error, _} -> {400, [], #{reason => <<"Invalid hash">>}};
-        {ok, Hash} -> get_generation(Hash)
+        {ok, Hash} ->
+            case aec_chain_state:hash_is_in_main_chain(Hash) of
+                true  -> generation_rsp(aec_chain:get_generation_by_hash(Hash, forward));
+                false -> {400, [], #{reason => <<"Hash not on main chain">>}}
+            end
     end;
 handle_request('GetGenerationByHeight', Params, _Context) ->
     Height = maps:get('height', Params),
     case aec_chain_state:get_key_block_hash_at_height(Height) of
         error -> {404, [], #{reason => <<"Chain too short">>}};
-        {ok, Hash} -> get_generation(Hash)
+        {ok, Hash} -> generation_rsp(aec_chain:get_generation_by_hash(Hash, forward))
     end;
 
 handle_request('GetAccountByPubkey', Params, _Context) ->
@@ -527,22 +531,20 @@ handle_request(OperationID, Req, Context) ->
      ),
     {501, [], #{}}.
 
-get_generation(Hash) ->
-    case aec_chain:get_generation(Hash) of
-        error -> {404, [], #{reason => <<"Block not found">>}};
-        {ok, KeyBlock, MicroBlocks} ->
-            case aec_blocks:height(KeyBlock) of
-                0 ->
-                    {200, [], encode_generation(KeyBlock, MicroBlocks, key)};
-                _ ->
-                    PrevBlockHash = aec_blocks:prev_hash(KeyBlock),
-                    case aec_chain:get_block(PrevBlockHash) of
-                        {ok, PrevBlock} ->
-                            PrevBlockType = aec_blocks:type(PrevBlock),
-                            {200, [], encode_generation(KeyBlock, MicroBlocks, PrevBlockType)};
-                        error ->
-                            {404, [], #{reason => <<"Block not found">>}}
-                    end
+generation_rsp(error) ->
+    {404, [], #{reason => <<"Block not found">>}};
+generation_rsp({ok, #{ key_block := KeyBlock, micro_blocks := MicroBlocks }}) ->
+    case aec_blocks:height(KeyBlock) of
+        0 ->
+            {200, [], encode_generation(KeyBlock, MicroBlocks, key)};
+        _ ->
+            PrevBlockHash = aec_blocks:prev_hash(KeyBlock),
+            case aec_chain:get_block(PrevBlockHash) of
+                {ok, PrevBlock} ->
+                    PrevBlockType = aec_blocks:type(PrevBlock),
+                    {200, [], encode_generation(KeyBlock, MicroBlocks, PrevBlockType)};
+                error ->
+                    {404, [], #{reason => <<"Block not found">>}}
             end
     end.
 

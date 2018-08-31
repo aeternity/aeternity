@@ -832,10 +832,15 @@ handle_signed_block(Block, State) ->
 as_hex(S) ->
     [io_lib:format("~2.16.0b", [X]) || <<X:8>> <= S].
 
-handle_add_block(#{ key_block := KeyBlock } = Block, #state{} = State, Origin) ->
-    %% Network layer (peer_connection, sync) sanitized KeyBlock to be key block. TODO Use distinct internal representation for key block and micro block so to make this evident.
+handle_add_block(#{ key_block := KeyBlock, dir := Dir } = Block, #state{} = State, Origin) ->
+    %% Network layer (peer_connection, sync) sanitized KeyBlock to be key block.
     Header = aec_blocks:to_header(KeyBlock),
-    handle_add_block(Header, fun aec_sync:has_generation/1, Block, State, Origin);
+    %% Always try to insert forward generation - it may contain new unseen information
+    CheckFun = case Dir of
+                   backward -> fun aec_sync:has_generation/1;
+                   forward  -> fun(_) -> false end
+               end,
+    handle_add_block(Header, CheckFun, Block, State, Origin);
 handle_add_block(Block, #state{} = State, Origin) ->
     Header = aec_blocks:to_header(Block),
     handle_add_block(Header, fun aec_chain:has_block/1, Block, State, Origin).

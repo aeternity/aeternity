@@ -16,11 +16,21 @@
 %%%===================================================================
 
 validate_block(#{ key_block := KeyBlock, micro_blocks := MicroBlocks }) ->
-    case aec_blocks:validate_key_block(KeyBlock) of
-        ok ->
-            validate_micro_block_list(MicroBlocks);
-        Err = {error, _} ->
-            Err
+    GenesisHeight = aec_block_genesis:height(),
+    case aec_blocks:height(KeyBlock) of
+        GenesisHeight ->
+            case aec_blocks:to_header(KeyBlock) == aec_block_genesis:genesis_header()
+                    andalso MicroBlocks == [] of
+                true  -> ok;
+                false -> {error, invalid_genesis_generation}
+            end;
+        Height when Height > GenesisHeight ->
+            case aec_blocks:validate_key_block(KeyBlock) of
+                ok ->
+                    validate_micro_block_list(MicroBlocks);
+                Err = {error, _} ->
+                    Err
+            end
     end;
 validate_block(Block) ->
     case aec_blocks:is_key_block(Block) of

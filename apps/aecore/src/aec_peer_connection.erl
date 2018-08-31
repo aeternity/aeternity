@@ -833,10 +833,10 @@ handle_get_generation(S, Msg) ->
     Forward = maps:get(forward, Msg),
     Response =
         case do_get_generation(maps:get(hash, Msg), Forward) of
-            {ok, KeyBlock, MicroBlocks} ->
-                SerKeyBlock = serialize_key_block(KeyBlock),
-                SerMicroBlocks = [ serialize_micro_block(B) || B <- MicroBlocks ],
-                {ok, #{key_block => SerKeyBlock, micro_blocks => SerMicroBlocks, forward => Forward }};
+            {ok, #{ key_block := KB, micro_blocks := MBs }} ->
+                SerKB = serialize_key_block(KB),
+                SerMBs = [ serialize_micro_block(B) || B <- MBs ],
+                {ok, #{key_block => SerKB, micro_blocks => SerMBs, forward => Forward }};
             error ->
                 {error, block_not_found}
         end,
@@ -844,9 +844,9 @@ handle_get_generation(S, Msg) ->
     S.
 
 do_get_generation(Hash, true) ->
-    aec_chain:get_generation(Hash);
+    aec_chain:get_generation_by_hash(Hash, forward);
 do_get_generation(Hash, false) ->
-    aec_chain:get_prev_generation(Hash).
+    aec_chain:get_generation_by_hash(Hash, backward).
 
 handle_get_generation_rsp(S, {get_generation, From, _TRef}, Msg) ->
     SerKeyBlock = maps:get(key_block, Msg),

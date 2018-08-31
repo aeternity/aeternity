@@ -249,9 +249,9 @@ mine_blocks_until_txs_on_chain_loop(Node, TxHashes, Max, Acc) ->
 
 txs_not_on_chain(Node, Block, TxHashes) ->
     {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
-    case rpc:call(Node, aec_chain, get_prev_generation, [BlockHash]) of
+    case rpc:call(Node, aec_chain, get_generation_by_hash, [BlockHash, backward]) of
         error -> TxHashes;
-        {ok, Block, MicroBlocks} -> txs_not_in_generation(MicroBlocks, TxHashes)
+        {ok, #{micro_blocks := MBs }} -> txs_not_in_generation(MBs, TxHashes)
     end.
 
 txs_not_in_generation([], TxHashes) -> TxHashes;
