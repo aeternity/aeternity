@@ -659,7 +659,17 @@ multiple_channels(Cfg) ->
     ct:log("channels spawned", []),
     Cs = collect_acks(Cs, mine_blocks, NumCs),
     ct:log("mining requests collected", []),
-    mine_blocks(dev1, 10),
+
+    {ok, Txs} = rpc(dev1, aec_tx_pool, peek, [infinity]),
+    TxHashes =
+        lists:map(
+            fun(Tx) ->
+                aec_base58c:encode(tx_hash, aetx_sign:hash(Tx))
+            end,
+            Txs),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(
+        aecore_suite_utils:node_name(dev1), TxHashes, 20),
+    mine_blocks(dev1, ?MINIMUM_DEPTH),
     Cs = collect_acks(Cs, channel_ack, NumCs),
     ct:log("channel pids collected: ~p", [Cs]),
     [P ! {transfer, 100} || P <- Cs],
@@ -1034,7 +1044,6 @@ mine_blocks(_, _, #{mine_blocks := false}) ->
     ok;
 mine_blocks(Node, N, _) ->
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(Node), N).
-
 
 prep_initiator(Node) ->
     {ok, PubKey} = rpc(Node, aec_keys, pubkey, []),
