@@ -367,7 +367,7 @@ handle_request('GetContractStore', Req, _Context) ->
 handle_request('GetContractPoI', Req, _Context) ->
     ParseFuns = [read_required_params([pubkey]),
                  base58_decode([{pubkey, pubkey, contract_pubkey}]),
-                 get_poi(contracts, pubkey, poi),
+                 get_poi(contract, pubkey, poi),
                  ok_response(
                     fun(#{poi := PoI}) ->
                         #{poi => aec_base58c:encode(poi, aec_trees:serialize_poi(PoI))}
