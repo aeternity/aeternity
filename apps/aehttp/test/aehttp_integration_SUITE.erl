@@ -2669,6 +2669,14 @@ state_channels_close_solo(ChannelId, MinerPubkey) ->
                                fun get_channel_close_solo/1,
                                fun aesc_close_solo_tx:new/1, MinerPubkey),
     test_invalid_hash({account_pubkey, MinerPubkey}, from_id, Encoded, fun get_channel_close_solo/1),
+    BrokenPoIs = [<<>>, <<"hejsan svejsan">>],
+    lists:foreach(
+        fun(BrokenPoI) ->
+            EncBrokenPoI =  aec_base58c:encode(poi, BrokenPoI),
+            {ok, 400, #{<<"reason">> := <<"Invalid proof of inclusion">>}}
+                = get_channel_close_solo(maps:put(poi, EncBrokenPoI, Encoded))
+        end,
+        BrokenPoIs),
     ok.
 
 state_channels_slash(ChannelId, MinerPubkey) ->
@@ -2686,6 +2694,15 @@ state_channels_slash(ChannelId, MinerPubkey) ->
                                fun get_channel_slash/1,
                                fun aesc_slash_tx:new/1, MinerPubkey),
     test_invalid_hash({account_pubkey, MinerPubkey}, from_id, Encoded, fun get_channel_slash/1),
+
+    BrokenPoIs = [<<>>, <<"hejsan svejsan">>],
+    lists:foreach(
+        fun(BrokenPoI) ->
+            EncBrokenPoI =  aec_base58c:encode(poi, BrokenPoI),
+            {ok, 400, #{<<"reason">> := <<"Invalid proof of inclusion">>}}
+                = get_channel_slash(maps:put(poi, EncBrokenPoI, Encoded))
+        end,
+        BrokenPoIs),
     ok.
 
 state_channels_settle(ChannelId, MinerPubkey) ->
