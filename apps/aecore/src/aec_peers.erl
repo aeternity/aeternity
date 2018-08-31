@@ -425,6 +425,35 @@ handle_cast({add_peer, SourceAddr, Peer}, State0) ->
 handle_cast({del_peer, PeerId}, State0) ->
     State = on_del_peer(PeerId, State0),
     {noreply, update_peer_metrics(schedule_connect(State))};
+handle_cast({resolved_hostname, Host, error}, #state{hostnames = HostMap} = State) ->
+    case maps:find(Host, HostMap) of
+        {ok, {_, RetryCount, PeerMap}} ->
+            HostData = {undefined, RetryCount + 1, PeerMap},
+            HostMap2 = resolver_schedule(Host, HostData, HostMap),
+            {noreply, update_peer_metrics(schedule_connect(State#state{ hostnames = HostMap2 }))};
+        _ ->
+            %% This hostname is no longer of interest
+            {noreply, State}
+    end;
+handle_cast({resolved_hostname, Host, {ok, Addr}}, #state{hostnames = HostMap} = State) ->
+    case maps:find(Host, HostMap) of
+        {ok, {_, _, PeerMap}} ->
+            HostMap2 = maps:remove(Host, HostMap),
+            State2 = State#state{ hostnames = HostMap2 },
+            NewState = 
+                maps:fold(fun
+                              (_, {undefined, PeerInfo, IsTrusted}, S) ->
+                                  Peer = peer(Addr, PeerInfo, IsTrusted),
+                                  on_add_peer(Addr, Peer, S);
+                              (_, {SourceAddr, PeerInfo, IsTrusted}, S) ->
+                                  Peer = peer(Addr, PeerInfo, IsTrusted),
+                                  on_add_peer(SourceAddr, Peer, S)
+                          end, State2, PeerMap),
+            {noreply, update_peer_metrics(schedule_connect(NewState))};
+        _ ->
+            %% This hostname must have been resolved already
+            {noreply, State}
+    end;
 handle_cast({resolve_peer, SourceAddr, PeerInfo, IsTrusted}, State) ->
     {noreply, on_resolve_peer(SourceAddr, PeerInfo, IsTrusted, State)}.
 
@@ -432,9 +461,15 @@ handle_info({timeout, Ref, {ping, PeerId}}, State) ->
     {noreply, on_ping_timeout(PeerId, Ref, State)};
 handle_info({timeout, Ref, connect}, State) ->
     {noreply, update_peer_metrics(on_connect_timeout(Ref, State))};
-handle_info({timeout, Ref, {resolve, Hostname}}, State0) ->
-    State = on_resolve_hostname(Ref, Hostname, State0),
-    {noreply, update_peer_metrics(schedule_connect(State))};
+handle_info({timeout, Ref, {resolve, Hostname}}, #state{ hostnames = HostMap } = State) ->
+    %% Handles timeout of hostname resolution event.
+    case maps:find(Hostname, HostMap) of
+        {ok, {Ref, _, _}} ->
+            async_resolve_host(Hostname);
+        _ ->
+            ok
+    end,
+    {noreply, State};
 handle_info({'DOWN', Ref, process, Pid, _}, State0) ->
     State = on_process_down(Pid, Ref, State0),
     {noreply, update_peer_metrics(schedule_connect(State))};
@@ -553,22 +588,35 @@ async_add_peer(SourceAddr0, #{ host := Host} = PeerInfo, IsTrusted) ->
     spawn(fun() ->
              case inet:getaddr(to_list(Host), inet) of
                  {error, nxdomain} ->
-                     epoch_sync:info("Peer ~p - failed to resolve hostname ~p; "
+                     epoch_sync:debug("Peer ~p - failed to resolve hostname ~p; "
                                      "retrying later", [ppp(PeerInfo), Host]),
                      gen_server:cast(?MODULE, {resolve_peer, SourceAddr0,
                                                PeerInfo, IsTrusted});
                  {ok, Addr} when SourceAddr0 == undefined ->
-                     epoch_sync:info("PEER undefined address ~p ~p -> ~p", [Host, SourceAddr0, Addr]),
+                     epoch_sync:debug("PEER undefined address ~p ~p -> ~p", [Host, SourceAddr0, Addr]),
                      Peer = peer(Addr, PeerInfo, IsTrusted),
                      gen_server:cast(?MODULE, {add_peer, Addr, Peer});
                  {ok, Addr} when SourceAddr0 =/= undefined ->
                      %% IP address has changed
-                     epoch_sync:info("IP address of peer changed ~p ~p -> ~p", [Host, SourceAddr0, Addr]),
+                     [ epoch_sync:debug("New IP address for host ~p ~p -> ~p", [Host, SourceAddr0, Addr]) 
+                       || Addr =/= SourceAddr0 ],
                      Peer = peer(Addr, PeerInfo, IsTrusted),
                      gen_server:cast(?MODULE, {add_peer, SourceAddr0, Peer})
              end
           end), 
     ok.
+
+async_resolve_host(Host) ->
+    spawn(fun() ->
+             case inet:getaddr(Host, inet) of
+                 {error, nxdomain} ->
+                     epoch_sync:info("Failed to resolve hostname ~p", [Host]),
+                     gen_server:cast(?MODULE, {resolved_hostname, Host, error});
+                 {ok, Addr} ->
+                     gen_server:cast(?MODULE, {resolved_hostname, Host, {ok, Addr}})
+             end
+          end).
+
 
 -spec count(connections | inbound | outbound | blocked | peers
             | verified | unverified | available | standby | hostnames, state())
@@ -967,23 +1015,11 @@ on_resolve_peer(SourceAddr, PeerInfo, IsTrusted, State) ->
             State#state{ hostnames = HostMap2 }
     end.
 
-%% Handles timeout of hostname resolution event.
--spec on_resolve_hostname(reference(), string(), state()) -> state().
-on_resolve_hostname(Ref, Host, #state{ hostnames = HostMap } = State) ->
-    case maps:find(Host, HostMap) of
-        {ok, {Ref, RetryCount, PeerMap}} ->
-            [ async_add_peer(SourceAddr, PeerInfo, IsTrusted) || 
-                {SourceAddr, PeerInfo, IsTrusted} <- maps:values(PeerMap) ],
-            State#state{ hostnames = HostMap#{ Host => {undefined, RetryCount + 1, PeerMap}}};
-        _ ->
-            State
-    end.
 
 %% Handles event adding a new peer to the pool.
 -spec on_add_peer(inet:ip_address(), peer(), state()) -> state().
 on_add_peer(SourceAddr, Peer, State0) ->
-    #state{ hostnames = HostMap } = State0,
-    State = maybe_unblock(State0#state{hostnames = maps:remove(to_list(Peer#peer.host), HostMap)}),
+    State = maybe_unblock(State0),
     PeerId  = peer_id(Peer),
     #peer{ pubkey = PPK, address = PA, port = PP } = Peer,
     case is_local(PeerId, State) orelse is_blocked(PeerId, State) of
