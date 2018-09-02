@@ -2,12 +2,6 @@
 
 %=== EXPORTS ===================================================================
 
--export([get_balance/3]).
-
--export([tx_spend/6]).
--export([tx_state/3]).
--export([tx_wait/5]).
-
 -export([sc_open/2]).
 -export([sc_withdraw/3]).
 -export([sc_close_mutual/2]).
@@ -28,7 +22,6 @@
   privkey := binary()
 }.
 
--type tx_state() :: mempool | chain | undefined.
 
 -type sc_open_params() :: #{
     initiator_node    := atom(),
@@ -45,57 +38,33 @@
 
 %=== API FUNCTIONS =============================================================
 
--spec get_balance(atom(), account(), aest_nodes:test_ctx()) -> non_neg_integer().
-get_balance(NodeName, Account, Cfg) ->
-    api_get_balance(NodeName, Account, Cfg).
-
--spec tx_spend(atom(), account(), account(), pos_integer(), pos_integer(),
-               aest_nodes:test_ctx())
-    -> binary().
-tx_spend(NodeName, From, To, Amount, Fee, Cfg) ->
-    #{ pubkey := FromPubKey } = From,
-    #{ pubkey := ToPubKey } = To,
-    TxArgs = #{
-        sender_id        => FromPubKey,
-        recipient_id     => ToPubKey,
-        amount           => Amount,
-        fee              => Fee,
-        payload          => <<"foo">>
-    },
-    {TxHash, Tx} = tx_prepare(NodeName, spend_tx, From, TxArgs, Cfg),
-    tx_post(NodeName, TxHash, Tx, Cfg).
-
--spec tx_state(atom(), binary(), aest_nodes:test_ctx()) -> tx_state().
-tx_state(NodeName, TxHash, Cfg) ->
-    case api_get_tx(NodeName, TxHash, Cfg) of
-        {ok, 404, _} ->
-            undefined;
-        {ok, 200, #{ <<"transaction">> := #{ <<"block_hash">> := <<"none">> }} } ->
-            mempool;
-        {ok, 200, #{ <<"transaction">> := #{ <<"block_hash">> := _Other }} } ->
-            chain
-    end.
-
--spec tx_wait(atom() | [atom()], binary(), tx_state(), pos_integer(),
-              aest_nodes:test_ctx())
-    -> ok | timeout.
-tx_wait(NodeNames, TxHash, Status, Timeout, Cfg) ->
-    CheckFun = fun(NodeName) -> tx_state(NodeName, TxHash, Cfg) =:= Status end,
-    wait_for(NodeNames, CheckFun, 100, Timeout).
-
 -spec sc_open(sc_open_params(), aest_nodes:test_ctx())
     -> {ok, channel(), binary(), pos_integer()}.
 sc_open(Params, Cfg) ->
     #{
-        initiator_node := INodeName,
-        initiator_id   := IAccount,
-        responder_node := RNodeName,
-        responder_id   := RAccount
+        initiator_node    := INodeName,
+        initiator_id      := IAccount,
+        initiator_amount  := IAmt,
+        responder_node    := RNodeName,
+        responder_id      := RAccount,
+        responder_amount  := RAmt
     } = Params,
     #{ pubkey := IPubKey, privkey := IPrivKey } = IAccount,
     #{ pubkey := RPubKey, privkey := RPrivKey } = RAccount,
 
-    Opts = sc_options(Params, #{}, Cfg),
+    {Host, _Port} = node_ws_int_addr(RNodeName, Cfg),
+    Opts = #{
+        host => Host,
+        port => maps:get(responder_port, Params, 9000),
+        initiator_id => aec_base58c:encode(account_pubkey, IPubKey),
+        responder_id => aec_base58c:encode(account_pubkey, RPubKey),
+        lock_period => maps:get(lock_period, Params, 10),
+        push_amount => maps:get(push_amount, Params, 10),
+        initiator_amount => IAmt,
+        responder_amount => RAmt,
+        channel_reserve => maps:get(channel_reserve, Params, 2)
+    },
+
     {ok, IConn} = sc_start_ws(INodeName, initiator, Opts, Cfg),
     ok = ?WS:register_test_for_channel_events(IConn, [info, sign, on_chain_tx]),
     {ok, RConn} = sc_start_ws(RNodeName, responder, Opts, Cfg),
@@ -120,8 +89,8 @@ sc_open(Params, Cfg) ->
 
     {channel_create_tx, Tx} = aetx:specialize_type(CrTx),
     %% Check public keys
-    IPubKey = aec_base58c:encode(account_pubkey, aesc_create_tx:initiator_pubkey(Tx)),
-    RPubKey = aec_base58c:encode(account_pubkey, aesc_create_tx:responder_pubkey(Tx)),
+    IPubKey = aesc_create_tx:initiator_pubkey(Tx),
+    RPubKey = aesc_create_tx:responder_pubkey(Tx),
     Fee = aesc_create_tx:fee(Tx),
 
     ok = sc_wait_funding_locked(IConn, RConn),
@@ -177,35 +146,7 @@ sc_close_mutual(Channel, Closer)
 
     {ok, TxHash, IChange, RChange}.
 
-%=== INTERNAL FUNCTIONS ========================================================
-
-str(A) when is_atom(A) -> str(atom_to_binary(A, utf8));
-str(S) when is_list(S); is_binary(S) -> S.
-
-wait_for(NodeName, CheckFun, Interval, Timeout) when is_atom(NodeName) ->
-    wait_for([NodeName], CheckFun, Interval, Timeout);
-wait_for(NodeNames, CheckFun, Interval, Timeout) when is_list(NodeNames) ->
-    TimerRef = erlang:start_timer(Timeout, self(), undefined),
-    wait_for(NodeNames, CheckFun, Interval, TimerRef, NodeNames).
-
-wait_for(_Nodes, _CheckFun, _Interval, TimerRef, []) ->
-    erlang:cancel_timer(TimerRef),
-    receive {timeout, TimerRef, _} -> ok after 0 -> ok end;
-wait_for(AllNodes, CheckFun, Interval, TimerRef, [Node | Rest]) ->
-    case CheckFun(Node) of
-        true -> wait_for(AllNodes, CheckFun, Interval, TimerRef, Rest);
-        false ->
-            receive
-                {timeout, TimerRef, _} -> timeout
-            after Interval ->
-                wait_for(AllNodes, CheckFun, Interval, TimerRef, AllNodes)
-            end
-    end.
-
 %--- NODE FUNCTIONS ------------------------------------------------------------
-
-node_http_base_url(NodeName, Cfg) ->
-    aest_nodes:get_service_address(NodeName, ext_http, Cfg).
 
 node_ws_int_addr(NodeName, Cfg) ->
     Url = aest_nodes:get_internal_address(NodeName, ext_ws, Cfg),
@@ -218,31 +159,6 @@ node_ws_ext_addr(NodeName, Cfg) ->
     {Host, list_to_integer(PortStr)}.
 
 %--- CHANNEL FUNCTIONS ---------------------------------------------------------
-
-sc_options(Params, ExtraOpts, Cfg) ->
-    #{
-        initiator_id      := IAccount,
-        initiator_amount  := IAmt,
-        responder_node    := RNodeName,
-        responder_id      := RAccount,
-        responder_amount  := RAmt
-    } = Params,
-    #{ pubkey := IPubKey } = IAccount,
-    #{ pubkey := RPubKey } = RAccount,
-
-    {Host, _Port} = node_ws_int_addr(RNodeName, Cfg),
-    Opts = #{
-        host => Host,
-        port => maps:get(responder_port, Params, 9000),
-        initiator_id => IPubKey,
-        responder_id => RPubKey,
-        lock_period => maps:get(lock_period, Params, 10),
-        push_amount => maps:get(push_amount, Params, 10),
-        initiator_amount => IAmt,
-        responder_amount => RAmt,
-        channel_reserve => maps:get(channel_reserve, Params, 2)
-    },
-    maps:merge(Opts, ExtraOpts).
 
 sc_start_ws(NodeName, Role, Opts, Cfg) ->
     {Host, Port} = node_ws_ext_addr(NodeName, Cfg),
@@ -308,108 +224,3 @@ sc_wait_withdraw_locked(SenderConn, AckConn) ->
 
 %--- TRANSACTION FUNCTIONS -----------------------------------------------------
 
-tx_prepare(NodeName, TxType, Account, Args, Cfg) ->
-    #{ privkey := PrivKey } = Account,
-    {ok, 200, #{ <<"tx">> := EncodedSerializedUnsignedTx }} = api_post(NodeName, TxType, Args, Cfg),
-    {ok, SerializedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedSerializedUnsignedTx),
-    UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
-    Signature = enacl:sign_detached(SerializedUnsignedTx, PrivKey),
-    SignedTx = aetx_sign:new(UnsignedTx, [Signature]),
-    TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
-    EncodedSerializedSignedTx = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)),
-    {TxHash, EncodedSerializedSignedTx}.
-
-tx_post(NodeName, TxHash, Tx, Cfg) ->
-    {ok, 200, Resp} = api_post_tx(NodeName, Tx, Cfg),
-    ?assertEqual(TxHash, maps:get(<<"tx_hash">>, Resp)),
-    TxHash.
-
-%--- HTTP API FUNCTIONS --------------------------------------------------------
-
-api_path(spend_tx) -> "tx/spend".
-
-api_post(NodeName, ApiTag, Params, Cfg) ->
-    BaseUrl = node_http_base_url(NodeName, Cfg),
-    Path = api_path(ApiTag),
-    http_request(BaseUrl, post, Path, Params).
-
-api_get_balance(NodeName, #{ pubkey := PubKey }, Cfg) ->
-    BaseUrl = node_http_base_url(NodeName, Cfg),
-    Path = binary_to_list(<<"account/", PubKey/binary, "/balance">>),
-    {ok, 200, #{ <<"balance">> := Bal }} = http_request(BaseUrl, get, Path, []),
-    Bal.
-
-api_get_tx(NodeName, TxHash, Cfg) ->
-    BaseUrl = node_http_base_url(NodeName, Cfg),
-    http_request(BaseUrl, get, "tx/" ++ binary_to_list(TxHash), #{}).
-
-api_post_tx(NodeName, Tx, Cfg) ->
-    BaseUrl = node_http_base_url(NodeName, Cfg),
-    http_request(BaseUrl, post, "ng-transactions", #{tx => Tx}).
-
-%--- HTTP BACKEND FUNCTIONS ----------------------------------------------------
-
-http_request(Host, get, Path, Params) ->
-    EncodedParams = http_encode_get_params(Params),
-    URL = binary_to_list(iolist_to_binary([Host, "v2/", Path, EncodedParams])),
-    ct:log("GET ~p", [URL]),
-    R = httpc_request(get, {URL, []}, [], []),
-    http_process_response(R);
-http_request(Host, post, Path, Params) ->
-    URL = binary_to_list(iolist_to_binary([Host, "v2/", Path])),
-    {Type, Body} = case Params of
-                       Map when is_map(Map) ->
-                           %% JSON-encoded
-                           {"application/json", jsx:encode(Params)};
-                       [] ->
-                           {"application/x-www-form-urlencoded",
-                            http_uri:encode(Path)}
-                   end,
-    %% lager:debug("Type = ~p; Body = ~p", [Type, Body]),
-    ct:log("POST ~p, type ~p, Body ~p", [URL, Type, Body]),
-    R = httpc_request(post, {URL, [], Type, Body}, [], []),
-    http_process_response(R).
-
-httpc_request(Method, Request, HTTPOptions, Options) ->
-    httpc_request(Method, Request, HTTPOptions, Options, test_browser).
-
-httpc_request(Method, Request, HTTPOptions, Options, Profile) ->
-    {ok, Pid} = inets:start(httpc, [{profile, Profile}], stand_alone),
-    Response = httpc:request(Method, Request, HTTPOptions, Options, Pid),
-    ok = gen_server:stop(Pid, normal, infinity),
-    Response.
-
-http_process_response(R) ->
-    case R of
-        {ok, {{_, ReturnCode, _State}, _Head, Body}} ->
-            try
-                ct:log("Return code ~p, Body ~p", [ReturnCode, Body]),
-                Result =
-                    case iolist_to_binary(Body) of
-                        <<>> ->
-                            #{};
-                        BodyB ->
-                            jsx:decode(BodyB, [return_maps])
-                    end,
-                {ok, ReturnCode, Result}
-            catch
-                error:E ->
-                    {error, {parse_error, [E, erlang:get_stacktrace()]}}
-            end;
-        {error, _} = Error ->
-            Error
-    end.
-
-http_encode_get_params(#{} = Ps) ->
-    http_encode_get_params(maps:to_list(Ps));
-http_encode_get_params([{K,V}|T]) ->
-    ["?", [str(K),"=",http_uenc(V)
-           | [["&", str(K1), "=", http_uenc(V1)]
-              || {K1, V1} <- T]]];
-http_encode_get_params([]) ->
-    [].
-
-http_uenc(I) when is_integer(I) ->
-    http_uenc(integer_to_list(I));
-http_uenc(V) ->
-    http_uri:encode(V).

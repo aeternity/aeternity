@@ -39,6 +39,7 @@
 -export([get_block/2]).
 -export([get_top/1]).
 -export([get_mempool/1]).
+-export([post_spend_tx/5]).
 -export([wait_for_value/4]).
 -export([wait_for_time/3]).
 -export([wait_for_time/4]).
@@ -360,20 +361,38 @@ get_mempool(NodeName) ->
         %% nomatch if none of the two
     end.
 
+post_spend_tx(Node, From, To, Nonce, Map) ->
+    #{ pubkey := SendPubKey, privkey := SendSecKey } = From,
+    #{ pubkey := RecvPubKey} = To,
+    PayLoad = iolist_to_binary(io_lib:format("~p", [Node])),
+    Params = maps:merge(#{ sender_id => aec_id:create(account, SendPubKey)
+                         , recipient_id => aec_id:create(account, RecvPubKey)
+                         , amount => 10000
+                         , fee => 100
+                         , ttl => 10000000
+                         , nonce => Nonce
+                         , payload => PayLoad }, Map),
+    {ok, Tx} = aec_spend_tx:new(Params),
+    SignedTx = aec_test_utils:sign_tx(Tx, SendSecKey),
+    SerSignTx = aetx_sign:serialize_to_binary(SignedTx),
+    {ok, 200, Response} = 
+        request(Node, 'PostTransaction', #{ tx => aec_base58c:encode(transaction, SerSignTx) }),
+    Response.
+
 -spec wait_for_value({balance, binary(), non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok;
                     ({contract_tx, binary(), non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok;
                     ({height, non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok.
+%% Use values that are not yet base58c encoded in test cases
 wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, _Ctx) ->
     CheckF =
         fun(Node) ->
-                 case request(Node, 'GetAccountByPubkey', #{pubkey => PubKey}) of
-                    {ok, 200, #{balance := Balance}} when Balance >= MinBalance -> {done, #{PubKey => Balance}};
-                    _ -> wait
+                 case request(Node, 'GetAccountByPubkey', #{pubkey => aec_base58c:encode(account_pubkey, PubKey)}) of
+                     {ok, 200, #{balance := Balance}} when Balance >= MinBalance -> {done, #{PubKey => Balance}};
+                     _ -> wait
                 end
         end,
-    wait_for_value(CheckF, NodeNames, [], 500, Timeout);
+    loop_for_values(CheckF, NodeNames, [], 500, Timeout);
 wait_for_value({height, MinHeight}, NodeNames, Timeout, _Ctx) ->
-    Start = erlang:system_time(millisecond),
     CheckF =
         fun(Node) ->
                 case request(Node, 'GetKeyBlockByHeight', #{height => MinHeight}) of
@@ -381,12 +400,24 @@ wait_for_value({height, MinHeight}, NodeNames, Timeout, _Ctx) ->
                     _ -> wait
                 end
         end,
-    Result = wait_for_value(CheckF, NodeNames, [], 500, Timeout),
-    Duration = (erlang:system_time(millisecond) - Start) / 1000,
-    ct:log("Height ~p reached on nodes ~p after ~.2f seconds",
-        [MinHeight, NodeNames, Duration]
-    ),
-    Result.
+    loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Height ~p on nodes ~p", [MinHeight, NodeNames]});
+wait_for_value({txs_on_chain, Txs}, NodeNames, Timeout, _Ctx) ->
+    aest_nodes_mgr:log("txs on chain waiting: ~p", [Txs]),
+    CheckF =
+        fun(Node) ->
+                Found = 
+                    lists:usort([ case request(Node, 'GetTransactionByHash', #{hash => Tx}) of
+                                      {ok, 200, #{ block_height := H}} when H > 0 -> H;
+                                      _ -> wait
+                                  end || Tx <- Txs]),
+                aest_nodes_mgr:log("found: ~p", [Found]),
+                case Found of
+                    [H] when H =/= wait -> {done, H};
+                    _ -> wait
+                end
+        end,
+    loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Txs found ~p", [Txs]}).    
+
 
 wait_for_time(height, NodeNames, Time) ->
     wait_for_time(height, NodeNames, Time, #{}).
@@ -398,7 +429,7 @@ wait_for_time(height, NodeNames, TimeUnit, Opts) ->
         [{_Node, Lowest}|_] = Tops = lists:sort(fun({_, A}, {_, B}) ->
             maps:get(height, A) =< maps:get(height, B)
         end, [{N, get_top(N)} || N <- NodeNames]),
-        ct:log("Heights after ~p s: ~p", [
+        aest_nodes_mgr:log("Heights after ~p s: ~p", [
             floor(Elapsed / 1000),
             [{N, H} || {N, #{height := H}} <- Tops]
         ]),
@@ -473,26 +504,29 @@ wait_for_exit(Pid, Timeout) ->
     after Timeout -> error({process_not_stopped, Pid})
     end.
 
-make_expiration(Timeout) ->
-    {os:timestamp(), Timeout}.
+loop_for_values(CheckF, Nodes, Rem, Delay, Timeout) ->
+    loop_for_values(CheckF, Nodes, Rem, Delay, Timeout, {"", []}).
 
-assert_expiration({StartTime, Timeout}) ->
-    Now = os:timestamp(),
-    Delta = timer:now_diff(Now, StartTime),
-    case Delta > (Timeout * 1000) of
-        true -> error(timeout);
-        false -> ok
-    end.
-
-wait_for_value(CheckF, Nodes, Rem, Delay, Timeout) ->
-    Expiration = make_expiration(Timeout),
-    wait_for_value(CheckF, Nodes, Rem, Delay, Expiration, #{}).
+loop_for_values(CheckF, Nodes, Rem, Delay, Timeout, FinalMessage) ->
+    Start = erlang:system_time(millisecond),
+    Expiration = Start + Timeout,
+    Results = wait_for_value(CheckF, Nodes, Rem, Delay, Expiration, #{}),  
+    End = erlang:system_time(millisecond),
+    {Format, Args} = FinalMessage,
+    aest_nodes_mgr:log("Reached after ~.2f seconds (slack ~p ms) " ++ Format, 
+                       [ (End - Start) / 1000, Timeout - (End - Start) | Args]),
+    Results.
+    
 
 wait_for_value(_CheckF, [], [], _Delay, _Expiration, Results) -> Results;
 wait_for_value(CheckF, [], Rem, Delay, Expiration, Results) ->
-    assert_expiration(Expiration),
-    timer:sleep(Delay),
-    wait_for_value(CheckF, lists:reverse(Rem), [], Delay, Expiration, Results);
+    case Expiration >= erlang:system_time(millisecond) of
+        true ->
+            timer:sleep(Delay),
+            wait_for_value(CheckF, lists:reverse(Rem), [], Delay, Expiration, Results);
+        false ->
+            error(timeout)
+    end;
 wait_for_value(CheckF, [Node | Nodes], Rem, Delay, Expiration, Results) ->
     case CheckF(Node) of
         {done, Result} ->
