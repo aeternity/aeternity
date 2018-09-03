@@ -255,8 +255,7 @@ for_client(#spend_tx{sender_id    = SenderId,
       <<"fee">>          => Fee,
       <<"ttl">>          => TTL,
       <<"nonce">>        => Nonce,
-      <<"payload">>      => Payload,
-      <<"vsn">>          => version()}.
+      <<"payload">>      => Payload}.
 
 %% Internals
 
