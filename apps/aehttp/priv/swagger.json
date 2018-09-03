@@ -2120,8 +2120,8 @@
       "example" : {
         "transactions" : [ {
           "tx" : {
-            "vsn" : 0,
-            "type" : "type"
+            "type" : "type",
+            "version" : 0
           },
           "block_hash" : { },
           "block_height" : 6,
@@ -2129,8 +2129,8 @@
           "signatures" : [ "signatures", "signatures" ]
         }, {
           "tx" : {
-            "vsn" : 0,
-            "type" : "type"
+            "type" : "type",
+            "version" : 0
           },
           "block_hash" : { },
           "block_height" : 6,
@@ -3417,8 +3417,8 @@
       },
       "example" : {
         "tx" : {
-          "vsn" : 0,
-          "type" : "type"
+          "type" : "type",
+          "version" : 0
         },
         "block_hash" : { },
         "block_height" : 6,
@@ -3428,10 +3428,10 @@
     },
     "GenericTx" : {
       "type" : "object",
-      "required" : [ "type", "vsn" ],
+      "required" : [ "type", "version" ],
       "discriminator" : "type",
       "properties" : {
-        "vsn" : {
+        "version" : {
           "type" : "integer",
           "format" : "int64"
         },
@@ -3440,8 +3440,8 @@
         }
       },
       "example" : {
-        "vsn" : 0,
-        "type" : "type"
+        "type" : "type",
+        "version" : 0
       }
     },
     "ChannelCreateTxJSON" : {
