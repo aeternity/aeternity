@@ -192,13 +192,13 @@ commit_to_db(#oracle_tree{otree = OTree, cache = Cache} = Tree) ->
 add_oracle(How, O, #oracle_tree{ otree = OTree } = Tree) ->
     Pubkey = aeo_oracles:pubkey(O),
     Serialized = aeo_oracles:serialize(O),
-    Expires = aeo_oracles:expires(O),
+    TTL = aeo_oracles:ttl(O),
 
     OTree1 = case How of
                 enter  -> aeu_mtrees:enter(Pubkey, Serialized, OTree);
                 insert -> aeu_mtrees:insert(Pubkey, Serialized, OTree)
             end,
-    Cache  = cache_push({oracle, Pubkey}, Expires, Tree#oracle_tree.cache),
+    Cache  = cache_push({oracle, Pubkey}, TTL, Tree#oracle_tree.cache),
     Tree#oracle_tree{ otree  = OTree1
                     , cache  = Cache
                     }.
@@ -208,12 +208,12 @@ add_query(How, I, #oracle_tree{otree = OTree} = Tree) ->
     QueryId      = aeo_query:id(I),
     TreeId       = <<OraclePubkey/binary, QueryId/binary>>,
     SerializedI  = aeo_query:serialize(I),
-    Expires      = aeo_query:expires(I),
+    TTL          = aeo_query:ttl(I),
     OTree1       = case How of
                        enter  -> aeu_mtrees:enter(TreeId, SerializedI, OTree);
                        insert -> aeu_mtrees:insert(TreeId, SerializedI, OTree)
                   end,
-    Cache  = cache_push({query, OraclePubkey, QueryId}, Expires, Tree#oracle_tree.cache),
+    Cache  = cache_push({query, OraclePubkey, QueryId}, TTL, Tree#oracle_tree.cache),
     Tree#oracle_tree{ otree  = OTree1
                     , cache  = Cache
                     }.
@@ -259,13 +259,13 @@ delete({query, OracleId, Id}, H, OTree, ATree) ->
 
 oracle_expired(Id, H, OTree) ->
     case lookup_oracle(Id, OTree) of
-        {value, O} -> H >= aeo_oracles:expires(O);
+        {value, O} -> H >= aeo_oracles:ttl(O);
         none       -> false
     end.
 
 oracle_query_expired(OracleId, Id, H, OTree) ->
     case lookup_query(OracleId, Id, OTree) of
-        {value, Q} -> H >= aeo_query:expires(Q);
+        {value, Q} -> H >= aeo_query:ttl(Q);
         none       -> false
     end.
 
@@ -387,8 +387,8 @@ find_oracle_query_ids(OracleId, {Key,_Val, Iter}, Type, Acc) ->
 %%%===================================================================
 -define(DUMMY_VAL, <<0>>).
 
-cache_push(Id, Expires, C) ->
-    SExt = sext:encode({Expires, Id}),
+cache_push(Id, TTL, C) ->
+    SExt = sext:encode({TTL, Id}),
     aeu_mtrees:enter(SExt, ?DUMMY_VAL, C).
 
 cache_safe_peek(C) ->

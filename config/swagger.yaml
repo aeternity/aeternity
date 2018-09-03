@@ -1804,7 +1804,7 @@ definitions:
         type: string
       query_fee:
         type: integer
-      expires:
+      ttl:
         type: integer
         format: int64
   OracleQuery:
@@ -1824,7 +1824,7 @@ definitions:
         type: string
       response:
         type: string
-      expires:
+      ttl:
         type: integer
         format: int64
       response_ttl:
@@ -1995,7 +1995,7 @@ definitions:
     properties:
       id:
         $ref: '#/definitions/EncodedHash'
-      expires:
+      ttl:
         type: integer
         format: int64
       pointers:

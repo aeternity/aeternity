@@ -1594,7 +1594,7 @@ post_oracle_extend(Config) ->
     ok = wait_for_tx_hash_on_chain(TxHash),
     {ok, 200, Resp} = get_oracles_by_pubkey_sut(OracleId),
     ?assertEqual(OracleId, maps:get(<<"id">>, Resp)),
-    ?assertEqual(?config(oracle_ttl_value_final, Config), maps:get(<<"expires">>, Resp)),
+    ?assertEqual(?config(oracle_ttl_value_final, Config), maps:get(<<"ttl">>, Resp)),
     {ok, 200, Resp1} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "all"}),
     ?assertEqual([], maps:get(<<"oracle_queries">>, Resp1)),
     {save_config, save_config([account_id, oracle_id], Config)}.
@@ -3041,7 +3041,7 @@ naming_system_manage_name(_Config) ->
     EncodedNHash = aec_base58c:encode(name, NHash),
     ExpectedTTL1 = (Height2 - 1) + aec_governance:name_claim_max_expiration(),
     {ok, 200, #{<<"id">>       := EncodedNHash,
-                <<"expires">>  := ExpectedTTL1,
+                <<"ttl">>      := ExpectedTTL1,
                 <<"pointers">> := []}} = get_names_entry_by_name_sut(Name),
 
     %% Submit name updated tx and check it is in mempool
@@ -3061,7 +3061,7 @@ naming_system_manage_name(_Config) ->
 
     %% Check that TTL and pointers got updated in name entry
     ExpectedTTL2 = (Height3 - 1) + NameTTL,
-    {ok, 200, #{<<"expires">> := ExpectedTTL2,
+    {ok, 200, #{<<"ttl">>      := ExpectedTTL2,
                 <<"pointers">> := Pointers}} = get_names_entry_by_name_sut(Name),
 
     %% Check mine reward

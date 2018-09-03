@@ -9,7 +9,7 @@
 
 %% API
 -export([ deserialize/2
-        , expires/1
+        , ttl/1
         , id/1
         , pubkey/1
         , new/2
@@ -18,7 +18,7 @@
         , response_format/1
         , serialize/1
         , serialize_for_client/1
-        , set_expires/2
+        , set_ttl/2
         , set_pubkey/2
         , set_query_fee/2
         , set_query_format/2
@@ -44,7 +44,7 @@
                 , query_format    :: type_format()
                 , response_format :: type_format()
                 , query_fee       :: amount()
-                , expires         :: aec_blocks:height()
+                , ttl             :: aec_blocks:height()
                 }).
 
 
@@ -77,13 +77,13 @@
 
 -spec new(aeo_register_tx:tx(), aec_blocks:height()) -> oracle().
 new(RTx, BlockHeight) ->
-    Expires = aeo_utils:ttl_expiry(BlockHeight, aeo_register_tx:oracle_ttl(RTx)),
+    TTL = aeo_utils:ttl_expiry(BlockHeight, aeo_register_tx:oracle_ttl(RTx)),
     AccountPubkey = aeo_register_tx:account_pubkey(RTx),
     O = #oracle{ id              = aec_id:create(oracle, AccountPubkey)
                , query_format    = aeo_register_tx:query_format(RTx)
                , response_format = aeo_register_tx:response_format(RTx)
                , query_fee       = aeo_register_tx:query_fee(RTx)
-               , expires         = Expires
+               , ttl             = TTL
                },
     assert_fields(O).
 
@@ -96,7 +96,7 @@ serialize(#oracle{} = O) ->
       [ {query_format, query_format(O)}
       , {response_format, response_format(O)}
       , {query_fee, query_fee(O)}
-      , {expires, expires(O)}
+      , {ttl, ttl(O)}
       ]).
 
 -spec deserialize(aec_keys:pubkey(), binary()) -> oracle().
@@ -104,7 +104,7 @@ deserialize(Pubkey, Bin) ->
       [ {query_format, QueryFormat}
       , {response_format, ResponseFormat}
       , {query_fee, QueryFee}
-      , {expires, Expires}
+      , {ttl, TTL}
       ] =
         aec_object_serialization:deserialize(
           ?ORACLE_TYPE,
@@ -116,14 +116,14 @@ deserialize(Pubkey, Bin) ->
            , query_format    = QueryFormat
            , response_format = ResponseFormat
            , query_fee       = QueryFee
-           , expires         = Expires
+           , ttl             = TTL
            }.
 
 serialization_template(?ORACLE_VSN) ->
     [ {query_format, binary}
     , {response_format, binary}
     , {query_fee, int}
-    , {expires, int}
+    , {ttl, int}
     ].
 
 -spec serialize_for_client(oracle()) -> map().
@@ -131,12 +131,12 @@ serialize_for_client(#oracle{id              = Id,
                              query_format    = QueryFormat,
                              response_format = ResponseFormat,
                              query_fee       = QueryFee,
-                             expires         = Expires}) ->
+                             ttl             = TTL}) ->
     #{ <<"id">>              => aec_base58c:encode(id_hash, Id)
      , <<"query_format">>    => QueryFormat
      , <<"response_format">> => ResponseFormat
      , <<"query_fee">>       => QueryFee
-     , <<"expires">>         => Expires}.
+     , <<"ttl">>             => TTL}.
 
 %%%===================================================================
 %%% Getters
@@ -161,9 +161,9 @@ response_format(#oracle{response_format = ResponseFormat}) ->
 query_fee(#oracle{query_fee = QueryFee}) ->
     QueryFee.
 
--spec expires(oracle()) -> aec_blocks:height().
-expires(#oracle{expires = Expires}) ->
-    Expires.
+-spec ttl(oracle()) -> aec_blocks:height().
+ttl(#oracle{ttl = TTL}) ->
+    TTL.
 
 %%%===================================================================
 %%% Setters
@@ -184,9 +184,9 @@ set_response_format(X, O) ->
 set_query_fee(X, O) ->
     O#oracle{query_fee = assert_field(query_fee, X)}.
 
--spec set_expires(aec_blocks:height(), oracle()) -> oracle().
-set_expires(X, O) ->
-    O#oracle{expires = assert_field(expires, X)}.
+-spec set_ttl(aec_blocks:height(), oracle()) -> oracle().
+set_ttl(X, O) ->
+    O#oracle{ttl = assert_field(ttl, X)}.
 
 %%%===================================================================
 %%% Internal functions
@@ -197,7 +197,7 @@ assert_fields(O) ->
            , {query_format   , O#oracle.query_format}
            , {response_format, O#oracle.response_format}
            , {query_fee      , O#oracle.query_fee}
-           , {expires        , O#oracle.expires}
+           , {ttl            , O#oracle.ttl}
            ],
     List1 = [try assert_field(X, Y), [] catch _:X -> X end
              || {X, Y} <- List],
@@ -210,5 +210,5 @@ assert_field(pubkey         , <<_:?PUB_SIZE/binary>> = X) -> X;
 assert_field(query_format   , X) when is_binary(X) -> X;
 assert_field(response_format, X) when is_binary(X) -> X;
 assert_field(query_fee      , X) when is_integer(X), X >= 0 -> X;
-assert_field(expires        , X) when is_integer(X), X >= 0 -> X;
+assert_field(ttl            , X) when is_integer(X), X >= 0 -> X;
 assert_field(Field          , X) -> error({illegal, Field, X}).

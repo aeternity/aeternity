@@ -94,7 +94,7 @@ name_entry(NameRecord) ->
     case aens_names:status(NameRecord) of
         claimed ->
             {ok, #{id       => aens_names:id(NameRecord),
-                   expires  => aens_names:expires(NameRecord),
+                   ttl      => aens_names:ttl(NameRecord),
                    pointers => aens_names:pointers(NameRecord)}};
         revoked ->
             {error, name_revoked}
