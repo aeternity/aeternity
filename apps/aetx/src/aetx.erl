@@ -107,6 +107,8 @@
 
 -callback type() -> atom().
 
+-callback version() -> non_neg_integer().
+
 -callback fee(Tx :: tx_instance()) ->
     Fee :: integer().
 
