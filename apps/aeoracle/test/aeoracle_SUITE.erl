@@ -215,7 +215,7 @@ extend_oracle(Cfg) ->
     Trees          = aeo_test_utils:trees(S),
     OTrees         = aec_trees:oracles(Trees),
     Oracle         = aeo_state_tree:get_oracle(OracleKey, OTrees),
-    Expires0       = aeo_oracles:expires(Oracle),
+    TTL0           = aeo_oracles:ttl(Oracle),
     CurrHeight     = ?ORACLE_EXT_HEIGHT,
 
     %% Test that ExtendTX is accepted
@@ -227,11 +227,11 @@ extend_oracle(Cfg) ->
 
     OTrees1  = aec_trees:oracles(Trees1),
     Oracle1  = aeo_state_tree:get_oracle(OracleKey, OTrees1),
-    Expires1 = aeo_oracles:expires(Oracle1),
-    ct:pal("Expires0 = ~p\nExpires1 = ~p\n", [Expires0, Expires1]),
-    true = (Expires0 + maps:get(extend, aeo_test_utils:ttl_defaults())) == Expires1,
+    TTL1     = aeo_oracles:ttl(Oracle1),
+    ct:pal("TTL0 = ~p\nTTL1 = ~p\n", [TTL0, TTL1]),
+    true = (TTL0 + maps:get(extend, aeo_test_utils:ttl_defaults())) == TTL1,
 
-    {OracleKey, Expires0, Expires1, S1}.
+    {OracleKey, TTL0, TTL1, S1}.
 
 %%%===================================================================
 %%% Query oracle
@@ -415,14 +415,14 @@ prune_oracle(Cfg) ->
     Trees          = aeo_test_utils:trees(S),
     OTrees         = aec_trees:oracles(Trees),
     Oracle         = aeo_state_tree:get_oracle(OracleKey, OTrees),
-    Expires        = ?ORACLE_REG_HEIGHT + maps:get(oracle, aeo_test_utils:ttl_defaults()),
+    TTL            = ?ORACLE_REG_HEIGHT + maps:get(oracle, aeo_test_utils:ttl_defaults()),
 
     %% Test that the oracle is pruned
-    Gone  = prune_from_until(?GENESIS_HEIGHT, Expires + 1, Trees),
+    Gone  = prune_from_until(?GENESIS_HEIGHT, TTL + 1, Trees),
     none  = aeo_state_tree:lookup_oracle(OracleKey, aec_trees:oracles(Gone)),
 
     %% Test that the oracle remains
-    Left      = prune_from_until(?GENESIS_HEIGHT, Expires, Trees),
+    Left      = prune_from_until(?GENESIS_HEIGHT, TTL, Trees),
     Oracle    = aeo_state_tree:get_oracle(OracleKey, aec_trees:oracles(Left)),
     OracleKey = aeo_oracles:pubkey(Oracle),
     ok.
@@ -451,11 +451,11 @@ prune_query(Cfg) ->
     Trees              = aeo_test_utils:trees(S),
     OTrees             = aec_trees:oracles(Trees),
     OIO                = aeo_state_tree:get_query(OracleKey, ID, OTrees),
-    Expires            = ?ORACLE_QUERY_HEIGHT + maps:get(query, aeo_test_utils:ttl_defaults()),
+    TTL                = ?ORACLE_QUERY_HEIGHT + maps:get(query, aeo_test_utils:ttl_defaults()),
     SenderKey          = aeo_query:sender_pubkey(OIO),
 
     %% Test that the query is pruned
-    Gone  = prune_from_until(?GENESIS_HEIGHT, Expires + 1, Trees),
+    Gone  = prune_from_until(?GENESIS_HEIGHT, TTL + 1, Trees),
     none  = aeo_state_tree:lookup_query(OracleKey, ID, aec_trees:oracles(Gone)),
 
     %% Check that the query fee was refunded
@@ -464,7 +464,7 @@ prune_query(Cfg) ->
     true = aec_accounts:balance(PreAccount) < aec_accounts:balance(PostAccount),
 
     %% Test that the query remains
-    Left  = prune_from_until(?GENESIS_HEIGHT, Expires, Trees),
+    Left  = prune_from_until(?GENESIS_HEIGHT, TTL, Trees),
     OIO2  = aeo_state_tree:get_query(OracleKey, ID, aec_trees:oracles(Left)),
     ID    = aeo_query:id(OIO2),
     ok.
@@ -480,11 +480,11 @@ prune_response(Cfg, QueryOpts = #{ response_ttl := {delta, RTTL} }) ->
     Trees              = aeo_test_utils:trees(S),
     OTrees             = aec_trees:oracles(Trees),
     OIO                = aeo_state_tree:get_query(OracleKey, ID, OTrees),
-    Expires            = ?ORACLE_RSP_HEIGHT + RTTL,
+    TTL                = ?ORACLE_RSP_HEIGHT + RTTL,
     SenderKey          = aeo_query:sender_pubkey(OIO),
 
     %% Test that the query is pruned
-    Gone  = prune_from_until(?GENESIS_HEIGHT, Expires + 1, Trees),
+    Gone  = prune_from_until(?GENESIS_HEIGHT, TTL + 1, Trees),
     none  = aeo_state_tree:lookup_query(OracleKey, ID, aec_trees:oracles(Gone)),
 
     %% Check that the query fee was not refunded
@@ -493,7 +493,7 @@ prune_response(Cfg, QueryOpts = #{ response_ttl := {delta, RTTL} }) ->
     true = aec_accounts:balance(PreAccount) == aec_accounts:balance(PostAccount),
 
     %% Test that the query remains
-    Left  = prune_from_until(?GENESIS_HEIGHT, Expires, Trees),
+    Left  = prune_from_until(?GENESIS_HEIGHT, TTL, Trees),
     OIO2  = aeo_state_tree:get_query(OracleKey, ID, aec_trees:oracles(Left)),
     ID    = aeo_query:id(OIO2),
     ok.

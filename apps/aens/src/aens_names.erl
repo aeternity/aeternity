@@ -21,7 +21,7 @@
          hash/1,
          owner_pubkey/1,
          status/1,
-         expires/1,
+         ttl/1,
          pointers/1,
          client_ttl/1]).
 
@@ -36,7 +36,7 @@
 -record(name,
         {id         :: id(),
          owner_id   :: id(),
-         expires    :: aec_blocks:height(),
+         ttl        :: aec_blocks:height(),
          status     :: status(),
          client_ttl :: integer(),
          pointers   :: list(aens_pointer:pointer())}).
@@ -57,29 +57,29 @@
 
 -spec new(aens_claim_tx:tx(), non_neg_integer(), aec_blocks:height()) -> name().
 new(ClaimTx, Expiration, BlockHeight) ->
-    Expires    = BlockHeight + Expiration,
-    Name       = aens_claim_tx:name(ClaimTx),
+    TTL            = BlockHeight + Expiration,
+    Name           = aens_claim_tx:name(ClaimTx),
     {ok, NameHash} = aens:get_name_hash(Name),
     %% TODO: add assertions on fields, similarily to what is done in aeo_oracles:new/2
     #name{id         = aec_id:create(name, NameHash),
           owner_id   = aens_claim_tx:account_id(ClaimTx),
-          expires    = Expires,
+          ttl        = TTL,
           status     = claimed,
           client_ttl = 0,
           pointers   = []}.
 
 -spec update(aens_update_tx:tx(), name(), aec_blocks:height()) -> name().
 update(UpdateTx, Name, BlockHeight) ->
-    Expires = BlockHeight + aens_update_tx:name_ttl(UpdateTx),
-    Name#name{expires    = Expires,
+    TTL = BlockHeight + aens_update_tx:name_ttl(UpdateTx),
+    Name#name{ttl        = TTL,
               client_ttl = aens_update_tx:client_ttl(UpdateTx),
               pointers   = aens_update_tx:pointers(UpdateTx)}.
 
 -spec revoke(name(), non_neg_integer(), aec_blocks:height()) -> name().
 revoke(Name, Expiration, BlockHeight) ->
-    Expires = BlockHeight + Expiration,
+    TTL = BlockHeight + Expiration,
     Name#name{status  = revoked,
-              expires = Expires}.
+              ttl     = TTL}.
 
 -spec transfer_to(aec_keys:pubkey(), name()) -> name().
 transfer_to(Pubkey, Name) ->
@@ -87,7 +87,7 @@ transfer_to(Pubkey, Name) ->
 
 -spec serialize(name()) -> binary().
 serialize(#name{owner_id   = OwnerId,
-                expires    = Expires,
+                ttl        = TTL,
                 status     = Status,
                 client_ttl = ClientTTL,
                 pointers   = Pointers}) ->
@@ -96,7 +96,7 @@ serialize(#name{owner_id   = OwnerId,
       ?NAME_VSN,
       serialization_template(?NAME_VSN),
       [ {owner_id, OwnerId}
-      , {expires, Expires}
+      , {ttl, TTL}
       , {status, atom_to_binary(Status, utf8)}
       , {client_ttl, ClientTTL}
       , {pointers, [{aens_pointer:key(P), aens_pointer:id(P)} || P <- Pointers]}]).
@@ -104,7 +104,7 @@ serialize(#name{owner_id   = OwnerId,
 -spec deserialize(aens_hash:name_hash(), binary()) -> name().
 deserialize(NameHash, Bin) ->
     [ {owner_id, OwnerId}
-    , {expires, Expires}
+    , {ttl, TTL}
     , {status, Status}
     , {client_ttl, ClientTTL}
     , {pointers, Pointers}
@@ -115,14 +115,14 @@ deserialize(NameHash, Bin) ->
           Bin),
     #name{id         = aec_id:create(name, NameHash),
           owner_id   = OwnerId,
-          expires    = Expires,
+          ttl        = TTL,
           status     = binary_to_existing_atom(Status, utf8),
           client_ttl = ClientTTL,
           pointers   = [aens_pointer:new(Key, Id) || {Key, Id} <- Pointers]}.
 
 serialization_template(?NAME_VSN) ->
     [ {owner_id, id}
-    , {expires, int}
+    , {ttl, int}
     , {status, binary}
     , {client_ttl, int}
     , {pointers, [{binary, id}]}
@@ -148,9 +148,9 @@ owner_pubkey(#name{owner_id = OwnerId}) ->
 status(#name{status = Status}) ->
     Status.
 
--spec expires(name()) -> aec_blocks:height().
-expires(#name{expires = Expires}) ->
-    Expires.
+-spec ttl(name()) -> aec_blocks:height().
+ttl(#name{ttl = TTL}) ->
+    TTL.
 
 -spec pointers(name()) -> list(aens_pointer:pointer()).
 pointers(#name{pointers = Pointers}) ->

@@ -307,7 +307,7 @@ check_oracle_ttl(O, Height, QTTL, RTTL) ->
     try
         Delta  = aeo_utils:ttl_delta(Height, QTTL),
         MaxTTL = aeo_utils:ttl_expiry(Height + Delta, RTTL),
-        case aeo_oracles:expires(O) < MaxTTL of
+        case aeo_oracles:ttl(O) < MaxTTL of
             false -> ok;
             true  -> {error, too_long_ttl}
         end

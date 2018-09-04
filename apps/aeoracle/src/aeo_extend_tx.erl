@@ -130,8 +130,8 @@ process(#oracle_extend_tx{nonce = Nonce, fee = Fee, oracle_ttl = OTTL} = Tx,
     AccountsTree1 = aec_accounts_trees:enter(Account1, AccountsTree0),
 
     Oracle0 = aeo_state_tree:get_oracle(OraclePK, OraclesTree0),
-    NewExpires = aeo_utils:ttl_expiry(aeo_oracles:expires(Oracle0), OTTL),
-    Oracle1 = aeo_oracles:set_expires(NewExpires, Oracle0),
+    NewTTL = aeo_utils:ttl_expiry(aeo_oracles:ttl(Oracle0), OTTL),
+    Oracle1 = aeo_oracles:set_ttl(NewTTL, Oracle0),
     OraclesTree1 = aeo_state_tree:enter_oracle(Oracle1, OraclesTree0),
 
     Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),

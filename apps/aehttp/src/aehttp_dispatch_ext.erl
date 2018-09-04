@@ -443,10 +443,10 @@ handle_request('GetNameEntryByName', Params, _Context) ->
     Name = maps:get(name, Params),
     case aec_chain:name_entry(Name) of
         {ok, #{id       := Id,
-               expires  := Expires,
+               ttl      := TTL,
                pointers := Pointers}} ->
             {200, [], #{<<"id">>       => aec_base58c:encode(id_hash, Id),
-                        <<"expires">>  => Expires,
+                        <<"ttl">>      => TTL,
                         <<"pointers">> => [aens_pointer:serialize_for_client(P) || P <- Pointers]}};
         {error, name_not_found} ->
             {404, [], #{reason => <<"Name not found">>}};

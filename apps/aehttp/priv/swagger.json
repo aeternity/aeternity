@@ -2191,16 +2191,16 @@
         "query_fee" : {
           "type" : "integer"
         },
-        "expires" : {
+        "ttl" : {
           "type" : "integer",
           "format" : "int64"
         }
       },
       "example" : {
-        "expires" : 6,
         "response_format" : "response_format",
         "id" : { },
         "query_fee" : 0,
+        "ttl" : 6,
         "query_format" : "query_format"
       }
     },
@@ -2227,7 +2227,7 @@
         "response" : {
           "type" : "string"
         },
-        "expires" : {
+        "ttl" : {
           "type" : "integer",
           "format" : "int64"
         },
@@ -2240,7 +2240,6 @@
         }
       },
       "example" : {
-        "expires" : 6,
         "oracle_id" : null,
         "response_ttl" : {
           "type" : "delta",
@@ -2251,6 +2250,7 @@
         "fee" : 5,
         "sender_nonce" : 0,
         "id" : { },
+        "ttl" : 6,
         "sender_id" : null
       }
     },
@@ -2266,7 +2266,6 @@
       },
       "example" : {
         "oracle_queries" : [ {
-          "expires" : 6,
           "oracle_id" : null,
           "response_ttl" : {
             "type" : "delta",
@@ -2277,9 +2276,9 @@
           "fee" : 5,
           "sender_nonce" : 0,
           "id" : { },
+          "ttl" : 6,
           "sender_id" : null
         }, {
-          "expires" : 6,
           "oracle_id" : null,
           "response_ttl" : {
             "type" : "delta",
@@ -2290,6 +2289,7 @@
           "fee" : 5,
           "sender_nonce" : 0,
           "id" : { },
+          "ttl" : 6,
           "sender_id" : null
         } ]
       }
@@ -2549,7 +2549,7 @@
         "id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
-        "expires" : {
+        "ttl" : {
           "type" : "integer",
           "format" : "int64"
         },
@@ -2561,8 +2561,8 @@
         }
       },
       "example" : {
-        "expires" : 0,
         "id" : { },
+        "ttl" : 0,
         "pointers" : [ {
           "id" : null,
           "key" : "key"

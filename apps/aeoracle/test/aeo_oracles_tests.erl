@@ -10,7 +10,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -import(aeo_oracles, [ deserialize/2
-                     , expires/1
+                     , ttl/1
                      , id/1
                      , pubkey/1
                      , new/2
@@ -18,7 +18,7 @@
                      , query_format/1
                      , response_format/1
                      , serialize/1
-                     , set_expires/2
+                     , set_ttl/2
                      , set_pubkey/2
                      , set_query_fee/2
                      , set_query_format/2
@@ -40,7 +40,7 @@ basic_serialize() ->
 basic_getters() ->
     O = aeo_oracles:new(register_tx(), 1),
     ?assertEqual(oracle, aec_id:specialize_type(id(O))),
-    ?assert(is_integer(expires(O))),
+    ?assert(is_integer(ttl(O))),
     ?assert(is_binary(pubkey(O))),
     ?assert(is_integer(query_fee(O))),
     ?assert(is_binary(query_format(O))),
@@ -49,8 +49,8 @@ basic_getters() ->
 
 basic_setters() ->
     O = aeo_oracles:new(register_tx(), 1),
-    ?assertError({illegal, _, _}, set_expires(foo, O)),
-    _ = set_expires(100, O),
+    ?assertError({illegal, _, _}, set_ttl(foo, O)),
+    _ = set_ttl(100, O),
     ?assertError({illegal, _, _}, set_pubkey(<<4711:64/unit:8>>, O)),
     _ = set_pubkey(<<42:32/unit:8>>, O),
     ?assertError({illegal, _, _}, set_query_fee(foo, O)),

@@ -265,7 +265,7 @@ update(Cfg) ->
     %% Check name present, with both pointers and TTL set
     {value, N1} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees1)),
     Pointers = aens_names:pointers(N1),
-    NameTTL  = aens_names:expires(N1) - Height,
+    NameTTL  = aens_names:ttl(N1) - Height,
     ok.
 
 update_negative(Cfg) ->
@@ -505,8 +505,8 @@ prune_preclaim(Cfg) ->
     CHash      = aens_commitments:hash(C),
     PubKey     = aens_commitments:owner_pubkey(C),
 
-    Expires = aens_commitments:expires(C),
-    NSTree = do_prune_until(?GENESIS_HEIGHT, Expires + 1, aec_trees:ns(Trees2)),
+    TTL = aens_commitments:ttl(C),
+    NSTree = do_prune_until(?GENESIS_HEIGHT, TTL + 1, aec_trees:ns(Trees2)),
     none = aens_state_tree:lookup_commitment(CHash, NSTree),
     ok.
 
@@ -521,17 +521,17 @@ prune_claim(Cfg) ->
     NHash    = aens_names:hash(N),
     PubKey   = aens_names:owner_pubkey(N),
     claimed  = aens_names:status(N),
-    Expires1 = aens_names:expires(N),
+    TTL1     = aens_names:ttl(N),
 
 
-    NTree2 = aens_state_tree:prune(Expires1+1, NTrees),
+    NTree2 = aens_state_tree:prune(TTL1+1, NTrees),
     {value, N2} = aens_state_tree:lookup_name(NHash, NTree2),
     NHash    = aens_names:hash(N2),
     PubKey   = aens_names:owner_pubkey(N2),
     revoked  = aens_names:status(N2),
-    Expires2 = aens_names:expires(N2),
+    TTL2     = aens_names:ttl(N2),
 
-    NTree3 = aens_state_tree:prune(Expires2+1, NTree2),
+    NTree3 = aens_state_tree:prune(TTL2+1, NTree2),
     none = aens_state_tree:lookup_name(NHash, NTree3),
 
     {PubKey, NHash, S2}.

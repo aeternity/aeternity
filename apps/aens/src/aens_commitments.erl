@@ -16,7 +16,7 @@
 %% Getters
 -export([hash/1,
          owner_pubkey/1,
-         expires/1,
+         ttl/1,
          created/1]).
 
 %%%===================================================================
@@ -26,7 +26,7 @@
         {id       :: aec_id:id(),
          owner_id :: aec_id:id(),
          created  :: aec_blocks:height(),
-         expires  :: aec_blocks:height()
+         ttl      :: aec_blocks:height()
          }).
 
 -opaque commitment() :: #commitment{}.
@@ -57,25 +57,25 @@ new(PreclaimTx, ExpirationHeight, BlockHeight) ->
     #commitment{id       = Id,
                 owner_id = OwnerId,
                 created  = BlockHeight,
-                expires  = BlockHeight + ExpirationHeight}.
+                ttl      = BlockHeight + ExpirationHeight}.
 
 -spec serialize(commitment()) -> binary().
 serialize(#commitment{owner_id = OwnerId,
                       created  = Created,
-                      expires  = Expires}) ->
+                      ttl      = TTL}) ->
     aec_object_serialization:serialize(
       ?COMMITMENT_TYPE,
       ?COMMITMENT_VSN,
       serialization_template(?COMMITMENT_VSN),
       [ {owner_id, OwnerId}
       , {created, Created}
-      , {expires, Expires}]).
+      , {ttl, TTL}]).
 
 -spec deserialize(hash(), binary()) -> commitment().
 deserialize(CommitmentHash, Bin) ->
     [ {owner_id, OwnerId}
     , {created, Created}
-    , {expires, Expires}
+    , {ttl, TTL}
     ] = aec_object_serialization:deserialize(
           ?COMMITMENT_TYPE,
           ?COMMITMENT_VSN,
@@ -84,12 +84,12 @@ deserialize(CommitmentHash, Bin) ->
     #commitment{id       = aec_id:create(commitment, CommitmentHash),
                 owner_id = OwnerId,
                 created  = Created,
-                expires  = Expires}.
+                ttl      = TTL}.
 
 serialization_template(?COMMITMENT_VSN) ->
     [ {owner_id, id}
     , {created, int}
-    , {expires, int}
+    , {ttl, int}
     ].
 
 %%%===================================================================
@@ -104,9 +104,9 @@ hash(#commitment{id = Id}) ->
 owner_pubkey(#commitment{owner_id = OwnerId}) ->
     aec_id:specialize(OwnerId, account).
 
--spec expires(commitment()) -> aec_blocks:height().
-expires(#commitment{expires = Expires}) ->
-    Expires.
+-spec ttl(commitment()) -> aec_blocks:height().
+ttl(#commitment{ttl = TTL}) ->
+    TTL.
 
 -spec created(commitment()) -> aec_blocks:height().
 created(#commitment{created = Created}) ->

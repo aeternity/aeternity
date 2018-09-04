@@ -103,9 +103,9 @@ run_elapsed([{aens_commitments, Id, Serialized}|Expired], Tree, Height) ->
 enter_commitment(Commitment, Tree) ->
     CommitmentHash = aens_commitments:hash(Commitment),
     Serialized = aens_commitments:serialize(Commitment),
-    Expiration = aens_commitments:expires(Commitment),
+    TTL = aens_commitments:ttl(Commitment),
     %% TODO: consider two trees (names vs pre-claims/commitments)
-    Cache1 = cache_push(Expiration, CommitmentHash, aens_commitments, Tree#ns_tree.cache),
+    Cache1 = cache_push(TTL, CommitmentHash, aens_commitments, Tree#ns_tree.cache),
     MTree1 = aeu_mtrees:insert(CommitmentHash, Serialized, Tree#ns_tree.mtree),
     Tree#ns_tree{cache = Cache1, mtree = MTree1}.
 
@@ -113,8 +113,8 @@ enter_commitment(Commitment, Tree) ->
 enter_name(Name, Tree) ->
     NameHash = aens_names:hash(Name),
     Serialized = aens_names:serialize(Name),
-    Expiration = aens_names:expires(Name),
-    Cache1 = cache_push(Expiration, NameHash, aens_names, Tree#ns_tree.cache),
+    TTL = aens_names:ttl(Name),
+    Cache1 = cache_push(TTL, NameHash, aens_names, Tree#ns_tree.cache),
     MTree1 = aeu_mtrees:enter(NameHash, Serialized, Tree#ns_tree.mtree),
     Tree#ns_tree{cache = Cache1, mtree = MTree1}.
 
@@ -210,7 +210,7 @@ int_prune({HeightLower, Id, Mod}, NextBlockHeight, Cache, MTree, ExpiredAcc) ->
 %%
 
 run_elapsed_name(Name, NamesTree0, NextBlockHeight) ->
-    ExpirationBlockHeight = aens_names:expires(Name),
+    ExpirationBlockHeight = aens_names:ttl(Name),
     Status = aens_names:status(Name),
     case ExpirationBlockHeight =:= (NextBlockHeight - 1) of
         false ->
@@ -240,8 +240,8 @@ run_elapsed_commitment(Commitment, NamesTree0) ->
 %%%===================================================================
 -define(DUMMY_VAL, <<0>>).
 
-cache_push(Expires, Hash, Mod, C) ->
-    SExt = sext:encode({Expires, Hash, Mod}),
+cache_push(TTL, Hash, Mod, C) ->
+    SExt = sext:encode({TTL, Hash, Mod}),
     aeu_mtrees:enter(SExt, ?DUMMY_VAL, C).
 
 cache_safe_peek(C) ->
