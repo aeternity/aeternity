@@ -13,8 +13,8 @@
          beneficiary/1,
          deserialize_from_binary/1,
          deserialize_from_map/1,
-         deserialize_key_from_binary/2,
-         deserialize_micro_from_binary/2,
+         deserialize_key_from_binary/1,
+         deserialize_micro_from_binary/1,
          deserialize_pow_evidence/1,
          difficulty/1,
          hash_header/1,
@@ -398,12 +398,12 @@ serialize_to_signature_binary(#mic_header{signature = Sig} = H) ->
             serialize_to_binary(set_signature(H, Blank))
     end.
 
-
 -spec serialize_to_binary(header()) -> deterministic_header_binary().
 serialize_to_binary(#key_header{} = Header) ->
     PowEvidence = serialize_pow_evidence_to_binary(Header#key_header.pow_evidence),
     %% Todo check size of hashes = (?BLOCK_HEADER_HASH_BYTES*8),
-    <<(Header#key_header.version):64,
+    <<?KEY_HEADER_TAG:1,
+      (Header#key_header.version):63,
       (Header#key_header.height):64,
       (Header#key_header.prev_hash)/binary,
       (Header#key_header.root_hash)/binary,
@@ -414,7 +414,8 @@ serialize_to_binary(#key_header{} = Header) ->
       (Header#key_header.nonce):64,
       (Header#key_header.time):64>>;
 serialize_to_binary(#mic_header{} = Header) ->
-    <<(Header#mic_header.version):64,
+    <<?MICRO_HEADER_TAG:1,
+      (Header#mic_header.version):63,
       (Header#mic_header.height):64,
       (Header#mic_header.prev_hash)/binary,
       (Header#mic_header.root_hash)/binary,
@@ -424,20 +425,18 @@ serialize_to_binary(#mic_header{} = Header) ->
 
 -spec deserialize_from_binary(deterministic_header_binary()) -> header().
 
--define(KEY_HEADER_BYTES, 336).
--define(MIC_HEADER_BYTES, 184).
 deserialize_from_binary(Bin) when byte_size(Bin) =:= ?KEY_HEADER_BYTES ->
-    {ok, H} = deserialize_key_from_binary(Bin, any),
+    {ok, H} = deserialize_key_from_binary(Bin),
     H;
 deserialize_from_binary(Bin) when byte_size(Bin) =:= ?MIC_HEADER_BYTES ->
-    {ok, H} = deserialize_micro_from_binary(Bin, any),
+    {ok, H} = deserialize_micro_from_binary(Bin),
     H.
 
--spec deserialize_key_from_binary(deterministic_header_binary(),
-                                  'any' | non_neg_integer()) ->
+-spec deserialize_key_from_binary(deterministic_header_binary()) ->
                                          {'ok', key_header()}
                                        | {'error', term()}.
-deserialize_key_from_binary(<<Version:64,
+deserialize_key_from_binary(<<?KEY_HEADER_TAG:1,
+                              Version:63,
                               Height:64,
                               PrevHash:?BLOCK_HEADER_HASH_BYTES/binary,
                               RootHash:?STATE_HASH_BYTES/binary,
@@ -446,54 +445,44 @@ deserialize_key_from_binary(<<Version:64,
                               Target:64,
                               PowEvidenceBin:168/binary,
                               Nonce:64,
-                              Time:64 >>, Vsn) ->
-    case (Vsn =:= any) orelse (Vsn =:= Version) of
-        false ->
-            {error, malformed_vsn};
-        true ->
-            PowEvidence = deserialize_pow_evidence_from_binary(PowEvidenceBin),
-            H = #key_header{height = Height,
-                            prev_hash = PrevHash,
-                            root_hash = RootHash,
-                            miner = Miner,
-                            beneficiary = Beneficiary,
-                            target = Target,
-                            pow_evidence = PowEvidence,
-                            nonce = Nonce,
-                            time = Time,
-                            version = Version},
-            {ok, H}
-    end;
-deserialize_key_from_binary(_Other,_Vsn) ->
+                              Time:64 >>) ->
+    PowEvidence = deserialize_pow_evidence_from_binary(PowEvidenceBin),
+    H = #key_header{height = Height,
+                    prev_hash = PrevHash,
+                    root_hash = RootHash,
+                    miner = Miner,
+                    beneficiary = Beneficiary,
+                    target = Target,
+                    pow_evidence = PowEvidence,
+                    nonce = Nonce,
+                    time = Time,
+                    version = Version},
+    {ok, H};
+deserialize_key_from_binary(_Other) ->
     {error, malformed_header}.
 
 
--spec deserialize_micro_from_binary(deterministic_header_binary(),
-                                    'any' | non_neg_integer()) ->
+-spec deserialize_micro_from_binary(deterministic_header_binary()) ->
                                            {'ok', micro_header()}
                                          | {'error', term()}.
-deserialize_micro_from_binary(<<Version:64,
+deserialize_micro_from_binary(<<?MICRO_HEADER_TAG:1,
+                                Version:63,
                                 Height:64,
                                 PrevHash:?BLOCK_HEADER_HASH_BYTES/binary,
                                 RootHash:?STATE_HASH_BYTES/binary,
                                 TxsHash:?TXS_HASH_BYTES/binary,
                                 Time:64,
                                 Signature:?BLOCK_SIGNATURE_BYTES/binary
-                              >>, Vsn) ->
-    case (Vsn =:= any) orelse (Vsn =:= Version) of
-        false ->
-            {error, malformed_vsn};
-        true ->
-            H = #mic_header{height = Height,
-                            prev_hash = PrevHash,
-                            root_hash = RootHash,
-                            signature = Signature,
-                            txs_hash = TxsHash,
-                            time = Time,
-                            version = Version},
-            {ok, H}
-    end;
-deserialize_micro_from_binary(_Other,_Vsn) ->
+                              >>) ->
+    H = #mic_header{height = Height,
+                    prev_hash = PrevHash,
+                    root_hash = RootHash,
+                    signature = Signature,
+                    txs_hash = TxsHash,
+                    time = Time,
+                    version = Version},
+    {ok, H};
+deserialize_micro_from_binary(_Other) ->
     {error, malformed_header}.
 
 
