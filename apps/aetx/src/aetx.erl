@@ -107,6 +107,8 @@
 
 -callback type() -> atom().
 
+-callback version() -> non_neg_integer().
+
 -callback fee(Tx :: tx_instance()) ->
     Fee :: integer().
 
@@ -247,7 +249,7 @@ process_from_contract(#aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion
 -spec serialize_for_client(Tx :: tx()) -> map().
 serialize_for_client(#aetx{ cb = CB, type = Type, tx = Tx }) ->
     Res0 = CB:for_client(Tx),
-    Res1 = Res0#{ <<"type">> => tx_type(Type) },
+    Res1 = Res0#{ <<"type">> => tx_type(Type), <<"version">> => CB:version() },
     case maps:get(<<"ttl">>, Res1, 0) of
         0 -> maps:remove(<<"ttl">>, Res1);
         _ -> Res1

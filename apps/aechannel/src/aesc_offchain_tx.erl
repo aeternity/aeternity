@@ -13,6 +13,7 @@
          check/5,
          process/6,
          signers/2,
+         version/0,
          serialization_template/1,
          serialize/1,
          deserialize/2,
@@ -148,8 +149,7 @@ for_client(#channel_offchain_tx{
               state_hash         = StateHash,
               channel_id         = ChannelId,
               round              = Round}) ->
-    #{<<"vsn">>                => ?CHANNEL_OFFCHAIN_TX_VSN,
-      <<"channel_id">>         => aec_base58c:encode(id_hash, ChannelId),
+    #{<<"channel_id">>         => aec_base58c:encode(id_hash, ChannelId),
       <<"round">>              => Round,
       <<"updates">>            => [aesc_offchain_update:for_client(D) || D <- Updates],
       <<"state_hash">>         => aec_base58c:encode(state, StateHash)}.

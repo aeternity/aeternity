@@ -17,6 +17,7 @@
          check/5,
          process/6,
          signers/2,
+         version/0,
          serialization_template/1,
          serialize/1,
          deserialize/2,
@@ -254,8 +255,7 @@ for_client(#spend_tx{sender_id    = SenderId,
       <<"fee">>          => Fee,
       <<"ttl">>          => TTL,
       <<"nonce">>        => Nonce,
-      <<"payload">>      => Payload,
-      <<"vsn">>          => version()}.
+      <<"payload">>      => Payload}.
 
 %% Internals
 
