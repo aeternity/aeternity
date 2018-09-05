@@ -101,7 +101,8 @@ websocket_info({aesc_fsm, FsmPid, Msg}, #handler{fsm_pid=FsmPid}=H) ->
         {reply, Resp} -> {reply, {text, jsx:encode(Resp)}, H1}
     end;
 websocket_info({'DOWN', MRef, _, _, _}, #handler{fsm_mref = MRef} = H) ->
-    {stop, H};
+    {stop, H#handler{fsm_pid = undefined,
+                     fsm_mref = undefined}};
 websocket_info(_Info, State) ->
     {ok, State}.
 
@@ -125,10 +126,13 @@ terminate(_Reason, _PartialReq, #{} = _State) ->
     % not initialized yet
     ok;
 terminate(Reason, _PartialReq, State) ->
-    FsmPid = fsm_pid(State),
-    true = unlink(FsmPid),
     lager:debug("WebSocket dying because of ~p", [Reason]),
-    ok = aesc_fsm:client_died(FsmPid),
+    case fsm_pid(State) of
+        undefined -> pass;
+        FsmPid ->
+            true = unlink(FsmPid),
+            ok = aesc_fsm:client_died(FsmPid)
+    end,
     jobs:done(job_id(State)),
     ok.
 
