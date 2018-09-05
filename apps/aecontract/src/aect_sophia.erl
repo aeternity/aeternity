@@ -56,7 +56,7 @@ simple_call(Code, Function, Argument) ->
     case create_call(Code, Function, Argument) of
         {error, E} -> {error, E};
         CallData ->
-            %% TODO: proper setup of chain state!
+            %% TODO: proper setup of chain state! Tracked as #160281213
             Owner = <<123456:32/unit:8>>,
             {Block, Trees} = aec_chain:top_block_with_state(),
             BlockHeight = aec_blocks:height(Block) + 1,
