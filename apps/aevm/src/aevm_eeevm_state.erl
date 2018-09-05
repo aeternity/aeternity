@@ -14,6 +14,7 @@
         , add_callcreates/2
         , address/1
         , blockhash/3
+        , bloom/2
         , calldepth/1
         , call_stack/1
         , call_contract/6
@@ -381,6 +382,11 @@ format_word(N) ->
 %% (27) m(x, i) ≡ KEC(x)[i, i + 1] mod 2048
 %% where B is the bit reference function such that Bj (x)
 %% equals the bit of index j (indexed from 0) in the byte array x.
+bloom(State, Filter) ->
+    Data = maps:get(logs, State),
+    bloom_filter(Data, Filter).
+
+
 bloom_filter(Data, Filter) ->
     Hash = aec_hash:hash(evm, Data),
     Bits = bloom_bits(Hash),

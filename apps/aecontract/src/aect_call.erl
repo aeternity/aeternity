@@ -32,7 +32,6 @@
         , set_return_value/2
         , set_gas_used/2
         , set_log/2
-        , set_log_bloom/2
         ]).
 
 -define(CONTRACT_INTERACTION_TYPE, contract_call).
@@ -54,8 +53,7 @@
               , gas_used     :: amount()
               , return_value :: binary()
               , return_type  :: ok | error | revert
-              , log              :: [log_entry()]
-              , log_bloom        :: integer()
+              , log          :: [log_entry()]
               }).
 
 -opaque call() :: #call{}.
@@ -86,7 +84,6 @@ new(CallerId, Nonce, ContractId, BlockHeight, GasPrice) ->
              , return_value = <<>>  %% in aect_call_tx:process()
              , return_type  = ok
              , log          = []
-             , log_bloom    = 0
              },
     assert_fields(C).
 
@@ -110,8 +107,7 @@ serialize(#call{caller_id    = CallerId,
                 gas_used     = GasUsed,
                 return_value = ReturnValue,
                 return_type  = ReturnType,
-                log          = Log,
-                log_bloom    = LogBloom
+                log          = Log
                }) ->
     aec_object_serialization:serialize(
       ?CONTRACT_INTERACTION_TYPE,
@@ -126,7 +122,6 @@ serialize(#call{caller_id    = CallerId,
       , {return_value, ReturnValue}
       , {return_type, serialize_return_type(ReturnType)}
       , {log, serialize_log(Log)}
-      , {log_bloom, <<LogBloom:256>>}
      ]).
 
 -spec deserialize(binary()) -> call().
@@ -144,7 +139,6 @@ deserialize(B) ->
             , {return_value, ReturnValue}
             , {return_type, ReturnType}
             , {log, Log}
-            , {log_bloom, <<LogBloom:256/integer>>}
             ] =  aec_serialization:decode_fields(
                    serialization_template(?CONTRACT_INTERACTION_VSN),
                    Fields);
@@ -160,8 +154,7 @@ deserialize(B) ->
             ] = aec_serialization:decode_fields(
                   serialization_template(?CONTRACT_INTERACTION_VSN_PRE_LOG),
                   Fields),
-            Log = [],
-            LogBloom = 0
+            Log = []
     end,
     %% TODO: check caller_id type
     contract = aec_id:specialize_type(ContractId),
@@ -174,7 +167,6 @@ deserialize(B) ->
          , return_value = ReturnValue
          , return_type  = deserialize_return_type(ReturnType)
          , log          = deserialize_log(Log)
-         , log_bloom    = LogBloom
          }.
 
 serialization_template(?CONTRACT_INTERACTION_VSN) ->
@@ -187,7 +179,6 @@ serialization_template(?CONTRACT_INTERACTION_VSN) ->
     , {return_value, binary}
     , {return_type, int}
     , {log, [{binary, [binary], binary}]}
-    , {log_bloom, binary}
     ];
 serialization_template(?CONTRACT_INTERACTION_VSN_PRE_LOG) ->
     [ {caller_address, binary}
@@ -216,8 +207,7 @@ serialize_for_client(#call{caller_id    = CallerId,
                            gas_used     = GasUsed,
                            return_value = ReturnValue,
                            return_type  = ReturnType,
-                           log          = Log,
-                           log_bloom    = LogBloom
+                           log          = Log
                           }) ->
     #{ <<"caller_id">>    => aec_base58c:encode(id_hash, CallerId)
      , <<"caller_nonce">> => CallerNonce
@@ -228,7 +218,6 @@ serialize_for_client(#call{caller_id    = CallerId,
      , <<"return_value">> => list_to_binary(aect_utils:hex_bytes(ReturnValue))
      , <<"return_type">>  => atom_to_binary(ReturnType, utf8)
      , <<"log">>              => [serialize_log_entry_for_client(E) || E <- Log]
-     , <<"log_bloom">>        => <<LogBloom:256>>
      }.
 
 serialize_log(Log) -> [serialize_log_entry(E) || E <- Log].
@@ -292,9 +281,6 @@ gas_used(#call{gas_used = GasUsed}) ->
 -spec log(call()) -> [log_entry()].
 log(I) -> I#call.log.
 
--spec log_bloom(call()) -> integer().
-log_bloom(I) -> I#call.log_bloom.
-
 %%%===================================================================
 %%% Setters
 
@@ -331,9 +317,6 @@ set_gas_used(X, I) ->
 set_log(Log, I) ->
     I#call{log = assert_field(log, Log)}.
 
--spec set_log_bloom(integer(), call()) -> call().
-set_log_bloom(LogBloom, I) ->
-    I#call{log_bloom = assert_field(log_bloom, LogBloom)}.
 
 %%%===================================================================
 %%% Internal functions
@@ -348,7 +331,6 @@ assert_fields(I) ->
            , {gas_price,    I#call.gas_price}
            , {gas_used,     I#call.gas_used}
            , {log,              I#call.log}
-           , {log_bloom,        I#call.log_bloom}
            ],
     List1 = [try assert_field(X, Y), [] catch _:X -> X end
              || {X, Y} <- List],
@@ -366,5 +348,4 @@ assert_field(gas_price,        X) when is_integer(X), X >= 0 -> X;
 assert_field(gas_used,         X) when is_integer(X), X >= 0 -> X;
 assert_field(log,              []) -> [];
 assert_field(log,              [[_A,_T,_D]=E|Log])-> [E|assert_field(log, Log)];
-assert_field(log_bloom,        X) when is_integer(X) -> X;
 assert_field(Field,            X) -> error({illegal, Field, X}).
