@@ -2196,10 +2196,6 @@ definitions:
         type: integer
         format: int64
         minimum: 0
-      push_amount:
-        type: integer
-        format: int64
-        minimum: 0
       channel_reserve:
         type: integer
         format: int64
@@ -2228,7 +2224,6 @@ definitions:
     - initiator_amount
     - responder_id
     - responder_amount
-    - push_amount
     - channel_reserve
     - lock_period
     - fee

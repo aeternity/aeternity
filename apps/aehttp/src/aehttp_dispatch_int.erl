@@ -249,7 +249,7 @@ handle_request('PostChannelCreate', #{'ChannelCreateTx' := Req}, _Context) ->
                  read_required_params([initiator_id, initiator_amount,
                                        state_hash,
                                        responder_id, responder_amount,
-                                       push_amount, channel_reserve,
+                                       channel_reserve,
                                        lock_period, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  base58_decode([{initiator_id, initiator_id, {id_hash, [account_pubkey]}},

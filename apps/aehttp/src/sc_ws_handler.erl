@@ -603,7 +603,6 @@ read_channel_options(Params) ->
          Read(<<"offchain_tx">>, offchain_tx,
               #{type => serialized_tx, mandatory => false}),
          Read(<<"lock_period">>, lock_period, #{type => integer}),
-         Read(<<"push_amount">>, push_amount, #{type => integer}),
          Read(<<"initiator_amount">>, initiator_amount, #{type => integer}),
          Read(<<"responder_amount">>, responder_amount, #{type => integer}),
          Read(<<"channel_reserve">>, channel_reserve, #{type => integer}),
