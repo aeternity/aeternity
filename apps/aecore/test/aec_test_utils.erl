@@ -310,9 +310,13 @@ create_keyblock_with_state([{PrevBlock, TreesIn} | _] = Chain, MinerAccount, Ben
     Version = aec_hard_forks:protocol_effective_at_height(Height),
     Trees1 = aec_trees:perform_pre_transformations(TreesIn, Height),
     Delay = aec_governance:beneficiary_reward_delay(),
+    PrevKeyHash = case aec_blocks:type(PrevBlock) of
+                      micro -> aec_blocks:prev_key_hash(PrevBlock);
+                      key   -> PrevBlockHash
+                  end,
     %% Dummy block to calculate the fees.
     Target = pick_prev_target(Chain),
-    Block0 = aec_blocks:new_key(Height, PrevBlockHash, aec_trees:hash(TreesIn),
+    Block0 = aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash, aec_trees:hash(TreesIn),
                                 Target, 0, aeu_time:now_in_msecs(), Version,
                                 MinerAccount, BeneficiaryAccount),
     Trees2 = case Height > Delay of
@@ -323,7 +327,7 @@ create_keyblock_with_state([{PrevBlock, TreesIn} | _] = Chain, MinerAccount, Ben
                  false ->
                      Trees1
              end,
-    Block = aec_blocks:new_key(Height, PrevBlockHash, aec_trees:hash(Trees2),
+    Block = aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash, aec_trees:hash(Trees2),
                                Target, 0, aeu_time:now_in_msecs(), Version,
                                MinerAccount, BeneficiaryAccount),
     {Block, Trees2}.

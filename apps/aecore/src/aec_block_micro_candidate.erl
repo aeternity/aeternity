@@ -34,13 +34,8 @@ create(Block) ->
     case aec_blocks:is_key_block(Block) of
         true -> int_create(Block, Block);
         false ->
-            {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
-            case aec_chain:get_key_hash(BlockHash) of
-                {ok, KeyBlockHash} ->
-                    case aec_chain:get_block(KeyBlockHash) of
-                        {ok, KeyBlock} -> int_create(Block, KeyBlock);
-                        _ -> {error, block_not_found}
-                    end;
+            case aec_chain:get_block(aec_blocks:prev_key_hash(Block)) of
+                {ok, KeyBlock} -> int_create(Block, KeyBlock);
                 _ -> {error, block_not_found}
             end
     end.
@@ -113,6 +108,10 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
     {ExpectedPrevBlockVersion, _} = {aec_blocks:version(PrevBlock),
                                      {expected, ExpectedPrevBlockVersion}},
 
+    PrevKeyHash = case aec_blocks:type(PrevBlock) of
+                      micro -> aec_blocks:prev_key_hash(PrevBlock);
+                      key   -> PrevBlockHash
+                  end,
     Height = aec_blocks:height(KeyBlock),
     Version = aec_hard_forks:protocol_effective_at_height(Height),
 
@@ -122,7 +121,7 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
     TxsTree = aec_txs_trees:from_txs(Txs1),
     TxsRootHash = aec_txs_trees:pad_empty(aec_txs_trees:root_hash(TxsTree)),
 
-    NewBlock = aec_blocks:new_micro(Height, PrevBlockHash,
+    NewBlock = aec_blocks:new_micro(Height, PrevBlockHash, PrevKeyHash,
                                     aec_trees:hash(Trees2), TxsRootHash, Txs1,
                                     aeu_time:now_in_msecs(), Version),
 

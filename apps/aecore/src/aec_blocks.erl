@@ -18,12 +18,13 @@
          is_block/1,
          is_key_block/1,
          miner/1,
-         new_key/9,
+         new_key/10,
          new_key_from_header/1,
-         new_micro/7,
+         new_micro/8,
          new_micro_from_header/2,
          pow/1,
          prev_hash/1,
+         prev_key_hash/1,
          root_hash/1,
          serialize_to_binary/1,
          serialize_to_map/1,
@@ -32,6 +33,7 @@
          set_nonce/2,
          set_nonce_and_pow/3,
          set_prev_hash/2,
+         set_prev_key_hash/2,
          set_root_hash/2,
          set_signature/2,
          set_target/2,
@@ -146,13 +148,14 @@ type(#mic_block{}) -> 'micro'.
 %%% Constructors
 %%%===================================================================
 
--spec new_key(height(), block_header_hash(), state_hash(), aec_pow:sci_int(),
+-spec new_key(height(), block_header_hash(), block_header_hash(), state_hash(),
+              aec_pow:sci_int(),
               non_neg_integer(), non_neg_integer(), non_neg_integer(),
               miner_pubkey(), beneficiary_pubkey()
              ) -> key_block().
-new_key(Height, PrevHash, RootHash, Target,
+new_key(Height, PrevHash, PrevKeyHash, RootHash, Target,
         Nonce, Time, Version, Miner, Beneficiary) ->
-    H = aec_headers:new_key_header(Height, PrevHash, RootHash,
+    H = aec_headers:new_key_header(Height, PrevHash, PrevKeyHash, RootHash,
                                    Miner, Beneficiary, Target,
                                    no_value, Nonce, Time, Version),
     #key_block{header = H}.
@@ -162,11 +165,11 @@ new_key_from_header(Header) ->
     aec_headers:assert_key_header(Header),
     #key_block{header = Header}.
 
--spec new_micro(height(), block_header_hash(), state_hash(), txs_hash(),
-                tx_list(), non_neg_integer(),
+-spec new_micro(height(), block_header_hash(), block_header_hash(), state_hash(),
+                txs_hash(), tx_list(), non_neg_integer(),
                 non_neg_integer()) -> micro_block().
-new_micro(Height, PrevHash, RootHash, TxsHash, Txs, Time, Version) ->
-    H = aec_headers:new_micro_header(Height, PrevHash, RootHash, Time,
+new_micro(Height, PrevHash, PrevKeyHash, RootHash, TxsHash, Txs, Time, Version) ->
+    H = aec_headers:new_micro_header(Height, PrevHash, PrevKeyHash, RootHash, Time,
                                      TxsHash, Version),
     #mic_block{header    = H,
                txs       = Txs
@@ -200,6 +203,14 @@ beneficiary(Block) ->
 -spec prev_hash(block()) -> block_header_hash().
 prev_hash(Block) ->
     aec_headers:prev_hash(to_header(Block)).
+
+-spec prev_key_hash(block()) -> block_header_hash().
+prev_key_hash(Block) ->
+    aec_headers:prev_key_hash(to_header(Block)).
+
+-spec set_prev_key_hash(block(), block_header_hash()) -> block().
+set_prev_key_hash(Block, PrevKeyHash) ->
+    set_header(Block, aec_headers:set_prev_key_hash(to_header(Block), PrevKeyHash)).
 
 -spec set_prev_hash(block(), block_header_hash()) -> block().
 set_prev_hash(Block, PrevHash) ->

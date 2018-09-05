@@ -2018,6 +2018,9 @@
         "prev_hash" : {
           "$ref" : "#/definitions/EncodedHash"
         },
+        "prev_key_hash" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
         "state_hash" : {
           "$ref" : "#/definitions/EncodedHash"
         },
@@ -2052,17 +2055,18 @@
       },
       "example" : {
         "txs_hash" : null,
-        "beneficiary" : null,
-        "state_hash" : null,
         "prev_hash" : null,
-        "pow" : "",
-        "time" : 5,
         "nonce" : 1,
         "version" : 5,
-        "hash" : { },
         "miner" : null,
-        "height" : 0,
-        "target" : 6
+        "target" : 6,
+        "beneficiary" : null,
+        "state_hash" : null,
+        "pow" : "",
+        "prev_key_hash" : null,
+        "time" : 5,
+        "hash" : { },
+        "height" : 0
       }
     },
     "MicroBlockHeader" : {
@@ -2076,6 +2080,9 @@
           "format" : "int64"
         },
         "prev_hash" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "prev_key_hash" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "state_hash" : {
@@ -2101,6 +2108,7 @@
         "state_hash" : null,
         "signature" : null,
         "prev_hash" : null,
+        "prev_key_hash" : null,
         "time" : 6,
         "version" : 1,
         "hash" : { },
@@ -4168,17 +4176,18 @@
         "micro_blocks" : [ { }, { } ],
         "key_block" : {
           "txs_hash" : null,
-          "beneficiary" : null,
-          "state_hash" : null,
           "prev_hash" : null,
-          "pow" : "",
-          "time" : 5,
           "nonce" : 1,
           "version" : 5,
-          "hash" : { },
           "miner" : null,
-          "height" : 0,
-          "target" : 6
+          "target" : 6,
+          "beneficiary" : null,
+          "state_hash" : null,
+          "pow" : "",
+          "prev_key_hash" : null,
+          "time" : 5,
+          "hash" : { },
+          "height" : 0
         }
       }
     },

@@ -15,8 +15,8 @@
 -define(KEY_HEADER_TAG, 1).
 -define(MICRO_HEADER_TAG, 0).
 
--define(KEY_HEADER_BYTES, 336).
--define(MIC_HEADER_BYTES, 184).
+-define(KEY_HEADER_BYTES, 368).
+-define(MIC_HEADER_BYTES, 216).
 
 -type(txs_hash() :: <<_:(?TXS_HASH_BYTES*8)>>).
 -type(state_hash() :: <<_:(?STATE_HASH_BYTES*8)>>).

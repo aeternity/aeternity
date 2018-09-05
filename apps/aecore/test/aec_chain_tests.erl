@@ -193,6 +193,8 @@ broken_chain_test_() ->
        fun broken_chain_wrong_height/0},
       {"Add a block with the wrong state hash",
        fun broken_chain_wrong_state_hash/0},
+      {"Add a block with the wrong previous key hash",
+       fun broken_chain_wrong_prev_key_hash/0},
       {"Add a block with invalid transaction",
        fun broken_chain_invalid_transaction/0},
       {"Add a block with invalid micro block signature",
@@ -266,6 +268,38 @@ broken_chain_wrong_state_hash() ->
     ?assertNotEqual(Hash, Bogus),
     ?assertMatch({error, {root_hash_mismatch, _, _}},
                  insert_block(aec_blocks:set_root_hash(B2, Bogus))),
+    ok.
+
+broken_chain_wrong_prev_key_hash() ->
+    #{ public := SenderPubKey, secret := SenderPrivKey } = enacl:sign_keypair(),
+    RecipientPubKey = <<42:32/unit:8>>,
+    PresetAccounts = [{SenderPubKey, 100}],
+    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    Spend1 = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
+    Spend2 = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 2, RecipientPubKey), SenderPrivKey),
+
+    Chain0 = gen_block_chain_with_state_by_target(PresetAccounts, [?GENESIS_TARGET], 111),
+
+    TxsFun = fun(2) -> [Spend1, Spend2];
+                (_) -> []
+             end,
+    [B0,_B1, B2, MB1, MB2, B3] = Chain =
+        blocks_only_chain(extend_chain_with_state(Chain0, [?GENESIS_TARGET, ?GENESIS_TARGET], 111, TxsFun)),
+
+    %% Insert the full chain so we know it is valid.
+    ok = write_blocks_to_chain(Chain),
+
+    B0Hash = block_hash(B0),
+
+    %% Set the prev key hash to the wrong key block and see that it fails.
+    ?assertEqual({error, prev_key_hash_inconsistency},
+                 insert_block(aec_blocks:set_prev_key_hash(B2, B0Hash))),
+    ?assertEqual({error, prev_key_hash_inconsistency},
+                 insert_block(aec_blocks:set_prev_key_hash(B3, B0Hash))),
+    ?assertEqual({error, prev_key_hash_inconsistency},
+                 insert_block(aec_blocks:set_prev_key_hash(MB1, B0Hash))),
+    ?assertEqual({error, prev_key_hash_inconsistency},
+                 insert_block(aec_blocks:set_prev_key_hash(MB2, B0Hash))),
     ok.
 
 broken_chain_invalid_transaction() ->
@@ -1079,91 +1113,6 @@ fees_delayed_reward() ->
     %% Check rewards are granted for the first three key blocks, with fees of first two generations
     ?assertEqual({ok, 3 * MiningReward + Fee1 + Fee2},
                  orddict:find(PubKey3, DictBal3)),
-    ok.
-
-%%%===================================================================
-%%% Key hash test
-
-key_hash_test_() ->
-    {foreach,
-     fun() ->
-             aec_test_utils:start_chain_db(),
-             aec_test_utils:mock_block_target_validation(),
-             aec_test_utils:mock_genesis(),
-             aec_test_utils:aec_keys_setup()
-     end,
-     fun(TmpDir) ->
-             aec_test_utils:stop_chain_db(),
-             aec_test_utils:unmock_block_target_validation(),
-             aec_test_utils:unmock_genesis(),
-             aec_test_utils:aec_keys_cleanup(TmpDir)
-     end,
-     [{"Check key_hash being updated correctly for orphaned chain",
-       fun key_hash_orphaned_chain/0}
-     ]
-    }.
-
-key_hash_orphaned_chain() ->
-    %% Create a chain with both key and micro blocks
-    #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
-    TxsFun = fun(1) ->
-                     Tx = make_spend_tx(PubKey, 1, PubKey, 1),
-                     [aec_test_utils:sign_tx(Tx, PrivKey)];
-                (2) ->
-                     Tx = make_spend_tx(PubKey, 2, PubKey, 1),
-                     [aec_test_utils:sign_tx(Tx, PrivKey)];
-                (_) ->
-                     []
-             end,
-    PresetAccounts = [{PubKey, 1000}],
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
-    Chain0 = gen_block_chain_with_state_by_target(
-               PresetAccounts,
-               [?HIGHEST_TARGET_SCI, ?HIGHEST_TARGET_SCI, ?HIGHEST_TARGET_SCI], 1, TxsFun),
-    [KB0, KB1, MB1, KB2, MB2, KB3] = blocks_only_chain(Chain0),
-    {ok, KB1Hash} = aec_blocks:hash_internal_representation(KB1),
-    {ok, MB1Hash} = aec_blocks:hash_internal_representation(MB1),
-    {ok, KB2Hash} = aec_blocks:hash_internal_representation(KB2),
-    {ok, MB2Hash} = aec_blocks:hash_internal_representation(MB2),
-    {ok, KB3Hash} = aec_blocks:hash_internal_representation(KB3),
-
-    ?assertEqual(true , aec_blocks:is_key_block(KB0)),
-    ?assertEqual(true , aec_blocks:is_key_block(KB1)),
-    ?assertEqual(false, aec_blocks:is_key_block(MB1)),
-    ?assertEqual(true , aec_blocks:is_key_block(KB2)),
-    ?assertEqual(false, aec_blocks:is_key_block(MB2)),
-    ?assertEqual(true , aec_blocks:is_key_block(KB3)),
-
-    %% Insert first part of the chain
-    ok = insert_block(KB0),
-    ok = insert_block(KB1),
-
-    %% Insert orphaned rest of the chain (no MB1)
-    ok = insert_block(KB2),
-    ok = insert_block(MB2),
-    ok = insert_block(KB3),
-
-    %% KB1 is still our top
-    ?assertEqual(KB1Hash, aec_chain:top_block_hash()),
-
-    %% Insert delayed MB1, so that the chain is joined
-    ok = insert_block(MB1),
-
-    %% KB3 is now our top
-    ?assertEqual(KB3Hash, aec_chain:top_block_hash()),
-
-    %% Check key_hash of all blocks in the chain
-    {ok, KB1KeyHash} = aec_chain:get_key_hash(KB1Hash),
-    {ok, MB1KeyHash} = aec_chain:get_key_hash(MB1Hash),
-    {ok, KB2KeyHash} = aec_chain:get_key_hash(KB2Hash),
-    {ok, MB2KeyHash} = aec_chain:get_key_hash(MB2Hash),
-    {ok, KB3KeyHash} = aec_chain:get_key_hash(KB3Hash),
-    ?assertEqual(KB1KeyHash, KB1Hash),
-    ?assertEqual(MB1KeyHash, KB1Hash),
-    ?assertEqual(KB2KeyHash, KB2Hash),
-    ?assertEqual(MB2KeyHash, KB2Hash),
-    ?assertEqual(KB3KeyHash, KB3Hash),
-
     ok.
 
 %%%===================================================================

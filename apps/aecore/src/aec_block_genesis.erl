@@ -52,6 +52,9 @@ genesis_header() ->
 prev_hash() ->
     <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>.
 
+prev_key_hash() ->
+    <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>.
+
 txs_hash() ->
     txs_hash(transactions()).
 
@@ -91,7 +94,7 @@ genesis_block_with_state(Map) ->
         aec_block_micro_candidate:apply_block_txs_strict(Txs, populated_trees(Map),
                                                          height(), ?GENESIS_VERSION),
 
-    Block = aec_blocks:new_key(height(), prev_hash(), aec_trees:hash(Trees),
+    Block = aec_blocks:new_key(height(), prev_hash(), prev_key_hash(), aec_trees:hash(Trees),
                                target(), 0, 0, ?GENESIS_VERSION, miner(), beneficiary()),
     {Block, Trees}.
 

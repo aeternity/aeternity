@@ -49,7 +49,7 @@ difficulty_recalculation_test_() ->
                  GoodTarget     = aec_pow:integer_to_scientific(round(?HIGHEST_TARGET_INT / GoodDifficulty)),
                  Height0        = 30,
 
-                 Block0 = aec_blocks:new_key(Height0, <<0:32/unit:8>>, <<0:32/unit:8>>, undefined,
+                 Block0 = aec_blocks:new_key(Height0, <<0:32/unit:8>>, <<0:32/unit:8>>, <<0:32/unit:8>>, undefined,
                                              12345, Now, ?PROTOCOL_VERSION, ?MINER_PUBKEY, ?BENEFICIARY_PUBKEY),
 
                  Chain = compute_chain(Now, Height0, GoodTarget, 0),
@@ -71,7 +71,7 @@ difficulty_recalculation_test_() ->
                  GoodTarget               = aec_pow:integer_to_scientific(round(?HIGHEST_TARGET_INT / GoodDifficulty)),
                  Height0                  = 30,
 
-                 Block0 = aec_blocks:new_key(Height0, <<0:32/unit:8>>, <<0:32/unit:8>>, undefined,
+                 Block0 = aec_blocks:new_key(Height0, <<0:32/unit:8>>, <<0:32/unit:8>>, <<0:32/unit:8>>, undefined,
                                              12345, Now, ?PROTOCOL_VERSION, ?MINER_PUBKEY, ?BENEFICIARY_PUBKEY),
 
                  %% Compute chain with almost perfect timing
@@ -91,7 +91,7 @@ difficulty_recalculation_test_() ->
                  GoodTarget               = aec_pow:integer_to_scientific(round(?HIGHEST_TARGET_INT / GoodDifficulty)),
                  Height0                  = 30,
 
-                 Block0 = aec_blocks:new_key(Height0, <<0:32/unit:8>>, <<0:32/unit:8>>, undefined,
+                 Block0 = aec_blocks:new_key(Height0, <<0:32/unit:8>>, <<0:32/unit:8>>, <<0:32/unit:8>>, undefined,
                                              12345, Now, ?PROTOCOL_VERSION, ?MINER_PUBKEY, ?BENEFICIARY_PUBKEY),
 
                  %% Compute chain with almost perfect timing
