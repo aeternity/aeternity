@@ -215,7 +215,7 @@ serialize_for_client(#call{caller_id    = CallerId,
                            gas_price    = GasPrice,
                            gas_used     = GasUsed,
                            return_value = ReturnValue,
-                           return_type  = ReturnType
+                           return_type  = ReturnType,
                            log          = Log,
                            log_bloom    = LogBloom
                           }) ->
