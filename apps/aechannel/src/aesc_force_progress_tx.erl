@@ -7,6 +7,7 @@
 -module(aesc_force_progress_tx).
 
 -behavior(aetx).
+-behaviour(aesc_signable_transaction).
 
 %% Behavior API
 -export([new/1,
@@ -25,6 +26,12 @@
          for_client/1
         ]).
 
+% aesc_signable_transaction callbacks
+-export([channel_id/1,
+         channel_pubkey/1,
+         state_hash/1,
+         updates/1,
+         round/1]).
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -226,6 +233,32 @@ serialization_template(?CHANNEL_FORCE_PROGRESS_TX_VSN) ->
     , {fee            , int}
     , {nonce          , int}
     ].
+
+%%%===================================================================
+%%% Getters
+%%%===================================================================
+-spec channel_pubkey(tx()) -> aesc_channels:pubkey().
+channel_pubkey(#channel_force_progress_tx{channel_id = ChannelId}) ->
+    aec_id:specialize(ChannelId, channel).
+
+-spec channel_id(tx()) -> aesc_channels:id().
+channel_id(#channel_force_progress_tx{channel_id = ChannelId}) ->
+    ChannelId.
+
+-spec updates(tx()) -> [aesc_offchain_update:update()].
+updates(#channel_force_progress_tx{solo_payload = SoloPayloadBin}) ->
+    {ok, _, SoloPayload} = aesc_utils:deserialize_payload(SoloPayloadBin),
+    [_Update] = aesc_offchain_tx:updates(SoloPayload).
+
+-spec round(tx()) -> aesc_channels:seq_number().
+round(#channel_force_progress_tx{solo_payload = SoloPayloadBin}) ->
+    {ok, _, SoloPayload} = aesc_utils:deserialize_payload(SoloPayloadBin),
+    aesc_offchain_tx:round(SoloPayload).
+
+-spec state_hash(tx()) -> binary().
+state_hash(#channel_force_progress_tx{solo_payload = SoloPayloadBin}) ->
+    {ok, _, SoloPayload} = aesc_utils:deserialize_payload(SoloPayloadBin),
+    aesc_offchain_tx:state_hash(SoloPayload).
 
 %%%===================================================================
 %%% Internal functions
