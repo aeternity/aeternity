@@ -20,6 +20,7 @@
 
 
 -include_lib("common_test/include/ct.hrl").
+-include_lib("stdlib/include/assert.hrl").
 
 all() ->
     [ micro_block_cycle
@@ -186,37 +187,29 @@ missing_tx_gossip(Config) ->
     ok.
 
 check_coinbase_validation(Config) ->
+    %% Mine on a node a contract tx using coinbase.
     aecore_suite_utils:start_node(dev1, Config),
-    aecore_suite_utils:start_node(dev2, Config),
-
     N1 = aecore_suite_utils:node_name(dev1),
-    N2 = aecore_suite_utils:node_name(dev2),
-
     aecore_suite_utils:connect(N1),
-    aecore_suite_utils:connect(N2),
-
-    %% Both nodes are up, now turn off gossiping of TXs
-    %% Also (virtually) disable ping
-    rpc:call(N1, aec_sync, gossip_txs, [false], 5000),
-    rpc:call(N2, aec_sync, gossip_txs, [false], 5000),
-    rpc:call(N1, application, set_env, [aecore, ping_interval, 1000000], 5000),
-    rpc:call(N2, application, set_env, [aecore, ping_interval, 1000000], 5000),
-
-    %% Ping interval was 500 ms, wait that long
-    timer:sleep(2 * 500),
-
     {ok, TxH1, Ct1} =
         create_contract_tx(N1, chain, <<"()">>,  1,  1,  100),
     {ok, TxH2} =
         call_contract_tx(N1, Ct1, "save_coinbase", "()", 1,  2,  100),
-
     {ok, _} =
         aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2], 2),
 
+    %% Start a second node with distinct beneficiary.
+    aecore_suite_utils:start_node(dev2, Config),
+    N2 = aecore_suite_utils:node_name(dev2),
+    aecore_suite_utils:connect(N2),
+    {ok, Ben1} = rpc:call(N1, aec_conductor, get_beneficiary, []),
+    {ok, Ben2} = rpc:call(N2, aec_conductor, get_beneficiary, []),
+    ?assertNotEqual(Ben1, Ben2), %% Sanity check on the test nodes.
 
+    %% Check that the second node syncs the mined tx with the initial node.
     {ok, Tx1Hash} = aec_base58c:safe_decode(tx_hash, TxH1),
     {ok, Tx2Hash} = aec_base58c:safe_decode(tx_hash, TxH2),
-    wait_till_hash_on_node(N2, Tx2Hash, 1000),
+    wait_till_hash_in_block_on_node(N2, Tx2Hash, 3000),
     {BlockHash1, _} = rpc:call(N1, aec_chain, find_tx_with_location, [Tx1Hash]),
     {BlockHash2, _} = rpc:call(N1, aec_chain, find_tx_with_location, [Tx2Hash]),
     {BlockHash1, _} = rpc:call(N2, aec_chain, find_tx_with_location, [Tx1Hash]),
@@ -225,13 +218,13 @@ check_coinbase_validation(Config) ->
     true = is_binary(BlockHash2),
     ok.
 
-wait_till_hash_on_node(_Node,_TxHash, 0) -> exit(tx_not_syncing);
-wait_till_hash_on_node(Node, TxHash, Limit) ->
+wait_till_hash_in_block_on_node(_Node,_TxHash, 0) -> exit(tx_not_syncing);
+wait_till_hash_in_block_on_node(Node, TxHash, Limit) ->
     try rpc:call(Node, aec_chain, find_tx_with_location, [TxHash]) of
-        {_Block, _} -> ok;
-        _ -> yield(), wait_till_hash_on_node(Node, TxHash, Limit-1)
+        {BlockHash, _} when is_binary(BlockHash) -> ok;
+        _ -> yield(), wait_till_hash_in_block_on_node(Node, TxHash, Limit-1)
     catch
-        _:_ -> yield(), wait_till_hash_on_node(Node, TxHash, Limit-1)
+        _:_ -> yield(), wait_till_hash_in_block_on_node(Node, TxHash, Limit-1)
     end.
 
 yield() -> timer:sleep(10).
