@@ -49,9 +49,10 @@ call_(Value, Data, State) ->
                 aens_call(PrimOp, Value, Data, State)
         end
     catch _T:_Err ->
-            _Trace = erlang:get_stacktrace(), %% Absent from non-test bytecode.
             ?TEST_LOG("Primop illegal call ~p:~p:~p~n~p:~p(~p, ~p, State)",
-                      [_T, _Err, _Trace, ?MODULE, ?FUNCTION_NAME, Value, Data]),
+                      [_T, _Err,
+                       erlang:get_stacktrace(), %% Absent from non-test bytecode.
+                       ?MODULE, ?FUNCTION_NAME, Value, Data]),
             %% TODO: Better error for illegal call.
             {error, out_of_gas}
     end.
