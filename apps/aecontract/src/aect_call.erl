@@ -22,6 +22,7 @@
         , return_value/1
         , gas_price/1
         , gas_used/1
+        , log/1
         , serialize/1
         , serialize_for_client/1
         , set_contract/2
