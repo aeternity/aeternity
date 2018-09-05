@@ -7,6 +7,7 @@
 
 %% common_test exports
 -export([ all/0
+        , end_per_testcase/2
         , groups/0
         ]).
 
@@ -63,6 +64,12 @@ setup_chain() ->
     InitS = aec_vm_chain:new_state(Trees, 1, Contract1),
     {[Account1, Account2, Contract1, Contract2], InitS}.
 
+end_per_testcase(spend, _) ->
+    teardown_chain();
+end_per_testcase(contracts, _) ->
+    teardown_chain();
+end_per_testcase(_, _) -> ok.
+
 teardown_chain() ->
     meck:unload(aec_blocks),
     meck:unload(aec_chain),
@@ -113,7 +120,6 @@ spend(_Cfg) ->
     AccBal2  = AccBal1 + Amount,
     {error, insufficient_funds}
              = aec_vm_chain:spend(AccId, 1000000, S1),
-    teardown_chain(),
     ok.
 
 %%%===================================================================
@@ -124,7 +130,6 @@ contracts(_Cfg) ->
     {[_Acc, _Acc2, Contract1, Contract2], S} = setup_chain(),
     _S1 = lists:foldl(fun({Value, Arg}, S0) -> make_call(Contract1, Contract2, Value, Arg, S0) end,
                       S, [{(I - 3) * 100, I + 100} || I <- lists:seq(1, 10)]),
-    teardown_chain(),
     ok.
 
 make_call(From, To, Value, Arg, S) ->
