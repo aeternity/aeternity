@@ -22,7 +22,6 @@
         , get_generation_by_height/2
         , get_header/1
         , get_key_header_by_height/1
-        , get_key_hash/1
         , get_n_generation_headers_backwards_from_hash/2
         , get_at_most_n_generation_headers_forward_from_hash/2
         , get_top_N_blocks_time_summary/1
@@ -331,9 +330,7 @@ top_key_block() ->
             {ok, Block} = get_block(Hash),
             case aec_blocks:type(Block) of
                 key -> {ok, Block};
-                micro ->
-                    {ok, KeyHash} = get_key_hash(Hash),
-                    get_block(KeyHash)
+                micro -> get_block(aec_blocks:prev_key_hash(Block))
             end;
         undefined ->
             error
@@ -346,9 +343,7 @@ top_key_block_hash() ->
             {ok, Block} = get_block(Hash),
             case aec_blocks:type(Block) of
                 key -> Hash;
-                micro ->
-                    {ok, KeyHash} = get_key_hash(Hash),
-                    KeyHash
+                micro -> aec_blocks:prev_key_hash(Block)
             end;
         undefined ->
             undefined
@@ -460,14 +455,7 @@ difficulty_at_hash(Hash) ->
 difficulty_at_hash(Hash, Acc) ->
     case aec_db:find_block_difficulty(Hash) of
         {value, Difficulty} -> {ok, Acc + Difficulty};
-        none ->
-            case get_header(Hash) of
-                error -> {error, 'not_rooted'};
-                {ok, Header} ->
-                    NewAcc = Acc + aec_headers:difficulty(Header),
-                    PrevHash = aec_headers:prev_hash(Header),
-                    difficulty_at_hash(PrevHash, NewAcc)
-            end
+        none -> {error, 'not_rooted'}
     end.
 
 %%%===================================================================
@@ -591,14 +579,4 @@ get_key_header_by_height(Height) when is_integer(Height), Height >= 0 ->
     case aec_chain_state:get_key_block_hash_at_height(Height) of
         error -> {error, chain_too_short};
         {ok, Hash} -> get_header(Hash)
-    end.
-
-%%%===================================================================
-%%% Key Hash
-%%%===================================================================
-
-get_key_hash(Hash) ->
-    case aec_db:find_block_key_hash(Hash) of
-        {value, KeyHash} -> {ok, KeyHash};
-        none -> error
     end.

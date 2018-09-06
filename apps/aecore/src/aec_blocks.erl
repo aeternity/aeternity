@@ -18,12 +18,13 @@
          is_block/1,
          is_key_block/1,
          miner/1,
-         new_key/9,
+         new_key/10,
          new_key_from_header/1,
-         new_micro/7,
+         new_micro/8,
          new_micro_from_header/2,
          pow/1,
          prev_hash/1,
+         prev_key_hash/1,
          root_hash/1,
          serialize_to_binary/1,
          serialize_to_map/1,
@@ -32,6 +33,7 @@
          set_nonce/2,
          set_nonce_and_pow/3,
          set_prev_hash/2,
+         set_prev_key_hash/2,
          set_root_hash/2,
          set_signature/2,
          set_target/2,
@@ -146,13 +148,14 @@ type(#mic_block{}) -> 'micro'.
 %%% Constructors
 %%%===================================================================
 
--spec new_key(height(), block_header_hash(), state_hash(), aec_pow:sci_int(),
+-spec new_key(height(), block_header_hash(), block_header_hash(), state_hash(),
+              aec_pow:sci_int(),
               non_neg_integer(), non_neg_integer(), non_neg_integer(),
               miner_pubkey(), beneficiary_pubkey()
              ) -> key_block().
-new_key(Height, PrevHash, RootHash, Target,
+new_key(Height, PrevHash, PrevKeyHash, RootHash, Target,
         Nonce, Time, Version, Miner, Beneficiary) ->
-    H = aec_headers:new_key_header(Height, PrevHash, RootHash,
+    H = aec_headers:new_key_header(Height, PrevHash, PrevKeyHash, RootHash,
                                    Miner, Beneficiary, Target,
                                    no_value, Nonce, Time, Version),
     #key_block{header = H}.
@@ -162,11 +165,11 @@ new_key_from_header(Header) ->
     aec_headers:assert_key_header(Header),
     #key_block{header = Header}.
 
--spec new_micro(height(), block_header_hash(), state_hash(), txs_hash(),
-                tx_list(), non_neg_integer(),
+-spec new_micro(height(), block_header_hash(), block_header_hash(), state_hash(),
+                txs_hash(), tx_list(), non_neg_integer(),
                 non_neg_integer()) -> micro_block().
-new_micro(Height, PrevHash, RootHash, TxsHash, Txs, Time, Version) ->
-    H = aec_headers:new_micro_header(Height, PrevHash, RootHash, Time,
+new_micro(Height, PrevHash, PrevKeyHash, RootHash, TxsHash, Txs, Time, Version) ->
+    H = aec_headers:new_micro_header(Height, PrevHash, PrevKeyHash, RootHash, Time,
                                      TxsHash, Version),
     #mic_block{header    = H,
                txs       = Txs
@@ -200,6 +203,14 @@ beneficiary(Block) ->
 -spec prev_hash(block()) -> block_header_hash().
 prev_hash(Block) ->
     aec_headers:prev_hash(to_header(Block)).
+
+-spec prev_key_hash(block()) -> block_header_hash().
+prev_key_hash(Block) ->
+    aec_headers:prev_key_hash(to_header(Block)).
+
+-spec set_prev_key_hash(block(), block_header_hash()) -> block().
+set_prev_key_hash(Block, PrevKeyHash) ->
+    set_header(Block, aec_headers:set_prev_key_hash(to_header(Block), PrevKeyHash)).
 
 -spec set_prev_hash(block(), block_header_hash()) -> block().
 set_prev_hash(Block, PrevHash) ->
@@ -304,70 +315,50 @@ update_micro_candidate(#mic_block{} = Block, TxsRootHash, RootHash, Txs, TimeMSe
 
 -spec serialize_to_binary(block()) -> binary().
 serialize_to_binary(#key_block{} = Block) ->
-    Hdr = aec_headers:serialize_to_binary(to_key_header(Block)),
-    Vsn = version(Block),
-    {ok, Template} = serialization_template(key, Vsn),
-    aec_object_serialization:serialize(
-      key_block,
-      Vsn,
-      Template,
-      [{header, Hdr}]);
+    aec_headers:serialize_to_binary(to_key_header(Block));
 serialize_to_binary(#mic_block{} = Block) ->
     Hdr = aec_headers:serialize_to_binary(to_micro_header(Block)),
     Txs = [ aetx_sign:serialize_to_binary(Tx) || Tx <- txs(Block)],
     Vsn = version(Block),
     {ok, Template} = serialization_template(micro, Vsn),
-    aec_object_serialization:serialize(
-      micro_block,
-      Vsn,
-      Template,
-      [{header, Hdr}, {txs, Txs}]).
+    Rest = aec_object_serialization:serialize(
+             micro_block,
+             Vsn,
+             Template,
+             [{txs, Txs}]),
+    <<Hdr/binary, Rest/binary>>.
 
 -spec deserialize_from_binary(binary()) -> {'error', term()} | {'ok', block()}.
-deserialize_from_binary(Bin) ->
-    case aec_object_serialization:deserialize_type_and_vsn(Bin) of
-        {key_block,   Vsn, _RawFields} ->
-            deserialize_key_block_from_binary(Vsn, Bin);
-        {micro_block, Vsn, _RawFields} ->
-            deserialize_micro_block_from_binary(Vsn, Bin)
+deserialize_from_binary(<<?KEY_HEADER_TAG:1, _/bits>> = Bin) ->
+    case aec_headers:deserialize_key_from_binary(Bin) of
+        {ok, Header} ->
+            {ok, #key_block{header = Header}};
+        {error, _} = E ->
+            E
+    end;
+deserialize_from_binary(<<HeaderBin:?MIC_HEADER_BYTES/binary, Rest/binary>>) ->
+    case aec_headers:deserialize_micro_from_binary(HeaderBin) of
+        {ok, Header} ->
+            deserialize_micro_block_from_binary(Rest, Header);
+        {error, _} = E ->
+            E
     end.
 
-deserialize_micro_block_from_binary(Vsn, Bin) ->
+deserialize_micro_block_from_binary(Bin, Header) ->
+    Vsn = aec_headers:version(Header),
     case serialization_template(micro, Vsn) of
         {ok, Template} ->
-            [{header, Hdr0}, {txs, Txs0}] =
+            [{txs, Txs0}] =
                 aec_object_serialization:deserialize(micro_block, Vsn, Template, Bin),
-            case aec_headers:deserialize_micro_from_binary(Hdr0, Vsn) of
-                {ok, Hdr} ->
-                    Txs = [aetx_sign:deserialize_from_binary(Tx)
-                           || Tx <- Txs0],
-                    {ok, #mic_block{header = Hdr, txs = Txs}};
-                Err = {error, _} ->
-                    Err
-            end;
+            Txs = [aetx_sign:deserialize_from_binary(Tx)
+                   || Tx <- Txs0],
+            {ok, #mic_block{header = Header, txs = Txs}};
         Err = {error, _} ->
             Err
     end.
 
-deserialize_key_block_from_binary(Vsn, Bin) ->
-    case serialization_template(key, Vsn) of
-        {ok, Template} ->
-            [{header, Hdr0}] =
-                aec_object_serialization:deserialize(key_block, Vsn, Template, Bin),
-            case aec_headers:deserialize_key_from_binary(Hdr0, Vsn) of
-                {ok, Hdr} ->
-                    {ok, #key_block{header = Hdr}};
-                {error, _} = E ->
-                    E
-            end;
-        Err = {error, _} ->
-            Err
-    end.
-
-serialization_template(key, Vsn) when Vsn >= ?GENESIS_VERSION andalso Vsn =< ?PROTOCOL_VERSION ->
-    {ok, [{header, binary}]};
 serialization_template(micro, Vsn) when Vsn >= ?GENESIS_VERSION andalso Vsn =< ?PROTOCOL_VERSION ->
-    {ok, [{header, binary}, {txs, [binary]}]};
+    {ok, [{txs, [binary]}]};
 serialization_template(_BlockType, Vsn) ->
     {error, {bad_block_vsn, Vsn}}.
 

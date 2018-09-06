@@ -91,9 +91,13 @@ int_create_block(PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees) ->
     {ExpectedPrevBlockVersion, _} = {aec_blocks:version(PrevBlock),
                                      {expected, ExpectedPrevBlockVersion}},
 
+    PrevKeyHash = case aec_blocks:type(PrevBlock) of
+                      micro -> aec_blocks:prev_key_hash(PrevBlock);
+                      key   -> PrevBlockHash
+                  end,
     Height = PrevBlockHeight + 1,
     Version = aec_hard_forks:protocol_effective_at_height(Height),
 
-    aec_blocks:new_key(Height, PrevBlockHash, aec_trees:hash(Trees),
-                       ?HIGHEST_TARGET_SCI,
+    aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash,
+                       aec_trees:hash(Trees), ?HIGHEST_TARGET_SCI,
                        0, aeu_time:now_in_msecs(), Version, Miner, Beneficiary).

@@ -1,6 +1,6 @@
 -include("pow.hrl").
 
--define(PROTOCOL_VERSION, 22).
+-define(PROTOCOL_VERSION, 23).
 -define(GENESIS_VERSION, ?PROTOCOL_VERSION).
 -define(GENESIS_HEIGHT, 0).
 -define(GENESIS_TIME, 0).
@@ -12,9 +12,11 @@
 -define(BENEFICIARY_PUB_BYTES, 32).
 -define(BLOCK_SIGNATURE_BYTES, 64).
 
--define(STORAGE_TYPE_BLOCK,  0).
--define(STORAGE_TYPE_HEADER, 1).
--define(STORAGE_TYPE_STATE,  2).
+-define(KEY_HEADER_TAG, 1).
+-define(MICRO_HEADER_TAG, 0).
+
+-define(KEY_HEADER_BYTES, 368).
+-define(MIC_HEADER_BYTES, 216).
 
 -type(txs_hash() :: <<_:(?TXS_HASH_BYTES*8)>>).
 -type(state_hash() :: <<_:(?STATE_HASH_BYTES*8)>>).
