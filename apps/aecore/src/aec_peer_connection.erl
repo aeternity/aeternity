@@ -1091,30 +1091,41 @@ send_response(S, Type, Response) ->
     Msg = aec_peer_messages:serialize_response(Type, Response),
     send_msg(S, response, Msg).
 
-%% If the message is more than 65533 bytes it won't fit in a single Noise
-%% message and we need to fragment it.
+%% If the message is more than 0xFFFF - 2 - 16 bytes (2 bytes for the length at
+%% Noise protocol level and 16 bytes for the encryption MAC since we are using
+%% ChaChaPoly) it won't fit in a single Noise message and we need to fragment
+%% it.
 %%
 %% Fragments have the format <<?MSG_FRAGMENT:16, N:16, M:16,
-%% PayLoad:65529/binary>> (where the last fragment has a smaller Payload),
-%% saying that this is fragment N out of M fragments.
+%% PayLoad:65527/binary>> (where the last fragment has a smaller Payload, and
+%% where 16 bytes of the payload is the encryption MAC), saying that this is
+%% fragment N out of M fragments.
 %%
-%% For testing purpose - set the max packet size to 16#FF while testing
-
+%% For testing purpose - set the max packet size to 16#1FF while testing
+-define(NOISE_PACKET_LENGTH_SIZE, 2).
 -ifndef(TEST).
--define(MAX_PACKET_SIZE, 16#FFFF).
+-define(MAX_PACKET_SIZE, 16#FFFF - ?NOISE_PACKET_LENGTH_SIZE).
 -else.
--define(MAX_PACKET_SIZE, 16#1FF).
+-define(MAX_PACKET_SIZE, 16#1FF - ?NOISE_PACKET_LENGTH_SIZE).
 -endif.
--define(FRAGMENT_SIZE, (?MAX_PACKET_SIZE - 6)).
-do_send(ESock, Msg) when byte_size(Msg) < ?MAX_PACKET_SIZE - 2 ->
+
+-define(CHACHAPOLY_MAC_SIZE, 16).
+-define(MAX_PAYLOAD_SIZE, (?MAX_PACKET_SIZE - ?CHACHAPOLY_MAC_SIZE)).
+
+-define(FRAGMENT_HEADER_SIZE, 2 + 2 + 2).
+-define(MAX_FRAGMENT_PAYLOAD_SIZE,
+        (?MAX_PACKET_SIZE - ?FRAGMENT_HEADER_SIZE - ?CHACHAPOLY_MAC_SIZE)).
+
+do_send(ESock, Msg) when byte_size(Msg) =< ?MAX_PAYLOAD_SIZE ->
     enoise_send(ESock, Msg);
 do_send(ESock, Msg) ->
-    NChunks = (?FRAGMENT_SIZE + byte_size(Msg) - 1) div ?FRAGMENT_SIZE,
+    NChunks = (?MAX_FRAGMENT_PAYLOAD_SIZE + byte_size(Msg) - 1)
+                div ?MAX_FRAGMENT_PAYLOAD_SIZE,
     send_chunks(ESock, 1, NChunks, Msg).
 
 send_chunks(ESock, M, M, Msg) ->
     enoise:send(ESock, <<?MSG_FRAGMENT:16, M:16, M:16, Msg/binary>>);
-send_chunks(ESock, N, M, <<Chunk:?FRAGMENT_SIZE/binary, Rest/binary>>) ->
+send_chunks(ESock, N, M, <<Chunk:?MAX_FRAGMENT_PAYLOAD_SIZE/binary, Rest/binary>>) ->
     enoise_send(ESock, <<?MSG_FRAGMENT:16, N:16, M:16, Chunk/binary>>),
     send_chunks(ESock, N + 1, M, Rest).
 
