@@ -7,6 +7,7 @@
 
 %% common_test exports
 -export([ all/0
+        , end_per_testcase/2
         , groups/0
         ]).
 
@@ -16,8 +17,8 @@
         ]).
 
 -include_lib("common_test/include/ct.hrl").
-
 -include_lib("apps/aecore/include/blocks.hrl").
+-define(BENEFICIARY_PUBKEY, <<12345:?BENEFICIARY_PUB_BYTES/unit:8>>).
 
 %%%===================================================================
 %%% Common test framework
@@ -45,6 +46,15 @@ groups() ->
 %% Uses aect_test_utils to set up the chain, but after the setup everything is
 %% done through the aevm_chain_api.
 setup_chain() ->
+    meck:new(aec_chain, [passthrough]),
+    meck:expect(aec_chain, get_key_block_by_height, 1,
+                fun (_) -> {ok, none} end),
+    ok = meck:new(aec_blocks, [passthrough]),
+    meck:expect(aec_blocks, beneficiary, 1,
+                fun (none) -> ?BENEFICIARY_PUBKEY;
+                    (Block) ->
+                        aec_headers:beneficiary(aec_blocks:to_header(Block))
+                end),
     S0              = aect_test_utils:new_state(),
     {Account1, S1}  = aect_test_utils:setup_new_account(S0),
     {Account2, S2}  = aect_test_utils:setup_new_account(S1),
@@ -54,17 +64,29 @@ setup_chain() ->
     InitS = aec_vm_chain:new_state(Trees, 1, Contract1),
     {[Account1, Account2, Contract1, Contract2], InitS}.
 
+end_per_testcase(spend, _) ->
+    teardown_chain();
+end_per_testcase(contracts, _) ->
+    teardown_chain();
+end_per_testcase(_, _) -> ok.
+
+teardown_chain() ->
+    meck:unload(aec_blocks),
+    meck:unload(aec_chain),
+    ok.
+
 create_contract(Owner, S) ->
     OwnerPrivKey = aect_test_utils:priv_key(Owner, S),
     IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
     CallData     = aeso_abi:create_calldata(IdContract, "init", "42"),
 
     Overrides    = #{ code => IdContract
-		    , call_data => CallData
-		    , gas => 10000
-		    , amount => 2000},
+                    , call_data => CallData
+                    , gas => 10000
+                    , amount => 2000},
     CreateTx     = aect_test_utils:create_tx(Owner, Overrides, S),
-    {SignedTx, [SignedTx], S1} = sign_and_apply_transaction(CreateTx, OwnerPrivKey, S),
+    {SignedTx, [SignedTx], S1} =
+        sign_and_apply_transaction(CreateTx, OwnerPrivKey, S),
     {aect_contracts:compute_contract_pubkey(Owner, aetx:nonce(CreateTx)), S1}.
 
 sign_and_apply_transaction(Tx, PrivKey, S1) ->
@@ -72,7 +94,8 @@ sign_and_apply_transaction(Tx, PrivKey, S1) ->
     Trees    = aect_test_utils:trees(S1),
     Height   = 1,
     {ok, AcceptedTxs, Trees1} =
-        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Height, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees,
+                                                  Height, ?PROTOCOL_VERSION),
     S2       = aect_test_utils:set_trees(Trees1, S1),
     {SignedTx, AcceptedTxs, S2}.
 
@@ -135,5 +158,3 @@ make_call(From, To, Value, Arg, S) ->
             {error, insufficient_funds} = CallRes,
             S
     end.
-
-

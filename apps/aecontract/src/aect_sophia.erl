@@ -56,7 +56,7 @@ simple_call(Code, Function, Argument) ->
     case create_call(Code, Function, Argument) of
         {error, E} -> {error, E};
         CallData ->
-            %% TODO: proper setup of chain state!
+            %% TODO: proper setup of chain state! Tracked as #160281213
             Owner = <<123456:32/unit:8>>,
             {Block, Trees} = aec_chain:top_block_with_state(),
             BlockHeight = aec_blocks:height(Block) + 1,
@@ -66,7 +66,8 @@ simple_call(Code, Function, Argument) ->
             Contract = aect_contracts:new(Owner, 1, VmVersion, Code, Deposit),
             DummyPubKey = aect_contracts:pubkey(Contract),
             Trees1 = insert_contract(Contract, Trees),
-            ChainState  = aec_vm_chain:new_state(Trees1, BlockHeight, DummyPubKey),
+            ChainState =
+                aec_vm_chain:new_state(Trees1, BlockHeight, DummyPubKey),
             Spec = #{ code => Code
                     , address => 1 %% Address 0 is for primcals.
                     , caller => 0
@@ -75,7 +76,7 @@ simple_call(Code, Function, Argument) ->
                     , gasPrice => 1
                     , origin => 0
                     , value => Amount
-                    , currentCoinbase => 1
+                    , currentCoinbase => 0
                     , currentDifficulty => 1
                     , currentGasLimit => 1000000
                     , currentNumber => 1
@@ -96,7 +97,8 @@ insert_contract(Contract, Trees) ->
     CTrees1 = aect_state_tree:insert_contract(Contract, CTrees),
     aec_trees:set_contracts(Trees, CTrees1).
 
--spec encode_call_data(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
+-spec encode_call_data(binary(), binary(), binary()) ->
+                              {ok, binary()} | {error, binary()}.
 encode_call_data(Contract, Function, Argument) ->
     try create_call(Contract, Function, Argument) of
         Data when is_binary(Data) ->

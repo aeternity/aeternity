@@ -7,7 +7,9 @@
 
 %% common_test exports
 -export([ all/0
+        , end_per_testcase/2
         , groups/0
+        , init_per_testcase/2
         ]).
 
 %% test case exports
@@ -52,6 +54,8 @@
         , sophia_oracles_qfee__outer_error_after_primop__remote/1
         , sophia_maps/1
         , sophia_variant_types/1
+        , sophia_chain/1
+        , sophia_savecoinbase/1
         , sophia_fundme/1
         , sophia_aens/1
         , create_store/1
@@ -69,6 +73,8 @@
 -include_lib("apps/aecontract/src/aecontract.hrl").
 
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
+-define(BENEFICIARY_PUBKEY, <<12345:?BENEFICIARY_PUB_BYTES/unit:8>>).
+
 
 %%%===================================================================
 %%% Common test framework
@@ -107,6 +113,8 @@ groups() ->
                                  {group, sophia_oracles_query_fee_unhappy_path_remote},
                                  sophia_maps,
                                  sophia_variant_types,
+                                 sophia_chain,
+                                 sophia_savecoinbase,
                                  sophia_fundme,
                                  sophia_aens ]}
     , {sophia_oracles_query_fee_happy_path, [],
@@ -152,6 +160,14 @@ groups() ->
                           , merge_missing_keys
                           ]}
     ].
+
+init_per_testcase(_, Cfg) ->
+    mock(),
+    Cfg.
+
+end_per_testcase(_, Cfg) ->
+    unmock(),
+    Cfg.
 
 %%%===================================================================
 %%% Create contract
@@ -225,11 +241,9 @@ create_contract_init_error(_Cfg) ->
                  aec_accounts:balance(aect_test_utils:get_account(PubKey, S2))),
     ok.
 
-create_contract(_Cfg) ->
-    create_contract_(1).
+create_contract(_Cfg) -> create_contract_(1).
 
-create_contract_with_gas_price_zero(_Cfg) ->
-    create_contract_(0).
+create_contract_with_gas_price_zero(_Cfg) -> create_contract_(0).
 
 create_contract_(ContractCreateTxGasPrice) ->
     S  = aect_test_utils:new_state(),
@@ -345,11 +359,9 @@ call_contract_negative(_Cfg) ->
     %% PLACEHOLDER
     ok.
 
-call_contract(_Cfg) ->
-    call_contract_(2).
+call_contract(_Cfg) -> call_contract_(2).
 
-call_contract_with_gas_price_zero(_Cfg) ->
-    call_contract_(0).
+call_contract_with_gas_price_zero(_Cfg) -> call_contract_(0).
 
 call_contract_(ContractCallTxGasPrice) ->
     S  = aect_test_utils:new_state(),
@@ -463,6 +475,11 @@ make_call(PubKey, ContractKey,_Call,_S) ->
 
 state()  -> get(the_state).
 state(S) -> put(the_state, S).
+
+get_contract_state(Contract) ->
+    S = state(),
+    {{value, C}, _} = lookup_contract_by_id(Contract, S),
+    aect_contracts:state(C).
 
 call(Name, Fun, Xs) ->
     Fmt = string:join(lists:duplicate(length(Xs), "~p"), ", "),
@@ -1055,6 +1072,7 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle(_Cf
     ?assertEqual(Bal(UserAcc, S2)                , Bal(UserAcc, S3)),
     ?assertEqual(Bal(OracleAcc, S2) + QueryTxQFee, Bal(OracleAcc, S3)),
     ?assertEqual(Bal(OperatorAcc, S2) - TxFee    , Bal(OperatorAcc, S3)).
+
 %%
 sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__remote(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
@@ -1125,6 +1143,7 @@ sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle(_Cfg) ->
     ?assertEqual(Bal(UserAcc, S2)                , Bal(UserAcc, S3)),
     ?assertEqual(Bal(OracleAcc, S2) + QueryTxQFee, Bal(OracleAcc, S3)),
     ?assertEqual(Bal(OperatorAcc, S2) - TxFee    , Bal(OperatorAcc, S3)).
+
 %%
 sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__remote(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
@@ -1249,6 +1268,7 @@ sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle(_Cfg) ->
     ?assertEqual(Bal(OperatorAcc, S1)                             , Bal(OperatorAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1) - (QueryTxQFee - QueryTxValue), Bal(OracleAcc, S2)),
     ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue)        , Bal(UserAcc, S2)).
+
 %%
 sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_poor_oracle(_Cfg) ->
     {_InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
@@ -1456,6 +1476,7 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_takes_from_rich_oracle__
      RegisterTxQFee,
      _QueryTxValue = RegisterTxQFee,
      _QueryTxQFee = QFeeExcess + RegisterTxQFee}.
+
 %%
 sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_takes_from_rich_oracle(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
@@ -1771,7 +1792,6 @@ sophia_maps(_Cfg) ->
             || {Fn, Ks} <- [{delete_state_i, DeltaI3}, {delete_state_s, DeltaS3}],
                K <- Ks ],
     {MapI3, MapS3} = Call(get_state, State, {}),
-
     ok.
 
 sophia_variant_types(_Cfg) ->
@@ -1789,6 +1809,34 @@ sophia_variant_types(_Cfg) ->
     {}        = Call(set_color, Unit, {{1}}),   %% green has tag 1
     {started, {AccId, 123, green}} = Call(get_state, State, {}),
     ok.
+
+
+sophia_chain(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc         = ?call(new_account, 1000000),
+    <<Beneficiary:?BENEFICIARY_PUB_BYTES/unit:8>> = ?BENEFICIARY_PUBKEY,
+    Ct1         = ?call(create_contract, Acc, chain, {}, #{amount => 10000}),
+    Beneficiary = ?call(call_contract, Acc, Ct1, miner, word, {}),
+    ok.
+
+sophia_savecoinbase(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000),
+    <<Beneficiary:?BENEFICIARY_PUB_BYTES/unit:8>> = ?BENEFICIARY_PUBKEY,
+
+    %% Create chain contract and check that address is stored.
+    Ct1 = ?call(create_contract, Acc, chain, {}, #{amount => 10000}),
+    #{<<0>> := Val1} = get_contract_state(Ct1),
+    {ok, {LastBf}} = aeso_data:from_binary(0, {tuple, [word]}, Val1),
+    <<LastBf:?BENEFICIARY_PUB_BYTES/unit:8>> = Ct1,
+
+    %% Call chain.save_coinbase() and make sure beneficiary is stored.
+    ?call(call_contract, Acc, Ct1, save_coinbase, word, {}),
+    #{<<0>> := Val2}  = get_contract_state(Ct1),
+    {ok, {LastBf2}} = aeso_data:from_binary(0, {tuple, [word]}, Val2),
+    Beneficiary = LastBf2,
+    ok.
+
 
 
 %% The crowd funding example.
@@ -1911,7 +1959,8 @@ sophia_fundme(_Cfg) ->
             [{withdraw, {investor, 3}, 2300, error}] },
 
     run_scenario(Funded),
-    run_scenario(NotFunded).
+    run_scenario(NotFunded),
+    ok.
 
 %% AENS tests
 
@@ -2028,7 +2077,6 @@ sophia_aens(_Cfg) ->
     ok = ?call(aens_update, Acc, NHash, Pointers),
     {some, OPubkey} = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name1, <<"oracle_pubkey">>}),
     {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Ct, NHash, 0}, #{ height => 13 }),
-
     ok.
 
 
@@ -2135,3 +2183,22 @@ merge_missing_keys(_Cfg) ->
 enter_contract(Contract, S) ->
     Contracts = aect_state_tree:enter_contract(Contract, aect_test_utils:contracts(S)),
     {Contract, aect_test_utils:set_contracts(Contracts, S)}.
+
+
+%%% Utils
+mock() ->
+    meck:new(aec_chain, [passthrough]),
+    meck:expect(aec_chain, get_key_block_by_height, 1,
+                fun (_) -> {ok, none} end),
+    ok = meck:new(aec_blocks, [passthrough]),
+    meck:expect(aec_blocks, beneficiary, 1,
+                fun (none) -> ?BENEFICIARY_PUBKEY;
+                    (Block) ->
+                        aec_headers:beneficiary(aec_blocks:to_header(Block))
+                end).
+
+
+unmock() ->
+    meck:unload(aec_blocks),
+    meck:unload(aec_chain),
+    ok.

@@ -297,20 +297,24 @@ run_contract(#contract_create_tx{ nonce      =_Nonce
     Caller = owner_pubkey(Tx),
     CallStack = [], %% TODO: should we have a call stack for create_tx also
                     %% when creating a contract in a contract.
+    {ok, KeyBlock} = aec_chain:get_key_block_by_height(Height),
+    Beneficiary = aec_blocks:beneficiary(KeyBlock),
 
-    CallDef = #{ caller     => Caller
-               , contract   => ContractPubKey
-               , gas        => Gas
-               , gas_price  => GasPrice
-               , call_data  => CallData
-               , amount     => 0 %% Initial call takes no amount
-               , call_stack => CallStack
-               , code       => Code
-               , call       => Call
-               , height     => Height
-               , trees      => Trees
+    CallDef = #{ caller      => Caller
+               , contract    => ContractPubKey
+               , gas         => Gas
+               , gas_price   => GasPrice
+               , call_data   => CallData
+               , amount      => 0 %% Initial call takes no amount
+               , call_stack  => CallStack
+               , code        => Code
+               , call        => Call
+               , height      => Height
+               , trees       => Trees
+               , beneficiary => Beneficiary
                },
     aect_dispatch:run(VmVersion, CallDef).
+
 
 initialize_contract(#contract_create_tx{nonce      = Nonce,
                                         vm_version = VmVersion,

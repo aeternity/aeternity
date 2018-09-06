@@ -49,12 +49,12 @@ call_(Value, Data, State) ->
                 aens_call(PrimOp, Value, Data, State)
         end
     catch _T:_Err ->
-        ?TEST_LOG("Primop illegal call ~p:~p:~p~n~p:~p(~p, ~p, State)",
-                  [_T, _Err,
-                   erlang:get_stacktrace(), %% Absent from non-test bytecode.
-                   ?MODULE, ?FUNCTION_NAME, Value, Data]),
-	%% TODO: Better error for illegal call.
-        {error, out_of_gas}
+            ?TEST_LOG("Primop illegal call ~p:~p:~p~n~p:~p(~p, ~p, State)",
+                      [_T, _Err,
+                       erlang:get_stacktrace(), %% Absent from non-test bytecode.
+                       ?MODULE, ?FUNCTION_NAME, Value, Data]),
+            %% TODO: Better error for illegal call.
+            {error, out_of_gas}
     end.
 
 %% ------------------------------------------------------------------
@@ -65,7 +65,8 @@ spend_call(Value, Data, State) ->
     [Recipient] = get_args([word], Data),
     %% TODO: This assumes that we are spending to an account
     RecipientId = aec_id:create(account, <<Recipient:256>>),
-    Callback = fun(API, ChainState) -> API:spend(RecipientId, Value, ChainState) end,
+    Callback = fun(API, ChainState) ->
+                       API:spend(RecipientId, Value, ChainState) end,
     call_chain(Callback, State).
 
 %% ------------------------------------------------------------------

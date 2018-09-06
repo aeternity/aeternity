@@ -30,9 +30,9 @@
          dutch_auction_contract/1,
          environment_contract/1,
          identity_contract/1,
-	 maps_contract/1,
+         maps_contract/1,
          simple_storage_contract/1,
-	 spend_test_contract/1,
+         spend_test_contract/1,
          null/1
         ]).
 

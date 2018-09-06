@@ -6,6 +6,7 @@
 %%%-------------------------------------------------------------------
 -module(aect_dispatch).
 
+-include_lib("apps/aecore/include/blocks.hrl").
 -include("aecontract.hrl").
 
 %% API
@@ -65,36 +66,37 @@ run(_, #{ call := Call} = _CallDef) ->
     %% Wrong VM/ABI version just return an unchanged call.
     Call.
 
-call_AEVM_01_Sophia_01(#{ contract   := ContractPubKey
-                        , height     := Height
-                        , trees      := Trees
-			} = CallDef) ->
-    Env = set_env(ContractPubKey, Height, Trees, aec_vm_chain, ?AEVM_01_Sophia_01),
+call_AEVM_01_Sophia_01(#{ contract    := ContractPubKey
+                        , height      := Height
+                        , trees       := Trees
+                        , beneficiary := <<Beneficiary:?BENEFICIARY_PUB_BYTES/unit:8>>
+                        } = CallDef) ->
+    Env = set_env(ContractPubKey, Height, Trees, Beneficiary, aec_vm_chain, ?AEVM_01_Sophia_01),
     Spec = #{ env => Env,
               exec => #{},
               pre => #{}},
     call_common(CallDef, Spec).
 
-call_AEVM_01_Solidity_01(#{ contract   := ContractPubKey
-                          , height     := Height
-                          , trees      := Trees
+call_AEVM_01_Solidity_01(#{ contract    := ContractPubKey
+                          , height      := Height
+                          , trees       := Trees
+                          , beneficiary := <<Beneficiary:?BENEFICIARY_PUB_BYTES/unit:8>>
                           } = CallDef) ->
-    Env = set_env(ContractPubKey, Height, Trees, aec_vm_chain, ?AEVM_01_Solidity_01),
+    Env = set_env(ContractPubKey, Height, Trees, Beneficiary, aec_vm_chain, ?AEVM_01_Solidity_01),
     Spec = #{ env => Env,
               exec => #{},
               pre => #{}},
     call_common(CallDef, Spec).
 
-set_env(ContractPubKey, Height, Trees, API, VmVersion) ->
+set_env(ContractPubKey, Height, Trees, Beneficiary, API, VmVersion) ->
     ChainState = aec_vm_chain:new_state(Trees, Height, ContractPubKey),
-    %% {ok, MinerPubkey} = aec_keys:pubkey(),
-    #{currentCoinbase   => <<>>, %% MinerPubkey,
-      %% TODO: get the right difficulty
+    #{currentCoinbase   => Beneficiary,
+      %% TODO: get the right difficulty (Tracked as #159522571)
       currentDifficulty => 0,
-      %% TODO: implement gas limit in governance and blocks.
+      %% TODO: implement gas limit in governance and blocks. (Tracked as #159427123)
       currentGasLimit   => 100000000000,
       currentNumber     => Height,
-      %% TODO: should be set before starting block candidate.
+      %% TODO: should be set before starting block candidate. (Tracked as #159522630)
       currentTimestamp  => aeu_time:now_in_msecs(),
       chainState        => ChainState,
       chainAPI          => API,
@@ -125,9 +127,10 @@ call_common(#{ caller     := CallerPubKey
         value      => Value,
         call_stack => CallStack
     }),
-    try aevm_eeevm_state:init(Spec#{exec => Exec}, #{trace => false}) of
+    try aevm_eeevm_state:init(Spec#{exec => Exec},
+			      #{trace => false
+			       }) of
         InitState ->
-            %% TODO: Nicer error handling - do more in check.
             %% Update gas_used depending on exit type.
             try aevm_eeevm:eval(InitState) of
                 {ok, #{gas := GasLeft, out := Out, chain_state := ChainState}} ->
@@ -143,7 +146,7 @@ call_common(#{ caller     := CallerPubKey
                 {error, Error, _} ->
                     %% Execution resulting in VM exception.
                     %% Gas used, but other state not affected.
-                    %% TODO: Use up the right amount of gas depending on error
+                    %% TODO: Use up the right amount of gas depending on error (#159522821)
                     %% TODO: Store error code in state tree
                     {create_call(Gas, error, Error, Call), Trees}
             catch T:E ->
