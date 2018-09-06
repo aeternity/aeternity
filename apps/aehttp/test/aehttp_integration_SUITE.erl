@@ -588,11 +588,13 @@ init_per_group(Group, Config) when
 init_per_group(on_genesis_block = Group, Config) ->
     Config1 = start_node(Group, Config),
     GenesisBlock = rpc(aec_chain, genesis_block, []),
+    {ok, PendingKeyBlock} = wait_for_key_block_candidate(),
     [{current_block, GenesisBlock},
      {current_block_hash, hash(key, GenesisBlock)},
      {current_block_hash_wrong_type, hash(micro, GenesisBlock)},
      {current_block_height, 0},
-     {current_block_type, genesis_block} | Config1];
+     {current_block_type, genesis_block},
+     {pending_key_block, PendingKeyBlock} | Config1];
 init_per_group(on_key_block = Group, Config) ->
     Config1 = start_node(Group, Config),
     Node = ?config(node, Config1),
@@ -600,11 +602,13 @@ init_per_group(on_key_block = Group, Config) ->
     aecore_suite_utils:mine_key_blocks(Node, aecore_suite_utils:latest_fork_height()),
     {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     true = aec_blocks:is_key_block(KeyBlock),
+    {ok, PendingKeyBlock} = wait_for_key_block_candidate(),
     [{current_block, KeyBlock},
      {current_block_hash, hash(key, KeyBlock)},
      {current_block_hash_wrong_type, hash(micro, KeyBlock)},
      {current_block_height, aec_blocks:height(KeyBlock)},
-     {current_block_type, key_block} | Config1];
+     {current_block_type, key_block},
+     {pending_key_block, PendingKeyBlock} | Config1];
 init_per_group(on_micro_block = Group, Config) ->
     Config1 = start_node(Group, Config),
     Node = ?config(node, Config1),
@@ -619,6 +623,7 @@ init_per_group(on_micro_block = Group, Config) ->
     {ok, []} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
     true = aec_blocks:is_key_block(KeyBlock),
     false = aec_blocks:is_key_block(MicroBlock),
+    {ok, PendingKeyBlock} = wait_for_key_block_candidate(),
     [{prev_key_block, KeyBlock},
      {prev_key_block_hash, hash(key, KeyBlock)},
      {prev_key_block_height, aec_blocks:height(KeyBlock)},
@@ -626,7 +631,8 @@ init_per_group(on_micro_block = Group, Config) ->
      {current_block_hash, hash(micro, MicroBlock)},
      {current_block_height, aec_blocks:height(KeyBlock)},
      {current_block_txs, [Tx]},
-     {current_block_type, micro_block} | Config1];
+     {current_block_type, micro_block},
+     {pending_key_block, PendingKeyBlock} | Config1];
 init_per_group(chain_with_pending_key_block, Config) ->
     %% Expect a key block each hour.
     MineRate = 60 * 60 * 1000,
@@ -1045,13 +1051,9 @@ get_current_key_block_height(_CurrentBlockType, Config) ->
 
 get_pending_key_block(Config) ->
     CurrentBlockType = ?config(current_block_type, Config),
-    get_pending_key_block(proplists:is_defined(pending_key_block, Config), CurrentBlockType, Config).
+    get_pending_key_block(CurrentBlockType, Config).
 
-get_pending_key_block(false, _CurrentBlockType, _Config) ->
-    {ok, 404, Error} = get_key_blocks_pending_sut(),
-    ?assertEqual(<<"Block not found">>, maps:get(<<"reason">>, Error)),
-    ok;
-get_pending_key_block(true, _CurrentBlockType, Config) ->
+get_pending_key_block(_CurrentBlockType, Config) ->
     CurrentBlockHash = ?config(current_block_hash, Config),
     CurrentBlockHeight = ?config(current_block_height, Config),
     Pred =
@@ -1779,14 +1781,13 @@ hash(micro, Block) ->
 
 wait_for_key_block_candidate() -> wait_for_key_block_candidate(10).
 
-wait_for_key_block_candidate(0) -> {error, miner_starting};
+wait_for_key_block_candidate(0) -> {error, not_found};
 wait_for_key_block_candidate(N) ->
     case rpc(aec_conductor, get_key_block_candidate, []) of
         {ok, Block} -> {ok, Block};
-        {error, not_mining} -> {error, not_mining};
-        {error, miner_starting} ->
+        {error, _Rsn} = Err ->
             timer:sleep(10),
-            wait_for_key_block_candidate(N)
+            wait_for_key_block_candidate(N - 1)
     end.
 
 save_config(Keys, Config) ->

@@ -194,12 +194,8 @@ handle_call({add_synced_block, Block},_From, State) ->
 handle_call(get_key_block_candidate,_From, State) ->
     Res =
         case State#state.key_block_candidate of
-            undefined when State#state.mining_state =:= stopped ->
-                {error, not_mining};
-            undefined when State#state.mining_state =:= running ->
-                {error, miner_starting};
-            #candidate{block=Block} ->
-                {ok, Block}
+            #candidate{block=Block} -> {ok, Block};
+            undefined               -> {error, not_found}
         end,
     {reply, Res, State};
 handle_call({post_block, Block},_From, State) ->
@@ -209,8 +205,9 @@ handle_call(stop_mining,_From, State = #state{ consensus = Cons }) ->
     epoch_mining:info("Mining stopped"),
     [ aec_tx_pool:garbage_collect() || is_record(Cons, consensus) andalso Cons#consensus.leader ],
     State1 = kill_all_workers(State),
-    {reply, ok, State1#state{mining_state = 'stopped',
-                             key_block_candidate = undefined}};
+    State2 = State1#state{mining_state = 'stopped',
+                          key_block_candidate = undefined},
+    {reply, ok, create_key_block_candidate(State2)};
 handle_call(start_mining,_From, #state{mining_state = 'running'} = State) ->
     epoch_mining:info("Mining running"),
     {reply, ok, State};
@@ -510,7 +507,7 @@ preempt_if_new_top(#state{ top_block_hash = OldHash,
                                 end,
                     State5 = State4#state{ top_key_block_hash = NewTopKey,
                                            key_block_candidate = undefined },
-                    {changed, NewBlock, State5}
+                    {changed, NewBlock, create_key_block_candidate(State5)}
             end
     end.
 
@@ -631,16 +628,19 @@ handle_wait_for_keys_reply(timeout, State) ->
 start_mining(#state{keys_ready = false} = State) ->
     %% We need to get the keys first
     wait_for_keys(State);
-start_mining(#state{mining_state = 'stopped'} = State) ->
-    State;
 start_mining(#state{key_block_candidate = undefined} = State) ->
-    create_key_block_candidate(State);
+    %% If the mining is turned off, the key block candidate is still created, but
+    %% not mined. The candidate can be retrieved via the API and other nodes can
+    %% mine it.
+    State1 = kill_all_workers_with_tag(create_key_block_candidate, State),
+    create_key_block_candidate(State1);
+start_mining(#state{mining_state = stopped} = State) ->
+    State;
 start_mining(#state{key_block_candidate = #candidate{top_hash = OldHash},
                     top_block_hash = TopHash } = State) when OldHash =/= TopHash ->
     %% Candidate generated with stale top hash.
     %% Regenerate the candidate.
     create_key_block_candidate(State);
-
 start_mining(#state{key_block_candidate = Candidate} = State) ->
     epoch_mining:info("Starting mining"),
     HeaderBin = Candidate#candidate.bin,
