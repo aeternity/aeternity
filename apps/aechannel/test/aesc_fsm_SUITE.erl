@@ -779,7 +779,6 @@ channel_spec(Cfg) ->
              responder        => maps:get(pub, R),
              initiator_amount => IAmt,
              responder_amount => RAmt,
-             push_amount      => 2,
              lock_period      => 10,
              channel_reserve  => 3,
              minimum_depth    => ?MINIMUM_DEPTH,

@@ -2562,7 +2562,7 @@ state_channels_create(MinerPubkey, ResponderPubkey) ->
                 initiator_amount => 2,
                 responder_id => aec_base58c:encode(account_pubkey, ResponderPubkey),
                 responder_amount => 3,
-                push_amount => 5, channel_reserve => 5,
+                channel_reserve => 5,
                 lock_period => 20,
                 state_hash => aec_base58c:encode(state, ?BOGUS_STATE_HASH),
                 fee => 1},
@@ -4347,7 +4347,6 @@ channel_options(IPubkey, RPubkey, IAmt, RAmt, Other) ->
                   initiator_id => aec_base58c:encode(account_pubkey, IPubkey),
                   responder_id => aec_base58c:encode(account_pubkey, RPubkey),
                   lock_period => 10,
-                  push_amount => 10,
                   initiator_amount => IAmt,
                   responder_amount => RAmt,
                   channel_reserve => 2

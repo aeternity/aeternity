@@ -92,7 +92,6 @@ dec(<<?c(?ID_INBAND_MSG)   , B/bytes>>) -> {?INBAND_MSG  , dec_inband_msg(B)}.
 -type ch_open_msg() :: #{chain_hash           := hash()
                        , temporary_channel_id := chan_id()
                        , lock_period          := lock_period()
-                       , push_amount          := amount()
                        , initiator_amount     := amount()
                        , responder_amount     := amount()
                        , channel_reserve      := amount()
@@ -102,7 +101,6 @@ dec(<<?c(?ID_INBAND_MSG)   , B/bytes>>) -> {?INBAND_MSG  , dec_inband_msg(B)}.
 enc_ch_open(#{chain_hash := ChainHash
             , temporary_channel_id := ChanId
             , lock_period          := LockPeriod
-            , push_amount          := PushAmt
             , initiator_amount     := InitiatorAmt
             , responder_amount     := ResponderAmt
             , channel_reserve      := ChanReserve
@@ -111,7 +109,6 @@ enc_ch_open(#{chain_hash := ChainHash
      , ChainHash      :32/binary
      , ChanId         :32/binary
      , LockPeriod     :2 /unit:8
-     , PushAmt        :8 /unit:8
      , InitiatorAmt   :8 /unit:8
      , ResponderAmt   :8 /unit:8
      , ChanReserve    :8 /unit:8
@@ -121,7 +118,6 @@ enc_ch_open(#{chain_hash := ChainHash
 dec_ch_open(<< ChainHash      :32/binary
              , ChanId         :32/binary
              , LockPeriod     :2 /unit:8
-             , PushAmt        :8 /unit:8
              , InitiatorAmt   :8 /unit:8
              , ResponderAmt   :8 /unit:8
              , ChanReserve    :8 /unit:8
@@ -129,7 +125,6 @@ dec_ch_open(<< ChainHash      :32/binary
     #{ chain_hash           => ChainHash
      , temporary_channel_id => ChanId
      , lock_period          => LockPeriod
-     , push_amount          => PushAmt
      , initiator_amount     => InitiatorAmt
      , responder_amount     => ResponderAmt
      , channel_reserve      => ChanReserve

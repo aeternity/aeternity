@@ -2879,7 +2879,7 @@
     },
     "ChannelCreateTx" : {
       "type" : "object",
-      "required" : [ "channel_reserve", "fee", "initiator_amount", "initiator_id", "lock_period", "push_amount", "responder_amount", "responder_id", "state_hash" ],
+      "required" : [ "channel_reserve", "fee", "initiator_amount", "initiator_id", "lock_period", "responder_amount", "responder_id", "state_hash" ],
       "properties" : {
         "initiator_id" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -2893,11 +2893,6 @@
           "$ref" : "#/definitions/EncodedHash"
         },
         "responder_amount" : {
-          "type" : "integer",
-          "format" : "int64",
-          "minimum" : 0
-        },
-        "push_amount" : {
           "type" : "integer",
           "format" : "int64",
           "minimum" : 0
@@ -2939,7 +2934,6 @@
         "responder_id" : null,
         "state_hash" : null,
         "fee" : 0,
-        "push_amount" : 0,
         "ttl" : 0,
         "nonce" : 0,
         "lock_period" : 0,
