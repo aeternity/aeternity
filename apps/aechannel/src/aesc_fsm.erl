@@ -407,34 +407,38 @@ init(#{opts := Opts0} = Arg) ->
               fun check_log_opt/1
              ], Opts0),
     Session = start_session(Arg, Opts),
-    {ok, State} = aesc_offchain_state:new(Opts),
-    Data = #data{role    = Role,
-                 client  = Client,
-                 session = Session,
-                 opts    = Opts,
-                 state   = State,
-                 log     = #w{keep = maps:get(log_keep, Opts)}},
-    lager:debug("Session started, Data = ~p", [Data]),
-    %% TODO: Amend the fsm above to include this step. We have transport-level
-    %% connectivity, but not yet agreement on the channel parameters. We will next send
-    %% a channel_open() message and await a channel_accept().
-    Reestablish = maps:is_key(existing_channel_id, Opts),
-    case Role of
-        initiator ->
-            if Reestablish ->
-                    {ok, reestablish_init, send_reestablish_msg(Data),
-                     [timer_for_state(reestablish_init, Data)]};
-               true ->
-                    {ok, initialized, send_open_msg(Data),
-                     [timer_for_state(initialized, Data)]}
-            end;
-        responder ->
-            if Reestablish ->
-                    {ok, awaiting_reestablish, Data,
-                     [timer_for_state(awaiting_reestablish, Data)]};
-               true ->
-                    {ok, awaiting_open, Data,
-                     [timer_for_state(awaiting_open, Data)]}
+    case aesc_offchain_state:new(Opts) of
+        {error, push_amount_too_big} ->
+            {stop, push_amount_too_big};
+        {ok, State} ->
+            Data = #data{role    = Role,
+                        client  = Client,
+                        session = Session,
+                        opts    = Opts,
+                        state   = State,
+                        log     = #w{keep = maps:get(log_keep, Opts)}},
+            lager:debug("Session started, Data = ~p", [Data]),
+            %% TODO: Amend the fsm above to include this step. We have transport-level
+            %% connectivity, but not yet agreement on the channel parameters. We will next send
+            %% a channel_open() message and await a channel_accept().
+            Reestablish = maps:is_key(existing_channel_id, Opts),
+            case Role of
+                initiator ->
+                    if Reestablish ->
+                            {ok, reestablish_init, send_reestablish_msg(Data),
+                            [timer_for_state(reestablish_init, Data)]};
+                      true ->
+                            {ok, initialized, send_open_msg(Data),
+                            [timer_for_state(initialized, Data)]}
+                    end;
+                responder ->
+                    if Reestablish ->
+                            {ok, awaiting_reestablish, Data,
+                            [timer_for_state(awaiting_reestablish, Data)]};
+                      true ->
+                            {ok, awaiting_open, Data,
+                            [timer_for_state(awaiting_open, Data)]}
+                    end
             end
     end.
 

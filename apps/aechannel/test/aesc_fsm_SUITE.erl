@@ -22,6 +22,7 @@
 %% test case exports
 -export([
           create_channel/1
+        , channel_with_push_amount_too_high/1
         , inband_msgs/1
         , upd_transfer/1
         , update_with_conflict/1
@@ -71,6 +72,7 @@ groups() ->
      {transactions, [sequence],
       [
         create_channel
+      , channel_with_push_amount_too_high
       , inband_msgs
       , upd_transfer
       , update_with_conflict
@@ -123,7 +125,9 @@ init_per_group(_Group, Config) ->
             Initiator = prep_initiator(dev1),
             Responder = prep_responder(Initiator, dev1),
             [{initiator, Initiator},
-             {responder, Responder}
+             {responder, Responder},
+             {initiator_amount, 50},
+             {responder_amount, 50}
              | Config]
         end
     catch
@@ -167,6 +171,18 @@ create_channel(Cfg) ->
     wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
     verify_close_mutual_tx(SignedTx, ChannelId),
     check_info(500),
+    ok.
+
+channel_with_push_amount_too_high(Cfg) ->
+    Debug = get_debug(Cfg),
+    Port = 9325,
+    {_, _, Spec} = channel_spec([{initiator_amount, 10},
+                                 {port, Port}, ?SLOGAN|Cfg],
+                                _ChannelReserve = 6, _PushAmount = 5),
+    {badrpc, {'EXIT', push_amount_too_big}} =
+        rpc(dev1, aesc_fsm, respond, [Port, Spec], Debug),
+    {badrpc, {'EXIT', push_amount_too_big}} =
+        rpc(dev1, aesc_fsm, initiate, ["localhost", Port, Spec], Debug),
     ok.
 
 inband_msgs(Cfg) ->
@@ -767,21 +783,24 @@ create_channel_(Cfg, Debug) ->
     create_channel_from_spec(I, R, Spec, Port, Debug).
 
 channel_spec(Cfg) ->
+    channel_spec(Cfg, 3, 2).
+
+channel_spec(Cfg, ChannelReserve, PushAmount) ->
     I = ?config(initiator, Cfg),
     R = ?config(responder, Cfg),
 
     %% dynamic key negotiation
     Proto = <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>,
 
-    IAmt = 5,
-    RAmt = 5,
+    IAmt = ?config(initiator_amount, Cfg),
+    RAmt = ?config(responder_amount, Cfg),
     Spec = #{initiator        => maps:get(pub, I),
              responder        => maps:get(pub, R),
-             initiator_amount => IAmt,
+             initiator_amount => IAmt, 
              responder_amount => RAmt,
-             push_amount      => 2,
+             push_amount      => PushAmount,
              lock_period      => 10,
-             channel_reserve  => 3,
+             channel_reserve  => ChannelReserve,
              minimum_depth    => ?MINIMUM_DEPTH,
              client           => self(),
              noise            => [{noise, Proto}],
@@ -798,7 +817,10 @@ slogan(Cfg) ->
     ?config(slogan, Cfg).
 
 create_channel_from_spec(
-  I, R, #{initiator_amount := IAmt, responder_amount := RAmt} = Spec, Port, Debug) ->
+  I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
+          push_amount := PushAmount} = Spec, Port, Debug) ->
+    IAmt = IAmt0 - PushAmount,
+    RAmt = RAmt0 + PushAmount,
     {ok, FsmR} = rpc(dev1, aesc_fsm, respond, [Port, Spec], Debug),
     {ok, FsmI} = rpc(dev1, aesc_fsm, initiate, ["localhost", Port, Spec], Debug),
 

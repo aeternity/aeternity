@@ -35,7 +35,7 @@
          prune_calls/1
         ]).
 
--spec new(map()) -> {ok, state()}.
+-spec new(map()) -> {ok, state()} | {error, atom()}.
 new(Opts) ->
     lager:debug("offchain_tx:new(~p)", [Opts]),
     case Opts of
@@ -49,10 +49,18 @@ new(Opts) ->
             new_(Opts)
     end.
 
+new_(#{initiator_amount    := InitiatorAmount
+      , push_amount        := PushAmount
+      , channel_reserve    := ChannelReserve})
+    when ChannelReserve > InitiatorAmount - PushAmount ->
+    %% applying the push_amount on the initiator's amount will bring it bellow
+    %% the channel_reseve treshhold 
+    {error, push_amount_too_big};
 new_(#{ initiator          := InitiatorPubKey
       , responder          := ResponderPubKey
       , initiator_amount   := InitiatorAmount
-      , responder_amount   := ResponderAmount }) ->
+      , responder_amount   := ResponderAmount
+      , push_amount        := PushAmount}) ->
     Trees0 = aec_trees:new_without_backend(),
     Accounts =
         lists:foldl(
@@ -61,8 +69,8 @@ new_(#{ initiator          := InitiatorPubKey
             aec_accounts_trees:enter(Account, AccTree)
         end,
         aec_trees:accounts(Trees0),
-        [{InitiatorPubKey, InitiatorAmount},
-         {ResponderPubKey, ResponderAmount}]),
+        [{InitiatorPubKey, InitiatorAmount - PushAmount},
+         {ResponderPubKey, ResponderAmount + PushAmount}]),
     Trees = aec_trees:set_accounts(Trees0, Accounts),
     {ok, #state{trees=Trees, calls = aect_call_state_tree:empty()}}.
 
