@@ -332,19 +332,24 @@ serialize_to_map(#mic_header{} = Header) ->
 -spec serialize_for_client(header(), block_type()) -> map().
 serialize_for_client(#key_header{} = Header, PrevBlockType) ->
     {ok, Hash} = hash_header(Header),
-    #{<<"hash">>        => encode_block_hash(key, Hash),
-      <<"height">>      => Header#key_header.height,
-      <<"prev_hash">>   => encode_block_hash(PrevBlockType, Header#key_header.prev_hash),
-      <<"prev_key_hash">> => encode_block_hash(key, Header#key_header.prev_key),
-      <<"state_hash">>  => aec_base58c:encode(block_state_hash, Header#key_header.root_hash),
-      <<"miner">>       => aec_base58c:encode(account_pubkey, Header#key_header.miner),
-      <<"beneficiary">> => aec_base58c:encode(account_pubkey, Header#key_header.beneficiary),
-      <<"target">>      => Header#key_header.target,
-      <<"pow">>         => serialize_pow_evidence(Header#key_header.pow_evidence),
-      <<"nonce">>       => Header#key_header.nonce,
-      <<"time">>        => Header#key_header.time,
-      <<"version">>     => Header#key_header.version
-     };
+    Res =
+        #{<<"hash">>          => encode_block_hash(key, Hash),
+          <<"height">>        => Header#key_header.height,
+          <<"prev_hash">>     => encode_block_hash(PrevBlockType, Header#key_header.prev_hash),
+          <<"prev_key_hash">> => encode_block_hash(key, Header#key_header.prev_key),
+          <<"state_hash">>    => aec_base58c:encode(block_state_hash, Header#key_header.root_hash),
+          <<"miner">>         => aec_base58c:encode(account_pubkey, Header#key_header.miner),
+          <<"beneficiary">>   => aec_base58c:encode(account_pubkey, Header#key_header.beneficiary),
+          <<"target">>        => Header#key_header.target,
+          <<"time">>          => Header#key_header.time,
+          <<"version">>       => Header#key_header.version},
+    case Header#key_header.pow_evidence of
+        no_value ->
+            Res;
+        _ ->
+            Res#{<<"pow">>   => serialize_pow_evidence(Header#key_header.pow_evidence),
+                 <<"nonce">> => Header#key_header.nonce}
+    end;
 serialize_for_client(#mic_header{} = Header, PrevBlockType) ->
     {ok, Hash} = hash_header(Header),
     #{<<"hash">>       => encode_block_hash(micro, Hash),
