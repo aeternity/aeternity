@@ -196,7 +196,7 @@ check_coinbase_validation(Config) ->
     {ok, TxH2} =
         call_contract_tx(N1, Ct1, "save_coinbase", "()", 1,  2,  100),
     {ok, _} =
-        aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2], 2),
+        aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2], 10),
 
     %% Start a second node with distinct beneficiary.
     aecore_suite_utils:start_node(dev2, Config),
