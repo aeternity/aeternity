@@ -165,58 +165,9 @@ init_per_testcase(_, Cfg) ->
     mock(),
     Cfg.
 
-%% init_per_testcase(TC, Cfg) ->
-%%     case lists:member(TC, mock_cases()) of
-%%         true -> mock();
-%%         false -> ok
-%%     end,
-%%     Cfg;
-
-%% init_per_testcase(TC, Cfg) ->
-%%     case lists:member(TC, mock_cases()) of
-%%         true -> unmock();
-%%         false -> ok
-%%     end,
-%%     Cfg;
 end_per_testcase(_, Cfg) ->
     unmock(),
     Cfg.
-
-%% mock_cases() ->
-%%     [ create_contract_negative
-%%     , create_contract_init_error
-%%     , create_contract
-%%     , create_contract_with_gas_price_zero
-%%     , call_contract_negative_insufficient_funds
-%%     , call_contract
-%%     , call_contract_with_gas_price_zero
-%%     , call_contract_error_value
-%%     , state_tree
-%%     , sophia_identity
-%%     , sophia_state
-%%     , sophia_match_bug
-%%     , sophia_spend
-%%     , sophia_typed_calls
-%%     , sophia_oracles
-%%     , sophia_oracles_qfee__basic
-%%     , sophia_oracles_qfee__basic__remote
-%%     , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle
-%%     , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__remote
-%%     , sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle
-%%     , sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__remote
-%%     , sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs
-%%     , sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__remote
-%%     , sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle
-%%     , sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_poor_oracle
-%%     , sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_rich_oracle_thanks_to_contract_check
-%%     , sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__remote
-%%     , sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_poor_oracle__remote
-%%     , sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_rich_oracle_thanks_to_contract_check__remote
-%%     , sophia_oracles_qfee__remote_contract_query_value_below_qfee_takes_from_rich_oracle__remote
-%%     , sophia_oracles_qfee__remote_contract_query_value_below_qfee_does_not_take_from_poor_oracle__remote
-
-%%     ].
-
 
 %%%===================================================================
 %%% Create contract
