@@ -18,9 +18,26 @@ sudo apt-get -qq update \
 
 Required Erlang OTP version is `20.1`.
 
-A compatible OTP version can be installed from a package both on Ubuntu 16.04 and Ubuntu 18.04:
+#### Ubuntu 18.04
+
 ```bash
 sudo apt-get install erlang
+```
+
+#### Ubuntu 16.04
+
+Ubuntu 16.04 ships with outdated erlang version. Version 20 can be installed from source:
+
+```bash
+OTP_VERSION="20.2.3"
+OTP_DOWNLOAD_URL="https://github.com/erlang/otp/archive/OTP-${OTP_VERSION}.tar.gz"
+curl -fsSL -o otp-src.tar.gz "$OTP_DOWNLOAD_URL" \
+&& mkdir otp-src \
+&& tar -zxf otp-src.tar.gz -C otp-src --strip-components=1 \
+&& cd otp-src \
+&& export ERL_TOP=`pwd` \
+&& ./otp_build autoconf && ./configure && make -j$(nproc) && sudo make install \
+&& cd ..
 ```
 
 ### Libsodium install
