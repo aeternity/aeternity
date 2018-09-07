@@ -35,6 +35,7 @@
         , sophia_oracles_ttl__answer_after_qttl/1
         , sophia_oracles_ttl__get_answer_after_rttl/1
         , sophia_oracles_ttl__happy_path/1
+        , sophia_oracles_ttl__good_query_bad_extend/1
         , sophia_oracles_qfee__basic/1
         , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle/1
         , sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle/1
@@ -131,7 +132,8 @@ groups() ->
         , sophia_oracles_ttl__qttl_too_long
         , sophia_oracles_ttl__answer_after_qttl
         , sophia_oracles_ttl__get_answer_after_rttl
-        , sophia_oracles_ttl__happy_path ]}
+        , sophia_oracles_ttl__happy_path
+        , sophia_oracles_ttl__good_query_bad_extend ]}
     , {sophia_oracles_query_fee_happy_path, [],
        [ %% Test query fee handling from txs calling contract that calls oracle builtins.
          sophia_oracles_qfee__basic
@@ -800,8 +802,10 @@ step_ttl(St = #{ account := Acc, contract := Ct }, Height, Cmd) ->
         {extend, TTL} ->
             #{ oracle := Oracle, oracle_ttl := TTLo } = St,
             Res = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Oracle, 0, Enc(TTL)}, #{ height => Height }),
-            case TTLo >= Height of  %% Can't extend after expiry
-                true  -> St#{ oracle_ttl => ttl_height(TTLo, TTL) }; %% Extend relative to previous expiry
+            NewTTLo = ttl_height(TTLo, TTL),
+            %% Can't extend if expired, and new expiry must be > old expiry
+            case TTLo >= Height andalso NewTTLo > TTLo of
+                true  -> {} = Res, St#{ oracle_ttl => NewTTLo }; %% Extend relative to previous expiry
                 false -> Error = Res, St
             end;
         {query, TTLq, TTLr} ->
@@ -849,6 +853,20 @@ ttl_scenario_create_and_extend(Start0, Extend0, Stop0) ->
                  [ T || Extend /= false, T <- ttls(Start, [Extend + 5]) ],
          TTLe <- [ 0 || Extend == false ] ++
                  [ T || Extend /= false, T <- ttls(ttl_height(Start, TTLo), [Stop]) ] ].
+
+%% Base scenario for failing or unnecessary extends.
+ttl_scenario_bad_extend(Start0, Extend0, Stop0) ->
+    List = fun(X) when is_list(X) -> X; (X) -> [X] end,
+    [ [ {Start,  {create, TTLo}},
+        {Extend, {extend, TTLe}} ]
+    || Start <- List(Start0), Extend <- List(Extend0), Stop <- List(Stop0),
+       TTLo  <- ttls(Start, [Stop]),
+       TTLe  <- ttls(ttl_height(Start, TTLo),
+                     [Extend - 5,   %% Try to extend before current height
+                      Extend,       %% Equal to current height
+                      Extend + 5,   %% Between now and planned expiry
+                      Stop])        %% Same as previous expiry
+    ].
 
 %% Base scenario for setting up a query
 ttl_scenario_create_query(Start0, Extend0, Query0, QTTL0, RTTL0, Stop0) ->
@@ -898,6 +916,16 @@ ttl_scenario_happy_path() ->
     || Setup <- ttl_scenario_create_query(10, [false, 20], 25, 40, 20, 70),
        Ans   <- [35, 45] ].
 
+%% Oracle TTL successful query, bad extend.
+ttl_scenario_good_query_bad_extend() ->
+    [ combine_ttl_scenarios(Setup,
+        [{25,  {query, QTTL, {delta, 10}}},
+         {30,  respond},
+         {Ans, getAnswer}])
+    || Setup <- ttl_scenario_bad_extend(10, 20, 50),
+       QTTL  <- ttls(25, [40]),
+       Ans   <- [35, 40, 45] ].
+
 combine_ttl_scenarios(Cmds1, Cmds2) ->
     lists:keymerge(1, Cmds1, Cmds2).
 
@@ -928,6 +956,9 @@ sophia_oracles_ttl__get_answer_after_rttl(_Cfg) ->
 
 sophia_oracles_ttl__happy_path(_Cfg) ->
     run_ttl_scenario(ttl_scenario_happy_path()).
+
+sophia_oracles_ttl__good_query_bad_extend(_Cfg) ->
+    run_ttl_scenario(ttl_scenario_good_query_bad_extend()).
 
 %% -- End TTL tests --
 
