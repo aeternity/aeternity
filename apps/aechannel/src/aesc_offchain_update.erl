@@ -119,35 +119,35 @@ apply_on_trees(Update, Trees0, Round, Reserve) ->
 
 -spec for_client(update()) -> map().
 for_client({?OP_TRANSFER, From, To, Amount}) ->
-    #{<<"op">> => <<"transfer">>,
+    #{<<"op">> => <<"OffChainTransfer">>, % swagger name
       <<"from">> => aec_base58c:encode(id_hash, From),
       <<"to">> => aec_base58c:encode(id_hash, To),
       <<"am">>   => Amount};
 for_client({?OP_WITHDRAW, To, Amount}) ->
-    #{<<"op">> => <<"withdraw">>,
+    #{<<"op">> => <<"OffChainWithdrawal">>, % swagger name
       <<"to">> => aec_base58c:encode(id_hash, To),
       <<"am">>   => Amount};
 for_client({?OP_DEPOSIT, From, Amount}) ->
-    #{<<"op">> => <<"deposit">>,
+    #{<<"op">> => <<"OffChainDeposit">>, % swagger name
       <<"from">> => aec_base58c:encode(id_hash, From),
       <<"am">>   => Amount};
 for_client({?OP_CREATE_CONTRACT, OwnerId, VmVersion, Code, Deposit, CallData}) ->
-    #{<<"op">>          => <<"new_contract">>,
+    #{<<"op">>          => <<"OffChainNewContract">>, % swagger name
       <<"owner">>       => aec_base58c:encode(id_hash, OwnerId),
       <<"vm_version">>  => VmVersion,
       <<"code">>        => Code,
       <<"deposit">>     => Deposit,
-      <<"call_data">>   => CallData};
+      <<"call_data">>   => aect_utils:hex_bytes(CallData)};
 for_client({?OP_CALL_CONTRACT, CallerId, ContractId, VmVersion, Amount,
             CallData, CallStack, GasPrice, Gas}) ->
-    #{<<"op">>          => <<"contract_call">>,
+    #{<<"op">>          => <<"OffChainCallContract">>, % swagger name
       <<"caller">>      => aec_base58c:encode(id_hash, CallerId),
       <<"contract">>    => aec_base58c:encode(id_hash, ContractId),
       <<"vm_version">>  => VmVersion,
       <<"amount">>      => Amount,
       <<"gas">>         => Gas,
       <<"gas_price">>   => GasPrice,
-      <<"call_data">>   => CallData,
+      <<"call_data">>   => aect_utils:hex_bytes(CallData),
       <<"call_stack">>  => CallStack}.
 
 -spec serialize(update()) -> binary().

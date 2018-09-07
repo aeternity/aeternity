@@ -137,11 +137,8 @@
          fp_payload_invalid_state_hash/1,
          fp_payload_older_payload/1,
          % solo signed payload tests
-         fp_solo_payload_from_another_channel/1,
          fp_solo_payload_invalid_state_hash/1,
          fp_solo_payload_wrong_round/1,
-         fp_solo_payload_no_update/1,
-         fp_solo_payload_multiple_updates/1,
          fp_solo_payload_not_call_update/1,
          fp_solo_payload_broken_call/1,
          % poi tests
@@ -292,11 +289,8 @@ groups() ->
        fp_payload_invalid_state_hash,
        fp_payload_older_payload,
        % solo signed payload tests
-       fp_solo_payload_from_another_channel,
        fp_solo_payload_invalid_state_hash,
        fp_solo_payload_wrong_round,
-       fp_solo_payload_no_update,
-       fp_solo_payload_multiple_updates,
        fp_solo_payload_not_call_update,
        fp_solo_payload_broken_call,
        % poi tests
@@ -1665,12 +1659,9 @@ fp_on_top_of_fp(Cfg) ->
                       responder_pubkey := Responder,
                       contract_id      := ContractId,
                       fake_account     := FakeAcc,
-                      solo_payload     := SoloPayload} = Props) ->
-                    SignedTx = aetx_sign:deserialize_from_binary(SoloPayload),
-                    Tx       = aetx_sign:tx(SignedTx),
-                    {channel_offchain_tx, PayloadTx} = aetx:specialize_type(Tx),
-                    [Update] = aesc_offchain_tx:updates(PayloadTx),
-                    FPRound1 = aesc_offchain_tx:round(PayloadTx), %assert
+                      solo_payload     := #{update := Update,
+                                            round  := FPRound}} = Props) ->
+                    FPRound = FPRound1, % assert expected round
                     Reserve = maps:get(channel_reserve, Props, 0),
                     Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
                     PoIHash = aesc_channels:state_hash(Channel),
@@ -2266,37 +2257,6 @@ fp_payload_invalid_state_hash(Cfg) ->
                             Forcer<- ?ROLES],
     ok.
 
-fp_solo_payload_from_another_channel(Cfg) ->
-    Round = 43,
-    ContractRound = 10,
-    ChannelHashSize = aec_base58c:byte_size_for_type(channel),
-    FakeChannelId = <<42:ChannelHashSize/unit:8>>,
-    Test =
-        fun(Owner, Forcer) ->
-            run(#{cfg => Cfg, initiator_amount => 30,
-                              responder_amount => 30,
-                 channel_reserve => 1},
-               [positive(fun create_channel_/2),
-                create_contract_poi_and_payload(Round - 1, ContractRound, Owner),
-                get_onchain_balances(before_force),
-                set_from(Forcer),
-                set_prop(round, Round),
-                fun(#{channel_pubkey := ChannelPubKey} = Props) ->
-                    Props#{correct_channel_pubkey => ChannelPubKey,
-                           channel_pubkey => FakeChannelId} % create wrong solo payload
-                end,
-                fun(#{contract_id := ContractId} = Props) ->
-                    (create_contract_call_payload(ContractId, <<"main">>,
-                                                  <<"42">>, 1))(Props)
-                end,
-                fun(#{correct_channel_pubkey := ChannelPubKey} = Props) ->
-                    Props#{channel_pubkey => ChannelPubKey}
-                end,
-                negative(fun force_progress_/2, {error, bad_state_channel_pubkey})])
-        end,
-    [Test(Owner, Forcer) || Owner  <- ?ROLES,
-                            Forcer <- ?ROLES].
-
 fp_solo_payload_wrong_round(Cfg) ->
     ContractRound = 10,
     BrokenRounds =
@@ -2378,34 +2338,6 @@ different_state_hash_produced(OldRound, OldStateHash) ->
                 end])
     end.
 
-fp_solo_payload_no_update(Cfg) ->
-    fp_solo_payload_broken_updates_(Cfg, [], no_update).
-
-fp_solo_payload_multiple_updates(Cfg) ->
-    AccountHashSize = aec_base58c:byte_size_for_type(account_pubkey),
-    FakeAccount1 = <<42:AccountHashSize/unit:8>>,
-    FakeAccount2 = <<43:AccountHashSize/unit:8>>,
-
-    ContractSize = aec_base58c:byte_size_for_type(contract_pubkey),
-    FakeContractId = <<2:ContractSize/unit:8>>,
-
-    Update1 = aesc_offchain_update:op_call_contract(
-                aec_id:create(account, FakeAccount1),
-                aec_id:create(contract, FakeContractId),
-                ?VM_VERSION, 1, <<>>,
-                [],
-                _GasPrice = 1,
-                _GasLimit = 1234567890),
-    Update2 = aesc_offchain_update:op_call_contract(
-                aec_id:create(account, FakeAccount2),
-                aec_id:create(contract, FakeContractId),
-                ?VM_VERSION, 1, <<>>,
-                [],
-                _GasPrice = 1,
-                _GasLimit = 1234567890),
-    fp_solo_payload_broken_updates_(Cfg, [Update1, Update2],
-                                    more_than_one_update).
-
 fp_solo_payload_not_call_update(Cfg) ->
     AccountHashSize = aec_base58c:byte_size_for_type(account_pubkey),
     Fake1Id = aec_id:create(account, <<42:AccountHashSize/unit:8>>),
@@ -2418,8 +2350,8 @@ fp_solo_payload_not_call_update(Cfg) ->
                                                        <<>>, 1, <<>>),
     lists:foreach(
         fun(Update) ->
-            fp_solo_payload_broken_updates_(Cfg, [Update],
-                                            update_not_call)
+            fp_solo_payload_broken_update_(Cfg, Update,
+                                           update_not_call)
         end,
         [Transfer,
          Deposit,
@@ -2427,7 +2359,7 @@ fp_solo_payload_not_call_update(Cfg) ->
          NewContract]),
     ok.
 
-fp_solo_payload_broken_updates_(Cfg, UpdatesList, Error) ->
+fp_solo_payload_broken_update_(Cfg, Update, Error) ->
     Round = 43,
     ContractRound = 10,
     StateHashSize = aec_base58c:byte_size_for_type(state),
@@ -2443,7 +2375,7 @@ fp_solo_payload_broken_updates_(Cfg, UpdatesList, Error) ->
                 get_onchain_balances(before_force),
                 set_from(Forcer),
                 set_prop(round, Round),
-                set_prop(solo_payload_updates, UpdatesList),
+                set_prop(solo_payload_update, Update),
                 set_prop(fake_solo_state_hash, FakeStateHash),
                 fun(#{contract_id := ContractId} = Props) ->
                     (create_contract_call_payload(ContractId, <<"main">>,
@@ -2481,7 +2413,7 @@ fp_solo_payload_broken_call(Cfg) ->
                                 [],
                                 _GasPrice = 1,
                                 _GasLimit = 1234567890),
-                    Props#{solo_payload_updates => [Update]}
+                    Props#{solo_payload_update => Update}
                 end,
                 set_prop(fake_solo_state_hash, FakeStateHash),
                 fun(#{contract_id := ContractId} = Props) ->
@@ -2492,12 +2424,9 @@ fp_solo_payload_broken_call(Cfg) ->
                 positive(fun force_progress_/2),
                 fun(#{state := S,
                       signed_force_progress := SignedForceProgressTx,
-                      solo_payload := SoloPayload} = Props) ->
-                    SignedTx = aetx_sign:deserialize_from_binary(SoloPayload),
-                    Tx       = aetx_sign:tx(SignedTx),
-                    {channel_offchain_tx, PayloadTx} = aetx:specialize_type(Tx),
-                    [Update] = aesc_offchain_tx:updates(PayloadTx),
-                    Round = aesc_offchain_tx:round(PayloadTx), %assert
+                      solo_payload := #{update := Update,
+                                        round  := Round1}} = Props) ->
+                    Round1 = Round, %% assert
                     {_ContractId, Caller} = aesc_offchain_update:extract_call(Update),
                     TxHashContractPubkey = aesc_utils:tx_hash_to_contract_pubkey(
                                           aetx_sign:hash(SignedForceProgressTx)),
@@ -2751,14 +2680,14 @@ force_progress_sequence(Round, Forcer) ->
             set_prop(fee, Fee),
             positive(fun force_progress_/2),
             fun(#{channel_pubkey  := ChannelPubKey, state := S,
-                  solo_payload    := SoloPayload} = Props) ->
+                  solo_payload    := #{state_hash := ExpectedStateHash,
+                                       round      := ExpectedRound}} = Props) ->
                 % ensure channel had been updated
                 Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
                 Round = aesc_channels:round(Channel),
-                {channel_offchain_tx, SoloPayloadTx} = aetx:specialize_type(
-                    aetx_sign:tx(aetx_sign:deserialize_from_binary(SoloPayload))),
-                ExpectedStateHash = aesc_offchain_tx:state_hash(SoloPayloadTx),
+                % assert state_hash and round had changed
                 ExpectedStateHash = aesc_channels:state_hash(Channel),
+                ExpectedRound = aesc_channels:round(Channel),
                 true = aesc_channels:is_last_state_forced(Channel),
                 Props
             end,
@@ -2767,12 +2696,7 @@ force_progress_sequence(Round, Forcer) ->
                   signed_force_progress := SignedForceProgressTx,
                   before_force := #{initiator := I0, responder := R0},
                   after_force  := #{initiator := I1, responder := R1},
-                  solo_payload := SoloPayload} = Props) ->
-                SignedTx = aetx_sign:deserialize_from_binary(SoloPayload),
-                Tx       = aetx_sign:tx(SignedTx),
-                {channel_offchain_tx, PayloadTx} = aetx:specialize_type(Tx),
-                [Update] = aesc_offchain_tx:updates(PayloadTx),
-                Round = aesc_offchain_tx:round(PayloadTx), %assert
+                  solo_payload := #{update := Update}} = Props) ->
                 {_ContractId, Caller} = aesc_offchain_update:extract_call(Update),
                 TxHashContractPubkey = aesc_utils:tx_hash_to_contract_pubkey(
                                       aetx_sign:hash(SignedForceProgressTx)),
@@ -2882,23 +2806,23 @@ create_contract_call_payload(ContractId, Fun, Args, Amount) ->
     create_contract_call_payload(solo_payload, ContractId, Fun, Args, Amount).
 
 create_contract_call_payload(Key, ContractId, Fun, Args, Amount) ->
-    fun(#{channel_pubkey    := ChannelPubKey,
-          from_pubkey       := From,
-          from_privkey      := FromPrivkey,
+    fun(#{from_pubkey       := From,
           round             := Round,
           trees             := Trees0} = Props) ->
         Contract = aect_test_utils:get_contract(ContractId, #{trees => Trees0}),
         Code = aect_contracts:code(Contract),
         CallData = aect_sophia:create_call(Code, Fun, Args),
         Reserve = maps:get(channel_reserve, Props, 0),
-        Update = aesc_offchain_update:op_call_contract(
+        Update =
+            maps:get(solo_payload_update, Props,
+                aesc_offchain_update:op_call_contract(
                     aec_id:create(account, From),
                     aec_id:create(contract, ContractId),
                     ?VM_VERSION, Amount, CallData,
                     [],
                     _GasPrice = maps:get(gas_price, Props, 1),
-                    _GasLimit = maps:get(gas_limit, Props, 1234567890)),
-        {StateHash, Updates} =
+                    _GasLimit = maps:get(gas_limit, Props, 1234567890))),
+        StateHash =
             case maps:get(fake_solo_state_hash, Props, none) of
                 none ->
                     Trees1 = aesc_offchain_update:apply_on_trees(Update,
@@ -2906,18 +2830,13 @@ create_contract_call_payload(Key, ContractId, Fun, Args, Amount) ->
                                                                 Round,
                                                                 Reserve),
                     StateHash1 = aec_trees:hash(Trees1),
-                    {StateHash1, [Update]};
+                    StateHash1;
                 SH ->
-                    Ups = maps:get(solo_payload_updates, Props, [Update]),
-                    {SH, Ups}
+                    SH
             end,
-        {ok, UnsignedP} = aesc_offchain_tx:new(#{channel_id => aec_id:create(channel, ChannelPubKey),
-                                                 updates => Updates,
-                                                 state_hash => StateHash,
-                                                 round => Round}),
-        Payload = aetx_sign:serialize_to_binary(
-                    aec_test_utils:sign_tx(UnsignedP, [FromPrivkey])),
-        Props#{Key => Payload}
+        Props#{Key => #{state_hash => StateHash,
+                        round      => Round,
+                        update     => Update}}
     end.
 
 create_trees() ->
@@ -2963,14 +2882,21 @@ run(Cfg, Funs) ->
 
 apply_on_trees_(#{height := Height} = Props, SignedTx, S, positive) ->
     Trees = aens_test_utils:trees(S),
-    {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
-                                [SignedTx], Trees, Height, ?PROTOCOL_VERSION),
-    S1 = aesc_test_utils:set_trees(Trees1, S),
-    Props#{state => S1};
+    case aesc_test_utils:apply_on_trees_without_sigs_check(
+                      [SignedTx], Trees, Height, ?PROTOCOL_VERSION) of
+        {ok, [SignedTx], Trees1} ->
+            S1 = aesc_test_utils:set_trees(Trees1, S),
+            Props#{state => S1};
+        Err ->
+            throw({case_failed, Err})
+    end;
 apply_on_trees_(#{height := Height} = Props, SignedTx, S, {negative, ExpectedError}) ->
     Trees = aens_test_utils:trees(S),
     Tx = aetx_sign:tx(SignedTx),
-    ExpectedError =  aetx:check(Tx, Trees, Height, ?PROTOCOL_VERSION),
+    case aetx:check(Tx, Trees, Height, ?PROTOCOL_VERSION) of
+        ExpectedError -> pass;
+        {ok, _} -> throw(negative_case_passed)
+    end,
     Props.
 
 get_state(Cfg) ->
@@ -3196,14 +3122,18 @@ force_progress_(#{channel_pubkey    := ChannelPubKey,
                   fee               := Fee,
                   state             := S,
                   payload           := Payload,
-                  solo_payload      := SoloPayload,
+                  solo_payload      := #{update     := Update,
+                                         round      := Round,
+                                         state_hash := StateHash},
                   addresses         := Addresses,
                   poi               := PoI,
                   initiator_privkey := _IPrivkey,
                   responder_privkey := _RPrivkey} = Props, Expected) ->
 
     ForceProTxSpec = aesc_test_utils:force_progress_tx_spec(ChannelPubKey, From,
-                                                            Payload, SoloPayload, PoI,
+                                                            Payload,
+                                                            Update, StateHash,
+                                                            Round, PoI,
                                                             Addresses,
                                                             #{fee => Fee}, S),
     {ok, ForceProTx} = aesc_force_progress_tx:new(ForceProTxSpec),

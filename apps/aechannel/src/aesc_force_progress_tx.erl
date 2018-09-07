@@ -7,6 +7,7 @@
 -module(aesc_force_progress_tx).
 
 -behavior(aetx).
+-behaviour(aesc_signable_transaction).
 
 %% Behavior API
 -export([new/1,
@@ -25,6 +26,12 @@
          for_client/1
         ]).
 
+% aesc_signable_transaction callbacks
+-export([channel_id/1,
+         channel_pubkey/1,
+         state_hash/1,
+         updates/1,
+         round/1]).
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -39,7 +46,9 @@
           channel_id    :: aec_id:id(),
           from_id       :: aec_id:id(),
           payload       :: binary(),
-          solo_payload  :: binary(),
+          update        :: aesc_offchain_update:update(),
+          state_hash    :: binary(),
+          round         :: aesc_channels:seq_number(),
           addresses     :: [aec_id:id()],
           poi           :: aec_trees:poi(),
           ttl           :: aetx:tx_ttl(),
@@ -59,7 +68,9 @@
 new(#{channel_id    := ChannelId,
       from_id       := FromId,
       payload       := Payload,
-      solo_payload  := SoloPayload,
+      update        := Update,
+      state_hash    := StateHash,
+      round         := Round,
       addresses     := Addresses,
       poi           := PoI,
       fee           := Fee,
@@ -77,7 +88,9 @@ new(#{channel_id    := ChannelId,
             channel_id    = ChannelId,
             from_id       = FromId,
             payload       = Payload,
-            solo_payload  = SoloPayload,
+            update        = Update,
+            state_hash    = StateHash,
+            round         = Round,
             addresses     = Addresses,
             poi           = PoI,
             ttl           = maps:get(ttl, Args, 0),
@@ -107,9 +120,6 @@ origin(#channel_force_progress_tx{} = Tx) ->
 channel(#channel_force_progress_tx{channel_id = ChannelId}) ->
     ChannelId.
 
-channel_hash(#channel_force_progress_tx{channel_id = ChannelId}) ->
-    aec_id:specialize(ChannelId, channel).
-
 from_id(#channel_force_progress_tx{from_id = FromId}) ->
     FromId.
 
@@ -119,15 +129,9 @@ from_pubkey(#channel_force_progress_tx{from_id = FromId}) ->
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_force_progress_tx{payload      = Payload,
-                                 solo_payload = SoloPayload,
                                  addresses    = Addresses,
-                                 poi          = PoI,
-                                 fee          = Fee,
-                                 nonce        = Nonce} = Tx, _Context, Trees, Height, _ConsensusVersion) ->
-    ChannelId  = channel_hash(Tx),
-    FromPubKey = from_pubkey(Tx),
-    case aesc_utils:check_force_progress(ChannelId, FromPubKey, Nonce, Fee,
-                                   Payload, SoloPayload, Addresses,
+                                 poi          = PoI} = Tx, _Context, Trees, Height, _ConsensusVersion) ->
+    case aesc_utils:check_force_progress(Tx, Payload, Addresses,
                                    PoI, Height, Trees) of
         ok -> {ok, Trees};
         Err -> Err
@@ -135,17 +139,10 @@ check(#channel_force_progress_tx{payload      = Payload,
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
               non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
-process(#channel_force_progress_tx{payload      = Payload,
-                                   solo_payload = SoloPayload,
-                                   addresses    = Addresses,
-                                   poi          = PoI,
-                                   fee          = Fee,
-                                   nonce        = Nonce} = Tx, _Context,
+process(#channel_force_progress_tx{addresses    = Addresses,
+                                   poi          = PoI} = Tx, _Context,
         Trees, Height, _ConsensusVersion, TxHash) when is_binary(TxHash) ->
-    ChannelId  = channel_hash(Tx),
-    FromPubKey = from_pubkey(Tx),
-    aesc_utils:process_force_progress(ChannelId, FromPubKey, Nonce, Fee,
-                                      Payload, SoloPayload, Addresses,
+    aesc_utils:process_force_progress(Tx, Addresses,
                                       PoI, TxHash, Height, Trees).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
@@ -156,7 +153,9 @@ signers(#channel_force_progress_tx{} = Tx, _) ->
 serialize(#channel_force_progress_tx{channel_id   = ChannelId,
                                      from_id      = FromId,
                                      payload      = Payload,
-                                     solo_payload = SoloPayload,
+                                     update       = Update,
+                                     state_hash   = StateHash,
+                                     round        = Round,
                                      addresses    = Addresses,
                                      poi          = PoI,
                                      ttl          = TTL,
@@ -166,7 +165,9 @@ serialize(#channel_force_progress_tx{channel_id   = ChannelId,
      [ {channel_id    , ChannelId}
      , {from_id       , FromId}
      , {payload       , Payload}
-     , {solo_payload  , SoloPayload}
+     , {round         , Round}
+     , {update        , aesc_offchain_update:serialize(Update)}
+     , {state_hash    , StateHash}
      , {addresses     , Addresses}
      , {poi           , aec_trees:serialize_poi(PoI)}
      , {ttl           , TTL}
@@ -179,7 +180,9 @@ deserialize(?CHANNEL_FORCE_PROGRESS_TX_VSN,
             [ {channel_id   , ChannelId}
             , {from_id      , FromId}
             , {payload      , Payload}
-            , {solo_payload , SoloPayload}
+            , {round        , Round}
+            , {update       , UpdateBin}
+            , {state_hash   , StateHash}
             , {address      , Addresses}
             , {poi          , PoI}
             , {ttl          , TTL}
@@ -187,10 +190,13 @@ deserialize(?CHANNEL_FORCE_PROGRESS_TX_VSN,
             , {nonce        , Nonce}]) ->
     channel = aec_id:specialize_type(ChannelId),
     account = aec_id:specialize_type(FromId),
+    Update = aesc_offchain_update:deserialize(UpdateBin),
     #channel_force_progress_tx{channel_id   = ChannelId,
                                from_id      = FromId,
                                payload      = Payload,
-                               solo_payload = SoloPayload,
+                               round        = Round,
+                               state_hash   = StateHash,
+                               update       = Update,
                                addresses    = Addresses,
                                poi          = aec_trees:deserialize_poi(PoI),
                                ttl          = TTL,
@@ -199,7 +205,9 @@ deserialize(?CHANNEL_FORCE_PROGRESS_TX_VSN,
 
 -spec for_client(tx()) -> map().
 for_client(#channel_force_progress_tx{payload       = Payload,
-                                      solo_payload  = SoloPayload,
+                                      round         = Round,
+                                      state_hash    = StateHash,
+                                      update        = Update,
                                       addresses     = Addresses,
                                       poi           = PoI,
                                       ttl           = TTL,
@@ -207,8 +215,10 @@ for_client(#channel_force_progress_tx{payload       = Payload,
                                       nonce         = Nonce} = Tx) ->
     #{<<"channel_id">>    => aec_base58c:encode(id_hash, channel(Tx)),
       <<"from_id">>       => aec_base58c:encode(id_hash, from_id(Tx)),
-      <<"payload">>       => Payload,
-      <<"solo_payload">>  => SoloPayload,
+      <<"payload">>       => aec_base58c:encode(tx, Payload),
+      <<"round">>         => Round,
+      <<"update">>        => aesc_offchain_update:for_client(Update),
+      <<"state_hash">>    => aec_base58c:encode(state, StateHash),
       <<"addresses">>     => [aec_base58c:encode(id_hash, Id) || Id <- Addresses],
       <<"poi">>           => aec_base58c:encode(poi, aec_trees:serialize_poi(PoI)),
       <<"ttl">>           => TTL,
@@ -219,13 +229,38 @@ serialization_template(?CHANNEL_FORCE_PROGRESS_TX_VSN) ->
     [ {channel_id     , id}
     , {from_id        , id}
     , {payload        , binary}
-    , {solo_payload   , binary}
+    , {round          , int}
+    , {update         , binary}
+    , {state_hash     , binary}
     , {addresses      , [id]}
     , {poi            , binary}
     , {ttl            , int}
     , {fee            , int}
     , {nonce          , int}
     ].
+
+%%%===================================================================
+%%% Getters
+%%%===================================================================
+-spec channel_pubkey(tx()) -> aesc_channels:pubkey().
+channel_pubkey(#channel_force_progress_tx{channel_id = ChannelId}) ->
+    aec_id:specialize(ChannelId, channel).
+
+-spec channel_id(tx()) -> aesc_channels:id().
+channel_id(#channel_force_progress_tx{channel_id = ChannelId}) ->
+    ChannelId.
+
+-spec updates(tx()) -> [aesc_offchain_update:update()].
+updates(#channel_force_progress_tx{update = Update}) ->
+    [Update].
+
+-spec round(tx()) -> aesc_channels:seq_number().
+round(#channel_force_progress_tx{round = Round}) ->
+    Round.
+
+-spec state_hash(tx()) -> binary().
+state_hash(#channel_force_progress_tx{state_hash = StateHash}) ->
+    StateHash.
 
 %%%===================================================================
 %%% Internal functions

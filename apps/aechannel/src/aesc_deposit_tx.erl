@@ -27,7 +27,7 @@
          for_client/1
         ]).
 
-% snapshot callbacks
+% aesc_signable_transaction callbacks
 -export([channel_id/1,
          channel_pubkey/1,
          state_hash/1,

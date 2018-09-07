@@ -20,7 +20,7 @@
          serialize_for_client/1,
          close_solo/3,
          close_solo/4,
-         force_progress/5,
+         force_progress/6,
          snapshot_solo/2,
          withdraw/4]).
 
@@ -167,14 +167,15 @@ snapshot_solo(Ch, PayloadTx) ->
                force_blocked_until= 0,
                state_hash         = StateHash}.
 
--spec force_progress(channel(), aesc_offchain_tx:tx(), 
+-spec force_progress(channel(), binary(), seq_number(), 
                      amount(), amount(),
                      aec_blocks:height()) -> channel().
-force_progress(Ch0, PayloadTx, IAmt, RAmt, Height) ->
-    Ch = snapshot_solo(Ch0, PayloadTx),
-    Ch1 = Ch#channel{force_blocked_until = Height + lock_period(Ch0),
-                     initiator_amount    = IAmt,
-                     responder_amount    = RAmt},
+force_progress(Ch0, StateHash, Round, IAmt, RAmt, Height) ->
+    Ch1 = Ch0#channel{force_blocked_until = Height + lock_period(Ch0),
+                      state_hash          = StateHash,
+                      round               = Round,
+                      initiator_amount    = IAmt,
+                      responder_amount    = RAmt},
     case is_active(Ch1) of
         true -> Ch1;
         false -> Ch1#channel{closes_at = Height + lock_period(Ch0)}

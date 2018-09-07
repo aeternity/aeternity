@@ -20,8 +20,9 @@
          for_client/1
         ]).
 
-%% Getters
--export([channel_pubkey/1,
+% aesc_signable_transaction callbacks
+-export([channel_id/1,
+         channel_pubkey/1,
          updates/1,
          round/1,
          state_hash/1]).
@@ -164,10 +165,13 @@ serialization_template(?CHANNEL_OFFCHAIN_TX_VSN) ->
 %%%===================================================================
 %%% Getters
 %%%===================================================================
-
 -spec channel_pubkey(tx()) -> aesc_channels:pubkey().
 channel_pubkey(#channel_offchain_tx{channel_id = ChannelId}) ->
     aec_id:specialize(ChannelId, channel).
+
+-spec channel_id(tx()) -> aesc_channels:id().
+channel_id(#channel_offchain_tx{channel_id = ChannelId}) ->
+    ChannelId.
 
 -spec updates(tx()) -> [aesc_offchain_update:update()].
 updates(#channel_offchain_tx{updates = Updates}) ->

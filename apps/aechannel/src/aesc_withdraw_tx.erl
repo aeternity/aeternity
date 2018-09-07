@@ -27,8 +27,9 @@
          for_client/1
         ]).
 
-% snapshot callbacks
--export([channel_pubkey/1,
+% aesc_signable_transaction callbacks
+-export([channel_id/1,
+         channel_pubkey/1,
          state_hash/1,
          updates/1,
          round/1]).
@@ -111,6 +112,10 @@ to_pubkey(#channel_withdraw_tx{to_id = ToId}) ->
 -spec channel_pubkey(tx()) -> aesc_channels:pubkey().
 channel_pubkey(#channel_withdraw_tx{channel_id = ChannelId}) ->
     aec_id:specialize(ChannelId, channel).
+
+-spec channel_id(tx()) -> aesc_channels:id().
+channel_id(#channel_withdraw_tx{channel_id = ChannelId}) ->
+    ChannelId.
 
 -spec amount(tx()) -> non_neg_integer().
 amount(#channel_withdraw_tx{amount = Amt}) ->

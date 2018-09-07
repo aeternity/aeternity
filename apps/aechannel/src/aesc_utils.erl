@@ -18,10 +18,10 @@
          check_solo_close_payload/7,
          check_slash_payload/8,
          check_solo_snapshot_payload/6,
-         check_force_progress/10,
+         check_force_progress/6,
          process_solo_close/8,
          process_slash/8,
-         process_force_progress/11,
+         process_force_progress/6,
          process_solo_snapshot/6
         ]).
 
@@ -182,28 +182,28 @@ check_slash_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
             aeu_validation:run(Checks)
     end.
 
-check_force_progress(ChannelId, FromPubKey, Nonce, Fee,
-                     Payload, SoloPayload, Addresses,
-                     PoI, Height, Trees) ->
-    case get_vals([get_channel(ChannelId, Trees),
-                   deserialize_payload(Payload),
-                   deserialize_payload(SoloPayload)]) of
+check_force_progress(Tx, Payload, Addresses, PoI, Height, Trees) ->
+    ChannelPubKey = aesc_force_progress_tx:channel_pubkey(Tx),
+    FromPubKey = aesc_force_progress_tx:origin(Tx),
+    Nonce = aesc_force_progress_tx:nonce(Tx),
+    Fee = aesc_force_progress_tx:fee(Tx),
+    [Update] = aesc_force_progress_tx:updates(Tx),
+    NextRound = aesc_force_progress_tx:round(Tx),
+    case get_vals([get_channel(ChannelPubKey, Trees),
+                   deserialize_payload(Payload)]) of
         {error, _} = E -> E;
-        {ok, [_Channel, _, last_onchain]} ->
-            {error, force_progress_must_have_payload};
-        {ok, [Channel, last_onchain, {SoloSignedState, SoloPayloadTx}]} ->
+        {ok, [Channel, last_onchain]} ->
               Round = aesc_channels:round(Channel),
               PayloadHash = aesc_channels:state_hash(Channel),
               Checks = [
                   fun() ->
                       check_force_progress_(PayloadHash, Round,
-                              Channel, FromPubKey, Nonce, Fee, SoloSignedState,
-                              SoloPayloadTx, Addresses, PoI, Height, Trees)
+                              Channel, FromPubKey, Nonce, Fee, Update,
+                              NextRound, Addresses, PoI, Height, Trees)
                   end],
               aeu_validation:run(Checks);
 
-        {ok, [Channel, {SignedState, PayloadTx},
-                       {SoloSignedState, SoloPayloadTx}]} ->
+        {ok, [Channel, {SignedState, PayloadTx}]} ->
               Round = aesc_offchain_tx:round(PayloadTx),
               PayloadHash = aesc_offchain_tx:state_hash(PayloadTx),
               Checks = [
@@ -213,15 +213,15 @@ check_force_progress(ChannelId, FromPubKey, Nonce, Fee,
                   end,
                   fun() ->
                       check_force_progress_(PayloadHash, Round,
-                              Channel, FromPubKey, Nonce, Fee, SoloSignedState,
-                              SoloPayloadTx, Addresses, PoI, Height, Trees)
+                              Channel, FromPubKey, Nonce, Fee, Update,
+                              NextRound, Addresses, PoI, Height, Trees)
                   end],
               aeu_validation:run(Checks)
     end.
 
 check_force_progress_(PayloadHash, PayloadRound,
-                      Channel, FromPubKey, Nonce, Fee, SoloSignedState,
-                      SoloPayloadTx, Addresses, PoI, Height, Trees) ->
+                      Channel, FromPubKey, Nonce, Fee, Update,
+                      NextRound, Addresses, PoI, Height, Trees) ->
     Checks =
         [ fun() ->
               case aesc_channels:can_force_progress(Channel, Height) of
@@ -229,12 +229,25 @@ check_force_progress_(PayloadHash, PayloadRound,
                   false -> {error, force_progressed_too_soon}
               end
           end,
-          fun() -> check_solo_signed_payload(Channel, SoloPayloadTx,
-                                            FromPubKey, SoloSignedState,
-                                  Trees, force_progress) end,
           fun() ->
-              R1 = aesc_offchain_tx:round(SoloPayloadTx),
-              case PayloadRound =:= R1 - 1 of
+              case aesc_offchain_update:is_call(Update) of
+                  true -> ok;
+                  false -> {error, update_not_call}
+              end
+          end,
+          fun() ->
+              check_round_greater_than_last(Channel, NextRound,
+                                            force_progress)
+          end,
+          fun() ->
+              CallerPubKey = aesc_offchain_update:extract_caller(Update),
+              case CallerPubKey =:= FromPubKey of
+                  true -> ok;
+                  false -> {error, not_caller}
+              end
+          end,
+          fun() ->
+              case PayloadRound =:= NextRound - 1 of
                   true -> ok;
                   false -> {error, wrong_round}
               end
@@ -251,11 +264,15 @@ check_force_progress_(PayloadHash, PayloadRound,
                   false -> {error, incomplete_poi}
               end
           end,
-          fun() -> check_call_and_caller(SoloPayloadTx, FromPubKey,
-                                        Addresses)
+          fun() ->
+              ContractPubkey = aesc_offchain_update:extract_contract_pubkey(Update),
+              ContractId = aec_id:create(contract, ContractPubkey),
+              case lists:member(ContractId, Addresses) of
+                  true -> ok;
+                  false -> {error, contract_missing}
+              end
           end,
           fun() ->
-              [Update] = aesc_offchain_tx:updates(SoloPayloadTx),
               {_Amount, GasPrice, GasLimit} = aesc_offchain_update:extract_amounts(Update),
               RequiredAmount = Fee + GasLimit * GasPrice,
               aetx_utils:check_account(FromPubKey, Trees, Nonce,
@@ -297,16 +314,6 @@ check_payload(Channel, PayloadTx, FromPubKey, SignedState, Trees, Type) ->
           fun() -> check_round_in_payload(Channel, PayloadTx, Type) end,
           fun() -> is_peer_or_delegate(ChannelId, FromPubKey, SignedState, Trees, Type) end,
           fun() -> aetx_sign:verify(SignedState, Trees) end
-        ],
-    aeu_validation:run(Checks).
-
-check_solo_signed_payload(Channel, PayloadTx, FromPubKey, SignedState, Trees, Type) ->
-    ChannelId = aesc_channels:id(Channel),
-    Checks =
-        [fun() -> check_channel_id_in_payload(Channel, PayloadTx) end,
-          fun() -> check_round_in_payload(Channel, PayloadTx, Type) end,
-          fun() -> is_peer_or_delegate(ChannelId, FromPubKey, SignedState, Trees, Type) end,
-          fun() -> aetx_sign:verify_incomplete(SignedState, [FromPubKey]) end
         ],
     aeu_validation:run(Checks).
 
@@ -457,18 +464,20 @@ process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
     Trees2 = set_channel(Channel1, Trees1),
     {ok, Trees2}.
 
-process_force_progress(ChannelId, FromPubKey, Nonce, Fee,
-                       _Payload, SoloPayload, Addresses,
+process_force_progress(Tx, Addresses,
                        PoI, TxHash, Height, Trees) ->
-    {ok, [Channel, {_SoloSignedState, SoloPayloadTx}]} =
-          get_vals([get_channel(ChannelId, Trees),
-                   deserialize_payload(SoloPayload)]),
-    [Update] = aesc_offchain_tx:updates(SoloPayloadTx),
+    ChannelPubKey = aesc_force_progress_tx:channel_pubkey(Tx),
+    FromPubKey = aesc_force_progress_tx:origin(Tx),
+    Nonce = aesc_force_progress_tx:nonce(Tx),
+    Fee = aesc_force_progress_tx:fee(Tx),
+    [Update] = aesc_force_progress_tx:updates(Tx),
+    NextRound = aesc_force_progress_tx:round(Tx),
+    ExpectedHash = aesc_force_progress_tx:state_hash(Tx),
+    {ok, Channel} = get_channel(ChannelPubKey, Trees),
     {ContractPubkey, Caller} = aesc_offchain_update:extract_call(Update),
     %% use in gas payment
     PoITrees0 = trees_from_poi(Addresses, PoI),
     Reserve = aesc_channels:channel_reserve(Channel),
-    NextRound = aesc_offchain_tx:round(SoloPayloadTx),
     PoITrees =
         try aesc_offchain_update:apply_on_trees(Update, PoITrees0, NextRound,
                                                       Reserve)
@@ -488,7 +497,6 @@ process_force_progress(ChannelId, FromPubKey, Nonce, Fee,
                                                 NextRound,
                                                 aec_trees:calls(PoITrees)),
     % check hash
-    ExpectedHash = aesc_offchain_tx:state_hash(SoloPayloadTx),
     ComputedHash = aec_trees:hash(PoITrees),
 
     Accs = aec_trees:accounts(PoITrees),
@@ -511,7 +519,8 @@ process_force_progress(ChannelId, FromPubKey, Nonce, Fee,
                 % update channel obj
                 InitiatorBalance = GetBalance(aesc_channels:initiator_pubkey(Channel)),
                 ResponderBalance = GetBalance(aesc_channels:responder_pubkey(Channel)),
-                Channel1 = aesc_channels:force_progress(Channel, SoloPayloadTx,
+                Channel1 = aesc_channels:force_progress(Channel, ExpectedHash,
+                                                        NextRound,
                                                         InitiatorBalance,
                                                         ResponderBalance,
                                                         Height),
@@ -583,32 +592,6 @@ check_contracts_in_poi(Pubkeys, PoI) ->
     case AllPresent of
         true -> ok;
         false -> {error, contract_missing_in_poi}
-    end.
-
-check_call_and_caller(SoloSignedState, FromPubKey, Addresses) ->
-    case aesc_offchain_tx:updates(SoloSignedState) of
-        [Update] ->
-            case aesc_offchain_update:is_call(Update) of
-                true ->
-                    UpdateFrom = aesc_offchain_update:extract_caller(Update),
-                    ContractPubkey = aesc_offchain_update:extract_contract_pubkey(Update),
-                    ContractId = aec_id:create(contract, ContractPubkey),
-                    ContractProvided = lists:member(ContractId, Addresses),
-                    case {UpdateFrom, ContractProvided} of
-                        {FromPubKey, true} -> %% same as poster
-                            ok;
-                        {_, true} -> %% some other caller?
-                            {error, not_caller};
-                        {_, false} ->
-                            {error, contract_missing}
-                    end;
-                false ->
-                    {error, update_not_call}
-            end;
-        [] ->
-            {error, no_update};
-        _ ->
-            {error, more_than_one_update}
     end.
 
 -spec trees_from_poi([aec_id:id()], aec_trees:poi()) -> aec_trees:trees().

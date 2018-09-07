@@ -39,8 +39,9 @@
          delegate_pubkeys/1
         ]).
 
-% snapshot callbacks
--export([channel_pubkey/1,
+% aesc_signable_transaction callbacks
+-export([channel_id/1,
+         channel_pubkey/1,
          state_hash/1,
          updates/1,
          round/1]).
@@ -312,6 +313,11 @@ responder_amount(#channel_create_tx{responder_amount = ResponderAmount}) ->
 -spec channel_pubkey(tx()) -> aesc_channels:pubkey().
 channel_pubkey(#channel_create_tx{nonce = Nonce} = Tx) ->
     aesc_channels:pubkey(initiator_pubkey(Tx), Nonce, responder_pubkey(Tx)).
+
+-spec channel_id(tx()) -> aesc_channels:id().
+channel_id(#channel_create_tx{} = Tx) ->
+    Key = channel_pubkey(Tx),
+    aec_id:create(channel, Key).
 
 -spec state_hash(tx()) -> binary().
 state_hash(#channel_create_tx{state_hash = StateHash}) -> StateHash.
