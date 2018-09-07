@@ -369,7 +369,7 @@ handle_request('PostOracleExtend', #{'OracleExtendTx' := Req}, _Context) ->
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  base58_decode([{oracle_id, oracle_id, {id_hash, [oracle_pubkey]}}]),
                  get_nonce_from_account_id(oracle_id),
-                 ttl_decode(oracle_ttl),
+                 relative_ttl_decode(oracle_ttl),
                  unsigned_tx_response(fun aeo_extend_tx:new/1)
                 ],
     process_request(ParseFuns, Req);

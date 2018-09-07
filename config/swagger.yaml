@@ -1906,7 +1906,7 @@ definitions:
         type: integer
         format: int64
       oracle_ttl:
-        $ref: '#/definitions/TTL'
+        $ref: '#/definitions/RelativeTTL'
       oracle_id:
         $ref: '#/definitions/EncodedHash'
       nonce:
