@@ -19,12 +19,11 @@
     setup_nodes/2,
     start_node/2,
     wait_for_value/4,
-    wait_for_startup/3
+    wait_for_startup/3,
+    post_spend_tx/5
 ]).
 
 -import(aest_api, [
-    tx_spend/6,
-    tx_wait/5,
     sc_open/2,
     sc_withdraw/3,
     sc_close_mutual/2
@@ -40,7 +39,9 @@
 -define(SYNC_TIMEOUT,      100).
 
 -define(MIKE, #{
-    pubkey => <<"ak$2XNq9oKtThxKLNFGWTaxmLBZPgP7ECEGxL3zK7dTSFh6RyRvaG">>,
+    pubkey => <<200,171,93,11,3,93,177,65,197,27,123,127,177,165,
+                190,211,20,112,79,108,85,78,88,181,26,207,191,211,
+                40,225,138,154>>,
     privkey => <<237,12,20,128,115,166,32,106,220,142,111,97,141,104,201,130,56,
                  100,64,142,139,163,87,166,185,94,4,159,217,243,160,169,200,171,
                  93,11,3,93,177,65,197,27,123,127,177,165,190,211,20,112,79,108,
@@ -48,7 +49,8 @@
 }).
 
 -define(ALICE, #{
-    pubkey => <<"ak$2MGLPW2CHTDXJhqFJezqSwYSNwbZokSKkG7wSbGtVmeyjGfHtm">>,
+    pubkey => <<177,181,119,188,211,39,203,57,229,94,108,2,107,214, 167,74,27,
+                53,222,108,6,80,196,174,81,239,171,117,158,65,91,102>>,
     privkey => <<145,69,14,254,5,22,194,68,118,57,0,134,66,96,8,20,124,253,238,
                  207,230,147,95,173,161,192,86,195,165,186,115,251,177,181,119,
                  188,211,39,203,57,229,94,108,2,107,214,167,74,27,53,222,108,6,
@@ -56,7 +58,9 @@
 }).
 
 -define(BOB, #{
-    pubkey => <<"ak$nQpnNuBPQwibGpSJmjAah6r3ktAB7pG9JHuaGWHgLKxaKqEvC">>,
+    pubkey => <<103,28,85,70,70,73,69,117,178,180,148,246,81,104,
+                33,113,6,99,216,72,147,205,210,210,54,3,122,84,195,
+                62,238,132>>,
     privkey => <<59,130,10,50,47,94,36,188,50,163,253,39,81,120,89,219,72,88,68,
                  154,183,225,78,92,9,216,215,59,108,82,203,25,103,28,85,70,70,
                  73,69,117,178,180,148,246,81,104,33,113,6,99,216,72,147,205,
@@ -125,8 +129,6 @@ test_simple_different_nodes_channel(Cfg) ->
     },
     simple_channel_test(ChannelOpts, Cfg).
 
-simple_channel_test(_ChannelOpts, _Cfg) ->
-    {skip, api_needs_to_be_fixed};
 simple_channel_test(ChannelOpts, Cfg) ->
     #{
         initiator_id     := IAccount,
@@ -135,43 +137,45 @@ simple_channel_test(ChannelOpts, Cfg) ->
         responder_amount := RAmt
     } = ChannelOpts,
 
-    NodeConfig = #{ beneficiary => maps:get(pubkey, ?MIKE) },
+    MikePubkey = aec_base58c:encode(account_pubkey, maps:get(pubkey, ?MIKE)),
+    NodeConfig = #{ beneficiary => MikePubkey },
     setup([?NODE1, ?NODE2], NodeConfig, Cfg),
     NodeNames = [node1, node2],
     start_node(node1, Cfg),
     start_node(node2, Cfg),
     wait_for_startup([node1, node2], 4, Cfg),  %% make sure there is some money in accounts
-    wait_balance(NodeNames, ?MIKE, 1000, 10000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, ?MIKE), 1000}, [node1], 10000, Cfg),
 
-    tx_spend(node1, ?MIKE, IAccount, 200, 1, Cfg),
-    wait_balance(NodeNames, IAccount, 200, 5000, Cfg),
+    post_spend_tx(node1, ?MIKE, IAccount, 1, #{amount => 200}),
+    wait_for_value({balance, maps:get(pubkey, IAccount), 200}, NodeNames, 10000, Cfg),
 
-    tx_spend(node1, ?MIKE, RAccount, 200, 1, Cfg),
-    wait_balance(NodeNames, RAccount, 200, 5000, Cfg),
+    post_spend_tx(node1, ?MIKE, RAccount, 2, #{amount => 200}),
+    wait_for_value({balance, maps:get(pubkey, RAccount), 200}, NodeNames, 10000, Cfg),
 
     {ok, Chan, TxHash, OpenFee} = sc_open(ChannelOpts, Cfg),
-    ok = tx_wait(NodeNames, TxHash, chain, 2000, Cfg),
-    wait_balance(NodeNames, IAccount, 200 - IAmt - OpenFee, 5000, Cfg),
-    wait_balance(NodeNames, RAccount, 200 - RAmt, 5000, Cfg),
+    wait_for_value({txs_on_chain, [TxHash]}, NodeNames, 5000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, IAccount), 200 - IAmt - OpenFee}, NodeNames, 10000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, RAccount), 200 - RAmt}, NodeNames, 10000, Cfg),
 
     {ok, TxHash1, WFee1} = sc_withdraw(Chan, initiator, 20),
-    ok = tx_wait(NodeNames, TxHash1, chain, 2000, Cfg),
-    wait_balance(NodeNames, IAccount, 200 - IAmt - OpenFee + 20 - WFee1, 5000, Cfg),
-    wait_balance(NodeNames, RAccount, 200 - RAmt, 5000, Cfg),
+    wait_for_value({txs_on_chain, [TxHash1]}, NodeNames, 5000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, IAccount), 200 - IAmt - OpenFee + 20 - WFee1}, NodeNames, 10000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, RAccount), 200 - RAmt}, NodeNames, 10000, Cfg),
 
     {ok, TxHash2, WFee2} = sc_withdraw(Chan, responder, 50),
-    ok = tx_wait(NodeNames, TxHash2, chain, 2000, Cfg),
-    wait_balance(NodeNames, IAccount, 200 - IAmt - OpenFee + 20 - WFee1, 5000, Cfg),
-    wait_balance(NodeNames, RAccount, 200 - RAmt + 50 - WFee2, 5000, Cfg),
+    wait_for_value({txs_on_chain, [TxHash2]}, NodeNames, 5000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, IAccount), 200 - IAmt - OpenFee + 20 - WFee1}, NodeNames, 10000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, RAccount), 200 - RAmt + 50 - WFee2}, NodeNames, 10000, Cfg),
 
     {ok, CloseTxHash, IChange, RChange} = sc_close_mutual(Chan, initiator),
 
     ?assertEqual(IAmt - 20 - OpenFee, IChange),
     ?assertEqual(RAmt - 50, RChange),
+    
+    wait_for_value({txs_on_chain, [CloseTxHash]}, NodeNames, 5000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, IAccount), 200 - IAmt - OpenFee + 20 - WFee1 + IChange}, NodeNames, 10000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, RAccount), 200 - RAmt + 50 - WFee2 + RChange}, NodeNames, 10000, Cfg),
 
-    ok = tx_wait(NodeNames, CloseTxHash, chain, 2000, Cfg),
-    wait_balance(NodeNames, IAccount, 200 - IAmt - OpenFee + 20 - WFee1 + IChange, 5000, Cfg),
-    wait_balance(NodeNames, RAccount, 200 - RAmt + 50 - WFee2 + RChange, 5000, Cfg),
 
     ok.
 
@@ -179,7 +183,4 @@ simple_channel_test(ChannelOpts, Cfg) ->
 
 setup(NodeSpecs, Config, Cfg) ->
     setup_nodes([maps:put(config, Config, N) || N <- NodeSpecs], Cfg).
-
-wait_balance(NodeNames, #{pubkey := Pubkey}, Amount, Timeout, Cfg) ->
-    wait_for_value({balance, Pubkey, Amount}, NodeNames, Timeout, Cfg).
 

@@ -32,6 +32,7 @@
     get_block/2,
     get_top/1,
     get_mempool/1,
+    post_spend_tx/5,
     request/3,
     assert_in_sync/1
 ]).
@@ -421,7 +422,7 @@ tx_pool_sync(Cfg) ->
 
     %% Check that the valid transactions made it to the chain.
     #{ receiver := RecvAccount, amount := Amount } = lists:last(ValidTxs),
-    wait_for_value({balance, aec_base58c:encode(account_pubkey, RecvAccount), Amount},
+    wait_for_value({balance, RecvAccount, Amount},
                    [node1], 5 * ?MINING_TIMEOUT, Cfg),
 
     %% Check that the mempool has the other transactions
@@ -462,7 +463,7 @@ tx_pool_sync(Cfg) ->
 
     %% Check that the last of the first batch of invalid transactions made it to the chain.
     #{ receiver := RecvAccount2, amount := Amount2 } = lists:last(InvalidTxs),
-    wait_for_value({balance, aec_base58c:encode(account_pubkey, RecvAccount2), Amount2},
+    wait_for_value({balance, RecvAccount2, Amount2},
                    [node1], 5 * ?MINING_TIMEOUT, Cfg),
 
     ok.
@@ -477,20 +478,11 @@ inject_spend_txs(Node, SenderAcct, N, NonceStart, TimeDelay) ->
 add_spend_txs(Node, SenderAcct, N, NonceStart) ->
     [ add_spend_tx(Node, SenderAcct, Nonce) || Nonce <- lists:seq(NonceStart, NonceStart + N - 1) ].
 
-add_spend_tx(Node, #{ pubkey := SendPubKey, privkey := SendSecKey }, Nonce) ->
-    #{ public := RecvPubKey, secret := RecvSecKey } = enacl:sign_keypair(),
-    PayLoad = iolist_to_binary(io_lib:format("~p", [Node])),
-    Params = #{ sender_id => aec_id:create(account, SendPubKey)
-              , recipient_id => aec_id:create(account, RecvPubKey)
-              , amount => 10000
-              , fee => 100
-              , ttl => 10000000
-              , nonce => Nonce
-              , payload => PayLoad },
-    {ok, Tx} = aec_spend_tx:new(Params),
-    SignedTx = aec_test_utils:sign_tx(Tx, SendSecKey),
-    SerSignTx = aetx_sign:serialize_to_binary(SignedTx),
-    {ok, 200, #{ tx_hash := TxHash }} = request(Node, 'PostTransaction', #{ tx => aec_base58c:encode(transaction, SerSignTx) }),
+
+add_spend_tx(Node, Sender, Nonce) ->
+    %% create new receiver
+    #{ public := RecvPubKey, secret := RecvSecKey } =  enacl:sign_keypair(),
+    #{ tx_hash := TxHash} = post_spend_tx(Node, Sender, #{pubkey => RecvPubKey}, Nonce, #{amount => 10000}),
     #{ receiver => RecvPubKey, receiver_sec => RecvSecKey, amount => 10000, tx_hash => TxHash }.
 
 %% Test that two disconnected clusters of nodes are able to recover and merge

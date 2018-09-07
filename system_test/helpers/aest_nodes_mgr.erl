@@ -149,8 +149,9 @@ handle_call({connect_node, NodeName, NetName}, _From, State) ->
     {reply, ok, mgr_connect_node(NodeName, NetName, State)};
 handle_call({disconnect_node, NodeName, NetName}, _From, State) ->
     {reply, ok, mgr_disconnect_node(NodeName, NetName, State)};
-handle_call({log, Format, Params}, _From, State) ->
-    {reply, ok, mgr_log(Format, Params, State)};
+handle_call({log, Format, Params}, _From, #{log_fun := LogFun} = State) ->
+    log(LogFun, Format, Params),
+    {reply, ok, State};
 handle_call({export, NodeName, Name}, _From, State) ->
     {ok, Reply, NewState} = mgr_export_node(NodeName, Name, State),
     {reply, Reply, NewState};
@@ -257,10 +258,6 @@ mgr_setup_node(#{backend := Mod, name := Name} = NodeSpec, Backends) ->
             NodeState = Mod:setup_node(NodeSpec, BackendState),
             {Name, {Mod, NodeState}}
     end.
-
-mgr_log(Format, Params, #{log_fun := LogFun} = State) ->
-    log(LogFun, Format, Params),
-    State.
 
 mgr_export_node(NodeName, Name, #{nodes := Nodes} = State) ->
     {Mod, NodeState} = maps:get(NodeName, Nodes),
