@@ -170,9 +170,10 @@ handle_cast_(_Msg, St) ->
 
 %% FSM had died
 handle_info({'DOWN', Ref, process, Pid, _Reason},
-            #st{parent_mon_ref=Ref, parent=Pid}=St) ->
+            #st{parent_mon_ref=Ref, parent=Pid, econn=EConn}=St) ->
     lager:debug("Got DOWN from parent (~p)", [Pid]),
-    {stop, close, St};
+    close_econn(EConn),
+    {stop, normal, St};
 handle_info(Msg, St) ->
     try handle_info_(Msg, St)
     catch
@@ -201,7 +202,9 @@ code_change(_FromVsn, St, _Extra) ->
 close_econn(undefined) ->
     ok;
 close_econn(EConn) ->
-    enoise:close(EConn).
+    try enoise:close(EConn)
+    catch _:_ -> ok
+    end.
 
 
 cast(P, Msg) ->
