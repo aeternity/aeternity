@@ -954,22 +954,33 @@ handle_new_micro_block(S, Msg) ->
                 Header = aec_blocks:to_header(MicroBlock),
                 {ok, HH} = aec_headers:hash_header(Header),
                 epoch_sync:debug("Got new block: ~s", [pp(HH)]),
+                %% in the full micro block case - conductor will do the necessary checks
                 aec_conductor:post_block(MicroBlock);
             true ->
                 {ok, #{ header := Header, tx_hashes := TxHashes }} =
                     deserialize_light_micro_block(maps:get(micro_block, Msg)),
-                case get_micro_block_txs(TxHashes) of
-                    {all, Txs} ->
-                        MicroBlock = aec_blocks:new_micro_from_header(Header, Txs),
+                %% Before assembling the block, check if it is known, and valid
+                case pre_assembly_check(Header) of
+                    known ->
+                        ok;
+                    E = {error, _} ->
                         {ok, HH} = aec_headers:hash_header(Header),
-                        epoch_sync:debug("Got new block: ~s", [pp(HH)]),
-                        aec_conductor:post_block(MicroBlock);
-                    {some, TxsAndTxHashes} ->
-                        epoch_sync:info("Missing txs: ~p",
-                                        [[ TH || TH <- TxsAndTxHashes, is_binary(TH) ]]),
-                        cast(self(), {expand_micro_block, #{ header => Header,
-                                                             tx_data => TxsAndTxHashes }}),
-                        ok
+                        epoch_sync:info("Got invalid light micro_block (~s): ~p", [pp(HH), E]),
+                        ok;
+                    ok ->
+                        case get_micro_block_txs(TxHashes) of
+                            {all, Txs} ->
+                                MicroBlock = aec_blocks:new_micro_from_header(Header, Txs),
+                                {ok, HH} = aec_headers:hash_header(Header),
+                                epoch_sync:debug("Got new block: ~s", [pp(HH)]),
+                                aec_conductor:post_block(MicroBlock);
+                            {some, TxsAndTxHashes} ->
+                                epoch_sync:info("Missing txs: ~p",
+                                                [[ TH || TH <- TxsAndTxHashes, is_binary(TH) ]]),
+                                cast(self(), {expand_micro_block, #{ header => Header,
+                                                                     tx_data => TxsAndTxHashes }}),
+                                ok
+                        end
                 end
         end
     catch _:_ ->
@@ -1234,3 +1245,51 @@ get_micro_block_txs([TxHash | TxHashes], State, Acc) ->
         none         -> get_micro_block_txs(TxHashes, some, [TxHash | Acc]);
         {value, STx} -> get_micro_block_txs(TxHashes, State, [STx | Acc])
     end.
+
+pre_assembly_check(MicroHeader) ->
+    {ok, Hash} = aec_headers:hash_header(MicroHeader),
+    case aec_db:has_block(Hash) of
+        true -> known;
+        false ->
+            Validators = [fun validate_micro/1,
+                          fun validate_connected_to_chain/1,
+                          fun validate_delta_height/1,
+                          fun validate_micro_signature/1],
+            aeu_validation:run(Validators, [MicroHeader])
+    end.
+
+validate_connected_to_chain(MicroHeader) ->
+    case aec_chain_state:hash_is_connected_to_genesis(
+            aec_headers:prev_hash(MicroHeader)) of
+        true -> ok;
+        false -> {error, orphan_blocks_not_allowed}
+    end.
+
+validate_delta_height(MicroHeader) ->
+    Height = aec_headers:height(MicroHeader),
+    case aec_chain:top_header() of
+        undefined -> ok;
+        TopHeader ->
+            MaxDelta = aec_chain_state:gossip_allowed_height_from_top(),
+            case Height >= aec_headers:height(TopHeader) - MaxDelta of
+                true  -> ok;
+                false -> {error, too_far_below_top}
+            end
+    end.
+
+validate_micro(MicroHeader) ->
+    aec_headers:validate_micro_block_header(MicroHeader).
+
+validate_micro_signature(MicroHeader) ->
+    case aec_db:find_header(aec_headers:prev_key_hash(MicroHeader)) of
+        none -> {error, signer_not_found}; %% This is virtually impossible!
+        {value, KeyHeader} ->
+            Bin = aec_headers:serialize_to_signature_binary(MicroHeader),
+            Sig = aec_headers:signature(MicroHeader),
+            Signer = aec_headers:miner(KeyHeader),
+            case enacl:sign_verify_detached(Sig, Bin, Signer) of
+                {ok, _}    -> ok;
+                {error, _} -> {error, signature_verification_failed}
+            end
+    end.
+
