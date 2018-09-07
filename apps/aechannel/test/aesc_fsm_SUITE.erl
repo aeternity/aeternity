@@ -179,7 +179,7 @@ channel_with_push_amount_too_high(Cfg) ->
     {_, _, Spec} = channel_spec([{initiator_amount, 10},
                                  {port, Port}, ?SLOGAN|Cfg],
                                 _ChannelReserve = 6, _PushAmount = 5),
-    {badrpc, {'EXIT', push_amount_too_big}} =
+    {error, push_amount_too_big} =
         rpc(dev1, aesc_fsm, respond, [Port, Spec], Debug),
     {badrpc, {'EXIT', push_amount_too_big}} =
         rpc(dev1, aesc_fsm, initiate, ["localhost", Port, Spec], Debug),
