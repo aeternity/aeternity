@@ -493,16 +493,16 @@ handle_request('GetStatus', _Params, _Context) ->
             undefined -> 0
         end,
     {200, [],
-     #{<<"genesis-key-block-hash">>     => aec_base58c:encode(key_block_hash, GenesisBlockHash),
+     #{<<"genesis_key_block_hash">>     => aec_base58c:encode(key_block_hash, GenesisBlockHash),
        <<"solutions">>                  => Solutions,
        <<"difficulty">>                 => Difficulty,
        <<"syncing">>                    => Syncing,
        <<"listening">>                  => Listening,
        <<"protocols">>                  => Protocols,
-       <<"node-version">>               => NodeVersion,
-       <<"node-revision">>              => NodeRevision,
-       <<"peer-count">>                 => PeerCount,
-       <<"pending-transactions-count">> => PendingTxsCount}};
+       <<"node_version">>               => NodeVersion,
+       <<"node_revision">>              => NodeRevision,
+       <<"peer_count">>                 => PeerCount,
+       <<"pending_transactions_count">> => PendingTxsCount}};
 
 handle_request('GetContractCallFromTx', Req, _Context) ->
     ParseFuns = [read_required_params([tx_hash]),

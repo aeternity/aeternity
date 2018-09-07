@@ -3320,7 +3320,7 @@
     "Status" : {
       "type" : "object",
       "properties" : {
-        "genesis-key-block-hash" : {
+        "genesis_key_block_hash" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "solutions" : {
@@ -3344,18 +3344,18 @@
             "$ref" : "#/definitions/Protocol"
           }
         },
-        "node-version" : {
+        "node_version" : {
           "type" : "string"
         },
-        "node-revision" : {
+        "node_revision" : {
           "type" : "string"
         },
-        "peer-count" : {
+        "peer_count" : {
           "type" : "integer",
           "format" : "int64",
           "minimum" : 0
         },
-        "pending-transactions-count" : {
+        "pending_transactions_count" : {
           "type" : "integer",
           "format" : "int64",
           "minimum" : 0
@@ -3364,20 +3364,20 @@
       "example" : {
         "difficulty" : 6.02745618307040320615897144307382404804229736328125,
         "listening" : true,
+        "peer_count" : 0,
+        "pending_transactions_count" : 0,
+        "genesis_key_block_hash" : { },
         "syncing" : true,
-        "node-version" : "node-version",
+        "node_revision" : "node_revision",
         "solutions" : 0,
-        "node-revision" : "node-revision",
-        "peer-count" : 0,
+        "node_version" : "node_version",
         "protocols" : [ {
           "protocol_version" : 1,
           "effective_at_height" : 0
         }, {
           "protocol_version" : 1,
           "effective_at_height" : 0
-        } ],
-        "pending-transactions-count" : 0,
-        "genesis-key-block-hash" : { }
+        } ]
       }
     },
     "Protocol" : {
