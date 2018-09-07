@@ -10,8 +10,8 @@
 
 -export([ load/2
         , store/3
-	, init/2
-	, to_binary/1
+        , init/2
+        , to_binary/1
         , from_sophia_state/1
         , to_sophia_state/1
         , is_valid_key/2

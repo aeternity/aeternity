@@ -39,24 +39,24 @@
 -record(list,    {elems :: [expr()]}).
 
 -record(unop,    { op   :: term()
-		 , rand :: expr()}).
+                 , rand :: expr()}).
 
 -record(binop,   { op   :: term()
-		 , left :: expr()
-		 , right :: expr()}).
+                 , left :: expr()
+                 , right :: expr()}).
 
 -record(ifte,    { decision :: expr()
-		 , then :: expr()
-		 , else :: expr()}).
+                 , then :: expr()
+                 , else :: expr()}).
 
 -record(switch,  { expr  :: expr()
-		 , cases :: [{expr(),expr()}]}).
+                 , cases :: [{expr(),expr()}]}).
 
 -record(funcall, { function :: expr()
-		 , args     :: [expr()]}).
+                 , args     :: [expr()]}).
 
 -record(lambda,  { args :: arg_list(),
-		   body :: expr()}).
+                   body :: expr()}).
 
 -record(missing_field, { format :: string()
-		       , args   :: [term()]}).
+                       , args   :: [term()]}).

@@ -438,7 +438,7 @@ m_to_op('REVERT')         -> ?REVERT         ;
 m_to_op('COMMENT')        -> ?COMMENT("")    ;
 m_to_op('SUICIDE')        -> ?SUICIDE        ;
 m_to_op(Data) when 0=<Data, Data=<255
-	      	          -> Data            .
+                          -> Data            .
 
 push(N) when N >= 1, N =< 32 -> ?PUSH1 + N - 1.
 dup(N)  when N >= 1, N =< 16 -> ?DUP1  + N - 1.

@@ -11,8 +11,8 @@
 
 %% API
 -export([ call/4
-	, encode_call_data/4
-	, run/2]).
+        , encode_call_data/4
+        , run/2]).
 
 -define(PUB_SIZE, 32).
 
@@ -128,8 +128,8 @@ call_common(#{ caller     := CallerPubKey
         call_stack => CallStack
     }),
     try aevm_eeevm_state:init(Spec#{exec => Exec},
-			      #{trace => false
-			       }) of
+                              #{trace => false
+                               }) of
         InitState ->
             %% Update gas_used depending on exit type.
             try aevm_eeevm:eval(InitState) of

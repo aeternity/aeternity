@@ -7,11 +7,11 @@ compile_test() ->
     Dir = "apps/aevarna/test/contracts",
     {ok,Fs} = file:list_dir(Dir),
     Cfun = fun (F) ->
-		   case string:split(F, ".") of
-		       [_,"aev"] ->
-			   Name = Cwd ++ "/" ++ Dir ++ "/" ++ F,
-			   ?assertMatch({ok,_,_}, aeva_compile:file(Name));
-		       _ -> ok
-		   end
-	   end,
+                  case string:split(F, ".") of
+                      [_,"aev"] ->
+                      Name = Cwd ++ "/" ++ Dir ++ "/" ++ F,
+                      ?assertMatch({ok,_,_}, aeva_compile:file(Name));
+                      _ -> ok
+                  end
+            end,
     lists:foreach(Cfun, Fs).

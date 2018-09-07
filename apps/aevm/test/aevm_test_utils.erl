@@ -108,15 +108,15 @@ validate_no_post(#{}) ->
 
 validate_storage(State, #{exec := #{address := Addr}} = Spec) ->
     case Spec of
-	#{ post := Post} ->
-	    PostStorage =
-		case maps:get(Addr, Post, undefined) of
-		    undefined -> #{};
-		    #{storage := S}  -> S
-		end,
-	    Storage = aevm_eeevm_state:storage(State),
-	    ?assertEqual(PostStorage, Storage);
-	_ -> true
+        #{ post := Post} ->
+            PostStorage =
+            case maps:get(Addr, Post, undefined) of
+                undefined -> #{};
+                #{storage := S}  -> S
+            end,
+            Storage = aevm_eeevm_state:storage(State),
+            ?assertEqual(PostStorage, Storage);
+        _ -> true
     end.
 
 validate_out(State, #{out := SpecOut} =_Spec) ->

@@ -18,9 +18,9 @@
 %%%-------------------------------------------------------------------
 -module(aeu_hex).
 -export([ bin_to_hex/1
-	, hexstring_decode/1
-	, hexstring_encode/1
-	, hex_to_bin/1]).
+        , hexstring_decode/1
+        , hexstring_encode/1
+        , hex_to_bin/1]).
 
 -spec bin_to_hex(binary()) -> [byte()].
 bin_to_hex(Bin) ->
@@ -54,8 +54,8 @@ hexstring_decode(Binary) ->
             end,
             << << (hex_to_int(X)):4, (hex_to_int(Y)):4 >>
                   || <<X:8, Y:8>> <= BinaryAsHexString >>;
-	<<"0x">> -> <<>>;
-	<<>> -> <<>>;
+        <<"0x">> -> <<>>;
+        <<>> -> <<>>;
         _ -> throw(invalid_hex_string)
     end.
 

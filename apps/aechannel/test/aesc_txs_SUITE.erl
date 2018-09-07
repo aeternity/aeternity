@@ -199,7 +199,7 @@ groups() ->
       [close_solo_unknown_from,
        close_solo_wrong_amounts,
        close_solo_not_participant,
-			 close_solo_wrong_nonce,
+       close_solo_wrong_nonce,
        close_solo_payload_from_another_channel,
        close_solo_payload_not_co_signed,
        close_solo_invalid_state_hash,
@@ -219,7 +219,7 @@ groups() ->
        slash_unknown_from,
        slash_wrong_amounts,
        slash_not_participant,
-			 slash_wrong_nonce,
+       slash_wrong_nonce,
        slash_payload_from_another_channel,
        slash_payload_not_co_signed,
        slash_invalid_state_hash,
@@ -388,7 +388,7 @@ create_loaded_accounts(FAmt, SAmt) ->
 
 create_wrong_nonce(_Cfg) ->
     {Initiator, Responder, S0} = create_loaded_accounts(100, 100),
-		Nonce = 42,
+    Nonce = 42,
     S = aesc_test_utils:set_account_nonce(Initiator, Nonce, S0),
     Trees = aesc_test_utils:trees(S),
     Height = 1,
