@@ -771,7 +771,8 @@ create_channel_on_port(Port) ->
     Node = dev1,
     I = prep_initiator(Node),
     R = prep_responder(I, Node),
-    Cfg = [{port, Port}, {initiator, I}, {responder, R}, ?SLOGAN],
+    Cfg = [{port, Port}, {initiator, I}, {responder, R},
+           {initiator_amount, 50}, {responder_amount, 50}, ?SLOGAN],
     create_channel_(Cfg, get_debug(Cfg)).
 
 create_channel_(Cfg) ->
