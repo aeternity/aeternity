@@ -22,7 +22,7 @@
 %% test case exports
 -export([
           create_channel/1
-        , channel_with_push_amount_too_high/1
+        , channel_insufficent_tokens/1
         , inband_msgs/1
         , upd_transfer/1
         , update_with_conflict/1
@@ -72,7 +72,7 @@ groups() ->
      {transactions, [sequence],
       [
         create_channel
-      , channel_with_push_amount_too_high
+      , channel_insufficent_tokens
       , inband_msgs
       , upd_transfer
       , update_with_conflict
@@ -173,16 +173,24 @@ create_channel(Cfg) ->
     check_info(500),
     ok.
 
-channel_with_push_amount_too_high(Cfg) ->
+channel_insufficent_tokens(Cfg) ->
     Debug = get_debug(Cfg),
     Port = 9325,
-    {_, _, Spec} = channel_spec([{initiator_amount, 10},
-                                 {port, Port}, ?SLOGAN|Cfg],
-                                _ChannelReserve = 6, _PushAmount = 5),
-    {error, push_amount_too_big} =
-        rpc(dev1, aesc_fsm, respond, [Port, Spec], Debug),
-    {badrpc, {'EXIT', push_amount_too_big}} =
-        rpc(dev1, aesc_fsm, initiate, ["localhost", Port, Spec], Debug),
+    Test =
+        fun(IAmt, RAmt, ChannelReserve, PushAmount, Error) ->
+            {_, _, Spec} =
+                channel_spec([{initiator_amount, IAmt},
+                              {responder_amount, RAmt},
+                              {port, Port}, ?SLOGAN|Cfg],
+                              ChannelReserve, PushAmount),
+            {error, Error} =
+                rpc(dev1, aesc_fsm, respond, [Port, Spec], Debug),
+            {error, Error} =
+                rpc(dev1, aesc_fsm, initiate, ["localhost", Port, Spec], Debug)
+        end,
+    Test(10, 10, 5, 6, insufficient_initiator_amount),
+    Test(10, 1, 5, 3, insufficient_responder_amount),
+    Test(1, 1, 5, 3, insufficient_amounts),
     ok.
 
 inband_msgs(Cfg) ->

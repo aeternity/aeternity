@@ -35,7 +35,7 @@
          prune_calls/1
         ]).
 
--spec new(map()) -> {ok, state()} | {error, atom()}.
+-spec new(map()) -> {ok, state()}.
 new(Opts) ->
     lager:debug("offchain_tx:new(~p)", [Opts]),
     case Opts of
@@ -49,13 +49,6 @@ new(Opts) ->
             new_(Opts)
     end.
 
-new_(#{initiator_amount    := InitiatorAmount
-      , push_amount        := PushAmount
-      , channel_reserve    := ChannelReserve})
-    when ChannelReserve > InitiatorAmount - PushAmount ->
-    %% applying the push_amount on the initiator's amount will bring it bellow
-    %% the channel_reseve treshhold 
-    {error, push_amount_too_big};
 new_(#{ initiator          := InitiatorPubKey
       , responder          := ResponderPubKey
       , initiator_amount   := InitiatorAmount
