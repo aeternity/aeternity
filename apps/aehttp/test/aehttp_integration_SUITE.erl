@@ -3392,15 +3392,22 @@ sc_ws_open(Config) ->
     ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt),
     {ok, IConnPid} = channel_ws_start(initiator,
                                            maps:put(host, <<"localhost">>, ChannelOpts)),
-    ok = ?WS:register_test_for_channel_events(IConnPid, [info, sign, on_chain_tx]),
+    ok = ?WS:register_test_for_channel_events(IConnPid, [info, get, sign, on_chain_tx]),
 
     {ok, RConnPid} = channel_ws_start(responder, ChannelOpts),
 
-    ok = ?WS:register_test_for_channel_events(RConnPid, [info, sign, on_chain_tx]),
+    ok = ?WS:register_test_for_channel_events(RConnPid, [info, get, sign, on_chain_tx]),
 
     channel_send_conn_open_infos(RConnPid, IConnPid),
 
     ChannelCreateFee = channel_create(Config, IConnPid, RConnPid),
+    {ok, {IBal, RBal}} = sc_ws_get_both_balances(IConnPid,
+                                                 IPubkey,
+                                                 RPubkey),
+    %% assert off-chain balances
+    PushAmt = maps:get(push_amount, ChannelOpts),
+    IBal = IAmt - PushAmt,
+    RBal = RAmt + PushAmt,
 
     %% ensure new balances
     assert_balance(IPubkey, IStartAmt - IAmt - ChannelCreateFee),
@@ -4347,7 +4354,7 @@ channel_options(IPubkey, RPubkey, IAmt, RAmt, Other) ->
                   initiator_id => aec_base58c:encode(account_pubkey, IPubkey),
                   responder_id => aec_base58c:encode(account_pubkey, RPubkey),
                   lock_period => 10,
-                  push_amount => 10,
+                  push_amount => 1,
                   initiator_amount => IAmt,
                   responder_amount => RAmt,
                   channel_reserve => 2

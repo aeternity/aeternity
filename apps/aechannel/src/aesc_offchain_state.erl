@@ -52,7 +52,8 @@ new(Opts) ->
 new_(#{ initiator          := InitiatorPubKey
       , responder          := ResponderPubKey
       , initiator_amount   := InitiatorAmount
-      , responder_amount   := ResponderAmount }) ->
+      , responder_amount   := ResponderAmount
+      , push_amount        := PushAmount}) ->
     Trees0 = aec_trees:new_without_backend(),
     Accounts =
         lists:foldl(
@@ -61,8 +62,8 @@ new_(#{ initiator          := InitiatorPubKey
             aec_accounts_trees:enter(Account, AccTree)
         end,
         aec_trees:accounts(Trees0),
-        [{InitiatorPubKey, InitiatorAmount},
-         {ResponderPubKey, ResponderAmount}]),
+        [{InitiatorPubKey, InitiatorAmount - PushAmount},
+         {ResponderPubKey, ResponderAmount + PushAmount}]),
     Trees = aec_trees:set_accounts(Trees0, Accounts),
     {ok, #state{trees=Trees, calls = aect_call_state_tree:empty()}}.
 
