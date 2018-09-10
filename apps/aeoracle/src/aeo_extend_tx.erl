@@ -100,7 +100,8 @@ check(#oracle_extend_tx{nonce = Nonce, oracle_ttl = OTTL, fee = Fee} = Tx,
       Context, Trees, Height, _ConsensusVersion) ->
     OraclePK = oracle_pubkey(Tx),
     Checks =
-        [fun() -> aetx_utils:check_account(OraclePK, Trees, Nonce, Fee) end,
+        [fun() -> check_oracle_extension_ttl(OTTL) end,
+         fun() -> aetx_utils:check_account(OraclePK, Trees, Nonce, Fee) end,
          fun() -> ensure_oracle(OraclePK, Trees) end
          | case Context of
                aetx_contract -> []; %% TODO Cater for TTL fee from contract.
@@ -193,6 +194,14 @@ for_client(#oracle_extend_tx{oracle_id = OracleId,
       <<"ttl">>         => TTL}.
 
 %% -- Local functions  -------------------------------------------------------
+
+-dialyzer({no_match, check_oracle_extension_ttl/1}).
+check_oracle_extension_ttl({delta, D}) when is_integer(D), D > 0 ->
+    ok;
+check_oracle_extension_ttl({delta, 0}) ->
+    {error, zero_relative_oracle_extension_ttl};
+check_oracle_extension_ttl({block, _}) ->
+    {error, absolute_oracle_extension_ttl}.
 
 ensure_oracle(PubKey, Trees) ->
     OraclesTree  = aec_trees:oracles(Trees),

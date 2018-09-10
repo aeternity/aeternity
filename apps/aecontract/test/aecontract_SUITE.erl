@@ -758,7 +758,7 @@ sophia_oracles(_Cfg) ->
     none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
     {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {CtId, QId, 0, 4001}),
     {some, 4001}      = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
-    {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Ct, 0, FixedTTL(TTL + 10)}),
+    {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Ct, 0, RelativeTTL(10)}),
 
     %% Test complex answers
     Ct1 = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
@@ -803,8 +803,9 @@ step_ttl(St = #{ account := Acc, contract := Ct }, Height, Cmd) ->
             #{ oracle := Oracle, oracle_ttl := TTLo } = St,
             Res = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Oracle, 0, Enc(TTL)}, #{ height => Height }),
             NewTTLo = ttl_height(TTLo, TTL),
-            %% Can't extend if expired, and new expiry must be > old expiry
-            case TTLo >= Height andalso NewTTLo > TTLo of
+            %% Can't extend if expired, and new expiry must be > old expiry,
+            %% and TTL must be relative.
+            case TTLo >= Height andalso NewTTLo > TTLo andalso element(1, TTL) == delta of
                 true  -> {} = Res, St#{ oracle_ttl => NewTTLo }; %% Extend relative to previous expiry
                 false -> Error = Res, St
             end;
@@ -851,8 +852,8 @@ ttl_scenario_create_and_extend(Start0, Extend0, Stop0) ->
       || Start <- List(Start0), Extend <- List(Extend0), Stop <- List(Stop0),
          TTLo <- [ T || Extend == false, T <- ttls(Start, [Stop]) ] ++
                  [ T || Extend /= false, T <- ttls(Start, [Extend + 5]) ],
-         TTLe <- [ 0 || Extend == false ] ++
-                 [ T || Extend /= false, T <- ttls(ttl_height(Start, TTLo), [Stop]) ] ].
+         TTLe = {delta, _} <- [ 0 || Extend == false ] ++
+                              [ T || Extend /= false, T <- ttls(ttl_height(Start, TTLo), [Stop]) ] ].
 
 %% Base scenario for failing or unnecessary extends.
 ttl_scenario_bad_extend(Start0, Extend0, Stop0) ->
@@ -865,7 +866,8 @@ ttl_scenario_bad_extend(Start0, Extend0, Stop0) ->
                      [Extend - 5,   %% Try to extend before current height
                       Extend,       %% Equal to current height
                       Extend + 5,   %% Between now and planned expiry
-                      Stop])        %% Same as previous expiry
+                      Stop]) ++     %% Same as previous expiry
+                [{block, ttl_height(Start, TTLo) + 5}] %% After previous, but absolute TTL
     ].
 
 %% Base scenario for setting up a query
