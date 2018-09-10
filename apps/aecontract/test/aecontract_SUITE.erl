@@ -604,7 +604,13 @@ create_contract(Owner, Name, Args, Options, S) ->
     PrivKey  = aect_test_utils:priv_key(Owner, S),
     {ok, S1} = sign_and_apply_transaction(CreateTx, PrivKey, S, Height),
     ContractKey = aect_contracts:compute_contract_pubkey(Owner, Nonce),
-    {ContractKey, S1}.
+    CallKey     = aect_call:id(Owner, Nonce, ContractKey),
+    CallTree    = aect_test_utils:calls(S1),
+    Call        = aect_call_state_tree:get_call(ContractKey, CallKey, CallTree),
+    case maps:get(return_gas_used, Options, false) of
+        false -> {ContractKey, S1};
+        true  -> {{ContractKey, aect_call:gas_used(Call)}, S1}
+    end.
 
 call_contract(Caller, ContractKey, Fun, Type, Args, S) ->
     call_contract(Caller, ContractKey, Fun, Type, Args, #{}, S).
@@ -635,7 +641,10 @@ call_contract(Caller, ContractKey, Fun, Type, Args0, Options, S) ->
             error  -> {error, aect_call:return_value(Call)};
             revert -> revert
         end,
-    {Result, S1}.
+    case maps:get(return_gas_used, Options, false) of
+        false -> {Result, S1};
+        true  -> {{Result, aect_call:gas_used(Call)}, S1}
+    end.
 
 account_balance(PubKey, S) ->
     Account = aect_test_utils:get_account(PubKey, S),
