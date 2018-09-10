@@ -27,6 +27,7 @@
         , cp/1
         , data/1
         , difficulty/1
+        , do_return/3
         , extcode/2
         , extcode/4
         , extcodesize/2
@@ -176,6 +177,11 @@ init_vm(State, Code, Mem, Store) ->
             State2 = aevm_eeevm_memory:write_area(Addr, Data, State1),
             aevm_eeevm_memory:store(0, Addr, State2)
     end.
+
+%% Us0 is pointer to a return data binary and Us1 is the size.
+do_return(Us0, Us1, State) ->
+    {Out, State1} = aevm_eeevm_memory:get_area(Us0, Us1, State),
+    aevm_eeevm_state:set_out(Out, State1).
 
 call_contract(Caller, Target, CallGas, Value, Data, State) ->
     case vm_version(State) of

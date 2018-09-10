@@ -1139,9 +1139,8 @@ loop(StateIn) ->
                     %% µ'i ≡ M(µi, µs[0], µs[1]) TODO: This
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
-                    {Out, State3} = aevm_eeevm_memory:get_area(Us0, Us1, State2),
-                    State4 = aevm_eeevm_state:set_out(Out, State3),
-                    spend_mem_gas(State, State4);
+                    State3 = aevm_eeevm_state:do_return(Us0, Us1, State2),
+                    spend_mem_gas(State, State3);
                 ?DELEGATECALL ->
                     %% 0xf4 DELEGATECALL  δ=6 α=1
                     %% Message-call into this account with an
