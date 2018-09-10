@@ -114,7 +114,8 @@ test_simple_same_node_channel(Cfg) ->
         initiator_amount => 80,
         responder_node => node1,
         responder_id => ?ALICE,
-        responder_amount => 80
+        responder_amount => 80,
+        push_amount => 2
     },
     simple_channel_test(ChannelOpts, Cfg).
 
@@ -125,7 +126,8 @@ test_simple_different_nodes_channel(Cfg) ->
         initiator_amount => 80,
         responder_node => node2,
         responder_id => ?ALICE,
-        responder_amount => 80
+        responder_amount => 80,
+        push_amount => 2
     },
     simple_channel_test(ChannelOpts, Cfg).
 
@@ -134,7 +136,8 @@ simple_channel_test(ChannelOpts, Cfg) ->
         initiator_id     := IAccount,
         initiator_amount := IAmt,
         responder_id     := RAccount,
-        responder_amount := RAmt
+        responder_amount := RAmt,
+        push_amount      := PushAmount
     } = ChannelOpts,
 
     MikePubkey = aec_base58c:encode(account_pubkey, maps:get(pubkey, ?MIKE)),
@@ -169,8 +172,8 @@ simple_channel_test(ChannelOpts, Cfg) ->
 
     {ok, CloseTxHash, IChange, RChange} = sc_close_mutual(Chan, initiator),
 
-    ?assertEqual(IAmt - 20 - OpenFee, IChange),
-    ?assertEqual(RAmt - 50, RChange),
+    ?assertEqual(IAmt - 20 - OpenFee - PushAmount, IChange),
+    ?assertEqual(RAmt - 50 + PushAmount, RChange),
     
     wait_for_value({txs_on_chain, [CloseTxHash]}, NodeNames, 5000, Cfg),
     wait_for_value({balance, maps:get(pubkey, IAccount), 200 - IAmt - OpenFee + 20 - WFee1 + IChange}, NodeNames, 10000, Cfg),
