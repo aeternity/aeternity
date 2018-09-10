@@ -195,6 +195,7 @@ for_client(#oracle_extend_tx{oracle_id = OracleId,
 
 %% -- Local functions  -------------------------------------------------------
 
+-dialyzer({no_match, check_oracle_extension_ttl/1}).
 check_oracle_extension_ttl({delta, D}) when is_integer(D), D > 0 ->
     ok;
 check_oracle_extension_ttl({delta, 0}) ->
