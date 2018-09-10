@@ -12,6 +12,7 @@
          assert_micro_header/1,
          beneficiary/1,
          deserialize_from_binary/1,
+         deserialize_from_client/2,
          deserialize_from_map/1,
          deserialize_key_from_binary/1,
          deserialize_micro_from_binary/1,
@@ -368,6 +369,24 @@ encode_block_hash(key, Hash) ->
 encode_block_hash(micro, Hash) ->
     aec_base58c:encode(micro_block_hash, Hash).
 
+-spec deserialize_from_client(key, map()) -> {ok, header()} | {error, term()}.
+deserialize_from_client(key, KeyBlock) ->
+    try
+        {ok, #key_header{height       = maps:get(<<"height">>, KeyBlock),
+                         prev_hash    = decode_block_hash(maps:get(<<"prev_hash">>, KeyBlock)),
+                         prev_key     = decode(key_block_hash, maps:get(<<"prev_key_hash">>, KeyBlock)),
+                         root_hash    = decode(block_state_hash, maps:get(<<"state_hash">>, KeyBlock)),
+                         miner        = decode(account_pubkey, maps:get(<<"miner">>, KeyBlock)),
+                         beneficiary  = decode(account_pubkey, maps:get(<<"beneficiary">>, KeyBlock)),
+                         target       = maps:get(<<"target">>, KeyBlock),
+                         pow_evidence = deserialize_pow_evidence(maps:get(<<"pow">>, KeyBlock)),
+                         nonce        = maps:get(<<"nonce">>, KeyBlock),
+                         time         = maps:get(<<"time">>, KeyBlock),
+                         version      = maps:get(<<"version">>, KeyBlock)}}
+    catch
+        _:_ -> {error, invalid_header}
+    end.
+
 -spec deserialize_from_map(map()) -> {'ok', header()} | {'error', term()}.
 deserialize_from_map(#{<<"height">> := Height,
                        <<"prev_hash">> := PrevHash,
@@ -648,3 +667,22 @@ validate_max_time({Header, _}) ->
         false ->
             {error, block_from_the_future}
     end.
+
+%% TODO: this is taken from ws_int_dispatch.erl - needs refactoring after
+%% separation of key/micro block records.
+decode_block_hash(Hash) ->
+    case aec_base58c:safe_decode(key_block_hash, Hash) of
+        {ok, KeyBlockHash} ->
+            KeyBlockHash;
+        {error, _Rsn} ->
+            case aec_base58c:safe_decode(micro_block_hash, Hash) of
+                {ok, MicroBlockHash} ->
+                    MicroBlockHash;
+                {error, _Rsn} = Err ->
+                    Err
+            end
+    end.
+
+decode(Type, Enc) ->
+    {ok, Val} = aec_base58c:safe_decode(Type, Enc),
+    Val.

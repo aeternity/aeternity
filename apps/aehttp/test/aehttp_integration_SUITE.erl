@@ -27,6 +27,7 @@
     get_current_key_block_hash/1,
     get_current_key_block_height/1,
     get_pending_key_block/1,
+    post_key_block/1,
     get_key_block_by_hash/1,
     get_key_block_by_height/1
    ]).
@@ -283,7 +284,8 @@ groups() ->
       ]},
      {chain_with_pending_key_block, [],
       [
-       get_pending_key_block
+       get_pending_key_block,
+       post_key_block
       ]},
      {block_info, [sequence],
       [
@@ -634,14 +636,8 @@ init_per_group(on_micro_block = Group, Config) ->
      {current_block_type, micro_block},
      {pending_key_block, PendingKeyBlock} | Config1];
 init_per_group(chain_with_pending_key_block, Config) ->
-    %% Expect a key block each hour.
-    MineRate = 60 * 60 * 1000,
-    ok = rpc(application, set_env, [aecore, expected_mine_rate, MineRate]),
-    ok = rpc(aec_conductor, start_mining, []),
     {ok, PendingKeyBlock} = wait_for_key_block_candidate(),
-    [{expected_mine_rate, MineRate},
-     {pending_key_block, PendingKeyBlock},
-     {pending_key_block_hash, hash(key, PendingKeyBlock)} | Config];
+    [{pending_key_block, PendingKeyBlock} | Config];
 init_per_group(block_info, Config) ->
     Config;
 %% account_endpoints
@@ -774,7 +770,7 @@ end_per_group(Group, _Config) when
       Group =:= tx_info ->
     ok;
 end_per_group(chain_with_pending_key_block, _Config) ->
-    ok = rpc(aec_conductor, stop_mining, []);
+    ok;
 end_per_group(account_with_pending_tx, _Config) ->
     ok;
 end_per_group(oracle_txs, _Config) ->
@@ -1108,6 +1104,19 @@ get_key_block_by_height(micro_block, Config) ->
     ?assertEqual(PrevKeyBlockHeight, maps:get(<<"height">>, Block)),
     ok.
 
+post_key_block(Config) ->
+    post_key_block(?config(current_block_type, Config), Config).
+
+post_key_block(_CurrentBlockType, Config) ->
+    {ok, 200, PendingKeyBlock} = get_key_blocks_pending_sut(),
+    PowEvidence = lists:duplicate(42, 1),
+    Nonce = 1,
+    KeyBlock = PendingKeyBlock#{<<"pow">> => PowEvidence, <<"nonce">> => Nonce},
+    {ok, 400, Error} = post_key_blocks_sut(KeyBlock),
+    %% Block is always rejected - pow and nonce are not correct.
+    ?assertEqual(<<"Block rejected">>, maps:get(<<"reason">>, Error)),
+    ok.
+
 get_key_blocks_current_sut() ->
     Host = external_address(),
     http_request(Host, get, "key-blocks/current", []).
@@ -1131,6 +1140,10 @@ get_key_blocks_by_height_sut(Height) ->
 get_key_blocks_by_hash_sut(Hash) ->
     Host = external_address(),
     http_request(Host, get, "key-blocks/hash/" ++ http_uri:encode(Hash), []).
+
+post_key_blocks_sut(KeyBlock) ->
+    Host = internal_address(),
+    http_request(Host, post, "key-blocks", KeyBlock).
 
 %% /micro-blocks/*
 
