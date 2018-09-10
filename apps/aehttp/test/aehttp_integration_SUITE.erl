@@ -1720,16 +1720,16 @@ get_peers_pubkey_sut() ->
 
 get_status(_Config) ->
     {ok, 200, #{
-       <<"genesis-key-block-hash">>     := _,
+       <<"genesis_key_block_hash">>     := _,
        <<"solutions">>                  := _,
        <<"difficulty">>                 := _,
        <<"syncing">>                    := _,
        <<"listening">>                  := _,
        <<"protocols">>                  := _,
-       <<"node-version">>               := _,
-       <<"node-revision">>              := _,
-       <<"peer-count">>                 := _,
-       <<"pending-transactions-count">> := _
+       <<"node_version">>               := _,
+       <<"node_revision">>              := _,
+       <<"peer_count">>                 := _,
+       <<"pending_transactions_count">> := _
       }} = get_status_sut(),
     ok.
 

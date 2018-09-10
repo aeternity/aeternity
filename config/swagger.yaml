@@ -2527,7 +2527,7 @@ definitions:
   Status:
     type: object
     properties:
-      genesis-key-block-hash:
+      genesis_key_block_hash:
         $ref: '#/definitions/EncodedHash'
       solutions:
         type: integer
@@ -2544,15 +2544,15 @@ definitions:
         type: array
         items:
           $ref: '#/definitions/Protocol'
-      node-version:
+      node_version:
         type: string
-      node-revision:
+      node_revision:
         type: string
-      peer-count:
+      peer_count:
         type: integer
         format: int64
         minimum: 0
-      pending-transactions-count:
+      pending_transactions_count:
         type: integer
         format: int64
         minimum: 0
