@@ -44,7 +44,7 @@
 -callback oracle_register(Account :: pubkey(),
                           Sign :: binary(),
                           QueryFee :: non_neg_integer(),
-                          TTL :: non_neg_integer(),
+                          TTL :: aeo_oracles:ttl(),
                           DecodedQType :: aeso_sophia:type(),
                           DecodedRType :: aeso_sophia:type(),
                           ChainState :: chain_state()) ->
@@ -53,8 +53,8 @@
 -callback oracle_query(Oracle :: pubkey(),
                        Query :: term(),
                        Value :: non_neg_integer(),
-                       QueryTTL :: non_neg_integer(),
-                       ResponseTTL :: non_neg_integer(),
+                       QueryTTL :: aeo_oracles:ttl(),
+                       ResponseTTL :: aeo_oracles:ttl(),
                        ChainState :: chain_state()) ->
     {ok, QueryId :: pubkey(), chain_state()} | {error, term()}.
 
@@ -67,7 +67,7 @@
 
 -callback oracle_extend(Oracle :: pubkey(),
                         Sign :: binary(),
-                        TTL :: non_neg_integer(),
+                        TTL :: aeo_oracles:ttl(),
                         ChainState :: chain_state()) ->
     {ok, chain_state()} | {error, term()}.
 

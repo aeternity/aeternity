@@ -29,6 +29,13 @@
         , sophia_spend/1
         , sophia_typed_calls/1
         , sophia_oracles/1
+        , sophia_oracles_ttl__extend_after_expiry/1
+        , sophia_oracles_ttl__fixed_rttl/1
+        , sophia_oracles_ttl__qttl_too_long/1
+        , sophia_oracles_ttl__answer_after_qttl/1
+        , sophia_oracles_ttl__get_answer_after_rttl/1
+        , sophia_oracles_ttl__happy_path/1
+        , sophia_oracles_ttl__good_query_bad_extend/1
         , sophia_oracles_qfee__basic/1
         , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle/1
         , sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle/1
@@ -107,6 +114,7 @@ groups() ->
                                  sophia_spend,
                                  sophia_typed_calls,
                                  sophia_oracles,
+                                 {group, sophia_oracles_ttl},
                                  {group, sophia_oracles_query_fee_happy_path},
                                  {group, sophia_oracles_query_fee_happy_path_remote},
                                  {group, sophia_oracles_query_fee_unhappy_path},
@@ -117,6 +125,15 @@ groups() ->
                                  sophia_savecoinbase,
                                  sophia_fundme,
                                  sophia_aens ]}
+    , {sophia_oracles_ttl, [],
+          %% Test Oracle TTL handling
+        [ sophia_oracles_ttl__extend_after_expiry
+        , sophia_oracles_ttl__fixed_rttl
+        , sophia_oracles_ttl__qttl_too_long
+        , sophia_oracles_ttl__answer_after_qttl
+        , sophia_oracles_ttl__get_answer_after_rttl
+        , sophia_oracles_ttl__happy_path
+        , sophia_oracles_ttl__good_query_bad_extend ]}
     , {sophia_oracles_query_fee_happy_path, [],
        [ %% Test query fee handling from txs calling contract that calls oracle builtins.
          sophia_oracles_qfee__basic
@@ -503,6 +520,10 @@ call(Fun, Xs) when is_function(Fun, 1 + length(Xs)) ->
 -define(call(Fun, X, Y, Z, U, V),    call(Fun, fun Fun/6, [X, Y, Z, U, V])).
 -define(call(Fun, X, Y, Z, U, V, W), call(Fun, fun Fun/7, [X, Y, Z, U, V, W])).
 
+perform_pre_transformations(Height, S) ->
+    Trees = aec_trees:perform_pre_transformations(aect_test_utils:trees(S), Height),
+    {ok, aect_test_utils:set_trees(Trees, S)}.
+
 new_account(Balance, S) ->
     aect_test_utils:setup_new_account(Balance, S).
 
@@ -718,25 +739,26 @@ sophia_typed_calls(_Cfg) ->
 %% Oracles tests
 
 %% TODO:
-%%  - TTL stuff
 %%  - signatures (when oracle is different from contract)
-%%  - Handling of fees
 %%  - Failing calls
 sophia_oracles(_Cfg) ->
     state(aect_test_utils:new_state()),
+    RelativeTTL       = fun(Delta)  -> {variant, 0, [Delta]} end,
+    FixedTTL          = fun(Height) -> {variant, 1, [Height]} end,
     Acc               = ?call(new_account, 1000000),
     Ct = <<CtId:256>> = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
     QueryFee          = 100,
     TTL               = 15,
-    CtId              = ?call(call_contract, Acc, Ct, registerOracle, word, {CtId, 0, QueryFee, TTL}),
+    CtId              = ?call(call_contract, Acc, Ct, registerOracle, word, {CtId, 0, QueryFee, FixedTTL(TTL)}),
     Question          = <<"Manchester United vs Brommapojkarna">>,
-    QId               = ?call(call_contract, Acc, Ct, createQuery, word, {Ct, Question, QueryFee, 5, 5}, #{amount => QueryFee}),
+    QId               = ?call(call_contract, Acc, Ct, createQuery, word,
+                                {Ct, Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
     Question          = ?call(call_contract, Acc, Ct, getQuestion, string, {CtId, QId}),
     QueryFee          = ?call(call_contract, Acc, Ct, queryFee, word, Ct),
     none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
     {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {CtId, QId, 0, 4001}),
     {some, 4001}      = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
-    {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Ct, 0, TTL + 10}),
+    {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Ct, 0, RelativeTTL(10)}),
 
     %% Test complex answers
     Ct1 = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
@@ -746,6 +768,201 @@ sophia_oracles(_Cfg) ->
     Answer       = {yesAnswer, {how, <<"birds fly?">>}, <<"magic">>, 1337},
     {some, Answer} = ?call(call_contract, Acc, Ct1, complexOracle, {option, AnswerType}, {Question1, 0}),
     ok.
+
+%% Oracle TTL tests
+
+%% Tests are checked by a little state machine keeping track of a single oracle
+%% and query.
+interpret_ttl(St, Cmds) ->
+    interpret_ttl(St, 0, Cmds).
+
+interpret_ttl(St, _, []) -> St;
+interpret_ttl(St, H, [{H, Cmd} | Rest]) ->
+    ?call(perform_pre_transformations, H),
+    St1 = step_ttl(St, H, Cmd),
+    interpret_ttl(St1, H + 1, Rest);
+interpret_ttl(St, H, Cmds) ->
+    ?call(perform_pre_transformations, H),
+    interpret_ttl(St, H + 1, Cmds).
+
+ttl_height(H, {delta, D}) -> D + H;
+ttl_height(_, {block, H}) -> H.
+
+%% Run a single transaction from an Oracle TTL scenario and check the results.
+step_ttl(St = #{ account := Acc, contract := Ct }, Height, Cmd) ->
+    Enc = fun({delta, D}) -> {variant, 0, [D]};
+             ({block, H}) -> {variant, 1, [H]} end,
+    QFee = 10,
+    Error = {error, <<"out_of_gas">>},
+    io:format("-- At height ~p --\nState ~p\nTransaction: ~p\n", [Height, St, Cmd]),
+    case Cmd of
+        {create, TTL} ->
+            Oracle = ?call(call_contract, Acc, Ct, registerOracle, word, {Ct, 0, QFee, Enc(TTL)}, #{ height => Height }),
+            St#{ oracle => Oracle, oracle_ttl => ttl_height(Height, TTL) };
+        {extend, TTL} ->
+            #{ oracle := Oracle, oracle_ttl := TTLo } = St,
+            Res = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Oracle, 0, Enc(TTL)}, #{ height => Height }),
+            NewTTLo = ttl_height(TTLo, TTL),
+            %% Can't extend if expired, and new expiry must be > old expiry,
+            %% and TTL must be relative.
+            case TTLo >= Height andalso NewTTLo > TTLo andalso element(1, TTL) == delta of
+                true  -> {} = Res, St#{ oracle_ttl => NewTTLo }; %% Extend relative to previous expiry
+                false -> Error = Res, St
+            end;
+        {query, TTLq, TTLr} ->
+            #{ oracle := Oracle, oracle_ttl := TTLo } = St,
+            Res = ?call(call_contract, Acc, Ct, createQuery, word, {Oracle, <<"?">>, QFee, Enc(TTLq), Enc(TTLr)},
+                                         #{ height => Height, amount => QFee }),
+            AbsTTLq = ttl_height(Height, TTLq),
+            AbsTTLr = ttl_height(AbsTTLq, TTLr),
+            %% Latest possible response expiry must be before oracle expiry and
+            %% response TTL must be relative.
+            case TTLo >= AbsTTLr andalso element(1, TTLr) == delta of
+                true ->
+                    true = is_integer(Res),
+                    St#{ query => Res, query_ttl => AbsTTLq, reply_ttl => TTLr };
+                _ -> Error = Res, St
+            end;
+        respond ->
+            #{ oracle := Oracle, query := Query, query_ttl := TTLq, reply_ttl := TTLr } = St,
+            Res = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {Oracle, Query, 0, 42}, #{ height => Height }),
+            case TTLq >= Height of  %% Query must not have expired
+                true  -> St#{ reply_ttl => ttl_height(Height, TTLr) };
+                false -> Error = Res, St
+            end;
+        getAnswer ->
+            #{ oracle := Oracle, query := Query, reply_ttl := TTLr } = St,
+            ExpectedRes = case TTLr >= Height of   %% Response must not have expired,
+                            true  -> {some, 42};   %% and we only ask after responding.
+                            false -> none
+                          end,
+            ExpectedRes = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {Oracle, Query}, #{ height => Height }),
+            St
+    end.
+
+ttls(Now, Ts) ->
+    [{block, T} || T <- Ts] ++
+    [{delta, T - Now} || T <- Ts, T > Now].
+
+%% Base scenario for setting up and possibly extending an oracle.
+ttl_scenario_create_and_extend(Start0, Extend0, Stop0) ->
+    List = fun(X) when is_list(X) -> X; (X) -> [X] end,
+    [ [ {Start,  {create, TTLo}} ] ++
+      [ {Extend, {extend, TTLe}} || Extend /= false ]
+      || Start <- List(Start0), Extend <- List(Extend0), Stop <- List(Stop0),
+         TTLo <- [ T || Extend == false, T <- ttls(Start, [Stop]) ] ++
+                 [ T || Extend /= false, T <- ttls(Start, [Extend + 5]) ],
+         TTLe = {delta, _} <- [ {delta, 0} || Extend == false ] ++
+                              [ T || Extend /= false, T <- ttls(ttl_height(Start, TTLo), [Stop]) ] ].
+
+%% Base scenario for failing or unnecessary extends.
+ttl_scenario_bad_extend(Start0, Extend0, Stop0) ->
+    List = fun(X) when is_list(X) -> X; (X) -> [X] end,
+    [ [ {Start,  {create, TTLo}},
+        {Extend, {extend, TTLe}} ]
+    || Start <- List(Start0), Extend <- List(Extend0), Stop <- List(Stop0),
+       TTLo  <- ttls(Start, [Stop]),
+       TTLe  <- ttls(ttl_height(Start, TTLo),
+                     [Extend - 5,   %% Try to extend before current height
+                      Extend,       %% Equal to current height
+                      Extend + 5,   %% Between now and planned expiry
+                      Stop]) ++     %% Same as previous expiry
+                [{block, ttl_height(Start, TTLo) + 5}] %% After previous, but absolute TTL
+    ].
+
+%% Base scenario for setting up a query
+ttl_scenario_create_query(Start0, Extend0, Query0, QTTL0, RTTL0, Stop0) ->
+    List = fun(X) when is_list(X) -> X; (X) -> [X] end,
+    [ combine_ttl_scenarios(Setup, [{Query, {query, QTTL, {delta, RTTL}}}])
+    || Setup <- ttl_scenario_create_and_extend(Start0, Extend0, Stop0),
+       Query <- List(Query0),
+       QTTL  <- ttls(Query, List(QTTL0)),
+       RTTL  <- List(RTTL0) ].
+
+%% Extending an oracle must be done before expiry.
+ttl_scenario_extend_after_expiry() ->
+    [ [ {10, {create, TTLo}},
+        {20, {extend, TTLe}} ]
+    || TTLo <- ttls(10, [15]),
+       TTLe <- ttls(20, [25]) ].
+
+%% Absolute RTTLs are not allowed.
+ttl_scenario_fixed_rttl() ->
+    [ combine_ttl_scenarios(Setup, [{20, {query, QTTL, {block, 40}}}])
+    || Setup <- ttl_scenario_create_and_extend(10, false, 100),
+       QTTL  <- ttls(20, [30]) ].
+
+%% Query TTL too long
+ttl_scenario_qttl_too_long() ->
+    [ combine_ttl_scenarios(Setup, [{25, {query, QTTL, {delta, RTTL}}}])
+    || Setup <- ttl_scenario_create_and_extend(10, [false, 20], 50),
+       QTTL  <- ttls(25, [40, 60]),
+       RTTL  <- [15]
+    ].
+
+%% Answer after QTTL
+ttl_scenario_answer_after_qttl() ->
+    [ combine_ttl_scenarios(Setup, [{45, respond}])
+    || Setup <- ttl_scenario_create_query(10, [false, 20], 25, 40, 10, 70)
+    ].
+
+%% Get answer after RTTL
+ttl_scenario_get_answer_after_rttl() ->
+    [ combine_ttl_scenarios(Setup, [{35, respond}, {50, getAnswer}])
+    || Setup <- ttl_scenario_create_query(10, [false, 20], 25, 40, 10, 70)
+    ].
+
+%% Oracle TTL happy path
+ttl_scenario_happy_path() ->
+    [ combine_ttl_scenarios(Setup, [{30, respond}, {Ans, getAnswer}])
+    || Setup <- ttl_scenario_create_query(10, [false, 20], 25, 40, 20, 70),
+       Ans   <- [35, 45] ].
+
+%% Oracle TTL successful query, bad extend.
+ttl_scenario_good_query_bad_extend() ->
+    [ combine_ttl_scenarios(Setup,
+        [{25,  {query, QTTL, {delta, 10}}},
+         {30,  respond},
+         {Ans, getAnswer}])
+    || Setup <- ttl_scenario_bad_extend(10, 20, 50),
+       QTTL  <- ttls(25, [40]),
+       Ans   <- [35, 40, 45] ].
+
+combine_ttl_scenarios(Cmds1, Cmds2) ->
+    lists:keymerge(1, Cmds1, Cmds2).
+
+run_ttl_scenario(Scenario) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 10000000000),
+    [ begin
+        Ct = ?call(create_contract, Acc, oracles, {}, #{amount => 10000}),
+        io:format("Testing ~p\n", [Cmds]),
+        interpret_ttl(#{contract => Ct, account => Acc}, Cmds)
+      end || Cmds <- Scenario ],
+    ok.
+
+sophia_oracles_ttl__extend_after_expiry(_Cfg) ->
+    run_ttl_scenario(ttl_scenario_extend_after_expiry()).
+
+sophia_oracles_ttl__fixed_rttl(_Cfg) ->
+    run_ttl_scenario(ttl_scenario_fixed_rttl()).
+
+sophia_oracles_ttl__qttl_too_long(_Cfg) ->
+    run_ttl_scenario(ttl_scenario_qttl_too_long()).
+
+sophia_oracles_ttl__answer_after_qttl(_Cfg) ->
+    run_ttl_scenario(ttl_scenario_answer_after_qttl()).
+
+sophia_oracles_ttl__get_answer_after_rttl(_Cfg) ->
+    run_ttl_scenario(ttl_scenario_get_answer_after_rttl()).
+
+sophia_oracles_ttl__happy_path(_Cfg) ->
+    run_ttl_scenario(ttl_scenario_happy_path()).
+
+sophia_oracles_ttl__good_query_bad_extend(_Cfg) ->
+    run_ttl_scenario(ttl_scenario_good_query_bad_extend()).
+
+%% -- End TTL tests --
 
 oracle_init_from_contract(OperatorAcc, InitialOracleContractBalance, S) ->
     {OCt, S1} = create_contract(OperatorAcc, oracles, {}, #{amount => InitialOracleContractBalance}, S),

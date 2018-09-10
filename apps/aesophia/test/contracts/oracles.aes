@@ -1,7 +1,7 @@
 contract Oracles =
 
   type fee = int
-  type ttl = int
+  type ttl = Chain.ttl
 
   type query_t  = string
   type answer_t = int
@@ -63,8 +63,8 @@ contract Oracles =
   datatype complexAnswer   = NoAnswer | Answer(complexQuestion, string, int)
 
   function complexOracle(question, sig) =
-    let o = Oracle.register(Contract.address, sig, 0, 1000) : oracle(complexQuestion, complexAnswer)
-    let q = Oracle.query(o, question, 0, 100, 100)
+    let o = Oracle.register(Contract.address, sig, 0, FixedTTL(1000)) : oracle(complexQuestion, complexAnswer)
+    let q = Oracle.query(o, question, 0, RelativeTTL(100), RelativeTTL(100))
     Oracle.respond(o, q, sig, Answer(question, "magic", 1337))
     Oracle.get_answer(o, q)
 

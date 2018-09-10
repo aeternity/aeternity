@@ -68,10 +68,8 @@ eval_code(State) ->
     try {ok, loop(valid_jumpdests(State))}
     catch
         throw:?aevm_eval_error(What, StateOut) ->
-            ?TEST_LOG("Code evaluation error at ~s in~n~s",
-                      [aeb_disassemble:format_address(aevm_eeevm_state:cp(StateOut)),
-                       aeb_disassemble:format(aevm_eeevm_state:code(StateOut),
-                                              fun(F,D) -> ?TEST_LOG(F,D) end)]),
+            ?TEST_LOG("Code evaluation error at ~s",
+                      [aeb_disassemble:format_address(aevm_eeevm_state:cp(StateOut))]),
 	    %% Throw away new storage on error.
             {error, What, old_store(State, StateOut)};
 	throw:?AEVM_SIGNAL(Signal, StateOut) ->

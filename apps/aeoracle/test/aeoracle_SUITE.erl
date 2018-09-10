@@ -198,7 +198,7 @@ extend_oracle_negative_dynamic_fee(Cfg) ->
 
     %% Test minimum fee for increasing TTL.
     ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 0}, fee => 0})),
-    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 0}, fee => MinFee})),
+    ?assertEqual({error, zero_relative_oracle_extension_ttl}, F(#{oracle_ttl => {delta, 0}, fee => MinFee})),
     ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 1}, fee => MinFee})),
     ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1}, fee => 1 + MinFee})),
     ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 999}, fee => 1 + MinFee})),

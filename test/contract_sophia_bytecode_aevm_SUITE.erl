@@ -332,8 +332,8 @@ oracles(_Cfg) ->
     Env0 = initial_state(#{}),
     Env1 = create_contract(101, Code, "()", Env0),
     QFee = 100,
-    {101, Env2} = successful_call(101, word, registerOracle, "(101, 3, "++ integer_to_list(QFee) ++", 10)", Env1),
-    {Q, Env3}   = successful_call(101, word, createQuery, "(101, \"why?\", "++ integer_to_list(QFee) ++", 10, 11)", Env2, #{value => QFee}),
+    {101, Env2} = successful_call(101, word, registerOracle, "(101, 3, "++ integer_to_list(QFee) ++", (0, 10))", Env1),
+    {Q, Env3}   = successful_call(101, word, createQuery, "(101, \"why?\", "++ integer_to_list(QFee) ++", (0, 10), (0, 11))", Env2, #{value => QFee}),
     QArg        = integer_to_list(Q),
     OandQArg    = "(101, "++ QArg ++")",
     none        = successful_call_(101, {option, word}, getAnswer, OandQArg, Env3),
@@ -341,19 +341,19 @@ oracles(_Cfg) ->
     {some, 42}  = successful_call_(101, {option, word}, getAnswer, OandQArg, Env4),
     <<"why?">>  = successful_call_(101, string, getQuestion, OandQArg, Env4),
     QFee        = successful_call_(101, word, queryFee, "101", Env4),
-    {{}, Env5}  = successful_call(101, {tuple, []}, extendOracle, "(101, 1111, 100)", Env4),
+    {{}, Env5}  = successful_call(101, {tuple, []}, extendOracle, "(101, 1111, (0, 100))", Env4),
     #{oracles :=
           #{101 := #{
              nonce := 1,
              query_format := string,
              response_format := word,
              sign := 3,
-             ttl := 100}},
+             ttl := {delta, 100}}},
       oracle_queries :=
           #{Q := #{ oracle := 101,
                     query := <<"why?">>,
-                    q_ttl := 10,
-                    r_ttl := 11,
+                    q_ttl := {delta, 10},
+                    r_ttl := {delta, 11},
                     answer := {some, 42} }}} = Env5,
     ok.
 

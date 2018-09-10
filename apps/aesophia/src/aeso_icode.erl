@@ -21,11 +21,14 @@
                    , arg_list()
                    , expr()
                    , aeso_sophia:type()}.
+
+-type type_name() :: string() | [string()].
+
 -type icode() :: #{ contract_name => string()
                   , functions => [fun_dec()]
                   , env => [bindings()]
                   , state_type => aeso_sophia:type()
-                  , types => #{ string() => type_def() }
+                  , types => #{ type_name() => type_def() }
                   , type_vars => #{ string() => aeso_sophia:type() }
                   , constructors => #{ string() => integer() }  %% name to tag
                   , options => [any()]
@@ -44,7 +47,7 @@ new(Options) ->
      , state_type => {tuple, []}
      , types => builtin_types()
      , type_vars => #{}
-     , constructors => #{}
+     , constructors => builtin_constructors()
      , options => Options}.
 
 builtin_types() ->
@@ -60,7 +63,12 @@ builtin_types() ->
      , "list"         => fun([A]) -> {list, A} end
      , "option"       => fun([A]) -> {option, A} end
      , "map"          => fun([K, V]) -> map_typerep(K, V) end
+     , ["Chain", "ttl"] => fun([]) -> {variant, [[word], [word]]} end
      }.
+
+builtin_constructors() ->
+    #{ "RelativeTTL" => 0
+     , "FixedTTL"    => 1 }.
 
 map_typerep(K, V) ->
     {list, {tuple, [K, V]}}.  %% Lists of key-value pairs for now
