@@ -758,7 +758,7 @@ sophia_oracles(_Cfg) ->
     none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
     {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {CtId, QId, 0, 4001}),
     {some, 4001}      = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
-    {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Ct, 0, RelativeTTL(TTL + 10)}),
+    {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Ct, 0, RelativeTTL(10)}),
 
     %% Test complex answers
     Ct1 = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
