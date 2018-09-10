@@ -1254,6 +1254,7 @@ pre_assembly_check(MicroHeader) ->
             Validators = [fun validate_micro/1,
                           fun validate_connected_to_chain/1,
                           fun validate_delta_height/1,
+                          fun validate_prev_key_block/1,
                           fun validate_micro_signature/1],
             aeu_validation:run(Validators, [MicroHeader])
     end.
@@ -1275,6 +1276,31 @@ validate_delta_height(MicroHeader) ->
                 true  -> ok;
                 false -> {error, too_far_below_top}
             end
+    end.
+
+validate_prev_key_block(MicroHeader) ->
+    case aec_db:find_header(aec_headers:prev_hash(MicroHeader)) of
+        {value, PrevHeader} ->
+            case aec_headers:height(PrevHeader) == aec_headers:height(MicroHeader) of
+                false -> {error, wrong_prev_key_block_height};
+                true ->
+                    case aec_headers:type(PrevHeader) of
+                        key ->
+                            case aec_headers:prev_key_hash(MicroHeader) ==
+                                    aec_headers:prev_hash(MicroHeader) of
+                                true -> ok;
+                                false -> {error, wrong_prev_key_hash}
+                            end;
+                        micro ->
+                            case aec_headers:prev_key_hash(MicroHeader) ==
+                                    aec_headers:prev_key_hash(PrevHeader) of
+                                true -> ok;
+                                false -> {error, wrong_prev_key_hash}
+                            end
+                    end
+            end;
+        none ->
+            {error, orphan_blocks_not_allowed}
     end.
 
 validate_micro(MicroHeader) ->
