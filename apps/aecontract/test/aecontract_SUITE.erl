@@ -852,7 +852,7 @@ ttl_scenario_create_and_extend(Start0, Extend0, Stop0) ->
       || Start <- List(Start0), Extend <- List(Extend0), Stop <- List(Stop0),
          TTLo <- [ T || Extend == false, T <- ttls(Start, [Stop]) ] ++
                  [ T || Extend /= false, T <- ttls(Start, [Extend + 5]) ],
-         TTLe = {delta, _} <- [ 0 || Extend == false ] ++
+         TTLe = {delta, _} <- [ {delta, 0} || Extend == false ] ++
                               [ T || Extend /= false, T <- ttls(ttl_height(Start, TTLo), [Stop]) ] ].
 
 %% Base scenario for failing or unnecessary extends.
