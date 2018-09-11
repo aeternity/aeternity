@@ -35,8 +35,8 @@ sync:
     port: 9815
 
 peers:
-    - aenode://pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:9825
-    - aenode://pp$Dxq41rJN33j26MLqryvh7AnhuZywefWKEPBiiYu2Da2vDWLBq@localhost:9835
+    - aenode://pp_28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:9825
+    - aenode://pp_Dxq41rJN33j26MLqryvh7AnhuZywefWKEPBiiYu2Da2vDWLBq@localhost:9835
 
 http:
     external:
@@ -53,7 +53,7 @@ websocket:
         acceptors: 100
 
 mining:
-    beneficiary: "ak$RShHyLiaQJF8AZ7Thi4Sgjm6ncHhqguqBBqCzQRG3fyjvKj6V"
+    beneficiary: "ak_RShHyLiaQJF8AZ7Thi4Sgjm6ncHhqguqBBqCzQRG3fyjvKj6V"
     cuckoo:
         miner:
             executable: mean16s-generic
@@ -92,7 +92,7 @@ sync:
     port: 9825
 
 peers:
-    - aenode://pp$Dxq41rJN33j26MLqryvh7AnhuZywefWKEPBiiYu2Da2vDWLBq@localhost:9835
+    - aenode://pp_Dxq41rJN33j26MLqryvh7AnhuZywefWKEPBiiYu2Da2vDWLBq@localhost:9835
 
 http:
     external:
@@ -109,7 +109,7 @@ websocket:
         acceptors: 100
 
 mining:
-    beneficiary: "ak$2WPFUrtoxvdpaMySJUfyhGeBg5o725y6wFJTWAdv9YQ7pJMHjT"
+    beneficiary: "ak_2WPFUrtoxvdpaMySJUfyhGeBg5o725y6wFJTWAdv9YQ7pJMHjT"
     cuckoo:
         miner:
             executable: mean16s-generic
@@ -148,7 +148,7 @@ sync:
     port: 9835
 
 peers:
-    - aenode://pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:9825
+    - aenode://pp_28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:9825
 
 http:
     external:
@@ -165,7 +165,7 @@ websocket:
         acceptors: 100
 
 mining:
-    beneficiary: "ak$uDBX3LjznjmtoFzVmVWBnAaMXhvsReKYkxMrA1QMSxudhbjuf"
+    beneficiary: "ak_uDBX3LjznjmtoFzVmVWBnAaMXhvsReKYkxMrA1QMSxudhbjuf"
     cuckoo:
         miner:
             executable: mean16s-generic

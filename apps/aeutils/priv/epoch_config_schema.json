@@ -10,8 +10,8 @@
             "items" : {
                 "type" : "string",
                 "description" : "Aeternity Node address",
-                "example" : "aenode://pp$ySU7cHqsymnuBP9iSe4rMnH1Rz2FStx5rnoewYMJcuPhdaqPk@192.168.1.1:3015",
-                "pattern": "^aenode://pp\$[a-zA-Z0-9]+@[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/*$"
+                "example" : "aenode://pp_ySU7cHqsymnuBP9iSe4rMnH1Rz2FStx5rnoewYMJcuPhdaqPk@192.168.1.1:3015",
+                "pattern": "^aenode://pp_[a-zA-Z0-9]+@[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/*$"
             }
         },
         "blocked_peers" : {
@@ -21,8 +21,8 @@
             "items" : {
                 "type" : "string",
                 "description" : "Aeternity Node address",
-                "example" : "aenode://pp$ySU7cHqsymnuBP9iSe4rMnH1Rz2FStx5rnoewYMJcuPhdaqPk@192.168.1.1:3015",
-                "pattern": "^aenode://pp\$[a-zA-Z0-9]+@[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/*$"
+                "example" : "aenode://pp_ySU7cHqsymnuBP9iSe4rMnH1Rz2FStx5rnoewYMJcuPhdaqPk@192.168.1.1:3015",
+                "pattern": "^aenode://pp_[a-zA-Z0-9]+@[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/*$"
             }
         },
         "mempool" : {
@@ -318,8 +318,8 @@
                     "description" :
                     "Public key of beneficiary account that will receive fees from mining on a node.",
                     "type" : "string",
-                    "example" : "ak$DummyPubKeyDoNotEverUse999999999999999999999999999",
-                    "pattern": "^ak\$[1-9A-HJ-NP-Za-km-z]*$"
+                    "example" : "ak_DummyPubKeyDoNotEverUse999999999999999999999999999",
+                    "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*$"
                 },
                 "expected_mine_rate" : {
                     "description" : "Expected mine rate (milliseconds) between blocks. Used in governance.",

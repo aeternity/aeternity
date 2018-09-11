@@ -9,7 +9,7 @@
 
 -define(TAB, aec_tx_pool_test_keys).
 
--define(BENEFICIARY, <<"ak$tjnw1KcmnwfqXvhtGa9GRjanbHM3t6PmEWEWtNMM3ouvNKRu5">>).
+-define(BENEFICIARY, <<"ak_tjnw1KcmnwfqXvhtGa9GRjanbHM3t6PmEWEWtNMM3ouvNKRu5">>).
 
 tx_pool_test_() ->
     {foreach,

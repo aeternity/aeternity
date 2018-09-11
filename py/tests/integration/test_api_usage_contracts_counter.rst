@@ -27,7 +27,7 @@ Step 1: Bob creates the counter contract on the chain
 Bob has the public-private key pair of his account.
 
 >>> print(users['b']['encoded_pub_key']) # doctest: +ELLIPSIS
-ak$...
+ak_...
 
 Assumption: Bob has enough tokens.
 
@@ -61,9 +61,9 @@ Bob computes - off-chain, using the epoch API - the unsigned contract create tra
 ...   call_data=encoded_init_call_data))
 >>> contract_id = raw_unsigned_contract_create_tx.contract_id
 >>> print(contract_id) # doctest: +ELLIPSIS
-ct$...
+ct_...
 >>> print(raw_unsigned_contract_create_tx.tx) # doctest: +ELLIPSIS
-tx$...
+tx_...
 >>> import base58
 >>> unsigned_contract_create_tx = base58.b58decode_check(raw_unsigned_contract_create_tx.tx[3:])
 
@@ -72,14 +72,14 @@ Bob signs - locally - the contract create transaction.
 >>> import keys
 >>> encoded_signed_contract_create_tx = keys.sign_verify_encode_tx(unsigned_contract_create_tx, users['b']['priv_key'], users['b']['pub_key'])
 >>> print(encoded_signed_contract_create_tx) # doctest: +ELLIPSIS
-tx$...
+tx_...
 
 Bob publishes the signed contract create transaction to an epoch node for inclusion in the chain.
 
 >>> from swagger_client.models.tx import Tx
 >>> contract_create_tx_hash = epoch_node['external_api'].post_transaction(Tx(encoded_signed_contract_create_tx)).tx_hash
 >>> print(contract_create_tx_hash) # doctest: +ELLIPSIS
-th$...
+th_...
 
 Bob ensures that the published contract create transaction is included in the chain.
 
@@ -104,7 +104,7 @@ Step 2: Alice retrieves the value of the counter on the chain
 Alice has the public-private key pair of her account.
 
 >>> print(users['a']['encoded_pub_key']) # doctest: +ELLIPSIS
-ak$...
+ak_...
 
 Assumption: Alice has enough tokens.
 
@@ -128,13 +128,13 @@ Alice signs - locally - the contract call transaction.
 
 >>> encoded_signed_contract_call_tx = keys.sign_verify_encode_tx(unsigned_contract_call_tx, users['a']['priv_key'], users['a']['pub_key'])
 >>> print(encoded_signed_contract_call_tx) # doctest: +ELLIPSIS
-tx$...
+tx_...
 
 Alice publishes the signed contract call transaction to an epoch node for inclusion in the chain.
 
 >>> contract_call_tx_hash = epoch_node['external_api'].post_transaction(Tx(encoded_signed_contract_call_tx)).tx_hash
 >>> print(contract_call_tx_hash) # doctest: +ELLIPSIS
-th$...
+th_...
 
 Alice ensures that the published contract call transaction is included in the chain.
 
