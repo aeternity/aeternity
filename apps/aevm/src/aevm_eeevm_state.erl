@@ -178,10 +178,27 @@ init_vm(State, Code, Mem, Store) ->
             aevm_eeevm_memory:store(0, Addr, State2)
     end.
 
-%% Us0 is pointer to a return data binary and Us1 is the size.
 do_return(Us0, Us1, State) ->
+    case vm_version(State) of
+        ?AEVM_01_Sophia_01 ->
+            try
+            %% In Sophia Us0 is a pointer to a typerep for the return value, and
+            %% Us1 is a pointer to the actual value.
+            Size       = aevm_eeevm_memory:size_in_words(State) * 32,
+            {Heap, _}  = aevm_eeevm_memory:get_area(0, Size, State),
+            {ok, Type} = aeso_data:from_heap(typerep, Heap, Us0),
+            {ok, Out}  = aeso_data:from_heap(Type, Heap, Us1),
+            OutBin = aeso_data:to_binary(Out, 0),
+                set_out(OutBin, State)
+            catch _:_ ->
+                io:format("** Error reading return value\n~s", [format_mem(mem(State))]),
+                set_gas(0, State)   %% Consume all gas on failure
+            end;
+        ?AEVM_01_Solidity_01 ->
+            %% Us0 is pointer to a return data binary and Us1 is the size.
     {Out, State1} = aevm_eeevm_memory:get_area(Us0, Us1, State),
-    aevm_eeevm_state:set_out(Out, State1).
+            set_out(Out, State1)
+    end.
 
 call_contract(Caller, Target, CallGas, Value, Data, State) ->
     case vm_version(State) of

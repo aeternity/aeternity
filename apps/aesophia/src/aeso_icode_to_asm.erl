@@ -35,12 +35,14 @@ convert(#{ contract_name := _ContractName
                                {tuple, make_args(Args)}]},
                       icode_seq([ hack_return_address(Fun, length(Args) + 1) ] ++
                                 [ {funcall, {var_ref, "_copy_state"}, [prim_state]} || not is_pure(Fun) ] ++
-                                [{encode, 0, TypeRep, {funcall, {var_ref, FName}, make_args(Args)}}])}
+                                [ {tuple, [aeso_ast_to_icode:type_value(TypeRep),
+                                           {funcall, {var_ref, FName}, make_args(Args)}]} ]
+                               )}
                      || Fun={FName, Args, _, TypeRep} <- Functions, is_public(Fun) ]},
                    word},
     %% Find the type-reps we need encoders for
     {InTypes, OutTypes} = remote_call_type_reps(Functions),
-    TypeReps = all_type_reps([TypeRep || {_, _, _, TypeRep} <- Functions] ++ InTypes ++ [StateType]),
+    TypeReps = all_type_reps(InTypes ++ [StateType]),
     OutTypeReps = all_type_reps(OutTypes ++ [StateType]),
     Encoders = [make_encoder(T) || T <- TypeReps],
     Decoders = [make_decoder(T) || T <- OutTypeReps],
@@ -54,6 +56,14 @@ convert(#{ contract_name := _ContractName
     StopLabel = make_ref(),
     StatefulStopLabel = make_ref(),
     MainFunction = lookup_fun(Funs, "_main"),
+
+    %% Unpack a pair on the stack       %% Ptr
+    UnpackPair   = [dup(1),             %% Ptr Ptr
+                    push(32), i(?ADD),  %% Ptr+32 Ptr
+                    i(?MLOAD),          %% Snd Ptr
+                    swap(1),            %% Ptr Snd
+                    i(?MLOAD)],         %% Fst Snd
+
     DispatchCode = [%% read all call data into memory at address 32
                     i(?CALLDATASIZE),
                     push(0), push(32),
@@ -67,14 +77,12 @@ convert(#{ contract_name := _ContractName
                     push(32), i(?MLOAD),
                     jump(MainFunction),
                     jumpdest(StatefulStopLabel),
-                    %% A pointer to a binary is on top of the stack
-                    %% Get size of data area (it will be the last thing on the
-                    %% heap, so we can use MSIZE to compute it).
-                    dup(1),    %% Ptr Ptr
-                    i(?MSIZE), %% MSize Ptr Ptr
-                    i(?SUB),   %% Size Ptr
-                    swap(1),   %% Ptr Size
-                    %% Now we need to do the same thing for the state
+
+                    %% The dispatcher leaves a pointer to pair of a typerep and
+                    %% return value on the stack. We need to unpack this.
+                    UnpackPair,
+
+                    %% Now we need to encode the state
                     push(0), i(?MLOAD),          %% State Ptr Size
                     assemble_expr(Funs, [{"state", "_"}, dummy, dummy], nontail, {encode, 0, StateType, {var_ref, "state"}}),
                                                  %% StateBinPtr State Ptr Size
@@ -82,7 +90,8 @@ convert(#{ contract_name := _ContractName
                     i(?RETURN),
                     jumpdest(StopLabel),
                     %% Same as StatefulStopLabel above
-                    dup(1), i(?MSIZE), i(?SUB), swap(1),
+                    UnpackPair,
+
                     %% Set state pointer to 0 to indicate that we didn't change state
                     push(0), dup(1), i(?MSTORE),
                     i(?RETURN)
