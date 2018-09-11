@@ -324,7 +324,7 @@ request(Node, Id, Params) ->
     aehttp_client:request(Id, Params, [
         {ext_http, aest_nodes_mgr:get_service_address(Node, ext_http)},
         {int_http, aest_nodes_mgr:get_service_address(Node, int_http)},
-        {ct_log, true}
+        {ct_log, fun(X,Y) -> aest_nodes_mgr:log(X, Y) end}  %% use the log function configured by mgr
     ]).
 
 %% @doc Performs an HTTP get request on the node external API.
@@ -379,9 +379,6 @@ post_spend_tx(Node, From, To, Nonce, Map) ->
         request(Node, 'PostTransaction', #{ tx => aec_base58c:encode(transaction, SerSignTx) }),
     Response.
 
--spec wait_for_value({balance, binary(), non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok;
-                    ({contract_tx, binary(), non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok;
-                    ({height, non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok.
 %% Use values that are not yet base58c encoded in test cases
 wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, _Ctx) ->
     CheckF =
