@@ -3,6 +3,7 @@
 -export([ to_binary/1
         , to_binary/2
         , binary_to_words/1
+        , from_heap/3
         , from_binary/2
         , from_binary/3
         , get_function_from_calldata/1
@@ -72,16 +73,21 @@ binary_to_words(Bin) ->
 
 %% Interpret a return value (a binary) using a type rep.
 
+-spec from_heap(Type :: ?Type(), Heap :: binary(), Ptr :: integer()) ->
+        {ok, term()} | {error, term()}.
+from_heap(Type, Heap, Ptr) ->
+    try {ok, from_binary(#{}, Type, Heap, Ptr)}
+    catch _:Err ->
+        {error, Err}
+    end.
+
 %% Base address is the address of the first word of the given heap.
 -spec from_binary(BaseAddr :: non_neg_integer(),
                   T :: ?Type(),
                   Heap :: binary()) ->
         {ok, term()} | {error, term()}.
 from_binary(BaseAddr, T, Heap = <<V:256, _/binary>>) ->
-    try {ok, from_binary(#{}, T, <<0:BaseAddr/unit:8, Heap/binary>>, V)}
-    catch _:Err ->
-            {error, Err}
-    end;
+    from_heap(T, <<0:BaseAddr/unit:8, Heap/binary>>, V);
 from_binary(_, _, Bin) ->
     {error, {binary_too_short, Bin}}.
 

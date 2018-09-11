@@ -9,7 +9,7 @@
 %%%-------------------------------------------------------------------
 -module(aeso_ast_to_icode).
 
--export([ast_typerep/1,
+-export([ast_typerep/1, type_value/1,
          convert/2]).
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
