@@ -447,7 +447,7 @@ tx_pool_sync(Cfg) ->
     start_node(node1, Cfg),
     wait_for_startup([node1], 0, Cfg),
 
-   wait_for_value({txs_on_node, [ TxHash || #{tx_hash := TxHash} <- InvalidTxs7 ++ InvalidTxs15 ++ InvalidTxs25 ]}, 
+    wait_for_value({txs_on_node, [ TxHash || #{tx_hash := TxHash} <- InvalidTxs7 ++ InvalidTxs15 ++ InvalidTxs25 ]}, 
                    [node1], 5000, Cfg),
 
     %% Now add a Tx that unlocks 5 more...

@@ -409,9 +409,9 @@ wait_for_value({txs_on_chain, Txs}, NodeNames, Timeout, _Ctx) ->
                                       {ok, 200, #{ block_height := H}} when H > 0 -> H;
                                       _ -> wait
                                   end || Tx <- Txs]),
-                case Found of
-                    [H] when H =/= wait -> {done, H};
-                    _ -> wait
+                case lists:member(wait, Found) of
+                    false -> {done, Found};
+                    true -> wait
                 end
         end,
     loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Txs found ~p", [Txs]});
