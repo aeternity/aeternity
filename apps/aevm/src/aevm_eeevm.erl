@@ -1459,7 +1459,7 @@ recursive_call1(StateIn, Op) ->
     {IOffset, State4} = pop(State3),
     {ISize, State5}   = pop(State4),
     {OOffset, State6} = pop(State5),
-    {_OSize, State7}  = pop(State6),   %% NOTE: we don't need the OSize!
+    {OSize, State7}   = pop(State6),
     {I, State8}       = aevm_eeevm_memory:get_area(IOffset, ISize, State7),
 
     GasAfterSpend     = aevm_eeevm_state:gas(State8),
@@ -1472,14 +1472,14 @@ recursive_call1(StateIn, Op) ->
     Address = aevm_eeevm_state:address(State8),
     AddressBalance = aevm_eeevm_state:accountbalance(Address, State8),
     case Value =< AddressBalance of
-        true  -> recursive_call2(Op, Gascap, To, Value, OOffset, I, State8, GasAfterSpend);
+        true  -> recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend);
         false ->
             ?TEST_LOG("Excessive value operand ~p for address ~p, that has balance ~p", [Value, Address, AddressBalance]),
             {0, aevm_eeevm_state:set_gas(0, State8)}
             %% Consume all gas on failed contract call.
     end.
 
-recursive_call2(Op, Gascap, To, Value, OOffset, I, State8, GasAfterSpend) ->
+recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend) ->
     Dest = case Op of
                ?CALL -> To;
                ?CALLCODE -> aevm_eeevm_state:address(State8);
@@ -1535,14 +1535,13 @@ recursive_call2(Op, Gascap, To, Value, OOffset, I, State8, GasAfterSpend) ->
             %% ReturnState1 = aevm_eeevm_state:add_trace(CallTrace, State9),
             GasAfterCall = GasAfterSpend  + max(0, OutGas - Stipend),
             ReturnState2 = aevm_eeevm_state:set_gas(GasAfterCall, ReturnState),
-            ReturnState3 =
-                case R of
-                    {ok, Message} ->
-                        aevm_eeevm_memory:write_area(OOffset, Message, ReturnState2);
-                    {error, _} -> aevm_eeevm_state:set_gas(0, ReturnState2)
-                                    %% Consume all gas on failed contract call.
-                end,
-            {1, ReturnState3}
+            case R of
+                {ok, Message} ->
+                    aevm_eeevm_state:return_contract_call_result(OOffset, OSize, Message, ReturnState2);
+                {error, _} ->
+                    {0, aevm_eeevm_state:set_gas(0, ReturnState2)}
+                    %% Consume all gas on failed contract call.
+            end
     end.
 
 %% ------------------------------------------------------------------------

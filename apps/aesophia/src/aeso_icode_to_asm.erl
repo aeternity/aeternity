@@ -39,13 +39,11 @@ convert(#{ contract_name := _ContractName
                      || Fun={FName, Args, _, TypeRep} <- Functions, is_public(Fun) ]},
                    word},
     %% Find the type-reps we need encoders for
-    {InTypes, OutTypes} = remote_call_type_reps(Functions),
+    {InTypes, _OutTypes} = remote_call_type_reps(Functions),
     TypeReps = all_type_reps(InTypes),
-    OutTypeReps = all_type_reps(OutTypes),
     Encoders = [make_encoder(T) || T <- TypeReps],
-    Decoders = [make_decoder(T) || T <- OutTypeReps],
     Library = [make_copymem()],
-    NewFunctions = Functions ++ [DispatchFun] ++ Encoders ++ Decoders ++ Library,
+    NewFunctions = Functions ++ [DispatchFun] ++ Encoders ++ Library,
     %% Create a function environment
     Funs = [{Name, length(Args), make_ref()}
             || {Name, Args, _Body, _Type} <- NewFunctions],
@@ -407,7 +405,7 @@ assemble_expr(Funs, Stack, _Tail, #prim_balance{ address = Addr }) ->
 assemble_expr(Funs, Stack, _Tail, #prim_block_hash{ height = Height }) ->
     [assemble_expr(Funs, Stack, nontail, Height),
      i(?BLOCKHASH)];
-assemble_expr(Funs, Stack, Tail,
+assemble_expr(Funs, Stack, _Tail,
               #prim_call_contract{ gas      = Gas
                                  , address  = To
                                  , value    = Value
@@ -415,30 +413,15 @@ assemble_expr(Funs, Stack, Tail,
                                  , arg_type = ArgT
                                  , out_type = OutT }) ->
     %% ?CALL takes (from the top)
-    %%   Gas, To, Value, IOffset, ISize, OOffset, OSize
-    %% We need to
-    %%  - encode the argument
-    %%  - push the arguments to ?CALL
-    %%  - ?CALL
-    %%  - decode the return value
-    OSize = 0,  %% Note: The ?CALL instruction takes the out size as an argument, but
-                %%       our EVM implementation doesn't actually need it.
-    %% Note: assemble expressions first, since this may allocate memory.
-    Exprs = [Value, Gas, To],                 %% Stack
-    [%% i(?COMMENT(io_lib:format("Call primop: To ~p, Value: ~p", [To, Value]))),
-      assemble_exprs(Funs, Stack, Exprs)      %%  To Gas Value
-    , assemble_expr(Funs, [dummy, dummy, dummy | Stack],
-            nontail, {encode, 32, ArgT, Arg}) %%  IOffset To Gas Value
-    , i(?MSIZE)                               %%  OOffset IOffset To Gas Value
-    , dup(2), dup(2)                          %%  OOffset IOffset OOffset IOffset To Gas Value
-    , i(?SUB)                                 %%  ISize OOffset IOffset To Gas Value
-    , push(OSize)                             %%  OSize ISize OOffset IOffset To Gas Value
-    , dup(3)                                  %%  OOffset OSize ISize OOffset IOffset To Gas Value
-    , shuffle_stack([1, 2, 4, 3, 5, 7, 8, 6]) %%  Gas To Value IOffset ISize OOffset OSize OOffset
-    , i(?CALL)                                %%  Result OOffset
-    , pop(1)                                  %%  OOffset         -- ignoring result for now
-    , assemble_expr(Funs, [pointer | Stack], Tail, {decode, OutT})
-                                              %%  ResultPtr
+    %%   Gas, To, Value, IOffset, ISize, _OOffset, OutType
+    [ assemble_expr(Funs, Stack, nontail, aeso_ast_to_icode:type_value(OutT))
+    , push(0)                                       %% _OOffset OutT
+    , assemble_expr(Funs, [dummy, dummy | Stack],
+            nontail, {encode, 32, ArgT, Arg})       %%  IOffset _OOffset OutT
+    , dup(1), i(?MSIZE), i(?SUB), swap(1)           %%  IOffset ISize _OOffset OutT
+    , assemble_exprs(Funs, [dummy, dummy, dummy, dummy | Stack], [Value, To, Gas])
+                                                    %%  Gas To Value IOffset ISize _OOffset OutT
+    , i(?CALL)                                      %%  Result
     ].
 
 
@@ -722,9 +705,6 @@ decoder_name(TR) ->
 make_encoder(TR) ->
     {encoder_name(TR), [{"base", "_"}, {"value", "_"}], make_encoder_body(TR), word}.
 
-make_decoder(TR) ->
-    {decoder_name(TR), [{"base", "_"}, {"value", "_"}], make_decoder_body(TR), TR}.
-
 make_encoder_body(word) ->
     {var_ref, "value"};
 make_encoder_body(typerep) ->
@@ -786,50 +766,6 @@ make_encoder_body({variant, Cons}) ->
             || {Tag, Args} <- lists:zip(Tags, Cons) ]};
 make_encoder_body(function) ->
     {integer, 33333333333333333}.   %% TODO: fail here once we distinguish public and private functions
-
-%% TODO: update pointers in-place so save memory!
-%% Note: we never need to decode typereps.
-make_decoder_body(word) ->
-    {var_ref, "value"};
-make_decoder_body({tuple, []}) ->
-    {integer, 0};
-make_decoder_body(string) ->
-    %% the value is a relative pointer to the string, so add base to it
-    {binop, '+', {var_ref, "value"}, {var_ref, "base"}};
-make_decoder_body({tuple, TRs}) ->
-    %% value: relative pointer to tuple cell
-    Ptr  = {binop, '+', {var_ref, "value"}, {var_ref, "base"}},
-    Vars = make_vars(length(TRs)),
-    Body = {tuple, [ {funcall, {var_ref, decoder_name(TR)}, [{var_ref, "base"}, X]}
-                     || {X, TR} <- lists:zip(Vars, TRs) ]},
-    {switch, Ptr, [{{tuple, Vars}, Body}]};
-make_decoder_body({list, TR}) ->
-    Ptr  = {binop, '+', {var_ref, "value"}, {var_ref, "base"}},
-    Head = {var_ref, "head"},
-    Tail = {var_ref, "tail"},
-    Nil  = {list, []},
-    Decode = fun(T, V) ->
-                {funcall, {var_ref, decoder_name(T)},
-                          [{var_ref, "base"}, V]}
-             end,
-    {switch, {var_ref, "value"},
-        [{Nil, Nil},
-         {{var_ref, "_"},
-            {switch, Ptr, [{{tuple, [Head, Tail]},
-                {tuple, [Decode(TR, Head), Decode({list, TR}, Tail)]}}]}}]};
-make_decoder_body({variant, Cons}) ->
-    Ptr  = {binop, '+', {var_ref, "value"}, {var_ref, "base"}},
-    Tags = lists:seq(0, length(Cons) - 1),
-    Decode = fun(T, V) ->
-                {funcall, {var_ref, decoder_name(T)},
-                          [{var_ref, "base"}, V]}
-             end,
-    {switch, Ptr,
-        [{{tuple, [{integer, Tag}]},
-            Decode({tuple, [word | Args]}, {var_ref, "value"})}  %% TODO: optimize nullary constructors
-          || {Tag, Args} <- lists:zip(Tags, Cons)]};
-make_decoder_body(function) ->
-    error(cannot_decode_functions).
 
 make_vars(N) ->
     [{var_ref, "_v" ++ integer_to_list(I)} || I <- lists:seq(1, N)].

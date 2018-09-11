@@ -2160,6 +2160,32 @@ sophia_map_benchmark(Cfg) ->
     %%  160   1,015          993      3,582  (2,383)
     %%          +3%         -40%       -15%
 
+    %% No decoding of contract call return values.
+    %%
+    %%  Code size: 1,874 bytes
+    %%
+    %%  Gas:
+    %%    N    init  set_updater  benchmark
+    %%    0   1,193          781      3,262
+    %%   10   1,204          786      9,802
+    %%   20   1,215          792     15,290
+    %%   40   1,237          803     32,190
+    %%   80   1,282          826     64,967
+    %%  160   1,370          871    134,365
+    %%          -0%          -0%       -31%     delta cost
+    %%          x72         x174       x5.5     total improvement
+    %%
+    %%  Memory (words)
+    %%    N    init  set_updater  benchmark (remote)
+    %%    0      55           33         77     (47)
+    %%   10     115           93        251    (183)
+    %%   20     175          153        431    (303)
+    %%   40     295          273        791    (623)
+    %%   80     535          513      1,511  (1,223)
+    %%  160   1,015          993      2,951  (2,383)
+    %%          -0%          -0%       -18%     delta cost
+    %%         x1.9         x2.6       x2.1     total improvement
+
     ok.
 
 sophia_variant_types(_Cfg) ->

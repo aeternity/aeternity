@@ -42,6 +42,7 @@
         , mem/1
         , no_recursion/1
         , number/1
+        , return_contract_call_result/4
         , return_data/1
         , save_store/1
         , set_code/2
@@ -183,6 +184,28 @@ do_return(Us0, Us1, State) ->
             %% Us0 is pointer to a return data binary and Us1 is the size.
     {Out, State1} = aevm_eeevm_memory:get_area(Us0, Us1, State),
             set_out(Out, State1)
+    end.
+
+return_contract_call_result(Addr, Size, ReturnData, State) ->
+    case aevm_eeevm_state:vm_version(State) of
+        ?AEVM_01_Solidity_01 ->
+            {1, aevm_eeevm_memory:write_area(Addr, ReturnData, State)};
+        ?AEVM_01_Sophia_01 ->
+            try
+                %% For Sophia, we use the Size argument to store the typerep of
+                %% the result. We also ignore the Addr and put the result on
+                %% top of the heap.
+                TypePtr    = Size,
+                HeapSize   = aevm_eeevm_memory:size_in_words(State) * 32,
+                {Heap, _}  = aevm_eeevm_memory:get_area(0, HeapSize, State),
+                {ok, Type} = aeso_data:from_heap(typerep, Heap, TypePtr),
+                {ok, Return} = aeso_data:from_binary(Type, ReturnData),
+                <<Ptr:32/unit:8, OutHeap/binary>> = aeso_data:to_binary(Return, HeapSize - 32),
+                {Ptr, aevm_eeevm_memory:write_area(HeapSize, OutHeap, State)}
+            catch _:Err ->
+                io:format("** Failed to decode contract return value\n~P\n~p\n", [erlang:get_stacktrace(), 20, Err]),
+                {0, set_gas(0, State)}
+            end
     end.
 
 -spec save_store(state()) -> state().
