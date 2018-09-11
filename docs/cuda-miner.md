@@ -76,6 +76,7 @@ mining:
             executable: cuda30
             extra_args: ""
             node_bits: 30
+            hex_encoded_header: true
 ```
 
 After configuration could be started (or restarted if it's already running):
@@ -95,6 +96,7 @@ mining:
             executable: cuda30
             extra_args: "-d 0"
             node_bits: 30
+            hex_encoded_header: true
 ```
 
 The address of the device can be obtained by running `nvidia-smi`
