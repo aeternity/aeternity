@@ -505,7 +505,11 @@ get_contract_state(Contract) ->
 
 call(Name, Fun, Xs) ->
     Fmt = string:join(lists:duplicate(length(Xs), "~p"), ", "),
-    io:format("~p(" ++ Fmt ++ ") ->\n", [Name | Xs]),
+    Xs1 = [ case X of
+                <<Pre:32, _:28/unit:8>> -> <<Pre:32>>;
+                _ -> X
+            end || X <- Xs ],
+    io:format("~p(" ++ Fmt ++ ") ->\n", [Name | Xs1]),
     R = call(Fun, Xs),
     io:format("  ~p\n", [R]),
     R.
