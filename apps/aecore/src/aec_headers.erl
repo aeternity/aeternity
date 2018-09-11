@@ -373,7 +373,7 @@ encode_block_hash(micro, Hash) ->
 deserialize_from_client(key, KeyBlock) ->
     try
         {ok, #key_header{height       = maps:get(<<"height">>, KeyBlock),
-                         prev_hash    = decode_block_hash(maps:get(<<"prev_hash">>, KeyBlock)),
+                         prev_hash    = decode(block_hash, maps:get(<<"prev_hash">>, KeyBlock)),
                          prev_key     = decode(key_block_hash, maps:get(<<"prev_key_hash">>, KeyBlock)),
                          root_hash    = decode(block_state_hash, maps:get(<<"state_hash">>, KeyBlock)),
                          miner        = decode(account_pubkey, maps:get(<<"miner">>, KeyBlock)),
@@ -666,21 +666,6 @@ validate_max_time({Header, _}) ->
             ok;
         false ->
             {error, block_from_the_future}
-    end.
-
-%% TODO: this is taken from ws_int_dispatch.erl - needs refactoring after
-%% separation of key/micro block records.
-decode_block_hash(Hash) ->
-    case aec_base58c:safe_decode(key_block_hash, Hash) of
-        {ok, KeyBlockHash} ->
-            KeyBlockHash;
-        {error, _Rsn} ->
-            case aec_base58c:safe_decode(micro_block_hash, Hash) of
-                {ok, MicroBlockHash} ->
-                    MicroBlockHash;
-                {error, _Rsn} = Err ->
-                    Err
-            end
     end.
 
 decode(Type, Enc) ->
