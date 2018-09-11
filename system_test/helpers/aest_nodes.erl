@@ -402,7 +402,6 @@ wait_for_value({height, MinHeight}, NodeNames, Timeout, _Ctx) ->
         end,
     loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Height ~p on nodes ~p", [MinHeight, NodeNames]});
 wait_for_value({txs_on_chain, Txs}, NodeNames, Timeout, _Ctx) ->
-    aest_nodes_mgr:log("txs on chain waiting: ~p", [Txs]),
     CheckF =
         fun(Node) ->
                 Found = 
@@ -410,13 +409,26 @@ wait_for_value({txs_on_chain, Txs}, NodeNames, Timeout, _Ctx) ->
                                       {ok, 200, #{ block_height := H}} when H > 0 -> H;
                                       _ -> wait
                                   end || Tx <- Txs]),
-                aest_nodes_mgr:log("found: ~p", [Found]),
                 case Found of
                     [H] when H =/= wait -> {done, H};
                     _ -> wait
                 end
         end,
-    loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Txs found ~p", [Txs]}).    
+    loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Txs found ~p", [Txs]});
+wait_for_value({txs_on_node, Txs}, NodeNames, Timeout, _Ctx) ->
+    CheckF =
+        fun(Node) ->
+                Found = [ case request(Node, 'GetTransactionByHash', #{hash => Tx}) of
+                                      {ok, 200, #{ block_height := H}} -> {Tx, H};
+                                      _ -> wait
+                                  end || Tx <- Txs],
+                case lists:member(wait, Found) of
+                    false -> {done, Found};
+                    true -> wait
+                end
+        end,
+    loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Txs found ~p", [Txs]}).
+
 
 
 wait_for_time(height, NodeNames, Time) ->

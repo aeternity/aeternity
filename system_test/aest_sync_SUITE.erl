@@ -416,8 +416,8 @@ tx_pool_sync(Cfg) ->
     %% Add 5 valid spend transactions
     ValidTxs = add_spend_txs(node1, Patron, 5, 1),
     %% Add 10 invalid (nonce_too_high) spend transactions
-    InvalidTxs = add_spend_txs(node1, Patron, 5, 7),
-    add_spend_txs(node1, Patron, 5, 15),
+    InvalidTxs7 = add_spend_txs(node1, Patron, 5, 7),
+    InvalidTxs15 = add_spend_txs(node1, Patron, 5, 15),
 
 
     %% Check that the valid transactions made it to the chain.
@@ -426,43 +426,35 @@ tx_pool_sync(Cfg) ->
                    [node1], 5 * ?MINING_TIMEOUT, Cfg),
 
     %% Check that the mempool has the other transactions
-    MempoolTxs1 = get_mempool(node1),
-    {10, _} = {length(MempoolTxs1), MempoolTxs1},
+    wait_for_value({txs_on_node, [ TxHash || #{tx_hash := TxHash} <- InvalidTxs7 ++ InvalidTxs15 ]}, 
+                   [node1], 5000, Cfg),
 
     %% Start 2nd node and let it sync
     start_node(node2, Cfg),
     wait_for_startup([node2], 0, Cfg),
 
-    %% Give the sync a moment to finish
-    #{ height := Height1 } = get_top(node1),
-    wait_for_value({height, Height1 + 5}, [node2], 5 * ?MINING_TIMEOUT, Cfg),
-
-    MempoolTxs2 = get_mempool(node2),
-    {10, _} = {length(MempoolTxs2), MempoolTxs2},
+    wait_for_value({txs_on_node, [ TxHash || #{tx_hash := TxHash} <- InvalidTxs7 ++ InvalidTxs15 ]}, 
+                   [node2], 5000, Cfg),
 
     %% Stop node1
     stop_node(node1, 8000, Cfg),
 
     %% Add one more invalid transaction at Node2
-    add_spend_txs(node2, Patron, 1, 25),
+    InvalidTxs25 = [add_spend_txs(node2, Patron, 1, 25)],
 
     %% Start node1 and make sure that Tx is synced.
     %% TODO: Automate check that _only_ this Tx is synced.
     start_node(node1, Cfg),
     wait_for_startup([node1], 0, Cfg),
 
-    %% Give the sync a moment to finish
-    #{ height := Height2 } = get_top(node2),
-    wait_for_value({height, Height2 + 8}, [node1], 8 * ?MINING_TIMEOUT, Cfg),
-
-    MempoolTxs1B  = get_mempool(node1),
-    {11, _} = {length(MempoolTxs1B), MempoolTxs1B},
+   wait_for_value({txs_on_node, [ TxHash || #{tx_hash := TxHash} <- InvalidTxs7 ++ InvalidTxs15 ++ InvalidTxs25 ]}, 
+                   [node1], 5000, Cfg),
 
     %% Now add a Tx that unlocks 5 more...
     add_spend_txs(node2, Patron, 1, 6),
 
     %% Check that the last of the first batch of invalid transactions made it to the chain.
-    #{ receiver := RecvAccount2, amount := Amount2 } = lists:last(InvalidTxs),
+    #{ receiver := RecvAccount2, amount := Amount2 } = lists:last(InvalidTxs7),
     wait_for_value({balance, RecvAccount2, Amount2},
                    [node1], 5 * ?MINING_TIMEOUT, Cfg),
 
