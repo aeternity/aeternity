@@ -72,32 +72,6 @@
 
 -export_type([state/0]).
 
--spec save_store(state()) -> state().
-save_store(#{ chain_state := ChainState
-            , chain_api   := ChainAPI
-            , vm_version  := VmVersion } = State) ->
-    case VmVersion of
-        ?AEVM_01_Solidity_01 ->
-            Store = aevm_eeevm_store:to_binary(State),
-            State#{ chain_state => ChainAPI:set_store(Store, ChainState)};
-        ?AEVM_01_Sophia_01 ->
-            %% The serialized state is on top of the heap and the pointer to it
-            %% at address 0.
-            try
-                {Addr, _} = aevm_eeevm_memory:load(0, State),
-                case Addr of        %% A contract can write 0 to the state pointer
-                    0 -> State;     %% to indicate that the state didn't change.
-                    _ -> Size      = aevm_eeevm_memory:size_in_words(State) * 32 - Addr,
-                         {Data, _} = aevm_eeevm_memory:get_area(Addr, Size, State),
-                         Store     = aevm_eeevm_store:from_sophia_state(Data),
-                         State#{ chain_state => ChainAPI:set_store(Store, ChainState) }
-                end
-            catch _:_ ->
-                io:format("** Error reading updated state\n~s", [format_mem(mem(State))]),
-                State
-            end
-    end.
-
 -spec init(map(), map()) -> state().
 init(#{ env  := Env
       , exec := Exec
@@ -198,6 +172,32 @@ do_return(Us0, Us1, State) ->
             %% Us0 is pointer to a return data binary and Us1 is the size.
     {Out, State1} = aevm_eeevm_memory:get_area(Us0, Us1, State),
             set_out(Out, State1)
+    end.
+
+-spec save_store(state()) -> state().
+save_store(#{ chain_state := ChainState
+            , chain_api   := ChainAPI
+            , vm_version  := VmVersion } = State) ->
+    case VmVersion of
+        ?AEVM_01_Solidity_01 ->
+            Store = aevm_eeevm_store:to_binary(State),
+            State#{ chain_state => ChainAPI:set_store(Store, ChainState)};
+        ?AEVM_01_Sophia_01 ->
+            %% The serialized state is on top of the heap and the pointer to it
+            %% at address 0.
+            try
+                {Addr, _} = aevm_eeevm_memory:load(0, State),
+                case Addr of        %% A contract can write 0 to the state pointer
+                    0 -> State;     %% to indicate that the state didn't change.
+                    _ -> Size      = aevm_eeevm_memory:size_in_words(State) * 32 - Addr,
+                         {Data, _} = aevm_eeevm_memory:get_area(Addr, Size, State),
+                         Store     = aevm_eeevm_store:from_sophia_state(Data),
+                         State#{ chain_state => ChainAPI:set_store(Store, ChainState) }
+                end
+            catch _:_ ->
+                io:format("** Error reading updated state\n~s", [format_mem(mem(State))]),
+                State
+            end
     end.
 
 call_contract(Caller, Target, CallGas, Value, Data, State) ->
