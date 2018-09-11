@@ -2399,7 +2399,7 @@
           "format" : "int64"
         },
         "oracle_ttl" : {
-          "$ref" : "#/definitions/TTL"
+          "$ref" : "#/definitions/RelativeTTL"
         },
         "oracle_id" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -2420,8 +2420,8 @@
           "type" : "delta",
           "value" : 1
         },
-        "nonce" : 6,
-        "ttl" : 1
+        "nonce" : 1,
+        "ttl" : 5
       }
     },
     "OracleQueryTx" : {
@@ -2472,9 +2472,9 @@
           "type" : "delta",
           "value" : 1
         },
-        "fee" : 1,
+        "fee" : 6,
         "query_fee" : 0,
-        "ttl" : 5,
+        "ttl" : 1,
         "nonce" : 5,
         "sender_id" : null
       }
