@@ -38,6 +38,7 @@ to_binary1(none, Address)            -> to_binary1({variant, 0, []}, Address);
 to_binary1({some, Value}, Address)   -> to_binary1({variant, 1, [Value]}, Address);
 to_binary1(word, Address)            -> to_binary1({?TYPEREP_WORD_TAG}, Address);
 to_binary1(string, Address)          -> to_binary1({?TYPEREP_STRING_TAG}, Address);
+to_binary1(typerep, Address)         -> to_binary1({?TYPEREP_TYPEREP_TAG}, Address);
 to_binary1({list, T}, Address)       -> to_binary1({?TYPEREP_LIST_TAG, T}, Address);
 to_binary1({option, T}, Address)     -> to_binary1({variant, [[], [T]]}, Address);
 to_binary1({tuple, Ts}, Address)     -> to_binary1({?TYPEREP_TUPLE_TAG, Ts}, Address);
@@ -158,6 +159,7 @@ from_binary(Visited, typerep, Heap, V) ->
     case Tag of
         ?TYPEREP_WORD_TAG    -> word;
         ?TYPEREP_STRING_TAG  -> string;
+        ?TYPEREP_TYPEREP_TAG -> typerep;
         ?TYPEREP_LIST_TAG    -> {list,   Arg(typerep)};
         ?TYPEREP_TUPLE_TAG   -> {tuple,  Arg({list, typerep})};
         ?TYPEREP_VARIANT_TAG -> {variant, Arg({list, {list, typerep}})}
