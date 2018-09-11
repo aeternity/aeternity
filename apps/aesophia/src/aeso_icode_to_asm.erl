@@ -38,12 +38,7 @@ convert(#{ contract_name := _ContractName
                                )}
                      || Fun={FName, Args, _, TypeRep} <- Functions, is_public(Fun) ]},
                    word},
-    %% Find the type-reps we need encoders for
-    {InTypes, _OutTypes} = remote_call_type_reps(Functions),
-    TypeReps = all_type_reps(InTypes),
-    Encoders = [make_encoder(T) || T <- TypeReps],
-    Library = [make_copymem()],
-    NewFunctions = Functions ++ [DispatchFun] ++ Encoders ++ Library,
+    NewFunctions = Functions ++ [DispatchFun],
     %% Create a function environment
     Funs = [{Name, length(Args), make_ref()}
             || {Name, Args, _Body, _Type} <- NewFunctions],
@@ -256,47 +251,6 @@ assemble_expr(Funs, Stack, _, {lambda, Args, Body}) ->
      jumpdest(Continue)];
 assemble_expr(_, _, _, {label, Label}) ->
     push_label(Label);
-assemble_expr(Funs, Stack, _, {encode, Base, TypeRep, A}) ->
-    %% Encode a value A of type TypeRep as a binary. Leaves a pointer to the
-    %% binary on top of the stack.
-    %%
-    %% For boxed types the encoding is a relative pointer into a following heap fragment
-    %% with relative addresses. `Base` is the relative address of the start of the binary,
-    %% so that if the binary were written to address `Base` it would be a valid
-    %% heap object.
-    %% For instance with Pad = 0, the tuple ("pink", (99, "apple")) would be encoded as
-    %%    Offset   0   32   64     96     128    160   192     224    256
-    %%    Word   160   99   96      5  "apple"   224    32       4  "pink"
-    %%
-    %% For unboxed types the encoding is simply the value.
-
-    SubBase = [ [push(Base), swap(1), i(?SUB)] || Base /= 0 ],
-
-      %% First assemble the value to be encoded. This may allocate memory.
-    [ assemble_expr(Funs, Stack, nontail, A), %% [ value ]
-                                           %% Allocate space for the first word
-      i(?MSIZE),                           %% [ addr value ]
-      push(0),                             %% [ 0 addr value ]
-      dup(2),                              %% [ addr 0 addr value ]
-      i(?MSTORE),                          %% [ addr value ]    -- allocate
-      swap(1), dup(2), SubBase,            %% [ base value addr ]
-      %% Call the encoder function. This returns a relative pointer for boxed
-      %% types, and `value` for unboxed types.
-      assemble_expr(Funs, [{"base", "_"}, {"value", "_"} | Stack], nontail,
-        {funcall, {var_ref, encoder_name(TypeRep)},
-        [{var_ref, "base"}, {var_ref, "value"}]}),     %% [ result base value addr ]
-      dup(4), i(?MSTORE),                              %% [ base value addr ]  Mem[addr] := result
-      pop(2)];                                         %% [ addr ]
-assemble_expr(Funs, Stack0, _Tail, {decode, TypeRep}) ->
-    %% Inverse of encoding. Top of the stack should contain a pointer to the
-    %% blob.
-    [_ | Stack] = Stack0,
-    [ dup(1),                                          %% [ ptr ptr ]
-      i(?MLOAD),                                       %% [ value ptr ]
-      assemble_expr(Funs, [{"value", "_"}, {"base", "_"} | Stack], nontail,
-        {funcall, {var_ref, decoder_name(TypeRep)},
-            [{var_ref, "base"}, {var_ref, "value"}]}), %% [ decoded value ptr ]
-      pop_args(2) ];                                   %% [ decoded ]
 assemble_expr(Funs, Stack, nontail, {funcall, Fun, Args}) ->
     Return = make_ref(),
     %% This is the obvious code:
@@ -412,16 +366,13 @@ assemble_expr(Funs, Stack, _Tail,
                                  , arg      = Arg
                                  , arg_type = ArgT
                                  , out_type = OutT }) ->
+    Type = fun(T) -> aeso_ast_to_icode:type_value(T) end,
     %% ?CALL takes (from the top)
-    %%   Gas, To, Value, IOffset, ISize, _OOffset, OutType
-    [ assemble_expr(Funs, Stack, nontail, aeso_ast_to_icode:type_value(OutT))
-    , push(0)                                       %% _OOffset OutT
-    , assemble_expr(Funs, [dummy, dummy | Stack],
-            nontail, {encode, 32, ArgT, Arg})       %%  IOffset _OOffset OutT
-    , dup(1), i(?MSIZE), i(?SUB), swap(1)           %%  IOffset ISize _OOffset OutT
-    , assemble_exprs(Funs, [dummy, dummy, dummy, dummy | Stack], [Value, To, Gas])
-                                                    %%  Gas To Value IOffset ISize _OOffset OutT
-    , i(?CALL)                                      %%  Result
+    %%   Gas, To, Value, Arg, ArgType, _OOffset, OutType
+    %% So assemble these in reverse order.
+    [ assemble_exprs(Funs, Stack, [ Type(OutT), {integer, 0}, Type(ArgT)
+                                  , Arg, Value, To, Gas ])
+    , i(?CALL)
     ].
 
 
@@ -642,152 +593,6 @@ free_vars(_) ->
     [].
 
 
-
-
-%% Type-directed encoders
-
-%% We need encoding functions for the argument types of remote contract calls.
-remote_call_type_reps(X) -> remote_call_type_reps(X, {[], []}).
-
-remote_call_type_reps(#prim_call_contract{ arg_type = ArgT, out_type = OutT }, {In, Out}) ->
-    {[ArgT | In], [OutT | Out]};
-remote_call_type_reps([H | T], Acc) ->
-    remote_call_type_reps(T, remote_call_type_reps(H, Acc));
-remote_call_type_reps(T, Acc) when is_tuple(T) ->
-    remote_call_type_reps(tuple_to_list(T), Acc);
-remote_call_type_reps(M, Acc) when is_map(M) ->
-    remote_call_type_reps(maps:values(M), Acc);
-remote_call_type_reps(_, Acc) -> Acc.
-
-%% Given the type-reps appearing in the program, include children and
-%% eliminate duplicates.
-all_type_reps(InSource) ->
-    all_type_reps(InSource, []).
-
-all_type_reps([], Found) ->
-    Found;
-all_type_reps([TR|InSource], Found) ->
-    case lists:member(TR, Found) of
-        true ->
-            all_type_reps(InSource, Found);
-        false ->
-            Nested = case TR of
-                         {tuple, TRs} -> TRs;
-                         {list, T}    -> [T];
-                         {variant, Cs} -> [{tuple, [word | Args]} || Args <- Cs];
-                            %% Constructor values are encoded as tuples with the tag as the first component
-                         typerep      -> [{list, {list, typerep}}];
-                            %% tuple case has a list of typereps and variant list(list(typerep))
-                         _            -> []
-                     end,
-            all_type_reps(Nested ++ InSource, [TR|Found])
-    end.
-
-%% We generate encoder function definitions for each type
-%% rep. Encoders take a base address as an argument, and a value to
-%% copy, and construct a copy of the value with all addresses relative
-%% to the base address. Very untyped!
-%%
-%% More precisely:
-%%
-%%  _encode_T(base, value) returns a copy of `value` with all pointers relative
-%%  to `base`. So, for unboxed types (word) it simply returns `value`, and for
-%%  boxed types it returns an offset from `base` where the encoded value is
-%%  stored. Thus, if called with the top of the heap as `base`, it returns 0
-%%  (for boxed types).
-
-encoder_name(TR) ->
-    "_encode_" ++ lists:flatten(io_lib:write(TR)).
-
-decoder_name(TR) ->
-    "_decode_" ++ lists:flatten(io_lib:write(TR)).
-
-make_encoder(TR) ->
-    {encoder_name(TR), [{"base", "_"}, {"value", "_"}], make_encoder_body(TR), word}.
-
-make_encoder_body(word) ->
-    {var_ref, "value"};
-make_encoder_body(typerep) ->
-    Con = fun(Tag, Args) -> {tuple, [{integer, Tag} | Args]} end,
-    Rel = fun(E) -> {binop, '-', E, {var_ref, "base"}} end,
-    Enc = fun(T, X) -> {funcall, {var_ref, encoder_name(T)}, [{var_ref, "base"}, {var_ref, X}]} end,
-    {switch, {var_ref, "value"},
-        [{Con(?TYPEREP_WORD_TAG, []),   Rel(Con(?TYPEREP_WORD_TAG, []))},
-         {Con(?TYPEREP_STRING_TAG, []), Rel(Con(?TYPEREP_STRING_TAG, []))},
-         {Con(?TYPEREP_LIST_TAG, [{var_ref, "t"}]),
-            Rel(Con(?TYPEREP_LIST_TAG, [Enc(typerep, "t")]))},
-         {Con(?TYPEREP_TUPLE_TAG, [{var_ref, "ts"}]),
-            Rel(Con(?TYPEREP_TUPLE_TAG, [Enc({list, typerep}, "ts")]))},
-         {Con(?TYPEREP_VARIANT_TAG, [{var_ref, "cs"}]),
-            Rel(Con(?TYPEREP_VARIANT_TAG, [Enc({list, {list, typerep}}, "cs")]))}]};
-make_encoder_body(string) ->
-    %% matching against a singleton tuple reads an address
-    {switch, {var_ref, "value"},
-     [{{tuple, [{var_ref, "length"}]},
-       %% allocate the first word
-      {switch, {tuple, [{var_ref, "length"}]},
-       [{{var_ref, "result"},
-         {funcall, {var_ref, "_copymem"},
-          [%% address to copy from
-           {binop, '+', {integer, 32}, {var_ref, "value"}},
-           %% number of bytes to copy
-           {var_ref, "length"},
-           %% final result
-           {binop, '-', {var_ref, "result"}, {var_ref, "base"}}
-          ]}}
-       ]}
-      }]};
-make_encoder_body({tuple, TRs}) ->
-    Vars = make_vars(length(TRs)),
-    {switch, {var_ref, "value"},
-     [{{tuple, Vars},
-       {binop, '-',
-        {tuple, [{funcall, {var_ref, encoder_name(TR)}, [{var_ref, "base"}, V]}
-                || {TR, V} <- lists:zip(TRs, Vars)]},
-        {var_ref, "base"}}}
-     ]};
-make_encoder_body({list, TR}) ->
-    {switch, {var_ref, "value"},
-     [{{list, []}, {list, []}},
-      {{tuple, [{var_ref, "head"}, {var_ref, "tail"}]},
-       {binop, '-',
-        {tuple, [{funcall, {var_ref, encoder_name(TR)},
-                 [{var_ref, "base"}, {var_ref, "head"}]},
-                {funcall, {var_ref, encoder_name({list, TR})},
-                 [{var_ref, "base"}, {var_ref, "tail"}]}]},
-        {var_ref, "base"}}}
-     ]};
-make_encoder_body({variant, Cons}) ->
-    Tags = lists:seq(0, length(Cons) - 1),
-    {switch, {var_ref, "value"},
-        [ {{tuple, [{integer, Tag}]},
-            {funcall, {var_ref, encoder_name({tuple, [word | Args]})},  %% TODO: optimize nullary constructors
-                [{var_ref, "base"}, {var_ref, "value"}]}}
-            || {Tag, Args} <- lists:zip(Tags, Cons) ]};
-make_encoder_body(function) ->
-    {integer, 33333333333333333}.   %% TODO: fail here once we distinguish public and private functions
-
-make_vars(N) ->
-    [{var_ref, "_v" ++ integer_to_list(I)} || I <- lists:seq(1, N)].
-
-%% Generates a definition of a function to copy N bytes from address A
-%% to the heap pointer, and return the final argument.
-make_copymem() ->
-    {"_copymem", [{"addr", "_"}, {"length", "_"}, {"result", "_"}],
-     {ifte, {binop, '>', {var_ref, "length"}, {integer, 0}},
-      %% read the word at addr
-      {switch, {var_ref, "addr"},
-       [{{tuple, [{var_ref, "word"}]},
-         %% write the word at the heap pointer
-         {switch, {tuple, [{var_ref, "word"}]},
-          [{{var_ref, "_"},
-            %% and loop
-            {funcall, {var_ref, "_copymem"},
-             [{binop, '+', {var_ref, "addr"}, {integer, 32}},
-              {binop, '-', {var_ref, "length"}, {integer, 32}},
-              {var_ref, "result"}]}}]}}]},
-      {var_ref, "result"}},
-    word}.
 
 %% shuffle_stack reorders the stack, for example before a tailcall. It is called
 %% with a description of the current stack, and how the final stack

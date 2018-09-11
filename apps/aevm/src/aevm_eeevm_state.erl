@@ -34,6 +34,7 @@
         , gas/1
         , gaslimit/1
         , gasprice/1
+        , get_contract_call_input/3
         , init/2
         , jumpdests/1
         , logs/1
@@ -239,6 +240,22 @@ save_store(#{ chain_state := ChainState
                 io:format("** Error reading updated state\n~s", [format_mem(mem(State))]),
                 State
             end
+    end.
+
+get_contract_call_input(IOffset, ISize, State) ->
+    case vm_version(State) of
+        ?AEVM_01_Solidity_01 ->
+            aevm_eeevm_memory:get_area(IOffset, ISize, State);
+        ?AEVM_01_Sophia_01 ->
+            %% In Sophia the ISize is the type of the arguments and IOffset is
+            %% a pointer into the heap.
+            TypePtr = ISize,
+            Ptr     = IOffset,
+            Size         = aevm_eeevm_memory:size_in_words(State) * 32,
+            {Heap, _}    = aevm_eeevm_memory:get_area(0, Size, State),
+            {ok, Type}   = aeso_data:from_heap(typerep, Heap, TypePtr),
+            {ok, Arg}    = aeso_data:from_heap(Type, Heap, Ptr),
+            {aeso_data:to_binary(Arg, 32), State}    %% Encode calldata with base addr 32
     end.
 
 call_contract(Caller, Target, CallGas, Value, Data, State) ->

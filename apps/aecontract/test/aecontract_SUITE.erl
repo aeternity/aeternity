@@ -2160,31 +2160,57 @@ sophia_map_benchmark(Cfg) ->
     %%  160   1,015          993      3,582  (2,383)
     %%          +3%         -40%       -15%
 
-    %% No decoding of contract call return values.
+    %% No decoding of contract call return values (only affects benchmark).
     %%
     %%  Code size: 1,874 bytes
     %%
     %%  Gas:
     %%    N    init  set_updater  benchmark
-    %%    0   1,193          781      3,262
-    %%   10   1,204          786      9,802
-    %%   20   1,215          792     15,290
-    %%   40   1,237          803     32,190
-    %%   80   1,282          826     64,967
-    %%  160   1,370          871    134,365
-    %%          -0%          -0%       -31%     delta cost
+    %%    0                           3,262
+    %%   10                           9,802
+    %%   20                          15,290
+    %%   40                          32,190
+    %%   80                          64,967
+    %%  160                         134,365
+    %%                                 -31%     delta cost
     %%          x72         x174       x5.5     total improvement
     %%
     %%  Memory (words)
     %%    N    init  set_updater  benchmark (remote)
-    %%    0      55           33         77     (47)
-    %%   10     115           93        251    (183)
-    %%   20     175          153        431    (303)
-    %%   40     295          273        791    (623)
-    %%   80     535          513      1,511  (1,223)
-    %%  160   1,015          993      2,951  (2,383)
-    %%          -0%          -0%       -18%     delta cost
+    %%    0                              77     (47)
+    %%   10                             251    (183)
+    %%   20                             431    (303)
+    %%   40                             791    (623)
+    %%   80                           1,511  (1,223)
+    %%  160                           2,951  (2,383)
+    %%                                 -18%     delta cost
     %%         x1.9         x2.6       x2.1     total improvement
+
+    %% No decoding of contract call arguments (only affects benchmark).
+    %%
+    %%  Code size: 1,710 bytes      -36 bytes (yay!)
+    %%
+    %%  Gas:
+    %%    N    init  set_updater  benchmark
+    %%    0                           2,938
+    %%   10                           4,363
+    %%   20                           4,668
+    %%   40                          10,988
+    %%   80                          21,763
+    %%  160                          43,782
+    %%                                 -67%     delta cost
+    %%          x72         x174        x17     total improvement
+    %%
+    %%  Memory (words)
+    %%    N    init  set_updater  benchmark (remote)
+    %%    0                              94     (47)
+    %%   10                             208    (183)
+    %%   20                             328    (303)
+    %%   40                             568    (623)
+    %%   80                           1,048  (1,223)
+    %%  160                           2,008  (2,383)
+    %%                                 -32%     delta cost
+    %%         x1.9         x2.6       x3.0     total improvement
 
     ok.
 

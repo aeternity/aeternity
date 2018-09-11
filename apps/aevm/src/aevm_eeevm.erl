@@ -1460,7 +1460,7 @@ recursive_call1(StateIn, Op) ->
     {ISize, State5}   = pop(State4),
     {OOffset, State6} = pop(State5),
     {OSize, State7}   = pop(State6),
-    {I, State8}       = aevm_eeevm_memory:get_area(IOffset, ISize, State7),
+    {I, State8}       = aevm_eeevm_state:get_contract_call_input(IOffset, ISize, State7),
 
     GasAfterSpend     = aevm_eeevm_state:gas(State8),
     case GasAfterSpend >= 0 of
