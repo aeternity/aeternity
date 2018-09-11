@@ -2111,6 +2111,31 @@ sophia_map_benchmark(Cfg) ->
     %%   80     509          836      2,145  (1,546)
     %%  160     989        1,636      4,225  (3,026)
 
+    %% Load calldata before starting the VM. This makes calling functions with
+    %% big arguments *a lot* cheaper.
+    %%
+    %%  Code size: 1,901 bytes
+    %%
+    %%  Gas:
+    %%    N    init  set_updater  benchmark
+    %%    0     673        1,070      4,082
+    %%   10     678        4,535     20,715
+    %%   20     683        8,023     36,824
+    %%   40     693       15,077     75,554
+    %%   80     713       29,485    154,273
+    %%  160     752       59,498    324,599
+    %%         -99%          -0%        -1%
+    %%
+    %%  Memory (words)
+    %%    N    init  set_updater  benchmark (remote)
+    %%    0      29           36         75     (50)
+    %%   10      89          136        325    (226)
+    %%   20     149          236        585    (386)
+    %%   40     269          436      1,105    (786)
+    %%   80     509          836      2,145  (1,546)
+    %%  160     989        1,636      4,225  (3,026)
+    %%          -0%          -0%        -0%
+
     ok.
 
 sophia_variant_types(_Cfg) ->

@@ -145,11 +145,14 @@ init_vm(State, Code, Mem, Store) ->
         ?AEVM_01_Solidity_01 ->
             aevm_eeevm_store:init(Store, State1);
         ?AEVM_01_Sophia_01 ->
-            %% Leave room for the calldata at address 32
-            Addr = byte_size(data(State1)) + 32,
-            Data = aevm_eeevm_store:to_sophia_state(Store),
-            State2 = aevm_eeevm_memory:write_area(Addr, Data, State1),
-            aevm_eeevm_memory:store(0, Addr, State2)
+            %% Write calldata at address 32
+            Calldata = data(State),
+            State2   = aevm_eeevm_memory:write_area(32, Calldata, State1),
+            %% Write the state on top of it
+            Addr      = byte_size(Calldata) + 32,
+            StateData = aevm_eeevm_store:to_sophia_state(Store),
+            State3    = aevm_eeevm_memory:write_area(Addr, StateData, State2),
+            aevm_eeevm_memory:store(0, Addr, State3)
     end.
 
 do_return(Us0, Us1, State) ->

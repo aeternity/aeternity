@@ -64,11 +64,7 @@ convert(#{ contract_name := _ContractName
                     swap(1),            %% Ptr Snd
                     i(?MLOAD)],         %% Fst Snd
 
-    DispatchCode = [%% read all call data into memory at address 32
-                    i(?CALLDATASIZE),
-                    push(0), push(32),
-                    i(?CALLDATACOPY),
-                    %% push two return addresses to stop, one for stateful
+    DispatchCode = [%% push two return addresses to stop, one for stateful
                     %% functions and one for non-stateful functions.
                     push_label(StopLabel),
                     push_label(StatefulStopLabel),
