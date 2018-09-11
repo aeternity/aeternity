@@ -2064,7 +2064,7 @@ sophia_map_benchmark(Cfg) ->
     %%   40     493          658      1,559  (1,240)
     %%   80     973        1,298      3,079  (2,480)
     %%  160   1,933        2,578      6,119  (4,920)
-    %%
+
     %% Read return values off the heap (with encoded typereps on the heap)
     %%
     %%  Code size: 1,859 bytes
@@ -2077,8 +2077,9 @@ sophia_map_benchmark(Cfg) ->
     %%   40   2,306       36,193    119,874
     %%   80   4,111       72,779    246,881
     %%  160   8,395      150,075    525,113
+    %%         -91%          -1%       -29%
     %%
-    %%  Memory (words) - recorded by instrumenting the VM
+    %%  Memory (words)
     %%    N    init  set_updater  benchmark (remote)
     %%    0      29           21         66     (35)
     %%   10      89          181        370    (271)
@@ -2086,6 +2087,30 @@ sophia_map_benchmark(Cfg) ->
     %%   40     269          661      1,330  (1,011)
     %%   80     509        1,301      2,610  (2,011)
     %%  160     989        2,581      5,170  (3,971)
+
+    %% Read updated states from the heap (with encoded typereps on the heap)
+    %%
+    %%  Code size: 1,907 bytes
+    %%
+    %%  Gas:
+    %%    N    init  set_updater  benchmark
+    %%    0     726        1,099      4,161
+    %%   10   1,100        4,564     20,974
+    %%   20   1,488        8,052     37,263
+    %%   40   2,306       15,106     76,353
+    %%   80   4,111       29,514    155,792
+    %%  160   8,395       59,527    327,558
+    %%          -0%         -60%       -38%
+    %%
+    %%  Memory (words)
+    %%    N    init  set_updater  benchmark (remote)
+    %%    0      29           36         75     (50)
+    %%   10      89          136        325    (226)
+    %%   20     149          236        585    (386)
+    %%   40     269          436      1,105    (786)
+    %%   80     509          836      2,145  (1,546)
+    %%  160     989        1,636      4,225  (3,026)
+
     ok.
 
 sophia_variant_types(_Cfg) ->

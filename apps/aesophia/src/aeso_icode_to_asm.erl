@@ -42,7 +42,7 @@ convert(#{ contract_name := _ContractName
                    word},
     %% Find the type-reps we need encoders for
     {InTypes, OutTypes} = remote_call_type_reps(Functions),
-    TypeReps = all_type_reps(InTypes ++ [StateType]),
+    TypeReps = all_type_reps(InTypes),
     OutTypeReps = all_type_reps(OutTypes ++ [StateType]),
     Encoders = [make_encoder(T) || T <- TypeReps],
     Decoders = [make_decoder(T) || T <- OutTypeReps],
@@ -82,11 +82,18 @@ convert(#{ contract_name := _ContractName
                     %% return value on the stack. We need to unpack this.
                     UnpackPair,
 
-                    %% Now we need to encode the state
-                    push(0), i(?MLOAD),          %% State Ptr Size
-                    assemble_expr(Funs, [{"state", "_"}, dummy, dummy], nontail, {encode, 0, StateType, {var_ref, "state"}}),
-                                                 %% StateBinPtr State Ptr Size
-                    push(0), i(?MSTORE), pop(1), %% Ptr Size  Mem[0] := StateBinPtr
+                    %% Now we need to encode the state type and put it
+                    %% underneath the return type and value.
+                    assemble_expr(Funs, [], nontail, aeso_ast_to_icode:type_value(StateType)),  %% StateT RetT Ret
+                    swap(2), swap(1),
+                    %% We should also change the state value at address 0 to a
+                    %% pointer to the state value (to allow 0 to represent an
+                    %% unchanged state).
+                    i(?MSIZE),             %% Ptr
+                    push(0), i(?MLOAD),    %% Val Ptr
+                    i(?MSIZE), i(?MSTORE), %% Ptr   Mem[Ptr] := Val
+                    push(0), i(?MSTORE),   %%       Mem[0]   := Ptr
+
                     i(?RETURN),
                     jumpdest(StopLabel),
                     %% Same as StatefulStopLabel above

@@ -183,14 +183,21 @@ save_store(#{ chain_state := ChainState
             Store = aevm_eeevm_store:to_binary(State),
             State#{ chain_state => ChainAPI:set_store(Store, ChainState)};
         ?AEVM_01_Sophia_01 ->
-            %% The serialized state is on top of the heap and the pointer to it
-            %% at address 0.
+            %% A typerep for the state type is on top of the stack, and the state
+            %% pointer is at address 0.
             try
                 {Addr, _} = aevm_eeevm_memory:load(0, State),
                 case Addr of        %% A contract can write 0 to the state pointer
                     0 -> State;     %% to indicate that the state didn't change.
-                    _ -> Size      = aevm_eeevm_memory:size_in_words(State) * 32 - Addr,
-                         {Data, _} = aevm_eeevm_memory:get_area(Addr, Size, State),
+                    _ ->
+                        {TypePtr, _} = aevm_eeevm_stack:pop(State),
+                        Size         = aevm_eeevm_memory:size_in_words(State) * 32,
+                        {Heap, _}    = aevm_eeevm_memory:get_area(0, Size, State),
+                        {ok, Type}   = aeso_data:from_heap(typerep, Heap, TypePtr),
+                        io:format("State type = ~p\n", [Type]),
+                        {Ptr, _}     = aevm_eeevm_memory:load(Addr, State),
+                        {ok, Val}    = aeso_data:from_heap(Type, Heap, Ptr),
+                        Data         = aeso_data:to_binary(Val, 0),
                          Store     = aevm_eeevm_store:from_sophia_state(Data),
                          State#{ chain_state => ChainAPI:set_store(Store, ChainState) }
                 end
