@@ -149,10 +149,18 @@ init_vm(State, Code, Mem, Store) ->
             Calldata = data(State),
             State2   = aevm_eeevm_memory:write_area(32, Calldata, State1),
             %% Write the state on top of it
-            Addr      = byte_size(Calldata) + 32,
-            StateData = aevm_eeevm_store:to_sophia_state(Store),
-            State3    = aevm_eeevm_memory:write_area(Addr, StateData, State2),
-            aevm_eeevm_memory:store(0, Addr, State3)
+            case aevm_eeevm_store:get_sophia_state_type(Store) of
+                false -> State2;  %% No state yet (init function)
+                TypeBin ->
+                    {ok, Type} = aeso_data:from_binary(typerep, TypeBin),
+                    Addr      = byte_size(Calldata) + 32,
+                    StateData = aevm_eeevm_store:get_sophia_state(Store),
+                    %% TODO: implement fusion of to_binary and from_binary (i.e. relocate_binary)
+                    {ok, StateVal} = aeso_data:from_binary(Type, StateData),
+                    <<StatePtr:32/unit:8, StateHeap/binary>> = aeso_data:to_binary(StateVal, Addr - 32),
+                    State3    = aevm_eeevm_memory:write_area(Addr, StateHeap, State2),
+                    aevm_eeevm_memory:store(0, StatePtr, State3)
+            end
     end.
 
 do_return(Us0, Us1, State) ->
@@ -197,12 +205,12 @@ save_store(#{ chain_state := ChainState
                         Size         = aevm_eeevm_memory:size_in_words(State) * 32,
                         {Heap, _}    = aevm_eeevm_memory:get_area(0, Size, State),
                         {ok, Type}   = aeso_data:from_heap(typerep, Heap, TypePtr),
-                        io:format("State type = ~p\n", [Type]),
                         {Ptr, _}     = aevm_eeevm_memory:load(Addr, State),
                         {ok, Val}    = aeso_data:from_heap(Type, Heap, Ptr),
                         Data         = aeso_data:to_binary(Val, 0),
-                         Store     = aevm_eeevm_store:from_sophia_state(Data),
-                         State#{ chain_state => ChainAPI:set_store(Store, ChainState) }
+                        Store        = ChainAPI:get_store(ChainState),
+                        Store1       = aevm_eeevm_store:set_sophia_state(Data, Store),
+                        State#{ chain_state => ChainAPI:set_store(Store1, ChainState) }
                 end
             catch _:_ ->
                 io:format("** Error reading updated state\n~s", [format_mem(mem(State))]),

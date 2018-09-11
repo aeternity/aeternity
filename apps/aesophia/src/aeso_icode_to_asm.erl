@@ -17,7 +17,6 @@
 i(Code) -> aeb_opcodes:mnemonic(Code).
 
 %% We don't track purity or statefulness in the type checker yet.
-is_pure({FName, _, _, _})     -> FName == "init".
 is_stateful({FName, _, _, _}) -> FName /= "init".
 
 is_public({{builtin, _}, _, _, _}) -> false;
@@ -34,7 +33,6 @@ convert(#{ contract_name := _ContractName
                     [{{tuple, [fun_hash(FName),
                                {tuple, make_args(Args)}]},
                       icode_seq([ hack_return_address(Fun, length(Args) + 1) ] ++
-                                [ {funcall, {var_ref, "_copy_state"}, [prim_state]} || not is_pure(Fun) ] ++
                                 [ {tuple, [aeso_ast_to_icode:type_value(TypeRep),
                                            {funcall, {var_ref, FName}, make_args(Args)}]} ]
                                )}
@@ -43,10 +41,10 @@ convert(#{ contract_name := _ContractName
     %% Find the type-reps we need encoders for
     {InTypes, OutTypes} = remote_call_type_reps(Functions),
     TypeReps = all_type_reps(InTypes),
-    OutTypeReps = all_type_reps(OutTypes ++ [StateType]),
+    OutTypeReps = all_type_reps(OutTypes),
     Encoders = [make_encoder(T) || T <- TypeReps],
     Decoders = [make_decoder(T) || T <- OutTypeReps],
-    Library = [make_copymem(), make_copystate(StateType)],
+    Library = [make_copymem()],
     NewFunctions = Functions ++ [DispatchFun] ++ Encoders ++ Decoders ++ Library,
     %% Create a function environment
     Funs = [{Name, length(Args), make_ref()}
@@ -854,19 +852,6 @@ make_copymem() ->
               {var_ref, "result"}]}}]}}]},
       {var_ref, "result"}},
     word}.
-
-%% Generates a function _copy_state that decodes a binary blob at the argument
-%% address.
-make_copystate(StateType) ->
-    {"_copy_state", [{"addr", "_"}],
-     #switch{expr = {decode, StateType},  %% Replaces addr with new state pointer
-             cases =
-                [{#var_ref{name = "addr"},
-                 {inline_asm,
-                    [ dup(1), push(0), i(?MSTORE)
-                    , i(?MSIZE), i(?MSIZE)  %% dummy result of switch and dummy return
-                    ]}}] },
-     {tuple, []}}.
 
 %% shuffle_stack reorders the stack, for example before a tailcall. It is called
 %% with a description of the current stack, and how the final stack

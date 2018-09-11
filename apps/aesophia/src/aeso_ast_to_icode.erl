@@ -35,7 +35,9 @@ add_default_init_function(Icode = #{functions := Funs, state_type := State}) ->
         true -> Icode;
         false when State /= {tuple, []} -> error(missing_init_function);
         false ->
-            DefaultInit = {"init", [], {tuple, []}, {tuple, []}},
+            Type  = {tuple, [typerep, {tuple, []}]},
+            Value = #tuple{ cpts = [type_value({tuple, []}), {tuple, []}] },
+            DefaultInit = {"init", [], Value, Type},
             Icode#{ functions => [DefaultInit | Funs] }
     end.
 
@@ -66,8 +68,15 @@ contract_to_icode([{letfun,_Attrib, Name, Args, _What, Body={typed,_,_,T}}|Rest]
     %% TODO: push funname to env
     FunArgs = ast_args(Args, [], Icode),
     %% TODO: push args to env
-    FunBody = ast_body(Body, Icode),
-    TypeRep = ast_typerep(T, Icode),
+    {FunBody, TypeRep} =
+        case FunName of
+            "init" ->
+                %% Pair the initial state with a typerep for the state (TODO: until we have the state type in some contract metadata)
+                #{ state_type := StateType } = Icode,
+                {#tuple{ cpts = [type_value(StateType), ast_body(Body, Icode)] },
+                 {tuple, [typerep, ast_typerep(T, Icode)]}};
+            _ -> {ast_body(Body, Icode), ast_typerep(T, Icode)}
+        end,
     NewIcode = ast_fun_to_icode(FunName, FunArgs, FunBody, TypeRep, Icode),
     contract_to_icode(Rest, NewIcode);
 contract_to_icode([{letrec,_,Defs}|Rest], Icode) ->
