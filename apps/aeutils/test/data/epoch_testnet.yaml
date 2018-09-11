@@ -11,4 +11,4 @@ chain:
 mining:
     autostart: true
     # Public key of beneficiary account that will receive fees from mining on a node.
-    beneficiary: "ak$DummyPubKeyDoNotEverUse999999999999999999999999999"
+    beneficiary: "ak_DummyPubKeyDoNotEverUse999999999999999999999999999"

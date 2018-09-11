@@ -40,7 +40,7 @@ encode(id_hash, Payload) ->
 encode(Type, Payload) ->
     Pfx = type2pfx(Type),
     Enc = base58_check(Payload),
-    <<Pfx/binary, "$", Enc/binary>>.
+    <<Pfx/binary, "_", Enc/binary>>.
 
 -spec decode(binary()) -> {known_type(), payload()}.
 decode(Bin0) ->
@@ -110,7 +110,7 @@ base58_check(Bin) ->
     binary_to_base58(iolist_to_binary([Bin, C])).
 
 split(Bin) ->
-    binary:split(Bin, [<<"$">>], []).
+    binary:split(Bin, [<<"_">>], []).
 
 check_str(Bin) ->
     <<C:32/bitstring,_/binary>> =

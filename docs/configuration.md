@@ -52,10 +52,10 @@ cd /tmp/node
 bin/epoch keys_gen my_secret_password
 ```
 ```
-Generated keypair with encoded pubkey: ak$2D9REvQsrAgnJgmdwPq585D8YksJC8PSAA8MscQdxinbkFC7rq
+Generated keypair with encoded pubkey: ak_2D9REvQsrAgnJgmdwPq585D8YksJC8PSAA8MscQdxinbkFC7rq
 ```
 
-In the example the generated public key is `ak$2D9REvQsrAgnJgmdwPq585D8YksJC8PSAA8MscQdxinbkFC7rq`, but do not use it in your config!
+In the example the generated public key is `ak_2D9REvQsrAgnJgmdwPq585D8YksJC8PSAA8MscQdxinbkFC7rq`, but do not use it in your config!
 This is just an example value to show what public key format you should expect after running `bin/epoch keys_gen` command.
 
 ### Signing keys management

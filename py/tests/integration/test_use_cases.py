@@ -78,7 +78,7 @@ chain:
 mining:
     autostart: true
     expected_mine_rate: 100
-    beneficiary: "ak$2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
+    beneficiary: "ak_2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
     cuckoo:
         miner:
             executable: mean16s-generic
@@ -92,7 +92,7 @@ chain:
     db_path: \"""" + root_dir + """\"
 
 mining:
-    beneficiary: "ak$2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
+    beneficiary: "ak_2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
 """
     persistence_mining_user_config = common.install_user_config(root_dir, "p_m_epoch.yaml", p_m_conf)
     minimal_user_config_with_persistence = common.install_user_config(root_dir, "p_epoch.yaml", p_conf)
@@ -145,14 +145,14 @@ def test_node_discovery_transitively():
     # Bob's config: only peer is Alice
     bob_peers = """\
 peers:
-    - "aenode://pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@localhost:3015"
+    - "aenode://pp_HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@localhost:3015"
 """
     bob_user_config = make_peers_user_config(root_dir, "bob_epoch.yaml",
                             "node2", "3025", bob_peers, "false")
     # Carol's config: only peer is Bob
     carol_peers = """\
 peers:
-    - "aenode://pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025"
+    - "aenode://pp_28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025"
 """
     carol_user_config = make_peers_user_config(root_dir, "carol_epoch.yaml",
                             "node3", "3035", carol_peers, "false")
@@ -179,7 +179,7 @@ peers:
 
     # Check that Carol discovers Alice as a peer
     carol_int_api = common.internal_api(carol_node)
-    wait(lambda: 'aenode://pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@localhost:3015' in get_peers(carol_int_api), timeout_seconds=20, sleep_seconds=1)
+    wait(lambda: 'aenode://pp_HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@localhost:3015' in get_peers(carol_int_api), timeout_seconds=20, sleep_seconds=1)
 
     # cleanup
     common.stop_node(alice_node)
@@ -206,7 +206,7 @@ def test_node_discovery_from_common_friend():
     # Alice's config: only peer is Bob
     alice_peers = """\
 peers:
-    - "aenode://pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025"
+    - "aenode://pp_28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025"
 """
     alice_user_config = make_peers_user_config(root_dir, "alice_epoch.yaml",
                             "node1", "3015", alice_peers, "true")
@@ -217,7 +217,7 @@ peers:
     # Carol's config: only peer is Bob
     carol_peers = """\
 peers:
-    - "aenode://pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025"
+    - "aenode://pp_28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025"
 """
     carol_user_config = make_peers_user_config(root_dir, "carol_epoch.yaml",
                             "node3", "3035", carol_peers, "false")
@@ -244,7 +244,7 @@ peers:
 
     # Check that Carol discovers Alice as a peer
     carol_int_api = common.internal_api(carol_node)
-    wait(lambda: 'aenode://pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@127.0.0.1:3015' in get_peers(carol_int_api), timeout_seconds=20, sleep_seconds=1)
+    wait(lambda: 'aenode://pp_HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@127.0.0.1:3015' in get_peers(carol_int_api), timeout_seconds=20, sleep_seconds=1)
 
     # cleanup
     common.stop_node(alice_node)
@@ -279,7 +279,7 @@ keys:
 mining:
     autostart: {}
     expected_mine_rate: 100
-    beneficiary: "ak$2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
+    beneficiary: "ak_2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
     cuckoo:
         miner:
             executable: mean16s-generic
@@ -293,7 +293,7 @@ def make_fast_mining_user_config(root_dir, file_name):
     conf = """\
 ---
 peers:
-    - "aenode://pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025"
+    - "aenode://pp_28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025"
 
 sync:
     port: 3015
@@ -309,7 +309,7 @@ chain:
 mining:
     autostart: true
     expected_mine_rate: 100
-    beneficiary: "ak$2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
+    beneficiary: "ak_2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
     cuckoo:
         miner:
             executable: mean16s-generic
@@ -323,7 +323,7 @@ def make_no_mining_user_config(root_dir, file_name):
     conf = """\
 ---
 peers:
-    - "aenode://pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@localhost:3015"
+    - "aenode://pp_HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@localhost:3015"
 
 sync:
     port: 3025
@@ -339,7 +339,7 @@ chain:
 mining:
     autostart: false
     expected_mine_rate: 100
-    beneficiary: "ak$2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
+    beneficiary: "ak_2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
     cuckoo:
         miner:
             executable: mean16s-generic
