@@ -60,6 +60,7 @@
         , sophia_oracles_qfee__inner_error_after_primop__remote/1
         , sophia_oracles_qfee__outer_error_after_primop__remote/1
         , sophia_maps/1
+        , sophia_map_benchmark/1
         , sophia_variant_types/1
         , sophia_chain/1
         , sophia_savecoinbase/1
@@ -122,6 +123,7 @@ groups() ->
                                  {group, sophia_oracles_query_fee_unhappy_path},
                                  {group, sophia_oracles_query_fee_unhappy_path_remote},
                                  sophia_maps,
+                                 sophia_map_benchmark,
                                  sophia_variant_types,
                                  sophia_chain,
                                  sophia_savecoinbase,
@@ -2026,6 +2028,64 @@ sophia_maps(_Cfg) ->
             || {Fn, Ks} <- [{delete_state_i, DeltaI3}, {delete_state_s, DeltaS3}],
                K <- Ks ],
     {MapI3, MapS3} = Call(get_state, State, {}),
+    ok.
+
+sophia_map_benchmark(Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc  = ?call(new_account, 100000000),
+    N    = proplists:get_value(n, Cfg, 10),
+    Map  = maps:from_list([{I, list_to_binary(integer_to_list(I))} || I <- lists:seq(1, N) ]),
+    Code = aect_test_utils:compile_contract("contracts/maps_benchmark.aes"),
+    Opts = #{ gas => 1000000, return_gas_used => true },
+    {Ct, InitGas}   = ?call(create_contract, Acc, maps_benchmark, {777, Map}, Opts),
+    {{}, SimpleGas} = ?call(call_contract, Acc, Ct, set_updater, {tuple, []}, Ct, Opts),
+    Map1 = Map#{ 5 => <<"five">> },
+    {Map1, Gas} = ?call(call_contract, Acc, Ct, benchmark, {map, word, string}, {5, <<"five">>}, Opts),
+    io:format("Bytecode size: ~p\nInit   gas used: ~p\nSimple gas used: ~p\nBench  gas used: ~p\n", [byte_size(Code), InitGas, SimpleGas, Gas]),
+
+    %% Before any optimisations:
+    %%
+    %%  Code size: 1,746 bytes
+    %%
+    %%  Gas:
+    %%    N    init  set_updater  benchmark
+    %%    0     599          976      5,253
+    %%   10   6,283        9,758     42,102
+    %%   20  12,024       18,626     80,524
+    %%   40  32,673       36,619    165,544
+    %%   80  47,648       73,638    343,217
+    %%  160  98,296      151,799    736,808
+    %%
+    %%  Memory (words) - recorded by instrumenting the VM
+    %%    N    init  set_updater  benchmark (remote)
+    %%    0      13           18         61     (30)
+    %%   10     133          178        419    (320)
+    %%   20     253          338        799    (600)
+    %%   40     493          658      1,559  (1,240)
+    %%   80     973        1,298      3,079  (2,480)
+    %%  160   1,933        2,578      6,119  (4,920)
+    %%
+    %% Read return values off the heap (with encoded typereps on the heap)
+    %%
+    %%  Code size: 1,859 bytes
+    %%
+    %%  Gas:
+    %%    N    init  set_updater  benchmark
+    %%    0     726          982      4,456
+    %%   10   1,100        9,656     31,330
+    %%   20   1,488       18,416     58,424
+    %%   40   2,306       36,193    119,874
+    %%   80   4,111       72,779    246,881
+    %%  160   8,395      150,075    525,113
+    %%
+    %%  Memory (words) - recorded by instrumenting the VM
+    %%    N    init  set_updater  benchmark (remote)
+    %%    0      29           21         66     (35)
+    %%   10      89          181        370    (271)
+    %%   20     149          341        690    (491)
+    %%   40     269          661      1,330  (1,011)
+    %%   80     509        1,301      2,610  (2,011)
+    %%  160     989        2,581      5,170  (3,971)
     ok.
 
 sophia_variant_types(_Cfg) ->
