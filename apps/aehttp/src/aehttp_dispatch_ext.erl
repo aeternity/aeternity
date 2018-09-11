@@ -475,10 +475,10 @@ handle_request('GetPeerPubkey', _Params, _Context) ->
     {200, [], #{pubkey => aec_base58c:encode(peer_pubkey, Pubkey)}};
 
 handle_request('GetStatus', _Params, _Context) ->
-    {ok, TopBlock} = aehttp_logic:get_top(),
+    {ok, TopKeyBlock} = aec_chain:top_key_block(),
     {ok, GenesisBlockHash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
     Solutions = 0, %% TODO
-    Difficulty = aec_blocks:difficulty(TopBlock),
+    Difficulty = aec_blocks:difficulty(TopKeyBlock),
     Syncing = true, %% TODO
     Listening = true, %% TODO
     Protocols = maps:fold(fun(Vsn, Height, Acc) ->
