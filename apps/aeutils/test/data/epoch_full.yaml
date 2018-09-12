@@ -40,6 +40,8 @@ sync:
     max_outbound: 10
     # If the extra outbound connections should be to nodes from different address groups (IP netmask /16)
     single_outbound_per_group: true
+    # Allowed height difference from current top for incoming blocks (via gossip)
+    gossip_allowed_height_from_top: 5
 
 mempool:
     # Number of blocks before inactive TXs are garbage collected

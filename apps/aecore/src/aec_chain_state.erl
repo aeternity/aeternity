@@ -68,6 +68,7 @@
         , hash_is_in_main_chain/1
         , insert_block/1
         , median_timestamp/1
+        , gossip_allowed_height_from_top/0
         ]).
 
 %% For tests
@@ -192,6 +193,13 @@ calculate_state_for_new_keyblock(PrevHash, Miner, Beneficiary) ->
                     {ok, Trees}
             end
     end.
+
+-define(DEFAULT_GOSSIP_ALLOWED_HEIGHT_FROM_TOP, 5).
+
+gossip_allowed_height_from_top() ->
+    aeu_env:user_config_or_env([<<"sync">>, <<"gossip_allowed_height_from_top">>],
+                               aecore, gossip_allowed_height_from_top,
+                               ?DEFAULT_GOSSIP_ALLOWED_HEIGHT_FROM_TOP).
 
 %%%===================================================================
 %%% Internal functions
@@ -428,14 +436,11 @@ assert_connection_to_chain(Node) ->
         false -> internal_error({illegal_orphan, hash(Node)})
     end.
 
-%% TODO: Should this be configurable?
--define(ALLOWED_HEIGHT_DELTA, 5).
-
 assert_height_delta(Node, State) ->
     Top       = db_get_node(get_top_block_hash(State)),
     TopHeight = node_height(Top),
     Height    = node_height(Node),
-    case Height >= TopHeight - ?ALLOWED_HEIGHT_DELTA of
+    case Height >= TopHeight - gossip_allowed_height_from_top() of
         false -> internal_error({too_far_below_top, Height, TopHeight});
         true -> ok
     end.

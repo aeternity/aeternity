@@ -188,7 +188,7 @@ handle_re_sync(State, _TimerRef) -> %% Stale TimerRef
     State.
 
 handle_local_action(State = #state{ local = not_synced }, _Action, _Ref, _Result) ->
-    % Synchronization aborted
+    %% Synchronization aborted
     State;
 handle_local_action(State = #state{ local = {active, #sync{ id = Ref }} }, Action, Ref, Result) ->
     handle_local_action(State, Action, Result);
@@ -204,7 +204,10 @@ handle_local_action(State = #state{ remote = Remotes }, tree, Ref, Result) ->
                 {error, _} ->
                     State#state{ remote = lists:keydelete(Ref, #sync.id, Remotes) }
             end
-    end.
+    end;
+handle_local_action(State, _Action, _Ref, _Result) ->
+    %% Ignore stale result
+    State.
 
 handle_local_action(State = #state{ local = {active, Sync} }, Action, {error, _} = Err) ->
     epoch_sync:debug("Local TX-pool sync action ~p failed (~p)", [Action, Err]),
@@ -217,7 +220,7 @@ handle_local_action(State = #state{ local = {active, Sync} }, Action, Res) ->
             State#state{ local = {active, Sync#sync{ tree = Tree }} };
         {init, ok} ->
             RootHash = aeu_mp_trees:root_hash(Sync#sync.tree),
-            do_local_action(Sync, {unfold, [{node, <<>>, RootHash}], 0}),
+            do_local_action(Sync, {unfold, [{node, <<>>, RootHash}], 50}),
             State#state{ local = {active, Sync#sync{ data = [] }} };
         {unfold, {ok, tree_not_ready, OldUnfolds, Delay}} when Delay < 10000 ->
             %% Remote tree is not computed, retry with delay

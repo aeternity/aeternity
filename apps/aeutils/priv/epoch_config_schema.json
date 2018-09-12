@@ -110,6 +110,10 @@
                     "description" : "If the extra outbound connections should be to nodes from different address groups (IP netmask /16)",
                     "type" : "boolean",
                     "default": true,
+                },
+                "gossip_allowed_height_from_top" : {
+                    "description": "Allowed height difference from current top for incoming blocks (via gossip)",
+                    "type" : "integer"
                 }
             }
         },
