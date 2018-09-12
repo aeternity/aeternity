@@ -270,21 +270,16 @@ groups() ->
      {on_genesis_block, [sequence],
       [
        {group, block_info},
-       {group, chain_with_pending_key_block}
+       post_key_block
       ]},
      {on_key_block, [sequence],
       [
        {group, block_info},
-       {group, chain_with_pending_key_block}
+       post_key_block
       ]},
      {on_micro_block, [sequence],
       [
        {group, block_info},
-       {group, chain_with_pending_key_block}
-      ]},
-     {chain_with_pending_key_block, [],
-      [
-       get_pending_key_block,
        post_key_block
       ]},
      {block_info, [sequence],
@@ -635,9 +630,6 @@ init_per_group(on_micro_block = Group, Config) ->
      {current_block_txs, [Tx]},
      {current_block_type, micro_block},
      {pending_key_block, PendingKeyBlock} | Config1];
-init_per_group(chain_with_pending_key_block, Config) ->
-    {ok, PendingKeyBlock} = wait_for_key_block_candidate(),
-    [{pending_key_block, PendingKeyBlock} | Config];
 init_per_group(block_info, Config) ->
     Config;
 %% account_endpoints
@@ -768,8 +760,6 @@ end_per_group(Group, _Config) when
       Group =:= block_info;
       Group =:= account_info;
       Group =:= tx_info ->
-    ok;
-end_per_group(chain_with_pending_key_block, _Config) ->
     ok;
 end_per_group(account_with_pending_tx, _Config) ->
     ok;
@@ -1108,14 +1098,36 @@ post_key_block(Config) ->
     post_key_block(?config(current_block_type, Config), Config).
 
 post_key_block(_CurrentBlockType, Config) ->
-    {ok, 200, PendingKeyBlock} = get_key_blocks_pending_sut(),
-    PowEvidence = lists:duplicate(42, 1),
-    Nonce = 1,
-    KeyBlock = PendingKeyBlock#{<<"pow">> => PowEvidence, <<"nonce">> => Nonce},
+    {ok, 200, #{<<"height">> := Height} = PendingKeyBlock} = get_key_blocks_pending_sut(),
+
+    KeyBlock = PendingKeyBlock#{<<"pow">> => lists:duplicate(42, 1), <<"nonce">> => 1},
     {ok, 400, Error} = post_key_blocks_sut(KeyBlock),
     %% Block is always rejected - pow and nonce are not correct.
     ?assertEqual(<<"Block rejected">>, maps:get(<<"reason">>, Error)),
+
+    KeyBlock1 = PendingKeyBlock#{<<"pow">> => lists:duplicate(42, 0), <<"nonce">> => 0},
+    {ok, KeyBlockHeader} = aec_headers:deserialize_from_client(key, KeyBlock1),
+    KeyBlockHeaderBin = aec_headers:serialize_to_binary(KeyBlockHeader),
+    Target = aec_headers:target(KeyBlockHeader),
+    Nonce = aec_pow:pick_nonce(),
+    {ok, {Nonce1, PowEvidence}} = mine_key_block(KeyBlockHeaderBin, Target, Nonce, 1000),
+    {ok, 200, #{}} = post_key_blocks_sut(PendingKeyBlock#{<<"pow">> => PowEvidence, <<"nonce">> => Nonce1}),
+    ok = aecore_suite_utils:wait_for_height(?config(node, Config), Height),
+    {ok, 200, CurrentBlock} = get_key_blocks_current_sut(),
+    ?assertEqual(Height, maps:get(<<"height">>, CurrentBlock)),
+    ?assertEqual(PowEvidence, maps:get(<<"pow">>, CurrentBlock)),
+    ?assertEqual(Nonce1, maps:get(<<"nonce">>, CurrentBlock)),
     ok.
+
+mine_key_block(HeaderBin, Target, Nonce, Attempts) when Attempts > 0 ->
+    case rpc(aec_mining, mine, [HeaderBin, Target, Nonce]) of
+        {ok, {Nonce, PowEvidence}} = Res ->
+            Res;
+        {error, no_solution} ->
+            mine_key_block(HeaderBin, Target, aec_pow:next_nonce(Nonce), Attempts - 1)
+    end;
+mine_key_block(_HeaderBin, _Target, _Nonce, 0) ->
+    {error, no_solution}.
 
 get_key_blocks_current_sut() ->
     Host = external_address(),
