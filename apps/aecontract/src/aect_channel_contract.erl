@@ -4,7 +4,7 @@
 
 -export([new/6,
          run_new/5,
-         run/10,
+         run/11,
          get_call/4,
          insert_failed_call/6
         ]).
@@ -41,7 +41,7 @@ run_new(ContractPubKey, Call, CallData, Round, Trees0) ->
                , code        => Code
                , call        => Call
                , trees       => Trees0
-               , tx_env     => tx_env(Round)
+               , tx_env      => tx_env(Round)
                },
     {CallRes, Trees} = aect_dispatch:run(VmVersion, CallDef),
     case aect_call:return_type(CallRes) of
@@ -70,10 +70,10 @@ run_new(ContractPubKey, Call, CallData, Round, Trees0) ->
 
 -spec run(aect_contracts:pubkey(), aect_contracts:vm_version(), aect_call:call(),
           binary(), [non_neg_integer()], non_neg_integer(), aec_trees:trees(),
-          non_neg_integer(), non_neg_integer(), non_neg_integer())
-    -> aec_trees:trees().
+          non_neg_integer(), non_neg_integer(), non_neg_integer(),
+          aec_trees:trees()) -> aec_trees:trees().
 run(ContractPubKey, VmVersion, Call, CallData, CallStack, Round, Trees0,
-    Amount, GasPrice, Gas) ->
+    Amount, GasPrice, Gas, OnChainTrees) ->
     ContractsTree  = aec_trees:contracts(Trees0),
     Contract = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
     OwnerPubKey = aect_contracts:owner_pubkey(Contract),
@@ -92,7 +92,9 @@ run(ContractPubKey, VmVersion, Call, CallData, CallStack, Round, Trees0,
                , code       => Code
                , call       => Call
                , trees      => Trees0
-               , tx_env     => tx_env(Round)
+               , tx_env     => tx_env(Round) % TODO: on-chain?
+               , off_chain  => true
+               , on_chain_trees => OnChainTrees
                },
     {CallRes, Trees} = aect_dispatch:run(VmVersion, CallDef),
     aect_utils:insert_call_in_trees(CallRes, Trees).

@@ -479,8 +479,8 @@ process_force_progress(Tx, Addresses,
     PoITrees0 = trees_from_poi(Addresses, PoI),
     Reserve = aesc_channels:channel_reserve(Channel),
     PoITrees =
-        try aesc_offchain_update:apply_on_trees(Update, PoITrees0, NextRound,
-                                                      Reserve)
+        try aesc_offchain_update:apply_on_trees(Update, PoITrees0, Trees,
+                                                NextRound, Reserve)
         catch _:_ ->
           {_Amount, GasPrice, GasLimit} = aesc_offchain_update:extract_amounts(Update),
             CallsTrees =

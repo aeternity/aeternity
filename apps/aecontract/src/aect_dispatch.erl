@@ -77,15 +77,16 @@ run_common(#{  amount      := Value
              , gas_price   := GasPrice
              , trees       := Trees
              , tx_env      := TxEnv0
-             }, VMVersion) ->
+             } = CallDef, VMVersion) ->
     TxEnv = aetx_env:set_context(TxEnv0, aetx_contract),
     <<Beneficiary:?BENEFICIARY_PUB_BYTES/unit:8>> = aetx_env:beneficiary(TxEnv),
+    ChainState0 = chain_state(CallDef, TxEnv),
     Env = #{currentCoinbase   => Beneficiary,
             currentDifficulty => aetx_env:difficulty(TxEnv),
             currentGasLimit   => aec_governance:block_gas_limit(),
             currentNumber     => aetx_env:height(TxEnv),
             currentTimestamp  => aetx_env:time_in_msecs(TxEnv),
-            chainState        => aec_vm_chain:new_state(Trees, TxEnv, CPubKey),
+            chainState        => ChainState0, 
             chainAPI          => aec_vm_chain,
             vm_version        => VMVersion},
     Exec = #{code       => Code,
@@ -160,3 +161,16 @@ error_to_binary(out_of_stack) -> <<"out_of_stack">>;
 error_to_binary(E) ->
     ?DEBUG_LOG("Unknown error: ~p\n", [E]),
     <<"unknown_error">>.
+
+chain_state(#{ contract    := ContractPubKey
+             , trees       := Trees} = CallDef, TxEnv) ->
+    case maps:get(off_chain, CallDef, false) of
+        true ->
+            OnChainTrees = maps:get(on_chain_trees, CallDef),
+            % the on-chain state uses the off-chain aetx_env:env()
+            OnChainState = aec_vm_chain:new_state(OnChainTrees, TxEnv, ContractPubKey),
+            OffChainState = aec_vm_chain:new_offchain_state(Trees, TxEnv, ContractPubKey),
+            aec_vm_chain:push_state_context(OffChainState, OnChainState);
+        false ->
+            aec_vm_chain:new_state(Trees, TxEnv, ContractPubKey)
+    end.

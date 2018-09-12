@@ -29,7 +29,7 @@
 -export([serialize/1,
          deserialize/1,
          for_client/1,
-         apply_on_trees/4]).
+         apply_on_trees/5]).
 
 -export([is_call/1,
          is_contract_create/1,
@@ -77,9 +77,9 @@ op_call_contract(CallerId, ContractId, VmVersion, Amount, CallData, CallStack,
     {?OP_CALL_CONTRACT, CallerId, ContractId, VmVersion, Amount, CallData,
      CallStack, GasPrice, Gas}.
 
--spec apply_on_trees(aesc_offchain_update:update(), aec_trees:trees(), non_neg_integer(),
-                     non_neg_integer()) -> aec_trees:trees().
-apply_on_trees(Update, Trees0, Round, Reserve) ->
+-spec apply_on_trees(aesc_offchain_update:update(), aec_trees:trees(),
+                     aec_trees:trees(), non_neg_integer(), non_neg_integer()) -> aec_trees:trees().
+apply_on_trees(Update, Trees0, OnChainTrees, Round, Reserve) ->
     case Update of
         {?OP_TRANSFER, FromId, ToId, Amount} ->
             From = account_pubkey(FromId),
@@ -114,7 +114,8 @@ apply_on_trees(Update, Trees0, Round, Reserve) ->
                                  GasPrice),
             _Trees = aect_channel_contract:run(ContractPubKey, VmVersion, Call,
                                               CallData, CallStack, Round,
-                                              Trees2, Amount, GasPrice, Gas)
+                                              Trees2, Amount, GasPrice, Gas,
+                                              OnChainTrees)
     end.
 
 -spec for_client(update()) -> map().
