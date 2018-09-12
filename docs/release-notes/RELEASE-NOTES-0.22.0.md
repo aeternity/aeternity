@@ -2,7 +2,18 @@
 
 [This release][this-release] is focused on TODOFILLMEIN.
 It:
-* Does all the things temporarily located at https://github.com/aeternity/epoch/wiki/Release-notes-next
+* Adds on-chain forcing of progress for channel off-chain contracts. This impacts consensus. ([ref](https://github.com/aeternity/epoch/pull/1469), [ref](https://github.com/aeternity/epoch/pull/1528))
+* Enriches HTTP API for fetching contract proof of inclusion with including contract's account as well. ([ref](https://github.com/aeternity/epoch/pull/1503))
+* Improves stability of HTTP API ([ref](https://github.com/aeternity/epoch/pull/1505), [ref](https://github.com/aeternity/epoch/pull/1546))
+* Fixes coinbase instruction in aevm. This impacts consensus. ([ref](https://github.com/aeternity/epoch/pull/1502))
+* Makes it possible to use absolute TTLs in the Sophia oracle API. ([ref](https://github.com/aeternity/epoch/pull/1493))
+* Improves channels' WebSocket client stability ([ref](https://github.com/aeternity/epoch/pull/1520))
+* Enriches channel WebSocket client opening with the functionality of the `initator` giving the `responder` a certain amount of tokens in the initial channel state. This is an act of a good will and can as well be 0. ([ref](https://github.com/aeternity/epoch/pull/1531))
+* Clarifies in the user HTTP API that the oracle extension TTL must be relative. ([ref](https://github.com/aeternity/epoch/pull/1537))
+* Replaces '$' with '_' in addresses ([ref](https://github.com/aeternity/epoch/pull/1544))
+* Improves checking and validation of gossiped light micro blocks([ref](https://github.com/aeternity/epoch/pull/1541))
+* Changes `/key-blocks/pending` endpoint - the pending key block is returned even when the node is not mining ([ref](https://github.com/aeternity/epoch/pull/1536))
+* Removes `pow` and `nonce` from pending key block and genesis block returned from HTTP API ([ref](https://github.com/aeternity/epoch/pull/1536))
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.22.0
 
