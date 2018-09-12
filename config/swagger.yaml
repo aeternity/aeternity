@@ -204,6 +204,32 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /key-blocks:
+    post:
+      tags:
+        - internal
+        - chain
+      operationId: PostKeyBlock
+      description: 'Post a mined key block'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: 'Mined key block'
+          required: true
+          schema:
+            $ref: '#/definitions/KeyBlock'
+      responses:
+        '200':
+          description: 'Successful operation'
+        '400':
+          description: 'Invalid block'
+          schema:
+            $ref: '#/definitions/Error'
+      security:
   /micro-blocks/hash/{hash}/header:
     get:
       tags:
@@ -3080,10 +3106,10 @@ definitions:
         properties:
           from:
             $ref: '#/definitions/EncodedHash'
-            description: Sender of tokens 
+            description: Sender of tokens
           to:
             $ref: '#/definitions/EncodedHash'
-            description: Receiver of tokens 
+            description: Receiver of tokens
           am:
             type: integer
             description: Amount of tokens to transfer
@@ -3099,10 +3125,10 @@ definitions:
         properties:
           to:
             $ref: '#/definitions/EncodedHash'
-            description: Withdrawer of tokens 
+            description: Withdrawer of tokens
           am:
             type: integer
-            description: Amount of tokens to withdraw 
+            description: Amount of tokens to withdraw
             format: int64
         required:
         - to
@@ -3114,7 +3140,7 @@ definitions:
         properties:
           from:
             $ref: '#/definitions/EncodedHash'
-            description: Depositor of tokens 
+            description: Depositor of tokens
           am:
             type: integer
             description: Amount of tokens to deposit
@@ -3129,10 +3155,10 @@ definitions:
         properties:
           owner:
             $ref: '#/definitions/EncodedHash'
-            description: Contract owner 
+            description: Contract owner
           vm_version:
             type: integer
-            description: VM version of the contract 
+            description: VM version of the contract
             format: int64
           code:
             $ref: '#/definitions/ByteCode'
@@ -3156,13 +3182,13 @@ definitions:
         properties:
           caller:
             $ref: '#/definitions/EncodedHash'
-            description: Contract caller 
+            description: Contract caller
           contract:
             $ref: '#/definitions/EncodedHash'
-            description: Contract address 
+            description: Contract address
           vm_version:
             type: integer
-            description: VM version of the contract 
+            description: VM version of the contract
             format: int64
           amount:
             type: integer
@@ -3170,11 +3196,11 @@ definitions:
             format: int64
           gas:
             type: integer
-            description: Gas limit for the contract call 
+            description: Gas limit for the contract call
             format: int64
           gas_price:
             type: integer
-            description: Gas price for the contract call 
+            description: Gas price for the contract call
             format: int64
           call_data:
             description: Contract call data

@@ -27,7 +27,7 @@
                     | state
                     | poi.
 
--type extended_type() :: known_type() | {id_hash, [known_type()]}.
+-type extended_type() :: known_type() | block_hash | {id_hash, [known_type()]}.
 
 
 -type payload() :: binary().
@@ -81,6 +81,18 @@ safe_decode({id_hash, AllowedTypes}, Enc) ->
                 false ->
                     {error, invalid_prefix}
             end
+    catch
+        error:_ ->
+            {error, invalid_encoding}
+    end;
+safe_decode(block_hash, Enc) ->
+    try decode(Enc) of
+        {key_block_hash, Dec} ->
+            {ok, Dec};
+        {micro_block_hash, Dec} ->
+            {ok, Dec};
+        {_, _} ->
+            {error, invalid_prefix}
     catch
         error:_ ->
             {error, invalid_encoding}

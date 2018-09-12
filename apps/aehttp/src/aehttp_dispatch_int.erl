@@ -32,6 +32,20 @@
         Context :: #{}
                    ) -> {Status :: cowboy:http_status(), Headers :: list(), Body :: map()}.
 
+handle_request('PostKeyBlock', #{'KeyBlock' := Data}, _Context) ->
+    case aec_headers:deserialize_from_client(key, Data) of
+        {ok, Header} ->
+            KeyBlock = aec_blocks:new_key_from_header(Header),
+            case aec_conductor:post_block(KeyBlock) of
+                ok ->
+                    {200, [], #{}};
+                {error, _Rsn} ->
+                    {400, [], #{reason => <<"Block rejected">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid block">>}}
+    end;
+
 handle_request('PostSpend', #{'SpendTx' := Req}, _Context) ->
     AllowedRecipients = [account_pubkey, name, oracle_pubkey, contract_pubkey],
     ParseFuns = [parse_map_to_atom_keys(),
