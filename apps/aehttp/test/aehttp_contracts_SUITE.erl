@@ -129,8 +129,6 @@ init_per_group(contracts, Config) ->
                             priv_key => DPrivkey,
                             start_amt => StartAmt}},
     [{accounts,Accounts},{node_name,NodeName}|Config];
-init_per_group(test_group, Config) ->           %Do nothing
-    Config;
 init_per_group(_Group, Config) ->
     NodeName = aecore_suite_utils:node_name(?NODE),
     aecore_suite_utils:start_node(?NODE, Config),
@@ -140,8 +138,6 @@ init_per_group(_Group, Config) ->
     aecore_suite_utils:mine_key_blocks(NodeName, ToMine),
     [{node_name,NodeName}|Config].
 
-end_per_group(test_group, _Config) ->
-    ok;
 end_per_group(_Group, Config) ->
     RpcFun = fun(M, F, A) -> rpc(?NODE, M, F, A) end,
     {ok, DbCfg} = aecore_suite_utils:get_node_db_config(RpcFun),
@@ -528,9 +524,7 @@ stack_contract(Config) ->
                                 <<"([\"two\",\"one\"])">>),
 
     %% Test the size.
-    {Ret1,_} = call_compute_func(NodeName, APubkey, APrivkey,
-                                 EncodedContractPubkey, <<"size">>, <<"()">>),
-    #{<<"value">> := 2} = decode_data(<<"int">>, Ret1),
+    2 = call_size(NodeName, APubkey, APrivkey, EncodedContractPubkey),
 
     %% Push 2 more elements.
     call_compute_func(NodeName, BPubkey, BPrivkey, EncodedContractPubkey,
@@ -538,35 +532,35 @@ stack_contract(Config) ->
     call_compute_func(NodeName, CPubkey, CPrivkey, EncodedContractPubkey,
                       <<"push">>, <<"(\"four\")">>),
     %% Test the size.
-    {Ret2,_} = call_compute_func(NodeName, DPubkey, DPrivkey,
-                                 EncodedContractPubkey, <<"size">>, <<"()">>),
-    #{<<"value">> := 4} = decode_data(<<"int">>, Ret2),
+    4 = call_size(NodeName, DPubkey, DPrivkey, EncodedContractPubkey),
 
     %% Check the stack.
-    {Ret3,_} = call_compute_func(NodeName, DPubkey, DPrivkey,
-                                 EncodedContractPubkey, <<"all">>, <<"()">>),
-    #{<<"value">> := All} = decode_data(<<"list(string)">>, Ret3),
-    ct:pal("All ~p\n", [All]),
+    Stack = call_func_decode(NodeName, DPubkey, DPrivkey,
+                             EncodedContractPubkey, <<"all">>, <<"()">>,
+                             <<"list(string)">>),
+    [#{<<"type">> := <<"string">>,<<"value">> := <<"four">>},
+     #{<<"type">> := <<"string">>,<<"value">> := <<"three">>},
+     #{<<"type">> := <<"string">>,<<"value">> := <<"two">>},
+     #{<<"type">> := <<"string">>,<<"value">> := <<"one">>}] = Stack,
 
-    %% Pop the values.
+    %% Pop the values and check we get them in the right order.
     <<"four">> = call_pop(NodeName, APubkey, APrivkey, EncodedContractPubkey),
     <<"three">> = call_pop(NodeName, BPubkey, BPrivkey, EncodedContractPubkey),
     <<"two">> = call_pop(NodeName, CPubkey, CPrivkey, EncodedContractPubkey),
     <<"one">> = call_pop(NodeName, DPubkey, DPrivkey, EncodedContractPubkey),
 
     %% The resulting stack is empty.
-    {Ret4,_} = call_compute_func(NodeName, APubkey, APrivkey,
-                                 EncodedContractPubkey, <<"size">>, <<"()">>),
-    #{<<"value">> := 0} = decode_data(<<"int">>, Ret4),
+    0 = call_size(NodeName, APubkey, APrivkey, EncodedContractPubkey),
 
     ok.
 
+call_size(NodeName, Pubkey, Privkey, EncodedContractPubkey) ->
+    call_func_decode(NodeName, Pubkey, Privkey, EncodedContractPubkey,
+                     <<"size">>, <<"()">>, <<"int">>).
+
 call_pop(NodeName, Pubkey, Privkey, EncodedContractPubkey) ->
-    {Value,_Return} =
-        call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
-                          <<"pop">>, <<"()">>),
-    #{<<"value">> := String} = decode_data(<<"string">>, Value),
-    String.
+    call_func_decode(NodeName, Pubkey, Privkey, EncodedContractPubkey,
+                     <<"pop">>, <<"()">>, <<"string">>).
 
 %% polymorphism_test_contract(Config)
 %%  Check the polymorphism_test contract.
@@ -590,6 +584,8 @@ polymorphism_test_contract(Config) ->
        create_compute_contract(NodeName, APubkey, APrivkey, Code, <<"()">>),
 
     %% Test the polymorphism.
+    %% TODO: currently we just test that it works but we should check
+    %% the return values as well.
     call_compute_func(NodeName, APubkey, APrivkey, EncodedContractPubkey,
                       <<"foo">>, <<"()">>),
     call_compute_func(NodeName, APubkey, APrivkey, EncodedContractPubkey,
@@ -617,7 +613,7 @@ factorial_contract(Config) ->
     {EncodedContractPubkey,DecodedContractPubkey,_} =
        create_compute_contract(NodeName, APubkey, APrivkey, Code, <<"(0)">>),
 
-    %% Set worker contract.
+    %% Set worker contract. A simple way of pointing the contract to itself.
     call_compute_func(NodeName, APubkey, APrivkey, EncodedContractPubkey,
                       <<"set_worker">>,
                       args_to_binary([DecodedContractPubkey])),
@@ -630,7 +626,8 @@ factorial_contract(Config) ->
     ok.
 
 %% maps_contract(Config)
-%%  Check the Maps contract but we are still working on it.
+%%  Check the Maps contract. We need an interface contract here as
+%%  there is no way pass record as an argument over the http API.
 
 maps_contract(Config) ->
     NodeName = proplists:get_value(node_name, Config),
@@ -658,7 +655,7 @@ maps_contract(Config) ->
     {EncodedMapsPubkey,DecodedMapsPubkey,_} =
        create_compute_contract(NodeName, APubkey, APrivkey, MCode, <<"()">>),
 
-    %% Some functions can't be called directly, we need an interface contract.
+    %% Compile the interface contract "test_maps.aes".
     TestMapsFile = proplists:get_value(data_dir, Config) ++ "test_maps.aes",
     {ok,SophiaCode} = file:read_file(TestMapsFile),
     {ok, 200, #{<<"bytecode">> := TCode}} = get_contract_bytecode(SophiaCode),
@@ -964,15 +961,18 @@ environment_contract(Config) ->
     ct:pal("Block hash ~p\n", [BlockHash]),
 
     %% Coinbase.
-    %% ct:pal("Calling coinbase\n"),
-    %% call_compute_func(NodeName, CPubkey, CPrivkey, EncodedContractPubkey,
-    %%                <<"coinbase">>, <<"()">>),
+    ct:pal("Calling coinbase\n"),
+    {CoinBaseValue,_} = call_compute_func(NodeName, CPubkey, CPrivkey,
+                                          EncodedContractPubkey,
+                                          <<"coinbase">>, <<"()">>),
+    #{<<"value">> := CoinBase} = decode_data(<<"address">>, CoinBaseValue),
+    ct:pal("CoinBase ~p\n", [CoinBase]),
 
-    %% Block timestamp.
+    %% Block timestamp. TODO: currently this does not work.
     %% ct:pal("Calling timestamp\n"),
     %% {TimeStampValue,_} = call_compute_func(NodeName, CPubkey, CPrivkey,
-    %%                                     EncodedContractPubkey,
-    %%                                     <<"timestamp">>, <<"()">>),
+    %%                                        EncodedContractPubkey,
+    %%                                        <<"timestamp">>, <<"()">>),
     %% #{<<"value">> := TimeStamp} = decode_data(<<"int">>, TimeStampValue),
     %% ct:pal("Timestamp ~p\n", [TimeStamp]),
 
