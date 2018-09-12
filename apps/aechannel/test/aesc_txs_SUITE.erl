@@ -124,7 +124,9 @@
          fp_is_replaced_by_same_round_snapshot/1,
          % already closing
          fp_after_solo_close/1,
-         fp_after_slash/1
+         fp_after_slash/1,
+         fp_use_onchain_oracle/1,
+         fp_use_onchain_name_resolution/1
         ]).
 
 % negative force progress
@@ -277,7 +279,10 @@ groups() ->
        fp_is_replaced_by_same_round_snapshot,
        % already closing
        fp_after_solo_close,
-       fp_after_slash
+       fp_after_slash,
+       % contract referring to on-chain objects
+       fp_use_onchain_oracle,
+       fp_use_onchain_name_resolution
       ]},
      {force_progress_negative, [sequence],
       [fp_closed_channel,
@@ -1652,37 +1657,8 @@ fp_on_top_of_fp(Cfg) ->
                     Props
                 end,
                 set_prop(height, InitHeight + LockPeriod + 1),
-                fun(#{trees            := Trees0,
-                      state            := S,
-                      channel_pubkey   := ChannelPubKey,
-                      initiator_pubkey := Initiator,
-                      responder_pubkey := Responder,
-                      contract_id      := ContractId,
-                      fake_account     := FakeAcc,
-                      solo_payload     := #{update := Update,
-                                            round  := FPRound}} = Props) ->
-                    FPRound = FPRound1, % assert expected round
-                    Reserve = maps:get(channel_reserve, Props, 0),
-                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
-                    PoIHash = aesc_channels:state_hash(Channel),
-                    Trees = aesc_offchain_update:apply_on_trees(Update,
-                                                                aect_call_state_tree:prune_without_backend(Trees0),
-                                                                FPRound1,
-                                                                Reserve),
-                    PoIHash = aec_trees:hash(Trees),
-                    PoI = calc_poi([Initiator, Responder, FakeAcc],
-                                  [ContractId], Trees),
-                    PoIHash = aec_trees:poi_hash(PoI),
-                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
-                    Props#{state_hash => PoIHash, poi => PoI,
-                          payload => <<>>,
-                          trees => Trees,
-                          addresses => [aec_id:create(account, Initiator),
-                                        aec_id:create(account, Responder),
-                                        aec_id:create(account, FakeAcc),
-                                        aec_id:create(contract, ContractId)
-                                        ]}
-                end,
+                create_poi_by_trees(),
+                set_prop(payload, <<>>),
                 force_progress_sequence(FPRound2, Forcer2)
                ])
         end,
@@ -2096,6 +2072,165 @@ fp_after_slash(Cfg) ->
     Test(10, 11, 20),
     %% force progress right after a close
     Test(11, 20, 30),
+    ok.
+
+
+fp_use_onchain_oracle(Cfg) ->
+    FPRound = 20,
+    LockPeriod = 10,
+    FPHeight0 = 20,
+    HexEncode = fun(L) -> list_to_binary(aect_utils:hex_bytes(L)) end,
+    Question = <<"To be, or not to be?">>,
+    OQuestion = aeso_data:to_binary(Question, 0),
+    Answer = <<"oh, yes">>,
+    OResponse = aeso_data:to_binary(Answer, 0),
+    QueryFee = 2,
+    CallOnChain =
+        fun(Owner, Forcer) ->
+            IAmt0 = 30,
+            RAmt0 = 30,
+            ContractCreateRound = 10,
+            run(#{cfg => Cfg, initiator_amount => IAmt0,
+                              responder_amount => RAmt0,
+                  lock_period => LockPeriod,
+                  channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                set_prop(height, FPHeight0),
+
+                % create oracle
+                register_new_oracle(aeso_data:to_binary(string, 0),
+                                    aeso_data:to_binary(string, 0),
+                                    QueryFee),
+
+                % create off-chain contract
+                create_trees(),
+                set_from(Owner, owner, owner_privkey),
+                fun(#{oracle := Oracle} = Props) ->
+                    EncodedOracleId = HexEncode(Oracle),
+                    (create_contract_in_trees(_Round    = ContractCreateRound,
+                                             _Contract = "channel_on_chain_contract_oracle",
+                                             _InitArgs = <<"(",EncodedOracleId/binary, ", \"", Question/binary, "\")">>,
+                                             _Deposit  = 2))(Props)
+                end,
+
+                % place some calls to that contract
+                force_call_contract_first(Forcer, <<"place_bet">>, <<"\"Lorem\"">>,
+                                          LockPeriod, FPRound),
+                force_call_contract(Forcer, <<"place_bet">>, <<"\"Ipsum\"">>,
+                                    LockPeriod),
+
+                % try resolving a contract with wrong query id
+                fun(Props) ->
+                    EncodedQueryId = HexEncode(<<1234:42/unit:8>>),
+                    (force_call_contract(Forcer, <<"resolve">>,
+                                         <<"(", EncodedQueryId/binary,
+                                           ")">>, LockPeriod))(Props)
+                end,
+                assert_last_channel_result(<<"no response">>, string),
+
+                % oracle query and answer
+                oracle_query(OQuestion, _ResponseTTL = 100),
+                oracle_response(OResponse),
+                fun(#{state := S, oracle := Oracle, query_id := QueryId} = Props) ->
+                    OTrees = aec_trees:oracles(aesc_test_utils:trees(S)),
+                    Q = aeo_state_tree:get_query(Oracle, QueryId, OTrees),
+                    OResponse = aeo_query:response(Q),
+                    Props
+                end,
+
+                % there is currently no bet for the correct answer, try anyway
+                fun(#{query_id := QueryId} = Props) ->
+                    EncodedQueryId = HexEncode(QueryId),
+                    (force_call_contract(Forcer, <<"resolve">>,
+                                         <<"(", EncodedQueryId/binary,
+                                           ")">>, LockPeriod))(Props)
+                end,
+                assert_last_channel_result(<<"no winning bet">>, string),
+
+                % place a winnning bet
+                force_call_contract(Forcer, <<"place_bet">>, <<"\"", Answer/binary,"\"">>,
+                                    LockPeriod),
+                fun(#{query_id := QueryId} = Props) ->
+                    EncodedQueryId = HexEncode(QueryId),
+                    (force_call_contract(Forcer, <<"resolve">>,
+                                         <<"(", EncodedQueryId/binary,
+                                           ")">>, LockPeriod))(Props)
+                end,
+                assert_last_channel_result(<<"ok">>, string),
+
+                % verify that Oracle.get_question works
+                fun(#{query_id := QueryId} = Props) ->
+                    EncodedQueryId = HexEncode(QueryId),
+                    (force_call_contract(Forcer, <<"get_question">>,
+                                         <<"(", EncodedQueryId/binary,
+                                           ")">>, LockPeriod))(Props)
+                end,
+                assert_last_channel_result(Question, string),
+
+                % verify that Oracle.query_fee works
+                fun(#{query_id := QueryId} = Props) ->
+                    EncodedQueryId = HexEncode(QueryId),
+                    (force_call_contract(Forcer, <<"query_fee">>,
+                                         <<"(", EncodedQueryId/binary,
+                                           ")">>, LockPeriod))(Props)
+                end,
+                assert_last_channel_result(QueryFee, word)
+               ])
+        end,
+    [CallOnChain(Owner, Forcer) || Owner  <- ?ROLES,
+                                   Forcer <- ?ROLES],
+    ok.
+
+fp_use_onchain_name_resolution(Cfg) ->
+    FPRound = 20,
+    LockPeriod = 10,
+    FPHeight0 = 20,
+    Name = <<"lorem.test">>,
+    ForceCallCheckName =
+        fun(Forcer, K, Found) when is_binary(K) andalso is_boolean(Found) ->
+            fun(Props) ->
+              run(Props,
+                  [force_call_contract(Forcer, <<"can_resolve">>,
+                                    <<"(\"", Name/binary, "\",\"", K/binary, "\")">>,
+                                    LockPeriod),
+                  assert_last_channel_result(Found, bool)])
+            end
+        end,
+
+    CallOnChain =
+        fun(Owner, Forcer) ->
+            IAmt0 = 30,
+            RAmt0 = 30,
+            ContractCreateRound = 10,
+            run(#{cfg => Cfg, initiator_amount => IAmt0,
+                              responder_amount => RAmt0,
+                  lock_period => LockPeriod,
+                  channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                set_prop(height, FPHeight0),
+
+                % create off-chain contract
+                create_trees(),
+                set_from(Owner, owner, owner_privkey),
+                create_contract_in_trees(_Round    = ContractCreateRound,
+                                         _Contract = "channel_on_chain_contract_name_resolution",
+                                         _InitArgs = <<"()">>,
+                                         _Deposit  = 2),
+                force_call_contract_first(Forcer, <<"can_resolve">>,
+                                          <<"(\"", Name/binary, "\",\"oracle\")">>,
+                                          LockPeriod, FPRound),
+                assert_last_channel_result(false, bool),
+                register_name(Name,
+                              [{<<"account_pubkey">>, aec_id:create(account, <<1:256>>)},
+                               {<<"oracle">>, aec_id:create(oracle, <<2:256>>)},
+                               {<<"unexpected_key">>, aec_id:create(account, <<3:256>>)}]),
+                ForceCallCheckName(Forcer, <<"oracle">>, true),
+                ForceCallCheckName(Forcer, <<"unexpected_key">>, true),
+                ForceCallCheckName(Forcer, <<"no_such_pointer">>, false)
+               ])
+        end,
+    [CallOnChain(Owner, Forcer) || Owner  <- ?ROLES,
+                                   Forcer <- ?ROLES],
     ok.
 
 % no one can post a force progress to a closed channel
@@ -2606,13 +2741,16 @@ create_contract_poi_and_payload(Round, ContractRound, Owner) ->
     create_contract_poi_and_payload(Round, ContractRound, Owner, #{}).
 
 create_contract_poi_and_payload(Round, ContractRound, Owner, Opts) ->
+
     fun(Props0) ->
+        {Contract, ContractInitProps} =
+            maps:get(contract_name, Props0, {"identity", <<"()">>}),
         run(Props0,
           [create_trees(),
            set_from(Owner, owner, owner_privkey),
            create_contract_in_trees(_Round    = ContractRound,
-                                    _Contract = "identity",
-                                    _InitArgs = <<"()">>,
+                                    _Contract = Contract,
+                                    _InitArgs = ContractInitProps,
                                     _Deposit  = 2),
            create_poi_by_trees(),
            set_prop(round, Round),
@@ -2669,13 +2807,16 @@ force_progress_sequence(Round, Forcer) ->
     Fee = 1,
     fun(Props0) ->
         DepositAmt = maps:get(call_deposit, Props0, 1),
+        {FunName, FunParams} = maps:get(contract_function_call, Props0,
+                                        {<<"main">>, <<"42">>}),
+        DepositAmt = maps:get(call_deposit, Props0, 1),
         run(Props0,
            [get_onchain_balances(before_force),
             set_from(Forcer),
             set_prop(round, Round),
             fun(#{contract_id := ContractId} = Props) ->
-                (create_contract_call_payload(ContractId, <<"main">>,
-                                              <<"42">>, DepositAmt))(Props)
+                (create_contract_call_payload(ContractId, FunName,
+                                              FunParams, DepositAmt))(Props)
             end,
             set_prop(fee, Fee),
             positive(fun force_progress_/2),
@@ -2705,7 +2846,9 @@ force_progress_sequence(Round, Forcer) ->
                                       TxHashContractPubkey),
                 Call = aect_test_utils:get_call(TxHashContractPubkey, CallId,
                                                 S),
-                377 = GasUsed = aect_call:gas_used(Call),
+                GasUsed = aect_call:gas_used(Call),
+                GasLimit = maps:get(gas_limit, Props, 1234567890),
+                ?assert(GasUsed < GasLimit),
                 GasPrice = aect_call:gas_price(Call),
                 ConsumedGas = GasUsed * GasPrice,
                 DeductedAmt = ConsumedGas + Fee,
@@ -2808,11 +2951,13 @@ create_contract_call_payload(ContractId, Fun, Args, Amount) ->
 create_contract_call_payload(Key, ContractId, Fun, Args, Amount) ->
     fun(#{from_pubkey       := From,
           round             := Round,
+          state             := State,
           trees             := Trees0} = Props) ->
         Contract = aect_test_utils:get_contract(ContractId, #{trees => Trees0}),
         Code = aect_contracts:code(Contract),
         CallData = aect_sophia:create_call(Code, Fun, Args),
         Reserve = maps:get(channel_reserve, Props, 0),
+        OnChainTrees = aesc_test_utils:trees(State), 
         Update =
             maps:get(solo_payload_update, Props,
                 aesc_offchain_update:op_call_contract(
@@ -2822,21 +2967,23 @@ create_contract_call_payload(Key, ContractId, Fun, Args, Amount) ->
                     [],
                     _GasPrice = maps:get(gas_price, Props, 1),
                     _GasLimit = maps:get(gas_limit, Props, 1234567890))),
-        StateHash =
+        {UpdatedTrees, StateHash} =
             case maps:get(fake_solo_state_hash, Props, none) of
                 none ->
                     Trees1 = aesc_offchain_update:apply_on_trees(Update,
                                                                 aect_call_state_tree:prune_without_backend(Trees0),
+                                                                OnChainTrees,
                                                                 Round,
                                                                 Reserve),
                     StateHash1 = aec_trees:hash(Trees1),
-                    StateHash1;
+                    {Trees1, StateHash1};
                 SH ->
-                    SH
+                    {Trees0, SH}
             end,
         Props#{Key => #{state_hash => StateHash,
                         round      => Round,
-                        update     => Update}}
+                        update     => Update},
+               trees => UpdatedTrees}
     end.
 
 create_trees() ->
@@ -2858,6 +3005,7 @@ create_trees() ->
 
 create_contract_in_trees(CreationRound, ContractName, InitArg, Deposit) ->
     fun(#{trees := Trees0,
+          state := State,
           owner := Owner} = Props) ->
         ContractString = aeso_test_utils:read_contract(ContractName),
         BinCode = aeso_compiler:from_string(ContractString, []),
@@ -2868,8 +3016,9 @@ create_contract_in_trees(CreationRound, ContractName, InitArg, Deposit) ->
                                                       Deposit,
                                                       CallData),
         Reserve = maps:get(channel_reserve, Props, 0),
-        Trees = aesc_offchain_update:apply_on_trees(Update, Trees0, CreationRound,
-                                                    Reserve),
+        OnChainTrees = aesc_test_utils:trees(State), 
+        Trees = aesc_offchain_update:apply_on_trees(Update, Trees0, OnChainTrees,
+                                                    CreationRound, Reserve),
         ContractId = aect_contracts:compute_contract_pubkey(Owner, CreationRound),
         Props#{trees => Trees, contract_id => ContractId}
     end.
@@ -3404,3 +3553,167 @@ test_not_participant(Cfg, Fun, InitProps) ->
          end,
          negative(Fun, {error, account_not_peer})]),
     ok.
+
+register_new_oracle(QFormat, RFormat, QueryFee) ->
+    fun(Props0) ->
+        run(Props0,
+           [fun(#{state := S0} = Props) ->
+                {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
+                S1 = aesc_test_utils:set_account_balance(NewAcc, 1000, S),
+                Props#{state => S1, oracle => NewAcc}
+            end,
+            fun(#{state := S, oracle := Oracle} = Props) ->
+                RegTx = aeo_test_utils:register_tx(Oracle,
+                                                   #{query_format => QFormat,
+                                                     query_fee => QueryFee,
+                                                     response_format => RFormat},
+                                                   S),
+                PrivKey = aesc_test_utils:priv_key(Oracle, S),
+                SignedTx = aec_test_utils:sign_tx(RegTx, [PrivKey]),
+                apply_on_trees_(Props, SignedTx, S, positive)
+            end
+           ])
+    end.
+
+oracle_query(Question, ResponseTTL) ->
+    fun(Props0) ->
+        run(Props0,
+           [fun(#{state := S, oracle := Oracle} = Props) ->
+                QueryTx = aeo_test_utils:query_tx(Oracle,
+                                                  aec_id:create(oracle, Oracle),% oracle is asking
+                                                  #{query => Question,
+                                                    response_ttl => {delta, ResponseTTL}},
+                                                  S),
+                {_, Tx} = aetx:specialize_type(QueryTx),
+                QueryId = aeo_query_tx:query_id(Tx),
+                PrivKey = aesc_test_utils:priv_key(Oracle, S),
+                SignedTx = aec_test_utils:sign_tx(QueryTx, [PrivKey]),
+                Props1 = apply_on_trees_(Props, SignedTx, S, positive),
+                Props1#{query_id => QueryId}
+            end
+           ])
+    end.
+
+oracle_response(Response) ->
+    fun(Props0) ->
+        run(Props0,
+           [fun(#{state := S, oracle := Oracle, query_id := QueryId} = Props) ->
+                ResponseTx = aeo_test_utils:response_tx(Oracle, QueryId,
+                                                        Response, S),
+                PrivKey = aesc_test_utils:priv_key(Oracle, S),
+                SignedTx = aec_test_utils:sign_tx(ResponseTx, [PrivKey]),
+                apply_on_trees_(Props, SignedTx, S, positive)
+            end
+           ])
+    end.
+
+register_name(Name, Pointers0) ->
+    NameSalt = rand:uniform(10000),
+    fun(Props0) ->
+        run(Props0,
+           [% create dummy account to hold the name
+            fun(#{state := S0} = Props) ->
+                {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
+                S1 = aesc_test_utils:set_account_balance(NewAcc, 1000, S),
+                Props#{state => S1, name_owner => NewAcc}
+            end,
+            % preclaim
+            fun(#{state := S, name_owner := NameOwner} = Props) ->
+                {ok, NameAscii} = aens_utils:to_ascii(Name),
+                CHash = aens_hash:commitment_hash(NameAscii, NameSalt),
+                TxSpec = aens_test_utils:preclaim_tx_spec(NameOwner, CHash, S),
+                {ok, Tx} = aens_preclaim_tx:new(TxSpec),
+                PrivKey = aesc_test_utils:priv_key(NameOwner, S),
+                SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
+                apply_on_trees_(Props, SignedTx, S, positive)
+            end,
+            % claim
+            fun(#{state := S, name_owner := NameOwner, height := Height0} = Props) ->
+                PrivKey = aesc_test_utils:priv_key(NameOwner, S),
+                Delta = aec_governance:name_claim_preclaim_delta(),
+                TxSpec = aens_test_utils:claim_tx_spec(NameOwner, Name, NameSalt, S),
+                {ok, Tx} = aens_claim_tx:new(TxSpec),
+                SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
+                apply_on_trees_(Props#{height := Height0 + Delta}, SignedTx, S, positive)
+            end,
+            % update to set pointers
+            fun(#{state := S, name_owner := NameOwner} = Props) ->
+                PrivKey = aesc_test_utils:priv_key(NameOwner, S),
+                {ok, NameAscii} = aens_utils:to_ascii(Name),
+                NHash = aens_hash:name_hash(NameAscii),
+                Pointers =
+                    lists:map(
+                        fun({PointerName, Value}) ->
+                            aens_pointer:new(PointerName, Value)
+                        end,
+                        Pointers0),
+                NameTTL  = 40000,
+                TxSpec = aens_test_utils:update_tx_spec(
+                           NameOwner, NHash, #{pointers => Pointers, name_ttl => NameTTL}, S),
+                {ok, Tx} = aens_update_tx:new(TxSpec),
+                SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
+                apply_on_trees_(Props, SignedTx, S, positive)
+            end
+           ])
+    end.
+
+%% provide payload
+force_call_contract_first(Forcer, Fun, Args, LockPeriod, Round) ->
+    fun(Props0) ->
+        run(Props0,
+           [fun(#{height := H0} = Props) ->
+                Props#{height => H0 + LockPeriod + 1}
+            end,
+            set_prop(round, Round - 1),
+            set_from(Forcer),
+            create_poi_by_trees(),
+            create_payload(),
+            set_prop(round, Round),
+            fun(#{contract_id := ContractId} = Props) ->
+                (create_contract_call_payload(ContractId, Fun,
+                                              Args, 1))(Props)
+            end,
+            set_prop(fee, 1),
+            positive(fun force_progress_/2)
+            ])
+    end.
+
+%% build on top of on-chain payload
+force_call_contract(Forcer, Fun, Args, LockPeriod) ->
+    fun(Props0) ->
+        #{channel_pubkey := ChannelPubKey, state := S} = Props0,
+        Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+        Round = aesc_channels:round(Channel),
+        (force_call_contract(Forcer, Fun, Args, LockPeriod, Round + 1))(Props0)
+    end.
+
+force_call_contract(Forcer, Fun, Args, LockPeriod, Round) ->
+    fun(Props0) ->
+        run(Props0,
+            [set_prop(contract_function_call, {Fun, Args}),
+            create_poi_by_trees(),
+            set_prop(payload, <<>>),
+            fun(#{height := H0} = Props) ->
+                Props#{height => H0 + LockPeriod + 1}
+            end,
+            force_progress_sequence(Round, Forcer)])
+    end.
+
+assert_last_channel_result(Result, Type) ->
+    fun(#{state := S,
+          signed_force_progress := SignedForceProgressTx,
+          solo_payload := #{update := Update,
+                            round  := Round}} = Props) ->
+        {_ContractId, Caller} = aesc_offchain_update:extract_call(Update),
+        TxHashContractPubkey = aesc_utils:tx_hash_to_contract_pubkey(
+                              aetx_sign:hash(SignedForceProgressTx)),
+        CallId = aect_call:id(Caller,
+                              Round,
+                              TxHashContractPubkey),
+        Call = aect_test_utils:get_call(TxHashContractPubkey, CallId,
+                                        S),
+        EncRValue = aect_call:return_value(Call),
+        {ok, Result} = aeso_data:from_binary(Type, EncRValue),
+        Props
+    end.
+
