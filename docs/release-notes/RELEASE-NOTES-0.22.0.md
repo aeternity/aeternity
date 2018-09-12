@@ -14,6 +14,7 @@ It:
 * Improves checking and validation of gossiped light micro blocks([ref](https://github.com/aeternity/epoch/pull/1541))
 * Changes `/key-blocks/pending` endpoint - the pending key block is returned even when the node is not mining ([ref](https://github.com/aeternity/epoch/pull/1536))
 * Removes `pow` and `nonce` from pending key block and genesis block returned from HTTP API ([ref](https://github.com/aeternity/epoch/pull/1536))
+* Adds `/key-blocks` endpoint for posting mined key blocks ([ref](https://github.com/aeternity/epoch/pull/1542))
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.22.0
 
