@@ -1,6 +1,6 @@
 # About this release
 
-[This release][this-release] is focused on TODOFILLMEIN.
+[This][this-release] is a maintenance release.
 It:
 * Adds on-chain forcing of progress for channel off-chain contracts. This impacts consensus. ([ref](https://github.com/aeternity/epoch/pull/1469), [ref](https://github.com/aeternity/epoch/pull/1528))
 * Enriches HTTP API for fetching contract proof of inclusion with including contract's account as well. ([ref](https://github.com/aeternity/epoch/pull/1503))
