@@ -380,16 +380,18 @@ post_spend_tx(Node, From, To, Nonce, Map) ->
     Response.
 
 %% Use values that are not yet base58c encoded in test cases
-wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, _Ctx) ->
+wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, Ctx) ->
+    FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
     CheckF =
         fun(Node) ->
-                 case request(Node, 'GetAccountByPubkey', #{pubkey => aec_base58c:encode(account_pubkey, PubKey)}) of
+                 case request(Node, 'GetAccountByPubkey', maps:merge(#{pubkey => aec_base58c:encode(account_pubkey, PubKey)}, FaultInject)) of
                      {ok, 200, #{balance := Balance}} when Balance >= MinBalance -> {done, #{PubKey => Balance}};
                      _ -> wait
                 end
         end,
     loop_for_values(CheckF, NodeNames, [], 500, Timeout);
-wait_for_value({height, MinHeight}, NodeNames, Timeout, _Ctx) ->
+wait_for_value({height, MinHeight}, NodeNames, Timeout, Ctx) ->
+    FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
     CheckF =
         fun(Node) ->
                 case request(Node, 'GetKeyBlockByHeight', #{height => MinHeight}) of
@@ -398,11 +400,12 @@ wait_for_value({height, MinHeight}, NodeNames, Timeout, _Ctx) ->
                 end
         end,
     loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Height ~p on nodes ~p", [MinHeight, NodeNames]});
-wait_for_value({txs_on_chain, Txs}, NodeNames, Timeout, _Ctx) ->
+wait_for_value({txs_on_chain, Txs}, NodeNames, Timeout, Ctx) ->
+    FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
     CheckF =
         fun(Node) ->
                 Found = 
-                    lists:usort([ case request(Node, 'GetTransactionByHash', #{hash => Tx}) of
+                    lists:usort([ case request(Node, 'GetTransactionByHash', maps:merge(#{hash => Tx}, FaultInject)) of
                                       {ok, 200, #{ block_height := H}} when H > 0 -> H;
                                       _ -> wait
                                   end || Tx <- Txs]),
@@ -412,10 +415,11 @@ wait_for_value({txs_on_chain, Txs}, NodeNames, Timeout, _Ctx) ->
                 end
         end,
     loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Txs found ~p", [Txs]});
-wait_for_value({txs_on_node, Txs}, NodeNames, Timeout, _Ctx) ->
+wait_for_value({txs_on_node, Txs}, NodeNames, Timeout, Ctx) ->
+    FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
     CheckF =
         fun(Node) ->
-                Found = [ case request(Node, 'GetTransactionByHash', #{hash => Tx}) of
+                Found = [ case request(Node, 'GetTransactionByHash', maps:merge(#{hash => Tx}, FaultInject)) of
                                       {ok, 200, #{ block_height := H}} -> {Tx, H};
                                       _ -> wait
                                   end || Tx <- Txs],
