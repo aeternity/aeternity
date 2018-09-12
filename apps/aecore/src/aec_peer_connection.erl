@@ -215,7 +215,9 @@ init([Opts]) ->
                  , kind => permanent
                  , version => Version
                  , genesis => Genesis},
-    {ok, Opts1, 0}.
+    %% NOTE: The init continues at handle_info(init_continue, State).
+    self() ! init_continue,
+    {ok, Opts1}.
 
 handle_call(Request, From, State) ->
     handle_request(State, Request, From).
@@ -242,12 +244,12 @@ handle_cast(disconnect, #{ status := {disconnecting, _} } = S) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info(timeout, S = #{ role := initiator, host := Host, port := Port }) ->
+handle_info(init_continue, S = #{ role := initiator, host := Host, port := Port }) ->
     Self = self(),
     ConnTimeout = connect_timeout(),
     Pid = spawn(fun() -> try_connect(Self, Host, Port, ConnTimeout) end),
     {noreply, S#{ status => {connecting, Pid} }};
-handle_info(timeout, S) ->
+handle_info(init_continue, S) ->
     {noreply, S};
 handle_info({timeout, Ref, {request, Kind}}, S) ->
     handle_request_timeout(S, Ref, Kind);
