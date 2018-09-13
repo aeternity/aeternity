@@ -9,8 +9,8 @@ compile_test() ->
     Cfun = fun (F) ->
                   case string:split(F, ".") of
                       [_,"aev"] ->
-                      Name = Cwd ++ "/" ++ Dir ++ "/" ++ F,
-                      ?assertMatch({ok,_,_}, aeva_compile:file(Name));
+                          Name = Cwd ++ "/" ++ Dir ++ "/" ++ F,
+                          ?assertMatch({ok,_,_}, aeva_compile:file(Name));
                       _ -> ok
                   end
             end,

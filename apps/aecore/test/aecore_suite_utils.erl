@@ -541,15 +541,15 @@ cp_dir({ok, Fs}, From, To) ->
                 FullF = filename:join(From, F),
                 case filelib:is_dir(FullF) of
                     true ->
-                    To1 = filename:join(To, F),
-                    cp_dir(FullF, To1),
-                    [FullF|Acc];
+                        To1 = filename:join(To, F),
+                        cp_dir(FullF, To1),
+                        [FullF|Acc];
                     false ->
-                    Tgt = filename:join(To, F),
-                    ok = filelib:ensure_dir(Tgt),
-                    {ok,_} = file:copy(FullF, Tgt),
-                    ok = match_mode(FullF, Tgt),
-                    [FullF|Acc]
+                        Tgt = filename:join(To, F),
+                        ok = filelib:ensure_dir(Tgt),
+                        {ok,_} = file:copy(FullF, Tgt),
+                        ok = match_mode(FullF, Tgt),
+                        [FullF|Acc]
                 end
             end, [], Fs),
     ct:log("cp_dir(~p, ~p) -> ~p", [From, To, Res]),

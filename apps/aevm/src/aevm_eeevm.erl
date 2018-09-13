@@ -1327,15 +1327,15 @@ data_get_bytes(Address, Size, State) ->
     Data = aevm_eeevm_state:data(State),
     try aevm_eeevm_utils:bin_copy(Address, Size, Data)
     catch error:system_limit ->
-            eval_error(out_of_memory, State)
-     end.
+        eval_error(out_of_memory, State)
+    end.
 
 %% Get a binary of size Size bytes from return data.
 return_data_get_bytes(Address, Size, State) ->
     Data = aevm_eeevm_state:return_data(State),
     try aevm_eeevm_utils:bin_copy(Address, Size, Data)
     catch error:system_limit ->
-            throw({out_of_memory, State})
+        throw({out_of_memory, State})
     end.
 
 
@@ -1539,18 +1539,18 @@ recursive_call1(StateIn, Op) ->
             GasOut = GasAfterSpend + CallGas,
             State9 = aevm_eeevm_state:set_gas(GasOut, State8),
             State10 = aevm_eeevm_state:add_callcreates(#{ data => I
-                                , destination => Dest
-                                , gasLimit => CallGas
-                                , value => Value
-                                }, State9),
+                                                        , destination => Dest
+                                                        , gasLimit => CallGas
+                                                        , value => Value
+                                                        }, State9),
             {1, State10};
         false ->
              %% State9 =
              %%     aevm_eeevm_state:add_callcreates(#{ data => I
-             %%                       , destination => Dest
-             %%                       , gasLimit => CallGas
-             %%                       , value => Value
-             %%                       }, State8),
+             %%                                       , destination => Dest
+             %%                                       , gasLimit => CallGas
+             %%                                       , value => Value
+             %%                                       }, State8),
             {OutGas, ReturnState, R} =
                 case aevm_eeevm_state:call_contract(Caller, Dest, CallGas, Value, I, State8) of
                     {ok, Res, GasSpent, OutState1} -> {CallGas - GasSpent, OutState1, Res};
