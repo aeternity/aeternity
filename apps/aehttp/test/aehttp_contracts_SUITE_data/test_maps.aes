@@ -1,0 +1,38 @@
+// Test contract for interfacing maps.aes.
+// All operations done in maps.aes
+
+contract Maps =
+  function set_state_i : (int, pt) => state
+  function set_state_s : (string, pt) => state
+  function tolist_state_i : () => list((int, pt))
+  function tolist_state_s : () => list((string, pt))
+  function fromlist_state_i : (list((int, pt))) => state
+  function fromlist_state_s : (list((string, pt))) => state
+
+contract TestMaps =
+
+  record state = {r : Maps}
+  record pt = {x : int, y : int}
+
+  function init(r) = {r = r}
+
+  // Allow us to be build record.
+  function set_state_i(k : int, x, y) =
+    let the = {x = x, y = y}
+    state.r.set_state_i(k, the)
+
+  function set_state_s(k : string, x, y) =
+    let the = {x = x, y = y}
+    state.r.set_state_s(k, the)
+
+  // Convert map to list, prefix with new element, convert back to map
+
+  function list_state_i(k : int) =
+    let l0 = state.r.tolist_state_i()
+    let l1 = (k, {x = 43, y = 44}) :: l0
+    state.r.fromlist_state_i(l1)
+
+  function list_state_s(k : string) =
+    let l0 = state.r.tolist_state_s()
+    let l1 = (k, {x = 43, y = 44}) :: l0
+    state.r.fromlist_state_s(l1)
