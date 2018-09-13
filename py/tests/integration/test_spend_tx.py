@@ -26,62 +26,58 @@ def test_not_enough_tokens():
     # should not be able to use the incoming tokens until the spend transaction
     # they are in is confirmed.
     test_settings = settings["test_not_enough_tokens"]
-    coinbase_reward = common.coinbase_reward()
-    bob = common.setup_beneficiary()
-    (bob_node, (root_dir, bob_api, bob_top)) = setup_node_with_tokens(test_settings, bob, "bob")
-    bob_internal_api = common.internal_api(bob_node)
-    bob_pub_key = bob['enc_pubk']
-    alice_pub_key = test_settings["spend_tx"]["alice_pubkey"]
-    def get_bob_balance():
-        return common.get_account_balance(bob_api, bob_internal_api, pub_key=bob_pub_key)
-    def get_alice_balance():
-        return common.get_account_balance(bob_api, bob_internal_api, pub_key=alice_pub_key)
+    beneficiary = common.setup_beneficiary()
+    (node, (root_dir, ext_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "miner")
+    int_api = common.internal_api(node)
 
+    alice_address = keys.address(keys.public_key(keys.new_private()))
 
-    spend_tx_amt = test_settings["spend_tx"]["amount"]
+    bob_private_key = keys.new_private()
+    bob_public_key = keys.public_key(bob_private_key)
+    bob_address = keys.address(bob_public_key)
+
+    # initial balances - amounts that the miner should send them
+    alice_init_balance = test_settings["send_tokens"]["alice"]
+    bob_init_balance = test_settings["send_tokens"]["bob"]
+
+    # populate accounts with tokens, and validate balances
+    common.send_tokens_to_unchanging_user_and_wait_balance(beneficiary, alice_address, alice_init_balance, 1, ext_api, int_api)
+    common.send_tokens_to_unchanging_user_and_wait_balance(beneficiary, bob_address, bob_init_balance, 1, ext_api, int_api)
+    common.wait_until_height(ext_api, ext_api.get_top_block().height + 3)
+    alice_balance0 = common.get_account_balance(ext_api, int_api, pub_key=alice_address).balance
+    bob_balance0 = common.get_account_balance(ext_api, int_api, pub_key=bob_address).balance
+    print("Alice balance is " + str(alice_balance0))
+    print("Bob balance is " + str(bob_balance0))
+    assert_equals(alice_balance0, alice_init_balance)
+    assert_equals(bob_balance0, bob_init_balance)
+
+    # check that Bob is able to send less tokens than he has
     spend_tx_fee = test_settings["spend_tx"]["fee"]
-    bob_balance = get_bob_balance()
-    bob_has_not_enough_tokens = bob_balance.balance < spend_tx_amt + spend_tx_fee
-    assert_equals(bob_has_not_enough_tokens, True)
-    print("Bob initial balance is " + str(bob_balance.balance) +
-            " and he will try to spend " + str(spend_tx_amt + spend_tx_fee))
+    few_tokens_to_send = test_settings["spend_tx"]["small_amount"]
+    print("Bob is about to send " + str(few_tokens_to_send) + " to Alice")
+    send_tokens_to_unchanging_user(bob_private_key, bob_address, alice_address, few_tokens_to_send, spend_tx_fee, ext_api, int_api)
+    common.wait_until_height(ext_api, ext_api.get_top_block().height + 3)
+    alice_balance1 = common.get_account_balance(ext_api, int_api, pub_key=alice_address).balance
+    bob_balance1 = common.get_account_balance(ext_api, int_api, pub_key=bob_address).balance
+    print("Alice balance is " + str(alice_balance1))
+    print("Bob balance is " + str(bob_balance1))
+    assert_equals(alice_balance1, alice_balance0 + few_tokens_to_send)
+    assert_equals(bob_balance1, bob_balance0 - (few_tokens_to_send + spend_tx_fee))
 
-    alice_balance0 = get_alice_balance()
-
-    # Bob tries to send some tokens to Alice
-    spend_tx_obj = SpendTx(
-        sender_id=bob_pub_key,
-        recipient_id=alice_pub_key,
-        amount=spend_tx_amt,
-        fee=spend_tx_fee,
-        ttl=100,
-        payload="foo")
-    print("Bob's spend_tx is " + str(spend_tx_obj))
-    bob_internal_api.post_spend(spend_tx_obj)
-    print("Transaction sent")
-    bob_top_after_tx = bob_api.get_top_block()
-
-    print("Waiting for a few blocks to be mined")
-    checked_height = bob_top_after_tx.height + 3
-    common.wait_until_height(bob_api, checked_height)
-
-    # ensure Alice balance had not changed
-    alice_balance1 = get_alice_balance()
-    print("Alice's balance is now " + str(alice_balance1.balance))
-    assert_equals(alice_balance1.balance, alice_balance0.balance)
-
-    # ensure Bob not debited
-    # Since Bob had mined the block he is receiving the coinbase_reward
-    blocks_mined = checked_height - bob_top.height
-    print("Coinbase reward is " + str(coinbase_reward) + ", had mined " +
-          str(blocks_mined) + " blocks")
-    expected_balance = bob_balance.balance + coinbase_reward * blocks_mined
-    bob_new_balance = get_bob_balance()
-    print("Bob's balance (with coinbase rewards) is now " + str(bob_new_balance.balance))
-    assert_equals(bob_new_balance.balance, expected_balance)
+    # check that Bob is unable to send less tokens than he has
+    many_tokens_to_send = test_settings["spend_tx"]["large_amount"]
+    print("Bob is about to send " + str(many_tokens_to_send) + " to Alice")
+    send_tokens_to_unchanging_user(bob_private_key, bob_address, alice_address, many_tokens_to_send, spend_tx_fee, ext_api, int_api)
+    common.wait_until_height(ext_api, ext_api.get_top_block().height + 3)
+    alice_balance2 = common.get_account_balance(ext_api, int_api, pub_key=alice_address).balance
+    bob_balance2 = common.get_account_balance(ext_api, int_api, pub_key=bob_address).balance
+    print("Alice balance is " + str(alice_balance2))
+    print("Bob balance is " + str(bob_balance2))
+    assert_equals(alice_balance2, alice_balance1)
+    assert_equals(bob_balance2, bob_balance1)
 
     # stop node
-    common.stop_node(bob_node)
+    common.stop_node(node)
     shutil.rmtree(root_dir)
 
 def test_send_by_name():
