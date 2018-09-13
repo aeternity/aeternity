@@ -356,7 +356,7 @@ amount(#contract_call_tx{amount = Amount}) ->
 
 -spec gas(tx()) -> aect_contracts:amount().
 gas(#contract_call_tx{gas = Gas}) ->
-    Gas.
+    aec_governance:tx_gas() + Gas.
 
 -spec gas_price(tx()) -> aect_contracts:amount().
 gas_price(#contract_call_tx{gas_price = GasPrice}) ->
