@@ -54,6 +54,7 @@
 -define(DISCONNECT, disconnect).
 -define(SIGNED, signed).
 -define(MIN_DEPTH_ACHIEVED, minimum_depth_achieved).
+-define(CHANNEL_CLOSING, channel_closing).
 
 %% Error codes
 -define(ERR_VALIDATION, 1).

@@ -40,6 +40,7 @@
          channel_reserve/1,
          state_hash/1,
          round/1,
+         lock_period/1,
          closes_at/1]).
 
 -compile({no_auto_import, [round/1]}).
