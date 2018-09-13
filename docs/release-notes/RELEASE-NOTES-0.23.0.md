@@ -2,7 +2,7 @@
 
 [This release][this-release] is focused on TODOFILLMEIN.
 It:
-* Does this.
+* Does all the things temporarily located in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.23.0
 
