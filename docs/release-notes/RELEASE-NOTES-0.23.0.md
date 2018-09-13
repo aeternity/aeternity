@@ -2,7 +2,9 @@
 
 [This release][this-release] is focused on TODOFILLMEIN.
 It:
-* Does all the things temporarily located in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
+* Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/). I.e. each mentioned item is meant to be placed in a file named as the Pivotal Tracker ticket number in which scope the mentioned item is.
+
+TODO: When preparing the release, concatenate all `/docs/release-notes/next/PT-*.md` files and place them in this file.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.23.0
 
