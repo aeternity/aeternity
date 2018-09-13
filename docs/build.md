@@ -81,7 +81,7 @@ git clone https://github.com/aeternity/epoch.git epoch && cd epoch
 
 Identify the version to be built:
 ```
-VERSION=0.22.0
+VERSION=0.23.0
 ```
 
 Checkout the version to be built:

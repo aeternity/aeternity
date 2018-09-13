@@ -1,26 +1,14 @@
 # About this release
 
-[This][this-release] is a maintenance release.
+[This release][this-release] is focused on TODOFILLMEIN.
 It:
-* Adds on-chain forcing of progress for channel off-chain contracts. This impacts consensus. ([ref](https://github.com/aeternity/epoch/pull/1469), [ref](https://github.com/aeternity/epoch/pull/1528))
-* Enriches HTTP API for fetching contract proof of inclusion with including contract's account as well. ([ref](https://github.com/aeternity/epoch/pull/1503))
-* Improves stability of HTTP API ([ref](https://github.com/aeternity/epoch/pull/1505), [ref](https://github.com/aeternity/epoch/pull/1546))
-* Fixes coinbase instruction in aevm. This impacts consensus. ([ref](https://github.com/aeternity/epoch/pull/1502))
-* Makes it possible to use absolute TTLs in the Sophia oracle API. ([ref](https://github.com/aeternity/epoch/pull/1493))
-* Improves channels' WebSocket client stability ([ref](https://github.com/aeternity/epoch/pull/1520))
-* Enriches channel WebSocket client opening with the functionality of the `initator` giving the `responder` a certain amount of tokens in the initial channel state. This is an act of a good will and can as well be 0. ([ref](https://github.com/aeternity/epoch/pull/1531))
-* Clarifies in the user HTTP API that the oracle extension TTL must be relative. ([ref](https://github.com/aeternity/epoch/pull/1537))
-* Replaces '$' with '_' in addresses ([ref](https://github.com/aeternity/epoch/pull/1544))
-* Improves checking and validation of gossiped light micro blocks([ref](https://github.com/aeternity/epoch/pull/1541))
-* Changes `/key-blocks/pending` endpoint - the pending key block is returned even when the node is not mining ([ref](https://github.com/aeternity/epoch/pull/1536))
-* Removes `pow` and `nonce` from pending key block and genesis block returned from HTTP API ([ref](https://github.com/aeternity/epoch/pull/1536))
-* Adds `/key-blocks` endpoint for posting mined key blocks ([ref](https://github.com/aeternity/epoch/pull/1542))
+* Does this.
 
-[this-release]: https://github.com/aeternity/epoch/releases/tag/v0.22.0
+[this-release]: https://github.com/aeternity/epoch/releases/tag/v0.23.0
 
 This release introduces backward incompatible changes in the chain format:
 * After upgrading your node, you will not have your previous balance (even if you keep your key pair);
-* Please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.21.x".
+* Please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.22.x".
 
 Please join the testnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/epoch/wiki/Troubleshooting).
@@ -37,8 +25,8 @@ You can run a node by either:
 * Running the published [Docker image `aeternity/epoch`][docker]; or
 * [Building a release binary from source][build].
 
-[docker]: https://github.com/aeternity/epoch/blob/v0.22.0/docs/docker.md
-[build]: https://github.com/aeternity/epoch/blob/v0.22.0/docs/build.md
+[docker]: https://github.com/aeternity/epoch/blob/v0.23.0/docs/docker.md
+[build]: https://github.com/aeternity/epoch/blob/v0.23.0/docs/build.md
 
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration).
 For specifying configuration using the Docker image, please refer to [its documentation][docker].
@@ -51,9 +39,9 @@ The node user API is documented:
 * WebSocket API endpoints are [specified online][api-doc];
 * The intended usage of the user API (HTTP and WebSocket) is [documented online][api-doc].
 
-[swagger-yaml]: https://github.com/aeternity/epoch/blob/v0.22.0/config/swagger.yaml
-[swagger-ui]: https://aeternity.github.io/epoch-api-docs/?config=https://raw.githubusercontent.com/aeternity/epoch/v0.22.0/apps/aehttp/priv/swagger.json
-[api-doc]: https://github.com/aeternity/protocol/blob/epoch-v0.22.0/epoch/api/README.md
+[swagger-yaml]: https://github.com/aeternity/epoch/blob/v0.23.0/config/swagger.yaml
+[swagger-ui]: https://aeternity.github.io/epoch-api-docs/?config=https://raw.githubusercontent.com/aeternity/epoch/v0.23.0/apps/aehttp/priv/swagger.json
+[api-doc]: https://github.com/aeternity/protocol/blob/epoch-v0.23.0/epoch/api/README.md
 
 ## Install node
 
