@@ -1189,9 +1189,9 @@ dump_messages(Acc) ->
         case Acc of
             [] -> ok;
             _ ->
-                io:format(user, "Message box:~n", []),
+                io:format("Message box:~n", []),
                 lists:foreach(fun(M) ->
-                    io:format(user, "    ~p~n", [M])
+                    io:format("    ~p~n", [M])
                 end, lists:reverse(Acc))
         end
     end.
@@ -1203,21 +1203,21 @@ setup_mock_getaddr() ->
 cleanup_mock_getaddr() ->
     catch meck:unload(inet).
 
-mock_interactive_getaddr() ->
-    Self = self(),
-    ok = meck:expect(inet, getaddr, fun(Hostname, _) ->
-        Ref = erlang:make_ref(),
-        Self ! {self(), Ref, {getaddr, Hostname}},
-        receive
-            {Ref, error} ->
-                throw(test_intervactive_call_error);
-            {Ref, {Delay, Result}} ->
-                timer:sleep(Delay),
-                Result
-        after 5000 ->
-            throw(test_intervactive_call_timeout)
-        end
-    end).
+%% mock_interactive_getaddr() ->
+%%     Self = self(),
+%%     ok = meck:expect(inet, getaddr, fun(Hostname, _) ->
+%%         Ref = erlang:make_ref(),
+%%         Self ! {self(), Ref, {getaddr, Hostname}},
+%%         receive
+%%             {Ref, error} ->
+%%                 throw(test_intervactive_call_error);
+%%             {Ref, {Delay, Result}} ->
+%%                 timer:sleep(Delay),
+%%                 Result
+%%         after 5000 ->
+%%             throw(test_intervactive_call_timeout)
+%%         end
+%%     end).
 
 mock_getaddr(Result) ->
     Self = self(),

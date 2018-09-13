@@ -1345,8 +1345,8 @@ validate_counters() ->
 
     Now1 = erlang:system_time(millisecond),
 
-    {Pool2, Now2, All2, Selected2} = lists:foldl(fun(K, {P, N, A, S}) ->
-        if (K rem 10000) =:= 0 -> io:format(user, "*", []); true -> ok end,
+    {Pool2, Now2, All2, Selected2} = 
+        lists:foldl(fun(_K, {P, N, A, S}) ->
             case {rand_int(1, 8), A, S} of
                 {1, _, _} ->
                     case random_select(P, N, both, undefined) of
