@@ -343,4 +343,5 @@ internal-distclean: $$(KIND)
 	kill killall \
 	clean distclean \
 	swagger swagger-docs swagger-check swagger-version-check \
-	rebar-lock-check
+	rebar-lock-check \
+	python-env python-ws-test python-uats python-single-uat python-release-test
