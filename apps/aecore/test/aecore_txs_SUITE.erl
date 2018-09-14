@@ -285,7 +285,7 @@ create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
                                          , fee        => Fee
                                          , deposit    => 0
                                          , amount     => 0
-                                         , gas        => 100000000
+                                         , gas        => 100000
                                          , owner_id   => Owner
                                          , gas_price  => 1
                                          , ttl        => TTL
@@ -312,7 +312,7 @@ call_contract_tx(Node, Contract, Function, Args, Fee, Nonce, TTL) ->
                                      , contract_id => ContractID
                                      , fee         => Fee
                                      , amount      => 0
-                                     , gas         => 10000000
+                                     , gas         => 100000
                                      , gas_price   => 1
                                      , call_data   => CallData
                                      , ttl         => TTL

@@ -212,36 +212,37 @@ tx_pool_test_() ->
       {"Ensure candidate ordering",
        fun() ->
                PK = new_pubkey(),
+               MaxGas = aec_governance:block_gas_limit(),
 
                %% Only one tx in pool
                STx1 = a_signed_tx(PK, me, Nonce1=1,_Fee1=1),
                ?assertEqual(ok, aec_tx_pool:push(STx1)),
-               ?assertEqual({ok, [STx1]}, aec_tx_pool:get_candidate(10, aec_chain:top_block_hash())),
+               ?assertEqual({ok, [STx1]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
 
                %% Order by nonce even if fee is higher
                STx2 = a_signed_tx(PK, me, Nonce2=2, Fee2=5),
                ?assertEqual(ok, aec_tx_pool:push(STx2)),
-               ?assertEqual({ok, [STx1, STx2]}, aec_tx_pool:get_candidate(10, aec_chain:top_block_hash())),
+               ?assertEqual({ok, [STx1, STx2]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
 
                %% Replace same nonce with the higher fee
                STx3 = a_signed_tx(PK, me, Nonce1=1, 2),
                ?assertEqual(ok, aec_tx_pool:push(STx3)),
-               ?assertEqual({ok, [STx3, STx2]}, aec_tx_pool:get_candidate(10, aec_chain:top_block_hash())),
+               ?assertEqual({ok, [STx3, STx2]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
 
                %% Replace same nonce with same fee but positive gas price (gas price of transaction without gas price is considered zero)
                STx4 = signed_ct_create_tx(PK, Nonce2=2, Fee2=5,_GasPrice4=1),
                ?assertEqual(ok, aec_tx_pool:push(STx4)),
-               ?assertEqual({ok, [STx3, STx4]}, aec_tx_pool:get_candidate(10, aec_chain:top_block_hash())),
+               ?assertEqual({ok, [STx3, STx4]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
 
                %% Replace same nonce with same fee but higher gas price
                STx5 = signed_ct_create_tx(PK, Nonce2=2, Fee2=5, 2),
                ?assertEqual(ok, aec_tx_pool:push(STx5)),
-               ?assertEqual({ok, [STx3, STx5]}, aec_tx_pool:get_candidate(10, aec_chain:top_block_hash())),
+               ?assertEqual({ok, [STx3, STx5]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
 
                %% Order by nonce even if fee and gas price are higher
                STx6 = signed_ct_call_tx(PK, _Nonce6=3,_Fee6=9,_GasPrice6=9),
                ?assertEqual(ok, aec_tx_pool:push(STx6)),
-               ?assertEqual({ok, [STx3, STx5, STx6]}, aec_tx_pool:get_candidate(10, aec_chain:top_block_hash())),
+               ?assertEqual({ok, [STx3, STx5, STx6]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
 
                ok
        end},

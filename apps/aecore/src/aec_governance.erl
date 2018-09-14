@@ -9,7 +9,6 @@
          block_mine_reward/0,
          block_gas_limit/0,
          tx_gas/0,
-         max_txs_in_block/0,
          beneficiary_reward_delay/0,
          minimum_tx_fee/0,
          minimum_gas_price/0,
@@ -84,11 +83,6 @@ block_gas_limit() ->
 
 tx_gas() ->
     ?TX_GAS.
-
-max_txs_in_block() ->
-    %% TODO: Consider trade-offs sync latency vs pow time
-    %%       Relate to transaction size expressed with gas (when we have channels)
-    10946.
 
 minimum_tx_fee() ->
     1.

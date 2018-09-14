@@ -13,6 +13,7 @@
          deserialize_from_binary/1,
          deserialize_from_map/1,
          difficulty/1,
+         gas/1,
          hash_internal_representation/1,
          height/1,
          is_block/1,
@@ -227,6 +228,10 @@ set_height(Block, Height) ->
 -spec difficulty(key_block()) -> float().
 difficulty(Block) ->
     aec_pow:target_to_difficulty(target(Block)).
+
+-spec gas(micro_block()) -> non_neg_integer().
+gas(#mic_block{txs = Txs}) ->
+    lists:foldl(fun(Tx, Acc) -> aetx:gas(aetx_sign:tx(Tx)) + Acc end, 0, Txs).
 
 -spec time_in_msecs(block()) -> non_neg_integer().
 time_in_msecs(Block) ->

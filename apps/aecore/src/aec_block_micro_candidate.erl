@@ -66,19 +66,19 @@ apply_block_txs_strict(Txs, Trees, Height, Version) ->
              block_info()) ->
                     {ok, aec_blocks:block(), block_info()} | {error, no_change}.
 update(Block, Txs, BlockInfo) ->
-    NTxs = length(aec_blocks:txs(Block)),
-    MaxTxs = aec_governance:max_txs_in_block(),
-    case NTxs < MaxTxs of
-        false ->
-            {error, block_is_full};
-        true  ->
+    MaxGas = aec_governance:block_gas_limit(),
+    BlockGas = aec_blocks:gas(Block),
+    case BlockGas < MaxGas of
+        true ->
             SortedTxs = sort_txs(Txs),
-            case int_update(MaxTxs - NTxs, Block, SortedTxs, BlockInfo) of
+            case int_update(MaxGas - BlockGas, Block, SortedTxs, BlockInfo) of
                 {ok, _NewBlock, _NewBlockInfo} = Updated ->
                     Updated;
                 {error, no_change} ->
                     {error, no_update_to_block_candidate}
-            end
+            end;
+        false ->
+            {error, block_is_full}
     end.
 
 %% -- Internal functions -----------------------------------------------------
@@ -93,8 +93,8 @@ int_create(Block, KeyBlock) ->
     end.
 
 int_create(BlockHash, Block, KeyBlock, Trees) ->
-    MaxN = aec_governance:max_txs_in_block(),
-    {ok, Txs} = aec_tx_pool:get_candidate(MaxN, BlockHash),
+    MaxGas = aec_governance:block_gas_limit(),
+    {ok, Txs} = aec_tx_pool:get_candidate(MaxGas, BlockHash),
     int_create_block(BlockHash, Block, KeyBlock, Trees, Txs).
 
 int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
@@ -142,8 +142,8 @@ int_apply_block_txs(Txs, Trees, Height, Version, true) ->
             Err
     end.
 
-int_update(MaxNTxs, Block, Txs, BlockInfo) ->
-    case add_txs_to_trees(MaxNTxs, maps:get(trees, BlockInfo), Txs,
+int_update(MaxGas, Block, Txs, BlockInfo) ->
+    case add_txs_to_trees(MaxGas, maps:get(trees, BlockInfo), Txs,
                           aec_blocks:height(Block), aec_blocks:version(Block)) of
         {[], _} ->
             {error, no_change};
@@ -159,19 +159,23 @@ int_update(MaxNTxs, Block, Txs, BlockInfo) ->
             {ok, NewBlock, NewBlockInfo}
     end.
 
-add_txs_to_trees(MaxN, Trees, Txs, Height, Version) ->
-    add_txs_to_trees(MaxN, Trees, Txs, [], Height, Version).
+add_txs_to_trees(MaxGas, Trees, Txs, Height, Version) ->
+    add_txs_to_trees(MaxGas, Trees, Txs, [], Height, Version).
 
-add_txs_to_trees(0, Trees, _Txs, Acc, _Height, _Version) ->
+add_txs_to_trees(_MaxGas, Trees, [], Acc, _Height, _Version) ->
     {lists:reverse(Acc), Trees};
-add_txs_to_trees(_N, Trees, [], Acc, _Height, _Version) ->
-    {lists:reverse(Acc), Trees};
-add_txs_to_trees(N, Trees, [Tx | Txs], Acc, Height, Version) ->
-    case aec_trees:apply_txs_on_state_trees([Tx], Trees, Height, Version) of
-        {ok, [], _, _} ->
-            add_txs_to_trees(N, Trees, Txs, Acc, Height, Version);
-        {ok, [Tx], _, Trees1} ->
-            add_txs_to_trees(N+1, Trees1, Txs, [Tx | Acc], Height, Version)
+add_txs_to_trees(MaxGas, Trees, [Tx | Txs], Acc, Height, Version) ->
+    TxGas = aetx:gas(aetx_sign:tx(Tx)),
+    case TxGas =< MaxGas of
+        true ->
+            case aec_trees:apply_txs_on_state_trees([Tx], Trees, Height, Version) of
+                {ok, [], _, _} ->
+                    add_txs_to_trees(MaxGas, Trees, Txs, Acc, Height, Version);
+                {ok, [Tx], _, Trees1} ->
+                    add_txs_to_trees(MaxGas - TxGas, Trees1, Txs, [Tx | Acc], Height, Version)
+            end;
+        false ->
+            {lists:reverse(Acc), Trees}
     end.
 
 %% Respect nonces order

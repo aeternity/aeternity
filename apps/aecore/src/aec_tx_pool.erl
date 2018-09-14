@@ -144,9 +144,9 @@ peek(MaxN, Account) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
     gen_server:call(?SERVER, {peek, MaxN, Account}).
 
 -spec get_candidate(pos_integer(), binary()) -> {ok, [aetx_sign:signed_tx()]}.
-get_candidate(MaxN, BlockHash) when is_integer(MaxN), MaxN >= 0,
-                                    is_binary(BlockHash) ->
-    gen_server:call(?SERVER, {get_candidate, MaxN, BlockHash}).
+get_candidate(MaxGas, BlockHash) when is_integer(MaxGas), MaxGas > 0,
+                                      is_binary(BlockHash) ->
+    gen_server:call(?SERVER, {get_candidate, MaxGas, BlockHash}).
 
 %% It assumes that the persisted mempool has been updated.
 -spec top_change(binary(), binary()) -> ok.
@@ -190,8 +190,8 @@ handle_call({peek, MaxNumberOfTxs, Account}, _From, #state{db = Mempool} = State
        MaxNumberOfTxs =:= infinity ->
     Txs = pool_db_peek(Mempool, MaxNumberOfTxs, Account),
     {reply, {ok, Txs}, State};
-handle_call({get_candidate, MaxNumberOfTxs, BlockHash}, _From, State) ->
-    Txs = int_get_candidate(State, MaxNumberOfTxs, BlockHash),
+handle_call({get_candidate, MaxGas, BlockHash}, _From, State) ->
+    Txs = int_get_candidate(State, MaxGas, BlockHash),
     {reply, {ok, Txs}, State};
 handle_call(Request, From, State) ->
     lager:warning("Ignoring unknown call request from ~p: ~p", [From, Request]),
@@ -236,37 +236,44 @@ int_get_max_nonce(Mempool, Sender) ->
 
 %% Ensure ordering of tx nonces in one account, and for duplicate account nonces
 %% we only get the one with higher fee or - if equal fee - higher gas price.
-int_get_candidate(#state{ db = Db, gc_db = GCDb }, MaxNumberOfTxs, BlockHash) ->
+int_get_candidate(#state{ db = Db, gc_db = GCDb }, MaxGas, BlockHash) ->
     {ok, Trees} = aec_chain:get_block_state(BlockHash),
     {ok, Header} = aec_chain:get_header(BlockHash),
-    int_get_candidate(MaxNumberOfTxs, {Db, GCDb}, ets:first(Db),
+    int_get_candidate(MaxGas, {Db, GCDb}, ets:first(Db),
                       {account_trees, aec_trees:accounts(Trees)},
                       aec_headers:height(Header), gb_trees:empty()).
 
-int_get_candidate(0, _Dbs, _, _AccountsTree, _Height, Acc) ->
-    gb_trees:values(Acc);
-int_get_candidate(_N, _Dbs, '$end_of_table', _AccountsTree, _Height, Acc) ->
-    gb_trees:values(Acc);
-int_get_candidate(N, Dbs = {Db, GCDb}, ?KEY(_, _, Account, Nonce, TxHash) = Key,
+int_get_candidate(Gas, Dbs = {Db, GCDb}, ?KEY(_, _, Account, Nonce, TxHash) = Key,
                   AccountsTree, Height, Acc) ->
     Next = ets:next(Db, Key),
     case gb_trees:is_defined({Account, Nonce}, Acc) of
         true ->
             %% The earlier must have had higher fee. Skip this tx.
-            int_get_candidate(N, Dbs, Next, AccountsTree, Height, Acc);
+            int_get_candidate(Gas, Dbs, Next, AccountsTree, Height, Acc);
         false ->
             Tx = ets:lookup_element(Db, Key, ?VALUE_POS),
-            TTL = aetx:ttl(aetx_sign:tx(Tx)),
-            case Height < TTL andalso ok == int_check_nonce(Tx, AccountsTree) of
+            Tx1 = aetx_sign:tx(Tx),
+            TxTTL = aetx:ttl(Tx1),
+            TxGas = aetx:gas(Tx1),
+            case Height < TxTTL andalso ok =:= int_check_nonce(Tx, AccountsTree) of
                 true ->
-                    NewAcc = gb_trees:insert({Account, Nonce}, Tx, Acc),
-                    int_get_candidate(N - 1, Dbs, Next, AccountsTree, Height, NewAcc);
+                    case Gas - TxGas of
+                        RemGas when RemGas >= 0 ->
+                            Acc1 = gb_trees:insert({Account, Nonce}, Tx, Acc),
+                            int_get_candidate(RemGas, Dbs, Next, AccountsTree, Height, Acc1);
+                        _ ->
+                            %% Check the rest of txs, maybe some of them fits
+                            %% into the gas limit.
+                            int_get_candidate(Gas, Dbs, Next, AccountsTree, Height, Acc)
+                    end;
                 false ->
                     %% This is not valid anymore.
                     enter_tx_gc(GCDb, TxHash, Height + invalid_tx_ttl()),
-                    int_get_candidate(N, Dbs, Next, AccountsTree, Height, Acc)
+                    int_get_candidate(Gas, Dbs, Next, AccountsTree, Height, Acc)
             end
-    end.
+    end;
+int_get_candidate(_Gas, _Dbs, '$end_of_table', _AccountsTree, _Height, Acc) ->
+    gb_trees:values(Acc).
 
 top_height() ->
     case aec_chain:top_header() of
