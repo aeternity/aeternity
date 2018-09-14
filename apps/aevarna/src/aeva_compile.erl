@@ -90,7 +90,7 @@ do_file(Name, Opts) ->
 do_string(Str, Opts) ->
     St0 = #comp{opts=Opts},
     case parse_string(Str) of
-	{ok,Fs} ->
+        {ok,Fs} ->
             %% Do the actual compilation work.
             do_forms(St0#comp{code=Fs});
         {error,Error} -> {error,[Error]}
@@ -138,8 +138,8 @@ parse_string(Str) when is_binary(Str) ->
     parse_string(binary_to_list(Str));
 parse_string(Str) ->
     case aeva_scan:string(Str) of
-	{ok,Ts,_} -> R = aeva_parse:contract(Ts), io:format("~p\n",[R]), R;
-	{error,Error,_} -> {error,Error}
+        {ok,Ts,_} -> R = aeva_parse:contract(Ts), io:format("~p\n",[R]), R;
+        {error,Error,_} -> {error,Error}
     end.
 
 %% do_forms(State) ->

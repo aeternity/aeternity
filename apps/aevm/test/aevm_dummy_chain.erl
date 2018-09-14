@@ -14,8 +14,8 @@
 
 %% aevm_chain_api callbacks
 -export([get_balance/2,
-	 get_store/1,
-	 set_store/2,
+         get_store/1,
+         set_store/2,
          spend/3,
          call_contract/6]).
 

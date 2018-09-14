@@ -56,7 +56,7 @@ call(Code, CallData) ->
         {ok, #{ out := Out }} -> {ok, aeu_hex:hexstring_encode(Out)};
         E -> {error, list_to_binary(io_lib:format("~p", [E]))}
     catch _T:E ->
-	{error, list_to_binary(io_lib:format("~p",
+        {error, list_to_binary(io_lib:format("~p",
                                              [{E, erlang:get_stacktrace()}]))}
     end.
 

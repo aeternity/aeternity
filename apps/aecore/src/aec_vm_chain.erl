@@ -412,9 +412,9 @@ do_get_store(PubKey, Trees) ->
 do_set_store(Store, PubKey, Trees) ->
     ContractsTree = aec_trees:contracts(Trees),
     NewContract =
-	case aect_state_tree:lookup_contract(PubKey, ContractsTree) of
-	    {value, Contract} -> aect_contracts:set_state(Store, Contract)
-	end,
+        case aect_state_tree:lookup_contract(PubKey, ContractsTree) of
+            {value, Contract} -> aect_contracts:set_state(Store, Contract)
+        end,
     aect_state_tree:enter_contract(NewContract, ContractsTree).
 
 apply_transaction(Tx, #state{ trees = Trees, height = Height } = State) ->

@@ -14,8 +14,8 @@
 
 %% aevm_chain_api callbacks
 -export([get_balance/2,
-	 get_store/1,
-	 set_store/2,
+         get_store/1,
+         set_store/2,
          spend/3,
          call_contract/6]).
 
@@ -34,8 +34,8 @@ get_balance(<<A:256>>, #{ pre := Chain} =_S) ->
 
 -spec get_store(chain_state()) -> map().
 get_store(#{ env :=_Env,
-	     exec := Exec,
-	     pre := Pre }) ->
+             exec := Exec,
+             pre := Pre }) ->
     Address = maps:get(address, Exec),
     case maps:get(Address, Pre, undefined) of
         undefined -> #{};

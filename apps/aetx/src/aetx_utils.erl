@@ -48,8 +48,8 @@ check_account(AccountPubKey, Trees, Amount) ->
         ok | {error, ttl_expired}.
 check_ttl(TTL, Height) ->
     case TTL >= Height of
-      	true -> ok;
-      	false -> {error, ttl_expired}
+        true -> ok;
+        false -> {error, ttl_expired}
     end.
 
 %%%===================================================================

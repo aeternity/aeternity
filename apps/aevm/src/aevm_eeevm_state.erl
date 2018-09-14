@@ -40,7 +40,7 @@
         , no_recursion/1
         , number/1
         , return_data/1
-	, save_store/1
+        , save_store/1
         , set_code/2
         , set_cp/2
         , set_gas/2
@@ -72,7 +72,7 @@
 
 -spec save_store(state()) -> state().
 save_store(#{ chain_state := ChainState
-	    , chain_api   := ChainAPI
+            , chain_api   := ChainAPI
             , vm_version  := VmVersion } = State) ->
     case VmVersion of
         ?AEVM_01_Solidity_01 ->
@@ -152,17 +152,17 @@ init(#{ env  := Env
 
 init_vm(State, Code, Mem, Store) ->
     State1 =
-	State#{ out       => <<>>
-	      , call      => #{}
-	      , callcreates => []
-	      , code      => Code
-	      , cp        => 0
-	      , logs      => []
-	      , memory    => Mem
+        State#{ out       => <<>>
+              , call      => #{}
+              , callcreates => []
+              , code      => Code
+              , cp        => 0
+              , logs      => []
+              , memory    => Mem
               , storage   => #{}
-	      , return_data => <<>>
-	      , stack     => []
-	      },
+              , return_data => <<>>
+              , stack     => []
+              },
     %% Solidity contracts want their state in the 'store', and Sophia contracts
     %% want it on the heap.
     case vm_version(State) of

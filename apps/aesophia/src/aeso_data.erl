@@ -123,10 +123,10 @@ from_binary(Visited, {tuple,Cpts}, Heap, V) ->
 from_binary(Visited, {list, Elem}, Heap, V) ->
     <<Nil:256>> = <<(-1):256>>,
     if V==Nil ->
-	    [];
+          [];
        true ->
-	    {H,T} = from_binary(Visited, {tuple,[Elem,{list,Elem}]},Heap,V),
-	    [H|T]
+          {H,T} = from_binary(Visited, {tuple,[Elem,{list,Elem}]},Heap,V),
+          [H|T]
     end;
 from_binary(Visited, {option, A}, Heap, V) ->
     <<None:256>> = <<(-1):256>>,

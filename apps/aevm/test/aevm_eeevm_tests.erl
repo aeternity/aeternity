@@ -31,15 +31,15 @@ default_opts() ->
 
 extra_opts_tc(Name) ->
     GasOpts =
-	case gas_exception(Name) of
-	    true  -> #{validate_gas => false};
-	    false -> #{}
-	end,
+        case gas_exception(Name) of
+            true  -> #{validate_gas => false};
+            false -> #{}
+        end,
     CallOpts =
-	case call_exception(Name) of
-	    true  -> GasOpts#{no_recursion => false};
-	    false -> GasOpts
-	end,
+        case call_exception(Name) of
+            true  -> GasOpts#{no_recursion => false};
+            false -> GasOpts
+        end,
     CallOpts.
 
 gas_exception(Name) ->
@@ -51,11 +51,11 @@ gas_exception(Name) ->
 call_exception(Name) ->
     lists:member(Name,
                  [ arith
-		 , boolean
-		 , mktx
-		 , 'ABAcalls1'
-		 , 'ABAcalls2'
-		 , 'ABAcalls3'
+                 , boolean
+                 , mktx
+                 , 'ABAcalls1'
+                 , 'ABAcalls2'
+                 , 'ABAcalls3'
                  ]).
 
 %%====================================================================

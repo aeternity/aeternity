@@ -4215,7 +4215,7 @@ contract_id_from_create_update(Owner, OffchainTx) ->
 
 
 create_contract_(TestName, SenderConnPid, UpdateVolley) ->
-		Code = contract_byte_code(TestName),
+                 Code = contract_byte_code(TestName),
     InitArgument = contract_create_init_arg(TestName),
     {ok, EncodedInitData} = aect_sophia:encode_call_data(Code, <<"init">>,
                                                          InitArgument),
@@ -4316,18 +4316,18 @@ contract_byte_code(TestName) ->
     ContractString = aeso_test_utils:read_contract(TestName),
     BinCode = aeso_compiler:from_string(ContractString, []),
     HexCode = aeu_hex:hexstring_encode(BinCode),
-		HexCode.
+    HexCode.
 
 
 contract_return_type(_) ->
-		<<"int">>.
+    <<"int">>.
 
 contract_create_init_arg("identity") ->
-		<<"()">>;
+    <<"()">>;
 contract_create_init_arg("counter") ->
-		<<"(21)">>;
+    <<"(21)">>;
 contract_create_init_arg("spend_test") ->
-		<<"()">>.
+    <<"()">>.
 
 contract_result_parse(_TestName, Data) ->
   #{<<"type">> := <<"word">>, <<"value">> := DecodedCallResult} = Data,
