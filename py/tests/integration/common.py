@@ -22,6 +22,7 @@ from waiting import wait
 
 import base58
 import rlp
+import integration.keys
 
 EXT_API = {}
 for node, node_config in config['nodes'].iteritems():
@@ -203,13 +204,9 @@ def get_account_balance(api, int_api, pub_key=None):
     return _balance_from_get_account(
         lambda: api.get_account_by_pubkey(_node_pub_key(int_api, pub_key)))
 
-def send_tokens_to_unchanging_user(beneficiary, address, tokens, fee, external_api, internal_api):
-    import keys
-    def get_balance(k):
-        return get_account_balance(external_api, internal_api, k).balance
-    bal0 = get_balance(address)
+def send_tokens_to_unchanging_user(sender, address, tokens, fee, external_api, internal_api):
     spend_tx_obj = SpendTx(
-        sender_id=beneficiary['enc_pubk'],
+        sender_id=sender['enc_pubk'],
         recipient_id=address,
         amount=tokens,
         fee=fee,
@@ -217,8 +214,14 @@ def send_tokens_to_unchanging_user(beneficiary, address, tokens, fee, external_a
         payload="sending tokens")
     spend_tx = internal_api.post_spend(spend_tx_obj).tx
     unsigned_tx = base58_decode(spend_tx)
-    signed_tx = keys.sign_encode_tx(unsigned_tx, beneficiary['privk'])
+    signed_tx = integration.keys.sign_encode_tx(unsigned_tx, sender['privk'])
     external_api.post_transaction(Tx(tx=signed_tx))
+
+def send_tokens_to_unchanging_user_and_wait_balance(sender, address, tokens, fee, external_api, internal_api):
+    def get_balance(k):
+        return get_account_balance(external_api, internal_api, k).balance
+    bal0 = get_balance(address)
+    send_tokens_to_unchanging_user(sender, address, tokens, fee, external_api, internal_api)
     wait(lambda: get_balance(address) == (bal0 + tokens),
          timeout_seconds=20, sleep_seconds=0.25)
 
@@ -285,11 +288,10 @@ def encode_tx_hash(txhash):
     return "th_" + str
 
 def setup_beneficiary():
-    import keys
-    ben_priv = keys.new_private()
-    ben_pub = keys.public_key(ben_priv)
+    ben_priv = integration.keys.new_private()
+    ben_pub = integration.keys.public_key(ben_priv)
     beneficiary = {'privk': ben_priv, 'pubk': ben_pub,
-           'enc_pubk': keys.address(ben_pub)}
+           'enc_pubk': integration.keys.address(ben_pub)}
     return beneficiary
 
 logging.getLogger("urllib3").setLevel(logging.ERROR)

@@ -79,9 +79,9 @@ def _setup_users_(beneficiary, user_settings, spend_tx_fee, ext_api, int_api):
                  'key_pair': key_pair()
                  } for (k, v) in user_settings.items()}
     for (_, u) in users.items():
-        common.send_tokens_to_unchanging_user(beneficiary,
-                                              u['key_pair']['enc_pubk'],
-                                              u['bal'],
-                                              spend_tx_fee,
-                                              ext_api, int_api)
+        common.send_tokens_to_unchanging_user_and_wait_balance(beneficiary,
+                                                               u['key_pair']['enc_pubk'],
+                                                               u['bal'],
+                                                               spend_tx_fee,
+                                                               ext_api, int_api)
     return users

@@ -74,11 +74,14 @@ tests: # test specific settings
     # should not be able to use the incoming tokens until the spend transaction
     # they are in is confirmed.
       nodes:
-        bob: dev1
+        miner: dev1
       blocks_to_mine: 3
+      send_tokens:
+        alice: 1
+        bob: 100
       spend_tx:
-        alice_pubkey: ak_juZ2L9zGwFnBAzTWjaix65QifTRjKa5uxpuffRN3Zn2BVyddB
-        amount: 1000000000000000000000
+        small_amount: 1 # Added to tx fee, less than tokens that Bob has.
+        large_amount: 1000000000000000000000 # More than tokens that Bob has.
         fee: 20
     test_send_by_name:
     # Bob registers a name 'bob.aet'

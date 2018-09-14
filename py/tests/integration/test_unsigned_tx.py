@@ -289,12 +289,12 @@ def setup_node_with_tokens(test_settings, beneficiary, node_name):
     return node, common.setup_node_with_tokens(node, beneficiary, test_settings["blocks_to_mine"])
 
 def send_tokens_to_user(beneficiary, user, test_settings, external_api, internal_api):
-    return common.send_tokens_to_unchanging_user(beneficiary,
-                                                 test_settings[user]["pubkey"],
-                                                 test_settings[user]["amount"],
-                                                 test_settings[user]["fee"],
-                                                 external_api,
-                                                 internal_api)
+    return common.send_tokens_to_unchanging_user_and_wait_balance(beneficiary,
+                                                                  test_settings[user]["pubkey"],
+                                                                  test_settings[user]["amount"],
+                                                                  test_settings[user]["fee"],
+                                                                  external_api,
+                                                                  internal_api)
 
 def get_unsigned_contract_create(owner_id, contract, external_api, internal_api):
     bytecode = read_id_contract(internal_api)

@@ -37,7 +37,6 @@ endif
 
 PYTHON_DIR = py
 PYTHON_TESTS = $(PYTHON_DIR)/tests
-PIP = $(PYTHON_BIN)/pip
 
 export AEVM_EXTERNAL_TEST_DIR=aevm_external
 export AEVM_EXTERNAL_TEST_VERSION=348b0633f4a6ee3c100368bf0f4fca71394b4d01
@@ -344,4 +343,5 @@ internal-distclean: $$(KIND)
 	kill killall \
 	clean distclean \
 	swagger swagger-docs swagger-check swagger-version-check \
-	rebar-lock-check
+	rebar-lock-check \
+	python-env python-ws-test python-uats python-single-uat python-release-test
