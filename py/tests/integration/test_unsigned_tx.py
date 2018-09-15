@@ -230,11 +230,10 @@ def test_spend():
 
     private_key = keys.new_private()
     public_key = keys.public_key(private_key)
-
     alice_address = keys.address(public_key)
+    test_settings["alice"]["pubkey"] = alice_address
     bob_address = test_settings["spend_tx"]["recipient"]
 
-    test_settings["alice"]["pubkey"] = alice_address
     send_tokens_to_user(beneficiary, "alice", test_settings, external_api, internal_api)
 
     alice_balance0 = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
@@ -255,19 +254,14 @@ def test_spend():
     # Alice signs spend tx
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
     tx_hash = keys.tx_hash_from_signed_encoded(signed)
-    print("Tx hash " + tx_hash)
-    print("Signed transaction " + signed)
 
     # Alice posts spend tx
     tx_object = Tx(tx=signed)
     external_api.post_transaction(tx_object)
-    _ = external_api.get_transaction_by_hash(tx_hash) # it is there - either in mempool or in a block
 
     # Wait until spend tx is mined
-    wait(lambda: common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance < alice_balance0,
+    wait(lambda: external_api.get_transaction_by_hash(tx_hash).block_hash != 'none',
          timeout_seconds=120, sleep_seconds=0.25)
-    _ = external_api.get_transaction_by_hash(tx_hash) # it is there - shall be in a block
-    print("Tx in chain ")
 
     # Check that Alice was debited and Bob was credited
     alice_balance = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
