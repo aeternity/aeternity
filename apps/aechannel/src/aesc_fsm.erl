@@ -1247,15 +1247,12 @@ handle_common_event_(cast, {?CHANNEL_CLOSING, ChanId} = Msg, _St, _,
     close(channel_closing_on_chain, D);
 handle_common_event_({call, From}, Req, St, Mode, D) ->
     case Mode of
-        postpone_all ->
-            postpone(D);
         error_all ->
             keep_state(D, [{reply, From, {error, not_ready}}]);
         _ ->
             handle_call(St, Req, From, D)
     end;
-handle_common_event_(_Type, {_, _} = _Msg, _St, P, D) when P == postpone;
-                                                           P == postpone_all ->
+handle_common_event_(_Type, {_, _} = _Msg, _St, P, D) when P == postpone ->
     postpone(D);
 handle_common_event_(info, Msg, _St, _P, D) ->
     handle_info(Msg, D);
