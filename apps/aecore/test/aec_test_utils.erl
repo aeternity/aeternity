@@ -24,6 +24,8 @@
         , exec_with_timeout/2
         , start_chain_db/0
         , stop_chain_db/0
+        , extend_block_chain_with_micro_blocks/2
+        , extend_block_chain_with_micro_blocks/3
         , extend_block_chain_with_state/2
         , aec_keys_setup/0
         , aec_keys_cleanup/1
@@ -364,6 +366,14 @@ extend_block_chain_with_state(Chain,
     NewChain = next_block_with_state(Chain, Tgt, Ts, TxsFun, Nonce, PubKey, PrivKey, BeneficiaryPubKey),
     extend_block_chain_with_state(NewChain, Tgts, Tss, Miners, Beneficiaries, TxsFun, Nonce).
 
+extend_block_chain_with_micro_blocks(Chain, Txs) ->
+    extend_block_chain_with_micro_blocks(Chain, Txs, 0).
+
+extend_block_chain_with_micro_blocks(Chain, Txs, PrevMicroBlocksCount) ->
+    {ok, PrivKey} = aec_keys:sign_privkey(),
+    Delay = 1 + PrevMicroBlocksCount * aec_governance:micro_block_cycle(),
+    lists:reverse(create_micro_blocks(lists:reverse(Chain), PrivKey, Txs, Delay)).
+
 blocks_only_chain(Chain) ->
     lists:map(fun({B, _S}) -> B end, Chain).
 
@@ -397,7 +407,6 @@ next_block_with_state([{PB,_PBS} | _] = Chain, Target, Time0, TxsFun, Nonce,
               end
               | Chain],
     create_micro_blocks(Chain1, PrivKey, Txs).
-
 
 create_micro_blocks(Chain, PrivKey, Txs) ->
     create_micro_blocks(Chain, PrivKey, Txs, 1).

@@ -649,7 +649,7 @@ default_config(N, Config) ->
       <<"mining">> =>
           #{<<"autostart">> => false,
             <<"beneficiary">> => aec_base58c:encode(account_pubkey, PubKey),
-            <<"beneficiary_reward_delay">> => 0},
+            <<"beneficiary_reward_delay">> => 2},
       <<"chain">> =>
           #{<<"persist">> => true},
       <<"websocket">> =>

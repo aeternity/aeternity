@@ -919,7 +919,7 @@ fees_test_() ->
     }.
 
 fees_three_beneficiaries() ->
-    meck:expect(aec_governance, beneficiary_reward_delay, 0, 0),
+    meck:expect(aec_governance, beneficiary_reward_delay, 0, 3),
 
     %% Two accounts to act as sender and receiver.
     #{ public := PubKey1, secret := PrivKey1 } = enacl:sign_keypair(),
@@ -957,8 +957,11 @@ fees_three_beneficiaries() ->
     Miners = [ {PubKey3, PrivKey3}
              , {PubKey4, PrivKey4}
              , {PubKey5, PrivKey5}
+             , {PubKey5, PrivKey5}
+             , {PubKey5, PrivKey5}
+             , {PubKey5, PrivKey5}
              ],
-    Beneficiaries = [PubKey6, PubKey7, PubKey8],
+    Beneficiaries = [PubKey6, PubKey7, PubKey8, PubKey8, PubKey8, PubKey8],
     Chain0 = gen_block_chain_with_state_by_actors(PresetAccounts, Miners, Beneficiaries, TxsFun),
     Chain = blocks_only_chain(Chain0),
 
@@ -1061,6 +1064,94 @@ fees_delayed_reward() ->
     ok.
 
 %%%===================================================================
+%%% PoF test
+
+pof_test_() ->
+    {foreach,
+     fun() ->
+             aec_test_utils:start_chain_db(),
+             setup_meck_and_keys()
+     end,
+     fun(TmpDir) ->
+             aec_test_utils:stop_chain_db(),
+             teardown_meck_and_keys(TmpDir)
+     end,
+     [{"Check pof is recognized on key-block as parent",
+       fun pof_fork_on_key_block/0},
+      {"Check pof is recognized on micro-block as parent",
+       fun pof_fork_on_micro_block/0}
+     ]
+    }.
+
+pof_fork_on_key_block() ->
+    #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
+    PresetAccounts = [{PubKey, 1000}],
+    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+
+    %% Create main chain
+    TxsFun = fun(1) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 1, 2), PrivKey)];
+                (_) -> []
+             end,
+    [B0, B1, _B2] = Chain0 = gen_block_chain_with_state_by_target(
+                               PresetAccounts, [?HIGHEST_TARGET_SCI], 1, TxsFun),
+    Chain = [_KB0, KB1, MB1] = blocks_only_chain(Chain0),
+
+    %% Create fork, which starts on a key-block
+    CommonChain = [B0, B1],
+    Txs = [aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 1, 3), PrivKey)],
+    Fork = aec_test_utils:extend_block_chain_with_micro_blocks(CommonChain, Txs),
+    [_, _, MB2] = blocks_only_chain(Fork),
+
+    %% Write initial chain
+    ok = write_blocks_to_chain(Chain),
+
+    %% Write micro-block, and recognize a fraud
+    FraudHeader1 = aec_blocks:to_header(MB2),
+    FraudHeader2 = aec_blocks:to_header(MB1),
+    {pof, PoF} = insert_block(MB2),
+    ?assertEqual(FraudHeader1, aec_pof:header1(PoF)),
+    ?assertEqual(FraudHeader2, aec_pof:header2(PoF)),
+    ?assertEqual(aec_blocks:miner(KB1), aec_pof:pubkey(PoF)),
+
+    ok.
+
+pof_fork_on_micro_block() ->
+    #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
+    PresetAccounts = [{PubKey, 1000}],
+    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+
+    %% Create main chain
+    TxsFun = fun(1) ->
+                     Tx1 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 1, 2), PrivKey),
+                     Tx2 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 2, PubKey, 1, 2), PrivKey),
+                     [Tx1, Tx2];
+                (_) ->
+                     []
+             end,
+    [B0, B1, B2, _] = Chain0 = gen_block_chain_with_state_by_target(
+                               PresetAccounts, [?HIGHEST_TARGET_SCI], 1, TxsFun),
+    Chain = [_KB0, KB1, _MB1, MB2] = blocks_only_chain(Chain0),
+
+    %% Create fork, which starts on a micro-block
+    CommonChain = [B0, B1, B2],
+    Txs = [aec_test_utils:sign_tx(make_spend_tx(PubKey, 2, PubKey, 1, 3), PrivKey)],
+    Fork = aec_test_utils:extend_block_chain_with_micro_blocks(CommonChain, Txs, 1),
+    [_, _, _, MB3] = blocks_only_chain(Fork),
+
+    %% Write initial chain
+    ok = write_blocks_to_chain(Chain),
+
+    %% Write micro-block, and recognize a fraud
+    FraudHeader1 = aec_blocks:to_header(MB3),
+    FraudHeader2 = aec_blocks:to_header(MB2),
+    {pof, PoF} = insert_block(MB3),
+    ?assertEqual(FraudHeader1, aec_pof:header1(PoF)),
+    ?assertEqual(FraudHeader2, aec_pof:header2(PoF)),
+    ?assertEqual(aec_blocks:miner(KB1), aec_pof:pubkey(PoF)),
+
+    ok.
+
+%%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
@@ -1130,11 +1221,14 @@ make_spend_tx(Sender, SenderNonce, Recipient) ->
     make_spend_tx(Sender, SenderNonce, Recipient, 1).
 
 make_spend_tx(Sender, SenderNonce, Recipient, Fee) ->
+    make_spend_tx(Sender, SenderNonce, Recipient, Fee, 1).
+
+make_spend_tx(Sender, SenderNonce, Recipient, Fee, Amount) ->
     SenderId = aec_id:create(account, Sender),
     RecipientId = aec_id:create(account, Recipient),
     {ok, SpendTx} = aec_spend_tx:new(#{sender_id => SenderId,
                                        recipient_id => RecipientId,
-                                       amount => 1,
+                                       amount => Amount,
                                        fee => Fee,
                                        nonce => SenderNonce,
                                        payload => <<>>}),

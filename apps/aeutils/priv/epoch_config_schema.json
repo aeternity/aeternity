@@ -341,7 +341,7 @@
                     "description" : "Delay (in key blocks / generations) for getting mining rewards. Used in governance.",
                     "type" : "integer",
                     "default": 180,
-                    "minimum" : 0
+                    "minimum" : 2
                 },
                 "cuckoo" : {
                     "type" : "object",

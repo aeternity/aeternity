@@ -121,9 +121,21 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
     TxsTree = aec_txs_trees:from_txs(Txs1),
     TxsRootHash = aec_txs_trees:pad_empty(aec_txs_trees:root_hash(TxsTree)),
 
+    PoF = case PrevKeyHash =:= PrevBlockHash of
+              false -> no_fraud; %% Can only report in the first block
+              true ->
+                  MaybeFraudHash = aec_blocks:prev_key_hash(KeyBlock),
+                  case aec_db:find_discovered_pof(MaybeFraudHash) of
+                      none -> no_fraud;
+                      {value, PoF0} -> PoF0
+                  end
+          end,
+
     NewBlock = aec_blocks:new_micro(Height, PrevBlockHash, PrevKeyHash,
                                     aec_trees:hash(Trees2), TxsRootHash, Txs1,
-                                    aeu_time:now_in_msecs(), Version),
+                                    aeu_time:now_in_msecs(), PoF, Version),
+
+    lager:debug("NewBlock: ~p", [NewBlock]),
 
     BlockInfo = #{ trees => Trees2, txs_tree => TxsTree },
     {ok, NewBlock, BlockInfo}.

@@ -13,6 +13,7 @@
          beneficiary/1,
          deserialize_from_binary/1,
          deserialize_from_client/2,
+         deserialize_from_binary_partial/1,
          deserialize_from_map/1,
          deserialize_key_from_binary/1,
          deserialize_micro_from_binary/1,
@@ -22,8 +23,9 @@
          height/1,
          miner/1,
          new_key_header/11,
-         new_micro_header/7,
+         new_micro_header/8,
          nonce/1,
+         pof_hash/1,
          pow/1,
          prev_hash/1,
          prev_key_hash/1,
@@ -36,6 +38,7 @@
          set_miner/2,
          set_nonce/2,
          set_nonce_and_pow/3,
+         set_pof_hash/2,
          set_prev_hash/2,
          set_prev_key_hash/2,
          set_root_hash/2,
@@ -65,6 +68,7 @@
 
 -record(mic_header, {
           height       = 0                                     :: height(),
+          pof_hash     = <<>>                                  :: aec_pof:hash(),
           prev_hash    = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
           prev_key     = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
           root_hash    = <<0:?STATE_HASH_BYTES/unit:8>>        :: state_hash(),
@@ -171,10 +175,11 @@ new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
 
 -spec new_micro_header(height(), block_header_hash(), block_header_hash(),
                        state_hash(), non_neg_integer(), txs_hash(),
-                       non_neg_integer()
+                       aec_pof:pof_hash(), non_neg_integer()
                       ) -> header().
-new_micro_header(Height, PrevHash, PrevKey, RootHash, Time, TxsHash, Version) ->
+new_micro_header(Height, PrevHash, PrevKey, RootHash, Time, TxsHash, PoFHash, Version) ->
     #mic_header{height    = Height,
+                pof_hash  = PoFHash,
                 prev_hash = PrevHash,
                 prev_key  = PrevKey,
                 root_hash = RootHash,
@@ -237,6 +242,15 @@ set_nonce(Header, Nonce) ->
 -spec set_prev_hash(header(), block_header_hash()) -> header().
 set_prev_hash(#key_header{} = H, Hash) -> H#key_header{prev_hash = Hash};
 set_prev_hash(#mic_header{} = H, Hash) -> H#mic_header{prev_hash = Hash}.
+
+-spec pof_hash(micro_header()) -> aec_pof:hash().
+pof_hash(#mic_header{pof_hash = Hash}) ->
+    Hash.
+
+-spec set_pof_hash(micro_header(), aec_pof:hash()) -> micro_header().
+set_pof_hash(Header, Hash) when byte_size(Hash) =:= 0;
+                                byte_size(Hash) =:= 32 ->
+    Header#mic_header{pof_hash = Hash}.
 
 -spec pow(key_header()) -> aec_pow:pow_evidence().
 pow(#key_header{pow_evidence = Evd}) ->
@@ -355,6 +369,7 @@ serialize_for_client(#mic_header{} = Header, PrevBlockType) ->
     {ok, Hash} = hash_header(Header),
     #{<<"hash">>       => encode_block_hash(micro, Hash),
       <<"height">>     => Header#mic_header.height,
+      <<"pof_hash">>   => encode_pof_hash(pof_hash(Header)),
       <<"prev_hash">>  => encode_block_hash(PrevBlockType, Header#mic_header.prev_hash),
       <<"prev_key_hash">> => encode_block_hash(key, Header#mic_header.prev_key),
       <<"signature">>  => aec_base58c:encode(signature, Header#mic_header.signature),
@@ -368,6 +383,11 @@ encode_block_hash(key, Hash) ->
     aec_base58c:encode(key_block_hash, Hash);
 encode_block_hash(micro, Hash) ->
     aec_base58c:encode(micro_block_hash, Hash).
+
+encode_pof_hash(<<>>) ->
+    <<"no_fraud">>;
+encode_pof_hash(PofHash) ->
+    aec_base58c:encode(pof_hash, PofHash).
 
 -spec deserialize_from_client(key, map()) -> {ok, header()} | {error, term()}.
 deserialize_from_client(key, KeyBlock) ->
@@ -448,9 +468,10 @@ serialize_to_signature_binary(#mic_header{signature = Sig} = H) ->
 -spec serialize_to_binary(header()) -> deterministic_header_binary().
 serialize_to_binary(#key_header{} = Header) ->
     PowEvidence = serialize_pow_evidence_to_binary(Header#key_header.pow_evidence),
+    Flags = construct_key_flags(Header),
     %% Todo check size of hashes = (?BLOCK_HEADER_HASH_BYTES*8),
-    <<?KEY_HEADER_TAG:1,
-      (Header#key_header.version):63,
+    <<(Header#key_header.version):32,
+      Flags:32/bits,
       (Header#key_header.height):64,
       (Header#key_header.prev_hash)/binary,
       (Header#key_header.prev_key)/binary,
@@ -462,30 +483,66 @@ serialize_to_binary(#key_header{} = Header) ->
       (Header#key_header.nonce):64,
       (Header#key_header.time):64>>;
 serialize_to_binary(#mic_header{} = Header) ->
-    <<?MICRO_HEADER_TAG:1,
-      (Header#mic_header.version):63,
+    Flags = construct_micro_flags(Header),
+    <<(Header#mic_header.version):32,
+      Flags:32/bits,
       (Header#mic_header.height):64,
       (Header#mic_header.prev_hash)/binary,
       (Header#mic_header.prev_key)/binary,
       (Header#mic_header.root_hash)/binary,
       (Header#mic_header.txs_hash)/binary,
       (Header#mic_header.time):64,
+      (Header#mic_header.pof_hash)/binary, %% Either 0 or 32 bytes.
       (Header#mic_header.signature)/binary>>.
+
+construct_key_flags(#key_header{}) ->
+    <<?KEY_HEADER_TAG:1, 0:31>>.
+
+construct_micro_flags(#mic_header{pof_hash = Bin}) ->
+    PoFFlag = min(byte_size(Bin), 1),
+    <<?MICRO_HEADER_TAG:1, PoFFlag:1, 0:30>>.
 
 -spec deserialize_from_binary(deterministic_header_binary()) -> header().
 
-deserialize_from_binary(Bin) when byte_size(Bin) =:= ?KEY_HEADER_BYTES ->
-    {ok, H} = deserialize_key_from_binary(Bin),
-    H;
-deserialize_from_binary(Bin) when byte_size(Bin) =:= ?MIC_HEADER_BYTES ->
-    {ok, H} = deserialize_micro_from_binary(Bin),
-    H.
+deserialize_from_binary(Bin) ->
+    case deserialize_from_binary_partial(Bin) of
+        {key, Header} -> Header;
+        {micro, Header, <<>>} -> Header;
+        Other -> error({illegal_header, Other})
+    end.
+
+-spec deserialize_from_binary_partial(binary()) ->
+                                             {'key', key_header()}
+                                           | {'micro', micro_header(), binary()}
+                                           | {'error', term()}.
+deserialize_from_binary_partial(<<?PROTOCOL_VERSION:32,
+                                  ?KEY_HEADER_TAG:1,
+                                  _/bits>> = Bin) ->
+    case deserialize_key_from_binary(Bin) of
+        {ok, Header} -> {key, Header};
+        {error, _} = E -> E
+    end;
+deserialize_from_binary_partial(<<?PROTOCOL_VERSION:32,
+                                  ?MICRO_HEADER_TAG:1,
+                                  PoFFlag:1,
+                                  _/bits>> = Bin) ->
+    HeaderSize = PoFFlag * 32 + ?MIC_HEADER_BYTES,
+    case Bin of
+        <<HeaderBin:HeaderSize/binary, Rest/binary>> ->
+            case deserialize_micro_from_binary(HeaderBin) of
+                {ok, Header} -> {micro, Header, Rest};
+                {error, _} = E -> E
+            end;
+        _ ->
+            {error, malformed_header}
+    end.
 
 -spec deserialize_key_from_binary(deterministic_header_binary()) ->
                                          {'ok', key_header()}
                                        | {'error', term()}.
-deserialize_key_from_binary(<<?KEY_HEADER_TAG:1,
-                              Version:63,
+deserialize_key_from_binary(<<?PROTOCOL_VERSION:32,
+                              ?KEY_HEADER_TAG:1,
+                              0:31, %% Remaining flags.
                               Height:64,
                               PrevHash:?BLOCK_HEADER_HASH_BYTES/binary,
                               PrevKeyHash:?BLOCK_HEADER_HASH_BYTES/binary,
@@ -507,7 +564,7 @@ deserialize_key_from_binary(<<?KEY_HEADER_TAG:1,
                     pow_evidence = PowEvidence,
                     nonce = Nonce,
                     time = Time,
-                    version = Version},
+                    version = ?PROTOCOL_VERSION},
     {ok, H};
 deserialize_key_from_binary(_Other) ->
     {error, malformed_header}.
@@ -516,28 +573,37 @@ deserialize_key_from_binary(_Other) ->
 -spec deserialize_micro_from_binary(deterministic_header_binary()) ->
                                            {'ok', micro_header()}
                                          | {'error', term()}.
-deserialize_micro_from_binary(<<?MICRO_HEADER_TAG:1,
-                                Version:63,
+deserialize_micro_from_binary(<<?PROTOCOL_VERSION:32,
+                                ?MICRO_HEADER_TAG:1,
+                                PoFTag:1,
+                                0:30, %% Remaining flags
                                 Height:64,
                                 PrevHash:?BLOCK_HEADER_HASH_BYTES/binary,
                                 PrevKeyHash:?BLOCK_HEADER_HASH_BYTES/binary,
                                 RootHash:?STATE_HASH_BYTES/binary,
                                 TxsHash:?TXS_HASH_BYTES/binary,
                                 Time:64,
-                                Signature:?BLOCK_SIGNATURE_BYTES/binary
+                                Rest/binary
                               >>) ->
-    H = #mic_header{height = Height,
-                    prev_hash = PrevHash,
-                    prev_key = PrevKeyHash,
-                    root_hash = RootHash,
-                    signature = Signature,
-                    txs_hash = TxsHash,
-                    time = Time,
-                    version = Version},
-    {ok, H};
+    PoFHashSize = PoFTag * 32,
+    case Rest of
+        <<PoFHash:PoFHashSize/binary,
+          Signature:?BLOCK_SIGNATURE_BYTES/binary>> ->
+            H = #mic_header{height = Height,
+                            pof_hash = PoFHash,
+                            prev_hash = PrevHash,
+                            prev_key = PrevKeyHash,
+                            root_hash = RootHash,
+                            signature = Signature,
+                            txs_hash = TxsHash,
+                            time = Time,
+                            version = ?PROTOCOL_VERSION},
+            {ok, H};
+        _ ->
+            {error, malformed_header}
+    end;
 deserialize_micro_from_binary(_Other) ->
     {error, malformed_header}.
-
 
 serialize_pow_evidence_to_binary(Ev) ->
    << <<E:32>> || E <- serialize_pow_evidence(Ev) >>.
@@ -589,7 +655,7 @@ validate_micro_block_header(Header) ->
     Validators = [fun validate_version/1,
                   fun validate_micro_block_cycle_time/1,
                   fun validate_max_time/1
-                 ],
+    ],
     aeu_validation:run(Validators, [{Header, ProtocolVersions}]).
 
 -spec validate_version({header(), aec_governance:protocols()}) ->

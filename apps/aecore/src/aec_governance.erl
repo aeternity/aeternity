@@ -18,7 +18,8 @@
          name_claim_preclaim_delta/0,
          name_registrars/0,
          micro_block_cycle/0,
-         accepted_future_block_time_shift/0]).
+         accepted_future_block_time_shift/0,
+         fraud_report_reward/0]).
 
 -export_type([protocols/0]).
 
@@ -33,6 +34,7 @@
 -define(TIMESTAMP_MEDIAN_BLOCKS, 11).
 -define(EXPECTED_BLOCK_MINE_RATE, 3 * 60 * 1000). %% 60secs * 1000ms * 3 = 180000msecs
 -define(BLOCK_MINE_REWARD, 10000000000000000000).
+-define(POF_REWARD       , 500000000000000000). %% (?BLOCK_MINE_REWARD / 100) * 5
 -define(BENEFICIARY_REWARD_DELAY, 180). %% in key blocks / generations
 -define(MICRO_BLOCK_CYCLE, 3000). %% in msecs
 
@@ -82,9 +84,14 @@ minimum_gas_price() ->
     0.
 
 %% In key blocks / generations
+%% NOTE: The delay must be at least two generations, otherwise the
+%% payout would be done before anyone had the chance to report the
+%% miner for fraudulent behavior.
 beneficiary_reward_delay() ->
-    aeu_env:user_config_or_env([<<"mining">>, <<"beneficiary_reward_delay">>],
-                               aecore, beneficiary_reward_delay, ?BENEFICIARY_REWARD_DELAY).
+    Delay = aeu_env:user_config_or_env([<<"mining">>, <<"beneficiary_reward_delay">>],
+                                       aecore, beneficiary_reward_delay, ?BENEFICIARY_REWARD_DELAY),
+    [error({beneficiary_reward_delay_too_low, Delay}) || Delay < 2],
+    Delay.
 
 %% In milliseconds
 micro_block_cycle() ->
@@ -114,3 +121,6 @@ name_claim_preclaim_delta() ->
 
 name_registrars() ->
     [<<"aet">>, <<"test">>].
+
+fraud_report_reward() ->
+    ?POF_REWARD.

@@ -22,7 +22,7 @@ chain:
 
 mining:
     beneficiary: "ak_25eTK8PaiLpREqBkP3yDNWJAwXjWSR8tbn3zu8SXaNx824A1AJ"
-    beneficiary_reward_delay: 1
+    beneficiary_reward_delay: 2
     autostart: true
     cuckoo:
         miner:

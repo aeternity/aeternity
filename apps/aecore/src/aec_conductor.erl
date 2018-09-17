@@ -512,7 +512,6 @@ preempt_if_new_top(#state{ top_block_hash = OldHash,
             end
     end.
 
-
 maybe_publish_top(block_created,_TopBlock) ->
     %% A new block we created is published unconditionally below.
     ok;
@@ -532,7 +531,6 @@ maybe_publish_top(micro_block_received, TopBlock) ->
     %% top. Publish the new top.
     aec_events:publish(block_to_publish, TopBlock).
 
-
 maybe_publish_block(block_synced,_Block) ->
     %% We don't publish blocks pulled from network. Otherwise on
     %% bootstrap the node would publish old blocks.
@@ -547,7 +545,6 @@ maybe_publish_block(block_created = T, Block) ->
     aec_events:publish(T, Block),
     %% This is a block we created ourselves. Always publish.
     aec_events:publish(block_to_publish, Block);
-
 maybe_publish_block(micro_block_created = T, Block) ->
     aec_events:publish(T, Block),
     %% This is a block we created ourselves. Always publish.
@@ -855,20 +852,26 @@ handle_add_block(Header, CheckFun, Block, State, Origin) ->
         false ->
             case aec_validation:validate_block(Block) of
                 ok ->
+                    StateSetup = fun(State1) ->
+                                    maybe_publish_block(Origin, Block),
+                                    case preempt_if_new_top(State1, Origin) of
+                                        no_change ->
+                                            {ok, State1};
+                                        {micro_changed, State2 = #state{ consensus = Cons }} ->
+                                            {ok, setup_loop(State2, false, Cons#consensus.leader, Origin)};
+                                        {changed, NewTopBlock, State2} ->
+                                            IsLeader = is_leader(NewTopBlock),
+                                            %% Don't spend time when we are the leader.
+                                            [ aec_tx_pool:garbage_collect() || not IsLeader ],
+                                            {ok, setup_loop(State2, true, IsLeader, Origin)}
+                                    end
+                                 end,
                     case aec_chain_state:insert_block(Block) of
                         ok ->
-                            maybe_publish_block(Origin, Block),
-                            case preempt_if_new_top(State, Origin) of
-                                no_change ->
-                                    {ok, State};
-                                {micro_changed, State1 = #state{ consensus = Cons }} ->
-                                    {ok, setup_loop(State1, false, Cons#consensus.leader, Origin)};
-                                {changed, NewTopBlock, State1} ->
-                                    IsLeader = is_leader(NewTopBlock),
-                                    %% Don't spend time when we are the leader.
-                                    [ aec_tx_pool:garbage_collect() || not IsLeader ],
-                                    {ok, setup_loop(State1, true, IsLeader, Origin)}
-                            end;
+                            StateSetup(State);
+                        {pof,_PoF} ->
+                            lager:info("PoF found in ~p", [Hash]),
+                            StateSetup(State);
                         {error, Reason} when Origin == block_created; Origin == micro_block_created ->
                             lager:error("Couldn't insert created block (~p)", [Reason]),
                             {{error, Reason}, State};
@@ -935,3 +938,4 @@ setup_loop(State = #state{ consensus = Cons }, RestartMining, IsLeader, Origin) 
         true  -> start_mining(State2);
         false -> State2
     end.
+
