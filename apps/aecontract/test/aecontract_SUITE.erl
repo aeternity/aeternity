@@ -977,14 +977,14 @@ oracle_init_from_remote_contract(OperatorAcc, InitialOracleContractBalance, S) -
 
 oracle_register_from_contract(OperatorAcc, OCt, OCt, Opts, TxOpts, S) ->
     QueryFee = maps:get(qfee, Opts),
-    OTtl = maps:get(ottl, Opts, 15),
+    OTtl = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(maps:get(ottl, Opts, 15)),
     <<OCtId:256>> = OCt,
     {OCtId, S1} = call_contract(OperatorAcc, OCt, registerOracle, word, {OCt, 0, QueryFee, OTtl}, TxOpts, S),
     {ok, S1}.
 
 oracle_register_from_remote_contract(OperatorAcc, RCt, OCt, Opts, TxOpts, S) ->
     QueryFee = maps:get(qfee, Opts),
-    OTtl = maps:get(ottl, Opts, 15),
+    OTtl = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(maps:get(ottl, Opts, 15)),
     <<OCtId:256>> = OCt,
     {OCtId, S1} = call_contract(OperatorAcc, RCt, callRegisterOracle, word, {OCt, OCt, 0, QueryFee, OTtl}, TxOpts, S),
     {ok, S1}.
@@ -997,8 +997,8 @@ oracle_query_from_contract_(Fun, UserAcc, OCt, OCt, Opts, TxOpts, S) ->
     QueryFee = maps:get(qfee, Opts),
     Question = maps:get(question, Opts, <<"why?">>),
     ?assertMatch(_ when is_binary(Question), Question),
-    QTtl = maps:get(qttl, Opts, 5),
-    RTtl = maps:get(rttl, Opts, 5),
+    QTtl = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(maps:get(qttl, Opts, 5)),
+    RTtl = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(maps:get(rttl, Opts, 5)),
     call_contract(UserAcc, OCt, Fun, word, {OCt, Question, QueryFee, QTtl, RTtl}, TxOpts, S).
 
 oracle_query_from_remote_contract(UserAcc, RCt, OCt, Opts, TxOpts, S) ->
@@ -1010,8 +1010,8 @@ oracle_query_from_remote_contract_(Fun, UserAcc, RCt, OCt, Opts, TxOpts, S) ->
 oracle_query_from_remote_contract_(Fun, UserAcc, RCt, OCt, OAcc, Opts, TxOpts, S) ->
     QueryFee = maps:get(qfee, Opts),
     Question = maps:get(question, Opts, <<"why?">>),
-    QTtl = maps:get(qttl, Opts, 5),
-    RTtl = maps:get(rttl, Opts, 5),
+    QTtl = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(maps:get(qttl, Opts, 5)),
+    RTtl = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(maps:get(rttl, Opts, 5)),
     Value = case maps:find(remote_value, Opts) of
                 {ok, V} -> V;
                 error -> maps:get(amount, TxOpts)
