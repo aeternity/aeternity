@@ -81,7 +81,7 @@ def setup_node_with_tokens(node, beneficiary, blocks_to_mine):
     ext_api = external_api(node)
     int_api = internal_api(node)
 
-    bal0 = get_account_balance(ext_api, int_api, pub_key=beneficiary['enc_pubk']).balance
+    bal0 = get_account_balance(ext_api, beneficiary['enc_pubk'])
 
     # populate the chain so node had mined some blocks and has tokens
     # to spend
@@ -90,7 +90,7 @@ def setup_node_with_tokens(node, beneficiary, blocks_to_mine):
     assert_equals(top.height >= blocks_to_mine, True)
     # Now the node has at least blocks_to_mine blocks mined
 
-    bal1 = get_account_balance(ext_api, int_api, pub_key=beneficiary['enc_pubk']).balance
+    bal1 = get_account_balance(ext_api, beneficiary['enc_pubk'])
     assert_equals(bal1 > bal0, True)
 
     return (root_dir, ext_api, int_api, top)
@@ -207,9 +207,8 @@ def genesis_hash(api):
 def wait_until_height(api, height):
     wait(lambda: api.get_current_key_block().height >= height, timeout_seconds=120, sleep_seconds=0.25)
 
-def get_account_balance(api, int_api, pub_key=None):
-    return _balance_from_get_account(
-        lambda: api.get_account_by_pubkey(_node_pub_key(int_api, pub_key)))
+def get_account_balance(api, pub_key):
+    return _balance_from_get_account(lambda: api.get_account_by_pubkey(pub_key))
 
 def send_tokens_to_unchanging_user(sender, address, tokens, fee, external_api, internal_api):
     spend_tx_obj = SpendTx(
@@ -224,16 +223,11 @@ def send_tokens_to_unchanging_user(sender, address, tokens, fee, external_api, i
     signed_tx = integration.keys.sign_encode_tx(unsigned_tx, sender['privk'])
     external_api.post_transaction(Tx(tx=signed_tx))
 
-def send_tokens_to_unchanging_user_and_wait_balance(sender, address, tokens, fee, external_api, internal_api):
-    def get_balance(k):
-        return get_account_balance(external_api, internal_api, k).balance
-    bal0 = get_balance(address)
-    send_tokens_to_unchanging_user(sender, address, tokens, fee, external_api, internal_api)
-    wait(lambda: get_balance(address) == (bal0 + tokens),
+def send_tokens_to_unchanging_user_and_wait_balance(sender, address, tokens, fee, ext_api, int_api):
+    bal0 = get_account_balance(ext_api, address)
+    send_tokens_to_unchanging_user(sender, address, tokens, fee, ext_api, int_api)
+    wait(lambda: get_account_balance(ext_api, address) == (bal0 + tokens),
          timeout_seconds=20, sleep_seconds=0.25)
-
-def _node_pub_key(int_api, k=None):
-    return k if k is not None else int_api.get_node_pubkey().pub_key
 
 def _balance_from_get_account(get_account_fun):
     account = Account(balance=0)
@@ -241,7 +235,7 @@ def _balance_from_get_account(get_account_fun):
         account = get_account_fun()
     except ApiException as e:
         assert_equals(e.status, 404) # no account yet
-    return account
+    return account.balance
 
 def base58_decode(encoded):
     if encoded[2] != '_':

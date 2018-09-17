@@ -43,8 +43,8 @@ def test_not_enough_tokens():
     common.send_tokens_to_unchanging_user_and_wait_balance(beneficiary, alice_address, alice_init_balance, 1, ext_api, int_api)
     common.send_tokens_to_unchanging_user_and_wait_balance(beneficiary, bob_address, bob_init_balance, 1, ext_api, int_api)
     common.wait_until_height(ext_api, ext_api.get_top_block().height + 3)
-    alice_balance0 = common.get_account_balance(ext_api, int_api, pub_key=alice_address).balance
-    bob_balance0 = common.get_account_balance(ext_api, int_api, pub_key=bob_address).balance
+    alice_balance0 = common.get_account_balance(ext_api, alice_address)
+    bob_balance0 = common.get_account_balance(ext_api, bob_address)
     print("Alice balance is " + str(alice_balance0))
     print("Bob balance is " + str(bob_balance0))
     assert_equals(alice_balance0, alice_init_balance)
@@ -56,8 +56,8 @@ def test_not_enough_tokens():
     print("Bob is about to send " + str(few_tokens_to_send) + " to Alice")
     send_tokens_to_unchanging_user(bob_private_key, bob_address, alice_address, few_tokens_to_send, spend_tx_fee, ext_api, int_api)
     common.wait_until_height(ext_api, ext_api.get_top_block().height + 3)
-    alice_balance1 = common.get_account_balance(ext_api, int_api, pub_key=alice_address).balance
-    bob_balance1 = common.get_account_balance(ext_api, int_api, pub_key=bob_address).balance
+    alice_balance1 = common.get_account_balance(ext_api, pub_key=alice_address)
+    bob_balance1 = common.get_account_balance(ext_api, pub_key=bob_address)
     print("Alice balance is " + str(alice_balance1))
     print("Bob balance is " + str(bob_balance1))
     assert_equals(alice_balance1, alice_balance0 + few_tokens_to_send)
@@ -68,8 +68,8 @@ def test_not_enough_tokens():
     print("Bob is about to send " + str(many_tokens_to_send) + " to Alice")
     send_tokens_to_unchanging_user(bob_private_key, bob_address, alice_address, many_tokens_to_send, spend_tx_fee, ext_api, int_api)
     common.wait_until_height(ext_api, ext_api.get_top_block().height + 3)
-    alice_balance2 = common.get_account_balance(ext_api, int_api, pub_key=alice_address).balance
-    bob_balance2 = common.get_account_balance(ext_api, int_api, pub_key=bob_address).balance
+    alice_balance2 = common.get_account_balance(ext_api, pub_key=alice_address)
+    bob_balance2 = common.get_account_balance(ext_api, pub_key=bob_address)
     print("Alice balance is " + str(alice_balance2))
     print("Bob balance is " + str(bob_balance2))
     assert_equals(alice_balance2, alice_balance1)
@@ -103,8 +103,8 @@ def test_send_by_name():
     common.send_tokens_to_unchanging_user_and_wait_balance(beneficiary, bob_address, bob_init_balance, 1, ext_api, int_api)
 
     # validate balances
-    alice_balance0 = common.get_account_balance(ext_api, int_api, pub_key=alice_address).balance
-    bob_balance0 = common.get_account_balance(ext_api, int_api, pub_key=bob_address).balance
+    alice_balance0 = common.get_account_balance(ext_api, alice_address)
+    bob_balance0 = common.get_account_balance(ext_api, bob_address)
 
     assert_equals(alice_balance0, alice_init_balance)
     assert_equals(bob_balance0, bob_init_balance)
@@ -116,7 +116,7 @@ def test_send_by_name():
     register_name(bob_name, bob_address, ext_api, int_api, bob_private_key)
 
     print("Bob has registered " + bob_name)
-    bob_balance1 = common.get_account_balance(ext_api, int_api, pub_key=bob_address).balance
+    bob_balance1 = common.get_account_balance(ext_api, bob_address)
     print("Bob balance is " + str(bob_balance1))
 
     tokens_to_send = test_settings["spend_tx"]["amount"]
@@ -125,8 +125,8 @@ def test_send_by_name():
     common.wait_until_height(ext_api, ext_api.get_top_block().height + 3)
 
     # validate balances
-    alice_balance2 = common.get_account_balance(ext_api, int_api, pub_key=alice_address).balance
-    bob_balance2 = common.get_account_balance(ext_api, int_api, pub_key=bob_address).balance
+    alice_balance2 = common.get_account_balance(ext_api, alice_address)
+    bob_balance2 = common.get_account_balance(ext_api, bob_address)
 
     print("Alice balance is " + str(alice_balance2))
     print("Bob balance is " + str(bob_balance2))
