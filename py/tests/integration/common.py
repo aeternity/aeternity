@@ -78,6 +78,9 @@ def setup_node_with_tokens(node, beneficiary, blocks_to_mine):
     user_config = make_mining_user_config(root_dir, key_dir, beneficiary, "epoch.yaml")
     start_node(node, user_config)
     api = external_api(node)
+    int_api = internal_api(node)
+
+    bal0 = get_account_balance(api, int_api, pub_key=beneficiary['enc_pubk']).balance
 
     # populate the chain so node had mined some blocks and has tokens
     # to spend
@@ -85,6 +88,9 @@ def setup_node_with_tokens(node, beneficiary, blocks_to_mine):
     top = api.get_current_key_block()
     assert_equals(top.height >= blocks_to_mine, True)
     # Now the node has at least blocks_to_mine blocks mined
+
+    bal1 = get_account_balance(api, int_api, pub_key=beneficiary['enc_pubk']).balance
+    assert_equals(bal1 > bal0, True)
 
     return (root_dir, api, top)
 
