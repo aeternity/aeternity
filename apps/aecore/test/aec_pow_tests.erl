@@ -107,17 +107,17 @@ conversion_test_() ->
                ?assertEqual(true, ?TEST_MODULE:test_target(
                                      <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
                                        0,0,0,0,0,16#04,16#03>>,
-                                     16#020404cb)),
+                                     16#02040400)),
                %% 0404 < 0404 fails
                ?assertEqual(false, ?TEST_MODULE:test_target(
                                      <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
                                        0,0,0,0,0,16#04,16#04>>,
-                                      16#020404cb)),
-               %% 0405 < 0405 fails
+                                      16#02040400)),
+               %% 0405 < 0404 fails
                ?assertEqual(false, ?TEST_MODULE:test_target(
                                      <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
                                        0,0,0,0,0,16#04,16#05>>,
-                                      16#020404cb)),
+                                      16#02040400)),
                %% hide a 1 among zeros
                ?assertEqual(false, ?TEST_MODULE:test_target(
                                      <<0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -127,12 +127,12 @@ conversion_test_() ->
                ?assertEqual(true, ?TEST_MODULE:test_target(
                                      <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
                                        0,0,0,0,0,0,16#03>>,
-                                      16#010404cb)),
+                                      16#01040000)),
                %% 04 < 04 fails
                ?assertEqual(false, ?TEST_MODULE:test_target(
                                      <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
                                        0,0,0,0,0,0,16#04>>,
-                                      16#010404cb)),
+                                      16#01040000)),
 
                %%----------------------------------------------------------------------
                %% Exp > size of binary
@@ -140,34 +140,21 @@ conversion_test_() ->
 
                %% fffe < ffff
                ?assertEqual(true, ?TEST_MODULE:test_target(
-                                     <<255,254,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                     <<16#ff,16#fe,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
                                        0,0,0,0,0,0,0>>,
                                       16#2100ffff)),
                %% fffffe < ffff00 fails
                ?assertEqual(false, ?TEST_MODULE:test_target(
-                                     <<255,255,254,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                     <<16#ff,16#ff,16#fe,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
                                        0,0,0,0,0,0,0>>,
-                                      16#2100ffff)),
+                                      16#2100ffff))
 
-               %%----------------------------------------------------------------------
-               %% Negative exp marked in the sign og significand
-               %%----------------------------------------------------------------------
-
-               ?assertEqual(true, ?TEST_MODULE:test_target(
-                                     <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-                                       0,0,0,0,0,0,0>>,
-                                     16#028404cb)),
-               ?assertEqual(false, ?TEST_MODULE:test_target(
-                                     <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-                                       0,0,0,0,0,16#04,16#03>>,
-                                     16#028404cb))
        end},
       {"Threshold to difficulty",
        fun() ->
                %% More than 3 nonzero bytes
                Diff = ?TEST_MODULE:target_to_difficulty(16#1b0404cb),
-               ?assert(Diff > 70039839613066.1),
-               ?assert(Diff < 70039839613066.2)
+               ?assert(Diff == 1175073517793766964014)
        end}
      ]
     }.
@@ -185,7 +172,7 @@ target_adj_test_() ->
           ExpectedDifficulty = PoWCapacity / TargetSpeed,
           InitBlocks = [aec_test_utils:genesis_block_with_state()],
           Chain = [Top | _] = mine_blocks_only_chain(InitBlocks, 500, PoWCapacity),
-          Difficulties = [ aec_blocks:difficulty(B) || B <- Chain ],
+          Difficulties = [ hr_difficulty(B) || B <- Chain ],
           %% ?debugFmt("Difficulties: ~p", [Difficulties]),
           Window = 25,
           AvgDiffWindow = lists:sum(lists:sublist(Difficulties, Window)) / Window,
@@ -234,7 +221,7 @@ mining_step(Chain = [{Top, _} | _], PoWCapacity) ->
 
 mining_time([_], _) -> 1000000000;
 mining_time([{Top, _} | _], PC) ->
-    Attempts = mine(aec_blocks:difficulty(Top)),
+    Attempts = mine(hr_difficulty(Top)),
     round(Attempts / PC * 60 * 1000).
 
 mine(Difficulty) ->
@@ -245,6 +232,10 @@ mine(Difficulty, N) ->
       true  -> N;
       false -> mine(Difficulty, N + 1)
     end.
+
+%% Human readable difficulty
+hr_difficulty(Block) ->
+    aec_blocks:difficulty(Block) / ?DIFFICULTY_INTEGER_FACTOR.
 
 setup() ->
     application:start(crypto).

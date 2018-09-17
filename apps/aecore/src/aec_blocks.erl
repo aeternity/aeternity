@@ -224,7 +224,7 @@ height(Block) ->
 set_height(Block, Height) ->
     set_header(Block, aec_headers:set_height(to_header(Block), Height)).
 
--spec difficulty(key_block()) -> float().
+-spec difficulty(key_block()) -> aec_pow:difficulty().
 difficulty(Block) ->
     aec_pow:target_to_difficulty(target(Block)).
 
