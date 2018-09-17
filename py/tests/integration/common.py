@@ -64,9 +64,10 @@ def setup_node(node):
     # setup the dir with non-mining node
     user_config = make_no_mining_user_config(root_dir, "epoch.yaml")
     start_node(node, user_config)
-    api = external_api(node)
+    ext_api = external_api(node)
+    int_api = internal_api(node)
 
-    return (root_dir, node, api)
+    return (root_dir, node, ext_api, int_api)
 
 def setup_node_with_tokens(node, beneficiary, blocks_to_mine):
     # prepare a dir to hold the configs and the keys
@@ -77,22 +78,22 @@ def setup_node_with_tokens(node, beneficiary, blocks_to_mine):
     # setup the dir with mining node
     user_config = make_mining_user_config(root_dir, key_dir, beneficiary, "epoch.yaml")
     start_node(node, user_config)
-    api = external_api(node)
+    ext_api = external_api(node)
     int_api = internal_api(node)
 
-    bal0 = get_account_balance(api, int_api, pub_key=beneficiary['enc_pubk']).balance
+    bal0 = get_account_balance(ext_api, int_api, pub_key=beneficiary['enc_pubk']).balance
 
     # populate the chain so node had mined some blocks and has tokens
     # to spend
-    wait_until_height(api, blocks_to_mine)
-    top = api.get_current_key_block()
+    wait_until_height(ext_api, blocks_to_mine)
+    top = ext_api.get_current_key_block()
     assert_equals(top.height >= blocks_to_mine, True)
     # Now the node has at least blocks_to_mine blocks mined
 
-    bal1 = get_account_balance(api, int_api, pub_key=beneficiary['enc_pubk']).balance
+    bal1 = get_account_balance(ext_api, int_api, pub_key=beneficiary['enc_pubk']).balance
     assert_equals(bal1 > bal0, True)
 
-    return (root_dir, api, top)
+    return (root_dir, ext_api, int_api, top)
 
 def _copy_sign_keys(root_dir, keys):
     # Copy the right keys

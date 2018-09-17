@@ -32,8 +32,7 @@ def test_compile_and_call_id():
     # Alice should be able to compile a sophia contract with an identity
     # function into bytecode and call it.
     test_settings = settings["test_compile_and_call_id"]
-    (root_dir, node, external_api) = setup_node(test_settings, "alice")
-    internal_api = common.internal_api(node)
+    (root_dir, node, external_api, internal_api) = setup_node(test_settings, "alice")
 
     bytecode = read_id_contract(internal_api)
 
@@ -51,8 +50,7 @@ def test_encode_id_call():
     # a sophia contract.
 
     test_settings = settings["test_encode_id_call"]
-    (root_dir, node, external_api) = setup_node(test_settings, "alice")
-    internal_api = common.internal_api(node)
+    (root_dir, node, external_api, internal_api) = setup_node(test_settings, "alice")
 
     bytecode = read_id_contract(internal_api)
 
@@ -71,8 +69,7 @@ def test_id_call():
     # an Id contract.
 
     test_settings = settings["test_id_call"]
-    (root_dir, node, external_api) = setup_node(test_settings, "alice")
-    internal_api = common.internal_api(node)
+    (root_dir, node, external_api, internal_api) = setup_node(test_settings, "alice")
 
     bytecode = read_id_contract(internal_api)
 
@@ -92,8 +89,7 @@ def test_solidity_greeter():
     # the gretee Solidity contract.
 
     test_settings = settings["test_id_call"]
-    (root_dir, node, api) = setup_node(test_settings, "alice")
-    internal_api = common.internal_api(node)
+    (root_dir, node, api, internal_api) = setup_node(test_settings, "alice")
 
     bytecode = greeter_code()
 
@@ -114,8 +110,7 @@ def test_call_solidity_greeter():
     # an greete Solidity contract.
 
     test_settings = settings["test_id_call"]
-    (root_dir, node, api) = setup_node(test_settings, "alice")
-    internal_api = common.internal_api(node)
+    (root_dir, node, api, internal_api) = setup_node(test_settings, "alice")
 
     bytecode = greeter_generated_code()
 

@@ -38,8 +38,7 @@ def read_id_contract(api):
 def test_contract_create():
     test_settings = settings["test_contract_create"]
     beneficiary = common.setup_beneficiary()
-    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "node")
-    internal_api = common.internal_api(node)
+    (node, (root_dir, external_api, internal_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "node")
 
     private_key = keys.new_private()
     public_key = keys.public_key(private_key)
@@ -92,8 +91,8 @@ def test_contract_call():
     test_settings = settings["test_contract_call"]
     create_settings = settings["test_contract_create"]
     beneficiary = common.setup_beneficiary()
-    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "node")
-    internal_api = common.internal_api(node)
+    (node, (root_dir, external_api, internal_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "node")
+
 
     private_key = keys.new_private()
     public_key = keys.public_key(private_key)
@@ -175,8 +174,7 @@ def test_contract_on_chain_call_off_chain():
     test_settings = settings["test_contract_call"]
     create_settings = settings["test_contract_create"]
     beneficiary = common.setup_beneficiary()
-    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "node")
-    internal_api = common.internal_api(node)
+    (node, (root_dir, external_api, internal_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "node")
 
     private_key = keys.new_private()
     public_key = keys.public_key(private_key)
@@ -225,8 +223,7 @@ def test_spend():
     # Setup
     test_settings = settings["test_spend"]
     beneficiary = common.setup_beneficiary()
-    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "node")
-    internal_api = common.internal_api(node)
+    (node, (root_dir, external_api, internal_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "node")
 
     private_key = keys.new_private()
     public_key = keys.public_key(private_key)

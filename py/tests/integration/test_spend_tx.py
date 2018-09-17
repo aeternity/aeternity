@@ -27,8 +27,7 @@ def test_not_enough_tokens():
     # they are in is confirmed.
     test_settings = settings["test_not_enough_tokens"]
     beneficiary = common.setup_beneficiary()
-    (node, (root_dir, ext_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "miner")
-    int_api = common.internal_api(node)
+    (node, (root_dir, ext_api, int_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "miner")
 
     alice_address = keys.address(keys.public_key(keys.new_private()))
 
@@ -85,8 +84,7 @@ def test_send_by_name():
     # Alice should be able to send tokens to Bob using that name
     test_settings = settings["test_send_by_name"]
     beneficiary = common.setup_beneficiary()
-    (node, (root_dir, ext_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "miner")
-    int_api = common.internal_api(node)
+    (node, (root_dir, ext_api, int_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "miner")
 
     alice_private_key = keys.new_private()
     alice_public_key = keys.public_key(alice_private_key)

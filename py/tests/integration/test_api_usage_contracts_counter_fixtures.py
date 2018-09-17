@@ -57,7 +57,7 @@ def _test_name_from_test_path_(test_path):
 
 def _setup_node_(node_makefile_id, beneficiary, blocks_to_mine):
     import common
-    (node_root_dir, _, _) = common.setup_node_with_tokens(node_makefile_id, beneficiary, blocks_to_mine)
+    (node_root_dir,_,  _, _) = common.setup_node_with_tokens(node_makefile_id, beneficiary, blocks_to_mine)
     return node_root_dir
 
 def _cleanup_node_(node_makefile_id, node_root_dir):
