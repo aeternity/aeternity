@@ -17,10 +17,9 @@
 i(Code) -> aeb_opcodes:mnemonic(Code).
 
 %% We don't track purity or statefulness in the type checker yet.
-is_stateful({FName, _, _, _}) -> FName /= "init".
+is_stateful({FName, _, _, _, _}) -> FName /= "init".
 
-is_public({{builtin, _}, _, _, _}) -> false;
-is_public(_) -> true.
+is_public({_Name, Attrs, _Args, _Body, _Type}) -> not lists:member(private, Attrs).
 
 convert(#{ contract_name := _ContractName
          , state_type := StateType
@@ -28,7 +27,7 @@ convert(#{ contract_name := _ContractName
               },
         _Options) ->
     %% Create a function dispatcher
-    DispatchFun = {"_main", [{"arg", "_"}],
+    DispatchFun = {"_main", [], [{"arg", "_"}],
                    {switch, {var_ref, "arg"},
                     [{{tuple, [fun_hash(FName),
                                {tuple, make_args(Args)}]},
@@ -36,12 +35,12 @@ convert(#{ contract_name := _ContractName
                                 [ {tuple, [aeso_ast_to_icode:type_value(TypeRep),
                                            {funcall, {var_ref, FName}, make_args(Args)}]} ]
                                )}
-                     || Fun={FName, Args, _, TypeRep} <- Functions, is_public(Fun) ]},
+                     || Fun={FName, _, Args, _, TypeRep} <- Functions, is_public(Fun) ]},
                    word},
     NewFunctions = Functions ++ [DispatchFun],
     %% Create a function environment
     Funs = [{Name, length(Args), make_ref()}
-            || {Name, Args, _Body, _Type} <- NewFunctions],
+            || {Name, _Attrs, Args, _Body, _Type} <- NewFunctions],
     %% Create dummy code to call the main function with one argument
     %% taken from the stack
     StopLabel = make_ref(),
@@ -95,7 +94,7 @@ convert(#{ contract_name := _ContractName
     %% references take the form {push_label, Ref}, which is translated
     %% into a PUSH instruction.
     Code = [assemble_function(Funs, Name, Args, Body)
-            || {Name, Args, Body, _Type} <- NewFunctions],
+            || {Name, _, Args, Body, _Type} <- NewFunctions],
     resolve_references(
         [%% i(?COMMENT), "CONTRACT: " ++ ContractName,
          DispatchCode,

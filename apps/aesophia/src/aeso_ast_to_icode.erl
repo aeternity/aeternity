@@ -37,7 +37,7 @@ add_default_init_function(Icode = #{functions := Funs, state_type := State}) ->
         false ->
             Type  = {tuple, [typerep, {tuple, []}]},
             Value = #tuple{ cpts = [type_value({tuple, []}), {tuple, []}] },
-            DefaultInit = {"init", [], Value, Type},
+            DefaultInit = {"init", [], [], Value, Type},
             Icode#{ functions => [DefaultInit | Funs] }
     end.
 
@@ -62,7 +62,10 @@ contract_to_icode([{type_def, _Attrib, {id, _, Name}, Args, Def} | Rest],
                 _                       -> Icode1
              end,
     contract_to_icode(Rest, Icode2);
-contract_to_icode([{letfun,_Attrib, Name, Args, _What, Body={typed,_,_,T}}|Rest], Icode) ->
+contract_to_icode([{letfun, Attrib, Name, Args, _What, Body={typed,_,_,T}}|Rest], Icode) ->
+    FunAttrs = [ stateful || proplists:get_value(stateful, Attrib, false) ] ++
+               [ private  || proplists:get_value(private, Attrib, false) orelse
+                             proplists:get_value(internal, Attrib, false) ],
     %% TODO: Handle types
     FunName = ast_id(Name),
     %% TODO: push funname to env
@@ -77,7 +80,7 @@ contract_to_icode([{letfun,_Attrib, Name, Args, _What, Body={typed,_,_,T}}|Rest]
                  {tuple, [typerep, ast_typerep(T, Icode)]}};
             _ -> {ast_body(Body, Icode), ast_typerep(T, Icode)}
         end,
-    NewIcode = ast_fun_to_icode(FunName, FunArgs, FunBody, TypeRep, Icode),
+    NewIcode = ast_fun_to_icode(FunName, FunAttrs, FunArgs, FunBody, TypeRep, Icode),
     contract_to_icode(Rest, NewIcode);
 contract_to_icode([{letrec,_,Defs}|Rest], Icode) ->
     %% OBS! This code ignores the letrec structure of the source,
@@ -536,8 +539,8 @@ type_value({variant, Cs}) ->
     #tuple{ cpts = [#integer{ value = ?TYPEREP_VARIANT_TAG },
                     #list{ elems = [ #list{ elems = [ type_value(A) || A <- As ] } || As <- Cs ] }] }.
 
-ast_fun_to_icode(Name, Args, Body, TypeRep, #{functions := Funs} = Icode) ->
-    NewFuns = [{Name, Args, Body, TypeRep}| Funs],
+ast_fun_to_icode(Name, Attrs, Args, Body, TypeRep, #{functions := Funs} = Icode) ->
+    NewFuns = [{Name, Attrs, Args, Body, TypeRep}| Funs],
     aeso_icode:set_functions(NewFuns, Icode).
 
 %% -------------------------------------------------------------------
@@ -590,7 +593,7 @@ builtin_function(Builtin = {map_get, Type}) ->
     %% function map_get(m, k) =
     %%   switch(map_lookup(m, k))
     %%     Some(v) => v
-    {{builtin, Builtin},
+    {{builtin, Builtin}, [private],
         [{"m", aeso_icode:map_typerep(Type, word)}, {"k", Type}],
             {switch, {funcall, {var_ref, {builtin, {map_lookup, Type}}},
                      [{var_ref, "m"}, {var_ref, "k"}]},
@@ -602,7 +605,7 @@ builtin_function(Builtin = {map_member, Type}) ->
     %%   switch(Map.lookup(m, k))
     %%     None => false
     %%     _    => true
-    {{builtin, Builtin},
+    {{builtin, Builtin}, [private],
         [{"m", aeso_icode:map_typerep(Type, word)}, {"k", Type}],
             {switch, {funcall, {var_ref, {builtin, {map_lookup, Type}}},
                      [{var_ref, "m"}, {var_ref, "k"}]},
@@ -621,7 +624,7 @@ builtin_function(Builtin = {map_lookup, Type}) ->
     %%          map_lookup(m, key)
     Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
     Name = {builtin, Builtin},
-    {Name,
+    {Name, [private],
      [{"map", aeso_icode:map_typerep(Type, word)}, {"key", Type}],
      {switch, {var_ref, "map"},
               [{{list, []}, option_none()},
@@ -645,7 +648,7 @@ builtin_function(Builtin = {map_put, Type}) ->
     %%          (k, v) :: map_put(m, key, val)  // note reallocates (k, v) pair
     Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
     Name = {builtin, Builtin},
-    {Name,
+    {Name, [private],
      [{"map", aeso_icode:map_typerep(Type, word)}, {"key", Type}, {"val", word}],
      {switch,
          {var_ref, "map"},
@@ -678,7 +681,7 @@ builtin_function(Builtin = {map_del, Type}) ->
     %%          (k, v) :: map_del(m, key)  // note reallocates (k, v) pair
     Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
     Name = {builtin, Builtin},
-    {Name,
+    {Name, [private],
      [{"map", aeso_icode:map_typerep(Type, word)}, {"key", word}],
      {switch,
          {var_ref, "map"},
@@ -707,7 +710,7 @@ builtin_function(Builtin = {map_upd, Type}) ->
     %%          (k, v) :: map_upd(m, key, fun)  // note reallocates (k, v) pair
     Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
     Name = {builtin, Builtin},
-    {Name,
+    {Name, [private],
      [{"map", aeso_icode:map_typerep(Type, word)}, {"key", word}, {"fun", word}],
      {switch,
          {var_ref, "map"},
@@ -734,7 +737,7 @@ builtin_function(map_size) ->
     %%     []        => acc
     %%     _ :: map' => size(map', acc + 1)
     Name = {builtin, map_size},
-    {Name,
+    {Name, [private],
         [{"map", {list, word}}, {"acc", word}],
         {switch, {var_ref, "map"},
                 [{{list, []}, {var_ref, "acc"}},
@@ -749,7 +752,7 @@ builtin_function(string_length) ->
     %%   switch(str)
     %%      {n} -> n  // (ab)use the representation
     V = fun(X) -> {var_ref, atom_to_list(X)} end,
-    {{builtin, string_length},
+    {{builtin, string_length}, [private],
      [{"s", string}],
      {switch, V(s), [{{tuple, [V(n)]}, V(n)}]},
      word};
@@ -767,7 +770,7 @@ builtin_function(string_concat) ->
     Let = fun(N, E, Body) -> {switch, E, [{V(N), Body}]} end,
     StepPtr = fun(P) -> {binop, '+', V(P), I(32)} end,
     A = fun(X) -> aeb_opcodes:mnemonic(X) end,
-    {{builtin, string_concat},
+    {{builtin, string_concat}, [private],
      [{"s1", string}, {"s2", string}],
      LetLen(n1, s1,
      LetLen(n2, s2,
@@ -791,7 +794,7 @@ builtin_function(string_concat_inner1) ->
     A = fun(X) -> aeb_opcodes:mnemonic(X) end,
     %% Copy all whole words from the first string, and set up for word fusion
     %% Special case when the length of the first string is divisible by 32.
-    {Name,
+    {Name, [private],
      [{"n1", word}, {"p1", pointer}, {"n2", word}, {"p2", pointer}],
      LetWord(w1, p1,
         {ifte, {binop, '>', V(n1), I(32)},
@@ -817,7 +820,7 @@ builtin_function(string_concat_inner2) ->
     Name = {builtin, string_concat_inner2},
     %% Current "work in progess" word 'x', has 'o' bytes that are "free" - fill them from
     %% words of the second string.
-    {Name,
+    {Name, [private],
      [{"o", word}, {"x", word}, {"n2", word}, {"p2", pointer}],
      {ifte, {binop, '<', V(n2), I(1)},
         {seq, [V(x), {inline_asm, [A(?MSIZE), A(?MSTORE), A(?MSIZE)]}]}, %% Use MSIZE as dummy return value
@@ -844,7 +847,7 @@ builtin_function(str_equal_p) ->
     V = fun(X) -> {var_ref, atom_to_list(X)} end,
     LetWord = fun(W, P, Body) -> {switch, V(P), [{{tuple, [V(W)]}, Body}]} end,
     Name = {builtin, str_equal_p},
-    {Name,
+    {Name, [private],
         [{"n", word}, {"p1", pointer}, {"p2", pointer}],
         {ifte, {binop, '<', V(n), {integer, 1}},
             {integer, 1},
@@ -864,7 +867,7 @@ builtin_function(str_equal) ->
     %%   n1 == n2 && str_equal_p(n1, s1 + 32, s2 + 32)
     V = fun(X) -> {var_ref, atom_to_list(X)} end,
     LetLen = fun(N, S, Body) -> {switch, V(S), [{{tuple, [V(N)]}, Body}]} end,
-    {{builtin, str_equal},
+    {{builtin, str_equal}, [private],
         [{"s1", string}, {"s2", string}],
         LetLen(n1, s1,
         LetLen(n2, s2,
