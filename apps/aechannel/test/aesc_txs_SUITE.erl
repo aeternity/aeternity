@@ -1554,7 +1554,7 @@ fp_after_deposit(Cfg) ->
                     Props#{initiator_amount => IAmt1,
                            responder_amount => RAmt1}
                 end,
-                create_contract_poi_and_payload(FPRound - 1, 
+                create_contract_poi_and_payload(FPRound - 1,
                                                 ContractCreateRound,
                                                 Owner),
                 set_prop(round, DepositRound),
@@ -1602,7 +1602,7 @@ fp_after_withdrawal(Cfg) ->
                     Props#{initiator_amount => IAmt1,
                            responder_amount => RAmt1}
                 end,
-                create_contract_poi_and_payload(FPRound - 1, 
+                create_contract_poi_and_payload(FPRound - 1,
                                                 ContractCreateRound,
                                                 Owner),
                 set_prop(round, WithdrawalRound),
@@ -1754,7 +1754,7 @@ fp_is_replaced_by_same_round_deposit(Cfg) ->
                               responder_amount => RAmt0,
                  channel_reserve => 1},
                [positive(fun create_channel_/2),
-                create_contract_poi_and_payload(FPRound - 1, 
+                create_contract_poi_and_payload(FPRound - 1,
                                                 ContractCreateRound,
                                                 Owner),
                 force_progress_sequence(_Round = FPRound, Forcer),
@@ -1805,7 +1805,7 @@ fp_is_replaced_by_same_round_withdrawal(Cfg) ->
                               responder_amount => RAmt0,
                  channel_reserve => 1},
                [positive(fun create_channel_/2),
-                create_contract_poi_and_payload(FPRound - 1, 
+                create_contract_poi_and_payload(FPRound - 1,
                                                 ContractCreateRound,
                                                 Owner),
                 force_progress_sequence(_Round = FPRound, Forcer),
@@ -1854,7 +1854,7 @@ fp_after_snapshot(Cfg) ->
                               responder_amount => RAmt,
                  channel_reserve => 1},
                [positive(fun create_channel_/2),
-                create_contract_poi_and_payload(SnapshotRound, 
+                create_contract_poi_and_payload(SnapshotRound,
                                                 ContractCreateRound,
                                                 Owner),
                 set_from(Snapshoter),
@@ -1866,7 +1866,7 @@ fp_after_snapshot(Cfg) ->
                     SnapshotRound = aesc_channels:round(Channel), % assert
                     Props
                 end,
-                create_contract_poi_and_payload(FPRound - 1, 
+                create_contract_poi_and_payload(FPRound - 1,
                                                 ContractCreateRound,
                                                 Owner),
                 fun(Props) when SnapshotRound =:= FPRound - 1 ->
@@ -1901,7 +1901,7 @@ fp_is_replaced_by_same_round_snapshot(Cfg) ->
                               responder_amount => RAmt0,
                  channel_reserve => 1},
                [positive(fun create_channel_/2),
-                create_contract_poi_and_payload(FPRound - 1, 
+                create_contract_poi_and_payload(FPRound - 1,
                                                 ContractCreateRound,
                                                 Owner),
                 force_progress_sequence(_Round = FPRound, Forcer),
@@ -1949,7 +1949,7 @@ fp_after_solo_close(Cfg) ->
                  channel_reserve => 1},
                [positive(fun create_channel_/2),
                 set_from(Closer),
-                create_contract_poi_and_payload(CloseRound, 
+                create_contract_poi_and_payload(CloseRound,
                                                 ContractCreateRound,
                                                 Owner),
                 set_prop(round, CloseRound),
@@ -1992,9 +1992,9 @@ fp_after_solo_close(Cfg) ->
                                                   Forcer <- ?ROLES]
         end,
 
-    %% some rounds had passed since the close 
+    %% some rounds had passed since the close
     Test(10, 20),
-    %% force progress right after a close 
+    %% force progress right after a close
     Test(11, 12),
     ok.
 
@@ -2017,7 +2017,7 @@ fp_after_slash(Cfg) ->
                 % close
                 set_prop(height, CloseHeight),
                 set_from(Closer),
-                create_contract_poi_and_payload(CloseRound, 
+                create_contract_poi_and_payload(CloseRound,
                                                 ContractCreateRound,
                                                 Owner),
                 set_prop(round, CloseRound),
@@ -2092,9 +2092,9 @@ fp_after_slash(Cfg) ->
                                                            Forcer <- ?ROLES]
         end,
 
-    %% some rounds had passed since the close 
+    %% some rounds had passed since the close
     Test(10, 11, 20),
-    %% force progress right after a close 
+    %% force progress right after a close
     Test(11, 20, 30),
     ok.
 
@@ -2574,12 +2574,12 @@ fp_too_soon(Cfg) ->
                  channel_reserve => 1, lock_period => LockPeriod},
                [positive(fun create_channel_/2),
                 set_prop(height, FPHeight0),
-                create_contract_poi_and_payload(Round0 - 1, 
+                create_contract_poi_and_payload(Round0 - 1,
                                                 ContractCreateRound,
                                                 Owner),
                 force_progress_sequence(_Round = Round0, Forcer0),
                 set_prop(height, FPHeight1),
-                create_contract_poi_and_payload(Round1 - 1, 
+                create_contract_poi_and_payload(Round1 - 1,
                                                 ContractCreateRound,
                                                 Owner),
                 negative_force_progress_sequence(Round1, Forcer1,
@@ -2593,7 +2593,7 @@ fp_too_soon(Cfg) ->
                                                        Forcer <- ?ROLES]
         end,
 
-    % height is too low 
+    % height is too low
     Test(11, 12, 10),
     % height is one less
     Test(10, 20, 10),
@@ -2705,11 +2705,11 @@ force_progress_sequence(Round, Forcer) ->
                                       TxHashContractPubkey),
                 Call = aect_test_utils:get_call(TxHashContractPubkey, CallId,
                                                 S),
-                524 = GasUsed = aect_call:gas_used(Call),
+                380 = GasUsed = aect_call:gas_used(Call),
                 GasPrice = aect_call:gas_price(Call),
                 ConsumedGas = GasUsed * GasPrice,
                 DeductedAmt = ConsumedGas + Fee,
-                
+
                 case Forcer of
                     initiator ->
                         true = I0 - DeductedAmt =:= I1 andalso R0 =:= R1;

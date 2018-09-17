@@ -428,7 +428,7 @@ get_balance(<<Account:256>>, #{ accounts := Accounts }) ->
 get_store(#{ running := Contract, store := Store }) ->
     Data = maps:get(Contract, Store, undefined),
     case Data of
-        undefined -> aevm_eeevm_store:from_sophia_state(<<>>);
+        undefined -> #{};
         _         -> Data
     end.
 

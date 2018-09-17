@@ -2,12 +2,12 @@
 // All operations done in maps.aes
 
 contract Maps =
-  function set_state_i : (int, pt) => state
-  function set_state_s : (string, pt) => state
+  function set_state_i : (int, pt) => ()
+  function set_state_s : (string, pt) => ()
   function tolist_state_i : () => list((int, pt))
   function tolist_state_s : () => list((string, pt))
-  function fromlist_state_i : (list((int, pt))) => state
-  function fromlist_state_s : (list((string, pt))) => state
+  function fromlist_state_i : (list((int, pt))) => ()
+  function fromlist_state_s : (list((string, pt))) => ()
 
 contract TestMaps =
 
