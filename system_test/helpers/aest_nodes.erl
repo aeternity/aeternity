@@ -40,6 +40,10 @@
 -export([get_top/1]).
 -export([get_mempool/1]).
 -export([post_spend_tx/5]).
+-export([post_create_state_channel_tx/4,
+         post_close_mutual_state_channel_tx/5,
+         post_withdraw_state_channel_tx/5,
+         post_deposit_state_channel_tx/5]).
 -export([wait_for_value/4]).
 -export([wait_for_time/3]).
 -export([wait_for_time/4]).
@@ -379,6 +383,75 @@ post_spend_tx(Node, From, To, Nonce, Map) ->
         request(Node, 'PostTransaction', #{ tx => aec_base58c:encode(transaction, SerSignTx) }),
     Response.
 
+post_create_state_channel_tx(Node, Initiator, Responder, #{nonce := Nonce} = Map) ->
+    #{ pubkey := InPubKey, privkey := InSecKey } = Initiator,
+    #{ pubkey := RespPubKey, privkey := RespSecKey } = Responder,
+    Round = 0, %% this needs a data structure containing round!!
+    {ok, CreateTx} = aesc_create_tx:new(maps:merge(
+                                          #{initiator_id => aec_id:create(account, InPubKey),
+                                            responder_id => aec_id:create(account, RespPubKey),
+                                            state_hash => <<Round:256>>,
+                                            initiator_amount => 80,
+                                            responder_amount => 80,
+                                            push_amount => 0,
+                                            lock_period => 0,
+                                            ttl => 100000,
+                                            fee => 1,
+                                            channel_reserve => 40}, Map)),
+    BothSigned = aec_test_utils:sign_tx(CreateTx, [InSecKey, RespSecKey]),
+    Transaction = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
+    {ok, 200, Response} = request(Node, 'PostTransaction', #{tx => Transaction}),
+    Response#{channel_id => aec_id:create(channel, aesc_channels:pubkey(InPubKey, Nonce, RespPubKey))}.
+
+post_close_mutual_state_channel_tx(Node, Initiator, Responder, ChannelId, #{nonce := _} = Map) ->
+    #{ privkey := InSecKey } = Initiator,
+    #{ privkey := RespSecKey } = Responder,
+    {ok, CloseTx} = 
+        aesc_close_mutual_tx:new(maps:merge(#{channel_id => ChannelId,
+                                              initiator_amount_final => 80,
+                                              responder_amount_final => 80,
+                                              fee => 1,
+                                              ttl => 100000},
+                                            Map)),
+    BothSigned = aec_test_utils:sign_tx(CloseTx, [InSecKey, RespSecKey]),
+    Transaction = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
+    {ok, 200, Response} = request(Node, 'PostTransaction', #{tx => Transaction}),
+    Response.
+
+post_deposit_state_channel_tx(Node, PayingParty, OtherParty, ChannelId, #{nonce := _} = Map) ->
+    #{ pubkey := InPubKey, privkey := InSecKey } = PayingParty,
+    #{ privkey := RespSecKey } = OtherParty,
+    {ok, DepositTx} = 
+        aesc_deposit_tx:new(maps:merge(#{channel_id => ChannelId,
+                                         from_id => aec_id:create(account, InPubKey),
+                                         state_hash => <<0:256>>,
+                                         amount => 20,
+                                         round => 1,
+                                         fee => 1,
+                                         ttl => 100000},
+                                       Map)),
+    BothSigned = aec_test_utils:sign_tx(DepositTx, [InSecKey, RespSecKey]),
+    Transaction = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
+    {ok, 200, Response} = request(Node, 'PostTransaction', #{tx => Transaction}),
+    Response.
+
+post_withdraw_state_channel_tx(Node, RecParty, OtherParty, ChannelId, #{nonce := _} = Map) ->
+    #{ pubkey := InPubKey, privkey := InSecKey } = RecParty,
+    #{ privkey := RespSecKey } = OtherParty,
+    {ok, WithdrawTx} = 
+        aesc_withdraw_tx:new(maps:merge(#{channel_id => ChannelId,
+                                         to_id => aec_id:create(account, InPubKey),
+                                         state_hash => <<0:256>>,
+                                         amount => 20,
+                                         round => 1,
+                                         fee => 1,
+                                         ttl => 100000},
+                                       Map)),
+    BothSigned = aec_test_utils:sign_tx(WithdrawTx, [InSecKey, RespSecKey]),
+    Transaction = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
+    {ok, 200, Response} = request(Node, 'PostTransaction', #{tx => Transaction}),
+    Response.
+
 %% Use values that are not yet base58c encoded in test cases
 wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, Ctx) ->
     FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
@@ -394,19 +467,20 @@ wait_for_value({height, MinHeight}, NodeNames, Timeout, Ctx) ->
     FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
     CheckF =
         fun(Node) ->
-                case request(Node, 'GetKeyBlockByHeight', #{height => MinHeight}) of
+                case request(Node, 'GetKeyBlockByHeight', maps:merge(#{height => MinHeight}, FaultInject)) of
                     {ok, 200, Block} -> {done, Block};
                     _ -> wait
                 end
         end,
     loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Height ~p on nodes ~p", [MinHeight, NodeNames]});
 wait_for_value({txs_on_chain, Txs}, NodeNames, Timeout, Ctx) ->
+    %% Not very optimal, since found Txs' are searched for in next round.
     FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
     CheckF =
         fun(Node) ->
                 Found = 
                     lists:usort([ case request(Node, 'GetTransactionByHash', maps:merge(#{hash => Tx}, FaultInject)) of
-                                      {ok, 200, #{ block_height := H}} when H > 0 -> H;
+                                      {ok, 200, #{ block_height := H}} when H > 0 -> {Tx, H};
                                       _ -> wait
                                   end || Tx <- Txs]),
                 case lists:member(wait, Found) of
