@@ -403,7 +403,8 @@ validate_key_block(#key_block{} = Block) ->
 
 -spec validate_micro_block(micro_block()) -> 'ok' | {'error', {'header' | 'block', term()}}.
 validate_micro_block(#mic_block{} = Block) ->
-    Validators = [fun validate_txs_hash/1],
+    Validators = [fun validate_txs_hash/1,
+                  fun validate_gas_limit/1],
     case aec_headers:validate_micro_block_header(to_micro_header(Block)) of
         ok ->
             case aeu_validation:run(Validators, [Block]) of
@@ -423,3 +424,11 @@ validate_txs_hash(#mic_block{txs = Txs} = Block) ->
         _Other ->
             {error, malformed_txs_hash}
     end.
+
+-spec validate_gas_limit(block()) -> ok | {error, gas_limit_exceeded}.
+validate_gas_limit(#mic_block{} = Block) ->
+    case gas(Block) =< aec_governance:block_gas_limit() of
+        true  -> ok;
+        false -> {error, gas_limit_exceeded}
+    end.
+
