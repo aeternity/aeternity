@@ -3,94 +3,25 @@
 %% common_test exports
 -export(
    [ all/0
-   , end_per_testcase/2
-   , init_per_testcase/2
    ]).
 
 %% test case exports
 -export(
-   [
-    execute_counter_fun_from_bytecode/1,
-    execute_identity_fun_from_solidity_binary/1
+   [ execute_counter_fun_from_bytecode/1
+   , execute_identity_fun_from_solidity_binary/1
+   , events_from_solidity_binary/1
    ]).
+
+%% chain API exports
+-export([ spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2,
+          oracle_register/7, oracle_query/6, oracle_query_format/2, oracle_response_format/2,
+          oracle_query_oracle/2, oracle_respond/5, oracle_get_answer/3,
+          oracle_query_fee/2, oracle_get_question/3, oracle_extend/4]).
+
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("eunit/include/eunit.hrl").
-
--define(STARTED_APPS_WHITELIST, [{erlexec,"OS Process Manager","1.7.1"}]).
--define(TO_BE_STOPPED_APPS_BLACKLIST, [erlexec, lager]).
--define(REGISTERED_PROCS_WHITELIST,
-        [cover_server, timer_server, %% by test framework
-         exec_app, exec, %% by erlexec
-         inet_gethost_native_sup, inet_gethost_native, %% by inet
-         prfTarg,  %% by eper
-         dets_sup, dets,  %% by mnesia
-         aeu_env_meck %% by test
-        ]).
-
-init_per_testcase(TC, Cfg) ->
-    lager_common_test_backend:bounce(error),
-    Apps = application:which_applications(),
-    Names = registered(),
-    mock_fast_and_deterministic_cuckoo_pow(),
-    {MyPubKey, MyPrivKey} = new_key_pair(),
-    Amount = 100000000000000000000,
-    Preset = [{MyPubKey, Amount}],
-
-    Code = tc_to_code(TC),
-
-    [ {running_apps, Apps}
-    , {regnames, Names}
-    , {my_pub_key, MyPubKey}
-    , {my_priv_key, MyPrivKey}
-    , {preset, Preset}
-    , {vm_version, 2} %% AEVM/Solidity
-    , {code, Code}
-      | Cfg].
-
-tc_to_code(execute_identity_fun_from_solidity_binary) ->
-     id_bytecode();
-tc_to_code(execute_counter_fun_from_bytecode) ->
-     counter_bytecode().
-
-end_per_testcase(_TC, Config) ->
-    Apps0 = ?config(running_apps, Config),
-    Names0 = ?config(regnames, Config),
-    Apps = application:which_applications() -- ?STARTED_APPS_WHITELIST,
-    Names = registered() -- ?REGISTERED_PROCS_WHITELIST,
-    case {(Apps -- Apps0), Names -- Names0, lager_common_test_backend:get_logs()} of
-        {[], [], []} ->
-            ok;
-        {_, _, Logs} when Logs =/= []->
-            {fail, {errors_in_lager_log, lists:map(fun iolist_to_s/1, Logs)}};
-        {NewApps, _, _} when NewApps =/= [] ->
-            %% New applications take precedence over new registered processes
-            {fail, {started_applications, NewApps}};
-        {_, NewReg, _} ->
-            await_registered(NewReg, Names0)
-    end.
-
-await_registered(Rest, Names0) ->
-    receive after 100 ->
-                    await_registered(9, Rest, Names0)
-            end.
-
-await_registered(N, _, Names0) when N > 0 ->
-    case (registered() -- Names0) -- ?REGISTERED_PROCS_WHITELIST of
-        [] ->
-            ok;
-        [_|_] = NewReg ->
-            receive after 100 ->
-                            await_registered(N-1, NewReg, Names0)
-                    end
-    end;
-await_registered(_, NewReg, _Names0) ->
-    {fail, {registered_processes, NewReg}}.
-
--spec iolist_to_s(iolist()) -> string().
-iolist_to_s(L) ->
-    lists:flatten(io_lib:format("~s~n", [L])).
-
+-include("apps/aecontract/src/aecontract.hrl").
 
 %% ------------------------------------------------------------------------
 %% Test cases
@@ -101,122 +32,83 @@ all() -> [
           %% but not with "make test" where other tests have run before.
           %% Taken out of test suite for now.
           %% TODO: Turn into a "dev1" node test.
-          %% execute_counter_fun_from_bytecode,
-          %% execute_identity_fun_from_solidity_binary
+          execute_counter_fun_from_bytecode
+         , execute_identity_fun_from_solidity_binary
+         , events_from_solidity_binary
          ].
 
-execute_identity_fun_from_solidity_binary(Cfg) ->
-    {ok, StartedApps, TempDir} = prepare_app_start(aecore, Cfg),
-    ok = mock_genesis(Cfg),
-    {ok,_} = application:ensure_all_started(aecore),
-
-    Tx = create_tx(#{}, Cfg),
-    PrivKey = ?config(my_priv_key, Cfg),
-    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
-    ok = aec_tx_pool:push(SignedTx),
-    TxHash = aetx_sign:hash(SignedTx),
-
-    wait_for_it(fun () ->
-    			none =/=
-    			    aec_chain:find_tx_with_location(TxHash)
-     		end, true),
-
-    %% lager:error("TxBin ~w~n",[TxHash]),
-
-    wait_for_it(fun () ->
-			case aec_chain:find_tx_with_location(TxHash) of
-			    'none' -> false;
-			    {'mempool', _} -> false;
-			    {_Bin, _TX} -> true
-			end
-     		end, true),
-
-    {_Block, SignedTx} = aec_chain:find_tx_with_location(TxHash),
-
-    ok = unmock_genesis(Cfg),
-    ok = application:stop(aecore),
-    ok = app_stop(StartedApps -- ?TO_BE_STOPPED_APPS_BLACKLIST, TempDir),
+execute_identity_fun_from_solidity_binary(_Cfg) ->
+    Code = id_bytecode(),
+    Env  = initial_state(#{101 => Code}),
+    NewCode = successful_call_(101, word, main, <<42>>, Env),
+    {ok, <<42:256>>, _, _} =  execute_call(101, <<26,148,216,62,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 42>>, Env#{ 101 => aeu_hex:hexstring_encode(NewCode)}, #{}),
     ok.
 
 
 id_bytecode() ->
-    aeu_hex:hexstring_decode(
-      <<"0x6060604052341561000f57600080fd5b60ae8061001d6000396000f300606060"
-        "405260043610603f576000357c0100000000000000000000000000000000000000"
-        "000000000000000000900463ffffffff1680631a94d83e146044575b600080fd5b"
-        "3415604e57600080fd5b606260048080359060200190919050506078565b604051"
-        "8082815260200191505060405180910390f35b60008190509190505600a165627a"
-        "7a723058205cc378b9229138b9feea0e5d1a4c82df2ff3e18e9db005d866e7158b"
-        "e405cbf70029">>).
-
-execute_counter_fun_from_bytecode(Cfg) ->
-    application:stop(mnesia),
-    application:stop(aec_conductor),
-    application:stop(aecore),
-    {ok, StartedApps, TempDir} = prepare_app_start(aecore, Cfg),
-    ok = mock_genesis(Cfg),
-    {ok,_} = application:ensure_all_started(aecore),
-
-    PrivKey = ?config(my_priv_key, Cfg),
-    Tx = create_tx(#{}, Cfg),
-    OwnerPubKey = ?config(my_pub_key, Cfg),
-    Nonce = 1, %% aect_create_tx:nonce(Tx),
-    ContractPubKey = aect_contracts:compute_contract_pubkey(OwnerPubKey, Nonce),
+    <<"0x6060604052341561000f57600080fd5b60ae8061001d6000396000f300606060"
+      "405260043610603f576000357c0100000000000000000000000000000000000000"
+      "000000000000000000900463ffffffff1680631a94d83e146044575b600080fd5b"
+      "3415604e57600080fd5b606260048080359060200190919050506078565b604051"
+      "8082815260200191505060405180910390f35b60008190509190505600a165627a"
+      "7a723058205cc378b9229138b9feea0e5d1a4c82df2ff3e18e9db005d866e7158b"
+      "e405cbf70029">>.
 
 
-    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
-    ok = aec_tx_pool:push(SignedTx),
-    TxHash = aetx_sign:hash(SignedTx),
+events_from_solidity_binary(_Cfg) ->
+    Code =  receipt_bytecode(),
+    CallData = aeu_hex:hexstring_decode(<<"0xb214faa51700000000000000000000000000000000000000000000000000000000000000">>),
+    ContractAddress = 101,
+    Env  = initial_state(#{ContractAddress => Code}),
+    {ok, NewCode, NewEnv, _} = execute_call(ContractAddress, CallData, Env, #{}),
+    Env2 = NewEnv#{ContractAddress => aeu_hex:hexstring_encode(NewCode)},
+    {ok, RetVal, _, #{logs := L}} = execute_call(ContractAddress, CallData, Env2, #{}),
+    [[<<ContractAddress:160>>,
+      [<<25,218,203,248,60,93,230,101,142,20,203,247,188,174,92,
+         21,236,162,238,222,207,28,102,251,202,146,142,77,53,27,
+         234,15>>,
+       <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+         0,0,0,0,0>>,
+       <<23,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+         0,0,0,0,0,0>>],
+      <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0>>]] = L,
+    ok.
 
-    wait_for_it(fun () ->
-                        none =/=
-                            aec_chain:find_tx_with_location(TxHash)
-                end, true),
+receipt_bytecode() ->
+    %% pragma solidity ^0.4.21;
+    %%
+    %% contract ClientReceipt {
+    %%     event Deposit(
+    %%         address indexed _from,
+    %%         bytes32 indexed _id,
+    %%         uint _value
+    %%     );
+    %%
+    %%     function deposit(bytes32 _id) public payable {
+    %%         // Events are emitted using `emit`, followed by
+    %%         // the name of the event and the arguments
+    %%         // (if any) in parentheses. Any such invocation
+    %%         // (even deeply nested) can be detected from
+    %%         // the JavaScript API by filtering for `Deposit`.
+    %%         emit Deposit(msg.sender, _id, msg.value);
+    %%     }
+    %% }
+    <<"0x6080604052348015600f57600080fd5b5060e88061001e6000396000f300608060"
+      "405260043610603f576000357c0100000000000000000000000000000000000000"
+      "000000000000000000900463ffffffff168063b214faa5146044575b600080fd5b"
+      "606460048036038101908080356000191690602001909291905050506066565b00"
+      "5b80600019163373ffffffffffffffffffffffffffffffffffffffff167f19dacb"
+      "f83c5de6658e14cbf7bcae5c15eca2eedecf1c66fbca928e4d351bea0f34604051"
+      "8082815260200191505060405180910390a3505600a165627a7a72305820ae5aa9"
+      "3cc8c862b2660f25285f4c9fee0bd9751471be450c4d49ce6e9793f61c0029">>.
 
-    %% lager:error("TxBin ~w~n",[TxHash]),
-
-    wait_for_it(fun () ->
-                        case aec_chain:find_tx_with_location(TxHash) of
-                            'none' -> false;
-                            {'mempool', _} -> false;
-                            {_Bin, _TX} -> true
-                        end
-                end, true),
-
-    {ok, Contract} = aec_chain:get_contract(ContractPubKey),
-    ct:pal("~p~n",[Contract]),
-    ct:pal("~p~n",[aect_contracts:state(Contract)]),
-    #{} = aect_contracts:state(Contract),
-    %% Call Counter:inc(1)
+execute_counter_fun_from_bytecode(_Cfg) ->
+    Code =  counter_bytecode(),
     CallData =  aeu_hex:hexstring_decode(<< "0x6d4ce63c" >>),
-    Spec = #{ caller     => aec_id:create(account, OwnerPubKey)
-            , nonce      => 2
-            , contract   => aec_id:create(contract, ContractPubKey)
-            , vm_version => 2
-            , fee        => 1
-            , amount     => 0
-            , gas        => 500
-            , gas_price  => 1
-            , call_data  => CallData
-            },
-    {ok, CallTx} = aect_call_tx:new(Spec),
-    SignedCallTx = aec_test_utils:sign_tx(CallTx, PrivKey),
-    ok = aec_tx_pool:push(SignedCallTx),
-    CallTxHash = aetx_sign:hash(SignedCallTx),
-    wait_for_it(fun () ->
-                        case aec_chain:find_tx_with_location(CallTxHash) of
-                            'none' -> false;
-                            {'mempool', _} -> false;
-                            {_, _} -> true
-                        end
-                end, true),
-    {ok, Contract2} = aec_chain:get_contract(ContractPubKey),
-    ct:pal("~p~n",[Contract2]),
-    ct:pal("~p~n",[aect_contracts:state(Contract2)]),
-
-    ok = unmock_genesis(Cfg),
-    ok = application:stop(aecore),
-    ok = app_stop(StartedApps -- ?TO_BE_STOPPED_APPS_BLACKLIST, TempDir),
+    Env  = initial_state(#{101 => Code}),
+    {ok, NewCode, NewEnv, _} = execute_call(101, CallData, Env, #{}),
+    {ok, _, _, _} = execute_call(101, CallData, NewEnv#{ 101 => aeu_hex:hexstring_encode(NewCode)}, #{}),
     ok.
 
 
@@ -239,7 +131,6 @@ counter_bytecode() ->
     %%  }
 
 
-    aeu_hex:hexstring_decode(
       <<"0x608060405234801561001057600080fd5b5060008060006101000a81548163"
         "ffffffff021916908363ffffffff16021790555061018d8061004160003960"
         "00f300608060405260043610610057576000357c0100000000000000000000"
@@ -254,104 +145,13 @@ counter_bytecode() ->
         "008060009054906101000a900463ffffffff16905090565b80600080905490"
         "6101000a900463ffffffff16016000806101000a81548163ffffffff021916"
         "908363ffffffff160217905550505600a165627a7a72305820d465419d8b4c"
-        "7adf48551bcf6e438080d2c45e27489fc706002b4c638d420ebd0029">>).
+        "7adf48551bcf6e438080d2c45e27489fc706002b4c638d420ebd0029">>.
 
 
 
 %% ------------------------------------------------------------------------
 %% Helper Functions
 %% ------------------------------------------------------------------------
-
-%%%===================================================================
-%%% Keys TODO: Should move
-%%%===================================================================
-new_key_pair() ->
-    #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
-    {PubKey, PrivKey}.
-
-%%%===================================================================
-%%% Accounts in Genesis
-%%%===================================================================
-
-
-mock_genesis(Cfg) ->
-    Preset = ?config(preset, Cfg),
-    meck:new(aec_genesis_block_settings, []),
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, Preset),
-    ok.
-
-unmock_genesis(_Cfg) ->
-    meck:unload(aec_genesis_block_settings),
-    ok.
-
-create_tx(Override, Cfg) ->
-    PubKey = ?config(my_pub_key, Cfg),
-    Code = ?config(code, Cfg),
-    VmVersion = ?config(vm_version, Cfg),
-    Map = #{ owner      => aec_id:create(account, PubKey)
-           , nonce      => 1
-           , code       => Code
-           , vm_version => VmVersion
-           , fee        => 10
-           , deposit    => 100
-           , amount     => 0
-           , gas        => 1000000000000000000
-           , gas_price  => 5
-           , call_data  => <<"0">>
-           },
-    Map1 = maps:merge(Map, Override),
-    {ok, Tx} = aect_create_tx:new(Map1),
-    Tx.
-
-
-
-prepare_app_start(App, Config) ->
-    try prepare_app_start_(App, Config)
-    catch
-        error:Reason ->
-            error({Reason, erlang:get_stacktrace()})
-    end.
-
-prepare_app_start_(App, Config) ->
-    application:load(App),
-    TempDir = create_temp_key_dir(),
-    application:set_env(aecore, keys_dir, TempDir),
-    application:set_env(aecore, password, <<"secret">>),
-
-    {ok, Deps0} = application:get_key(App, applications),
-    Deps = maybe_add_mnesia(App, Deps0), % mnesia is started manually in aecore_app
-    AlreadyRunning = [ Name || {Name, _,_} <- proplists:get_value(running_apps, Config) ],
-    [ ok = application:ensure_started(Dep) || Dep <- Deps ],
-    {ok, lists:reverse(Deps -- AlreadyRunning), TempDir}.
-
-app_stop(Apps, TempDir) ->
-    remove_temp_key_dir(TempDir),
-    [ application:stop(App) || App <- Apps ],
-    ok.
-
-maybe_add_mnesia(App, Deps) ->
-    case lists:member(aecore, [App|Deps]) of
-        true  -> Deps ++ [mnesia];
-        false -> Deps
-    end.
-
-remove_temp_key_dir(TmpKeysDir) ->
-    {ok, KeyFiles} = file:list_dir(TmpKeysDir),
-    %% Expect four filenames - private and public keys x2.
-    [_KF1, _KF2, _KF3, _KF4] = KeyFiles,
-    lists:foreach(
-      fun(F) ->
-              AbsF = filename:absname_join(TmpKeysDir, F),
-              {ok, _} = {file:delete(AbsF), {F, AbsF}}
-      end,
-      KeyFiles),
-    ok = file:del_dir(TmpKeysDir).
-
-create_temp_key_dir() ->
-    mktempd(os:type()).
-
-mktempd({unix, _}) ->
-    lib:nonl(?cmd("mktemp -d")).
 
 wait_for_it(Fun, Value) ->
     wait_for_it(Fun, Value, 0).
@@ -366,14 +166,221 @@ wait_for_it(Fun, Value, Sleep) ->
             wait_for_it(Fun, Value, Sleep + 10)
     end.
 
-mock_fast_and_deterministic_cuckoo_pow() ->
-    mock_fast_cuckoo_pow({"mean16s-generic", "", 16, false}).
 
-mock_fast_cuckoo_pow({_MinerBin, _MinerExtraArgs, _NodeBits} = Cfg) ->
-    meck:expect(aeu_env, get_env, 3,
-                fun
-                    (aecore, aec_pow_cuckoo, _) ->
-                       Cfg;
-                    (App, Key, Def) ->
-                       meck:passthrough([App, Key, Def])
-               end).
+
+execute_call(Contract, CallData, ChainState, Options) ->
+    #{Contract := Code} = ChainState,
+    ChainState1 = ChainState#{ running => Contract },
+    Trace = true,
+    Res = aect_evm:execute_call(
+          maps:merge(
+          #{ code              => Code,
+             address           => Contract,
+             caller            => 0,
+             data              => CallData,
+             gas               => 1000000,
+             gasPrice          => 1,
+             origin            => 0,
+             value             => 0,
+             currentCoinbase   => 0,
+             currentDifficulty => 0,
+             currentGasLimit   => 1000000,
+             currentNumber     => 0,
+             currentTimestamp  => 0,
+             chainState        => ChainState1,
+             chainAPI          => ?MODULE,
+             vm_version        =>  ?AEVM_01_Solidity_01}, Options),
+          Trace),
+    case Res of
+        {ok, #{ out := RetVal, chain_state := S } = ResRec} ->
+            {ok, RetVal, S, ResRec};
+        {revert, RRes}  -> {revert, RRes};
+        Err = {error, _, _}      -> Err
+    end.
+
+make_call(Contract, Fun, Args, Env, Options) ->
+    #{ Contract := Code } = Env,
+    CallData = aect_evm:encode_call_data(Code, list_to_binary(atom_to_list(Fun)),
+                    Args),
+    execute_call(Contract, CallData, Env, Options).
+
+create_contract(Address, Code, Args, Env) ->
+    Env1 = Env#{Address => Code},
+    {ok, InitS, Env2} = make_call(Address, init, Args, Env1, #{}),
+    set_store(aevm_eeevm_store:from_sophia_state(InitS), Env2).
+
+create_contract(Address, Code, Args, Env, Options) ->
+    Env1 = Env#{Address => Code},
+    {ok, InitS, Env2} = make_call(Address, init, Args, Env1, Options),
+    set_store(aevm_eeevm_store:from_sophia_state(InitS), Env2).
+
+successful_call_(Contract, Type, Fun, Args, Env) ->
+    {Res, _Env1} = successful_call(Contract, Type, Fun, Args, Env),
+    Res.
+
+successful_call_(Contract, Type, Fun, Args, Env, Options) ->
+    {Res, _Env1} = successful_call(Contract, Type, Fun, Args, Env, Options),
+    Res.
+
+successful_call(Contract, Type, Fun, Args, Env) ->
+    successful_call(Contract, Type, Fun, Args, Env, #{}).
+
+successful_call(Contract, Type, Fun, Args, Env, Options) ->
+    case make_call(Contract, Fun, Args, Env, Options) of
+        {ok, Result, Env1, _} -> {Result, Env1};
+        {error, Err, S} ->
+            io:format("S =\n  ~p\n", [S]),
+            exit({error, Err})
+    end.
+
+%% failing_call(Contract, Fun, Args, Env) ->
+%%     failing_call(Contract, Fun, Args, Env, #{}).
+
+failing_call(Contract, Fun, Args, Env, Options) ->
+    case make_call(Contract, Fun, Args, Env, Options) of
+        {ok, Result, _} ->
+            Words = aeso_test_utils:dump_words(Result),
+            exit({expected_failure, {ok, Words}});
+        {error, Err, _} ->
+            Err
+    end.
+
+
+%% -- Chain API implementation -----------------------------------------------
+
+
+
+initial_state(Contracts) ->
+    initial_state(Contracts, #{}).
+
+initial_state(Contracts, Accounts) ->
+    maps:merge(#{environment => #{}, store => #{}},
+        maps:merge(Contracts, #{accounts => Accounts})).
+
+spend(_To, Amount, _) when Amount < 0 ->
+    {error, negative_spend};
+spend(ToId, Amount, S = #{ running := From, accounts := Accounts }) ->
+    <<To:256>> = aec_id:specialize(ToId, account),
+    Balance = get_balance(<<From:256>>, S),
+    case Amount =< Balance of
+        true -> {ok, S#{ accounts := Accounts#{ From => Balance            - Amount,
+                                                To   => get_balance(<<To:256>>, S) + Amount } }};
+        false -> {error, insufficient_funds}
+    end.
+
+get_balance(<<Account:256>>, #{ accounts := Accounts }) ->
+    maps:get(Account, Accounts, 0).
+
+get_store(#{ running := Contract, store := Store }) ->
+    Data = maps:get(Contract, Store, undefined),
+    case Data of
+        undefined -> #{};
+        _         -> Data
+    end.
+
+set_store(Data, State = #{ running := Contract, store := Store }) ->
+    State#{ store => Store#{ Contract => Data } }.
+
+call_contract(<<Contract:256>>, _Gas, Value, CallData, _, S = #{running := Caller}) ->
+    case maps:is_key(Contract, S) of
+        true ->
+            #{environment := Env0} = S,
+            Env = maps:merge(Env0, #{address => Contract, caller => Caller, value => Value}),
+            Res = execute_call(Contract, CallData, S, Env),
+            case Res of
+                {ok, Ret, #{ accounts := Accounts }} ->
+                    {ok, aevm_chain_api:call_result(Ret, 0), S#{ accounts := Accounts }};
+                {error, out_of_gas, _} ->
+                    io:format("  result = out_of_gas\n"),
+                    {ok, aevm_chain_api:call_exception(out_of_gas, 0), S}
+            end;
+        false ->
+            io:format("  oops, no such contract!\n"),
+            {error, {no_such_contract, Contract}}
+    end.
+
+
+oracle_register(PubKey = <<Account:256>>, <<Sign:256>>, QueryFee, TTL, QueryFormat, ResponseFormat, State) ->
+    io:format("oracle_register(~p, ~p, ~p, ~p, ~p, ~p)\n", [Account, Sign, QueryFee, TTL, QueryFormat, ResponseFormat]),
+    Oracles = maps:get(oracles, State, #{}),
+    State1 = State#{ oracles => Oracles#{ Account =>
+                        #{sign            => Sign,
+                          nonce           => 1,
+                          query_fee       => QueryFee,
+                          query_format    => QueryFormat,
+                          response_format => ResponseFormat,
+                          ttl             => TTL} } },
+    {ok, PubKey, State1}.
+
+oracle_query(<<Oracle:256>>, Q, Value, QTTL, RTTL, State) ->
+    io:format("oracle_query(~p, ~p, ~p, ~p, ~p)\n", [Oracle, Q, Value, QTTL, RTTL]),
+    QueryKey = <<QueryId:256>> = crypto:hash(sha256, term_to_binary(make_ref())),
+    Queries = maps:get(oracle_queries, State, #{}),
+    State1  = State#{ oracle_queries =>
+                Queries#{ QueryId =>
+                    #{oracle => Oracle,
+                      query  => Q,
+                      q_ttl  => QTTL,
+                      r_ttl  => RTTL} } },
+    {ok, QueryKey, State1}.
+
+oracle_respond(<<_Oracle:256>>, <<Query:256>>, Sign, R, State) ->
+    io:format("oracle_respond(~p, ~p, ~p)\n", [Query, Sign, R]),
+    case maps:get(oracle_queries, State, #{}) of
+        #{Query := Q} = Queries ->
+            State1 = State#{ oracle_queries := Queries#{ Query := Q#{ answer => {some, R} } } },
+            {ok, State1};
+        _ -> {error, {no_such_query, Query}}
+    end.
+
+oracle_extend(<<Oracle:256>>,_Sign, TTL, State) ->
+    io:format("oracle_extend(~p, ~p, ~p)\n", [Oracle,_Sign, TTL]),
+    case maps:get(oracles, State, #{}) of
+        #{Oracle := O} = Oracles ->
+            State1 = State#{ oracles := Oracles#{ Oracle := O#{ ttl => TTL } } },
+            {ok, State1};
+        _ -> foo= Oracle, {error, {no_such_oracle, Oracle}}
+    end.
+
+oracle_get_answer(<<_Oracle:256>>, <<Query:256>>, State) ->
+    case maps:get(oracle_queries, State, #{}) of
+        #{Query := Q} ->
+            Answer = maps:get(answer, Q, none),
+            io:format("oracle_get_answer() -> ~p\n", [Answer]),
+            {ok, Answer};
+        _ -> {ok, none}
+    end.
+
+oracle_get_question(<<_Oracle:256>>, <<Query:256>>, State) ->
+    case maps:get(oracle_queries, State, #{}) of
+        #{Query := Q} ->
+            Question = maps:get(query, Q, none),
+            io:format("oracle_get_question() -> ~p\n", [Question]),
+            {ok, Question};
+        _             -> {ok, none}
+    end.
+
+oracle_query_fee(<<Oracle:256>>, State) ->
+    case maps:get(oracles, State, []) of
+        #{ Oracle := #{query_fee := Fee} } -> {ok, Fee};
+        _ -> {error, {no_such_oracle, Oracle}}
+    end.
+
+oracle_query_format(<<Oracle:256>>, State) ->
+    case maps:get(oracles, State, []) of
+        #{ Oracle := #{query_format := Format} } -> {ok, Format};
+        _ -> {error, {no_such_oracle, Oracle}}
+    end.
+
+oracle_response_format(<<Oracle:256>>, State) ->
+    case maps:get(oracles, State, #{}) of
+        #{ Oracle := #{response_format := Format} } -> {ok, Format};
+        _ -> {error, {no_such_oracle, Oracle}}
+    end.
+
+oracle_query_oracle(<<Query:256>>, State) ->
+    case maps:get(oracle_queries, State, #{}) of
+        #{ Query := #{oracle := Oracle} } -> {ok, <<Oracle:256>>};
+        _ -> {error, {no_such_oracle_query, Query}}
+    end.
+
