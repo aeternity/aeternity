@@ -82,6 +82,8 @@
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
 -define(BENEFICIARY_PUBKEY, <<12345:?BENEFICIARY_PUB_BYTES/unit:8>>).
 
+-define(CHAIN_RELATIVE_TTL_MEMORY_ENCODING(X), {variant, 0, [X]}).
+-define(CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(X), {variant, 1, [X]}).
 
 %%%===================================================================
 %%% Common test framework
@@ -743,8 +745,8 @@ sophia_typed_calls(_Cfg) ->
 %%  - Failing calls
 sophia_oracles(_Cfg) ->
     state(aect_test_utils:new_state()),
-    RelativeTTL       = fun(Delta)  -> {variant, 0, [Delta]} end,
-    FixedTTL          = fun(Height) -> {variant, 1, [Height]} end,
+    RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
+    FixedTTL          = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
     Acc               = ?call(new_account, 1000000),
     Ct = <<CtId:256>> = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
     QueryFee          = 100,
@@ -790,8 +792,8 @@ ttl_height(_, {block, H}) -> H.
 
 %% Run a single transaction from an Oracle TTL scenario and check the results.
 step_ttl(St = #{ account := Acc, contract := Ct }, Height, Cmd) ->
-    Enc = fun({delta, D}) -> {variant, 0, [D]};
-             ({block, H}) -> {variant, 1, [H]} end,
+    Enc = fun({delta, D}) -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(D);
+             ({block, H}) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(H) end,
     QFee = 10,
     Error = {error, <<"out_of_gas">>},
     io:format("-- At height ~p --\nState ~p\nTransaction: ~p\n", [Height, St, Cmd]),
