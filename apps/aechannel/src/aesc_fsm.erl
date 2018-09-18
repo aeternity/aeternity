@@ -693,7 +693,7 @@ accepted(cast, {?FND_CREATED, Msg}, #data{role = responder} = D) ->
         %%     close(Error, D)
     end;
 accepted(Type, Msg, D) ->
-    handle_common_event(Type, Msg, error, D).
+    handle_common_event(Type, Msg, error_all, D).
 
 half_signed(enter, _OldSt, _D) -> keep_state_and_data;
 half_signed(cast, {?FND_SIGNED, Msg}, #data{role = initiator} = D) ->
@@ -710,7 +710,7 @@ half_signed(cast, {?FND_SIGNED, Msg}, #data{role = initiator} = D) ->
         %%     close(Error, D)
     end;
 half_signed(Type, Msg, D) ->
-    handle_common_event(Type, Msg, error, D).
+    handle_common_event(Type, Msg, error_all, D).
 
 dep_half_signed(enter, _OldSt, _D) -> keep_state_and_data;
 dep_half_signed(cast, {Req, _} = Msg, D) when ?UPDATE_CAST(Req) ->
@@ -935,7 +935,7 @@ signed(cast, {?FND_LOCKED, Msg}, D) ->
 signed(cast, {?SHUTDOWN, _Msg}, D) ->
     next_state(closing, D);
 signed(Type, Msg, D) ->
-    handle_common_event(Type, Msg, error, D).
+    handle_common_event(Type, Msg, error_all, D).
 
 funding_locked_complete(D) ->
     D1   = D#data{state = aesc_offchain_state:add_signed_tx(D#data.create_tx,
@@ -1233,6 +1233,15 @@ handle_info(Msg, #data{cur_statem_state = St} = D) ->
     lager:debug("Discarding info in ~p state: ~p", [St, Msg]),
     keep_state(log(drop, msg_type(Msg), Msg, D)).
 
+%% A few different modes are specified here:
+%% * error_all - all calls and casts not explicitly handled lead to protocol
+%%               error. Used mainly for the open/reestablish handshake.
+%% * error     - try to handle calls, but unknown casts cause protocol error.
+%%               Used during deposit/withdraw, since calls can be used to
+%%               inject a competing operation (thereby rejecting the other).
+%% * postpone  - postpone casts (and info), but try to handle calls.
+%% * discard   - handle calls, but drop unknown casts (could be e.g. a stray
+%%               signing reply in the open state).
 handle_common_event(E, Msg, M, #data{cur_statem_state = St} = D) ->
     lager:debug("handle_common_event(~p, ~p, ~p, ~p, D)", [E, Msg, St, M]),
     handle_common_event_(E, Msg, St, M, D).
@@ -1252,14 +1261,15 @@ handle_common_event_({call, From}, Req, St, Mode, D) ->
         _ ->
             handle_call(St, Req, From, D)
     end;
-handle_common_event_(_Type, {_, _} = _Msg, _St, P, D) when P == postpone ->
-    postpone(D);
 handle_common_event_(info, Msg, _St, _P, D) ->
     handle_info(Msg, D);
+handle_common_event_(_Type, _Msg, _St, P, D) when P == postpone ->
+    postpone(D);
 handle_common_event_(Type, Msg, St, discard, D) ->
     lager:error("Discarding ~p in '~p' state: ~p", [Type, St, Msg]),
     keep_state(log(drop, msg_type(Msg), Msg, D));
-handle_common_event_(Type, Msg, St, error, D) ->
+handle_common_event_(Type, Msg, St, Err, D) when Err==error;
+                                                 Err==error_all ->
     lager:debug("Wrong ~p in ~p: ~p", [Type, St, Msg]),
     %% should send an error msg
     close(protocol_error, D).

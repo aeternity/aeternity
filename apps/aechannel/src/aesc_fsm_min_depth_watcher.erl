@@ -105,11 +105,11 @@ check_status(#st{requests = Reqs} = St) ->
 
 check_status([Req|Reqs], St, Cache, Acc) ->
     case check_status_(Req, St, Cache) of
-        {done, #{} = Cache1} ->
+        {done, Cache1} when is_map(Cache1) ->
             check_status(Reqs, St, Cache1, Acc);
-        {done, #st{} = St1, #{} = Cache1} ->
+        {done, #st{} = St1, Cache1} when is_map(Cache1) ->
             check_status(Reqs, St1, Cache1, Acc);
-        {#{} = Req1, Cache1} ->
+        {Req1, Cache1} when is_map(Req1) ->
             check_status(Reqs, St, Cache1, [Req1|Acc])
     end;
 check_status([], St, _, Acc) ->
@@ -149,13 +149,8 @@ check_status_(#{mode := tx_hash, tx_hash := TxHash, parent := Parent,
         {true, C1} ->
             lager:debug("min_depth achieved", []),
             #{ callback_mod := Mod } = R,
-            case Mod:minimum_depth_achieved(
-                   Parent, ChanId, Type, TxHash) of
-                ok ->
-                    {done, C1}
-                %% stop ->
-                %%     {stop, normal, St}
-            end;
+            Mod:minimum_depth_achieved(Parent, ChanId, Type, TxHash),
+            {done, C1};
         {_, C1} ->
             lager:debug("min_depth not yet achieved", []),
             {R, C1}
