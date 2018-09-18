@@ -825,10 +825,19 @@ find_predecessor_at_height(Node, Height) ->
     case node_height(Node) of
         Height -> Node;
         H when H < Height -> error({cannot_find_predecessor, H, Height});
+        H when H =:= Height + 1 ->
+            %% Special case where we already have the hash
+            db_get_node(prev_key_hash(Node));
         H ->
             case db_find_key_nodes_at_height(Height) of
                 {ok, [KeyNode]} -> KeyNode;
-                {ok, KeyNodes} -> find_one_predecessor(KeyNodes, Node);
+                {ok, KeyNodes} ->
+                    %% Use the preceeding key node since fork info might not be known
+                    %% for Node (i.e., in candidate generation).
+                    %% The clause for Height + 1 above will catch the case of the
+                    %% immediate previous key hash.
+                    PrevKeyNode = db_get_node(prev_key_hash(Node)),
+                    find_one_predecessor(KeyNodes, PrevKeyNode);
                 error -> error({cannot_find_predecessor, H, Height})
             end
     end.
