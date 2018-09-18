@@ -320,9 +320,13 @@ handle_request('PostTransaction', #{'Tx' := Tx}, _Context) ->
         {ok, TxDec} ->
             case deserialize_transaction(TxDec) of
                 {ok, SignedTx} ->
-                    ok = aec_tx_pool:push(SignedTx), %% TODO Add proper error handling
-                    Hash = aetx_sign:hash(SignedTx),
-                    {200, [], #{<<"tx_hash">> => aec_base58c:encode(tx_hash, Hash)}};
+                    case aec_tx_pool:push(SignedTx) of
+                        ok ->
+                            Hash = aetx_sign:hash(SignedTx),
+                            {200, [], #{<<"tx_hash">> => aec_base58c:encode(tx_hash, Hash)}};
+                        {error, _} ->
+                            {400, [], #{reason => <<"Invalid tx">>}}
+                    end; 
                 {error, broken_tx} ->
                     {400, [], #{reason => <<"Invalid tx">>}}
             end;

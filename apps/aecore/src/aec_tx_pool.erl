@@ -104,11 +104,11 @@ stop() ->
 
 %% INFO: Transaction from the same sender with the same nonce and fee
 %%       will be overwritten
--spec push(aetx_sign:signed_tx()) -> ok.
+-spec push(aetx_sign:signed_tx()) -> ok | {error, atom()}.
 push(Tx) ->
     push(Tx, tx_created).
 
--spec push(aetx_sign:signed_tx(), event()) -> ok.
+-spec push(aetx_sign:signed_tx(), event()) -> ok | {error, atom()}.
 push(Tx, Event) when ?PUSH_EVENT(Event) ->
     %% Verify that this is a signed transaction.
     try aetx_sign:tx(Tx)
