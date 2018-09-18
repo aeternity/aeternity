@@ -281,16 +281,20 @@ tx_pool_test_() ->
                             aec_tx_pool:get_candidate(GasTx1, aec_chain:top_block_hash())),
 
                %% Get only 2 txs, the 1st + 2nd or 1st + 3rd.
-               {ok, STxs} = aec_tx_pool:get_candidate(GasTx1 + GasTx2, aec_chain:top_block_hash()),
-               ?assert(lists:member(STx1, STxs) and (lists:member(STx2, STxs) or lists:member(STx3, STxs))),
+               {ok, STxs1} = aec_tx_pool:get_candidate(GasTx1 + GasTx2, aec_chain:top_block_hash()),
+               ?assert(lists:member(STx1, STxs1) and (lists:member(STx2, STxs1) or lists:member(STx3, STxs1))),
 
                %% Get all 3 txs by providing exactly the gas the txs need.
-               ?assertEqual({ok, [STx1, STx2, STx3]},
-                            aec_tx_pool:get_candidate(GasTx1 + GasTx2 + GasTx3, aec_chain:top_block_hash())),
+               {ok, STxs2} = aec_tx_pool:get_candidate(GasTx1 + GasTx2 + GasTx3, aec_chain:top_block_hash()),
+               ?assert(lists:member(STx1, STxs2)),
+               ?assert(lists:member(STx2, STxs2)),
+               ?assert(lists:member(STx3, STxs2)),
 
                %% Get 1st and 3rd tx, skip 2nd tx.
-               ?assertEqual({ok, [STx1, STx3]},
-                             aec_tx_pool:get_candidate(GasTx1 + GasTx3, aec_chain:top_block_hash())),
+               {ok, STxs3} = aec_tx_pool:get_candidate(GasTx1 + GasTx3, aec_chain:top_block_hash()),
+               ?assert(lists:member(STx1, STxs3)),
+               ?assert(lists:member(STx3, STxs3)),
+
                ok
        end},
       {"Ensure persistence",
