@@ -13,6 +13,7 @@
          deserialize_from_binary/1,
          deserialize_from_map/1,
          difficulty/1,
+         gas/1,
          hash_internal_representation/1,
          height/1,
          is_block/1,
@@ -228,6 +229,10 @@ set_height(Block, Height) ->
 difficulty(Block) ->
     aec_pow:target_to_difficulty(target(Block)).
 
+-spec gas(micro_block()) -> non_neg_integer().
+gas(#mic_block{txs = Txs}) ->
+    lists:foldl(fun(Tx, Acc) -> aetx:gas(aetx_sign:tx(Tx)) + Acc end, 0, Txs).
+
 -spec time_in_msecs(block()) -> non_neg_integer().
 time_in_msecs(Block) ->
     aec_headers:time_in_msecs(to_header(Block)).
@@ -398,7 +403,8 @@ validate_key_block(#key_block{} = Block) ->
 
 -spec validate_micro_block(micro_block()) -> 'ok' | {'error', {'header' | 'block', term()}}.
 validate_micro_block(#mic_block{} = Block) ->
-    Validators = [fun validate_txs_hash/1],
+    Validators = [fun validate_txs_hash/1,
+                  fun validate_gas_limit/1],
     case aec_headers:validate_micro_block_header(to_micro_header(Block)) of
         ok ->
             case aeu_validation:run(Validators, [Block]) of
@@ -418,3 +424,11 @@ validate_txs_hash(#mic_block{txs = Txs} = Block) ->
         _Other ->
             {error, malformed_txs_hash}
     end.
+
+-spec validate_gas_limit(block()) -> ok | {error, gas_limit_exceeded}.
+validate_gas_limit(#mic_block{} = Block) ->
+    case gas(Block) =< aec_governance:block_gas_limit() of
+        true  -> ok;
+        false -> {error, gas_limit_exceeded}
+    end.
+

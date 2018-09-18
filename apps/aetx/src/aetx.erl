@@ -9,6 +9,7 @@
         , check_from_contract/4
         , deserialize_from_binary/1
         , fee/1
+        , gas/1
         , lookup_gas_price/1
         , ttl/1
         , is_tx_type/1
@@ -112,6 +113,9 @@
 -callback fee(Tx :: tx_instance()) ->
     Fee :: integer().
 
+-callback gas(Tx :: tx_instance()) ->
+    Gas :: non_neg_integer().
+
 -callback gas_price(Tx :: tx_instance()) ->
     GasPrice :: aect_contracts:amount().
 
@@ -170,6 +174,10 @@ tx_type(TxType) when is_atom(TxType) ->
 -spec fee(Tx :: tx()) -> Fee :: integer().
 fee(#aetx{ cb = CB, tx = Tx }) ->
     CB:fee(Tx).
+
+-spec gas(Tx :: tx()) -> Gas :: non_neg_integer().
+gas(#aetx{ cb = CB, tx = Tx }) ->
+    CB:gas(Tx).
 
 -spec lookup_gas_price(Tx :: tx()) -> none | {value, GasPrice} when
       GasPrice :: aect_contracts:amount().

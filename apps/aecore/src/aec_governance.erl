@@ -7,7 +7,8 @@
          median_timestamp_key_blocks/0,
          expected_block_mine_rate/0,
          block_mine_reward/0,
-         max_txs_in_block/0,
+         block_gas_limit/0,
+         tx_gas/0,
          beneficiary_reward_delay/0,
          minimum_tx_fee/0,
          minimum_gas_price/0,
@@ -33,6 +34,11 @@
 -define(TIMESTAMP_MEDIAN_BLOCKS, 11).
 -define(EXPECTED_BLOCK_MINE_RATE, 3 * 60 * 1000). %% 60secs * 1000ms * 3 = 180000msecs
 -define(BLOCK_MINE_REWARD, 10000000000000000000).
+%% Ethereum's gas limit is 8 000 000 and block time ~15s.
+%% For 3s block time it's 1 600 000 (5x less).
+-define(BLOCK_GAS_LIMIT, 1600000).
+%% Taken from Ethereum - a simple tx to send Eth is about 21000 gas.
+-define(TX_GAS, 21000).
 -define(BENEFICIARY_REWARD_DELAY, 180). %% in key blocks / generations
 -define(MICRO_BLOCK_CYCLE, 3000). %% in msecs
 
@@ -67,13 +73,16 @@ expected_block_mine_rate() ->
     aeu_env:user_config_or_env([<<"mining">>, <<"expected_mine_rate">>],
                                aecore, expected_mine_rate, ?EXPECTED_BLOCK_MINE_RATE).
 
+%% In Ethereum, block gas limit is changed in every block. The new block gas
+%% limit is decided by algorithm and vote by miners.
 block_mine_reward() ->
     ?BLOCK_MINE_REWARD.
 
-max_txs_in_block() ->
-    %% TODO: Consider trade-offs sync latency vs pow time
-    %%       Relate to transaction size expressed with gas (when we have channels)
-    10946.
+block_gas_limit() ->
+    ?BLOCK_GAS_LIMIT.
+
+tx_gas() ->
+    ?TX_GAS.
 
 minimum_tx_fee() ->
     1.

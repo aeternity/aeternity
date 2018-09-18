@@ -14,6 +14,7 @@
 -export([new/1,
          type/0,
          fee/1,
+         gas/1,
          ttl/1,
          nonce/1,
          origin/1,
@@ -88,6 +89,10 @@ type() ->
 -spec fee(tx()) -> integer().
 fee(#oracle_response_tx{fee = F}) ->
     F.
+
+-spec gas(tx()) -> non_neg_integer().
+gas(#oracle_response_tx{}) ->
+    aec_governance:tx_gas().
 
 -spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#oracle_response_tx{ttl = TTL}) ->
