@@ -12,7 +12,8 @@
 % Test cases
 -export([
     test_simple_same_node_channel/1,
-    test_simple_different_nodes_channel/1
+    test_simple_different_nodes_channel/1,
+    on_chain_channel/1
 ]).
 
 -import(aest_nodes, [
@@ -85,7 +86,8 @@
 
 all() -> [
     test_simple_same_node_channel,
-    test_simple_different_nodes_channel
+    test_simple_different_nodes_channel,
+    on_chain_channel
 ].
 
 init_per_suite(Config) ->
@@ -187,3 +189,38 @@ simple_channel_test(ChannelOpts, Cfg) ->
 setup(NodeSpecs, Config, Cfg) ->
     setup_nodes([maps:put(config, Config, N) || N <- NodeSpecs], Cfg).
 
+on_chain_channel(Cfg) ->
+    MikePubkey = aec_base58c:encode(account_pubkey, maps:get(pubkey, ?MIKE)),
+    NodeConfig = #{ beneficiary => MikePubkey },
+    setup([?NODE1], NodeConfig, Cfg),
+    NodeNames = [node1],
+    start_node(node1, Cfg),
+    wait_for_startup([node1], 4, Cfg),  %% make sure ?MIKE has some money
+    #{tx_hash := Hash1} = aest_nodes:post_spend_tx(node1, ?MIKE, ?BOB, 1, #{amount => 1000}),
+    #{tx_hash := Hash2} = aest_nodes:post_spend_tx(node1, ?MIKE, ?ALICE, 2, #{amount => 1000}),
+    aest_nodes:wait_for_value({txs_on_chain, [Hash1, Hash2]}, NodeNames, 10000, []),
+    wait_for_value({balance, maps:get(pubkey, ?BOB), 100}, NodeNames, 5000, []),
+    wait_for_value({balance, maps:get(pubkey, ?ALICE), 100}, NodeNames, 5000, []),
+
+    #{tx_hash := CreateHash, channel_id := ChannelId} = 
+        aest_nodes:post_create_state_channel_tx(node1, ?BOB, ?ALICE, #{ nonce => 1 }),
+    aest_nodes:wait_for_value({txs_on_chain, [CreateHash]}, NodeNames, 10000, []),
+
+    #{tx_hash := DepositHash} = 
+        aest_nodes:post_deposit_state_channel_tx(node1, ?BOB, ?ALICE, ChannelId, #{ nonce => 2, amount => 20, round => 1 }),
+    aest_nodes:wait_for_value({txs_on_chain, [DepositHash]}, NodeNames, 10000, []),
+
+    #{tx_hash := WithdrawHash} = 
+        aest_nodes:post_withdraw_state_channel_tx(node1, ?ALICE, ?BOB, ChannelId, #{ nonce => 1, amount => 20, round => 2 }),
+    aest_nodes:wait_for_value({txs_on_chain, [WithdrawHash]}, NodeNames, 10000, []),
+
+
+    #{tx_hash := CloseHash} = 
+        aest_nodes:post_close_mutual_state_channel_tx(node1, ?BOB, ?ALICE, ChannelId, 
+                                                      #{ nonce => 3, fee => 1, 
+                                                         initiator_amount_final => 59,
+                                                         responder_amount_final => 100 }),
+    aest_nodes:wait_for_value({txs_on_chain, [CloseHash]}, NodeNames, 10000, []),
+
+    wait_for_value({balance, maps:get(pubkey, ?BOB), 100}, NodeNames, 5000, []),
+    wait_for_value({balance, maps:get(pubkey, ?ALICE), 100}, NodeNames, 5000, []).
