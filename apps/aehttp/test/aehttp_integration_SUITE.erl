@@ -2942,7 +2942,7 @@ post_correct_tx(_Config) ->
 post_broken_tx(_Config) ->
     Amount = 1,
     {BlocksToMine, Fee} = minimal_fee_and_blocks_to_mine(Amount, 1),
-    {PubKey, Nonce} = prepare_for_spending(BlocksToMine),
+    {PubKey, Nonce} = prepare_for_spending(max(BlocksToMine, 3)),  %% we need at least 3 blocks
     {ok, SpendTx} =
         aec_spend_tx:new(
           #{sender_id => aec_id:create(account, PubKey),
@@ -2953,13 +2953,28 @@ post_broken_tx(_Config) ->
             payload => <<"foo">>}),
     {ok, SignedTx} = rpc(aec_keys, sign_tx, [SpendTx]),
     SignedTxBin = aetx_sign:serialize_to_binary(SignedTx),
+
+    {ok, SpendTTLTx} = 
+        aec_spend_tx:new(
+          #{sender_id => aec_id:create(account, PubKey),
+            recipient_id => aec_id:create(account, random_hash()),
+            amount => Amount,
+            fee => Fee,
+            nonce => Nonce,
+            ttl => 2,
+            payload => <<"too low ttl">>}),
+    {ok, SignedTTLTx} = rpc(aec_keys, sign_tx, [SpendTTLTx]),
+    SignedTTLTxBin = aetx_sign:serialize_to_binary(SignedTTLTx),
+
     BrokenTxBin = case SignedTxBin of
                     <<1:1, Rest/bits>> -> <<0:1, Rest/bits>>;
                     <<0:1, Rest/bits>> -> <<1:1, Rest/bits>>
                   end,
     EncodedBrokenTx = aec_base58c:encode(transaction, BrokenTxBin),
+    EncodedBrokenTTLTx = aec_base58c:encode(transaction, SignedTTLTxBin),
     EncodedSignedTx = aec_base58c:encode(transaction, SignedTxBin),
     {ok, 400, #{<<"reason">> := <<"Invalid tx">>}} = post_transactions_sut(EncodedBrokenTx),
+    {ok, 400, #{<<"reason">> := <<"Invalid tx">>}} = post_transactions_sut(EncodedBrokenTTLTx),
     {ok, 200, _} = post_transactions_sut(EncodedSignedTx),
     ok.
 
