@@ -37,7 +37,6 @@
 
 -define(CONTRACT_INTERACTION_TYPE, contract_call).
 -define(CONTRACT_INTERACTION_VSN, 2).
--define(CONTRACT_INTERACTION_VSN_PRE_LOG, 1).
 
 %%%===================================================================
 %%% Types
@@ -142,20 +141,7 @@ deserialize(B) ->
             , {log, Log}
             ] =  aec_serialization:decode_fields(
                    serialization_template(?CONTRACT_INTERACTION_VSN),
-                   Fields);
-        ?CONTRACT_INTERACTION_VSN_PRE_LOG ->
-            [ {caller_id, CallerId}
-            , {caller_nonce, CallerNonce}
-            , {height, Height}
-            , {contract_id, ContractId}
-            , {gas_price, GasPrice}
-            , {gas_used, GasUsed}
-            , {return_value, ReturnValue}
-            , {return_type, ReturnType}
-            ] = aec_serialization:decode_fields(
-                  serialization_template(?CONTRACT_INTERACTION_VSN_PRE_LOG),
-                  Fields),
-            Log = []
+                   Fields)
     end,
     %% TODO: check caller_id type
     contract = aec_id:specialize_type(ContractId),
@@ -180,16 +166,6 @@ serialization_template(?CONTRACT_INTERACTION_VSN) ->
     , {return_value, binary}
     , {return_type, int}
     , {log, [{binary, [binary], binary}]}
-    ];
-serialization_template(?CONTRACT_INTERACTION_VSN_PRE_LOG) ->
-    [ {caller_address, binary}
-    , {caller_nonce, int}
-    , {height, int}
-    , {contract_address, binary}
-    , {gas_price, int}
-    , {gas_used, int}
-    , {return_value, binary}
-    , {return_type, int}
     ].
 
 serialize_return_type(ok) -> 0;
