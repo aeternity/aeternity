@@ -35,7 +35,8 @@
 -export([signing_response/3]).    %% (Fsm, Tag, Obj)
 
 %% Used by min-depth watcher
--export([minimum_depth_achieved/4]).  %% (Fsm, OnChainId, Type, TxHash)
+-export([minimum_depth_achieved/4,     %% (Fsm, OnChainId, Type, TxHash)
+         channel_closing_on_chain/2]). %% (Fsm, OnChainId)
 
 -export([init/1,
          callback_mode/0,
@@ -91,6 +92,30 @@
         ; R==upd_create_contract
         ; R==upd_call_contract).
 
+-define(KNOWN_MSG_TYPE(T), T =:= ?CH_OPEN
+                         ; T =:= ?CH_ACCEPT
+                         ; T =:= ?FND_CREATED
+                         ; T =:= ?FND_SIGNED
+                         ; T =:= ?FND_LOCKED
+                         ; T =:= ?UPDATE
+                         ; T =:= ?UPDATE_ACK
+                         ; T =:= ?UPDATE_ERR
+                         ; T =:= ?DEP_CREATED
+                         ; T =:= ?DEP_SIGNED
+                         ; T =:= ?DEP_LOCKED
+                         ; T =:= ?DEP_ERR
+                         ; T =:= ?WDRAW_CREATED
+                         ; T =:= ?WDRAW_SIGNED
+                         ; T =:= ?WDRAW_LOCKED
+                         ; T =:= ?WDRAW_ERR
+                         ; T =:= ?INBAND_MSG
+                         ; T =:= disconnect
+                         ; T =:= ?LEAVE
+                         ; T =:= ?LEAVE_ACK
+                         ; T =:= ?SHUTDOWN
+                         ; T =:= ?SHUTDOWN_ACK
+                         ; T =:= ?CH_REESTABL
+                         ; T =:= ?CH_REEST_ACK).
 
 -define(KEEP, 10).
 -record(w, { n = 0         :: non_neg_integer()
@@ -169,30 +194,7 @@ callback_mode() -> [state_functions, state_enter].
 %%   |                                                                          |
 %%   +--------------------------------------------------------------------------+
 
-message(Fsm, {T, _} = Msg) when T =:= ?CH_OPEN
-                              ; T =:= ?CH_ACCEPT
-                              ; T =:= ?FND_CREATED
-                              ; T =:= ?FND_SIGNED
-                              ; T =:= ?FND_LOCKED
-                              ; T =:= ?UPDATE
-                              ; T =:= ?UPDATE_ACK
-                              ; T =:= ?UPDATE_ERR
-                              ; T =:= ?DEP_CREATED
-                              ; T =:= ?DEP_SIGNED
-                              ; T =:= ?DEP_LOCKED
-                              ; T =:= ?DEP_ERR
-                              ; T =:= ?WDRAW_CREATED
-                              ; T =:= ?WDRAW_SIGNED
-                              ; T =:= ?WDRAW_LOCKED
-                              ; T =:= ?WDRAW_ERR
-                              ; T =:= ?INBAND_MSG
-                              ; T =:= disconnect
-                              ; T =:= ?LEAVE
-                              ; T =:= ?LEAVE_ACK
-                              ; T =:= ?SHUTDOWN
-                              ; T =:= ?SHUTDOWN_ACK
-                              ; T =:= ?CH_REESTABL
-                              ; T =:= ?CH_REEST_ACK ->
+message(Fsm, {T, _} = Msg) when ?KNOWN_MSG_TYPE(T) ->
     lager:debug("message(~p, ~p)", [Fsm, Msg]),
     gen_statem:cast(Fsm, Msg).
 
@@ -213,6 +215,9 @@ signing_response(Fsm, Tag, Obj) ->
 
 minimum_depth_achieved(Fsm, ChanId, Type, TxHash) ->
     gen_statem:cast(Fsm, {?MIN_DEPTH_ACHIEVED, ChanId, Type, TxHash}).
+
+channel_closing_on_chain(Fsm, ChanId) ->
+    gen_statem:cast(Fsm, {?CHANNEL_CLOSING, ChanId}).
 
 where(ChanId, Role) when Role == initiator; Role == responder ->
     gproc:where(gproc_name_by_role(ChanId, Role));
@@ -547,16 +552,8 @@ awaiting_open(cast, {?CH_OPEN, Msg}, #data{role = responder} = D) ->
         {error, _} = Error ->
             close(Error, D)
     end;
-awaiting_open(timeout, awaiting_open = T, D) ->
-    close({timeout, T}, D);
-awaiting_open(cast, {?DISCONNECT, _Msg}, D) ->
-    close(disconnect, D);
-awaiting_open(cast, {_, _} = Msg, D) ->
-    lager:debug("Wrong msg in awaiting_open: ~p", [Msg]),
-    %% should send an error msg
-    close(protocol_error, D);
-awaiting_open({call, From}, Req, D) ->
-    handle_call(awaiting_open, Req, From, D).
+awaiting_open(Type, Msg, D) ->
+    handle_common_event(Type, Msg, error_all, D).
 
 awaiting_reestablish(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_reestablish(cast, {?CH_REESTABL, Msg}, #data{role = responder} = D) ->
@@ -568,14 +565,8 @@ awaiting_reestablish(cast, {?CH_REESTABL, Msg}, #data{role = responder} = D) ->
         {error, _} = Error ->
             close(Error, D)
     end;
-awaiting_reestablish(timeout, awaiting_reestablish = T, D) ->
-    close({timeout, T}, D);
-awaiting_reestablish(cast, {?DISCONNECT, _Msg}, D) ->
-    close(disconnect, D);
-awaiting_reestablish(cast, {_, _} = Msg, D) ->
-    lager:debug("Wrong msg in awaiting_reestablish: ~p", [Msg]),
-    %% should send and error msg
-    close(protocol_error, D).
+awaiting_reestablish(Type, Msg, D) ->
+    handle_common_event(Type, Msg, error_all, D).
 
 initialized(enter, _OldSt, _D) -> keep_state_and_data;
 initialized(cast, {?CH_ACCEPT, Msg}, #data{role = initiator} = D) ->
@@ -589,12 +580,8 @@ initialized(cast, {?CH_ACCEPT, Msg}, #data{role = initiator} = D) ->
         {error, _} = Error ->
             close(Error, D)
     end;
-initialized(timeout, initialized = T, D) ->
-    close({timeout, T}, D);
-initialized(cast, {?DISCONNECT, _Msg}, D) ->
-    close(disconnect, D);
-initialized({call, From}, Req, D) ->
-    handle_call(initialized, Req, From, D).
+initialized(Type, Msg, D) ->
+    handle_common_event(Type, Msg, error_all, D).
 
 reestablish_init(enter, _OldSt, _D) -> keep_state_and_data;
 reestablish_init(cast, {?CH_REEST_ACK, Msg}, D) ->
@@ -605,12 +592,8 @@ reestablish_init(cast, {?CH_REEST_ACK, Msg}, D) ->
         {error, _} = Err ->
             close(Err, D)
     end;
-reestablish_init(timeout, reestablish_init = T, D) ->
-    close({timeout, T}, D);
-reestablish_init(cast, {?DISCONNECT, _Msg}, D) ->
-    close(disconnect, D);
-reestablish_init({call, From}, Req, D) ->
-    handle_call(reestablish_init, Req, From, D).
+reestablish_init(Type, Msg, D) ->
+    handle_common_event(Type, Msg, error_all, D).
 
 awaiting_signature(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_signature(cast, {Req, _} = Msg, #data{ongoing_update = true} = D)
@@ -694,13 +677,8 @@ awaiting_signature(cast, {?SIGNED, ?SHUTDOWN_ACK, SignedTx} = Msg,
     report(on_chain_tx, NewSignedTx, D1),
     close(close_mutual, D2);
 %% Other
-awaiting_signature(timeout, awaiting_signature = T, D) ->
-    close({timeout, T}, D);
-awaiting_signature(cast, {?DISCONNECT, _Msg}, D) ->
-    close(disconnect, D);
-awaiting_signature({call, From}, Req, D) ->
-    handle_call(awaiting_signature, Req, From, D).
-
+awaiting_signature(Type, Msg, D) ->
+    handle_common_event(Type, Msg, postpone, D).
 
 accepted(enter, _OldSt, _D) -> keep_state_and_data;
 accepted(cast, {?FND_CREATED, Msg}, #data{role = responder} = D) ->
@@ -714,13 +692,8 @@ accepted(cast, {?FND_CREATED, Msg}, #data{role = responder} = D) ->
         %% {error, _} = Error ->
         %%     close(Error, D)
     end;
-accepted(cast, {?DISCONNECT, _Msg}, D) ->
-    close(disconnect, D);
-accepted(timeout, accepted = T, D) ->
-    close({timeout, T}, D);
-accepted({call, From}, Req, D) ->
-    handle_call(accepted, Req, From, D).
-
+accepted(Type, Msg, D) ->
+    handle_common_event(Type, Msg, error_all, D).
 
 half_signed(enter, _OldSt, _D) -> keep_state_and_data;
 half_signed(cast, {?FND_SIGNED, Msg}, #data{role = initiator} = D) ->
@@ -736,12 +709,8 @@ half_signed(cast, {?FND_SIGNED, Msg}, #data{role = initiator} = D) ->
         %% {error, _} = Error ->
         %%     close(Error, D)
     end;
-half_signed(timeout, half_signed = T, D) ->
-    close({timeout, T}, D);
-half_signed(cast, {?DISCONNECT, _Msg}, D) ->
-    close(disconnect, D);
-half_signed({call, From}, Req, D) ->
-    handle_call(half_signed, Req, From, D).
+half_signed(Type, Msg, D) ->
+    handle_common_event(Type, Msg, error_all, D).
 
 dep_half_signed(enter, _OldSt, _D) -> keep_state_and_data;
 dep_half_signed(cast, {Req, _} = Msg, D) when ?UPDATE_CAST(Req) ->
@@ -770,12 +739,8 @@ dep_half_signed(cast, {?DEP_ERR, Msg}, D) ->
         {error, _} = Error ->
             close(Error, D)
     end;
-dep_half_signed(timeout, dep_half_signed = T, D) ->
-    close({timeout, T}, D);
-dep_half_signed(cast, {?DISCONNECT, _Msg}, D) ->
-    close(disconnect, D);
-dep_half_signed({call, From}, Req, D) ->
-    handle_call(dep_half_signed, Req, From, D).
+dep_half_signed(Type, Msg, D) ->
+    handle_common_event(Type, Msg, error, D).
 
 dep_signed(enter, _OldSt, _D) -> keep_state_and_data;
 dep_signed(cast, {?DEP_LOCKED, Msg}, #data{latest = {deposit, SignedTx}} = D) ->
@@ -790,10 +755,8 @@ dep_signed(timeout, dep_signed = T, D) ->
     close({timeout, T}, D);
 dep_signed(cast, {?SHUTDOWN, _Msg}, D) ->
     next_state(closing, D);
-dep_signed(cast, {?DISCONNECT, _Msg}, D) ->
-    next_state(disconnected, D);
-dep_signed({call, From}, Req, D) ->
-    handle_call(dep_signed, Req, From, D).
+dep_signed(Type, Msg, D) ->
+    handle_common_event(Type, Msg, error, D).
 
 deposit_locked_complete(SignedTx, #data{state = State, opts = Opts} = D) ->
     D1   = D#data{state = aesc_offchain_state:add_signed_tx(SignedTx, State, Opts)},
@@ -826,12 +789,8 @@ wdraw_half_signed(cast, {?WDRAW_ERR, Msg}, D) ->
         {error, _} = Error ->
             close(Error, D)
     end;
-wdraw_half_signed(timeout, wdraw_half_signed = T, D) ->
-    close({timeout, T}, D);
-wdraw_half_signed(cast, {?DISCONNECT, _Msg}, D) ->
-    close(disconnect, D);
-wdraw_half_signed({call, From}, Req, D) ->
-    handle_call(wdraw_half_signed, Req, From, D).
+wdraw_half_signed(Type, Msg, D) ->
+    handle_common_event(Type, Msg, error, D).
 
 %% Don't flag for update conflicts once we've pushed to the chain, and
 %% wait for confirmation; postpone instead.
@@ -845,14 +804,10 @@ wdraw_signed(cast, {?WDRAW_LOCKED, Msg}, #data{latest = {withdraw, SignedTx}} = 
         {error, _} = Error ->
             close(Error, D)
     end;
-wdraw_signed(timeout, wdraw_signed = T, D) ->
-    close({timeout, T}, D);
 wdraw_signed(cast, {?SHUTDOWN, _Msg}, D) ->
     next_state(closing, D);
-wdraw_signed(cast, {?DISCONNECT, _Msg}, D) ->
-    next_state(disconnected, D);
-wdraw_signed({call, From}, Req, D) ->
-    handle_call(wdraw_signed, Req, From, D).
+wdraw_signed(Type, Msg, D) ->
+    handle_common_event(Type, Msg, error, D).
 
 withdraw_locked_complete(SignedTx, #data{state = State, opts = Opts} = D) ->
     D1   = D#data{state = aesc_offchain_state:add_signed_tx(SignedTx, State, Opts)},
@@ -888,12 +843,8 @@ awaiting_locked(cast, {?DEP_LOCKED, _Msg}, D) ->
     postpone(D);
 awaiting_locked(cast, {?WDRAW_LOCKED, _Msg}, D) ->
     postpone(D);
-awaiting_locked(cast, {?DISCONNECT, _Msg}, D) ->
-    close(disconnect, D);
-awaiting_locked(timeout, awaiting_locked = T, D) ->
-    close({timeout, T}, D);
-awaiting_locked({call, From}, Req, D) ->
-    handle_call(awaiting_locked, Req, From, D).
+awaiting_locked(Type, Msg, D) ->
+    handle_common_event(Type, Msg, error, D).
 
 awaiting_initial_state(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_initial_state(cast, {?UPDATE, Msg}, #data{role = responder} = D) ->
@@ -909,16 +860,8 @@ awaiting_initial_state(cast, {?UPDATE, Msg}, #data{role = responder} = D) ->
             %% TODO: do we do a dispute challenge here?
             close(Error, D)
     end;
-awaiting_initial_state(cast, {?DISCONNECT, _Msg}, D) ->
-    close(disconnect, D);
-awaiting_initial_state(timeout, awaiting_initial_state = T, D) ->
-    close({timeout, T}, D);
-awaiting_initial_state({call, From}, Req, D) ->
-    handle_call(awaiting_initial_state, Req, From, D);
-awaiting_initial_state(Evt, Msg, D) ->
-    lager:debug("unexpected: awaiting_initial_state(~p, ~p, ~p)",
-                [Evt, Msg, D]),
-    close({unexpected, Msg}, D).
+awaiting_initial_state(Type, Msg, D) ->
+    handle_common_event(Type, Msg, error, D).
 
 awaiting_update_ack(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_update_ack(cast, {Req,_} = Msg, #data{} = D) when ?UPDATE_CAST(Req) ->
@@ -949,12 +892,10 @@ awaiting_update_ack(cast, {?UPDATE_ERR, Msg}, D) ->
         {error, _} = Error ->
             close(Error, D)
     end;
-awaiting_update_ack(cast, {?DISCONNECT, _Msg}, D) ->
-    close(disconnect, D);
-awaiting_update_ack(timeout, awaiting_update_ack = T, D) ->
-    close({timeout, T}, D);
 awaiting_update_ack({call, _}, _Req, D) ->
-    postpone(D).
+    postpone(D);
+awaiting_update_ack(Type, Msg, D) ->
+    handle_common_event(Type, Msg, postpone, D).
 
 awaiting_leave_ack(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_leave_ack(cast, {?LEAVE_ACK, Msg}, D) ->
@@ -979,10 +920,8 @@ awaiting_leave_ack(cast, {?LEAVE, Msg}, D) ->
         {error, _} = Err ->
             close(Err, D)
     end;
-awaiting_leave_ack(cast, _Msg, D) ->
-    postpone(D);
-awaiting_leave_ack({call, _From}, _Req, D) ->
-    postpone(D).
+awaiting_leave_ack(Type, Msg, D) ->
+    handle_common_event(Type, Msg, postpone, D).
 
 signed(enter, _OldSt, _D) -> keep_state_and_data;
 signed(cast, {?FND_LOCKED, Msg}, D) ->
@@ -993,15 +932,10 @@ signed(cast, {?FND_LOCKED, Msg}, D) ->
         {error, _} = Error ->
             close(Error, D)
     end;
-signed(timeout, signed = T, D) ->
-    close({timeout, T}, D);
 signed(cast, {?SHUTDOWN, _Msg}, D) ->
     next_state(closing, D);
-signed(cast, {?DISCONNECT, _Msg}, D) ->
-    next_state(disconnected, D);
-signed({call, From}, Req, D) ->
-    handle_call(signed, Req, From, D).
-
+signed(Type, Msg, D) ->
+    handle_common_event(Type, Msg, error_all, D).
 
 funding_locked_complete(D) ->
     D1   = D#data{state = aesc_offchain_state:add_signed_tx(D#data.create_tx,
@@ -1057,6 +991,9 @@ open(cast, {?INBAND_MSG, Msg}, D) ->
                    D
            end,
     keep_state(NewD);
+open(cast, {?SIGNED, _, _} = Msg, D) ->
+    lager:debug("Received signing reply in 'open' - ignore: ~p", [Msg]),
+    keep_state(log(ignore, ?SIGNED, Msg, D));
 open({call, From}, Request, D) ->
     handle_call(open, Request, From, D);
 open(cast, {?LEAVE, Msg}, D) ->
@@ -1078,15 +1015,8 @@ open(cast, {?SHUTDOWN, Msg}, D) ->
         {error, E} ->
             close({shutdown_error, E}, D)
     end;
-open(cast, {?DISCONNECT, _Msg}, D) ->
-    next_state(disconnected, D);
-open(cast, _Msg, D) ->
-    lager:error("Discarding cast in 'open' state: ~p", [_Msg]),
-    keep_state(D);
-open(info, Msg, D) ->
-    handle_info(Msg, D);
-open(timeout, open = T, D) ->
-    close({timeout, T}, D).
+open(Type, Msg, D) ->
+    handle_common_event(Type, Msg, discard, D).
 
 closing(enter, _OldSt, _D) -> keep_state_and_data;
 closing(cast, {?SHUTDOWN_ACK, Msg}, D) ->
@@ -1099,10 +1029,10 @@ closing(cast, {?SHUTDOWN_ACK, Msg}, D) ->
         {error, _} = Error ->
             close(Error, D)
     end;
-closing(cast, {?DISCONNECT, _Msg}, D) ->
-    next_state(disconnected, D);
 closing(cast, {closing_signed, _Msg}, D) ->  %% TODO: not using this, right?
-    close(closing_signed, D).
+    close(closing_signed, D);
+closing(Type, Msg, D) ->
+    handle_common_event(Type, Msg, error, D).
 
 disconnected(cast, {?CH_REESTABL, _Msg}, D) ->
     next_state(closing, D).
@@ -1301,7 +1231,56 @@ handle_call_(_St, _Req, From, D) ->
 
 handle_info(Msg, #data{cur_statem_state = St} = D) ->
     lager:debug("Discarding info in ~p state: ~p", [St, Msg]),
-    keep_state(D).
+    keep_state(log(drop, msg_type(Msg), Msg, D)).
+
+%% A few different modes are specified here:
+%% * error_all - all calls and casts not explicitly handled lead to protocol
+%%               error. Used mainly for the open/reestablish handshake.
+%% * error     - try to handle calls, but unknown casts cause protocol error.
+%%               Used during deposit/withdraw, since calls can be used to
+%%               inject a competing operation (thereby rejecting the other).
+%% * postpone  - postpone casts (and info), but try to handle calls.
+%% * discard   - handle calls, but drop unknown casts (could be e.g. a stray
+%%               signing reply in the open state).
+handle_common_event(E, Msg, M, #data{cur_statem_state = St} = D) ->
+    lager:debug("handle_common_event(~p, ~p, ~p, ~p, D)", [E, Msg, St, M]),
+    handle_common_event_(E, Msg, St, M, D).
+
+handle_common_event_(timeout, St = T, St, _, D) ->
+    close({timeout, T}, D);
+handle_common_event_(cast, {?DISCONNECT, _}, _St, _, D) ->
+    close(disconnect, D);
+handle_common_event_(cast, {?CHANNEL_CLOSING, ChanId} = Msg, _St, _,
+                     #data{on_chain_id = ChanId} = D) ->
+    lager:debug("got ~p", [Msg]),
+    close(channel_closing_on_chain, D);
+handle_common_event_({call, From}, Req, St, Mode, D) ->
+    case Mode of
+        error_all ->
+            keep_state(D, [{reply, From, {error, not_ready}}]);
+        _ ->
+            handle_call(St, Req, From, D)
+    end;
+handle_common_event_(info, Msg, _St, _P, D) ->
+    handle_info(Msg, D);
+handle_common_event_(_Type, _Msg, _St, P, D) when P == postpone ->
+    postpone(D);
+handle_common_event_(Type, Msg, St, discard, D) ->
+    lager:error("Discarding ~p in '~p' state: ~p", [Type, St, Msg]),
+    keep_state(log(drop, msg_type(Msg), Msg, D));
+handle_common_event_(Type, Msg, St, Err, D) when Err==error;
+                                                 Err==error_all ->
+    lager:debug("Wrong ~p in ~p: ~p", [Type, St, Msg]),
+    %% should send an error msg
+    close(protocol_error, D).
+
+msg_type(Msg) when is_tuple(Msg) ->
+    T = element(1, Msg),
+    if ?KNOWN_MSG_TYPE(T) -> T;
+       true -> unknown
+    end;
+msg_type(T) -> T.
+
 
 cur_channel_id(#data{channel_id = TChId,
                      on_chain_id = PChId}) ->
@@ -2176,12 +2155,13 @@ start_min_depth_watcher(Type, SignedTx,
     case {Type, Watcher0} of
         {funding, undefined} ->
             {ok, Watcher1} = aesc_fsm_min_depth_watcher:start_link(
-                               Type, TxHash, OnChainId, MinDepth),
+                               Type, TxHash, OnChainId, MinDepth, ?MODULE),
             evt({watcher, Watcher1}),
             {ok, D1#data{watcher = Watcher1,
                          latest = {watch, Type, TxHash, SignedTx}}};
         {_, Pid} when Pid =/= undefined ->  % assertion
-            ok = aesc_fsm_min_depth_watcher:watch(Pid, Type, TxHash, MinDepth),
+            ok = aesc_fsm_min_depth_watcher:watch(
+                   Pid, Type, TxHash, MinDepth, ?MODULE),
             {ok, D1#data{latest = {watch, Type, TxHash, SignedTx}}}
     end.
 

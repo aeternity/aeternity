@@ -36,6 +36,7 @@
         , dep_wdraw_with_conflict/1
         , deposit/1
         , withdraw/1
+        , channel_subverted/1
         , leave_reestablish/1
         , leave_reestablish_close/1
         , change_config_get_history/1
@@ -86,6 +87,7 @@ groups() ->
       , dep_wdraw_with_conflict
       , deposit
       , withdraw
+      , channel_subverted
       , leave_reestablish
       , leave_reestablish_close
       , change_config_get_history
@@ -539,6 +541,38 @@ withdraw(Cfg) ->
     {Expected, Expected} = {{IAmt0 - Withdrawal, RAmt0}, Expected},
     check_info(500).
 
+channel_subverted(Cfg) ->
+    Debug = get_debug(Cfg),
+    #{ i := I, r := R } = create_channel_([{port, 9325},?SLOGAN|Cfg]),
+    {ok, Tx} = close_solo_tx(I, <<>>),
+    #{ priv := IPrivKey } = ?config(initiator, Cfg),
+    SignedCloseSoloTx = aec_test_utils:sign_tx(Tx, [IPrivKey]),
+    ok = rpc(dev1, aec_tx_pool, push, [SignedCloseSoloTx]),
+    mine_blocks(dev1, 3),
+    {ok,_} = receive_from_fsm(info, I, fun died_subverted/1, ?TIMEOUT, Debug),
+    {ok,_} = receive_from_fsm(info, R, fun died_subverted/1, ?TIMEOUT, Debug),
+    check_info(500).
+
+close_solo_tx(#{ fsm        := Fsm
+               , channel_id := ChannelId }, Payload) ->
+    {ok, #{ round      := Round
+          , initiator  := IPubKey
+          , responder  := RPubKey
+          , round      := Round }} = St = rpc(dev1, aesc_fsm, get_state, [Fsm]),
+    ct:log("St = ~p", [St]),
+    {ok, PoI} =  rpc(dev1, aesc_fsm, get_poi, [Fsm, [{account, IPubKey},
+                                                     {account, RPubKey}]]),
+    {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [IPubKey]),
+    TTL = current_height(dev1) + 100,
+    TxSpec = #{ channel_id => aec_id:create(channel, ChannelId)
+              , from_id    => aec_id:create(account, IPubKey)
+              , payload    => Payload
+              , poi        => PoI
+              , ttl        => TTL
+              , fee        => 3
+              , nonce      => Nonce },
+    {ok, _Tx} = aesc_close_solo_tx:new(TxSpec).
+
 leave_reestablish(Cfg) ->
     leave_reestablish(9350, Cfg).
 
@@ -666,6 +700,10 @@ check_log([], _) ->
     ok.
 
 died_normal(#{info := {died,normal}}) -> ok.
+
+%% died_subverted(#{info := {died,channel_closing_on_chain}}) -> ok.
+died_subverted(#{info := {died,_}}) -> ok.
+
 
 multiple_channels(Cfg) ->
     ct:log("spawning multiple channels", []),
@@ -849,11 +887,7 @@ create_channel_from_spec(
                        error(Err, erlang:get_stacktrace())
                end,
     log(Debug, "mining blocks on dev1 for minimum depth", []),
-    CurrentHeight =
-        case rpc(dev1, aec_chain, top_header, []) of
-            undefined -> 0;
-            Header -> aec_headers:height(Header)
-        end,
+    CurrentHeight = current_height(dev1),
     SignedTx = await_on_chain_report(I2, ?TIMEOUT),
     SignedTx = await_on_chain_report(R2, ?TIMEOUT), % same tx
     wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
@@ -925,16 +959,17 @@ await_funding_locked(#{role := Role} = R, Timeout, Debug) ->
     R#{channel_id => maps:get(channel_id, Msg)}.
 
 await_update(#{channel_id := ChId} = R, Timeout, Debug) ->
-    {ok, _Msg} = receive_from_fsm(
-                   update, R,
-                   fun(#{ channel_id := ChId1
+    {ok, Msg} = receive_from_fsm(
+                  update, R,
+                  fun(#{ channel_id := ChId1
                          , info := SignedTx }) ->
-                           true =
-                               ChId1 == ChId
-                               andalso
-                               element(1, SignedTx) == signed_tx
-                   end, Timeout, Debug),
-    R.
+                          true =
+                              ChId1 == ChId
+                              andalso
+                              element(1, SignedTx) == signed_tx
+                  end, Timeout, Debug),
+    #{info := SignedTx} = Msg,
+    R#{signed_tx => SignedTx}.
 
 await_signing_request(Tag, R) ->
     await_signing_request(Tag, R, ?TIMEOUT, true).
@@ -1146,6 +1181,13 @@ check_amounts(R, SignedTx) ->
         _ ->
             R
     end.
+
+current_height(Node) ->
+    case rpc(Node, aec_chain, top_header, []) of
+        undefined -> 0;
+        Header -> aec_headers:height(Header)
+    end.
+
 
 log(true, Fmt, Args) ->
     ct:log(Fmt, Args);
