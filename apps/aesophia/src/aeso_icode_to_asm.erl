@@ -672,7 +672,6 @@ all_type_reps([TR|InSource], Found) ->
             Nested = case TR of
                          {tuple, TRs} -> TRs;
                          {list, T}    -> [T];
-                         {option, T}  -> [T];
                          {variant, Cs} -> [{tuple, [word | Args]} || Args <- Cs];
                             %% Constructor values are encoded as tuples with the tag as the first component
                          typerep      -> [{list, {list, typerep}}];
@@ -718,8 +717,6 @@ make_encoder_body(typerep) ->
          {Con(?TYPEREP_STRING_TAG, []), Rel(Con(?TYPEREP_STRING_TAG, []))},
          {Con(?TYPEREP_LIST_TAG, [{var_ref, "t"}]),
             Rel(Con(?TYPEREP_LIST_TAG, [Enc(typerep, "t")]))},
-         {Con(?TYPEREP_OPTION_TAG, [{var_ref, "t"}]),
-            Rel(Con(?TYPEREP_OPTION_TAG, [Enc(typerep, "t")]))},
          {Con(?TYPEREP_TUPLE_TAG, [{var_ref, "ts"}]),
             Rel(Con(?TYPEREP_TUPLE_TAG, [Enc({list, typerep}, "ts")]))},
          {Con(?TYPEREP_VARIANT_TAG, [{var_ref, "cs"}]),
@@ -759,15 +756,6 @@ make_encoder_body({list, TR}) ->
                  [{var_ref, "base"}, {var_ref, "head"}]},
                 {funcall, {var_ref, encoder_name({list, TR})},
                  [{var_ref, "base"}, {var_ref, "tail"}]}]},
-        {var_ref, "base"}}}
-     ]};
-make_encoder_body({option, TR}) ->
-    {switch, {var_ref, "value"},
-     [{{list, []}, {list, []}},
-      {{tuple, [{var_ref, "elem"}]},
-       {binop, '-',
-        {tuple, [{funcall, {var_ref, encoder_name(TR)},
-                 [{var_ref, "base"}, {var_ref, "elem"}]}]},
         {var_ref, "base"}}}
      ]};
 make_encoder_body({variant, Cons}) ->
@@ -810,19 +798,6 @@ make_decoder_body({list, TR}) ->
          {{var_ref, "_"},
             {switch, Ptr, [{{tuple, [Head, Tail]},
                 {tuple, [Decode(TR, Head), Decode({list, TR}, Tail)]}}]}}]};
-make_decoder_body({option, TR}) ->
-    Ptr  = {binop, '+', {var_ref, "value"}, {var_ref, "base"}},
-    Elem = {var_ref, "elem"},
-    None = {list, []},
-    Decode = fun(T, V) ->
-                {funcall, {var_ref, decoder_name(T)},
-                          [{var_ref, "base"}, V]}
-             end,
-    {switch, {var_ref, "value"},
-        [{None, None},
-         {{var_ref, "_"},
-            {switch, Ptr, [{{tuple, [Elem]},
-                {tuple, [Decode(TR, Elem)]}}]}}]};
 make_decoder_body({variant, Cons}) ->
     Ptr  = {binop, '+', {var_ref, "value"}, {var_ref, "base"}},
     Tags = lists:seq(0, length(Cons) - 1),

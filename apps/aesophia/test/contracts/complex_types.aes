@@ -78,8 +78,8 @@ contract ComplexTypes =
       None :: ys => None
       Some(x) :: ys =>
         switch(all_some(ys))
-          None     => None
           Some(xs) => Some(x :: xs)
+          None     => None
 
   function remote_all_some(xs : list(option(int))) : option(list(int)) =
     state.worker.all_some(gas = 10000, xs)

@@ -9,7 +9,7 @@
 %%%-------------------------------------------------------------------
 -module(aeso_icode).
 
--export([new/1, pp/1, set_name/2, set_functions/2, map_typerep/2, get_constructor_tag/2]).
+-export([new/1, pp/1, set_name/2, set_functions/2, map_typerep/2, option_typerep/1, get_constructor_tag/2]).
 -export_type([icode/0]).
 
 -include("aeso_icode.hrl").
@@ -61,17 +61,22 @@ builtin_types() ->
      , "oracle"       => fun([_, _]) -> word end
      , "oracle_query" => fun([_, _]) -> word end
      , "list"         => fun([A]) -> {list, A} end
-     , "option"       => fun([A]) -> {option, A} end
+     , "option"       => fun([A]) -> {variant, [[], [A]]} end
      , "map"          => fun([K, V]) -> map_typerep(K, V) end
      , ["Chain", "ttl"] => fun([]) -> {variant, [[word], [word]]} end
      }.
 
 builtin_constructors() ->
     #{ "RelativeTTL" => 0
-     , "FixedTTL"    => 1 }.
+     , "FixedTTL"    => 1
+     , "None"        => 0
+     , "Some"        => 1 }.
 
 map_typerep(K, V) ->
     {list, {tuple, [K, V]}}.  %% Lists of key-value pairs for now
+
+option_typerep(A) ->
+    {variant, [[], [A]]}.
 
 new_env() ->
     [].

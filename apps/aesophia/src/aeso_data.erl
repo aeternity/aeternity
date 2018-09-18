@@ -33,12 +33,12 @@ to_binary1(Data, Address) when is_binary(Data) ->
     %% a string
     Words = binary_to_words(Data),
     {Address,<<(size(Data)):256, << <<W:256>> || W <- Words>>/binary>>};
-to_binary1(none, Address) -> to_binary1([], Address);
-to_binary1({some, Value}, Address) -> to_binary1({Value}, Address);
+to_binary1(none, Address)            -> to_binary1({variant, 0, []}, Address);
+to_binary1({some, Value}, Address)   -> to_binary1({variant, 1, [Value]}, Address);
 to_binary1(word, Address)            -> to_binary1({?TYPEREP_WORD_TAG}, Address);
 to_binary1(string, Address)          -> to_binary1({?TYPEREP_STRING_TAG}, Address);
 to_binary1({list, T}, Address)       -> to_binary1({?TYPEREP_LIST_TAG, T}, Address);
-to_binary1({option, T}, Address)     -> to_binary1({?TYPEREP_OPTION_TAG, T}, Address);
+to_binary1({option, T}, Address)     -> to_binary1({variant, [[], [T]]}, Address);
 to_binary1({tuple, Ts}, Address)     -> to_binary1({?TYPEREP_TUPLE_TAG, Ts}, Address);
 to_binary1({variant, Cons}, Address) -> to_binary1({?TYPEREP_VARIANT_TAG, Cons}, Address);
 to_binary1({variant, Tag, Args}, Address) ->
@@ -129,12 +129,7 @@ from_binary(Visited, {list, Elem}, Heap, V) ->
           [H|T]
     end;
 from_binary(Visited, {option, A}, Heap, V) ->
-    <<None:256>> = <<(-1):256>>,
-    if V == None -> none;
-       true      ->
-         {Elem} = from_binary(Visited, {tuple, [A]}, Heap, V),
-         {some, Elem}
-    end;
+    from_binary(Visited, {variant_t, [{none, []}, {some, [A]}]}, Heap, V);
 from_binary(Visited, {variant, Cons}, Heap, V) ->
     Tag      = heap_word(Heap, V),
     Args     = lists:nth(Tag + 1, Cons),
@@ -158,7 +153,6 @@ from_binary(Visited, typerep, Heap, V) ->
         ?TYPEREP_WORD_TAG    -> word;
         ?TYPEREP_STRING_TAG  -> string;
         ?TYPEREP_LIST_TAG    -> {list,   Arg(typerep)};
-        ?TYPEREP_OPTION_TAG  -> {option, Arg(typerep)};
         ?TYPEREP_TUPLE_TAG   -> {tuple,  Arg({list, typerep})};
         ?TYPEREP_VARIANT_TAG -> {variant, Arg({list, {list, typerep}})}
     end.
