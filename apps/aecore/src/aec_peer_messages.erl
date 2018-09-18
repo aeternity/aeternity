@@ -31,7 +31,7 @@ serialize(ping, Ping, Vsn = ?PING_VSN) ->
     Flds = [ {port, maps:get(port, Ping)}
            , {share, maps:get(share, Ping)}
            , {genesis_hash, maps:get(genesis_hash, Ping)}
-           , {difficulty, serialize(double, maps:get(difficulty, Ping), ?VSN_1)}
+           , {difficulty, maps:get(difficulty, Ping)}
            , {best_hash, maps:get(best_hash, Ping)}
            , {sync_allowed, maps:get(sync_allowed, Ping)}
            , {peers, serialize(peers, maps:get(peers, Ping), ?VSN_1)} ],
@@ -84,8 +84,6 @@ serialize(txps_get, TxpsGet, Vsn = ?TX_POOL_SYNC_GET_VSN) ->
 serialize(txps_finish, TxpsFinish, Vsn = ?TX_POOL_SYNC_FINISH_VSN) ->
     #{ done := Done } = TxpsFinish,
     serialize_flds(txps_finish, Vsn, [{done, Done}]);
-serialize(double, D, ?VSN_1) ->
-    float_to_binary(D);
 serialize(peers, Peers, Vsn = ?VSN_1) ->
     [ serialize(peer, Peer, Vsn) || Peer <- Peers ];
 serialize(peer, Peer, ?VSN_1) ->
@@ -183,14 +181,13 @@ deserialize(ping, Vsn, PingFlds) when Vsn == ?PING_VSN ->
         [ {port, _Port}
         , {share, _Share}
         , {genesis_hash, _GenHash}
-        , {difficulty, DifficultyBin}
+        , {difficulty, Difficulty}
         , {best_hash, _TopHash}
         , {sync_allowed, _SyncAllowed}
         , {peers, PeersBin} ] = aec_serialization:decode_fields(
                                     serialization_template(ping, Vsn),
                                     PingFlds),
     Peers = deserialize(peers, Vsn, PeersBin),
-    Difficulty = binary_to_float(DifficultyBin),
     PingData1 = replace_keys(PingData, [{peers, Peers}, {difficulty, Difficulty}]),
     {ping, Vsn, maps:from_list(PingData1)};
 deserialize(get_header_by_hash, Vsn, GetHeaderFlds) when Vsn == ?GET_HEADER_BY_HASH_VSN ->
@@ -301,7 +298,7 @@ serialization_template(ping, ?PING_VSN) ->
     [ {port, int}
     , {share, int}
     , {genesis_hash, binary}
-    , {difficulty, binary}
+    , {difficulty, int}
     , {best_hash, binary}
     , {sync_allowed, bool}
     , {peers, [binary]} ];
