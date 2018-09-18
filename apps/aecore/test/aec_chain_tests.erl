@@ -641,6 +641,7 @@ forking_test_() ->
      , {"Get a transaction from the right fork", fun fork_get_transaction/0}
      , {"Fork on micro-block", fun fork_on_micro_block/0}
      , {"Fork on old fork point", fun fork_on_old_fork_point/0}
+     , {"Generate candidate from top with high fork", fun fork_gen_key_candidate/0}
      ]}.
 
 fork_on_genesis() ->
@@ -833,6 +834,31 @@ fork_on_old_fork_point() ->
     ?assertEqual(ok, insert_block(#{key_block => ForkBlock,
                                     micro_blocks => [],
                                     dir => backward})),
+    ok.
+
+fork_gen_key_candidate() ->
+    %% Make sure a key candidate can be generated when there is a fork
+    %% of equal height. Bug found in system tests.
+    meck:expect(aec_governance, beneficiary_reward_delay, 0, 4),
+
+    CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, ?GENESIS_TARGET], 111),
+    HardChain = extend_chain_with_state(CommonChain, [1, 1, 1], 111),
+    EasyChain = extend_chain_with_state(CommonChain, [2, 2, 2], 222),
+
+    %% Add the easy chain first, then the hard chain
+    ok = write_blocks_to_chain(blocks_only_chain(EasyChain)),
+    ok = write_blocks_to_chain(blocks_only_chain(HardChain)),
+
+    %% Verify that the hard chain took over
+    [TopBlock] = blocks_only_chain([lists:last(HardChain)]),
+    TopBlockHash = block_hash(TopBlock),
+    ?assertEqual(TopBlockHash, aec_chain:top_block_hash()),
+
+    %% Assert that we can make a new key block candidate.
+    {ok, Pubkey} = aec_keys:pubkey(),
+    ?assertMatch({ok, _},
+                 aec_chain_state:calculate_state_for_new_keyblock(
+                   TopBlockHash, Pubkey, Pubkey)),
     ok.
 
 %%%===================================================================
