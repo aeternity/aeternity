@@ -18,8 +18,8 @@
          ttl/1,
          nonce/1,
          origin/1,
-         check/5,
-         process/6,
+         check/3,
+         process/3,
          signers/2,
          version/0,
          serialization_template/1,
@@ -144,18 +144,18 @@ origin(#oracle_query_tx{} = Tx) ->
 %% SenderAccount should exist, and have enough funds for the fee + the query_fee.
 %% Oracle should exist, and query_fee should be enough
 %% Fee should cover TTL
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
-        {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_query_tx{nonce = Nonce, query_fee = QFee, query_ttl = QTTL,
                        response_ttl = RTTL, fee = Fee} = QTx,
-      Context, Trees, Height, _ConsensusVersion) ->
+      Trees, Env) ->
+    Height       = aetx_env:height(Env),
     SenderPubKey = sender_pubkey(QTx),
     OraclePubKey = oracle_pubkey(QTx),
     Checks =
         [fun() -> aetx_utils:check_account(SenderPubKey, Trees, Nonce, Fee + QFee) end,
          fun() -> check_oracle(OraclePubKey, Trees, QFee, Height, QTTL, RTTL) end,
          fun() -> check_query(QTx, Trees, Height) end
-         | case Context of
+         | case aetx_env:context(Env) of
                aetx_contract -> [];
                aetx_transaction ->
                    [fun() -> aeo_utils:check_ttl_fee(Height, QTTL, Fee - aec_governance:minimum_tx_fee()) end]
@@ -171,11 +171,11 @@ check(#oracle_query_tx{nonce = Nonce, query_fee = QFee, query_ttl = QTTL,
 signers(#oracle_query_tx{} = Tx, _) ->
     {ok, [sender_pubkey(Tx)]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
-              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
 process(#oracle_query_tx{nonce = Nonce, fee = Fee,
-                         query_fee = QueryFee} = QueryTx, _Context, Trees0,
-        Height, _ConsensusVersion, _TxHash) ->
+                         query_fee = QueryFee} = QueryTx,
+        Trees0, Env) ->
+    Height        = aetx_env:height(Env),
     SenderPubKey  = sender_pubkey(QueryTx),
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),

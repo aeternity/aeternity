@@ -16,8 +16,8 @@
          ttl/1,
          nonce/1,
          origin/1,
-         check/5,
-         process/6,
+         check/3,
+         process/3,
          signers/2,
          version/0,
          serialization_template/1,
@@ -87,10 +87,10 @@ nonce(#ns_revoke_tx{nonce = Nonce}) ->
 origin(#ns_revoke_tx{} = Tx) ->
     account_pubkey(Tx).
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
-        {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#ns_revoke_tx{nonce = Nonce,
-                    fee   = Fee} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
+                    fee   = Fee} = Tx,
+      Trees,_Env) ->
     AccountPubKey = account_pubkey(Tx),
     NameHash = name_hash(Tx),
 
@@ -103,10 +103,10 @@ check(#ns_revoke_tx{nonce = Nonce,
         {error, Reason} -> {error, Reason}
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
-              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
 process(#ns_revoke_tx{fee = Fee, nonce = Nonce} = Tx,
-        _Context, Trees0, Height, _ConsensusVersion, _TxHash) ->
+        Trees0, Env) ->
+    Height = aetx_env:height(Env),
     AccountPubKey = account_pubkey(Tx),
     NameHash = name_hash(Tx),
     AccountsTree0 = aec_trees:accounts(Trees0),

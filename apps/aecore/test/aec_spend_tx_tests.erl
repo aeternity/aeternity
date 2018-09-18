@@ -22,8 +22,8 @@ check_test_() ->
               {ok, SpendTx} = spend_tx(#{fee => 0, %% minimum governance fee = 1
                                          payload => <<"">>}),
               StateTree = aec_test_utils:create_state_tree(),
-              ?assertEqual({error, too_low_fee},
-                           aetx:check(SpendTx, StateTree, 10, ?PROTOCOL_VERSION))
+              Env = aetx_env:tx_env(10, ?PROTOCOL_VERSION),
+              ?assertEqual({error, too_low_fee}, aetx:check(SpendTx, StateTree, Env))
       end},
      {"Sender account does not exist in state trees",
       fun() ->
@@ -31,8 +31,8 @@ check_test_() ->
               {ok, SpendTx} = spend_tx(#{fee => 10, sender_id => BogusSender,
                                          payload => <<"">>}),
               StateTree = aec_test_utils:create_state_tree(),
-              ?assertEqual({error, account_not_found},
-                           aetx:check(SpendTx, StateTree, 10, ?PROTOCOL_VERSION))
+              Env = aetx_env:tx_env(10, ?PROTOCOL_VERSION),
+              ?assertEqual({error, account_not_found}, aetx:check(SpendTx, StateTree, Env))
       end},
      {"Sender account has insufficient funds to cover tx fee + amount",
       fun() ->
@@ -49,8 +49,8 @@ check_test_() ->
 
               SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 55, nonce => 5}),
               StateTree = aec_test_utils:create_state_tree_with_account(SenderAccount),
-              ?assertEqual({error, insufficient_funds},
-                           aetx:check(SpendTx, StateTree, 20, ?PROTOCOL_VERSION))
+              Env = aetx_env:tx_env(20, ?PROTOCOL_VERSION),
+              ?assertEqual({error, insufficient_funds}, aetx:check(SpendTx, StateTree, Env))
       end},
      {"Sender account has nonce higher than tx nonce",
       fun() ->
@@ -62,8 +62,9 @@ check_test_() ->
               AccountNonce = 15,
               SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 100, nonce => AccountNonce}),
               StateTree = aec_test_utils:create_state_tree_with_account(SenderAccount),
+              Env = aetx_env:tx_env(20, ?PROTOCOL_VERSION),
               ?assertEqual({error, account_nonce_too_high},
-                           aetx:check(SpendTx, StateTree, 20, ?PROTOCOL_VERSION))
+                           aetx:check(SpendTx, StateTree, Env))
       end},
       {"TX TTL is too small",
       fun() ->
@@ -76,8 +77,8 @@ check_test_() ->
               AccountNonce = 10,
               SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 100, nonce => AccountNonce}),
               StateTree = aec_test_utils:create_state_tree_with_account(SenderAccount),
-              ?assertEqual({error, ttl_expired},
-                           aetx:check(SpendTx, StateTree, 20, ?PROTOCOL_VERSION))
+              Env = aetx_env:tx_env(20, ?PROTOCOL_VERSION),
+              ?assertEqual({error, ttl_expired}, aetx:check(SpendTx, StateTree, Env))
       end}].
 
 process_test_() ->
@@ -94,9 +95,9 @@ process_test_() ->
                                                  nonce => 11,
                                                  payload => <<"foo">>}),
               <<"foo">> = aec_spend_tx:payload(aetx:tx(SpendTx)),
-              {ok, StateTree0} = aetx:check(SpendTx, StateTree0, 20, ?PROTOCOL_VERSION),
-              {ok, StateTree} = aetx:process(SpendTx, StateTree0, 20,
-                                             ?PROTOCOL_VERSION),
+              Env = aetx_env:tx_env(20, ?PROTOCOL_VERSION),
+              {ok, StateTree0} = aetx:check(SpendTx, StateTree0, Env),
+              {ok, StateTree} = aetx:process(SpendTx, StateTree0, Env),
 
               ResultAccountsTree = aec_trees:accounts(StateTree),
               {value, ResultSenderAccount} = aec_accounts_trees:lookup(?SENDER_PUBKEY, ResultAccountsTree),
@@ -118,9 +119,9 @@ process_test_() ->
                                                  fee => 10,
                                                  nonce => 11,
                                                  payload => <<"foo">>}),
-              {ok, StateTree0} = aetx:check(SpendTx, StateTree0, 20, ?PROTOCOL_VERSION),
-              {ok, StateTree} = aetx:process(SpendTx, StateTree0, 20,
-                                             ?PROTOCOL_VERSION),
+              Env = aetx_env:tx_env(20, ?PROTOCOL_VERSION),
+              {ok, StateTree0} = aetx:check(SpendTx, StateTree0, Env),
+              {ok, StateTree} = aetx:process(SpendTx, StateTree0, Env),
 
               ResultAccountsTree = aec_trees:accounts(StateTree),
               {value, ResultAccount} = aec_accounts_trees:lookup(?SENDER_PUBKEY, ResultAccountsTree),

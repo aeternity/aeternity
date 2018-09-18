@@ -17,8 +17,8 @@
          ttl/1,
          nonce/1,
          origin/1,
-         check/5,
-         process/6,
+         check/3,
+         process/3,
          signers/2,
          version/0,
          serialization_template/1,
@@ -166,8 +166,7 @@ origin(#contract_create_tx{} = Tx) ->
 
 %% Owner should exist, and have enough funds for the fee, the amount
 %% the deposit and the gas
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
-                   {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#contract_create_tx{nonce      = Nonce,
                           vm_version = VmVersion,
                           call_data  = CallData,
@@ -175,8 +174,8 @@ check(#contract_create_tx{nonce      = Nonce,
                           gas        = Gas,
                           gas_price  = GasPrice,
                           deposit    = Deposit,
-                          fee = Fee} = Tx, _Context, Trees, _Height, _ConsensusVersion
-     ) when ?is_non_neg_integer(GasPrice) ->
+                          fee = Fee} = Tx,
+      Trees,_Env) when ?is_non_neg_integer(GasPrice) ->
     OwnerPubKey = owner_pubkey(Tx),
     TotalAmount = Fee + Amount + Deposit + Gas * GasPrice,
     Checks =
@@ -205,14 +204,14 @@ check(#contract_create_tx{nonce      = Nonce,
 signers(#contract_create_tx{} = Tx, _) ->
     {ok, [owner_pubkey(Tx)]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
-              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
 process(#contract_create_tx{owner_id   = OwnerId,
                             nonce      = Nonce,
                             amount     = Amount,
                             gas_price  = GasPrice,
                             fee        = Fee} = CreateTx,
-        Context, Trees0, Height, ConsensusVersion, _TxHash) ->
+        Trees0, Env) ->
+    Height = aetx_env:height(Env),
     OwnerPubKey = owner_pubkey(CreateTx),
 
     {Contract, Trees1} = create_contract(CreateTx, Trees0),
@@ -221,9 +220,8 @@ process(#contract_create_tx{owner_id   = OwnerId,
 
     %% Charge the fee to the contract owner (caller)
     %% and transfer the funds (amount) to the contract account.
-    Trees2 =
-        spend(OwnerPubKey, ContractPubKey, Amount, Fee,
-              Nonce, Context, Height, Trees1, ConsensusVersion),
+    Trees2 = spend(OwnerPubKey, ContractPubKey, Amount, Fee, Nonce,
+                   Trees1, Env),
 
     %% Create the init call.
     Call0 = aect_call:new(OwnerId, Nonce, ContractId, Height, GasPrice),
@@ -234,8 +232,7 @@ process(#contract_create_tx{owner_id   = OwnerId,
     case aect_call:return_type(CallRes) of
         ok ->
             initialize_contract(CreateTx, ContractPubKey, Contract,
-                                CallRes, Context, Trees3, Height,
-                                ConsensusVersion);
+                                CallRes, Trees3, Env);
         E ->
             lager:debug("Init call error ~w ~w~n",[E, CallRes]),
             %% Don't create the contract if 'init' fails!
@@ -244,9 +241,8 @@ process(#contract_create_tx{owner_id   = OwnerId,
             %% (The VM will decide how much gas is used: 0, some, all.)
             Trees5 = aect_utils:insert_call_in_trees(CallRes, Trees0),
             GasCost = aect_call:gas_used(CallRes) * GasPrice,
-            Trees6 =
-                spend(OwnerPubKey, ContractPubKey, 0, Fee+GasCost, Nonce,
-                      Context, Height, Trees5, ConsensusVersion),
+            Trees6 = spend(OwnerPubKey, ContractPubKey, 0, Fee+GasCost, Nonce,
+                           Trees5, Env),
             {ok, Trees6}
     end.
 
@@ -263,7 +259,8 @@ create_contract(CreateTx, Trees0) ->
 
 
 spend(SenderPubKey, ReceiverPubKey, Value, Fee, Nonce,
-      Context, Height, Trees, ConsensusVersion) ->
+      Trees, Env) ->
+    Height = aetx_env:height(Env),
     {ok, SpendTx} = aec_spend_tx:new(
                       #{ sender_id    => aec_id:create(account, SenderPubKey)
                        , recipient_id => aec_id:create(account, ReceiverPubKey)
@@ -273,17 +270,8 @@ spend(SenderPubKey, ReceiverPubKey, Value, Fee, Nonce,
                        , nonce        => Nonce
                        , payload      => <<>>}),
     Trees1 = aec_trees:ensure_account(ReceiverPubKey, Trees),
-    case Context of
-        aetx_contract ->
-            {ok, Trees2} =
-                aetx:process_from_contract(SpendTx, Trees1, Height, ConsensusVersion),
-            Trees2;
-        aetx_transaction ->
-            {ok, Trees2} =
-                aetx:process(SpendTx, Trees1, Height, ConsensusVersion),
-            Trees2
-    end.
-
+    {ok, Trees2} = aetx:process(SpendTx, Trees1, Env),
+    Trees2.
 
 run_contract(#contract_create_tx{ nonce      =_Nonce
                                 , code       = Code
@@ -324,7 +312,7 @@ initialize_contract(#contract_create_tx{nonce      = Nonce,
                                         deposit    = Deposit,
                                         fee   =_Fee} = Tx,
                     ContractPubKey, Contract,
-                    CallRes,  Context, Trees, Height, ConsensusVersion) ->
+                    CallRes, Trees, Env) ->
     OwnerPubKey = owner_pubkey(Tx),
 
     %% Insert the call into the state tree for one block.
@@ -335,10 +323,8 @@ initialize_contract(#contract_create_tx{nonce      = Nonce,
     %% Spend Gas and burn
     %% Deposit (the deposit is stored in the contract.)
     GasCost = aect_call:gas_used(CallRes) * GasPrice,
-    Trees2 =
-        spend(OwnerPubKey, ContractPubKey, 0, Deposit+GasCost, Nonce,
-              Context, Height, Trees1,
-              ConsensusVersion),
+    Trees2 = spend(OwnerPubKey, ContractPubKey, 0, Deposit+GasCost, Nonce,
+                   Trees1, Env),
 
     %% TODO: Move ABI specific code to abi module(s).
     Contract1 =

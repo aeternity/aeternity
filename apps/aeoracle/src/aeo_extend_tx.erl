@@ -18,8 +18,8 @@
          ttl/1,
          nonce/1,
          origin/1,
-         check/5,
-         process/6,
+         check/3,
+         process/3,
          signers/2,
          version/0,
          serialize/1,
@@ -99,16 +99,16 @@ origin(#oracle_extend_tx{} = Tx) ->
 
 %% Account should exist, and have enough funds for the fee
 %% Oracle should exist.
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
-    {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_extend_tx{nonce = Nonce, oracle_ttl = OTTL, fee = Fee} = Tx,
-      Context, Trees, Height, _ConsensusVersion) ->
+      Trees, Env) ->
+    Height = aetx_env:height(Env),
     OraclePK = oracle_pubkey(Tx),
     Checks =
         [fun() -> check_oracle_extension_ttl(OTTL) end,
          fun() -> aetx_utils:check_account(OraclePK, Trees, Nonce, Fee) end,
          fun() -> ensure_oracle(OraclePK, Trees) end
-         | case Context of
+         | case aetx_env:context(Env) of
                aetx_contract -> []; %% TODO Cater for TTL fee from contract.
                aetx_transaction ->
                    [fun() -> aeo_utils:check_ttl_fee(Height, OTTL, Fee - aec_governance:minimum_tx_fee()) end]
@@ -123,10 +123,9 @@ check(#oracle_extend_tx{nonce = Nonce, oracle_ttl = OTTL, fee = Fee} = Tx,
 signers(#oracle_extend_tx{} = Tx, _) ->
     {ok, [oracle_pubkey(Tx)]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
-              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
 process(#oracle_extend_tx{nonce = Nonce, fee = Fee, oracle_ttl = OTTL} = Tx,
-        _Context, Trees0, _Height, _ConsensusVersion, _TxHash) ->
+        Trees0,_Env) ->
     OraclePK      = oracle_pubkey(Tx),
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),

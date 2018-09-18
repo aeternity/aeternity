@@ -197,25 +197,27 @@ create_contract_negative(_Cfg) ->
     Trees        = aect_test_utils:trees(S1),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
     CurrHeight   = 1,
+    Env          = aetx_env:tx_env(CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test creating a bogus account
     {BadPubKey, BadS} = aect_test_utils:setup_new_account(aect_test_utils:new_state()),
     BadPrivKey        = aect_test_utils:priv_key(BadPubKey, BadS),
     RTx1      = aect_test_utils:create_tx(BadPubKey, S1),
     {error, S1} = sign_and_apply_transaction(RTx1, BadPrivKey, S1),
-    {error, account_not_found} = aetx:check(RTx1, Trees, CurrHeight, ?PROTOCOL_VERSION),
+
+    {error, account_not_found} = aetx:check(RTx1, Trees, Env),
 
     %% Insufficient funds
     S2     = aect_test_utils:set_account_balance(PubKey, 0, S1),
     Trees2 = aect_test_utils:trees(S2),
     RTx2   = aect_test_utils:create_tx(PubKey, S2),
     {error, S2} = sign_and_apply_transaction(RTx2, PrivKey, S2),
-    {error, insufficient_funds} = aetx:check(RTx2, Trees2, CurrHeight, ?PROTOCOL_VERSION),
+    {error, insufficient_funds} = aetx:check(RTx2, Trees2, Env),
 
     %% Test too high account nonce
     RTx3 = aect_test_utils:create_tx(PubKey, #{nonce => 0}, S1),
     {error, S1} = sign_and_apply_transaction(RTx3, PrivKey, S1),
-    {error, account_nonce_too_high} = aetx:check(RTx3, Trees, CurrHeight, ?PROTOCOL_VERSION),
+    {error, account_nonce_too_high} = aetx:check(RTx3, Trees, Env),
 
     ok.
 
@@ -371,7 +373,8 @@ call_contract_negative_insufficient_funds(_Cfg) ->
                                        amount    => Value,
                                        fee       => Fee}, S),
     {error, _} = sign_and_apply_transaction(CallTx, aect_test_utils:priv_key(Acc1, S), S),
-    {error, insufficient_funds} = aetx:check(CallTx, aect_test_utils:trees(S), _CurrHeight = 1, ?PROTOCOL_VERSION),
+    Env = aetx_env:tx_env(_Height = 1, ?PROTOCOL_VERSION),
+    {error, insufficient_funds} = aetx:check(CallTx, aect_test_utils:trees(S), Env),
     ok.
 
 call_contract_negative(_Cfg) ->

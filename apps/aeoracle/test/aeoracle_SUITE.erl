@@ -82,35 +82,38 @@ register_oracle_negative(_Cfg) ->
     %% Test registering a bogus account
     BadPubKey = <<42:32/unit:8>>,
     RTx1      = aeo_test_utils:register_tx(BadPubKey, S1),
-    {error, account_not_found} = aetx:check(RTx1, Trees, CurrHeight, ?PROTOCOL_VERSION),
+    Env       = aetx_env:tx_env(CurrHeight, ?PROTOCOL_VERSION),
+    {error, account_not_found} = aetx:check(RTx1, Trees, Env),
 
     %% Insufficient funds
     S2     = aeo_test_utils:set_account_balance(PubKey, 0, S1),
     Trees2 = aeo_test_utils:trees(S2),
     RTx2 = aeo_test_utils:register_tx(PubKey, S1),
-    {error, insufficient_funds} =
-        aetx:check(RTx2, Trees2, CurrHeight, ?PROTOCOL_VERSION),
+    {error, insufficient_funds} = aetx:check(RTx2, Trees2, Env),
 
     %% Test too high account nonce
     RTx3 = aeo_test_utils:register_tx(PubKey, #{nonce => 0}, S1),
-    {error, account_nonce_too_high} =
-        aetx:check(RTx3, Trees, CurrHeight, ?PROTOCOL_VERSION),
+    {error, account_nonce_too_high} = aetx:check(RTx3, Trees, Env),
 
     %% Test too low fee
     RTx4 = aeo_test_utils:register_tx(PubKey, #{fee => 0}, S1),
-    {error, too_low_fee} = aetx:check(RTx4, Trees, CurrHeight, ?PROTOCOL_VERSION),
+    {error, too_low_fee} = aetx:check(RTx4, Trees, Env),
 
     %% Test too low TTL
     RTx5 = aeo_test_utils:register_tx(PubKey, #{ttl => 1}, S1),
-    {error, ttl_expired} = aetx:check(RTx5, Trees, 2, ?PROTOCOL_VERSION),
+    {error, ttl_expired} = aetx:check(RTx5, Trees, aetx_env:set_height(Env, 2)),
     ok.
 
 register_oracle_negative_dynamic_fee(_Cfg) ->
     {PubKey, S1} = aeo_test_utils:setup_new_account(aeo_test_utils:new_state()),
     Trees        = aeo_test_utils:trees(S1),
     CurrHeight   = ?ORACLE_REG_HEIGHT,
+    Env          = aetx_env:tx_env(CurrHeight, ?PROTOCOL_VERSION),
 
-    F = fun(RegTxOpts) -> aetx:check(aeo_test_utils:register_tx(PubKey, RegTxOpts, S1), Trees, CurrHeight, ?PROTOCOL_VERSION) end,
+    F = fun(RegTxOpts) ->
+            Tx = aeo_test_utils:register_tx(PubKey, RegTxOpts, S1),
+            aetx:check(Tx, Trees, Env)
+        end,
     1 = MinFee = aec_governance:minimum_tx_fee(),
 
     %% Test minimum fee for increasing TTL.
@@ -155,45 +158,48 @@ extend_oracle_negative(Cfg) ->
     %% Test registering a bogus account
     BadPubKey = <<42:32/unit:8>>,
     RTx1      = aeo_test_utils:extend_tx(BadPubKey, S1),
-    {error, account_not_found} = aetx:check(RTx1, Trees, CurrHeight, ?PROTOCOL_VERSION),
+    Env       = aetx_env:tx_env(CurrHeight, ?PROTOCOL_VERSION),
+    {error, account_not_found} = aetx:check(RTx1, Trees, Env),
 
     %% Test extending non-existent oracle
     RTx2 = aeo_test_utils:extend_tx(PubKey, S1),
-    {error, account_is_not_an_active_oracle} =
-        aetx:check(RTx2, Trees, CurrHeight, ?PROTOCOL_VERSION),
+    {error, account_is_not_an_active_oracle} = aetx:check(RTx2, Trees, Env),
 
     %% Register the oracle
     {OracleKey, S2} = register_oracle(Cfg),
     Trees2          = aeo_test_utils:trees(S2),
     CurrHeight2     = ?ORACLE_EXT_HEIGHT,
+    Env2            = aetx_env:tx_env(CurrHeight2, ?PROTOCOL_VERSION),
 
     %% Insufficient funds
     S3     = aeo_test_utils:set_account_balance(OracleKey, 0, S2),
     Trees3 = aeo_test_utils:trees(S3),
     RTx3 = aeo_test_utils:extend_tx(OracleKey, S3),
-    {error, insufficient_funds} =
-        aetx:check(RTx3, Trees3, CurrHeight2, ?PROTOCOL_VERSION),
+    {error, insufficient_funds} = aetx:check(RTx3, Trees3, Env2),
 
     %% Test too high account nonce
     RTx4 = aeo_test_utils:extend_tx(OracleKey, #{nonce => 0}, S2),
-    {error, account_nonce_too_high} =
-        aetx:check(RTx4, Trees2, CurrHeight2, ?PROTOCOL_VERSION),
+    {error, account_nonce_too_high} = aetx:check(RTx4, Trees2, Env2),
 
     %% Test too low fee
     RTx5 = aeo_test_utils:extend_tx(OracleKey, #{fee => 0}, S2),
-    {error, too_low_fee} = aetx:check(RTx5, Trees2, CurrHeight2, ?PROTOCOL_VERSION),
+    {error, too_low_fee} = aetx:check(RTx5, Trees2, Env),
 
     %% Test too low TTL
     RTx6 = aeo_test_utils:extend_tx(OracleKey, #{ttl => CurrHeight2 - 1}, S2),
-    {error, ttl_expired} = aetx:check(RTx6, Trees2, CurrHeight2, ?PROTOCOL_VERSION),
+    {error, ttl_expired} = aetx:check(RTx6, Trees2, Env2),
     ok.
 
 extend_oracle_negative_dynamic_fee(Cfg) ->
     {OracleKey, S2} = register_oracle(Cfg),
     Trees2          = aeo_test_utils:trees(S2),
     CurrHeight2     = ?ORACLE_EXT_HEIGHT,
+    Env             = aetx_env:tx_env(CurrHeight2, ?PROTOCOL_VERSION),
 
-    F = fun(ExtTxOpts) -> aetx:check(aeo_test_utils:extend_tx(OracleKey, ExtTxOpts, S2), Trees2, CurrHeight2, ?PROTOCOL_VERSION) end,
+    F = fun(ExtTxOpts) ->
+            Tx = aeo_test_utils:extend_tx(OracleKey, ExtTxOpts, S2),
+            aetx:check(Tx, Trees2, Env)
+        end,
     1 = MinFee = aec_governance:minimum_tx_fee(),
 
     %% Test minimum fee for increasing TTL.
@@ -242,43 +248,44 @@ query_oracle_negative(Cfg) ->
     {SenderKey, S2} = aeo_test_utils:setup_new_account(S),
     Trees           = aeo_test_utils:trees(S2),
     CurrHeight      = ?ORACLE_QUERY_HEIGHT,
+    Env             = aetx_env:tx_env(CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test bad sender key
     BadSenderKey = <<42:32/unit:8>>,
     OracleId     = aec_id:create(oracle, OracleKey),
     Q1 = aeo_test_utils:query_tx(BadSenderKey, OracleId, S2),
-    {error, account_not_found} = aetx:check(Q1, Trees, CurrHeight, ?PROTOCOL_VERSION),
+    {error, account_not_found} = aetx:check(Q1, Trees, Env),
 
     %% Test unsufficient funds.
     S3     = aeo_test_utils:set_account_balance(SenderKey, 0, S2),
     Trees1 = aeo_test_utils:trees(S3),
     Q2     = aeo_test_utils:query_tx(SenderKey, OracleId, S2),
-    {error, insufficient_funds} = aetx:check(Q2, Trees1, CurrHeight, ?PROTOCOL_VERSION),
+    {error, insufficient_funds} = aetx:check(Q2, Trees1, Env),
 
     %% Test too high nonce in account
     Q3 = aeo_test_utils:query_tx(SenderKey, OracleId, #{nonce => 0}, S2),
-    {error, account_nonce_too_high} = aetx:check(Q3, Trees, CurrHeight, ?PROTOCOL_VERSION),
+    {error, account_nonce_too_high} = aetx:check(Q3, Trees, Env),
 
     %% Test too low query fee
     Q4 = aeo_test_utils:query_tx(SenderKey, OracleId, #{fee => 0}, S2),
-    {error, too_low_fee} = aetx:check(Q4, Trees, CurrHeight, ?PROTOCOL_VERSION),
+    {error, too_low_fee} = aetx:check(Q4, Trees, Env),
 
     %% Test bad oracle key
     BadOracleId = aec_id:create(oracle, <<42:32/unit:8>>),
     Q5 = aeo_test_utils:query_tx(SenderKey, BadOracleId, S2),
-    {error, oracle_does_not_exist} = aetx:check(Q5, Trees, CurrHeight, ?PROTOCOL_VERSION),
+    {error, oracle_does_not_exist} = aetx:check(Q5, Trees, Env),
 
     %% Test too long query ttl
     Q6 = aeo_test_utils:query_tx(SenderKey, OracleId, #{ query_ttl => {block, 500} }, S2),
-    {error, too_long_ttl} = aetx:check(Q6, Trees, CurrHeight, ?PROTOCOL_VERSION),
+    {error, too_long_ttl} = aetx:check(Q6, Trees, Env),
 
     %% Test too long response ttl
     Q7 = aeo_test_utils:query_tx(SenderKey, OracleId, #{ response_ttl => {delta, 500} }, S2),
-    {error, too_long_ttl} = aetx:check(Q7, Trees, CurrHeight, ?PROTOCOL_VERSION),
+    {error, too_long_ttl} = aetx:check(Q7, Trees, Env),
 
     %% Test too short TTL
     Q8 = aeo_test_utils:query_tx(SenderKey, OracleId, #{ ttl => CurrHeight - 1 }, S2),
-    {error, ttl_expired} = aetx:check(Q8, Trees, CurrHeight, ?PROTOCOL_VERSION),
+    {error, ttl_expired} = aetx:check(Q8, Trees, Env),
     ok.
 
 query_oracle_negative_dynamic_fee(Cfg) ->
@@ -287,8 +294,12 @@ query_oracle_negative_dynamic_fee(Cfg) ->
     {SenderKey, S2} = aeo_test_utils:setup_new_account(S),
     Trees           = aeo_test_utils:trees(S2),
     CurrHeight      = ?ORACLE_QUERY_HEIGHT,
+    Env             = aetx_env:tx_env(CurrHeight, ?PROTOCOL_VERSION),
 
-    F = fun(QTxOpts) -> aetx:check(aeo_test_utils:query_tx(SenderKey, OracleId, QTxOpts, S2), Trees, CurrHeight, ?PROTOCOL_VERSION) end,
+    F = fun(QTxOpts) ->
+            Tx = aeo_test_utils:query_tx(SenderKey, OracleId, QTxOpts, S2),
+            aetx:check(Tx, Trees, Env)
+        end,
     1 = MinFee = aec_governance:minimum_tx_fee(),
 
     %% Test minimum fee for increasing TTL.
@@ -333,40 +344,40 @@ query_response_negative(Cfg) ->
     {OracleKey, ID, S1}  = query_oracle(Cfg),
     Trees                = aeo_test_utils:trees(S1),
     CurrHeight           = ?ORACLE_RSP_HEIGHT,
+    Env                  = aetx_env:tx_env(CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test bad oracle key
     BadOracleKey = <<42:32/unit:8>>,
     RTx1 = aeo_test_utils:response_tx(BadOracleKey, ID, <<"42">>, S1),
-    {error, no_matching_oracle_query} =
-        aetx:check(RTx1, Trees, CurrHeight, ?PROTOCOL_VERSION),
+    {error, no_matching_oracle_query} = aetx:check(RTx1, Trees, Env),
 
     %% Test too high nonce for account
     RTx2 = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, #{nonce => 0}, S1),
-    {error, account_nonce_too_high} =
-        aetx:check(RTx2, Trees, CurrHeight, ?PROTOCOL_VERSION),
+    {error, account_nonce_too_high} = aetx:check(RTx2, Trees, Env),
 
     %% Test fee too low
     RTx3 = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, #{fee => 0}, S1),
-    {error, too_low_fee} = aetx:check(RTx3, Trees, CurrHeight, ?PROTOCOL_VERSION),
+    {error, too_low_fee} = aetx:check(RTx3, Trees, Env),
 
     %% Test too short TTL
     RTx4 = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, #{ttl => CurrHeight - 1}, S1),
-    {error, ttl_expired} = aetx:check(RTx4, Trees, CurrHeight, ?PROTOCOL_VERSION),
+    {error, ttl_expired} = aetx:check(RTx4, Trees, Env),
 
     %% Test bad query id
     OIO = aeo_state_tree:get_query(OracleKey, ID, aec_trees:oracles(Trees)),
     BadId = aeo_query:id(aeo_query:set_sender_nonce(42, OIO)),
     RTx5 = aeo_test_utils:response_tx(OracleKey, BadId, <<"42">>, S1),
-    {error, no_matching_oracle_query} =
-        aetx:check(RTx5, Trees, CurrHeight, ?PROTOCOL_VERSION),
+    {error, no_matching_oracle_query} = aetx:check(RTx5, Trees, Env),
     ok.
 
 query_response_negative_dynamic_fee(Cfg) ->
     F = fun(QTxSpec, RTxSpec) ->
                 {OracleKey, ID, S1}  = query_oracle(Cfg, #{oracle_ttl => {block, 2000 + ?ORACLE_RSP_HEIGHT}, fee => 25}, QTxSpec),
-                Trees                = aeo_test_utils:trees(S1),
-                CurrHeight           = ?ORACLE_RSP_HEIGHT,
-                aetx:check(aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, RTxSpec, S1), Trees, CurrHeight, ?PROTOCOL_VERSION)
+                Trees      = aeo_test_utils:trees(S1),
+                CurrHeight = ?ORACLE_RSP_HEIGHT,
+                Env        = aetx_env:tx_env(CurrHeight, ?PROTOCOL_VERSION),
+                Tx = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, RTxSpec, S1),
+                aetx:check(Tx, Trees, Env)
         end,
     1 = MinFee = aec_governance:minimum_tx_fee(),
 

@@ -419,10 +419,10 @@ do_set_store(Store, PubKey, Trees) ->
 
 apply_transaction(Tx, #state{ trees = Trees, height = Height } = State) ->
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
-    case aetx:check_from_contract(Tx, Trees, Height, ConsensusVersion) of
+    Env = aetx_env:contract_env(Height, ConsensusVersion),
+    case aetx:check(Tx, Trees, Env) of
         {ok, Trees1} ->
-            {ok, Trees2} =
-                aetx:process_from_contract(Tx, Trees1, Height, ConsensusVersion),
+            {ok, Trees2} = aetx:process(Tx, Trees1, Env),
             State1 = State#state{ trees = Trees2 },
             {ok, State1};
         {error, _} = E -> E

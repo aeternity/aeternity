@@ -16,8 +16,8 @@
          ttl/1,
          nonce/1,
          origin/1,
-         check/5,
-         process/6,
+         check/3,
+         process/3,
          signers/2,
          version/0,
          serialization_template/1,
@@ -101,12 +101,12 @@ channel_pubkey(#channel_close_solo_tx{channel_id = ChannelId}) ->
 from_pubkey(#channel_close_solo_tx{from_id = FromPubKey}) ->
     aec_id:specialize(FromPubKey, account).
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
-        {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_close_solo_tx{payload    = Payload,
                              poi        = PoI,
                              fee        = Fee,
-                             nonce      = Nonce} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
+                             nonce      = Nonce} = Tx,
+      Trees,_Env) ->
     ChannelPubKey  = channel_pubkey(Tx),
     FromPubKey = from_pubkey(Tx),
     case aesc_utils:check_solo_close_payload(ChannelPubKey, FromPubKey, Nonce, Fee,
@@ -115,13 +115,13 @@ check(#channel_close_solo_tx{payload    = Payload,
         Err -> Err
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
-              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
 process(#channel_close_solo_tx{payload    = Payload,
                                poi        = PoI,
                                fee        = Fee,
-                               nonce      = Nonce} = Tx, _Context, Trees,
-        Height, _ConsensusVersion, _TxHash) ->
+                               nonce      = Nonce} = Tx,
+        Trees, Env) ->
+    Height         = aetx_env:height(Env),
     ChannelPubKey  = channel_pubkey(Tx),
     FromPubKey     = from_pubkey(Tx),
     aesc_utils:process_solo_close(ChannelPubKey, FromPubKey, Nonce, Fee,
