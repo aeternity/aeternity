@@ -76,7 +76,8 @@ tag(trees_poi) -> 60;
 tag(trees_db) -> 61;
 tag(key_block) -> 100;
 tag(micro_block) -> 101;
-tag(light_micro_block) -> 102.
+tag(light_micro_block) -> 102;
+tag(pof) -> 200.
 
 rev_tag(10) -> account;
 rev_tag(11) -> signed_tx;
@@ -118,4 +119,5 @@ rev_tag(60) -> trees_poi;
 rev_tag(61) -> trees_db;
 rev_tag(100) -> key_block;
 rev_tag(101) -> micro_block;
-rev_tag(102) -> light_micro_block.
+rev_tag(102) -> light_micro_block;
+rev_tag(200) -> pof.

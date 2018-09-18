@@ -595,8 +595,9 @@ init_per_group(on_genesis_block = Group, Config) ->
 init_per_group(on_key_block = Group, Config) ->
     Config1 = start_node(Group, Config),
     Node = ?config(node, Config1),
-    %% Mine at least 1 key block (fork height may be 0).
-    aecore_suite_utils:mine_key_blocks(Node, aecore_suite_utils:latest_fork_height()),
+    %% Mine at least 2 key blocks (fork height may be 0).
+    ToMine = max(2, aecore_suite_utils:latest_fork_height()),
+    aecore_suite_utils:mine_key_blocks(Node, ToMine),
     {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     true = aec_blocks:is_key_block(KeyBlock),
     {ok, PendingKeyBlock} = wait_for_key_block_candidate(),
@@ -609,8 +610,9 @@ init_per_group(on_key_block = Group, Config) ->
 init_per_group(on_micro_block = Group, Config) ->
     Config1 = start_node(Group, Config),
     Node = ?config(node, Config1),
-    %% Mine at least 1 key block (fork height may be 0).
-    aecore_suite_utils:mine_key_blocks(Node, aecore_suite_utils:latest_fork_height()),
+    %% Mine at least 2 key blocks (fork height may be 0).
+    ToMine = max(2, aecore_suite_utils:latest_fork_height()),
+    aecore_suite_utils:mine_key_blocks(Node, ToMine),
     {ok, [_KeyBlock0]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     %% Send spend tx so it gets included into micro block.
     {ok, Pub} = rpc(aec_keys, pubkey, []),
@@ -642,7 +644,8 @@ init_per_group(account_with_balance = Group, Config) ->
     Config1 = start_node(Group, Config),
     Node = ?config(node, Config1),
     {ok, Pubkey} = rpc(aec_keys, pubkey, []),
-    aecore_suite_utils:mine_key_blocks(Node, aecore_suite_utils:latest_fork_height()),
+    ToMine = max(2, aecore_suite_utils:latest_fork_height()),
+    aecore_suite_utils:mine_key_blocks(Node, ToMine),
     {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     true = aec_blocks:is_key_block(KeyBlock),
     [{account_id, aec_base58c:encode(account_pubkey, Pubkey)},
@@ -665,7 +668,8 @@ init_per_group(tx_is_pending = Group, Config) ->
     Config1 = start_node(Group, Config),
     Node = ?config(node, Config1),
     {ok, Pubkey} = rpc(aec_keys, pubkey, []),
-    aecore_suite_utils:mine_key_blocks(Node, aecore_suite_utils:latest_fork_height()),
+    ToMine = max(2, aecore_suite_utils:latest_fork_height()),
+    aecore_suite_utils:mine_key_blocks(Node, ToMine),
     {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     true = aec_blocks:is_key_block(KeyBlock),
     {ok, Tx} = aecore_suite_utils:spend(Node, Pubkey, Pubkey, 1),
@@ -690,7 +694,8 @@ init_per_group(post_tx_to_mempool = Group, Config) ->
     Config1 = start_node(Group, Config),
     Node = ?config(node, Config1),
     {ok, Pubkey} = rpc(aec_keys, pubkey, []),
-    aecore_suite_utils:mine_key_blocks(Node, aecore_suite_utils:latest_fork_height()),
+    ToMine = max(2, aecore_suite_utils:latest_fork_height()),
+    aecore_suite_utils:mine_key_blocks(Node, ToMine),
     {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     true = aec_blocks:is_key_block(KeyBlock),
     [{sender_id, aec_base58c:encode(account_pubkey, Pubkey)},
@@ -707,7 +712,8 @@ init_per_group(nonexistent_oracle = Group, Config) ->
 init_per_group(oracle_txs = Group, Config) ->
     Config1 = start_node(Group, Config),
     Node = ?config(node, Config1),
-    aecore_suite_utils:mine_key_blocks(Node, aecore_suite_utils:latest_fork_height()),
+    ToMine = max(2, aecore_suite_utils:latest_fork_height()),
+    aecore_suite_utils:mine_key_blocks(Node, ToMine),
     {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     true = aec_blocks:is_key_block(KeyBlock),
     Config1;
@@ -727,7 +733,7 @@ init_per_group(channel_websocket = Group, Config) ->
     IStartAmt = 10000,
     RStartAmt = 10000,
     Fee = 1,
-    BlocksToMine = 1,
+    BlocksToMine = 3,
 
     aecore_suite_utils:mine_key_blocks(Node, BlocksToMine),
 
@@ -1505,7 +1511,7 @@ post_transactions_sut(Tx) ->
 %% /contracts/*
 
 get_contract(_Config) ->
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 3),
 
     {ok, 200, _} = get_balance_at_top(),
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
@@ -1706,7 +1712,7 @@ get_names_entry_by_name_sut(Name) ->
 %% /channels/*
 
 get_channel_by_pubkey(_Config) ->
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 2),
     ?assertEqual({ok, 400, #{<<"reason">> => <<"Invalid public key">>}},
                  get_channel_by_pubkey_sut(<<"InvalidKey">>)),
 
@@ -1832,7 +1838,7 @@ save_config([], _Config, Acc) ->
 %% due to complexity of contract_call_tx (needs a contract in the state tree)
 %% both positive and negative cases are tested in this test
 contract_transactions(_Config) ->    % miner has an account
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 3),
     {ok, 200, _} = get_balance_at_top(),
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
@@ -2864,6 +2870,10 @@ get_transaction(_Config) ->
 %% POST internalAPI/debug/transactions/spend
 %% GET externalAPI/account/balance
 pending_transactions(_Config) ->
+    %% Mine for the reward delay to avoid worrying about start of the chain effects
+    Delay = rpc(aec_governance, beneficiary_reward_delay, []),
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), Delay),
+
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
     {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
     InitialBalance =
@@ -2871,6 +2881,7 @@ pending_transactions(_Config) ->
             {ok, 404, #{<<"reason">> := <<"Account not found">>}} -> 0;
             {ok, 200, #{<<"balance">> := Bal00}} -> Bal00
         end,
+
     AmountToSpent = 3,
     {BlocksToMine, Fee} = minimal_fee_and_blocks_to_mine(AmountToSpent, 1),
     MineReward = rpc(aec_governance, block_mine_reward, []),
@@ -2906,14 +2917,15 @@ pending_transactions(_Config) ->
                   get_accounts_by_pubkey_sut(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
 
 
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 3),
+    ToMine = 2 + Delay,
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), ToMine),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty again
     {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
 
     {ok, 200, #{<<"balance">> := Bal1}} = get_balance_at_top(),
     ct:log("Bal1: ~p, Bal0: ~p, Mine reward: ~p, Fee: ~p, Amount to spend: ~p",
-           [Bal1, Bal0, 3 * MineReward, Fee, AmountToSpent]),
-    {Bal1, _} = {Bal0 + 3 * MineReward + Fee - Fee - AmountToSpent, Bal1},
+           [Bal1, Bal0, ToMine * MineReward, Fee, AmountToSpent]),
+    {Bal1, _} = {Bal0 + ToMine * MineReward + Fee - Fee - AmountToSpent, Bal1},
     {ok, 200, #{<<"balance">> := AmountToSpent}} =
                  get_accounts_by_pubkey_sut(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
     ok.
@@ -3043,12 +3055,13 @@ naming_system_manage_name(_Config) ->
     {ok, NHash} = aens:get_name_hash(Name),
     Fee         = 2,
     MineReward  = rpc(aec_governance, block_mine_reward, []),
+    Delay       = rpc(aec_governance, beneficiary_reward_delay, []),
     Node        = aecore_suite_utils:node_name(?NODE),
 
-    %% Mine a block to get some funds
-    aecore_suite_utils:mine_key_blocks(Node, 1),
-    Height0 = 1,
+    %% Mine blocks to get some funds
+    aecore_suite_utils:mine_key_blocks(Node, Delay + 1),
     {ok, 200, #{<<"balance">> := Balance}} = get_balance_at_top(),
+    {ok, 200, #{<<"height">> := Height0}} = get_top_sut(),
 
     %% Check mempool empty
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
@@ -3067,13 +3080,18 @@ naming_system_manage_name(_Config) ->
     ?assertEqual(EncodedCHash, maps:get(<<"commitment_id">>, PreclaimTx)),
 
     %% Mine a block and check mempool empty again
-    {ok, BS1} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, PreclaimTxHash, 10),
-    Height1 = Height0 + length(BS1),
+    {ok,_BS1} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, PreclaimTxHash, 10),
+    {ok, 200, #{<<"height">> := Height1}} = get_top_sut(),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
-    %% Check fee taken from account, then mine reward and fee added to account
+    %% Check fee taken from account, then mine reward added to account
     {ok, 200, #{<<"balance">> := Balance1}} = get_balance_at_top(),
-    ?assertEqual(Balance1, Balance - Fee + (Height1 - Height0) * MineReward + Fee),
+    ?assertEqual(Balance1, Balance - Fee + (Height1 - Height0) * MineReward),
+
+    %% Mine for the reward delay to not have old fees interfere.
+    aecore_suite_utils:mine_key_blocks(Node, Delay + 1),
+    {ok, 200, #{<<"balance">> := Balance2}} = get_balance_at_top(),
+    {ok, 200, #{<<"height">> := Height2}} = get_top_sut(),
 
     %% Submit name claim tx and check it is in mempool
     ClaimData = #{account_id => PubKeyEnc,
@@ -3084,19 +3102,19 @@ naming_system_manage_name(_Config) ->
     ClaimTxHash = sign_and_post_tx(ClaimTxEnc),
 
     %% Mine a block and check mempool empty again
-    {ok, BS2} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, ClaimTxHash, 10),
-    Height2 = Height1 + length(BS2),
+    {ok,_BS2} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, ClaimTxHash, 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Check tx fee taken from account, claim fee burned,
     %% then mine reward and fee added to account
     ClaimBurnedFee = rpc(aec_governance, name_claim_burned_fee, []),
-    {ok, 200, #{<<"balance">> := Balance2}} = get_balance_at_top(),
-    ?assertEqual(Balance2, Balance1 - Fee + (Height2 - Height1) * MineReward + Fee - ClaimBurnedFee),
+    {ok, 200, #{<<"balance">> := Balance3}} = get_balance_at_top(),
+    {ok, 200, #{<<"height">> := Height3}} = get_top_sut(),
+    ?assertEqual(Balance3, Balance2 - Fee + (Height3 - Height2) * MineReward - ClaimBurnedFee),
 
     %% Check that name entry is present
     EncodedNHash = aec_base58c:encode(name, NHash),
-    ExpectedTTL1 = (Height2 - 1) + aec_governance:name_claim_max_expiration(),
+    ExpectedTTL1 = (Height3 - 1) + aec_governance:name_claim_max_expiration(),
     {ok, 200, #{<<"id">>       := EncodedNHash,
                 <<"ttl">>      := ExpectedTTL1,
                 <<"pointers">> := []}} = get_names_entry_by_name_sut(Name),
@@ -3112,33 +3130,38 @@ naming_system_manage_name(_Config) ->
     UpdateTxHash = sign_and_post_tx(UpdateEnc),
 
     %% Mine a block and check mempool empty again
-    {ok, BS3} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, UpdateTxHash, 10),
-    Height3 = Height2 + length(BS3),
+    {ok,_BS3} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, UpdateTxHash, 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Check that TTL and pointers got updated in name entry
-    ExpectedTTL2 = (Height3 - 1) + NameTTL,
+    {ok, 200, #{<<"height">> := Height31}} = get_top_sut(),
+    ExpectedTTL2 = (Height31 - 1) + NameTTL,
     {ok, 200, #{<<"ttl">>      := ExpectedTTL2,
                 <<"pointers">> := Pointers}} = get_names_entry_by_name_sut(Name),
 
-    %% Check mine reward
-    {ok, 200, #{<<"balance">> := Balance3}} = get_balance_at_top(),
-    ?assertEqual(Balance3, Balance2 - Fee + (Height3 - Height2) * MineReward + Fee),
+    %% Mine for the reward delay to not have old fees interfere.
+    aecore_suite_utils:mine_key_blocks(Node, Delay),
+    {ok, 200, #{<<"balance">> := Balance4}} = get_balance_at_top(),
+    {ok, 200, #{<<"height">> := Height4}} = get_top_sut(),
 
     {ok, 200, #{<<"tx">> := EncodedSpendTx}} =
-        get_spend(#{recipient_id => EncodedNHash, amount => 77, fee => 50,
+        get_spend(#{recipient_id => EncodedNHash, amount => 77, fee => Fee,
                     payload => <<"foo">>, sender_id => PubKeyEnc}),
     SpendTxHash = sign_and_post_tx(EncodedSpendTx),
 
-    {ok, BS4} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, SpendTxHash, 10),
-    Height4 = Height3 + length(BS4),
+    {ok,_BS4} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, SpendTxHash, 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
-    %% Nothing gets lost as recipient = sender = miner
+    %% Only fee is lost as recipient = sender
     %% This tests 'resolve_name' because recipient is expressed by name label
-    %% This tests passes with 1 block confirmation due to lack of miner's reward delay
-    {ok, 200, #{<<"balance">> := Balance4}} = get_balance_at_top(),
-    ?assertEqual(Balance4, Balance3 + (Height4 - Height3) * MineReward),
+    {ok, 200, #{<<"balance">> := Balance5}} = get_balance_at_top(),
+    {ok, 200, #{<<"height">> := Height5}} = get_top_sut(),
+    ?assertEqual(Balance5, Balance4 - Fee + (Height5 - Height4) * MineReward),
+
+    %% Mine for the reward delay to not have old fees interfere.
+    aecore_suite_utils:mine_key_blocks(Node, Delay),
+    {ok, 200, #{<<"balance">> := Balance6}} = get_balance_at_top(),
+    {ok, 200, #{<<"height">> := Height6}} = get_top_sut(),
 
     %% Submit name transfer tx and check it is in mempool
     TransferData = #{account_id   => PubKeyEnc,
@@ -3149,13 +3172,18 @@ naming_system_manage_name(_Config) ->
     TransferTxHash = sign_and_post_tx(TransferEnc),
 
     %% Mine a block and check mempool empty again
-    {ok, BS5} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, TransferTxHash, 10),
-    Height5 = Height4 + length(BS5),
+    {ok,_BS5} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, TransferTxHash, 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Check balance
-    {ok, 200, #{<<"balance">> := Balance5}} = get_balance_at_top(),
-    ?assertEqual(Balance5, Balance4 + (Height5 - Height4) * MineReward),
+    {ok, 200, #{<<"balance">> := Balance7}} = get_balance_at_top(),
+    {ok, 200, #{<<"height">> := Height7}} = get_top_sut(),
+    ?assertEqual(Balance7, Balance6 - Fee + (Height7 - Height6) * MineReward),
+
+    %% Mine for the reward delay to not have old fees interfere.
+    aecore_suite_utils:mine_key_blocks(Node, Delay),
+    {ok, 200, #{<<"balance">> := Balance8}} = get_balance_at_top(),
+    {ok, 200, #{<<"height">> := Height8}} = get_top_sut(),
 
     %% Submit name revoke tx and check it is in mempool
     RevokeData = #{account_id => PubKeyEnc,
@@ -3165,13 +3193,13 @@ naming_system_manage_name(_Config) ->
     RevokeTxHash = sign_and_post_tx(RevokeEnc),
 
     %% Mine a block and check mempool empty again
-    {ok, BS6} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, RevokeTxHash, 10),
-    Height6 = Height5 + length(BS6),
+    {ok,_BS6} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, RevokeTxHash, 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Check balance
-    {ok, 200, #{<<"balance">> := Balance6}} = get_balance_at_top(),
-    ?assertEqual(Balance6, Balance5 + (Height6 - Height5) * MineReward),
+    {ok, 200, #{<<"balance">> := Balance9}} = get_balance_at_top(),
+    {ok, 200, #{<<"height">> := Height9}} = get_top_sut(),
+    ?assertEqual(Balance9, Balance8 - Fee + (Height9 - Height8) * MineReward),
 
     %% Check the name got expired
     {ok, 404, #{<<"reason">> := <<"Name revoked">>}} = get_names_entry_by_name_sut(Name),
@@ -3262,7 +3290,7 @@ ws_block_mined(_Config) ->
     %% Register for mined_block events
     ws_subscribe(ConnPid, #{ type => mined_block }),
 
-    {Height, Hash} = ws_mine_key_block(ConnPid, ?NODE, 1),
+    {Height, Hash} = ws_mine_key_block(ConnPid, ?NODE, 3),
 
     {_Tag, #{<<"block">> := Block}} = ws_chain_get(ConnPid, #{height => Height, type => block}),
     {_Tag, #{<<"block">> := Block}} = ws_chain_get(ConnPid, #{hash => Hash, type => block}),
@@ -4978,7 +5006,8 @@ minimal_fee_and_blocks_to_mine(Amount, ChecksCnt) ->
     Fee = rpc(aec_governance, minimum_tx_fee, []),
     MineReward = rpc(aec_governance, block_mine_reward, []),
     TokensRequired = (Amount + Fee) * ChecksCnt,
-    BlocksToMine = trunc(math:ceil(TokensRequired / MineReward)),
+    Delay = rpc(aec_governance, beneficiary_reward_delay, []),
+    BlocksToMine = trunc(math:ceil(TokensRequired / MineReward)) + Delay,
     {BlocksToMine, Fee}.
 
 ws_start_link() ->

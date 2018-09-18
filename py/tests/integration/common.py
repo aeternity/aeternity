@@ -116,13 +116,14 @@ def make_no_mining_user_config(root_dir, file_name):
 ---
 chain:
     hard_forks:
-        "23": 0
+        "24": 0
 
 mining:
     autostart: false
     expected_mine_rate: 100
+
     beneficiary: "ak_2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
-    beneficiary_reward_delay: 0
+    beneficiary_reward_delay: 2
     cuckoo:
         miner:
             executable: mean16s-generic
@@ -136,7 +137,7 @@ def make_mining_user_config(root_dir, key_dir, beneficiary, file_name):
 ---
 chain:
     hard_forks:
-        "23": 0
+        "24": 0
 keys:
     dir: "{}"
 
@@ -145,7 +146,7 @@ mining:
     expected_mine_rate: 100
     # Beneficiary matches pubkey from sign_keys/dev1/sign_key.pub
     beneficiary: "{}"
-    beneficiary_reward_delay: 0
+    beneficiary_reward_delay: 2
     cuckoo:
         miner:
             executable: mean16s-generic

@@ -21,8 +21,9 @@
          miner/1,
          new_key/10,
          new_key_from_header/1,
-         new_micro/8,
-         new_micro_from_header/2,
+         new_micro/9,
+         new_micro_from_header/3,
+         pof/1,
          pow/1,
          prev_hash/1,
          prev_key_hash/1,
@@ -33,6 +34,7 @@
          set_miner/2,
          set_nonce/2,
          set_nonce_and_pow/3,
+         set_pof/2,
          set_prev_hash/2,
          set_prev_key_hash/2,
          set_root_hash/2,
@@ -63,7 +65,8 @@
 
 -record(mic_block, {
           header    :: aec_headers:micro_header(),
-          txs = []  :: tx_list()
+          txs = []  :: tx_list(),
+          pof = no_fraud
          }).
 
 -record(key_block, {
@@ -167,22 +170,25 @@ new_key_from_header(Header) ->
     #key_block{header = Header}.
 
 -spec new_micro(height(), block_header_hash(), block_header_hash(), state_hash(),
-                txs_hash(), tx_list(), non_neg_integer(),
+                txs_hash(), tx_list(), non_neg_integer(), aec_pof:pof(),
                 non_neg_integer()) -> micro_block().
-new_micro(Height, PrevHash, PrevKeyHash, RootHash, TxsHash, Txs, Time, Version) ->
+new_micro(Height, PrevHash, PrevKeyHash, RootHash, TxsHash, Txs, Time, PoF, Version) ->
+    PoFHash = aec_pof:hash(PoF),
     H = aec_headers:new_micro_header(Height, PrevHash, PrevKeyHash, RootHash, Time,
-                                     TxsHash, Version),
+                                     TxsHash, PoFHash, Version),
     #mic_block{header    = H,
-               txs       = Txs
+               txs       = Txs,
+               pof       = PoF
               }.
 
--spec new_micro_from_header(aec_headers:micro_header(), tx_list()
+-spec new_micro_from_header(aec_headers:micro_header(), tx_list(), aec_pof:pof()
                            )-> micro_block().
 
-new_micro_from_header(Header, Txs) ->
+new_micro_from_header(Header, Txs, PoF) ->
     aec_headers:assert_micro_header(Header),
     #mic_block{header    = Header,
-               txs       = Txs
+               txs       = Txs,
+               pof       = PoF
               }.
 
 %%%===================================================================
@@ -265,6 +271,16 @@ version(Block) ->
 set_nonce(Block, Nonce) ->
     set_header(Block, aec_headers:set_nonce(to_key_header(Block), Nonce)).
 
+-spec pof(micro_block()) -> aec_pof:pof().
+pof(#mic_block{pof = PoF}) ->
+    PoF.
+
+-spec set_pof(micro_block(), aec_pof:pof()) -> micro_block().
+set_pof(#mic_block{} = Block, PoF) ->
+    PoFHash = aec_pof:hash(PoF),
+    Header = aec_headers:set_pof_hash(to_micro_header(Block), PoFHash),
+    set_header(Block#mic_block{pof = PoF}, Header).
+
 -spec pow(key_block()) -> aec_pow:pow_evidence().
 pow(Block) ->
     aec_headers:pow(to_key_header(Block)).
@@ -330,20 +346,17 @@ serialize_to_binary(#mic_block{} = Block) ->
              micro_block,
              Vsn,
              Template,
-             [{txs, Txs}]),
+             [ {txs, Txs}
+             , {pof, aec_pof:serialize(pof(Block))}
+             ]),
     <<Hdr/binary, Rest/binary>>.
 
 -spec deserialize_from_binary(binary()) -> {'error', term()} | {'ok', block()}.
-deserialize_from_binary(<<?KEY_HEADER_TAG:1, _/bits>> = Bin) ->
-    case aec_headers:deserialize_key_from_binary(Bin) of
-        {ok, Header} ->
+deserialize_from_binary(Bin) ->
+    case aec_headers:deserialize_from_binary_partial(Bin) of
+        {key, Header} ->
             {ok, #key_block{header = Header}};
-        {error, _} = E ->
-            E
-    end;
-deserialize_from_binary(<<HeaderBin:?MIC_HEADER_BYTES/binary, Rest/binary>>) ->
-    case aec_headers:deserialize_micro_from_binary(HeaderBin) of
-        {ok, Header} ->
+        {micro, Header, Rest} ->
             deserialize_micro_block_from_binary(Rest, Header);
         {error, _} = E ->
             E
@@ -353,17 +366,19 @@ deserialize_micro_block_from_binary(Bin, Header) ->
     Vsn = aec_headers:version(Header),
     case serialization_template(micro, Vsn) of
         {ok, Template} ->
-            [{txs, Txs0}] =
+            [{txs, Txs0}, {pof, PoF0}] =
                 aec_object_serialization:deserialize(micro_block, Vsn, Template, Bin),
             Txs = [aetx_sign:deserialize_from_binary(Tx)
                    || Tx <- Txs0],
-            {ok, #mic_block{header = Header, txs = Txs}};
+            PoF = aec_pof:deserialize(PoF0),
+            {ok, #mic_block{header = Header, txs = Txs, pof = PoF}};
         Err = {error, _} ->
             Err
     end.
 
 serialization_template(micro, Vsn) when Vsn >= ?GENESIS_VERSION andalso Vsn =< ?PROTOCOL_VERSION ->
-    {ok, [{txs, [binary]}]};
+    {ok, [ {txs, [binary]}
+         , {pof, [binary]}]};
 serialization_template(_BlockType, Vsn) ->
     {error, {bad_block_vsn, Vsn}}.
 
@@ -404,7 +419,9 @@ validate_key_block(#key_block{} = Block) ->
 -spec validate_micro_block(micro_block()) -> 'ok' | {'error', {'header' | 'block', term()}}.
 validate_micro_block(#mic_block{} = Block) ->
     Validators = [fun validate_txs_hash/1,
-                  fun validate_gas_limit/1],
+                  fun validate_gas_limit/1,
+                  fun validate_pof/1
+                 ],
     case aec_headers:validate_micro_block_header(to_micro_header(Block)) of
         ok ->
             case aeu_validation:run(Validators, [Block]) of
@@ -430,5 +447,15 @@ validate_gas_limit(#mic_block{} = Block) ->
     case gas(Block) =< aec_governance:block_gas_limit() of
         true  -> ok;
         false -> {error, gas_limit_exceeded}
+    end.
+
+validate_pof(#mic_block{pof = no_fraud}) -> ok;
+validate_pof(#mic_block{pof = PoF} = Block) ->
+    Header = to_header(Block),
+    case aec_headers:pof_hash(Header) =:= aec_pof:hash(PoF) of
+        false ->
+            {error, pof_hash_mismatch};
+        true ->
+            aec_pof:validate(PoF)
     end.
 
