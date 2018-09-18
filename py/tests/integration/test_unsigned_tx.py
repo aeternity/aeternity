@@ -38,8 +38,7 @@ def read_id_contract(api):
 def test_contract_create():
     test_settings = settings["test_contract_create"]
     beneficiary = common.setup_beneficiary()
-    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "node")
-    internal_api = common.internal_api(node)
+    (node, (root_dir, external_api, internal_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "node")
 
     private_key = keys.new_private()
     public_key = keys.public_key(private_key)
@@ -69,13 +68,13 @@ def test_contract_create():
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
     print("Signed transaction " + signed)
 
-    alice_balance0 = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
+    alice_balance0 = common.get_account_balance(external_api, alice_address)
     tx_object = Tx(tx=signed)
     external_api.post_transaction(tx_object)
 
     top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
-    alice_balance = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
+    alice_balance = common.get_account_balance(external_api, alice_address)
 
     assert_equals(alice_balance0,
                   alice_balance
@@ -92,8 +91,8 @@ def test_contract_call():
     test_settings = settings["test_contract_call"]
     create_settings = settings["test_contract_create"]
     beneficiary = common.setup_beneficiary()
-    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "node")
-    internal_api = common.internal_api(node)
+    (node, (root_dir, external_api, internal_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "node")
+
 
     private_key = keys.new_private()
     public_key = keys.public_key(private_key)
@@ -109,13 +108,13 @@ def test_contract_call():
 
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
 
-    alice_balance0 = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
+    alice_balance0 = common.get_account_balance(external_api, alice_address)
     tx_object = Tx(tx=signed)
     external_api.post_transaction(tx_object)
 
     top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
-    alice_balance = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
+    alice_balance = common.get_account_balance(external_api, pub_key=alice_address)
 
     # assert contract created:
     call_contract = test_settings["contract_call"]
@@ -152,13 +151,13 @@ def test_contract_call():
     signed_call = keys.sign_verify_encode_tx(unsigned_call_tx, private_key, public_key)
 
     print("Signed transaction: " + signed_call)
-    alice_balance0 = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
+    alice_balance0 = common.get_account_balance(external_api, alice_address)
     tx_object = Tx(tx=signed_call)
     external_api.post_transaction(tx_object)
 
     top = external_api.get_top_block()
     common.wait_until_height(external_api, top.height + 3)
-    alice_balance = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
+    alice_balance = common.get_account_balance(external_api, alice_address)
 
     # The call runs out of gas and all gas is consumed
     # assert contract called:
@@ -175,8 +174,7 @@ def test_contract_on_chain_call_off_chain():
     test_settings = settings["test_contract_call"]
     create_settings = settings["test_contract_create"]
     beneficiary = common.setup_beneficiary()
-    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "node")
-    internal_api = common.internal_api(node)
+    (node, (root_dir, external_api, internal_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "node")
 
     private_key = keys.new_private()
     public_key = keys.public_key(private_key)
@@ -192,7 +190,7 @@ def test_contract_on_chain_call_off_chain():
 
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
 
-    alice_balance0 = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
+    alice_balance0 = common.get_account_balance(external_api, alice_address)
     tx_object = Tx(tx=signed)
     external_api.post_transaction(tx_object)
 
@@ -225,20 +223,18 @@ def test_spend():
     # Setup
     test_settings = settings["test_spend"]
     beneficiary = common.setup_beneficiary()
-    (node, (root_dir, external_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "node")
-    internal_api = common.internal_api(node)
+    (node, (root_dir, external_api, internal_api, top)) = setup_node_with_tokens(test_settings, beneficiary, "node")
 
     private_key = keys.new_private()
     public_key = keys.public_key(private_key)
-
     alice_address = keys.address(public_key)
+    test_settings["alice"]["pubkey"] = alice_address
     bob_address = test_settings["spend_tx"]["recipient"]
 
-    test_settings["alice"]["pubkey"] = alice_address
     send_tokens_to_user(beneficiary, "alice", test_settings, external_api, internal_api)
 
-    alice_balance0 = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
-    bob_balance0 = common.get_account_balance(external_api, internal_api, pub_key=bob_address).balance
+    alice_balance0 = common.get_account_balance(external_api, alice_address)
+    bob_balance0 = common.get_account_balance(external_api, bob_address)
 
     # Alice creates spend tx
     spend_data_obj = SpendTx(
@@ -255,23 +251,18 @@ def test_spend():
     # Alice signs spend tx
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
     tx_hash = keys.tx_hash_from_signed_encoded(signed)
-    print("Tx hash " + tx_hash)
-    print("Signed transaction " + signed)
 
     # Alice posts spend tx
     tx_object = Tx(tx=signed)
     external_api.post_transaction(tx_object)
-    _ = external_api.get_transaction_by_hash(tx_hash) # it is there - either in mempool or in a block
 
     # Wait until spend tx is mined
-    wait(lambda: common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance < alice_balance0,
+    wait(lambda: external_api.get_transaction_by_hash(tx_hash).block_hash != 'none',
          timeout_seconds=120, sleep_seconds=0.25)
-    _ = external_api.get_transaction_by_hash(tx_hash) # it is there - shall be in a block
-    print("Tx in chain ")
 
     # Check that Alice was debited and Bob was credited
-    alice_balance = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
-    bob_balance = common.get_account_balance(external_api, internal_api, pub_key=bob_address).balance
+    alice_balance = common.get_account_balance(external_api, alice_address)
+    bob_balance = common.get_account_balance(external_api, bob_address)
     print("Alice balance now is " + str(alice_balance))
     print("Bob balance now is " + str(bob_balance))
     assert_equals(alice_balance0, alice_balance + test_settings["spend_tx"]["fee"] + test_settings["spend_tx"]["amount"])
