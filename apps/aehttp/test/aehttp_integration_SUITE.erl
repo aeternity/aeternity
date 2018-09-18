@@ -1121,7 +1121,7 @@ post_key_block(_CurrentBlockType, Config) ->
 
 mine_key_block(HeaderBin, Target, Nonce, Attempts) when Attempts > 0 ->
     case rpc(aec_mining, mine, [HeaderBin, Target, Nonce]) of
-        {ok, {Nonce, PowEvidence}} = Res ->
+        {ok, {Nonce, _PowEvidence}} = Res ->
             Res;
         {error, no_solution} ->
             mine_key_block(HeaderBin, Target, aec_pow:next_nonce(Nonce), Attempts - 1)
@@ -1810,7 +1810,7 @@ wait_for_key_block_candidate(0) -> {error, not_found};
 wait_for_key_block_candidate(N) ->
     case rpc(aec_conductor, get_key_block_candidate, []) of
         {ok, Block} -> {ok, Block};
-        {error, _Rsn} = Err ->
+        {error, _Rsn} ->
             timer:sleep(10),
             wait_for_key_block_candidate(N - 1)
     end.
@@ -2100,8 +2100,7 @@ contract_transactions(_Config) ->    % miner has an account
 %% GET contract_call_compute_tx unsigned transaction
 %% No testing of negative cases as these are same as for "normal" create.
 contract_create_compute_transaction(_Config) ->
-    NodeName = aecore_suite_utils:node_name(?NODE),
-
+    
     {ok, 200, _} = get_balance_at_top(),
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
@@ -2447,7 +2446,7 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
     Salt = 1234,
 
     {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = get_commitment_id(Name, Salt),
-    {ok, CHash} = aec_base58c:safe_decode(commitment, EncodedCHash),
+    {ok, _CHash} = aec_base58c:safe_decode(commitment, EncodedCHash),
 
     %% Submit name preclaim tx and check it is in mempool
     PreclaimData = #{commitment_id => EncodedCHash,
@@ -2459,7 +2458,7 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
     ?assertEqual(EncodedCHash, maps:get(<<"commitment_id">>, PreclaimTx)),
 
     %% Mine a block and check mempool empty again
-    {ok, BS1} = aecore_suite_utils:mine_blocks_until_tx_on_chain(
+    {ok, _BS1} = aecore_suite_utils:mine_blocks_until_tx_on_chain(
                     aecore_suite_utils:node_name(?NODE), PreclaimTxHash, 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
@@ -2649,7 +2648,7 @@ state_channels_withdrawal(ChannelId, MinerPubkey) ->
     ok.
 
 state_channels_snapshot_solo(ChannelId, MinerPubkey) ->
-    PoI = aec_trees:new_poi(aec_trees:new_without_backend()),
+    _PoI = aec_trees:new_poi(aec_trees:new_without_backend()),
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
                 from_id => aec_base58c:encode(account_pubkey, MinerPubkey),
                 payload => <<"hejsan svejsan">>, %%TODO proper payload
@@ -3041,7 +3040,7 @@ naming_system_manage_name(_Config) ->
 
     %% Get commitment hash to preclaim a name
     {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = get_commitment_id(Name, NameSalt),
-    {ok, CHash} = aec_base58c:safe_decode(commitment, EncodedCHash),
+    {ok, _CHash} = aec_base58c:safe_decode(commitment, EncodedCHash),
 
     %% Submit name preclaim tx and check it is in mempool
     PreclaimData = #{commitment_id => EncodedCHash,
@@ -3365,7 +3364,7 @@ ws_tx_on_chain(_Config) ->
     ws_mine_key_block(ConnPid, ?NODE, 1),
 
     %% Fetch the pubkey via HTTP
-    {ok, 200, #{ <<"pub_key">> := PK }} = get_node_pubkey(),
+    {ok, 200, #{ <<"pub_key">> := _}} = get_node_pubkey(),
 
     %% Post spend tx
     {ok, 200, #{<<"tx">> := Tx}} =
@@ -3859,11 +3858,7 @@ sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
 
 sc_ws_leave(Config) ->
     {sc_ws_open, ConfigList} = ?config(saved_config, Config),
-    #{initiator := #{pub_key  := IPubkey,
-                     priv_key := IPrivkey},
-      responder := #{pub_key  := RPubkey,
-                     priv_key := RPrivkey}} = proplists:get_value(participants,
-                                                                  ConfigList),
+
     #{initiator := IConnPid,
       responder := RConnPid} = proplists:get_value(channel_clients, ConfigList),
     ok = ?WS:register_test_for_channel_events(IConnPid, [leave, info]),
@@ -4112,9 +4107,9 @@ sc_ws_contract_(Config, TestName, Owner) ->
                 end,
             CallRes = GetCallResult(SenderConnPid),
             CallRes = GetCallResult(AckConnPid),
-            #{<<"caller_id">>         := CallerId,
+            #{<<"caller_id">>         := _CallerId,
               <<"caller_nonce">>      := CallRound,
-              <<"contract_id">>       := ContractId,
+              <<"contract_id">>       := _ContractId,
               <<"gas_price">>         := _,
               <<"gas_used">>          := _,
               <<"height">>            := CallRound,
