@@ -1413,7 +1413,7 @@ spend_gas_common(_Resource, Cost, State) ->
 log(Topics, MemAddress, Length, State) ->
     AccountAddress = aevm_eeevm_state:address(State),
     {Body, State1} = aevm_eeevm_memory:get_area(
-		       MemAddress, Length, State),
+                       MemAddress, Length, State),
     LogEntry = log_entry(AccountAddress, Topics, Body),
     aevm_eeevm_state:add_log(LogEntry, State1).
 
@@ -1421,7 +1421,7 @@ log(Topics, MemAddress, Length, State) ->
 %% 32-bytes log topics, Ot and some number of bytes of data, Od: (21)
 %% O ≡ (Oa,(Ot0, Ot1, ...), Od)
 log_entry(Address, Topics, Data) ->
-    [<<Address:160>>, [<<T:256>> || T <- tuple_to_list(Topics)], Data].
+    {<<Address:256>>, [<<T:256>> || T <- tuple_to_list(Topics)], Data}.
 
 %% ------------------------------------------------------------------------
 %% Account Functions

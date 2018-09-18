@@ -41,9 +41,9 @@
 %%%===================================================================
 %%% Types
 %%%===================================================================
--type log_entry() ::  list(). %% [binary()       160 bit account address
-                              %%  [binary()]     topics
-                              %%  binary()       data
+-type log_entry() ::  { binary()    %% 256 bit account address
+                      , [binary()]  %% topics
+                      , binary()}.  %% data
 
 -record(call, { caller_id    :: aec_id:id()
               , caller_nonce :: integer()
@@ -198,14 +198,14 @@ serialize_for_client(#call{caller_id    = CallerId,
      }.
 
 serialize_log(Log) -> [serialize_log_entry(E) || E <- Log].
-serialize_log_entry([Address, Topics, Data]) ->
-    {Address, Topics, Data}.
-
-deserialize_log(Log) -> [deserialize_log_entry(E) || E <- Log].
-deserialize_log_entry({Address, Topics, Data}) ->
+serialize_log_entry({Address, Topics, Data}) ->
     [Address, Topics, Data].
 
-serialize_log_entry_for_client([Address, Topics, Data]) ->
+deserialize_log(Log) -> [deserialize_log_entry(E) || E <- Log].
+deserialize_log_entry([Address, Topics, Data]) ->
+    {Address, Topics, Data}.
+
+serialize_log_entry_for_client({Address, Topics, Data}) ->
     #{ <<"address">> => Address
      , <<"topics">>  => Topics
      , <<"data">>    => Data
@@ -307,7 +307,7 @@ assert_fields(I) ->
            , {return_value, I#call.return_value}
            , {gas_price,    I#call.gas_price}
            , {gas_used,     I#call.gas_used}
-           , {log,              I#call.log}
+           , {log,          I#call.log}
            ],
     List1 = [try assert_field(X, Y), [] catch _:X -> X end
              || {X, Y} <- List],
@@ -324,5 +324,5 @@ assert_field(return_value,     X) when is_binary(X) -> X;
 assert_field(gas_price,        X) when is_integer(X), X >= 0 -> X;
 assert_field(gas_used,         X) when is_integer(X), X >= 0 -> X;
 assert_field(log,              []) -> [];
-assert_field(log,              [[_A,_T,_D]=E|Log])-> [E|assert_field(log, Log)];
+assert_field(log,              [{_A,_T,_D}=E|Log])-> [E|assert_field(log, Log)];
 assert_field(Field,            X) -> error({illegal, Field, X}).

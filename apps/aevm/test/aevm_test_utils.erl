@@ -122,9 +122,16 @@ validate_storage(State, #{exec := #{ address := Addr}} = Spec) ->
 
 validate_log(State, #{logs := Logs} =_Spec) ->
     GeneratedLogs = aevm_eeevm_state:logs(State),
-    RLPLogs = aeu_rlp:encode(GeneratedLogs),
+    RLPLogs = evm_encode_log(GeneratedLogs, []),
     ?assertEqual(Logs, logs_to_string( aec_hash:hash(evm,RLPLogs)));
 validate_log(_,_) -> true.
+
+evm_encode_log([], Acc) ->  aeu_rlp:encode(lists:reverse(Acc));
+evm_encode_log([{<<Address:256>>, Topics, Data}|Rest], Acc) ->
+    %% The EVM tests expects 160 bit addresses and
+    %% RLP expects tuples as lists.
+    evm_encode_log(Rest, [[<<Address:160>>, Topics, Data] | Acc]).
+
 
 logs_to_string(Logs) ->
     aeu_hex:hexstring_encode(Logs).
