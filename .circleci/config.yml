@@ -58,16 +58,16 @@ references:
     run:
       name: Install OTP
       environment:
-        OTP_VERSION: "20.2.3"
-      # source: https://github.com/aeternity/docker-builder/blob/master/Dockerfile#L14
+        # See minimum_otp_vsn in rebar.config
+        OTP_VERSION: "20.1"
       command: |
-        OTP_DOWNLOAD_URL="https://github.com/erlang/otp/archive/OTP-${OTP_VERSION}.tar.gz" \
-          && curl -fsSL -o otp-src.tar.gz "$OTP_DOWNLOAD_URL" \
-          && mkdir otp-src \
-          && tar -zxf otp-src.tar.gz -C otp-src --strip-components=1 \
-          && cd otp-src \
-          && export ERL_TOP=`pwd` \
-          && ./otp_build autoconf && ./configure && make -j$(nproc) && sudo make install
+        # Install OTP package deps
+        sudo apt-get update && sudo apt-get install libwxbase3.0-dev libwxgtk3.0-dev
+        # Install OTP binary package
+        PACKAGE_NAME=esl-erlang_${OTP_VERSION}-1~ubuntu~trusty_amd64.deb
+        OTP_DOWNLOAD_URL=https://packages.erlang-solutions.com/erlang/esl-erlang/FLAVOUR_1_general/${PACKAGE_NAME}
+        curl -fsSL -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"
+        sudo dpkg -i ${PACKAGE_NAME}
 
   install_libsodium: &install_libsodium
     run:
@@ -92,6 +92,24 @@ references:
   restore_build_cache: &restore_build_cache
     restore_cache:
       key: *build_cache_key
+
+  machine_build_cache_key: &machine_build_cache_key machine-build-cache-v1-{{ .Branch }}-{{ .Revision }}
+  restore_machine_build_cache: &restore_machine_build_cache
+    restore_cache:
+      keys:
+        - *machine_build_cache_key
+        - machine-build-cache-v1-{{ .Branch }}-
+        - machine-build-cache-v1-master-
+        - machine-build-cache-v1-
+
+  save_machine_build_cache: &save_machine_build_cache
+    save_cache:
+      key: *machine_build_cache_key
+      paths:
+        - "_build"
+        - "apps/aecuckoo/c_src"
+        - "apps/aecuckoo/priv/bin"
+        - "apps/aecuckoo/priv/lib"
 
   packages_workspace: &packages_workspace /tmp/packages
   set_package_path: &set_package_path
@@ -493,6 +511,8 @@ jobs:
       - *install_os_deps
       - *install_otp
       - *install_libsodium
+      - *restore_machine_build_cache
+      # keep user preparation step after cache restore because of perms
       - *prepare_ubuntu_user
       - *install_system_test_deps
       - run:
@@ -501,6 +521,7 @@ jobs:
           command: |
             sudo -u ubuntu -E -H make system-test
       - *fail_notification_system_test
+      - *save_machine_build_cache
       - store_test_results:
           path: *system_test_logs
       - store_artifacts:
@@ -513,6 +534,8 @@ jobs:
       - *install_os_deps
       - *install_otp
       - *install_libsodium
+      - *restore_machine_build_cache
+      # keep user preparation step after cache restore because of perms
       - *prepare_ubuntu_user
       - *install_system_test_deps
       - run:
@@ -521,6 +544,7 @@ jobs:
           command: |
             sudo -u ubuntu -E -H make smoke-test-run
       - *fail_notification_system_test
+      - *save_machine_build_cache
       - store_test_results:
           path: *system_test_logs
       - store_artifacts:
@@ -621,9 +645,13 @@ workflows:
               only: /^v.*$/
 
       - docker_system_smoke_tests:
+          requires:
+            - docker_smoke_tests
           filters:
             branches:
-              only: master
+              ignore:
+                - env/dev1
+                - env/dev2
 
       - test:
           requires:
