@@ -819,10 +819,23 @@ fork_on_micro_block() ->
     ok.
 
 fork_on_old_fork_point() ->
-    CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, ?GENESIS_TARGET], 111),
+    #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
+    PresetAccounts = [{PubKey, 1000}],
+    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+
+    CommonChain = gen_block_chain_with_state_by_target(
+                    PresetAccounts, [?GENESIS_TARGET, ?GENESIS_TARGET], 111),
     OriginalChain = extend_chain_with_state(CommonChain, [2, 2, 2, 2, 2, 2, 2, 2], 111),
-    ForkChain = extend_chain_with_state(CommonChain, [1], 222),
-    ForkBlock = lists:last(blocks_only_chain(ForkChain)),
+    ForkHeight = length(CommonChain),
+
+    %% Create a fork chain with both micro blocks and key blocks
+    TxsFun = fun(N) when N =:= ForkHeight ->
+                     [aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 1), PrivKey)]
+             end,
+    ForkChain0 = extend_chain_with_state(CommonChain, [1], 222, TxsFun),
+    ForkChain1 = lists:nthtail(ForkHeight, ForkChain0),
+
+    [ForkBlock|MicroBlocks] = blocks_only_chain(ForkChain1),
 
     %% Add the original chain
     ok = write_blocks_to_chain(blocks_only_chain(OriginalChain)),
@@ -832,8 +845,8 @@ fork_on_old_fork_point() ->
 
     %% But if we add it through sync, it is allowed
     ?assertEqual(ok, insert_block(#{key_block => ForkBlock,
-                                    micro_blocks => [],
-                                    dir => backward})),
+                                    micro_blocks => MicroBlocks,
+                                    dir => forward})),
     ok.
 
 fork_gen_key_candidate() ->
