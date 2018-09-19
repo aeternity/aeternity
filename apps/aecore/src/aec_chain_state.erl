@@ -131,12 +131,12 @@ median_timestamp(Header) ->
 
 -spec insert_block(aec_blocks:block() | map()) -> 'ok' | {'pof', aec_pof:pof()} | {'error', any()}.
 insert_block(#{ key_block := KeyBlock, micro_blocks := MicroBlocks, dir := forward }) ->
-    FoldFun = fun(MB, ok) -> insert_block(MB);
-                 (MB, {pof, _}) -> insert_block(MB);
+    FoldFun = fun(MB, ok) -> do_insert_block(MB, sync);
+                 (MB, {pof, _}) -> do_insert_block(MB, sync);
                  (_MB, Err = {error, _}) -> Err
               end,
     %% First insert key_block
-    case insert_block(KeyBlock, sync) of
+    case do_insert_block(KeyBlock, sync) of
         ok ->
             lists:foldl(FoldFun, ok, MicroBlocks);
         {pof,_Pof} ->
@@ -146,21 +146,21 @@ insert_block(#{ key_block := KeyBlock, micro_blocks := MicroBlocks, dir := forwa
     end;
 insert_block(#{ key_block := KeyBlock, micro_blocks := MicroBlocks, dir := backward }) ->
     %% First insert micro_blocks
-    case lists:foldl(fun(MB, ok) -> insert_block(MB);
-                        (MB, {pof, _}) -> insert_block(MB);
+    case lists:foldl(fun(MB, ok) -> do_insert_block(MB, sync);
+                        (MB, {pof, _}) -> do_insert_block(MB, sync);
                         (_MB, Err = {error, _}) -> Err
                      end, ok, MicroBlocks) of
         ok ->
-            insert_block(KeyBlock, sync);
+            do_insert_block(KeyBlock, sync);
         {pof,_PoF} ->
-            insert_block(KeyBlock, sync);
+            do_insert_block(KeyBlock, sync);
         Err = {error, _} ->
             Err
     end;
 insert_block(Block) ->
-    insert_block(Block, undefined).
+    do_insert_block(Block, undefined).
 
-insert_block(Block, Origin) ->
+do_insert_block(Block, Origin) ->
     Node = wrap_block(Block),
     try internal_insert(Node, Block, Origin)
     catch throw:?internal_error(What) -> {error, What}
