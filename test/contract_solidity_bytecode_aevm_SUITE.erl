@@ -62,8 +62,8 @@ events_from_solidity_binary(_Cfg) ->
     Env  = initial_state(#{ContractAddress => Code}),
     {ok, NewCode, NewEnv, _} = execute_call(ContractAddress, CallData, Env, #{}),
     Env2 = NewEnv#{ContractAddress => aeu_hex:hexstring_encode(NewCode)},
-    {ok, RetVal, _, #{logs := L}} = execute_call(ContractAddress, CallData, Env2, #{}),
-    [[<<ContractAddress:160>>,
+    {ok,_RetVal, _, #{logs := L}} = execute_call(ContractAddress, CallData, Env2, #{}),
+    [{<<ContractAddress:256>>,
       [<<25,218,203,248,60,93,230,101,142,20,203,247,188,174,92,
          21,236,162,238,222,207,28,102,251,202,146,142,77,53,27,
          234,15>>,
@@ -72,7 +72,7 @@ events_from_solidity_binary(_Cfg) ->
        <<23,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
          0,0,0,0,0,0>>],
       <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        0,0,0,0,0>>]] = L,
+        0,0,0,0,0>>}] = L,
     ok.
 
 receipt_bytecode() ->
@@ -153,21 +153,6 @@ counter_bytecode() ->
 %% Helper Functions
 %% ------------------------------------------------------------------------
 
-wait_for_it(Fun, Value) ->
-    wait_for_it(Fun, Value, 0).
-
-wait_for_it(Fun, Value, Sleep) ->
-    case Fun() of
-        Value ->
-            Value;
-        _Other ->
-            %% ?ifDebugFmt("Waiting for ~p got ~p~n",[Value,_Other]),
-            timer:sleep(Sleep),
-            wait_for_it(Fun, Value, Sleep + 10)
-    end.
-
-
-
 execute_call(Contract, CallData, ChainState, Options) ->
     #{Contract := Code} = ChainState,
     ChainState1 = ChainState#{ running => Contract },
@@ -204,45 +189,20 @@ make_call(Contract, Fun, Args, Env, Options) ->
                     Args),
     execute_call(Contract, CallData, Env, Options).
 
-create_contract(Address, Code, Args, Env) ->
-    Env1 = Env#{Address => Code},
-    {ok, InitS, Env2} = make_call(Address, init, Args, Env1, #{}),
-    set_store(aevm_eeevm_store:from_sophia_state(InitS), Env2).
-
-create_contract(Address, Code, Args, Env, Options) ->
-    Env1 = Env#{Address => Code},
-    {ok, InitS, Env2} = make_call(Address, init, Args, Env1, Options),
-    set_store(aevm_eeevm_store:from_sophia_state(InitS), Env2).
 
 successful_call_(Contract, Type, Fun, Args, Env) ->
     {Res, _Env1} = successful_call(Contract, Type, Fun, Args, Env),
     Res.
 
-successful_call_(Contract, Type, Fun, Args, Env, Options) ->
-    {Res, _Env1} = successful_call(Contract, Type, Fun, Args, Env, Options),
-    Res.
-
 successful_call(Contract, Type, Fun, Args, Env) ->
     successful_call(Contract, Type, Fun, Args, Env, #{}).
 
-successful_call(Contract, Type, Fun, Args, Env, Options) ->
+successful_call(Contract,_Type, Fun, Args, Env, Options) ->
     case make_call(Contract, Fun, Args, Env, Options) of
         {ok, Result, Env1, _} -> {Result, Env1};
         {error, Err, S} ->
             io:format("S =\n  ~p\n", [S]),
             exit({error, Err})
-    end.
-
-%% failing_call(Contract, Fun, Args, Env) ->
-%%     failing_call(Contract, Fun, Args, Env, #{}).
-
-failing_call(Contract, Fun, Args, Env, Options) ->
-    case make_call(Contract, Fun, Args, Env, Options) of
-        {ok, Result, _} ->
-            Words = aeso_test_utils:dump_words(Result),
-            exit({expected_failure, {ok, Words}});
-        {error, Err, _} ->
-            Err
     end.
 
 
