@@ -1942,10 +1942,11 @@ definitions:
       payload:
         type: string
     required:
-    - recipient_id
-    - amount
-    - fee
-    - payload
+      - recipient_id
+      - amount
+      - fee
+      - sender_id
+      - payload
   OracleRegisterTx:
     type: object
     properties:

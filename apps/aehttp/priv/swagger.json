@@ -2339,7 +2339,7 @@
     },
     "SpendTx" : {
       "type" : "object",
-      "required" : [ "amount", "fee", "payload", "recipient_id" ],
+      "required" : [ "amount", "fee", "payload", "recipient_id", "sender_id" ],
       "properties" : {
         "recipient_id" : {
           "$ref" : "#/definitions/EncodedHash"

@@ -2106,7 +2106,7 @@ contract_transactions(_Config) ->    % miner has an account
 %% GET contract_call_compute_tx unsigned transaction
 %% No testing of negative cases as these are same as for "normal" create.
 contract_create_compute_transaction(_Config) ->
-    
+
     {ok, 200, _} = get_balance_at_top(),
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
@@ -2966,7 +2966,7 @@ post_broken_tx(_Config) ->
     {ok, SignedTx} = rpc(aec_keys, sign_tx, [SpendTx]),
     SignedTxBin = aetx_sign:serialize_to_binary(SignedTx),
 
-    {ok, SpendTTLTx} = 
+    {ok, SpendTTLTx} =
         aec_spend_tx:new(
           #{sender_id => aec_id:create(account, PubKey),
             recipient_id => aec_id:create(account, random_hash()),
@@ -4691,6 +4691,7 @@ swagger_validation_schema(_Config) ->
                         <<"error">> := <<"wrong_type">>,
                         <<"path">> := [<<"fee">>]
         }}} = http_request(Host, post, "debug/transactions/spend", #{
+                   sender_id => <<"">>,
                    recipient_id => <<"">>,
                    amount => 0,
                    fee => <<"wrong_fee_data">>,
@@ -4716,6 +4717,7 @@ swagger_validation_schema(_Config) ->
                         <<"error">> := <<"not_in_range">>,
                         <<"path">> := [<<"amount">>]
         }}} = http_request(Host, post, "debug/transactions/spend", #{
+                   sender_id => <<"">>,
                    recipient_id => <<"">>,
                    amount => -1,
                    fee => <<"fee">>,
