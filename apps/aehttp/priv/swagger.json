@@ -3373,6 +3373,7 @@
     },
     "Status" : {
       "type" : "object",
+      "required" : [ "difficulty", "genesis_key_block_hash", "listening", "node_revision", "node_version", "peer_count", "pending_transactions_count", "protocols", "solutions", "syncing" ],
       "properties" : {
         "genesis_key_block_hash" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -3426,18 +3427,19 @@
         "solutions" : 0,
         "node_version" : "node_version",
         "protocols" : [ {
-          "protocol_version" : 1,
-          "effective_at_height" : 0
+          "effective_at_height" : 0,
+          "version" : 1
         }, {
-          "protocol_version" : 1,
-          "effective_at_height" : 0
+          "effective_at_height" : 0,
+          "version" : 1
         } ]
       }
     },
     "Protocol" : {
       "type" : "object",
+      "required" : [ "effective_at_height", "version" ],
       "properties" : {
-        "protocol_version" : {
+        "version" : {
           "type" : "integer",
           "format" : "int64",
           "minimum" : 1
@@ -3449,8 +3451,8 @@
         }
       },
       "example" : {
-        "protocol_version" : 1,
-        "effective_at_height" : 0
+        "effective_at_height" : 0,
+        "version" : 1
       }
     },
     "GenericSignedTx" : {

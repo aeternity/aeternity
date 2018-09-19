@@ -2672,10 +2672,21 @@ definitions:
         type: integer
         format: int64
         minimum: 0
+    required:
+      - genesis_key_block_hash
+      - solutions
+      - difficulty
+      - syncing
+      - listening
+      - protocols
+      - node_version
+      - node_revision
+      - peer_count
+      - pending_transactions_count
   Protocol:
     type: object
     properties:
-      protocol_version:
+      version:
         type: integer
         format: int64
         minimum: 1
@@ -2683,6 +2694,9 @@ definitions:
         type: integer
         format: int64
         minimum: 0
+    required:
+      - version
+      - effective_at_height
   GenericSignedTx:
     type: object
     properties:
