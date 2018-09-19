@@ -1869,6 +1869,12 @@ definitions:
       ttl:
         type: integer
         format: int64
+    required:
+      - id
+      - query_format
+      - response_format
+      - query_fee
+      - ttl
   OracleQuery:
     type: object
     properties:
@@ -1894,6 +1900,16 @@ definitions:
       fee:
         type: integer
         format: int64
+    required:
+      - id
+      - sender_id
+      - sender_nonce
+      - oracle_id
+      - query
+      - response
+      - ttl
+      - response_ttl
+      - fee
   OracleQueries:
     type: object
     properties:
@@ -1901,6 +1917,8 @@ definitions:
         type: array
         items:
           $ref: '#/definitions/OracleQuery'
+    required:
+      - oracle_queries
   SpendTx:
     type: object
     properties:
@@ -1952,11 +1970,12 @@ definitions:
         type: integer
         format: int64
     required:
-    - query_format
-    - response_format
-    - query_fee
-    - fee
-    - oracle_ttl
+      - query_format
+      - response_format
+      - query_fee
+      - fee
+      - oracle_ttl
+      - account_id
   OracleExtendTx:
     type: object
     properties:
@@ -1974,8 +1993,9 @@ definitions:
         type: integer
         format: int64
     required:
-    - fee
-    - oracle_ttl
+      - fee
+      - oracle_ttl
+      - oracle_id
   OracleQueryTx:
     type: object
     properties:
@@ -2003,12 +2023,13 @@ definitions:
         format: int64
         description: Sender nonce
     required:
-    - oracle_id
-    - query
-    - query_fee
-    - query_ttl
-    - response_ttl
-    - fee
+      - oracle_id
+      - query
+      - query_fee
+      - query_ttl
+      - response_ttl
+      - fee
+      - sender_id
   OracleRespondTx:
     type: object
     properties:
@@ -2029,9 +2050,10 @@ definitions:
         format: int64
         description: Oracle nonce
     required:
-    - query_id
-    - response
-    - fee
+      - query_id
+      - response
+      - fee
+      - oracle_id
   TTL:
     type: object
     properties:

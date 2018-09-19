@@ -2218,6 +2218,7 @@
     },
     "RegisteredOracle" : {
       "type" : "object",
+      "required" : [ "id", "query_fee", "query_format", "response_format", "ttl" ],
       "properties" : {
         "id" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -2246,6 +2247,7 @@
     },
     "OracleQuery" : {
       "type" : "object",
+      "required" : [ "fee", "id", "oracle_id", "query", "response", "response_ttl", "sender_id", "sender_nonce", "ttl" ],
       "properties" : {
         "id" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -2296,6 +2298,7 @@
     },
     "OracleQueries" : {
       "type" : "object",
+      "required" : [ "oracle_queries" ],
       "properties" : {
         "oracle_queries" : {
           "type" : "array",
@@ -2377,7 +2380,7 @@
     },
     "OracleRegisterTx" : {
       "type" : "object",
-      "required" : [ "fee", "oracle_ttl", "query_fee", "query_format", "response_format" ],
+      "required" : [ "account_id", "fee", "oracle_ttl", "query_fee", "query_format", "response_format" ],
       "properties" : {
         "query_format" : {
           "type" : "string"
@@ -2424,7 +2427,7 @@
     },
     "OracleExtendTx" : {
       "type" : "object",
-      "required" : [ "fee", "oracle_ttl" ],
+      "required" : [ "fee", "oracle_id", "oracle_ttl" ],
       "properties" : {
         "fee" : {
           "type" : "integer",
@@ -2458,7 +2461,7 @@
     },
     "OracleQueryTx" : {
       "type" : "object",
-      "required" : [ "fee", "oracle_id", "query", "query_fee", "query_ttl", "response_ttl" ],
+      "required" : [ "fee", "oracle_id", "query", "query_fee", "query_ttl", "response_ttl", "sender_id" ],
       "properties" : {
         "oracle_id" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -2513,7 +2516,7 @@
     },
     "OracleRespondTx" : {
       "type" : "object",
-      "required" : [ "fee", "query_id", "response" ],
+      "required" : [ "fee", "oracle_id", "query_id", "response" ],
       "properties" : {
         "query_id" : {
           "$ref" : "#/definitions/EncodedHash"
