@@ -99,7 +99,7 @@ references:
       keys:
         - *machine_build_cache_key
         - machine-build-cache-v1-{{ .Branch }}-
-        - machine-build-cache-v1-master
+        - machine-build-cache-v1-master-
         - machine-build-cache-v1-
 
   save_machine_build_cache: &save_machine_build_cache
@@ -647,6 +647,11 @@ workflows:
       - docker_system_smoke_tests:
           requires:
             - docker_smoke_tests
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
 
       - test:
           requires:
