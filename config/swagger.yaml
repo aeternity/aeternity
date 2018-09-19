@@ -1752,9 +1752,15 @@ definitions:
         $ref: '#/definitions/EncodedHash'
       state_hash:
         $ref: '#/definitions/EncodedHash'
+      miner:
+        $ref: '#/definitions/EncodedHash'
+      beneficiary:
+        $ref: '#/definitions/EncodedHash'
       target:
         type: integer
         format: int64
+      pow:
+        $ref: '#/definitions/Pow'
       nonce:
         type: integer
         format: int64
@@ -1764,12 +1770,17 @@ definitions:
       version:
         type: integer
         format: int64
-      pow:
-        $ref: '#/definitions/Pow'
-      miner:
-        $ref: '#/definitions/EncodedHash'
-      beneficiary:
-        $ref: '#/definitions/EncodedHash'
+    required:
+      - hash
+      - height
+      - prev_hash
+      - prev_key_hash
+      - state_hash
+      - miner
+      - beneficiary
+      - target
+      - time
+      - version
   MicroBlockHeader:
     type: object
     properties:
@@ -1797,6 +1808,17 @@ definitions:
       version:
         type: integer
         format: int64
+    required:
+      - hash
+      - height
+      - pof_hash
+      - prev_hash
+      - prev_key_hash
+      - state_hash
+      - txs_hash
+      - signature
+      - time
+      - version
   GenericTxs:
     type: object
     properties:
@@ -3090,7 +3112,8 @@ definitions:
         items:
             $ref: '#/definitions/EncodedHash'
     required:
-    - tx
+      - key_block
+      - micro_blocks
   OffChainUpdate:
     type: object
     discriminator: op

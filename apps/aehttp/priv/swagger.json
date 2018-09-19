@@ -2033,6 +2033,7 @@
     },
     "KeyBlock" : {
       "type" : "object",
+      "required" : [ "beneficiary", "hash", "height", "miner", "prev_hash", "prev_key_hash", "state_hash", "target", "time", "version" ],
       "properties" : {
         "hash" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -2050,9 +2051,18 @@
         "state_hash" : {
           "$ref" : "#/definitions/EncodedHash"
         },
+        "miner" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "beneficiary" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
         "target" : {
           "type" : "integer",
           "format" : "int64"
+        },
+        "pow" : {
+          "$ref" : "#/definitions/Pow"
         },
         "nonce" : {
           "type" : "integer",
@@ -2065,15 +2075,6 @@
         "version" : {
           "type" : "integer",
           "format" : "int64"
-        },
-        "pow" : {
-          "$ref" : "#/definitions/Pow"
-        },
-        "miner" : {
-          "$ref" : "#/definitions/EncodedHash"
-        },
-        "beneficiary" : {
-          "$ref" : "#/definitions/EncodedHash"
         }
       },
       "example" : {
@@ -2093,6 +2094,7 @@
     },
     "MicroBlockHeader" : {
       "type" : "object",
+      "required" : [ "hash", "height", "pof_hash", "prev_hash", "prev_key_hash", "signature", "state_hash", "time", "txs_hash", "version" ],
       "properties" : {
         "hash" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -4199,6 +4201,7 @@
     },
     "Generation" : {
       "type" : "object",
+      "required" : [ "key_block", "micro_blocks" ],
       "properties" : {
         "key_block" : {
           "$ref" : "#/definitions/KeyBlock"
