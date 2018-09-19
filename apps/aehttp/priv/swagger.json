@@ -2844,6 +2844,7 @@
     },
     "Channel" : {
       "type" : "object",
+      "required" : [ "channel_amount", "channel_reserve", "closes_at", "delegate_ids", "forcing_blocked_until", "id", "initiator_amount", "initiator_id", "lock_period", "responder_amount", "responder_id", "round", "state_hash" ],
       "properties" : {
         "id" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -3322,7 +3323,7 @@
     },
     "ChannelSnapshotSoloTx" : {
       "type" : "object",
-      "required" : [ "channel_id", "fee", "payload" ],
+      "required" : [ "channel_id", "fee", "from_id", "payload" ],
       "properties" : {
         "channel_id" : {
           "$ref" : "#/definitions/EncodedHash"

@@ -2288,6 +2288,20 @@ definitions:
       closes_at:
         type: integer
         format: int64
+    required:
+      - id
+      - initiator_id
+      - responder_id
+      - channel_amount
+      - initiator_amount
+      - responder_amount
+      - channel_reserve
+      - delegate_ids
+      - state_hash
+      - round
+      - lock_period
+      - forcing_blocked_until
+      - closes_at
   ChannelCreateTx:
     type: object
     properties:
@@ -2331,15 +2345,15 @@ definitions:
         description: 'Root hash of the channel''s internal state tree'
         $ref: '#/definitions/EncodedHash'
     required:
-    - initiator_id
-    - initiator_amount
-    - responder_id
-    - responder_amount
-    - push_amount
-    - channel_reserve
-    - lock_period
-    - fee
-    - state_hash
+      - initiator_id
+      - initiator_amount
+      - responder_id
+      - responder_amount
+      - push_amount
+      - channel_reserve
+      - lock_period
+      - fee
+      - state_hash
   ChannelDepositTx:
     type: object
     properties:
@@ -2372,13 +2386,13 @@ definitions:
         minimum: 0
         description: 'Channel''s next round'
     required:
-    - channel_id
-    - from_id
-    - amount
-    - fee
-    - nonce
-    - state_hash
-    - round
+      - channel_id
+      - from_id
+      - amount
+      - fee
+      - nonce
+      - state_hash
+      - round
   ChannelWithdrawTx:
     type: object
     properties:
@@ -2411,13 +2425,13 @@ definitions:
         minimum: 0
         description: 'Channel''s next round'
     required:
-    - channel_id
-    - to_id
-    - amount
-    - fee
-    - nonce
-    - state_hash
-    - round
+      - channel_id
+      - to_id
+      - amount
+      - fee
+      - nonce
+      - state_hash
+      - round
   ChannelForceProgressTx:
     type: object
     properties:
@@ -2459,16 +2473,15 @@ definitions:
         type: string
         description: 'Proof of inclusion containing information for closing the channel'
     required:
-    - channel_id
-    - from_id
-    - payload
-    - round
-    - update
-    - state_hash
-    - addresses
-    - poi
-    - fee
-    - poi
+      - channel_id
+      - from_id
+      - payload
+      - round
+      - update
+      - state_hash
+      - addresses
+      - fee
+      - poi
   ChannelCloseMutualTx:
     type: object
     properties:
@@ -2495,11 +2508,11 @@ definitions:
         format: int64
         minimum: 0
     required:
-    - channel_id
-    - initiator_amount_final
-    - responder_amount_final
-    - fee
-    - nonce
+      - channel_id
+      - initiator_amount_final
+      - responder_amount_final
+      - fee
+      - nonce
   ChannelCloseSoloTx:
     type: object
     properties:
@@ -2525,11 +2538,11 @@ definitions:
         type: string
         description: 'Proof of inclusion containing information for closing the channel'
     required:
-    - channel_id
-    - from_id
-    - payload
-    - fee
-    - poi
+      - channel_id
+      - from_id
+      - payload
+      - fee
+      - poi
   ChannelSlashTx:
     type: object
     properties:
@@ -2555,11 +2568,11 @@ definitions:
         type: string
         description: 'Proof of inclusion containing information for closing the channel'
     required:
-    - channel_id
-    - from_id
-    - payload
-    - fee
-    - poi
+      - channel_id
+      - from_id
+      - payload
+      - fee
+      - poi
   ChannelSettleTx:
     type: object
     properties:
@@ -2588,12 +2601,12 @@ definitions:
         format: int64
         minimum: 0
     required:
-    - channel_id
-    - from_id
-    - initiator_amount_final
-    - responder_amount_final
-    - fee
-    - nonce
+      - channel_id
+      - from_id
+      - initiator_amount_final
+      - responder_amount_final
+      - fee
+      - nonce
   ChannelSnapshotSoloTx:
     type: object
     properties:
@@ -2616,10 +2629,10 @@ definitions:
         format: int64
         minimum: 0
     required:
-    - channel_id
-    - from
-    - payload
-    - fee
+      - channel_id
+      - from_id
+      - payload
+      - fee
   PubKey:
     type: object
     properties:
