@@ -1826,6 +1826,8 @@ definitions:
         type: array
         items:
             $ref: '#/definitions/GenericSignedTx'
+    required:
+      - transactions
   Account:
     type: object
     properties:
@@ -1847,6 +1849,8 @@ definitions:
     properties:
        tx:
          type: string
+    required:
+      - tx
   RegisteredOracle:
     type: object
     properties:
@@ -2632,6 +2636,12 @@ definitions:
         minItems: 1
         items:
           type: string
+    required:
+      - tx
+      - block_height
+      - block_hash
+      - hash
+      - signatures
   GenericTx:
     type: object
     discriminator: type
@@ -3075,7 +3085,7 @@ definitions:
         description: Unsigned transaction object
         $ref: '#/definitions/EncodedHash'
     required:
-    - tx
+      - tx
   PostTxResponse:
     type: object
     properties:
@@ -3083,7 +3093,7 @@ definitions:
         description: 'Hash of a signed transaction'
         $ref: '#/definitions/EncodedHash'
     required:
-    - tx_hash
+      - tx_hash
   CreateContractUnsignedTx:
     allOf:
       - $ref: '#/definitions/UnsignedTx'

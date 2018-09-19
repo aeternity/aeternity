@@ -2146,6 +2146,7 @@
     },
     "GenericTxs" : {
       "type" : "object",
+      "required" : [ "transactions" ],
       "properties" : {
         "transactions" : {
           "type" : "array",
@@ -2204,6 +2205,7 @@
     },
     "Tx" : {
       "type" : "object",
+      "required" : [ "tx" ],
       "properties" : {
         "tx" : {
           "type" : "string"
@@ -3441,6 +3443,7 @@
     },
     "GenericSignedTx" : {
       "type" : "object",
+      "required" : [ "block_hash", "block_height", "hash", "signatures", "tx" ],
       "properties" : {
         "tx" : {
           "$ref" : "#/definitions/GenericTx"
