@@ -3111,10 +3111,6 @@
           },
           "minItems" : 1
         },
-        "poi" : {
-          "type" : "string",
-          "description" : "Proof of inclusion containing information for closing the channel"
-        },
         "ttl" : {
           "type" : "integer",
           "format" : "int64",
@@ -3129,6 +3125,10 @@
           "type" : "integer",
           "format" : "int64",
           "minimum" : 0
+        },
+        "poi" : {
+          "type" : "string",
+          "description" : "Proof of inclusion containing information for closing the channel"
         }
       }
     },

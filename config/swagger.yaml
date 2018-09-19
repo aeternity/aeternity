@@ -2368,8 +2368,6 @@ definitions:
         minItems: 1
         items:
           $ref: '#/definitions/EncodedHash'
-      poi:
-        type: string
       ttl:
         type: integer
         format: int64
