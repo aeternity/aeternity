@@ -2093,6 +2093,10 @@ definitions:
         type: array
         items:
           $ref: '#/definitions/NamePointer'
+    required:
+      - id
+      - ttl
+      - pointers
   NamePreclaimTx:
     type: object
     properties:
@@ -2111,8 +2115,9 @@ definitions:
         type: integer
         format: int64
     required:
-    - commitment_id
-    - fee
+      - commitment_id
+      - fee
+      - account_id
   NameClaimTx:
     type: object
     properties:
@@ -2133,9 +2138,10 @@ definitions:
         type: integer
         format: int64
     required:
-    - name
-    - name_salt
-    - fee
+      - name
+      - name_salt
+      - fee
+      - account_id
   NameUpdateTx:
     type: object
     properties:
@@ -2164,11 +2170,12 @@ definitions:
         type: integer
         format: int64
     required:
-    - name_id
-    - name_ttl
-    - client_ttl
-    - pointers
-    - fee
+      - name_id
+      - name_ttl
+      - client_ttl
+      - pointers
+      - fee
+      - account_id
   NameTransferTx:
     type: object
     properties:
@@ -2188,9 +2195,10 @@ definitions:
         type: integer
         format: int64
     required:
-    - name_id
-    - recipient_id
-    - fee
+      - name_id
+      - recipient_id
+      - fee
+      - account_id
   NameRevokeTx:
     type: object
     properties:
@@ -2208,18 +2216,23 @@ definitions:
         type: integer
         format: int64
     required:
-    - name_id
-    - fee
+      - name_id
+      - fee
+      - account_id
   CommitmentId:
     type: object
     properties:
       commitment_id:
         $ref: '#/definitions/EncodedHash'
+    required:
+      - commitment_id
   NameHash:
     type: object
     properties:
       name_id:
         $ref: '#/definitions/EncodedHash'
+    required:
+      - name_id
   NamePointer:
     type: object
     properties:
@@ -2227,6 +2240,9 @@ definitions:
         type: string
       id:
         $ref: '#/definitions/EncodedHash'
+    required:
+      - key
+      - id
   Channel:
     type: object
     properties:

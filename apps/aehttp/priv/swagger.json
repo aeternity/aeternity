@@ -2590,6 +2590,7 @@
     },
     "NameEntry" : {
       "type" : "object",
+      "required" : [ "id", "pointers", "ttl" ],
       "properties" : {
         "id" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -2619,7 +2620,7 @@
     },
     "NamePreclaimTx" : {
       "type" : "object",
-      "required" : [ "commitment_id", "fee" ],
+      "required" : [ "account_id", "commitment_id", "fee" ],
       "properties" : {
         "commitment_id" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -2650,7 +2651,7 @@
     },
     "NameClaimTx" : {
       "type" : "object",
-      "required" : [ "fee", "name", "name_salt" ],
+      "required" : [ "account_id", "fee", "name", "name_salt" ],
       "properties" : {
         "name" : {
           "type" : "string"
@@ -2686,7 +2687,7 @@
     },
     "NameUpdateTx" : {
       "type" : "object",
-      "required" : [ "client_ttl", "fee", "name_id", "name_ttl", "pointers" ],
+      "required" : [ "account_id", "client_ttl", "fee", "name_id", "name_ttl", "pointers" ],
       "properties" : {
         "name_id" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -2740,7 +2741,7 @@
     },
     "NameTransferTx" : {
       "type" : "object",
-      "required" : [ "fee", "name_id", "recipient_id" ],
+      "required" : [ "account_id", "fee", "name_id", "recipient_id" ],
       "properties" : {
         "name_id" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -2775,7 +2776,7 @@
     },
     "NameRevokeTx" : {
       "type" : "object",
-      "required" : [ "fee", "name_id" ],
+      "required" : [ "account_id", "fee", "name_id" ],
       "properties" : {
         "name_id" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -2806,6 +2807,7 @@
     },
     "CommitmentId" : {
       "type" : "object",
+      "required" : [ "commitment_id" ],
       "properties" : {
         "commitment_id" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -2817,6 +2819,7 @@
     },
     "NameHash" : {
       "type" : "object",
+      "required" : [ "name_id" ],
       "properties" : {
         "name_id" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -2825,6 +2828,7 @@
     },
     "NamePointer" : {
       "type" : "object",
+      "required" : [ "id", "key" ],
       "properties" : {
         "key" : {
           "type" : "string"

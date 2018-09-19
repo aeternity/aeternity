@@ -2511,13 +2511,12 @@ nameservice_transaction_update(MinerAddress, MinerPubkey) ->
     test_invalid_hash({name, MinerPubkey}, name_id, Encoded, fun get_name_update/1),
     test_missing_address(account_id, Encoded, fun get_name_update/1),
     %% test broken pointers
-    TestBrokenPointers =
-        fun(P) ->
-            {ok, 400, #{<<"reason">> := <<"Invalid pointers">>}} =
-                get_name_update(maps:put(pointers, P, Encoded))
-        end,
-    TestBrokenPointers([#{<<"key">> => <<"k2">>, <<"id">> => <<"not a valid pointer">>}]),
-    TestBrokenPointers([#{<<"invalid_key">> => <<"k2">>, <<"id">> => <<"not a valid pointer">>}]),
+    {ok, 400, #{<<"reason">> := <<"Invalid pointers">>}} =
+        get_name_update(maps:put(pointers, [#{<<"key">> => <<"k2">>,
+                                              <<"id">> => <<"not a valid pointer">>}], Encoded)),
+    {ok, 400, #{<<"reason">> := <<"validation_error">>}} =
+        get_name_update(maps:put(pointers, [#{<<"invalid_key">> => <<"k2">>,
+                                              <<"id">> => <<"not a valid pointer">>}], Encoded)),
     ok.
 
 nameservice_transaction_transfer(MinerAddress, MinerPubkey) ->
