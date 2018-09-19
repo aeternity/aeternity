@@ -42,7 +42,7 @@ def test_not_enough_tokens():
     # populate accounts with tokens, and validate balances
     common.send_tokens_to_unchanging_user_and_wait_balance(beneficiary, alice_address, alice_init_balance, 1, ext_api, int_api)
     common.send_tokens_to_unchanging_user_and_wait_balance(beneficiary, bob_address, bob_init_balance, 1, ext_api, int_api)
-    common.wait_until_height(ext_api, ext_api.get_top_block().height + 3)
+    common.wait_until_height(ext_api, ext_api.get_current_key_block().height + 3)
     alice_balance0 = common.get_account_balance(ext_api, alice_address)
     bob_balance0 = common.get_account_balance(ext_api, bob_address)
     print("Alice balance is " + str(alice_balance0))
@@ -55,7 +55,7 @@ def test_not_enough_tokens():
     few_tokens_to_send = test_settings["spend_tx"]["small_amount"]
     print("Bob is about to send " + str(few_tokens_to_send) + " to Alice")
     send_tokens_to_unchanging_user(bob_private_key, bob_address, alice_address, few_tokens_to_send, spend_tx_fee, ext_api, int_api)
-    common.wait_until_height(ext_api, ext_api.get_top_block().height + 3)
+    common.wait_until_height(ext_api, ext_api.get_current_key_block().height + 3)
     alice_balance1 = common.get_account_balance(ext_api, pub_key=alice_address)
     bob_balance1 = common.get_account_balance(ext_api, pub_key=bob_address)
     print("Alice balance is " + str(alice_balance1))
@@ -67,7 +67,7 @@ def test_not_enough_tokens():
     many_tokens_to_send = test_settings["spend_tx"]["large_amount"]
     print("Bob is about to send " + str(many_tokens_to_send) + " to Alice")
     send_tokens_to_unchanging_user(bob_private_key, bob_address, alice_address, many_tokens_to_send, spend_tx_fee, ext_api, int_api)
-    common.wait_until_height(ext_api, ext_api.get_top_block().height + 3)
+    common.wait_until_height(ext_api, ext_api.get_current_key_block().height + 3)
     alice_balance2 = common.get_account_balance(ext_api, pub_key=alice_address)
     bob_balance2 = common.get_account_balance(ext_api, pub_key=bob_address)
     print("Alice balance is " + str(alice_balance2))
@@ -122,7 +122,7 @@ def test_send_by_name():
     tokens_to_send = test_settings["spend_tx"]["amount"]
     print("Alice is about to send " + str(tokens_to_send) + " to " + bob_name)
     send_tokens_to_name(bob_name, tokens_to_send, alice_address, alice_private_key, int_api, ext_api)
-    common.wait_until_height(ext_api, ext_api.get_top_block().height + 3)
+    common.wait_until_height(ext_api, ext_api.get_current_key_block().height + 3)
 
     # validate balances
     alice_balance2 = common.get_account_balance(ext_api, alice_address)
@@ -156,7 +156,7 @@ def register_name(name, address, external_api, internal_api, private_key):
     signed_preclaim = keys.sign_encode_tx(unsigned_preclaim, private_key)
 
     external_api.post_transaction(Tx(tx=signed_preclaim))
-    top = external_api.get_top_block()
+    top = external_api.get_current_key_block()
     common.wait_until_height(external_api, top.height + 3)
 
     # claim
@@ -167,7 +167,7 @@ def register_name(name, address, external_api, internal_api, private_key):
     signed_claim = keys.sign_encode_tx(unsigned_claim, private_key)
 
     external_api.post_transaction(Tx(tx=signed_claim))
-    top = external_api.get_top_block()
+    top = external_api.get_current_key_block()
     common.wait_until_height(external_api, top.height + 3)
     name_entry0 = external_api.get_name_entry_by_name(name)
 
@@ -180,7 +180,7 @@ def register_name(name, address, external_api, internal_api, private_key):
     signed_update = keys.sign_encode_tx(unsigned_update, private_key)
 
     external_api.post_transaction(Tx(tx=signed_update))
-    top = external_api.get_top_block()
+    top = external_api.get_current_key_block()
     common.wait_until_height(external_api, top.height + 3)
     name_entry = external_api.get_name_entry_by_name(name)
     received_pointers = name_entry.pointers[0]

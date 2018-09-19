@@ -58,10 +58,7 @@
         "parameters" : [ ],
         "responses" : {
           "200" : {
-            "description" : "Successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/KeyBlock"
-            }
+            "description" : "Successful operation"
           },
           "404" : {
             "description" : "Block not found",
@@ -2053,9 +2050,6 @@
         "state_hash" : {
           "$ref" : "#/definitions/EncodedHash"
         },
-        "txs_hash" : {
-          "$ref" : "#/definitions/EncodedHash"
-        },
         "target" : {
           "type" : "integer",
           "format" : "int64"
@@ -2083,19 +2077,18 @@
         }
       },
       "example" : {
-        "txs_hash" : null,
-        "prev_hash" : null,
-        "nonce" : 1,
-        "version" : 5,
-        "miner" : null,
-        "target" : 6,
         "beneficiary" : null,
         "state_hash" : null,
+        "prev_hash" : null,
         "pow" : "",
         "prev_key_hash" : null,
         "time" : 5,
+        "nonce" : 1,
+        "version" : 5,
         "hash" : { },
-        "height" : 0
+        "miner" : null,
+        "height" : 0,
+        "target" : 6
       }
     },
     "MicroBlockHeader" : {
@@ -4220,19 +4213,18 @@
       "example" : {
         "micro_blocks" : [ { }, { } ],
         "key_block" : {
-          "txs_hash" : null,
-          "prev_hash" : null,
-          "nonce" : 1,
-          "version" : 5,
-          "miner" : null,
-          "target" : 6,
           "beneficiary" : null,
           "state_hash" : null,
+          "prev_hash" : null,
           "pow" : "",
           "prev_key_hash" : null,
           "time" : 5,
+          "nonce" : 1,
+          "version" : 5,
           "hash" : { },
-          "height" : 0
+          "miner" : null,
+          "height" : 0,
+          "target" : 6
         }
       }
     },
