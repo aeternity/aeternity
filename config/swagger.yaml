@@ -1844,6 +1844,10 @@ definitions:
         description: 'Nonce'
         format: int64
         minimum: 0
+    required:
+      - id
+      - balance
+      - nonce
   Tx:
     type: object
     properties:
@@ -2038,6 +2042,9 @@ definitions:
         type: integer
         format: int64
         minimum: 1
+    required:
+      - type
+      - value
   RelativeTTL:
     type: object
     properties:
@@ -2048,6 +2055,9 @@ definitions:
         type: integer
         format: int64
         minimum: 1
+    required:
+      - type
+      - value
   NameEntry:
     type: object
     properties:
@@ -2576,6 +2586,8 @@ definitions:
     properties:
       pub_key:
         type: string
+    required:
+      - pub_key
   Status:
     type: object
     properties:
@@ -2769,6 +2781,8 @@ definitions:
     properties:
       reason:
         type: string
+    required:
+      - reason
   ContractObject:
     type: object
     properties:
@@ -2868,6 +2882,9 @@ definitions:
         description: All blocked peers
         items:
             $ref: '#/definitions/Peer'
+    required:
+      - peers
+      - blocked
   ContractCreateData:
     type: object
     properties:

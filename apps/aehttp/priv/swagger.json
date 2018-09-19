@@ -2179,6 +2179,7 @@
     },
     "Account" : {
       "type" : "object",
+      "required" : [ "balance", "id", "nonce" ],
       "properties" : {
         "id" : {
           "description" : "Public key",
@@ -2548,6 +2549,7 @@
     },
     "TTL" : {
       "type" : "object",
+      "required" : [ "type", "value" ],
       "properties" : {
         "type" : {
           "type" : "string",
@@ -2566,6 +2568,7 @@
     },
     "RelativeTTL" : {
       "type" : "object",
+      "required" : [ "type", "value" ],
       "properties" : {
         "type" : {
           "type" : "string",
@@ -3350,6 +3353,7 @@
     },
     "PubKey" : {
       "type" : "object",
+      "required" : [ "pub_key" ],
       "properties" : {
         "pub_key" : {
           "type" : "string"
@@ -3679,6 +3683,7 @@
     },
     "Error" : {
       "type" : "object",
+      "required" : [ "reason" ],
       "properties" : {
         "reason" : {
           "type" : "string"
@@ -3851,6 +3856,7 @@
     },
     "Peers" : {
       "type" : "object",
+      "required" : [ "blocked", "peers" ],
       "properties" : {
         "peers" : {
           "type" : "array",
