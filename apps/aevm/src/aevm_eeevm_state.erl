@@ -9,10 +9,12 @@
 
 -module(aevm_eeevm_state).
 -export([ accountbalance/2
+        , add_log/2
         , add_trace/2
         , add_callcreates/2
         , address/1
         , blockhash/3
+        , bloom/2
         , calldepth/1
         , call_stack/1
         , call_contract/6
@@ -45,7 +47,6 @@
         , set_cp/2
         , set_gas/2
         , set_jumpdests/2
-        , set_logs/2
         , set_mem/2
         , set_out/2
         , set_selfdestruct/2
@@ -288,13 +289,16 @@ chain_api(State)   -> maps:get(chain_api, State).
 
 vm_version(State)  -> maps:get(vm_version, State).
 
+add_log(Entry, State)    ->
+    Log = maps:get(logs, State),
+    maps:put(logs, Log ++ [Entry], State).
+
 set_cp(Value, State)      -> maps:put(cp, Value, State).
 set_code(Value, State)    -> maps:put(code, Value, State).
 set_stack(Value, State)   -> maps:put(stack, Value, State).
 set_mem(Value, State)     -> maps:put(memory, Value, State).
 set_out(Value, State)     -> maps:put(out, Value, State).
 set_gas(Value, State)     -> maps:put(gas, Value, State).
-set_logs(Value, State)    -> maps:put(logs, Value, State).
 set_storage(Value, State) -> maps:put(storage, Value, State).
 set_jumpdests(Value, State)    -> maps:put(jumpdests, Value, State).
 set_selfdestruct(Value, State) -> maps:put(selfdestruct, Value, State).
@@ -362,3 +366,39 @@ format_word(N) ->
             <<X:256/signed>> = <<N:256>>,
             X
     end.
+
+
+%% We define the Bloom filter function, M, to reduce a log
+%% entry into a single 256-byte hash:
+%% (23) M(O) ≡ V_(t∈{Oa}∪Ot) (M3:2048(t))
+%% where M3:2048 is a specialised Bloom filter that sets
+%% three bits out of 2048, given an arbitrary byte sequence.
+%% It does this through taking the low-order 11 bits of each
+%% of the first three pairs of bytes in a Keccak-256 hash of
+%% the byte sequence. Formally:
+%% (24) M3:2048(x : x ∈ B) ≡ y : y ∈ B256 where:
+%% (25) y = (0, 0, ..., 0) except:
+%% (26) ∀i∈{0,2,4} : Bm(x,i)(y) = 1
+%% (27) m(x, i) ≡ KEC(x)[i, i + 1] mod 2048
+%% where B is the bit reference function such that Bj (x)
+%% equals the bit of index j (indexed from 0) in the byte array x.
+bloom(State, Filter) ->
+    Data = maps:get(logs, State),
+    bloom_filter(Data, Filter).
+
+
+bloom_filter(Data, Filter) ->
+    Hash = aec_hash:hash(evm, Data),
+    Bits = bloom_bits(Hash),
+    Filter bor Bits.
+
+bloom_bits(Hash) ->
+    {Bit1, Hash1} = bloom_bit(Hash),
+    {Bit2, Hash2} = bloom_bit(Hash1),
+    {Bit3,     _} = bloom_bit(Hash2),
+
+    (1 bsl Bit1) bor (1 bsl Bit2) bor (1 bsl Bit3).
+
+bloom_bit(<<Bits:16/integer, Rest/bitstring>>) ->
+    {Bits band 2047, Rest}.
+

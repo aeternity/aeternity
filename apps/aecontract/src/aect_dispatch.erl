@@ -93,10 +93,10 @@ set_env(ContractPubKey, Height, Trees, Beneficiary, API, VmVersion) ->
     #{currentCoinbase   => Beneficiary,
       %% TODO: get the right difficulty (Tracked as #159522571)
       currentDifficulty => 0,
-      %% TODO: implement gas limit in governance and blocks. (Tracked as #159427123)
+      %% TODO: implement gas limit in governance and blocks.
       currentGasLimit   => 100000000000,
       currentNumber     => Height,
-      %% TODO: should be set before starting block candidate. (Tracked as #159522630)
+      %% TODO: should be set before starting block candidate.
       currentTimestamp  => aeu_time:now_in_msecs(),
       chainState        => ChainState,
       chainAPI          => API,
@@ -131,43 +131,53 @@ call_common(#{ caller     := CallerPubKey
                               #{trace => false
                                }) of
         InitState ->
+            %% TODO: Nicer error handling - do more in check.
             %% Update gas_used depending on exit type.
             try aevm_eeevm:eval(InitState) of
-                {ok, #{gas := GasLeft, out := Out, chain_state := ChainState}} ->
+                {ok, ResultState} ->
+                    GasLeft = aevm_eeevm_state:gas(ResultState),
+                    Out = aevm_eeevm_state:out(ResultState),
+                    ChainState = aevm_eeevm_state:chain_state(ResultState),
+                    Log = aevm_eeevm_state:logs(ResultState),
                     {
-                        create_call(Gas - GasLeft, ok, Out, Call),
-                        aec_vm_chain:get_trees(ChainState)
+                      create_call(Gas - GasLeft, ok, Out, Log, Call),
+                      aec_vm_chain:get_trees(ChainState)
                     };
-                {revert, #{gas := GasLeft, out := Out, chain_state := ChainState}} ->
+                {revert, ResultState} ->
+                    GasLeft = aevm_eeevm_state:gas(ResultState),
+                    Out = aevm_eeevm_state:out(ResultState),
+                    ChainState = aevm_eeevm_state:chain_state(ResultState),
+                    Log = aevm_eeevm_state:logs(ResultState),
                     {
-                        create_call(Gas - GasLeft, revert, Out, Call),
+                        create_call(Gas - GasLeft, revert, Out, Log, Call),
                         aec_vm_chain:get_trees(ChainState)
                     };
                 {error, Error, _} ->
                     %% Execution resulting in VM exception.
                     %% Gas used, but other state not affected.
-                    %% TODO: Use up the right amount of gas depending on error (#159522821)
+                    %% TODO: Use up the right amount of gas depending on error
                     %% TODO: Store error code in state tree
-                    {create_call(Gas, error, Error, Call), Trees}
+                    {create_call(Gas, error, Error, [], Call), Trees}
             catch T:E ->
                 ?DEBUG_LOG("Return error ~p:~p~n", [T,E]),
-                {create_call(Gas, error, Call), Trees}
+                {create_call(Gas, error, [], Call), Trees}
             end
     catch T:E ->
             %% TODO: Clarify whether this case can be reached with valid chain state and sanitized input transaction.
             ?DEBUG_LOG("Init error ~p:~p~n", [T,E]),
-            {create_call(Gas, error, Call), Trees}
+            {create_call(Gas, error, [], Call), Trees}
     end.
 
-create_call(Gas, Type, Value, Call) when Type == ok; Type == revert ->
-    Return = aect_call:set_return_value(Value, Call),
-    create_call(Gas, Type, Return);
-create_call(Gas, error = Type, Value, Call)  ->
-    Return = aect_call:set_return_value(error_to_binary(Value), Call),
-    create_call(Gas, Type, Return).
+create_call(Gas, Type, Value, Log, Call) when Type == ok; Type == revert ->
+    Call1 = aect_call:set_return_value(Value, Call),
+    create_call(Gas, Type, Log, Call1);
+create_call(Gas, error = Type, Value, Log, Call)  ->
+    Call1 = aect_call:set_return_value(error_to_binary(Value), Call),
+    create_call(Gas, Type, Log, Call1).
 
-create_call(Gas, Type, Value) ->
-    aect_call:set_gas_used(Gas, aect_call:set_return_type(Type, Value)).
+create_call(Gas, Type, Log, Call) ->
+    Call1 = aect_call:set_log(Log, Call),
+    aect_call:set_gas_used(Gas, aect_call:set_return_type(Type, Call1)).
 
 error_to_binary(out_of_gas) -> <<"out_of_gas">>;
 error_to_binary(out_of_stack) -> <<"out_of_stack">>;

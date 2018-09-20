@@ -726,12 +726,53 @@ vm_log_test_() ->
 
 vm_log_tests() ->
     [ log0_nonEmptyMem
+    , log0_logMemsizeTooHigh
+    , log0_logMemsizeZero
+    , log0_logMemStartTooHigh
+    , log0_nonEmptyMem
+    , log0_nonEmptyMem_logMemSize1
+    , log0_nonEmptyMem_logMemSize1_logMemStart31
+    , log1_Caller
+    , log1_emptyMem
+    , log1_logMemsizeTooHigh
+    , log1_logMemsizeZero
+    , log1_logMemStartTooHigh
+    , log1_MaxTopic
+    , log1_nonEmptyMem
+    , log1_nonEmptyMem_logMemSize1
     , log1_nonEmptyMem_logMemSize1_logMemStart31
+    , log2_Caller
+    , log2_emptyMem
+    , log2_logMemsizeTooHigh
+    , log2_logMemsizeZero
+    , log2_logMemStartTooHigh
+    , log_2logs
+    , log2_MaxTopic
+    , log2_nonEmptyMem
     , log2_nonEmptyMem_logMemSize1
+    , log2_nonEmptyMem_logMemSize1_logMemStart31
+    , log3_Caller
+    , log3_emptyMem
+    , log3_logMemsizeTooHigh
+    , log3_logMemsizeZero
+    , log3_logMemStartTooHigh
+    , log3_MaxTopic
+    , log3_nonEmptyMem
+    , log3_nonEmptyMem_logMemSize1
+    , log3_nonEmptyMem_logMemSize1_logMemStart31
     , log3_PC
+    , log4_Caller
+    , log4_emptyMem
+    , log4_logMemsizeTooHigh
+    , log4_logMemsizeZero
+    , log4_logMemStartTooHigh
+    , log4_MaxTopic
+    , log4_nonEmptyMem
+    , log4_nonEmptyMem_logMemSize1
+    , log4_nonEmptyMem_logMemSize1_logMemStart31
     , log4_PC
       %% TODO: Actually test log results
-      %% TODO add the rest of the tests
+
     ].
 
 %%====================================================================
@@ -792,6 +833,8 @@ vm_performance_tests() ->
     , ackermann32
     , manyFunctions100
     ].
+
+
 
 %%====================================================================
 %% Internal functions

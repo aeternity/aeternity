@@ -79,6 +79,7 @@ testcase({Path, Name, Opts}, #{ pre := Pre, exec := Exec} = Spec) ->
                       validate_out(State, Spec1),
                       validate_gas(State, Spec1, Opts),
                       validate_callcreates(State, Spec1),
+                      validate_log(State, Spec1),
                       {ok, State};
                   {error, What, State} ->
                       %% Handle execution exceptions gracefully here.
@@ -106,7 +107,7 @@ validate_no_post(#{post := _} = Spec) ->
 validate_no_post(#{}) ->
     ok.
 
-validate_storage(State, #{exec := #{address := Addr}} = Spec) ->
+validate_storage(State, #{exec := #{ address := Addr}} = Spec) ->
     case Spec of
         #{ post := Post} ->
             PostStorage =
@@ -118,6 +119,23 @@ validate_storage(State, #{exec := #{address := Addr}} = Spec) ->
             ?assertEqual(PostStorage, Storage);
         _ -> true
     end.
+
+validate_log(State, #{logs := Logs} =_Spec) ->
+    GeneratedLogs = aevm_eeevm_state:logs(State),
+    RLPLogs = evm_encode_log(GeneratedLogs, []),
+    ?assertEqual(Logs, logs_to_string( aec_hash:hash(evm,RLPLogs)));
+validate_log(_,_) -> true.
+
+evm_encode_log([], Acc) ->  aeu_rlp:encode(lists:reverse(Acc));
+evm_encode_log([{<<Address:256>>, Topics, Data}|Rest], Acc) ->
+    %% The EVM tests expects 160 bit addresses and
+    %% RLP expects tuples as lists.
+    evm_encode_log(Rest, [[<<Address:160>>, Topics, Data] | Acc]).
+
+
+logs_to_string(Logs) ->
+    aeu_hex:hexstring_encode(Logs).
+
 
 validate_out(State, #{out := SpecOut} =_Spec) ->
     Out  = aevm_eeevm_state:out(State),
