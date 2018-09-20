@@ -153,6 +153,18 @@ prepare_for_json({tuple, Ts}, Es) ->
 prepare_for_json({list, T}, Es) ->
     #{ <<"type">> => <<"list">>,
        <<"value">> => [prepare_for_json(T,E) || E <- Es]};
+prepare_for_json(T = {variant, Cons}, R = {variant, Tag, Args}) when is_integer(Tag), Tag < length(Cons) ->
+    Ts = lists:nth(Tag + 1, Cons),
+    case length(Ts) == length(Args) of
+        true ->
+            #{ <<"type">> => <<"variant">>
+             , <<"value">> => [Tag | [prepare_for_json(ArgT, Arg)
+                                      || {ArgT, Arg} <- lists:zip(Ts, Args)]] };
+        false ->
+            String = io_lib:format("Type: ~p Res:~p", [T,R]),
+            Error = << <<B>> || B <- "Invalid Sophia type: " ++ lists:flatten(String) >>,
+            throw({error, Error})
+    end;
 prepare_for_json(T, R) ->
     String = io_lib:format("Type: ~p Res:~p", [T,R]),
     Error = << <<B>> || B <- "Invalid Sophia type: " ++ lists:flatten(String) >>,

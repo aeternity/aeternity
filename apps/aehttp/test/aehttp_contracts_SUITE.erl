@@ -738,29 +738,29 @@ maps_contract(Config) ->
     {IL1Value,_} = call_compute_func(NodeName, CPubkey, CPrivkey,
                                      EncodedMapsPubkey,
                                      <<"lookup_state_i">>, <<"(3)">>),
-    #{<<"type">> := <<"option">>,
-      <<"value">> := #{<<"value">> := [#{<<"value">> := 5},
-                                       #{<<"value">> := 6}]}} =
+    #{<<"type">> := <<"variant">>,
+      <<"value">> := [1, #{<<"value">> := [#{<<"value">> := 5},
+                                           #{<<"value">> := 6}]}]} =
         decode_data(<<"option((int, int))">>, IL1Value),
     {IL2Value,_} = call_compute_func(NodeName, CPubkey, CPrivkey,
                                      EncodedMapsPubkey,
                                      <<"lookup_state_i">>, <<"(10)">>),
-    #{<<"type">> := <<"option">>,
-      <<"value">> := <<"None">>} =
+    #{<<"type">> := <<"variant">>,
+      <<"value">> := [0]} =
         decode_data(<<"option((int, int))">>, IL2Value),
 
     {SL1Value,_} = call_compute_func(NodeName, CPubkey, CPrivkey,
                                      EncodedMapsPubkey,
                                      <<"lookup_state_s">>, <<"(\"three\")">>),
-    #{<<"type">> := <<"option">>,
-      <<"value">> := #{<<"value">> := [#{<<"value">> := 5},
-                                       #{<<"value">> := 6}]}} =
+    #{<<"type">> := <<"variant">>,
+      <<"value">> := [1, #{<<"value">> := [#{<<"value">> := 5},
+                                           #{<<"value">> := 6}]}]} =
         decode_data(<<"option((int, int))">>, SL1Value),
     {SL2Value,_} = call_compute_func(NodeName, CPubkey, CPrivkey,
                                      EncodedMapsPubkey,
                                      <<"lookup_state_s">>, <<"(\"ten\")">>),
-    #{<<"type">> := <<"option">>,
-      <<"value">> := <<"None">>} =
+    #{<<"type">> := <<"variant">>,
+      <<"value">> := [0]} =
         decode_data(<<"option((int, int))">>, SL2Value),
 
     %% Map.delete
