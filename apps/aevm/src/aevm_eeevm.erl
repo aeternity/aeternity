@@ -1469,7 +1469,16 @@ recursive_call1(StateIn, Op) ->
             ?TEST_LOG("Out of gas before call", []),
             eval_error(out_of_gas, State7)
     end,
+    Address = aevm_eeevm_state:address(State8),
+    AddressBalance = aevm_eeevm_state:accountbalance(Address, State8),
+    case Value =< AddressBalance of
+        true  -> recursive_call2(Op, Gascap, To, Value, OOffset, I, State8, GasAfterSpend);
+        false ->
+            ?TEST_LOG("Excessive value operand ~p for address ~p, that has balance ~p", [Value, Address, AddressBalance]),
+            {0, State8} %% TODO: How much gas should this consume?
+    end.
 
+recursive_call2(Op, Gascap, To, Value, OOffset, I, State8, GasAfterSpend) ->
     Dest = case Op of
                ?CALL -> To;
                ?CALLCODE -> aevm_eeevm_state:address(State8);

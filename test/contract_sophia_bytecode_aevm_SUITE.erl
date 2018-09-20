@@ -10,6 +10,7 @@
 -export(
    [ execute_identity_fun_from_sophia_file/1
    , sophia_remote_call/1
+   , sophia_remote_call_negative/1
    , sophia_factorial/1
    , simple_multi_argument_call/1
    , remote_multi_argument_call/1
@@ -35,6 +36,7 @@
 
 all() -> [ execute_identity_fun_from_sophia_file,
            sophia_remote_call,
+           sophia_remote_call_negative,
            sophia_factorial,
            simple_multi_argument_call,
            remote_multi_argument_call,
@@ -129,8 +131,8 @@ successful_call(Contract, Type, Fun, Args, Env, Options) ->
             exit({error, Err})
     end.
 
-%% failing_call(Contract, Fun, Args, Env) ->
-%%     failing_call(Contract, Fun, Args, Env, #{}).
+failing_call(Contract, Fun, Args, Env) ->
+    failing_call(Contract, Fun, Args, Env, #{}).
 
 failing_call(Contract, Fun, Args, Env, Options) ->
     case make_call(Contract, Fun, Args, Env, Options) of
@@ -150,8 +152,16 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
 sophia_remote_call(_Cfg) ->
     IdCode     = compile_contract(identity),
     CallerCode = compile_contract(remote_call),
-    Env        = initial_state(#{ 1234 => IdCode, 1 => CallerCode }),
+    Env        = initial_state(#{ 1234 => IdCode, 1 => CallerCode }, #{1 => 20000}),
     42         = successful_call_(1, word, call, "(1234,42)", Env),
+    ok.
+
+sophia_remote_call_negative(_Cfg) ->
+    IdCode     = compile_contract(identity),
+    CallerCode = compile_contract(remote_call),
+    %% The call fails for insufficient balance for the value specified in the remote call.
+    Env        = initial_state(#{ 1234 => IdCode, 1 => CallerCode }),
+    out_of_gas = failing_call(1, call, "(1234,42)", Env),
     ok.
 
 sophia_factorial(_Cfg) ->
@@ -171,7 +181,7 @@ simple_multi_argument_call(_Cfg) ->
 remote_multi_argument_call(_Cfg) ->
     IdCode     = compile_contract(identity),
     RemoteCode = compile_contract(remote_call),
-    Env        = initial_state(#{ 101 => IdCode, 102 => RemoteCode, 103 => RemoteCode }),
+    Env        = initial_state(#{ 101 => IdCode, 102 => RemoteCode, 103 => RemoteCode }, #{102 => 20000}),
     42         = successful_call_(102, word, staged_call, "(101,102,42)", Env),
     ok.
 
@@ -358,9 +368,9 @@ increment_account(Account, Value, Env) ->
 
 oracles(_Cfg) ->
     Code = compile_contract(oracles),
-    Env0 = initial_state(#{}),
-    Env1 = create_contract(101, Code, "()", Env0),
     QFee = 100,
+    Env0 = initial_state(#{}, #{101 => QFee}),
+    Env1 = create_contract(101, Code, "()", Env0),
     {101, Env2} = successful_call(101, word, registerOracle, "(101, 3, "++ integer_to_list(QFee) ++", (0, 10))", Env1),
     {Q, Env3}   = successful_call(101, word, createQuery, "(101, \"why?\", "++ integer_to_list(QFee) ++", (0, 10), (0, 11))", Env2, #{value => QFee}),
     QArg        = integer_to_list(Q),
