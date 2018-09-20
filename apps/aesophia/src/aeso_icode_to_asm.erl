@@ -124,6 +124,13 @@ assemble_function(Funs, Name, Args, Body) ->
      swap(1),
      i(?JUMP)].
 
+%% {seq, Es} - should be "one" operation in terms of stack content
+%% i.e. after the `seq` there should be one new element on the stack.
+assemble_expr(Funs, Stack, Tail, {seq, [E]}) ->
+    assemble_expr(Funs, Stack, Tail, E);
+assemble_expr(Funs, Stack, Tail, {seq, [E | Es]}) ->
+    [assemble_expr(Funs, Stack, nontail, E),
+     assemble_expr(Funs, Stack, Tail, {seq, Es})];
 assemble_expr(_Funs, _Stack, _Tail, {inline_asm, Code}) ->
     Code;   %% Unsafe! Code should take care to respect the stack!
 assemble_expr(Funs, Stack, _TailPosition, {var_ref, Id}) ->
@@ -593,6 +600,8 @@ assemble_infix('+')    -> i(?ADD);
 assemble_infix('-')    -> i(?SUB);
 assemble_infix('*')    -> i(?MUL);
 assemble_infix('/')    -> i(?SDIV);
+assemble_infix('div')  -> i(?DIV);
+assemble_infix('^')    -> i(?EXP);
 assemble_infix('bor')  -> i(?OR);
 assemble_infix('band') -> i(?AND);
 assemble_infix('bxor') -> i(?XOR);

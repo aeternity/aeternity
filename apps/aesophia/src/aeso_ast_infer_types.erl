@@ -124,7 +124,10 @@ global_env() ->
      {["Map", "lookup"],    Fun([K, Map(K, V)], Option(V))},
      {["Map", "delete"],    Fun([K, Map(K, V)], Map(K, V))},
      {["Map", "member"],    Fun([K, Map(K, V)], Bool)},
-     {["Map", "size"],      Fun1(Map(K, V), Int)}
+     {["Map", "size"],      Fun1(Map(K, V), Int)},
+     %% Strings
+     {["String", "length"], Fun1(String, Int)},
+     {["String", "concat"], Fun([String, String], String)}
     ].
 
 global_type_env() ->

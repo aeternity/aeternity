@@ -1,6 +1,8 @@
 -module(contract_sophia_bytecode_aevm_SUITE).
 -behaviour(aevm_chain_api).
 
+-include_lib("stdlib/include/assert.hrl").
+
 %% common_test exports
 -export([all/0]).
 
@@ -16,6 +18,7 @@
    , environment/1
    , counter/1
    , stack/1
+   , strings/1
    , simple_storage/1
    , dutch_auction/1
    , oracles/1
@@ -40,6 +43,7 @@ all() -> [ execute_identity_fun_from_sophia_file,
            environment,
            counter,
            stack,
+           strings,
            simple_storage,
            dutch_auction,
            oracles].
@@ -284,6 +288,31 @@ stack(_Cfg) ->
     {2, Env2} = successful_call(101, word, push, "\"foo\"", Env1),
     {<<"foo">>,  Env3} = successful_call(101, string, pop, "()", Env2),
     {<<"bar">>, _Env4} = successful_call(101, string, pop, "()", Env3),
+    ok.
+
+strings(_Cfg) ->
+    Code      = compile_contract(strings),
+    Env       = initial_state(#{}),
+    Env1      = create_contract(101, Code, "()", Env),
+    Strings = ["",
+               "five?",
+               "this_is_sixteen!",
+               "surely_this_is_twentyseven!",
+               "most_likely_this_is_thirtytwo?!?",
+               "guvf_vf_zbfg_yvxryl_guveglgjb?!?guvf_vf_zbfg_yvxryl_guveglgjb?!?"],
+    TestStrings =
+        fun(Str1, Str2) ->
+            ExpectedLen = length(Str1 ++ Str2),
+            {ActualLen, Env1} = successful_call(101, word, str_len, "\"" ++ Str1 ++ Str2 ++ "\"", Env1),
+            ct:log("str_len(~p) = ~p - expected ~p", [Str1++Str2, ActualLen, ExpectedLen]),
+            ?assertEqual(ExpectedLen, ActualLen),
+
+            ExpectedStr = Str1 ++ Str2,
+            {ActualStr, Env1} = successful_call(101, string, str_concat, "(\"" ++ Str1 ++ "\", \"" ++ Str2 ++ "\")", Env1),
+            ct:log("str_concat(~p, ~p) = ~p", [Str1, Str2, binary_to_list(ActualStr)]),
+            ?assertEqual(ExpectedStr, binary_to_list(ActualStr))
+        end,
+    [ TestStrings(X, Y) || X <- Strings, Y <- Strings ],
     ok.
 
 simple_storage(_Cfg) ->

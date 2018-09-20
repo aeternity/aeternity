@@ -60,3 +60,5 @@
 
 -record(missing_field, { format :: string()
                        , args   :: [term()]}).
+
+-record(seq, {exprs :: [expr()]}).
