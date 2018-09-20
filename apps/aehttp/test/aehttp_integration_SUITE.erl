@@ -902,10 +902,10 @@ test_decode_sophia_data2(_Config) ->
                           , #{ <<"type">> := <<"list">>
                              , <<"value">> :=
                                    [_,_,_]}
-                          , #{ <<"type">> := <<"option">>
+                          , #{ <<"type">> := <<"variant">>
                              , <<"value">> :=
-                                   #{ <<"type">> := <<"word">>
-                                    , <<"value">> := 1}}]}
+                                   [1, #{ <<"type">> := <<"word">>
+                                        , <<"value">> := 1 }]} ]}
                   ]
            }
      } = Decoded,

@@ -170,7 +170,7 @@ ast_body(?qid_app(["Oracle", "get_question"], [Oracle, Q], [_, ?query_t(QType, _
 
 ast_body(?qid_app(["Oracle", "get_answer"], [Oracle, Q], [_, ?query_t(_, RType)], _), Icode) ->
     prim_call(?PRIM_CALL_ORACLE_GET_ANSWER, #integer{value = 0},
-              [ast_body(Oracle, Icode), ast_body(Q, Icode)], [word, word], {option, ast_type(RType, Icode)});
+              [ast_body(Oracle, Icode), ast_body(Q, Icode)], [word, word], aeso_icode:option_typerep(ast_type(RType, Icode)));
 
 ast_body({qid, _, ["Oracle", "register"]}, _Icode)     -> error({underapplied_primitive, 'Oracle.register'});
 ast_body({qid, _, ["Oracle", "query"]}, _Icode)        -> error({underapplied_primitive, 'Oracle.query'});
@@ -190,7 +190,7 @@ ast_body(?qid_app(["AENS", "resolve"], [Name, Key], _, ?option_t(Type)), Icode) 
             end,
             prim_call(?PRIM_CALL_AENS_RESOLVE, #integer{value = 0},
                       [ast_body(Name, Icode), ast_body(Key, Icode), ast_type_value(Type, Icode)],
-                      [string, string, typerep], {option, ast_type(Type, Icode)});
+                      [string, string, typerep], aeso_icode:option_typerep(ast_type(Type, Icode)));
         false ->
             error({unresolved_result_type, 'AENS.resolve', Type})
     end;
@@ -292,14 +292,6 @@ ast_body({tuple,_,Args}, Icode) ->
     #tuple{cpts = [ast_body(A, Icode) || A <- Args]};
 ast_body({list,_,Args}, Icode) ->
     #list{elems = [ast_body(A, Icode) || A <- Args]};
-%% Hardwired option types. TODO: Remove when we have arbitrary variant types.
-ast_body({con, _, "None"}, _Icode) ->
-    #list{elems = []};
-ast_body({app, _, {typed, _, {con, _, "Some"}, _}, [Elem]}, Icode) ->
-    #tuple{cpts = [ast_body(Elem, Icode)]};
-ast_body({typed, _, {con, _, "Some"}, {fun_t, _, _, [A], _}}, Icode) ->
-    #lambda{ args = [#arg{name = "x", type = ast_type(A, Icode)}]
-           , body = #tuple{cpts = [#var_ref{name = "x"}]} };
 %% Typed contract calls
 ast_body({proj, _, {typed, _, Addr, {con, _, _}}, {id, _, "address"}}, Icode) ->
     ast_body(Addr, Icode);  %% Values of contract types _are_ addresses.
@@ -515,8 +507,6 @@ type_value(string) ->
     #tuple{ cpts = [#integer{ value = ?TYPEREP_STRING_TAG }] };
 type_value({list, A}) ->
     #tuple{ cpts = [#integer{ value = ?TYPEREP_LIST_TAG }, type_value(A)] };
-type_value({option, A}) ->
-    #tuple{ cpts = [#integer{ value = ?TYPEREP_OPTION_TAG }, type_value(A)] };
 type_value({tuple, As}) ->
     #tuple{ cpts = [#integer{ value = ?TYPEREP_TUPLE_TAG },
                     #list{ elems = [ type_value(A) || A <- As ] }] };
@@ -570,6 +560,9 @@ used_builtins(_) -> [].
 builtin_eq(word, A, B)   -> {binop, '==', A, B};
 builtin_eq(string, A, B) -> {funcall, {var_ref, {builtin, str_equal}}, [A, B]}.
 
+option_none()  -> {tuple, [{integer, 0}]}.
+option_some(X) -> {tuple, [{integer, 1}, X]}.
+
 builtin_function(Builtin = {map_get, Type}) ->
     %% function map_get(m, k) =
     %%   switch(map_lookup(m, k))
@@ -578,7 +571,7 @@ builtin_function(Builtin = {map_get, Type}) ->
         [{"m", aeso_icode:map_typerep(Type, word)}, {"k", Type}],
             {switch, {funcall, {var_ref, {builtin, {map_lookup, Type}}},
                      [{var_ref, "m"}, {var_ref, "k"}]},
-                [{{tuple, [{var_ref, "v"}]}, {var_ref, "v"}}]},
+                [{option_some({var_ref, "v"}), {var_ref, "v"}}]},
      word};
 
 builtin_function(Builtin = {map_member, Type}) ->
@@ -590,7 +583,7 @@ builtin_function(Builtin = {map_member, Type}) ->
         [{"m", aeso_icode:map_typerep(Type, word)}, {"k", Type}],
             {switch, {funcall, {var_ref, {builtin, {map_lookup, Type}}},
                      [{var_ref, "m"}, {var_ref, "k"}]},
-                [{{list, []}, {integer, 0}},
+                [{option_none(), {integer, 0}},
                  {{var_ref, "_"}, {integer, 1}}]},
      word};
 
@@ -608,15 +601,15 @@ builtin_function(Builtin = {map_lookup, Type}) ->
     {Name,
      [{"map", aeso_icode:map_typerep(Type, word)}, {"key", Type}],
      {switch, {var_ref, "map"},
-              [{{list, []}, {list, []}},
+              [{{list, []}, option_none()},
                {{binop, '::',
                   {tuple, [{var_ref, "k"}, {var_ref, "val"}]},
                   {var_ref, "m"}},
                 {ifte, Eq({var_ref, "k"}, {var_ref, "key"}),
-                    {tuple, [{var_ref, "val"}]},
+                    option_some({var_ref, "val"}),
                     {funcall, {var_ref, Name},
                              [{var_ref, "m"}, {var_ref, "key"}]}}}]},
-    {option, word}};
+    aeso_icode:option_typerep(word)};
 
 builtin_function(Builtin = {map_put, Type}) ->
     %% function map_put(map, key, val) =

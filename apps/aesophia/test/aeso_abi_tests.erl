@@ -62,7 +62,7 @@ encode_decode_sophia_test() ->
     1 = encode_decode_sophia_string("true"),
     0 = encode_decode_sophia_string("false"),
     <<"Hello">> = encode_decode_sophia_string("\"Hello\""),
-    {<<"Hello">>, [1,2,3], {some, 1}} =
+    {<<"Hello">>, [1,2,3], {variant, 1, [1]}} =
         encode_decode_sophia_string(
           "(\"Hello\", [1,2,3], Some(true))"),
     ok.

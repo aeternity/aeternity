@@ -1952,7 +1952,10 @@ sophia_maps(_Cfg) ->
                                 {fromlist_s, StrMap, MapS}] ] ++
         []),
 
-    _ = [ Result = Call(Fn, Type, Args) || {Fn, Type, Args, Result} <- Calls ],
+    _ = [ begin
+            io:format("Applying ~p.\nArgs = ~p\nType = ~p\nExpected = ~p\n", [Fn, Args, Type, Result]),
+            Result = Call(Fn, Type, Args)
+          end || {Fn, Type, Args, Result} <- Calls ],
 
     %% to_list (not tolist_state)
     _ = [ {Xs, Xs} = {lists:keysort(1, Call(Fn, Type, Map)), maps:to_list(Map)}
