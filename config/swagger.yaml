@@ -2870,6 +2870,14 @@ definitions:
           $ref: '#/definitions/EncodedHash'
       deposit:
         type: integer
+    required:
+      - id
+      - owner_id
+      - vm_version
+      - log
+      - active
+      - referrer_ids
+      - deposit
   ContractStore:
     type: object
     properties:
@@ -2882,6 +2890,8 @@ definitions:
               type: string
             value:
               type: string
+    required:
+      - store
   Contract:
     type: object
     properties:
@@ -2889,11 +2899,16 @@ definitions:
         type: string
       options:
         type: string
+    required:
+      - code
+      - options
   ByteCode:
     type: object
     properties:
       bytecode:
         type: string
+    required:
+      - bytecode
   ContractCallInput:
     type: object
     properties:
@@ -2905,16 +2920,25 @@ definitions:
         type: string
       arg:
        type: string
+    required:
+      - abi
+      - code
+      - function
+      - arg
   CallResult:
     type: object
     properties:
       out:
         type: string
+    required:
+      - out
   Calldata:
     type: object
     properties:
       calldata:
         type: string
+    required:
+      - calldata
   SophiaBinaryData:
     type: object
     properties:
@@ -2923,15 +2947,15 @@ definitions:
       data:
         type: string
     required:
-    - sophia-type
-    - data
+      - sophia-type
+      - data
   SophiaJsonData:
     type: object
     properties:
       data:
         type: object
     required:
-    - data
+      - data
   Peer:
     type: string
     description: 'Aeternity node'
@@ -2996,15 +3020,15 @@ definitions:
         description: Contract call data
         type: string
     required:
-    - owner_id
-    - code
-    - vm_version
-    - deposit
-    - amount
-    - gas
-    - gas_price
-    - fee
-    - call_data
+      - owner_id
+      - code
+      - vm_version
+      - deposit
+      - amount
+      - gas
+      - gas_price
+      - fee
+      - call_data
   ContractCreateCompute:
     type: object
     properties:
@@ -3050,15 +3074,15 @@ definitions:
         description: Contract call data init function arguments
         type: string
     required:
-    - owner_id
-    - code
-    - vm_version
-    - deposit
-    - amount
-    - gas
-    - gas_price
-    - fee
-    - arguments
+      - owner_id
+      - code
+      - vm_version
+      - deposit
+      - amount
+      - gas
+      - gas_price
+      - fee
+      - arguments
   ContractCallData:
     type: object
     properties:
@@ -3100,14 +3124,14 @@ definitions:
         description: Contract call data
         type: string
     required:
-    - caller_id
-    - contract_id
-    - vm_version
-    - fee
-    - amount
-    - gas
-    - gas_price
-    - call_data
+      - caller_id
+      - contract_id
+      - vm_version
+      - fee
+      - amount
+      - gas
+      - gas_price
+      - call_data
   ContractCallCompute:
     type: object
     properties:
@@ -3152,15 +3176,15 @@ definitions:
         description: Contract call data function arguments
         type: string
     required:
-    - caller_id
-    - contract_id
-    - vm_version
-    - fee
-    - amount
-    - gas
-    - gas_price
-    - function
-    - arguments
+      - caller_id
+      - contract_id
+      - vm_version
+      - fee
+      - amount
+      - gas
+      - gas_price
+      - function
+      - arguments
   UnsignedTx:
     type: object
     properties:
@@ -3186,7 +3210,7 @@ definitions:
             $ref: '#/definitions/EncodedHash'
             description: Address of the contract to be created
         required:
-        - contract_id
+          - contract_id
   PoI:
     type: object
     properties:
@@ -3194,7 +3218,7 @@ definitions:
         description: Proof of inclusion
         type: string
     required:
-    - poi
+      - poi
   Generation:
     type: object
     properties:

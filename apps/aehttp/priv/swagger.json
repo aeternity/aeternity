@@ -3702,6 +3702,7 @@
     },
     "ContractObject" : {
       "type" : "object",
+      "required" : [ "active", "deposit", "id", "log", "owner_id", "referrer_ids", "vm_version" ],
       "properties" : {
         "id" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -3742,6 +3743,7 @@
     },
     "ContractStore" : {
       "type" : "object",
+      "required" : [ "store" ],
       "properties" : {
         "store" : {
           "type" : "array",
@@ -3762,6 +3764,7 @@
     },
     "Contract" : {
       "type" : "object",
+      "required" : [ "code", "options" ],
       "properties" : {
         "code" : {
           "type" : "string"
@@ -3777,6 +3780,7 @@
     },
     "ByteCode" : {
       "type" : "object",
+      "required" : [ "bytecode" ],
       "properties" : {
         "bytecode" : {
           "type" : "string"
@@ -3788,6 +3792,7 @@
     },
     "ContractCallInput" : {
       "type" : "object",
+      "required" : [ "abi", "arg", "code", "function" ],
       "properties" : {
         "abi" : {
           "type" : "string"
@@ -3811,6 +3816,7 @@
     },
     "CallResult" : {
       "type" : "object",
+      "required" : [ "out" ],
       "properties" : {
         "out" : {
           "type" : "string"
@@ -3822,6 +3828,7 @@
     },
     "Calldata" : {
       "type" : "object",
+      "required" : [ "calldata" ],
       "properties" : {
         "calldata" : {
           "type" : "string"
