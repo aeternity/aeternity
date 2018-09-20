@@ -124,8 +124,8 @@ oracle_register(AccountKey,_Sign, QueryFee, TTL, QueryFormat, ResponseFormat,
     %% This means that if you register an oracle for an account other than
     %% the contract account through a contract that contract nonce is incremented
     %% "behind your back".
-    BinaryQueryFormat = aeso_data:to_binary(QueryFormat, 0),
-    BinaryResponseFormat = aeso_data:to_binary(ResponseFormat, 0),
+    BinaryQueryFormat = aeso_data:to_binary(QueryFormat),
+    BinaryResponseFormat = aeso_data:to_binary(ResponseFormat),
     Spec =
         #{account_id      => aec_id:create(account, AccountKey),
           nonce           => Nonce,
@@ -158,7 +158,7 @@ oracle_register(AccountKey,_Sign, QueryFee, TTL, QueryFormat, ResponseFormat,
 oracle_query(Oracle, Q, Value, QTTL, RTTL,
              State = #state{ account = ContractKey } = State) ->
     Nonce = next_nonce(State),
-    QueryData = aeso_data:to_binary(Q, 0),
+    QueryData = aeso_data:to_binary(Q),
     {ok, Tx} =
         aeo_query_tx:new(#{sender_id     => aec_id:create(account, ContractKey),
                            nonce         => Nonce,
@@ -186,7 +186,7 @@ oracle_respond(Oracle, QueryId,_Sign, Response, State) ->
                  #{oracle_id => aec_id:create(oracle, Oracle),
                    nonce     => Nonce,
                    query_id  => QueryId,
-                   response  => aeso_data:to_binary(Response, 0),
+                   response  => aeso_data:to_binary(Response),
                    fee       => 0,
                    ttl       => 0 %% Not used
                   }),
@@ -245,7 +245,7 @@ oracle_query_format(Oracle, #state{ trees   = Trees} =_State) ->
     case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
         {value, O} ->
             BinaryFormat = aeo_oracles:query_format(O),
-            try aeso_data:from_binary(0, typerep, BinaryFormat) of
+            try aeso_data:from_binary(typerep, BinaryFormat) of
                 {ok, Format} -> {ok, Format};
                 {error, _} = Error -> Error
             catch
@@ -262,7 +262,7 @@ oracle_response_format(Oracle, #state{ trees   = Trees} =_State) ->
     case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
         {value, O} ->
             BinaryFormat = aeo_oracles:response_format(O),
-            try aeso_data:from_binary(0, typerep, BinaryFormat) of
+            try aeso_data:from_binary(typerep, BinaryFormat) of
                 {ok, Format} -> {ok, Format};
                 {error, _} = Error -> Error
             catch

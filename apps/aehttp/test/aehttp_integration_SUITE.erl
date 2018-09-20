@@ -972,8 +972,7 @@ broken_decode_sophia_data(_Config) ->
 
 %% Used in contract-decode endpoint tests.
 to_binary(Term) ->
-    BaseAddr = 0, %% Decode expects base address 0 (since return values have base address 0)
-    aeu_hex:hexstring_encode(aeso_data:to_binary(Term, BaseAddr)).
+    aeu_hex:hexstring_encode(aeso_data:to_binary(Term)).
 
 decode_data(Type, EncodedData) ->
     {ok, 200, Data} =

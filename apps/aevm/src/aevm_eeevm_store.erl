@@ -55,8 +55,8 @@ from_sophia_state(Data) ->
     %% TODO: less encoding/decoding
     {ok, {Type}}     = aeso_data:from_binary({tuple, [typerep]},    Data),
     {ok, {_, Value}} = aeso_data:from_binary({tuple, [word, Type]}, Data),
-    StateData          = aeso_data:to_binary(Value, 0),
-    TypeData           = aeso_data:to_binary(Type, 0),
+    StateData          = aeso_data:to_binary(Value),
+    TypeData           = aeso_data:to_binary(Type),
     #{ ?SOPHIA_STATE_KEY      => StateData,
        ?SOPHIA_STATE_TYPE_KEY => TypeData }.
 

@@ -15,8 +15,6 @@
 
 -record(chain, {api, state}).
 
--define(BASE_ADDRESS, 32). %% Byte offset for data
-
 -ifdef(COMMON_TEST).
 -define(TEST_LOG(Format, Data),
         try ct:log(Format, Data)
@@ -110,7 +108,7 @@ call_chain1(Callback, State) ->
 query_chain(Callback, State) ->
     case call_chain1(Callback, State) of
         {ok, Res} ->
-            Return = {ok, aeso_data:to_binary(Res, 0)},
+            Return = {ok, aeso_data:to_binary(Res)},
             {ok, Return, 0, State#chain.state};
         {error, _} = Err -> Err
     end.
@@ -128,7 +126,7 @@ call_chain(Callback, State) ->
     case call_chain1(Callback, State) of
         {ok, Retval, ChainState1} ->
             GasSpent   = 0,         %% Already costs lots of gas
-            Return     = {ok, aeso_data:to_binary(Retval, 0)},
+            Return     = {ok, aeso_data:to_binary(Retval)},
             {ok, Return, GasSpent, ChainState1};
         {error, _} = Err -> Err
     end.
@@ -253,12 +251,12 @@ aens_call_revoke(Data, State) ->
 %% ------------------------------------------------------------------
 
 get_primop(Data) ->
-    {ok, T} = aeso_data:from_binary(?BASE_ADDRESS, {tuple, [word]}, Data),
+    {ok, T} = aeso_data:from_binary({tuple, [word]}, Data),
     {PrimOp} = T,
     PrimOp.
 
 get_args(Types, Data) ->
-    {ok, Val} = aeso_data:from_binary(?BASE_ADDRESS, {tuple, [word | Types]}, Data),
+    {ok, Val} = aeso_data:from_binary({tuple, [word | Types]}, Data),
     [_ | Args] = tuple_to_list(Val),
     Args.
 

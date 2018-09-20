@@ -56,11 +56,11 @@ convert(#{ contract_name := _ContractName
 
     DispatchCode = [%% push two return addresses to stop, one for stateful
                     %% functions and one for non-stateful functions.
-                    push_label(StopLabel),
                     push_label(StatefulStopLabel),
-                    %% The first word of the calldata is a pointer to the
-                    %% actual calldata.
-                    push(32), i(?MLOAD),
+                    push_label(StopLabel),
+                    %% The calldata is already on the stack when we start. Put
+                    %% it on top (also reorders StatefulStop and Stop).
+                    swap(2),
                     jump(MainFunction),
                     jumpdest(StatefulStopLabel),
 

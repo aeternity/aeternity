@@ -147,21 +147,24 @@ init_vm(State, Code, Mem, Store) ->
         ?AEVM_01_Solidity_01 ->
             aevm_eeevm_store:init(Store, State1);
         ?AEVM_01_Sophia_01 ->
-            %% Write calldata at address 32
-            Calldata = data(State),
-            State2   = aevm_eeevm_memory:write_area(32, Calldata, State1),
-            %% Write the state on top of it
-            case aevm_eeevm_store:get_sophia_state_type(Store) of
-                false -> State2;  %% No state yet (init function)
-                TypeBin ->
-                    {ok, Type} = aeso_data:from_binary(typerep, TypeBin),
-                    Addr      = byte_size(Calldata) + 32,
-                    StateData = aevm_eeevm_store:get_sophia_state(Store),
-                    %% TODO: implement fusion of to_binary and from_binary (i.e. relocate_binary)
-                    {ok, StateVal} = aeso_data:from_binary(Type, StateData),
-                    <<StatePtr:32/unit:8, StateHeap/binary>> = aeso_data:to_binary(StateVal, Addr - 32),
-                    State3    = aevm_eeevm_memory:write_area(Addr, StateHeap, State2),
-                    aevm_eeevm_memory:store(0, StatePtr, State3)
+            %% Write calldata at address 32 and put the pointer to the value on the stack.
+            case data(State1) of
+                <<Ptr:32/unit:8, Calldata/binary>> ->
+                    State2 = aevm_eeevm_stack:push(Ptr, aevm_eeevm_memory:write_area(32, Calldata, State1)),
+                    %% Write the state on top of it
+                    case aevm_eeevm_store:get_sophia_state_type(Store) of
+                        false -> State2;  %% No state yet (init function)
+                        TypeBin ->
+                            {ok, Type} = aeso_data:from_binary(typerep, TypeBin),
+                            Addr      = byte_size(Calldata) + 32,
+                            StateData = aevm_eeevm_store:get_sophia_state(Store),
+                            %% TODO: implement fusion of to_binary and from_binary (i.e. relocate_binary)
+                            {ok, StateVal} = aeso_data:from_binary(Type, StateData),
+                            <<StatePtr:32/unit:8, StateHeap/binary>> = aeso_data:to_binary(StateVal, Addr - 32),
+                            State3    = aevm_eeevm_memory:write_area(Addr, StateHeap, State2),
+                            aevm_eeevm_memory:store(0, StatePtr, State3)
+                    end;
+                _ -> set_gas(0, State1) %% Bad calldata, consume all gas
             end
     end.
 
@@ -174,7 +177,7 @@ do_return(Us0, Us1, State) ->
             Heap       = get_heap(State),
             {ok, Type} = aeso_data:from_heap(typerep, Heap, Us0),
             {ok, Out}  = aeso_data:from_heap(Type, Heap, Us1),
-            OutBin = aeso_data:to_binary(Out, 0),
+            OutBin = aeso_data:to_binary(Out),
                 set_out(OutBin, State)
             catch _:_ ->
                 io:format("** Error reading return value\n~s", [format_mem(mem(State))]),
@@ -229,7 +232,7 @@ save_store(#{ chain_state := ChainState
                         {ok, Type}   = aeso_data:from_heap(typerep, Heap, TypePtr),
                         {Ptr, _}     = aevm_eeevm_memory:load(Addr, State),
                         {ok, Val}    = aeso_data:from_heap(Type, Heap, Ptr),
-                        Data         = aeso_data:to_binary(Val, 0),
+                        Data         = aeso_data:to_binary(Val),
                         Store        = ChainAPI:get_store(ChainState),
                         Store1       = aevm_eeevm_store:set_sophia_state(Data, Store),
                         State#{ chain_state => ChainAPI:set_store(Store1, ChainState) }
@@ -252,7 +255,7 @@ get_contract_call_input(IOffset, ISize, State) ->
             Heap       = get_heap(State),
             {ok, Type} = aeso_data:from_heap(typerep, Heap, TypePtr),
             {ok, Arg}  = aeso_data:from_heap(Type, Heap, Ptr),
-            {aeso_data:to_binary(Arg, 32), State}    %% Encode calldata with base addr 32
+            {aeso_data:to_binary(Arg), State}
     end.
 
 %% Get the entire heap. Does not update the state.

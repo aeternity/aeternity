@@ -13,11 +13,10 @@
 -include("aeso_icode.hrl").
 
 -spec to_binary(aeso_sophia:data()) -> aeso_sophia:heap().
-%% Encode the data as a heap fragment starting at address 32. The first word is
-%% a pointer into the heap fragment. The reason we store it at address 32 is to
-%% leave room for the state pointer at address 0.
+%% Encode the data as a heap where the first word is the value (for unboxed
+%% types) or a pointer to the value (for boxed types).
 to_binary(Data) ->
-    to_binary(Data, 32).
+    to_binary(Data, 0).
 
 to_binary(Data, BaseAddress) ->
     {Address, Memory} = to_binary1(Data, BaseAddress + 32),
@@ -83,18 +82,18 @@ from_heap(Type, Heap, Ptr) ->
     end.
 
 %% Base address is the address of the first word of the given heap.
--spec from_binary(BaseAddr :: non_neg_integer(),
-                  T :: ?Type(),
-                  Heap :: binary()) ->
+-spec from_binary(T :: ?Type(),
+                  Heap :: binary(),
+                  BaseAddr :: non_neg_integer()) ->
         {ok, term()} | {error, term()}.
-from_binary(BaseAddr, T, Heap = <<V:256, _/binary>>) ->
+from_binary(T, Heap = <<V:256, _/binary>>, BaseAddr) ->
     from_heap(T, <<0:BaseAddr/unit:8, Heap/binary>>, V);
-from_binary(_, _, Bin) ->
+from_binary(_, Bin, BaseAddr) ->
     {error, {binary_too_short, Bin}}.
 
 -spec from_binary(?Type(), binary()) -> {ok, term()} | {error, term()}.
 from_binary(T, Heap) ->
-    from_binary(0, T, Heap).
+    from_binary(T, Heap, 0).
 
 from_binary(_, word, _, V) ->
     V;
@@ -180,7 +179,7 @@ heap_word(Heap,Addr) ->
 -spec get_function_from_calldata(Calldata::binary()) ->
                                         {ok, term()} | {error, term()}.
 get_function_from_calldata(Calldata) ->
-    case from_binary(32, {tuple, [string]}, Calldata) of
+    case from_binary({tuple, [string]}, Calldata) of
         {ok, {FunctionName}} ->
             {ok, FunctionName};
         {error, _} = Error -> Error

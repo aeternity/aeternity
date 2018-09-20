@@ -2705,7 +2705,7 @@ force_progress_sequence(Round, Forcer) ->
                                       TxHashContractPubkey),
                 Call = aect_test_utils:get_call(TxHashContractPubkey, CallId,
                                                 S),
-                380 = GasUsed = aect_call:gas_used(Call),
+                377 = GasUsed = aect_call:gas_used(Call),
                 GasPrice = aect_call:gas_price(Call),
                 ConsumedGas = GasUsed * GasPrice,
                 DeductedAmt = ConsumedGas + Fee,

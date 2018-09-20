@@ -2247,13 +2247,13 @@ sophia_savecoinbase(_Cfg) ->
     %% Create chain contract and check that address is stored.
     Ct1 = ?call(create_contract, Acc, chain, {}, #{amount => 10000}),
     #{<<0>> := Val1} = get_contract_state(Ct1),
-    {ok, {LastBf}} = aeso_data:from_binary(0, {tuple, [word]}, Val1),
+    {ok, {LastBf}} = aeso_data:from_binary({tuple, [word]}, Val1),
     <<LastBf:?BENEFICIARY_PUB_BYTES/unit:8>> = Ct1,
 
     %% Call chain.save_coinbase() and make sure beneficiary is stored.
     ?call(call_contract, Acc, Ct1, save_coinbase, word, {}),
     #{<<0>> := Val2}  = get_contract_state(Ct1),
-    {ok, {LastBf2}} = aeso_data:from_binary(0, {tuple, [word]}, Val2),
+    {ok, {LastBf2}} = aeso_data:from_binary({tuple, [word]}, Val2),
     Beneficiary = LastBf2,
     ok.
 
