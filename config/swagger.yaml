@@ -54,8 +54,9 @@ paths:
       responses:
         '200':
           description: 'Successful operation'
-          schema:
-            $ref: '#/definitions/KeyBlock'
+          oneOf:
+            - $ref: '#/definitions/KeyBlock'
+            - $ref: '#/definitions/MicroBlockHeader'
         '404':
           description: 'Block not found'
           schema:
@@ -1751,8 +1752,6 @@ definitions:
         $ref: '#/definitions/EncodedHash'
       state_hash:
         $ref: '#/definitions/EncodedHash'
-      txs_hash:
-        $ref: '#/definitions/EncodedHash'
       target:
         type: integer
         format: int64
@@ -2369,8 +2368,6 @@ definitions:
         minItems: 1
         items:
           $ref: '#/definitions/EncodedHash'
-      poi:
-        type: string
       ttl:
         type: integer
         format: int64
