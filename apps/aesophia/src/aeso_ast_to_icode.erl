@@ -273,6 +273,17 @@ ast_body({map, _, Map, [Upd]}, Icode) ->
 ast_body({map, Ann, Map, [Upd | Upds]}, Icode) ->
     ast_body({map, Ann, {map, Ann, Map, [Upd]}, Upds}, Icode);
 
+%% Strings
+%% -- String length
+ast_body(?qid_app(["String", "length"], [String], _, _), Icode) ->
+    #funcall{ function = #var_ref{ name = {builtin, string_length} },
+              args     = [ast_body(String, Icode)] };
+
+%% -- String concat
+ast_body(?qid_app(["String", "concat"], [String1, String2], _, _), Icode) ->
+    #funcall{ function = #var_ref{ name = {builtin, string_concat} },
+              args     = [ast_body(String1, Icode), ast_body(String2, Icode)] };
+
 %% Other terms
 ast_body({id, _, Name}, _Icode) ->
     %% TODO Look up id in env
@@ -539,6 +550,7 @@ builtin_deps({map_del, string})    -> [str_equal];
 builtin_deps({map_put, string})    -> [str_equal];
 builtin_deps({map_upd, string})    -> [str_equal];
 builtin_deps(str_equal)            -> [str_equal_p];
+builtin_deps(string_concat)        -> [string_concat_inner1, string_concat_inner2];
 builtin_deps(_) -> [].
 
 dep_closure(Deps) ->
@@ -720,6 +732,96 @@ builtin_function(map_size) ->
                            [{var_ref, "map'"},
                             {binop, '+', {var_ref, "acc"}, {integer, 1}}]}}]},
         word};
+
+builtin_function(string_length) ->
+    %% function length(str) =
+    %%   switch(str)
+    %%      {n} -> n  // (ab)use the representation
+    V = fun(X) -> {var_ref, atom_to_list(X)} end,
+    {{builtin, string_length},
+     [{"s", string}],
+     {switch, V(s), [{{tuple, [V(n)]}, V(n)}]},
+     word};
+
+%% str_concat - concatenate two strings
+%%
+%% Unless the second string is the empty string, a new string is created at the
+%% top of the Heap and the address to it is returned. The tricky bit is when
+%% the words from the second string has to be shifted to fit next to the first
+%% string.
+builtin_function(string_concat) ->
+    V = fun(X) -> {var_ref, atom_to_list(X)} end,
+    I = fun(X) -> {integer, X} end,
+    LetLen = fun(N, S, Body) -> {switch, V(S), [{{tuple, [V(N)]}, Body}]} end,
+    Let = fun(N, E, Body) -> {switch, E, [{V(N), Body}]} end,
+    StepPtr = fun(P) -> {binop, '+', V(P), I(32)} end,
+    A = fun(X) -> aeb_opcodes:mnemonic(X) end,
+    {{builtin, string_concat},
+     [{"s1", string}, {"s2", string}],
+     LetLen(n1, s1,
+     LetLen(n2, s2,
+        {ifte, {binop, '==', V(n2), I(0)},
+            V(s1), %% Second string is empty return first string
+            Let(ret, {inline_asm, [A(?MSIZE)]},
+                {seq, [{binop, '+', V(n1), V(n2)},
+                       {inline_asm, [A(?MSIZE), A(?MSTORE)]}, %% Store total len
+                       {funcall, {var_ref, {builtin, string_concat_inner1}},
+                            [V(n1), StepPtr(s1), V(n2), StepPtr(s2)]},
+                       {inline_asm, [A(?POP)]}, %% Discard fun ret val
+                       V(ret)                   %% Put the actual return value
+                      ]})})),
+     word};
+
+builtin_function(string_concat_inner1) ->
+    V = fun(X) -> {var_ref, atom_to_list(X)} end,
+    I = fun(X) -> {integer, X} end,
+    Name = {builtin, string_concat_inner1},
+    LetWord = fun(W, P, Body) -> {switch, V(P), [{{tuple, [V(W)]}, Body}]} end,
+    A = fun(X) -> aeb_opcodes:mnemonic(X) end,
+    %% Copy all whole words from the first string, and set up for word fusion
+    %% Special case when the length of the first string is divisible by 32.
+    {Name,
+     [{"n1", word}, {"p1", pointer}, {"n2", word}, {"p2", pointer}],
+     LetWord(w1, p1,
+        {ifte, {binop, '>', V(n1), I(32)},
+            {seq, [V(w1), {inline_asm, [A(?MSIZE), A(?MSTORE)]},
+                   {funcall, {var_ref, Name}, [{binop, '-', V(n1), I(32)},
+                                               {binop, '+', V(p1), I(32)},
+                                               V(n2), V(p2)]}]},
+            {ifte, {binop, '==', V(n1), I(0)},
+                {funcall, {var_ref, {builtin, string_concat_inner2}},
+                          [I(32), I(0), V(n2), V(p2)]},
+                {funcall, {var_ref, {builtin, string_concat_inner2}},
+                          [{binop, '-', I(32), V(n1)}, V(w1), V(n2), V(p2)]}}
+        }),
+     word};
+
+builtin_function(string_concat_inner2) ->
+    V = fun(X) -> {var_ref, atom_to_list(X)} end,
+    I = fun(X) -> {integer, X} end,
+    LetWord = fun(W, P, Body) -> {switch, V(P), [{{tuple, [V(W)]}, Body}]} end,
+    BSR = fun(X, Bytes) -> {binop, 'div', X, {binop, '^', I(2), {binop, '*', Bytes, I(8)}}} end,
+    BSL = fun(X, Bytes) -> {binop, '*', X, {binop, '^', I(2), {binop, '*', Bytes, I(8)}}} end,
+    A = fun(X) -> aeb_opcodes:mnemonic(X) end,
+    Name = {builtin, string_concat_inner2},
+    %% Current "work in progess" word 'x', has 'o' bytes that are "free" - fill them from
+    %% words of the second string.
+    {Name,
+     [{"o", word}, {"x", word}, {"n2", word}, {"p2", pointer}],
+     {ifte, {binop, '<', V(n2), I(1)},
+        {seq, [V(x), {inline_asm, [A(?MSIZE), A(?MSTORE), A(?MSIZE)]}]}, %% Use MSIZE as dummy return value
+        LetWord(w2, p2,
+            {ifte, {binop, '>', V(n2), V(o)},
+                {seq, [{binop, '+', V(x), BSR(V(w2), {binop, '-', I(32), V(o)})},
+                       {inline_asm, [A(?MSIZE), A(?MSTORE)]},
+                       {funcall, {var_ref, Name},
+                                [V(o), BSL(V(w2), V(o)), {binop, '-', V(n2), I(32)}, {binop, '+', V(p2), I(32)}]}
+                      ]},
+                {seq, [{binop, '+', V(x), BSR(V(w2), {binop, '-', I(32), V(o)})},
+                       {inline_asm, [A(?MSIZE), A(?MSTORE), A(?MSIZE)]}]} %% Use MSIZE as dummy return value
+            })
+     },
+     word};
 
 builtin_function(str_equal_p) ->
     %% function str_equal_p(n, p1, p2) =
