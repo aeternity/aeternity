@@ -3255,9 +3255,9 @@ definitions:
             description: Amount of tokens to transfer
             format: int64
         required:
-        - from
-        - to
-        - am
+          - from
+          - to
+          - am
   OffChainWithdrawal:
     allOf:
       - $ref: '#/definitions/OffChainUpdate'
@@ -3271,8 +3271,8 @@ definitions:
             description: Amount of tokens to withdraw
             format: int64
         required:
-        - to
-        - am
+          - to
+          - am
   OffChainDeposit:
     allOf:
       - $ref: '#/definitions/OffChainUpdate'
@@ -3286,8 +3286,8 @@ definitions:
             description: Amount of tokens to deposit
             format: int64
         required:
-        - from
-        - am
+          - from
+          - am
   OffChainNewContract:
     allOf:
       - $ref: '#/definitions/OffChainUpdate'
@@ -3310,11 +3310,11 @@ definitions:
             description: Contract call data
             type: string
         required:
-        - owner
-        - vm_version
-        - code
-        - deposit
-        - call_data
+          - owner
+          - vm_version
+          - code
+          - deposit
+          - call_data
   OffChainCallContract:
     allOf:
       - $ref: '#/definitions/OffChainUpdate'
@@ -3346,14 +3346,14 @@ definitions:
             description: Contract call data
             type: string
         required:
-        - caller
-        - contract
-        - vm_version
-        - code
-        - amount
-        - call_data
-        - gas
-        - gas_price
+          - caller
+          - contract
+          - vm_version
+          - code
+          - amount
+          - call_data
+          - gas
+          - gas_price
 
 externalDocs:
   description: Find out more about Aeternity
