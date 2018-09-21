@@ -404,7 +404,6 @@ assemble_expr(Funs, Stack, Tail,
                                  , arg      = Arg
                                  , arg_type = ArgT
                                  , out_type = OutT }) ->
-    CallOk = make_ref(),
     %% ?CALL takes (from the top)
     %%   Gas, To, Value, IOffset, ISize, OOffset, OSize
     %% We need to
@@ -427,9 +426,7 @@ assemble_expr(Funs, Stack, Tail,
     , dup(3)                                  %%  OOffset OSize ISize OOffset IOffset To Gas Value
     , shuffle_stack([1, 2, 4, 3, 5, 7, 8, 6]) %%  Gas To Value IOffset ISize OOffset OSize OOffset
     , i(?CALL)                                %%  Result OOffset
-    , jump_if(CallOk) %% Jump if non-zero. CALL places on stack 1 if ok and 0 if failure. I.e. jump if non-failure. TODO: stricter check on ok (1) rather than non-failure.
-    , exhaust_gas()
-    , jumpdest(CallOk)                        %%  OOffset
+    , pop(1)                                  %%  OOffset         -- ignoring result for now
     , assemble_expr(Funs, [pointer | Stack], Tail, {decode, OutT})
                                               %%  ResultPtr
     ].
@@ -469,7 +466,12 @@ assemble_decision(Funs, Stack, Decision, Then, Else) ->
 assemble_cases(_Funs, _Stack, _Tail, _Close, []) ->
     %% No match! What should be do? There's no real way to raise an
     %% exception, except consuming all the gas.
-    exhaust_gas();
+    %% There should not be enough gas to do this:
+    [push(1), i(?NOT),
+     i(?MLOAD),
+     %% now stop, so that jump optimizer realizes we will not fall
+     %% through this code.
+     i(?STOP)];
 assemble_cases(Funs, Stack, Tail, Close, [{Pattern, Body}|Cases]) ->
     Succeed = make_ref(),
     Fail = make_ref(),
@@ -942,14 +944,6 @@ push_label(Label) -> {push_label, Label}.
 
 jump(Label)    -> [push_label(Label), i(?JUMP)].
 jump_if(Label) -> [push_label(Label), i(?JUMPI)].
-
-exhaust_gas() ->
-    %% There should not be enough gas to do this:
-    [push(1), i(?NOT),
-     i(?MLOAD),
-     %% now stop, so that jump optimizer realizes we will not fall
-     %% through this code.
-     i(?STOP)].
 
 %% ICode utilities (TODO: move to separate module)
 

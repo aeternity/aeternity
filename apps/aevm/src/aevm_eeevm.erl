@@ -1475,7 +1475,8 @@ recursive_call1(StateIn, Op) ->
         true  -> recursive_call2(Op, Gascap, To, Value, OOffset, I, State8, GasAfterSpend);
         false ->
             ?TEST_LOG("Excessive value operand ~p for address ~p, that has balance ~p", [Value, Address, AddressBalance]),
-            {0, State8} %% TODO: How much gas should this consume?
+            {0, aevm_eeevm_state:set_gas(0, State8)}
+            %% Consume all gas on failed contract call.
     end.
 
 recursive_call2(Op, Gascap, To, Value, OOffset, I, State8, GasAfterSpend) ->
