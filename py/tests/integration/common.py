@@ -209,7 +209,7 @@ def wait_until_height(api, height):
     wait(lambda: api.get_current_key_block().height >= height, timeout_seconds=120, sleep_seconds=0.25)
 
 def get_account_balance(api, pub_key):
-    return _balance_from_get_account(lambda: api.get_account_by_pubkey(pub_key))
+    return _balance_from_get_account(lambda: api.get_account_by_pubkey(pub_key), pub_key)
 
 def send_tokens_to_unchanging_user(sender, address, tokens, fee, external_api, internal_api):
     spend_tx_obj = SpendTx(
@@ -230,8 +230,8 @@ def send_tokens_to_unchanging_user_and_wait_balance(sender, address, tokens, fee
     wait(lambda: get_account_balance(ext_api, address) == (bal0 + tokens),
          timeout_seconds=20, sleep_seconds=0.25)
 
-def _balance_from_get_account(get_account_fun):
-    account = Account(balance=0)
+def _balance_from_get_account(get_account_fun, pub_key):
+    account = Account(id=pub_key, balance=0, nonce=0)
     try:
         account = get_account_fun()
     except ApiException as e:

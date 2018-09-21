@@ -326,7 +326,7 @@ handle_request('PostTransaction', #{'Tx' := Tx}, _Context) ->
                             {200, [], #{<<"tx_hash">> => aec_base58c:encode(tx_hash, Hash)}};
                         {error, _} ->
                             {400, [], #{reason => <<"Invalid tx">>}}
-                    end; 
+                    end;
                 {error, broken_tx} ->
                     {400, [], #{reason => <<"Invalid tx">>}}
             end;
@@ -486,7 +486,7 @@ handle_request('GetStatus', _Params, _Context) ->
     Syncing = true, %% TODO
     Listening = true, %% TODO
     Protocols = maps:fold(fun(Vsn, Height, Acc) ->
-                          [#{protocol => #{version => Vsn, effective_at_height => Height}} | Acc]
+                          [#{<<"version">> => Vsn, <<"effective_at_height">> => Height} | Acc]
                  end, [], aec_governance:protocols()),
     NodeVersion = aeu_info:get_version(),
     NodeRevision = aeu_info:get_revision(),

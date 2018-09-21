@@ -1752,9 +1752,15 @@ definitions:
         $ref: '#/definitions/EncodedHash'
       state_hash:
         $ref: '#/definitions/EncodedHash'
+      miner:
+        $ref: '#/definitions/EncodedHash'
+      beneficiary:
+        $ref: '#/definitions/EncodedHash'
       target:
         type: integer
         format: int64
+      pow:
+        $ref: '#/definitions/Pow'
       nonce:
         type: integer
         format: int64
@@ -1764,12 +1770,17 @@ definitions:
       version:
         type: integer
         format: int64
-      pow:
-        $ref: '#/definitions/Pow'
-      miner:
-        $ref: '#/definitions/EncodedHash'
-      beneficiary:
-        $ref: '#/definitions/EncodedHash'
+    required:
+      - hash
+      - height
+      - prev_hash
+      - prev_key_hash
+      - state_hash
+      - miner
+      - beneficiary
+      - target
+      - time
+      - version
   MicroBlockHeader:
     type: object
     properties:
@@ -1797,6 +1808,17 @@ definitions:
       version:
         type: integer
         format: int64
+    required:
+      - hash
+      - height
+      - pof_hash
+      - prev_hash
+      - prev_key_hash
+      - state_hash
+      - txs_hash
+      - signature
+      - time
+      - version
   GenericTxs:
     type: object
     properties:
@@ -1804,6 +1826,8 @@ definitions:
         type: array
         items:
             $ref: '#/definitions/GenericSignedTx'
+    required:
+      - transactions
   Account:
     type: object
     properties:
@@ -1820,11 +1844,17 @@ definitions:
         description: 'Nonce'
         format: int64
         minimum: 0
+    required:
+      - id
+      - balance
+      - nonce
   Tx:
     type: object
     properties:
        tx:
          type: string
+    required:
+      - tx
   RegisteredOracle:
     type: object
     properties:
@@ -1839,6 +1869,12 @@ definitions:
       ttl:
         type: integer
         format: int64
+    required:
+      - id
+      - query_format
+      - response_format
+      - query_fee
+      - ttl
   OracleQuery:
     type: object
     properties:
@@ -1864,6 +1900,16 @@ definitions:
       fee:
         type: integer
         format: int64
+    required:
+      - id
+      - sender_id
+      - sender_nonce
+      - oracle_id
+      - query
+      - response
+      - ttl
+      - response_ttl
+      - fee
   OracleQueries:
     type: object
     properties:
@@ -1871,6 +1917,8 @@ definitions:
         type: array
         items:
           $ref: '#/definitions/OracleQuery'
+    required:
+      - oracle_queries
   SpendTx:
     type: object
     properties:
@@ -1894,10 +1942,11 @@ definitions:
       payload:
         type: string
     required:
-    - recipient_id
-    - amount
-    - fee
-    - payload
+      - recipient_id
+      - amount
+      - fee
+      - sender_id
+      - payload
   OracleRegisterTx:
     type: object
     properties:
@@ -1922,11 +1971,12 @@ definitions:
         type: integer
         format: int64
     required:
-    - query_format
-    - response_format
-    - query_fee
-    - fee
-    - oracle_ttl
+      - query_format
+      - response_format
+      - query_fee
+      - fee
+      - oracle_ttl
+      - account_id
   OracleExtendTx:
     type: object
     properties:
@@ -1944,8 +1994,9 @@ definitions:
         type: integer
         format: int64
     required:
-    - fee
-    - oracle_ttl
+      - fee
+      - oracle_ttl
+      - oracle_id
   OracleQueryTx:
     type: object
     properties:
@@ -1973,12 +2024,13 @@ definitions:
         format: int64
         description: Sender nonce
     required:
-    - oracle_id
-    - query
-    - query_fee
-    - query_ttl
-    - response_ttl
-    - fee
+      - oracle_id
+      - query
+      - query_fee
+      - query_ttl
+      - response_ttl
+      - fee
+      - sender_id
   OracleRespondTx:
     type: object
     properties:
@@ -1999,9 +2051,10 @@ definitions:
         format: int64
         description: Oracle nonce
     required:
-    - query_id
-    - response
-    - fee
+      - query_id
+      - response
+      - fee
+      - oracle_id
   TTL:
     type: object
     properties:
@@ -2012,6 +2065,9 @@ definitions:
         type: integer
         format: int64
         minimum: 1
+    required:
+      - type
+      - value
   RelativeTTL:
     type: object
     properties:
@@ -2022,6 +2078,9 @@ definitions:
         type: integer
         format: int64
         minimum: 1
+    required:
+      - type
+      - value
   NameEntry:
     type: object
     properties:
@@ -2034,6 +2093,10 @@ definitions:
         type: array
         items:
           $ref: '#/definitions/NamePointer'
+    required:
+      - id
+      - ttl
+      - pointers
   NamePreclaimTx:
     type: object
     properties:
@@ -2052,8 +2115,9 @@ definitions:
         type: integer
         format: int64
     required:
-    - commitment_id
-    - fee
+      - commitment_id
+      - fee
+      - account_id
   NameClaimTx:
     type: object
     properties:
@@ -2074,9 +2138,10 @@ definitions:
         type: integer
         format: int64
     required:
-    - name
-    - name_salt
-    - fee
+      - name
+      - name_salt
+      - fee
+      - account_id
   NameUpdateTx:
     type: object
     properties:
@@ -2105,11 +2170,12 @@ definitions:
         type: integer
         format: int64
     required:
-    - name_id
-    - name_ttl
-    - client_ttl
-    - pointers
-    - fee
+      - name_id
+      - name_ttl
+      - client_ttl
+      - pointers
+      - fee
+      - account_id
   NameTransferTx:
     type: object
     properties:
@@ -2129,9 +2195,10 @@ definitions:
         type: integer
         format: int64
     required:
-    - name_id
-    - recipient_id
-    - fee
+      - name_id
+      - recipient_id
+      - fee
+      - account_id
   NameRevokeTx:
     type: object
     properties:
@@ -2149,18 +2216,23 @@ definitions:
         type: integer
         format: int64
     required:
-    - name_id
-    - fee
+      - name_id
+      - fee
+      - account_id
   CommitmentId:
     type: object
     properties:
       commitment_id:
         $ref: '#/definitions/EncodedHash'
+    required:
+      - commitment_id
   NameHash:
     type: object
     properties:
       name_id:
         $ref: '#/definitions/EncodedHash'
+    required:
+      - name_id
   NamePointer:
     type: object
     properties:
@@ -2168,6 +2240,9 @@ definitions:
         type: string
       id:
         $ref: '#/definitions/EncodedHash'
+    required:
+      - key
+      - id
   Channel:
     type: object
     properties:
@@ -2213,6 +2288,20 @@ definitions:
       closes_at:
         type: integer
         format: int64
+    required:
+      - id
+      - initiator_id
+      - responder_id
+      - channel_amount
+      - initiator_amount
+      - responder_amount
+      - channel_reserve
+      - delegate_ids
+      - state_hash
+      - round
+      - lock_period
+      - forcing_blocked_until
+      - closes_at
   ChannelCreateTx:
     type: object
     properties:
@@ -2256,15 +2345,15 @@ definitions:
         description: 'Root hash of the channel''s internal state tree'
         $ref: '#/definitions/EncodedHash'
     required:
-    - initiator_id
-    - initiator_amount
-    - responder_id
-    - responder_amount
-    - push_amount
-    - channel_reserve
-    - lock_period
-    - fee
-    - state_hash
+      - initiator_id
+      - initiator_amount
+      - responder_id
+      - responder_amount
+      - push_amount
+      - channel_reserve
+      - lock_period
+      - fee
+      - state_hash
   ChannelDepositTx:
     type: object
     properties:
@@ -2297,13 +2386,13 @@ definitions:
         minimum: 0
         description: 'Channel''s next round'
     required:
-    - channel_id
-    - from_id
-    - amount
-    - fee
-    - nonce
-    - state_hash
-    - round
+      - channel_id
+      - from_id
+      - amount
+      - fee
+      - nonce
+      - state_hash
+      - round
   ChannelWithdrawTx:
     type: object
     properties:
@@ -2336,13 +2425,13 @@ definitions:
         minimum: 0
         description: 'Channel''s next round'
     required:
-    - channel_id
-    - to_id
-    - amount
-    - fee
-    - nonce
-    - state_hash
-    - round
+      - channel_id
+      - to_id
+      - amount
+      - fee
+      - nonce
+      - state_hash
+      - round
   ChannelForceProgressTx:
     type: object
     properties:
@@ -2384,16 +2473,15 @@ definitions:
         type: string
         description: 'Proof of inclusion containing information for closing the channel'
     required:
-    - channel_id
-    - from_id
-    - payload
-    - round
-    - update
-    - state_hash
-    - addresses
-    - poi
-    - fee
-    - poi
+      - channel_id
+      - from_id
+      - payload
+      - round
+      - update
+      - state_hash
+      - addresses
+      - fee
+      - poi
   ChannelCloseMutualTx:
     type: object
     properties:
@@ -2420,11 +2508,11 @@ definitions:
         format: int64
         minimum: 0
     required:
-    - channel_id
-    - initiator_amount_final
-    - responder_amount_final
-    - fee
-    - nonce
+      - channel_id
+      - initiator_amount_final
+      - responder_amount_final
+      - fee
+      - nonce
   ChannelCloseSoloTx:
     type: object
     properties:
@@ -2450,11 +2538,11 @@ definitions:
         type: string
         description: 'Proof of inclusion containing information for closing the channel'
     required:
-    - channel_id
-    - from_id
-    - payload
-    - fee
-    - poi
+      - channel_id
+      - from_id
+      - payload
+      - fee
+      - poi
   ChannelSlashTx:
     type: object
     properties:
@@ -2480,11 +2568,11 @@ definitions:
         type: string
         description: 'Proof of inclusion containing information for closing the channel'
     required:
-    - channel_id
-    - from_id
-    - payload
-    - fee
-    - poi
+      - channel_id
+      - from_id
+      - payload
+      - fee
+      - poi
   ChannelSettleTx:
     type: object
     properties:
@@ -2513,12 +2601,12 @@ definitions:
         format: int64
         minimum: 0
     required:
-    - channel_id
-    - from_id
-    - initiator_amount_final
-    - responder_amount_final
-    - fee
-    - nonce
+      - channel_id
+      - from_id
+      - initiator_amount_final
+      - responder_amount_final
+      - fee
+      - nonce
   ChannelSnapshotSoloTx:
     type: object
     properties:
@@ -2541,15 +2629,17 @@ definitions:
         format: int64
         minimum: 0
     required:
-    - channel_id
-    - from
-    - payload
-    - fee
+      - channel_id
+      - from_id
+      - payload
+      - fee
   PubKey:
     type: object
     properties:
       pub_key:
         type: string
+    required:
+      - pub_key
   Status:
     type: object
     properties:
@@ -2582,10 +2672,21 @@ definitions:
         type: integer
         format: int64
         minimum: 0
+    required:
+      - genesis_key_block_hash
+      - solutions
+      - difficulty
+      - syncing
+      - listening
+      - protocols
+      - node_version
+      - node_revision
+      - peer_count
+      - pending_transactions_count
   Protocol:
     type: object
     properties:
-      protocol_version:
+      version:
         type: integer
         format: int64
         minimum: 1
@@ -2593,6 +2694,9 @@ definitions:
         type: integer
         format: int64
         minimum: 0
+    required:
+      - version
+      - effective_at_height
   GenericSignedTx:
     type: object
     properties:
@@ -2610,6 +2714,12 @@ definitions:
         minItems: 1
         items:
           type: string
+    required:
+      - tx
+      - block_height
+      - block_hash
+      - hash
+      - signatures
   GenericTx:
     type: object
     discriminator: type
@@ -2737,6 +2847,8 @@ definitions:
     properties:
       reason:
         type: string
+    required:
+      - reason
   ContractObject:
     type: object
     properties:
@@ -2758,6 +2870,14 @@ definitions:
           $ref: '#/definitions/EncodedHash'
       deposit:
         type: integer
+    required:
+      - id
+      - owner_id
+      - vm_version
+      - log
+      - active
+      - referrer_ids
+      - deposit
   ContractStore:
     type: object
     properties:
@@ -2770,6 +2890,8 @@ definitions:
               type: string
             value:
               type: string
+    required:
+      - store
   Contract:
     type: object
     properties:
@@ -2777,11 +2899,16 @@ definitions:
         type: string
       options:
         type: string
+    required:
+      - code
+      - options
   ByteCode:
     type: object
     properties:
       bytecode:
         type: string
+    required:
+      - bytecode
   ContractCallInput:
     type: object
     properties:
@@ -2793,16 +2920,25 @@ definitions:
         type: string
       arg:
        type: string
+    required:
+      - abi
+      - code
+      - function
+      - arg
   CallResult:
     type: object
     properties:
       out:
         type: string
+    required:
+      - out
   Calldata:
     type: object
     properties:
       calldata:
         type: string
+    required:
+      - calldata
   SophiaBinaryData:
     type: object
     properties:
@@ -2811,15 +2947,15 @@ definitions:
       data:
         type: string
     required:
-    - sophia-type
-    - data
+      - sophia-type
+      - data
   SophiaJsonData:
     type: object
     properties:
       data:
         type: object
     required:
-    - data
+      - data
   Peer:
     type: string
     description: 'Aeternity node'
@@ -2836,6 +2972,9 @@ definitions:
         description: All blocked peers
         items:
             $ref: '#/definitions/Peer'
+    required:
+      - peers
+      - blocked
   ContractCreateData:
     type: object
     properties:
@@ -2881,15 +3020,15 @@ definitions:
         description: Contract call data
         type: string
     required:
-    - owner_id
-    - code
-    - vm_version
-    - deposit
-    - amount
-    - gas
-    - gas_price
-    - fee
-    - call_data
+      - owner_id
+      - code
+      - vm_version
+      - deposit
+      - amount
+      - gas
+      - gas_price
+      - fee
+      - call_data
   ContractCreateCompute:
     type: object
     properties:
@@ -2935,15 +3074,15 @@ definitions:
         description: Contract call data init function arguments
         type: string
     required:
-    - owner_id
-    - code
-    - vm_version
-    - deposit
-    - amount
-    - gas
-    - gas_price
-    - fee
-    - arguments
+      - owner_id
+      - code
+      - vm_version
+      - deposit
+      - amount
+      - gas
+      - gas_price
+      - fee
+      - arguments
   ContractCallData:
     type: object
     properties:
@@ -2985,14 +3124,14 @@ definitions:
         description: Contract call data
         type: string
     required:
-    - caller_id
-    - contract_id
-    - vm_version
-    - fee
-    - amount
-    - gas
-    - gas_price
-    - call_data
+      - caller_id
+      - contract_id
+      - vm_version
+      - fee
+      - amount
+      - gas
+      - gas_price
+      - call_data
   ContractCallCompute:
     type: object
     properties:
@@ -3037,15 +3176,15 @@ definitions:
         description: Contract call data function arguments
         type: string
     required:
-    - caller_id
-    - contract_id
-    - vm_version
-    - fee
-    - amount
-    - gas
-    - gas_price
-    - function
-    - arguments
+      - caller_id
+      - contract_id
+      - vm_version
+      - fee
+      - amount
+      - gas
+      - gas_price
+      - function
+      - arguments
   UnsignedTx:
     type: object
     properties:
@@ -3053,7 +3192,7 @@ definitions:
         description: Unsigned transaction object
         $ref: '#/definitions/EncodedHash'
     required:
-    - tx
+      - tx
   PostTxResponse:
     type: object
     properties:
@@ -3061,7 +3200,7 @@ definitions:
         description: 'Hash of a signed transaction'
         $ref: '#/definitions/EncodedHash'
     required:
-    - tx_hash
+      - tx_hash
   CreateContractUnsignedTx:
     allOf:
       - $ref: '#/definitions/UnsignedTx'
@@ -3071,7 +3210,7 @@ definitions:
             $ref: '#/definitions/EncodedHash'
             description: Address of the contract to be created
         required:
-        - contract_id
+          - contract_id
   PoI:
     type: object
     properties:
@@ -3079,7 +3218,7 @@ definitions:
         description: Proof of inclusion
         type: string
     required:
-    - poi
+      - poi
   Generation:
     type: object
     properties:
@@ -3090,7 +3229,8 @@ definitions:
         items:
             $ref: '#/definitions/EncodedHash'
     required:
-    - tx
+      - key_block
+      - micro_blocks
   OffChainUpdate:
     type: object
     discriminator: op
@@ -3115,9 +3255,9 @@ definitions:
             description: Amount of tokens to transfer
             format: int64
         required:
-        - from
-        - to
-        - am
+          - from
+          - to
+          - am
   OffChainWithdrawal:
     allOf:
       - $ref: '#/definitions/OffChainUpdate'
@@ -3131,8 +3271,8 @@ definitions:
             description: Amount of tokens to withdraw
             format: int64
         required:
-        - to
-        - am
+          - to
+          - am
   OffChainDeposit:
     allOf:
       - $ref: '#/definitions/OffChainUpdate'
@@ -3146,8 +3286,8 @@ definitions:
             description: Amount of tokens to deposit
             format: int64
         required:
-        - from
-        - am
+          - from
+          - am
   OffChainNewContract:
     allOf:
       - $ref: '#/definitions/OffChainUpdate'
@@ -3170,11 +3310,11 @@ definitions:
             description: Contract call data
             type: string
         required:
-        - owner
-        - vm_version
-        - code
-        - deposit
-        - call_data
+          - owner
+          - vm_version
+          - code
+          - deposit
+          - call_data
   OffChainCallContract:
     allOf:
       - $ref: '#/definitions/OffChainUpdate'
@@ -3206,14 +3346,14 @@ definitions:
             description: Contract call data
             type: string
         required:
-        - caller
-        - contract
-        - vm_version
-        - code
-        - amount
-        - call_data
-        - gas
-        - gas_price
+          - caller
+          - contract
+          - vm_version
+          - code
+          - amount
+          - call_data
+          - gas
+          - gas_price
 
 externalDocs:
   description: Find out more about Aeternity

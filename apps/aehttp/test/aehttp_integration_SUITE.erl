@@ -2106,7 +2106,7 @@ contract_transactions(_Config) ->    % miner has an account
 %% GET contract_call_compute_tx unsigned transaction
 %% No testing of negative cases as these are same as for "normal" create.
 contract_create_compute_transaction(_Config) ->
-    
+
     {ok, 200, _} = get_balance_at_top(),
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
@@ -2511,13 +2511,12 @@ nameservice_transaction_update(MinerAddress, MinerPubkey) ->
     test_invalid_hash({name, MinerPubkey}, name_id, Encoded, fun get_name_update/1),
     test_missing_address(account_id, Encoded, fun get_name_update/1),
     %% test broken pointers
-    TestBrokenPointers =
-        fun(P) ->
-            {ok, 400, #{<<"reason">> := <<"Invalid pointers">>}} =
-                get_name_update(maps:put(pointers, P, Encoded))
-        end,
-    TestBrokenPointers([#{<<"key">> => <<"k2">>, <<"id">> => <<"not a valid pointer">>}]),
-    TestBrokenPointers([#{<<"invalid_key">> => <<"k2">>, <<"id">> => <<"not a valid pointer">>}]),
+    {ok, 400, #{<<"reason">> := <<"Invalid pointers">>}} =
+        get_name_update(maps:put(pointers, [#{<<"key">> => <<"k2">>,
+                                              <<"id">> => <<"not a valid pointer">>}], Encoded)),
+    {ok, 400, #{<<"reason">> := <<"validation_error">>}} =
+        get_name_update(maps:put(pointers, [#{<<"invalid_key">> => <<"k2">>,
+                                              <<"id">> => <<"not a valid pointer">>}], Encoded)),
     ok.
 
 nameservice_transaction_transfer(MinerAddress, MinerPubkey) ->
@@ -2966,7 +2965,7 @@ post_broken_tx(_Config) ->
     {ok, SignedTx} = rpc(aec_keys, sign_tx, [SpendTx]),
     SignedTxBin = aetx_sign:serialize_to_binary(SignedTx),
 
-    {ok, SpendTTLTx} = 
+    {ok, SpendTTLTx} =
         aec_spend_tx:new(
           #{sender_id => aec_id:create(account, PubKey),
             recipient_id => aec_id:create(account, random_hash()),
@@ -4691,6 +4690,7 @@ swagger_validation_schema(_Config) ->
                         <<"error">> := <<"wrong_type">>,
                         <<"path">> := [<<"fee">>]
         }}} = http_request(Host, post, "debug/transactions/spend", #{
+                   sender_id => <<"">>,
                    recipient_id => <<"">>,
                    amount => 0,
                    fee => <<"wrong_fee_data">>,
@@ -4716,6 +4716,7 @@ swagger_validation_schema(_Config) ->
                         <<"error">> := <<"not_in_range">>,
                         <<"path">> := [<<"amount">>]
         }}} = http_request(Host, post, "debug/transactions/spend", #{
+                   sender_id => <<"">>,
                    recipient_id => <<"">>,
                    amount => -1,
                    fee => <<"fee">>,
