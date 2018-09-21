@@ -7,13 +7,13 @@ PIP = $(BIN)/pip
 
 .PHONY: venv-present
 venv-present:
-	@virtualenv -q .
+	@virtualenv --python=python2.7 -q .
 
 .PHONY: env
 env: venv-present
-	@. bin/activate && $(PIP) -q install -r requirements.txt 
+	@. bin/activate && $(PIP) -q install -r requirements.txt
 
-.PHONY: websocket-test 
+.PHONY: websocket-test
 websocket-test:
 	@$(PYTHON) $(PYTHON_TESTS)/ws_client.py --port 3114 --log INFO --handler ws_logic
 
