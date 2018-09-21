@@ -44,6 +44,10 @@
          post_close_mutual_state_channel_tx/5,
          post_withdraw_state_channel_tx/5,
          post_deposit_state_channel_tx/5]).
+-export([post_oracle_register_tx/3,
+         post_oracle_extend_tx/3,
+         post_oracle_query_tx/5,
+         post_oracle_response_tx/5]).
 -export([wait_for_value/4]).
 -export([wait_for_time/3]).
 -export([wait_for_time/4]).
@@ -451,6 +455,91 @@ post_withdraw_state_channel_tx(Node, RecParty, OtherParty, ChannelId, #{nonce :=
     Transaction = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
     {ok, 200, Response} = request(Node, 'PostTransaction', #{tx => Transaction}),
     Response.
+
+post_oracle_register_tx(Node, OAccount, #{ nonce := _ } = Opts) ->
+    #{ pubkey := OPubKey, privkey := OPrivKey } = OAccount,
+
+    BaseTxArgs = #{
+        account_id      => aec_id:create(account, OPubKey),
+        query_format    => maps:get(query_format, Opts, <<"qspec">>),
+        response_format => maps:get(response_format, Opts, <<"rspec">>),
+        query_fee       => maps:get(query_fee, Opts, 1),
+        fee             => maps:get(fee, Opts, 6),
+        oracle_ttl      => {
+            maps:get(oracle_ttl_type, Opts, block),
+            maps:get(oracle_ttl, Opts, 2000)
+        }
+    },
+    ExtraTxArgs = maps:without([query_format, response_format, query_fee, fee,
+                                oracle_ttl_type, oracle_ttl], Opts),
+    AllTxArgs = maps:merge(BaseTxArgs, ExtraTxArgs),
+    {ok, RegisterTx} = aeo_register_tx:new(AllTxArgs),
+    Signed = aec_test_utils:sign_tx(RegisterTx, [OPrivKey]),
+    SignedEnc = aetx_sign:serialize_to_binary(Signed),
+    Transaction = aec_base58c:encode(transaction, SignedEnc),
+    {ok, 200, Resp} = request(Node, 'PostTransaction', #{tx => Transaction}),
+    Resp.
+
+post_oracle_extend_tx(Node, OAccount, #{ nonce := _ } = Opts) ->
+    #{ pubkey := OPubKey, privkey := OPrivKey } = OAccount,
+
+    BaseTxArgs = #{
+        oracle_id  => aec_id:create(oracle, OPubKey),
+        fee        => maps:get(fee, Opts, 10),
+        oracle_ttl => {delta, maps:get(oracle_ttl, Opts, 2000)}
+    },
+    ExtraTxArgs = maps:without([oracle_id, fee, oracle_ttl], Opts),
+    AllTxArgs = maps:merge(BaseTxArgs, ExtraTxArgs),
+    {ok, ExtendTx} = aeo_extend_tx:new(AllTxArgs),
+    Signed = aec_test_utils:sign_tx(ExtendTx, [OPrivKey]),
+    SignedEnc = aetx_sign:serialize_to_binary(Signed),
+    Transaction = aec_base58c:encode(transaction, SignedEnc),
+    {ok, 200, Resp} = request(Node, 'PostTransaction', #{tx => Transaction}),
+    Resp.
+
+post_oracle_query_tx(Node, QuerierAcc, OracleAcc, Query, #{ nonce := _ } = Opts) ->
+    #{ pubkey := QPubKey, privkey := QPrivKey } = QuerierAcc,
+    #{ pubkey := OPubKey } = OracleAcc,
+
+    BaseTxArgs = #{
+        sender_id    => aec_id:create(account, QPubKey),
+        oracle_id    => aec_id:create(oracle, OPubKey),
+        query        => Query,
+        query_fee    => maps:get(query_fee, Opts, 2),
+        fee          => maps:get(fee, Opts, 30),
+        query_ttl    => {
+            maps:get(query_ttl_type, Opts, block),
+            maps:get(query_ttl, Opts, 20)
+        },
+        response_ttl => {delta, maps:get(response_ttl, Opts, 20)}
+    },
+    ExtraTxArgs = maps:without([query, query_fee, fee, query_ttl_type,
+                                query_ttl, response_ttl], Opts),
+    AllTxArgs = maps:merge(BaseTxArgs, ExtraTxArgs),
+    {ok, QueryTx} = aeo_query_tx:new(AllTxArgs),
+    Signed = aec_test_utils:sign_tx(QueryTx, [QPrivKey]),
+    SignedEnc = aetx_sign:serialize_to_binary(Signed),
+    Transaction = aec_base58c:encode(transaction, SignedEnc),
+    {ok, 200, Resp} = request(Node, 'PostTransaction', #{tx => Transaction}),
+    Resp.
+
+post_oracle_response_tx(Node, OracleAcc, QueryId, Response, #{ nonce := _ } = Opts) ->
+    #{ pubkey := OPubKey, privkey := OPrivKey } = OracleAcc,
+
+    BaseTxArgs = #{
+        oracle_id => aec_id:create(oracle, OPubKey),
+        query_id  => QueryId,
+        response  => Response,
+        fee       => maps:get(fee, Opts, 10)
+    },
+    ExtraTxArgs = maps:without([oracle_id, query_id, response, fee], Opts),
+    AllTxArgs = maps:merge(BaseTxArgs, ExtraTxArgs),
+    {ok, RespTx} = aeo_response_tx:new(AllTxArgs),
+    Signed = aec_test_utils:sign_tx(RespTx, [OPrivKey]),
+    SignedEnc = aetx_sign:serialize_to_binary(Signed),
+    Transaction = aec_base58c:encode(transaction, SignedEnc),
+    {ok, 200, Resp} = request(Node, 'PostTransaction', #{tx => Transaction}),
+    Resp.
 
 %% Use values that are not yet base58c encoded in test cases
 wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, Ctx) ->
