@@ -68,10 +68,18 @@ run(_, #{ call := Call} = _CallDef) ->
 
 call_AEVM_01_Sophia_01(#{ contract    := ContractPubKey
                         , height      := Height
+                        , time        := Time
+                        , difficulty  := Difficulty
                         , trees       := Trees
-                        , beneficiary := <<Beneficiary:?BENEFICIARY_PUB_BYTES/unit:8>>
+                        , beneficiary := BeneficiaryBin
                         } = CallDef) ->
-    Env = set_env(ContractPubKey, Height, Trees, Beneficiary, aec_vm_chain, ?AEVM_01_Sophia_01),
+    <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>> = BeneficiaryBin,
+
+    ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
+    TxEnv = aetx_env:contract_env(Height, ConsensusVersion, Time,
+                                  BeneficiaryBin, Difficulty),
+    Env = set_env(ContractPubKey, Height, Trees, BeneficiaryInt, Time, Difficulty,
+                  TxEnv, aec_vm_chain, ?AEVM_01_Sophia_01),
     Spec = #{ env => Env,
               exec => #{},
               pre => #{}},
@@ -80,24 +88,33 @@ call_AEVM_01_Sophia_01(#{ contract    := ContractPubKey
 call_AEVM_01_Solidity_01(#{ contract    := ContractPubKey
                           , height      := Height
                           , trees       := Trees
-                          , beneficiary := <<Beneficiary:?BENEFICIARY_PUB_BYTES/unit:8>>
+                          , beneficiary := BeneficiaryBin
                           } = CallDef) ->
-    Env = set_env(ContractPubKey, Height, Trees, Beneficiary, aec_vm_chain, ?AEVM_01_Solidity_01),
+    %% TODO: should be set before starting block candidate.
+    Time = aeu_time:now_in_msecs(),
+    %% TODO: get the right difficulty (Tracked as #159522571)
+    Difficulty = 0,
+    ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
+
+    <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>> = BeneficiaryBin,
+    TxEnv = aetx_env:contract_env(Height, ConsensusVersion, Time,
+                                  BeneficiaryBin, Difficulty),
+    Env = set_env(ContractPubKey, Height, Trees, BeneficiaryInt, Time, Difficulty,
+                  TxEnv, aec_vm_chain, ?AEVM_01_Solidity_01),
     Spec = #{ env => Env,
               exec => #{},
               pre => #{}},
     call_common(CallDef, Spec).
 
-set_env(ContractPubKey, Height, Trees, Beneficiary, API, VmVersion) ->
-    ChainState = aec_vm_chain:new_state(Trees, Height, ContractPubKey),
+set_env(ContractPubKey, Height, Trees, Beneficiary, Time, Difficulty,
+        TxEnv, API, VmVersion) ->
+    ChainState = aec_vm_chain:new_state(Trees, TxEnv, ContractPubKey),
     #{currentCoinbase   => Beneficiary,
-      %% TODO: get the right difficulty (Tracked as #159522571)
-      currentDifficulty => 0,
+      currentDifficulty => Difficulty,
       %% TODO: implement gas limit in governance and blocks.
       currentGasLimit   => 100000000000,
       currentNumber     => Height,
-      %% TODO: should be set before starting block candidate.
-      currentTimestamp  => aeu_time:now_in_msecs(),
+      currentTimestamp  => Time,
       chainState        => ChainState,
       chainAPI          => API,
       vm_version        => VmVersion}.

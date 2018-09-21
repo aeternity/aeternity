@@ -227,7 +227,7 @@ process(#contract_create_tx{owner_id   = OwnerId,
     Call0 = aect_call:new(OwnerId, Nonce, ContractId, Height, GasPrice),
     %% Execute init calQl to get the contract state and return value
     {CallRes, Trees3} =
-        run_contract(CreateTx, Call0, Height, Trees2, Contract, ContractPubKey),
+        run_contract(CreateTx, Call0, Env, Trees2, Contract, ContractPubKey),
 
     case aect_call:return_type(CallRes) of
         ok ->
@@ -281,25 +281,30 @@ run_contract(#contract_create_tx{ nonce      =_Nonce
                                 , gas_price  = GasPrice
                                 , call_data  = CallData
                                 } = Tx,
-             Call, Height, Trees,_Contract, ContractPubKey)->
+             Call, Env, Trees,_Contract, ContractPubKey)->
     Caller = owner_pubkey(Tx),
     CallStack = [], %% TODO: should we have a call stack for create_tx also
                     %% when creating a contract in a contract.
-    {ok, KeyBlock} = aec_chain:get_key_block_by_height(Height),
-    Beneficiary = aec_blocks:beneficiary(KeyBlock),
+    Height      = aetx_env:height(Env),
+    Beneficiary = aetx_env:beneficiary(Env),
+    Difficulty  = aetx_env:difficulty(Env),
+    Time        = aetx_env:time_in_msecs(Env),
 
     CallDef = #{ caller      => Caller
                , contract    => ContractPubKey
                , gas         => Gas
                , gas_price   => GasPrice
                , call_data   => CallData
+               , difficulty  => Difficulty
                , amount      => 0 %% Initial call takes no amount
                , call_stack  => CallStack
                , code        => Code
                , call        => Call
                , height      => Height
+               , time        => Time
                , trees       => Trees
                , beneficiary => Beneficiary
+               , tx_env      => Env
                },
     aect_dispatch:run(VmVersion, CallDef).
 

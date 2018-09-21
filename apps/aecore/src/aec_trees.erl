@@ -34,8 +34,8 @@
 
 -export([ensure_account/2]).
 
--export([apply_txs_on_state_trees/4,
-         apply_txs_on_state_trees_strict/4,
+-export([apply_txs_on_state_trees/3,
+         apply_txs_on_state_trees_strict/3,
          grant_fee/3,
          perform_pre_transformations/2
         ]).
@@ -348,12 +348,10 @@ internal_commit_to_db(Trees) ->
                , accounts  = aec_accounts_trees:commit_to_db(accounts(Trees))
                }.
 
-apply_txs_on_state_trees(SignedTxs, Trees, Height, ConsensusVersion) ->
-    Env = aetx_env:tx_env(Height, ConsensusVersion),
+apply_txs_on_state_trees(SignedTxs, Trees, Env) ->
     apply_txs_on_state_trees(SignedTxs, [], [], Trees, Env, _Strict = false).
 
-apply_txs_on_state_trees_strict(SignedTxs, Trees, Height, ConsensusVersion) ->
-    Env = aetx_env:tx_env(Height, ConsensusVersion),
+apply_txs_on_state_trees_strict(SignedTxs, Trees, Env) ->
     apply_txs_on_state_trees(SignedTxs, [], [], Trees, Env, _Strict = true).
 
 apply_txs_on_state_trees([], ValidTxs, InvalidTxs, Trees,_Env,_Strict) ->

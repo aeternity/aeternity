@@ -59,8 +59,9 @@ signatures_check_test_() ->
             {ok, SenderPubkey} = aec_test_utils:wait_for_pubkey(),
             Account = aec_accounts:new(SenderPubkey, 1000),
             TreesIn = aec_test_utils:create_state_tree_with_account(Account),
+            Env = aetx_env:tx_env(1),
             {ok, ValidTxs, _InvalidTxs, _Trees} =
-                ?TEST_MODULE:apply_txs_on_state_trees(SignedTxs, TreesIn, 1, ?PROTOCOL_VERSION),
+                ?TEST_MODULE:apply_txs_on_state_trees(SignedTxs, TreesIn, Env),
             ?assertEqual(SignedTxs, ValidTxs),
             ok
         end}
@@ -68,8 +69,9 @@ signatures_check_test_() ->
         fun () ->
             Tx = make_spend_tx(<<0:32/unit:8>>, <<1:32/unit:8>>),
             MalformedTxs = [aec_test_utils:sign_tx(Tx, <<0:64/unit:8>>)],
+            Env = aetx_env:tx_env(1),
             {ok, ValidTxs, _InvalidTxs, _Trees} =
-                ?TEST_MODULE:apply_txs_on_state_trees(MalformedTxs, aec_trees:new(), 1, ?PROTOCOL_VERSION),
+                ?TEST_MODULE:apply_txs_on_state_trees(MalformedTxs, aec_trees:new(), Env),
             ?assertEqual([], ValidTxs),
             ok
         end}

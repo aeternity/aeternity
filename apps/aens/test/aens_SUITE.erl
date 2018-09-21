@@ -82,8 +82,9 @@ preclaim(Cfg) ->
     TxSpec = aens_test_utils:preclaim_tx_spec(PubKey, CHash, S1),
     {ok, Tx} = aens_preclaim_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
+    Env      = aetx_env:tx_env(Height),
     {ok, [SignedTx], Trees1} =
-        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Height, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
     S2 = aens_test_utils:set_trees(Trees1, S1),
 
     %% Check commitment created
@@ -98,7 +99,7 @@ preclaim_negative(Cfg) ->
     {PubKey, S1} = aens_test_utils:setup_new_account(aens_test_utils:new_state()),
     Trees = aens_test_utils:trees(S1),
     Height = 1,
-    Env = aetx_env:tx_env(Height, ?PROTOCOL_VERSION),
+    Env = aetx_env:tx_env(Height),
 
     {ok, NameAscii} = aens_utils:to_ascii(<<"詹姆斯詹姆斯.test"/utf8>>),
     CHash = aens_hash:commitment_hash(NameAscii, 123),
@@ -152,9 +153,10 @@ claim(Cfg) ->
     TxSpec = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, S1),
     {ok, Tx} = aens_claim_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
+    Env      = aetx_env:tx_env(Height),
 
     {ok, [SignedTx], Trees1} =
-        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Height, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
     S2 = aens_test_utils:set_trees(Trees1, S1),
 
     %% Check commitment removed and name entry added
@@ -171,7 +173,7 @@ claim_negative(Cfg) ->
     {PubKey, Name, NameSalt, S1} = preclaim(Cfg),
     Trees = aens_test_utils:trees(S1),
     Height = ?PRE_CLAIM_HEIGHT,
-    Env = aetx_env:tx_env(Height, ?PROTOCOL_VERSION),
+    Env = aetx_env:tx_env(Height),
 
     %% Test commitment delta too small
     TxSpec = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, S1),
@@ -226,7 +228,7 @@ claim_race_negative(_Cfg) ->
     %% Test bad account key
     TxSpec1 = aens_test_utils:claim_tx_spec(PubKey2, Name2, NameSalt2, S2),
     {ok, Tx1} = aens_claim_tx:new(TxSpec1),
-    Env = aetx_env:tx_env(Height, ?PROTOCOL_VERSION),
+    Env = aetx_env:tx_env(Height),
     {error, name_already_taken} = aetx:check(Tx1, Trees, Env).
 
 %%%===================================================================
@@ -251,9 +253,9 @@ update(Cfg) ->
                PubKey, NHash, #{pointers => Pointers, name_ttl => NameTTL}, S1),
     {ok, Tx} = aens_update_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
-
+    Env      = aetx_env:tx_env(Height),
     {ok, [SignedTx], Trees1} =
-        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Height, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
 
     %% Check name present, with both pointers and TTL set
     {value, N1} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees1)),
@@ -265,7 +267,7 @@ update_negative(Cfg) ->
     {PubKey, NHash, S1} = claim(Cfg),
     Trees = aens_test_utils:trees(S1),
     Height = ?PRE_CLAIM_HEIGHT + 1,
-    Env = aetx_env:tx_env(Height, ?PROTOCOL_VERSION),
+    Env = aetx_env:tx_env(Height),
 
     %% Test TX TTL too low
     MaxTTL = aec_governance:name_claim_max_expiration(),
@@ -341,9 +343,9 @@ transfer(Cfg) ->
                PubKey, NHash, PubKey2, S1),
     {ok, Tx} = aens_transfer_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
-
+    Env      = aetx_env:tx_env(Height),
     {ok, [SignedTx], Trees2} =
-        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees1, Height, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees1, Env),
 
     %% Check name new owner
     {value, N1} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees2)),
@@ -354,7 +356,7 @@ transfer_negative(Cfg) ->
     {PubKey, NHash, S1} = claim(Cfg),
     Trees = aens_test_utils:trees(S1),
     Height = ?PRE_CLAIM_HEIGHT+1,
-    Env = aetx_env:tx_env(Height, ?PROTOCOL_VERSION),
+    Env = aetx_env:tx_env(Height),
 
     %% Test bad account key
     BadPubKey = <<42:32/unit:8>>,
@@ -415,9 +417,9 @@ revoke(Cfg) ->
     TxSpec = aens_test_utils:revoke_tx_spec(PubKey, NHash, S1),
     {ok, Tx} = aens_revoke_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
-
+    Env      = aetx_env:tx_env(Height),
     {ok, [SignedTx], Trees1} =
-        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Height, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
 
     %% Check name revoked
     {value, N1} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees1)),
@@ -428,7 +430,7 @@ revoke_negative(Cfg) ->
     {PubKey, NHash, S1} = claim(Cfg),
     Trees = aens_test_utils:trees(S1),
     Height = ?PRE_CLAIM_HEIGHT+1,
-    Env = aetx_env:tx_env(Height, ?PROTOCOL_VERSION),
+    Env = aetx_env:tx_env(Height),
 
     %% Test bad account key
     BadPubKey = <<42:32/unit:8>>,

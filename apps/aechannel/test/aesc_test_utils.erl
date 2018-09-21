@@ -171,7 +171,8 @@ set_channel(Channel, State) ->
 
 apply_on_trees_without_sigs_check([SignedTx], Trees, Height, ConsensusVersion) ->
     Tx = aetx_sign:tx(SignedTx),
-    Env = aetx_env:tx_env(Height, ConsensusVersion, {value, SignedTx}),
+    Env0 = aetx_env:tx_env(Height, ConsensusVersion),
+    Env = aetx_env:set_signed_tx(Env0, {value, SignedTx}),
     {ok, Trees1} = aetx:check(Tx, Trees, Env),
     {ok, Trees2} = aetx:process(Tx, Trees1, Env),
     {ok, [SignedTx], Trees2}.

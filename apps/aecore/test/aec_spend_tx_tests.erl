@@ -22,7 +22,7 @@ check_test_() ->
               {ok, SpendTx} = spend_tx(#{fee => 0, %% minimum governance fee = 1
                                          payload => <<"">>}),
               StateTree = aec_test_utils:create_state_tree(),
-              Env = aetx_env:tx_env(10, ?PROTOCOL_VERSION),
+              Env = aetx_env:tx_env(10),
               ?assertEqual({error, too_low_fee}, aetx:check(SpendTx, StateTree, Env))
       end},
      {"Sender account does not exist in state trees",
@@ -31,7 +31,7 @@ check_test_() ->
               {ok, SpendTx} = spend_tx(#{fee => 10, sender_id => BogusSender,
                                          payload => <<"">>}),
               StateTree = aec_test_utils:create_state_tree(),
-              Env = aetx_env:tx_env(10, ?PROTOCOL_VERSION),
+              Env = aetx_env:tx_env(10),
               ?assertEqual({error, account_not_found}, aetx:check(SpendTx, StateTree, Env))
       end},
      {"Sender account has insufficient funds to cover tx fee + amount",
@@ -49,7 +49,7 @@ check_test_() ->
 
               SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 55, nonce => 5}),
               StateTree = aec_test_utils:create_state_tree_with_account(SenderAccount),
-              Env = aetx_env:tx_env(20, ?PROTOCOL_VERSION),
+              Env = aetx_env:tx_env(20),
               ?assertEqual({error, insufficient_funds}, aetx:check(SpendTx, StateTree, Env))
       end},
      {"Sender account has nonce higher than tx nonce",
@@ -62,7 +62,7 @@ check_test_() ->
               AccountNonce = 15,
               SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 100, nonce => AccountNonce}),
               StateTree = aec_test_utils:create_state_tree_with_account(SenderAccount),
-              Env = aetx_env:tx_env(20, ?PROTOCOL_VERSION),
+              Env = aetx_env:tx_env(20),
               ?assertEqual({error, account_nonce_too_high},
                            aetx:check(SpendTx, StateTree, Env))
       end},
@@ -77,7 +77,7 @@ check_test_() ->
               AccountNonce = 10,
               SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 100, nonce => AccountNonce}),
               StateTree = aec_test_utils:create_state_tree_with_account(SenderAccount),
-              Env = aetx_env:tx_env(20, ?PROTOCOL_VERSION),
+              Env = aetx_env:tx_env(20),
               ?assertEqual({error, ttl_expired}, aetx:check(SpendTx, StateTree, Env))
       end}].
 
@@ -95,7 +95,7 @@ process_test_() ->
                                                  nonce => 11,
                                                  payload => <<"foo">>}),
               <<"foo">> = aec_spend_tx:payload(aetx:tx(SpendTx)),
-              Env = aetx_env:tx_env(20, ?PROTOCOL_VERSION),
+              Env = aetx_env:tx_env(20),
               {ok, StateTree0} = aetx:check(SpendTx, StateTree0, Env),
               {ok, StateTree} = aetx:process(SpendTx, StateTree0, Env),
 
@@ -119,7 +119,7 @@ process_test_() ->
                                                  fee => 10,
                                                  nonce => 11,
                                                  payload => <<"foo">>}),
-              Env = aetx_env:tx_env(20, ?PROTOCOL_VERSION),
+              Env = aetx_env:tx_env(20),
               {ok, StateTree0} = aetx:check(SpendTx, StateTree0, Env),
               {ok, StateTree} = aetx:process(SpendTx, StateTree0, Env),
 

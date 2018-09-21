@@ -312,7 +312,7 @@ create_missing_account(_Cfg) ->
     {PubKey1, S} = aesc_test_utils:setup_new_account(aesc_test_utils:new_state()),
     Trees = aesc_test_utils:trees(S),
     Height = 1,
-    Env = aetx_env:tx_env(Height, ?PROTOCOL_VERSION),
+    Env = aetx_env:tx_env(Height),
     BadPubKey = <<42:32/unit:8>>,
 
     TxSpec1 = aesc_test_utils:create_tx_spec(BadPubKey, PubKey1, S),
@@ -329,7 +329,7 @@ create_insufficient_funds(_Cfg) ->
     {Loaded, NotLoaded, S} = create_loaded_accounts(100, 1),
     Trees = aesc_test_utils:trees(S),
     Height = 1,
-    Env = aetx_env:tx_env(Height, ?PROTOCOL_VERSION),
+    Env = aetx_env:tx_env(Height),
 
     %% Test insufficient initiator funds
     TxSpecI = aesc_test_utils:create_tx_spec(
@@ -354,7 +354,7 @@ create_insufficient_funds_reserve(_Cfg) ->
     {Loaded, NotLoaded, S} = create_loaded_accounts(100, 10),
     Trees = aesc_test_utils:trees(S),
     Height = 1,
-    Env = aetx_env:tx_env(Height, ?PROTOCOL_VERSION),
+    Env = aetx_env:tx_env(Height),
 
     %% Test initiator funds lower than channel reserve
     TxSpecI = aesc_test_utils:create_tx_spec(
@@ -391,7 +391,7 @@ create_wrong_nonce(_Cfg) ->
     S = aesc_test_utils:set_account_nonce(Initiator, Nonce, S0),
     Trees = aesc_test_utils:trees(S),
     Height = 1,
-    Env = aetx_env:tx_env(Height, ?PROTOCOL_VERSION),
+    Env = aetx_env:tx_env(Height),
 
     Test =
         fun(TestNonce, Err) ->
@@ -918,7 +918,7 @@ slash_payload_not_co_signed(Cfg) ->
                                                     PayloadMissingS, PoI, S),
                             {ok, TxMissingS} = aesc_slash_tx:new(TxSpecMissingS),
                             Trees = aesc_test_utils:trees(S),
-                            Env = aetx_env:tx_env(Height, ?PROTOCOL_VERSION),
+                            Env = aetx_env:tx_env(Height),
                             {error, signature_check_failed} =
                                     aetx:check(TxMissingS, Trees, Env)
                         end,
@@ -2893,7 +2893,7 @@ apply_on_trees_(#{height := Height} = Props, SignedTx, S, positive) ->
 apply_on_trees_(#{height := Height} = Props, SignedTx, S, {negative, ExpectedError}) ->
     Trees = aens_test_utils:trees(S),
     Tx = aetx_sign:tx(SignedTx),
-    Env = aetx_env:tx_env(Height, ?PROTOCOL_VERSION),
+    Env = aetx_env:tx_env(Height),
     case aetx:check(Tx, Trees, Env) of
         ExpectedError -> pass;
         {ok, _} -> throw(negative_case_passed)
@@ -2921,9 +2921,9 @@ create_from_state(S, DefaultSpec) ->
     TxSpec = aesc_test_utils:create_tx_spec(PubKey1, PubKey2, DefaultSpec, S2),
     {ok, Tx} = aesc_create_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, [PrivKey1, PrivKey2]),
+    Env      = aetx_env:tx_env(Height),
     {ok, [SignedTx], Trees1} =
-        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees,
-                                                  Height, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
     S3 = aesc_test_utils:set_trees(Trees1, S2),
 
     %% Check channel created
@@ -3304,7 +3304,7 @@ test_payload_not_both_signed(Cfg, SpecFun, CreateTxFun) ->
                                                     PayloadMissingS, PoI, S),
                             {ok, TxMissingS} = CreateTxFun(TxSpecMissingS),
                             Trees = aesc_test_utils:trees(S),
-                            Env = aetx_env:tx_env(Height, ?PROTOCOL_VERSION),
+                            Env = aetx_env:tx_env(Height),
                             {error, signature_check_failed} =
                                 aetx:check(TxMissingS, Trees, Env)
                         end,

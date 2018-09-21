@@ -372,14 +372,17 @@ extend_block_chain_with_micro_blocks(Chain, Txs) ->
 extend_block_chain_with_micro_blocks(Chain, Txs, PrevMicroBlocksCount) ->
     {ok, PrivKey} = aec_keys:sign_privkey(),
     Delay = 1 + PrevMicroBlocksCount * aec_governance:micro_block_cycle(),
-    lists:reverse(create_micro_blocks(lists:reverse(Chain), PrivKey, Txs, Delay)).
+    RevChain = lists:reverse(Chain),
+    [{PrevKeyBlock, _}|_] = lists:dropwhile(fun({B, _}) -> aec_blocks:type(B) =:= micro end,
+                                            RevChain),
+    lists:reverse(create_micro_blocks(RevChain, PrevKeyBlock, PrivKey, Txs, Delay)).
 
 blocks_only_chain(Chain) ->
     lists:map(fun({B, _S}) -> B end, Chain).
 
-create_micro_block(PrevBlock, PrivKey, Txs, Trees, Offset) ->
+create_micro_block(PrevBlock, PrevKeyBlock, PrivKey, Txs, Trees, Offset) ->
     {Block1, Trees1} =
-        aec_block_micro_candidate:create_with_state(PrevBlock, PrevBlock, Txs, Trees),
+        aec_block_micro_candidate:create_with_state(PrevBlock, PrevKeyBlock, Txs, Trees),
     Block2 = aec_blocks:set_time_in_msecs(Block1, Offset + aec_blocks:time_in_msecs(Block1)),
     SignedMicroBlock = sign_micro_block(Block2, PrivKey),
     {SignedMicroBlock, Trees1}.
@@ -409,13 +412,15 @@ next_block_with_state([{PB,_PBS} | _] = Chain, Target, Time0, TxsFun, Nonce,
     create_micro_blocks(Chain1, PrivKey, Txs).
 
 create_micro_blocks(Chain, PrivKey, Txs) ->
-    create_micro_blocks(Chain, PrivKey, Txs, 1).
+    [{PrevKeyBlock, _}|_] = lists:dropwhile(fun({B, _}) -> aec_blocks:type(B) =:= micro end,
+                                            Chain),
+    create_micro_blocks(Chain, PrevKeyBlock, PrivKey, Txs, 1).
 
-create_micro_blocks(Chain, _PrivKey, [], _Offset) ->
+create_micro_blocks(Chain, _PrevKeyBlock, _PrivKey, [], _Offset) ->
     Chain;
-create_micro_blocks([{PB, PBS} | _] = Chain, PrivKey, [Tx | Rest], Offset) ->
-    Chain1 = [create_micro_block(PB, PrivKey, [Tx], PBS, Offset) | Chain],
-    create_micro_blocks(Chain1, PrivKey, Rest, Offset + aec_governance:micro_block_cycle()).
+create_micro_blocks([{PB, PBS} | _] = Chain, PrevKeyBlock, PrivKey, [Tx | Rest], Offset) ->
+    Chain1 = [create_micro_block(PB, PrevKeyBlock, PrivKey, [Tx], PBS, Offset) | Chain],
+    create_micro_blocks(Chain1, PrevKeyBlock, PrivKey, Rest, Offset + aec_governance:micro_block_cycle()).
 
 %% @doc Given a transaction Tx, a private key or list of keys,
 %% return the cryptographically signed transaction using the default crypto

@@ -82,7 +82,7 @@ register_oracle_negative(_Cfg) ->
     %% Test registering a bogus account
     BadPubKey = <<42:32/unit:8>>,
     RTx1      = aeo_test_utils:register_tx(BadPubKey, S1),
-    Env       = aetx_env:tx_env(CurrHeight, ?PROTOCOL_VERSION),
+    Env       = aetx_env:tx_env(CurrHeight),
     {error, account_not_found} = aetx:check(RTx1, Trees, Env),
 
     %% Insufficient funds
@@ -108,7 +108,7 @@ register_oracle_negative_dynamic_fee(_Cfg) ->
     {PubKey, S1} = aeo_test_utils:setup_new_account(aeo_test_utils:new_state()),
     Trees        = aeo_test_utils:trees(S1),
     CurrHeight   = ?ORACLE_REG_HEIGHT,
-    Env          = aetx_env:tx_env(CurrHeight, ?PROTOCOL_VERSION),
+    Env          = aetx_env:tx_env(CurrHeight),
 
     F = fun(RegTxOpts) ->
             Tx = aeo_test_utils:register_tx(PubKey, RegTxOpts, S1),
@@ -141,8 +141,9 @@ register_oracle(_Cfg, RegTxOpts) ->
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Trees    = aeo_test_utils:trees(S1),
     Height   = ?ORACLE_REG_HEIGHT,
+    Env      = aetx_env:tx_env(Height),
     {ok, [SignedTx], Trees1} =
-        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Height, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
     S2       = aeo_test_utils:set_trees(Trees1, S1),
     {PubKey, S2}.
 
@@ -158,7 +159,7 @@ extend_oracle_negative(Cfg) ->
     %% Test registering a bogus account
     BadPubKey = <<42:32/unit:8>>,
     RTx1      = aeo_test_utils:extend_tx(BadPubKey, S1),
-    Env       = aetx_env:tx_env(CurrHeight, ?PROTOCOL_VERSION),
+    Env       = aetx_env:tx_env(CurrHeight),
     {error, account_not_found} = aetx:check(RTx1, Trees, Env),
 
     %% Test extending non-existent oracle
@@ -169,7 +170,7 @@ extend_oracle_negative(Cfg) ->
     {OracleKey, S2} = register_oracle(Cfg),
     Trees2          = aeo_test_utils:trees(S2),
     CurrHeight2     = ?ORACLE_EXT_HEIGHT,
-    Env2            = aetx_env:tx_env(CurrHeight2, ?PROTOCOL_VERSION),
+    Env2            = aetx_env:tx_env(CurrHeight2),
 
     %% Insufficient funds
     S3     = aeo_test_utils:set_account_balance(OracleKey, 0, S2),
@@ -194,7 +195,7 @@ extend_oracle_negative_dynamic_fee(Cfg) ->
     {OracleKey, S2} = register_oracle(Cfg),
     Trees2          = aeo_test_utils:trees(S2),
     CurrHeight2     = ?ORACLE_EXT_HEIGHT,
-    Env             = aetx_env:tx_env(CurrHeight2, ?PROTOCOL_VERSION),
+    Env             = aetx_env:tx_env(CurrHeight2),
 
     F = fun(ExtTxOpts) ->
             Tx = aeo_test_utils:extend_tx(OracleKey, ExtTxOpts, S2),
@@ -227,8 +228,9 @@ extend_oracle(Cfg) ->
     %% Test that ExtendTX is accepted
     Tx       = aeo_test_utils:extend_tx(OracleKey, S),
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
+    Env      = aetx_env:tx_env(CurrHeight),
     {ok, [SignedTx], Trees1} =
-        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, CurrHeight, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
     S1       = aeo_test_utils:set_trees(Trees1, S),
 
     OTrees1  = aec_trees:oracles(Trees1),
@@ -248,7 +250,7 @@ query_oracle_negative(Cfg) ->
     {SenderKey, S2} = aeo_test_utils:setup_new_account(S),
     Trees           = aeo_test_utils:trees(S2),
     CurrHeight      = ?ORACLE_QUERY_HEIGHT,
-    Env             = aetx_env:tx_env(CurrHeight, ?PROTOCOL_VERSION),
+    Env             = aetx_env:tx_env(CurrHeight),
 
     %% Test bad sender key
     BadSenderKey = <<42:32/unit:8>>,
@@ -294,7 +296,7 @@ query_oracle_negative_dynamic_fee(Cfg) ->
     {SenderKey, S2} = aeo_test_utils:setup_new_account(S),
     Trees           = aeo_test_utils:trees(S2),
     CurrHeight      = ?ORACLE_QUERY_HEIGHT,
-    Env             = aetx_env:tx_env(CurrHeight, ?PROTOCOL_VERSION),
+    Env             = aetx_env:tx_env(CurrHeight),
 
     F = fun(QTxOpts) ->
             Tx = aeo_test_utils:query_tx(SenderKey, OracleId, QTxOpts, S2),
@@ -329,8 +331,9 @@ query_oracle(Cfg, RegTxOpts, QueryTxOpts) ->
     Q1 = aeo_test_utils:query_tx(SenderKey, OracleId, QueryTxOpts, S2),
     %% Test that QueryTX is accepted
     SignedTx = aec_test_utils:sign_tx(Q1, PrivKey),
+    Env      = aetx_env:tx_env(CurrHeight),
     {ok, [SignedTx], Trees2} =
-        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, CurrHeight, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
     S3 = aeo_test_utils:set_trees(Trees2, S2),
     {oracle_query_tx, QTx} = aetx:specialize_type(Q1),
     ID = aeo_query:id(aeo_query:new(QTx, CurrHeight)),
@@ -344,7 +347,7 @@ query_response_negative(Cfg) ->
     {OracleKey, ID, S1}  = query_oracle(Cfg),
     Trees                = aeo_test_utils:trees(S1),
     CurrHeight           = ?ORACLE_RSP_HEIGHT,
-    Env                  = aetx_env:tx_env(CurrHeight, ?PROTOCOL_VERSION),
+    Env                  = aetx_env:tx_env(CurrHeight),
 
     %% Test bad oracle key
     BadOracleKey = <<42:32/unit:8>>,
@@ -375,7 +378,7 @@ query_response_negative_dynamic_fee(Cfg) ->
                 {OracleKey, ID, S1}  = query_oracle(Cfg, #{oracle_ttl => {block, 2000 + ?ORACLE_RSP_HEIGHT}, fee => 25}, QTxSpec),
                 Trees      = aeo_test_utils:trees(S1),
                 CurrHeight = ?ORACLE_RSP_HEIGHT,
-                Env        = aetx_env:tx_env(CurrHeight, ?PROTOCOL_VERSION),
+                Env        = aetx_env:tx_env(CurrHeight),
                 Tx = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, RTxSpec, S1),
                 aetx:check(Tx, Trees, Env)
         end,
@@ -406,8 +409,9 @@ query_response(Cfg, QueryOpts) ->
     RTx      = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, S1),
     PrivKey  = aeo_test_utils:priv_key(OracleKey, S1),
     SignedTx = aec_test_utils:sign_tx(RTx, PrivKey),
+    Env      = aetx_env:tx_env(CurrHeight),
     {ok, [SignedTx], Trees2} =
-        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, CurrHeight, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
 
     S2 = aeo_test_utils:set_trees(Trees2, S1),
 

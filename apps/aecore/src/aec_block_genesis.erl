@@ -88,11 +88,8 @@ genesis_block_with_state() ->
     genesis_block_with_state(#{preset_accounts => aec_genesis_block_settings:preset_accounts()}).
 
 genesis_block_with_state(Map) ->
-    Txs = transactions(),
-    %% INFO NG: genesis block is a key block. We use micro API, because it handles txs
-    {ok, Txs, Trees} =
-        aec_block_micro_candidate:apply_block_txs_strict(Txs, populated_trees(Map),
-                                                         height(), ?GENESIS_VERSION),
+    [] = transactions(),
+    Trees = populated_trees(Map),
 
     Block = aec_blocks:new_key(height(), prev_hash(), prev_key_hash(), aec_trees:hash(Trees),
                                target(), 0, 0, ?GENESIS_VERSION, miner(), beneficiary()),
