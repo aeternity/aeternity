@@ -17,8 +17,8 @@
          ttl/1,
          nonce/1,
          origin/1,
-         check/5,
-         process/6,
+         check/3,
+         process/3,
          signers/2,
          version/0,
          serialization_template/1,
@@ -130,14 +130,14 @@ nonce(#channel_create_tx{nonce = Nonce}) ->
 origin(#channel_create_tx{} = Tx) ->
     initiator_pubkey(Tx).
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
-        {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_create_tx{initiator_amount   = InitiatorAmount,
                          responder_amount   = ResponderAmount,
                          channel_reserve    = ChannelReserve,
                          nonce              = Nonce,
                          state_hash         = _StateHash,
-                         fee                = Fee} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
+                         fee                = Fee} = Tx,
+      Trees,_Env) ->
     InitiatorPubKey = initiator_pubkey(Tx),
     ResponderPubKey = responder_pubkey(Tx),
     Checks =
@@ -152,14 +152,13 @@ check(#channel_create_tx{initiator_amount   = InitiatorAmount,
             Error
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
-              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
 process(#channel_create_tx{initiator_amount   = InitiatorAmount,
                            responder_amount   = ResponderAmount,
                            fee                = Fee,
                            state_hash         = _StateHash,
-                           nonce              = Nonce} = CreateTx, _Context, Trees0, _Height,
-        _ConsensusVersion, _TxHash) ->
+                           nonce              = Nonce} = CreateTx,
+        Trees0,_Env) ->
     InitiatorPubKey = initiator_pubkey(CreateTx),
     ResponderPubKey = responder_pubkey(CreateTx),
 

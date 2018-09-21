@@ -17,8 +17,8 @@
          ttl/1,
          nonce/1,
          origin/1,
-         check/5,
-         process/6,
+         check/3,
+         process/3,
          signers/2,
          version/0,
          serialization_template/1,
@@ -121,17 +121,17 @@ call_id(#contract_call_tx{} = Tx) ->
 
 %% CallerAccount should exist, and have enough funds for the fee + gas cost
 %% Contract should exist and its vm_version should match the one in the call.
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
-        {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#contract_call_tx{nonce = Nonce,
                         fee = Fee, amount = Value,
                         gas = GasLimit, gas_price = GasPrice,
                         call_stack = CallStack
-                       } = CallTx, Context, Trees, Height, _ConsensusVersion
-     ) when ?is_non_neg_integer(GasPrice) ->
+                       } = CallTx,
+      Trees, Env) when ?is_non_neg_integer(GasPrice) ->
+    Height = aetx_env:height(Env),
     CallerPubKey = caller_pubkey(CallTx),
     Checks =
-        case Context of
+        case aetx_env:context(Env) of
             aetx_transaction ->
                 RequiredAmount = Fee + GasLimit * GasPrice + Value,
                 [fun() -> aetx_utils:check_account(CallerPubKey, Trees, Nonce, RequiredAmount) end,
@@ -151,21 +151,20 @@ check(#contract_call_tx{nonce = Nonce,
 signers(Tx, _) ->
     {ok, [caller_pubkey(Tx)]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
-              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
 process(#contract_call_tx{caller_id   = CallerId,
                           nonce       = Nonce,
                           contract_id = ContractId,
                           fee         = Fee,
                           gas_price   = GasPrice,
                           amount      = Value} = CallTx,
-        Context, Trees1, Height, ConsensusVersion, _TxHash) ->
+        Trees1, Env) ->
+    Height = aetx_env:height(Env),
 
     %% Transfer the attached funds to the callee (before calling the contract!)
     CallerPubkey = caller_pubkey(CallTx),
     ContractPubkey = contract_pubkey(CallTx),
-    Trees2 = spend(CallerPubkey, ContractPubkey, Value,
-                   Nonce, Context, Height, Trees1, ConsensusVersion),
+    Trees2 = spend(CallerPubkey, ContractPubkey, Value, Nonce, Trees1, Env),
 
     %% Create the call.
     Call0 = aect_call:new(CallerId, Nonce, ContractId, Height, GasPrice),
@@ -177,7 +176,7 @@ process(#contract_call_tx{caller_id   = CallerId,
     %% Charge the fee and the used gas to the caller (not if called from another contract!)
     AccountsTree1 = aec_trees:accounts(Trees3),
     AccountsTree2 =
-        case Context of
+        case aetx_env:context(Env) of
             aetx_contract    ->
                 AccountsTree1;
             aetx_transaction ->
@@ -195,7 +194,7 @@ process(#contract_call_tx{caller_id   = CallerId,
     %% Each block starts with an empty calls tree.
     {ok, aect_utils:insert_call_in_trees(Call, Trees4)}.
 
-spend(CallerPubkey, ContractPubkey, Value, Nonce,_Context, Height, Trees, ConsensusVersion) ->
+spend(CallerPubkey, ContractPubkey, Value, Nonce, Trees, Env) ->
     {ok, SpendTx} =
         aec_spend_tx:new(#{ sender_id    => aec_id:create(account, CallerPubkey)
                           , recipient_id => aec_id:create(account, ContractPubkey)
@@ -203,10 +202,11 @@ spend(CallerPubkey, ContractPubkey, Value, Nonce,_Context, Height, Trees, Consen
                           , fee          => 0
                           , nonce        => Nonce
                           , payload      => <<>>}),
-    {ok, Trees1} =
-        aetx:check_from_contract(SpendTx, Trees, Height, ConsensusVersion),
-    {ok, Trees2} =
-        aetx:process_from_contract(SpendTx, Trees1, Height, ConsensusVersion),
+    %% These spends should always be evaluated in contract context
+    %% (i.e., no checks for minimum fee etc)
+    Env1 = aetx_env:set_context(Env, aetx_contract),
+    {ok, Trees1} = aetx:check(SpendTx, Trees, Env1),
+    {ok, Trees2} = aetx:process(SpendTx, Trees1, Env),
     Trees2.
 
 run_contract(#contract_call_tx{ nonce  = _Nonce

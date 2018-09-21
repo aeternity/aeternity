@@ -1,12 +1,15 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%%-------------------------------------------------------------------
+%%% @doc
+%%% ADT containing all different transactions
+%%% @end
+%%%-------------------------------------------------------------------
 
 -module(aetx).
 
 -export([ accounts/1
-        , check/4
-        , check_from_contract/4
+        , check/3
         , deserialize_from_binary/1
         , fee/1
         , gas/1
@@ -16,9 +19,7 @@
         , new/2
         , nonce/1
         , origin/1
-        , process/4
-        , process_with_tx_hash/5
-        , process_from_contract/4
+        , process/3
         , serialize_for_client/1
         , serialize_to_binary/1
         , signers/2
@@ -32,7 +33,10 @@
 -export([tx/1]).
 -endif.
 
-%% -- Types ------------------------------------------------------------------
+%%%===================================================================
+%%% Types
+%%%===================================================================
+
 -record(aetx, { type :: tx_type()
               , cb   :: module()
               , tx   :: tx_instance() }).
@@ -85,11 +89,6 @@
                      | aesc_snapshot_solo_tx:tx()
                      | aesc_offchain_tx:tx().
 
--type tx_context() :: aetx_transaction | aetx_contract.
-%% Where does this transaction come from? Is it a top level transaction
-%% or was it created by a smart contract. In the latter case the fee
-%% logic is different.
-
 -type tx_ttl() :: 0 | aec_blocks:height().
 %% A transaction TTL is either an absolute block height, or the transaction
 %% does not have a TTL. The latter is represented as 0 to get a small
@@ -98,10 +97,11 @@
 -export_type([ tx/0
              , tx_instance/0
              , tx_type/0
-             , tx_context/0
              , tx_ttl/0 ]).
 
-%% -- Behaviour definition ---------------------------------------------------
+%%%===================================================================
+%%% Behaviour definition
+%%%===================================================================
 
 -callback new(Args :: map()) ->
     {ok, Tx :: tx()} | {error, Reason :: term()}.
@@ -131,15 +131,10 @@
 -callback signers(Tx :: tx_instance(), Trees :: aec_trees:trees()) ->
     {ok, [aec_keys:pubkey()]} | {error, atom()}.
 
--callback check(Tx :: tx_instance(), Context :: tx_context(),
-                Trees :: aec_trees:trees(), Height :: non_neg_integer(),
-                ConsensusVersion :: non_neg_integer()) ->
+-callback check(Tx :: tx_instance(), aec_trees:trees(), aetx_env:env()) ->
     {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
 
--callback process(Tx :: tx_instance(), Context :: tx_context(),
-                  Trees :: aec_trees:trees(), Height :: non_neg_integer(),
-                  ConsensusVersion :: non_neg_integer(),
-                  TxHash :: binary() | no_tx_hash) ->
+-callback process(Tx :: tx_instance(), aec_trees:trees(), aetx_env:env()) ->
     {ok, NewTrees :: aec_trees:trees()}.
 
 -callback serialize(Tx :: tx_instance()) ->
@@ -157,7 +152,9 @@
 -optional_callbacks([gas_price/1]).
 
 
-%% -- ADT Implementation -----------------------------------------------------
+%%%===================================================================
+%%% Getters and setters
+%%%===================================================================
 
 -spec new(CallbackModule :: module(),  Tx :: tx_instance()) ->
     Tx :: tx().
@@ -215,44 +212,48 @@ ttl(#aetx{ cb = CB, tx = Tx }) ->
         N -> N
     end.
 
--spec check(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer(),
-            ConsensusVersion :: non_neg_integer()) ->
-    {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
-check(AeTx = #aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion) ->
-    case {CB:fee(Tx) >= aec_governance:minimum_tx_fee(), ttl(AeTx) >= Height} of
-        {true, true} ->
-            CB:check(Tx, aetx_transaction, Trees, Height, ConsensusVersion);
-        {false, _} ->
-            {error, too_low_fee};
-        {_, false} ->
-            {error, ttl_expired}
+%%%===================================================================
+%%% Checking transactions
+%%%===================================================================
+
+-spec check(tx(), aec_trees:trees(), aetx_env:env()) ->
+               {ok, aec_trees:trees()} | {error, term()}.
+
+check(Tx, Trees, Env) ->
+    case aetx_env:context(Env) of
+        aetx_transaction -> check_tx(Tx, Trees, Env);
+        aetx_contract    -> check_contract(Tx, Trees, Env)
     end.
 
--spec check_from_contract(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer(),
-                          ConsensusVersion :: non_neg_integer()) ->
-    {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
-check_from_contract(#aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion) ->
-    CB:check(Tx, aetx_contract, Trees, Height, ConsensusVersion).
+check_contract(#aetx{ cb = CB, tx = Tx }, Trees, Env) ->
+    CB:check(Tx, Trees, Env).
+
+check_tx(#aetx{ cb = CB, tx = Tx } = AeTx, Trees, Env) ->
+    case CB:fee(Tx) >= aec_governance:minimum_tx_fee() of
+        false ->
+            {error, too_low_fee};
+        true  ->
+            case ttl(AeTx) >= aetx_env:height(Env) of
+                false ->
+                    {error, ttl_expired};
+                true ->
+                    CB:check(Tx, Trees, Env)
+            end
+    end.
+
+%%%===================================================================
+%%% Processing transactions
+%%%===================================================================
+
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) ->
+                 {ok, NewTrees :: aec_trees:trees()}.
+process(#aetx{ cb = CB, tx = Tx }, Trees, Env) ->
+    CB:process(Tx, Trees, Env).
 
 
--spec process(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer(),
-              ConsensusVersion :: non_neg_integer()) ->
-    {ok, NewTrees :: aec_trees:trees()}.
-process(Tx, Trees, Height, ConsensusVersion) ->
-    process_with_tx_hash(Tx, Trees, Height, ConsensusVersion, no_tx_hash).
-
--spec process_with_tx_hash(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer(),
-              ConsensusVersion :: non_neg_integer(), TxHash :: binary() | no_tx_hash) ->
-    {ok, NewTrees :: aec_trees:trees()}.
-process_with_tx_hash(#aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion, TxHash) ->
-    CB:process(Tx, aetx_transaction, Trees, Height, ConsensusVersion, TxHash).
-
--spec process_from_contract(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer(),
-                            ConsensusVersion :: non_neg_integer()) ->
-    {ok, NewTrees :: aec_trees:trees()}.
-
-process_from_contract(#aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion) ->
-    CB:process(Tx, aetx_contract, Trees, Height, ConsensusVersion, no_tx_hash).
+%%%===================================================================
+%%% Serialize/deserialize
+%%%===================================================================
 
 -spec serialize_for_client(Tx :: tx()) -> map().
 serialize_for_client(#aetx{ cb = CB, type = Type, tx = Tx }) ->
@@ -356,4 +357,3 @@ is_tx_type(X) when is_atom(X) ->
 tx(Tx) ->
     Tx#aetx.tx.
 -endif.
-

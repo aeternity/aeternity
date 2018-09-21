@@ -17,8 +17,8 @@
          ttl/1,
          nonce/1,
          origin/1,
-         check/5,
-         process/6,
+         check/3,
+         process/3,
          signers/2,
          version/0,
          serialization_template/1,
@@ -131,22 +131,26 @@ from_id(#channel_force_progress_tx{from_id = FromId}) ->
 from_pubkey(#channel_force_progress_tx{from_id = FromId}) ->
     aec_id:specialize(FromId, account).
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
-        {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_force_progress_tx{payload      = Payload,
                                  addresses    = Addresses,
-                                 poi          = PoI} = Tx, _Context, Trees, Height, _ConsensusVersion) ->
+                                 poi          = PoI} = Tx,
+      Trees, Env) ->
+    Height = aetx_env:height(Env),
     case aesc_utils:check_force_progress(Tx, Payload, Addresses,
                                    PoI, Height, Trees) of
         ok -> {ok, Trees};
         Err -> Err
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
-              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
 process(#channel_force_progress_tx{addresses    = Addresses,
-                                   poi          = PoI} = Tx, _Context,
-        Trees, Height, _ConsensusVersion, TxHash) when is_binary(TxHash) ->
+                                   poi          = PoI} = Tx,
+        Trees, Env) ->
+    Height = aetx_env:height(Env),
+    {value, STx} = aetx_env:signed_tx(Env),
+
+    TxHash = aetx_sign:hash(STx),
     aesc_utils:process_force_progress(Tx, Addresses,
                                       PoI, TxHash, Height, Trees).
 

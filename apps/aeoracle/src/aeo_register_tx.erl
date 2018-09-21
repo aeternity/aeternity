@@ -18,8 +18,8 @@
          ttl/1,
          nonce/1,
          origin/1,
-         check/5,
-         process/6,
+         check/3,
+         process/3,
          signers/2,
          version/0,
          serialization_template/1,
@@ -122,15 +122,16 @@ origin(#oracle_register_tx{} = Tx) ->
     account_pubkey(Tx).
 
 %% Account should exist, and have enough funds for the fee.
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+-spec check(tx(), aec_trees:trees(), aetx_env:env()) ->
         {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_register_tx{nonce = Nonce, oracle_ttl = OTTL, fee = Fee} = Tx,
-      Context, Trees, Height, _ConsensusVersion) ->
+      Trees, Env) ->
+    Height = aetx_env:height(Env),
     AccountPubKey = account_pubkey(Tx),
     Checks =
         [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee) end,
          fun() -> ensure_not_oracle(AccountPubKey, Trees) end
-         | case Context of
+         | case aetx_env:context(Env) of
                %% Contract is paying tx fee as gas.
                aetx_contract -> [];
                aetx_transaction ->
@@ -146,10 +147,10 @@ check(#oracle_register_tx{nonce = Nonce, oracle_ttl = OTTL, fee = Fee} = Tx,
 signers(#oracle_register_tx{} = Tx, _) ->
     {ok, [account_pubkey(Tx)]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
-              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
 process(#oracle_register_tx{nonce = Nonce, fee = Fee} = RegisterTx,
-        _Ctxt, Trees0, Height, _ConsensusVersion, _TxHash) ->
+        Trees0, Env) ->
+    Height = aetx_env:height(Env),
     AccountPubKey = account_pubkey(RegisterTx),
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),

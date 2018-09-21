@@ -18,8 +18,8 @@
          ttl/1,
          nonce/1,
          origin/1,
-         check/5,
-         process/6,
+         check/3,
+         process/3,
          signers/2,
          version/0,
          serialization_template/1,
@@ -108,10 +108,11 @@ origin(#oracle_response_tx{} = Tx) ->
 
 %% Oracle should exist, and have enough funds for the fee.
 %% QueryId id should match oracle.
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+-spec check(tx(), aec_trees:trees(), aetx_env:env()) ->
         {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_response_tx{nonce = Nonce, query_id = QueryId, fee = Fee} = Tx,
-      Context, Trees, Height, _ConsensusVersion) ->
+      Trees, Env) ->
+    Height = aetx_env:height(Env),
     OraclePubKey = oracle_pubkey(Tx),
     case fetch_query(OraclePubKey, QueryId, Trees) of
         {value, I} ->
@@ -120,7 +121,7 @@ check(#oracle_response_tx{nonce = Nonce, query_id = QueryId, fee = Fee} = Tx,
             Checks =
                 [fun() -> check_oracle(OraclePubKey, Trees) end,
                  fun() -> check_query(OraclePubKey, I) end |
-                 case Context of
+                 case aetx_env:context(Env) of
                      aetx_contract -> []; %% TODO: Handle fees from contracts right.
                      aetx_transaction ->
                          [fun() -> aetx_utils:check_account(OraclePubKey, Trees,
@@ -139,11 +140,11 @@ check(#oracle_response_tx{nonce = Nonce, query_id = QueryId, fee = Fee} = Tx,
 signers(#oracle_response_tx{} = Tx, _) ->
     {ok, [oracle_pubkey(Tx)]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
-              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
-process(#oracle_response_tx{nonce = Nonce, query_id = QueryId, response = Response,
-                            fee = Fee} = Tx,
-        _Context, Trees0, Height, _ConsensusVersion, _TxHash) ->
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
+process(#oracle_response_tx{nonce = Nonce, query_id = QueryId,
+                            response = Response, fee = Fee} = Tx,
+        Trees0, Env) ->
+    Height = aetx_env:height(Env),
     OraclePubKey  = oracle_pubkey(Tx),
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),

@@ -11,8 +11,8 @@
          ttl/1,
          nonce/1,
          origin/1,
-         check/5,
-         process/6,
+         check/3,
+         process/3,
          signers/2,
          version/0,
          serialization_template/1,
@@ -96,21 +96,18 @@ nonce(#channel_offchain_tx{round = N}) ->
 origin(#channel_offchain_tx{}) ->
     error(do_not_use).
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
-        {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_offchain_tx{
          channel_id         = _ChannelId,
          updates            = _Updates,
          state_hash         = _State,
-         round              = _Round}, _Context, Trees, _Height,
-                                                _ConsensusVersion) ->
+         round              = _Round},
+      Trees,_Env) ->
     %% TODO: implement checks relevant to off-chain
     {ok, Trees}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
-              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
-process(#channel_offchain_tx{}, _Context, _Trees, _Height, _ConsensusVersion,
-       _TxHash) ->
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
+process(#channel_offchain_tx{},_Trees, #{}) ->
     error(off_chain_tx).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.

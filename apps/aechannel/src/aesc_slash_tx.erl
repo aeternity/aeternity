@@ -16,8 +16,8 @@
          ttl/1,
          nonce/1,
          origin/1,
-         check/5,
-         process/6,
+         check/3,
+         process/3,
          signers/2,
          version/0,
          serialization_template/1,
@@ -101,12 +101,13 @@ from_pubkey(#channel_slash_tx{from_id = FromId}) ->
 channel_pubkey(#channel_slash_tx{channel_id = ChannelId}) ->
     aec_id:specialize(ChannelId, channel).
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
-        {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_slash_tx{payload    = Payload,
                         poi        = PoI,
                         fee        = Fee,
-                        nonce      = Nonce} = Tx, _Context, Trees, Height,  _ConsensusVersion) ->
+                        nonce      = Nonce} = Tx,
+      Trees, Env) ->
+    Height        = aetx_env:height(Env),
     ChannelPubKey = channel_pubkey(Tx),
     FromPubKey    = from_pubkey(Tx),
     case aesc_utils:check_slash_payload(ChannelPubKey, FromPubKey, Nonce, Fee,
@@ -115,13 +116,13 @@ check(#channel_slash_tx{payload    = Payload,
         Err -> Err
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
-              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
 process(#channel_slash_tx{payload    = Payload,
                           poi        = PoI,
                           fee        = Fee,
-                          nonce      = Nonce} = Tx, _Context, Trees, Height,
-        _ConsensusVersion, _TxHash) ->
+                          nonce      = Nonce} = Tx,
+        Trees, Env) ->
+    Height        = aetx_env:height(Env),
     ChannelPubKey = channel_pubkey(Tx),
     FromPubKey    = from_pubkey(Tx),
     aesc_utils:process_slash(ChannelPubKey, FromPubKey, Nonce, Fee,

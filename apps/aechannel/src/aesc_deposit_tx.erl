@@ -18,8 +18,8 @@
          nonce/1,
          origin/1,
          amount/1,
-         check/5,
-         process/6,
+         check/3,
+         process/3,
          signers/2,
          version/0,
          serialization_template/1,
@@ -128,13 +128,13 @@ channel_id(#channel_deposit_tx{channel_id = ChannelId}) ->
 channel_pubkey(#channel_deposit_tx{channel_id = ChannelId}) ->
     aec_id:specialize(ChannelId, channel).
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
-        {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_deposit_tx{amount     = Amount,
                           fee        = Fee,
                           state_hash  = _StateHash,
                           round       = Round,
-                          nonce      = Nonce} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
+                          nonce      = Nonce} = Tx,
+      Trees,_Env) ->
     ChannelPubKey = channel_pubkey(Tx),
     FromPubKey    = from_pubkey(Tx),
     Checks =
@@ -147,14 +147,13 @@ check(#channel_deposit_tx{amount     = Amount,
             Error
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(),
-              non_neg_integer(), binary() | no_tx_hash) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
 process(#channel_deposit_tx{amount     = Amount,
                             fee        = Fee,
                             state_hash = StateHash,
                             round      = Round,
-                            nonce      = Nonce} = Tx, _Context, Trees,
-        _Height, _ConsensusVersion, _TxHash) ->
+                            nonce      = Nonce} = Tx,
+        Trees,_Env) ->
     ChannelPubKey = channel_pubkey(Tx),
     FromPubKey    = from_pubkey(Tx),
     AccountsTree0 = aec_trees:accounts(Trees),
