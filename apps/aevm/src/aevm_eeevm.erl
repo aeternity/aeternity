@@ -25,6 +25,7 @@
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("aevm_eeevm.hrl").
 -include("aevm_gas.hrl").
+-include("aevm_ae_primops.hrl").
 
 -define(AEVM_SIGNAL(___SIGNAL___, ___STATE___),
         {aevm_signal, ___SIGNAL___, ___STATE___}).
@@ -1523,6 +1524,9 @@ recursive_call2(Op, Gascap, To, Value, OOffset, I, State8, GasAfterSpend) ->
             {OutGas, ReturnState, R} =
                 case aevm_eeevm_state:call_contract(Caller, Dest, CallGas, Value, I, State8) of
                     {ok, Res, GasSpent, OutState1} -> {CallGas - GasSpent, OutState1, Res};
+                    {error, ?AEVM_PRIMOP_ERR_REASON_OOG(_OogResource, _OogCost, State9)} ->
+                        ?TEST_LOG("Out of gas spending ~p gas for ~p", [_OogCost, _OogResource]),
+                        eval_error(out_of_gas, State9);
                     {error, _Err} ->
                         ?TEST_LOG("Invalid call error ~p", [_Err]),
                         {0, State8, {error, invalid_call}}

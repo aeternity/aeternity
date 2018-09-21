@@ -11,6 +11,7 @@
 -export([call/3]).
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
+-include("aevm_ae_primops.hrl").
 
 -record(chain, {api, state}).
 
@@ -29,11 +30,15 @@
 
 -spec call(Value::non_neg_integer(), Data::binary(), StateIn) ->
                   {ok, ReturnValue, GasSpent::non_neg_integer(), StateOut} |
-                  {error, any()} when
+                  {error, Reason} when
       StateIn :: State,
       StateOut :: State,
       State :: aevm_eeevm_state:state(),
-      ReturnValue :: {ok, binary()} | {error, any()}.
+      ReturnValue :: {ok, binary()} | {error, any()},
+      Reason :: ?AEVM_PRIMOP_ERR_REASON_OOG(OogResource, OogCost, State)
+              | any(),
+      OogResource :: any(),
+      OogCost :: pos_integer().
 call(Value, Data, StateIn) ->
     ChainIn = #chain{api = aevm_eeevm_state:chain_api(StateIn),
                      state = aevm_eeevm_state:chain_state(StateIn)},
@@ -63,7 +68,7 @@ call_(Value, Data, State) ->
                        erlang:get_stacktrace(), %% Absent from non-test bytecode.
                        ?MODULE, ?FUNCTION_NAME, Value, Data]),
             %% TODO: Better error for illegal call.
-            {error, out_of_gas}
+            {error, illegal_primop_call}
     end.
 
 %% ------------------------------------------------------------------
@@ -96,8 +101,8 @@ oracle_call(?PRIM_CALL_ORACLE_GET_QUESTION, Value, Data, State) ->
     oracle_call_get_question(Value, Data, State);
 oracle_call(?PRIM_CALL_ORACLE_QUERY_FEE, Value, Data, State) ->
     oracle_call_query_fee(Value, Data, State);
-oracle_call(_, _, _, _) ->
-    {error, out_of_gas}.
+oracle_call(PrimOp, _, _, _) ->
+    {error, {illegal_oracle_primop_call, PrimOp}}.
 
 call_chain1(Callback, State) ->
     Callback(State#chain.api, State#chain.state).
@@ -215,8 +220,8 @@ aens_call(?PRIM_CALL_AENS_TRANSFER, _Value, Data, State) ->
     aens_call_transfer(Data, State);
 aens_call(?PRIM_CALL_AENS_REVOKE, _Value, Data, State) ->
     aens_call_revoke(Data, State);
-aens_call(_, _, _, _) ->
-    {error, out_of_gas}.
+aens_call(PrimOp, _, _, _) ->
+    {error, {illegal_aens_primop_call, PrimOp}}.
 
 aens_call_resolve(Data, State) ->
     [Name, Key, Type] = get_args([string, string, typerep], Data),
