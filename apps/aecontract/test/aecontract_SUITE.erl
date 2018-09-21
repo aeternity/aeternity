@@ -599,7 +599,7 @@ create_contract(Owner, Name, Args, Options, S) ->
                      , fee        => 1
                      , deposit    => 0
                      , amount     => 0
-                     , gas        => 10000 }, maps:remove(height, Options)), S),
+                     , gas        => 10000 }, maps:without([height, return_gas_used], Options)), S),
     Height   = maps:get(height, Options, 1),
     PrivKey  = aect_test_utils:priv_key(Owner, S),
     {ok, S1} = sign_and_apply_transaction(CreateTx, PrivKey, S, Height),
