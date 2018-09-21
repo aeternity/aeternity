@@ -28,6 +28,10 @@
 
 %% -- Callback API -----------------------------------------------------------
 
+%% -- Chain --
+
+-callback get_height(State :: chain_state()) -> aec_blocks:height().
+
 %% -- Accounts --
 
 %% Execute a spend transaction from the contract account.

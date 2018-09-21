@@ -12,7 +12,8 @@
         ]).
 
 %% test case exports
--export([ contracts/1
+-export([ height/1
+        , contracts/1
         , spend/1
         ]).
 
@@ -30,9 +31,12 @@ all() ->
 
 groups() ->
     [ {all_tests, [sequence],
-        [ {group, spend}
+        [ {group, height}
+        , {group, spend}
         , {group, contracts}
         ]}
+    , {height, [sequence],
+        [ height ]}
     , {spend, [sequence],
         [ spend ]}
     , {contracts, [sequence],
@@ -64,6 +68,8 @@ setup_chain() ->
     InitS = aec_vm_chain:new_state(Trees, 1, Contract1),
     {[Account1, Account2, Contract1, Contract2], InitS}.
 
+end_per_testcase(height, _) ->
+    teardown_chain();
 end_per_testcase(spend, _) ->
     teardown_chain();
 end_per_testcase(contracts, _) ->
@@ -102,6 +108,15 @@ sign_and_apply_transaction(Tx, PrivKey, S1) ->
 call_data(Arg) ->
     Code = aect_test_utils:compile_contract("contracts/identity.aes"),
     aect_sophia:create_call(Code, <<"main">>, Arg).
+
+%%%===================================================================
+%%% Height tests
+%%%===================================================================
+
+height(_Cfg) ->
+    {_, S} = setup_chain(),
+    1 = aec_vm_chain:get_height(S),
+    ok.
 
 %%%===================================================================
 %%% Spend tests
