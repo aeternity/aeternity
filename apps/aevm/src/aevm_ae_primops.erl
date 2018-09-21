@@ -76,7 +76,7 @@ spend_call(Value, Data, State) ->
     RecipientId = aec_id:create(account, <<Recipient:256>>),
     Callback = fun(API, ChainState) ->
                        API:spend(RecipientId, Value, ChainState) end,
-    call_chain(Callback, State).
+    cast_chain(Callback, State).
 
 %% ------------------------------------------------------------------
 %% Oracle operations.
@@ -110,12 +110,17 @@ query_chain(Callback, State) ->
         {error, _} = Err -> Err
     end.
 
-call_chain(Callback, State) ->
+cast_chain(Callback, State) ->
     case call_chain1(Callback, State) of
         {ok, ChainState1} ->
             UnitReturn = {ok, <<0:256>>},
             GasSpent   = 0,         %% Already costs lots of gas
             {ok, UnitReturn, GasSpent, ChainState1};
+        {error, _} = Err -> Err
+    end.
+
+call_chain(Callback, State) ->
+    case call_chain1(Callback, State) of
         {ok, Retval, ChainState1} ->
             GasSpent   = 0,         %% Already costs lots of gas
             Return     = {ok, aeso_data:to_binary(Retval, 0)},
@@ -164,7 +169,7 @@ oracle_call_respond(_Value, Data, State) ->
             [_, _, Sign, R] = get_args(ArgumentTypes, Data),
             QueryKey = <<Query:256>>,
             Callback = fun(API, ChainState) -> API:oracle_respond(OracleKey, QueryKey, Sign, R, ChainState) end,
-            call_chain(Callback, State);
+            cast_chain(Callback, State);
         {error, _} = Err -> Err
     end.
 
@@ -173,7 +178,7 @@ oracle_call_extend(_Value, Data, State) ->
     ArgumentTypes = [word, word, oracle_ttl_t()],
     [Oracle, Sign, TTL] = get_args(ArgumentTypes, Data),
     Callback = fun(API, ChainState) -> API:oracle_extend(<<Oracle:256>>, Sign, TTL, ChainState) end,
-    call_chain(Callback, State).
+    cast_chain(Callback, State).
 
 
 oracle_call_get_answer(_Value, Data, State) ->
@@ -221,22 +226,22 @@ aens_call_resolve(Data, State) ->
 aens_call_preclaim(Data, State) ->
     [Addr, CHash, Sign] = get_args([word, word, word], Data),
     Callback = fun(API, ChainState) -> API:aens_preclaim(<<Addr:256>>, <<CHash:256>>, <<Sign:256>>, ChainState) end,
-    call_chain(Callback, State).
+    cast_chain(Callback, State).
 
 aens_call_claim(Data, State) ->
     [Addr, Name, Salt, Sign] = get_args([word, string, word, word], Data),
     Callback = fun(API, ChainState) -> API:aens_claim(<<Addr:256>>, Name, Salt, <<Sign:256>>, ChainState) end,
-    call_chain(Callback, State).
+    cast_chain(Callback, State).
 
 aens_call_transfer(Data, State) ->
     [From, To, Hash, Sign] = get_args([word, word, word, word], Data),
     Callback = fun(API, ChainState) -> API:aens_transfer(<<From:256>>, <<To:256>>, <<Hash:256>>, <<Sign:256>>, ChainState) end,
-    call_chain(Callback, State).
+    cast_chain(Callback, State).
 
 aens_call_revoke(Data, State) ->
     [Addr, Hash, Sign] = get_args([word, word, word], Data),
     Callback = fun(API, ChainState) -> API:aens_revoke(<<Addr:256>>, <<Hash:256>>, <<Sign:256>>, ChainState) end,
-    call_chain(Callback, State).
+    cast_chain(Callback, State).
 
 %% ------------------------------------------------------------------
 %% Internal functions
