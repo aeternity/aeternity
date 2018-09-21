@@ -25,9 +25,13 @@
 -define(TEST_LOG(Format, Data), ok).
 -endif.
 
--spec call( non_neg_integer(), binary(), aevm_eeevm_state:state()) ->
-                  {ok, binary(), non_neg_integer(), aevm_eeevm_state:state()}
-                      | {error, any()}.
+-spec call(Value::non_neg_integer(), Data::binary(), StateIn) ->
+                  {ok, ReturnValue, GasSpent::non_neg_integer(), StateOut} |
+                  {error, any()} when
+      StateIn :: State,
+      StateOut :: State,
+      State :: aevm_eeevm_state:state(),
+      ReturnValue :: {ok, binary()} | {error, any()}.
 call(Value, Data, State) ->
     case call_(Value, Data, State) of
         {ok, _, _, _} = Ok ->
