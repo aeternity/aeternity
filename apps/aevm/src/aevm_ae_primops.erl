@@ -12,6 +12,8 @@
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 
+-record(chain, {api, state}).
+
 -define(BASE_ADDRESS, 32). %% Byte offset for data
 
 -ifdef(COMMON_TEST).
@@ -32,10 +34,13 @@
       StateOut :: State,
       State :: aevm_eeevm_state:state(),
       ReturnValue :: {ok, binary()} | {error, any()}.
-call(Value, Data, State) ->
-    case call_(Value, Data, State) of
-        {ok, _, _, _} = Ok ->
-            Ok;
+call(Value, Data, StateIn) ->
+    ChainIn = #chain{api = aevm_eeevm_state:chain_api(StateIn),
+                     state = aevm_eeevm_state:chain_state(StateIn)},
+    case call_(Value, Data, ChainIn) of
+        {ok, ReturnValue, GasSpent, ChainStateOut} ->
+            StateOut = aevm_eeevm_state:set_chain_state(ChainStateOut, StateIn),
+            {ok, ReturnValue, GasSpent, StateOut};
         {error, _} = Err ->
             ?TEST_LOG("Primop call error ~p~n~p:~p(~p, ~p, State)",
                       [Err, ?MODULE, ?FUNCTION_NAME, Value, Data]),
@@ -95,15 +100,13 @@ oracle_call(_, _, _, _) ->
     {error, out_of_gas}.
 
 call_chain1(Callback, State) ->
-    ChainAPI   = aevm_eeevm_state:chain_api(State),
-    ChainState = aevm_eeevm_state:chain_state(State),
-    Callback(ChainAPI, ChainState).
+    Callback(State#chain.api, State#chain.state).
 
 query_chain(Callback, State) ->
     case call_chain1(Callback, State) of
         {ok, Res} ->
             Return = {ok, aeso_data:to_binary(Res, 0)},
-            {ok, Return, 0, State};
+            {ok, Return, 0, State#chain.state};
         {error, _} = Err -> Err
     end.
 
@@ -112,13 +115,11 @@ call_chain(Callback, State) ->
         {ok, ChainState1} ->
             UnitReturn = {ok, <<0:256>>},
             GasSpent   = 0,         %% Already costs lots of gas
-            {ok, UnitReturn, GasSpent,
-             aevm_eeevm_state:set_chain_state(ChainState1, State)};
+            {ok, UnitReturn, GasSpent, ChainState1};
         {ok, Retval, ChainState1} ->
             GasSpent   = 0,         %% Already costs lots of gas
             Return     = {ok, aeso_data:to_binary(Retval, 0)},
-            {ok, Return, GasSpent,
-             aevm_eeevm_state:set_chain_state(ChainState1, State)};
+            {ok, Return, GasSpent, ChainState1};
         {error, _} = Err -> Err
     end.
 
