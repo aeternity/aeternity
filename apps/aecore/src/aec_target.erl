@@ -46,7 +46,7 @@
 %%    TemperedTotalTime = 0.75 * N * DesiredTimeBetweenBlocks + 0.2523 * TotalTime    %% DigiShield v3
 %%
 %% Where FTL = Future Time Limit - i.e. the time a block is allowed to be
-%% "from the future". We use 10 minutes (600 s).
+%% "from the future". We use 9 minutes (540 s).
 %%
 %% Now, the problem is that we can't do any floating point arithmetic (to
 %% ensure the calculation can be verified by other nodes), so we pick a

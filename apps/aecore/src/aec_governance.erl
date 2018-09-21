@@ -44,7 +44,7 @@
 -define(BENEFICIARY_REWARD_DELAY, 180). %% in key blocks / generations
 -define(MICRO_BLOCK_CYCLE, 3000). %% in msecs
 
--define(ACCEPTED_FUTURE_BLOCK_TIME_SHIFT, 10 * 60 * 1000). %% 10 min
+-define(ACCEPTED_FUTURE_BLOCK_TIME_SHIFT, 9 * 60 * 1000). %% 9 min
 
 %% Maps consensus protocol version to minimum height at which such
 %% version is effective.  The height must be strictly increasing with
