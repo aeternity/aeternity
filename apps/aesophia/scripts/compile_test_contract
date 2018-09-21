@@ -2,8 +2,9 @@
 %% -*- erlang -*-
 %%! -smp enable -sname complile_test_contract -mnesia debug verbose
 
-main([TestName, Ebin]) ->
-    code:add_patha(Ebin),
+main([TestName, EbinDir]) ->
+    code:add_patha(lists:concat([EbinDir, "/aesophia/ebin/"])),
+    code:add_patha(lists:concat([EbinDir, "/aebytecode/ebin/"])),
     TestDir = "../test/contracts/",
     case file:read_file(lists:concat([TestDir,
                                       TestName, ".aes"])) of
