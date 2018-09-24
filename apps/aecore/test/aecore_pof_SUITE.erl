@@ -89,11 +89,11 @@ siblings_on_key_block(Config) ->
     {ok, Tx0a} = add_spend_tx(N1, 100000, 1, 1, 10, patron(), PK1),
     {ok, Tx0b} = add_spend_tx(N1, 100000, 1, 2, 10, patron(), PK2),
 
-    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx0a, Tx0b], 5),
+    {ok, N1Blocks1} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx0a, Tx0b], 5),
 
     {ok, _Tx1} = add_spend_tx(N1, 1000, 1,  1,  10, Account1, new_pubkey()),
 
-    {ok, [Key, Micro1 | _]} = aecore_suite_utils:mine_micro_blocks(N1, 1),
+    {ok, [Key, Micro1 | _] = N1Blocks2} = aecore_suite_utils:mine_micro_blocks(N1, 1),
 
     %% Act fraudulent on "behalf" of N1
     timer:sleep(MBC), %% adhere to micro block interval
@@ -104,7 +104,7 @@ siblings_on_key_block(Config) ->
 
     %% Add a transaction so there will be a micro block with fraud produced
     {ok, _Tx3} = add_spend_tx(N1, 1000, 1,  3,  10),
-    {ok, [_Key3, Micro3 | _]} =  aecore_suite_utils:mine_micro_blocks(N2, 1),
+    {ok, [_Key3, Micro3 | _] = N2Blocks} =  aecore_suite_utils:mine_micro_blocks(N2, 1),
     ct:log("Micro3: ~p", [Micro3]),
 
     %% Check that the fraud would not be reported again.
@@ -123,7 +123,11 @@ siblings_on_key_block(Config) ->
                          {ok, aec_pof:pubkey(PoF)})
     end,
 
-    check_post(N1, N2),
+    %% One N1 key block has been mined at the beginning of the test, hence + 1.
+    N1KeyBlocksCount = key_blocks_count(N1Blocks1 ++ N1Blocks2) + 1,
+    N2KeyBlocksCount = key_blocks_count(N2Blocks),
+
+    check_post(N1, N1KeyBlocksCount, N2, N2KeyBlocksCount),
 
     ok.
 
@@ -146,11 +150,11 @@ siblings_on_micro_block(Config) ->
     {ok, Tx0a} = add_spend_tx(N1, 100000, 1, 1, 10, patron(), PK1),
     {ok, Tx0b} = add_spend_tx(N1, 100000, 1, 2, 10, patron(), PK2),
 
-    aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx0a, Tx0b], 5),
+    {ok, N1Blocks1} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx0a, Tx0b], 5),
 
     {ok, _Tx1} = add_spend_tx(N1, 1000, 1,  3, 10),
 
-    {ok, [_Key, Micro0 | _]} = aecore_suite_utils:mine_micro_blocks(N1, 1),
+    {ok, [_Key, Micro0 | _] = N1Blocks2} = aecore_suite_utils:mine_micro_blocks(N1, 1),
 
     %% Act fraudulent on "behalf" of N1
     timer:sleep(MBC), %% adhere to micro block interval
@@ -167,7 +171,7 @@ siblings_on_micro_block(Config) ->
 
     %% Add a transaction so there will be a micro block with fraud produced
     {ok, _Tx4} = add_spend_tx(N1, 1000, 1,  4, 10),
-    {ok, [_Key3, Micro3|_]} =  aecore_suite_utils:mine_micro_blocks(N2, 1),
+    {ok, [_Key3, Micro3|_] = N2Blocks} =  aecore_suite_utils:mine_micro_blocks(N2, 1),
     ct:log("Micro3: ~p", [Micro3]),
 
     %% Check that the fraud would not be reported again.
@@ -186,16 +190,21 @@ siblings_on_micro_block(Config) ->
                          {ok, aec_pof:pubkey(PoF)})
     end,
 
-    check_post(N1, N2),
+    %% One N1 key block has been mined at the beginning of the test, hence + 1.
+    N1KeyBlocksCount = key_blocks_count(N1Blocks1 ++ N1Blocks2) + 1,
+    N2KeyBlocksCount = key_blocks_count(N2Blocks),
+
+    check_post(N1, N1KeyBlocksCount, N2, N2KeyBlocksCount),
 
     ok.
 
-check_post(N1, N2) ->
+check_post(N1, N1KeyBlocksCount, N2, N2KeyBlocksCount0) ->
     B1 = <<217,202,108,173,192,99,13,10,129,124,71,86,232,121,148,177,243,254,160,88,174,204,22,114,15,42,51,71,75,19,135,16>>,
     B2 = <<40,25,191,50,209,111,19,239,98,126,125,211,15,133,93,12,13,125,167,137,94,138,27,55,23,50,106,33,28,222,180,102>>,
 
     %% Check the rewards
     aecore_suite_utils:mine_key_blocks(N2, 2),
+    N2KeyBlocksCount = N2KeyBlocksCount0 + 2,
 
     {value, Acc1} = rpc:call(N2, aec_chain, get_account, [B1]),
     {value, Acc2} = rpc:call(N2, aec_chain, get_account, [B2]),
@@ -203,16 +212,16 @@ check_post(N1, N2) ->
     Bal1 = aec_accounts:balance(Acc1),
     Bal2 = aec_accounts:balance(Acc2),
 
-    %% Node1 has mined 4 blocks, but should only get 3 rewards (fraud)
-    %% Node2 has mined 3 blocks, but should only get 1 reward (delay)
-    %%          + 1 fraud reward.
+    %% Node1 has mined N1KeyBlocksCount blocks, but should only get N1KeyBlocksCount - 1 rewards (fraud)
+    %% Node2 has mined N2KeyBlocksCount blocks, but should only get N2KeyBlocksCount - 2 rewards (delay)
+    %%                                                                               + 1 fraud reward.
     MR = aec_governance:block_mine_reward(),
     FR = aec_governance:fraud_report_reward(),
-    case Bal1 >= 3 * MR andalso Bal1 < 3 * MR + 10 of %% should get some fees
+    case Bal1 >= (N1KeyBlocksCount - 1) * MR andalso Bal1 < (N1KeyBlocksCount - 1) * MR + 10 of %% should get some fees
         true -> ok;
         false -> error({bad_balance1, Bal1})
     end,
-    case Bal2 >= 1 * MR + FR andalso Bal2 < 1 * MR + FR + 10 of
+    case Bal2 >= (N2KeyBlocksCount - 2) * MR + FR andalso Bal2 < (N2KeyBlocksCount - 2) * MR + FR + 10 of
         true -> ok;
         false -> error({bad_balance2, Bal2})
     end,
@@ -260,3 +269,6 @@ patron() ->
                     167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,
                     187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>
       }.
+
+key_blocks_count(Blocks) ->
+    length(lists:filter(fun aec_blocks:is_key_block/1, Blocks)).
