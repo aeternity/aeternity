@@ -1114,13 +1114,8 @@ send_response(S, Type, Response) ->
 %% where 16 bytes of the payload is the encryption MAC), saying that this is
 %% fragment N out of M fragments.
 %%
-%% For testing purpose - set the max packet size to 16#1FF while testing
 -define(NOISE_PACKET_LENGTH_SIZE, 2).
--ifndef(TEST).
 -define(MAX_PACKET_SIZE, 16#FFFF - ?NOISE_PACKET_LENGTH_SIZE).
--else.
--define(MAX_PACKET_SIZE, 16#1FF - ?NOISE_PACKET_LENGTH_SIZE).
--endif.
 
 -define(CHACHAPOLY_MAC_SIZE, 16).
 -define(MAX_PAYLOAD_SIZE, (?MAX_PACKET_SIZE - ?CHACHAPOLY_MAC_SIZE)).
