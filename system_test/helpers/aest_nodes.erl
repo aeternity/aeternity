@@ -573,12 +573,19 @@ wait_for_value({txs_on_chain, Txs}, NodeNames, Timeout, Ctx) ->
                                       _ -> wait
                                   end || Tx <- Txs]),
                 case lists:member(wait, Found) of
-                    false -> {done, Found};
+                    false ->
+                        case {get_top(Node), lists:max([0 |[ H || {_,H} <- Found]])} of
+                            {#{height := Top}, Max} when Top > Max + 1 ->
+                                %% We wait two key block on top of the microblock that contains the transaction
+                                {done, Found};
+                            _ -> wait
+                        end;
                     true -> wait
                 end
         end,
     loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Txs found ~p", [Txs]});
 wait_for_value({txs_on_node, Txs}, NodeNames, Timeout, Ctx) ->
+    %% Reached the mempool at least, probably even in a block.
     FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
     CheckF =
         fun(Node) ->
