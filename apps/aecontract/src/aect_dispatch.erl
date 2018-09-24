@@ -136,28 +136,31 @@ call_common(#{ caller     := CallerPubKey
             try aevm_eeevm:eval(InitState) of
                 {ok, ResultState} ->
                     GasLeft = aevm_eeevm_state:gas(ResultState),
+                    GasUsed = Gas - GasLeft,
                     Out = aevm_eeevm_state:out(ResultState),
                     ChainState = aevm_eeevm_state:chain_state(ResultState),
                     Log = aevm_eeevm_state:logs(ResultState),
                     {
-                      create_call(Gas - GasLeft, ok, Out, Log, Call),
+                      create_call(GasUsed, ok, Out, Log, Call),
                       aec_vm_chain:get_trees(ChainState)
                     };
                 {revert, ResultState} ->
                     GasLeft = aevm_eeevm_state:gas(ResultState),
+                    GasUsed = Gas - GasLeft,
                     Out = aevm_eeevm_state:out(ResultState),
                     ChainState = aevm_eeevm_state:chain_state(ResultState),
                     Log = aevm_eeevm_state:logs(ResultState),
                     {
-                        create_call(Gas - GasLeft, revert, Out, Log, Call),
+                        create_call(GasUsed, revert, Out, Log, Call),
                         aec_vm_chain:get_trees(ChainState)
                     };
                 {error, Error, _} ->
                     %% Execution resulting in VM exception.
                     %% Gas used, but other state not affected.
                     %% TODO: Use up the right amount of gas depending on error
+                    GasUsed = Gas,
                     %% TODO: Store error code in state tree
-                    {create_call(Gas, error, Error, [], Call), Trees}
+                    {create_call(GasUsed, error, Error, [], Call), Trees}
             catch T:E ->
                 ?DEBUG_LOG("Return error ~p:~p~n", [T,E]),
                 {create_call(Gas, error, [], Call), Trees}
@@ -168,16 +171,16 @@ call_common(#{ caller     := CallerPubKey
             {create_call(Gas, error, [], Call), Trees}
     end.
 
-create_call(Gas, Type, Value, Log, Call) when Type == ok; Type == revert ->
+create_call(GasUsed, Type, Value, Log, Call) when Type == ok; Type == revert ->
     Call1 = aect_call:set_return_value(Value, Call),
-    create_call(Gas, Type, Log, Call1);
-create_call(Gas, error = Type, Value, Log, Call)  ->
+    create_call(GasUsed, Type, Log, Call1);
+create_call(GasUsed, error = Type, Value, Log, Call)  ->
     Call1 = aect_call:set_return_value(error_to_binary(Value), Call),
-    create_call(Gas, Type, Log, Call1).
+    create_call(GasUsed, Type, Log, Call1).
 
-create_call(Gas, Type, Log, Call) ->
+create_call(GasUsed, Type, Log, Call) ->
     Call1 = aect_call:set_log(Log, Call),
-    aect_call:set_gas_used(Gas, aect_call:set_return_type(Type, Call1)).
+    aect_call:set_gas_used(GasUsed, aect_call:set_return_type(Type, Call1)).
 
 error_to_binary(out_of_gas) -> <<"out_of_gas">>;
 error_to_binary(out_of_stack) -> <<"out_of_stack">>;

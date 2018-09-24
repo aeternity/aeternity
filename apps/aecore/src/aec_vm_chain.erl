@@ -11,7 +11,8 @@
 -export([new_state/3, get_trees/1]).
 
 %% aevm_chain_api callbacks
--export([ call_contract/6,
+-export([ get_height/1,
+          call_contract/6,
           get_balance/2,
           get_store/1,
           set_store/2,
@@ -70,6 +71,10 @@ new_state(Trees, Height, ContractAccount) ->
 -spec get_trees(chain_state()) -> aec_trees:trees().
 get_trees(#state{ trees = Trees}) ->
     Trees.
+
+%% @doc Get the chain height from a state.
+get_height(#state{ height = Height }) ->
+    Height.
 
 %% @doc Get the balance of the contract account.
 -spec get_balance(aec_keys:pubkey(), chain_state()) -> non_neg_integer().

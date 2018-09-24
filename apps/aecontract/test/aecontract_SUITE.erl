@@ -599,12 +599,18 @@ create_contract(Owner, Name, Args, Options, S) ->
                      , fee        => 1
                      , deposit    => 0
                      , amount     => 0
-                     , gas        => 10000 }, maps:remove(height, Options)), S),
+                     , gas        => 10000 }, maps:without([height, return_gas_used], Options)), S),
     Height   = maps:get(height, Options, 1),
     PrivKey  = aect_test_utils:priv_key(Owner, S),
     {ok, S1} = sign_and_apply_transaction(CreateTx, PrivKey, S, Height),
     ContractKey = aect_contracts:compute_contract_pubkey(Owner, Nonce),
-    {ContractKey, S1}.
+    CallKey     = aect_call:id(Owner, Nonce, ContractKey),
+    CallTree    = aect_test_utils:calls(S1),
+    Call        = aect_call_state_tree:get_call(ContractKey, CallKey, CallTree),
+    case maps:get(return_gas_used, Options, false) of
+        false -> {ContractKey, S1};
+        true  -> {{ContractKey, aect_call:gas_used(Call)}, S1}
+    end.
 
 call_contract(Caller, ContractKey, Fun, Type, Args, S) ->
     call_contract(Caller, ContractKey, Fun, Type, Args, #{}, S).
@@ -635,7 +641,10 @@ call_contract(Caller, ContractKey, Fun, Type, Args0, Options, S) ->
             error  -> {error, aect_call:return_value(Call)};
             revert -> revert
         end,
-    {Result, S1}.
+    case maps:get(return_gas_used, Options, false) of
+        false -> {Result, S1};
+        true  -> {{Result, aect_call:gas_used(Call)}, S1}
+    end.
 
 account_balance(PubKey, S) ->
     Account = aect_test_utils:get_account(PubKey, S),
@@ -981,16 +990,12 @@ oracle_init_from_remote_contract(OperatorAcc, InitialOracleContractBalance, S) -
 oracle_register_from_contract(OperatorAcc, OCt, OCt, Opts, TxOpts, S) ->
     QueryFee = maps:get(qfee, Opts),
     OTtl = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(maps:get(ottl, Opts, 15)),
-    <<OCtId:256>> = OCt,
-    {OCtId, S1} = call_contract(OperatorAcc, OCt, registerOracle, word, {OCt, 0, QueryFee, OTtl}, TxOpts, S),
-    {ok, S1}.
+    call_contract(OperatorAcc, OCt, registerOracle, word, {OCt, 0, QueryFee, OTtl}, TxOpts, S).
 
 oracle_register_from_remote_contract(OperatorAcc, RCt, OCt, Opts, TxOpts, S) ->
     QueryFee = maps:get(qfee, Opts),
     OTtl = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(maps:get(ottl, Opts, 15)),
-    <<OCtId:256>> = OCt,
-    {OCtId, S1} = call_contract(OperatorAcc, RCt, callRegisterOracle, word, {OCt, OCt, 0, QueryFee, OTtl}, TxOpts, S),
-    {ok, S1}.
+    call_contract(OperatorAcc, RCt, callRegisterOracle, word, {OCt, OCt, 0, QueryFee, OTtl}, TxOpts, S).
 
 oracle_query_from_contract(UserAcc, OCt, OCt, Opts, TxOpts, S) ->
     oracle_query_from_contract_(createQuery, UserAcc, OCt, OCt, Opts, TxOpts, S).
@@ -1025,16 +1030,16 @@ oracle_check_and_respond_from_contract(OperatorAcc, OCt, OCt, QueryId, Opts, TxO
     ?assertMatch({Question, _} when is_binary(Question), call_contract(OperatorAcc, OCt, getQuestion, string, {OCt, QueryId}, S)),
     Response = maps:get(response, Opts, 4001),
     ?assertMatch(_ when is_integer(Response), Response),
-    {{}, S1} = call_contract(OperatorAcc, OCt, respond, {tuple, []}, {OCt, QueryId, 0, Response}, TxOpts, S),
+    {R, S1} = call_contract(OperatorAcc, OCt, respond, {tuple, []}, {OCt, QueryId, 0, Response}, TxOpts, S),
     ?assertMatch({{some, Response}, _}, call_contract(OperatorAcc, OCt, getAnswer, {option, word}, {OCt, QueryId}, S1)),
-    {ok, S1}.
+    {R, S1}.
 
 oracle_check_and_respond_from_remote_contract(OperatorAcc, RCt, OCt, QueryId, Opts, TxOpts, S) ->
     ?assertMatch({Question, _} when is_binary(Question), call_contract(OperatorAcc, OCt, getQuestion, string, {OCt, QueryId}, S)),
     Response = maps:get(response, Opts, 4001),
-    {{}, S1} = call_contract(OperatorAcc, RCt, callRespond, {tuple, []}, {OCt, OCt, QueryId, 0, Response}, TxOpts, S),
+    {R, S1} = call_contract(OperatorAcc, RCt, callRespond, {tuple, []}, {OCt, OCt, QueryId, 0, Response}, TxOpts, S),
     ?assertMatch({{some, Response}, _}, call_contract(OperatorAcc, OCt, getAnswer, {option, word}, {OCt, QueryId}, S1)),
-    {ok, S1}.
+    {R, S1}.
 
 -record(oracle_cbs, {init, register, query, respond}).
 %%
@@ -1080,7 +1085,7 @@ closed_oracle_cbs(Cbs,
 sophia_oracles_qfee__init_and_register_and_query_(Init, RegisterOracle, CreateQuery) ->
     {OracleAcc, CallingCt} = call(Init, []),
     S0 = state(),
-    ok = call(RegisterOracle, [CallingCt, OracleAcc]),
+    OracleAcc = <<(call(RegisterOracle, [CallingCt, OracleAcc])):256>>,
     S1 = state(),
     R = call(CreateQuery, [CallingCt, OracleAcc]),
     {R,
@@ -1094,7 +1099,7 @@ sophia_oracles_qfee__init_and_register_and_query_and_respond_(Init, RegisterOrac
       S1] %% State after oracle registration.
     } = sophia_oracles_qfee__init_and_register_and_query_(Init, RegisterOracle, CreateQuery),
     S2 = state(),
-    ok = call(RespondQuery, [CallingCt, OracleAcc, QId]),
+    {} = call(RespondQuery, [CallingCt, OracleAcc, QId]),
     {{OracleAcc, CallingCt},
      [S0, S1, S2]}.
 

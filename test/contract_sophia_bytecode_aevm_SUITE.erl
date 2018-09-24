@@ -26,7 +26,7 @@
    ]).
 
 %% chain API exports
--export([ spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2,
+-export([ get_height/1, spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2,
           oracle_register/7, oracle_query/6, oracle_query_format/2, oracle_response_format/2,
           oracle_query_oracle/2, oracle_respond/5, oracle_get_answer/3,
           oracle_query_fee/2, oracle_get_question/3, oracle_extend/4]).
@@ -407,6 +407,9 @@ initial_state(Contracts) ->
 initial_state(Contracts, Accounts) ->
     maps:merge(#{environment => #{}, store => #{}},
         maps:merge(Contracts, #{accounts => Accounts})).
+
+get_height(#{ environment := #{ currentNumber := Height } }) ->
+    Height.
 
 spend(_To, Amount, _) when Amount < 0 ->
     {error, negative_spend};
