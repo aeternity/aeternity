@@ -73,8 +73,8 @@ get_trees(#state{ trees = Trees}) ->
     Trees.
 
 %% @doc Get the chain height from a state.
-get_height(#state{ height = Height }) ->
-    Height.
+get_height(#state{ tx_env = TxEnv }) ->
+    aetx_env:height(TxEnv).
 
 %% @doc Get the balance of the contract account.
 -spec get_balance(aec_keys:pubkey(), chain_state()) -> non_neg_integer().

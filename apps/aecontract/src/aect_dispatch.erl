@@ -37,7 +37,7 @@ call(<<"sophia">>, Code, Function, Argument) ->
 call(<<"sophia-address">>, ContractKey, Function, Argument) ->
     aect_sophia:on_chain_call(ContractKey, Function, Argument);
 call(<<"evm">>, Code, _, Argument) ->
-    aect_evm:call(Code, Argument);
+    aect_evm:simple_call_solidity(Code, Argument);
 call(_, _, _, _) ->
     {error, <<"Unknown call ABI">>}.
 
@@ -58,95 +58,57 @@ encode_call_data(_, _, _, _) ->
 
 -spec run(byte(), map()) -> {aect_call:call(), aec_trees:trees()}.
 run(?AEVM_01_Sophia_01, CallDef) ->
-    call_AEVM_01_Sophia_01(CallDef);
+    run_common(CallDef, ?AEVM_01_Sophia_01);
 run(?AEVM_01_Solidity_01, CallDef) ->
-    call_AEVM_01_Solidity_01(CallDef);
+    run_common(CallDef, ?AEVM_01_Solidity_01);
 run(_, #{ call := Call} = _CallDef) ->
     %% TODO:
     %% Wrong VM/ABI version just return an unchanged call.
     Call.
 
-call_AEVM_01_Sophia_01(#{ contract    := ContractPubKey
-                        , height      := Height
-                        , time        := Time
-                        , difficulty  := Difficulty
-                        , trees       := Trees
-                        , beneficiary := BeneficiaryBin
-                        } = CallDef) ->
-    <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>> = BeneficiaryBin,
-
+run_common(#{  amount      := Value
+             , beneficiary := <<Beneficiary:?BENEFICIARY_PUB_BYTES/unit:8>> = BeneficiaryBin
+             , call        := Call
+             , call_data   := CallData
+             , call_stack  := CallStack
+             , caller      := <<CallerAddr:?PUB_SIZE/unit:8>>
+             , code        := Code
+             , contract    := <<Address:?PUB_SIZE/unit:8>> = ContractPubKey
+             , difficulty  := Difficulty
+             , gas         := Gas
+             , gas_price   := GasPrice
+             , height      := Height
+             , time        := Time
+             , trees       := Trees
+             }, VMVersion) ->
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
     TxEnv = aetx_env:contract_env(Height, ConsensusVersion, Time,
                                   BeneficiaryBin, Difficulty),
-    Env = set_env(ContractPubKey, Height, Trees, BeneficiaryInt, Time, Difficulty,
-                  TxEnv, aec_vm_chain, ?AEVM_01_Sophia_01),
+    ChainState0 = aec_vm_chain:new_state(Trees, TxEnv, ContractPubKey),
+    Env = #{currentCoinbase   => Beneficiary,
+            currentDifficulty => Difficulty,
+            %% TODO: implement gas limit in governance and blocks.
+            currentGasLimit   => 100000000000,
+            currentNumber     => Height,
+            currentTimestamp  => Time,
+            chainState        => ChainState0,
+            chainAPI          => aec_vm_chain,
+            vm_version        => VMVersion},
+    Exec = #{code       => Code,
+             address    => Address,
+             caller     => CallerAddr,
+             data       => CallData,
+             gas        => Gas,
+             gasPrice   => GasPrice,
+             origin     => CallerAddr,
+             value      => Value,
+             call_stack => CallStack
+            },
     Spec = #{ env => Env,
-              exec => #{},
+              exec => Exec,
               pre => #{}},
-    call_common(CallDef, Spec).
 
-call_AEVM_01_Solidity_01(#{ contract    := ContractPubKey
-                          , height      := Height
-                          , trees       := Trees
-                          , beneficiary := BeneficiaryBin
-                          } = CallDef) ->
-    %% TODO: should be set before starting block candidate.
-    Time = aeu_time:now_in_msecs(),
-    %% TODO: get the right difficulty (Tracked as #159522571)
-    Difficulty = 0,
-    ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
-
-    <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>> = BeneficiaryBin,
-    TxEnv = aetx_env:contract_env(Height, ConsensusVersion, Time,
-                                  BeneficiaryBin, Difficulty),
-    Env = set_env(ContractPubKey, Height, Trees, BeneficiaryInt, Time, Difficulty,
-                  TxEnv, aec_vm_chain, ?AEVM_01_Solidity_01),
-    Spec = #{ env => Env,
-              exec => #{},
-              pre => #{}},
-    call_common(CallDef, Spec).
-
-set_env(ContractPubKey, Height, Trees, Beneficiary, Time, Difficulty,
-        TxEnv, API, VmVersion) ->
-    ChainState = aec_vm_chain:new_state(Trees, TxEnv, ContractPubKey),
-    #{currentCoinbase   => Beneficiary,
-      currentDifficulty => Difficulty,
-      %% TODO: implement gas limit in governance and blocks.
-      currentGasLimit   => 100000000000,
-      currentNumber     => Height,
-      currentTimestamp  => Time,
-      chainState        => ChainState,
-      chainAPI          => API,
-      vm_version        => VmVersion}.
-
-call_common(#{ caller     := CallerPubKey
-             , contract   := ContractPubKey
-             , gas        := Gas
-             , gas_price  := GasPrice
-             , call_data  := CallData
-             , amount     := Value
-             , call_stack := CallStack
-             , code       := Code
-             , call       := Call
-             , height     :=_Height
-             , trees      := Trees
-             }, Spec) ->
-    <<Address:?PUB_SIZE/unit:8>> = ContractPubKey,
-    <<CallerAddr:?PUB_SIZE/unit:8>> = CallerPubKey,
-    Exec = maps:merge(maps:get(exec, Spec), #{
-        code       => Code,
-        address    => Address,
-        caller     => CallerAddr,
-        data       => CallData,
-        gas        => Gas,
-        gasPrice   => GasPrice,
-        origin     => CallerAddr,
-        value      => Value,
-        call_stack => CallStack
-    }),
-    try aevm_eeevm_state:init(Spec#{exec => Exec},
-                              #{trace => false
-                               }) of
+    try aevm_eeevm_state:init(Spec, #{trace => false}) of
         InitState ->
             %% TODO: Nicer error handling - do more in check.
             %% Update gas_used depending on exit type.

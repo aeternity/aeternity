@@ -2883,7 +2883,7 @@ run(Cfg, Funs) ->
 apply_on_trees_(#{height := Height} = Props, SignedTx, S, positive) ->
     Trees = aens_test_utils:trees(S),
     case aesc_test_utils:apply_on_trees_without_sigs_check(
-                      [SignedTx], Trees, Height, ?PROTOCOL_VERSION) of
+                      [SignedTx], Trees, Height) of
         {ok, [SignedTx], Trees1} ->
             S1 = aesc_test_utils:set_trees(Trees1, S),
             Props#{state => S1};
