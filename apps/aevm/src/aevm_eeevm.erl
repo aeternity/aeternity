@@ -1459,15 +1459,32 @@ recursive_call1(StateIn, Op) ->
     {IOffset, State4} = pop(State3),
     {ISize, State5}   = pop(State4),
     {OOffset, State6} = pop(State5),
-    {_OSize, State7}   = pop(State6),   %% NOTE: we don't need the OSize!
-    Dest              = case Op of
-                            ?CALL -> To;
-                            ?CALLCODE -> aevm_eeevm_state:address(State6);
-                            ?DELEGATECALL -> aevm_eeevm_state:address(State6)
-                        end,
+    {_OSize, State7}  = pop(State6),   %% NOTE: we don't need the OSize!
     {I, State8}       = aevm_eeevm_memory:get_area(IOffset, ISize, State7),
-    GasAfterSpend     = aevm_eeevm_state:gas(State8),
 
+    GasAfterSpend     = aevm_eeevm_state:gas(State8),
+    case GasAfterSpend >= 0 of
+        true  -> ok;
+        false ->
+            ?TEST_LOG("Out of gas before call", []),
+            eval_error(out_of_gas, State7)
+    end,
+    Address = aevm_eeevm_state:address(State8),
+    AddressBalance = aevm_eeevm_state:accountbalance(Address, State8),
+    case Value =< AddressBalance of
+        true  -> recursive_call2(Op, Gascap, To, Value, OOffset, I, State8, GasAfterSpend);
+        false ->
+            ?TEST_LOG("Excessive value operand ~p for address ~p, that has balance ~p", [Value, Address, AddressBalance]),
+            {0, aevm_eeevm_state:set_gas(0, State8)}
+            %% Consume all gas on failed contract call.
+    end.
+
+recursive_call2(Op, Gascap, To, Value, OOffset, I, State8, GasAfterSpend) ->
+    Dest = case Op of
+               ?CALL -> To;
+               ?CALLCODE -> aevm_eeevm_state:address(State8);
+               ?DELEGATECALL -> aevm_eeevm_state:address(State8)
+           end,
     %% "The child message of a nonzero-value CALL operation (NOT the
     %% top-level message arising from a transaction!) gains an
     %% additional 2300 gas on top of the gas supplied by the calling
@@ -1481,12 +1498,6 @@ recursive_call1(StateIn, Op) ->
                   false -> 0
               end,
     CallGas = Stipend + Gascap,
-    case GasAfterSpend >= 0 of
-        true  -> ok;
-        false ->
-            ?TEST_LOG("Out of gas before call", []),
-            eval_error(out_of_gas, State7)
-    end,
     Caller = case Op of
                  ?CALL -> aevm_eeevm_state:address(State8);
                  ?CALLCODE -> aevm_eeevm_state:address(State8);
