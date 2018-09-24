@@ -8,6 +8,7 @@
          type/0,
          fee/1,
          gas/1,
+         gas_price/1,
          ttl/1,
          nonce/1,
          origin/1,
@@ -80,6 +81,11 @@ fee(#channel_offchain_tx{}) ->
 
 -spec gas(tx()) -> non_neg_integer().
 gas(#channel_offchain_tx{}) ->
+    %% This tx should never hit the mempool or any block
+    0.
+
+-spec gas_price(tx()) -> non_neg_integer().
+gas_price(#channel_offchain_tx{}) ->
     %% This tx should never hit the mempool or any block
     0.
 

@@ -186,8 +186,8 @@ tx_pool_test_() ->
                    , a_signed_tx        (        PK1, me,       3,     3)
                    , a_signed_tx        (        PK2, me,       2,     5)
                    , a_signed_tx        (        PK2, me,       1,     6)
-                   , signed_ct_create_tx(        PK4,           1,     1,_GasPrice=1)
-                   , signed_ct_call_tx  (        PK4,           2,     4,          9)
+                   , signed_ct_create_tx(        PK4,           1,     1,_GasPrice=1100000000)
+                   , signed_ct_call_tx  (        PK4,           2,     4,          9000000000)
                    , signed_ct_call_tx  (        PK4,           3,     7,          0)
                    ],
 
@@ -230,17 +230,17 @@ tx_pool_test_() ->
                ?assertEqual({ok, [STx3, STx2]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
 
                %% Replace same nonce with same fee but positive gas price (gas price of transaction without gas price is considered zero)
-               STx4 = signed_ct_create_tx(PK, Nonce2=2, Fee2=5,_GasPrice4=1),
+               STx4 = signed_ct_create_tx(PK, Nonce2=2, Fee2=5,_GasPrice4=1100000000),
                ?assertEqual(ok, aec_tx_pool:push(STx4)),
                ?assertEqual({ok, [STx3, STx4]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
 
                %% Replace same nonce with same fee but higher gas price
-               STx5 = signed_ct_create_tx(PK, Nonce2=2, Fee2=5, 2),
+               STx5 = signed_ct_create_tx(PK, Nonce2=2, Fee2=5, 2000000000),
                ?assertEqual(ok, aec_tx_pool:push(STx5)),
                ?assertEqual({ok, [STx3, STx5]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
 
                %% Order by nonce even if fee and gas price are higher
-               STx6 = signed_ct_call_tx(PK, _Nonce6=3,_Fee6=9,_GasPrice6=9),
+               STx6 = signed_ct_call_tx(PK, _Nonce6=3,_Fee6=9,_GasPrice6=9000000000),
                ?assertEqual(ok, aec_tx_pool:push(STx6)),
                ?assertEqual({ok, [STx3, STx5, STx6]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
 
