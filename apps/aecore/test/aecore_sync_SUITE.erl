@@ -144,7 +144,8 @@ init_per_group(TwoNodes, Config) when TwoNodes == two_nodes;
 init_per_group(three_nodes, Config) ->
     config({devs, [dev1, dev2, dev3]}, Config);
 init_per_group(one_blocked, Config) ->
-    Config1 = config({devs, [dev1, dev2]}, Config),
+    %% Use dev1 and dev3, since the group doesn't clean up properly TODO!
+    Config1 = config({devs, [dev1, dev3]}, Config),
     preblock_second(Config1),
     Config1;
 init_per_group(_Group, Config) ->
