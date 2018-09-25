@@ -52,7 +52,7 @@ all() ->
 
 groups() ->
     [
-     {contracts, [sequence],
+     {contracts, [],
       [
        spending_1,
        spending_2,
@@ -959,8 +959,20 @@ environment_contract(Config) ->
     {BHValue,_} = call_compute_func(NodeName, CPubkey, CPrivkey,
                                     EncodedContractPubkey,
                                     <<"block_hash">>, <<"(21)">>),
-    #{<<"value">> := BlockHash} = decode_data(<<"int">>, BHValue),
-    ct:pal("Block hash ~p\n", [BlockHash]),
+    #{<<"value">> := BlockHashValue} = decode_data(<<"int">>, BHValue),
+    {ok, 200, #{<<"hash">> := ExpectedBlockHash}} = get_key_block_at_height(21),
+    ct:pal("Block hash ~p\n", [BlockHashValue]),
+    ?assertEqual({key_block_hash, <<BlockHashValue:256/integer-unsigned>>},
+                 aec_base58c:decode(ExpectedBlockHash)),
+
+    %% Block hash. With value out of bounds
+    ct:pal("Calling block_hash\n"),
+    {BHValue1,_} = call_compute_func(NodeName, CPubkey, CPrivkey,
+                                    EncodedContractPubkey,
+                                    <<"block_hash">>, <<"(10000000)">>),
+    #{<<"value">> := BlockHashValue1} = decode_data(<<"int">>, BHValue1),
+    ct:pal("Block hash ~p\n", [BlockHashValue1]),
+    ?assertEqual(0, BlockHashValue1),
 
     %% Coinbase.
     ct:pal("Calling coinbase\n"),
@@ -1512,6 +1524,10 @@ get_top() ->
 get_key_blocks_current_height() ->
     Host = external_address(),
     http_request(Host, get, "key-blocks/current/height", []).
+
+get_key_block_at_height(Height) ->
+    Host = external_address(),
+    http_request(Host, get, "key-blocks/height/" ++ integer_to_list(Height), []).
 
 get_contract_bytecode(SourceCode) ->
     Host = internal_address(),

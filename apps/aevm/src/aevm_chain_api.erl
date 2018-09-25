@@ -32,6 +32,9 @@
 
 -callback get_height(State :: chain_state()) -> aec_blocks:height().
 
+-callback blockhash(N :: non_neg_integer(), State :: chain_state()) ->
+  aec_blocks:block_header_hash().
+
 %% -- Accounts --
 
 %% Execute a spend transaction from the contract account.

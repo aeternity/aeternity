@@ -104,7 +104,7 @@ tx_env(Round) ->
     %% Beneficiary is always 0
     Beneficiary = <<0:?BENEFICIARY_PUB_BYTES/unit:8>>,
     %% Block hash is always 0
-    PrevHash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
+    PrevKeyHash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
     %% TODO: Default value for offchain
     Difficulty = 0,
     %% TODO: The time should probably be set in channels as well
@@ -112,7 +112,7 @@ tx_env(Round) ->
     %% TODO: Proper consensus version should be set
     ConsensusVersion = ?PROTOCOL_VERSION,
     aetx_env:contract_env(Round, ConsensusVersion, Time,
-                          Beneficiary, Difficulty, PrevHash).
+                          Beneficiary, Difficulty, PrevKeyHash).
 
 get_call(ContractPubkey, CallerPubkey, Round, CallsTree) ->
     CallId = aect_call:id(CallerPubkey, Round, ContractPubkey),

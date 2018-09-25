@@ -12,6 +12,7 @@
 
 %% aevm_chain_api callbacks
 -export([ get_height/1,
+          blockhash/2,
           call_contract/6,
           get_balance/2,
           get_store/1,
@@ -34,7 +35,7 @@
           spend/3
         ]).
 
-
+-include_lib("apps/aecore/include/blocks.hrl").
 
 -record(state, { trees   :: aec_trees:trees()
                , tx_env  :: aetx_env:env()
@@ -76,6 +77,33 @@ get_trees(#state{ trees = Trees}) ->
 %% @doc Get the chain height from a state.
 get_height(#state{ tx_env = TxEnv }) ->
     aetx_env:height(TxEnv).
+
+%% @doc Get the key hash at height, in the current fork
+%%      NOTE: The check for the valid height is done before calling this
+%%            function.
+-spec blockhash(non_neg_integer(), chain_state()) -> aec_blocks:block_header_hash().
+blockhash(H, #state{ tx_env = TxEnv}) ->
+    case aetx_env:key_hash(TxEnv) of
+        <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> = Hash ->
+            %% For channels
+            Hash;
+        KeyHash ->
+            {ok, Header} = aec_chain:get_key_header_by_height(H),
+            {ok, Hash} = aec_headers:hash_header(Header),
+            %% Make sure that this is an ancestor
+            case aec_chain:find_common_ancestor(Hash, KeyHash) of
+                {ok, Hash} -> Hash;
+                {ok, _Other} -> traverse_to_key_hash(H, KeyHash)
+            end
+    end.
+
+traverse_to_key_hash(H, KeyHash) ->
+    {ok, Header} = aec_chain:get_header(KeyHash),
+    case aec_headers:height(Header) of
+        Height when Height =:= H -> KeyHash;
+        Height when Height =:= H + 1 -> aec_headers:prev_key_hash(Header);
+        _Height -> traverse_to_key_hash(H, aec_headers:prev_key_hash(Header))
+    end.
 
 %% @doc Get the balance of the contract account.
 -spec get_balance(aec_keys:pubkey(), chain_state()) -> non_neg_integer().

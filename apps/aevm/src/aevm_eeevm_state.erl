@@ -13,7 +13,7 @@
         , add_trace/2
         , add_callcreates/2
         , address/1
-        , blockhash/3
+        , blockhash/2
         , bloom/2
         , calldepth/1
         , call_stack/1
@@ -79,7 +79,7 @@ init(#{ env  := Env
       , exec := Exec
       , pre  := Pre} = Spec, Opts) ->
     Address = maps:get(address, Exec),
-    BlockHashFun = get_blockhash_fun(Opts, Env, Address),
+    BlockHashFun = get_blockhash_fun(Opts, Env),
     NoRecursion = maps:get(no_recursion, Opts, false),
 
     ChainState = maps:get(chainState, Env),
@@ -295,26 +295,43 @@ get_ext_code_blocks(#{} = Pre) ->
     maps:from_list(
       [{Address, C} || {Address, #{code := C}} <-maps:to_list(Pre)]).
 
-get_blockhash_fun(Opts, Env, H) ->
+get_blockhash_fun(Opts, Env) ->
+    GenesisHeight = aec_block_genesis:height(),
     case maps:get(blockhash, Opts, default) of
-        %% default -> fun(N,A) -> aevm_eeevm_env:get_block_hash(H,N,A) end;
-        %% sha3 ->
-        _ -> fun(N,_A) ->
-                        %% Because the data of the blockchain is not
-                        %% given, the opcode BLOCKHASH could not
-                        %% return the hashes of the corresponding
-                        %% blocks. Therefore we define the hash of
-                        %% block number n to be SHA3-256("n").
-                        CurrentNumber = maps:get(currentNumber, Env),
-                        if (N >= CurrentNumber) or (_A == 256) or (H==0) -> 0;
-                           CurrentNumber - 256 > N -> 0;
-                           true ->
-                                BinN = integer_to_binary(N),
-                                Hash = aec_hash:hash(evm, BinN),
-                                <<Val:256/integer-unsigned>> = Hash,
-                                Val
-                        end
-                end
+        default ->
+            fun(N, State) ->
+                    CurrentNumber = maps:get(currentNumber, Env),
+                    if
+                        N < GenesisHeight -> 0;
+                        N >= CurrentNumber -> 0;
+                        CurrentNumber - 256 > N -> 0;
+                        true ->
+                            ChainState = chain_state(State),
+                            ChainAPI = chain_api(State),
+                            Hash = ChainAPI:blockhash(N, ChainState),
+                            <<Val:256/integer-unsigned>> = Hash,
+                            Val
+                    end
+            end;
+        sha3 ->
+            fun(N,_A) ->
+                    %% Because the data of the blockchain is not
+                    %% given, the opcode BLOCKHASH could not
+                    %% return the hashes of the corresponding
+                    %% blocks. Therefore we define the hash of
+                    %% block number n to be SHA3-256("n").
+                    CurrentNumber = maps:get(currentNumber, Env),
+                    if
+                        N < GenesisHeight -> 0;
+                        N >= CurrentNumber -> 0;
+                        CurrentNumber - 256 > N -> 0;
+                        true ->
+                            BinN = integer_to_binary(N),
+                            Hash = aec_hash:hash(evm, BinN),
+                            <<Val:256/integer-unsigned>> = Hash,
+                            Val
+                    end
+            end
     end.
 
 
@@ -329,7 +346,7 @@ accountbalance(Address, State) ->
     PubKey = <<Address:256>>,
     Chain:get_balance(PubKey, ChainState).
 address(State)     -> maps:get(address, State).
-blockhash(N,A,State) -> (maps:get(block_hash_fun, State))(N,A).
+blockhash(N,State) -> (maps:get(block_hash_fun, State))(N,State).
 calldepth(State) -> length(call_stack(State)).
 call_stack(State) -> maps:get(call_stack, State).
 caller(State)    -> maps:get(caller, State).
