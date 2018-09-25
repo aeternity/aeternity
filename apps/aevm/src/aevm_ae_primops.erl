@@ -49,14 +49,39 @@ call(Value, Data, State) ->
     end.
 
 call_(Value, Data, StateIn) ->
-    ChainIn = #chain{api = aevm_eeevm_state:chain_api(StateIn),
-                     state = aevm_eeevm_state:chain_state(StateIn)},
-    try call_primop(get_primop(Data), Value, Data, ChainIn) of
-        {ok, ReturnValue, ChainStateOut} ->
+    Gas = aevm_eeevm_state:gas(StateIn),
+    try
+        PrimOp = get_primop(Data),
+        BaseCost = aec_governance:primop_base_gas_cost(PrimOp),
+        case BaseCost =< Gas of
+            false ->
+                {error, ?AEVM_PRIMOP_ERR_REASON_OOG({base, PrimOp}, BaseCost, StateIn)};
+            true ->
+                ChainIn = #chain{api = aevm_eeevm_state:chain_api(StateIn),
+                                 state = aevm_eeevm_state:chain_state(StateIn)},
+                case call_primop(PrimOp, Value, Data, ChainIn) of
+                    {error, _} = Err ->
+                        Err;
+                    {ok, DynamicCost, Cb} ->
+                        case (BaseCost + DynamicCost) =< Gas of
+                            false ->
+                                {error, ?AEVM_PRIMOP_ERR_REASON_OOG({dyn, PrimOp}, DynamicCost, StateIn)};
+                            true ->
+                                case Cb() of
+                                    {error, _} = Err ->
+                                        Err;
+                                    {ok, CbReturnValue, CbChainStateOut} ->
+                                        {ok, CbReturnValue, BaseCost + DynamicCost, CbChainStateOut}
+                                end
+                        end
+                end
+        end
+    of
+        {ok, ReturnValue, GasSpent, ChainStateOut} ->
             StateOut = aevm_eeevm_state:set_chain_state(ChainStateOut, StateIn),
-            {ok, ReturnValue, 0, StateOut};
-        {error, _} = Err ->
-            Err
+            {ok, ReturnValue, GasSpent, StateOut};
+        {error, _} = OuterErr ->
+            OuterErr
     catch _T:_Err ->
             ?TEST_LOG("Primop illegal call ~p:~p:~p~n~p:~p(~p, ~p, State)",
                       [_T, _Err,
@@ -85,7 +110,7 @@ spend_call(Value, Data, State) ->
     RecipientId = aec_id:create(account, <<Recipient:256>>),
     Callback = fun(API, ChainState) ->
                        API:spend(RecipientId, Value, ChainState) end,
-    cast_chain(Callback, State).
+    no_dynamic_cost(fun() -> cast_chain(Callback, State) end).
 
 %% ------------------------------------------------------------------
 %% Oracle operations.
@@ -137,18 +162,25 @@ call_chain(Callback, State) ->
 
 %% Sophia representation of aeo_oracles:ttl().
 oracle_ttl_t() ->
-    {variant_t, [{delta, [word]}, {block, [word]}]}.
+    {variant_t, [{delta, [word]}, {block, [word]}]}. %% `word` decoded as non-negative integer.
 
 oracle_call_register(_Value, Data, State) ->
     ArgumentTypes = [word, word, word, oracle_ttl_t(), typerep, typerep],
     [Acct, Sign, QFee, TTL, QType, RType] = get_args(ArgumentTypes, Data),
-    Callback =
-        fun(API, ChainState) ->
-            case API:oracle_register(<<Acct:256>>, <<Sign:256>>, QFee, TTL, QType, RType, ChainState) of
-                {ok, <<OKey:256>>, ChainState1} -> {ok, OKey, ChainState1};
-                {error, _} = Err                -> Err
-            end end,
-    call_chain(Callback, State).
+    case chain_ttl_delta(TTL, State) of
+        {error, _} = Err -> Err;
+        {ok, DeltaTTL = {delta, _}} ->
+            Callback =
+                fun(API, ChainState) ->
+                    case API:oracle_register(<<Acct:256>>, <<Sign:256>>, QFee, TTL, QType, RType, ChainState) of
+                        {ok, <<OKey:256>>, ChainState1} -> {ok, OKey, ChainState1};
+                        {error, _} = Err                -> Err
+                    end
+                end,
+            DynCost = state_gas_cost(oracle_registration, DeltaTTL),
+            ?TEST_LOG("~s computed gas cost ~p from relative TTL ~p", [?FUNCTION_NAME, DynCost, DeltaTTL]),
+            {ok, DynCost, fun() -> call_chain(Callback, State) end}
+    end.
 
 oracle_call_query(Value, Data, State) ->
     [Oracle]  = get_args([word], Data),  %% We need the oracle address before we can decode the query
@@ -157,12 +189,20 @@ oracle_call_query(Value, Data, State) ->
         {ok, QueryType} ->
             ArgumentTypes = [word, QueryType, oracle_ttl_t(), oracle_ttl_t()],
             [_Oracle, Q, QTTL, RTTL] = get_args(ArgumentTypes, Data),
-            Callback = fun(API, ChainState) ->
-                case API:oracle_query(OracleKey, Q, _QFee=Value, QTTL, RTTL, ChainState) of
-                    {ok, <<QKey:256>>, ChainState1} -> {ok, QKey, ChainState1};
-                    {error, _} = Err                -> Err
-                end end,
-            call_chain(Callback, State);
+            case chain_ttl_delta(QTTL, State) of
+                {error, _} = Err -> Err;
+                {ok, DeltaQTTL = {delta, _}} ->
+                    Callback =
+                        fun(API, ChainState) ->
+                            case API:oracle_query(OracleKey, Q, _QFee=Value, QTTL, RTTL, ChainState) of
+                                {ok, <<QKey:256>>, ChainState1} -> {ok, QKey, ChainState1};
+                                {error, _} = Err                -> Err
+                            end
+                        end,
+                    DynCost = state_gas_cost(oracle_query, DeltaQTTL),
+                    ?TEST_LOG("~s computed gas cost ~p from relative TTL ~p", [?FUNCTION_NAME, DynCost, DeltaQTTL]),
+                    {ok, DynCost, fun() -> call_chain(Callback, State) end}
+            end;
         {error, _} = Err -> Err
     end.
 
@@ -170,43 +210,64 @@ oracle_call_query(Value, Data, State) ->
 oracle_call_respond(_Value, Data, State) ->
     [Oracle, Query] = get_args([word, word], Data),
     OracleKey = <<Oracle:256>>,
-    case call_chain1(fun(API, ChainState) -> API:oracle_response_format(OracleKey, ChainState) end, State) of
-        {ok, RType} ->
-            ArgumentTypes = [word, word, word, RType],
-            [_, _, Sign, R] = get_args(ArgumentTypes, Data),
-            QueryKey = <<Query:256>>,
-            Callback = fun(API, ChainState) -> API:oracle_respond(OracleKey, QueryKey, Sign, R, ChainState) end,
-            cast_chain(Callback, State);
-        {error, _} = Err -> Err
+    QueryKey = <<Query:256>>,
+    case call_chain1(fun(API, ChainState) -> API:oracle_query_response_ttl(OracleKey, QueryKey, ChainState) end, State) of
+        {error, _} = Err -> Err;
+        {ok, RTTL} ->
+            case chain_ttl_delta(RTTL, State) of
+                {error, _} = Err -> Err;
+                {ok, DeltaRTTL = {delta, _}} ->
+                    Callback2 =
+                        fun() ->
+                            case call_chain1(fun(API, ChainState) ->
+                                API:oracle_response_format(OracleKey, ChainState) end, State) of
+                                {ok, RType} ->
+                                    ArgumentTypes = [word, word, word, RType],
+                                    [_, _, Sign, R] = get_args(ArgumentTypes, Data),
+                                    Callback = fun(API, ChainState) ->
+                                        API:oracle_respond(OracleKey, QueryKey, Sign, R, ChainState) end,
+                                    cast_chain(Callback, State);
+                                {error, _} = Err -> Err
+                            end
+                        end,
+                    DynCost = state_gas_cost(oracle_response, DeltaRTTL),
+                    ?TEST_LOG("~s computed gas cost ~p from relative TTL ~p", [?FUNCTION_NAME, DynCost, DeltaRTTL]),
+                    {ok, DynCost, Callback2}
+            end
     end.
-
 
 oracle_call_extend(_Value, Data, State) ->
     ArgumentTypes = [word, word, oracle_ttl_t()],
     [Oracle, Sign, TTL] = get_args(ArgumentTypes, Data),
-    Callback = fun(API, ChainState) -> API:oracle_extend(<<Oracle:256>>, Sign, TTL, ChainState) end,
-    cast_chain(Callback, State).
+    case chain_ttl_delta(TTL, State) of
+        {error, _} = Err -> Err;
+        {ok, DeltaTTL = {delta, _}} ->
+            Callback = fun(API, ChainState) -> API:oracle_extend(<<Oracle:256>>, Sign, TTL, ChainState) end,
+            DynCost = state_gas_cost(oracle_extension, DeltaTTL),
+            ?TEST_LOG("~s computed gas cost ~p from relative TTL ~p", [?FUNCTION_NAME, DynCost, DeltaTTL]),
+            {ok, DynCost, fun() -> cast_chain(Callback, State) end}
+    end.
 
 
 oracle_call_get_answer(_Value, Data, State) ->
     ArgumentTypes = [word, word],
     [O, Q] = get_args(ArgumentTypes, Data),
     Callback = fun(API, ChainState) -> API:oracle_get_answer(<<O:256>>, <<Q:256>>, ChainState) end,
-    query_chain(Callback, State).
+    no_dynamic_cost(fun() -> query_chain(Callback, State) end).
 
 
 oracle_call_get_question(_Value, Data, State) ->
     ArgumentTypes = [word, word],
     [O, Q] = get_args(ArgumentTypes, Data),
     Callback = fun(API, ChainState) -> API:oracle_get_question(<<O:256>>, <<Q:256>>, ChainState) end,
-    query_chain(Callback, State).
+    no_dynamic_cost(fun() -> query_chain(Callback, State) end).
 
 
 oracle_call_query_fee(_Value, Data, State) ->
     ArgumentTypes = [word],
     [Oracle] = get_args(ArgumentTypes, Data),
     Callback = fun(API, ChainState) -> API:oracle_query_fee(<<Oracle:256>>, ChainState) end,
-    query_chain(Callback, State).
+    no_dynamic_cost(fun() -> query_chain(Callback, State) end).
 
 %% ------------------------------------------------------------------
 %% AENS operations.
@@ -228,27 +289,27 @@ aens_call(PrimOp, _, _, _) ->
 aens_call_resolve(Data, State) ->
     [Name, Key, Type] = get_args([string, string, typerep], Data),
     Callback = fun(API, ChainState) -> API:aens_resolve(Name, Key, Type, ChainState) end,
-    query_chain(Callback, State).
+    no_dynamic_cost(fun() -> query_chain(Callback, State) end).
 
 aens_call_preclaim(Data, State) ->
     [Addr, CHash, Sign] = get_args([word, word, word], Data),
     Callback = fun(API, ChainState) -> API:aens_preclaim(<<Addr:256>>, <<CHash:256>>, <<Sign:256>>, ChainState) end,
-    cast_chain(Callback, State).
+    no_dynamic_cost(fun() -> cast_chain(Callback, State) end).
 
 aens_call_claim(Data, State) ->
     [Addr, Name, Salt, Sign] = get_args([word, string, word, word], Data),
     Callback = fun(API, ChainState) -> API:aens_claim(<<Addr:256>>, Name, Salt, <<Sign:256>>, ChainState) end,
-    cast_chain(Callback, State).
+    no_dynamic_cost(fun() -> cast_chain(Callback, State) end).
 
 aens_call_transfer(Data, State) ->
     [From, To, Hash, Sign] = get_args([word, word, word, word], Data),
     Callback = fun(API, ChainState) -> API:aens_transfer(<<From:256>>, <<To:256>>, <<Hash:256>>, <<Sign:256>>, ChainState) end,
-    cast_chain(Callback, State).
+    no_dynamic_cost(fun() -> cast_chain(Callback, State) end).
 
 aens_call_revoke(Data, State) ->
     [Addr, Hash, Sign] = get_args([word, word, word], Data),
     Callback = fun(API, ChainState) -> API:aens_revoke(<<Addr:256>>, <<Hash:256>>, <<Sign:256>>, ChainState) end,
-    cast_chain(Callback, State).
+    no_dynamic_cost(fun() -> cast_chain(Callback, State) end).
 
 %% ------------------------------------------------------------------
 %% Internal functions
@@ -264,3 +325,28 @@ get_args(Types, Data) ->
     [_ | Args] = tuple_to_list(Val),
     Args.
 
+no_dynamic_cost(Cb) when is_function(Cb, 0) ->
+    {ok, _DynCost=0, Cb}.
+
+chain_ttl_delta(TTL, State) ->
+    ChainHeight = call_chain1(fun(API, ChainState) -> API:get_height(ChainState) end, State),
+    ttl_delta(ChainHeight, TTL).
+
+ttl_delta(_, {delta, D}) when
+      D >= 0 -> %% Guaranteed by caller.
+    {ok, {delta, D}};
+ttl_delta(CurrHeight, {block, H}) when
+      CurrHeight >= 0, %% Guaranteed by chain API.
+      H >= 0 -> %% Guaranteed by caller.
+    D = H - CurrHeight,
+    case D >= 0 of
+        true ->
+            {ok, {delta, D}};
+        false ->
+            {error, too_low_abs_ttl}
+    end.
+
+state_gas_cost(Tag, {delta, TTL}) ->
+    aec_governance_utils:state_gas_cost(
+      aec_governance:state_gas_cost_per_block(Tag),
+      TTL).
