@@ -39,13 +39,11 @@
 
 %=== GENERIC API FUNCTIONS =====================================================
 
-start(Backends, #{data_dir := _DataDir,
-                  temp_dir := _TempDir} = EnvMap) ->
+start(Backends, EnvMap) ->
     {ok, _} = application:ensure_all_started(hackney),
     gen_server:start({local, ?SERVER}, ?MODULE, [Backends, EnvMap], []).
 
-start_link(Backends, #{data_dir := _DataDir,
-                  temp_dir := _TempDir} = EnvMap) ->
+start_link(Backends, EnvMap) ->
     {ok, _} = application:ensure_all_started(hackney),
     gen_server:start_link({local, ?SERVER}, ?MODULE, [Backends, EnvMap], []).
 
