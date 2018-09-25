@@ -29,6 +29,7 @@
          counter_contract/1,
          dutch_auction_contract/1,
          environment_contract/1,
+         erc20_token_contract/1,
          factorial_contract/1,
          fundme_contract/1,
          identity_contract/1,
@@ -67,6 +68,7 @@ groups() ->
        spend_test_contract,
        dutch_auction_contract,
        fundme_contract,
+       erc20_token_contract,
        null                                     %This allows to end with ,
       ]}
     ].
@@ -1224,6 +1226,104 @@ fundme_contract(Config) ->
     BBal3 = get_balance(BPubkey),
 
     ct:pal("BBalance ~p, ~p, ~p, ~p\n", [BBal0,BBal1,BBal2,BBal3]),
+
+    ok.
+
+%% erc20_token_contract(Config)
+
+erc20_token_contract(Config) ->
+    NodeName = proplists:get_value(node_name, Config),
+    %% Get account information.
+    #{acc_a := #{pub_key := APubkey,
+                 priv_key := APrivkey},
+      acc_b := #{pub_key := BPubkey,
+                 priv_key := BPrivkey},
+      acc_c := #{pub_key := CPubkey,
+                 priv_key := CPrivkey},
+      acc_d := #{pub_key := DPubkey,
+                 priv_key := DPrivkey}} = proplists:get_value(accounts, Config),
+
+    %% Make sure accounts have enough tokens.
+    _ABal0 = ensure_balance(APubkey, 500000),
+    BBal0 = ensure_balance(BPubkey, 500000),
+    _CBal0 = ensure_balance(CPubkey, 500000),
+    _DBal0 = ensure_balance(DPubkey, 500000),
+    {ok,[_]} = aecore_suite_utils:mine_key_blocks(NodeName, 1),
+
+    ContractString = aeso_test_utils:read_contract("erc20_token"),
+    aeso_compiler:from_string(ContractString, []),
+
+    %% Compile test contract "erc20_token.aes"
+    Code = compile_test_contract("erc20_token"),
+
+    %% Default values, 100000, 10, "Token Name", "TKN".
+    Total = 100000,
+    Decimals = 10,
+    Name = <<"Token Name">>,
+    Symbol = <<"TKN">>,
+
+    %% Initialise contract owned by Alice.
+    InitArg = args_to_binary([Total,Decimals,{string,Name},{string,Symbol}]),
+    {EncodedContractPubkey,_,_} =
+        create_compute_contract(NodeName, APubkey, APrivkey, Code, InitArg),
+
+    %% Call funcion and decode value.
+    CallDec = fun (Pubkey, Privkey, Func, Arg, Type) ->
+                      call_func_decode(NodeName, Pubkey, Privkey,
+                                       EncodedContractPubkey,
+                                       Func, Arg, Type)
+              end,
+
+    %% Test state record fields.
+    Total = CallDec(APubkey, APrivkey, <<"totalSupply">>, <<"()">>, <<"int">>),
+    Decimals = CallDec(APubkey, APrivkey, <<"decimals">>, <<"()">>, <<"int">>),
+    Name = CallDec(APubkey, APrivkey, <<"name">>, <<"()">>, <<"string">>),
+    Symbol = CallDec(APubkey, APrivkey, <<"symbol">>, <<"()">>, <<"string">>),
+
+    %% Setup balances for Bert to 20000 and Carl to 25000 and check balances.
+    call_compute_func(NodeName, APubkey, APrivkey, EncodedContractPubkey,
+                      <<"transfer">>, args_to_binary([BPubkey,20000])),
+    call_compute_func(NodeName, APubkey, APrivkey, EncodedContractPubkey,
+                      <<"transfer">>, args_to_binary([CPubkey,25000])),
+    55000 = CallDec(APubkey, APrivkey, <<"balanceOf">>,
+                       args_to_binary([APubkey]), <<"int">>),
+    20000 = CallDec(APubkey, APrivkey, <<"balanceOf">>,
+                       args_to_binary([BPubkey]), <<"int">>),
+    25000 = CallDec(APubkey, APrivkey, <<"balanceOf">>,
+                       args_to_binary([CPubkey]), <<"int">>),
+    0 = CallDec(APubkey, APrivkey, <<"balanceOf">>,
+                args_to_binary([DPubkey]), <<"int">>),
+
+    %% Bert and Carl approve transfering 15000 to Alice.
+    call_compute_func(NodeName, BPubkey, BPrivkey, EncodedContractPubkey,
+                      <<"approve">>, args_to_binary([APubkey,15000])),
+    call_compute_func(NodeName, CPubkey, CPrivkey, EncodedContractPubkey,
+                      <<"approve">>, args_to_binary([APubkey,15000])),
+
+    %% Alice transfers 10000 from Bert and 15000 Carl to Diana.
+    call_compute_func(NodeName, APubkey, APrivkey, EncodedContractPubkey,
+                      <<"transferFrom">>,
+                      args_to_binary([BPubkey,DPubkey,10000])),
+    call_compute_func(NodeName, APubkey, APrivkey, EncodedContractPubkey,
+                      <<"transferFrom">>,
+                      args_to_binary([CPubkey,DPubkey,15000])),
+
+    %% Check the balances.
+    10000 = CallDec(APubkey, APrivkey, <<"balanceOf">>,
+                    args_to_binary([BPubkey]), <<"int">>),
+    10000 = CallDec(APubkey, APrivkey, <<"balanceOf">>,
+                    args_to_binary([CPubkey]), <<"int">>),
+    25000 = CallDec(APubkey, APrivkey, <<"balanceOf">>,
+                    args_to_binary([DPubkey]), <<"int">>),
+
+    %% Print transfer and approval logs for final visual check.
+    Transfer2 = CallDec(APubkey, APrivkey, <<"getTransferLog">>, <<"()">>,
+                       <<"list((address,address,int))">>),
+    Approval2 = CallDec(APubkey, APrivkey, <<"getApprovalLog">>, <<"()">>,
+                       <<"list((address,address,int))">>),
+
+    ct:pal("Transfer2 ~p\n", [Transfer2]),
+    ct:pal("Approval2 ~p\n", [Approval2]),
 
     ok.
 
