@@ -52,9 +52,9 @@ call_(Value, Data, StateIn) ->
     ChainIn = #chain{api = aevm_eeevm_state:chain_api(StateIn),
                      state = aevm_eeevm_state:chain_state(StateIn)},
     try call_primop(get_primop(Data), Value, Data, ChainIn) of
-        {ok, ReturnValue, GasSpent, ChainStateOut} ->
+        {ok, ReturnValue, ChainStateOut} ->
             StateOut = aevm_eeevm_state:set_chain_state(ChainStateOut, StateIn),
-            {ok, ReturnValue, GasSpent, StateOut};
+            {ok, ReturnValue, 0, StateOut};
         {error, _} = Err ->
             Err
     catch _T:_Err ->
@@ -115,7 +115,7 @@ query_chain(Callback, State) ->
     case call_chain1(Callback, State) of
         {ok, Res} ->
             Return = {ok, aeso_data:to_binary(Res)},
-            {ok, Return, 0, State#chain.state};
+            {ok, Return, State#chain.state};
         {error, _} = Err -> Err
     end.
 
@@ -123,17 +123,15 @@ cast_chain(Callback, State) ->
     case call_chain1(Callback, State) of
         {ok, ChainState1} ->
             UnitReturn = {ok, <<0:256>>},
-            GasSpent   = 0,         %% Already costs lots of gas
-            {ok, UnitReturn, GasSpent, ChainState1};
+            {ok, UnitReturn, ChainState1};
         {error, _} = Err -> Err
     end.
 
 call_chain(Callback, State) ->
     case call_chain1(Callback, State) of
         {ok, Retval, ChainState1} ->
-            GasSpent   = 0,         %% Already costs lots of gas
             Return     = {ok, aeso_data:to_binary(Retval)},
-            {ok, Return, GasSpent, ChainState1};
+            {ok, Return, ChainState1};
         {error, _} = Err -> Err
     end.
 
