@@ -7,7 +7,6 @@
 
 %% common_test exports
 -export([ all/0
-        , end_per_testcase/2
         , groups/0
         ]).
 
@@ -50,36 +49,18 @@ groups() ->
 %% Uses aect_test_utils to set up the chain, but after the setup everything is
 %% done through the aevm_chain_api.
 setup_chain() ->
-    meck:new(aec_chain, [passthrough]),
-    meck:expect(aec_chain, get_key_block_by_height, 1,
-                fun (_) -> {ok, none} end),
-    ok = meck:new(aec_blocks, [passthrough]),
-    meck:expect(aec_blocks, beneficiary, 1,
-                fun (none) -> ?BENEFICIARY_PUBKEY;
-                    (Block) ->
-                        aec_headers:beneficiary(aec_blocks:to_header(Block))
-                end),
     S0              = aect_test_utils:new_state(),
     {Account1, S1}  = aect_test_utils:setup_new_account(S0),
     {Account2, S2}  = aect_test_utils:setup_new_account(S1),
     {Contract1, S3} = create_contract(Account1, S2),
     {Contract2, S4} = create_contract(Account2, S3),
     Trees = aect_test_utils:trees(S4),
-    InitS = aec_vm_chain:new_state(Trees, 1, Contract1),
+    TxEnv = aetx_env:contract_env(_Height = 1, ?PROTOCOL_VERSION,
+                                  aeu_time:now_in_msecs(),
+                                  ?BENEFICIARY_PUBKEY, _Difficulty = 0
+                                 ),
+    InitS = aec_vm_chain:new_state(Trees, TxEnv, Contract1),
     {[Account1, Account2, Contract1, Contract2], InitS}.
-
-end_per_testcase(height, _) ->
-    teardown_chain();
-end_per_testcase(spend, _) ->
-    teardown_chain();
-end_per_testcase(contracts, _) ->
-    teardown_chain();
-end_per_testcase(_, _) -> ok.
-
-teardown_chain() ->
-    meck:unload(aec_blocks),
-    meck:unload(aec_chain),
-    ok.
 
 create_contract(Owner, S) ->
     OwnerPrivKey = aect_test_utils:priv_key(Owner, S),
@@ -99,9 +80,9 @@ sign_and_apply_transaction(Tx, PrivKey, S1) ->
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
     Height   = 1,
+    Env      = aetx_env:tx_env(Height),
     {ok, AcceptedTxs, Trees1} =
-        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees,
-                                                  Height, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
     S2       = aect_test_utils:set_trees(Trees1, S1),
     {SignedTx, AcceptedTxs, S2}.
 

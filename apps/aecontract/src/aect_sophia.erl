@@ -8,6 +8,7 @@
 -module(aect_sophia).
 
 -include("aecontract.hrl").
+-include_lib("apps/aecore/include/blocks.hrl").
 
 -export([ compile/2
         , create_call/3
@@ -49,53 +50,29 @@ parse_options(<<_:8, Rest/binary>>, Acc) ->
     parse_options(Rest, Acc);
 parse_options(<<>>, Acc) -> Acc.
 
-
-
--spec simple_call(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
-simple_call(Code, Function, Argument) ->
+-spec on_chain_call(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
+on_chain_call(ContractKey, Function, Argument) ->
+    {Block, Trees} = aec_chain:top_block_with_state(),
+    ContractsTree  = aec_trees:contracts(Trees),
+    Contract       = aect_state_tree:get_contract(ContractKey, ContractsTree),
+    Code           = aect_contracts:code(Contract),
     case create_call(Code, Function, Argument) of
         {error, E} -> {error, E};
         CallData ->
-            %% TODO: proper setup of chain state! Tracked as #160281213
-            Owner = <<123456:32/unit:8>>,
-            {Block, Trees} = aec_chain:top_block_with_state(),
-            BlockHeight = aec_blocks:height(Block) + 1,
-            Amount = 0,
-            VmVersion = ?AEVM_01_Sophia_01,
-            Deposit = 0,
-            Contract = aect_contracts:new(Owner, 1, VmVersion, Code, Deposit),
-            DummyPubKey = aect_contracts:pubkey(Contract),
-            Trees1 = insert_contract(Contract, Trees),
-            ChainState =
-                aec_vm_chain:new_state(Trees1, BlockHeight, DummyPubKey),
-            Spec = #{ code => Code
-                    , address => 1 %% Address 0 is for primcals.
-                    , caller => 0
-                    , data => CallData
-                    , gas => 1000000
-                    , gasPrice => 1
-                    , origin => 0
-                    , value => Amount
-                    , currentCoinbase => 0
-                    , currentDifficulty => 1
-                    , currentGasLimit => 1000000
-                    , currentNumber => 1
-                    , currentTimestamp => 1
-                    , chainAPI => aec_vm_chain
-                    , chainState => ChainState
-                    , vm_version => VmVersion
-                    },
-            case aect_evm:execute_call(Spec, true) of
-                {ok, #{ out := Out } = _RetState} ->
-                    {ok, aeu_hex:hexstring_encode(Out)};
-                E -> {error, list_to_binary(io_lib:format("~p", [E]))}
-            end
+            EncodedCode = aeu_hex:hexstring_encode(Code),
+            VMVersion   = ?AEVM_01_Sophia_01,
+            aect_evm:call_common(CallData, ContractKey, EncodedCode,
+                                 Block, Trees, VMVersion)
     end.
 
-insert_contract(Contract, Trees) ->
-    CTrees = aec_trees:contracts(Trees),
-    CTrees1 = aect_state_tree:insert_contract(Contract, CTrees),
-    aec_trees:set_contracts(Trees, CTrees1).
+-spec simple_call(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
+simple_call(EncodedCode, Function, Argument) ->
+    Code = aeu_hex:hexstring_decode(EncodedCode),
+    case create_call(Code, Function, Argument) of
+        {error, E} -> {error, E};
+        CallData ->
+            aect_evm:simple_call_common(EncodedCode, CallData, ?AEVM_01_Sophia_01)
+    end.
 
 -spec encode_call_data(binary(), binary(), binary()) ->
                               {ok, binary()} | {error, binary()}.
@@ -179,44 +156,4 @@ create_call(Contract, Function, Argument) ->
         {error, Error} ->
             {error, list_to_binary(io_lib:format("~p", [Error]))};
         _ -> Res
-    end.
-
-
--spec on_chain_call(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
-on_chain_call(ContractKey, Function, Argument) ->
-    {Block, Trees} = aec_chain:top_block_with_state(),
-    ContractsTree  = aec_trees:contracts(Trees),
-    Contract       = aect_state_tree:get_contract(ContractKey, ContractsTree),
-    Code           = aect_contracts:code(Contract),
-    <<Address:256>> = ContractKey,
-    case create_call(Code, Function, Argument) of
-        {error, E} -> {error, E};
-        CallData ->
-            BlockHeight = aec_blocks:height(Block),
-            Amount = 0,
-            VmVersion = ?AEVM_01_Sophia_01,
-            ChainState  = aec_vm_chain:new_state(Trees, BlockHeight, ContractKey),
-            Spec = #{ code => aeu_hex:hexstring_encode(Code)
-                    , address => Address
-                    , caller => 0
-                    , data => CallData
-                    , gas => 100000000000000000
-                    , gasPrice => 1
-                    , origin => 0
-                    , value => Amount
-                      %% TODO:
-                    , currentCoinbase => 1
-                    , currentDifficulty => 1
-                    , currentGasLimit => 1000000
-                    , currentNumber => 1
-                    , currentTimestamp => 1
-                    , chainAPI => aec_vm_chain
-                    , chainState => ChainState
-                    , vm_version => VmVersion
-                    },
-            case aect_evm:execute_call(Spec, true) of
-                {ok, #{ out := Out } = _RetState} ->
-                    {ok, aeu_hex:hexstring_encode(Out)};
-                E -> {error, list_to_binary(io_lib:format("~p", [E]))}
-            end
     end.

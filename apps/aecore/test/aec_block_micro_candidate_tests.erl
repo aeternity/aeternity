@@ -93,9 +93,9 @@ block_extension_test_() ->
           %% actual contract that would make this unit test
           %% unnecessary complex.
           meck:expect(aec_trees, apply_txs_on_state_trees,
-                      fun(STxs, Trees, Height, Vsn) ->
+                      fun(STxs, Trees, Env) ->
                               {ok, STxs, [], NewTrees} =
-                                  meck:passthrough([STxs, Trees, Height, Vsn]),
+                                  meck:passthrough([STxs, Trees, Env]),
                               case lists:member(STx, STxs) of
                                   false -> {ok, [], STxs, NewTrees};
                                   true ->

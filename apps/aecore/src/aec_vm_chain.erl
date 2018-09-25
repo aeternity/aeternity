@@ -36,7 +36,7 @@
 
 
 -record(state, { trees   :: aec_trees:trees()
-               , height  :: aec_blocks:height()
+               , tx_env  :: aetx_env:env()
                , account :: aec_keys:pubkey()            %% the contract account
                }).
 
@@ -60,10 +60,10 @@
 %% -- API --------------------------------------------------------------------
 
 %% @doc Create a chain state.
--spec new_state(aec_trees:trees(), aec_blocks:height(), aec_keys:pubkey()) -> chain_state().
-new_state(Trees, Height, ContractAccount) ->
+-spec new_state(aec_trees:trees(), aetx_env:env(), aec_keys:pubkey()) -> chain_state().
+new_state(Trees, Env, ContractAccount) ->
     #state{ trees   = Trees,
-            height  = Height,
+            tx_env  = Env,
             account = ContractAccount
           }.
 
@@ -73,8 +73,8 @@ get_trees(#state{ trees = Trees}) ->
     Trees.
 
 %% @doc Get the chain height from a state.
-get_height(#state{ height = Height }) ->
-    Height.
+get_height(#state{ tx_env = TxEnv }) ->
+    aetx_env:height(TxEnv).
 
 %% @doc Get the balance of the contract account.
 -spec get_balance(aec_keys:pubkey(), chain_state()) -> non_neg_integer().
@@ -422,9 +422,7 @@ do_set_store(Store, PubKey, Trees) ->
         end,
     aect_state_tree:enter_contract(NewContract, ContractsTree).
 
-apply_transaction(Tx, #state{ trees = Trees, height = Height } = State) ->
-    ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
-    Env = aetx_env:contract_env(Height, ConsensusVersion),
+apply_transaction(Tx, #state{ trees = Trees, tx_env = Env } = State) ->
     case aetx:check(Tx, Trees, Env) of
         {ok, Trees1} ->
             {ok, Trees2} = aetx:process(Tx, Trees1, Env),

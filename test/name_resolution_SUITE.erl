@@ -16,7 +16,7 @@
         , transfer_name_to_named_account/1
         ]).
 
--import(aec_block_micro_candidate, [apply_block_txs_strict/4
+-import(aec_block_micro_candidate, [apply_block_txs_strict/3
                                    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -63,8 +63,8 @@ balance(Pubkey, #{trees := Trees}) ->
 
 apply_txs([Tx|Left], #{trees := Trees, height := Height} = S) ->
     STx = sign(Tx, S),
-    case apply_block_txs_strict([STx], Trees,
-                                Height, ?PROTOCOL_VERSION) of
+    Env = aetx_env:tx_env(Height),
+    case apply_block_txs_strict([STx], Trees, Env) of
         {ok, [STx], Trees1} ->
             apply_txs(Left, S#{trees => Trees1});
         {error, What} ->

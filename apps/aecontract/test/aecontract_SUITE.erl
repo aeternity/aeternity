@@ -7,9 +7,7 @@
 
 %% common_test exports
 -export([ all/0
-        , end_per_testcase/2
         , groups/0
-        , init_per_testcase/2
         ]).
 
 %% test case exports
@@ -182,14 +180,6 @@ groups() ->
                           ]}
     ].
 
-init_per_testcase(_, Cfg) ->
-    mock(),
-    Cfg.
-
-end_per_testcase(_, Cfg) ->
-    unmock(),
-    Cfg.
-
 %%%===================================================================
 %%% Create contract
 %%%===================================================================
@@ -199,7 +189,7 @@ create_contract_negative(_Cfg) ->
     Trees        = aect_test_utils:trees(S1),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
     CurrHeight   = 1,
-    Env          = aetx_env:tx_env(CurrHeight, ?PROTOCOL_VERSION),
+    Env          = aetx_env:tx_env(CurrHeight),
 
     %% Test creating a bogus account
     {BadPubKey, BadS} = aect_test_utils:setup_new_account(aect_test_utils:new_state()),
@@ -333,8 +323,10 @@ sign_and_apply_transaction(Tx, PrivKey, S1) ->
 sign_and_apply_transaction(Tx, PrivKey, S1, Height) ->
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
+    Env0     = aetx_env:tx_env(Height),
+    Env      = aetx_env:set_beneficiary(Env0, ?BENEFICIARY_PUBKEY),
     {ok, AcceptedTxs, Trees1} =
-        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Height, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
     S2       = aect_test_utils:set_trees(Trees1, S1),
     case AcceptedTxs of
         [SignedTx] -> {ok, S2};
@@ -347,9 +339,10 @@ sign_and_apply_transaction_strict(Tx, PrivKey, S1) ->
 sign_and_apply_transaction_strict(Tx, PrivKey, S1, Height) ->
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
-    ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
+    Env0     = aetx_env:tx_env(Height),
+    Env      = aetx_env:set_beneficiary(Env0, ?BENEFICIARY_PUBKEY),
     {ok, AcceptedTxs, Trees1} =
-        aec_block_micro_candidate:apply_block_txs_strict([SignedTx], Trees, Height, ConsensusVersion),
+        aec_block_micro_candidate:apply_block_txs_strict([SignedTx], Trees, Env),
     S2       = aect_test_utils:set_trees(Trees1, S1),
     {SignedTx, AcceptedTxs, S2}.
 
@@ -375,7 +368,7 @@ call_contract_negative_insufficient_funds(_Cfg) ->
                                        amount    => Value,
                                        fee       => Fee}, S),
     {error, _} = sign_and_apply_transaction(CallTx, aect_test_utils:priv_key(Acc1, S), S),
-    Env = aetx_env:tx_env(_Height = 1, ?PROTOCOL_VERSION),
+    Env = aetx_env:tx_env(_Height = 1),
     {error, insufficient_funds} = aetx:check(CallTx, aect_test_utils:trees(S), Env),
     ok.
 
@@ -2603,22 +2596,3 @@ merge_missing_keys(_Cfg) ->
 enter_contract(Contract, S) ->
     Contracts = aect_state_tree:enter_contract(Contract, aect_test_utils:contracts(S)),
     {Contract, aect_test_utils:set_contracts(Contracts, S)}.
-
-
-%%% Utils
-mock() ->
-    meck:new(aec_chain, [passthrough]),
-    meck:expect(aec_chain, get_key_block_by_height, 1,
-                fun (_) -> {ok, none} end),
-    ok = meck:new(aec_blocks, [passthrough]),
-    meck:expect(aec_blocks, beneficiary, 1,
-                fun (none) -> ?BENEFICIARY_PUBKEY;
-                    (Block) ->
-                        aec_headers:beneficiary(aec_blocks:to_header(Block))
-                end).
-
-
-unmock() ->
-    meck:unload(aec_blocks),
-    meck:unload(aec_chain),
-    ok.

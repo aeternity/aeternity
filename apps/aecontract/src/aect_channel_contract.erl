@@ -44,8 +44,12 @@ run_new(ContractPubKey, Call, CallData, Round, Trees0) ->
                , trees       => Trees0
                  %% We do not want the execution off chain and
                  %% on chain to be different so the coinbase
-                 %% instruction will allways return 0.
+                 %% instruction will always return 0.
                , beneficiary => <<0:?BENEFICIARY_PUB_BYTES/unit:8>>
+                %% TODO: Default value for offchain
+               , difficulty  => 0
+                %% TODO: The time should probably be set in channels as well
+               , time        => aeu_time:now_in_msecs()
                },
     {CallRes, Trees} = aect_dispatch:run(VmVersion, CallDef),
     case aect_call:return_type(CallRes) of
@@ -99,8 +103,12 @@ run(ContractPubKey, VmVersion, Call, CallData, CallStack, Round, Trees0,
                , trees      => Trees0
                  %% We do not want the execution off chain and
                  %% on chain to be different so the coinbase
-                 %% instruction will allways return 0.
+                 %% instruction will always return 0.
                , beneficiary => <<0:?BENEFICIARY_PUB_BYTES/unit:8>>
+                %% TODO: Default value for offchain
+               , difficulty  => 0
+                %% TODO: The time should probably be set in channels as well
+               , time        => aeu_time:now_in_msecs()
                },
     {CallRes, Trees} = aect_dispatch:run(VmVersion, CallDef),
     aect_utils:insert_call_in_trees(CallRes, Trees).

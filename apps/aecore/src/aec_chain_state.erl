@@ -281,8 +281,6 @@ prev_key_hash(#node{header = H}) -> aec_headers:prev_key_hash(H).
 
 node_height(#node{header = H}) -> aec_headers:height(H).
 
-node_version(#node{header = H}) -> aec_headers:version(H).
-
 node_difficulty(#node{type = micro}) -> 0;
 node_difficulty(#node{header = H}) -> aec_headers:difficulty(H).
 
@@ -920,15 +918,15 @@ calculate_gas_fee(Calls) ->
 
 apply_micro_block_transactions(Node, FeesIn, Trees) ->
     Txs = db_get_txs(hash(Node)),
-    Height = node_height(Node),
-    Version = node_version(Node),
     TotalFees = lists:foldl(
                   fun(SignedTx, AccFee) ->
                           Fee = aetx:fee(aetx_sign:tx(SignedTx)),
                           AccFee + Fee
                   end, FeesIn, Txs),
-
-    case aec_block_micro_candidate:apply_block_txs_strict(Txs, Trees, Height, Version) of
+    KeyHeader = db_get_header(prev_key_hash(Node)),
+    Env = aetx_env:tx_env_from_key_header(KeyHeader, prev_key_hash(Node),
+                                          node_time(Node), prev_hash(Node)),
+    case aec_block_micro_candidate:apply_block_txs_strict(Txs, Trees, Env) of
         {ok, _, NewTrees} -> {NewTrees, TotalFees};
         {error,_What} -> internal_error(invalid_transactions_in_block)
     end.
@@ -1004,6 +1002,9 @@ db_get_node(Hash) when is_binary(Hash) ->
     {ok, Node} = db_find_node(Hash),
     Node.
 
+db_get_header(Hash) when is_binary(Hash) ->
+    {value, Header} =  aec_db:find_header(Hash),
+    Header.
 
 db_find_key_nodes_at_height(Height) when is_integer(Height) ->
     case aec_db:find_headers_and_hash_at_height(Height) of

@@ -56,9 +56,9 @@ apply_signed_txs_test_() ->
                {ok, SignedSpendTx} = aec_keys:sign_tx(SpendTx),
                {ok, SignedOverBalanceTx} = aec_keys:sign_tx(OverBalanceTx),
                SignedTxs = [SignedSpendTx, SignedOverBalanceTx],
-
+               Env = aetx_env:tx_env(BlockHeight),
                {ok, ValidSignedTxs, StateTree} =
-                  aec_block_micro_candidate:apply_block_txs(SignedTxs, StateTree0, BlockHeight, ?PROTOCOL_VERSION),
+                  aec_block_micro_candidate:apply_block_txs(SignedTxs, StateTree0, Env),
 
                ?assertEqual([SignedSpendTx], ValidSignedTxs),
 

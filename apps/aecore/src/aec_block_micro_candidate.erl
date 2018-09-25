@@ -6,8 +6,8 @@
 %%%=============================================================================
 -module(aec_block_micro_candidate).
 
--export([ apply_block_txs/4
-        , apply_block_txs_strict/4
+-export([ apply_block_txs/3
+        , apply_block_txs_strict/3
         , create/1
         , create_with_state/4
         , update/3
@@ -19,7 +19,9 @@
 
 -opaque block_info() :: #{trees := aec_trees:trees(),
                           txs_tree := aec_txs_trees:txs_tree(),
-                          adj_chain := [aec_headers:header()]}.
+                          adj_chain := [aec_headers:header()],
+                          tx_env := aetx_env:env()
+                         }.
 
 %% -- API functions ----------------------------------------------------------
 
@@ -50,16 +52,16 @@ create_with_state(Block, KeyBlock, Txs, Trees) ->
     {NewBlock, NewTrees}.
 
 -spec apply_block_txs(list(aetx_sign:signed_tx()), aec_trees:trees(),
-                      aec_blocks:height(), non_neg_integer()) ->
+                      aetx_env:env()) ->
         {ok, list(aetx_sign:signed_tx()), aec_trees:trees()}.
-apply_block_txs(Txs, Trees, Height, Version) ->
-    int_apply_block_txs(Txs, Trees, Height, Version, false).
+apply_block_txs(Txs, Trees, Env) ->
+    int_apply_block_txs(Txs, Trees, Env, false).
 
--spec apply_block_txs_strict(list(aetx_sign:signed_tx()),
-                             aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+-spec apply_block_txs_strict(list(aetx_sign:signed_tx()), aec_trees:trees(),
+                             aetx_env:env()) ->
         {ok, list(aetx_sign:signed_tx()), aec_trees:trees()} | {error, term()}.
-apply_block_txs_strict(Txs, Trees, Height, Version) ->
-    int_apply_block_txs(Txs, Trees, Height, Version, true).
+apply_block_txs_strict(Txs, Trees, Env) ->
+    int_apply_block_txs(Txs, Trees, Env, true).
 
 %% TODO NG: handle update after new keyblock in higher layer to get depth of microfork
 -spec update(aec_blocks:block(), nonempty_list(aetx_sign:signed_tx()),
@@ -115,8 +117,13 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
     Height = aec_blocks:height(KeyBlock),
     Version = aec_hard_forks:protocol_effective_at_height(Height),
 
-    {ok, Txs1, Trees2} =
-        int_apply_block_txs(Txs, Trees, Height, Version, false),
+    Time = aeu_time:now_in_msecs(),
+
+    KeyHeader = aec_blocks:to_header(KeyBlock),
+    Env = aetx_env:tx_env_from_key_header(KeyHeader, PrevKeyHash,
+                                          Time, PrevBlockHash),
+
+    {ok, Txs1, Trees2} = int_apply_block_txs(Txs, Trees, Env, false),
 
     TxsTree = aec_txs_trees:from_txs(Txs1),
     TxsRootHash = aec_txs_trees:pad_empty(aec_txs_trees:root_hash(TxsTree)),
@@ -125,9 +132,9 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
 
     NewBlock = aec_blocks:new_micro(Height, PrevBlockHash, PrevKeyHash,
                                     aec_trees:hash(Trees2), TxsRootHash, Txs1,
-                                    aeu_time:now_in_msecs(), PoF, Version),
+                                    Time, PoF, Version),
 
-    BlockInfo = #{ trees => Trees2, txs_tree => TxsTree },
+    BlockInfo = #{ trees => Trees2, txs_tree => TxsTree, tx_env => Env},
     {ok, NewBlock, BlockInfo}.
 
 get_pof(KeyBlock, PrevBlockHash, PrevBlock) ->
@@ -151,13 +158,13 @@ get_pof(KeyBlock, PrevBlockHash, PrevBlock) ->
 
 
 %% Non-strict
-int_apply_block_txs(Txs, Trees, Height, Version, false) ->
+int_apply_block_txs(Txs, Trees, Env, false) ->
     {ok, Txs1, _InvalidTxs, Trees1} =
-        aec_trees:apply_txs_on_state_trees(Txs, Trees, Height, Version),
+        aec_trees:apply_txs_on_state_trees(Txs, Trees, Env),
     {ok, Txs1, Trees1};
 %% strict
-int_apply_block_txs(Txs, Trees, Height, Version, true) ->
-    case aec_trees:apply_txs_on_state_trees_strict(Txs, Trees, Height, Version) of
+int_apply_block_txs(Txs, Trees, Env, true) ->
+    case aec_trees:apply_txs_on_state_trees_strict(Txs, Trees, Env) of
         {ok, Txs1, [], Trees1} ->
             {ok, Txs1, Trees1};
         Err = {error, _} ->
@@ -165,8 +172,8 @@ int_apply_block_txs(Txs, Trees, Height, Version, true) ->
     end.
 
 int_update(MaxGas, Block, Txs, BlockInfo) ->
-    case add_txs_to_trees(MaxGas, maps:get(trees, BlockInfo), Txs,
-                          aec_blocks:height(Block), aec_blocks:version(Block)) of
+    Env = maps:get(tx_env, BlockInfo),
+    case add_txs_to_trees(MaxGas, maps:get(trees, BlockInfo), Txs, Env) of
         {[], _} ->
             {error, no_change};
         {Txs1, Trees1} ->
@@ -181,20 +188,20 @@ int_update(MaxGas, Block, Txs, BlockInfo) ->
             {ok, NewBlock, NewBlockInfo}
     end.
 
-add_txs_to_trees(MaxGas, Trees, Txs, Height, Version) ->
-    add_txs_to_trees(MaxGas, Trees, Txs, [], Height, Version).
+add_txs_to_trees(MaxGas, Trees, Txs, Env) ->
+    add_txs_to_trees(MaxGas, Trees, Txs, [], Env).
 
-add_txs_to_trees(_MaxGas, Trees, [], Acc, _Height, _Version) ->
+add_txs_to_trees(_MaxGas, Trees, [], Acc,_Env) ->
     {lists:reverse(Acc), Trees};
-add_txs_to_trees(MaxGas, Trees, [Tx | Txs], Acc, Height, Version) ->
+add_txs_to_trees(MaxGas, Trees, [Tx | Txs], Acc, Env) ->
     TxGas = aetx:gas(aetx_sign:tx(Tx)),
     case TxGas =< MaxGas of
         true ->
-            case aec_trees:apply_txs_on_state_trees([Tx], Trees, Height, Version) of
+            case aec_trees:apply_txs_on_state_trees([Tx], Trees, Env) of
                 {ok, [], _, _} ->
-                    add_txs_to_trees(MaxGas, Trees, Txs, Acc, Height, Version);
+                    add_txs_to_trees(MaxGas, Trees, Txs, Acc, Env);
                 {ok, [Tx], _, Trees1} ->
-                    add_txs_to_trees(MaxGas - TxGas, Trees1, Txs, [Tx | Acc], Height, Version)
+                    add_txs_to_trees(MaxGas - TxGas, Trees1, Txs, [Tx | Acc], Env)
             end;
         false ->
             {lists:reverse(Acc), Trees}

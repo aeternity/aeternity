@@ -171,7 +171,7 @@ process(#contract_call_tx{caller_id   = CallerId,
 
     %% Run the contract code. Also computes the amount of gas left and updates
     %% the call object.
-    {Call, Trees3} = run_contract(CallTx, Call0, Height, Trees2),
+    {Call, Trees3} = run_contract(CallTx, Call0, Env, Trees2),
 
     %% Charge the fee and the used gas to the caller (not if called from another contract!)
     AccountsTree1 = aec_trees:accounts(Trees3),
@@ -216,16 +216,19 @@ run_contract(#contract_call_tx{ nonce  = _Nonce
                               , gas_price  = GasPrice
                               , call_data  = CallData
                               , call_stack = CallStack
-                              } = Tx, Call, Height, Trees) ->
+                              } = Tx, Call, Env, Trees) ->
     CallerPubkey   = caller_pubkey(Tx),
     ContractPubkey = contract_pubkey(Tx),
     ContractsTree  = aec_trees:contracts(Trees),
     Contract       = aect_state_tree:get_contract(ContractPubkey, ContractsTree),
     Code           = aect_contracts:code(Contract),
-    {ok, KeyBlock} = aec_chain:get_key_block_by_height(Height),
-    Beneficiary = aec_blocks:beneficiary(KeyBlock),
+    Height         = aetx_env:height(Env),
+    Beneficiary    = aetx_env:beneficiary(Env),
+    Difficulty     = aetx_env:difficulty(Env),
+    Time           = aetx_env:time_in_msecs(Env),
     CallDef = #{ caller     => CallerPubkey
                , contract   => ContractPubkey
+               , difficulty => Difficulty
                , gas        => Gas
                , gas_price  => GasPrice
                , call_data  => CallData
@@ -234,6 +237,7 @@ run_contract(#contract_call_tx{ nonce  = _Nonce
                , code       => Code
                , call       => Call
                , height     => Height
+               , time       => Time
                , trees      => Trees
                , beneficiary => Beneficiary
                },
