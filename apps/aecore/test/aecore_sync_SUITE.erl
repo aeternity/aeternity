@@ -30,7 +30,8 @@
     ensure_tx_pools_one_tx/1,
     report_metrics/1,
     check_metrics_logged/1,
-    crash_syncing_worker/1
+    crash_syncing_worker/1,
+    large_msgs/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -43,7 +44,8 @@ groups() ->
      {all_nodes, [sequence], [{group, two_nodes},
                               {group, three_nodes},
                               {group, semantically_invalid_tx},
-                              {group, one_blocked}
+                              {group, one_blocked},
+                              {group, large_msgs}
                              ]},
      {two_nodes, [sequence],
       [start_first_node,
@@ -85,7 +87,9 @@ groups() ->
      {one_blocked, [sequence],
       [start_first_node,
        mine_on_first,
-       start_blocked_second]}
+       start_blocked_second]},
+     {large_msgs, [sequence],
+      [large_msgs]}
     ].
 
 suite() ->
@@ -134,14 +138,14 @@ init_per_suite(Config) ->
 end_per_suite(Config) ->
     stop_devs(Config).
 
-init_per_group(two_nodes, Config) ->
+init_per_group(TwoNodes, Config) when TwoNodes == two_nodes;
+        TwoNodes == semantically_invalid_tx; TwoNodes == large_msgs ->
     config({devs, [dev1, dev2]}, Config);
 init_per_group(three_nodes, Config) ->
     config({devs, [dev1, dev2, dev3]}, Config);
-init_per_group(semantically_invalid_tx, Config) ->
-    config({devs, [dev1, dev2]}, Config);
 init_per_group(one_blocked, Config) ->
-    Config1 = config({devs, [dev1, dev2]}, Config),
+    %% Use dev1 and dev3, since the group doesn't clean up properly TODO!
+    Config1 = config({devs, [dev1, dev3]}, Config),
     preblock_second(Config1),
     Config1;
 init_per_group(_Group, Config) ->
@@ -484,6 +488,42 @@ expect_same_tx_(Nodes) ->
         _ -> false
     end.
 
+large_msgs(Config) ->
+    [ Dev1, Dev2 | _ ] = proplists:get_value(devs, Config),
+    N1 = aecore_suite_utils:node_name(Dev1),
+    N2 = aecore_suite_utils:node_name(Dev2),
+
+    aecore_suite_utils:start_node(Dev1, Config),
+    aecore_suite_utils:connect(aecore_suite_utils:node_name(Dev1)),
+
+    %% Insert enough transactions to make a large generation
+    Blob = fun(Size) -> << <<171:8>> || _ <- lists:seq(1, Size) >> end,
+    {ok, Tx1} = add_spend_tx(N1, 10, 1, 1, 100, Blob(16#ffff)),
+    aecore_suite_utils:mine_blocks_until_tx_on_chain(N1, Tx1, 10),
+
+    {ok, Tx2} = add_spend_tx(N1, 10, 1, 2, 100, Blob(16#1ffff)),
+    aecore_suite_utils:mine_blocks_until_tx_on_chain(N1, Tx2, 10),
+
+    {ok, Tx3} = add_spend_tx(N1, 10, 1, 3, 100, Blob(16#2ffff)),
+    aecore_suite_utils:mine_blocks_until_tx_on_chain(N1, Tx3, 10),
+
+    {ok, Tx4} = add_spend_tx(N1, 10, 1, 4, 100, Blob(16#5ffff)),
+    aecore_suite_utils:mine_blocks_until_tx_on_chain(N1, Tx4, 10),
+
+    {ok, Tx5} = add_spend_tx(N1, 10, 1, 5, 100, Blob(16#fce3)), %% Should exactly fit in one message
+    aecore_suite_utils:mine_blocks_until_tx_on_chain(N1, Tx5, 10),
+
+    {ok, Tx6} = add_spend_tx(N1, 10, 1, 6, 100, Blob(16#fce4)), %% Wee bit too large
+    aecore_suite_utils:mine_blocks_until_tx_on_chain(N1, Tx6, 10),
+
+    {ok, Tx7} = add_spend_tx(N1, 10, 1, 7, 100, Blob(16#1fcb8)), %% Even multiple of fragment size
+    aecore_suite_utils:mine_blocks_until_tx_on_chain(N1, Tx7, 10),
+
+    T0 = os:timestamp(),
+    aecore_suite_utils:start_node(Dev2, Config),
+    aecore_suite_utils:connect(N2),
+    true = expect_same(T0, Config).
+
 %% ==================================================
 %% Private functions
 %% ==================================================
@@ -602,3 +642,33 @@ sign_tx(Node, Tx) ->
     {ok, SignedTx} = rpc:call(Node, aec_keys, sign_tx, [UnsignedTx]),
     aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)).
 
+add_spend_tx(Node, Amount, Fee, Nonce, TTL, Payload) ->
+    add_spend_tx(Node, Amount, Fee, Nonce, TTL, Payload, patron(), new_pubkey()).
+
+add_spend_tx(Node, Amount, Fee, Nonce, TTL, Payload, Sender, Recipient) ->
+    SenderId = aec_id:create(account, maps:get(pubkey, Sender)),
+    RecipientId = aec_id:create(account, Recipient),
+    Params = #{ sender_id    => SenderId,
+                recipient_id => RecipientId,
+                amount       => Amount,
+                nonce        => Nonce,
+                ttl          => TTL,
+                payload      => Payload,
+                fee          => Fee },
+    {ok, Tx} = aec_spend_tx:new(Params),
+    STx = aec_test_utils:sign_tx(Tx, maps:get(privkey, Sender)),
+    Res = rpc:call(Node, aec_tx_pool, push, [STx]),
+    {Res, aec_base58c:encode(tx_hash, aetx_sign:hash(STx))}.
+
+new_pubkey() ->
+    #{ public := PubKey } = enacl:sign_keypair(),
+    PubKey.
+
+patron() ->
+    #{ pubkey  => <<206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,
+                    73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>,
+       privkey => <<230,169,29,99,60,119,207,87,113,50,157,51,84,179,188,239,27,
+                    197,224,50,196,61,112,182,211,90,249,35,206,30,183,77,206,
+                    167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,
+                    187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>
+      }.
