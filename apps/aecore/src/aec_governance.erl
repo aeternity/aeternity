@@ -152,7 +152,13 @@ primop_base_gas_cost(?PRIM_CALL_AENS_PRECLAIM      ) -> 0;
 primop_base_gas_cost(?PRIM_CALL_AENS_CLAIM         ) -> 0;
 primop_base_gas_cost(?PRIM_CALL_AENS_UPDATE        ) -> 0;
 primop_base_gas_cost(?PRIM_CALL_AENS_TRANSFER      ) -> 0;
-primop_base_gas_cost(?PRIM_CALL_AENS_REVOKE        ) -> 0.
+primop_base_gas_cost(?PRIM_CALL_AENS_REVOKE        ) -> 0;
+primop_base_gas_cost(?PRIM_CALL_MAP_EMPTY          ) -> 0;
+primop_base_gas_cost(?PRIM_CALL_MAP_GET            ) -> 0;
+primop_base_gas_cost(?PRIM_CALL_MAP_PUT            ) -> 0;
+primop_base_gas_cost(?PRIM_CALL_MAP_DELETE         ) -> 0;
+primop_base_gas_cost(?PRIM_CALL_MAP_SIZE           ) -> 0;
+primop_base_gas_cost(?PRIM_CALL_MAP_TOLIST         ) -> 0.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Naming system variables

@@ -59,19 +59,21 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
 
 execute_identity_fun_from_bytecode(_Cfg) ->
     Code =
-        %% We enter the VM with the calldata on the stack and stored at address
-        %% 32 in memory if required. In this case the calldata is an integer so
-        %% it fits on the stack.
+        %% We enter the VM with the calldata on the stack and stored after the
+        %% statedata in memory if required. The calldata is a pair of the type
+        %% (word) and the value (42).
         %% We should return with a typerep and return value on the stack and 0
         %% written to the state pointer at address 0, to indicate that we
         %% didn't update the state. We haven't initialized any state in this
         %% test though, so the state pointer is already 0.
-                        %% Stack    Mem     Comment
-                        %% N
-        <<?MSIZE,       %% P N
-          ?PUSH1, 0,    %% 0 P N            The typerep for 'word' is a tuple {0}, i.e. a pointer to 0
-          ?MSIZE,       %% P 0 P N
-          ?MSTORE,      %% P N      P:0
+                        %% Stack    Mem             Comment
+                        %% P        .. P:Q P+32:N Q:0
+        <<?DUP1,        %% P P
+          ?PUSH1, 32,   %% 32 P P
+          ?ADD,         %% P+32 P
+          ?MLOAD,       %% N
+          ?SWAP1,       %% P N
+          ?MLOAD,       %% Q N
           ?RETURN>>,
     {ok, Res} =
         aevm_eeevm:eval(
@@ -79,7 +81,7 @@ execute_identity_fun_from_bytecode(_Cfg) ->
             #{ exec => #{ code => Code,
                           address => 91210,
                           caller => 0,
-                          data => <<42:256>>,
+                          data => <<32:256, 96:256, 42:256, 0:256>>,
                           gas => 1000000,
                           gasPrice => 1,
                           origin => 0,

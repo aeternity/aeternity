@@ -121,12 +121,13 @@ global_env() ->
      {["AENS", "transfer"], Fun([Address, Address, Hash, Signature], Unit)},
      {["AENS", "revoke"],   Fun([Address, Hash, Signature], Unit)},
      %% Maps
-     {["Map", "from_list"], Fun1(List(Pair(K, V)), Map(K, V))},
-     {["Map", "to_list"],   Fun1(Map(K, V), List(Pair(K, V)))},
-     {["Map", "lookup"],    Fun([K, Map(K, V)], Option(V))},
-     {["Map", "delete"],    Fun([K, Map(K, V)], Map(K, V))},
-     {["Map", "member"],    Fun([K, Map(K, V)], Bool)},
-     {["Map", "size"],      Fun1(Map(K, V), Int)},
+     {["Map", "from_list"],      Fun1(List(Pair(K, V)), Map(K, V))},
+     {["Map", "to_list"],        Fun1(Map(K, V), List(Pair(K, V)))},
+     {["Map", "lookup"],         Fun([K, Map(K, V)], Option(V))},
+     {["Map", "lookup_default"], Fun([K, Map(K, V), V], V)},
+     {["Map", "delete"],         Fun([K, Map(K, V)], Map(K, V))},
+     {["Map", "member"],         Fun([K, Map(K, V)], Bool)},
+     {["Map", "size"],           Fun1(Map(K, V), Int)},
      %% Strings
      {["String", "length"], Fun1(String, Int)},
      {["String", "concat"], Fun([String, String], String)}
@@ -433,7 +434,7 @@ infer_expr(Env, {record, Attrs, Fields}) ->
     constrain([begin
                 [{proj, _, FieldName}] = LV,
                 #field_constraint{
-                    record_t = RecordType,
+                    record_t = unfold_types_in_type(RecordType),
                     field    = FieldName,
                     field_t  = T,
                     kind     = create,
@@ -448,7 +449,7 @@ infer_expr(Env, {proj, Attrs, Record, FieldName}) ->
     NewRecord = {typed, _, _, RecordType} = infer_expr(Env, Record),
     FieldType = fresh_uvar(Attrs),
     constrain([#field_constraint{
-        record_t = RecordType,
+        record_t = unfold_types_in_type(RecordType),
         field    = FieldName,
         field_t  = FieldType,
         kind     = project,
@@ -521,7 +522,7 @@ check_record_update(Env, RecordType, Fld) ->
                 {field_upd, Ann, LV, check_expr(Env, Fun, FunType)}
         end,
     constrain([#field_constraint{
-        record_t = RecordType,
+        record_t = unfold_types_in_type(RecordType),
         field    = FieldName,
         field_t  = FldType,
         kind     = update,
@@ -692,7 +693,7 @@ insert_typedef(Id, Args, Typedef) ->
 lookup_type(Id) ->
     case ets:lookup(type_defs, type_key(Id)) of
         []                        -> false;
-        [{_Key, Params, Typedef}] -> {Params, Typedef}
+        [{_Key, Params, Typedef}] -> {Params, unfold_types_in_type(Typedef)}
     end.
 
 -spec insert_record_field(string(), field_info()) -> true.

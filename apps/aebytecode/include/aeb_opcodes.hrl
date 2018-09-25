@@ -171,3 +171,12 @@
 -define(PRIM_CALL_AENS_UPDATE,   203).
 -define(PRIM_CALL_AENS_TRANSFER, 204).
 -define(PRIM_CALL_AENS_REVOKE,   205).
+
+-define(PRIM_CALL_IN_MAP_RANGE(__TTYPE__), (((__TTYPE__) > 299) andalso ((__TTYPE__) < 400))).
+-define(PRIM_CALL_MAP_EMPTY,  300).
+-define(PRIM_CALL_MAP_GET,    301).
+-define(PRIM_CALL_MAP_PUT,    302).
+-define(PRIM_CALL_MAP_DELETE, 303).
+-define(PRIM_CALL_MAP_SIZE,   304).
+-define(PRIM_CALL_MAP_TOLIST, 305).
+

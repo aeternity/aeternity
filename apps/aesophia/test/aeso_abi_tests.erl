@@ -3,9 +3,9 @@
 -include_lib("eunit/include/eunit.hrl").
 
 encode_call_with_integer_test() ->
-    [32, 96, 160, 4, "main", 42] =
-        aeso_test_utils:dump_words(
-            aeso_abi:create_calldata("", "main", "(42)")).
+    Words = fun aeso_test_utils:dump_words/1,
+    Expected = Words(aeso_data:to_binary({{tuple, [string, {tuple, [word]}]}, {<<"main">>, {42}}})),
+    Expected = Words(aeso_abi:create_calldata("", "main", "(42)")).
 
 -define(SANDBOX(Code), sandbox(fun() -> Code end)).
 
@@ -77,10 +77,10 @@ encode_decode_sophia_string(String) ->
     io:format("Data ~p~n", [Data]),
     case Type of
         {tuple, _} ->
-            {<<"foo">>, R} = decode({tuple, [string, Type]}, Data),
+            {_, {<<"foo">>, R}} = decode({tuple, [typerep, {tuple, [string, Type]}]}, Data),
             R;
         _ ->
-            {<<"foo">>, {R}} = decode({tuple, [string, {tuple, [Type]}]}, Data),
+            {_, {<<"foo">>, {R}}} = decode({tuple, [typerep, {tuple, [string, {tuple, [Type]}]}]}, Data),
             R
     end.
 

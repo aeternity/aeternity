@@ -119,7 +119,7 @@ tests: # test specific settings
         deposit: 2
         amount: 1
         gas: 75000
-        gas_used: 472
+        gas_used: 482
         gas_price: 1
         fee: 11
         function: "init"

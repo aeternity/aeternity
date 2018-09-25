@@ -8,7 +8,7 @@
 %%%-------------------------------------------------------------------
 
 -module(aevm_ae_primops).
--export([call/3]).
+-export([call/3, is_local_primop/1]).
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("aevm_ae_primops.hrl").
@@ -56,6 +56,9 @@ call_(Value, Data, StateIn) ->
         case BaseCost =< Gas of
             false ->
                 {error, ?AEVM_PRIMOP_ERR_REASON_OOG({base, PrimOp}, BaseCost, StateIn)};
+            true when ?PRIM_CALL_IN_MAP_RANGE(PrimOp) ->
+                %% Map primops need the full state
+                map_call(PrimOp, Value, Data, StateIn);
             true ->
                 ChainIn = #chain{api = aevm_eeevm_state:chain_api(StateIn),
                                  state = aevm_eeevm_state:chain_state(StateIn)},
@@ -71,15 +74,15 @@ call_(Value, Data, StateIn) ->
                                     {error, _} = Err ->
                                         Err;
                                     {ok, CbReturnValue, CbChainStateOut} ->
-                                        {ok, CbReturnValue, BaseCost + DynamicCost, CbChainStateOut}
+                                        StateOut = aevm_eeevm_state:set_chain_state(CbChainStateOut, StateIn),
+                                        {ok, CbReturnValue, BaseCost + DynamicCost, StateOut}
                                 end
                         end
                 end
         end
     of
-        {ok, ReturnValue, GasSpent, ChainStateOut} ->
-            StateOut = aevm_eeevm_state:set_chain_state(ChainStateOut, StateIn),
-            {ok, ReturnValue, GasSpent, StateOut};
+        {ok, _, _, _} = Ok ->
+            Ok;
         {error, _} = OuterErr ->
             OuterErr
     catch _T:_Err ->
@@ -99,6 +102,12 @@ call_primop(PrimOp, Value, Data, State)
 call_primop(PrimOp, Value, Data, State)
   when ?PRIM_CALL_IN_AENS_RANGE(PrimOp) ->
     aens_call(PrimOp, Value, Data, State).
+
+is_local_primop(Data) ->
+    case get_primop(Data) of
+        Op when ?PRIM_CALL_IN_MAP_RANGE(Op) -> true;
+        _ -> false
+    end.
 
 %% ------------------------------------------------------------------
 %% Basic account operations.
@@ -314,17 +323,116 @@ aens_call_revoke(Data, State) ->
     no_dynamic_cost(fun() -> cast_chain(Callback, State) end).
 
 %% ------------------------------------------------------------------
+%% Map operations.
+%% ------------------------------------------------------------------
+
+map_call(?PRIM_CALL_MAP_EMPTY, _Value, Data, State) ->
+    map_call_empty(Data, State);
+map_call(?PRIM_CALL_MAP_GET, _Value, Data, State) ->
+    map_call_get(Data, State);
+map_call(?PRIM_CALL_MAP_PUT, _Value, Data, State) ->
+    map_call_put(Data, State);
+map_call(?PRIM_CALL_MAP_DELETE, _Value, Data, State) ->
+    map_call_delete(Data, State);
+map_call(?PRIM_CALL_MAP_SIZE, _Value, Data, State) ->
+    map_call_size(Data, State);
+map_call(?PRIM_CALL_MAP_TOLIST, _Value, Data, State) ->
+    map_call_tolist(Data, State);
+map_call(_, _, _, _) ->
+    {error, out_of_gas}.
+
+map_call_empty(Data, State) ->
+    [KeyType, ValType] = get_args([typerep, typerep], Data),
+    {MapId, State1} = aevm_eeevm_maps:empty(KeyType, ValType, State),
+    {ok, {ok, <<MapId:32/unit:8>>}, 0, State1}.
+
+map_call_size(Data, State) ->
+    [MapId] = get_args([word], Data),
+    Size = aevm_eeevm_maps:size(MapId, State),
+    {ok, {ok, <<Size:256>>}, 0, State}.
+
+map_call_get(Data, State) ->
+    [MapId]   = get_args([word], Data),
+    {KeyType, _ValType} = aevm_eeevm_maps:map_type(MapId, State),
+    [_, KeyPtr]  = get_args([word, word], Data),
+    {ok, KeyBin} = aevm_eeevm_state:heap_to_binary(KeyType, KeyPtr, State),
+    Res = case aevm_eeevm_maps:get(MapId, KeyBin, State) of
+            false -> aeso_data:to_binary(none);
+            <<ValPtr:256, ValBin/binary>> ->
+                %% Some hacky juggling to build an option value.
+                NewPtr = 32 + byte_size(ValBin),
+                <<NewPtr:256, ValBin/binary, 1:256, ValPtr:256>>
+          end,
+    {ok, {ok, Res}, 0, State}.
+
+map_call_put(Data, State) ->
+    [MapId]             = get_args([word], Data),
+    {KeyType, ValType}  = aevm_eeevm_maps:map_type(MapId, State),
+    [_, KeyPtr, ValPtr] = get_args([word, word, word], Data),
+    {ok, KeyBin}        = aevm_eeevm_state:heap_to_binary(KeyType, KeyPtr, State),
+    {ok, ValBin}        = aevm_eeevm_state:heap_to_heap(ValType, ValPtr, State),
+    {NewMapId, State1}  = aevm_eeevm_maps:put(MapId, KeyBin, ValBin, State),
+    {ok, {ok, <<NewMapId:256>>}, 0, State1}.
+
+map_call_delete(Data, State) ->
+    [MapId]      = get_args([word], Data),
+    {KeyType, _} = aevm_eeevm_maps:map_type(MapId, State),
+    [_, KeyPtr]  = get_args([word, word], Data),
+    {ok, KeyBin} = aevm_eeevm_state:heap_to_binary(KeyType, KeyPtr, State),
+    {NewMapId, State1} = aevm_eeevm_maps:delete(MapId, KeyBin, State),
+    {ok, {ok, <<NewMapId:256>>}, 0, State1}.
+
+map_call_tolist(Data, State) ->
+    [MapId] = get_args([word], Data),
+    {KeyType, ValType} = aevm_eeevm_maps:map_type(MapId, State),
+    {ok, Map} = aevm_eeevm_maps:get_flat_map(MapId, State),
+    List = maps:to_list(Map),
+    HeapBin = build_heap_list(aevm_eeevm_state:maps(State), KeyType, ValType, List),
+    {ok, {ok, HeapBin}, 0, State}.
+
+build_heap_list(_, _, _, []) -> <<(-1):256>>;
+build_heap_list(Maps, KeyType, ValType, KVs) ->
+    build_heap_list(Maps, KeyType, ValType, KVs, 32, []).
+
+build_heap_list(_, _, _, [], _, Acc) ->
+    <<32:256, (list_to_binary(lists:reverse(Acc)))/binary>>;
+build_heap_list(Maps, KeyType, ValType, [{K, V} | KVs], Offs, Acc) ->
+    %% Addr:  Offs      Offs + 32  HeadPtr  HeadPtr + 32  KeyPtr    ValPtr  TailPtr
+    %% Data:  [HeadPtr] [TailPtr]  [KeyPtr]   [ValPtr]    KeyBin    ValBin  NextConsCell
+    HeadPtr      = Offs + 64,
+    KeyPtr       = HeadPtr + 64,
+    NextId       = 0,   %% There are no maps in map keys
+    {ok, KeyVal} = aeso_data:binary_to_heap(KeyType, K, NextId, KeyPtr),
+    KeyBin       = aeso_data:heap_value_heap(KeyVal),
+    KeyPtr1      = aeso_data:heap_value_pointer(KeyVal),
+    ValPtr       = KeyPtr + byte_size(KeyBin),
+    <<VP:256, VB/binary>> = V,
+    {ok, ValVal} = aeso_data:heap_to_heap(ValType, aeso_data:heap_value(Maps, VP, VB, 32), ValPtr),
+    ValPtr1      = aeso_data:heap_value_pointer(ValVal),
+    ValBin       = aeso_data:heap_value_heap(ValVal),
+    TailPtr      =
+        case KVs of
+            [] -> -1;
+            _  -> ValPtr + byte_size(ValBin)
+        end,
+    ConsCell = <<HeadPtr:256, TailPtr:256>>,
+    PairCell = <<KeyPtr1:256, ValPtr1:256>>,
+    build_heap_list(Maps, KeyType, ValType, KVs, TailPtr,
+                    [[ConsCell, PairCell, KeyBin, ValBin] | Acc]).
+
+
+%% ------------------------------------------------------------------
 %% Internal functions
 %% ------------------------------------------------------------------
 
-get_primop(Data) ->
-    {ok, T} = aeso_data:from_binary({tuple, [word]}, Data),
+get_primop(Data) ->                     %% First component is the typerep
+    {ok, {_, T}} = aeso_data:from_binary({tuple, [word, {tuple, [word]}]}, Data),
     {PrimOp} = T,
     PrimOp.
 
-get_args(Types, Data) ->
-    {ok, Val} = aeso_data:from_binary({tuple, [word | Types]}, Data),
-    [_ | Args] = tuple_to_list(Val),
+get_args(Types, Data) ->                %% First component is the typerep
+    {ok, {_, V}} = aeso_data:from_binary({tuple, [word, {tuple, [word | Types]}]}, Data),
+    [_ | Args] = tuple_to_list(V),
     Args.
 
 no_dynamic_cost(Cb) when is_function(Cb, 0) ->

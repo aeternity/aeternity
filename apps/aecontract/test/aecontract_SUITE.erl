@@ -65,6 +65,9 @@
         , sophia_signatures_aens/1
         , sophia_maps/1
         , sophia_map_benchmark/1
+        , sophia_pmaps/1
+        , sophia_map_of_maps/1
+        , sophia_chess/1
         , sophia_variant_types/1
         , sophia_chain/1
         , sophia_savecoinbase/1
@@ -234,7 +237,7 @@ create_contract_init_error(_Cfg) ->
     {PubKey, S1} = aect_test_utils:setup_new_account(S0),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
-    Overrides = #{ call_data => aeso_abi:create_calldata(<<>>, "init", "()")
+    Overrides = #{ call_data => make_calldata(init, {})
                  },
     Tx = aect_test_utils:create_tx(PubKey, Overrides, S1),
 
@@ -280,7 +283,7 @@ create_contract_(ContractCreateTxGasPrice) ->
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
     IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
-    CallData     = aeso_abi:create_calldata(IdContract, "init", "()"),
+    CallData     = make_calldata(init, {}),
     Overrides    = #{ code => IdContract
                     , call_data => CallData
                     , gas => 10000
@@ -375,8 +378,7 @@ call_contract_negative_insufficient_funds(_Cfg) ->
     Value = 10,
     Bal = 9 = Fee + Value - 2,
     S = aect_test_utils:set_account_balance(Acc1, Bal, state()),
-    Arg = <<"(42)">>,
-    CallData = aect_sophia:create_call(IdC, <<"main">>, Arg),
+    CallData = make_calldata(main, 42),
     CallTx = aect_test_utils:call_tx(Acc1, IdC,
                                      #{call_data => CallData,
                                        gas_price => 0,
@@ -407,7 +409,7 @@ call_contract_(ContractCallTxGasPrice) ->
     CallerBalance = aec_accounts:balance(aect_test_utils:get_account(Caller, S2)),
 
     IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
-    CallDataInit = aeso_abi:create_calldata(IdContract, "init", "()"),
+    CallDataInit = make_calldata(init, {}),
     Overrides    = #{ code => IdContract
                     , call_data => CallDataInit
                     , gas => 10000
@@ -423,8 +425,7 @@ call_contract_(ContractCallTxGasPrice) ->
     %% Now check that we can call it.
     Fee           = 107,
     Value         = 52,
-    Arg           = <<"(42)">>,
-    CallData = aect_sophia:create_call(IdContract, <<"main">>, Arg),
+    CallData = make_calldata(main, 42),
     CallTx = aect_test_utils:call_tx(Caller, ContractKey,
                                      #{call_data => CallData,
                                        gas_price => ContractCallTxGasPrice,
@@ -603,7 +604,7 @@ create_contract(Owner, Name, Args, S) ->
 create_contract(Owner, Name, Args, Options, S) ->
     Nonce       = aect_test_utils:next_nonce(Owner, S),
     Code        = aect_test_utils:compile_contract(lists:concat(["contracts/", Name, ".aes"])),
-    CallData    = aect_sophia:create_call(Code, <<"init">>, args_to_binary(Args)),
+    CallData    = make_calldata(init, Args),
     CreateTx    = aect_test_utils:create_tx(Owner,
                     maps:merge(
                     #{ nonce      => Nonce
@@ -629,15 +630,14 @@ create_contract(Owner, Name, Args, Options, S) ->
 call_contract(Caller, ContractKey, Fun, Type, Args, S) ->
     call_contract(Caller, ContractKey, Fun, Type, Args, #{}, S).
 
-call_contract(Caller, ContractKey, Fun, Type, Args0, Options, S) ->
+call_contract(Caller, ContractKey, Fun, Type, Args, Options, S) ->
     Nonce    = aect_test_utils:next_nonce(Caller, S),
-    Args     = if is_tuple(Args0) -> Args0; true -> {Args0} end,
-    CallData = aeso_data:to_binary({list_to_binary(atom_to_list(Fun)), translate_pubkeys(Args)}),
+    Calldata = make_calldata(Fun, Args),
     CallTx   = aect_test_utils:call_tx(Caller, ContractKey,
                 maps:merge(
                 #{ nonce      => Nonce
                  , vm_version => ?AEVM_01_Sophia_01
-                 , call_data  => CallData
+                 , call_data  => Calldata
                  , fee        => 1
                  , amount     => 0
                  , gas        => 50000
@@ -664,6 +664,11 @@ account_balance(PubKey, S) ->
     Account = aect_test_utils:get_account(PubKey, S),
     {aec_accounts:balance(Account), S}.
 
+make_calldata(Fun, Args0) ->
+    Args         = translate_pubkeys(if is_tuple(Args0) -> Args0; true -> {Args0} end),
+    CalldataType = {tuple, [string, aeso_abi:get_type(Args)]},
+    aeso_data:to_binary({CalldataType, {list_to_binary(atom_to_list(Fun)), Args}}).
+
 translate_pubkeys(<<N:256>>) -> N;
 translate_pubkeys([H|T]) ->
   [translate_pubkeys(H) | translate_pubkeys(T)];
@@ -672,24 +677,6 @@ translate_pubkeys(T) when is_tuple(T) ->
 translate_pubkeys(M) when is_map(M) ->
   maps:from_list(translate_pubkeys(maps:to_list(M)));
 translate_pubkeys(X) -> X.
-
-args_to_binary(Args) -> list_to_binary(args_to_list(Args)).
-
-commas([]) -> [];
-commas([H | T]) ->
-    io_lib:format("~s~s", [H, [ [",", X] || X <- T ]]).
-
-args_to_list(<<N:256>>) -> integer_to_list(N);
-args_to_list(B) when is_binary(B) ->
-    io_lib:format("~10000p", [binary_to_list(B)]);   %% string
-args_to_list(N) when is_integer(N) -> integer_to_list(N);
-args_to_list(L) when is_list(L) ->
-    io_lib:format("[~s]", [commas(lists:map(fun args_to_list/1, L))]);
-args_to_list(T) when is_tuple(T) ->
-    io_lib:format("(~s)", [commas(lists:map(fun args_to_list/1, tuple_to_list(T)))]);
-args_to_list(M) when is_map(M) ->
-    Elems = [ io_lib:format("[~s] = ~s", [args_to_list(K), args_to_list(V)]) || {K, V} <- maps:to_list(M) ],
-    ["{", string:join(Elems, ","), "}"].
 
 sophia_identity(_Cfg) ->
     state(aect_test_utils:new_state()),
@@ -1944,9 +1931,12 @@ sophia_oracles_gas_ttl__oracle_registration(_Cfg) ->
     %% TTL increases gas used.
     ?assertEqual(Part + G(Rel(H, 1        )), G(Rel(H, 1 +   Whole))),
     ?assertEqual(Part + G(Rel(H, 1 + Whole)), G(Rel(H, 1 + 2*Whole))),
-    %% Gas used for absolute TTL is same as relative.
-    Abs = fun(H, Ttl) -> M(H, ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Ttl)) end,
-    ?assertEqual(Rel(H, 1 + Whole), Abs(H, H + 1 + Whole)),
+    %% Gas used for absolute TTL is same(ish) as relative.
+    Abs = fun(He, Ttl) -> M(He, ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Ttl)) end,
+    RelGas = G(Rel(H, 1 + Whole)),
+    AbsGas = G(Abs(H, H + 1 + Whole)),
+    ?assert(RelGas < AbsGas + 10),
+    ?assert(AbsGas < RelGas + 10),
     %% Enough gas for base cost though not enough for all TTL causes out-of-gas.
     ?assertMatch(
        {{error, <<"out_of_gas">>}, _},
@@ -2011,9 +2001,12 @@ sophia_oracles_gas_ttl__query(_Cfg) ->
     %% TTL increases gas used.
     ?assertEqual(Part + G(Rel(H, 1        )), G(Rel(H, 1 +   Whole))),
     ?assertEqual(Part + G(Rel(H, 1 + Whole)), G(Rel(H, 1 + 2*Whole))),
-    %% Gas used for absolute TTL is same as relative.
-    Abs = fun(H, Ttl) -> M(H, ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Ttl)) end,
-    ?assertEqual(Rel(H, 1 + Whole), Abs(H, H + 1 + Whole)),
+    %% Gas used for absolute TTL is same(ish) as relative.
+    Abs = fun(He, Ttl) -> M(He, ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Ttl)) end,
+    RelGas = G(Rel(H, 1 + Whole)),
+    AbsGas = G(Abs(H, H + 1 + Whole)),
+    ?assert(RelGas < AbsGas + 10),
+    ?assert(AbsGas < RelGas + 10),
     %% Enough gas for base cost though not enough for all TTL causes out-of-gas.
     ?assertMatch(
        {{error, <<"out_of_gas">>}, _},
@@ -2472,6 +2465,88 @@ sophia_map_benchmark(Cfg) ->
     %%                                 -32%     delta cost
     %%         x1.9         x2.6       x3.0     total improvement
 
+    %% Primitive maps
+    %%
+    %%  Code size: 1,417 bytes
+    %%
+    %%  Gas:
+    %%    N    init  set_updater  benchmark
+    %%    _     991          683      2,607         -- really need to pay gas for calldata sizes etc
+    %%
+    %%  Memory (words)
+    %%    N    init  set_updater  benchmark (remote)
+    %%    _      64           41         84 (75)    -- all data stored in maps off the heap
+
+    ok.
+
+sophia_pmaps(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000),
+    Ct  = ?call(create_contract, Acc, primitive_map, 0),
+    {} = ?call(call_contract, Acc, Ct, set_remote, {tuple, []}, Ct),
+
+    %% Using maps locally
+    {Result, _Gas} = ?call(call_contract, Acc, Ct, test, {list, {option, string}}, {}, #{return_gas_used => true}),
+    Result = [none,                      none,
+              {some,<<"value_of_foo">>}, {some,<<"value_of_bla">>},
+              none,                      {some,<<"value_of_bla">>},
+              none,                      {some,<<"new_value_of_bla">>}],
+
+    %% Returning maps from contracts
+    FooBar = #{<<"foo">> => <<"bar">>},
+    FooBar = ?call(call_contract, Acc, Ct, return_map, {map, string, string}, {}),
+
+    %% Passing maps as contract arguments
+    <<"bar">> = ?call(call_contract, Acc, Ct, argument_map, string, FooBar),
+
+    %% Passing maps between contracts
+    FooBarXY = FooBar#{<<"xxx">> => <<"yyy">>},
+    FooBarXY = ?call(call_contract, Acc, Ct, remote_insert, {map, string, string}, {<<"xxx">>, <<"yyy">>, FooBar}),
+    XY       = maps:remove(<<"foo">>, FooBarXY),
+    XY       = ?call(call_contract, Acc, Ct, remote_delete, {map, string, string}, {<<"foo">>, FooBarXY}),
+
+    %% Storing maps in the state
+    GetState = fun() -> ?call(call_contract, Acc, Ct, get_state_map, {map, string, string}, {}) end,
+    Empty = #{},
+    Empty = GetState(),
+    {} = ?call(call_contract, Acc, Ct, insert_state, {tuple, []}, {<<"foo">>, <<"bar">>}),
+    FooBar = GetState(),
+    {} = ?call(call_contract, Acc, Ct, insert_state, {tuple, []}, {<<"xxx">>, <<"yyy">>}),
+    {some, <<"bar">>} = ?call(call_contract, Acc, Ct, lookup_state, {option, string}, <<"foo">>),
+    FooBarXY = GetState(),
+    {} = ?call(call_contract, Acc, Ct, delete_state, {tuple, []}, {<<"foo">>}),
+    XY = GetState(),
+    {} = ?call(call_contract, Acc, Ct, set_state_map, {tuple, []}, FooBarXY),
+    FooBarXY = GetState(),
+    {} = ?call(call_contract, Acc, Ct, clone_state, {tuple, []}, {}),
+    {} = ?call(call_contract, Acc, Ct, double_insert_state, {tuple, []}, {<<"side">>, <<"left">>, <<"right">>}),
+    ok.
+
+sophia_chess(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000),
+    {Ct, _Gas} = ?call(create_contract, Acc, chess, {}, #{gas => 1000000, return_gas_used => true}),
+    {some, <<"black king">>}  = ?call(call_contract, Acc, Ct, piece, {option, string}, {8, 5}),
+    {some, <<"white queen">>} = ?call(call_contract, Acc, Ct, piece, {option, string}, {1, 4}),
+    {some, <<"black pawn">>}  = ?call(call_contract, Acc, Ct, piece, {option, string}, {7, 2}),
+    {}                        = ?call(call_contract, Acc, Ct, move_piece, {tuple, []}, {1, 4, 7, 2}),
+    {some, <<"white queen">>} = ?call(call_contract, Acc, Ct, piece, {option, string}, {7, 2}),
+    {some, <<"black pawn">>}  = ?call(call_contract, Acc, Ct, piece, {option, string}, {7, 1}),
+    {}                        = ?call(call_contract, Acc, Ct, delete_row, {tuple, []}, 7),
+    none                      = ?call(call_contract, Acc, Ct, piece, {option, string}, {7, 1}),
+    ok.
+
+sophia_map_of_maps(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 1000000000),
+    {Ct, _Gas} = ?call(create_contract, Acc, map_of_maps, {}, #{gas => 1000000, return_gas_used => true}),
+    {}         = ?call(call_contract, Acc, Ct, setup_state, {tuple, []}, {}),
+
+    %% Test 1 - garbage collection of inner map when outer map is garbage collected
+    Empty = #{},
+    {}    = ?call(call_contract, Acc, Ct, test1_setup, {tuple, []}, {}),
+    {}    = ?call(call_contract, Acc, Ct, test1_execute, {tuple, []}, {}),
+    Empty = ?call(call_contract, Acc, Ct, test1_check, {map, string, string}, {}),
     ok.
 
 sophia_variant_types(_Cfg) ->
