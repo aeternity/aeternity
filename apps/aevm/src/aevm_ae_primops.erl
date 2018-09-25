@@ -37,29 +37,26 @@
               | any(),
       OogResource :: any(),
       OogCost :: pos_integer().
-call(Value, Data, StateIn) ->
-    ChainIn = #chain{api = aevm_eeevm_state:chain_api(StateIn),
-                     state = aevm_eeevm_state:chain_state(StateIn)},
-    case call_(Value, Data, ChainIn) of
-        {ok, ReturnValue, GasSpent, ChainStateOut} ->
-            StateOut = aevm_eeevm_state:set_chain_state(ChainStateOut, StateIn),
-            {ok, ReturnValue, GasSpent, StateOut};
+%% Wrapper function for logging error in tests.
+call(Value, Data, State) ->
+    case call_(Value, Data, State) of
+        {ok, _, _, _} = Ok ->
+            Ok;
         {error, _} = Err ->
             ?TEST_LOG("Primop call error ~p~n~p:~p(~p, ~p, State)",
                       [Err, ?MODULE, ?FUNCTION_NAME, Value, Data]),
             Err
     end.
 
-call_(Value, Data, State) ->
-    try
-        case get_primop(Data) of
-            ?PRIM_CALL_SPEND ->
-                spend_call(Value, Data, State);
-            PrimOp when ?PRIM_CALL_IN_ORACLE_RANGE(PrimOp) ->
-                oracle_call(PrimOp, Value, Data, State);
-            PrimOp when ?PRIM_CALL_IN_AENS_RANGE(PrimOp) ->
-                aens_call(PrimOp, Value, Data, State)
-        end
+call_(Value, Data, StateIn) ->
+    ChainIn = #chain{api = aevm_eeevm_state:chain_api(StateIn),
+                     state = aevm_eeevm_state:chain_state(StateIn)},
+    try call_primop(get_primop(Data), Value, Data, ChainIn) of
+        {ok, ReturnValue, GasSpent, ChainStateOut} ->
+            StateOut = aevm_eeevm_state:set_chain_state(ChainStateOut, StateIn),
+            {ok, ReturnValue, GasSpent, StateOut};
+        {error, _} = Err ->
+            Err
     catch _T:_Err ->
             ?TEST_LOG("Primop illegal call ~p:~p:~p~n~p:~p(~p, ~p, State)",
                       [_T, _Err,
@@ -68,6 +65,15 @@ call_(Value, Data, State) ->
             %% TODO: Better error for illegal call.
             {error, illegal_primop_call}
     end.
+
+call_primop(?PRIM_CALL_SPEND, Value, Data, State) ->
+    spend_call(Value, Data, State);
+call_primop(PrimOp, Value, Data, State)
+  when ?PRIM_CALL_IN_ORACLE_RANGE(PrimOp) ->
+    oracle_call(PrimOp, Value, Data, State);
+call_primop(PrimOp, Value, Data, State)
+  when ?PRIM_CALL_IN_AENS_RANGE(PrimOp) ->
+    aens_call(PrimOp, Value, Data, State).
 
 %% ------------------------------------------------------------------
 %% Basic account operations.
