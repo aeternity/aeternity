@@ -13,7 +13,9 @@
 -export([
     test_simple_same_node_query/1,
     test_simple_two_nodes_query/1,
-    test_oracle_ttl_extension/1
+    test_oracle_ttl_extension/1,
+    test_pipelined_same_node_query/1,
+    test_pipelined_two_nodes_query/1
 ]).
 
 -import(aest_nodes, [
@@ -25,8 +27,8 @@
     post_spend_tx/5,
     post_oracle_register_tx/3,
     post_oracle_extend_tx/3,
-    post_oracle_query_tx/5,
-    post_oracle_response_tx/5
+    post_oracle_query_tx/4,
+    post_oracle_response_tx/3
 ]).
 
 %=== INCLUDES ==================================================================
@@ -86,7 +88,9 @@
 all() -> [
     test_simple_same_node_query,
     test_simple_two_nodes_query,
-    test_oracle_ttl_extension
+    test_oracle_ttl_extension,
+    test_pipelined_same_node_query,
+    test_pipelined_two_nodes_query
 ].
 
 init_per_suite(Config) ->
@@ -158,8 +162,14 @@ simple_query_test(Opts, Cfg) ->
     wait_for_value({balance, QPubKey, 200}, NodeNames, 10000, Cfg),
 
     %% Register oracle
-    #{ tx_hash := RegTxHash } =
-        post_oracle_register_tx(ONode, OAccount, #{ nonce => 1 }),
+    #{ tx_hash := RegTxHash } = post_oracle_register_tx(ONode, OAccount, #{
+        nonce           => 1,
+        query_format    => <<"qspec">>,
+        response_format => <<"rspec">>,
+        query_fee       => 1,
+        fee             => 6,
+        oracle_ttl      => {block, 2000}
+    }),
     aest_nodes:wait_for_value({txs_on_chain, [RegTxHash]}, NodeNames, 10000, []),
 
     {ok, 200, OracleInfo} =
@@ -167,8 +177,14 @@ simple_query_test(Opts, Cfg) ->
     ?assertMatch(#{ id := EncOPubKey }, OracleInfo),
 
     %% Start an oracle query
-    #{ tx_hash := QueryTxHash } =
-        post_oracle_query_tx(QNode, QAccount, OAccount, <<"Hidely-Ho">>, #{ nonce => 1 }),
+    #{ tx_hash := QueryTxHash } = post_oracle_query_tx(QNode, QAccount, OAccount, #{
+        nonce        => 1,
+        query        => <<"Hidely-Ho">>,
+        query_fee    => 2,
+        fee          => 30,
+        query_ttl    => {delta, 100},
+        response_ttl => {delta, 100}
+    }),
     aest_nodes:wait_for_value({txs_on_chain, [QueryTxHash]}, NodeNames, 10000, []),
     QueryId = aeo_query:id(QPubKey, 1, OPubKey),
     EncQueryId = aec_base58c:encode(oracle_query_id, QueryId),
@@ -185,8 +201,12 @@ simple_query_test(Opts, Cfg) ->
     ?assertEqual({oracle_response, <<>>}, aec_base58c:decode(maps:get(response, QueryInfo))),
 
     %% Respond to the oracle query
-    #{ tx_hash := RespTxHash } =
-        post_oracle_response_tx(ONode, OAccount, QueryId, <<"D'oh!">>, #{ nonce => 2 }),
+    #{ tx_hash := RespTxHash } = post_oracle_response_tx(ONode, OAccount, #{
+        nonce     => 2,
+        query_id  => QueryId,
+        response  => <<"D'oh!">>,
+        fee       => 10
+    }),
     aest_nodes:wait_for_value({txs_on_chain, [RespTxHash]}, NodeNames, 10000, []),
 
     {ok, 200, OpenQueriesInfo} =
@@ -220,9 +240,12 @@ test_oracle_ttl_extension(Cfg) ->
 
     %% Register oracle
     #{ tx_hash := RegTxHash } = post_oracle_register_tx(node1, ?OLIVIA, #{
-        nonce => 1,
-        oracle_ttl_type => block,
-        oracle_ttl => 200
+        nonce           => 1,
+        query_format    => <<"qspec">>,
+        response_format => <<"rspec">>,
+        query_fee       => 1,
+        fee             => 6,
+        oracle_ttl      => {block, 200}
     }),
     aest_nodes:wait_for_value({txs_on_chain, [RegTxHash]}, [node1], 10000, []),
 
@@ -232,14 +255,108 @@ test_oracle_ttl_extension(Cfg) ->
 
     %% Extend oracle's TTL
     #{ tx_hash := ExtTxHash } = post_oracle_extend_tx(node1, ?OLIVIA, #{
-        nonce => 2,
-        oracle_ttl => 20
+        nonce      => 2,
+        fee        => 10,
+        oracle_ttl => {delta, 100}
     }),
     aest_nodes:wait_for_value({txs_on_chain, [ExtTxHash]}, [node1], 10000, []),
 
     {ok, 200, OracleInfo2} =
         request(node1, 'GetOracleByPubkey', #{ pubkey => EncOPubKey }),
-    ?assertMatch(#{ id := EncOPubKey, ttl := 220 }, OracleInfo2),
+    ?assertMatch(#{ id := EncOPubKey, ttl := 300 }, OracleInfo2),
+
+    ok.
+
+test_pipelined_same_node_query(Cfg) ->
+    Opts = #{
+        oracle_node => node1,
+        oracle_id => ?OLIVIA,
+        querier_node => node1,
+        querier_id => ?ALICE
+    },
+    pipelined_query_test(Opts, Cfg).
+
+test_pipelined_two_nodes_query(Cfg) ->
+    Opts = #{
+        oracle_node => node1,
+        oracle_id => ?OLIVIA,
+        querier_node => node2,
+        querier_id => ?ALICE
+    },
+    pipelined_query_test(Opts, Cfg).
+
+pipelined_query_test(Opts, Cfg) ->
+    #{
+        oracle_node := ONode,
+        oracle_id := OAccount,
+        querier_node := QNode,
+        querier_id := QAccount
+    } = Opts,
+
+    MPubKey = maps:get(pubkey, ?MIKE),
+    OPubKey = maps:get(pubkey, OAccount),
+    QPubKey = maps:get(pubkey, QAccount),
+    EncMPubKey = aec_base58c:encode(account_pubkey, MPubKey),
+    EncOPubKey = aec_base58c:encode(oracle_pubkey, OPubKey),
+    EncQPubKey = aec_base58c:encode(account_pubkey, QPubKey),
+
+    %% Setup nodes
+    NodeConfig = #{ beneficiary => EncMPubKey },
+    setup([?NODE1, ?NODE2], NodeConfig, Cfg),
+    NodeNames = [node1, node2],
+    start_node(node1, Cfg),
+    start_node(node2, Cfg),
+    wait_for_startup([node1, node2], 4, Cfg),
+
+    %% Give some tokens to the oracle account
+    post_spend_tx(node1, ?MIKE, OAccount, 1, #{ amount => 200 }),
+    %% Give some tokens to the querier account
+    post_spend_tx(node1, ?MIKE, QAccount, 2, #{ amount => 200 }),
+
+    %% Register oracle
+    #{ tx_hash := _ } = post_oracle_register_tx(ONode, OAccount, #{
+        nonce           => 1,
+        query_format    => <<"qspec">>,
+        response_format => <<"rspec">>,
+        query_fee       => 1,
+        fee             => 6,
+        oracle_ttl      => {block, 2000}
+    }),
+
+    %% Start an oracle query
+    #{ tx_hash := _ } = post_oracle_query_tx(QNode, QAccount, OAccount, #{
+        nonce        => 1,
+        query        => <<"Hidely-Ho">>,
+        query_fee    => 2,
+        fee          => 30,
+        query_ttl    => {delta, 100},
+        response_ttl => {delta, 100}
+    }),
+    QueryId = aeo_query:id(QPubKey, 1, OPubKey),
+    EncQueryId = aec_base58c:encode(oracle_query_id, QueryId),
+
+    %% Respond to the oracle query
+    #{ tx_hash := RespTxHash } = post_oracle_response_tx(ONode, OAccount, #{
+        nonce     => 2,
+        query_id  => QueryId,
+        response  => <<"D'oh!">>,
+        fee       => 10
+    }),
+
+    %% Wait for the response transaction to get in the chain
+    aest_nodes:wait_for_value({txs_on_chain, [RespTxHash]}, NodeNames, 10000, []),
+
+    {ok, 200, OracleInfo} =
+        request(node1, 'GetOracleByPubkey', #{ pubkey => EncOPubKey }),
+    ?assertMatch(#{ id := EncOPubKey }, OracleInfo),
+    {ok, 200, OpenQueriesInfo} =
+        request(node1, 'GetOracleQueriesByPubkey', #{ pubkey => EncOPubKey, type => <<"open">> }),
+    ?assertMatch(#{ <<"oracle_queries">> := [] }, OpenQueriesInfo),
+    {ok, 200, QueryInfo} =
+        request(node1, 'GetOracleQueryByPubkeyAndQueryId', #{ pubkey => EncOPubKey, 'query-id' => EncQueryId }),
+    ?assertMatch(#{ id := EncQueryId, oracle_id := EncOPubKey, sender_id := EncQPubKey }, QueryInfo),
+    ?assertEqual({oracle_query, <<"Hidely-Ho">>}, aec_base58c:decode(maps:get(query, QueryInfo))),
+    ?assertEqual({oracle_response, <<"D'oh!">>}, aec_base58c:decode(maps:get(response, QueryInfo))),
 
     ok.
 
