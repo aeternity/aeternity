@@ -12,15 +12,18 @@
         , store/3
         , init/2
         , to_binary/1
+        , get_sophia_state/1
+        , get_sophia_state_type/1
         , from_sophia_state/1
-        , to_sophia_state/1
+        , set_sophia_state/2
         , is_valid_key/2
         ]).
 
 -include("aevm_eeevm.hrl").
 -include_lib("aecontract/src/aecontract.hrl").
 
--define(SOPHIA_STATE_KEY, <<0>>).
+-define(SOPHIA_STATE_KEY,      <<0>>).
+-define(SOPHIA_STATE_TYPE_KEY, <<1>>).
 
 %%====================================================================
 %% API
@@ -46,13 +49,28 @@ store(Address, Value, State) when is_integer(Value) ->
     Store1 = storage_write(Address, Value256, Store),
     aevm_eeevm_state:set_storage(Store1, State).
 
+%% The argument should be a binary encoding a pair of a typerep and a value of that type.
 -spec from_sophia_state(binary()) -> aect_contracts:store().
-from_sophia_state(Data) -> #{?SOPHIA_STATE_KEY => Data}.
+from_sophia_state(Data) ->
+    %% TODO: less encoding/decoding
+    {ok, {Type}}     = aeso_data:from_binary({tuple, [typerep]},    Data),
+    {ok, {_, Value}} = aeso_data:from_binary({tuple, [word, Type]}, Data),
+    StateData          = aeso_data:to_binary(Value),
+    TypeData           = aeso_data:to_binary(Type),
+    #{ ?SOPHIA_STATE_KEY      => StateData,
+       ?SOPHIA_STATE_TYPE_KEY => TypeData }.
 
--spec to_sophia_state(aect_contracts:store()) -> binary().
-to_sophia_state(Store) -> maps:get(?SOPHIA_STATE_KEY, Store, <<>>).
+-spec set_sophia_state(binary(), aect_contracts:store()) -> aect_contracts:store().
+set_sophia_state(Data, Store) -> Store#{?SOPHIA_STATE_KEY => Data}.
+
+-spec get_sophia_state(aect_contracts:store()) -> binary().
+get_sophia_state(Store) -> maps:get(?SOPHIA_STATE_KEY, Store, <<>>).
+
+-spec get_sophia_state_type(aect_contracts:store()) -> false | binary().
+get_sophia_state_type(Store) -> maps:get(?SOPHIA_STATE_TYPE_KEY, Store, false).
 
 is_valid_key(?AEVM_01_Sophia_01, ?SOPHIA_STATE_KEY) -> true;
+is_valid_key(?AEVM_01_Sophia_01, ?SOPHIA_STATE_TYPE_KEY) -> true;
 is_valid_key(?AEVM_01_Sophia_01, _) -> false;
 is_valid_key(?AEVM_01_Solidity_01, K) -> is_binary_map_key(K).
 

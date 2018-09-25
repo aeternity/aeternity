@@ -27,12 +27,14 @@
         , cp/1
         , data/1
         , difficulty/1
+        , do_return/3
         , extcode/2
         , extcode/4
         , extcodesize/2
         , gas/1
         , gaslimit/1
         , gasprice/1
+        , get_contract_call_input/3
         , init/2
         , jumpdests/1
         , logs/1
@@ -41,6 +43,7 @@
         , mem/1
         , no_recursion/1
         , number/1
+        , return_contract_call_result/4
         , return_data/1
         , save_store/1
         , set_code/2
@@ -70,32 +73,6 @@
 -type state() :: map().
 
 -export_type([state/0]).
-
--spec save_store(state()) -> state().
-save_store(#{ chain_state := ChainState
-            , chain_api   := ChainAPI
-            , vm_version  := VmVersion } = State) ->
-    case VmVersion of
-        ?AEVM_01_Solidity_01 ->
-            Store = aevm_eeevm_store:to_binary(State),
-            State#{ chain_state => ChainAPI:set_store(Store, ChainState)};
-        ?AEVM_01_Sophia_01 ->
-            %% The serialized state is on top of the heap and the pointer to it
-            %% at address 0.
-            try
-                {Addr, _} = aevm_eeevm_memory:load(0, State),
-                case Addr of        %% A contract can write 0 to the state pointer
-                    0 -> State;     %% to indicate that the state didn't change.
-                    _ -> Size      = aevm_eeevm_memory:size_in_words(State) * 32 - Addr,
-                         {Data, _} = aevm_eeevm_memory:get_area(Addr, Size, State),
-                         Store     = aevm_eeevm_store:from_sophia_state(Data),
-                         State#{ chain_state => ChainAPI:set_store(Store, ChainState) }
-                end
-            catch _:_ ->
-                io:format("** Error reading updated state\n~s", [format_mem(mem(State))]),
-                State
-            end
-    end.
 
 -spec init(map(), map()) -> state().
 init(#{ env  := Env
@@ -170,12 +147,122 @@ init_vm(State, Code, Mem, Store) ->
         ?AEVM_01_Solidity_01 ->
             aevm_eeevm_store:init(Store, State1);
         ?AEVM_01_Sophia_01 ->
-            %% Leave room for the calldata at address 32
-            Addr = byte_size(data(State1)) + 32,
-            Data = aevm_eeevm_store:to_sophia_state(Store),
-            State2 = aevm_eeevm_memory:write_area(Addr, Data, State1),
-            aevm_eeevm_memory:store(0, Addr, State2)
+            %% Write calldata at address 32 and put the pointer to the value on the stack.
+            case data(State1) of
+                <<Ptr:32/unit:8, Calldata/binary>> ->
+                    State2 = aevm_eeevm_stack:push(Ptr, aevm_eeevm_memory:write_area(32, Calldata, State1)),
+                    %% Write the state on top of it
+                    case aevm_eeevm_store:get_sophia_state_type(Store) of
+                        false -> State2;  %% No state yet (init function)
+                        TypeBin ->
+                            {ok, Type} = aeso_data:from_binary(typerep, TypeBin),
+                            Addr      = byte_size(Calldata) + 32,
+                            StateData = aevm_eeevm_store:get_sophia_state(Store),
+                            %% TODO: implement fusion of to_binary and from_binary (i.e. relocate_binary)
+                            {ok, StateVal} = aeso_data:from_binary(Type, StateData),
+                            <<StatePtr:32/unit:8, StateHeap/binary>> = aeso_data:to_binary(StateVal, Addr - 32),
+                            State3    = aevm_eeevm_memory:write_area(Addr, StateHeap, State2),
+                            aevm_eeevm_memory:store(0, StatePtr, State3)
+                    end;
+                _ -> set_gas(0, State1) %% Bad calldata, consume all gas
+            end
     end.
+
+do_return(Us0, Us1, State) ->
+    case vm_version(State) of
+        ?AEVM_01_Sophia_01 ->
+            try
+            %% In Sophia Us0 is a pointer to a typerep for the return value, and
+            %% Us1 is a pointer to the actual value.
+            Heap       = get_heap(State),
+            {ok, Type} = aeso_data:from_heap(typerep, Heap, Us0),
+            {ok, Out}  = aeso_data:from_heap(Type, Heap, Us1),
+            OutBin = aeso_data:to_binary(Out),
+                set_out(OutBin, State)
+            catch _:_ ->
+                io:format("** Error reading return value\n~s", [format_mem(mem(State))]),
+                set_gas(0, State)   %% Consume all gas on failure
+            end;
+        ?AEVM_01_Solidity_01 ->
+            %% Us0 is pointer to a return data binary and Us1 is the size.
+    {Out, State1} = aevm_eeevm_memory:get_area(Us0, Us1, State),
+            set_out(Out, State1)
+    end.
+
+return_contract_call_result(Addr, Size, ReturnData, State) ->
+    case aevm_eeevm_state:vm_version(State) of
+        ?AEVM_01_Solidity_01 ->
+            {1, aevm_eeevm_memory:write_area(Addr, ReturnData, State)};
+        ?AEVM_01_Sophia_01 ->
+            try
+                %% For Sophia, we use the Size argument to store the typerep of
+                %% the result. We also ignore the Addr and put the result on
+                %% top of the heap.
+                TypePtr    = Size,
+                HeapSize   = aevm_eeevm_memory:size_in_words(State) * 32,
+                {Heap, _}  = aevm_eeevm_memory:get_area(0, HeapSize, State),
+                {ok, Type} = aeso_data:from_heap(typerep, Heap, TypePtr),
+                {ok, Return} = aeso_data:from_binary(Type, ReturnData),
+                <<Ptr:32/unit:8, OutHeap/binary>> = aeso_data:to_binary(Return, HeapSize - 32),
+                {Ptr, aevm_eeevm_memory:write_area(HeapSize, OutHeap, State)}
+            catch _:Err ->
+                io:format("** Failed to decode contract return value\n~P\n~p\n", [erlang:get_stacktrace(), 20, Err]),
+                {0, set_gas(0, State)}
+            end
+    end.
+
+-spec save_store(state()) -> state().
+save_store(#{ chain_state := ChainState
+            , chain_api   := ChainAPI
+            , vm_version  := VmVersion } = State) ->
+    case VmVersion of
+        ?AEVM_01_Solidity_01 ->
+            Store = aevm_eeevm_store:to_binary(State),
+            State#{ chain_state => ChainAPI:set_store(Store, ChainState)};
+        ?AEVM_01_Sophia_01 ->
+            %% A typerep for the state type is on top of the stack, and the state
+            %% pointer is at address 0.
+            try
+                {Addr, _} = aevm_eeevm_memory:load(0, State),
+                case Addr of        %% A contract can write 0 to the state pointer
+                    0 -> State;     %% to indicate that the state didn't change.
+                    _ ->
+                        {TypePtr, _} = aevm_eeevm_stack:pop(State),
+                        Heap         = get_heap(State),
+                        {ok, Type}   = aeso_data:from_heap(typerep, Heap, TypePtr),
+                        {Ptr, _}     = aevm_eeevm_memory:load(Addr, State),
+                        {ok, Val}    = aeso_data:from_heap(Type, Heap, Ptr),
+                        Data         = aeso_data:to_binary(Val),
+                        Store        = ChainAPI:get_store(ChainState),
+                        Store1       = aevm_eeevm_store:set_sophia_state(Data, Store),
+                        State#{ chain_state => ChainAPI:set_store(Store1, ChainState) }
+                end
+            catch _:_ ->
+                io:format("** Error reading updated state\n~s", [format_mem(mem(State))]),
+                State
+            end
+    end.
+
+get_contract_call_input(IOffset, ISize, State) ->
+    case vm_version(State) of
+        ?AEVM_01_Solidity_01 ->
+            aevm_eeevm_memory:get_area(IOffset, ISize, State);
+        ?AEVM_01_Sophia_01 ->
+            %% In Sophia the ISize is the type of the arguments and IOffset is
+            %% a pointer into the heap.
+            TypePtr = ISize,
+            Ptr     = IOffset,
+            Heap       = get_heap(State),
+            {ok, Type} = aeso_data:from_heap(typerep, Heap, TypePtr),
+            {ok, Arg}  = aeso_data:from_heap(Type, Heap, Ptr),
+            {aeso_data:to_binary(Arg), State}
+    end.
+
+%% Get the entire heap. Does not update the state.
+get_heap(State) ->
+    Size      = aevm_eeevm_memory:size_in_words(State) * 32,
+    {Heap, _} = aevm_eeevm_memory:get_area(0, Size, State),
+    Heap.
 
 call_contract(Caller, Target, CallGas, Value, Data, State) ->
     case vm_version(State) of

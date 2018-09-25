@@ -47,13 +47,17 @@ decl() ->
     , ?RULE(keyword(datatype), id(), type_vars(), tok('='), typedef(variant), {type_def, _1, _2, _3, _5})
 
       %% Function declarations
-    , ?RULE(modifiers(), keyword(function), id(), tok(':'), type(), {fun_decl, _2, _3, _5})     %% TODO modifiers
-    , ?RULE(modifiers(), keyword(function), fundef(),               set_pos(get_pos(_2), _3))   %% TODO
+    , ?RULE(modifiers(), keyword(function), id(), tok(':'), type(), add_modifiers(_1, {fun_decl, _2, _3, _5}))
+    , ?RULE(modifiers(), keyword(function), fundef(),               add_modifiers(_1, set_pos(get_pos(_2), _3)))
     , ?RULE(keyword('let'),    valdef(),                            set_pos(get_pos(_1), _2))
     ])).
 
 modifiers() ->
     many(choice([token(stateful), token(public), token(private), token(internal)])).
+
+add_modifiers(Mods, Node) ->
+    lists:foldl(fun({Mod, _}, X) -> set_ann(Mod, true, X) end,
+                Node, Mods).
 
 %% -- Type declarations ------------------------------------------------------
 

@@ -3,7 +3,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 encode_call_with_integer_test() ->
-    [64, 128, 192, 4, "main", 42] =
+    [32, 96, 160, 4, "main", 42] =
         aeso_test_utils:dump_words(
             aeso_abi:create_calldata("", "main", "(42)")).
 
@@ -92,5 +92,5 @@ encode(D) ->
     aeso_data:to_binary(D).
 
 decode(T,B) ->
-    {ok, D} = aeso_data:from_binary(32, T, B),
+    {ok, D} = aeso_data:from_binary(T, B),
     D.

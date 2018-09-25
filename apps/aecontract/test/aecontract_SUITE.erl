@@ -60,6 +60,7 @@
         , sophia_oracles_qfee__inner_error_after_primop__remote/1
         , sophia_oracles_qfee__outer_error_after_primop__remote/1
         , sophia_maps/1
+        , sophia_map_benchmark/1
         , sophia_variant_types/1
         , sophia_chain/1
         , sophia_savecoinbase/1
@@ -122,6 +123,7 @@ groups() ->
                                  {group, sophia_oracles_query_fee_unhappy_path},
                                  {group, sophia_oracles_query_fee_unhappy_path_remote},
                                  sophia_maps,
+                                 sophia_map_benchmark,
                                  sophia_variant_types,
                                  sophia_chain,
                                  sophia_savecoinbase,
@@ -505,7 +507,11 @@ get_contract_state(Contract) ->
 
 call(Name, Fun, Xs) ->
     Fmt = string:join(lists:duplicate(length(Xs), "~p"), ", "),
-    io:format("~p(" ++ Fmt ++ ") ->\n", [Name | Xs]),
+    Xs1 = [ case X of
+                <<Pre:32, _:28/unit:8>> -> <<Pre:32>>;
+                _ -> X
+            end || X <- Xs ],
+    io:format("~p(" ++ Fmt ++ ") ->\n", [Name | Xs1]),
     R = call(Fun, Xs),
     io:format("  ~p\n", [R]),
     R.
@@ -2024,6 +2030,190 @@ sophia_maps(_Cfg) ->
     {MapI3, MapS3} = Call(get_state, State, {}),
     ok.
 
+sophia_map_benchmark(Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc  = ?call(new_account, 100000000),
+    N    = proplists:get_value(n, Cfg, 10),
+    Map  = maps:from_list([{I, list_to_binary(integer_to_list(I))} || I <- lists:seq(1, N) ]),
+    Code = aect_test_utils:compile_contract("contracts/maps_benchmark.aes"),
+    Opts = #{ gas => 1000000, return_gas_used => true },
+    {Ct, InitGas}   = ?call(create_contract, Acc, maps_benchmark, {777, Map}, Opts),
+    {{}, SimpleGas} = ?call(call_contract, Acc, Ct, set_updater, {tuple, []}, Ct, Opts),
+    Map1 = Map#{ 5 => <<"five">> },
+    {Map1, Gas} = ?call(call_contract, Acc, Ct, benchmark, {map, word, string}, {5, <<"five">>}, Opts),
+    io:format("Bytecode size: ~p\nInit   gas used: ~p\nSimple gas used: ~p\nBench  gas used: ~p\n", [byte_size(Code), InitGas, SimpleGas, Gas]),
+
+    %% Before any optimisations:
+    %%
+    %%  Code size: 1,746 bytes
+    %%
+    %%  Gas:
+    %%    N    init  set_updater  benchmark
+    %%    0     599          976      5,253
+    %%   10   6,283        9,758     42,102
+    %%   20  12,024       18,626     80,524
+    %%   40  32,673       36,619    165,544
+    %%   80  47,648       73,638    343,217
+    %%  160  98,296      151,799    736,808
+    %%
+    %%  Memory (words) - recorded by instrumenting the VM
+    %%    N    init  set_updater  benchmark (remote)
+    %%    0      13           18         61     (30)
+    %%   10     133          178        419    (320)
+    %%   20     253          338        799    (600)
+    %%   40     493          658      1,559  (1,240)
+    %%   80     973        1,298      3,079  (2,480)
+    %%  160   1,933        2,578      6,119  (4,920)
+
+    %% Read return values off the heap (with encoded typereps on the heap)
+    %%
+    %%  Code size: 1,859 bytes
+    %%
+    %%  Gas:
+    %%    N    init  set_updater  benchmark
+    %%    0     726          982      4,456
+    %%   10   1,100        9,656     31,330
+    %%   20   1,488       18,416     58,424
+    %%   40   2,306       36,193    119,874
+    %%   80   4,111       72,779    246,881
+    %%  160   8,395      150,075    525,113
+    %%         -91%          -1%       -29%
+    %%
+    %%  Memory (words)
+    %%    N    init  set_updater  benchmark (remote)
+    %%    0      29           21         66     (35)
+    %%   10      89          181        370    (271)
+    %%   20     149          341        690    (491)
+    %%   40     269          661      1,330  (1,011)
+    %%   80     509        1,301      2,610  (2,011)
+    %%  160     989        2,581      5,170  (3,971)
+
+    %% Read updated states from the heap (with encoded typereps on the heap)
+    %%
+    %%  Code size: 1,907 bytes
+    %%
+    %%  Gas:
+    %%    N    init  set_updater  benchmark
+    %%    0     726        1,099      4,161
+    %%   10   1,100        4,564     20,974
+    %%   20   1,488        8,052     37,263
+    %%   40   2,306       15,106     76,353
+    %%   80   4,111       29,514    155,792
+    %%  160   8,395       59,527    327,558
+    %%          -0%         -60%       -38%
+    %%
+    %%  Memory (words)
+    %%    N    init  set_updater  benchmark (remote)
+    %%    0      29           36         75     (50)
+    %%   10      89          136        325    (226)
+    %%   20     149          236        585    (386)
+    %%   40     269          436      1,105    (786)
+    %%   80     509          836      2,145  (1,546)
+    %%  160     989        1,636      4,225  (3,026)
+
+    %% Load calldata before starting the VM. This makes calling functions with
+    %% big arguments *a lot* cheaper.
+    %%
+    %%  Code size: 1,901 bytes
+    %%
+    %%  Gas:
+    %%    N    init  set_updater  benchmark
+    %%    0     673        1,070      4,082
+    %%   10     678        4,535     20,715
+    %%   20     683        8,023     36,824
+    %%   40     693       15,077     75,554
+    %%   80     713       29,485    154,273
+    %%  160     752       59,498    324,599
+    %%         -99%          -0%        -1%
+    %%
+    %%  Memory (words)
+    %%    N    init  set_updater  benchmark (remote)
+    %%    0      29           36         75     (50)
+    %%   10      89          136        325    (226)
+    %%   20     149          236        585    (386)
+    %%   40     269          436      1,105    (786)
+    %%   80     509          836      2,145  (1,546)
+    %%  160     989        1,636      4,225  (3,026)
+    %%          -0%          -0%        -0%
+
+    %% No decoding of input state.
+    %%
+    %%  Code size: 1,961 bytes
+    %%
+    %%  Gas:
+    %%    N    init  set_updater  benchmark
+    %%    0   1,193          781      3,503
+    %%   10   1,204          786     13,064
+    %%   20   1,215          792     21,970
+    %%   40   1,237          803     45,891
+    %%   80   1,282          826     93,461
+    %%  160   1,370          871    195,447
+    %%         +40%         -99%       -40%
+    %%
+    %%  Memory (words)
+    %%    N    init  set_updater  benchmark (remote)
+    %%    0      55           33         72     (47)
+    %%   10     115           93        282    (183)
+    %%   20     175          153        502    (303)
+    %%   40     295          273        942    (623)
+    %%   80     535          513      1,822  (1,223)
+    %%  160   1,015          993      3,582  (2,383)
+    %%          +3%         -40%       -15%
+
+    %% No decoding of contract call return values (only affects benchmark).
+    %%
+    %%  Code size: 1,874 bytes
+    %%
+    %%  Gas:
+    %%    N    init  set_updater  benchmark
+    %%    0                           3,262
+    %%   10                           9,802
+    %%   20                          15,290
+    %%   40                          32,190
+    %%   80                          64,967
+    %%  160                         134,365
+    %%                                 -31%     delta cost
+    %%          x72         x174       x5.5     total improvement
+    %%
+    %%  Memory (words)
+    %%    N    init  set_updater  benchmark (remote)
+    %%    0                              77     (47)
+    %%   10                             251    (183)
+    %%   20                             431    (303)
+    %%   40                             791    (623)
+    %%   80                           1,511  (1,223)
+    %%  160                           2,951  (2,383)
+    %%                                 -18%     delta cost
+    %%         x1.9         x2.6       x2.1     total improvement
+
+    %% No decoding of contract call arguments (only affects benchmark).
+    %%
+    %%  Code size: 1,710 bytes      -36 bytes (yay!)
+    %%
+    %%  Gas:
+    %%    N    init  set_updater  benchmark
+    %%    0                           2,938
+    %%   10                           4,363
+    %%   20                           4,668
+    %%   40                          10,988
+    %%   80                          21,763
+    %%  160                          43,782
+    %%                                 -67%     delta cost
+    %%          x72         x174        x17     total improvement
+    %%
+    %%  Memory (words)
+    %%    N    init  set_updater  benchmark (remote)
+    %%    0                              94     (47)
+    %%   10                             208    (183)
+    %%   20                             328    (303)
+    %%   40                             568    (623)
+    %%   80                           1,048  (1,223)
+    %%  160                           2,008  (2,383)
+    %%                                 -32%     delta cost
+    %%         x1.9         x2.6       x3.0     total improvement
+
+    ok.
+
 sophia_variant_types(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc = <<AccId:256>> = ?call(new_account, 1000000),
@@ -2057,13 +2247,13 @@ sophia_savecoinbase(_Cfg) ->
     %% Create chain contract and check that address is stored.
     Ct1 = ?call(create_contract, Acc, chain, {}, #{amount => 10000}),
     #{<<0>> := Val1} = get_contract_state(Ct1),
-    {ok, {LastBf}} = aeso_data:from_binary(0, {tuple, [word]}, Val1),
+    {ok, {LastBf}} = aeso_data:from_binary({tuple, [word]}, Val1),
     <<LastBf:?BENEFICIARY_PUB_BYTES/unit:8>> = Ct1,
 
     %% Call chain.save_coinbase() and make sure beneficiary is stored.
     ?call(call_contract, Acc, Ct1, save_coinbase, word, {}),
     #{<<0>> := Val2}  = get_contract_state(Ct1),
-    {ok, {LastBf2}} = aeso_data:from_binary(0, {tuple, [word]}, Val2),
+    {ok, {LastBf2}} = aeso_data:from_binary({tuple, [word]}, Val2),
     Beneficiary = LastBf2,
     ok.
 

@@ -972,8 +972,7 @@ broken_decode_sophia_data(_Config) ->
 
 %% Used in contract-decode endpoint tests.
 to_binary(Term) ->
-    BaseAddr = 0, %% Decode expects base address 0 (since return values have base address 0)
-    aeu_hex:hexstring_encode(aeso_data:to_binary(Term, BaseAddr)).
+    aeu_hex:hexstring_encode(aeso_data:to_binary(Term)).
 
 decode_data(Type, EncodedData) ->
     {ok, 200, Data} =
@@ -1450,7 +1449,7 @@ post_contract_and_call_tx(_Config) ->
                       vm_version => 1,
                       deposit    => 2,
                       amount     => 1,
-                      gas        => 300,
+                      gas        => 500,
                       gas_price  => 1,
                       fee        => 1,
                       call_data  => EncodedInitCallData},
@@ -1533,7 +1532,7 @@ get_contract(_Config) ->
                       vm_version => 1,
                       deposit    => 2,
                       amount     => ContractInitBalance,
-                      gas        => 300,
+                      gas        => 500,
                       gas_price  => 1,
                       fee        => 1,
                       call_data  => EncodedInitCallData},
@@ -1562,7 +1561,7 @@ get_contract(_Config) ->
     ok = wait_for_tx_hash_on_chain(ContractCreateTxHash),
     ?assert(tx_in_chain(ContractCreateTxHash)),
 
-    {ok, 200, #{<<"return_value">> := ReturnValue}} = get_contract_call_object(ContractCreateTxHash),
+    {ok, 200, #{<<"return_value">> := _InitStateAndType}} = get_contract_call_object(ContractCreateTxHash),
 
     ?assertMatch({ok, 200, #{<<"id">>          := EncodedContractPubKey,
                              <<"owner_id">>    := MinerAddress,
@@ -1574,7 +1573,8 @@ get_contract(_Config) ->
                  get_contract_sut(EncodedContractPubKey)),
     ?assertEqual({ok, 200, #{<<"bytecode">> => Code}}, get_contract_code_sut(EncodedContractPubKey)),
     ?assertMatch({ok, 200, #{<<"store">> := [
-        #{<<"key">> := <<"0x00">>, <<"value">> := ReturnValue}
+        #{<<"key">> := <<"0x00">>, <<"value">> := _InitState},
+        #{<<"key">> := <<"0x01">>, <<"value">> := _StateType}    %% We store the state type in the Store
         ]}}, get_contract_store_sut(EncodedContractPubKey)),
     ok.
 
@@ -1859,7 +1859,7 @@ contract_transactions(_Config) ->    % miner has an account
                       vm_version => 1,
                       deposit => 2,
                       amount => ContractInitBalance,
-                      gas => 300,
+                      gas => 500,
                       gas_price => 1,
                       fee => 1,
                       call_data => EncodedInitCallData},
@@ -2118,7 +2118,7 @@ contract_create_compute_transaction(_Config) ->
                       vm_version => 1,
                       deposit => 2,
                       amount => ContractInitBalance,
-                      gas => 300,
+                      gas => 500,
                       gas_price => 1,
                       fee => 1,
                       arguments => <<"()">> },

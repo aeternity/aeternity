@@ -14,6 +14,7 @@
    ]).
 
 -include("apps/aecontract/src/aecontract.hrl").
+-include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include_lib("common_test/include/ct.hrl").
 
 all() ->
@@ -58,16 +59,27 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
 
 execute_identity_fun_from_bytecode(_Cfg) ->
     Code =
-        <<96,0,53,128,127,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-          0,0,0,0,0,20,98,0,0,44,87,0,91,96,32,53,98,0,0,58,144,98,0,0,67,86,91,
-          96,0,82,96,32,96,0,243,91,128,144,80,144,86>>,
+        %% We enter the VM with the calldata on the stack and stored at address
+        %% 32 in memory if required. In this case the calldata is an integer so
+        %% it fits on the stack.
+        %% We should return with a typerep and return value on the stack and 0
+        %% written to the state pointer at address 0, to indicate that we
+        %% didn't update the state. We haven't initialized any state in this
+        %% test though, so the state pointer is already 0.
+                        %% Stack    Mem     Comment
+                        %% N
+        <<?MSIZE,       %% P N
+          ?PUSH1, 0,    %% 0 P N            The typerep for 'word' is a tuple {0}, i.e. a pointer to 0
+          ?MSIZE,       %% P 0 P N
+          ?MSTORE,      %% P N      P:0
+          ?RETURN>>,
     {ok, Res} =
         aevm_eeevm:eval(
           aevm_eeevm_state:init(
             #{ exec => #{ code => Code,
                           address => 91210,
                           caller => 0,
-                          data => <<0:256, 42:256>>,
+                          data => <<42:256>>,
                           gas => 1000000,
                           gasPrice => 1,
                           origin => 0,

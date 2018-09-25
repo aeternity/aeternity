@@ -92,8 +92,8 @@ contract Identity =
   // let id(x) = x
   // let main(xs) = map(double,xs)
   function z(f,x) = x
-  function s(n) = (f,x)=>f(n(f,x))
-  function add(m,n) = (f,x)=>m(f,n(f,x))
+  private function s(n) = (f,x)=>f(n(f,x))
+  private function add(m,n) = (f,x)=>m(f,n(f,x))
   function main(_) =
     let three=s(s(s(z)))
     add(three,three)

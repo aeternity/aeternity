@@ -10,7 +10,7 @@
 
 -include("apps/aecontract/src/aecontract.hrl").
 
--export([read_contract/1, contract_path/0, run_contract/4, pp/1, pp/2, dump_words/1, compile/1]).
+-export([read_contract/1, contract_path/0, run_contract/4, pp/1, pp/2, dump_words/1, show_heap/1, show_heap/2, compile/1]).
 
 -export([spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2,
          aens_lookup/4]).
@@ -141,6 +141,14 @@ new_atom() ->
     end,
     ets:insert(names,{index,I+1}),
     list_to_atom([$a+I]).
+
+show_heap(Bin) ->
+    show_heap(0, Bin).
+
+show_heap(Offs, Bin) ->
+    Words = dump_words(Bin),
+    Addrs = lists:seq(0, (length(Words) - 1) * 32, 32),
+    lists:flatten([io_lib:format("~4b ~p\n", [Addr + Offs, Word]) || {Addr, Word} <- lists:zip(Addrs, Words)]).
 
 %% Translate a blob of 256-bit words into readable form. Does a bit of guessing
 %% to recover strings. TODO: strings longer than 32 bytes

@@ -153,7 +153,11 @@ decl({type_def, _, T, Vars, Def}) ->
     equals(typedecl(Kind, T, Vars), typedef(Def));
 decl({fun_decl, _, F, T}) ->
     hsep(text("function"), typed(name(F), T));
-decl(D = {letfun, _, _, _, _, _}) -> letdecl("function", D);
+decl(D = {letfun, Attrs, _, _, _, _}) ->
+    Mod = fun({Mod, true}) when Mod == private; Mod == internal; Mod == public; Mod == stateful ->
+                            text(atom_to_list(Mod));
+             (_) -> empty() end,
+    hsep(lists:map(Mod, Attrs) ++ [letdecl("function", D)]);
 decl(D = {letval, _, _, _, _})    -> letdecl("let", D);
 decl(D = {letrec, _, _})          -> letdecl("let", D).
 

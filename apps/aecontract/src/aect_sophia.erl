@@ -111,7 +111,7 @@ encode_call_data(Contract, Function, Argument) ->
 decode_data(Type, Data) ->
     case get_type(Type) of
         {ok, SophiaType} ->
-            try aeso_data:from_binary(0, SophiaType,
+            try aeso_data:from_binary(SophiaType,
                                       aeu_hex:hexstring_decode(Data)) of
                 {ok, Term} ->
                     try prepare_for_json(SophiaType, Term) of

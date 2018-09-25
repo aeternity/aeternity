@@ -18,9 +18,12 @@
 
 -type bindings() :: any().
 -type fun_dec() :: { string()
+                   , [modifier()]
                    , arg_list()
                    , expr()
                    , aeso_sophia:type()}.
+
+-type modifier() :: private | stateful.
 
 -type type_name() :: string() | [string()].
 
