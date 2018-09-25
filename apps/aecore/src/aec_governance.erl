@@ -33,7 +33,8 @@
 
 -define(BLOCKS_TO_CHECK_DIFFICULTY_COUNT, 17).
 -define(TIMESTAMP_MEDIAN_BLOCKS, 11).
--define(EXPECTED_BLOCK_MINE_RATE, 3 * 60 * 1000). %% 60secs * 1000ms * 3 = 180000msecs
+-define(EXPECTED_BLOCK_MINE_RATE_MINUTES, 3).
+-define(EXPECTED_BLOCK_MINE_RATE, (?EXPECTED_BLOCK_MINE_RATE_MINUTES * 60 * 1000)). %% 60secs * 1000ms * 3 = 180000msecs
 -define(BLOCK_MINE_REWARD, 10000000000000000000).
 %% Ethereum's gas limit is 8 000 000 and block time ~15s.
 %% For 3s block time it's 1 600 000 (5x less).
@@ -44,7 +45,7 @@
 -define(BENEFICIARY_REWARD_DELAY, 180). %% in key blocks / generations
 -define(MICRO_BLOCK_CYCLE, 3000). %% in msecs
 
--define(ACCEPTED_FUTURE_BLOCK_TIME_SHIFT, 9 * 60 * 1000). %% 9 min
+-define(ACCEPTED_FUTURE_BLOCK_TIME_SHIFT, (?EXPECTED_BLOCK_MINE_RATE_MINUTES * 3 * 60 * 1000)). %% 9 min
 
 %% Maps consensus protocol version to minimum height at which such
 %% version is effective.  The height must be strictly increasing with
