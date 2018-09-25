@@ -82,8 +82,7 @@ run_common(#{  amount      := Value
     <<Beneficiary:?BENEFICIARY_PUB_BYTES/unit:8>> = aetx_env:beneficiary(TxEnv),
     Env = #{currentCoinbase   => Beneficiary,
             currentDifficulty => aetx_env:difficulty(TxEnv),
-            %% TODO: implement gas limit in governance and blocks.
-            currentGasLimit   => 100000000000,
+            currentGasLimit   => aec_governance:block_gas_limit(),
             currentNumber     => aetx_env:height(TxEnv),
             currentTimestamp  => aetx_env:time_in_msecs(TxEnv),
             chainState        => aec_vm_chain:new_state(Trees, TxEnv, CPubKey),
