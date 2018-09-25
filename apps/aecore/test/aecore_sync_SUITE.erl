@@ -144,13 +144,28 @@ init_per_group(TwoNodes, Config) when TwoNodes == two_nodes;
 init_per_group(three_nodes, Config) ->
     config({devs, [dev1, dev2, dev3]}, Config);
 init_per_group(one_blocked, Config) ->
-    %% Use dev1 and dev3, since the group doesn't clean up properly TODO!
-    Config1 = config({devs, [dev1, dev3]}, Config),
-    preblock_second(Config1),
+    Config1 = config({devs, [dev1, dev2]}, Config),
+    [Dev1, Dev2 | _] = proplists:get_value(devs, Config1),
+    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
+    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
+                                            [{block_peers, [ Dev2 ]},
+                                             {add_peers, true}
+                                            ]),
     Config1;
 init_per_group(_Group, Config) ->
     Config.
 
+end_per_group(one_blocked, Config) ->
+    ct:log("Metrics: ~p", [aec_metrics_test_utils:fetch_data()]),
+    aec_metrics_test_utils:stop_statsd_loggers(Config),
+    stop_devs(Config),
+    %% reset dev1 config to no longer block any peers.
+    Config1 = config({devs, [dev1]}, Config),
+    [Dev1 | _] = proplists:get_value(devs, Config1),
+    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
+    aecore_suite_utils:create_config(Dev1, Config, 
+                                     maps:without([<<"blocked_peers">>], EpochCfg),
+                                     [{add_peers, true}]);
 end_per_group(_, Config) ->
     ct:log("Metrics: ~p", [aec_metrics_test_utils:fetch_data()]),
     aec_metrics_test_utils:stop_statsd_loggers(Config),
@@ -613,14 +628,6 @@ ensure_new_tx_(N, Tx) ->
 
 ok({ok, V}) ->
     V.
-
-preblock_second(Config) ->
-    [Dev1, Dev2 | _] = proplists:get_value(devs, Config),
-    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
-    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
-                                            [{block_peers, [ Dev2 ]},
-                                             {add_peers, true}
-                                            ]).
 
 config({devs, Devs}, Config) ->
     aec_metrics_test_utils:start_statsd_loggers(
