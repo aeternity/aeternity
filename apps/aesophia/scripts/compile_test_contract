@@ -1,6 +1,6 @@
 #!/usr/bin/env escript
 %% -*- erlang -*-
-%%! -smp enable -sname complile_test_contract -mnesia debug verbose
+%%! -smp enable -sname compile_test_contract -mnesia debug verbose
 
 main([TestName, EbinDir]) ->
     code:add_patha(lists:concat([EbinDir, "/aesophia/ebin/"])),
@@ -13,6 +13,7 @@ main([TestName, EbinDir]) ->
             io:format("Compiling contract ~s~s.aes\n\n", [TestDir, TestName]),
             aeso_compiler:from_string(C, []);
         {error, enoent} ->
-            io:format("Contract ~s.aes not found in ~s\n", [TestName, TestDir])
+            io:format("Contract ~s.aes not found in ~s\n", [TestName, TestDir]),
+            halt(127)
     end.
 
