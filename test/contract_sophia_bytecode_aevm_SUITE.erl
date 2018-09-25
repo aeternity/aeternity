@@ -29,7 +29,7 @@
 -export([ get_height/1, spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2,
           oracle_register/7, oracle_query/6, oracle_query_format/2, oracle_response_format/2,
           oracle_respond/5, oracle_get_answer/3,
-          oracle_query_fee/2, oracle_get_question/3, oracle_extend/4]).
+          oracle_query_fee/2, oracle_query_response_ttl/3, oracle_get_question/3, oracle_extend/4]).
 
 -include("apps/aecontract/src/aecontract.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -369,7 +369,8 @@ increment_account(Account, Value, Env) ->
 oracles(_Cfg) ->
     Code = compile_contract(oracles),
     QFee = 100,
-    Env0 = initial_state(#{}, #{101 => QFee}),
+    ChainEnv = #{ currentNumber => 20 },
+    Env0 = initial_state(#{ environment => ChainEnv }, #{101 => QFee}),
     Env1 = create_contract(101, Code, "()", Env0),
     {101, Env2} = successful_call(101, word, registerOracle, "(101, 3, "++ integer_to_list(QFee) ++", (0, 10))", Env1),
     {Q, Env3}   = successful_call(101, word, createQuery, "(101, \"why?\", "++ integer_to_list(QFee) ++", (0, 10), (0, 11))", Env2, #{value => QFee}),
@@ -517,6 +518,12 @@ oracle_query_fee(<<Oracle:256>>, State) ->
     case maps:get(oracles, State, []) of
         #{ Oracle := #{query_fee := Fee} } -> {ok, Fee};
         _ -> {error, {no_such_oracle, Oracle}}
+    end.
+
+oracle_query_response_ttl(<<Oracle:256>>, <<Query:256>>, State) ->
+    case maps:get(oracle_queries, State, #{}) of
+        #{Query := Q} -> {ok, maps:get(r_ttl, Q)};
+        _ -> {error, no_such_oracle_query}
     end.
 
 oracle_query_format(<<Oracle:256>>, State) ->

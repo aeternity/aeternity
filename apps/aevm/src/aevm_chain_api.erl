@@ -104,6 +104,11 @@
                            ChainState :: chain_state()) ->
     {ok, non_neg_integer()} | {error, term()}.
 
+-callback oracle_query_response_ttl(Oracle :: pubkey(),
+                                    Query :: pubkey(),
+                                    ChainState :: chain_state()) ->
+    {ok, aeo_oracles:relative_ttl()} | {error, term()}.
+
 %% -- Name Services --
 
 -callback aens_resolve(Name :: binary(),

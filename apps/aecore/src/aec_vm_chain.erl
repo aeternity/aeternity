@@ -22,6 +22,7 @@
           oracle_query/6,
           oracle_query_fee/2,
           oracle_query_format/2,
+          oracle_query_response_ttl/3,
           oracle_register/7,
           oracle_respond/5,
           oracle_response_format/2,
@@ -255,8 +256,14 @@ oracle_query_format(Oracle, #state{ trees   = Trees} =_State) ->
             {error, no_such_oracle}
     end.
 
-
-
+oracle_query_response_ttl(OracleId, QueryId, #state{trees = Trees} =_State) ->
+    OraclesTree = aec_trees:oracles(Trees),
+    case aeo_state_tree:lookup_query(OracleId, QueryId, OraclesTree) of
+        {value, Query} ->
+            {ok, aeo_query:response_ttl(Query)};
+        none ->
+            {error, no_such_oracle_query}
+    end.
 
 oracle_response_format(Oracle, #state{ trees   = Trees} =_State) ->
     case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
