@@ -40,16 +40,8 @@ run_new(ContractPubKey, Call, CallData, Round, Trees0) ->
                , call_stack  => CallStack
                , code        => Code
                , call        => Call
-               , height      => Round
                , trees       => Trees0
-                 %% We do not want the execution off chain and
-                 %% on chain to be different so the coinbase
-                 %% instruction will always return 0.
-               , beneficiary => <<0:?BENEFICIARY_PUB_BYTES/unit:8>>
-                %% TODO: Default value for offchain
-               , difficulty  => 0
-                %% TODO: The time should probably be set in channels as well
-               , time        => aeu_time:now_in_msecs()
+               , tx_env     => tx_env(Round)
                },
     {CallRes, Trees} = aect_dispatch:run(VmVersion, CallDef),
     case aect_call:return_type(CallRes) of
@@ -99,19 +91,28 @@ run(ContractPubKey, VmVersion, Call, CallData, CallStack, Round, Trees0,
                , call_stack => CallStack
                , code       => Code
                , call       => Call
-               , height     => Round
                , trees      => Trees0
-                 %% We do not want the execution off chain and
-                 %% on chain to be different so the coinbase
-                 %% instruction will always return 0.
-               , beneficiary => <<0:?BENEFICIARY_PUB_BYTES/unit:8>>
-                %% TODO: Default value for offchain
-               , difficulty  => 0
-                %% TODO: The time should probably be set in channels as well
-               , time        => aeu_time:now_in_msecs()
+               , tx_env     => tx_env(Round)
                },
     {CallRes, Trees} = aect_dispatch:run(VmVersion, CallDef),
     aect_utils:insert_call_in_trees(CallRes, Trees).
+
+tx_env(Round) ->
+    %% We do not want the execution off chain and
+    %% on chain to be different so therea are some default values.
+
+    %% Beneficiary is always 0
+    Beneficiary = <<0:?BENEFICIARY_PUB_BYTES/unit:8>>,
+    %% Block hash is always 0
+    PrevHash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
+    %% TODO: Default value for offchain
+    Difficulty = 0,
+    %% TODO: The time should probably be set in channels as well
+    Time = aeu_time:now_in_msecs(),
+    %% TODO: Proper consensus version should be set
+    ConsensusVersion = ?PROTOCOL_VERSION,
+    aetx_env:contract_env(Round, ConsensusVersion, Time,
+                          Beneficiary, Difficulty, PrevHash).
 
 get_call(ContractPubkey, CallerPubkey, Round, CallsTree) ->
     CallId = aect_call:id(CallerPubkey, Round, ContractPubkey),

@@ -19,6 +19,7 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("apps/aecore/include/blocks.hrl").
 -define(BENEFICIARY_PUBKEY, <<12345:?BENEFICIARY_PUB_BYTES/unit:8>>).
+-define(BOGUS_PREV_HASH, <<12345:?BLOCK_HEADER_HASH_BYTES/unit:8>>).
 
 %%%===================================================================
 %%% Common test framework
@@ -57,7 +58,8 @@ setup_chain() ->
     Trees = aect_test_utils:trees(S4),
     TxEnv = aetx_env:contract_env(_Height = 1, ?PROTOCOL_VERSION,
                                   aeu_time:now_in_msecs(),
-                                  ?BENEFICIARY_PUBKEY, _Difficulty = 0
+                                  ?BENEFICIARY_PUBKEY, _Difficulty = 0,
+                                  ?BOGUS_PREV_HASH
                                  ),
     InitS = aec_vm_chain:new_state(Trees, TxEnv, Contract1),
     {[Account1, Account2, Contract1, Contract2], InitS}.

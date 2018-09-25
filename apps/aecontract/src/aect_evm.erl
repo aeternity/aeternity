@@ -52,8 +52,9 @@ call_common(CallData, ContractKey, EncodedCode, Block, Trees, VMVersion) ->
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(BlockHeight),
     GasLimit = aec_governance:block_gas_limit(),
     Amount = 0,
+    {ok, PrevHash} = aec_blocks:hash_internal_representation(Block),
     TxEnv = aetx_env:contract_env(BlockHeight, ConsensusVersion, Time,
-                                  BeneficiaryBin, Difficulty),
+                                  BeneficiaryBin, Difficulty, PrevHash),
     ChainState = aec_vm_chain:new_state(Trees, TxEnv, ContractKey),
     Spec = #{ code => EncodedCode
             , address => Address

@@ -67,31 +67,26 @@ run(_, #{ call := Call} = _CallDef) ->
     Call.
 
 run_common(#{  amount      := Value
-             , beneficiary := <<Beneficiary:?BENEFICIARY_PUB_BYTES/unit:8>> = BeneficiaryBin
              , call        := Call
              , call_data   := CallData
              , call_stack  := CallStack
              , caller      := <<CallerAddr:?PUB_SIZE/unit:8>>
              , code        := Code
-             , contract    := <<Address:?PUB_SIZE/unit:8>> = ContractPubKey
-             , difficulty  := Difficulty
+             , contract    := <<Address:?PUB_SIZE/unit:8>> = CPubKey
              , gas         := Gas
              , gas_price   := GasPrice
-             , height      := Height
-             , time        := Time
              , trees       := Trees
+             , tx_env      := TxEnv0
              }, VMVersion) ->
-    ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
-    TxEnv = aetx_env:contract_env(Height, ConsensusVersion, Time,
-                                  BeneficiaryBin, Difficulty),
-    ChainState0 = aec_vm_chain:new_state(Trees, TxEnv, ContractPubKey),
+    TxEnv = aetx_env:set_context(TxEnv0, aetx_contract),
+    <<Beneficiary:?BENEFICIARY_PUB_BYTES/unit:8>> = aetx_env:beneficiary(TxEnv),
     Env = #{currentCoinbase   => Beneficiary,
-            currentDifficulty => Difficulty,
+            currentDifficulty => aetx_env:difficulty(TxEnv),
             %% TODO: implement gas limit in governance and blocks.
             currentGasLimit   => 100000000000,
-            currentNumber     => Height,
-            currentTimestamp  => Time,
-            chainState        => ChainState0,
+            currentNumber     => aetx_env:height(TxEnv),
+            currentTimestamp  => aetx_env:time_in_msecs(TxEnv),
+            chainState        => aec_vm_chain:new_state(Trees, TxEnv, CPubKey),
             chainAPI          => aec_vm_chain,
             vm_version        => VMVersion},
     Exec = #{code       => Code,
