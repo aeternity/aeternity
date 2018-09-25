@@ -327,6 +327,8 @@ internal-clean: $$(KIND)
 internal-distclean: $$(KIND)
 	@rm -rf ./_build/$(KIND)
 
+compile-aes:
+	( cd apps/aesophia && make compile_test_aes CONTRACT=$(CONTRACT) ; )
 
 .PHONY: \
 	all console \
@@ -344,4 +346,5 @@ internal-distclean: $$(KIND)
 	clean distclean \
 	swagger swagger-docs swagger-check swagger-version-check \
 	rebar-lock-check \
+	compile-aes\
 	python-env python-ws-test python-uats python-single-uat python-release-test
