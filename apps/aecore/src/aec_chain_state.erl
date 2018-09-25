@@ -875,7 +875,7 @@ grant_fees(Node, Trees, Delay, FraudStatus, State) ->
     Beneficiary2 = node_beneficiary(KeyNode2),
     Reward = aec_governance:block_mine_reward(),
     FraudReward = aec_governance:fraud_report_reward(),
-    BeneficiaryReward1 = round(KeyFees * 0.4),
+    BeneficiaryReward1 = KeyFees * 4 div 10,
     BeneficiaryReward2 = KeyFees - BeneficiaryReward1 + Reward,
     case {FraudStatus1, FraudStatus2} of
         {true, true} ->
