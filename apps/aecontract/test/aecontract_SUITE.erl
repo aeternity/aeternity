@@ -61,6 +61,7 @@
         , sophia_oracles_gas_ttl__oracle_extension/1
         , sophia_oracles_gas_ttl__query/1
         , sophia_oracles_gas_ttl__response/1
+        , sophia_signatures_oracles/1
         , sophia_maps/1
         , sophia_map_benchmark/1
         , sophia_variant_types/1
@@ -125,6 +126,7 @@ groups() ->
                                  {group, sophia_oracles_query_fee_unhappy_path},
                                  {group, sophia_oracles_query_fee_unhappy_path_remote},
                                  {group, sophia_oracles_gas_ttl},
+                                 sophia_signatures_oracles,
                                  sophia_maps,
                                  sophia_map_benchmark,
                                  sophia_variant_types,
@@ -2053,6 +2055,40 @@ sophia_oracles_gas_ttl__response(_Cfg) ->
     ok.
 
 %% -- End oracle gas TTL tests --
+
+%% Testing external oracles, with provided Signatures
+sophia_signatures_oracles(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    RelativeTTL         = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
+    FixedTTL            = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
+    Acc                 = ?call(new_account, 1000000000),
+    Orc                 = ?call(new_account, 1000000000),
+    Ct                  = ?call(create_contract, Acc, oracles, {}),
+    QueryFee            = 13,
+    TTL                 = 50,
+    <<OrcId:256>>       = Orc,
+    RegSig              = sign(<<Orc/binary, Ct/binary>>, Orc),
+    OrcId               = ?call(call_contract, Acc, Ct, registerOracle, word, {Orc, RegSig, QueryFee, FixedTTL(TTL)},
+                                #{amount => 1}),
+
+    Question          = <<"Manchester United vs Brommapojkarna">>,
+    QId               = ?call(call_contract, Acc, Ct, createQuery, word,
+                                {Orc, Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
+    Question          = ?call(call_contract, Acc, Ct, getQuestion, string, {Orc, QId}),
+    QueryFee          = ?call(call_contract, Acc, Ct, queryFee, word, Orc),
+    none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {Orc, QId}),
+
+    RespSign          = sign(<<QId:256, Ct/binary>>, Orc),
+    {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {Orc, QId, RespSign, 4001}),
+    {some, 4001}      = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {Orc, QId}),
+    {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Orc, RegSig, RelativeTTL(10)}),
+
+    ok.
+
+sign(Material, KeyHolder) ->
+    PrivKey  = aect_test_utils:priv_key(KeyHolder, state()),
+    <<Word1:256, Word2:256>> = enacl:sign_detached(Material, PrivKey),
+    {Word1, Word2}.
 
 %% Testing map functions and primitives
 sophia_maps(_Cfg) ->

@@ -164,15 +164,18 @@ call_chain(Callback, State) ->
 oracle_ttl_t() ->
     {variant_t, [{delta, [word]}, {block, [word]}]}. %% `word` decoded as non-negative integer.
 
+sign_t() ->
+    {tuple, [word, word]}.
+
 oracle_call_register(_Value, Data, State) ->
-    ArgumentTypes = [word, word, word, oracle_ttl_t(), typerep, typerep],
-    [Acct, Sign, QFee, TTL, QType, RType] = get_args(ArgumentTypes, Data),
+    ArgumentTypes = [word, sign_t(), word, oracle_ttl_t(), typerep, typerep],
+    [Acct, Sign0, QFee, TTL, QType, RType] = get_args(ArgumentTypes, Data),
     case chain_ttl_delta(TTL, State) of
         {error, _} = Err -> Err;
         {ok, DeltaTTL = {delta, _}} ->
             Callback =
                 fun(API, ChainState) ->
-                    case API:oracle_register(<<Acct:256>>, <<Sign:256>>, QFee, TTL, QType, RType, ChainState) of
+                    case API:oracle_register(<<Acct:256>>, to_sign(Sign0), QFee, TTL, QType, RType, ChainState) of
                         {ok, <<OKey:256>>, ChainState1} -> {ok, OKey, ChainState1};
                         {error, _} = Err                -> Err
                     end
@@ -206,7 +209,6 @@ oracle_call_query(Value, Data, State) ->
         {error, _} = Err -> Err
     end.
 
-
 oracle_call_respond(_Value, Data, State) ->
     [Oracle, Query] = get_args([word, word], Data),
     OracleKey = <<Oracle:256>>,
@@ -222,10 +224,10 @@ oracle_call_respond(_Value, Data, State) ->
                             case call_chain1(fun(API, ChainState) ->
                                 API:oracle_response_format(OracleKey, ChainState) end, State) of
                                 {ok, RType} ->
-                                    ArgumentTypes = [word, word, word, RType],
-                                    [_, _, Sign, R] = get_args(ArgumentTypes, Data),
+                                    ArgumentTypes = [word, word, sign_t(), RType],
+                                    [_, _, Sign0, R] = get_args(ArgumentTypes, Data),
                                     Callback = fun(API, ChainState) ->
-                                        API:oracle_respond(OracleKey, QueryKey, Sign, R, ChainState) end,
+                                        API:oracle_respond(OracleKey, QueryKey, to_sign(Sign0), R, ChainState) end,
                                     cast_chain(Callback, State);
                                 {error, _} = Err -> Err
                             end
@@ -237,12 +239,12 @@ oracle_call_respond(_Value, Data, State) ->
     end.
 
 oracle_call_extend(_Value, Data, State) ->
-    ArgumentTypes = [word, word, oracle_ttl_t()],
-    [Oracle, Sign, TTL] = get_args(ArgumentTypes, Data),
+    ArgumentTypes = [word, sign_t(), oracle_ttl_t()],
+    [Oracle, Sign0, TTL] = get_args(ArgumentTypes, Data),
     case chain_ttl_delta(TTL, State) of
         {error, _} = Err -> Err;
         {ok, DeltaTTL = {delta, _}} ->
-            Callback = fun(API, ChainState) -> API:oracle_extend(<<Oracle:256>>, Sign, TTL, ChainState) end,
+            Callback = fun(API, ChainState) -> API:oracle_extend(<<Oracle:256>>, to_sign(Sign0), TTL, ChainState) end,
             DynCost = state_gas_cost(oracle_extension, DeltaTTL),
             ?TEST_LOG("~s computed gas cost ~p from relative TTL ~p", [?FUNCTION_NAME, DynCost, DeltaTTL]),
             {ok, DynCost, fun() -> cast_chain(Callback, State) end}
@@ -350,3 +352,6 @@ state_gas_cost(Tag, {delta, TTL}) ->
     aec_governance_utils:state_gas_cost(
       aec_governance:state_gas_cost_per_block(Tag),
       TTL).
+
+to_sign({W1, W2}) ->
+    <<W1:256, W2:256>>.
