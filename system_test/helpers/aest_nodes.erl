@@ -53,7 +53,6 @@
 
 %=== MACROS ====================================================================
 
--define(BACKENDS, [aest_docker]).
 -define(CALL_TAG, ?MODULE).
 -define(CT_CONF_KEY, node_manager).
 -define(CALL_TIMEOUT, 120000).
