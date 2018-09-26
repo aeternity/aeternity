@@ -1,6 +1,6 @@
 # About this release
 
-[This release][this-release] is focused on TODOFILLMEIN.
+[This release][this-release] is focused on the Bitcoin-NG Proof of Fraud.
 It:
 * Changes difficulty from a floating point number to an integer value as seen in P2P message PING, and node status.
 * Adds fixed gas limit per micro block
