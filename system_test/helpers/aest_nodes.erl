@@ -44,6 +44,10 @@
          post_close_mutual_state_channel_tx/5,
          post_withdraw_state_channel_tx/5,
          post_deposit_state_channel_tx/5]).
+-export([post_oracle_register_tx/3,
+         post_oracle_extend_tx/3,
+         post_oracle_query_tx/4,
+         post_oracle_response_tx/3]).
 -export([wait_for_value/4]).
 -export([wait_for_time/3]).
 -export([wait_for_time/4]).
@@ -452,6 +456,54 @@ post_withdraw_state_channel_tx(Node, RecParty, OtherParty, ChannelId, #{nonce :=
     {ok, 200, Response} = request(Node, 'PostTransaction', #{tx => Transaction}),
     Response.
 
+post_oracle_register_tx(Node, OAccount, #{ nonce := _ } = Opts) ->
+    #{ pubkey := OPubKey, privkey := OPrivKey } = OAccount,
+    BaseTxArgs = #{ account_id => aec_id:create(account, OPubKey) },
+    AllTxArgs = maps:merge(BaseTxArgs, Opts),
+    {ok, RegisterTx} = aeo_register_tx:new(AllTxArgs),
+    Signed = aec_test_utils:sign_tx(RegisterTx, [OPrivKey]),
+    SignedEnc = aetx_sign:serialize_to_binary(Signed),
+    Transaction = aec_base58c:encode(transaction, SignedEnc),
+    {ok, 200, Resp} = request(Node, 'PostTransaction', #{tx => Transaction}),
+    Resp.
+
+post_oracle_extend_tx(Node, OAccount, #{ nonce := _ } = Opts) ->
+    #{ pubkey := OPubKey, privkey := OPrivKey } = OAccount,
+    BaseTxArgs = #{ oracle_id => aec_id:create(oracle, OPubKey) },
+    AllTxArgs = maps:merge(BaseTxArgs, Opts),
+    {ok, ExtendTx} = aeo_extend_tx:new(AllTxArgs),
+    Signed = aec_test_utils:sign_tx(ExtendTx, [OPrivKey]),
+    SignedEnc = aetx_sign:serialize_to_binary(Signed),
+    Transaction = aec_base58c:encode(transaction, SignedEnc),
+    {ok, 200, Resp} = request(Node, 'PostTransaction', #{tx => Transaction}),
+    Resp.
+
+post_oracle_query_tx(Node, QuerierAcc, OracleAcc, #{ nonce := _ } = Opts) ->
+    #{ pubkey := QPubKey, privkey := QPrivKey } = QuerierAcc,
+    #{ pubkey := OPubKey } = OracleAcc,
+    BaseTxArgs = #{
+        sender_id    => aec_id:create(account, QPubKey),
+        oracle_id    => aec_id:create(oracle, OPubKey)
+    },
+    AllTxArgs = maps:merge(BaseTxArgs, Opts),
+    {ok, QueryTx} = aeo_query_tx:new(AllTxArgs),
+    Signed = aec_test_utils:sign_tx(QueryTx, [QPrivKey]),
+    SignedEnc = aetx_sign:serialize_to_binary(Signed),
+    Transaction = aec_base58c:encode(transaction, SignedEnc),
+    {ok, 200, Resp} = request(Node, 'PostTransaction', #{tx => Transaction}),
+    Resp.
+
+post_oracle_response_tx(Node, OracleAcc, #{ nonce := _ } = Opts) ->
+    #{ pubkey := OPubKey, privkey := OPrivKey } = OracleAcc,
+    BaseTxArgs = #{ oracle_id => aec_id:create(oracle, OPubKey) },
+    AllTxArgs = maps:merge(BaseTxArgs, Opts),
+    {ok, RespTx} = aeo_response_tx:new(AllTxArgs),
+    Signed = aec_test_utils:sign_tx(RespTx, [OPrivKey]),
+    SignedEnc = aetx_sign:serialize_to_binary(Signed),
+    Transaction = aec_base58c:encode(transaction, SignedEnc),
+    {ok, 200, Resp} = request(Node, 'PostTransaction', #{tx => Transaction}),
+    Resp.
+
 %% Use values that are not yet base58c encoded in test cases
 wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, Ctx) ->
     FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
@@ -484,12 +536,19 @@ wait_for_value({txs_on_chain, Txs}, NodeNames, Timeout, Ctx) ->
                                       _ -> wait
                                   end || Tx <- Txs]),
                 case lists:member(wait, Found) of
-                    false -> {done, Found};
+                    false ->
+                        case {get_top(Node), lists:max([0 |[ H || {_,H} <- Found]])} of
+                            {#{height := Top}, Max} when Top > Max + 1 ->
+                                %% We wait two key block on top of the microblock that contains the transaction
+                                {done, Found};
+                            _ -> wait
+                        end;
                     true -> wait
                 end
         end,
     loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Txs found ~p", [Txs]});
 wait_for_value({txs_on_node, Txs}, NodeNames, Timeout, Ctx) ->
+    %% Reached the mempool at least, probably even in a block.
     FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
     CheckF =
         fun(Node) ->
