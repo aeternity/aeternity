@@ -92,8 +92,7 @@ validate_test_malformed_txs_root_hash() ->
     Block = aec_blocks:update_micro_candidate(
               RawBlock, MalformedTxsRootHash,
               aec_blocks:root_hash(RawBlock),
-              [SignedSpend],
-              aec_blocks:time_in_msecs(RawBlock)),
+              [SignedSpend]),
     ?assertEqual({error, {block, malformed_txs_hash}},
                  ?TEST_MODULE:validate_micro_block(Block)).
 
@@ -105,8 +104,7 @@ validate_test_pass_validation_no_txs() ->
     Block = aec_blocks:update_micro_candidate(
               RawBlock, TxsRootHash,
               aec_blocks:root_hash(RawBlock),
-              [],
-              aec_blocks:time_in_msecs(RawBlock)),
+              []),
     ?assertEqual(ok, ?TEST_MODULE:validate_micro_block(Block)).
 
 validate_test_pass_validation() ->
@@ -124,8 +122,7 @@ validate_test_pass_validation() ->
     Block = aec_blocks:update_micro_candidate(
               RawBlock, TxsRootHash,
               aec_blocks:root_hash(RawBlock),
-              Txs,
-              aec_blocks:time_in_msecs(RawBlock)),
+              Txs),
 
     ?assertEqual(ok, ?TEST_MODULE:validate_micro_block(Block)).
 

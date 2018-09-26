@@ -982,13 +982,13 @@ environment_contract(Config) ->
     #{<<"value">> := CoinBase} = decode_data(<<"address">>, CoinBaseValue),
     ct:pal("CoinBase ~p\n", [CoinBase]),
 
-    %% Block timestamp. TODO: currently this does not work.
-    %% ct:pal("Calling timestamp\n"),
-    %% {TimeStampValue,_} = call_compute_func(NodeName, CPubkey, CPrivkey,
-    %%                                        EncodedContractPubkey,
-    %%                                        <<"timestamp">>, <<"()">>),
-    %% #{<<"value">> := TimeStamp} = decode_data(<<"int">>, TimeStampValue),
-    %% ct:pal("Timestamp ~p\n", [TimeStamp]),
+    %% Block timestamp.
+    ct:pal("Calling timestamp\n"),
+    {TimeStampValue,_} = call_compute_func(NodeName, CPubkey, CPrivkey,
+                                           EncodedContractPubkey,
+                                           <<"timestamp">>, <<"()">>),
+    #{<<"value">> := TimeStamp} = decode_data(<<"int">>, TimeStampValue),
+    ct:pal("Timestamp ~p\n", [TimeStamp]),
 
     %% Block height.
     ct:pal("Calling block_height\n"),
