@@ -15,6 +15,7 @@
                    , gas_used/1
                    , height/1
                    , id/1
+                   , log/1
                    , new/5
                    , contract_id/1
                    , contract_pubkey/1
@@ -23,11 +24,13 @@
                    , caller_nonce/1
                    , serialize/1
                    , set_return_value/2
+                   , set_return_type/2
                    , set_gas_used/2
                    , set_height/2
                    , set_contract/2
                    , set_caller/3
                    , set_caller_nonce/2
+                   , set_log/2
                    ]).
 
 basic_test_() ->
@@ -39,10 +42,12 @@ basic_test_() ->
 basic_serialize() ->
     C = new_call(call_tx(), 1),
     ?assertEqual(C, deserialize(serialize(C))),
+    ExecutedCall = executed_call(C),
+    ?assertEqual(ExecutedCall, deserialize(serialize(ExecutedCall))),
     ok.
 
 basic_getters() ->
-    I = new_call(call_tx(), 1),
+    I =  executed_call(new_call(call_tx(), 1)),
     ?assert(is_binary(id(I))),
     ?assert(is_binary(contract_pubkey(I))),
     ?assert(is_binary(caller_pubkey(I))),
@@ -51,7 +56,16 @@ basic_getters() ->
     ?assert(is_binary(return_value(I))),
     ?assert(is_integer(gas_price(I))),
     ?assert(is_integer(gas_used(I))),
+    ?assert(is_log(log(I))),
     ok.
+
+is_log([]) -> true;
+is_log([{Address, Topics, Data}| Rest]) ->
+    is_binary(Address)
+        andalso lists:all(fun erlang:is_binary/1, Topics)
+        andalso is_binary(Data)
+        andalso is_log(Rest);
+is_log(_) -> false.
 
 basic_setters() ->
     I = new_call(call_tx(), 1),
@@ -69,6 +83,10 @@ basic_setters() ->
     _ = set_caller_nonce(1, I),
     ?assertError({illegal, _, _}, set_height(-1, I)),
     _ = set_height(1, I),
+    ?assertError({illegal, _, _}, set_log([{}], I)),
+    _ = set_log([{ <<0:256 >>
+                    , [ <<1:256>> ]
+                    , <<1>>}], I),
     ok.
 
 new_call(Tx, Height) ->
@@ -77,6 +95,13 @@ new_call(Tx, Height) ->
     ContractId = aect_call_tx:contract_id(Tx),
     GasPrice   = aect_call_tx:gas_price(Tx),
     new(CallerId, Nonce, ContractId, Height, GasPrice).
+
+executed_call(C) ->
+    set_log([{<<42:256>>, [<<1:256>>, <<2:256>>], <<"Log entry data">>},
+             {<<4711:256>>, [<<1:256>>, <<1024:256>>], <<"2nd Log entry.">>}],
+            set_gas_used(90,
+                         set_return_type(ok,
+                                         set_return_value(<<1>>, C)))).
 
 call_tx() ->
     call_tx(#{}).
