@@ -4110,7 +4110,7 @@ sc_ws_oracle_contract(Config) ->
     ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, get, error]),
     ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, get, error]),
 
-    [sc_ws_contract_generic(Role, fun sc_ws_oracle_contract_/6, Config)
+    [sc_ws_contract_generic(Role, fun sc_ws_oracle_contract_/7, Config, [])
         || Role <- [initiator, responder]],
 
     % cleanup
@@ -4127,15 +4127,33 @@ sc_ws_nameservice_contract(Config) ->
     ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, get, error]),
     ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, get, error]),
 
-    [sc_ws_contract_generic(Role, fun sc_ws_nameservice_contract_/6, Config)
-        || Role <- [initiator, responder]],
+
+    [sc_ws_contract_generic(Role, fun sc_ws_nameservice_contract_/7, Config,
+                            [])
+        || Role <- [initiator,
+                    responder]],
 
     % cleanup
     ok = ?WS:stop(IConnPid),
     ok = ?WS:stop(RConnPid),
     ok.
 
-sc_ws_contract_generic(Origin, Fun, Config) ->
+random_unused_name() ->
+    random_unused_name(_Attempts = 10).
+
+random_unused_name(Attempts) when Attempts < 1->
+    {error, exhausted};
+random_unused_name(Attempts) ->
+    Size = 10,
+    RandStr = base58:binary_to_base58(crypto:strong_rand_bytes(Size)),
+    NameL = RandStr ++ ".test",
+    Name = list_to_binary(NameL),
+    case get_names_entry_by_name_sut(Name) of
+        {ok, 404, _Error} -> Name; % name not used yet
+        _ -> random_unused_name(Attempts - 1)
+    end.
+
+sc_ws_contract_generic(Origin, Fun, Config, Opts) ->
     %% get the infrastructure for users going 
     {sc_ws_update, ConfigList} = ?config(saved_config, Config),
     Participants = proplists:get_value(participants, ConfigList),
@@ -4175,12 +4193,12 @@ sc_ws_contract_generic(Origin, Fun, Config) ->
         end,
     Actors = [{R, GetPubkeys(R)} || R <- [initiator, responder]],
     [Fun(Owner, GetVolley, SenderConnPid,
-         AckConnPid, OwnerPubkey, OtherPubkey)
+         AckConnPid, OwnerPubkey, OtherPubkey, Opts)
         || {Owner, {OwnerPubkey, OtherPubkey}} <- Actors],
     ok.
 
 sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
-                       OwnerPubkey, OtherPubkey) ->
+                       OwnerPubkey, OtherPubkey, _Opts) ->
     %% Register an oracle. It will be used in an off-chain contract
     %% Oracle ask itself a question and answers it
     {OraclePubkey, OraclePrivkey} = initialize_account(100000),
@@ -4297,11 +4315,11 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     ok.
 
 sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
-                            OwnerPubkey, OtherPubkey) ->
+                            OwnerPubkey, _OtherPubkey, _Opts) ->
+    Name = random_unused_name(),
     %% Register an oracle. It will be used in an off-chain contract
     %% Oracle ask itself a question and answers it
     {NamePubkey, NamePrivkey} = initialize_account(100000),
-    HexEncode = fun(L) -> list_to_binary(aect_utils:hex_bytes(L)) end,
 
     Code = contract_byte_code("channel_on_chain_contract_name_resolution"),
     InitArgument = <<"()">>,
@@ -4321,17 +4339,23 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     ContractCanNameResolve = 
         fun(Who, Name0, Key0, Result) ->
             {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
-            AddQuotes = fun(B) when is_binary(B) -> <<"\"", B, "\"">> end,
-            Name = AddQuotes(Name0),
-            Key = AddQuotes(Key0),
+            AddQuotes = fun(B) when is_binary(B) -> <<"\"", B/binary, "\"">> end,
+            QName = AddQuotes(Name0),
+            QKey = AddQuotes(Key0),
+            Args = <<"(", QName/binary, ",", QKey/binary,")">>,
             Tx = call_a_contract(<<"can_resolve">>,
-                                 <<"(", Name/binary, ", ", Key/binary,")">>,
+                                 Args,
                                  ContractPubKey, Code,
                                  UpdaterConnPid, UpdateVolley),
-            #{<<"value">> := R} =
+             #{<<"value">> := RInt} =
                 ws_get_decoded_result(ConnPid1, ConnPid2,
                                       <<"bool">>,
                                       Tx),
+            R =
+                case RInt of
+                    0 -> false;
+                    1 -> true
+                end,
             {R, R} = {Result, R}
 
         end,
@@ -4341,7 +4365,6 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                 || Who <- [initiator, responder]]
         end,
 
-    Name = <<"tralala.test">>,
     Test(Name, <<"oracle">>, false),
     register_name(NamePubkey, NamePrivkey, Name,
                   [{<<"account_pubkey">>, aec_id:create(account, <<1:256>>)},
@@ -4394,8 +4417,9 @@ register_name(Owner, OwnerPrivKey, Name, Pointers) ->
 
 preclaim_name(Owner, OwnerPrivKey, Name, Salt) ->
     {ok, NameAscii} = aens_utils:to_ascii(Name),
+    {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [Owner]),
     CHash = aens_hash:commitment_hash(NameAscii, Salt),
-    TxSpec = aens_test_utils:preclaim_tx_spec(Owner, CHash, #{}),
+    TxSpec = aens_test_utils:preclaim_tx_spec(Owner, CHash, #{nonce => Nonce}, #{}),
     {ok, Tx} = aens_preclaim_tx:new(TxSpec),
     sign_post_mine(Tx, OwnerPrivKey),
     ok.
@@ -4404,12 +4428,14 @@ claim_name(Owner, OwnerPrivKey, Name, Salt) ->
     Delta = aec_governance:name_claim_preclaim_delta(),
     Node = aecore_suite_utils:node_name(?NODE),
     aecore_suite_utils:mine_key_blocks(Node, Delta),
-    TxSpec = aens_test_utils:claim_tx_spec(Owner, Name, Salt, #{}),
+    {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [Owner]),
+    TxSpec = aens_test_utils:claim_tx_spec(Owner, Name, Salt,  #{nonce => Nonce},#{}),
     {ok, Tx} = aens_claim_tx:new(TxSpec),
     sign_post_mine(Tx, OwnerPrivKey),
     ok.
     
 update_pointers(Owner, OwnerPrivKey, Name, Pointers0) ->
+    {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [Owner]),
     {ok, NameAscii} = aens_utils:to_ascii(Name),
     NHash = aens_hash:name_hash(NameAscii),
     Pointers =
@@ -4420,7 +4446,9 @@ update_pointers(Owner, OwnerPrivKey, Name, Pointers0) ->
             Pointers0),
     NameTTL  = 40000,
     TxSpec = aens_test_utils:update_tx_spec(
-                Owner, NHash, #{pointers => Pointers, name_ttl => NameTTL}, #{}),
+                Owner, NHash, #{pointers => Pointers,
+                                name_ttl => NameTTL,
+                                nonce => Nonce}, #{}),
     {ok, Tx} = aens_update_tx:new(TxSpec),
     sign_post_mine(Tx, OwnerPrivKey),
     ok.
