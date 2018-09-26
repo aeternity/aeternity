@@ -117,10 +117,7 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
     Height = aec_blocks:height(KeyBlock),
     Version = aec_hard_forks:protocol_effective_at_height(Height),
 
-    MicroBlockCycle = aec_governance:micro_block_cycle(),
-    LastTime = aec_blocks:time_in_msecs(PrevBlock),
-    Time = max(aeu_time:now_in_msecs(), MicroBlockCycle + LastTime),
-
+    Time = determine_new_time(PrevBlock),
     KeyHeader = aec_blocks:to_header(KeyBlock),
     Env = aetx_env:tx_env_from_key_header(KeyHeader, PrevKeyHash,
                                           Time, PrevBlockHash),
@@ -138,6 +135,18 @@ int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
 
     BlockInfo = #{ trees => Trees2, txs_tree => TxsTree, tx_env => Env},
     {ok, NewBlock, BlockInfo}.
+
+determine_new_time(PrevBlock) ->
+    LastTime = aec_blocks:time_in_msecs(PrevBlock),
+    case aec_blocks:type(PrevBlock) of
+        key ->
+            %% Just make sure we are progressing time.
+            max(aeu_time:now_in_msecs(), LastTime);
+        micro ->
+            %% Make sure to respect the micro block cycle.
+            MicroBlockCycle = aec_governance:micro_block_cycle(),
+            max(aeu_time:now_in_msecs(), MicroBlockCycle + LastTime)
+    end.
 
 get_pof(KeyBlock, PrevBlockHash, PrevBlock) ->
     %% NOTE: If the restriction of reporting a miner in the next
