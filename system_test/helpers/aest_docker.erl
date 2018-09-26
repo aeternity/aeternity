@@ -231,7 +231,7 @@ setup_node(Spec, BackendState) ->
         mining => maps:merge(#{autostart => true}, maps:get(mining, Spec, #{}))
     },
     Context = #{epoch_config => RootVars},
-    ok = write_template(TemplateFile, ConfigFilePath, Context),
+    {ok, ConfigString} = write_template(TemplateFile, ConfigFilePath, Context),
     Command =
         case MineRate of
             default -> [];
@@ -269,10 +269,12 @@ setup_node(Spec, BackendState) ->
             [ContId, NetId])
     end, OtherNetworks),
 
+    [YamlConfig] = yamerl:decode(ConfigString),
     NodeState#{
         container_name => Hostname,
         container_id => ContId,
         config_path => ConfigFilePath,
+        config => YamlConfig,
         log_path => {LogPath, list_to_binary(?EPOCH_LOG_FOLDER)}
     }.
 
@@ -435,7 +437,8 @@ write_template(TemplateFile, OutputFile, Context) ->
     {{ok, TemplateBin}, _} = {file:read_file(TemplateFile), TemplateFile},
     Data = bbmustache:render(TemplateBin, Context, [{key_type, atom}]),
     ok = filelib:ensure_dir(OutputFile),
-    file:write_file(OutputFile, Data).
+    ok = file:write_file(OutputFile, Data),
+    {ok, Data}.
 
 is_running(Id) -> is_running(Id, 5).
 
