@@ -52,7 +52,7 @@
          time_in_secs/1,
          txs_hash/1,
          type/1,
-         update_micro_candidate/4,
+         update_micro_candidate/3,
          validate_key_block_header/1,
          validate_micro_block_header/1,
          version/1
@@ -309,12 +309,11 @@ time_in_msecs(#mic_header{time = T}) -> T.
 set_time_in_msecs(#key_header{} = H, Time) -> H#key_header{time = Time};
 set_time_in_msecs(#mic_header{} = H, Time) -> H#mic_header{time = Time}.
 
--spec update_micro_candidate(micro_header(), txs_hash(), state_hash(),
-                             non_neg_integer()) -> micro_header().
-update_micro_candidate(#mic_header{} = H, TxsRootHash, RootHash, TimeMSecs) ->
+-spec update_micro_candidate(micro_header(), txs_hash(), state_hash()) ->
+                                    micro_header().
+update_micro_candidate(#mic_header{} = H, TxsRootHash, RootHash) ->
     H#mic_header{txs_hash = TxsRootHash,
-                 root_hash = RootHash,
-                 time = TimeMSecs
+                 root_hash = RootHash
                 }.
 
 %%%===================================================================

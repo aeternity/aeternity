@@ -51,7 +51,7 @@
          txs/1,
          txs_hash/1,
          type/1,
-         update_micro_candidate/5,
+         update_micro_candidate/4,
          validate_key_block/1,
          validate_micro_block/1,
          version/1
@@ -321,11 +321,11 @@ txs_hash(Block) ->
     aec_headers:txs_hash(to_micro_header(Block)).
 
 -spec update_micro_candidate(micro_block(), txs_hash(), state_hash(),
-                             [aetx_sign:signed_tx()], non_neg_integer()
+                             [aetx_sign:signed_tx()]
                             ) -> micro_block().
-update_micro_candidate(#mic_block{} = Block, TxsRootHash, RootHash, Txs, TimeMSecs) ->
+update_micro_candidate(#mic_block{} = Block, TxsRootHash, RootHash, Txs) ->
     H = aec_headers:update_micro_candidate(to_micro_header(Block),
-                                           TxsRootHash, RootHash, TimeMSecs),
+                                           TxsRootHash, RootHash),
     Block#mic_block{ header = H
                    , txs    = Txs
                    }.
