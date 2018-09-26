@@ -45,7 +45,7 @@ simple_call_common(EncodedCode, CallData, VMVersion) ->
 call_common(CallData, ContractKey, EncodedCode, Block, Trees, VMVersion) ->
     <<Address:256>> = ContractKey,
     Time = aeu_time:now_in_msecs(),
-    KeyBlock = get_key_block(Block),
+    {KeyBlockHash, KeyBlock} = get_key_block(Block),
     {BeneficiaryBin, BeneficiaryInt} = get_beneficiary(KeyBlock),
     Difficulty = aec_blocks:difficulty(KeyBlock),
     BlockHeight = aec_blocks:height(Block),
@@ -53,7 +53,7 @@ call_common(CallData, ContractKey, EncodedCode, Block, Trees, VMVersion) ->
     GasLimit = aec_governance:block_gas_limit(),
     Amount = 0,
     TxEnv = aetx_env:contract_env(BlockHeight, ConsensusVersion, Time,
-                                  BeneficiaryBin, Difficulty),
+                                  BeneficiaryBin, Difficulty, KeyBlockHash),
     ChainState = aec_vm_chain:new_state(Trees, TxEnv, ContractKey),
     Spec = #{ code => EncodedCode
             , address => Address
@@ -83,10 +83,13 @@ call_common(CallData, ContractKey, EncodedCode, Block, Trees, VMVersion) ->
 
 get_key_block(Block) ->
     case aec_blocks:type(Block) of
-        key   -> Block;
+        key   ->
+            {ok, Hash} = aec_blocks:hash_internal_representation(Block),
+            {Hash, Block};
         micro ->
-            {ok, KB} = aec_chain:get_block(aec_blocks:prev_key_hash(Block)),
-            KB
+            Hash = aec_blocks:prev_key_hash(Block),
+            {ok, KB} = aec_chain:get_block(Hash),
+            {Hash, KB}
     end.
 
 get_beneficiary(KeyBlock) ->

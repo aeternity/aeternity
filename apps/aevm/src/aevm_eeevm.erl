@@ -589,7 +589,7 @@ loop(StateIn) ->
                     %% its hash is the parent hash
                     %% in the block following it.
                     {Us0, State1} = pop(State0),
-                    Hash = aevm_eeevm_state:blockhash(Us0, 0, State1),
+                    Hash = aevm_eeevm_state:blockhash(Us0, State1),
                     State2 = push(Hash, State1),
                     next_instruction(OP, State, State2);
                 ?COINBASE ->

@@ -222,13 +222,8 @@ run_contract(#contract_call_tx{ nonce  = _Nonce
     ContractsTree  = aec_trees:contracts(Trees),
     Contract       = aect_state_tree:get_contract(ContractPubkey, ContractsTree),
     Code           = aect_contracts:code(Contract),
-    Height         = aetx_env:height(Env),
-    Beneficiary    = aetx_env:beneficiary(Env),
-    Difficulty     = aetx_env:difficulty(Env),
-    Time           = aetx_env:time_in_msecs(Env),
     CallDef = #{ caller     => CallerPubkey
                , contract   => ContractPubkey
-               , difficulty => Difficulty
                , gas        => Gas
                , gas_price  => GasPrice
                , call_data  => CallData
@@ -236,10 +231,8 @@ run_contract(#contract_call_tx{ nonce  = _Nonce
                , call_stack => CallStack
                , code       => Code
                , call       => Call
-               , height     => Height
-               , time       => Time
                , trees      => Trees
-               , beneficiary => Beneficiary
+               , tx_env     => Env
                },
     aect_dispatch:run(VmVersion, CallDef).
 

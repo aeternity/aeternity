@@ -10,7 +10,7 @@
 
 %% Constructors
 -export([ tx_env_from_key_header/4
-        , contract_env/5
+        , contract_env/6
         ]).
 
 -ifdef(TEST).
@@ -27,6 +27,7 @@
         , context/1
         , difficulty/1
         , height/1
+        , key_hash/1
         , signed_tx/1
         , time_in_msecs/1
         ]).
@@ -54,6 +55,7 @@
              , context           :: context()
              , difficulty        :: aec_pow:difficulty()
              , height            :: aec_blocks:height()
+             , key_hash          :: aec_blocks:block_header_hash()
              , signed_tx         :: wrapped_tx()
              , time              :: non_neg_integer()
              }).
@@ -71,14 +73,16 @@
 
 -spec contract_env(aec_blocks:height(), non_neg_integer(),
                    non_neg_integer(), aec_keys:pubkey(),
-                   aec_pow:difficulty()
+                   aec_pow:difficulty(), aec_blocks:block_header_hash()
                   ) -> env().
-contract_env(Height, ConsensusVersion, Time, Beneficiary, Difficulty) ->
+contract_env(Height, ConsensusVersion, Time, Beneficiary, Difficulty,
+             KeyHash) ->
     #env{ beneficiary = Beneficiary
         , consensus_version = ConsensusVersion
         , context = aetx_contract
         , difficulty = Difficulty
         , height  = Height
+        , key_hash = KeyHash
         , signed_tx = none
         , time = Time
      }.
@@ -88,13 +92,13 @@ contract_env(Height, ConsensusVersion, Time, Beneficiary, Difficulty) ->
                              non_neg_integer(),
                              aec_blocks:block_header_hash()) ->
                              env().
-tx_env_from_key_header(KeyHeader,_KeyHash, Time,_PrevHash) ->
-    %% TODO: Add more stuff to the env
+tx_env_from_key_header(KeyHeader, KeyHash, Time,_PrevHash) ->
     #env{ beneficiary = aec_headers:beneficiary(KeyHeader)
         , consensus_version = aec_headers:version(KeyHeader)
         , context = aetx_transaction
         , difficulty = aec_headers:difficulty(KeyHeader)
         , height  = aec_headers:height(KeyHeader)
+        , key_hash = KeyHash
         , signed_tx = none
         , time = Time
         }.
@@ -113,6 +117,7 @@ tx_env(Height) ->
         , signed_tx = none
         , beneficiary = aec_block_genesis:beneficiary()
         , difficulty = aec_block_genesis:genesis_difficulty()
+        , key_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>
         , time = aeu_time:now_in_msecs()
         }.
 
@@ -152,6 +157,11 @@ height(#env{height = X}) -> X.
 
 -spec set_height(env(), aec_blocks:height()) -> env().
 set_height(Env, X) -> Env#env{height = X}.
+
+%%------
+
+-spec key_hash(env()) -> aec_blocks:block_header_hash().
+key_hash(#env{key_hash = X}) -> X.
 
 %%------
 
