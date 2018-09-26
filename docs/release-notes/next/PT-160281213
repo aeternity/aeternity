@@ -1,3 +1,0 @@
-* Makes execution of some chain related instructions in contracts more efficient.
-* Makes the TIMESTAMP instruction deterministic by using the timestamp of the current micro block. This affects consensus.
-* Makes the DIFFICULTY instruction deterministic by using the difficulty at previous key block. This affects consensus.
