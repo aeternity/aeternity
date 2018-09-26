@@ -15,7 +15,7 @@
 -export([start/2, start_link/2, stop/0]).
 -export([cleanup/0, dump_logs/0, setup_nodes/1, start_node/1, stop_node/2, 
          get_service_address/2, get_internal_address/2, get_hostname/1,
-         get_log_path/1, get_log_paths/0, log/2]).
+         get_config/2, get_log_path/1, get_log_paths/0, log/2]).
 
 %% gen_server callbacks
 -export([ init/1
@@ -79,6 +79,10 @@ get_service_address(NodeName, Service) ->
 get_internal_address(NodeName, Service) ->
     gen_server:call(?SERVER, {get_internal_address, NodeName, Service}).
 
+%% provide Keys as path, e.g. ["mining", "beneficiary_reward_delay"]
+get_config(NodeName, Keys) ->
+    gen_server:call(?SERVER, {get_config, NodeName, Keys}).
+
 get_hostname(NodeName) ->
     gen_server:call(?SERVER, {get_hostname, NodeName}).
 
@@ -123,6 +127,10 @@ handle_call({get_internal_address, NodeName, Service}, _From, #{nodes := Nodes} 
     #{NodeName := {Mod, NodeState}} = Nodes,
     ServiceAddress = Mod:get_internal_address(Service, NodeState),
     {reply, ServiceAddress, State};
+handle_call({get_config, NodeName, Path}, _From, #{nodes := Nodes} = State) when is_list(Path) ->
+    #{NodeName := {_Mod, NodeState}} = Nodes,
+    Config = maps:get(config, NodeState, []),
+    {reply, config_find(Path, Config), State};
 handle_call({get_hostname, NodeName}, _From, #{nodes := Nodes} = State) ->
     #{NodeName := {_Mod, _NodeState}} = Nodes,
     %% for the moment only localhost supported
@@ -270,3 +278,9 @@ add_nodes(New, Old) ->
             false -> maps:put(N, S, Ns)
         end
     end, Old, New).
+
+config_find([], Config) ->
+    Config;
+config_find([Key|Keys], Config) ->
+    config_find(Keys, proplists:get_value(Key, Config, [])).
+
