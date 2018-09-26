@@ -227,6 +227,8 @@ def send_tokens_to_unchanging_user(sender, address, tokens, fee, external_api, i
 def send_tokens_to_unchanging_user_and_wait_balance(sender, address, tokens, fee, ext_api, int_api):
     bal0 = get_account_balance(ext_api, address)
     send_tokens_to_unchanging_user(sender, address, tokens, fee, ext_api, int_api)
+    top = ext_api.get_current_key_block()
+    wait_until_height(ext_api, top.height+1)
     wait(lambda: get_account_balance(ext_api, address) == (bal0 + tokens),
          timeout_seconds=20, sleep_seconds=0.25)
 
