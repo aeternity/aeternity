@@ -141,7 +141,7 @@ determine_new_time(PrevBlock) ->
     case aec_blocks:type(PrevBlock) of
         key ->
             %% Just make sure we are progressing time.
-            max(aeu_time:now_in_msecs(), LastTime);
+            max(aeu_time:now_in_msecs(), LastTime + 1);
         micro ->
             %% Make sure to respect the micro block cycle.
             MicroBlockCycle = aec_governance:micro_block_cycle(),
