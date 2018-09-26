@@ -191,11 +191,11 @@ simple_query_test(Opts, Cfg) ->
 
     {ok, 200, ClosedQueriesInfo} =
         request(node1, 'GetOracleQueriesByPubkey', #{ pubkey => EncOPubKey, type => closed }),
-    ?assertMatch(#{ <<"oracle_queries">> := [] }, ClosedQueriesInfo),
+    ?assertMatch(#{ oracle_queries := [] }, ClosedQueriesInfo),
     {ok, 200, AllQueriesInfo} =
         request(node1, 'GetOracleQueriesByPubkey', #{ pubkey => EncOPubKey, type => all }),
-    ?assertMatch(#{ <<"oracle_queries">> := [_] }, AllQueriesInfo),
-    [QueryInfo] = maps:get(<<"oracle_queries">>, AllQueriesInfo),
+    ?assertMatch(#{ oracle_queries := [_] }, AllQueriesInfo),
+    [QueryInfo] = maps:get(oracle_queries, AllQueriesInfo),
     ?assertMatch(#{ id := EncQueryId, oracle_id := EncOPubKey, sender_id := EncQPubKey }, QueryInfo),
     ?assertEqual({oracle_query, <<"Hidely-Ho">>}, aec_base58c:decode(maps:get(query, QueryInfo))),
     ?assertEqual({oracle_response, <<>>}, aec_base58c:decode(maps:get(response, QueryInfo))),
@@ -211,7 +211,7 @@ simple_query_test(Opts, Cfg) ->
 
     {ok, 200, OpenQueriesInfo} =
         request(node1, 'GetOracleQueriesByPubkey', #{ pubkey => EncOPubKey, type => <<"open">> }),
-    ?assertMatch(#{ <<"oracle_queries">> := [] }, OpenQueriesInfo),
+    ?assertMatch(#{ oracle_queries := [] }, OpenQueriesInfo),
     {ok, 200, QueryInfo2} =
         request(node1, 'GetOracleQueryByPubkeyAndQueryId', #{ pubkey => EncOPubKey, 'query-id' => EncQueryId }),
     ?assertMatch(#{ id := EncQueryId, oracle_id := EncOPubKey, sender_id := EncQPubKey }, QueryInfo2),
@@ -351,7 +351,7 @@ pipelined_query_test(Opts, Cfg) ->
     ?assertMatch(#{ id := EncOPubKey }, OracleInfo),
     {ok, 200, OpenQueriesInfo} =
         request(node1, 'GetOracleQueriesByPubkey', #{ pubkey => EncOPubKey, type => <<"open">> }),
-    ?assertMatch(#{ <<"oracle_queries">> := [] }, OpenQueriesInfo),
+    ?assertMatch(#{ oracle_queries := [] }, OpenQueriesInfo),
     {ok, 200, QueryInfo} =
         request(node1, 'GetOracleQueryByPubkeyAndQueryId', #{ pubkey => EncOPubKey, 'query-id' => EncQueryId }),
     ?assertMatch(#{ id := EncQueryId, oracle_id := EncOPubKey, sender_id := EncQPubKey }, QueryInfo),
