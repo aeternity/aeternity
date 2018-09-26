@@ -1753,17 +1753,29 @@ get_peers_pubkey_sut() ->
 
 get_status(_Config) ->
     {ok, 200, #{
-       <<"genesis_key_block_hash">>     := _,
-       <<"solutions">>                  := _,
-       <<"difficulty">>                 := _,
-       <<"syncing">>                    := _,
-       <<"listening">>                  := _,
-       <<"protocols">>                  := _,
-       <<"node_version">>               := _,
-       <<"node_revision">>              := _,
-       <<"peer_count">>                 := _,
-       <<"pending_transactions_count">> := _
+       <<"genesis_key_block_hash">>     := GenesisKeyBlocHash,
+       <<"solutions">>                  := Solutions,
+       <<"difficulty">>                 := Difficulty,
+       <<"syncing">>                    := Syncing,
+       <<"listening">>                  := Listening,
+       <<"protocols">>                  := Protocols,
+       <<"node_version">>               := _NodeVersion,
+       <<"node_revision">>              := _NodeRevision,
+       <<"peer_count">>                 := PeerCount,
+       <<"pending_transactions_count">> := PendingTxCount
       }} = get_status_sut(),
+    ?assertMatch({ok, _}, aec_base58c:safe_decode(key_block_hash, GenesisKeyBlocHash)),
+    ?assertMatch(X when is_integer(X) andalso X >= 0, Solutions),
+    ?assertMatch(X when is_integer(X), Difficulty),
+    ?assertMatch(X when is_boolean(X), Syncing),
+    ?assertMatch(X when is_boolean(X), Listening),
+    ?assertMatch(X when is_list(X) andalso length(X) > 0, Protocols),
+    lists:foreach(fun(P) ->
+                          ?assertMatch(X when is_integer(X) andalso X >= 0, maps:get(<<"version">>, P)),
+                          ?assertMatch(X when is_integer(X) andalso X >= 0, maps:get(<<"effective_at_height">>, P))
+                  end, Protocols),
+    ?assertMatch(X when is_integer(X) andalso X >= 0, PeerCount),
+    ?assertMatch(X when is_integer(X) andalso X >= 0, PendingTxCount),
     ok.
 
 get_status_sut() ->
