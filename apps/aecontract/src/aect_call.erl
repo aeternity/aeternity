@@ -121,7 +121,7 @@ serialize(#call{caller_id    = CallerId,
       , {gas_used, GasUsed}
       , {return_value, ReturnValue}
       , {return_type, serialize_return_type(ReturnType)}
-      , {log, serialize_log(Log)}
+      , {log, Log}
      ]).
 
 -spec deserialize(binary()) -> call().
@@ -153,7 +153,7 @@ deserialize(B) ->
          , gas_used     = GasUsed
          , return_value = ReturnValue
          , return_type  = deserialize_return_type(ReturnType)
-         , log          = deserialize_log(Log)
+         , log          = Log
          }.
 
 serialization_template(?CONTRACT_INTERACTION_VSN) ->
@@ -194,16 +194,8 @@ serialize_for_client(#call{caller_id    = CallerId,
      , <<"gas_used">>     => GasUsed
      , <<"return_value">> => list_to_binary(aect_utils:hex_bytes(ReturnValue))
      , <<"return_type">>  => atom_to_binary(ReturnType, utf8)
-     , <<"log">>              => [serialize_log_entry_for_client(E) || E <- Log]
+     , <<"log">>          => [serialize_log_entry_for_client(E) || E <- Log]
      }.
-
-serialize_log(Log) -> [serialize_log_entry(E) || E <- Log].
-serialize_log_entry({Address, Topics, Data}) ->
-    [Address, Topics, Data].
-
-deserialize_log(Log) -> [deserialize_log_entry(E) || E <- Log].
-deserialize_log_entry([Address, Topics, Data]) ->
-    {Address, Topics, Data}.
 
 serialize_log_entry_for_client({Address, Topics, Data}) ->
     #{ <<"address">> => Address
