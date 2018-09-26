@@ -23,6 +23,7 @@
    , simple_storage/1
    , dutch_auction/1
    , oracles/1
+   , blockhash/2
    ]).
 
 %% chain API exports
@@ -271,7 +272,13 @@ environment(_Cfg) ->
     GasPrice = Call(call_gas_price),
 
     CallerBalance = Call1(get_balance, Caller),
-    0             = Call1(block_hash, BlockHeight), %% TODO: BLOCKHASH not implemented in EVM
+    0             = Call1(block_hash, BlockHeight),
+    0             = Call1(block_hash, BlockHeight + 1),
+    0             = Call1(block_hash, BlockHeight - 257),
+    BlockHashHeight1 = BlockHeight - 1,
+    BlockHashHeight1 = Call1(block_hash, BlockHashHeight1),
+    BlockHashHeight2 = BlockHeight - 256,
+    BlockHashHeight2 = Call1(block_hash, BlockHashHeight2),
     Coinbase      = Call(coinbase),
     Timestamp     = Call(timestamp),
     BlockHeight   = Call(block_height),
@@ -537,3 +544,8 @@ oracle_response_format(<<Oracle:256>>, State) ->
         #{ Oracle := #{response_format := Format} } -> {ok, Format};
         _ -> {error, {no_such_oracle, Oracle}}
     end.
+
+blockhash(N,_State) ->
+    %% Dummy value to check that we reach this.
+    <<N:256/unsigned-integer>>.
+
