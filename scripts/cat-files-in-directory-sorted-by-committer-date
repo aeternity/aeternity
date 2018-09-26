@@ -1,0 +1,10 @@
+#!/bin/sh
+
+## Sample usage:
+## ```
+## scripts/cat-files-in-directory-sorted-by-committer-date docs/release-notes/next
+## ```
+
+D="${1:?}"
+
+git ls-files -- "${D:?}/" | xargs -IXXX git log -n 1 --pretty="%ct XXX" -- "XXX" | sort --field-separator=' ' --key=1 | cut -d ' ' -f '2-' | xargs cat
