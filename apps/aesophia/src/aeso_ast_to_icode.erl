@@ -210,22 +210,22 @@ ast_body(?qid_app(["AENS", "resolve"], [Name, Key], _, ?option_t(Type)), Icode) 
 ast_body(?qid_app(["AENS", "preclaim"], [Addr, CHash, Sign], _, _), Icode) ->
     prim_call(?PRIM_CALL_AENS_PRECLAIM, #integer{value = 0},
               [ast_body(Addr, Icode), ast_body(CHash, Icode), ast_body(Sign, Icode)],
-              [word, word, word], {tuple, []});
+              [word, word, {tuple, [word, word]}], {tuple, []});
 
 ast_body(?qid_app(["AENS", "claim"], [Addr, Name, Salt, Sign], _, _), Icode) ->
     prim_call(?PRIM_CALL_AENS_CLAIM, #integer{value = 0},
               [ast_body(Addr, Icode), ast_body(Name, Icode), ast_body(Salt, Icode), ast_body(Sign, Icode)],
-              [word, string, word, word], {tuple, []});
+              [word, string, word, {tuple, [word, word]}], {tuple, []});
 
 ast_body(?qid_app(["AENS", "transfer"], [FromAddr, ToAddr, NameHash, Sign], _, _), Icode) ->
     prim_call(?PRIM_CALL_AENS_TRANSFER, #integer{value = 0},
               [ast_body(FromAddr, Icode), ast_body(ToAddr, Icode), ast_body(NameHash, Icode), ast_body(Sign, Icode)],
-              [word, word, word, word], {tuple, []});
+              [word, word, word, {tuple, [word, word]}], {tuple, []});
 
 ast_body(?qid_app(["AENS", "revoke"], [Addr, NameHash, Sign], _, _), Icode) ->
     prim_call(?PRIM_CALL_AENS_REVOKE, #integer{value = 0},
               [ast_body(Addr, Icode), ast_body(NameHash, Icode), ast_body(Sign, Icode)],
-              [word, word, word], {tuple, []});
+              [word, word, {tuple, [word, word]}], {tuple, []});
 
 ast_body({qid, _, ["AENS", "resolve"]}, _Icode)  -> error({underapplied_primitive, 'AENS.resolve'});
 ast_body({qid, _, ["AENS", "preclaim"]}, _Icode) -> error({underapplied_primitive, 'AENS.preclaim'});

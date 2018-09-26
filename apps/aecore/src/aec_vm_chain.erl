@@ -138,9 +138,8 @@ oracle_register(AccountKey, Signature, QueryFee, TTL, QueryFormat, ResponseForma
           fee             => 0},
     {ok, Tx} = aeo_register_tx:new(Spec),
 
-    Bin = <<AccountKey/binary, ContractKey/binary>>,
     Result =
-        case check_signature(AccountKey, ContractKey, Bin, Signature) of
+        case check_signature(AccountKey, ContractKey, Signature) of
             ok                -> apply_transaction(Tx, State);
             Err_ = {error, _} -> Err_
         end,
@@ -200,8 +199,7 @@ oracle_extend(Oracle, Signature, TTL, State = #state{ account = ContractKey }) -
                             fee        => 0,
                             ttl        => 0 %% Not used
                            }),
-    Bin = <<Oracle/binary, ContractKey/binary>>,
-    case check_signature(Oracle, ContractKey, Bin, Signature) of
+    case check_signature(Oracle, ContractKey, Signature) of
         ok               -> apply_transaction(Tx, State);
         Err = {error, _} -> Err
     end.
@@ -285,6 +283,9 @@ get_query_type(OracleId, OraclesTree) ->
     QueryFormat     = aeo_oracles:query_format(Oracle),
     aeso_data:from_binary(typerep, QueryFormat).
 
+check_signature(AKey, CKey, Signature) ->
+    check_signature(AKey, CKey, <<AKey/binary, CKey/binary>>, Signature).
+
 check_signature(AKey, AKey, _Binary, _Signature) -> ok;
 check_signature(AKey, _CKey, Binary, Signature) ->
     case enacl:sign_verify_detached(Signature, Binary, AKey) of
@@ -309,20 +310,20 @@ decode_as(Type, Val) ->
     ?DEBUG_LOG("Can't decode ~p as ~p\n", [Val, Type]),
     {error, out_of_gas}.
 
-aens_preclaim(Addr, CHash, _Sign, #state{ account = ContractKey } = State) ->
+aens_preclaim(Addr, CHash, Signature, #state{ account = ContractKey } = State) ->
     Nonce = next_nonce(Addr, State),
     {ok, Tx} =
         aens_preclaim_tx:new(#{ account_id    => aec_id:create(account, Addr),
                                 nonce         => Nonce,
                                 commitment_id => aec_id:create(commitment, CHash),
                                 fee           => 0 }),
-    case Addr =:= ContractKey of
-        true  -> apply_transaction(Tx, State);
-        false -> %% TODO: check signature for external account
-            {error, signature_check_failed}
+
+    case check_signature(Addr, ContractKey, Signature) of
+        ok               -> apply_transaction(Tx, State);
+        Err = {error, _} -> Err
     end.
 
-aens_claim(Addr, Name, Salt, _Sign, #state{ account = ContractKey } = State) ->
+aens_claim(Addr, Name, Salt, Signature, #state{ account = ContractKey } = State) ->
     Nonce = next_nonce(Addr, State),
     {ok, Tx} =
         aens_claim_tx:new(#{ account_id => aec_id:create(account, Addr),
@@ -330,13 +331,13 @@ aens_claim(Addr, Name, Salt, _Sign, #state{ account = ContractKey } = State) ->
                              name       => Name,
                              name_salt  => Salt,
                              fee        => 0 }),
-    case Addr =:= ContractKey of
-        true  -> apply_transaction(Tx, State);
-        false -> %% TODO: check signature for external account
-            {error, signature_check_failed}
+
+    case check_signature(Addr, ContractKey, Signature) of
+        ok               -> apply_transaction(Tx, State);
+        Err = {error, _} -> Err
     end.
 
-aens_transfer(FromAddr, ToAddr, Hash, _Sign, #state{ account = ContractKey } = State) ->
+aens_transfer(FromAddr, ToAddr, Hash, Signature, #state{ account = ContractKey } = State) ->
     Nonce = next_nonce(FromAddr, State),
     {ok, Tx} =
         aens_transfer_tx:new(#{ account_id   => aec_id:create(account, FromAddr),
@@ -344,23 +345,21 @@ aens_transfer(FromAddr, ToAddr, Hash, _Sign, #state{ account = ContractKey } = S
                                 name_id      => aec_id:create(name, Hash),
                                 recipient_id => aec_id:create(account, ToAddr),
                                 fee          => 0 }),
-    case FromAddr =:= ContractKey of
-        true  -> apply_transaction(Tx, State);
-        false -> %% TODO: check signature for external account
-            {error, signature_check_failed}
+    case check_signature(FromAddr, ContractKey, Signature) of
+        ok               -> apply_transaction(Tx, State);
+        Err = {error, _} -> Err
     end.
 
-aens_revoke(Addr, Hash, _Sign, #state{ account = ContractKey } = State) ->
+aens_revoke(Addr, Hash, Signature, #state{ account = ContractKey } = State) ->
     Nonce = next_nonce(Addr, State),
     {ok, Tx} =
         aens_revoke_tx:new(#{ account_id => aec_id:create(account, Addr),
                               nonce      => Nonce,
                               name_id    => aec_id:create(name, Hash),
                               fee        => 0 }),
-    case Addr =:= ContractKey of
-        true  -> apply_transaction(Tx, State);
-        false -> %% TODO: check signature for external account
-            {error, signature_check_failed}
+    case check_signature(Addr, ContractKey, Signature) of
+        ok               -> apply_transaction(Tx, State);
+        Err = {error, _} -> Err
     end.
 
 %%    Contracts

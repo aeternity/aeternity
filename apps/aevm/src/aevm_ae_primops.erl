@@ -294,23 +294,23 @@ aens_call_resolve(Data, State) ->
     no_dynamic_cost(fun() -> query_chain(Callback, State) end).
 
 aens_call_preclaim(Data, State) ->
-    [Addr, CHash, Sign] = get_args([word, word, word], Data),
-    Callback = fun(API, ChainState) -> API:aens_preclaim(<<Addr:256>>, <<CHash:256>>, <<Sign:256>>, ChainState) end,
+    [Addr, CHash, Sign0] = get_args([word, word, sign_t()], Data),
+    Callback = fun(API, ChainState) -> API:aens_preclaim(<<Addr:256>>, <<CHash:256>>, to_sign(Sign0), ChainState) end,
     no_dynamic_cost(fun() -> cast_chain(Callback, State) end).
 
 aens_call_claim(Data, State) ->
-    [Addr, Name, Salt, Sign] = get_args([word, string, word, word], Data),
-    Callback = fun(API, ChainState) -> API:aens_claim(<<Addr:256>>, Name, Salt, <<Sign:256>>, ChainState) end,
+    [Addr, Name, Salt, Sign0] = get_args([word, string, word, sign_t()], Data),
+    Callback = fun(API, ChainState) -> API:aens_claim(<<Addr:256>>, Name, Salt, to_sign(Sign0), ChainState) end,
     no_dynamic_cost(fun() -> cast_chain(Callback, State) end).
 
 aens_call_transfer(Data, State) ->
-    [From, To, Hash, Sign] = get_args([word, word, word, word], Data),
-    Callback = fun(API, ChainState) -> API:aens_transfer(<<From:256>>, <<To:256>>, <<Hash:256>>, <<Sign:256>>, ChainState) end,
+    [From, To, Hash, Sign0] = get_args([word, word, word, sign_t()], Data),
+    Callback = fun(API, ChainState) -> API:aens_transfer(<<From:256>>, <<To:256>>, <<Hash:256>>, to_sign(Sign0), ChainState) end,
     no_dynamic_cost(fun() -> cast_chain(Callback, State) end).
 
 aens_call_revoke(Data, State) ->
-    [Addr, Hash, Sign] = get_args([word, word, word], Data),
-    Callback = fun(API, ChainState) -> API:aens_revoke(<<Addr:256>>, <<Hash:256>>, <<Sign:256>>, ChainState) end,
+    [Addr, Hash, Sign0] = get_args([word, word, sign_t()], Data),
+    Callback = fun(API, ChainState) -> API:aens_revoke(<<Addr:256>>, <<Hash:256>>, to_sign(Sign0), ChainState) end,
     no_dynamic_cost(fun() -> cast_chain(Callback, State) end).
 
 %% ------------------------------------------------------------------

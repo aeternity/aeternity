@@ -62,6 +62,7 @@
         , sophia_oracles_gas_ttl__query/1
         , sophia_oracles_gas_ttl__response/1
         , sophia_signatures_oracles/1
+        , sophia_signatures_aens/1
         , sophia_maps/1
         , sophia_map_benchmark/1
         , sophia_variant_types/1
@@ -127,6 +128,7 @@ groups() ->
                                  {group, sophia_oracles_query_fee_unhappy_path_remote},
                                  {group, sophia_oracles_gas_ttl},
                                  sophia_signatures_oracles,
+                                 sophia_signatures_aens,
                                  sophia_maps,
                                  sophia_map_benchmark,
                                  sophia_variant_types,
@@ -2083,6 +2085,43 @@ sophia_signatures_oracles(_Cfg) ->
     {some, 4001}      = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {Orc, QId}),
     {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Orc, RegSig, RelativeTTL(10)}),
 
+    ok.
+
+sophia_signatures_aens(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc      = ?call(new_account, 1000000),
+    Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
+    Name     = <<"foo.test">>,
+    APubkey  = 1,
+    OPubkey  = <<2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2>>,
+    %% TODO: Improve checks in aens_unpdate_tx
+    Pointers = [aens_pointer:new(<<"account_pubkey">>, aec_id:create(account, <<APubkey:256>>)),
+                aens_pointer:new(<<"oracle_pubkey">>, aec_id:create(oracle, OPubkey))],
+
+    Salt  = ?call(aens_preclaim, Acc, Name),
+    Hash  = ?call(aens_claim, Acc, Name, Salt),
+    ok    = ?call(aens_update, Acc, Hash, Pointers),
+
+    {some, APubkey} = ?call(call_contract, Acc, Ct, resolve_word,   {option, word},   {Name, <<"account_pubkey">>}),
+    {some, OPubkey} = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"oracle_pubkey">>}),
+    none            = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"name">>}),
+    ok              = ?call(aens_revoke, Acc, Hash),
+    none            = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"name">>}),
+
+    %% AENS transactions from contract - using 3rd party account
+    NameAcc         = ?call(new_account, 10000000),
+    Name1           = <<"bla.test">>,
+    Salt1           = rand:uniform(10000),
+    {ok, NameAscii} = aens_utils:to_ascii(Name1),
+    CHash           = aens_hash:commitment_hash(NameAscii, Salt1),
+    NHash           = aens_hash:name_hash(NameAscii),
+    NameSig         = sign(<<NameAcc/binary, Ct/binary>>, NameAcc),
+    {} = ?call(call_contract, Acc, Ct, preclaim, {tuple, []}, {NameAcc, CHash, NameSig},        #{ height => 10 }),
+    {} = ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {NameAcc, Name1, Salt1, NameSig}, #{ height => 11 }),
+    {} = ?call(call_contract, Acc, Ct, transfer, {tuple, []}, {NameAcc, Acc, NHash, NameSig},   #{ height => 12 }),
+    ok = ?call(aens_update, Acc, NHash, Pointers),
+    {some, OPubkey} = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name1, <<"oracle_pubkey">>}),
+    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {NameAcc, NHash, NameSig}, #{ height => 13 }),
     ok.
 
 sign(Material, KeyHolder) ->
