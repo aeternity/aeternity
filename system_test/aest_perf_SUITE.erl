@@ -18,7 +18,8 @@
     startup_speed/1,
     startup_speed_mining/1,
     sync_speed/1,
-    stay_in_sync/1
+    stay_in_sync/1,
+    mining_governed_rate/1
 ]).
 
 -import(aest_nodes, [
@@ -48,12 +49,12 @@
 
 suite() -> [{timetrap, {minutes, 90}}].
 
-all() -> [
-    {group, long_chain}
-].
+all() -> 
+    [ {group, long_chain} ].
 
 groups() ->
     [{long_chain, [], [
+        mining_governed_rate,
         startup_speed,
         startup_speed_mining,
         sync_speed,
@@ -61,12 +62,9 @@ groups() ->
     ]}].
 
 init_per_suite(Cfg) ->
-    MineRate = 100,
     Cfg ++ [
         {mine_time, {minutes, 20}},     % Time to mine for
         {mine_interval, {seconds, 30}}, % Interval to check mining height
-        {mine_rate, MineRate},          % Mine rate configuration for nodes
-        {mine_timeout, MineRate * 2},   % Per block
         {node_startup_timeout, 20000},  % Timeout until HTTP API responds
         {sync_timeout, 1000}            % Per block
     ].
@@ -77,10 +75,9 @@ init_per_group(long_chain, InitCfg) ->
 
     Nodes = [n1, n2, n3],
 
-    setup_nodes(cluster(Nodes, #{mine_rate => ?cfg(mine_rate)}), Cfg),
+    setup_nodes(cluster(Nodes, #{}), Cfg),
     [start_node(N, Cfg) || N <- Nodes],
     wait_for_startup(Nodes, 0, Cfg),
-    % wait_for_value({height, Height}, Nodes, ?cfg(mine_timeout) * Height, Cfg),
     Height = wait_for_time(height, Nodes, ?cfg(mine_time), #{
         interval => ?cfg(mine_interval)
     }),
@@ -90,17 +87,17 @@ init_per_group(long_chain, InitCfg) ->
     [kill_node(N, Cfg) || N <- Nodes],
 
     %% Match "ok =" when we want to find errors in this stage
-    %% ok = 
-    aest_nodes:ct_cleanup(Cfg),
+    ok = aest_nodes:ct_cleanup(Cfg),
  
     [{height, Height}, {source, Ref}|Cfg].
 
 end_per_group(long_chain, _Cfg) -> ok.
 
-init_per_testcase(_TC, Cfg) -> aest_nodes:ct_setup(Cfg).
+init_per_testcase(_TC, Cfg) -> 
+    aest_nodes:ct_setup(Cfg).
 
 end_per_testcase(_TC, Cfg) ->
-  aest_nodes:ct_cleanup(Cfg).
+    aest_nodes:ct_cleanup(Cfg).
 
 end_per_suite(_Cfg) -> ok.
 
@@ -121,23 +118,20 @@ sync_speed(Cfg) ->
     % This tests starts 3 nodes at the pre-mined height, then adds and syncs two
     % more one at a time. Syncing is verified to not take longer than mining and
     % then the measured time is logged.
-    [Height, MineRate] = ?cfg([height, mine_rate]),
+    Height = ?cfg(height),
 
     InitialNodes = [n1, n2, n3],
 
     InitialNodeSpecs = [
         spec(N, InitialNodes -- [N], #{
-            mine_rate => MineRate,
             source => ?cfg(source),
             mining => #{autostart => false}
         })
         || N <- InitialNodes
     ],
-    NewNodesSpec = [
-        spec(N, InitialNodes, #{
-            mine_rate => MineRate,
-            mining => #{autostart => false}
-        }) || N <- [n5, n6]
+    NewNodesSpec = 
+        [ spec(N, InitialNodes, #{mining => #{autostart => false}}) 
+          || N <- [n5, n6]
     ],
 
     setup_nodes(InitialNodeSpecs ++ NewNodesSpec, Cfg),
@@ -159,10 +153,7 @@ stay_in_sync(Cfg) ->
     % does not fork.
     Height = ?cfg(height),
     Nodes = [n1, n2, n3, n4, n5],
-    setup_nodes(cluster(Nodes, #{
-        mine_rate => ?cfg(mine_rate),
-        source => ?cfg(source)
-    }), Cfg),
+    setup_nodes(cluster(Nodes, #{source => ?cfg(source)}), Cfg),
     [start_node(N, Cfg) || N <- Nodes],
     wait_for_startup(Nodes, Height, Cfg),
 
@@ -170,6 +161,39 @@ stay_in_sync(Cfg) ->
 
     Blocks = [{N, get_block(N, Height + 40)} || N <- Nodes],
     [?assertEqual(AB, BB) || {AN, AB} <- Blocks, {BN, BB} <- Blocks, AN =/= BN].
+
+mining_governed_rate(Cfg) ->
+    Height = ?cfg(height),
+    Nodes = [n1],
+    setup_nodes(cluster(Nodes, #{source => ?cfg(source)}), Cfg),
+    start_node(n1, Cfg),
+
+    %% Get configured mining rate in ms per block (defaults to 180000, but reads from config)
+    ct:log("Node configuration ~p", [aest_nodes_mgr:get_config(n1, [])]),
+    MiningRate = 
+        case aest_nodes:get_node_config(n1, ["mining", "expected_mine_rate"]) of
+            [] -> aec_governance:expected_block_mine_rate();
+            Rate -> Rate
+        end,
+    
+    wait_for_startup(Nodes, Height, Cfg),
+    #{ time := Time0 } = aest_nodes:get_block(n1, 10),
+    ct:log("Block 10 reached at time ~p", [Time0]),
+    
+    %% half way
+    H1 = Height div 2,
+    #{ time := Time1 } = aest_nodes:get_block(n1, H1),
+    ActualMineRate1 = (Time1 - Time0) div (H1-10),
+    ct:log("Block ~p reached at time ~p rate ~p  (~p)", [H1, Time1, ActualMineRate1, MiningRate]),
+
+    ?assert(abs(MiningRate - ActualMineRate1) < 0.25 * MiningRate),
+
+    %% final
+    #{ time := Time2 } = aest_nodes:get_block(n1, Height),
+    ActualMineRate2 = (Time2 - Time0) div (Height-10),
+    ct:log("Block ~p reached at time ~p rate ~p (~p)", [Height, Time2, ActualMineRate2, MiningRate]),
+    ?assert(abs(MiningRate - ActualMineRate2) < 0.20 * MiningRate).
+
 
 %=== INTERNAL FUNCTIONS ========================================================
 
