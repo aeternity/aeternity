@@ -57,6 +57,10 @@
         , sophia_oracles_qfee__remote_contract_query_value_below_qfee_does_not_take_from_rich_oracle_thanks_to_contract_check__remote/1
         , sophia_oracles_qfee__inner_error_after_primop__remote/1
         , sophia_oracles_qfee__outer_error_after_primop__remote/1
+        , sophia_oracles_gas_ttl__oracle_registration/1
+        , sophia_oracles_gas_ttl__oracle_extension/1
+        , sophia_oracles_gas_ttl__query/1
+        , sophia_oracles_gas_ttl__response/1
         , sophia_maps/1
         , sophia_map_benchmark/1
         , sophia_variant_types/1
@@ -120,6 +124,7 @@ groups() ->
                                  {group, sophia_oracles_query_fee_happy_path_remote},
                                  {group, sophia_oracles_query_fee_unhappy_path},
                                  {group, sophia_oracles_query_fee_unhappy_path_remote},
+                                 {group, sophia_oracles_gas_ttl},
                                  sophia_maps,
                                  sophia_map_benchmark,
                                  sophia_variant_types,
@@ -170,6 +175,12 @@ groups() ->
        , sophia_oracles_qfee__remote_contract_query_value_below_qfee_does_not_take_from_rich_oracle_thanks_to_contract_check__remote
        , sophia_oracles_qfee__inner_error_after_primop__remote
        , sophia_oracles_qfee__outer_error_after_primop__remote
+       ]}
+    , {sophia_oracles_gas_ttl, [],
+       [ sophia_oracles_gas_ttl__oracle_registration
+       , sophia_oracles_gas_ttl__oracle_extension
+       , sophia_oracles_gas_ttl__query
+       , sophia_oracles_gas_ttl__response
        ]}
     , {store, [sequence], [ create_store
                           , update_store
@@ -1877,6 +1888,171 @@ sophia_oracles_qfee__outer_error_after_primop__remote(_Cfg) ->
     ?assertEqual(Bal(OracleAcc, S1)                       , Bal(OracleAcc, S2)),
     ?assertEqual(Bal(CallingCt, S1) + QueryTxValue        , Bal(CallingCt, S2)),
     ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)).
+
+%% Oracle gas TTL tests
+
+-record(oracles_gas_ttl_scenario,
+        {register_ttl :: ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(non_neg_integer())
+                       | ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(non_neg_integer()),
+         extend_ttl   :: ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(non_neg_integer()),
+         query_ttl    :: ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(non_neg_integer())
+                       | ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(non_neg_integer()),
+         respond_ttl  :: ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(non_neg_integer())}).
+sophia_oracles_gas_ttl__measure_gas_used(Sc, Height, Gas) ->
+    state(aect_test_utils:new_state()),
+    Caller = call(fun new_account/2, [1000000]),
+    Ct = call(fun create_contract/4, [Caller, oracles_gas, {}]),
+    QFee=1,
+    Args = {QFee,
+            Sc#oracles_gas_ttl_scenario.register_ttl,
+            Sc#oracles_gas_ttl_scenario.extend_ttl,
+            Sc#oracles_gas_ttl_scenario.query_ttl,
+            Sc#oracles_gas_ttl_scenario.respond_ttl,
+            _Signature=0},
+    Opts = #{height => Height,
+             return_gas_used => true,
+             gas_price => 0,
+             gas => Gas,
+             amount => QFee},
+    {_Result, _GasUsed} = call(fun call_contract/7, [Caller, Ct, happyPathWithAllBuiltinsAtSameHeight, {tuple, []}, Args, Opts]).
+
+%% Test that gas charged by oracle primop depends on TTL of state object.
+%% Test approach: run primop with low and high TTLs, then compare consumed gas. This proves that TTL-related gas computation kicks in without relying on absolute minimum value of gas used.
+sophia_oracles_gas_ttl__oracle_registration(_Cfg) ->
+    {Part, Whole} = aec_governance:state_gas_cost_per_block(oracle_registration),
+    ?assertMatch(X when X > 0, Whole), %% Hardcoded expectation on governance - for test readability.
+    ?assertMatch(X when X > 0, Part), %% Hardcoded expectation on governance - for test readability.
+    MM = fun(H, Ttl, Gas) ->
+                sophia_oracles_gas_ttl__measure_gas_used(
+                  #oracles_gas_ttl_scenario{
+                     register_ttl = Ttl,
+                     extend_ttl   = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(1),
+                     query_ttl    = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(1),
+                     respond_ttl  = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(1)},
+                  H, Gas)
+        end,
+    M = fun(H, Ttl) -> MM(H, Ttl, 1234567890) end,
+    Rel = fun(H, Ttl) -> M(H, ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Ttl)) end,
+    H = 1,
+    %% Smoke test.
+    ?assertMatch({{}, _}, Rel(H, 1)),
+    G = fun({{}=_Result, GasUsed}) -> GasUsed end,
+    %% TTL increases gas used.
+    ?assertEqual(Part + G(Rel(H, 1        )), G(Rel(H, 1 +   Whole))),
+    ?assertEqual(Part + G(Rel(H, 1 + Whole)), G(Rel(H, 1 + 2*Whole))),
+    %% Gas used for absolute TTL is same as relative.
+    Abs = fun(H, Ttl) -> M(H, ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Ttl)) end,
+    ?assertEqual(Rel(H, 1 + Whole), Abs(H, H + 1 + Whole)),
+    %% Enough gas for base cost though not enough for all TTL causes out-of-gas.
+    ?assertMatch(
+       {{error, <<"out_of_gas">>}, _},
+       MM(H,
+          ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(1 + Whole),
+          G(Rel(H, 1))
+         )
+      ),
+    ok.
+
+sophia_oracles_gas_ttl__oracle_extension(_Cfg) ->
+    {Part, Whole} = aec_governance:state_gas_cost_per_block(oracle_extension),
+    ?assertMatch(X when X > 0, Whole), %% Hardcoded expectation on governance - for test readability.
+    ?assertMatch(X when X > 0, Part), %% Hardcoded expectation on governance - for test readability.
+    MM = fun(H, Ttl, Gas) ->
+                 sophia_oracles_gas_ttl__measure_gas_used(
+                   #oracles_gas_ttl_scenario{
+                      register_ttl = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(1),
+                      extend_ttl   = Ttl,
+                      query_ttl    = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(1),
+                      respond_ttl  = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(1)},
+                   H, Gas)
+         end,
+    M = fun(H, Ttl) -> MM(H, Ttl, 1234567890) end,
+    Rel = fun(H, Ttl) -> M(H, ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Ttl)) end,
+    H = 1,
+    %% Smoke test.
+    ?assertMatch({{}, _}, Rel(H, 1)),
+    G = fun({{}=_Result, GasUsed}) -> GasUsed end,
+    %% TTL increases gas used.
+    ?assertEqual(Part + G(Rel(H, 1        )), G(Rel(H, 1 +   Whole))),
+    ?assertEqual(Part + G(Rel(H, 1 + Whole)), G(Rel(H, 1 + 2*Whole))),
+    %% Enough gas for base cost though not enough for all TTL causes out-of-gas.
+    ?assertMatch(
+       {{error, <<"out_of_gas">>}, _},
+       MM(H,
+          ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(1 + Whole),
+          G(Rel(H, 1))
+         )
+      ),
+    ok.
+
+sophia_oracles_gas_ttl__query(_Cfg) ->
+    {Part, Whole} = aec_governance:state_gas_cost_per_block(oracle_query),
+    ?assertMatch(X when X > 0, Whole), %% Hardcoded expectation on governance - for test readability.
+    ?assertMatch(X when X > 0, Part), %% Hardcoded expectation on governance - for test readability.
+    MM = fun(H, Ttl, Gas) ->
+                 sophia_oracles_gas_ttl__measure_gas_used(
+                   #oracles_gas_ttl_scenario{
+                      register_ttl = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(10 + 10 * Whole), %% Fixed, though enough room for playing with query/response TTL.
+                      extend_ttl   = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(1),
+                      query_ttl    = Ttl,
+                      respond_ttl  = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(1)},
+                   H, Gas)
+         end,
+    M = fun(H, Ttl) -> MM(H, Ttl, 1234567890) end,
+    Rel = fun(H, Ttl) -> M(H, ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Ttl)) end,
+    H = 1,
+    %% Smoke test.
+    ?assertMatch({{}, _}, Rel(H, 1)),
+    G = fun({{}=_Result, GasUsed}) -> GasUsed end,
+    %% TTL increases gas used.
+    ?assertEqual(Part + G(Rel(H, 1        )), G(Rel(H, 1 +   Whole))),
+    ?assertEqual(Part + G(Rel(H, 1 + Whole)), G(Rel(H, 1 + 2*Whole))),
+    %% Gas used for absolute TTL is same as relative.
+    Abs = fun(H, Ttl) -> M(H, ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Ttl)) end,
+    ?assertEqual(Rel(H, 1 + Whole), Abs(H, H + 1 + Whole)),
+    %% Enough gas for base cost though not enough for all TTL causes out-of-gas.
+    ?assertMatch(
+       {{error, <<"out_of_gas">>}, _},
+       MM(H,
+          ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(1 + Whole),
+          G(Rel(H, 1))
+         )
+      ),
+    ok.
+
+sophia_oracles_gas_ttl__response(_Cfg) ->
+    {Part, Whole} = aec_governance:state_gas_cost_per_block(oracle_response),
+    ?assertMatch(X when X > 0, Whole), %% Hardcoded expectation on governance - for test readability.
+    ?assertMatch(X when X > 0, Part), %% Hardcoded expectation on governance - for test readability.
+    MM = fun(H, Ttl, Gas) ->
+                 sophia_oracles_gas_ttl__measure_gas_used(
+                   #oracles_gas_ttl_scenario{
+                      register_ttl = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(10 + 10 * Whole), %% Fixed, though enough room for playing with query/response TTL.
+                      extend_ttl   = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(1),
+                      query_ttl    = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(1),
+                      respond_ttl  = Ttl},
+                   H, Gas)
+         end,
+    M = fun(H, Ttl) -> MM(H, Ttl, 1234567890) end,
+    Rel = fun(H, Ttl) -> M(H, ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Ttl)) end,
+    H = 1,
+    %% Smoke test.
+    ?assertMatch({{}, _}, Rel(H, 1)),
+    G = fun({{}=_Result, GasUsed}) -> GasUsed end,
+    %% TTL increases gas used.
+    ?assertEqual(Part + G(Rel(H, 1        )), G(Rel(H, 1 +   Whole))),
+    ?assertEqual(Part + G(Rel(H, 1 + Whole)), G(Rel(H, 1 + 2*Whole))),
+    %% Enough gas for base cost though not enough for all TTL causes out-of-gas.
+    ?assertMatch(
+       {{error, <<"out_of_gas">>}, _},
+       MM(H,
+          ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(1 + Whole),
+          G(Rel(H, 1))
+         )
+      ),
+    ok.
+
+%% -- End oracle gas TTL tests --
 
 %% Testing map functions and primitives
 sophia_maps(_Cfg) ->

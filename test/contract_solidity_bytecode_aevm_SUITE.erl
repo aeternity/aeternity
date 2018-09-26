@@ -15,8 +15,8 @@
 %% chain API exports
 -export([ spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2,
           oracle_register/7, oracle_query/6, oracle_query_format/2, oracle_response_format/2,
-          oracle_query_oracle/2, oracle_respond/5, oracle_get_answer/3,
-          oracle_query_fee/2, oracle_get_question/3, oracle_extend/4]).
+          oracle_respond/5, oracle_get_answer/3,
+          oracle_query_fee/2, oracle_query_response_ttl/3, oracle_get_question/3, oracle_extend/4]).
 
 
 -include_lib("common_test/include/ct.hrl").
@@ -326,6 +326,12 @@ oracle_query_fee(<<Oracle:256>>, State) ->
         _ -> {error, {no_such_oracle, Oracle}}
     end.
 
+oracle_query_response_ttl(<<_Oracle:256>>, <<Query:256>>, State) ->
+    case maps:get(oracle_queries, State, #{}) of
+        #{Query := Q} -> {ok, maps:get(r_ttl, Q)};
+        _ -> {error, no_such_oracle_query}
+    end.
+
 oracle_query_format(<<Oracle:256>>, State) ->
     case maps:get(oracles, State, []) of
         #{ Oracle := #{query_format := Format} } -> {ok, Format};
@@ -337,10 +343,3 @@ oracle_response_format(<<Oracle:256>>, State) ->
         #{ Oracle := #{response_format := Format} } -> {ok, Format};
         _ -> {error, {no_such_oracle, Oracle}}
     end.
-
-oracle_query_oracle(<<Query:256>>, State) ->
-    case maps:get(oracle_queries, State, #{}) of
-        #{ Query := #{oracle := Oracle} } -> {ok, <<Oracle:256>>};
-        _ -> {error, {no_such_oracle_query, Query}}
-    end.
-

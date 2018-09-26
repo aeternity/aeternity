@@ -20,11 +20,14 @@
          name_registrars/0,
          micro_block_cycle/0,
          accepted_future_block_time_shift/0,
-         fraud_report_reward/0]).
+         fraud_report_reward/0,
+         state_gas_cost_per_block/1,
+         primop_base_gas_cost/1]).
 
 -export_type([protocols/0]).
 
 -include("blocks.hrl").
+-include_lib("aebytecode/include/aeb_opcodes.hrl").
 
 -define(SORTED_VERSIONS, lists:sort(maps:keys(?PROTOCOLS))).
 -define(PROTOCOLS,
@@ -33,7 +36,9 @@
 
 -define(BLOCKS_TO_CHECK_DIFFICULTY_COUNT, 17).
 -define(TIMESTAMP_MEDIAN_BLOCKS, 11).
--define(EXPECTED_BLOCK_MINE_RATE, 3 * 60 * 1000). %% 60secs * 1000ms * 3 = 180000msecs
+-define(EXPECTED_BLOCK_MINE_RATE_MINUTES, 3).
+-define(EXPECTED_BLOCK_MINE_RATE, (?EXPECTED_BLOCK_MINE_RATE_MINUTES * 60 * 1000)). %% 60secs * 1000ms * 3 = 180000msecs
+-define(EXPECTED_BLOCKS_IN_A_YEAR_FLOOR, (175200 = ((60 * 24 * 365) div ?EXPECTED_BLOCK_MINE_RATE_MINUTES))).
 -define(BLOCK_MINE_REWARD, 10000000000000000000).
 %% Ethereum's gas limit is 8 000 000 and block time ~15s.
 %% For 3s block time it's 1 600 000 (5x less).
@@ -44,7 +49,9 @@
 -define(BENEFICIARY_REWARD_DELAY, 180). %% in key blocks / generations
 -define(MICRO_BLOCK_CYCLE, 3000). %% in msecs
 
--define(ACCEPTED_FUTURE_BLOCK_TIME_SHIFT, 9 * 60 * 1000). %% 9 min
+-define(ACCEPTED_FUTURE_BLOCK_TIME_SHIFT, (?EXPECTED_BLOCK_MINE_RATE_MINUTES * 3 * 60 * 1000)). %% 9 min
+
+-define(ORACLE_STATE_GAS_COST_PER_YEAR, 32000). %% 32000 as `?GCREATE` in `aevm_gas.hrl` i.e. an oracle-related state object costs per year as much as it costs to indefinitely create an account.
 
 %% Maps consensus protocol version to minimum height at which such
 %% version is effective.  The height must be strictly increasing with
@@ -110,6 +117,36 @@ micro_block_cycle() ->
 
 accepted_future_block_time_shift() ->
     ?ACCEPTED_FUTURE_BLOCK_TIME_SHIFT.
+
+%% Reoccurring gas cost, meant to be paid up front.
+%%
+%% Expressed as a fraction because otherwise it would become too large
+%% when multiplied by the number of key blocks.
+-spec state_gas_cost_per_block(atom()) -> {Part::pos_integer(), Whole::pos_integer()}.
+state_gas_cost_per_block(oracle_registration) -> {?ORACLE_STATE_GAS_COST_PER_YEAR, ?EXPECTED_BLOCKS_IN_A_YEAR_FLOOR};
+state_gas_cost_per_block(oracle_extension)    -> state_gas_cost_per_block(oracle_registration);
+state_gas_cost_per_block(oracle_query)        -> state_gas_cost_per_block(oracle_registration);
+state_gas_cost_per_block(oracle_response)     -> state_gas_cost_per_block(oracle_registration).
+
+%% As primops are not meant to be called from contract call
+%% transactions, calling a primop costs (apart from the fees for the
+%% calling contract create transaction or contract call transaction)
+%% at least the gas cost of the call instruction (e.g. `CALL`) used
+%% for calling the primop.
+primop_base_gas_cost(?PRIM_CALL_SPEND              ) -> 0;
+primop_base_gas_cost(?PRIM_CALL_ORACLE_REGISTER    ) -> 0;
+primop_base_gas_cost(?PRIM_CALL_ORACLE_QUERY       ) -> 0;
+primop_base_gas_cost(?PRIM_CALL_ORACLE_RESPOND     ) -> 0;
+primop_base_gas_cost(?PRIM_CALL_ORACLE_EXTEND      ) -> 0;
+primop_base_gas_cost(?PRIM_CALL_ORACLE_GET_ANSWER  ) -> 0;
+primop_base_gas_cost(?PRIM_CALL_ORACLE_GET_QUESTION) -> 0;
+primop_base_gas_cost(?PRIM_CALL_ORACLE_QUERY_FEE   ) -> 0;
+primop_base_gas_cost(?PRIM_CALL_AENS_RESOLVE       ) -> 0;
+primop_base_gas_cost(?PRIM_CALL_AENS_PRECLAIM      ) -> 0;
+primop_base_gas_cost(?PRIM_CALL_AENS_CLAIM         ) -> 0;
+primop_base_gas_cost(?PRIM_CALL_AENS_UPDATE        ) -> 0;
+primop_base_gas_cost(?PRIM_CALL_AENS_TRANSFER      ) -> 0;
+primop_base_gas_cost(?PRIM_CALL_AENS_REVOKE        ) -> 0.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Naming system variables
