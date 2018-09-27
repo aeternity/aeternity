@@ -372,22 +372,21 @@ oracles(_Cfg) ->
     ChainEnv = #{ currentNumber => 20 },
     Env0 = initial_state(#{ environment => ChainEnv }, #{101 => QFee}),
     Env1 = create_contract(101, Code, "()", Env0),
-    {101, Env2} = successful_call(101, word, registerOracle, "(101, 3, "++ integer_to_list(QFee) ++", (0, 10))", Env1),
+    {101, Env2} = successful_call(101, word, registerOracle, "(101, 0, "++ integer_to_list(QFee) ++", (0, 10))", Env1),
     {Q, Env3}   = successful_call(101, word, createQuery, "(101, \"why?\", "++ integer_to_list(QFee) ++", (0, 10), (0, 11))", Env2, #{value => QFee}),
     QArg        = integer_to_list(Q),
     OandQArg    = "(101, "++ QArg ++")",
     none        = successful_call_(101, {option, word}, getAnswer, OandQArg, Env3),
-    {{}, Env4}  = successful_call(101, {tuple, []}, respond, "(101," ++ QArg ++ ",111,42)", Env3),
+    {{}, Env4}  = successful_call(101, {tuple, []}, respond, "(101," ++ QArg ++ ",0,42)", Env3),
     {some, 42}  = successful_call_(101, {option, word}, getAnswer, OandQArg, Env4),
     <<"why?">>  = successful_call_(101, string, getQuestion, OandQArg, Env4),
     QFee        = successful_call_(101, word, queryFee, "101", Env4),
-    {{}, Env5}  = successful_call(101, {tuple, []}, extendOracle, "(101, 1111, (0, 100))", Env4),
+    {{}, Env5}  = successful_call(101, {tuple, []}, extendOracle, "(101, 0, (0, 100))", Env4),
     #{oracles :=
           #{101 := #{
              nonce := 1,
              query_format := string,
              response_format := word,
-             sign := 3,
              ttl := {delta, 100}}},
       oracle_queries :=
           #{Q := #{ oracle := 101,
@@ -454,7 +453,7 @@ call_contract(<<Contract:256>>, _Gas, Value, CallData, _, S = #{running := Calle
             {error, {no_such_contract, Contract}}
     end.
 
-oracle_register(PubKey = <<Account:256>>, <<Sign:256>>, QueryFee, TTL, QueryFormat, ResponseFormat, State) ->
+oracle_register(PubKey = <<Account:256>>, Sign, QueryFee, TTL, QueryFormat, ResponseFormat, State) ->
     io:format("oracle_register(~p, ~p, ~p, ~p, ~p, ~p)\n", [Account, Sign, QueryFee, TTL, QueryFormat, ResponseFormat]),
     Oracles = maps:get(oracles, State, #{}),
     State1 = State#{ oracles => Oracles#{ Account =>

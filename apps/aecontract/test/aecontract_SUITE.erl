@@ -2069,6 +2069,11 @@ sophia_signatures_oracles(_Cfg) ->
     QueryFee            = 13,
     TTL                 = 50,
     <<OrcId:256>>       = Orc,
+
+    BadSig              = sign(<<Ct/binary, Orc/binary>>, Orc),
+    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, registerOracle, word,
+                                      {Orc, BadSig, QueryFee, FixedTTL(TTL)}, #{amount => 1}),
+
     RegSig              = sign(<<Orc/binary, Ct/binary>>, Orc),
     OrcId               = ?call(call_contract, Acc, Ct, registerOracle, word, {Orc, RegSig, QueryFee, FixedTTL(TTL)},
                                 #{amount => 1}),
@@ -2080,10 +2085,11 @@ sophia_signatures_oracles(_Cfg) ->
     QueryFee          = ?call(call_contract, Acc, Ct, queryFee, word, Orc),
     none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {Orc, QId}),
 
-    RespSign          = sign(<<QId:256, Ct/binary>>, Orc),
-    {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {Orc, QId, RespSign, 4001}),
-    {some, 4001}      = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {Orc, QId}),
-    {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Orc, RegSig, RelativeTTL(10)}),
+    RespSign                  = sign(<<QId:256, Ct/binary>>, Orc),
+    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {Orc, QId, BadSig, 4001}),
+    {}                        = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {Orc, QId, RespSign, 4001}),
+    {some, 4001}              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {Orc, QId}),
+    {}                        = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Orc, RegSig, RelativeTTL(10)}),
 
     ok.
 
@@ -2116,12 +2122,20 @@ sophia_signatures_aens(_Cfg) ->
     CHash           = aens_hash:commitment_hash(NameAscii, Salt1),
     NHash           = aens_hash:name_hash(NameAscii),
     NameSig         = sign(<<NameAcc/binary, Ct/binary>>, NameAcc),
+    AccSig          = sign(<<Acc/binary, Ct/binary>>, Acc),
+
+    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, preclaim, {tuple, []}, {NameAcc, CHash, AccSig}, #{ height => 10 }),
     {} = ?call(call_contract, Acc, Ct, preclaim, {tuple, []}, {NameAcc, CHash, NameSig},        #{ height => 10 }),
+    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {NameAcc, Name1, Salt1, AccSig}, #{ height => 11 }),
     {} = ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {NameAcc, Name1, Salt1, NameSig}, #{ height => 11 }),
+    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, transfer, {tuple, []}, {NameAcc, Acc, NHash, AccSig},   #{ height => 12 }),
     {} = ?call(call_contract, Acc, Ct, transfer, {tuple, []}, {NameAcc, Acc, NHash, NameSig},   #{ height => 12 }),
     ok = ?call(aens_update, Acc, NHash, Pointers),
+
     {some, OPubkey} = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name1, <<"oracle_pubkey">>}),
+
     {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {NameAcc, NHash, NameSig}, #{ height => 13 }),
+    {} = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Acc, NHash, AccSig}, #{ height => 13 }),
     ok.
 
 sign(Material, KeyHolder) ->
