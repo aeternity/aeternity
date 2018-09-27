@@ -84,6 +84,7 @@ run(ContractPubKey, VmVersion, Call, CallData, CallStack, Round, Trees0,
 
 make_call_def(OwnerPubKey, ContractPubKey, GasLimit, GasPrice, Amount,
               CallData, CallStack, Code, Call, OnChainTrees, OnChainEnv, OffChainTrees, Round) ->
+    Time = aetx_env:time_in_msecs(OnChainEnv),
     #{caller          => OwnerPubKey
     , contract        => ContractPubKey
     , gas             => GasLimit
@@ -94,13 +95,13 @@ make_call_def(OwnerPubKey, ContractPubKey, GasLimit, GasPrice, Amount,
     , code            => Code
     , call            => Call
     , trees           => OffChainTrees
-    , tx_env          => tx_env(Round)
+    , tx_env          => tx_env(Round, Time)
     , off_chain       => true
     , on_chain_trees  => OnChainTrees
     , on_chain_env    => OnChainEnv
     }.
 
-tx_env(Round) ->
+tx_env(Round, Time) ->
     %% We do not want the execution off chain and
     %% on chain to be different so therea are some default values.
 
@@ -110,8 +111,6 @@ tx_env(Round) ->
     PrevKeyHash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
     %% TODO: Default value for offchain
     Difficulty = 0,
-    %% TODO: The time should probably be set in channels as well
-    Time = aeu_time:now_in_msecs(),
     %% TODO: Proper consensus version should be set
     ConsensusVersion = ?PROTOCOL_VERSION,
     aetx_env:contract_env(Round, ConsensusVersion, Time,

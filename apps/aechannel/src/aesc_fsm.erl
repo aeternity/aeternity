@@ -1922,7 +1922,7 @@ on_chain_trees_and_env() ->
         get_key_block_data(Header),
     Height = aec_headers:height(Header),
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(BlockHeight),
-    Time = aeu_time:now_in_msecs(),
+    Time = aec_headers:time_in_msecs(Header),
     {ok, Trees} = aec_chain:get_block_state(TopHash),
     Env = aetx_env:contract_env(Height, ConsensusVersion, Time, BeneficiaryBin,
                                 Difficulty, KeyBlockHash),
