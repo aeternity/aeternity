@@ -157,7 +157,7 @@ process(#channel_force_progress_tx{addresses    = Addresses,
 
     TxHash = aetx_sign:hash(STx),
     aesc_utils:process_force_progress(Tx, Addresses,
-                                      PoI, TxHash, Height, Trees).
+                                      PoI, TxHash, Height, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
 signers(#channel_force_progress_tx{} = Tx, _) ->
