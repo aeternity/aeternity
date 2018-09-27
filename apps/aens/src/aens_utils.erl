@@ -9,8 +9,7 @@
 
 %% API
 -export([check_name_claimed_and_owned/3,
-         to_ascii/1,
-         from_ascii/1]).
+         to_ascii/1]).
 
 %%%===================================================================
 %%% Types
@@ -39,23 +38,10 @@ check_name_claimed_and_owned(NameHash, AccountPubKey, Trees) ->
 to_ascii(Name) when is_binary(Name)->
     case validate_name(Name) of
         ok ->
-            NameUnicodeList = unicode:characters_to_list(Name, utf8),
-            AsciiName       = idna:to_ascii(NameUnicodeList),
-            %% TODO: Validation should be a part of idna library.
-            %% IDNA validation should be applied on name in both Unicode and ASCII forms.
-            case validate_name_ascii(AsciiName) of
-                ok             -> {ok, list_to_binary(AsciiName)};
-                {error, _} = E -> E
-            end;
+            name_to_ascii(Name);
         {error, _} = E ->
             E
     end.
-
--spec from_ascii(binary()) -> binary().
-from_ascii(NameAscii) when is_binary(NameAscii) ->
-    NameAsciiList = unicode:characters_to_list(NameAscii, utf8),
-    UnicodeName   = idna:from_ascii(NameAsciiList),
-    list_to_binary(UnicodeName).
 
 %%%===================================================================
 %%% Internal functions
@@ -86,22 +72,18 @@ validate_name(Name) ->
             {error, multiple_namespaces}
     end.
 
-validate_name_ascii(NameAscii) ->
-    case length(NameAscii) > 253 of
-        true  -> {error, name_too_long};
-        false ->
-            Labels = string:split(NameAscii, ".", all),
+name_to_ascii(Name) when is_binary(Name) ->
+    NameUnicodeList = unicode:characters_to_list(Name, utf8),
+    try idna:encode(NameUnicodeList, [{uts46, true}, {std3_rules, true}]) of
+        NameAscii ->
             %% idna:to_ascii(".aet") returns just "aet"
-            case length(Labels) of
-                1  -> {error, no_label_in_registrar};
-                _N -> validate_labels(Labels)
+            case length(string:split(NameAscii, ".", all)) =:= 1 of
+                true  -> {error, no_label_in_registrar};
+                false -> {ok, list_to_binary(NameAscii)}
             end
-    end.
-
-validate_labels([]) ->
-    ok;
-validate_labels([Label | Rest]) ->
-    case length(Label) > 0 andalso length(Label) =< 63 of
-        true  -> validate_labels(Rest);
-        false -> {error, bad_label_length}
+    catch
+        exit:{bad_label, Reason} ->
+            {error, {bad_label, Reason}};
+        exit:{invalid_codepoint, Cp} ->
+            {error, {invalid_codepoint, Cp}}
     end.

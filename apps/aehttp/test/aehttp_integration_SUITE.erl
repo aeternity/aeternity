@@ -3058,7 +3058,7 @@ naming_system_manage_name(_Config) ->
     PubKeyEnc   = aec_base58c:encode(account_pubkey, PubKey),
     %% TODO: find out how to craete HTTP path with unicode chars
     %%Name        = <<"詹姆斯詹姆斯.test"/utf8>>,
-    Name        = <<"without_unicode.test">>,
+    Name        = <<"without-unicode.test">>,
     NameSalt    = 12345,
     NameTTL     = 20000,
     Pointers    = [#{<<"key">> => <<"account_pubkey">>, <<"id">> => PubKeyEnc}],

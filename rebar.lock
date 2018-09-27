@@ -47,7 +47,7 @@
   1},
  {<<"idna">>,
   {git,"https://github.com/aeternity/erlang-idna",
-       {ref,"24bf647c9b63f4521351896398edecf56f4843a8"}},
+       {ref,"6cff72747821110169ecfac871b0c69e5064afff"}},
   0},
  {<<"jesse">>,
   {git,"https://github.com/aeternity/jesse.git",
@@ -90,7 +90,7 @@
   {git,"https://github.com/szktty/erlang-sha3",
        {ref,"dbdfd12ace2fc7e530e697fef81e1e72e90740f9"}},
   0},
- {<<"unicode_util_compat">>,{pkg,<<"unicode_util_compat">>,<<"0.3.1">>},1},
+ {<<"unicode_util_compat">>,{pkg,<<"unicode_util_compat">>,<<"0.4.1">>},1},
  {<<"yamerl">>,{pkg,<<"yamerl">>,<<"0.7.0">>},0}]}.
 [
 {pkg_hash,[
@@ -101,6 +101,6 @@
  {<<"poolboy">>, <<"6B46163901CFD0A1B43D692657ED9D7E599853B3B21B95AE5AE0A777CF9B6CA8">>},
  {<<"rocksdb">>, <<"C92B48703D4812C8BC571E0FBB7681F0899F35C4E4330F1CF646D79357A6AFE4">>},
  {<<"setup">>, <<"1203F4CDA11306C2E34434244576DED0A7BBFB0908D9A572356C809BD0CDF085">>},
- {<<"unicode_util_compat">>, <<"A1F612A7B512638634A603C8F401892AFBF99B8CE93A45041F8AACA99CADB85E">>},
+ {<<"unicode_util_compat">>, <<"D869E4C68901DD9531385BB0C8C40444EBF624E60B6962D95952775CAC5E90CD">>},
  {<<"yamerl">>, <<"E51DBA652DCE74C20A88294130B48051EBBBB0BE7D76F22DE064F0F3CCF0AAF5">>}]}
 ].
