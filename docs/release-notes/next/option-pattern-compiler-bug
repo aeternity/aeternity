@@ -1,1 +1,0 @@
-* Fixes a Sophia bug where None would match a Some(x) pattern
