@@ -861,10 +861,10 @@ environment_contract(Config) ->
                  priv_key := DPrivkey}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
-    ABal0 = ensure_balance(APubkey, 50000),
-    BBal0 = ensure_balance(BPubkey, 50000),
-    CBal0 = ensure_balance(CPubkey, 50000),
-    DBal0 = ensure_balance(DPubkey, 50000),
+    ABal0 = ensure_balance(APubkey, 500000),
+    BBal0 = ensure_balance(BPubkey, 500000),
+    CBal0 = ensure_balance(CPubkey, 500000),
+    DBal0 = ensure_balance(DPubkey, 500000),
     {ok,[_]} = aecore_suite_utils:mine_key_blocks(NodeName, 1),
 
     %% Compile test contract "environment.aes"
@@ -919,24 +919,32 @@ environment_contract(Config) ->
 
     %% Value.
     ct:pal("Calling call_value\n"),
+    ExpectedValue = 5,
     {CVValue,_} = call_compute_func(NodeName, BPubkey, BPrivkey,
                                     EncodedContractPubkey,
-                                    <<"call_value">>, <<"()">>),
+                                    <<"call_value">>, <<"()">>,
+                                    #{amount => ExpectedValue}
+                                   ),
     #{<<"value">> := CallValue} = decode_data(<<"int">>, CVValue),
     ct:pal("Call value ~p\n", [CallValue]),
+    ?assertEqual(ExpectedValue, CallValue),
     ct:pal("Calling nested_value\n"),
-    NestedValue = call_compute_func(NodeName, BPubkey, BPrivkey,
-                                    EncodedContractPubkey,
-                                    <<"nested_value">>, <<"(42)">>),
+    {NestedValue, _} = call_compute_func(NodeName, BPubkey, BPrivkey,
+                                         EncodedContractPubkey,
+                                         <<"nested_value">>, <<"(42)">>),
     ct:pal("Nested value ~p\n", [NestedValue]),
 
     %% Gas price.
     ct:pal("Calling call_gas_price\n"),
+    ExpectedGasPrice = 2,
     {GPValue,_} = call_compute_func(NodeName, BPubkey, BPrivkey,
                                     EncodedContractPubkey,
-                                    <<"call_gas_price">>, <<"()">>),
+                                    <<"call_gas_price">>, <<"()">>,
+                                    #{gas_price => ExpectedGasPrice}
+                                   ),
     #{<<"value">> := GasPrice} = decode_data(<<"int">>, GPValue),
     ct:pal("Gas price ~p\n", [GasPrice]),
+    ?assertEqual(ExpectedGasPrice, GasPrice),
 
     %% Account balances.
     ct:pal("Calling get_balance twice\n"),
@@ -976,35 +984,44 @@ environment_contract(Config) ->
 
     %% Coinbase.
     ct:pal("Calling coinbase\n"),
-    {CoinBaseValue,_} = call_compute_func(NodeName, CPubkey, CPrivkey,
-                                          EncodedContractPubkey,
-                                          <<"coinbase">>, <<"()">>),
+    {CoinBaseValue,CBHeader} = call_compute_func(NodeName, CPubkey, CPrivkey,
+                                                 EncodedContractPubkey,
+                                                 <<"coinbase">>, <<"()">>),
     #{<<"value">> := CoinBase} = decode_data(<<"address">>, CoinBaseValue),
     ct:pal("CoinBase ~p\n", [CoinBase]),
+    #{<<"prev_key_hash">> := CBKeyHash} = CBHeader,
+    ExpectedBeneficiary = aec_base58c:encode(account_pubkey, <<CoinBase:256>>),
+    ?assertMatch({ok, 200, #{<<"beneficiary">> := ExpectedBeneficiary}},
+                 get_key_block(CBKeyHash)),
 
     %% Block timestamp.
     ct:pal("Calling timestamp\n"),
-    {TimeStampValue,_} = call_compute_func(NodeName, CPubkey, CPrivkey,
-                                           EncodedContractPubkey,
-                                           <<"timestamp">>, <<"()">>),
+    {TimeStampValue,TSHeader} = call_compute_func(NodeName, CPubkey, CPrivkey,
+                                                  EncodedContractPubkey,
+                                                  <<"timestamp">>, <<"()">>),
     #{<<"value">> := TimeStamp} = decode_data(<<"int">>, TimeStampValue),
     ct:pal("Timestamp ~p\n", [TimeStamp]),
+    ?assertEqual(maps:get(<<"time">>, TSHeader), TimeStamp),
 
     %% Block height.
     ct:pal("Calling block_height\n"),
-    {HeightValue,_} = call_compute_func(NodeName, DPubkey, DPrivkey,
+    {HeightValue,HeightHeader} = call_compute_func(NodeName, DPubkey, DPrivkey,
                                         EncodedContractPubkey,
                                         <<"block_height">>, <<"()">>),
     #{<<"value">> := BlockHeight} = decode_data(<<"int">>, HeightValue),
     ct:pal("Block height ~p\n", [BlockHeight]),
+    ?assertEqual(maps:get(<<"height">>, HeightHeader), BlockHeight),
 
     %% Difficulty.
     ct:pal("Calling difficulty\n"),
-    {DiffValue,_} = call_compute_func(NodeName, DPubkey, DPrivkey,
-                                      EncodedContractPubkey,
-                                      <<"difficulty">>, <<"()">>),
+    {DiffValue,DiffHeader} = call_compute_func(NodeName, DPubkey, DPrivkey,
+                                               EncodedContractPubkey,
+                                               <<"difficulty">>, <<"()">>),
     #{<<"value">> := Difficulty} = decode_data(<<"int">>, DiffValue),
     ct:pal("Difficulty ~p\n", [Difficulty]),
+    #{<<"prev_key_hash">> := DiffKeyHash} = DiffHeader,
+    {ok, 200, #{<<"target">> := Target}} = get_key_block(DiffKeyHash),
+    ?assertMatch(Difficulty, aec_pow:target_to_difficulty(Target)),
 
     %% Gas limit.
     ct:pal("Calling gas_limit\n"),
@@ -1013,6 +1030,7 @@ environment_contract(Config) ->
                                     <<"gas_limit">>, <<"()">>),
     #{<<"value">> := GasLimit} = decode_data(<<"int">>, GLValue),
     ct:pal("Gas limit ~p\n", [GasLimit]),
+    ?assertEqual(aec_governance:block_gas_limit(), GasLimit),
 
     aecore_suite_utils:mine_key_blocks(NodeName, 3),
 
@@ -1433,7 +1451,12 @@ call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
     ct:pal("Call return ~p\n", [CallReturn]),
 
     #{<<"return_type">> := <<"ok">>,<<"return_value">> := Value} = CallReturn,
-    {Value,CallReturn}.
+
+    %% Get the block where the tx was included
+    {ok, 200, #{<<"block_hash">> := BlockHash}} = get_tx(ContractCallTxHash),
+    {ok, 200, BlockHeader} = get_micro_block_header(BlockHash),
+
+    {Value, BlockHeader}.
 
 %% error_call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
 %%                         Function, Arguments)
@@ -1520,6 +1543,19 @@ contract_call_compute_tx(Pubkey, Privkey, EncodedContractPubkey,
 get_top() ->
     Host = external_address(),
     http_request(Host, get, "blocks/top", []).
+
+get_micro_block_header(Hash) ->
+    Host = external_address(),
+    http_request(Host, get,
+                 "micro-blocks/hash/"
+                 ++ binary_to_list(Hash)
+                 ++ "/header", []).
+
+get_key_block(Hash) ->
+    Host = external_address(),
+    http_request(Host, get,
+                 "key-blocks/hash/"
+                 ++ binary_to_list(Hash), []).
 
 get_key_blocks_current_height() ->
     Host = external_address(),
