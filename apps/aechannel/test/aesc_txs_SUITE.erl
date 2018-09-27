@@ -2958,6 +2958,7 @@ create_contract_call_payload(Key, ContractId, Fun, Args, Amount) ->
         CallData = aect_sophia:create_call(Code, Fun, Args),
         Reserve = maps:get(channel_reserve, Props, 0),
         OnChainTrees = aesc_test_utils:trees(State), 
+        Env = tx_env(Props),
         Update =
             maps:get(solo_payload_update, Props,
                 aesc_offchain_update:op_call_contract(
@@ -2973,6 +2974,7 @@ create_contract_call_payload(Key, ContractId, Fun, Args, Amount) ->
                     Trees1 = aesc_offchain_update:apply_on_trees(Update,
                                                                 aect_call_state_tree:prune_without_backend(Trees0),
                                                                 OnChainTrees,
+                                                                Env,
                                                                 Round,
                                                                 Reserve),
                     StateHash1 = aec_trees:hash(Trees1),
@@ -2986,6 +2988,15 @@ create_contract_call_payload(Key, ContractId, Fun, Args, Amount) ->
                trees => UpdatedTrees}
     end.
 
+tx_env(#{height := Height,
+         state  := State}) ->
+    Time = aeu_time:now_in_msecs(),
+    ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
+    KeyBlockHash = <<42:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
+    Beneficiary = <<24:?BENEFICIARY_PUB_BYTES/unit:8>>,
+    aetx_env:contract_env(Height, ConsensusVersion, Time, Beneficiary,
+                          123456, KeyBlockHash).
+    
 create_trees() ->
     AccountHashSize = aec_base58c:byte_size_for_type(account_pubkey),
     FakeAccount = <<42:AccountHashSize/unit:8>>,
@@ -3017,7 +3028,9 @@ create_contract_in_trees(CreationRound, ContractName, InitArg, Deposit) ->
                                                       CallData),
         Reserve = maps:get(channel_reserve, Props, 0),
         OnChainTrees = aesc_test_utils:trees(State), 
+        Env = tx_env(Props),
         Trees = aesc_offchain_update:apply_on_trees(Update, Trees0, OnChainTrees,
+                                                    Env,
                                                     CreationRound, Reserve),
         ContractId = aect_contracts:compute_contract_pubkey(Owner, CreationRound),
         Props#{trees => Trees, contract_id => ContractId}

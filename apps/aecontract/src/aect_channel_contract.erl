@@ -3,8 +3,8 @@
 -include("aecontract.hrl").
 
 -export([new/6,
-         run_new/5,
-         run/11,
+         run_new/7,
+         run/12,
          get_call/4,
          insert_failed_call/6
         ]).
@@ -21,9 +21,10 @@ new(Owner, Round, VmVersion, Code, Deposit, Trees0) ->
     {ContractId, Contract, Trees1}.
 
 -spec run_new(aect_contracts:pubkey(), aect_call:call(), binary(),
-              non_neg_integer(), aec_trees:trees())
-    -> aec_trees:trees().
-run_new(ContractPubKey, Call, CallData, Round, Trees0) ->
+              non_neg_integer(), aec_trees:trees(), aec_trees:trees(),
+              aetx_env:env()) -> aec_trees:trees().
+run_new(ContractPubKey, Call, CallData, Round, Trees0, OnChainTrees,
+        OnChainEnv) ->
     ContractsTree  = aec_trees:contracts(Trees0),
     Contract = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
     OwnerPubKey = aect_contracts:owner_pubkey(Contract),
@@ -31,18 +32,11 @@ run_new(ContractPubKey, Call, CallData, Round, Trees0) ->
     CallStack = [], %% TODO: should we have a call stack for create_tx also
                     %% when creating a contract in a contract.
     VmVersion = aect_contracts:vm_version(Contract),
-    CallDef = #{ caller      => OwnerPubKey
-               , contract    => ContractPubKey
-               , gas         => 10000000
-               , gas_price   => 1
-               , call_data   => CallData
-               , amount      => 0
-               , call_stack  => CallStack
-               , code        => Code
-               , call        => Call
-               , trees       => Trees0
-               , tx_env      => tx_env(Round)
-               },
+    CallDef = make_call_def(OwnerPubKey, ContractPubKey,
+                            _Gas = 1000000, _GasPrice = 1,
+                            _Amount = 0, %TODO: make this configurable
+                            CallData, CallStack, Code, Call, OnChainTrees, OnChainEnv, Trees0,
+                            Round),
     {CallRes, Trees} = aect_dispatch:run(VmVersion, CallDef),
     case aect_call:return_type(CallRes) of
         ok ->
@@ -71,9 +65,9 @@ run_new(ContractPubKey, Call, CallData, Round, Trees0) ->
 -spec run(aect_contracts:pubkey(), aect_contracts:vm_version(), aect_call:call(),
           binary(), [non_neg_integer()], non_neg_integer(), aec_trees:trees(),
           non_neg_integer(), non_neg_integer(), non_neg_integer(),
-          aec_trees:trees()) -> aec_trees:trees().
+          aec_trees:trees(), aetx_env:env()) -> aec_trees:trees().
 run(ContractPubKey, VmVersion, Call, CallData, CallStack, Round, Trees0,
-    Amount, GasPrice, Gas, OnChainTrees) ->
+    Amount, GasPrice, Gas, OnChainTrees, OnChainEnv) ->
     ContractsTree  = aec_trees:contracts(Trees0),
     Contract = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
     OwnerPubKey = aect_contracts:owner_pubkey(Contract),
@@ -82,22 +76,29 @@ run(ContractPubKey, VmVersion, Call, CallData, CallStack, Round, Trees0,
         true  -> ok;
         false ->  erlang:error(wrong_vm_version)
     end,
-    CallDef = #{ caller     => OwnerPubKey
-               , contract   => ContractPubKey
-               , gas        => Gas
-               , gas_price  => GasPrice
-               , call_data  => CallData
-               , amount     => Amount
-               , call_stack => CallStack
-               , code       => Code
-               , call       => Call
-               , trees      => Trees0
-               , tx_env     => tx_env(Round) % TODO: on-chain?
-               , off_chain  => true
-               , on_chain_trees => OnChainTrees
-               },
+    CallDef = make_call_def(OwnerPubKey, ContractPubKey, Gas, GasPrice, Amount,
+              CallData, CallStack, Code, Call, OnChainTrees, OnChainEnv, Trees0,
+              Round),
     {CallRes, Trees} = aect_dispatch:run(VmVersion, CallDef),
     aect_utils:insert_call_in_trees(CallRes, Trees).
+
+make_call_def(OwnerPubKey, ContractPubKey, GasLimit, GasPrice, Amount,
+              CallData, CallStack, Code, Call, OnChainTrees, OnChainEnv, OffChainTrees, Round) ->
+    #{caller          => OwnerPubKey
+    , contract        => ContractPubKey
+    , gas             => GasLimit
+    , gas_price       => GasPrice
+    , call_data       => CallData
+    , amount          => Amount
+    , call_stack      => CallStack
+    , code            => Code
+    , call            => Call
+    , trees           => OffChainTrees
+    , tx_env          => tx_env(Round)
+    , off_chain       => true
+    , on_chain_trees  => OnChainTrees
+    , on_chain_env    => OnChainEnv
+    }.
 
 tx_env(Round) ->
     %% We do not want the execution off chain and

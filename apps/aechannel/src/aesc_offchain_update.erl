@@ -29,7 +29,7 @@
 -export([serialize/1,
          deserialize/1,
          for_client/1,
-         apply_on_trees/5]).
+         apply_on_trees/6]).
 
 -export([is_call/1,
          is_contract_create/1,
@@ -78,8 +78,9 @@ op_call_contract(CallerId, ContractId, VmVersion, Amount, CallData, CallStack,
      CallStack, GasPrice, Gas}.
 
 -spec apply_on_trees(aesc_offchain_update:update(), aec_trees:trees(),
-                     aec_trees:trees(), non_neg_integer(), non_neg_integer()) -> aec_trees:trees().
-apply_on_trees(Update, Trees0, OnChainTrees, Round, Reserve) ->
+                     aec_trees:trees(), aetx_env:env(),
+                     non_neg_integer(), non_neg_integer()) -> aec_trees:trees().
+apply_on_trees(Update, Trees0, OnChainTrees, OnChainEnv, Round, Reserve) ->
     case Update of
         {?OP_TRANSFER, FromId, ToId, Amount} ->
             From = account_pubkey(FromId),
@@ -103,7 +104,8 @@ apply_on_trees(Update, Trees0, OnChainTrees, Round, Reserve) ->
             Trees4 = add_tokens(ContractPubKey, Deposit, Trees3),
             Call = aect_call:new(OwnerId, Round, ContractId, Round, 0),
             _Trees = aect_channel_contract:run_new(ContractPubKey, Call, CallData,
-                                                  Round, Trees4);
+                                                  Round, Trees4,
+                                                  OnChainTrees, OnChainEnv);
         {?OP_CALL_CONTRACT, CallerId, ContractId, VmVersion, Amount, CallData,
          CallStack, GasPrice, Gas} ->
             Caller = account_pubkey(CallerId),
@@ -115,7 +117,7 @@ apply_on_trees(Update, Trees0, OnChainTrees, Round, Reserve) ->
             _Trees = aect_channel_contract:run(ContractPubKey, VmVersion, Call,
                                               CallData, CallStack, Round,
                                               Trees2, Amount, GasPrice, Gas,
-                                              OnChainTrees)
+                                              OnChainTrees, OnChainEnv)
     end.
 
 -spec for_client(update()) -> map().
