@@ -153,13 +153,9 @@ get_balance(PubKey, #state{} = State) ->
 
 %% @doc Get the contract state store of the contract account.
 -spec get_store(chain_state()) -> aevm_chain_api:store().
-get_store(#state{ account = PubKey} = State) ->
-    Get = fun(Trees) -> do_get_store(PubKey, Trees) end,
-    Res = get_from_state_or_inner(Get, none, State),
-    case Res of
-        none -> #{};
-        S -> S
-    end.
+get_store(#state{ account = PubKey, trees = Trees }) ->
+    Store = do_get_store(PubKey, Trees),
+    Store.
 
 %% @doc Set the contract state store of the contract account.
 -spec set_store(aevm_chain_api:store(), chain_state()) -> chain_state().
@@ -509,7 +505,7 @@ do_get_store(PubKey, Trees) ->
     ContractsTree = aec_trees:contracts(Trees),
     case aect_state_tree:lookup_contract(PubKey, ContractsTree) of
         {value, Contract} -> aect_contracts:state(Contract);
-        none              -> none
+        none              -> #{}
     end.
 
 do_set_store(Store, PubKey, Trees) ->
