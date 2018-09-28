@@ -35,6 +35,7 @@
 -export([spec/3]).
 -export([request/3]).
 -export([request/4]).
+-export([get_node_config/2]).
 -export([get/5]).
 -export([get_block/2]).
 -export([get_top/1]).
@@ -335,8 +336,11 @@ request(Node, Id, Params) ->
         {ct_log, fun(X,Y) -> aest_nodes_mgr:log(X, Y) end}  %% use the log function configured by mgr
     ]).
 
+get_node_config(Node, Path) ->
+    aest_nodes_mgr:get_config(Node, Path).
+
 %% @doc Performs an HTTP get request on the node external API.
--spec request(atom(), http_path(), http_query(), test_ctx) -> json_object().
+-spec request(atom(), http_path(), http_query(), test_ctx()) -> json_object().
 request(NodeName, Path, Query, Ctx) ->
     get(NodeName, ext_http, Path, Query, Ctx).
 
