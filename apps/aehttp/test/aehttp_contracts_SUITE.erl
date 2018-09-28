@@ -984,9 +984,10 @@ environment_contract(Config) ->
 
     %% Coinbase.
     ct:pal("Calling coinbase\n"),
-    {CoinBaseValue,CBHeader} = call_compute_func(NodeName, CPubkey, CPrivkey,
-                                                 EncodedContractPubkey,
-                                                 <<"coinbase">>, <<"()">>),
+    {CoinBaseValue, #{header := CBHeader}} =
+        call_compute_func(NodeName, CPubkey, CPrivkey,
+                          EncodedContractPubkey,
+                          <<"coinbase">>, <<"()">>),
     #{<<"value">> := CoinBase} = decode_data(<<"address">>, CoinBaseValue),
     ct:pal("CoinBase ~p\n", [CoinBase]),
     #{<<"prev_key_hash">> := CBKeyHash} = CBHeader,
@@ -996,27 +997,30 @@ environment_contract(Config) ->
 
     %% Block timestamp.
     ct:pal("Calling timestamp\n"),
-    {TimeStampValue,TSHeader} = call_compute_func(NodeName, CPubkey, CPrivkey,
-                                                  EncodedContractPubkey,
-                                                  <<"timestamp">>, <<"()">>),
+    {TimeStampValue, #{header := TSHeader}} =
+        call_compute_func(NodeName, CPubkey, CPrivkey,
+                          EncodedContractPubkey,
+                          <<"timestamp">>, <<"()">>),
     #{<<"value">> := TimeStamp} = decode_data(<<"int">>, TimeStampValue),
     ct:pal("Timestamp ~p\n", [TimeStamp]),
     ?assertEqual(maps:get(<<"time">>, TSHeader), TimeStamp),
 
     %% Block height.
     ct:pal("Calling block_height\n"),
-    {HeightValue,HeightHeader} = call_compute_func(NodeName, DPubkey, DPrivkey,
-                                        EncodedContractPubkey,
-                                        <<"block_height">>, <<"()">>),
+    {HeightValue,#{header := HeightHeader}} =
+        call_compute_func(NodeName, DPubkey, DPrivkey,
+                          EncodedContractPubkey,
+                          <<"block_height">>, <<"()">>),
     #{<<"value">> := BlockHeight} = decode_data(<<"int">>, HeightValue),
     ct:pal("Block height ~p\n", [BlockHeight]),
     ?assertEqual(maps:get(<<"height">>, HeightHeader), BlockHeight),
 
     %% Difficulty.
     ct:pal("Calling difficulty\n"),
-    {DiffValue,DiffHeader} = call_compute_func(NodeName, DPubkey, DPrivkey,
-                                               EncodedContractPubkey,
-                                               <<"difficulty">>, <<"()">>),
+    {DiffValue,#{header := DiffHeader}} =
+        call_compute_func(NodeName, DPubkey, DPrivkey,
+                          EncodedContractPubkey,
+                          <<"difficulty">>, <<"()">>),
     #{<<"value">> := Difficulty} = decode_data(<<"int">>, DiffValue),
     ct:pal("Difficulty ~p\n", [Difficulty]),
     #{<<"prev_key_hash">> := DiffKeyHash} = DiffHeader,
@@ -1169,10 +1173,11 @@ dutch_auction_contract(Config) ->
     CBal1 = get_balance(CPubkey),
 
     %% Call the contract bid function by Bert.
-    {_,BidReturn} = call_compute_func(NodeName, BPubkey, BPrivkey,
-                                      EncodedContractPubkey,
-                                      <<"bid">>, <<"()">>,
-                                      #{amount => 100000,fee => Fee}),
+    {_,#{return := BidReturn}} =
+        call_compute_func(NodeName, BPubkey, BPrivkey,
+                          EncodedContractPubkey,
+                          <<"bid">>, <<"()">>,
+                          #{amount => 100000,fee => Fee}),
     #{<<"gas_used">> := GasUsed,<<"height">> := Height1} = BidReturn,
 
     %% Set the cost from the amount, decrease and diff in height.
@@ -1456,7 +1461,7 @@ call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
     {ok, 200, #{<<"block_hash">> := BlockHash}} = get_tx(ContractCallTxHash),
     {ok, 200, BlockHeader} = get_micro_block_header(BlockHash),
 
-    {Value, BlockHeader}.
+    {Value, #{header => BlockHeader, return => CallReturn}}.
 
 %% error_call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
 %%                         Function, Arguments)
