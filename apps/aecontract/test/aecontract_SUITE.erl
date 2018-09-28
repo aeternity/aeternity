@@ -61,6 +61,8 @@
         , sophia_oracles_gas_ttl__oracle_extension/1
         , sophia_oracles_gas_ttl__query/1
         , sophia_oracles_gas_ttl__response/1
+        , sophia_signatures_oracles/1
+        , sophia_signatures_aens/1
         , sophia_maps/1
         , sophia_map_benchmark/1
         , sophia_variant_types/1
@@ -125,6 +127,8 @@ groups() ->
                                  {group, sophia_oracles_query_fee_unhappy_path},
                                  {group, sophia_oracles_query_fee_unhappy_path_remote},
                                  {group, sophia_oracles_gas_ttl},
+                                 sophia_signatures_oracles,
+                                 sophia_signatures_aens,
                                  sophia_maps,
                                  sophia_map_benchmark,
                                  sophia_variant_types,
@@ -2053,6 +2057,93 @@ sophia_oracles_gas_ttl__response(_Cfg) ->
     ok.
 
 %% -- End oracle gas TTL tests --
+
+%% Testing external oracles, with provided Signatures
+sophia_signatures_oracles(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    RelativeTTL         = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
+    FixedTTL            = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
+    Acc                 = ?call(new_account, 1000000000),
+    Orc                 = ?call(new_account, 1000000000),
+    Ct                  = ?call(create_contract, Acc, oracles, {}),
+    QueryFee            = 13,
+    TTL                 = 50,
+    <<OrcId:256>>       = Orc,
+
+    BadSig              = sign(<<Ct/binary, Orc/binary>>, Orc),
+    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, registerOracle, word,
+                                      {Orc, BadSig, QueryFee, FixedTTL(TTL)}, #{amount => 1}),
+
+    RegSig              = sign(<<Orc/binary, Ct/binary>>, Orc),
+    OrcId               = ?call(call_contract, Acc, Ct, registerOracle, word, {Orc, RegSig, QueryFee, FixedTTL(TTL)},
+                                #{amount => 1}),
+
+    Question          = <<"Manchester United vs Brommapojkarna">>,
+    QId               = ?call(call_contract, Acc, Ct, createQuery, word,
+                                {Orc, Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
+    Question          = ?call(call_contract, Acc, Ct, getQuestion, string, {Orc, QId}),
+    QueryFee          = ?call(call_contract, Acc, Ct, queryFee, word, Orc),
+    none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {Orc, QId}),
+
+    RespSign                  = sign(<<QId:256, Ct/binary>>, Orc),
+    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {Orc, QId, BadSig, 4001}),
+    {}                        = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {Orc, QId, RespSign, 4001}),
+    {some, 4001}              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {Orc, QId}),
+    {}                        = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Orc, RegSig, RelativeTTL(10)}),
+
+    ok.
+
+sophia_signatures_aens(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc      = ?call(new_account, 1000000),
+    Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
+    Name     = <<"foo.test">>,
+    APubkey  = 1,
+    OPubkey  = <<2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2>>,
+    %% TODO: Improve checks in aens_unpdate_tx
+    Pointers = [aens_pointer:new(<<"account_pubkey">>, aec_id:create(account, <<APubkey:256>>)),
+                aens_pointer:new(<<"oracle_pubkey">>, aec_id:create(oracle, OPubkey))],
+
+    Salt  = ?call(aens_preclaim, Acc, Name),
+    Hash  = ?call(aens_claim, Acc, Name, Salt),
+    ok    = ?call(aens_update, Acc, Hash, Pointers),
+
+    {some, APubkey} = ?call(call_contract, Acc, Ct, resolve_word,   {option, word},   {Name, <<"account_pubkey">>}),
+    {some, OPubkey} = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"oracle_pubkey">>}),
+    none            = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"name">>}),
+    ok              = ?call(aens_revoke, Acc, Hash),
+    none            = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"name">>}),
+
+    %% AENS transactions from contract - using 3rd party account
+    NameAcc         = ?call(new_account, 10000000),
+    Name1           = <<"bla.test">>,
+    Salt1           = rand:uniform(10000),
+    {ok, NameAscii} = aens_utils:to_ascii(Name1),
+    CHash           = aens_hash:commitment_hash(NameAscii, Salt1),
+    NHash           = aens_hash:name_hash(NameAscii),
+    NameAccSig      = sign(<<NameAcc/binary, Ct/binary>>, NameAcc),
+    {ok, NameHash} = aens:get_name_hash(<<"bla.test">>),
+    NameSig         = sign(<<NameAcc/binary, NameHash/binary, Ct/binary>>, NameAcc),
+    AccSig          = sign(<<Acc/binary, NameHash/binary, Ct/binary>>, Acc),
+
+    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, preclaim, {tuple, []}, {NameAcc, CHash, AccSig}, #{ height => 10 }),
+    {} = ?call(call_contract, Acc, Ct, preclaim, {tuple, []}, {NameAcc, CHash, NameAccSig},        #{ height => 10 }),
+    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {NameAcc, Name1, Salt1, AccSig}, #{ height => 11 }),
+    {} = ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {NameAcc, Name1, Salt1, NameSig}, #{ height => 11 }),
+    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, transfer, {tuple, []}, {NameAcc, Acc, NHash, AccSig},   #{ height => 12 }),
+    {} = ?call(call_contract, Acc, Ct, transfer, {tuple, []}, {NameAcc, Acc, NHash, NameSig},   #{ height => 12 }),
+    ok = ?call(aens_update, Acc, NHash, Pointers),
+
+    {some, OPubkey} = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name1, <<"oracle_pubkey">>}),
+
+    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {NameAcc, NHash, NameSig}, #{ height => 13 }),
+    {} = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Acc, NHash, AccSig}, #{ height => 13 }),
+    ok.
+
+sign(Material, KeyHolder) ->
+    PrivKey  = aect_test_utils:priv_key(KeyHolder, state()),
+    <<Word1:256, Word2:256>> = enacl:sign_detached(Material, PrivKey),
+    {Word1, Word2}.
 
 %% Testing map functions and primitives
 sophia_maps(_Cfg) ->

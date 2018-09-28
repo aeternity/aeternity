@@ -155,7 +155,7 @@ ast_body(?qid_app(["Oracle", "register"], [Acct, Sign, QFee, TTL], _, ?oracle_t(
     prim_call(?PRIM_CALL_ORACLE_REGISTER, #integer{value = 0},
               [ast_body(Acct, Icode), ast_body(Sign, Icode), ast_body(QFee, Icode), ast_body(TTL, Icode),
                ast_type_value(QType, Icode), ast_type_value(RType, Icode)],
-              [word, word, word, ttl_t(Icode), typerep, typerep], word);
+              [word, sign_t(), word, ttl_t(Icode), typerep, typerep], word);
 
 ast_body(?qid_app(["Oracle", "query_fee"], [Oracle], _, _), Icode) ->
     prim_call(?PRIM_CALL_ORACLE_QUERY_FEE, #integer{value = 0},
@@ -169,12 +169,12 @@ ast_body(?qid_app(["Oracle", "query"], [Oracle, Q, QFee, QTTL, RTTL], [_, QType,
 ast_body(?qid_app(["Oracle", "extend"], [Oracle, Sign, TTL], _, _), Icode) ->
     prim_call(?PRIM_CALL_ORACLE_EXTEND, #integer{value = 0},
               [ast_body(Oracle, Icode), ast_body(Sign, Icode), ast_body(TTL, Icode)],
-              [word, word, ttl_t(Icode)], {tuple, []});
+              [word, sign_t(), ttl_t(Icode)], {tuple, []});
 
 ast_body(?qid_app(["Oracle", "respond"], [Oracle, Query, Sign, R], [_, _, _, RType], _), Icode) ->
     prim_call(?PRIM_CALL_ORACLE_RESPOND, #integer{value = 0},
               [ast_body(Oracle, Icode), ast_body(Query, Icode), ast_body(Sign, Icode), ast_body(R, Icode)],
-              [word, word, word, ast_type(RType, Icode)], {tuple, []});
+              [word, word, sign_t(), ast_type(RType, Icode)], {tuple, []});
 
 ast_body(?qid_app(["Oracle", "get_question"], [Oracle, Q], [_, ?query_t(QType, _)], _), Icode) ->
     prim_call(?PRIM_CALL_ORACLE_GET_QUESTION, #integer{value = 0},
@@ -210,22 +210,22 @@ ast_body(?qid_app(["AENS", "resolve"], [Name, Key], _, ?option_t(Type)), Icode) 
 ast_body(?qid_app(["AENS", "preclaim"], [Addr, CHash, Sign], _, _), Icode) ->
     prim_call(?PRIM_CALL_AENS_PRECLAIM, #integer{value = 0},
               [ast_body(Addr, Icode), ast_body(CHash, Icode), ast_body(Sign, Icode)],
-              [word, word, word], {tuple, []});
+              [word, word, sign_t()], {tuple, []});
 
 ast_body(?qid_app(["AENS", "claim"], [Addr, Name, Salt, Sign], _, _), Icode) ->
     prim_call(?PRIM_CALL_AENS_CLAIM, #integer{value = 0},
               [ast_body(Addr, Icode), ast_body(Name, Icode), ast_body(Salt, Icode), ast_body(Sign, Icode)],
-              [word, string, word, word], {tuple, []});
+              [word, string, word, sign_t()], {tuple, []});
 
 ast_body(?qid_app(["AENS", "transfer"], [FromAddr, ToAddr, NameHash, Sign], _, _), Icode) ->
     prim_call(?PRIM_CALL_AENS_TRANSFER, #integer{value = 0},
               [ast_body(FromAddr, Icode), ast_body(ToAddr, Icode), ast_body(NameHash, Icode), ast_body(Sign, Icode)],
-              [word, word, word, word], {tuple, []});
+              [word, word, word, sign_t()], {tuple, []});
 
 ast_body(?qid_app(["AENS", "revoke"], [Addr, NameHash, Sign], _, _), Icode) ->
     prim_call(?PRIM_CALL_AENS_REVOKE, #integer{value = 0},
               [ast_body(Addr, Icode), ast_body(NameHash, Icode), ast_body(Sign, Icode)],
-              [word, word, word], {tuple, []});
+              [word, word, sign_t()], {tuple, []});
 
 ast_body({qid, _, ["AENS", "resolve"]}, _Icode)  -> error({underapplied_primitive, 'AENS.resolve'});
 ast_body({qid, _, ["AENS", "preclaim"]}, _Icode) -> error({underapplied_primitive, 'AENS.preclaim'});
@@ -514,6 +514,9 @@ ast_typerep({variant_t, Cons}, Icode) ->
 
 ttl_t(Icode) ->
     ast_typerep({qid, [], ["Chain", "ttl"]}, Icode).
+
+sign_t() ->
+    {tuple, [word, word]}.
 
 lookup_type_id(Name, Args, #{ types := Types }) ->
     case maps:get(Name, Types, undefined) of
