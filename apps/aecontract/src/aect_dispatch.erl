@@ -167,9 +167,8 @@ chain_state(#{ contract    := ContractPubKey
     case maps:get(off_chain, CallDef, false) of
         true ->
             OnChainTrees = maps:get(on_chain_trees, CallDef),
-            OnChainEnv = maps:get(on_chain_env, CallDef),
             % the on-chain state uses the off-chain aetx_env:env()
-            OnChainState = aec_vm_chain:new_state(OnChainTrees, OnChainEnv, ContractPubKey),
+            OnChainState = aec_vm_chain:new_state(OnChainTrees, TxEnv, ContractPubKey),
             OffChainState = aec_vm_chain:new_offchain_state(Trees, TxEnv, ContractPubKey),
             aec_vm_chain:push_state_context(OffChainState, OnChainState);
         false ->

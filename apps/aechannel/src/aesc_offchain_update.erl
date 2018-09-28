@@ -103,8 +103,7 @@ apply_on_trees(Update, Trees0, OnChainTrees, OnChainEnv, Round, Reserve) ->
             Trees3 = create_account(ContractPubKey, Trees2),
             Trees4 = add_tokens(ContractPubKey, Deposit, Trees3),
             Call = aect_call:new(OwnerId, Round, ContractId, Round, 0),
-            _Trees = aect_channel_contract:run_new(ContractPubKey, Call, CallData,
-                                                  Round, Trees4,
+            _Trees = aect_channel_contract:run_new(ContractPubKey, Call, CallData, Trees4,
                                                   OnChainTrees, OnChainEnv);
         {?OP_CALL_CONTRACT, CallerId, ContractId, VmVersion, Amount, CallData,
          CallStack, GasPrice, Gas} ->
@@ -115,7 +114,7 @@ apply_on_trees(Update, Trees0, OnChainTrees, OnChainEnv, Round, Reserve) ->
             Call = aect_call:new(CallerId, Round, ContractId, Round,
                                  GasPrice),
             _Trees = aect_channel_contract:run(ContractPubKey, VmVersion, Call,
-                                              CallData, CallStack, Round,
+                                              CallData, CallStack,
                                               Trees2, Amount, GasPrice, Gas,
                                               OnChainTrees, OnChainEnv)
     end.
