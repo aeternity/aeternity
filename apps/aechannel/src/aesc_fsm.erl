@@ -1916,31 +1916,8 @@ check_update_tx(normal, SignedTx, State, Opts) ->
                                         OnChainTrees, OnChainEnv, Opts).
 
 on_chain_trees_and_env() ->
-    Header = aec_chain:top_header(),% later use specific block's hash
-    {ok, TopHash} = aec_headers:hash_header(Header),
-    {KeyBlockHash, BlockHeight, Difficulty, BeneficiaryBin} =
-        get_key_block_data(Header),
-    Height = aec_headers:height(Header),
-    ConsensusVersion = aec_hard_forks:protocol_effective_at_height(BlockHeight),
-    Time = aec_headers:time_in_msecs(Header),
-    {ok, Trees} = aec_chain:get_block_state(TopHash),
-    Env = aetx_env:contract_env(Height, ConsensusVersion, Time, BeneficiaryBin,
-                                Difficulty, KeyBlockHash),
+    {Env, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
     {Trees, Env}.
-
-get_key_block_data(Header) ->
-    case aec_headers:type(Header) of
-        key   ->
-            {ok, Hash} = aec_headers:hash_header(Header),
-            D = aec_headers:difficulty(Header),
-            Height = aec_headers:height(Header),
-            B = aec_headers:beneficiary(Header),
-            {Hash, Height, D, B};
-        micro ->
-            Hash = aec_headers:prev_key_hash(Header),
-            {ok, KH} = aec_chain:get_header(Hash),
-            get_key_block_data(KH)
-    end.
 
 check_update_ack_msg(Msg, D) ->
     lager:debug("check_update_ack_msg(~p)", [Msg]),

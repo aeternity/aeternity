@@ -30,31 +30,24 @@ simple_call_solidity(EncodedCode, EncodedCallData) ->
 
 -spec simple_call_common(binary(), binary(), VMVersion :: integer()) -> {ok, binary()} | {error, binary()}.
 simple_call_common(EncodedCode, CallData, VMVersion) ->
-    {Block, Trees} = aec_chain:top_block_with_state(),
+    {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
     Owner          = <<123456:32/unit:8>>,
     Deposit        = 0,
     Code           = aeu_hex:hexstring_decode(EncodedCode),
     Contract       = aect_contracts:new(Owner, 1, VMVersion, Code, Deposit),
     ContractKey    = aect_contracts:pubkey(Contract),
     Trees1         = aect_utils:insert_contract_in_trees(Contract, Trees),
-    call_common(CallData, ContractKey, EncodedCode, Block, Trees1, VMVersion).
+    call_common(CallData, ContractKey, EncodedCode, TxEnv, Trees1, VMVersion).
 
--spec call_common(binary(), binary(), binary(), aec_blocks:block(),
+-spec call_common(binary(), binary(), binary(), aetx_env:env(),
                   aec_trees:trees(), VMVersion :: integer()) ->
                      {ok, binary()} | {error, binary()}.
-call_common(CallData, ContractKey, EncodedCode, Block, Trees, VMVersion) ->
+call_common(CallData, ContractKey, EncodedCode, TxEnv, Trees, VMVersion) ->
     <<Address:256>> = ContractKey,
-    Time = aeu_time:now_in_msecs(),
-    {KeyBlockHash, KeyBlock} = get_key_block(Block),
-    {BeneficiaryBin, BeneficiaryInt} = get_beneficiary(KeyBlock),
-    Difficulty = aec_blocks:difficulty(KeyBlock),
-    BlockHeight = aec_blocks:height(Block),
-    ConsensusVersion = aec_hard_forks:protocol_effective_at_height(BlockHeight),
     GasLimit = aec_governance:block_gas_limit(),
     Amount = 0,
-    TxEnv = aetx_env:contract_env(BlockHeight, ConsensusVersion, Time,
-                                  BeneficiaryBin, Difficulty, KeyBlockHash),
     ChainState = aec_vm_chain:new_state(Trees, TxEnv, ContractKey),
+    <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>> = aetx_env:beneficiary(TxEnv),
     Spec = #{ code => EncodedCode
             , address => Address
             , caller => 0
@@ -64,10 +57,10 @@ call_common(CallData, ContractKey, EncodedCode, Block, Trees, VMVersion) ->
             , origin => 0
             , value => Amount
             , currentCoinbase => BeneficiaryInt
-            , currentDifficulty => Difficulty
+            , currentDifficulty => aetx_env:difficulty(TxEnv)
             , currentGasLimit => GasLimit
-            , currentNumber => BlockHeight
-            , currentTimestamp => Time
+            , currentNumber => aetx_env:height(TxEnv)
+            , currentTimestamp => aetx_env:time_in_msecs(TxEnv)
             , chainAPI => aec_vm_chain
             , chainState => ChainState
             , vm_version => VMVersion
@@ -80,23 +73,6 @@ call_common(CallData, ContractKey, EncodedCode, Block, Trees, VMVersion) ->
             ErrorString = io_lib:format("~p", [{E, erlang:get_stacktrace()}]),
             {error, list_to_binary(ErrorString)}
     end.
-
-get_key_block(Block) ->
-    case aec_blocks:type(Block) of
-        key   ->
-            {ok, Hash} = aec_blocks:hash_internal_representation(Block),
-            {Hash, Block};
-        micro ->
-            Hash = aec_blocks:prev_key_hash(Block),
-            {ok, KB} = aec_chain:get_block(Hash),
-            {Hash, KB}
-    end.
-
-get_beneficiary(KeyBlock) ->
-    BeneficiaryBin = aec_blocks:beneficiary(KeyBlock),
-    <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>> = BeneficiaryBin,
-    {BeneficiaryBin, BeneficiaryInt}.
-
 
 -spec execute_call(map(), boolean()) -> {ok, map()} | {error, term()}.
 execute_call(#{ code := CodeAsHexBinString

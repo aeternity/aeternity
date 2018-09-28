@@ -52,7 +52,7 @@ parse_options(<<>>, Acc) -> Acc.
 
 -spec on_chain_call(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
 on_chain_call(ContractKey, Function, Argument) ->
-    {Block, Trees} = aec_chain:top_block_with_state(),
+    {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
     ContractsTree  = aec_trees:contracts(Trees),
     Contract       = aect_state_tree:get_contract(ContractKey, ContractsTree),
     Code           = aect_contracts:code(Contract),
@@ -62,7 +62,7 @@ on_chain_call(ContractKey, Function, Argument) ->
             EncodedCode = aeu_hex:hexstring_encode(Code),
             VMVersion   = ?AEVM_01_Sophia_01,
             aect_evm:call_common(CallData, ContractKey, EncodedCode,
-                                 Block, Trees, VMVersion)
+                                 TxEnv, Trees, VMVersion)
     end.
 
 -spec simple_call(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
