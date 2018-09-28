@@ -49,6 +49,11 @@
          post_oracle_extend_tx/3,
          post_oracle_query_tx/4,
          post_oracle_response_tx/3]).
+-export([post_name_preclaim_tx/4,
+         post_name_claim_tx/3,
+         post_name_update_tx/4,
+         post_name_transfer_tx/5,
+         post_name_revoke_tx/4]).
 -export([wait_for_value/4]).
 -export([wait_for_time/3]).
 -export([wait_for_time/4]).
@@ -460,49 +465,70 @@ post_withdraw_state_channel_tx(Node, RecParty, OtherParty, ChannelId, #{nonce :=
     {ok, 200, Response} = request(Node, 'PostTransaction', #{tx => Transaction}),
     Response.
 
-post_oracle_register_tx(Node, OAccount, #{ nonce := _ } = Opts) ->
+post_oracle_register_tx(Node, OAccount, Opts) ->
     #{ pubkey := OPubKey, privkey := OPrivKey } = OAccount,
-    BaseTxArgs = #{ account_id => aec_id:create(account, OPubKey) },
-    AllTxArgs = maps:merge(BaseTxArgs, Opts),
-    {ok, RegisterTx} = aeo_register_tx:new(AllTxArgs),
-    Signed = aec_test_utils:sign_tx(RegisterTx, [OPrivKey]),
-    SignedEnc = aetx_sign:serialize_to_binary(Signed),
-    Transaction = aec_base58c:encode(transaction, SignedEnc),
-    {ok, 200, Resp} = request(Node, 'PostTransaction', #{tx => Transaction}),
-    Resp.
+    post_transaction(Node, aeo_register_tx, OPrivKey, Opts, #{
+        account_id => aec_id:create(account, OPubKey)
+    }).
 
-post_oracle_extend_tx(Node, OAccount, #{ nonce := _ } = Opts) ->
+post_oracle_extend_tx(Node, OAccount, Opts) ->
     #{ pubkey := OPubKey, privkey := OPrivKey } = OAccount,
-    BaseTxArgs = #{ oracle_id => aec_id:create(oracle, OPubKey) },
-    AllTxArgs = maps:merge(BaseTxArgs, Opts),
-    {ok, ExtendTx} = aeo_extend_tx:new(AllTxArgs),
-    Signed = aec_test_utils:sign_tx(ExtendTx, [OPrivKey]),
-    SignedEnc = aetx_sign:serialize_to_binary(Signed),
-    Transaction = aec_base58c:encode(transaction, SignedEnc),
-    {ok, 200, Resp} = request(Node, 'PostTransaction', #{tx => Transaction}),
-    Resp.
+    post_transaction(Node, aeo_extend_tx, OPrivKey, Opts, #{
+        oracle_id => aec_id:create(oracle, OPubKey)
+    }).
 
 post_oracle_query_tx(Node, QuerierAcc, OracleAcc, #{ nonce := _ } = Opts) ->
     #{ pubkey := QPubKey, privkey := QPrivKey } = QuerierAcc,
     #{ pubkey := OPubKey } = OracleAcc,
-    BaseTxArgs = #{
+    post_transaction(Node, aeo_query_tx, QPrivKey, Opts, #{
         sender_id    => aec_id:create(account, QPubKey),
         oracle_id    => aec_id:create(oracle, OPubKey)
-    },
-    AllTxArgs = maps:merge(BaseTxArgs, Opts),
-    {ok, QueryTx} = aeo_query_tx:new(AllTxArgs),
-    Signed = aec_test_utils:sign_tx(QueryTx, [QPrivKey]),
-    SignedEnc = aetx_sign:serialize_to_binary(Signed),
-    Transaction = aec_base58c:encode(transaction, SignedEnc),
-    {ok, 200, Resp} = request(Node, 'PostTransaction', #{tx => Transaction}),
-    Resp.
+    }).
 
 post_oracle_response_tx(Node, OracleAcc, #{ nonce := _ } = Opts) ->
     #{ pubkey := OPubKey, privkey := OPrivKey } = OracleAcc,
-    BaseTxArgs = #{ oracle_id => aec_id:create(oracle, OPubKey) },
-    AllTxArgs = maps:merge(BaseTxArgs, Opts),
-    {ok, RespTx} = aeo_response_tx:new(AllTxArgs),
-    Signed = aec_test_utils:sign_tx(RespTx, [OPrivKey]),
+    post_transaction(Node, aeo_response_tx, OPrivKey, Opts, #{
+        oracle_id => aec_id:create(oracle, OPubKey)
+    }).
+
+post_name_preclaim_tx(Node, OwnerAcc, CommitmentHash, Opts) ->
+    #{ pubkey := OPubKey, privkey := OPrivKey } = OwnerAcc,
+    post_transaction(Node, aens_preclaim_tx, OPrivKey, Opts, #{
+        account_id => aec_id:create(account, OPubKey),
+        commitment_id => aec_id:create(commitment, CommitmentHash)
+    }).
+
+post_name_claim_tx(Node, OwnerAcc, Opts) ->
+    #{ pubkey := OPubKey, privkey := OPrivKey } = OwnerAcc,
+    post_transaction(Node, aens_claim_tx, OPrivKey, Opts, #{
+        account_id => aec_id:create(account, OPubKey)
+    }).
+
+post_name_update_tx(Node, OwnerAcc, Name, Opts) ->
+    #{ pubkey := OPubKey, privkey := OPrivKey } = OwnerAcc,
+    post_transaction(Node, aens_update_tx, OPrivKey, Opts, #{
+        account_id => aec_id:create(account, OPubKey),
+        name_id => aec_id:create(name, aens_hash:name_hash(Name))
+    }).
+
+post_name_transfer_tx(Node, OwnerAcc, RecipientAcc, Name, Opts) ->
+    #{ pubkey := OPubKey, privkey := OPrivKey } = OwnerAcc,
+    post_transaction(Node, aens_transfer_tx, OPrivKey, Opts, #{
+        account_id => aec_id:create(account, OPubKey),
+        name_id => aec_id:create(name, aens_hash:name_hash(Name)),
+        recipient_id => aec_id:create(account, maps:get(pubkey, RecipientAcc))
+    }).
+
+post_name_revoke_tx(Node, OwnerAcc, Name, Opts) ->
+    #{ pubkey := OPubKey, privkey := OPrivKey } = OwnerAcc,
+    post_transaction(Node, aens_revoke_tx, OPrivKey, Opts, #{
+        account_id => aec_id:create(account, OPubKey),
+        name_id => aec_id:create(name, aens_hash:name_hash(Name))
+    }).
+
+post_transaction(Node, TxMod, PrivKey, ExtraTxArgs, TxArgs) ->
+    {ok, RespTx} = TxMod:new(maps:merge(TxArgs, ExtraTxArgs)),
+    Signed = aec_test_utils:sign_tx(RespTx, [PrivKey]),
     SignedEnc = aetx_sign:serialize_to_binary(Signed),
     Transaction = aec_base58c:encode(transaction, SignedEnc),
     {ok, 200, Resp} = request(Node, 'PostTransaction', #{tx => Transaction}),
@@ -566,8 +592,6 @@ wait_for_value({txs_on_node, Txs}, NodeNames, Timeout, Ctx) ->
                 end
         end,
     loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Txs found ~p", [Txs]}).
-
-
 
 wait_for_time(height, NodeNames, Time) ->
     wait_for_time(height, NodeNames, Time, #{}).
