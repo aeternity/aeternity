@@ -42,7 +42,7 @@
 
 -include_lib("apps/aecore/include/blocks.hrl").
 
--define(NO_INNER_STATE, nej).
+-define(NO_INNER_STATE, no_inner_state).
 
 -record(state, { trees              :: aec_trees:trees()
                , tx_env             :: aetx_env:env()
