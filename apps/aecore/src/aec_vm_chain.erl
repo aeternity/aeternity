@@ -139,7 +139,7 @@ oracle_register(AccountKey, Signature, QueryFee, TTL, QueryFormat, ResponseForma
     {ok, Tx} = aeo_register_tx:new(Spec),
 
     Result =
-        case check_signature(AccountKey, ContractKey, Signature) of
+        case check_account_signature(AccountKey, ContractKey, Signature) of
             ok                -> apply_transaction(Tx, State);
             Err_ = {error, _} -> Err_
         end,
@@ -199,7 +199,7 @@ oracle_extend(Oracle, Signature, TTL, State = #state{ account = ContractKey }) -
                             fee        => 0,
                             ttl        => 0 %% Not used
                            }),
-    case check_signature(Oracle, ContractKey, Signature) of
+    case check_account_signature(Oracle, ContractKey, Signature) of
         ok               -> apply_transaction(Tx, State);
         Err = {error, _} -> Err
     end.
@@ -283,8 +283,11 @@ get_query_type(OracleId, OraclesTree) ->
     QueryFormat     = aeo_oracles:query_format(Oracle),
     aeso_data:from_binary(typerep, QueryFormat).
 
-check_signature(AKey, CKey, Signature) ->
+check_account_signature(AKey, CKey, Signature) ->
     check_signature(AKey, CKey, <<AKey/binary, CKey/binary>>, Signature).
+
+check_name_signature(AKey, Hash, CKey, Signature) ->
+    check_signature(AKey, CKey, <<AKey/binary, Hash/binary, CKey/binary>>, Signature).
 
 check_signature(AKey, AKey, _Binary, _Signature) -> ok;
 check_signature(AKey, _CKey, Binary, Signature) ->
@@ -318,7 +321,7 @@ aens_preclaim(Addr, CHash, Signature, #state{ account = ContractKey } = State) -
                                 commitment_id => aec_id:create(commitment, CHash),
                                 fee           => 0 }),
 
-    case check_signature(Addr, ContractKey, Signature) of
+    case check_account_signature(Addr, ContractKey, Signature) of
         ok               -> apply_transaction(Tx, State);
         Err = {error, _} -> Err
     end.
@@ -332,7 +335,8 @@ aens_claim(Addr, Name, Salt, Signature, #state{ account = ContractKey } = State)
                              name_salt  => Salt,
                              fee        => 0 }),
 
-    case check_signature(Addr, ContractKey, Signature) of
+    {ok, Hash} = aens:get_name_hash(Name),
+    case check_name_signature(Addr, Hash, ContractKey, Signature) of
         ok               -> apply_transaction(Tx, State);
         Err = {error, _} -> Err
     end.
@@ -345,7 +349,7 @@ aens_transfer(FromAddr, ToAddr, Hash, Signature, #state{ account = ContractKey }
                                 name_id      => aec_id:create(name, Hash),
                                 recipient_id => aec_id:create(account, ToAddr),
                                 fee          => 0 }),
-    case check_signature(FromAddr, ContractKey, Signature) of
+    case check_name_signature(FromAddr, Hash, ContractKey, Signature) of
         ok               -> apply_transaction(Tx, State);
         Err = {error, _} -> Err
     end.
@@ -357,7 +361,7 @@ aens_revoke(Addr, Hash, Signature, #state{ account = ContractKey } = State) ->
                               nonce      => Nonce,
                               name_id    => aec_id:create(name, Hash),
                               fee        => 0 }),
-    case check_signature(Addr, ContractKey, Signature) of
+    case check_name_signature(Addr, Hash, ContractKey, Signature) of
         ok               -> apply_transaction(Tx, State);
         Err = {error, _} -> Err
     end.
