@@ -36,6 +36,7 @@
         , top_key_block_hash/0
         , top_block_with_state/0
         , top_header/0
+        , top_header_hash_and_state/0
         ]).
 
 %%% Accounts API
@@ -322,6 +323,18 @@ top_block() ->
 -spec top_block_hash() -> 'undefined' | binary().
 top_block_hash() ->
     aec_db:get_top_block_hash().
+
+-spec top_header_hash_and_state() -> 'undefined'
+                                   | {aec_headers:header(),
+                                      aec_blocks:block_header_hash(),
+                                      aec_trees:trees()}.
+top_header_hash_and_state() ->
+    case top_block_hash() of
+        undefined -> error;
+        Hash ->
+            {ok, Header} = get_header(Hash),
+            {Header, Hash, aec_db:get_block_state(Hash)}
+    end.
 
 -spec top_key_block() -> 'error' | {ok, aec_blocks:block()}.
 top_key_block() ->

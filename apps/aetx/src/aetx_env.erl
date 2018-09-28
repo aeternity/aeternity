@@ -10,11 +10,12 @@
 
 %% Constructors
 -export([ tx_env_from_key_header/4
-        , contract_env/6
+        , tx_env_and_trees_from_top/1
         ]).
 
 -ifdef(TEST).
--export([ tx_env/1
+-export([ contract_env/6
+        , tx_env/1
         ]).
 
 -include_lib("apps/aecore/include/blocks.hrl").
@@ -71,22 +72,6 @@
 %%% API
 %%%===================================================================
 
--spec contract_env(aec_blocks:height(), non_neg_integer(),
-                   non_neg_integer(), aec_keys:pubkey(),
-                   aec_pow:difficulty(), aec_blocks:block_header_hash()
-                  ) -> env().
-contract_env(Height, ConsensusVersion, Time, Beneficiary, Difficulty,
-             KeyHash) ->
-    #env{ beneficiary = Beneficiary
-        , consensus_version = ConsensusVersion
-        , context = aetx_contract
-        , difficulty = Difficulty
-        , height  = Height
-        , key_hash = KeyHash
-        , signed_tx = none
-        , time = Time
-     }.
-
 -spec tx_env_from_key_header(aec_headers:key_header(),
                              aec_blocks:block_header_hash(),
                              non_neg_integer(),
@@ -103,12 +88,38 @@ tx_env_from_key_header(KeyHeader, KeyHash, Time,_PrevHash) ->
         , time = Time
         }.
 
+tx_env_and_trees_from_top(Type) when Type == aetx_contract;
+                                     Type == aetx_transaction ->
+    {TopHeader, TopHash, Trees} = aec_chain:top_header_hash_and_state(),
+    {KeyHeader, KeyHash, Time} =
+        case aec_headers:type(TopHeader) of
+            micro ->
+                KHash = aec_headers:prev_key_hash(TopHeader),
+                {ok, KH} = aec_chain:get_header(KHash),
+                {KH, KHash, aec_headers:time_in_msecs(TopHeader)};
+            key ->
+                {TopHeader, TopHash, aec_headers:time_in_msecs(TopHeader) + 1}
+        end,
+    Env = tx_env_from_key_header(KeyHeader, KeyHash, Time, TopHash),
+    {set_context(Env, Type), Trees}.
 
 %%%===================================================================
 %%% Test API
 %%%===================================================================
 
 -ifdef(TEST).
+
+contract_env(Height, ConsensusVersion, Time, Beneficiary, Difficulty,
+             KeyHash) ->
+    #env{ beneficiary = Beneficiary
+        , consensus_version = ConsensusVersion
+        , context = aetx_contract
+        , difficulty = Difficulty
+        , height  = Height
+        , key_hash = KeyHash
+        , signed_tx = none
+        , time = Time
+     }.
 
 tx_env(Height) ->
     #env{ consensus_version = ?PROTOCOL_VERSION
