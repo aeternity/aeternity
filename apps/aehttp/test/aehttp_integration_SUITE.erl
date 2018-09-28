@@ -214,7 +214,8 @@
     sc_ws_withdraw_responder_and_close/1,
     sc_ws_contracts/1,
     sc_ws_oracle_contract/1,
-    sc_ws_nameservice_contract/1
+    sc_ws_nameservice_contract/1,
+    sc_ws_enviroment_contract/1
    ]).
 
 
@@ -542,14 +543,19 @@ groups() ->
        sc_ws_open,
        sc_ws_update,
        sc_ws_contracts,
-       % both can refer on-chain objects
+       % both can refer on-chain objects - oracle
        sc_ws_open,
        sc_ws_update,
        sc_ws_oracle_contract,
-       % both can refer on-chain objects
+       % both can refer on-chain objects - name service
        sc_ws_open,
        sc_ws_update,
-       sc_ws_nameservice_contract
+       sc_ws_nameservice_contract,
+
+       % both can refer on-chain objects - chain environment
+       sc_ws_open,
+       sc_ws_update,
+       sc_ws_enviroment_contract
       ]}
     ].
 
@@ -4138,6 +4144,26 @@ sc_ws_nameservice_contract(Config) ->
     ok = ?WS:stop(RConnPid),
     ok.
 
+sc_ws_enviroment_contract(Config) ->
+
+    {sc_ws_update, ConfigList} = ?config(saved_config, Config),
+    #{initiator := IConnPid, responder := RConnPid} =
+        proplists:get_value(channel_clients, ConfigList),
+
+    ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, get, error]),
+    ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, get, error]),
+
+
+    [sc_ws_contract_generic(Role, fun sc_ws_enviroment_contract_/7, Config,
+                            [])
+        || Role <- [initiator,
+                    responder]],
+
+    % cleanup
+    ok = ?WS:stop(IConnPid),
+    ok = ?WS:stop(RConnPid),
+    ok.
+
 random_unused_name() ->
     random_unused_name(_Attempts = 10).
 
@@ -4374,6 +4400,55 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     Test(Name, <<"oracle">>, true),
     Test(Name, <<"unexpected_key">>, true),
     Test(Name, <<"missing_key">>, false),
+    ok.
+
+sc_ws_enviroment_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
+                           OwnerPubkey, _OtherPubkey, _Opts) ->
+    Code = contract_byte_code("channel_env"),
+    InitArgument = <<"()">>,
+    {ok, EncodedInitData} = aect_sophia:encode_call_data(Code, <<"init">>,
+                                                         InitArgument),
+    {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
+    ?WS:send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+                    #{vm_version => 1,
+                      deposit    => 10,
+                      code       => Code,
+                      call_data  => EncodedInitData}),
+
+    UnsignedStateTx = CreateVolley(),
+    ContractPubKey = contract_id_from_create_update(OwnerPubKey,
+                                                    UnsignedStateTx),
+
+    ContractCanNameResolve = 
+        fun(Who, Fun, ResultType, Result) ->
+            {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
+            Args = <<"()">>,
+            Tx = call_a_contract(Fun,
+                                 Args,
+                                 ContractPubKey, Code,
+                                 UpdaterConnPid, UpdateVolley),
+             #{<<"value">> := R} =
+                ws_get_decoded_result(ConnPid1, ConnPid2,
+                                      ResultType,
+                                      Tx),
+            case is_function(Result) of
+                true -> true = Result(R);
+                false ->
+                    {R, R} = {Result, R}
+            end
+        end,
+    Test =
+        fun(Fun, ResultType, Result) ->
+            [ContractCanNameResolve(Who, Fun, ResultType, Result)
+                || Who <- [initiator, responder]]
+        end,
+    {ok, 200, Block} = get_key_blocks_current_sut(),
+    #{<<"height">> := BlockHeight,
+      <<"time">> := Time
+     } = Block,
+    Test(<<"block_height">>, <<"int">>, BlockHeight),
+    Test(<<"coinbase">>, <<"int">>, fun(I) -> <<I:32/unit:8>> =:= <<0:32/unit:8>> end),
+    Test(<<"timestamp">>, <<"int">>, fun(T) -> T > Time end),
     ok.
 
 

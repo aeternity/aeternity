@@ -76,12 +76,12 @@ run_common(#{  amount      := Value
              , gas         := Gas
              , gas_price   := GasPrice
              , trees       := Trees
-             , tx_env      := TxEnv0
+             , tx_env      := TxEnv00
              } = CallDef, VMVersion) ->
-    TxEnv = aetx_env:set_context(TxEnv0, aetx_contract),
-    <<Beneficiary:?BENEFICIARY_PUB_BYTES/unit:8>> = aetx_env:beneficiary(TxEnv),
-    ChainState0 = chain_state(CallDef, TxEnv),
-    Env = #{currentCoinbase   => Beneficiary,
+    TxEnv0 = aetx_env:set_context(TxEnv00, aetx_contract),
+    {TxEnv, ChainState0} = chain_state(CallDef, TxEnv0),
+    <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>> = aetx_env:beneficiary(TxEnv),
+    Env = #{currentCoinbase   => BeneficiaryInt,
             currentDifficulty => aetx_env:difficulty(TxEnv),
             currentGasLimit   => aec_governance:block_gas_limit(),
             currentNumber     => aetx_env:height(TxEnv),
@@ -169,8 +169,12 @@ chain_state(#{ contract    := ContractPubKey
             OnChainTrees = maps:get(on_chain_trees, CallDef),
             % the on-chain state uses the off-chain aetx_env:env()
             OnChainState = aec_vm_chain:new_state(OnChainTrees, TxEnv, ContractPubKey),
-            OffChainState = aec_vm_chain:new_offchain_state(Trees, TxEnv, ContractPubKey),
-            aec_vm_chain:push_state_context(OffChainState, OnChainState);
+            OffChainEnv = off_chain_env(TxEnv),
+            OffChainState = aec_vm_chain:new_offchain_state(Trees, OffChainEnv, ContractPubKey),
+            {OffChainEnv, aec_vm_chain:push_state_context(OffChainState, OnChainState)};
         false ->
-            aec_vm_chain:new_state(Trees, TxEnv, ContractPubKey)
+            {TxEnv, aec_vm_chain:new_state(Trees, TxEnv, ContractPubKey)}
     end.
+
+off_chain_env(OnChainEnv) ->
+   aetx_env:set_beneficiary(OnChainEnv, <<0:?BENEFICIARY_PUB_BYTES/unit:8>>). 
