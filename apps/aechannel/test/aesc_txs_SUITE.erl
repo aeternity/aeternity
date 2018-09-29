@@ -126,7 +126,8 @@
          fp_after_solo_close/1,
          fp_after_slash/1,
          fp_use_onchain_oracle/1,
-         fp_use_onchain_name_resolution/1
+         fp_use_onchain_name_resolution/1,
+         fp_use_onchain_enviroment/1
         ]).
 
 % negative force progress
@@ -282,7 +283,8 @@ groups() ->
        fp_after_slash,
        % contract referring to on-chain objects
        fp_use_onchain_oracle,
-       fp_use_onchain_name_resolution
+       fp_use_onchain_name_resolution,
+       fp_use_onchain_enviroment
       ]},
      {force_progress_negative, [sequence],
       [fp_closed_channel,
@@ -2115,16 +2117,15 @@ fp_use_onchain_oracle(Cfg) ->
 
                 % place some calls to that contract
                 force_call_contract_first(Forcer, <<"place_bet">>, <<"\"Lorem\"">>,
-                                          LockPeriod, FPRound),
-                force_call_contract(Forcer, <<"place_bet">>, <<"\"Ipsum\"">>,
-                                    LockPeriod),
+                                          FPRound),
+                force_call_contract(Forcer, <<"place_bet">>, <<"\"Ipsum\"">>),
 
                 % try resolving a contract with wrong query id
                 fun(Props) ->
                     EncodedQueryId = HexEncode(<<1234:42/unit:8>>),
                     (force_call_contract(Forcer, <<"resolve">>,
                                          <<"(", EncodedQueryId/binary,
-                                           ")">>, LockPeriod))(Props)
+                                           ")">>))(Props)
                 end,
                 assert_last_channel_result(<<"no response">>, string),
 
@@ -2143,18 +2144,17 @@ fp_use_onchain_oracle(Cfg) ->
                     EncodedQueryId = HexEncode(QueryId),
                     (force_call_contract(Forcer, <<"resolve">>,
                                          <<"(", EncodedQueryId/binary,
-                                           ")">>, LockPeriod))(Props)
+                                           ")">>))(Props)
                 end,
                 assert_last_channel_result(<<"no winning bet">>, string),
 
                 % place a winnning bet
-                force_call_contract(Forcer, <<"place_bet">>, <<"\"", Answer/binary,"\"">>,
-                                    LockPeriod),
+                force_call_contract(Forcer, <<"place_bet">>, <<"\"", Answer/binary,"\"">>),
                 fun(#{query_id := QueryId} = Props) ->
                     EncodedQueryId = HexEncode(QueryId),
                     (force_call_contract(Forcer, <<"resolve">>,
                                          <<"(", EncodedQueryId/binary,
-                                           ")">>, LockPeriod))(Props)
+                                           ")">>))(Props)
                 end,
                 assert_last_channel_result(<<"ok">>, string),
 
@@ -2163,7 +2163,7 @@ fp_use_onchain_oracle(Cfg) ->
                     EncodedQueryId = HexEncode(QueryId),
                     (force_call_contract(Forcer, <<"get_question">>,
                                          <<"(", EncodedQueryId/binary,
-                                           ")">>, LockPeriod))(Props)
+                                           ")">>))(Props)
                 end,
                 assert_last_channel_result(Question, string),
 
@@ -2172,7 +2172,7 @@ fp_use_onchain_oracle(Cfg) ->
                     EncodedQueryId = HexEncode(QueryId),
                     (force_call_contract(Forcer, <<"query_fee">>,
                                          <<"(", EncodedQueryId/binary,
-                                           ")">>, LockPeriod))(Props)
+                                           ")">>))(Props)
                 end,
                 assert_last_channel_result(QueryFee, word)
                ])
@@ -2191,8 +2191,7 @@ fp_use_onchain_name_resolution(Cfg) ->
             fun(Props) ->
               run(Props,
                   [force_call_contract(Forcer, <<"can_resolve">>,
-                                    <<"(\"", Name/binary, "\",\"", K/binary, "\")">>,
-                                    LockPeriod),
+                                    <<"(\"", Name/binary, "\",\"", K/binary, "\")">>),
                   assert_last_channel_result(Found, bool)])
             end
         end,
@@ -2218,7 +2217,7 @@ fp_use_onchain_name_resolution(Cfg) ->
                                          _Deposit  = 2),
                 force_call_contract_first(Forcer, <<"can_resolve">>,
                                           <<"(\"", Name/binary, "\",\"oracle\")">>,
-                                          LockPeriod, FPRound),
+                                          FPRound),
                 assert_last_channel_result(false, bool),
                 register_name(Name,
                               [{<<"account_pubkey">>, aec_id:create(account, <<1:256>>)},
@@ -2232,6 +2231,60 @@ fp_use_onchain_name_resolution(Cfg) ->
     [CallOnChain(Owner, Forcer) || Owner  <- ?ROLES,
                                    Forcer <- ?ROLES],
     ok.
+
+fp_use_onchain_enviroment(Cfg) ->
+    FPRound = 20,
+    LockPeriod = 10,
+    FPHeight0 = 20,
+    ForceCall =
+        fun(Forcer, Fun, RType, R) ->
+            fun(Props) ->
+              run(Props,
+                  [force_call_contract(Forcer, Fun, <<"()">>),
+                  assert_last_channel_result(R, RType)])
+            end
+        end,
+
+    Height1 = 12345,
+    Timestamp1 = 654321,
+    CallOnChain =
+        fun(Owner, Forcer) ->
+            IAmt0 = 30,
+            RAmt0 = 30,
+            ContractCreateRound = 10,
+            run(#{cfg => Cfg, initiator_amount => IAmt0,
+                              responder_amount => RAmt0,
+                  lock_period => LockPeriod,
+                  channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                set_prop(height, FPHeight0),
+
+                % create off-chain contract
+                create_trees(),
+                set_from(Owner, owner, owner_privkey),
+                create_contract_in_trees(_Round    = ContractCreateRound,
+                                         _Contract = "channel_env",
+                                         _InitArgs = <<"()">>,
+                                         _Deposit  = 2),
+                force_call_contract_first(Forcer, <<"block_height">>,
+                                          <<"()">>,
+                                          FPRound),
+                fun(#{height := H} = Props) ->
+                    (assert_last_channel_result(H, word))(Props)
+                end,
+                ForceCall(Forcer, <<"coinbase">>, word, 0),
+                set_tx_env(Height1, Timestamp1),
+                ForceCall(Forcer, <<"block_height">>, word, Height1),
+                set_tx_env(Height1 + LockPeriod + 1, Timestamp1),
+                ForceCall(Forcer, <<"coinbase">>, word, 0),
+                set_tx_env(Height1 + 2 * LockPeriod + 3, Timestamp1),
+                ForceCall(Forcer, <<"timestamp">>, word, Timestamp1)
+               ])
+        end,
+    [CallOnChain(Owner, Forcer) || Owner  <- ?ROLES,
+                                   Forcer <- ?ROLES],
+    ok.
+
 
 % no one can post a force progress to a closed channel
 fp_closed_channel(Cfg) ->
@@ -2988,9 +3041,20 @@ create_contract_call_payload(Key, ContractId, Fun, Args, Amount) ->
                trees => UpdatedTrees}
     end.
 
-tx_env(#{height := Height,
-         state  := State}) ->
-    Time = aeu_time:now_in_msecs(),
+set_tx_env(Height, TimeStamp) ->
+    fun(Props0) ->
+        run(Props0,
+            [set_prop(height, Height),
+             set_prop(timestamp, TimeStamp),
+             fun(Props) ->
+                 Env = tx_env(Props),
+                 Props#{aetx_env => Env}
+             end
+            ])
+    end.
+
+tx_env(#{height := Height} = Props) ->
+    Time = maps:get(timestamp, Props, aeu_time:now_in_msecs()),
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
     KeyBlockHash = <<42:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
     Beneficiary = <<24:?BENEFICIARY_PUB_BYTES/unit:8>>,
@@ -3044,8 +3108,16 @@ run(Cfg, Funs) ->
 
 apply_on_trees_(#{height := Height} = Props, SignedTx, S, positive) ->
     Trees = aens_test_utils:trees(S),
-    case aesc_test_utils:apply_on_trees_without_sigs_check(
-                      [SignedTx], Trees, Height) of
+    Res =
+        case maps:get(aetx_env, Props, none) of
+            none ->
+                aesc_test_utils:apply_on_trees_without_sigs_check(
+                                  [SignedTx], Trees, Height);
+            AetxEnv ->
+                aesc_test_utils:apply_on_trees_without_sigs_check_with_env(
+                                  [SignedTx], Trees, AetxEnv)
+        end,
+    case Res of
         {ok, [SignedTx], Trees1} ->
             S1 = aesc_test_utils:set_trees(Trees1, S),
             Props#{state => S1};
@@ -3671,12 +3743,10 @@ register_name(Name, Pointers0) ->
     end.
 
 %% provide payload
-force_call_contract_first(Forcer, Fun, Args, LockPeriod, Round) ->
+force_call_contract_first(Forcer, Fun, Args, Round) ->
     fun(Props0) ->
         run(Props0,
-           [fun(#{height := H0} = Props) ->
-                Props#{height => H0 + LockPeriod + 1}
-            end,
+           [set_height_to_forcable(),
             set_prop(round, Round - 1),
             set_from(Forcer),
             create_poi_by_trees(),
@@ -3692,24 +3762,34 @@ force_call_contract_first(Forcer, Fun, Args, LockPeriod, Round) ->
     end.
 
 %% build on top of on-chain payload
-force_call_contract(Forcer, Fun, Args, LockPeriod) ->
+force_call_contract(Forcer, Fun, Args) ->
     fun(Props0) ->
         #{channel_pubkey := ChannelPubKey, state := S} = Props0,
         Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
         Round = aesc_channels:round(Channel),
-        (force_call_contract(Forcer, Fun, Args, LockPeriod, Round + 1))(Props0)
+        (force_call_contract(Forcer, Fun, Args, Round + 1))(Props0)
     end.
 
-force_call_contract(Forcer, Fun, Args, LockPeriod, Round) ->
+force_call_contract(Forcer, Fun, Args, Round) ->
     fun(Props0) ->
         run(Props0,
             [set_prop(contract_function_call, {Fun, Args}),
             create_poi_by_trees(),
             set_prop(payload, <<>>),
-            fun(#{height := H0} = Props) ->
-                Props#{height => H0 + LockPeriod + 1}
-            end,
+            set_height_to_forcable(),
             force_progress_sequence(Round, Forcer)])
+    end.
+
+set_height_to_forcable() ->
+    fun(#{channel_pubkey := ChannelPubKey, state := S,
+          height := H0} = Props) ->
+        Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+        case aesc_channels:can_force_progress(Channel, H0) of
+            true -> Props;
+            false ->
+                H1 = aesc_channels:force_blocked_until(Channel),
+                Props#{height => H1 + 1}
+        end
     end.
 
 assert_last_channel_result(Result, Type) ->

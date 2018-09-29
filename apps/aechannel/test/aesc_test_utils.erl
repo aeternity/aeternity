@@ -22,7 +22,8 @@
          get_channel/2,
          lookup_channel/2,
          set_channel/2]).
--export([apply_on_trees_without_sigs_check/3]).
+-export([apply_on_trees_without_sigs_check/3,
+         apply_on_trees_without_sigs_check_with_env/3]).
 
 -export([create_tx_spec/3,
          create_tx_spec/4,
@@ -170,8 +171,11 @@ set_channel(Channel, State) ->
 %%%===================================================================
 
 apply_on_trees_without_sigs_check([SignedTx], Trees, Height) ->
-    Tx = aetx_sign:tx(SignedTx),
     Env0 = aetx_env:tx_env(Height),
+    apply_on_trees_without_sigs_check_with_env([SignedTx], Trees, Env0).
+
+apply_on_trees_without_sigs_check_with_env([SignedTx], Trees, Env0) ->
+    Tx = aetx_sign:tx(SignedTx),
     Env = aetx_env:set_signed_tx(Env0, {value, SignedTx}),
     {ok, Trees1} = aetx:check(Tx, Trees, Env),
     {ok, Trees2} = aetx:process(Tx, Trees1, Env),

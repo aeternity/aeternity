@@ -4145,7 +4145,6 @@ sc_ws_nameservice_contract(Config) ->
     ok.
 
 sc_ws_enviroment_contract(Config) ->
-
     {sc_ws_update, ConfigList} = ?config(saved_config, Config),
     #{initiator := IConnPid, responder := RConnPid} =
         proplists:get_value(channel_clients, ConfigList),
@@ -4419,7 +4418,7 @@ sc_ws_enviroment_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     ContractPubKey = contract_id_from_create_update(OwnerPubKey,
                                                     UnsignedStateTx),
 
-    ContractCanNameResolve = 
+    ContractCall = 
         fun(Who, Fun, ResultType, Result) ->
             {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
             Args = <<"()">>,
@@ -4439,7 +4438,7 @@ sc_ws_enviroment_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
         end,
     Test =
         fun(Fun, ResultType, Result) ->
-            [ContractCanNameResolve(Who, Fun, ResultType, Result)
+            [ContractCall(Who, Fun, ResultType, Result)
                 || Who <- [initiator, responder]]
         end,
     {ok, 200, Block} = get_key_blocks_current_sut(),
