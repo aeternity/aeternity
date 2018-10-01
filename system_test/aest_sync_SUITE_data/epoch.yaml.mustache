@@ -7,7 +7,7 @@ peers: {{^peers}}[]{{/peers}}
 
 sync:
     port: {{services.sync.port}}
-    ping_interval: 5000
+    ping_interval: {{config.ping_interval}}
     single_outbound_per_group: false
 
 http:
