@@ -23,7 +23,6 @@
 
 -import(aest_nodes, [
     cluster/2,
-    setup_nodes/2,
     start_node/2,
     stop_node/3,
     connect_node/3, disconnect_node/3,
@@ -767,5 +766,9 @@ try_until(MSec, F) ->
         end
     end.
 
+setup_nodes(Nodes, Cfg) ->
+    NodeCfg = #{ping_interval => ?PING_INTERVAL},
+    setup(Nodes, NodeCfg, Cfg).
+
 setup(Nodes, Config, Cfg) ->
-    setup_nodes([maps:put(config, Config, N) || N <- Nodes], Cfg).
+    aest_nodes:setup_nodes([maps:put(config, Config, N) || N <- Nodes], Cfg).
