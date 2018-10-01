@@ -667,7 +667,7 @@ net_split_mining_power(Cfg) ->
     %% Mine Length blocks, this may take longer than ping interval
     %% if so, the chains should be in sync when it's done.
     TargetHeight2 = MinedHeight1 + SyncLength,
-    %% Wait for one extra block for resolving potential fork caused by nodes mining distinct blocks at the same time.
+    %% Wait for some extra blocks for resolving potential fork caused by nodes mining distinct blocks at the same time.
     wait_for_value({height, ExtraLength + TargetHeight2}, AllNodes,
                    (ExtraLength + SyncLength) * ?MINING_TIMEOUT, Cfg),
 
