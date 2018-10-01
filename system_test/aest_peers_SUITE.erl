@@ -17,6 +17,7 @@
 
 -import(aest_nodes, [
     setup_nodes/2,
+    get_node_config/2,
     start_node/2,
     stop_node/3,
     wait_for_value/4,
@@ -93,7 +94,6 @@ end_per_suite(_Config) -> ok.
 
 test_peer_discovery(Cfg) ->
     NodeConfig = #{
-        ping_interval => 5000,
         max_inbound => 4
     },
     StartupTimeout = proplists:get_value(node_startup_time, Cfg),
@@ -106,7 +106,7 @@ test_peer_discovery(Cfg) ->
     wait_for_internal_api([node1, node2, node3, node4, node5], StartupTimeout),
 
     % Wait for two gossip ping messages.
-    timer:sleep(ping_interval() * 2 + 500),
+    timer:sleep(ping_interval(node1) * 2 + 500),
 
     lists:foreach(fun(N) ->
         {ok, 200, Peers} = aehttp_client:request('GetPeers', #{}, [
@@ -122,7 +122,6 @@ test_inbound_limitation(Cfg) ->
     Length = 50,
     StartupTimeout = proplists:get_value(node_startup_time, Cfg),
     NodeConfig = #{
-        ping_interval => 5000,
         max_inbound => 2
     },
     setup([?NODE1, ?NODE2, ?NODE3, ?NODE4], NodeConfig, Cfg),
@@ -139,7 +138,7 @@ test_inbound_limitation(Cfg) ->
     wait_for_value({height, Length + 1}, [node1, node2, node3], ?MINING_TIMEOUT * Length, Cfg),
     T1 = erlang:system_time(millisecond),
 
-    try_until(T1 + 3 * ping_interval(),
+    try_until(T1 + 3 * ping_interval(node1),
             fun() ->
                 B1a = get_block(node1, Length),
                 B2a = get_block(node2, Length),
@@ -150,7 +149,7 @@ test_inbound_limitation(Cfg) ->
             end),
 
     % Ensure a ping between start node3 and starting next.
-    TimeForPing1 = max(0, ping_interval() - (erlang:system_time(millisecond) - T1)),
+    TimeForPing1 = max(0, ping_interval(node1) - (erlang:system_time(millisecond) - T1)),
     timer:sleep(TimeForPing1),
 
     % Start 4th node that should get disconnected from node1 and connect to another one.
@@ -161,7 +160,7 @@ test_inbound_limitation(Cfg) ->
     wait_for_value({height, Length * 2 + 1}, [node1, node2, node3, node4], ?MINING_TIMEOUT * Length, Cfg),
     T2 = erlang:system_time(millisecond),
 
-    try_until(T2 + 3 * ping_interval(),
+    try_until(T2 + 3 * ping_interval(node1),
             fun() ->
                 B1b = get_block(node1, Length * 2),
                 B2b = get_block(node2, Length * 2),
@@ -174,7 +173,7 @@ test_inbound_limitation(Cfg) ->
             end),
 
     % Ensure a ping between start node4 and checking status.
-    TimeForPing2 = max(0, ping_interval() - (erlang:system_time(millisecond) - T2)),
+    TimeForPing2 = max(0, ping_interval(node1) - (erlang:system_time(millisecond) - T2)),
     timer:sleep(TimeForPing2),
 
     % Check node4 do not have an outbound connection to node1 anymore.
@@ -217,9 +216,8 @@ get_peers(Node) ->
     ]),
     Peers.
 
-ping_interval() ->
-    aeu_env:user_config_or_env([<<"sync">>, <<"ping_interval">>],
-                               aecore, ping_interval, 5000).
+ping_interval(Node) ->
+    get_node_config(Node, ["sync", "ping_interval"]).
 
 try_until(MSec, F) ->
     try F()
