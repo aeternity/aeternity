@@ -525,7 +525,6 @@ net_split_recovery(Cfg) ->
     connect_node(net1_node2, net2, Cfg),
     connect_node(net2_node1, net1, Cfg),
     connect_node(net2_node2, net1, Cfg),
-    T0 = erlang:system_time(millisecond),
 
     inject_spend_txs(net1_node1, patron(), 5, 6, 100),
     inject_spend_txs(net2_node1, patron(), 5, 11, 100),
@@ -535,6 +534,7 @@ net_split_recovery(Cfg) ->
     TargetHeight2 = MinedHeight1 + Length,
     %% Wait for some extra blocks for resolving potential fork caused by nodes mining distinct blocks at the same time.
     wait_for_value({height, ExtraLength + TargetHeight2}, Nodes, (ExtraLength + Length) * ?MINING_TIMEOUT, Cfg),
+    T0 = erlang:system_time(millisecond),
 
     %% Wait at least as long as the ping timer can take
     try_until(T0 + 2 * ping_interval(net1_node1),
@@ -584,11 +584,11 @@ net_split_recovery(Cfg) ->
     connect_node(net1_node2, net2, Cfg),
     connect_node(net2_node1, net1, Cfg),
     connect_node(net2_node2, net1, Cfg),
-    T1 = erlang:system_time(millisecond),
 
     TargetHeight4 = MinedHeight3 + Length,
     %% Wait for some extra blocks for resolving potential fork caused by nodes mining distinct blocks at the same time.
     wait_for_value({height, ExtraLength + TargetHeight4}, Nodes, (ExtraLength + Length) * ?MINING_TIMEOUT, Cfg),
+    T1 = erlang:system_time(millisecond),
 
     try_until(T1 + 2 * ping_interval(net1_node1),
             fun() ->
@@ -661,7 +661,6 @@ net_split_mining_power(Cfg) ->
     %% Join all the nodes
     lists:foreach(fun(N) -> connect_node(N, net2, Cfg) end, Net1Nodes),
     lists:foreach(fun(N) -> connect_node(N, net1, Cfg) end, Net2Nodes),
-    T0 = erlang:system_time(millisecond),
 
     %% Mine Length blocks, this may take longer than ping interval
     %% if so, the chains should be in sync when it's done.
@@ -669,6 +668,7 @@ net_split_mining_power(Cfg) ->
     %% Wait for some extra blocks for resolving potential fork caused by nodes mining distinct blocks at the same time.
     wait_for_value({height, ExtraLength + TargetHeight2}, AllNodes,
                    (ExtraLength + SyncLength) * ?MINING_TIMEOUT, Cfg),
+    T0 = erlang:system_time(millisecond),
 
     %% Wait at least as long as the ping timer can take
     try_until(T0 + 2 * ping_interval(net1_node1),
