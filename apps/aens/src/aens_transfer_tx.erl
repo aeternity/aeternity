@@ -14,6 +14,7 @@
          type/0,
          fee/1,
          gas/1,
+         gas_price/1,
          ttl/1,
          nonce/1,
          origin/1,
@@ -87,6 +88,10 @@ fee(#ns_transfer_tx{fee = Fee}) ->
 -spec gas(tx()) -> non_neg_integer().
 gas(#ns_transfer_tx{}) ->
     aec_governance:tx_gas().
+
+-spec gas_price(tx()) -> non_neg_integer().
+gas_price(#ns_transfer_tx{}) ->
+    aec_governance:tx_gas_price().
 
 -spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#ns_transfer_tx{ttl = TTL}) ->

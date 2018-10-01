@@ -23,9 +23,6 @@
         }).
 -define(KEY_NONCE_PATTERN(Sender), {?KEY('_', '_', Sender, '$1', '_'), '_'}).
 
-%% Placeholder for gas price in mempool key for txs unrelated to contracts.
--define(PSEUDO_GAS_PRICE, 0).
-
 %% API
 -export([ start_link/0
         , stop/0
@@ -344,7 +341,7 @@ pool_db_key(SignedTx) ->
     %%       * negative fee and negative gas price place high profit
     %%         transactions at the beginning
     %%       * ordered_set type enables implicit overwrite of the same txs
-    ?KEY(-aetx:fee(Tx), -int_gas_price(Tx),
+    ?KEY(-aetx:fee(Tx), -aetx:gas_price(Tx),
          aetx:origin(Tx), aetx:nonce(Tx), aetx_sign:hash(SignedTx)).
 
 -spec select_pool_db_key_by_hash(pool_db(), binary()) -> {ok, pool_db_key()} | not_in_ets.
@@ -553,23 +550,13 @@ check_minimum_fee(Tx,_Hash) ->
         false -> {error, too_low_fee}
     end.
 
-check_minimum_gas_price(Tx,_Hash) ->
-    case aetx:lookup_gas_price(aetx_sign:tx(Tx)) of
-        none -> ok;
-        {value, GasPrice} -> int_check_minimum_gas_price(GasPrice)
-    end.
-
--dialyzer({no_match, int_check_minimum_gas_price/1}).
-int_check_minimum_gas_price(GasPrice) ->
-    case GasPrice >= aec_governance:minimum_gas_price() of
+-dialyzer({no_match, check_minimum_gas_price/2}).
+check_minimum_gas_price(Tx, _Hash) ->
+    GasPrice = aetx:gas_price(aetx_sign:tx(Tx)),
+    MinGasPrice = aec_governance:minimum_gas_price(),
+    case GasPrice >= MinGasPrice of
         true  -> ok;
         false -> {error, too_low_gas_price}
-    end.
-
-int_gas_price(Tx) ->
-    case aetx:lookup_gas_price(Tx) of
-        none -> ?PSEUDO_GAS_PRICE;
-        {value, GP} when is_integer(GP), GP >= 0 -> GP
     end.
 
 tx_ttl() ->

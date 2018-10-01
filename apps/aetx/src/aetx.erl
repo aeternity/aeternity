@@ -13,7 +13,7 @@
         , deserialize_from_binary/1
         , fee/1
         , gas/1
-        , lookup_gas_price/1
+        , gas_price/1
         , ttl/1
         , is_tx_type/1
         , new/2
@@ -149,9 +149,6 @@
 -callback for_client(Tx :: tx_instance()) ->
     map().
 
--optional_callbacks([gas_price/1]).
-
-
 %%%===================================================================
 %%% Getters and setters
 %%%===================================================================
@@ -176,14 +173,9 @@ fee(#aetx{ cb = CB, tx = Tx }) ->
 gas(#aetx{ cb = CB, tx = Tx }) ->
     CB:gas(Tx).
 
--spec lookup_gas_price(Tx :: tx()) -> none | {value, GasPrice} when
-      GasPrice :: aect_contracts:amount().
-lookup_gas_price(#aetx{ cb = aect_create_tx, tx = Tx }) ->
-    {value, aect_create_tx:gas_price(Tx)};
-lookup_gas_price(#aetx{ cb = aect_call_tx, tx = Tx }) ->
-    {value, aect_call_tx:gas_price(Tx)};
-lookup_gas_price(#aetx{}) ->
-    none.
+-spec gas_price(Tx :: tx()) -> GasPrice :: non_neg_integer().
+gas_price(#aetx{ cb = CB, tx = Tx }) ->
+    CB:gas_price(Tx).
 
 -spec nonce(Tx :: tx()) -> Nonce :: non_neg_integer().
 nonce(#aetx{ cb = CB, tx = Tx }) ->
