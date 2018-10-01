@@ -58,7 +58,10 @@
         "parameters" : [ ],
         "responses" : {
           "200" : {
-            "description" : "Successful operation"
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/KeyBlockOrMicroBlockHeader"
+            }
           },
           "404" : {
             "description" : "Block not found",
@@ -2138,10 +2141,49 @@
         "pof_hash" : "pof_hash",
         "prev_hash" : null,
         "prev_key_hash" : null,
-        "time" : 6,
-        "version" : 1,
-        "hash" : { },
-        "height" : 0
+        "time" : 7,
+        "version" : 9,
+        "hash" : null,
+        "height" : 2
+      }
+    },
+    "KeyBlockOrMicroBlockHeader" : {
+      "type" : "object",
+      "properties" : {
+        "key_block" : {
+          "$ref" : "#/definitions/KeyBlock"
+        },
+        "micro_block" : {
+          "$ref" : "#/definitions/MicroBlockHeader"
+        }
+      },
+      "example" : {
+        "micro_block" : {
+          "txs_hash" : null,
+          "state_hash" : null,
+          "signature" : null,
+          "pof_hash" : "pof_hash",
+          "prev_hash" : null,
+          "prev_key_hash" : null,
+          "time" : 7,
+          "version" : 9,
+          "hash" : null,
+          "height" : 2
+        },
+        "key_block" : {
+          "beneficiary" : null,
+          "state_hash" : null,
+          "prev_hash" : null,
+          "pow" : "",
+          "prev_key_hash" : null,
+          "time" : 5,
+          "nonce" : 1,
+          "version" : 5,
+          "hash" : { },
+          "miner" : null,
+          "height" : 0,
+          "target" : 6
+        }
       }
     },
     "GenericTxs" : {

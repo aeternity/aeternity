@@ -983,11 +983,17 @@ decode_data(Type, EncodedData) ->
 %% /blocks/top
 
 get_top_block(Config) ->
-    get_top_block(?config(current_block_type, Config), Config).
+    get_top_block(?config(current_block_type, Config),
+                  ?config(current_block_hash, Config),
+                  Config).
 
-get_top_block(_CurrentBlockType, Config) ->
-    CurrentBlockHash = ?config(current_block_hash, Config),
-    {ok, 200, Block} = get_top_sut(),
+get_top_block(CurrentBlockType, CurrentBlockHash, _Config) when
+      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    {ok, 200, #{<<"key_block">> := Block}} = get_top_sut(),
+    ?assertEqual(CurrentBlockHash, maps:get(<<"hash">>, Block)),
+    ok;
+get_top_block(micro_block, CurrentBlockHash, _Config) ->
+    {ok, 200, #{<<"micro_block">> := Block}} = get_top_sut(),
     ?assertEqual(CurrentBlockHash, maps:get(<<"hash">>, Block)),
     ok.
 
@@ -3072,7 +3078,7 @@ naming_system_manage_name(_Config) ->
     %% Mine blocks to get some funds
     aecore_suite_utils:mine_key_blocks(Node, Delay + 1),
     {ok, 200, #{<<"balance">> := Balance}} = get_balance_at_top(),
-    {ok, 200, #{<<"height">> := Height0}} = get_top_sut(),
+    {ok, 200, #{<<"height">> := Height0}} = get_key_blocks_current_sut(),
 
     %% Check mempool empty
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
@@ -3092,7 +3098,7 @@ naming_system_manage_name(_Config) ->
 
     %% Mine a block and check mempool empty again
     {ok,_BS1} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, PreclaimTxHash, 10),
-    {ok, 200, #{<<"height">> := Height1}} = get_top_sut(),
+    {ok, 200, #{<<"height">> := Height1}} = get_key_blocks_current_sut(),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Check fee taken from account, then mine reward added to account
@@ -3102,7 +3108,7 @@ naming_system_manage_name(_Config) ->
     %% Mine for the reward delay to not have old fees interfere.
     aecore_suite_utils:mine_key_blocks(Node, Delay + 1),
     {ok, 200, #{<<"balance">> := Balance2}} = get_balance_at_top(),
-    {ok, 200, #{<<"height">> := Height2}} = get_top_sut(),
+    {ok, 200, #{<<"height">> := Height2}} = get_key_blocks_current_sut(),
 
     %% Submit name claim tx and check it is in mempool
     ClaimData = #{account_id => PubKeyEnc,
@@ -3120,7 +3126,7 @@ naming_system_manage_name(_Config) ->
     %% then mine reward and fee added to account
     ClaimBurnedFee = rpc(aec_governance, name_claim_burned_fee, []),
     {ok, 200, #{<<"balance">> := Balance3}} = get_balance_at_top(),
-    {ok, 200, #{<<"height">> := Height3}} = get_top_sut(),
+    {ok, 200, #{<<"height">> := Height3}} = get_key_blocks_current_sut(),
     ?assertEqual(Balance3, Balance2 - Fee + (Height3 - Height2) * MineReward - ClaimBurnedFee),
 
     %% Check that name entry is present
@@ -3145,7 +3151,7 @@ naming_system_manage_name(_Config) ->
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Check that TTL and pointers got updated in name entry
-    {ok, 200, #{<<"height">> := Height31}} = get_top_sut(),
+    {ok, 200, #{<<"height">> := Height31}} = get_key_blocks_current_sut(),
     ExpectedTTL2 = (Height31 - 1) + NameTTL,
     {ok, 200, #{<<"ttl">>      := ExpectedTTL2,
                 <<"pointers">> := Pointers}} = get_names_entry_by_name_sut(Name),
@@ -3153,7 +3159,7 @@ naming_system_manage_name(_Config) ->
     %% Mine for the reward delay to not have old fees interfere.
     aecore_suite_utils:mine_key_blocks(Node, Delay),
     {ok, 200, #{<<"balance">> := Balance4}} = get_balance_at_top(),
-    {ok, 200, #{<<"height">> := Height4}} = get_top_sut(),
+    {ok, 200, #{<<"height">> := Height4}} = get_key_blocks_current_sut(),
 
     {ok, 200, #{<<"tx">> := EncodedSpendTx}} =
         get_spend(#{recipient_id => EncodedNHash, amount => 77, fee => Fee,
@@ -3166,13 +3172,13 @@ naming_system_manage_name(_Config) ->
     %% Only fee is lost as recipient = sender
     %% This tests 'resolve_name' because recipient is expressed by name label
     {ok, 200, #{<<"balance">> := Balance5}} = get_balance_at_top(),
-    {ok, 200, #{<<"height">> := Height5}} = get_top_sut(),
+    {ok, 200, #{<<"height">> := Height5}} = get_key_blocks_current_sut(),
     ?assertEqual(Balance5, Balance4 - Fee + (Height5 - Height4) * MineReward),
 
     %% Mine for the reward delay to not have old fees interfere.
     aecore_suite_utils:mine_key_blocks(Node, Delay),
     {ok, 200, #{<<"balance">> := Balance6}} = get_balance_at_top(),
-    {ok, 200, #{<<"height">> := Height6}} = get_top_sut(),
+    {ok, 200, #{<<"height">> := Height6}} = get_key_blocks_current_sut(),
 
     %% Submit name transfer tx and check it is in mempool
     TransferData = #{account_id   => PubKeyEnc,
@@ -3188,13 +3194,13 @@ naming_system_manage_name(_Config) ->
 
     %% Check balance
     {ok, 200, #{<<"balance">> := Balance7}} = get_balance_at_top(),
-    {ok, 200, #{<<"height">> := Height7}} = get_top_sut(),
+    {ok, 200, #{<<"height">> := Height7}} = get_key_blocks_current_sut(),
     ?assertEqual(Balance7, Balance6 - Fee + (Height7 - Height6) * MineReward),
 
     %% Mine for the reward delay to not have old fees interfere.
     aecore_suite_utils:mine_key_blocks(Node, Delay),
     {ok, 200, #{<<"balance">> := Balance8}} = get_balance_at_top(),
-    {ok, 200, #{<<"height">> := Height8}} = get_top_sut(),
+    {ok, 200, #{<<"height">> := Height8}} = get_key_blocks_current_sut(),
 
     %% Submit name revoke tx and check it is in mempool
     RevokeData = #{account_id => PubKeyEnc,
@@ -3209,7 +3215,7 @@ naming_system_manage_name(_Config) ->
 
     %% Check balance
     {ok, 200, #{<<"balance">> := Balance9}} = get_balance_at_top(),
-    {ok, 200, #{<<"height">> := Height9}} = get_top_sut(),
+    {ok, 200, #{<<"height">> := Height9}} = get_key_blocks_current_sut(),
     ?assertEqual(Balance9, Balance8 - Fee + (Height9 - Height8) * MineReward),
 
     %% Check the name got expired

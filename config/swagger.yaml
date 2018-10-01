@@ -54,9 +54,8 @@ paths:
       responses:
         '200':
           description: 'Successful operation'
-          oneOf:
-            - $ref: '#/definitions/KeyBlock'
-            - $ref: '#/definitions/MicroBlockHeader'
+          schema:
+            $ref: '#/definitions/KeyBlockOrMicroBlockHeader'
         '404':
           description: 'Block not found'
           schema:
@@ -1819,6 +1818,13 @@ definitions:
       - signature
       - time
       - version
+  KeyBlockOrMicroBlockHeader:
+    type: object
+    properties:
+      key_block:
+        $ref: '#/definitions/KeyBlock'
+      micro_block:
+        $ref: '#/definitions/MicroBlockHeader'
   GenericTxs:
     type: object
     properties:
