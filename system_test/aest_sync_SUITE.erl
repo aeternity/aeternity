@@ -44,6 +44,7 @@
 %=== MACROS ====================================================================
 
 -define(MINING_TIMEOUT,   3000).
+-define(PING_INTERVAL,    5000).
 
 -define(STANDALONE_NODE, #{
     name    => standalone_node,
@@ -488,7 +489,8 @@ net_split_recovery(Cfg) ->
     %% This means we need more than 20 seconds (or blocks) to at all observe a
     %% synced chain of machines on the same net.
 
-    setup_nodes([?NET1_NODE1, ?NET1_NODE2, ?NET2_NODE1, ?NET2_NODE2], Cfg),
+    NodeCfg = #{ping_interval => ?PING_INTERVAL},
+    setup([?NET1_NODE1, ?NET1_NODE2, ?NET2_NODE1, ?NET2_NODE2], NodeCfg, Cfg),
     Nodes = [net1_node1, net1_node2, net2_node1, net2_node2],
     start_node(net1_node1, Cfg),
     start_node(net1_node2, Cfg),
@@ -535,7 +537,7 @@ net_split_recovery(Cfg) ->
     wait_for_value({height, 2 + TargetHeight2}, Nodes, (2 + Length) * ?MINING_TIMEOUT, Cfg),
 
     %% Wait at least as long as the ping timer can take
-    try_until(T0 + 2 * ping_interval(),
+    try_until(T0 + 2 * ?PING_INTERVAL,
             fun() ->
 
               B1 = get_block(net1_node1, TargetHeight2),
@@ -587,9 +589,8 @@ net_split_recovery(Cfg) ->
     TargetHeight4 = MinedHeight3 + Length,
     %% Wait for extra blocks for resolving potential fork caused by nodes mining distinct blocks at the same time.
     wait_for_value({height, 2 + TargetHeight4}, Nodes, (2 + Length) * ?MINING_TIMEOUT, Cfg),
-    ct:log("Ping interval set to ~p", [ping_interval()]),
 
-    try_until(T1 + 2 * ping_interval(),
+    try_until(T1 + 2 * ?PING_INTERVAL,
             fun() ->
               D1 = get_block(net1_node1, TargetHeight4),
               D2 = get_block(net1_node2, TargetHeight4),
@@ -619,8 +620,9 @@ net_split_mining_power(Cfg) ->
 
     %% We don't use node NET1_NODE2 but it needs to be configured to have NET1_NODE
     %% start at all.
-    setup_nodes([?NET1_NODE1, ?NET1_NODE2,
-                 ?NET2_NODE1, ?NET2_NODE2, ?NET2_NODE3], Cfg),
+    NodeCfg = #{ping_interval => ?PING_INTERVAL},
+    setup([?NET1_NODE1, ?NET1_NODE2,
+           ?NET2_NODE1, ?NET2_NODE2, ?NET2_NODE3], NodeCfg, Cfg),
 
     lists:foreach(fun(N) -> start_node(N, Cfg) end, Net2Nodes),
     lists:foreach(fun(N) -> start_node(N, Cfg) end, Net1Nodes),
@@ -669,10 +671,8 @@ net_split_mining_power(Cfg) ->
     wait_for_value({height, ExtraLength + TargetHeight2}, AllNodes,
                    (ExtraLength + SyncLength) * ?MINING_TIMEOUT, Cfg),
 
-    ct:log("Ping interval set to ~p", [ping_interval()]),
-
     %% Wait at least as long as the ping timer can take
-    try_until(T0 + 2 * ping_interval(),
+    try_until(T0 + 2 * ?PING_INTERVAL,
             fun() ->
                 BlocksB = lists:foldl(fun(N, Acc) ->
                     [get_block(N, TargetHeight2) | Acc]
@@ -753,10 +753,6 @@ node_mined_retries(Nodes) ->
         end
     end, 0, Nodes).
 
-ping_interval() ->
-    aeu_env:user_config_or_env([<<"sync">>, <<"ping_interval">>],
-                               aecore, ping_interval, 120000).
-
 try_until(MSec, F) ->
     try F()
     catch
@@ -769,3 +765,6 @@ try_until(MSec, F) ->
             try_until(MSec, F)
         end
     end.
+
+setup(Nodes, Config, Cfg) ->
+    setup_nodes([maps:put(config, Config, N) || N <- Nodes], Cfg).
