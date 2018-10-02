@@ -111,6 +111,23 @@
                     "type" : "boolean",
                     "default": true,
                 },
+                "resolver_max_retries": {
+                    "description" : "Maximum number of retries at resolving the host name of untrusted peers.",
+                    "type" : "integer",
+                    "minimum" : 0,
+                    "default" : 7
+                },
+                "resolver_backoff_times" : {
+                    "description" : "Waiting time intervals (milliseconds) before each retry at resolving the host name of peers (both trusted and untrusted).",
+                    "type" : "array",
+                    "minItems" : 1,
+                    "items" : {
+                        "type" : "integer",
+                        "minimum" : 1,
+                        "example" : 5000
+                    },
+                    "default" : [5000, 15000, 30000, 60000, 120000, 300000, 600000]
+                },
                 "gossip_allowed_height_from_top" : {
                     "description": "Allowed height difference from current top for incoming blocks (via gossip)",
                     "type" : "integer"

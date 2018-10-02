@@ -1580,9 +1580,11 @@ single_outbound_per_group() ->
                                ?DEFAULT_SINGLE_OUTBOUND_PER_GROUP).
 
 resolve_max_retries() ->
-    application:get_env(aecore, sync_resolver_max_retries,
-                        ?DEFAULT_RESOLVE_MAX_RETRY).
+    aeu_env:user_config_or_env([<<"sync">>, <<"resolver_max_retries">>],
+                               aecore, sync_resolver_max_retries,
+                               ?DEFAULT_RESOLVE_MAX_RETRY).
 
 resolve_backoff_times() ->
-    application:get_env(aecore, sync_resolver_backoff_times,
-                        ?DEFAULT_RESOLVE_BACKOFF_TIMES).
+    aeu_env:user_config_or_env([<<"sync">>, <<"resolver_backoff_times">>],
+                               aecore, sync_resolver_backoff_times,
+                               ?DEFAULT_RESOLVE_BACKOFF_TIMES).
