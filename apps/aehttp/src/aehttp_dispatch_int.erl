@@ -317,13 +317,13 @@ handle_request_('PostChannelSnapshotSolo', #{'ChannelSnapshotSoloTx' := Req}, _C
 
 handle_request_('PostChannelCloseMutual', #{'ChannelCloseMutualTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([channel_id, origin,
+                 read_required_params([channel_id, from_id,
                                        initiator_amount_final,
                                        responder_amount_final,
                                        fee, nonce]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  base58_decode([{channel_id, channel_id, {id_hash, [channel]}},
-                                {origin, origin, {id_hash, [account_pubkey]}}]),
+                                {from_id, from_id, {id_hash, [account_pubkey]}}]),
                  unsigned_tx_response(fun aesc_close_mutual_tx:new/1)
                 ],
     process_request(ParseFuns, Req);

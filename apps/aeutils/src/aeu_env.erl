@@ -443,5 +443,5 @@ read_schema() ->
 
 load_schema(F) ->
     [Schema] = jsx:consult(F, [return_maps]),
-    set_env(aeutils, '$schema', Schema),
+    application:set_env(aeutils, '$schema', Schema),
     Schema.

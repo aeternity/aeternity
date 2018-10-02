@@ -214,7 +214,7 @@ close_mutual_tx_spec(ChannelId, Spec0, State) ->
     Initiator = maps:get(initiator_account, Spec0),
     Spec = maps:merge(close_mutual_tx_default_spec(Initiator, State), Spec0),
     #{channel_id              => aec_id:create(channel, ChannelId),
-      origin                  => aec_id:create(account, Initiator),
+      from_id                 => aec_id:create(account, Initiator),
       initiator_amount_final  => maps:get(initiator_amount_final, Spec),
       responder_amount_final  => maps:get(responder_amount_final, Spec),
       ttl                     => maps:get(ttl, Spec, 0),

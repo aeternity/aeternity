@@ -552,6 +552,10 @@
                         "max_size" : {
                             "type" : "integer",
                             "default" : 0
+                        },
+                        "max_time" : {
+                            "type" : "integer",
+                            "default" : 0
                         }
                     }
                 },
@@ -594,6 +598,10 @@
                         "max_size" : {
                             "type" : "integer",
                             "default" : 5
+                        },
+                        "max_time" : {
+                            "type" : "integer",
+                            "default" : 0
                         }
                     }
                 },
@@ -613,6 +621,10 @@
                         "max_size" : {
                             "type" : "integer",
                             "default" : 100
+                        },
+                        "max_time" : {
+                            "type" : "integer",
+                            "default" : 0
                         }
                     }
                 },

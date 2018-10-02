@@ -40,7 +40,7 @@
 
 -record(channel_close_mutual_tx, {
           channel_id              :: aec_id:id(),
-          origin                  :: aec_id:id(),
+          from_id                 :: aec_id:id(),
           initiator_amount_final  :: non_neg_integer(),
           responder_amount_final  :: non_neg_integer(),
           ttl                     :: aetx:tx_ttl(),
@@ -58,16 +58,16 @@
 
 -spec new(map()) -> {ok, aetx:tx()}.
 new(#{channel_id              := ChannelId,
-      origin                  := Origin,
+      from_id                 := FromId,
       initiator_amount_final  := InitiatorAmount,
       responder_amount_final  := ResponderAmount,
       fee                     := Fee,
       nonce                   := Nonce} = Args) ->
     channel = aec_id:specialize_type(ChannelId),
-    account = aec_id:specialize_type(Origin),
+    account = aec_id:specialize_type(FromId),
     Tx = #channel_close_mutual_tx{
             channel_id              = ChannelId,
-            origin                  = Origin,
+            from_id                 = FromId,
             initiator_amount_final  = InitiatorAmount,
             responder_amount_final  = ResponderAmount,
             ttl                     = maps:get(ttl, Args, 0),
@@ -99,14 +99,14 @@ nonce(#channel_close_mutual_tx{nonce = Nonce}) ->
     Nonce.
 
 -spec origin(tx()) -> aec_keys:pubkey().
-origin(#channel_close_mutual_tx{origin = Origin}) ->
-    aec_id:specialize(Origin, account).
+origin(#channel_close_mutual_tx{from_id = FromId}) ->
+    aec_id:specialize(FromId, account).
 
 channel_pubkey(#channel_close_mutual_tx{channel_id = ChannelId}) ->
     aec_id:specialize(ChannelId, channel).
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#channel_close_mutual_tx{origin = Origin,
+check(#channel_close_mutual_tx{from_id = FromId,
                                initiator_amount_final = InitiatorAmount,
                                responder_amount_final = ResponderAmount,
                                fee                    = Fee,
@@ -117,17 +117,17 @@ check(#channel_close_mutual_tx{origin = Origin,
         none ->
             {error, channel_does_not_exist};
         {value, Channel} ->
-            OriginPubKey = aec_id:specialize(Origin, account),
+            FromIdPubKey = aec_id:specialize(FromId, account),
             InitiatorPubKey = aesc_channels:initiator_pubkey(Channel),
             ResponderPubKey = aesc_channels:responder_pubkey(Channel),
             Checks =
                 [% the fee is being split between parties so no check if the
                  % initiator can pay the fee; just a check for the nonce correctness
-                 fun() -> ok_or_error(OriginPubKey == InitiatorPubKey
-                                      orelse OriginPubKey == ResponderPubKey,
+                 fun() -> ok_or_error(FromIdPubKey == InitiatorPubKey
+                                      orelse FromIdPubKey == ResponderPubKey,
                                       illegal_origin)
                  end,
-                 fun() -> aetx_utils:check_account(OriginPubKey, Trees, Nonce, 0) end,
+                 fun() -> aetx_utils:check_account(FromIdPubKey, Trees, Nonce, 0) end,
                  fun() ->
                     case aesc_channels:is_active(Channel) of
                         true -> ok;
@@ -160,7 +160,7 @@ process(#channel_close_mutual_tx{initiator_amount_final = InitiatorAmount,
     ChannelsTree0 = aec_trees:channels(Trees),
 
     Channel         = aesc_state_tree:get(ChannelPubKey, ChannelsTree0),
-    OriginPubKey    = origin(Tx),
+    FromIdPubKey    = origin(Tx),
     InitiatorPubKey = aesc_channels:initiator_pubkey(Channel),
     ResponderPubKey = aesc_channels:responder_pubkey(Channel),
 
@@ -173,7 +173,7 @@ process(#channel_close_mutual_tx{initiator_amount_final = InitiatorAmount,
                                                  ResponderAmount),
 
     {InitiatorAccount, ResponderAccount} =
-        update_nonce(OriginPubKey, InitiatorPubKey, ResponderPubKey,
+        update_nonce(FromIdPubKey, InitiatorPubKey, ResponderPubKey,
                      InitiatorAccount1, ResponderAccount1, Nonce),
     AccountsTree1 = aec_accounts_trees:enter(InitiatorAccount, AccountsTree0),
     AccountsTree2 = aec_accounts_trees:enter(ResponderAccount, AccountsTree1),
@@ -201,7 +201,7 @@ signers(#channel_close_mutual_tx{} = Tx, Trees) ->
 
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_close_mutual_tx{channel_id             = ChannelId,
-                                   origin                 = Origin,
+                                   from_id                = FromId,
                                    initiator_amount_final = InitiatorAmount,
                                    responder_amount_final = ResponderAmount,
                                    ttl                    = TTL,
@@ -209,7 +209,7 @@ serialize(#channel_close_mutual_tx{channel_id             = ChannelId,
                                    nonce                  = Nonce}) ->
     {version(),
      [ {channel_id              , ChannelId}
-     , {origin                  , Origin}
+     , {from_id                 , FromId}
      , {initiator_amount_final  , InitiatorAmount}
      , {responder_amount_final  , ResponderAmount}
      , {ttl                     , TTL}
@@ -220,7 +220,7 @@ serialize(#channel_close_mutual_tx{channel_id             = ChannelId,
 -spec deserialize(vsn(), list()) -> tx().
 deserialize(?CHANNEL_CLOSE_MUTUAL_TX_VSN,
             [ {channel_id             , ChannelId}
-            , {origin                 , Origin}
+            , {from_id                , FromId}
             , {initiator_amount_final , InitiatorAmount}
             , {responder_amount_final , ResponderAmount}
             , {ttl                    , TTL}
@@ -228,7 +228,7 @@ deserialize(?CHANNEL_CLOSE_MUTUAL_TX_VSN,
             , {nonce                  , Nonce}]) ->
     channel = aec_id:specialize_type(ChannelId),
     #channel_close_mutual_tx{channel_id             = ChannelId,
-                             origin                 = Origin,
+                             from_id                = FromId,
                              initiator_amount_final = InitiatorAmount,
                              responder_amount_final = ResponderAmount,
                              ttl                    = TTL,
@@ -237,14 +237,14 @@ deserialize(?CHANNEL_CLOSE_MUTUAL_TX_VSN,
 
 -spec for_client(tx()) -> map().
 for_client(#channel_close_mutual_tx{channel_id             = ChannelId,
-                                    origin                 = Origin,
+                                    from_id                = FromId,
                                     initiator_amount_final = InitiatorAmount,
                                     responder_amount_final = ResponderAmount,
                                     ttl                    = TTL,
                                     fee                    = Fee,
                                     nonce                  = Nonce}) ->
     #{<<"channel_id">>              => aec_base58c:encode(id_hash, ChannelId),
-      <<"origin">>                  => aec_base58c:encode(id_hash, Origin),
+      <<"from_id">>                 => aec_base58c:encode(id_hash, FromId),
       <<"initiator_amount_final">>  => InitiatorAmount,
       <<"responder_amount_final">>  => ResponderAmount,
       <<"ttl">>                     => TTL,
@@ -253,7 +253,7 @@ for_client(#channel_close_mutual_tx{channel_id             = ChannelId,
 
 serialization_template(?CHANNEL_CLOSE_MUTUAL_TX_VSN) ->
     [ {channel_id             , id}
-    , {origin                 , id}
+    , {from_id                , id}
     , {initiator_amount_final , int}
     , {responder_amount_final , int}
     , {ttl                    , int}
