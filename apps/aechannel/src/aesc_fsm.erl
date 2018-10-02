@@ -657,7 +657,8 @@ awaiting_signature(cast, {?SIGNED, ?UPDATE_ACK, SignedTx} = Msg,
     NewSignedTx = aetx_sign:add_signatures(
                     OCTx, aetx_sign:signatures(SignedTx)),
     D1 = send_update_ack_msg(NewSignedTx, D),
-    {OnChainTrees, OnChainEnv} = on_chain_trees_and_env(),
+    {OnChainEnv, OnChainTrees} =
+        aetx_env:tx_env_and_trees_from_top(aetx_contract),
     State = aesc_offchain_state:add_signed_tx(NewSignedTx, D1#data.state,
                                               OnChainTrees, OnChainEnv, Opts),
     D2 = D1#data{log   = log_msg(rcv, ?SIGNED, Msg, D1#data.log),
@@ -761,7 +762,8 @@ dep_signed(Type, Msg, D) ->
     handle_common_event(Type, Msg, error, D).
 
 deposit_locked_complete(SignedTx, #data{state = State, opts = Opts} = D) ->
-    {OnChainTrees, OnChainEnv} = on_chain_trees_and_env(),
+    {OnChainEnv, OnChainTrees} =
+        aetx_env:tx_env_and_trees_from_top(aetx_contract),
     D1   = D#data{state = aesc_offchain_state:add_signed_tx(SignedTx, State,
                                                             OnChainTrees,
                                                             OnChainEnv, Opts)},
@@ -815,7 +817,8 @@ wdraw_signed(Type, Msg, D) ->
     handle_common_event(Type, Msg, error, D).
 
 withdraw_locked_complete(SignedTx, #data{state = State, opts = Opts} = D) ->
-    {OnChainTrees, OnChainEnv} = on_chain_trees_and_env(),
+    {OnChainEnv, OnChainTrees} =
+        aetx_env:tx_env_and_trees_from_top(aetx_contract),
     D1   = D#data{state = aesc_offchain_state:add_signed_tx(SignedTx, State,
                                                             OnChainTrees,
                                                             OnChainEnv, Opts)},
@@ -946,7 +949,8 @@ signed(Type, Msg, D) ->
     handle_common_event(Type, Msg, error_all, D).
 
 funding_locked_complete(D) ->
-    {OnChainTrees, OnChainEnv} = on_chain_trees_and_env(),
+    {OnChainEnv, OnChainTrees} =
+        aetx_env:tx_env_and_trees_from_top(aetx_contract),
     D1   = D#data{state = aesc_offchain_state:add_signed_tx(D#data.create_tx,
                                                             D#data.state,
                                                             OnChainTrees,
@@ -1512,7 +1516,8 @@ check_accept_msg(#{ chain_hash           := ChainHash
 dep_tx_for_signing(#{from_id := FromId, amount := Amount} = Opts,
                    #data{on_chain_id = ChanId, state=State}) ->
     Updates = [aesc_offchain_update:op_deposit(aec_id:create(account, FromId), Amount)],
-    {OnChainTrees, OnChainEnv} = on_chain_trees_and_env(),
+    {OnChainEnv, OnChainTrees} =
+        aetx_env:tx_env_and_trees_from_top(aetx_contract),
     UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State,
                                                         OnChainTrees,
                                                         OnChainEnv, Opts),
@@ -1534,7 +1539,8 @@ dep_tx_for_signing(#{from_id := FromId, amount := Amount} = Opts,
 wdraw_tx_for_signing(#{to_id := ToId, amount := Amount} = Opts,
                      #data{on_chain_id = ChanId, state=State}) ->
     Updates = [aesc_offchain_update:op_withdraw(aec_id:create(account, ToId), Amount)],
-    {OnChainTrees, OnChainEnv} = on_chain_trees_and_env(),
+    {OnChainEnv, OnChainTrees} =
+        aetx_env:tx_env_and_trees_from_top(aetx_contract),
     UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State,
                                                         OnChainTrees,
                                                         OnChainEnv, Opts),
@@ -1561,7 +1567,8 @@ new_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts 
       call_data   := CallData} = Opts,
     Updates = [aesc_offchain_update:op_new_contract(aec_id:create(account, Owner),
                                                     VmVersion, Code, Deposit, CallData)],
-    {OnChainTrees, OnChainEnv} = on_chain_trees_and_env(),
+    {OnChainEnv, OnChainTrees} =
+        aetx_env:tx_env_and_trees_from_top(aetx_contract),
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,
                                                   OnChainTrees, OnChainEnv, ChannelOpts),
          D1 = request_signing(?UPDATE, Tx1, D),
@@ -1583,7 +1590,8 @@ call_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts
     Updates = [aesc_offchain_update:op_call_contract(aec_id:create(account, Caller),
                                                      aec_id:create(contract, ContractPubKey),
                                                      VmVersion, Amount, CallData, CallStack)],
-    {OnChainTrees, OnChainEnv} = on_chain_trees_and_env(),
+    {OnChainEnv, OnChainTrees} =
+        aetx_env:tx_env_and_trees_from_top(aetx_contract),
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,
                                                   OnChainTrees, OnChainEnv, ChannelOpts),
          D1 = request_signing(?UPDATE, Tx1, D),
@@ -1907,17 +1915,15 @@ check_signed_update_tx(Type, SignedTx, Msg,
     end.
 
 check_update_tx(initial, SignedTx, State, Opts) ->
-    {OnChainTrees, OnChainEnv} = on_chain_trees_and_env(),
+    {OnChainEnv, OnChainTrees} =
+        aetx_env:tx_env_and_trees_from_top(aetx_contract),
     aesc_offchain_state:check_initial_update_tx(SignedTx, State,
                                                 OnChainTrees, OnChainEnv, Opts);
 check_update_tx(normal, SignedTx, State, Opts) ->
-    {OnChainTrees, OnChainEnv} = on_chain_trees_and_env(),
+    {OnChainEnv, OnChainTrees} =
+        aetx_env:tx_env_and_trees_from_top(aetx_contract),
     aesc_offchain_state:check_update_tx(SignedTx, State,
                                         OnChainTrees, OnChainEnv, Opts).
-
-on_chain_trees_and_env() ->
-    {Env, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
-    {Trees, Env}.
 
 check_update_ack_msg(Msg, D) ->
     lager:debug("check_update_ack_msg(~p)", [Msg]),
@@ -1944,7 +1950,8 @@ check_signed_update_ack_tx(SignedTx, Msg,
                            #data{state = State, opts = Opts} = D) ->
     HalfSignedTx = aesc_offchain_state:get_latest_half_signed_tx(State),
     try  ok = check_update_ack_(SignedTx, HalfSignedTx),
-         {OnChainTrees, OnChainEnv} = on_chain_trees_and_env(),
+         {OnChainEnv, OnChainTrees} =
+            aetx_env:tx_env_and_trees_from_top(aetx_contract),
          {ok, D#data{state = aesc_offchain_state:add_signed_tx(
                                SignedTx, State, OnChainTrees, OnChainEnv, Opts),
                      log = log_msg(rcv, ?UPDATE_ACK, Msg, D#data.log)}}
@@ -1969,7 +1976,8 @@ handle_upd_transfer(FromPub, ToPub, Amount, From, #data{ state = State
                                                        , opts = Opts } = D) ->
     Updates = [aesc_offchain_update:op_transfer(aec_id:create(account, FromPub),
                                                 aec_id:create(account, ToPub), Amount)],
-    {OnChainTrees, OnChainEnv} = on_chain_trees_and_env(),
+    {OnChainEnv, OnChainTrees} =
+        aetx_env:tx_env_and_trees_from_top(aetx_contract),
     try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,
                                                   OnChainTrees, OnChainEnv, Opts),
          D1 = request_signing(?UPDATE, Tx1, D),
