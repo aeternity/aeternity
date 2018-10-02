@@ -79,16 +79,16 @@ Verify that the height is the same; it may take a few minutes for your node to c
 ### Verify that node mines on same chain as the testnet
 
 After the node is successfully connected to the testnet, you could verify that it is mining on the same chain as the rest of the network.
-You can validate it observing the `hash` of the `/top` of the remote nodes:
+You can validate it observing the `hash` of the `/blocks/top` of the remote nodes:
 ```bash
 $ curl http://52.10.46.160:3013/v2/blocks/top
-{"hash":"bh$2UWBL9BciGC1w2FUukJZinchGRrCuwEuFTkcVvpZcfcpjiAbUy","height":...}
+{"key_block":{"hash":"kh_2UWBL9BciGC1w2FUukJZinchGRrCuwEuFTkcVvpZcfcpjiAbUy","height":...}}
 ```
 
 This is the hash of the block being at the top of the chain of the node and it should be same as the hash in `prev_hash` of the block you're currently mining:
 ```bash
 $ curl http://127.0.0.1:3013/v2/key-blocks/pending
-{...,"height":... ,"prev_hash":"bh$2UWBL9BciGC1w2FUukJZinchGRrCuwEuFTkcVvpZcfcpjiAbUy", ...}
+{"key_block":{...,"height":... ,"prev_hash":"kh_2UWBL9BciGC1w2FUukJZinchGRrCuwEuFTkcVvpZcfcpjiAbUy", ...}}
 ```
-Height would be +1 of what is in the `/top` of the remote node but this is not
+Height would be +1 of what is in the `/blocks/top` of the remote node but this is not
 as strong guarantee as the `prev_hash`.
