@@ -246,7 +246,6 @@ top_height(C) ->
                     TopHdr ->
                         aec_headers:height(TopHdr)
                 end,
-    lager:debug("top height = ~p", [TopHeight]),
     {TopHeight, C#{ top_height => TopHeight }}.
 
 height(BHash, C) ->

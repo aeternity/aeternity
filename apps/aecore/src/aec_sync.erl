@@ -163,11 +163,11 @@ handle_call(_, _From, State) ->
 handle_cast({start_sync, PeerId, RemoteHash, _RemoteDifficulty}, State) ->
     %% We could decide not to sync if we are already syncing, but that
     %% opens up for an attack in which someone fakes to have higher difficulty
-    run_job(sync_task_workers, fun() -> do_start_sync(PeerId, RemoteHash) end),
+    run_job(sync_tasks, fun() -> do_start_sync(PeerId, RemoteHash) end),
     {noreply, State};
 handle_cast({get_generation, PeerId, Hash},
             State = #state{ last_generation_in_sync = false }) ->
-    run_job(sync_task_workers,
+    run_job(sync_tasks,
             fun() ->
                 case do_get_generation(PeerId, Hash) of
                     ok         -> set_last_generation_in_sync();
@@ -184,7 +184,7 @@ handle_cast({schedule_ping, PeerId}, State) ->
         true ->
             ok;
         false ->
-            run_job(sync_ping_workers, fun() -> ping_peer(PeerId) end)
+            run_job(sync_ping, fun() -> ping_peer(PeerId) end)
     end,
     {noreply, State};
 handle_cast({handle_worker, STId, Action}, State) ->
@@ -514,10 +514,10 @@ enqueue(Kind, Data, PeerIds) ->
     spawn(fun() ->
     case Kind of
         block ->
-            [ jobs:run(sync_gossip_workers, fun() -> do_forward_block(Data, PId) end)
+            [ jobs:run(sync_gossip, fun() -> do_forward_block(Data, PId) end)
               || PId <- PeerIds ];
         tx ->
-            [ jobs:run(sync_gossip_workers, fun() -> do_forward_tx(Data, PId) end)
+            [ jobs:run(sync_gossip, fun() -> do_forward_tx(Data, PId) end)
               || PId <- PeerIds ]
     end end).
 
@@ -627,7 +627,7 @@ do_work_on_sync_task(PeerId, Task, LastResult) ->
     %% epoch_sync:debug("working on ~p against ~p (Last: ~p)", [Task, ppp(PeerId), LastResult]),
     case next_work_item(Task, PeerId, LastResult) of
         take_a_break ->
-            delayed_run_job(PeerId, Task, sync_task_workers,
+            delayed_run_job(PeerId, Task, sync_tasks,
                             fun() -> do_work_on_sync_task(PeerId, Task) end, 250);
         {agree_on_height, Chain} ->
             #{ chain := [#{ hash := TopHash, height := TopHeight } | _] } = Chain,

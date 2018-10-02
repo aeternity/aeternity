@@ -4,6 +4,7 @@
 # Does not use relx_escript, as it does not work well with whitespaces in password, even in brackets.
 
 PATH=$BINDIR:$PATH
+export ERL_LIBS=$ROOTDIR/lib
 "$ERTS_DIR/bin/escript" "$ROOTDIR/lib/aeutils-0.1.0/priv/keys_gen" "$*"
 
 exit $?

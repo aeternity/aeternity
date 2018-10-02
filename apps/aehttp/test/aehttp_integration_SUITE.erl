@@ -2687,11 +2687,13 @@ state_channels_snapshot_solo(ChannelId, MinerPubkey) ->
 
 state_channels_close_mutual(ChannelId, InitiatorPubkey) ->
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
+                origin => aec_base58c:encode(account_pubkey, InitiatorPubkey),
                 initiator_amount_final => 4,
                 responder_amount_final => 3,
                 fee => 1},
     Decoded = maps:merge(Encoded,
-                        #{channel_id => aec_id:create(channel, ChannelId)}),
+                         #{channel_id => aec_id:create(channel, ChannelId),
+                           origin     => aec_id:create(account, InitiatorPubkey)}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_close_mutual/1,
                                fun aesc_close_mutual_tx:new/1, InitiatorPubkey,

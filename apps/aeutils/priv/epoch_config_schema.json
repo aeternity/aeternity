@@ -462,6 +462,184 @@
                     }
                 }
             }
+        },
+        "regulators" : {
+            "description" :
+            "Queues regulating the load in an epoch node. Each queue may have a combination of 'rate', 'counter', 'max_size' and 'max_time' parameters. Set a parameter to 0 if you want it to have no effect.",
+            "type" : "object",
+            "additionalProperties" : false,
+            "properties" : {
+                "sync_ping" : {
+                    "description" : "sync node pinger worker pool.",
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "counter" : {
+                            "type" : "integer",
+                            "default" : 3
+                        },
+                        "rate" : {
+                            "type" : "integer",
+                            "default" : 0
+                        },
+                        "max_size" : {
+                            "type" : "integer",
+                            "default" : 0
+                        },
+                        "max_time" : {
+                            "type" : "integer",
+                            "default" : 0
+                        }
+                    }
+                },
+                "sync_tasks" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "counter" : {
+                            "type" : "integer",
+                            "default" : 10
+                        },
+                        "rate" : {
+                            "type" : "integer",
+                            "default" : 0
+                        },
+                        "max_size" : {
+                            "type" : "integer",
+                            "default" : 0
+                        },
+                        "max_time" : {
+                            "type" : "integer",
+                            "default" : 0
+                        }
+                    }
+                },
+                "sync_gossip" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "counter" : {
+                            "type" : "integer",
+                            "default" : 10
+                        },
+                        "rate" : {
+                            "type" : "integer",
+                            "default" : 0
+                        },
+                        "max_size" : {
+                            "type" : "integer",
+                            "default" : 0
+                        },
+                        "max_time" : {
+                            "type" : "integer",
+                            "default" : 0
+                        }
+                    }
+                },
+                "tx_pool_push" : {
+                    "description" : "mempool updates.",
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "counter" : {
+                            "type" : "integer",
+                            "default" : 0
+                        },
+                        "rate" : {
+                            "type" : "integer",
+                            "default" : 150
+                        },
+                        "max_size" : {
+                            "type" : "integer",
+                            "default" : 0
+                        }
+                    }
+                },
+                "ws_handlers" : {
+                    "description" : "websocket handlers.",
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "counter" : {
+                            "type" : "integer",
+                            "default" : 10
+                        },
+                        "rate" : {
+                            "type" : "integer",
+                            "default" : 0
+                        },
+                        "max_size" : {
+                            "type" : "integer",
+                            "default" : 5
+                        },
+                        "max_time" : {
+                            "type" : "integer",
+                            "default" : 0
+                        }
+                    }
+                },
+                "sc_ws_handlers" : {
+                    "description" : "State channel websocket handlers.",
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "counter" : {
+                            "type" : "integer",
+                            "default" : 10
+                        },
+                        "rate" : {
+                            "type" : "integer",
+                            "default" : 0
+                        },
+                        "max_size" : {
+                            "type" : "integer",
+                            "default" : 5
+                        }
+                    }
+                },
+                "http_update" : {
+                    "description" : "HTTP update requests.",
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "counter" : {
+                            "type" : "integer",
+                            "default" : 5
+                        },
+                        "rate" : {
+                            "type" : "integer",
+                            "default" : 150
+                        },
+                        "max_size" : {
+                            "type" : "integer",
+                            "default" : 100
+                        }
+                    }
+                },
+                "http_read" : {
+                    "description" : "HTTP read requests.",
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "counter" : {
+                            "type" : "integer",
+                            "default" : 10
+                        },
+                        "rate" : {
+                            "type" : "integer",
+                            "default" : 200
+                        },
+                        "max_size" : {
+                            "type" : "integer",
+                            "default" : 100
+                        },
+                        "max_time" : {
+                            "type" : "integer",
+                            "default" : 0
+                        }
+                    }
+                }
+            }
         }
     }
 }

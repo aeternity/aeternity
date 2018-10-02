@@ -32,7 +32,11 @@
         Context :: #{}
                    ) -> {Status :: cowboy:http_status(), Headers :: list(), Body :: map()}.
 
-handle_request('PostKeyBlock', #{'KeyBlock' := Data}, _Context) ->
+handle_request(OperationID, Req, Context) ->
+    jobs:run(http_update,
+             fun() -> handle_request_(OperationID, Req, Context) end).
+
+handle_request_('PostKeyBlock', #{'KeyBlock' := Data}, _Context) ->
     case aec_headers:deserialize_from_client(key, Data) of
         {ok, Header} ->
             KeyBlock = aec_blocks:new_key_from_header(Header),
@@ -46,7 +50,7 @@ handle_request('PostKeyBlock', #{'KeyBlock' := Data}, _Context) ->
             {400, [], #{reason => <<"Invalid block">>}}
     end;
 
-handle_request('PostSpend', #{'SpendTx' := Req}, _Context) ->
+handle_request_('PostSpend', #{'SpendTx' := Req}, _Context) ->
     AllowedRecipients = [account_pubkey, name, oracle_pubkey, contract_pubkey],
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([sender_id,
@@ -61,7 +65,7 @@ handle_request('PostSpend', #{'SpendTx' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) ->
+handle_request_('PostContractCreate', #{'ContractCreateData' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([owner_id, code, vm_version, deposit,
                                        amount, gas, gas_price, fee, call_data]),
@@ -83,7 +87,7 @@ handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) -
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('PostContractCreateCompute', #{'ContractCreateCompute' := Req}, _Context) ->
+handle_request_('PostContractCreateCompute', #{'ContractCreateCompute' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([owner_id, code, vm_version, deposit,
                                        amount, gas, gas_price, fee,
@@ -107,7 +111,7 @@ handle_request('PostContractCreateCompute', #{'ContractCreateCompute' := Req}, _
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
+handle_request_('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([caller_id, contract_id, vm_version,
                                        amount, gas, gas_price, fee, call_data]),
@@ -121,7 +125,7 @@ handle_request('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('PostContractCallCompute', #{'ContractCallCompute' := Req}, _Context) ->
+handle_request_('PostContractCallCompute', #{'ContractCallCompute' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([caller_id, contract_id, vm_version,
                                        amount, gas, gas_price, fee,
@@ -136,7 +140,7 @@ handle_request('PostContractCallCompute', #{'ContractCallCompute' := Req}, _Cont
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('CompileContract', Req, _Context) ->
+handle_request_('CompileContract', Req, _Context) ->
     case Req of
         #{'Contract' :=
               #{ <<"code">> := Code
@@ -151,7 +155,7 @@ handle_request('CompileContract', Req, _Context) ->
         _ -> {403, [], #{reason => <<"Bad request">>}}
     end;
 
-handle_request('CallContract', Req, _Context) ->
+handle_request_('CallContract', Req, _Context) ->
     case Req of
         #{'ContractCallInput' :=
               #{ <<"abi">> := ABI
@@ -167,7 +171,7 @@ handle_request('CallContract', Req, _Context) ->
         _ -> {403, [], #{reason => <<"Bad request">>}}
     end;
 
-handle_request('DecodeData', Req, _Context) ->
+handle_request_('DecodeData', Req, _Context) ->
     case Req of
         #{'SophiaBinaryData' :=
               #{ <<"sophia-type">>  := Type
@@ -181,7 +185,7 @@ handle_request('DecodeData', Req, _Context) ->
             end
     end;
 
-handle_request('EncodeCalldata', Req, _Context) ->
+handle_request_('EncodeCalldata', Req, _Context) ->
     case Req of
         #{'ContractCallInput' :=
               #{ <<"abi">>  := ABI
@@ -198,7 +202,7 @@ handle_request('EncodeCalldata', Req, _Context) ->
         _ -> {403, [], #{reason => <<"Bad request">>}}
     end;
 
-handle_request('PostNamePreclaim', #{'NamePreclaimTx' := Req}, _Context) ->
+handle_request_('PostNamePreclaim', #{'NamePreclaimTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([account_id, commitment_id, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
@@ -209,7 +213,7 @@ handle_request('PostNamePreclaim', #{'NamePreclaimTx' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('PostNameUpdate', #{'NameUpdateTx' := Req}, _Context) ->
+handle_request_('PostNameUpdate', #{'NameUpdateTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([account_id, name_id, name_ttl,
                                        pointers, client_ttl, fee]),
@@ -222,7 +226,7 @@ handle_request('PostNameUpdate', #{'NameUpdateTx' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('PostNameClaim', #{'NameClaimTx' := Req}, _Context) ->
+handle_request_('PostNameClaim', #{'NameClaimTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([account_id, name, name_salt, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
@@ -234,7 +238,7 @@ handle_request('PostNameClaim', #{'NameClaimTx' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('PostNameTransfer', #{'NameTransferTx' := Req}, _Context) ->
+handle_request_('PostNameTransfer', #{'NameTransferTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([account_id, name_id, recipient_id, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
@@ -247,7 +251,7 @@ handle_request('PostNameTransfer', #{'NameTransferTx' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('PostNameRevoke', #{'NameRevokeTx' := Req}, _Context) ->
+handle_request_('PostNameRevoke', #{'NameRevokeTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([account_id, name_id, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
@@ -258,7 +262,7 @@ handle_request('PostNameRevoke', #{'NameRevokeTx' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('PostChannelCreate', #{'ChannelCreateTx' := Req}, _Context) ->
+handle_request_('PostChannelCreate', #{'ChannelCreateTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([initiator_id, initiator_amount,
                                        state_hash,
@@ -275,7 +279,7 @@ handle_request('PostChannelCreate', #{'ChannelCreateTx' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('PostChannelDeposit', #{'ChannelDepositTx' := Req}, _Context) ->
+handle_request_('PostChannelDeposit', #{'ChannelDepositTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([channel_id, from_id,
                                        amount, fee, state_hash, round, nonce]),
@@ -287,7 +291,7 @@ handle_request('PostChannelDeposit', #{'ChannelDepositTx' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('PostChannelWithdraw', #{'ChannelWithdrawTx' := Req}, _Context) ->
+handle_request_('PostChannelWithdraw', #{'ChannelWithdrawTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([channel_id, to_id,
                                        amount, fee, state_hash, round, nonce]),
@@ -299,7 +303,7 @@ handle_request('PostChannelWithdraw', #{'ChannelWithdrawTx' := Req}, _Context) -
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('PostChannelSnapshotSolo', #{'ChannelSnapshotSoloTx' := Req}, _Context) ->
+handle_request_('PostChannelSnapshotSolo', #{'ChannelSnapshotSoloTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([channel_id, from_id,
                                        payload, fee]),
@@ -311,19 +315,20 @@ handle_request('PostChannelSnapshotSolo', #{'ChannelSnapshotSoloTx' := Req}, _Co
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('PostChannelCloseMutual', #{'ChannelCloseMutualTx' := Req}, _Context) ->
+handle_request_('PostChannelCloseMutual', #{'ChannelCloseMutualTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([channel_id,
+                 read_required_params([channel_id, origin,
                                        initiator_amount_final,
                                        responder_amount_final,
                                        fee, nonce]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
-                 base58_decode([{channel_id, channel_id, {id_hash, [channel]}}]),
+                 base58_decode([{channel_id, channel_id, {id_hash, [channel]}},
+                                {origin, origin, {id_hash, [account_pubkey]}}]),
                  unsigned_tx_response(fun aesc_close_mutual_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('PostChannelCloseSolo', #{'ChannelCloseSoloTx' := Req}, _Context) ->
+handle_request_('PostChannelCloseSolo', #{'ChannelCloseSoloTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([channel_id, from_id,
                                        payload, poi, fee]),
@@ -337,7 +342,7 @@ handle_request('PostChannelCloseSolo', #{'ChannelCloseSoloTx' := Req}, _Context)
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('PostChannelSlash', #{'ChannelSlashTx' := Req}, _Context) ->
+handle_request_('PostChannelSlash', #{'ChannelSlashTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([channel_id, from_id,
                                        payload, poi, fee]),
@@ -351,7 +356,7 @@ handle_request('PostChannelSlash', #{'ChannelSlashTx' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('PostChannelSettle', #{'ChannelSettleTx' := Req}, _Context) ->
+handle_request_('PostChannelSettle', #{'ChannelSettleTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([channel_id, from_id,
                                        initiator_amount_final,
@@ -364,7 +369,7 @@ handle_request('PostChannelSettle', #{'ChannelSettleTx' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
+handle_request_('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([account_id, {query_format, query_format},
                                        {response_format, response_format},
@@ -377,7 +382,7 @@ handle_request('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('PostOracleExtend', #{'OracleExtendTx' := Req}, _Context) ->
+handle_request_('PostOracleExtend', #{'OracleExtendTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([oracle_id, oracle_ttl, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
@@ -388,7 +393,7 @@ handle_request('PostOracleExtend', #{'OracleExtendTx' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
+handle_request_('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([sender_id, oracle_id, query,
                                        query_fee, fee, query_ttl, response_ttl]),
@@ -403,7 +408,7 @@ handle_request('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('PostOracleRespond', #{'OracleRespondTx' := Req}, _Context) ->
+handle_request_('PostOracleRespond', #{'OracleRespondTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([oracle_id, query_id, response, fee]),
                  read_optional_params([{ttl, ttl, '$no_value'}]),
@@ -415,7 +420,7 @@ handle_request('PostOracleRespond', #{'OracleRespondTx' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('GetNodePubkey', _, _Context) ->
+handle_request_('GetNodePubkey', _, _Context) ->
     case aec_keys:pubkey() of
         {ok, Pubkey} ->
             %% TODO: rename pub_key to pubkey
@@ -424,7 +429,7 @@ handle_request('GetNodePubkey', _, _Context) ->
             {404, [], #{reason => <<"Public key not found">>}}
     end;
 
-handle_request('GetCommitmentId', Req, _Context) ->
+handle_request_('GetCommitmentId', Req, _Context) ->
     Name         = maps:get('name', Req),
     Salt         = maps:get('salt', Req),
     case aens:get_commitment_hash(Name, Salt) of
@@ -436,11 +441,11 @@ handle_request('GetCommitmentId', Req, _Context) ->
             {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>}}
     end;
 
-handle_request('GetPendingTransactions', _Req, _Context) ->
+handle_request_('GetPendingTransactions', _Req, _Context) ->
     {ok, Txs} = aec_tx_pool:peek(infinity),
     {200, [], #{transactions => [aetx_sign:serialize_for_client_pending(T) || T <- Txs]}};
 
-handle_request('GetPeers', _Req, _Context) ->
+handle_request_('GetPeers', _Req, _Context) ->
     case aeu_env:user_config_or_env([<<"http">>, <<"debug">>],
                                     aehttp, enable_debug_endpoints, false) of
         true ->
@@ -457,7 +462,7 @@ handle_request('GetPeers', _Req, _Context) ->
             {403, [], #{reason => <<"Call not enabled">>}}
     end;
 
-handle_request(OperationID, Req, Context) ->
+handle_request_(OperationID, Req, Context) ->
     error_logger:error_msg(
       ">>> Got not implemented request to process: ~p~n",
       [{OperationID, Req, Context}]

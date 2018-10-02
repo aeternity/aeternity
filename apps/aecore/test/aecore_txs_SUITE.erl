@@ -94,7 +94,7 @@ txs_gc(Config) ->
     {ok, _}    = add_spend_tx(N1, 1000, 1,  8,  5),  %% Short TTL - expires at 5 + 2 = 7
 
     %% Now there should be 7 transactions in mempool
-    {ok, Txs1} = rpc:call(N1, aec_tx_pool, peek, [infinity]),
+    {ok, Txs1} = pool_peek(N1),
     {7, _} = {length(Txs1), Txs1},
 
     %% Mine to get TxH1-3 onto chain
@@ -102,7 +102,7 @@ txs_gc(Config) ->
     Height1 = Height0 + length(Blocks1), %% Very unlikely to be > 4...
 
     %% Now there should be 3 or 4 transactions in mempool
-    {ok, Txs2} = rpc:call(N1, aec_tx_pool, peek, [infinity]),
+    {ok, Txs2} = pool_peek(N1),
     case Height1 of
         3                -> {4, _} = {length(Txs2), Txs2};
         HH1 when HH1 > 3 -> ct:log("Skipping assert; micro fork advanced height to far...")
@@ -114,7 +114,7 @@ txs_gc(Config) ->
     Height2 = max(Height1, 4),
 
     %% Now unless Height2 > 4, there should be 3 transactions in mempool
-    {ok, Txs3} = rpc:call(N1, aec_tx_pool, peek, [infinity]),
+    {ok, Txs3} = pool_peek(N1),
     case Height2 of
         4                -> {3, _} = {length(Txs3), Txs3};
         HH2 when HH2 > 4 -> ct:log("Skipping assert; micro fork advanced height to far...")
@@ -128,7 +128,7 @@ txs_gc(Config) ->
     Height3 = Height2 + length(Blocks2),
 
     %% Now at height 6 there should be 2 transactions in mempool
-    {ok, Txs4} = rpc:call(N1, aec_tx_pool, peek, [infinity]),
+    {ok, Txs4} = pool_peek(N1),
     case Height3 of
         6                -> {2, _} = {length(Txs4), Txs4};
         HH3 when HH3 > 6 -> ct:log("Skipping assert; micro fork advanced height to far...")
@@ -140,7 +140,7 @@ txs_gc(Config) ->
     Height4 = max(Height3, 7),
 
     %% Now there should be 1 transaction in mempool
-    {ok, Txs5} = rpc:call(N1, aec_tx_pool, peek, [infinity]),
+    {ok, Txs5} = pool_peek(N1),
     case Height4 of
         7                -> {1, _} = {length(Txs5), Txs5};
         HH4 when HH4 > 7 -> ct:log("Skipping assert; micro fork advanced height to far...")
@@ -154,6 +154,10 @@ txs_gc(Config) ->
     {0, _} = {length(Txs6), Txs6},
 
     ok = aecore_suite_utils:check_for_logs([dev1], Config).
+
+pool_peek(Node) ->
+    rpc:call(Node, sys, get_status, [aec_tx_pool_gc]),
+    rpc:call(Node, aec_tx_pool, peek, [infinity]).
 
 missing_tx_gossip(Config) ->
     aecore_suite_utils:start_node(dev1, Config),

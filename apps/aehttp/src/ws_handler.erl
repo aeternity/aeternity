@@ -24,7 +24,7 @@ init(Req, Opts) ->
     {cowboy_websocket, Req, Opts}.
 
 websocket_init(_Opts) ->
-    case jobs:ask(ws_handlers_queue) of
+    case jobs:ask(ws_handlers) of
         {ok, JobId} ->
             gproc:reg(?GPROC_KEY),
             {ok, JobId};

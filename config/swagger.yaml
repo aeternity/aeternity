@@ -2492,6 +2492,8 @@ definitions:
     properties:
       channel_id:
         $ref: '#/definitions/EncodedHash'
+      origin:
+        $ref: '#/definitions/EncodedHash'
       initiator_amount_final:
         type: integer
         format: int64

@@ -35,13 +35,61 @@
 
 -compile({parse_transform, lager_transform}).
 
+-define(READ_Q, http_read).
+-define(WRITE_Q, http_update).
+-define(NO_Q, no_queue).
+
 -spec handle_request(
         OperationID :: atom(),
         Req :: cowboy_req:req(),
         Context :: #{}
        ) -> {Status :: cowboy:http_status(), Headers :: list(), Body :: map()}.
+handle_request(OperationID, Req, Context) ->
+    run(queue(OperationID),
+        fun() ->
+                handle_request_(OperationID, Req, Context)
+        end).
 
-handle_request('GetTopBlock', _, _Context) ->
+%% run(no_queue, F) -> F();
+run(Queue, F) -> jobs:run(Queue, F).
+
+%% read transactions
+queue('GetTopBlock')                            -> ?READ_Q;
+queue('GetCurrentKeyBlock')                     -> ?READ_Q;
+queue('GetCurrentKeyBlockHash')                 -> ?READ_Q;
+queue('GetCurrentKeyBlockHeight')               -> ?READ_Q;
+queue('GetPendingKeyBlock')                     -> ?READ_Q;
+queue('GetKeyBlockByHash')                      -> ?READ_Q;
+queue('GetKeyBlockByHeight')                    -> ?READ_Q;
+queue('GetMicroBlockHeaderByHash')              -> ?READ_Q;
+queue('GetMicroBlockTransactionsByHash')        -> ?READ_Q;
+queue('GetMicroBlockTransactionByHashAndIndex') -> ?READ_Q;
+queue('GetMicroBlockTransactionsCountByHash')   -> ?READ_Q;
+queue('GetCurrentGeneration')                   -> ?READ_Q;
+queue('GetGenerationByHash')                    -> ?READ_Q;
+queue('GetGenerationByHeight')                  -> ?READ_Q;
+queue('GetAccountByPubkey')                     -> ?READ_Q;
+queue('GetPendingAccountTransactionsByPubkey')  -> ?READ_Q;
+queue('GetTransactionByHash')                   -> ?READ_Q;
+queue('GetTransactionInfoByHash')               -> ?READ_Q;
+queue('GetContract')                            -> ?READ_Q;
+queue('GetContractCode')                        -> ?READ_Q;
+queue('GetContractStore')                       -> ?READ_Q;
+queue('GetContractPoI')                         -> ?READ_Q;
+queue('GetOracleByPubkey')                      -> ?READ_Q;
+queue('GetOracleQueriesByPubkey')               -> ?READ_Q;
+queue('GetOracleQueryByPubkeyAndQueryId')       -> ?READ_Q;
+queue('GetNameEntryByName')                     -> ?READ_Q;
+queue('GetChannelByPubkey')                     -> ?READ_Q;
+queue('GetPeerPubkey')                          -> ?READ_Q;
+queue('GetStatus')                              -> ?READ_Q;
+queue('GetContractCallFromTx')                  -> ?READ_Q;
+queue('GetPeerKey')                             -> ?READ_Q;
+%% update transactions (default to update in catch-all)
+queue('PostTransaction')                        -> ?WRITE_Q;
+queue(_)                                        -> ?WRITE_Q.
+
+handle_request_('GetTopBlock', _, _Context) ->
     case aec_chain:top_block() of
         Block when Block =/= undefined ->
             case aec_blocks:height(Block) of
@@ -69,7 +117,7 @@ handle_request('GetTopBlock', _, _Context) ->
             {404, [], #{reason => <<"Block not found">>}}
     end;
 
-handle_request('GetCurrentKeyBlock', _Req, _Context) ->
+handle_request_('GetCurrentKeyBlock', _Req, _Context) ->
     case aec_chain:top_key_block() of
         {ok, Block} ->
             case aec_blocks:height(Block) of
@@ -91,17 +139,17 @@ handle_request('GetCurrentKeyBlock', _Req, _Context) ->
             {404, [], #{reason => <<"Block not found">>}}
     end;
 
-handle_request('GetCurrentKeyBlockHash', _, _Context) ->
+handle_request_('GetCurrentKeyBlockHash', _, _Context) ->
     Hash = aec_chain:top_key_block_hash(),
     EncodedHash = aec_base58c:encode(key_block_hash, Hash),
     {200, [], #{hash => EncodedHash}};
 
-handle_request('GetCurrentKeyBlockHeight', _, _Context) ->
+handle_request_('GetCurrentKeyBlockHeight', _, _Context) ->
     TopBlock = aec_chain:top_block(),
     Height = aec_blocks:height(TopBlock),
     {200, [], #{height => Height}};
 
-handle_request('GetPendingKeyBlock', _Req, _Context) ->
+handle_request_('GetPendingKeyBlock', _Req, _Context) ->
     case aec_conductor:get_key_block_candidate() of
         {ok, Block} ->
             PrevBlockHash = aec_blocks:prev_hash(Block),
@@ -117,7 +165,7 @@ handle_request('GetPendingKeyBlock', _Req, _Context) ->
             {404, [], #{reason => <<"Block not found">>}}
     end;
 
-handle_request('GetKeyBlockByHash', Params, _Context) ->
+handle_request_('GetKeyBlockByHash', Params, _Context) ->
     case aec_base58c:safe_decode(key_block_hash, maps:get('hash', Params)) of
         {error, _} -> {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
@@ -147,7 +195,7 @@ handle_request('GetKeyBlockByHash', Params, _Context) ->
             end
     end;
 
-handle_request('GetKeyBlockByHeight', Params, _Context) ->
+handle_request_('GetKeyBlockByHeight', Params, _Context) ->
     Height = maps:get(height, Params),
     case aec_chain:get_key_block_by_height(Height) of
         {ok, Block} ->
@@ -169,7 +217,7 @@ handle_request('GetKeyBlockByHeight', Params, _Context) ->
             {404, [], #{reason => <<"Block not found">>}}
     end;
 
-handle_request('GetMicroBlockHeaderByHash', Params, _Context) ->
+handle_request_('GetMicroBlockHeaderByHash', Params, _Context) ->
     case aec_base58c:safe_decode(micro_block_hash, maps:get(hash, Params)) of
         {ok, Hash} ->
             case aehttp_logic:get_micro_block_by_hash(Hash) of
@@ -190,7 +238,7 @@ handle_request('GetMicroBlockHeaderByHash', Params, _Context) ->
             {400, [], #{reason => <<"Invalid hash">>}}
     end;
 
-handle_request('GetMicroBlockTransactionsByHash', Params, _Context) ->
+handle_request_('GetMicroBlockTransactionsByHash', Params, _Context) ->
     case aec_base58c:safe_decode(micro_block_hash, maps:get(hash, Params)) of
         {ok, Hash} ->
             case aehttp_logic:get_micro_block_by_hash(Hash) of
@@ -206,7 +254,7 @@ handle_request('GetMicroBlockTransactionsByHash', Params, _Context) ->
             {400, [], #{reason => <<"Invalid hash">>}}
     end;
 
-handle_request('GetMicroBlockTransactionByHashAndIndex', Params, _Context) ->
+handle_request_('GetMicroBlockTransactionByHashAndIndex', Params, _Context) ->
     HashDec = aec_base58c:safe_decode(micro_block_hash, maps:get(hash, Params)),
     IndexDec = maps:get(index, Params),
     case {HashDec, IndexDec} of
@@ -231,7 +279,7 @@ handle_request('GetMicroBlockTransactionByHashAndIndex', Params, _Context) ->
     end;
 
 
-handle_request('GetMicroBlockTransactionsCountByHash', Params, _Context) ->
+handle_request_('GetMicroBlockTransactionsCountByHash', Params, _Context) ->
     case aec_base58c:safe_decode(micro_block_hash, maps:get(hash, Params)) of
         {ok, Hash} ->
             case aehttp_logic:get_micro_block_by_hash(Hash) of
@@ -244,10 +292,10 @@ handle_request('GetMicroBlockTransactionsCountByHash', Params, _Context) ->
             {400, [], #{reason => <<"Invalid hash">>}}
     end;
 
-handle_request('GetCurrentGeneration', _, _Context) ->
+handle_request_('GetCurrentGeneration', _, _Context) ->
     generation_rsp(aec_chain:get_current_generation());
 
-handle_request('GetGenerationByHash', Params, _Context) ->
+handle_request_('GetGenerationByHash', Params, _Context) ->
     case aec_base58c:safe_decode(key_block_hash, maps:get('hash', Params)) of
         {error, _} -> {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
@@ -256,14 +304,14 @@ handle_request('GetGenerationByHash', Params, _Context) ->
                 false -> {400, [], #{reason => <<"Hash not on main chain">>}}
             end
     end;
-handle_request('GetGenerationByHeight', Params, _Context) ->
+handle_request_('GetGenerationByHeight', Params, _Context) ->
     Height = maps:get('height', Params),
     case aec_chain_state:get_key_block_hash_at_height(Height) of
         error -> {404, [], #{reason => <<"Chain too short">>}};
         {ok, Hash} -> generation_rsp(aec_chain:get_generation_by_hash(Hash, forward))
     end;
 
-handle_request('GetAccountByPubkey', Params, _Context) ->
+handle_request_('GetAccountByPubkey', Params, _Context) ->
     AllowedTypes = [account_pubkey, contract_pubkey],
     case aec_base58c:safe_decode({id_hash, AllowedTypes}, maps:get(pubkey, Params)) of
         {ok, Id} ->
@@ -278,7 +326,7 @@ handle_request('GetAccountByPubkey', Params, _Context) ->
             {400, [], #{reason => <<"Invalid public key">>}}
     end;
 
-handle_request('GetPendingAccountTransactionsByPubkey', Params, _Context) ->
+handle_request_('GetPendingAccountTransactionsByPubkey', Params, _Context) ->
     case aec_base58c:safe_decode(account_pubkey, maps:get(pubkey, Params)) of
         {ok, Pubkey} ->
             case aec_chain:get_account(Pubkey) of
@@ -293,7 +341,7 @@ handle_request('GetPendingAccountTransactionsByPubkey', Params, _Context) ->
             {400, [], #{reason => <<"Invalid public key">>}}
     end;
 
-handle_request('GetTransactionByHash', Params, _Config) ->
+handle_request_('GetTransactionByHash', Params, _Config) ->
     case aec_base58c:safe_decode(tx_hash, maps:get(hash, Params)) of
         {ok, Hash} ->
             case aec_chain:find_tx_with_location(Hash) of
@@ -309,7 +357,7 @@ handle_request('GetTransactionByHash', Params, _Config) ->
             {400, [], #{reason => <<"Invalid hash">>}}
     end;
 
-handle_request('GetTransactionInfoByHash', Params, _Config) ->
+handle_request_('GetTransactionInfoByHash', Params, _Config) ->
     ParseFuns = [read_required_params([hash]),
                  base58_decode([{hash, tx_hash, tx_hash}]),
                  get_transaction(tx_hash, tx),
@@ -321,7 +369,7 @@ handle_request('GetTransactionInfoByHash', Params, _Config) ->
                 ],
     process_request(ParseFuns, Params);
 
-handle_request('PostTransaction', #{'Tx' := Tx}, _Context) ->
+handle_request_('PostTransaction', #{'Tx' := Tx}, _Context) ->
     case aec_base58c:safe_decode(transaction, maps:get(<<"tx">>, Tx)) of
         {ok, TxDec} ->
             case deserialize_transaction(TxDec) of
@@ -340,7 +388,7 @@ handle_request('PostTransaction', #{'Tx' := Tx}, _Context) ->
             {400, [], #{reason => <<"Invalid base58Check encoding">>}}
     end;
 
-handle_request('GetContract', Req, _Context) ->
+handle_request_('GetContract', Req, _Context) ->
     case aec_base58c:safe_decode(contract_pubkey, maps:get(pubkey, Req)) of
         {error, _} -> {400, [], #{reason => <<"Invalid public key">>}};
         {ok, PubKey} ->
@@ -352,7 +400,7 @@ handle_request('GetContract', Req, _Context) ->
             end
     end;
 
-handle_request('GetContractCode', Req, _Context) ->
+handle_request_('GetContractCode', Req, _Context) ->
     case aec_base58c:safe_decode(contract_pubkey, maps:get(pubkey, Req)) of
         {error, _} -> {400, [], #{reason => <<"Invalid public key">>}};
         {ok, PubKey} ->
@@ -364,7 +412,7 @@ handle_request('GetContractCode', Req, _Context) ->
             end
     end;
 
-handle_request('GetContractStore', Req, _Context) ->
+handle_request_('GetContractStore', Req, _Context) ->
     case aec_base58c:safe_decode(contract_pubkey, maps:get(pubkey, Req)) of
         {error, _} -> {400, [], #{reason => <<"Invalid public key">>}};
         {ok, PubKey} ->
@@ -378,7 +426,7 @@ handle_request('GetContractStore', Req, _Context) ->
             end
     end;
 
-handle_request('GetContractPoI', Req, _Context) ->
+handle_request_('GetContractPoI', Req, _Context) ->
     ParseFuns = [read_required_params([pubkey]),
                  base58_decode([{pubkey, pubkey, contract_pubkey}]),
                  get_poi(contract, pubkey, poi),
@@ -389,7 +437,7 @@ handle_request('GetContractPoI', Req, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('GetOracleByPubkey', Params, _Context) ->
+handle_request_('GetOracleByPubkey', Params, _Context) ->
     case aec_base58c:safe_decode(oracle_pubkey, maps:get(pubkey, Params)) of
         {ok, Pubkey} ->
             case aec_chain:get_oracle(Pubkey) of
@@ -402,7 +450,7 @@ handle_request('GetOracleByPubkey', Params, _Context) ->
             {400, [], #{reason => <<"Invalid public key">>}}
     end;
 
-handle_request('GetOracleQueriesByPubkey', Params, _Context) ->
+handle_request_('GetOracleQueriesByPubkey', Params, _Context) ->
     case aec_base58c:safe_decode(oracle_pubkey, maps:get(pubkey, Params)) of
         {ok, Pubkey} ->
             Limit = case maps:get(limit, Params) of
@@ -431,7 +479,7 @@ handle_request('GetOracleQueriesByPubkey', Params, _Context) ->
             {400, [], #{reason => <<"Invalid public key">>}}
     end;
 
-handle_request('GetOracleQueryByPubkeyAndQueryId', Params, _Context) ->
+handle_request_('GetOracleQueryByPubkeyAndQueryId', Params, _Context) ->
     case aec_base58c:safe_decode(oracle_pubkey, maps:get(pubkey, Params)) of
         {ok, Pubkey} ->
             case aec_base58c:safe_decode(oracle_query_id, maps:get('query-id', Params)) of
@@ -449,7 +497,7 @@ handle_request('GetOracleQueryByPubkeyAndQueryId', Params, _Context) ->
             {400, [], #{reason => <<"Invalid public key or query ID">>}}
     end;
 
-handle_request('GetNameEntryByName', Params, _Context) ->
+handle_request_('GetNameEntryByName', Params, _Context) ->
     Name = maps:get(name, Params),
     case aec_chain:name_entry(Name) of
         {ok, #{id       := Id,
@@ -467,7 +515,7 @@ handle_request('GetNameEntryByName', Params, _Context) ->
             {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>}}
     end;
 
-handle_request('GetChannelByPubkey', Params, _Context) ->
+handle_request_('GetChannelByPubkey', Params, _Context) ->
     case aec_base58c:safe_decode(channel, maps:get(pubkey, Params)) of
         {ok, Pubkey} ->
             case aec_chain:get_channel(Pubkey) of
@@ -480,11 +528,11 @@ handle_request('GetChannelByPubkey', Params, _Context) ->
             {400, [], #{reason => <<"Invalid public key">>}}
     end;
 
-handle_request('GetPeerPubkey', _Params, _Context) ->
+handle_request_('GetPeerPubkey', _Params, _Context) ->
     {ok, Pubkey} = aec_keys:peer_pubkey(),
     {200, [], #{pubkey => aec_base58c:encode(peer_pubkey, Pubkey)}};
 
-handle_request('GetStatus', _Params, _Context) ->
+handle_request_('GetStatus', _Params, _Context) ->
     {ok, TopKeyBlock} = aec_chain:top_key_block(),
     {ok, GenesisBlockHash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
     Solutions = 0, %% TODO
@@ -514,7 +562,7 @@ handle_request('GetStatus', _Params, _Context) ->
        <<"peer_count">>                 => PeerCount,
        <<"pending_transactions_count">> => PendingTxsCount}};
 
-handle_request('GetContractCallFromTx', Req, _Context) ->
+handle_request_('GetContractCallFromTx', Req, _Context) ->
     ParseFuns = [read_required_params([tx_hash]),
                  base58_decode([{tx_hash, tx_hash, tx_hash}]),
                  get_transaction(tx_hash, tx),
@@ -526,7 +574,7 @@ handle_request('GetContractCallFromTx', Req, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request('GetPeerKey', _Req, _Context) ->
+handle_request_('GetPeerKey', _Req, _Context) ->
     case aehttp_logic:peer_pubkey() of
         {ok, PeerKey} ->
             {200, [], #{pub_key => aec_base58c:encode(peer_pubkey, PeerKey)}};
@@ -534,7 +582,7 @@ handle_request('GetPeerKey', _Req, _Context) ->
             {404, [], #{reason => <<"Keys not configured">>}}
     end;
 
-handle_request(OperationID, Req, Context) ->
+handle_request_(OperationID, Req, Context) ->
     error_logger:error_msg(
       ">>> Got not implemented request to process: ~p~n",
       [{OperationID, Req, Context}]
