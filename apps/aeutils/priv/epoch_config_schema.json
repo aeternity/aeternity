@@ -118,7 +118,7 @@
                     "default" : 7
                 },
                 "resolver_backoff_times" : {
-                    "description" : "Waiting time intervals (milliseconds) before each retry at resolving the host name of peers (both trusted and untrusted).",
+                    "description" : "Waiting time intervals (milliseconds) before each retry at resolving the host name of peers (both trusted and untrusted). Retries further to the length of the array reuse the last item of the array.",
                     "type" : "array",
                     "minItems" : 1,
                     "items" : {
