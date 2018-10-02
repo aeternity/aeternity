@@ -74,10 +74,12 @@ make_spend_tx(Sender) ->
                                         nonce => 1,
                                         payload => <<>>}).
 make_signed_mutual_close() ->
-    #{ secret:= PrivKey1} = enacl:sign_keypair(),
+    #{ public := PubKey, secret:= PrivKey1} = enacl:sign_keypair(),
     #{ secret := PrivKey2} = enacl:sign_keypair(),
     Channel = aec_id:create(channel, <<0:32/unit:8>>),
+    FromId = aec_id:create(account, PubKey),
     {ok, Tx} = aesc_close_mutual_tx:new(#{channel_id              => Channel,
+                                          from_id                 => FromId,
                                           initiator_amount_final  => 42,
                                           responder_amount_final  => 24,
                                           ttl                     => 1000,

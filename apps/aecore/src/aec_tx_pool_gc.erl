@@ -3,6 +3,7 @@
 
 -export([
           start_link/0
+        , stop/0
         , gc/1
         , delete_hash/2
         , add_hash/4
@@ -39,6 +40,9 @@
 
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+stop() ->
+    gen_server:stop(?SERVER).
 
 gc(Height) ->
     gen_server:cast(?SERVER, {garbage_collect, Height}).

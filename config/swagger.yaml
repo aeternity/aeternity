@@ -2516,6 +2516,7 @@ definitions:
         minimum: 0
     required:
       - channel_id
+      - from_id
       - initiator_amount_final
       - responder_amount_final
       - fee

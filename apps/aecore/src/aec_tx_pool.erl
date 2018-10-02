@@ -143,7 +143,7 @@ garbage_collect() ->
 -ifdef(TEST).
 -spec garbage_collect(Height :: aec_blocks:height()) -> ok.
 garbage_collect(Height) ->
-    aec_tx_pool_gc:garbage_collect(Height).
+    aec_tx_pool_gc:gc(Height).
 -endif.
 
 %% The specified maximum number of transactions avoids requiring
@@ -279,8 +279,8 @@ int_get_candidate(MaxGas, BlockHash, #dbs{db = Db} = DBs) ->
                       {account_trees, aec_trees:accounts(Trees)},
                       aec_headers:height(Header), gb_trees:empty()).
 
-int_get_candidate(Gas, Dbs = #dbs{db = Db, gc_db = GCDb},
-                  ?KEY(_, _, Account, Nonce, TxHash) = Key,
+int_get_candidate(Gas, Dbs = #dbs{db = Db},
+                  ?KEY(_, _, Account, Nonce, _) = Key,
                   AccountsTree, Height, Acc) ->
     Next = ets:next(Db, Key),
     case gb_trees:is_defined({Account, Nonce}, Acc) of
@@ -288,7 +288,18 @@ int_get_candidate(Gas, Dbs = #dbs{db = Db, gc_db = GCDb},
             %% The earlier must have had higher fee. Skip this tx.
             int_get_candidate(Gas, Dbs, Next, AccountsTree, Height, Acc);
         false ->
-            Tx = ets:lookup_element(Db, Key, ?VALUE_POS),
+            {RemGas, Acc1} =
+                check_candidate(Dbs, Key, AccountsTree, Height, Gas, Acc),
+            int_get_candidate(RemGas, Dbs, Next, AccountsTree, Height, Acc1)
+    end;
+int_get_candidate(_Gas, _Dbs, '$end_of_table', _AccountsTree, _Height, Acc) ->
+    {ok, gb_trees:values(Acc)}.
+
+check_candidate(#dbs{db = Db, gc_db = GCDb},
+                ?KEY(_, _, Account, Nonce, TxHash) = Key,
+                AccountsTree, Height, Gas, Acc) ->
+    case ets:lookup(Db, Key) of
+        [{_, Tx}] ->
             Tx1 = aetx_sign:tx(Tx),
             TxTTL = aetx:ttl(Tx1),
             TxGas = aetx:gas(Tx1),
@@ -297,20 +308,22 @@ int_get_candidate(Gas, Dbs = #dbs{db = Db, gc_db = GCDb},
                     case Gas - TxGas of
                         RemGas when RemGas >= 0 ->
                             Acc1 = gb_trees:insert({Account, Nonce}, Tx, Acc),
-                            int_get_candidate(RemGas, Dbs, Next, AccountsTree, Height, Acc1);
+                            {RemGas, Acc1};
                         _ ->
                             %% Check the rest of txs, maybe some of them fits
                             %% into the gas limit.
-                            int_get_candidate(Gas, Dbs, Next, AccountsTree, Height, Acc)
+                            {Gas, Acc}
                     end;
                 false ->
                     %% This is not valid anymore.
                     enter_tx_gc(GCDb, TxHash, Key, Height + invalid_tx_ttl()),
-                    int_get_candidate(Gas, Dbs, Next, AccountsTree, Height, Acc)
-            end
-    end;
-int_get_candidate(_Gas, _Dbs, '$end_of_table', _AccountsTree, _Height, Acc) ->
-    {ok, gb_trees:values(Acc)}.
+                    {Gas, Acc}
+            end;
+        [] ->
+            %% probably deleted by GC process
+            {Gas, Acc}
+    end.
+
 
 top_height() ->
     case aec_chain:top_header() of
@@ -319,7 +332,7 @@ top_height() ->
     end.
 
 get_gc_height(#state{gc_height = undefined,
-                  sync_top_calc = P} = State) when is_pid(P) ->
+                     sync_top_calc = P} = State) when is_pid(P) ->
     lager:debug("wait for gc_height ...", []),
     receive
         {P, new_gc_height, H} ->
@@ -335,22 +348,26 @@ do_update_sync_top_target(NewSyncTop, #state{ gc_height = GCHeight
     case OldP of
         undefined ->
             Me = self(),
-            NewP = spawn_link(
+            NewP = proc_lib:spawn_link(
                      fun() ->
                              do_update_sync_top(NewSyncTop, GCHeight, Me)
                      end),
             State#state{ sync_top_calc = NewP, gc_height = undefined };
         _ when is_pid(OldP) ->
-            unlink(OldP),
-            exit(OldP, kill),
-            do_update_sync_top_target(
-              NewSyncTop, State#state{sync_top_calc = undefined})
+            {_, State1} = get_gc_height(State),
+            do_update_sync_top_target(NewSyncTop, State1)
+            %% unlink(OldP),
+            %% exit(OldP, kill),
+            %% do_update_sync_top_target(
+            %%   NewSyncTop, State#state{sync_top_calc = undefined})
     end.
 
 do_update_sync_top(NewSyncTop, GCHeight, Parent) ->
-    LocalTop = aec_tx_pool:top_height(),
+    LocalTop = top_height(),
+    lager:debug("do_update_sync_top(~p,~p,~p), LocalTop = ~p",
+                [NewSyncTop, GCHeight, Parent, LocalTop]),
     NewGCHeight = lists:max([LocalTop, GCHeight, NewSyncTop]),
-    case NewGCHeight < GCHeight - 5 of
+    try NewGCHeight < GCHeight - 5 of
         true ->
             %% This is a special case, normally the height shouldn't go down
             %% this means that the sync was aborted - in this case we
@@ -359,6 +376,11 @@ do_update_sync_top(NewSyncTop, GCHeight, Parent) ->
             aec_tx_pool_gc:adjust_ttl(GCHeight - NewGCHeight);
         false ->
             ok
+    catch
+        error:E ->
+            lager:error(
+              "do_update_sync_top(~p,~p,~p), LocalTop=~p, NewGCHeight=~p ERROR: ~p/~p",
+              [NewSyncTop, GCHeight, Parent, LocalTop, NewGCHeight, E, erlang:get_stacktrace()])
     end,
     Parent ! {self(), new_gc_height, NewGCHeight}.
 
