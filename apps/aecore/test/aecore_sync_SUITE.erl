@@ -441,7 +441,7 @@ mine_and_compare(N1, Config) ->
     AllNodes = [N || {_, N} <- ?config(nodes, Config)],
     PrevTop = rpc:call(N1, aec_chain, top_block, [], 5000),
     %% If there are txs in the mempool, there will be an additional micro block.
-    %% Micor blocks may result in micro forks, so we need to mine sufficiently many
+    %% Micro blocks may result in micro forks, so we need to mine sufficiently many
     %% blocks.
     %% Better to use: aecore_suite_utils:mine_blocks_until_txs_on_chain/3, but
     %% then we need to pass on the TxHashes... which this test structure does
