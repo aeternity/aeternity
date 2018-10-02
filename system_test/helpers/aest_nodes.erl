@@ -366,7 +366,10 @@ get_block(NodeName, Height) ->
 
 get_top(NodeName) ->
     {ok, 200, Top} = request(NodeName, 'GetTopBlock', #{}),
-    Top.
+    case Top of
+        #{key_block := KeyBlock} -> KeyBlock;
+        #{micro_block := MicroBlock} -> MicroBlock
+    end.
 
 get_mempool(NodeName) ->
     {ok, 200, Txs} = request(NodeName, 'GetPendingTransactions', #{}),
@@ -391,7 +394,7 @@ post_spend_tx(Node, From, To, Nonce, Map) ->
     {ok, Tx} = aec_spend_tx:new(Params),
     SignedTx = aec_test_utils:sign_tx(Tx, SendSecKey),
     SerSignTx = aetx_sign:serialize_to_binary(SignedTx),
-    {ok, 200, Response} = 
+    {ok, 200, Response} =
         request(Node, 'PostTransaction', #{ tx => aec_base58c:encode(transaction, SerSignTx) }),
     Response.
 
@@ -418,7 +421,7 @@ post_create_state_channel_tx(Node, Initiator, Responder, #{nonce := Nonce} = Map
 post_close_mutual_state_channel_tx(Node, Initiator, Responder, ChannelId, #{nonce := _} = Map) ->
     #{ privkey := InSecKey } = Initiator,
     #{ privkey := RespSecKey } = Responder,
-    {ok, CloseTx} = 
+    {ok, CloseTx} =
         aesc_close_mutual_tx:new(maps:merge(#{channel_id => ChannelId,
                                               initiator_amount_final => 80,
                                               responder_amount_final => 80,
@@ -433,7 +436,7 @@ post_close_mutual_state_channel_tx(Node, Initiator, Responder, ChannelId, #{nonc
 post_deposit_state_channel_tx(Node, PayingParty, OtherParty, ChannelId, #{nonce := _} = Map) ->
     #{ pubkey := InPubKey, privkey := InSecKey } = PayingParty,
     #{ privkey := RespSecKey } = OtherParty,
-    {ok, DepositTx} = 
+    {ok, DepositTx} =
         aesc_deposit_tx:new(maps:merge(#{channel_id => ChannelId,
                                          from_id => aec_id:create(account, InPubKey),
                                          state_hash => <<0:256>>,
@@ -450,7 +453,7 @@ post_deposit_state_channel_tx(Node, PayingParty, OtherParty, ChannelId, #{nonce 
 post_withdraw_state_channel_tx(Node, RecParty, OtherParty, ChannelId, #{nonce := _} = Map) ->
     #{ pubkey := InPubKey, privkey := InSecKey } = RecParty,
     #{ privkey := RespSecKey } = OtherParty,
-    {ok, WithdrawTx} = 
+    {ok, WithdrawTx} =
         aesc_withdraw_tx:new(maps:merge(#{channel_id => ChannelId,
                                          to_id => aec_id:create(account, InPubKey),
                                          state_hash => <<0:256>>,
@@ -559,7 +562,7 @@ wait_for_value({txs_on_chain, Txs}, NodeNames, Timeout, Ctx) ->
     FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
     CheckF =
         fun(Node) ->
-                Found = 
+                Found =
                     lists:usort([ case request(Node, 'GetTransactionByHash', maps:merge(#{hash => Tx}, FaultInject)) of
                                       {ok, 200, #{ block_height := H}} when H > 0 -> {Tx, H};
                                       _ -> wait
@@ -683,13 +686,13 @@ loop_for_values(CheckF, Nodes, Rem, Delay, Timeout) ->
 loop_for_values(CheckF, Nodes, Rem, Delay, Timeout, FinalMessage) ->
     Start = erlang:system_time(millisecond),
     Expiration = Start + Timeout,
-    Results = wait_for_value(CheckF, Nodes, Rem, Delay, Expiration, #{}),  
+    Results = wait_for_value(CheckF, Nodes, Rem, Delay, Expiration, #{}),
     End = erlang:system_time(millisecond),
     {Format, Args} = FinalMessage,
-    aest_nodes_mgr:log("Reached after ~.2f seconds (slack ~p ms) " ++ Format, 
+    aest_nodes_mgr:log("Reached after ~.2f seconds (slack ~p ms) " ++ Format,
                        [ (End - Start) / 1000, Timeout - (End - Start) | Args]),
     Results.
-    
+
 
 wait_for_value(_CheckF, [], [], _Delay, _Expiration, Results) -> Results;
 wait_for_value(CheckF, [], Rem, Delay, Expiration, Results) ->

@@ -245,7 +245,7 @@ spending_2(Config) ->
     BBal1 = get_balance(BPubkey),
     ct:pal("Balances 1: ~p, ~p\n", [ABal1,BBal1]),
 
-    {ok,200,#{<<"height">> := Height}} = get_top(),
+    {ok,200,#{<<"key_block">> := #{<<"height">> := Height}}} = get_top(),
     ct:pal("Height ~p\n", [Height]),
 
     %% Transfer money from Alice to Bert, but more than Alice has.
