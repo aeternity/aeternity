@@ -4443,10 +4443,13 @@ sc_ws_enviroment_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
         end,
     {ok, 200, Block} = get_key_blocks_current_sut(),
     #{<<"height">> := BlockHeight,
+      <<"beneficiary">> := EncBeneficiary,
       <<"time">> := Time
      } = Block,
+    {ok, Beneficiary} = aec_base58c:safe_decode(account_pubkey,
+                                                EncBeneficiary),
     Test(<<"block_height">>, <<"int">>, BlockHeight),
-    Test(<<"coinbase">>, <<"int">>, fun(I) -> <<I:32/unit:8>> =:= <<0:32/unit:8>> end),
+    Test(<<"coinbase">>, <<"int">>, fun(I) -> <<I:32/unit:8>> =:= Beneficiary end),
     Test(<<"timestamp">>, <<"int">>, fun(T) -> T > Time end),
     ok.
 

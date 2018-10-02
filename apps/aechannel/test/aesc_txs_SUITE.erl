@@ -2247,6 +2247,12 @@ fp_use_onchain_enviroment(Cfg) ->
 
     Height1 = 12345,
     Timestamp1 = 654321,
+    BeneficiaryInt = 42,
+    Beneficiary = <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>>,
+    
+    Height2 = Height1 + LockPeriod + 1,
+    Height3 = Height2 + LockPeriod + 1,
+    Height4 = Height3 + LockPeriod + 1,
     CallOnChain =
         fun(Owner, Forcer) ->
             IAmt0 = 30,
@@ -2272,12 +2278,13 @@ fp_use_onchain_enviroment(Cfg) ->
                 fun(#{height := H} = Props) ->
                     (assert_last_channel_result(H, word))(Props)
                 end,
-                ForceCall(Forcer, <<"coinbase">>, word, 0),
-                set_tx_env(Height1, Timestamp1),
-                ForceCall(Forcer, <<"block_height">>, word, Height1),
-                set_tx_env(Height1 + LockPeriod + 1, Timestamp1),
-                ForceCall(Forcer, <<"coinbase">>, word, 0),
-                set_tx_env(Height1 + 2 * LockPeriod + 3, Timestamp1),
+                set_tx_env(Height1, Timestamp1, Beneficiary),
+                ForceCall(Forcer, <<"coinbase">>, word, BeneficiaryInt),
+                set_tx_env(Height2, Timestamp1, Beneficiary),
+                ForceCall(Forcer, <<"block_height">>, word, Height2),
+                set_tx_env(Height3, Timestamp1, Beneficiary),
+                ForceCall(Forcer, <<"coinbase">>, word, BeneficiaryInt),
+                set_tx_env(Height4, Timestamp1, Beneficiary),
                 ForceCall(Forcer, <<"timestamp">>, word, Timestamp1)
                ])
         end,
@@ -3041,11 +3048,12 @@ create_contract_call_payload(Key, ContractId, Fun, Args, Amount) ->
                trees => UpdatedTrees}
     end.
 
-set_tx_env(Height, TimeStamp) ->
+set_tx_env(Height, TimeStamp, Beneficiary) ->
     fun(Props0) ->
         run(Props0,
             [set_prop(height, Height),
              set_prop(timestamp, TimeStamp),
+             set_prop(beneficiary, Beneficiary),
              fun(Props) ->
                  Env = tx_env(Props),
                  Props#{aetx_env => Env}
@@ -3057,7 +3065,8 @@ tx_env(#{height := Height} = Props) ->
     Time = maps:get(timestamp, Props, aeu_time:now_in_msecs()),
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
     KeyBlockHash = <<42:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
-    Beneficiary = <<24:?BENEFICIARY_PUB_BYTES/unit:8>>,
+    Beneficiary = maps:get(beneficiary, Props,
+                          <<24:?BENEFICIARY_PUB_BYTES/unit:8>>),
     aetx_env:contract_env(Height, ConsensusVersion, Time, Beneficiary,
                           123456, KeyBlockHash).
     
