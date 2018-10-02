@@ -72,7 +72,7 @@ Information, e.g. height, of the top block of the longest chain as seen by these
 * http://52.10.46.160:3013/v2/top
 * http://18.195.109.60:3013/v2/top
 * http://13.250.162.250:3013/v2/top
-* http://31.13.249.70:3013/v2/top
+* http://18.130.148.7:3013/v2/top
 
 ### Setup your node
 

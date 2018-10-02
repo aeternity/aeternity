@@ -66,7 +66,7 @@ Verify that your node sees the same longest blockchain as the testnet.
 
 Inspect the current top of the blockchain as seen by the testnet:
 ```bash
-curl http://31.13.249.70:3013/v2/blocks/top || curl http://18.195.109.60:3013/v2/blocks/top
+curl http://52.10.46.160:3013/v2/blocks/top || curl http://18.195.109.60:3013/v2/blocks/top
 ```
 
 Inspect the current top of the blockchain as seen by your node:
@@ -81,7 +81,7 @@ Verify that the height is the same; it may take a few minutes for your node to c
 After the node is successfully connected to the testnet, you could verify that it is mining on the same chain as the rest of the network.
 You can validate it observing the `hash` of the `/top` of the remote nodes:
 ```bash
-$ curl http://31.13.249.70:3013/v2/blocks/top
+$ curl http://52.10.46.160:3013/v2/blocks/top
 {"hash":"bh$2UWBL9BciGC1w2FUukJZinchGRrCuwEuFTkcVvpZcfcpjiAbUy","height":...}
 ```
 
