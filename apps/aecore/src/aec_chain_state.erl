@@ -82,7 +82,6 @@
         , hash_is_connected_to_genesis/1
         , hash_is_in_main_chain/1
         , insert_block/1
-        , median_timestamp/1
         , gossip_allowed_height_from_top/0
         , proof_of_fraud_report_delay/0
         ]).
@@ -111,23 +110,6 @@ get_key_block_hash_at_height(Height) when is_integer(Height), Height >= 0 ->
 get_n_key_headers_backward_from(Header, N) ->
     Node = wrap_header(Header),
     get_n_key_headers_from(Node, N).
-
-%% Compute the median timestamp for last aec_governance:median_timestamp_key_blocks()
--spec median_timestamp(aec_headers:header()) -> {ok, integer()} | 'error'.
-median_timestamp(Header) ->
-    TimeStampKeyBlocks = aec_governance:median_timestamp_key_blocks(),
-    case aec_headers:height(Header) =< TimeStampKeyBlocks of
-        true ->
-            {ok, ?GENESIS_TIME};
-        false ->
-            case get_n_key_headers_from(wrap_header(Header), TimeStampKeyBlocks + 1) of
-                {ok, Headers} ->
-                    {ok, median([ aec_headers:time_in_msecs(H)
-                                  || H <- lists:droplast(Headers) ])};
-                error ->
-                    error
-            end
-    end.
 
 -spec insert_block(aec_blocks:block() | map()) -> 'ok' | {'pof', aec_pof:pof()} | {'error', any()}.
 insert_block(#{ dir := forward} = Generation) ->
@@ -578,10 +560,25 @@ assert_key_block_time(Node) ->
             Time = node_time(Node),
             case median_timestamp(export_header(Node)) of
                 {ok, Median} when Time > Median -> ok;
-                {ok, _Median} -> internal_error(key_block_from_the_past);
-                error -> internal_error(key_block_median_time_error)
+                {ok, _Median} -> internal_error(key_block_from_the_past)
             end;
         false -> ok
+    end.
+
+%% Compute the median timestamp for last aec_governance:median_timestamp_key_blocks()
+median_timestamp(Header) ->
+    TimeStampKeyBlocks = aec_governance:median_timestamp_key_blocks(),
+    case aec_headers:height(Header) =< TimeStampKeyBlocks of
+        true ->
+            {ok, ?GENESIS_TIME};
+        false ->
+            case get_n_key_headers_from(wrap_header(Header), TimeStampKeyBlocks + 1) of
+                {ok, Headers} ->
+                    {ok, median([ aec_headers:time_in_msecs(H)
+                                  || H <- lists:droplast(Headers) ])};
+                error ->
+                    error
+            end
     end.
 
 assert_micro_block_time(PrevNode, Node) ->

@@ -130,12 +130,6 @@ validate_test_() ->
       end,
       fun() ->
               meck:expect(aec_pow_cuckoo, verify, 4, true),
-              Header = ?TEST_MODULE:set_version_and_height(
-                           raw_key_header(), ?GENESIS_VERSION, ?GENESIS_HEIGHT),
-              ?assertEqual({error, block_from_the_past}, ?TEST_MODULE:validate_key_block_header(Header))
-      end,
-      fun() ->
-              meck:expect(aec_pow_cuckoo, verify, 4, true),
               Header0 = ?TEST_MODULE:set_version_and_height(
                            raw_key_header(), ?GENESIS_VERSION, ?GENESIS_HEIGHT),
               Header = ?TEST_MODULE:set_time_in_msecs(Header0,
