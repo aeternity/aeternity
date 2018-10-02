@@ -672,7 +672,7 @@ post_blocks(From, To, []) ->
 post_blocks(From, _To, [{Height, _Hash, {_PeerId, local}} | Blocks]) ->
     post_blocks(From, Height, Blocks);
 post_blocks(From, To, [{Height, _Hash, {PeerId, Block}} | Blocks]) ->
-    case aec_conductor:add_synced_block(Block) of
+    case aec_conductor:add_synced_generation(Block) of
         ok ->
             post_blocks(From, Height, Blocks);
         {error, Reason} ->
@@ -740,9 +740,10 @@ fill_pool(PeerId, StartHash, TargetHash, ST) ->
 do_get_generation(PeerId, LastHash) ->
     case aec_peer_connection:get_generation(PeerId, LastHash, forward) of
         {ok, KeyBlock, MicroBlocks, forward} ->
-            aec_conductor:add_synced_block(#{ key_block => KeyBlock,
-                                              micro_blocks => MicroBlocks,
-                                              dir => forward });
+            Generation = #{ key_block => KeyBlock,
+                            micro_blocks => MicroBlocks,
+                            dir => forward },
+            aec_conductor:add_synced_generation(Generation);
         Err = {error, _} ->
             Err
     end.

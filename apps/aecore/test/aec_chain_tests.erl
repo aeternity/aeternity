@@ -846,7 +846,9 @@ fork_on_old_fork_point() ->
     %% But if we add it through sync, it is allowed
     ?assertEqual(ok, insert_block(#{key_block => ForkBlock,
                                     micro_blocks => MicroBlocks,
-                                    dir => forward})),
+                                    dir => forward,
+                                    add_keyblock => true
+                                   })),
     ok.
 
 fork_gen_key_candidate() ->

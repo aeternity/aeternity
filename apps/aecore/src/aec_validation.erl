@@ -15,7 +15,10 @@
 %%% API
 %%%===================================================================
 
-validate_block(#{ key_block := KeyBlock, micro_blocks := MicroBlocks }) ->
+validate_block(#{ key_block    := KeyBlock,
+                  micro_blocks := MicroBlocks,
+                  add_keyblock := AddKeyblock
+                }) ->
     GenesisHeight = aec_block_genesis:height(),
     case aec_blocks:height(KeyBlock) of
         GenesisHeight ->
@@ -25,10 +28,13 @@ validate_block(#{ key_block := KeyBlock, micro_blocks := MicroBlocks }) ->
                 false -> {error, invalid_genesis_generation}
             end;
         Height when Height > GenesisHeight ->
-            case aec_blocks:validate_key_block(KeyBlock) of
+            case validate_micro_block_list(MicroBlocks) of
                 ok ->
-                    validate_micro_block_list(MicroBlocks);
-                Err = {error, _} ->
+                    case AddKeyblock of
+                        true -> aec_blocks:validate_key_block(KeyBlock);
+                        false -> ok
+                    end;
+                {error, _} = Err ->
                     Err
             end
     end;

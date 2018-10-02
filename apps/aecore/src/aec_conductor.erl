@@ -54,7 +54,8 @@
         ]).
 
 %% Chain API
--export([ add_synced_block/1
+-export([ add_synced_generation/1
+        , add_synced_generation_batched/2
         , get_key_block_candidate/0
         , post_block/1
         ]).
@@ -133,9 +134,14 @@ post_block(Block) ->
     aec_blocks:assert_block(Block),
     gen_server:call(?SERVER, {post_block, Block}).
 
--spec add_synced_block(map()) -> 'ok' | {'error', any()}.
-add_synced_block(Block) ->
-    gen_server:call(?SERVER, {add_synced_block, Block}).
+-spec add_synced_generation(map()) -> 'ok' | {'error', any()}.
+add_synced_generation(#{} = Generation) ->
+    add_synced_generation_batched(Generation, true).
+
+-spec add_synced_generation_batched(map(), boolean()) -> 'ok' | {'error', any()}.
+add_synced_generation_batched(#{} = Generation, AddKeyBlock) when is_boolean(AddKeyBlock)->
+    Generation1 = Generation#{add_keyblock => AddKeyBlock},
+    gen_server:call(?SERVER, {add_synced_generation, Generation1}).
 
 -spec get_key_block_candidate() -> {'ok', aec_blocks:block()} | {'error', atom()}.
 get_key_block_candidate() ->
@@ -189,8 +195,8 @@ reinit_chain_state() ->
     exit(whereis(aec_tx_pool), kill),
     ok.
 
-handle_call({add_synced_block, Block},_From, State) ->
-    {Reply, State1} = handle_synced_block(Block, State),
+handle_call({add_synced_generation, Block},_From, State) ->
+    {Reply, State1} = handle_synced_generation(Block, State),
     {reply, Reply, State1};
 handle_call(get_key_block_candidate,_From, State) ->
     Res =
@@ -800,8 +806,8 @@ handle_key_block_candidate_reply({{error, Reason}, _}, State) ->
 %%%===================================================================
 %%% In server context: A block was given to us from the outside world
 
-handle_synced_block(Block, State) ->
-    epoch_mining:info("sync_block: ~p", [Block]),
+handle_synced_generation(Block, State) ->
+    epoch_mining:info("synced_generation: ~p", [Block]),
     handle_add_block(Block, State, block_synced).
 
 handle_post_block(Block, State) ->
@@ -833,8 +839,10 @@ handle_add_block(#{ key_block := KeyBlock, dir := Dir } = Block, #state{} = Stat
     %% Network layer (peer_connection, sync) sanitized KeyBlock to be key block.
     Header = aec_blocks:to_header(KeyBlock),
     %% Always try to insert forward generation - it may contain new unseen information
+    %% For backward generation, it is enough to check if we have the key block
+    %% since we only accept connected blocks.
     CheckFun = case Dir of
-                   backward -> fun aec_sync:has_generation/1;
+                   backward -> fun aec_chain:has_block/1;
                    forward  -> fun(_) -> false end
                end,
     handle_add_block(Header, CheckFun, Block, State, Origin);

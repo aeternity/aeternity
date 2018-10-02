@@ -130,35 +130,39 @@ median_timestamp(Header) ->
     end.
 
 -spec insert_block(aec_blocks:block() | map()) -> 'ok' | {'pof', aec_pof:pof()} | {'error', any()}.
-insert_block(#{ key_block := KeyBlock, micro_blocks := MicroBlocks, dir := forward }) ->
+insert_block(#{ dir := forward} = Generation) ->
+    case add_key_block_in_generation(Generation) of
+        ok ->
+            add_micro_blocks_in_generation(Generation);
+        {pof, _} ->
+            add_micro_blocks_in_generation(Generation);
+        {error, _} = Err ->
+            Err
+    end;
+insert_block(#{ dir := backward} = Generation) ->
+    case add_micro_blocks_in_generation(Generation) of
+        ok ->
+            add_key_block_in_generation(Generation);
+        {pof, _} ->
+            add_key_block_in_generation(Generation);
+        {error, _} = Err ->
+            Err
+    end;
+insert_block(Block) ->
+    aec_blocks:assert_block(Block),
+    do_insert_block(Block, undefined).
+
+add_micro_blocks_in_generation(#{ micro_blocks := MicroBlocks}) ->
     FoldFun = fun(MB, ok) -> do_insert_block(MB, sync);
                  (MB, {pof, _}) -> do_insert_block(MB, sync);
                  (_MB, Err = {error, _}) -> Err
               end,
-    %% First insert key_block
-    case do_insert_block(KeyBlock, sync) of
-        ok ->
-            lists:foldl(FoldFun, ok, MicroBlocks);
-        {pof,_Pof} ->
-            lists:foldl(FoldFun, ok, MicroBlocks);
-        Err = {error, _} ->
-            Err
-    end;
-insert_block(#{ key_block := KeyBlock, micro_blocks := MicroBlocks, dir := backward }) ->
-    %% First insert micro_blocks
-    case lists:foldl(fun(MB, ok) -> do_insert_block(MB, sync);
-                        (MB, {pof, _}) -> do_insert_block(MB, sync);
-                        (_MB, Err = {error, _}) -> Err
-                     end, ok, MicroBlocks) of
-        ok ->
-            do_insert_block(KeyBlock, sync);
-        {pof,_PoF} ->
-            do_insert_block(KeyBlock, sync);
-        Err = {error, _} ->
-            Err
-    end;
-insert_block(Block) ->
-    do_insert_block(Block, undefined).
+    lists:foldl(FoldFun, ok, MicroBlocks).
+
+add_key_block_in_generation(#{ add_keyblock := false}) ->
+    ok;
+add_key_block_in_generation(#{ add_keyblock := true, key_block := KeyBlock}) ->
+    do_insert_block(KeyBlock, sync).
 
 do_insert_block(Block, Origin) ->
     Node = wrap_block(Block),
