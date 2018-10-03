@@ -125,8 +125,16 @@
     %% The connection monitors.
     monitors          :: #{pid() => {reference(), peer_id()}},
     %% The hostnames that failed to resolve and are pending for retries.
-    hostnames         :: #{string() => {reference(), pos_integer(),
-         #{ peer_id() => {inet:ip_address(), peer_info(), boolean()}}}}
+    hostnames         :: #{Host::string() =>
+                                 %% Host data.
+                                 {ResolverTimer :: reference(),
+                                  RetryCount :: pos_integer(),
+                                  #{ peer_id() =>
+                                         %% Peer data.
+                                         {SourceAddress :: inet:ip_address()
+                                                         | undefined,
+                                          peer_info(),
+                                          Trusted :: boolean()}}}}
 }).
 
 %% The Peer is identified by its pubkey for now.
@@ -778,7 +786,8 @@ resolver_schedule(Host, {OldRef, RetryCount, PeerMap}, HostMap) ->
             HostData = {NewRef, RetryCount, PeerMap},
             HostMap#{ Host => HostData };
         true ->
-            PeerMap2 = maps:filter(fun(_, {_, _, T}) -> T end, PeerMap),
+            PeerMap2 = maps:filter(fun(_, {_, _, Trusted}) -> Trusted end,
+                                   PeerMap),
             case maps:size(PeerMap2) > 0 of
                 false -> maps:remove(Host, HostMap);
                 true ->
@@ -1571,9 +1580,11 @@ single_outbound_per_group() ->
                                ?DEFAULT_SINGLE_OUTBOUND_PER_GROUP).
 
 resolve_max_retries() ->
-    application:get_env(aecore, sync_resolver_max_retries,
-                        ?DEFAULT_RESOLVE_MAX_RETRY).
+    aeu_env:user_config_or_env([<<"sync">>, <<"resolver_max_retries">>],
+                               aecore, sync_resolver_max_retries,
+                               ?DEFAULT_RESOLVE_MAX_RETRY).
 
 resolve_backoff_times() ->
-    application:get_env(aecore, sync_resolver_backoff_times,
-                        ?DEFAULT_RESOLVE_BACKOFF_TIMES).
+    aeu_env:user_config_or_env([<<"sync">>, <<"resolver_backoff_times">>],
+                               aecore, sync_resolver_backoff_times,
+                               ?DEFAULT_RESOLVE_BACKOFF_TIMES).
