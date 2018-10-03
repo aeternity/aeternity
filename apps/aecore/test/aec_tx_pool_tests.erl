@@ -23,11 +23,14 @@ tx_pool_test_() ->
              GB = aec_test_utils:genesis_block(),
              aec_chain_state:insert_block(GB),
              aec_test_utils:mock_block_target_validation(), %% Mocks aec_governance.
+             {ok, _} = aec_tx_pool_gc:start_link(),
              {ok, _} = aec_tx_pool:start_link(),
              %% Start `aec_keys` merely for generating realistic test
              %% signed txs - as a node would do.
              ets:new(?TAB, [public, ordered_set, named_table]),
              meck:new(aeu_time, [passthrough]),
+             meck:new(jobs),
+             meck:expect(jobs, run, fun(_,F) -> F() end),
              TmpKeysDir
      end,
      fun(TmpKeysDir) ->
@@ -39,7 +42,9 @@ tx_pool_test_() ->
              aec_test_utils:unmock_genesis(),
              aec_test_utils:unmock_block_target_validation(), %% Unloads aec_governance mock.
              ok = aec_tx_pool:stop(),
+             ok = aec_tx_pool_gc:stop(),
              meck:unload(aeu_time),
+             meck:unload(jobs),
              ok
      end,
      [{"No txs in mempool",
@@ -415,19 +420,25 @@ tx_pool_test_() ->
             %% For test ?TX_TTL = 8
 
             %% Doing a garbage collect at height 0 shouldn't affect
-            aec_tx_pool:garbage_collect(0),
+            tx_pool_gc(0),
+            _ = sys:get_status(aec_tx_pool_gc),
             ?assertMatch({ok, [_, _, _]}, aec_tx_pool:peek(infinity)),
 
             %% At 4 still GC should not kick in.
-            aec_tx_pool:garbage_collect(4),
+            tx_pool_gc(4),
             ?assertMatch({ok, [_, _, _]}, aec_tx_pool:peek(infinity)),
 
             %% At 8, now TXs should be dropped.
-            aec_tx_pool:garbage_collect(8),
+            tx_pool_gc(8),
             ?assertMatch({ok, []}, aec_tx_pool:peek(infinity))
 
         end}
      ]}.
+
+tx_pool_gc(Height) ->
+    aec_tx_pool_gc:gc(Height),
+    sys:get_status(aec_tx_pool_gc), %% sync point (gc is asynchronous)
+    ok.
 
 a_signed_tx(Sender, Recipient, Nonce, Fee) ->
     a_signed_tx(Sender, Recipient, Nonce, Fee,0).

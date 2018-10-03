@@ -13,8 +13,10 @@
 
 -export([user_config/0, user_config/1]).
 -export([user_map/0, user_map/1]).
+-export([schema/0, schema/1, schema_properties/1]).
 -export([user_config_or_env/3, user_config_or_env/4]).
 -export([user_map_or_env/4]).
+-export([nested_map_get/2]).
 -export([read_config/0]).
 -export([data_dir/1]).
 -export([check_config/1, check_config/2]).
@@ -116,7 +118,7 @@ user_map(Key) when is_list(Key) ->
         {ok, _} = Ok ->
             Ok;
         error ->
-            user_map_l(Key, M)
+            nested_map_get(Key, M)
     end;
 user_map(Key) ->
     case maps:find(Key, user_map()) of
@@ -124,19 +126,19 @@ user_map(Key) ->
         error        -> undefined
     end.
 
-user_map_l([], V) ->
+nested_map_get([], V) ->
     {ok, V};
-user_map_l([H|T], M) when is_map(M) ->
+nested_map_get([H|T], M) when is_map(M) ->
     case maps:find(H, M) of
         {ok, M1} ->
-            user_map_l(T, M1);
+            nested_map_get(T, M1);
         error ->
             undefined
     end;
-user_map_l([H|T], L) when is_list(L) ->
+nested_map_get([H|T], L) when is_list(L) ->
     case lists_map_key_find(H, L) of
         {ok, V} ->
-            user_map_l(T, V);
+            nested_map_get(T, V);
         error ->
             undefined
     end.
@@ -153,6 +155,40 @@ lists_map_key_find(K, [{K, V}|_]) ->
 lists_map_key_find(_, []) ->
     error.
 
+schema() ->
+    case setup:get_env(aeutils, '$schema', undefined) of
+        undefined ->
+            read_schema(),
+            setup:get_env(aeutils, '$schema', []);
+        S ->
+            S
+    end.
+
+schema(Key) when is_list(Key) ->
+    M = schema(),
+    case maps:find(Key, M) of
+        {ok, _} = Ok ->
+            Ok;
+        error ->
+            nested_map_get(Key, M)
+    end;
+schema(Key) ->
+    case maps:find(Key, schema()) of
+        {ok, _} = Ok -> Ok;
+        error        -> undefined
+    end.
+
+schema_properties(Key) when is_list(Key) ->
+    schema(intersperse_properties(Key)).
+
+intersperse_properties([<<"properties">> = H|T]) ->
+    [H|intersperse(T, H)];
+intersperse_properties(L) ->
+    [<<"properties">> | intersperse(L, <<"properties">>)].
+
+
+intersperse([], _) -> [];
+intersperse([H|T], K) -> [H,K|intersperse(T, K)].
 
 read_config() ->
     read_config(report).
@@ -166,11 +202,11 @@ read_config(Mode) when Mode =:= silent; Mode =:= report ->
             ok;
         F ->
             info_msg(Mode, "Reading config file ~s~n", [F]),
-            do_read_config(F, schema(), store, Mode)
+            do_read_config(F, read_schema(), store, Mode)
     end.
 
 check_config(F) ->
-    do_read_config(F, schema(), check, silent).
+    do_read_config(F, read_schema(), check, silent).
 
 check_config(F, Schema) ->
     do_read_config(F, Schema, check, silent).
@@ -355,7 +391,7 @@ try_decode(F, DecF, Fmt, Mode) ->
 validate(JSON, F) ->
     validate(JSON, F, report).
 validate(JSON, F, Mode) ->
-    validate(JSON, F, schema(), Mode).
+    validate(JSON, F, read_schema(), Mode).
 
 validate(JSON, F, Schema, Mode) when is_list(JSON) ->
     check_validation([validate_(Schema, J) || J <- JSON], JSON, F, Mode);
@@ -401,10 +437,11 @@ validate_(Schema, JSON) ->
             {error, {schema_file_not_found, Schema}}
     end.
 
-schema() ->
+read_schema() ->
     filename:join(code:priv_dir(aeutils),
                   "epoch_config_schema.json").
 
 load_schema(F) ->
     [Schema] = jsx:consult(F, [return_maps]),
+    application:set_env(aeutils, '$schema', Schema),
     Schema.

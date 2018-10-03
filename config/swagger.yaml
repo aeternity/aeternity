@@ -2492,6 +2492,8 @@ definitions:
     properties:
       channel_id:
         $ref: '#/definitions/EncodedHash'
+      from_id:
+        $ref: '#/definitions/EncodedHash'
       initiator_amount_final:
         type: integer
         format: int64
@@ -2514,6 +2516,7 @@ definitions:
         minimum: 0
     required:
       - channel_id
+      - from_id
       - initiator_amount_final
       - responder_amount_final
       - fee

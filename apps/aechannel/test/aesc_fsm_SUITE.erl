@@ -51,7 +51,7 @@
 -include_lib("common_test/include/ct.hrl").
 
 -define(TIMEOUT, 10000).
--define(LONG_TIMEOUT, 30000).
+-define(LONG_TIMEOUT, 60000).
 
 -define(OP_TRANSFER, 0).
 -define(OP_WITHDRAW, 1).
@@ -719,10 +719,12 @@ multiple_channels(Cfg) ->
                                                    debug => false})
           || N <- lists:seq(1, NumCs)],
     ct:log("channels spawned", []),
-    Cs = collect_acks(Cs, mine_blocks, NumCs),
+    CsAcks = collect_acks_w_payload(Cs, mine_blocks, NumCs),
     ct:log("mining requests collected", []),
 
-    {ok, Txs} = rpc(dev1, aec_tx_pool, peek, [infinity]),
+    Cs  = [C  || {C, _} <- CsAcks],
+    Txs = [Tx || {_, Tx} <- CsAcks],
+
     TxHashes =
         lists:map(
             fun(Tx) ->
@@ -790,6 +792,17 @@ collect_acks([Pid | Pids], Tag, N) ->
             error(timeout)
     end;
 collect_acks([], _Tag, _) ->
+    [].
+
+collect_acks_w_payload([Pid | Pids], Tag, N) ->
+    Timeout = 30000 + (N div 10)*5000,  % wild guess
+    receive
+        {Pid, Tag, Payload} ->
+            [{Pid, Payload} | collect_acks_w_payload(Pids, Tag, N)]
+    after Timeout ->
+            error(timeout)
+    end;
+collect_acks_w_payload([], _Tag, _) ->
     [].
 
 
@@ -891,14 +904,16 @@ create_channel_from_spec(
     SignedTx = await_on_chain_report(I2, ?TIMEOUT),
     SignedTx = await_on_chain_report(R2, ?TIMEOUT), % same tx
     wait_for_signed_transaction_in_block(dev1, SignedTx, Debug),
-    mine_blocks(dev1, ?MINIMUM_DEPTH, Debug),
+    mine_blocks(dev1, ?MINIMUM_DEPTH, opt_add_tx_to_debug(SignedTx, Debug)),
     %% in case of multiple channels starting in parallel - the mining above
     %% has no effect (the blocks are mined in another process)
     %% The following line makes sure this process is blocked until the proper
     %% height is reached
     aecore_suite_utils:wait_for_height(aecore_suite_utils:node_name(dev1),
                                        CurrentHeight + ?MINIMUM_DEPTH),
-    {ok, _} = receive_from_fsm(info, R2, own_funding_locked, ?TIMEOUT, Debug),
+    %% we've seen 10-15 second block times in CI, so wait a while longer
+    {ok, _} = receive_from_fsm(info, R2, own_funding_locked, ?LONG_TIMEOUT, Debug),
+    %% shouldn't be necessary to use ?LONG_TIMEOUT again
     {ok, _} = receive_from_fsm(info, I2, own_funding_locked, ?TIMEOUT, Debug),
     I3 = await_funding_locked(I2, ?TIMEOUT, Debug),
     R3 = await_funding_locked(R2, ?TIMEOUT, Debug),
@@ -1103,13 +1118,19 @@ check_info(Timeout, Debug) ->
 
 mine_blocks(Node, N) -> mine_blocks(Node, N, true).
 
-mine_blocks(_Node, _N, #{mine_blocks := {ask, Pid}}) when is_pid(Pid) ->
-    Pid ! {self(), mine_blocks},
+mine_blocks(_Node, _N, #{mine_blocks := {ask, Pid},
+                         signed_tx   := SignedTx}) when is_pid(Pid) ->
+    Pid ! {self(), mine_blocks, SignedTx},
     ok;
 mine_blocks(_, _, #{mine_blocks := false}) ->
     ok;
 mine_blocks(Node, N, _) ->
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(Node), N).
+
+opt_add_tx_to_debug(SignedTx, #{mine_blocks := {ask, _}} = Debug) ->
+    Debug#{signed_tx => SignedTx};
+opt_add_tx_to_debug(_, Debug) ->
+    Debug.
 
 prep_initiator(Node) ->
     {ok, PubKey} = rpc(Node, aec_keys, pubkey, []),

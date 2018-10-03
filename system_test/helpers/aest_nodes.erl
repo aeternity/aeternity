@@ -419,10 +419,11 @@ post_create_state_channel_tx(Node, Initiator, Responder, #{nonce := Nonce} = Map
     Response#{channel_id => aec_id:create(channel, aesc_channels:pubkey(InPubKey, Nonce, RespPubKey))}.
 
 post_close_mutual_state_channel_tx(Node, Initiator, Responder, ChannelId, #{nonce := _} = Map) ->
-    #{ privkey := InSecKey } = Initiator,
+    #{ pubkey := InPubKey, privkey := InSecKey } = Initiator,
     #{ privkey := RespSecKey } = Responder,
     {ok, CloseTx} =
         aesc_close_mutual_tx:new(maps:merge(#{channel_id => ChannelId,
+                                              from_id => aec_id:create(account, InPubKey),
                                               initiator_amount_final => 80,
                                               responder_amount_final => 80,
                                               fee => 1,

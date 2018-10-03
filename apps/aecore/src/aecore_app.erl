@@ -15,6 +15,7 @@
 
 start(_StartType, _StartArgs) ->
     ok = lager:info("Starting aecore node"),
+    ok = aec_jobs_queues:start(),
     ok = application:ensure_started(mnesia),
     aec_db:load_database(),
     case aec_db:persisted_valid_genesis_block() of

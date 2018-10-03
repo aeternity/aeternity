@@ -536,7 +536,7 @@ prepare_handler(Params) ->
         end,
     Validators =
         [fun(H) ->
-            case jobs:ask(ws_handlers_queue) of
+            case jobs:ask(ws_handlers) of
                 {ok, JobId} ->
                     H#handler{job_id = JobId};
                 {error, _} ->

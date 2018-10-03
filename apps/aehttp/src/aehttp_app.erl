@@ -39,11 +39,6 @@ start(_StartType, _StartArgs) ->
     ok = start_http_api(),
     ok = start_websocket_internal(),
     ok = start_channel_websocket(),
-    MaxWsHandlers = get_internal_websockets_acceptors(),
-    ok = jobs:add_queue(ws_handlers_queue, [{standard_counter, MaxWsHandlers},
-                                            {max_size, ws_handlers_queue_max_size()}]),
-    ok = jobs:add_queue(sc_ws_handlers_queue, [{standard_counter, get_channel_websockets_acceptors()},
-                                               {max_size, ws_handlers_queue_max_size()}]),
     gproc:reg({n,l,{epoch, app, aehttp}}),
     {ok, Pid}.
 

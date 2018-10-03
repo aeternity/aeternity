@@ -1614,8 +1614,7 @@ adjust_ttl(TTL) when is_integer(TTL), TTL > 0 ->
 
 close_mutual_tx(LatestSignedTx, D) ->
     Account = my_account(D),
-    Initiator = initiator_account(D),
-    {ok, Nonce} = aec_next_nonce:pick_for_account(Initiator),
+    {ok, Nonce} = aec_next_nonce:pick_for_account(Account),
     close_mutual_tx(Account, Nonce, LatestSignedTx, D).
 
 close_mutual_tx(Account, Nonce, _LatestSignedTx,
@@ -1632,13 +1631,12 @@ close_mutual_tx(Account, Nonce, _LatestSignedTx,
     TTL = maps:get(ttl, Opts1, 0), %% 0 means no TTL limit
     {IAmt1, RAmt1} = pay_close_mutual_fee(Fee, IAmt, RAmt),
     {LastRound, _} = aesc_offchain_state:get_latest_signed_tx(State),
-    StateHash = aesc_offchain_state:hash(State),
     aesc_close_mutual_tx:new(#{ channel_id             => aec_id:create(channel, ChanId)
+                              , from_id                => aec_id:create(account, Account)
                               , initiator_amount_final => IAmt1
                               , responder_amount_final => RAmt1
                               , ttl                    => TTL
                               , fee                    => Fee
-                              , state_hash             => StateHash
                               , round                  => LastRound + 1
                               , nonce                  => Nonce }).
 
@@ -1661,8 +1659,6 @@ my_account(#data{role = responder, opts = #{responder := R}}) -> R.
 
 other_account(#data{role = initiator, opts = #{responder := R}}) -> R;
 other_account(#data{role = responder, opts = #{initiator := I}}) -> I.
-
-initiator_account(#data{opts = #{initiator := I}}) -> I.
 
 send_funding_created_msg(SignedTx, #data{channel_id = Ch,
                                          session    = Sn} = Data) ->

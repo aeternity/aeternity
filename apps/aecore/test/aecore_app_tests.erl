@@ -10,12 +10,15 @@ persisted_valid_gen_block_test_() ->
              meck:expect(aec_db, load_database, 0, ok),
              meck:new(aecore_sup, [passthrough]),
              meck:expect(aecore_sup, start_link, 0, {ok, pid}),
+             meck:new(aec_jobs_queues, [passthrough]),
+             meck:expect(aec_jobs_queues, start, 0, ok),
              lager:start(),
              ok
      end,
      fun(ok) ->
              ok = application:stop(lager),
              ok = application:stop(mnesia),
+             meck:unload(aec_jobs_queues),
              meck:unload(aecore_sup),
              meck:unload(aec_db)
      end,
