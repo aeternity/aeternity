@@ -103,8 +103,7 @@ test_name_registration(Cfg) ->
     EncMPubKey = aec_base58c:encode(account_pubkey, MPubKey),
     EncRPubKey = aec_base58c:encode(account_pubkey, RPubKey),
 
-    AsciiName = <<"richard.test">>,
-    Name = aens_utils:from_ascii(AsciiName),
+    Name = <<"richard.test">>,
     NameSalt = 36346245,
     EncNameId = aec_base58c:encode(name, aens_hash:name_hash(Name)),
 
@@ -192,8 +191,7 @@ test_name_transfer(Cfg) ->
     RPubKey2 = maps:get(pubkey, ?ROBERT),
     EncMPubKey = aec_base58c:encode(account_pubkey, MPubKey),
 
-    AsciiName = <<"richard.test">>,
-    Name = aens_utils:from_ascii(AsciiName),
+    Name = <<"richard.test">>,
     NameSalt = 36346245,
 
     %% Setup nodes
