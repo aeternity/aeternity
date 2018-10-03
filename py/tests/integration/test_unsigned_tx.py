@@ -69,11 +69,7 @@ def test_contract_create():
     print("Signed transaction " + signed)
 
     alice_balance0 = common.get_account_balance(external_api, alice_address)
-    tx_object = Tx(tx=signed)
-    external_api.post_transaction(tx_object)
-
-    top = external_api.get_current_key_block()
-    common.wait_until_height(external_api, top.height + 3)
+    ensure_transaction_posted(external_api, signed)
     alice_balance = common.get_account_balance(external_api, alice_address)
 
     assert_equals(alice_balance0,
@@ -105,15 +101,10 @@ def test_contract_call():
     ## create contract
     encoded_tx, encoded_contract_id = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api, internal_api)
     unsigned_tx = common.base58_decode(encoded_tx)
-
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
 
     alice_balance0 = common.get_account_balance(external_api, alice_address)
-    tx_object = Tx(tx=signed)
-    external_api.post_transaction(tx_object)
-
-    top = external_api.get_current_key_block()
-    common.wait_until_height(external_api, top.height + 3)
+    ensure_transaction_posted(external_api, signed)
     alice_balance = common.get_account_balance(external_api, pub_key=alice_address)
 
     # assert contract created:
@@ -152,11 +143,7 @@ def test_contract_call():
 
     print("Signed transaction: " + signed_call)
     alice_balance0 = common.get_account_balance(external_api, alice_address)
-    tx_object = Tx(tx=signed_call)
-    external_api.post_transaction(tx_object)
-
-    top = external_api.get_current_key_block()
-    common.wait_until_height(external_api, top.height + 3)
+    ensure_transaction_posted(external_api, signed_call)
     alice_balance = common.get_account_balance(external_api, alice_address)
 
     # The call runs out of gas and all gas is consumed
@@ -189,13 +176,7 @@ def test_contract_on_chain_call_off_chain():
     unsigned_tx = common.base58_decode(encoded_tx)
 
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
-
-    alice_balance0 = common.get_account_balance(external_api, alice_address)
-    tx_object = Tx(tx=signed)
-    external_api.post_transaction(tx_object)
-
-    top = external_api.get_current_key_block()
-    common.wait_until_height(external_api, top.height + 3)
+    ensure_transaction_posted(external_api, signed)
 
     call_contract = test_settings["contract_call"]
     call_input = ContractCallInput("sophia-address", encoded_contract_id,\
@@ -235,8 +216,12 @@ def test_spend():
 
     alice_balance0 = common.get_account_balance(external_api, alice_address)
     bob_balance0 = common.get_account_balance(external_api, bob_address)
+    print("Alice balance at start is " + str(alice_balance0))
+    print("Bob balance at start is " + str(bob_balance0))
 
     # Alice creates spend tx
+    print("Tx amount " + str(test_settings["spend_tx"]["amount"]))
+    print("Tx fee " + str(test_settings["spend_tx"]["fee"]))
     spend_data_obj = SpendTx(
             sender_id=alice_address,
             recipient_id=bob_address,
@@ -250,15 +235,9 @@ def test_spend():
 
     # Alice signs spend tx
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
-    tx_hash = keys.tx_hash_from_signed_encoded(signed)
 
     # Alice posts spend tx
-    tx_object = Tx(tx=signed)
-    external_api.post_transaction(tx_object)
-
-    # Wait until spend tx is mined
-    wait(lambda: external_api.get_transaction_by_hash(tx_hash).block_hash != 'none',
-         timeout_seconds=120, sleep_seconds=0.25)
+    ensure_transaction_posted(external_api, signed)
 
     # Check that Alice was debited and Bob was credited
     alice_balance = common.get_account_balance(external_api, alice_address)
@@ -286,6 +265,15 @@ def send_tokens_to_user(beneficiary, user, test_settings, external_api, internal
                                                                   test_settings[user]["fee"],
                                                                   external_api,
                                                                   internal_api)
+
+def ensure_transaction_posted(api, signed_tx):
+    tx_object = Tx(tx=signed_tx)
+    tx_hash = api.post_transaction(tx_object).tx_hash
+    top = api.get_current_key_block()
+    common.wait_until_height(api, top.height + 1)
+    wait(lambda: api.get_transaction_by_hash(tx_hash).block_hash != 'none',
+         timeout_seconds=20, sleep_seconds=0.25)
+
 
 def get_unsigned_contract_create(owner_id, contract, external_api, internal_api):
     bytecode = read_id_contract(internal_api)
