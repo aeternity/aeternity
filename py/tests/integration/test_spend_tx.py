@@ -34,6 +34,7 @@ def test_not_enough_tokens():
     bob_private_key = keys.new_private()
     bob_public_key = keys.public_key(bob_private_key)
     bob_address = keys.address(bob_public_key)
+    bob = {'privk': bob_private_key, 'enc_pubk': bob_address}
 
     # initial balances - amounts that the miner should send them
     alice_init_balance = test_settings["send_tokens"]["alice"]
@@ -42,7 +43,6 @@ def test_not_enough_tokens():
     # populate accounts with tokens, and validate balances
     common.send_tokens_to_unchanging_user_and_wait_balance(beneficiary, alice_address, alice_init_balance, 1, ext_api, int_api)
     common.send_tokens_to_unchanging_user_and_wait_balance(beneficiary, bob_address, bob_init_balance, 1, ext_api, int_api)
-    common.wait_until_height(ext_api, ext_api.get_current_key_block().height + 3)
     alice_balance0 = common.get_account_balance(ext_api, alice_address)
     bob_balance0 = common.get_account_balance(ext_api, bob_address)
     print("Alice balance is " + str(alice_balance0))
@@ -54,8 +54,7 @@ def test_not_enough_tokens():
     spend_tx_fee = test_settings["spend_tx"]["fee"]
     few_tokens_to_send = test_settings["spend_tx"]["small_amount"]
     print("Bob is about to send " + str(few_tokens_to_send) + " to Alice")
-    send_tokens_to_unchanging_user(bob_private_key, bob_address, alice_address, few_tokens_to_send, spend_tx_fee, ext_api, int_api)
-    common.wait_until_height(ext_api, ext_api.get_current_key_block().height + 3)
+    common.send_tokens_to_unchanging_user_and_wait_balance(bob, alice_address, few_tokens_to_send, spend_tx_fee, ext_api, int_api)
     alice_balance1 = common.get_account_balance(ext_api, pub_key=alice_address)
     bob_balance1 = common.get_account_balance(ext_api, pub_key=bob_address)
     print("Alice balance is " + str(alice_balance1))
@@ -66,7 +65,7 @@ def test_not_enough_tokens():
     # check that Bob is unable to send less tokens than he has
     many_tokens_to_send = test_settings["spend_tx"]["large_amount"]
     print("Bob is about to send " + str(many_tokens_to_send) + " to Alice")
-    send_tokens_to_unchanging_user(bob_private_key, bob_address, alice_address, many_tokens_to_send, spend_tx_fee, ext_api, int_api)
+    common.send_tokens_to_unchanging_user(bob, alice_address, many_tokens_to_send, spend_tx_fee, ext_api, int_api)
     common.wait_until_height(ext_api, ext_api.get_current_key_block().height + 3)
     alice_balance2 = common.get_account_balance(ext_api, pub_key=alice_address)
     bob_balance2 = common.get_account_balance(ext_api, pub_key=bob_address)
@@ -89,6 +88,7 @@ def test_send_by_name():
     alice_private_key = keys.new_private()
     alice_public_key = keys.public_key(alice_private_key)
     alice_address = keys.address(alice_public_key)
+    alice = {'privk': alice_private_key, 'enc_pubk': alice_address}
 
     bob_private_key = keys.new_private()
     bob_public_key = keys.public_key(bob_private_key)
@@ -121,8 +121,8 @@ def test_send_by_name():
 
     tokens_to_send = test_settings["spend_tx"]["amount"]
     print("Alice is about to send " + str(tokens_to_send) + " to " + bob_name)
-    send_tokens_to_name(bob_name, tokens_to_send, alice_address, alice_private_key, int_api, ext_api)
-    common.wait_until_height(ext_api, ext_api.get_current_key_block().height + 3)
+    resolved_address = get_address_by_name(bob_name, ext_api)
+    common.send_tokens_to_unchanging_user_and_wait_balance(alice, resolved_address, tokens_to_send, 1, ext_api, int_api)
 
     # validate balances
     alice_balance2 = common.get_account_balance(ext_api, alice_address)
@@ -187,13 +187,8 @@ def register_name(name, address, external_api, internal_api, private_key):
     assert_equals('account_pubkey', received_pointers.key)
     assert_equals(address, received_pointers.id)
 
-def send_tokens_to_name(name, tokens, sender_address, private_key, internal_api, external_api):
-    name_entry = external_api.get_name_entry_by_name(name)
+def get_address_by_name(name, ext_api):
+    name_entry = ext_api.get_name_entry_by_name(name)
     resolved_address = name_entry.pointers[0].id
     print("Name " + name + " resolved to address " + resolved_address)
-    send_tokens_to_unchanging_user(private_key, sender_address, resolved_address, tokens, 1, external_api, internal_api)
-
-def send_tokens_to_unchanging_user(sender_priv_key, sender_enc_pub_key, address, tokens, fee, external_api, internal_api):
-    sender = {'privk': sender_priv_key,
-              'enc_pubk': sender_enc_pub_key}
-    common.send_tokens_to_unchanging_user(sender, address, tokens, fee, external_api, internal_api)
+    return resolved_address
