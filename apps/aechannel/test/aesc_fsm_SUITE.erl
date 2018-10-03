@@ -51,7 +51,7 @@
 -include_lib("common_test/include/ct.hrl").
 
 -define(TIMEOUT, 10000).
--define(LONG_TIMEOUT, 30000).
+-define(LONG_TIMEOUT, 60000).
 
 -define(OP_TRANSFER, 0).
 -define(OP_WITHDRAW, 1).
@@ -911,7 +911,9 @@ create_channel_from_spec(
     %% height is reached
     aecore_suite_utils:wait_for_height(aecore_suite_utils:node_name(dev1),
                                        CurrentHeight + ?MINIMUM_DEPTH),
-    {ok, _} = receive_from_fsm(info, R2, own_funding_locked, ?TIMEOUT, Debug),
+    %% we've seen 10-15 second block times in CI, so wait a while longer
+    {ok, _} = receive_from_fsm(info, R2, own_funding_locked, ?LONG_TIMEOUT, Debug),
+    %% shouldn't be necessary to use ?LONG_TIMEOUT again
     {ok, _} = receive_from_fsm(info, I2, own_funding_locked, ?TIMEOUT, Debug),
     I3 = await_funding_locked(I2, ?TIMEOUT, Debug),
     R3 = await_funding_locked(R2, ?TIMEOUT, Debug),
