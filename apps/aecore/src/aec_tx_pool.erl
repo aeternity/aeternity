@@ -507,7 +507,7 @@ check_pool_db_put(Tx) ->
     end.
 
 do_pool_db_put(Key, Tx, Hash, Event,
-               #state{ db = Db, gc_db = GCDb, gc_height = GCHeight } = St0) ->
+               #state{ db = Db, gc_db = GCDb } = St0) ->
     {GCHeight, St} = get_gc_height(St0),
     %% TODO: This check is never going to hit? Hash is part of the Key!?
     case ets:member(Db, Key) of
