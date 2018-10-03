@@ -3611,6 +3611,13 @@
         "$ref" : "#/definitions/ChannelSettleTx"
       } ]
     },
+    "ChannelSnapshotSoloTxJSON" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/GenericTx"
+      }, {
+        "$ref" : "#/definitions/ChannelSnapshotSoloTx"
+      } ]
+    },
     "SpendTxJSON" : {
       "allOf" : [ {
         "$ref" : "#/definitions/GenericTx"
