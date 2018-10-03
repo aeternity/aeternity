@@ -161,9 +161,9 @@ new(Callback, Tx) ->
 
 -spec tx_type(TxOrTxType :: tx_type() | tx()) -> binary().
 tx_type(#aetx{ type = TxType }) ->
-    tx_type(TxType);
+    type_to_binary(TxType);
 tx_type(TxType) when is_atom(TxType) ->
-    erlang:atom_to_binary(TxType, utf8).
+    type_to_binary(TxType).
 
 -spec fee(Tx :: tx()) -> Fee :: integer().
 fee(#aetx{ cb = CB, tx = Tx }) ->
@@ -250,7 +250,7 @@ process(#aetx{ cb = CB, tx = Tx }, Trees, Env) ->
 -spec serialize_for_client(Tx :: tx()) -> map().
 serialize_for_client(#aetx{ cb = CB, type = Type, tx = Tx }) ->
     Res0 = CB:for_client(Tx),
-    Res1 = Res0#{ <<"type">> => tx_type(Type), <<"version">> => CB:version() },
+    Res1 = Res0#{ <<"type">> => type_to_swagger_name(Type), <<"version">> => CB:version() },
     case maps:get(<<"ttl">>, Res1, 0) of
         0 -> maps:remove(<<"ttl">>, Res1);
         _ -> Res1
@@ -297,6 +297,30 @@ type_to_cb(channel_slash_tx)          -> aesc_slash_tx;
 type_to_cb(channel_settle_tx)         -> aesc_settle_tx;
 type_to_cb(channel_snapshot_solo_tx)  -> aesc_snapshot_solo_tx;
 type_to_cb(channel_offchain_tx)       -> aesc_offchain_tx.
+
+type_to_swagger_name(spend_tx)                  -> <<"SpendTx">>;
+type_to_swagger_name(oracle_register_tx)        -> <<"OracleRegisterTx">>;
+type_to_swagger_name(oracle_extend_tx)          -> <<"OracleExtendTx">>;
+type_to_swagger_name(oracle_query_tx)           -> <<"OracleQueryTx">>;
+type_to_swagger_name(oracle_response_tx)        -> <<"OracleResponseTx">>;
+type_to_swagger_name(name_preclaim_tx)          -> <<"NamePreclaimTx">>;
+type_to_swagger_name(name_claim_tx)             -> <<"NameClaimTx">>;
+type_to_swagger_name(name_transfer_tx)          -> <<"NameTransferTx">>;
+type_to_swagger_name(name_update_tx)            -> <<"NameUpdateTx">>;
+type_to_swagger_name(name_revoke_tx)            -> <<"NameRevokeTx">>;
+type_to_swagger_name(name_create_tx)            -> <<"NameCreateTx">>;
+type_to_swagger_name(contract_call_tx)          -> <<"ContractCallTx">>;
+type_to_swagger_name(contract_create_tx)        -> <<"ContractCreateTx">>;
+type_to_swagger_name(channel_create_tx)         -> <<"ChannelCreateTx">>;
+type_to_swagger_name(channel_deposit_tx)        -> <<"ChannelDepositTx">>;
+type_to_swagger_name(channel_withdraw_tx)       -> <<"ChannelWithdrawTx">>;
+type_to_swagger_name(channel_force_progress_tx) -> <<"ChannelForceProgressTx">>;
+type_to_swagger_name(channel_close_solo_tx)     -> <<"ChannelCloseSoloTx">>;
+type_to_swagger_name(channel_close_mutual_tx)   -> <<"ChannelCloseMutualTx">>;
+type_to_swagger_name(channel_slash_tx)          -> <<"ChannelSlashTx">>;
+type_to_swagger_name(channel_settle_tx)         -> <<"ChannelSettleTx">>;
+type_to_swagger_name(channel_snapshot_solo_tx)  -> <<"ChannelSnapshotSoloTx">>;
+type_to_swagger_name(channel_offchain_tx)       -> <<"ChannelOffchainTx">>.
 
 -spec specialize_type(Tx :: tx()) -> {tx_type(), tx_instance()}.
 specialize_type(#aetx{ type = Type, tx = Tx }) -> {Type, Tx}.

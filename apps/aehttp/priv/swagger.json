@@ -1045,7 +1045,7 @@
           "name" : "body",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/ContractCreateData"
+            "$ref" : "#/definitions/ContractCreateTx"
           }
         } ],
         "responses" : {
@@ -1119,7 +1119,7 @@
           "name" : "body",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/ContractCallData"
+            "$ref" : "#/definitions/ContractCallTx"
           }
         } ],
         "responses" : {
@@ -3646,53 +3646,53 @@
         "$ref" : "#/definitions/OracleRespondTx"
       } ]
     },
-    "NamePreclaimTxObject" : {
+    "NamePreclaimTxJSON" : {
       "allOf" : [ {
         "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/NamePreclaimTx"
       } ]
     },
-    "NameClaimTxObject" : {
+    "NameClaimTxJSON" : {
       "allOf" : [ {
         "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/NameClaimTx"
       } ]
     },
-    "NameUpdateTxObject" : {
+    "NameUpdateTxJSON" : {
       "allOf" : [ {
         "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/NameUpdateTx"
       } ]
     },
-    "NameTransferTxObject" : {
+    "NameTransferTxJSON" : {
       "allOf" : [ {
         "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/NameTransferTx"
       } ]
     },
-    "NameRevokeTxObject" : {
+    "NameRevokeTxJSON" : {
       "allOf" : [ {
         "$ref" : "#/definitions/GenericTx"
       }, {
         "$ref" : "#/definitions/NameRevokeTx"
       } ]
     },
-    "ContractCreateTxObject" : {
+    "ContractCreateTxJSON" : {
       "allOf" : [ {
         "$ref" : "#/definitions/GenericTx"
       }, {
-        "$ref" : "#/definitions/ContractCreateData"
+        "$ref" : "#/definitions/ContractCreateTx"
       } ]
     },
-    "ContractCallTxObject" : {
+    "ContractCallTxJSON" : {
       "allOf" : [ {
         "$ref" : "#/definitions/GenericTx"
       }, {
-        "$ref" : "#/definitions/ContractCallData"
+        "$ref" : "#/definitions/ContractCallTx"
       } ]
     },
     "ContractCallObject" : {
@@ -3941,7 +3941,7 @@
         "peers" : [ { }, { } ]
       }
     },
-    "ContractCreateData" : {
+    "ContractCreateTx" : {
       "type" : "object",
       "required" : [ "amount", "call_data", "code", "deposit", "fee", "gas", "gas_price", "owner_id", "vm_version" ],
       "properties" : {
@@ -4083,7 +4083,7 @@
         "ttl" : 0
       }
     },
-    "ContractCallData" : {
+    "ContractCallTx" : {
       "type" : "object",
       "required" : [ "amount", "call_data", "caller_id", "contract_id", "fee", "gas", "gas_price", "vm_version" ],
       "properties" : {

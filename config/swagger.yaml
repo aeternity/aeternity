@@ -904,7 +904,7 @@ paths:
           name: body
           required: true
           schema:
-            $ref: '#/definitions/ContractCreateData'
+            $ref: '#/definitions/ContractCreateTx'
       responses:
         '200':
           description: Successful operation
@@ -966,7 +966,7 @@ paths:
           name: body
           required: true
           schema:
-            $ref: '#/definitions/ContractCallData'
+            $ref: '#/definitions/ContractCallTx'
       responses:
         '200':
           description: Successful operation
@@ -2792,34 +2792,34 @@ definitions:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/OracleRespondTx'
-  NamePreclaimTxObject:
+  NamePreclaimTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/NamePreclaimTx'
-  NameClaimTxObject:
+  NameClaimTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/NameClaimTx'
-  NameUpdateTxObject:
+  NameUpdateTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/NameUpdateTx'
-  NameTransferTxObject:
+  NameTransferTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/NameTransferTx'
-  NameRevokeTxObject:
+  NameRevokeTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/NameRevokeTx'
-  ContractCreateTxObject:
+  ContractCreateTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
-      - $ref: '#/definitions/ContractCreateData'
-  ContractCallTxObject:
+      - $ref: '#/definitions/ContractCreateTx'
+  ContractCallTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
-      - $ref: '#/definitions/ContractCallData'
+      - $ref: '#/definitions/ContractCallTx'
   ContractCallObject:
     type: object
     properties:
@@ -2983,7 +2983,7 @@ definitions:
     required:
       - peers
       - blocked
-  ContractCreateData:
+  ContractCreateTx:
     type: object
     properties:
       owner_id:
@@ -3091,7 +3091,7 @@ definitions:
       - gas_price
       - fee
       - arguments
-  ContractCallData:
+  ContractCallTx:
     type: object
     properties:
       caller_id:

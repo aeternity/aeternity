@@ -12,8 +12,8 @@ from swagger_client.rest import ApiException
 from swagger_client.models.tx import Tx
 from swagger_client.models.spend_tx import SpendTx
 from swagger_client.models.contract import Contract
-from swagger_client.models.contract_create_data import ContractCreateData
-from swagger_client.models.contract_call_data import ContractCallData
+from swagger_client.models.contract_create_tx import ContractCreateTx
+from swagger_client.models.contract_call_tx import ContractCallTx
 from swagger_client.models.contract_call_input import ContractCallInput
 
 import keys
@@ -130,7 +130,7 @@ def test_contract_call():
                                              call_contract["data"]["function"],
                                              call_contract["data"]["argument"])
     result = internal_api.call_contract(call_input)
-    contract_call_obj = ContractCallData(
+    contract_call_obj = ContractCallTx(
         caller_id=test_settings["alice"]["pubkey"],
         contract_id=encoded_contract_id,
         vm_version=call_contract["vm_version"],
@@ -298,7 +298,7 @@ def get_unsigned_contract_create(owner_id, contract, external_api, internal_api)
     call_data = result.calldata
 
     print("OWNERID", owner_id)
-    contract_create_data_obj = ContractCreateData(
+    contract_create_tx_obj = ContractCreateTx(
         owner_id=owner_id,
         code=bytecode,
         vm_version=contract["vm_version"],
@@ -309,5 +309,5 @@ def get_unsigned_contract_create(owner_id, contract, external_api, internal_api)
         fee=contract["fee"],
         ttl=100,
         call_data=call_data)
-    tx_obj = internal_api.post_contract_create(contract_create_data_obj)
+    tx_obj = internal_api.post_contract_create(contract_create_tx_obj)
     return (tx_obj.tx, tx_obj.contract_id)

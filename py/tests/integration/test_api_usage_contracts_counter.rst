@@ -47,8 +47,8 @@ Bob computes - off-chain, using the epoch API - the initialization call data.
 
 Bob computes - off-chain, using the epoch API - the unsigned contract create transaction.
 
->>> from swagger_client.models.contract_create_data import ContractCreateData
->>> raw_unsigned_contract_create_tx = epoch_node['internal_api'].post_contract_create(ContractCreateData(
+>>> from swagger_client.models.contract_create_tx import ContractCreateTx
+>>> raw_unsigned_contract_create_tx = epoch_node['internal_api'].post_contract_create(ContractCreateTx(
 ...   owner_id=users['b']['encoded_pub_key'],
 ...   nonce=1,
 ...   code=contract_bytecode,

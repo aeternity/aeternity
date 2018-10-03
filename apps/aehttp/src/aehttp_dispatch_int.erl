@@ -65,7 +65,7 @@ handle_request_('PostSpend', #{'SpendTx' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request_('PostContractCreate', #{'ContractCreateData' := Req}, _Context) ->
+handle_request_('PostContractCreate', #{'ContractCreateTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([owner_id, code, vm_version, deposit,
                                        amount, gas, gas_price, fee, call_data]),
@@ -111,7 +111,7 @@ handle_request_('PostContractCreateCompute', #{'ContractCreateCompute' := Req}, 
                 ],
     process_request(ParseFuns, Req);
 
-handle_request_('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
+handle_request_('PostContractCall', #{'ContractCallTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([caller_id, contract_id, vm_version,
                                        amount, gas, gas_price, fee, call_data]),
