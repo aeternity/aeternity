@@ -69,7 +69,7 @@ def test_contract_create():
     print("Signed transaction " + signed)
 
     alice_balance0 = common.get_account_balance(external_api, alice_address)
-    ensure_transaction_posted(external_api, signed)
+    common.ensure_transaction_posted(external_api, signed)
     alice_balance = common.get_account_balance(external_api, alice_address)
 
     assert_equals(alice_balance0,
@@ -104,7 +104,7 @@ def test_contract_call():
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
 
     alice_balance0 = common.get_account_balance(external_api, alice_address)
-    ensure_transaction_posted(external_api, signed)
+    common.ensure_transaction_posted(external_api, signed)
     alice_balance = common.get_account_balance(external_api, pub_key=alice_address)
 
     # assert contract created:
@@ -143,7 +143,7 @@ def test_contract_call():
 
     print("Signed transaction: " + signed_call)
     alice_balance0 = common.get_account_balance(external_api, alice_address)
-    ensure_transaction_posted(external_api, signed_call)
+    common.ensure_transaction_posted(external_api, signed_call)
     alice_balance = common.get_account_balance(external_api, alice_address)
 
     # The call runs out of gas and all gas is consumed
@@ -176,7 +176,7 @@ def test_contract_on_chain_call_off_chain():
     unsigned_tx = common.base58_decode(encoded_tx)
 
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
-    ensure_transaction_posted(external_api, signed)
+    common.ensure_transaction_posted(external_api, signed)
 
     call_contract = test_settings["contract_call"]
     call_input = ContractCallInput("sophia-address", encoded_contract_id,\
@@ -237,7 +237,7 @@ def test_spend():
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
 
     # Alice posts spend tx
-    ensure_transaction_posted(external_api, signed)
+    common.ensure_transaction_posted(external_api, signed)
 
     # Check that Alice was debited and Bob was credited
     alice_balance = common.get_account_balance(external_api, alice_address)
@@ -265,15 +265,6 @@ def send_tokens_to_user(beneficiary, user, test_settings, external_api, internal
                                                                   test_settings[user]["fee"],
                                                                   external_api,
                                                                   internal_api)
-
-def ensure_transaction_posted(api, signed_tx):
-    tx_object = Tx(tx=signed_tx)
-    tx_hash = api.post_transaction(tx_object).tx_hash
-    top = api.get_current_key_block()
-    common.wait_until_height(api, top.height + 1)
-    wait(lambda: api.get_transaction_by_hash(tx_hash).block_hash != 'none',
-         timeout_seconds=20, sleep_seconds=0.25)
-
 
 def get_unsigned_contract_create(owner_id, contract, external_api, internal_api):
     bytecode = read_id_contract(internal_api)

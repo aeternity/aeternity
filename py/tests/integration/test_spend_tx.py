@@ -154,10 +154,7 @@ def register_name(name, address, external_api, internal_api, private_key):
         internal_api.post_name_preclaim(\
             NamePreclaimTx(commitment_id=commitment_id, fee=1, ttl=100, account_id=address)).tx)
     signed_preclaim = keys.sign_encode_tx(unsigned_preclaim, private_key)
-
-    external_api.post_transaction(Tx(tx=signed_preclaim))
-    top = external_api.get_current_key_block()
-    common.wait_until_height(external_api, top.height + 3)
+    common.ensure_transaction_posted(external_api, signed_preclaim)
 
     # claim
     encoded_name = common.encode_name(name)
@@ -165,10 +162,7 @@ def register_name(name, address, external_api, internal_api, private_key):
         internal_api.post_name_claim(\
             NameClaimTx(name=encoded_name, name_salt=salt, fee=1, ttl=100, account_id=address)).tx)
     signed_claim = keys.sign_encode_tx(unsigned_claim, private_key)
-
-    external_api.post_transaction(Tx(tx=signed_claim))
-    top = external_api.get_current_key_block()
-    common.wait_until_height(external_api, top.height + 3)
+    common.ensure_transaction_posted(external_api, signed_claim)
     name_entry0 = external_api.get_name_entry_by_name(name)
 
     # set pointers
@@ -178,10 +172,7 @@ def register_name(name, address, external_api, internal_api, private_key):
             NameUpdateTx(name_id=name_entry0.id, name_ttl=6000, client_ttl=50,\
                 pointers=pointers, fee=1, ttl=100, account_id=address)).tx)
     signed_update = keys.sign_encode_tx(unsigned_update, private_key)
-
-    external_api.post_transaction(Tx(tx=signed_update))
-    top = external_api.get_current_key_block()
-    common.wait_until_height(external_api, top.height + 3)
+    common.ensure_transaction_posted(external_api, signed_update)
     name_entry = external_api.get_name_entry_by_name(name)
     received_pointers = name_entry.pointers[0]
     assert_equals('account_pubkey', received_pointers.key)
