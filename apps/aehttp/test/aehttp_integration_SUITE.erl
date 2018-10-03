@@ -215,7 +215,8 @@
     sc_ws_contracts/1,
     sc_ws_oracle_contract/1,
     sc_ws_nameservice_contract/1,
-    sc_ws_enviroment_contract/1
+    sc_ws_enviroment_contract/1,
+    sc_ws_remote_call_contract/1
    ]).
 
 
@@ -555,7 +556,12 @@ groups() ->
        % both can refer on-chain objects - chain environment
        sc_ws_open,
        sc_ws_update,
-       sc_ws_enviroment_contract
+       sc_ws_enviroment_contract,
+
+       % both can call a remote contract
+       sc_ws_open,
+       sc_ws_update,
+       sc_ws_remote_call_contract
       ]}
     ].
 
@@ -4163,6 +4169,25 @@ sc_ws_enviroment_contract(Config) ->
     ok = ?WS:stop(RConnPid),
     ok.
 
+sc_ws_remote_call_contract(Config) ->
+    {sc_ws_update, ConfigList} = ?config(saved_config, Config),
+    #{initiator := IConnPid, responder := RConnPid} =
+        proplists:get_value(channel_clients, ConfigList),
+
+    ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, get, error]),
+    ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, get, error]),
+
+
+    [sc_ws_contract_generic(Role, fun sc_ws_remote_call_contract_/7, Config,
+                            [])
+        || Role <- [initiator,
+                    responder]],
+
+    % cleanup
+    ok = ?WS:stop(IConnPid),
+    ok = ?WS:stop(RConnPid),
+    ok.
+
 random_unused_name() ->
     random_unused_name(_Attempts = 10).
 
@@ -4451,6 +4476,74 @@ sc_ws_enviroment_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     Test(<<"block_height">>, <<"int">>, BlockHeight),
     Test(<<"coinbase">>, <<"int">>, fun(I) -> <<I:32/unit:8>> =:= Beneficiary end),
     Test(<<"timestamp">>, <<"int">>, fun(T) -> T > Time end),
+    ok.
+
+
+sc_ws_remote_call_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
+                           OwnerPubkey, _OtherPubkey, _Opts) ->
+    %% create identity contract off-chain
+    CreateContract =
+        fun(Name) ->
+            Code = contract_byte_code(Name),
+            InitArgument = <<"()">>,
+            {ok, EncodedInitData} = aect_sophia:encode_call_data(Code, <<"init">>,
+                                                                InitArgument),
+            {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
+            ?WS:send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+                            #{vm_version => 1,
+                              deposit    => 10,
+                              code       => Code,
+                              call_data  => EncodedInitData}),
+
+            UnsignedStateTx = CreateVolley(),
+            ContractPubKey = contract_id_from_create_update(OwnerPubKey,
+                                                            UnsignedStateTx),
+            {ContractPubKey, Code}
+          end,
+    {IdentityCPubKey, IdentityCode} = CreateContract("identity"),
+    {RemoteCallCPubKey, RemoteCallCode} = CreateContract("remote_call"),
+
+    ContractCall = 
+        fun(Who, ContractPubKey, Code, Fun, Args, Result, Amount) ->
+            {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
+            Tx = call_a_contract(Fun,
+                                 Args,
+                                 ContractPubKey, Code,
+                                 UpdaterConnPid, UpdateVolley, Amount),
+             #{<<"value">> := R} =
+                ws_get_decoded_result(ConnPid1, ConnPid2, <<"int">>, Tx),
+            {R, R} = {Result, R}
+        end,
+    CallIdentity =
+        fun(Who, Val) ->
+            ValB = integer_to_binary(Val),
+            ContractCall(Who, IdentityCPubKey, IdentityCode, <<"main">>,
+                         <<"(", ValB/binary, ")">>, Val, _Amount = 0)
+        end,
+    HexEncodedIdentityPubkey =
+        list_to_binary(aect_utils:hex_bytes(IdentityCPubKey)),
+    CallRemoteContract =
+        fun(Who, Val) ->
+            ValB = integer_to_binary(Val),
+            ContractCall(Who, RemoteCallCPubKey, RemoteCallCode, <<"call">>,
+                         <<"(", HexEncodedIdentityPubkey/binary, ", ",
+                           ValB/binary, ")">>, Val,
+                         % beacuse of hardcoded value=10 in the
+                         % remote_call.aes -> amount in the call must be > 10
+                         _Amount = 20)
+        end,
+    Test =
+        fun(Fun, Val) ->
+            [Fun(Who, Val)
+                || Who <- [initiator, responder]]
+        end,
+
+    % actual tests
+    Test(CallIdentity, 10),
+    Test(CallIdentity, 11),
+    Test(CallRemoteContract, 42),
+    Test(CallRemoteContract, 43),
+    Test(CallIdentity, 12),
     ok.
 
 
@@ -4784,13 +4877,17 @@ contract_calls_("spend_test", ContractPubKey, Code, SenderConnPid, UpdateVolley,
     UnsignedStateTx.
 
 call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid, UpdateVolley) ->
+    call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
+                    UpdateVolley, 0).
+call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
+                UpdateVolley, Amount) ->
     {ok, EncodedMainData} = aect_sophia:encode_call_data(Code,
                                                          Function,
                                                          Argument),
     ?WS:send_tagged(SenderConnPid, <<"update">>, <<"call_contract">>,
                     #{contract   => aec_base58c:encode(contract_pubkey, ContractPubKey),
                       vm_version => 1,
-                      amount     => 0,
+                      amount     => Amount,
                       call_data  => EncodedMainData}),
     _UnsignedStateTx = UpdateVolley().
 

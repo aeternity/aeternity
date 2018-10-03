@@ -505,7 +505,7 @@ do_set_store(Store, PubKey, Trees) ->
         case aect_state_tree:lookup_contract(PubKey, ContractsTree) of
             {value, Contract} -> aect_contracts:set_state(Store, Contract)
         end,
-    Trees1 = aect_state_tree:enter_contract(NewContract, ContractsTree).
+    aect_state_tree:enter_contract(NewContract, ContractsTree).
 
 apply_transaction(Tx, #state{tx_env = Env } = State) ->
     Trees = get_top_trees(State),

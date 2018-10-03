@@ -127,7 +127,8 @@
          fp_after_slash/1,
          fp_use_onchain_oracle/1,
          fp_use_onchain_name_resolution/1,
-         fp_use_onchain_enviroment/1
+         fp_use_onchain_enviroment/1,
+         fp_use_remote_call/1
         ]).
 
 % negative force progress
@@ -284,7 +285,8 @@ groups() ->
        % contract referring to on-chain objects
        fp_use_onchain_oracle,
        fp_use_onchain_name_resolution,
-       fp_use_onchain_enviroment
+       fp_use_onchain_enviroment,
+       fp_use_remote_call
       ]},
      {force_progress_negative, [sequence],
       [fp_closed_channel,
@@ -530,9 +532,11 @@ calc_poi(Accounts, Contracts, Trees) ->
         fun(Key, InitPoI, Pubkeys) ->
             lists:foldl(
                 fun(Pubkey, AccumPoI) ->
-                    {ok, P} = aec_trees:add_poi(Key, Pubkey, Trees,
-                                                AccumPoI),
-                    P
+                    case aec_trees:add_poi(Key, Pubkey, Trees,
+                                                AccumPoI) of
+                        {ok, P} -> P;
+                        {error, Err} -> error({poi_calculation, Err, Key})
+                    end
                 end,
                 InitPoI,
                 Pubkeys)
@@ -1844,9 +1848,10 @@ fp_after_snapshot(Cfg) ->
                     SnapshotRound = aesc_channels:round(Channel), % assert
                     Props
                 end,
-                create_contract_poi_and_payload(FPRound - 1,
-                                                ContractCreateRound,
-                                                Owner),
+
+                create_poi_by_trees(),
+                set_prop(round, FPRound - 1), % for the payload
+                create_payload(),
                 fun(Props) when SnapshotRound =:= FPRound - 1 ->
                       Props#{payload => <<>>};
                    (Props) -> Props
@@ -2105,7 +2110,7 @@ fp_use_onchain_oracle(Cfg) ->
                                     QueryFee),
 
                 % create off-chain contract
-                create_trees(),
+                create_trees_if_not_present(),
                 set_from(Owner, owner, owner_privkey),
                 fun(#{oracle := Oracle} = Props) ->
                     EncodedOracleId = HexEncode(Oracle),
@@ -2209,7 +2214,7 @@ fp_use_onchain_name_resolution(Cfg) ->
                 set_prop(height, FPHeight0),
 
                 % create off-chain contract
-                create_trees(),
+                create_trees_if_not_present(),
                 set_from(Owner, owner, owner_privkey),
                 create_contract_in_trees(_Round    = ContractCreateRound,
                                          _Contract = "channel_on_chain_contract_name_resolution",
@@ -2266,7 +2271,7 @@ fp_use_onchain_enviroment(Cfg) ->
                 set_prop(height, FPHeight0),
 
                 % create off-chain contract
-                create_trees(),
+                create_trees_if_not_present(),
                 set_from(Owner, owner, owner_privkey),
                 create_contract_in_trees(_Round    = ContractCreateRound,
                                          _Contract = "channel_env",
@@ -2286,6 +2291,83 @@ fp_use_onchain_enviroment(Cfg) ->
                 ForceCall(Forcer, <<"coinbase">>, word, BeneficiaryInt),
                 set_tx_env(Height4, Timestamp1, Beneficiary),
                 ForceCall(Forcer, <<"timestamp">>, word, Timestamp1)
+               ])
+        end,
+    [CallOnChain(Owner, Forcer) || Owner  <- ?ROLES,
+                                   Forcer <- ?ROLES],
+    ok.
+
+fp_use_remote_call(Cfg) ->
+    FPRound = 20,
+    LockPeriod = 10,
+    FPHeight0 = 20,
+    HexEncodePK =
+        fun(L) ->
+            list_to_binary(aect_utils:hex_bytes(L))
+        end,
+    RemoteCall =
+        fun(Forcer, Int) when is_integer(Int) ->
+            fun(Props) ->
+                Bin = integer_to_binary(Int),
+                RemoteContract = maps:get(remote_contract, Props),
+                Address = HexEncodePK(RemoteContract),
+                Args = <<"(", Address/binary, ", ", Bin/binary, ")">>,
+                (force_call_contract(Forcer, <<"call">>, Args))(Props)
+            end
+        end,
+    PushContractId =
+        fun(Key) ->
+            rename_prop(contract_id, Key, keep_old)
+        end,
+    PopContractId =
+        fun(Key) ->
+            rename_prop(Key, contract_id, keep_old)
+        end,
+
+    CallOnChain =
+        fun(Owner, Forcer) ->
+            IAmt0 = 30,
+            RAmt0 = 30,
+            ContractCreateRound = 10,
+            run(#{cfg => Cfg, initiator_amount => IAmt0,
+                              responder_amount => RAmt0,
+                  lock_period => LockPeriod,
+                  channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                set_prop(height, FPHeight0),
+
+                % create off-chain contract that is going to be used in the
+                % remote call later
+                create_trees_if_not_present(),
+                set_from(Owner, owner, owner_privkey),
+                create_contract_in_trees(_Round    = ContractCreateRound,
+                                         _Contract = "identity",
+                                         _InitArgs = <<"()">>,
+                                         _Deposit  = 2),
+                PushContractId(remote_contract),
+                fun(#{contract_id := RemoteContract} = Props) ->
+                    Props#{remote_contract => RemoteContract}
+                end,
+                % create the second contract
+                create_contract_in_trees(_Round1    = ContractCreateRound + 10,
+                                         _Contract2 = "remote_call",
+                                         _InitArgs2 = <<"()">>,
+                                         _Deposit2  = 2),
+                PushContractId(second_contract),
+                PopContractId(remote_contract),
+                force_call_contract_first(Forcer, <<"main">>, <<"(42)">>,
+                                          FPRound),
+                assert_last_channel_result(42, word),% it works
+
+                PopContractId(second_contract),
+                %% contract has a hardcoded expectation for `value = 10` for
+                %% the remote call
+                %% this means that the contract must have at least 10 tokens
+                %% in the contract's balance. This is guaranteed via the
+                %% following line (granting 20 tokens to the second_contract)
+                set_prop(call_deposit, 20),
+                RemoteCall(Forcer, 44),
+                assert_last_channel_result(44, word)% it works remote
                ])
         end,
     [CallOnChain(Owner, Forcer) || Owner  <- ?ROLES,
@@ -2373,7 +2455,8 @@ fp_payload_from_another_channel(Cfg) ->
                 % create another channelB and replace the old one with the
                 % participansts as well
                 positive(fun create_channel_/2),
-                create_trees(),
+                delete_prop(trees),
+                create_trees_if_not_present(),
                 set_from(Owner, owner, owner_privkey),
                 create_contract_in_trees(_Round    = 6,
                                          _Contract = "identity",
@@ -2660,7 +2743,7 @@ fp_missing_account_address(Cfg) ->
                               responder_amount => 30,
                  channel_reserve => 1},
                [positive(fun create_channel_/2),
-                create_trees(),
+                create_trees_if_not_present(),
                 set_from(Owner, owner, owner_privkey),
                 create_contract_in_trees(_Round    = ContractRound,
                                           _Contract = "identity",
@@ -2700,7 +2783,7 @@ fp_missing_contract_address(Cfg) ->
                               responder_amount => 30,
                  channel_reserve => 1},
                [positive(fun create_channel_/2),
-                create_trees(),
+                create_trees_if_not_present(),
                 set_from(Owner, owner, owner_privkey),
                 create_contract_in_trees(_Round    = ContractRound,
                                           _Contract = "identity",
@@ -2774,9 +2857,9 @@ fp_too_soon(Cfg) ->
                                                 Owner),
                 force_progress_sequence(_Round = Round0, Forcer0),
                 set_prop(height, FPHeight1),
-                create_contract_poi_and_payload(Round1 - 1,
-                                                ContractCreateRound,
-                                                Owner),
+                create_poi_by_trees(),
+                set_prop(round, Round1 - 1), % for the payload
+                create_payload(),
                 negative_force_progress_sequence(Round1, Forcer1,
                                                  force_progressed_too_soon)])
         end,
@@ -2806,7 +2889,7 @@ create_contract_poi_and_payload(Round, ContractRound, Owner, Opts) ->
         {Contract, ContractInitProps} =
             maps:get(contract_name, Props0, {"identity", <<"()">>}),
         run(Props0,
-          [create_trees(),
+          [create_trees_if_not_present(),
            set_from(Owner, owner, owner_privkey),
            create_contract_in_trees(_Round    = ContractRound,
                                     _Contract = Contract,
@@ -2826,7 +2909,7 @@ create_contract_poi_and_payload(Round, ContractRound, Owner, Opts) ->
 create_poi_by_trees() ->
     fun(#{initiator_pubkey := Initiator,
           responder_pubkey := Responder,
-          contract_id      := ContractId,
+          contract_ids     := ContractIds0,
           fake_account     := FakeAcc,
           trees            := Trees} = Props) ->
         IdsToDrop = maps:get(exclude_from_poi, Props, []),
@@ -2838,7 +2921,7 @@ create_poi_by_trees() ->
                     IdsToDrop)
             end,
         Accounts = DropSomeIds([Initiator, Responder, FakeAcc]),
-        Contracts = DropSomeIds([ContractId]),
+        Contracts = DropSomeIds(ContractIds0),
         PoI = calc_poi(Accounts, Contracts, Trees),
         PoIHash = aec_trees:poi_hash(PoI),
         Props#{state_hash => PoIHash, poi => PoI,
@@ -2869,7 +2952,6 @@ force_progress_sequence(Round, Forcer) ->
         DepositAmt = maps:get(call_deposit, Props0, 1),
         {FunName, FunParams} = maps:get(contract_function_call, Props0,
                                         {<<"main">>, <<"42">>}),
-        DepositAmt = maps:get(call_deposit, Props0, 1),
         run(Props0,
            [get_onchain_balances(before_force),
             set_from(Forcer),
@@ -2960,6 +3042,18 @@ set_prop(Key, Value) ->
 delete_prop(Key) ->
     fun(Props) ->
         maps:remove(Key, Props)
+    end.
+
+-spec rename_prop(atom(), atom(), keep_old | delete_old) -> fun((map()) -> map()).
+rename_prop(Key1, Key2, KeepOld) ->
+    fun(Props) ->
+        Value = maps:get(Key1, Props),
+        Props1 =
+            case KeepOld of
+                keep_old -> Props;
+                delete_old -> maps:remove(Key1, Props)
+            end,
+        maps:put(Key2, Value, Props1)
     end.
 
 prepare_balances_for_mutual_close() ->
@@ -3070,11 +3164,12 @@ tx_env(#{height := Height} = Props) ->
     aetx_env:contract_env(Height, ConsensusVersion, Time, Beneficiary,
                           123456, KeyBlockHash).
     
-create_trees() ->
+create_trees_if_not_present() ->
     AccountHashSize = aec_base58c:byte_size_for_type(account_pubkey),
     FakeAccount = <<42:AccountHashSize/unit:8>>,
     FakeAmt = 3,
-    fun(#{initiator_amount  := IAmt,
+    fun(#{trees := _} = Props) -> Props; % trees are already present
+       (#{initiator_amount  := IAmt,
           responder_amount  := RAmt,
           initiator_pubkey  := IPubkey,
           responder_pubkey  := RPubkey} = Props) ->
@@ -3106,7 +3201,13 @@ create_contract_in_trees(CreationRound, ContractName, InitArg, Deposit) ->
                                                     Env,
                                                     CreationRound, Reserve),
         ContractId = aect_contracts:compute_contract_pubkey(Owner, CreationRound),
-        Props#{trees => Trees, contract_id => ContractId}
+        ContractIds = maps:get(contract_ids, Props, []),
+        case lists:member(ContractId, ContractIds) of
+            true -> error(contract_already_present); % something is wrong with the test
+            false -> pass
+        end,
+        Props#{trees => Trees, contract_id => ContractId,
+               contract_ids => [ContractId | ContractIds]}
     end.
 
 run(Cfg, Funs) ->
