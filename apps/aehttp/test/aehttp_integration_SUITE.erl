@@ -4259,7 +4259,6 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     QueryTTL = 30,
     ResponseTTL = 30,
     Question = <<"Fill me in with something reasonable">>,
-    HexEncode = fun(L) -> list_to_binary(aect_utils:hex_bytes(L)) end,
     register_oracle(OraclePubkey, OraclePrivkey,
                     #{query_format    => SophiaStringType,
                       response_format => SophiaStringType,
@@ -4280,7 +4279,7 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
         end,
 
     Code = contract_byte_code("channel_on_chain_contract_oracle"),
-    HexOracleId = HexEncode(OraclePubkey),
+    HexOracleId = aeu_hex:hexstring_encode(OraclePubkey),
     InitArgument = <<"(",HexOracleId/binary, ", \"", Question/binary, "\")">>,
     {ok, EncodedInitData} = aect_sophia:encode_call_data(Code, <<"init">>,
                                                          InitArgument),
@@ -4323,14 +4322,14 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
 
     %% place some oracle query id with a different question
     ErrQueryId = OracleQuerySequence(<<"other question">>, <<"some answer">>),
-    EncodedErrQuery = HexEncode(ErrQueryId),
+    EncodedErrQuery = aeu_hex:hexstring_encode(ErrQueryId),
     [CallContract(Who, <<"resolve">>, <<"(", EncodedErrQuery/binary, ")">>,
                   <<"string">>, <<"different question">>)
         || Who <- [initiator, responder]],
 
     Answer = <<"other reasonable thingy">>,
     CorrectQueryId = OracleQuerySequence(Question, Answer),
-    EncodedQueryId = HexEncode(CorrectQueryId),
+    EncodedQueryId = aeu_hex:hexstring_encode(CorrectQueryId),
 
     {ok, {OwnerBal0, OtherBal0}} = sc_ws_get_both_balances(ConnPid1,
                                                            OwnerPubkey,
@@ -4522,8 +4521,7 @@ sc_ws_remote_call_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
             ContractCall(Who, IdentityCPubKey, IdentityCode, <<"main">>,
                          <<"(", ValB/binary, ")">>, Val, _Amount = 0)
         end,
-    HexEncodedIdentityPubkey =
-        list_to_binary(aect_utils:hex_bytes(IdentityCPubKey)),
+    HexEncodedIdentityPubkey = aeu_hex:hexstring_encode(IdentityCPubKey),
     CallRemoteContract =
         fun(Who, Val) ->
             ValB = integer_to_binary(Val),
@@ -4850,13 +4848,12 @@ contract_calls_("spend_test", ContractPubKey, Code, SenderConnPid, UpdateVolley,
         end,
     ContractBalance0 = GetBalance(<<"()">>),
 
-    SenderB0 = GetBalance(list_to_binary("(" ++ aect_utils:hex_bytes(SenderPubkey) ++ ")")),
-    AckB0 = GetBalance(list_to_binary("(" ++ aect_utils:hex_bytes(AckPubkey) ++ ")")),
+    SenderB0 = GetBalance(format_args(SenderPubkey)),
+    AckB0 = GetBalance(format_args(AckPubkey)),
 
     SpendFun =
         fun(To, Amt) ->
-            SpendArgs = list_to_binary("(" ++ aect_utils:hex_bytes(To) ++
-                                       ", " ++ integer_to_list(Amt) ++ ")"),
+            SpendArgs = format_args(To, Amt),
             _SpendStateTx = call_a_contract(<<"spend">>, SpendArgs, ContractPubKey, Code, SenderConnPid,
                                   UpdateVolley)
         end,
@@ -4865,16 +4862,16 @@ contract_calls_("spend_test", ContractPubKey, Code, SenderConnPid, UpdateVolley,
     SpendFun(SenderPubkey, SpendAmt),
     ContractBalance = GetBalance(<<"()">>),
     {ContractBalance, _} = {ContractBalance0 - SpendAmt, ContractBalance0},
-    SenderB = GetBalance(list_to_binary("(" ++ aect_utils:hex_bytes(SenderPubkey) ++ ")")),
-    AckB0 = GetBalance(list_to_binary("(" ++ aect_utils:hex_bytes(AckPubkey) ++ ")")),
+    SenderB = GetBalance(format_args(SenderPubkey)),
+    AckB0 = GetBalance(format_args(AckPubkey)),
     SenderB = SenderB0 + SpendAmt,
 
     SpendAmt2 = 2,
     UnsignedStateTx = SpendFun(AckPubkey, SpendAmt2),
     ContractBalance1 = GetBalance(<<"()">>),
     {ContractBalance1, _} = {ContractBalance - SpendAmt2, ContractBalance1},
-    SenderB = GetBalance(list_to_binary("(" ++ aect_utils:hex_bytes(SenderPubkey) ++ ")")),
-    AckB = GetBalance(list_to_binary("(" ++ aect_utils:hex_bytes(AckPubkey) ++ ")")),
+    SenderB = GetBalance(format_args(SenderPubkey)),
+    AckB = GetBalance(format_args(AckPubkey)),
     AckB = AckB0 + SpendAmt2,
     UnsignedStateTx.
 
@@ -4988,6 +4985,15 @@ peers(_Config) ->
     {ok, 200, #{<<"blocked">> := [], <<"peers">> := []}} = get_peers(),
 
     ok.
+
+format_args(X) ->
+    iolist_to_binary(["(", format_arg(X), ")"]).
+
+format_args(X, Y) ->
+    iolist_to_binary(["(", format_arg(X), ", ", format_arg(Y), ")"]).
+
+format_arg(B) when is_binary(B)  -> aeu_hex:hexstring_encode(B);
+format_arg(I) when is_integer(I) -> integer_to_binary(I).
 
 %% ============================================================
 %% WebSocket helpers

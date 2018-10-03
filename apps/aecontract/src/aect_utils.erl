@@ -7,21 +7,11 @@
 
 -module(aect_utils).
 
--export([hex_bytes/1,
-         hex_byte/1,
-         check_balance/3,
+-export([check_balance/3,
          check/2,
          insert_call_in_trees/2,
          insert_contract_in_trees/2
         ]).
-
--spec hex_byte(byte()) -> string().
-hex_byte(N) ->
-    hex_bytes(<<N:8>>).
-
--spec hex_bytes(binary()) -> string().
-hex_bytes(Bin) ->
-    lists:flatten("0x" ++ [io_lib:format("~2.16.0B", [B]) || <<B:8>> <= Bin]).
 
 -spec check_balance(aec_keys:pubkey(), aec_trees:trees(), non_neg_integer()) ->
         ok | {error, term()}.

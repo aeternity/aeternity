@@ -2086,7 +2086,6 @@ fp_use_onchain_oracle(Cfg) ->
     FPRound = 20,
     LockPeriod = 10,
     FPHeight0 = 20,
-    HexEncode = fun(L) -> list_to_binary(aect_utils:hex_bytes(L)) end,
     Question = <<"To be, or not to be?">>,
     OQuestion = aeso_data:to_binary(Question, 0),
     Answer = <<"oh, yes">>,
@@ -2113,7 +2112,7 @@ fp_use_onchain_oracle(Cfg) ->
                 create_trees_if_not_present(),
                 set_from(Owner, owner, owner_privkey),
                 fun(#{oracle := Oracle} = Props) ->
-                    EncodedOracleId = HexEncode(Oracle),
+                    EncodedOracleId = aeu_hex:hexstring_encode(Oracle),
                     (create_contract_in_trees(_Round    = ContractCreateRound,
                                              _Contract = "channel_on_chain_contract_oracle",
                                              _InitArgs = <<"(",EncodedOracleId/binary, ", \"", Question/binary, "\")">>,
@@ -2127,7 +2126,7 @@ fp_use_onchain_oracle(Cfg) ->
 
                 % try resolving a contract with wrong query id
                 fun(Props) ->
-                    EncodedQueryId = HexEncode(<<1234:42/unit:8>>),
+                    EncodedQueryId = aeu_hex:hexstring_encode(<<1234:42/unit:8>>),
                     (force_call_contract(Forcer, <<"resolve">>,
                                          <<"(", EncodedQueryId/binary,
                                            ")">>))(Props)
@@ -2146,7 +2145,7 @@ fp_use_onchain_oracle(Cfg) ->
 
                 % there is currently no bet for the correct answer, try anyway
                 fun(#{query_id := QueryId} = Props) ->
-                    EncodedQueryId = HexEncode(QueryId),
+                    EncodedQueryId = aeu_hex:hexstring_encode(QueryId),
                     (force_call_contract(Forcer, <<"resolve">>,
                                          <<"(", EncodedQueryId/binary,
                                            ")">>))(Props)
@@ -2156,7 +2155,7 @@ fp_use_onchain_oracle(Cfg) ->
                 % place a winnning bet
                 force_call_contract(Forcer, <<"place_bet">>, <<"\"", Answer/binary,"\"">>),
                 fun(#{query_id := QueryId} = Props) ->
-                    EncodedQueryId = HexEncode(QueryId),
+                    EncodedQueryId = aeu_hex:hexstring_encode(QueryId),
                     (force_call_contract(Forcer, <<"resolve">>,
                                          <<"(", EncodedQueryId/binary,
                                            ")">>))(Props)
@@ -2165,7 +2164,7 @@ fp_use_onchain_oracle(Cfg) ->
 
                 % verify that Oracle.get_question works
                 fun(#{query_id := QueryId} = Props) ->
-                    EncodedQueryId = HexEncode(QueryId),
+                    EncodedQueryId = aeu_hex:hexstring_encode(QueryId),
                     (force_call_contract(Forcer, <<"get_question">>,
                                          <<"(", EncodedQueryId/binary,
                                            ")">>))(Props)
@@ -2174,7 +2173,7 @@ fp_use_onchain_oracle(Cfg) ->
 
                 % verify that Oracle.query_fee works
                 fun(#{query_id := QueryId} = Props) ->
-                    EncodedQueryId = HexEncode(QueryId),
+                    EncodedQueryId = aeu_hex:hexstring_encode(QueryId),
                     (force_call_contract(Forcer, <<"query_fee">>,
                                          <<"(", EncodedQueryId/binary,
                                            ")">>))(Props)
@@ -2301,16 +2300,12 @@ fp_use_remote_call(Cfg) ->
     FPRound = 20,
     LockPeriod = 10,
     FPHeight0 = 20,
-    HexEncodePK =
-        fun(L) ->
-            list_to_binary(aect_utils:hex_bytes(L))
-        end,
     RemoteCall =
         fun(Forcer, Int) when is_integer(Int) ->
             fun(Props) ->
                 Bin = integer_to_binary(Int),
                 RemoteContract = maps:get(remote_contract, Props),
-                Address = HexEncodePK(RemoteContract),
+                Address = aeu_hex:hexstring_encode(RemoteContract),
                 Args = <<"(", Address/binary, ", ", Bin/binary, ")">>,
                 (force_call_contract(Forcer, <<"call">>, Args))(Props)
             end
