@@ -82,7 +82,6 @@
         , hash_is_connected_to_genesis/1
         , hash_is_in_main_chain/1
         , insert_block/1
-        , median_timestamp/1
         , gossip_allowed_height_from_top/0
         , proof_of_fraud_report_delay/0
         ]).
@@ -112,53 +111,40 @@ get_n_key_headers_backward_from(Header, N) ->
     Node = wrap_header(Header),
     get_n_key_headers_from(Node, N).
 
-%% Compute the median timestamp for last aec_governance:median_timestamp_key_blocks()
--spec median_timestamp(aec_headers:header()) -> {ok, integer()} | 'error'.
-median_timestamp(Header) ->
-    TimeStampKeyBlocks = aec_governance:median_timestamp_key_blocks(),
-    case aec_headers:height(Header) =< TimeStampKeyBlocks of
-        true ->
-            {ok, ?GENESIS_TIME};
-        false ->
-            case get_n_key_headers_from(wrap_header(Header), TimeStampKeyBlocks + 1) of
-                {ok, Headers} ->
-                    {ok, median([ aec_headers:time_in_msecs(H)
-                                  || H <- lists:droplast(Headers) ])};
-                error ->
-                    error
-            end
-    end.
-
 -spec insert_block(aec_blocks:block() | map()) -> 'ok' | {'pof', aec_pof:pof()} | {'error', any()}.
-insert_block(#{ key_block := KeyBlock, micro_blocks := MicroBlocks, dir := forward }) ->
+insert_block(#{ dir := forward} = Generation) ->
+    case add_key_block_in_generation(Generation) of
+        ok ->
+            add_micro_blocks_in_generation(Generation);
+        {pof, _} ->
+            add_micro_blocks_in_generation(Generation);
+        {error, _} = Err ->
+            Err
+    end;
+insert_block(#{ dir := backward} = Generation) ->
+    case add_micro_blocks_in_generation(Generation) of
+        ok ->
+            add_key_block_in_generation(Generation);
+        {pof, _} ->
+            add_key_block_in_generation(Generation);
+        {error, _} = Err ->
+            Err
+    end;
+insert_block(Block) ->
+    aec_blocks:assert_block(Block),
+    do_insert_block(Block, undefined).
+
+add_micro_blocks_in_generation(#{ micro_blocks := MicroBlocks}) ->
     FoldFun = fun(MB, ok) -> do_insert_block(MB, sync);
                  (MB, {pof, _}) -> do_insert_block(MB, sync);
                  (_MB, Err = {error, _}) -> Err
               end,
-    %% First insert key_block
-    case do_insert_block(KeyBlock, sync) of
-        ok ->
-            lists:foldl(FoldFun, ok, MicroBlocks);
-        {pof,_Pof} ->
-            lists:foldl(FoldFun, ok, MicroBlocks);
-        Err = {error, _} ->
-            Err
-    end;
-insert_block(#{ key_block := KeyBlock, micro_blocks := MicroBlocks, dir := backward }) ->
-    %% First insert micro_blocks
-    case lists:foldl(fun(MB, ok) -> do_insert_block(MB, sync);
-                        (MB, {pof, _}) -> do_insert_block(MB, sync);
-                        (_MB, Err = {error, _}) -> Err
-                     end, ok, MicroBlocks) of
-        ok ->
-            do_insert_block(KeyBlock, sync);
-        {pof,_PoF} ->
-            do_insert_block(KeyBlock, sync);
-        Err = {error, _} ->
-            Err
-    end;
-insert_block(Block) ->
-    do_insert_block(Block, undefined).
+    lists:foldl(FoldFun, ok, MicroBlocks).
+
+add_key_block_in_generation(#{ add_keyblock := false}) ->
+    ok;
+add_key_block_in_generation(#{ add_keyblock := true, key_block := KeyBlock}) ->
+    do_insert_block(KeyBlock, sync).
 
 do_insert_block(Block, Origin) ->
     Node = wrap_block(Block),
@@ -434,12 +420,15 @@ internal_insert_transaction(Node, Block, Origin) ->
             PrevNode = db_get_node(prev_hash(Node)),
             assert_previous_height(PrevNode, Node),
             assert_previous_key_block_hash(PrevNode, Node),
-            assert_micro_block_time(PrevNode, Node),
-            assert_micro_signature(PrevNode, Node),
-            assert_micro_pof(PrevNode, Node, Block),
-            %% TODO: The key header chain should only be read once.
-            assert_key_block_time(Node),
-            assert_calculated_target(Node)
+            case node_type(Node) of
+                key ->
+                    KeyHeaders = assert_key_block_time_return_headers(Node),
+                    assert_key_block_target(Node, KeyHeaders);
+                micro ->
+                    assert_micro_block_time(PrevNode, Node),
+                    assert_micro_signature(PrevNode, Node),
+                    assert_micro_pof(PrevNode, Node, Block)
+            end
     end,
     ok = db_put_node(Block, hash(Node)),
     State3 = update_state_tree(Node, State2),
@@ -506,13 +495,7 @@ assert_previous_key_block_hash(PrevNode, Node) ->
 
 %% To assert key block target calculation we need DeltaHeight headers counted
 %% backwards from the node we want to assert.
-assert_calculated_target(Node) ->
-    case is_key_block(Node) of
-        true  -> assert_key_block_target(Node);
-        false -> ok
-    end.
-
-assert_key_block_target(Node) ->
+assert_key_block_target(Node, Headers) ->
     case db_find_node(prev_hash(Node)) of
         error -> ok;
         {ok, PrevNode} ->
@@ -524,7 +507,7 @@ assert_key_block_target(Node) ->
                     %% We only need to verify that the target is equal to its predecessor.
                     assert_target_equal_to_prev(Node, PrevNode);
                 false ->
-                    assert_calculated_target(Node, PrevNode, Delta)
+                    assert_calculated_target(Node, PrevNode, Delta, Headers)
             end
     end.
 
@@ -542,8 +525,20 @@ assert_target_equal_to_prev(Node, PrevNode) ->
         {X, Y} -> internal_error({target_not_equal_to_parent, Node, X, Y})
     end.
 
-assert_calculated_target(Node, PrevNode, Delta) ->
-    {ok, Headers} = get_n_key_headers_from(PrevNode, Delta),
+assert_calculated_target(Node, PrevNode, Delta, HeadersIn) ->
+    {ok, Headers} =
+        case length(HeadersIn) of
+            0 ->
+                get_n_key_headers_from(PrevNode, Delta);
+            N when N == Delta ->
+                {ok, HeadersIn};
+            N when N > Delta ->
+                {ok, lists:nthtail(N - Delta, HeadersIn)};
+            N when N < Delta ->
+                NextHash = aec_headers:prev_key_hash(hd(HeadersIn)),
+                NextNode = db_get_node(NextHash),
+                get_n_key_headers_from({ok, NextNode}, Delta - N, HeadersIn)
+        end,
     case aec_target:verify(export_header(Node), Headers) of
         ok -> ok;
         {error, {wrong_target, Actual, Expected}} ->
@@ -568,16 +563,28 @@ get_n_key_headers_from({ok, Node}, N, Acc) ->
 get_n_key_headers_from(error, _N, _Acc) ->
     error.
 
-assert_key_block_time(Node) ->
-    case is_key_block(Node) of
+assert_key_block_time_return_headers(Node) ->
+    Time = node_time(Node),
+    case median_timestamp_and_headers(Node) of
+        {ok, Median, Headers} when Time > Median -> Headers;
+        {ok,_Median,_Headers} -> internal_error(key_block_from_the_past)
+    end.
+
+%% Compute the median timestamp for last aec_governance:median_timestamp_key_blocks()
+median_timestamp_and_headers(Node) ->
+    TimeStampKeyBlocks = aec_governance:median_timestamp_key_blocks(),
+    case node_height(Node) =< TimeStampKeyBlocks of
         true ->
-            Time = node_time(Node),
-            case median_timestamp(export_header(Node)) of
-                {ok, Median} when Time > Median -> ok;
-                {ok, _Median} -> internal_error(key_block_from_the_past);
-                error -> internal_error(key_block_median_time_error)
-            end;
-        false -> ok
+            {ok, ?GENESIS_TIME, []};
+        false ->
+            PrevKeyNode = db_get_node(prev_key_hash(Node)),
+            case get_n_key_headers_from(PrevKeyNode, TimeStampKeyBlocks) of
+                {ok, Headers} ->
+                    Times = [aec_headers:time_in_msecs(H) || H <- Headers],
+                    {ok, median(Times), Headers};
+                error ->
+                    error
+            end
     end.
 
 assert_micro_block_time(PrevNode, Node) ->

@@ -672,13 +672,31 @@ post_blocks(From, To, []) ->
 post_blocks(From, _To, [{Height, _Hash, {_PeerId, local}} | Blocks]) ->
     post_blocks(From, Height, Blocks);
 post_blocks(From, To, [{Height, _Hash, {PeerId, Block}} | Blocks]) ->
-    case aec_conductor:add_synced_block(Block) of
+    case add_generation(Block) of
         ok ->
             post_blocks(From, Height, Blocks);
         {error, Reason} ->
             epoch_sync:info("Failed to add synced block ~p: ~p", [Height, Reason]),
             [ epoch_sync:info("Synced blocks ~p - ~p", [From, To - 1]) || To > From ],
             {error, PeerId, Height}
+    end.
+
+%% In order not to timeout the conductor, large generations are added in
+%% smaller chuncks, a few micro blocks at the time.
+%% Each micro block has a fixed maximum gas, by limiting the number of micro
+%% blocks we limit the total amount of work the conductor has to perform in
+%% each synchronous call. 
+add_generation(#{micro_blocks := MBlocks} = Generation) ->
+    add_generation(maps:without([micro_blocks], Generation), MBlocks).
+
+-define(MAX_NR_MICROBLOCKS, 4).
+add_generation(Gen, MBlocks) when length(MBlocks) < ?MAX_NR_MICROBLOCKS ->
+    aec_conductor:add_synced_generation_batched(Gen#{micro_blocks => MBlocks}, true);
+add_generation(Gen, MBlocks) ->
+    {Add, AddLater} = lists:split(?MAX_NR_MICROBLOCKS, MBlocks),
+    case aec_conductor:add_synced_generation_batched(Gen#{micro_blocks => Add}, false) of
+        ok -> add_generation(Gen, AddLater);
+        Error -> Error
     end.
 
 %% Ping logic makes sure they always agree on genesis header (height 0)
@@ -740,9 +758,10 @@ fill_pool(PeerId, StartHash, TargetHash, ST) ->
 do_get_generation(PeerId, LastHash) ->
     case aec_peer_connection:get_generation(PeerId, LastHash, forward) of
         {ok, KeyBlock, MicroBlocks, forward} ->
-            aec_conductor:add_synced_block(#{ key_block => KeyBlock,
-                                              micro_blocks => MicroBlocks,
-                                              dir => forward });
+            Generation = #{ key_block => KeyBlock,
+                            micro_blocks => MicroBlocks,
+                            dir => forward },
+            aec_conductor:add_synced_generation(Generation);
         Err = {error, _} ->
             Err
     end.

@@ -254,7 +254,7 @@ test_preemption_pulled() ->
     Hash2 = block_hash(Top2),
 
     %% Seed the server with the first part of the chain
-    [ok = ?TEST_MODULE:add_synced_block(B) || B <- Chain1],
+    [ok = ?TEST_MODULE:post_block(B) || B <- Chain1],
     wait_for_top_block_hash(Hash1),
 
     %% Start mining and make sure we are starting
@@ -265,7 +265,7 @@ test_preemption_pulled() ->
     wait_for_start_mining(Hash1),
 
     %% Sync the rest of the chain, which will take over.
-    [?TEST_MODULE:add_synced_block(B) || B <- Chain2],
+    [?TEST_MODULE:post_block(B) || B <- Chain2],
     wait_for_top_block_hash(Hash2),
 
     %% The mining should now have been preempted

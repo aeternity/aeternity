@@ -642,8 +642,8 @@ validate_key_block_header(Header) ->
 
     Validators = [fun validate_version/1,
                   fun validate_pow/1,
-                  fun validate_max_time/1,
-                  fun validate_median_time/1],
+                  fun validate_max_time/1
+                  ],
     aeu_validation:run(Validators, [{Header, ProtocolVersions}]).
 
 validate_micro_block_header(Header) ->
@@ -688,16 +688,6 @@ validate_pow({#key_header{nonce        = Nonce,
             ok;
         false ->
             {error, incorrect_pow}
-    end.
-
--spec validate_median_time({header(), aec_governance:protocols()}) ->
-        ok | {error, block_from_the_past}.
-validate_median_time({Header, _}) ->
-    Time = time_in_msecs(Header),
-    case aec_chain_state:median_timestamp(Header) of
-        {ok, MTime} when Time > MTime -> ok;
-        {ok, _MTime}                  -> {error, block_from_the_past};
-        error                         -> ok %% We can't know yet - checked later
     end.
 
 -spec validate_micro_block_cycle_time({header(), aec_governance:protocols()}) ->

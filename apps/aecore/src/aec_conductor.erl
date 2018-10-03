@@ -54,7 +54,8 @@
         ]).
 
 %% Chain API
--export([ add_synced_block/1
+-export([ add_synced_generation/1
+        , add_synced_generation_batched/2
         , get_key_block_candidate/0
         , post_block/1
         ]).
@@ -130,12 +131,34 @@ handoff_leader() ->
 
 -spec post_block(aec_blocks:block()) -> 'ok' | {'error', any()}.
 post_block(Block) ->
-    aec_blocks:assert_block(Block),
-    gen_server:call(?SERVER, {post_block, Block}).
+    case aec_validation:validate_block(Block) of
+        ok ->
+            gen_server:call(?SERVER, {post_block, Block});
+        {error, {header, Reason}} ->
+            epoch_mining:info("Header failed validation: ~p", [Reason]),
+            {error, Reason};
+        {error, {block, Reason}} ->
+            epoch_mining:info("Block failed validation: ~p", [Reason]),
+            {error, Reason}
+    end.
 
--spec add_synced_block(map()) -> 'ok' | {'error', any()}.
-add_synced_block(Block) ->
-    gen_server:call(?SERVER, {add_synced_block, Block}).
+-spec add_synced_generation(map()) -> 'ok' | {'error', any()}.
+add_synced_generation(#{} = Generation) ->
+    add_synced_generation_batched(Generation, true).
+
+-spec add_synced_generation_batched(map(), boolean()) -> 'ok' | {'error', any()}.
+add_synced_generation_batched(#{} = Generation, AddKeyBlock) when is_boolean(AddKeyBlock)->
+    Generation1 = Generation#{add_keyblock => AddKeyBlock},
+    case aec_validation:validate_block(Generation1) of
+        ok ->
+            gen_server:call(?SERVER, {add_synced_generation, Generation1});
+        {error, {header, Reason}} ->
+            epoch_mining:info("Header failed validation: ~p", [Reason]),
+            {error, Reason};
+        {error, {block, Reason}} ->
+            epoch_mining:info("Block failed validation: ~p", [Reason]),
+            {error, Reason}
+    end.
 
 -spec get_key_block_candidate() -> {'ok', aec_blocks:block()} | {'error', atom()}.
 get_key_block_candidate() ->
@@ -189,8 +212,8 @@ reinit_chain_state() ->
     exit(whereis(aec_tx_pool), kill),
     ok.
 
-handle_call({add_synced_block, Block},_From, State) ->
-    {Reply, State1} = handle_synced_block(Block, State),
+handle_call({add_synced_generation, Block},_From, State) ->
+    {Reply, State1} = handle_synced_generation(Block, State),
     {reply, Reply, State1};
 handle_call(get_key_block_candidate,_From, State) ->
     Res =
@@ -800,8 +823,8 @@ handle_key_block_candidate_reply({{error, Reason}, _}, State) ->
 %%%===================================================================
 %%% In server context: A block was given to us from the outside world
 
-handle_synced_block(Block, State) ->
-    epoch_mining:info("sync_block: ~p", [Block]),
+handle_synced_generation(Block, State) ->
+    epoch_mining:info("synced_generation: ~p", [Block]),
     handle_add_block(Block, State, block_synced).
 
 handle_post_block(Block, State) ->
@@ -833,8 +856,10 @@ handle_add_block(#{ key_block := KeyBlock, dir := Dir } = Block, #state{} = Stat
     %% Network layer (peer_connection, sync) sanitized KeyBlock to be key block.
     Header = aec_blocks:to_header(KeyBlock),
     %% Always try to insert forward generation - it may contain new unseen information
+    %% For backward generation, it is enough to check if we have the key block
+    %% since we only accept connected blocks.
     CheckFun = case Dir of
-                   backward -> fun aec_sync:has_generation/1;
+                   backward -> fun aec_chain:has_block/1;
                    forward  -> fun(_) -> false end
                end,
     handle_add_block(Header, CheckFun, Block, State, Origin);
@@ -849,43 +874,38 @@ handle_add_block(Header, CheckFun, Block, State, Origin) ->
             epoch_mining:debug("Block already in chain", []),
             {ok, State};
         false ->
-            case aec_validation:validate_block(Block) of
+            %% Block validation is performed in the caller's context for
+            %% external (gossip/sync) blocks and we trust the ones we
+            %% produce ourselves.
+            case aec_chain_state:insert_block(Block) of
                 ok ->
-                    StateSetup = fun(State1) ->
-                                    maybe_publish_block(Origin, Block),
-                                    case preempt_if_new_top(State1, Origin) of
-                                        no_change ->
-                                            {ok, State1};
-                                        {micro_changed, State2 = #state{ consensus = Cons }} ->
-                                            {ok, setup_loop(State2, false, Cons#consensus.leader, Origin)};
-                                        {changed, NewTopBlock, State2} ->
-                                            IsLeader = is_leader(NewTopBlock),
-                                            %% Don't spend time when we are the leader.
-                                            [ aec_tx_pool:garbage_collect() || not IsLeader ],
-                                            {ok, setup_loop(State2, true, IsLeader, Origin)}
-                                    end
-                                 end,
-                    case aec_chain_state:insert_block(Block) of
-                        ok ->
-                            StateSetup(State);
-                        {pof,_PoF} ->
-                            lager:info("PoF found in ~p", [Hash]),
-                            StateSetup(State);
-                        {error, Reason} when Origin == block_created; Origin == micro_block_created ->
-                            lager:error("Couldn't insert created block (~p)", [Reason]),
-                            {{error, Reason}, State};
-                        {error, Reason} ->
-                            lager:info("Couldn't insert received block (~p)", [Reason]),
-                            {{error, Reason}, State}
-                    end;
-                {error, {header, Reason}} ->
-                    epoch_mining:info("Header failed validation: ~p", [Reason]),
+                    handle_successfully_added_block(Block, State, Origin);
+                {pof,_PoF} ->
+                    lager:info("PoF found in ~p", [Hash]),
+                    handle_successfully_added_block(Block, State, Origin);
+                {error, Reason} when Origin == block_created; Origin == micro_block_created ->
+                    lager:error("Couldn't insert created block (~p)", [Reason]),
                     {{error, Reason}, State};
-                {error, {block, Reason}} ->
-                    epoch_mining:info("Block failed validation: ~p", [Reason]),
+                {error, Reason} ->
+                    lager:info("Couldn't insert received block (~p)", [Reason]),
                     {{error, Reason}, State}
             end
     end.
+
+handle_successfully_added_block(Block, State, Origin) ->
+    maybe_publish_block(Origin, Block),
+    case preempt_if_new_top(State, Origin) of
+        no_change ->
+            {ok, State};
+        {micro_changed, State2 = #state{ consensus = Cons }} ->
+            {ok, setup_loop(State2, false, Cons#consensus.leader, Origin)};
+        {changed, NewTopBlock, State2} ->
+            IsLeader = is_leader(NewTopBlock),
+            %% Don't spend time when we are the leader.
+            [ aec_tx_pool:garbage_collect() || not IsLeader ],
+            {ok, setup_loop(State2, true, IsLeader, Origin)}
+    end.
+
 
 %% NG-TODO: This is pretty inefficient and can be helped with some info
 %%          in the state.

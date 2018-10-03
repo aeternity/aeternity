@@ -213,7 +213,9 @@ broken_chain_test_() ->
       {"Add a block with invalid transaction",
        fun broken_chain_invalid_transaction/0},
       {"Add a block with invalid micro block signature",
-       fun broken_chain_invalid_micro_block_signature/0}
+       fun broken_chain_invalid_micro_block_signature/0},
+      {"Add a block which fails median time validation",
+       fun broken_chain_median_time/0}
      ]}.
 
 broken_chain_broken_fork() ->
@@ -372,6 +374,23 @@ broken_chain_invalid_micro_block_signature() ->
     ?assertEqual(ok, insert_block(MB)),
     ok.
 
+broken_chain_median_time() ->
+    TimeStampKeyBlocks = aec_governance:median_timestamp_key_blocks(),
+    Chain = aec_test_utils:gen_blocks_only_chain(TimeStampKeyBlocks + 2),
+    ButLast = lists:droplast(Chain),
+    Last = lists:last(Chain),
+    ?assertEqual(ok, write_blocks_to_chain(ButLast)),
+    MedianTS = median([aec_blocks:time_in_msecs(B) || B <- tl(ButLast)]),
+    OldBlock = aec_blocks:set_time_in_msecs(Last, MedianTS - 1),
+    ?assertEqual({error, key_block_from_the_past}, insert_block(OldBlock)),
+    ?assertEqual(ok, insert_block(Last)).
+
+median(Xs) ->
+    Sorted = lists:sort(Xs),
+    Length = length(Sorted),
+    Mid = Length div 2,
+    Rem = Length rem 2,
+    (lists:nth(Mid+Rem, Sorted) + lists:nth(Mid+1, Sorted)) div 2.
 
 %%%===================================================================
 %%% Block candidate test
@@ -846,7 +865,9 @@ fork_on_old_fork_point() ->
     %% But if we add it through sync, it is allowed
     ?assertEqual(ok, insert_block(#{key_block => ForkBlock,
                                     micro_blocks => MicroBlocks,
-                                    dir => forward})),
+                                    dir => forward,
+                                    add_keyblock => true
+                                   })),
     ok.
 
 fork_gen_key_candidate() ->
