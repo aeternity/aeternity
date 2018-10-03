@@ -9,6 +9,7 @@ sync:
     port: {{services.sync.port}}
     ping_interval: 5000
     single_outbound_per_group: false
+    resolver_backoff_times: [1000]  # Small compared to ping_interval, so when test adds container to network the node resolves peer hostname soon and starts syncing.
 
 http:
     external:

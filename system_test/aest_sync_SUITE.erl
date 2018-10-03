@@ -24,6 +24,7 @@
 -import(aest_nodes, [
     cluster/2,
     setup_nodes/2,
+    get_node_config/2,
     start_node/2,
     stop_node/3,
     connect_node/3, disconnect_node/3,
@@ -487,6 +488,7 @@ net_split_recovery(Cfg) ->
     %% It takes up to 20 seconds on some machines to connect docker containers
     %% This means we need more than 20 seconds (or blocks) to at all observe a
     %% synced chain of machines on the same net.
+    ExtraLength = 2,
 
     setup_nodes([?NET1_NODE1, ?NET1_NODE2, ?NET2_NODE1, ?NET2_NODE2], Cfg),
     Nodes = [net1_node1, net1_node2, net2_node1, net2_node2],
@@ -502,9 +504,9 @@ net_split_recovery(Cfg) ->
     inject_spend_txs(net2_node1, patron(), 5, 1, 100),
 
     TargetHeight1 = Length,
-    %% Wait for one extra block for resolving potential fork caused by nodes mining distinct blocks at the same time.
-    MinedHeight1 = 1 + TargetHeight1,
-    wait_for_value({height, MinedHeight1}, Nodes, (1 + Length) * ?MINING_TIMEOUT, Cfg),
+    %% Wait for some extra blocks for resolving potential fork caused by nodes mining distinct blocks at the same time.
+    MinedHeight1 = ExtraLength + TargetHeight1,
+    wait_for_value({height, MinedHeight1}, Nodes, (ExtraLength + Length) * ?MINING_TIMEOUT, Cfg),
 
     A1 = get_block(net1_node1, TargetHeight1),
     A2 = get_block(net1_node2, TargetHeight1),
@@ -523,7 +525,6 @@ net_split_recovery(Cfg) ->
     connect_node(net1_node2, net2, Cfg),
     connect_node(net2_node1, net1, Cfg),
     connect_node(net2_node2, net1, Cfg),
-    T0 = erlang:system_time(millisecond),
 
     inject_spend_txs(net1_node1, patron(), 5, 6, 100),
     inject_spend_txs(net2_node1, patron(), 5, 11, 100),
@@ -531,11 +532,12 @@ net_split_recovery(Cfg) ->
     %% Mine Length blocks, this may take longer than ping interval
     %% if so, the chains should be in sync when it's done.
     TargetHeight2 = MinedHeight1 + Length,
-    %% Wait for one extra block for resolving potential fork caused by nodes mining distinct blocks at the same time.
-    wait_for_value({height, 1 + TargetHeight2}, Nodes, (1 + Length) * ?MINING_TIMEOUT, Cfg),
+    %% Wait for some extra blocks for resolving potential fork caused by nodes mining distinct blocks at the same time.
+    wait_for_value({height, ExtraLength + TargetHeight2}, Nodes, (ExtraLength + Length) * ?MINING_TIMEOUT, Cfg),
+    T0 = erlang:system_time(millisecond),
 
     %% Wait at least as long as the ping timer can take
-    try_until(T0 + 2 * ping_interval(),
+    try_until(T0 + 2 * ping_interval(net1_node1),
             fun() ->
 
               B1 = get_block(net1_node1, TargetHeight2),
@@ -560,9 +562,9 @@ net_split_recovery(Cfg) ->
     disconnect_node(net2_node2, net1, Cfg),
 
     TargetHeight3 = Top2 + Length,
-    %% Wait for one extra block for resolving potential fork caused by nodes mining distinct blocks at the same time.
-    MinedHeight3 = 1 + TargetHeight3,
-    wait_for_value({height, MinedHeight3}, Nodes, (1 + Length) * ?MINING_TIMEOUT, Cfg),
+    %% Wait for some extra blocks for resolving potential fork caused by nodes mining distinct blocks at the same time.
+    MinedHeight3 = ExtraLength + TargetHeight3,
+    wait_for_value({height, MinedHeight3}, Nodes, (ExtraLength + Length) * ?MINING_TIMEOUT, Cfg),
 
     C1 = get_block(net1_node1, TargetHeight3),
     C2 = get_block(net1_node2, TargetHeight3),
@@ -582,14 +584,13 @@ net_split_recovery(Cfg) ->
     connect_node(net1_node2, net2, Cfg),
     connect_node(net2_node1, net1, Cfg),
     connect_node(net2_node2, net1, Cfg),
-    T1 = erlang:system_time(millisecond),
 
     TargetHeight4 = MinedHeight3 + Length,
-    %% Wait for one extra block for resolving potential fork caused by nodes mining distinct blocks at the same time.
-    wait_for_value({height, 1 + TargetHeight4}, Nodes, (1 + Length) * ?MINING_TIMEOUT, Cfg),
-    ct:log("Ping interval set to ~p", [ping_interval()]),
+    %% Wait for some extra blocks for resolving potential fork caused by nodes mining distinct blocks at the same time.
+    wait_for_value({height, ExtraLength + TargetHeight4}, Nodes, (ExtraLength + Length) * ?MINING_TIMEOUT, Cfg),
+    T1 = erlang:system_time(millisecond),
 
-    try_until(T1 + 2 * ping_interval(),
+    try_until(T1 + 2 * ping_interval(net1_node1),
             fun() ->
               D1 = get_block(net1_node1, TargetHeight4),
               D2 = get_block(net1_node2, TargetHeight4),
@@ -660,7 +661,6 @@ net_split_mining_power(Cfg) ->
     %% Join all the nodes
     lists:foreach(fun(N) -> connect_node(N, net2, Cfg) end, Net1Nodes),
     lists:foreach(fun(N) -> connect_node(N, net1, Cfg) end, Net2Nodes),
-    T0 = erlang:system_time(millisecond),
 
     %% Mine Length blocks, this may take longer than ping interval
     %% if so, the chains should be in sync when it's done.
@@ -668,11 +668,10 @@ net_split_mining_power(Cfg) ->
     %% Wait for some extra blocks for resolving potential fork caused by nodes mining distinct blocks at the same time.
     wait_for_value({height, ExtraLength + TargetHeight2}, AllNodes,
                    (ExtraLength + SyncLength) * ?MINING_TIMEOUT, Cfg),
-
-    ct:log("Ping interval set to ~p", [ping_interval()]),
+    T0 = erlang:system_time(millisecond),
 
     %% Wait at least as long as the ping timer can take
-    try_until(T0 + 2 * ping_interval(),
+    try_until(T0 + 2 * ping_interval(net1_node1),
             fun() ->
                 BlocksB = lists:foldl(fun(N, Acc) ->
                     [get_block(N, TargetHeight2) | Acc]
@@ -753,9 +752,8 @@ node_mined_retries(Nodes) ->
         end
     end, 0, Nodes).
 
-ping_interval() ->
-    aeu_env:user_config_or_env([<<"sync">>, <<"ping_interval">>],
-                               aecore, ping_interval, 120000).
+ping_interval(Node) ->
+    get_node_config(Node, ["sync", "ping_interval"]).
 
 try_until(MSec, F) ->
     try F()
