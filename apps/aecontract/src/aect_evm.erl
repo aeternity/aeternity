@@ -112,6 +112,7 @@ execute_call(#{ code := CodeAsHexBinString
                    , chainState => ChainState
                    , chainAPI => ChainAPI
                    , vm_version => VmVersion
+                   , off_chain => false
                    },
            pre => #{}},
     TraceSpec =

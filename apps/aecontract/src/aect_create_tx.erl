@@ -297,6 +297,7 @@ run_contract(#contract_create_tx{ nonce      =_Nonce
                , call        => Call
                , trees       => Trees
                , tx_env      => Env
+               , off_chain   => false
                },
     aect_dispatch:run(VmVersion, CallDef).
 

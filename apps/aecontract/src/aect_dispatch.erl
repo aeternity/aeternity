@@ -88,7 +88,8 @@ run_common(#{  amount      := Value
             currentTimestamp  => aetx_env:time_in_msecs(TxEnv),
             chainState        => ChainState0, 
             chainAPI          => aec_vm_chain,
-            vm_version        => VMVersion},
+            vm_version        => VMVersion,
+            off_chain         => false},
     Exec = #{code       => Code,
              address    => Address,
              caller     => CallerAddr,
@@ -163,15 +164,13 @@ error_to_binary(E) ->
     <<"unknown_error">>.
 
 chain_state(#{ contract    := ContractPubKey
+             , off_chain   := false
+             , trees       := Trees}, TxEnv) ->
+    aec_vm_chain:new_state(Trees, TxEnv, ContractPubKey);
+chain_state(#{ contract    := ContractPubKey
+             , off_chain   := true
              , trees       := Trees} = CallDef, TxEnv) ->
-    case maps:get(off_chain, CallDef, false) of
-        true ->
             OnChainTrees = maps:get(on_chain_trees, CallDef),
-            OffChainState =
-                aec_vm_chain:new_offchain_state(Trees, OnChainTrees,
-                                                TxEnv, ContractPubKey),
-            OffChainState;
-        false ->
-            aec_vm_chain:new_state(Trees, TxEnv, ContractPubKey)
-    end.
+    aec_vm_chain:new_offchain_state(Trees, OnChainTrees, TxEnv,
+                                    ContractPubKey).
 
