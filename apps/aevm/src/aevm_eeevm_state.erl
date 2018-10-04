@@ -119,7 +119,6 @@ init(#{ env  := Env
          , environment =>
                #{ spec => Spec
                 , options => Opts }
-
          },
 
     init_vm(State,

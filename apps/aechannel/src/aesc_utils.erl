@@ -21,7 +21,7 @@
          check_force_progress/6,
          process_solo_close/8,
          process_slash/8,
-         process_force_progress/6,
+         process_force_progress/7,
          process_solo_snapshot/6
         ]).
 
@@ -465,7 +465,7 @@ process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
     {ok, Trees2}.
 
 process_force_progress(Tx, Addresses,
-                       PoI, TxHash, Height, Trees) ->
+                       PoI, TxHash, Height, Trees, Env) ->
     ChannelPubKey = aesc_force_progress_tx:channel_pubkey(Tx),
     FromPubKey = aesc_force_progress_tx:origin(Tx),
     Nonce = aesc_force_progress_tx:nonce(Tx),
@@ -479,9 +479,9 @@ process_force_progress(Tx, Addresses,
     PoITrees0 = trees_from_poi(Addresses, PoI),
     Reserve = aesc_channels:channel_reserve(Channel),
     PoITrees =
-        try aesc_offchain_update:apply_on_trees(Update, PoITrees0, NextRound,
-                                                      Reserve)
-        catch _:_ ->
+        try aesc_offchain_update:apply_on_trees(Update, PoITrees0, Trees, Env,
+                                                NextRound, Reserve)
+        catch error:{off_chain_update_error, _} ->
           {_Amount, GasPrice, GasLimit} = aesc_offchain_update:extract_amounts(Update),
             CallsTrees =
                 aect_channel_contract:insert_failed_call(ContractPubkey,

@@ -29,7 +29,7 @@
 -export([serialize/1,
          deserialize/1,
          for_client/1,
-         apply_on_trees/4]).
+         apply_on_trees/6]).
 
 -export([is_call/1,
          is_contract_create/1,
@@ -77,9 +77,10 @@ op_call_contract(CallerId, ContractId, VmVersion, Amount, CallData, CallStack,
     {?OP_CALL_CONTRACT, CallerId, ContractId, VmVersion, Amount, CallData,
      CallStack, GasPrice, Gas}.
 
--spec apply_on_trees(aesc_offchain_update:update(), aec_trees:trees(), non_neg_integer(),
-                     non_neg_integer()) -> aec_trees:trees().
-apply_on_trees(Update, Trees0, Round, Reserve) ->
+-spec apply_on_trees(aesc_offchain_update:update(), aec_trees:trees(),
+                     aec_trees:trees(), aetx_env:env(),
+                     non_neg_integer(), non_neg_integer()) -> aec_trees:trees().
+apply_on_trees(Update, Trees0, OnChainTrees, OnChainEnv, Round, Reserve) ->
     case Update of
         {?OP_TRANSFER, FromId, ToId, Amount} ->
             From = account_pubkey(FromId),
@@ -102,8 +103,8 @@ apply_on_trees(Update, Trees0, Round, Reserve) ->
             Trees3 = create_account(ContractPubKey, Trees2),
             Trees4 = add_tokens(ContractPubKey, Deposit, Trees3),
             Call = aect_call:new(OwnerId, Round, ContractId, Round, 0),
-            _Trees = aect_channel_contract:run_new(ContractPubKey, Call, CallData,
-                                                  Round, Trees4);
+            _Trees = aect_channel_contract:run_new(ContractPubKey, Call, CallData, Trees4,
+                                                  OnChainTrees, OnChainEnv);
         {?OP_CALL_CONTRACT, CallerId, ContractId, VmVersion, Amount, CallData,
          CallStack, GasPrice, Gas} ->
             Caller = account_pubkey(CallerId),
@@ -113,8 +114,9 @@ apply_on_trees(Update, Trees0, Round, Reserve) ->
             Call = aect_call:new(CallerId, Round, ContractId, Round,
                                  GasPrice),
             _Trees = aect_channel_contract:run(ContractPubKey, VmVersion, Call,
-                                              CallData, CallStack, Round,
-                                              Trees2, Amount, GasPrice, Gas)
+                                              CallData, CallStack,
+                                              Trees2, Amount, GasPrice, Gas,
+                                              OnChainTrees, OnChainEnv)
     end.
 
 -spec for_client(update()) -> map().
@@ -265,7 +267,7 @@ update_serialization_template(?UPDATE_VSN, ?OP_CALL_CONTRACT) ->
 
 check_min_amt(Amt, Reserve) ->
     if Amt < Reserve ->
-            erlang:error(insufficient_balance);
+            update_error(insufficient_balance);
        true ->
             Amt
     end.
@@ -342,3 +344,5 @@ extract_amounts(Update) ->
         _ -> not_call
     end.
 
+update_error(Err) ->
+    error({off_chain_update_error, Err}).

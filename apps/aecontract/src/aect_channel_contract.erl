@@ -3,8 +3,8 @@
 -include("aecontract.hrl").
 
 -export([new/6,
-         run_new/5,
-         run/10,
+         run_new/6,
+         run/11,
          get_call/4,
          insert_failed_call/6
         ]).
@@ -21,9 +21,10 @@ new(Owner, Round, VmVersion, Code, Deposit, Trees0) ->
     {ContractId, Contract, Trees1}.
 
 -spec run_new(aect_contracts:pubkey(), aect_call:call(), binary(),
-              non_neg_integer(), aec_trees:trees())
-    -> aec_trees:trees().
-run_new(ContractPubKey, Call, CallData, Round, Trees0) ->
+              aec_trees:trees(), aec_trees:trees(),
+              aetx_env:env()) -> aec_trees:trees().
+run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
+        OnChainEnv) ->
     ContractsTree  = aec_trees:contracts(Trees0),
     Contract = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
     OwnerPubKey = aect_contracts:owner_pubkey(Contract),
@@ -31,18 +32,10 @@ run_new(ContractPubKey, Call, CallData, Round, Trees0) ->
     CallStack = [], %% TODO: should we have a call stack for create_tx also
                     %% when creating a contract in a contract.
     VmVersion = aect_contracts:vm_version(Contract),
-    CallDef = #{ caller      => OwnerPubKey
-               , contract    => ContractPubKey
-               , gas         => 10000000
-               , gas_price   => 1
-               , call_data   => CallData
-               , amount      => 0
-               , call_stack  => CallStack
-               , code        => Code
-               , call        => Call
-               , trees       => Trees0
-               , tx_env     => tx_env(Round)
-               },
+    CallDef = make_call_def(OwnerPubKey, ContractPubKey,
+                            _Gas = 1000000, _GasPrice = 1,
+                            _Amount = 0, %TODO: make this configurable
+                            CallData, CallStack, Code, Call, OnChainTrees, OnChainEnv, Trees0),
     {CallRes, Trees} = aect_dispatch:run(VmVersion, CallDef),
     case aect_call:return_type(CallRes) of
         ok ->
@@ -69,11 +62,11 @@ run_new(ContractPubKey, Call, CallData, Round, Trees0) ->
     end.
 
 -spec run(aect_contracts:pubkey(), aect_contracts:vm_version(), aect_call:call(),
-          binary(), [non_neg_integer()], non_neg_integer(), aec_trees:trees(),
-          non_neg_integer(), non_neg_integer(), non_neg_integer())
-    -> aec_trees:trees().
-run(ContractPubKey, VmVersion, Call, CallData, CallStack, Round, Trees0,
-    Amount, GasPrice, Gas) ->
+          binary(), [non_neg_integer()], aec_trees:trees(),
+          non_neg_integer(), non_neg_integer(), non_neg_integer(),
+          aec_trees:trees(), aetx_env:env()) -> aec_trees:trees().
+run(ContractPubKey, VmVersion, Call, CallData, CallStack, Trees0,
+    Amount, GasPrice, Gas, OnChainTrees, OnChainEnv) ->
     ContractsTree  = aec_trees:contracts(Trees0),
     Contract = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
     OwnerPubKey = aect_contracts:owner_pubkey(Contract),
@@ -82,37 +75,29 @@ run(ContractPubKey, VmVersion, Call, CallData, CallStack, Round, Trees0,
         true  -> ok;
         false ->  erlang:error(wrong_vm_version)
     end,
-    CallDef = #{ caller     => OwnerPubKey
-               , contract   => ContractPubKey
-               , gas        => Gas
-               , gas_price  => GasPrice
-               , call_data  => CallData
-               , amount     => Amount
-               , call_stack => CallStack
-               , code       => Code
-               , call       => Call
-               , trees      => Trees0
-               , tx_env     => tx_env(Round)
-               },
+    CallDef = make_call_def(OwnerPubKey, ContractPubKey, Gas, GasPrice, Amount,
+              CallData, CallStack, Code, Call, OnChainTrees, OnChainEnv, Trees0),
     {CallRes, Trees} = aect_dispatch:run(VmVersion, CallDef),
     aect_utils:insert_call_in_trees(CallRes, Trees).
 
-tx_env(Round) ->
-    %% We do not want the execution off chain and
-    %% on chain to be different so therea are some default values.
+make_call_def(OwnerPubKey, ContractPubKey, GasLimit, GasPrice, Amount,
+              CallData, CallStack, Code, Call, OnChainTrees, OnChainEnv,
+              OffChainTrees) ->
+    #{caller          => OwnerPubKey
+    , contract        => ContractPubKey
+    , gas             => GasLimit
+    , gas_price       => GasPrice
+    , call_data       => CallData
+    , amount          => Amount
+    , call_stack      => CallStack
+    , code            => Code
+    , call            => Call
+    , trees           => OffChainTrees
+    , tx_env          => OnChainEnv
+    , off_chain       => true
+    , on_chain_trees  => OnChainTrees
+    }.
 
-    %% Beneficiary is always 0
-    Beneficiary = <<0:?BENEFICIARY_PUB_BYTES/unit:8>>,
-    %% Block hash is always 0
-    PrevKeyHash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
-    %% TODO: Default value for offchain
-    Difficulty = 0,
-    %% TODO: The time should probably be set in channels as well
-    Time = aeu_time:now_in_msecs(),
-    %% TODO: Proper consensus version should be set
-    ConsensusVersion = ?PROTOCOL_VERSION,
-    aetx_env:contract_env(Round, ConsensusVersion, Time,
-                          Beneficiary, Difficulty, PrevKeyHash).
 
 get_call(ContractPubkey, CallerPubkey, Round, CallsTree) ->
     CallId = aect_call:id(CallerPubkey, Round, ContractPubkey),

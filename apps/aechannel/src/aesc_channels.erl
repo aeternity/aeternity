@@ -14,6 +14,7 @@
          is_solo_closing/2,
          can_force_progress/2,
          is_last_state_forced/1,
+         force_blocked_until/1,
          new/1,
          peers/1,
          serialize/1,
@@ -205,6 +206,10 @@ pubkey(<<_:?PUB_SIZE/binary>> = InitiatorPubKey, Nonce,
 -spec can_force_progress(channel(), aec_blocks:height()) -> boolean().
 can_force_progress(#channel{force_blocked_until = FBU} = Ch, Height) ->
     not is_last_state_forced(Ch) orelse FBU < Height.
+
+-spec force_blocked_until(channel()) -> aec_blocks:height().
+force_blocked_until(#channel{force_blocked_until = FBU}) ->
+    FBU.
 
 -spec is_last_state_forced(channel()) -> boolean().
 is_last_state_forced(#channel{force_blocked_until = FBU}) ->

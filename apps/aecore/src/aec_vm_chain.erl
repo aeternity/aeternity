@@ -8,7 +8,9 @@
 
 -behaviour(aevm_chain_api).
 
--export([new_state/3, get_trees/1]).
+-export([new_state/3, get_trees/1,
+         new_offchain_state/4
+         ]).
 
 %% aevm_chain_api callbacks
 -export([ get_height/1,
@@ -37,14 +39,24 @@
 
 -include_lib("apps/aecore/include/blocks.hrl").
 
--record(state, { trees   :: aec_trees:trees()
-               , tx_env  :: aetx_env:env()
-               , account :: aec_keys:pubkey()            %% the contract account
+-define(NO_INNER_TREES, no_inner_trees).
+
+-record(trees, { trees              :: aec_trees:trees()
+               , is_onchain = true  :: boolean()
+               , inner              :: chain_trees() | ?NO_INNER_TREES
                }).
 
+
+-record(state, { trees              :: chain_trees()
+               , tx_env             :: aetx_env:env()
+               , account            :: aec_keys:pubkey() %% the contract account
+               }).
+
+-type chain_trees() :: #trees{}.
 -type chain_state() :: #state{}.
 
 -define(PUB_SIZE, 32).
+
 
 -ifdef(COMMON_TEST).
 -define(TEST_LOG(Format, Data),
@@ -61,18 +73,30 @@
 
 %% -- API --------------------------------------------------------------------
 
-%% @doc Create a chain state.
+%% @doc Create an on-chain state.
 -spec new_state(aec_trees:trees(), aetx_env:env(), aec_keys:pubkey()) -> chain_state().
 new_state(Trees, Env, ContractAccount) ->
-    #state{ trees   = Trees,
-            tx_env  = Env,
-            account = ContractAccount
+    #state{ trees       = on_chain_trees(Trees),
+            tx_env      = Env,
+            account     = ContractAccount
+          }.
+
+%% @doc Create an off-chain state.
+-spec new_offchain_state(aec_trees:trees(), aec_trees:trees(),
+                         aetx_env:env(),
+                         aec_keys:pubkey()) -> chain_state().
+new_offchain_state(OffChainTrees, OnChainTrees, TxEnv, ContractAccount) ->
+    InnerTrees = on_chain_trees(OnChainTrees),
+    Trees = push_trees(off_chain_trees(OffChainTrees), InnerTrees),
+    #state{ trees       = Trees,
+            tx_env      = TxEnv,
+            account     = ContractAccount
           }.
 
 %% @doc Get the state trees from a state.
 -spec get_trees(chain_state()) -> aec_trees:trees().
-get_trees(#state{ trees = Trees}) ->
-    Trees.
+get_trees(State) ->
+    get_top_trees(State).
 
 %% @doc Get the chain height from a state.
 get_height(#state{ tx_env = TxEnv }) ->
@@ -107,21 +131,27 @@ traverse_to_key_hash(H, KeyHash) ->
 
 %% @doc Get the balance of the contract account.
 -spec get_balance(aec_keys:pubkey(), chain_state()) -> non_neg_integer().
-get_balance(PubKey, #state{ trees = Trees }) ->
-    do_get_balance(PubKey, Trees).
+get_balance(PubKey, #state{} = State) ->
+    Get = fun(Trees) -> do_get_balance(PubKey, Trees) end,
+    case get_from_state_or_inner(Get, State) of
+        {error, not_found} -> 0;
+        {ok, B} -> B
+    end.
 
 %% @doc Get the contract state store of the contract account.
 -spec get_store(chain_state()) -> aevm_chain_api:store().
-get_store(#state{ account = PubKey, trees = Trees }) ->
+get_store(#state{ account = PubKey} = State) ->
+    Trees = get_top_trees(State),
     Store = do_get_store(PubKey, Trees),
     Store.
 
 %% @doc Set the contract state store of the contract account.
 -spec set_store(aevm_chain_api:store(), chain_state()) -> chain_state().
-set_store(Store,  #state{ account = PubKey, trees = Trees } = State) ->
+set_store(Store,  #state{ account = PubKey} = State) ->
+    Trees = get_top_trees(State),
     CTree1 = do_set_store(Store, PubKey, Trees),
     Trees1 = aec_trees:set_contracts(Trees, CTree1),
-    State#state{ trees = Trees1 }.
+    set_top_trees(State, Trees1).
 
 
 %% -- Primops ----------------------------
@@ -232,15 +262,16 @@ oracle_extend(Oracle, Signature, TTL, State = #state{ account = ContractKey }) -
         Err = {error, _} -> Err
     end.
 
-oracle_get_answer(OracleId, QueryId, #state{ trees = Trees } =_State) ->
+oracle_get_answer(OracleId, QueryId, #state{trees = ChainTrees}) ->
+    Trees = get_on_chain_trees(ChainTrees),
     case aeo_state_tree:lookup_query(OracleId, QueryId,
-                                     aec_trees:oracles(Trees)) of
+                                    aec_trees:oracles(Trees)) of
         {value, Query} ->
             case aeo_query:response(Query) of
                 undefined -> {ok, none};
                 Answer ->
                     {value, Oracle} = aeo_state_tree:lookup_oracle(OracleId,
-                                                                   aec_trees:oracles(Trees)),
+                                                                  aec_trees:oracles(Trees)),
                     ResponseFormat = aeo_oracles:response_format(Oracle),
                     {ok, Type} = aeso_data:from_binary(typerep,  ResponseFormat),
                     {ok, Result} = aeso_data:from_binary(Type, Answer),
@@ -250,7 +281,8 @@ oracle_get_answer(OracleId, QueryId, #state{ trees = Trees } =_State) ->
             {ok, none}
     end.
 
-oracle_get_question(OracleId, QueryId, #state{trees = Trees} = _State) ->
+oracle_get_question(OracleId, QueryId, #state{trees = ChainTrees}) ->
+    Trees = get_on_chain_trees(ChainTrees),
     OraclesTree = aec_trees:oracles(Trees),
     case aeo_state_tree:lookup_query(OracleId, QueryId, OraclesTree) of
         {value, Query} ->
@@ -260,7 +292,8 @@ oracle_get_question(OracleId, QueryId, #state{trees = Trees} = _State) ->
             {ok, none}
     end.
 
-oracle_query_fee(Oracle, #state{trees = Trees} =_State) ->
+oracle_query_fee(Oracle, #state{trees = ChainTrees}) ->
+    Trees = get_on_chain_trees(ChainTrees),
     case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
         {value, O} ->
             Fee = aeo_oracles:query_fee(O),
@@ -269,7 +302,8 @@ oracle_query_fee(Oracle, #state{trees = Trees} =_State) ->
             {ok, none}
     end.
 
-oracle_query_format(Oracle, #state{ trees   = Trees} =_State) ->
+oracle_query_format(Oracle, #state{trees = ChainTrees}) ->
+    Trees = get_on_chain_trees(ChainTrees),
     case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
         {value, O} ->
             BinaryFormat = aeo_oracles:query_format(O),
@@ -283,7 +317,8 @@ oracle_query_format(Oracle, #state{ trees   = Trees} =_State) ->
             {error, no_such_oracle}
     end.
 
-oracle_query_response_ttl(OracleId, QueryId, #state{trees = Trees} =_State) ->
+oracle_query_response_ttl(OracleId, QueryId, #state{trees = ChainTrees} =_State) ->
+    Trees = get_on_chain_trees(ChainTrees),
     OraclesTree = aec_trees:oracles(Trees),
     case aeo_state_tree:lookup_query(OracleId, QueryId, OraclesTree) of
         {value, Query} ->
@@ -292,7 +327,8 @@ oracle_query_response_ttl(OracleId, QueryId, #state{trees = Trees} =_State) ->
             {error, no_such_oracle_query}
     end.
 
-oracle_response_format(Oracle, #state{ trees   = Trees} =_State) ->
+oracle_response_format(Oracle, #state{trees = ChainTrees}) ->
+    Trees = get_on_chain_trees(ChainTrees),
     case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
         {value, O} ->
             BinaryFormat = aeo_oracles:response_format(O),
@@ -326,7 +362,8 @@ check_signature(AKey, _CKey, Binary, Signature) ->
 
 %%    AENS
 
-aens_resolve(Name, Key, Type, #state{ trees = Trees } = _State) ->
+aens_resolve(Name, Key, Type, #state{trees = ChainTrees}) ->
+    Trees = get_on_chain_trees(ChainTrees),
     case aens:resolve(Key, Name, aec_trees:ns(Trees)) of
         {ok, Id}  ->
             {_IdType, IdValue} = aec_id:specialize(Id),
@@ -401,9 +438,8 @@ aens_revoke(Addr, Hash, Signature, #state{ account = ContractKey } = State) ->
                     [non_neg_integer()], chain_state()) ->
         {ok, aevm_chain_api:call_result(), chain_state()} | {error, term()}.
 call_contract(Target, Gas, Value, CallData, CallStack,
-              State = #state{ trees   = Trees,
-                              account = ContractKey
-                            }) ->
+              State = #state{account = ContractKey}) ->
+    Trees = get_top_trees(State),
     CT = aec_trees:contracts(Trees),
     case aect_state_tree:lookup_contract(Target, CT) of
         {value, Contract} ->
@@ -423,7 +459,8 @@ call_contract(Target, Gas, Value, CallData, CallStack,
                                     call_data   => CallData,
                                     call_stack  => CallStack }),
             case apply_transaction(CallTx, State) of
-                {ok, State1 = #state{ trees = Trees1 }} ->
+                {ok, State1} ->
+                    Trees1 = get_top_trees(State1),
                     CallId  = aect_call:id(ContractKey, Nonce, Target),
                     Call    = aect_call_state_tree:get_call(Target, CallId,
                                                             aec_trees:calls(Trees1)),
@@ -446,11 +483,13 @@ call_contract(Target, Gas, Value, CallData, CallStack,
 
 %% -- Internal functions -----------------------------------------------------
 
+-spec do_get_balance(aec_keys:pubkey(), aec_trees:trees()) ->
+    {ok, non_neg_integer()} | {error, not_found}.
 do_get_balance(PubKey, Trees) ->
     AccountsTree  = aec_trees:accounts(Trees),
     case aec_accounts_trees:lookup(PubKey, AccountsTree) of
-        none             -> 0;
-        {value, Account} -> aec_accounts:balance(Account)
+        none             -> {error, not_found};
+        {value, Account} -> {ok, aec_accounts:balance(Account)}
     end.
 
 do_get_store(PubKey, Trees) ->
@@ -468,11 +507,12 @@ do_set_store(Store, PubKey, Trees) ->
         end,
     aect_state_tree:enter_contract(NewContract, ContractsTree).
 
-apply_transaction(Tx, #state{ trees = Trees, tx_env = Env } = State) ->
+apply_transaction(Tx, #state{tx_env = Env } = State) ->
+    Trees = get_top_trees(State),
     case aetx:check(Tx, Trees, Env) of
         {ok, Trees1} ->
             {ok, Trees2} = aetx:process(Tx, Trees1, Env),
-            State1 = State#state{ trees = Trees2 },
+            State1 = set_top_trees(State, Trees2),
             {ok, State1};
         {error, _} = E -> E
     end.
@@ -480,8 +520,59 @@ apply_transaction(Tx, #state{ trees = Trees, tx_env = Env } = State) ->
 next_nonce(State = #state{ account = ContractKey }) ->
     next_nonce(ContractKey, State).
 
-next_nonce(Addr, #state{ trees = Trees }) ->
+next_nonce(Addr, State) ->
+    Trees = get_top_trees(State),
     AT = aec_trees:accounts(Trees),
     {value, Account} = aec_accounts_trees:lookup(Addr, AT),
     aec_accounts:nonce(Account) + 1.
 
+is_channel_call(#trees{is_onchain = false, inner = ?NO_INNER_TREES}) ->
+    error(offchain_missing_onchain);
+is_channel_call(#trees{is_onchain = false}) ->
+    true;
+is_channel_call(#trees{is_onchain = true}) ->
+    false.
+
+-spec get_from_state_or_inner(fun((aec_trees:trees()) -> {ok, term()} |{error, not_found}),
+                              chain_state()) -> {ok,term()} | {error, not_found}.
+get_from_state_or_inner(Fun, #state{trees = ChainTrees}) ->
+    get_from_state_or_inner_(Fun, ChainTrees).
+
+get_from_state_or_inner_(Fun, #trees{trees = Trees, inner = Inner} = ChainTrees) ->
+    case is_channel_call(ChainTrees) of
+        false -> Fun(Trees);
+        true ->
+            case Fun(Trees) of
+                {error, not_found} ->
+                    get_from_state_or_inner_(Fun, Inner);
+                {ok, _Val} = OK  -> OK
+            end
+    end.
+
+-spec on_chain_trees(aec_trees:trees()) -> chain_trees().
+on_chain_trees(Trees) ->
+    #trees{trees = Trees,
+           is_onchain = true,
+           inner = ?NO_INNER_TREES}.
+
+-spec off_chain_trees(aec_trees:trees()) -> chain_trees().
+off_chain_trees(Trees) ->
+    #trees{trees = Trees,
+           is_onchain = false,
+           inner = ?NO_INNER_TREES}.
+
+-spec push_trees(chain_trees(), chain_trees()) -> chain_trees().
+push_trees(OuterTrees, InnerTrees) ->
+    OuterTrees#trees{inner = InnerTrees}.
+
+-spec get_top_trees(chain_state()) -> aec_trees:trees().
+get_top_trees(#state{trees = #trees{trees = Trees}}) ->
+    Trees.
+
+set_top_trees(#state{trees = T} = State, Trees) ->
+    State#state{trees = T#trees{trees = Trees}}.
+
+get_on_chain_trees(#trees{is_onchain = true, trees = Trees}) ->
+    Trees;
+get_on_chain_trees(#trees{is_onchain = false, inner = Inner}) ->
+    get_on_chain_trees(Inner).
