@@ -150,6 +150,11 @@ ast_body(?id_app("put", [NewState], _, _), Icode) ->
 ast_body({id, _, "put"}, _Icode) ->
     error({underapplied_primitive, put});   %% TODO: eta
 
+%% Abort
+ast_body(?id_app("abort", [String], _, _), Icode) ->
+    #funcall{ function = #var_ref{ name = {builtin, abort} },
+              args     = [ast_body(String, Icode)] };
+
 %% Oracles
 ast_body(?qid_app(["Oracle", "register"], [Acct, Sign, QFee, TTL], _, ?oracle_t(QType, RType)), Icode) ->
     prim_call(?PRIM_CALL_ORACLE_REGISTER, #integer{value = 0},
@@ -542,6 +547,13 @@ type_value({variant, Cs}) ->
     #tuple{ cpts = [#integer{ value = ?TYPEREP_VARIANT_TAG },
                     #list{ elems = [ #list{ elems = [ type_value(A) || A <- As ] } || As <- Cs ] }] }.
 
+%% As abort is a built-in in the future it will be illegal to for
+%% users to define abort. For the time being strip away all user
+%% defined abort functions.
+
+ast_fun_to_icode("abort", _Atts, _Args, Body, _TypeRep, Icode) ->
+    %% Strip away all user defined abort functions.
+    Icode;
 ast_fun_to_icode(Name, Attrs, Args, Body, TypeRep, #{functions := Funs} = Icode) ->
     NewFuns = [{Name, Attrs, Args, Body, TypeRep}| Funs],
     aeso_icode:set_functions(NewFuns, Icode).
@@ -591,6 +603,14 @@ builtin_eq(string, A, B) -> {funcall, {var_ref, {builtin, str_equal}}, [A, B]}.
 
 option_none()  -> {tuple, [{integer, 0}]}.
 option_some(X) -> {tuple, [{integer, 1}, X]}.
+
+builtin_function(abort) ->
+    %% function abort(str) =
+    %%   switch (0) 1 => ()
+    {{builtin, abort}, [private],
+     [{"s", string}],
+     {switch, {integer,0}, [{{integer,1}, {tuple,[]}}]},
+     {tuple,[]}};
 
 builtin_function(Builtin = {map_get, Type}) ->
     %% function map_get(m, k) =

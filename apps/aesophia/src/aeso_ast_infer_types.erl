@@ -104,6 +104,8 @@ global_env() ->
      %% State
      {"state", State},
      {"put",   Fun1(State, Unit)},
+     %% Abort
+     {"abort", Fun1(String, Unit)},
      %% Oracles
      {["Oracle", "register"],     Fun([Address, Signature, Fee, TTL], Oracle(Q, R))},
      {["Oracle", "query_fee"],    Fun([Oracle(Q, R)], Fee)},
