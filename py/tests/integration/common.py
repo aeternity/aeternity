@@ -208,6 +208,14 @@ def genesis_hash(api):
 def wait_until_height(api, height):
     wait(lambda: api.get_current_key_block().height >= height, timeout_seconds=120, sleep_seconds=0.25)
 
+def ensure_transaction_posted(ext_api, signed_tx):
+    tx_object = Tx(tx=signed_tx)
+    tx_hash = ext_api.post_transaction(tx_object).tx_hash
+    top = ext_api.get_current_key_block()
+    wait_until_height(ext_api, top.height + 1)
+    wait(lambda: ext_api.get_transaction_by_hash(tx_hash).block_hash != 'none',
+         timeout_seconds=20, sleep_seconds=0.25)
+
 def get_account_balance(api, pub_key):
     return _balance_from_get_account(lambda: api.get_account_by_pubkey(pub_key), pub_key)
 
