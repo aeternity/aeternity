@@ -98,7 +98,9 @@ tx_env_and_trees_from_top(Type) when Type == aetx_contract;
                 {ok, KH} = aec_chain:get_header(KHash),
                 {KH, KHash, aec_headers:time_in_msecs(TopHeader)};
             key ->
-                {TopHeader, TopHash, aec_headers:time_in_msecs(TopHeader) + 1}
+                {TopHeader, TopHash,
+                 aec_headers:time_in_msecs(TopHeader) +
+                    aec_block_micro_candidate:min_t_after_keyblock()}
         end,
     Env = tx_env_from_key_header(KeyHeader, KeyHash, Time, TopHash),
     {set_context(Env, Type), Trees}.

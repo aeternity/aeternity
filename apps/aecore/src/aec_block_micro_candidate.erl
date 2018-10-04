@@ -13,6 +13,8 @@
         , update/3
         ]).
 
+-export([ min_t_after_keyblock/0]).
+
 -export_type([block_info/0]).
 
 -include("blocks.hrl").
@@ -141,12 +143,15 @@ determine_new_time(PrevBlock) ->
     case aec_blocks:type(PrevBlock) of
         key ->
             %% Just make sure we are progressing time.
-            max(aeu_time:now_in_msecs(), LastTime + 1);
+            max(aeu_time:now_in_msecs(), LastTime + min_t_after_keyblock());
         micro ->
             %% Make sure to respect the micro block cycle.
             MicroBlockCycle = aec_governance:micro_block_cycle(),
             max(aeu_time:now_in_msecs(), MicroBlockCycle + LastTime)
     end.
+
+min_t_after_keyblock() ->
+    1.
 
 get_pof(KeyBlock, PrevBlockHash, PrevBlock) ->
     %% NOTE: If the restriction of reporting a miner in the next
