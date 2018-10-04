@@ -49,8 +49,7 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
                         currentTimestamp => 0,
                         chainState => aevm_dummy_chain:new_state(),
                         chainAPI => aevm_dummy_chain,
-                        vm_version => ?AEVM_01_Sophia_01,
-                        off_chain => false},
+                        vm_version => ?AEVM_01_Sophia_01},
                pre => #{}},
             #{trace => true})
          ),
@@ -92,8 +91,7 @@ execute_identity_fun_from_bytecode(_Cfg) ->
                         currentTimestamp => 0,
                         chainState => aevm_dummy_chain:new_state(),
                         chainAPI => aevm_dummy_chain,
-                        vm_version => ?AEVM_01_Sophia_01,
-                        off_chain => false},
+                        vm_version => ?AEVM_01_Sophia_01},
                pre => #{}},
             #{trace => true})
          ),

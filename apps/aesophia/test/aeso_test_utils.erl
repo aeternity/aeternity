@@ -52,8 +52,7 @@ dummy_state(Code, Data) ->
            currentTimestamp  => 0,
            chainAPI          => ?MODULE,
            chainState        => no_state,
-           vm_version        => ?AEVM_01_Sophia_01,
-           off_chain         => false
+           vm_version        => ?AEVM_01_Sophia_01
          }
      , exec =>
         #{ gas        => 1000000,

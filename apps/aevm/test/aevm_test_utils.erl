@@ -206,7 +206,6 @@ get_config({DirPath, TestName,_Opts}) ->
     DefaultEnv = #{ chainState => aevm_ethereum_test_chain:new_state(TestConfig)
                   , chainAPI => aevm_ethereum_test_chain
                   , vm_version => ?AEVM_01_Solidity_01
-                  , off_chain => false
                   },
     maps:update_with(env, fun(Env) -> maps:merge(DefaultEnv, Env) end,
                      TestConfig).
