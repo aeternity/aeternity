@@ -206,6 +206,7 @@ get_config({DirPath, TestName,_Opts}) ->
     DefaultEnv = #{ chainState => aevm_ethereum_test_chain:new_state(TestConfig)
                   , chainAPI => aevm_ethereum_test_chain
                   , vm_version => ?AEVM_01_Solidity_01
+                  , off_chain => false
                   },
     maps:update_with(env, fun(Env) -> maps:merge(DefaultEnv, Env) end,
                      TestConfig).
@@ -300,7 +301,6 @@ build_data_array([], Acc) ->
                                 , {post, leave_out}
                                 , {sourceHash, default, <<>>}
                                 , {lllcversion, default, <<>>}
-                                , {off_chain, default, false}
                                 ]).
 
 get_default_for_optional_config_field(X) ->
@@ -329,7 +329,6 @@ config_structure() ->
                      , currentGasLimit => bin_int
                      , currentNumber => bin_int
                      , currentTimestamp => bin_int
-                     , off_chain => bool
                      }
            , exec => #{ address => bin_int
                       , caller => bin_int
