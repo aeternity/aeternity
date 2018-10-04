@@ -24,9 +24,7 @@
         , signers/2
         , specialize_type/1
         , specialize_callback/1
-        , update_tx/2
-        , tx_type/1
-        , tx_types/0]).
+        , update_tx/2]).
 
 -ifdef(TEST).
 -export([tx/1]).
@@ -157,12 +155,6 @@
 new(Callback, Tx) ->
     Type = Callback:type(),
     #aetx{ type = Type, cb = Callback, tx = Tx }.
-
--spec tx_type(TxOrTxType :: tx_type() | tx()) -> binary().
-tx_type(#aetx{ type = TxType }) ->
-    type_to_binary(TxType);
-tx_type(TxType) when is_atom(TxType) ->
-    type_to_binary(TxType).
 
 -spec fee(Tx :: tx()) -> Fee :: integer().
 fee(#aetx{ cb = CB, tx = Tx }) ->
@@ -330,33 +322,6 @@ specialize_callback(#aetx{ cb = CB, tx = Tx }) -> {CB, Tx}.
 -spec update_tx(tx(), tx_instance()) -> tx().
 update_tx(#aetx{} = Tx, NewTxI) ->
     Tx#aetx{tx = NewTxI}.
-
--spec tx_types() -> list(tx_type()).
-tx_types() ->
-    [ spend_tx
-    , oracle_register_tx
-    , oracle_extend_tx
-    , oracle_query_tx
-    , oracle_response_tx
-    , name_preclaim_tx
-    , name_claim_tx
-    , name_transfer_tx
-    , name_update_tx
-    , name_revoke_tx
-    , name_create_tx
-    , contract_call_tx
-    , contract_create_tx
-    , channel_create_tx
-    , channel_deposit_tx
-    , channel_withdraw_tx
-    , channel_force_progress_tx
-    , channel_close_mutual_tx
-    , channel_close_solo_tx
-    , channel_slash_tx
-    , channel_settle_tx
-    , channel_snapshot_solo_tx
-    , channel_offchain_tx
-    ].
 
 -ifdef(TEST).
 tx(Tx) ->
