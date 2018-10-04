@@ -691,13 +691,11 @@ delete_file(F) ->
             erlang:error(Other, [F])
     end.
 
-hostname() ->
-    {ok, H} = inet:gethostname(),
-    H.
-
+%% Use localhost here, because some systems have both 127.0.0.1 and 127.0.1.1
+%% defined, resulting in a conflict during testing
 peer_info(N) ->
     list_to_binary(["aenode://", aec_base58c:encode(peer_pubkey, pubkey(N)),
-                  "@", hostname(), ":", integer_to_list(port_number(N))]).
+                  "@localhost:", integer_to_list(port_number(N))]).
 
 port_number(dev1) -> 3015;
 port_number(dev2) -> 3025;
