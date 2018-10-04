@@ -119,8 +119,6 @@ init(#{ env  := Env
          , environment =>
                #{ spec => Spec
                 , options => Opts }
-         , off_chain  => false
-
          },
 
     init_vm(State,
