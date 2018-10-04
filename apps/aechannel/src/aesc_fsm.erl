@@ -1576,8 +1576,7 @@ new_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts 
          next_state(awaiting_signature, set_ongoing(D1))
     catch
         error:Reason ->
-            lager:error("CAUGHT ~p, trace = ~p", [Reason, erlang:get_stacktrace()]),
-            keep_state(D, [{reply, From, {error, Reason}}])
+            process_update_error(Reason, From, D)
     end.
 
 call_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts } = D) ->
@@ -1599,8 +1598,7 @@ call_contract_tx_for_signing(Opts, From, #data{state = State, opts = ChannelOpts
          next_state(awaiting_signature, set_ongoing(D1))
     catch
         error:Reason ->
-            lager:error("CAUGHT ~p, trace = ~p", [Reason, erlang:get_stacktrace()]),
-            keep_state(D, [{reply, From, {error, Reason}}])
+            process_update_error(Reason, From, D)
     end.
 
 create_tx_for_signing(#data{opts = #{initiator := Initiator,
@@ -1985,8 +1983,7 @@ handle_upd_transfer(FromPub, ToPub, Amount, From, #data{ state = State
          next_state(awaiting_signature, D1)
     catch
         error:Reason ->
-            lager:error("CAUGHT ~p, trace = ~p", [Reason, erlang:get_stacktrace()]),
-            keep_state(D, [{reply, From, {error, Reason}}])
+            process_update_error(Reason, From, D)
     end.
 
 send_leave_msg(#data{ on_chain_id = ChId
@@ -2341,3 +2338,9 @@ check_amounts(#{ initiator_amount   := InitiatorAmount0
         {false, false} -> {error, insufficient_amounts}
     end.
 
+process_update_error({off_chain_update_error, Reason}, From, D) ->
+    lager:error("CAUGHT ERROR UPDATE ~p, trace = ~p", [Reason, erlang:get_stacktrace()]),
+    keep_state(D, [{reply, From, {error, Reason}}]);
+process_update_error(Reason, From, D) ->
+    lager:error("CAUGHT ~p, trace = ~p", [Reason, erlang:get_stacktrace()]),
+    keep_state(D, [{reply, From, {error, Reason}}]).

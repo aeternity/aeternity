@@ -267,7 +267,7 @@ update_serialization_template(?UPDATE_VSN, ?OP_CALL_CONTRACT) ->
 
 check_min_amt(Amt, Reserve) ->
     if Amt < Reserve ->
-            erlang:error(insufficient_balance);
+            update_error(insufficient_balance);
        true ->
             Amt
     end.
@@ -344,3 +344,5 @@ extract_amounts(Update) ->
         _ -> not_call
     end.
 
+update_error(Err) ->
+    error({off_chain_update_error, Err}).

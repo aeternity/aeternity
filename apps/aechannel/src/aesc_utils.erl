@@ -481,7 +481,7 @@ process_force_progress(Tx, Addresses,
     PoITrees =
         try aesc_offchain_update:apply_on_trees(Update, PoITrees0, Trees, Env,
                                                 NextRound, Reserve)
-        catch _:_ ->
+        catch error:{off_chain_update_error, _} ->
           {_Amount, GasPrice, GasLimit} = aesc_offchain_update:extract_amounts(Update),
             CallsTrees =
                 aect_channel_contract:insert_failed_call(ContractPubkey,
