@@ -38,10 +38,10 @@ all() -> [
          ].
 
 execute_identity_fun_from_solidity_binary(_Cfg) ->
-    Code = id_bytecode(),
+    Code = aeu_hex:hexstring_decode(id_bytecode()),
     Env  = initial_state(#{101 => Code}),
     NewCode = successful_call_(101, word, main, <<42>>, Env),
-    {ok, <<42:256>>, _, _} =  execute_call(101, <<26,148,216,62,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 42>>, Env#{ 101 => aeu_hex:hexstring_encode(NewCode)}, #{}),
+    {ok, <<42:256>>, _, _} =  execute_call(101, <<26,148,216,62,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 42>>, Env#{ 101 => NewCode}, #{}),
     ok.
 
 
@@ -56,12 +56,12 @@ id_bytecode() ->
 
 
 events_from_solidity_binary(_Cfg) ->
-    Code =  receipt_bytecode(),
+    Code =  aeu_hex:hexstring_decode(receipt_bytecode()),
     CallData = aeu_hex:hexstring_decode(<<"0xb214faa51700000000000000000000000000000000000000000000000000000000000000">>),
     ContractAddress = 101,
     Env  = initial_state(#{ContractAddress => Code}),
     {ok, NewCode, NewEnv, _} = execute_call(ContractAddress, CallData, Env, #{}),
-    Env2 = NewEnv#{ContractAddress => aeu_hex:hexstring_encode(NewCode)},
+    Env2 = NewEnv#{ContractAddress => NewCode},
     {ok,_RetVal, _, #{logs := L}} = execute_call(ContractAddress, CallData, Env2, #{}),
     [{<<ContractAddress:256>>,
       [<<25,218,203,248,60,93,230,101,142,20,203,247,188,174,92,
@@ -104,11 +104,11 @@ receipt_bytecode() ->
       "3cc8c862b2660f25285f4c9fee0bd9751471be450c4d49ce6e9793f61c0029">>.
 
 execute_counter_fun_from_bytecode(_Cfg) ->
-    Code =  counter_bytecode(),
+    Code = aeu_hex:hexstring_decode(counter_bytecode()),
     CallData =  aeu_hex:hexstring_decode(<< "0x6d4ce63c" >>),
     Env  = initial_state(#{101 => Code}),
     {ok, NewCode, NewEnv, _} = execute_call(101, CallData, Env, #{}),
-    {ok, _, _, _} = execute_call(101, CallData, NewEnv#{ 101 => aeu_hex:hexstring_encode(NewCode)}, #{}),
+    {ok, _, _, _} = execute_call(101, CallData, NewEnv#{ 101 => NewCode}, #{}),
     ok.
 
 

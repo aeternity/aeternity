@@ -8,7 +8,6 @@
                         , read_optional_params/1
                         , parse_map_to_atom_keys/0
                         , base58_decode/1
-                        , hexstrings_decode/1
                         , nameservice_pointers_decode/1
                         , get_nonce/1
                         , get_nonce_from_account_id/1
@@ -407,7 +406,7 @@ handle_request_('GetContractCode', Req, _Context) ->
                 {error, _} -> {404, [], #{reason => <<"Contract not found">>}};
                 {ok, Contract} ->
                     Code = aect_contracts:code(Contract),
-                    {200, [], #{ <<"bytecode">> => aeu_hex:hexstring_encode(Code) }}
+                    {200, [], #{ <<"bytecode">> => aec_base58c:encode(contract_bytearray, Code) }}
             end
     end;
 
@@ -419,7 +418,7 @@ handle_request_('GetContractStore', Req, _Context) ->
                 {error, _} -> {404, [], #{reason => <<"Contract not found">>}};
                 {ok, Contract} ->
                     Response = [ #{<<"key">> => aeu_hex:hexstring_encode(K),
-                                   <<"value">> => aeu_hex:hexstring_encode(V)}
+                                   <<"value">> => aec_base58c:encode(contract_bytearray, V)}
                                || {K, V} <- maps:to_list(aect_contracts:state(Contract)) ],
                     {200, [], #{ <<"store">> => Response }}
             end

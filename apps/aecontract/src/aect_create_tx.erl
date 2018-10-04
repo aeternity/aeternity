@@ -422,7 +422,7 @@ for_client(#contract_create_tx{ owner_id   = OwnerId,
                                 call_data  = CallData}) ->
     #{<<"owner_id">>    => aec_base58c:encode(id_hash, OwnerId),
       <<"nonce">>       => Nonce,
-      <<"code">>        => aeu_hex:hexstring_encode(Code),
+      <<"code">>        => aec_base58c:encode(contract_bytearray, Code),
       <<"vm_version">>  => aeu_hex:hexstring_encode(<<VmVersion:8>>),
       <<"fee">>         => Fee,
       <<"ttl">>         => TTL,
@@ -430,7 +430,7 @@ for_client(#contract_create_tx{ owner_id   = OwnerId,
       <<"amount">>      => Amount,
       <<"gas">>         => Gas,
       <<"gas_price">>   => GasPrice,
-      <<"call_data">>   => aeu_hex:hexstring_encode(CallData)}.
+      <<"call_data">>   => aec_base58c:encode(contract_bytearray, CallData)}.
 
 %%%===================================================================
 %%% Internal functions

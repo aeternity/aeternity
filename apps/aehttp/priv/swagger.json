@@ -3725,8 +3725,7 @@
           "type" : "integer"
         },
         "return_value" : {
-          "type" : "string",
-          "description" : "Hex encoded return value of the call"
+          "$ref" : "#/definitions/EncodedByteArray"
         },
         "return_type" : {
           "type" : "string",
@@ -3736,7 +3735,7 @@
       "example" : {
         "gas_price" : 1,
         "return_type" : "return_type",
-        "return_value" : "return_value",
+        "return_value" : { },
         "caller_id" : { },
         "contract_id" : null,
         "gas_used" : 5,
@@ -3807,10 +3806,10 @@
       },
       "example" : {
         "store" : [ {
-          "value" : "value",
+          "value" : { },
           "key" : "key"
         }, {
-          "value" : "value",
+          "value" : { },
           "key" : "key"
         } ]
       }
@@ -3884,12 +3883,15 @@
       "required" : [ "calldata" ],
       "properties" : {
         "calldata" : {
-          "type" : "string"
+          "$ref" : "#/definitions/EncodedByteArray"
         }
       },
       "example" : {
-        "calldata" : "calldata"
+        "calldata" : { }
       }
+    },
+    "EncodedByteArray" : {
+      "type" : "string"
     },
     "SophiaBinaryData" : {
       "type" : "object",
@@ -4001,8 +4003,8 @@
           "minimum" : 0
         },
         "call_data" : {
-          "type" : "string",
-          "description" : "Contract call data"
+          "description" : "Contract call data",
+          "$ref" : "#/definitions/EncodedByteArray"
         }
       },
       "example" : {
@@ -4010,7 +4012,7 @@
         "vm_version" : 153,
         "amount" : 0,
         "code" : "code",
-        "call_data" : "call_data",
+        "call_data" : { },
         "owner_id" : { },
         "fee" : 0,
         "gas" : 0,
@@ -4138,15 +4140,15 @@
           "minimum" : 0
         },
         "call_data" : {
-          "type" : "string",
-          "description" : "Contract call data"
+          "description" : "Contract call data",
+          "$ref" : "#/definitions/EncodedByteArray"
         }
       },
       "example" : {
         "gas_price" : 0,
         "vm_version" : 153,
         "amount" : 0,
-        "call_data" : "call_data",
+        "call_data" : { },
         "caller_id" : { },
         "contract_id" : null,
         "fee" : 0,
@@ -4406,8 +4408,8 @@
             "description" : "Amount of tokens to deposit to the new contract"
           },
           "call_data" : {
-            "type" : "string",
-            "description" : "Contract call data"
+            "description" : "Contract call data",
+            "$ref" : "#/definitions/EncodedByteArray"
           }
         }
       } ]
@@ -4448,8 +4450,8 @@
             "description" : "Gas price for the contract call"
           },
           "call_data" : {
-            "type" : "string",
-            "description" : "Contract call data"
+            "description" : "Contract call data",
+            "$ref" : "#/definitions/EncodedByteArray"
           }
         }
       } ]
@@ -4506,11 +4508,11 @@
           "type" : "string"
         },
         "value" : {
-          "type" : "string"
+          "$ref" : "#/definitions/EncodedByteArray"
         }
       },
       "example" : {
-        "value" : "value",
+        "value" : { },
         "key" : "key"
       }
     }

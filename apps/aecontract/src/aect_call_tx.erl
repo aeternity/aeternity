@@ -323,7 +323,7 @@ for_client(#contract_call_tx{caller_id   = CallerId,
       <<"amount">>      => Amount,
       <<"gas">>         => Gas,
       <<"gas_price">>   => GasPrice,
-      <<"call_data">>   => aeu_hex:hexstring_encode(CallData)}.
+      <<"call_data">>   => aec_base58c:encode(contract_bytearray, CallData)}.
 
 %% -- Getters ----------------------------------------------------------------
 

@@ -167,45 +167,66 @@ get_top_blocks_time_summary(Count) ->
 
 contract_compile(Code, Options) ->
     case aect_sophia:compile(Code, Options) of
-          {ok, _ByteCode} = OK -> OK;
+          {ok, ByteCode} -> {ok, ByteCode};
           {error, _ErrorMsg} = Err -> Err
     end.
 
-contract_call(ABI, Code, Function, Argument) ->
+contract_call(ABI, EncodedCode, Function, Argument) ->
     Call =
-        fun(CodeOrAddress) ->
-          case aect_dispatch:call(ABI, CodeOrAddress, Function, Argument) of
-              {ok, _Result} = OK -> OK;
+        fun(CodeOrAddress, Arg) ->
+          case aect_dispatch:call(ABI, CodeOrAddress, Function, Arg) of
+              {ok, Result} -> {ok, aec_base58c:encode(contract_bytearray, Result)};
               {error, _ErrorMsg} = Err -> Err
           end
         end,
     case ABI of
         <<"sophia-address">> ->
-            case aec_base58c:safe_decode(contract_pubkey, Code) of
+            case aec_base58c:safe_decode(contract_pubkey, EncodedCode) of
                 {ok, ContractAddress} ->
-                    Call(ContractAddress);
+                    Call(ContractAddress, Argument);
                 _ ->
                     {error, <<"Invalid hash for contract address">>}
             end;
-        _ ->
-            Call(Code)
+        <<"sophia">> ->
+            case aec_base58c:safe_decode(contract_bytearray, EncodedCode) of
+                {ok, Code} -> Call(Code, Argument);
+                {error, _} -> {error, <<"Illegal code">>}
+            end;
+        <<"evm">> ->
+            case aec_base58c:safe_decode(contract_bytearray, EncodedCode) of
+                {ok, Code} ->
+                    case aec_base58c:safe_decode(contract_bytearray, Argument) of
+                        {ok, CallData} -> Call(Code, CallData);
+                        {error, _} -> {error, <<"Illegal call data">>}
+                    end;
+                {error, _} ->
+                    {error, <<"Illegal code">>}
+            end;
+        _Other ->
+            {error, "Unknown ABI"}
     end.
 
 contract_decode_data(Type, Data) ->
-    try aect_sophia:decode_data(Type, Data) of
-        {ok, _Result} = OK -> OK;
-        {error, _ErrorMsg} = Err -> Err
-    catch _T:_E ->
-            String = io_lib:format("~p:~p ~p", [_T,_E,erlang:get_stacktrace()]),
-            Error = << <<B>> || B <- "Bad argument: " ++ lists:flatten(String) >>,
-            {error, Error}
+    case aec_base58c:safe_decode(contract_bytearray, Data) of
+        {error, _} ->
+            {error, <<"Data must be hex encoded">>};
+        {ok, CallData} ->
+            try aect_sophia:decode_data(Type, CallData) of
+                {ok, _Result} = OK -> OK;
+                {error, _ErrorMsg} = Err -> Err
+            catch
+                _T:_E ->
+                    String = io_lib:format("~p:~p ~p", [_T,_E,erlang:get_stacktrace()]),
+                    Error = << <<B>> || B <- "Bad argument: " ++ lists:flatten(String) >>,
+                    {error, Error}
+            end
     end.
 
 
 
 contract_encode_call_data(ABI, Code, Function, Argument) ->
     case aect_dispatch:encode_call_data(ABI, Code, Function, Argument) of
-        {ok, _Result} = OK -> OK;
+        {ok, ByteCode} -> {ok, aec_base58c:encode(contract_bytearray, ByteCode)};
         {error, _ErrorMsg} = Err -> Err
     end.
 

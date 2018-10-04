@@ -5,7 +5,7 @@
         , read_required_params/1
         , read_optional_params/1
         , base58_decode/1
-        , hexstrings_decode/1
+        , contract_bytearray_params_decode/1
         , ttl_decode/1
         , poi_decode/1
         , relative_ttl_decode/1
@@ -98,15 +98,16 @@ base58_decode_read_fun({Name, Type}, _, Data) ->
         {ok, _} = Res -> Res
     end.
 
-hexstrings_decode(ParamNames) ->
+contract_bytearray_params_decode(ParamNames) ->
     params_read_fun(ParamNames,
         fun(Name, _, State) ->
-            Hex = maps:get(Name, State),
-            try {ok, aeu_hex:hexstring_decode(Hex)}
-            catch _:_ -> error
+            ByteArray = maps:get(Name, State),
+            case aec_base58c:safe_decode(contract_bytearray, ByteArray) of
+                {ok, _} = Ok -> Ok;
+                {error, _} -> error
             end
         end,
-        "Not hex string").
+        "Not byte array").
 
 params_read_fun(ParamNames, ReadFun, ErrMsg) ->
     fun(Req, State0) ->
@@ -426,8 +427,7 @@ compute_contract_create_data() ->
           arguments := Argument} = State,
         case aect_dispatch:encode_call_data(<<"sophia">>, Code,
                                             <<"init">>, Argument) of
-          {ok, HexCallData} ->
-              CallData = aeu_hex:hexstring_decode(HexCallData),
+          {ok, CallData} ->
               {ok, maps:put(call_data, CallData, State)};
           {error, ErrorMsg} when is_binary(ErrorMsg) ->
                 Reason = <<"Failed to compute create_data, reason: ",
@@ -443,8 +443,7 @@ compute_contract_call_data() ->
             arguments := Argument} = State,
         case aect_dispatch:encode_call_data(<<"sophia">>, Code,
                                             Function, Argument) of
-          {ok, HexCallData} ->
-              CallData = aeu_hex:hexstring_decode(HexCallData),
+          {ok, CallData} ->
               {ok, maps:put(call_data, CallData, State)};
           {error, ErrorMsg} when is_binary(ErrorMsg) ->
                 Reason = <<"Failed to compute call_data, reason: ",

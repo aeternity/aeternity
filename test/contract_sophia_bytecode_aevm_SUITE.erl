@@ -57,8 +57,7 @@ compile_contract(Name) ->
     {ok, ContractBin} = file:read_file(FileName),
     Options           = [],
     %% Options           = [pp_ast, pp_icode, pp_assembler, pp_bytecode],
-    Code = aeso_compiler:from_string(binary_to_list(ContractBin), Options),
-    aeu_hex:hexstring_encode(Code).
+    aeso_compiler:from_string(binary_to_list(ContractBin), Options).
 
 %% execute_call(Contract, CallData, ChainState) ->
 %%     execute_call(Contract, CallData, ChainState, #{}).

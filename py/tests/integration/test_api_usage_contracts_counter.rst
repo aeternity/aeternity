@@ -36,7 +36,7 @@ Bob computes - off-chain, using the epoch API - the bytecode of the contract.
 >>> from swagger_client.models.contract import Contract
 >>> contract_bytecode = epoch_node['internal_api'].compile_contract(Contract(counter_contract, options="")).bytecode
 >>> print(contract_bytecode) # doctest: +ELLIPSIS
-0x...
+cb_...
 
 Bob computes - off-chain, using the epoch API - the initialization call data.
 
@@ -155,7 +155,7 @@ ok
 Alice decodes the return value - off-chain, using the epoch API.
 
 >>> print(contract_call_object.return_value) # doctest: +ELLIPSIS
-0x...
+cb_...
 >>> from swagger_client.models.sophia_binary_data import SophiaBinaryData
 >>> epoch_node['internal_api'].decode_data(SophiaBinaryData(sophia_type=counter_contract_get_function_return_value_type,
 ...                                                         data=contract_call_object.return_value)).data
