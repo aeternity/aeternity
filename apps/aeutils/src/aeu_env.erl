@@ -158,8 +158,9 @@ lists_map_key_find(_, []) ->
 schema() ->
     case setup:get_env(aeutils, '$schema', undefined) of
         undefined ->
-            read_schema(),
-            setup:get_env(aeutils, '$schema', []);
+            load_schema(),
+            {ok, S} = setup:get_env(aeutils, '$schema'),
+            S;
         S ->
             S
     end.
@@ -202,11 +203,11 @@ read_config(Mode) when Mode =:= silent; Mode =:= report ->
             ok;
         F ->
             info_msg(Mode, "Reading config file ~s~n", [F]),
-            do_read_config(F, read_schema(), store, Mode)
+            do_read_config(F, schema_filename(), store, Mode)
     end.
 
 check_config(F) ->
-    do_read_config(F, read_schema(), check, silent).
+    do_read_config(F, schema_filename(), check, silent).
 
 check_config(F, Schema) ->
     do_read_config(F, Schema, check, silent).
@@ -391,7 +392,7 @@ try_decode(F, DecF, Fmt, Mode) ->
 validate(JSON, F) ->
     validate(JSON, F, report).
 validate(JSON, F, Mode) ->
-    validate(JSON, F, read_schema(), Mode).
+    validate(JSON, F, schema_filename(), Mode).
 
 validate(JSON, F, Schema, Mode) when is_list(JSON) ->
     check_validation([validate_(Schema, J) || J <- JSON], JSON, F, Mode);
@@ -437,9 +438,12 @@ validate_(Schema, JSON) ->
             {error, {schema_file_not_found, Schema}}
     end.
 
-read_schema() ->
+schema_filename() ->
     filename:join(code:priv_dir(aeutils),
                   "epoch_config_schema.json").
+
+load_schema() ->
+    load_schema(schema_filename()).
 
 load_schema(F) ->
     [Schema] = jsx:consult(F, [return_maps]),
