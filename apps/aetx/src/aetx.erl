@@ -15,7 +15,6 @@
         , gas/1
         , gas_price/1
         , ttl/1
-        , is_tx_type/1
         , new/2
         , nonce/1
         , origin/1
@@ -358,16 +357,6 @@ tx_types() ->
     , channel_snapshot_solo_tx
     , channel_offchain_tx
     ].
-
--spec is_tx_type(MaybeTxType :: binary() | atom()) -> boolean().
-is_tx_type(X) when is_binary(X) ->
-    try
-        is_tx_type(erlang:binary_to_existing_atom(X, utf8))
-    catch _:_ ->
-            false
-    end;
-is_tx_type(X) when is_atom(X) ->
-    lists:member(X, tx_types()).
 
 -ifdef(TEST).
 tx(Tx) ->
