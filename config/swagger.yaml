@@ -2840,8 +2840,7 @@ definitions:
       gas_used:
         type: integer
       return_value:
-        description: Hex encoded return value of the call
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
       return_type:
         description: The status of the call 'ok | error | revert'.
         type: string
@@ -2901,6 +2900,7 @@ definitions:
             key:
               type: string
             value:
+              $ref: '#/definitions/EncodedByteArray'
               type: string
     required:
       - store
@@ -2948,9 +2948,11 @@ definitions:
     type: object
     properties:
       calldata:
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
     required:
       - calldata
+  EncodedByteArray:
+    type: string
   SophiaBinaryData:
     type: object
     properties:
@@ -3030,7 +3032,7 @@ definitions:
         minimum: 0
       call_data:
         description: Contract call data
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
     required:
       - owner_id
       - code
@@ -3134,7 +3136,7 @@ definitions:
         minimum: 0
       call_data:
         description: Contract call data
-        type: string
+        $ref: '#/definitions/EncodedByteArray'
     required:
       - caller_id
       - contract_id
@@ -3320,7 +3322,7 @@ definitions:
             format: int64
           call_data:
             description: Contract call data
-            type: string
+            $ref: '#/definitions/EncodedByteArray'
         required:
           - owner
           - vm_version
@@ -3356,7 +3358,7 @@ definitions:
             format: int64
           call_data:
             description: Contract call data
-            type: string
+            $ref: '#/definitions/EncodedByteArray'
         required:
           - caller
           - contract

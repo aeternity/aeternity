@@ -14,8 +14,6 @@
         , file/2
         , from_string/2]).
 
--export([test/0]).
-
 -type option() :: pp_sophia_code | pp_ast | pp_icode | pp_assembler |
                   pp_bytecode.
 -type options() :: [option()].
@@ -99,25 +97,3 @@ read_contract(Name) ->
 
 contract_path() ->
     "apps/aesophia/test/contracts".
-
-
-solidity_id_contract() ->
-    binint_to_bin(<< "0x606060405260043610603f576000357c0100000000000000000000000000000000000000000000000000000000" >>).
-
-test() ->
-    io:format(aeb_disassemble:pp(solidity_id_contract()),[]).
-
-
-binint_to_bin(<<"0x", Bin/binary>>) ->
-    << <<(hex_to_int(X)):4>> || <<X:8>> <= Bin>>;
-binint_to_bin(<<"0", _/binary>> = Bin) ->
-    %% Don't know what to do.
-    %% Is this an attempt to pad?
-    error({unexpected, Bin});
-binint_to_bin(Bin) when is_binary(Bin) ->
-    Int = binary_to_integer(Bin),
-    binary:encode_unsigned(Int).
-
-hex_to_int(X) when $A =< X, X =< $F -> 10 + X - $A;
-hex_to_int(X) when $a =< X, X =< $f -> 10 + X - $a;
-hex_to_int(X) when $0 =< X, X =< $9 -> X - $0.

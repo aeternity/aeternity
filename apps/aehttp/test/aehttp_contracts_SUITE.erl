@@ -1835,7 +1835,7 @@ args_to_list([]) -> [].
 %%arg_to_list(<<N:256>>) -> integer_to_list(N);
 arg_to_list(N) when is_integer(N) -> integer_to_list(N);
 arg_to_list(B) when is_binary(B) ->             %A key
-    aect_utils:hex_bytes(B);
+    binary_to_list(aeu_hex:hexstring_encode(B));
 arg_to_list({string,S}) -> ["\"",S,"\""];
 arg_to_list(T) when is_tuple(T) ->
     [$(,args_to_list(tuple_to_list(T)),$)];

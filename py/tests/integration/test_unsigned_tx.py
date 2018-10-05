@@ -30,7 +30,7 @@ def read_id_contract(api):
     # Compile contract to bytecode
     contract = Contract( contract_string, "")
     compilation_result = api.compile_contract(contract)
-    assert_regexp_matches(compilation_result.bytecode, '0x.*')
+    assert_regexp_matches(compilation_result.bytecode, 'cb_.*')
 
     return compilation_result.bytecode
 
@@ -184,7 +184,7 @@ def test_contract_on_chain_call_off_chain():
                                    call_contract["data"]["argument"])
     result = internal_api.call_contract(call_input)
 
-    assert_equals('0x000000000000000000000000000000000000000000000000000000000000002a',
+    assert_equals(common.hexstring_to_contract_bytearray('0x000000000000000000000000000000000000000000000000000000000000002a'),
                    result.out)
 
     cleanup(node, root_dir)

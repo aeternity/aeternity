@@ -317,13 +317,13 @@ for_client(#contract_call_tx{caller_id   = CallerId,
     #{<<"caller_id">>   => aec_base58c:encode(id_hash, CallerId),
       <<"nonce">>       => Nonce,
       <<"contract_id">> => aec_base58c:encode(id_hash, ContractId),
-      <<"vm_version">>  => aect_utils:hex_byte(VmVersion),
+      <<"vm_version">>  => aeu_hex:hexstring_encode(<<VmVersion:8>>),
       <<"fee">>         => Fee,
       <<"ttl">>         => TTL,
       <<"amount">>      => Amount,
       <<"gas">>         => Gas,
       <<"gas_price">>   => GasPrice,
-      <<"call_data">>   => aect_utils:hex_bytes(CallData)}.
+      <<"call_data">>   => aec_base58c:encode(contract_bytearray, CallData)}.
 
 %% -- Getters ----------------------------------------------------------------
 

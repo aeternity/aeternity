@@ -7,8 +7,7 @@
 
 -module(aect_evm).
 
--export([ simple_call_solidity/2
-        , simple_call_common/3
+-export([ simple_call_common/3
         , call_common/6
         , encode_call_data/3
         , execute_call/2
@@ -23,32 +22,26 @@ encode_call_data(_Contract, Function, Argument) ->
     %% TODO: Check that Function exists in Contract.
     {ok, <<Function/binary, Argument/binary>>}.
 
--spec simple_call_solidity(binary(), binary()) -> {ok, binary()} | {error, binary()}.
-simple_call_solidity(EncodedCode, EncodedCallData) ->
-    CallData       = aeu_hex:hexstring_decode(EncodedCallData),
-    simple_call_common(EncodedCode, CallData, ?AEVM_01_Solidity_01).
-
 -spec simple_call_common(binary(), binary(), VMVersion :: integer()) -> {ok, binary()} | {error, binary()}.
-simple_call_common(EncodedCode, CallData, VMVersion) ->
+simple_call_common(Code, CallData, VMVersion) ->
     {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
     Owner          = <<123456:32/unit:8>>,
     Deposit        = 0,
-    Code           = aeu_hex:hexstring_decode(EncodedCode),
     Contract       = aect_contracts:new(Owner, 1, VMVersion, Code, Deposit),
     ContractKey    = aect_contracts:pubkey(Contract),
     Trees1         = aect_utils:insert_contract_in_trees(Contract, Trees),
-    call_common(CallData, ContractKey, EncodedCode, TxEnv, Trees1, VMVersion).
+    call_common(CallData, ContractKey, Code, TxEnv, Trees1, VMVersion).
 
 -spec call_common(binary(), binary(), binary(), aetx_env:env(),
                   aec_trees:trees(), VMVersion :: integer()) ->
                      {ok, binary()} | {error, binary()}.
-call_common(CallData, ContractKey, EncodedCode, TxEnv, Trees, VMVersion) ->
+call_common(CallData, ContractKey, Code, TxEnv, Trees, VMVersion) ->
     <<Address:256>> = ContractKey,
     GasLimit = aec_governance:block_gas_limit(),
     Amount = 0,
     ChainState = aec_vm_chain:new_state(Trees, TxEnv, ContractKey),
     <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>> = aetx_env:beneficiary(TxEnv),
-    Spec = #{ code => EncodedCode
+    Spec = #{ code => Code
             , address => Address
             , caller => 0
             , data => CallData
@@ -67,7 +60,7 @@ call_common(CallData, ContractKey, EncodedCode, TxEnv, Trees, VMVersion) ->
             },
     try execute_call(Spec, true) of
         {ok, #{ out := Out } = _RetState} ->
-            {ok, aeu_hex:hexstring_encode(Out)};
+            {ok, Out};
         E -> {error, list_to_binary(io_lib:format("~p", [E]))}
     catch _T:E ->
             ErrorString = io_lib:format("~p", [{E, erlang:get_stacktrace()}]),
@@ -75,7 +68,7 @@ call_common(CallData, ContractKey, EncodedCode, TxEnv, Trees, VMVersion) ->
     end.
 
 -spec execute_call(map(), boolean()) -> {ok, map()} | {error, term()}.
-execute_call(#{ code := CodeAsHexBinString
+execute_call(#{ code := Code
               , address := Address
               , caller := Caller
               , data := CallData
@@ -93,7 +86,6 @@ execute_call(#{ code := CodeAsHexBinString
               , vm_version := VmVersion
               }, Trace) ->
     %% TODO: Handle Contract In State.
-    Code = aeu_hex:hexstring_decode(CodeAsHexBinString),
     Spec =
         #{ exec => #{ code => Code
                     , address => Address

@@ -19,7 +19,7 @@
                         , verify_oracle_existence/1
                         , verify_oracle_query_existence/2
                         , poi_decode/1
-                        , hexstrings_decode/1
+                        , contract_bytearray_params_decode/1
                         , unsigned_tx_response/1
                         , ok_response/1
                         , process_request/2
@@ -71,7 +71,7 @@ handle_request_('PostContractCreate', #{'ContractCreateTx' := Req}, _Context) ->
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  base58_decode([{owner_id, owner_id, {id_hash, [account_pubkey]}}]),
                  get_nonce_from_account_id(owner_id),
-                 hexstrings_decode([code, call_data]),
+                 contract_bytearray_params_decode([code, call_data]),
                  ok_response(
                     fun(Data) ->
                         {ok, Tx} = aect_create_tx:new(Data),
@@ -94,7 +94,7 @@ handle_request_('PostContractCreateCompute', #{'ContractCreateCompute' := Req}, 
                  read_optional_params([{ttl, ttl, '$no_value'}]),
                  base58_decode([{owner_id, owner_id, {id_hash, [account_pubkey]}}]),
                  get_nonce_from_account_id(owner_id),
-                 hexstrings_decode([code]),
+                 contract_bytearray_params_decode([code]),
                  compute_contract_create_data(),
                  ok_response(
                     fun(Data) ->
@@ -119,7 +119,7 @@ handle_request_('PostContractCall', #{'ContractCallTx' := Req}, _Context) ->
                                 {contract_id, contract_id, {id_hash, [contract_pubkey]}}]),
                  get_nonce_from_account_id(caller_id),
                  get_contract_code(contract_id, contract_code),
-                 hexstrings_decode([call_data]),
+                 contract_bytearray_params_decode([call_data]),
                  unsigned_tx_response(fun aect_call_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
@@ -147,7 +147,7 @@ handle_request_('CompileContract', Req, _Context) ->
             %% TODO: Handle other languages
             case aehttp_logic:contract_compile(Code, Options) of
                  {ok, ByteCode} ->
-                     {200, [], #{ bytecode => ByteCode}};
+                     {200, [], #{bytecode => aec_base58c:encode(contract_bytearray, ByteCode)}};
                  {error, ErrorMsg} ->
                      {403, [], #{reason => ErrorMsg}}
              end;

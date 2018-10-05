@@ -871,7 +871,7 @@ stop_node(false, _Group, _Config) ->
 
 %% off chain endpoints
 test_decode_sophia_data(_Config) ->
-    CallEncodedInteger42 = to_binary({<<"foo">>, {42, 2}}),
+    CallEncodedInteger42 = to_contract_bytearray({<<"foo">>, {42, 2}}),
     Decoded = decode_data(<<"(string, (int, int))">>,
                           CallEncodedInteger42),
     #{<<"data">> :=
@@ -894,7 +894,7 @@ test_decode_sophia_data(_Config) ->
 test_decode_sophia_data2(_Config) ->
     CD = {<<"foo">>, {<<"Hello">>, [1, 2, 3], {some, 1}}},
     Type = <<"(string, (string, list(int), option(bool)))">>,
-    CallEncoded = to_binary(CD),
+    CallEncoded = to_contract_bytearray(CD),
     Decoded = decode_data(Type, CallEncoded),
     #{<<"data">> :=
           #{ <<"type">> := <<"tuple">>
@@ -919,7 +919,7 @@ test_decode_sophia_data2(_Config) ->
     ok.
 
 broken_decode_sophia_data(_Config) ->
-    D = to_binary({<<"bar">>, 42}),
+    D = to_contract_bytearray({<<"bar">>, 42}),
     T = <<"(string, int)">>,
     %% Happy path.
     {ok, 200,
@@ -963,8 +963,10 @@ broken_decode_sophia_data(_Config) ->
       , { #{'sophia-type' => T, data => 42}, <<"data">>, 42}
       ]),
     %% Field valid according to schema but invalid for handler.
-    {ok, 400, #{<<"reason">> := <<"bad_type">>}} = get_contract_decode_data(#{'sophia-type' => <<"foo">>, data => D}),
-    {ok, 400, #{<<"reason">> := <<"bad argument">>}} = get_contract_decode_data(#{'sophia-type' => T, data => <<"foo">>}),
+    {ok, 400, #{<<"reason">> := <<"bad_type">>}} =
+        get_contract_decode_data(#{'sophia-type' => <<"foo">>, data => D}),
+    {ok, 400, #{<<"reason">> := <<"Data must be hex encoded">>}} =
+        get_contract_decode_data(#{'sophia-type' => T, data => <<"foo">>}),
     %% Field valid for both schema and handler, though data
     %% interpreted in a different way than the specified type spec.
     {ok, 200,
@@ -973,12 +975,18 @@ broken_decode_sophia_data(_Config) ->
              <<"value">> :=
                  [#{<<"type">> := <<"string">>, <<"value">> := <<"bar">>},
                   #{<<"type">> := <<"word">>, <<"value">> := 160} ]}}
-    } = get_contract_decode_data(#{'sophia-type' => T, data => to_binary({<<"bar">>, {42}})}),
+    } = get_contract_decode_data(#{'sophia-type' => T, data => to_contract_bytearray({<<"bar">>, {42}})}),
     ok.
 
 %% Used in contract-decode endpoint tests.
-to_binary(Term) ->
-    aeu_hex:hexstring_encode(aeso_data:to_binary(Term)).
+to_contract_bytearray(Term) ->
+    aec_base58c:encode(contract_bytearray, aeso_data:to_binary(Term)).
+
+contract_bytearray_decode(X) ->
+    case aec_base58c:safe_decode(contract_bytearray, X) of
+        {ok, Y} -> Y;
+        {error, _} = E -> error(E)
+    end.
 
 decode_data(Type, EncodedData) ->
     {ok, 200, Data} =
@@ -1455,7 +1463,8 @@ post_contract_and_call_tx(_Config) ->
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
     {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
 
-    {ok, EncodedInitCallData} = aect_sophia:encode_call_data(Code, <<"init">>, <<"()">>),
+    {ok, EncodedInitCallData} = aehttp_logic:contract_encode_call_data(
+                                  <<"sophia">>, Code, <<"init">>, <<"()">>),
     ValidEncoded = #{ owner_id   => MinerAddress,
                       code       => Code,
                       vm_version => 1,
@@ -1483,7 +1492,8 @@ post_contract_and_call_tx(_Config) ->
     ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCreateTxHash)),
     ?assertMatch({ok, 200, _}, get_transactions_info_by_hash_sut(ContractCreateTxHash)),
 
-    {ok, EncodedCallData} = aect_sophia:encode_call_data(Code, <<"main">>, <<"42">>),
+    {ok, EncodedCallData} = aehttp_logic:contract_encode_call_data(
+                              <<"sophia">>, Code, <<"main">>, <<"42">>),
     ContractCallEncoded = #{ caller_id   => MinerAddress,
                              contract_id => EncodedContractPubKey,
                              vm_version  => 1,
@@ -1534,9 +1544,10 @@ get_contract(_Config) ->
     InitFunction = <<"init">>,
     InitArgument = <<"()">>,
     {ok, EncodedInitCallData} =
-        aect_sophia:encode_call_data(Code,
-                                     InitFunction,
-                                     InitArgument),
+        aehttp_logic:contract_encode_call_data(<<"sophia">>,
+                                               Code,
+                                               InitFunction,
+                                               InitArgument),
 
     ContractInitBalance = 1,
     ValidEncoded = #{ owner_id   => MinerAddress,
@@ -1551,8 +1562,8 @@ get_contract(_Config) ->
 
     ValidDecoded = maps:merge(ValidEncoded,
                               #{owner_id  => aec_id:create(account, MinerPubkey),
-                                code      => aeu_hex:hexstring_decode(Code),
-                                call_data => aeu_hex:hexstring_decode(EncodedInitCallData)}),
+                                code      => contract_bytearray_decode(Code),
+                                call_data => contract_bytearray_decode(EncodedInitCallData)}),
 
     unsigned_tx_positive_test(ValidDecoded, ValidEncoded, fun get_contract_create/1,
                                fun aect_create_tx:new/1, MinerPubkey),
@@ -1873,9 +1884,10 @@ contract_transactions(_Config) ->    % miner has an account
     InitFunction = <<"init">>,
     InitArgument = <<"()">>,
     {ok, EncodedInitCallData} =
-        aect_sophia:encode_call_data(Code,
-                                     InitFunction,
-                                     InitArgument),
+        aehttp_logic:contract_encode_call_data(<<"sophia">>,
+                                               Code,
+                                               InitFunction,
+                                               InitArgument),
 
     ContractInitBalance = 1,
     ValidEncoded = #{ owner_id => MinerAddress,
@@ -1890,8 +1902,8 @@ contract_transactions(_Config) ->    % miner has an account
 
     ValidDecoded = maps:merge(ValidEncoded,
                               #{owner_id => aec_id:create(account, MinerPubkey),
-                                code => aeu_hex:hexstring_decode(Code),
-                                call_data => aeu_hex:hexstring_decode(EncodedInitCallData)}),
+                                code => contract_bytearray_decode(Code),
+                                call_data => contract_bytearray_decode(EncodedInitCallData)}),
 
     unsigned_tx_positive_test(ValidDecoded, ValidEncoded, fun get_contract_create/1,
                                fun aect_create_tx:new/1, MinerPubkey),
@@ -1949,9 +1961,10 @@ contract_transactions(_Config) ->    % miner has an account
     Function = <<"main">>,
     Argument = <<"42">>,
     {ok, EncodedCallData} =
-        aect_sophia:encode_call_data(Code,
-                                     Function,
-                                     Argument),
+        aehttp_logic:contract_encode_call_data(<<"sophia">>,
+                                               Code,
+                                               Function,
+                                               Argument),
 
 
     ContractCallEncoded = #{ caller_id => MinerAddress,
@@ -1966,7 +1979,7 @@ contract_transactions(_Config) ->    % miner has an account
     ContractCallDecoded = maps:merge(ContractCallEncoded,
                               #{caller_id => aec_id:create(account, MinerPubkey),
                                 contract_id => aec_id:create(contract, ContractPubKey),
-                                call_data => aeu_hex:hexstring_decode(EncodedCallData)}),
+                                call_data => contract_bytearray_decode(EncodedCallData)}),
 
     unsigned_tx_positive_test(ContractCallDecoded, ContractCallEncoded,
                                fun get_contract_call/1,
@@ -2024,12 +2037,13 @@ contract_transactions(_Config) ->    % miner has an account
                              function => Function,
                              arguments => Argument},
 
-    {ok, EncodedCallData} = aect_sophia:encode_call_data(Code, Function,
-                                                         Argument),
+    {ok, EncodedCallData} = aehttp_logic:contract_encode_call_data(
+                              <<"sophia">>, Code, Function, Argument),
+
     ComputeCCallDecoded = maps:merge(ComputeCCallEncoded,
                               #{caller_id => aec_id:create(account, MinerPubkey),
                                 contract_id => aec_id:create(contract, ContractPubKey),
-                                call_data => aeu_hex:hexstring_decode(EncodedCallData)}),
+                                call_data => contract_bytearray_decode(EncodedCallData)}),
 
     unsigned_tx_positive_test(ComputeCCallDecoded, ComputeCCallEncoded,
                                fun get_contract_call_compute/1,
@@ -2097,19 +2111,19 @@ contract_transactions(_Config) ->    % miner has an account
     InvalidHex2 = <<"0xXYZ">>,
 
     % invalid code
-    {ok, 400, #{<<"reason">> := <<"Not hex string: code">>}} =
+    {ok, 400, #{<<"reason">> := <<"Not byte array: code">>}} =
         get_contract_create(maps:put(code, InvalidHex1, ValidEncoded)),
-    {ok, 400, #{<<"reason">> := <<"Not hex string: code">>}} =
+    {ok, 400, #{<<"reason">> := <<"Not byte array: code">>}} =
         get_contract_create(maps:put(code, InvalidHex2, ValidEncoded)),
     % invalid call data
-    {ok, 400, #{<<"reason">> := <<"Not hex string: call_data">>}} =
+    {ok, 400, #{<<"reason">> := <<"Not byte array: call_data">>}} =
         get_contract_create(maps:put(call_data, InvalidHex1, ValidEncoded)),
-    {ok, 400, #{<<"reason">> := <<"Not hex string: call_data">>}} =
+    {ok, 400, #{<<"reason">> := <<"Not byte array: call_data">>}} =
         get_contract_create(maps:put(call_data, InvalidHex2, ValidEncoded)),
     % invalid call data
-    {ok, 400, #{<<"reason">> := <<"Not hex string: call_data">>}} =
+    {ok, 400, #{<<"reason">> := <<"Not byte array: call_data">>}} =
         get_contract_call(maps:put(call_data, InvalidHex1, ContractCallEncoded)),
-    {ok, 400, #{<<"reason">> := <<"Not hex string: call_data">>}} =
+    {ok, 400, #{<<"reason">> := <<"Not byte array: call_data">>}} =
         get_contract_call(maps:put(call_data, InvalidHex2, ContractCallEncoded)),
 
     {ok, 400, #{<<"reason">> := <<"Failed to compute call_data, reason: bad argument">>}} =
@@ -2198,14 +2212,15 @@ contract_create_transaction_init_error(_Config) ->
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
 
     % contract_create_tx positive test
-    Code = aeu_hex:hexstring_encode(<<"NOT PROPER BYTE CODE">>),
+    Code = aec_base58c:encode(contract_bytearray, <<"NOT PROPER BYTE CODE">>),
 
     InitFunction = <<"init">>,
     InitArgument = <<"()">>,
     {ok, EncodedInitCallData} =
-        aect_sophia:encode_call_data(Code,
-            InitFunction,
-            InitArgument),
+        aehttp_logic:contract_encode_call_data(<<"sophia">>,
+                                               Code,
+                                               InitFunction,
+                                               InitArgument),
     ValidEncoded = #{ owner_id   => MinerAddress,
                       code       => Code,
                       vm_version => 1,
@@ -2217,8 +2232,8 @@ contract_create_transaction_init_error(_Config) ->
                       call_data  => EncodedInitCallData},
     ValidDecoded = maps:merge(ValidEncoded,
         #{owner => MinerPubkey,
-            code => aeu_hex:hexstring_decode(Code),
-            call_data => aeu_hex:hexstring_decode(EncodedInitCallData)}),
+            code => contract_bytearray_decode(Code),
+            call_data => contract_bytearray_decode(EncodedInitCallData)}),
 
     %% prepare a contract_create_tx and post it
     {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
@@ -4259,7 +4274,6 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     QueryTTL = 30,
     ResponseTTL = 30,
     Question = <<"Fill me in with something reasonable">>,
-    HexEncode = fun(L) -> list_to_binary(aect_utils:hex_bytes(L)) end,
     register_oracle(OraclePubkey, OraclePrivkey,
                     #{query_format    => SophiaStringType,
                       response_format => SophiaStringType,
@@ -4280,10 +4294,10 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
         end,
 
     Code = contract_byte_code("channel_on_chain_contract_oracle"),
-    HexOracleId = HexEncode(OraclePubkey),
+    HexOracleId = aeu_hex:hexstring_encode(OraclePubkey),
     InitArgument = <<"(",HexOracleId/binary, ", \"", Question/binary, "\")">>,
-    {ok, EncodedInitData} = aect_sophia:encode_call_data(Code, <<"init">>,
-                                                         InitArgument),
+    {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
+                              <<"sophia">>, Code, <<"init">>, InitArgument),
     {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
     ?WS:send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
                     #{vm_version => 1,
@@ -4323,14 +4337,14 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
 
     %% place some oracle query id with a different question
     ErrQueryId = OracleQuerySequence(<<"other question">>, <<"some answer">>),
-    EncodedErrQuery = HexEncode(ErrQueryId),
+    EncodedErrQuery = aeu_hex:hexstring_encode(ErrQueryId),
     [CallContract(Who, <<"resolve">>, <<"(", EncodedErrQuery/binary, ")">>,
                   <<"string">>, <<"different question">>)
         || Who <- [initiator, responder]],
 
     Answer = <<"other reasonable thingy">>,
     CorrectQueryId = OracleQuerySequence(Question, Answer),
-    EncodedQueryId = HexEncode(CorrectQueryId),
+    EncodedQueryId = aeu_hex:hexstring_encode(CorrectQueryId),
 
     {ok, {OwnerBal0, OtherBal0}} = sc_ws_get_both_balances(ConnPid1,
                                                            OwnerPubkey,
@@ -4375,8 +4389,8 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
 
     Code = contract_byte_code("channel_on_chain_contract_name_resolution"),
     InitArgument = <<"()">>,
-    {ok, EncodedInitData} = aect_sophia:encode_call_data(Code, <<"init">>,
-                                                         InitArgument),
+    {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
+                              <<"sophia">>, Code, <<"init">>, InitArgument),
     {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
     ?WS:send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
                     #{vm_version => 1,
@@ -4432,8 +4446,8 @@ sc_ws_enviroment_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                            OwnerPubkey, _OtherPubkey, _Opts) ->
     Code = contract_byte_code("channel_env"),
     InitArgument = <<"()">>,
-    {ok, EncodedInitData} = aect_sophia:encode_call_data(Code, <<"init">>,
-                                                         InitArgument),
+    {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
+                              <<"sophia">>, Code, <<"init">>, InitArgument),
     {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
     ?WS:send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
                     #{vm_version => 1,
@@ -4488,8 +4502,11 @@ sc_ws_remote_call_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
         fun(Name) ->
             Code = contract_byte_code(Name),
             InitArgument = <<"()">>,
-            {ok, EncodedInitData} = aect_sophia:encode_call_data(Code, <<"init">>,
-                                                                InitArgument),
+            {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
+                                      <<"sophia">>,
+                                      Code,
+                                      <<"init">>,
+                                      InitArgument),
             {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
             ?WS:send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
                             #{vm_version => 1,
@@ -4522,8 +4539,7 @@ sc_ws_remote_call_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
             ContractCall(Who, IdentityCPubKey, IdentityCode, <<"main">>,
                          <<"(", ValB/binary, ")">>, Val, _Amount = 0)
         end,
-    HexEncodedIdentityPubkey =
-        list_to_binary(aect_utils:hex_bytes(IdentityCPubKey)),
+    HexEncodedIdentityPubkey = aeu_hex:hexstring_encode(IdentityCPubKey),
     CallRemoteContract =
         fun(Who, Val) ->
             ValB = integer_to_binary(Val),
@@ -4781,8 +4797,9 @@ contract_id_from_create_update(Owner, OffchainTx) ->
 create_contract_(TestName, SenderConnPid, UpdateVolley) ->
     Code = contract_byte_code(TestName),
     InitArgument = contract_create_init_arg(TestName),
-    {ok, EncodedInitData} = aect_sophia:encode_call_data(Code, <<"init">>,
-                                                         InitArgument),
+    {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
+                              <<"sophia">>, Code, <<"init">>, InitArgument),
+
     ?WS:send_tagged(SenderConnPid, <<"update">>, <<"new_contract">>,
                     #{vm_version => 1,
                       deposit    => 10,
@@ -4850,13 +4867,12 @@ contract_calls_("spend_test", ContractPubKey, Code, SenderConnPid, UpdateVolley,
         end,
     ContractBalance0 = GetBalance(<<"()">>),
 
-    SenderB0 = GetBalance(list_to_binary("(" ++ aect_utils:hex_bytes(SenderPubkey) ++ ")")),
-    AckB0 = GetBalance(list_to_binary("(" ++ aect_utils:hex_bytes(AckPubkey) ++ ")")),
+    SenderB0 = GetBalance(format_args(SenderPubkey)),
+    AckB0 = GetBalance(format_args(AckPubkey)),
 
     SpendFun =
         fun(To, Amt) ->
-            SpendArgs = list_to_binary("(" ++ aect_utils:hex_bytes(To) ++
-                                       ", " ++ integer_to_list(Amt) ++ ")"),
+            SpendArgs = format_args(To, Amt),
             _SpendStateTx = call_a_contract(<<"spend">>, SpendArgs, ContractPubKey, Code, SenderConnPid,
                                   UpdateVolley)
         end,
@@ -4865,16 +4881,16 @@ contract_calls_("spend_test", ContractPubKey, Code, SenderConnPid, UpdateVolley,
     SpendFun(SenderPubkey, SpendAmt),
     ContractBalance = GetBalance(<<"()">>),
     {ContractBalance, _} = {ContractBalance0 - SpendAmt, ContractBalance0},
-    SenderB = GetBalance(list_to_binary("(" ++ aect_utils:hex_bytes(SenderPubkey) ++ ")")),
-    AckB0 = GetBalance(list_to_binary("(" ++ aect_utils:hex_bytes(AckPubkey) ++ ")")),
+    SenderB = GetBalance(format_args(SenderPubkey)),
+    AckB0 = GetBalance(format_args(AckPubkey)),
     SenderB = SenderB0 + SpendAmt,
 
     SpendAmt2 = 2,
     UnsignedStateTx = SpendFun(AckPubkey, SpendAmt2),
     ContractBalance1 = GetBalance(<<"()">>),
     {ContractBalance1, _} = {ContractBalance - SpendAmt2, ContractBalance1},
-    SenderB = GetBalance(list_to_binary("(" ++ aect_utils:hex_bytes(SenderPubkey) ++ ")")),
-    AckB = GetBalance(list_to_binary("(" ++ aect_utils:hex_bytes(AckPubkey) ++ ")")),
+    SenderB = GetBalance(format_args(SenderPubkey)),
+    AckB = GetBalance(format_args(AckPubkey)),
     AckB = AckB0 + SpendAmt2,
     UnsignedStateTx.
 
@@ -4883,9 +4899,10 @@ call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid, UpdateV
                     UpdateVolley, 0).
 call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
                 UpdateVolley, Amount) ->
-    {ok, EncodedMainData} = aect_sophia:encode_call_data(Code,
-                                                         Function,
-                                                         Argument),
+    {ok, EncodedMainData} = aehttp_logic:contract_encode_call_data(<<"sophia">>,
+                                                                   Code,
+                                                                   Function,
+                                                                   Argument),
     ?WS:send_tagged(SenderConnPid, <<"update">>, <<"call_contract">>,
                     #{contract   => aec_base58c:encode(contract_pubkey, ContractPubKey),
                       vm_version => 1,
@@ -4898,7 +4915,7 @@ contract_byte_code(TestName) ->
     %% Compile contract TesName ++ ".aes"
     ContractString = aeso_test_utils:read_contract(TestName),
     BinCode = aeso_compiler:from_string(ContractString, []),
-    HexCode = aeu_hex:hexstring_encode(BinCode),
+    HexCode = aec_base58c:encode(contract_bytearray, BinCode),
     HexCode.
 
 
@@ -4988,6 +5005,15 @@ peers(_Config) ->
     {ok, 200, #{<<"blocked">> := [], <<"peers">> := []}} = get_peers(),
 
     ok.
+
+format_args(X) ->
+    iolist_to_binary(["(", format_arg(X), ")"]).
+
+format_args(X, Y) ->
+    iolist_to_binary(["(", format_arg(X), ", ", format_arg(Y), ")"]).
+
+format_arg(B) when is_binary(B)  -> aeu_hex:hexstring_encode(B);
+format_arg(I) when is_integer(I) -> integer_to_binary(I).
 
 %% ============================================================
 %% WebSocket helpers

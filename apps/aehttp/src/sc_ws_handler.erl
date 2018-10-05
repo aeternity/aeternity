@@ -283,7 +283,7 @@ process_incoming(#{<<"action">> := <<"update">>,
                                       <<"deposit">>    := Deposit,
                                       <<"code">>       := CodeE,
                                       <<"call_data">>  := CallDataE}} = R, State) ->
-    case {hex_decode(CodeE), hex_decode(CallDataE)} of
+    case {bytearray_decode(CodeE), bytearray_decode(CallDataE)} of
         {{ok, Code}, {ok, CallData}} ->
             case aesc_fsm:upd_create_contract(fsm_pid(State),
                                               #{vm_version => VmVersion,
@@ -294,7 +294,7 @@ process_incoming(#{<<"action">> := <<"update">>,
                 {error, Reason} ->
                     {reply, error_response(R, Reason)}
             end;
-        _ -> {reply, error_response(R, broken_hexcode)}
+        _ -> {reply, error_response(R, broken_code)}
     end;
 process_incoming(#{<<"action">> := <<"update">>,
                    <<"tag">> := <<"call_contract">>,
@@ -302,7 +302,7 @@ process_incoming(#{<<"action">> := <<"update">>,
                                       <<"vm_version">> := VmVersion,
                                       <<"amount">>     := Amount,
                                       <<"call_data">>  := CallDataE}} = R, State) ->
-    case {aec_base58c:safe_decode(contract_pubkey, ContractE), hex_decode(CallDataE)} of
+    case {aec_base58c:safe_decode(contract_pubkey, ContractE), bytearray_decode(CallDataE)} of
         {{ok, Contract}, {ok, CallData}} ->
             case aesc_fsm:upd_call_contract(fsm_pid(State),
                                             #{contract   => Contract,
@@ -313,7 +313,7 @@ process_incoming(#{<<"action">> := <<"update">>,
                 {error, Reason} ->
                     {reply, error_response(R, Reason)}
             end;
-        _ -> {reply, error_response(R, broken_hexcode)}
+        _ -> {reply, error_response(R, broken_code)}
     end;
 process_incoming(#{<<"action">> := <<"get">>,
                    <<"tag">> := <<"contract_call">>,
@@ -333,7 +333,7 @@ process_incoming(#{<<"action">> := <<"get">>,
                 {error, Reason} ->
                     {reply, error_response(R, Reason)}
             end;
-        _ -> {reply, error_response(R, broken_hexcode)}
+        _ -> {reply, error_response(R, broken_code)}
     end;
 process_incoming(#{<<"action">> := <<"clean_contract_calls">>}, State) ->
     ok = aesc_fsm:prune_local_calls(fsm_pid(State)),
@@ -626,10 +626,8 @@ error_response(Req, Reason) ->
 ok_response(Action) ->
     #{<<"action">>  => Action}.
 
-hex_decode(Hex) ->
-    try {ok, aeu_hex:hexstring_decode(Hex)}
-    catch _:_ -> error
-    end.
+bytearray_decode(Bytearray) ->
+    aec_base58c:safe_decode(contract_bytearray, Bytearray).
 
 safe_decode_account_keys(Keys) ->
     try {ok, lists:foldr(

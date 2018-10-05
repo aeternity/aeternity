@@ -23,9 +23,8 @@
 compile(ContractAsBinString, OptionsAsBinString) ->
     ContractText = binary_to_list(ContractAsBinString),
     Options = parse_options(OptionsAsBinString),
-    try aeso_compiler:from_string(ContractText, Options) of
-        %% TODO: Handle contract meta data.
-        Code -> {ok, aeu_hex:hexstring_encode(Code)}
+    %% TODO: Handle contract meta data.
+    try {ok, aeso_compiler:from_string(ContractText, Options)}
     catch error:Error ->
             {error, list_to_binary(io_lib:format("~p", [Error]))}
     end.
@@ -59,19 +58,17 @@ on_chain_call(ContractKey, Function, Argument) ->
     case create_call(Code, Function, Argument) of
         {error, E} -> {error, E};
         CallData ->
-            EncodedCode = aeu_hex:hexstring_encode(Code),
             VMVersion   = ?AEVM_01_Sophia_01,
-            aect_evm:call_common(CallData, ContractKey, EncodedCode,
+            aect_evm:call_common(CallData, ContractKey, Code,
                                  TxEnv, Trees, VMVersion)
     end.
 
 -spec simple_call(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
-simple_call(EncodedCode, Function, Argument) ->
-    Code = aeu_hex:hexstring_decode(EncodedCode),
+simple_call(Code, Function, Argument) ->
     case create_call(Code, Function, Argument) of
         {error, E} -> {error, E};
         CallData ->
-            aect_evm:simple_call_common(EncodedCode, CallData, ?AEVM_01_Sophia_01)
+            aect_evm:simple_call_common(Code, CallData, ?AEVM_01_Sophia_01)
     end.
 
 -spec encode_call_data(binary(), binary(), binary()) ->
@@ -79,7 +76,7 @@ simple_call(EncodedCode, Function, Argument) ->
 encode_call_data(Contract, Function, Argument) ->
     try create_call(Contract, Function, Argument) of
         Data when is_binary(Data) ->
-            {ok, aeu_hex:hexstring_encode(Data)};
+            {ok, Data};
         Error -> Error
     catch _:_ -> {error, <<"bad argument">>}
     end.
@@ -88,8 +85,7 @@ encode_call_data(Contract, Function, Argument) ->
 decode_data(Type, Data) ->
     case get_type(Type) of
         {ok, SophiaType} ->
-            try aeso_data:from_binary(SophiaType,
-                                      aeu_hex:hexstring_decode(Data)) of
+            try aeso_data:from_binary(SophiaType, Data) of
                 {ok, Term} ->
                     try prepare_for_json(SophiaType, Term) of
                         R -> {ok, R}

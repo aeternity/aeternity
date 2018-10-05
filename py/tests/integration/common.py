@@ -253,6 +253,11 @@ def base58_decode(encoded):
         raise ValueError('Invalid hash')
     return base58.b58decode_check(encoded[3:])
 
+def hexstring_to_contract_bytearray(hexstring):
+    if (hexstring.startswith("0x")):
+        hexstring = hexstring[2:]
+    return "cb_" + base58.b58encode_check(hexstring.decode("hex"))
+
 def encode_signed_tx(encoded_tx, signatures):
     tag = bytearray([11])
     vsn = bytearray([1])

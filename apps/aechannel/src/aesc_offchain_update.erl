@@ -139,7 +139,7 @@ for_client({?OP_CREATE_CONTRACT, OwnerId, VmVersion, Code, Deposit, CallData}) -
       <<"vm_version">>  => VmVersion,
       <<"code">>        => Code,
       <<"deposit">>     => Deposit,
-      <<"call_data">>   => aect_utils:hex_bytes(CallData)};
+      <<"call_data">>   => aec_base58c:encode(contract_bytearray, CallData)};
 for_client({?OP_CALL_CONTRACT, CallerId, ContractId, VmVersion, Amount,
             CallData, CallStack, GasPrice, Gas}) ->
     #{<<"op">>          => <<"OffChainCallContract">>, % swagger name
@@ -149,7 +149,7 @@ for_client({?OP_CALL_CONTRACT, CallerId, ContractId, VmVersion, Amount,
       <<"amount">>      => Amount,
       <<"gas">>         => Gas,
       <<"gas_price">>   => GasPrice,
-      <<"call_data">>   => aect_utils:hex_bytes(CallData),
+      <<"call_data">>   => aec_base58c:encode(contract_bytearray, CallData),
       <<"call_stack">>  => CallStack}.
 
 -spec serialize(update()) -> binary().
