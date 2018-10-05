@@ -27,7 +27,6 @@
                         , get_transaction/2
                         , encode_transaction/2
                         , ok_response/1
-                        , parse_filter_param/2
                         , read_optional_param/3
                         , get_poi/3
                         , get_block_hash_optionally_by_hash_or_height/1

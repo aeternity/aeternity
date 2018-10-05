@@ -21,7 +21,6 @@
         , compute_contract_create_data/0
         , compute_contract_call_data/0
         , read_optional_param/3
-        , parse_filter_param/2
         , get_poi/3
         , get_block_from_chain/1
         , get_block_hash_optionally_by_hash_or_height/1
@@ -491,23 +490,6 @@ read_optional_param(Key, Req, Default) ->
         Val -> Val
     end.
 
--spec parse_filter_param(atom(), map()) -> {ok, list()} | {error, unknown_type}.
-parse_filter_param(ParamName, Req) when is_atom(ParamName) ->
-    Vals = binary:split(
-        read_optional_param(ParamName, Req, <<>>),
-        [<<",">>],
-        [global]),
-    case Vals =:= [<<>>] of
-        false ->
-            KnownTypes = lists:filter(fun aetx:is_tx_type/1, Vals),
-            case length(Vals) =:= length(KnownTypes) of
-                true -> {ok, KnownTypes};
-                false -> {error, unknown_type}
-            end;
-        true ->
-            {ok, []}
-    end.
-
 -spec get_block_from_chain(fun(() -> {ok, aec_blocks:block()} | error | {error, atom()}))
     -> {ok, aec_blocks:block()}| {404, [], map()}.
 get_block_from_chain(Fun) when is_function(Fun, 0) ->
@@ -534,7 +516,7 @@ get_poi(Type, KeyName, PutKey) when Type =:= account
         PubKey = maps:get(KeyName, State),
         {ok, Trees} = aec_chain:get_top_state(),
         AddToPoI =
-            fun(Subtree, PoI0) -> 
+            fun(Subtree, PoI0) ->
                 case aec_trees:add_poi(Subtree, PubKey, Trees, PoI0) of
                     {ok, PoI} ->
                         {ok, PoI};

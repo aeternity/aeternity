@@ -3,8 +3,7 @@
 -export([handle_request/3]).
 
 -import(aeu_debug, [pp/1]).
--import(aehttp_helpers, [ parse_filter_param/2
-                        , get_block_from_chain/1
+-import(aehttp_helpers, [ get_block_from_chain/1
                         , parse_map_to_atom_keys/0
                         , read_required_params/1
                         , read_optional_params/1
@@ -65,7 +64,7 @@ handle_request_('PostSpend', #{'SpendTx' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
-handle_request_('PostContractCreate', #{'ContractCreateData' := Req}, _Context) ->
+handle_request_('PostContractCreate', #{'ContractCreateTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([owner_id, code, vm_version, deposit,
                                        amount, gas, gas_price, fee, call_data]),
@@ -111,7 +110,7 @@ handle_request_('PostContractCreateCompute', #{'ContractCreateCompute' := Req}, 
                 ],
     process_request(ParseFuns, Req);
 
-handle_request_('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
+handle_request_('PostContractCall', #{'ContractCallTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([caller_id, contract_id, vm_version,
                                        amount, gas, gas_price, fee, call_data]),
