@@ -60,7 +60,7 @@ contract Voting =
     let voter = Map.find(delegateTo, state.voters)
     switch(voter.vote)
       Voted(vote)  => addVote(vote, weight)
-      Delegated(_) => abort()   // impossible
+      Delegated(_) => abort("impossible")   // impossible
       NotVoted     => voter{ weight = voter.weight + weight }
 
   function delegate(delegateTo: address) =
@@ -85,7 +85,7 @@ contract Voting =
   // const
   function winningProposal() : proposal =
     switch(state.proposals)
-      []      => abort()
+      []      => abort("none")
       p :: ps => winningProposal'(p, ps)
 
   // const

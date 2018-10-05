@@ -9,11 +9,7 @@ contract VariantTypes =
 
   function init() = Stopped
 
-  function abort() =
-    switch(true)
-      false => ()
-
-  function require(b) = if(!b) abort()
+  function require(b) = if(!b) abort("required")
 
   function start(bal : int) =
     switch(state)

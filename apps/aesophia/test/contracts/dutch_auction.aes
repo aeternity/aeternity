@@ -15,9 +15,6 @@ contract DutchAuction =
     Chain.spend(to, amount)
     total - amount
 
-  private function abort(err : string) =
-    switch(0) 1 => ()
-
   private function require(b : bool, err : string) =
     if(!b) abort(err)
 
