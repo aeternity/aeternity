@@ -269,6 +269,13 @@ references:
 
   system_test_logs: &system_test_logs system_test/logs
 
+  print_system_test_host_info: &print_system_test_host_info
+    run:
+      name: Print system test host information
+      command: |
+        uname -a
+        free -t -m
+
 jobs:
   build:
     <<: *container_config
@@ -508,6 +515,7 @@ jobs:
   docker_system_tests:
     <<: *machine_config
     steps:
+      - *print_system_test_host_info
       - checkout
       - *install_os_deps
       - *install_otp
@@ -531,6 +539,7 @@ jobs:
   docker_system_smoke_tests:
     <<: *machine_config
     steps:
+      - *print_system_test_host_info
       - checkout
       - *install_os_deps
       - *install_otp
