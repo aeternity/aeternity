@@ -578,6 +578,8 @@ net_split_recovery(Cfg) ->
     ?assertNotEqual(undefined, C1),
     ?assertNotEqual(undefined, C3),
 
+    #{height := Top3} = get_top(net1_node1),
+    ct:log("Height reached ~p", [Top3]),
 
     %% Reconnect the nodes together
     connect_node(net1_node1, net2, Cfg),
@@ -585,7 +587,7 @@ net_split_recovery(Cfg) ->
     connect_node(net2_node1, net1, Cfg),
     connect_node(net2_node2, net1, Cfg),
 
-    TargetHeight4 = MinedHeight3 + Length,
+    TargetHeight4 = Top3 + Length,
     %% Wait for some extra blocks for resolving potential fork caused by nodes mining distinct blocks at the same time.
     wait_for_value({height, ExtraLength + TargetHeight4}, Nodes, (ExtraLength + Length) * ?MINING_TIMEOUT, Cfg),
     T1 = erlang:system_time(millisecond),
@@ -604,8 +606,8 @@ net_split_recovery(Cfg) ->
               ?assertNotEqual(undefined, D1)
             end),
 
-    #{height := Top3} = get_top(net1_node1),
-    ct:log("Top reached ~p", [Top3]),
+    #{height := Top4} = get_top(net1_node1),
+    ct:log("Top reached ~p", [Top4]),
 
     ok.
 
