@@ -11,7 +11,7 @@
 
 -export([get_env/2, get_env/3]).
 
--export([user_config/0, user_config/1]).
+-export([user_config/0, user_config/1, user_config/2]).
 -export([user_map/0, user_map/1]).
 -export([schema/0, schema/1, schema_properties/1]).
 -export([user_config_or_env/3, user_config_or_env/4]).
@@ -75,6 +75,13 @@ user_config(Key) when is_list(Key) ->
     get_env(aeutils, ['$user_config'|Key]);
 user_config(Key) when is_binary(Key) ->
     get_env(aeutils, ['$user_config',Key]).
+
+-spec user_config(list() | binary(), any()) -> any().
+user_config(Key, Default) ->
+    case user_config(Key) of
+        undefined   -> Default;
+        {ok, Value} -> Value
+    end.
 
 -spec user_config_or_env(config_key(), atom(), env_key()) -> {ok, any()} | undefined.
 user_config_or_env(CfgKey, App, EnvKey) ->
