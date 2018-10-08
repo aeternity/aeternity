@@ -39,6 +39,7 @@
          events_since/3,
          all_events_since/2,
          check_for_logs/2,
+         times_in_epoch_log/3,
          errors_in_logs/2]).
 
 -export([proxy/0,
@@ -419,6 +420,14 @@ grep_error(FileName) ->
     Entries = string:lexemes(Bin, [$\r,$\n]),
     [ Entry || Entry <- Entries,
                string:find(Entry, "[error]") =/= nomatch ].
+
+times_in_epoch_log(Node, Config, Str) ->
+    LogFile = filename:join(log_dir(Node, Config), "epoch.log"),
+    ct:log("Reading logfile ~p", [LogFile]),
+    {ok, Bin} = file:read_file(LogFile),
+    Entries = string:lexemes(Bin, [$\r,$\n]),
+    [ Entry || Entry <- Entries,
+               string:find(Entry, Str) =/= nomatch ].
 
 expected_logs() ->
     ["epoch.log", "epoch_mining.log", "epoch_sync.log",
