@@ -281,7 +281,7 @@ mine_blocks_loop(Cnt, Type) ->
 mine_blocks_loop(Blocks, 0,_Type) ->
     {ok, Blocks};
 mine_blocks_loop(Blocks, BlocksToMine, Type) ->
-    Block = wait_for_new_block(),
+    {ok, Block} = wait_for_new_block(),
     case aec_blocks:type(Block) of
         micro when Type =:= key ->
             %% Don't decrement
@@ -298,11 +298,11 @@ wait_for_new_block() ->
         {gproc_ps_event, block_created, Info} ->
             ct:log("key block created, Info=~p", [Info]),
             #{info := Block} = Info,
-            Block;
+            {ok, Block};
         {gproc_ps_event, micro_block_created, Info} ->
             ct:log("micro block created, Info=~p", [Info]),
             #{info := Block} = Info,
-            Block
+            {ok, Block}
     after 30000 ->
             ct:log("timeout waiting for block event~n"
                   "~p", [process_info(self(), messages)]),
