@@ -276,6 +276,17 @@ references:
         uname -a
         free -t -m
 
+  system_test_host_logs: &system_test_host_logs /tmp/system_test_host
+  collect_system_test_host_logs: &collect_system_test_host_logs
+    run:
+      name: Collect system test host logs
+      environment:
+        SYSTEM_TEST_HOST_LOGS_DIR: *system_test_host_logs
+      command: |
+        mkdir ${SYSTEM_TEST_HOST_LOGS_DIR:?}
+        dmesg > ${SYSTEM_TEST_HOST_LOGS_DIR:?}/dmesg.log
+      when: always
+
 jobs:
   build:
     <<: *container_config
@@ -529,12 +540,15 @@ jobs:
           no_output_timeout: 2h
           command: |
             sudo -u ubuntu -E -H make system-test
+      - *collect_system_test_host_logs
       - *fail_notification_system_test
       - *save_machine_build_cache
       - store_test_results:
           path: *system_test_logs
       - store_artifacts:
           path: *system_test_logs
+      - store_artifacts:
+          path: *system_test_host_logs
 
   docker_system_smoke_tests:
     <<: *machine_config
@@ -553,12 +567,15 @@ jobs:
           no_output_timeout: 1h
           command: |
             sudo -u ubuntu -E -H make smoke-test-run
+      - *collect_system_test_host_logs
       - *fail_notification_system_test
       - *save_machine_build_cache
       - store_test_results:
           path: *system_test_logs
       - store_artifacts:
           path: *system_test_logs
+      - store_artifacts:
+          path: *system_test_host_logs
 
   deploy_integration:
     <<: *infrastructure_config
