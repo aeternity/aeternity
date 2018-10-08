@@ -152,7 +152,7 @@
          fp_insufficent_tokens/1,
          fp_too_soon/1,
 
-         %
+         % off-chain name registration not allowed
          fp_register_name/1
         ]).
 
@@ -2921,7 +2921,7 @@ fp_register_name(Cfg) ->
                     <<Word1:256, Word2:256>> = enacl:sign_detached(BinToSign,
                                                                    Privkey),
                     Sig = aeu_hex:hexstring_encode(
-                            aeso_data:to_binary({Word1, Word2-2})),
+                            aeso_data:to_binary({Word1, Word2})),
                     PreclaimArgs = <<"(", Account/binary, ",",
                                           CHash/binary, ",",
                                           Sig/binary,
