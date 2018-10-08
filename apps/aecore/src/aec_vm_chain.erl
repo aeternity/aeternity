@@ -379,17 +379,18 @@ decode_as(Type, Val) ->
     ?DEBUG_LOG("Can't decode ~p as ~p\n", [Val, Type]),
     {error, out_of_gas}.
 
-aens_preclaim(Addr, CHash, Signature, #state{ account = ContractKey } = State) ->
-    Nonce = next_nonce(Addr, State),
-    {ok, Tx} =
-        aens_preclaim_tx:new(#{ account_id    => aec_id:create(account, Addr),
-                                nonce         => Nonce,
-                                commitment_id => aec_id:create(commitment, CHash),
-                                fee           => 0 }),
+aens_preclaim(Addr, CHash, Signature, #state{ account = ContractKey,
+                                              trees = ChainTrees } = State) ->
+            Nonce = next_nonce(Addr, State),
+            {ok, Tx} =
+                aens_preclaim_tx:new(#{ account_id    => aec_id:create(account, Addr),
+                                        nonce         => Nonce,
+                                        commitment_id => aec_id:create(commitment, CHash),
+                                        fee           => 0 }),
 
-    case check_account_signature(Addr, ContractKey, Signature) of
-        ok               -> apply_transaction(Tx, State);
-        Err = {error, _} -> Err
+            case check_account_signature(Addr, ContractKey, Signature) of
+                ok               -> apply_transaction(Tx, State);
+                Err = {error, _} -> Err
     end.
 
 aens_claim(Addr, Name, Salt, Signature, #state{ account = ContractKey } = State) ->

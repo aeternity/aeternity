@@ -150,7 +150,10 @@
          fp_missing_contract_address/1,
 
          fp_insufficent_tokens/1,
-         fp_too_soon/1
+         fp_too_soon/1,
+
+         %
+         fp_register_name/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -307,7 +310,8 @@ groups() ->
        fp_missing_contract_address,
 
        fp_insufficent_tokens,
-       fp_too_soon
+       fp_too_soon,
+       fp_register_name
       ]}
     ].
 
@@ -2873,6 +2877,90 @@ fp_too_soon(Cfg) ->
 
     % height is one less, different lock_period
     Test(100, 200, 100),
+    ok.
+
+fp_register_name(Cfg) ->
+    Name = <<"lorem.test">>,
+    Salt = 42,
+    {ok, NameAscii} = aens_utils:to_ascii(Name),
+    CHash           = aeu_hex:hexstring_encode(
+                        aens_hash:commitment_hash(NameAscii, Salt)),
+    #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),
+    Account = aeu_hex:hexstring_encode(Pubkey),
+    StateHashSize = aec_base58c:byte_size_for_type(state),
+    StateHash = <<42:StateHashSize/unit:8>>,
+    Round = 42,
+    FPRound = Round + 10,
+    Test =
+        fun(Owner, Forcer) ->
+            ContractCreateRound = 10,
+            run(#{cfg => Cfg},
+               [positive(fun create_channel_/2),
+                % store state on-chain via snapshot
+                set_from(initiator),
+                set_prop(round, 42),
+                set_prop(state_hash, StateHash),
+                positive(fun snapshot_solo_/2),
+                fun(#{state := S,
+                      channel_pubkey := ChannelPubKey} = Props) ->
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    Round = aesc_channels:round(Channel),
+                    StateHash = aesc_channels:state_hash(Channel),
+                    Props
+                end,
+                % create contract off-chain
+                create_trees_if_not_present(),
+                set_from(Owner, owner, owner_privkey),
+                create_contract_in_trees(_Round    = ContractCreateRound,
+                                         _Contract = "aens",
+                                         _InitArgs = <<"()">>,
+                                         _Deposit  = 2),
+                % force progress contract on-chain
+                fun(#{contract_id := ContractId} = Props) ->
+                    BinToSign = <<Pubkey/binary, ContractId/binary>>,
+                    <<Word1:256, Word2:256>> = enacl:sign_detached(BinToSign,
+                                                                   Privkey),
+                    Sig = aeu_hex:hexstring_encode(
+                            aeso_data:to_binary({Word1, Word2-2})),
+                    PreclaimArgs = <<"(", Account/binary, ",",
+                                          CHash/binary, ",",
+                                          Sig/binary,
+                                      ")">>,
+                    (force_call_contract_first(Forcer, <<"preclaim">>,
+                                          PreclaimArgs, FPRound))(Props)
+                end,
+                % ensure all gas is consumed and channel is updated
+                fun(#{state := S,
+                      channel_pubkey := ChannelPubKey,
+                      signed_force_progress := SignedForceProgressTx,
+                      solo_payload := #{update    := Update,
+                                       state_hash := ExpectedStateHash,
+                                       round      := ExpectedRound}} = Props) ->
+                    {_ContractId, Caller} = aesc_offchain_update:extract_call(Update),
+                    TxHashContractPubkey = aesc_utils:tx_hash_to_contract_pubkey(
+                                          aetx_sign:hash(SignedForceProgressTx)),
+                    CallId = aect_call:id(Caller,
+                                          FPRound,
+                                          TxHashContractPubkey),
+                    Call = aect_test_utils:get_call(TxHashContractPubkey, CallId,
+                                                    S),
+                    {_, GasPrice, GasLimit} = aesc_offchain_update:extract_amounts(Update),
+                    %% assert all gas was consumed
+                    GasLimit = aect_call:gas_used(Call),
+                    GasPrice = aect_call:gas_price(Call),
+                    %% the default catch all reason for error
+                    <<>> = aect_call:return_value(Call),
+
+                    %% expected channel states
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    FPRound = aesc_channels:round(Channel),
+                    FPRound = ExpectedRound,
+                    ExpectedStateHash = aesc_channels:state_hash(Channel),
+                    Props
+                end])
+        end,
+    [Test(Owner, Forcer) || Owner  <- ?ROLES,
+                            Forcer <- ?ROLES],
     ok.
 
 create_contract_poi_and_payload(Round, ContractRound, Owner) ->
