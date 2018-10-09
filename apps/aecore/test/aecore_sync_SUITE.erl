@@ -163,7 +163,7 @@ end_per_group(one_blocked, Config) ->
     Config1 = config({devs, [dev1]}, Config),
     [Dev1 | _] = proplists:get_value(devs, Config1),
     EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
-    aecore_suite_utils:create_config(Dev1, Config, 
+    aecore_suite_utils:create_config(Dev1, Config,
                                      maps:without([<<"blocked_peers">>], EpochCfg),
                                      [{add_peers, true}]);
 end_per_group(_, Config) ->

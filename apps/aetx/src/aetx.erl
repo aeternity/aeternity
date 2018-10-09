@@ -147,7 +147,7 @@
 -callback for_client(Tx :: tx_instance()) ->
     map().
 
--optional_callbacks([gas/1]).
+-optional_callbacks([gas/1, gas_price/1]).
 
 %%%===================================================================
 %%% Getters and setters
@@ -176,9 +176,12 @@ gas(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }) when
 gas(#aetx{ size = Size }) ->
     Size * aec_governance:byte_gas().
 
--spec gas_price(Tx :: tx()) -> GasPrice :: non_neg_integer().
-gas_price(#aetx{ cb = CB, tx = Tx }) ->
-    CB:gas_price(Tx).
+-spec gas_price(Tx :: tx()) -> GasPrice :: non_neg_integer() | undefined.
+gas_price(#aetx{ type = Type, cb = CB, tx = Tx }) when
+      Type =:= contract_create_tx; Type =:= contract_call_tx ->
+    CB:gas_price(Tx);
+gas_price(#aetx{}) ->
+    undefined.
 
 -spec nonce(Tx :: tx()) -> Nonce :: non_neg_integer().
 nonce(#aetx{ cb = CB, tx = Tx }) ->

@@ -13,7 +13,6 @@
 -export([new/1,
          type/0,
          fee/1,
-         gas_price/1,
          ttl/1,
          nonce/1,
          origin/1,
@@ -86,10 +85,6 @@ type() ->
 -spec fee(tx()) -> integer().
 fee(#ns_update_tx{fee = Fee}) ->
     Fee.
-
--spec gas_price(tx()) -> non_neg_integer().
-gas_price(#ns_update_tx{}) ->
-    aec_governance:tx_gas_price().
 
 -spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#ns_update_tx{ttl = TTL}) ->

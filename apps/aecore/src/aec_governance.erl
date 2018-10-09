@@ -9,7 +9,6 @@
          block_mine_reward/0,
          block_gas_limit/0,
          byte_gas/0,
-         tx_gas_price/0,
          beneficiary_reward_delay/0,
          minimum_tx_fee/0,
          minimum_gas_price/0,
@@ -46,8 +45,6 @@
 -define(BLOCK_GAS_LIMIT, (4*1600000)).
 %% Gas for 1 byte of a serialized tx.
 -define(BYTE_GAS, 100).
-%% TODO: this will be removed, gas price will be set by the tx sender.
--define(TX_GAS_PRICE, 1000000000).
 -define(POF_REWARD       , 500000000000000000). %% (?BLOCK_MINE_REWARD / 100) * 5
 -define(BENEFICIARY_REWARD_DELAY, 180). %% in key blocks / generations
 -define(MICRO_BLOCK_CYCLE, 3000). %% in msecs
@@ -95,9 +92,6 @@ block_gas_limit() ->
 
 byte_gas() ->
     ?BYTE_GAS.
-
-tx_gas_price() ->
-    ?TX_GAS_PRICE.
 
 minimum_tx_fee() ->
     1.
