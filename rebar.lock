@@ -15,14 +15,8 @@
   {git,"https://github.com/ninenines/cowlib",
        {ref,"3ef5b48a028bb66f82b452c98ae515903096641c"}},
   1},
- {<<"enacl">>,
-  {git,"https://github.com/aeternity/enacl.git",
-       {ref,"2f50ba6289f2f2d9fef05d22a396c0bab4f64149"}},
-  0},
- {<<"enoise">>,
-  {git,"https://github.com/aeternity/enoise.git",
-       {ref,"71aac15db7b934e0aecac87ff0175abf40aaa2f2"}},
-  0},
+ {<<"enacl">>,{pkg,<<"enacl">>,<<"0.17.2">>},0},
+ {<<"enoise">>,{pkg,<<"enoise">>,<<"1.0.0">>},0},
  {<<"eper">>,
   {git,"git://github.com/aeternity/eper.git",
        {ref,"03d4be3ce7dd75ae332fc21ba7d5c18678affc5b"}},
@@ -94,6 +88,8 @@
  {<<"yamerl">>,{pkg,<<"yamerl">>,<<"0.7.0">>},0}]}.
 [
 {pkg_hash,[
+ {<<"enacl">>, <<"4AD59142943E72D72C56E33C30DEDEF28ADD8EBEE79C51033562B0CB4B93EDE0">>},
+ {<<"enoise">>, <<"A5CFD9EDAE54228E3BA06AC4D187838DE10D6EA6C6A6F63E4ABAB886EF18A41D">>},
  {<<"goldrush">>, <<"F06E5D5F1277DA5C413E84D5A2924174182FB108DABB39D5EC548B27424CD106">>},
  {<<"gproc">>, <<"4579663E5677970758A05D8F65D13C3E9814EC707AD51D8DCEF7294EDA1A730C">>},
  {<<"jobs">>, <<"132E4BED856CE774B008B31C1AA809C17FA6C2C20BE03E010ACE273CA057A5DE">>},
