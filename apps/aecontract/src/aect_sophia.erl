@@ -55,24 +55,24 @@ on_chain_call(ContractKey, Function, Argument) ->
     ContractsTree  = aec_trees:contracts(Trees),
     Contract       = aect_state_tree:get_contract(ContractKey, ContractsTree),
     SerializedCode = aect_contracts:code(Contract),
-    #{ byte_code := Code
-     , type_info := TypeInfo} = aeso_compiler:deserialize(SerializedCode),
+    %% TODO: Check the type info before calling?
+    #{ byte_code := Code} = aeso_compiler:deserialize(SerializedCode),
     case create_call(Code, Function, Argument) of
         {error, E} -> {error, E};
         CallData ->
             VMVersion   = ?AEVM_01_Sophia_01,
-            aect_evm:call_common(CallData, ContractKey, Code, TypeInfo,
+            aect_evm:call_common(CallData, ContractKey, Code,
                                  TxEnv, Trees, VMVersion)
     end.
 
 -spec simple_call(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
 simple_call(SerializedCode, Function, Argument) ->
-    #{ byte_code := Code
-     , type_info := TypeInfo} = aeso_compiler:deserialize(SerializedCode),
+    %% TODO: Check the type info before calling?
+    #{ byte_code := Code} = aeso_compiler:deserialize(SerializedCode),
     case create_call(Code, Function, Argument) of
         {error, E} -> {error, E};
         CallData ->
-            aect_evm:simple_call_common(Code, TypeInfo, CallData, ?AEVM_01_Sophia_01)
+            aect_evm:simple_call_common(Code, CallData, ?AEVM_01_Sophia_01)
     end.
 
 -spec encode_call_data(binary(), binary(), binary()) ->

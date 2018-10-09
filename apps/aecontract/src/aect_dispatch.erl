@@ -37,8 +37,7 @@ call(<<"sophia">>, Code, Function, Argument) ->
 call(<<"sophia-address">>, ContractKey, Function, Argument) ->
     aect_sophia:on_chain_call(ContractKey, Function, Argument);
 call(<<"evm">>, Code, _, CallData) ->
-    TypeInfo = [], %% Not defined for solidity
-    aect_evm:simple_call_common(Code, TypeInfo, CallData, ?AEVM_01_Solidity_01);
+    aect_evm:simple_call_common(Code, CallData, ?AEVM_01_Solidity_01);
 call(_, _, _, _) ->
     {error, <<"Unknown call ABI">>}.
 
@@ -59,9 +58,9 @@ encode_call_data(_, _, _, _) ->
 
 -spec run(byte(), map()) -> {aect_call:call(), aec_trees:trees()}.
 run(?AEVM_01_Sophia_01, #{code := SerializedCode} = CallDef) ->
-    #{ byte_code := Code
-     , type_info := TypeInfo} = aeso_compiler:deserialize(SerializedCode),
-    CallDef1 = CallDef#{code => Code, type_info => TypeInfo},
+    %% TODO: Check the type info before running
+    #{ byte_code := Code} = aeso_compiler:deserialize(SerializedCode),
+    CallDef1 = CallDef#{code => Code},
     run_common(CallDef1, ?AEVM_01_Sophia_01);
 run(?AEVM_01_Solidity_01, CallDef) ->
     run_common(CallDef, ?AEVM_01_Solidity_01);
@@ -94,7 +93,6 @@ run_common(#{  amount      := Value
             chainAPI          => aec_vm_chain,
             vm_version        => VMVersion},
     Exec = #{code       => Code,
-             type_info  => maps:get(type_info, CallDef, []), %% Only for Sophia
              address    => Address,
              caller     => CallerAddr,
              data       => CallData,

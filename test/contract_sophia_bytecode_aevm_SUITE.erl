@@ -66,12 +66,11 @@ execute_call(Contract, CallData, ChainState, Options) ->
     #{Contract := SerializedCode} = ChainState,
     ChainState1 = ChainState#{ running => Contract },
     Trace = false,
-    #{ byte_code := Code
-     , type_info := TypeInfo} = aeso_compiler:deserialize(SerializedCode),
+    %% TODO: Check the type info before calling?
+    #{ byte_code := Code} = aeso_compiler:deserialize(SerializedCode),
     Res = aect_evm:execute_call(
           maps:merge(
           #{ code              => Code,
-             type_info         => TypeInfo,
              address           => Contract,
              caller            => 0,
              data              => CallData,
