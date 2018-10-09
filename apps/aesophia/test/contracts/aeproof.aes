@@ -141,5 +141,5 @@ contract AEProof =
     function getProofsByOwner(owner: address): array(uint) =
         Map.get(owner, state())
 
-    function require(x : bool) : unit = if(x) () else abort()
+    function require(x : bool) : unit = if(x) () else abort("false")
 

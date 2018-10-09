@@ -33,7 +33,7 @@ contract MultiSig =
 
     function lookup(map, key) =
       switch(Map.get(key, map))
-        None        => abort()
+        None        => abort("not found")
         Some(value) => value
 
     function revoke(operation : hash) =

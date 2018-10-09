@@ -26,6 +26,7 @@
          spending_1/1,
          spending_2/1,
          spending_3/1,
+         abort_test_contract/1,
          counter_contract/1,
          dutch_auction_contract/1,
          environment_contract/1,
@@ -58,6 +59,7 @@ groups() ->
        spending_2,
        spending_3,
        identity_contract,
+       abort_test_contract,
        simple_storage_contract,
        counter_contract,
        stack_contract,
@@ -362,6 +364,32 @@ identity_contract(Config) ->
                                     EncodedContractPubkey,
                                     <<"main">>, <<"(42)">>),
     #{<<"value">> := 42} = decode_data(<<"int">>, DReturn),
+
+    ok.
+
+%% abort_test_contract(Config)
+%%  Test the built-in abort function.
+
+abort_test_contract(Config) ->
+    NodeName = proplists:get_value(node_name, Config),
+    %% Get account information.
+    #{acc_a := #{pub_key := APubkey,
+                 priv_key := APrivkey}} = proplists:get_value(accounts, Config),
+
+    %% Make sure accounts have enough tokens.
+    _ABal0 = ensure_balance(APubkey, 500000),
+    {ok,[_]} = aecore_suite_utils:mine_key_blocks(NodeName, 1),
+
+    %% Compile test contract "abort_test.aes"
+    Code = compile_test_contract("abort_test"),
+
+    {EncodedContractPubkey,_,_} =
+        create_compute_contract(NodeName, APubkey, APrivkey, Code, <<"()">>),
+
+    error_call_compute_func(NodeName, APubkey, APrivkey, EncodedContractPubkey,
+                            <<"do_abort_1">>, <<"(\"yogi bear\")">>),
+    error_call_compute_func(NodeName, APubkey, APrivkey, EncodedContractPubkey,
+                            <<"do_abort_2">>, <<"(\"yogi bear\")">>),
 
     ok.
 

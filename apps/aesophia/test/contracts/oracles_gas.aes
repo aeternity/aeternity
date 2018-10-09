@@ -23,6 +23,3 @@ contract OraclesGas =
 
   private function require(b : bool, err : string) =
     if(!b) abort(err)
-
-  private function abort(err : string) =
-    switch(0) 1 => ()

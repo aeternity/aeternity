@@ -99,8 +99,5 @@ contract RemoteOracles =
     qr   : int) =
     r.respond(o, q, sign, qr)
 
-  private function abort(err : string) =
-    switch(0) 1 => ()
-
   private function require(b : bool, err : string) =
     if(!b) abort(err)

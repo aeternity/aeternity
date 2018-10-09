@@ -1,0 +1,16 @@
+// A simple test of the abort built-in function.
+
+contract AbortTest =
+
+  // This is still legal but will be stripped out.
+  private function abort(s : string) = 42
+
+  function do_abort_1(s : string) =
+    abort("42")
+
+  function do_abort_2(s : string) =
+    my_abort("42")
+
+  // This fail in the same way as the built-in abort.
+  private function my_abort(s : string) =
+    switch (0) 1 => ()
