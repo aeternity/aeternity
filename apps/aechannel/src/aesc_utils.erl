@@ -18,10 +18,10 @@
          check_solo_close_payload/7,
          check_slash_payload/8,
          check_solo_snapshot_payload/6,
-         check_force_progress/6,
+         check_force_progress/5,
          process_solo_close/8,
          process_slash/8,
-         process_force_progress/7,
+         process_force_progress/6,
          process_solo_snapshot/6
         ]).
 
@@ -182,7 +182,7 @@ check_slash_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
             aeu_validation:run(Checks)
     end.
 
-check_force_progress(Tx, Payload, Addresses, PoI, Height, Trees) ->
+check_force_progress(Tx, Payload, PoI, Height, Trees) ->
     ChannelPubKey = aesc_force_progress_tx:channel_pubkey(Tx),
     FromPubKey = aesc_force_progress_tx:origin(Tx),
     Nonce = aesc_force_progress_tx:nonce(Tx),
@@ -199,7 +199,7 @@ check_force_progress(Tx, Payload, Addresses, PoI, Height, Trees) ->
                   fun() ->
                       check_force_progress_(PayloadHash, Round,
                               Channel, FromPubKey, Nonce, Fee, Update,
-                              NextRound, Addresses, PoI, Height, Trees)
+                              NextRound, PoI, Height, Trees)
                   end],
               aeu_validation:run(Checks);
 
@@ -214,14 +214,14 @@ check_force_progress(Tx, Payload, Addresses, PoI, Height, Trees) ->
                   fun() ->
                       check_force_progress_(PayloadHash, Round,
                               Channel, FromPubKey, Nonce, Fee, Update,
-                              NextRound, Addresses, PoI, Height, Trees)
+                              NextRound, PoI, Height, Trees)
                   end],
               aeu_validation:run(Checks)
     end.
 
 check_force_progress_(PayloadHash, PayloadRound,
                       Channel, FromPubKey, Nonce, Fee, Update,
-                      NextRound, Addresses, PoI, Height, Trees) ->
+                      NextRound, PoI, Height, Trees) ->
     Checks =
         [ fun() ->
               case aesc_channels:can_force_progress(Channel, Height) of
@@ -252,24 +252,15 @@ check_force_progress_(PayloadHash, PayloadRound,
                   false -> {error, wrong_round}
               end
           end,
-          fun() -> validate_addresses(Addresses, PoI, Channel) end,
           fun() -> check_root_hash_of_poi(PayloadHash, PoI) end,
           fun() -> % check produced tree has the same root hash as the poi 
               %% TODO: this might be a lot of work. Shall we consume gas?
-              PoITrees = trees_from_poi(Addresses, PoI),
+              PoITrees = trees_from_poi(PoI),
               PoICallsHash = aec_trees:poi_calls_hash(PoI),
               case aec_trees:hash(PoITrees, {calls, PoICallsHash}) =:= aec_trees:poi_hash(PoI) of
                   true -> % expected hash, no missing keys
                       ok;
                   false -> {error, incomplete_poi}
-              end
-          end,
-          fun() ->
-              ContractPubkey = aesc_offchain_update:extract_contract_pubkey(Update),
-              ContractId = aec_id:create(contract, ContractPubkey),
-              case lists:member(ContractId, Addresses) of
-                  true -> ok;
-                  false -> {error, contract_missing}
               end
           end,
           fun() ->
@@ -464,8 +455,7 @@ process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
     Trees2 = set_channel(Channel1, Trees1),
     {ok, Trees2}.
 
-process_force_progress(Tx, Addresses,
-                       PoI, TxHash, Height, Trees, Env) ->
+process_force_progress(Tx, PoI, TxHash, Height, Trees, Env) ->
     ChannelPubKey = aesc_force_progress_tx:channel_pubkey(Tx),
     FromPubKey = aesc_force_progress_tx:origin(Tx),
     Nonce = aesc_force_progress_tx:nonce(Tx),
@@ -476,7 +466,7 @@ process_force_progress(Tx, Addresses,
     {ok, Channel} = get_channel(ChannelPubKey, Trees),
     {ContractPubkey, Caller} = aesc_offchain_update:extract_call(Update),
     %% use in gas payment
-    PoITrees0 = trees_from_poi(Addresses, PoI),
+    PoITrees0 = trees_from_poi(PoI),
     Reserve = aesc_channels:channel_reserve(Channel),
     PoITrees =
         try aesc_offchain_update:apply_on_trees(Update, PoITrees0, Trees, Env,
@@ -545,32 +535,7 @@ get_vals(List) ->
         L when is_list(L) -> {ok, lists:reverse(L)}
     end.
 
-validate_addresses(Addresses, PoI, Channel) ->
-    GetAccount =
-        fun(AddressID) ->
-            {Tag,  Pubkey} = aec_id:specialize(AddressID),
-            case aec_trees:lookup_poi(accounts, Pubkey, PoI) of
-                {error, _} -> {error, address_not_found};
-                {ok, Account} -> {ok, {Tag, Account}}
-            end
-        end,
-    case get_vals([GetAccount(ID) || ID <- Addresses]) of
-        {error, not_found} = Err -> Err;
-        {ok, AccountsMixed} ->
-            Accounts = [Acc || {T, Acc} <- AccountsMixed, T =:= account],
-            Contracts = [C || {T, C} <- AccountsMixed, T =:= contract],
-            Checks = [
-                fun() -> check_amounts_do_not_exceed_total_balance(Accounts,
-                                                                   Contracts,
-                                                                   Channel)
-                end,
-                fun() ->
-                    ContractKeys = [aec_accounts:pubkey(Acc) || Acc <- Contracts],
-                    check_contracts_in_poi(ContractKeys, PoI)
-                end],
-            aeu_validation:run(Checks)
-    end.
-
+%HERE deleteme domat
 check_amounts_do_not_exceed_total_balance(Accounts, Contracts, Channel) ->
     AllBalances = lists:sum(
                     [aec_accounts:balance(Acc) || Acc <- Accounts ++ Contracts]),
@@ -579,23 +544,8 @@ check_amounts_do_not_exceed_total_balance(Accounts, Contracts, Channel) ->
         false -> ok
     end.
 
-check_contracts_in_poi(Pubkeys, PoI) ->
-    AllPresent =
-        lists:all(
-            fun(Pubkey) ->
-                case aec_trees:lookup_poi(contracts, Pubkey, PoI) of
-                    {ok, _} -> true;
-                    {error, _} -> false
-                end
-            end,
-            Pubkeys),
-    case AllPresent of
-        true -> ok;
-        false -> {error, contract_missing_in_poi}
-    end.
-
--spec trees_from_poi([aec_id:id()], aec_trees:poi()) -> aec_trees:trees().
-trees_from_poi(IDs, PoI) ->
+-spec trees_from_poi(aec_trees:poi()) -> aec_trees:trees().
+trees_from_poi(PoI) ->
     AddAccount =
         fun(Pubkey, Type, Trees) when Type =:= accounts
                                orelse Type =:= contracts ->
@@ -623,7 +573,7 @@ trees_from_poi(IDs, PoI) ->
             end
         end,
         aec_trees:new_without_backend(),
-        IDs).
+        []).
 
 spend(From, Amount, Nonce, Trees) ->
     AccountsTree0 = aec_trees:accounts(Trees),

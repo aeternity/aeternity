@@ -50,7 +50,6 @@
           update        :: aesc_offchain_update:update(),
           state_hash    :: binary(),
           round         :: aesc_channels:seq_number(),
-          addresses     :: [aec_id:id()],
           poi           :: aec_trees:poi(),
           ttl           :: aetx:tx_ttl(),
           fee           :: non_neg_integer(),
@@ -72,19 +71,11 @@ new(#{channel_id    := ChannelId,
       update        := Update,
       state_hash    := StateHash,
       round         := Round,
-      addresses     := Addresses,
       poi           := PoI,
       fee           := Fee,
       nonce         := Nonce} = Args) ->
     channel = aec_id:specialize_type(ChannelId),
     account = aec_id:specialize_type(FromId),
-    true =
-        lists:all(
-            fun(Id) ->
-                T = aec_id:specialize_type(Id),
-                T =:= account orelse T =:= contract
-            end,
-            Addresses),
     Tx = #channel_force_progress_tx{
             channel_id    = ChannelId,
             from_id       = FromId,
@@ -92,7 +83,6 @@ new(#{channel_id    := ChannelId,
             update        = Update,
             state_hash    = StateHash,
             round         = Round,
-            addresses     = Addresses,
             poi           = PoI,
             ttl           = maps:get(ttl, Args, 0),
             fee           = Fee,
@@ -133,26 +123,23 @@ from_pubkey(#channel_force_progress_tx{from_id = FromId}) ->
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_force_progress_tx{payload      = Payload,
-                                 addresses    = Addresses,
                                  poi          = PoI} = Tx,
       Trees, Env) ->
     Height = aetx_env:height(Env),
-    case aesc_utils:check_force_progress(Tx, Payload, Addresses,
+    case aesc_utils:check_force_progress(Tx, Payload,
                                    PoI, Height, Trees) of
         ok -> {ok, Trees};
         Err -> Err
     end.
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
-process(#channel_force_progress_tx{addresses    = Addresses,
-                                   poi          = PoI} = Tx,
+process(#channel_force_progress_tx{poi          = PoI} = Tx,
         Trees, Env) ->
     Height = aetx_env:height(Env),
     {value, STx} = aetx_env:signed_tx(Env),
 
     TxHash = aetx_sign:hash(STx),
-    aesc_utils:process_force_progress(Tx, Addresses,
-                                      PoI, TxHash, Height, Trees, Env).
+    aesc_utils:process_force_progress(Tx, PoI, TxHash, Height, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
 signers(#channel_force_progress_tx{} = Tx, _) ->
@@ -165,7 +152,6 @@ serialize(#channel_force_progress_tx{channel_id   = ChannelId,
                                      update       = Update,
                                      state_hash   = StateHash,
                                      round        = Round,
-                                     addresses    = Addresses,
                                      poi          = PoI,
                                      ttl          = TTL,
                                      fee          = Fee,
@@ -177,7 +163,6 @@ serialize(#channel_force_progress_tx{channel_id   = ChannelId,
      , {round         , Round}
      , {update        , aesc_offchain_update:serialize(Update)}
      , {state_hash    , StateHash}
-     , {addresses     , Addresses}
      , {poi           , aec_trees:serialize_poi(PoI)}
      , {ttl           , TTL}
      , {fee           , Fee}
@@ -192,7 +177,6 @@ deserialize(?CHANNEL_FORCE_PROGRESS_TX_VSN,
             , {round        , Round}
             , {update       , UpdateBin}
             , {state_hash   , StateHash}
-            , {address      , Addresses}
             , {poi          , PoI}
             , {ttl          , TTL}
             , {fee          , Fee}
@@ -206,7 +190,6 @@ deserialize(?CHANNEL_FORCE_PROGRESS_TX_VSN,
                                round        = Round,
                                state_hash   = StateHash,
                                update       = Update,
-                               addresses    = Addresses,
                                poi          = aec_trees:deserialize_poi(PoI),
                                ttl          = TTL,
                                fee          = Fee,
@@ -217,7 +200,6 @@ for_client(#channel_force_progress_tx{payload       = Payload,
                                       round         = Round,
                                       state_hash    = StateHash,
                                       update        = Update,
-                                      addresses     = Addresses,
                                       poi           = PoI,
                                       ttl           = TTL,
                                       fee           = Fee,
@@ -228,7 +210,6 @@ for_client(#channel_force_progress_tx{payload       = Payload,
       <<"round">>         => Round,
       <<"update">>        => aesc_offchain_update:for_client(Update),
       <<"state_hash">>    => aec_base58c:encode(state, StateHash),
-      <<"addresses">>     => [aec_base58c:encode(id_hash, Id) || Id <- Addresses],
       <<"poi">>           => aec_base58c:encode(poi, aec_trees:serialize_poi(PoI)),
       <<"ttl">>           => TTL,
       <<"fee">>           => Fee,
@@ -241,7 +222,6 @@ serialization_template(?CHANNEL_FORCE_PROGRESS_TX_VSN) ->
     , {round          , int}
     , {update         , binary}
     , {state_hash     , binary}
-    , {addresses      , [id]}
     , {poi            , binary}
     , {ttl            , int}
     , {fee            , int}

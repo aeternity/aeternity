@@ -3675,7 +3675,7 @@ force_progress_(#{channel_pubkey    := ChannelPubKey,
                   solo_payload      := #{update     := Update,
                                          round      := Round,
                                          state_hash := StateHash},
-                  addresses         := Addresses,
+                  addresses         := Addresses, %HERE deleteme DOMAT
                   poi               := PoI,
                   initiator_privkey := _IPrivkey,
                   responder_privkey := _RPrivkey} = Props, Expected) ->
@@ -3684,7 +3684,6 @@ force_progress_(#{channel_pubkey    := ChannelPubKey,
                                                             Payload,
                                                             Update, StateHash,
                                                             Round, PoI,
-                                                            Addresses,
                                                             #{fee => Fee}, S),
     {ok, ForceProTx} = aesc_force_progress_tx:new(ForceProTxSpec),
 

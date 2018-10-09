@@ -18,6 +18,10 @@
          commit_to_db/1
         ]).
 
+-export([ from_binary_without_backend/1,
+        , to_binary_without_backend/1
+        ]).
+
 %% API - Proof of inclusion
 -export([ add_poi/3
         , verify_poi/3

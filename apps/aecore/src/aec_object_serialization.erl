@@ -75,6 +75,7 @@ tag(channel_snapshot_solo_tx) -> 59;
 tag(trees_poi) -> 60;
 tag(trees_db) -> 61;
 tag(compiler_sophia) -> 70;
+tag(trees) -> 62;
 tag(key_block) -> 100;
 tag(micro_block) -> 101;
 tag(light_micro_block) -> 102;
