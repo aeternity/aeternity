@@ -63,12 +63,15 @@ compile_contract(Name) ->
 %%     execute_call(Contract, CallData, ChainState, #{}).
 
 execute_call(Contract, CallData, ChainState, Options) ->
-    #{Contract := Code} = ChainState,
+    #{Contract := SerializedCode} = ChainState,
     ChainState1 = ChainState#{ running => Contract },
     Trace = false,
+    #{ byte_code := Code
+     , type_info := TypeInfo} = aeso_compiler:deserialize(SerializedCode),
     Res = aect_evm:execute_call(
           maps:merge(
           #{ code              => Code,
+             type_info         => TypeInfo,
              address           => Contract,
              caller            => 0,
              data              => CallData,

@@ -37,7 +37,8 @@ call(<<"sophia">>, Code, Function, Argument) ->
 call(<<"sophia-address">>, ContractKey, Function, Argument) ->
     aect_sophia:on_chain_call(ContractKey, Function, Argument);
 call(<<"evm">>, Code, _, CallData) ->
-    aect_evm:simple_call_common(Code, CallData, ?AEVM_01_Solidity_01);
+    TypeInfo = [], %% Not defined for solidity
+    aect_evm:simple_call_common(Code, TypeInfo, CallData, ?AEVM_01_Solidity_01);
 call(_, _, _, _) ->
     {error, <<"Unknown call ABI">>}.
 
@@ -57,8 +58,11 @@ encode_call_data(_, _, _, _) ->
 %% used.
 
 -spec run(byte(), map()) -> {aect_call:call(), aec_trees:trees()}.
-run(?AEVM_01_Sophia_01, CallDef) ->
-    run_common(CallDef, ?AEVM_01_Sophia_01);
+run(?AEVM_01_Sophia_01, #{code := SerializedCode} = CallDef) ->
+    #{ byte_code := Code
+     , type_info := TypeInfo} = aeso_compiler:deserialize(SerializedCode),
+    CallDef1 = CallDef#{code => Code, type_info => TypeInfo},
+    run_common(CallDef1, ?AEVM_01_Sophia_01);
 run(?AEVM_01_Solidity_01, CallDef) ->
     run_common(CallDef, ?AEVM_01_Solidity_01);
 run(_, #{ call := Call} = _CallDef) ->
@@ -72,7 +76,7 @@ run_common(#{  amount      := Value
              , call_stack  := CallStack
              , caller      := <<CallerAddr:?PUB_SIZE/unit:8>>
              , code        := Code
-             , contract    := <<Address:?PUB_SIZE/unit:8>> = CPubKey
+             , contract    := <<Address:?PUB_SIZE/unit:8>>
              , gas         := Gas
              , gas_price   := GasPrice
              , trees       := Trees
@@ -86,10 +90,11 @@ run_common(#{  amount      := Value
             currentGasLimit   => aec_governance:block_gas_limit(),
             currentNumber     => aetx_env:height(TxEnv),
             currentTimestamp  => aetx_env:time_in_msecs(TxEnv),
-            chainState        => ChainState0, 
+            chainState        => ChainState0,
             chainAPI          => aec_vm_chain,
             vm_version        => VMVersion},
     Exec = #{code       => Code,
+             type_info  => maps:get(type_info, CallDef, []), %% Only for Sophia
              address    => Address,
              caller     => CallerAddr,
              data       => CallData,
