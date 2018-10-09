@@ -10,7 +10,8 @@
 
 -include("apps/aecontract/src/aecontract.hrl").
 
--export([read_contract/1, contract_path/0, run_contract/4, pp/1, pp/2, dump_words/1, show_heap/1, show_heap/2, compile/1]).
+-export([read_contract/1, contract_path/0, run_contract/4, pp/1, pp/2,
+         dump_words/1, show_heap/1, show_heap/2, show_heap_value/1, compile/1]).
 
 -export([spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2,
          aens_lookup/4]).
@@ -149,6 +150,17 @@ show_heap(Offs, Bin) ->
     Words = dump_words(Bin),
     Addrs = lists:seq(0, (length(Words) - 1) * 32, 32),
     lists:flatten([io_lib:format("~4b ~p\n", [Addr + Offs, Word]) || {Addr, Word} <- lists:zip(Addrs, Words)]).
+
+show_heap_value(HeapValue) ->
+    Maps = aeso_data:heap_value_maps(HeapValue),
+    Offs = aeso_data:heap_value_offset(HeapValue),
+    Ptr  = aeso_data:heap_value_pointer(HeapValue),
+    Mem  = aeso_data:heap_value_heap(HeapValue),
+    Words = dump_words(Mem),
+    Addrs = lists:seq(Offs, Offs + (length(Words) - 1) * 32, 32),
+    lists:flatten(
+        io_lib:format("  Maps: ~p\n  Ptr:  ~p\n  Heap: ~p",
+                      [Maps, Ptr, lists:zip(Addrs, Words)])).
 
 %% Translate a blob of 256-bit words into readable form. Does a bit of guessing
 %% to recover strings. TODO: strings longer than 32 bytes

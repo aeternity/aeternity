@@ -7,6 +7,7 @@
 -define(TYPEREP_TUPLE_TAG,  3).
 -define(TYPEREP_VARIANT_TAG, 4).
 -define(TYPEREP_TYPEREP_TAG, 5).
+-define(TYPEREP_MAP_TAG,     6).
 
 -record(arg, {name::string(), type::?Type()}).
 

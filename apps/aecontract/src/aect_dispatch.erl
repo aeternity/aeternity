@@ -141,7 +141,7 @@ run_common(#{  amount      := Value
             end
     catch T:E ->
             %% TODO: Clarify whether this case can be reached with valid chain state and sanitized input transaction.
-            ?DEBUG_LOG("Init error ~p:~p~n", [T,E]),
+            ?DEBUG_LOG("Init error ~p:~p~n~p~n", [T,E,erlang:get_stacktrace()]),
             {create_call(Gas, error, [], Call), Trees}
     end.
 

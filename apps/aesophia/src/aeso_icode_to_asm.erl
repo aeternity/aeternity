@@ -61,6 +61,12 @@ convert(#{ contract_name := _ContractName
                     %% The calldata is already on the stack when we start. Put
                     %% it on top (also reorders StatefulStop and Stop).
                     swap(2),
+                    %% At the moment (TODO) the calldata is a pair of a typerep
+                    %% and the actual calldata. Grab the second component.
+                    push(32),
+                    i(?ADD),
+                    i(?MLOAD),
+
                     jump(MainFunction),
                     jumpdest(StatefulStopLabel),
 

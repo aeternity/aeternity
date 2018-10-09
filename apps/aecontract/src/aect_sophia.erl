@@ -138,6 +138,11 @@ prepare_for_json(T = {variant, Cons}, R = {variant, Tag, Args}) when is_integer(
             Error = << <<B>> || B <- "Invalid Sophia type: " ++ lists:flatten(String) >>,
             throw({error, Error})
     end;
+prepare_for_json({map, KeyT, ValT}, Map) when is_map(Map) ->
+    #{ <<"type">> => <<"map">>,
+       <<"value">> => [ #{ <<"key">> => prepare_for_json(KeyT, K),
+                           <<"val">> => prepare_for_json(ValT, V) }
+                        || {K, V} <- maps:to_list(Map) ] };
 prepare_for_json(T, R) ->
     String = io_lib:format("Type: ~p Res:~p", [T,R]),
     Error = << <<B>> || B <- "Invalid Sophia type: " ++ lists:flatten(String) >>,

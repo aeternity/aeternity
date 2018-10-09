@@ -241,52 +241,56 @@ ast_body({qid, _, ["AENS", "revoke"]}, _Icode)   -> error({underapplied_primitiv
 %% Maps
 
 %% -- map lookup  m[k]
-ast_body({map_get, _, Map, {typed, Ann, Key, KeyType}}, Icode) ->
-    Fun = {map_get, key_type(Ann, KeyType, Icode)},
-    #funcall{ function = #var_ref{name = {builtin, Fun}},
-              args     = [ast_body(Map, Icode), ast_body(Key, Icode)] };
+ast_body({map_get, _, Map, Key}, Icode) ->
+    {_, ValType} = check_monomorphic_map(Map, Icode),
+    Fun = {map_get, ast_typerep(ValType, Icode)},
+    builtin_call(Fun, [ast_body(Map, Icode), ast_body(Key, Icode)]);
 
 %% -- lookup functions
-ast_body(?qid_app(["Map", "lookup"], [{typed, Ann, Key, KeyType}, Map], _, _), Icode) ->
-    Fun = {map_lookup, key_type(Ann, KeyType, Icode)},
-    #funcall{ function = #var_ref{name = {builtin, Fun}},
-              args     = [ast_body(Map, Icode), ast_body(Key, Icode)] };
-ast_body(?qid_app(["Map", "member"], [{typed, Ann, Key, KeyType}, Map], _, _), Icode) ->
-    Fun = {map_member, key_type(Ann, KeyType, Icode)},
-    #funcall{ function = #var_ref{name = {builtin, Fun}},
-              args     = [ast_body(Map, Icode), ast_body(Key, Icode)] };
+ast_body(?qid_app(["Map", "lookup"], [Key, Map], _, _), Icode) ->
+    map_get(Key, Map, Icode);
+ast_body(?qid_app(["Map", "lookup_default"], [Key, Map, Val], _, _), Icode) ->
+    {_, ValType} = check_monomorphic_map(Map, Icode),
+    Fun = {map_lookup_default, ast_typerep(ValType, Icode)},
+    builtin_call(Fun, [ast_body(Map, Icode), ast_body(Key, Icode), ast_body(Val, Icode)]);
+ast_body(?qid_app(["Map", "member"], [Key, Map], _, _), Icode) ->
+    builtin_call(map_member, [ast_body(Map, Icode), ast_body(Key, Icode)]);
 ast_body(?qid_app(["Map", "size"], [Map], _, _), Icode) ->
-    #funcall{ function = #var_ref{name = {builtin, map_size}},
-              args     = [ast_body(Map, Icode), {integer, 0}] };
-ast_body(?qid_app(["Map", "delete"], [{typed, Ann, Key, KeyType}, Map], _, _), Icode) ->
-    Fun = {map_del, key_type(Ann, KeyType, Icode)},
-    #funcall{ function = #var_ref{name = {builtin, Fun}},
-              args     = [ast_body(Map, Icode), ast_body(Key, Icode)] };
+    builtin_call(map_size, [ast_body(Map, Icode)]);
+ast_body(?qid_app(["Map", "delete"], [Key, Map], _, _), Icode) ->
+    map_del(Key, Map, Icode);
 
 %% -- map conversion to/from list
-ast_body(?qid_app(["Map", "from_list"], [List], _, _), Icode) -> ast_body(List, Icode);
-ast_body(?qid_app(["Map", "to_list"],   [Map], _, _), Icode)  -> ast_body(Map, Icode);
+ast_body(App = ?qid_app(["Map", "from_list"], [List], _, MapType), Icode) ->
+    Ann = aeso_syntax:get_ann(App),
+    {KeyType, ValType} = check_monomorphic_map(Ann, MapType, Icode),
+    builtin_call(map_from_list, [ast_body(List, Icode), map_empty(KeyType, ValType, Icode)]);
+
+ast_body(?qid_app(["Map", "to_list"], [Map], _, _), Icode) ->
+    map_tolist(Map, Icode);
 
 ast_body({qid, _, ["Map", "from_list"]}, _Icode) -> error({underapplied_primitive, 'Map.from_list'});
-ast_body({qid, _, ["Map", "to_list"]}, _Icode)   -> error({underapplied_primitive, 'Map.to_list'});
-ast_body({qid, _, ["Map", "lookup"]}, _Icode)    -> error({underapplied_primitive, 'Map.to_list'});
-ast_body({qid, _, ["Map", "member"]}, _Icode)    -> error({underapplied_primitive, 'Map.to_list'});
+%% ast_body({qid, _, ["Map", "to_list"]}, _Icode)   -> error({underapplied_primitive, 'Map.to_list'});
+ast_body({qid, _, ["Map", "lookup"]}, _Icode)    -> error({underapplied_primitive, 'Map.lookup'});
+ast_body({qid, _, ["Map", "lookup_default"]}, _Icode)    -> error({underapplied_primitive, 'Map.lookup_default'});
+ast_body({qid, _, ["Map", "member"]}, _Icode)    -> error({underapplied_primitive, 'Map.member'});
 
 %% -- map construction { k1 = v1, k2 = v2 }
-ast_body({map, Ann, KVs}, Icode) ->
-    ast_body({list, Ann, [{tuple, Ann, [K, V]} || {K, V} <- KVs]}, Icode);
+ast_body({typed, Ann, {map, _, KVs}, MapType}, Icode) ->
+    {KeyType, ValType} = check_monomorphic_map(Ann, MapType, Icode),
+    lists:foldr(fun({K, V}, Map) ->
+                    builtin_call(map_put, [Map, ast_body(K, Icode), ast_body(V, Icode)])
+                end, map_empty(KeyType, ValType, Icode), KVs);
 
 %% -- map update       m { [k] = v } or m { [k] @ x = f(x) }
 ast_body({map, _, Map, []}, Icode) -> ast_body(Map, Icode);
 ast_body({map, _, Map, [Upd]}, Icode) ->
-    {Fun, Args} = case Upd of
-            {field, _, [{map_get, _, {typed, Ann, Key, KeyType}}], Val} ->
-                {{map_put, key_type(Ann, KeyType, Icode)}, [ast_body(Key, Icode), ast_body(Val, Icode)]};
-            {field_upd, _, [{map_get, _, {typed, Ann, Key, KeyType}}], ValFun} ->
-                {{map_upd, key_type(Ann, KeyType, Icode)}, [ast_body(Key, Icode), ast_body(ValFun, Icode)]}
-        end,
-    #funcall{ function = #var_ref{name = {builtin, Fun}},
-              args     = [ast_body(Map, Icode) | Args] };
+    case Upd of
+        {field, _, [{map_get, _, Key}], Val} ->
+            map_put(Key, Val, Map, Icode);
+        {field_upd, _, [{map_get, _, Key}], ValFun} ->
+            map_upd(Key, ValFun, Map, Icode)
+    end;
 ast_body({map, Ann, Map, [Upd | Upds]}, Icode) ->
     ast_body({map, Ann, {map, Ann, Map, [Upd]}, Upds}, Icode);
 
@@ -461,6 +465,49 @@ ast_binop(Op, Ann, {typed, _, A, Type}, B, Icode)
 ast_binop(Op, _, A, B, Icode) ->
     #binop{op = Op, left = ast_body(A, Icode), right = ast_body(B, Icode)}.
 
+check_monomorphic_map({typed, Ann, _, MapType}, Icode) ->
+    check_monomorphic_map(Ann, MapType, Icode).
+
+check_monomorphic_map(Ann, Type = ?map_t(KeyType, ValType), Icode) ->
+    case is_monomorphic(KeyType) of
+        true  ->
+            case aeso_data:has_maps(ast_type(KeyType, Icode)) of
+                false -> {KeyType, ValType};
+                true  -> error({cant_use_map_as_map_keys, Ann, Type})
+            end;
+        false -> error({cant_compile_map_with_polymorphic_keys, Ann, Type})
+    end.
+
+map_empty(KeyType, ValType, Icode) ->
+    prim_call(?PRIM_CALL_MAP_EMPTY, #integer{value = 0},
+              [ast_type_value(KeyType, Icode),
+               ast_type_value(ValType, Icode)],
+              [typerep, typerep], word).
+
+map_get(Key, Map = {typed, Ann, _, MapType}, Icode) ->
+    {_KeyType, ValType} = check_monomorphic_map(Ann, MapType, Icode),
+    builtin_call({map_lookup, ast_type(ValType, Icode)}, [ast_body(Map, Icode), ast_body(Key, Icode)]).
+
+map_put(Key, Val, Map, Icode) ->
+    builtin_call(map_put, [ast_body(Map, Icode), ast_body(Key, Icode), ast_body(Val, Icode)]).
+
+map_del(Key, Map, Icode) ->
+    prim_call(?PRIM_CALL_MAP_DELETE, #integer{value = 0},
+              [ast_body(Map, Icode), ast_body(Key, Icode)],
+              [word, word], word).
+
+map_tolist(Map, Icode) ->
+    {KeyType, ValType} = check_monomorphic_map(Map, Icode),
+    prim_call(?PRIM_CALL_MAP_TOLIST, #integer{value = 0},
+              [ast_body(Map, Icode)],
+              [word], {list, {tuple, [ast_type(KeyType, Icode), ast_type(ValType, Icode)]}}).
+
+map_upd(Key, ValFun, Map = {typed, Ann, _, MapType}, Icode) ->
+    {_, ValType} = check_monomorphic_map(Ann, MapType, Icode),
+    FunName = {map_upd, ast_type(ValType, Icode)},
+    Args    = [ast_body(Map, Icode), ast_body(Key, Icode), ast_body(ValFun, Icode)],
+    builtin_call(FunName, Args).
+
 is_monomorphic({tvar, _, _}) -> false;
 is_monomorphic([H|T]) ->
   is_monomorphic(H) andalso is_monomorphic(T);
@@ -545,13 +592,16 @@ type_value({tuple, As}) ->
                     #list{ elems = [ type_value(A) || A <- As ] }] };
 type_value({variant, Cs}) ->
     #tuple{ cpts = [#integer{ value = ?TYPEREP_VARIANT_TAG },
-                    #list{ elems = [ #list{ elems = [ type_value(A) || A <- As ] } || As <- Cs ] }] }.
+                    #list{ elems = [ #list{ elems = [ type_value(A) || A <- As ] } || As <- Cs ] }] };
+type_value({map, K, V}) ->
+    #tuple{ cpts = [#integer{ value = ?TYPEREP_MAP_TAG },
+                    type_value(K), type_value(V)] }.
 
 %% As abort is a built-in in the future it will be illegal to for
 %% users to define abort. For the time being strip away all user
 %% defined abort functions.
 
-ast_fun_to_icode("abort", _Atts, _Args, Body, _TypeRep, Icode) ->
+ast_fun_to_icode("abort", _Atts, _Args, _Body, _TypeRep, Icode) ->
     %% Strip away all user defined abort functions.
     Icode;
 ast_fun_to_icode(Name, Attrs, Args, Body, TypeRep, #{functions := Funs} = Icode) ->
@@ -562,25 +612,21 @@ ast_fun_to_icode(Name, Attrs, Args, Body, TypeRep, #{functions := Funs} = Icode)
 %% Builtins
 %% -------------------------------------------------------------------
 
-key_type(Ann, Type, Icode) ->
-    Monomorphic = is_monomorphic(Type),
-    case ast_typerep(Type, Icode) of
-        _ when not Monomorphic ->
-            error({polymorphic_key_type, Ann, Type});
-        word   -> word;
-        string -> string;
-        _      -> error({unsupported_key_type, Ann, Type})
-    end.
+builtin_call(Builtin, Args) ->
+    #funcall{ function = #var_ref{ name = {builtin, Builtin} },
+              args = Args }.
 
-builtin_deps({map_get, Type})      -> [{map_lookup, Type}];
-builtin_deps({map_member, Type})   -> [{map_lookup, Type}];
-builtin_deps({map_lookup, string}) -> [str_equal];
-builtin_deps({map_del, string})    -> [str_equal];
-builtin_deps({map_put, string})    -> [str_equal];
-builtin_deps({map_upd, string})    -> [str_equal];
-builtin_deps(str_equal)            -> [str_equal_p];
-builtin_deps(string_concat)        -> [string_concat_inner1, string_concat_inner2];
-builtin_deps(_) -> [].
+builtin_deps(Builtin) ->
+    lists:usort(builtin_deps1(Builtin)).
+
+builtin_deps1({map_lookup_default, Type}) -> [{map_lookup, Type}];
+builtin_deps1({map_get, Type})            -> [{map_lookup, Type}];
+builtin_deps1(map_member)                 -> [{map_lookup, word}];
+builtin_deps1({map_upd, Type})            -> [{map_lookup, Type}, map_put];
+builtin_deps1(map_from_list)              -> [map_put];
+builtin_deps1(str_equal)                  -> [str_equal_p];
+builtin_deps1(string_concat)              -> [string_concat_inner1, string_concat_inner2];
+builtin_deps1(_)                          -> [].
 
 dep_closure(Deps) ->
     case lists:umerge(lists:map(fun builtin_deps/1, Deps)) of
@@ -598,11 +644,11 @@ used_builtins(M) when is_map(M) ->
   used_builtins(maps:to_list(M));
 used_builtins(_) -> [].
 
-builtin_eq(word, A, B)   -> {binop, '==', A, B};
-builtin_eq(string, A, B) -> {funcall, {var_ref, {builtin, str_equal}}, [A, B]}.
-
 option_none()  -> {tuple, [{integer, 0}]}.
 option_some(X) -> {tuple, [{integer, 1}, X]}.
+
+v(X) when is_atom(X) -> v(atom_to_list(X));
+v(X) when is_list(X) -> #var_ref{name = X}.
 
 builtin_function(abort) ->
     %% function abort(str) =
@@ -612,172 +658,107 @@ builtin_function(abort) ->
      {switch, {integer,0}, [{{integer,1}, {tuple,[]}}]},
      {tuple,[]}};
 
+%% Map primitives
+builtin_function(Builtin = {map_lookup, Type}) ->
+    Ret = aeso_icode:option_typerep(Type),
+    {{builtin, Builtin}, [private],
+        [{"m", word}, {"k", word}],
+            prim_call(?PRIM_CALL_MAP_GET, #integer{value = 0},
+                      [#var_ref{name = "m"}, #var_ref{name = "k"}],
+                      [word, word], Ret),
+     Ret};
+
+builtin_function(Builtin = map_put) ->
+    %% We don't need the types for put.
+    {{builtin, Builtin}, [private],
+        [{"m", word}, {"k", word}, {"v", word}],
+        prim_call(?PRIM_CALL_MAP_PUT, #integer{value = 0},
+                  [v(m), v(k), v(v)],
+                  [word, word, word], word),
+     word};
+
+builtin_function(Builtin = map_delete) ->
+    {{builtin, Builtin}, [private],
+        [{"m", word}, {"k", word}],
+        prim_call(?PRIM_CALL_MAP_DELETE, #integer{value = 0},
+                  [v(m), v(k)],
+                  [word, word], word),
+     word};
+
+builtin_function(Builtin = map_size) ->
+    Name = {builtin, Builtin},
+    {Name, [private], [{"m", word}],
+        prim_call(?PRIM_CALL_MAP_SIZE, #integer{value = 0},
+                  [v(m)], [word], word),
+        word};
+
+%% Map builtins
 builtin_function(Builtin = {map_get, Type}) ->
     %% function map_get(m, k) =
     %%   switch(map_lookup(m, k))
     %%     Some(v) => v
     {{builtin, Builtin}, [private],
-        [{"m", aeso_icode:map_typerep(Type, word)}, {"k", Type}],
-            {switch, {funcall, {var_ref, {builtin, {map_lookup, Type}}},
-                     [{var_ref, "m"}, {var_ref, "k"}]},
-                [{option_some({var_ref, "v"}), {var_ref, "v"}}]},
-     word};
+        [{"m", word}, {"k", word}],
+            {switch, builtin_call({map_lookup, Type}, [v(m), v(k)]),
+                [{option_some(v(v)), v(v)}]},
+     Type};
 
-builtin_function(Builtin = {map_member, Type}) ->
+builtin_function(Builtin = {map_lookup_default, Type}) ->
+    %% function map_lookup_default(m, k, default) =
+    %%   switch(map_lookup(m, k))
+    %%     None    => default
+    %%     Some(v) => v
+    {{builtin, Builtin}, [private],
+        [{"m", word}, {"k", word}, {"default", Type}],
+            {switch, builtin_call({map_lookup, Type}, [v(m), v(k)]),
+                [{option_none(),     v(default)},
+                 {option_some(v(v)), v(v)}]},
+     Type};
+
+builtin_function(Builtin = map_member) ->
     %% function map_member(m, k) : bool =
     %%   switch(Map.lookup(m, k))
     %%     None => false
     %%     _    => true
     {{builtin, Builtin}, [private],
-        [{"m", aeso_icode:map_typerep(Type, word)}, {"k", Type}],
-            {switch, {funcall, {var_ref, {builtin, {map_lookup, Type}}},
-                     [{var_ref, "m"}, {var_ref, "k"}]},
+        [{"m", word}, {"k", word}],
+            {switch, builtin_call({map_lookup, word}, [v(m), v(k)]),
                 [{option_none(), {integer, 0}},
                  {{var_ref, "_"}, {integer, 1}}]},
      word};
 
-builtin_function(Builtin = {map_lookup, Type}) ->
-    %% function map_lookup(map, key) =
-    %%   switch(map)
-    %%     [] => None
-    %%     (k, val) :: m =>
-    %%       if(k == key)
-    %%          Some(val)
-    %%      else
-    %%          map_lookup(m, key)
-    Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
-    Name = {builtin, Builtin},
-    {Name, [private],
-     [{"map", aeso_icode:map_typerep(Type, word)}, {"key", Type}],
-     {switch, {var_ref, "map"},
-              [{{list, []}, option_none()},
-               {{binop, '::',
-                  {tuple, [{var_ref, "k"}, {var_ref, "val"}]},
-                  {var_ref, "m"}},
-                {ifte, Eq({var_ref, "k"}, {var_ref, "key"}),
-                    option_some({var_ref, "val"}),
-                    {funcall, {var_ref, Name},
-                             [{var_ref, "m"}, {var_ref, "key"}]}}}]},
-    aeso_icode:option_typerep(word)};
-
-builtin_function(Builtin = {map_put, Type}) ->
-    %% function map_put(map, key, val) =
-    %%   switch(map)
-    %%     [] => [(key, val)]
-    %%     (k, v) :: m =>
-    %%       if(k == key)
-    %%          (k, val) :: m
-    %%      else
-    %%          (k, v) :: map_put(m, key, val)  // note reallocates (k, v) pair
-    Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
-    Name = {builtin, Builtin},
-    {Name, [private],
-     [{"map", aeso_icode:map_typerep(Type, word)}, {"key", Type}, {"val", word}],
-     {switch,
-         {var_ref, "map"},
-         [{{list, []}, {list, [{tuple, [{var_ref, "key"}, {var_ref, "val"}]}]}},
-          {{binop, '::',
-               {tuple, [{var_ref, "k"}, {var_ref, "v"}]},
-               {var_ref, "m"}},
-           {ifte,
-               Eq({var_ref, "k"}, {var_ref, "key"}),
-               {binop, '::',
-                   {tuple, [{var_ref, "k"}, {var_ref, "val"}]},
-                   {var_ref, "m"}},
-               {binop, '::',
-                   {tuple, [{var_ref, "k"}, {var_ref, "v"}]},
-                   {funcall,
-                       {var_ref, Name},
-                       [{var_ref, "m"},
-                        {var_ref, "key"},
-                        {var_ref, "val"}]}}}}]},
-     aeso_icode:map_typerep(Type, word)};
-
-builtin_function(Builtin = {map_del, Type}) ->
-    %% function map_del(map, key) =
-    %%   switch(map)
-    %%     [] => []
-    %%     (k, v) :: m =>
-    %%       if(k == key)
-    %%          m
-    %%      else
-    %%          (k, v) :: map_del(m, key)  // note reallocates (k, v) pair
-    Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
-    Name = {builtin, Builtin},
-    {Name, [private],
-     [{"map", aeso_icode:map_typerep(Type, word)}, {"key", word}],
-     {switch,
-         {var_ref, "map"},
-         [{{list, []}, {list, []}},
-          {{binop, '::',
-               {tuple, [{var_ref, "k"}, {var_ref, "v"}]},
-               {var_ref, "m"}},
-           {ifte,
-               Eq({var_ref, "k"}, {var_ref, "key"}),
-               {var_ref, "m"},
-               {binop, '::',
-                   {tuple, [{var_ref, "k"}, {var_ref, "v"}]},
-                   {funcall,
-                       {var_ref, Name},
-                       [{var_ref, "m"},
-                        {var_ref, "key"}]}}}}]},
-     aeso_icode:map_typerep(Type, word)};
-
 builtin_function(Builtin = {map_upd, Type}) ->
     %% function map_upd(map, key, fun) =
-    %%   switch(map)
-    %%     (k, v) :: m =>
-    %%       if(k == key)
-    %%          (k, fun(v)) :: m
-    %%      else
-    %%          (k, v) :: map_upd(m, key, fun)  // note reallocates (k, v) pair
-    Eq = fun(A, B) -> builtin_eq(Type, A, B) end,
-    Name = {builtin, Builtin},
-    {Name, [private],
-     [{"map", aeso_icode:map_typerep(Type, word)}, {"key", word}, {"fun", word}],
-     {switch,
-         {var_ref, "map"},
-         [{{binop, '::',
-               {tuple, [{var_ref, "k"}, {var_ref, "v"}]},
-               {var_ref, "m"}},
-           {ifte,
-               Eq({var_ref, "k"}, {var_ref, "key"}),
-               {binop, '::',
-                   {tuple, [{var_ref, "k"}, {funcall, {var_ref, "fun"}, [{var_ref, "v"}]}]},
-                   {var_ref, "m"}},
-               {binop, '::',
-                   {tuple, [{var_ref, "k"}, {var_ref, "v"}]},
-                   {funcall,
-                       {var_ref, Name},
-                       [{var_ref, "m"},
-                        {var_ref, "key"},
-                        {var_ref, "fun"}]}}}}]},
-     aeso_icode:map_typerep(Type, word)};
+    %%   map_put(map, key, fun(map_get(map, key)))
+    {{builtin, Builtin}, [private],
+     [{"map", word}, {"key", word}, {"valfun", word}],
+     builtin_call(map_put,
+        [v(map), v(key),
+         #funcall{ function = v(valfun),
+                   args     = [builtin_call({map_get, Type}, [v(map), v(key)])] }]),
+     word};
 
-builtin_function(map_size) ->
-    %% function size(map, acc) =
-    %%   switch(map)
-    %%     []        => acc
-    %%     _ :: map' => size(map', acc + 1)
-    Name = {builtin, map_size},
-    {Name, [private],
-        [{"map", {list, word}}, {"acc", word}],
-        {switch, {var_ref, "map"},
-                [{{list, []}, {var_ref, "acc"}},
-                 {{binop, '::', {var_ref, "_"}, {var_ref, "map'"}},
-                  {funcall, {var_ref, Name},
-                           [{var_ref, "map'"},
-                            {binop, '+', {var_ref, "acc"}, {integer, 1}}]}}]},
-        word};
+builtin_function(Builtin = map_from_list) ->
+    %% function map_from_list(xs, acc) =
+    %%   switch(xs)
+    %%     [] => acc
+    %%     (k, v) :: xs => map_from_list(xs, acc { [k] = v })
+    {{builtin, Builtin}, [private],
+     [{"xs", {list, {tuple, [word, word]}}}, {"acc", word}],
+     {switch, v(xs),
+        [{{list, []}, v(acc)},
+         {{binop, '::', {tuple, [v(k), v(v)]}, v(ys)},
+          builtin_call(map_from_list,
+            [v(ys), builtin_call(map_put, [v(acc), v(k), v(v)])])}]},
+     word};
 
 builtin_function(string_length) ->
     %% function length(str) =
     %%   switch(str)
     %%      {n} -> n  // (ab)use the representation
-    V = fun(X) -> {var_ref, atom_to_list(X)} end,
     {{builtin, string_length}, [private],
      [{"s", string}],
-     {switch, V(s), [{{tuple, [V(n)]}, V(n)}]},
+     {switch, v(s), [{{tuple, [v(n)]}, v(n)}]},
      word};
 
 %% str_concat - concatenate two strings
@@ -787,56 +768,53 @@ builtin_function(string_length) ->
 %% the words from the second string has to be shifted to fit next to the first
 %% string.
 builtin_function(string_concat) ->
-    V = fun(X) -> {var_ref, atom_to_list(X)} end,
     I = fun(X) -> {integer, X} end,
-    LetLen = fun(N, S, Body) -> {switch, V(S), [{{tuple, [V(N)]}, Body}]} end,
-    Let = fun(N, E, Body) -> {switch, E, [{V(N), Body}]} end,
-    StepPtr = fun(P) -> {binop, '+', V(P), I(32)} end,
+    LetLen = fun(N, S, Body) -> {switch, v(S), [{{tuple, [v(N)]}, Body}]} end,
+    Let = fun(N, E, Body) -> {switch, E, [{v(N), Body}]} end,
+    StepPtr = fun(P) -> {binop, '+', v(P), I(32)} end,
     A = fun(X) -> aeb_opcodes:mnemonic(X) end,
     {{builtin, string_concat}, [private],
      [{"s1", string}, {"s2", string}],
      LetLen(n1, s1,
      LetLen(n2, s2,
-        {ifte, {binop, '==', V(n2), I(0)},
-            V(s1), %% Second string is empty return first string
+        {ifte, {binop, '==', v(n2), I(0)},
+            v(s1), %% Second string is empty return first string
             Let(ret, {inline_asm, [A(?MSIZE)]},
-                {seq, [{binop, '+', V(n1), V(n2)},
+                {seq, [{binop, '+', v(n1), v(n2)},
                        {inline_asm, [A(?MSIZE), A(?MSTORE)]}, %% Store total len
                        {funcall, {var_ref, {builtin, string_concat_inner1}},
-                            [V(n1), StepPtr(s1), V(n2), StepPtr(s2)]},
+                            [v(n1), StepPtr(s1), v(n2), StepPtr(s2)]},
                        {inline_asm, [A(?POP)]}, %% Discard fun ret val
-                       V(ret)                   %% Put the actual return value
+                       v(ret)                   %% Put the actual return value
                       ]})})),
      word};
 
 builtin_function(string_concat_inner1) ->
-    V = fun(X) -> {var_ref, atom_to_list(X)} end,
     I = fun(X) -> {integer, X} end,
     Name = {builtin, string_concat_inner1},
-    LetWord = fun(W, P, Body) -> {switch, V(P), [{{tuple, [V(W)]}, Body}]} end,
+    LetWord = fun(W, P, Body) -> {switch, v(P), [{{tuple, [v(W)]}, Body}]} end,
     A = fun(X) -> aeb_opcodes:mnemonic(X) end,
     %% Copy all whole words from the first string, and set up for word fusion
     %% Special case when the length of the first string is divisible by 32.
     {Name, [private],
      [{"n1", word}, {"p1", pointer}, {"n2", word}, {"p2", pointer}],
      LetWord(w1, p1,
-        {ifte, {binop, '>', V(n1), I(32)},
-            {seq, [V(w1), {inline_asm, [A(?MSIZE), A(?MSTORE)]},
-                   {funcall, {var_ref, Name}, [{binop, '-', V(n1), I(32)},
-                                               {binop, '+', V(p1), I(32)},
-                                               V(n2), V(p2)]}]},
-            {ifte, {binop, '==', V(n1), I(0)},
+        {ifte, {binop, '>', v(n1), I(32)},
+            {seq, [v(w1), {inline_asm, [A(?MSIZE), A(?MSTORE)]},
+                   {funcall, {var_ref, Name}, [{binop, '-', v(n1), I(32)},
+                                               {binop, '+', v(p1), I(32)},
+                                               v(n2), v(p2)]}]},
+            {ifte, {binop, '==', v(n1), I(0)},
                 {funcall, {var_ref, {builtin, string_concat_inner2}},
-                          [I(32), I(0), V(n2), V(p2)]},
+                          [I(32), I(0), v(n2), v(p2)]},
                 {funcall, {var_ref, {builtin, string_concat_inner2}},
-                          [{binop, '-', I(32), V(n1)}, V(w1), V(n2), V(p2)]}}
+                          [{binop, '-', I(32), v(n1)}, v(w1), v(n2), v(p2)]}}
         }),
      word};
 
 builtin_function(string_concat_inner2) ->
-    V = fun(X) -> {var_ref, atom_to_list(X)} end,
     I = fun(X) -> {integer, X} end,
-    LetWord = fun(W, P, Body) -> {switch, V(P), [{{tuple, [V(W)]}, Body}]} end,
+    LetWord = fun(W, P, Body) -> {switch, v(P), [{{tuple, [v(W)]}, Body}]} end,
     BSR = fun(X, Bytes) -> {binop, 'div', X, {binop, '^', I(2), {binop, '*', Bytes, I(8)}}} end,
     BSL = fun(X, Bytes) -> {binop, '*', X, {binop, '^', I(2), {binop, '*', Bytes, I(8)}}} end,
     A = fun(X) -> aeb_opcodes:mnemonic(X) end,
@@ -845,16 +823,16 @@ builtin_function(string_concat_inner2) ->
     %% words of the second string.
     {Name, [private],
      [{"o", word}, {"x", word}, {"n2", word}, {"p2", pointer}],
-     {ifte, {binop, '<', V(n2), I(1)},
-        {seq, [V(x), {inline_asm, [A(?MSIZE), A(?MSTORE), A(?MSIZE)]}]}, %% Use MSIZE as dummy return value
+     {ifte, {binop, '<', v(n2), I(1)},
+        {seq, [v(x), {inline_asm, [A(?MSIZE), A(?MSTORE), A(?MSIZE)]}]}, %% Use MSIZE as dummy return value
         LetWord(w2, p2,
-            {ifte, {binop, '>', V(n2), V(o)},
-                {seq, [{binop, '+', V(x), BSR(V(w2), {binop, '-', I(32), V(o)})},
+            {ifte, {binop, '>', v(n2), v(o)},
+                {seq, [{binop, '+', v(x), BSR(v(w2), {binop, '-', I(32), v(o)})},
                        {inline_asm, [A(?MSIZE), A(?MSTORE)]},
                        {funcall, {var_ref, Name},
-                                [V(o), BSL(V(w2), V(o)), {binop, '-', V(n2), I(32)}, {binop, '+', V(p2), I(32)}]}
+                                [v(o), BSL(v(w2), v(o)), {binop, '-', v(n2), I(32)}, {binop, '+', v(p2), I(32)}]}
                       ]},
-                {seq, [{binop, '+', V(x), BSR(V(w2), {binop, '-', I(32), V(o)})},
+                {seq, [{binop, '+', v(x), BSR(v(w2), {binop, '-', I(32), v(o)})},
                        {inline_asm, [A(?MSIZE), A(?MSTORE), A(?MSIZE)]}]} %% Use MSIZE as dummy return value
             })
      },
@@ -867,20 +845,19 @@ builtin_function(str_equal_p) ->
     %%      let w1 = *p1
     %%      let w2 = *p2
     %%      w1 == w2 && str_equal_p(n - 32, p1 + 32, p2 + 32)
-    V = fun(X) -> {var_ref, atom_to_list(X)} end,
-    LetWord = fun(W, P, Body) -> {switch, V(P), [{{tuple, [V(W)]}, Body}]} end,
+    LetWord = fun(W, P, Body) -> {switch, v(P), [{{tuple, [v(W)]}, Body}]} end,
     Name = {builtin, str_equal_p},
     {Name, [private],
         [{"n", word}, {"p1", pointer}, {"p2", pointer}],
-        {ifte, {binop, '<', V(n), {integer, 1}},
+        {ifte, {binop, '<', v(n), {integer, 1}},
             {integer, 1},
             LetWord(w1, p1,
             LetWord(w2, p2,
-                {binop, '&&', {binop, '==', V(w1), V(w2)},
+                {binop, '&&', {binop, '==', v(w1), v(w2)},
                     {funcall, {var_ref, Name},
-                        [{binop, '-', V(n), {integer, 32}},
-                         {binop, '+', V(p1), {integer, 32}},
-                         {binop, '+', V(p2), {integer, 32}}]}}))},
+                        [{binop, '-', v(n), {integer, 32}},
+                         {binop, '+', v(p1), {integer, 32}},
+                         {binop, '+', v(p2), {integer, 32}}]}}))},
      word};
 
 builtin_function(str_equal) ->
@@ -888,16 +865,15 @@ builtin_function(str_equal) ->
     %%   let n1 = length(s1)
     %%   let n2 = length(s2)
     %%   n1 == n2 && str_equal_p(n1, s1 + 32, s2 + 32)
-    V = fun(X) -> {var_ref, atom_to_list(X)} end,
-    LetLen = fun(N, S, Body) -> {switch, V(S), [{{tuple, [V(N)]}, Body}]} end,
+    LetLen = fun(N, S, Body) -> {switch, v(S), [{{tuple, [v(N)]}, Body}]} end,
     {{builtin, str_equal}, [private],
         [{"s1", string}, {"s2", string}],
         LetLen(n1, s1,
         LetLen(n2, s2,
-            {binop, '&&', {binop, '==', V(n1), V(n2)},
+            {binop, '&&', {binop, '==', v(n1), v(n2)},
                 {funcall, {var_ref, {builtin, str_equal_p}},
-                    [V(n1), {binop, '+', V(s1), {integer, 32}},
-                            {binop, '+', V(s2), {integer, 32}}]}})),
+                    [v(n1), {binop, '+', v(s1), {integer, 32}},
+                            {binop, '+', v(s2), {integer, 32}}]}})),
         word}.
 
 add_builtins(Icode = #{functions := Funs}) ->

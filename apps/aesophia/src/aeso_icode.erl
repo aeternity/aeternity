@@ -76,7 +76,7 @@ builtin_constructors() ->
      , "Some"        => 1 }.
 
 map_typerep(K, V) ->
-    {list, {tuple, [K, V]}}.  %% Lists of key-value pairs for now
+    {map, K, V}.
 
 option_typerep(A) ->
     {variant, [[], [A]]}.
