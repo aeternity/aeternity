@@ -127,7 +127,7 @@ spend(_Cfg) ->
 contracts(_Cfg) ->
     {[_Acc, _Acc2, Contract1, Contract2], S} = setup_chain(),
     _S1 = lists:foldl(fun({Value, Arg}, S0) -> make_call(Contract1, Contract2, Value, Arg, S0) end,
-                      S, [{(I - 3) * 100, I + 100} || I <- lists:seq(1, 10)]),
+                      S, [{(I - 1) * 100, I + 100} || I <- lists:seq(1, 10)]),
     ok.
 
 make_call(From, To, Value, Arg, S) ->
