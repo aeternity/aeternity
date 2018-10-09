@@ -156,6 +156,13 @@
 
     ]).
 
+%% test case exports
+%% for CORS headers
+-export([
+    cors_not_returned_when_origin_not_sent/1,
+    cors_returned_on_preflight_request/1,
+    cors_returned_on_get_request/1]).
+
 %%
 %% test case exports
 %% wrong http method for all endpoints
@@ -464,6 +471,10 @@ groups() ->
         swagger_validation_schema
         %%swagger_validation_types
       ]},
+     {cors_headers, [],
+      [cors_not_returned_when_origin_not_sent,
+       cors_returned_on_preflight_request,
+       cors_returned_on_get_request]},
      {wrong_http_method_endpoints, [], [
         wrong_http_method_top,
         wrong_http_method_contract_create,
@@ -5308,6 +5319,38 @@ swagger_validation_schema(_Config) ->
 %%                           "bh$11111111111111111111111111111111" ++
 %%                           "/transactions/index/" ++
 %%                           "not_integer", []).
+
+
+%% ============================================================
+%% Test CORS headers
+%% ============================================================
+
+cors_not_returned_when_origin_not_sent(_Config) ->
+    Host = external_address(),
+    {ok, {{_, 200, _}, Headers, _Body}} =
+        httpc_request(get, {Host ++ "/v2/blocks/top", []}, [], []),
+
+    undefined = proplists:get_value(<<"access-control-allow-origin">>, Headers),
+    ok.
+
+cors_returned_on_preflight_request(_Config) ->
+    Host = external_address(),
+    {ok, {{_, 200, _}, Headers, _Body}} =
+        httpc_request(options, {Host ++ "/v2/blocks/top", [{"origin", "example.com"}]}, [], []),
+
+    "example.com" = proplists:get_value("access-control-allow-origin", Headers),
+    "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT" = proplists:get_value("access-control-allow-methods", Headers),
+    "1800" = proplists:get_value("access-control-max-age", Headers),
+    "true" = proplists:get_value("access-control-allow-credentials", Headers),
+    ok.
+
+cors_returned_on_get_request(_Config) ->
+    Host = external_address(),
+    {ok, {{_, 200, _}, Headers, _Body}} =
+        httpc_request(get, {Host ++ "/v2/blocks/top", [{"origin", "example.com"}]}, [], []),
+
+    "example.com" = proplists:get_value("access-control-allow-origin", Headers),
+    ok.
 
 %% ============================================================
 %% HTTP Requests with wrong method

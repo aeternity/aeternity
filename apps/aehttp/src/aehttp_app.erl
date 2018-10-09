@@ -105,7 +105,10 @@ start_http_api(Target, LogicHandler) ->
             [{port, Port},
              {ip, ListenAddress},
              {num_acceptors, PoolSize}],
-            #{env => #{dispatch => Dispatch}}
+            #{env => #{dispatch => Dispatch},
+              middlewares => [cowboy_router,
+                              aehttp_cors_middleware,
+                              cowboy_handler]}
         ),
     ok.
 

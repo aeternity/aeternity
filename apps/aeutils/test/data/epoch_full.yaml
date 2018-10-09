@@ -56,6 +56,15 @@ mempool:
     sync_interval: 1800000
 
 http:
+    cors:
+        # List of domains allowed to access resources
+        allow_domains: ["*"]
+        # List of headers allowed to be used with requests
+        allow_headers: ["*"]
+        # List of methods allowed to be used when accessing resources
+        allow_methods: ["DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT"]
+        # Indicates for how many seconds the results of a preflight request can be cached
+        max_age: 1800
     external:
         # Port used for external HTTP API
         port: 3013

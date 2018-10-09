@@ -69,47 +69,47 @@
                 "acceptors" : {
                     "description" : "Number of acceptors in listening pool",
                     "type" : "integer",
-                    "default": 10,
+                    "default": 10
                 },
                 "connect_timeout" : {
                     "description" : "Connection timeout in miliseconds",
                     "type" : "integer",
-                    "default": 1000,
+                    "default": 1000
                 },
                 "first_ping_timeout" : {
                     "description" : "Maximum time for receiving a ping in miliseconds",
                     "type" : "integer",
-                    "default": 30000,
+                    "default": 30000
                 },
                 "noise_hs_timeout" : {
                     "description" : "Maximum time for noise handshake in miliseconds",
                     "type" : "integer",
-                    "default": 5000,
+                    "default": 5000
                 },
                 "close_timeout" : {
                     "description" : "Maximum time for the peer to close a connection cleanly",
                     "type" : "integer",
-                    "default": 3000,
+                    "default": 3000
                 },
                 "max_inbound" : {
                     "description" : "Maximum number of inbound connections after which inbound connections are temporary (only used for a single ping)",
                     "type" : "integer",
-                    "default": 100,
+                    "default": 100
                 },
                 "max_inbound_hard" : {
                     "description" : "Maximum number of inbound connections",
                     "type" : "integer",
-                    "default": 1000,
+                    "default": 1000
                 },
                 "max_outbound" : {
                     "description" : "Maximum number of outbound connections",
                     "type" : "integer",
-                    "default": 10,
+                    "default": 10
                 },
                 "single_outbound_per_group" : {
                     "description" : "If the extra outbound connections should be to nodes from different address groups (IP netmask /16)",
                     "type" : "boolean",
-                    "default": true,
+                    "default": true
                 },
                 "resolver_max_retries": {
                     "description" : "Maximum number of retries at resolving the host name of untrusted peers.",
@@ -138,6 +138,48 @@
             "type" : "object",
             "additionalProperties" : false,
             "properties" : {
+                "cors" : {
+                    "type": "object",
+                    "description" : "Section for CORS headers configuration.",
+                    "additionalProperties": false,
+                    "properties": {
+                        "allow_domains": {
+                            "description": "List of domains that can access resources. Use '*' to allow all domains.",
+                            "type" : "array",
+                            "minItems" : 1,
+                            "items" : {
+                                "type" : "string",
+                                "example" : "https://example.com"
+                            },
+                            "default" : ["*"]
+                        },
+                        "allow_headers": {
+                            "description": "List of allowed headers to be used with requests (to be set in access-control-request-headers header in the response). Use '*' or do not set at all to allow all headers.",
+                            "type" : "array",
+                            "minItems" : 1,
+                            "items" : {
+                                "type" : "string",
+                                "example" : "Content-Type"
+                            },
+                            "default" : ["*"]
+                        },
+                        "allow_methods": {
+                            "description": "List of allowed methods allowed to be used when accessing resources (to be set in access-control-allow-methods header in the response).",
+                            "type" : "array",
+                            "minItems" : 1,
+                            "items" : {
+                                "type" : "string",
+                                "example" : "GET"
+                            },
+                            "default": ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+                        },
+                        "max_age": {
+                            "description" : "Indicates for how many seconds the results of a preflight request can be cached (to be set in access-control-max-age header in the response).",
+                            "type" : "integer",
+                            "default" : 1800
+                        }
+                    }
+                },
                 "external" : {
                     "type" : "object",
                     "additionalProperties" : false,
