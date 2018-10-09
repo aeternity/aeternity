@@ -251,7 +251,8 @@ setup_node(Spec, BackendState) ->
         image => Image,
         ulimits => [{nofile, 1024, 1024}],
         command => Command,
-        env => #{"EPOCH_CONFIG" => ?EPOCH_CONFIG_FILE},
+        env => #{"EPOCH_CONFIG" => ?EPOCH_CONFIG_FILE,
+                 "ERL_CRASH_DUMP" => format("~s/erl_crash.dump", [?EPOCH_LOG_FOLDER])},
         labels => #{epoch_system_test => <<"true">>},
         volumes => [
             {rw, KeysDir, ?EPOCH_KEYS_FOLDER},

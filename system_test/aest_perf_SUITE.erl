@@ -15,6 +15,7 @@
 
 % Test cases
 -export([
+    long_chain_mine_and_export/1,
     startup_speed/1,
     startup_speed_mining/1,
     sync_speed/1,
@@ -53,7 +54,10 @@ all() ->
     [ {group, long_chain} ].
 
 groups() ->
-    [{long_chain, [], [
+    [{long_chain, [sequence], [
+        long_chain_mine_and_export,
+        {group, long_chain_tests}]},
+     {long_chain_tests, [], [
         mining_governed_rate,
         startup_speed,
         startup_speed_mining,
@@ -69,10 +73,27 @@ init_per_suite(Cfg) ->
         {sync_timeout, 1000}            % Per block
     ].
 
-init_per_group(long_chain, InitCfg) ->
-    %% Some parameters depend on the speed and capacity of the docker containers:
-    Cfg = aest_nodes:ct_setup(InitCfg),
+init_per_group(long_chain_tests, InitCfg) ->
+    {long_chain_mine_and_export, SavedCfg} = cfg(saved_config, InitCfg),
+    Height = cfg(height, SavedCfg),
+    Ref = cfg(source, SavedCfg),
+    [{height, Height}, {source, Ref}|InitCfg];
+init_per_group(_TG, _Cfg) -> ok.
 
+end_per_group(_TG, _Cfg) -> ok.
+
+init_per_testcase(_TC, Cfg) -> 
+    aest_nodes:ct_setup(Cfg).
+
+end_per_testcase(_TC, Cfg) ->
+    aest_nodes:ct_cleanup(Cfg).
+
+end_per_suite(_Cfg) -> ok.
+
+%=== TEST CASES ================================================================
+
+long_chain_mine_and_export(Cfg) ->
+    %% Some parameters depend on the speed and capacity of the docker containers:
     Nodes = [n1, n2, n3],
 
     setup_nodes(cluster(Nodes, #{}), Cfg),
@@ -86,22 +107,7 @@ init_per_group(long_chain, InitCfg) ->
     Ref = aest_nodes:export(n1, Tag, Cfg),
     [kill_node(N, Cfg) || N <- Nodes],
 
-    %% Match "ok =" when we want to find errors in this stage
-    ok = aest_nodes:ct_cleanup(Cfg),
- 
-    [{height, Height}, {source, Ref}|Cfg].
-
-end_per_group(long_chain, _Cfg) -> ok.
-
-init_per_testcase(_TC, Cfg) -> 
-    aest_nodes:ct_setup(Cfg).
-
-end_per_testcase(_TC, Cfg) ->
-    aest_nodes:ct_cleanup(Cfg).
-
-end_per_suite(_Cfg) -> ok.
-
-%=== TEST CASES ================================================================
+    {save_config, [{height, Height}, {source, Ref}]}.
 
 startup_speed(Cfg) ->
     % This test verifies that startup does not take longer than mining
