@@ -77,10 +77,8 @@ websocket_handle({text, MsgBin}, #handler{protocol = P} = H) ->
     try unpack_request(P, jsx:decode(MsgBin, [return_maps]), H) of
         {Msg, H1} ->
             try process_incoming(Msg, H1) of
-                no_reply -> {ok, H};
-                {reply, Resp} ->
-                    {reply, {text, jsx:encode(Resp)}, H};
-                {error, _} -> {ok, H}
+                no_reply      -> {ok, H};
+                {reply, Resp} -> {reply, {text, jsx:encode(Resp)}, H}
             catch
                 error:E1 ->
                     lager:debug("CAUGHT E1=~p / ~p", [E1, erlang:get_stacktrace()]),
@@ -754,18 +752,24 @@ add_payload(#{payload := Payload}, Msg) -> Msg#{<<"payload">> => Payload};
 add_payload(#{action := _}       , Msg) -> Msg;
 add_payload(Reply                , Msg) -> Msg#{<<"payload">> => Reply}.
 
-json_rpc_reply(#{payload := Payload} = Reply, #handler{orig_request = Req}) ->
+json_rpc_reply(Reply, #handler{orig_request = Req}) ->
     case Req of
         #{id := Id} ->
             {reply, #{ <<"jsonrpc">> => <<"2.0">>
                      , <<"id">>      => Id
-                     , <<"result">>  => Payload }
+                     , <<"result">>  => result(Reply) }
             };
         _ ->
             {reply, #{ <<"jsonrpc">> => <<"2.0">>
                      , <<"method">>  => legacy_to_method_out(Reply)
-                     , <<"params">>  => Payload }}
+                     , <<"params">>  => result(Reply) }}
     end.
+
+result(#{payload := Payload}) ->            
+    Payload;
+result(Result) -> 
+    Result.
+
 
 legacy_to_method_in(Action) ->
     <<"channels.", Action/binary>>.
