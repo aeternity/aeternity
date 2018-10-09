@@ -14,7 +14,6 @@
 -export([new/1,
          type/0,
          fee/1,
-         gas/1,
          gas_price/1,
          ttl/1,
          nonce/1,
@@ -82,10 +81,6 @@ oracle_ttl(#oracle_register_tx{oracle_ttl = TTL}) ->
 -spec fee(tx()) -> integer().
 fee(#oracle_register_tx{fee = Fee}) ->
     Fee.
-
--spec gas(tx()) -> non_neg_integer().
-gas(#oracle_register_tx{}) ->
-    aec_governance:tx_gas().
 
 -spec gas_price(tx()) -> non_neg_integer().
 gas_price(#oracle_register_tx{}) ->

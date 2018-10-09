@@ -8,7 +8,6 @@
 -export([new/1,
          type/0,
          fee/1,
-         gas/1,
          gas_price/1,
          ttl/1,
          nonce/1,
@@ -92,10 +91,6 @@ type() ->
 -spec fee(tx()) -> integer().
 fee(#spend_tx{fee = F}) ->
     F.
-
--spec gas(tx()) -> non_neg_integer().
-gas(#spend_tx{}) ->
-    aec_governance:tx_gas().
 
 -spec gas_price(tx()) -> non_neg_integer().
 gas_price(#spend_tx{}) ->
