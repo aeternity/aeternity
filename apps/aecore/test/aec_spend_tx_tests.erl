@@ -128,7 +128,28 @@ process_test_() ->
 
               ?assertEqual(100 - 50 - 10 + 50, aec_accounts:balance(ResultAccount)),
               ?assertEqual(11, aec_accounts:nonce(ResultAccount))
-      end}].
+      end},
+      {"Check gas is higher with bigger payload",
+       fun() ->
+              _SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 100, nonce => 10}),
+              _RecipientAccount = new_account(#{pubkey => ?RECIPIENT_PUBKEY, balance => 80, nonce => 12}),
+
+              {ok, SpendTx1} = ?TEST_MODULE:new(#{sender_id => ?SENDER_ID,
+                                                  recipient_id => ?RECIPIENT_ID,
+                                                  amount => 50,
+                                                  fee => 10,
+                                                  nonce => 11,
+                                                  payload => <<"foo">>}),
+
+              {ok, SpendTx2} = ?TEST_MODULE:new(#{sender_id => ?SENDER_ID,
+                                                  recipient_id => ?RECIPIENT_ID,
+                                                  amount => 50,
+                                                  fee => 10,
+                                                  nonce => 11,
+                                                  payload => <<"foo bar">>}),
+
+              ?assert(aetx:gas(SpendTx1) < aetx:gas(SpendTx2))
+       end}].
 
 spend_tx(Data) ->
     DefaultData = #{sender_id => ?SENDER_ID,

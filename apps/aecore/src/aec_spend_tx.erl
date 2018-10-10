@@ -9,7 +9,6 @@
          type/0,
          fee/1,
          gas/1,
-         gas_price/1,
          ttl/1,
          nonce/1,
          origin/1,
@@ -95,11 +94,7 @@ fee(#spend_tx{fee = F}) ->
 
 -spec gas(tx()) -> non_neg_integer().
 gas(#spend_tx{}) ->
-    aec_governance:tx_gas().
-
--spec gas_price(tx()) -> non_neg_integer().
-gas_price(#spend_tx{}) ->
-    aec_governance:tx_gas_price().
+    aec_governance:tx_base_gas().
 
 -spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#spend_tx{ttl = TTL}) ->

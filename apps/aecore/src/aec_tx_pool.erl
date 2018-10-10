@@ -394,7 +394,7 @@ pool_db_key(SignedTx) ->
     %%       * negative fee and negative gas price place high profit
     %%         transactions at the beginning
     %%       * ordered_set type enables implicit overwrite of the same txs
-    ?KEY(-aetx:fee(Tx), -aetx:gas_price(Tx),
+    ?KEY(-aetx:fee(Tx), -int_gas_price(Tx),
          aetx:origin(Tx), aetx:nonce(Tx), aetx_sign:hash(SignedTx)).
 
 -spec pool_db_open(DbName :: atom()) -> {ok, pool_db()}.
@@ -594,6 +594,15 @@ check_minimum_gas_price(Tx, _Hash) ->
     case GasPrice >= MinGasPrice of
         true  -> ok;
         false -> {error, too_low_gas_price}
+    end.
+
+int_gas_price(Tx) ->
+    case aetx:gas_price(Tx) of
+        GasPrice when is_integer(GasPrice), GasPrice >= 0 ->
+            GasPrice;
+        undefined ->
+            %% Non-contract txs have 0 gas price.
+            0
     end.
 
 tx_ttl() ->

@@ -14,7 +14,6 @@
          type/0,
          fee/1,
          gas/1,
-         gas_price/1,
          ttl/1,
          nonce/1,
          origin/1,
@@ -117,11 +116,7 @@ fee(#channel_create_tx{fee = Fee}) ->
 
 -spec gas(tx()) -> non_neg_integer().
 gas(#channel_create_tx{}) ->
-    aec_governance:tx_gas().
-
--spec gas_price(tx()) -> non_neg_integer().
-gas_price(#channel_create_tx{}) ->
-    aec_governance:tx_gas_price().
+    aec_governance:tx_base_gas().
 
 -spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#channel_create_tx{ttl = TTL}) ->
