@@ -2894,8 +2894,6 @@ fp_register_name(Cfg) ->
                         aens_hash:commitment_hash(NameAscii, Salt)),
     ?TEST_LOG("Commitment hash ~p", [aens_hash:commitment_hash(NameAscii,
                                                                Salt)]), 
-    #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),
-    Account = aeu_hex:hexstring_encode(Pubkey),
     StateHashSize = aec_base58c:byte_size_for_type(state),
     StateHash = <<42:StateHashSize/unit:8>>,
     Round = 42,
@@ -2911,101 +2909,115 @@ fp_register_name(Cfg) ->
             <<"(", Word11/binary, ", ", Word21/binary, ")">>
         end,
     ContractName = "aens",
+    
+    % test contract on-chain
+    % this validates that the contract and the fucntion are indeed callable
+    % on-chain and they produce a name preclaim
+    ?TEST_LOG("Create contract ~p.aes on-chain", [ContractName]),
+    run(#{cfg => Cfg},
+        [ % create account for being contract owner
+          fun(#{} = Props) ->
+              S0 = aesc_test_utils:new_state(),
+              {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
+              S1 = aesc_test_utils:set_account_balance(NewAcc, 10000000, S),
+              PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
+              ?TEST_LOG("Owner: pubkey ~p, privkey: ~p", [NewAcc, PrivKey]),
+              Props#{state => S1, onchain_contract_owner_pubkey => NewAcc,
+                                  onchain_contract_owner_privkey => PrivKey}
+          end,
+          % create contract on-chain
+          fun(#{onchain_contract_owner_pubkey := PubKey,
+                state := S0} = Props) ->
+            ContractString = aeso_test_utils:read_contract(ContractName),
+            BinCode = aeso_compiler:from_string(ContractString, []),
+            CallData = aect_sophia:create_call(BinCode, <<"init">>, <<"()">>),
+            Nonce = 1,
+            {ok, ContractCreateTx} =
+                aect_create_tx:new(
+                    #{owner_id    => aec_id:create(account, PubKey),
+                      nonce       => Nonce,
+                      code        => BinCode,
+                      vm_version  => ?VM_VERSION,
+                      deposit     => 1,
+                      amount      => 1,
+                      gas         => 123456,
+                      gas_price   => 1,
+                      call_data   => CallData,
+                      fee         => 1}),
+            ?TEST_LOG("Contract create tx ~p", [ContractCreateTx]),
+            OnChainTrees = aesc_test_utils:trees(S0), 
+            TxEnv = tx_env(#{height => 3}),
+            {ok, _} = aetx:check(ContractCreateTx, OnChainTrees,
+                                  TxEnv),
+            {ok, OnChainTrees1} = aetx:process(ContractCreateTx,
+                                                OnChainTrees,
+                                                TxEnv),
+            S1 = aesc_test_utils:set_trees(OnChainTrees1, S0),
+            ContractId = aect_contracts:compute_contract_pubkey(PubKey, Nonce),
+            ?TEST_LOG("Contract created on-chain, id ~p", [ContractId]),
+            Props#{state => S1,
+                    onchain_contract_id => ContractId,
+                    code => BinCode}
+          end,
+          % call contract on-chain
+          fun(#{onchain_contract_owner_pubkey := OPubKey,
+                onchain_contract_owner_privkey := OPrivKey,
+                onchain_contract_id := ContractId,
+                code := Code,
+                state := S0} = Props) ->
+            Nonce = 2,
+            Sig = SignContractAddress(OPubKey, OPrivKey, ContractId),
+            NameOwner = aeu_hex:hexstring_encode(OPubKey),
+            PreclaimArgs = <<"(", NameOwner/binary, ",",
+                                  CHash/binary, ",",
+                                  Sig/binary,
+                              ")">>,
+            ?TEST_LOG("Preclaim function arguments ~p", [PreclaimArgs]),
+            CallData = aect_sophia:create_call(Code, <<"preclaim">>,
+                                                PreclaimArgs),
+            ?TEST_LOG("CallData ~p", [CallData]),
+            true = is_binary(CallData),
+            {ok, CallTx} =
+                aect_call_tx:new(
+                    #{caller_id   => aec_id:create(account, OPubKey),
+                      nonce       => Nonce,
+                      contract_id => aec_id:create(contract,
+                                                    ContractId),
+                      vm_version  => ?VM_VERSION,
+                      amount      => 1,
+                      gas         => 123456,
+                      gas_price   => 1,
+                      call_data   => CallData,
+                      fee         => 1}),
+            ?TEST_LOG("Contract call tx ~p", [CallTx]),
+            OnChainTrees = aesc_test_utils:trees(S0), 
+            TxEnv = tx_env(#{height => 4}),
+            {ok, _} = aetx:check(CallTx, OnChainTrees,
+                                  TxEnv),
+            {ok, OnChainTrees1} = aetx:process(CallTx,
+                                                OnChainTrees,
+                                                TxEnv),
+            CallId = aect_call:id(OPubKey,
+                                  Nonce,
+                                  ContractId),
+            Calls = aec_trees:calls(OnChainTrees1),
+            {value, Call} =
+                aect_call_state_tree:lookup_call(ContractId, CallId,
+                                                  Calls),
+            ok = aect_call:return_type(Call),
+            S1 = aesc_test_utils:set_trees(OnChainTrees1, S0),
+            Props#{state => S1}
+          end]),
+    ?TEST_LOG("Name preclaimed on-chain, proceeding with off-chain tests", []),
+                  
     Test =
         fun(Owner, Forcer) ->
+            ?TEST_LOG("Name preclaimed off-chain, owner is ~p, forcer is ~p",
+                      [Owner, Forcer]),
             ContractCreateRound = 10,
             run(#{cfg => Cfg},
                 [ % test contract on-chain:
                   % create account for being contract owner
-                  fun(#{} = Props) ->
-                      S0 = aesc_test_utils:new_state(),
-                      {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-                      S1 = aesc_test_utils:set_account_balance(NewAcc, 10000000, S),
-                      PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
-                      Props#{state => S1, onchain_contract_owner_pubkey => NewAcc,
-                                          onchain_contract_owner_privkey => PrivKey}
-                  end,
-                  % create contract on-chain
-                  fun(#{onchain_contract_owner_pubkey := PubKey,
-                        state := S0} = Props) ->
-                    ContractString = aeso_test_utils:read_contract(ContractName),
-                    BinCode = aeso_compiler:from_string(ContractString, []),
-                    CallData = aect_sophia:create_call(BinCode, <<"init">>, <<"()">>),
-                    Nonce = 1,
-                    {ok, ContractCreateTx} =
-                        aect_create_tx:new(
-                            #{owner_id    => aec_id:create(account, PubKey),
-                              nonce       => Nonce,
-                              code        => BinCode,
-                              vm_version  => ?VM_VERSION,
-                              deposit     => 1,
-                              amount      => 1,
-                              gas         => 123456,
-                              gas_price   => 1,
-                              call_data   => CallData,
-                              fee         => 1}),
-                    OnChainTrees = aesc_test_utils:trees(S0), 
-                    TxEnv = tx_env(#{height => 3}),
-                    {ok, _} = aetx:check(ContractCreateTx, OnChainTrees,
-                                         TxEnv),
-                    {ok, OnChainTrees1} = aetx:process(ContractCreateTx,
-                                                       OnChainTrees,
-                                                       TxEnv),
-                    S1 = aesc_test_utils:set_trees(OnChainTrees1, S0),
-                    ContractId = aect_contracts:compute_contract_pubkey(PubKey, Nonce),
-                    Props#{state => S1,
-                           onchain_contract_id => ContractId,
-                           code => BinCode}
-                  end,
-                  % create contract on-chain
-                  fun(#{onchain_contract_owner_pubkey := OPubKey,
-                        onchain_contract_owner_privkey := OPrivKey,
-                        onchain_contract_id := ContractId,
-                        code := Code,
-                        state := S0} = Props) ->
-                    Nonce = 2,
-                    Sig = SignContractAddress(OPubKey, OPrivKey, ContractId),
-                    ?TEST_LOG("Signature ~p", [Sig]),
-                    PreclaimArgs = <<"(", Account/binary, ",",
-                                          CHash/binary, ",",
-                                          Sig/binary,
-                                      ")">>,
-                    ?TEST_LOG("Preclaim args ~p", [PreclaimArgs]),
-                    CallData = aect_sophia:create_call(Code, <<"preclaim">>,
-                                                       PreclaimArgs),
-                    true = is_binary(CallData),
-                    ?TEST_LOG("CallData ~p", [CallData]),
-                    {ok, CallTx} =
-                        aect_call_tx:new(
-                            #{caller_id   => aec_id:create(account, OPubKey),
-                              nonce       => Nonce,
-                              contract_id => aec_id:create(contract,
-                                                           ContractId),
-                              vm_version  => ?VM_VERSION,
-                              amount      => 1,
-                              gas         => 123456,
-                              gas_price   => 1,
-                              call_data   => CallData,
-                              fee         => 1}),
-                    OnChainTrees = aesc_test_utils:trees(S0), 
-                    TxEnv = tx_env(#{height => 4}),
-                    {ok, _} = aetx:check(CallTx, OnChainTrees,
-                                         TxEnv),
-                    {ok, OnChainTrees1} = aetx:process(CallTx,
-                                                       OnChainTrees,
-                                                       TxEnv),
-                    CallId = aect_call:id(OPubKey,
-                                          Nonce,
-                                          ContractId),
-                    Calls = aec_trees:calls(OnChainTrees1),
-                    {value, Call} =
-                        aect_call_state_tree:lookup_call(ContractId, CallId,
-                                                         Calls),
-                    ok = aect_call:return_type(Call),
-                    S1 = aesc_test_utils:set_trees(OnChainTrees1, S0),
-                    Props#{state => S1}
-                  end,
-                  
                   positive(fun create_channel_/2),
                   % store state on-chain via snapshot
                   set_from(initiator),
@@ -3027,12 +3039,16 @@ fp_register_name(Cfg) ->
                                           _InitArgs = <<"()">>,
                                           _Deposit  = 2),
                   % force progress contract on-chain
-                  fun(#{contract_id := ContractId} = Props) ->
+                  fun(#{contract_id := ContractId,
+                        from_pubkey := Pubkey,
+                        from_privkey := Privkey} = Props) ->
                       Sig = SignContractAddress(Pubkey, Privkey, ContractId),
+                      Account = aeu_hex:hexstring_encode(Pubkey),
                       PreclaimArgs = <<"(", Account/binary, ",",
                                             CHash/binary, ",",
                                             Sig/binary,
                                         ")">>,
+                      ?TEST_LOG("Off-chain preclaim args ~p", [PreclaimArgs]),
                       (force_call_contract_first(Forcer, <<"preclaim">>,
                                             PreclaimArgs, FPRound))(Props)
                   end,
@@ -3051,6 +3067,7 @@ fp_register_name(Cfg) ->
                                             TxHashContractPubkey),
                       Call = aect_test_utils:get_call(TxHashContractPubkey, CallId,
                                                       S),
+                      ?TEST_LOG("Off-chain call ~p", [Call]),
                       {_, GasPrice, GasLimit} = aesc_offchain_update:extract_amounts(Update),
                       %% assert all gas was consumed
                       GasLimit = aect_call:gas_used(Call),
