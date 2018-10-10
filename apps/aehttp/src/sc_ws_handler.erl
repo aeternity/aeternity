@@ -582,8 +582,8 @@ prepare_handler(Params) ->
 
 protocol(#{protocol := P}) ->
     case P of
-        <<"legacy">>  -> legacy;
-        <<"jsonrpc">> -> jsonrpc;
+        <<"legacy">>   -> legacy;
+        <<"json-rpc">> -> jsonrpc;
         _ when P==legacy;
                P==jsonrpc -> P;
         _Other ->
