@@ -102,7 +102,7 @@ amount(#contract_create_tx{amount = X}) ->
 
 -spec gas(tx()) -> amount().
 gas(#contract_create_tx{gas = X}) ->
-    X.
+    aec_governance:tx_base_gas() + X.
 
 -spec gas_price(tx()) -> amount().
 gas_price(#contract_create_tx{gas_price = X}) ->

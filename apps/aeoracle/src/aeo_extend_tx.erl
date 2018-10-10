@@ -14,6 +14,7 @@
 -export([new/1,
          type/0,
          fee/1,
+         gas/1,
          ttl/1,
          nonce/1,
          origin/1,
@@ -62,6 +63,10 @@ oracle_ttl(#oracle_extend_tx{oracle_ttl = OTTL}) ->
 -spec fee(tx()) -> integer().
 fee(#oracle_extend_tx{fee = Fee}) ->
     Fee.
+
+-spec gas(tx()) -> non_neg_integer().
+gas(#oracle_extend_tx{}) ->
+    aec_governance:tx_base_gas().
 
 -spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#oracle_extend_tx{ttl = TTL}) ->

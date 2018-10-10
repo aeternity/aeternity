@@ -147,7 +147,7 @@
 -callback for_client(Tx :: tx_instance()) ->
     map().
 
--optional_callbacks([gas/1, gas_price/1]).
+-optional_callbacks([gas_price/1]).
 
 %%%===================================================================
 %%% Getters and setters
@@ -166,15 +166,11 @@ new(Callback, Tx) ->
 fee(#aetx{ cb = CB, tx = Tx }) ->
     CB:fee(Tx).
 
-%% Each tx has gas computed based on the byte size of its serialized form. Some
-%% txs can add additional gas, e.g. contract txs that need the gas for contract
-%% execution.
 -spec gas(Tx :: tx()) -> Gas :: non_neg_integer().
-gas(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }) when
-      Type =:= contract_create_tx; Type =:= contract_call_tx ->
-    Size * aec_governance:byte_gas() + CB:gas(Tx);
-gas(#aetx{ size = Size }) ->
-    Size * aec_governance:byte_gas().
+gas(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }) when Type =/= channel_offchain_tx ->
+    CB:gas(Tx) + Size * aec_governance:byte_gas();
+gas(#aetx{ type = channel_offchain_tx }) ->
+    0.
 
 -spec gas_price(Tx :: tx()) -> GasPrice :: non_neg_integer() | undefined.
 gas_price(#aetx{ type = Type, cb = CB, tx = Tx }) when

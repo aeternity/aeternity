@@ -12,6 +12,7 @@
 -export([new/1,
          type/0,
          fee/1,
+         gas/1,
          ttl/1,
          nonce/1,
          origin/1,
@@ -74,6 +75,10 @@ type() ->
 -spec fee(tx()) -> non_neg_integer().
 fee(#channel_snapshot_solo_tx{fee = Fee}) ->
     Fee.
+
+-spec gas(tx()) -> non_neg_integer().
+gas(#channel_snapshot_solo_tx{}) ->
+    aec_governance:tx_base_gas().
 
 -spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#channel_snapshot_solo_tx{ttl = TTL}) ->

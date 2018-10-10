@@ -8,6 +8,7 @@
          expected_block_mine_rate/0,
          block_mine_reward/0,
          block_gas_limit/0,
+         tx_base_gas/0,
          byte_gas/0,
          beneficiary_reward_delay/0,
          minimum_tx_fee/0,
@@ -43,8 +44,9 @@
 %% Ethereum's gas limit is 8 000 000 and block time ~15s.
 %% For 3s block time it's 1 600 000 (5x less).
 -define(BLOCK_GAS_LIMIT, (4*1600000)).
+-define(TX_BASE_GAS, 15000).
 %% Gas for 1 byte of a serialized tx.
--define(BYTE_GAS, 100).
+-define(BYTE_GAS, 20).
 -define(POF_REWARD       , 500000000000000000). %% (?BLOCK_MINE_REWARD / 100) * 5
 -define(BENEFICIARY_REWARD_DELAY, 180). %% in key blocks / generations
 -define(MICRO_BLOCK_CYCLE, 3000). %% in msecs
@@ -89,6 +91,9 @@ block_mine_reward() ->
 
 block_gas_limit() ->
     ?BLOCK_GAS_LIMIT.
+
+tx_base_gas() ->
+    ?TX_BASE_GAS.
 
 byte_gas() ->
     ?BYTE_GAS.

@@ -7,6 +7,7 @@
 -export([new/1,
          type/0,
          fee/1,
+         gas/1,
          ttl/1,
          nonce/1,
          origin/1,
@@ -76,6 +77,10 @@ type() ->
 fee(#channel_offchain_tx{}) ->
     %% This tx should never hit the mempool or any block
     ?CHANNEL_OFFCHAIN_TX_FEE.
+
+-spec gas(tx()) -> non_neg_integer().
+gas(#channel_offchain_tx{}) ->
+    0.
 
 -spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#channel_offchain_tx{}) ->
