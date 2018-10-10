@@ -40,13 +40,6 @@
 -include_lib("apps/aecore/include/blocks.hrl").
 
 -define(NO_INNER_TREES, no_inner_trees).
--define(ON_CHAIN_ONLY(S, Block),
-        #state{trees = ChainTrees} = S,
-        case is_channel_call(ChainTrees) of
-            true ->
-                {error, not_allowed_off_chain};
-            false -> Block
-        end).
 
 -record(trees, { trees              :: aec_trees:trees()
                , is_onchain = true  :: boolean()
@@ -386,21 +379,22 @@ decode_as(Type, Val) ->
     ?DEBUG_LOG("Can't decode ~p as ~p\n", [Val, Type]),
     {error, out_of_gas}.
 
-aens_preclaim(Addr, CHash, Signature, #state{ account = ContractKey} = State) ->
-    ?ON_CHAIN_ONLY(State,
-        begin
-            Nonce = next_nonce(Addr, State),
-            {ok, Tx} =
-                aens_preclaim_tx:new(#{ account_id    => aec_id:create(account, Addr),
-                                        nonce         => Nonce,
-                                        commitment_id => aec_id:create(commitment, CHash),
-                                        fee           => 0 }),
+aens_preclaim(Addr, CHash, Signature, State) ->
+    on_chain_only(State,
+                  fun() -> aens_preclaim_(Addr, CHash, Signature, State) end).
 
-            case check_account_signature(Addr, ContractKey, Signature) of
-                ok               -> apply_transaction(Tx, State);
-                Err = {error, _} -> Err
-            end
-        end).
+aens_preclaim_(Addr, CHash, Signature, #state{ account = ContractKey} = State) ->
+    Nonce = next_nonce(Addr, State),
+    {ok, Tx} =
+        aens_preclaim_tx:new(#{ account_id    => aec_id:create(account, Addr),
+                                nonce         => Nonce,
+                                commitment_id => aec_id:create(commitment, CHash),
+                                fee           => 0 }),
+
+    case check_account_signature(Addr, ContractKey, Signature) of
+        ok               -> apply_transaction(Tx, State);
+        Err = {error, _} -> Err
+    end.
 
 aens_claim(Addr, Name, Salt, Signature, #state{ account = ContractKey } = State) ->
     Nonce = next_nonce(Addr, State),
@@ -588,3 +582,10 @@ get_on_chain_trees(#trees{is_onchain = true, trees = Trees}) ->
 get_on_chain_trees(#trees{is_onchain = false, inner = Inner}) ->
     get_on_chain_trees(Inner).
 
+on_chain_only(State, Fun) ->
+    #state{trees = ChainTrees} = State,
+    case is_channel_call(ChainTrees) of
+        true ->
+            {error, not_allowed_off_chain};
+        false -> Fun()
+    end.
