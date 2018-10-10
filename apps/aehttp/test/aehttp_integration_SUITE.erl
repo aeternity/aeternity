@@ -2223,7 +2223,8 @@ contract_create_transaction_init_error(_Config) ->
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
 
     % contract_create_tx positive test
-    Code = aec_base58c:encode(contract_bytearray, <<"NOT PROPER BYTE CODE">>),
+    DummyByteCode = aect_test_utils:dummy_bytecode(),
+    Code = aec_base58c:encode(contract_bytearray, DummyByteCode),
 
     InitFunction = <<"init">>,
     InitArgument = <<"()">>,

@@ -169,7 +169,6 @@ origin(#contract_create_tx{} = Tx) ->
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#contract_create_tx{nonce      = Nonce,
                           vm_version = VmVersion,
-                          call_data  = CallData,
                           amount     = Amount,
                           gas        = Gas,
                           gas_price  = GasPrice,
@@ -184,12 +183,8 @@ check(#contract_create_tx{nonce      = Nonce,
          end |
          case VmVersion of
             ?AEVM_01_Sophia_01 ->
-                 [fun() ->
-                          case aeso_data:get_function_from_calldata(CallData) of
-                              {ok, <<"init">>} -> ok;
-                              _Other -> {error, bad_init_function}
-                          end
-                  end
+                 [ fun() -> check_sophia_serialization(Tx) end
+                 , fun() -> check_init_function(Tx) end
                  ];
             ?AEVM_01_Solidity_01 -> []
          end
@@ -198,6 +193,19 @@ check(#contract_create_tx{nonce      = Nonce,
     case aeu_validation:run(Checks) of
         ok              -> {ok, Trees};
         {error, Reason} -> {error, Reason}
+    end.
+
+check_sophia_serialization(#contract_create_tx{code = SerializedCode}) ->
+    try aeso_compiler:deserialize(SerializedCode) of
+        _ -> ok
+    catch
+        _:_ -> {error, bad_sophia_code}
+    end.
+
+check_init_function(#contract_create_tx{call_data = CallData}) ->
+    case aeso_data:get_function_from_calldata(CallData) of
+        {ok, <<"init">>} -> ok;
+        _Other -> {error, bad_init_function}
     end.
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.

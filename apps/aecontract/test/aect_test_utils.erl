@@ -28,6 +28,7 @@
         , compile_contract/1
         , assert_state_equal/2
         , get_oracle_queries/2
+        , dummy_bytecode/0
         ]).
 
 %%%===================================================================
@@ -116,7 +117,7 @@ create_tx_default_spec(PubKey, State) ->
     #{ fee        => 5
      , owner_id   => aec_id:create(account, PubKey)
      , nonce      => try next_nonce(PubKey, State) catch _:_ -> 0 end
-     , code       => <<"NOT PROPER BYTE CODE">>
+     , code       => dummy_bytecode()
      , vm_version => 1
      , deposit    => 10
      , amount     => 200
@@ -125,6 +126,10 @@ create_tx_default_spec(PubKey, State) ->
      , call_data  => <<"NOT ENCODED ACCORDING TO ABI">>
      , ttl        => 0
      }.
+
+dummy_bytecode() ->
+    aeso_compiler:serialize(<<"NOT PROPER BYTE CODE">>,
+                            "NOT PROPER SOURCE STRING").
 
 %%%===================================================================
 %%% Call tx

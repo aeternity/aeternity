@@ -57,8 +57,11 @@ encode_call_data(_, _, _, _) ->
 %% used.
 
 -spec run(byte(), map()) -> {aect_call:call(), aec_trees:trees()}.
-run(?AEVM_01_Sophia_01, CallDef) ->
-    run_common(CallDef, ?AEVM_01_Sophia_01);
+run(?AEVM_01_Sophia_01, #{code := SerializedCode} = CallDef) ->
+    %% TODO: Check the type info before running
+    #{ byte_code := Code} = aeso_compiler:deserialize(SerializedCode),
+    CallDef1 = CallDef#{code => Code},
+    run_common(CallDef1, ?AEVM_01_Sophia_01);
 run(?AEVM_01_Solidity_01, CallDef) ->
     run_common(CallDef, ?AEVM_01_Solidity_01);
 run(_, #{ call := Call} = _CallDef) ->
@@ -72,7 +75,7 @@ run_common(#{  amount      := Value
              , call_stack  := CallStack
              , caller      := <<CallerAddr:?PUB_SIZE/unit:8>>
              , code        := Code
-             , contract    := <<Address:?PUB_SIZE/unit:8>> = CPubKey
+             , contract    := <<Address:?PUB_SIZE/unit:8>>
              , gas         := Gas
              , gas_price   := GasPrice
              , trees       := Trees
@@ -86,7 +89,7 @@ run_common(#{  amount      := Value
             currentGasLimit   => aec_governance:block_gas_limit(),
             currentNumber     => aetx_env:height(TxEnv),
             currentTimestamp  => aetx_env:time_in_msecs(TxEnv),
-            chainState        => ChainState0, 
+            chainState        => ChainState0,
             chainAPI          => aec_vm_chain,
             vm_version        => VMVersion},
     Exec = #{code       => Code,

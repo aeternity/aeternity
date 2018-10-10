@@ -22,7 +22,8 @@ encode_call_data(_Contract, Function, Argument) ->
     %% TODO: Check that Function exists in Contract.
     {ok, <<Function/binary, Argument/binary>>}.
 
--spec simple_call_common(binary(), binary(), VMVersion :: integer()) -> {ok, binary()} | {error, binary()}.
+-spec simple_call_common(binary(), binary(), VMVersion :: integer()) ->
+                            {ok, binary()} | {error, binary()}.
 simple_call_common(Code, CallData, VMVersion) ->
     {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
     Owner          = <<123456:32/unit:8>>,

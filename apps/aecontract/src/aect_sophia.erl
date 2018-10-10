@@ -54,7 +54,9 @@ on_chain_call(ContractKey, Function, Argument) ->
     {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
     ContractsTree  = aec_trees:contracts(Trees),
     Contract       = aect_state_tree:get_contract(ContractKey, ContractsTree),
-    Code           = aect_contracts:code(Contract),
+    SerializedCode = aect_contracts:code(Contract),
+    %% TODO: Check the type info before calling?
+    #{ byte_code := Code} = aeso_compiler:deserialize(SerializedCode),
     case create_call(Code, Function, Argument) of
         {error, E} -> {error, E};
         CallData ->
@@ -64,7 +66,9 @@ on_chain_call(ContractKey, Function, Argument) ->
     end.
 
 -spec simple_call(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
-simple_call(Code, Function, Argument) ->
+simple_call(SerializedCode, Function, Argument) ->
+    %% TODO: Check the type info before calling?
+    #{ byte_code := Code} = aeso_compiler:deserialize(SerializedCode),
     case create_call(Code, Function, Argument) of
         {error, E} -> {error, E};
         CallData ->
