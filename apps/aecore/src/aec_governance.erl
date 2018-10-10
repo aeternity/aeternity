@@ -43,7 +43,7 @@
 -define(BLOCK_MINE_REWARD, 10000000000000000000).
 %% Ethereum's gas limit is 8 000 000 and block time ~15s.
 %% For 3s block time it's 1 600 000 (5x less).
--define(BLOCK_GAS_LIMIT, 1600000).
+-define(BLOCK_GAS_LIMIT, (4*1600000)).
 %% Taken from Ethereum - a simple tx to send Eth is about 21000 gas.
 -define(TX_GAS, 21000).
 %% TODO: this will be removed, gas price will be set by the tx sender.
