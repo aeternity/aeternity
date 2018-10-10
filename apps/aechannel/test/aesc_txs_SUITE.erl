@@ -165,6 +165,12 @@
 -define(BOGUS_CHANNEL, <<0:?MINER_PUB_BYTES/unit:8>>).
 -define(ROLES, [initiator, responder]).
 -define(VM_VERSION, ?AEVM_01_Sophia_01).
+-define(TEST_LOG(Format, Data),
+        try ct:log(Format, Data)
+        catch
+            %% Enable setting up node with "test" rebar profile.
+            error:undef -> ok
+        end).
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
@@ -2881,11 +2887,13 @@ fp_too_soon(Cfg) ->
     ok.
 
 fp_register_name(Cfg) ->
-    Name = <<"lorem.test">>,
+    Name = <<"bla.test">>,
     Salt = 42,
     {ok, NameAscii} = aens_utils:to_ascii(Name),
     CHash           = aeu_hex:hexstring_encode(
                         aens_hash:commitment_hash(NameAscii, Salt)),
+    ?TEST_LOG("Commitment hash ~p", [aens_hash:commitment_hash(NameAscii,
+                                                               Salt)]), 
     #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),
     Account = aeu_hex:hexstring_encode(Pubkey),
     StateHashSize = aec_base58c:byte_size_for_type(state),
@@ -2895,8 +2903,9 @@ fp_register_name(Cfg) ->
     SignContractAddress =
         fun(PubK, PrivK, ConId) ->
             BinToSign = <<PubK/binary, ConId/binary>>,
-            <<Word1:256, Word2:256>> = enacl:sign_detached(BinToSign, PrivK),
+            SigBin = <<Word1:256, Word2:256>> = enacl:sign_detached(BinToSign, PrivK),
             %_Sig = aeu_hex:hexstring_encode(aeso_data:to_binary({Word1, Word2}, 0))
+            ?TEST_LOG("Signature binary ~p", [SigBin]),
             Word11 = integer_to_binary(Word1),
             Word21 = integer_to_binary(Word2),
             <<"(", Word11/binary, ", ", Word21/binary, ")">>
@@ -2956,12 +2965,16 @@ fp_register_name(Cfg) ->
                         state := S0} = Props) ->
                     Nonce = 2,
                     Sig = SignContractAddress(OPubKey, OPrivKey, ContractId),
+                    ?TEST_LOG("Signature ~p", [Sig]),
                     PreclaimArgs = <<"(", Account/binary, ",",
                                           CHash/binary, ",",
                                           Sig/binary,
                                       ")">>,
+                    ?TEST_LOG("Preclaim args ~p", [PreclaimArgs]),
                     CallData = aect_sophia:create_call(Code, <<"preclaim">>,
                                                        PreclaimArgs),
+                    true = is_binary(CallData),
+                    ?TEST_LOG("CallData ~p", [CallData]),
                     {ok, CallTx} =
                         aect_call_tx:new(
                             #{caller_id   => aec_id:create(account, OPubKey),
