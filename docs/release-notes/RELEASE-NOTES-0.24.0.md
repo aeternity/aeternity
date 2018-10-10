@@ -1,6 +1,6 @@
 # About this release
 
-[This release][this-release] is focused on TODOFILLMEIN.
+[This][this-release] is a maintenance release.
 It:
 * Upgrade IDNA library to introduce character and label validation according to IDNA 2008.
 * Seed node with address 31.13.249.70 in region eu-east has been replaced with seed node with address 18.130.148.7 in region eu-west-2
