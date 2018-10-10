@@ -3012,7 +3012,7 @@ fp_register_name(Cfg) ->
                   
     Test =
         fun(Owner, Forcer) ->
-            ?TEST_LOG("Name preclaimed off-chain, owner is ~p, forcer is ~p",
+            ?TEST_LOG("Name preclaim off-chain, owner is ~p, forcer is ~p",
                       [Owner, Forcer]),
             ContractCreateRound = 10,
             run(#{cfg => Cfg},
@@ -3073,7 +3073,7 @@ fp_register_name(Cfg) ->
                       GasLimit = aect_call:gas_used(Call),
                       GasPrice = aect_call:gas_price(Call),
                       %% the default catch all reason for error
-                      <<>> = aect_call:return_value(Call),
+                      <<"not_allowed_off_chain">> = aect_call:return_value(Call),
                       error = aect_call:return_type(Call),
 
                       %% expected channel states

@@ -1526,6 +1526,9 @@ recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend)
                     {error, ?AEVM_PRIMOP_ERR_REASON_OOG(_OogResource, _OogCost, State9)} ->
                         ?TEST_LOG("Out of gas spending ~p gas for ~p", [_OogCost, _OogResource]),
                         eval_error(out_of_gas, State9);
+                    {error, not_allowed_off_chain} ->
+                        ?TEST_LOG("Not allowed calling this contract off-chain", []),
+                        eval_error(not_allowed_off_chain, State8);
                     {error, _Err} ->
                         ?TEST_LOG("Invalid call error ~p", [_Err]),
                         {0, State8, {error, invalid_call}}
