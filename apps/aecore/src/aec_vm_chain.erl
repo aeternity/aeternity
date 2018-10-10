@@ -54,7 +54,7 @@
 
 -type chain_trees() :: #trees{}.
 -type chain_state() :: #state{}.
-
+-type prim_op_result() :: {ok, chain_state()} | {error, term()}.
 -define(PUB_SIZE, 32).
 
 
@@ -379,6 +379,8 @@ decode_as(Type, Val) ->
     ?DEBUG_LOG("Can't decode ~p as ~p\n", [Val, Type]),
     {error, out_of_gas}.
 
+-spec aens_preclaim(binary(), binary(), binary(), chain_state()) ->
+    prim_op_result().
 aens_preclaim(Addr, CHash, Signature, State) ->
     on_chain_only(State,
                   fun() -> aens_preclaim_(Addr, CHash, Signature, State) end).
@@ -582,6 +584,8 @@ get_on_chain_trees(#trees{is_onchain = true, trees = Trees}) ->
 get_on_chain_trees(#trees{is_onchain = false, inner = Inner}) ->
     get_on_chain_trees(Inner).
 
+-spec on_chain_only(chain_state(), fun(() -> prim_op_result())) ->
+    prim_op_result().
 on_chain_only(State, Fun) ->
     #state{trees = ChainTrees} = State,
     case is_channel_call(ChainTrees) of
