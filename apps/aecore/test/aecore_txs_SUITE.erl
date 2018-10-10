@@ -150,7 +150,7 @@ txs_gc(Config) ->
     aecore_suite_utils:mine_key_blocks(N1, 2),
 
     %% Now there should be no transactions in mempool
-    {ok, Txs6} = rpc:call(N1, aec_tx_pool, peek, [infinity]),
+    {ok, Txs6} = pool_peek(N1),
     {0, _} = {length(Txs6), Txs6},
 
     ok = aecore_suite_utils:check_for_logs([dev1], Config).
