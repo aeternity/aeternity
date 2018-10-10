@@ -16,7 +16,7 @@
                   channel_id         :: aesc_channels:id() | undefined,
                   enc_channel_id     :: aec_base58c:encoded() | undefined,
                   job_id             :: term(),
-                  protocol           :: legacy | jsonrpc | undefined,
+                  protocol = legacy  :: legacy | jsonrpc,
                   orig_request       :: map() | undefined,
                   role               :: initiator | responder | undefined,
                   host               :: binary() | undefined,
