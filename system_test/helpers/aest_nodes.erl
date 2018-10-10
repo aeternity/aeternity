@@ -594,7 +594,42 @@ wait_for_value({txs_on_node, Txs}, NodeNames, Timeout, Ctx) ->
                     true -> wait
                 end
         end,
+    loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Txs found ~p", [Txs]});
+wait_for_value({txs_all_dropped, Txs}, NodeNames, Timeout, Ctx) ->
+    FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
+    CheckF =
+        fun(Node) ->
+            Exists = lists:foldl(fun(Tx, Acc) ->
+                Params = maps:merge(#{hash => Tx}, FaultInject),
+                case request(Node, 'GetTransactionByHash', Params) of
+                    {ok, 200, Block} -> [Block | Acc];
+                    {ok, 404, _} -> Acc
+                end
+            end, [], Txs),
+            case length(Exists) > 0 of
+                true -> wait;
+                false -> {done, undefined}
+            end
+        end,
+    loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Txs found ~p", [Txs]});
+wait_for_value({txs_any_dropped, Txs}, NodeNames, Timeout, Ctx) ->
+    FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
+    CheckF =
+        fun(Node) ->
+            Exists = lists:foldl(fun(Tx, Acc) ->
+                Params = maps:merge(#{hash => Tx}, FaultInject),
+                case request(Node, 'GetTransactionByHash', Params) of
+                    {ok, 200, Block} -> [Block | Acc];
+                    {ok, 404, _} -> Acc
+                end
+            end, [], Txs),
+            case length(Exists) < length(Txs) of
+                false -> wait;
+                true -> {done, Exists}
+            end
+        end,
     loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Txs found ~p", [Txs]}).
+
 
 wait_for_time(height, NodeNames, Time) ->
     wait_for_time(height, NodeNames, Time, #{}).
@@ -684,32 +719,57 @@ wait_for_exit(Pid, Timeout) ->
 loop_for_values(CheckF, Nodes, Rem, Delay, Timeout) ->
     loop_for_values(CheckF, Nodes, Rem, Delay, Timeout, {"", []}).
 
-loop_for_values(CheckF, Nodes, Rem, Delay, Timeout, FinalMessage) ->
+loop_for_values(CheckF, Nodes, Rem, Delay, Timeout, FinalMessage)
+  when is_integer(Timeout) ->
     Start = erlang:system_time(millisecond),
     Expiration = Start + Timeout,
-    Results = wait_for_value(CheckF, Nodes, Rem, Delay, Expiration, #{}),
+    ExpFun = make_time_expiration(Expiration),
+    Results = wait_for_value(CheckF, Nodes, Rem, Delay, ExpFun, #{}),
     End = erlang:system_time(millisecond),
     {Format, Args} = FinalMessage,
     aest_nodes_mgr:log("Reached after ~.2f seconds (slack ~p ms) " ++ Format,
                        [ (End - Start) / 1000, Timeout - (End - Start) | Args]),
+    Results;
+loop_for_values(CheckF, Nodes, Rem, Delay, {blocks_delta, MaxDeltaHeight}, FinalMessage)
+  when is_integer(MaxDeltaHeight) ->
+    RefHeight = get_min_top_height(Nodes),
+    MaxHeight = RefHeight + MaxDeltaHeight,
+    loop_for_values(CheckF, Nodes, Rem, Delay, {blocks, MaxHeight}, FinalMessage);
+loop_for_values(CheckF, Nodes, Rem, Delay, {blocks, MaxHeight}, FinalMessage)
+  when is_integer(MaxHeight) ->
+    Start = erlang:system_time(millisecond),
+    ExpFun = make_height_expiration(Nodes, MaxHeight),
+    Results = wait_for_value(CheckF, Nodes, Rem, Delay, ExpFun, #{}),
+    End = erlang:system_time(millisecond),
+    {Format, Args} = FinalMessage,
+    aest_nodes_mgr:log("Reached after ~.2f seconds" ++ Format,
+                       [ (End - Start) / 1000 | Args]),
     Results.
 
+get_min_top_height(Nodes) ->
+    lists:min([ H || #{ height := H } <- [get_top(N) || N <- Nodes ] ]).
 
-wait_for_value(_CheckF, [], [], _Delay, _Expiration, Results) -> Results;
-wait_for_value(CheckF, [], Rem, Delay, Expiration, Results) ->
-    case Expiration >= erlang:system_time(millisecond) of
-        true ->
-            timer:sleep(Delay),
-            wait_for_value(CheckF, lists:reverse(Rem), [], Delay, Expiration, Results);
+make_height_expiration(Nodes, MaxHeight) ->
+    fun() -> get_min_top_height(Nodes) > MaxHeight end.
+
+make_time_expiration(MaxTime) ->
+    fun() -> erlang:system_time(millisecond) > MaxTime end.
+
+wait_for_value(_CheckF, [], [], _Delay, _ExpFun, Results) -> Results;
+wait_for_value(CheckF, [], Rem, Delay, ExpFun, Results) ->
+    case ExpFun() of
         false ->
+            timer:sleep(Delay),
+            wait_for_value(CheckF, lists:reverse(Rem), [], Delay, ExpFun, Results);
+        true ->
             error(timeout)
     end;
-wait_for_value(CheckF, [Node | Nodes], Rem, Delay, Expiration, Results) ->
+wait_for_value(CheckF, [Node | Nodes], Rem, Delay, ExpFun, Results) ->
     case CheckF(Node) of
         {done, Result} ->
-            wait_for_value(CheckF, Nodes, Rem, Delay, Expiration, maps:put(Node, Result, Results));
+            wait_for_value(CheckF, Nodes, Rem, Delay, ExpFun, maps:put(Node, Result, Results));
         wait ->
-            wait_for_value(CheckF, Nodes, [Node | Rem], Delay, Expiration, Results)
+            wait_for_value(CheckF, Nodes, [Node | Rem], Delay, ExpFun, Results)
     end.
 
 http_addr_get(Addr, Path, Query) ->
