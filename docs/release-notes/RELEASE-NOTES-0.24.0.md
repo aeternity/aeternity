@@ -1,10 +1,23 @@
 # About this release
 
-[This release][this-release] is focused on TODOFILLMEIN.
+[This][this-release] is a maintenance release.
 It:
-* Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
-
-TODO: When preparing the release, concatenate all `/docs/release-notes/next/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
+* Upgrade IDNA library to introduce character and label validation according to IDNA 2008.
+* Seed node with address 31.13.249.70 in region eu-east has been replaced with seed node with address 18.130.148.7 in region eu-west-2
+* Changes /blocks/top endpoint, the returned value is more explicit about the block type.
+* Makes the retries of the peer host name resolution configurable by the user. See configuration parameters `sync > resolver_max_retries` and `sync > resolver_backoff_times`.
+* mempool refactored/optimized for better throughput and latency
+* load regulation queues made configurable via epoch.[json|yaml]
+* 'from_id' field added to close-mutual transaction record
+  (changes HTTP API and serialization)
+* Renames transaction's type in user HTTP API to match swagger definition name (e.g. `spend_tx` is `SpendTx` now).
+* Allows state channel off-chain contracts to use on-chain data: balances,
+  names and oracle responses.
+* Changes the API from using hex encoded strings as contract call data, byte code, and return values to using base58c encoded byte arrays with the prefix `cb_`
+* Adds Cross-Origin Resource Sharing (CORS) support
+* Relased enoise version 1.0.0 - available at hex.pm and used it in node.
+* Adds computation of gas of all transactions based on their size. Contract transactions also have gas for their execution.
+* Adds efficient implementation of Sophia maps. This affects consensus.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.24.0
 
