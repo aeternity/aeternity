@@ -76,9 +76,10 @@ websocket_init(Params) ->
 websocket_handle({text, MsgBin}, #handler{protocol = P} = H) ->
     try unpack_request(P, jsx:decode(MsgBin, [return_maps]), H) of
         {Msg, H1} ->
+            HNext = H1#handler{orig_request = undefined},
             try process_incoming(Msg, H1) of
-                no_reply      -> {ok, H};
-                {reply, Resp} -> {reply, {text, jsx:encode(Resp)}, H}
+                no_reply      -> {ok, HNext};
+                {reply, Resp} -> {reply, {text, jsx:encode(Resp)}, HNext}
             catch
                 error:E1 ->
                     lager:debug("CAUGHT E1=~p / ~p", [E1, erlang:get_stacktrace()]),
