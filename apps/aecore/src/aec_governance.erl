@@ -90,7 +90,7 @@ block_mine_reward() ->
     ?BLOCK_MINE_REWARD.
 
 block_gas_limit() ->
-    ?BLOCK_GAS_LIMIT.
+    application:get_env(aecore, block_gas_limit, ?BLOCK_GAS_LIMIT).
 
 tx_base_gas() ->
     ?TX_BASE_GAS.

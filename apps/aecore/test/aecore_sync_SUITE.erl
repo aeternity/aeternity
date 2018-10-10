@@ -511,6 +511,8 @@ large_msgs(Config) ->
     aecore_suite_utils:start_node(Dev1, Config),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(Dev1)),
 
+    ok = rpc:call(N1, application, set_env, [aecore, block_gas_limit, 10000000]),
+
     %% Insert enough transactions to make a large generation
     Blob = fun(Size) -> << <<171:8>> || _ <- lists:seq(1, Size) >> end,
     {ok, Tx1} = add_spend_tx(N1, 10, 1, 1, 100, Blob(16#ffff)),
@@ -537,6 +539,9 @@ large_msgs(Config) ->
     T0 = os:timestamp(),
     aecore_suite_utils:start_node(Dev2, Config),
     aecore_suite_utils:connect(N2),
+
+    ok = rpc:call(N2, application, set_env, [aecore, block_gas_limit, 10000000]),
+
     true = expect_same(T0, Config).
 
 %% ==================================================
