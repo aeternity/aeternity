@@ -190,18 +190,6 @@
     wrong_http_method_peers/1
     ]).
 
-%%
-%% test case exports
-%% websocket endpoints
--export(
-   [ws_get_genesis/1,
-    ws_request_tag/1,
-    ws_block_mined/1,
-    ws_micro_block_added/1,
-    ws_refused_on_limit_reached/1,
-    ws_tx_on_chain/1
-   ]).
-
 %% channel websocket endpoints
 -export(
    [sc_ws_timeout_open/1,
@@ -266,7 +254,6 @@ groups() ->
        {group, internal_endpoints},
        {group, swagger_validation},
        {group, wrong_http_method_endpoints},
-       {group, websocket},
        {group, naming},
        {group, channel_websocket},
        {group, channel_websocket_legacy}
@@ -501,14 +488,6 @@ groups() ->
      ]},
      {naming, [sequence],
       [naming_system_manage_name
-      ]},
-     {websocket, [sequence],
-      [ws_get_genesis,
-       ws_request_tag,
-       ws_block_mined,
-       ws_micro_block_added,
-       ws_refused_on_limit_reached,
-       ws_tx_on_chain
       ]},
      {channel_websocket, [sequence],
       channel_websocket_sequence()
@@ -3345,183 +3324,6 @@ naming_system_broken_txs(_Config) ->
 %% Websocket tests
 %% ============================================================
 
-ws_get_genesis(_Config) ->
-    {ok, ConnPid} = ws_start_link(),
-    {_Tag, #{ <<"block">> := Block }} =
-        ws_chain_get(ConnPid, #{height => 0, type => block}),
-    {ok, 200, BlockMap} = get_key_blocks_by_height_sut(0),
-    ?assertEqual(BlockMap, Block),
-
-    ok = aehttp_ws_test_utils:stop(ConnPid),
-    ok.
-
-ws_request_tag(_Config) ->
-    {ok, ConnPid} = ws_start_link(),
-
-    %% Test with tag
-    {<<"supersecret_tag">>, #{<<"block">> := _Block}} =
-        ws_chain_get(ConnPid, supersecret_tag, #{height => 0, type => block}),
-
-    %% And test without tag
-    {<<"untagged">>, #{<<"block">> := _Block}} =
-        ws_chain_get(ConnPid, #{height => 0, type => block}),
-
-    ok = aehttp_ws_test_utils:stop(ConnPid),
-    ok.
-
-
-ws_block_mined(_Config) ->
-    %% dbg:tracer(),
-    %% dbg:tpl(aehttp_ws_test_utils, x),
-    %% dbg:tp(jsx, x),
-    %% dbg:p(all, [c]),
-    %% ConnPid1 = try
-    {ok, ConnPid} = ws_start_link(),
-
-    %% Register for mined_block events
-    ws_subscribe(ConnPid, #{ type => mined_block }),
-
-    {Height, Hash} = ws_mine_key_block(ConnPid, ?NODE, 3),
-
-    {_Tag, #{<<"block">> := Block}} = ws_chain_get(ConnPid, #{height => Height, type => block}),
-    {_Tag, #{<<"block">> := Block}} = ws_chain_get(ConnPid, #{hash => Hash, type => block}),
-    {_Tag, #{<<"header">> := Header}} = ws_chain_get(ConnPid, #{height => Height, type => header}),
-    {_Tag, #{<<"header">> := Header}} = ws_chain_get(ConnPid, #{hash => Hash, type => header}),
-    %% ConnPid
-    %% after
-    %%     dbg:ctp('_'),
-    %%     dbg:ctpl('_'),
-    %%     dbg:stop()
-    %% end,
-    ok = aehttp_ws_test_utils:stop(ConnPid),
-    ok.
-
-ws_micro_block_added(_Config) ->
-    {ok, ConnPid} = ws_start_link(),
-
-    %% Mine 1 key block to get a reward.
-    ws_subscribe(ConnPid, #{ type => mined_block }),
-    {_Height0, _KeyBlockHash0} = ws_mine_key_block(ConnPid, ?NODE, 1),
-
-    %% 1 tx in the mempool, so micro block will be generated.
-    {ok, 200, #{<<"tx">> := SpendTx}} =
-        post_spend_tx(aec_base58c:encode(account_pubkey, random_hash()), 1, 1),
-    sign_and_post_tx(SpendTx),
-
-    %% Register for added_micro_block events
-    ws_subscribe(ConnPid, #{ type => added_micro_block }),
-    {Height, KeyBlockHash, MicroBlockHash} = ws_mine_key_and_micro_block(ConnPid, ?NODE),
-
-    {_Tag, #{<<"block">> := #{<<"height">> := Height, <<"prev_hash">> := PrevHash}}} =
-        ws_chain_get(ConnPid, #{hash => KeyBlockHash, type => block}),
-    {_Tag, #{<<"header">> := #{<<"height">> := Height, <<"prev_hash">> := PrevHash}}} =
-        ws_chain_get(ConnPid, #{hash => KeyBlockHash, type => header}),
-    {_Tag, #{<<"block">> := #{<<"height">> := Height, <<"prev_hash">> := PrevHash1, <<"txs_hash">> := TxsHash}}} =
-        ws_chain_get(ConnPid, #{hash => MicroBlockHash, type => block}),
-    {_Tag, #{<<"header">> := #{<<"height">> := Height, <<"prev_hash">> := PrevHash1, <<"txs_hash">> := TxsHash}}} =
-        ws_chain_get(ConnPid, #{hash => MicroBlockHash, type => header}),
-
-    ok = aehttp_ws_test_utils:stop(ConnPid),
-    ok.
-%% Currently the websockets are a queue: they have a maximim amount of
-%% acceptors. Every WS trying to connect after all acceptoprs are used
-%% goes into a queue. When the queue is full - the node starts rejecting
-%% any new incoming WS connections
-ws_refused_on_limit_reached(_Config) ->
-    %% maximum amount of acceptors
-    MaxWsCount = rpc(aeu_env, user_config_or_env,
-                          [[<<"websocket">>, <<"internal">>, <<"acceptors">>],
-                          aehttp, [internal, websocket, handlers], 10]),
-    %% Maximum WS connections hanging in the queue
-    WSQueueSize = rpc(aehttp_app, ws_handlers_queue_max_size, []),
-    WSDieTimeout = 1000,
-    ct:log("Websocket acceptors: ~p, websocket acceptor's queue size ~p",
-           [MaxWsCount, WSQueueSize]),
-    %% assert no WS running on the node
-    0 = open_websockets_count(),
-    %% start as many WS as needed to consume all acceptors
-    WSPids =
-        lists:map(
-            fun(_) ->
-              {ok, ConnPid} = ws_start_link(),
-              ConnPid
-            end,
-            lists:seq(1, MaxWsCount)),
-    %% assert expectation for amount of connected WSs
-    MaxWsCount = open_websockets_count(),
-    WaitingPids =
-        lists:map(
-            fun(_) ->
-                %% try to connect a WS client; assert it does not connect and
-                %% is waiting
-                {error, {still_connecting, WaitingPid}} = ws_start_link(),
-                MaxWsCount = open_websockets_count(),
-                WaitingPid
-            end,
-            lists:seq(1, WSQueueSize)),
-
-    %% Now both the acceptor pool and queue are full. Try to connect a new WS
-    %% client and assert it fails
-    {error, rejected} = ws_start_link(),
-
-    %% split currently connected WS clients into two groups: first with as
-    %% many as there are WS clients waiting in the queue and all the rest in a
-    %% seperate list. The first group would be used for stopping WS clients
-    %% one by one while validating that one of the waiting WS clients connects
-    %% for each one stopped
-    {FirstWSsPids, OtherWSsPids} = lists:split(WSQueueSize, WSPids),
-    lists:foreach(
-        fun(Pid) ->
-            %% stop one
-            ?WS:stop(Pid),
-            %% another one connects in its place and it doesn't matter which one
-            {ok, _SomePid} = ?WS:wait_for_connect_any(),
-            %% total amount of connected WS clients is still the maximum
-            MaxWsCount = open_websockets_count()
-        end,
-        FirstWSsPids),
-    %% cleanup
-    lists:foreach(fun ?WS:stop/1, OtherWSsPids),
-    timer:sleep(100), % wait for all of them to die out
-    {ok, WSQueueSize} =
-        aec_test_utils:wait_for_it_or_timeout(fun open_websockets_count/0,
-                                              WSQueueSize, WSDieTimeout),
-    lists:foreach(fun ?WS:stop/1, WaitingPids),
-    timer:sleep(100), % wait for all of them to die out
-    {ok, 0} =
-        aec_test_utils:wait_for_it_or_timeout(fun open_websockets_count/0,
-                                              0, WSDieTimeout),
-    ok.
-
-ws_tx_on_chain(_Config) ->
-    {ok, ConnPid} = ws_start_link(),
-
-    %% Register for events when a block is mined!
-    ws_subscribe(ConnPid, #{ type => mined_block }),
-
-    %% Mine a block to make sure the Pubkey has some funds!
-    ws_mine_key_block(ConnPid, ?NODE, 1),
-
-    %% Fetch the pubkey via HTTP
-    {ok, 200, #{ <<"pub_key">> := _}} = get_node_pubkey(),
-
-    %% Post spend tx
-    {ok, 200, #{<<"tx">> := Tx}} =
-        post_spend_tx(aec_base58c:encode(account_pubkey, random_hash()), 3, 1),
-    TxHash = sign_and_post_tx(Tx),
-
-    %% Subscribe for an event once the Tx goes onto the chain...
-    ws_subscribe(ConnPid, #{ type => tx, tx_hash => TxHash }),
-    ok = ?WS:register_test_for_event(ConnPid, chain, tx_chain),
-
-    %% Mine a block and check that an event is receieved corresponding to
-    %% the Tx.
-    ws_mine_key_block(ConnPid, ?NODE, 2),
-    {ok, #{<<"tx_hash">> := TxHash }} = ?WS:wait_for_event(ConnPid, chain, tx_chain),
-
-    ok = aehttp_ws_test_utils:stop(ConnPid),
-    ok.
-
 %%
 %% Channels
 %%
@@ -5082,46 +4884,6 @@ format_arg(B) when is_binary(B)  -> aeu_hex:hexstring_encode(B);
 format_arg(I) when is_integer(I) -> integer_to_binary(I).
 
 %% ============================================================
-%% WebSocket helpers
-%% ============================================================
-
-ws_subscribe(ConnPid, PayLoad) ->
-    ok = ?WS:register_test_for_event(ConnPid, chain, subscribe),
-    ?WS:send(ConnPid, chain, subscribe, PayLoad),
-    {ok, _, #{<<"result">> := <<"ok">>}} = ?WS:wait_for_event(ConnPid, chain, subscribe),
-    ok = ?WS:unregister_test_for_event(ConnPid, chain, subscribe).
-
-ws_chain_get(ConnPid, PayLoad) ->
-    ws_chain_get(ConnPid, undefined, PayLoad).
-
-ws_chain_get(ConnPid, Tag, PayLoad) ->
-    ok = ?WS:register_test_for_event(ConnPid, chain, requested_data),
-    case Tag of
-        undefined -> ?WS:send(ConnPid, chain, get, PayLoad);
-        _         -> ?WS:send(ConnPid, chain, get, Tag, PayLoad)
-    end,
-    {ok, Tag1, Res} = ?WS:wait_for_event(ConnPid, chain, requested_data),
-    ok = ?WS:unregister_test_for_event(ConnPid, chain, requested_data),
-    {Tag1, Res}.
-
-ws_mine_key_block(ConnPid, Node, Count) ->
-    ok = ?WS:register_test_for_event(ConnPid, chain, mined_block),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(Node), Count),
-    {ok, #{<<"height">> := Height, <<"hash">> := Hash}} = ?WS:wait_for_event(ConnPid, chain, mined_block),
-    ok = ?WS:unregister_test_for_event(ConnPid, chain, mined_block),
-    {Height, Hash}.
-
-ws_mine_key_and_micro_block(ConnPid, Node) ->
-    ok = ?WS:register_test_for_events(ConnPid, chain, [mined_block, added_micro_block]),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(Node), 2),
-    {ok, #{<<"height">> := Height, <<"hash">> := KeyBlockHash}} =
-        ?WS:wait_for_event(ConnPid, chain, mined_block),
-    {ok, #{<<"height">> := Height, <<"hash">> := MicroBlockHash}} =
-        ?WS:wait_for_event(ConnPid, chain, added_micro_block),
-    ok = ?WS:unregister_test_for_event(ConnPid, chain, [mined_block, added_micro_block]),
-    {Height, KeyBlockHash, MicroBlockHash}.
-
-%% ============================================================
 %% HTTP Requests
 %% ============================================================
 
@@ -5516,12 +5278,6 @@ internal_address() ->
                 aehttp, [internal, port], 8143]),
     "http://127.0.0.1:" ++ integer_to_list(Port).
 
-ws_host_and_port() ->
-    Port = rpc(aeu_env, user_config_or_env,
-              [ [<<"websocket">>, <<"internal">>, <<"port">>],
-                aehttp, [internal, websocket, port], 8144]),
-    {"127.0.0.1", Port}.
-
 channel_ws_host_and_port() ->
     Port = rpc(aeu_env, user_config_or_env,
               [ [<<"websocket">>, <<"channel">>, <<"port">>],
@@ -5681,20 +5437,9 @@ minimal_fee_and_blocks_to_mine(Amount, ChecksCnt) ->
     BlocksToMine = trunc(math:ceil(TokensRequired / MineReward)) + Delay,
     {BlocksToMine, Fee}.
 
-ws_start_link() ->
-    {Host, Port} = ws_host_and_port(),
-    ?WS:start_link(Host, Port).
-
 channel_ws_start(Role, Opts) ->
     {Host, Port} = channel_ws_host_and_port(),
     ?WS:start_channel(Host, Port, Role, Opts).
-
-open_websockets_count() ->
-    QueueName = ws_handlers,
-    % ensure queue exsits
-    true = undefined =/= rpc(jobs, queue_info, [QueueName]),
-    length([1 || {_, QName} <- rpc(jobs, info, [monitors]),
-                 QName =:= QueueName]).
 
 sign_and_post_tx(EncodedUnsignedTx) ->
     {ok, SerializedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedUnsignedTx),
