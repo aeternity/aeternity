@@ -39,13 +39,9 @@
 
 %=== GENERIC API FUNCTIONS =====================================================
 
-start(Backends, EnvMap) ->
-    {ok, _} = application:ensure_all_started(hackney),
-    gen_server:start({local, ?SERVER}, ?MODULE, [Backends, EnvMap], []).
+start(Backends, EnvMap) -> start_proc(?FUNCTION_NAME, Backends, EnvMap).
 
-start_link(Backends, EnvMap) ->
-    {ok, _} = application:ensure_all_started(hackney),
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [Backends, EnvMap], []).
+start_link(Backends, EnvMap) -> start_proc(?FUNCTION_NAME, Backends, EnvMap).
 
 stop() ->
     gen_server:stop(?SERVER).
@@ -178,6 +174,13 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %=== INTERNAL FUNCTIONS ========================================================
+
+start_proc(Func, Backends, EnvMap) ->
+    [{ok, _} = application:ensure_all_started(A) || A <- [
+        hackney,
+        yamerl
+    ]],
+    gen_server:Func({local, ?SERVER}, ?MODULE, [Backends, EnvMap], []).
 
 log(LogFun, Format, Params) when is_function(LogFun) ->
     LogFun(Format, Params);
