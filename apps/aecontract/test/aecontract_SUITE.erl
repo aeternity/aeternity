@@ -2158,7 +2158,7 @@ sophia_oracles_gas_ttl__measure_gas_used(Sc, Height, Gas) ->
 %% Test that gas charged by oracle primop depends on TTL of state object.
 %% Test approach: run primop with low and high TTLs, then compare consumed gas. This proves that TTL-related gas computation kicks in without relying on absolute minimum value of gas used.
 sophia_oracles_gas_ttl__oracle_registration(_Cfg) ->
-    {Part, Whole} = aec_governance:state_gas_cost_per_block(oracle_registration),
+    {Part, Whole} = aec_governance:state_gas_per_block(oracle_registration),
     ?assertMatch(X when X > 0, Whole), %% Hardcoded expectation on governance - for test readability.
     ?assertMatch(X when X > 0, Part), %% Hardcoded expectation on governance - for test readability.
     MM = fun(H, Ttl, Gas) ->
@@ -2196,7 +2196,7 @@ sophia_oracles_gas_ttl__oracle_registration(_Cfg) ->
     ok.
 
 sophia_oracles_gas_ttl__oracle_extension(_Cfg) ->
-    {Part, Whole} = aec_governance:state_gas_cost_per_block(oracle_extension),
+    {Part, Whole} = aec_governance:state_gas_per_block(oracle_extension),
     ?assertMatch(X when X > 0, Whole), %% Hardcoded expectation on governance - for test readability.
     ?assertMatch(X when X > 0, Part), %% Hardcoded expectation on governance - for test readability.
     MM = fun(H, Ttl, Gas) ->
@@ -2228,7 +2228,7 @@ sophia_oracles_gas_ttl__oracle_extension(_Cfg) ->
     ok.
 
 sophia_oracles_gas_ttl__query(_Cfg) ->
-    {Part, Whole} = aec_governance:state_gas_cost_per_block(oracle_query),
+    {Part, Whole} = aec_governance:state_gas_per_block(oracle_query),
     ?assertMatch(X when X > 0, Whole), %% Hardcoded expectation on governance - for test readability.
     ?assertMatch(X when X > 0, Part), %% Hardcoded expectation on governance - for test readability.
     MM = fun(H, Ttl, Gas) ->
@@ -2266,7 +2266,7 @@ sophia_oracles_gas_ttl__query(_Cfg) ->
     ok.
 
 sophia_oracles_gas_ttl__response(_Cfg) ->
-    {Part, Whole} = aec_governance:state_gas_cost_per_block(oracle_response),
+    {Part, Whole} = aec_governance:state_gas_per_block(oracle_response),
     ?assertMatch(X when X > 0, Whole), %% Hardcoded expectation on governance - for test readability.
     ?assertMatch(X when X > 0, Part), %% Hardcoded expectation on governance - for test readability.
     MM = fun(H, Ttl, Gas) ->

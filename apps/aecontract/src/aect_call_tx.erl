@@ -120,7 +120,7 @@ origin(#contract_call_tx{} = Tx) ->
 call_id(#contract_call_tx{} = Tx) ->
     aect_call:id(caller_pubkey(Tx), nonce(Tx), contract_pubkey(Tx)).
 
-%% CallerAccount should exist, and have enough funds for the fee + gas cost
+%% CallerAccount should exist, and have enough funds for the fee + gas
 %% Contract should exist and its vm_version should match the one in the call.
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#contract_call_tx{nonce = Nonce,
