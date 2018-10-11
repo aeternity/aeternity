@@ -8,8 +8,8 @@
 
 -module(aevm_gas).
 
--export([ op_cost/2
-        , mem_cost/2
+-export([ op_gas/2
+        , mem_gas/2
         ]).
 -export([ call_cap/2
         ]).
@@ -23,13 +23,13 @@
 %%====================================================================
 
 %% NOTE: This is just purely the op cost, not including memory cost
-op_cost(Op, State) ->
-    try aevm_opcodes:op_base_cost(Op) + op_dynamic_cost(Op, State)
+op_gas(Op, State) ->
+    try aevm_opcodes:op_base_gas(Op) + op_dynamic_gas(Op, State)
     catch error:{badarg, _, _} -> State %% TODO: This is not right
     end.
 
 %% NOTE: This is just purely the mem cost, not including op cost
-mem_cost(State1, State2) ->
+mem_gas(State1, State2) ->
     Size1 = aevm_eeevm_memory:size_in_words(State1),
     case aevm_eeevm_memory:size_in_words(State2) of
         Size1 -> 0;
@@ -40,36 +40,36 @@ mem_cost(State1, State2) ->
     end.
 
 call_cap(?CALL, State) ->
-    {CGascap, _} = call_dynamic_cost_components(State),
+    {CGascap, _} = call_dynamic_gas_components(State),
     CGascap;
 call_cap(?CALLCODE, State) ->
-    {CGascap, _} = call_dynamic_cost_components(State),
+    {CGascap, _} = call_dynamic_gas_components(State),
     CGascap;
 call_cap(?DELEGATECALL, State) -> %% TODO This is a placeholder.
-    {CGascap, _} = call_dynamic_cost_components(State),
+    {CGascap, _} = call_dynamic_gas_components(State),
     CGascap.
 
-op_dynamic_cost(?CALL, State) ->
-    call_dynamic_cost(State);
-op_dynamic_cost(?DELEGATECALL, State) ->
-    call_dynamic_cost(State);
-op_dynamic_cost(?CALLCODE, State) ->
-    call_dynamic_cost(State);
-op_dynamic_cost(?CALLDATACOPY, State) ->
+op_dynamic_gas(?CALL, State) ->
+    call_dynamic_gas(State);
+op_dynamic_gas(?DELEGATECALL, State) ->
+    call_dynamic_gas(State);
+op_dynamic_gas(?CALLCODE, State) ->
+    call_dynamic_gas(State);
+op_dynamic_gas(?CALLDATACOPY, State) ->
     ?GCOPY * round(ceil(peek(2, State)/32));
-op_dynamic_cost(?CODECOPY, State) ->
+op_dynamic_gas(?CODECOPY, State) ->
     ?GCOPY * round(ceil(peek(2, State)/32));
-op_dynamic_cost(?EXTCODECOPY, State) ->
+op_dynamic_gas(?EXTCODECOPY, State) ->
     ?GCOPY * round(ceil(peek(3, State)/32));
-op_dynamic_cost(?LOG0, State) -> ?GLOGDATA * peek(1, State);
-op_dynamic_cost(?LOG1, State) -> ?GLOGDATA * peek(1, State);
-op_dynamic_cost(?LOG2, State) -> ?GLOGDATA * peek(1, State);
-op_dynamic_cost(?LOG3, State) -> ?GLOGDATA * peek(1, State);
-op_dynamic_cost(?LOG4, State) -> ?GLOGDATA * peek(1, State);
-op_dynamic_cost(?SHA3, State) ->
+op_dynamic_gas(?LOG0, State) -> ?GLOGDATA * peek(1, State);
+op_dynamic_gas(?LOG1, State) -> ?GLOGDATA * peek(1, State);
+op_dynamic_gas(?LOG2, State) -> ?GLOGDATA * peek(1, State);
+op_dynamic_gas(?LOG3, State) -> ?GLOGDATA * peek(1, State);
+op_dynamic_gas(?LOG4, State) -> ?GLOGDATA * peek(1, State);
+op_dynamic_gas(?SHA3, State) ->
     Us1 = peek(1, State),
     ?GSHA3WORD * round(ceil(Us1/32));
-op_dynamic_cost(?SSTORE, State) ->
+op_dynamic_gas(?SSTORE, State) ->
     Us0 = peek(0, State),
     Us1 = peek(1, State),
     Old = aevm_eeevm_store:load(Us0, State),
@@ -77,23 +77,23 @@ op_dynamic_cost(?SSTORE, State) ->
         true  -> ?GSSET;   %% Additional storage is needed
         false -> ?GSRESET  %% Resetting a new value in the store.
     end;
-op_dynamic_cost(?EXP, State) ->
+op_dynamic_gas(?EXP, State) ->
     case peek(1, State) of
         0 -> 0;
         Us1 -> ?GEXPBYTE * (1 + floor_log_256(Us1))
     end;
-op_dynamic_cost(_Op,_State) ->
+op_dynamic_gas(_Op,_State) ->
     0.
 
 %%====================================================================
 %% Internal functions
 %%====================================================================
 
-call_dynamic_cost(State) ->
-    {CGascap, CExtra} = call_dynamic_cost_components(State),
+call_dynamic_gas(State) ->
+    {CGascap, CExtra} = call_dynamic_gas_components(State),
     CGascap + CExtra.
 
-call_dynamic_cost_components(State) ->
+call_dynamic_gas_components(State) ->
     Gas = aevm_eeevm_state:gas(State),
     Us0 = peek(0, State),
     %%Us1 = peek(1, State), %% TODO: Needed for CNEW.

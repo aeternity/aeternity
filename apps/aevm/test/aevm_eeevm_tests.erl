@@ -15,7 +15,7 @@
 %% For VMTests
 %%  "Because the data of the blockchain is not given,
 %%   the opcode BLOCKHASH could not return the hashes
-%%   of the corresponding blocks. Therefore we define the hash of 
+%%   of the corresponding blocks. Therefore we define the hash of
 %%   block number n to be SHA3-256("n")."
 %% Indicated by the option blockhash->sha3
 extra_opts(Name) ->

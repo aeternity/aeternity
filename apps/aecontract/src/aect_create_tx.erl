@@ -265,8 +265,8 @@ process(#contract_create_tx{owner_id   = OwnerId,
             %% Spend gas + fee
             %% (The VM will decide how much gas is used: 0, some, all.)
             Trees5 = aect_utils:insert_call_in_trees(CallRes, Trees0),
-            GasCost = aect_call:gas_used(CallRes) * GasPrice,
-            Trees6 = spend(OwnerPubKey, ContractPubKey, 0, Fee+GasCost, Nonce,
+            UsedAmount = aect_call:gas_used(CallRes) * GasPrice,
+            Trees6 = spend(OwnerPubKey, ContractPubKey, 0, Fee + UsedAmount, Nonce,
                            Trees5, Env),
             {ok, Trees6}
     end.

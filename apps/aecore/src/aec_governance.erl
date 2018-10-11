@@ -22,8 +22,8 @@
          micro_block_cycle/0,
          accepted_future_block_time_shift/0,
          fraud_report_reward/0,
-         state_gas_cost_per_block/1,
-         primop_base_gas_cost/1,
+         state_gas_per_block/1,
+         primop_base_gas/1,
          add_network_id/1,
          get_network_id/0]).
 
@@ -56,7 +56,7 @@
 
 -define(ACCEPTED_FUTURE_BLOCK_TIME_SHIFT, (?EXPECTED_BLOCK_MINE_RATE_MINUTES * 3 * 60 * 1000)). %% 9 min
 
--define(ORACLE_STATE_GAS_COST_PER_YEAR, 32000). %% 32000 as `?GCREATE` in `aevm_gas.hrl` i.e. an oracle-related state object costs per year as much as it costs to indefinitely create an account.
+-define(ORACLE_STATE_GAS_PER_YEAR, 32000). %% 32000 as `?GCREATE` in `aevm_gas.hrl` i.e. an oracle-related state object costs per year as much as it costs to indefinitely create an account.
 
 %% Maps consensus protocol version to minimum height at which such
 %% version is effective.  The height must be strictly increasing with
@@ -116,10 +116,10 @@ tx_base_gas(oracle_extend_tx) -> ?TX_BASE_GAS;
 tx_base_gas(oracle_query_tx) -> ?TX_BASE_GAS;
 tx_base_gas(oracle_register_tx) -> ?TX_BASE_GAS;
 tx_base_gas(oracle_response_tx) -> ?TX_BASE_GAS;
-tx_base_gas(_) -> 
+tx_base_gas(_) ->
     %% never accept unknown transaction types
     block_gas_limit().
- 
+
 byte_gas() ->
     ?BYTE_GAS.
 
@@ -152,37 +152,37 @@ accepted_future_block_time_shift() ->
 %%
 %% Expressed as a fraction because otherwise it would become too large
 %% when multiplied by the number of key blocks.
--spec state_gas_cost_per_block(atom()) -> {Part::pos_integer(), Whole::pos_integer()}.
-state_gas_cost_per_block(oracle_registration) -> {?ORACLE_STATE_GAS_COST_PER_YEAR, ?EXPECTED_BLOCKS_IN_A_YEAR_FLOOR};
-state_gas_cost_per_block(oracle_extension)    -> state_gas_cost_per_block(oracle_registration);
-state_gas_cost_per_block(oracle_query)        -> state_gas_cost_per_block(oracle_registration);
-state_gas_cost_per_block(oracle_response)     -> state_gas_cost_per_block(oracle_registration).
+-spec state_gas_per_block(atom()) -> {Part::pos_integer(), Whole::pos_integer()}.
+state_gas_per_block(oracle_registration) -> {?ORACLE_STATE_GAS_PER_YEAR, ?EXPECTED_BLOCKS_IN_A_YEAR_FLOOR};
+state_gas_per_block(oracle_extension)    -> state_gas_per_block(oracle_registration);
+state_gas_per_block(oracle_query)        -> state_gas_per_block(oracle_registration);
+state_gas_per_block(oracle_response)     -> state_gas_per_block(oracle_registration).
 
 %% As primops are not meant to be called from contract call
 %% transactions, calling a primop costs (apart from the fees for the
 %% calling contract create transaction or contract call transaction)
 %% at least the gas cost of the call instruction (e.g. `CALL`) used
 %% for calling the primop.
-primop_base_gas_cost(?PRIM_CALL_SPEND              ) -> 0;
-primop_base_gas_cost(?PRIM_CALL_ORACLE_REGISTER    ) -> 0;
-primop_base_gas_cost(?PRIM_CALL_ORACLE_QUERY       ) -> 0;
-primop_base_gas_cost(?PRIM_CALL_ORACLE_RESPOND     ) -> 0;
-primop_base_gas_cost(?PRIM_CALL_ORACLE_EXTEND      ) -> 0;
-primop_base_gas_cost(?PRIM_CALL_ORACLE_GET_ANSWER  ) -> 0;
-primop_base_gas_cost(?PRIM_CALL_ORACLE_GET_QUESTION) -> 0;
-primop_base_gas_cost(?PRIM_CALL_ORACLE_QUERY_FEE   ) -> 0;
-primop_base_gas_cost(?PRIM_CALL_AENS_RESOLVE       ) -> 0;
-primop_base_gas_cost(?PRIM_CALL_AENS_PRECLAIM      ) -> 0;
-primop_base_gas_cost(?PRIM_CALL_AENS_CLAIM         ) -> 0;
-primop_base_gas_cost(?PRIM_CALL_AENS_UPDATE        ) -> 0;
-primop_base_gas_cost(?PRIM_CALL_AENS_TRANSFER      ) -> 0;
-primop_base_gas_cost(?PRIM_CALL_AENS_REVOKE        ) -> 0;
-primop_base_gas_cost(?PRIM_CALL_MAP_EMPTY          ) -> 0;
-primop_base_gas_cost(?PRIM_CALL_MAP_GET            ) -> 0;
-primop_base_gas_cost(?PRIM_CALL_MAP_PUT            ) -> 0;
-primop_base_gas_cost(?PRIM_CALL_MAP_DELETE         ) -> 0;
-primop_base_gas_cost(?PRIM_CALL_MAP_SIZE           ) -> 0;
-primop_base_gas_cost(?PRIM_CALL_MAP_TOLIST         ) -> 0.
+primop_base_gas(?PRIM_CALL_SPEND              ) -> 0;
+primop_base_gas(?PRIM_CALL_ORACLE_REGISTER    ) -> 0;
+primop_base_gas(?PRIM_CALL_ORACLE_QUERY       ) -> 0;
+primop_base_gas(?PRIM_CALL_ORACLE_RESPOND     ) -> 0;
+primop_base_gas(?PRIM_CALL_ORACLE_EXTEND      ) -> 0;
+primop_base_gas(?PRIM_CALL_ORACLE_GET_ANSWER  ) -> 0;
+primop_base_gas(?PRIM_CALL_ORACLE_GET_QUESTION) -> 0;
+primop_base_gas(?PRIM_CALL_ORACLE_QUERY_FEE   ) -> 0;
+primop_base_gas(?PRIM_CALL_AENS_RESOLVE       ) -> 0;
+primop_base_gas(?PRIM_CALL_AENS_PRECLAIM      ) -> 0;
+primop_base_gas(?PRIM_CALL_AENS_CLAIM         ) -> 0;
+primop_base_gas(?PRIM_CALL_AENS_UPDATE        ) -> 0;
+primop_base_gas(?PRIM_CALL_AENS_TRANSFER      ) -> 0;
+primop_base_gas(?PRIM_CALL_AENS_REVOKE        ) -> 0;
+primop_base_gas(?PRIM_CALL_MAP_EMPTY          ) -> 0;
+primop_base_gas(?PRIM_CALL_MAP_GET            ) -> 0;
+primop_base_gas(?PRIM_CALL_MAP_PUT            ) -> 0;
+primop_base_gas(?PRIM_CALL_MAP_DELETE         ) -> 0;
+primop_base_gas(?PRIM_CALL_MAP_SIZE           ) -> 0;
+primop_base_gas(?PRIM_CALL_MAP_TOLIST         ) -> 0.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Naming system variables
