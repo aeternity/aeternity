@@ -114,19 +114,19 @@ handle_call({setup_nodes, NodeSpecs}, _From, State) ->
 handle_call({get_node_pubkey, NodeName}, _From, State) ->
     {reply, mgr_get_node_pubkey(NodeName, State), State};
 handle_call({get_service_address, NodeName, Service}, _From, #{nodes := Nodes} = State) ->
-    #{NodeName := {Mod, NodeState}} = Nodes,
+    {Mod, NodeState} = maps:get(NodeName, Nodes),
     ServiceAddress = Mod:get_service_address(Service, NodeState),
     {reply, ServiceAddress, State};
 handle_call({get_internal_address, NodeName, Service}, _From, #{nodes := Nodes} = State) ->
-    #{NodeName := {Mod, NodeState}} = Nodes,
+    {Mod, NodeState} = maps:get(NodeName, Nodes),
     ServiceAddress = Mod:get_internal_address(Service, NodeState),
     {reply, ServiceAddress, State};
 handle_call({get_config, NodeName, Path}, _From, #{nodes := Nodes} = State) when is_list(Path) ->
-    #{NodeName := {_Mod, NodeState}} = Nodes,
+    {_Mod, NodeState} = maps:get(NodeName, Nodes),
     Config = maps:get(config, NodeState, []),
     {reply, config_find(Path, Config), State};
 handle_call({get_hostname, NodeName}, _From, #{nodes := Nodes} = State) ->
-    #{NodeName := {_Mod, _NodeState}} = Nodes,
+    {_Mod, _NodeState} = maps:get(NodeName, Nodes),
     %% for the moment only localhost supported
     {reply, "localhost", State};
 handle_call({start_node, NodeName}, _From, #{nodes := Nodes} = State) ->
@@ -134,12 +134,12 @@ handle_call({start_node, NodeName}, _From, #{nodes := Nodes} = State) ->
     NodeState2 = Mod:start_node(NodeState),
     {reply, ok, State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}};
 handle_call({stop_node, NodeName, Timeout}, _From, #{nodes := Nodes} =State) ->
-    #{NodeName := {Mod, NodeState}} = Nodes,
+    {Mod, NodeState} = maps:get(NodeName, Nodes),
     Opts = #{soft_timeout => Timeout},
     NodeState2 = Mod:stop_node(NodeState, Opts),
     {reply, ok, State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}};
 handle_call({kill_node, NodeName}, _From, #{nodes := Nodes} = State) ->
-    #{NodeName := {Mod, NodeState}} = Nodes,
+    {Mod, NodeState} = maps:get(NodeName, Nodes),
     NodeState2 = Mod:kill_node(NodeState),
     {reply, ok, State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}};
 handle_call({extract_archive, NodeName, Path, Archive}, _From, State) ->
@@ -214,7 +214,7 @@ mgr_cleanup(State) ->
 
 
 mgr_get_node_pubkey(NodeName, #{nodes := Nodes}) ->
-    #{NodeName := {Mod, NodeState}} = Nodes,
+    {Mod, NodeState} = maps:get(NodeName, Nodes),
     Mod:get_node_pubkey(NodeState).
 
 mgr_extract_archive(NodeName, Path, Archive, #{nodes := Nodes} = State) ->
