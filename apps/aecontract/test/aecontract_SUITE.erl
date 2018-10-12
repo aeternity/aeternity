@@ -671,7 +671,7 @@ call_contract(Caller, ContractKey, Fun, Type, Args, Options, S) ->
                  , fee        => 1
                  , amount     => 0
                  , gas        => 50000
-                 }, maps:remove(height, Options)), S),
+                 }, maps:without([height, return_gas_used], Options)), S),
     Height   = maps:get(height, Options, 1),
     PrivKey  = aect_test_utils:priv_key(Caller, S),
     {ok, S1} = sign_and_apply_transaction(CallTx, PrivKey, S, Height),
