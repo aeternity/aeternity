@@ -374,7 +374,9 @@ query_response_negative(Cfg) ->
     ok.
 
 query_response_negative_dynamic_fee(Cfg) ->
-    F = fun(QTxSpec, RTxSpec) ->
+    F = fun(RTTL, Fee) ->
+                QTxSpec = #{ response_ttl => RTTL },
+                RTxSpec = #{ response_ttl => RTTL, fee => Fee },
                 {OracleKey, ID, S1}  = query_oracle(Cfg, #{oracle_ttl => {block, 2000 + ?ORACLE_RSP_HEIGHT}, fee => 25}, QTxSpec),
                 Trees      = aeo_test_utils:trees(S1),
                 CurrHeight = ?ORACLE_RSP_HEIGHT,
@@ -385,16 +387,16 @@ query_response_negative_dynamic_fee(Cfg) ->
     1 = MinFee = aec_governance:minimum_tx_fee(),
 
     %% Test minimum fee for increasing TTL.
-    ?assertException(error, {illegal,response_ttl,{delta,0}}, F(#{response_ttl => {delta, 0}}, #{fee => 0})),
-    ?assertException(error, {illegal,response_ttl,{delta,0}}, F(#{response_ttl => {delta, 0}}, #{fee => MinFee})),
-    ?assertEqual({error, too_low_fee}, F(#{response_ttl => {delta, 1}}, #{fee => MinFee})),
-    ?assertMatch({ok, _}             , F(#{response_ttl => {delta, 1}}, #{fee => 1 + MinFee})),
-    ?assertMatch({ok, _}             , F(#{response_ttl => {delta, 999}}, #{fee => 1 + MinFee})),
-    ?assertMatch({ok, _}             , F(#{response_ttl => {delta, 1000}}, #{fee => 1 + MinFee})),
-    ?assertEqual({error, too_low_fee}, F(#{response_ttl => {delta, 1001}}, #{fee => 1 + MinFee})),
-    ?assertMatch({ok, _}             , F(#{response_ttl => {delta, 1001}}, #{fee => 2 + MinFee})),
+    ?assertException(error, {illegal,response_ttl,{delta,0}}, F({delta, 0}, 0)),
+    ?assertException(error, {illegal,response_ttl,{delta,0}}, F({delta, 0}, MinFee)),
+    ?assertEqual({error, too_low_fee}, F({delta, 1},    MinFee)),
+    ?assertMatch({ok, _}             , F({delta, 1},    1 + MinFee)),
+    ?assertMatch({ok, _}             , F({delta, 999},  1 + MinFee)),
+    ?assertMatch({ok, _}             , F({delta, 1000}, 1 + MinFee)),
+    ?assertEqual({error, too_low_fee}, F({delta, 1001}, 1 + MinFee)),
+    ?assertMatch({ok, _}             , F({delta, 1001}, 2 + MinFee)),
     %% Test more than minimum fee considering TTL.
-    ?assertMatch({ok, _}             , F(#{response_ttl => {delta, 1001}}, #{fee => 3 + MinFee})),
+    ?assertMatch({ok, _}             , F({delta, 1001}, 3 + MinFee)),
     ok.
 
 query_response(Cfg) ->
@@ -406,7 +408,7 @@ query_response(Cfg, QueryOpts) ->
     CurrHeight          = ?ORACLE_RSP_HEIGHT,
 
     %% Test that ResponseTX is accepted
-    RTx      = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, S1),
+    RTx      = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, maps:remove(query_ttl, QueryOpts), S1),
     PrivKey  = aeo_test_utils:priv_key(OracleKey, S1),
     SignedTx = aec_test_utils:sign_tx(RTx, PrivKey),
     Env      = aetx_env:tx_env(CurrHeight),

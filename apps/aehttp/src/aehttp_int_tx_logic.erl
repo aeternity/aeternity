@@ -10,7 +10,7 @@
 -export([ oracle_register/7
         , oracle_extend/4
         , oracle_query/8
-        , oracle_response/4
+        , oracle_response/5
        ]).
 
 sender_and_hash(STx) ->
@@ -99,18 +99,19 @@ oracle_query(EncodedOraclePubkey, Query, QueryFee, QueryTTLType,
               end
           end).
 
-oracle_response(DecodedQueryId, Response, Fee, TTL) ->
+oracle_response(DecodedQueryId, Response, ResponseTTLValue, Fee, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
             %% Note that this is the local node's pubkey.
             Sender = aec_id:create(oracle, Pubkey),
             aeo_response_tx:new(
-              #{oracle_id => Sender,
-                nonce     => Nonce,
-                query_id  => DecodedQueryId,
-                response  => Response,
-                fee       => Fee,
-                ttl       => TTL})
+              #{oracle_id    => Sender,
+                nonce        => Nonce,
+                query_id     => DecodedQueryId,
+                response     => Response,
+                response_ttl => {delta, ResponseTTLValue},
+                fee          => Fee,
+                ttl          => TTL})
           end).
 
 %% Internals

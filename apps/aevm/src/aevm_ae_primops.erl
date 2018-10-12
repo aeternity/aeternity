@@ -236,7 +236,7 @@ oracle_call_respond(_Value, Data, State) ->
                                     ArgumentTypes = [word, word, sign_t(), RType],
                                     [_, _, Sign0, R] = get_args(ArgumentTypes, Data),
                                     Callback = fun(API, ChainState) ->
-                                        API:oracle_respond(OracleKey, QueryKey, to_sign(Sign0), R, ChainState) end,
+                                        API:oracle_respond(OracleKey, QueryKey, to_sign(Sign0), R, DeltaRTTL, ChainState) end,
                                     cast_chain(Callback, State);
                                 {error, _} = Err -> Err
                             end

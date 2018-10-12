@@ -27,7 +27,7 @@
           oracle_query_format/2,
           oracle_query_response_ttl/3,
           oracle_register/7,
-          oracle_respond/5,
+          oracle_respond/6,
           oracle_response_format/2,
           aens_resolve/4,
           aens_preclaim/4,
@@ -229,17 +229,18 @@ oracle_query(Oracle, Q, Value, QTTL, RTTL,
         {error, _} = E -> E
     end.
 
-oracle_respond(Oracle, QueryId, Signature, Response,
+oracle_respond(Oracle, QueryId, Signature, Response, ResponseTTL,
                State = #state{ account = ContractKey }) ->
     Nonce = next_nonce(Oracle, State),
 
     {ok, Tx} = aeo_response_tx:new(
-                 #{oracle_id => aec_id:create(oracle, Oracle),
-                   nonce     => Nonce,
-                   query_id  => QueryId,
-                   response  => aeso_data:to_binary(Response),
-                   fee       => 0,
-                   ttl       => 0 %% Not used
+                 #{oracle_id    => aec_id:create(oracle, Oracle),
+                   nonce        => Nonce,
+                   query_id     => QueryId,
+                   response     => aeso_data:to_binary(Response),
+                   response_ttl => ResponseTTL,
+                   fee          => 0,
+                   ttl          => 0 %% Not used
                   }),
 
     Bin = <<QueryId/binary, ContractKey/binary>>,

@@ -2558,13 +2558,16 @@
     },
     "OracleRespondTx" : {
       "type" : "object",
-      "required" : [ "fee", "oracle_id", "query_id", "response" ],
+      "required" : [ "fee", "oracle_id", "query_id", "response", "response_ttl" ],
       "properties" : {
         "query_id" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "response" : {
           "type" : "string"
+        },
+        "response_ttl" : {
+          "$ref" : "#/definitions/RelativeTTL"
         },
         "fee" : {
           "type" : "integer",
@@ -2584,6 +2587,10 @@
         }
       },
       "example" : {
+        "response_ttl" : {
+          "type" : "delta",
+          "value" : 1
+        },
         "oracle_id" : null,
         "query_id" : { },
         "response" : "response",

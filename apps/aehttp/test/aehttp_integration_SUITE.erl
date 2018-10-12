@@ -829,6 +829,8 @@ init_per_testcase(post_oracle_response, Config) ->
      {query, ?config(query, SavedConfig)},
      {query_id, ?config(query_id, SavedConfig)},
      {fee, 10},
+     {response_ttl_type, <<"delta">>},
+     {response_ttl_value, 20},
      {response, <<"Hejsan">>} | init_per_testcase_all(Config)];
 init_per_testcase(_Case, Config) ->
     init_per_testcase_all(Config).
@@ -1699,10 +1701,12 @@ post_oracle_response(Config) ->
     QueryId = ?config(query_id, Config),
     Response = ?config(response, Config),
     TxArgs =
-        #{oracle_id => OracleId,
-          query_id  => QueryId,
-          response  => Response,
-          fee       => ?config(fee, Config)},
+        #{oracle_id    => OracleId,
+          query_id     => QueryId,
+          response     => Response,
+          response_ttl => #{type  => ?config(response_ttl_type, Config),
+                            value => ?config(response_ttl_value, Config)},
+          fee          => ?config(fee, Config)},
     {TxHash, Tx} = prepare_tx(oracle_response_tx, TxArgs),
     ok = post_tx(TxHash, Tx),
     ok = wait_for_tx_hash_on_chain(TxHash),
@@ -2361,9 +2365,11 @@ oracle_transactions(_Config) ->
                         query_id => aec_base58c:encode(oracle_query_id,
                                                        QueryId),
                         response => <<"Hejsan">>,
+                        response_ttl => #{type => <<"delta">>, value => 20},
                         fee => 3},
     ResponseDecoded = maps:merge(ResponseEncoded,
                               #{oracle_id => aec_id:create(oracle, MinerPubkey),
+                                response_ttl => {delta, 20},
                                 query_id => QueryId}),
     unsigned_tx_positive_test(ResponseDecoded, ResponseEncoded,
                                fun get_oracle_response/1,
@@ -2410,6 +2416,7 @@ oracle_transactions(_Config) ->
     %% broken ttl
     BrokenTTL1 = #{<<"invalid">> => <<"structure">>},
     BrokenTTL2 = #{<<"type">> => <<"hejsan">>, <<"value">> => 20},
+    BrokenTTL3 = #{<<"type">> => <<"delta">>, <<"value">> => 21}, %% only bad for Response
 
     {ok, 400, _} =
         get_oracle_register(maps:put(ttl, BrokenTTL1, RegEncoded)),
@@ -2424,10 +2431,19 @@ oracle_transactions(_Config) ->
         get_oracle_query(maps:put(response_ttl, BrokenTTL1, QueryEncoded)),
     {ok, 400, _} =
         get_oracle_query(maps:put(response_ttl, BrokenTTL2, QueryEncoded)),
+    {ok, 400, _} =
+        get_oracle_query(maps:put(response_ttl, BrokenTTL1, ResponseEncoded)),
+    {ok, 400, _} =
+        get_oracle_query(maps:put(response_ttl, BrokenTTL2, ResponseEncoded)),
+    {ok, 400, _} =
+        get_oracle_query(maps:put(response_ttl, BrokenTTL3, ResponseEncoded)),
     % test non-relative ttl
     {ok, 400, _} =
         get_oracle_query(maps:put(response_ttl, #{type => <<"block">>,
                                                   value => 2}, QueryEncoded)),
+    {ok, 400, _} =
+        get_oracle_query(maps:put(response_ttl, #{type => <<"block">>,
+                                                  value => 2}, ResponseEncoded)),
     ok.
 
 %% tests the following
@@ -4233,7 +4249,7 @@ random_unused_name(Attempts) ->
     end.
 
 sc_ws_contract_generic(Origin, Fun, Config, Opts) ->
-    %% get the infrastructure for users going 
+    %% get the infrastructure for users going
     {sc_ws_update, ConfigList} = ?config(saved_config, Config),
     Participants = proplists:get_value(participants, ConfigList),
     Clients = proplists:get_value(channel_clients, ConfigList),
@@ -4293,7 +4309,7 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                       query_ttl       => QueryTTL
                      }),
     OracleQuerySequence =
-        fun(Q0, R0) -> 
+        fun(Q0, R0) ->
             Q = aeso_data:to_binary(Q0, 0),
             R = aeso_data:to_binary(R0, 0),
             QueryId = query_oracle(OraclePubkey, OraclePrivkey, %oracle asks oracle
@@ -4301,7 +4317,7 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                                   #{query        => Q,
                                     response_ttl => {delta, ResponseTTL}}),
             respond_oracle(OraclePubkey, OraclePrivkey, QueryId,
-                          R, #{}),
+                          R, #{response_ttl => {delta, ResponseTTL}}),
             QueryId
         end,
 
@@ -4321,7 +4337,7 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     ContractPubKey = contract_id_from_create_update(OwnerPubKey,
                                                     UnsignedStateTx),
 
-    CallContract = 
+    CallContract =
         fun(Who, Fun, Args, ReturnType, Result) ->
             {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
             Tx = call_a_contract(Fun, Args,
@@ -4414,7 +4430,7 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     ContractPubKey = contract_id_from_create_update(OwnerPubKey,
                                                     UnsignedStateTx),
 
-    ContractCanNameResolve = 
+    ContractCanNameResolve =
         fun(Who, Name0, Key0, Result) ->
             {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
             AddQuotes = fun(B) when is_binary(B) -> <<"\"", B/binary, "\"">> end,
@@ -4471,7 +4487,7 @@ sc_ws_enviroment_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     ContractPubKey = contract_id_from_create_update(OwnerPubKey,
                                                     UnsignedStateTx),
 
-    ContractCall = 
+    ContractCall =
         fun(Who, Fun, ResultType, Result) ->
             {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
             Args = <<"()">>,
@@ -4534,7 +4550,7 @@ sc_ws_remote_call_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     {IdentityCPubKey, IdentityCode} = CreateContract("identity"),
     {RemoteCallCPubKey, RemoteCallCode} = CreateContract("remote_call"),
 
-    ContractCall = 
+    ContractCall =
         fun(Who, ContractPubKey, Code, Fun, Args, Result, Amount) ->
             {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
             Tx = call_a_contract(Fun,
@@ -4633,7 +4649,7 @@ claim_name(Owner, OwnerPrivKey, Name, Salt) ->
     {ok, Tx} = aens_claim_tx:new(TxSpec),
     sign_post_mine(Tx, OwnerPrivKey),
     ok.
-    
+
 update_pointers(Owner, OwnerPrivKey, Name, Pointers0) ->
     {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [Owner]),
     {ok, NameAscii} = aens_utils:to_ascii(Name),

@@ -2043,6 +2043,8 @@ definitions:
         $ref: '#/definitions/EncodedHash'
       response:
         type: string
+      response_ttl:
+        $ref: '#/definitions/RelativeTTL'
       fee:
         type: integer
         format: int64
@@ -2058,6 +2060,7 @@ definitions:
     required:
       - query_id
       - response
+      - response_ttl
       - fee
       - oracle_id
   TTL:

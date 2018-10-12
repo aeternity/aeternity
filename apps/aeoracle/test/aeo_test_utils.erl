@@ -141,12 +141,13 @@ response_tx(PubKey, ID, Response, Spec0, State) ->
     Tx.
 
 response_tx_default_spec(PubKey, ID, Response, State) ->
-    #{ nonce     => try next_nonce(PubKey, State) catch _:_ -> 0 end
-     , oracle_id => aec_id:create(oracle, PubKey)
-     , query_id  => ID
-     , response  => Response
-     , fee       => 2
-     , ttl       => 0
+    #{ nonce        => try next_nonce(PubKey, State) catch _:_ -> 0 end
+     , oracle_id    => aec_id:create(oracle, PubKey)
+     , query_id     => ID
+     , response     => Response
+     , response_ttl => {delta, maps:get(response, ttl_defaults())}
+     , fee          => 2
+     , ttl          => 0
      }.
 
 
