@@ -14,6 +14,7 @@
 -export([new/1,
          type/0,
          fee/1,
+         gas/1,
          ttl/1,
          nonce/1,
          origin/1,
@@ -35,7 +36,7 @@
          contract_pubkey/1,
          vm_version/1,
          amount/1,
-         gas/1,
+         gas_limit/1,
          gas_price/1,
          call_data/1,
          call_stack/1]).
@@ -355,6 +356,10 @@ amount(#contract_call_tx{amount = Amount}) ->
 -spec gas(tx()) -> aect_contracts:amount().
 gas(#contract_call_tx{gas = Gas}) ->
     aec_governance:tx_base_gas() + Gas.
+
+-spec gas_limit(tx()) -> aect_contracts:amount().
+gas_limit(#contract_call_tx{gas = Gas}) ->
+    Gas.
 
 -spec gas_price(tx()) -> aect_contracts:amount().
 gas_price(#contract_call_tx{gas_price = GasPrice}) ->
