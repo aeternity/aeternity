@@ -2135,7 +2135,7 @@ fp_use_onchain_oracle(Cfg) ->
 
                 % oracle query and answer
                 oracle_query(OQuestion, _ResponseTTL = 100),
-                oracle_response(OResponse),
+                oracle_response(OResponse, _ResponseTTL = 100),
                 fun(#{state := S, oracle := Oracle, query_id := QueryId} = Props) ->
                     OTrees = aec_trees:oracles(aesc_test_utils:trees(S)),
                     Q = aeo_state_tree:get_query(Oracle, QueryId, OTrees),
@@ -2253,7 +2253,7 @@ fp_use_onchain_enviroment(Cfg) ->
     Timestamp1 = 654321,
     BeneficiaryInt = 42,
     Beneficiary = <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>>,
-    
+
     Height2 = Height1 + LockPeriod + 1,
     Height3 = Height2 + LockPeriod + 1,
     Height4 = Height3 + LockPeriod + 1,
@@ -3106,7 +3106,7 @@ create_contract_call_payload(Key, ContractId, Fun, Args, Amount) ->
         Code = aect_contracts:code(Contract),
         CallData = aect_sophia:create_call(Code, Fun, Args),
         Reserve = maps:get(channel_reserve, Props, 0),
-        OnChainTrees = aesc_test_utils:trees(State), 
+        OnChainTrees = aesc_test_utils:trees(State),
         Env = tx_env(Props),
         Update =
             maps:get(solo_payload_update, Props,
@@ -3158,7 +3158,7 @@ tx_env(#{height := Height} = Props) ->
                           <<24:?BENEFICIARY_PUB_BYTES/unit:8>>),
     aetx_env:contract_env(Height, ConsensusVersion, Time, Beneficiary,
                           123456, KeyBlockHash).
-    
+
 create_trees_if_not_present() ->
     AccountHashSize = aec_base58c:byte_size_for_type(account_pubkey),
     FakeAccount = <<42:AccountHashSize/unit:8>>,
@@ -3190,7 +3190,7 @@ create_contract_in_trees(CreationRound, ContractName, InitArg, Deposit) ->
                                                       Deposit,
                                                       CallData),
         Reserve = maps:get(channel_reserve, Props, 0),
-        OnChainTrees = aesc_test_utils:trees(State), 
+        OnChainTrees = aesc_test_utils:trees(State),
         Env = tx_env(Props),
         Trees = aesc_offchain_update:apply_on_trees(Update, Trees0, OnChainTrees,
                                                     Env,
@@ -3784,12 +3784,12 @@ oracle_query(Question, ResponseTTL) ->
            ])
     end.
 
-oracle_response(Response) ->
+oracle_response(Response, ResponseTTL) ->
     fun(Props0) ->
         run(Props0,
            [fun(#{state := S, oracle := Oracle, query_id := QueryId} = Props) ->
-                ResponseTx = aeo_test_utils:response_tx(Oracle, QueryId,
-                                                        Response, S),
+                ResponseTx = aeo_test_utils:response_tx(Oracle, QueryId, Response,
+                                                        #{response_ttl => {delta, ResponseTTL}}, S),
                 PrivKey = aesc_test_utils:priv_key(Oracle, S),
                 SignedTx = aec_test_utils:sign_tx(ResponseTx, [PrivKey]),
                 apply_on_trees_(Props, SignedTx, S, positive)

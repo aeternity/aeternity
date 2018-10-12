@@ -29,7 +29,7 @@
 %% chain API exports
 -export([ get_height/1, spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2,
           oracle_register/7, oracle_query/6, oracle_query_format/2, oracle_response_format/2,
-          oracle_respond/5, oracle_get_answer/3,
+          oracle_respond/6, oracle_get_answer/3,
           oracle_query_fee/2, oracle_query_response_ttl/3, oracle_get_question/3, oracle_extend/4]).
 
 -include("apps/aecontract/src/aecontract.hrl").
@@ -485,7 +485,7 @@ oracle_query(<<Oracle:256>>, Q, Value, QTTL, RTTL, State) ->
                       r_ttl  => RTTL} } },
     {ok, QueryKey, State1}.
 
-oracle_respond(<<_Oracle:256>>, <<Query:256>>, Sign, R, State) ->
+oracle_respond(<<_Oracle:256>>, <<Query:256>>, Sign, R, _RTTL, State) ->
     io:format("oracle_respond(~p, ~p, ~p)\n", [Query, Sign, R]),
     case maps:get(oracle_queries, State, #{}) of
         #{Query := Q} = Queries ->

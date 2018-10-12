@@ -69,6 +69,7 @@
                          Query :: pubkey(),
                          Sign :: binary(),
                          Response :: term(),
+                         ResponseTTL :: aeo_oracles:ttl(),
                          ChainState :: chain_state()) ->
     {ok, chain_state()} | {error, term()}.
 

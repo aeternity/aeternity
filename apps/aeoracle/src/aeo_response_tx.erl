@@ -32,19 +32,21 @@
 -export([oracle_id/1,
          oracle_pubkey/1,
          query_id/1,
-         response/1]).
+         response/1,
+         response_ttl/1]).
 
 
 -define(ORACLE_RESPONSE_TX_VSN, 1).
 -define(ORACLE_RESPONSE_TX_TYPE, oracle_response_tx).
 
 -record(oracle_response_tx, {
-          oracle_id :: aec_id:id(),
-          nonce     :: integer(),
-          query_id  :: aeo_query:id(),
-          response  :: aeo_oracles:response(),
-          fee       :: integer(),
-          ttl       :: aetx:tx_ttl()
+          oracle_id    :: aec_id:id(),
+          nonce        :: integer(),
+          query_id     :: aeo_query:id(),
+          response     :: aeo_oracles:response(),
+          response_ttl :: aeo_oracles:relative_ttl(),
+          fee          :: integer(),
+          ttl          :: aetx:tx_ttl()
           }).
 
 -opaque tx() :: #oracle_response_tx{}.
@@ -67,19 +69,25 @@ query_id(#oracle_response_tx{query_id = QueryId}) ->
 response(#oracle_response_tx{response = Response}) ->
     Response.
 
+-spec response_ttl(tx()) -> aeo_oracles:relative_ttl().
+response_ttl(#oracle_response_tx{response_ttl = ResponseTTL}) ->
+    ResponseTTL.
+
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{oracle_id := OracleId,
-      nonce     := Nonce,
-      query_id  := QueryId,
-      response  := Response,
-      fee       := Fee} = Args) ->
+new(#{oracle_id    := OracleId,
+      nonce        := Nonce,
+      query_id     := QueryId,
+      response     := Response,
+      response_ttl := ResponseTTL,
+      fee          := Fee} = Args) ->
     oracle = aec_id:specialize_type(OracleId),
-    Tx = #oracle_response_tx{oracle_id = OracleId,
-                             nonce     = Nonce,
-                             query_id  = QueryId,
-                             response  = Response,
-                             fee       = Fee,
-                             ttl       = maps:get(ttl, Args, 0)},
+    Tx = #oracle_response_tx{oracle_id    = OracleId,
+                             nonce        = Nonce,
+                             query_id     = QueryId,
+                             response     = Response,
+                             response_ttl = ResponseTTL,
+                             fee          = Fee,
+                             ttl          = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -110,16 +118,17 @@ origin(#oracle_response_tx{} = Tx) ->
 %% QueryId id should match oracle.
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) ->
         {ok, aec_trees:trees()} | {error, term()}.
-check(#oracle_response_tx{nonce = Nonce, query_id = QueryId, fee = Fee} = Tx,
-      Trees, Env) ->
+check(#oracle_response_tx{nonce = Nonce, query_id = QueryId,
+                          fee = Fee, response_ttl = ResponseTTL} = Tx, Trees, Env) ->
     Height = aetx_env:height(Env),
     OraclePubKey = oracle_pubkey(Tx),
     case fetch_query(OraclePubKey, QueryId, Trees) of
         {value, I} ->
-            ResponseTTL = aeo_query:response_ttl(I),
-            QueryFee    = aeo_query:fee(I),
+            QueryResponseTTL = aeo_query:response_ttl(I),
+            QueryFee         = aeo_query:fee(I),
             Checks =
-                [fun() -> check_oracle(OraclePubKey, Trees) end,
+                [fun() -> check_response_ttl(ResponseTTL, QueryResponseTTL) end,
+                 fun() -> check_oracle(OraclePubKey, Trees) end,
                  fun() -> check_query(OraclePubKey, I) end |
                  case aetx_env:context(Env) of
                      aetx_contract -> []; %% TODO: Handle fees from contracts right.
@@ -164,17 +173,20 @@ process(#oracle_response_tx{nonce = Nonce, query_id = QueryId,
 
     {ok, Trees2}.
 
-serialize(#oracle_response_tx{oracle_id = OracleId,
-                              nonce     = Nonce,
-                              query_id  = QueryId,
-                              response  = Response,
-                              fee       = Fee,
-                              ttl       = TTL}) ->
+serialize(#oracle_response_tx{oracle_id    = OracleId,
+                              nonce        = Nonce,
+                              query_id     = QueryId,
+                              response     = Response,
+                              response_ttl = {?ttl_delta_atom, ResponseTTLValue},
+                              fee          = Fee,
+                              ttl          = TTL}) ->
     {version(),
     [ {oracle_id, OracleId}
     , {nonce, Nonce}
     , {query_id, QueryId}
     , {response, Response}
+    , {response_ttl_type, ?ttl_delta_int}
+    , {response_ttl_value, ResponseTTLValue}
     , {fee, Fee}
     , {ttl, TTL}
     ]}.
@@ -184,21 +196,26 @@ deserialize(?ORACLE_RESPONSE_TX_VSN,
             , {nonce, Nonce}
             , {query_id, QueryId}
             , {response, Response}
+            , {response_ttl_type, ?ttl_delta_int}
+            , {response_ttl_value, ResponseTTLValue}
             , {fee, Fee}
             , {ttl, TTL}]) ->
     oracle = aec_id:specialize_type(OracleId),
-    #oracle_response_tx{oracle_id = OracleId,
-                        nonce     = Nonce,
-                        query_id  = QueryId,
-                        response  = Response,
-                        fee       = Fee,
-                        ttl       = TTL}.
+    #oracle_response_tx{oracle_id    = OracleId,
+                        nonce        = Nonce,
+                        query_id     = QueryId,
+                        response     = Response,
+                        response_ttl = {?ttl_delta_atom, ResponseTTLValue},
+                        fee          = Fee,
+                        ttl          = TTL}.
 
 serialization_template(?ORACLE_RESPONSE_TX_VSN) ->
     [ {oracle_id, id}
     , {nonce, int}
     , {query_id, binary}
     , {response, binary}
+    , {response_ttl_type, int}
+    , {response_ttl_value, int}
     , {fee, int}
     , {ttl, int}
     ].
@@ -212,11 +229,14 @@ for_client(#oracle_response_tx{oracle_id = OracleId,
                                query_id  = QueryId,
                                response  = Response,
                                fee       = Fee,
-                               ttl       = TTL}) ->
+                               ttl       = TTL} = Tx) ->
+    {ResponseTTLType = delta, ResponseTTLValue} = response_ttl(Tx),
     #{<<"oracle_id">>   => aec_base58c:encode(id_hash, OracleId),
       <<"nonce">>       => Nonce,
       <<"query_id">>    => aec_base58c:encode(oracle_query_id, QueryId),
       <<"response">>    => Response,
+      <<"response_ttl">> => #{<<"type">>  => ResponseTTLType,
+                              <<"value">> => ResponseTTLValue},
       <<"fee">>         => Fee,
       <<"ttl">>         => TTL}.
 
@@ -225,6 +245,9 @@ for_client(#oracle_response_tx{oracle_id = OracleId,
 fetch_query(OraclePubkey, QueryId, Trees) ->
     OraclesTree  = aec_trees:oracles(Trees),
     aeo_state_tree:lookup_query(OraclePubkey, QueryId, OraclesTree).
+
+check_response_ttl(RTTL, RTTL)     -> ok;
+check_response_ttl(_RTTL1, _RTTL2) -> {error, oracle_response_has_wrong_response_ttl}.
 
 check_query(OraclePubKey, I) ->
     case OraclePubKey == aeo_query:oracle_pubkey(I) of
