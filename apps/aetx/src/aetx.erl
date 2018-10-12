@@ -223,16 +223,36 @@ check_contract(#aetx{ cb = CB, tx = Tx }, Trees, Env) ->
     CB:check(Tx, Trees, Env).
 
 check_tx(#aetx{ cb = CB, tx = Tx } = AeTx, Trees, Env) ->
-    case CB:fee(Tx) >= aec_governance:minimum_tx_fee() of
-        false ->
-            {error, too_low_fee};
-        true  ->
-            case ttl(AeTx) >= aetx_env:height(Env) of
-                false ->
-                    {error, ttl_expired};
-                true ->
-                    CB:check(Tx, Trees, Env)
+    Checks =
+        [fun() -> check_minimum_fee(AeTx) end,
+         fun() -> check_minimum_gas_price(AeTx) end,
+         fun() -> check_ttl(AeTx, Env) end],
+    case aeu_validation:run(Checks) of
+        ok             -> CB:check(Tx, Trees, Env);
+        {error, _} = E -> E
+    end.
+
+check_minimum_fee(AeTx) ->
+    case fee(AeTx) >= aec_governance:minimum_tx_fee() of
+        true  -> ok;
+        false -> {error, too_low_fee}
+    end.
+
+check_minimum_gas_price(AeTx) ->
+    case gas_price(AeTx) of
+        undefined ->
+            ok;
+        GasPrice when is_integer(GasPrice) ->
+            case GasPrice >= aec_governance:minimum_gas_price() of
+                true  -> ok;
+                false -> {error, too_low_gas_price}
             end
+    end.
+
+check_ttl(AeTx, Env) ->
+    case ttl(AeTx) >= aetx_env:height(Env) of
+        true  -> ok;
+        false -> {error, ttl_expired}
     end.
 
 %%%===================================================================

@@ -124,7 +124,7 @@ minimum_tx_fee() ->
     1.
 
 minimum_gas_price() ->
-    0.
+    1.
 
 %% In key blocks / generations
 %%
