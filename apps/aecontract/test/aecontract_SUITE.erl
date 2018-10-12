@@ -254,9 +254,9 @@ create_contract_init_error(_Cfg) ->
     ?assertEqual(PubKey, aect_call:caller_pubkey(InitCall)),
     ?assertEqual(aetx:nonce(Tx), aect_call:caller_nonce(InitCall)),
     ?assertEqual(aect_create_tx:gas_price(aetx:tx(Tx)), aect_call:gas_price(InitCall)),
+    ?assertEqual(aect_create_tx:gas_limit(aetx:tx(Tx)), aect_call:gas_used(InitCall)), %% Gas exhausted.
     %% Check that the created init call has the correct details not from the contract create tx
     ?assertEqual(ContractKey, aect_call:contract_pubkey(InitCall)), %% Contract not created.
-    ?assertMatch(X when X > 0, aect_call:gas_used(InitCall)),
     ?assertEqual(error, aect_call:return_type(InitCall)),
     _ = aect_call:return_value(InitCall),
 
@@ -266,6 +266,9 @@ create_contract_init_error(_Cfg) ->
     %% returned to the miner.
     ?assertMatch(D when D > 0, aect_create_tx:deposit(aetx:tx(Tx))), %% Check on test data.
     ?assertMatch(A when A > 0, aect_create_tx:amount(aetx:tx(Tx))), %% Check on test data.
+    ?assertMatch(F when F > 0, aect_create_tx:fee(aetx:tx(Tx))), %% Check on test data.
+    ?assertMatch(G when G > 0, aect_create_tx:gas_limit(aetx:tx(Tx))), %% Check on test data.
+    ?assertMatch(P when P > 0, aect_create_tx:gas_price(aetx:tx(Tx))), %% Check on test data.
     ?assertEqual(aec_accounts:balance(aect_test_utils:get_account(PubKey, S1))
                  - aect_create_tx:fee(aetx:tx(Tx))
                  - aect_create_tx:gas_price(aetx:tx(Tx)) * aect_call:gas_used(InitCall),
@@ -462,7 +465,8 @@ call_contract_(ContractCallTxGasPrice) ->
 %% Check behaviour of contract call error - especially re value / amount.
 call_contract_error_value(_Cfg) ->
     F = 1,
-    DefaultOpts = #{fee => F, gas_price => 0, amount => 0},
+    G = 60000,
+    DefaultOpts = #{fee => F, gas_price => 1, gas => G, amount => 0},
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
     %% Initialization.
     state(aect_test_utils:new_state()),
@@ -473,21 +477,24 @@ call_contract_error_value(_Cfg) ->
     0 = call(fun account_balance/2, [RemC]),
     %% Sanity check: value is transferred as expected in calls that do not err.
     S0 = state(),
-    {11, S1} = call_contract(Acc1, IdC, ok, word, {}, DefaultOpts#{amount := 3}, S0),
-    ?assertEqual(Bal(Acc1, S0) - (F + 3), Bal(Acc1, S1)),
+    {{11, GasUsed1}, S1} = call_contract(Acc1, IdC, ok, word, {}, DefaultOpts#{amount := 3, return_gas_used => true}, S0),
+    ?assertMatch(U when U < G, GasUsed1),
+    ?assertEqual(Bal(Acc1, S0) - (F + GasUsed1 + 3), Bal(Acc1, S1)),
     ?assertEqual(Bal(RemC, S0), Bal(RemC, S1)),
     ?assertEqual(Bal(IdC, S0) + 3, Bal(IdC, S1)),
-    {11, S2} = call_contract(Acc1, RemC, callOk, word, {IdC, 10}, DefaultOpts#{amount := 14}, S1),
-    ?assertEqual(Bal(Acc1, S1) - (F + 14), Bal(Acc1, S2)),
+    {{11, GasUsed2}, S2} = call_contract(Acc1, RemC, callOk, word, {IdC, 10}, DefaultOpts#{amount := 14, return_gas_used => true}, S1),
+    ?assertEqual(Bal(Acc1, S1) - (F + GasUsed2 + 14), Bal(Acc1, S2)),
     ?assertEqual(Bal(RemC, S1) + (14 - 10), Bal(RemC, S2)),
     ?assertEqual(Bal(IdC, S1) + 10, Bal(IdC, S2)),
     %% Check tranfer of value in calls that err.
-    {{error, <<"out_of_gas">>}, S3} = call_contract(Acc1, IdC, err, word, {}, DefaultOpts#{amount := 5}, S2),
-    ?assertEqual(Bal(Acc1, S2) - (F + 5), Bal(Acc1, S3)),
+    {{{error, <<"out_of_gas">>}, GasUsed3}, S3} = call_contract(Acc1, IdC, err, word, {}, DefaultOpts#{amount := 5, return_gas_used => true}, S2),
+    ?assertEqual(G, GasUsed3),
+    ?assertEqual(Bal(Acc1, S2) - (F + G + 5), Bal(Acc1, S3)),
     ?assertEqual(Bal(RemC, S2), Bal(RemC, S3)),
     ?assertEqual(Bal(IdC, S2) + 5, Bal(IdC, S3)),
-    {{error, <<"out_of_gas">>}, S4} = call_contract(Acc1, RemC, callErr, word, {IdC, 7}, DefaultOpts#{amount := 13}, S3),
-    ?assertEqual(Bal(Acc1, S3) - (F + 13), Bal(Acc1, S4)),
+    {{{error, <<"out_of_gas">>}, GasUsed4}, S4} = call_contract(Acc1, RemC, callErr, word, {IdC, 7}, DefaultOpts#{amount := 13, return_gas_used => true}, S3),
+    ?assertEqual(G, GasUsed4),
+    ?assertEqual(Bal(Acc1, S3) - (F + G + 13), Bal(Acc1, S4)),
     ?assertEqual(Bal(RemC, S3) + 13, Bal(RemC, S4)),
     ?assertEqual(Bal(IdC, S3), Bal(IdC, S4)),
     ok.
