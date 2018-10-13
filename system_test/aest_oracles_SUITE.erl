@@ -202,10 +202,11 @@ simple_query_test(Opts, Cfg) ->
 
     %% Respond to the oracle query
     #{ tx_hash := RespTxHash } = post_oracle_response_tx(ONode, OAccount, #{
-        nonce     => 2,
-        query_id  => QueryId,
-        response  => <<"D'oh!">>,
-        fee       => 10
+        nonce        => 2,
+        query_id     => QueryId,
+        response     => <<"D'oh!">>,
+        response_ttl => {delta, 100},
+        fee          => 10
     }),
     aest_nodes:wait_for_value({txs_on_chain, [RespTxHash]}, NodeNames, 10000, []),
 
@@ -337,10 +338,11 @@ pipelined_query_test(Opts, Cfg) ->
 
     %% Respond to the oracle query
     #{ tx_hash := RespTxHash } = post_oracle_response_tx(ONode, OAccount, #{
-        nonce     => 2,
-        query_id  => QueryId,
-        response  => <<"D'oh!">>,
-        fee       => 10
+        nonce        => 2,
+        query_id     => QueryId,
+        response     => <<"D'oh!">>,
+        response_ttl => {delta, 100},
+        fee          => 10
     }),
 
     %% Wait for the response transaction to get in the chain
