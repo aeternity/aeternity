@@ -28,6 +28,10 @@
         , root_hash/1
         ]).
 
+-export([ from_binary_without_backend/1
+        , to_binary_without_backend/1
+        ]).
+
 -ifdef(TEST).
 -export([ query_list/1
         , oracle_list/1
@@ -68,6 +72,7 @@
 
 -define(HASH_SIZE, 32).
 
+-define(VSN, 1).
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -403,3 +408,30 @@ cache_pop(C) ->
         {Next,?DUMMY_VAL,_Iter} ->
             {sext:decode(Next), aeu_mtrees:delete(Next, C)}
     end.
+
+-spec to_binary_without_backend(tree()) -> binary().
+to_binary_without_backend(#oracle_tree{otree = OTree, cache = Cache}) ->
+    OTBin = aeu_mtrees:serialize(OTree),
+    CacheBin = aeu_mtrees:serialize(Cache),
+    aec_object_serialization:serialize(
+        oracles_mtree,
+        ?VSN,
+        serialization_template(?VSN),
+        [ {otree, OTBin}
+        , {cache, CacheBin}]).
+
+-spec from_binary_without_backend(binary()) -> tree().
+from_binary_without_backend(Bin) ->
+    [ {otree, OTBin}
+    , {cache, CacheBin}] =
+        aec_object_serialization:deserialize(oracles_mtree, ?VSN,
+                                             serialization_template(?VSN), Bin),
+    OTree = aeu_mtrees:deserialize(OTBin),
+    Cache = aeu_mtrees:deserialize(CacheBin),
+    #oracle_tree{otree = OTree,
+                 cache = Cache}.
+
+serialization_template(?VSN) ->
+    [ {otree, binary}
+    , {cache, binary}].
+

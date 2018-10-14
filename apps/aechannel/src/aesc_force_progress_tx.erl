@@ -50,7 +50,7 @@
           update        :: aesc_offchain_update:update(),
           state_hash    :: binary(),
           round         :: aesc_channels:seq_number(),
-          poi           :: aec_trees:poi(),
+          poi           :: aec_trees:trees(),
           ttl           :: aetx:tx_ttl(),
           fee           :: non_neg_integer(),
           nonce         :: non_neg_integer()
@@ -133,8 +133,7 @@ check(#channel_force_progress_tx{payload      = Payload,
     end.
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
-process(#channel_force_progress_tx{poi          = PoI} = Tx,
-        Trees, Env) ->
+process(#channel_force_progress_tx{poi = PoI} = Tx, Trees, Env) ->
     Height = aetx_env:height(Env),
     {value, STx} = aetx_env:signed_tx(Env),
 
@@ -163,7 +162,7 @@ serialize(#channel_force_progress_tx{channel_id   = ChannelId,
      , {round         , Round}
      , {update        , aesc_offchain_update:serialize(Update)}
      , {state_hash    , StateHash}
-     , {poi           , aec_trees:serialize_poi(PoI)}
+     , {poi           , aec_trees:serialize_to_binary(PoI)}
      , {ttl           , TTL}
      , {fee           , Fee}
      , {nonce         , Nonce}
@@ -190,7 +189,7 @@ deserialize(?CHANNEL_FORCE_PROGRESS_TX_VSN,
                                round        = Round,
                                state_hash   = StateHash,
                                update       = Update,
-                               poi          = aec_trees:deserialize_poi(PoI),
+                               poi          = aec_trees:deserialize_from_binary_without_backend(PoI),
                                ttl          = TTL,
                                fee          = Fee,
                                nonce        = Nonce}.
@@ -210,7 +209,7 @@ for_client(#channel_force_progress_tx{payload       = Payload,
       <<"round">>         => Round,
       <<"update">>        => aesc_offchain_update:for_client(Update),
       <<"state_hash">>    => aec_base58c:encode(state, StateHash),
-      <<"poi">>           => aec_base58c:encode(poi, aec_trees:serialize_poi(PoI)),
+      <<"poi">>           => aec_base58c:encode(poi, aec_trees:serialize_to_binary(PoI)),
       <<"ttl">>           => TTL,
       <<"fee">>           => Fee,
       <<"nonce">>         => Nonce}.

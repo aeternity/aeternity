@@ -47,6 +47,10 @@
         , proof_db_fold/3
         ]).
 
+-export([ serialize/1
+        , deserialize/1
+        , deserialize_with_backend/2]).
+
 -export_type([iterator/0,
               iterator_opts/0,
               mtree/0,
@@ -54,10 +58,13 @@
               root_hash/0,
               proof/0]).
 
+
 -define(HASH_BYTES, 32).
 -define(IS_KEY(K), is_binary(K)).
 -define(IS_VALUE(V), is_binary(V)).
 -define(STATE_HASH_BYTES, 32). %% TODO NG move to proper hrl
+
+-define(VSN, 1).
 
 -type key() :: binary().
 -type value() :: binary().
@@ -252,3 +259,60 @@ proof_db_commit(_Cache,_DB) ->
 
 proof_db_fold(Fun, Initial, Proof) ->
     dict:fold(Fun, Initial, Proof).
+
+%%%===================================================================
+%%% serialization
+%%%===================================================================
+-spec serialize(mtree()) -> binary().
+serialize(Tree) ->
+    LeavesBins =
+        lists:map(
+            fun({Key, Value}) ->
+                aec_object_serialization:serialize(
+                    mtree_leaf,
+                    ?VSN,
+                    leaf_serialization_template(?VSN),
+                    [ {key, Key}
+                    , {val, Value}
+                    ])
+            end,
+            to_list(Tree)),
+    aec_object_serialization:serialize(
+        mtree,
+        ?VSN,
+        serialization_template(?VSN),
+        [ {leaves, LeavesBins}]).
+
+-spec deserialize(binary()) -> mtree().
+deserialize(Bin) ->
+    deserialize_(Bin, empty()).
+
+-spec deserialize_with_backend(binary(), aeu_mp_trees_db:db()) -> mtree().
+deserialize_with_backend(Bin, DB) ->
+    deserialize_(Bin, empty_with_backend(DB)).
+
+-spec deserialize_(binary(), mtree()) -> mtree().
+deserialize_(Bin, EmptyMTree) ->
+    [{leaves, LeavesBin}] =
+        aec_object_serialization:deserialize(mtree, ?VSN,
+                                             serialization_template(?VSN), Bin),
+    lists:foldl(
+        fun(LeafBin, Accum) ->
+            [ {key, Key}
+            , {val, Value}] =
+                aec_object_serialization:deserialize(mtree_leaf, ?VSN,
+                                                      leaf_serialization_template(?VSN),
+                                                      LeafBin),
+            insert(Key, Value, Accum)
+        end,
+        EmptyMTree,
+        LeavesBin).
+
+serialization_template(?VSN) ->
+   [{leaves, [binary]}]. 
+
+leaf_serialization_template(?VSN) ->
+   [ {key, binary}
+   , {val, binary}
+   ]. 
+

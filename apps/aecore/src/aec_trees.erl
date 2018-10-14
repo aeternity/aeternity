@@ -32,7 +32,7 @@
         , serialize_for_db/1
         % could get big, used in force progress
         , serialize_to_binary/1
-        , deserialize_from_binary/1
+        , deserialize_from_binary_without_backend/1
         ]).
 
 -export([ensure_account/2]).
@@ -297,28 +297,45 @@ db_deserialize_hash({Field, [Hash]}) -> {Field, Hash};
 db_deserialize_hash({Field, []}) -> {Field, empty}.
 
 
+-spec serialize_to_binary(trees()) -> binary().
 serialize_to_binary(#trees{} = Trees) ->
-    <<>>.
+    #trees{ contracts = Contracts
+          , calls     = Calls
+          , channels  = Channels
+          , ns        = NS
+          , oracles   = Oracles
+          , accounts  = Accounts
+          } = Trees,
+    aec_object_serialization:serialize(
+      state_trees,
+      ?AEC_TREES_VERSION,
+      binary_serialization_template(?AEC_TREES_VERSION),
+      [ {contracts,     aect_state_tree:to_binary_without_backend(Contracts)}
+      , {calls,         aect_call_state_tree:to_binary_without_backend(Calls)}
+      , {channels,      aesc_state_tree:to_binary_without_backend(Channels)}
+      , {ns,            aens_state_tree:to_binary_without_backend(NS)}
+      , {oracles,       aeo_state_tree:to_binary_without_backend(Oracles)}
+      , {accounts,      aec_accounts_trees:to_binary_without_backend(Accounts)}
+      ]).
 
-deserialize_from_binary_without_backend(Bin, EmptyTree) ->
-    [ {contracts_hash, Contracts}
-    , {calls_hash, Calls}
-    , {channels_hash, Channels}
-    , {ns_hash, NS}
-    , {ns_cache_hash, NSCache}
-    , {oracles_hash, Oracles}
-    , {oracles_cache_hash, OraclesCache}
-    , {accounts_hash, Accounts}
+-spec deserialize_from_binary_without_backend(binary()) -> trees().
+deserialize_from_binary_without_backend(Bin) ->
+    [ {contracts, Contracts}
+    , {calls, Calls}
+    , {channels, Channels}
+    , {ns, NS}
+    , {oracles, Oracles}
+    , {accounts, Accounts}
     ] = aec_object_serialization:deserialize(
-            treesb,
+            state_trees,
             ?AEC_TREES_VERSION,
             binary_serialization_template(?AEC_TREES_VERSION),
             Bin),
     #trees{ contracts = aect_state_tree:from_binary_without_backend(Contracts)
           , calls     = aect_call_state_tree:from_binary_without_backend(Calls)
           , channels  = aesc_state_tree:from_binary_without_backend(Channels)
-          , ns        = aens_state_tree:from_binary_without_backend(NS, NSCache)
-          , oracles   = aeo_state_tree:from_binary_without_backend(Oracles, OraclesCache)
+          , ns        = aens_state_tree:from_binary_without_backend(NS)
+          , oracles   = aeo_state_tree:from_binary_without_backend(Oracles)
           , accounts  = aec_accounts_trees:from_binary_without_backend(Accounts)
           }.
 

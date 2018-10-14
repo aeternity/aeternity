@@ -17,6 +17,10 @@
          new_with_backend/1,
          root_hash/1]).
 
+-export([ from_binary_without_backend/1
+        , to_binary_without_backend/1
+        ]).
+
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -30,6 +34,7 @@
 
 -export_type([tree/0]).
 
+-define(VSN, 1).
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -74,3 +79,23 @@ lookup(PubKey, Tree) ->
 -spec root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
 root_hash(Tree) ->
     aeu_mtrees:root_hash(Tree).
+
+-spec to_binary_without_backend(tree()) -> binary().
+to_binary_without_backend(Tree) ->
+    Bin = aeu_mtrees:serialize(Tree),
+    aec_object_serialization:serialize(
+        channels_mtree,
+        ?VSN,
+        serialization_template(?VSN),
+        [{channels, Bin}]).
+
+-spec from_binary_without_backend(binary()) -> tree().
+from_binary_without_backend(Bin) ->
+    [{channels, ChannelsBin}] =
+        aec_object_serialization:deserialize(channels_mtree, ?VSN,
+                                             serialization_template(?VSN), Bin),
+    aeu_mtrees:deserialize(ChannelsBin).
+
+serialization_template(?VSN) ->
+    [{channels, binary}].
+

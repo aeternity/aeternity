@@ -11,6 +11,7 @@
          get/2,
          lookup/2,
          new_with_backend/1,
+         total_balances/1,
          enter/2]).
 
 %% API - Merkle tree
@@ -18,7 +19,7 @@
          commit_to_db/1
         ]).
 
--export([ from_binary_without_backend/1,
+-export([ from_binary_without_backend/1
         , to_binary_without_backend/1
         ]).
 
@@ -42,6 +43,7 @@
 -type value() :: aec_accounts:deterministic_account_binary_with_pubkey().
 -opaque tree() :: aeu_mtrees:mtree(key(), value()).
 
+-define(VSN, 1).
 %%%===================================================================
 %%% API - similar to OTP `gb_trees` module
 %%%===================================================================
@@ -57,6 +59,16 @@ empty_with_backend() ->
 new_with_backend(Hash) ->
     aeu_mtrees:new_with_backend(Hash, aec_db_backends:accounts_backend()).
 
+-spec total_balances(tree()) -> integer().
+total_balances(Tree) ->
+    Balance =
+        fun(Pubkey, Bin) ->
+            Account = aec_accounts:deserialize(Pubkey, Bin),
+            aec_accounts:balance(Account)
+        end,
+    lists:sum(
+       [Balance(Key, Bin) || {Key, Bin} <- aeu_mtrees:to_list(Tree)]).
+    
 -spec get(aec_keys:pubkey(), tree()) -> aec_accounts:account().
 get(Pubkey, Tree) ->
     Account = aec_accounts:deserialize(Pubkey, aeu_mtrees:get(Pubkey, Tree)),
@@ -82,6 +94,25 @@ enter(Account, Tree) ->
 -spec delete(aec_keys:pubkey(), tree()) -> tree().
 delete(Pubkey, Tree) ->
     aeu_mtrees:delete(Pubkey, Tree).
+
+-spec to_binary_without_backend(tree()) -> binary().
+to_binary_without_backend(Tree) ->
+    Bin = aeu_mtrees:serialize(Tree),
+    aec_object_serialization:serialize(
+        accounts_mtree,
+        ?VSN,
+        serialization_template(?VSN),
+        [{accounts, Bin}]).
+
+-spec from_binary_without_backend(binary()) -> tree().
+from_binary_without_backend(Bin) ->
+    [{accounts, AccountsBin}] =
+        aec_object_serialization:deserialize(accounts_mtree, ?VSN,
+                                             serialization_template(?VSN), Bin),
+    aeu_mtrees:deserialize(AccountsBin).
+
+serialization_template(?VSN) ->
+    [{accounts, binary}].
 
 %%%===================================================================
 %%% API - Merkle tree

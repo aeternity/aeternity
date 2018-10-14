@@ -23,6 +23,10 @@
          new_with_backend/2,
          root_hash/1]).
 
+-export([ from_binary_without_backend/1
+        , to_binary_without_backend/1
+        ]).
+
 %% Export for test
 -ifdef(TEST).
 -export([ name_list/1
@@ -52,6 +56,7 @@
 
 -export_type([tree/0]).
 
+-define(VSN, 1).
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -170,6 +175,32 @@ name_list(#ns_tree{mtree = Tree}) ->
            C <- IsName(Id, Val) ].
 -endif.
 
+
+-spec to_binary_without_backend(tree()) -> binary().
+to_binary_without_backend(#ns_tree{mtree = MTree, cache = Cache}) ->
+    MTBin = aeu_mtrees:serialize(MTree),
+    CacheBin = aeu_mtrees:serialize(Cache),
+    aec_object_serialization:serialize(
+        nameservice_mtree,
+        ?VSN,
+        serialization_template(?VSN),
+        [ {mtree, MTBin}
+        , {cache, CacheBin}]).
+
+-spec from_binary_without_backend(binary()) -> tree().
+from_binary_without_backend(Bin) ->
+    [ {mtree, MTBin}
+    , {cache, CacheBin}] =
+        aec_object_serialization:deserialize(nameservice_mtree, ?VSN,
+                                             serialization_template(?VSN), Bin),
+    MTree = aeu_mtrees:deserialize(MTBin),
+    Cache = aeu_mtrees:deserialize(CacheBin),
+    #ns_tree{mtree = MTree,
+             cache = Cache}.
+
+serialization_template(?VSN) ->
+    [ {mtree, binary}
+    , {cache, binary}].
 
 %%%===================================================================
 %%% Internal functions

@@ -24,6 +24,10 @@
         , lookup_poi/2
         ]).
 
+-export([ from_binary_without_backend/1
+        , to_binary_without_backend/1
+        ]).
+
 -export_type([tree/0]).
 
 %%%===================================================================
@@ -37,6 +41,8 @@
     }).
 
 -opaque tree() :: #contract_tree{}.
+
+-define(VSN, 1).
 
 %%%===================================================================
 %%% API
@@ -258,3 +264,22 @@ lookup_store_from_poi(Id, {PrefixedKey, Val, Iter}, PrefixSize, Store, Poi) ->
 -spec commit_to_db(tree()) -> tree().
 commit_to_db(#contract_tree{contracts = CtTree} = Tree) ->
     Tree#contract_tree{contracts = aeu_mtrees:commit_to_db(CtTree)}.
+
+-spec to_binary_without_backend(tree()) -> binary().
+to_binary_without_backend(#contract_tree{contracts = CtTree}) ->
+    Bin = aeu_mtrees:serialize(CtTree),
+    aec_object_serialization:serialize(
+        contracts_mtree,
+        ?VSN,
+        serialization_template(?VSN),
+        [{contracts, Bin}]).
+
+-spec from_binary_without_backend(binary()) -> tree().
+from_binary_without_backend(Bin) ->
+    [{contracts, ContractsBin}] =
+        aec_object_serialization:deserialize(contracts_mtree, ?VSN,
+                                             serialization_template(?VSN), Bin),
+    #contract_tree{contracts = aeu_mtrees:deserialize(ContractsBin)}.
+
+serialization_template(?VSN) ->
+    [{contracts, binary}].

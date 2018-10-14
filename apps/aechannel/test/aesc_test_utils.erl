@@ -368,11 +368,11 @@ snapshot_solo_tx_default_spec(FromPubKey, State) ->
 
 state_tx(ChannelPubKey, Initiator, Responder, Spec0) ->
     Spec = maps:merge(state_tx_spec(), Spec0),
-    InitiatorAmount = maps:get(initiator_amount, Spec),
-    ResponderAmount = maps:get(responder_amount, Spec),
     StateHash =
         case maps:get(state_hash, Spec, <<>>) of
             <<>> -> %not set, calculate
+                InitiatorAmount = maps:get(initiator_amount, Spec),
+                ResponderAmount = maps:get(responder_amount, Spec),
                 Trees0 = aec_trees:new_without_backend(),
                 Accounts =
                     lists:foldl(

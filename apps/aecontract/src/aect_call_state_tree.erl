@@ -20,6 +20,10 @@
         , prune_without_backend/1
         , root_hash/1]).
 
+-export([ from_binary_without_backend/1
+        , to_binary_without_backend/1
+        ]).
+
 -ifdef(TEST).
 -export([to_list/1]).
 -endif.
@@ -38,6 +42,7 @@
 
 -opaque tree() :: #call_tree{}.
 
+-define(VSN, 1).
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -117,6 +122,24 @@ root_hash(#call_tree{calls = CtTree}) ->
 commit_to_db(#call_tree{calls = CtTree} = Tree) ->
     Tree#call_tree{calls = aeu_mtrees:commit_to_db(CtTree)}.
 
+-spec to_binary_without_backend(tree()) -> binary().
+to_binary_without_backend(#call_tree{calls = Tree}) ->
+    Bin = aeu_mtrees:serialize(Tree),
+    aec_object_serialization:serialize(
+        calls_mtree,
+        ?VSN,
+        serialization_template(?VSN),
+        [{calls, Bin}]).
+
+-spec from_binary_without_backend(binary()) -> tree().
+from_binary_without_backend(Bin) ->
+    [{calls, CallsBin}] =
+        aec_object_serialization:deserialize(calls_mtree, ?VSN,
+                                             serialization_template(?VSN), Bin),
+    #call_tree{calls = aeu_mtrees:deserialize(CallsBin)}.
+
+serialization_template(?VSN) ->
+    [{calls, binary}].
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
