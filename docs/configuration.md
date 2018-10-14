@@ -101,8 +101,6 @@ http:
         port: 3113
 
 websocket:
-    internal:
-        port: 3114
     channel:
         port: 3014
 
