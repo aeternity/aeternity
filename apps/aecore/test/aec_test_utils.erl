@@ -349,7 +349,6 @@ extend_block_chain_with_state(Chain, Data) ->
     TxsFun     = maps:get(txs_by_height_fun, Data),
     Nonce      = maps:get(nonce, Data, 12345),
     Timestamps = maps:get(timestamps, Data, lists:duplicate(length(Targets), undefined)),
-    Timestamps = maps:get(timestamps, Data, lists:duplicate(length(Targets), undefined)),
     Miners     = maps:get(miners, Data, lists:duplicate(length(Targets), {Pubkey, PrivKey})),
     Beneficiaries = maps:get(beneficiaries, Data, lists:duplicate(length(Targets), Pubkey)),
     extend_block_chain_with_state(lists:reverse(Chain), Targets, Timestamps,
