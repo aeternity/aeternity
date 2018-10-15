@@ -138,7 +138,7 @@
 %=== TYPES ====================================================================
 
 -type test_ctx() :: pid() | proplists:proplist().
--type node_service() :: ext_http | int_http | int_ws.
+-type node_service() :: ext_http | int_http | ext_ws.
 -type http_path() :: [atom() | binary() | number()] | binary().
 -type http_query() :: #{atom() | binary() => atom() | binary()}.
 -type json_object() :: term().

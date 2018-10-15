@@ -36,7 +36,6 @@
 -define(EXT_HTTP_PORT, 3013).
 -define(EXT_SYNC_PORT, 3015).
 -define(INT_HTTP_PORT, 3113).
--define(INT_WS_PORT, 3114).
 -define(EXT_WS_PORT, 3014).
 -define(EPOCH_STOP_TIMEOUT, 30000).
 -define(PEER_KEYS_PASSWORD, <<"top secret">>).
@@ -46,7 +45,7 @@
 
 -type log_fun() :: fun((io:format(), list()) -> ok) | undefined.
 -type test_uid() :: binary() | undefined.
--type service_label() :: sync | ext_http | int_http | int_ws | ext_ws.
+-type service_label() :: sync | ext_http | int_http | ext_ws.
 
 %% State of the docker backend
 -type backend_state() :: #{
@@ -171,10 +170,9 @@ setup_node(Spec, BackendState) ->
         sync => ?EXT_SYNC_PORT,
         ext_http => ?EXT_HTTP_PORT,
         int_http => ?INT_HTTP_PORT,
-        int_ws => ?INT_WS_PORT,
         ext_ws => ?EXT_WS_PORT
     },
-    {LocalPorts, Sockets} = allocate_ports([sync, ext_http, int_http, int_ws, ext_ws]),
+    {LocalPorts, Sockets} = allocate_ports([sync, ext_http, int_http, ext_ws]),
     NodeState = #{
         postfix => Postfix,
         log_fun => LogFun,
@@ -225,8 +223,7 @@ setup_node(Spec, BackendState) ->
             sync => #{port => ?EXT_SYNC_PORT},
             ext_http => #{port => ?EXT_HTTP_PORT},
             int_http => #{port => ?INT_HTTP_PORT},
-            ext_ws => #{port => ?EXT_WS_PORT},
-            int_ws => #{port => ?INT_WS_PORT}
+            ext_ws => #{port => ?EXT_WS_PORT}
         },
         mining => maps:merge(#{autostart => true}, maps:get(mining, Spec, #{}))
     },
@@ -257,7 +254,7 @@ setup_node(Spec, BackendState) ->
         volumes => [
             {rw, KeysDir, ?EPOCH_KEYS_FOLDER},
             {ro, ConfigFilePath, ?EPOCH_CONFIG_FILE},
-            {rw, LogPath, ?EPOCH_LOG_FOLDER}] ++ 
+            {rw, LogPath, ?EPOCH_LOG_FOLDER}] ++
             [ {ro, Genesis, ?EPOCH_GENESIS_FILE} || Genesis =/= undefined ],
         ports => PortMapping
     },
@@ -337,9 +334,8 @@ get_service_address(Service, NodeState)
   when Service == ext_http; Service == int_http ->
     #{local_ports := #{Service := Port}} = NodeState,
     format("http://localhost:~w/", [Port]);
-get_service_address(Service, NodeState)
-  when Service == ext_ws; Service == int_ws ->
-    #{local_ports := #{Service := Port}} = NodeState,
+get_service_address(ext_ws, NodeState) ->
+    #{local_ports := #{ext_ws := Port}} = NodeState,
     format("ws://localhost:~w/", [Port]).
 
 -spec get_internal_address(service_label(), node_state()) -> binary().
@@ -354,9 +350,8 @@ get_internal_address(Service, NodeState)
   when Service == ext_http; Service == int_http ->
     #{hostname := Hostname, exposed_ports := #{Service := Port}} = NodeState,
     format("http://~s:~w/", [Hostname, Port]);
-get_internal_address(Service, NodeState)
-  when Service == ext_ws; Service == int_ws ->
-    #{hostname := Hostname, exposed_ports := #{Service := Port}} = NodeState,
+get_internal_address(ext_ws, NodeState) ->
+    #{hostname := Hostname, exposed_ports := #{ext_ws := Port}} = NodeState,
     format("ws://~s:~w/", [Hostname, Port]).
 
 -spec get_node_pubkey(node_state()) -> binary().
