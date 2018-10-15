@@ -81,7 +81,7 @@ fee(#channel_close_solo_tx{fee = Fee}) ->
 
 -spec gas(tx()) -> non_neg_integer().
 gas(#channel_close_solo_tx{}) ->
-    aec_governance:tx_base_gas().
+    aec_governance:tx_base_gas(channel_close_solo_tx).
 
 -spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#channel_close_solo_tx{ttl = TTL}) ->

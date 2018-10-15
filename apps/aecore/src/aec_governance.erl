@@ -8,7 +8,7 @@
          expected_block_mine_rate/0,
          block_mine_reward/0,
          block_gas_limit/0,
-         tx_base_gas/0,
+         tx_base_gas/1,
          byte_gas/0,
          beneficiary_reward_delay/0,
          minimum_tx_fee/0,
@@ -92,9 +92,31 @@ block_mine_reward() ->
 block_gas_limit() ->
     application:get_env(aecore, block_gas_limit, ?BLOCK_GAS_LIMIT).
 
-tx_base_gas() ->
-    ?TX_BASE_GAS.
-
+tx_base_gas(contract_call_tx) -> 5 * ?TX_BASE_GAS;
+tx_base_gas(contract_create_tx) -> 4 * ?TX_BASE_GAS;
+tx_base_gas(spend_tx) -> ?TX_BASE_GAS;
+tx_base_gas(channel_deposit_tx) -> ?TX_BASE_GAS;
+tx_base_gas(channel_close_mutual_tx) -> ?TX_BASE_GAS;
+tx_base_gas(channel_close_solo_tx) -> ?TX_BASE_GAS;
+tx_base_gas(channel_create_tx) -> ?TX_BASE_GAS;
+tx_base_gas(channel_force_progress_tx) -> ?TX_BASE_GAS;
+tx_base_gas(channel_slash_tx) -> ?TX_BASE_GAS;
+tx_base_gas(channel_settle_tx) -> ?TX_BASE_GAS;
+tx_base_gas(channel_snapshot_solo_tx) -> ?TX_BASE_GAS;
+tx_base_gas(channel_withdraw_tx) -> ?TX_BASE_GAS;
+tx_base_gas(ns_preclaim_tx) -> ?TX_BASE_GAS;
+tx_base_gas(ns_revoke_tx) -> ?TX_BASE_GAS;
+tx_base_gas(ns_transfer_tx) -> ?TX_BASE_GAS;
+tx_base_gas(ns_claim_tx) -> ?TX_BASE_GAS;
+tx_base_gas(ns_update_tx) -> ?TX_BASE_GAS;
+tx_base_gas(oracle_extend_tx) -> ?TX_BASE_GAS;
+tx_base_gas(oracle_query_tx) -> ?TX_BASE_GAS;
+tx_base_gas(oracle_register_tx) -> ?TX_BASE_GAS;
+tx_base_gas(oracle_response_tx) -> ?TX_BASE_GAS;
+tx_base_gas(_) -> 
+    %% never accept unknown transaction types
+    block_gas_limit().
+ 
 byte_gas() ->
     ?BYTE_GAS.
 

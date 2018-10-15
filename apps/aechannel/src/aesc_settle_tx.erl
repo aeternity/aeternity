@@ -81,7 +81,7 @@ fee(#channel_settle_tx{fee = Fee}) ->
 
 -spec gas(tx()) -> non_neg_integer().
 gas(#channel_settle_tx{}) ->
-    aec_governance:tx_base_gas().
+    aec_governance:tx_base_gas(channel_settle_tx).
 
 -spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#channel_settle_tx{ttl = TTL}) ->

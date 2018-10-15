@@ -66,7 +66,7 @@ fee(#oracle_extend_tx{fee = Fee}) ->
 
 -spec gas(tx()) -> non_neg_integer().
 gas(#oracle_extend_tx{}) ->
-    aec_governance:tx_base_gas().
+    aec_governance:tx_base_gas(oracle_extend_tx).
 
 -spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#oracle_extend_tx{ttl = TTL}) ->

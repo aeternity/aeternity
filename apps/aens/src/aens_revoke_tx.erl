@@ -73,7 +73,7 @@ fee(#ns_revoke_tx{fee = Fee}) ->
 
 -spec gas(tx()) -> non_neg_integer().
 gas(#ns_revoke_tx{}) ->
-    aec_governance:tx_base_gas().
+    aec_governance:tx_base_gas(ns_revoke_tx).
 
 -spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#ns_revoke_tx{ttl = TTL}) ->

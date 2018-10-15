@@ -100,7 +100,7 @@ fee(#oracle_response_tx{fee = F}) ->
 
 -spec gas(tx()) -> non_neg_integer().
 gas(#oracle_response_tx{}) ->
-    aec_governance:tx_base_gas().
+    aec_governance:tx_base_gas(oracle_response_tx).
 
 -spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#oracle_response_tx{ttl = TTL}) ->
