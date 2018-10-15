@@ -149,7 +149,7 @@ test_target(Bin, Target) ->
 
 integer_to_scientific(I, Exp) when I > 16#7fffff ->
     integer_to_scientific(I bsr 8, Exp + 1);
-integer_to_scientific(I, Exp) when I < 16#008000 ->
+integer_to_scientific(I, Exp) when I < 16#008000, I > 16#000000 ->
     integer_to_scientific(I bsl 8, Exp - 1);
 integer_to_scientific(I, Exp) ->
     %% Add the number of bytes in the significand
