@@ -3143,7 +3143,7 @@
     },
     "ChannelForceProgressTx" : {
       "type" : "object",
-      "required" : [ "addresses", "channel_id", "fee", "from_id", "payload", "poi", "round", "state_hash", "update" ],
+      "required" : [ "channel_id", "fee", "from_id", "payload", "round", "state_hash", "update" ],
       "properties" : {
         "channel_id" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -3168,13 +3168,6 @@
           "description" : "Channel's next state_hash",
           "$ref" : "#/definitions/EncodedHash"
         },
-        "addresses" : {
-          "type" : "array",
-          "items" : {
-            "$ref" : "#/definitions/EncodedHash"
-          },
-          "minItems" : 1
-        },
         "ttl" : {
           "type" : "integer",
           "format" : "int64",
@@ -3190,9 +3183,9 @@
           "format" : "int64",
           "minimum" : 0
         },
-        "poi" : {
-          "type" : "string",
-          "description" : "Proof of inclusion containing information for closing the channel"
+        "offchain_trees" : {
+          "description" : "The whole set of off-chain state trees",
+          "$ref" : "#/definitions/EncodedHash"
         }
       }
     },

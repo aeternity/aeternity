@@ -423,21 +423,21 @@ proof_of_inclusion(Participants) ->
 %%%===================================================================
 
 force_progress_tx_spec(ChannelId, FromPubKey, Payload, Update, StateHash,
-                       Round, PoI, State) ->
+                       Round, OffChainTrees, State) ->
     force_progress_tx_spec(ChannelId, FromPubKey, Payload, Update, StateHash,
-                       Round, PoI, #{}, State).
+                       Round, OffChainTrees, #{}, State).
 
 force_progress_tx_spec(ChannelId, FromPubKey, Payload, Update, StateHash,
-                       Round, PoI, Spec0, State) ->
+                       Round, OffChainTrees, Spec0, State) ->
     Spec = maps:merge(force_progress_default_spec(FromPubKey, State), Spec0),
-    Spec#{channel_id  => aec_id:create(channel, ChannelId),
-          from_id     => aec_id:create(account, FromPubKey),
-          payload     => Payload,
-          update      => Update,
-          state_hash  => StateHash,
-          round       => Round,
-          poi         => PoI,
-          ttl         => maps:get(ttl, Spec, 0)}.
+    Spec#{channel_id      => aec_id:create(channel, ChannelId),
+          from_id         => aec_id:create(account, FromPubKey),
+          payload         => Payload,
+          update          => Update,
+          state_hash      => StateHash,
+          round           => Round,
+          offchain_trees  => OffChainTrees,
+          ttl             => maps:get(ttl, Spec, 0)}.
 
 force_progress_default_spec(FromPubKey, State) ->
     #{fee              => 3,
