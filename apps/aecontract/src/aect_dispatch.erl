@@ -161,6 +161,7 @@ create_call(GasUsed, Type, Log, Call) ->
 
 error_to_binary(out_of_gas) -> <<"out_of_gas">>;
 error_to_binary(out_of_stack) -> <<"out_of_stack">>;
+error_to_binary(not_allowed_off_chain) -> <<"not_allowed_off_chain">>;
 error_to_binary(E) ->
     ?DEBUG_LOG("Unknown error: ~p\n", [E]),
     <<"unknown_error">>.

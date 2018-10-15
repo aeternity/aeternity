@@ -54,7 +54,7 @@
 
 -type chain_trees() :: #trees{}.
 -type chain_state() :: #state{}.
-
+-type prim_op_result() :: {ok, chain_state()} | {error, term()}.
 -define(PUB_SIZE, 32).
 
 
@@ -176,8 +176,15 @@ spend(RecipientId, Amount, State = #state{ account = ContractKey }) ->
 -spec oracle_register(aec_keys:pubkey(), binary(), non_neg_integer(),
                       aeo_oracles:ttl(), aeso_sophia:type(), aeso_sophia:type(), chain_state()) ->
     {ok, aec_keys:pubkey(), chain_state()} | {error, term()}.
-oracle_register(AccountKey, Signature, QueryFee, TTL, QueryFormat, ResponseFormat,
-                State = #state{account = ContractKey}) ->
+oracle_register(AccountKey, Signature, QueryFee, TTL, QueryFormat, ResponseFormat, State) ->
+    on_chain_only(State,
+                  fun() ->
+                      oracle_register_(AccountKey, Signature, QueryFee, TTL,
+                                       QueryFormat, ResponseFormat, State)
+                  end).
+
+oracle_register_(AccountKey, Signature, QueryFee, TTL, QueryFormat, ResponseFormat,
+                 State = #state{account = ContractKey}) ->
     Nonce = next_nonce(AccountKey, State),
     %% Note: The nonce of the account is incremented.
     %% This means that if you register an oracle for an account other than
@@ -206,7 +213,11 @@ oracle_register(AccountKey, Signature, QueryFee, TTL, QueryFormat, ResponseForma
         Err = {error, _} -> Err
     end.
 
-oracle_query(Oracle, Q, Value, QTTL, RTTL,
+oracle_query(Oracle, Q, Value, QTTL, RTTL, State) ->
+    on_chain_only(State,
+                  fun() -> oracle_query_(Oracle, Q, Value, QTTL, RTTL, State) end).
+    
+oracle_query_(Oracle, Q, Value, QTTL, RTTL,
              State = #state{ account = ContractKey }) ->
     Nonce = next_nonce(State),
     QueryData = aeso_data:to_binary(Q),
@@ -229,7 +240,15 @@ oracle_query(Oracle, Q, Value, QTTL, RTTL,
         {error, _} = E -> E
     end.
 
-oracle_respond(Oracle, QueryId, Signature, Response, ResponseTTL,
+-spec oracle_respond(aec_keys:pubkey(), aeo_query:id(), binary(), binary(),
+                     aeo_oracles:relative_ttl(), chain_state()) ->
+    prim_op_result().
+oracle_respond(Oracle, QueryId, Signature, Response, ResponseTTL, State) ->
+    on_chain_only(State,
+                  fun() -> oracle_respond_(Oracle, QueryId, Signature,
+                                           Response, ResponseTTL, State) end).
+
+oracle_respond_(Oracle, QueryId, Signature, Response, ResponseTTL,
                State = #state{ account = ContractKey }) ->
     Nonce = next_nonce(Oracle, State),
 
@@ -249,7 +268,13 @@ oracle_respond(Oracle, QueryId, Signature, Response, ResponseTTL,
         Err = {error, _} -> Err
     end.
 
-oracle_extend(Oracle, Signature, TTL, State = #state{ account = ContractKey }) ->
+-spec oracle_extend(aec_keys:pubkey(), binary(), aeo_oracles:ttl(), chain_state()) ->
+    prim_op_result().
+oracle_extend(Oracle, Signature, TTL, State) ->
+    on_chain_only(State,
+                  fun() -> oracle_extend_(Oracle, Signature, TTL, State) end).
+
+oracle_extend_(Oracle, Signature, TTL, State = #state{ account = ContractKey }) ->
     Nonce = next_nonce(Oracle, State),
     {ok, Tx} =
         aeo_extend_tx:new(#{oracle_id  => aec_id:create(oracle, Oracle),
@@ -379,7 +404,13 @@ decode_as(Type, Val) ->
     ?DEBUG_LOG("Can't decode ~p as ~p\n", [Val, Type]),
     {error, out_of_gas}.
 
-aens_preclaim(Addr, CHash, Signature, #state{ account = ContractKey } = State) ->
+-spec aens_preclaim(binary(), binary(), binary(), chain_state()) ->
+    prim_op_result().
+aens_preclaim(Addr, CHash, Signature, State) ->
+    on_chain_only(State,
+                  fun() -> aens_preclaim_(Addr, CHash, Signature, State) end).
+
+aens_preclaim_(Addr, CHash, Signature, #state{ account = ContractKey} = State) ->
     Nonce = next_nonce(Addr, State),
     {ok, Tx} =
         aens_preclaim_tx:new(#{ account_id    => aec_id:create(account, Addr),
@@ -392,7 +423,13 @@ aens_preclaim(Addr, CHash, Signature, #state{ account = ContractKey } = State) -
         Err = {error, _} -> Err
     end.
 
-aens_claim(Addr, Name, Salt, Signature, #state{ account = ContractKey } = State) ->
+-spec aens_claim(aec_keys:pubkey(), binary(), integer(), binary(), chain_state()) ->
+    prim_op_result().
+aens_claim(Addr, Name, Salt, Signature, State) ->
+    on_chain_only(State,
+                  fun() -> aens_claim_(Addr, Name, Salt, Signature, State) end).
+
+aens_claim_(Addr, Name, Salt, Signature, #state{ account = ContractKey } = State) ->
     Nonce = next_nonce(Addr, State),
     {ok, Tx} =
         aens_claim_tx:new(#{ account_id => aec_id:create(account, Addr),
@@ -407,7 +444,13 @@ aens_claim(Addr, Name, Salt, Signature, #state{ account = ContractKey } = State)
         Err = {error, _} -> Err
     end.
 
-aens_transfer(FromAddr, ToAddr, Hash, Signature, #state{ account = ContractKey } = State) ->
+-spec aens_transfer(aec_keys:pubkey(), aec_keys:pubkey(), binary(), binary(), chain_state()) ->
+    prim_op_result().
+aens_transfer(FromAddr, ToAddr, Hash, Signature, State) ->
+    on_chain_only(State,
+                  fun() -> aens_transfer_(FromAddr, ToAddr, Hash, Signature, State) end).
+
+aens_transfer_(FromAddr, ToAddr, Hash, Signature, #state{ account = ContractKey } = State) ->
     Nonce = next_nonce(FromAddr, State),
     {ok, Tx} =
         aens_transfer_tx:new(#{ account_id   => aec_id:create(account, FromAddr),
@@ -420,7 +463,13 @@ aens_transfer(FromAddr, ToAddr, Hash, Signature, #state{ account = ContractKey }
         Err = {error, _} -> Err
     end.
 
-aens_revoke(Addr, Hash, Signature, #state{ account = ContractKey } = State) ->
+-spec aens_revoke(aec_keys:pubkey(), binary(), binary(), chain_state()) ->
+    prim_op_result().
+aens_revoke(Addr, Hash, Signature, State) ->
+    on_chain_only(State,
+                  fun() -> aens_revoke_(Addr, Hash, Signature, State) end).
+
+aens_revoke_(Addr, Hash, Signature, #state{ account = ContractKey } = State) ->
     Nonce = next_nonce(Addr, State),
     {ok, Tx} =
         aens_revoke_tx:new(#{ account_id => aec_id:create(account, Addr),
@@ -577,3 +626,14 @@ get_on_chain_trees(#trees{is_onchain = true, trees = Trees}) ->
     Trees;
 get_on_chain_trees(#trees{is_onchain = false, inner = Inner}) ->
     get_on_chain_trees(Inner).
+
+-spec on_chain_only(chain_state(),
+                    fun(() -> prim_op_result() | {ok, aec_keys:pubkey(), chain_trees()})) ->
+    prim_op_result() | {ok, aec_keys:pubkey(), chain_trees()}.
+on_chain_only(State, Fun) ->
+    #state{trees = ChainTrees} = State,
+    case is_channel_call(ChainTrees) of
+        true ->
+            {error, not_allowed_off_chain};
+        false -> Fun()
+    end.
