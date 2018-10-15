@@ -97,7 +97,7 @@ fee(#channel_withdraw_tx{fee = Fee}) ->
 
 -spec gas(tx()) -> non_neg_integer().
 gas(#channel_withdraw_tx{}) ->
-    aec_governance:tx_base_gas().
+    aec_governance:tx_base_gas(channel_withdraw_tx).
 
 -spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#channel_withdraw_tx{ttl = TTL}) ->
