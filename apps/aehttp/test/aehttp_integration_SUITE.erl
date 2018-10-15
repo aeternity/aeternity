@@ -268,7 +268,8 @@ groups() ->
        {group, wrong_http_method_endpoints},
        {group, websocket},
        {group, naming},
-       {group, channel_websocket}
+       {group, channel_websocket},
+       {group, channel_websocket_legacy}
       ]},
 
      %% /key-blocks/* /micro-blocks/* /generations/*
@@ -510,71 +511,79 @@ groups() ->
        ws_tx_on_chain
       ]},
      {channel_websocket, [sequence],
-      [sc_ws_timeout_open,
-       sc_ws_open,
-       sc_ws_update,
-       sc_ws_close,
-      % ensure port is reusable
-       sc_ws_open,
-       sc_ws_update_fails_and_close,
-       sc_ws_open,
-       sc_ws_send_messages_and_close,
-       sc_ws_open,
-       sc_ws_conflict_and_close,
-      % initiator can start close mutual
-       sc_ws_open,
-       sc_ws_update,
-       sc_ws_close_mutual_initiator,
-       % responder can start close mutual
-       sc_ws_open,
-       sc_ws_update,
-       sc_ws_close_mutual_responder,
-       % possible to leave and reestablish channel
-       sc_ws_open,
-       sc_ws_leave,
-       sc_ws_reestablish,
-       sc_ws_update,
-       sc_ws_close_mutual_initiator,
-       % initiator can make a deposit
-       sc_ws_open,
-       sc_ws_update,
-       sc_ws_deposit_initiator_and_close,
-       % responder can make a deposit
-       sc_ws_open,
-       sc_ws_update,
-       sc_ws_deposit_responder_and_close,
-       % initiator can make a withdrawal
-       sc_ws_open,
-       sc_ws_update,
-       sc_ws_withdraw_initiator_and_close,
-       % responder can make a withdrawal
-       sc_ws_open,
-       sc_ws_update,
-       sc_ws_withdraw_responder_and_close,
-       % responder can make a withdrawal
-       sc_ws_open,
-       sc_ws_update,
-       sc_ws_contracts,
-       % both can refer on-chain objects - oracle
-       sc_ws_open,
-       sc_ws_update,
-       sc_ws_oracle_contract,
-       % both can refer on-chain objects - name service
-       sc_ws_open,
-       sc_ws_update,
-       sc_ws_nameservice_contract,
-
-       % both can refer on-chain objects - chain environment
-       sc_ws_open,
-       sc_ws_update,
-       sc_ws_enviroment_contract,
-
-       % both can call a remote contract
-       sc_ws_open,
-       sc_ws_update,
-       sc_ws_remote_call_contract
-      ]}
+      channel_websocket_sequence()
+     },
+     {channel_websocket_legacy, [sequence],
+      channel_websocket_sequence()
+     }
     ].
+
+channel_websocket_sequence() ->
+    [sc_ws_timeout_open,
+     sc_ws_open,
+     sc_ws_update,
+     sc_ws_close,
+     %% ensure port is reusable
+     sc_ws_open,
+     sc_ws_update_fails_and_close,
+     sc_ws_open,
+     sc_ws_send_messages_and_close,
+     sc_ws_open,
+     sc_ws_conflict_and_close,
+     %% initiator can start close mutual
+     sc_ws_open,
+     sc_ws_update,
+     sc_ws_close_mutual_initiator,
+     %% responder can start close mutual
+     sc_ws_open,
+     sc_ws_update,
+     sc_ws_close_mutual_responder,
+     %% possible to leave and reestablish channel
+     sc_ws_open,
+     sc_ws_leave,
+     sc_ws_reestablish,
+     sc_ws_update,
+     sc_ws_close_mutual_initiator,
+     %% initiator can make a deposit
+     sc_ws_open,
+     sc_ws_update,
+     sc_ws_deposit_initiator_and_close,
+     %% responder can make a deposit
+     sc_ws_open,
+     sc_ws_update,
+     sc_ws_deposit_responder_and_close,
+     %% initiator can make a withdrawal
+     sc_ws_open,
+     sc_ws_update,
+     sc_ws_withdraw_initiator_and_close,
+     %% responder can make a withdrawal
+     sc_ws_open,
+     sc_ws_update,
+     sc_ws_withdraw_responder_and_close,
+     %% responder can make a withdrawal
+     sc_ws_open,
+     sc_ws_update,
+     sc_ws_contracts,
+     %% both can refer on-chain objects - oracle
+     sc_ws_open,
+     sc_ws_update,
+     sc_ws_oracle_contract,
+     %% both can refer on-chain objects - name service
+     sc_ws_open,
+     sc_ws_update,
+     sc_ws_nameservice_contract,
+
+     %% both can refer on-chain objects - chain environment
+     sc_ws_open,
+     sc_ws_update,
+     sc_ws_enviroment_contract,
+
+     %% both can call a remote contract
+     sc_ws_open,
+     sc_ws_update,
+     sc_ws_remote_call_contract
+    ].
+
 
 suite() ->
     [].
@@ -764,13 +773,22 @@ init_per_group(channel_websocket = Group, Config) ->
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 2),
     {IPubkey, IPrivkey} = initialize_account(IStartAmt),
     {RPubkey, RPrivkey} = initialize_account(RStartAmt),
+
+    Config2 = lists:keystore(sc_ws_protocol, 1, Config1, {sc_ws_protocol, <<"json-rpc">>}),
+
     Participants = #{initiator => #{pub_key => IPubkey,
                                     priv_key => IPrivkey,
                                     start_amt => IStartAmt},
                      responder => #{pub_key => RPubkey,
                                     priv_key => RPrivkey,
                                     start_amt => RStartAmt}},
-    [{participants, Participants} | Config1];
+    [{participants, Participants} | Config2];
+init_per_group(channel_websocket_legacy, Config) ->
+    Config1 = init_per_group(channel_websocket, Config),
+    Config2 = lists:keyreplace(
+                node_start_group, 1, Config1,
+                {node_start_group, channel_websocket_legacy}),
+    lists:keystore(sc_ws_protocol, 1, Config2, {sc_ws_protocol, <<"legacy">>});
 init_per_group(Group, Config) ->
     Config1 = start_node(Group, Config),
     Node = ?config(node, Config1),
@@ -1957,7 +1975,7 @@ contract_transactions(_Config) ->    % miner has an account
         {maps:get(<<"gas_used">>, InitCallObject), maps:get(gas, ValidDecoded)}
     ),
     ?assertEqual(<<"ok">>, maps:get(<<"return_type">>, InitCallObject)),
-    ?assertMatch(_, maps:get(<<"return_value">>, InitCallObject)),
+    _ = maps:get(<<"return_value">>, InitCallObject),
 
     {ok, 200, #{<<"poi">> := EncPoI}} = get_contract_poi(EncodedContractPubKey),
     {ok, PoIBin} = aec_base58c:safe_decode(poi, EncPoI),
@@ -2281,7 +2299,7 @@ contract_create_transaction_init_error(_Config) ->
         {maps:get(<<"gas_used">>, InitCallObject), maps:get(gas, ValidDecoded)}
     ),
     ?assertEqual(<<"error">>, maps:get(<<"return_type">>, InitCallObject)),
-    ?assertMatch(_, maps:get(<<"return_value">>, InitCallObject)),
+    _ = maps:get(<<"return_value">>, InitCallObject),
 
     ok.
 
@@ -3353,6 +3371,11 @@ ws_request_tag(_Config) ->
 
 
 ws_block_mined(_Config) ->
+    %% dbg:tracer(),
+    %% dbg:tpl(aehttp_ws_test_utils, x),
+    %% dbg:tp(jsx, x),
+    %% dbg:p(all, [c]),
+    %% ConnPid1 = try
     {ok, ConnPid} = ws_start_link(),
 
     %% Register for mined_block events
@@ -3364,7 +3387,12 @@ ws_block_mined(_Config) ->
     {_Tag, #{<<"block">> := Block}} = ws_chain_get(ConnPid, #{hash => Hash, type => block}),
     {_Tag, #{<<"header">> := Header}} = ws_chain_get(ConnPid, #{height => Height, type => header}),
     {_Tag, #{<<"header">> := Header}} = ws_chain_get(ConnPid, #{hash => Hash, type => header}),
-
+    %% ConnPid
+    %% after
+    %%     dbg:ctp('_'),
+    %%     dbg:ctpl('_'),
+    %%     dbg:stop()
+    %% end,
     ok = aehttp_ws_test_utils:stop(ConnPid),
     ok.
 
@@ -3432,7 +3460,7 @@ ws_refused_on_limit_reached(_Config) ->
             end,
             lists:seq(1, WSQueueSize)),
 
-    %% Now both the acceptopr pool and queue are full. Try to connect a new WS
+    %% Now both the acceptor pool and queue are full. Try to connect a new WS
     %% client and assert it fails
     {error, rejected} = ws_start_link(),
 
@@ -3502,14 +3530,14 @@ assert_balance(Pubkey, ExpectedBalance) ->
     {ok, 200, #{<<"balance">> := ExpectedBalance}} =
         get_accounts_by_pubkey_sut(Address).
 
-channel_sign_tx(ConnPid, Privkey, Tag) ->
-    {ok, Tag, #{<<"tx">> := EncCreateTx}} = ?WS:wait_for_channel_event(ConnPid, sign),
+channel_sign_tx(ConnPid, Privkey, Tag, Config) ->
+    {ok, Tag, #{<<"tx">> := EncCreateTx}} = wait_for_channel_event(ConnPid, sign, Config),
     {ok, CreateBinTx} = aec_base58c:safe_decode(transaction, EncCreateTx),
     Tx = aetx:deserialize_from_binary(CreateBinTx),
     SignedCreateTx = aec_test_utils:sign_tx(Tx, Privkey),
     EncSignedCreateTx = aec_base58c:encode(transaction,
                                   aetx_sign:serialize_to_binary(SignedCreateTx)),
-    ?WS:send(ConnPid, Tag, #{tx => EncSignedCreateTx}),
+    ws_send(ConnPid, Tag,  #{tx => EncSignedCreateTx}, Config),
     Tx.
 
 sc_ws_open(Config) ->
@@ -3525,7 +3553,7 @@ sc_ws_open(Config) ->
 
     {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
 
-    ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt),
+    ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt, #{}, Config),
     {ok, IConnPid} = channel_ws_start(initiator,
                                            maps:put(host, <<"localhost">>, ChannelOpts)),
     ok = ?WS:register_test_for_channel_events(IConnPid, [info, get, sign, on_chain_tx]),
@@ -3534,12 +3562,13 @@ sc_ws_open(Config) ->
 
     ok = ?WS:register_test_for_channel_events(RConnPid, [info, get, sign, on_chain_tx]),
 
-    channel_send_conn_open_infos(RConnPid, IConnPid),
+    channel_send_conn_open_infos(RConnPid, IConnPid, Config),
 
     ChannelCreateFee = channel_create(Config, IConnPid, RConnPid),
     {ok, {IBal, RBal}} = sc_ws_get_both_balances(IConnPid,
                                                  IPubkey,
-                                                 RPubkey),
+                                                 RPubkey,
+                                                 Config),
     %% assert off-chain balances
     PushAmt = maps:get(push_amount, ChannelOpts),
     IBal = IAmt - PushAmt,
@@ -3552,9 +3581,9 @@ sc_ws_open(Config) ->
     % mine min depth
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 4),
 
-    channel_send_locking_infos(IConnPid, RConnPid),
+    channel_send_locking_infos(IConnPid, RConnPid, Config),
 
-    channel_send_chan_open_infos(RConnPid, IConnPid),
+    channel_send_chan_open_infos(RConnPid, IConnPid, Config),
 
     ChannelClients = #{initiator => IConnPid,
                        responder => RConnPid},
@@ -3562,20 +3591,20 @@ sc_ws_open(Config) ->
                    {channel_options, ChannelOpts} | Config]}.
 
 
-channel_send_conn_open_infos(RConnPid, IConnPid) ->
-    {ok, #{<<"event">> := <<"channel_open">>}} = ?WS:wait_for_channel_event(RConnPid, info),
-    {ok, #{<<"event">> := <<"channel_accept">>}} = ?WS:wait_for_channel_event(IConnPid, info).
+channel_send_conn_open_infos(RConnPid, IConnPid, Config) ->
+    {ok, #{<<"event">> := <<"channel_open">>}} = wait_for_channel_event(RConnPid, info, Config),
+    {ok, #{<<"event">> := <<"channel_accept">>}} = wait_for_channel_event(IConnPid, info, Config).
 
-channel_send_locking_infos(IConnPid, RConnPid) ->
-    {ok, #{<<"event">> := <<"own_funding_locked">>}} = ?WS:wait_for_channel_event(IConnPid, info),
-    {ok, #{<<"event">> := <<"own_funding_locked">>}} = ?WS:wait_for_channel_event(RConnPid, info),
+channel_send_locking_infos(IConnPid, RConnPid, Config) ->
+    {ok, #{<<"event">> := <<"own_funding_locked">>}} = wait_for_channel_event(IConnPid, info, Config),
+    {ok, #{<<"event">> := <<"own_funding_locked">>}} = wait_for_channel_event(RConnPid, info, Config),
 
-    {ok, #{<<"event">> := <<"funding_locked">>}} = ?WS:wait_for_channel_event(IConnPid, info),
-    {ok, #{<<"event">> := <<"funding_locked">>}} = ?WS:wait_for_channel_event(RConnPid, info).
+    {ok, #{<<"event">> := <<"funding_locked">>}} = wait_for_channel_event(IConnPid, info, Config),
+    {ok, #{<<"event">> := <<"funding_locked">>}} = wait_for_channel_event(RConnPid, info, Config).
 
-channel_send_chan_open_infos(RConnPid, IConnPid) ->
-    {ok, #{<<"event">> := <<"open">>}} = ?WS:wait_for_channel_event(IConnPid, info),
-    {ok, #{<<"event">> := <<"open">>}} = ?WS:wait_for_channel_event(RConnPid, info).
+channel_send_chan_open_infos(RConnPid, IConnPid, Config) ->
+    {ok, #{<<"event">> := <<"open">>}} = wait_for_channel_event(IConnPid, info, Config),
+    {ok, #{<<"event">> := <<"open">>}} = wait_for_channel_event(RConnPid, info, Config).
 
 channel_participants_balances(IPubkey, RPubkey) ->
     {ok, 200, #{<<"balance">> := BalI}} =
@@ -3592,15 +3621,15 @@ channel_create(Config, IConnPid, RConnPid) ->
     %% initiator gets to sign a create_tx
     {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
 
-    CrTx = channel_sign_tx(IConnPid, IPrivkey, <<"initiator_sign">>),
-    {ok, #{<<"event">> := <<"funding_created">>}} = ?WS:wait_for_channel_event(RConnPid, info),
+    CrTx = channel_sign_tx(IConnPid, IPrivkey, <<"initiator_sign">>, Config),
+    {ok, #{<<"event">> := <<"funding_created">>}} = wait_for_channel_event(RConnPid, info, Config),
     %% responder gets to sign a create_tx
-    CrTx = channel_sign_tx(RConnPid, RPrivkey, <<"responder_sign">>),
-    {ok, #{<<"event">> := <<"funding_signed">>}} = ?WS:wait_for_channel_event(IConnPid, info),
+    CrTx = channel_sign_tx(RConnPid, RPrivkey, <<"responder_sign">>, Config),
+    {ok, #{<<"event">> := <<"funding_signed">>}} = wait_for_channel_event(IConnPid, info, Config),
 
     %% both of them receive the same co-signed channel_create_tx
-    {ok, #{<<"tx">> := EncodedSignedCrTx}} = ?WS:wait_for_channel_event(IConnPid, on_chain_tx),
-    {ok, #{<<"tx">> := EncodedSignedCrTx}} = ?WS:wait_for_channel_event(RConnPid, on_chain_tx),
+    {ok, #{<<"tx">> := EncodedSignedCrTx}} = wait_for_channel_event(IConnPid, on_chain_tx, Config),
+    {ok, #{<<"tx">> := EncodedSignedCrTx}} = wait_for_channel_event(RConnPid, on_chain_tx, Config),
 
     {ok, SSignedCrTx} = aec_base58c:safe_decode(transaction, EncodedSignedCrTx),
     SignedCrTx = aetx_sign:deserialize_from_binary(SSignedCrTx),
@@ -3631,7 +3660,7 @@ sc_ws_update(Config) ->
     Conns = proplists:get_value(channel_clients, ConfigList),
     lists:foldl(
         fun(Sender, Round) ->
-            channel_update(Conns, Sender, Participants, 1, Round),
+            channel_update(Conns, Sender, Participants, 1, Round, Config),
             Round + 1
         end,
         2, % we start from round 2
@@ -3650,18 +3679,19 @@ sc_ws_update_fails_and_close(Config) ->
     lists:foreach(
         fun(Sender) ->
             {ok, #{<<"reason">> := <<"insufficient_balance">>,
-                  <<"request">> := _Request0}} = channel_update_fail(Conns, Sender,
-                                                                    Participants, 10000),
+                  <<"request">> := _Request0}} = channel_update_fail(
+                                                   Conns, Sender,
+                                                   Participants, 10000, Config),
             {ok, #{<<"reason">> := <<"negative_amount">>,
-                  <<"request">> := _Request1}} = channel_update_fail(Conns, Sender,
-                                                                     Participants,
-                                                                     -1),
+                  <<"request">> := _Request1}} = channel_update_fail(
+                                                   Conns, Sender,
+                                                   Participants, -1, Config),
             {ok, #{<<"reason">> := <<"invalid_pubkeys">>,
                   <<"request">> := _Request2}} =
                 channel_update_fail(Conns, Sender,
                                     #{initiator => #{pub_key => <<42:32/unit:8>>},
                                       responder => #{pub_key => <<43:32/unit:8>>}},
-                                    1),
+                                    1, Config),
             ok
         end,
         [initiator, responder]),
@@ -3685,27 +3715,27 @@ sc_ws_send_messages_and_close(Config) ->
                     responder ->
                         {RPubkey, IPubkey, RConnPid, IConnPid}
                 end,
-            SenderEncodedK = aec_base58c:encode(account_pubkey, SenderPubkey),
-            ReceiverEncodedK = aec_base58c:encode(account_pubkey, ReceiverPubkey),
-            ok = ?WS:register_test_for_channel_event(ReceiverPid, message),
+                SenderEncodedK = aec_base58c:encode(account_pubkey, SenderPubkey),
+                ReceiverEncodedK = aec_base58c:encode(account_pubkey, ReceiverPubkey),
+                ok = ?WS:register_test_for_channel_event(ReceiverPid, message),
 
-            ?WS:send(SenderPid, <<"message">>,
-                    #{<<"to">> => ReceiverEncodedK,
-                      <<"info">> => Msg}),
+                ws_send(SenderPid, <<"message">>,
+                        #{<<"to">> => ReceiverEncodedK,
+                          <<"info">> => Msg}, Config),
 
-            {ok, #{<<"message">> := #{<<"from">> := SenderEncodedK,
-                                      <<"to">> := ReceiverEncodedK,
-                                      <<"info">> := Msg}}}
-                = ?WS:wait_for_channel_event(ReceiverPid, message),
-            ok = ?WS:unregister_test_for_channel_event(ReceiverPid, message)
+                {ok, #{<<"message">> := #{<<"from">> := SenderEncodedK,
+                                          <<"to">> := ReceiverEncodedK,
+                                          <<"info">> := Msg}}}
+                    = wait_for_channel_event(ReceiverPid, message, Config),
+                ok = ?WS:unregister_test_for_channel_event(ReceiverPid, message)
         end,
-        [ {initiator, <<"hejsan">>}                   %% initiator can send
-        , {responder, <<"svejsan">>}                  %% responder can send
-        , {initiator, <<"first message in a row">>}   %% initiator can send two messages in a row
-        , {initiator, <<"second message in a row">>}
-        , {responder, <<"some message">>}             %% responder can send two messages in a row
-        , {responder, <<"other message">>}
-        ]),
+      [ {initiator, <<"hejsan">>}                   %% initiator can send
+      , {responder, <<"svejsan">>}                  %% responder can send
+      , {initiator, <<"first message in a row">>}   %% initiator can send two messages in a row
+      , {initiator, <<"second message in a row">>}
+      , {responder, <<"some message">>}             %% responder can send two messages in a row
+      , {responder, <<"other message">>}
+      ]),
 
     ok = ?WS:stop(IConnPid),
     ok = ?WS:stop(RConnPid),
@@ -3719,7 +3749,7 @@ sc_ws_conflict_and_close(Config) ->
 
     lists:foreach(
         fun(FirstSender) ->
-            channel_conflict(Conns, FirstSender, Participants, 1, 2)
+                channel_conflict(Conns, FirstSender, Participants, 1, 2, Config)
         end,
         [initiator,
          responder]),
@@ -3734,7 +3764,7 @@ channel_conflict(#{initiator := IConnPid, responder :=RConnPid},
                                 priv_key := IPrivkey},
                  responder := #{pub_key := RPubkey,
                                 priv_key := RPrivkey}},
-               Amount1, Amount2) ->
+               Amount1, Amount2, Config) ->
     {StarterPid, AcknowledgerPid, StarterPubkey, StarterPrivkey,
      AcknowledgerPubkey, AcknowledgerPrivkey} =
         case StarterRole of
@@ -3748,7 +3778,7 @@ channel_conflict(#{initiator := IConnPid, responder :=RConnPid},
 
     SignUpdate =
         fun TrySignUpdate(ConnPid, Privkey) ->
-            case ?WS:wait_for_channel_event(ConnPid, sign) of
+            case wait_for_channel_event(ConnPid, sign, Config) of
                 {ok, <<"update_ack">>, _} -> %% this is not the message we are looking for
                     TrySignUpdate(ConnPid, Privkey);
                 {ok, <<"update">>, #{<<"tx">> := EncCreateTx}} ->
@@ -3757,28 +3787,28 @@ channel_conflict(#{initiator := IConnPid, responder :=RConnPid},
                     SignedCreateTx = aec_test_utils:sign_tx(Tx, Privkey),
                     EncSignedCreateTx = aec_base58c:encode(transaction,
                                                   aetx_sign:serialize_to_binary(SignedCreateTx)),
-                    ?WS:send(ConnPid, <<"update">>, #{tx => EncSignedCreateTx})
+                    ws_send(ConnPid, <<"update">>, #{tx => EncSignedCreateTx}, Config)
             end
         end,
     %% sender initiates an update
-    ?WS:send_tagged(StarterPid, <<"update">>, <<"new">>,
-        #{from => aec_base58c:encode(account_pubkey, StarterPubkey),
-          to => aec_base58c:encode(account_pubkey, AcknowledgerPubkey),
-          amount => Amount1}),
+    ws_send_tagged(StarterPid, <<"update">>, <<"new">>,
+                   #{from => aec_base58c:encode(account_pubkey, StarterPubkey),
+                     to => aec_base58c:encode(account_pubkey, AcknowledgerPubkey),
+                     amount => Amount1}, Config),
 
     %% starter signs the new state
 
     %% acknowledger initiates an update too
-    ?WS:send_tagged(AcknowledgerPid, <<"update">>, <<"new">>,
-        #{from => aec_base58c:encode(account_pubkey, StarterPubkey),
-          to => aec_base58c:encode(account_pubkey, AcknowledgerPubkey),
-          amount => Amount2}),
+    ws_send_tagged(AcknowledgerPid, <<"update">>, <<"new">>,
+                   #{from => aec_base58c:encode(account_pubkey, StarterPubkey),
+                     to => aec_base58c:encode(account_pubkey, AcknowledgerPubkey),
+                     amount => Amount2}, Config),
 
     SignUpdate(StarterPid, StarterPrivkey),
     SignUpdate(AcknowledgerPid, AcknowledgerPrivkey),
 
-    {ok, _} = ?WS:wait_for_channel_event(StarterPid, conflict),
-    {ok, _} = ?WS:wait_for_channel_event(AcknowledgerPid, conflict),
+    {ok, _} = wait_for_channel_event(StarterPid, conflict, Config),
+    {ok, _} = wait_for_channel_event(AcknowledgerPid, conflict, Config),
 
     ok = ?WS:unregister_test_for_channel_events(IConnPid, [sign, conflict]),
     ok = ?WS:unregister_test_for_channel_events(RConnPid, [sign, conflict]),
@@ -3791,7 +3821,7 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
                                 priv_key := IPrivkey},
                  responder := #{pub_key := RPubkey,
                                 priv_key := RPrivkey}},
-               Amount,_Round) ->
+               Amount,_Round,Config) ->
     true = undefined =/= process_info(IConnPid),
     true = undefined =/= process_info(RConnPid),
     {StarterPid, AcknowledgerPid, StarterPubkey, StarterPrivkey,
@@ -3810,17 +3840,17 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
     %% sender initiates an update
     GetBothBalances = fun(ConnPid) ->
                               sc_ws_get_both_balances(
-                                ConnPid, StarterPubkey, AcknowledgerPubkey)
+                                ConnPid, StarterPubkey, AcknowledgerPubkey, Config)
                       end,
     {ok, {Ba0, Bb0} = Bal0} = GetBothBalances(IConnPid),
     ct:log("Balances before: ~p", [Bal0]),
-    ?WS:send_tagged(StarterPid, <<"update">>, <<"new">>,
+    ws_send_tagged(StarterPid, <<"update">>, <<"new">>,
         #{from => aec_base58c:encode(account_pubkey, StarterPubkey),
           to => aec_base58c:encode(account_pubkey, AcknowledgerPubkey),
-          amount => Amount}),
+          amount => Amount}, Config),
 
     %% starter signs the new state
-    UnsignedStateTx = channel_sign_tx(StarterPid, StarterPrivkey, <<"update">>),
+    UnsignedStateTx = channel_sign_tx(StarterPid, StarterPrivkey, <<"update">>, Config),
     ct:log("Unsigned state tx ~p", [UnsignedStateTx]),
     %% verify contents
     {channel_offchain_tx, OffchainTx} = aetx:specialize_type(UnsignedStateTx),
@@ -3831,13 +3861,11 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
 
 
     %% acknowledger signs the new state
-    {ok, #{<<"event">> := <<"update">>}} = ?WS:wait_for_channel_event(AcknowledgerPid, info),
-    UnsignedStateTx = channel_sign_tx(AcknowledgerPid, AcknowledgerPrivkey, <<"update_ack">>),
+    {ok, #{<<"event">> := <<"update">>}} = wait_for_channel_event(AcknowledgerPid, info, Config),
+    UnsignedStateTx = channel_sign_tx(AcknowledgerPid, AcknowledgerPrivkey, <<"update_ack">>, Config),
 
-    {ok, #{<<"state">> := NewState}} = ?WS:wait_for_channel_event(IConnPid,
-                                                                 update),
-    {ok, #{<<"state">> := NewState}} = ?WS:wait_for_channel_event(RConnPid,
-                                                                 update),
+    {ok, #{<<"state">> := NewState}} = wait_for_channel_event(IConnPid, update, Config),
+    {ok, #{<<"state">> := NewState}} = wait_for_channel_event(RConnPid, update, Config),
     {ok, SignedStateTxBin} = aec_base58c:safe_decode(transaction, NewState),
     SignedStateTx = aetx_sign:deserialize_from_binary(SignedStateTxBin),
 
@@ -3862,7 +3890,7 @@ channel_update_fail(#{initiator := IConnPid, responder :=RConnPid},
                StarterRole,
                #{initiator := #{pub_key := IPubkey},
                  responder := #{pub_key := RPubkey}},
-               Amount) ->
+               Amount, Config) ->
     {StarterPid, _AcknowledgerPid, StarterPubkey, AcknowledgerPubkey} =
         case StarterRole of
             initiator ->
@@ -3873,12 +3901,12 @@ channel_update_fail(#{initiator := IConnPid, responder :=RConnPid},
     ok = ?WS:register_test_for_channel_event(StarterPid, error),
 
     %% sender initiates an update
-    ?WS:send_tagged(StarterPid, <<"update">>, <<"new">>,
-        #{from => aec_base58c:encode(account_pubkey, StarterPubkey),
-          to => aec_base58c:encode(account_pubkey, AcknowledgerPubkey),
-          amount => Amount}),
+    ws_send_tagged(StarterPid, <<"update">>, <<"new">>,
+                   #{from => aec_base58c:encode(account_pubkey, StarterPubkey),
+                     to => aec_base58c:encode(account_pubkey, AcknowledgerPubkey),
+                     amount => Amount}, Config),
 
-    {ok, _Payload}= Res = ?WS:wait_for_channel_event(StarterPid, error),
+    {ok, _Payload}= Res = wait_for_channel_event(StarterPid, error, Config),
 
 
     ok = ?WS:unregister_test_for_channel_event(StarterPid, error),
@@ -3895,23 +3923,33 @@ sc_ws_close(Config) ->
     ok = ?WS:stop(RConnPid),
     ok.
 
-sc_ws_get_balance(ConnPid, PubKey) ->
+sc_ws_get_balance(ConnPid, PubKey, Config) ->
     Account = aec_base58c:encode(account_pubkey, PubKey),
-    ?WS:send_tagged(ConnPid, <<"get">>, <<"balances">>,
-                    #{<<"accounts">> => [Account]}),
-    {ok, <<"balances">>, Res} = ?WS:wait_for_channel_event(ConnPid, get),
+    {ok, Res} = query_balances(ConnPid, [Account], Config),
     [#{<<"account">> := Account, <<"balance">> := B}] = Res,
     {ok, B}.
 
-sc_ws_get_both_balances(ConnPid, PubKeyI, PubKeyR) ->
+sc_ws_get_both_balances(ConnPid, PubKeyI, PubKeyR, Config) ->
     AccountI = aec_base58c:encode(account_pubkey, PubKeyI),
     AccountR = aec_base58c:encode(account_pubkey, PubKeyR),
-    ?WS:send_tagged(ConnPid, <<"get">>, <<"balances">>,
-                    #{<<"accounts">> => [AccountI, AccountR]}),
-    {ok, <<"balances">>, Res} = ?WS:wait_for_channel_event(ConnPid, get),
+    {ok, Res} = query_balances(ConnPid, [AccountI, AccountR], Config),
     [#{<<"account">> := AccountI, <<"balance">> := BI},
      #{<<"account">> := AccountR, <<"balance">> := BR}] = Res,
     {ok, {BI, BR}}.
+
+query_balances(ConnPid, Accounts, Config) ->
+    query_balances_(ConnPid, Accounts, sc_ws_protocol(Config)).
+
+query_balances_(ConnPid, Accounts, <<"legacy">>) ->
+    ?WS:send_tagged(ConnPid, <<"get">>, <<"balances">>,
+                    #{<<"accounts">> => Accounts}),
+    {ok, <<"balances">>, Res} = ?WS:wait_for_channel_event(ConnPid, get),
+    {ok, Res};
+query_balances_(ConnPid, Accounts, <<"json-rpc">>) ->
+    {ok, ?WS:json_rpc_call(
+            ConnPid, #{ <<"method">> => <<"channels.get.balances">>
+                      , <<"params">> => #{<<"accounts">> => Accounts} })}.
+
 
 sc_ws_close_mutual_initiator(Config) ->
     sc_ws_close_mutual(Config, initiator).
@@ -3937,10 +3975,10 @@ sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
 
     CloseMutual =
         fun(CloserConn, CloserPrivkey, OtherConn, OtherPrivkey) ->
-            ?WS:send(CloserConn, <<"shutdown">>, #{}),
+                ws_send(CloserConn, <<"shutdown">>, #{}, Config),
 
-            ShTx = channel_sign_tx(CloserConn, CloserPrivkey, <<"shutdown_sign">>),
-            ShTx = channel_sign_tx(OtherConn, OtherPrivkey, <<"shutdown_sign_ack">>)
+            ShTx = channel_sign_tx(CloserConn, CloserPrivkey, <<"shutdown_sign">>, Config),
+            ShTx = channel_sign_tx(OtherConn, OtherPrivkey, <<"shutdown_sign_ack">>, Config)
         end,
     ShutdownTx =
         case Closer of
@@ -3948,8 +3986,8 @@ sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
             responder -> CloseMutual(RConnPid, RPrivkey, IConnPid, IPrivkey)
         end,
 
-    {ok, #{<<"tx">> := EncodedSignedMutualTx}} = ?WS:wait_for_channel_event(IConnPid, on_chain_tx),
-    {ok, #{<<"tx">> := EncodedSignedMutualTx}} = ?WS:wait_for_channel_event(RConnPid, on_chain_tx),
+    {ok, #{<<"tx">> := EncodedSignedMutualTx}} = wait_for_channel_event(IConnPid, on_chain_tx, Config),
+    {ok, #{<<"tx">> := EncodedSignedMutualTx}} = wait_for_channel_event(RConnPid, on_chain_tx, Config),
 
     {ok, SSignedMutualTx} = aec_base58c:safe_decode(transaction, EncodedSignedMutualTx),
     SignedMutualTx = aetx_sign:deserialize_from_binary(SSignedMutualTx),
@@ -3985,20 +4023,14 @@ sc_ws_leave(Config) ->
     ok = ?WS:register_test_for_events(IConnPid, websocket, [closed]),
     ok = ?WS:register_test_for_events(RConnPid, websocket, [closed]),
     %%
-    ok = ?WS:send(IConnPid, <<"leave">>, #{}),
+    ok = ws_send(IConnPid, <<"leave">>, #{}, Config),
     %%
-    {ok, #{ <<"channel_id">> := IDi,
-            <<"payload">> := Pi }} =
-        ?WS:wait_for_channel_msg(IConnPid, leave),
-    #{ <<"state">> := StI } = Pi,
-    {ok, #{<<"channel_id">> := IDr,
-           <<"payload">> := Pr }} =
-        ?WS:wait_for_channel_msg(RConnPid, leave),
-    #{ <<"state">> := StR } = Pr,
+    {ok, #{id := IDi, state := StI}} = wait_for_channel_leave_msg(IConnPid, Config),
+    {ok, #{id := IDr, state := StR}} = wait_for_channel_leave_msg(RConnPid, Config),
     {IDi, IDr} = {IDr, IDi},
     {StI, StR} = {StR, StI},
-    {ok, #{<<"event">> := <<"died">>}} = ?WS:wait_for_channel_event(IConnPid, info),
-    {ok, #{<<"event">> := <<"died">>}} = ?WS:wait_for_channel_event(RConnPid, info),
+    {ok, #{<<"event">> := <<"died">>}} = wait_for_channel_event(IConnPid, info, Config),
+    {ok, #{<<"event">> := <<"died">>}} = wait_for_channel_event(RConnPid, info, Config),
     ok = ?WS:wait_for_event(IConnPid, websocket, closed),
     ok = ?WS:wait_for_event(RConnPid, websocket, closed),
     %%
@@ -4023,13 +4055,13 @@ sc_ws_reestablish(Config) ->
     ok = ?WS:register_test_for_channel_events(
             IrConnPid, [info, update]),
     {ok, #{<<"event">> := <<"channel_reestablished">>}} =
-        ?WS:wait_for_channel_event(IrConnPid, info),
+        wait_for_channel_event(IrConnPid, info, Config),
     {ok, #{<<"event">> := <<"channel_reestablished">>}} =
-        ?WS:wait_for_channel_event(RrConnPid, info),
+        wait_for_channel_event(RrConnPid, info, Config),
     {ok, #{<<"event">> := <<"open">>}} =
-        ?WS:wait_for_channel_event(IrConnPid, info),
+        wait_for_channel_event(IrConnPid, info, Config),
     {ok, #{<<"event">> := <<"open">>}} =
-        ?WS:wait_for_channel_event(RrConnPid, info),
+        wait_for_channel_event(RrConnPid, info, Config),
     ChannelClients = #{initiator => IrConnPid,
                        responder => RrConnPid},
     {save_config, [{channel_clients, ChannelClients},
@@ -4062,13 +4094,13 @@ sc_ws_deposit_and_close(Config, Origin) when Origin =:= initiator
     {SStartB, AStartB} = channel_participants_balances(SenderPubkey, AckPubkey),
     ok = ?WS:register_test_for_channel_events(SenderConnPid, [sign, info, on_chain_tx]),
     ok = ?WS:register_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx]),
-    ?WS:send(SenderConnPid, <<"deposit">>, #{amount => 2}),
-    UnsignedStateTx = channel_sign_tx(SenderConnPid, SenderPrivkey, <<"deposit_tx">>),
-    {ok, #{<<"event">> := <<"deposit_created">>}} = ?WS:wait_for_channel_event(AckConnPid, info),
-    UnsignedStateTx = channel_sign_tx(AckConnPid, AckPrivkey, <<"deposit_ack">>),
+    ws_send(SenderConnPid, <<"deposit">>, #{amount => 2}, Config),
+    UnsignedStateTx = channel_sign_tx(SenderConnPid, SenderPrivkey, <<"deposit_tx">>, Config),
+    {ok, #{<<"event">> := <<"deposit_created">>}} = wait_for_channel_event(AckConnPid, info, Config),
+    UnsignedStateTx = channel_sign_tx(AckConnPid, AckPrivkey, <<"deposit_ack">>, Config),
     ct:log("Unsigned state tx ~p", [UnsignedStateTx]),
-    {ok, #{<<"tx">> := EncodedSignedDepositTx}} = ?WS:wait_for_channel_event(SenderConnPid, on_chain_tx),
-    {ok, #{<<"tx">> := EncodedSignedDepositTx}} = ?WS:wait_for_channel_event(AckConnPid, on_chain_tx),
+    {ok, #{<<"tx">> := EncodedSignedDepositTx}} = wait_for_channel_event(SenderConnPid, on_chain_tx, Config),
+    {ok, #{<<"tx">> := EncodedSignedDepositTx}} = wait_for_channel_event(AckConnPid, on_chain_tx, Config),
 
     {ok, SSignedDepositTx} = aec_base58c:safe_decode(transaction,
                                                      EncodedSignedDepositTx),
@@ -4079,11 +4111,11 @@ sc_ws_deposit_and_close(Config, Origin) when Origin =:= initiator
     {SStartB1, _} = {SStartB - 2 - 1, SStartB},
 
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 5),
-    {ok, #{<<"event">> := <<"own_deposit_locked">>}} = ?WS:wait_for_channel_event(SenderConnPid, info),
-    {ok, #{<<"event">> := <<"own_deposit_locked">>}} = ?WS:wait_for_channel_event(AckConnPid, info),
+    {ok, #{<<"event">> := <<"own_deposit_locked">>}} = wait_for_channel_event(SenderConnPid, info, Config),
+    {ok, #{<<"event">> := <<"own_deposit_locked">>}} = wait_for_channel_event(AckConnPid, info, Config),
 
-    {ok, #{<<"event">> := <<"deposit_locked">>}} = ?WS:wait_for_channel_event(SenderConnPid, info),
-    {ok, #{<<"event">> := <<"deposit_locked">>}} = ?WS:wait_for_channel_event(AckConnPid, info),
+    {ok, #{<<"event">> := <<"deposit_locked">>}} = wait_for_channel_event(SenderConnPid, info, Config),
+    {ok, #{<<"event">> := <<"deposit_locked">>}} = wait_for_channel_event(AckConnPid, info, Config),
 
     ok = ?WS:stop(SenderConnPid),
     ok = ?WS:stop(AckConnPid),
@@ -4115,13 +4147,13 @@ sc_ws_withdraw_and_close(Config, Origin) when Origin =:= initiator
     {SStartB, AStartB} = channel_participants_balances(SenderPubkey, AckPubkey),
     ok = ?WS:register_test_for_channel_events(SenderConnPid, [sign, info, on_chain_tx]),
     ok = ?WS:register_test_for_channel_events(AckConnPid, [sign, info, on_chain_tx]),
-    ?WS:send(SenderConnPid, <<"withdraw">>, #{amount => 2}),
-    UnsignedStateTx = channel_sign_tx(SenderConnPid, SenderPrivkey, <<"withdraw_tx">>),
-    {ok, #{<<"event">> := <<"withdraw_created">>}} = ?WS:wait_for_channel_event(AckConnPid, info),
-    UnsignedStateTx = channel_sign_tx(AckConnPid, AckPrivkey, <<"withdraw_ack">>),
+    ws_send(SenderConnPid, <<"withdraw">>, #{amount => 2}, Config),
+    UnsignedStateTx = channel_sign_tx(SenderConnPid, SenderPrivkey, <<"withdraw_tx">>, Config),
+    {ok, #{<<"event">> := <<"withdraw_created">>}} = wait_for_channel_event(AckConnPid, info, Config),
+    UnsignedStateTx = channel_sign_tx(AckConnPid, AckPrivkey, <<"withdraw_ack">>, Config),
     ct:log("Unsigned state tx ~p", [UnsignedStateTx]),
-    {ok, #{<<"tx">> := EncodedSignedWTx}} = ?WS:wait_for_channel_event(SenderConnPid, on_chain_tx),
-    {ok, #{<<"tx">> := EncodedSignedWTx}} = ?WS:wait_for_channel_event(AckConnPid, on_chain_tx),
+    {ok, #{<<"tx">> := EncodedSignedWTx}} = wait_for_channel_event(SenderConnPid, on_chain_tx, Config),
+    {ok, #{<<"tx">> := EncodedSignedWTx}} = wait_for_channel_event(AckConnPid, on_chain_tx, Config),
 
     {ok, SSignedWTx} = aec_base58c:safe_decode(transaction, EncodedSignedWTx),
     SignedWTx = aetx_sign:deserialize_from_binary(SSignedWTx),
@@ -4131,11 +4163,11 @@ sc_ws_withdraw_and_close(Config, Origin) when Origin =:= initiator
     {SStartB1, _} = {SStartB + 2 - 1, SStartB},
 
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 5),
-    {ok, #{<<"event">> := <<"own_withdraw_locked">>}} = ?WS:wait_for_channel_event(SenderConnPid, info),
-    {ok, #{<<"event">> := <<"own_withdraw_locked">>}} = ?WS:wait_for_channel_event(AckConnPid, info),
+    {ok, #{<<"event">> := <<"own_withdraw_locked">>}} = wait_for_channel_event(SenderConnPid, info, Config),
+    {ok, #{<<"event">> := <<"own_withdraw_locked">>}} = wait_for_channel_event(AckConnPid, info, Config),
 
-    {ok, #{<<"event">> := <<"withdraw_locked">>}} = ?WS:wait_for_channel_event(SenderConnPid, info),
-    {ok, #{<<"event">> := <<"withdraw_locked">>}} = ?WS:wait_for_channel_event(AckConnPid, info),
+    {ok, #{<<"event">> := <<"withdraw_locked">>}} = wait_for_channel_event(SenderConnPid, info, Config),
+    {ok, #{<<"event">> := <<"withdraw_locked">>}} = wait_for_channel_event(AckConnPid, info, Config),
 
 
     ok = ?WS:stop(SenderConnPid),
@@ -4167,7 +4199,7 @@ sc_ws_oracle_contract(Config) ->
     ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, get, error]),
     ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, get, error]),
 
-    [sc_ws_contract_generic(Role, fun sc_ws_oracle_contract_/7, Config, [])
+    [sc_ws_contract_generic(Role, fun sc_ws_oracle_contract_/8, Config, [])
         || Role <- [initiator, responder]],
 
     % cleanup
@@ -4185,7 +4217,7 @@ sc_ws_nameservice_contract(Config) ->
     ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, get, error]),
 
 
-    [sc_ws_contract_generic(Role, fun sc_ws_nameservice_contract_/7, Config,
+    [sc_ws_contract_generic(Role, fun sc_ws_nameservice_contract_/8, Config,
                             [])
         || Role <- [initiator,
                     responder]],
@@ -4204,7 +4236,7 @@ sc_ws_enviroment_contract(Config) ->
     ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, get, error]),
 
 
-    [sc_ws_contract_generic(Role, fun sc_ws_enviroment_contract_/7, Config,
+    [sc_ws_contract_generic(Role, fun sc_ws_enviroment_contract_/8, Config,
                             [])
         || Role <- [initiator,
                     responder]],
@@ -4223,7 +4255,7 @@ sc_ws_remote_call_contract(Config) ->
     ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, get, error]),
 
 
-    [sc_ws_contract_generic(Role, fun sc_ws_remote_call_contract_/7, Config,
+    [sc_ws_contract_generic(Role, fun sc_ws_remote_call_contract_/8, Config,
                             [])
         || Role <- [initiator,
                     responder]],
@@ -4271,10 +4303,10 @@ sc_ws_contract_generic(Origin, Fun, Config, Opts) ->
         fun(Actor) ->
             case Actor =:= Origin of
                 true ->
-                    {fun() -> update_voley_(SenderConnPid, SenderPrivkey, AckConnPid, AckPrivkey) end,
+                    {fun() -> update_volley_(SenderConnPid, SenderPrivkey, AckConnPid, AckPrivkey, Config) end,
                      SenderConnPid, SenderPubkey};
                 false ->
-                    {fun() -> update_voley_(AckConnPid, AckPrivkey, SenderConnPid, SenderPrivkey) end,
+                    {fun() -> update_volley_(AckConnPid, AckPrivkey, SenderConnPid, SenderPrivkey, Config) end,
                      AckConnPid, AckPubkey}
             end
         end,
@@ -4288,12 +4320,12 @@ sc_ws_contract_generic(Origin, Fun, Config, Opts) ->
         end,
     Actors = [{R, GetPubkeys(R)} || R <- [initiator, responder]],
     [Fun(Owner, GetVolley, SenderConnPid,
-         AckConnPid, OwnerPubkey, OtherPubkey, Opts)
+         AckConnPid, OwnerPubkey, OtherPubkey, Opts, Config)
         || {Owner, {OwnerPubkey, OtherPubkey}} <- Actors],
     ok.
 
 sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
-                       OwnerPubkey, OtherPubkey, _Opts) ->
+                       OwnerPubkey, OtherPubkey, _Opts, Config) ->
     %% Register an oracle. It will be used in an off-chain contract
     %% Oracle ask itself a question and answers it
     {OraclePubkey, OraclePrivkey} = initialize_account(100000),
@@ -4327,11 +4359,11 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
                               <<"sophia">>, Code, <<"init">>, InitArgument),
     {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
-    ?WS:send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
-                    #{vm_version => 1,
-                      deposit    => 10,
-                      code       => Code,
-                      call_data  => EncodedInitData}),
+    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+                   #{vm_version => 1,
+                     deposit    => 10,
+                     code       => Code,
+                     call_data  => EncodedInitData}, Config),
 
     UnsignedStateTx = CreateVolley(),
     ContractPubKey = contract_id_from_create_update(OwnerPubKey,
@@ -4342,11 +4374,11 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
             {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
             Tx = call_a_contract(Fun, Args,
                                  ContractPubKey, Code,
-                                 UpdaterConnPid, UpdateVolley),
+                                 UpdaterConnPid, UpdateVolley, Config),
             #{<<"value">> := R} =
                 ws_get_decoded_result(ConnPid1, ConnPid2,
                                       ReturnType,
-                                      Tx),
+                                      Tx, Config),
             {R, R} = {Result, R}
 
         end,
@@ -4376,40 +4408,45 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
 
     {ok, {OwnerBal0, OtherBal0}} = sc_ws_get_both_balances(ConnPid1,
                                                            OwnerPubkey,
-                                                           OtherPubkey),
+                                                           OtherPubkey,
+                                                           Config),
     CallContract(Owner, <<"resolve">>, <<"(", EncodedQueryId/binary, ")">>,
                  <<"string">>, <<"no winning bet">>),
 
     % no changes in balances
     {ok, {OwnerBal0, OtherBal0}} = sc_ws_get_both_balances(ConnPid1,
                                                            OwnerPubkey,
-                                                           OtherPubkey),
+                                                           OtherPubkey,
+                                                           Config),
 
     % owner posts the correct
     CallContract(Owner, <<"place_bet">>, <<"\"", Answer/binary, "\"">>,
                   <<"string">>, <<"ok">>),
     {ok, {OwnerBal, OtherBal0}} = sc_ws_get_both_balances(ConnPid1,
                                                           OwnerPubkey,
-                                                          OtherPubkey),
-    {ok, ContractBalance} = sc_ws_get_balance(ConnPid1, ContractPubKey),
+                                                          OtherPubkey,
+                                                          Config),
+    {ok, ContractBalance} = sc_ws_get_balance(ConnPid1, ContractPubKey, Config),
     CallContract(Owner, <<"resolve">>, <<"(", EncodedQueryId/binary, ")">>,
                  <<"string">>, <<"ok">>),
     % contract balance is 0 now
-    {ok, 0} = sc_ws_get_balance(ConnPid1, ContractPubKey),
-    {ok, 0} = sc_ws_get_balance(ConnPid2, ContractPubKey),
+    {ok, 0} = sc_ws_get_balance(ConnPid1, ContractPubKey, Config),
+    {ok, 0} = sc_ws_get_balance(ConnPid2, ContractPubKey, Config),
 
     % contract owner balance is updated
     {ok, {OwnerBal1, OtherBal0}} = sc_ws_get_both_balances(ConnPid1,
                                                            OwnerPubkey,
-                                                           OtherPubkey),
+                                                           OtherPubkey,
+                                                           Config),
     {ok, {OwnerBal1, OtherBal0}} = sc_ws_get_both_balances(ConnPid2,
                                                            OwnerPubkey,
-                                                           OtherPubkey),
+                                                           OtherPubkey,
+                                                           Config),
     {OwnerBal1, _} = {OwnerBal + ContractBalance, OwnerBal1},
     ok.
 
 sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
-                            OwnerPubkey, _OtherPubkey, _Opts) ->
+                            OwnerPubkey, _OtherPubkey, _Opts, Config) ->
     Name = random_unused_name(),
     %% Register an oracle. It will be used in an off-chain contract
     %% Oracle ask itself a question and answers it
@@ -4419,15 +4456,15 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     InitArgument = <<"()">>,
     {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
                               <<"sophia">>, Code, <<"init">>, InitArgument),
-    {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
-    ?WS:send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
-                    #{vm_version => 1,
-                      deposit    => 10,
-                      code       => Code,
-                      call_data  => EncodedInitData}),
+    {CreateVolley, OwnerConnPid, OwnerPubkey} = GetVolley(Owner),
+    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+                   #{vm_version => 1,
+                     deposit    => 10,
+                     code       => Code,
+                     call_data  => EncodedInitData}, Config),
 
     UnsignedStateTx = CreateVolley(),
-    ContractPubKey = contract_id_from_create_update(OwnerPubKey,
+    ContractPubKey = contract_id_from_create_update(OwnerPubkey,
                                                     UnsignedStateTx),
 
     ContractCanNameResolve =
@@ -4440,11 +4477,11 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
             Tx = call_a_contract(<<"can_resolve">>,
                                  Args,
                                  ContractPubKey, Code,
-                                 UpdaterConnPid, UpdateVolley),
+                                 UpdaterConnPid, UpdateVolley, Config),
              #{<<"value">> := RInt} =
                 ws_get_decoded_result(ConnPid1, ConnPid2,
                                       <<"bool">>,
-                                      Tx),
+                                      Tx, Config),
             R =
                 case RInt of
                     0 -> false;
@@ -4454,8 +4491,8 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
 
         end,
     Test =
-        fun(Name, Key, Result) ->
-            [ContractCanNameResolve(Who, Name, Key, Result)
+        fun(Name1, Key, Result) ->
+            [ContractCanNameResolve(Who, Name1, Key, Result)
                 || Who <- [initiator, responder]]
         end,
 
@@ -4471,20 +4508,20 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     ok.
 
 sc_ws_enviroment_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
-                           OwnerPubkey, _OtherPubkey, _Opts) ->
+                           OwnerPubkey, _OtherPubkey, _Opts, Config) ->
     Code = contract_byte_code("channel_env"),
     InitArgument = <<"()">>,
     {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
                               <<"sophia">>, Code, <<"init">>, InitArgument),
-    {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
-    ?WS:send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
-                    #{vm_version => 1,
-                      deposit    => 10,
-                      code       => Code,
-                      call_data  => EncodedInitData}),
+    {CreateVolley, OwnerConnPid, OwnerPubkey} = GetVolley(Owner),
+    ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+                   #{vm_version => 1,
+                     deposit    => 10,
+                     code       => Code,
+                     call_data  => EncodedInitData}, Config),
 
     UnsignedStateTx = CreateVolley(),
-    ContractPubKey = contract_id_from_create_update(OwnerPubKey,
+    ContractPubKey = contract_id_from_create_update(OwnerPubkey,
                                                     UnsignedStateTx),
 
     ContractCall =
@@ -4494,11 +4531,11 @@ sc_ws_enviroment_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
             Tx = call_a_contract(Fun,
                                  Args,
                                  ContractPubKey, Code,
-                                 UpdaterConnPid, UpdateVolley),
+                                 UpdaterConnPid, UpdateVolley, Config),
              #{<<"value">> := R} =
                 ws_get_decoded_result(ConnPid1, ConnPid2,
                                       ResultType,
-                                      Tx),
+                                      Tx, Config),
             case is_function(Result) of
                 true -> true = Result(R);
                 false ->
@@ -4524,7 +4561,7 @@ sc_ws_enviroment_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
 
 
 sc_ws_remote_call_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
-                           OwnerPubkey, _OtherPubkey, _Opts) ->
+                           OwnerPubkey, _OtherPubkey, _Opts, Config) ->
     %% create identity contract off-chain
     CreateContract =
         fun(Name) ->
@@ -4535,15 +4572,15 @@ sc_ws_remote_call_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                                       Code,
                                       <<"init">>,
                                       InitArgument),
-            {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
-            ?WS:send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
-                            #{vm_version => 1,
-                              deposit    => 10,
-                              code       => Code,
-                              call_data  => EncodedInitData}),
+            {CreateVolley, OwnerConnPid, OwnerPubkey} = GetVolley(Owner),
+            ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
+                           #{vm_version => 1,
+                             deposit    => 10,
+                             code       => Code,
+                             call_data  => EncodedInitData}, Config),
 
             UnsignedStateTx = CreateVolley(),
-            ContractPubKey = contract_id_from_create_update(OwnerPubKey,
+            ContractPubKey = contract_id_from_create_update(OwnerPubkey,
                                                             UnsignedStateTx),
             {ContractPubKey, Code}
           end,
@@ -4552,14 +4589,14 @@ sc_ws_remote_call_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
 
     ContractCall =
         fun(Who, ContractPubKey, Code, Fun, Args, Result, Amount) ->
-            {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
-            Tx = call_a_contract(Fun,
-                                 Args,
-                                 ContractPubKey, Code,
-                                 UpdaterConnPid, UpdateVolley, Amount),
-             #{<<"value">> := R} =
-                ws_get_decoded_result(ConnPid1, ConnPid2, <<"int">>, Tx),
-            {R, R} = {Result, R}
+                {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
+                Tx = call_a_contract(Fun,
+                                     Args,
+                                     ContractPubKey, Code,
+                                     UpdaterConnPid, UpdateVolley, Amount, Config),
+                #{<<"value">> := R} =
+                    ws_get_decoded_result(ConnPid1, ConnPid2, <<"int">>, Tx, Config),
+                {R, R} = {Result, R}
         end,
     CallIdentity =
         fun(Who, Val) ->
@@ -4687,13 +4724,13 @@ initialize_account(Amount) ->
     assert_balance(Pubkey, Amount),
     {Pubkey, Privkey}.
 
-update_voley_(FirstConnPid, FirstPrivkey, SecondConnPid, SecondPrivkey) ->
-    UnsignedStateTx = channel_sign_tx(FirstConnPid, FirstPrivkey, <<"update">>),
+update_volley_(FirstConnPid, FirstPrivkey, SecondConnPid, SecondPrivkey, Config) ->
+    UnsignedStateTx = channel_sign_tx(FirstConnPid, FirstPrivkey, <<"update">>, Config),
 
     % acknowledger signs update_ack
-    {ok, #{<<"event">> := <<"update">>}} = ?WS:wait_for_channel_event(SecondConnPid, info),
+    {ok, #{<<"event">> := <<"update">>}} = wait_for_channel_event(SecondConnPid, info, Config),
     UnsignedStateTx = channel_sign_tx(SecondConnPid, SecondPrivkey,
-                                      <<"update_ack">>).
+                                      <<"update_ack">>, Config).
 
 sc_ws_contract_(Config, TestName, Owner) ->
     ct:log("Start processing contract ~p, initated by ~p", [TestName, Owner]),
@@ -4718,15 +4755,15 @@ sc_ws_contract_(Config, TestName, Owner) ->
     %% helper lambda for update
     UpdateVolley =
         fun() ->
-            update_voley_(SenderConnPid, SenderPrivkey, AckConnPid, AckPrivkey)
+            update_volley_(SenderConnPid, SenderPrivkey, AckConnPid, AckPrivkey, Config)
         end,
     UpdateVolleyReverse =
         fun() ->
-            update_voley_(AckConnPid, AckPrivkey, SenderConnPid, SenderPrivkey)
+            update_volley_(AckConnPid, AckPrivkey, SenderConnPid, SenderPrivkey, Config)
         end,
 
     % trigger new contract
-    {UnsignedStateTx, Code} = create_contract_(TestName, SenderConnPid, UpdateVolley),
+    {UnsignedStateTx, Code} = create_contract_(TestName, SenderConnPid, UpdateVolley, Config),
 
     ContractPubKey = contract_id_from_create_update(SenderPubkey,
                                                     UnsignedStateTx),
@@ -4735,54 +4772,54 @@ sc_ws_contract_(Config, TestName, Owner) ->
     PruneCalls =
         fun(ConnPid) ->
             ok = ?WS:register_test_for_channel_events(ConnPid, [calls_pruned]),
-            ?WS:send(ConnPid, <<"clean_contract_calls">>, #{}),
-            {ok, _} = ?WS:wait_for_channel_event(ConnPid, calls_pruned),
+            ws_send(ConnPid, <<"clean_contract_calls">>, #{}, Config),
+            {ok, _} = wait_for_channel_event(ConnPid, calls_pruned, Config),
             ok = ?WS:unregister_test_for_channel_events(ConnPid, [calls_pruned])
         end,
     CallMissingCall =
         fun(UnsignedStateTx00, ConnPid) ->
-            ?WS:send_tagged(ConnPid, <<"get">>, <<"contract_call">>,
-                            ws_get_call_params(UnsignedStateTx00)),
-            {ok, #{<<"reason">> := <<"call_not_found">>}} = ?WS:wait_for_channel_event(ConnPid, error),
+            ws_send_tagged(ConnPid, <<"get">>, <<"contract_call">>,
+                           ws_get_call_params(UnsignedStateTx00), Config),
+            {ok, #{<<"reason">> := <<"call_not_found">>}} = wait_for_channel_event(ConnPid, error, Config),
             ok
         end,
 
     % trigger call contract
     % owner can call a contract
     SomeUnsignedStateTx = contract_calls_(TestName, ContractPubKey, Code, SenderConnPid, UpdateVolley,
-                    AckConnPid, SenderPubkey, AckPubkey),
+                    AckConnPid, SenderPubkey, AckPubkey, Config),
     _ = contract_result_parse(TestName,
                               ws_get_decoded_result(SenderConnPid, AckConnPid,
                                                     contract_return_type(TestName),
-                                                    SomeUnsignedStateTx)),
+                                                    SomeUnsignedStateTx, Config)),
     ok = PruneCalls(SenderConnPid),
     ok = CallMissingCall(SomeUnsignedStateTx, SenderConnPid),
     % state is still usable
 
     % acknowledger can call a contract
     contract_calls_(TestName, ContractPubKey, Code, AckConnPid, UpdateVolleyReverse,
-                    SenderConnPid, AckPubkey, SenderPubkey),
+                    SenderConnPid, AckPubkey, SenderPubkey, Config),
 
     GetPoI =
         fun(ConnPid) ->
-            ?WS:send_tagged(ConnPid, <<"get">>, <<"poi">>,
-                            #{contracts   => [aec_base58c:encode(contract_pubkey, ContractPubKey)],
-                              accounts    => [aec_base58c:encode(account_pubkey, SenderPubkey),
-                                              aec_base58c:encode(account_pubkey, AckPubkey)]
-                            }),
+            ws_send_tagged(ConnPid, <<"get">>, <<"poi">>,
+                           #{contracts   => [aec_base58c:encode(contract_pubkey, ContractPubKey)],
+                             accounts    => [aec_base58c:encode(account_pubkey, SenderPubkey),
+                                             aec_base58c:encode(account_pubkey, AckPubkey)]
+                            }, Config),
 
-                    {ok, <<"poi">>, #{<<"poi">> := P}} = ?WS:wait_for_channel_event(ConnPid, get),
+                    {ok, <<"poi">>, #{<<"poi">> := P}} = wait_for_channel_event(ConnPid, get, Config),
                     P
                 end,
 
     GetMissingPoI =
         fun(ConnPid, Accs, Cts) ->
-            ?WS:send_tagged(ConnPid, <<"get">>, <<"poi">>,
+            ws_send_tagged(ConnPid, <<"get">>, <<"poi">>,
                             #{contracts   => [aec_base58c:encode(contract_pubkey, C) || C <- Cts],
                               accounts    => [aec_base58c:encode(account_pubkey, Acc) || Acc <- Accs]
-                            }),
+                            }, Config),
 
-                    {ok, #{<<"reason">> := R}} = ?WS:wait_for_channel_event(ConnPid, error),
+                    {ok, #{<<"reason">> := R}} = wait_for_channel_event(ConnPid, error, Config),
                     R
                 end,
 
@@ -4822,54 +4859,54 @@ contract_id_from_create_update(Owner, OffchainTx) ->
     aect_contracts:compute_contract_pubkey(Owner, Round).
 
 
-create_contract_(TestName, SenderConnPid, UpdateVolley) ->
+create_contract_(TestName, SenderConnPid, UpdateVolley, Config) ->
     Code = contract_byte_code(TestName),
     InitArgument = contract_create_init_arg(TestName),
     {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
                               <<"sophia">>, Code, <<"init">>, InitArgument),
 
-    ?WS:send_tagged(SenderConnPid, <<"update">>, <<"new_contract">>,
-                    #{vm_version => 1,
-                      deposit    => 10,
-                      code       => Code,
-                      call_data  => EncodedInitData}),
+    ws_send_tagged(SenderConnPid, <<"update">>, <<"new_contract">>,
+                   #{vm_version => 1,
+                     deposit    => 10,
+                     code       => Code,
+                     call_data  => EncodedInitData}, Config),
     UnsignedStateTx = UpdateVolley(),
     {UnsignedStateTx, Code}.
 
 contract_calls_("identity", ContractPubKey, Code, SenderConnPid, UpdateVolley,
-                AckConnPid, _ , _) ->
+                AckConnPid, _ , _, Config) ->
     UnsignedStateTx = call_a_contract(<<"main">>, <<"(42)">>, ContractPubKey, Code, SenderConnPid,
-                    UpdateVolley),
+                    UpdateVolley, Config),
     ExpectedResult = 42,
     DecodedCallResult =
         contract_result_parse("identity",
                               ws_get_decoded_result(SenderConnPid, AckConnPid,
                                                     contract_return_type("identity"),
-                                                    UnsignedStateTx)),
+                                                    UnsignedStateTx, Config)),
     {ExpectedResult, _} = {DecodedCallResult, ExpectedResult},
     UnsignedStateTx;
 contract_calls_("counter", ContractPubKey, Code, SenderConnPid, UpdateVolley,
-                AckConnPid, _ , _) ->
+                AckConnPid, _ , _, Config) ->
     TestName = "counter",
     UnsignedStateTx0 = call_a_contract(<<"get">>, <<"()">>, ContractPubKey, Code, SenderConnPid,
-                    UpdateVolley),
+                    UpdateVolley, Config),
     GetDecodedResult =
         fun(Tx) ->
             contract_result_parse("counter",
                                   ws_get_decoded_result(SenderConnPid, AckConnPid,
                                                         contract_return_type(TestName),
-                                                        Tx))
+                                                        Tx, Config))
         end,
 
     InitResult = GetDecodedResult(UnsignedStateTx0),
     call_a_contract(<<"tick">>, <<"()">>, ContractPubKey, Code, SenderConnPid,
-                    UpdateVolley),
+                    UpdateVolley, Config),
 
     UnsignedStateTx1 = call_a_contract(<<"get">>, <<"()">>, ContractPubKey, Code, SenderConnPid,
-                    UpdateVolley),
+                    UpdateVolley, Config),
 
     UnsignedStateTx2 = call_a_contract(<<"get">>, <<"()">>, ContractPubKey, Code, SenderConnPid,
-                    UpdateVolley),
+                    UpdateVolley, Config),
 
     ExpectedResult = InitResult + 1,
     DecodedCallResult = GetDecodedResult(UnsignedStateTx1),
@@ -4877,7 +4914,7 @@ contract_calls_("counter", ContractPubKey, Code, SenderConnPid, UpdateVolley,
     {ExpectedResult, _} = {DecodedCallResult, ExpectedResult},
     UnsignedStateTx0;
 contract_calls_("spend_test", ContractPubKey, Code, SenderConnPid, UpdateVolley,
-                AckConnPid, SenderPubkey, AckPubkey) ->
+                AckConnPid, SenderPubkey, AckPubkey, Config) ->
     GetBalance =
         fun(Args) ->
             FunName =
@@ -4886,12 +4923,12 @@ contract_calls_("spend_test", ContractPubKey, Code, SenderConnPid, UpdateVolley,
                     _ -> <<"get_balance_of">>
                 end,
             UsStateTx = call_a_contract(FunName, Args, ContractPubKey, Code, SenderConnPid,
-                            UpdateVolley),
+                            UpdateVolley, Config),
             _DecodedCallResult =
                 contract_result_parse("spend_test",
                                       ws_get_decoded_result(SenderConnPid, AckConnPid,
                                                             contract_return_type("spend_test"),
-                                                            UsStateTx))
+                                                            UsStateTx, Config))
         end,
     ContractBalance0 = GetBalance(<<"()">>),
 
@@ -4902,7 +4939,7 @@ contract_calls_("spend_test", ContractPubKey, Code, SenderConnPid, UpdateVolley,
         fun(To, Amt) ->
             SpendArgs = format_args(To, Amt),
             _SpendStateTx = call_a_contract(<<"spend">>, SpendArgs, ContractPubKey, Code, SenderConnPid,
-                                  UpdateVolley)
+                                  UpdateVolley, Config)
         end,
 
     SpendAmt = 3,
@@ -4922,20 +4959,20 @@ contract_calls_("spend_test", ContractPubKey, Code, SenderConnPid, UpdateVolley,
     AckB = AckB0 + SpendAmt2,
     UnsignedStateTx.
 
-call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid, UpdateVolley) ->
+call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid, UpdateVolley, Config) ->
     call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
-                    UpdateVolley, 0).
+                    UpdateVolley, 0, Config).
 call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
-                UpdateVolley, Amount) ->
+                UpdateVolley, Amount, Config) ->
     {ok, EncodedMainData} = aehttp_logic:contract_encode_call_data(<<"sophia">>,
                                                                    Code,
                                                                    Function,
                                                                    Argument),
-    ?WS:send_tagged(SenderConnPid, <<"update">>, <<"call_contract">>,
-                    #{contract   => aec_base58c:encode(contract_pubkey, ContractPubKey),
-                      vm_version => 1,
-                      amount     => Amount,
-                      call_data  => EncodedMainData}),
+    ws_send_tagged(SenderConnPid, <<"update">>, <<"call_contract">>,
+                   #{contract   => aec_base58c:encode(contract_pubkey, ContractPubKey),
+                     vm_version => 1,
+                     amount     => Amount,
+                     call_data  => EncodedMainData}, Config),
     _UnsignedStateTx = UpdateVolley().
 
 
@@ -4994,16 +5031,16 @@ sc_ws_timeout_open(Config) ->
     RAmt = 4,
 
     ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt,
-                                  #{timeout_accept => 100}),
+                                  #{timeout_accept => 100}, Config),
     {ok, IConnPid} = channel_ws_start(initiator, maps:put(host, <<"localhost">>, ChannelOpts)),
     ok = ?WS:register_test_for_channel_event(IConnPid, info),
-    {ok, #{<<"event">> := <<"died">>}} = ?WS:wait_for_channel_event(IConnPid, info),
+    ok = wait_for_channel_event(<<"died">>, IConnPid, info, Config),
     ok.
 
-channel_options(IPubkey, RPubkey, IAmt, RAmt) ->
-    channel_options(IPubkey, RPubkey, IAmt, RAmt, #{}).
+%% channel_options(IPubkey, RPubkey, IAmt, RAmt) ->
+%%     channel_options(IPubkey, RPubkey, IAmt, RAmt, #{}).
 
-channel_options(IPubkey, RPubkey, IAmt, RAmt, Other) ->
+channel_options(IPubkey, RPubkey, IAmt, RAmt, Other, Config) ->
     maps:merge(#{ port => 12340,
                   initiator_id => aec_base58c:encode(account_pubkey, IPubkey),
                   responder_id => aec_base58c:encode(account_pubkey, RPubkey),
@@ -5011,7 +5048,8 @@ channel_options(IPubkey, RPubkey, IAmt, RAmt, Other) ->
                   push_amount => 1,
                   initiator_amount => IAmt,
                   responder_amount => RAmt,
-                  channel_reserve => 2
+                  channel_reserve => 2,
+                  protocol => proplists:get_value(sc_ws_protocol, Config, <<"legacy">>)
                 }, Other).
 
 peers(_Config) ->
@@ -5695,13 +5733,13 @@ generate_key_pair() ->
     #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),
     {Pubkey, Privkey}.
 
-ws_get_decoded_result(ConnPid1, ConnPid2, Type, Tx) ->
+ws_get_decoded_result(ConnPid1, ConnPid2, Type, Tx, Config) ->
     %% helper lambda for decoded result
     GetCallResult =
         fun(ConnPid) ->
-            ?WS:send_tagged(ConnPid, <<"get">>, <<"contract_call">>,
-                            ws_get_call_params(Tx)),
-            {ok, <<"contract_call">>, Res} = ?WS:wait_for_channel_event(ConnPid, get),
+            ws_send_tagged(ConnPid, <<"get">>, <<"contract_call">>,
+                           ws_get_call_params(Tx), Config),
+            {ok, <<"contract_call">>, Res} = wait_for_channel_event(ConnPid, get, Config),
             Res
         end,
     CallRes = GetCallResult(ConnPid1),
@@ -5729,3 +5767,120 @@ ws_get_call_params(UnsignedTx) ->
     #{contract   => ContractId,
       caller     => CallerId,
       round      => CallRound}.
+
+%% wait_for_channel_msg(ConnPid, Action, Config) ->
+%%     wait_for_channel_msg_(ConnPid, Action, sc_ws_protocol(Config)).
+
+wait_for_channel_msg_(ConnPid, Action, <<"legacy">>) ->
+    ?WS:wait_for_channel_msg(ConnPid, Action);
+wait_for_channel_msg_(ConnPid, Action, <<"json-rpc">>) ->
+    wait_for_channel_event_(ConnPid, Action, <<"json-rpc">>).
+
+wait_for_channel_event(ConnPid, Action, Config) ->
+    wait_for_channel_event_(ConnPid, Action, sc_ws_protocol(Config)).
+
+wait_for_channel_event_(ConnPid, Action, <<"legacy">>) ->
+    ?WS:wait_for_channel_event(ConnPid, Action);
+wait_for_channel_event_(ConnPid, error, <<"json-rpc">>) ->
+    case ?WS:wait_for_channel_msg(ConnPid, error) of   % whole msg
+        {ok, #{ <<"jsonrpc">> := <<"2.0">>
+              , <<"id">>      := null
+              , <<"error">>   := E } } ->
+            {ok, lift_reason(E)}
+    end;
+wait_for_channel_event_(ConnPid, Action, <<"json-rpc">>) ->
+    Method = method_pfx(Action),
+    Sz = byte_size(Method),
+    case {?WS:wait_for_channel_msg(ConnPid, Action), Method} of   % whole msg
+        {{ok, #{ <<"jsonrpc">> := <<"2.0">>
+               , <<"method">>  := <<Method:Sz/binary, _/binary>>
+               , <<"params">>  := Params }}, _} ->
+            {ok, Params};
+        {{ok, Tag, #{ <<"jsonrpc">> := <<"2.0">>
+                    , <<"method">>  := <<Method:Sz/binary, _/binary>>
+                    , <<"params">>  := Params }}, _} ->
+            {ok, Tag, Params}
+    end.
+
+wait_for_channel_event(Event, ConnPid, Type, Config) ->
+    wait_for_channel_event_(Event, ConnPid, Type, sc_ws_protocol(Config)).
+
+wait_for_channel_event_(Event, ConnPid, Type, <<"legacy">>) ->
+    {ok, #{<<"event">> := Event}} = ?WS:wait_for_channel_event(ConnPid, Type),
+    ok;
+wait_for_channel_event_(Event, ConnPid, Action, <<"json-rpc">>) ->
+    Method0 = method_pfx(Action),
+    Sz = byte_size(Method0),
+    {ok, #{ <<"jsonrpc">> := <<"2.0">>
+          , <<"method">>  := <<Method0:Sz/binary, _/binary>>
+          , <<"params">>  := #{<<"event">> := Event} }} =
+        ?WS:wait_for_channel_msg(ConnPid, Action),
+    ok.
+
+wait_for_channel_leave_msg(ConnPid, Config) ->
+    wait_for_channel_leave_msg_(ConnPid, sc_ws_protocol(Config)).
+
+wait_for_channel_leave_msg_(ConnPid, <<"legacy">> = L) ->
+    {ok, #{ <<"channel_id">> := ChId,
+            <<"payload">> := P }} =
+        wait_for_channel_msg_(ConnPid, leave, L),
+    #{ <<"state">> := St } = P,
+    {ok, #{id => ChId, state => St}};
+wait_for_channel_leave_msg_(ConnPid, <<"json-rpc">> = J) ->
+    {ok, #{ <<"channel_id">> := ChId
+          , <<"state">>      := St }} =
+        wait_for_channel_event_(ConnPid, leave, J),
+    {ok, #{id => ChId, state => St}}.
+
+lift_reason(#{ <<"message">> := <<"Rejected">>
+             , <<"data">>    := Data } = E) ->
+    Codes = lists:sort([Code || #{<<"code">> := Code} <- Data]),
+    E#{ <<"reason">> => data_code_to_reason(Codes) };
+lift_reason(#{ <<"code">> := Code } = E) ->
+    E#{ <<"reason">> => code_to_reason(Code) }.
+
+data_code_to_reason([100 ])      -> <<"not_found">>;
+data_code_to_reason([107 ])      -> <<"conflict">>;
+data_code_to_reason([1001])      -> <<"insufficient_balance">>;
+data_code_to_reason([1002])      -> <<"negative_amount">>;
+data_code_to_reason([1003])      -> <<"invalid_pubkeys">>;
+data_code_to_reason([1004])      -> <<"call_not_found">>;
+data_code_to_reason([1005])      -> <<"broken_encoding: accounts">>;
+data_code_to_reason([1006])      -> <<"broken_encoding: contracts">>;
+data_code_to_reason([1005,1006]) -> <<"broken_encoding: accounts, contracts">>;
+data_code_to_reason([Code])      -> sc_ws_handler:error_data_msg(Code).
+
+code_to_reason(Code) ->
+    sc_ws_handler:error_msg(Code).
+
+method_pfx(Action) ->
+    <<"channels.", (bin(Action))/binary>>.
+
+ws_send(ConnPid, Action, Payload, Config) ->
+    ws_send_(ConnPid, Action, Payload, sc_ws_protocol(Config)).
+
+ws_send_(ConnPid, Action, Payload, <<"legacy">>) ->
+    ?WS:send(ConnPid, Action, Payload);
+ws_send_(ConnPid, Action, Payload, <<"json-rpc">>) ->
+    ?WS:json_rpc_notify(ConnPid, #{ <<"method">> => <<"channels.", (bin(Action))/binary>>
+                                  , <<"params">> => Payload }).
+
+ws_send_tagged(ConnPid, Action, Tag, Payload, Config) ->
+    ws_send_tagged_(ConnPid, Action, Tag, Payload, sc_ws_protocol(Config)).
+
+ws_send_tagged_(ConnPid, Action, Tag, Payload, <<"legacy">>) ->
+    ?WS:send_tagged(ConnPid, Action, Tag, Payload);
+ws_send_tagged_(ConnPid, Action, Tag, Payload, <<"json-rpc">>) ->
+    ?WS:json_rpc_notify(
+       ConnPid,
+       #{ <<"method">> => iolist_to_binary([<<"channels.">>, bin(Action), ".", bin(Tag)])
+        , <<"params">> => Payload }).
+
+bin(A) when is_atom(A) ->
+    atom_to_binary(A, utf8);
+bin(B) when is_binary(B) ->
+    B.
+
+sc_ws_protocol(Config) ->
+    {_, Protocol} = lists:keyfind(sc_ws_protocol, 1, Config),
+    Protocol.

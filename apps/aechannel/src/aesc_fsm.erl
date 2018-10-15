@@ -435,21 +435,20 @@ init(#{opts := Opts0} = Arg) ->
     case Role of
         initiator ->
             if Reestablish ->
-                    {ok, reestablish_init, send_reestablish_msg(Data),
-                    [timer_for_state(reestablish_init, Data)]};
+                    ok_next(reestablish_init, send_reestablish_msg(Data));
               true ->
-                    {ok, initialized, send_open_msg(Data),
-                    [timer_for_state(initialized, Data)]}
+                    ok_next(initialized, send_open_msg(Data))
             end;
         responder ->
             if Reestablish ->
-                    {ok, awaiting_reestablish, Data,
-                    [timer_for_state(awaiting_reestablish, Data)]};
+                    ok_next(awaiting_reestablish, Data);
               true ->
-                    {ok, awaiting_open, Data,
-                    [timer_for_state(awaiting_open, Data)]}
+                    ok_next(awaiting_open, Data)
             end
     end.
+
+ok_next(Next, Data) ->
+    {ok, Next, cur_st(Next, Data), [timer_for_state(Next, Data)]}.
 
 check_opts([H|T], Opts) ->
     check_opts(T, H(Opts));

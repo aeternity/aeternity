@@ -11,6 +11,9 @@
 -export([websocket_info/2]).
 -export([terminate/3]).
 
+-export([error_msg/1,
+         error_data_msg/1]).
+
 -record(handler, {fsm_pid            :: pid() | undefined,
                   fsm_mref           :: reference() | undefined,
                   channel_id         :: aesc_channels:id() | undefined,
@@ -51,7 +54,7 @@
 init(Req, _Opts) ->
     lager:debug("init(~p, ~p)", [Req, _Opts]),
     {cowboy_websocket, Req,
-     maps:merge(#{protocol => <<"legacy">>},
+     maps:merge(#{<<"protocol">> => <<"legacy">>},
                 maps:from_list(cowboy_req:parse_qs(Req)))}.
 
 -spec websocket_init(map()) -> {ok, handler()} | {stop, undefined}.
@@ -73,44 +76,45 @@ websocket_init(Params) ->
     end.
 
 -spec websocket_handle(term(), handler()) -> {ok, handler()}.
-websocket_handle({text, MsgBin}, #handler{protocol = P} = H) ->
-    try unpack_request(P, jsx:decode(MsgBin, [return_maps]), H) of
-        {Msg, H1} ->
-            HNext = H1#handler{orig_request = undefined},
-            try process_incoming(Msg, H1) of
-                no_reply      -> {ok, HNext};
-                {reply, Resp} -> {reply, {text, jsx:encode(Resp)}, HNext}
-            catch
-                error:E1 ->
-                    lager:debug("CAUGHT E1=~p / ~p", [E1, erlang:get_stacktrace()]),
-                    throw({die_anyway, E1})
-            end
-    catch
-        error:E ->
-            lager:debug("Caught E=~p / ~p", [E, erlang:get_stacktrace()]),
-            {ok, H};
-        throw:{die_anyway, E1_} ->
-            erlang:error(E1_)
-    end;
+websocket_handle({text, MsgBin}, #handler{} = H) ->
+    try_seq([ fun jsx_decode/2
+            , fun unpack_request/2
+            , fun process_incoming/2 ], MsgBin, H);
 websocket_handle(_Data, H) ->
     {ok, H}.
 
-websocket_info(Msg, #handler{protocol = P} = H) ->
-    try unpack_info(P, Msg, H) of
-        {Msg1, H1} ->
-            try websocket_info_(Msg1, H1)
-            catch
-                error:E1 ->
-                    lager:debug("CAUGHT E1=~p / ~p",
-                                [E1, erlang:get_stacktrace()]),
-                    {stop, H}
-            end
+websocket_info(Msg, #handler{} = H) ->
+    try_seq([ fun unpack_info/2
+            , fun websocket_info_/2 ], Msg, H).
+
+try_seq(Seq, Msg, H) ->
+    %% All funs in `Seq` except the last, are to return `{Msg', H'}`.
+    %% The expected return values of the last fun are explicit below.
+    try lists:foldl(fun(F, {M1, H1}) ->
+                            F(M1, H1)
+                    end, {Msg, H}, Seq) of
+        no_reply          -> {ok, reset_h(H)};
+        {ok, H1}          -> {ok, reset_h(H1)};
+        {reply, Resp}     -> {reply, {text, jsx:encode(Resp)}, reset_h(H)};
+        {reply, Resp, H1} -> {reply, {text, jsx:encode(Resp)}, reset_h(H1)};
+        {stop, H1}        -> {stop, reset_h(H1)}
     catch
+        throw:{decode_error, Reason} ->
+            lager:debug("CAUGHT THROW {decode_error, ~p} (Msg = ~p)",
+                        [Reason, Msg]),
+            {reply, Err} = error_response(Reason, H),
+            {reply, {text, jsx:encode(Err), H}};
+        throw:{die_anyway, E} ->
+            lager:debug("CAUGHT THROW E = ~p / Msg = ~p / ~p",
+                        [E, Msg, erlang:get_stacktrace()]),
+            erlang:error(E);
         error:E ->
-            lager:debug("CAUGHT E=~p / ~p", [E, erlang:get_stacktrace()]);
-        throw:{die_anyway, E1_} ->
-            erlang:error(E1_)
+            lager:debug("CAUGHT E=~p / Msg = ~p / ~p", [E, Msg, erlang:get_stacktrace()]),
+            {ok, H}
     end.
+
+reset_h(H) ->
+    H#handler{orig_request = undefined}.
 
 websocket_info_({push, ChannelId, Data, Options}, H) ->
     case ChannelId =:= channel_id(H) of
@@ -119,16 +123,11 @@ websocket_info_({push, ChannelId, Data, Options}, H) ->
             {ok, H};
         true ->
             process_response(ok, Options),
-            Msg = jsx:encode(Data),
-            {reply, {text, Msg}, H}
+            reply(Data, H)
     end;
 websocket_info_({aesc_fsm, FsmPid, Msg}, #handler{fsm_pid=FsmPid}=H) ->
     H1 = set_channel_id(Msg, H),
-    case process_fsm(Msg, H) of
-        %no_reply -> {ok, H1};
-        %{error, _} -> {ok, H1}
-        {reply, Resp} -> {reply, {text, jsx:encode(Resp)}, H1}
-    end;
+    process_fsm(Msg, H1);
 websocket_info_({'DOWN', MRef, _, _, _}, #handler{fsm_mref = MRef} = H) ->
     {stop, H#handler{fsm_pid = undefined,
                      fsm_mref = undefined}};
@@ -145,17 +144,18 @@ set_channel_id(#{channel_id := A}, #handler{channel_id = B})
 set_channel_id(_Msg, H) ->
     H.
 
-fsm_reply(Msg, #handler{enc_channel_id = Id}) ->
+fsm_reply(Msg, #handler{enc_channel_id = Id} = H) ->
     case Id of
-        undefined -> {reply, Msg};
-        _         -> {reply, maps:merge(#{channel_id => Id}, Msg)}
+        undefined -> reply(Msg, H);
+        _         -> reply(maps:merge(#{channel_id => Id}, Msg), H)
     end.
+
 
 terminate(_Reason, _PartialReq, #{} = _H) ->
     % not initialized yet
     ok;
 terminate(Reason, _PartialReq, State) ->
-    lager:debug("WebSocket dying because of ~p", [Reason]),
+    lager:debug("WebSocket dying because of ~p/~p", [Reason, erlang:get_stacktrace()]),
     case fsm_pid(State) of
         undefined -> pass;
         FsmPid ->
@@ -290,8 +290,30 @@ parse_by_type(serialized_tx, V, RecordField) when is_binary(V) ->
             {error, {RecordField, broken_encoding}}
     end.
 
--spec process_incoming(map(), handler()) -> no_reply | {reply, map()} | {error, atom()}.
-process_incoming(#{<<"method">> := <<"channels.update.new">>,
+process_incoming([_|_] = Batch, #handler{protocol = jsonrpc}) ->
+    Results = [R || R <- lists:map(fun process_batch/1, Batch),
+                    R =/= noreply],
+    case Results of
+        []    -> noreply;
+        [_|_] -> {reply, Results}
+    end;
+process_incoming(Req, H) ->
+    process_incoming_(Req, H).
+
+process_batch({Req, H}) ->
+    try process_incoming_(Req, H) of
+        no_reply       -> no_reply;
+        {reply, Reply} -> Reply
+    catch
+        error:E ->
+            lager:debug("CAUGHT E=~p / Req = ~p / ~p",
+                        [E, Req, erlang:get_stacktrace()]),
+            noreply
+    end.
+
+
+-spec process_incoming_(map(), handler()) -> no_reply | {reply, map()}.
+process_incoming_(#{<<"method">> := <<"channels.update.new">>,
                    <<"params">> := #{<<"from">>    := FromB,
                                      <<"to">>      := ToB,
                                      <<"amount">>  := Amount}}, H) ->
@@ -305,7 +327,7 @@ process_incoming(#{<<"method">> := <<"channels.update.new">>,
             end;
         _ -> error_response(broken_encoding, H)
     end;
-process_incoming(#{<<"method">> := <<"channels.update.new_contract">>,
+process_incoming_(#{<<"method">> := <<"channels.update.new_contract">>,
                    <<"params">> := #{<<"vm_version">> := VmVersion,
                                      <<"deposit">>    := Deposit,
                                      <<"code">>       := CodeE,
@@ -323,11 +345,11 @@ process_incoming(#{<<"method">> := <<"channels.update.new_contract">>,
             end;
         _ -> error_response(broken_code, H)
     end;
-process_incoming(#{<<"method">> := <<"channels.update.call_contract">>,
-                   <<"params">> := #{<<"contract">>   := ContractE,
-                                     <<"vm_version">> := VmVersion,
-                                     <<"amount">>     := Amount,
-                                     <<"call_data">>  := CallDataE}}, H) ->
+process_incoming_(#{<<"method">> := <<"channels.update.call_contract">>,
+                    <<"params">> := #{<<"contract">>   := ContractE,
+                                      <<"vm_version">> := VmVersion,
+                                      <<"amount">>     := Amount,
+                                      <<"call_data">>  := CallDataE}}, H) ->
     case {aec_base58c:safe_decode(contract_pubkey, ContractE),
           bytearray_decode(CallDataE)} of
         {{ok, Contract}, {ok, CallData}} ->
@@ -342,27 +364,30 @@ process_incoming(#{<<"method">> := <<"channels.update.call_contract">>,
             end;
         _ -> error_response(broken_code, H)
     end;
-process_incoming(#{<<"method">> := <<"channels.get.contract_call">>,
-                   <<"params">> := #{<<"contract">>   := ContractE,
-                                     <<"caller">>     := CallerE,
-                                     <<"round">>      := Round}}, H) ->
+process_incoming_(#{<<"method">> := <<"channels.get.contract_call">>,
+                    <<"params">> := #{<<"contract">>   := ContractE,
+                                      <<"caller">>     := CallerE,
+                                      <<"round">>      := Round}}, H) ->
     case {aec_base58c:safe_decode(contract_pubkey, ContractE),
           aec_base58c:safe_decode(account_pubkey, CallerE)} of
         {{ok, Contract}, {ok, Caller}} ->
             case aesc_fsm:get_contract_call(fsm_pid(H),
                                             Contract, Caller, Round) of
                 {ok, Call} ->
-                    reply(aect_call:serialize_for_client(Call), H);
+                    reply(#{ action     => <<"get">>
+                           , tag        => <<"contract_call">>
+                           , {int,type} => reply
+                           , payload    => aect_call:serialize_for_client(Call) }, H);
                 {error, Reason} ->
                     error_response(Reason, H)
             end;
         _ -> error_response(broken_code, H)
     end;
-process_incoming(#{<<"method">> := <<"channels.clean_contract_calls">>}, H) ->
+process_incoming_(#{<<"method">> := <<"channels.clean_contract_calls">>}, H) ->
     ok = aesc_fsm:prune_local_calls(fsm_pid(H)),
     reply(ok_response(calls_pruned), H);
-process_incoming(#{<<"method">> := <<"channels.get.balances">>,
-                   <<"params">> := #{<<"accounts">> := Accounts}}, H) ->
+process_incoming_(#{<<"method">> := <<"channels.get.balances">>,
+                    <<"params">> := #{<<"accounts">> := Accounts}}, H) ->
     case safe_decode_account_keys(Accounts) of
         {ok, AccountKeys} ->
             case aesc_fsm:get_balances(
@@ -373,15 +398,18 @@ process_incoming(#{<<"method">> := <<"channels.get.balances">>,
                             || {AcctExt, AcctInt} <- AccountKeys,
                                {Acct, Bal} <- Balances,
                                AcctInt =:= Acct],
-                    reply(Resp, H);
+                    reply(#{ action     => <<"get">>
+                           , tag        => <<"balances">>
+                           , {int,type} => reply
+                           , payload    => Resp }, H);
                 {error, Reason} ->
                     error_response(Reason, H)
             end;
         {error, _} ->
             error_response(invalid_arguments, H)
     end;
-process_incoming(#{<<"method">> := <<"channels.get.poi">>,
-                   <<"params">> := Filter}, H) ->
+process_incoming_(#{<<"method">> := <<"channels.get.poi">>,
+                    <<"params">> := Filter}, H) ->
     AccountsE   = maps:get(<<"accounts">>, Filter, []),
     ContractsE  = maps:get(<<"contracts">>, Filter, []),
     Parse =
@@ -398,7 +426,7 @@ process_incoming(#{<<"method">> := <<"channels.get.poi">>,
         end,
     BrokenEncodingReply =
         fun(What) ->
-                error_response(<<"broken_encoding: ", What/binary>>, H)
+                error_response({broken_encoding, What}, H)
         end,
     case {Parse(account_pubkey, AccountsE), Parse(contract_pubkey, ContractsE)} of
         {{ok, Accounts0}, {ok, Contracts0}} ->
@@ -407,19 +435,25 @@ process_incoming(#{<<"method">> := <<"channels.get.poi">>,
             case aesc_fsm:get_poi(fsm_pid(H), Accounts ++ Contracts) of
                 {ok, PoI} ->
                     Resp = #{
-                      <<"poi">> => aec_base58c:encode(
-                                     poi, aec_trees:serialize_poi(PoI))},
+                      action      => <<"get">>,
+                      tag         => <<"poi">>,
+                      {int,type}  => reply,
+                      payload     => #{
+                        <<"poi">> => aec_base58c:encode(
+                                       poi, aec_trees:serialize_poi(PoI))
+                       }
+                     },
                     reply(Resp, H);
                 {error, Reason} ->
                     error_response(Reason, H)
             end;
-      {{error, _},  {ok, _}}    -> BrokenEncodingReply(<<"accounts">>);
-      {{ok, _},     {error, _}} -> BrokenEncodingReply(<<"contracts">>);
-      {{error, _},  {error, _}} -> BrokenEncodingReply(<<"accounts, contracts">>)
+      {{error, _},  {ok, _}}    -> BrokenEncodingReply([accounts]);
+      {{ok, _},     {error, _}} -> BrokenEncodingReply([contracts]);
+      {{error, _},  {error, _}} -> BrokenEncodingReply([accounts, contracts])
     end;
-process_incoming(#{<<"method">> := <<"channels.message">>,
-                   <<"params">> := #{<<"to">>    := ToB,
-                                     <<"info">>  := Msg}}, H) ->
+process_incoming_(#{<<"method">> := <<"channels.message">>,
+                    <<"params">> := #{<<"to">>    := ToB,
+                                      <<"info">>  := Msg}}, H) ->
     case aec_base58c:safe_decode(account_pubkey, ToB) of
         {ok, To} ->
             case aesc_fsm:inband_msg(fsm_pid(H), To, Msg) of
@@ -429,22 +463,22 @@ process_incoming(#{<<"method">> := <<"channels.message">>,
             end;
         _ -> error_response(broken_encoding, H)
     end;
-process_incoming(#{<<"method">> := <<"channels.deposit">>,
-                   <<"params">> := #{<<"amount">>  := Amount}}, H) ->
+process_incoming_(#{<<"method">> := <<"channels.deposit">>,
+                    <<"params">> := #{<<"amount">>  := Amount}}, H) ->
     case aesc_fsm:upd_deposit(fsm_pid(H), #{amount => Amount}) of
         ok -> reply(ok, H, no_reply);
         {error, Reason} ->
             error_response(Reason, H)
     end;
-process_incoming(#{<<"method">> := <<"channels.withdraw">>,
-                   <<"params">> := #{<<"amount">>  := Amount}}, H) ->
+process_incoming_(#{<<"method">> := <<"channels.withdraw">>,
+                    <<"params">> := #{<<"amount">>  := Amount}}, H) ->
     case aesc_fsm:upd_withdraw(fsm_pid(H), #{amount => Amount}) of
         ok -> reply(ok, H, no_reply);
         {error, Reason} ->
             error_response(Reason, H)
     end;
-process_incoming(#{<<"method">> := Method,
-                   <<"params">> := #{<<"tx">> := EncodedTx}}, H)
+process_incoming_(#{<<"method">> := Method,
+                    <<"params">> := #{<<"tx">> := EncodedTx}}, H)
     when ?METHOD_SIGNED(Method) ->
     Tag = ?METHOD_TAG(Method),
     case aec_base58c:safe_decode(transaction, EncodedTx) of
@@ -456,18 +490,18 @@ process_incoming(#{<<"method">> := Method,
             aesc_fsm:signing_response(fsm_pid(H), Tag, SignedTx),
             reply(ok, H, no_reply)
     end;
-process_incoming(#{<<"method">> := <<"channels.leave">>}, H) ->
+process_incoming_(#{<<"method">> := <<"channels.leave">>}, H) ->
     lager:debug("Channel WS: leave channel message received"),
     aesc_fsm:leave(fsm_pid(H)),
     reply(ok, H, no_reply);
-process_incoming(#{<<"method">> := <<"channels.shutdown">>}, H) ->
+process_incoming_(#{<<"method">> := <<"channels.shutdown">>}, H) ->
     lager:warning("Channel WS: closing channel message received"),
     aesc_fsm:shutdown(fsm_pid(H)),
     reply(ok, H, no_reply);
-process_incoming(#{<<"method">> := _} = Unhandled, H) ->
+process_incoming_(#{<<"method">> := _} = Unhandled, H) ->
     lager:warning("Channel WS: unhandled action received ~p", [Unhandled]),
     error_response(unhandled, H);
-process_incoming(Msg, H) ->
+process_incoming_(Msg, H) ->
     lager:warning("Channel WS: missing action received ~p", [Msg]),
     error_response(unhandled, H).
 
@@ -493,7 +527,7 @@ process_fsm(#{type := sign,
             shutdown_ack -> <<"shutdown_sign_ack">>;
             deposit_created -> <<"deposit_ack">>;
             withdraw_created -> <<"withdraw_ack">>;
-            T -> T
+            T -> atom_to_binary(T, utf8)
         end,
     reply(#{action  => <<"sign">>,
             tag => Tag1,
@@ -537,7 +571,8 @@ process_fsm(#{type := report,
         end,
     Action = atom_to_binary(Tag, utf8),
     fsm_reply(#{action => Action,
-                payload => Payload}, H);
+                payload => Payload,
+                tag     => none}, H);
 process_fsm(#{type := Type, tag := Tag, info := Event}, _H) ->
     error({unparsed_fsm_event, Type, Tag, Event}).
 
@@ -580,12 +615,10 @@ prepare_handler(Params) ->
         end,
         #handler{protocol = protocol(Params)}, Validators).
 
-protocol(#{protocol := P}) ->
+protocol(#{<<"protocol">> := P}) ->
     case P of
         <<"legacy">>   -> legacy;
         <<"json-rpc">> -> jsonrpc;
-        _ when P==legacy;
-               P==jsonrpc -> P;
         _Other ->
             erlang:error(invalid_protocol)
     end.
@@ -650,21 +683,114 @@ read_channel_options(Params) ->
 error_response(Reason, #handler{protocol = legacy, orig_request = Req}) ->
     {reply, #{ <<"action">>  => <<"error">>
              , <<"payload">> => #{ <<"request">> => Req
-                                 , <<"reason">> => Reason} }
+                                 , <<"reason">> => legacy_error_reason(Reason)} }
     };
 error_response(Reason, #handler{protocol = jsonrpc, orig_request = Req}) ->
-    case Req of
-        #{<<"id">> := Id} ->
-            {reply, #{ <<"jsonrpc">> => <<"2.0">>
-                     , <<"id">>      => Id
-                     , <<"error">>   => Reason }
-            };
-        _ ->
-            noreply
-    end.
+    {reply, #{ <<"jsonrpc">> => <<"2.0">>
+             , <<"id">>      => error_id(Req)
+             , <<"error">>   => json_rpc_error_object(Reason, Req) }
+    }.
+
+error_id(#{ <<"id">> := Id }) -> Id;
+error_id(_) ->
+    null.
+
+%% this should be generalized more
+legacy_error_reason({broken_encoding, [accounts, contracts]}) ->
+    <<"broken_encoding: accounts, contracts">>;
+legacy_error_reason({broken_encoding, [accounts]}) ->
+    <<"broken_encoding: accounts">>;
+legacy_error_reason({broken_encoding, [contracts]}) ->
+    <<"broken_encoding: contracts">>;
+legacy_error_reason(Reason) ->
+    bin(Reason).
+
+%% JSON-RPC error objects. Try to follow
+%% https://github.com/ethereum/wiki/wiki/JSON-RPC-Error-Codes-Improvement-Proposal
+json_rpc_error_object(parse_error         , R) -> error_obj(-32700        , R);
+json_rpc_error_object(invalid_request     , R) -> error_obj(-32000        , R);
+json_rpc_error_object(unhandled           , R) -> error_obj(-32601        , R);
+json_rpc_error_object(broken_encoding     , R) -> error_obj(3     , [104] , R);
+json_rpc_error_object(broken_code         , R) -> error_obj(3     , [104] , R);
+json_rpc_error_object(conflict            , R) -> error_obj(3     , [107] , R);
+json_rpc_error_object(insufficient_balance, R) -> error_obj(3     , [1001], R);
+json_rpc_error_object(negative_amount     , R) -> error_obj(3     , [1002], R);
+json_rpc_error_object(invalid_pubkeys     , R) -> error_obj(3     , [1003], R);
+json_rpc_error_object(call_not_found      , R) -> error_obj(3     , [1004], R);
+json_rpc_error_object({broken_encoding,What}, R) ->
+    error_obj(3, [broken_encoding_code(W) || W <- What], R);
+json_rpc_error_object(not_found           , R) -> error_obj(3     , [100] , R);
+json_rpc_error_object(Other               , R) ->
+    lager:debug("Unrecognized error reason: ~p", [Other]),
+    error_obj(-32603        , R).
+
+error_obj(Code, OrigReq) when is_map(OrigReq) ->
+    #{ <<"code">>    => Code
+     , <<"message">> => error_msg(Code)
+     , <<"request">> => OrigReq };
+error_obj(Code, undefined) ->
+    #{ <<"code">>    => Code
+     , <<"message">> => error_msg(Code) }.
+
+error_obj(Code, Data, OrigReq) when is_map(OrigReq) ->
+    #{ <<"code">>    => Code
+     , <<"message">> => error_msg(Code)
+     , <<"data">>    => error_data(Data)
+     , <<"request">> => OrigReq };
+error_obj(Code, Data, undefined) ->
+    #{ <<"code">>    => Code
+     , <<"message">> => error_msg(Code)
+     , <<"data">>    => error_data(Data) }.
+
+error_msg(Code) ->
+    maps:get(Code, error_msgs(), <<"Unknown error">>).
+
+error_msgs() ->
+    #{
+       -32700 => <<"Parse error">>
+     , -32000 => <<"Invalid request">>
+     , -32601 => <<"Method not found">>
+     , -32602 => <<"Invalid params">>
+     , -32603 => <<"Internal error">>
+       %% Ethereum application error codes
+     , 1      => <<"Unauthorized">>
+     , 2      => <<"Action not allowed">>
+     , 3      => <<"Rejected">>
+     }.
+
+error_data(Codes) ->
+    [ #{ <<"code">>    => C
+       , <<"message">> => error_data_msg(C) } || C <- Codes].
+
+%% Mimicking Ethereum suggested custom error codes (not all relevant here)
+error_data_msg(Code) ->
+    maps:get(Code, error_data_msgs(), <<"Unknown error">>).
+
+error_data_msgs() ->
+    #{
+       100 => <<"X doesn't exist">>
+     , 101 => <<"Requires coin">>      %% (Requires ether)
+     , 102 => <<"Gas too low">>
+     , 103 => <<"Gas limit exceeded">>
+     , 104 => <<"Rejected">>
+     , 105 => <<"Value too low">>      %% (Ether too low)
+     , 106 => <<"Timeout">>
+     , 107 => <<"Conflict">>
+     %% Aeternity error codes
+     , 1001 => <<"Insufficient balance">>
+     , 1002 => <<"Negative amount">>
+     , 1003 => <<"Invalid pubkeys">>
+     , 1004 => <<"Call not found">>
+     , 1005 => <<"Broken encoding: accounts">>
+     , 1006 => <<"Broken encoding: contracts">>
+     }.
+
+broken_encoding_code(accounts ) -> 1005;
+broken_encoding_code(contracts) -> 1006.
 
 ok_response(Action) ->
-    #{action => Action}.
+    #{ action     => Action
+     , {int,type} => reply }.
 
 bytearray_decode(Bytearray) ->
     aec_base58c:safe_decode(contract_bytearray, Bytearray).
@@ -680,28 +806,46 @@ safe_decode_account_keys(Keys) ->
             {error, invalid_pubkey}
     end.
 
-unpack_request(jsonrpc, #{ <<"jsonrpc">> := <<"2.0">>
+jsx_decode(Msg, H) ->
+    try {jsx:decode(Msg, [return_maps]), H}
+    catch
+        error:_ ->
+            throw({decode_error, parse_error})
+    end.
+
+unpack_request(Msg, #handler{protocol = Proto} = H) ->
+    case {Msg, Proto} of
+        {[_|_], jsonrpc} ->
+            %% request batch
+            [unpack_request_(Proto, M, H) || M <- Msg];
+        {_, _} ->
+            unpack_request_(Proto, Msg, H)
+    end.
+
+unpack_request_(jsonrpc, #{ <<"jsonrpc">> := <<"2.0">>
                          , <<"method">>  := _Method } = Req, H) ->
     { Req, H#handler{orig_request = Req} };
-unpack_request(legacy, #{ <<"action">>  := Action
+unpack_request_(legacy, #{ <<"action">>  := Action
                         , <<"tag">>     := Tag
                         , <<"payload">> := Payload } = Req, H) ->
     Method = legacy_to_method_in(Action, Tag),
     { #{ <<"method">> => Method
        , <<"params">> => Payload }
     , H#handler{ orig_request = Req#{<<"method">> => Method} } };
-unpack_request(legacy, #{ <<"action">>  := Action
+unpack_request_(legacy, #{ <<"action">>  := Action
                         , <<"payload">> := Payload } = Req, H) ->
     Method = legacy_to_method_in(Action),
     { #{ <<"method">> => Method
        , <<"params">> => Payload }
     , H#handler{ orig_request = Req#{<<"method">> => Method} } };
-unpack_request(legacy, #{ <<"action">> := Action } = Req, H) ->
+unpack_request_(legacy, #{ <<"action">> := Action } = Req, H) ->
     Method = legacy_to_method_in(Action),
     { #{ <<"method">> => Method }
-    , H#handler{ orig_request = Req#{<<"method">> => Method} } }.
+    , H#handler{ orig_request = Req#{<<"method">> => Method} } };
+unpack_request_(jsonrpc, _Req, _H) ->
+    throw({decode_error, invalid_request}).
 
-unpack_info(Protocol, Msg, H) ->
+unpack_info(Msg, #handler{protocol = Protocol} = H) ->
     Req = info_to_req(Protocol, Msg),
     { Msg, H#handler{orig_request = Req} }.
 
@@ -714,63 +858,87 @@ info_to_req(_, _) ->
     undefined.
 
 reply(Payload, #handler{protocol = legacy, orig_request = undefined}) ->
-    {reply, Payload};
+    {reply, clean_reply(Payload)};
 reply(Payload, #handler{protocol = legacy, orig_request = #{<<"method">> := Method}}) ->
     {reply, legacy_notify(Method, Payload)};
 reply(Reply, #handler{protocol = jsonrpc} = H) ->
     json_rpc_reply(Reply, H).
 
 legacy_notify(Method, Reply) ->
+    lager:debug("legacy_notify(~p, ~p)", [Method, Reply]),
     case binary:split(Method, [<<".">>], [global]) of
-        [<<"channels">>, Action, Tag] ->
+        [<<"channels">>, Action, _Tag] ->
             Action1 = opt_maps_get(action, Reply, Action),
-            Tag1 = case find_tag(Reply) of
-                       {ok, T} -> T;
-                       error   -> Tag
-                   end,
-            add_payload(Reply, #{ <<"action">>  => Action1
-                                , <<"tag">>     => Tag1 });
+            Msg = opt_elems([tag, channel_id], #{ <<"action">> => Action1 }, Reply),
+            add_payload(Reply, Msg);
         [<<"channels">>, Action] ->
             Action1 = opt_maps_get(action, Reply, Action),
-            case find_tag(Reply) of
-                {ok, Tag} ->
-                    add_payload(Reply, #{ <<"action">>  => Action1
-                                        , <<"tag">>     => Tag});
-                error ->
-                    add_payload(Reply, #{ <<"action">>  => Action1 })
-            end
+            Msg = opt_elems([tag, channel_id], #{ <<"action">> => Action1 }, Reply),
+            add_payload(Reply, Msg)
     end.
+
+opt_elems(Keys, Msg, Reply) when is_map(Reply) ->  % Reply may not be a map
+    M = lists:foldl(
+          fun(K, Acc) ->
+                  case maps:find(K, Reply) of
+                      {ok, none} -> Acc;
+                      {ok, V} ->
+                          Kb = bin(K),
+                          Acc#{ Kb => V };
+                      error ->
+                          Acc
+                  end
+          end, #{}, Keys),
+    maps:merge(M, Msg);
+opt_elems(_, Msg, _) ->
+    Msg.
 
 opt_maps_get(Key, Map, Default) when is_map(Map) ->
     maps:get(Key, Map, Default);
 opt_maps_get(_ , _, Default) ->
     Default.
 
-find_tag(#{tag := Tag}) -> {ok, Tag};
-find_tag(_)             -> error.
-
 add_payload(#{payload := Payload}, Msg) -> Msg#{<<"payload">> => Payload};
-add_payload(#{action := _}       , Msg) -> Msg;
-add_payload(Reply                , Msg) -> Msg#{<<"payload">> => Reply}.
+add_payload(#{action := _}       , Msg) -> clean_reply(Msg);
+add_payload(Reply                , Msg) ->
+    Msg#{<<"payload">> => clean_reply(Reply)}.
 
-json_rpc_reply(Reply, #handler{orig_request = Req}) ->
-    case Req of
-        #{id := Id} ->
+json_rpc_reply(Reply, H) ->
+    json_rpc_reply(Reply, H, notify).
+
+json_rpc_reply(Reply, #handler{orig_request = Req}, Mode) ->
+    lager:debug("json_rpc_reply(~p, Req = ~p, Mode = ~p)", [Reply, Req, Mode]),
+    case {Req, Mode} of
+        {#{<<"id">> := Id}, _} ->
             {reply, #{ <<"jsonrpc">> => <<"2.0">>
                      , <<"id">>      => Id
                      , <<"result">>  => result(Reply) }
             };
-        _ ->
+        {_, notify} ->
             {reply, #{ <<"jsonrpc">> => <<"2.0">>
                      , <<"method">>  => legacy_to_method_out(Reply)
-                     , <<"params">>  => result(Reply) }}
+                     , <<"params">>  => result(Reply) } };
+        {_, no_reply} ->
+            no_reply
     end.
 
-result(#{payload := Payload}) ->            
-    Payload;
+result(#{payload := Payload} = R) ->
+    case {Payload, R} of
+        {#{channel_id := _}, _} ->
+            Payload;
+        {_, #{channel_id := Id}} when is_map(Payload) ->
+            Payload#{<<"channel_id">> => Id};
+        _ ->
+            Payload
+    end;
 result(Result) -> 
-    Result.
+    clean_reply(Result).
 
+clean_reply(Map) when is_map(Map) ->
+    maps:filter(fun(K,_) ->
+                        is_atom(K) orelse is_binary(K)
+                end, Map);
+clean_reply(Msg) -> Msg.
 
 legacy_to_method_in(Action) ->
     <<"channels.", Action/binary>>.
@@ -778,10 +946,22 @@ legacy_to_method_in(Action) ->
 legacy_to_method_in(Action, Tag) ->
     <<"channels.", Action/binary, ".", Tag/binary>>.
 
-legacy_to_method_out(#{action := Action, tag := Tag}) ->
-    <<"channels.", Action/binary, ".", Tag/binary>>.
+legacy_to_method_out(#{action := Action, tag := none} = Msg) ->
+    opt_type(Msg, <<"channels.", (bin(Action))/binary>>);
+legacy_to_method_out(#{action := Action, tag := Tag} = Msg) ->
+    opt_type(Msg, <<"channels.", (bin(Action))/binary, ".", (bin(Tag))/binary>>);
+legacy_to_method_out(#{action := Action} = Msg) ->
+    opt_type(Msg, <<"channels.", (bin(Action))/binary>>).
+
+opt_type(#{ {int,type} := T }, Bin) ->
+    <<Bin/binary, ".", (bin(T))/binary>>;
+opt_type(_, Bin) ->
+    Bin.
 
 reply(_, #handler{protocol = legacy}, no_reply) ->
     no_reply;
 reply(Reply, #handler{protocol = jsonrpc} = H, _) ->
-    json_rpc_reply(Reply, H).
+    json_rpc_reply(Reply, H, no_reply).
+
+bin(A) when is_atom(A)   -> atom_to_binary(A, utf8);
+bin(B) when is_binary(B) -> B.
