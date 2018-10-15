@@ -444,8 +444,8 @@ websocket_info({unregister_test, RegisteredPid, Events}, _ConnState,
     inform_registered(RegisteredPid, unregistered_test, Events),
     {ok, State#state{regs=Register}};
 websocket_info({set_options, #{ role := Role
-                              , opts := Opts }}, _ConnState, #state{role=undefined}=State) ->
-    {ok, State#state{role=Role, protocol=get_protocol(Opts)}};
+                              , opts := Opts }}, _ConnState, #state{role=undefined, protocol = Proto0}=State) ->
+    {ok, State#state{role=Role, protocol=get_protocol(Opts, Proto0)}};
 websocket_info({'DOWN', _Ref, process, Pid, _}, _ConnState,
                #state{regs=Register0}=State) ->
     {ok, State#state{regs= delete_pid(Pid, Register0)}};
@@ -570,5 +570,7 @@ uenc(A) when is_atom(A) ->
 uenc(V) ->
     http_uri:encode(V).
 
-get_protocol(#{protocol := Proto}) ->
-    to_atom(Proto).
+get_protocol(#{protocol := Proto}, _) ->
+    to_atom(Proto);
+get_protocol(_, Default) ->
+    Default.
