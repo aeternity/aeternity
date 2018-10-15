@@ -477,7 +477,7 @@ serialize_to_binary(#key_header{} = Header) ->
       (Header#key_header.root_hash)/binary,
       (Header#key_header.miner)/binary,
       (Header#key_header.beneficiary)/binary,
-      (Header#key_header.target):64,
+      (Header#key_header.target):32,
       PowEvidence/binary,
       (Header#key_header.nonce):64,
       (Header#key_header.time):64>>;
@@ -548,7 +548,7 @@ deserialize_key_from_binary(<<?PROTOCOL_VERSION:32,
                               RootHash:?STATE_HASH_BYTES/binary,
                               Miner:32/binary,
                               Beneficiary:32/binary,
-                              Target:64,
+                              Target:32,
                               PowEvidenceBin:168/binary,
                               Nonce:64,
                               Time:64 >>) ->
