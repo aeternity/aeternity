@@ -165,12 +165,7 @@
 -define(BOGUS_CHANNEL, <<0:?MINER_PUB_BYTES/unit:8>>).
 -define(ROLES, [initiator, responder]).
 -define(VM_VERSION, ?AEVM_01_Sophia_01).
--define(TEST_LOG(Format, Data),
-        try ct:log(Format, Data)
-        catch
-            %% Enable setting up node with "test" rebar profile.
-            error:undef -> ok
-        end).
+-define(TEST_LOG(Format, Data), ct:log(Format, Data)).
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================

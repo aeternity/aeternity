@@ -213,7 +213,11 @@ oracle_register_(AccountKey, Signature, QueryFee, TTL, QueryFormat, ResponseForm
         Err = {error, _} -> Err
     end.
 
-oracle_query(Oracle, Q, Value, QTTL, RTTL,
+oracle_query(Oracle, Q, Value, QTTL, RTTL, State) ->
+    on_chain_only(State,
+                  fun() -> oracle_query_(Oracle, Q, Value, QTTL, RTTL, State) end).
+    
+oracle_query_(Oracle, Q, Value, QTTL, RTTL,
              State = #state{ account = ContractKey }) ->
     Nonce = next_nonce(State),
     QueryData = aeso_data:to_binary(Q),
