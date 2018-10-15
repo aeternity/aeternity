@@ -211,9 +211,6 @@ $(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests:
 python-env:
 	( cd $(PYTHON_DIR) && $(MAKE) env; )
 
-python-ws-test: swagger
-	( cd $(PYTHON_DIR) && $(MAKE) websocket-test; )
-
 python-uats: swagger
 	( cd $(PYTHON_DIR) && $(MAKE) uats; )
 
