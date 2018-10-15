@@ -25,6 +25,9 @@
          wait_for_channel_msg/3,
          wait_for_connect/1,
          wait_for_connect_any/0,
+         json_rpc_notify/2,
+         json_rpc_call/2,
+         json_rpc_call/3,
          stop/1]).
 
 %% behaviour exports
@@ -46,7 +49,9 @@
                    events   = #{} :: map()}).
 
 -record(state, {role :: atom() | undefined,
-                regs:: #register{}
+                regs:: #register{},
+                calls = [] :: [{non_neg_integer(), pid()}],
+                protocol = legacy :: legacy | json_rpc
                }).
 
 start_link(Host, Port) ->
@@ -56,7 +61,7 @@ start_link(Host, Port) ->
     wait_for_connect(Pid).
 
 start_link_channel(Host, Port, RoleA, Opts) when is_atom(RoleA) ->
-    Role = atom_to_binary(RoleA, utf8),
+    Role = to_binary(RoleA),
     WsAddress = make_channel_connect_address(Host, Port, Role, Opts),
     ct:log("connecting to Channel ~p as ~p", [WsAddress, Role]),
     {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, self(),
@@ -64,7 +69,7 @@ start_link_channel(Host, Port, RoleA, Opts) when is_atom(RoleA) ->
     wait_for_connect(Pid).
 
 start_channel(Host, Port, RoleA, Opts) when is_atom(RoleA) ->
-    Role = atom_to_binary(RoleA, utf8),
+    Role = to_binary(RoleA),
     WsAddress = make_channel_connect_address(Host, Port, Role, Opts),
     ct:log("connecting to Channel ~s as ~p", [iolist_to_binary(WsAddress), Role]),
     %% There is no websocket_client:start/4 ...
@@ -73,13 +78,13 @@ start_channel(Host, Port, RoleA, Opts) when is_atom(RoleA) ->
     unlink(Pid),
     case wait_for_connect(Pid) of
         {ok, Pid} = Res ->
-            set_role(Pid, RoleA),
+            set_options(Pid, #{role => RoleA, opts => Opts}),
             Res;
         {error, _} = Err -> Err
     end.
 
 extra_headers() ->
-    [{extra_headers, [{<<"Content-Type">>, <<"application/jsonrpc">>}]}].
+    [{extra_headers, [{<<"Content-Type">>, <<"application/json">>}]}].
 
 
 make_channel_connect_address(Host, Port, Role, Opts0) ->
@@ -96,18 +101,24 @@ wait_for_connect_any() ->
     end.
 
 wait_for_connect(Pid) ->
-    case wait_for_event(Pid, websocket, connected, ?DEFAULT_SUB_TIMEOUT) of
+    try wait_for_event(Pid, websocket, connected, ?DEFAULT_SUB_TIMEOUT) of
         ok ->
-            {ok, Pid};
-        timeout ->
+            {ok, Pid}
+    catch
+        error:{timeout, _} ->
             case process_info(Pid) of
                 undefined -> {error, rejected};
                 _ -> {error, {still_connecting, Pid}}
-            end
+            end;
+        error:{connection_died,_} ->
+            {error, rejected}
     end.
 
 set_role(ConnPid, Role) when is_atom(Role) ->
-    ConnPid ! {set_role, Role}.
+    set_options(ConnPid, #{role => Role}).
+
+set_options(ConnPid, Opts) when is_map(Opts) ->
+    ConnPid ! {set_options, Opts}.
 
 stop(ConnPid) ->
     ok = websocket_client:stop(ConnPid).
@@ -137,6 +148,38 @@ send_(ConnPid, Target, Action, Payload, Msg0) ->
         end,
     ConnPid ! {send_to_client, jsx:encode(Msg)},
     ok.
+
+json_rpc_notify(ConnPid, Msg) ->
+    ConnPid ! { send_to_client, jsx:encode(Msg#{ <<"jsonrpc">> => <<"2.0">> }) },
+    ok.
+
+json_rpc_call(ConnPid, Req) ->
+    json_rpc_call(ConnPid, Req, ?DEFAULT_EVENT_TIMEOUT).
+
+json_rpc_call(ConnPid, Req, Timeout) when is_map(Req) ->
+    Id = erlang:unique_integer([monotonic]),
+    MRef = erlang:monitor(process, ConnPid),
+    ConnPid ! { json_rpc, self(), Id, jsx:encode(Req#{ <<"jsonrpc">> => <<"2.0">>
+                                                     , <<"id">>      => Id }) },
+    try
+        receive
+            { ConnPid, #{ <<"jsonrpc">> := <<"2.0">>
+                        , <<"id">>      := Id
+                        , <<"result">>  := Result } } ->
+                Result;
+            { ConnPid, #{ <<"jsonrpc">> := <<"2.0">>
+                        , <<"id">>      := Id
+                        , <<"error">>   := Error } } ->
+                erlang:error({json_rpc_error, Error});
+            {'DOWN', MRef, _, _, Reason} ->
+                erlang:error({connpid_died, Reason})
+        after Timeout ->
+                erlang:error(timeout)
+        end
+    after
+        erlang:demonitor(MRef)
+    end.
+
 
 %% when an WS event occours, the registered process will receive a message in
 %% the mailbox. Message structure will be:
@@ -227,15 +270,21 @@ wait_for_msg(ConnPid, Origin, Action, Timeout) ->
 
 -spec wait_for_msg(pid(), atom(), atom(), integer()) -> ok | {ok, map()} | timeout.
 wait_for_msg(Type, ConnPid, Origin, Action, Timeout) ->
-    receive
-        {ConnPid, websocket_event, Origin, Action, Tag, Msg} ->
-            {ok, Tag, msg_data(Type, Msg)};
-        {ConnPid, websocket_event, Origin, Action, Msg} ->
-            {ok, msg_data(Type, Msg)};
-        {ConnPid, websocket_event, Origin, Action} ->
-            ok
-    after Timeout ->
-        timeout
+    MRef = erlang:monitor(process, ConnPid),
+    try receive
+            {ConnPid, websocket_event, Origin, Action, Tag, Msg} ->
+                {ok, Tag, msg_data(Type, Msg)};
+            {ConnPid, websocket_event, Origin, Action, Msg} ->
+                {ok, msg_data(Type, Msg)};
+            {ConnPid, websocket_event, Origin, Action} ->
+                ok;
+            {'DOWN', MRef, _, _, Reason} ->
+                error({connection_died, Reason})
+        after Timeout ->
+                erlang:error({timeout, process_info(self(), messages)})
+        end
+    after
+        erlang:demonitor(MRef)
     end.
 
 wait_for_channel_msg(ConnPid, Action) ->
@@ -264,6 +313,7 @@ inform(Origin, Action, #state{} = State) ->
     inform(Origin, Action, undefined, [], State).
 
 inform(Origin, Action, Tag, Payload, #state{regs = Register}) ->
+    ct:log("inform(~p, ~p, ~p, ~p)", [Origin, Action, Tag]),
     RegisteredPids = get_registered_pids({Origin, Action}, Register),
     lists:foreach(
       fun(Pid) -> inform_registered(Pid, Origin, Action, Tag, Payload) end,
@@ -315,7 +365,7 @@ websocket_handle({pong, Nonce}, _ConnState, #state{regs=Register}=State) ->
         [] ->
             {ok, State}
     end;
-websocket_handle({text, MsgBin}, _ConnState, #state{regs=Register, role=Role}=State) ->
+websocket_handle({text, MsgBin}, _ConnState, #state{role=Role}=State) ->
     Msg = jsx:decode(MsgBin, [return_maps]),
     case Role of
         undefined ->
@@ -323,21 +373,43 @@ websocket_handle({text, MsgBin}, _ConnState, #state{regs=Register, role=Role}=St
         _ ->
             ct:log("[~p] Received msg ~p~n", [Role, Msg])
     end,
-    Origin = binary_to_atom(maps:get(<<"origin">>, Msg,
-                                     atom_to_binary(?CHANNEL, utf8)), utf8),
-    Action = binary_to_atom(maps:get(<<"action">>, Msg), utf8),
-    Tag = maps:get(<<"tag">>, Msg, undefined),
+    websocket_handle_enc(Msg, State).
+
+websocket_handle_enc(#{ <<"jsonrpc">> := <<"2.0">>
+                      , <<"id">>      := null
+                      , <<"error">>   := _ } = Msg, #state{regs=Register} = State) ->
+    maybe_inform(origin(Msg), error, undefined, Msg, Register),
+    {ok, State};
+websocket_handle_enc(#{ <<"jsonrpc">> := <<"2.0">>
+                      , <<"id">>      := Id } = Msg, #state{calls=Calls}=State) ->
+    case lists:keyfind(Id, 1, Calls) of
+        {_, Pid} = Match ->
+            Pid ! {self(), Msg},
+            {ok, State#state{calls = Calls -- [Match]}};
+        false ->
+            erlang:error({json_rpc_call_mismatch, Msg})
+    end;
+websocket_handle_enc(Msg, #state{regs=Register}=State) ->
+    Origin = to_atom(maps:get(<<"origin">>, Msg, to_binary(?CHANNEL))),
+    {Action, Tag} = get_action_tag(Msg),
+    ct:log("Origin = ~p, Action = ~p, Tag = ~p", [Origin, Action, Tag]),
+    ct:log("Register = ~p", [Register]),
+    %% Action = binary_to_atom(maps:get(<<"action">>, Msg), utf8),
+    %% Tag = maps:get(<<"tag">>, Msg, undefined),
+    maybe_inform(Origin, Action, Tag, Msg, Register),
+    {ok, State}.
+
+maybe_inform(Origin, Action, Tag, Msg, Register) ->
     RegisteredPids = get_registered_pids({Origin, Action}, Register),
     lists:foreach(
-        fun(Pid) -> inform_registered(Pid, Origin, Action, Tag, Msg) end,
-        RegisteredPids),
-
-    % for easier debugging
+      fun(Pid) -> inform_registered(Pid, Origin, Action, Tag, Msg) end,
+      RegisteredPids),
+    %% for easier debugging
     case RegisteredPids == [] of
         true -> ct:log("No test registered for this event");
         false -> pass
-    end,
-    {ok, State}.
+    end.
+
 
 websocket_info(ping, _ConnState, #state{regs=Register}=State) ->
     Nonce = list_to_binary(ref_to_list(make_ref())),
@@ -371,11 +443,16 @@ websocket_info({unregister_test, RegisteredPid, Events}, _ConnState,
             Actions),
     inform_registered(RegisteredPid, unregistered_test, Events),
     {ok, State#state{regs=Register}};
-websocket_info({set_role, Role}, _ConnState, #state{role=undefined}=State) ->
-    {ok, State#state{role=Role}};
+websocket_info({set_options, #{ role := Role
+                              , opts := Opts }}, _ConnState, #state{role=undefined}=State) ->
+    {ok, State#state{role=Role, protocol=get_protocol(Opts)}};
 websocket_info({'DOWN', _Ref, process, Pid, _}, _ConnState,
                #state{regs=Register0}=State) ->
     {ok, State#state{regs= delete_pid(Pid, Register0)}};
+websocket_info({json_rpc, Pid, Id, Req}, _ConnState, #state{calls = Calls}=State) ->
+    {reply, {text, Req}, State#state{calls = [{Id, Pid}|Calls]}};
+websocket_info({json_rpc, Notify}, _ConnState, State) ->
+    {reply, {text, Notify}, State};
 websocket_info({send_to_client, Msg}, _ConnState, #state{role=Role}=State) ->
     case Role of
         undefined ->
@@ -390,6 +467,30 @@ websocket_terminate(Reason, _ConnState, State) ->
               [State, Reason]),
     inform(websocket, closed, State),
     ok.
+
+origin(Msg) ->
+    to_atom(maps:get(<<"origin">>, Msg, to_binary(?CHANNEL))).
+
+get_action_tag(#{<<"jsonrpc">> := _, <<"method">> := Method}) ->
+    case binary:split(Method, [<<".">>], [global]) of
+        [<<"channels">>, Action] ->
+            {to_atom(Action), undefined};
+        [<<"channels">>, Action, <<"reply">>] ->
+            {to_atom(Action), undefined};   % "reply" doesn't count as a tag (bw compat reasons)
+        [<<"channels">>, Action, Tag | _] ->
+            {to_atom(Action), Tag};
+        _ ->
+            {undefined, undefined}
+    end;
+get_action_tag(#{<<"action">> := Action} = Msg) ->
+    {to_atom(Action), maps:get(<<"tag">>, Msg, undefined)}.
+
+to_atom(A) when is_atom(A)  -> A;
+to_atom(B) when is_binary(B)-> binary_to_atom(B, utf8).
+
+to_binary(A) when is_atom(A)   -> atom_to_binary(A, utf8);
+to_binary(B) when is_binary(B) -> B.
+
 
 get_registered_pids(Event, #register{events=Events}) ->
     maps:get(Event, Events, []).
@@ -458,14 +559,16 @@ encode_params([]) ->
     [].
 
 str(A) when is_atom(A) ->
-    str(atom_to_binary(A, utf8));
+    str(to_binary(A));
 str(S) when is_list(S); is_binary(S) ->
     S.
 
 uenc(I) when is_integer(I) ->
     uenc(integer_to_list(I));
 uenc(A) when is_atom(A) ->
-    uenc(atom_to_binary(A, utf8));
+    uenc(to_binary(A));
 uenc(V) ->
     http_uri:encode(V).
 
+get_protocol(#{protocol := Proto}) ->
+    to_atom(Proto).
