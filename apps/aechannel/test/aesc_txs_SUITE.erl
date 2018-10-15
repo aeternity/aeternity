@@ -1665,7 +1665,7 @@ fp_on_top_of_fp(Cfg) ->
                     Props
                 end,
                 set_prop(height, InitHeight + LockPeriod + 1),
-                create_poi_by_trees(),
+                create_fp_trees(),
                 set_prop(payload, <<>>),
                 force_progress_sequence(FPRound2, Forcer2)
                ])
@@ -1851,7 +1851,7 @@ fp_after_snapshot(Cfg) ->
                     Props
                 end,
 
-                create_poi_by_trees(),
+                create_fp_trees(),
                 set_prop(round, FPRound - 1), % for the payload
                 create_payload(),
                 fun(Props) when SnapshotRound =:= FPRound - 1 ->
@@ -1946,7 +1946,7 @@ fp_after_solo_close(Cfg) ->
                 end,
                 positive(fun close_solo_/2),
                 delete_prop(state_hash),
-                create_poi_by_trees(),
+                create_fp_trees(),
                 set_prop(round, FPRound - 1), % for the payload
                 create_payload(),
                 fun(Props) when CloseRound =:= FPRound - 1 ->
@@ -2025,7 +2025,7 @@ fp_after_slash(Cfg) ->
                 set_prop(round, SlashRound),
                 set_from(Slasher),
                 delete_prop(state_hash),
-                create_poi_by_trees(),
+                create_fp_trees(),
                 fun(#{initiator_pubkey  := IPubkey,
                       responder_pubkey  := RPubkey,
                       trees             := Trees} = Props) ->
@@ -2035,7 +2035,7 @@ fp_after_slash(Cfg) ->
                 create_payload(),
                 positive(fun slash_/2),
                 % force progress
-                create_poi_by_trees(),
+                create_fp_trees(),
                 set_prop(round, FPRound - 1), % for the payload
                 create_payload(),
                 fun(Props) when CloseRound =:= FPRound - 1 ->
@@ -2798,7 +2798,7 @@ fp_too_soon(Cfg) ->
                                                 Owner),
                 force_progress_sequence(_Round = Round0, Forcer0),
                 set_prop(height, FPHeight1),
-                create_poi_by_trees(),
+                create_fp_trees(),
                 set_prop(round, Round1 - 1), % for the payload
                 create_payload(),
                 negative_force_progress_sequence(Round1, Forcer1,
@@ -3038,7 +3038,7 @@ create_contract_poi_and_payload(Round, ContractRound, Owner, Opts) ->
                                     _Contract = Contract,
                                     _InitArgs = ContractInitProps,
                                     _Deposit  = 2),
-           create_poi_by_trees(),
+           create_fp_trees(),
            fun(#{state_hash := PoiHash, trees := Trees} = Props) ->
                ?assertEqual(PoiHash, aec_trees:hash(Trees)),
                Props
@@ -3053,11 +3053,10 @@ create_contract_poi_and_payload(Round, ContractRound, Owner, Opts) ->
            create_payload()])
     end.
 
-create_poi_by_trees() ->
+create_fp_trees() ->
     fun(#{trees := Trees} = Props) ->
-        PoI = Trees,
-        PoIHash = aec_trees:hash(PoI),
-        Props#{state_hash => PoIHash, poi => Trees}
+        Hash = aec_trees:hash(Trees),
+        Props#{state_hash => Hash, offchain_trees => Trees}
     end.
 
 negative_force_progress_sequence(Round, Forcer, ErrMsg) ->
@@ -3084,8 +3083,8 @@ force_progress_sequence(Round, Forcer) ->
                                         {<<"main">>, <<"42">>}),
         run(Props0,
            [get_onchain_balances(before_force),
-            fun(#{state_hash := StateHash, poi := PoI} = Props) ->
-                ?assertEqual(StateHash, aec_trees:hash(PoI)),
+            fun(#{state_hash := StateHash, offchain_trees := OffChainTrees} = Props) ->
+                ?assertEqual(StateHash, aec_trees:hash(OffChainTrees)),
                 Props
             end,
             set_from(Forcer),
@@ -3594,7 +3593,7 @@ snapshot_solo_(#{ channel_pubkey    := ChannelPubKey,
     apply_on_trees_(Props, SignedTx, S, Expected).
 
 force_progress_(#{channel_pubkey    := ChannelPubKey,
-                  poi               := PoI,
+                  offchain_trees    := OffChainTrees,
                   from_pubkey       := From,
                   from_privkey      := FromPrivkey,
                   fee               := Fee,
@@ -3609,7 +3608,7 @@ force_progress_(#{channel_pubkey    := ChannelPubKey,
     ForceProTxSpec = aesc_test_utils:force_progress_tx_spec(ChannelPubKey, From,
                                                             Payload,
                                                             Update, StateHash,
-                                                            Round, PoI,
+                                                            Round, OffChainTrees,
                                                             #{fee => Fee}, S),
     {ok, ForceProTx} = aesc_force_progress_tx:new(ForceProTxSpec),
 
@@ -3989,7 +3988,7 @@ force_call_contract_first(Forcer, Fun, Args, Round) ->
            [set_height_to_forcable(),
             set_prop(round, Round - 1),
             set_from(Forcer),
-            create_poi_by_trees(),
+            create_fp_trees(),
             create_payload(),
             set_prop(round, Round),
             fun(#{contract_id := ContractId} = Props) ->
@@ -4014,7 +4013,7 @@ force_call_contract(Forcer, Fun, Args, Round) ->
     fun(Props0) ->
         run(Props0,
             [set_prop(contract_function_call, {Fun, Args}),
-            create_poi_by_trees(),
+            create_fp_trees(),
             set_prop(payload, <<>>),
             set_height_to_forcable(),
             force_progress_sequence(Round, Forcer)])
