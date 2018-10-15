@@ -660,11 +660,7 @@ default_config(N, Config) ->
             <<"beneficiary">> => aec_base58c:encode(account_pubkey, PubKey),
             <<"beneficiary_reward_delay">> => 2},
       <<"chain">> =>
-          #{<<"persist">> => true},
-      <<"websocket">> =>
-          #{<<"internal">> =>
-                #{<<"acceptors">> => 10}
-           }
+          #{<<"persist">> => true}
      }.
 
 epoch_config_dir(N, Config) ->

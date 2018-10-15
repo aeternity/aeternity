@@ -18,11 +18,6 @@ http:
         listen_address: 0.0.0.0
         port: {{services.int_http.port}}
 
-websocket:
-    internal:
-        listen_address: 0.0.0.0
-        port: {{services.int_ws.port}}
-
 keys:
     password: {{key_password}}
     dir: ./keys

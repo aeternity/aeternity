@@ -45,9 +45,6 @@ http:
         port: 9913
 
 websocket:
-    internal:
-        port: 9914
-        acceptors: 100
     channel:
         port: 9814
         acceptors: 100
@@ -68,13 +65,6 @@ chain:
 {aecore,
  [
   {expected_mine_rate, 100}
- ]},
-{aehttp,
- [
-  {internal, [
-      {websocket, [ {tasks, 200}
-                ]}
-    ]}
  ]}
 ].
 '''
@@ -101,9 +91,6 @@ http:
         port: 9923
 
 websocket:
-    internal:
-        port: 9924
-        acceptors: 100
     channel:
         port: 9824
         acceptors: 100
@@ -124,13 +111,6 @@ chain:
 {aecore,
  [
   {expected_mine_rate, 100}
- ]},
-{aehttp,
- [
-  {internal, [
-      {websocket, [ {tasks, 200}
-                ]}
-    ]}
  ]}
 ].
 '''
@@ -157,9 +137,6 @@ http:
         port: 9933
 
 websocket:
-    internal:
-        port: 9934
-        acceptors: 100
     channel:
         port: 9834
         acceptors: 100
@@ -180,13 +157,6 @@ chain:
 {aecore,
  [
   {expected_mine_rate, 100}
- ]},
-{aehttp,
- [
-  {internal, [
-      {websocket, [ {tasks, 200}
-                ]}
-    ]}
  ]}
 ].
 '''
