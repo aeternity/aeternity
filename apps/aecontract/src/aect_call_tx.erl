@@ -157,15 +157,23 @@ process(#contract_call_tx{caller_id   = CallerId,
                           nonce       = Nonce,
                           contract_id = ContractId,
                           fee         = Fee,
+                          gas         = Gas,
                           gas_price   = GasPrice,
                           amount      = Value} = CallTx,
         Trees1, Env) ->
     Height = aetx_env:height(Env),
 
-    %% Transfer the attached funds to the callee (before calling the contract!)
+    %% Transfer the attached funds to the callee (before calling the contract!).
+    %% When calling from the top-level we charge Fee and Gas as well.
+    %% Also bump nonce.
+    Charges =
+        case aetx_env:context(Env) of
+            aetx_transaction -> Fee + Gas * GasPrice;
+            aetx_contract    -> 0
+        end,
     CallerPubkey = caller_pubkey(CallTx),
     ContractPubkey = contract_pubkey(CallTx),
-    Trees2 = spend(CallerPubkey, ContractPubkey, Value, Nonce, Trees1, Env),
+    Trees2 = spend(CallerPubkey, ContractPubkey, Value, Charges, Nonce, Trees1, Env),
 
     %% Create the call.
     Call0 = aect_call:new(CallerId, Nonce, ContractId, Height, GasPrice),
@@ -174,33 +182,26 @@ process(#contract_call_tx{caller_id   = CallerId,
     %% the call object.
     {Call, Trees3} = run_contract(CallTx, Call0, Env, Trees2),
 
-    %% Charge the fee and the used gas to the caller (not if called from another contract!)
-    AccountsTree1 = aec_trees:accounts(Trees3),
-    AccountsTree2 =
+    %% Refund unused gas.
+    Trees4 =
         case aetx_env:context(Env) of
-            aetx_contract    ->
-                AccountsTree1;
             aetx_transaction ->
-                %% When calling from the top-level we charge Fee and Gas as well.
-                GasCost       = aect_call:gas_used(Call) * GasPrice,
-                Amount        = Fee + GasCost,
-                Caller2       = aec_accounts_trees:get(CallerPubkey, AccountsTree1),
-                {ok, Caller3} = aec_accounts:spend(Caller2, Amount, Nonce),
-                aec_accounts_trees:enter(Caller3, AccountsTree1)
+                aect_utils:refund_unused_gas(CallerPubkey, GasPrice, Gas, Call, Trees3);
+            aetx_contract ->
+                Trees3
         end,
-    Trees4 = aec_trees:set_accounts(Trees3, AccountsTree2),
 
     %% Insert the call into the state tree. This is mainly to remember what the
     %% return value was so that the caller can access it easily.
     %% Each block starts with an empty calls tree.
     {ok, aect_utils:insert_call_in_trees(Call, Trees4)}.
 
-spend(CallerPubkey, ContractPubkey, Value, Nonce, Trees, Env) ->
+spend(CallerPubkey, ContractPubkey, Value, Fee, Nonce, Trees, Env) ->
     {ok, SpendTx} =
         aec_spend_tx:new(#{ sender_id    => aec_id:create(account, CallerPubkey)
                           , recipient_id => aec_id:create(account, ContractPubkey)
                           , amount       => Value
-                          , fee          => 0
+                          , fee          => Fee
                           , nonce        => Nonce
                           , payload      => <<>>}),
     %% These spends should always be evaluated in contract context

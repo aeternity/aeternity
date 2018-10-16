@@ -16,13 +16,17 @@
         , call_contract_negative_insufficient_funds/1
         , call_contract_negative_gas_price_zero/1
         , call_contract_negative/1
+        , call_contract_upfront_fee/1
+        , call_contract_upfront_gas/1
         , call_contract_upfront_amount/1
         , create_contract/1
         , create_contract_init_error/1
         , create_contract_negative_gas_price_zero/1
         , create_contract_negative/1
         , create_contract_upfront_fee/1
+        , create_contract_upfront_gas/1
         , create_contract_upfront_amount/1
+        , create_contract_upfront_deposit/1
         , state_tree/1
         , sophia_identity/1
         , sophia_state/1
@@ -123,8 +127,12 @@ groups() ->
                          , {group, call_contract_upfront_charges}
                          ]}
     , {create_contract_upfront_charges, [], [ create_contract_upfront_fee
-                                            , create_contract_upfront_amount ]}
-    , {call_contract_upfront_charges, [], [ call_contract_upfront_amount ]}
+                                            , create_contract_upfront_gas
+                                            , create_contract_upfront_amount
+                                            , create_contract_upfront_deposit ]}
+    , {call_contract_upfront_charges, [], [ call_contract_upfront_fee
+                                          , call_contract_upfront_gas
+                                          , call_contract_upfront_amount ]}
 
     , {state_tree, [sequence], [ state_tree ]}
     , {sophia,     [sequence], [ sophia_identity,
@@ -365,8 +373,29 @@ create_contract_upfront_fee(_Cfg) ->
     ?assertEqual(F(V1) + V1 - V2, F(V2)),
     ok.
 
+create_contract_upfront_gas(_Cfg) ->
+    F = fun(P, G) -> sender_balance_in_create(#{gas_price => P, gas => G}) end,
+    P1 = 1,
+    G1 = 20000,
+    G2 = 30000,
+    V1 = P1 * G1,
+    V2 = P1 * G2, %% Same gas price, different gas limit.
+    Bal1 = F(P1, G1),
+    ?assertEqual(Bal1 + V1 - V2, F(_P2=P1, G2)),
+    P3 = 2,
+    V3 = P3 * G1, %% Different gas price, same gas limit.
+    ?assertEqual(Bal1 + V1 - V3, F(P3, _G3=G1)),
+    ok.
+
 create_contract_upfront_amount(_Cfg) ->
     F = fun(X) -> sender_balance_in_create(#{amount => X}) end,
+    V1 = 10,
+    V2 = 20,
+    ?assertEqual(F(V1) + V1 - V2, F(V2)),
+    ok.
+
+create_contract_upfront_deposit(_Cfg) ->
+    F = fun(X) -> sender_balance_in_create(#{deposit => X}) end,
     V1 = 10,
     V2 = 20,
     ?assertEqual(F(V1) + V1 - V2, F(V2)),
@@ -513,6 +542,27 @@ call_contract_(ContractCallTxGasPrice) ->
                  aec_accounts:balance(aect_test_utils:get_account(ContractKey, S4))),
 
     {ok, S4}.
+
+call_contract_upfront_fee(_Cfg) ->
+    F = fun(X) -> sender_balance_in_call(#{fee => X}) end,
+    V1 = 10,
+    V2 = 20,
+    ?assertEqual(F(V1) + V1 - V2, F(V2)),
+    ok.
+
+call_contract_upfront_gas(_Cfg) ->
+    F = fun(P, G) -> sender_balance_in_call(#{gas_price => P, gas => G}) end,
+    P1 = 1,
+    G1 = 20000,
+    G2 = 30000,
+    V1 = P1 * G1,
+    V2 = P1 * G2, %% Same gas price, different gas limit.
+    Bal1 = F(P1, G1),
+    ?assertEqual(Bal1 + V1 - V2, F(_P2=P1, G2)),
+    P3 = 2,
+    V3 = P3 * G1, %% Different gas price, same gas limit.
+    ?assertEqual(Bal1 + V1 - V3, F(P3, _G3=G1)),
+    ok.
 
 call_contract_upfront_amount(_Cfg) ->
     F = fun(X) -> sender_balance_in_call(#{amount => X}) end,
