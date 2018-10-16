@@ -40,6 +40,7 @@
 -export([get_block/2]).
 -export([get_top/1]).
 -export([get_mempool/1]).
+-export([get_account/2]).
 -export([post_spend_tx/5]).
 -export([post_create_state_channel_tx/4,
          post_close_mutual_state_channel_tx/5,
@@ -379,6 +380,10 @@ get_mempool(NodeName) ->
         {Mempool, undefined} -> Mempool
         %% nomatch if none of the two
     end.
+
+get_account(NodeName, PubKey) ->
+    Params = #{pubkey => aec_base58c:encode(account_pubkey, PubKey)},
+    verify(200, request(NodeName, 'GetAccountByPubkey', Params)).
 
 post_spend_tx(Node, From, To, Nonce, Map) ->
     #{ pubkey := SendPubKey, privkey := SendSecKey } = From,
