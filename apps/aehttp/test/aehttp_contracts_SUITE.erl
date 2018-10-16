@@ -229,8 +229,8 @@ simple_storage_contract(Config) ->
                  priv_key := BPriv}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 100000),
-    _BBal0 = ensure_balance(BPub, 100000),
+    _ABal0 = ensure_balance(APub, 200000),
+    _BBal0 = ensure_balance(BPub, 200000),
     {ok,[_]} = aecore_suite_utils:mine_key_blocks(Node, 1),
 
     %% Compile test contract "simple_storage.aes"
@@ -1166,7 +1166,7 @@ contract_create_compute_tx(Pubkey, Privkey, Code, InitArgument, CallerSet) ->
                               vm_version => 1,  %?AEVM_01_Sophia_01
                               deposit => 2,
                               amount => 0,      %Initial balance
-                              gas => 20000,     %May need a lot of gas
+                              gas => 100000,     %May need a lot of gas
                               gas_price => 1,
                               fee => 1,
                               nonce => Nonce,
@@ -1191,7 +1191,7 @@ contract_call_compute_tx(Pubkey, Privkey, Nonce, EncodedContractPubkey,
                               contract_id => EncodedContractPubkey,
                               vm_version => 1,  %?AEVM_01_Sophia_01
                               amount => 0,
-                              gas => 50000,     %May need a lot of gas
+                              gas => 100000,     %May need a lot of gas
                               gas_price => 1,
                               fee => 1,
                               nonce => Nonce,

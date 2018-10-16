@@ -27,6 +27,10 @@
          for_client/1
         ]).
 
+-export([account_id/1,
+         name_id/1
+        ]).
+
 %% Getters
 -ifdef(TEST).
 -export([recipient_pubkey/1]).
@@ -215,6 +219,14 @@ for_client(#ns_transfer_tx{account_id   = AccountId,
 recipient_pubkey(#ns_transfer_tx{recipient_id = RecipientId}) ->
     aec_id:specialize(RecipientId, account).
 -endif.
+
+-spec account_id(tx()) -> aec_id:id().
+account_id(#ns_transfer_tx{account_id = AccountId}) ->
+    AccountId.
+
+-spec name_id(tx()) -> aec_id:id().
+name_id(#ns_transfer_tx{name_id = NameId}) ->
+    NameId.
 
 %%%===================================================================
 %%% Internal functions

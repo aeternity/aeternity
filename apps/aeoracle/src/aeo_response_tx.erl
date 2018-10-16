@@ -184,7 +184,7 @@ serialize(#oracle_response_tx{oracle_id    = OracleId,
     [ {oracle_id, OracleId}
     , {nonce, Nonce}
     , {query_id, QueryId}
-    , {response, Response}
+    , {response, response_to_binary(Response)}
     , {response_ttl_type, ?ttl_delta_int}
     , {response_ttl_value, ResponseTTLValue}
     , {fee, Fee}
@@ -265,3 +265,11 @@ check_oracle(OraclePubKey, Trees) ->
         {value, _Oracle} -> ok;
         none -> {error, oracle_does_not_exist}
     end.
+
+response_to_binary(Response) when is_atom(Response) ->
+    atom_to_binary(Response, utf8);
+response_to_binary(Response) when is_integer(Response) ->
+    list_to_binary(integer_to_list(Response));
+response_to_binary(Response) ->
+    Response.
+

@@ -38,10 +38,10 @@
 -type fixed_ttl()    :: {block, aec_blocks:height()}.
 -type ttl()          :: relative_ttl() | fixed_ttl().
 
--type type_format()  :: binary(). %% Utf8 encoded string
+-type type_format()  :: term().  %% TODO: Fix format types.
 
 -type query()    :: binary().             %% Don't use native types for queries
--type response() :: binary(). %% Don't use native types for responses
+-type response() :: term().      %% TODO: Fix response type.
 
 -record(oracle, { id              :: aec_id:id()
                 , query_format    :: type_format()

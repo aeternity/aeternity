@@ -37,10 +37,14 @@
 
 %% -- Accounts --
 
+-callback spend_tx(Recipient :: aec_id:id(),
+                   Amount :: non_neg_integer(),
+                   State :: chain_state()) ->
+    {ok, aetx:tx()}.
+
 %% Execute a spend transaction from the contract account.
--callback spend(Recipient :: aec_id:id(),
-                Amount    :: non_neg_integer(),
-                State     :: chain_state()) -> {ok, chain_state()} | {error, term()}.
+-callback spend(Tx :: aetx:tx(), State :: chain_state()) ->
+    {ok, chain_state()} | {error, term()}.
 
 %% Get the current balance of an account.
 -callback get_balance(Account :: pubkey(), State :: chain_state()) ->
@@ -48,35 +52,50 @@
 
 %% -- Oracles --
 
--callback oracle_register(Account :: pubkey(),
-                          Sign :: binary(),
-                          QueryFee :: non_neg_integer(),
-                          TTL :: aeo_oracles:ttl(),
-                          DecodedQType :: aeso_sophia:type(),
-                          DecodedRType :: aeso_sophia:type(),
-                          ChainState :: chain_state()) ->
+-callback oracle_register_tx(Account :: pubkey(),
+                            QueryFee :: non_neg_integer(),
+                            TTL :: aeo_oracles:ttl(),
+                            DecodedQType :: aeso_sophia:type(),
+                            DecodedRType :: aeso_sophia:type(),
+                            ChainState :: chain_state()) ->
+    {ok, aetx:tx()}.
+
+-callback oracle_register(Tx :: aetx:tx(),
+                          Signature :: binary(),
+                          State :: chain_state()) ->
     {ok, OracleKey :: pubkey(), chain_state()} | {error, term()}.
 
--callback oracle_query(Oracle :: pubkey(),
-                       Query :: term(),
-                       Value :: non_neg_integer(),
-                       QueryTTL :: aeo_oracles:ttl(),
-                       ResponseTTL :: aeo_oracles:ttl(),
-                       ChainState :: chain_state()) ->
+-callback oracle_query_tx(Oracle :: pubkey(),
+                          Query :: term(),
+                          Value :: non_neg_integer(),
+                          QueryTTL :: aeo_oracles:ttl(),
+                          ResponseTTL :: aeo_oracles:ttl(),
+                          ChainState :: chain_state()) ->
+    {ok, aetx:tx()}.
+
+-callback oracle_query(Tx :: aetx:tx(), State :: chain_state()) ->
     {ok, QueryId :: pubkey(), chain_state()} | {error, term()}.
 
--callback oracle_respond(Oracle :: pubkey(),
-                         Query :: pubkey(),
-                         Sign :: binary(),
-                         Response :: term(),
-                         ResponseTTL :: aeo_oracles:ttl(),
-                         ChainState :: chain_state()) ->
+-callback oracle_respond_tx(Oracle :: pubkey(),
+                            Query :: pubkey(),
+                            Response :: term(),
+                            ResponseTTL :: aeo_oracles:ttl(),
+                            ChainState :: chain_state()) ->
+    {ok, aetx:tx()}.
+
+-callback oracle_respond(Tx :: aetx:tx(),
+                         Signature :: binary(),
+                         State :: chain_state()) ->
     {ok, chain_state()} | {error, term()}.
 
--callback oracle_extend(Oracle :: pubkey(),
-                        Sign :: binary(),
-                        TTL :: aeo_oracles:ttl(),
-                        ChainState :: chain_state()) ->
+-callback oracle_extend_tx(Oracle :: pubkey(),
+                           TTL :: aeo_oracles:ttl(),
+                           ChainState :: chain_state()) ->
+    {ok, aetx:tx()}.
+
+-callback oracle_extend(Tx :: aetx:tx(),
+                        Signature :: binary(),
+                        State :: chain_state()) ->
     {ok, chain_state()} | {error, term()}.
 
 -callback oracle_get_answer(Oracle :: pubkey(),
@@ -121,39 +140,55 @@
                        ChainState :: chain_state()) ->
     {ok, none | {some, term()}} | {error, term()}.
 
--callback aens_preclaim(Addr  :: pubkey(),
-                        CHash :: binary(),
-                        Sign  :: binary(),
+-callback aens_preclaim_tx(Addr :: pubkey(),
+                           CHash :: binary(),
+                           ChainState :: chain_state()) ->
+    {ok, aetx:tx()}.
+
+-callback aens_preclaim(Tx :: aetx:tx(),
+                        Signature :: binary(),
+                        State :: chain_state()) ->
+    {ok, chain_state()} | {error, term()}.
+
+-callback aens_claim_tx(Addr :: pubkey(),
+                        Name :: binary(),
+                        Salt :: integer(),
                         ChainState :: chain_state()) ->
+    {ok, aetx:tx()}.
+
+-callback aens_claim(Tx :: aetx:tx(),
+                     Signature :: binary(),
+                     State :: chain_state()) ->
     {ok, chain_state()} | {error, term()}.
 
--callback aens_claim(Addr  :: pubkey(),
-                     Name  :: binary(),
-                     Salt  :: integer(),
-                     Sign  :: binary(),
-                     ChainState :: chain_state()) ->
+-callback aens_transfer_tx(FromAddr :: pubkey(),
+                           ToAddr :: pubkey(),
+                           Hash :: binary(),
+                           ChainState :: chain_state()) ->
+    {ok, aetx:tx()}.
+
+-callback aens_transfer(Tx :: aetx:tx(),
+                        Signature :: binary(),
+                        State :: chain_state()) ->
     {ok, chain_state()} | {error, term()}.
 
--callback aens_transfer(FromAddr   :: pubkey(),
-                        ToAddr     :: pubkey(),
-                        Hash       :: binary(),
-                        Sign       :: binary(),
-                        ChainState :: chain_state()) ->
-    {ok, chain_state()} | {error, term()}.
+-callback aens_revoke_tx(Addr :: pubkey(),
+                         Hash :: binary(),
+                         ChainState :: chain_state()) ->
+    {ok, aetx:tx()}.
 
--callback aens_revoke(Addr       :: pubkey(),
-                      Hash       :: binary(),
-                      Sign       :: binary(),
-                      ChainState :: chain_state()) ->
+-callback aens_revoke(Tx :: aetx:tx(),
+                      Signature :: binary(),
+                      State :: chain_state()) ->
     {ok, chain_state()} | {error, term()}.
 
 %% Make a call to another contract.
--callback call_contract(Contract  :: pubkey(),
-                        Gas       :: non_neg_integer(),
-                        Value     :: non_neg_integer(),
-                        CallData  :: binary(),
+-callback call_contract(Contract :: pubkey(),
+                        Gas :: non_neg_integer(),
+                        Value :: non_neg_integer(),
+                        CallData :: binary(),
                         CallStack :: [non_neg_integer()],
-                        State     :: chain_state()) ->
+                        State :: chain_state()) ->
                     {ok, call_result(), chain_state()} | {error, term()}.
 
 -callback get_store(chain_state()) -> store().

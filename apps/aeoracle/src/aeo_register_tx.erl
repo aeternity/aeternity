@@ -179,11 +179,12 @@ serialize(#oracle_register_tx{account_id      = AccountId,
                   ?ttl_delta_atom -> ?ttl_delta_int;
                   ?ttl_block_atom -> ?ttl_block_int
               end,
+
     {version(),
     [ {account_id, AccountId}
     , {nonce, Nonce}
-    , {query_format, QueryFormat}
-    , {response_format, ResponseFormat}
+    , {query_format, format_to_binary(QueryFormat)}
+    , {response_format, format_to_binary(ResponseFormat)}
     , {query_fee, QueryFee}
     , {ttl_type, TTLType}
     , {ttl_value, TTLValue}
@@ -257,3 +258,9 @@ ensure_not_oracle(PubKey, Trees) ->
         {value, _Oracle} -> {error, account_is_already_an_oracle};
         none             -> ok
     end.
+
+format_to_binary(Format) when is_atom(Format) ->
+    atom_to_binary(Format, utf8);
+format_to_binary(Format) ->
+    Format.
+

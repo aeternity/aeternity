@@ -2164,9 +2164,15 @@ sophia_oracles_gas_ttl__oracle_registration(_Cfg) ->
     %% Smoke test.
     ?assertMatch({{}, _}, Rel(H, 1)),
     G = fun({{}=_Result, GasUsed}) -> GasUsed end,
+    %% This test uses 2 different TTLs that don't have the same number of digits.
+    %% Since there is a primop in the contract call which includes the TTL, the
+    %% serialized tx representing the primop has different size for TTLs with
+    %% different number of digits as well as the size gas.
+    %% ?assertEqual(Part + G(Rel(H, 1        )), G(Rel(H, 1 +   Whole))),
+
     %% TTL increases gas used.
-    ?assertEqual(Part + G(Rel(H, 1        )), G(Rel(H, 1 +   Whole))),
-    ?assertEqual(Part + G(Rel(H, 1 + Whole)), G(Rel(H, 1 + 2*Whole))),
+    ?assertEqual(Part + G(Rel(H, 1 +   Whole)), G(Rel(H, 1 + 2*Whole))),
+    ?assertEqual(Part + G(Rel(H, 1 + 2*Whole)), G(Rel(H, 1 + 3*Whole))),
     %% Gas used for absolute TTL is same(ish) as relative.
     Abs = fun(He, Ttl) -> M(He, ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Ttl)) end,
     RelGas = G(Rel(H, 1 + Whole)),
@@ -2202,9 +2208,12 @@ sophia_oracles_gas_ttl__oracle_extension(_Cfg) ->
     %% Smoke test.
     ?assertMatch({{}, _}, Rel(H, 1)),
     G = fun({{}=_Result, GasUsed}) -> GasUsed end,
+    %% TTL with different number of digits - different size gas.
+    %% ?assertEqual(Part + G(Rel(H, 1        )), G(Rel(H, 1 +   Whole))),
+
     %% TTL increases gas used.
-    ?assertEqual(Part + G(Rel(H, 1        )), G(Rel(H, 1 +   Whole))),
-    ?assertEqual(Part + G(Rel(H, 1 + Whole)), G(Rel(H, 1 + 2*Whole))),
+    ?assertEqual(Part + G(Rel(H, 1 +   Whole)), G(Rel(H, 1 + 2*Whole))),
+    ?assertEqual(Part + G(Rel(H, 1 + 2*Whole)), G(Rel(H, 1 + 3*Whole))),
     %% Enough gas for base cost though not enough for all TTL causes out-of-gas.
     ?assertMatch(
        {{error, <<"out_of_gas">>}, _},
@@ -2234,9 +2243,11 @@ sophia_oracles_gas_ttl__query(_Cfg) ->
     %% Smoke test.
     ?assertMatch({{}, _}, Rel(H, 1)),
     G = fun({{}=_Result, GasUsed}) -> GasUsed end,
+    %% TTL with different number of digits - different size gas.
+    %% ?assertEqual(Part + G(Rel(H, 1        )), G(Rel(H, 1 +   Whole))),
     %% TTL increases gas used.
-    ?assertEqual(Part + G(Rel(H, 1        )), G(Rel(H, 1 +   Whole))),
-    ?assertEqual(Part + G(Rel(H, 1 + Whole)), G(Rel(H, 1 + 2*Whole))),
+    ?assertEqual(Part + G(Rel(H, 1 +   Whole)), G(Rel(H, 1 + 2*Whole))),
+    ?assertEqual(Part + G(Rel(H, 1 + 2*Whole)), G(Rel(H, 1 + 3*Whole))),
     %% Gas used for absolute TTL is same(ish) as relative.
     Abs = fun(He, Ttl) -> M(He, ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Ttl)) end,
     RelGas = G(Rel(H, 1 + Whole)),
@@ -2272,9 +2283,11 @@ sophia_oracles_gas_ttl__response(_Cfg) ->
     %% Smoke test.
     ?assertMatch({{}, _}, Rel(H, 1)),
     G = fun({{}=_Result, GasUsed}) -> GasUsed end,
+    %% TTL with different number of digits - different size gas.
+    %% ?assertEqual(Part + G(Rel(H, 1        )), G(Rel(H, 1 +   Whole))),
     %% TTL increases gas used.
-    ?assertEqual(Part + G(Rel(H, 1        )), G(Rel(H, 1 +   Whole))),
-    ?assertEqual(Part + G(Rel(H, 1 + Whole)), G(Rel(H, 1 + 2*Whole))),
+    ?assertEqual(Part + G(Rel(H, 1 +   Whole)), G(Rel(H, 1 + 2*Whole))),
+    ?assertEqual(Part + G(Rel(H, 1 + 2*Whole)), G(Rel(H, 1 + 3*Whole))),
     %% Enough gas for base cost though not enough for all TTL causes out-of-gas.
     ?assertMatch(
        {{error, <<"out_of_gas">>}, _},

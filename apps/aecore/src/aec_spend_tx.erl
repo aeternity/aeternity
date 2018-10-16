@@ -15,6 +15,7 @@
          sender_id/1,
          sender_pubkey/1,
          recipient_id/1,
+         amount/1,
          check/3,
          process/3,
          signers/2,
@@ -119,6 +120,10 @@ sender_pubkey(#spend_tx{sender_id = SenderId}) ->
 -spec recipient_id(tx()) -> aec_id:id().
 recipient_id(#spend_tx{recipient_id = RecipientId}) ->
     RecipientId.
+
+-spec amount(tx()) -> non_neg_integer().
+amount(#spend_tx{amount = Amount}) ->
+    Amount.
 
 resolve_recipient_pubkey(Tx, Trees) ->
     case resolve_recipient(Tx, Trees) of

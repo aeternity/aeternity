@@ -27,10 +27,27 @@
    ]).
 
 %% chain API exports
--export([ get_height/1, spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2,
-          oracle_register/7, oracle_query/6, oracle_query_format/2, oracle_response_format/2,
-          oracle_respond/6, oracle_get_answer/3,
-          oracle_query_fee/2, oracle_query_response_ttl/3, oracle_get_question/3, oracle_extend/4]).
+-export([ get_height/1,
+          spend_tx/3,
+          spend/2,
+          get_balance/2,
+          call_contract/6,
+          get_store/1,
+          set_store/2,
+          oracle_register_tx/6,
+          oracle_register/3,
+          oracle_query_tx/6,
+          oracle_query/2,
+          oracle_query_format/2,
+          oracle_response_format/2,
+          oracle_respond_tx/5,
+          oracle_respond/3,
+          oracle_get_answer/3,
+          oracle_query_fee/2,
+          oracle_query_response_ttl/3,
+          oracle_get_question/3,
+          oracle_extend_tx/3,
+          oracle_extend/3]).
 
 -include("apps/aecontract/src/aecontract.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -75,13 +92,13 @@ execute_call(Contract, CallData, ChainState, Options) ->
              address           => Contract,
              caller            => 0,
              data              => CallData,
-             gas               => 1000000,
+             gas               => 1500000,
              gasPrice          => 1,
              origin            => 0,
              value             => 0,
              currentCoinbase   => 0,
              currentDifficulty => 0,
-             currentGasLimit   => 1000000,
+             currentGasLimit   => 2000000,
              currentNumber     => 0,
              currentTimestamp  => 0,
              chainState        => ChainState1,
@@ -420,16 +437,33 @@ initial_state(Contracts, Accounts) ->
 get_height(#{ environment := #{ currentNumber := Height } }) ->
     Height.
 
-spend(_To, Amount, _) when Amount < 0 ->
+spend_tx(_To, Amount, _) when Amount < 0 ->
     {error, negative_spend};
-spend(ToId, Amount, S = #{ running := From, accounts := Accounts }) ->
-    <<To:256>> = aec_id:specialize(ToId, account),
-    Balance = get_balance(<<From:256>>, S),
+spend_tx(ToId, Amount, State = #{running := From}) ->
+    Balance = get_balance(<<From:256>>, State),
     case Amount =< Balance of
-        true -> {ok, S#{ accounts := Accounts#{ From => Balance            - Amount,
-                                                To   => get_balance(<<To:256>>, S) + Amount } }};
-        false -> {error, insufficient_funds}
+        true ->
+            Spec =
+                #{sender_id    => aec_id:create(account, <<From:256>>),
+                  recipient_id => ToId,
+                  amount       => Amount,
+                  fee          => 0,
+                  nonce        => 1,
+                  payload      => <<>>},
+            aec_spend_tx:new(Spec);
+        false ->
+            {error, insufficient_funds}
     end.
+
+spend(Tx, State = #{accounts := Accounts}) ->
+    {aec_spend_tx, STx} = aetx:specialize_callback(Tx),
+    <<To:256>> = aec_id:specialize(aec_spend_tx:recipient_id(STx), account),
+    <<From:256>> = aec_id:specialize(aec_spend_tx:sender_id(STx), account),
+    Amount = aec_spend_tx:amount(STx),
+    FromBalance = get_balance(<<From:256>>, State),
+    ToBalance = get_balance(<<To:256>>, State),
+    {ok, State#{accounts := Accounts#{From => FromBalance - Amount,
+                                      To   => ToBalance + Amount}}}.
 
 get_balance(<<Account:256>>, #{ accounts := Accounts }) ->
     maps:get(Account, Accounts, 0).
@@ -462,60 +496,130 @@ call_contract(<<Contract:256>>, _Gas, Value, CallData, _, S = #{running := Calle
             {error, {no_such_contract, Contract}}
     end.
 
-oracle_register(PubKey = <<Account:256>>, Sign, QueryFee, TTL, QueryFormat, ResponseFormat, State) ->
-    io:format("oracle_register(~p, ~p, ~p, ~p, ~p, ~p)\n", [Account, Sign, QueryFee, TTL, QueryFormat, ResponseFormat]),
+oracle_register_tx(PubKey = <<Account:256>>, QueryFee, TTL, QFormat, RFormat, _State) ->
+    io:format("oracle_register(~p, ~p, ~p, ~p, ~p)\n", [Account, QueryFee, TTL, QFormat, RFormat]),
+    Spec =
+        #{account_id      => aec_id:create(account, PubKey),
+          nonce           => 1,
+          query_format    => QFormat,
+          response_format => RFormat,
+          query_fee       => QueryFee,
+          oracle_ttl      => TTL,
+          ttl             => 0,
+          fee             => 0},
+    aeo_register_tx:new(Spec).
+
+oracle_register(Tx, Signature, State) ->
+    {aeo_register_tx, OTx} = aetx:specialize_callback(Tx),
+    <<PubKey:256>> = aeo_register_tx:account_pubkey(OTx),
     Oracles = maps:get(oracles, State, #{}),
-    State1 = State#{ oracles => Oracles#{ Account =>
-                        #{sign            => Sign,
-                          nonce           => 1,
-                          query_fee       => QueryFee,
-                          query_format    => QueryFormat,
-                          response_format => ResponseFormat,
-                          ttl             => TTL} } },
-    {ok, PubKey, State1}.
+    State1 =
+        State#{
+          oracles =>
+            Oracles#{
+              PubKey =>
+                #{sign            => Signature,
+                  nonce           => aeo_register_tx:nonce(OTx),
+                  query_fee       => aeo_register_tx:query_fee(OTx),
+                  query_format    => aeo_register_tx:query_format(OTx),
+                  response_format => aeo_register_tx:response_format(OTx),
+                  ttl             => aeo_register_tx:ttl(OTx)}}},
+    {ok, <<PubKey:256>>, State1}.
 
-oracle_query(<<Oracle:256>>, Q, Value, QTTL, RTTL, State) ->
+oracle_query_tx(OracleKey = <<Oracle:256>>, Q, Value, QTTL, RTTL, _State) ->
     io:format("oracle_query(~p, ~p, ~p, ~p, ~p)\n", [Oracle, Q, Value, QTTL, RTTL]),
-    QueryKey = <<QueryId:256>> = crypto:hash(sha256, term_to_binary(make_ref())),
-    Queries = maps:get(oracle_queries, State, #{}),
-    State1  = State#{ oracle_queries =>
-                Queries#{ QueryId =>
-                    #{oracle => Oracle,
-                      query  => Q,
-                      q_ttl  => QTTL,
-                      r_ttl  => RTTL} } },
-    {ok, QueryKey, State1}.
+    Spec =
+        #{sender_id     => aec_id:create(account, OracleKey),
+          nonce         => 1,
+          oracle_id     => aec_id:create(oracle, OracleKey),
+          query         => Q,
+          query_fee     => 0,
+          query_ttl     => QTTL,
+          response_ttl  => RTTL,
+          fee           => 0,
+          ttl           => 0
+         },
+    aeo_query_tx:new(Spec).
 
-oracle_respond(<<_Oracle:256>>, <<Query:256>>, Sign, R, _RTTL, State) ->
-    io:format("oracle_respond(~p, ~p, ~p)\n", [Query, Sign, R]),
+oracle_query(Tx, State) ->
+    {aeo_query_tx, OTx} = aetx:specialize_callback(Tx),
+    <<Oracle:256>> = aec_id:specialize(aeo_query_tx:sender_id(OTx), account),
+    <<QueryId:256>> = aeo_query_tx:query_id(OTx),
+    Q = aeo_query_tx:query(OTx),
+    QTTL = aeo_query_tx:query_ttl(OTx),
+    RTTL = aeo_query_tx:response_ttl(OTx),
+    Queries = maps:get(oracle_queries, State, #{}),
+    State1 =
+        State#{
+          oracle_queries =>
+            Queries#{
+              QueryId =>
+                #{oracle => Oracle,
+                  query  => Q,
+                  q_ttl  => QTTL,
+                  r_ttl  => RTTL}}},
+    {ok, <<QueryId:256>>, State1}.
+
+oracle_respond_tx(OracleKey, QueryIdKey = <<QueryId:256>>, R, RTTL, _State) ->
+    io:format("oracle_respond(~p, ~p)\n", [QueryId, R]),
+    Spec =
+        #{oracle_id    => aec_id:create(oracle, OracleKey),
+          nonce        => 1,
+          query_id     => QueryIdKey,
+          response     => R,
+          response_ttl => RTTL,
+          fee          => 0,
+          ttl          => 0 %% Not used
+         },
+    aeo_response_tx:new(Spec).
+
+oracle_respond(Tx, _Signature, State) ->
+    {aeo_response_tx, OTx} = aetx:specialize_callback(Tx),
+    <<QueryId:256>> = aeo_response_tx:query_id(OTx),
+    R = aeo_response_tx:response(OTx),
     case maps:get(oracle_queries, State, #{}) of
-        #{Query := Q} = Queries ->
-            State1 = State#{ oracle_queries := Queries#{ Query := Q#{ answer => {some, R} } } },
+        #{QueryId := Q} = Queries ->
+            State1 =
+                State#{
+                  oracle_queries := Queries#{QueryId := Q#{answer => {some, R}}}},
             {ok, State1};
-        _ -> {error, {no_such_query, Query}}
+        _ -> {error, {no_such_query, QueryId}}
     end.
 
-oracle_extend(<<Oracle:256>>,_Sign, TTL, State) ->
-    io:format("oracle_extend(~p, ~p, ~p)\n", [Oracle,_Sign, TTL]),
+oracle_extend_tx(OracleKey = <<Oracle:256>>, OTTL, _State) ->
+    io:format("oracle_extend(~p, ~p)\n", [Oracle, OTTL]),
+    Spec =
+        #{oracle_id  => aec_id:create(oracle, OracleKey),
+          nonce      => 1,
+          oracle_ttl => OTTL,
+          fee        => 0,
+          ttl        => 0 %% Not used
+         },
+    aeo_extend_tx:new(Spec).
+
+oracle_extend(Tx, _Signature, State) ->
+    {aeo_extend_tx, OTx} = aetx:specialize_callback(Tx),
+    <<Oracle:256>> = aec_id:specialize(aeo_extend_tx:oracle_id(OTx), oracle),
+    OTTL = aeo_extend_tx:oracle_ttl(OTx),
     case maps:get(oracles, State, #{}) of
         #{Oracle := O} = Oracles ->
-            State1 = State#{ oracles := Oracles#{ Oracle := O#{ ttl => TTL } } },
+            State1 = State#{oracles := Oracles#{Oracle := O#{ttl => OTTL}}},
             {ok, State1};
         _ -> foo= Oracle, {error, {no_such_oracle, Oracle}}
     end.
 
-oracle_get_answer(<<_Oracle:256>>, <<Query:256>>, State) ->
+oracle_get_answer(<<_Oracle:256>>, <<QueryId:256>>, State) ->
     case maps:get(oracle_queries, State, #{}) of
-        #{Query := Q} ->
+        #{QueryId := Q} ->
             Answer = maps:get(answer, Q, none),
             io:format("oracle_get_answer() -> ~p\n", [Answer]),
             {ok, Answer};
         _ -> {ok, none}
     end.
 
-oracle_get_question(<<_Oracle:256>>, <<Query:256>>, State) ->
+oracle_get_question(<<_Oracle:256>>, <<QueryId:256>>, State) ->
     case maps:get(oracle_queries, State, #{}) of
-        #{Query := Q} ->
+        #{QueryId := Q} ->
             Question = maps:get(query, Q, none),
             io:format("oracle_get_question() -> ~p\n", [Question]),
             {ok, Question};
@@ -524,25 +628,25 @@ oracle_get_question(<<_Oracle:256>>, <<Query:256>>, State) ->
 
 oracle_query_fee(<<Oracle:256>>, State) ->
     case maps:get(oracles, State, []) of
-        #{ Oracle := #{query_fee := Fee} } -> {ok, Fee};
+        #{Oracle := #{query_fee := Fee}} -> {ok, Fee};
         _ -> {error, {no_such_oracle, Oracle}}
     end.
 
-oracle_query_response_ttl(<<Oracle:256>>, <<Query:256>>, State) ->
+oracle_query_response_ttl(<<_Oracle:256>>, <<QueryId:256>>, State) ->
     case maps:get(oracle_queries, State, #{}) of
-        #{Query := Q} -> {ok, maps:get(r_ttl, Q)};
+        #{QueryId := Q} -> {ok, maps:get(r_ttl, Q)};
         _ -> {error, no_such_oracle_query}
     end.
 
 oracle_query_format(<<Oracle:256>>, State) ->
     case maps:get(oracles, State, []) of
-        #{ Oracle := #{query_format := Format} } -> {ok, Format};
+        #{Oracle := #{query_format := Format}} -> {ok, Format};
         _ -> {error, {no_such_oracle, Oracle}}
     end.
 
 oracle_response_format(<<Oracle:256>>, State) ->
     case maps:get(oracles, State, #{}) of
-        #{ Oracle := #{response_format := Format} } -> {ok, Format};
+        #{Oracle := #{response_format := Format}} -> {ok, Format};
         _ -> {error, {no_such_oracle, Oracle}}
     end.
 

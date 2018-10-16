@@ -111,13 +111,14 @@ spend(_Cfg) ->
     AccBal1  = aec_vm_chain:get_balance(Acc, S),
     Bal1     = aec_vm_chain:get_balance(Contract1, S),
     Amount   = 50,
-    {ok, S1} = aec_vm_chain:spend(AccId, Amount, S),
+    {ok, T1} = aec_vm_chain:spend_tx(AccId, Amount, S),
+    {ok, S1} = aec_vm_chain:spend(T1, S),
     Bal2     = aec_vm_chain:get_balance(Contract1, S1),
     Bal2     = Bal1 - Amount,
     AccBal2  = aec_vm_chain:get_balance(Acc, S1),
     AccBal2  = AccBal1 + Amount,
-    {error, insufficient_funds}
-             = aec_vm_chain:spend(AccId, 1000000, S1),
+    {ok, T2} = aec_vm_chain:spend_tx(AccId, 1000000, S1),
+    {error, insufficient_funds} = aec_vm_chain:spend(T2, S1),
     ok.
 
 %%%===================================================================
