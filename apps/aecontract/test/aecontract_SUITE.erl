@@ -12,13 +12,13 @@
 
 %% test case exports
 -export([ call_contract/1
-        , call_contract_with_gas_price_zero/1
         , call_contract_error_value/1
         , call_contract_negative_insufficient_funds/1
+        , call_contract_negative_gas_price_zero/1
         , call_contract_negative/1
         , create_contract/1
-        , create_contract_with_gas_price_zero/1
         , create_contract_init_error/1
+        , create_contract_negative_gas_price_zero/1
         , create_contract_negative/1
         , state_tree/1
         , sophia_identity/1
@@ -108,13 +108,13 @@ groups() ->
                               , {group, store}
                               ]}
     , {transactions, [], [ create_contract
-                         , create_contract_with_gas_price_zero
                          , create_contract_init_error
+                         , create_contract_negative_gas_price_zero
                          , create_contract_negative
                          , call_contract
-                         , call_contract_with_gas_price_zero
                          , call_contract_error_value
                          , call_contract_negative_insufficient_funds
+                         , call_contract_negative_gas_price_zero
                          , call_contract_negative
                          ]}
     , {state_tree, [sequence], [ state_tree ]}
@@ -202,6 +202,19 @@ groups() ->
 %%% Create contract
 %%%===================================================================
 
+create_contract_negative_gas_price_zero(_Cfg) ->
+    {PubKey, S1} = aect_test_utils:setup_new_account(aect_test_utils:new_state()),
+    PrivKey      = aect_test_utils:priv_key(PubKey, S1),
+
+    Overrides = #{gas_price => 0},
+    Tx        = aect_test_utils:create_tx(PubKey, Overrides, S1),
+    ?assertEqual(0, aect_create_tx:gas_price(aetx:tx(Tx))),
+
+    {error, _} = sign_and_apply_transaction(Tx, PrivKey, S1),
+    Env        = aetx_env:tx_env(_Height = 1),
+    {error, too_low_gas_price} = aetx:check(Tx, aect_test_utils:trees(S1), Env),
+    ok.
+
 create_contract_negative(_Cfg) ->
     {PubKey, S1} = aect_test_utils:setup_new_account(aect_test_utils:new_state()),
     Trees        = aect_test_utils:trees(S1),
@@ -276,8 +289,6 @@ create_contract_init_error(_Cfg) ->
     ok.
 
 create_contract(_Cfg) -> create_contract_(1).
-
-create_contract_with_gas_price_zero(_Cfg) -> create_contract_(0).
 
 create_contract_(ContractCreateTxGasPrice) ->
     S  = aect_test_utils:new_state(),
@@ -384,7 +395,7 @@ call_contract_negative_insufficient_funds(_Cfg) ->
     CallData = make_calldata(main, 42),
     CallTx = aect_test_utils:call_tx(Acc1, IdC,
                                      #{call_data => CallData,
-                                       gas_price => 0,
+                                       gas_price => 1,
                                        amount    => Value,
                                        fee       => Fee}, S),
     {error, _} = sign_and_apply_transaction(CallTx, aect_test_utils:priv_key(Acc1, S), S),
@@ -392,13 +403,25 @@ call_contract_negative_insufficient_funds(_Cfg) ->
     {error, insufficient_funds} = aetx:check(CallTx, aect_test_utils:trees(S), Env),
     ok.
 
+call_contract_negative_gas_price_zero(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1 = call(fun new_account/2, [1000000]),
+    IdC  = call(fun create_contract/4, [Acc1, identity, {}]),
+    S    = state(),
+
+    Tx   = aect_test_utils:call_tx(Acc1, IdC, #{gas_price => 0}, S),
+    ?assertEqual(0, aect_call_tx:gas_price(aetx:tx(Tx))),
+
+    {error, _} = sign_and_apply_transaction(Tx, aect_test_utils:priv_key(Acc1, S), S),
+    Env        = aetx_env:tx_env(_Height = 1),
+    {error, too_low_gas_price} = aetx:check(Tx, aect_test_utils:trees(S), Env),
+    ok.
+
 call_contract_negative(_Cfg) ->
     %% PLACEHOLDER
     ok.
 
 call_contract(_Cfg) -> call_contract_(2).
-
-call_contract_with_gas_price_zero(_Cfg) -> call_contract_(0).
 
 call_contract_(ContractCallTxGasPrice) ->
     S  = aect_test_utils:new_state(),
@@ -987,34 +1010,41 @@ sophia_oracles_ttl__good_query_bad_extend(_Cfg) ->
 %% -- End TTL tests --
 
 oracle_init_from_contract(OperatorAcc, InitialOracleContractBalance, S) ->
-    {OCt, S1} = create_contract(OperatorAcc, oracles, {}, #{amount => InitialOracleContractBalance}, S),
-    {{OCt, OCt}, S1}.
+    {{OCt, GasUsed}, S1} = create_contract(OperatorAcc, oracles, {},
+        #{amount          => InitialOracleContractBalance,
+          return_gas_used => true}, S),
+    {{OCt, OCt, GasUsed}, S1}.
 
 oracle_init_from_remote_contract(OperatorAcc, InitialOracleContractBalance, S) ->
-    {OCt, S1} = create_contract(OperatorAcc, oracles, {}, #{amount => InitialOracleContractBalance}, S),
+    {{OCt, GasUsed}, S1} = create_contract(OperatorAcc, oracles, {}, #{
+          amount          => InitialOracleContractBalance,
+          return_gas_used => true}, S),
     {RCt, S2} = create_contract(OperatorAcc, remote_oracles, {}, #{amount => 0}, S1),
-    {{OCt, RCt}, S2}.
+    {{OCt, RCt, GasUsed}, S2}.
 
-oracle_register_from_contract(OperatorAcc, OCt, OCt, Opts, TxOpts, S) ->
+oracle_register_from_contract(OperatorAcc, OCt, OCt, Opts, TxOpts0, S) ->
     QueryFee = maps:get(qfee, Opts),
     OTtl = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(maps:get(ottl, Opts, 15)),
+    TxOpts = TxOpts0#{return_gas_used => true},
     call_contract(OperatorAcc, OCt, registerOracle, word, {OCt, 0, QueryFee, OTtl}, TxOpts, S).
 
-oracle_register_from_remote_contract(OperatorAcc, RCt, OCt, Opts, TxOpts, S) ->
+oracle_register_from_remote_contract(OperatorAcc, RCt, OCt, Opts, TxOpts0, S) ->
     QueryFee = maps:get(qfee, Opts),
     OTtl = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(maps:get(ottl, Opts, 15)),
+    TxOpts = TxOpts0#{return_gas_used => true},
     call_contract(OperatorAcc, RCt, callRegisterOracle, word, {OCt, OCt, 0, QueryFee, OTtl}, TxOpts, S).
 
 oracle_query_from_contract(UserAcc, OCt, OCt, Opts, TxOpts, S) ->
     oracle_query_from_contract_(createQuery, UserAcc, OCt, OCt, Opts, TxOpts, S).
 oracle_unsafe_query_from_contract(UserAcc, OCt, OCt, Opts, TxOpts, S) ->
     oracle_query_from_contract_(unsafeCreateQuery, UserAcc, OCt, OCt, Opts, TxOpts, S).
-oracle_query_from_contract_(Fun, UserAcc, OCt, OCt, Opts, TxOpts, S) ->
+oracle_query_from_contract_(Fun, UserAcc, OCt, OCt, Opts, TxOpts0, S) ->
     QueryFee = maps:get(qfee, Opts),
     Question = maps:get(question, Opts, <<"why?">>),
     ?assertMatch(_ when is_binary(Question), Question),
     QTtl = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(maps:get(qttl, Opts, 5)),
     RTtl = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(maps:get(rttl, Opts, 5)),
+    TxOpts = TxOpts0#{return_gas_used => true},
     call_contract(UserAcc, OCt, Fun, word, {OCt, Question, QueryFee, QTtl, RTtl}, TxOpts, S).
 
 oracle_query_from_remote_contract(UserAcc, RCt, OCt, Opts, TxOpts, S) ->
@@ -1023,31 +1053,34 @@ oracle_unsafe_query_from_remote_contract(UserAcc, RCt, OCt, Opts, TxOpts, S) ->
     oracle_query_from_remote_contract_(callUnsafeCreateQuery, UserAcc, RCt, OCt, Opts, TxOpts, S).
 oracle_query_from_remote_contract_(Fun, UserAcc, RCt, OCt, Opts, TxOpts, S) ->
     oracle_query_from_remote_contract_(Fun, UserAcc, RCt, OCt, OCt, Opts, TxOpts, S).
-oracle_query_from_remote_contract_(Fun, UserAcc, RCt, OCt, OAcc, Opts, TxOpts, S) ->
+oracle_query_from_remote_contract_(Fun, UserAcc, RCt, OCt, OAcc, Opts, TxOpts0, S) ->
     QueryFee = maps:get(qfee, Opts),
     Question = maps:get(question, Opts, <<"why?">>),
     QTtl = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(maps:get(qttl, Opts, 5)),
     RTtl = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(maps:get(rttl, Opts, 5)),
     Value = case maps:find(remote_value, Opts) of
                 {ok, V} -> V;
-                error -> maps:get(amount, TxOpts)
+                error -> maps:get(amount, TxOpts0)
             end,
+    TxOpts = TxOpts0#{return_gas_used => true},
     call_contract(UserAcc, RCt, Fun, word, {OCt, Value, OAcc, Question, QueryFee, QTtl, RTtl}, TxOpts, S).
 
-oracle_check_and_respond_from_contract(OperatorAcc, OCt, OCt, QueryId, Opts, TxOpts, S) ->
+oracle_check_and_respond_from_contract(OperatorAcc, OCt, OCt, QueryId, Opts, TxOpts0, S) ->
     ?assertMatch({Question, _} when is_binary(Question), call_contract(OperatorAcc, OCt, getQuestion, string, {OCt, QueryId}, S)),
     Response = maps:get(response, Opts, 4001),
     ?assertMatch(_ when is_integer(Response), Response),
-    {R, S1} = call_contract(OperatorAcc, OCt, respond, {tuple, []}, {OCt, QueryId, 0, Response}, TxOpts, S),
+    TxOpts = TxOpts0#{return_gas_used => true},
+    {{R, GasUsed}, S1} = call_contract(OperatorAcc, OCt, respond, {tuple, []}, {OCt, QueryId, 0, Response}, TxOpts, S),
     ?assertMatch({{some, Response}, _}, call_contract(OperatorAcc, OCt, getAnswer, {option, word}, {OCt, QueryId}, S1)),
-    {R, S1}.
+    {{R, GasUsed}, S1}.
 
-oracle_check_and_respond_from_remote_contract(OperatorAcc, RCt, OCt, QueryId, Opts, TxOpts, S) ->
+oracle_check_and_respond_from_remote_contract(OperatorAcc, RCt, OCt, QueryId, Opts, TxOpts0, S) ->
     ?assertMatch({Question, _} when is_binary(Question), call_contract(OperatorAcc, OCt, getQuestion, string, {OCt, QueryId}, S)),
     Response = maps:get(response, Opts, 4001),
-    {R, S1} = call_contract(OperatorAcc, RCt, callRespond, {tuple, []}, {OCt, OCt, QueryId, 0, Response}, TxOpts, S),
+    TxOpts = TxOpts0#{return_gas_used => true},
+    {{R, GasUsed}, S1} = call_contract(OperatorAcc, RCt, callRespond, {tuple, []}, {OCt, OCt, QueryId, 0, Response}, TxOpts, S),
     ?assertMatch({{some, Response}, _}, call_contract(OperatorAcc, OCt, getAnswer, {option, word}, {OCt, QueryId}, S1)),
-    {R, S1}.
+    {{R, GasUsed}, S1}.
 
 -record(oracle_cbs, {init, register, query, respond}).
 %%
@@ -1067,6 +1100,12 @@ oracle_check_and_respond_from_remote_contract(OperatorAcc, RCt, OCt, QueryId, Op
            respond = fun oracle_check_and_respond_from_remote_contract/7
           }).
 -define(ORACLE_UNSAFE_REMOTE_CBS, ?ORACLE_SAFE_REMOTE_CBS#oracle_cbs{query = fun oracle_unsafe_query_from_remote_contract/6}).
+
+-record(gas_used, {init = 0, register = 0, query = 0, respond = 0}).
+gu_register(#gas_used{register = R}) -> R.
+gu_query   (#gas_used{query    = Q}) -> Q.
+gu_respond (#gas_used{respond  = R}) -> R.
+
 %%
 closed_oracle_cbs(Cbs,
                   OperatorAcc, UserAcc,
@@ -1091,35 +1130,42 @@ closed_oracle_cbs(Cbs,
       }.
 %%
 sophia_oracles_qfee__init_and_register_and_query_(Init, RegisterOracle, CreateQuery) ->
-    {OracleAcc, CallingCt} = call(Init, []),
+    {OracleAcc, CallingCt, GasUsedInit} = call(Init, []),
     S0 = state(),
-    OracleAcc = <<(call(RegisterOracle, [CallingCt, OracleAcc])):256>>,
+
+    {RegisterRes, GasUsedRegister} = call(RegisterOracle, [CallingCt, OracleAcc]),
+    OracleAcc = <<(RegisterRes):256>>,
     S1 = state(),
-    R = call(CreateQuery, [CallingCt, OracleAcc]),
+
+    {R, GasUsedQuery} = call(CreateQuery, [CallingCt, OracleAcc]),
+    S2 = state(),
     {R,
      {OracleAcc, CallingCt},
-     [S0, S1]}.
+     [S0, S1, S2],
+     #gas_used{init = GasUsedInit, register = GasUsedRegister, query = GasUsedQuery}}.
 %%
 sophia_oracles_qfee__init_and_register_and_query_and_respond_(Init, RegisterOracle, CreateQuery, RespondQuery) ->
     {QId,
      {OracleAcc, CallingCt},
-     [S0, %% State before oracle registration.
-      S1] %% State after oracle registration.
+     [S0,  %% State before oracle registration.
+      S1,  %% State after oracle registration.
+      S2], %% State after query.
+     GasUsed
     } = sophia_oracles_qfee__init_and_register_and_query_(Init, RegisterOracle, CreateQuery),
-    S2 = state(),
-    {} = call(RespondQuery, [CallingCt, OracleAcc, QId]),
+    {{}, GasUsedRespond} = call(RespondQuery, [CallingCt, OracleAcc, QId]),
     {{OracleAcc, CallingCt},
-     [S0, S1, S2]}.
+     [S0, S1, S2, state()], GasUsed#gas_used{respond = GasUsedRespond}}.
 
 sophia_oracles_qfee__flow_up_to_respond_(Cbs,
                                          TxFee,
+                                         GasPrice,
                                          InitialOracleCtBalance,
                                          RegisterOpts,
                                          QueryOpts, QueryTxValue,
                                          RespondOpts) ->
-    RegisterTxOpts = #{fee => TxFee, gas_price => 0, amount => 0},
-    QueryTxOpts = #{fee => TxFee, gas_price => 0, amount => QueryTxValue},
-    RespondTxOpts = #{fee => TxFee, gas_price => 0, amount => 0},
+    RegisterTxOpts = #{fee => TxFee, gas_price => GasPrice, amount => 0},
+    QueryTxOpts    = #{fee => TxFee, gas_price => GasPrice, amount => QueryTxValue},
+    RespondTxOpts  = #{fee => TxFee, gas_price => GasPrice, amount => 0},
 
     state(aect_test_utils:new_state()),
     OperatorAcc = call(fun new_account/2, [1000000]),
@@ -1131,35 +1177,40 @@ sophia_oracles_qfee__flow_up_to_respond_(Cbs,
                              QueryOpts   , QueryTxOpts,
                              RespondOpts , RespondTxOpts),
     {{OracleAcc, CallingCt},
-     [S0, %% State before oracle registration.
-      S1, %% State after oracle registration.
-      S2] %% State after query.
+     [S0,  %% State before oracle registration.
+      S1,  %% State after oracle registration.
+      S2,  %% State after query.
+      S3], %% State after oracle respond.
+     GasUsed
     } = sophia_oracles_qfee__init_and_register_and_query_and_respond_(
           CCbs#oracle_cbs.init,
           CCbs#oracle_cbs.register,
           CCbs#oracle_cbs.query,
           CCbs#oracle_cbs.respond),
-    {{OperatorAcc, UserAcc}, {OracleAcc, CallingCt}, [S0, S1, S2]}.
+    {{OperatorAcc, UserAcc}, {OracleAcc, CallingCt}, [S0, S1, S2, S3], GasUsed}.
 %%
 sophia_oracles_qfee__flow_up_to_query_(Cbs,
                                        TxFee,
+                                       GasPrice,
                                        InitialOracleCtBalance,
                                        RegisterOpts,
                                        QueryOpts, QueryTxValue) ->
     sophia_oracles_qfee__flow_up_to_query_(aect_test_utils:new_state(),
                                            Cbs,
                                            TxFee,
+                                           GasPrice,
                                            InitialOracleCtBalance,
                                            RegisterOpts,
                                            QueryOpts, QueryTxValue).
 sophia_oracles_qfee__flow_up_to_query_(InitialState,
                                        Cbs,
                                        TxFee,
+                                       GasPrice,
                                        InitialOracleCtBalance,
                                        RegisterOpts,
                                        QueryOpts, QueryTxValue) ->
-    RegisterTxOpts = #{fee => TxFee, gas_price => 0, amount => 0},
-    QueryTxOpts = #{fee => TxFee, gas_price => 0, amount => QueryTxValue},
+    RegisterTxOpts = #{fee => TxFee, gas_price => GasPrice, amount => 0},
+    QueryTxOpts    = #{fee => TxFee, gas_price => GasPrice, amount => QueryTxValue},
 
     state(InitialState),
     OperatorAcc = call(fun new_account/2, [1000000]),
@@ -1172,13 +1223,15 @@ sophia_oracles_qfee__flow_up_to_query_(InitialState,
                              no_response , no_response),
     {{error, <<"out_of_gas">>},
      {OracleAcc, CallingCt},
-     [S0, %% State before oracle registration.
-      S1] %% State after oracle registration.
+     [S0,  %% State before oracle init.
+      S1,  %% State after oracle registration.
+      S2], %% State after oracle query.
+     GasUsed
     } = sophia_oracles_qfee__init_and_register_and_query_(
           CCbs#oracle_cbs.init,
           CCbs#oracle_cbs.register,
           CCbs#oracle_cbs.query),
-    {{OperatorAcc, UserAcc}, {OracleAcc, CallingCt}, [S0, S1]}.
+    {{OperatorAcc, UserAcc}, {OracleAcc, CallingCt}, [S0, S1, S2], GasUsed}.
 
 %% Reference case i.e. all of the following items are equal:
 %% * Query fee specified when registering oracle
@@ -1196,31 +1249,36 @@ sophia_oracles_qfee__basic(_Cfg) ->
         sophia_oracles_qfee__basic__data_(),
 
     TxFee = 2,
+    GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     RespondOpts = #{},
     {{OperatorAcc, UserAcc},
      {OracleAcc, OracleAcc = _CallingCt},
-     [S0, %% State before oracle registration.
-      S1, %% State after oracle registration.
-      S2] %% State after query.
+     [S0,  %% State before oracle registration.
+      S1,  %% State after oracle registration.
+      S2,  %% State after query.
+      S3], %% State after oracle respond.
+     GasUsed
     } = sophia_oracles_qfee__flow_up_to_respond_(
           ?ORACLE_UNSAFE_CBS, %% Safe or unsafe query does not matter here.
-          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
+          TxFee, GasPrice, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
           RespondOpts),
-    S3 = state(),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(OperatorAcc, S0) - TxFee, Bal(OperatorAcc, S1)),
-    ?assertEqual(Bal(OracleAcc, S0)          , Bal(OracleAcc, S1)),
-    ?assertEqual(Bal(UserAcc, S0)            , Bal(UserAcc, S1)),
+    ?assertEqual(Bal(OperatorAcc, S0) - (TxFee + GasPrice * gu_register(GasUsed)),
+                 Bal(OperatorAcc, S1)),
+    ?assertEqual(Bal(OracleAcc, S0), Bal(OracleAcc, S1)),
+    ?assertEqual(Bal(UserAcc, S0)  , Bal(UserAcc, S1)),
 
-    ?assertEqual(Bal(OperatorAcc, S1)                       , Bal(OperatorAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1)                         , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + RegisterTxQFee), Bal(UserAcc, S2)),
+    ?assertEqual(Bal(OperatorAcc, S1), Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1)  , Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + RegisterTxQFee + GasPrice * gu_query(GasUsed)),
+                 Bal(UserAcc, S2)),
 
-    ?assertEqual(Bal(OperatorAcc, S2) - TxFee       , Bal(OperatorAcc, S3)),
+    ?assertEqual(Bal(OperatorAcc, S2) - (TxFee + GasPrice * gu_respond(GasUsed)),
+                 Bal(OperatorAcc, S3)),
     ?assertEqual(Bal(OracleAcc, S2) + RegisterTxQFee, Bal(OracleAcc, S3)),
     ?assertEqual(Bal(UserAcc, S2)                   , Bal(UserAcc, S3)),
 
@@ -1233,33 +1291,37 @@ sophia_oracles_qfee__basic__remote(_Cfg) ->
         sophia_oracles_qfee__basic__data_(),
 
     TxFee = 2,
+    GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     RespondOpts = #{},
     {{OperatorAcc, UserAcc},
      {OracleAcc, CallingCt},
-     [S0, %% State before oracle registration.
-      S1, %% State after oracle registration.
-      S2] %% State after query.
+     [S0,  %% State before oracle registration.
+      S1,  %% State after oracle registration.
+      S2,  %% State after query.
+      S3], %% State after oracle respond.
+     GasUsed
     } = sophia_oracles_qfee__flow_up_to_respond_(
           ?ORACLE_UNSAFE_REMOTE_CBS, %% Safe or unsafe query does not matter here.
-          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
+          TxFee, GasPrice, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
           RespondOpts),
-    S3 = state(),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(OperatorAcc, S0) - TxFee, Bal(OperatorAcc, S1)),
-    ?assertEqual(Bal(OracleAcc, S0)          , Bal(OracleAcc, S1)),
-    ?assertEqual(Bal(CallingCt, S0)          , Bal(CallingCt, S1)),
-    ?assertEqual(Bal(UserAcc, S0)            , Bal(UserAcc, S1)),
+    ?assertEqual(Bal(OperatorAcc, S0) - (TxFee + GasPrice * gu_register(GasUsed)),
+                 Bal(OperatorAcc, S1)),
+    ?assertEqual(Bal(OracleAcc, S0), Bal(OracleAcc, S1)),
+    ?assertEqual(Bal(CallingCt, S0), Bal(CallingCt, S1)),
+    ?assertEqual(Bal(UserAcc, S0)  , Bal(UserAcc, S1)),
 
-    ?assertEqual(Bal(OperatorAcc, S1)                       , Bal(OperatorAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1)                         , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(CallingCt, S1)                         , Bal(CallingCt, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + RegisterTxQFee), Bal(UserAcc, S2)),
+    ?assertEqual(Bal(OperatorAcc, S1), Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1)  , Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(CallingCt, S1)  , Bal(CallingCt, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + RegisterTxQFee + GasPrice * gu_query(GasUsed)),
+                 Bal(UserAcc, S2)),
 
-    ?assertEqual(Bal(OperatorAcc, S2) - TxFee       , Bal(OperatorAcc, S3)),
+    ?assertEqual(Bal(OperatorAcc, S2) - (TxFee + GasPrice * gu_respond(GasUsed)), Bal(OperatorAcc, S3)),
     ?assertEqual(Bal(OracleAcc, S2) + RegisterTxQFee, Bal(OracleAcc, S3)),
     ?assertEqual(Bal(CallingCt, S2)                 , Bal(CallingCt, S3)),
     ?assertEqual(Bal(UserAcc, S2)                   , Bal(UserAcc, S3)),
@@ -1284,29 +1346,33 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle(_Cf
         sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__data_(),
 
     TxFee = 2,
+    GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     RespondOpts = #{},
     {{OperatorAcc, UserAcc},
      {OracleAcc, OracleAcc = _CallingCt},
-     [_S0, %% State before oracle registration.
-      S1, %% State after oracle registration.
-      S2] %% State after query.
+     [_S0,  %% State before oracle registration.
+      S1,   %% State after oracle registration.
+      S2,   %% State after query.
+      S3],  %% State after oracle respond.
+     GasUsed
     } = sophia_oracles_qfee__flow_up_to_respond_(
           ?ORACLE_UNSAFE_CBS, %% Safe or unsafe query does not matter here.
-          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
+          TxFee, GasPrice, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
           RespondOpts),
-    S3 = state(),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxQFee), Bal(UserAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1)                      , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(OperatorAcc, S1)                    , Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxQFee + GasPrice * gu_query(GasUsed)),
+                 Bal(UserAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1)  , Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(OperatorAcc, S1), Bal(OperatorAcc, S2)),
 
     ?assertEqual(Bal(UserAcc, S2)                , Bal(UserAcc, S3)),
     ?assertEqual(Bal(OracleAcc, S2) + QueryTxQFee, Bal(OracleAcc, S3)),
-    ?assertEqual(Bal(OperatorAcc, S2) - TxFee    , Bal(OperatorAcc, S3)).
+    ?assertEqual(Bal(OperatorAcc, S2) - (TxFee + GasPrice * gu_respond(GasUsed)),
+                 Bal(OperatorAcc, S3)).
 
 %%
 sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__remote(_Cfg) ->
@@ -1314,31 +1380,35 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__re
         sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__data_(),
 
     TxFee = 2,
+    GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     RespondOpts = #{},
     {{OperatorAcc, UserAcc},
      {OracleAcc, CallingCt},
-     [_S0, %% State before oracle registration.
-      S1, %% State after oracle registration.
-      S2] %% State after query.
+     [_S0,  %% State before oracle registration.
+      S1,   %% State after oracle registration.
+      S2,   %% State after query.
+      S3],  %% State after oracle respond.
+     GasUsed
     } = sophia_oracles_qfee__flow_up_to_respond_(
           ?ORACLE_UNSAFE_REMOTE_CBS, %% Safe or unsafe query does not matter here.
-          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
+          TxFee, GasPrice, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
           RespondOpts),
-    S3 = state(),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxQFee), Bal(UserAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1)                      , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(CallingCt, S1)                      , Bal(CallingCt, S2)),
-    ?assertEqual(Bal(OperatorAcc, S1)                    , Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxQFee + GasPrice * gu_query(GasUsed)),
+                 Bal(UserAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1)  , Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(CallingCt, S1)  , Bal(CallingCt, S2)),
+    ?assertEqual(Bal(OperatorAcc, S1), Bal(OperatorAcc, S2)),
 
     ?assertEqual(Bal(UserAcc, S2)                , Bal(UserAcc, S3)),
     ?assertEqual(Bal(OracleAcc, S2) + QueryTxQFee, Bal(OracleAcc, S3)),
     ?assertEqual(Bal(CallingCt, S2)              , Bal(CallingCt, S3)),
-    ?assertEqual(Bal(OperatorAcc, S2) - TxFee    , Bal(OperatorAcc, S3)).
+    ?assertEqual(Bal(OperatorAcc, S2) - (TxFee + GasPrice * gu_respond(GasUsed)),
+                 Bal(OperatorAcc, S3)).
 
 %% Call tx value in excess of query fee specified in same query call
 %% tx ends up in oracle contract (at query creation).
@@ -1355,29 +1425,33 @@ sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle(_Cfg) ->
         sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__data_(),
 
     TxFee = 2,
+    GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     RespondOpts = #{},
     {{OperatorAcc, UserAcc},
      {OracleAcc, OracleAcc = _CallingCt},
-     [_S0, %% State before oracle registration.
-      S1, %% State after oracle registration.
-      S2] %% State after query.
+     [_S0,  %% State before oracle registration.
+      S1,   %% State after oracle registration.
+      S2,   %% State after query.
+      S3],  %% State after oracle respond.
+     GasUsed
     } = sophia_oracles_qfee__flow_up_to_respond_(
           ?ORACLE_UNSAFE_CBS, %% Safe or unsafe query does not matter here.
-          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
+          TxFee, GasPrice, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
           RespondOpts),
-    S3 = state(),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue)        , Bal(UserAcc, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+                 Bal(UserAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1) + (QueryTxValue - QueryTxQFee), Bal(OracleAcc, S2)),
     ?assertEqual(Bal(OperatorAcc, S1)                             , Bal(OperatorAcc, S2)),
 
     ?assertEqual(Bal(UserAcc, S2)                , Bal(UserAcc, S3)),
     ?assertEqual(Bal(OracleAcc, S2) + QueryTxQFee, Bal(OracleAcc, S3)),
-    ?assertEqual(Bal(OperatorAcc, S2) - TxFee    , Bal(OperatorAcc, S3)).
+    ?assertEqual(Bal(OperatorAcc, S2) - (TxFee + GasPrice * gu_respond(GasUsed)),
+                 Bal(OperatorAcc, S3)).
 
 %%
 sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__remote(_Cfg) ->
@@ -1385,23 +1459,26 @@ sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__remote(_
         sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__data_(),
 
     TxFee = 2,
+    GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     RespondOpts = #{},
     {{OperatorAcc, UserAcc},
      {OracleAcc, CallingCt},
-     [_S0, %% State before oracle registration.
-      S1, %% State after oracle registration.
-      S2] %% State after query.
+     [_S0,  %% State before oracle registration.
+      S1,   %% State after oracle registration.
+      S2,   %% State after query.
+      S3],  %% State after oracle respond.
+     GasUsed
     } = sophia_oracles_qfee__flow_up_to_respond_(
           ?ORACLE_UNSAFE_REMOTE_CBS, %% Safe or unsafe query does not matter here.
-          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
+          TxFee, GasPrice, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
           RespondOpts),
-    S3 = state(),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue)        , Bal(UserAcc, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+                 Bal(UserAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1) + (QueryTxValue - QueryTxQFee), Bal(OracleAcc, S2)),
     ?assertEqual(Bal(CallingCt, S1)                               , Bal(CallingCt, S2)),
     ?assertEqual(Bal(OperatorAcc, S1)                             , Bal(OperatorAcc, S2)),
@@ -1409,7 +1486,8 @@ sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__remote(_
     ?assertEqual(Bal(UserAcc, S2)                , Bal(UserAcc, S3)),
     ?assertEqual(Bal(OracleAcc, S2) + QueryTxQFee, Bal(OracleAcc, S3)),
     ?assertEqual(Bal(CallingCt, S2)              , Bal(CallingCt, S3)),
-    ?assertEqual(Bal(OperatorAcc, S2) - TxFee    , Bal(OperatorAcc, S3)).
+    ?assertEqual(Bal(OperatorAcc, S2) - (TxFee + GasPrice * gu_respond(GasUsed)),
+                 Bal(OperatorAcc, S3)).
 
 %% Attempt to create query with query fee smaller than the one
 %% requested by the oracle fails.
@@ -1429,45 +1507,51 @@ sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs(_Cfg) ->
         sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__data_(),
 
     TxFee = 2,
+    GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     {{OperatorAcc, UserAcc},
      {OracleAcc, OracleAcc = _CallingCt},
      [_S0, %% State before oracle registration.
-      S1] %% State after oracle registration.
+      S1,  %% State after oracle registration.
+      S2], %% State after oracle query.
+     GasUsed
     } = sophia_oracles_qfee__flow_up_to_query_(
           ?ORACLE_UNSAFE_CBS, %% Safe or unsafe query does not matter here.
-          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
-    S2 = state(),
+          TxFee, GasPrice, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue        , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+                 Bal(UserAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue, Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(OperatorAcc, S1)             , Bal(OperatorAcc, S2)).
 %%
 sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__remote(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__data_(),
 
     TxFee = 2,
+    GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     {{OperatorAcc, UserAcc},
      {OracleAcc, CallingCt},
      [_S0, %% State before oracle registration.
-      S1] %% State after oracle registration.
+      S1,  %% State after oracle registration.
+      S2], %% State after oracle query.
+     GasUsed
     } = sophia_oracles_qfee__flow_up_to_query_(
           ?ORACLE_UNSAFE_REMOTE_CBS, %% Safe or unsafe query does not matter here.
-          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
-    S2 = state(),
+          TxFee, GasPrice, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1)                       , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(CallingCt, S1) + QueryTxValue        , Bal(CallingCt, S2)),
-    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+                 Bal(UserAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1)               , Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(CallingCt, S1) + QueryTxValue, Bal(CallingCt, S2)),
+    ?assertEqual(Bal(OperatorAcc, S1)             , Bal(OperatorAcc, S2)).
 
 %% Attempt to create query with call tx value smaller than query fee
 %% uses oracle contract balance: oracle contract should implement
@@ -1485,24 +1569,28 @@ sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle(_Cfg) ->
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
 
     TxFee = 2,
+    GasPrice = 1,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     RespondOpts = #{},
     {{OperatorAcc, UserAcc},
      {OracleAcc, OracleAcc = _CallingCt},
-     [_S0, %% State before oracle registration.
-      S1, %% State after oracle registration.
-      S2] %% State after query.
+     [_S0,  %% State before oracle registration.
+      S1,   %% State after oracle registration.
+      S2,   %% State after query.
+      _S3], %% State after oracle respond.
+     GasUsed
     } = sophia_oracles_qfee__flow_up_to_respond_(
           ?ORACLE_UNSAFE_CBS, %% Unsafe query.
-          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
+          TxFee, GasPrice, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
           RespondOpts),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
     ?assertEqual(Bal(OperatorAcc, S1)                             , Bal(OperatorAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1) - (QueryTxQFee - QueryTxValue), Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue)        , Bal(UserAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+                 Bal(UserAcc, S2)).
 
 %%
 sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_poor_oracle(_Cfg) ->
@@ -1511,61 +1599,70 @@ sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_poor_oracle(_C
     InitialOracleCtBalance = 0,
 
     TxFee = 2,
+    GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     {{OperatorAcc, UserAcc},
      {OracleAcc, OracleAcc = _CallingCt},
      [_S0, %% State before oracle registration.
-      S1] %% State after oracle registration.
+      S1,  %% State after oracle registration.
+      S2], %% State after oracle query.
+     GasUsed
     } = sophia_oracles_qfee__flow_up_to_query_(
           ?ORACLE_UNSAFE_CBS, %% Unsafe query.
-          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
-    S2 = state(),
+          TxFee, GasPrice, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
     ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue        , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+                 Bal(UserAcc, S2)).
 %%
 sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_rich_oracle_thanks_to_contract_check(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
 
     TxFee = 2,
+    GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     {{OperatorAcc, UserAcc},
      {OracleAcc, OracleAcc = _CallingCt},
      [_S0, %% State before oracle registration.
-      S1] %% State after oracle registration.
+      S1,  %% State after oracle registration.
+      S2], %% State after oracle query.
+     GasUsed
     } = sophia_oracles_qfee__flow_up_to_query_(
           ?ORACLE_SAFE_CBS, %% Safe query.
-          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
-    S2 = state(),
+          TxFee, GasPrice, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
     ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue        , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+                 Bal(UserAcc, S2)).
 %%
 sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__remote(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
 
     TxFee = 2,
+    GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     RespondOpts = #{},
     {{OperatorAcc, UserAcc},
      {OracleAcc, CallingCt},
-     [_S0, %% State before oracle registration.
-      S1, %% State after oracle registration.
-      S2] %% State after query.
+     [_S0,  %% State before oracle registration.
+      S1,   %% State after oracle registration.
+      S2,   %% State after query.
+      _S3], %% State after oracle respond.
+     GasUsed
     } = sophia_oracles_qfee__flow_up_to_respond_(
           ?ORACLE_UNSAFE_REMOTE_CBS, %% Unsafe query.
-          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
+          TxFee, GasPrice, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
           RespondOpts),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
@@ -1573,7 +1670,8 @@ sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__remote(_C
     ?assertEqual(Bal(OperatorAcc, S1)                             , Bal(OperatorAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1) - (QueryTxQFee - QueryTxValue), Bal(OracleAcc, S2)),
     ?assertEqual(Bal(CallingCt, S1)                               , Bal(CallingCt, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue)        , Bal(UserAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+                 Bal(UserAcc, S2)).
 %%
 sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_poor_oracle__remote(_Cfg) ->
     {_InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
@@ -1581,46 +1679,52 @@ sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_poor_oracle__r
     InitialOracleCtBalance = 0,
 
     TxFee = 2,
+    GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     {{OperatorAcc, UserAcc},
      {OracleAcc, CallingCt},
      [_S0, %% State before oracle registration.
-      S1] %% State after oracle registration.
+      S1,  %% State after oracle registration.
+      S2], %% State after oracle query.
+     GasUsed
     } = sophia_oracles_qfee__flow_up_to_query_(
           ?ORACLE_UNSAFE_REMOTE_CBS, %% Unsafe query.
-          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
-    S2 = state(),
+          TxFee, GasPrice, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1)                       , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(CallingCt, S1) + QueryTxValue        , Bal(CallingCt, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)).
+    ?assertEqual(Bal(OperatorAcc, S1)             , Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1)               , Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(CallingCt, S1) + QueryTxValue, Bal(CallingCt, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+                 Bal(UserAcc, S2)).
 %%
 sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_rich_oracle_thanks_to_contract_check__remote(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
 
     TxFee = 2,
+    GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     {{OperatorAcc, UserAcc},
      {OracleAcc, CallingCt},
      [_S0, %% State before oracle registration.
-      S1] %% State after oracle registration.
+      S1,  %% State after oracle registration.
+      S2], %% State after oracle query.
+     GasUsed
     } = sophia_oracles_qfee__flow_up_to_query_(
           ?ORACLE_SAFE_REMOTE_CBS, %% Safe query.
-          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
-    S2 = state(),
+          TxFee, GasPrice, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1)                       , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(CallingCt, S1) + QueryTxValue        , Bal(CallingCt, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)).
+    ?assertEqual(Bal(OperatorAcc, S1)             , Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1)               , Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(CallingCt, S1) + QueryTxValue, Bal(CallingCt, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+                 Bal(UserAcc, S2)).
 %%
 sophia_oracles_qfee__remote_contract_query_value_below_qfee_takes_from_rich_oracle__remote(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue0, QueryTxQFee} =
@@ -1629,17 +1733,20 @@ sophia_oracles_qfee__remote_contract_query_value_below_qfee_takes_from_rich_orac
     QueryRemoteCtValue = QueryTxValue0,
 
     TxFee = 2,
+    GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee, remote_value => QueryRemoteCtValue},
     RespondOpts = #{},
     {{OperatorAcc, UserAcc},
      {OracleAcc, CallingCt},
-     [_S0, %% State before oracle registration.
-      S1, %% State after oracle registration.
-      S2] %% State after query.
+     [_S0,  %% State before oracle registration.
+      S1,   %% State after oracle registration.
+      S2,   %% State after query.
+      _S3], %% State after oracle respond.
+     GasUsed
     } = sophia_oracles_qfee__flow_up_to_respond_(
           ?ORACLE_UNSAFE_REMOTE_CBS, %% Unsafe query.
-          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
+          TxFee, GasPrice, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
           RespondOpts),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
@@ -1647,7 +1754,8 @@ sophia_oracles_qfee__remote_contract_query_value_below_qfee_takes_from_rich_orac
     ?assertEqual(Bal(OperatorAcc, S1)                                    , Bal(OperatorAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1) - (QueryTxValue - QueryRemoteCtValue), Bal(OracleAcc, S2)),
     ?assertEqual(Bal(CallingCt, S1) + (QueryTxValue - QueryRemoteCtValue), Bal(CallingCt, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue)               , Bal(UserAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+                 Bal(UserAcc, S2)).
 %%
 sophia_oracles_qfee__remote_contract_query_value_below_qfee_does_not_take_from_poor_oracle__remote(_Cfg) ->
     {_InitialOracleCtBalance, RegisterTxQFee, QueryTxValue0, QueryTxQFee} =
@@ -1657,23 +1765,26 @@ sophia_oracles_qfee__remote_contract_query_value_below_qfee_does_not_take_from_p
     QueryRemoteCtValue = QueryTxValue0,
 
     TxFee = 2,
+    GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee, remote_value => QueryRemoteCtValue},
     {{OperatorAcc, UserAcc},
      {OracleAcc, CallingCt},
      [_S0, %% State before oracle registration.
-      S1] %% State after oracle registration.
+      S1,  %% State after oracle registration.
+      S2], %% State after oracle query.
+     GasUsed
     } = sophia_oracles_qfee__flow_up_to_query_(
           ?ORACLE_UNSAFE_REMOTE_CBS, %% Unsafe query.
-          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
-    S2 = state(),
+          TxFee, GasPrice, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1)                       , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(CallingCt, S1) + QueryTxValue        , Bal(CallingCt, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)).
+    ?assertEqual(Bal(OperatorAcc, S1)             , Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1)               , Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(CallingCt, S1) + QueryTxValue, Bal(CallingCt, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+                 Bal(UserAcc, S2)).
 %%
 sophia_oracles_qfee__remote_contract_query_value_below_qfee_does_not_take_from_rich_oracle_thanks_to_contract_check__remote(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue0, QueryTxQFee} =
@@ -1682,23 +1793,26 @@ sophia_oracles_qfee__remote_contract_query_value_below_qfee_does_not_take_from_r
     QueryRemoteCtValue = QueryTxValue0,
 
     TxFee = 2,
+    GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee, remote_value => QueryRemoteCtValue},
     {{OperatorAcc, UserAcc},
      {OracleAcc, CallingCt},
      [_S0, %% State before oracle registration.
-      S1] %% State after oracle registration.
+      S1,  %% State after oracle registration.
+      S2], %% State after oracle query.
+     GasUsed
     } = sophia_oracles_qfee__flow_up_to_query_(
           ?ORACLE_SAFE_REMOTE_CBS, %% Safe query.
-          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
-    S2 = state(),
+          TxFee, GasPrice, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1)                       , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(CallingCt, S1) + QueryTxValue        , Bal(CallingCt, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)).
+    ?assertEqual(Bal(OperatorAcc, S1)             , Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1)               , Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(CallingCt, S1) + QueryTxValue, Bal(CallingCt, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+                 Bal(UserAcc, S2)).
 
 %% Attempt to create query with query fee larger than the one
 %% requested by the oracle but not covered by call tx value uses
@@ -1718,24 +1832,28 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_takes_from_rich_oracle(_
         sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_takes_from_rich_oracle__data_(),
 
     TxFee = 2,
+    GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     RespondOpts = #{},
     {{OperatorAcc, UserAcc},
      {OracleAcc, OracleAcc = _CallingCt},
-     [_S0, %% State before oracle registration.
-      S1, %% State after oracle registration.
-      S2] %% State after query.
+     [_S0,  %% State before oracle registration.
+      S1,   %% State after oracle registration.
+      S2,   %% State after query.
+      _S3], %% State after oracle respond.
+      GasUsed
     } = sophia_oracles_qfee__flow_up_to_respond_(
           ?ORACLE_UNSAFE_CBS, %% Unsafe query.
-          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
+          TxFee, GasPrice, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue,
           RespondOpts),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
     ?assertEqual(Bal(OperatorAcc, S1)                               , Bal(OperatorAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1) - (QueryTxQFee - RegisterTxQFee), Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue)          , Bal(UserAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+                 Bal(UserAcc, S2)).
 %%
 sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_does_not_take_from_poor_oracle(_Cfg) ->
     {_InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
@@ -1743,44 +1861,50 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_does_not_take_from_poor_
     InitialOracleCtBalance = 0,
 
     TxFee = 2,
+    GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     {{OperatorAcc, UserAcc},
      {OracleAcc, OracleAcc = _CallingCt},
      [_S0, %% State before oracle registration.
-      S1] %% State after oracle registration.
+      S1,  %% State after oracle registration.
+      S2], %% State after oracle query.
+     GasUsed
     } = sophia_oracles_qfee__flow_up_to_query_(
           ?ORACLE_UNSAFE_CBS, %% Unsafe query.
-          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
-    S2 = state(),
+          TxFee, GasPrice, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
     ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
     ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue        , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+                 Bal(UserAcc, S2)).
 %%
 sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_does_not_take_from_rich_oracle_thanks_to_contract_check(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_takes_from_rich_oracle__data_(),
 
     TxFee = 2,
+    GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     {{OperatorAcc, UserAcc},
      {OracleAcc, OracleAcc = _CallingCt},
      [_S0, %% State before oracle registration.
-      S1] %% State after oracle registration.
+      S1,  %% State after oracle registration.
+      S2], %% State after oracle query.
+     GasUsed
     } = sophia_oracles_qfee__flow_up_to_query_(
           ?ORACLE_SAFE_CBS, %% Safe query.
-          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
-    S2 = state(),
+          TxFee, GasPrice, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue        , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)).
+    ?assertEqual(Bal(OperatorAcc, S1)             , Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue, Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+                 Bal(UserAcc, S2)).
 
 %% Failure after query creation primop succeeds.
 sophia_oracles_qfee__error_after_primop(_Cfg) ->
@@ -1795,25 +1919,28 @@ sophia_oracles_qfee__error_after_primop(_Cfg) ->
                end},
 
     TxFee = 2,
+    GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     {{OperatorAcc, UserAcc},
      {OracleAcc, OracleAcc = _CallingCt},
      [_S0, %% State before oracle registration.
-      S1] %% State after oracle registration.
+      S1,  %% State after oracle registration.
+      S2], %% State after oracle query.
+     GasUsed
     } = sophia_oracles_qfee__flow_up_to_query_(
           Cbs,
-          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
-    S2 = state(),
+          TxFee, GasPrice, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
 
     ?assertEqual([], aect_test_utils:get_oracle_queries(OracleAcc, S1)),
     ?assertEqual([], aect_test_utils:get_oracle_queries(OracleAcc, S2)),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue        , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+                 Bal(UserAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue, Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(OperatorAcc, S1)             , Bal(OperatorAcc, S2)).
 %%
 sophia_oracles_qfee__inner_error_after_primop__remote(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
@@ -1831,28 +1958,31 @@ sophia_oracles_qfee__inner_error_after_primop__remote(_Cfg) ->
                end},
 
     TxFee = 2,
+    GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     {{OperatorAcc, UserAcc},
      {OracleAcc, CallingCt},
      [_S0, %% State before oracle registration.
-      S1] %% State after oracle registration.
+      S1,  %% State after oracle registration.
+      S2], %% State after oracle query.
+     GasUsed
     } = sophia_oracles_qfee__flow_up_to_query_(
           InitialState,
           Cbs,
-          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
-    S2 = state(),
+          TxFee, GasPrice, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
 
     ?assertEqual([], aect_test_utils:get_oracle_queries(OracleAcc, S1)),
     ?assertEqual([], aect_test_utils:get_oracle_queries(OracleAcc, S2)),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1)                       , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(CallingCt, S1) + QueryTxValue        , Bal(CallingCt, S2)),
-    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
-    ?assertEqual(Bal(TmpAcc, S1)                          , Bal(TmpAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+                 Bal(UserAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1)               , Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(CallingCt, S1) + QueryTxValue, Bal(CallingCt, S2)),
+    ?assertEqual(Bal(OperatorAcc, S1)             , Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(TmpAcc, S1)                  , Bal(TmpAcc, S2)).
 %%
 sophia_oracles_qfee__outer_error_after_primop__remote(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
@@ -1866,26 +1996,29 @@ sophia_oracles_qfee__outer_error_after_primop__remote(_Cfg) ->
                end},
 
     TxFee = 2,
+    GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
     {{OperatorAcc, UserAcc},
      {OracleAcc, CallingCt},
      [_S0, %% State before oracle registration.
-      S1] %% State after oracle registration.
+      S1,  %% State after oracle registration.
+      S2], %% State after oracle query.
+     GasUsed
     } = sophia_oracles_qfee__flow_up_to_query_(
           Cbs,
-          TxFee, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
-    S2 = state(),
+          TxFee, GasPrice, InitialOracleCtBalance, RegisterOpts, QueryOpts, QueryTxValue),
 
     ?assertEqual([], aect_test_utils:get_oracle_queries(OracleAcc, S1)),
     ?assertEqual([], aect_test_utils:get_oracle_queries(OracleAcc, S2)),
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue), Bal(UserAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1)                       , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(CallingCt, S1) + QueryTxValue        , Bal(CallingCt, S2)),
-    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)).
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+                 Bal(UserAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1)               , Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(CallingCt, S1) + QueryTxValue, Bal(CallingCt, S2)),
+    ?assertEqual(Bal(OperatorAcc, S1)             , Bal(OperatorAcc, S2)).
 
 %% Oracle gas TTL tests
 
@@ -1898,7 +2031,7 @@ sophia_oracles_qfee__outer_error_after_primop__remote(_Cfg) ->
          respond_ttl  :: ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(non_neg_integer())}).
 sophia_oracles_gas_ttl__measure_gas_used(Sc, Height, Gas) ->
     state(aect_test_utils:new_state()),
-    Caller = call(fun new_account/2, [1000000]),
+    Caller = call(fun new_account/2, [100000000000]),
     Ct = call(fun create_contract/4, [Caller, oracles_gas, {}]),
     QFee=1,
     Args = {QFee,
@@ -1909,7 +2042,7 @@ sophia_oracles_gas_ttl__measure_gas_used(Sc, Height, Gas) ->
             _Signature=0},
     Opts = #{height => Height,
              return_gas_used => true,
-             gas_price => 0,
+             gas_price => 1,
              gas => Gas,
              amount => QFee},
     {_Result, _GasUsed} = call(fun call_contract/7, [Caller, Ct, happyPathWithAllBuiltinsAtSameHeight, {tuple, []}, Args, Opts]).

@@ -587,13 +587,15 @@ check_minimum_fee(Tx,_Hash) ->
         false -> {error, too_low_fee}
     end.
 
--dialyzer({no_match, check_minimum_gas_price/2}).
 check_minimum_gas_price(Tx, _Hash) ->
-    GasPrice = aetx:gas_price(aetx_sign:tx(Tx)),
-    MinGasPrice = aec_governance:minimum_gas_price(),
-    case GasPrice >= MinGasPrice of
-        true  -> ok;
-        false -> {error, too_low_gas_price}
+    case aetx:gas_price(aetx_sign:tx(Tx)) of
+        undefined ->
+            ok;
+        GasPrice when is_integer(GasPrice) ->
+            case GasPrice >= aec_governance:minimum_gas_price() of
+                true  -> ok;
+                false -> {error, too_low_gas_price}
+            end
     end.
 
 int_gas_price(Tx) ->
@@ -612,4 +614,3 @@ tx_ttl() ->
 invalid_tx_ttl() ->
     aeu_env:user_config_or_env([<<"mempool">>, <<"invalid_tx_ttl">>],
                                aecore, mempool_invalid_tx_ttl, ?DEFAULT_INVALID_TX_TTL).
-
