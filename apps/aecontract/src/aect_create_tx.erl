@@ -193,7 +193,6 @@ check(#contract_create_tx{nonce      = Nonce,
                  ];
             ?AEVM_01_Solidity_01 -> []
          end
-         %% TODO: Check minum gas price.
         ],
     case aeu_validation:run(Checks) of
         ok              -> {ok, Trees};
