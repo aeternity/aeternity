@@ -14,10 +14,8 @@ request(OpId, Params, Cfg) ->
     BaseUrl = string:trim(proplists:get_value(Interface, Cfg), trailing, "/"),
     Path = endpoints:path(Method, OpId, Params),
     Query = endpoints:query(Method, OpId, Params),
-    {ok, ClientPid} = inets:start(httpc, [{profile, test_browser}], stand_alone),
-    Response = request(Method, BaseUrl, Path, Query, Params, [], [{timeout, 15000}], [], ClientPid, Cfg),
-    ok = gen_server:stop(ClientPid, normal, infinity),
-    Response.
+    {ok, _} = application:ensure_all_started(inets),
+    request(Method, BaseUrl, Path, Query, Params, [], [{timeout, 15000}], [], default, Cfg).
 
 request(get, BaseUrl, Path, Query, _Params, Headers, HttpOpts, Opts, Profile, Cfg) ->
     Url = binary_to_list(iolist_to_binary([BaseUrl, Path, Query])),
