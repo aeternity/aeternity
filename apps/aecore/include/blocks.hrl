@@ -1,6 +1,6 @@
 -include("pow.hrl").
 
--define(PROTOCOL_VERSION, 25).
+-define(PROTOCOL_VERSION, 26).
 -define(GENESIS_VERSION, ?PROTOCOL_VERSION).
 -define(GENESIS_HEIGHT, 0).
 -define(GENESIS_TIME, 0).
@@ -15,7 +15,7 @@
 -define(KEY_HEADER_TAG, 1).
 -define(MICRO_HEADER_TAG, 0).
 
--define(KEY_HEADER_BYTES, 368).
+-define(KEY_HEADER_BYTES, 364).
 -define(MIC_HEADER_MIN_BYTES, 216).
 
 -type(txs_hash() :: <<_:(?TXS_HASH_BYTES*8)>>).
