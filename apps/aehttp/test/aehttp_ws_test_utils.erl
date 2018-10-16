@@ -6,6 +6,7 @@
          start_link_channel/4,
          start_channel/4,
          set_role/2,
+         log/3,
          send/3, send/4, send/5,
          send_tagged/4,
          register_test_for_event/3,
@@ -49,6 +50,8 @@
                    events   = #{} :: map()}).
 
 -record(state, {role :: atom() | undefined,
+                log :: string() | undefined,
+                ws_address :: string() | undefined,
                 regs:: #register{},
                 calls = [] :: [{non_neg_integer(), pid()}],
                 protocol = legacy :: legacy | json_rpc
@@ -68,8 +71,9 @@ start_link_channel(Host, Port, RoleA, Opts) when is_atom(RoleA) ->
                                             extra_headers()),
     wait_for_connect(Pid).
 
-start_channel(Host, Port, RoleA, Opts) when is_atom(RoleA) ->
+start_channel(Host, Port, RoleA, Opts0) when is_atom(RoleA) ->
     Role = to_binary(RoleA),
+    {LogFile, Opts} = get_logfile(Opts0),
     WsAddress = make_channel_connect_address(Host, Port, Role, Opts),
     ct:log("connecting to Channel ~s as ~p", [iolist_to_binary(WsAddress), Role]),
     %% There is no websocket_client:start/4 ...
@@ -78,7 +82,10 @@ start_channel(Host, Port, RoleA, Opts) when is_atom(RoleA) ->
     unlink(Pid),
     case wait_for_connect(Pid) of
         {ok, Pid} = Res ->
-            set_options(Pid, #{role => RoleA, opts => Opts}),
+            set_options(Pid, #{role => RoleA,
+                               logfile => LogFile,
+                               ws_address => WsAddress,
+                               opts => Opts}),
             Res;
         {error, _} = Err -> Err
     end.
@@ -116,6 +123,13 @@ wait_for_connect(Pid) ->
 
 set_role(ConnPid, Role) when is_atom(Role) ->
     set_options(ConnPid, #{role => Role}).
+
+log(ConnPid, Type, Info) when Type==info;
+                              Type==init;
+                              Type==send;
+                              Type==recv ->
+    ConnPid ! {log, Type, Info},
+    ok.
 
 set_options(ConnPid, Opts) when is_map(Opts) ->
     ConnPid ! {set_options, Opts}.
@@ -367,6 +381,7 @@ websocket_handle({pong, Nonce}, _ConnState, #state{regs=Register}=State) ->
     end;
 websocket_handle({text, MsgBin}, _ConnState, #state{role=Role}=State) ->
     Msg = jsx:decode(MsgBin, [return_maps]),
+    do_log(recv, MsgBin, State),
     case Role of
         undefined ->
             ct:log("Received msg ~p~n", [Msg]);
@@ -444,8 +459,18 @@ websocket_info({unregister_test, RegisteredPid, Events}, _ConnState,
     inform_registered(RegisteredPid, unregistered_test, Events),
     {ok, State#state{regs=Register}};
 websocket_info({set_options, #{ role := Role
+                              , logfile := LogFile
+                              , ws_address := WsAddress
                               , opts := Opts }}, _ConnState, #state{role=undefined, protocol = Proto0}=State) ->
-    {ok, State#state{role=Role, protocol=get_protocol(Opts, Proto0)}};
+    Log = open_log(LogFile),
+    State1 = State#state{role     = Role,
+                         log      = Log,
+                         protocol = get_protocol(Opts, Proto0)},
+    do_log(init, WsAddress, State1),
+    {ok, State1};
+websocket_info({log, Type, Msg}, _ConnState, State) ->
+    do_log(Type, Msg, State),
+    {ok, State};
 websocket_info({'DOWN', _Ref, process, Pid, _}, _ConnState,
                #state{regs=Register0}=State) ->
     {ok, State#state{regs= delete_pid(Pid, Register0)}};
@@ -454,6 +479,7 @@ websocket_info({json_rpc, Pid, Id, Req}, _ConnState, #state{calls = Calls}=State
 websocket_info({json_rpc, Notify}, _ConnState, State) ->
     {reply, {text, Notify}, State};
 websocket_info({send_to_client, Msg}, _ConnState, #state{role=Role}=State) ->
+    do_log(send, Msg, State),
     case Role of
         undefined ->
             ct:log("Sending to server ~p", [Msg]);
@@ -574,3 +600,58 @@ get_protocol(#{protocol := Proto}, _) ->
     to_atom(Proto);
 get_protocol(_, Default) ->
     Default.
+
+get_logfile(Opts) ->
+    case maps:take({int,logfile}, Opts) of
+        error ->
+            {undefined, Opts};
+        {F, Opts1} ->
+            {F, Opts1}
+    end.
+
+open_log(undefined) ->
+    undefined;
+open_log(F) ->
+    Name = filename:basename(F),
+    {ok, _} = disk_log:open([{name, Name},
+                             {file, F},
+                             {format, external}]),
+    Name.
+
+do_log(_Dir, _Msg, #state{log = undefined}) ->
+    ok;
+do_log(info, Msg, #state{log = Log, role = Role}) ->
+    TimeStr = log_time_str(),
+    LogMsg = io_lib:format("~n"
+                           "#### ~w: (~s)~n"
+                           "> ~s~n", [Role, TimeStr, Msg]),
+    disk_log:blog(Log, LogMsg);
+do_log(Dir, Msg, #state{log = Log, role = Role}) ->
+    {Lang, MsgStr} = try {"javascript", jsx:prettify(Msg)}
+                     catch error:_ -> {"", Msg}
+                     end,
+    TimeStr = log_time_str(),
+    LogMsg = io_lib:format(
+               "~n"
+               "#### ~s~n"
+               "```~s~n"
+               "~s~n"
+               "```~n", [log_header_str(Dir, Role, TimeStr), Lang, MsgStr]),
+    disk_log:blog(Log, LogMsg).
+
+log_header_str(Dir, Role, TimeStr) ->
+    {Fmt, Args} =
+        case Dir of
+            send -> {"~w ---> (~s)", [Role, TimeStr]};
+            recv -> {"~w <--- (~s)", [Role, TimeStr]};
+            init -> {"~w init (~s)", [Role, TimeStr]};
+            info -> {"~w info (~s)", [Role, TimeStr]}
+        end,
+    io_lib:format(Fmt, Args).
+
+log_time_str() ->
+    {_,_,USec} = Now = os:timestamp(),
+    {{Y,Mo,D}, {H,Mi,S}} = calendar:now_to_datetime(Now),
+    Ms = USec div 1000,
+    io_lib:format("~4w-~2..0w-~2..0w ~2..0w:~2..0w:~2..0w.~w",
+                  [Y, Mo, D, H, Mi, S, Ms]).
