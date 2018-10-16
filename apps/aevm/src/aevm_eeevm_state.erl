@@ -28,6 +28,7 @@
         , data/1
         , difficulty/1
         , do_return/3
+        , do_trace/1
         , extcode/2
         , extcode/4
         , extcodesize/2
