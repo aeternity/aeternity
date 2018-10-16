@@ -1,0 +1,2 @@
+* Optimizes the force progress transaction by turning the `poi` to a proper
+  set of off-chain trees and removing the auxiliary `addresses`
