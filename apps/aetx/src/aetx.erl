@@ -15,6 +15,7 @@
         , gas/1
         , gas_price/1
         , ttl/1
+        , size/1
         , new/2
         , nonce/1
         , origin/1
@@ -205,6 +206,10 @@ ttl(#aetx{ cb = CB, tx = Tx }) ->
         0 -> max_ttl;
         N -> N
     end.
+
+-spec size(Tx :: tx()) -> pos_integer().
+size(#aetx{ size = Size }) ->
+    Size.
 
 %%%===================================================================
 %%% Checking transactions
