@@ -365,14 +365,14 @@ get_block(NodeName, Height) ->
     end.
 
 get_top(NodeName) ->
-    {ok, 200, Top} = request(NodeName, 'GetTopBlock', #{}),
+    Top = verify(200, request(NodeName, 'GetTopBlock', #{})),
     case Top of
         #{key_block := KeyBlock} -> KeyBlock;
         #{micro_block := MicroBlock} -> MicroBlock
     end.
 
 get_mempool(NodeName) ->
-    {ok, 200, Txs} = request(NodeName, 'GetPendingTransactions', #{}),
+    Txs = verify(200, request(NodeName, 'GetPendingTransactions', #{})),
     case {maps:get(<<"transactions">>, Txs, undefined),
           maps:get(transactions, Txs, undefined)} of
         {undefined, Mempool} -> Mempool; %% future proof
@@ -394,9 +394,9 @@ post_spend_tx(Node, From, To, Nonce, Map) ->
     {ok, Tx} = aec_spend_tx:new(Params),
     SignedTx = aec_test_utils:sign_tx(Tx, SendSecKey),
     SerSignTx = aetx_sign:serialize_to_binary(SignedTx),
-    {ok, 200, Response} =
-        request(Node, 'PostTransaction', #{ tx => aec_base58c:encode(transaction, SerSignTx) }),
-    Response.
+    verify(200, request(Node, 'PostTransaction', #{
+        tx => aec_base58c:encode(transaction, SerSignTx)
+    })).
 
 post_create_state_channel_tx(Node, Initiator, Responder, #{nonce := Nonce} = Map) ->
     #{ pubkey := InPubKey, privkey := InSecKey } = Initiator,
@@ -415,7 +415,7 @@ post_create_state_channel_tx(Node, Initiator, Responder, #{nonce := Nonce} = Map
                                             channel_reserve => 40}, Map)),
     BothSigned = aec_test_utils:sign_tx(CreateTx, [InSecKey, RespSecKey]),
     Transaction = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
-    {ok, 200, Response} = request(Node, 'PostTransaction', #{tx => Transaction}),
+    Response = verify(200, request(Node, 'PostTransaction', #{tx => Transaction})),
     Response#{channel_id => aec_id:create(channel, aesc_channels:pubkey(InPubKey, Nonce, RespPubKey))}.
 
 post_close_mutual_state_channel_tx(Node, Initiator, Responder, ChannelId, #{nonce := _} = Map) ->
@@ -431,8 +431,7 @@ post_close_mutual_state_channel_tx(Node, Initiator, Responder, ChannelId, #{nonc
                                             Map)),
     BothSigned = aec_test_utils:sign_tx(CloseTx, [InSecKey, RespSecKey]),
     Transaction = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
-    {ok, 200, Response} = request(Node, 'PostTransaction', #{tx => Transaction}),
-    Response.
+    verify(200, request(Node, 'PostTransaction', #{tx => Transaction})).
 
 post_deposit_state_channel_tx(Node, PayingParty, OtherParty, ChannelId, #{nonce := _} = Map) ->
     #{ pubkey := InPubKey, privkey := InSecKey } = PayingParty,
@@ -448,8 +447,7 @@ post_deposit_state_channel_tx(Node, PayingParty, OtherParty, ChannelId, #{nonce 
                                        Map)),
     BothSigned = aec_test_utils:sign_tx(DepositTx, [InSecKey, RespSecKey]),
     Transaction = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
-    {ok, 200, Response} = request(Node, 'PostTransaction', #{tx => Transaction}),
-    Response.
+    verify(200, request(Node, 'PostTransaction', #{tx => Transaction})).
 
 post_withdraw_state_channel_tx(Node, RecParty, OtherParty, ChannelId, #{nonce := _} = Map) ->
     #{ pubkey := InPubKey, privkey := InSecKey } = RecParty,
@@ -465,8 +463,7 @@ post_withdraw_state_channel_tx(Node, RecParty, OtherParty, ChannelId, #{nonce :=
                                        Map)),
     BothSigned = aec_test_utils:sign_tx(WithdrawTx, [InSecKey, RespSecKey]),
     Transaction = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
-    {ok, 200, Response} = request(Node, 'PostTransaction', #{tx => Transaction}),
-    Response.
+    verify(200, request(Node, 'PostTransaction', #{tx => Transaction})).
 
 post_oracle_register_tx(Node, OAccount, Opts) ->
     #{ pubkey := OPubKey, privkey := OPrivKey } = OAccount,
@@ -534,8 +531,7 @@ post_transaction(Node, TxMod, PrivKey, ExtraTxArgs, TxArgs) ->
     Signed = aec_test_utils:sign_tx(RespTx, [PrivKey]),
     SignedEnc = aetx_sign:serialize_to_binary(Signed),
     Transaction = aec_base58c:encode(transaction, SignedEnc),
-    {ok, 200, Resp} = request(Node, 'PostTransaction', #{tx => Transaction}),
-    Resp.
+    verify(200, request(Node, 'PostTransaction', #{tx => Transaction})).
 
 %% Use values that are not yet base58c encoded in test cases
 wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, Ctx) ->
@@ -861,3 +857,10 @@ check_log_for_errors(NodeName, LogPath, LogName, Cfg, Result) ->
 
             end
     end.
+
+verify(Code, {ok, Code, Result}) ->
+    Result;
+verify(_Code, {ok, Other, Result}) ->
+    erlang:error({unexpected_response, Other, Result});
+verify(_Code, Other) ->
+    erlang:error({request_error, Other}).
