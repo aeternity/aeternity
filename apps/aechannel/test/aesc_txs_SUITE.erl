@@ -122,6 +122,8 @@
          fp_is_replaced_by_same_round_deposit/1,
          fp_is_replaced_by_same_round_withdrawal/1,
          fp_is_replaced_by_same_round_snapshot/1,
+         % not closing, balances are NOT checked
+         fp_solo_payload_overflowing_balances/1,
          % already closing
          fp_after_solo_close/1,
          fp_after_slash/1,
@@ -145,6 +147,8 @@
          fp_solo_payload_wrong_round/1,
          fp_solo_payload_not_call_update/1,
          fp_solo_payload_broken_call/1,
+         % closing, balances are checked
+         fp_solo_payload_closing_overflowing_balances/1,
          % poi tests
 
          fp_insufficent_tokens/1,
@@ -282,6 +286,8 @@ groups() ->
        fp_is_replaced_by_same_round_deposit,
        fp_is_replaced_by_same_round_withdrawal,
        fp_is_replaced_by_same_round_snapshot,
+       % not closing, balances are NOT checked
+       fp_solo_payload_overflowing_balances,
        % already closing
        fp_after_solo_close,
        fp_after_slash,
@@ -305,6 +311,8 @@ groups() ->
        fp_solo_payload_wrong_round,
        fp_solo_payload_not_call_update,
        fp_solo_payload_broken_call,
+       % closing, balances are checked
+       fp_solo_payload_closing_overflowing_balances,
        % poi tests
 
        fp_insufficent_tokens,
@@ -2613,6 +2621,117 @@ fp_solo_payload_invalid_state_hash(Cfg) ->
     [Test(Owner, Forcer) || Owner  <- ?ROLES,
                             Forcer <- ?ROLES].
 
+fp_solo_payload_closing_overflowing_balances(Cfg) ->
+    CloseRound = 13,
+    Round = 43,
+    ContractRound = 10,
+    CreateDeposit = 2,
+    CallDeposit = 1,
+    Test =
+        fun(Owner, Forcer) ->
+            run(#{cfg => Cfg, initiator_amount => 30,
+                              responder_amount => 30,
+                 channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                set_from(initiator),
+                set_prop(round, CloseRound),
+                positive(fun close_solo_/2),
+                create_trees_if_not_present(),
+                set_prop(call_deposit, CallDeposit),
+                fun(#{channel_pubkey := ChannelPubKey,
+                      initiator_pubkey := Initiator,
+                      responder_pubkey := Responder,
+                      trees := Trees0,
+                      state := S} = Props) ->
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    ChannelAmount = aesc_channels:channel_amount(Channel),
+                    Accounts0 = aec_trees:accounts(Trees0),
+                    IAcc0 = aec_accounts_trees:get(Initiator, Accounts0),
+                    RAcc0 = aec_accounts_trees:get(Responder, Accounts0),
+                    ToAdd = (ChannelAmount + 1) %over the channel limit
+                            + CallDeposit
+                            + CreateDeposit % contract created
+                            - aec_accounts:balance(IAcc0)
+                            - aec_accounts:balance(RAcc0),
+                    {ok, IAcc} = aec_accounts:earn(IAcc0, ToAdd),
+                    ?TEST_LOG("Total channel tokens: ~p\nInitator tokens: ~p,\nResponder tokens: ~p, Adding ~p tokens to initator",
+                              [ChannelAmount, aec_accounts:balance(IAcc0),
+                                aec_accounts:balance(RAcc0), ToAdd]), 
+                    Accounts = aec_accounts_trees:enter(IAcc, Accounts0),
+                    Trees = aec_trees:set_accounts(Trees0, Accounts),
+                    Props#{trees => Trees}
+                end,
+                set_prop(contract_create_deposit, CreateDeposit),
+                create_contract_poi_and_payload(Round - 1, ContractRound, Owner),
+                set_prop(round, Round),
+                fun(#{contract_id := ContractId} = Props) ->
+                    (create_contract_call_payload(ContractId, <<"main">>,
+                                                  <<"42">>, 1))(Props)
+                end,
+                set_prop(fee, 1),
+                fun(#{channel_pubkey := ChannelPubKey,
+                      state := S} = Props) ->
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    OnChainRound = aesc_channels:round(Channel),
+                    OnChainHash = aesc_channels:state_hash(Channel),
+                    (different_state_hash_produced(OnChainRound,
+                                                   OnChainHash))(Props)
+                 end])
+        end,
+    [Test(Owner, Forcer) || Owner  <- ?ROLES,
+                            Forcer <- ?ROLES].
+
+fp_solo_payload_overflowing_balances(Cfg) ->
+    StateHashSize = aec_base58c:byte_size_for_type(state),
+    SnapshotRound = 13,
+    SnapshotStateHash = <<1234:StateHashSize/unit:8>>,
+    Round = 43,
+    ContractRound = 10,
+    CreateDeposit = 2,
+    CallDeposit = 1,
+    Test =
+        fun(Owner, Forcer) ->
+            run(#{cfg => Cfg, initiator_amount => 30,
+                              responder_amount => 30,
+                 channel_reserve => 1},
+               [positive(fun create_channel_/2),
+
+                set_from(initiator),
+                set_prop(round, SnapshotRound),
+                set_prop(state_hash, SnapshotStateHash),
+                positive(fun snapshot_solo_/2),
+                create_trees_if_not_present(),
+                set_prop(call_deposit, CallDeposit),
+                fun(#{channel_pubkey := ChannelPubKey,
+                      initiator_pubkey := Initiator,
+                      responder_pubkey := Responder,
+                      trees := Trees0,
+                      state := S} = Props) ->
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    ChannelAmount = aesc_channels:channel_amount(Channel),
+                    Accounts0 = aec_trees:accounts(Trees0),
+                    IAcc0 = aec_accounts_trees:get(Initiator, Accounts0),
+                    RAcc0 = aec_accounts_trees:get(Responder, Accounts0),
+                    ToAdd = (ChannelAmount + 1) %over the channel limit
+                            + CallDeposit
+                            + CreateDeposit % contract created
+                            - aec_accounts:balance(IAcc0)
+                            - aec_accounts:balance(RAcc0),
+                    {ok, IAcc} = aec_accounts:earn(IAcc0, ToAdd),
+                    ?TEST_LOG("Total channel tokens: ~p\nInitator tokens: ~p,\nResponder tokens: ~p, Adding ~p tokens to initator",
+                              [ChannelAmount, aec_accounts:balance(IAcc0),
+                                aec_accounts:balance(RAcc0), ToAdd]), 
+                    Accounts = aec_accounts_trees:enter(IAcc, Accounts0),
+                    Trees = aec_trees:set_accounts(Trees0, Accounts),
+                    Props#{trees => Trees}
+                end,
+                set_prop(contract_create_deposit, CreateDeposit),
+                create_contract_poi_and_payload(Round - 1, ContractRound, Owner),
+                force_progress_sequence(_Round = Round, Forcer)])
+        end,
+    [Test(Owner, Forcer) || Owner  <- ?ROLES,
+                            Forcer <- ?ROLES].
+
 different_state_hash_produced(OldRound, OldStateHash) ->
     fun(Props0) ->
         run(Props0,
@@ -3031,13 +3150,15 @@ create_contract_poi_and_payload(Round, ContractRound, Owner, Opts) ->
     fun(Props0) ->
         {Contract, ContractInitProps} =
             maps:get(contract_name, Props0, {"identity", <<"()">>}),
+        ContractCreateDeposit =
+            maps:get(contract_create_deposit, Props0, 2),
         run(Props0,
           [create_trees_if_not_present(),
            set_from(Owner, owner, owner_privkey),
            create_contract_in_trees(_Round    = ContractRound,
                                     _Contract = Contract,
                                     _InitArgs = ContractInitProps,
-                                    _Deposit  = 2),
+                                    _Deposit  = ContractCreateDeposit),
            create_fp_trees(),
            fun(#{state_hash := PoiHash, trees := Trees} = Props) ->
                ?assertEqual(PoiHash, aec_trees:hash(Trees)),

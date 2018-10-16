@@ -284,10 +284,6 @@ check_force_progress_(PayloadHash, PayloadRound,
                           none -> {error, contract_missing};
                           {value, _} -> ok
                       end
-                  end,
-                  fun() ->
-                      check_amounts_do_not_exceed_total_balance(OffChainTrees,
-                                                                Channel)
                   end])
           end,
           fun() ->
@@ -544,10 +540,21 @@ process_force_progress(Tx, OffChainTrees, TxHash, Height, Trees, Env) ->
 
     ?TEST_LOG("Expected hash ~p", [ExpectedHash]),
     ?TEST_LOG("Computed hash ~p", [ComputedHash]),
-    Trees3 =
-        case ExpectedHash =:= ComputedHash of
+    BalancesMatch =
+        case aesc_channels:is_active(Channel) of
             true ->
-                ?TEST_LOG("Expected and computed hash MATCH. Channel object is being updated", []),
+                ?TEST_LOG("Channel is NOT closing, balances are not taken into account", []),
+                true;
+            false ->
+                amounts_do_not_exceed_total_balance(NewOffChainTrees,
+                                                    Channel)
+        end,
+    HashesMatch = ExpectedHash =:= ComputedHash,
+    ?TEST_LOG("Matches: hashes ~p, balances ~p", [HashesMatch, BalancesMatch]),
+    Trees3 =
+        case HashesMatch andalso BalancesMatch of
+            true ->
+                ?TEST_LOG("Expected and computed hash MATCH. Balances does not exceed on-chain total balance. Channel object is being updated", []),
                 % update channel obj
                 InitiatorBalance = GetBalance(aesc_channels:initiator_pubkey(Channel)),
                 ResponderBalance = GetBalance(aesc_channels:responder_pubkey(Channel)),
@@ -558,7 +565,7 @@ process_force_progress(Tx, OffChainTrees, TxHash, Height, Trees, Env) ->
                                                         Height),
                 _Trees = set_channel(Channel1, Trees2);
             false ->
-                ?TEST_LOG("Expected and computed hash DO NOT MATCH. Channel object is NOT being updated", []),
+                ?TEST_LOG("Expected and computed values DO NOT MATCH. Channel object is NOT being updated", []),
                 Trees2
         end,
     {ok, Trees3}.
@@ -579,12 +586,21 @@ get_vals(List) ->
         L when is_list(L) -> {ok, lists:reverse(L)}
     end.
 
-check_amounts_do_not_exceed_total_balance(OffChainTrees, Channel) ->
-    AllBalances =  aec_accounts_trees:total_balances(aec_trees:accounts(OffChainTrees)),
-    case AllBalances > aesc_channels:channel_amount(Channel) of
-        true -> {error, poi_amounts_change_channel_funds};
-        false -> ok
-    end.
+amounts_do_not_exceed_total_balance(OffChainTrees, Channel) ->
+    AccountsTree = aec_trees:accounts(OffChainTrees),
+    GetBalance =
+        fun(Pubkey) ->
+            Acc = aec_accounts_trees:get(Pubkey, AccountsTree), % must be present
+            B = aec_accounts:balance(Acc),
+            ?TEST_LOG("Participant balance ~p", [B]),
+            B
+        end,
+    AllBalances = lists:sum([GetBalance(K) ||
+                             K <- [aesc_channels:initiator_pubkey(Channel),
+                                   aesc_channels:responder_pubkey(Channel)]]),
+    ChannelAmount = aesc_channels:channel_amount(Channel),
+    ?TEST_LOG("AllBalances ~p, ChannelAmount ~p", [AllBalances, ChannelAmount]),
+    AllBalances =< ChannelAmount.
 
 spend(From, Amount, Nonce, Trees) ->
     AccountsTree0 = aec_trees:accounts(Trees),

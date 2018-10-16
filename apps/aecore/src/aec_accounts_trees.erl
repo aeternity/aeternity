@@ -11,7 +11,6 @@
          get/2,
          lookup/2,
          new_with_backend/1,
-         total_balances/1,
          enter/2]).
 
 %% API - Merkle tree
@@ -59,16 +58,6 @@ empty_with_backend() ->
 new_with_backend(Hash) ->
     aeu_mtrees:new_with_backend(Hash, aec_db_backends:accounts_backend()).
 
--spec total_balances(tree()) -> integer().
-total_balances(Tree) ->
-    Balance =
-        fun(Pubkey, Bin) ->
-            Account = aec_accounts:deserialize(Pubkey, Bin),
-            aec_accounts:balance(Account)
-        end,
-    lists:sum(
-       [Balance(Key, Bin) || {Key, Bin} <- aeu_mtrees:to_list(Tree)]).
-    
 -spec get(aec_keys:pubkey(), tree()) -> aec_accounts:account().
 get(Pubkey, Tree) ->
     Account = aec_accounts:deserialize(Pubkey, aeu_mtrees:get(Pubkey, Tree)),
