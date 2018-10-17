@@ -150,13 +150,18 @@ iterator_next(Iter) ->
 
 -spec to_list(mtree()) -> [{key(), value()}].
 to_list(Tree) ->
+    map(fun(K, V) -> {K, V} end, Tree).
+
+-spec map(fun((key(), value()) -> term()), mtree()) -> list(term()).
+map(Fun, Tree) ->
+    MapThroughValues =
+        fun Map('$end_of_table', Accum) -> Accum;
+            Map({Key, Value, Iter}, Accum) ->
+                Map(aeu_mp_trees:iterator_next(Iter),
+                    [Fun(Key, Value) | Accum])
+        end,
     Iterator = aeu_mp_trees:iterator(Tree),
-    to_list(aeu_mp_trees:iterator_next(Iterator), []).
-
-to_list('$end_of_table', Acc) -> Acc;
-to_list({Key, Val, Iter}, Acc) ->
-    to_list(aeu_mp_trees:iterator_next(Iter), [{Key, Val}|Acc]).
-
+    MapThroughValues(aeu_mp_trees:iterator_next(Iterator), []).
 %%%===================================================================
 %%% API - utils outside OTP `gb_trees` module
 %%%===================================================================
@@ -266,8 +271,7 @@ proof_db_fold(Fun, Initial, Proof) ->
 -spec serialize(mtree()) -> binary().
 serialize(Tree) ->
     ValuesBins =
-        lists:map(
-            fun({Key, Value}) ->
+        map(fun(Key, Value) ->
                 aec_object_serialization:serialize(
                     mtree_value,
                     ?VSN,
@@ -276,7 +280,7 @@ serialize(Tree) ->
                     , {val, Value}
                     ])
             end,
-            to_list(Tree)),
+            Tree),
     aec_object_serialization:serialize(
         mtree,
         ?VSN,
