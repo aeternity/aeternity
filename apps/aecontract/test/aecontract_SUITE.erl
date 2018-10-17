@@ -16,10 +16,17 @@
         , call_contract_negative_insufficient_funds/1
         , call_contract_negative_gas_price_zero/1
         , call_contract_negative/1
+        , call_contract_upfront_fee/1
+        , call_contract_upfront_gas/1
+        , call_contract_upfront_amount/1
         , create_contract/1
         , create_contract_init_error/1
         , create_contract_negative_gas_price_zero/1
         , create_contract_negative/1
+        , create_contract_upfront_fee/1
+        , create_contract_upfront_gas/1
+        , create_contract_upfront_amount/1
+        , create_contract_upfront_deposit/1
         , state_tree/1
         , sophia_identity/1
         , sophia_state/1
@@ -111,12 +118,22 @@ groups() ->
                          , create_contract_init_error
                          , create_contract_negative_gas_price_zero
                          , create_contract_negative
+                         , {group, create_contract_upfront_charges}
                          , call_contract
                          , call_contract_error_value
                          , call_contract_negative_insufficient_funds
                          , call_contract_negative_gas_price_zero
                          , call_contract_negative
+                         , {group, call_contract_upfront_charges}
                          ]}
+    , {create_contract_upfront_charges, [], [ create_contract_upfront_fee
+                                            , create_contract_upfront_gas
+                                            , create_contract_upfront_amount
+                                            , create_contract_upfront_deposit ]}
+    , {call_contract_upfront_charges, [], [ call_contract_upfront_fee
+                                          , call_contract_upfront_gas
+                                          , call_contract_upfront_amount ]}
+
     , {state_tree, [sequence], [ state_tree ]}
     , {sophia,     [sequence], [ sophia_identity,
                                  sophia_state,
@@ -349,6 +366,47 @@ create_contract_(ContractCreateTxGasPrice) ->
 
     ok.
 
+create_contract_upfront_fee(_Cfg) ->
+    F = fun(X) -> sender_balance_in_create(#{fee => X}) end,
+    V1 = 10,
+    V2 = 20,
+    ?assertEqual(F(V1) + V1 - V2, F(V2)),
+    ok.
+
+create_contract_upfront_gas(_Cfg) ->
+    F = fun(P, G) -> sender_balance_in_create(#{gas_price => P, gas => G}) end,
+    P1 = 1,
+    G1 = 20000,
+    G2 = 30000,
+    V1 = P1 * G1,
+    V2 = P1 * G2, %% Same gas price, different gas limit.
+    Bal1 = F(P1, G1),
+    ?assertEqual(Bal1 + V1 - V2, F(_P2=P1, G2)),
+    P3 = 2,
+    V3 = P3 * G1, %% Different gas price, same gas limit.
+    ?assertEqual(Bal1 + V1 - V3, F(P3, _G3=G1)),
+    ok.
+
+create_contract_upfront_amount(_Cfg) ->
+    F = fun(X) -> sender_balance_in_create(#{amount => X}) end,
+    V1 = 10,
+    V2 = 20,
+    ?assertEqual(F(V1) + V1 - V2, F(V2)),
+    ok.
+
+create_contract_upfront_deposit(_Cfg) ->
+    F = fun(X) -> sender_balance_in_create(#{deposit => X}) end,
+    V1 = 10,
+    V2 = 20,
+    ?assertEqual(F(V1) + V1 - V2, F(V2)),
+    ok.
+
+sender_balance_in_create(CreateTxOpts) ->
+    state(aect_test_utils:new_state()),
+    Sender = call(fun new_account/2, [1000000]),
+    Ct = call(fun create_contract/5, [Sender, upfront_charges, {}, CreateTxOpts]),
+    _SenderBalInCt = call(fun call_contract/6, [Sender, Ct, initialSenderBalance, word, {}]).
+
 sign_and_apply_transaction(Tx, PrivKey, S1) ->
     sign_and_apply_transaction(Tx, PrivKey, S1, 1).
 
@@ -484,6 +542,40 @@ call_contract_(ContractCallTxGasPrice) ->
                  aec_accounts:balance(aect_test_utils:get_account(ContractKey, S4))),
 
     {ok, S4}.
+
+call_contract_upfront_fee(_Cfg) ->
+    F = fun(X) -> sender_balance_in_call(#{fee => X}) end,
+    V1 = 10,
+    V2 = 20,
+    ?assertEqual(F(V1) + V1 - V2, F(V2)),
+    ok.
+
+call_contract_upfront_gas(_Cfg) ->
+    F = fun(P, G) -> sender_balance_in_call(#{gas_price => P, gas => G}) end,
+    P1 = 1,
+    G1 = 20000,
+    G2 = 30000,
+    V1 = P1 * G1,
+    V2 = P1 * G2, %% Same gas price, different gas limit.
+    Bal1 = F(P1, G1),
+    ?assertEqual(Bal1 + V1 - V2, F(_P2=P1, G2)),
+    P3 = 2,
+    V3 = P3 * G1, %% Different gas price, same gas limit.
+    ?assertEqual(Bal1 + V1 - V3, F(P3, _G3=G1)),
+    ok.
+
+call_contract_upfront_amount(_Cfg) ->
+    F = fun(X) -> sender_balance_in_call(#{amount => X}) end,
+    V1 = 10,
+    V2 = 20,
+    ?assertEqual(F(V1) + V1 - V2, F(V2)),
+    ok.
+
+sender_balance_in_call(CallTxOpts) ->
+    state(aect_test_utils:new_state()),
+    Sender = call(fun new_account/2, [1000000]),
+    Ct = call(fun create_contract/4, [Sender, upfront_charges, {}]),
+    _SenderBalInCt = call(fun call_contract/7, [Sender, Ct, senderBalance, word, {}, CallTxOpts]).
 
 %% Check behaviour of contract call error - especially re value / amount.
 call_contract_error_value(_Cfg) ->
@@ -671,7 +763,7 @@ call_contract(Caller, ContractKey, Fun, Type, Args, Options, S) ->
                  , fee        => 1
                  , amount     => 0
                  , gas        => 50000
-                 }, maps:remove(height, Options)), S),
+                 }, maps:without([height, return_gas_used], Options)), S),
     Height   = maps:get(height, Options, 1),
     PrivKey  = aect_test_utils:priv_key(Caller, S),
     {ok, S1} = sign_and_apply_transaction(CallTx, PrivKey, S, Height),
