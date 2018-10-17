@@ -18,10 +18,31 @@ The following example configuration assumes that:
 
 ### Channels
 
-In order to be able to connect to your node as a channel participant you need to have
-a port set up for channels' websocket communication. That would be the TCP port (`websocket` > `channel` > `port` parameter).
+`epoch` provides an infrastructure for using state channes. There are two
+distinct protocols involved:
+* WebSocket client one
+* Noise encoded one
 
-Please notice that, if your node is behind a firewall, you need to open a TCP port in your firewall (the one you want to connect to) and map that port to the one the node actually listens on (`websocket` > `channel` > `port` parameter).
+#### Channels' WebSocket client setup
+
+In order to connect as a WebSocket client, one must set up a port and a host
+the service is to listen at. This is a private node setting that is left for
+the node operator to secure its access. The TCP port can be set using
+`websocket` > `channel` > `port` parameter. The address the service is to be
+listening can be set using the `websocket` > `channel` > `listen_address`
+parameter. Note that this address has a default value of `127.0.0.1` and thus
+the WebSocket endpoint is not exposed.
+
+#### Channels' Noise setup
+
+Channels have two participants' roles - an `initiator` and a `responder`.
+Those roles are prenegotiated off-chain before opening the channel on-chain.
+Once set for a channel - those roles can not change. Main difference between
+roles is that the `initiator`'s node connects to the `responder`'s node via an
+upgraded TCP connection. In order for this to be possible, they must have a
+network visibility. It is the `responder`'s responsibilty to provide a free
+port and a host name to the `initator` so one can use those to connect.
+The `responder`'s network setup is outside of the scope of `epoch`.
 
 ### Beneficiary account
 
