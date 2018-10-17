@@ -13,7 +13,10 @@
          revoke/3,
          transfer_to/2,
          serialize/1,
-         deserialize/2
+         deserialize/2,
+         deserialize_from_fields/3,
+         serialization_type/0,
+         serialization_template/1
         ]).
 
 %% Getters
@@ -25,6 +28,7 @@
          pointers/1,
          client_ttl/1]).
 
+-behavior(aens_cache).
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -103,16 +107,19 @@ serialize(#name{owner_id   = OwnerId,
 
 -spec deserialize(aens_hash:name_hash(), binary()) -> name().
 deserialize(NameHash, Bin) ->
+    Fields = aec_object_serialization:deserialize(
+                  ?NAME_TYPE,
+                  ?NAME_VSN,
+                  serialization_template(?NAME_VSN),
+                  Bin),
+    deserialize_from_fields(?NAME_VSN, NameHash, Fields).
+
+deserialize_from_fields(?NAME_VSN, NameHash,
     [ {owner_id, OwnerId}
     , {ttl, TTL}
     , {status, Status}
     , {client_ttl, ClientTTL}
-    , {pointers, Pointers}
-    ] = aec_object_serialization:deserialize(
-          ?NAME_TYPE,
-          ?NAME_VSN,
-          serialization_template(?NAME_VSN),
-          Bin),
+    , {pointers, Pointers}]) ->
     #name{id         = aec_id:create(name, NameHash),
           owner_id   = OwnerId,
           ttl        = TTL,
@@ -127,6 +134,8 @@ serialization_template(?NAME_VSN) ->
     , {client_ttl, int}
     , {pointers, [{binary, id}]}
     ].
+
+serialization_type() -> ?NAME_TYPE.
 
 %%%===================================================================
 %%% Getters
