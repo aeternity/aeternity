@@ -1,11 +1,11 @@
 %%%=============================================================================
 %%% @copyright (C) 2018, Aeternity Anstalt
 %%% @doc
-%%%    Behaviour module for naming's cache
+%%%    Behaviour module for oracles' cache
 %%% @end
 %%%=============================================================================
 
--module(aens_cache).
+-module(aeo_cache).
 
 -callback serialization_type() -> atom().
 
