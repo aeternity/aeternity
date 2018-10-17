@@ -13,3 +13,5 @@
 
 -callback deserialize_from_fields(non_neg_integer(), binary(), list()) -> term().
 
+-callback ttl(term()) -> integer().
+
