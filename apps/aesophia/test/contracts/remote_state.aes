@@ -1,0 +1,12 @@
+contract RemoteState =
+  record rstate = { i : int, s : string, m : map(int, int) }
+
+  function get(s : rstate) = s
+  function get_i(s : rstate) = s.i
+  function get_s(s : rstate) = s.s
+  function get_m(s : rstate) = s.m
+
+  function fun_update_i(s : rstate, ni) = s{ i = ni }
+  function fun_update_s(s : rstate, ns) = s{ s = ns }
+  function fun_update_m(s : rstate, nm) = s{ m = nm }
+

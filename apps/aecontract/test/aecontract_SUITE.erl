@@ -73,6 +73,7 @@
         , sophia_savecoinbase/1
         , sophia_fundme/1
         , sophia_aens/1
+        , sophia_state_handling/1
         , create_store/1
         , update_store/1
         , read_store/1
@@ -138,7 +139,8 @@ groups() ->
                                  sophia_chain,
                                  sophia_savecoinbase,
                                  sophia_fundme,
-                                 sophia_aens ]}
+                                 sophia_aens,
+                                 sophia_state_handling]}
     , {sophia_oracles_ttl, [],
           %% Test Oracle TTL handling
         [ sophia_oracles_ttl__extend_after_expiry
@@ -2972,6 +2974,73 @@ sophia_aens(_Cfg) ->
     ok = ?call(aens_update, Acc, NHash, Pointers),
     {some, OPubkey} = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name1, <<"oracle_pubkey">>}),
     {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Ct, NHash, 0}, #{ height => 13 }),
+    ok.
+
+sophia_state_handling(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc      = ?call(new_account, 1000000),
+    Ct0      = ?call(create_contract, Acc, remote_state, {}, #{ amount => 100000 }),
+    %% Test an init function that calls a remote contract to compute the state
+    Ct1      = ?call(create_contract, Acc, state_handling, {Ct0, 1}, #{ amount => 100000 }),
+    Ct2      = ?call(create_contract, Acc, state_handling, {Ct0, 2}, #{ amount => 100000 }),
+    MapT     = {map, word, word},
+    StateT   = {tuple, [word, string, MapT]},
+    UnitT    = {tuple, []},
+
+    %% Test that we can read the state
+    ?assertEqual({1, <<"undefined">>, #{}}, ?call(call_contract, Acc, Ct1, read, StateT, {})),
+    ?assertEqual(1,                         ?call(call_contract, Acc, Ct1, read_i, word, {})),
+    ?assertEqual(<<"undefined">>,           ?call(call_contract, Acc, Ct1, read_s, string, {})),
+    ?assertEqual(#{},                       ?call(call_contract, Acc, Ct1, read_m, MapT, {})),
+    ?assertEqual({2, <<"undefined">>, #{}}, ?call(call_contract, Acc, Ct2, read, StateT, {})),
+    ?assertEqual(2,                         ?call(call_contract, Acc, Ct2, read_i, word, {})),
+    ?assertEqual(<<"undefined">>,           ?call(call_contract, Acc, Ct2, read_s, string, {})),
+    ?assertEqual(#{},                       ?call(call_contract, Acc, Ct2, read_m, MapT, {})),
+
+    %% Test that we can update the state
+    ?call(call_contract, Acc, Ct1, update_i, UnitT, {7}),
+    ?call(call_contract, Acc, Ct1, update_s, UnitT, {<<"defined">>}),
+    ?call(call_contract, Acc, Ct1, update_m, UnitT, {#{3 => 4, 1 => 2}}),
+    ?assertMatch({7, <<"defined">>, #{3 := 4, 1 := 2}},
+                 ?call(call_contract, Acc, Ct1, read, StateT, {})),
+
+
+    ?call(call_contract, Acc, Ct1, update, UnitT, {{8, <<"hello">>, #{3 => 5}}}),
+    ?assertMatch({8, <<"hello">>, #{3 := 5}},
+                 ?call(call_contract, Acc, Ct1, read, StateT, {})),
+
+    %% Test that we can pass the state to a remote contract (the remote contract
+    %% just return the state/field and the contract does not change the return
+    %% value).
+    ?assertMatch({8, <<"hello">>, #{3 := 5}},
+                 ?call(call_contract, Acc, Ct1, pass, StateT, {Ct2})),
+    ?assertEqual(8,           ?call(call_contract, Acc, Ct1, pass_i, word, {Ct2})),
+    ?assertEqual(<<"hello">>, ?call(call_contract, Acc, Ct1, pass_s, string, {Ct2})),
+    ?assertMatch(#{3 := 5},   ?call(call_contract, Acc, Ct1, pass_m, MapT, {Ct2})),
+
+    %% Test that we can modify a state passed to a remote contract...
+    ?assertMatch({9, <<"hello">>, #{3 := 5}},
+                 ?call(call_contract, Acc, Ct1, pass_update_i, StateT, {Ct2, 9})),
+    ?assertMatch({8, <<"foo">>, #{3 := 5}},
+                 ?call(call_contract, Acc, Ct1, pass_update_s, StateT, {Ct2, <<"foo">>})),
+    ?assertMatch({8, <<"hello">>, #{2 := 5}},
+                 ?call(call_contract, Acc, Ct1, pass_update_m, StateT, {Ct2, #{2 => 5}})),
+
+    %% And verify that the state of the contract was not affected by this...
+    ?assertMatch({8, <<"hello">>, #{3 := 5}},
+                 ?call(call_contract, Acc, Ct1, read, StateT, {})),
+
+    %% Test that we can actually use the remotely updated state
+    ?call(call_contract, Acc, Ct1, remote_update_i, UnitT, {Ct2, 9}),
+    ?assertMatch({9, <<"hello">>, #{3 := 5}},
+                 ?call(call_contract, Acc, Ct1, read, StateT, {})),
+    ?call(call_contract, Acc, Ct1, remote_update_s, UnitT, {Ct2, <<"foo">>}),
+    ?assertMatch({9, <<"foo">>, #{3 := 5}},
+                 ?call(call_contract, Acc, Ct1, read, StateT, {})),
+    ?call(call_contract, Acc, Ct1, remote_update_m, UnitT, {Ct2, #{2 => 5}}),
+    ?assertMatch({9, <<"foo">>, #{2 := 5}},
+                 ?call(call_contract, Acc, Ct1, read, StateT, {})),
+
     ok.
 
 
