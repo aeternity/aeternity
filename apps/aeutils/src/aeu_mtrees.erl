@@ -265,11 +265,11 @@ proof_db_fold(Fun, Initial, Proof) ->
 %%%===================================================================
 -spec serialize(mtree()) -> binary().
 serialize(Tree) ->
-    LeavesBins =
+    ValuesBins =
         lists:map(
             fun({Key, Value}) ->
                 aec_object_serialization:serialize(
-                    mtree_leaf,
+                    mtree_value,
                     ?VSN,
                     leaf_serialization_template(?VSN),
                     [ {key, Key}
@@ -281,7 +281,7 @@ serialize(Tree) ->
         mtree,
         ?VSN,
         serialization_template(?VSN),
-        [ {leaves, LeavesBins}]).
+        [{values, ValuesBins}]).
 
 -spec deserialize(binary()) -> mtree().
 deserialize(Bin) ->
@@ -293,23 +293,23 @@ deserialize_with_backend(Bin, DB) ->
 
 -spec deserialize_(binary(), mtree()) -> mtree().
 deserialize_(Bin, EmptyMTree) ->
-    [{leaves, LeavesBin}] =
+    [{values, ValuesBin}] =
         aec_object_serialization:deserialize(mtree, ?VSN,
                                              serialization_template(?VSN), Bin),
     lists:foldl(
         fun(LeafBin, Accum) ->
             [ {key, Key}
             , {val, Value}] =
-                aec_object_serialization:deserialize(mtree_leaf, ?VSN,
+                aec_object_serialization:deserialize(mtree_value, ?VSN,
                                                       leaf_serialization_template(?VSN),
                                                       LeafBin),
             insert(Key, Value, Accum)
         end,
         EmptyMTree,
-        LeavesBin).
+        ValuesBin).
 
 serialization_template(?VSN) ->
-   [{leaves, [binary]}]. 
+   [{values, [binary]}]. 
 
 leaf_serialization_template(?VSN) ->
    [ {key, binary}
