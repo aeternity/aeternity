@@ -48,7 +48,8 @@
          await_sync_complete/2
         ]).
 
--export([sign_keys/0]).
+-export([patron/0,
+         sign_keys/0]).
 
 -include_lib("kernel/include/file.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -75,6 +76,14 @@ sign_keys() ->
                89,70,193,75,247,195,248,104,132,11,199,133,103,156,209,167,244,82,126,86,51,156,36,165,214,45,50>>,
              <<207,253,207,144,121,89,70,193,75,247,195,248,104,132,11,199,133,103,156,209,167,244,82,126,86,51,156,36,165,214,45,50>>}}].
 
+patron() ->
+    #{ pubkey  => <<206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,
+                    73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>,
+       privkey => <<230,169,29,99,60,119,207,87,113,50,157,51,84,179,188,239,27,
+                    197,224,50,196,61,112,182,211,90,249,35,206,30,183,77,206,
+                    167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,
+                    187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>
+      }.
 
 %%%=============================================================================
 %%% API
@@ -397,7 +406,7 @@ file_missing(F) ->
     end.
 
 errors_in_logs(Nodes, Config) ->
-    [{N, Errs} || N <- Nodes, 
+    [{N, Errs} || N <- Nodes,
                   Errs <- check_errors_logs(N, Config)].
 
 check_errors_logs(Node, Config) ->
@@ -409,7 +418,7 @@ grep_error(FileName) ->
     {ok, Bin} = file:read_file(FileName),
     Entries = string:lexemes(Bin, [$\r,$\n]),
     [ Entry || Entry <- Entries,
-               string:find(Entry, "[error]") =/= nomatch ]. 
+               string:find(Entry, "[error]") =/= nomatch ].
 
 expected_logs() ->
     ["epoch.log", "epoch_mining.log", "epoch_sync.log",
