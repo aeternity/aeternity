@@ -23,9 +23,6 @@
 %% test case exports
 %% external endpoints
 -export([
-         spending_1/1,
-         spending_2/1,
-         spending_3/1,
          abort_test_contract/1,
          counter_contract/1,
          dutch_auction_contract/1,
@@ -55,9 +52,6 @@ groups() ->
     [
      {contracts, [],
       [
-       spending_1,
-       spending_2,
-       spending_3,
        identity_contract,
        abort_test_contract,
        simple_storage_contract,
@@ -168,202 +162,38 @@ end_per_testcase(_Case, Config) ->
 null(_Config) ->
     ok.
 
-%% spending_1(Config)
-%%  A simple test of tokens from acc_a to acc_b.
-
-spending_1(Config) ->
-    NodeName = proplists:get_value(node_name, Config),
-    %% Get account information.
-    #{acc_a := #{pub_key := APubkey,
-                 priv_key := APrivkey},
-      acc_b := #{pub_key := BPubkey}} = proplists:get_value(accounts, Config),
-
-    %% Check initial balances.
-    ABal0 = get_balance(APubkey),
-    BBal0 = get_balance(BPubkey),
-    ct:pal("Balances 0: ~p, ~p\n", [ABal0,BBal0]),
-
-    %% Add tokens to both accounts and wait until done.
-    {ok,200,#{<<"tx">> := ATx}} =
-        post_spend_tx(aec_base58c:encode(account_pubkey, APubkey), 500, 1),
-    SignedATx = sign_tx(ATx),
-    {ok, 200, #{<<"tx_hash">> := ATxHash}} = post_tx(SignedATx),
-    ok = wait_for_tx_hash_on_chain(NodeName, ATxHash),
-
-    {ok,200,#{<<"tx">> := BTx}} =
-        post_spend_tx(aec_base58c:encode(account_pubkey, BPubkey), 500, 1),
-    SignedBTx = sign_tx(BTx),
-    {ok, 200, #{<<"tx_hash">> := BTxHash}} = post_tx(SignedBTx),
-
-    ok = wait_for_tx_hash_on_chain(NodeName, BTxHash),
-
-    %% Get balances after mining.
-    ABal1 = get_balance(APubkey),
-    BBal1 = get_balance(BPubkey),
-    ct:pal("Balances 1: ~p, ~p\n", [ABal1,BBal1]),
-
-    %% Amount transfered and fee.
-    Amount = 200,
-    Fee = 5,
-
-    %% Transfer money from Alice to Bert.
-    TxHash = spend_tokens(APubkey, APrivkey, BPubkey, Amount, Fee),
-    ok = wait_for_tx_hash_on_chain(NodeName, TxHash),
-
-    %% Check that tx has succeeded.
-    ?assert(tx_in_chain(TxHash)),
-
-    %% Check balances after sending.
-    ABal2 = get_balance(APubkey),
-    BBal2 = get_balance(BPubkey),
-    ct:pal("Balances 2: ~p, ~p\n", [ABal2,BBal2]),
-
-    %% Check that the balances are correct, don't forget the fee.
-    ABal2 = ABal1 - Amount - Fee,
-    BBal2 = BBal1 + Amount,
-
-    ok.
-
-%% spending_2(Config)
-%%  A simple test of tokens from acc_a to acc_b. There are not enough
-%%  tokens in acc_a so tx suspends until TTL runs out.
-
-spending_2(Config) ->
-    NodeName = proplists:get_value(node_name, Config),
-    %% Get account information.
-    #{acc_a := #{pub_key := APubkey,
-                 priv_key := APrivkey},
-      acc_b := #{pub_key := BPubkey}} = proplists:get_value(accounts, Config),
-
-    %% Check initial balances.
-    ABal0 = get_balance(APubkey),
-    BBal0 = get_balance(BPubkey),
-    ct:pal("Balances 0: ~p, ~p\n", [ABal0,BBal0]),
-
-    {ok,[_]} = aecore_suite_utils:mine_key_blocks(NodeName, 1),
-
-    %% Get balances after mining.
-    ABal1 = get_balance(APubkey),
-    BBal1 = get_balance(BPubkey),
-    ct:pal("Balances 1: ~p, ~p\n", [ABal1,BBal1]),
-
-    {ok,200,#{<<"key_block">> := #{<<"height">> := Height}}} = get_top(),
-    ct:pal("Height ~p\n", [Height]),
-
-    %% Transfer money from Alice to Bert, but more than Alice has.
-    TTL =  #{ttl => Height + 2},
-    TxHash = spend_tokens(APubkey, APrivkey, BPubkey, ABal1 + 100, 5, TTL),
-    {ok,[_, _]} = aecore_suite_utils:mine_key_blocks(NodeName, 2),
-
-    %% Check that tx has failed.
-    ?assertNot(tx_in_chain(TxHash)),
-
-    %% Check that there has been no transfer.
-    ABal2 = get_balance(APubkey),
-    BBal2 = get_balance(BPubkey),
-    ABal2 = ABal1,
-    BBal2 = BBal1,
-    ct:pal("Balances 2: ~p, ~p\n", [ABal2,BBal2]),
-
-    %% Wait until TTL has been passed.
-    {ok,[_,_]} = aecore_suite_utils:mine_blocks(NodeName, 2),
-
-    %% Check that tx has failed.
-    ?assertNot(tx_in_chain(TxHash)),
-
-    ok.
-
-%% spending_3(Config)
-%%  A simple test of tokens from acc_a to acc_b. There are not enough
-%%  tokens in acc_a so tx suspends until acc_a gets enough.
-
-spending_3(Config) ->
-    NodeName = proplists:get_value(node_name, Config),
-    %% Get account information.
-    #{acc_a := #{pub_key := APubkey,
-                 priv_key := APrivkey},
-      acc_b := #{pub_key := BPubkey}} = proplists:get_value(accounts, Config),
-
-    %% Check initial balances.
-    ABal0 = get_balance(APubkey),
-    BBal0 = get_balance(BPubkey),
-    ct:pal("Balances 0: ~p, ~p\n", [ABal0,BBal0]),
-
-    {ok,[_,_]} = aecore_suite_utils:mine_key_blocks(NodeName, 2),
-
-    %% Get balances after mining.
-    ABal1 = get_balance(APubkey),
-    BBal1 = get_balance(BPubkey),
-    ct:pal("Balances 1: ~p, ~p\n", [ABal1,BBal1]),
-
-    %% Transfer money from Alice to Bert, but more than Alice has.
-    SpendTxHash = spend_tokens(APubkey, APrivkey, BPubkey, ABal1 + 200, 5),
-    {ok,[_,_]} = aecore_suite_utils:mine_key_blocks(NodeName, 2),
-
-    %% Check that tx has failed.
-    ?assertNot(tx_in_chain(SpendTxHash)),
-
-    %% Check that there has been no transfer.
-    ABal2 = get_balance(APubkey),
-    BBal2 = get_balance(BPubkey),
-    ABal2 = ABal1,
-    BBal2 = BBal1,
-    ct:pal("Balances 2: ~p, ~p\n", [ABal2,BBal2]),
-
-    %% Now we add enough tokens to acc_a so it can do the spend tx.
-    {ok,200,#{<<"tx">> := PostTx}} =
-        post_spend_tx(aec_base58c:encode(account_pubkey, APubkey), 500, 1),
-    SignedPostTx = sign_tx(PostTx),
-    {ok, 200, #{<<"tx_hash">> := PostTxHash}} = post_tx(SignedPostTx),
-
-    ok = wait_for_tx_hash_on_chain(NodeName, PostTxHash),
-    ok = wait_for_tx_hash_on_chain(NodeName, SpendTxHash),
-
-    %% Check that tx has succeeded.
-    ?assert(tx_in_chain(SpendTxHash)),
-
-    %% Check the balance to see what happened.
-    ABal3 = get_balance(APubkey),
-    BBal3 = get_balance(BPubkey),
-    ct:pal("Balances 3: ~p, ~p\n", [ABal3,BBal3]),
-
-    ok.
-
 %% identity_contract(Config)
 %%  Create the Identity contract by account acc_c and call by accounts
 %%  acc_c and acc_d. Encode create and call data in server.
 
 identity_contract(Config) ->
-    NodeName = proplists:get_value(node_name, Config),
+    Node = proplists:get_value(node_name, Config),
     %% Get account information.
-    #{acc_c := #{pub_key := CPubkey,
-                 priv_key := CPrivkey},
-      acc_d := #{pub_key := DPubkey,
-                 priv_key := DPrivkey}} = proplists:get_value(accounts, Config),
+    #{acc_c := #{pub_key := CPub,
+                 priv_key := CPriv},
+      acc_d := #{pub_key := DPub,
+                 priv_key := DPriv}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
-    ensure_balance(CPubkey, 50000),
-    ensure_balance(DPubkey, 50000),
-    {ok,[_]} = aecore_suite_utils:mine_key_blocks(NodeName, 1),
+    ensure_balance(CPub, 50000),
+    ensure_balance(DPub, 50000),
 
     %% Compile test contract "identity.aes"
     Code = compile_test_contract("identity"),
 
+    init_fun_calls(),
+
     %% Initialise contract, owned by Carl.
-    {EncodedContractPubkey,_,_} =
-        create_compute_contract(NodeName, CPubkey, CPrivkey, Code, <<"()">>),
+    {EncCPub,_,_} =
+        create_compute_contract(Node, CPub, CPriv, Code, <<"()">>),
 
     %% Call contract main function by Carl.
-    {CReturn,_} = call_compute_func(NodeName, CPubkey, CPrivkey,
-                                    EncodedContractPubkey,
-                                    <<"main">>, <<"(42)">>),
-    #{<<"value">> := 42} = decode_data(<<"int">>, CReturn),
+    call_func(CPub, CPriv, EncCPub,  <<"main">>, <<"(42)">>, {<<"int">>, 42}),
 
     %% Call contract main function by Diana.
-    {DReturn,_} = call_compute_func(NodeName, DPubkey, DPrivkey,
-                                    EncodedContractPubkey,
-                                    <<"main">>, <<"(42)">>),
-    #{<<"value">> := 42} = decode_data(<<"int">>, DReturn),
+    call_func(DPub, DPriv, EncCPub,  <<"main">>, <<"(42)">>, {<<"int">>, 42}),
+
+    force_fun_calls(Node),
 
     ok.
 
