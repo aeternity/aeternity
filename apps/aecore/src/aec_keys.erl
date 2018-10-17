@@ -119,7 +119,8 @@ sign_micro_block(MicroBlock) ->
 sign_tx(Tx) ->
     %% Serialize first to maybe (hopefully) pass as reference.
     Bin = aetx:serialize_to_binary(Tx),
-    {ok, Signature} = gen_server:call(?MODULE, {sign, Bin}),
+    BinForNetwork = aec_governance:add_network_id(Bin),
+    {ok, Signature} = gen_server:call(?MODULE, {sign, BinForNetwork}),
     {ok, aetx_sign:new(Tx, [Signature])}.
 
 -spec pubkey() -> {ok, binary()} | {error, key_not_found}.

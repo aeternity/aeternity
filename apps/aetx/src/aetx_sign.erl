@@ -104,7 +104,8 @@ verify_one_pubkey(Sigs, PubKey, Bin) ->
     verify_one_pubkey(Sigs, PubKey, Bin, []).
 
 verify_one_pubkey([Sig|Left], PubKey, Bin, Acc) when ?VALID_PUBK(PubKey) ->
-    case enacl:sign_verify_detached(Sig, Bin, PubKey) of
+    BinForNetwork = aec_governance:add_network_id(Bin),
+    case enacl:sign_verify_detached(Sig, BinForNetwork, PubKey) of
         {ok, _}    -> {ok, Acc ++ Left};
         {error, _} -> verify_one_pubkey(Left, PubKey, Bin, [Sig|Acc])
     end;

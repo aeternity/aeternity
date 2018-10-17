@@ -711,6 +711,16 @@
                     }
                 }
             }
+        },
+        "fork_management" : {
+            "type"    : "object",
+            "additionalProperties" : false,
+            "properties" : {
+                "network_id" : {
+                    "description" :
+                    "Identification of the network in case of hard forks.",
+                    "type" : "string"}
+            }
         }
     }
 }

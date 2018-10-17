@@ -430,11 +430,12 @@ sign_tx(Tx, PrivKey) when is_binary(PrivKey) ->
     sign_tx(Tx, [PrivKey]);
 sign_tx(Tx, PrivKeys) when is_list(PrivKeys) ->
     Bin = aetx:serialize_to_binary(Tx),
+    BinForNetwork = aec_governance:add_network_id(Bin),
     case lists:filter(fun(PrivKey) -> not (?VALID_PRIVK(PrivKey)) end, PrivKeys) of
         [_|_]=BrokenKeys -> erlang:error({invalid_priv_key, BrokenKeys});
         [] -> pass
     end,
-    Signatures = [ enacl:sign_detached(Bin, PrivKey) || PrivKey <- PrivKeys ],
+    Signatures = [ enacl:sign_detached(BinForNetwork, PrivKey) || PrivKey <- PrivKeys ],
     aetx_sign:new(Tx, Signatures).
 
 signed_spend_tx(ArgsMap) ->
