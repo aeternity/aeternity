@@ -8,7 +8,7 @@
 -module(aect_evm).
 
 -export([ simple_call_common/3
-        , call_common/6
+        , call_common/7
         , encode_call_data/3
         , execute_call/2
         ]).
@@ -29,20 +29,22 @@ simple_call_common(Code, CallData, VMVersion) ->
     Owner          = <<123456:32/unit:8>>,
     Deposit        = 0,
     Contract       = aect_contracts:new(Owner, 1, VMVersion, Code, Deposit),
+    Store          = aect_contracts:state(Contract),
     ContractKey    = aect_contracts:pubkey(Contract),
     Trees1         = aect_utils:insert_contract_in_trees(Contract, Trees),
-    call_common(CallData, ContractKey, Code, TxEnv, Trees1, VMVersion).
+    call_common(CallData, ContractKey, Code, Store, TxEnv, Trees1, VMVersion).
 
--spec call_common(binary(), binary(), binary(), aetx_env:env(),
+-spec call_common(binary(), binary(), binary(), aect_contracts:store(), aetx_env:env(),
                   aec_trees:trees(), VMVersion :: integer()) ->
                      {ok, binary()} | {error, binary()}.
-call_common(CallData, ContractKey, Code, TxEnv, Trees, VMVersion) ->
+call_common(CallData, ContractKey, Code, Store, TxEnv, Trees, VMVersion) ->
     <<Address:256>> = ContractKey,
     GasLimit = aec_governance:block_gas_limit(),
     Amount = 0,
     ChainState = aec_vm_chain:new_state(Trees, TxEnv, ContractKey),
     <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>> = aetx_env:beneficiary(TxEnv),
     Spec = #{ code => Code
+            , store => Store
             , address => Address
             , caller => 0
             , data => CallData
@@ -70,6 +72,7 @@ call_common(CallData, ContractKey, Code, TxEnv, Trees, VMVersion) ->
 
 -spec execute_call(map(), boolean()) -> {ok, map()} | {error, term()}.
 execute_call(#{ code := Code
+              , store := Store
               , address := Address
               , caller := Caller
               , data := CallData
@@ -89,6 +92,7 @@ execute_call(#{ code := Code
     %% TODO: Handle Contract In State.
     Spec =
         #{ exec => #{ code => Code
+                    , store => Store
                     , address => Address
                     , caller => Caller
                     , data => CallData

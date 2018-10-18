@@ -55,13 +55,14 @@ on_chain_call(ContractKey, Function, Argument) ->
     ContractsTree  = aec_trees:contracts(Trees),
     Contract       = aect_state_tree:get_contract(ContractKey, ContractsTree),
     SerializedCode = aect_contracts:code(Contract),
+    Store          = aect_contracts:state(Contract),
     %% TODO: Check the type info before calling?
     #{ byte_code := Code} = aeso_compiler:deserialize(SerializedCode),
     case create_call(Code, Function, Argument) of
         {error, E} -> {error, E};
         CallData ->
             VMVersion   = ?AEVM_01_Sophia_01,
-            aect_evm:call_common(CallData, ContractKey, Code,
+            aect_evm:call_common(CallData, ContractKey, Code, Store,
                                  TxEnv, Trees, VMVersion)
     end.
 

@@ -71,6 +71,7 @@ execute_call(Contract, CallData, ChainState, Options) ->
     Res = aect_evm:execute_call(
           maps:merge(
           #{ code              => Code,
+             store             => get_store(ChainState1),
              address           => Contract,
              caller            => 0,
              data              => CallData,

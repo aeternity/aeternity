@@ -131,7 +131,7 @@ init(#{ env  := Env
     init_vm(State,
             maps:get(code, Exec),
             maps:get(mem, Exec, #{mem_size => 0}),
-            ChainAPI:get_store(ChainState)).
+            maps:get(store, Exec)).
 
 
 init_vm(State, Code, Mem, Store) ->
