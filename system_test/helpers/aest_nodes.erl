@@ -562,6 +562,7 @@ wait_for_value({height, MinHeight}, NodeNames, Timeout, Ctx) ->
 wait_for_value({txs_on_chain, Txs}, NodeNames, Timeout, Ctx) ->
     %% Not very optimal, since found Txs' are searched for in next round.
     FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
+    KeyBlocksWaiting = proplists:get_value(key_blocks, Ctx, 2),
     CheckF =
         fun(Node) ->
                 Found =
@@ -572,10 +573,11 @@ wait_for_value({txs_on_chain, Txs}, NodeNames, Timeout, Ctx) ->
                 case lists:member(wait, Found) of
                     false ->
                         case {get_top(Node), lists:max([0 |[ H || {_,H} <- Found]])} of
-                            {#{height := Top}, Max} when Top > Max + 1 ->
-                                %% We wait two key block on top of the microblock that contains the transaction
+                            {#{height := Top}, Max} when Top >= Max + KeyBlocksWaiting ->
+                                %% We wait some key block on top of the microblock that contains the transaction
                                 {done, Found};
-                            _ -> wait
+                            _ ->
+                                wait
                         end;
                     true -> wait
                 end
