@@ -32,8 +32,12 @@
                    ) -> {Status :: cowboy:http_status(), Headers :: list(), Body :: map()}.
 
 handle_request(OperationID, Req, Context) ->
-    jobs:run(http_update,
-             fun() -> handle_request_(OperationID, Req, Context) end).
+    try aec_jobs_queues:run(http_update,
+                            fun() -> handle_request_(OperationID, Req, Context) end)
+    catch
+        error:{rejected, _} ->
+            {503, [], #{reason => <<"Temporary overload">>}}
+    end.
 
 handle_request_('PostKeyBlock', #{'KeyBlock' := Data}, _Context) ->
     case aec_headers:deserialize_from_client(key, Data) of

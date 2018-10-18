@@ -1,7 +1,54 @@
 -module(aec_jobs_queues).
 
 -export([start/0]).
+-export([run/2]).
 
+
+%% run(Queue, F)
+%%
+run(Queue, F) when is_function(F, 0) ->
+    T0 = erlang:system_time(microsecond),
+    case jobs:ask(Queue) of
+        {ok, Opaque} ->
+            log_outcome(Queue, accepted, T0),
+            try F()
+            after
+                jobs:done(Opaque)
+            end;
+        {error, Reason} ->
+            log_outcome(Queue, rejected, T0),
+            erlang:error({rejected, Reason})
+    end;
+run(Queue, F) when is_function(F, 1) ->
+    T0 = erlang:system_time(microsecond),
+    case jobs:ask(Queue) of
+        {ok, Opaque} ->
+            log_outcome(Queue, accepted, T0),
+            try F(Opaque)
+            after
+                jobs:done(Opaque)
+            end;
+        {error, Reason} ->
+            log_outcome(Queue, rejected, T0),
+            erlang:error({rejected, Reason})
+    end.
+
+log_outcome(Queue, Result, T0) when Result == accepted; Result == rejected ->
+    T1 = erlang:system_time(microsecond),
+    aec_metrics:try_update(metric(Queue, [Result, wait]), T1-T0),
+    aec_metrics:try_update(metric(Queue, [Result]), 1).
+
+create_metrics(Q) ->
+    exometer:ensure(metric(Q, [accepted]), counter, []),
+    exometer:ensure(metric(Q, [accepted, wait]), histogram, []),
+    exometer:ensure(metric(Q, [rejected]), counter, []),
+    exometer:ensure(metric(Q, [rejected, wait]), histogram, []).
+
+metric(Queue, Sub) ->
+    [ae, epoch, aecore, queues, Queue | Sub].
+
+%% start()
+%%
 %% This function, called from aecore_app:start(), adds the configurable jobs
 %% queues for epoch.
 %%
@@ -64,6 +111,7 @@ start() ->
 add_queue(Q, Opts) ->
     lager:debug("add_queue(~p, ~p)", [Q, Opts]),
     Res = jobs:add_queue(Q, Opts),
+    create_metrics(Q),
     lager:debug("Res = ~p", [Res]),
     ok.
 

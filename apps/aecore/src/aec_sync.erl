@@ -502,7 +502,7 @@ delayed_run_job(PeerId, Task, Queue, Fun, Delay) ->
     NewWorker = proc_lib:spawn(
         fun() ->
             timer:sleep(Delay),
-            jobs:run(Queue, Fun)
+            aec_jobs_queues:run(Queue, Fun)
         end),
     handle_worker(Task, {change_worker, PeerId, OldWorker, NewWorker}).
 
@@ -514,10 +514,10 @@ enqueue(Kind, Data, PeerIds) ->
     spawn(fun() ->
     case Kind of
         block ->
-            [ jobs:run(sync_gossip, fun() -> do_forward_block(Data, PId) end)
+            [ aec_jobs_queues:run(sync_gossip, fun() -> do_forward_block(Data, PId) end)
               || PId <- PeerIds ];
         tx ->
-            [ jobs:run(sync_gossip, fun() -> do_forward_tx(Data, PId) end)
+            [ aec_jobs_queues:run(sync_gossip, fun() -> do_forward_tx(Data, PId) end)
               || PId <- PeerIds ]
     end end).
 

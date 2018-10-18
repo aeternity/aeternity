@@ -49,7 +49,12 @@ handle_request(OperationID, Req, Context) ->
         end).
 
 %% run(no_queue, F) -> F();
-run(Queue, F) -> jobs:run(Queue, F).
+run(Queue, F) ->
+    try aec_jobs_queues:run(Queue, F)
+    catch
+        error:{rejected, _} ->
+            {503, [], #{reason => <<"Temporary overload">>}}
+    end.
 
 %% read transactions
 queue('GetTopBlock')                            -> ?READ_Q;

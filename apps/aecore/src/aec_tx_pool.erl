@@ -116,7 +116,7 @@ push(Tx) ->
 -spec push(aetx_sign:signed_tx(), event()) -> ok | {error, atom()}.
 push(Tx, Event) when ?PUSH_EVENT(Event) ->
     %% Verify that this is a signed transaction.
-    jobs:run(tx_pool_push, fun() -> push_(Tx, Event) end).
+    aec_jobs_queues:run(tx_pool_push, fun() -> push_(Tx, Event) end).
 
 push_(Tx, Event) ->
     try aetx_sign:tx(Tx)
