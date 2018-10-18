@@ -202,9 +202,15 @@
                             "description" : "HTTP Request connect timeout.",
                             "type" : "integer"
                         },
+                        "max_connections" : {
+                            "description" : "Maximum number of concurrent connections.",
+                            "type" : "integer",
+                            "default" : 100
+                        },
                         "acceptors" : {
                             "description" : "Number of acceptors in external pool",
-                            "type" : "integer"
+                            "type" : "integer",
+                            "default" : 10
                         }
                     }
                 },
@@ -222,9 +228,15 @@
                             "Listen port for internal HTTP interface.",
                             "type" : "integer"
                         },
+                        "max_connections" : {
+                            "description" : "Maximum number of concurrent connections.",
+                            "type" : "integer",
+                            "default" : 100
+                        },
                         "acceptors" : {
                             "description" : "Number of acceptors in internal pool",
-                            "type" : "integer"
+                            "type" : "integer",
+                            "default" : 10
                         }
                     }
                 },
@@ -287,9 +299,15 @@
                           "default": "127.0.0.1",
                           "example": "0.0.0.0"
                         },
+                        "max_connections": {
+                          "description": "Maximum number of concurrent connections.",
+                          "type": "integer",
+                          "default": 100
+                        },
                         "acceptors" : {
                             "description" : "Number of acceptors in pool",
-                            "type" : "integer"
+                            "type" : "integer",
+                            "default" : 10
                         }
                     }
                 }

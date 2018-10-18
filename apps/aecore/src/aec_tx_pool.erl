@@ -120,15 +120,24 @@ push(Tx, Event) when ?PUSH_EVENT(Event) ->
 
 push_(Tx, Event) ->
     try aetx_sign:tx(Tx)
-    catch _:_ -> error({illegal_transaction, Tx})
+    catch _:_ ->
+            incr([push, illegal]),
+            error({illegal_transaction, Tx})
     end,
     case check_pool_db_put(Tx) of
-        ignore -> ok;
-        {error,_} = E -> E;
+        ignore ->
+            incr([push, ignore]),
+            ok;
+        {error,_} = E ->
+            incr([push, error]),
+            E;
         {ok, Hash} ->
+            incr([push]),
             gen_server:call(?SERVER, {push, Tx, Hash, Event})
     end.
 
+incr(Metric) ->
+    aec_metrics:try_update([ae,epoch,aecore,tx_pool | Metric], 1).
 
 -spec get_max_nonce(aec_keys:pubkey()) -> {ok, non_neg_integer()} | undefined.
 get_max_nonce(Sender) ->
