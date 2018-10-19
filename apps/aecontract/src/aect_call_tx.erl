@@ -224,6 +224,7 @@ run_contract(#contract_call_tx{ nonce  = _Nonce
     ContractsTree  = aec_trees:contracts(Trees),
     Contract       = aect_state_tree:get_contract(ContractPubkey, ContractsTree),
     Code           = aect_contracts:code(Contract),
+    Store          = aect_contracts:state(Contract),
     CallDef = #{ caller     => CallerPubkey
                , contract   => ContractPubkey
                , gas        => Gas
@@ -232,6 +233,7 @@ run_contract(#contract_call_tx{ nonce  = _Nonce
                , amount     => Amount
                , call_stack => CallStack
                , code       => Code
+               , store      => Store
                , call       => Call
                , trees      => Trees
                , tx_env     => Env

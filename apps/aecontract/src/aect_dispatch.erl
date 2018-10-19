@@ -75,6 +75,7 @@ run_common(#{  amount      := Value
              , call_stack  := CallStack
              , caller      := <<CallerAddr:?PUB_SIZE/unit:8>>
              , code        := Code
+             , store       := Store
              , contract    := <<Address:?PUB_SIZE/unit:8>>
              , gas         := Gas
              , gas_price   := GasPrice
@@ -93,6 +94,7 @@ run_common(#{  amount      := Value
             chainAPI          => aec_vm_chain,
             vm_version        => VMVersion},
     Exec = #{code       => Code,
+             store      => Store,
              address    => Address,
              caller     => CallerAddr,
              data       => CallData,

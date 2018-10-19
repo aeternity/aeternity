@@ -41,7 +41,7 @@ execute_identity_fun_from_solidity_binary(_Cfg) ->
     Code = aeu_hex:hexstring_decode(id_bytecode()),
     Env  = initial_state(#{101 => Code}),
     NewCode = successful_call_(101, word, main, <<42>>, Env),
-    {ok, <<42:256>>, _, _} =  execute_call(101, <<26,148,216,62,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 42>>, Env#{ 101 => NewCode}, #{}),
+    {ok, <<42:256>>, _, _} =  execute_call(101, <<26,148,216,62,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 42>>, Env#{101 => NewCode}, #{}),
     ok.
 
 
@@ -160,6 +160,7 @@ execute_call(Contract, CallData, ChainState, Options) ->
     Res = aect_evm:execute_call(
           maps:merge(
           #{ code              => Code,
+             store             => #{},
              address           => Contract,
              caller            => 0,
              data              => CallData,

@@ -29,13 +29,14 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
     Contract = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
     OwnerPubKey = aect_contracts:owner_pubkey(Contract),
     Code = aect_contracts:code(Contract),
+    Store = aect_contracts:state(Contract),
     CallStack = [], %% TODO: should we have a call stack for create_tx also
                     %% when creating a contract in a contract.
     VmVersion = aect_contracts:vm_version(Contract),
     CallDef = make_call_def(OwnerPubKey, ContractPubKey,
                             _Gas = 1000000, _GasPrice = 1,
                             _Amount = 0, %TODO: make this configurable
-                            CallData, CallStack, Code, Call, OnChainTrees, OnChainEnv, Trees0),
+                            CallData, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv, Trees0),
     {CallRes, Trees} = aect_dispatch:run(VmVersion, CallDef),
     case aect_call:return_type(CallRes) of
         ok ->
@@ -71,17 +72,18 @@ run(ContractPubKey, VmVersion, Call, CallData, CallStack, Trees0,
     Contract = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
     OwnerPubKey = aect_contracts:owner_pubkey(Contract),
     Code = aect_contracts:code(Contract),
+    Store = aect_contracts:state(Contract),
     case aect_contracts:vm_version(Contract) =:= VmVersion of
         true  -> ok;
         false ->  erlang:error(wrong_vm_version)
     end,
     CallDef = make_call_def(OwnerPubKey, ContractPubKey, Gas, GasPrice, Amount,
-              CallData, CallStack, Code, Call, OnChainTrees, OnChainEnv, Trees0),
+              CallData, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv, Trees0),
     {CallRes, Trees} = aect_dispatch:run(VmVersion, CallDef),
     aect_utils:insert_call_in_trees(CallRes, Trees).
 
 make_call_def(OwnerPubKey, ContractPubKey, GasLimit, GasPrice, Amount,
-              CallData, CallStack, Code, Call, OnChainTrees, OnChainEnv,
+              CallData, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv,
               OffChainTrees) ->
     #{caller          => OwnerPubKey
     , contract        => ContractPubKey
@@ -92,6 +94,7 @@ make_call_def(OwnerPubKey, ContractPubKey, GasLimit, GasPrice, Amount,
     , call_stack      => CallStack
     , code            => Code
     , call            => Call
+    , store           => Store
     , trees           => OffChainTrees
     , tx_env          => OnChainEnv
     , off_chain       => true

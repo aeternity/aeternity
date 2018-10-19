@@ -306,11 +306,12 @@ run_contract(#contract_create_tx{ nonce      =_Nonce
                                 , gas_price  = GasPrice
                                 , call_data  = CallData
                                 } = Tx,
-             Call, Env, Trees,_Contract, ContractPubKey)->
+             Call, Env, Trees, Contract, ContractPubKey)->
     Caller = owner_pubkey(Tx),
     CallStack = [], %% TODO: should we have a call stack for create_tx also
                     %% when creating a contract in a contract.
 
+    Store     = aect_contracts:state(Contract),
     CallDef = #{ caller      => Caller
                , contract    => ContractPubKey
                , gas         => Gas
@@ -319,6 +320,7 @@ run_contract(#contract_create_tx{ nonce      =_Nonce
                , amount      => 0 %% Initial call takes no amount
                , call_stack  => CallStack
                , code        => Code
+               , store       => Store
                , call        => Call
                , trees       => Trees
                , tx_env      => Env
