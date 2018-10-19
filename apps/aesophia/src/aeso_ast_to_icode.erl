@@ -10,16 +10,13 @@
 -module(aeso_ast_to_icode).
 
 -export([ast_typerep/1, type_value/1,
-         convert/2]).
+         convert_typed/2]).
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("aeso_icode.hrl").
 
--spec convert(aeso_syntax:ast(), list()) -> aeso_icode:icode().
-convert(Tree, Options) ->
-    TypedTree = aeso_ast_infer_types:infer(Tree),
-    [io:format("Typed tree:\n~s\n",[prettypr:format(aeso_pretty:decls(TypedTree, [show_generated]))]) || lists:member(pp_typed,Options)],
-    %% [io:format("Typed tree:\n~p\n",[TypedTree]) || lists:member(pp_typed,Options)],
+-spec convert_typed(aeso_syntax:ast(), list()) -> aeso_icode:icode().
+convert_typed(TypedTree, Options) ->
     code(TypedTree, aeso_icode:new(Options)).
 
 code([{contract, _Attribs, {con, _, Name}, Code}|Rest], Icode) ->

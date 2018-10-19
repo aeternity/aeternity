@@ -2179,10 +2179,8 @@ fp_use_onchain_oracle(Cfg) ->
 
                 % verify that Oracle.query_fee works
                 fun(#{query_id := QueryId} = Props) ->
-                    EncodedQueryId = aeu_hex:hexstring_encode(QueryId),
                     (force_call_contract(Forcer, <<"query_fee">>,
-                                         <<"(", EncodedQueryId/binary,
-                                           ")">>))(Props)
+                                         <<"()">>))(Props)
                 end,
                 assert_last_channel_result(QueryFee, word)
                ])
@@ -2718,7 +2716,7 @@ fp_solo_payload_broken_call(Cfg) ->
                     %% assert all gas was consumed
                     GasLimit = aect_call:gas_used(Call),
                     GasPrice = aect_call:gas_price(Call),
-                    <<"out_of_gas">> = aect_call:return_value(Call),
+                    <<"bad_call_data">> = aect_call:return_value(Call),
                     Props
                 end])
         end,

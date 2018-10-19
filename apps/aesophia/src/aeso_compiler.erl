@@ -10,7 +10,8 @@
 %%%-------------------------------------------------------------------
 -module(aeso_compiler).
 
--export([ deserialize/1
+-export([ arg_typerep_from_type_info/2
+        , deserialize/1
         , file/1
         , file/2
         , from_string/2
@@ -19,7 +20,7 @@
 
 -ifdef(TEST).
 
--export([ serialize/2
+-export([ serialize/3
         ]).
 
 -endif.
@@ -33,6 +34,11 @@
                          , type_info   := [binary()]
                          , byte_code   := binary()
                          }.
+-type function_name() :: binary(). %% String
+-type typerep() :: tuple(). %% Should not be here
+-type type_info() :: [{ FunctionName :: function_name()
+                      , ArgType      :: typerep()
+                      , OutType      :: typerep()}].
 
 -export_type([ option/0
              , options/0
@@ -59,20 +65,23 @@ from_string(ContractString, Options) ->
     Ast = parse(ContractString, Options),
     ok = pp_sophia_code(Ast, Options),
     ok = pp_ast(Ast, Options),
-    ICode = to_icode(Ast, Options),
+    TypedAst = aeso_ast_infer_types:infer(Ast),
+    ok = pp_typed_ast(TypedAst, Options),
+    ICode = to_icode(TypedAst, Options),
+    TypeInfo = extract_type_info(ICode),
     ok = pp_icode(ICode, Options),
     Assembler =  assemble(ICode, Options),
     ok = pp_assembler(Assembler, Options),
     ByteCodeList = to_bytecode(Assembler, Options),
     ByteCode = << << B:8 >> || B <- ByteCodeList >>,
     ok = pp_bytecode(ByteCode, Options),
-    serialize(ByteCode, ContractString).
+    serialize(ByteCode, TypeInfo, ContractString).
 
 parse(C,_Options) ->
     parse_string(C).
 
-to_icode(Ast, Options) ->
-    aeso_ast_to_icode:convert(Ast, Options).
+to_icode(TypedAst, Options) ->
+    aeso_ast_to_icode:convert_typed(TypedAst, Options).
 
 assemble(Icode, Options) ->
     aeso_icode_to_asm:convert(Icode, Options).
@@ -84,12 +93,34 @@ to_bytecode([Op|Rest], Options) ->
     [aeb_opcodes:m_to_op(Op)|to_bytecode(Rest, Options)];
 to_bytecode([], _) -> [].
 
+extract_type_info(#{functions := Functions} =_Icode) ->
+    io:format("Functions: ~p\n", [Functions]),
+    TypeInfo = [{list_to_binary(Name),
+                 aeso_data:to_binary({tuple, [T || {_, T} <- Args]}),
+                 aeso_data:to_binary(TypeRep)}
+                || {Name,_Attrs, Args,_Body, TypeRep} <- Functions,
+                   not is_tuple(Name)
+               ],
+    lists:sort(TypeInfo).
 
-serialize(ByteCode, ContractString) ->
+-spec arg_typerep_from_type_info(Function :: binary(), type_info()) ->
+           {'ok', typerep()} | {'error', 'bad_type_data' | 'unknown_function'}.
+arg_typerep_from_type_info(Function, TypeInfo) ->
+    case lists:keyfind(Function, 1, TypeInfo) of
+        {Function, ArgTypeBin,_OutTypeBin} ->
+            case aeso_data:from_binary(typerep, ArgTypeBin) of
+                {ok, ArgType} -> {ok, ArgType};
+                {error,_} -> {error, bad_type_data}
+            end;
+        false ->
+            {error, unknown_function}
+    end.
+
+serialize(ByteCode, TypeInfo, ContractString) ->
     ContractBin = list_to_binary(ContractString),
     Version = version(),
     Fields = [ {source_hash, aec_hash:hash(sophia_source_code, ContractBin)}
-             , {type_info, []} %% TODO: This
+             , {type_info, TypeInfo}
              , {byte_code, ByteCode}
              ],
     aec_object_serialization:serialize(compiler_sophia,
@@ -117,7 +148,7 @@ deserialize(Binary) ->
 
 serialization_template(?COMPILER_VERSION) ->
     [ {source_hash, binary}
-    , {type_info, [binary]}
+    , {type_info, [{binary, binary, binary}]} %% {Function, arg type, out type}
     , {byte_code, binary}].
 
 
@@ -125,6 +156,7 @@ pp_sophia_code(C, Opts)->  pp(C, Opts, pp_sophia_code, fun(Code) ->
                                 io:format("~s\n", [prettypr:format(aeso_pretty:decls(Code))])
                             end).
 pp_ast(C, Opts)      ->  pp(C, Opts, pp_ast, fun aeso_ast:pp/1).
+pp_typed_ast(C, Opts)->  pp(C, Opts, pp_typed, fun aeso_ast:pp_typed/1).
 pp_icode(C, Opts)    ->  pp(C, Opts, pp_icode, fun aeso_icode:pp/1).
 pp_assembler(C, Opts)->  pp(C, Opts, pp_assembler, fun aeb_asm:pp/1).
 pp_bytecode(C, Opts) ->  pp(C, Opts, pp_bytecode, fun aeb_disassemble:pp/1).

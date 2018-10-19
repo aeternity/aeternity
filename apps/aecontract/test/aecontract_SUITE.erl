@@ -890,24 +890,25 @@ sophia_oracles(_Cfg) ->
     Ct = <<CtId:256>> = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
     QueryFee          = 100,
     TTL               = 15,
-    CtId              = ?call(call_contract, Acc, Ct, registerOracle, word, {CtId, 0, QueryFee, FixedTTL(TTL)}),
+    Sig               = dummy_signature(),
+    CtId              = ?call(call_contract, Acc, Ct, registerOracle, word, {CtId, Sig, QueryFee, FixedTTL(TTL)}),
     Question          = <<"Manchester United vs Brommapojkarna">>,
     QId               = ?call(call_contract, Acc, Ct, createQuery, word,
                                 {Ct, Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
     Question          = ?call(call_contract, Acc, Ct, getQuestion, string, {CtId, QId}),
     QueryFee          = ?call(call_contract, Acc, Ct, queryFee, word, Ct),
     none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
-    {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {CtId, QId, 0, 4001}),
+    {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {CtId, QId, Sig, 4001}),
     {some, 4001}      = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
-    {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Ct, 0, RelativeTTL(10)}),
+    {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Ct, Sig, RelativeTTL(10)}),
 
     %% Test complex answers
     Ct1 = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
     QuestionType = {variant_t, [{why, [word]}, {how, [string]}]},
     AnswerType   = {variant_t, [{noAnswer, []}, {yesAnswer, [QuestionType, string, word]}]},
-    Question1    = {1, <<"birds fly?">>},
+    Question1    = {variant, 1, [<<"birds fly?">>]},
     Answer       = {yesAnswer, {how, <<"birds fly?">>}, <<"magic">>, 1337},
-    {some, Answer} = ?call(call_contract, Acc, Ct1, complexOracle, {option, AnswerType}, {Question1, 0}),
+    {some, Answer} = ?call(call_contract, Acc, Ct1, complexOracle, {option, AnswerType}, {Question1, Sig}),
     ok.
 
 %% Oracle TTL tests
@@ -936,13 +937,14 @@ step_ttl(St = #{ account := Acc, contract := Ct }, Height, Cmd) ->
     QFee = 10,
     Error = {error, <<"out_of_gas">>},
     io:format("-- At height ~p --\nState ~p\nTransaction: ~p\n", [Height, St, Cmd]),
+    Sig = dummy_signature(),
     case Cmd of
         {create, TTL} ->
-            Oracle = ?call(call_contract, Acc, Ct, registerOracle, word, {Ct, 0, QFee, Enc(TTL)}, #{ height => Height }),
+            Oracle = ?call(call_contract, Acc, Ct, registerOracle, word, {Ct, Sig, QFee, Enc(TTL)}, #{ height => Height }),
             St#{ oracle => Oracle, oracle_ttl => ttl_height(Height, TTL) };
         {extend, TTL} ->
             #{ oracle := Oracle, oracle_ttl := TTLo } = St,
-            Res = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Oracle, 0, Enc(TTL)}, #{ height => Height }),
+            Res = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Oracle, Sig, Enc(TTL)}, #{ height => Height }),
             NewTTLo = ttl_height(TTLo, TTL),
             %% Can't extend if expired, and new expiry must be > old expiry,
             %% and TTL must be relative.
@@ -966,7 +968,7 @@ step_ttl(St = #{ account := Acc, contract := Ct }, Height, Cmd) ->
             end;
         respond ->
             #{ oracle := Oracle, query := Query, query_ttl := TTLq, reply_ttl := TTLr } = St,
-            Res = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {Oracle, Query, 0, 42}, #{ height => Height }),
+            Res = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {Oracle, Query, Sig, 42}, #{ height => Height }),
             case TTLq >= Height of  %% Query must not have expired
                 true  -> St#{ reply_ttl => ttl_height(Height, TTLr) };
                 false -> Error = Res, St
@@ -1122,13 +1124,15 @@ oracle_register_from_contract(OperatorAcc, OCt, OCt, Opts, TxOpts0, S) ->
     QueryFee = maps:get(qfee, Opts),
     OTtl = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(maps:get(ottl, Opts, 15)),
     TxOpts = TxOpts0#{return_gas_used => true},
-    call_contract(OperatorAcc, OCt, registerOracle, word, {OCt, 0, QueryFee, OTtl}, TxOpts, S).
+    Sig = dummy_signature(),
+    call_contract(OperatorAcc, OCt, registerOracle, word, {OCt, Sig, QueryFee, OTtl}, TxOpts, S).
 
 oracle_register_from_remote_contract(OperatorAcc, RCt, OCt, Opts, TxOpts0, S) ->
     QueryFee = maps:get(qfee, Opts),
     OTtl = ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(maps:get(ottl, Opts, 15)),
     TxOpts = TxOpts0#{return_gas_used => true},
-    call_contract(OperatorAcc, RCt, callRegisterOracle, word, {OCt, OCt, 0, QueryFee, OTtl}, TxOpts, S).
+    Sig = dummy_signature(),
+    call_contract(OperatorAcc, RCt, callRegisterOracle, word, {OCt, OCt, Sig, QueryFee, OTtl}, TxOpts, S).
 
 oracle_query_from_contract(UserAcc, OCt, OCt, Opts, TxOpts, S) ->
     oracle_query_from_contract_(createQuery, UserAcc, OCt, OCt, Opts, TxOpts, S).
@@ -1166,7 +1170,8 @@ oracle_check_and_respond_from_contract(OperatorAcc, OCt, OCt, QueryId, Opts, TxO
     Response = maps:get(response, Opts, 4001),
     ?assertMatch(_ when is_integer(Response), Response),
     TxOpts = TxOpts0#{return_gas_used => true},
-    {{R, GasUsed}, S1} = call_contract(OperatorAcc, OCt, respond, {tuple, []}, {OCt, QueryId, 0, Response}, TxOpts, S),
+    Sig = dummy_signature(),
+    {{R, GasUsed}, S1} = call_contract(OperatorAcc, OCt, respond, {tuple, []}, {OCt, QueryId, Sig, Response}, TxOpts, S),
     ?assertMatch({{some, Response}, _}, call_contract(OperatorAcc, OCt, getAnswer, {option, word}, {OCt, QueryId}, S1)),
     {{R, GasUsed}, S1}.
 
@@ -1174,7 +1179,8 @@ oracle_check_and_respond_from_remote_contract(OperatorAcc, RCt, OCt, QueryId, Op
     ?assertMatch({Question, _} when is_binary(Question), call_contract(OperatorAcc, OCt, getQuestion, string, {OCt, QueryId}, S)),
     Response = maps:get(response, Opts, 4001),
     TxOpts = TxOpts0#{return_gas_used => true},
-    {{R, GasUsed}, S1} = call_contract(OperatorAcc, RCt, callRespond, {tuple, []}, {OCt, OCt, QueryId, 0, Response}, TxOpts, S),
+    Sig = dummy_signature(),
+    {{R, GasUsed}, S1} = call_contract(OperatorAcc, RCt, callRespond, {tuple, []}, {OCt, OCt, QueryId, Sig, Response}, TxOpts, S),
     ?assertMatch({{some, Response}, _}, call_contract(OperatorAcc, OCt, getAnswer, {option, word}, {OCt, QueryId}, S1)),
     {{R, GasUsed}, S1}.
 
@@ -2135,7 +2141,7 @@ sophia_oracles_gas_ttl__measure_gas_used(Sc, Height, Gas) ->
             Sc#oracles_gas_ttl_scenario.extend_ttl,
             Sc#oracles_gas_ttl_scenario.query_ttl,
             Sc#oracles_gas_ttl_scenario.respond_ttl,
-            _Signature=0},
+            _Signature=dummy_signature()},
     Opts = #{height => Height,
              return_gas_used => true,
              gas_price => 1,
@@ -2373,6 +2379,9 @@ sign(Material, KeyHolder) ->
     PrivKey  = aect_test_utils:priv_key(KeyHolder, state()),
     <<Word1:256, Word2:256>> = enacl:sign_detached(Material, PrivKey),
     {Word1, Word2}.
+
+dummy_signature() ->
+    {123, 123}.
 
 %% Testing map functions and primitives
 sophia_maps(_Cfg) ->
@@ -2797,7 +2806,7 @@ sophia_variant_types(_Cfg) ->
     stopped   = Call(get_state, State, {}),
     {}        = Call(start, Unit, {123}),
     {grey, 0} = Call(get_color, Color, {}),
-    {}        = Call(set_color, Unit, {{1}}),   %% green has tag 1
+    {}        = Call(set_color, Unit, {{variant, 1, []}}), %% green has tag 1
     {started, {AccId, 123, green}} = Call(get_state, State, {}),
     ok.
 
@@ -3062,12 +3071,13 @@ sophia_aens(_Cfg) ->
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
     CHash           = aens_hash:commitment_hash(NameAscii, Salt1),
     NHash           = aens_hash:name_hash(NameAscii),
-    {} = ?call(call_contract, Acc, Ct, preclaim, {tuple, []}, {Ct, CHash, 0},        #{ height => 10 }),
-    {} = ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {Ct, Name1, Salt1, 0}, #{ height => 11 }),
-    {} = ?call(call_contract, Acc, Ct, transfer, {tuple, []}, {Ct, Acc, NHash, 0},   #{ height => 12 }),
+    Sig             = dummy_signature(),
+    {} = ?call(call_contract, Acc, Ct, preclaim, {tuple, []}, {Ct, CHash, Sig},        #{ height => 10 }),
+    {} = ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {Ct, Name1, Salt1, Sig}, #{ height => 11 }),
+    {} = ?call(call_contract, Acc, Ct, transfer, {tuple, []}, {Ct, Acc, NHash, Sig},   #{ height => 12 }),
     ok = ?call(aens_update, Acc, NHash, Pointers),
     {some, OPubkey} = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name1, <<"oracle_pubkey">>}),
-    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Ct, NHash, 0}, #{ height => 13 }),
+    {error, <<"out_of_gas">>} = ?call(call_contract, Acc, Ct, revoke, {tuple, []}, {Ct, NHash, Sig}, #{ height => 13 }),
     ok.
 
 sophia_state_handling(_Cfg) ->
