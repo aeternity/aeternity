@@ -7,8 +7,9 @@
 
 -module(aect_evm).
 
--export([ simple_call_common/3
-        , call_common/7
+-export([ simple_call_common/5
+        , simple_call_common/3
+        , call_common/9
         , encode_call_data/3
         , execute_call/2
         ]).
@@ -25,6 +26,12 @@ encode_call_data(_Contract, Function, Argument) ->
 -spec simple_call_common(binary(), binary(), VMVersion :: integer()) ->
                             {ok, binary()} | {error, binary()}.
 simple_call_common(Code, CallData, VMVersion) ->
+    simple_call_common(Code, CallData, undefined, undefined, VMVersion).
+
+-spec simple_call_common(binary(), binary(), aeso_sophia:type() | 'undefined',
+                         aeso_sophia:type() | 'undefined', VMVersion :: integer()) ->
+                            {ok, binary()} | {error, binary()}.
+simple_call_common(Code, CallData, CallDataType, OutType, VMVersion) ->
     {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
     Owner          = <<123456:32/unit:8>>,
     Deposit        = 0,
@@ -32,12 +39,16 @@ simple_call_common(Code, CallData, VMVersion) ->
     Store          = aect_contracts:state(Contract),
     ContractKey    = aect_contracts:pubkey(Contract),
     Trees1         = aect_utils:insert_contract_in_trees(Contract, Trees),
-    call_common(CallData, ContractKey, Code, Store, TxEnv, Trees1, VMVersion).
+    call_common(CallData, CallDataType, OutType, ContractKey, Code,
+                Store, TxEnv, Trees1, VMVersion).
 
--spec call_common(binary(), binary(), binary(), aect_contracts:store(), aetx_env:env(),
+-spec call_common(binary(), aeso_sophia:type() | 'undefined',
+                  aeso_sophia:type() | 'undefined', binary(), binary(),
+                  aect_contracts:store(), aetx_env:env(),
                   aec_trees:trees(), VMVersion :: integer()) ->
                      {ok, binary()} | {error, binary()}.
-call_common(CallData, ContractKey, Code, Store, TxEnv, Trees, VMVersion) ->
+call_common(CallData, CallDataType, OutType, ContractKey,
+            Code, Store, TxEnv, Trees, VMVersion) ->
     <<Address:256>> = ContractKey,
     GasLimit = aec_governance:block_gas_limit(),
     Amount = 0,
@@ -48,6 +59,8 @@ call_common(CallData, ContractKey, Code, Store, TxEnv, Trees, VMVersion) ->
             , address => Address
             , caller => 0
             , data => CallData
+            , call_data_type => CallDataType
+            , out_type => OutType
             , gas => 100000000000000000
             , gasPrice => 1
             , origin => 0
@@ -88,7 +101,7 @@ execute_call(#{ code := Code
               , chainState := ChainState
               , chainAPI := ChainAPI
               , vm_version := VmVersion
-              }, Trace) ->
+              } = CallDef, Trace) ->
     %% TODO: Handle Contract In State.
     Spec =
         #{ exec => #{ code => Code
@@ -96,6 +109,8 @@ execute_call(#{ code := Code
                     , address => Address
                     , caller => Caller
                     , data => CallData
+                    , call_data_type => maps:get(call_data_type, CallDef, undefined)
+                    , out_type => maps:get(out_type, CallDef, undefined)
                     , gas => Gas
                     , gasPrice => GasPrice
                     , origin => Origin

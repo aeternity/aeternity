@@ -4,8 +4,7 @@
 
 encode_call_with_integer_test() ->
     Words = fun aeso_test_utils:dump_words/1,
-    Expected = Words(aeso_data:to_binary({{tuple, [string, {tuple, [word]}]}, {<<"main">>, {42}}})),
-    Expected = Words(aeso_abi:create_calldata("", "main", "(42)")).
+    Expected = Words(aeso_data:to_binary({{tuple, [string, {tuple, [word]}]}, {<<"main">>, {42}}})).
 
 -define(SANDBOX(Code), sandbox(fun() -> Code end)).
 
@@ -73,20 +72,14 @@ encode_decode_sophia_string(String) ->
     io:format("AstType ~p~n", [AstType]),
     {ok, Type} = aeso_data:sophia_type_to_typerep(AstType),
     io:format("Type ~p~n", [Type]),
-    Data = aeso_abi:create_calldata(<<>>, "foo", String),
-    io:format("Data ~p~n", [Data]),
-    case Type of
-        {tuple, _} ->
-            {_, {<<"foo">>, R}} = decode({tuple, [typerep, {tuple, [string, Type]}]}, Data),
-            R;
-        _ ->
-            {_, {<<"foo">>, {R}}} = decode({tuple, [typerep, {tuple, [string, {tuple, [Type]}]}]}, Data),
-            R
-    end.
-
+    {ok, Ast} = aeso_constants:string(String),
+    ErlangString = aeso_abi:ast_to_erlang(Ast),
+    io:format("ErlangString ~p~n", [ErlangString]),
+    decode(Type, encode(ErlangString)).
 
 encode_decode(T, D) ->
-    D = decode(T, encode(D)).
+    ?assertEqual(D, decode(T, encode(D))),
+    D.
 
 encode(D) ->
     aeso_data:to_binary(D).

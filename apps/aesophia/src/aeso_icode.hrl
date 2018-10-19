@@ -8,6 +8,7 @@
 -define(TYPEREP_VARIANT_TAG, 4).
 -define(TYPEREP_TYPEREP_TAG, 5).
 -define(TYPEREP_MAP_TAG,     6).
+-define(TYPEREP_FUN_TAG,     7).
 
 -record(arg, {name::string(), type::?Type()}).
 
@@ -26,8 +27,8 @@
     , address  :: expr()
     , value    :: expr()
     , arg      :: expr()
-    , arg_type :: ?Type()
-    , out_type :: ?Type() }).
+    , type_hash:: expr()
+    }).
 
 -record(prim_balance,    { address :: expr() }).
 -record(prim_block_hash, { height :: expr() }).

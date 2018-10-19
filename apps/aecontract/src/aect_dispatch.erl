@@ -58,10 +58,20 @@ encode_call_data(_, _, _, _) ->
 
 -spec run(byte(), map()) -> {aect_call:call(), aec_trees:trees()}.
 run(?AEVM_01_Sophia_01, #{code := SerializedCode} = CallDef) ->
-    %% TODO: Check the type info before running
-    #{ byte_code := Code} = aeso_compiler:deserialize(SerializedCode),
-    CallDef1 = CallDef#{code => Code},
-    run_common(CallDef1, ?AEVM_01_Sophia_01);
+    #{ byte_code := Code
+     , type_info := TypeInfo} = aeso_compiler:deserialize(SerializedCode),
+    case aeso_abi:check_calldata(maps:get(call_data, CallDef), TypeInfo) of
+        {ok, CallDataType, OutType} ->
+            CallDef1 = CallDef#{code => Code,
+                                call_data_type => CallDataType,
+                                out_type => OutType},
+            run_common(CallDef1, ?AEVM_01_Sophia_01);
+        {error, What} ->
+            Gas = maps:get(gas, CallDef),
+            Call = maps:get(call, CallDef),
+            Trees = maps:get(trees, CallDef),
+            {create_call(Gas, error, What, [], Call), Trees}
+    end;
 run(?AEVM_01_Solidity_01, CallDef) ->
     run_common(CallDef, ?AEVM_01_Solidity_01);
 run(_, #{ call := Call} = _CallDef) ->
@@ -97,6 +107,8 @@ run_common(#{  amount      := Value
              store      => Store,
              address    => Address,
              caller     => CallerAddr,
+             call_data_type => maps:get(call_data_type, CallDef, undefined),
+             out_type   => maps:get(out_type, CallDef, undefined),
              data       => CallData,
              gas        => Gas,
              gasPrice   => GasPrice,
@@ -159,6 +171,8 @@ create_call(GasUsed, Type, Log, Call) ->
 error_to_binary(out_of_gas) -> <<"out_of_gas">>;
 error_to_binary(out_of_stack) -> <<"out_of_stack">>;
 error_to_binary(not_allowed_off_chain) -> <<"not_allowed_off_chain">>;
+error_to_binary(bad_call_data) -> <<"bad_call_data">>;
+error_to_binary(unknown_function) -> <<"unknown_function">>;
 error_to_binary(E) ->
     ?DEBUG_LOG("Unknown error: ~p\n", [E]),
     <<"unknown_error">>.

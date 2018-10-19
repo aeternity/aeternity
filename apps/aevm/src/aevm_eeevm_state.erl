@@ -36,7 +36,7 @@
         , gas/1
         , gaslimit/1
         , gasprice/1
-        , get_contract_call_input/3
+        , get_contract_call_input/4
         , heap_to_binary/3
         , heap_to_heap/3
         , init/2
@@ -48,7 +48,7 @@
         , mem/1
         , no_recursion/1
         , number/1
-        , return_contract_call_result/6
+        , return_contract_call_result/7
         , return_data/1
         , save_store/1
         , set_code/2
@@ -90,6 +90,7 @@ init(#{ env  := Env
 
     ChainState = maps:get(chainState, Env),
     ChainAPI =  maps:get(chainAPI, Env),
+    OutType = maps:get(out_type, Exec, undefined),
 
     State =
         #{ address     => Address
@@ -124,6 +125,8 @@ init(#{ env  := Env
          , chain_state => ChainState
          , chain_api   => ChainAPI
 
+         , out_type => OutType
+
          , environment =>
                #{ spec => Spec
                 , options => Opts }
@@ -132,10 +135,13 @@ init(#{ env  := Env
     init_vm(State,
             maps:get(code, Exec),
             maps:get(mem, Exec, #{mem_size => 0}),
-            maps:get(store, Exec)).
+            maps:get(store, Exec),
+            maps:get(call_data_type, Exec, undefined),
+            OutType
+           ).
 
 
-init_vm(State, Code, Mem, Store) ->
+init_vm(State, Code, Mem, Store, CallDataType, OutType) ->
     State1 =
         State#{ out       => <<>>
               , call      => #{}
@@ -153,6 +159,9 @@ init_vm(State, Code, Mem, Store) ->
     case vm_version(State) of
         ?AEVM_01_Solidity_01 ->
             aevm_eeevm_store:init(Store, State1);
+        ?AEVM_01_Sophia_01 when CallDataType =:= undefined;
+                                OutType =:= undefined ->
+            error({bad_vm_setup, missing_call_data_type});
         ?AEVM_01_Sophia_01 ->
             case is_reentrant_call(State) of
                 true -> %% Sophia doesn't allow reentrant calls
@@ -165,13 +174,13 @@ init_vm(State, Code, Mem, Store) ->
                     %% to it on the stack.
                     Calldata = data(State1),
                     %% Calldata can contain maps, so we can't simply write it
-                    %% to memory. The calldata should be a pair of a typerep
-                    %% and the actual calldata.
+                    %% to memory. The first element of the calldata tuple is
+                    %% the function name
                     HeapSize = aevm_eeevm_memory:size_in_words(State2) * 32,
-                    case aeso_data:from_binary({tuple, [typerep]}, Calldata) of
-                        {ok, {Type}} ->
-                            {ok, CalldataHeap} = aeso_data:binary_to_heap({tuple, [typerep, Type]}, Calldata,
-                                                                          aevm_eeevm_maps:next_id(maps(State2)), HeapSize),
+                    case aeso_data:binary_to_heap(CallDataType, Calldata,
+                                                  aevm_eeevm_maps:next_id(maps(State2)),
+                                                  HeapSize) of
+                        {ok, CalldataHeap} ->
                             {Ptr, State3} = write_heap_value(CalldataHeap, State2),
                             aevm_eeevm_stack:push(Ptr, State3);
                         {error, Err} ->
@@ -207,13 +216,12 @@ do_return(Us0, Us1, State) ->
     case vm_version(State) of
         ?AEVM_01_Sophia_01 ->
             try
-                %% In Sophia Us0 is a pointer to a typerep for the return value, and
-                %% Us1 is a pointer to the actual value.
+                %% In Sophia Us1 is a pointer to the actual value.
+                %% The type of the value is in the state (from meta data)
                 Heap       = mem(State),
-                {ok, Type} = aeso_data:from_heap(typerep, Heap, Us0),
-                {ok, Out, Stats} = aeso_data:heap_to_binary_w_stats(Type, get_store(State), aeso_data:heap_value(maps(State), Us1, Heap)),
+                Type       = out_type(State),
+                {ok, Out, Stats}  = aeso_data:heap_to_binary_w_stats(Type, get_store(State), aeso_data:heap_value(maps(State), Us1, Heap)),
                 {set_out(Out, State), aevm_gas:mem_gas(maps:get(total_map_size, Stats) div 32)}
-
             catch _:_ ->
                 io:format("** Error reading return value\n~s", [format_mem(mem(State))]),
                 {set_gas(0, State), 0}  %% Consume all gas on failure
@@ -259,19 +267,15 @@ heap_to_heap(Type, Ptr, State) ->
     NewBin = aeso_data:heap_value_heap(NewValue),
     {ok, <<NewPtr:256, NewBin/binary>>}.
 
-return_contract_call_result(To, Input, Addr, Size, ReturnData, State) ->
+return_contract_call_result(To, Input, Addr,_Size, ReturnData, Type, State) ->
     case aevm_eeevm_state:vm_version(State) of
         ?AEVM_01_Solidity_01 ->
             {1, aevm_eeevm_memory:write_area(Addr, ReturnData, State)};
         ?AEVM_01_Sophia_01 ->
             try
-                %% For Sophia, we use the Size argument to store the typerep of
-                %% the result. We also ignore the Addr and put the result on
-                %% top of the heap.
-                TypePtr    = Size,
-                HeapSize   = aevm_eeevm_memory:size_in_words(State) * 32,
-                Heap       = mem(State),
-                {ok, Type} = aeso_data:from_heap(typerep, Heap, TypePtr),
+                %% For Sophia, ignore the Addr and put the result on the
+                %% top of the heap
+                HeapSize = aevm_eeevm_memory:size_in_words(State) * 32,
                 OutValue =
                     case is_local_primop(To, Input) of
                         true ->
@@ -327,28 +331,46 @@ save_store(#{ chain_state := ChainState
             end
     end.
 
-get_contract_call_input(IOffset, ISize, State) ->
+get_contract_call_input(Target, IOffset, ISize, State) ->
     case vm_version(State) of
         ?AEVM_01_Solidity_01 ->
-            aevm_eeevm_memory:get_area(IOffset, ISize, State);
+            {Arg, State1} = aevm_eeevm_memory:get_area(IOffset, ISize, State),
+            {Arg, undefined, State1};
         ?AEVM_01_Sophia_01 ->
-            %% In Sophia the ISize is the type of the arguments and IOffset is
-            %% a pointer into the heap.
-            TypePtr = ISize,
-            Ptr     = IOffset,
+            %% In Sophia:
+            %%   ISize is the (integer) type hash of the remote entrypoint
+            %%   IOffset is a pointer into the heap to the arguments
+            ArgPtr     = IOffset,
+            TypeHash   = <<ISize:256>>,
             Heap       = mem(State),
-            {ok, Type} = aeso_data:from_heap(typerep, Heap, TypePtr),
-            %% TODO: This is a bit awkward since we need to pass the argument
-            %%       typerep in the calldata. Will be much better when types
-            %%       are in contract metadata!
-            %% We put a temporary pair of the type and the value on the heap
-            %% and call heap_to_binary on that.
-            PairPtr   = 32 * aevm_eeevm_memory:size_in_words(State),
-            TmpState  = aevm_eeevm_memory:write_area(PairPtr, <<TypePtr:256, Ptr:256>>, State),
-            TmpHeap   = mem(TmpState),
-            {ok, Arg} = aeso_data:heap_to_binary({tuple, [typerep, Type]}, get_store(TmpState),
-                                                 aeso_data:heap_value(maps(TmpState), PairPtr, TmpHeap)),
-            {Arg, State}
+            TargetKey  = <<Target:256>>,
+            ChainAPI   = chain_api(State),
+            ChainState = chain_state(State),
+            Store      = get_store(State),
+            HeapValue = aeso_data:heap_value(maps(State), ArgPtr, Heap),
+            case Target == ?PRIM_CALLS_CONTRACT of
+                true ->
+                    %% The first argument is the primop id
+                    {ok, Bin} = aeso_data:heap_to_binary({tuple, [word]}, get_store(State), HeapValue),
+                    {ok, {Prim}} = aeso_data:from_binary({tuple, [word]}, Bin),
+                    {ArgTypes, OutType} = aevm_ae_primops:types(Prim, HeapValue, Store, State),
+                    DataType = {tuple, [word|ArgTypes]},
+                    {ok, Arg} = aeso_data:heap_to_binary(DataType, Store, HeapValue),
+                    {Arg, OutType, State};
+                false ->
+                    case ChainAPI:get_contract_fun_types(TargetKey, ?AEVM_01_Sophia_01,
+                                                         TypeHash, ChainState) of
+                        {ok, ArgType, OutType} ->
+                            DataType = {tuple, [word, ArgType]},
+                            {ok, Arg} = aeso_data:heap_to_binary(DataType, Store, HeapValue),
+                            {Arg, OutType, State};
+                        {error, _Err} ->
+                            %% This will fail later anyway.
+                            DataType = {tuple, [word]},
+                            {ok, Arg} = aeso_data:heap_to_binary(DataType, Store, HeapValue),
+                            {Arg, word, set_gas(0, State)}
+                    end
+            end
     end.
 
 -spec write_heap_value(aeso_data:heap_value(), state()) -> {non_neg_integer(), state()}.
@@ -376,7 +398,8 @@ call_contract(Caller, Target, CallGas, Value, Data, State) ->
                     GasSpent = aevm_chain_api:gas_spent(Res),
                     Return   = aevm_chain_api:return_value(Res),
                     {ok, Return, GasSpent, set_chain_state(ChainState1, State)};
-                {error, Err} -> {error, Err}
+                {error, Err} ->
+                    {error, Err}
             catch K:Err ->
                 lager:error("~w:call_contract(~w, ~w, ~w, ~w, ~w, _) crashed with ~w:~w",
                             [ChainAPI, TargetKey, CallGas, Value, Data, CallStack, K, Err]),
@@ -473,6 +496,7 @@ mem(State)         -> maps:get(memory, State).
 number(State)      -> maps:get(number, State).
 origin(State)      -> maps:get(origin, State).
 out(State)         -> maps:get(out, State).
+out_type(State)    -> maps:get(out_type, State).
 return_data(State) -> maps:get(return_data, State).
 gas(State)         -> maps:get(gas, State).
 gaslimit(State)    -> maps:get(gas_limit, State).

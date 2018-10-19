@@ -19,6 +19,8 @@
         , call_contract_upfront_fee/1
         , call_contract_upfront_gas/1
         , call_contract_upfront_amount/1
+        , call_missing/1
+        , call_wrong_type/1
         , create_contract/1
         , create_contract_init_error/1
         , create_contract_negative_gas_price_zero/1
@@ -116,6 +118,7 @@ groups() ->
                               , {group, state_tree}
                               , {group, sophia}
                               , {group, store}
+                              , {group, remote_call_type_errors}
                               ]}
     , {transactions, [], [ create_contract
                          , create_contract_init_error
@@ -136,7 +139,9 @@ groups() ->
     , {call_contract_upfront_charges, [], [ call_contract_upfront_fee
                                           , call_contract_upfront_gas
                                           , call_contract_upfront_amount ]}
-
+    , {remote_call_type_errors, [], [ call_missing
+                                    , call_wrong_type
+                                    ]}
     , {state_tree, [sequence], [ state_tree ]}
     , {sophia,     [sequence], [ sophia_identity,
                                  sophia_no_reentrant,
@@ -273,7 +278,11 @@ create_contract_init_error(_Cfg) ->
     {PubKey, S1} = aect_test_utils:setup_new_account(S0),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
-    Overrides = #{ call_data => make_calldata(init, {})
+    ContractCode = aect_test_utils:compile_contract("contracts/init_error.aes"),
+    Overrides = #{ code => ContractCode
+                 , call_data => make_calldata_from_code(ContractCode, <<"init">>, {<<123:256>>, 0})
+                 , gas => 10000
+                 , gas_price => 1
                  },
     Tx = aect_test_utils:create_tx(PubKey, Overrides, S1),
 
@@ -290,11 +299,12 @@ create_contract_init_error(_Cfg) ->
     ?assertEqual(PubKey, aect_call:caller_pubkey(InitCall)),
     ?assertEqual(aetx:nonce(Tx), aect_call:caller_nonce(InitCall)),
     ?assertEqual(aect_create_tx:gas_price(aetx:tx(Tx)), aect_call:gas_price(InitCall)),
+    %% TODO: Should all gas be consumed always on init errors?
     ?assertEqual(aect_create_tx:gas_limit(aetx:tx(Tx)), aect_call:gas_used(InitCall)), %% Gas exhausted.
     %% Check that the created init call has the correct details not from the contract create tx
     ?assertEqual(ContractKey, aect_call:contract_pubkey(InitCall)), %% Contract not created.
     ?assertEqual(error, aect_call:return_type(InitCall)),
-    ?assertEqual(<<>>, aect_call:return_value(InitCall)),
+    ?assertEqual(<<"out_of_gas">>, aect_call:return_value(InitCall)),
 
     %% Check that contract create transaction sender got charged correctly.
     %%
@@ -320,7 +330,7 @@ create_contract_(ContractCreateTxGasPrice) ->
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
     IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
-    CallData     = make_calldata(init, {}),
+    CallData     = make_calldata_from_code(IdContract, init, {}),
     Overrides    = #{ code => IdContract
                     , call_data => CallData
                     , gas => 10000
@@ -456,7 +466,7 @@ call_contract_negative_insufficient_funds(_Cfg) ->
     Value = 10,
     Bal = 9 = Fee + Value - 2,
     S = aect_test_utils:set_account_balance(Acc1, Bal, state()),
-    CallData = make_calldata(main, 42),
+    CallData = make_calldata_from_id(IdC, main, 42, S),
     CallTx = aect_test_utils:call_tx(Acc1, IdC,
                                      #{call_data => CallData,
                                        gas_price => 1,
@@ -499,7 +509,7 @@ call_contract_(ContractCallTxGasPrice) ->
     CallerBalance = aec_accounts:balance(aect_test_utils:get_account(Caller, S2)),
 
     IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
-    CallDataInit = make_calldata(init, {}),
+    CallDataInit = make_calldata_from_code(IdContract, init, {}),
     Overrides    = #{ code => IdContract
                     , call_data => CallDataInit
                     , gas => 10000
@@ -515,7 +525,7 @@ call_contract_(ContractCallTxGasPrice) ->
     %% Now check that we can call it.
     Fee           = 107,
     Value         = 52,
-    CallData = make_calldata(main, 42),
+    CallData = make_calldata_from_code(IdContract, main, 42),
     CallTx = aect_test_utils:call_tx(Caller, ContractKey,
                                      #{call_data => CallData,
                                        gas_price => ContractCallTxGasPrice,
@@ -732,7 +742,7 @@ create_contract(Owner, Name, Args, S) ->
 create_contract(Owner, Name, Args, Options, S) ->
     Nonce       = aect_test_utils:next_nonce(Owner, S),
     Code        = aect_test_utils:compile_contract(lists:concat(["contracts/", Name, ".aes"])),
-    CallData    = make_calldata(init, Args),
+    CallData    = make_calldata_from_code(Code, init, Args),
     CreateTx    = aect_test_utils:create_tx(Owner,
                     maps:merge(
                     #{ nonce      => Nonce
@@ -760,7 +770,7 @@ call_contract(Caller, ContractKey, Fun, Type, Args, S) ->
 
 call_contract(Caller, ContractKey, Fun, Type, Args, Options, S) ->
     Nonce    = aect_test_utils:next_nonce(Caller, S),
-    Calldata = make_calldata(Fun, Args),
+    Calldata = make_calldata_from_id(ContractKey, Fun, Args, S),
     CallTx   = aect_test_utils:call_tx(Caller, ContractKey,
                 maps:merge(
                 #{ nonce      => Nonce
@@ -792,10 +802,22 @@ account_balance(PubKey, S) ->
     Account = aect_test_utils:get_account(PubKey, S),
     {aec_accounts:balance(Account), S}.
 
-make_calldata(Fun, Args0) ->
-    Args         = translate_pubkeys(if is_tuple(Args0) -> Args0; true -> {Args0} end),
-    CalldataType = {tuple, [string, aeso_abi:get_type(Args)]},
-    aeso_data:to_binary({CalldataType, {list_to_binary(atom_to_list(Fun)), Args}}).
+make_calldata_raw(<<FunHashInt:256>>, Args0) ->
+    Args = translate_pubkeys(if is_tuple(Args0) -> Args0; true -> {Args0} end),
+    aeso_data:to_binary({FunHashInt, Args}).
+
+make_calldata_from_code(Code, Fun, Args) when is_atom(Fun) ->
+    make_calldata_from_code(Code, atom_to_binary(Fun, latin1), Args);
+make_calldata_from_code(Code, Fun, Args) when is_binary(Fun) ->
+    #{type_info := TypeInfo} = aeso_compiler:deserialize(Code),
+    case aeso_abi:type_hash_from_function_name(Fun, TypeInfo) of
+        {ok, TypeHash} -> make_calldata_raw(TypeHash, Args);
+        {error, _} = Err -> error({bad_function, Fun, Err})
+    end.
+
+make_calldata_from_id(Id, Fun, Args, State) ->
+    {{value, C}, _S} = lookup_contract_by_id(Id, State),
+    make_calldata_from_code(aect_contracts:code(C), Fun, Args).
 
 translate_pubkeys(<<N:256>>) -> N;
 translate_pubkeys([H|T]) ->
@@ -917,7 +939,7 @@ sophia_oracles(_Cfg) ->
     Ct1 = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
     QuestionType = {variant_t, [{why, [word]}, {how, [string]}]},
     AnswerType   = {variant_t, [{noAnswer, []}, {yesAnswer, [QuestionType, string, word]}]},
-    Question1    = {1, <<"birds fly?">>},
+    Question1    = {variant, 1, [<<"birds fly?">>]},
     Answer       = {yesAnswer, {how, <<"birds fly?">>}, <<"magic">>, 1337},
     {some, Answer} = ?call(call_contract, Acc, Ct1, complexOracle, {option, AnswerType}, {Question1}),
     ok.
@@ -2146,8 +2168,7 @@ sophia_oracles_gas_ttl__measure_gas_used(Sc, Height, Gas) ->
             Sc#oracles_gas_ttl_scenario.register_ttl,
             Sc#oracles_gas_ttl_scenario.extend_ttl,
             Sc#oracles_gas_ttl_scenario.query_ttl,
-            Sc#oracles_gas_ttl_scenario.respond_ttl,
-            _Signature=0},
+            Sc#oracles_gas_ttl_scenario.respond_ttl},
     Opts = #{height => Height,
              return_gas_used => true,
              gas_price => 1,
@@ -2815,7 +2836,7 @@ sophia_variant_types(_Cfg) ->
     stopped   = Call(get_state, State, {}),
     {}        = Call(start, Unit, {123}),
     {grey, 0} = Call(get_color, Color, {}),
-    {}        = Call(set_color, Unit, {{1}}),   %% green has tag 1
+    {}        = Call(set_color, Unit, {{variant, 1, []}}), %% green has tag 1
     {started, {AccId, 123, green}} = Call(get_state, State, {}),
     ok.
 
@@ -3304,3 +3325,27 @@ merge_missing_keys(_Cfg) ->
 enter_contract(Contract, S) ->
     Contracts = aect_state_tree:enter_contract(Contract, aect_test_utils:contracts(S)),
     {Contract, aect_test_utils:set_contracts(Contracts, S)}.
+
+%%%===================================================================
+%%% Remote call type errors
+%%%===================================================================
+
+call_missing(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1      = ?call(new_account, 1000000),
+    Contract1 = ?call(create_contract, Acc1, remote_type_check, {}),
+    Contract2 = ?call(create_contract, Acc1, remote_type_check, {}),
+    42        = ?call(call_contract, Acc1, Contract1, remote_id, word, {Contract2, 42}),
+    {error, <<"out_of_gas">>} = ?call(call_contract, Acc1, Contract1, remote_missing, word, {Contract2, 42}),
+
+    ok.
+
+call_wrong_type(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1     = ?call(new_account, 1000000),
+    Contract1 = ?call(create_contract, Acc1, remote_type_check, {}),
+    Contract2 = ?call(create_contract, Acc1, remote_type_check, {}),
+    42        = ?call(call_contract, Acc1, Contract1, remote_id, word, {Contract2, 42}),
+    {error, <<"out_of_gas">>} = ?call(call_contract, Acc1, Contract1, remote_wrong_type, word,
+                                      {Contract2, <<"hello">>}),
+    ok.

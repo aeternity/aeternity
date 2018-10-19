@@ -1408,15 +1408,16 @@ get_call_input(StateIn, Op) when Op == ?CALL; Op == ?CALLCODE ->
     get_call_input(StateIn, 3, 4).
 
 get_call_input(StateIn, IOffsetIx, ISizeIx) ->
+    To      = aevm_eeevm_stack:peek(1, StateIn),
     IOffset = aevm_eeevm_stack:peek(IOffsetIx, StateIn),
     ISize   = aevm_eeevm_stack:peek(ISizeIx, StateIn),
 
-    {I, State} = aevm_eeevm_state:get_contract_call_input(IOffset, ISize, StateIn),
+    {I, OutT, State} = aevm_eeevm_state:get_contract_call_input(To, IOffset, ISize, StateIn),
     case aevm_eeevm_state:vm_version(State) of
         ?AEVM_01_Solidity_01 ->
-            {I, State};
+            {I, OutT, State};
         ?AEVM_01_Sophia_01 ->
-            {I, spend_gas_common({call_data}, aevm_gas:mem_gas(byte_size(I) div 32), State)}
+            {I, OutT, spend_gas_common({call_data}, aevm_gas:mem_gas(byte_size(I) div 32), State)}
     end.
 
 recursive_call1(StateIn, Op) ->
@@ -1424,7 +1425,7 @@ recursive_call1(StateIn, Op) ->
     %% i ≡ µm[µs[3] . . .(µs[3] + µs[4] − 1)]
 
     %% Get (expanded) call data, and pay gas for it.
-    {I, State0}       = get_call_input(StateIn, Op),
+    {I, OutT, State0} = get_call_input(StateIn, Op),
     State1            = spend_call_gas(State0, Op),
     Gascap            = aevm_gas:call_cap(Op, State0),
 
@@ -1450,14 +1451,14 @@ recursive_call1(StateIn, Op) ->
     Address = aevm_eeevm_state:address(State8),
     AddressBalance = aevm_eeevm_state:accountbalance(Address, State8),
     case Value =< AddressBalance of
-        true  -> recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend);
+        true  -> recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend, OutT);
         false ->
             ?TEST_LOG("Excessive value operand ~p for address ~p, that has balance ~p", [Value, Address, AddressBalance]),
             {0, aevm_eeevm_state:set_gas(0, State8)}
             %% Consume all gas on failed contract call.
     end.
 
-recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend) ->
+recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend, OutType) ->
     Dest = case Op of
                ?CALL -> To;
                ?CALLCODE -> aevm_eeevm_state:address(State8);
@@ -1518,7 +1519,7 @@ recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend)
             ReturnState2 = aevm_eeevm_state:set_gas(GasAfterCall, ReturnState),
             case R of
                 {ok, Message} ->
-                    aevm_eeevm_state:return_contract_call_result(Dest, I, OOffset, OSize, Message, ReturnState2);
+                    aevm_eeevm_state:return_contract_call_result(Dest, I, OOffset, OSize, Message, OutType, ReturnState2);
                 {error, _} ->
                     {0, aevm_eeevm_state:set_gas(0, ReturnState2)}
                     %% Consume all gas on failed contract call.

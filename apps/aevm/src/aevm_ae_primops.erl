@@ -8,7 +8,7 @@
 %%%-------------------------------------------------------------------
 
 -module(aevm_ae_primops).
--export([call/4, is_local_primop/1]).
+-export([types/4, call/4, is_local_primop/1]).
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("aevm_ae_primops.hrl").
@@ -106,6 +106,111 @@ is_local_primop(Data) ->
     case get_primop(Data) of
         Op when ?PRIM_CALL_IN_MAP_RANGE(Op) -> true;
         _ -> false
+    end.
+
+%% ------------------------------------------------------------------
+%% Primop types
+%% ------------------------------------------------------------------
+
+%% This is used to find the argument and return types for primops.
+%% For some of them, we need to dig around in the actual argument to
+%% find the types, and for some we need to know what types for which
+%% the argument was built.
+
+types(?PRIM_CALL_AENS_CLAIM,_HeapValue,_Store,_State) ->
+    {[word, string, word, sign_t()], tuple0_t()};
+types(?PRIM_CALL_AENS_PRECLAIM,_HeapValue,_Store,_State) ->
+    {[word, word, sign_t()], tuple0_t()};
+types(?PRIM_CALL_AENS_RESOLVE, HeapValue, Store,_State) ->
+    %% The out type is given in the third argument
+    T = {tuple, [word, word, word, typerep]},
+    {ok, Bin} = aeso_data:heap_to_binary(T, Store, HeapValue),
+    {ok, {_Prim, _, _, OutType}} = aeso_data:from_binary(T, Bin),
+    {[string, string, typerep], aeso_icode:option_typerep(OutType)};
+types(?PRIM_CALL_AENS_REVOKE,_HeapValue,_Store,_State) ->
+    {[word, word, sign_t()], tuple0_t()};
+types(?PRIM_CALL_AENS_TRANSFER,_HeapValue,_Store,_State) ->
+    {[word, word, word, sign_t()], tuple0_t()};
+%%types(?PRIM_CALL_AENS_UPDATE,_HeapValue,_Store,_State) ->
+%%TODO: Not implemented
+types(?PRIM_CALL_MAP_DELETE,_HeapValue,_Store,_State) ->
+    {[word, word], word};
+types(?PRIM_CALL_MAP_EMPTY,_HeapValue,_Store,_State) ->
+    {[typerep, typerep], word};
+types(?PRIM_CALL_MAP_GET, HeapValue, Store, State) ->
+    T = {tuple, [word, word]},
+    {ok, Bin} = aeso_data:heap_to_binary(T, Store, HeapValue),
+    {ok, {_Prim, Id}} = aeso_data:from_binary(T, Bin),
+    {_KeyType, ValType} = aevm_eeevm_maps:map_type(Id, State),
+    {[word, word], aeso_icode:option_typerep(ValType)};
+types(?PRIM_CALL_MAP_PUT,_HeapValue,_Store,_State) ->
+    {[word, word, word], word};
+types(?PRIM_CALL_MAP_SIZE,_HeapValue,_Store,_State) ->
+    {[word], word};
+types(?PRIM_CALL_MAP_TOLIST, HeapValue, Store, State) ->
+    T = {tuple, [word, word]},
+    {ok, Bin} = aeso_data:heap_to_binary(T, Store, HeapValue),
+    {ok, {_Prim, Id}} = aeso_data:from_binary(T, Bin),
+    {KeyType, ValType} = aevm_eeevm_maps:map_type(Id, State),
+    {[word], {list, {tuple, [KeyType, ValType]}}};
+types(?PRIM_CALL_ORACLE_EXTEND,_HeapValue,_Store,_State) ->
+    {[word, sign_t(), ttl_t()], tuple0_t()};
+types(?PRIM_CALL_ORACLE_GET_ANSWER, HeapValue, Store, State) ->
+    case oracle_response_type_from_chain(HeapValue, Store, State) of
+        {ok, RType} ->
+            {[word, word], aeso_icode:option_typerep(RType)};
+        {error, _} ->
+            {[], tuple0_t()}
+    end;
+types(?PRIM_CALL_ORACLE_GET_QUESTION, HeapValue, Store, State) ->
+    case oracle_query_type_from_chain(HeapValue, Store, State) of
+        {ok, QType} ->
+            {[word, word], QType};
+        {error, _} ->
+            {[], tuple0_t()}
+    end;
+types(?PRIM_CALL_ORACLE_QUERY, HeapValue, Store, State) ->
+    case oracle_query_type_from_chain(HeapValue, Store, State) of
+        {ok, QType} ->
+            {[word, QType, ttl_t(), ttl_t(), word], word};
+        {error, _} ->
+            {[], tuple0_t()}
+    end;
+types(?PRIM_CALL_ORACLE_QUERY_FEE,_HeapValue,_Store,_State) ->
+    {[word], word};
+types(?PRIM_CALL_ORACLE_REGISTER,_HeapValue,_Store,_State) ->
+    {[word, sign_t(), word, ttl_t(), typerep, typerep], word};
+types(?PRIM_CALL_ORACLE_RESPOND, HeapValue, Store, State) ->
+    case oracle_response_type_from_chain(HeapValue, Store, State) of
+        {ok, RType} ->
+            {[word, word, sign_t(), RType], tuple0_t()};
+        {error, _} ->
+            {[], tuple0_t()}
+    end;
+types(?PRIM_CALL_SPEND,_HeapValue,_Store,_State) ->
+    {[word], tuple0_t()}.
+
+tuple0_t() ->
+    {tuple, []}.
+
+ttl_t() ->
+    {variant, [[word], [word]]}.
+
+oracle_response_type_from_chain(HeapValue, Store, State) ->
+    oracle_type_from_chain(HeapValue, Store, State, response).
+
+oracle_query_type_from_chain(HeapValue, Store, State) ->
+    oracle_type_from_chain(HeapValue, Store, State, query).
+
+oracle_type_from_chain(HeapValue, Store, State, Which) ->
+    T = {tuple, [word, word]},
+    {ok, Bin} = aeso_data:heap_to_binary(T, Store, HeapValue),
+    {ok, {_Prim, OracleID}} = aeso_data:from_binary(T, Bin),
+    API        = aevm_eeevm_state:chain_api(State),
+    ChainState = aevm_eeevm_state:chain_state(State),
+    case Which of
+        query    -> API:oracle_query_format(<<OracleID:256>>, ChainState);
+        response -> API:oracle_response_format(<<OracleID:256>>, ChainState)
     end.
 
 %% ------------------------------------------------------------------
@@ -467,13 +572,13 @@ build_heap_list(Maps, KeyType, ValType, [{K, V} | KVs], Offs, Acc) ->
 %% Internal functions
 %% ------------------------------------------------------------------
 
-get_primop(Data) ->                     %% First component is the typerep
-    {ok, {_, T}} = aeso_data:from_binary({tuple, [word, {tuple, [word]}]}, Data),
+get_primop(Data) ->
+    {ok, T} = aeso_data:from_binary({tuple, [word]}, Data),
     {PrimOp} = T,
     PrimOp.
 
-get_args(Types, Data) ->                %% First component is the typerep
-    {ok, {_, V}} = aeso_data:from_binary({tuple, [word, {tuple, [word | Types]}]}, Data),
+get_args(Types, Data) ->
+    {ok, V} = aeso_data:from_binary({tuple, [word | Types]}, Data),
     [_ | Args] = tuple_to_list(V),
     Args.
 
