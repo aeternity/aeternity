@@ -141,8 +141,7 @@ Both external and internal API are exposed to the docker host, the URL pattern i
 - external API - http://$DOCKER_HOST_ADDRESS:$NODE_PORT/
 - internal API - http://$DOCKER_HOST_ADDRESS:$NODE_PORT/internal
 
-Websocket APIs are exposed to the docker host with following URL pattern:
-- websocket API - ws://$DOCKER_HOST_ADDRESS:$NODE_PORT/websocket
+Websocket API is exposed to the docker host with following URL pattern:
 - channels API - ws://$DOCKER_HOST_ADDRESS:$NODE_PORT/channel
 
 Node ports:

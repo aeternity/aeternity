@@ -13,8 +13,6 @@
 -define(DEFAULT_SWAGGER_INTERNAL_PORT, 8143).
 -define(DEFAULT_SWAGGER_INTERNAL_LISTEN_ADDRESS, <<"127.0.0.1">>).
 
--define(DEFAULT_WEBSOCKET_INTERNAL_PORT, 8144).
--define(DEFAULT_WEBSOCKET_LISTEN_ADDRESS, <<"127.0.0.1">>).
 -define(INT_ACCEPTORS_POOLSIZE, 10).
 
 -define(DEFAULT_CHANNEL_WEBSOCKET_PORT, 8044).
@@ -26,18 +24,13 @@
 
 -export([check_env/0]).
 
-%% Tests only
--export([ws_handlers_queue_max_size/0]).
-
 %%====================================================================
 %% API
 %%====================================================================
 
 start(_StartType, _StartArgs) ->
     {ok, Pid} = aehttp_sup:start_link(),
-    {ok, _} = ws_task_worker_sup:start_link(),
     ok = start_http_api(),
-    ok = start_websocket_internal(),
     ok = start_channel_websocket(),
     gproc:reg({n,l,{epoch, app, aehttp}}),
     {ok, Pid}.
@@ -112,23 +105,6 @@ start_http_api(Target, LogicHandler) ->
         ),
     ok.
 
-start_websocket_internal() ->
-    Port = get_internal_websockets_port(),
-    PoolSize = get_internal_websockets_acceptors(),
-    ListenAddress = get_internal_websockets_listen_address(),
-    Dispatch = cowboy_router:compile([
-        {'_', [
-            {"/websocket", ws_handler, []}
-        ]}
-    ]),
-    {ok, _} = cowboy:start_clear(http,
-            [{port, Port},
-             {ip, ListenAddress},
-             {num_acceptors, PoolSize}],
-            #{env => #{dispatch => Dispatch}}
-        ),
-    ok.
-
 start_channel_websocket() ->
     Port = get_channel_websockets_port(),
     PoolSize = get_channel_websockets_acceptors(),
@@ -172,20 +148,6 @@ get_http_api_listen_address(external) ->
 get_http_api_listen_address(internal) ->
     get_and_parse_ip_address_from_config_or_env([<<"http">>, <<"internal">>, <<"listen_address">>],
                                                 aehttp, [http, websocket, listen_address], ?DEFAULT_SWAGGER_INTERNAL_LISTEN_ADDRESS).
-
-get_internal_websockets_listen_address() ->
-    get_and_parse_ip_address_from_config_or_env([<<"websocket">>, <<"internal">>, <<"listen_address">>],
-                                                aehttp, [internal, websocket, listen_address], ?DEFAULT_WEBSOCKET_LISTEN_ADDRESS).
-
-get_internal_websockets_port() ->
-    aeu_env:user_config_or_env([<<"websocket">>, <<"internal">>, <<"port">>],
-                               aehttp, [internal, websocket, port], ?DEFAULT_WEBSOCKET_INTERNAL_PORT).
-
-get_internal_websockets_acceptors() ->
-    aeu_env:user_config_or_env([<<"websocket">>, <<"internal">>, <<"acceptors">>],
-                               aehttp, [internal, websocket, handlers], ?INT_ACCEPTORS_POOLSIZE).
-
-ws_handlers_queue_max_size() -> 5.
 
 get_channel_websockets_listen_address() ->
     get_and_parse_ip_address_from_config_or_env([<<"websocket">>, <<"channel">>, <<"listen_address">>],

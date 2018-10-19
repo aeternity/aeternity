@@ -6,28 +6,24 @@ nodes:
     ports:
       external_api: 3013
       internal_api: 3113
-      internal_ws: 3114
   dev1:
     start: True
     host: localhost
     ports:
       external_api: 3013
       internal_api: 3113
-      internal_ws: 3114
   dev2:
     start: True
     host: localhost
     ports:
       external_api: 3023
       internal_api: 3123
-      internal_ws: 3124
   dev3:
     start: True
     host: localhost
     ports:
       external_api: 3033
       internal_api: 3133
-      internal_ws: 3134
 coinbase_reward: 10000000000000000000
 tests: # test specific settings
   test_use_cases:

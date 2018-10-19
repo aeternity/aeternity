@@ -36,7 +36,7 @@ WORKDIR /home/epoch/node
 # Erl handle SIGQUIT instead of the default SIGINT
 STOPSIGNAL SIGQUIT
 
-EXPOSE 3013 3014 3015 3113 3114
+EXPOSE 3013 3014 3015 3113
 
 COPY ./docker/entrypoint.sh /docker-entrypoint.sh
 COPY ./docker/healthcheck.sh /healthcheck.sh

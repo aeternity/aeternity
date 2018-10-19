@@ -41,7 +41,6 @@
 
 -define(NODE, dev1).
 -define(DEFAULT_TESTS_COUNT, 5).
--define(WS, aehttp_ws_test_utils).
 
 all() ->
     [
