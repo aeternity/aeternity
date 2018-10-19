@@ -2,6 +2,8 @@ contract RemoteState =
   record rstate = { i : int, s : string, m : map(int, int) }
 
   function look_at(s : rstate) = ()
+  function return_s1() = "short"
+  function return_s2() = "______longer_string_at_least_32_bytes_long_____"
 
   function get(s : rstate) = s
   function get_i(s : rstate) = s.i

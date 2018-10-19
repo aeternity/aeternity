@@ -3169,19 +3169,25 @@ sophia_state_gas(_Cfg) ->
     {{}, Gas1} = ?call(call_contract, Acc, Ct1, nop, UnitT, {Ct0}, #{ return_gas_used => true }),
     ?assertEqual(Gas0, Gas1),
 
-    %% Test that one more key in map means more gas
+    %% Test that one more key in map does mean more gas when used as an argument
+    %% to a remote call.
     ?call(call_contract, Acc, Ct1, update_m, UnitT, {#{}}),
     {{}, Gas2} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {Ct0}, #{ return_gas_used => true }),
     ?call(call_contract, Acc, Ct1, update_m, UnitT, {#{1 => 1}}),
     {{}, Gas3} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {Ct0}, #{ return_gas_used => true }),
-    %% ?assertMatch(true, Gas3 > Gas2),
+    ?assertMatch(true, Gas3 > Gas2),
 
     %% Test that a longer string means more gas
     ?call(call_contract, Acc, Ct1, update_s, UnitT, {<<"short">>}),
     {{}, Gas4} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {Ct0}, #{ return_gas_used => true }),
     ?call(call_contract, Acc, Ct1, update_s, UnitT, {<<"at_least_32_bytes_long_in_order_to_use_an_extra_word">>}),
     {{}, Gas5} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {Ct0}, #{ return_gas_used => true }),
-    %% ?assertMatch(true, Gas5 > Gas4),
+    ?assertMatch(true, Gas5 > Gas4),
+
+    %% Test that a bigger return value in remote (inner) call means more gas
+    {_, Gas6} = ?call(call_contract, Acc, Ct1, return_it1, word, {Ct0}, #{ return_gas_used => true }),
+    {_, Gas7} = ?call(call_contract, Acc, Ct1, return_it2, word, {Ct0}, #{ return_gas_used => true }),
+    ?assertMatch(true, Gas7 > Gas6),
 
     ok.
 
