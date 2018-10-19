@@ -2382,10 +2382,8 @@ fp_use_onchain_oracle(Cfg) ->
 
                 % verify that Oracle.query_fee works
                 fun(#{query_id := QueryId} = Props) ->
-                    EncodedQueryId = aeu_hex:hexstring_encode(QueryId),
                     (force_call_contract(Forcer, <<"query_fee">>,
-                                         <<"(", EncodedQueryId/binary,
-                                           ")">>))(Props)
+                                         <<"()">>))(Props)
                 end,
                 assert_last_channel_result(QueryFee, word)
                ])
@@ -2986,7 +2984,7 @@ fp_solo_payload_broken_call(Cfg) ->
     StateHashSize = aec_base58c:byte_size_for_type(state),
     FakeStateHash = <<42:StateHashSize/unit:8>>,
     Test =
-        fun(Owner, Forcer, CallData) ->
+        fun(Owner, Forcer, CallData, Error) ->
             run(#{cfg => Cfg, initiator_amount => 30,
                               responder_amount => 30,
                  channel_reserve => 1},
@@ -3032,21 +3030,21 @@ fp_solo_payload_broken_call(Cfg) ->
                     %% assert all gas was consumed
                     GasLimit = aect_call:gas_used(Call),
                     GasPrice = aect_call:gas_price(Call),
-                    <<"out_of_gas">> = aect_call:return_value(Call),
+                    ?assertEqual(Error, aect_call:return_value(Call)),
                     Props
                 end])
         end,
     TestWithCallData =
-        fun(CallData) ->
-            [Test(Owner, Forcer, CallData) || Owner  <- ?ROLES,
-                                              Forcer <- ?ROLES]
+        fun(CallData, ErrorMsg) ->
+            [Test(Owner, Forcer, CallData, ErrorMsg) || Owner  <- ?ROLES,
+                                                        Forcer <- ?ROLES]
         end,
     %% empty call data
-    TestWithCallData(<<>>),
-    % hex encoded but still wrong
-    TestWithCallData(<<"0xABCD">>),
-    % not hex encoded at all
-    TestWithCallData(<<42:42/unit:8>>),
+    TestWithCallData(<<>>, <<"bad_call_data">>),
+    %% Too small call data
+    TestWithCallData(<<"0xABCD">>, <<"bad_call_data">>),
+    %% Just plain wrong call data, but that can be interpreted
+    TestWithCallData(<<42:42/unit:8>>, <<"unknown_function">>),
     ok.
 
 fp_insufficent_tokens(Cfg) ->
@@ -3124,7 +3122,7 @@ fp_register_name(Cfg) ->
                 state := S0} = Props) ->
             ContractString = aeso_test_utils:read_contract(ContractName),
             BinCode = aeso_compiler:from_string(ContractString, []),
-            CallData = aect_sophia:create_call(BinCode, <<"init">>, <<"()">>),
+            {ok, CallData} = aect_sophia:encode_call_data(BinCode, <<"init">>, <<"()">>),
             Nonce = 1,
             {ok, ContractCreateTx} =
                 aect_create_tx:new(
@@ -3167,8 +3165,8 @@ fp_register_name(Cfg) ->
                                   Sig/binary,
                               ")">>,
             ?TEST_LOG("Preclaim function arguments ~p", [PreclaimArgs]),
-            CallData = aect_sophia:create_call(Code, <<"preclaim">>,
-                                                PreclaimArgs),
+            {ok, CallData} = aect_sophia:encode_call_data(Code, <<"preclaim">>,
+                                                          PreclaimArgs),
             ?TEST_LOG("CallData ~p", [CallData]),
             true = is_binary(CallData),
             {ok, CallTx} =
@@ -4063,7 +4061,7 @@ create_contract_call_payload(Key, ContractId, Fun, Args, Amount) ->
     fun(#{trees := Trees0} = Props) ->
         Contract = aect_test_utils:get_contract(ContractId, #{trees => Trees0}),
         Code = aect_contracts:code(Contract),
-        CallData = aect_sophia:create_call(Code, Fun, Args),
+        {ok, CallData} = aect_sophia:encode_call_data(Code, Fun, Args),
         %% assert calldata is correct:
         true = is_binary(CallData),
         (create_contract_call_payload_with_calldata(Key, ContractId, CallData,
@@ -4149,7 +4147,7 @@ create_contract_in_trees(CreationRound, ContractName, InitArg, Deposit) ->
           owner := Owner} = Props) ->
         ContractString = aeso_test_utils:read_contract(ContractName),
         BinCode = aeso_compiler:from_string(ContractString, []),
-        CallData = aect_sophia:create_call(BinCode, <<"init">>, InitArg),
+        {ok, CallData} = aect_sophia:encode_call_data(BinCode, <<"init">>, InitArg),
         Update = aesc_offchain_update:op_new_contract(aec_id:create(account, Owner),
                                                       ?VM_VERSION,
                                                       BinCode,

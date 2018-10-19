@@ -192,8 +192,13 @@ check(#contract_create_tx{nonce      = Nonce,
          end |
          case VmVersion of
             ?AEVM_01_Sophia_01 ->
-                 [ fun() -> check_sophia_serialization(Tx) end
-                 , fun() -> check_init_function(Tx) end
+                 [ fun() ->
+                           case get_sophia_serialization(Tx) of
+                               {ok, #{type_info := TypeInfo}} ->
+                                   check_init_function(Tx, TypeInfo);
+                               {error, _} = Err -> Err
+                           end
+                   end
                  ];
             ?AEVM_01_Solidity_01 -> []
          end
@@ -203,16 +208,20 @@ check(#contract_create_tx{nonce      = Nonce,
         {error, Reason} -> {error, Reason}
     end.
 
-check_sophia_serialization(#contract_create_tx{code = SerializedCode}) ->
+get_sophia_serialization(#contract_create_tx{code = SerializedCode}) ->
     try aeso_compiler:deserialize(SerializedCode) of
-        _ -> ok
+        Map -> {ok, Map}
     catch
         _:_ -> {error, bad_sophia_code}
     end.
 
-check_init_function(#contract_create_tx{call_data = CallData}) ->
-    case aeso_data:get_function_from_calldata(CallData) of
-        {ok, <<"init">>} -> ok;
+check_init_function(#contract_create_tx{call_data = CallData}, TypeInfo) ->
+    case aeso_data:get_function_hash_from_calldata(CallData) of
+        {ok, Hash} ->
+            case aeso_compiler:function_name_from_type_hash(Hash, TypeInfo) of
+                {ok, <<"init">>} -> ok;
+                _ -> {error, bad_init_function}
+            end;
         _Other -> {error, bad_init_function}
     end.
 

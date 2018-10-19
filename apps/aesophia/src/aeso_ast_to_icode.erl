@@ -10,16 +10,13 @@
 -module(aeso_ast_to_icode).
 
 -export([ast_typerep/1, type_value/1,
-         convert/2]).
+         convert_typed/2]).
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("aeso_icode.hrl").
 
--spec convert(aeso_syntax:ast(), list()) -> aeso_icode:icode().
-convert(Tree, Options) ->
-    TypedTree = aeso_ast_infer_types:infer(Tree),
-    [io:format("Typed tree:\n~s\n",[prettypr:format(aeso_pretty:decls(TypedTree, [show_generated]))]) || lists:member(pp_typed,Options)],
-    %% [io:format("Typed tree:\n~p\n",[TypedTree]) || lists:member(pp_typed,Options)],
+-spec convert_typed(aeso_syntax:ast(), list()) -> aeso_icode:icode().
+convert_typed(TypedTree, Options) ->
     code(TypedTree, aeso_icode:new(Options)).
 
 code([{contract, _Attribs, {con, _, Name}, Code}|Rest], Icode) ->
@@ -340,14 +337,17 @@ ast_body({app, _, {typed, _, {proj, _, {typed, _, Addr, {con, _, Contract}}, {id
     ArgType = ast_typerep({tuple_t, [], ArgsT}),
     Gas    = proplists:get_value("gas",   ArgOpts ++ Defaults),
     Value  = proplists:get_value("value", ArgOpts ++ Defaults),
-    Fun    = ast_body({string, [], list_to_binary(FunName)}, Icode),
+    OutType = ast_typerep(OutT, Icode),
+    <<TypeHash:256>> = aeso_compiler:function_type_hash(FunName, ArgType, OutType),
+    %% The function is represented by its type hash (which includes the name)
+    Fun    = #integer{value = TypeHash},
     #prim_call_contract{
         address  = ast_body(Addr, Icode),
         gas      = Gas,
         value    = Value,
         arg      = #tuple{cpts = [Fun, #tuple{ cpts = ArgsI }]},
-        arg_type = {tuple, [string, ArgType]},
-        out_type = ast_typerep(OutT, Icode) };
+        type_hash= #integer{value = TypeHash}
+      };
 ast_body({proj, _, {typed, _, _, {con, _, Contract}}, {id, _, FunName}}, _Icode) ->
     error({underapplied_contract_call, string:join([Contract, FunName], ".")});
 
@@ -517,12 +517,14 @@ is_monomorphic(_) -> true.
 
 %% Implemented as a contract call to the contract with address 0.
 prim_call(Prim, Amount, Args, ArgTypes, OutType) ->
+    PrimBin = binary:encode_unsigned(Prim),
+    <<TypeHash:256>> = aeso_compiler:function_type_hash(PrimBin, ArgTypes, OutType),
     #prim_call_contract{ gas      = prim_gas_left,
                          address  = #integer{ value = ?PRIM_CALLS_CONTRACT },
                          value    = Amount,
-                         arg      = #tuple{cpts = [#integer{ value = Prim } | Args]},
-                         arg_type = {tuple, [word | ArgTypes]},
-                         out_type = OutType }.
+                         arg      = #tuple{cpts = [#integer{ value = Prim }| Args]},
+                         type_hash= #integer{value = TypeHash}
+                       }.
 
 make_type_def(Args, Def, Icode = #{ type_vars := TypeEnv }) ->
     TVars = [ X || {tvar, _, X} <- Args ],

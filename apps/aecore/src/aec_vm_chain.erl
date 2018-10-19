@@ -43,7 +43,8 @@
           aens_revoke_tx/3,
           aens_revoke/3,
           spend_tx/3,
-          spend/2
+          spend/2,
+          get_contract_fun_types/4
         ]).
 
 -include_lib("apps/aecore/include/blocks.hrl").
@@ -560,6 +561,25 @@ aens_revoke_(Tx, Signature, #state{ account = ContractKey } = State) ->
     end.
 
 %%    Contracts
+
+%% @doc Get the type signature of a remote contract
+get_contract_fun_types(Target, VMVersion, TypeHash, State) ->
+    Trees = get_top_trees(State),
+    CT = aec_trees:contracts(Trees),
+    case aect_state_tree:lookup_contract(Target, CT) of
+        {value, Contract} ->
+            case aect_contracts:vm_version(Contract) of
+                VMVersion ->
+                    SerializedCode = aect_contracts:code(Contract),
+                    #{type_info := TypeInfo} = aeso_compiler:deserialize(SerializedCode),
+                    aeso_compiler:typereps_from_type_hash(TypeHash, TypeInfo);
+                Other ->
+                    {error, {wrong_vm_version, Other}}
+            end;
+        none ->
+            {error, {no_such_contract, Target}}
+    end.
+
 
 %% @doc Call another contract.
 -spec call_contract(aec_keys:pubkey(), non_neg_integer(), non_neg_integer(), binary(),

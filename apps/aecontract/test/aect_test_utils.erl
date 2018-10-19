@@ -129,6 +129,7 @@ create_tx_default_spec(PubKey, State) ->
 
 dummy_bytecode() ->
     aeso_compiler:serialize(<<"NOT PROPER BYTE CODE">>,
+                            [], %% No type info
                             "NOT PROPER SOURCE STRING").
 
 %%%===================================================================
