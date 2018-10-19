@@ -13,11 +13,13 @@
 -define(DEFAULT_SWAGGER_INTERNAL_PORT, 8143).
 -define(DEFAULT_SWAGGER_INTERNAL_LISTEN_ADDRESS, <<"127.0.0.1">>).
 
--define(INT_ACCEPTORS_POOLSIZE, 10).
+-define(DEFAULT_WEBSOCKET_INTERNAL_PORT, 8144).
+-define(DEFAULT_WEBSOCKET_LISTEN_ADDRESS, <<"127.0.0.1">>).
+-define(INT_MAX_CONNECTIONS, 100).
 
 -define(DEFAULT_CHANNEL_WEBSOCKET_PORT, 8044).
 -define(DEFAULT_CHANNEL_WEBSOCKET_LISTEN_ADDRESS, <<"127.0.0.1">>).
--define(CHANNEL_ACCEPTORS_POOLSIZE, 100).
+-define(CHANNEL_MAX_CONNECTIONS, 100).
 
 %% Application callbacks
 -export([start/2, stop/1]).
@@ -61,13 +63,10 @@ check_env() ->
     EnabledGroups =
         lists:foldl(
             fun({Key, Default}, Accum) ->
-                Enabled =
-                    case aeu_env:user_config([<<"http">>, <<"endpoints">>, Key]) of
-                        {ok, Setting} when is_boolean(Setting) ->
-                            Setting;
-                        undefined ->
-                            Default
-                    end,
+                {ok, Enabled} = aeu_env:find_config([<<"http">>, <<"endpoints">>, Key],
+                                                    [ user_config
+                                                    , schema_default
+                                                    , {value, Default} ]),
                 case Enabled of
                     true -> [Key | Accum];
                     false -> Accum
@@ -127,30 +126,30 @@ start_channel_websocket() ->
     ok.
 
 get_and_parse_ip_address_from_config_or_env(CfgKey, App, EnvKey, Default) ->
-    Config = aeu_env:user_config_or_env(CfgKey, App, EnvKey, Default),
+    Config = aeu_env:config_value(CfgKey, App, EnvKey, Default),
     {ok, IpAddress} = inet:parse_address(binary_to_list(Config)),
     IpAddress.
 
 get_http_api_acceptors(external) ->
-    aeu_env:user_config_or_env([<<"http">>, <<"external">>, <<"acceptors">>],
-                               aehttp, [external, acceptors], ?INT_ACCEPTORS_POOLSIZE div 10);
+    aeu_env:config_value([<<"http">>, <<"external">>, <<"acceptors">>],
+                         aehttp, [external, acceptors], ?INT_MAX_CONNECTIONS div 10);
 get_http_api_acceptors(internal) ->
-    aeu_env:user_config_or_env([<<"http">>, <<"internal">>, <<"acceptors">>],
-                               aehttp, [internal, acceptors], ?INT_ACCEPTORS_POOLSIZE div 10).
+    aeu_env:config_value([<<"http">>, <<"internal">>, <<"acceptors">>],
+                               aehttp, [internal, acceptors], ?INT_MAX_CONNECTIONS div 10).
 
 get_http_api_max_conns(external) ->
-    aeu_env:user_config_or_env([<<"http">>, <<"external">>, <<"max_connections">>],
-                               aehttp, [external, acceptors], ?INT_ACCEPTORS_POOLSIZE);
+    aeu_env:config_value([<<"http">>, <<"external">>, <<"max_connections">>],
+                               aehttp, [external, acceptors], ?INT_MAX_CONNECTIONS);
 get_http_api_max_conns(internal) ->
-    aeu_env:user_config_or_env([<<"http">>, <<"internal">>, <<"max_connections">>],
-                               aehttp, [internal, acceptors], ?INT_ACCEPTORS_POOLSIZE).
+    aeu_env:config_value([<<"http">>, <<"internal">>, <<"max_connections">>],
+                               aehttp, [internal, acceptors], ?INT_MAX_CONNECTIONS).
 
 get_http_api_port(external) ->
-    aeu_env:user_config_or_env([<<"http">>, <<"external">>, <<"port">>],
-                               aehttp, [external, port], ?DEFAULT_SWAGGER_EXTERNAL_PORT);
+    aeu_env:config_value([<<"http">>, <<"external">>, <<"port">>],
+                         aehttp, [external, port], ?DEFAULT_SWAGGER_EXTERNAL_PORT);
 get_http_api_port(internal) ->
-    aeu_env:user_config_or_env([<<"http">>, <<"internal">>, <<"port">>],
-                               aehttp, [internal, port], ?DEFAULT_SWAGGER_INTERNAL_PORT).
+    aeu_env:config_value([<<"http">>, <<"internal">>, <<"port">>],
+                         aehttp, [internal, port], ?DEFAULT_SWAGGER_INTERNAL_PORT).
 
 
 get_http_api_listen_address(external) ->
@@ -161,19 +160,23 @@ get_http_api_listen_address(internal) ->
                                                 aehttp, [http, websocket, listen_address], ?DEFAULT_SWAGGER_INTERNAL_LISTEN_ADDRESS).
 
 get_channel_websockets_listen_address() ->
-    get_and_parse_ip_address_from_config_or_env([<<"websocket">>, <<"channel">>, <<"listen_address">>],
-                                                aehttp, [channel, websocket,
-                                                         listen_address], ?DEFAULT_CHANNEL_WEBSOCKET_LISTEN_ADDRESS).
+    get_and_parse_ip_address_from_config_or_env(
+      [<<"websocket">>, <<"channel">>, <<"listen_address">>],
+      aehttp, [channel, websocket,
+               listen_address], ?DEFAULT_CHANNEL_WEBSOCKET_LISTEN_ADDRESS).
 
 get_channel_websockets_port() ->
-    aeu_env:user_config_or_env([<<"websocket">>, <<"channel">>, <<"port">>],
-                               aehttp, [channel, websocket, port], ?DEFAULT_CHANNEL_WEBSOCKET_PORT).
+    aeu_env:config_value([<<"websocket">>, <<"channel">>, <<"port">>],
+                         aehttp, [channel, websocket, port],
+                         ?DEFAULT_CHANNEL_WEBSOCKET_PORT).
 
 get_channel_websockets_acceptors() ->
-    aeu_env:user_config_or_env([<<"websocket">>, <<"channel">>, <<"acceptors">>],
-                               aehttp, [channel, websocket, handlers], ?CHANNEL_ACCEPTORS_POOLSIZE div 10).
+    aeu_env:config_value([<<"websocket">>, <<"channel">>, <<"acceptors">>],
+                         aehttp, [channel, websocket, handlers],
+                         ?CHANNEL_MAX_CONNECTIONS div 10).
 
 get_channel_websockets_max_conns() ->
-    aeu_env:user_config_or_env([<<"websocket">>, <<"channel">>, <<"max_connections">>],
-                               aehttp, [channel, websocket, handlers], ?CHANNEL_ACCEPTORS_POOLSIZE).
+    aeu_env:config_value([<<"websocket">>, <<"channel">>, <<"max_connections">>],
+                         aehttp, [channel, websocket, handlers],
+                         ?CHANNEL_MAX_CONNECTIONS).
 

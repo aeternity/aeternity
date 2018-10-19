@@ -103,7 +103,7 @@ metric(Queue, Sub) ->
 %% 10 requests/sec (rather than crashing the node.)
 
 start() ->
-    {ok, RegulatorDefs} = aeu_env:schema_properties([<<"regulators">>]),
+    {ok, RegulatorDefs} = aeu_env:schema([<<"regulators">>, <<"properties">>]),
     Queues = check_defs(RegulatorDefs),
     [add_queue(Q, Opts) || {Q, Opts} <- Queues],
     ok.
