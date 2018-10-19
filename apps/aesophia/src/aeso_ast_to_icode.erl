@@ -650,12 +650,16 @@ option_some(X) -> {tuple, [{integer, 1}, X]}.
 v(X) when is_atom(X) -> v(atom_to_list(X));
 v(X) when is_list(X) -> #var_ref{name = X}.
 
+%% Abort primitive.
 builtin_function(abort) ->
-    %% function abort(str) =
-    %%   switch (0) 1 => ()
+    A = fun(X) -> aeb_opcodes:mnemonic(X) end,
     {{builtin, abort}, [private],
      [{"s", string}],
-     {switch, {integer,0}, [{{integer,1}, {tuple,[]}}]},
+     %% length, address, REVERT
+     {inline_asm, [A(?DUP1),
+                   A(?MLOAD),A(?SWAP1),         %Load size and swap
+                   A(?PUSH1),32,A(?ADD),        %Load address of string binary
+                   A(?REVERT)]},
      {tuple,[]}};
 
 %% Map primitives

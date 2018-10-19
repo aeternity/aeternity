@@ -28,6 +28,7 @@
         , data/1
         , difficulty/1
         , do_return/3
+        , do_revert/3
         , do_trace/1
         , extcode/2
         , extcode/4
@@ -218,7 +219,26 @@ do_return(Us0, Us1, State) ->
             end;
         ?AEVM_01_Solidity_01 ->
             %% Us0 is pointer to a return data binary and Us1 is the size.
-    {Out, State1} = aevm_eeevm_memory:get_area(Us0, Us1, State),
+            {Out, State1} = aevm_eeevm_memory:get_area(Us0, Us1, State),
+            set_out(Out, State1)
+    end.
+
+do_revert(Us0, Us1, State0) ->
+    %% Us0 is a pointer to the revert string binary and Us1 is its size.
+    case vm_version(State0) of
+        ?AEVM_01_Sophia_01 ->
+            try
+		%% Get the string then convert it to output binary format.
+                {String, State1} = aevm_eeevm_memory:get_area(Us0, Us1, State0),
+		Out = aeso_data:to_binary(String, 0),
+                set_out(Out, State1)
+            catch _:_ ->
+                io:format("** Error reading revert value\n~s",
+                          [format_mem(mem(State0))]),
+                set_gas(0, State0)   %% Consume all gas on failure
+            end;
+        ?AEVM_01_Solidity_01 ->
+            {Out, State1} = aevm_eeevm_memory:get_area(Us0, Us1, State0),
             set_out(Out, State1)
     end.
 
