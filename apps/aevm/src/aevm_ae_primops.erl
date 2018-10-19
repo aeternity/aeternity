@@ -8,7 +8,7 @@
 %%%-------------------------------------------------------------------
 
 -module(aevm_ae_primops).
--export([call/3, is_local_primop/1]).
+-export([call/4, is_local_primop/1]).
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("aevm_ae_primops.hrl").
@@ -26,7 +26,7 @@
 -define(TEST_LOG(Format, Data), ok).
 -endif.
 
--spec call(Value::non_neg_integer(), Data::binary(), StateIn) ->
+-spec call(Gas::non_neg_integer(), Value::non_neg_integer(), Data::binary(), StateIn) ->
                   {ok, ReturnValue, GasSpent::non_neg_integer(), StateOut} |
                   {error, Reason} when
       StateIn :: State,
@@ -38,18 +38,17 @@
       OogResource :: any(),
       OogGas :: pos_integer().
 %% Wrapper function for logging error in tests.
-call(Value, Data, State) ->
-    case call_(Value, Data, State) of
+call(Gas, Value, Data, State) ->
+    case call_(Gas, Value, Data, State) of
         {ok, _, _, _} = Ok ->
             Ok;
         {error, _} = Err ->
-            ?TEST_LOG("Primop call error ~p~n~p:~p(~p, ~p, State)",
-                      [Err, ?MODULE, ?FUNCTION_NAME, Value, Data]),
+            ?TEST_LOG("Primop call error ~p~n~p:~p(~p, ~p, ~p, State)",
+                      [Err, ?MODULE, ?FUNCTION_NAME, Gas, Value, Data]),
             Err
     end.
 
-call_(Value, Data, StateIn) ->
-    Gas = aevm_eeevm_state:gas(StateIn),
+call_(Gas, Value, Data, StateIn) ->
     try
         PrimOp = get_primop(Data),
         BaseGas = aec_governance:primop_base_gas(PrimOp),

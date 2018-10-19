@@ -334,7 +334,7 @@ write_heap_value(HeapValue, State) ->
 call_contract(Caller, Target, CallGas, Value, Data, State) ->
     case vm_version(State) of
         ?AEVM_01_Sophia_01 when Target == ?PRIM_CALLS_CONTRACT ->
-            Res = aevm_ae_primops:call(Value, Data, State),
+            Res = aevm_ae_primops:call(CallGas, Value, Data, State),
             Res;
         _ ->
             CallStack  = [Caller | call_stack(State)],
