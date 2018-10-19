@@ -379,6 +379,7 @@ do_local_action(#sync{ id = Ref }, Action, ActionFun, Timeout) ->
     Pid ! {go, SendRef}.
 
 kill_local_action(Worker, Ref, Action) ->
+    unlink(Worker),
     erlang:exit(Worker, kill),
     %% Flush any late arriving result
     receive {local_action, Ref, _, Action, _} -> ok
