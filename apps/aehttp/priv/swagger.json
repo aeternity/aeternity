@@ -2893,7 +2893,7 @@
     },
     "Channel" : {
       "type" : "object",
-      "required" : [ "channel_amount", "channel_reserve", "closes_at", "delegate_ids", "forcing_blocked_until", "id", "initiator_amount", "initiator_id", "lock_period", "responder_amount", "responder_id", "round", "state_hash" ],
+      "required" : [ "channel_amount", "channel_reserve", "delegate_ids", "id", "initiator_amount", "initiator_id", "lock_period", "responder_amount", "responder_id", "round", "state_hash" ],
       "properties" : {
         "id" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -2943,27 +2943,22 @@
           "format" : "int64",
           "minimum" : 0
         },
-        "forcing_blocked_until" : {
-          "type" : "integer",
-          "format" : "int64"
-        },
-        "closes_at" : {
+        "locked_until" : {
           "type" : "integer",
           "format" : "int64"
         }
       },
       "example" : {
-        "delegate_ids" : [ null, null ],
-        "responder_id" : null,
-        "lock_period" : 0,
         "responder_amount" : 0,
+        "delegate_ids" : [ null, null ],
         "initiator_amount" : 0,
         "round" : 0,
         "initiator_id" : null,
+        "responder_id" : null,
         "state_hash" : null,
-        "forcing_blocked_until" : 7,
+        "locked_until" : 7,
         "id" : { },
-        "closes_at" : 9,
+        "lock_period" : 0,
         "channel_amount" : 0,
         "channel_reserve" : 0
       }

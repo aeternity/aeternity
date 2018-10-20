@@ -152,7 +152,6 @@
          % poi tests
 
          fp_insufficent_tokens/1,
-         fp_too_soon/1,
 
          % off-chain name registration not allowed
          fp_register_name/1
@@ -316,7 +315,6 @@ groups() ->
        % poi tests
 
        fp_insufficent_tokens,
-       fp_too_soon,
        fp_register_name
       ]}
     ].
@@ -1665,14 +1663,7 @@ fp_on_top_of_fp(Cfg) ->
                 create_contract_poi_and_payload(FPRound1 - 1, Contract1Round, Owner),
                 set_prop(height, InitHeight),
                 force_progress_sequence(FPRound1, Forcer1),
-                fun(#{channel_pubkey := ChannelPubKey, state := S,
-                      height := Height} = Props) ->
-                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
-                    % can not force progress yet
-                    false = aesc_channels:can_force_progress(Channel, Height),
-                    Props
-                end,
-                set_prop(height, InitHeight + LockPeriod + 1),
+                set_prop(height, InitHeight + 1),
                 create_fp_trees(),
                 set_prop(payload, <<>>),
                 force_progress_sequence(FPRound2, Forcer2)
@@ -1706,14 +1697,7 @@ fp_after_fp_missing_rounds(Cfg) ->
                 create_contract_poi_and_payload(FPRound1 - 1, Contract1Round, Owner),
                 set_prop(height, InitHeight),
                 force_progress_sequence(FPRound1, Forcer1),
-                fun(#{channel_pubkey := ChannelPubKey, state := S,
-                      height := Height} = Props) ->
-                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
-                    % can not force progress yet
-                    false = aesc_channels:can_force_progress(Channel, Height),
-                    Props
-                end,
-                set_prop(height, InitHeight + LockPeriod + 1),
+                set_prop(height, InitHeight + 1),
                 fun(Props) when FPRound1 =/= FPRound2 - 1 ->
 
                     (create_contract_poi_and_payload(FPRound2 - 1,
@@ -2899,47 +2883,6 @@ fp_insufficent_tokens(Cfg) ->
     Test(2, 500,  999),
     ok.
 
-fp_too_soon(Cfg) ->
-    TooSoonTest =
-        fun(FPHeight0, FPHeight1, LockPeriod, Owner, Forcer0, Forcer1) ->
-            IAmt0 = 30,
-            RAmt0 = 30,
-            Round0 = 100,
-            Round1 = 200,
-            ContractCreateRound = 10,
-            run(#{cfg => Cfg, initiator_amount => IAmt0,
-                              responder_amount => RAmt0,
-                 channel_reserve => 1, lock_period => LockPeriod},
-               [positive(fun create_channel_/2),
-                set_prop(height, FPHeight0),
-                create_contract_poi_and_payload(Round0 - 1,
-                                                ContractCreateRound,
-                                                Owner),
-                force_progress_sequence(_Round = Round0, Forcer0),
-                set_prop(height, FPHeight1),
-                create_fp_trees(),
-                set_prop(round, Round1 - 1), % for the payload
-                create_payload(),
-                negative_force_progress_sequence(Round1, Forcer1,
-                                                 force_progressed_too_soon)])
-        end,
-    Test =
-        fun(DepositRound, FPRound, LockPeriod) ->
-            [TooSoonTest(DepositRound, FPRound, LockPeriod,
-                          Depositor, Owner, Forcer) || Owner  <- ?ROLES,
-                                                       Depositor <- ?ROLES,
-                                                       Forcer <- ?ROLES]
-        end,
-
-    % height is too low
-    Test(11, 12, 10),
-    % height is one less
-    Test(10, 20, 10),
-
-    % height is one less, different lock_period
-    Test(100, 200, 100),
-    ok.
-
 fp_register_name(Cfg) ->
     Name = <<"bla.test">>,
     Salt = 42,
@@ -4107,8 +4050,7 @@ register_name(Name, Pointers0) ->
 force_call_contract_first(Forcer, Fun, Args, Round) ->
     fun(Props0) ->
         run(Props0,
-           [set_height_to_forcable(),
-            set_prop(round, Round - 1),
+           [set_prop(round, Round - 1),
             set_from(Forcer),
             create_fp_trees(),
             create_payload(),
@@ -4137,21 +4079,9 @@ force_call_contract(Forcer, Fun, Args, Round) ->
             [set_prop(contract_function_call, {Fun, Args}),
             create_fp_trees(),
             set_prop(payload, <<>>),
-            set_height_to_forcable(),
             force_progress_sequence(Round, Forcer)])
     end.
 
-set_height_to_forcable() ->
-    fun(#{channel_pubkey := ChannelPubKey, state := S,
-          height := H0} = Props) ->
-        Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
-        case aesc_channels:can_force_progress(Channel, H0) of
-            true -> Props;
-            false ->
-                H1 = aesc_channels:force_blocked_until(Channel),
-                Props#{height => H1 + 1}
-        end
-    end.
 
 assert_last_channel_result(Result, Type) ->
     fun(#{state := S,

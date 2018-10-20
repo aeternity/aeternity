@@ -115,7 +115,7 @@ check_status([Req|Reqs], St, Cache, Acc) ->
 check_status([], St, _, Acc) ->
     St#st{requests = lists:reverse(Acc)}.
 
-check_status_(#{mode := close, closes_at := H, min_depth := Min} = R,
+check_status_(#{mode := close, locked_until := H, min_depth := Min} = R,
               #st{chan_id = ChId}, Cache) ->
     {HasDepth, Cache1} = determine_depth_(H, Min, Cache),
     case HasDepth of
@@ -133,11 +133,11 @@ check_status_(#{mode := close, parent := Parent} = R, #st{chan_id = ChId}, C) ->
     case Status of
         #{ is_active := true } ->
             {R, C2};
-        #{ closes_at := ClosesAt } ->
-            {R#{ closes_at => ClosesAt }, C2};
+        #{ locked_until := LockedUntil } ->
+            {R#{ locked_until => LockedUntil }, C2};
         undefined ->
             %% Set closing time to current top height, wait for min_depth
-            {R#{ closes_at => TopHeight }, C2}
+            {R#{ locked_until => TopHeight }, C2}
     end;
 check_status_(#{mode := watch} = R, St, C) ->
     watch_for_channel_closing(R, St, C);
@@ -194,9 +194,9 @@ channel_status({ok, S}, _, C) -> {S, C};
 channel_status(error, ChId, C) ->
     St = case aec_chain:get_channel(ChId) of
              {ok, Ch} ->
-                 #{ is_active   => aesc_channels:is_active(Ch)
-                  , lock_period => aesc_channels:lock_period(Ch)
-                  , closes_at   => aesc_channels:closes_at(Ch) };
+                 #{ is_active    => aesc_channels:is_active(Ch)
+                  , lock_period  => aesc_channels:lock_period(Ch)
+                  , locked_until => aesc_channels:locked_until(Ch) };
              _ ->
                  undefined
          end,

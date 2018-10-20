@@ -12,9 +12,8 @@
          is_active/1,
          is_solo_closed/2,
          is_solo_closing/2,
-         can_force_progress/2,
          is_last_state_forced/1,
-         force_blocked_until/1,
+         locked_until/1,
          new/1,
          peers/1,
          serialize/1,
@@ -41,8 +40,8 @@
          channel_reserve/1,
          state_hash/1,
          round/1,
-         lock_period/1,
-         closes_at/1]).
+         solo_round/1,
+         lock_period/1]).
 
 -compile({no_auto_import, [round/1]}).
 
@@ -66,9 +65,9 @@
                   channel_reserve     :: amount(),
                   state_hash          :: binary(),
                   round               :: seq_number(),
+                  solo_round          :: seq_number(),
                   lock_period         :: non_neg_integer(),
-                  force_blocked_until :: aec_blocks:height(),
-                  closes_at           :: aec_blocks:height()}).
+                  locked_until        :: aec_blocks:height()}).
 
 -opaque channel() :: #channel{}.
 
@@ -107,21 +106,21 @@ close_solo(Ch, PayloadTx, PoI, Height) ->
 close_solo_int(#channel{lock_period = LockPeriod} = Ch, PoI, Height, Round, StateHash) ->
     InitiatorPubKey = initiator_pubkey(Ch),
     ResponderPubKey = responder_pubkey(Ch),
-    ClosesAt = Height + LockPeriod,
+    LockedUntil  = Height + LockPeriod,
     InitiatorAmt = fetch_amount_from_poi(PoI, InitiatorPubKey),
     ResponderAmt = fetch_amount_from_poi(PoI, ResponderPubKey),
     Ch#channel{initiator_amount   = InitiatorAmt,
                responder_amount   = ResponderAmt,
                round              = Round,
+               % do not reset solo_round
                state_hash         = StateHash,
-               force_blocked_until= 0,
-               closes_at          = ClosesAt}.
+               locked_until       = LockedUntil}.
 
 -spec deposit(channel(), amount(), seq_number(), binary()) -> channel().
 deposit(#channel{channel_amount = ChannelAmount} = Ch, Amount, Round, StateHash) ->
     Ch#channel{channel_amount     = ChannelAmount + Amount,
                state_hash         = StateHash,
-               force_blocked_until= 0,
+               solo_round         = 0,
                round              = Round}.
 
 -spec deserialize(pubkey(), binary()) -> channel().
@@ -135,9 +134,9 @@ deserialize(IdBin, Bin) ->
     , {delegate_ids       , DelegateIds}
     , {state_hash         , StateHash}
     , {round              , Round}
+    , {solo_round         , SoloRound}
     , {lock_period        , LockPeriod}
-    , {force_blocked_until, ForceBlockedUntil}
-    , {closes_at          , ClosesAt}
+    , {locked_until       , LockedUntil}
     ] = aec_object_serialization:deserialize(
           ?CHANNEL_TYPE,
           ?CHANNEL_VSN,
@@ -156,9 +155,9 @@ deserialize(IdBin, Bin) ->
              channel_reserve    = ChannelReserve,
              state_hash         = StateHash,
              round              = Round,
+             solo_round         = SoloRound,
              lock_period        = LockPeriod,
-             force_blocked_until= ForceBlockedUntil,
-             closes_at          = ClosesAt}.
+             locked_until       = LockedUntil}.
 
 %% set a new state
 -spec snapshot_solo(channel(), aesc_offchain_tx:tx()) -> channel().
@@ -166,34 +165,34 @@ snapshot_solo(Ch, PayloadTx) ->
     Round = aesc_offchain_tx:round(PayloadTx),
     StateHash = aesc_offchain_tx:state_hash(PayloadTx),
     Ch#channel{round              = Round,
-               force_blocked_until= 0,
+               solo_round         = 0,
                state_hash         = StateHash}.
 
 -spec force_progress(channel(), binary(), seq_number(), 
                      amount(), amount(),
                      aec_blocks:height()) -> channel().
 force_progress(Ch0, StateHash, Round, IAmt, RAmt, Height) ->
-    Ch1 = Ch0#channel{force_blocked_until = Height + lock_period(Ch0),
-                      state_hash          = StateHash,
+    Ch1 = Ch0#channel{state_hash          = StateHash,
                       round               = Round,
+                      solo_round          = Round,
                       initiator_amount    = IAmt,
                       responder_amount    = RAmt},
     case is_active(Ch1) of
         true -> Ch1;
-        false -> Ch1#channel{closes_at = Height + lock_period(Ch0)}
+        false -> Ch1#channel{locked_until = Height + lock_period(Ch0)}
     end.
 
 -spec is_active(channel()) -> boolean().
-is_active(#channel{closes_at = ClosesAt}) ->
-    ClosesAt =:= 0.
+is_active(#channel{locked_until = LockedUntil}) ->
+    LockedUntil =:= 0.
 
 -spec is_solo_closed(channel(), aec_blocks:height()) -> boolean().
-is_solo_closed(#channel{closes_at = ClosesAt}, Height) ->
-    ClosesAt =/= 0 andalso ClosesAt =< Height.
+is_solo_closed(#channel{locked_until = LockedUntil}, Height) ->
+    LockedUntil =/= 0 andalso LockedUntil =< Height.
 
 -spec is_solo_closing(channel(), aec_blocks:height()) -> boolean().
-is_solo_closing(#channel{closes_at = ClosesAt}, Height) ->
-    ClosesAt > Height.
+is_solo_closing(#channel{locked_until = LockedUntil}, Height) ->
+    LockedUntil > Height.
 
 -spec pubkey(pubkey(), non_neg_integer(), pubkey()) -> pubkey().
 pubkey(<<_:?PUB_SIZE/binary>> = InitiatorPubKey, Nonce,
@@ -203,17 +202,9 @@ pubkey(<<_:?PUB_SIZE/binary>> = InitiatorPubKey, Nonce,
             ResponderPubKey:?PUB_SIZE/binary>>,
     aec_hash:hash(pubkey, Bin).
 
--spec can_force_progress(channel(), aec_blocks:height()) -> boolean().
-can_force_progress(#channel{force_blocked_until = FBU} = Ch, Height) ->
-    not is_last_state_forced(Ch) orelse FBU < Height.
-
--spec force_blocked_until(channel()) -> aec_blocks:height().
-force_blocked_until(#channel{force_blocked_until = FBU}) ->
-    FBU.
-
 -spec is_last_state_forced(channel()) -> boolean().
-is_last_state_forced(#channel{force_blocked_until = FBU}) ->
-    FBU =/= 0.
+is_last_state_forced(#channel{solo_round = SoloRound}) ->
+    SoloRound =/= 0.
 
 -spec new(aesc_create_tx:tx()) -> channel().
 new(ChCTx) ->
@@ -234,8 +225,8 @@ new(ChCTx) ->
              delegate_ids         = [aec_id:create(account, D) || D <- DelegatePubkeys],
              state_hash           = StateHash,
              round                = 0,
-             force_blocked_until  = 0,
-             closes_at            = 0,
+             solo_round           = 0,
+             locked_until         = 0,
              lock_period          = aesc_create_tx:lock_period(ChCTx)}.
 
 -spec peers(channel()) -> list(aec_keys:pubkey()).
@@ -258,9 +249,9 @@ serialize(#channel{initiator_id = InitiatorId,
       , {delegate_ids       , DelegateIds}
       , {state_hash         , state_hash(Ch)}
       , {round              , round(Ch)}
+      , {solo_round         , solo_round(Ch)}
       , {lock_period        , lock_period(Ch)}
-      , {force_blocked_until, forcing_blocked_until(Ch)}
-      , {closes_at          , closes_at(Ch)}
+      , {locked_until       , locked_until(Ch)}
       ]).
 
 serialization_template(?CHANNEL_VSN) ->
@@ -273,9 +264,9 @@ serialization_template(?CHANNEL_VSN) ->
     , {delegate_ids       , [id]}
     , {state_hash         , binary}
     , {round              , int}
+    , {solo_round         , int}
     , {lock_period        , int}
-    , {force_blocked_until, int}
-    , {closes_at          , int}
+    , {locked_until       , int}
     ].
 
 -spec serialize_for_client(channel()) -> map().
@@ -289,9 +280,9 @@ serialize_for_client(#channel{id                  = Id,
                               delegate_ids        = Delegates,
                               state_hash          = StateHash,
                               round               = Round,
+                              solo_round          = SoloRound,
                               lock_period         = LockPeriod,
-                              force_blocked_until = ForceBlockedUntil,
-                              closes_at           = ClosesAt}) ->
+                              locked_until        = LockedUntil}) ->
     #{<<"id">>                    => aec_base58c:encode(id_hash, Id),
       <<"initiator_id">>          => aec_base58c:encode(id_hash, InitiatorId),
       <<"responder_id">>          => aec_base58c:encode(id_hash, ResponderId),
@@ -302,27 +293,23 @@ serialize_for_client(#channel{id                  = Id,
       <<"delegate_ids">>          => [aec_base58c:encode(id_hash, D) || D <- Delegates],
       <<"state_hash">>            => aec_base58c:encode(state, StateHash),
       <<"round">>                 => Round,
+      <<"solo_round">>            => SoloRound,
       <<"lock_period">>           => LockPeriod,
-      <<"forcing_blocked_until">> => ForceBlockedUntil,
-      <<"closes_at">>             => ClosesAt}.
+      <<"locked_until">>          => LockedUntil}.
 
 -spec withdraw(channel(), amount(), seq_number(), binary()) -> channel().
 withdraw(#channel{channel_amount = ChannelAmount} = Ch, Amount, Round, StateHash) ->
     Ch#channel{channel_amount = ChannelAmount - Amount,
                state_hash = StateHash,
-               force_blocked_until = 0,
+               solo_round = 0,
                round = Round}.
 
 %%%===================================================================
 %%% Getters
 %%%===================================================================
 
--spec closes_at(channel()) -> undefined | aec_blocks:height().
-closes_at(#channel{closes_at = ClosesAt}) ->
-    ClosesAt.
-
--spec forcing_blocked_until(channel()) -> undefined | aec_blocks:height().
-forcing_blocked_until(#channel{force_blocked_until = FBU}) ->
+-spec locked_until(channel()) -> undefined | aec_blocks:height().
+locked_until(#channel{locked_until = FBU}) ->
     FBU.
 
 -spec id(channel()) -> aec_id:id().
@@ -384,6 +371,10 @@ state_hash(#channel{state_hash = StateHash}) ->
 -spec round(channel()) -> non_neg_integer().
 round(#channel{round = Round}) ->
     Round.
+
+-spec solo_round(channel()) -> non_neg_integer().
+solo_round(#channel{solo_round = SoloRound}) ->
+    SoloRound.
 
 -spec fetch_amount_from_poi(aec_trees:poi(), aec_keys:pubkey()) -> non_neg_integer().
 fetch_amount_from_poi(PoI, Pubkey) ->
