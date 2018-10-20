@@ -36,11 +36,10 @@
             %% Enable setting up node with "test" rebar profile.
             error:undef -> ok
         end).
--define(DEBUG_LOG(Format, Data), begin lager:debug(Format, Data), ?TEST_LOG(Format, Data) end).
 -else.
 -define(TEST_LOG(Format, Data), ok).
--define(DEBUG_LOG(Format, Data), lager:debug(Format, Data)).
 -endif.
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -104,6 +103,7 @@ check_round_greater_than_last(Channel, Round, Type) ->
             false ->
                 ChannelRound
         end,
+    ?TEST_LOG("MinRound ~p, Round ~p", [MinRound, Round]),
     case MinRound < Round of
         true  -> ok;
         false -> {error, old_round}

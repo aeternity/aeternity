@@ -172,9 +172,19 @@ snapshot_solo(Ch, PayloadTx) ->
                      amount(), amount(),
                      aec_blocks:height()) -> channel().
 force_progress(Ch0, StateHash, Round, IAmt, RAmt, Height) ->
+    SoloRound =
+        case solo_round(Ch0) of
+            0 ->
+                % force progress that is based on co-signed state
+                Round;
+            OldSoloRound ->
+                % force progress that is based on force progressed state
+                % keep the first of a chain of solo forced states
+                OldSoloRound
+        end,
     Ch1 = Ch0#channel{state_hash          = StateHash,
                       round               = Round,
-                      solo_round          = Round,
+                      solo_round          = SoloRound,
                       initiator_amount    = IAmt,
                       responder_amount    = RAmt},
     case is_active(Ch1) of

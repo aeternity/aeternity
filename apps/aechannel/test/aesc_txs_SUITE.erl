@@ -124,6 +124,10 @@
          fp_is_replaced_by_same_round_snapshot/1,
          % not closing, balances are NOT checked
          fp_solo_payload_overflowing_balances/1,
+
+         fp_chain_is_replaced_by_snapnshot/1,
+         fp_chain_is_replaced_by_deposit/1,
+         fp_chain_is_replaced_by_withdrawal/1,
          % already closing
          fp_after_solo_close/1,
          fp_after_slash/1,
@@ -287,6 +291,10 @@ groups() ->
        fp_is_replaced_by_same_round_snapshot,
        % not closing, balances are NOT checked
        fp_solo_payload_overflowing_balances,
+       % forced chain is replaces by co-signed state
+       fp_chain_is_replaced_by_snapnshot,
+       fp_chain_is_replaced_by_deposit,
+       fp_chain_is_replaced_by_withdrawal,
        % already closing
        fp_after_solo_close,
        fp_after_slash,
@@ -1904,9 +1912,9 @@ fp_is_replaced_by_same_round_snapshot(Cfg) ->
         end,
     Test =
         fun(Round) ->
-            [CoSignedSnapshotWins(Round, Withdrawer, Owner, Forcer)
+            [CoSignedSnapshotWins(Round, Snapshoter, Owner, Forcer)
                   || Owner  <- ?ROLES,
-                     Withdrawer <- ?ROLES,
+                     Snapshoter <- ?ROLES,
                      Forcer <- ?ROLES]
         end,
 
@@ -1915,6 +1923,89 @@ fp_is_replaced_by_same_round_snapshot(Cfg) ->
     Test(20),
     ok.
 
+fp_chain_is_replaced_by_snapnshot(Cfg) ->
+    fp_chain_is_replaced_by_cosigned_tx(Cfg, fun() -> positive(fun snapshot_solo_/2) end).
+
+fp_chain_is_replaced_by_deposit(Cfg) ->
+    CoSignedFun =
+        fun() ->
+            fun(Props) ->
+                run(Props,
+                    [ set_prop(amount, 1),
+                      positive(fun deposit_/2)])
+            end
+        end,
+    fp_chain_is_replaced_by_cosigned_tx(Cfg, CoSignedFun).
+
+fp_chain_is_replaced_by_withdrawal(Cfg) ->
+    CoSignedFun =
+        fun() ->
+            fun(Props) ->
+                run(Props,
+                    [ set_prop(amount, 1),
+                      positive(fun withdraw_/2)])
+            end
+        end,
+    fp_chain_is_replaced_by_cosigned_tx(Cfg, CoSignedFun).
+
+fp_chain_is_replaced_by_cosigned_tx(Cfg, PostCoSignedFun) ->
+    BogusStateHash = <<0:32/unit:8>>,
+    ForceProgressFromOnChain =
+        fun(Round, Forcer) ->
+            fun(Props) ->
+                run(Props,
+                    [ create_fp_trees(),
+                      set_prop(payload, <<>>),
+                      force_progress_sequence(Round, Forcer)])
+            end
+        end,
+    CoSignedTxWins =
+        fun(FPRound, CoSignedPoster, Owner, Forcer) ->
+            IAmt0 = 30,
+            RAmt0 = 30,
+            ContractCreateRound = 10,
+            run(#{cfg => Cfg, initiator_amount => IAmt0,
+                              responder_amount => RAmt0,
+                 channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                create_contract_poi_and_payload(FPRound - 1,
+                                                ContractCreateRound,
+                                                Owner),
+                force_progress_sequence(_Round = FPRound, Forcer),
+                ForceProgressFromOnChain(FPRound + 1, Forcer),
+                ForceProgressFromOnChain(FPRound + 2, Forcer),
+                fun(#{state_hash := SH} = Props) ->
+                    Props#{fp_state_hash => SH}
+                end,
+                set_from(CoSignedPoster),
+                set_prop(round, FPRound), % first force progressed
+                set_prop(state_hash, BogusStateHash),
+                delete_prop(payload), % old FP payload
+                PostCoSignedFun(),
+                fun(#{channel_pubkey := ChannelPubKey, state := S,
+                      fp_state_hash := FPStateHash} = Props) ->
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+
+                    % different hashes
+                    true = BogusStateHash =/= FPStateHash,
+                    % withdraw had won on-chain
+                    BogusStateHash = aesc_channels:state_hash(Channel),
+                    Props
+                end
+               ])
+        end,
+    Test =
+        fun(Round) ->
+            [CoSignedTxWins(Round, CoSignedPoster, Owner, Forcer)
+                  || Owner  <- ?ROLES,
+                     CoSignedPoster <- ?ROLES,
+                     Forcer <- ?ROLES]
+        end,
+
+    %% same round is used for the snapshot and the forced progress before it
+    %% co-signed snapshot wins
+    Test(20),
+    ok.
 fp_after_solo_close(Cfg) ->
     AfterClose =
         fun(CloseRound, FPRound, Closer, Owner, Forcer) ->
