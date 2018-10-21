@@ -131,6 +131,7 @@
          % already closing
          fp_after_solo_close/1,
          fp_after_slash/1,
+         fp_chain_is_replaced_by_slash/1,
          fp_use_onchain_oracle/1,
          fp_use_onchain_name_resolution/1,
          fp_use_onchain_enviroment/1,
@@ -298,6 +299,7 @@ groups() ->
        % already closing
        fp_after_solo_close,
        fp_after_slash,
+       fp_chain_is_replaced_by_slash,
        % contract referring to on-chain objects
        fp_use_onchain_oracle,
        fp_use_onchain_name_resolution,
@@ -1985,11 +1987,12 @@ fp_chain_is_replaced_by_cosigned_tx(Cfg, PostCoSignedFun) ->
                 fun(#{channel_pubkey := ChannelPubKey, state := S,
                       fp_state_hash := FPStateHash} = Props) ->
                     Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
-
                     % different hashes
                     true = BogusStateHash =/= FPStateHash,
-                    % withdraw had won on-chain
+                    % co-signed had won on-chain
                     BogusStateHash = aesc_channels:state_hash(Channel),
+                    % back to the co-signed round
+                    FPRound = aesc_channels:state_hash(Channel),
                     Props
                 end
                ])
@@ -2183,6 +2186,91 @@ fp_after_slash(Cfg) ->
     Test(10, 11, 20),
     %% force progress right after a close
     Test(11, 20, 30),
+    ok.
+
+% Test that slashing with co-signed off-chain state replaces
+% on-chain produced chain of unilaterally forced progress states
+%
+% unilaterally on-chain force progress state ROUND
+% unilaterally on-chain force progress state ROUND + 1
+% solo close using on-chain forced progress ROUND + 1
+% force progress on-chain state ROUND + 2
+% slash with co-signed off-chain state ROUND
+fp_chain_is_replaced_by_slash(Cfg) ->
+    ForceProgressFromOnChain =
+        fun(Round, Forcer) ->
+            fun(Props) ->
+                run(Props,
+                    [ create_poi_by_trees(),
+                      set_prop(payload, <<>>),
+                      force_progress_sequence(Round, Forcer)])
+            end
+        end,
+    Test =
+        fun(FPRound, Closer, Slasher, Owner, Forcer) ->
+            IAmt0 = 30,
+            RAmt0 = 30,
+            LockPeriod = 10,
+            CloseHeight = 10,
+            SlashHeight = 12,
+            true = SlashHeight < CloseHeight + LockPeriod,
+            ContractCreateRound = 10,
+            run(#{cfg => Cfg, initiator_amount => IAmt0,
+                              responder_amount => RAmt0,
+                  lock_period => LockPeriod,
+                  channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                % close
+                set_prop(height, CloseHeight),
+                set_from(Closer),
+                create_contract_poi_and_payload(FPRound + 1,
+                                                ContractCreateRound,
+                                                Owner),
+                create_poi_by_trees(),
+                set_prop(round, FPRound - 1), % for the payload
+                create_payload(),
+                force_progress_sequence(_Round = FPRound, Forcer),
+                ForceProgressFromOnChain(FPRound + 1, Forcer),
+                set_prop(round, FPRound + 1),
+                set_prop(payload, <<>>),
+                create_poi_by_trees(),
+                positive(fun close_solo_/2),
+                ForceProgressFromOnChain(FPRound + 2, Forcer),
+                fun(#{state_hash := SH} = Props) ->
+                    Props#{fp_state_hash => SH}
+                end,
+                % slash
+                % produce some different state trees
+                set_balances_in_trees(20, 10),
+                set_prop(height, SlashHeight),
+                set_prop(round, FPRound),
+                set_from(Slasher),
+                create_poi_by_trees(),
+                create_payload(),
+                fun(#{state_hash := SlashStateHash} = Props) ->
+                    Props#{slash_state_hash => SlashStateHash}
+                end,
+                positive(fun slash_/2),
+                fun(#{channel_pubkey := ChannelPubKey, state := S,
+                      fp_state_hash := FPStateHash,
+                      slash_state_hash := SlashStateHash} = Props) ->
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+
+                    % different hashes
+                    true = SlashStateHash =/= FPStateHash,
+                    % slash had won on-chain
+                    SlashStateHash = aesc_channels:state_hash(Channel),
+                    FPRound = aesc_channels:round(Channel),
+                    Props
+                end
+               ])
+        end,
+    FPRound = 50,
+    [Test(FPRound,
+          Closer, Slasher, Owner, Forcer) || Owner   <- ?ROLES,
+                                             Closer  <- ?ROLES,
+                                             Slasher <- ?ROLES,
+                                             Forcer  <- ?ROLES],
     ok.
 
 
@@ -3213,6 +3301,30 @@ create_fp_trees() ->
     fun(#{trees := Trees} = Props) ->
         Hash = aec_trees:hash(Trees),
         Props#{state_hash => Hash, offchain_trees => Trees}
+    end.
+
+set_balances_in_trees(IBal, RBal) ->
+    fun(#{initiator_pubkey := Initiator,
+          responder_pubkey := Responder,
+          trees            := Trees} = Props) ->
+        Accounts =
+            lists:foldl(
+                fun({Pubkey, Balance}, Accum) ->
+                    Acc = aec_accounts_trees:get(Pubkey, Accum),
+                    {ok, Acc1} =
+                        case aec_accounts:balance(Acc) of
+                            B0 when B0 > Balance ->
+                                aec_accounts:spend(Acc, B0 - Balance, 0);
+                            B0 when B0 =< Balance ->
+                                aec_accounts:earn(Acc, Balance - B0)
+                        end,
+                    aec_accounts_trees:enter(Acc1, Accum)
+                end,
+                aec_trees:accounts(Trees),
+                [{Initiator, IBal},
+                 {Responder, RBal}]),
+        Trees1 = aec_trees:set_accounts(Trees, Accounts),
+        Props#{trees => Trees1}
     end.
 
 negative_force_progress_sequence(Round, Forcer, ErrMsg) ->
