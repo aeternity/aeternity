@@ -292,7 +292,7 @@ groups() ->
        fp_is_replaced_by_same_round_snapshot,
        % not closing, balances are NOT checked
        fp_solo_payload_overflowing_balances,
-       % forced chain is replaces by co-signed state
+       % forced chain is replaced by co-signed state
        fp_chain_is_replaced_by_snapnshot,
        fp_chain_is_replaced_by_deposit,
        fp_chain_is_replaced_by_withdrawal,
@@ -2201,7 +2201,7 @@ fp_chain_is_replaced_by_slash(Cfg) ->
         fun(Round, Forcer) ->
             fun(Props) ->
                 run(Props,
-                    [ create_poi_by_trees(),
+                    [ create_fp_trees(),
                       set_prop(payload, <<>>),
                       force_progress_sequence(Round, Forcer)])
             end
@@ -2226,14 +2226,14 @@ fp_chain_is_replaced_by_slash(Cfg) ->
                 create_contract_poi_and_payload(FPRound + 1,
                                                 ContractCreateRound,
                                                 Owner),
-                create_poi_by_trees(),
+                create_fp_trees(),
                 set_prop(round, FPRound - 1), % for the payload
                 create_payload(),
                 force_progress_sequence(_Round = FPRound, Forcer),
                 ForceProgressFromOnChain(FPRound + 1, Forcer),
                 set_prop(round, FPRound + 1),
                 set_prop(payload, <<>>),
-                create_poi_by_trees(),
+                create_fp_trees(),
                 positive(fun close_solo_/2),
                 ForceProgressFromOnChain(FPRound + 2, Forcer),
                 fun(#{state_hash := SH} = Props) ->
@@ -2245,7 +2245,7 @@ fp_chain_is_replaced_by_slash(Cfg) ->
                 set_prop(height, SlashHeight),
                 set_prop(round, FPRound),
                 set_from(Slasher),
-                create_poi_by_trees(),
+                create_fp_trees(),
                 create_payload(),
                 fun(#{state_hash := SlashStateHash} = Props) ->
                     Props#{slash_state_hash => SlashStateHash}
