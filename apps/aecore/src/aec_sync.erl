@@ -689,14 +689,17 @@ post_blocks(From, To, [{Height, _Hash, {PeerId, Block}} | Blocks]) ->
 add_generation(#{micro_blocks := MBlocks} = Generation) ->
     add_generation(maps:without([micro_blocks], Generation), MBlocks).
 
--define(MAX_NR_MICROBLOCKS, 4).
-add_generation(Gen, MBlocks) when length(MBlocks) < ?MAX_NR_MICROBLOCKS ->
-    aec_conductor:add_synced_generation_batched(Gen#{micro_blocks => MBlocks}, true);
 add_generation(Gen, MBlocks) ->
-    {Add, AddLater} = lists:split(?MAX_NR_MICROBLOCKS, MBlocks),
-    case aec_conductor:add_synced_generation_batched(Gen#{micro_blocks => Add}, false) of
-        ok -> add_generation(Gen, AddLater);
-        Error -> Error
+    MaxBlocks = aeu_env:user_map_or_env(<<"max_micro_blocks_sync">>, aecore, max_micro_blocks_sync, 1),
+    case length(MBlocks) =<  MaxBlocks of 
+        true ->
+            aec_conductor:add_synced_generation_batched(Gen#{micro_blocks => MBlocks}, true);
+        false ->
+            {Add, AddLater} = lists:split(MaxBlocks, MBlocks),
+            case aec_conductor:add_synced_generation_batched(Gen#{micro_blocks => Add}, false) of
+                ok -> add_generation(Gen, AddLater);
+                Error -> Error
+            end
     end.
 
 %% Ping logic makes sure they always agree on genesis header (height 0)

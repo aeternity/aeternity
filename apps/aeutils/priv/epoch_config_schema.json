@@ -131,7 +131,13 @@
                 "gossip_allowed_height_from_top" : {
                     "description": "Allowed height difference from current top for incoming blocks (via gossip)",
                     "type" : "integer"
-                }
+                },
+                "max_micro_blocks_sync" : {
+                  "description": "Max number of micro blocks per generation put in database at same time",
+                  "type" : "integer",
+                  "minimum": 1,
+                  "default": 1
+               }
             }
         },
         "http" : {
