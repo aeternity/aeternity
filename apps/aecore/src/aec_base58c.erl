@@ -26,7 +26,8 @@
                     | commitment
                     | peer_pubkey
                     | state
-                    | poi.
+                    | poi
+                    | state_trees.
 
 -type extended_type() :: known_type() | block_hash | {id_hash, [known_type()]}.
 
@@ -165,7 +166,8 @@ type2pfx(commitment)       -> <<"cm">>;
 type2pfx(peer_pubkey)      -> <<"pp">>;
 type2pfx(name)             -> <<"nm">>;
 type2pfx(state)            -> <<"st">>;
-type2pfx(poi)              -> <<"pi">>.
+type2pfx(poi)              -> <<"pi">>;
+type2pfx(state_trees)      -> <<"ss">>.
 
 pfx2type(<<"kh">>) -> key_block_hash;
 pfx2type(<<"mh">>) -> micro_block_hash;
@@ -187,7 +189,8 @@ pfx2type(<<"cm">>) -> commitment;
 pfx2type(<<"pp">>) -> peer_pubkey;
 pfx2type(<<"nm">>) -> name;
 pfx2type(<<"st">>) -> state;
-pfx2type(<<"pi">>) -> poi.
+pfx2type(<<"pi">>) -> poi;
+pfx2type(<<"ss">>) -> state_trees.
 
 -spec byte_size_for_type(known_type()) -> non_neg_integer() | not_applicable.
 
@@ -211,7 +214,8 @@ byte_size_for_type(name)             -> not_applicable;
 byte_size_for_type(commitment)       -> 32;
 byte_size_for_type(peer_pubkey)      -> 32;
 byte_size_for_type(state)            -> 32;
-byte_size_for_type(poi)              -> not_applicable.
+byte_size_for_type(poi)              -> not_applicable;
+byte_size_for_type(state_trees)      -> not_applicable.
 
 
 %% TODO: Fix the base58 module so that it consistently uses binaries instead

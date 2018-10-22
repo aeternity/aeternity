@@ -9,6 +9,9 @@
 
 %% API
 -export([ deserialize/2
+        , deserialize_from_fields/3
+        , serialization_type/0
+        , serialization_template/1
         , ttl/1
         , id/1
         , pubkey/1
@@ -71,6 +74,8 @@
 -define(ORACLE_TYPE, oracle).
 -define(ORACLE_VSN, 1).
 
+-behavior(aeo_cache).
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -101,17 +106,19 @@ serialize(#oracle{} = O) ->
 
 -spec deserialize(aec_keys:pubkey(), binary()) -> oracle().
 deserialize(Pubkey, Bin) ->
+    Fields = aec_object_serialization:deserialize(
+                  ?ORACLE_TYPE,
+                  ?ORACLE_VSN,
+                  serialization_template(?ORACLE_VSN),
+                  Bin
+                ),
+    deserialize_from_fields(?ORACLE_VSN, Pubkey, Fields).
+
+deserialize_from_fields(?ORACLE_VSN, Pubkey,
       [ {query_format, QueryFormat}
       , {response_format, ResponseFormat}
       , {query_fee, QueryFee}
-      , {ttl, TTL}
-      ] =
-        aec_object_serialization:deserialize(
-          ?ORACLE_TYPE,
-          ?ORACLE_VSN,
-          serialization_template(?ORACLE_VSN),
-          Bin
-         ),
+      , {ttl, TTL}]) ->
     #oracle{ id              = aec_id:create(oracle, Pubkey)
            , query_format    = QueryFormat
            , response_format = ResponseFormat
@@ -125,6 +132,8 @@ serialization_template(?ORACLE_VSN) ->
     , {query_fee, int}
     , {ttl, int}
     ].
+
+serialization_type() -> ?ORACLE_TYPE.
 
 -spec serialize_for_client(oracle()) -> map().
 serialize_for_client(#oracle{id              = Id,

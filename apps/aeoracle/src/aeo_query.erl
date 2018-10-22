@@ -10,6 +10,9 @@
 %% API
 -export([ add_response/3
         , deserialize/1
+        , deserialize_from_fields/3
+        , serialization_type/0
+        , serialization_template/1
         , ttl/1
         , fee/1
         , id/1
@@ -71,6 +74,7 @@
 -define(PUB_SIZE, 32).
 -define(NONCE_SIZE, 256).
 
+-behavior(aeo_cache).
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -128,6 +132,12 @@ serialize(#query{} = I) ->
 
 -spec deserialize(binary()) -> query().
 deserialize(B) ->
+    Fields = aec_object_serialization:deserialize(
+                ?ORACLE_QUERY_TYPE, ?ORACLE_QUERY_VSN,
+                serialization_template(?ORACLE_QUERY_VSN), B),
+    deserialize_from_fields(?ORACLE_QUERY_VSN, unused, Fields).
+
+deserialize_from_fields(?ORACLE_QUERY_VSN, _Pubkey,
     [ {sender_id, SenderId}
     , {sender_nonce, SenderNonce}
     , {oracle_id, OracleId}
@@ -136,11 +146,7 @@ deserialize(B) ->
     , {response, Response0}
     , {ttl, TTL}
     , {response_ttl, RespTTLValue}
-    , {fee, Fee}
-    ] = aec_object_serialization:deserialize(
-          ?ORACLE_QUERY_TYPE, ?ORACLE_QUERY_VSN,
-          serialization_template(?ORACLE_QUERY_VSN), B),
-
+    , {fee, Fee}]) ->
     Response = case HasResponse of
                    false -> undefined;
                    true -> Response0
@@ -166,6 +172,8 @@ serialization_template(?ORACLE_QUERY_VSN) ->
     , {response_ttl , int}
     , {fee          , int}
     ].
+
+serialization_type() -> ?ORACLE_QUERY_TYPE.
 
 -spec serialize_for_client(query()) -> map().
 serialize_for_client(#query{sender_id    = SenderId,

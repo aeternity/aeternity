@@ -51,8 +51,8 @@
          snapshot_solo_tx_spec/4,
          snapshot_solo_tx_spec/5,
 
-         force_progress_tx_spec/9,
-         force_progress_tx_spec/10
+         force_progress_tx_spec/8,
+         force_progress_tx_spec/9
         ]).
 
 -define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
@@ -368,11 +368,11 @@ snapshot_solo_tx_default_spec(FromPubKey, State) ->
 
 state_tx(ChannelPubKey, Initiator, Responder, Spec0) ->
     Spec = maps:merge(state_tx_spec(), Spec0),
-    InitiatorAmount = maps:get(initiator_amount, Spec),
-    ResponderAmount = maps:get(responder_amount, Spec),
     StateHash =
         case maps:get(state_hash, Spec, <<>>) of
             <<>> -> %not set, calculate
+                InitiatorAmount = maps:get(initiator_amount, Spec),
+                ResponderAmount = maps:get(responder_amount, Spec),
                 Trees0 = aec_trees:new_without_backend(),
                 Accounts =
                     lists:foldl(
@@ -423,22 +423,21 @@ proof_of_inclusion(Participants) ->
 %%%===================================================================
 
 force_progress_tx_spec(ChannelId, FromPubKey, Payload, Update, StateHash,
-                       Round, PoI, Addresses, State) ->
+                       Round, OffChainTrees, State) ->
     force_progress_tx_spec(ChannelId, FromPubKey, Payload, Update, StateHash,
-                       Round, PoI, Addresses, #{}, State).
+                       Round, OffChainTrees, #{}, State).
 
 force_progress_tx_spec(ChannelId, FromPubKey, Payload, Update, StateHash,
-                       Round, PoI, Addresses, Spec0, State) ->
+                       Round, OffChainTrees, Spec0, State) ->
     Spec = maps:merge(force_progress_default_spec(FromPubKey, State), Spec0),
-    Spec#{channel_id  => aec_id:create(channel, ChannelId),
-          from_id     => aec_id:create(account, FromPubKey),
-          payload     => Payload,
-          update      => Update,
-          state_hash  => StateHash,
-          round       => Round,
-          addresses   => Addresses,
-          poi         => PoI,
-          ttl         => maps:get(ttl, Spec, 0)}.
+    Spec#{channel_id      => aec_id:create(channel, ChannelId),
+          from_id         => aec_id:create(account, FromPubKey),
+          payload         => Payload,
+          update          => Update,
+          state_hash      => StateHash,
+          round           => Round,
+          offchain_trees  => OffChainTrees,
+          ttl             => maps:get(ttl, Spec, 0)}.
 
 force_progress_default_spec(FromPubKey, State) ->
     #{fee              => 3,

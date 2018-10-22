@@ -18,6 +18,10 @@
          commit_to_db/1
         ]).
 
+-export([ from_binary_without_backend/1
+        , to_binary_without_backend/1
+        ]).
+
 %% API - Proof of inclusion
 -export([ add_poi/3
         , verify_poi/3
@@ -38,6 +42,7 @@
 -type value() :: aec_accounts:deterministic_account_binary_with_pubkey().
 -opaque tree() :: aeu_mtrees:mtree(key(), value()).
 
+-define(VSN, 1).
 %%%===================================================================
 %%% API - similar to OTP `gb_trees` module
 %%%===================================================================
@@ -78,6 +83,25 @@ enter(Account, Tree) ->
 -spec delete(aec_keys:pubkey(), tree()) -> tree().
 delete(Pubkey, Tree) ->
     aeu_mtrees:delete(Pubkey, Tree).
+
+-spec to_binary_without_backend(tree()) -> binary().
+to_binary_without_backend(Tree) ->
+    Bin = aeu_mtrees:serialize(Tree),
+    aec_object_serialization:serialize(
+        accounts_mtree,
+        ?VSN,
+        serialization_template(?VSN),
+        [{accounts, Bin}]).
+
+-spec from_binary_without_backend(binary()) -> tree().
+from_binary_without_backend(Bin) ->
+    [{accounts, AccountsBin}] =
+        aec_object_serialization:deserialize(accounts_mtree, ?VSN,
+                                             serialization_template(?VSN), Bin),
+    aeu_mtrees:deserialize(AccountsBin).
+
+serialization_template(?VSN) ->
+    [{accounts, binary}].
 
 %%%===================================================================
 %%% API - Merkle tree

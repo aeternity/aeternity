@@ -28,6 +28,10 @@
         , root_hash/1
         ]).
 
+-export([ from_binary_without_backend/1
+        , to_binary_without_backend/1
+        ]).
+
 -ifdef(TEST).
 -export([ query_list/1
         , oracle_list/1
@@ -68,6 +72,7 @@
 
 -define(HASH_SIZE, 32).
 
+-define(VSN, 1).
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -403,3 +408,51 @@ cache_pop(C) ->
         {Next,?DUMMY_VAL,_Iter} ->
             {sext:decode(Next), aeu_mtrees:delete(Next, C)}
     end.
+
+-spec to_binary_without_backend(tree()) -> binary().
+to_binary_without_backend(#oracle_tree{otree = OTree}) ->
+    OTBin = aeu_mtrees:serialize(OTree),
+    aec_object_serialization:serialize(
+        oracles_mtree,
+        ?VSN,
+        serialization_template(?VSN),
+        [{otree, OTBin}]).
+
+-spec from_binary_without_backend(binary()) -> tree().
+from_binary_without_backend(Bin) ->
+    [{otree, OTBin}] =
+        aec_object_serialization:deserialize(oracles_mtree, ?VSN,
+                                             serialization_template(?VSN), Bin),
+    OTree = aeu_mtrees:deserialize(OTBin),
+    Cache = create_cache_from_mtree(OTree, aeu_mtrees:empty()),
+    #oracle_tree{otree = OTree,
+                 cache = Cache}.
+
+serialization_template(?VSN) ->
+    [{otree, binary}].
+
+create_cache_from_mtree(MTree, EmptyCache) ->
+    create_cache_from_mtree_(aeu_mtrees:iterator_next(
+                               aeu_mtrees:iterator(MTree)), EmptyCache).
+
+create_cache_from_mtree_('$end_of_table', Cache) -> Cache;
+create_cache_from_mtree_({Key, Val, Iter}, Cache0) ->
+    {Module, Obj} = deserialize_value(Key, Val),
+    TTL = Module:ttl(Obj),
+    Cache = cache_push(TTL, Key, Cache0),
+    create_cache_from_mtree_(aeu_mtrees:iterator_next(Iter), Cache).
+
+deserialize_value(Hash, Bin) ->
+    {Type, Vsn, RawFields} =
+        aec_object_serialization:deserialize_type_and_vsn(Bin),
+    Oracle = aeo_oracles:serialization_type(),
+    Query = aeo_query:serialization_type(),
+    Module =
+        case Type of
+            Oracle -> aeo_oracles;
+            Query  -> aeo_query
+        end,
+    Template = Module:serialization_template(Vsn),
+    Fields = aec_serialization:decode_fields(Template, RawFields),
+    Obj = Module:deserialize_from_fields(Vsn, Hash, Fields),
+    {Module, Obj}.

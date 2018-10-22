@@ -10,7 +10,10 @@
 %% API
 -export([new/3,
          serialize/1,
-         deserialize/2
+         deserialize/2,
+         deserialize_from_fields/3,
+         serialization_type/0,
+         serialization_template/1
         ]).
 
 %% Getters
@@ -19,6 +22,7 @@
          ttl/1,
          created/1]).
 
+-behavior(aens_cache).
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -73,14 +77,17 @@ serialize(#commitment{owner_id = OwnerId,
 
 -spec deserialize(hash(), binary()) -> commitment().
 deserialize(CommitmentHash, Bin) ->
+    Fields = aec_object_serialization:deserialize(
+                  ?COMMITMENT_TYPE,
+                  ?COMMITMENT_VSN,
+                  serialization_template(?COMMITMENT_VSN),
+                  Bin),
+    deserialize_from_fields(?COMMITMENT_VSN, CommitmentHash, Fields).
+
+deserialize_from_fields(?COMMITMENT_VSN, CommitmentHash,
     [ {owner_id, OwnerId}
     , {created, Created}
-    , {ttl, TTL}
-    ] = aec_object_serialization:deserialize(
-          ?COMMITMENT_TYPE,
-          ?COMMITMENT_VSN,
-          serialization_template(?COMMITMENT_VSN),
-          Bin),
+    , {ttl, TTL}]) ->
     #commitment{id       = aec_id:create(commitment, CommitmentHash),
                 owner_id = OwnerId,
                 created  = Created,
@@ -92,6 +99,7 @@ serialization_template(?COMMITMENT_VSN) ->
     , {ttl, int}
     ].
 
+serialization_type() -> ?COMMITMENT_TYPE.
 %%%===================================================================
 %%% Getters
 %%%===================================================================

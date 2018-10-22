@@ -23,6 +23,10 @@
          new_with_backend/2,
          root_hash/1]).
 
+-export([ from_binary_without_backend/1
+        , to_binary_without_backend/1
+        ]).
+
 %% Export for test
 -ifdef(TEST).
 -export([ name_list/1
@@ -52,6 +56,7 @@
 
 -export_type([tree/0]).
 
+-define(VSN, 1).
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -171,6 +176,28 @@ name_list(#ns_tree{mtree = Tree}) ->
 -endif.
 
 
+-spec to_binary_without_backend(tree()) -> binary().
+to_binary_without_backend(#ns_tree{mtree = MTree}) ->
+    MTBin = aeu_mtrees:serialize(MTree),
+    aec_object_serialization:serialize(
+        nameservice_mtree,
+        ?VSN,
+        serialization_template(?VSN),
+        [{mtree, MTBin}]).
+
+-spec from_binary_without_backend(binary()) -> tree().
+from_binary_without_backend(Bin) ->
+    [{mtree, MTBin}] =
+        aec_object_serialization:deserialize(nameservice_mtree, ?VSN,
+                                             serialization_template(?VSN), Bin),
+    MTree = aeu_mtrees:deserialize(MTBin),
+    Cache = create_cache_from_mtree(MTree, aeu_mtrees:empty()),
+    #ns_tree{mtree = MTree,
+             cache = Cache}.
+
+serialization_template(?VSN) ->
+    [{mtree, binary}].
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -256,3 +283,29 @@ cache_pop(C) ->
         {Next,?DUMMY_VAL,_Iter} ->
             {sext:decode(Next), aeu_mtrees:delete(Next, C)}
     end.
+
+create_cache_from_mtree(MTree, EmptyCache) ->
+    create_cache_from_mtree_(aeu_mtrees:iterator_next(
+                               aeu_mtrees:iterator(MTree)), EmptyCache).
+
+create_cache_from_mtree_('$end_of_table', Cache) -> Cache;
+create_cache_from_mtree_({Key, Val, Iter}, Cache0) ->
+    {Module, Obj} = deserialize_name_or_commitment(Key, Val),
+    TTL = Module:ttl(Obj),
+    Cache = cache_push(TTL, Key, Module, Cache0),
+    create_cache_from_mtree_(aeu_mtrees:iterator_next(Iter), Cache).
+
+deserialize_name_or_commitment(Hash, Bin) ->
+    {Type, Vsn, RawFields} =
+        aec_object_serialization:deserialize_type_and_vsn(Bin),
+    Name = aens_names:serialization_type(),
+    Commitment = aens_commitments:serialization_type(),
+    Module =
+        case Type of
+            Name       -> aens_names;
+            Commitment -> aens_commitments
+        end,
+    Template = Module:serialization_template(Vsn),
+    Fields = aec_serialization:decode_fields(Template, RawFields),
+    Obj = Module:deserialize_from_fields(Vsn, Hash, Fields),
+    {Module, Obj}.
