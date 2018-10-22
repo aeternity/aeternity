@@ -284,7 +284,8 @@
                         "listen_address": {
                           "description": "Listen address for channels websocket interface.",
                           "type": "string",
-                          "example": "192.168.168.25"
+                          "default": "127.0.0.1",
+                          "example": "0.0.0.0"
                         },
                         "acceptors" : {
                             "description" : "Number of acceptors in pool",
