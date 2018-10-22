@@ -159,7 +159,10 @@
          fp_insufficent_tokens/1,
 
          % off-chain name registration not allowed
-         fp_register_name/1
+         fp_register_name/1,
+
+         % FP resets locked_until timer
+         fp_slash_too_soon/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -325,7 +328,10 @@ groups() ->
        % poi tests
 
        fp_insufficent_tokens,
-       fp_register_name
+       fp_register_name,
+
+       % FP resets locked_until timer
+       fp_slash_too_soon
       ]}
     ].
 
@@ -3264,6 +3270,99 @@ fp_register_name(Cfg) ->
     [Test(Owner, Forcer) || Owner  <- ?ROLES,
                             Forcer <- ?ROLES],
     ok.
+
+fp_slash_too_soon(Cfg) ->
+    AfterSlash =
+        fun(CloseRound, SlashRound, FPRound, Closer, Slasher, Owner, Forcer) ->
+            IAmt0 = 30,
+            RAmt0 = 30,
+            LockPeriod = 10,
+            CloseHeight = 10,
+            SlashHeight = 12,
+            FPHeight = SlashHeight + 1,
+            CallDeposit = 10,
+            true = SlashHeight < CloseHeight + LockPeriod,
+            ContractCreateRound = 10,
+            run(#{cfg => Cfg, initiator_amount => IAmt0,
+                              responder_amount => RAmt0,
+                  lock_period => LockPeriod,
+                  channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                % close
+                set_prop(height, CloseHeight),
+                set_from(Closer),
+                create_contract_poi_and_payload(CloseRound,
+                                                ContractCreateRound,
+                                                Owner),
+                set_prop(round, CloseRound),
+                positive(fun close_solo_/2),
+                % slash
+                set_prop(height, SlashHeight),
+                set_prop(round, SlashRound),
+                set_from(Slasher),
+                delete_prop(state_hash),
+                create_poi_by_trees(),
+                create_payload(),
+                positive(fun slash_/2),
+                % force progress
+                create_poi_by_trees(),
+                set_prop(round, FPRound - 1), % for the payload
+                create_payload(),
+                fun(Props) when CloseRound =:= FPRound - 1 ->
+                      Props#{payload => <<>>};
+                   (Props) -> Props
+                end,
+                set_prop(height, FPHeight),
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
+                    % ensure channel had been updated
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    SlashRound = aesc_channels:round(Channel),
+                    false = aesc_channels:is_active(Channel),
+                    ChannelAmount = aesc_channels:channel_amount(Channel),
+                    % total balance not changed
+                    {ChannelAmount, _} = {IAmt0 + RAmt0, ChannelAmount},
+                    ParticipantBalances = get_channel_obj_balances(Channel),
+                    Props#{amts_before_fp => ParticipantBalances}
+                end,
+                set_prop(call_deposit, CallDeposit),
+                force_progress_sequence(_Round = FPRound, Forcer),
+                fun(#{initiator_pubkey  := I,
+                      responder_pubkey  := R,
+                      trees             := Trees} = Props) ->
+                    Accounts = aec_trees:accounts(Trees),
+                    Balance =
+                        fun(Pubkey) ->
+                            Acc = aec_accounts_trees:get(Pubkey, Accounts),
+                            _Bal = aec_accounts:balance(Acc)
+                        end,
+                    IBal = Balance(I),
+                    RBal = Balance(R),
+                    Props#{initiator_amount => IBal,
+                           responder_amount => RBal}
+                end,
+                % height is not enough to accept a settle tx
+                negative(fun settle_/2, {error, channel_not_closed}),
+                % when a proper height is reached - a settle tx is
+                % accepted
+                set_prop(height, FPHeight + LockPeriod + 1),
+                positive(fun settle_/2)
+               ])
+        end,
+    Test =
+        fun(CloseRound, SlashRound, FPRound) ->
+            [AfterSlash(CloseRound, SlashRound, FPRound,
+                        Closer, Slasher, Owner, Forcer) || Owner  <- ?ROLES,
+                                                           Closer <- ?ROLES,
+                                                           Slasher <- ?ROLES,
+                                                           Forcer <- ?ROLES]
+        end,
+
+    %% some rounds had passed since the close
+    Test(10, 11, 20),
+    %% force progress right after a close
+    Test(11, 20, 30),
+    ok.
+
 
 create_contract_poi_and_payload(Round, ContractRound, Owner) ->
     create_contract_poi_and_payload(Round, ContractRound, Owner, #{}).
