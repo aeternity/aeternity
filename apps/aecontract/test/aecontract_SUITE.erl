@@ -33,6 +33,7 @@
         , sophia_match_bug/1
         , sophia_spend/1
         , sophia_typed_calls/1
+        , sophia_no_reentrant/1
         , sophia_oracles/1
         , sophia_oracles_ttl__extend_after_expiry/1
         , sophia_oracles_ttl__fixed_rttl/1
@@ -138,6 +139,7 @@ groups() ->
 
     , {state_tree, [sequence], [ state_tree ]}
     , {sophia,     [sequence], [ sophia_identity,
+                                 sophia_no_reentrant,
                                  sophia_state,
                                  sophia_match_bug,
                                  sophia_spend,
@@ -814,6 +816,16 @@ sophia_identity(_Cfg) ->
     99    = ?call(call_contract,   Acc1, RemC, call, word, {IdC, 99}),
     RemC2 = ?call(create_contract, Acc1, remote_call, {}, #{amount => 100}),
     77    = ?call(call_contract,   Acc1, RemC2, staged_call, word, {IdC, RemC, 77}),
+    ok.
+
+sophia_no_reentrant(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc   = ?call(new_account, 1000000),
+    IdC   = ?call(create_contract, Acc, identity, {}),
+    RemC  = ?call(create_contract, Acc, remote_call, {}, #{amount => 100}),
+    Err   = {error, <<"out_of_gas">>},
+            %% Should fail due to reentrancy
+    Err   = ?call(call_contract, Acc, RemC, staged_call, word, {IdC, RemC, 77}),
     ok.
 
 sophia_state(_Cfg) ->
@@ -2527,7 +2539,8 @@ sophia_map_benchmark(Cfg) ->
     Code = aect_test_utils:compile_contract("contracts/maps_benchmark.aes"),
     Opts = #{ gas => 1000000, return_gas_used => true },
     {Ct, InitGas}   = ?call(create_contract, Acc, maps_benchmark, {777, Map}, Opts),
-    {{}, SimpleGas} = ?call(call_contract, Acc, Ct, set_updater, {tuple, []}, Ct, Opts),
+    Remote          = ?call(create_contract, Acc, maps_benchmark, {888, #{}}, Opts),    %% Can't make remote calls to oneself
+    {{}, SimpleGas} = ?call(call_contract, Acc, Ct, set_updater, {tuple, []}, Remote, Opts),
     Map1 = Map#{ 5 => <<"five">> },
     {Map1, Gas} = ?call(call_contract, Acc, Ct, benchmark, {map, word, string}, {5, <<"five">>}, Opts),
     io:format("Bytecode size: ~p\nInit   gas used: ~p\nSimple gas used: ~p\nBench  gas used: ~p\n", [byte_size(Code), InitGas, SimpleGas, Gas]),
