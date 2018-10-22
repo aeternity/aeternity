@@ -23,7 +23,9 @@
          accepted_future_block_time_shift/0,
          fraud_report_reward/0,
          state_gas_cost_per_block/1,
-         primop_base_gas_cost/1]).
+         primop_base_gas_cost/1,
+         add_network_id/1,
+         get_network_id/0]).
 
 -export_type([protocols/0]).
 
@@ -35,6 +37,7 @@
         #{?PROTOCOL_VERSION => ?GENESIS_HEIGHT
          }).
 
+-define(NETWORK_ID, <<"ae_mainnet">>).
 -define(BLOCKS_TO_CHECK_DIFFICULTY_COUNT, 17).
 -define(TIMESTAMP_MEDIAN_BLOCKS, 11).
 -define(EXPECTED_BLOCK_MINE_RATE_MINUTES, 3).
@@ -204,3 +207,12 @@ name_registrars() ->
 
 fraud_report_reward() ->
     ?POF_REWARD.
+
+-spec add_network_id(binary()) -> binary().
+add_network_id(SerializedTransaction) ->
+    NetworkId = get_network_id(),
+    <<NetworkId/binary, SerializedTransaction/binary>>.
+
+get_network_id() ->
+    aeu_env:user_config_or_env([<<"fork_management">>, <<"network_id">>],
+                                aecore, network_id, ?NETWORK_ID).

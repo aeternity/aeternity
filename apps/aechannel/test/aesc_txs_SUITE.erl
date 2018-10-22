@@ -2896,7 +2896,8 @@ fp_register_name(Cfg) ->
     SignContractAddress =
         fun(PubK, PrivK, ConId) ->
             BinToSign = <<PubK/binary, ConId/binary>>,
-            SigBin = <<Word1:256, Word2:256>> = enacl:sign_detached(BinToSign, PrivK),
+            SigBin = <<Word1:256, Word2:256>> =
+                enacl:sign_detached(aec_governance:add_network_id(BinToSign), PrivK),
             %_Sig = aeu_hex:hexstring_encode(aeso_data:to_binary({Word1, Word2}, 0))
             ?TEST_LOG("Signature binary ~p", [SigBin]),
             Word11 = integer_to_binary(Word1),

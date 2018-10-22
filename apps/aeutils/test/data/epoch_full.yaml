@@ -143,3 +143,6 @@ metrics:
           actions: log
         - name: "ae.epoch.aecore.**"
           actions: log,send
+
+fork_management:
+    network_id: "ae_mainnet"

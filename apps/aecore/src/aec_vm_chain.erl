@@ -381,7 +381,8 @@ check_name_signature(AKey, Hash, CKey, Signature) ->
 
 check_signature(AKey, AKey, _Binary, _Signature) -> ok;
 check_signature(AKey, _CKey, Binary, Signature) ->
-    case enacl:sign_verify_detached(Signature, Binary, AKey) of
+    BinaryForNetwork = aec_governance:add_network_id(Binary),
+    case enacl:sign_verify_detached(Signature, BinaryForNetwork, AKey) of
        {ok, _}    -> ok;
        {error, _} -> {error, signature_check_failed}
     end.

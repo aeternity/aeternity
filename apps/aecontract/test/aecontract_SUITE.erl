@@ -2371,7 +2371,8 @@ sophia_signatures_aens(_Cfg) ->
 
 sign(Material, KeyHolder) ->
     PrivKey  = aect_test_utils:priv_key(KeyHolder, state()),
-    <<Word1:256, Word2:256>> = enacl:sign_detached(Material, PrivKey),
+    MaterialForNetworkId = aec_governance:add_network_id(Material),
+    <<Word1:256, Word2:256>> = enacl:sign_detached(MaterialForNetworkId, PrivKey),
     {Word1, Word2}.
 
 %% Testing map functions and primitives
