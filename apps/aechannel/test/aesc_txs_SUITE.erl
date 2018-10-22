@@ -1992,7 +1992,7 @@ fp_chain_is_replaced_by_cosigned_tx(Cfg, PostCoSignedFun) ->
                     % co-signed had won on-chain
                     BogusStateHash = aesc_channels:state_hash(Channel),
                     % back to the co-signed round
-                    FPRound = aesc_channels:state_hash(Channel),
+                    FPRound = aesc_channels:round(Channel),
                     Props
                 end
                ])
