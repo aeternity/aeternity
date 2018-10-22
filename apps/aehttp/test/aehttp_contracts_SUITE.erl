@@ -836,7 +836,9 @@ dutch_auction_contract(Config) ->
                  priv_key := APriv},
       acc_b := #{pub_key := BPub,
                  priv_key := BPriv},
-      acc_c := #{pub_key := CPub}} = proplists:get_value(accounts, Config),
+      acc_c := #{pub_key := CPub},
+      acc_d := #{pub_key := DPub,
+                 priv_key := DPriv}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
     _ABal0 = ensure_balance(APub, 500000),
@@ -881,6 +883,11 @@ dutch_auction_contract(Config) ->
     %% Check that the balances are correct, don't forget the gas and the fee.
     BBal2 = BBal1 - Cost - GasUsed - Fee,
     CBal2 = CBal1 + Cost,
+
+    %% Now make a bid which should fail as auction has closed.
+    revert_call_compute_func(Node, DPub, DPriv, EncCPub,
+                             <<"bid">>, <<"()">>,
+			     #{amount => 100000,fee => Fee}),
 
     ok.
 

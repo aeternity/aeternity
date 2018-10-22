@@ -1329,16 +1329,16 @@ sophia_oracles_qfee__flow_up_to_query_(InitialState,
                              RegisterOpts, RegisterTxOpts,
                              QueryOpts   , QueryTxOpts,
                              no_response , no_response),
-    {{error, <<"out_of_gas">>},
-     {OracleAcc, CallingCt},
-     [S0,  %% State before oracle init.
-      S1,  %% State after oracle registration.
-      S2], %% State after oracle query.
-     GasUsed
-    } = sophia_oracles_qfee__init_and_register_and_query_(
-          CCbs#oracle_cbs.init,
-          CCbs#oracle_cbs.register,
-          CCbs#oracle_cbs.query),
+    case sophia_oracles_qfee__init_and_register_and_query_(
+           CCbs#oracle_cbs.init,
+           CCbs#oracle_cbs.register,
+           CCbs#oracle_cbs.query) of
+        %% Exporting AccCt, States, GasUsed. Naughty, naughty!
+        {{error, <<"out_of_gas">>},AccCt,States,GasUsed} -> ok;
+        {revert,AccCt,States,GasUsed} -> ok
+    end,
+     %% State before oracle init, after registration, and after query.
+    {{OracleAcc, CallingCt}, [S0, S1, S2]} = {AccCt,States},
     {{OperatorAcc, UserAcc}, {OracleAcc, CallingCt}, [S0, S1, S2], GasUsed}.
 
 %% Reference case i.e. all of the following items are equal:
@@ -2915,6 +2915,7 @@ run_scenario(#fundme_scenario
     ExpectedResult =
         fun({withdraw, _, _, ok})       -> {};
            ({withdraw, _, _, error})    -> {error, <<"out_of_gas">>};
+           ({withdraw, _, _, revert})   -> revert;
            ({contribute, _, _, Height}) -> Height < Deadline end,
     lists:foreach(fun({E, Res}) ->
         Expect = ExpectedResult(E),
@@ -2948,8 +2949,8 @@ sophia_fundme(_Cfg) ->
             [{contribute, {investor, 2}, 5, 1900},
              {withdraw, beneficiary, 2100,   ok},
              {contribute, {investor, 1}, 3, 2150},
-             {withdraw, beneficiary, 2200,   error},
-             {withdraw, {investor, 5}, 2200, error} ] },
+             {withdraw, beneficiary, 2200,   revert},
+             {withdraw, {investor, 5}, 2200, revert} ] },
 
     NotFunded = #fundme_scenario{
         name     = not_funded_scenario,
@@ -2958,10 +2959,10 @@ sophia_fundme(_Cfg) ->
         events   =
             [{contribute, {investor, I}, I, 1000 + 100 * I} || I <- lists:seq(1, 5)] ++
             [{contribute, {investor, 2}, 5, 1900},
-             {withdraw, beneficiary, 2100, error},
+             {withdraw, beneficiary, 2100, revert},
              {contribute, {investor, 2}, 3, 2150}] ++
             [{withdraw, {investor, I}, 2200 + I, ok} || I <- lists:seq(1, 4)] ++
-            [{withdraw, {investor, 3}, 2300, error}] },
+            [{withdraw, {investor, 3}, 2300, revert}] },
 
     run_scenario(Funded),
     run_scenario(NotFunded),

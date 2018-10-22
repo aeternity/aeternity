@@ -91,7 +91,8 @@ execute_call(Contract, CallData, ChainState, Options) ->
     case Res of
         {ok, #{ out := RetVal, chain_state := S }} ->
             {ok, RetVal, S};
-        Err = {error, _, _}      -> Err
+        Err = {error, _, _}      -> Err;
+        Rev = {revert,_}         -> Rev
     end.
 
 make_call(Contract, Fun, Args, Env, Options) ->
@@ -131,7 +132,10 @@ successful_call(Contract, Type, Fun, Args, Env, Options) ->
             end;
         {error, Err, S} ->
             io:format("S =\n  ~p\n", [S]),
-            exit({error, Err})
+            exit({error, Err});
+        {revert, S} ->
+            io:format("S =\n  ~p\n", [S]),
+            exit(revert)
     end.
 
 failing_call(Contract, Fun, Args, Env) ->
@@ -142,9 +146,26 @@ failing_call(Contract, Fun, Args, Env, Options) ->
         {ok, Result, _} ->
             Words = aeso_test_utils:dump_words(Result),
             exit({expected_failure, {ok, Words}});
+        {revert, _} ->
+            exit({expected_failure, revert});
         {error, Err, _} ->
             Err
     end.
+
+reverting_call(Contract, Fun, Args, Env) ->
+    reverting_call(Contract, Fun, Args, Env, #{}).
+
+reverting_call(Contract, Fun, Args, Env, Options) ->
+    case make_call(Contract, Fun, Args, Env, Options) of
+        {ok, Result, _} ->
+            Words = aeso_test_utils:dump_words(Result),
+            exit({expected_revert, {ok, Words}});
+        {error, Err, _} ->
+            exit({expected_revert, {error, Err}});
+        {revert, _} ->
+            revert
+    end.
+
 
 execute_identity_fun_from_sophia_file(_Cfg) ->
     Code = compile_contract(identity),
@@ -358,8 +379,8 @@ dutch_auction(_Cfg) ->
     {_,Env3} = successful_call(Dadr, {tuple,[]}, bid, "()", Env2,
                                #{ caller => Cadr, currentNumber => 60 }),
     %% The auction has been closed so bidding again should fail.
-    failing_call(Dadr, bid, "()", Env3,
-                 #{ caller => Cadr, currentNumber => 70}),
+    reverting_call(Dadr, bid, "()", Env3,
+                   #{ caller => Cadr, currentNumber => 70}),
     %% Decrement is 5 per block and 18 blocks so 410 have been
     %% transferred to benficiary and 90 back to caller.
     1410 = get_balance(<<Badr:256>>, Env3),
