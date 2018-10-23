@@ -856,7 +856,7 @@ channel_spec(Cfg, ChannelReserve, PushAmount) ->
     RAmt = ?config(responder_amount, Cfg),
     Spec = #{initiator        => maps:get(pub, I),
              responder        => maps:get(pub, R),
-             initiator_amount => IAmt, 
+             initiator_amount => IAmt,
              responder_amount => RAmt,
              push_amount      => PushAmount,
              lock_period      => 10,
@@ -1133,8 +1133,7 @@ opt_add_tx_to_debug(_, Debug) ->
     Debug.
 
 prep_initiator(Node) ->
-    {ok, PubKey} = rpc(Node, aec_keys, pubkey, []),
-    {ok, PrivKey} = rpc(Node, aec_keys, sign_privkey, []),
+    {PrivKey, PubKey} = aecore_suite_utils:sign_keys(Node),
     ct:log("initiator Pubkey = ~p", [PubKey]),
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(Node), 3),
     ct:log("initiator: 3 blocks mined on ~p", [Node]),

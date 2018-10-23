@@ -38,6 +38,25 @@ all_test_() ->
                         {ok, SignedTx} = aec_keys:sign_tx(Tx),
                         ?assertEqual(Tx, aetx_sign:tx(SignedTx))
                 end},
+                {"Promote signing keys candidate (positive case)",
+                fun() ->
+                        {ok, SPub0} = aec_keys:pubkey(),
+                        {ok, CPub0} = aec_keys:candidate_pubkey(),
+                        ok = aec_keys:promote_candidate(CPub0),
+                        {ok, SPub1} = aec_keys:pubkey(),
+                        {ok, CPub1} = aec_keys:candidate_pubkey(),
+                        ?assertEqual(CPub0, SPub1),
+                        ?assertNotEqual(SPub0, SPub1),
+                        ?assertNotEqual(CPub0, CPub1)
+                end},
+                {"Promote signing keys candidate (negative case)",
+                fun() ->
+                        {ok, SPub0} = aec_keys:pubkey(),
+                        {ok, CPub0} = aec_keys:candidate_pubkey(),
+                        ?assertEqual({error, key_not_found}, aec_keys:promote_candidate(SPub0)),
+                        ?assertEqual({ok, SPub0}, aec_keys:pubkey()),
+                        ?assertEqual({ok, CPub0}, aec_keys:candidate_pubkey())
+                end},
                {"Keys validation (positive case)",
                 fun() ->
                         #{ public := Pubkey, secret := PrivKey} = enacl:sign_keypair(),

@@ -275,23 +275,27 @@ tx_first_pays_second_more_it_can_afford(Config) ->
 
 tx_first_pays_second_(Config, AmountFun) ->
     [ Dev1, Dev2 | _ ] = proplists:get_value(devs, Config),
-    N1 = aecore_suite_utils:node_name(Dev1),
-    N2 = aecore_suite_utils:node_name(Dev2),
-    {ok, PK1} = get_pubkey(N1),
-    ct:log("PK1 = ~p", [PK1]),
-    {ok, Bal1} = get_balance(N1),
-    ct:log("Balance on dev1: ~p", [Bal1]),
+    NodeT1 = aecore_suite_utils:node_tuple(Dev1),
+    NodeT2 = aecore_suite_utils:node_tuple(Dev2),
+
+    PK1 = get_pubkey(NodeT1),
+    PK2 = get_pubkey(NodeT1),
+
+    Bal1 = get_balance_(NodeT1, PK1),
     true = (is_integer(Bal1) andalso Bal1 > 0),
-    {ok, Pool11} = get_pool(N1),
-    {ok, Pool21} = get_pool(N2),
+
+    {ok, Pool11} = get_pool(NodeT1),
+    {ok, Pool21} = get_pool(NodeT2),
     Pool11 = Pool21,                % tx pools are ordered
-    ok = new_tx(#{node1  => N1,
-                  node2  => N2,
+
+    ok = new_tx(#{node1  => {PK1, NodeT1},
+                  node2  => {PK2, NodeT2},
                   amount => AmountFun(Bal1),
                   fee    => 1}),
-    {ok, Pool12} = get_pool(N1),
+
+    {ok, Pool12} = get_pool(NodeT1),
     [NewTx] = Pool12 -- Pool11,
-    true = ensure_new_tx(N2, NewTx).
+    true = ensure_new_tx(NodeT1, NewTx).
 
 ensure_tx_pools_empty(Config) ->
     ensure_tx_pools_n_txs_(Config, 0).
@@ -300,18 +304,18 @@ ensure_tx_pools_one_tx(Config) ->
     ensure_tx_pools_n_txs_(Config, 1).
 
 ensure_tx_pools_n_txs_(Config, TxsCount) ->
-    Ns = [N || {_,N} <- ?config(nodes, Config)],
+    Nodes = ?config(nodes, Config),
     retry(
       fun() ->
               [APool | RestPools] =
                   lists:map(
-                    fun(N) ->
-                            case get_pool(N) of
+                    fun(Node) ->
+                            case get_pool(Node) of
                                 {ok, Pool} when is_list(Pool) ->
-                                    ct:log("Pool (~p) = ~p", [N, Pool]),
+                                    ct:log("Pool (~p) = ~p", [Node, Pool]),
                                     Pool
                             end
-                    end, Ns),
+                    end, Nodes),
               if
                   length(APool) =:= TxsCount ->
                       lists:all(fun(P) when P =:= APool -> true;
@@ -320,7 +324,7 @@ ensure_tx_pools_n_txs_(Config, TxsCount) ->
                   true ->
                       false
               end
-      end, {?LINE, ensure_tx_pools_n_txs_, TxsCount, Ns}).
+      end, {?LINE, ensure_tx_pools_n_txs_, TxsCount, Nodes}).
 
 report_metrics(Config) ->
     Ns = [N || {_, N} <- ?config(nodes, Config)],
@@ -593,18 +597,23 @@ retry_(_, S) ->
 %% Transaction support functions
 %% ============================================================
 
-get_pubkey(N) ->
-    rpc:call(N, aec_keys, pubkey, [], 5000).
+get_pubkey({NodeId, _}) ->
+    {_Priv, Pub} = aecore_suite_utils:sign_keys(NodeId),
+    Pub.
+
+get_balance_({_, NodeName}, Pubkey) ->
+    {_, Account} = rpc:call(NodeName, aec_chain, get_account, [Pubkey]),
+    aec_accounts:balance(Account).
+
+%%
 
 get_balance(N) ->
     rpc:call(N, aec_mining, get_miner_account_balance, [], 5000).
 
-get_pool(N) ->
-    rpc:call(N, aec_tx_pool, peek, [infinity], 5000).
+get_pool({_, Name}) ->
+    rpc:call(Name, aec_tx_pool, peek, [infinity], 5000).
 
-new_tx(#{node1 := N1, node2 := N2, amount := Am, fee := Fee} = _M) ->
-    PK1 = ok(get_pubkey(N1)),
-    PK2 = ok(get_pubkey(N2)),
+new_tx(#{node1 := {PK1, {_,N1} = T1}, node2 := {PK2, _}, amount := Am, fee := Fee} = _M) ->
     ExtPort = rpc:call(N1, aeu_env, user_config_or_env,
                        [ [<<"http">>, <<"external">>, <<"port">>],
                          aehttp, [external, port], 8043], 5000),
@@ -620,21 +629,19 @@ new_tx(#{node1 := N1, node2 := N2, amount := Am, fee := Fee} = _M) ->
     Cfg = [{ext_http, "http://127.0.0.1:" ++ integer_to_list(ExtPort)},
            {int_http, "http://127.0.0.1:" ++ integer_to_list(IntPort)}],
     ct:log(">>> PARAMS: ~p", [Params]),
+
     {ok, 200, #{tx := SpendTx}} = aehttp_client:request('PostSpend', Params, Cfg),
-    SignedSpendTx = sign_tx(N1, SpendTx),
+    SignedSpendTx = sign_tx(T1, SpendTx),
     {ok, 200, _} = aehttp_client:request('PostTransaction', #{tx => SignedSpendTx}, Cfg),
     ok.
 
-ensure_new_tx(N, Tx) ->
-    retry(fun() -> ensure_new_tx_(N, Tx) end,
-          {?LINE, ensure_new_tx, N, Tx}).
+ensure_new_tx(T, Tx) ->
+    retry(fun() -> ensure_new_tx_(T, Tx) end,
+          {?LINE, ensure_new_tx, T, Tx}).
 
-ensure_new_tx_(N, Tx) ->
-    {ok, Txs} = get_pool(N),
+ensure_new_tx_(T, Tx) ->
+    {ok, Txs} = get_pool(T),
     lists:member(Tx, Txs).
-
-ok({ok, V}) ->
-    V.
 
 config({devs, Devs}, Config) ->
     aec_metrics_test_utils:start_statsd_loggers(
@@ -650,10 +657,10 @@ node_db_cfg(Node) ->
                     end),
     {ok, DbCfg}.
 
-sign_tx(Node, Tx) ->
+sign_tx(T, Tx) ->
     {ok, TxDec} = aec_base58c:safe_decode(transaction, Tx),
     UnsignedTx = aetx:deserialize_from_binary(TxDec),
-    {ok, SignedTx} = rpc:call(Node, aec_keys, sign_tx, [UnsignedTx]),
+    {ok, SignedTx} = aecore_suite_utils:sign_on_node(T, UnsignedTx),
     aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)).
 
 add_spend_tx(Node, Amount, Fee, Nonce, TTL, Payload) ->
