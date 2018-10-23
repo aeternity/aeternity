@@ -63,6 +63,7 @@
     privkey => binary(),        % Private part of the peer key
     peers := [binary()],        % URLs of the peer nodes
     source := {pull, binary()}, % Source of the node image
+    ulimits := [{Name :: atom(), Soft :: integer(), Hard :: integer()}],
     mine_rate => default | pos_integer(),
     cuckoo_miner => default | #{ex := binary(),
                                 args := binary(),
@@ -241,12 +242,17 @@ setup_node(Spec, BackendState) ->
     PortMapping = maps:fold(fun(Label, Port, Acc) ->
         [{tcp, maps:get(Label, LocalPorts), Port} | Acc]
     end, [], ExposedPorts),
+    OptsUlimits = maps:get(ulimits, Spec, []),
+    AllUlimits = case lists:keyfind(nofile, 1, OptsUlimits) of
+        false -> [{nofile, 1024, 1024} | OptsUlimits];
+        _ -> OptsUlimits
+    end,
     Genesis = maps:get(genesis, Spec, undefined),
     DockerConfig = #{
         hostname => Hostname,
         network => Network,
         image => Image,
-        ulimits => [{nofile, 1024, 1024}],
+        ulimits => AllUlimits,
         command => Command,
         env => #{"EPOCH_CONFIG" => ?EPOCH_CONFIG_FILE,
                  "ERL_CRASH_DUMP" => format("~s/erl_crash.dump", [?EPOCH_LOG_FOLDER])},
