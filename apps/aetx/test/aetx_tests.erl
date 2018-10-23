@@ -28,12 +28,11 @@ apply_signed_txs_test_() ->
        fun() ->
                %% Init state tree with 2 accounts
                {ok, MinerPubkey} = aec_keys:pubkey(),
-               MinerAccount =
-                    aec_accounts:set_nonce(aec_accounts:new(MinerPubkey, 100), 10),
-               AnotherAccount =
-                    aec_accounts:set_nonce(aec_accounts:new(?RECIPIENT_PUBKEY, 80), 12),
-               StateTree0 = aec_test_utils:create_state_tree_with_accounts(
-                              [MinerAccount, AnotherAccount]),
+               {ok, MinerPrivkey} = aec_keys:sign_privkey(),
+
+               MinerAccount = aec_accounts:set_nonce(aec_accounts:new(MinerPubkey, 100), 10),
+               AnotherAccount = aec_accounts:set_nonce(aec_accounts:new(?RECIPIENT_PUBKEY, 80), 12),
+               StateTree0 = aec_test_utils:create_state_tree_with_accounts([MinerAccount, AnotherAccount]),
 
                BlockHeight = 30,
                %% Create 2 signed transactions (1 valid, 1 invalid)
@@ -53,8 +52,9 @@ apply_signed_txs_test_() ->
                                          ttl => 100,
                                          nonce => 13,
                                          payload => <<"">>}),
-               {ok, SignedSpendTx} = aec_keys:sign_tx(SpendTx),
-               {ok, SignedOverBalanceTx} = aec_keys:sign_tx(OverBalanceTx),
+               SignedSpendTx = aec_test_utils:sign_tx(SpendTx, MinerPrivkey),
+               SignedOverBalanceTx = aec_test_utils:sign_tx(OverBalanceTx, MinerPrivkey),
+
                SignedTxs = [SignedSpendTx, SignedOverBalanceTx],
                Env = aetx_env:tx_env(BlockHeight),
                {ok, ValidSignedTxs, StateTree} =

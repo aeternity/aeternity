@@ -132,7 +132,9 @@ wait_for_pubkey(Sleep) ->
         {error, key_not_found} ->
             timer:sleep(Sleep),
             wait_for_pubkey(Sleep+10);
-        R -> R
+        {ok, Pub} ->
+            {ok, Priv} = aec_keys:sign_privkey(),
+            {ok, Pub, Priv}
     end.
 
 
@@ -254,7 +256,7 @@ gen_blocks_only_chain(Length) ->
     blocks_only_chain(gen_block_chain_with_state(Length)).
 
 gen_block_chain_with_state(Length, PresetAccounts) when Length > 0 ->
-    {ok, MinerAccount} = wait_for_pubkey(),
+    {ok, MinerAccount, _} = wait_for_pubkey(),
     gen_block_chain_with_state(Length, MinerAccount, PresetAccounts, []).
 
 
@@ -343,8 +345,7 @@ pick_prev_target([]) ->
     aec_block_genesis:target().
 
 extend_block_chain_with_state(Chain, Data) ->
-    {ok, Pubkey} = wait_for_pubkey(),
-    {ok, PrivKey} = aec_keys:sign_privkey(),
+    {ok, Pubkey, PrivKey} = wait_for_pubkey(),
     Targets    = maps:get(targets, Data),
     TxsFun     = maps:get(txs_by_height_fun, Data),
     Nonce      = maps:get(nonce, Data, 12345),
@@ -439,11 +440,10 @@ sign_tx(Tx, PrivKeys) when is_list(PrivKeys) ->
     aetx_sign:new(Tx, Signatures).
 
 signed_spend_tx(ArgsMap) ->
-    {ok, SenderAccount} = wait_for_pubkey(),
+    {ok, SenderAccount, Privkey} = wait_for_pubkey(),
     ArgsMap1 = maps:put(sender_id, aec_id:create(account, SenderAccount), ArgsMap),
     {ok, SpendTx} = aec_spend_tx:new(ArgsMap1),
-    {ok, SSTx} = aec_keys:sign_tx(SpendTx),
-    SSTx.
+    sign_tx(SpendTx, Privkey).
 
 %% function to setup the .genesis file for test SUITE-s
 %% SourceGenesisDir is the test release directory from which to take the .genesis

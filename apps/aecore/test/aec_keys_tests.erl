@@ -22,23 +22,7 @@ all_test_() ->
              aec_test_utils:aec_keys_cleanup(TmpKeysDir)
      end,
      [fun(_) ->
-              [{"Sign spend transaction",
-                fun() ->
-                        {ok, PubKey} = aec_keys:pubkey(),
-                        #{ public := RecipientPubkey } = enacl:sign_keypair(),
-                        Sender = aec_id:create(account, PubKey),
-                        Receiver = aec_id:create(account, RecipientPubkey),
-                        {ok, Tx} =
-                            aec_spend_tx:new(#{sender_id => Sender,
-                                               recipient_id => Receiver,
-                                               amount => 10,
-                                               fee => 2,
-                                               nonce => 3,
-                                               payload => <<"">>}),
-                        {ok, SignedTx} = aec_keys:sign_tx(Tx),
-                        ?assertEqual(Tx, aetx_sign:tx(SignedTx))
-                end},
-                {"Promote signing keys candidate (positive case)",
+              [ {"Promote signing keys candidate (positive case)",
                 fun() ->
                         {ok, SPub0} = aec_keys:pubkey(),
                         {ok, CPub0} = aec_keys:candidate_pubkey(),
