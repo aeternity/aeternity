@@ -1419,7 +1419,7 @@ recursive_call1(StateIn, Op) ->
     {ISize, State5}   = pop(State4),
     {OOffset, State6} = pop(State5),
     {OSize, State7}   = pop(State6),
-    {I, State8}       = aevm_eeevm_state:get_contract_call_input(IOffset, ISize, State7),
+    {I, OutT, State8} = aevm_eeevm_state:get_contract_call_input(To, IOffset, ISize, State7),
 
     GasAfterSpend     = aevm_eeevm_state:gas(State8),
     case GasAfterSpend >= 0 of
@@ -1431,14 +1431,14 @@ recursive_call1(StateIn, Op) ->
     Address = aevm_eeevm_state:address(State8),
     AddressBalance = aevm_eeevm_state:accountbalance(Address, State8),
     case Value =< AddressBalance of
-        true  -> recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend);
+        true  -> recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend, OutT);
         false ->
             ?TEST_LOG("Excessive value operand ~p for address ~p, that has balance ~p", [Value, Address, AddressBalance]),
             {0, aevm_eeevm_state:set_gas(0, State8)}
             %% Consume all gas on failed contract call.
     end.
 
-recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend) ->
+recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend, OutType) ->
     Dest = case Op of
                ?CALL -> To;
                ?CALLCODE -> aevm_eeevm_state:address(State8);
@@ -1499,7 +1499,7 @@ recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend)
             ReturnState2 = aevm_eeevm_state:set_gas(GasAfterCall, ReturnState),
             case R of
                 {ok, Message} ->
-                    aevm_eeevm_state:return_contract_call_result(Dest, I, OOffset, OSize, Message, ReturnState2);
+                    aevm_eeevm_state:return_contract_call_result(Dest, I, OOffset, OSize, Message, OutType, ReturnState2);
                 {error, _} ->
                     {0, aevm_eeevm_state:set_gas(0, ReturnState2)}
                     %% Consume all gas on failed contract call.

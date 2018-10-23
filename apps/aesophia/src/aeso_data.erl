@@ -569,8 +569,8 @@ get_chunk(Mem, Addr, Bytes) when is_map(Mem) ->
 -spec get_function_from_calldata(Calldata::binary()) ->
                                         {ok, term()} | {error, term()}.
 get_function_from_calldata(Calldata) ->
-    case from_binary({tuple, [word, {tuple, [string]}]}, Calldata) of
-        {ok, {_, {FunctionName}}} ->
+    case from_binary({tuple, [string]}, Calldata) of
+        {ok, {FunctionName}} ->
             {ok, FunctionName};
         {error, _} = Error -> Error
     end.

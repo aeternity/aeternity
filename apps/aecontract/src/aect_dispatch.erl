@@ -61,8 +61,8 @@ run(?AEVM_01_Sophia_01, #{code := SerializedCode} = CallDef) ->
     #{ byte_code := Code
      , type_info := TypeInfo} = aeso_compiler:deserialize(SerializedCode),
     case check_type_info(maps:get(call_data, CallDef), TypeInfo) of
-        ok ->
-            CallDef1 = CallDef#{code => Code},
+        {ok, CallDataType} ->
+            CallDef1 = CallDef#{code => Code, call_data_type => CallDataType},
             run_common(CallDef1, ?AEVM_01_Sophia_01);
         {error, What} ->
             Gas = maps:get(gas, CallDef),
@@ -105,6 +105,7 @@ run_common(#{  amount      := Value
              store      => Store,
              address    => Address,
              caller     => CallerAddr,
+             call_data_type => maps:get(call_data_type, CallDef, undefined),
              data       => CallData,
              gas        => Gas,
              gasPrice   => GasPrice,
@@ -172,8 +173,6 @@ create_call(GasUsed, Type, Log, Call) ->
 error_to_binary(out_of_gas) -> <<"out_of_gas">>;
 error_to_binary(out_of_stack) -> <<"out_of_stack">>;
 error_to_binary(not_allowed_off_chain) -> <<"not_allowed_off_chain">>;
-error_to_binary({bad_call_args, F}) -> <<"bad_call_args: ", F/binary>>;
-error_to_binary({bad_call_type, F}) -> <<"bad_call_type: ", F/binary>>;
 error_to_binary(bad_call_data) -> <<"bad_call_data">>;
 error_to_binary({unknown_function, F}) -> <<"unknown_function: ", F/binary>>;
 error_to_binary(E) ->
@@ -192,44 +191,29 @@ chain_state(#{ contract    := ContractPubKey
                                     ContractPubKey).
 
 check_type_info(CallData, TypeInfo) ->
-    case aeso_data:from_binary({tuple, [typerep]}, CallData) of
-        {ok, {{tuple, [string, GivenArgType]} = Type}} ->
-            case aeso_data:from_binary({tuple, [typerep, Type]}, CallData) of
-                {ok, {_, {Function, Args}}} ->
-                    case aeso_compiler:arg_typerep_from_type_info(Function, TypeInfo) of
-                        {ok, GivenArgType} -> ok;
-                        {ok, ArgType} ->
-                            %% Check if both type reps give the same result
-                            ?DEBUG_LOG("Checking representation for ~p\n"
-                                       "Given   : ~p\n"
-                                       "Accepted: ~p"
-                                      , [Function, GivenArgType, ArgType]),
-                            ExpectedType = {tuple, [string, ArgType]},
-                            case aeso_data:from_binary({tuple, [typerep, ExpectedType]}, CallData) of
-                                {ok, {_, {_, Args}}} -> ok;
-                                {ok, {_, {_,_Other}}} ->
-                                    ?TEST_LOG("Wrong argtypes for ~p\n"
-                                              "~p =/=\n~p",
-                                              [Function, Args,_Other]),
-                                    {error, {bad_call_args, Function}};
-                                _Res ->
-                                    ?TEST_LOG("Wrong argtypes for ~p: ~p\n",
-                                              [Function,_Res]),
-                                    {error, {bad_call_args, Function}}
-                            end;
-                        {error, unknown_function} ->
-                            ?DEBUG_LOG("Calling unknown function: ~p",
-                                       [Function]),
-                            {error, {unknown_function, Function}};
-                        {error, bad_type_data} ->
-                            ?DEBUG_LOG("Bad type info in contract", []),
-                            {error, []}
+    %% The first element of the CallData should be the function name
+    case aeso_data:get_function_from_calldata(CallData) of
+        {ok, Function} ->
+            case aeso_compiler:arg_typerep_from_function(Function, TypeInfo) of
+                {ok, ArgType} ->
+                    ?TEST_LOG("Found ~p for ~p", [ArgType, Function]),
+                    try aeso_data:from_binary({tuple, [string, ArgType]}, CallData) of
+                        {ok, _Something} ->
+                            ?TEST_LOG("Whole call data: ~p\n", [_Something]),
+                            {ok, {tuple, [string, ArgType]}};
+                        {error, _} ->
+                            {error, bad_call_data}
+                    catch
+                        _T:_E ->
+                            ?TEST_LOG("Error parsing call data: ~p", [{_T, _E}]),
+                            {error, bad_call_data}
                     end;
-                _Other ->
-                    {error, bad_call_data}
+                {error, unknown_function} ->
+                    ?TEST_LOG("Unknown function ~p", [Function]),
+                    {error, {unknown_function, Function}}
             end;
-        {error, What} ->
-            ?DEBUG_LOG("Bad call data: ~p", [What]),
+        {error, _What} ->
+            ?TEST_LOG("Bad call data ~p", [_What]),
             {error, bad_call_data}
     end.
 

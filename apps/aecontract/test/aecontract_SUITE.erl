@@ -19,6 +19,8 @@
         , call_contract_upfront_fee/1
         , call_contract_upfront_gas/1
         , call_contract_upfront_amount/1
+        , call_missing/1
+        , call_wrong_type/1
         , create_contract/1
         , create_contract_init_error/1
         , create_contract_negative_gas_price_zero/1
@@ -115,6 +117,7 @@ groups() ->
                               , {group, state_tree}
                               , {group, sophia}
                               , {group, store}
+                              , {group, remote_call_type_errors}
                               ]}
     , {transactions, [], [ create_contract
                          , create_contract_init_error
@@ -135,7 +138,9 @@ groups() ->
     , {call_contract_upfront_charges, [], [ call_contract_upfront_fee
                                           , call_contract_upfront_gas
                                           , call_contract_upfront_amount ]}
-
+    , {remote_call_type_errors, [], [ call_missing
+                                    , call_wrong_type
+                                    ]}
     , {state_tree, [sequence], [ state_tree ]}
     , {sophia,     [sequence], [ sophia_identity,
                                  sophia_state,
@@ -791,9 +796,8 @@ account_balance(PubKey, S) ->
     {aec_accounts:balance(Account), S}.
 
 make_calldata(Fun, Args0) ->
-    Args         = translate_pubkeys(if is_tuple(Args0) -> Args0; true -> {Args0} end),
-    CalldataType = {tuple, [string, aeso_abi:get_type(Args)]},
-    aeso_data:to_binary({CalldataType, {list_to_binary(atom_to_list(Fun)), Args}}).
+    Args = translate_pubkeys(if is_tuple(Args0) -> Args0; true -> {Args0} end),
+    aeso_data:to_binary({list_to_binary(atom_to_list(Fun)), Args}).
 
 translate_pubkeys(<<N:256>>) -> N;
 translate_pubkeys([H|T]) ->
@@ -3285,3 +3289,27 @@ merge_missing_keys(_Cfg) ->
 enter_contract(Contract, S) ->
     Contracts = aect_state_tree:enter_contract(Contract, aect_test_utils:contracts(S)),
     {Contract, aect_test_utils:set_contracts(Contracts, S)}.
+
+%%%===================================================================
+%%% Remote call type errors
+%%%===================================================================
+
+call_missing(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1     = ?call(new_account, 1000000),
+    Contract = ?call(create_contract, Acc1, remote_type_check, {}),
+    42       = ?call(call_contract, Acc1, Contract, remote_id, word, {Contract, 42}),
+    {error, <<"unknown_function: missing">>} = ?call(call_contract, Acc1, Contract, missing, word, 42),
+    {error, <<"out_of_gas">>} = ?call(call_contract, Acc1, Contract, remote_missing, word, {Contract, 42}),
+
+    ok.
+
+call_wrong_type(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1     = ?call(new_account, 1000000),
+    Contract = ?call(create_contract, Acc1, remote_type_check, {}),
+    %% TODO: How should we check this?
+    %% {error, <<"bad_call_args: wrong_type">>} = ?call(call_contract, Acc1, Contract, wrong_type, word, <<"hello">>),
+    {error, <<"out_of_gas">>} = ?call(call_contract, Acc1, Contract, remote_wrong_type, word,
+                                      {Contract, <<"hello">>}),
+    ok.

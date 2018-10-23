@@ -36,10 +36,7 @@ create_calldata(Contract, Function, Argument) ->
 %% Use a tuple to pass multiple arguments.
 encode_call(FunctionHandle, ArgumentAst) ->
     Argument = ast_to_erlang(ArgumentAst),
-    Call = list_to_tuple([FunctionHandle, Argument]),
-    ArgumentType = get_type(Argument),
-    %% TODO: Once we have types in metadata we shouldn't include it in the calldata
-    Data = aeso_data:to_binary({{tuple, [string, ArgumentType]}, Call}),
+    Data = aeso_data:to_binary(list_to_tuple([FunctionHandle, Argument])),
     Data.
 
 ast_to_erlang({int, _, N}) -> N;

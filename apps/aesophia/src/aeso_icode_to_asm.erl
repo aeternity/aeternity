@@ -61,11 +61,6 @@ convert(#{ contract_name := _ContractName
                     %% The calldata is already on the stack when we start. Put
                     %% it on top (also reorders StatefulStop and Stop).
                     swap(2),
-                    %% At the moment (TODO) the calldata is a pair of a typerep
-                    %% and the actual calldata. Grab the second component.
-                    push(32),
-                    i(?ADD),
-                    i(?MLOAD),
 
                     jump(MainFunction),
                     jumpdest(StatefulStopLabel),
@@ -369,13 +364,12 @@ assemble_expr(Funs, Stack, _Tail,
                                  , address  = To
                                  , value    = Value
                                  , arg      = Arg
-                                 , arg_type = ArgT
-                                 , out_type = OutT }) ->
-    Type = fun(T) -> aeso_ast_to_icode:type_value(T) end,
+                                 , type_hash= TypeHash
+                                 }) ->
     %% ?CALL takes (from the top)
-    %%   Gas, To, Value, Arg, ArgType, _OOffset, OutType
+    %%   Gas, To, Value, Arg, TypeHash, _OOffset,_OSize
     %% So assemble these in reverse order.
-    [ assemble_exprs(Funs, Stack, [ Type(OutT), {integer, 0}, Type(ArgT)
+    [ assemble_exprs(Funs, Stack, [ {integer, 0}, {integer, 0}, TypeHash
                                   , Arg, Value, To, Gas ])
     , i(?CALL)
     ].

@@ -27,8 +27,8 @@
     , address  :: expr()
     , value    :: expr()
     , arg      :: expr()
-    , arg_type :: ?Type()
-    , out_type :: ?Type() }).
+    , type_hash:: expr()
+    }).
 
 -record(prim_balance,    { address :: expr() }).
 -record(prim_block_hash, { height :: expr() }).
