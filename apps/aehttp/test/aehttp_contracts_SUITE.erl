@@ -231,10 +231,14 @@ abort_test_contract(Config) ->
 
     %% Do abort where we have put values 42, 142, 242, 342,
     %% then check value in abort_test contract, should still be 3017!
+    %% Check that we get the abort string back.
 
+    AbortString = <<"yogi bear">>,
     {RevertValue,_} =
         revert_call_compute_func(Node, APub, APriv, EncodedTestPub,
-                                 <<"do_abort">>, <<"(42,\"yogi bear\")">>),
+                                 <<"do_abort">>,
+                                 args_to_binary([42,{string,AbortString}])),
+    #{<<"value">> := AbortString} = decode_data(<<"string">>, RevertValue),
 
     ABal1 = get_balance(APub),
 
@@ -245,8 +249,6 @@ abort_test_contract(Config) ->
     ct:pal("After Values ~p\n", [AfterList]),
     AfterList = BeforeList,
 
-    RevertString = decode_data(<<"string">>, RevertValue),
-    ct:pal("Revert String ~p\n", [RevertString]),
     ct:pal("Balance ~p ~p \n", [ABal0,ABal1]),
 
     ok.
