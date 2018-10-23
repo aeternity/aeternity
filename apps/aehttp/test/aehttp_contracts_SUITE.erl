@@ -428,19 +428,27 @@ factorial_contract(Config) ->
     %% Compile test contract "factorial.aes".
     Code = compile_test_contract("factorial"),
 
-    %% Initialise contract owned by Alice.
-    {EncodedContractPubkey,DecodedContractPubkey,_} =
-       create_compute_contract(NodeName, APubkey, APrivkey, Code, <<"(0)">>),
+    %% We'll compute 10 factorial
+    N = 10,
+
+    %% Initialise contracts owned by Alice. We need N + 1 contracts, one for
+    %% each call to factorial.
+    {EncodedContractPubkey, _DecodedContractPubkey} =
+        lists:foldl(fun(_, {_EP, DP}) ->
+                Args =
+                    case DP of
+                        undefined -> args_to_binary([0]);
+                        _         -> args_to_binary([DP])
+                    end,
+                {EP1, DP1, _} = create_compute_contract(NodeName, APubkey, APrivkey, Code, Args),
+                {EP1, DP1}
+            end, {undefined, undefined}, lists:seq(0, N)),
 
     init_fun_calls(), % setup call handling
 
-    %% Set worker contract. A simple way of pointing the contract to itself.
-    call_func(APubkey, APrivkey, EncodedContractPubkey, <<"set_worker">>,
-              args_to_binary([DecodedContractPubkey])),
-
     %% Compute fac(10) = 3628800.
     call_func(APubkey, APrivkey, EncodedContractPubkey,
-              <<"fac">>, <<"(10)">>, {<<"int">>, 3628800}),
+              <<"fac">>, list_to_binary("(" ++ integer_to_list(N) ++ ")"), {<<"int">>, 3628800}),
 
     force_fun_calls(NodeName),
 
@@ -611,7 +619,11 @@ environment_contract(Config) ->
     ContractBalance = 10000,
 
     %% Initialise contract owned by Alice setting balance to 10000.
-    {EncCPub,DecCPub,_} =
+    {EncCPub, _, _} =
+        create_compute_contract(Node, APub, APriv,
+                                Code, <<"(0)">>, #{amount => ContractBalance}),
+    %% Second contract for remote calls
+    {_, DecRPub, _} =
         create_compute_contract(Node, APub, APriv,
                                 Code, <<"(0)">>, #{amount => ContractBalance}),
 
@@ -620,13 +632,13 @@ environment_contract(Config) ->
 
     init_fun_calls(),
 
-    call_func(BPub, BPriv, EncCPub, <<"set_remote">>, args_to_binary([DecCPub])),
+    call_func(BPub, BPriv, EncCPub, <<"set_remote">>, args_to_binary([DecRPub])),
 
     %% Address.
     ct:pal("Calling contract_address\n"),
     call_func(BPub, BPriv, EncCPub, <<"contract_address">>, <<"()">>),
     ct:pal("Calling nested_address\n"),
-    call_func(BPub, BPriv, EncCPub, <<"nested_address">>, args_to_binary([DecCPub])),
+    call_func(BPub, BPriv, EncCPub, <<"nested_address">>, args_to_binary([DecRPub])),
 
     %% Balance.
     ct:pal("Calling contract_balance\n"),
