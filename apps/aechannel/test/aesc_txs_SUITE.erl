@@ -162,7 +162,7 @@
          fp_register_name/1,
 
          % FP resets locked_until timer
-         fp_slash_too_soon/1
+         fp_settle_too_soon/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -331,7 +331,7 @@ groups() ->
        fp_register_name,
 
        % FP resets locked_until timer
-       fp_slash_too_soon
+       fp_settle_too_soon
       ]}
     ].
 
@@ -2239,7 +2239,7 @@ fp_chain_is_replaced_by_slash(Cfg) ->
                 ForceProgressFromOnChain(FPRound + 1, Forcer),
                 set_prop(round, FPRound + 1),
                 set_prop(payload, <<>>),
-                create_fp_trees(),
+                poi_participants_only(),
                 positive(fun close_solo_/2),
                 ForceProgressFromOnChain(FPRound + 2, Forcer),
                 fun(#{state_hash := SH} = Props) ->
@@ -2251,7 +2251,7 @@ fp_chain_is_replaced_by_slash(Cfg) ->
                 set_prop(height, SlashHeight),
                 set_prop(round, FPRound),
                 set_from(Slasher),
-                create_fp_trees(),
+                poi_participants_only(),
                 create_payload(),
                 fun(#{state_hash := SlashStateHash} = Props) ->
                     Props#{slash_state_hash => SlashStateHash}
@@ -3271,7 +3271,7 @@ fp_register_name(Cfg) ->
                             Forcer <- ?ROLES],
     ok.
 
-fp_slash_too_soon(Cfg) ->
+fp_settle_too_soon(Cfg) ->
     AfterSlash =
         fun(CloseRound, SlashRound, FPRound, Closer, Slasher, Owner, Forcer) ->
             IAmt0 = 30,
@@ -3294,18 +3294,18 @@ fp_slash_too_soon(Cfg) ->
                 create_contract_poi_and_payload(CloseRound,
                                                 ContractCreateRound,
                                                 Owner),
+                poi_participants_only(),
                 set_prop(round, CloseRound),
                 positive(fun close_solo_/2),
                 % slash
                 set_prop(height, SlashHeight),
                 set_prop(round, SlashRound),
                 set_from(Slasher),
-                delete_prop(state_hash),
-                create_poi_by_trees(),
+                poi_participants_only(),
                 create_payload(),
                 positive(fun slash_/2),
                 % force progress
-                create_poi_by_trees(),
+                create_fp_trees(),
                 set_prop(round, FPRound - 1), % for the payload
                 create_payload(),
                 fun(Props) when CloseRound =:= FPRound - 1 ->
@@ -4403,3 +4403,12 @@ assert_last_channel_result(Result, Type) ->
         Props
     end.
 
+% Create poi just for participants; used by slash and close solo
+poi_participants_only() ->
+    fun(#{initiator_pubkey  := IPubkey,
+          responder_pubkey  := RPubkey,
+          trees             := Trees} = Props) ->
+          PoI = calc_poi([IPubkey, RPubkey], [], Trees),
+          PoIHash = aec_trees:poi_hash(PoI),
+          Props#{poi => PoI, state_hash => PoIHash}
+   end.
