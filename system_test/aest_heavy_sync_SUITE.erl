@@ -173,12 +173,24 @@ find_txs(Node, [TxHash | TxHashes], Found, Deadline) ->
 
 
 add_spend_txs(Node, SenderAcct, N, NonceStart) ->
-    [ add_spend_tx(Node, SenderAcct, Nonce) || Nonce <- lists:seq(NonceStart, NonceStart + N - 1) ].
+    add_many_spend_tx(Node, SenderAcct, lists:seq(NonceStart, NonceStart + N - 1), []).
+
+add_many_spend_tx(_Node, _SenderAcct, [], Acc) ->
+    [ Hash || {_, Hash} <- lists:sort(Acc)];
+add_many_spend_tx(Node, SenderAcct, [Nonce|Nonces], Acc) ->
+    case (catch add_spend_tx(Node, SenderAcct, Nonce)) of
+        {'EXIT', _} ->
+            %% temporarily overloaded http server
+            timer:sleep(100),
+            add_many_spend_tx(Node, SenderAcct, Nonces ++ [Nonce], Acc);
+        Res ->
+            add_many_spend_tx(Node, SenderAcct, Nonces, [Res|Acc])
+    end.
 
 
 add_spend_tx(Node, Sender, Nonce) ->
     %% create new receiver
     #{ public := RecvPubKey, secret := _RecvSecKey } =  enacl:sign_keypair(),
     #{ tx_hash := TxHash} = post_spend_tx(Node, Sender, #{pubkey => RecvPubKey}, Nonce, #{amount => 1, fee => 1}),
-    TxHash.
+    {Nonce, TxHash}.
 
