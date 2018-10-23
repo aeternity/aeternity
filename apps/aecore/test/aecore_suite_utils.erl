@@ -357,11 +357,8 @@ spend(Node, FromPub, ToPub, Amount, Fee) ->
     {ok, SignedTx}.
 
 sign_on_node({Id, Node}, Tx) ->
-    {_, {SignPrivKey, _SignPubKey}} = lists:keyfind(Id, 1, sign_keys()),
-    Bin = rpc:call(Node, aetx, serialize_to_binary, [Tx]),
-    BinForNetwork = rpc:call(Node, aec_governance, add_network_id, [Bin]),
-    Signature = rpc:call(Node, enacl, sign_detached, [BinForNetwork, SignPrivKey]),
-    {ok, rpc:call(Node, aetx_sign, new, [Tx, [Signature]])};
+    {_, {SignPrivKey, _}} = lists:keyfind(Id, 1, sign_keys()),
+    {ok, aec_test_utils:sign_tx(Tx, SignPrivKey)};
 sign_on_node(Id, Tx) ->
     sign_on_node(node_tuple(Id), Tx).
 
