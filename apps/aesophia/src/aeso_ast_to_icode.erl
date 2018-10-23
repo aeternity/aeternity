@@ -156,7 +156,8 @@ ast_body(?id_app("abort", [String], _, _), Icode) ->
               args     = [ast_body(String, Icode)] };
 
 %% Oracles
-ast_body(?qid_app(["Oracle", "register"], [Acct, Sign, QFee, TTL], _, ?oracle_t(QType, RType)), Icode) ->
+ast_body(?qid_app(["Oracle", "register"], Args, _, ?oracle_t(QType, RType)), Icode) ->
+    {Sign, [Acct, QFee, TTL]} = get_signature_arg(Args),
     prim_call(?PRIM_CALL_ORACLE_REGISTER, #integer{value = 0},
               [ast_body(Acct, Icode), ast_body(Sign, Icode), ast_body(QFee, Icode), ast_body(TTL, Icode),
                ast_type_value(QType, Icode), ast_type_value(RType, Icode)],
@@ -171,12 +172,14 @@ ast_body(?qid_app(["Oracle", "query"], [Oracle, Q, QFee, QTTL, RTTL], [_, QType,
               [ast_body(Oracle, Icode), ast_body(Q, Icode), ast_body(QTTL, Icode), ast_body(RTTL, Icode)],
               [word, ast_type(QType, Icode), ttl_t(Icode), ttl_t(Icode)], word);
 
-ast_body(?qid_app(["Oracle", "extend"], [Oracle, Sign, TTL], _, _), Icode) ->
+ast_body(?qid_app(["Oracle", "extend"], Args, _, _), Icode) ->
+    {Sign, [Oracle, TTL]} = get_signature_arg(Args),
     prim_call(?PRIM_CALL_ORACLE_EXTEND, #integer{value = 0},
               [ast_body(Oracle, Icode), ast_body(Sign, Icode), ast_body(TTL, Icode)],
               [word, sign_t(), ttl_t(Icode)], {tuple, []});
 
-ast_body(?qid_app(["Oracle", "respond"], [Oracle, Query, Sign, R], [_, _, _, RType], _), Icode) ->
+ast_body(?qid_app(["Oracle", "respond"], Args, [_, _, RType], _), Icode) ->
+    {Sign, [Oracle, Query, R]} = get_signature_arg(Args),
     prim_call(?PRIM_CALL_ORACLE_RESPOND, #integer{value = 0},
               [ast_body(Oracle, Icode), ast_body(Query, Icode), ast_body(Sign, Icode), ast_body(R, Icode)],
               [word, word, sign_t(), ast_type(RType, Icode)], {tuple, []});
@@ -212,22 +215,26 @@ ast_body(?qid_app(["AENS", "resolve"], [Name, Key], _, ?option_t(Type)), Icode) 
             error({unresolved_result_type, 'AENS.resolve', Type})
     end;
 
-ast_body(?qid_app(["AENS", "preclaim"], [Addr, CHash, Sign], _, _), Icode) ->
+ast_body(?qid_app(["AENS", "preclaim"], Args, _, _), Icode) ->
+    {Sign, [Addr, CHash]} = get_signature_arg(Args),
     prim_call(?PRIM_CALL_AENS_PRECLAIM, #integer{value = 0},
               [ast_body(Addr, Icode), ast_body(CHash, Icode), ast_body(Sign, Icode)],
               [word, word, sign_t()], {tuple, []});
 
-ast_body(?qid_app(["AENS", "claim"], [Addr, Name, Salt, Sign], _, _), Icode) ->
+ast_body(?qid_app(["AENS", "claim"], Args, _, _), Icode) ->
+    {Sign, [Addr, Name, Salt]} = get_signature_arg(Args),
     prim_call(?PRIM_CALL_AENS_CLAIM, #integer{value = 0},
               [ast_body(Addr, Icode), ast_body(Name, Icode), ast_body(Salt, Icode), ast_body(Sign, Icode)],
               [word, string, word, sign_t()], {tuple, []});
 
-ast_body(?qid_app(["AENS", "transfer"], [FromAddr, ToAddr, NameHash, Sign], _, _), Icode) ->
+ast_body(?qid_app(["AENS", "transfer"], Args, _, _), Icode) ->
+    {Sign, [FromAddr, ToAddr, NameHash]} = get_signature_arg(Args),
     prim_call(?PRIM_CALL_AENS_TRANSFER, #integer{value = 0},
               [ast_body(FromAddr, Icode), ast_body(ToAddr, Icode), ast_body(NameHash, Icode), ast_body(Sign, Icode)],
               [word, word, word, sign_t()], {tuple, []});
 
-ast_body(?qid_app(["AENS", "revoke"], [Addr, NameHash, Sign], _, _), Icode) ->
+ast_body(?qid_app(["AENS", "revoke"], Args, _, _), Icode) ->
+    {Sign, [Addr, NameHash]} = get_signature_arg(Args),
     prim_call(?PRIM_CALL_AENS_REVOKE, #integer{value = 0},
               [ast_body(Addr, Icode), ast_body(NameHash, Icode), ast_body(Sign, Icode)],
               [word, word, sign_t()], {tuple, []});
@@ -569,6 +576,18 @@ ttl_t(Icode) ->
 
 sign_t() ->
     {tuple, [word, word]}.
+
+get_signature_arg(Args0) ->
+    NamedArgs = [Arg || Arg = {named_arg, _, _, _} <- Args0],
+    Args      = Args0 -- NamedArgs,
+
+    DefaultVal = {tuple, [], [{int, [], 0}, {int, [], 0}]},
+    Sig =
+        case NamedArgs of
+            []                       -> DefaultVal;
+            [{named_arg, _, _, Val}] -> Val
+        end,
+    {Sig, Args}.
 
 lookup_type_id(Name, Args, #{ types := Types }) ->
     case maps:get(Name, Types, undefined) of

@@ -2836,7 +2836,7 @@ fp_solo_payload_closing_overflowing_balances(Cfg) ->
                     {ok, IAcc} = aec_accounts:earn(IAcc0, ToAdd),
                     ?TEST_LOG("Total channel tokens: ~p\nInitator tokens: ~p,\nResponder tokens: ~p, Adding ~p tokens to initator",
                               [ChannelAmount, aec_accounts:balance(IAcc0),
-                                aec_accounts:balance(RAcc0), ToAdd]), 
+                                aec_accounts:balance(RAcc0), ToAdd]),
                     Accounts = aec_accounts_trees:enter(IAcc, Accounts0),
                     Trees = aec_trees:set_accounts(Trees0, Accounts),
                     Props#{trees => Trees}
@@ -2900,7 +2900,7 @@ fp_solo_payload_overflowing_balances(Cfg) ->
                     {ok, IAcc} = aec_accounts:earn(IAcc0, ToAdd),
                     ?TEST_LOG("Total channel tokens: ~p\nInitator tokens: ~p,\nResponder tokens: ~p, Adding ~p tokens to initator",
                               [ChannelAmount, aec_accounts:balance(IAcc0),
-                                aec_accounts:balance(RAcc0), ToAdd]), 
+                                aec_accounts:balance(RAcc0), ToAdd]),
                     Accounts = aec_accounts_trees:enter(IAcc, Accounts0),
                     Trees = aec_trees:set_accounts(Trees0, Accounts),
                     Props#{trees => Trees}
@@ -3086,7 +3086,7 @@ fp_register_name(Cfg) ->
     CHash           = aeu_hex:hexstring_encode(
                         aens_hash:commitment_hash(NameAscii, Salt)),
     ?TEST_LOG("Commitment hash ~p", [aens_hash:commitment_hash(NameAscii,
-                                                               Salt)]), 
+                                                               Salt)]),
     StateHashSize = aec_base58c:byte_size_for_type(state),
     StateHash = <<42:StateHashSize/unit:8>>,
     Round = 42,
@@ -3103,7 +3103,7 @@ fp_register_name(Cfg) ->
             <<"(", Word11/binary, ", ", Word21/binary, ")">>
         end,
     ContractName = "aens",
-    
+
     % test contract on-chain
     % this validates that the contract and the fucntion are indeed callable
     % on-chain and they produce a name preclaim
@@ -3139,7 +3139,7 @@ fp_register_name(Cfg) ->
                       call_data   => CallData,
                       fee         => 1}),
             ?TEST_LOG("Contract create tx ~p", [ContractCreateTx]),
-            OnChainTrees = aesc_test_utils:trees(S0), 
+            OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 3}),
             {ok, _} = aetx:check(ContractCreateTx, OnChainTrees,
                                   TxEnv),
@@ -3167,7 +3167,7 @@ fp_register_name(Cfg) ->
                                   Sig/binary,
                               ")">>,
             ?TEST_LOG("Preclaim function arguments ~p", [PreclaimArgs]),
-            CallData = aect_sophia:create_call(Code, <<"preclaim">>,
+            CallData = aect_sophia:create_call(Code, <<"signedPreclaim">>,
                                                 PreclaimArgs),
             ?TEST_LOG("CallData ~p", [CallData]),
             true = is_binary(CallData),
@@ -3184,7 +3184,7 @@ fp_register_name(Cfg) ->
                       call_data   => CallData,
                       fee         => 1}),
             ?TEST_LOG("Contract call tx ~p", [CallTx]),
-            OnChainTrees = aesc_test_utils:trees(S0), 
+            OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 4}),
             {ok, _} = aetx:check(CallTx, OnChainTrees,
                                   TxEnv),
@@ -3203,7 +3203,7 @@ fp_register_name(Cfg) ->
             Props#{state => S1}
           end]),
     ?TEST_LOG("Name preclaimed on-chain, proceeding with off-chain tests", []),
-                  
+
     Test =
         fun(Owner, Forcer) ->
             ?TEST_LOG("Name preclaim off-chain, owner is ~p, forcer is ~p",
@@ -3243,7 +3243,7 @@ fp_register_name(Cfg) ->
                                             Sig/binary,
                                         ")">>,
                       ?TEST_LOG("Off-chain preclaim args ~p", [PreclaimArgs]),
-                      (force_call_contract_first(Forcer, <<"preclaim">>,
+                      (force_call_contract_first(Forcer, <<"signedPreclaim">>,
                                             PreclaimArgs, FPRound))(Props)
                   end,
                   % ensure all gas is consumed and channel is updated
@@ -3390,7 +3390,7 @@ fp_oracle_query(Cfg) ->
         end,
     fp_oracle_action(Cfg, ProduceCallData).
 
-%% test that a force progress transaction can NOT respond an oracle 
+%% test that a force progress transaction can NOT respond an oracle
 %% query via a contract
 fp_oracle_respond(Cfg) ->
     ProduceCallData =
@@ -3405,17 +3405,17 @@ fp_oracle_respond(Cfg) ->
                                     OraclePrivkey),
             ?TEST_LOG("Signature binary ~p", [SigBin]),
             Sig = {Word1, Word2},
-            Args = {IntOracleId, IntQueryId, Sig, 
+            Args = {IntOracleId, IntQueryId, Sig,
                     aeso_data:to_binary(42, 0)},
             CalldataType = {tuple, [string, aeso_abi:get_type(Args)]},
             ?TEST_LOG("Oracle respond function arguments ~p", [Args]),
             aeso_data:to_binary({CalldataType,
-                         {list_to_binary(atom_to_list(respond)),
+                         {list_to_binary(atom_to_list(signedRespond)),
                           Args}})
         end,
     fp_oracle_action(Cfg, ProduceCallData).
 
-%% test that a force progress transaction can NOT extend an oracle 
+%% test that a force progress transaction can NOT extend an oracle
 %% via a contract
 fp_oracle_extend(Cfg) ->
     ProduceCallData =
@@ -3432,7 +3432,7 @@ fp_oracle_extend(Cfg) ->
             CalldataType = {tuple, [string, aeso_abi:get_type(Args)]},
             ?TEST_LOG("Oracle respond function arguments ~p", [Args]),
             aeso_data:to_binary({CalldataType,
-                         {list_to_binary(atom_to_list(extendOracle)),
+                         {list_to_binary(atom_to_list(signedExtendOracle)),
                           Args}})
         end,
     fp_oracle_action(Cfg, ProduceCallData).
@@ -3444,10 +3444,10 @@ fp_oracle_action(Cfg, ProduceCallData) ->
     FPRound = Round + 10,
     ContractName = "oracles",
     QueryFee = 1,
-    
+
     % test contract on-chain
     % this validates that the contract and the fucntion are indeed callable
-    % on-chain and they produce the expected oracle action 
+    % on-chain and they produce the expected oracle action
     ?TEST_LOG("Create contract ~p.aes on-chain", [ContractName]),
     run(#{cfg => Cfg},
         [ % create account for being contract owner
@@ -3481,7 +3481,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                       call_data   => CallData,
                       fee         => 1}),
             ?TEST_LOG("Contract create tx ~p", [ContractCreateTx]),
-            OnChainTrees = aesc_test_utils:trees(S0), 
+            OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 3}),
             {ok, _} = aetx:check(ContractCreateTx, OnChainTrees,
                                   TxEnv),
@@ -3526,7 +3526,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                       call_data   => CallData,
                       fee         => 1}),
             ?TEST_LOG("Contract call tx ~p", [CallTx]),
-            OnChainTrees = aesc_test_utils:trees(S0), 
+            OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 4}),
             {ok, _} = aetx:check(CallTx, OnChainTrees,
                                   TxEnv),
@@ -3651,14 +3651,14 @@ fp_register_oracle(Cfg) ->
             CalldataType = {tuple, [string, aeso_abi:get_type(RegisterArgs)]},
             ?TEST_LOG("Oracle register function arguments ~p", [RegisterArgs]),
             aeso_data:to_binary({CalldataType,
-                         {list_to_binary(atom_to_list(registerOracle)),
+                         {list_to_binary(atom_to_list(signedRegisterOracle)),
                           RegisterArgs}})
         end,
     ContractName = "oracles",
-    
+
     % test contract on-chain
     % this validates that the contract and the fucntion are indeed callable
-    % on-chain and it registers an oracle on-chain 
+    % on-chain and it registers an oracle on-chain
     ?TEST_LOG("Create contract ~p.aes on-chain", [ContractName]),
     run(#{cfg => Cfg},
         [ % create account for being contract owner
@@ -3691,7 +3691,7 @@ fp_register_oracle(Cfg) ->
                       call_data   => CallData,
                       fee         => 1}),
             ?TEST_LOG("Contract create tx ~p", [ContractCreateTx]),
-            OnChainTrees = aesc_test_utils:trees(S0), 
+            OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 3}),
             {ok, _} = aetx:check(ContractCreateTx, OnChainTrees,
                                   TxEnv),
@@ -3728,7 +3728,7 @@ fp_register_oracle(Cfg) ->
                       call_data   => CallData,
                       fee         => 1}),
             ?TEST_LOG("Contract call tx ~p", [CallTx]),
-            OnChainTrees = aesc_test_utils:trees(S0), 
+            OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 4}),
             {ok, _} = aetx:check(CallTx, OnChainTrees,
                                   TxEnv),

@@ -9,16 +9,15 @@ contract OraclesGas =
     ottl : Chain.ttl,
     ettl : Chain.ttl,
     qttl : Chain.ttl,
-    rttl : Chain.ttl,
-    sign : signature
+    rttl : Chain.ttl
     ) =
     let question = "why"
     let answer = 42
-    let o = Oracle.register(Contract.address, sign, qfee, ottl) : oracle(question_t, answer_t)
-    Oracle.extend(o, sign, ettl)
+    let o = Oracle.register(Contract.address, qfee, ottl) : oracle(question_t, answer_t)
+    Oracle.extend(o, ettl)
     require(qfee =< Call.value, "insufficient value for qfee")
     let q = Oracle.query(o, question, qfee, qttl, rttl)
-    Oracle.respond(o, q, sign, answer)
+    Oracle.respond(o, q, answer)
     ()
 
   private function require(b : bool, err : string) =
