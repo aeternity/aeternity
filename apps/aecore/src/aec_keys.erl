@@ -29,8 +29,7 @@
          pubkey/0,
          candidate_pubkey/0,
          promote_candidate/1,
-         sign_micro_block/1,
-         sign_tx/1
+         sign_micro_block/1
         ]).
 
 %% Supervisor API
@@ -105,8 +104,6 @@
 -type privkey()  :: <<_:512>>. %% 512 = 64 * 8
 
 -type block() :: aec_blocks:block().
--type tx() :: aetx:tx().
--type signed_tx() :: aetx_sign:signed_tx().
 
 -export_type([privkey/0, pubkey/0]).
 
@@ -121,14 +118,6 @@ sign_micro_block(MicroBlock) ->
     Bin = aec_headers:serialize_to_signature_binary(Header),
     {ok, Signature} = gen_server:call(?MODULE, {sign, Bin}),
     {ok, aec_blocks:set_signature(MicroBlock, Signature)}.
-
--spec sign_tx(tx()) -> {ok, signed_tx()} | {error, term()}.
-sign_tx(Tx) ->
-    %% Serialize first to maybe (hopefully) pass as reference.
-    Bin = aetx:serialize_to_binary(Tx),
-    BinForNetwork = aec_governance:add_network_id(Bin),
-    {ok, Signature} = gen_server:call(?MODULE, {sign, BinForNetwork}),
-    {ok, aetx_sign:new(Tx, [Signature])}.
 
 -spec pubkey() -> {ok, binary()} | {error, key_not_found}.
 pubkey() ->
