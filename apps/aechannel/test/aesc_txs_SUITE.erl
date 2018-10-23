@@ -166,7 +166,9 @@
 
          % off-chain oracle changes are not allowed
          fp_register_oracle/1,
-         fp_oracle_query/1
+         fp_oracle_query/1,
+         fp_oracle_extend/1,
+         fp_oracle_respond/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -338,7 +340,9 @@ groups() ->
 
        fp_register_name,
        fp_register_oracle,
-       fp_oracle_query
+       fp_oracle_query,
+       fp_oracle_extend,
+       fp_oracle_respond
       ]}
     ].
 
@@ -3374,7 +3378,7 @@ fp_settle_too_soon(Cfg) ->
 %% query via a contract
 fp_oracle_query(Cfg) ->
     ProduceCallData =
-        fun(_Pubkey, _Privkey, Oracle, _ContractId, QueryFee) ->
+        fun(_Pubkey, _Privkey, Oracle, _OraclePrivkey, _QueryId, _ContractId, QueryFee) ->
             <<IntOracleId:256>> = Oracle,
             RelativeTTL = {variant, 0, [10]},
             Args = {IntOracleId, <<"Very much of a question">>, QueryFee, RelativeTTL, RelativeTTL},
@@ -3382,6 +3386,53 @@ fp_oracle_query(Cfg) ->
             ?TEST_LOG("Oracle createQuery function arguments ~p", [Args]),
             aeso_data:to_binary({CalldataType,
                          {list_to_binary(atom_to_list(createQuery)),
+                          Args}})
+        end,
+    fp_oracle_action(Cfg, ProduceCallData).
+
+%% test that a force progress transaction can NOT respond an oracle 
+%% query via a contract
+fp_oracle_respond(Cfg) ->
+    ProduceCallData =
+        fun(_Pubkey, _Privkey, Oracle, OraclePrivkey, QueryId, ContractId, _QueryFee) ->
+            ?TEST_LOG("Oracle ~p", [Oracle]),
+            ?TEST_LOG("QueryId ~p", [QueryId]),
+            <<IntOracleId:256>> = Oracle,
+            <<IntQueryId:256>> = QueryId,
+            BinToSign = <<QueryId/binary, ContractId/binary>>,
+            SigBin = <<Word1:256, Word2:256>> =
+                enacl:sign_detached(aec_governance:add_network_id(BinToSign),
+                                    OraclePrivkey),
+            ?TEST_LOG("Signature binary ~p", [SigBin]),
+            Sig = {Word1, Word2},
+            Args = {IntOracleId, IntQueryId, Sig, 
+                    aeso_data:to_binary(42, 0)},
+            CalldataType = {tuple, [string, aeso_abi:get_type(Args)]},
+            ?TEST_LOG("Oracle respond function arguments ~p", [Args]),
+            aeso_data:to_binary({CalldataType,
+                         {list_to_binary(atom_to_list(respond)),
+                          Args}})
+        end,
+    fp_oracle_action(Cfg, ProduceCallData).
+
+%% test that a force progress transaction can NOT extend an oracle 
+%% via a contract
+fp_oracle_extend(Cfg) ->
+    ProduceCallData =
+        fun(_Pubkey, _Privkey, Oracle, OraclePrivkey, _QueryId, ContractId, _QueryFee) ->
+            <<IntOracleId:256>> = Oracle,
+            BinToSign = <<Oracle/binary, ContractId/binary>>,
+            RelativeTTL = {variant, 0, [10]},
+            SigBin = <<Word1:256, Word2:256>> =
+                enacl:sign_detached(aec_governance:add_network_id(BinToSign),
+                                    OraclePrivkey),
+            ?TEST_LOG("Signature binary ~p", [SigBin]),
+            Sig = {Word1, Word2},
+            Args = {IntOracleId, Sig, RelativeTTL},
+            CalldataType = {tuple, [string, aeso_abi:get_type(Args)]},
+            ?TEST_LOG("Oracle respond function arguments ~p", [Args]),
+            aeso_data:to_binary({CalldataType,
+                         {list_to_binary(atom_to_list(extendOracle)),
                           Args}})
         end,
     fp_oracle_action(Cfg, ProduceCallData).
@@ -3446,17 +3497,20 @@ fp_oracle_action(Cfg, ProduceCallData) ->
           end,
           % create oracle
           register_new_oracle(aeso_data:to_binary(string, 0),
-                              aeso_data:to_binary(string, 0),
+                              aeso_data:to_binary(word, 0),
                               QueryFee),
+          oracle_query(aeso_data:to_binary(<<"Some question">>, 0), 10),
           % call contract on-chain
           fun(#{onchain_contract_owner_pubkey := OPubKey,
                 onchain_contract_owner_privkey := OPrivKey,
                 onchain_contract_id := ContractId,
                 oracle := Oracle,
-                state := S0} = Props) ->
+                state := S0,
+                query_id := QueryID} = Props) ->
             Nonce = 2,
-            CallData = ProduceCallData(OPubKey, OPrivKey, Oracle, ContractId,
-                                      QueryFee),
+            OraclePrivkey = aesc_test_utils:priv_key(Oracle, S0),
+            CallData = ProduceCallData(OPubKey, OPrivKey, Oracle,
+                                       OraclePrivkey, QueryID, ContractId, QueryFee),
             ?TEST_LOG("CallData ~p", [CallData]),
             true = is_binary(CallData),
             {ok, CallTx} =
@@ -3501,7 +3555,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                   % create account for being contract owner
                   positive(fun create_channel_/2),
                   register_new_oracle(aeso_data:to_binary(string, 0),
-                                      aeso_data:to_binary(string, 0),
+                                      aeso_data:to_binary(word, 0),
                                       QueryFee),
                   % store state on-chain via snapshot
                   set_from(initiator),
@@ -3523,12 +3577,18 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                                           _Contract = ContractName,
                                           _InitArgs = <<"()">>,
                                           _Deposit  = 2),
+                  oracle_query(aeso_data:to_binary(<<"Some question">>, 0), 10),
                   % force progress contract on-chain
-                  fun(#{contract_id := ContractId,
-                        oracle      := Oracle,
-                        from_pubkey := Pubkey,
-                        from_privkey := Privkey} = Props) ->
+                  fun(#{contract_id   := ContractId,
+                        oracle        := Oracle,
+                        from_pubkey   := Pubkey,
+                        from_privkey  := Privkey,
+                        state         := S,
+                        query_id      := QueryID} = Props) ->
+                      OraclePrivkey = aesc_test_utils:priv_key(Oracle, S),
                       CallData = ProduceCallData(Pubkey, Privkey, Oracle,
+                                                 OraclePrivkey,
+                                                 QueryID,
                                                  ContractId, QueryFee),
                       (force_call_contract_first_with_calldata(Forcer,
                                             CallData, FPRound))(Props)
