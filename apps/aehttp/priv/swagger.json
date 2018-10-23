@@ -210,7 +210,8 @@
           "in" : "path",
           "description" : "The height of the block",
           "required" : true,
-          "type" : "integer"
+          "type" : "integer",
+          "minimum" : 0
         } ],
         "responses" : {
           "200" : {
@@ -473,7 +474,8 @@
           "in" : "path",
           "description" : "The height of the generation",
           "required" : true,
-          "type" : "integer"
+          "type" : "integer",
+          "minimum" : 0
         } ],
         "responses" : {
           "200" : {
