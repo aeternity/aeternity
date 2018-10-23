@@ -27,6 +27,7 @@
          wait_for_height/2,
          spend/4,         %% (Node, FromPub, ToPub, Amount) -> ok
          spend/5,         %% (Node, FromPub, ToPub, Amount, Fee) -> ok
+         sign_on_node/2,
          forks/0,
          latest_fork_height/0]).
 
@@ -49,7 +50,8 @@
         ]).
 
 -export([patron/0,
-         sign_keys/0]).
+         sign_keys/0,
+         sign_keys/1]).
 
 -include_lib("kernel/include/file.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -75,6 +77,10 @@ sign_keys() ->
      {dev3, {<<238,230,20,172,221,171,100,208,126,164,204,120,180,48,69,184,235,69,115,91,190,182,78,22,50,182,78,251,154,80,216,250,207,253,207,144,121,
                89,70,193,75,247,195,248,104,132,11,199,133,103,156,209,167,244,82,126,86,51,156,36,165,214,45,50>>,
              <<207,253,207,144,121,89,70,193,75,247,195,248,104,132,11,199,133,103,156,209,167,244,82,126,86,51,156,36,165,214,45,50>>}}].
+
+sign_keys(Node) ->
+    {_, {Priv, Pub}} = lists:keyfind(Node, 1, sign_keys()),
+    {Priv, Pub}.
 
 patron() ->
     #{ pubkey  => <<206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,
@@ -344,11 +350,20 @@ spend(Node, FromPub, ToPub, Amount, Fee) ->
                fee          => Fee,
                nonce        => Nonce,
                payload      => <<"foo">>},
+
     {ok, Tx} = rpc:call(Node, aec_spend_tx, new, [Params]),
-    {ok, SignedTx} = rpc:call(Node, aec_keys, sign_tx, [Tx]),
+    {ok, SignedTx} = sign_on_node({dev1, Node}, Tx),
     ok = rpc:call(Node, aec_tx_pool, push, [SignedTx]),
     {ok, SignedTx}.
 
+sign_on_node({Id, Node}, Tx) ->
+    {_, {SignPrivKey, _SignPubKey}} = lists:keyfind(Id, 1, sign_keys()),
+    Bin = rpc:call(Node, aetx, serialize_to_binary, [Tx]),
+    BinForNetwork = rpc:call(Node, aec_governance, add_network_id, [Bin]),
+    Signature = rpc:call(Node, enacl, sign_detached, [BinForNetwork, SignPrivKey]),
+    {ok, rpc:call(Node, aetx_sign, new, [Tx, [Signature]])};
+sign_on_node(Id, Tx) ->
+    sign_on_node(node_tuple(Id), Tx).
 
 forks() ->
     Vs = aec_governance:sorted_protocol_versions(),

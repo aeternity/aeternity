@@ -95,6 +95,7 @@ tx_pool_test_() ->
                {ok, KeyHash1} = aec_blocks:hash_internal_representation(KeyBlock1),
                ok = aec_chain_state:insert_block(KeyBlock1),
                ?assertEqual(KeyHash1, aec_chain:top_block_hash()),
+               ok = aec_keys:promote_candidate(aec_blocks:miner(KeyBlock1)),
 
                TopBlock = aec_chain:top_block(),
                TopBlockHash = aec_chain:top_block_hash(),
@@ -337,6 +338,7 @@ tx_pool_test_() ->
                {ok, KeyHash1} = aec_blocks:hash_internal_representation(KeyBlock1),
                ok = aec_chain_state:insert_block(KeyBlock1),
                ?assertEqual(KeyHash1, aec_chain:top_block_hash()),
+               ok = aec_keys:promote_candidate(aec_blocks:miner(KeyBlock1)),
 
                TopBlock = aec_chain:top_block(),
 

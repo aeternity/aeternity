@@ -65,7 +65,7 @@ int_create(BlockHash, Block, Beneficiary) ->
     end.
 
 int_create(BlockHash, Block, Beneficiary, AdjChain) ->
-    case aec_keys:pubkey() of
+    case aec_keys:candidate_pubkey() of
         {ok, Miner} ->
             int_create(BlockHash, Block, Miner, Beneficiary, AdjChain);
         {error, _} = Error ->
