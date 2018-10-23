@@ -537,7 +537,8 @@ p_gen_new_peer(Pwd, PubFile, PrivFile) ->
 ensure_dir(KeysDir) ->
     case filelib:is_dir(KeysDir) of
         false ->
-            ok = file:make_dir(KeysDir);
+            KeysDirFile = filename:join(KeysDir, "keyfile"),
+            ok = filelib:ensure_dir(KeysDirFile);
         true ->
             ok
     end.
