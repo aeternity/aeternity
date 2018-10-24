@@ -4146,16 +4146,18 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
             QueryId
         end,
 
-    Code = contract_byte_code("channel_on_chain_contract_oracle"),
+    EncodedCode = contract_byte_code("channel_on_chain_contract_oracle"),
     HexOracleId = aeu_hex:hexstring_encode(OraclePubkey),
     InitArgument = <<"(",HexOracleId/binary, ", \"", Question/binary, "\")">>,
     {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
-                              <<"sophia">>, Code, <<"init">>, InitArgument),
+                              <<"sophia">>,
+                              contract_bytearray_decode(EncodedCode),
+                              <<"init">>, InitArgument),
     {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
     ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
                    #{vm_version => 1,
                      deposit    => 10,
-                     code       => Code,
+                     code       => EncodedCode,
                      call_data  => EncodedInitData}, Config),
 
     UnsignedStateTx = CreateVolley(),
@@ -4166,7 +4168,7 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
         fun(Who, Fun, Args, ReturnType, Result) ->
             {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
             Tx = call_a_contract(Fun, Args,
-                                 ContractPubKey, Code,
+                                 ContractPubKey, EncodedCode,
                                  UpdaterConnPid, UpdateVolley, Config),
             #{<<"value">> := R} =
                 ws_get_decoded_result(ConnPid1, ConnPid2,
@@ -4245,15 +4247,17 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     %% Oracle ask itself a question and answers it
     {NamePubkey, NamePrivkey} = initialize_account(100000),
 
-    Code = contract_byte_code("channel_on_chain_contract_name_resolution"),
+    EncodedCode = contract_byte_code("channel_on_chain_contract_name_resolution"),
     InitArgument = <<"()">>,
     {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
-                              <<"sophia">>, Code, <<"init">>, InitArgument),
+                              <<"sophia">>,
+                              contract_bytearray_decode(EncodedCode),
+                              <<"init">>, InitArgument),
     {CreateVolley, OwnerConnPid, OwnerPubkey} = GetVolley(Owner),
     ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
                    #{vm_version => 1,
                      deposit    => 10,
-                     code       => Code,
+                     code       => EncodedCode,
                      call_data  => EncodedInitData}, Config),
 
     UnsignedStateTx = CreateVolley(),
@@ -4269,7 +4273,7 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
             Args = <<"(", QName/binary, ",", QKey/binary,")">>,
             Tx = call_a_contract(<<"can_resolve">>,
                                  Args,
-                                 ContractPubKey, Code,
+                                 ContractPubKey, EncodedCode,
                                  UpdaterConnPid, UpdateVolley, Config),
              #{<<"value">> := RInt} =
                 ws_get_decoded_result(ConnPid1, ConnPid2,
@@ -4302,15 +4306,17 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
 
 sc_ws_enviroment_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                            OwnerPubkey, _OtherPubkey, _Opts, Config) ->
-    Code = contract_byte_code("channel_env"),
+    EncodedCode = contract_byte_code("channel_env"),
     InitArgument = <<"()">>,
     {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
-                              <<"sophia">>, Code, <<"init">>, InitArgument),
+                              <<"sophia">>,
+                              contract_bytearray_decode(EncodedCode),
+                              <<"init">>, InitArgument),
     {CreateVolley, OwnerConnPid, OwnerPubkey} = GetVolley(Owner),
     ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
                    #{vm_version => 1,
                      deposit    => 10,
-                     code       => Code,
+                     code       => EncodedCode,
                      call_data  => EncodedInitData}, Config),
 
     UnsignedStateTx = CreateVolley(),
@@ -4323,7 +4329,7 @@ sc_ws_enviroment_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
             Args = <<"()">>,
             Tx = call_a_contract(Fun,
                                  Args,
-                                 ContractPubKey, Code,
+                                 ContractPubKey, EncodedCode,
                                  UpdaterConnPid, UpdateVolley, Config),
              #{<<"value">> := R} =
                 ws_get_decoded_result(ConnPid1, ConnPid2,
@@ -4358,24 +4364,24 @@ sc_ws_remote_call_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     %% create identity contract off-chain
     CreateContract =
         fun(Name) ->
-            Code = contract_byte_code(Name),
+            EncodedCode = contract_byte_code(Name),
             InitArgument = <<"()">>,
             {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
                                       <<"sophia">>,
-                                      Code,
+                                      contract_bytearray_decode(EncodedCode),
                                       <<"init">>,
                                       InitArgument),
             {CreateVolley, OwnerConnPid, OwnerPubkey} = GetVolley(Owner),
             ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
                            #{vm_version => 1,
                              deposit    => 10,
-                             code       => Code,
+                             code       => EncodedCode,
                              call_data  => EncodedInitData}, Config),
 
             UnsignedStateTx = CreateVolley(),
             ContractPubKey = contract_id_from_create_update(OwnerPubkey,
                                                             UnsignedStateTx),
-            {ContractPubKey, Code}
+            {ContractPubKey, EncodedCode}
           end,
     {IdentityCPubKey, IdentityCode} = CreateContract("identity"),
     {RemoteCallCPubKey, RemoteCallCode} = CreateContract("remote_call"),
@@ -4653,18 +4659,20 @@ contract_id_from_create_update(Owner, OffchainTx) ->
 
 
 create_contract_(TestName, SenderConnPid, UpdateVolley, Config) ->
-    Code = contract_byte_code(TestName),
+    EncodedCode = contract_byte_code(TestName),
     InitArgument = contract_create_init_arg(TestName),
     {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
-                              <<"sophia">>, Code, <<"init">>, InitArgument),
+                              <<"sophia">>,
+                              contract_bytearray_decode(EncodedCode),
+                              <<"init">>, InitArgument),
 
     ws_send_tagged(SenderConnPid, <<"update">>, <<"new_contract">>,
                    #{vm_version => 1,
                      deposit    => 10,
-                     code       => Code,
+                     code       => EncodedCode,
                      call_data  => EncodedInitData}, Config),
     UnsignedStateTx = UpdateVolley(),
-    {UnsignedStateTx, Code}.
+    {UnsignedStateTx, EncodedCode}.
 
 contract_calls_("identity", ContractPubKey, Code, SenderConnPid, UpdateVolley,
                 AckConnPid, _ , _, Config) ->
@@ -4758,7 +4766,7 @@ call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid, UpdateV
 call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
                 UpdateVolley, Amount, Config) ->
     {ok, EncodedMainData} = aehttp_logic:contract_encode_call_data(<<"sophia">>,
-                                                                   Code,
+                                                                   contract_bytearray_decode(Code),
                                                                    Function,
                                                                    Argument),
     ws_send_tagged(SenderConnPid, <<"update">>, <<"call_contract">>,
