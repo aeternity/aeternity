@@ -444,19 +444,21 @@ s_setup_sign_keys(#worker_state{sign_pass = SignPwd, keys_dir = KeysDir} = State
     {PubFile, PrivFile} = p_gen_sign_filename(KeysDir),
     State1 = State0#worker_state{ sign_priv_file = PrivFile , sign_pub_file  = PubFile },
     case read_keys(SignPwd, PubFile, PrivFile, ?PUB_SIZE, ?SIGN_PRIV_SIZE) of
-        {error, enoent} ->
-            case p_gen_new_keypair() of
-                {ok, {Pub, Priv}} ->
-                    s_save_sign_keys(State1#worker_state{ sign_priv = Priv , sign_pub = Pub });
-                {error, Reason} -> error(Reason)
-            end;
+        {error, enoent} -> s_setup_new_sign_keys(State1);
         {Pub, Priv} ->
             case check_sign_keys(Pub, Priv) of
                 true ->
                     State1#worker_state{ sign_priv = Priv , sign_pub = Pub };
                 false ->
-                    erlang:error({invalid_sign_key_pair, [PubFile, PrivFile]})
+                    s_setup_new_sign_keys(State1)
             end
+    end.
+
+s_setup_new_sign_keys(State) ->
+    case p_gen_new_keypair() of
+        {ok, {Pub, Priv}} ->
+            s_save_sign_keys(State#worker_state{ sign_priv = Priv , sign_pub = Pub });
+        {error, Reason} -> error(Reason)
     end.
 
 s_setup_candidate_keys(State) ->
