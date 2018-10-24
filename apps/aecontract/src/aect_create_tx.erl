@@ -338,9 +338,11 @@ initialize_contract(#contract_create_tx{vm_version = VmVersion,
     OwnerPubKey = owner_pubkey(Tx),
 
     %% Insert the call into the state tree for one block.
-    %% This is mainly to make the return value accessible.
+    %% This is mainly to make the return type (ok | error | revert) accessible.
+    %% The return value is cleared (empty binary) for init calls.
     %% Each block starts with an empty calls tree.
-    Trees1 = aect_utils:insert_call_in_trees(CallRes, Trees),
+    ClearedCallRes = aect_call:set_return_value(<<>>, CallRes),
+    Trees1 = aect_utils:insert_call_in_trees(ClearedCallRes, Trees),
 
     %% Refund unused gas.
     Trees2 =
