@@ -127,12 +127,7 @@ run_common(#{  amount      := Value
                     GasLeft = aevm_eeevm_state:gas(ResultState),
                     GasUsed = Gas - GasLeft,
                     Out = aevm_eeevm_state:out(ResultState),
-                    ChainState = aevm_eeevm_state:chain_state(ResultState),
-                    Log = aevm_eeevm_state:logs(ResultState),
-                    {
-                        create_call(GasUsed, revert, Out, Log, Call),
-                        aec_vm_chain:get_trees(ChainState)
-                    };
+                    {create_call(GasUsed, revert, Out, [], Call), Trees};
                 {error, Error, _} ->
                     %% Execution resulting in VM exception.
                     %% Gas used, but other state not affected.

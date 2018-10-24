@@ -200,19 +200,56 @@ abort_test_contract(Config) ->
 
     %% Make sure accounts have enough tokens.
     _ABal0 = ensure_balance(APub, 50000),
+    {ok,[_]} = aecore_suite_utils:mine_key_blocks(Node, 1),
 
-    %% Compile test contract "abort_test.aes"
-    Code = compile_test_contract("abort_test"),
+    %% Compile contracts "abort_test.aes" and "abort_test_int.aes".
+    TCode = compile_test_contract("abort_test"),
+    ICode = compile_test_contract("abort_test_int"),
 
-    {EncCPub,_,_} =
-        create_compute_contract(Node, APub, APriv, Code, <<"()">>),
+    %% Create chain of int contracts to test contract.
+    {EncodedTestPub,DecodedTestPub,_} =
+        create_compute_contract(Node, APub, APriv, TCode, <<"(42)">>),
+    {_EncodedInt1Pub,DecodedInt1Pub,_} =
+        create_compute_contract(Node, APub, APriv, ICode,
+                                args_to_binary([DecodedTestPub,42])),
+    {_EncodedInt2Pub,DecodedInt2Pub,_} =
+        create_compute_contract(Node, APub, APriv, ICode,
+                                args_to_binary([DecodedInt1Pub,42])),
+    {EncodedInt3Pub,_,_} =
+        create_compute_contract(Node, APub, APriv, ICode,
+                                args_to_binary([DecodedInt2Pub,42])),
 
-    init_fun_calls(),
+    %% This should set state values to 17, 1017, 2017, 3017.
+    call_compute_func(Node, APub, APriv, EncodedInt3Pub,
+                      <<"put_values">>, <<"(17)">>),
+    BeforeList = call_func_decode(Node, APub, APriv,
+                                  EncodedInt3Pub,
+                                  <<"get_values">>, <<"()">>, <<"list(int)">>),
+    ct:pal("Before Values ~p\n", [BeforeList]),
 
-    call_func(APub, APriv, EncCPub, <<"do_abort_1">>, <<"(\"yogi bear\")">>, error),
-    call_func(APub, APriv, EncCPub, <<"do_abort_2">>, <<"(\"yogi bear\")">>, error),
+    ABal0 = get_balance(APub),
 
-    force_fun_calls(Node),
+    %% Do abort where we have put values 42, 142, 242, 342,
+    %% then check value in abort_test contract, should still be 3017!
+    %% Check that we get the abort string back.
+
+    AbortString = <<"yogi bear">>,
+    {RevertValue,_} =
+        revert_call_compute_func(Node, APub, APriv, EncodedTestPub,
+                                 <<"do_abort">>,
+                                 args_to_binary([42,{string,AbortString}])),
+    #{<<"value">> := AbortString} = decode_data(<<"string">>, RevertValue),
+
+    ABal1 = get_balance(APub),
+
+    %% The contract values should be the same, 17, 1017, 2017, 3017.
+    AfterList = call_func_decode(Node, APub, APriv,
+                                 EncodedInt3Pub,
+                                 <<"get_values">>, <<"()">>, <<"list(int)">>),
+    ct:pal("After Values ~p\n", [AfterList]),
+    AfterList = BeforeList,
+
+    ct:pal("Balance ~p ~p \n", [ABal0,ABal1]),
 
     ok.
 
@@ -380,35 +417,33 @@ stack_contract(Config) ->
 
 %% polymorphism_test_contract(Config)
 %%  Check the polymorphism_test contract.
-%%  This does not work yet.
 
 polymorphism_test_contract(Config) ->
-    NodeName = proplists:get_value(node_name, Config),
+    Node = proplists:get_value(node_name, Config),
     %% Get account information.
-    #{acc_a := #{pub_key := APubkey,
-                 priv_key := APrivkey}} = proplists:get_value(accounts, Config),
+    #{acc_a := #{pub_key := APub,
+                 priv_key := APriv}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APubkey, 500000),
-    {ok,[_]} = aecore_suite_utils:mine_key_blocks(NodeName, 1),
+    _ABal0 = ensure_balance(APub, 500000),
+    {ok,[_]} = aecore_suite_utils:mine_key_blocks(Node, 1),
 
     %% Compile test contract "polymorphism_test.aes".
     Code = compile_test_contract("polymorphism_test"),
 
     %% Initialise contract owned by Alice.
-    {EncodedContractPubkey,_,_} =
-       create_compute_contract(NodeName, APubkey, APrivkey, Code, <<"()">>),
+    {EncodedContractPub,_,_} =
+       create_compute_contract(Node, APub, APriv, Code, <<"()">>),
 
     %% Test the polymorphism.
     init_fun_calls(), % setup call handling
-    Word   = fun(Val) -> #{<<"type">> => <<"word">>, <<"value">> => Val} end,
 
-    call_func(APubkey, APrivkey, EncodedContractPubkey, <<"foo">>, <<"()">>,
-              {<<"list(int)">>, [Word(5), Word(7), Word(9)]}),
-    call_func(APubkey, APrivkey, EncodedContractPubkey, <<"bar">>, <<"()">>,
-              {<<"list(int)">>, [Word(1), Word(0), Word(3)]}),
+    call_func(APub, APriv, EncodedContractPub, <<"foo">>, <<"()">>,
+              {<<"list(int)">>, [word(5), word(7), word(9)]}),
+    call_func(APub, APriv, EncodedContractPub, <<"bar">>, <<"()">>,
+              {<<"list(int)">>, [word(1), word(0), word(3)]}),
 
-    force_fun_calls(NodeName),
+    force_fun_calls(Node),
 
     ok.
 
@@ -416,14 +451,14 @@ polymorphism_test_contract(Config) ->
 %%  Check the factorial contract.
 
 factorial_contract(Config) ->
-    NodeName = proplists:get_value(node_name, Config),
+    Node = proplists:get_value(node_name, Config),
     %% Get account information.
-    #{acc_a := #{pub_key := APubkey,
-                 priv_key := APrivkey}} = proplists:get_value(accounts, Config),
+    #{acc_a := #{pub_key := APub,
+                 priv_key := APriv}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APubkey, 500000),
-    {ok,[_]} = aecore_suite_utils:mine_key_blocks(NodeName, 1),
+    _ABal0 = ensure_balance(APub, 500000),
+    {ok,[_]} = aecore_suite_utils:mine_key_blocks(Node, 1),
 
     %% Compile test contract "factorial.aes".
     Code = compile_test_contract("factorial"),
@@ -433,24 +468,21 @@ factorial_contract(Config) ->
 
     %% Initialise contracts owned by Alice. We need N + 1 contracts, one for
     %% each call to factorial.
-    {EncodedContractPubkey, _DecodedContractPubkey} =
-        lists:foldl(fun(_, {_EP, DP}) ->
-                Args =
-                    case DP of
-                        undefined -> args_to_binary([0]);
-                        _         -> args_to_binary([DP])
-                    end,
-                {EP1, DP1, _} = create_compute_contract(NodeName, APubkey, APrivkey, Code, Args),
-                {EP1, DP1}
-            end, {undefined, undefined}, lists:seq(0, N)),
+    CFun = fun (_, {_EP,DP,_IR}) ->
+                   create_compute_contract(Node, APub, APriv, Code,
+                                           args_to_binary([DP]))
+           end,
+    {EncodedContractPubkey, _DecodedContractPubkey,_} =
+        lists:foldl(CFun, {0,0,0}, lists:seq(0, N)),
 
     init_fun_calls(), % setup call handling
 
     %% Compute fac(10) = 3628800.
-    call_func(APubkey, APrivkey, EncodedContractPubkey,
-              <<"fac">>, list_to_binary("(" ++ integer_to_list(N) ++ ")"), {<<"int">>, 3628800}),
+    call_func(APub, APriv, EncodedContractPubkey,
+              <<"fac">>, args_to_binary([N]),
+              {<<"int">>, 3628800}),
 
-    force_fun_calls(NodeName),
+    force_fun_calls(Node),
 
     ok.
 
@@ -486,8 +518,6 @@ maps_contract(Config) ->
                                 args_to_binary([DecodedMapsPub])),
 
     init_fun_calls(), % setup call handling
-    Word   = fun(Val) -> #{<<"type">> => <<"word">>, <<"value">> => Val} end,
-    Tuple  = fun(Vals) -> #{<<"type">> => <<"tuple">>, <<"value">> => Vals} end,
 
     %% Set state {[k] = v}
     %% State now {map_i = {[1]=>{x=1,y=2},[2]=>{x=3,y=4},[3]=>{x=5,y=6}},
@@ -503,10 +533,10 @@ maps_contract(Config) ->
 
     %% m[k]
     call_func(BPub, BPriv, EncMapsPub, <<"get_state_i">>,  <<"(2)">>,
-              {<<"(int, int)">>, [Word(3), Word(4)]}),
+              {<<"(int, int)">>, [word(3), word(4)]}),
 
     call_func(BPub, BPriv, EncMapsPub, <<"get_state_s">>,  <<"(\"three\")">>,
-              {<<"(int, int)">>, [Word(5), Word(6)]}),
+              {<<"(int, int)">>, [word(5), word(6)]}),
 
     %% m{[k] = v}
     %% State now {map_i = {[1]=>{x=11,y=22},[2]=>{x=3,y=4},[3]=>{x=5,y=6}},
@@ -516,19 +546,19 @@ maps_contract(Config) ->
     call_func(BPub, BPriv, EncTestPub, <<"set_state_s">>, <<"(\"one\", 11, 22)">>),
 
     call_func(BPub, BPriv, EncMapsPub, <<"get_state_i">>, <<"(1)">>,
-              {<<"(int, int)">>, [Word(11), Word(22)]}),
+              {<<"(int, int)">>, [word(11), word(22)]}),
     call_func(BPub, BPriv, EncMapsPub, <<"get_state_s">>,  <<"(\"one\")">>,
-              {<<"(int, int)">>, [Word(11), Word(22)]}),
+              {<<"(int, int)">>, [word(11), word(22)]}),
 
     %% m{f[k].x = v}
     call_func(BPub, BPriv, EncMapsPub, <<"setx_state_i">>, <<"(2, 33)">>),
     call_func(BPub, BPriv, EncMapsPub, <<"setx_state_s">>, <<"(\"two\", 33)">>),
 
     call_func(BPub, BPriv, EncMapsPub, <<"get_state_i">>,  <<"(2)">>,
-              {<<"(int, int)">>, [Word(33), Word(4)]}),
+              {<<"(int, int)">>, [word(33), word(4)]}),
 
     call_func(BPub, BPriv, EncMapsPub, <<"get_state_s">>,  <<"(\"two\")">>,
-              {<<"(int, int)">>, [Word(33), Word(4)]}),
+              {<<"(int, int)">>, [word(33), word(4)]}),
 
     %% Map.member
     %% Check keys 1 and "one" which exist and 10 and "ten" which don't.
@@ -541,18 +571,18 @@ maps_contract(Config) ->
     %% Map.lookup
     %% The values of map keys 3 and "three" are unchanged, keys 10 and
     %% "ten" don't exist.
-    SomePair = fun({some, {X, Y}}) -> [1, Tuple([Word(X), Word(Y)])];
-                  (none)           -> [0]
+    SomePair = fun ({some,{X, Y}}) -> [1, tuple([word(X), word(Y)])];
+                   (none) -> [0]
                end,
 
     call_func(BPub, BPriv, EncMapsPub,  <<"lookup_state_i">>, <<"(3)">>,
-              {<<"option((int, int))">>, SomePair({some, {5, 6}})}),
+              {<<"option((int, int))">>, SomePair({some,{5, 6}})}),
 
     call_func(BPub, BPriv, EncMapsPub,  <<"lookup_state_i">>, <<"(10)">>,
               {<<"option((int, int))">>, SomePair(none)}),
 
     call_func(BPub, BPriv, EncMapsPub,  <<"lookup_state_s">>, <<"(\"three\")">>,
-              {<<"option((int, int))">>, SomePair({some, {5, 6}})}),
+              {<<"option((int, int))">>, SomePair({some,{5, 6}})}),
 
     call_func(BPub, BPriv, EncMapsPub,  <<"lookup_state_s">>, <<"(\"ten\")">>,
               {<<"option((int, int))">>, SomePair(none)}),
@@ -589,10 +619,10 @@ maps_contract(Config) ->
 
     ok.
 
-call_get_state(NodeName, Pubkey, Privkey, EncodedMapsPubkey) ->
+call_get_state(Node, Pub, Priv, EncodedMapsPub) ->
     StateType = <<"( map(int, (int, int)), map(string, (int, int)) )">>,
-    {Return,_} = call_compute_func(NodeName, Pubkey, Privkey,
-                                   EncodedMapsPubkey,
+    {Return,_} = call_compute_func(Node, Pub, Priv,
+                                   EncodedMapsPub,
                                    <<"get_state">>, <<"()">>),
     #{<<"value">> := GetState} = decode_data(StateType, Return),
     GetState.
@@ -681,7 +711,6 @@ environment_contract(Config) ->
     {_, <<BHInt:256/integer-unsigned>>} = aec_base58c:decode(ExpectedBlockHash),
 
     call_func(BPub, BPriv, EncCPub, <<"block_hash">>, <<"(2)">>, {<<"int">>, BHInt}),
-
 
     %% Block hash. With value out of bounds
     ct:pal("Calling block_hash out of bounds\n"),
@@ -800,7 +829,9 @@ dutch_auction_contract(Config) ->
                  priv_key := APriv},
       acc_b := #{pub_key := BPub,
                  priv_key := BPriv},
-      acc_c := #{pub_key := CPub}} = proplists:get_value(accounts, Config),
+      acc_c := #{pub_key := CPub},
+      acc_d := #{pub_key := DPub,
+                 priv_key := DPriv}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
     _ABal0 = ensure_balance(APub, 500000),
@@ -845,6 +876,11 @@ dutch_auction_contract(Config) ->
     %% Check that the balances are correct, don't forget the gas and the fee.
     BBal2 = BBal1 - Cost - GasUsed - Fee,
     CBal2 = CBal1 + Cost,
+
+    %% Now make a bid which should fail as auction has closed.
+    revert_call_compute_func(Node, DPub, DPriv, EncCPub,
+                             <<"bid">>, <<"()">>,
+                             #{amount => 100000,fee => Fee}),
 
     ok.
 
@@ -892,12 +928,12 @@ fundme_contract(Config) ->
     call_func(CPub, CPriv, EncCPub, <<"contribute">>, <<"()">>, #{<<"amount">> => 100000}, none),
 
     %% This should fail as we have not reached the goal.
-    call_func(BPub, BPriv, EncCPub, <<"withdraw">>, <<"()">>, error),
+    call_func(BPub, BPriv, EncCPub, <<"withdraw">>, <<"()">>, revert),
 
     call_func(DPub, DPriv, EncCPub, <<"contribute">>, <<"()">>, #{<<"amount">> => 100000}, none),
 
     %% This should fail as we have not reached the deadline.
-    call_func(BPub, BPriv, EncCPub, <<"withdraw">>, <<"()">>, error),
+    call_func(BPub, BPriv, EncCPub, <<"withdraw">>, <<"()">>, revert),
 
     force_fun_calls(Node),
 
@@ -984,25 +1020,28 @@ erc20_token_contract(Config) ->
     call_func(APub, APriv, EncCPub, <<"balanceOf">>, args_to_binary([DPub]), {<<"int">>, 25000}),
 
     %% Check transfer and approval logs.
-    Word  = fun(Val) -> #{<<"type">> => <<"word">>, <<"value">> => Val} end,
-    Tuple = fun(Vals) -> #{<<"type">> => <<"tuple">>, <<"value">> => Vals} end,
-    Addr  = fun(Adr) -> <<Int:256>> = Adr, Word(Int) end,
-
-    TrfLog = [Tuple([Addr(CPub), Addr(DPub), Word(15000)]),
-              Tuple([Addr(BPub), Addr(DPub), Word(10000)]),
-              Tuple([Addr(APub), Addr(CPub), Word(25000)]),
-              Tuple([Addr(APub), Addr(BPub), Word(20000)])],
+    TrfLog = [tuple([addr(CPub), addr(DPub), word(15000)]),
+              tuple([addr(BPub), addr(DPub), word(10000)]),
+              tuple([addr(APub), addr(CPub), word(25000)]),
+              tuple([addr(APub), addr(BPub), word(20000)])],
     call_func(APub, APriv, EncCPub, <<"getTransferLog">>, <<"()">>,
               {<<"list((address,address,int))">>, TrfLog}),
 
-    AppLog = [Tuple([Addr(CPub), Addr(APub), Word(15000)]),
-              Tuple([Addr(BPub), Addr(APub), Word(15000)])],
+    AppLog = [tuple([addr(CPub), addr(APub), word(15000)]),
+              tuple([addr(BPub), addr(APub), word(15000)])],
     call_func(APub, APriv, EncCPub, <<"getApprovalLog">>, <<"()">>,
               {<<"list((address,address,int))">>, AppLog}),
 
     force_fun_calls(Node),
 
     ok.
+
+%% Data structure functions.
+word(Val) -> #{<<"type">> => <<"word">>, <<"value">> => Val}.
+
+tuple(Vals) -> #{<<"type">> => <<"tuple">>, <<"value">> => Vals}. %Sneaky
+
+addr(Addr) -> <<Int:256>> = Addr, word(Int).
 
 %% Internal access functions.
 
@@ -1031,6 +1070,14 @@ decode_data(Type, EncodedData) ->
          get_contract_decode_data(#{'sophia-type' => Type,
                                     data => EncodedData}),
     DecodedData.
+
+call_func_decode(NodeName, Pubkey, Privkey, EncodedContractPubkey,
+                 Function, Arg, Type) ->
+    {Return,_} = call_compute_func(NodeName, Pubkey, Privkey,
+                                   EncodedContractPubkey,
+                                   Function, Arg),
+    #{<<"value">> := Value} = decode_data(Type, Return),
+    Value.
 
 %% Contract interface functions.
 
@@ -1064,11 +1111,10 @@ create_compute_contract(NodeName, Pubkey, Privkey, Code, InitArgument, CallerSet
 
     {EncodedContractPubkey,DecodedContractPubkey,InitReturn}.
 
-%% call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
-%%                   Function, Arguments)
-%% call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
-%%                   Function, Arguments, CallerSet)
-%%  Call contract function with arguments and mine blocks until in chain.
+%% init_fun_calls()
+%% force_fun_calls(Node)
+%% call_func(Pubkey, Privkey, EncodedContractPubkey, Function, Arguments)
+%% call_func(Pubkey, Privkey, EncodedContractPubkey, Function, Arguments, Check)
 
 init_fun_calls() ->
     put(fun_calls, []), put(nonces, []).
@@ -1102,7 +1148,9 @@ check_call({TxHash, Check}) ->
             ?assertEqual(<<"ok">>, RetType),
             check_value(Value, Check);
         error ->
-            ?assertEqual(<<"error">>, RetType)
+            ?assertEqual(<<"error">>, RetType);
+        revert ->
+            ?assertEqual(<<"revert">>, RetType)
     end.
 
 check_value(Val0, {Type, ExpVal}) ->
@@ -1139,6 +1187,11 @@ get_nonce(Pub) ->
             Nonce0 + NonceOff + 1
     end.
 
+%% call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
+%%                   Function, Arguments)
+%% call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
+%%                   Function, Arguments, CallerSet)
+
 call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
                   Function, Argument) ->
     call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
@@ -1146,6 +1199,42 @@ call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
 
 call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
                   Function, Argument, CallerSet) ->
+    {CallReturn,ContractCallTxHash} =
+        basic_call_compute_func(NodeName, Pubkey, Privkey,
+                                EncodedContractPubkey,
+                                 Function, Argument, CallerSet),
+
+    #{<<"return_type">> := <<"ok">>,
+      <<"return_value">> := Value} = CallReturn,
+
+    %% Get the block where the tx was included
+    {ok, 200, #{<<"block_hash">> := BlockHash}} = get_tx(ContractCallTxHash),
+    {ok, 200, BlockHeader} = get_micro_block_header(BlockHash),
+
+    {Value, #{header => BlockHeader, return => CallReturn}}.
+
+%% revert_call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
+%%                          Function, Arguments)
+%% revert_call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
+%%                          Function, Arguments, CallerSet)
+
+revert_call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
+                         Function, Argument) ->
+    revert_call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
+                             Function, Argument, #{}).
+
+revert_call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
+                         Function, Argument, CallerSet) ->
+    {CallReturn,_} = basic_call_compute_func(NodeName, Pubkey, Privkey,
+                                             EncodedContractPubkey,
+                                             Function, Argument, CallerSet),
+
+    #{<<"return_type">> := <<"revert">>,
+      <<"return_value">> := Value} = CallReturn,
+    {Value,CallReturn}.
+
+basic_call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
+                        Function, Argument, CallerSet) ->
     ContractCallTxHash =
         contract_call_compute_tx(Pubkey, Privkey, EncodedContractPubkey,
                                  Function, Argument, CallerSet),
@@ -1158,13 +1247,10 @@ call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
     {ok,200,CallReturn} = get_contract_call_object(ContractCallTxHash),
     ct:pal("Call return ~p\n", [CallReturn]),
 
-    #{<<"return_type">> := <<"ok">>,<<"return_value">> := Value} = CallReturn,
+    {CallReturn,ContractCallTxHash}.
 
-    %% Get the block where the tx was included
-    {ok, 200, #{<<"block_hash">> := BlockHash}} = get_tx(ContractCallTxHash),
-    {ok, 200, BlockHeader} = get_micro_block_header(BlockHash),
-
-    {Value, #{header => BlockHeader, return => CallReturn}}.
+%% contract_create_compute_tx(Pubkey, Privkey, Code, EncodedInitData) ->
+%%     contract_create_compute_tx(Pubkey, Privkey, Code, EncodedInitData, #{}).
 
 contract_create_compute_tx(Pubkey, Privkey, Code, InitArgument, CallerSet) ->
     Address = aec_base58c:encode(account_pubkey, Pubkey),
@@ -1290,7 +1376,7 @@ get_account_by_pubkey(Id) ->
     Host = external_address(),
     http_request(Host, get, "accounts/" ++ http_uri:encode(Id), []).
 
-post_tx(TxSerialized) ->
+ post_tx(TxSerialized) ->
     Host = external_address(),
     http_request(Host, post, "transactions", #{tx => TxSerialized}).
 

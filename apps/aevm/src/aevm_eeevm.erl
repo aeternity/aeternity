@@ -1156,10 +1156,9 @@ loop(CP, StateIn) ->
                     %%   µ' ≡ µ except: µ'g ≡ µg − C(σ, µ, I)
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
-                    {Out, State3} = aevm_eeevm_memory:get_area(Us0, Us1, State2),
-                    State4 = aevm_eeevm_state:set_out(Out, State3),
-                    State5 = spend_mem_gas(State, State4),
-                    throw(?REVERT_SIGNAL(State5));
+                    State3 = aevm_eeevm_state:do_revert(Us0, Us1, State2),
+                    State4 = spend_mem_gas(State, State3),
+                    throw(?REVERT_SIGNAL(State4));
                 ?INVALID ->
                     %% 0xfe INVALID δ=∅ α=∅
                     %% Designated invalid instruction.

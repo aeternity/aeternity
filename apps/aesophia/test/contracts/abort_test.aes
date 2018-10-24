@@ -2,15 +2,29 @@
 
 contract AbortTest =
 
+  record state = { value : int }
+
+  public function init(v : int) =
+    { value = v }
+
+  // Aborting
+  public function do_abort(v : int, s : string) =
+    put_value(v)
+    revert_abort(s)
+
+  // Accessing the value
+  public function get_value() = state.value
+  public function put_value(v : int) = put(state{value = v})
+  public function get_values() : list(int) = [state.value]
+  public function put_values(v : int) = put(state{value = v})
+
+  // Some basic statistics
+  public function get_stats(acct : address) =
+    ( Contract.balance, Chain.balance(acct) )
+
+  // Abort functions.
+  private function revert_abort(s : string) =
+    abort(s)
+
   // This is still legal but will be stripped out.
   private function abort(s : string) = 42
-
-  function do_abort_1(s : string) =
-    abort("42")
-
-  function do_abort_2(s : string) =
-    my_abort("42")
-
-  // This fail in the same way as the built-in abort.
-  private function my_abort(s : string) =
-    switch (0) 1 => ()
