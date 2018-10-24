@@ -2670,7 +2670,7 @@ fp_solo_payload_broken_call(Cfg) ->
     StateHashSize = aec_base58c:byte_size_for_type(state),
     FakeStateHash = <<42:StateHashSize/unit:8>>,
     Test =
-        fun(Owner, Forcer, CallData) ->
+        fun(Owner, Forcer, CallData, Error) ->
             run(#{cfg => Cfg, initiator_amount => 30,
                               responder_amount => 30,
                  channel_reserve => 1},
@@ -2716,21 +2716,21 @@ fp_solo_payload_broken_call(Cfg) ->
                     %% assert all gas was consumed
                     GasLimit = aect_call:gas_used(Call),
                     GasPrice = aect_call:gas_price(Call),
-                    <<"bad_call_data">> = aect_call:return_value(Call),
+                    ?assertEqual(Error, aect_call:return_value(Call)),
                     Props
                 end])
         end,
     TestWithCallData =
-        fun(CallData) ->
-            [Test(Owner, Forcer, CallData) || Owner  <- ?ROLES,
-                                              Forcer <- ?ROLES]
+        fun(CallData, ErrorMsg) ->
+            [Test(Owner, Forcer, CallData, ErrorMsg) || Owner  <- ?ROLES,
+                                                        Forcer <- ?ROLES]
         end,
     %% empty call data
-    TestWithCallData(<<>>),
-    % hex encoded but still wrong
-    TestWithCallData(<<"0xABCD">>),
-    % not hex encoded at all
-    TestWithCallData(<<42:42/unit:8>>),
+    TestWithCallData(<<>>, <<"bad_call_data">>),
+    %% Too small call data
+    TestWithCallData(<<"0xABCD">>, <<"bad_call_data">>),
+    %% Just plain wrong call data, but that can be interpreted
+    TestWithCallData(<<42:42/unit:8>>, <<"unknown_function: ">>),
     ok.
 
 fp_missing_account_address(Cfg) ->
