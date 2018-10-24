@@ -193,6 +193,7 @@ paths:
           description: 'The height of the block'
           required: true
           type : integer
+          minimum: 0
       responses:
         '200':
           description: 'Successful operation'
@@ -421,6 +422,7 @@ paths:
           description: 'The height of the generation'
           required: true
           type : integer
+          minimum: 0
       responses:
         '200':
           description: 'Successful operation'
@@ -2460,11 +2462,6 @@ definitions:
       state_hash:
         $ref: '#/definitions/EncodedHash'
         description: 'Channel''s next state_hash'
-      addresses:
-        type: array
-        minItems: 1
-        items:
-          $ref: '#/definitions/EncodedHash'
       ttl:
         type: integer
         format: int64
@@ -2477,9 +2474,9 @@ definitions:
         type: integer
         format: int64
         minimum: 0
-      poi:
-        type: string
-        description: 'Proof of inclusion containing information for closing the channel'
+      offchain_trees:
+        $ref: '#/definitions/EncodedHash'
+        description: 'The whole set of off-chain state trees'
     required:
       - channel_id
       - from_id
