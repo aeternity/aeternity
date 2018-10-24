@@ -70,7 +70,7 @@ execute_call(Contract, CallData, ChainState, Options) ->
     #{ byte_code := Code,
        type_info := TypeInfo
      } = aeso_compiler:deserialize(SerializedCode),
-    case aect_dispatch:check_type_info(CallData, TypeInfo) of
+    case aect_dispatch:check_call_data(CallData, TypeInfo) of
         {ok, CallDataType} ->
             execute_call_1(Contract, CallData, CallDataType, Code, ChainState1, Options);
         {error, _} = Err ->

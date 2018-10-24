@@ -56,8 +56,8 @@ on_chain_call(ContractKey, Function, Argument) ->
     Contract       = aect_state_tree:get_contract(ContractKey, ContractsTree),
     SerializedCode = aect_contracts:code(Contract),
     Store          = aect_contracts:state(Contract),
-    %% TODO: Check the type info before calling?
-    #{ byte_code := Code} = aeso_compiler:deserialize(SerializedCode),
+    #{ byte_code := Code
+     , type_info := TypeInfo} = aeso_compiler:deserialize(SerializedCode),
     case create_call(Code, Function, Argument) of
         {error, E} -> {error, E};
         CallData ->

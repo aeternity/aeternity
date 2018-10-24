@@ -11,7 +11,7 @@
 
 %% API
 -export([ call/4
-        , check_type_info/2
+        , check_call_data/2
         , encode_call_data/4
         , run/2]).
 
@@ -61,7 +61,7 @@ encode_call_data(_, _, _, _) ->
 run(?AEVM_01_Sophia_01, #{code := SerializedCode} = CallDef) ->
     #{ byte_code := Code
      , type_info := TypeInfo} = aeso_compiler:deserialize(SerializedCode),
-    case check_type_info(maps:get(call_data, CallDef), TypeInfo) of
+    case check_call_data(maps:get(call_data, CallDef), TypeInfo) of
         {ok, CallDataType} ->
             CallDef1 = CallDef#{code => Code, call_data_type => CallDataType},
             run_common(CallDef1, ?AEVM_01_Sophia_01);
@@ -191,7 +191,7 @@ chain_state(#{ contract    := ContractPubKey
     aec_vm_chain:new_offchain_state(Trees, OnChainTrees, TxEnv,
                                     ContractPubKey).
 
-check_type_info(CallData, TypeInfo) ->
+check_call_data(CallData, TypeInfo) ->
     %% The first element of the CallData should be the function name
     case aeso_data:get_function_from_calldata(CallData) of
         {ok, Function} ->
