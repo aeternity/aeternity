@@ -87,16 +87,16 @@
           peer_pass      :: password(),
           keys_dir       :: binary(),
 
-          candidate_pub  = <<>> :: binary(),
-          candidate_priv = <<>> :: binary(),
-          sign_pub       = <<>> :: binary(),
-          sign_priv      = <<>> :: binary(),
-          sign_pub_file  = <<>> :: binary(),
-          sign_priv_file = <<>> :: binary(),
-          peer_pub       = <<>> :: binary(),
-          peer_priv      = <<>> :: binary(),
-          peer_pub_file  = <<>> :: binary(),
-          peer_priv_file = <<>> :: binary()
+          candidate_pub  :: binary() | undefined,
+          candidate_priv :: binary() | undefined,
+          sign_pub       :: binary() | undefined,
+          sign_priv      :: binary() | undefined,
+          sign_pub_file  :: binary() | undefined,
+          sign_priv_file :: binary() | undefined,
+          peer_pub       :: binary() | undefined,
+          peer_priv      :: binary() | undefined,
+          peer_pub_file  :: binary() | undefined,
+          peer_priv_file :: binary() | undefined
          }).
 
 -type password() :: binary().
