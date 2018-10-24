@@ -1,0 +1,1 @@
+* Sets the return value of initial call in create contract transaction to the empty byte array "<<>>" in the call state tree. This affects consensus (state tree root has changes).
