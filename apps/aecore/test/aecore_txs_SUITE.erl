@@ -200,7 +200,7 @@ check_coinbase_validation(Config) ->
     {ok, TxH1, Ct1, Code} =
         create_contract_tx(N1, chain, <<"()">>,  1,  1,  100),
     {ok, TxH2} =
-        call_contract_tx(N1, Ct1, Code, "save_coinbase", "()", 1,  2,  100),
+        call_contract_tx(N1, Ct1, Code, <<"save_coinbase">>, <<"()">>, 1,  2,  100),
     {ok, _} =
         aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2], 10),
 

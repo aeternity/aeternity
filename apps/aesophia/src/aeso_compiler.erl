@@ -37,7 +37,7 @@
                          , byte_code   := binary()
                          }.
 -type function_name() :: binary(). %% String
--type typerep() :: tuple(). %% Should not be here
+-type typerep() :: aeso_sophia:type().
 -type type_info() :: [{ FunctionName :: function_name()
                       , ArgType      :: typerep()
                       , OutType      :: typerep()}].
@@ -140,7 +140,7 @@ typereps_from_type_hash(TypeHash, TypeInfo) ->
             case {aeso_data:from_binary(typerep, ArgTypeBin),
                   aeso_data:from_binary(typerep, OutTypeBin)} of
                 {{ok, ArgType}, {ok, OutType}} -> {ok, ArgType, OutType};
-                {error,_} -> {error, bad_type_data}
+                {_, _} -> {error, bad_type_data}
             end;
         false ->
             {error, unknown_function}

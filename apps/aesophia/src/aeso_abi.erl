@@ -15,7 +15,7 @@
 
 
 -spec create_calldata(binary(), string(), string()) ->
-                             {ok, aeso_sophia:heap(), aeso_sophia:typerep()}
+                             {ok, aeso_sophia:heap(), aeso_sophia:type()}
                                  | {error, argument_syntax_error}.
 
 create_calldata(ContractCode, Function, Argument) ->
