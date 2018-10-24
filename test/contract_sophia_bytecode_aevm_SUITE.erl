@@ -28,6 +28,7 @@
 
 %% chain API exports
 -export([ get_height/1, spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2,
+          get_contract_fun_types/4,
           oracle_register/7, oracle_query/6, oracle_query_format/2, oracle_response_format/2,
           oracle_respond/6, oracle_get_answer/3,
           oracle_query_fee/2, oracle_query_response_ttl/3, oracle_get_question/3, oracle_extend/4]).
@@ -65,16 +66,27 @@ compile_contract(Name) ->
 execute_call(Contract, CallData, ChainState, Options) ->
     #{Contract := SerializedCode} = ChainState,
     ChainState1 = ChainState#{ running => Contract },
-    Trace = false,
     %% TODO: Check the type info before calling?
-    #{ byte_code := Code} = aeso_compiler:deserialize(SerializedCode),
+    #{ byte_code := Code,
+       type_info := TypeInfo
+     } = aeso_compiler:deserialize(SerializedCode),
+    case aect_dispatch:check_type_info(CallData, TypeInfo) of
+        {ok, CallDataType} ->
+            execute_call_1(Contract, CallData, CallDataType, Code, ChainState1, Options);
+        {error, _} = Err ->
+            Err
+    end.
+
+execute_call_1(Contract, CallData, CallDataType, Code, ChainState, Options) ->
+    Trace = false,
     Res = aect_evm:execute_call(
           maps:merge(
           #{ code              => Code,
-             store             => get_store(ChainState1),
+             store             => get_store(ChainState),
              address           => Contract,
              caller            => 0,
              data              => CallData,
+             call_data_type    => CallDataType,
              gas               => 1000000,
              gasPrice          => 1,
              origin            => 0,
@@ -84,7 +96,7 @@ execute_call(Contract, CallData, ChainState, Options) ->
              currentGasLimit   => 1000000,
              currentNumber     => 0,
              currentTimestamp  => 0,
-             chainState        => ChainState1,
+             chainState        => ChainState,
              chainAPI          => ?MODULE,
              vm_version        => ?AEVM_01_Sophia_01}, Options),
           Trace),
@@ -381,16 +393,16 @@ oracles(_Cfg) ->
     ChainEnv = #{ currentNumber => 20 },
     Env0 = initial_state(#{ environment => ChainEnv }, #{101 => QFee}),
     Env1 = create_contract(101, Code, "()", Env0),
-    {101, Env2} = successful_call(101, word, registerOracle, "(101, 0, "++ integer_to_list(QFee) ++", (0, 10))", Env1),
+    {101, Env2} = successful_call(101, word, registerOracle, "(101, (0, 0), "++ integer_to_list(QFee) ++", (0, 10))", Env1),
     {Q, Env3}   = successful_call(101, word, createQuery, "(101, \"why?\", "++ integer_to_list(QFee) ++", (0, 10), (0, 11))", Env2, #{value => QFee}),
     QArg        = integer_to_list(Q),
     OandQArg    = "(101, "++ QArg ++")",
     none        = successful_call_(101, {option, word}, getAnswer, OandQArg, Env3),
-    {{}, Env4}  = successful_call(101, {tuple, []}, respond, "(101," ++ QArg ++ ",0,42)", Env3),
+    {{}, Env4}  = successful_call(101, {tuple, []}, respond, "(101," ++ QArg ++ ",(0,0),42)", Env3),
     {some, 42}  = successful_call_(101, {option, word}, getAnswer, OandQArg, Env4),
     <<"why?">>  = successful_call_(101, string, getQuestion, OandQArg, Env4),
     QFee        = successful_call_(101, word, queryFee, "101", Env4),
-    {{}, Env5}  = successful_call(101, {tuple, []}, extendOracle, "(101, 0, (0, 100))", Env4),
+    {{}, Env5}  = successful_call(101, {tuple, []}, extendOracle, "(101, (0,0), (0, 100))", Env4),
     #{oracles :=
           #{101 := #{
              nonce := 1,
@@ -443,6 +455,17 @@ get_store(#{ running := Contract, store := Store }) ->
 
 set_store(Data, State = #{ running := Contract, store := Store }) ->
     State#{ store => Store#{ Contract => Data } }.
+
+get_contract_fun_types(<<Contract:256>>,_VMVersion, TypeHash, S) ->
+    case maps:get(Contract, S, undefine) of
+        undefined ->
+            io:format("   oops, no such contract!\n"),
+            {error, {no_such_contract, Contract}};
+        SerializedCode ->
+            #{type_info := TypeInfo} = aeso_compiler:deserialize(SerializedCode),
+            aeso_compiler:typereps_from_type_hash(TypeHash, TypeInfo)
+    end.
+
 
 call_contract(<<Contract:256>>, _Gas, Value, CallData, _, S = #{running := Caller}) ->
     case maps:is_key(Contract, S) of

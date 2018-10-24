@@ -11,6 +11,7 @@
 
 %% API
 -export([ call/4
+        , check_type_info/2
         , encode_call_data/4
         , run/2]).
 

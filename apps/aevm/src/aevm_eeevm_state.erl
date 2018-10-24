@@ -154,6 +154,8 @@ init_vm(State, Code, Mem, Store, Type) ->
     case vm_version(State) of
         ?AEVM_01_Solidity_01 ->
             aevm_eeevm_store:init(Store, State1);
+        ?AEVM_01_Sophia_01 when Type =:= undefined ->
+            error({bad_vm_setup, missing_call_data_type});
         ?AEVM_01_Sophia_01 ->
             %% We need to import the state first, since the map ids in the store are fixed.
             State2 = import_state_from_store(Store, State1),
@@ -164,11 +166,16 @@ init_vm(State, Code, Mem, Store, Type) ->
             %% to memory. The first element of the calldata tuple is
             %% the function name
             HeapSize = aevm_eeevm_memory:size_in_words(State2) * 32,
-            {ok, CalldataHeap} =  aeso_data:binary_to_heap(Type, Calldata,
-                                                           aevm_eeevm_maps:next_id(maps(State2)),
-                                                           HeapSize),
-            {Ptr, State3} = write_heap_value(CalldataHeap, State2),
-            aevm_eeevm_stack:push(Ptr, State3)
+            case aeso_data:binary_to_heap(Type, Calldata,
+                                          aevm_eeevm_maps:next_id(maps(State2)),
+                                          HeapSize) of
+                {ok, CalldataHeap} ->
+                    {Ptr, State3} = write_heap_value(CalldataHeap, State2),
+                    aevm_eeevm_stack:push(Ptr, State3);
+                {error, What} ->
+                    io:format("** Error initiating VM: Bad call data\n~s", [What]),
+                    error(bad_call_data)
+            end
     end.
 
 %% TODO: Currently the Store is saved both in the chain state and the VM state.
@@ -311,7 +318,8 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
                 case Target == ?PRIM_CALLS_CONTRACT of
                     true ->
                         %% The first argument is the primop id
-                        {ok, <<_:256, Prim:256>>} = aeso_data:heap_to_binary({tuple, [word]}, get_store(State), HeapValue),
+                        {ok, Bin} = aeso_data:heap_to_binary({tuple, [word]}, get_store(State), HeapValue),
+                        {ok, {Prim}} = aeso_data:from_binary({tuple, [word]}, Bin),
                         {ArgTypes, OutType0} = aevm_ae_primops:types(Prim, HeapValue, Store, State),
                         {{tuple, [word|ArgTypes]}, OutType0};
                     false ->

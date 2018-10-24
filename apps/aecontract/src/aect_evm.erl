@@ -88,7 +88,7 @@ execute_call(#{ code := Code
               , chainState := ChainState
               , chainAPI := ChainAPI
               , vm_version := VmVersion
-              }, Trace) ->
+              } = CallDef, Trace) ->
     %% TODO: Handle Contract In State.
     Spec =
         #{ exec => #{ code => Code
@@ -96,6 +96,7 @@ execute_call(#{ code := Code
                     , address => Address
                     , caller => Caller
                     , data => CallData
+                    , call_data_type => maps:get(call_data_type, CallDef, undefined)
                     , gas => Gas
                     , gasPrice => GasPrice
                     , origin => Origin
