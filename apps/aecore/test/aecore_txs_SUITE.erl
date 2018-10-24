@@ -197,10 +197,10 @@ check_coinbase_validation(Config) ->
     aecore_suite_utils:start_node(dev1, Config),
     N1 = aecore_suite_utils:node_name(dev1),
     aecore_suite_utils:connect(N1),
-    {ok, TxH1, Ct1} =
+    {ok, TxH1, Ct1, Code} =
         create_contract_tx(N1, chain, <<"()">>,  1,  1,  100),
     {ok, TxH2} =
-        call_contract_tx(N1, Ct1, "save_coinbase", "()", 1,  2,  100),
+        call_contract_tx(N1, Ct1, Code, "save_coinbase", "()", 1,  2,  100),
     {ok, _} =
         aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2], 10),
 
@@ -287,7 +287,7 @@ create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
     OwnerKey = maps:get(pubkey, patron()),
     Owner    = aec_id:create(account, OwnerKey),
     Code     = compile_contract(lists:concat(["contracts/", Name, ".aes"])),
-    CallData = aect_sophia:create_call(Code, <<"init">>, Args),
+    {ok, CallData} = aect_sophia:encode_call_data(Code, <<"init">>, Args),
     {ok, CreateTx} = aect_create_tx:new(#{ nonce      => Nonce
                                          , vm_version => 1
                                          , code       => Code
@@ -303,7 +303,7 @@ create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
     CTx = aec_test_utils:sign_tx(CreateTx, maps:get(privkey, patron())),
     Res = rpc:call(Node, aec_tx_pool, push, [CTx]),
     ContractKey = aect_contracts:compute_contract_pubkey(OwnerKey, Nonce),
-    {Res, aec_base58c:encode(tx_hash, aetx_sign:hash(CTx)), ContractKey}.
+    {Res, aec_base58c:encode(tx_hash, aetx_sign:hash(CTx)), ContractKey, Code}.
 
 compile_contract(File) ->
     CodeDir = code:lib_dir(aesophia, test),
@@ -312,10 +312,10 @@ compile_contract(File) ->
     Contract = binary_to_list(ContractBin),
     aeso_compiler:from_string(Contract, [pp_icode]).
 
-call_contract_tx(Node, Contract, Function, Args, Fee, Nonce, TTL) ->
+call_contract_tx(Node, Contract, Code, Function, Args, Fee, Nonce, TTL) ->
     Caller       = aec_id:create(account, maps:get(pubkey, patron())),
     ContractID   = aec_id:create(contract, Contract),
-    CallData     = aeso_abi:create_calldata(<<>>, Function, Args),
+    {ok, CallData} = aect_sophia:encode_call_data(Code, Function, Args),
     {ok, CallTx} = aect_call_tx:new(#{ nonce       => Nonce
                                      , caller_id   => Caller
                                      , vm_version  => 1

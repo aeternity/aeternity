@@ -38,7 +38,7 @@ call(<<"sophia">>, Code, Function, Argument) ->
 call(<<"sophia-address">>, ContractKey, Function, Argument) ->
     aect_sophia:on_chain_call(ContractKey, Function, Argument);
 call(<<"evm">>, Code, _, CallData) ->
-    aect_evm:simple_call_common(Code, CallData, ?AEVM_01_Solidity_01);
+    aect_evm:simple_call_common(Code, CallData, undefined, ?AEVM_01_Solidity_01);
 call(_, _, _, _) ->
     {error, <<"Unknown call ABI">>}.
 

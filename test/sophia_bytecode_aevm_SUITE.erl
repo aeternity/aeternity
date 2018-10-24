@@ -32,7 +32,7 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
     CallDataType = {tuple, [string, ArgType]},
 
     %% Create the call data
-    CallData = aeso_abi:create_calldata(Code, "main", "(42)"),
+    {ok, CallData} = aect_sophia:encode_call_data(Code, "main", "(42)"),
     {ok, Res} =
         aevm_eeevm:eval(
           aevm_eeevm_state:init(

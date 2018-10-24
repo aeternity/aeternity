@@ -108,9 +108,9 @@ execute_call_1(Contract, CallData, CallDataType, Code, ChainState, Options) ->
 
 make_call(Contract, Fun, Args, Env, Options) ->
     #{ Contract := Code } = Env,
-    CallData = aect_sophia:create_call(Code,
-                    list_to_binary(atom_to_list(Fun)),
-                    list_to_binary(Args)),
+    {ok, CallData} = aect_sophia:encode_call_data(Code,
+                                                  atom_to_binary(Fun, utf8),
+                                                  list_to_binary(Args)),
     execute_call(Contract, CallData, Env, Options).
 
 create_contract(Address, Code, Args, Env) ->

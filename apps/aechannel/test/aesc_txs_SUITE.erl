@@ -2923,7 +2923,7 @@ fp_register_name(Cfg) ->
                 state := S0} = Props) ->
             ContractString = aeso_test_utils:read_contract(ContractName),
             BinCode = aeso_compiler:from_string(ContractString, []),
-            CallData = aect_sophia:create_call(BinCode, <<"init">>, <<"()">>),
+            {ok, CallData} = aect_sophia:encode_call_data(BinCode, <<"init">>, <<"()">>),
             Nonce = 1,
             {ok, ContractCreateTx} =
                 aect_create_tx:new(
@@ -2966,8 +2966,8 @@ fp_register_name(Cfg) ->
                                   Sig/binary,
                               ")">>,
             ?TEST_LOG("Preclaim function arguments ~p", [PreclaimArgs]),
-            CallData = aect_sophia:create_call(Code, <<"preclaim">>,
-                                                PreclaimArgs),
+            {ok, CallData} = aect_sophia:encode_call_data(Code, <<"preclaim">>,
+                                                          PreclaimArgs),
             ?TEST_LOG("CallData ~p", [CallData]),
             true = is_binary(CallData),
             {ok, CallTx} =
@@ -3310,7 +3310,7 @@ create_contract_call_payload(Key, ContractId, Fun, Args, Amount) ->
           trees             := Trees0} = Props) ->
         Contract = aect_test_utils:get_contract(ContractId, #{trees => Trees0}),
         Code = aect_contracts:code(Contract),
-        CallData = aect_sophia:create_call(Code, Fun, Args),
+        {ok, CallData} = aect_sophia:encode_call_data(Code, Fun, Args),
         %% assert calldata is correct:
         true = is_binary(CallData),
         Reserve = maps:get(channel_reserve, Props, 0),
@@ -3391,7 +3391,7 @@ create_contract_in_trees(CreationRound, ContractName, InitArg, Deposit) ->
           owner := Owner} = Props) ->
         ContractString = aeso_test_utils:read_contract(ContractName),
         BinCode = aeso_compiler:from_string(ContractString, []),
-        CallData = aect_sophia:create_call(BinCode, <<"init">>, InitArg),
+        {ok, CallData} = aect_sophia:encode_call_data(BinCode, <<"init">>, InitArg),
         Update = aesc_offchain_update:op_new_contract(aec_id:create(account, Owner),
                                                       ?VM_VERSION,
                                                       BinCode,

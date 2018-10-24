@@ -10,12 +10,14 @@
 -module(aeso_abi).
 -define(HASH_SIZE, 32).
 
--export([create_calldata/3, get_type/1]).
+-export([ create_calldata/3
+        , get_type/1]).
 
 
 -spec create_calldata(binary(), string(), string()) ->
-                             aeso_sophia:heap()
+                             {ok, aeso_sophia:heap(), aeso_sophia:typerep()}
                                  | {error, argument_syntax_error}.
+
 create_calldata(ContractCode, Function, Argument) ->
     FunctionHandle = encode_function(Function),
     case aeso_constants:string(Argument) of
@@ -39,7 +41,7 @@ encode_call(ContractCode, FunctionHandle, ArgumentAst) ->
     try aeso_compiler:deserialize(ContractCode) of
         #{type_info := TypeInfo} ->
             case aect_dispatch:check_call_data(Data, TypeInfo) of
-                {ok, _CallDataType} -> Data;
+                {ok, CallDataType} -> {ok, Data, CallDataType};
                 {error,_What} = Err -> Err
             end
     catch _:_ -> {error, bad_contract_code}

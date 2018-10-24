@@ -1471,12 +1471,12 @@ post_spend_tx(Config) ->
 post_contract_and_call_tx(_Config) ->
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
-    {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
-
+    {ok, 200, #{<<"bytecode">> := EncodedCode}} = get_contract_bytecode(SophiaCode),
+    {ok, Code} = aec_base58c:safe_decode(contract_bytearray, EncodedCode),
     {ok, EncodedInitCallData} = aehttp_logic:contract_encode_call_data(
                                   <<"sophia">>, Code, <<"init">>, <<"()">>),
     ValidEncoded = #{ owner_id   => MinerAddress,
-                      code       => Code,
+                      code       => EncodedCode,
                       vm_version => 1,
                       deposit    => 2,
                       amount     => 1,
@@ -1548,20 +1548,20 @@ get_contract(_Config) ->
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
-    {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
+    {ok, 200, #{<<"bytecode">> := EncodedCode}} = get_contract_bytecode(SophiaCode),
 
     % contract_create_tx positive test
     InitFunction = <<"init">>,
     InitArgument = <<"()">>,
     {ok, EncodedInitCallData} =
         aehttp_logic:contract_encode_call_data(<<"sophia">>,
-                                               Code,
+                                               contract_bytearray_decode(EncodedCode),
                                                InitFunction,
                                                InitArgument),
 
     ContractInitBalance = 1,
     ValidEncoded = #{ owner_id   => MinerAddress,
-                      code       => Code,
+                      code       => EncodedCode,
                       vm_version => 1,
                       deposit    => 2,
                       amount     => ContractInitBalance,
@@ -1572,7 +1572,7 @@ get_contract(_Config) ->
 
     ValidDecoded = maps:merge(ValidEncoded,
                               #{owner_id  => aec_id:create(account, MinerPubkey),
-                                code      => contract_bytearray_decode(Code),
+                                code      => contract_bytearray_decode(EncodedCode),
                                 call_data => contract_bytearray_decode(EncodedInitCallData)}),
 
     unsigned_tx_positive_test(ValidDecoded, ValidEncoded, fun get_contract_create/1,
@@ -1604,7 +1604,7 @@ get_contract(_Config) ->
                              <<"referrer_ids">> := [],
                              <<"log">>         := <<>>}},
                  get_contract_sut(EncodedContractPubKey)),
-    ?assertEqual({ok, 200, #{<<"bytecode">> => Code}}, get_contract_code_sut(EncodedContractPubKey)),
+    ?assertEqual({ok, 200, #{<<"bytecode">> => EncodedCode}}, get_contract_code_sut(EncodedContractPubKey)),
     ?assertMatch({ok, 200, #{<<"store">> := [
         #{<<"key">> := <<"0x00">>, <<"value">> := _InitState},
         #{<<"key">> := <<"0x01">>, <<"value">> := _StateType}    %% We store the state type in the Store
@@ -1890,20 +1890,20 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
-    {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
+    {ok, 200, #{<<"bytecode">> := EncodedCode}} = get_contract_bytecode(SophiaCode),
 
     % contract_create_tx positive test
     InitFunction = <<"init">>,
     InitArgument = <<"()">>,
     {ok, EncodedInitCallData} =
         aehttp_logic:contract_encode_call_data(<<"sophia">>,
-                                               Code,
+                                               contract_bytearray_decode(EncodedCode),
                                                InitFunction,
                                                InitArgument),
 
     ContractInitBalance = 1,
     ValidEncoded = #{ owner_id => MinerAddress,
-                      code => Code,
+                      code => EncodedCode,
                       vm_version => 1,
                       deposit => 2,
                       amount => ContractInitBalance,
@@ -1914,7 +1914,7 @@ contract_transactions(_Config) ->    % miner has an account
 
     ValidDecoded = maps:merge(ValidEncoded,
                               #{owner_id => aec_id:create(account, MinerPubkey),
-                                code => contract_bytearray_decode(Code),
+                                code => contract_bytearray_decode(EncodedCode),
                                 call_data => contract_bytearray_decode(EncodedInitCallData)}),
 
     unsigned_tx_positive_test(ValidDecoded, ValidEncoded, fun get_contract_create/1,
@@ -1974,7 +1974,7 @@ contract_transactions(_Config) ->    % miner has an account
     Argument = <<"42">>,
     {ok, EncodedCallData} =
         aehttp_logic:contract_encode_call_data(<<"sophia">>,
-                                               Code,
+                                               contract_bytearray_decode(EncodedCode),
                                                Function,
                                                Argument),
 
@@ -2048,9 +2048,6 @@ contract_transactions(_Config) ->    % miner has an account
                              fee => 1,
                              function => Function,
                              arguments => Argument},
-
-    {ok, EncodedCallData} = aehttp_logic:contract_encode_call_data(
-                              <<"sophia">>, Code, Function, Argument),
 
     ComputeCCallDecoded = maps:merge(ComputeCCallEncoded,
                               #{caller_id => aec_id:create(account, MinerPubkey),
@@ -2227,13 +2224,7 @@ contract_create_transaction_init_error(_Config) ->
     DummyByteCode = aect_test_utils:dummy_bytecode(),
     Code = aec_base58c:encode(contract_bytearray, DummyByteCode),
 
-    InitFunction = <<"init">>,
-    InitArgument = <<"()">>,
-    {ok, EncodedInitCallData} =
-        aehttp_logic:contract_encode_call_data(<<"sophia">>,
-                                               Code,
-                                               InitFunction,
-                                               InitArgument),
+    EncodedInitCallData = aec_base58c:encode(contract_bytearray, aeso_data:to_binary({<<"init">>, {}})),
     ValidEncoded = #{ owner_id   => MinerAddress,
                       code       => Code,
                       vm_version => 1,
