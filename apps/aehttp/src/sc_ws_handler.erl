@@ -87,10 +87,10 @@ websocket_info(Msg, #handler{} = H) ->
     try_seq([ fun unpack_info/2
             , fun websocket_info_/2 ], Msg, H).
 
-try_seq(Seq, Msg, H) ->
+try_seq(Seq, Msg, #handler{} = H) ->
     %% All funs in `Seq` except the last, are to return `{Msg', H'}`.
     %% The expected return values of the last fun are explicit below.
-    try lists:foldl(fun(F, {M1, H1}) ->
+    try lists:foldl(fun(F, {M1, #handler{} =H1}) ->
                             F(M1, H1)
                     end, {Msg, H}, Seq) of
         no_reply          -> {ok, reset_h(H)};
@@ -134,17 +134,24 @@ websocket_info_({'DOWN', MRef, _, _, _}, #handler{fsm_mref = MRef} = H) ->
 websocket_info_(_Info, State) ->
     {ok, State}.
 
-set_channel_id(#{channel_id := Id},
+set_channel_id(Msg, H) ->
+    Res = set_channel_id_(Msg, H),
+    lager:debug("Msg=~p (Id0=~p) -> ~p", [Msg, H#handler.channel_id,
+                                          Res#handler.channel_id]),
+    Res.
+
+set_channel_id_(#{channel_id := Id},
                #handler{channel_id = undefined} = H) when Id =/= undefined ->
     H#handler{channel_id = Id,
               enc_channel_id = aec_base58c:encode(channel, Id)};
-set_channel_id(#{channel_id := A}, #handler{channel_id = B})
+set_channel_id_(#{channel_id := A}, #handler{channel_id = B})
   when A =/= undefined, A =/= B ->
     erlang:error({channel_id_mismatch, [A, B]});
-set_channel_id(_Msg, H) ->
+set_channel_id_(_Msg, H) ->
     H.
 
 fsm_reply(Msg, #handler{enc_channel_id = Id} = H) ->
+    lager:debug("fsm_reply( Id = ~p )", [Id]),
     case Id of
         undefined -> reply(Msg, H);
         _         -> reply(maps:merge(#{channel_id => Id}, Msg), H)
@@ -328,10 +335,10 @@ process_incoming_(#{<<"method">> := <<"channels.update.new">>,
         _ -> error_response(broken_encoding, H)
     end;
 process_incoming_(#{<<"method">> := <<"channels.update.new_contract">>,
-                   <<"params">> := #{<<"vm_version">> := VmVersion,
-                                     <<"deposit">>    := Deposit,
-                                     <<"code">>       := CodeE,
-                                     <<"call_data">>  := CallDataE}}, H) ->
+                    <<"params">> := #{<<"vm_version">> := VmVersion,
+                                      <<"deposit">>    := Deposit,
+                                      <<"code">>       := CodeE,
+                                      <<"call_data">>  := CallDataE}}, H) ->
     case {bytearray_decode(CodeE), bytearray_decode(CallDataE)} of
         {{ok, Code}, {ok, CallData}} ->
             case aesc_fsm:upd_create_contract(fsm_pid(H),
@@ -368,6 +375,7 @@ process_incoming_(#{<<"method">> := <<"channels.get.contract_call">>,
                     <<"params">> := #{<<"contract">>   := ContractE,
                                       <<"caller">>     := CallerE,
                                       <<"round">>      := Round}}, H) ->
+    lager:debug("get.contract_call(), H = ~p", [H]),
     case {aec_base58c:safe_decode(contract_pubkey, ContractE),
           aec_base58c:safe_decode(account_pubkey, CallerE)} of
         {{ok, Contract}, {ok, Caller}} ->
@@ -906,7 +914,7 @@ add_payload(Reply                , Msg) ->
 json_rpc_reply(Reply, H) ->
     json_rpc_reply(Reply, H, notify).
 
-json_rpc_reply(Reply, #handler{orig_request = Req}, Mode) ->
+json_rpc_reply(Reply, #handler{orig_request = Req} = H, Mode) ->
     lager:debug("json_rpc_reply(~p, Req = ~p, Mode = ~p)", [Reply, Req, Mode]),
     case {Req, Mode} of
         {#{<<"id">> := Id}, _} ->
@@ -917,12 +925,13 @@ json_rpc_reply(Reply, #handler{orig_request = Req}, Mode) ->
         {_, notify} ->
             {reply, #{ <<"jsonrpc">> => <<"2.0">>
                      , <<"method">>  => legacy_to_method_out(Reply)
-                     , <<"params">>  => result(Reply) } };
+                     , <<"params">>  => notify_result(Reply, H) } };
         {_, no_reply} ->
             no_reply
     end.
 
-result(#{payload := Payload} = R) ->
+result(#{payload := Payload0} = R) ->
+    Payload = clean_reply(Payload0),
     case {Payload, R} of
         {#{channel_id := _}, _} ->
             Payload;
@@ -933,6 +942,28 @@ result(#{payload := Payload} = R) ->
     end;
 result(Result) -> 
     clean_reply(Result).
+
+notify_result(#{payload := Payload0} = R, #handler{enc_channel_id = Id0}) ->
+    Payload = clean_reply(Payload0),
+    case {Payload, R} of
+        {#{channel_id := Id}, _} ->
+            #{ channel_id => Id
+             , data => maps:remove(channel_id, Payload) };
+        {_, #{channel_id := Id}} ->
+            #{ channel_id => Id
+             , data => Payload };
+        _ ->
+            #{ channel_id => Id0
+             , data => Payload }
+    end;
+notify_result(R, #handler{enc_channel_id = Id0}) ->
+    case R of
+        #{channel_id := Id} ->
+            #{ channel_id => Id};
+        _ ->
+            #{ channel_id => Id0 }
+    end.
+
 
 clean_reply(Map) when is_map(Map) ->
     maps:filter(fun(K,_) ->

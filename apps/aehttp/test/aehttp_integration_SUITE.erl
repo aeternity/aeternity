@@ -503,12 +503,12 @@ channel_websocket_sequence() ->
                              sc_ws_update,
                              sc_ws_close]},
      %% ensure port is reusable
-     {ensure_reusable_port, [], [sc_ws_open,
-                                 sc_ws_update_fails_and_close,
-                                 sc_ws_open,
-                                 sc_ws_send_messages_and_close,
-                                 sc_ws_open,
-                                 sc_ws_conflict_and_close]},
+     {failed_update, [], [sc_ws_open,
+                          sc_ws_update_fails_and_close]},
+     {generic_messages, [], [sc_ws_open,
+                             sc_ws_send_messages_and_close]},
+     {update_conflict, [], [sc_ws_open,
+                            sc_ws_conflict_and_close]},
      %% initiator can start close mutual
      {initiator_can_start_close_mutual, [], [sc_ws_open,
                                              sc_ws_update,
@@ -5572,11 +5572,13 @@ wait_for_channel_event_(ConnPid, Action, <<"json-rpc">>) ->
         {{ok, #{ <<"jsonrpc">> := <<"2.0">>
                , <<"method">>  := <<Method:Sz/binary, _/binary>>
                , <<"params">>  := Params }}, _} ->
-            {ok, Params};
+            Data = maps:get(<<"data">>, Params, no_data),
+            {ok, Data};
         {{ok, Tag, #{ <<"jsonrpc">> := <<"2.0">>
                     , <<"method">>  := <<Method:Sz/binary, _/binary>>
                     , <<"params">>  := Params }}, _} ->
-            {ok, Tag, Params}
+            Data = maps:get(<<"data">>, Params, no_data),
+            {ok, Tag, Data}
     end.
 
 wait_for_channel_event(Event, ConnPid, Type, Config) ->
@@ -5586,12 +5588,8 @@ wait_for_channel_event_(Event, ConnPid, Type, <<"legacy">>) ->
     {ok, #{<<"event">> := Event}} = ?WS:wait_for_channel_event(ConnPid, Type),
     ok;
 wait_for_channel_event_(Event, ConnPid, Action, <<"json-rpc">>) ->
-    Method0 = method_pfx(Action),
-    Sz = byte_size(Method0),
-    {ok, #{ <<"jsonrpc">> := <<"2.0">>
-          , <<"method">>  := <<Method0:Sz/binary, _/binary>>
-          , <<"params">>  := #{<<"event">> := Event} }} =
-        ?WS:wait_for_channel_msg(ConnPid, Action),
+    {ok, #{ <<"data">> := #{ <<"event">> := Event } }} =
+        wait_for_json_rpc_action(ConnPid, Action),
     ok.
 
 wait_for_channel_leave_msg(ConnPid, Config) ->
@@ -5603,11 +5601,20 @@ wait_for_channel_leave_msg_(ConnPid, <<"legacy">> = L) ->
         wait_for_channel_msg_(ConnPid, leave, L),
     #{ <<"state">> := St } = P,
     {ok, #{id => ChId, state => St}};
-wait_for_channel_leave_msg_(ConnPid, <<"json-rpc">> = J) ->
-    {ok, #{ <<"channel_id">> := ChId
-          , <<"state">>      := St }} =
-        wait_for_channel_event_(ConnPid, leave, J),
+wait_for_channel_leave_msg_(ConnPid, <<"json-rpc">>) ->
+    {ok, #{ <<"channel_id">> := ChId,
+            <<"data">> := #{ <<"state">> := St } }} =
+        wait_for_json_rpc_action(ConnPid, leave),
     {ok, #{id => ChId, state => St}}.
+
+wait_for_json_rpc_action(ConnPid, Action) ->
+    Method0 = method_pfx(Action),
+    Sz = byte_size(Method0),
+    {ok, #{ <<"jsonrpc">> := <<"2.0">>
+          , <<"method">>  := <<Method0:Sz/binary, _/binary>>
+          , <<"params">>  := Params }} =
+        ?WS:wait_for_channel_msg(ConnPid, Action),
+    {ok, Params}.
 
 lift_reason(#{ <<"message">> := <<"Rejected">>
              , <<"data">>    := Data } = E) ->

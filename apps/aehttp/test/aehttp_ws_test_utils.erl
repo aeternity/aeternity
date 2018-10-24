@@ -475,9 +475,8 @@ websocket_info({'DOWN', _Ref, process, Pid, _}, _ConnState,
                #state{regs=Register0}=State) ->
     {ok, State#state{regs= delete_pid(Pid, Register0)}};
 websocket_info({json_rpc, Pid, Id, Req}, _ConnState, #state{calls = Calls}=State) ->
+    do_log(send, Req, State),
     {reply, {text, Req}, State#state{calls = [{Id, Pid}|Calls]}};
-websocket_info({json_rpc, Notify}, _ConnState, State) ->
-    {reply, {text, Notify}, State};
 websocket_info({send_to_client, Msg}, _ConnState, #state{role=Role}=State) ->
     do_log(send, Msg, State),
     case Role of
