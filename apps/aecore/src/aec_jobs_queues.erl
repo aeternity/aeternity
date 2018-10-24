@@ -120,20 +120,48 @@ check_defs(Defs) ->
 
 check_def({Name, Def}) ->
     {binary_to_atom(Name, latin1),
-     regulators(Name, Def) ++ max_size(Name, Def) ++ max_time(Name, Def)}.
+     regulators(Name, Def)
+     ++ max_size(Name, Def)
+     ++ max_time(Name, Def)}.
 
 regulators(Name, Def) ->
-    Rate = param(Name, rate   , fun(V) -> {rate   , [{limit, V}]} end, Def),
-    Cntr = param(Name, counter, fun(V) -> {counter, [{limit, V}]} end, Def),
+    Rate = param(Name, rate,
+                 fun(V) ->
+                         add_mods({rate, [{limit, V}]}, Name, Def)
+                 end, Def),
+    Cntr = param(Name, counter,
+                 fun(V) ->
+                         add_mods({counter, [{limit, V}]}, Name, Def)
+                 end, Def),
     Regs = case Rate ++ Cntr of
                []   ->
                    lager:warning(
                      "No def for queue ~p. Using default (rate:10)", [Name]),
-                   [{rate, [{limit,10}]}];
+                   [add_mods({rate,
+                              [{limit,10}]}, Name, Def)];
                Rs -> Rs
            end,
     [{regulators, Regs}].
 
+add_mods({RegType, Opts}, Name, Def) ->
+    F = fun(S) -> {modifiers, parse_mods(S)} end,
+    Ms = param(Name, modifier_key(RegType), F, Def),
+    {RegType, Opts ++ Ms}.
+
+modifier_key(rate   ) -> rate_modifiers;
+modifier_key(counter) -> counter_modifiers.
+
+
+parse_mods(S) when is_binary(S) ->
+    L = aeu_env:parse_key_value_string(S),
+    [{modifier_name(K), V} || {K, V} <- L].
+
+%% The cpu sampler is part of jobs, and has a hard-coded name.
+%% For our own samplers, we use the name specified in the schema.
+%% (For the moment, "cpu.level" removed from the schema, since we can't
+%% redefine the levels that way.)
+modifier_name(<<"cpu.level">>) -> cpu;
+modifier_name(Name) when is_binary(Name) -> Name.
 
 max_size(Name, Def) ->
     param(Name, max_size, fun(V) -> {max_size, V} end, Def).

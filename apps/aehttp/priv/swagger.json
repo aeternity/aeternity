@@ -195,6 +195,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -225,6 +231,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -251,6 +263,12 @@
           },
           "400" : {
             "description" : "Invalid block",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "503" : {
+            "description" : "Resource not available",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -289,6 +307,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -321,6 +345,12 @@
           },
           "404" : {
             "description" : "Block not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "503" : {
+            "description" : "Resource not available",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -366,6 +396,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -398,6 +434,12 @@
           },
           "404" : {
             "description" : "Block not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "503" : {
+            "description" : "Resource not available",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -459,6 +501,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -486,6 +534,12 @@
           },
           "404" : {
             "description" : "Generation not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "503" : {
+            "description" : "Resource not available",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -524,6 +578,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -559,6 +619,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -591,6 +657,12 @@
           },
           "404" : {
             "description" : "Transaction not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "503" : {
+            "description" : "Resource not available",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -661,6 +733,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -693,6 +771,12 @@
           },
           "404" : {
             "description" : "Contract not found"
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -728,6 +812,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -760,6 +850,12 @@
           },
           "404" : {
             "description" : "Contract not found"
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -795,6 +891,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -827,6 +929,12 @@
           },
           "404" : {
             "description" : "Oracle not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "503" : {
+            "description" : "Resource not available",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -886,6 +994,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -927,6 +1041,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -959,6 +1079,12 @@
           },
           "404" : {
             "description" : "Name not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "503" : {
+            "description" : "Resource not available",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -997,6 +1123,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -1014,6 +1146,12 @@
             "schema" : {
               "$ref" : "#/definitions/inline_response_200_3"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -1030,6 +1168,12 @@
             "description" : "Successful operation",
             "schema" : {
               "$ref" : "#/definitions/Status"
+            }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
             }
           }
         }
@@ -1065,6 +1209,12 @@
           },
           "404" : {
             "description" : "Owner account not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "503" : {
+            "description" : "Resource not available",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -1105,6 +1255,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -1139,6 +1295,12 @@
           },
           "404" : {
             "description" : "Caller account or contract not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "503" : {
+            "description" : "Resource not available",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -1179,6 +1341,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -1213,6 +1381,12 @@
           },
           "404" : {
             "description" : "Account not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "503" : {
+            "description" : "Resource not available",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -1253,6 +1427,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -1287,6 +1467,12 @@
           },
           "404" : {
             "description" : "Account or oracle not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "503" : {
+            "description" : "Resource not available",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -1327,6 +1513,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -1360,6 +1552,12 @@
           },
           "404" : {
             "description" : "Account not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "503" : {
+            "description" : "Resource not available",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -1399,6 +1597,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -1432,6 +1636,12 @@
           },
           "404" : {
             "description" : "Account or oracle not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "503" : {
+            "description" : "Resource not available",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -1471,6 +1681,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -1504,6 +1720,12 @@
           },
           "404" : {
             "description" : "Account or name not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "503" : {
+            "description" : "Resource not available",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -1545,6 +1767,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -1581,6 +1809,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -1608,6 +1842,12 @@
           },
           "400" : {
             "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "503" : {
+            "description" : "Resource not available",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -1641,6 +1881,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -1668,6 +1914,12 @@
           },
           "400" : {
             "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "503" : {
+            "description" : "Resource not available",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -1701,6 +1953,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -1731,6 +1989,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -1758,6 +2022,12 @@
           },
           "400" : {
             "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "503" : {
+            "description" : "Resource not available",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -1808,6 +2078,12 @@
             "schema" : {
               "$ref" : "#/definitions/GenericTxs"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -1843,6 +2119,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -1866,6 +2148,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -1886,6 +2174,12 @@
           },
           "403" : {
             "description" : "Info not enabled",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "503" : {
+            "description" : "Resource not available",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -1921,6 +2215,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -1950,6 +2250,12 @@
           },
           "403" : {
             "description" : "Invalid contract",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "503" : {
+            "description" : "Resource not available",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -1985,6 +2291,12 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
+          },
+          "503" : {
+            "description" : "Resource not available",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -2014,6 +2326,12 @@
           },
           "403" : {
             "description" : "Invalid contract",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "503" : {
+            "description" : "Resource not available",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }

@@ -19,6 +19,7 @@
 -export([find_config/2]).
 -export([nested_map_get/2]).
 -export([read_config/0]).
+-export([parse_key_value_string/1]).
 -export([data_dir/1]).
 -export([check_config/1, check_config/2]).
 
@@ -225,6 +226,31 @@ schema_find([], S) ->
 
 default(Key) when is_list(Key) ->
     schema(Key ++ [<<"default">>]).
+
+parse_key_value_string(Bin) when is_binary(Bin) ->
+    %% Parse: expect (binary) string of type "S1:L1 [, ...] Sn:Ln", where
+    %% Sx is a string or non-negative integer, and Lx is a non-neg integer;
+    %% allow for whitespace."
+    Ls = [{opt_bin_to_integer(A), opt_bin_to_integer(B)}
+          || [A, B] <-
+                 [re:split(B, <<"\\h*:\\h*">>, [{return,binary}])
+                  || B <- re:split(Bin, <<"\\h*,\\h*">>, [{return, binary}])]],
+    true = lists:all(fun valid_kv_pair/1, Ls),
+    Ls.
+
+opt_bin_to_integer(B) ->
+    try binary_to_integer(B)
+    catch
+        error:_ ->
+            B
+    end.
+
+valid_kv_pair({A,B}) when is_integer(A), A >= 0;
+                             is_binary(A) ->
+    is_integer(B) andalso B >= 0;
+valid_kv_pair(_) ->
+    false.
+
 
 read_config() ->
     read_config(report).

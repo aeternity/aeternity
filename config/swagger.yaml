@@ -177,6 +177,10 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /key-blocks/height/{height}:
     get:
@@ -203,6 +207,10 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /key-blocks:
     post:
@@ -227,6 +235,10 @@ paths:
           description: 'Successful operation'
         '400':
           description: 'Invalid block'
+          schema:
+            $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
           schema:
             $ref: '#/definitions/Error'
       security:
@@ -258,6 +270,10 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /micro-blocks/hash/{hash}/transactions:
     get:
@@ -285,6 +301,10 @@ paths:
             $ref: '#/definitions/Error'
         '404':
           description: 'Block not found'
+          schema:
+            $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
           schema:
             $ref: '#/definitions/Error'
       security:
@@ -322,6 +342,10 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /micro-blocks/hash/{hash}/transactions/count:
     get:
@@ -355,6 +379,10 @@ paths:
             $ref: '#/definitions/Error'
         '404':
           description: 'Block not found'
+          schema:
+            $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
           schema:
             $ref: '#/definitions/Error'
       security:
@@ -406,6 +434,10 @@ paths:
           description: 'Generation not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /generations/height/{height}:
     get:
@@ -430,6 +462,10 @@ paths:
             $ref: '#/definitions/Generation'
         '404':
           description: 'Generation not found'
+          schema:
+            $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
           schema:
             $ref: '#/definitions/Error'
       security:
@@ -461,6 +497,10 @@ paths:
           description: 'Account not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /accounts/{pubkey}/transactions/pending:
     get:
@@ -490,6 +530,10 @@ paths:
           description: 'Account not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /transactions/{hash}:
     get:
@@ -517,6 +561,10 @@ paths:
             $ref: '#/definitions/Error'
         '404':
           description: 'Transaction not found'
+          schema:
+            $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
           schema:
             $ref: '#/definitions/Error'
       security:
@@ -576,6 +624,10 @@ paths:
           description: 'Invalid transaction'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /contracts/{pubkey}:
     get:
@@ -603,6 +655,10 @@ paths:
             $ref: '#/definitions/Error'
         '404':
           description: 'Contract not found'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
   /contracts/{pubkey}/code:
     get:
       tags:
@@ -631,6 +687,10 @@ paths:
           description: 'Contract not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
   /contracts/{pubkey}/store:
     get:
       tags:
@@ -657,6 +717,10 @@ paths:
             $ref: '#/definitions/Error'
         '404':
           description: 'Contract not found'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
   /contracts/{pubkey}/poi:
     get:
       tags:
@@ -685,6 +749,10 @@ paths:
           description: Contract not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
   /oracles/{pubkey}:
     get:
       tags:
@@ -711,6 +779,10 @@ paths:
             $ref: '#/definitions/Error'
         '404':
           description: 'Oracle not found'
+          schema:
+            $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
           schema:
             $ref: '#/definitions/Error'
       security:
@@ -760,6 +832,10 @@ paths:
           description: 'Oracle not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /oracles/{pubkey}/queries/{query-id}:
     get:
@@ -794,6 +870,10 @@ paths:
           description: 'Oracle query not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /names/{name}:
     get:
@@ -821,6 +901,10 @@ paths:
             $ref: '#/definitions/Error'
         '404':
           description: 'Name not found'
+          schema:
+            $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
           schema:
             $ref: '#/definitions/Error'
       security:
@@ -852,6 +936,10 @@ paths:
           description: 'Channel not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /peers/pubkey:
     get:
@@ -871,6 +959,10 @@ paths:
             properties:
               pubkey:
                 type: string
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /status:
     get:
@@ -887,6 +979,10 @@ paths:
           description: 'Successful operation'
           schema:
             $ref: '#/definitions/Status'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
       security:
 
   /debug/contracts/create:
@@ -920,6 +1016,10 @@ paths:
           description: Owner account not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
   /debug/contracts/create/compute:
     post:
       tags:
@@ -949,6 +1049,10 @@ paths:
             $ref: '#/definitions/Error'
         '404':
           description: Owner account not found
+          schema:
+            $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
           schema:
             $ref: '#/definitions/Error'
   /debug/contracts/call:
@@ -982,6 +1086,10 @@ paths:
           description: Caller account or contract not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
   /debug/contracts/call/compute:
     post:
       tags:
@@ -1011,6 +1119,10 @@ paths:
             $ref: '#/definitions/Error'
         '404':
           description: Caller account or contract not found
+          schema:
+            $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
           schema:
             $ref: '#/definitions/Error'
   /debug/oracles/register:
@@ -1044,6 +1156,10 @@ paths:
           description: Account not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
   /debug/oracles/extend:
     post:
       tags:
@@ -1073,6 +1189,10 @@ paths:
             $ref: '#/definitions/Error'
         '404':
           description: Account not found
+          schema:
+            $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
           schema:
             $ref: '#/definitions/Error'
   /debug/oracles/query:
@@ -1106,6 +1226,10 @@ paths:
           description: Account or oracle not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
   /debug/oracles/respond:
     post:
       tags:
@@ -1137,6 +1261,10 @@ paths:
           description: Oracle or query not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
   /debug/names/preclaim:
     post:
       tags:
@@ -1164,6 +1292,10 @@ paths:
             $ref: '#/definitions/Error'
         '404':
           description: Account not found
+          schema:
+            $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
           schema:
             $ref: '#/definitions/Error'
   /debug/names/claim:
@@ -1195,6 +1327,10 @@ paths:
           description: Account or name not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
   /debug/names/update:
     post:
       tags:
@@ -1222,6 +1358,10 @@ paths:
             $ref: '#/definitions/Error'
         '404':
           description: Account or oracle not found
+          schema:
+            $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
           schema:
             $ref: '#/definitions/Error'
   /debug/names/transfer:
@@ -1253,6 +1393,10 @@ paths:
           description: Account or name not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
   /debug/names/revoke:
     post:
       tags:
@@ -1280,6 +1424,10 @@ paths:
             $ref: '#/definitions/Error'
         '404':
           description: Account or name not found
+          schema:
+            $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
           schema:
             $ref: '#/definitions/Error'
   /debug/transactions/spend:
@@ -1314,6 +1462,10 @@ paths:
           description: Sender account not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
   /debug/channels/create:
     post:
       tags:
@@ -1343,6 +1495,10 @@ paths:
           description: Initiator not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
   /debug/channels/deposit:
     post:
       tags:
@@ -1366,6 +1522,10 @@ paths:
             $ref: '#/definitions/UnsignedTx'
         '400':
           description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
           schema:
             $ref: '#/definitions/Error'
   /debug/channels/withdraw:
@@ -1393,6 +1553,10 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
   /debug/channels/snapshot/solo:
     post:
       tags:
@@ -1416,6 +1580,10 @@ paths:
             $ref: '#/definitions/UnsignedTx'
         '400':
           description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
           schema:
             $ref: '#/definitions/Error'
   /debug/channels/close/mutual:
@@ -1443,6 +1611,10 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
   /debug/channels/close/solo:
     post:
       tags:
@@ -1468,6 +1640,10 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
   /debug/channels/slash:
     post:
       tags:
@@ -1491,6 +1667,10 @@ paths:
             $ref: '#/definitions/UnsignedTx'
         '400':
           description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
           schema:
             $ref: '#/definitions/Error'
   /debug/channels/settle:
@@ -1534,6 +1714,10 @@ paths:
           description: 'Successful operation'
           schema:
             $ref: '#/definitions/GenericTxs'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
   /debug/names/commitment-id:
     get:
       tags:
@@ -1564,6 +1748,10 @@ paths:
           description: 'Invalid name'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /debug/accounts/node:
     get:
@@ -1585,6 +1773,10 @@ paths:
           description: 'Public key not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /debug/peers:
     get:
@@ -1604,6 +1796,10 @@ paths:
             $ref: '#/definitions/Peers'
         '403':
           description: Info not enabled
+          schema:
+            $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
           schema:
             $ref: '#/definitions/Error'
       security:
@@ -1635,6 +1831,10 @@ paths:
           description: Invalid contract
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
   /debug/contracts/code/call:
     post:
       tags:
@@ -1661,6 +1861,10 @@ paths:
             $ref: '#/definitions/CallResult'
         '403':
           description: Invalid contract
+          schema:
+            $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
           schema:
             $ref: '#/definitions/Error'
   /debug/contracts/code/decode-data:
@@ -1691,6 +1895,10 @@ paths:
           description: Invalid data
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
+          schema:
+            $ref: '#/definitions/Error'
   /debug/contracts/code/encode-calldata:
     post:
       tags:
@@ -1717,6 +1925,10 @@ paths:
             $ref: '#/definitions/Calldata'
         '403':
           description: Invalid contract
+          schema:
+            $ref: '#/definitions/Error'
+        '503':
+          description: 'Resource not available'
           schema:
             $ref: '#/definitions/Error'
 

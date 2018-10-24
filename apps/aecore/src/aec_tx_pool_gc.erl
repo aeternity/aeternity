@@ -90,7 +90,8 @@ do_gc(Height, State = #st{ gc_db = GCDb }) ->
 
 do_gc_([], S) ->
     S;
-do_gc_([{TxHash, Key} | TxHashes], S = #st{ db = Db, gc_db = GCDb }) ->
+do_gc_([{TxHash, Key} | TxHashes], S = #st{ db = Db,
+                                            gc_db = GCDb }) ->
     case aec_db:gc_tx(TxHash) of
         ok ->
             ets:delete(GCDb, TxHash),

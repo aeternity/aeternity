@@ -13,6 +13,7 @@
 -behaviour(gen_server).
 
 -define(MEMPOOL, mempool).
+-define(MEMPOOL_NONCE, mempool_nonce).
 -define(MEMPOOL_GC, mempool_gc).
 -define(KEY(NegFee, NegGasPrice, Origin, Nonce, TxHash),
            {NegFee, NegGasPrice, Origin, Nonce, TxHash}).
@@ -43,6 +44,7 @@
 %% exports used by GC (should perhaps be in a common lib module)
 -export([ top_height/0
         , pool_db/0
+        , pool_db_nonce/0
         , pool_db_gc/0]).
 
 -ifdef(TEST).
@@ -62,17 +64,20 @@
 -define(SERVER, ?MODULE).
 -define(TAB, ?MODULE).
 
--record(state, { db = pool_db()       :: pool_db()
-               , gc_db = pool_db_gc() :: pool_db()
-               , sync_top_calc        :: pid() | undefined
+-define(TC(Expr, Msg), begin {Time, Res} = timer:tc(fun() -> Expr end), lager:debug("[~p] Msg = ~p", [Time, Msg]), Res end).
+
+-record(dbs, {db       = pool_db()       :: pool_db(),
+              nonce_db = pool_db_nonce() :: pool_db(),
+              gc_db    = pool_db_gc()    :: pool_db()}).
+
+-record(state, { dbs = #dbs{}
+               , sync_top_calc           :: pid() | undefined
                  %% Used at tx insertion and at tx re-insertion (on
                  %% chain fork change) for preventing GCing received
                  %% txs while syncing with a stronger (i.e. with a
                  %% higher cumulative difficulty) and much longer
                  %% fork - typically at bootstrap.
                , gc_height = 0 :: aec_blocks:height() | undefined }).
-
--record(dbs, {db, gc_db}).
 
 -type negated_fee() :: non_pos_integer().
 -type non_pos_integer() :: neg_integer() | 0.
@@ -141,8 +146,8 @@ incr(Metric) ->
 
 -spec get_max_nonce(aec_keys:pubkey()) -> {ok, non_neg_integer()} | undefined.
 get_max_nonce(Sender) ->
-    #dbs{db = Db} = dbs(),
-    int_get_max_nonce(Db, Sender).
+    #dbs{nonce_db = NDb} = dbs(),
+    ?TC(int_get_max_nonce(NDb, Sender), {max_nonce, Sender}).
 
 -spec garbage_collect() -> ok.
 garbage_collect() ->
@@ -171,13 +176,12 @@ peek(MaxN, Account) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
 -spec get_candidate(pos_integer(), binary()) -> {ok, [aetx_sign:signed_tx()]}.
 get_candidate(MaxGas, BlockHash) when is_integer(MaxGas), MaxGas > 0,
                                       is_binary(BlockHash) ->
-    int_get_candidate(MaxGas, BlockHash, dbs()).
-    %% gen_server:call(?SERVER, {get_candidate, MaxGas, BlockHash}).
+    ?TC(int_get_candidate(MaxGas, BlockHash, dbs()),
+        {get_candidate, MaxGas, BlockHash}).
 
 %% It assumes that the persisted mempool has been updated.
 -spec top_change(binary(), binary()) -> ok.
 top_change(OldHash, NewHash) ->
-    lager:debug("top_change(...)", []),
     gen_server:call(?SERVER, {top_change, OldHash, NewHash}).
 
 -spec new_sync_top_target(aec_blocks:height()) -> ok.
@@ -190,6 +194,7 @@ size() ->
     ets:info(?MEMPOOL, size).
 
 pool_db() -> ?MEMPOOL.
+pool_db_nonce() -> ?MEMPOOL_NONCE.
 pool_db_gc() -> ?MEMPOOL_GC.
 
 %% This function is primarily used to sync with the aec_tx_pool server,
@@ -204,10 +209,11 @@ dbs() ->
 
 init([]) ->
     {ok, _MempoolDb} = pool_db_open(pool_db()),
+    {ok, _NonceDb} = pool_db_open(pool_db_nonce()),
     GCHeight = top_height(),
     Handled  = ets:new(init_tx_pool, [private]),
     InitF  = fun(TxHash, _) ->
-                     update_pool_on_tx_hash(TxHash, {pool_db(), pool_db_gc(), GCHeight}, Handled),
+                     update_pool_on_tx_hash(TxHash, {#dbs{}, GCHeight}, Handled),
                      ok
              end,
     ok = aec_db:ensure_transaction(fun() -> aec_db:fold_mempool(InitF, ok) end),
@@ -215,28 +221,34 @@ init([]) ->
     lager:debug("init: GCHeight = ~p", [GCHeight]),
     {ok, #state{gc_height = GCHeight}}.
 
-handle_call({get_max_nonce, Sender}, _From, #state{db = Mempool} = State) ->
-    {reply, int_get_max_nonce(Mempool, Sender), State};
-handle_call({push, Tx, Hash, Event}, _From, State) ->
+handle_call(Req, From, St) ->
+    ?TC(handle_call_(Req, From, St), Req).
+
+handle_call_({get_max_nonce, Sender}, _From, #state{dbs = #dbs{db = Db}} = State) ->
+    {reply, int_get_max_nonce(Db, Sender), State};
+handle_call_({push, Tx, Hash, Event}, _From, State) ->
     {Res, State1} = do_pool_db_put(pool_db_key(Tx), Tx, Hash, Event, State),
     {reply, Res, State1};
-handle_call({top_change, OldHash, NewHash}, _From, State) ->
+handle_call_({top_change, OldHash, NewHash}, _From, State) ->
     do_top_change(OldHash, NewHash, State),
     {reply, ok, State};
-handle_call({peek, MaxNumberOfTxs, Account}, _From, #state{db = Mempool} = State)
+handle_call_({peek, MaxNumberOfTxs, Account}, _From, #state{dbs = #dbs{db = Db}} = State)
   when is_integer(MaxNumberOfTxs), MaxNumberOfTxs >= 0;
        MaxNumberOfTxs =:= infinity ->
-    Txs = pool_db_peek(Mempool, MaxNumberOfTxs, Account),
+    Txs = pool_db_peek(Db, MaxNumberOfTxs, Account),
     {reply, {ok, Txs}, State};
-handle_call(dbs, _From, #state{db = Db, gc_db = GCDb} = State) ->
-    {reply, #dbs{db = Db, gc_db = GCDb}, State};
-handle_call(Request, From, State) ->
+handle_call_(dbs, _From, #state{dbs = Dbs} = State) ->
+    {reply, Dbs, State};
+handle_call_(Request, From, State) ->
     lager:warning("Ignoring unknown call request from ~p: ~p", [From, Request]),
     {noreply, State}.
 
-handle_cast({new_sync_top_target, NewSyncTop}, State) ->
+handle_cast(Msg, St) ->
+    ?TC(handle_cast_(Msg, St), Msg).
+
+handle_cast_({new_sync_top_target, NewSyncTop}, State) ->
     {noreply, do_update_sync_top_target(NewSyncTop, State)};
-handle_cast(garbage_collect, State) ->
+handle_cast_(garbage_collect, State) ->
     case State of
         #state{gc_height = undefined, sync_top_calc = P} when is_pid(P) ->
             %% sync_top update will be followed by GC (in handle_info/2 below)
@@ -245,16 +257,19 @@ handle_cast(garbage_collect, State) ->
             State1 = do_update_sync_top_target(H, State),
             {noreply, State1}
     end;
-handle_cast(Msg, State) ->
+handle_cast_(Msg, State) ->
     lager:warning("Ignoring unknown cast message: ~p", [Msg]),
     {noreply, State}.
 
-handle_info({P, new_gc_height, GCHeight}, #state{sync_top_calc = P} = State) ->
+handle_info(Msg, St) ->
+    ?TC(handle_info_(Msg, St), Msg).
+
+handle_info_({P, new_gc_height, GCHeight}, #state{sync_top_calc = P} = State) ->
     aec_tx_pool_gc:gc(GCHeight),
     {noreply, State#state{sync_top_calc = undefined, gc_height = GCHeight}};
-handle_info({'ETS-TRANSFER', _, _, _}, State) ->
+handle_info_({'ETS-TRANSFER', _, _, _}, State) ->
     {noreply, State};
-handle_info(Info, State) ->
+handle_info_(Info, State) ->
     lager:warning("Ignoring unknown info: ~p", [Info]),
     {noreply, State}.
 
@@ -268,13 +283,12 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 -spec int_get_max_nonce(pool_db(), aec_keys:pubkey()) -> {ok, non_neg_integer()} | undefined.
-int_get_max_nonce(Mempool, Sender) ->
-    case ets:select(Mempool, [{ ?KEY_NONCE_PATTERN(Sender), [], ['$1'] }]) of
-        [] ->
-            undefined;
-        Nonces ->
-            MaxNonce = lists:max(Nonces),
-            {ok, MaxNonce}
+int_get_max_nonce(NonceDb, Sender) ->
+    case ets:prev(NonceDb, {Sender, '$larger_than_any_nonce', <<>>}) of
+        {Sender, MaxNonce, _} ->
+            {ok, MaxNonce};
+        _ ->
+            undefined
     end.
 
 %% Ensure ordering of tx nonces in one account, and for duplicate account nonces
@@ -284,52 +298,55 @@ int_get_max_nonce(Mempool, Sender) ->
 int_get_candidate(MaxGas, BlockHash, #dbs{db = Db} = DBs) ->
     {ok, Trees} = aec_chain:get_block_state(BlockHash),
     {ok, Header} = aec_chain:get_header(BlockHash),
-    int_get_candidate(MaxGas, DBs, ets:first(Db),
+    lager:debug("size(Db) = ~p", [ets:info(Db, size)]),
+    Pat = [{ '_', [], ['$_'] }],
+    int_get_candidate(MaxGas, DBs, ets:select(Db, Pat, 20),
                       {account_trees, aec_trees:accounts(Trees)},
                       aec_headers:height(Header), gb_trees:empty()).
 
-int_get_candidate(Gas, Dbs = #dbs{db = Db},
-                  ?KEY(_, _, Account, Nonce, _) = Key,
+int_get_candidate(Gas, Dbs = #dbs{}, {Txs, Cont},
                   AccountsTree, Height, Acc) ->
-    Next = ets:next(Db, Key),
-    case gb_trees:is_defined({Account, Nonce}, Acc) of
-        true ->
-            %% The earlier must have had higher fee. Skip this tx.
-            int_get_candidate(Gas, Dbs, Next, AccountsTree, Height, Acc);
-        false ->
-            {RemGas, Acc1} =
-                check_candidate(Dbs, Key, AccountsTree, Height, Gas, Acc),
-            int_get_candidate(RemGas, Dbs, Next, AccountsTree, Height, Acc1)
-    end;
+    {RemGas, NewAcc} =
+        lists:foldl(
+          fun(T, {Gas1, Acc1}) ->
+                  int_get_candidate_(T, Gas1, Dbs, AccountsTree, Height, Acc1)
+          end, {Gas, Acc}, Txs),
+    int_get_candidate(RemGas, Dbs, ets:select(Cont), AccountsTree,
+                      Height, NewAcc);
 int_get_candidate(_Gas, _Dbs, '$end_of_table', _AccountsTree, _Height, Acc) ->
     {ok, gb_trees:values(Acc)}.
 
-check_candidate(#dbs{db = Db, gc_db = GCDb},
-                ?KEY(_, _, Account, Nonce, TxHash) = Key,
+int_get_candidate_({?KEY(_, _, Account, Nonce, _) = Key, Tx},
+                   Gas, Dbs, AccountsTree, Height, Acc) ->
+    case gb_trees:is_defined({Account, Nonce}, Acc) of
+        true ->
+            %% The earlier must have had higher fee. Skip this tx.
+            {Gas, Acc};
+        false ->
+            check_candidate(Dbs, Key, Tx, AccountsTree, Height, Gas, Acc)
+    end.
+
+
+check_candidate(#dbs{gc_db = GCDb},
+                ?KEY(_, _, Account, Nonce, TxHash) = Key, Tx,
                 AccountsTree, Height, Gas, Acc) ->
-    case ets:lookup(Db, Key) of
-        [{_, Tx}] ->
-            Tx1 = aetx_sign:tx(Tx),
-            TxTTL = aetx:ttl(Tx1),
-            TxGas = aetx:gas(Tx1),
-            case Height < TxTTL andalso ok =:= int_check_nonce(Tx, AccountsTree) of
-                true ->
-                    case Gas - TxGas of
-                        RemGas when RemGas >= 0 ->
-                            Acc1 = gb_trees:insert({Account, Nonce}, Tx, Acc),
-                            {RemGas, Acc1};
-                        _ ->
-                            %% Check the rest of txs, maybe some of them fits
-                            %% into the gas limit.
-                            {Gas, Acc}
-                    end;
-                false ->
-                    %% This is not valid anymore.
-                    enter_tx_gc(GCDb, TxHash, Key, Height + invalid_tx_ttl()),
+    Tx1 = aetx_sign:tx(Tx),
+    TxTTL = aetx:ttl(Tx1),
+    TxGas = aetx:gas(Tx1),
+    case Height < TxTTL andalso ok =:= int_check_nonce(Tx, AccountsTree) of
+        true ->
+            case Gas - TxGas of
+                RemGas when RemGas >= 0 ->
+                    Acc1 = gb_trees:insert({Account, Nonce}, Tx, Acc),
+                    {RemGas, Acc1};
+                _ ->
+                    %% Check the rest of txs, maybe some of them fits
+                    %% into the gas limit.
                     {Gas, Acc}
             end;
-        [] ->
-            %% probably deleted by GC process
+        false ->
+            %% This is not valid anymore.
+            enter_tx_gc(GCDb, TxHash, Key, Height + invalid_tx_ttl()),
             {Gas, Acc}
     end.
 
@@ -376,6 +393,7 @@ do_update_sync_top(NewSyncTop, GCHeight, Parent) ->
     lager:debug("do_update_sync_top(~p,~p,~p), LocalTop = ~p",
                 [NewSyncTop, GCHeight, Parent, LocalTop]),
     NewGCHeight = lists:max([LocalTop, GCHeight, NewSyncTop]),
+    Parent ! {self(), new_gc_height, NewGCHeight},
     try NewGCHeight < GCHeight - 5 of
         true ->
             %% This is a special case, normally the height shouldn't go down
@@ -390,8 +408,7 @@ do_update_sync_top(NewSyncTop, GCHeight, Parent) ->
             lager:error(
               "do_update_sync_top(~p,~p,~p), LocalTop=~p, NewGCHeight=~p ERROR: ~p/~p",
               [NewSyncTop, GCHeight, Parent, LocalTop, NewGCHeight, E, erlang:get_stacktrace()])
-    end,
-    Parent ! {self(), new_gc_height, NewGCHeight}.
+    end.
 
 -spec pool_db_key(aetx_sign:signed_tx()) -> pool_db_key().
 pool_db_key(SignedTx) ->
@@ -444,7 +461,7 @@ do_top_change(OldHash, NewHash, State) ->
 
     %% NG: does this work for common ancestor for micro blocks?
     {ok, Ancestor} = aec_chain:find_common_ancestor(OldHash, NewHash),
-    Info = {State#state.db, State#state.gc_db, State#state.gc_height},
+    Info = {State#state.dbs, State#state.gc_height},
 
     Handled = ets:new(foo, [private, set]),
     update_pool_from_blocks(Ancestor, OldHash, Info, Handled),
@@ -467,7 +484,7 @@ safe_get_tx_hashes(Hash) ->
         {value, Hashes} -> Hashes
     end.
 
-update_pool_on_tx_hash(TxHash, {Db, GCDb, GCHeight}, Handled) ->
+update_pool_on_tx_hash(TxHash, {#dbs{gc_db = GCDb} = Dbs, GCHeight}, Handled) ->
     case ets:member(Handled, TxHash) of
         true -> ok;
         false ->
@@ -476,10 +493,12 @@ update_pool_on_tx_hash(TxHash, {Db, GCDb, GCHeight}, Handled) ->
             case aec_db:is_in_tx_pool(TxHash) of
                 false ->
                     %% Added to chain
-                    ets:delete(Db, pool_db_key(Tx)),
+                    Key = pool_db_key(Tx),
+                    pool_db_raw_delete(Dbs, Key),
                     aec_tx_pool_gc:delete_hash(GCDb, TxHash);
                 true ->
-                    pool_db_raw_put(Db, GCDb, GCHeight, pool_db_key(Tx), Tx, TxHash)
+                    Key = pool_db_key(Tx),
+                    pool_db_raw_put(Dbs, GCHeight, Key, Tx, TxHash)
             end
     end.
 
@@ -516,7 +535,7 @@ check_pool_db_put(Tx) ->
     end.
 
 do_pool_db_put(Key, Tx, Hash, Event,
-               #state{ db = Db, gc_db = GCDb } = St0) ->
+               #state{ dbs = #dbs{db = Db} = Dbs } = St0) ->
     {GCHeight, St} = get_gc_height(St0),
     %% TODO: This check is never going to hit? Hash is part of the Key!?
     case ets:member(Db, Key) of
@@ -527,14 +546,25 @@ do_pool_db_put(Key, Tx, Hash, Event,
         false ->
             aec_db:add_tx(Tx),
             aec_events:publish(Event, Tx),
-            pool_db_raw_put(Db, GCDb, GCHeight, Key, Tx, Hash),
+            pool_db_raw_put(Dbs, GCHeight, Key, Tx, Hash),
             {ok, St}
     end.
 
+pool_db_raw_delete(#dbs{db = Db, nonce_db = NDb}, Key) ->
+    delete_nonce(NDb, Key),
+    ets:delete(Db, Key).
 
-pool_db_raw_put(Db, GCDb, GCHeight, Key, Tx, TxHash) ->
+pool_db_raw_put(#dbs{db = Db, nonce_db = NDb, gc_db = GCDb},
+                GCHeight, Key, Tx, TxHash) ->
     ets:insert(Db, {Key, Tx}),
+    insert_nonce(NDb, Key),
     enter_tx_gc(GCDb, TxHash, Key, GCHeight + tx_ttl()).
+
+insert_nonce(NDb, ?KEY(_, _, Account, Nonce, TxHash)) ->
+    ets:insert(NDb, {{Account, Nonce, TxHash}}).
+
+delete_nonce(NDb, ?KEY(_, _, Account, Nonce, TxHash)) ->
+    ets:delete(NDb, {{Account, Nonce, TxHash}}).
 
 check_tx_ttl(STx, _Hash) ->
     Tx = aetx_sign:tx(STx),

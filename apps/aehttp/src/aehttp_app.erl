@@ -13,13 +13,14 @@
 -define(DEFAULT_SWAGGER_INTERNAL_PORT, 8143).
 -define(DEFAULT_SWAGGER_INTERNAL_LISTEN_ADDRESS, <<"127.0.0.1">>).
 
+-define(DEFAULT_HTTP_ACCEPTORS, 10).
+
 -define(DEFAULT_WEBSOCKET_INTERNAL_PORT, 8144).
 -define(DEFAULT_WEBSOCKET_LISTEN_ADDRESS, <<"127.0.0.1">>).
--define(INT_MAX_CONNECTIONS, 100).
 
 -define(DEFAULT_CHANNEL_WEBSOCKET_PORT, 8044).
 -define(DEFAULT_CHANNEL_WEBSOCKET_LISTEN_ADDRESS, <<"127.0.0.1">>).
--define(CHANNEL_MAX_CONNECTIONS, 100).
+-define(DEFAULT_CHANNEL_ACCEPTORS, 10).
 
 %% Application callbacks
 -export([start/2, stop/1]).
@@ -87,7 +88,6 @@ start_http_api() ->
 
 start_http_api(Target, LogicHandler) ->
     PoolSize = get_http_api_acceptors(Target),
-    MaxConns = get_http_api_max_conns(Target),
     Port = get_http_api_port(Target),
     ListenAddress = get_http_api_listen_address(Target),
 
@@ -96,7 +96,6 @@ start_http_api(Target, LogicHandler) ->
 
     Opts = [{port, Port},
             {ip, ListenAddress},
-            {max_connections, MaxConns},
             {num_acceptors, PoolSize}],
     Env = #{env => #{dispatch => Dispatch},
             middlewares => [cowboy_router,
@@ -109,7 +108,6 @@ start_http_api(Target, LogicHandler) ->
 start_channel_websocket() ->
     Port = get_channel_websockets_port(),
     Acceptors = get_channel_websockets_acceptors(),
-    MaxConns = get_channel_websockets_max_conns(),
     ListenAddress = get_channel_websockets_listen_address(),
     Dispatch = cowboy_router:compile([
         {'_', [
@@ -118,7 +116,6 @@ start_channel_websocket() ->
     ]),
     Opts = [{port, Port},
             {ip, ListenAddress},
-            {max_connections, MaxConns},
             {num_acceptors, Acceptors}],
     Env = #{env => #{dispatch => Dispatch}},
     lager:debug("Opts = ~p", [Opts]),
@@ -132,17 +129,10 @@ get_and_parse_ip_address_from_config_or_env(CfgKey, App, EnvKey, Default) ->
 
 get_http_api_acceptors(external) ->
     aeu_env:config_value([<<"http">>, <<"external">>, <<"acceptors">>],
-                         aehttp, [external, acceptors], ?INT_MAX_CONNECTIONS div 10);
+                         aehttp, [external, acceptors], ?DEFAULT_HTTP_ACCEPTORS);
 get_http_api_acceptors(internal) ->
     aeu_env:config_value([<<"http">>, <<"internal">>, <<"acceptors">>],
-                               aehttp, [internal, acceptors], ?INT_MAX_CONNECTIONS div 10).
-
-get_http_api_max_conns(external) ->
-    aeu_env:config_value([<<"http">>, <<"external">>, <<"max_connections">>],
-                               aehttp, [external, acceptors], ?INT_MAX_CONNECTIONS);
-get_http_api_max_conns(internal) ->
-    aeu_env:config_value([<<"http">>, <<"internal">>, <<"max_connections">>],
-                               aehttp, [internal, acceptors], ?INT_MAX_CONNECTIONS).
+                               aehttp, [internal, acceptors], ?DEFAULT_HTTP_ACCEPTORS).
 
 get_http_api_port(external) ->
     aeu_env:config_value([<<"http">>, <<"external">>, <<"port">>],
@@ -173,10 +163,4 @@ get_channel_websockets_port() ->
 get_channel_websockets_acceptors() ->
     aeu_env:config_value([<<"websocket">>, <<"channel">>, <<"acceptors">>],
                          aehttp, [channel, websocket, handlers],
-                         ?CHANNEL_MAX_CONNECTIONS div 10).
-
-get_channel_websockets_max_conns() ->
-    aeu_env:config_value([<<"websocket">>, <<"channel">>, <<"max_connections">>],
-                         aehttp, [channel, websocket, handlers],
-                         ?CHANNEL_MAX_CONNECTIONS).
-
+                         ?DEFAULT_CHANNEL_ACCEPTORS).
