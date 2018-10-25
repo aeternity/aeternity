@@ -211,16 +211,17 @@ do_return(Us0, Us1, State) ->
                 %% Us1 is a pointer to the actual value.
                 Heap       = mem(State),
                 {ok, Type} = aeso_data:from_heap(typerep, Heap, Us0),
-                {ok, Out}  = aeso_data:heap_to_binary(Type, get_store(State), aeso_data:heap_value(maps(State), Us1, Heap)),
-                set_out(Out, State)
+                {ok, Out, Stats} = aeso_data:heap_to_binary_w_stats(Type, get_store(State), aeso_data:heap_value(maps(State), Us1, Heap)),
+                {set_out(Out, State), aevm_gas:mem_cost(maps:get(total_map_size, Stats) div 32)}
+
             catch _:_ ->
                 io:format("** Error reading return value\n~s", [format_mem(mem(State))]),
-                set_gas(0, State)   %% Consume all gas on failure
+                {set_gas(0, State), 0}  %% Consume all gas on failure
             end;
         ?AEVM_01_Solidity_01 ->
             %% Us0 is pointer to a return data binary and Us1 is the size.
             {Out, State1} = aevm_eeevm_memory:get_area(Us0, Us1, State),
-            set_out(Out, State1)
+            {set_out(Out, State1), 0}
     end.
 
 do_revert(Us0, Us1, State0) ->
