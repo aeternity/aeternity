@@ -1,5 +1,7 @@
 contract Remote =
   function look_at : (state) => ()
+  function return_s1 : () => string
+  function return_s2 : () => string
   function get : (state) => state
   function get_i : (state) => int
   function get_s : (state) => string
@@ -29,6 +31,12 @@ contract StateHandling =
 
   function pass_it(r : Remote) = r.look_at(state)
   function nop(r : Remote) = put(state{ i = state.i })
+  function return_it1(r : Remote) =
+    let x = r.return_s1()
+    String.length(x)
+  function return_it2(r : Remote) =
+    let x = r.return_s2()
+    String.length(x)
 
   function pass(r : Remote) = r.get(state)
   function pass_i(r : Remote) = r.get_i(state)
@@ -46,6 +54,9 @@ contract StateHandling =
 
   // remote called
   function look_at(s : state) = ()
+  function return_s1() = "short"
+  function return_s2() = "______longer_string_at_least_32_bytes_long_____"
+
 
   function get(s : state) = s
   function get_i(s : state) = s.i

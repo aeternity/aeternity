@@ -9,6 +9,7 @@
 -module(aevm_gas).
 
 -export([ op_cost/2
+        , mem_cost/1
         , mem_cost/2
         ]).
 -export([ call_cap/2
@@ -33,11 +34,11 @@ mem_cost(State1, State2) ->
     Size1 = aevm_eeevm_memory:size_in_words(State1),
     case aevm_eeevm_memory:size_in_words(State2) of
         Size1 -> 0;
-        Size2 ->
-            Before = Size1*?GMEMORY + round(math:floor((Size1 * Size1)/512)),
-            After  = Size2*?GMEMORY + round(math:floor((Size2 * Size2)/512)),
-            After - Before
+        Size2 -> mem_cost(Size2) - mem_cost(Size1)
     end.
+
+mem_cost(Size) ->
+    Size * ?GMEMORY + round(math:floor((Size * Size) / 512)).
 
 call_cap(?CALL, State) ->
     {CGascap, _} = call_dynamic_cost_components(State),

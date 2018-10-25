@@ -23,6 +23,7 @@
 -export([code_get_op/2]).
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
+-include_lib("aecontract/src/aecontract.hrl").
 -include("aevm_eeevm.hrl").
 -include("aevm_gas.hrl").
 -include("aevm_ae_primops.hrl").
@@ -1401,31 +1402,50 @@ recursive_call(State, Op) ->
         true  -> recursive_call1(State, Op)
     end.
 
+get_call_input(StateIn, ?DELEGATECALL) ->
+    get_call_input(StateIn, 2, 3);
+get_call_input(StateIn, Op) when Op == ?CALL; Op == ?CALLCODE ->
+    get_call_input(StateIn, 3, 4).
+
+get_call_input(StateIn, IOffsetIx, ISizeIx) ->
+    IOffset = aevm_eeevm_stack:peek(IOffsetIx, StateIn),
+    ISize   = aevm_eeevm_stack:peek(ISizeIx, StateIn),
+
+    {I, State} = aevm_eeevm_state:get_contract_call_input(IOffset, ISize, StateIn),
+    case aevm_eeevm_state:vm_version(State) of
+        ?AEVM_01_Solidity_01 ->
+            {I, State};
+        ?AEVM_01_Sophia_01 ->
+            {I, spend_gas_common({call_data}, aevm_gas:mem_cost(byte_size(I) div 32), State)}
+    end.
+
 recursive_call1(StateIn, Op) ->
     %% Message-call into an account.
     %% i ≡ µm[µs[3] . . .(µs[3] + µs[4] − 1)]
-    State0            = spend_call_gas(StateIn, Op), %% TODO Subtract memory expansion cost from gas before computing this.
-    Gascap            = aevm_gas:call_cap(Op, StateIn), %% TODO Subtract memory expansion cost from gas before computing this.
 
-    {_Gas, State1}    = pop(State0), %% Peeked elsewhere.
-    {To, State2}      = pop(State1),
-    {Value, State3}   = case Op of
-                            ?CALL         -> pop(State2);
-                            ?CALLCODE     -> pop(State2);
-                            ?DELEGATECALL -> {aevm_eeevm_state:value(State2), State2}
+    %% Get (expanded) call data, and pay gas for it.
+    {I, State0}       = get_call_input(StateIn, Op),
+    State1            = spend_call_gas(State0, Op),
+    Gascap            = aevm_gas:call_cap(Op, State0),
+
+    {_Gas, State2}    = pop(State1), %% Peeked elsewhere.
+    {To, State3}      = pop(State2),
+    {Value, State4}   = case Op of
+                            ?CALL         -> pop(State3);
+                            ?CALLCODE     -> pop(State3);
+                            ?DELEGATECALL -> {aevm_eeevm_state:value(State3), State3}
                         end,
-    {IOffset, State4} = pop(State3),
-    {ISize, State5}   = pop(State4),
-    {OOffset, State6} = pop(State5),
-    {OSize, State7}   = pop(State6),
-    {I, State8}       = aevm_eeevm_state:get_contract_call_input(IOffset, ISize, State7),
+    {_IOffset, State5} = pop(State4),
+    {_ISize, State6}   = pop(State5),
+    {OOffset, State7} = pop(State6),
+    {OSize, State8}   = pop(State7),
 
     GasAfterSpend     = aevm_eeevm_state:gas(State8),
     case GasAfterSpend >= 0 of
         true  -> ok;
         false ->
             ?TEST_LOG("Out of gas before call", []),
-            eval_error(out_of_gas, State7)
+            eval_error(out_of_gas, State8)
     end,
     Address = aevm_eeevm_state:address(State8),
     AddressBalance = aevm_eeevm_state:accountbalance(Address, State8),
