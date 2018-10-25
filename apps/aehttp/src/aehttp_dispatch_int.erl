@@ -188,15 +188,19 @@ handle_request_('EncodeCalldata', Req, _Context) ->
     case Req of
         #{'ContractCallInput' :=
               #{ <<"abi">>  := ABI
-               , <<"code">> := Code
+               , <<"code">> := EncodedCode
                , <<"function">> := Function
                , <<"arg">> := Argument }} ->
             %% TODO: Handle other languages
-            case aehttp_logic:contract_encode_call_data(ABI, Code, Function, Argument) of
-                {ok, Result} ->
-                    {200, [], #{ calldata => Result}};
-                {error, ErrorMsg} ->
-                    {403, [], #{reason => ErrorMsg}}
+            case aec_base58c:safe_decode(contract_bytearray, EncodedCode) of
+                {ok, Code} ->
+                    case aehttp_logic:contract_encode_call_data(ABI, Code, Function, Argument) of
+                        {ok, Result} ->
+                            {200, [], #{ calldata => Result}};
+                        {error, ErrorMsg} ->
+                            {403, [], #{reason => ErrorMsg}}
+                    end;
+                {error, _} -> {403, [], #{reason => <<"Bad request">>}}
             end;
         _ -> {403, [], #{reason => <<"Bad request">>}}
     end;
