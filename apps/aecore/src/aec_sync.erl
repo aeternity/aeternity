@@ -685,17 +685,16 @@ post_blocks(From, To, [{Height, _Hash, {PeerId, Block}} | Blocks]) ->
 %% smaller chuncks, a few micro blocks at the time.
 %% Each micro block has a fixed maximum gas, by limiting the number of micro
 %% blocks we limit the total amount of work the conductor has to perform in
-%% each synchronous call. 
+%% each synchronous call.
+%% Map contains key dir, saying in which direction we sync
 add_generation(#{micro_blocks := MBlocks} = Generation) ->
-    add_generation(maps:without([micro_blocks], Generation), MBlocks).
+    add_micro_blocks_in_generation(Generation#{micro_blocks => []}, MBlocks).
 
--define(MAX_NR_MICROBLOCKS, 4).
-add_generation(Gen, MBlocks) when length(MBlocks) < ?MAX_NR_MICROBLOCKS ->
-    aec_conductor:add_synced_generation_batched(Gen#{micro_blocks => MBlocks}, true);
-add_generation(Gen, MBlocks) ->
-    {Add, AddLater} = lists:split(?MAX_NR_MICROBLOCKS, MBlocks),
-    case aec_conductor:add_synced_generation_batched(Gen#{micro_blocks => Add}, false) of
-        ok -> add_generation(Gen, AddLater);
+add_micro_blocks_in_generation(Gen, []) ->
+    aec_conductor:add_synced_generation_batched(Gen, true);
+add_micro_blocks_in_generation(Gen, [MBlock | MBlocks]) ->
+    case aec_conductor:add_synced_generation_batched(Gen#{micro_blocks => [MBlock]}, false) of
+        ok -> add_micro_blocks_in_generation(Gen, MBlocks);
         Error -> Error
     end.
 
@@ -761,7 +760,7 @@ do_get_generation(PeerId, LastHash) ->
             Generation = #{ key_block => KeyBlock,
                             micro_blocks => MicroBlocks,
                             dir => forward },
-            aec_conductor:add_synced_generation(Generation);
+            add_generation(Generation);
         Err = {error, _} ->
             Err
     end.

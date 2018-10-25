@@ -1,0 +1,36 @@
+{{#epoch_config}}
+---
+peers: {{^peers}}[]{{/peers}}
+{{#peers}}
+    - {{peer}}
+{{/peers}}
+
+sync:
+    port: {{services.sync.port}}
+    ping_interval: 5000
+    single_outbound_per_group: false
+
+http:
+    external:
+        port: {{services.ext_http.port}}
+    internal:
+        listen_address: 0.0.0.0
+        port: {{services.int_http.port}}
+
+keys:
+    password: {{key_password}}
+    dir: ./keys
+
+chain:
+    persist: {{config.persist}}
+
+mining:
+    beneficiary: "ak_2VoAhMd7tVJrDYM5vPJwFRjueZyirDJumVJNeBWL9j1eNTHsRx"
+    micro_block_cycle: 3000
+    expected_mine_rate: 180000
+    cuckoo:
+        miner:
+            executable: mean28s-generic
+            extra_args: ""
+            node_bits: 28
+{{/epoch_config}}
