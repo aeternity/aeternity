@@ -13,11 +13,14 @@
 -define(DEFAULT_SWAGGER_INTERNAL_PORT, 8143).
 -define(DEFAULT_SWAGGER_INTERNAL_LISTEN_ADDRESS, <<"127.0.0.1">>).
 
--define(INT_ACCEPTORS_POOLSIZE, 10).
+-define(DEFAULT_HTTP_ACCEPTORS, 10).
+
+-define(DEFAULT_WEBSOCKET_INTERNAL_PORT, 8144).
+-define(DEFAULT_WEBSOCKET_LISTEN_ADDRESS, <<"127.0.0.1">>).
 
 -define(DEFAULT_CHANNEL_WEBSOCKET_PORT, 8044).
 -define(DEFAULT_CHANNEL_WEBSOCKET_LISTEN_ADDRESS, <<"127.0.0.1">>).
--define(CHANNEL_ACCEPTORS_POOLSIZE, 10).
+-define(DEFAULT_CHANNEL_ACCEPTORS, 10).
 
 %% Application callbacks
 -export([start/2, stop/1]).
@@ -61,13 +64,10 @@ check_env() ->
     EnabledGroups =
         lists:foldl(
             fun({Key, Default}, Accum) ->
-                Enabled =
-                    case aeu_env:user_config([<<"http">>, <<"endpoints">>, Key]) of
-                        {ok, Setting} when is_boolean(Setting) ->
-                            Setting;
-                        undefined ->
-                            Default
-                    end,
+                {ok, Enabled} = aeu_env:find_config([<<"http">>, <<"endpoints">>, Key],
+                                                    [ user_config
+                                                    , schema_default
+                                                    , {value, Default} ]),
                 case Enabled of
                     true -> [Key | Accum];
                     false -> Accum
@@ -94,52 +94,52 @@ start_http_api(Target, LogicHandler) ->
     Paths = aehttp_api_router:get_paths(Target, LogicHandler),
     Dispatch = cowboy_router:compile([{'_', Paths}]),
 
-    {ok, _} = cowboy:start_clear(Target,
-            [{port, Port},
-             {ip, ListenAddress},
-             {num_acceptors, PoolSize}],
-            #{env => #{dispatch => Dispatch},
-              middlewares => [cowboy_router,
-                              aehttp_cors_middleware,
-                              cowboy_handler]}
-        ),
+    Opts = [{port, Port},
+            {ip, ListenAddress},
+            {num_acceptors, PoolSize}],
+    Env = #{env => #{dispatch => Dispatch},
+            middlewares => [cowboy_router,
+                            aehttp_cors_middleware,
+                            cowboy_handler]},
+    lager:debug("Target = ~p, Opts = ~p", [Target, Opts]),
+    {ok, _} = cowboy:start_clear(Target, Opts, Env),
     ok.
 
 start_channel_websocket() ->
     Port = get_channel_websockets_port(),
-    PoolSize = get_channel_websockets_acceptors(),
+    Acceptors = get_channel_websockets_acceptors(),
     ListenAddress = get_channel_websockets_listen_address(),
     Dispatch = cowboy_router:compile([
         {'_', [
             {"/channel", sc_ws_handler, []}
         ]}
     ]),
-    {ok, _} = cowboy:start_clear(channels_socket,
-            [{port, Port},
-             {ip, ListenAddress},
-             {num_acceptors, PoolSize}],
-            #{env => #{dispatch => Dispatch}}
-        ),
+    Opts = [{port, Port},
+            {ip, ListenAddress},
+            {num_acceptors, Acceptors}],
+    Env = #{env => #{dispatch => Dispatch}},
+    lager:debug("Opts = ~p", [Opts]),
+    {ok, _} = cowboy:start_clear(channels_socket, Opts, Env),
     ok.
 
 get_and_parse_ip_address_from_config_or_env(CfgKey, App, EnvKey, Default) ->
-    Config = aeu_env:user_config_or_env(CfgKey, App, EnvKey, Default),
+    Config = aeu_env:config_value(CfgKey, App, EnvKey, Default),
     {ok, IpAddress} = inet:parse_address(binary_to_list(Config)),
     IpAddress.
 
 get_http_api_acceptors(external) ->
-    aeu_env:user_config_or_env([<<"http">>, <<"external">>, <<"acceptors">>],
-                               aehttp, [external, acceptors], ?INT_ACCEPTORS_POOLSIZE);
+    aeu_env:config_value([<<"http">>, <<"external">>, <<"acceptors">>],
+                         aehttp, [external, acceptors], ?DEFAULT_HTTP_ACCEPTORS);
 get_http_api_acceptors(internal) ->
-    aeu_env:user_config_or_env([<<"http">>, <<"internal">>, <<"acceptors">>],
-                               aehttp, [internal, acceptors], ?INT_ACCEPTORS_POOLSIZE).
+    aeu_env:config_value([<<"http">>, <<"internal">>, <<"acceptors">>],
+                               aehttp, [internal, acceptors], ?DEFAULT_HTTP_ACCEPTORS).
 
 get_http_api_port(external) ->
-    aeu_env:user_config_or_env([<<"http">>, <<"external">>, <<"port">>],
-                               aehttp, [external, port], ?DEFAULT_SWAGGER_EXTERNAL_PORT);
+    aeu_env:config_value([<<"http">>, <<"external">>, <<"port">>],
+                         aehttp, [external, port], ?DEFAULT_SWAGGER_EXTERNAL_PORT);
 get_http_api_port(internal) ->
-    aeu_env:user_config_or_env([<<"http">>, <<"internal">>, <<"port">>],
-                               aehttp, [internal, port], ?DEFAULT_SWAGGER_INTERNAL_PORT).
+    aeu_env:config_value([<<"http">>, <<"internal">>, <<"port">>],
+                         aehttp, [internal, port], ?DEFAULT_SWAGGER_INTERNAL_PORT).
 
 
 get_http_api_listen_address(external) ->
@@ -150,15 +150,17 @@ get_http_api_listen_address(internal) ->
                                                 aehttp, [http, websocket, listen_address], ?DEFAULT_SWAGGER_INTERNAL_LISTEN_ADDRESS).
 
 get_channel_websockets_listen_address() ->
-    get_and_parse_ip_address_from_config_or_env([<<"websocket">>, <<"channel">>, <<"listen_address">>],
-                                                aehttp, [channel, websocket,
-                                                         listen_address], ?DEFAULT_CHANNEL_WEBSOCKET_LISTEN_ADDRESS).
+    get_and_parse_ip_address_from_config_or_env(
+      [<<"websocket">>, <<"channel">>, <<"listen_address">>],
+      aehttp, [channel, websocket,
+               listen_address], ?DEFAULT_CHANNEL_WEBSOCKET_LISTEN_ADDRESS).
 
 get_channel_websockets_port() ->
-    aeu_env:user_config_or_env([<<"websocket">>, <<"channel">>, <<"port">>],
-                               aehttp, [channel, websocket, port], ?DEFAULT_CHANNEL_WEBSOCKET_PORT).
+    aeu_env:config_value([<<"websocket">>, <<"channel">>, <<"port">>],
+                         aehttp, [channel, websocket, port],
+                         ?DEFAULT_CHANNEL_WEBSOCKET_PORT).
 
 get_channel_websockets_acceptors() ->
-    aeu_env:user_config_or_env([<<"websocket">>, <<"channel">>, <<"acceptors">>],
-                               aehttp, [channel, websocket, handlers], ?CHANNEL_ACCEPTORS_POOLSIZE).
-
+    aeu_env:config_value([<<"websocket">>, <<"channel">>, <<"acceptors">>],
+                         aehttp, [channel, websocket, handlers],
+                         ?DEFAULT_CHANNEL_ACCEPTORS).

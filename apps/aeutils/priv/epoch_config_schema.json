@@ -204,7 +204,8 @@
                         },
                         "acceptors" : {
                             "description" : "Number of acceptors in external pool",
-                            "type" : "integer"
+                            "type" : "integer",
+                            "default" : 10
                         }
                     }
                 },
@@ -224,7 +225,8 @@
                         },
                         "acceptors" : {
                             "description" : "Number of acceptors in internal pool",
-                            "type" : "integer"
+                            "type" : "integer",
+                            "default" : 10
                         }
                     }
                 },
@@ -289,7 +291,8 @@
                         },
                         "acceptors" : {
                             "description" : "Number of acceptors in pool",
-                            "type" : "integer"
+                            "type" : "integer",
+                            "default" : 10
                         }
                     }
                 }
@@ -503,6 +506,27 @@
                 }
             }
         },
+        "load_levels" : {
+            "description" :
+            "Overload sampler configurations. These monitor potential pain points in the system for indications of overload.",
+            "type" : "object",
+            "additionalProperties" : false,
+            "properties" : {
+                "mempool" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "size" : {
+                            "description" :
+                            "Number of transactions in the mempool",
+                            "type" : "string",
+                            "$ref" : "#/definitions/key_value_pattern",
+                            "default" : "1000:1,2000:2,3000:3,4000:4"
+                        }
+                    }
+                }
+            }
+        },
         "regulators" : {
             "description" :
             "Queues regulating the load in an epoch node. Each queue may have a combination of 'rate', 'counter', 'max_size' and 'max_time' parameters. Set a parameter to 0 if you want it to have no effect.",
@@ -579,7 +603,7 @@
                 "tx_pool_push" : {
                     "description" : "mempool updates.",
                     "type" : "object",
-                    "additionalProperties" : false,
+                    "additionalProperties": false,
                     "properties" : {
                         "counter" : {
                             "type" : "integer",
@@ -587,7 +611,7 @@
                         },
                         "rate" : {
                             "type" : "integer",
-                            "default" : 150
+                            "default" : 100
                         },
                         "max_size" : {
                             "type" : "integer",
@@ -596,6 +620,16 @@
                         "max_time" : {
                             "type" : "integer",
                             "default" : 0
+                        },
+                        "rate_modifiers" : {
+                            "type" : "string",
+                            "default" : "mempool.size: 10",
+                            "$ref" : "#/definitions/key_value_pattern"
+                        },
+                        "counter_modifiers" : {
+                            "type" : "string",
+                            "default" : "mempool.size: 15",
+                            "$ref" : "#/definitions/key_value_pattern"
                         }
                     }
                 },
@@ -702,6 +736,11 @@
                     "Identification of the network in case of hard forks.",
                     "type" : "string"}
             }
+        }
+    },
+    "definitions" : {
+        "key_value_pattern": {
+            "pattern" : "^[a-zA-Z0-9\\-_\\.]+\\h*:\\h*[0-9]+(\\h*,\\h*[a-zA-Z_]+\\h*:\\h*[0-9]+)*"
         }
     }
 }

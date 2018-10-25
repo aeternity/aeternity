@@ -29,8 +29,8 @@ tx_pool_test_() ->
              %% signed txs - as a node would do.
              ets:new(?TAB, [public, ordered_set, named_table]),
              meck:new(aeu_time, [passthrough]),
-             meck:new(jobs),
-             meck:expect(jobs, run, fun(_,F) -> F() end),
+             meck:new(aec_jobs_queues),
+             meck:expect(aec_jobs_queues, run, fun(_, F) -> F() end),
              TmpKeysDir
      end,
      fun(TmpKeysDir) ->
@@ -44,7 +44,7 @@ tx_pool_test_() ->
              ok = aec_tx_pool:stop(),
              ok = aec_tx_pool_gc:stop(),
              meck:unload(aeu_time),
-             meck:unload(jobs),
+             meck:unload(aec_jobs_queues),
              ok
      end,
      [{"No txs in mempool",

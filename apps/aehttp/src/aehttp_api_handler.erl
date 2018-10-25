@@ -48,7 +48,7 @@ handle_request_json(Req0, State = #state{
         validator = Validator
     }) ->
     Method = cowboy_req:method(Req0),
-    case aehttp_api_validate:request(OperationId, Method, Req0, Validator) of
+    try aehttp_api_validate:request(OperationId, Method, Req0, Validator) of
         {ok, Params, Req1} ->
             Context = #{},
             {Code, Headers, Body} = LogicHandler:handle_request(OperationId, Params, Context),
@@ -62,6 +62,11 @@ handle_request_json(Req0, State = #state{
             Body = jsx:encode(to_error(Reason)),
             Req = cowboy_req:reply(400, #{}, Body, Req1),
             {stop, Req, State}
+    catch error:Error ->
+            lager:error("Unexpected validate result: ~p / ~p",
+                        [Error, erlang:get_stacktrace()]),
+            Body = jsx:encode(to_error({validation_error, <<>>, <<>>})),
+            {stop, cowboy_req:reply(400, #{}, Body, Req0), State}
     end.
 
 to_headers(Headers) when is_list(Headers) ->

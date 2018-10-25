@@ -37,6 +37,8 @@
 -define(WRITE_Q, http_update).
 -define(NO_Q, no_queue).
 
+-define(TC(Expr, Msg), begin {Time, Res} = timer:tc(fun() -> Expr end), lager:debug("[~p] Msg = ~p", [Time, Msg]), Res end).
+
 -spec handle_request(
         OperationID :: atom(),
         Req :: cowboy_req:req(),
@@ -45,11 +47,16 @@
 handle_request(OperationID, Req, Context) ->
     run(queue(OperationID),
         fun() ->
-                handle_request_(OperationID, Req, Context)
+                ?TC(handle_request_(OperationID, Req, Context), Req)
         end).
 
 %% run(no_queue, F) -> F();
-run(Queue, F) -> jobs:run(Queue, F).
+run(Queue, F) ->
+    try aec_jobs_queues:run(Queue, F)
+    catch
+        error:{rejected, _} ->
+            {503, [], #{reason => <<"Temporary overload">>}}
+    end.
 
 %% read transactions
 queue('GetTopBlock')                            -> ?READ_Q;

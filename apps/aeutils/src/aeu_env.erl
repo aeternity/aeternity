@@ -13,11 +13,13 @@
 
 -export([user_config/0, user_config/1, user_config/2]).
 -export([user_map/0, user_map/1]).
--export([schema/0, schema/1, schema_properties/1]).
+-export([schema/0, schema/1]).
 -export([user_config_or_env/3, user_config_or_env/4]).
 -export([user_map_or_env/4]).
+-export([find_config/2]).
 -export([nested_map_get/2]).
 -export([read_config/0]).
+-export([parse_key_value_string/1]).
 -export([data_dir/1]).
 -export([check_config/1, check_config/2]).
 
@@ -110,6 +112,27 @@ user_map_or_env(CfgKey, App, EnvKey, Default) ->
             Value
     end.
 
+config_value(CfgKey, App, Env, Default) ->
+    {ok, Value} =find_config(CfgKey, [ user_config
+                                     , {env, App, Env}
+                                     , schema_default
+                                     , {value, Default} ]),
+    Value.
+
+find_config(CfgKey, [H|T]) ->
+    case find_config_(CfgKey, H) of
+        undefined -> find_config(CfgKey, T);
+        {ok,_} = Ok -> Ok
+    end;
+find_config(_, []) ->
+    undefined.
+
+find_config_(K, user_config       ) -> user_map(K);
+find_config_(_, {env, App, EnvKey}) -> get_env(App, EnvKey);
+find_config_(K, schema_default    ) -> default(K);
+find_config_(_, {value, V}        ) -> {ok, V}.
+
+
 %% The user_map() functions are equivalent to user_config(), but
 %% operate on a tree of maps rather than a tree of {K,V} tuples.
 %% Actually, the user_map() data is the original validated object,
@@ -172,31 +195,62 @@ schema() ->
             S
     end.
 
-schema(Key) when is_list(Key) ->
-    M = schema(),
-    case maps:find(Key, M) of
-        {ok, _} = Ok ->
-            Ok;
-        error ->
-            nested_map_get(Key, M)
+schema([H|T]) ->
+    case schema() of
+        #{<<"$schema">> := _, <<"properties">> := #{H := Tree}} ->
+            schema_find(T, Tree);
+        #{H := Tree} ->
+            schema_find(T, Tree);
+        _ ->
+            undefined
     end;
+schema([]) ->
+    {ok, schema()};
 schema(Key) ->
     case maps:find(Key, schema()) of
         {ok, _} = Ok -> Ok;
         error        -> undefined
     end.
 
-schema_properties(Key) when is_list(Key) ->
-    schema(intersperse_properties(Key)).
+schema_find([H|T], S) ->
+    case S of
+        #{<<"properties">> := #{H := Tree}} ->
+            schema_find(T, Tree);
+        #{H := Tree} ->
+            schema_find(T, Tree);
+        _ ->
+            undefined
+    end;
+schema_find([], S) ->
+    {ok, S}.
 
-intersperse_properties([<<"properties">> = H|T]) ->
-    [H|intersperse(T, H)];
-intersperse_properties(L) ->
-    [<<"properties">> | intersperse(L, <<"properties">>)].
+default(Key) when is_list(Key) ->
+    schema(Key ++ [<<"default">>]).
 
+parse_key_value_string(Bin) when is_binary(Bin) ->
+    %% Parse: expect (binary) string of type "S1:L1 [, ...] Sn:Ln", where
+    %% Sx is a string or non-negative integer, and Lx is a non-neg integer;
+    %% allow for whitespace."
+    Ls = [{opt_bin_to_integer(A), opt_bin_to_integer(B)}
+          || [A, B] <-
+                 [re:split(B, <<"\\h*:\\h*">>, [{return,binary}])
+                  || B <- re:split(Bin, <<"\\h*,\\h*">>, [{return, binary}])]],
+    true = lists:all(fun valid_kv_pair/1, Ls),
+    Ls.
 
-intersperse([], _) -> [];
-intersperse([H|T], K) -> [H,K|intersperse(T, K)].
+opt_bin_to_integer(B) ->
+    try binary_to_integer(B)
+    catch
+        error:_ ->
+            B
+    end.
+
+valid_kv_pair({A,B}) when is_integer(A), A >= 0;
+                             is_binary(A) ->
+    is_integer(B) andalso B >= 0;
+valid_kv_pair(_) ->
+    false.
+
 
 read_config() ->
     read_config(report).

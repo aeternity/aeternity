@@ -18,5 +18,9 @@
  {[ae,epoch,aecore,peers,blocked]            , gauge       , []},
  {[ae,epoch,aecore,peers,errored]            , gauge       , []},
  {[ae,epoch,aecore,peers,ping,success]       , counter     , []},
- {[ae,epoch,aecore,peers,ping,failure]       , counter     , []}
+ {[ae,epoch,aecore,peers,ping,failure]       , counter     , []},
+ {[ae,epoch,aecore,tx_pool,push]             , counter     , []},
+ {[ae,epoch,aecore,tx_pool,push,illegal]     , counter     , []},
+ {[ae,epoch,aecore,tx_pool,push,error]       , counter     , []},
+ {[ae,epoch,aecore,tx_pool,push,ignore]      , counter     , []}
 ].
