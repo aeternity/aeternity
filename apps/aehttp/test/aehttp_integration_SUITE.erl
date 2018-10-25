@@ -498,69 +498,69 @@ groups() ->
     ].
 
 channel_websocket_sequence() ->
-    [sc_ws_timeout_open,
-     sc_ws_open,
-     sc_ws_update,
-     sc_ws_close,
+    [{basic_open_close, [], [sc_ws_timeout_open,
+                             sc_ws_open,
+                             sc_ws_update,
+                             sc_ws_close]},
      %% ensure port is reusable
-     sc_ws_open,
-     sc_ws_update_fails_and_close,
-     sc_ws_open,
-     sc_ws_send_messages_and_close,
-     sc_ws_open,
-     sc_ws_conflict_and_close,
+     {failed_update, [], [sc_ws_open,
+                          sc_ws_update_fails_and_close]},
+     {generic_messages, [], [sc_ws_open,
+                             sc_ws_send_messages_and_close]},
+     {update_conflict, [], [sc_ws_open,
+                            sc_ws_conflict_and_close]},
      %% initiator can start close mutual
-     sc_ws_open,
-     sc_ws_update,
-     sc_ws_close_mutual_initiator,
+     {initiator_can_start_close_mutual, [], [sc_ws_open,
+                                             sc_ws_update,
+                                             sc_ws_close_mutual_initiator]},
      %% responder can start close mutual
-     sc_ws_open,
-     sc_ws_update,
-     sc_ws_close_mutual_responder,
+     {responder_can_start_close_mutual, [], [sc_ws_open,
+                                             sc_ws_update,
+                                             sc_ws_close_mutual_responder]},
      %% possible to leave and reestablish channel
-     sc_ws_open,
-     sc_ws_leave,
-     sc_ws_reestablish,
-     sc_ws_update,
-     sc_ws_close_mutual_initiator,
+     {leave_reestablish, [], [sc_ws_open,
+                              sc_ws_leave,
+                              sc_ws_reestablish,
+                              sc_ws_update,
+                              sc_ws_close_mutual_initiator]},
      %% initiator can make a deposit
-     sc_ws_open,
-     sc_ws_update,
-     sc_ws_deposit_initiator_and_close,
+     {initiator_deposit, [], [sc_ws_open,
+                              sc_ws_update,
+                              sc_ws_deposit_initiator_and_close]},
      %% responder can make a deposit
-     sc_ws_open,
-     sc_ws_update,
-     sc_ws_deposit_responder_and_close,
+     {responder_deposit, [], [sc_ws_open,
+                              sc_ws_update,
+                              sc_ws_deposit_responder_and_close]},
      %% initiator can make a withdrawal
-     sc_ws_open,
-     sc_ws_update,
-     sc_ws_withdraw_initiator_and_close,
+     {initiator_withdrawal, [], [sc_ws_open,
+                                 sc_ws_update,
+                                 sc_ws_withdraw_initiator_and_close]},
      %% responder can make a withdrawal
-     sc_ws_open,
-     sc_ws_update,
-     sc_ws_withdraw_responder_and_close,
+     {responder_withdrawal, [], [sc_ws_open,
+                                 sc_ws_update,
+                                 sc_ws_withdraw_responder_and_close]},
      %% responder can make a withdrawal
-     sc_ws_open,
-     sc_ws_update,
-     sc_ws_contracts,
+     {contracts, [], [sc_ws_open,
+                      sc_ws_update,
+                      sc_ws_contracts]},
      %% both can refer on-chain objects - oracle
-     sc_ws_open,
-     sc_ws_update,
-     sc_ws_oracle_contract,
+     {onchain_objects_oracles, [], [sc_ws_open,
+                                    sc_ws_update,
+                                    sc_ws_oracle_contract]},
      %% both can refer on-chain objects - name service
-     sc_ws_open,
-     sc_ws_update,
-     sc_ws_nameservice_contract,
+     {onchain_objects_names, [], [sc_ws_open,
+                                  sc_ws_update,
+                                  sc_ws_nameservice_contract]},
 
      %% both can refer on-chain objects - chain environment
-     sc_ws_open,
-     sc_ws_update,
-     sc_ws_enviroment_contract,
+     {onchain_objects_chain_env, [], [sc_ws_open,
+                                      sc_ws_update,
+                                      sc_ws_enviroment_contract]},
 
      %% both can call a remote contract
-     sc_ws_open,
-     sc_ws_update,
-     sc_ws_remote_call_contract
+     {both_can_call_remote_contract, [], [sc_ws_open,
+                                          sc_ws_update,
+                                          sc_ws_remote_call_contract]}
     ].
 
 
@@ -3357,10 +3357,10 @@ sc_ws_open(Config) ->
 
     ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt, #{}, Config),
     {ok, IConnPid} = channel_ws_start(initiator,
-                                           maps:put(host, <<"localhost">>, ChannelOpts)),
+                                           maps:put(host, <<"localhost">>, ChannelOpts), Config),
     ok = ?WS:register_test_for_channel_events(IConnPid, [info, get, sign, on_chain_tx]),
 
-    {ok, RConnPid} = channel_ws_start(responder, ChannelOpts),
+    {ok, RConnPid} = channel_ws_start(responder, ChannelOpts, Config),
 
     ok = ?WS:register_test_for_channel_events(RConnPid, [info, get, sign, on_chain_tx]),
 
@@ -3399,14 +3399,20 @@ channel_send_conn_open_infos(RConnPid, IConnPid, Config) ->
 
 channel_send_locking_infos(IConnPid, RConnPid, Config) ->
     {ok, #{<<"event">> := <<"own_funding_locked">>}} = wait_for_channel_event(IConnPid, info, Config),
+    ?WS:log(IConnPid, info, "Funding has been confirmed locally on-chain"),
     {ok, #{<<"event">> := <<"own_funding_locked">>}} = wait_for_channel_event(RConnPid, info, Config),
+    ?WS:log(RConnPid, info, "Funding has been confirmed locally on-chain"),
 
     {ok, #{<<"event">> := <<"funding_locked">>}} = wait_for_channel_event(IConnPid, info, Config),
-    {ok, #{<<"event">> := <<"funding_locked">>}} = wait_for_channel_event(RConnPid, info, Config).
+    ?WS:log(IConnPid, info, "Funding has been confirmed on-chain by other party"),
+    {ok, #{<<"event">> := <<"funding_locked">>}} = wait_for_channel_event(RConnPid, info, Config),
+    ?WS:log(RConnPid, info, "Funding has been confirmed on-chain by other party").
 
 channel_send_chan_open_infos(RConnPid, IConnPid, Config) ->
     {ok, #{<<"event">> := <<"open">>}} = wait_for_channel_event(IConnPid, info, Config),
-    {ok, #{<<"event">> := <<"open">>}} = wait_for_channel_event(RConnPid, info, Config).
+    ?WS:log(IConnPid, info, "Channel is `open` and ready to use"),
+    {ok, #{<<"event">> := <<"open">>}} = wait_for_channel_event(RConnPid, info, Config),
+    ?WS:log(RConnPid, info, "Channel is `open` and ready to use").
 
 channel_participants_balances(IPubkey, RPubkey) ->
     {ok, 200, #{<<"balance">> := BalI}} =
@@ -3480,14 +3486,18 @@ sc_ws_update_fails_and_close(Config) ->
         proplists:get_value(channel_clients, ConfigList),
     lists:foreach(
         fun(Sender) ->
+            LogPid = maps:get(Sender, Conns),
+            ?WS:log(LogPid, info, "Failing update, insufficient balance"),
             {ok, #{<<"reason">> := <<"insufficient_balance">>,
                   <<"request">> := _Request0}} = channel_update_fail(
                                                    Conns, Sender,
                                                    Participants, 10000, Config),
+            ?WS:log(LogPid, info, "Failing update, negative amount"),
             {ok, #{<<"reason">> := <<"negative_amount">>,
                   <<"request">> := _Request1}} = channel_update_fail(
                                                    Conns, Sender,
                                                    Participants, -1, Config),
+            ?WS:log(LogPid, info, "Failing update, invalid pubkeys"),
             {ok, #{<<"reason">> := <<"invalid_pubkeys">>,
                   <<"request">> := _Request2}} =
                 channel_update_fail(Conns, Sender,
@@ -3848,10 +3858,10 @@ sc_ws_leave(Config) ->
 sc_ws_reestablish(Config) ->
     {sc_ws_leave, ConfigList} = ?config(saved_config, Config),
     ReestablOptions = proplists:get_value(channel_reestabl_options, ConfigList),
-    {ok, RrConnPid} = channel_ws_start(responder, ReestablOptions),
+    {ok, RrConnPid} = channel_ws_start(responder, ReestablOptions, Config),
     {ok, IrConnPid} = channel_ws_start(initiator, maps:put(
                                                     host, <<"localhost">>,
-                                                    ReestablOptions)),
+                                                    ReestablOptions), Config),
     ok = ?WS:register_test_for_channel_events(
             RrConnPid, [info, update]),
     ok = ?WS:register_test_for_channel_events(
@@ -4834,7 +4844,7 @@ sc_ws_timeout_open(Config) ->
 
     ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt,
                                   #{timeout_accept => 100}, Config),
-    {ok, IConnPid} = channel_ws_start(initiator, maps:put(host, <<"localhost">>, ChannelOpts)),
+    {ok, IConnPid} = channel_ws_start(initiator, maps:put(host, <<"localhost">>, ChannelOpts), Config),
     ok = ?WS:register_test_for_channel_event(IConnPid, info),
     ok = wait_for_channel_event(<<"died">>, IConnPid, info, Config),
     ok.
@@ -5437,9 +5447,31 @@ minimal_fee_and_blocks_to_mine(Amount, ChecksCnt) ->
     BlocksToMine = trunc(math:ceil(TokensRequired / MineReward)) + Delay,
     {BlocksToMine, Fee}.
 
-channel_ws_start(Role, Opts) ->
+channel_ws_start(Role, Opts, Config) ->
+    Opts1 = set_log_option(Opts, Config),
     {Host, Port} = channel_ws_host_and_port(),
-    ?WS:start_channel(Host, Port, Role, Opts).
+    ?WS:start_channel(Host, Port, Role, Opts1).
+
+set_log_option(Opts, Config) ->
+    %% TCLogBase = atom_to_list(?config(tc_name, Config)),
+    TCLogBase = log_basename(Config),
+    MsgLogFile = filename:join(?config(priv_dir, Config), TCLogBase ++ ".md"),
+    ct:log("MsgLogFile = ~p", [MsgLogFile]),
+    Opts#{ {int,logfile} => MsgLogFile }.
+
+log_basename(Config) ->
+    GOpts = ?config(tc_group_properties, Config),
+    GPath = ?config(tc_group_path, Config),
+    GName = ?config(name, GOpts),
+    Path = [?config(name, Opts) || Opts <- GPath],
+    intersperse(remove_leading_all(lists:reverse([GName|Path])), ".").
+
+remove_leading_all([all|T]) -> T;
+remove_leading_all(L      ) -> L.
+
+intersperse([H|T], Delim) ->
+    lists:flatten([H | [[Delim, E] || E <- T]]).
+
 
 sign_and_post_tx(EncodedUnsignedTx) ->
     {ok, SerializedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedUnsignedTx),
@@ -5540,11 +5572,13 @@ wait_for_channel_event_(ConnPid, Action, <<"json-rpc">>) ->
         {{ok, #{ <<"jsonrpc">> := <<"2.0">>
                , <<"method">>  := <<Method:Sz/binary, _/binary>>
                , <<"params">>  := Params }}, _} ->
-            {ok, Params};
+            Data = maps:get(<<"data">>, Params, no_data),
+            {ok, Data};
         {{ok, Tag, #{ <<"jsonrpc">> := <<"2.0">>
                     , <<"method">>  := <<Method:Sz/binary, _/binary>>
                     , <<"params">>  := Params }}, _} ->
-            {ok, Tag, Params}
+            Data = maps:get(<<"data">>, Params, no_data),
+            {ok, Tag, Data}
     end.
 
 wait_for_channel_event(Event, ConnPid, Type, Config) ->
@@ -5554,12 +5588,8 @@ wait_for_channel_event_(Event, ConnPid, Type, <<"legacy">>) ->
     {ok, #{<<"event">> := Event}} = ?WS:wait_for_channel_event(ConnPid, Type),
     ok;
 wait_for_channel_event_(Event, ConnPid, Action, <<"json-rpc">>) ->
-    Method0 = method_pfx(Action),
-    Sz = byte_size(Method0),
-    {ok, #{ <<"jsonrpc">> := <<"2.0">>
-          , <<"method">>  := <<Method0:Sz/binary, _/binary>>
-          , <<"params">>  := #{<<"event">> := Event} }} =
-        ?WS:wait_for_channel_msg(ConnPid, Action),
+    {ok, #{ <<"data">> := #{ <<"event">> := Event } }} =
+        wait_for_json_rpc_action(ConnPid, Action),
     ok.
 
 wait_for_channel_leave_msg(ConnPid, Config) ->
@@ -5571,11 +5601,20 @@ wait_for_channel_leave_msg_(ConnPid, <<"legacy">> = L) ->
         wait_for_channel_msg_(ConnPid, leave, L),
     #{ <<"state">> := St } = P,
     {ok, #{id => ChId, state => St}};
-wait_for_channel_leave_msg_(ConnPid, <<"json-rpc">> = J) ->
-    {ok, #{ <<"channel_id">> := ChId
-          , <<"state">>      := St }} =
-        wait_for_channel_event_(ConnPid, leave, J),
+wait_for_channel_leave_msg_(ConnPid, <<"json-rpc">>) ->
+    {ok, #{ <<"channel_id">> := ChId,
+            <<"data">> := #{ <<"state">> := St } }} =
+        wait_for_json_rpc_action(ConnPid, leave),
     {ok, #{id => ChId, state => St}}.
+
+wait_for_json_rpc_action(ConnPid, Action) ->
+    Method0 = method_pfx(Action),
+    Sz = byte_size(Method0),
+    {ok, #{ <<"jsonrpc">> := <<"2.0">>
+          , <<"method">>  := <<Method0:Sz/binary, _/binary>>
+          , <<"params">>  := Params }} =
+        ?WS:wait_for_channel_msg(ConnPid, Action),
+    {ok, Params}.
 
 lift_reason(#{ <<"message">> := <<"Rejected">>
              , <<"data">>    := Data } = E) ->
