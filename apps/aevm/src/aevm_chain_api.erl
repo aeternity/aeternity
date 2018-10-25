@@ -58,7 +58,7 @@
                             DecodedQType :: aeso_sophia:type(),
                             DecodedRType :: aeso_sophia:type(),
                             ChainState :: chain_state()) ->
-    {ok, aetx:tx()}.
+    {ok, aetx:tx()} | {error, term()}.
 
 -callback oracle_register(Tx :: aetx:tx(),
                           Signature :: binary(),
@@ -71,7 +71,7 @@
                           QueryTTL :: aeo_oracles:ttl(),
                           ResponseTTL :: aeo_oracles:ttl(),
                           ChainState :: chain_state()) ->
-    {ok, aetx:tx()}.
+    {ok, aetx:tx()} | {error, term()}.
 
 -callback oracle_query(Tx :: aetx:tx(), State :: chain_state()) ->
     {ok, QueryId :: pubkey(), chain_state()} | {error, term()}.
@@ -81,7 +81,7 @@
                             Response :: term(),
                             ResponseTTL :: aeo_oracles:ttl(),
                             ChainState :: chain_state()) ->
-    {ok, aetx:tx()}.
+    {ok, aetx:tx()} | {error, term()}.
 
 -callback oracle_respond(Tx :: aetx:tx(),
                          Signature :: binary(),
@@ -91,7 +91,7 @@
 -callback oracle_extend_tx(Oracle :: pubkey(),
                            TTL :: aeo_oracles:ttl(),
                            ChainState :: chain_state()) ->
-    {ok, aetx:tx()}.
+    {ok, aetx:tx()} | {error, term()}.
 
 -callback oracle_extend(Tx :: aetx:tx(),
                         Signature :: binary(),
@@ -143,7 +143,7 @@
 -callback aens_preclaim_tx(Addr :: pubkey(),
                            CHash :: binary(),
                            ChainState :: chain_state()) ->
-    {ok, aetx:tx()}.
+    {ok, aetx:tx()} | {error, term()}.
 
 -callback aens_preclaim(Tx :: aetx:tx(),
                         Signature :: binary(),
@@ -154,7 +154,7 @@
                         Name :: binary(),
                         Salt :: integer(),
                         ChainState :: chain_state()) ->
-    {ok, aetx:tx()}.
+    {ok, aetx:tx()} | {error, term()}.
 
 -callback aens_claim(Tx :: aetx:tx(),
                      Signature :: binary(),
@@ -165,7 +165,7 @@
                            ToAddr :: pubkey(),
                            Hash :: binary(),
                            ChainState :: chain_state()) ->
-    {ok, aetx:tx()}.
+    {ok, aetx:tx()} | {error, term()}.
 
 -callback aens_transfer(Tx :: aetx:tx(),
                         Signature :: binary(),
@@ -175,7 +175,7 @@
 -callback aens_revoke_tx(Addr :: pubkey(),
                          Hash :: binary(),
                          ChainState :: chain_state()) ->
-    {ok, aetx:tx()}.
+    {ok, aetx:tx()} | {error, term()}.
 
 -callback aens_revoke(Tx :: aetx:tx(),
                       Signature :: binary(),
