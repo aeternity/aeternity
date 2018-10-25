@@ -184,20 +184,23 @@ oracle_call_register(_Value, Data, #chain{api = API, state = State} = Chain) ->
     case chain_ttl_delta(TTL, Chain) of
         {error, _} = Err -> Err;
         {ok, DeltaTTL = {delta, _}} ->
-            {ok, Tx} = API:oracle_register_tx(<<Acct:256>>, QFee, TTL, QFormat, RFormat, State),
-            Callback =
-                fun(ChainAPI, ChainState) ->
-                    case ChainAPI:oracle_register(Tx, to_sign(Sign0), ChainState) of
-                        {ok, <<OKey:256>>, ChainState1} -> {ok, OKey, ChainState1};
-                        {error, _} = Err                -> Err
-                    end
-                end,
-            SizeGas = size_gas(Tx),
-            StateGas = state_gas(oracle_registration, DeltaTTL),
-            DynGas = SizeGas + StateGas,
-            ?TEST_LOG("~s computed gas ~p - size gas: ~p, state gas: ~p (relative TTL: ~p)",
-                        [?FUNCTION_NAME, DynGas, SizeGas, StateGas, DeltaTTL]),
-            {ok, DynGas, fun() -> call_chain(Callback, Chain) end}
+            case API:oracle_register_tx(<<Acct:256>>, QFee, TTL, QFormat, RFormat, State) of
+                {error, _} = Err -> Err;
+                {ok, Tx} ->
+                    Callback =
+                        fun(ChainAPI, ChainState) ->
+                            case ChainAPI:oracle_register(Tx, to_sign(Sign0), ChainState) of
+                                {ok, <<OKey:256>>, ChainState1} -> {ok, OKey, ChainState1};
+                                {error, _} = Err                -> Err
+                            end
+                        end,
+                    SizeGas = size_gas(Tx),
+                    StateGas = state_gas(oracle_registration, DeltaTTL),
+                    DynGas = SizeGas + StateGas,
+                    ?TEST_LOG("~s computed gas ~p - size gas: ~p, state gas: ~p (relative TTL: ~p)",
+                                [?FUNCTION_NAME, DynGas, SizeGas, StateGas, DeltaTTL]),
+                    {ok, DynGas, fun() -> call_chain(Callback, Chain) end}
+            end
     end.
 
 oracle_call_query(Value, Data, #chain{api = API, state = State} = Chain) ->
@@ -209,20 +212,23 @@ oracle_call_query(Value, Data, #chain{api = API, state = State} = Chain) ->
             case chain_ttl_delta(QTTL, Chain) of
                 {error, _} = Err -> Err;
                 {ok, DeltaQTTL = {delta, _}} ->
-                    {ok, Tx} = API:oracle_query_tx(<<Oracle:256>>, Q, _QFee=Value, QTTL, RTTL, State),
-                    Callback =
-                        fun(ChainAPI, ChainState) ->
-                            case ChainAPI:oracle_query(Tx, ChainState) of
-                                {ok, <<QKey:256>>, ChainState1} -> {ok, QKey, ChainState1};
-                                {error, _} = Err                -> Err
-                            end
-                        end,
-                    SizeGas = size_gas(Tx),
-                    StateGas = state_gas(oracle_query, DeltaQTTL),
-                    DynGas = SizeGas + StateGas,
-                    ?TEST_LOG("~s computed gas ~p - size gas: ~p, state gas: ~p (relative TTL: ~p)",
-                                [?FUNCTION_NAME, DynGas, SizeGas, StateGas, DeltaQTTL]),
-                    {ok, DynGas, fun() -> call_chain(Callback, Chain) end}
+                    case API:oracle_query_tx(<<Oracle:256>>, Q, _QFee=Value, QTTL, RTTL, State) of
+                        {error, _} = Err -> Err;
+                        {ok, Tx} ->
+                            Callback =
+                                fun(ChainAPI, ChainState) ->
+                                    case ChainAPI:oracle_query(Tx, ChainState) of
+                                        {ok, <<QKey:256>>, ChainState1} -> {ok, QKey, ChainState1};
+                                        {error, _} = Err                -> Err
+                                    end
+                                end,
+                            SizeGas = size_gas(Tx),
+                            StateGas = state_gas(oracle_query, DeltaQTTL),
+                            DynGas = SizeGas + StateGas,
+                            ?TEST_LOG("~s computed gas ~p - size gas: ~p, state gas: ~p (relative TTL: ~p)",
+                                        [?FUNCTION_NAME, DynGas, SizeGas, StateGas, DeltaQTTL]),
+                            {ok, DynGas, fun() -> call_chain(Callback, Chain) end}
+                    end
             end;
         {error, _} = Err -> Err
     end.
@@ -242,15 +248,18 @@ oracle_call_respond(_Value, Data, #chain{api = API, state = State} = Chain) ->
                         {ok, RFormat} ->
                             ArgumentTypes = [word, word, sign_t(), RFormat],
                             [_, _, Sign0, R] = get_args(ArgumentTypes, Data),
-                            {ok, Tx} = API:oracle_respond_tx(OracleKey, QueryKey, R, DeltaRTTL, State),
-                            SizeGas = size_gas(Tx),
-                            StateGas = state_gas(oracle_response, DeltaRTTL),
-                            DynGas = SizeGas + StateGas,
-                            ?TEST_LOG("~s computed gas ~p - size gas: ~p, state gas: ~p (relative TTL: ~p)",
-                                      [?FUNCTION_NAME, DynGas, SizeGas, StateGas, DeltaRTTL]),
-                            Callback = fun(ChainAPI, ChainState) ->
-                                ChainAPI:oracle_respond(Tx, to_sign(Sign0), ChainState) end,
-                            {ok, DynGas, fun() -> cast_chain(Callback, Chain) end}
+                            case API:oracle_respond_tx(OracleKey, QueryKey, R, DeltaRTTL, State) of
+                                {error, _} = Err -> Err;
+                                {ok, Tx} ->
+                                    SizeGas = size_gas(Tx),
+                                    StateGas = state_gas(oracle_response, DeltaRTTL),
+                                    DynGas = SizeGas + StateGas,
+                                    ?TEST_LOG("~s computed gas ~p - size gas: ~p, state gas: ~p (relative TTL: ~p)",
+                                            [?FUNCTION_NAME, DynGas, SizeGas, StateGas, DeltaRTTL]),
+                                    Callback = fun(ChainAPI, ChainState) ->
+                                        ChainAPI:oracle_respond(Tx, to_sign(Sign0), ChainState) end,
+                                    {ok, DynGas, fun() -> cast_chain(Callback, Chain) end}
+                            end
                     end
             end
     end.
@@ -261,14 +270,17 @@ oracle_call_extend(_Value, Data, #chain{api = API, state = State} = Chain) ->
     case chain_ttl_delta(TTL, Chain) of
         {error, _} = Err -> Err;
         {ok, DeltaTTL = {delta, _}} ->
-            {ok, Tx} = API:oracle_extend_tx(<<Oracle:256>>, TTL, State),
-            Callback = fun(ChainAPI, ChainState) ->
-                               ChainAPI:oracle_extend(Tx, to_sign(Sign0), ChainState)
-                       end,
-            StateGas = state_gas(oracle_extension, DeltaTTL),
-            ?TEST_LOG("~s computed gas ~p - state gas: ~p (relative TTL: ~p)",
-                        [?FUNCTION_NAME, StateGas, StateGas, DeltaTTL]),
-            {ok, StateGas, fun() -> cast_chain(Callback, Chain) end}
+            case API:oracle_extend_tx(<<Oracle:256>>, TTL, State) of
+                {error, _} = Err -> Err;
+                {ok, Tx} ->
+                    Callback = fun(ChainAPI, ChainState) ->
+                                    ChainAPI:oracle_extend(Tx, to_sign(Sign0), ChainState)
+                            end,
+                    StateGas = state_gas(oracle_extension, DeltaTTL),
+                    ?TEST_LOG("~s computed gas ~p - state gas: ~p (relative TTL: ~p)",
+                                [?FUNCTION_NAME, StateGas, StateGas, DeltaTTL]),
+                    {ok, StateGas, fun() -> cast_chain(Callback, Chain) end}
+            end
     end.
 
 
@@ -316,29 +328,41 @@ aens_call_resolve(Data, Chain) ->
 
 aens_call_preclaim(Data, #chain{api = API, state = State} = Chain) ->
     [Addr, CHash, Sign0] = get_args([word, word, sign_t()], Data),
-    {ok, Tx} = API:aens_preclaim_tx(<<Addr:256>>, <<CHash:256>>, State),
-    SizeGas = size_gas(Tx),
-    Callback = fun(ChainAPI, ChainState) -> ChainAPI:aens_preclaim(Tx, to_sign(Sign0), ChainState) end,
-    {ok, SizeGas, fun() -> cast_chain(Callback, Chain) end}.
+    case API:aens_preclaim_tx(<<Addr:256>>, <<CHash:256>>, State) of
+        {ok, Tx} ->
+            SizeGas = size_gas(Tx),
+            Callback = fun(ChainAPI, ChainState) -> ChainAPI:aens_preclaim(Tx, to_sign(Sign0), ChainState) end,
+            {ok, SizeGas, fun() -> cast_chain(Callback, Chain) end};
+        {error, _} = Err -> Err
+    end.
 
 aens_call_claim(Data, #chain{api = API, state = State} = Chain) ->
     [Addr, Name, Salt, Sign0] = get_args([word, string, word, sign_t()], Data),
-    {ok, Tx} = API:aens_claim_tx(<<Addr:256>>, Name, Salt, State),
-    SizeGas = size_gas(Tx),
-    Callback = fun(ChainAPI, ChainState) -> ChainAPI:aens_claim(Tx, to_sign(Sign0), ChainState) end,
-    {ok, SizeGas, fun() -> cast_chain(Callback, Chain) end}.
+    case API:aens_claim_tx(<<Addr:256>>, Name, Salt, State) of
+        {ok, Tx} ->
+            SizeGas = size_gas(Tx),
+            Callback = fun(ChainAPI, ChainState) -> ChainAPI:aens_claim(Tx, to_sign(Sign0), ChainState) end,
+            {ok, SizeGas, fun() -> cast_chain(Callback, Chain) end};
+        {error, _} = Err -> Err
+    end.
 
 aens_call_transfer(Data, #chain{api = API, state = State} = Chain) ->
     [From, To, Hash, Sign0] = get_args([word, word, word, sign_t()], Data),
-    {ok, Tx} = API:aens_transfer_tx(<<From:256>>, <<To:256>>, <<Hash:256>>, State),
-    Callback = fun(ChainAPI, ChainState) -> ChainAPI:aens_transfer(Tx, to_sign(Sign0), ChainState) end,
-    no_dynamic_gas(fun() -> cast_chain(Callback, Chain) end).
+    case API:aens_transfer_tx(<<From:256>>, <<To:256>>, <<Hash:256>>, State) of
+        {ok, Tx} ->
+            Callback = fun(ChainAPI, ChainState) -> ChainAPI:aens_transfer(Tx, to_sign(Sign0), ChainState) end,
+            no_dynamic_gas(fun() -> cast_chain(Callback, Chain) end);
+        {error, _} = Err -> Err
+    end.
 
 aens_call_revoke(Data, #chain{api = API, state = State} = Chain) ->
     [Addr, Hash, Sign0] = get_args([word, word, sign_t()], Data),
-    {ok, Tx} = API:aens_revoke_tx(<<Addr:256>>, <<Hash:256>>, State),
-    Callback = fun(ChainAPI, ChainState) -> ChainAPI:aens_revoke(Tx, to_sign(Sign0), ChainState) end,
-    no_dynamic_gas(fun() -> cast_chain(Callback, Chain) end).
+    case API:aens_revoke_tx(<<Addr:256>>, <<Hash:256>>, State) of
+        {ok, Tx} ->
+            Callback = fun(ChainAPI, ChainState) -> ChainAPI:aens_revoke(Tx, to_sign(Sign0), ChainState) end,
+            no_dynamic_gas(fun() -> cast_chain(Callback, Chain) end);
+        {error, _} = Err -> Err
+    end.
 
 %% ------------------------------------------------------------------
 %% Map operations.

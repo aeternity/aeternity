@@ -189,15 +189,18 @@ spend(Tx, State) ->
 %%    Oracle
 -spec oracle_register_tx(aec_keys:pubkey(), non_neg_integer(), aeo_oracles:ttl(),
                          aeso_sophia:type(), aeso_sophia:type(), chain_state()) ->
-    {ok, aetx:tx()}.
-oracle_register_tx(AccountKey, QueryFee, TTL, QueryFormat, ResponseFormat, State) ->
+    {ok, aetx:tx()} | {error, term()}.
+oracle_register_tx(AccountKey, QueryFee, TTL, QFormat, RFormat, State) ->
+    on_chain_only(State, fun() -> oracle_register_tx_(AccountKey, QueryFee, TTL, QFormat, RFormat, State) end).
+
+oracle_register_tx_(AccountKey, QueryFee, TTL, QFormat, RFormat, State) ->
     Nonce = next_nonce(AccountKey, State),
     %% Note: The nonce of the account is incremented.
     %% This means that if you register an oracle for an account other than
     %% the contract account through a contract that contract nonce is incremented
     %% "behind your back".
-    BinaryQueryFormat = aeso_data:to_binary(QueryFormat),
-    BinaryResponseFormat = aeso_data:to_binary(ResponseFormat),
+    BinaryQueryFormat = aeso_data:to_binary(QFormat),
+    BinaryResponseFormat = aeso_data:to_binary(RFormat),
     Spec =
         #{account_id      => aec_id:create(account, AccountKey),
           nonce           => Nonce,
@@ -227,8 +230,10 @@ oracle_register_(Tx, Signature, State = #state{account = ContractKey}) ->
         Err = {error, _} -> Err
     end.
 
+oracle_query_tx(Oracle, Q, Value, QTTL, RTTL, State) ->
+    on_chain_only(State, fun() -> oracle_query_tx_(Oracle, Q, Value, QTTL, RTTL, State) end).
 
-oracle_query_tx(Oracle, Q, Value, QTTL, RTTL,
+oracle_query_tx_(Oracle, Q, Value, QTTL, RTTL,
                 State = #state{account = ContractKey}) ->
     Nonce = next_nonce(State),
     QueryData = aeso_data:to_binary(Q),
@@ -259,8 +264,11 @@ oracle_query_(Tx, State) ->
 
 -spec oracle_respond_tx(aec_keys:pubkey(), aeo_query:id(), binary(),
                         aeo_oracles:relative_ttl(), chain_state()) ->
-    {ok, aetx:tx()}.
+    {ok, aetx:tx()} | {error, term()}.
 oracle_respond_tx(Oracle, QueryId, Response, ResponseTTL, State) ->
+    on_chain_only(State, fun() -> oracle_respond_tx_(Oracle, QueryId, Response, ResponseTTL, State) end).
+
+oracle_respond_tx_(Oracle, QueryId, Response, ResponseTTL, State) ->
     Nonce = next_nonce(Oracle, State),
     Spec =
         #{oracle_id    => aec_id:create(oracle, Oracle),
@@ -289,8 +297,11 @@ oracle_respond_(Tx, Signature, State = #state{ account = ContractKey }) ->
     end.
 
 -spec oracle_extend_tx(aec_keys:pubkey(), aeo_oracles:ttl(), chain_state()) ->
-    {ok, aetx:tx()}.
+    {ok, aetx:tx()} | {error, term()}.
 oracle_extend_tx(Oracle, TTL, State) ->
+    on_chain_only(State, fun() -> oracle_extend_tx_(Oracle, TTL, State) end).
+
+oracle_extend_tx_(Oracle, TTL, State) ->
     Nonce = next_nonce(Oracle, State),
     Spec =
         #{oracle_id  => aec_id:create(oracle, Oracle),
@@ -432,8 +443,11 @@ decode_as(Type, Val) ->
     {error, out_of_gas}.
 
 -spec aens_preclaim_tx(binary(), binary(), chain_state()) ->
-    {ok, aetx:tx()}.
+    {ok, aetx:tx()} | {error, term()}.
 aens_preclaim_tx(Addr, CHash, State) ->
+    on_chain_only(State, fun() -> aens_preclaim_tx_(Addr, CHash, State) end).
+
+aens_preclaim_tx_(Addr, CHash, State) ->
     Nonce = next_nonce(Addr, State),
     Spec =
         #{ account_id    => aec_id:create(account, Addr),
@@ -456,8 +470,11 @@ aens_preclaim_(Tx, Signature, #state{ account = ContractKey} = State) ->
     end.
 
 -spec aens_claim_tx(aec_keys:pubkey(), binary(), integer(), chain_state()) ->
-    {ok, aetx:tx()}.
+    {ok, aetx:tx()} | {error, term()}.
 aens_claim_tx(Addr, Name, Salt, State) ->
+    on_chain_only(State, fun() -> aens_claim_tx_(Addr, Name, Salt, State) end).
+
+aens_claim_tx_(Addr, Name, Salt, State) ->
     Nonce = next_nonce(Addr, State),
     Spec =
         #{ account_id => aec_id:create(account, Addr),
@@ -484,8 +501,11 @@ aens_claim_(Tx, Signature, #state{ account = ContractKey } = State) ->
     end.
 
 -spec aens_transfer_tx(aec_keys:pubkey(), aec_keys:pubkey(), binary(), chain_state()) ->
-    {ok, aetx:tx()}.
+    {ok, aetx:tx()} | {error, term()}.
 aens_transfer_tx(FromAddr, ToAddr, Hash, State) ->
+    on_chain_only(State, fun() -> aens_transfer_tx_(FromAddr, ToAddr, Hash, State) end).
+
+aens_transfer_tx_(FromAddr, ToAddr, Hash, State) ->
     Nonce = next_nonce(FromAddr, State),
     Spec =
         #{ account_id   => aec_id:create(account, FromAddr),
@@ -511,8 +531,11 @@ aens_transfer_(Tx, Signature, #state{ account = ContractKey } = State) ->
     end.
 
 -spec aens_revoke_tx(aec_keys:pubkey(), binary(), chain_state()) ->
-    {ok, aetx:tx()}.
+    {ok, aetx:tx()} | {error, term()}.
 aens_revoke_tx(Addr, Hash, State) ->
+    on_chain_only(State, fun() -> aens_revoke_tx_(Addr, Hash, State) end).
+
+aens_revoke_tx_(Addr, Hash, State) ->
     Nonce = next_nonce(Addr, State),
     Spec =
         #{ account_id => aec_id:create(account, Addr),
