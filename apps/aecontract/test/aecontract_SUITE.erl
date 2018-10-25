@@ -2158,7 +2158,7 @@ sophia_oracles_gas_ttl__measure_gas_used(Sc, Height, Gas) ->
 %% Test that gas charged by oracle primop depends on TTL of state object.
 %% Test approach: run primop with low and high TTLs, then compare consumed gas. This proves that TTL-related gas computation kicks in without relying on absolute minimum value of gas used.
 sophia_oracles_gas_ttl__oracle_registration(_Cfg) ->
-    {Part, Whole} = aec_governance:state_gas_cost_per_block(oracle_registration),
+    {Part, Whole} = aec_governance:state_gas_per_block(oracle_registration),
     ?assertMatch(X when X > 0, Whole), %% Hardcoded expectation on governance - for test readability.
     ?assertMatch(X when X > 0, Part), %% Hardcoded expectation on governance - for test readability.
     MM = fun(H, Ttl, Gas) ->
@@ -2176,9 +2176,13 @@ sophia_oracles_gas_ttl__oracle_registration(_Cfg) ->
     %% Smoke test.
     ?assertMatch({{}, _}, Rel(H, 1)),
     G = fun({{}=_Result, GasUsed}) -> GasUsed end,
-    %% TTL increases gas used.
-    ?assertEqual(Part + G(Rel(H, 1        )), G(Rel(H, 1 +   Whole))),
-    ?assertEqual(Part + G(Rel(H, 1 + Whole)), G(Rel(H, 1 + 2*Whole))),
+    %% This test uses 2 different TTLs that have the same number of digits.
+    %% Since there is a primop in the contract call and the primop includes
+    %% the TTL, the serialized tx representing the primop has the same size
+    %% for TTLs with the same number of digits. Different numbers of digits
+    %% would not work as there would be different size gas for the primop.
+    ?assertEqual(Part + G(Rel(H, 1 +   Whole)), G(Rel(H, 1 + 2*Whole))),
+    ?assertEqual(Part + G(Rel(H, 1 + 2*Whole)), G(Rel(H, 1 + 3*Whole))),
     %% Gas used for absolute TTL is same(ish) as relative.
     Abs = fun(He, Ttl) -> M(He, ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Ttl)) end,
     RelGas = G(Rel(H, 1 + Whole)),
@@ -2196,7 +2200,7 @@ sophia_oracles_gas_ttl__oracle_registration(_Cfg) ->
     ok.
 
 sophia_oracles_gas_ttl__oracle_extension(_Cfg) ->
-    {Part, Whole} = aec_governance:state_gas_cost_per_block(oracle_extension),
+    {Part, Whole} = aec_governance:state_gas_per_block(oracle_extension),
     ?assertMatch(X when X > 0, Whole), %% Hardcoded expectation on governance - for test readability.
     ?assertMatch(X when X > 0, Part), %% Hardcoded expectation on governance - for test readability.
     MM = fun(H, Ttl, Gas) ->
@@ -2215,8 +2219,8 @@ sophia_oracles_gas_ttl__oracle_extension(_Cfg) ->
     ?assertMatch({{}, _}, Rel(H, 1)),
     G = fun({{}=_Result, GasUsed}) -> GasUsed end,
     %% TTL increases gas used.
-    ?assertEqual(Part + G(Rel(H, 1        )), G(Rel(H, 1 +   Whole))),
-    ?assertEqual(Part + G(Rel(H, 1 + Whole)), G(Rel(H, 1 + 2*Whole))),
+    ?assertEqual(Part + G(Rel(H, 1 +   Whole)), G(Rel(H, 1 + 2*Whole))),
+    ?assertEqual(Part + G(Rel(H, 1 + 2*Whole)), G(Rel(H, 1 + 3*Whole))),
     %% Enough gas for base cost though not enough for all TTL causes out-of-gas.
     ?assertMatch(
        {{error, <<"out_of_gas">>}, _},
@@ -2228,7 +2232,7 @@ sophia_oracles_gas_ttl__oracle_extension(_Cfg) ->
     ok.
 
 sophia_oracles_gas_ttl__query(_Cfg) ->
-    {Part, Whole} = aec_governance:state_gas_cost_per_block(oracle_query),
+    {Part, Whole} = aec_governance:state_gas_per_block(oracle_query),
     ?assertMatch(X when X > 0, Whole), %% Hardcoded expectation on governance - for test readability.
     ?assertMatch(X when X > 0, Part), %% Hardcoded expectation on governance - for test readability.
     MM = fun(H, Ttl, Gas) ->
@@ -2247,8 +2251,8 @@ sophia_oracles_gas_ttl__query(_Cfg) ->
     ?assertMatch({{}, _}, Rel(H, 1)),
     G = fun({{}=_Result, GasUsed}) -> GasUsed end,
     %% TTL increases gas used.
-    ?assertEqual(Part + G(Rel(H, 1        )), G(Rel(H, 1 +   Whole))),
-    ?assertEqual(Part + G(Rel(H, 1 + Whole)), G(Rel(H, 1 + 2*Whole))),
+    ?assertEqual(Part + G(Rel(H, 1 +   Whole)), G(Rel(H, 1 + 2*Whole))),
+    ?assertEqual(Part + G(Rel(H, 1 + 2*Whole)), G(Rel(H, 1 + 3*Whole))),
     %% Gas used for absolute TTL is same(ish) as relative.
     Abs = fun(He, Ttl) -> M(He, ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Ttl)) end,
     RelGas = G(Rel(H, 1 + Whole)),
@@ -2266,7 +2270,7 @@ sophia_oracles_gas_ttl__query(_Cfg) ->
     ok.
 
 sophia_oracles_gas_ttl__response(_Cfg) ->
-    {Part, Whole} = aec_governance:state_gas_cost_per_block(oracle_response),
+    {Part, Whole} = aec_governance:state_gas_per_block(oracle_response),
     ?assertMatch(X when X > 0, Whole), %% Hardcoded expectation on governance - for test readability.
     ?assertMatch(X when X > 0, Part), %% Hardcoded expectation on governance - for test readability.
     MM = fun(H, Ttl, Gas) ->
@@ -2285,8 +2289,8 @@ sophia_oracles_gas_ttl__response(_Cfg) ->
     ?assertMatch({{}, _}, Rel(H, 1)),
     G = fun({{}=_Result, GasUsed}) -> GasUsed end,
     %% TTL increases gas used.
-    ?assertEqual(Part + G(Rel(H, 1        )), G(Rel(H, 1 +   Whole))),
-    ?assertEqual(Part + G(Rel(H, 1 + Whole)), G(Rel(H, 1 + 2*Whole))),
+    ?assertEqual(Part + G(Rel(H, 1 +   Whole)), G(Rel(H, 1 + 2*Whole))),
+    ?assertEqual(Part + G(Rel(H, 1 + 2*Whole)), G(Rel(H, 1 + 3*Whole))),
     %% Enough gas for base cost though not enough for all TTL causes out-of-gas.
     ?assertMatch(
        {{error, <<"out_of_gas">>}, _},

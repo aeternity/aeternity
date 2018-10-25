@@ -8,7 +8,7 @@
 
 -module(aevm_opcodes).
 
--export([ op_base_cost/1
+-export([ op_base_gas/1
         , op_name/1
         ]).
 
@@ -21,9 +21,9 @@
 op_name(OP) -> element(1, opcode(OP)).
 %% op_pop(OP) -> element(2, opcode(OP)).
 %% op_push(OP) -> element(3, opcode(OP)).
-op_base_cost(OP) -> element(4, opcode(OP)).
+op_base_gas(OP) -> element(4, opcode(OP)).
 
-%% @doc Opcodes defined as {OPCODE, POPPED, PUSHED, BASE_GAS_COST}
+%% @doc Opcodes defined as {OPCODE, POPPED, PUSHED, BASE_GAS}
 
 opcode(?STOP)           -> {aeb_opcodes:mnemonic(?STOP)           ,  0,  0, ?GZERO};
 opcode(?ADD)            -> {aeb_opcodes:mnemonic(?ADD)            ,  2,  1, ?GVERYLOW};

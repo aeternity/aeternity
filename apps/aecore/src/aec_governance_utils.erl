@@ -1,9 +1,9 @@
 -module(aec_governance_utils).
 
 %% API
--export([state_gas_cost/2]).
+-export([state_gas/2]).
 
-state_gas_cost(_CostPerKeyBlock = {Part, Whole}, NKeyBlocks)
+state_gas(_GasPerKeyBlock = {Part, Whole}, NKeyBlocks)
   when is_integer(Whole), Whole > 0,
        is_integer(Part), Part >= 0,
        is_integer(NKeyBlocks), NKeyBlocks >= 0 ->

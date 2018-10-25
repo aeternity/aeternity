@@ -26,6 +26,10 @@
          for_client/1
         ]).
 
+-export([account_id/1,
+         name_id/1
+        ]).
+
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -82,6 +86,14 @@ ttl(#ns_revoke_tx{ttl = TTL}) ->
 -spec nonce(tx()) -> non_neg_integer().
 nonce(#ns_revoke_tx{nonce = Nonce}) ->
     Nonce.
+
+-spec account_id(tx()) -> aec_id:id().
+account_id(#ns_revoke_tx{account_id = AccountId}) ->
+    AccountId.
+
+-spec name_id(tx()) -> aec_id:id().
+name_id(#ns_revoke_tx{name_id = NameId}) ->
+    NameId.
 
 -spec origin(tx()) -> aec_keys:pubkey().
 origin(#ns_revoke_tx{} = Tx) ->

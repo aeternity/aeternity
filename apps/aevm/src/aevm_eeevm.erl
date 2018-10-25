@@ -1340,7 +1340,7 @@ next_instruction(CP, StateWithOpGas, StateOut) ->
 spend_call_gas(State, OP) when OP =:= ?CALL;
                                OP =:= ?CALLCODE;
                                OP =:= ?DELEGATECALL ->
-    spend_gas_common({call_op, OP}, aevm_gas:op_cost(?CALL, State), State).
+    spend_gas_common({call_op, OP}, aevm_gas:op_gas(?CALL, State), State).
 
 spend_op_gas(?CALL, State) ->
     %% Delay this until the actual operation
@@ -1349,17 +1349,17 @@ spend_op_gas(?CALLCODE, State) ->
     %% Delay this until the actual operation
     State;
 spend_op_gas(Op, State) ->
-    spend_gas_common({op, Op}, aevm_gas:op_cost(Op, State), State).
+    spend_gas_common({op, Op}, aevm_gas:op_gas(Op, State), State).
 
 spend_mem_gas(StateWithOpGas, StateOut) ->
-    spend_gas_common({mem}, aevm_gas:mem_cost(StateWithOpGas, StateOut), StateOut).
+    spend_gas_common({mem}, aevm_gas:mem_gas(StateWithOpGas, StateOut), StateOut).
 
-spend_gas_common(_Resource, Cost, State) ->
-    Gas  = aevm_eeevm_state:gas(State),
-    case Gas >= Cost of
-        true ->  aevm_eeevm_state:set_gas(Gas - Cost, State);
+spend_gas_common(_Resource, Gas, State) ->
+    GasLimit  = aevm_eeevm_state:gas(State),
+    case GasLimit >= Gas of
+        true ->  aevm_eeevm_state:set_gas(GasLimit - Gas, State);
         false ->
-            ?TEST_LOG("Out of gas spending ~p gas for ~p", [Cost, _Resource]),
+            ?TEST_LOG("Out of gas spending ~p gas for ~p", [Gas, _Resource]),
             eval_error(out_of_gas, State)
     end.
 
@@ -1416,7 +1416,7 @@ get_call_input(StateIn, IOffsetIx, ISizeIx) ->
         ?AEVM_01_Solidity_01 ->
             {I, State};
         ?AEVM_01_Sophia_01 ->
-            {I, spend_gas_common({call_data}, aevm_gas:mem_cost(byte_size(I) div 32), State)}
+            {I, spend_gas_common({call_data}, aevm_gas:mem_gas(byte_size(I) div 32), State)}
     end.
 
 recursive_call1(StateIn, Op) ->
@@ -1501,8 +1501,8 @@ recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend)
             {OutGas, ReturnState, R} =
                 case aevm_eeevm_state:call_contract(Caller, Dest, CallGas, Value, I, State8) of
                     {ok, Res, GasSpent, OutState1} -> {CallGas - GasSpent, OutState1, Res};
-                    {error, ?AEVM_PRIMOP_ERR_REASON_OOG(_OogResource, _OogCost, State9)} ->
-                        ?TEST_LOG("Out of gas spending ~p gas for ~p", [_OogCost, _OogResource]),
+                    {error, ?AEVM_PRIMOP_ERR_REASON_OOG(_OogResource, _OogGas, State9)} ->
+                        ?TEST_LOG("Out of gas spending ~p gas for ~p", [_OogGas, _OogResource]),
                         eval_error(out_of_gas, State9);
                     {error, not_allowed_off_chain} ->
                         ?TEST_LOG("Not allowed calling this contract off-chain", []),

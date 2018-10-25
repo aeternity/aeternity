@@ -19,22 +19,31 @@
           get_balance/2,
           get_store/1,
           set_store/2,
-          oracle_extend/4,
+          oracle_extend_tx/3,
+          oracle_extend/3,
           oracle_get_answer/3,
           oracle_get_question/3,
-          oracle_query/6,
+          oracle_query_tx/6,
+          oracle_query/2,
           oracle_query_fee/2,
           oracle_query_format/2,
           oracle_query_response_ttl/3,
-          oracle_register/7,
-          oracle_respond/6,
+          oracle_register_tx/6,
+          oracle_register/3,
+          oracle_respond_tx/5,
+          oracle_respond/3,
           oracle_response_format/2,
           aens_resolve/4,
-          aens_preclaim/4,
-          aens_claim/5,
-          aens_transfer/5,
-          aens_revoke/4,
-          spend/3
+          aens_preclaim_tx/3,
+          aens_preclaim/3,
+          aens_claim_tx/4,
+          aens_claim/3,
+          aens_transfer_tx/4,
+          aens_transfer/3,
+          aens_revoke_tx/3,
+          aens_revoke/3,
+          spend_tx/3,
+          spend/2
         ]).
 
 -include_lib("apps/aecore/include/blocks.hrl").
@@ -153,38 +162,35 @@ set_store(Store,  #state{ account = PubKey} = State) ->
     Trees1 = aec_trees:set_contracts(Trees, CTree1),
     set_top_trees(State, Trees1).
 
-
 %% -- Primops ----------------------------
 %%    Account
 
-%% @doc Spend money from the contract account.
--spec spend(aec_id:id(), non_neg_integer(), chain_state()) ->
-          {ok, chain_state()} | {error, term()}.
-spend(RecipientId, Amount, State = #state{ account = ContractKey }) ->
+-spec spend_tx(aec_id:id(), non_neg_integer(), chain_state()) ->
+    {ok, aetx:tx()}.
+spend_tx(RecipientId, Amount, State = #state{ account = ContractKey }) ->
     Nonce = next_nonce(State),
     %% Note: The spend is from the contract's account.
     SenderId = aec_id:create(account, ContractKey),
-    {ok, SpendTx} = aec_spend_tx:new(#{ sender_id    => SenderId
-                                      , recipient_id => RecipientId
-                                      , amount       => Amount
-                                      , fee          => 0
-                                      , nonce        => Nonce
-                                      , payload      => <<>>}),
-    apply_transaction(SpendTx, State).
+    Spec =
+        #{ sender_id    => SenderId
+         , recipient_id => RecipientId
+         , amount       => Amount
+         , fee          => 0
+         , nonce        => Nonce
+         , payload      => <<>> },
+    aec_spend_tx:new(Spec).
+
+%% @doc Spend money from the contract account.
+-spec spend(aetx:tx(), chain_state()) ->
+    {ok, chain_state()} | {error, term()}.
+spend(Tx, State) ->
+    apply_transaction(Tx, State).
 
 %%    Oracle
--spec oracle_register(aec_keys:pubkey(), binary(), non_neg_integer(),
-                      aeo_oracles:ttl(), aeso_sophia:type(), aeso_sophia:type(), chain_state()) ->
-    {ok, aec_keys:pubkey(), chain_state()} | {error, term()}.
-oracle_register(AccountKey, Signature, QueryFee, TTL, QueryFormat, ResponseFormat, State) ->
-    on_chain_only(State,
-                  fun() ->
-                      oracle_register_(AccountKey, Signature, QueryFee, TTL,
-                                       QueryFormat, ResponseFormat, State)
-                  end).
-
-oracle_register_(AccountKey, Signature, QueryFee, TTL, QueryFormat, ResponseFormat,
-                 State = #state{account = ContractKey}) ->
+-spec oracle_register_tx(aec_keys:pubkey(), non_neg_integer(), aeo_oracles:ttl(),
+                         aeso_sophia:type(), aeso_sophia:type(), chain_state()) ->
+    {ok, aetx:tx()}.
+oracle_register_tx(AccountKey, QueryFee, TTL, QueryFormat, ResponseFormat, State) ->
     Nonce = next_nonce(AccountKey, State),
     %% Note: The nonce of the account is incremented.
     %% This means that if you register an oracle for an account other than
@@ -201,8 +207,16 @@ oracle_register_(AccountKey, Signature, QueryFee, TTL, QueryFormat, ResponseForm
           oracle_ttl      => TTL,
           ttl             => 0, %% Not used.
           fee             => 0},
-    {ok, Tx} = aeo_register_tx:new(Spec),
+    aeo_register_tx:new(Spec).
 
+-spec oracle_register(aetx:tx(), binary(), chain_state()) ->
+    {ok, aec_keys:pubkey(), chain_state()} | {error, term()}.
+oracle_register(Tx, Signature, State) ->
+    on_chain_only(State, fun() -> oracle_register_(Tx, Signature, State) end).
+
+oracle_register_(Tx, Signature, State = #state{account = ContractKey}) ->
+    {aeo_register_tx, OTx} = aetx:specialize_callback(Tx),
+    AccountKey = aeo_register_tx:account_pubkey(OTx),
     Result =
         case check_account_signature(AccountKey, ContractKey, Signature) of
             ok                -> apply_transaction(Tx, State);
@@ -213,25 +227,28 @@ oracle_register_(AccountKey, Signature, QueryFee, TTL, QueryFormat, ResponseForm
         Err = {error, _} -> Err
     end.
 
-oracle_query(Oracle, Q, Value, QTTL, RTTL, State) ->
-    on_chain_only(State,
-                  fun() -> oracle_query_(Oracle, Q, Value, QTTL, RTTL, State) end).
-    
-oracle_query_(Oracle, Q, Value, QTTL, RTTL,
-             State = #state{ account = ContractKey }) ->
+
+oracle_query_tx(Oracle, Q, Value, QTTL, RTTL,
+                State = #state{account = ContractKey}) ->
     Nonce = next_nonce(State),
     QueryData = aeso_data:to_binary(Q),
-    {ok, Tx} =
-        aeo_query_tx:new(#{sender_id     => aec_id:create(account, ContractKey),
-                           nonce         => Nonce,
-                           oracle_id     => aec_id:create(oracle, Oracle),
-                           query         => QueryData,
-                           query_fee     => Value,
-                           query_ttl     => QTTL,
-                           response_ttl  => RTTL,
-                           fee           => 0,
-                           ttl           => 0 %% Not used
-                          }),
+    Spec =
+        #{sender_id     => aec_id:create(account, ContractKey),
+          nonce         => Nonce,
+          oracle_id     => aec_id:create(oracle, Oracle),
+          query         => QueryData,
+          query_fee     => Value,
+          query_ttl     => QTTL,
+          response_ttl  => RTTL,
+          fee           => 0,
+          ttl           => 0 %% Not used
+         },
+    aeo_query_tx:new(Spec).
+
+oracle_query(Tx, State) ->
+    on_chain_only(State, fun() -> oracle_query_(Tx, State) end).
+
+oracle_query_(Tx, State) ->
     case apply_transaction(Tx, State) of
         {ok, State1} ->
             {oracle_query_tx, OTx} = aetx:specialize_type(Tx),
@@ -240,50 +257,59 @@ oracle_query_(Oracle, Q, Value, QTTL, RTTL,
         {error, _} = E -> E
     end.
 
--spec oracle_respond(aec_keys:pubkey(), aeo_query:id(), binary(), binary(),
-                     aeo_oracles:relative_ttl(), chain_state()) ->
-    prim_op_result().
-oracle_respond(Oracle, QueryId, Signature, Response, ResponseTTL, State) ->
-    on_chain_only(State,
-                  fun() -> oracle_respond_(Oracle, QueryId, Signature,
-                                           Response, ResponseTTL, State) end).
-
-oracle_respond_(Oracle, QueryId, Signature, Response, ResponseTTL,
-               State = #state{ account = ContractKey }) ->
+-spec oracle_respond_tx(aec_keys:pubkey(), aeo_query:id(), binary(),
+                        aeo_oracles:relative_ttl(), chain_state()) ->
+    {ok, aetx:tx()}.
+oracle_respond_tx(Oracle, QueryId, Response, ResponseTTL, State) ->
     Nonce = next_nonce(Oracle, State),
+    Spec =
+        #{oracle_id    => aec_id:create(oracle, Oracle),
+          nonce        => Nonce,
+          query_id     => QueryId,
+          response     => aeso_data:to_binary(Response),
+          response_ttl => ResponseTTL,
+          fee          => 0,
+          ttl          => 0 %% Not used
+         },
+    aeo_response_tx:new(Spec).
 
-    {ok, Tx} = aeo_response_tx:new(
-                 #{oracle_id    => aec_id:create(oracle, Oracle),
-                   nonce        => Nonce,
-                   query_id     => QueryId,
-                   response     => aeso_data:to_binary(Response),
-                   response_ttl => ResponseTTL,
-                   fee          => 0,
-                   ttl          => 0 %% Not used
-                  }),
+-spec oracle_respond(aetx:tx(), binary(), chain_state()) ->
+    prim_op_result().
+oracle_respond(Tx, Signature, State) ->
+    on_chain_only(State, fun() -> oracle_respond_(Tx, Signature, State) end).
 
+oracle_respond_(Tx, Signature, State = #state{ account = ContractKey }) ->
+    {aeo_response_tx, OTx} = aetx:specialize_callback(Tx),
+    OracleKey = aeo_response_tx:oracle_pubkey(OTx),
+    QueryId = aeo_response_tx:query_id(OTx),
     Bin = <<QueryId/binary, ContractKey/binary>>,
-    case check_signature(Oracle, ContractKey, Bin, Signature) of
+    case check_signature(OracleKey, ContractKey, Bin, Signature) of
         ok               -> apply_transaction(Tx, State);
         Err = {error, _} -> Err
     end.
 
--spec oracle_extend(aec_keys:pubkey(), binary(), aeo_oracles:ttl(), chain_state()) ->
-    prim_op_result().
-oracle_extend(Oracle, Signature, TTL, State) ->
-    on_chain_only(State,
-                  fun() -> oracle_extend_(Oracle, Signature, TTL, State) end).
-
-oracle_extend_(Oracle, Signature, TTL, State = #state{ account = ContractKey }) ->
+-spec oracle_extend_tx(aec_keys:pubkey(), aeo_oracles:ttl(), chain_state()) ->
+    {ok, aetx:tx()}.
+oracle_extend_tx(Oracle, TTL, State) ->
     Nonce = next_nonce(Oracle, State),
-    {ok, Tx} =
-        aeo_extend_tx:new(#{oracle_id  => aec_id:create(oracle, Oracle),
-                            nonce      => Nonce,
-                            oracle_ttl => TTL,
-                            fee        => 0,
-                            ttl        => 0 %% Not used
-                           }),
-    case check_account_signature(Oracle, ContractKey, Signature) of
+    Spec =
+        #{oracle_id  => aec_id:create(oracle, Oracle),
+          nonce      => Nonce,
+          oracle_ttl => TTL,
+          fee        => 0,
+          ttl        => 0 %% Not used
+         },
+    aeo_extend_tx:new(Spec).
+
+-spec oracle_extend(aetx:tx(), binary(), chain_state()) ->
+    prim_op_result().
+oracle_extend(Tx, Signature, State) ->
+    on_chain_only(State, fun() -> oracle_extend_(Tx,Signature, State) end).
+
+oracle_extend_(Tx, Signature, State = #state{ account = ContractKey }) ->
+    {aeo_extend_tx, OTx} = aetx:specialize_callback(Tx),
+    OracleKey = aeo_extend_tx:oracle_pubkey(OTx),
+    case check_account_signature(OracleKey, ContractKey, Signature) of
         ok               -> apply_transaction(Tx, State);
         Err = {error, _} -> Err
     end.
@@ -405,78 +431,106 @@ decode_as(Type, Val) ->
     ?DEBUG_LOG("Can't decode ~p as ~p\n", [Val, Type]),
     {error, out_of_gas}.
 
--spec aens_preclaim(binary(), binary(), binary(), chain_state()) ->
-    prim_op_result().
-aens_preclaim(Addr, CHash, Signature, State) ->
-    on_chain_only(State,
-                  fun() -> aens_preclaim_(Addr, CHash, Signature, State) end).
-
-aens_preclaim_(Addr, CHash, Signature, #state{ account = ContractKey} = State) ->
+-spec aens_preclaim_tx(binary(), binary(), chain_state()) ->
+    {ok, aetx:tx()}.
+aens_preclaim_tx(Addr, CHash, State) ->
     Nonce = next_nonce(Addr, State),
-    {ok, Tx} =
-        aens_preclaim_tx:new(#{ account_id    => aec_id:create(account, Addr),
-                                nonce         => Nonce,
-                                commitment_id => aec_id:create(commitment, CHash),
-                                fee           => 0 }),
+    Spec =
+        #{ account_id    => aec_id:create(account, Addr),
+           nonce         => Nonce,
+           commitment_id => aec_id:create(commitment, CHash),
+           fee           => 0 },
+    aens_preclaim_tx:new(Spec).
 
+-spec aens_preclaim(aetx:tx(), binary(), chain_state()) ->
+    prim_op_result().
+aens_preclaim(Tx, Signature, State) ->
+    on_chain_only(State, fun() -> aens_preclaim_(Tx, Signature, State) end).
+
+aens_preclaim_(Tx, Signature, #state{ account = ContractKey} = State) ->
+    {aens_preclaim_tx, NSTx} = aetx:specialize_callback(Tx),
+    Addr = aec_id:specialize(aens_preclaim_tx:account_id(NSTx), account),
     case check_account_signature(Addr, ContractKey, Signature) of
         ok               -> apply_transaction(Tx, State);
         Err = {error, _} -> Err
     end.
 
--spec aens_claim(aec_keys:pubkey(), binary(), integer(), binary(), chain_state()) ->
-    prim_op_result().
-aens_claim(Addr, Name, Salt, Signature, State) ->
-    on_chain_only(State,
-                  fun() -> aens_claim_(Addr, Name, Salt, Signature, State) end).
-
-aens_claim_(Addr, Name, Salt, Signature, #state{ account = ContractKey } = State) ->
+-spec aens_claim_tx(aec_keys:pubkey(), binary(), integer(), chain_state()) ->
+    {ok, aetx:tx()}.
+aens_claim_tx(Addr, Name, Salt, State) ->
     Nonce = next_nonce(Addr, State),
-    {ok, Tx} =
-        aens_claim_tx:new(#{ account_id => aec_id:create(account, Addr),
-                             nonce      => Nonce,
-                             name       => Name,
-                             name_salt  => Salt,
-                             fee        => 0 }),
+    Spec =
+        #{ account_id => aec_id:create(account, Addr),
+           nonce      => Nonce,
+           name       => Name,
+           name_salt  => Salt,
+           fee        => 0
+         },
+    aens_claim_tx:new(Spec).
 
+-spec aens_claim(aetx:tx(), binary(), chain_state()) ->
+    prim_op_result().
+aens_claim(Tx, Signature, State) ->
+    on_chain_only(State, fun() -> aens_claim_(Tx, Signature, State) end).
+
+aens_claim_(Tx, Signature, #state{ account = ContractKey } = State) ->
+    {aens_claim_tx, NSTx} = aetx:specialize_callback(Tx),
+    Addr = aec_id:specialize(aens_claim_tx:account_id(NSTx), account),
+    Name = aens_claim_tx:name(NSTx),
     {ok, Hash} = aens:get_name_hash(Name),
     case check_name_signature(Addr, Hash, ContractKey, Signature) of
         ok               -> apply_transaction(Tx, State);
         Err = {error, _} -> Err
     end.
 
--spec aens_transfer(aec_keys:pubkey(), aec_keys:pubkey(), binary(), binary(), chain_state()) ->
-    prim_op_result().
-aens_transfer(FromAddr, ToAddr, Hash, Signature, State) ->
-    on_chain_only(State,
-                  fun() -> aens_transfer_(FromAddr, ToAddr, Hash, Signature, State) end).
-
-aens_transfer_(FromAddr, ToAddr, Hash, Signature, #state{ account = ContractKey } = State) ->
+-spec aens_transfer_tx(aec_keys:pubkey(), aec_keys:pubkey(), binary(), chain_state()) ->
+    {ok, aetx:tx()}.
+aens_transfer_tx(FromAddr, ToAddr, Hash, State) ->
     Nonce = next_nonce(FromAddr, State),
-    {ok, Tx} =
-        aens_transfer_tx:new(#{ account_id   => aec_id:create(account, FromAddr),
-                                nonce        => Nonce,
-                                name_id      => aec_id:create(name, Hash),
-                                recipient_id => aec_id:create(account, ToAddr),
-                                fee          => 0 }),
+    Spec =
+        #{ account_id   => aec_id:create(account, FromAddr),
+           nonce        => Nonce,
+           name_id      => aec_id:create(name, Hash),
+           recipient_id => aec_id:create(account, ToAddr),
+           fee          => 0
+         },
+    aens_transfer_tx:new(Spec).
+
+-spec aens_transfer(aetx:tx(), binary(), chain_state()) ->
+    prim_op_result().
+aens_transfer(Tx, Signature, State) ->
+    on_chain_only(State, fun() -> aens_transfer_(Tx, Signature, State) end).
+
+aens_transfer_(Tx, Signature, #state{ account = ContractKey } = State) ->
+    {aens_transfer_tx, NSTx} = aetx:specialize_callback(Tx),
+    FromAddr = aec_id:specialize(aens_transfer_tx:account_id(NSTx), account),
+    Hash = aec_id:specialize(aens_transfer_tx:name_id(NSTx), name),
     case check_name_signature(FromAddr, Hash, ContractKey, Signature) of
         ok               -> apply_transaction(Tx, State);
         Err = {error, _} -> Err
     end.
 
--spec aens_revoke(aec_keys:pubkey(), binary(), binary(), chain_state()) ->
-    prim_op_result().
-aens_revoke(Addr, Hash, Signature, State) ->
-    on_chain_only(State,
-                  fun() -> aens_revoke_(Addr, Hash, Signature, State) end).
-
-aens_revoke_(Addr, Hash, Signature, #state{ account = ContractKey } = State) ->
+-spec aens_revoke_tx(aec_keys:pubkey(), binary(), chain_state()) ->
+    {ok, aetx:tx()}.
+aens_revoke_tx(Addr, Hash, State) ->
     Nonce = next_nonce(Addr, State),
-    {ok, Tx} =
-        aens_revoke_tx:new(#{ account_id => aec_id:create(account, Addr),
-                              nonce      => Nonce,
-                              name_id    => aec_id:create(name, Hash),
-                              fee        => 0 }),
+    Spec =
+        #{ account_id => aec_id:create(account, Addr),
+           nonce      => Nonce,
+           name_id    => aec_id:create(name, Hash),
+           fee        => 0
+         },
+    aens_revoke_tx:new(Spec).
+
+-spec aens_revoke(aetx:tx(), binary(), chain_state()) ->
+    prim_op_result().
+aens_revoke(Tx, Signature, State) ->
+    on_chain_only(State, fun() -> aens_revoke_(Tx, Signature, State) end).
+
+aens_revoke_(Tx, Signature, #state{ account = ContractKey } = State) ->
+    {aens_revoke_tx, NSTx} = aetx:specialize_callback(Tx),
+    Addr = aec_id:specialize(aens_revoke_tx:account_id(NSTx), account),
+    Hash = aec_id:specialize(aens_revoke_tx:name_id(NSTx), name),
     case check_name_signature(Addr, Hash, ContractKey, Signature) of
         ok               -> apply_transaction(Tx, State);
         Err = {error, _} -> Err
@@ -630,7 +684,7 @@ get_on_chain_trees(#trees{is_onchain = false, inner = Inner}) ->
 
 -spec on_chain_only(chain_state(),
                     fun(() -> prim_op_result() | {ok, aec_keys:pubkey(), chain_trees()})) ->
-    prim_op_result() | {ok, aec_keys:pubkey(), chain_trees()}.
+    prim_op_result() | {ok, aec_keys:pubkey(), aetx:tx(), chain_trees()}.
 on_chain_only(State, Fun) ->
     #state{trees = ChainTrees} = State,
     case is_channel_call(ChainTrees) of
