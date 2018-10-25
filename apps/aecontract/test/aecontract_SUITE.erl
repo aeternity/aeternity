@@ -294,7 +294,7 @@ create_contract_init_error(_Cfg) ->
     %% Check that the created init call has the correct details not from the contract create tx
     ?assertEqual(ContractKey, aect_call:contract_pubkey(InitCall)), %% Contract not created.
     ?assertEqual(error, aect_call:return_type(InitCall)),
-    _ = aect_call:return_value(InitCall),
+    ?assertEqual(<<>>, aect_call:return_value(InitCall)),
 
     %% Check that contract create transaction sender got charged correctly.
     %%
