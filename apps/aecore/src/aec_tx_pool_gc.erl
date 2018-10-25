@@ -29,10 +29,7 @@
 
 -define(SERVER, ?MODULE).
 
--record(st, {
-              db = aec_tx_pool:pool_db()       :: pool_db()
-            , gc_db = aec_tx_pool:pool_db_gc() :: pool_db()
-            }).
+-record(st, { gc_db = aec_tx_pool:pool_db_gc() :: pool_db() }).
 
 -record(tx, { hash :: aec_tx_pool:tx_hash()     | atom()
             , ttl  :: aetx:tx_ttl()             | atom()
@@ -86,23 +83,22 @@ do_gc(Height, State = #st{ gc_db = GCDb }) ->
               GCDb, [{ #tx{hash = '$1', ttl = '$2', key = '$3', _ = '_'},
                        [{'=<', '$2', Height}],
                        [{{'$1', '$3'}}] }]),
-    do_gc_(GCTxs, State).
+    do_gc_(GCTxs, aec_tx_pool:dbs(), State).
 
-do_gc_([], S) ->
+do_gc_([], _Dbs, S) ->
     S;
-do_gc_([{TxHash, Key} | TxHashes], S = #st{ db = Db,
-                                            gc_db = GCDb }) ->
+do_gc_([{TxHash, Key} | TxHashes], Dbs, S = #st{ gc_db = GCDb }) ->
     case aec_db:gc_tx(TxHash) of
         ok ->
+            aec_tx_pool:raw_delete(Dbs, Key),
             ets:delete(GCDb, TxHash),
-            ets:delete(Db, Key),
             lager:debug("Garbage collected ~p", [pp(TxHash)]);
         {error, BlockHash} ->
             lager:info("TX garbage collect failed ~p is present in ~p",
                        [pp(BlockHash), pp(TxHash)]),
             ok
     end,
-    do_gc_(TxHashes, S).
+    do_gc_(TxHashes, Dbs, S).
 
 -spec delete_hash(pool_db(), pool_db_gc_key()) -> true.
 delete_hash(MempoolGC, TxHash) ->

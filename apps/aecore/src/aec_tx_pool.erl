@@ -13,6 +13,7 @@
 -behaviour(gen_server).
 
 -define(MEMPOOL, mempool).
+-define(MEMPOOL_VISITED, mempool_visited).
 -define(MEMPOOL_NONCE, mempool_nonce).
 -define(MEMPOOL_GC, mempool_gc).
 -define(KEY(NegFee, NegGasPrice, Origin, Nonce, TxHash),
@@ -38,17 +39,24 @@
         , push/1
         , push/2
         , size/0
-        , top_change/2
+        , top_change/3
+        , dbs/0
         ]).
 
 %% exports used by GC (should perhaps be in a common lib module)
 -export([ top_height/0
         , pool_db/0
         , pool_db_nonce/0
-        , pool_db_gc/0]).
+        , pool_db_gc/0
+        , raw_delete/2
+        ]).
 
 -ifdef(TEST).
 -export([garbage_collect/1]). %% Only for (Unit-)test
+-export([restore_mempool/0]).
+-export([peek_db/0]).
+-export([peek_visited/0]).
+-export([peek_nonces/0]).
 -endif.
 
 %% gen_server callbacks
@@ -66,9 +74,10 @@
 
 -define(TC(Expr, Msg), begin {Time, Res} = timer:tc(fun() -> Expr end), lager:debug("[~p] Msg = ~p", [Time, Msg]), Res end).
 
--record(dbs, {db       = pool_db()       :: pool_db(),
-              nonce_db = pool_db_nonce() :: pool_db(),
-              gc_db    = pool_db_gc()    :: pool_db()}).
+-record(dbs, {db         = pool_db()         :: pool_db(),
+              visited_db = pool_db_visited() :: pool_db(),
+              nonce_db   = pool_db_nonce()   :: pool_db(),
+              gc_db      = pool_db_gc()      :: pool_db()}).
 
 -record(state, { dbs = #dbs{}
                , sync_top_calc           :: pid() | undefined
@@ -158,6 +167,21 @@ garbage_collect() ->
 -spec garbage_collect(Height :: aec_blocks:height()) -> ok.
 garbage_collect(Height) ->
     aec_tx_pool_gc:gc(Height).
+
+restore_mempool() ->
+    revisit(dbs()).
+
+peek_db() ->
+    #dbs{db = Db} = dbs(),
+    [Tx || {_, Tx} <- ets:tab2list(Db)].
+
+peek_visited() ->
+    #dbs{visited_db = VDb} = dbs(),
+    [Tx || {_, Tx} <- ets:tab2list(VDb)].
+
+peek_nonces() ->
+    #dbs{nonce_db = NDb} = dbs(),
+    [N || {N} <- ets:tab2list(NDb)].
 -endif.
 
 %% The specified maximum number of transactions avoids requiring
@@ -180,9 +204,9 @@ get_candidate(MaxGas, BlockHash) when is_integer(MaxGas), MaxGas > 0,
         {get_candidate, MaxGas, BlockHash}).
 
 %% It assumes that the persisted mempool has been updated.
--spec top_change(binary(), binary()) -> ok.
-top_change(OldHash, NewHash) ->
-    gen_server:call(?SERVER, {top_change, OldHash, NewHash}).
+-spec top_change(key | micro, binary(), binary()) -> ok.
+top_change(Type, OldHash, NewHash) when Type==key; Type==micro ->
+    gen_server:call(?SERVER, {top_change, Type, OldHash, NewHash}).
 
 -spec new_sync_top_target(aec_blocks:height()) -> ok.
 new_sync_top_target(NewSyncTop) ->
@@ -194,6 +218,7 @@ size() ->
     ets:info(?MEMPOOL, size).
 
 pool_db() -> ?MEMPOOL.
+pool_db_visited() -> ?MEMPOOL_VISITED.
 pool_db_nonce() -> ?MEMPOOL_NONCE.
 pool_db_gc() -> ?MEMPOOL_GC.
 
@@ -203,12 +228,16 @@ pool_db_gc() -> ?MEMPOOL_GC.
 dbs() ->
     gen_server:call(?SERVER, dbs).
 
+raw_delete(#dbs{} = Dbs, Key) ->
+    pool_db_raw_delete(Dbs, Key).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 
 init([]) ->
     {ok, _MempoolDb} = pool_db_open(pool_db()),
+    {ok, _VisitedDb} = pool_db_open(pool_db_visited()),
     {ok, _NonceDb} = pool_db_open(pool_db_nonce()),
     GCHeight = top_height(),
     Handled  = ets:new(init_tx_pool, [private]),
@@ -229,13 +258,13 @@ handle_call_({get_max_nonce, Sender}, _From, #state{dbs = #dbs{db = Db}} = State
 handle_call_({push, Tx, Hash, Event}, _From, State) ->
     {Res, State1} = do_pool_db_put(pool_db_key(Tx), Tx, Hash, Event, State),
     {reply, Res, State1};
-handle_call_({top_change, OldHash, NewHash}, _From, State) ->
-    do_top_change(OldHash, NewHash, State),
+handle_call_({top_change, Type, OldHash, NewHash}, _From, State) ->
+    do_top_change(Type, OldHash, NewHash, State),
     {reply, ok, State};
-handle_call_({peek, MaxNumberOfTxs, Account}, _From, #state{dbs = #dbs{db = Db}} = State)
+handle_call_({peek, MaxNumberOfTxs, Account}, _From, #state{dbs = Dbs} = State)
   when is_integer(MaxNumberOfTxs), MaxNumberOfTxs >= 0;
        MaxNumberOfTxs =:= infinity ->
-    Txs = pool_db_peek(Db, MaxNumberOfTxs, Account),
+    Txs = pool_db_peek(Dbs, MaxNumberOfTxs, Account),
     {reply, {ok, Txs}, State};
 handle_call_(dbs, _From, #state{dbs = Dbs} = State) ->
     {reply, Dbs, State};
@@ -294,40 +323,55 @@ int_get_max_nonce(NonceDb, Sender) ->
 %% Ensure ordering of tx nonces in one account, and for duplicate account nonces
 %% we only get the one with higher fee or - if equal fee - higher gas price.
 %% int_get_candidate(#state{ db = Db, gc_db = GCDb }, MaxGas, BlockHash) ->
-
+%%
+%% Once selected into a candidate set, transactions are moved to the 'visited'
+%% table until the next key block top_change. This means they won't be
+%% considered for another microblock until the next leader cycle.
+%% ... Unless no matching txs can be found in the regular mempool.
+%%
 int_get_candidate(MaxGas, BlockHash, #dbs{db = Db} = DBs) ->
     {ok, Trees} = aec_chain:get_block_state(BlockHash),
     {ok, Header} = aec_chain:get_header(BlockHash),
     lager:debug("size(Db) = ~p", [ets:info(Db, size)]),
-    Pat = [{ '_', [], ['$_'] }],
-    int_get_candidate(MaxGas, DBs, ets:select(Db, Pat, 20),
-                      {account_trees, aec_trees:accounts(Trees)},
-                      aec_headers:height(Header), gb_trees:empty()).
+    case int_get_candidate(Db, MaxGas, Trees, Header, DBs) of
+        {ok, []} ->
+            int_get_candidate(DBs#dbs.visited_db, MaxGas, Trees, Header, DBs);
+        Other ->
+            Other
+    end.
 
-int_get_candidate(Gas, Dbs = #dbs{}, {Txs, Cont},
-                  AccountsTree, Height, Acc) ->
+int_get_candidate(Db, MaxGas, Trees, Header, DBs) ->
+    Pat = [{ '_', [], ['$_'] }],
+    int_get_candidate_fold(MaxGas, Db, DBs, ets:select(Db, Pat, 20),
+                           {account_trees, aec_trees:accounts(Trees)},
+                           aec_headers:height(Header), gb_trees:empty()).
+
+int_get_candidate_fold(Gas, Db, Dbs = #dbs{}, {Txs, Cont},
+                       AccountsTree, Height, Acc) ->
     {RemGas, NewAcc} =
         lists:foldl(
           fun(T, {Gas1, Acc1}) ->
-                  int_get_candidate_(T, Gas1, Dbs, AccountsTree, Height, Acc1)
+                  int_get_candidate_(T, Gas1, Db, Dbs, AccountsTree,
+                                     Height, Acc1)
           end, {Gas, Acc}, Txs),
-    int_get_candidate(RemGas, Dbs, ets:select(Cont), AccountsTree,
-                      Height, NewAcc);
-int_get_candidate(_Gas, _Dbs, '$end_of_table', _AccountsTree, _Height, Acc) ->
+    int_get_candidate_fold(RemGas, Db, Dbs, ets:select(Cont), AccountsTree,
+                           Height, NewAcc);
+int_get_candidate_fold(_Gas, _Db, _Dbs, '$end_of_table', _AccountsTree,
+                       _Height, Acc) ->
     {ok, gb_trees:values(Acc)}.
 
 int_get_candidate_({?KEY(_, _, Account, Nonce, _) = Key, Tx},
-                   Gas, Dbs, AccountsTree, Height, Acc) ->
+                   Gas, Db, Dbs, AccountsTree, Height, Acc) ->
     case gb_trees:is_defined({Account, Nonce}, Acc) of
         true ->
             %% The earlier must have had higher fee. Skip this tx.
             {Gas, Acc};
         false ->
-            check_candidate(Dbs, Key, Tx, AccountsTree, Height, Gas, Acc)
+            check_candidate(Db, Dbs, Key, Tx, AccountsTree, Height, Gas, Acc)
     end.
 
 
-check_candidate(#dbs{gc_db = GCDb},
+check_candidate(Db, #dbs{gc_db = GCDb} = Dbs,
                 ?KEY(_, _, Account, Nonce, TxHash) = Key, Tx,
                 AccountsTree, Height, Gas, Acc) ->
     Tx1 = aetx_sign:tx(Tx),
@@ -337,6 +381,7 @@ check_candidate(#dbs{gc_db = GCDb},
         true ->
             case Gas - TxGas of
                 RemGas when RemGas >= 0 ->
+                    move_to_visited(Db, Dbs, Key, Tx),
                     Acc1 = gb_trees:insert({Account, Nonce}, Tx, Acc),
                     {RemGas, Acc1};
                 _ ->
@@ -346,10 +391,23 @@ check_candidate(#dbs{gc_db = GCDb},
             end;
         false ->
             %% This is not valid anymore.
+            move_to_visited(Db, Dbs, Key, Tx),
             enter_tx_gc(GCDb, TxHash, Key, Height + invalid_tx_ttl()),
             {Gas, Acc}
     end.
 
+move_to_visited(VDb, #dbs{visited_db = VDb}, _, _) ->
+    %% already in visited
+    ignore;
+move_to_visited(Db, #dbs{visited_db = VDb}, Key, Tx) ->
+    ets:insert(VDb, {Key, Tx}),
+    ets:delete(Db, Key),
+    ok.
+
+revisit(#dbs{db = Db, visited_db = VDb}) ->
+    [ets:insert_new(Db, V) || V <- ets:tab2list(VDb)],
+    ets:delete_all_objects(VDb),
+    ok.
 
 top_height() ->
     case aec_chain:top_header() of
@@ -430,12 +488,35 @@ pool_db_open(DbName) ->
 -spec pool_db_peek(pool_db(), MaxNumber::pos_integer() | infinity, aec_keys:pubkey() | all) ->
                           [pool_db_value()].
 pool_db_peek(_, 0, _) -> [];
-pool_db_peek(Mempool, Max, all) ->
-    sel_return(
-      ets_select(Mempool, [{ {'_', '$1'}, [], ['$1'] }], Max));
-pool_db_peek(Mempool, Max, Account) ->
-    sel_return(
-      ets_select(Mempool, [{ {?KEY('_', '_', Account, '_', '_'), '$1'}, [], ['$1'] }], Max)).
+pool_db_peek(#dbs{db = Db, visited_db = VDb}, Max, all) ->
+    Pat = [{ '_', [], ['$_'] }],
+    pool_db_peek_(VDb, Db, Pat, Max);
+pool_db_peek(#dbs{db = Db, visited_db = VDb}, Max, Account) ->
+    Pat = [{ {?KEY('_', '_', Account, '_', '_'), '_'}, [], ['$_'] }],
+    pool_db_peek_(VDb, Db, Pat, Max).
+
+pool_db_peek_(VDb, Db, Pat, Max) ->
+    case sel_return(ets_select(VDb, Pat, Max)) of
+        [] ->
+            [Tx || {_, Tx} <- sel_return(ets_select(Db, Pat, Max))];
+        Vs ->
+            pool_db_merge(Vs, sel_return(ets_select(Db, Pat, Max)), Max)
+    end.
+
+pool_db_merge(L1, L2, infinity) ->
+    pool_db_merge(L1, L2, length(L1) + length(L2));
+pool_db_merge([{K1,V1}|T1] = L1, [{K2,V2}|T2] = L2, N) when N>0 ->
+    if K1 < K2 ->
+            [V1 | pool_db_merge(T1, L2, N-1)];
+       true ->
+            [V2 | pool_db_merge(L1, T2, N-1)]
+    end;
+pool_db_merge(_, _, 0) -> [];
+%% the following clauses work also when L1 == L2 == [], and/or N == 0
+pool_db_merge([], L2, N) ->
+    [Tx || {_, Tx} <- lists:sublist(L2, N)];
+pool_db_merge(L1, [], N) ->
+    [Tx || {_, Tx} <- lists:sublist(L1, N)].
 
 
 %% If TxHash is not already in GC table insert it.
@@ -455,7 +536,7 @@ sel_return(L) when is_list(L) -> L;
 sel_return('$end_of_table' ) -> [];
 sel_return({Matches, _Cont}) -> Matches.
 
-do_top_change(OldHash, NewHash, State) ->
+do_top_change(Type, OldHash, NewHash, State) ->
     %% Add back transactions to the pool from discarded part of the chain
     %% Mind that we don't need to add those which are incoming in the fork
 
@@ -467,7 +548,10 @@ do_top_change(OldHash, NewHash, State) ->
     update_pool_from_blocks(Ancestor, OldHash, Info, Handled),
     update_pool_from_blocks(Ancestor, NewHash, Info, Handled),
     ets:delete(Handled),
-    ok.
+    case Type of
+        key -> revisit(State#state.dbs);
+        micro -> ok
+    end.
 
 update_pool_from_blocks(Hash, Hash,_Info,_Handled) -> ok;
 update_pool_from_blocks(Ancestor, Current, Info, Handled) ->
@@ -550,8 +634,9 @@ do_pool_db_put(Key, Tx, Hash, Event,
             {ok, St}
     end.
 
-pool_db_raw_delete(#dbs{db = Db, nonce_db = NDb}, Key) ->
+pool_db_raw_delete(#dbs{db = Db, visited_db = VDb, nonce_db = NDb}, Key) ->
     delete_nonce(NDb, Key),
+    ets:delete(VDb, Key),
     ets:delete(Db, Key).
 
 pool_db_raw_put(#dbs{db = Db, nonce_db = NDb, gc_db = GCDb},
@@ -564,7 +649,7 @@ insert_nonce(NDb, ?KEY(_, _, Account, Nonce, TxHash)) ->
     ets:insert(NDb, {{Account, Nonce, TxHash}}).
 
 delete_nonce(NDb, ?KEY(_, _, Account, Nonce, TxHash)) ->
-    ets:delete(NDb, {{Account, Nonce, TxHash}}).
+    ets:delete(NDb, {Account, Nonce, TxHash}).
 
 check_tx_ttl(STx, _Hash) ->
     Tx = aetx_sign:tx(STx),
