@@ -81,7 +81,7 @@ from_string(ContractString, Options) ->
 %% function (foo, say) and a function __call() = foo(args) calling this
 %% function. Returns the name of the called functions, typereps and Erlang
 %% terms for the arguments.
--spec check_call(string(), options()) -> {ok, string(), {[Type], Type}, [term()]} | {error, term()}
+-spec check_call(string(), options()) -> {ok, string(), {[Type], Type | any}, [term()]} | {error, term()}
     when Type :: term().
 check_call(ContractString, Options) ->
     io:format("Contract call code:\n~s\n", [ContractString]),
@@ -93,7 +93,10 @@ check_call(ContractString, Options) ->
     ok = pp_typed_ast(TypedAst, Options),
     Icode = to_icode(TypedAst, Options),
     ArgVMTypes = [ aeso_ast_to_icode:ast_typerep(T, Icode) || T <- ArgTypes ],
-    RetVMType  = aeso_ast_to_icode:ast_typerep(RetType, Icode),
+    RetVMType  = case RetType of
+                    {id, _, "_"} -> any;
+                    _            -> aeso_ast_to_icode:ast_typerep(RetType, Icode)
+                end,
     ok = pp_icode(Icode, Options),
     #{ functions := Funs } = Icode,
     ArgIcode = get_arg_icode(Funs),
