@@ -371,8 +371,11 @@ infer_expr(_Env, Body={int, As, _}) ->
     {typed, As, Body, {id, As, "int"}};
 infer_expr(_Env, Body={string, As, _}) ->
     {typed, As, Body, {id, As, "string"}};
-infer_expr(_Env, Body={hash, As, _}) ->
-    {typed, As, Body, {id, As, "address"}};
+infer_expr(_Env, Body={hash, As, Hash}) ->
+    case byte_size(Hash) of
+        32 -> {typed, As, Body, {id, As, "address"}};
+        64 -> {typed, As, Body, {id, As, "signature"}}
+    end;
 infer_expr(_Env, Body={id, As, "_"}) ->
     {typed, As, Body, fresh_uvar(As)};
 infer_expr(Env, Body={id, As, Name}) ->
