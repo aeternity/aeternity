@@ -29,7 +29,7 @@ convert(#{ contract_name := _ContractName
     %% Create a function dispatcher
     DispatchFun = {"_main", [], [{"arg", "_"}],
                    {switch, {var_ref, "arg"},
-                    [{{tuple, [fun_hash(FName),
+                    [{{tuple, [fun_hash(Fun),
                                {tuple, make_args(Args)}]},
                       icode_seq([ hack_return_address(Fun, length(Args) + 1) ] ++
                                 [ {tuple, [aeso_ast_to_icode:type_value(TypeRep),
@@ -104,8 +104,11 @@ convert(#{ contract_name := _ContractName
 make_args(Args) ->
     [{var_ref, [I-1 + $a]} || I <- lists:seq(1, length(Args))].
 
-fun_hash(Name) ->
-    {tuple, [{integer, X} || X <- [length(Name)|aeso_data:binary_to_words(list_to_binary(Name))]]}.
+fun_hash({FName, _, Args, _, TypeRep}) ->
+    ArgType = {tuple, [T || {_, T} <- Args]},
+    <<Hash:256>> = aeso_compiler:function_type_hash(FName, ArgType, TypeRep),
+    {integer, Hash}.
+%%    {tuple, [{integer, X} || X <- [length(Name)|aeso_data:binary_to_words(list_to_binary(Name))]]}.
 
 %% Expects two return addresses below N elements on the stack. Picks the top
 %% one for stateful functions and the bottom one for non-stateful.
@@ -285,7 +288,7 @@ assemble_expr(Funs, Stack, nontail, {funcall, Fun, Args}) ->
              jumpdest(Return)]
     end;
 assemble_expr(Funs, Stack, tail, {funcall, Fun, Args}) ->
-    IsTopLevel = is_top_level_fun(Funs, Stack, Fun),
+    IsTopLevel = is_top_level_fun(Stack, Fun),
     %% If the fun is not top-level, then it may refer to local
     %% variables and must be computed before stack shuffling.
     ArgsAndFun = Args++[Fun || not IsTopLevel],
@@ -566,7 +569,7 @@ assemble_infix('!')    -> [i(?ADD), i(?MLOAD)].
 %% code pointer onto the stack. In either case, we are ready to enter
 %% the function with JUMP.
 assemble_function(Funs, Stack, Fun) ->
-    case is_top_level_fun(Funs, Stack, Fun) of
+    case is_top_level_fun(Stack, Fun) of
         true ->
             {var_ref, Name} = Fun,
             {push_label, lookup_fun(Funs, Name)};
@@ -626,9 +629,9 @@ lookup_fun(Funs, Name) ->
         []    -> error({undefined_function, Name})
     end.
 
-is_top_level_fun(_Funs, Stack, {var_ref, Id}) ->
+is_top_level_fun(Stack, {var_ref, Id}) ->
     not lists:keymember(Id, 1, Stack);
-is_top_level_fun(_, _, _) ->
+is_top_level_fun(_, _) ->
     false.
 
 lookup_var(Id, Stack) ->

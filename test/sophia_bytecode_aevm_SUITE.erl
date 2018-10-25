@@ -29,10 +29,10 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
     #{ byte_code := Code,
        type_info := TypeInfo} = aeso_compiler:deserialize(SerializedCode),
     {ok, ArgType} = aeso_compiler:arg_typerep_from_function(<<"main">>, TypeInfo),
-    CallDataType = {tuple, [string, ArgType]},
+    CallDataType = {tuple, [word, ArgType]},
 
     %% Create the call data
-    {ok, CallData} = aect_sophia:encode_call_data(Code, "main", "(42)"),
+    {ok, CallData} = aect_sophia:encode_call_data(SerializedCode, <<"main">>, <<"(42)">>),
     {ok, Res} =
         aevm_eeevm:eval(
           aevm_eeevm_state:init(

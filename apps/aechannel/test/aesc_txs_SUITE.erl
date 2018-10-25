@@ -2730,7 +2730,7 @@ fp_solo_payload_broken_call(Cfg) ->
     %% Too small call data
     TestWithCallData(<<"0xABCD">>, <<"bad_call_data">>),
     %% Just plain wrong call data, but that can be interpreted
-    TestWithCallData(<<42:42/unit:8>>, <<"unknown_function: ">>),
+    TestWithCallData(<<42:42/unit:8>>, <<"unknown_function">>),
     ok.
 
 fp_missing_account_address(Cfg) ->

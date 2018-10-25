@@ -326,10 +326,10 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
                         case ChainAPI:get_contract_fun_types(TargetKey, ?AEVM_01_Sophia_01,
                                                              TypeHash, ChainState) of
                             {ok, ArgType, OutType0} ->
-                                {{tuple, [string, ArgType]}, OutType0};
+                                {{tuple, [word, ArgType]}, OutType0};
                             {error, _Err} ->
                                 %% This will fail later anyway.
-                                {{tuple, [string]}, word}
+                                {{tuple, [word]}, word}
                         end
                 end,
             {ok, Arg} = aeso_data:heap_to_binary(DataType, Store, HeapValue),

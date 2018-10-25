@@ -276,7 +276,11 @@ create_contract_init_error(_Cfg) ->
     {PubKey, S1} = aect_test_utils:setup_new_account(S0),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
-    Overrides = #{ call_data => make_calldata(init, {})
+    ContractCode = aect_test_utils:compile_contract("contracts/init_error.aes"),
+    Overrides = #{ code => ContractCode
+                 , call_data => make_calldata_from_code(ContractCode, <<"init">>, 1)
+                 , gas => 10000
+                 , gas_price => 1
                  },
     Tx = aect_test_utils:create_tx(PubKey, Overrides, S1),
 
@@ -323,7 +327,7 @@ create_contract_(ContractCreateTxGasPrice) ->
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
     IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
-    CallData     = make_calldata(init, {}),
+    CallData     = make_calldata_from_code(IdContract, init, {}),
     Overrides    = #{ code => IdContract
                     , call_data => CallData
                     , gas => 10000
@@ -459,7 +463,7 @@ call_contract_negative_insufficient_funds(_Cfg) ->
     Value = 10,
     Bal = 9 = Fee + Value - 2,
     S = aect_test_utils:set_account_balance(Acc1, Bal, state()),
-    CallData = make_calldata(main, 42),
+    CallData = make_calldata_from_id(IdC, main, 42, S),
     CallTx = aect_test_utils:call_tx(Acc1, IdC,
                                      #{call_data => CallData,
                                        gas_price => 1,
@@ -502,7 +506,7 @@ call_contract_(ContractCallTxGasPrice) ->
     CallerBalance = aec_accounts:balance(aect_test_utils:get_account(Caller, S2)),
 
     IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
-    CallDataInit = make_calldata(init, {}),
+    CallDataInit = make_calldata_from_code(IdContract, init, {}),
     Overrides    = #{ code => IdContract
                     , call_data => CallDataInit
                     , gas => 10000
@@ -518,7 +522,7 @@ call_contract_(ContractCallTxGasPrice) ->
     %% Now check that we can call it.
     Fee           = 107,
     Value         = 52,
-    CallData = make_calldata(main, 42),
+    CallData = make_calldata_from_code(IdContract, main, 42),
     CallTx = aect_test_utils:call_tx(Caller, ContractKey,
                                      #{call_data => CallData,
                                        gas_price => ContractCallTxGasPrice,
@@ -735,7 +739,7 @@ create_contract(Owner, Name, Args, S) ->
 create_contract(Owner, Name, Args, Options, S) ->
     Nonce       = aect_test_utils:next_nonce(Owner, S),
     Code        = aect_test_utils:compile_contract(lists:concat(["contracts/", Name, ".aes"])),
-    CallData    = make_calldata(init, Args),
+    CallData    = make_calldata_from_code(Code, init, Args),
     CreateTx    = aect_test_utils:create_tx(Owner,
                     maps:merge(
                     #{ nonce      => Nonce
@@ -763,7 +767,7 @@ call_contract(Caller, ContractKey, Fun, Type, Args, S) ->
 
 call_contract(Caller, ContractKey, Fun, Type, Args, Options, S) ->
     Nonce    = aect_test_utils:next_nonce(Caller, S),
-    Calldata = make_calldata(Fun, Args),
+    Calldata = make_calldata_from_id(ContractKey, Fun, Args, S),
     CallTx   = aect_test_utils:call_tx(Caller, ContractKey,
                 maps:merge(
                 #{ nonce      => Nonce
@@ -795,9 +799,22 @@ account_balance(PubKey, S) ->
     Account = aect_test_utils:get_account(PubKey, S),
     {aec_accounts:balance(Account), S}.
 
-make_calldata(Fun, Args0) ->
+make_calldata_raw(<<FunHashInt:256>>, Args0) ->
     Args = translate_pubkeys(if is_tuple(Args0) -> Args0; true -> {Args0} end),
-    aeso_data:to_binary({list_to_binary(atom_to_list(Fun)), Args}).
+    aeso_data:to_binary({FunHashInt, Args}).
+
+make_calldata_from_code(Code, Fun, Args) when is_atom(Fun) ->
+    make_calldata_from_code(Code, atom_to_binary(Fun, latin1), Args);
+make_calldata_from_code(Code, Fun, Args) when is_binary(Fun) ->
+    #{type_info := TypeInfo} = aeso_compiler:deserialize(Code),
+    case aeso_compiler:type_hash_from_function_name(Fun, TypeInfo) of
+        {ok, TypeHash} -> make_calldata_raw(TypeHash, Args);
+        {error, _} = Err -> error({bad_function, Fun, Err})
+    end.
+
+make_calldata_from_id(Id, Fun, Args, State) ->
+    {{value, C}, _S} = lookup_contract_by_id(Id, State),
+    make_calldata_from_code(aect_contracts:code(C), Fun, Args).
 
 translate_pubkeys(<<N:256>>) -> N;
 translate_pubkeys([H|T]) ->
@@ -3299,7 +3316,6 @@ call_missing(_Cfg) ->
     Acc1     = ?call(new_account, 1000000),
     Contract = ?call(create_contract, Acc1, remote_type_check, {}),
     42       = ?call(call_contract, Acc1, Contract, remote_id, word, {Contract, 42}),
-    {error, <<"unknown_function: missing">>} = ?call(call_contract, Acc1, Contract, missing, word, 42),
     {error, <<"out_of_gas">>} = ?call(call_contract, Acc1, Contract, remote_missing, word, {Contract, 42}),
 
     ok.
@@ -3308,8 +3324,6 @@ call_wrong_type(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc1     = ?call(new_account, 1000000),
     Contract = ?call(create_contract, Acc1, remote_type_check, {}),
-    %% TODO: How should we check this?
-    %% {error, <<"bad_call_args: wrong_type">>} = ?call(call_contract, Acc1, Contract, wrong_type, word, <<"hello">>),
     {error, <<"out_of_gas">>} = ?call(call_contract, Acc1, Contract, remote_wrong_type, word,
                                       {Contract, <<"hello">>}),
     ok.

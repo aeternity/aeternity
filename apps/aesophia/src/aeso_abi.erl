@@ -22,30 +22,33 @@
                                  | {error, argument_syntax_error}.
 
 create_calldata(ContractCode, Function, Argument) ->
-    FunctionHandle = encode_function(Function),
     case aeso_constants:string(Argument) of
         {ok, {tuple, _, _} = Tuple} ->
-            encode_call(ContractCode, FunctionHandle, Tuple);
+            encode_call(ContractCode, Function, Tuple);
         {ok, {unit, _} = Tuple} ->
-            encode_call(ContractCode, FunctionHandle, Tuple);
+            encode_call(ContractCode, Function, Tuple);
         {ok, ParsedArgument} ->
             %% The Sophia compiler does not parse a singleton tuple (42) as a tuple,
             %% Wrap it in a tuple.
-            encode_call(ContractCode, FunctionHandle, {tuple, [], [ParsedArgument]});
+            encode_call(ContractCode, Function, {tuple, [], [ParsedArgument]});
         {error, _} ->
             {error, argument_syntax_error}
     end.
 
 %% Call takes one arument.
 %% Use a tuple to pass multiple arguments.
-encode_call(ContractCode, FunctionHandle, ArgumentAst) ->
+encode_call(ContractCode, Function, ArgumentAst) ->
     Argument = ast_to_erlang(ArgumentAst),
-    Data = aeso_data:to_binary(list_to_tuple([FunctionHandle, Argument])),
     try aeso_compiler:deserialize(ContractCode) of
         #{type_info := TypeInfo} ->
-            case aect_dispatch:check_call_data(Data, TypeInfo) of
-                {ok, CallDataType} -> {ok, Data, CallDataType};
-                {error,_What} = Err -> Err
+            FunBin = list_to_binary(Function),
+            case aeso_compiler:type_hash_from_function_name(FunBin, TypeInfo) of
+                {ok, <<TypeHashInt:256>>} ->
+                    Data = aeso_data:to_binary({TypeHashInt, Argument}),
+                    case aect_dispatch:check_call_data(Data, TypeInfo) of
+                        {ok, CallDataType} -> {ok, Data, CallDataType};
+                        {error,_What} = Err -> Err
+                    end
             end
     catch _:_ -> {error, bad_contract_code}
     end.
@@ -64,7 +67,4 @@ ast_to_erlang({list, _, Elems}) ->
 ast_to_erlang({map, _, Elems}) ->
     maps:from_list([ {ast_to_erlang(element(1, Elem)), ast_to_erlang(element(2, Elem))}
                         || Elem <- Elems ]).
-
-encode_function(Function) ->
-     << <<X>> || X <- Function>>.
 

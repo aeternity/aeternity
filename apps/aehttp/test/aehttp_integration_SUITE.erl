@@ -2221,22 +2221,24 @@ contract_create_transaction_init_error(_Config) ->
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
 
     % contract_create_tx positive test
-    DummyByteCode = aect_test_utils:dummy_bytecode(),
-    Code = aec_base58c:encode(contract_bytearray, DummyByteCode),
-
+    EncodedCode = contract_byte_code("init_error"),
+    {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
+                              <<"sophia">>,
+                              contract_bytearray_decode(EncodedCode),
+                              <<"init">>, <<"(1)">>),
     EncodedInitCallData = aec_base58c:encode(contract_bytearray, aeso_data:to_binary({<<"init">>, {}})),
     ValidEncoded = #{ owner_id   => MinerAddress,
-                      code       => Code,
+                      code       => EncodedCode,
                       vm_version => 1,
                       deposit    => 2,
                       amount     => 1,
                       gas        => 30,
                       gas_price  => 1,
                       fee        => 1,
-                      call_data  => EncodedInitCallData},
+                      call_data  => EncodedInitData},
     ValidDecoded = maps:merge(ValidEncoded,
         #{owner => MinerPubkey,
-            code => contract_bytearray_decode(Code),
+            code => contract_bytearray_decode(EncodedCode),
             call_data => contract_bytearray_decode(EncodedInitCallData)}),
 
     %% prepare a contract_create_tx and post it

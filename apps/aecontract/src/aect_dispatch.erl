@@ -175,7 +175,7 @@ error_to_binary(out_of_gas) -> <<"out_of_gas">>;
 error_to_binary(out_of_stack) -> <<"out_of_stack">>;
 error_to_binary(not_allowed_off_chain) -> <<"not_allowed_off_chain">>;
 error_to_binary(bad_call_data) -> <<"bad_call_data">>;
-error_to_binary({unknown_function, F}) -> <<"unknown_function: ", F/binary>>;
+error_to_binary(unknown_function) -> <<"unknown_function">>;
 error_to_binary(E) ->
     ?DEBUG_LOG("Unknown error: ~p\n", [E]),
     <<"unknown_error">>.
@@ -193,15 +193,15 @@ chain_state(#{ contract    := ContractPubKey
 
 check_call_data(CallData, TypeInfo) ->
     %% The first element of the CallData should be the function name
-    case aeso_data:get_function_from_calldata(CallData) of
-        {ok, Function} ->
-            case aeso_compiler:arg_typerep_from_function(Function, TypeInfo) of
-                {ok, ArgType} ->
-                    ?TEST_LOG("Found ~p for ~p", [ArgType, Function]),
-                    try aeso_data:from_binary({tuple, [string, ArgType]}, CallData) of
+    case aeso_data:get_function_hash_from_calldata(CallData) of
+        {ok, Hash} ->
+            case aeso_compiler:typereps_from_type_hash(Hash, TypeInfo) of
+                {ok, ArgType,_OutType} ->
+                    ?TEST_LOG("Found ~p for ~p", [ArgType, Hash]),
+                    try aeso_data:from_binary({tuple, [word, ArgType]}, CallData) of
                         {ok, _Something} ->
                             ?TEST_LOG("Whole call data: ~p\n", [_Something]),
-                            {ok, {tuple, [string, ArgType]}};
+                            {ok, {tuple, [word, ArgType]}};
                         {error, _} ->
                             {error, bad_call_data}
                     catch
@@ -209,9 +209,9 @@ check_call_data(CallData, TypeInfo) ->
                             ?TEST_LOG("Error parsing call data: ~p", [{_T, _E}]),
                             {error, bad_call_data}
                     end;
-                {error, unknown_function} ->
-                    ?TEST_LOG("Unknown function ~p", [Function]),
-                    {error, {unknown_function, Function}}
+                {error, _} ->
+                    ?TEST_LOG("Unknown function hash ~p", [Hash]),
+                    {error, unknown_function}
             end;
         {error, _What} ->
             ?TEST_LOG("Bad call data ~p", [_What]),

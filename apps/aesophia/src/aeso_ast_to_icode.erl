@@ -337,9 +337,10 @@ ast_body({app, _, {typed, _, {proj, _, {typed, _, Addr, {con, _, Contract}}, {id
     ArgType = ast_typerep({tuple_t, [], ArgsT}),
     Gas    = proplists:get_value("gas",   ArgOpts ++ Defaults),
     Value  = proplists:get_value("value", ArgOpts ++ Defaults),
-    Fun    = ast_body({string, [], list_to_binary(FunName)}, Icode),
     OutType = ast_typerep(OutT, Icode),
     <<TypeHash:256>> = aeso_compiler:function_type_hash(FunName, ArgType, OutType),
+    %% The function is represented by its type hash (which includes the name)
+    Fun    = #integer{value = TypeHash},
     #prim_call_contract{
         address  = ast_body(Addr, Icode),
         gas      = Gas,

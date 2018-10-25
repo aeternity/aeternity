@@ -18,7 +18,7 @@
         , has_maps/1
         , from_binary/2
         , from_binary/3
-        , get_function_from_calldata/1
+        , get_function_hash_from_calldata/1
         , sophia_type_to_typerep/1
         ]).
 
@@ -566,12 +566,11 @@ get_chunk(Mem, Addr, Bytes) when is_map(Mem) ->
     Words = Bytes div 32,
     << <<(maps:get(Addr + 32 * I, Mem, 0)):256>> || I <- lists:seq(0, Words - 1) >>.
 
--spec get_function_from_calldata(Calldata::binary()) ->
-                                        {ok, term()} | {error, term()}.
-get_function_from_calldata(Calldata) ->
-    case from_binary({tuple, [string]}, Calldata) of
-        {ok, {FunctionName}} ->
-            {ok, FunctionName};
+-spec get_function_hash_from_calldata(Calldata::binary()) ->
+                                             {ok, binary()} | {error, term()}.
+get_function_hash_from_calldata(Calldata) ->
+    case from_binary({tuple, [word]}, Calldata) of
+        {ok, {HashInt}} -> {ok, <<HashInt:256>>};
         {error, _} = Error -> Error
     end.
 
