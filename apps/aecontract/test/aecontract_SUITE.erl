@@ -280,7 +280,7 @@ create_contract_init_error(_Cfg) ->
 
     ContractCode = aect_test_utils:compile_contract("contracts/init_error.aes"),
     Overrides = #{ code => ContractCode
-                 , call_data => make_calldata_from_code(ContractCode, <<"init">>, 1)
+                 , call_data => make_calldata_from_code(ContractCode, <<"init">>, {<<123:256>>, 0})
                  , gas => 10000
                  , gas_price => 1
                  },
@@ -299,11 +299,12 @@ create_contract_init_error(_Cfg) ->
     ?assertEqual(PubKey, aect_call:caller_pubkey(InitCall)),
     ?assertEqual(aetx:nonce(Tx), aect_call:caller_nonce(InitCall)),
     ?assertEqual(aect_create_tx:gas_price(aetx:tx(Tx)), aect_call:gas_price(InitCall)),
+    %% TODO: Should all gas be consumed always on init errors?
     ?assertEqual(aect_create_tx:gas_limit(aetx:tx(Tx)), aect_call:gas_used(InitCall)), %% Gas exhausted.
     %% Check that the created init call has the correct details not from the contract create tx
     ?assertEqual(ContractKey, aect_call:contract_pubkey(InitCall)), %% Contract not created.
     ?assertEqual(error, aect_call:return_type(InitCall)),
-    ?assertEqual(<<>>, aect_call:return_value(InitCall)),
+    ?assertEqual(<<"out_of_gas">>, aect_call:return_value(InitCall)),
 
     %% Check that contract create transaction sender got charged correctly.
     %%
@@ -3338,17 +3339,20 @@ enter_contract(Contract, S) ->
 
 call_missing(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1     = ?call(new_account, 1000000),
-    Contract = ?call(create_contract, Acc1, remote_type_check, {}),
-    42       = ?call(call_contract, Acc1, Contract, remote_id, word, {Contract, 42}),
-    {error, <<"out_of_gas">>} = ?call(call_contract, Acc1, Contract, remote_missing, word, {Contract, 42}),
+    Acc1      = ?call(new_account, 1000000),
+    Contract1 = ?call(create_contract, Acc1, remote_type_check, {}),
+    Contract2 = ?call(create_contract, Acc1, remote_type_check, {}),
+    42        = ?call(call_contract, Acc1, Contract1, remote_id, word, {Contract2, 42}),
+    {error, <<"out_of_gas">>} = ?call(call_contract, Acc1, Contract1, remote_missing, word, {Contract2, 42}),
 
     ok.
 
 call_wrong_type(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc1     = ?call(new_account, 1000000),
-    Contract = ?call(create_contract, Acc1, remote_type_check, {}),
-    {error, <<"out_of_gas">>} = ?call(call_contract, Acc1, Contract, remote_wrong_type, word,
-                                      {Contract, <<"hello">>}),
+    Contract1 = ?call(create_contract, Acc1, remote_type_check, {}),
+    Contract2 = ?call(create_contract, Acc1, remote_type_check, {}),
+    42        = ?call(call_contract, Acc1, Contract1, remote_id, word, {Contract2, 42}),
+    {error, <<"out_of_gas">>} = ?call(call_contract, Acc1, Contract1, remote_wrong_type, word,
+                                      {Contract2, <<"hello">>}),
     ok.

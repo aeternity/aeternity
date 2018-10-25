@@ -343,26 +343,29 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
             ChainState = chain_state(State),
             Store      = get_store(State),
             HeapValue = aeso_data:heap_value(maps(State), ArgPtr, Heap),
-            {DataType, OutType} =
-                case Target == ?PRIM_CALLS_CONTRACT of
-                    true ->
-                        %% The first argument is the primop id
-                        {ok, Bin} = aeso_data:heap_to_binary({tuple, [word]}, get_store(State), HeapValue),
-                        {ok, {Prim}} = aeso_data:from_binary({tuple, [word]}, Bin),
-                        {ArgTypes, OutType0} = aevm_ae_primops:types(Prim, HeapValue, Store, State),
-                        {{tuple, [word|ArgTypes]}, OutType0};
-                    false ->
-                        case ChainAPI:get_contract_fun_types(TargetKey, ?AEVM_01_Sophia_01,
-                                                             TypeHash, ChainState) of
-                            {ok, ArgType, OutType0} ->
-                                {{tuple, [word, ArgType]}, OutType0};
-                            {error, _Err} ->
-                                %% This will fail later anyway.
-                                {{tuple, [word]}, word}
-                        end
-                end,
-            {ok, Arg} = aeso_data:heap_to_binary(DataType, Store, HeapValue),
-            {Arg, OutType, State}
+            case Target == ?PRIM_CALLS_CONTRACT of
+                true ->
+                    %% The first argument is the primop id
+                    {ok, Bin} = aeso_data:heap_to_binary({tuple, [word]}, get_store(State), HeapValue),
+                    {ok, {Prim}} = aeso_data:from_binary({tuple, [word]}, Bin),
+                    {ArgTypes, OutType} = aevm_ae_primops:types(Prim, HeapValue, Store, State),
+                    DataType = {tuple, [word|ArgTypes]},
+                    {ok, Arg} = aeso_data:heap_to_binary(DataType, Store, HeapValue),
+                    {Arg, OutType, State};
+                false ->
+                    case ChainAPI:get_contract_fun_types(TargetKey, ?AEVM_01_Sophia_01,
+                                                         TypeHash, ChainState) of
+                        {ok, ArgType, OutType} ->
+                            DataType = {tuple, [word, ArgType]},
+                            {ok, Arg} = aeso_data:heap_to_binary(DataType, Store, HeapValue),
+                            {Arg, OutType, State};
+                        {error, _Err} ->
+                            %% This will fail later anyway.
+                            DataType = {tuple, [word]},
+                            {ok, Arg} = aeso_data:heap_to_binary(DataType, Store, HeapValue),
+                            {Arg, word, set_gas(0, State)}
+                    end
+            end
     end.
 
 -spec write_heap_value(aeso_data:heap_value(), state()) -> {non_neg_integer(), state()}.
@@ -390,7 +393,8 @@ call_contract(Caller, Target, CallGas, Value, Data, State) ->
                     GasSpent = aevm_chain_api:gas_spent(Res),
                     Return   = aevm_chain_api:return_value(Res),
                     {ok, Return, GasSpent, set_chain_state(ChainState1, State)};
-                {error, Err} -> {error, Err}
+                {error, Err} ->
+                    {error, Err}
             catch K:Err ->
                 lager:error("~w:call_contract(~w, ~w, ~w, ~w, ~w, _) crashed with ~w:~w",
                             [ChainAPI, TargetKey, CallGas, Value, Data, CallStack, K, Err]),

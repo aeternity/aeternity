@@ -3464,7 +3464,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                 state := S0} = Props) ->
             ContractString = aeso_test_utils:read_contract(ContractName),
             BinCode = aeso_compiler:from_string(ContractString, []),
-            CallData = aect_sophia:create_call(BinCode, <<"init">>, <<"()">>),
+            CallData = aect_sophia:encode_call_data(BinCode, <<"init">>, <<"()">>),
             Nonce = 1,
             {ok, ContractCreateTx} =
                 aect_create_tx:new(
@@ -3674,7 +3674,7 @@ fp_register_oracle(Cfg) ->
                 state := S0} = Props) ->
             ContractString = aeso_test_utils:read_contract(ContractName),
             BinCode = aeso_compiler:from_string(ContractString, []),
-            CallData = aect_sophia:create_call(BinCode, <<"init">>, <<"()">>),
+            CallData = aect_sophia:encode_call_data(BinCode, <<"init">>, <<"()">>),
             Nonce = 1,
             {ok, ContractCreateTx} =
                 aect_create_tx:new(

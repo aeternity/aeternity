@@ -2225,7 +2225,7 @@ contract_create_transaction_init_error(_Config) ->
     {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
                               <<"sophia">>,
                               contract_bytearray_decode(EncodedCode),
-                              <<"init">>, <<"(1)">>),
+                              <<"init">>, <<"(0x123, 0)">>),
     EncodedInitCallData = aec_base58c:encode(contract_bytearray, aeso_data:to_binary({<<"init">>, {}})),
     ValidEncoded = #{ owner_id   => MinerAddress,
                       code       => EncodedCode,

@@ -1,10 +1,9 @@
+contract Remote =
+  function missing : (int) => int
+
 contract Init_error =
 
   record state = {value : int}
 
-  private function require(b : bool, err : string) =
-    if(!b) abort(err)
-
-  function init(x: int) =
-    require(x > 10, "too small")
-    {value = x}
+  function init(r : Remote, x : int) =
+    {value = r.missing(x)}
