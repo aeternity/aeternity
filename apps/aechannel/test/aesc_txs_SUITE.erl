@@ -3375,22 +3375,21 @@ fp_settle_too_soon(Cfg) ->
 %% test that a force progress transaction can NOT produce an on-chain oracle
 %% query via a contract
 fp_oracle_query(Cfg) ->
+    FunHashInt = get_oracle_fun_hash_int(<<"createQuery">>),
     ProduceCallData =
         fun(_Pubkey, _Privkey, Oracle, _OraclePrivkey, _QueryId, _ContractId, QueryFee) ->
             <<IntOracleId:256>> = Oracle,
             RelativeTTL = {variant, 0, [10]},
             Args = {IntOracleId, <<"Very much of a question">>, QueryFee, RelativeTTL, RelativeTTL},
-            CalldataType = {tuple, [string, aeso_abi:get_type(Args)]},
             ?TEST_LOG("Oracle createQuery function arguments ~p", [Args]),
-            aeso_data:to_binary({CalldataType,
-                         {list_to_binary(atom_to_list(createQuery)),
-                          Args}})
+            aeso_data:to_binary({FunHashInt, Args})
         end,
     fp_oracle_action(Cfg, ProduceCallData).
 
 %% test that a force progress transaction can NOT respond an oracle 
 %% query via a contract
 fp_oracle_respond(Cfg) ->
+    FunHashInt = get_oracle_fun_hash_int(<<"respond">>),
     ProduceCallData =
         fun(_Pubkey, _Privkey, Oracle, OraclePrivkey, QueryId, ContractId, _QueryFee) ->
             ?TEST_LOG("Oracle ~p", [Oracle]),
@@ -3403,19 +3402,17 @@ fp_oracle_respond(Cfg) ->
                                     OraclePrivkey),
             ?TEST_LOG("Signature binary ~p", [SigBin]),
             Sig = {Word1, Word2},
-            Args = {IntOracleId, IntQueryId, Sig, 
+            Args = {IntOracleId, IntQueryId, Sig,
                     aeso_data:to_binary(42, 0)},
-            CalldataType = {tuple, [string, aeso_abi:get_type(Args)]},
             ?TEST_LOG("Oracle respond function arguments ~p", [Args]),
-            aeso_data:to_binary({CalldataType,
-                         {list_to_binary(atom_to_list(respond)),
-                          Args}})
+            aeso_data:to_binary({FunHashInt, Args})
         end,
     fp_oracle_action(Cfg, ProduceCallData).
 
 %% test that a force progress transaction can NOT extend an oracle 
 %% via a contract
 fp_oracle_extend(Cfg) ->
+    FunHashInt = get_oracle_fun_hash_int(<<"extendOracle">>),
     ProduceCallData =
         fun(_Pubkey, _Privkey, Oracle, OraclePrivkey, _QueryId, ContractId, _QueryFee) ->
             <<IntOracleId:256>> = Oracle,
@@ -3427,11 +3424,8 @@ fp_oracle_extend(Cfg) ->
             ?TEST_LOG("Signature binary ~p", [SigBin]),
             Sig = {Word1, Word2},
             Args = {IntOracleId, Sig, RelativeTTL},
-            CalldataType = {tuple, [string, aeso_abi:get_type(Args)]},
             ?TEST_LOG("Oracle respond function arguments ~p", [Args]),
-            aeso_data:to_binary({CalldataType,
-                         {list_to_binary(atom_to_list(extendOracle)),
-                          Args}})
+            aeso_data:to_binary({FunHashInt, Args})
         end,
     fp_oracle_action(Cfg, ProduceCallData).
 
@@ -3464,7 +3458,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                 state := S0} = Props) ->
             ContractString = aeso_test_utils:read_contract(ContractName),
             BinCode = aeso_compiler:from_string(ContractString, []),
-            CallData = aect_sophia:encode_call_data(BinCode, <<"init">>, <<"()">>),
+            {ok, CallData} = aect_sophia:encode_call_data(BinCode, <<"init">>, <<"()">>),
             Nonce = 1,
             {ok, ContractCreateTx} =
                 aect_create_tx:new(
@@ -3628,6 +3622,14 @@ fp_oracle_action(Cfg, ProduceCallData) ->
     ok.
 
 
+get_oracle_fun_hash_int(Function) ->
+    ContractString = aeso_test_utils:read_contract("oracles"),
+    BinCode = aeso_compiler:from_string(ContractString, []),
+    #{type_info := TypeInfo} = aeso_compiler:deserialize(BinCode),
+    {ok, <<IntFunHash:256>>} = aeso_compiler:type_hash_from_function_name(
+                               Function, TypeInfo),
+    IntFunHash.
+
 fp_register_oracle(Cfg) ->
     StateHashSize = aec_base58c:byte_size_for_type(state),
     StateHash = <<42:StateHashSize/unit:8>>,
@@ -3641,19 +3643,18 @@ fp_register_oracle(Cfg) ->
             ?TEST_LOG("Signature binary ~p", [SigBin]),
             {Word1, Word2}
         end,
+
+    IntFunHash = get_oracle_fun_hash_int(<<"registerOracle">>),
     RegisterCallData =
         fun(OPubKey, Sig) ->
             <<IntPubKey:256>> = OPubKey,
             RelativeTTL = {variant, 0, [10]},
             RegisterArgs = {IntPubKey, Sig, 2, RelativeTTL},
-            CalldataType = {tuple, [string, aeso_abi:get_type(RegisterArgs)]},
             ?TEST_LOG("Oracle register function arguments ~p", [RegisterArgs]),
-            aeso_data:to_binary({CalldataType,
-                         {list_to_binary(atom_to_list(registerOracle)),
-                          RegisterArgs}})
+            aeso_data:to_binary({IntFunHash, RegisterArgs})
         end,
     ContractName = "oracles",
-    
+
     % test contract on-chain
     % this validates that the contract and the fucntion are indeed callable
     % on-chain and it registers an oracle on-chain 
@@ -3674,7 +3675,7 @@ fp_register_oracle(Cfg) ->
                 state := S0} = Props) ->
             ContractString = aeso_test_utils:read_contract(ContractName),
             BinCode = aeso_compiler:from_string(ContractString, []),
-            CallData = aect_sophia:encode_call_data(BinCode, <<"init">>, <<"()">>),
+            {ok, CallData} = aect_sophia:encode_call_data(BinCode, <<"init">>, <<"()">>),
             Nonce = 1,
             {ok, ContractCreateTx} =
                 aect_create_tx:new(
