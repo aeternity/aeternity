@@ -190,7 +190,7 @@ infer_contract(Env, Defs) ->
     check_reserved_entrypoints(FunMap),
     DepGraph  = maps:map(fun(_, Def) -> aeso_syntax_utils:used_ids(Def) end, FunMap),
     SCCs      = aeso_utils:scc(DepGraph),
-    io:format("Dependency sorted functions:\n  ~p\n", [SCCs]),
+    %% io:format("Dependency sorted functions:\n  ~p\n", [SCCs]),
     TypeDefs ++ check_sccs(Env2, FunMap, SCCs, []).
 
 check_typedefs(Env, Defs) ->
@@ -199,7 +199,7 @@ check_typedefs(Env, Defs) ->
     TypeMap  = maps:from_list([ {GetName(Def), Def} || Def <- Defs ]),
     DepGraph = maps:map(fun(_, Def) -> aeso_syntax_utils:used_types(Def) end, TypeMap),
     SCCs     = aeso_utils:scc(DepGraph),
-    io:format("Dependency sorted types:\n  ~p\n", [SCCs]),
+    %% io:format("Dependency sorted types:\n  ~p\n", [SCCs]),
     Env1     = check_typedef_sccs(Env, TypeMap, SCCs),
     destroy_and_report_type_errors(),
     SCCNames = fun({cyclic, Xs}) -> Xs; ({acyclic, X}) -> [X] end,
