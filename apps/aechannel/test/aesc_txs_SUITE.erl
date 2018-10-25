@@ -3447,7 +3447,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
     
     % test contract on-chain
     % this validates that the contract and the fucntion are indeed callable
-    % on-chain and they produce a name preclaim
+    % on-chain and they produce the expected oracle action 
     ?TEST_LOG("Create contract ~p.aes on-chain", [ContractName]),
     run(#{cfg => Cfg},
         [ % create account for being contract owner
@@ -3640,7 +3640,6 @@ fp_register_oracle(Cfg) ->
             BinToSign = <<Oracle/binary, ContractId/binary>>,
             SigBin = <<Word1:256, Word2:256>> =
                 enacl:sign_detached(aec_governance:add_network_id(BinToSign), PrivK),
-            %_Sig = aeu_hex:hexstring_encode(aeso_data:to_binary({Word1, Word2}, 0))
             ?TEST_LOG("Signature binary ~p", [SigBin]),
             {Word1, Word2}
         end,
@@ -3659,7 +3658,7 @@ fp_register_oracle(Cfg) ->
     
     % test contract on-chain
     % this validates that the contract and the fucntion are indeed callable
-    % on-chain and they produce a name preclaim
+    % on-chain and it registers an oracle on-chain 
     ?TEST_LOG("Create contract ~p.aes on-chain", [ContractName]),
     run(#{cfg => Cfg},
         [ % create account for being contract owner
