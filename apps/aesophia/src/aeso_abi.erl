@@ -11,8 +11,11 @@
 -define(HASH_SIZE, 32).
 
 -export([ create_calldata/3
-        , get_type/1]).
+        ]).
 
+-ifdef(TEST).
+-export([ ast_to_erlang/1]).
+-endif.
 
 -spec create_calldata(binary(), string(), string()) ->
                              {ok, aeso_sophia:heap(), aeso_sophia:type()}
@@ -64,30 +67,4 @@ ast_to_erlang({map, _, Elems}) ->
 
 encode_function(Function) ->
      << <<X>> || X <- Function>>.
-
-get_type(N) when is_integer(N) -> word;
-get_type(S) when is_binary(S)  -> string;
-get_type(word)                 -> typerep;
-get_type(string)               -> typerep;
-get_type({list, _})            -> typerep;
-get_type({tuple, _})           -> typerep;
-get_type({variant, _})         -> typerep;
-get_type({map, _, _})          -> typerep;
-get_type(none)                 -> option_t(word);
-get_type({some, X})            -> option_t(get_type(X));
-get_type([])                   -> {list, word};
-get_type([H | _])              -> {list, get_type(H)};
-get_type(M) when is_map(M) ->
-    {KeyT, ValT} =
-        case maps:to_list(M) of
-            [] -> {word, word};
-            [{K, V} | _] -> {get_type(K), get_type(V)}
-        end,
-    {map, KeyT, ValT};
-get_type({variant, Tag, Args}) ->
-    {variant, lists:duplicate(Tag, []) ++ [lists:map(fun get_type/1, Args)]};
-get_type(T) when is_tuple(T) ->
-    {tuple, [ get_type(X) || X <- tuple_to_list(T) ]}.
-
-option_t(T) -> {variant, [[], [T]]}.
 
