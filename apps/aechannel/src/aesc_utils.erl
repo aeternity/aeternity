@@ -36,11 +36,10 @@
             %% Enable setting up node with "test" rebar profile.
             error:undef -> ok
         end).
--define(DEBUG_LOG(Format, Data), begin lager:debug(Format, Data), ?TEST_LOG(Format, Data) end).
 -else.
 -define(TEST_LOG(Format, Data), ok).
--define(DEBUG_LOG(Format, Data), lager:debug(Format, Data)).
 -endif.
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -96,12 +95,15 @@ check_round_greater_than_last(Channel, Round, Type) ->
                 ChannelRound;
             true when Type =/= force_progress ->
                 %% last state is a force progress and a co-signed transaction
-                %% is posted; co-signed round can overwrite the on-chain
-                %% computed one
-                ChannelRound - 1;
+                %% is posted; There might be a couple of subsequent forced
+                %% progressed states.
+                %% The co-signed state can overwrite the on-chain
+                %% computed ones, ever since the first on-chain produced one
+                aesc_channels:solo_round(Channel) - 1;
             false ->
                 ChannelRound
         end,
+    ?TEST_LOG("MinRound ~p, Round ~p", [MinRound, Round]),
     case MinRound < Round of
         true  -> ok;
         false -> {error, old_round}
@@ -242,15 +244,9 @@ check_force_progress(Tx, Payload, OffChainTrees, Height, Trees) ->
 
 check_force_progress_(PayloadHash, PayloadRound,
                       Channel, FromPubKey, Nonce, Fee, Update,
-                      NextRound, OffChainTrees, Height, Trees) ->
+                      NextRound, OffChainTrees, _Height, Trees) ->
     Checks =
         [ fun() ->
-              case aesc_channels:can_force_progress(Channel, Height) of
-                  true -> ok;
-                  false -> {error, force_progressed_too_soon}
-              end
-          end,
-          fun() ->
               case aesc_offchain_update:is_call(Update) of
                   true -> ok;
                   false -> {error, update_not_call}

@@ -1,0 +1,4 @@
+* Refactors State Channel's approach to disputes. The block height timer
+  between subsequent force progress transactions is removed. This greatly
+  improves the speed of forcing of progress. A co-signed state still 
+  overwrites on-chain produced states. This impacts consesus.

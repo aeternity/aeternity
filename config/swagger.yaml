@@ -2288,14 +2288,15 @@ definitions:
         type: integer
         format: int64
         minimum: 0
+      solo_round:
+        type: integer
+        format: int64
+        minimum: 0
       lock_period:
         type: integer
         format: int64
         minimum: 0
-      forcing_blocked_until:
-        type: integer
-        format: int64
-      closes_at:
+      locked_until:
         type: integer
         format: int64
     required:
@@ -2309,9 +2310,9 @@ definitions:
       - delegate_ids
       - state_hash
       - round
+      - solo_round
       - lock_period
-      - forcing_blocked_until
-      - closes_at
+      - locked_until
   ChannelCreateTx:
     type: object
     properties:

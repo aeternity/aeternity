@@ -124,9 +124,14 @@
          fp_is_replaced_by_same_round_snapshot/1,
          % not closing, balances are NOT checked
          fp_solo_payload_overflowing_balances/1,
+
+         fp_chain_is_replaced_by_snapnshot/1,
+         fp_chain_is_replaced_by_deposit/1,
+         fp_chain_is_replaced_by_withdrawal/1,
          % already closing
          fp_after_solo_close/1,
          fp_after_slash/1,
+         fp_chain_is_replaced_by_slash/1,
          fp_use_onchain_oracle/1,
          fp_use_onchain_name_resolution/1,
          fp_use_onchain_enviroment/1,
@@ -152,10 +157,12 @@
          % poi tests
 
          fp_insufficent_tokens/1,
-         fp_too_soon/1,
 
          % off-chain name registration not allowed
-         fp_register_name/1
+         fp_register_name/1,
+
+         % FP resets locked_until timer
+         fp_settle_too_soon/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -288,9 +295,14 @@ groups() ->
        fp_is_replaced_by_same_round_snapshot,
        % not closing, balances are NOT checked
        fp_solo_payload_overflowing_balances,
+       % forced chain is replaced by co-signed state
+       fp_chain_is_replaced_by_snapnshot,
+       fp_chain_is_replaced_by_deposit,
+       fp_chain_is_replaced_by_withdrawal,
        % already closing
        fp_after_solo_close,
        fp_after_slash,
+       fp_chain_is_replaced_by_slash,
        % contract referring to on-chain objects
        fp_use_onchain_oracle,
        fp_use_onchain_name_resolution,
@@ -316,8 +328,10 @@ groups() ->
        % poi tests
 
        fp_insufficent_tokens,
-       fp_too_soon,
-       fp_register_name
+       fp_register_name,
+
+       % FP resets locked_until timer
+       fp_settle_too_soon
       ]}
     ].
 
@@ -1665,14 +1679,7 @@ fp_on_top_of_fp(Cfg) ->
                 create_contract_poi_and_payload(FPRound1 - 1, Contract1Round, Owner),
                 set_prop(height, InitHeight),
                 force_progress_sequence(FPRound1, Forcer1),
-                fun(#{channel_pubkey := ChannelPubKey, state := S,
-                      height := Height} = Props) ->
-                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
-                    % can not force progress yet
-                    false = aesc_channels:can_force_progress(Channel, Height),
-                    Props
-                end,
-                set_prop(height, InitHeight + LockPeriod + 1),
+                set_prop(height, InitHeight + 1),
                 create_fp_trees(),
                 set_prop(payload, <<>>),
                 force_progress_sequence(FPRound2, Forcer2)
@@ -1706,14 +1713,7 @@ fp_after_fp_missing_rounds(Cfg) ->
                 create_contract_poi_and_payload(FPRound1 - 1, Contract1Round, Owner),
                 set_prop(height, InitHeight),
                 force_progress_sequence(FPRound1, Forcer1),
-                fun(#{channel_pubkey := ChannelPubKey, state := S,
-                      height := Height} = Props) ->
-                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
-                    % can not force progress yet
-                    false = aesc_channels:can_force_progress(Channel, Height),
-                    Props
-                end,
-                set_prop(height, InitHeight + LockPeriod + 1),
+                set_prop(height, InitHeight + 1),
                 fun(Props) when FPRound1 =/= FPRound2 - 1 ->
 
                     (create_contract_poi_and_payload(FPRound2 - 1,
@@ -1920,9 +1920,9 @@ fp_is_replaced_by_same_round_snapshot(Cfg) ->
         end,
     Test =
         fun(Round) ->
-            [CoSignedSnapshotWins(Round, Withdrawer, Owner, Forcer)
+            [CoSignedSnapshotWins(Round, Snapshoter, Owner, Forcer)
                   || Owner  <- ?ROLES,
-                     Withdrawer <- ?ROLES,
+                     Snapshoter <- ?ROLES,
                      Forcer <- ?ROLES]
         end,
 
@@ -1931,6 +1931,90 @@ fp_is_replaced_by_same_round_snapshot(Cfg) ->
     Test(20),
     ok.
 
+fp_chain_is_replaced_by_snapnshot(Cfg) ->
+    fp_chain_is_replaced_by_cosigned_tx(Cfg, fun() -> positive(fun snapshot_solo_/2) end).
+
+fp_chain_is_replaced_by_deposit(Cfg) ->
+    CoSignedFun =
+        fun() ->
+            fun(Props) ->
+                run(Props,
+                    [ set_prop(amount, 1),
+                      positive(fun deposit_/2)])
+            end
+        end,
+    fp_chain_is_replaced_by_cosigned_tx(Cfg, CoSignedFun).
+
+fp_chain_is_replaced_by_withdrawal(Cfg) ->
+    CoSignedFun =
+        fun() ->
+            fun(Props) ->
+                run(Props,
+                    [ set_prop(amount, 1),
+                      positive(fun withdraw_/2)])
+            end
+        end,
+    fp_chain_is_replaced_by_cosigned_tx(Cfg, CoSignedFun).
+
+fp_chain_is_replaced_by_cosigned_tx(Cfg, PostCoSignedFun) ->
+    BogusStateHash = <<0:32/unit:8>>,
+    ForceProgressFromOnChain =
+        fun(Round, Forcer) ->
+            fun(Props) ->
+                run(Props,
+                    [ create_fp_trees(),
+                      set_prop(payload, <<>>),
+                      force_progress_sequence(Round, Forcer)])
+            end
+        end,
+    CoSignedTxWins =
+        fun(FPRound, CoSignedPoster, Owner, Forcer) ->
+            IAmt0 = 30,
+            RAmt0 = 30,
+            ContractCreateRound = 10,
+            run(#{cfg => Cfg, initiator_amount => IAmt0,
+                              responder_amount => RAmt0,
+                 channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                create_contract_poi_and_payload(FPRound - 1,
+                                                ContractCreateRound,
+                                                Owner),
+                force_progress_sequence(_Round = FPRound, Forcer),
+                ForceProgressFromOnChain(FPRound + 1, Forcer),
+                ForceProgressFromOnChain(FPRound + 2, Forcer),
+                fun(#{state_hash := SH} = Props) ->
+                    Props#{fp_state_hash => SH}
+                end,
+                set_from(CoSignedPoster),
+                set_prop(round, FPRound), % first force progressed
+                set_prop(state_hash, BogusStateHash),
+                delete_prop(payload), % old FP payload
+                PostCoSignedFun(),
+                fun(#{channel_pubkey := ChannelPubKey, state := S,
+                      fp_state_hash := FPStateHash} = Props) ->
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    % different hashes
+                    true = BogusStateHash =/= FPStateHash,
+                    % co-signed had won on-chain
+                    BogusStateHash = aesc_channels:state_hash(Channel),
+                    % back to the co-signed round
+                    FPRound = aesc_channels:round(Channel),
+                    Props
+                end
+               ])
+        end,
+    Test =
+        fun(Round) ->
+            [CoSignedTxWins(Round, CoSignedPoster, Owner, Forcer)
+                  || Owner  <- ?ROLES,
+                     CoSignedPoster <- ?ROLES,
+                     Forcer <- ?ROLES]
+        end,
+
+    %% same round is used for the snapshot and the forced progress before it
+    %% co-signed snapshot wins
+    Test(20),
+    ok.
 fp_after_solo_close(Cfg) ->
     AfterClose =
         fun(CloseRound, FPRound, Closer, Owner, Forcer) ->
@@ -2108,6 +2192,91 @@ fp_after_slash(Cfg) ->
     Test(10, 11, 20),
     %% force progress right after a close
     Test(11, 20, 30),
+    ok.
+
+% Test that slashing with co-signed off-chain state replaces
+% on-chain produced chain of unilaterally forced progress states
+%
+% unilaterally on-chain force progress state ROUND
+% unilaterally on-chain force progress state ROUND + 1
+% solo close using on-chain forced progress ROUND + 1
+% force progress on-chain state ROUND + 2
+% slash with co-signed off-chain state ROUND
+fp_chain_is_replaced_by_slash(Cfg) ->
+    ForceProgressFromOnChain =
+        fun(Round, Forcer) ->
+            fun(Props) ->
+                run(Props,
+                    [ create_fp_trees(),
+                      set_prop(payload, <<>>),
+                      force_progress_sequence(Round, Forcer)])
+            end
+        end,
+    Test =
+        fun(FPRound, Closer, Slasher, Owner, Forcer) ->
+            IAmt0 = 30,
+            RAmt0 = 30,
+            LockPeriod = 10,
+            CloseHeight = 10,
+            SlashHeight = 12,
+            true = SlashHeight < CloseHeight + LockPeriod,
+            ContractCreateRound = 10,
+            run(#{cfg => Cfg, initiator_amount => IAmt0,
+                              responder_amount => RAmt0,
+                  lock_period => LockPeriod,
+                  channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                % close
+                set_prop(height, CloseHeight),
+                set_from(Closer),
+                create_contract_poi_and_payload(FPRound + 1,
+                                                ContractCreateRound,
+                                                Owner),
+                create_fp_trees(),
+                set_prop(round, FPRound - 1), % for the payload
+                create_payload(),
+                force_progress_sequence(_Round = FPRound, Forcer),
+                ForceProgressFromOnChain(FPRound + 1, Forcer),
+                set_prop(round, FPRound + 1),
+                set_prop(payload, <<>>),
+                poi_participants_only(),
+                positive(fun close_solo_/2),
+                ForceProgressFromOnChain(FPRound + 2, Forcer),
+                fun(#{state_hash := SH} = Props) ->
+                    Props#{fp_state_hash => SH}
+                end,
+                % slash
+                % produce some different state trees
+                set_balances_in_trees(20, 10),
+                set_prop(height, SlashHeight),
+                set_prop(round, FPRound),
+                set_from(Slasher),
+                poi_participants_only(),
+                create_payload(),
+                fun(#{state_hash := SlashStateHash} = Props) ->
+                    Props#{slash_state_hash => SlashStateHash}
+                end,
+                positive(fun slash_/2),
+                fun(#{channel_pubkey := ChannelPubKey, state := S,
+                      fp_state_hash := FPStateHash,
+                      slash_state_hash := SlashStateHash} = Props) ->
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+
+                    % different hashes
+                    true = SlashStateHash =/= FPStateHash,
+                    % slash had won on-chain
+                    SlashStateHash = aesc_channels:state_hash(Channel),
+                    FPRound = aesc_channels:round(Channel),
+                    Props
+                end
+               ])
+        end,
+    FPRound = 50,
+    [Test(FPRound,
+          Closer, Slasher, Owner, Forcer) || Owner   <- ?ROLES,
+                                             Closer  <- ?ROLES,
+                                             Slasher <- ?ROLES,
+                                             Forcer  <- ?ROLES],
     ok.
 
 
@@ -2899,47 +3068,6 @@ fp_insufficent_tokens(Cfg) ->
     Test(2, 500,  999),
     ok.
 
-fp_too_soon(Cfg) ->
-    TooSoonTest =
-        fun(FPHeight0, FPHeight1, LockPeriod, Owner, Forcer0, Forcer1) ->
-            IAmt0 = 30,
-            RAmt0 = 30,
-            Round0 = 100,
-            Round1 = 200,
-            ContractCreateRound = 10,
-            run(#{cfg => Cfg, initiator_amount => IAmt0,
-                              responder_amount => RAmt0,
-                 channel_reserve => 1, lock_period => LockPeriod},
-               [positive(fun create_channel_/2),
-                set_prop(height, FPHeight0),
-                create_contract_poi_and_payload(Round0 - 1,
-                                                ContractCreateRound,
-                                                Owner),
-                force_progress_sequence(_Round = Round0, Forcer0),
-                set_prop(height, FPHeight1),
-                create_fp_trees(),
-                set_prop(round, Round1 - 1), % for the payload
-                create_payload(),
-                negative_force_progress_sequence(Round1, Forcer1,
-                                                 force_progressed_too_soon)])
-        end,
-    Test =
-        fun(DepositRound, FPRound, LockPeriod) ->
-            [TooSoonTest(DepositRound, FPRound, LockPeriod,
-                          Depositor, Owner, Forcer) || Owner  <- ?ROLES,
-                                                       Depositor <- ?ROLES,
-                                                       Forcer <- ?ROLES]
-        end,
-
-    % height is too low
-    Test(11, 12, 10),
-    % height is one less
-    Test(10, 20, 10),
-
-    % height is one less, different lock_period
-    Test(100, 200, 100),
-    ok.
-
 fp_register_name(Cfg) ->
     Name = <<"bla.test">>,
     Salt = 42,
@@ -3143,6 +3271,99 @@ fp_register_name(Cfg) ->
                             Forcer <- ?ROLES],
     ok.
 
+fp_settle_too_soon(Cfg) ->
+    AfterSlash =
+        fun(CloseRound, SlashRound, FPRound, Closer, Slasher, Owner, Forcer) ->
+            IAmt0 = 30,
+            RAmt0 = 30,
+            LockPeriod = 10,
+            CloseHeight = 10,
+            SlashHeight = 12,
+            FPHeight = SlashHeight + 1,
+            CallDeposit = 10,
+            true = SlashHeight < CloseHeight + LockPeriod,
+            ContractCreateRound = 10,
+            run(#{cfg => Cfg, initiator_amount => IAmt0,
+                              responder_amount => RAmt0,
+                  lock_period => LockPeriod,
+                  channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                % close
+                set_prop(height, CloseHeight),
+                set_from(Closer),
+                create_contract_poi_and_payload(CloseRound,
+                                                ContractCreateRound,
+                                                Owner),
+                poi_participants_only(),
+                set_prop(round, CloseRound),
+                positive(fun close_solo_/2),
+                % slash
+                set_prop(height, SlashHeight),
+                set_prop(round, SlashRound),
+                set_from(Slasher),
+                poi_participants_only(),
+                create_payload(),
+                positive(fun slash_/2),
+                % force progress
+                create_fp_trees(),
+                set_prop(round, FPRound - 1), % for the payload
+                create_payload(),
+                fun(Props) when CloseRound =:= FPRound - 1 ->
+                      Props#{payload => <<>>};
+                   (Props) -> Props
+                end,
+                set_prop(height, FPHeight),
+                fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
+                    % ensure channel had been updated
+                    Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
+                    SlashRound = aesc_channels:round(Channel),
+                    false = aesc_channels:is_active(Channel),
+                    ChannelAmount = aesc_channels:channel_amount(Channel),
+                    % total balance not changed
+                    {ChannelAmount, _} = {IAmt0 + RAmt0, ChannelAmount},
+                    ParticipantBalances = get_channel_obj_balances(Channel),
+                    Props#{amts_before_fp => ParticipantBalances}
+                end,
+                set_prop(call_deposit, CallDeposit),
+                force_progress_sequence(_Round = FPRound, Forcer),
+                fun(#{initiator_pubkey  := I,
+                      responder_pubkey  := R,
+                      trees             := Trees} = Props) ->
+                    Accounts = aec_trees:accounts(Trees),
+                    Balance =
+                        fun(Pubkey) ->
+                            Acc = aec_accounts_trees:get(Pubkey, Accounts),
+                            _Bal = aec_accounts:balance(Acc)
+                        end,
+                    IBal = Balance(I),
+                    RBal = Balance(R),
+                    Props#{initiator_amount => IBal,
+                           responder_amount => RBal}
+                end,
+                % height is not enough to accept a settle tx
+                negative(fun settle_/2, {error, channel_not_closed}),
+                % when a proper height is reached - a settle tx is
+                % accepted
+                set_prop(height, FPHeight + LockPeriod + 1),
+                positive(fun settle_/2)
+               ])
+        end,
+    Test =
+        fun(CloseRound, SlashRound, FPRound) ->
+            [AfterSlash(CloseRound, SlashRound, FPRound,
+                        Closer, Slasher, Owner, Forcer) || Owner  <- ?ROLES,
+                                                           Closer <- ?ROLES,
+                                                           Slasher <- ?ROLES,
+                                                           Forcer <- ?ROLES]
+        end,
+
+    %% some rounds had passed since the close
+    Test(10, 11, 20),
+    %% force progress right after a close
+    Test(11, 20, 30),
+    ok.
+
+
 create_contract_poi_and_payload(Round, ContractRound, Owner) ->
     create_contract_poi_and_payload(Round, ContractRound, Owner, #{}).
 
@@ -3179,6 +3400,30 @@ create_fp_trees() ->
     fun(#{trees := Trees} = Props) ->
         Hash = aec_trees:hash(Trees),
         Props#{state_hash => Hash, offchain_trees => Trees}
+    end.
+
+set_balances_in_trees(IBal, RBal) ->
+    fun(#{initiator_pubkey := Initiator,
+          responder_pubkey := Responder,
+          trees            := Trees} = Props) ->
+        Accounts =
+            lists:foldl(
+                fun({Pubkey, Balance}, Accum) ->
+                    Acc = aec_accounts_trees:get(Pubkey, Accum),
+                    {ok, Acc1} =
+                        case aec_accounts:balance(Acc) of
+                            B0 when B0 > Balance ->
+                                aec_accounts:spend(Acc, B0 - Balance, 0);
+                            B0 when B0 =< Balance ->
+                                aec_accounts:earn(Acc, Balance - B0)
+                        end,
+                    aec_accounts_trees:enter(Acc1, Accum)
+                end,
+                aec_trees:accounts(Trees),
+                [{Initiator, IBal},
+                 {Responder, RBal}]),
+        Trees1 = aec_trees:set_accounts(Trees, Accounts),
+        Props#{trees => Trees1}
     end.
 
 negative_force_progress_sequence(Round, Forcer, ErrMsg) ->
@@ -4107,8 +4352,7 @@ register_name(Name, Pointers0) ->
 force_call_contract_first(Forcer, Fun, Args, Round) ->
     fun(Props0) ->
         run(Props0,
-           [set_height_to_forcable(),
-            set_prop(round, Round - 1),
+           [set_prop(round, Round - 1),
             set_from(Forcer),
             create_fp_trees(),
             create_payload(),
@@ -4137,21 +4381,9 @@ force_call_contract(Forcer, Fun, Args, Round) ->
             [set_prop(contract_function_call, {Fun, Args}),
             create_fp_trees(),
             set_prop(payload, <<>>),
-            set_height_to_forcable(),
             force_progress_sequence(Round, Forcer)])
     end.
 
-set_height_to_forcable() ->
-    fun(#{channel_pubkey := ChannelPubKey, state := S,
-          height := H0} = Props) ->
-        Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
-        case aesc_channels:can_force_progress(Channel, H0) of
-            true -> Props;
-            false ->
-                H1 = aesc_channels:force_blocked_until(Channel),
-                Props#{height => H1 + 1}
-        end
-    end.
 
 assert_last_channel_result(Result, Type) ->
     fun(#{state := S,
@@ -4171,3 +4403,12 @@ assert_last_channel_result(Result, Type) ->
         Props
     end.
 
+% Create poi just for participants; used by slash and close solo
+poi_participants_only() ->
+    fun(#{initiator_pubkey  := IPubkey,
+          responder_pubkey  := RPubkey,
+          trees             := Trees} = Props) ->
+          PoI = calc_poi([IPubkey, RPubkey], [], Trees),
+          PoIHash = aec_trees:poi_hash(PoI),
+          Props#{poi => PoI, state_hash => PoIHash}
+   end.
