@@ -275,7 +275,7 @@ serialize(Tree) ->
                 aec_object_serialization:serialize(
                     mtree_value,
                     ?VSN,
-                    leaf_serialization_template(?VSN),
+                    value_serialization_template(?VSN),
                     [ {key, Key}
                     , {val, Value}
                     ])
@@ -301,12 +301,12 @@ deserialize_(Bin, EmptyMTree) ->
         aec_object_serialization:deserialize(mtree, ?VSN,
                                              serialization_template(?VSN), Bin),
     lists:foldl(
-        fun(LeafBin, Accum) ->
+        fun(ValBin, Accum) ->
             [ {key, Key}
             , {val, Value}] =
                 aec_object_serialization:deserialize(mtree_value, ?VSN,
-                                                      leaf_serialization_template(?VSN),
-                                                      LeafBin),
+                                                     value_serialization_template(?VSN),
+                                                     ValBin),
             insert(Key, Value, Accum)
         end,
         EmptyMTree,
@@ -315,7 +315,7 @@ deserialize_(Bin, EmptyMTree) ->
 serialization_template(?VSN) ->
    [{values, [binary]}]. 
 
-leaf_serialization_template(?VSN) ->
+value_serialization_template(?VSN) ->
    [ {key, binary}
    , {val, binary}
    ]. 
