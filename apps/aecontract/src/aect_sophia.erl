@@ -57,9 +57,10 @@ on_chain_call(ContractKey, Function, Argument) ->
     #{ byte_code := Code} = aeso_compiler:deserialize(SerializedCode),
     case create_call(SerializedCode, Function, Argument) of
         {error, E} -> {error, E};
-        {ok, CallData, CallDataType} ->
+        {ok, CallData, CallDataType, OutType} ->
             VMVersion   = ?AEVM_01_Sophia_01,
-            aect_evm:call_common(CallData, CallDataType, ContractKey, Code, Store,
+            aect_evm:call_common(CallData, CallDataType, OutType,
+                                 ContractKey, Code, Store,
                                  TxEnv, Trees, VMVersion)
     end.
 
@@ -68,8 +69,9 @@ simple_call(SerializedCode, Function, Argument) ->
     #{ byte_code := Code} = aeso_compiler:deserialize(SerializedCode),
     case create_call(SerializedCode, Function, Argument) of
         {error, E} -> {error, E};
-        {ok, CallData, CallDataType} ->
-            aect_evm:simple_call_common(Code, CallData, CallDataType, ?AEVM_01_Sophia_01)
+        {ok, CallData, CallDataType, OutType} ->
+            aect_evm:simple_call_common(Code, CallData, CallDataType,
+                                        OutType, ?AEVM_01_Sophia_01)
     end.
 
 -spec encode_call_data(binary(), binary(), binary()) ->
@@ -77,9 +79,12 @@ simple_call(SerializedCode, Function, Argument) ->
 encode_call_data(Code, Function, Argument) ->
     try create_call(Code, Function, Argument) of
         {error, _} = Err -> Err;
-        {ok, Data,_DataType} when is_binary(Data) ->
+        {ok, Data,_DataType,_OutType} when is_binary(Data) ->
             {ok, Data}
-    catch _:_ -> {error, <<"bad argument">>}
+    catch _T:_E ->
+            io:format("Encode call data failed with: ~w:~w ~p\n",
+                      [_T, _E, erlang:get_stacktrace()]),
+            {error, <<"bad argument">>}
     end.
 
 
@@ -155,5 +160,5 @@ create_call(Code, Function, Argument) ->
                                   binary_to_list(Argument)) of
         {error, Error} ->
             {error, list_to_binary(io_lib:format("~p", [Error]))};
-        {ok, _CallData,_CallDataType} = Res -> Res
+        {ok, _CallData,_CallDataType,_OutType} = Res -> Res
     end.

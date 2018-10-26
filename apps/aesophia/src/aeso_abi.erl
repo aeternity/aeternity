@@ -82,8 +82,8 @@ encode_call(ContractCode, Function, ArgumentAst) ->
                 {ok, <<TypeHashInt:256>>} ->
                     Data = aeso_data:to_binary({TypeHashInt, Argument}),
                     case check_calldata(Data, TypeInfo) of
-                        {ok, CallDataType} ->
-                            {ok, Data, CallDataType};
+                        {ok, CallDataType, OutType} ->
+                            {ok, Data, CallDataType, OutType};
                         {error,_What} = Err ->
                             Err
                     end;
@@ -100,12 +100,12 @@ check_calldata(CallData, TypeInfo) ->
     case aeso_data:get_function_hash_from_calldata(CallData) of
         {ok, Hash} ->
             case typereps_from_type_hash(Hash, TypeInfo) of
-                {ok, ArgType,_OutType} ->
+                {ok, ArgType, OutType} ->
                     ?TEST_LOG("Found ~p for ~p", [ArgType, Hash]),
                     try aeso_data:from_binary({tuple, [word, ArgType]}, CallData) of
                         {ok, _Something} ->
                             ?TEST_LOG("Whole call data: ~p\n", [_Something]),
-                            {ok, {tuple, [word, ArgType]}};
+                            {ok, {tuple, [word, ArgType]}, OutType};
                         {error, _} ->
                             {error, bad_call_data}
                     catch

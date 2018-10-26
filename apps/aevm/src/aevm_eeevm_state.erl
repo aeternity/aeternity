@@ -90,6 +90,7 @@ init(#{ env  := Env
 
     ChainState = maps:get(chainState, Env),
     ChainAPI =  maps:get(chainAPI, Env),
+    OutType = maps:get(out_type, Exec, undefined),
 
     State =
         #{ address     => Address
@@ -124,6 +125,8 @@ init(#{ env  := Env
          , chain_state => ChainState
          , chain_api   => ChainAPI
 
+         , out_type => OutType
+
          , environment =>
                #{ spec => Spec
                 , options => Opts }
@@ -133,11 +136,12 @@ init(#{ env  := Env
             maps:get(code, Exec),
             maps:get(mem, Exec, #{mem_size => 0}),
             maps:get(store, Exec),
-            maps:get(call_data_type, Exec, undefined)
+            maps:get(call_data_type, Exec, undefined),
+            OutType
            ).
 
 
-init_vm(State, Code, Mem, Store, Type) ->
+init_vm(State, Code, Mem, Store, CallDataType, OutType) ->
     State1 =
         State#{ out       => <<>>
               , call      => #{}
@@ -155,7 +159,8 @@ init_vm(State, Code, Mem, Store, Type) ->
     case vm_version(State) of
         ?AEVM_01_Solidity_01 ->
             aevm_eeevm_store:init(Store, State1);
-        ?AEVM_01_Sophia_01 when Type =:= undefined ->
+        ?AEVM_01_Sophia_01 when CallDataType =:= undefined;
+                                OutType =:= undefined ->
             error({bad_vm_setup, missing_call_data_type});
         ?AEVM_01_Sophia_01 ->
             case is_reentrant_call(State) of
@@ -172,7 +177,7 @@ init_vm(State, Code, Mem, Store, Type) ->
                     %% to memory. The first element of the calldata tuple is
                     %% the function name
                     HeapSize = aevm_eeevm_memory:size_in_words(State2) * 32,
-                    case aeso_data:binary_to_heap(Type, Calldata,
+                    case aeso_data:binary_to_heap(CallDataType, Calldata,
                                                   aevm_eeevm_maps:next_id(maps(State2)),
                                                   HeapSize) of
                         {ok, CalldataHeap} ->
@@ -211,10 +216,10 @@ do_return(Us0, Us1, State) ->
     case vm_version(State) of
         ?AEVM_01_Sophia_01 ->
             try
-                %% In Sophia Us0 is a pointer to a typerep for the return value, and
-                %% Us1 is a pointer to the actual value.
+                %% In Sophia Us1 is a pointer to the actual value.
+                %% The type of the value is in the state (from meta data)
                 Heap       = mem(State),
-                {ok, Type} = aeso_data:from_heap(typerep, Heap, Us0),
+                Type       = out_type(State),
                 {ok, Out}  = aeso_data:heap_to_binary(Type, get_store(State), aeso_data:heap_value(maps(State), Us1, Heap)),
                 set_out(Out, State)
             catch _:_ ->
@@ -491,6 +496,7 @@ mem(State)         -> maps:get(memory, State).
 number(State)      -> maps:get(number, State).
 origin(State)      -> maps:get(origin, State).
 out(State)         -> maps:get(out, State).
+out_type(State)    -> maps:get(out_type, State).
 return_data(State) -> maps:get(return_data, State).
 gas(State)         -> maps:get(gas, State).
 gaslimit(State)    -> maps:get(gas_limit, State).

@@ -32,10 +32,9 @@ convert(#{ contract_name := _ContractName
                     [{{tuple, [fun_hash(Fun),
                                {tuple, make_args(Args)}]},
                       icode_seq([ hack_return_address(Fun, length(Args) + 1) ] ++
-                                [ {tuple, [aeso_ast_to_icode:type_value(TypeRep),
-                                           {funcall, {var_ref, FName}, make_args(Args)}]} ]
+                                [ {funcall, {var_ref, FName}, make_args(Args)}]
                                )}
-                     || Fun={FName, _, Args, _, TypeRep} <- Functions, is_public(Fun) ]},
+                     || Fun={FName, _, Args, _,_TypeRep} <- Functions, is_public(Fun) ]},
                    word},
     NewFunctions = Functions ++ [DispatchFun],
     %% Create a function environment
@@ -47,12 +46,7 @@ convert(#{ contract_name := _ContractName
     StatefulStopLabel = make_ref(),
     MainFunction = lookup_fun(Funs, "_main"),
 
-    %% Unpack a pair on the stack       %% Ptr
-    UnpackPair   = [dup(1),             %% Ptr Ptr
-                    push(32), i(?ADD),  %% Ptr+32 Ptr
-                    i(?MLOAD),          %% Snd Ptr
-                    swap(1),            %% Ptr Snd
-                    i(?MLOAD)],         %% Fst Snd
+    StateTypeValue = aeso_ast_to_icode:type_value(StateType),
 
     DispatchCode = [%% push two return addresses to stop, one for stateful
                     %% functions and one for non-stateful functions.
@@ -65,14 +59,11 @@ convert(#{ contract_name := _ContractName
                     jump(MainFunction),
                     jumpdest(StatefulStopLabel),
 
-                    %% The dispatcher leaves a pointer to pair of a typerep and
-                    %% return value on the stack. We need to unpack this.
-                    UnpackPair,
+                    %% We need to encode the state type and put it
+                    %% underneath the return value.
+                    assemble_expr(Funs, [], nontail, StateTypeValue), %% StateT Ret
+                    swap(1),                                          %% Ret StateT
 
-                    %% Now we need to encode the state type and put it
-                    %% underneath the return type and value.
-                    assemble_expr(Funs, [], nontail, aeso_ast_to_icode:type_value(StateType)),  %% StateT RetT Ret
-                    swap(2), swap(1),
                     %% We should also change the state value at address 0 to a
                     %% pointer to the state value (to allow 0 to represent an
                     %% unchanged state).
@@ -81,13 +72,16 @@ convert(#{ contract_name := _ContractName
                     i(?MSIZE), i(?MSTORE), %% Ptr   Mem[Ptr] := Val
                     push(0), i(?MSTORE),   %%       Mem[0]   := Ptr
 
+                    %% The pointer to the return value is on top of
+                    %% the stack, but the return instruction takes two
+                    %% stack arguments.
+                    push(0),
                     i(?RETURN),
                     jumpdest(StopLabel),
-                    %% Same as StatefulStopLabel above
-                    UnpackPair,
-
                     %% Set state pointer to 0 to indicate that we didn't change state
                     push(0), dup(1), i(?MSTORE),
+                    %% Same as StatefulStopLabel above
+                    push(0),
                     i(?RETURN)
                    ],
     %% Code is a deep list of instructions, containing labels and

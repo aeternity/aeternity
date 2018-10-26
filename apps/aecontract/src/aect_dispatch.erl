@@ -37,7 +37,7 @@ call(<<"sophia">>, Code, Function, Argument) ->
 call(<<"sophia-address">>, ContractKey, Function, Argument) ->
     aect_sophia:on_chain_call(ContractKey, Function, Argument);
 call(<<"evm">>, Code, _, CallData) ->
-    aect_evm:simple_call_common(Code, CallData, undefined, ?AEVM_01_Solidity_01);
+    aect_evm:simple_call_common(Code, CallData, ?AEVM_01_Solidity_01);
 call(_, _, _, _) ->
     {error, <<"Unknown call ABI">>}.
 
@@ -61,8 +61,10 @@ run(?AEVM_01_Sophia_01, #{code := SerializedCode} = CallDef) ->
     #{ byte_code := Code
      , type_info := TypeInfo} = aeso_compiler:deserialize(SerializedCode),
     case aeso_abi:check_calldata(maps:get(call_data, CallDef), TypeInfo) of
-        {ok, CallDataType} ->
-            CallDef1 = CallDef#{code => Code, call_data_type => CallDataType},
+        {ok, CallDataType, OutType} ->
+            CallDef1 = CallDef#{code => Code,
+                                call_data_type => CallDataType,
+                                out_type => OutType},
             run_common(CallDef1, ?AEVM_01_Sophia_01);
         {error, What} ->
             Gas = maps:get(gas, CallDef),
@@ -106,6 +108,7 @@ run_common(#{  amount      := Value
              address    => Address,
              caller     => CallerAddr,
              call_data_type => maps:get(call_data_type, CallDef, undefined),
+             out_type   => maps:get(out_type, CallDef, undefined),
              data       => CallData,
              gas        => Gas,
              gasPrice   => GasPrice,
