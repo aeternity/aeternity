@@ -26,7 +26,7 @@ The minimal configuration to join the testnet is the following (mind that `benef
 ```
 ---
 keys:
-    password: "top secret"
+    peer_password: "top secret"
     dir: ./keys
 
 chain:
@@ -149,10 +149,10 @@ Node ports:
 - `node2` - port 3002
 - `node3` - port 3003
 
-For example to access `node2` public key, assuming docker host address is `localhost`:
+For example to access `node2` peer public key, assuming docker host address is `localhost`:
 
 ```bash
-curl http://localhost:3002/internal/v2/account/pub-key
+curl http://localhost:3002/v2/peers/pubkey
 ```
 
 To start the network:

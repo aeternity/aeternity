@@ -35,7 +35,7 @@ curl http://127.0.0.1:3013/v2/blocks/top
 
 If the node is unresponsive, inspect the `log` directory for errors.
 
-Back up the key pair:
+Back up the peer key pair:
 ```bash
 cp -pr /tmp/node/keys ~/my_epoch_keys
 ```

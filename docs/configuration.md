@@ -70,18 +70,6 @@ Generated keypair with encoded pubkey: ak_2D9REvQsrAgnJgmdwPq585D8YksJC8PSAA8Msc
 In the example the generated public key is `ak_2D9REvQsrAgnJgmdwPq585D8YksJC8PSAA8MscQdxinbkFC7rq`, but do not use it in your config!
 This is just an example value to show what public key format you should expect after running `bin/epoch keys_gen` command.
 
-### Signing keys management
-
-In order for your node to participate in mining, you need to specify in the configuration file the location of your public-private key pair.
-The storage of the key pair by the node is basic:
-* Each node handles one key pair;
-* The key pair is stored on disk;
-* The location of the key pair is configurable (`keys` > `dir` parameter);
-* The key pair is encrypted with a configurable password stored in clear in the configuration file (`keys` > `password` parameter);
-* A fresh key pair is generated if none is found in the configured location.
-
-You do not need to create a key pair yourself: the node will generate one (`keys` > `dir` parameter) in the configured location if none found there.
-
 ## Instructions
 
 The instructions below assume that:
@@ -104,7 +92,7 @@ sync:
 
 keys:
     dir: keys
-    password: "secret"
+    peer_password: "secret"
 
 http:
     external:
