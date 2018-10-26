@@ -3189,11 +3189,15 @@ sophia_state_gas(_Cfg) ->
     {{}, Gas5} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {Ct0}, #{ return_gas_used => true }),
     ?assertMatch(true, Gas5 > Gas4),
 
-    %% Test that a bigger return value in remote (inner) call means more gas
-    {_, Gas6} = ?call(call_contract, Acc, Ct1, return_it1, word, {Ct0}, #{ return_gas_used => true }),
-    {_, Gas7} = ?call(call_contract, Acc, Ct1, return_it2, word, {Ct0}, #{ return_gas_used => true }),
+    %% Test that a bigger return value in remote (inner) call means more gas - strings
+    {_, Gas6} = ?call(call_contract, Acc, Ct1, return_it_s, word, {Ct0, 0}, #{ return_gas_used => true }),
+    {_, Gas7} = ?call(call_contract, Acc, Ct1, return_it_s, word, {Ct0, 1}, #{ return_gas_used => true }),
     ?assertMatch(true, Gas7 > Gas6),
 
+    %% Test that a bigger return value in remote (inner) call means more gas - maps
+    {_, Gas8} = ?call(call_contract, Acc, Ct1, return_it_m, word, {Ct0, 0}, #{ return_gas_used => true }),
+    {_, Gas9} = ?call(call_contract, Acc, Ct1, return_it_m, word, {Ct0, 1}, #{ return_gas_used => true }),
+    ?assertMatch(true, Gas9 > Gas8),
     ok.
 
 

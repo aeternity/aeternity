@@ -2,8 +2,14 @@ contract RemoteState =
   record rstate = { i : int, s : string, m : map(int, int) }
 
   function look_at(s : rstate) = ()
-  function return_s1() = "short"
-  function return_s2() = "______longer_string_at_least_32_bytes_long_____"
+  function return_s(big : bool) =
+    let x = "short"
+    let y = "______longer_string_at_least_32_bytes_long___________longer_string_at_least_32_bytes_long___________longer_string_at_least_32_bytes_long_____"
+    if(big) y else x
+  function return_m(big : bool) =
+    let x = { [1] = 2 }
+    let y = { [1] = 2, [3] = 4, [5] = 6 }
+    if(big) y else x
 
   function get(s : rstate) = s
   function get_i(s : rstate) = s.i
