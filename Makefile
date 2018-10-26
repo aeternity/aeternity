@@ -5,7 +5,10 @@ EUNIT_VM_ARGS = $(CURDIR)/config/eunit.vm.args
 EUNIT_TEST_FLAGS ?=
 
 CT_TEST_FLAGS ?=
-ST_CT_FLAGS = --dir system_test --logdir system_test/logs
+ST_CT_FLAGS = --logdir system_test/logs
+ST_CT_DIR = --dir system_test
+ST_CT_LOCALDIR = --dir system_test/only_local
+
 
 null  :=
 space := $(null) # space
@@ -189,10 +192,13 @@ docker-clean:
 smoke-test: docker smoke-test-run
 
 smoke-test-run:
-	@./rebar3 as system_test do ct $(ST_CT_FLAGS) --suite=aest_sync_SUITE,aest_commands_SUITE,aest_peers_SUITE
+	@./rebar3 as system_test do ct $(ST_CT_DIR) $(ST_CT_FLAGS) --suite=aest_sync_SUITE,aest_commands_SUITE,aest_peers_SUITE
+
+local-system-test:
+	@./rebar3 as system_test do ct $(ST_CT_LOCALDIR) $(ST_CT_FLAGS) --dir system_test/only_local $(CT_TEST_FLAGS)
 
 system-test:
-	@./rebar3 as system_test do ct $(ST_CT_FLAGS) $(CT_TEST_FLAGS)
+	@./rebar3 as system_test do ct $(ST_CT_DIR) $(ST_CT_FLAGS) $(CT_TEST_FLAGS)
 
 aevm-test: aevm-test-deps
 	@./rebar3 eunit --application=aevm
