@@ -432,7 +432,7 @@ oracles(_Cfg) ->
     ChainEnv = #{ currentNumber => 20 },
     Env0 = initial_state(#{ environment => ChainEnv }, #{101 => QFee}),
     Env1 = create_contract(101, Code, "()", Env0),
-    {101, Env2} = successful_call(101, word, registerOracle, "(101, (0, 0), "++ integer_to_list(QFee) ++", (0, 10))", Env1),
+    {101, Env2} = successful_call(101, word, registerOracle, "(101, "++ integer_to_list(QFee) ++", (0, 10))", Env1),
     {Q, Env3}   = successful_call(101, word, createQuery, "(101, \"why?\", "++ integer_to_list(QFee) ++", (0, 10), (0, 11))", Env2, #{value => QFee}),
     QArg        = integer_to_list(Q),
     OandQArg    = "(101, "++ QArg ++")",
