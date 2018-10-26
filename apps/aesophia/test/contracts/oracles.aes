@@ -10,10 +10,15 @@ contract Oracles =
   type query_id  = oracle_query(query_t, answer_t)
 
   function registerOracle(acct : address,
-                          sign : signature,   // Signed account address
                           qfee : fee,
                           ttl  : ttl) : oracle_id =
-     Oracle.register(acct, sign, qfee, ttl)
+     Oracle.register(acct, qfee, ttl)
+
+  function signedRegisterOracle(acct : address,
+                                sign : signature,
+                                qfee : fee,
+                                ttl  : ttl) : oracle_id =
+     Oracle.register(acct, qfee, ttl, signature = sign)
 
   function queryFee(o : oracle_id) : fee =
     Oracle.query_fee(o)
@@ -35,15 +40,24 @@ contract Oracles =
     Oracle.query(o, q, qfee, qttl, rttl)
 
   function extendOracle(o    : oracle_id,
-                        sign : signature,   // Signed oracle address
                         ttl  : ttl) : () =
-    Oracle.extend(o, sign, ttl)
+    Oracle.extend(o, ttl)
+
+  function signedExtendOracle(o    : oracle_id,
+                              sign : signature,   // Signed oracle address
+                              ttl  : ttl) : () =
+    Oracle.extend(o, signature = sign, ttl)
 
   function respond(o    : oracle_id,
                    q    : query_id,
-                   sign : signature,
                    r    : answer_t) : () =
-    Oracle.respond(o, q, sign, r)
+    Oracle.respond(o, q, r)
+
+  function signedRespond(o    : oracle_id,
+                         q    : query_id,
+                         sign : signature,
+                         r    : answer_t) : () =
+    Oracle.respond(o, q, signature = sign, r)
 
   function getQuestion(o : oracle_id,
                        q : query_id) : query_t =
@@ -62,10 +76,16 @@ contract Oracles =
   datatype complexQuestion = Why(int) | How(string)
   datatype complexAnswer   = NoAnswer | Answer(complexQuestion, string, int)
 
-  function complexOracle(question, sig) =
-    let o = Oracle.register(Contract.address, sig, 0, FixedTTL(1000)) : oracle(complexQuestion, complexAnswer)
+  function complexOracle(question) =
+    let o = Oracle.register(Contract.address, 0, FixedTTL(1000)) : oracle(complexQuestion, complexAnswer)
     let q = Oracle.query(o, question, 0, RelativeTTL(100), RelativeTTL(100))
-    Oracle.respond(o, q, sig, Answer(question, "magic", 1337))
+    Oracle.respond(o, q, Answer(question, "magic", 1337))
+    Oracle.get_answer(o, q)
+
+  function signedComplexOracle(question, sig) =
+    let o = Oracle.register(signature = sig, Contract.address, 0, FixedTTL(1000)) : oracle(complexQuestion, complexAnswer)
+    let q = Oracle.query(o, question, 0, RelativeTTL(100), RelativeTTL(100))
+    Oracle.respond(o, q, Answer(question, "magic", 1337), signature = sig)
     Oracle.get_answer(o, q)
 
   private function require(b : bool, err : string) =

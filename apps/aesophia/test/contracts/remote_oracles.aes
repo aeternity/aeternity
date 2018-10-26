@@ -2,7 +2,6 @@ contract Oracles =
 
   function registerOracle :
     (address,
-     signature,
      int,
      Chain.ttl) => oracle(string, int)
 
@@ -23,7 +22,6 @@ contract Oracles =
   function respond :
     (oracle(string, int),
      oracle_query(string, int),
-     signature,
      int) => ()
 
 contract OraclesErr =
@@ -40,10 +38,9 @@ contract RemoteOracles =
   public function callRegisterOracle(
       r    : Oracles,
       acct : address,
-      sign : signature,
       qfee : int,
       ttl  : Chain.ttl) : oracle(string, int) =
-    r.registerOracle(acct, sign, qfee, ttl)
+    r.registerOracle(acct, qfee, ttl)
 
   public function callCreateQuery(
     r     : Oracles,
@@ -95,9 +92,8 @@ contract RemoteOracles =
     r    : Oracles,
     o    : oracle(string, int),
     q    : oracle_query(string, int),
-    sign : signature,
     qr   : int) =
-    r.respond(o, q, sign, qr)
+    r.respond(o, q, qr)
 
   private function require(b : bool, err : string) =
     if(!b) abort(err)
