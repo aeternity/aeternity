@@ -212,7 +212,7 @@ do_return(Us0, Us1, State) ->
                 Heap       = mem(State),
                 {ok, Type} = aeso_data:from_heap(typerep, Heap, Us0),
                 {ok, Out, Stats} = aeso_data:heap_to_binary_w_stats(Type, get_store(State), aeso_data:heap_value(maps(State), Us1, Heap)),
-                {set_out(Out, State), aevm_gas:mem_cost(maps:get(total_map_size, Stats) div 32)}
+                {set_out(Out, State), aevm_gas:mem_gas(maps:get(total_map_size, Stats) div 32)}
 
             catch _:_ ->
                 io:format("** Error reading return value\n~s", [format_mem(mem(State))]),
