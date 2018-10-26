@@ -56,6 +56,14 @@ contract Maps =
   function lookup_state_i(k) = lookup_i(k, state.map_i)
   function lookup_state_s(k) = lookup_s(k, state.map_s)
 
+  // Map.lookup_default
+  function lookup_def_i(k, m : map(int,    pt), def : pt) =
+    Map.lookup_default(k, m, def)
+  function lookup_def_s(k, m : map(string, pt), def : pt) =
+    Map.lookup_default(k, m, def)
+  function lookup_def_state_i(k, def) = lookup_def_i(k, state.map_i, def)
+  function lookup_def_state_s(k, def) = lookup_def_s(k, state.map_s, def)
+
   // Map.delete
   function delete_i(k, m : map(int,    pt)) = Map.delete(k, m)
   function delete_s(k, m : map(string, pt)) = Map.delete(k, m)

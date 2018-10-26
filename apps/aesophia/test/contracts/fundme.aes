@@ -34,9 +34,7 @@ contract FundMe =
       false
     else
       let amount =
-        switch(Map.lookup(Call.caller, state.contributions))
-          None    => Call.value
-          Some(n) => n + Call.value
+        Map.lookup_default(Call.caller, state.contributions, 0) + Call.value
       put(state{ contributions[Call.caller] = amount,
                  total @ tot = tot + Call.value })
       true
