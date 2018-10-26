@@ -223,14 +223,17 @@ tx_pool_test_() ->
                ?assertEqual(ok, aec_tx_pool:push(STx1)),
                ?assertEqual([], aec_tx_pool:peek_visited()),
                [{PK, Nonce1, _}] = aec_tx_pool:peek_nonces(),
+               Size = aec_tx_pool:size(),
                ?assertEqual({ok, [STx1]},
                             aec_tx_pool:get_candidate(MaxGas, TopBlockHash)),
                ?assertEqual([STx1], aec_tx_pool:peek_visited()),
                ?assertEqual([], aec_tx_pool:peek_db()),
+               ?assertEqual(Size, aec_tx_pool:size()),
                %% a 'key' top_change should restore visited to the mempool
                aec_tx_pool:top_change(key, TopBlockHash, TopBlockHash),
                ?assertEqual([], aec_tx_pool:peek_visited()),
-               ?assertEqual([STx1], aec_tx_pool:peek_db())
+               ?assertEqual([STx1], aec_tx_pool:peek_db()),
+               ?assertEqual(Size, aec_tx_pool:size())
        end},
       {"Ensure candidate ordering",
        fun() ->

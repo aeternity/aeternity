@@ -550,11 +550,7 @@ handle_request_('GetStatus', _Params, _Context) ->
     NodeVersion = aeu_info:get_version(),
     NodeRevision = aeu_info:get_revision(),
     PeerCount = length(aec_peers:get_random(all)),
-    PendingTxsCount =
-        case aec_tx_pool:size() of
-            N when N =/= undefined -> N;
-            undefined -> 0
-        end,
+    PendingTxsCount = aec_tx_pool:size(),
     {200, [],
      #{<<"genesis_key_block_hash">>     => aec_base58c:encode(key_block_hash, GenesisBlockHash),
        <<"solutions">>                  => Solutions,
