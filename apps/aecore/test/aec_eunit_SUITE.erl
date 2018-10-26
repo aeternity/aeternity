@@ -149,7 +149,7 @@ prepare_app_start_(App, Config) ->
     application:load(App),
     TempDir = aec_test_utils:create_temp_key_dir(),
     application:set_env(aecore, keys_dir, TempDir),
-    application:set_env(aecore, password, <<"secret">>),
+    application:set_env(aecore, peer_password, <<"secret">>),
     application:set_env(aecore, beneficiary, aec_base58c:encode(account_pubkey, <<"_________my_public_key__________">>)),
 
     {ok, Deps0} = application:get_key(App, applications),

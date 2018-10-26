@@ -2,7 +2,7 @@
 # Minimal configuration file to join the TestNet with enabled chain persisting and mining.
 # Should not contain default values.
 keys:
-    password: "top secret"
+    peer_password: "top secret"
     dir: ./keys
 
 chain:

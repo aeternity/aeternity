@@ -482,7 +482,7 @@ aec_keys_cleanup(TmpKeysDir) ->
 
 aec_keys_bare_setup() ->
     TmpKeysDir = create_temp_key_dir(),
-    {ok, _} = aec_keys:start_link([<<"mypassword">>, TmpKeysDir]),
+    {ok, _} = aec_keys:start_link([<<"secret">>, TmpKeysDir]),
     wait_for_it(fun() -> whereis(aec_keys) =/= undefined end, true),
     TmpKeysDir.
 
@@ -492,8 +492,8 @@ aec_keys_bare_cleanup(TmpKeysDir) ->
 
 remove_temp_key_dir(TmpKeysDir) ->
     {ok, KeyFiles} = file:list_dir(TmpKeysDir),
-    %% Expect four filenames - private and public keys x2.
-    [_KF1, _KF2, _KF3, _KF4] = KeyFiles,
+    %% Expect two filenames - private and public peer keys
+    [_KF1, _KF2] = KeyFiles,
     lists:foreach(
       fun(F) ->
               AbsF = filename:absname_join(TmpKeysDir, F),
