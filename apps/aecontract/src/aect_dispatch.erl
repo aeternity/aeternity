@@ -11,7 +11,6 @@
 
 %% API
 -export([ call/4
-        , check_call_data/2
         , encode_call_data/4
         , run/2]).
 
@@ -61,7 +60,7 @@ encode_call_data(_, _, _, _) ->
 run(?AEVM_01_Sophia_01, #{code := SerializedCode} = CallDef) ->
     #{ byte_code := Code
      , type_info := TypeInfo} = aeso_compiler:deserialize(SerializedCode),
-    case check_call_data(maps:get(call_data, CallDef), TypeInfo) of
+    case aeso_abi:check_calldata(maps:get(call_data, CallDef), TypeInfo) of
         {ok, CallDataType} ->
             CallDef1 = CallDef#{code => Code, call_data_type => CallDataType},
             run_common(CallDef1, ?AEVM_01_Sophia_01);
@@ -185,31 +184,4 @@ chain_state(#{ contract    := ContractPubKey
             OnChainTrees = maps:get(on_chain_trees, CallDef),
     aec_vm_chain:new_offchain_state(Trees, OnChainTrees, TxEnv,
                                     ContractPubKey).
-
-check_call_data(CallData, TypeInfo) ->
-    %% The first element of the CallData should be the function name
-    case aeso_data:get_function_hash_from_calldata(CallData) of
-        {ok, Hash} ->
-            case aeso_compiler:typereps_from_type_hash(Hash, TypeInfo) of
-                {ok, ArgType,_OutType} ->
-                    ?TEST_LOG("Found ~p for ~p", [ArgType, Hash]),
-                    try aeso_data:from_binary({tuple, [word, ArgType]}, CallData) of
-                        {ok, _Something} ->
-                            ?TEST_LOG("Whole call data: ~p\n", [_Something]),
-                            {ok, {tuple, [word, ArgType]}};
-                        {error, _} ->
-                            {error, bad_call_data}
-                    catch
-                        _T:_E ->
-                            ?TEST_LOG("Error parsing call data: ~p", [{_T, _E}]),
-                            {error, bad_call_data}
-                    end;
-                {error, _} ->
-                    ?TEST_LOG("Unknown function hash ~p", [Hash]),
-                    {error, unknown_function}
-            end;
-        {error, _What} ->
-            ?TEST_LOG("Bad call data ~p", [_What]),
-            {error, bad_call_data}
-    end.
 

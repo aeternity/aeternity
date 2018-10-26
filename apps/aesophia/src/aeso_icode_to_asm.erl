@@ -106,9 +106,8 @@ make_args(Args) ->
 
 fun_hash({FName, _, Args, _, TypeRep}) ->
     ArgType = {tuple, [T || {_, T} <- Args]},
-    <<Hash:256>> = aeso_compiler:function_type_hash(FName, ArgType, TypeRep),
+    <<Hash:256>> = aeso_abi:function_type_hash(FName, ArgType, TypeRep),
     {integer, Hash}.
-%%    {tuple, [{integer, X} || X <- [length(Name)|aeso_data:binary_to_words(list_to_binary(Name))]]}.
 
 %% Expects two return addresses below N elements on the stack. Picks the top
 %% one for stateful functions and the bottom one for non-stateful.

@@ -338,7 +338,7 @@ ast_body({app, _, {typed, _, {proj, _, {typed, _, Addr, {con, _, Contract}}, {id
     Gas    = proplists:get_value("gas",   ArgOpts ++ Defaults),
     Value  = proplists:get_value("value", ArgOpts ++ Defaults),
     OutType = ast_typerep(OutT, Icode),
-    <<TypeHash:256>> = aeso_compiler:function_type_hash(FunName, ArgType, OutType),
+    <<TypeHash:256>> = aeso_abi:function_type_hash(FunName, ArgType, OutType),
     %% The function is represented by its type hash (which includes the name)
     Fun    = #integer{value = TypeHash},
     #prim_call_contract{
@@ -518,7 +518,8 @@ is_monomorphic(_) -> true.
 %% Implemented as a contract call to the contract with address 0.
 prim_call(Prim, Amount, Args, ArgTypes, OutType) ->
     PrimBin = binary:encode_unsigned(Prim),
-    <<TypeHash:256>> = aeso_compiler:function_type_hash(PrimBin, ArgTypes, OutType),
+    ArgType = {tuple, ArgTypes},
+    <<TypeHash:256>> = aeso_abi:function_type_hash(PrimBin, ArgType, OutType),
     #prim_call_contract{ gas      = prim_gas_left,
                          address  = #integer{ value = ?PRIM_CALLS_CONTRACT },
                          value    = Amount,

@@ -218,7 +218,7 @@ get_sophia_serialization(#contract_create_tx{code = SerializedCode}) ->
 check_init_function(#contract_create_tx{call_data = CallData}, TypeInfo) ->
     case aeso_data:get_function_hash_from_calldata(CallData) of
         {ok, Hash} ->
-            case aeso_compiler:function_name_from_type_hash(Hash, TypeInfo) of
+            case aeso_abi:function_name_from_type_hash(Hash, TypeInfo) of
                 {ok, <<"init">>} -> ok;
                 _ -> {error, bad_init_function}
             end;

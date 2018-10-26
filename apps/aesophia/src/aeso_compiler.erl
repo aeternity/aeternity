@@ -10,15 +10,10 @@
 %%%-------------------------------------------------------------------
 -module(aeso_compiler).
 
--export([ arg_typerep_from_function/2
-        , deserialize/1
+-export([ deserialize/1
         , file/1
         , file/2
         , from_string/2
-        , function_name_from_type_hash/2
-        , function_type_hash/3
-        , type_hash_from_function_name/2
-        , typereps_from_type_hash/2
         , version/0
         ]).
 
@@ -38,11 +33,6 @@
                          , type_info   := [binary()]
                          , byte_code   := binary()
                          }.
--type function_name() :: binary(). %% String
--type typerep() :: aeso_sophia:type().
--type type_info() :: [{ FunctionName :: function_name()
-                      , ArgType      :: typerep()
-                      , OutType      :: typerep()}].
 
 -export_type([ option/0
              , options/0
@@ -98,72 +88,12 @@ to_bytecode([Op|Rest], Options) ->
 to_bytecode([], _) -> [].
 
 extract_type_info(#{functions := Functions} =_Icode) ->
-    TypeInfo = [function_type_info(Name, Args, TypeRep)
+    TypeInfo = [aeso_abi:function_type_info(list_to_binary(Name), Args, TypeRep)
                 || {Name, Attrs, Args,_Body, TypeRep} <- Functions,
                    not is_tuple(Name),
                    not lists:member(private, Attrs)
                ],
     lists:sort(TypeInfo).
-
-function_type_info(Name, Args, OutType) ->
-    ArgType = {tuple, [T || {_, T} <- Args]},
-    { function_type_hash(Name, ArgType, OutType)
-    , list_to_binary(Name)
-    , aeso_data:to_binary(ArgType)
-    , aeso_data:to_binary(OutType)
-    }.
-
-function_type_hash(Name, ArgType, OutType) ->
-    aec_hash:hash(sophia_type_hash,
-                  iolist_to_binary([ Name
-                                   , aeso_data:to_binary(ArgType)
-                                   , aeso_data:to_binary(OutType)
-                                   ])).
-
-
--spec arg_typerep_from_function(Function :: binary(), type_info()) ->
-           {'ok', typerep()} | {'error', 'bad_type_data' | 'unknown_function'}.
-arg_typerep_from_function(Function, TypeInfo) ->
-    case lists:keyfind(Function, 2, TypeInfo) of
-        {_TypeHash, Function, ArgTypeBin,_OutTypeBin} ->
-            case aeso_data:from_binary(typerep, ArgTypeBin) of
-                {ok, ArgType} -> {ok, ArgType};
-                {error,_} -> {error, bad_type_data}
-            end;
-        false ->
-            {error, unknown_function}
-    end.
-
--spec typereps_from_type_hash(TypeHash :: binary(), type_info()) ->
-           {'ok', typerep()} | {'error', 'bad_type_data' | 'unknown_function'}.
-typereps_from_type_hash(TypeHash, TypeInfo) ->
-    case lists:keyfind(TypeHash, 1, TypeInfo) of
-        {TypeHash,_Function, ArgTypeBin, OutTypeBin} ->
-            case {aeso_data:from_binary(typerep, ArgTypeBin),
-                  aeso_data:from_binary(typerep, OutTypeBin)} of
-                {{ok, ArgType}, {ok, OutType}} -> {ok, ArgType, OutType};
-                {_, _} -> {error, bad_type_data}
-            end;
-        false ->
-            {error, unknown_function}
-    end.
-
-function_name_from_type_hash(TypeHash, TypeInfo) ->
-    case lists:keyfind(TypeHash, 1, TypeInfo) of
-        {TypeHash, Function,_ArgTypeBin,_OutTypeBin} ->
-            {ok, Function};
-        false ->
-            {error, unknown_function}
-    end.
-
-type_hash_from_function_name(Name, TypeInfo) ->
-    case lists:keyfind(Name, 2, TypeInfo) of
-        {TypeHash, Name,_ArgTypeBin,_OutTypeBin} ->
-            {ok, TypeHash};
-        false ->
-            {error, unknown_function}
-    end.
-
 
 serialize(ByteCode, TypeInfo, ContractString) ->
     ContractBin = list_to_binary(ContractString),

@@ -87,7 +87,7 @@ execute_call(Contract, CallData, ChainState, Options) ->
     #{ byte_code := Code,
        type_info := TypeInfo
      } = aeso_compiler:deserialize(SerializedCode),
-    case aect_dispatch:check_call_data(CallData, TypeInfo) of
+    case aeso_abi:check_calldata(CallData, TypeInfo) of
         {ok, CallDataType} ->
             execute_call_1(Contract, CallData, CallDataType, Code, ChainState1, Options);
         {error, _} = Err ->
@@ -518,7 +518,7 @@ get_contract_fun_types(<<Contract:256>>,_VMVersion, TypeHash, S) ->
             {error, {no_such_contract, Contract}};
         SerializedCode ->
             #{type_info := TypeInfo} = aeso_compiler:deserialize(SerializedCode),
-            aeso_compiler:typereps_from_type_hash(TypeHash, TypeInfo)
+            aeso_abi:typereps_from_type_hash(TypeHash, TypeInfo)
     end.
 
 

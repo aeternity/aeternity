@@ -810,7 +810,7 @@ make_calldata_from_code(Code, Fun, Args) when is_atom(Fun) ->
     make_calldata_from_code(Code, atom_to_binary(Fun, latin1), Args);
 make_calldata_from_code(Code, Fun, Args) when is_binary(Fun) ->
     #{type_info := TypeInfo} = aeso_compiler:deserialize(Code),
-    case aeso_compiler:type_hash_from_function_name(Fun, TypeInfo) of
+    case aeso_abi:type_hash_from_function_name(Fun, TypeInfo) of
         {ok, TypeHash} -> make_calldata_raw(TypeHash, Args);
         {error, _} = Err -> error({bad_function, Fun, Err})
     end.

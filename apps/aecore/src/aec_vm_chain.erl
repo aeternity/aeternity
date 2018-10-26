@@ -572,7 +572,7 @@ get_contract_fun_types(Target, VMVersion, TypeHash, State) ->
                 VMVersion ->
                     SerializedCode = aect_contracts:code(Contract),
                     #{type_info := TypeInfo} = aeso_compiler:deserialize(SerializedCode),
-                    aeso_compiler:typereps_from_type_hash(TypeHash, TypeInfo);
+                    aeso_abi:typereps_from_type_hash(TypeHash, TypeInfo);
                 Other ->
                     {error, {wrong_vm_version, Other}}
             end;

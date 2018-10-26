@@ -3626,7 +3626,7 @@ get_oracle_fun_hash_int(Function) ->
     ContractString = aeso_test_utils:read_contract("oracles"),
     BinCode = aeso_compiler:from_string(ContractString, []),
     #{type_info := TypeInfo} = aeso_compiler:deserialize(BinCode),
-    {ok, <<IntFunHash:256>>} = aeso_compiler:type_hash_from_function_name(
+    {ok, <<IntFunHash:256>>} = aeso_abi:type_hash_from_function_name(
                                Function, TypeInfo),
     IntFunHash.
 
