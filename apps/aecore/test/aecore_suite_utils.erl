@@ -357,7 +357,7 @@ spend(Node, FromPub, ToPub, Amount, Fee) ->
     ok = rpc:call(Node, aec_tx_pool, push, [SignedTx]),
     {ok, SignedTx}.
 
-sign_on_node({Id, Node}, Tx) ->
+sign_on_node({Id, _Node}, Tx) ->
     {_, {SignPrivKey, _}} = lists:keyfind(Id, 1, sign_keys()),
     {ok, aec_test_utils:sign_tx(Tx, SignPrivKey)};
 sign_on_node(Id, Tx) ->
@@ -645,15 +645,12 @@ config_apply_options(Node, Cfg, [{add_peers, true}| T]) ->
     config_apply_options(Node, Cfg1, T).
 
 write_keys(Node, Config) ->
-    #{ <<"keys">> := #{ <<"dir">> := Path, <<"password">> := Pwd } } = Config,
+    #{ <<"keys">> := #{ <<"dir">> := Path, <<"peer_password">> := Pwd } } = Config,
     ok = filelib:ensure_dir(filename:join(Path, "foo")),
-    ct:log("Writing peer and sign keys to ~p (~p)", [Path, filelib:is_dir(Path)]),
+    ct:log("Writing peer keys to ~p (~p)", [Path, filelib:is_dir(Path)]),
     {Node, {PeerPrivKey, PeerPubKey}} = lists:keyfind(Node, 1, peer_keys()),
     ok = file:write_file(filename:join(Path, "peer_key.pub"), aec_keys:encrypt_key(Pwd, PeerPubKey)),
     ok = file:write_file(filename:join(Path, "peer_key"), aec_keys:encrypt_key(Pwd, PeerPrivKey)),
-    {Node, {SignPrivKey, SignPubKey}} = lists:keyfind(Node, 1, sign_keys()),
-    ok = file:write_file(filename:join(Path, "sign_key.pub"), aec_keys:encrypt_key(Pwd, SignPubKey)),
-    ok = file:write_file(filename:join(Path, "sign_key"), aec_keys:encrypt_key(Pwd, SignPrivKey)),
     ok.
 
 write_config(F, Config) ->
@@ -673,7 +670,7 @@ default_config(N, Config) ->
     {N, {_PrivKey, PubKey}} = lists:keyfind(N, 1, sign_keys()),
     #{<<"keys">> =>
           #{<<"dir">> => iolist_to_binary(keys_dir(N, Config)),
-            <<"password">> => iolist_to_binary(io_lib:format("~w.~w.~w", [A,B,C]))},
+            <<"peer_password">> => iolist_to_binary(io_lib:format("~w.~w.~w", [A,B,C]))},
       <<"logging">> =>
           #{<<"hwm">> => 500},
       <<"mining">> =>

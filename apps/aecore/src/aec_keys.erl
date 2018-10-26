@@ -68,9 +68,6 @@
 -define(SIGN_PRIV_SIZE, 64).
 -define(PEER_PRIV_SIZE, 32).
 
--define(FILENAME_SIGNPUB, "sign_key.pub").
--define(FILENAME_SIGNPRIV, "sign_key").
-
 -define(FILENAME_PEERPUB, "peer_key.pub").
 -define(FILENAME_PEERPRIV, "peer_key").
 
@@ -83,7 +80,6 @@
 
 -record(worker_state, {
           parent_pid     :: pid(),
-          sign_pass      :: password(),
           peer_pass      :: password(),
           keys_dir       :: binary(),
 
@@ -91,8 +87,6 @@
           candidate_priv :: binary() | undefined,
           sign_pub       :: binary() | undefined,
           sign_priv      :: binary() | undefined,
-          sign_pub_file  :: binary() | undefined,
-          sign_priv_file :: binary() | undefined,
           peer_pub       :: binary() | undefined,
           peer_priv      :: binary() | undefined,
           peer_pub_file  :: binary() | undefined,
@@ -326,27 +320,25 @@ start_worker() ->
     Fun = fun() ->
                   process_flag(sensitive, true), %% Protect against tracing etc
                   process_flag(trap_exit, true),
-                  #{ keys_dir := KeysDir
-                   , password := SignPwd
-                   , peer_password := PeerPwd } = check_env(),
-                  enter_worker(Parent, SignPwd, PeerPwd, KeysDir)
+                  #{ keys_dir := KeysDir , peer_password := PeerPwd } = check_env(),
+                  enter_worker(Parent, PeerPwd, KeysDir)
           end,
     spawn_link(Fun).
 
 -ifdef(TEST).
 
-start_worker(Pwd, KeysDir) ->
+start_worker(PeerPwd, KeysDir) ->
     Parent = self(),
     Fun = fun() ->
                   %% NOTE: This is only used in tests: omit the sensitive flag
                   process_flag(trap_exit, true),
-                  enter_worker(Parent, Pwd, Pwd, KeysDir)
+                  enter_worker(Parent, PeerPwd, KeysDir)
           end,
     spawn_link(Fun).
 -endif.
 
-enter_worker(Parent, SignPwd, PeerPwd, KeysDir) ->
-    try worker_init(Parent, SignPwd, PeerPwd, KeysDir) of
+enter_worker(Parent, PeerPwd, KeysDir) ->
+    try worker_init(Parent, PeerPwd, KeysDir) of
         {ok, State} ->
             parent_state_update(pubkeys, State),
             worker_loop(State)
@@ -357,12 +349,11 @@ enter_worker(Parent, SignPwd, PeerPwd, KeysDir) ->
             error(init_failed)
     end.
 
-worker_init(Parent, SignPwd, PeerPwd, KeysDir) ->
+worker_init(Parent, PeerPwd, KeysDir) ->
     %% Ensure there is directory for keys
     ensure_dir(KeysDir),
 
     State0 = #worker_state{ parent_pid     = Parent
-                          , sign_pass      = SignPwd
                           , peer_pass      = PeerPwd
                           , keys_dir       = KeysDir },
 
@@ -375,10 +366,8 @@ worker_loop(#worker_state{ parent_pid = Parent } = State) ->
     receive
         {'EXIT', Parent, _} -> ok;
         {Parent, From, Msg} ->
-            case worker_handle_message(Msg, From, State) of
-                ok -> worker_loop(State);
-                {ok, NewState} -> worker_loop(NewState)
-            end;
+            {ok, NewState} = worker_handle_message(Msg, From, State),
+            worker_loop(NewState);
         Other ->
             lager:debug("Worker got unexpected: ~p", [Other]),
             worker_loop(State)
@@ -386,28 +375,27 @@ worker_loop(#worker_state{ parent_pid = Parent } = State) ->
 
 worker_handle_message({sign, Bin}, From, State) when is_binary(Bin) ->
     try enacl:sign_detached(Bin, State#worker_state.sign_priv) of
-        Signature -> worker_reply(From, {ok, Signature})
+        Signature -> worker_reply(From, {ok, Signature}, State)
     catch
-        _Type:_What -> worker_reply(From, {error, failed_sign})
+        _Type:_What -> worker_reply(From, {error, failed_sign}, State)
     end;
-worker_handle_message(privkey, From, #worker_state{sign_priv=PrivKey}) ->
-    worker_reply_if_test(From, {ok, PrivKey});
-worker_handle_message(peer_privkey, From, #worker_state{peer_priv=PrivKey}) ->
-    worker_reply(From, {ok, PrivKey});
+worker_handle_message(privkey, From, #worker_state{sign_priv=PrivKey} = State) ->
+    worker_reply_if_test(From, {ok, PrivKey}, State);
+worker_handle_message(peer_privkey, From, #worker_state{peer_priv=PrivKey} = State) ->
+    worker_reply(From, {ok, PrivKey}, State);
 worker_handle_message({promote_candidate, CPubKey}, From,
                       #worker_state{candidate_pub=CPubKey} = State0) ->
     State1 = s_promote_candidate(State0),
-    worker_reply(From, ok),
     State2 = parent_state_update(promoted_candidate, State1),
-    {ok, s_save_sign_keys(State2)};
-worker_handle_message({promote_candidate, _}, From, _State) ->
-    worker_reply(From, {error, key_not_found});
-worker_handle_message(Msg, From, #worker_state{}) ->
-    worker_reply(From, {error, illegal_query, Msg}).
+    worker_reply(From, ok, State2);
+worker_handle_message({promote_candidate, _}, From, State) ->
+    worker_reply(From, {error, key_not_found}, State);
+worker_handle_message(Msg, From, State) ->
+    worker_reply(From, {error, illegal_query, Msg}, State).
 
-worker_reply(From, Reply) ->
+worker_reply(From, Reply, State) ->
     gen_server:reply(From, Reply),
-    ok.
+    {ok, State}.
 
 parent_state_update(pubkeys, State) ->
     #worker_state{ sign_pub = SP, candidate_pub = CP,
@@ -422,13 +410,13 @@ parent_state_update(promoted_candidate, State) ->
 
 -ifdef(TEST).
 
-worker_reply_if_test(From, Reply) ->
-    worker_reply(From, Reply).
+worker_reply_if_test(From, Reply, State) ->
+    worker_reply(From, Reply, State).
 
 -else.
 
-worker_reply_if_test(From,_Reply) ->
-    worker_reply(From, {error, not_in_test_mode}).
+worker_reply_if_test(From,_Reply, State) ->
+    worker_reply(From, {error, not_in_test_mode}, State).
 
 -endif.
 
@@ -440,33 +428,16 @@ worker_reply_if_test(From,_Reply) ->
 s_promote_candidate(#worker_state{candidate_priv = Priv, candidate_pub  = Pub} = State) ->
     s_setup_candidate_keys( State#worker_state{ sign_priv = Priv, sign_pub = Pub } ).
 
-s_setup_sign_keys(#worker_state{sign_pass = SignPwd, keys_dir = KeysDir} = State0) ->
-    {PubFile, PrivFile} = p_gen_sign_filename(KeysDir),
-    State1 = State0#worker_state{ sign_priv_file = PrivFile , sign_pub_file  = PubFile },
-    case read_keys(SignPwd, PubFile, PrivFile, ?PUB_SIZE, ?SIGN_PRIV_SIZE) of
-        {error, enoent} -> s_setup_new_sign_keys(State1);
-        {Pub, Priv} ->
-            case check_sign_keys(Pub, Priv) of
-                true ->
-                    State1#worker_state{ sign_priv = Priv , sign_pub = Pub };
-                false ->
-                    s_setup_new_sign_keys(State1)
-            end
-    end.
-
-s_setup_new_sign_keys(State) ->
+s_setup_sign_keys(State) ->
     case p_gen_new_keypair() of
-        {ok, {Pub, Priv}} ->
-            s_save_sign_keys(State#worker_state{ sign_priv = Priv , sign_pub = Pub });
+        {ok, {Pub, Priv}} -> State#worker_state{ sign_priv = Priv , sign_pub = Pub };
         {error, Reason} -> error(Reason)
     end.
 
 s_setup_candidate_keys(State) ->
     case p_gen_new_keypair() of
-        {ok, {Pub, Priv}} ->
-            State#worker_state{ candidate_priv = Priv, candidate_pub = Pub };
-        {error, Reason} ->
-            error(Reason)
+        {ok, {Pub, Priv}} -> State#worker_state{ candidate_priv = Priv, candidate_pub = Pub };
+        {error, Reason} -> error(Reason)
     end.
 
 s_setup_peer_keys(#worker_state{peer_pass = PeerPwd, keys_dir = KeysDir} = State) ->
@@ -475,11 +446,6 @@ s_setup_peer_keys(#worker_state{peer_pass = PeerPwd, keys_dir = KeysDir} = State
                       , peer_pub       = PeerPub
                       , peer_priv_file = PeerPrivFile
                       , peer_pub_file  = PeerPubFile }.
-
-s_save_sign_keys(#worker_state{ sign_pass = Pwd, sign_priv = Priv, sign_priv_file = PrivFile,
-                                sign_pub = Pub, sign_pub_file = PubFile} = State) ->
-    p_save_keys(Pwd, PubFile, Pub, PrivFile, Priv),
-    State.
 
 setup_peer_keys(Pwd, KeysDir) ->
     {PubFile, PrivFile} = p_gen_peer_filename(KeysDir),
@@ -549,17 +515,12 @@ from_local_dir(NewFile) ->
     file:read_file(NewFile).
 
 check_env() ->
-    DefaultFile =  filename:join(aeu_env:data_dir(aecore), "keys"),
+    DefaultFile = filename:join(aeu_env:data_dir(aecore), "keys"),
     KeysDir = aeu_env:user_config_or_env([<<"keys">>, <<"dir">>],
                                          aecore, keys_dir, DefaultFile),
-    Pwd = aeu_env:user_config_or_env([<<"keys">>, <<"password">>],
-                                     aecore, password, <<>>),
     PeerPwd = aeu_env:user_config_or_env([<<"keys">>, <<"peer_password">>],
-                                         aecore, peer_password, Pwd),
-    #{keys_dir => KeysDir, password => Pwd, peer_password => PeerPwd}.
-
-p_gen_sign_filename(KeysDir) ->
-    p_gen_filename(KeysDir, ?FILENAME_SIGNPUB, ?FILENAME_SIGNPRIV).
+                                         aecore, peer_password, <<>>),
+    #{keys_dir => KeysDir, peer_password => PeerPwd}.
 
 p_gen_peer_filename(KeysDir) ->
     p_gen_filename(KeysDir, ?FILENAME_PEERPUB, ?FILENAME_PEERPRIV).
