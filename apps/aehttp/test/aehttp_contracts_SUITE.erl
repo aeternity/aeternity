@@ -1013,7 +1013,6 @@ erc20_token_contract(Config) ->
     call_func(APub, APriv, EncCPub, <<"transferFrom">>, args_to_binary([BPub,DPub,10000])),
     call_func(APub, APriv, EncCPub, <<"transferFrom">>, args_to_binary([CPub,DPub,15000])),
 
-
     %% Check the balances.
     call_func(APub, APriv, EncCPub, <<"balanceOf">>, args_to_binary([BPub]), {<<"int">>, 10000}),
     call_func(APub, APriv, EncCPub, <<"balanceOf">>, args_to_binary([CPub]), {<<"int">>, 10000}),
@@ -1029,6 +1028,22 @@ erc20_token_contract(Config) ->
 
     AppLog = [tuple([addr(CPub), addr(APub), word(15000)]),
               tuple([addr(BPub), addr(APub), word(15000)])],
+    call_func(APub, APriv, EncCPub, <<"getApprovalLog">>, <<"()">>,
+              {<<"list((address,address,int))">>, AppLog}),
+
+    force_fun_calls(Node),
+
+    %% Request a bad transfer and check that abort restores the state.
+    revert_call_compute_func(Node, APub, APriv, EncCPub,
+                             <<"transferFrom">>,
+                             args_to_binary([BPub,DPub,100000])),
+
+    call_func(APub, APriv, EncCPub, <<"balanceOf">>, args_to_binary([BPub]), {<<"int">>, 10000}),
+    call_func(APub, APriv, EncCPub, <<"balanceOf">>, args_to_binary([CPub]), {<<"int">>, 10000}),
+    call_func(APub, APriv, EncCPub, <<"balanceOf">>, args_to_binary([DPub]), {<<"int">>, 25000}),
+
+    call_func(APub, APriv, EncCPub, <<"getTransferLog">>, <<"()">>,
+              {<<"list((address,address,int))">>, TrfLog}),
     call_func(APub, APriv, EncCPub, <<"getApprovalLog">>, <<"()">>,
               {<<"list((address,address,int))">>, AppLog}),
 
@@ -1155,7 +1170,7 @@ check_call({TxHash, Check}) ->
 
 check_value(Val0, {Type, ExpVal}) ->
     #{<<"value">> := Val} = decode_data(Type, Val0),
-    ct:log("~p decoded as ~p into ~p =??= ~p", [Val0, Type, Val, ExpVal]),
+    ct:log("~p decoded\nas ~p\ninto ~p =??= ~p", [Val0, Type, Val, ExpVal]),
     ?assertEqual(ExpVal, Val).
 
 
