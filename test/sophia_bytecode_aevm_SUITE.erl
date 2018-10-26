@@ -30,6 +30,7 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
        type_info := TypeInfo} = aeso_compiler:deserialize(SerializedCode),
     {ok, ArgType} = aeso_abi:arg_typerep_from_function(<<"main">>, TypeInfo),
     CallDataType = {tuple, [word, ArgType]},
+    OutType = word,
 
     %% Create the call data
     {ok, CallData} = aect_sophia:encode_call_data(SerializedCode, <<"main">>, <<"(42)">>),
@@ -42,6 +43,7 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
                           caller => 0,
                           data => CallData,
                           call_data_type => CallDataType,
+                          out_type => OutType,
                           gas => 1000000,
                           gasPrice => 1,
                           origin => 0,

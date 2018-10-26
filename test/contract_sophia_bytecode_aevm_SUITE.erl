@@ -88,13 +88,13 @@ execute_call(Contract, CallData, ChainState, Options) ->
        type_info := TypeInfo
      } = aeso_compiler:deserialize(SerializedCode),
     case aeso_abi:check_calldata(CallData, TypeInfo) of
-        {ok, CallDataType,_OutType} ->
-            execute_call_1(Contract, CallData, CallDataType, Code, ChainState1, Options);
+        {ok, CallDataType, OutType} ->
+            execute_call_1(Contract, CallData, CallDataType, OutType, Code, ChainState1, Options);
         {error, _} = Err ->
             Err
     end.
 
-execute_call_1(Contract, CallData, CallDataType, Code, ChainState, Options) ->
+execute_call_1(Contract, CallData, CallDataType, OutType, Code, ChainState, Options) ->
     Trace = false,
     Res = aect_evm:execute_call(
           maps:merge(
@@ -104,6 +104,7 @@ execute_call_1(Contract, CallData, CallDataType, Code, ChainState, Options) ->
              caller            => 0,
              data              => CallData,
              call_data_type    => CallDataType,
+             out_type          => OutType,
              gas               => 1500000,
              gasPrice          => 1,
              origin            => 0,
