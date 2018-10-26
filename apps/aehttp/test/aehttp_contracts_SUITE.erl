@@ -501,6 +501,9 @@ maps_contract(Config) ->
     _ABal0 = ensure_balance(APub, 500000),
     _BBal0 = ensure_balance(BPub, 500000),
 
+    %% ContractString = aeso_test_utils:read_contract("maps"),
+    %% aeso_compiler:from_string(ContractString, []),
+
     %% Compile test contract "maps.aes".
     MCode = compile_test_contract("maps"),
 
@@ -571,7 +574,8 @@ maps_contract(Config) ->
     %% Map.lookup
     %% The values of map keys 3 and "three" are unchanged, keys 10 and
     %% "ten" don't exist.
-    SomePair = fun ({some,{X, Y}}) -> [1, tuple([word(X), word(Y)])];
+    Pair = fun (X, Y) -> tuple([word(X), word(Y)]) end,
+    SomePair = fun ({some,{X, Y}}) -> [1, Pair(X, Y)];
                    (none) -> [0]
                end,
 
@@ -586,6 +590,26 @@ maps_contract(Config) ->
 
     call_func(BPub, BPriv, EncMapsPub,  <<"lookup_state_s">>, <<"(\"ten\")">>,
               {<<"option((int, int))">>, SomePair(none)}),
+
+    %% Map.lookup_default
+    %% The values of map keys 3 and "three" are unchanged, keys 10 and
+    %% "ten" don't exist.
+
+    call_func(BPub, BPriv, EncMapsPub,  <<"lookup_def_state_i">>,
+              <<"(3, (47, 11))">>,
+              {<<"(int, int)">>, [word(5), word(6)]}),
+
+    call_func(BPub, BPriv, EncMapsPub,  <<"lookup_def_state_i">>,
+              <<"(10, (47, 11))">>,
+              {<<"(int, int)">>, [word(47), word(11)]}),
+
+    call_func(BPub, BPriv, EncMapsPub,  <<"lookup_def_state_s">>,
+              <<"(\"three\", (47, 11))">>,
+              {<<"(int, int)">>, [word(5), word(6)]}),
+
+    call_func(BPub, BPriv, EncMapsPub,  <<"lookup_def_state_s">>,
+              <<"(\"ten\", (47, 11))">>,
+              {<<"(int, int)">>, [word(47), word(11)]}),
 
     %% Map.delete
     %% Check map keys 3 and "three" exist, delete them and check that
@@ -970,8 +994,8 @@ erc20_token_contract(Config) ->
     _CBal0 = ensure_balance(CPub, 50000),
     _DBal0 = ensure_balance(DPub, 50000),
 
-    ContractString = aeso_test_utils:read_contract("erc20_token"),
-    aeso_compiler:from_string(ContractString, []),
+    %% ContractString = aeso_test_utils:read_contract("erc20_token"),
+    %% aeso_compiler:from_string(ContractString, []),
 
     %% Compile test contract "erc20_token.aes"
     Code = compile_test_contract("erc20_token"),

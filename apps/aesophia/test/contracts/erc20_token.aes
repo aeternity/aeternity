@@ -27,11 +27,12 @@ contract ERC20Token =
   public stateful function name() : string = state.name
   public stateful function symbol() : string = state.symbol
 
-  public stateful function balanceOf(tokenOwner : address ) : int = lookupDefault(tokenOwner, state.balances, 0)
+  public stateful function balanceOf(tokenOwner : address ) : int =
+    Map.lookup_default(tokenOwner, state.balances, 0)
 
   public stateful function transfer(to : address, tokens : int) =
     put( state{balances[Call.caller] = sub(state.balances[Call.caller], tokens) })
-    put( state{balances[to] = add(lookupDefault(to, state.balances, 0), tokens) })
+    put( state{balances[to] = add(Map.lookup_default(to, state.balances, 0), tokens) })
     transferEvent(Call.caller, to, tokens)
     true
 
@@ -78,11 +79,6 @@ contract ERC20Token =
 
   private function require(b : bool, err : string) =
     if(!b) abort(err)
-
-  private function lookupDefault(k : address, m, v) =
-    switch(Map.lookup(k, m))
-      None    => v
-      Some(x) => x
 
   private function sub(_a : int, _b : int) : int =
     require(_b =< _a, "Error")
