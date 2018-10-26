@@ -102,7 +102,4 @@ sample_(_, Acc) ->
     Acc.
 
 pending_txs() ->
-    case aec_tx_pool:size() of
-        S when is_integer(S), S >= 0 -> S;
-        undefined -> 0
-    end.
+    aec_tx_pool:size().

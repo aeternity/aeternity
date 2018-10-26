@@ -215,7 +215,11 @@ new_sync_top_target(NewSyncTop) ->
 
 -spec size() -> non_neg_integer() | undefined.
 size() ->
-    ets:info(?MEMPOOL, size) + ets:info(?MEMPOOL_VISITED, size).
+    ensure_num(ets:info(?MEMPOOL, size))
+        + ensure_num(ets:info(?MEMPOOL_VISITED, size)).
+
+ensure_num(undefined) -> 0;
+ensure_num(N) when is_integer(N) -> N.
 
 pool_db() -> ?MEMPOOL.
 pool_db_visited() -> ?MEMPOOL_VISITED.
