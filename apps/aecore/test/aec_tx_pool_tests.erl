@@ -120,7 +120,7 @@ tx_pool_test_() ->
                ?assertEqual(lists:sort(Included), lists:sort([STx1, STx2])),
 
                %% Ping tx_pool for top change
-               aec_tx_pool:top_change(TopBlockHash, CHash1),
+               aec_tx_pool:top_change(micro, TopBlockHash, CHash1),
 
                %% The mempool should now be empty
                ?assertEqual({ok, []}, aec_tx_pool:peek(infinity)),
@@ -154,7 +154,7 @@ tx_pool_test_() ->
                %% Push the keyblock with the longest chain of micro blocks
                ok = aec_chain_state:insert_block(KeyBlock3),
                ?assertEqual(CHashFork2, aec_chain:top_block_hash()),
-               aec_tx_pool:top_change(CHash1, CHashFork2),
+               aec_tx_pool:top_change(key, CHash1, CHashFork2),
                %% The mempool should now be empty
                ?assertEqual({ok, []}, aec_tx_pool:peek(infinity)),
 
@@ -170,7 +170,7 @@ tx_pool_test_() ->
                ?assertEqual(CHashFork1, aec_chain:top_block_hash()),
 
                %% Ping tx_pool for top change
-               aec_tx_pool:top_change(CHashFork2, CHashFork1),
+               aec_tx_pool:top_change(key, CHashFork2, CHashFork1),
 
                %% The not included transaction should now be back in the pool
                ?assertEqual({ok, [STx4]}, aec_tx_pool:peek(infinity)),
@@ -214,6 +214,24 @@ tx_pool_test_() ->
                  NotExistingSender = aec_tx_pool:get_max_nonce(PK3),
                  ?assertEqual(undefined, NotExistingSender)
              end},
+      {"Mempool consistency",
+       fun() ->
+               PK = new_pubkey(),
+               MaxGas = aec_governance:block_gas_limit(),
+               TopBlockHash = aec_chain:top_block_hash(),
+               STx1 = a_signed_tx(PK, me, Nonce1=1, _Fee1=1),
+               ?assertEqual(ok, aec_tx_pool:push(STx1)),
+               ?assertEqual([], aec_tx_pool:peek_visited()),
+               [{PK, Nonce1, _}] = aec_tx_pool:peek_nonces(),
+               ?assertEqual({ok, [STx1]},
+                            aec_tx_pool:get_candidate(MaxGas, TopBlockHash)),
+               ?assertEqual([STx1], aec_tx_pool:peek_visited()),
+               ?assertEqual([], aec_tx_pool:peek_db()),
+               %% a 'key' top_change should restore visited to the mempool
+               aec_tx_pool:top_change(key, TopBlockHash, TopBlockHash),
+               ?assertEqual([], aec_tx_pool:peek_visited()),
+               ?assertEqual([STx1], aec_tx_pool:peek_db())
+       end},
       {"Ensure candidate ordering",
        fun() ->
                PK = new_pubkey(),
@@ -224,26 +242,32 @@ tx_pool_test_() ->
                ?assertEqual(ok, aec_tx_pool:push(STx1)),
                ?assertEqual({ok, [STx1]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
 
+               aec_tx_pool:restore_mempool(),
                %% Order by nonce even if fee is higher
                STx2 = a_signed_tx(PK, me, Nonce2=2, Fee2=5),
                ?assertEqual(ok, aec_tx_pool:push(STx2)),
+
                ?assertEqual({ok, [STx1, STx2]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
 
+               aec_tx_pool:restore_mempool(),
                %% Replace same nonce with the higher fee
                STx3 = a_signed_tx(PK, me, Nonce1=1, 2),
                ?assertEqual(ok, aec_tx_pool:push(STx3)),
                ?assertEqual({ok, [STx3, STx2]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
 
+               aec_tx_pool:restore_mempool(),
                %% Replace same nonce with same fee but positive gas price (gas price of transaction without gas price is considered zero)
                STx4 = signed_ct_create_tx(PK, Nonce2=2, Fee2=5,_GasPrice4=1100000000),
                ?assertEqual(ok, aec_tx_pool:push(STx4)),
                ?assertEqual({ok, [STx3, STx4]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
 
+               aec_tx_pool:restore_mempool(),
                %% Replace same nonce with same fee but higher gas price
                STx5 = signed_ct_create_tx(PK, Nonce2=2, Fee2=5, 2000000000),
                ?assertEqual(ok, aec_tx_pool:push(STx5)),
                ?assertEqual({ok, [STx3, STx5]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
 
+               aec_tx_pool:restore_mempool(),
                %% Order by nonce even if fee and gas price are higher
                STx6 = signed_ct_call_tx(PK, _Nonce6=3,_Fee6=9,_GasPrice6=9000000000),
                ?assertEqual(ok, aec_tx_pool:push(STx6)),
@@ -285,15 +309,20 @@ tx_pool_test_() ->
                ?assertEqual({ok, [STx1]},
                             aec_tx_pool:get_candidate(GasTx1, aec_chain:top_block_hash())),
 
+               aec_tx_pool:restore_mempool(),
+
                %% Get only 2 txs, the 1st + 2nd or 1st + 3rd.
                {ok, STxs1} = aec_tx_pool:get_candidate(GasTx1 + GasTx2, aec_chain:top_block_hash()),
                ?assert(lists:member(STx1, STxs1) and (lists:member(STx2, STxs1) or lists:member(STx3, STxs1))),
 
+               aec_tx_pool:restore_mempool(),
                %% Get all 3 txs by providing exactly the gas the txs need.
                {ok, STxs2} = aec_tx_pool:get_candidate(GasTx1 + GasTx2 + GasTx3, aec_chain:top_block_hash()),
                ?assert(lists:member(STx1, STxs2)),
                ?assert(lists:member(STx2, STxs2)),
                ?assert(lists:member(STx3, STxs2)),
+
+               aec_tx_pool:restore_mempool(),
 
                %% Get 1st and 3rd tx, skip 2nd tx.
                {ok, STxs3} = aec_tx_pool:get_candidate(GasTx1 + GasTx3, aec_chain:top_block_hash()),
