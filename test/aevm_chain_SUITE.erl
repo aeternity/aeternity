@@ -67,7 +67,7 @@ setup_chain() ->
 create_contract(Owner, S) ->
     OwnerPrivKey = aect_test_utils:priv_key(Owner, S),
     IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
-    {ok, CallData} = aect_sophia:encode_call_data(IdContract, <<"init">>, <<"()">>),
+    {ok, CallData} = aect_sophia:encode_call_data(IdContract, <<"init : () => _">>, <<>>),
 
     Overrides    = #{ code => IdContract
                     , call_data => CallData
@@ -90,7 +90,7 @@ sign_and_apply_transaction(Tx, PrivKey, S1) ->
 
 call_data(Arg) ->
     Code = aect_test_utils:compile_contract("contracts/identity.aes"),
-    {ok, CallData} = aect_sophia:encode_call_data(Code, <<"main">>, Arg),
+    {ok, CallData} = aect_sophia:encode_call_data(Code, <<"main : int => _">>, Arg),
     CallData.
 
 %%%===================================================================
