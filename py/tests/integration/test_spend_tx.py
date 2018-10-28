@@ -79,7 +79,7 @@ def test_not_enough_tokens():
     shutil.rmtree(root_dir)
 
 def test_send_by_name():
-    # Bob registers a name 'bob.aet'
+    # Bob registers a name 'bob.test'
     # Alice should be able to send tokens to Bob using that name
     test_settings = settings["test_send_by_name"]
     beneficiary = common.setup_beneficiary()

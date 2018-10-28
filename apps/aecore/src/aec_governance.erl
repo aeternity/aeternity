@@ -202,8 +202,9 @@ name_protection_period() ->
 name_claim_preclaim_delta() ->
     1.
 
+-spec name_registrars() -> list(binary()).
 name_registrars() ->
-    [<<"aet">>, <<"test">>].
+    [<<"test">>].
 
 fraud_report_reward() ->
     ?POF_REWARD.
