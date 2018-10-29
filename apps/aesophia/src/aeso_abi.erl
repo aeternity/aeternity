@@ -54,16 +54,21 @@
                                  | {error, argument_syntax_error}.
 create_calldata(ContractCode, "", CallCode) ->
     case aeso_compiler:check_call(CallCode, []) of
-        {ok, FunName, {_ArgTypes, _RetType}, Args} ->
+        {ok, FunName, {ArgTypes, RetType}, Args} ->
             try aeso_compiler:deserialize(ContractCode) of
                 #{type_info := TypeInfo} ->
                     FunBin = list_to_binary(FunName),
                     case type_hash_from_function_name(FunBin, TypeInfo) of
                         {ok, <<TypeHashInt:256>>} ->
-                            %% TODO: check that ArgTypes and RetType matches CallDataType
                             Data = aeso_data:to_binary({TypeHashInt, list_to_tuple(Args)}),
                             case check_calldata(Data, TypeInfo) of
-                                {ok, CallDataType, OutType} -> {ok, Data, CallDataType, OutType};
+                                {ok, CallDataType, OutType} ->
+                                    case check_given_type(FunName, ArgTypes, RetType, CallDataType, OutType) of
+                                        ok ->
+                                            {ok, Data, CallDataType, OutType};
+                                        {error, _} = Err ->
+                                            Err
+                                    end;
                                 {error,_What} = Err -> Err
                             end
                     end
@@ -85,6 +90,25 @@ create_calldata(Contract, Function, Argument) ->
         ]),
     create_calldata(Contract, "", CallContract).
 
+%% Check that the given type matches the type from the metadata.
+check_given_type(FunName, GivenArgs, GivenRet, CalldataType, ExpectRet) ->
+    {tuple, [word, {tuple, ExpectArgs}]} = CalldataType,
+    ReturnOk = if FunName == "init" -> true;
+                  GivenRet == any   -> true;
+                  true              -> GivenRet == ExpectRet
+               end,
+    ArgsOk   = ExpectArgs == GivenArgs,
+    case ReturnOk andalso ArgsOk of
+        true -> ok;
+        false when FunName == "init" ->
+            {error, {init_args_mismatch,
+                        {given,    GivenArgs},
+                        {expected, ExpectArgs}}};
+        false ->
+            {error, {call_type_mismatch,
+                        {given,    GivenArgs,  '=>', GivenRet},
+                        {expected, ExpectArgs, '=>', ExpectRet}}}
+    end.
 
 -spec check_calldata(aeso_sophia:heap(), type_info()) ->
                         {'ok', typerep()} | {'error', atom()}.
