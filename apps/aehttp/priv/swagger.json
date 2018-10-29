@@ -1847,6 +1847,23 @@
         }
       }
     },
+    "/debug/accounts/beneficiary" : {
+      "get" : {
+        "tags" : [ "internal", "node_info", "debug" ],
+        "description" : "Get node's beneficiary public key",
+        "operationId" : "GetNodeBeneficiary",
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PubKey"
+            }
+          }
+        }
+      }
+    },
     "/debug/accounts/node" : {
       "get" : {
         "tags" : [ "internal", "node_info", "debug" ],

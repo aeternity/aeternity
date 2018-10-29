@@ -428,6 +428,10 @@ handle_request_('PostOracleRespond', #{'OracleRespondTx' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
+handle_request_('GetNodeBeneficiary', _, _Context) ->
+    {ok, Pubkey} = aec_conductor:get_beneficiary(),
+    {200, [], #{pub_key => aec_base58c:encode(account_pubkey, Pubkey)}};
+
 handle_request_('GetNodePubkey', _, _Context) ->
     case aec_keys:pubkey() of
         {ok, Pubkey} ->
