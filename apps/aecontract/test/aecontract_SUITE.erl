@@ -44,6 +44,8 @@
         , sophia_oracles_ttl__get_answer_after_rttl/1
         , sophia_oracles_ttl__happy_path/1
         , sophia_oracles_ttl__good_query_bad_extend/1
+        , sophia_oracles_type_error_arg/1
+        , sophia_oracles_type_error_out/1
         , sophia_oracles_qfee__basic/1
         , sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle/1
         , sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle/1
@@ -151,6 +153,7 @@ groups() ->
                                  sophia_typed_calls,
                                  sophia_oracles,
                                  {group, sophia_oracles_ttl},
+                                 {group, sophia_oracles_type_error},
                                  {group, sophia_oracles_query_fee_happy_path},
                                  {group, sophia_oracles_query_fee_happy_path_remote},
                                  {group, sophia_oracles_query_fee_unhappy_path},
@@ -176,6 +179,10 @@ groups() ->
         , sophia_oracles_ttl__get_answer_after_rttl
         , sophia_oracles_ttl__happy_path
         , sophia_oracles_ttl__good_query_bad_extend ]}
+    , {sophia_oracles_type_error, [],
+       [ sophia_oracles_type_error_arg
+       , sophia_oracles_type_error_out
+       ]}
     , {sophia_oracles_query_fee_happy_path, [],
        [ %% Test query fee handling from txs calling contract that calls oracle builtins.
          sophia_oracles_qfee__basic
@@ -660,7 +667,7 @@ call(Name, Fun, Xs) ->
             end || X <- Xs ],
     io:format("~p(" ++ Fmt ++ ") ->\n", [Name | Xs1]),
     R = call(Fun, Xs),
-    io:format("  ~p\n", [R]),
+    io:format("Response:  ~p\n", [R]),
     R.
 
 call(Fun, Xs) when is_function(Fun, 1 + length(Xs)) ->
@@ -942,6 +949,35 @@ sophia_oracles(_Cfg) ->
     Question1    = {variant, 1, [<<"birds fly?">>]},
     Answer       = {yesAnswer, {how, <<"birds fly?">>}, <<"magic">>, 1337},
     {some, Answer} = ?call(call_contract, Acc, Ct1, complexOracle, {option, AnswerType}, {Question1}),
+    ok.
+
+sophia_oracles_type_error_arg(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
+    FixedTTL          = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
+    Acc               = ?call(new_account, 1000000),
+    Ct = <<CtId:256>> = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
+    QueryFee          = 100,
+    TTL               = 15,
+    CtId              = ?call(call_contract, Acc, Ct, registerIntIntOracle, word, {CtId, QueryFee, FixedTTL(TTL)}),
+    Question          = <<"Manchester United vs Brommapojkarna">>,
+    {error, _}        = ?call(call_contract, Acc, Ct, createQuery, word,
+                              {Ct, Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
+    ok.
+
+sophia_oracles_type_error_out(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
+    FixedTTL          = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
+    Acc               = ?call(new_account, 1000000),
+    Ct = <<CtId:256>> = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
+    QueryFee          = 100,
+    TTL               = 15,
+    CtId              = ?call(call_contract, Acc, Ct, registerStringStringOracle, word, {CtId, QueryFee, FixedTTL(TTL)}),
+    Question          = <<"Manchester United vs Brommapojkarna">>,
+    QId               = ?call(call_contract, Acc, Ct, createQuery, word,
+                              {Ct, Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
+    {error, _}        = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {CtId, QId, 4001}),
     ok.
 
 %% Oracle TTL tests

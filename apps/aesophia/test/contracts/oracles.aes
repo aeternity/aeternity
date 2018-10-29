@@ -14,6 +14,16 @@ contract Oracles =
                           ttl  : ttl) : oracle_id =
      Oracle.register(acct, qfee, ttl)
 
+  function registerIntIntOracle(acct : address,
+                                qfee : fee,
+                                ttl  : ttl) : oracle(int, int) =
+     Oracle.register(acct, qfee, ttl)
+
+  function registerStringStringOracle(acct : address,
+                                      qfee : fee,
+                                      ttl  : ttl) : oracle(string, string) =
+     Oracle.register(acct, qfee, ttl)
+
   function signedRegisterOracle(acct : address,
                                 sign : signature,
                                 qfee : fee,
