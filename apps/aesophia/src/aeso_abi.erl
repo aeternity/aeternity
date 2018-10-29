@@ -55,24 +55,20 @@
 create_calldata(ContractCode, "", CallCode) ->
     case aeso_compiler:check_call(CallCode, []) of
         {ok, FunName, {ArgTypes, RetType}, Args} ->
-            try aeso_compiler:deserialize(ContractCode) of
-                #{type_info := TypeInfo} ->
-                    FunBin = list_to_binary(FunName),
-                    case type_hash_from_function_name(FunBin, TypeInfo) of
-                        {ok, <<TypeHashInt:256>>} ->
-                            Data = aeso_data:to_binary({TypeHashInt, list_to_tuple(Args)}),
-                            case check_calldata(Data, TypeInfo) of
-                                {ok, CallDataType, OutType} ->
-                                    case check_given_type(FunName, ArgTypes, RetType, CallDataType, OutType) of
-                                        ok ->
-                                            {ok, Data, CallDataType, OutType};
-                                        {error, _} = Err ->
-                                            Err
-                                    end;
-                                {error,_What} = Err -> Err
-                            end
-                    end
-            catch _:_ -> {error, bad_contract_code}
+            case get_type_info_and_hash(ContractCode, FunName) of
+                {ok, TypeInfo, TypeHashInt} ->
+                    Data = aeso_data:to_binary({TypeHashInt, list_to_tuple(Args)}),
+                    case check_calldata(Data, TypeInfo) of
+                        {ok, CallDataType, OutType} ->
+                            case check_given_type(FunName, ArgTypes, RetType, CallDataType, OutType) of
+                                ok ->
+                                    {ok, Data, CallDataType, OutType};
+                                {error, _} = Err ->
+                                    Err
+                            end;
+                        {error,_What} = Err -> Err
+                    end;
+                {error, _} = Err -> Err
             end;
         {error, _} = Err -> Err
     end;
@@ -81,14 +77,31 @@ create_calldata(Contract, Function, Argument) ->
     %% call contract code.
     %% Function should be "foo : type", and
     %% Argument should be "Arg1, Arg2, .., ArgN" (no parens)
-    FunName = hd(string:lexemes(Function, ": ")),
-    Args    = lists:map(fun($\n) -> 32; (X) -> X end, Argument),    %% newline to space
-    CallContract = lists:flatten(
-        [ "contract Call =\n"
-        , "  function ", Function, "\n"
-        , "  function __call() = ", FunName, "(", Args, ")"
-        ]),
-    create_calldata(Contract, "", CallContract).
+    case string:lexemes(Function, ": ") of
+                     %% If function is a single word fallback to old calldata generation
+        [FunName] -> old_create_calldata(Contract, FunName, Argument);
+        [FunName | _] ->
+            Args    = lists:map(fun($\n) -> 32; (X) -> X end, Argument),    %% newline to space
+            CallContract = lists:flatten(
+                [ "contract Call =\n"
+                , "  function ", Function, "\n"
+                , "  function __call() = ", FunName, "(", Args, ")"
+                ]),
+            create_calldata(Contract, "", CallContract)
+    end.
+
+get_type_info_and_hash(ContractCode, FunName) ->
+    try aeso_compiler:deserialize(ContractCode) of
+        #{type_info := TypeInfo} ->
+            FunBin = list_to_binary(FunName),
+            case type_hash_from_function_name(FunBin, TypeInfo) of
+                {ok, <<TypeHashInt:256>>} -> {ok, TypeInfo, TypeHashInt};
+                {ok, _}                   -> {error, bad_type_hash};
+                {error, _} = Err          -> Err
+            end
+    catch _:_ ->
+        {error, bad_contract_code}
+    end.
 
 %% Check that the given type matches the type from the metadata.
 check_given_type(FunName, GivenArgs, GivenRet, CalldataType, ExpectRet) ->
@@ -210,4 +223,51 @@ type_hash_from_function_name(Name, TypeInfo) ->
         false ->
             {error, unknown_function}
     end.
+
+%% -- Old calldata creation. Kept for backwards compatibility. ---------------
+
+old_create_calldata(ContractCode, Function, Argument) ->
+    case aeso_constants:string(Argument) of
+        {ok, {tuple, _, _} = Tuple} ->
+            old_encode_call(ContractCode, Function, Tuple);
+        {ok, {unit, _} = Tuple} ->
+            old_encode_call(ContractCode, Function, Tuple);
+        {ok, ParsedArgument} ->
+            %% The Sophia compiler does not parse a singleton tuple (42) as a tuple,
+            %% Wrap it in a tuple.
+            old_encode_call(ContractCode, Function, {tuple, [], [ParsedArgument]});
+        {error, _} ->
+            {error, argument_syntax_error}
+    end.
+
+%% Call takes one arument.
+%% Use a tuple to pass multiple arguments.
+old_encode_call(ContractCode, Function, ArgumentAst) ->
+    Argument = old_ast_to_erlang(ArgumentAst),
+    case get_type_info_and_hash(ContractCode, Function) of
+        {ok, TypeInfo, TypeHashInt} ->
+            Data = aeso_data:to_binary({TypeHashInt, Argument}),
+            case check_calldata(Data, TypeInfo) of
+                {ok, CallDataType, OutType} ->
+                    {ok, Data, CallDataType, OutType};
+                {error, _} = Err ->
+                    Err
+            end;
+        {error, _} = Err -> Err
+    end.
+
+old_ast_to_erlang({int, _, N}) -> N;
+old_ast_to_erlang({bool, _, true}) -> 1;
+old_ast_to_erlang({bool, _, false}) -> 0;
+old_ast_to_erlang({string, _, Bin}) -> Bin;
+old_ast_to_erlang({unit, _}) -> {};
+old_ast_to_erlang({con, _, "None"}) -> none;
+old_ast_to_erlang({app, _, {con, _, "Some"}, [A]}) -> {some, old_ast_to_erlang(A)};
+old_ast_to_erlang({tuple, _, Elems}) ->
+    list_to_tuple(lists:map(fun old_ast_to_erlang/1, Elems));
+old_ast_to_erlang({list, _, Elems}) ->
+    lists:map(fun old_ast_to_erlang/1, Elems);
+old_ast_to_erlang({map, _, Elems}) ->
+    maps:from_list([ {old_ast_to_erlang(element(1, Elem)), old_ast_to_erlang(element(2, Elem))}
+                        || Elem <- Elems ]).
 
