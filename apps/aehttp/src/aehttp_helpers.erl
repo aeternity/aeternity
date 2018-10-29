@@ -20,6 +20,7 @@
         , verify_name/1
         , compute_contract_create_data/0
         , compute_contract_call_data/0
+        , contract_call_input_funargs/1
         , read_optional_param/3
         , get_poi/3
         , get_block_from_chain/1
@@ -423,33 +424,71 @@ unsigned_tx_response(NewTxFun) when is_function(NewTxFun, 1) ->
 
 compute_contract_create_data() ->
     fun(_Req, State) ->
-        #{code := Code,
-          arguments := Argument} = State,
-        case aect_dispatch:encode_call_data(<<"sophia">>, Code,
-                                            <<"init">>, Argument) of
-          {ok, CallData} ->
-              {ok, maps:put(call_data, CallData, State)};
-          {error, ErrorMsg} when is_binary(ErrorMsg) ->
-                Reason = <<"Failed to compute create_data, reason: ",
-                                        ErrorMsg/binary>>,
-                {error, {400, [], #{<<"reason">> => Reason}}}
+        #{ code := Code } = State,
+        FunArgs =
+            case State of
+                #{ arguments := Argument } -> %% legacy calldata creation
+                    {<<"init">>, Argument};
+                #{ call := CallCode } ->
+                    {<<>>, CallCode};
+                _ ->
+                    {error, <<"Missing 'call' or 'arguments'">>}
+            end,
+        Fail = fun(ErrorMsg) ->
+                   Reason = <<"Failed to compute create_data, reason: ",
+                                           ErrorMsg/binary>>,
+                   {error, {400, [], #{<<"reason">> => Reason}}}
+               end,
+        case FunArgs of
+            {error, ErrorMsg} -> Fail(ErrorMsg);
+            {Fun, Args} ->
+                case aect_dispatch:encode_call_data(<<"sophia">>, Code, Fun, Args) of
+                    {ok, CallData} ->
+                        {ok, maps:put(call_data, CallData, State)};
+                    {error, ErrorMsg} when is_binary(ErrorMsg) ->
+                        Fail(ErrorMsg)
+                end
         end
     end.
 
 compute_contract_call_data() ->
     fun(_Req, State) ->
-        #{contract_code := Code,
-            function := Function,
-            arguments := Argument} = State,
-        case aect_dispatch:encode_call_data(<<"sophia">>, Code,
-                                            Function, Argument) of
-          {ok, CallData} ->
-              {ok, maps:put(call_data, CallData, State)};
-          {error, ErrorMsg} when is_binary(ErrorMsg) ->
-                Reason = <<"Failed to compute call_data, reason: ",
-                                        ErrorMsg/binary>>,
-                {error, {400, [], #{<<"reason">> => Reason}}}
+        #{contract_code := Code } = State,
+        FunArgs =
+            case State of
+                #{ function := Fun, arguments := Args} ->
+                    {Fun, Args};    %% Legacy calldata creation
+                #{ call := CallCode } ->
+                    {<<>>, CallCode};
+                _ ->
+                    {error, <<"Missing 'call' or 'function'/'arguments'">>}
+            end,
+        Fail = fun(ErrorMsg) ->
+                   Reason = <<"Failed to compute call_data, reason: ",
+                                           ErrorMsg/binary>>,
+                   {error, {400, [], #{<<"reason">> => Reason}}}
+               end,
+        case FunArgs of
+            {error, ErrorMsg} -> Fail(ErrorMsg);
+            {Function, Argument} ->
+                case aect_dispatch:encode_call_data(<<"sophia">>, Code,
+                                                    Function, Argument) of
+                    {ok, CallData} ->
+                        {ok, maps:put(call_data, CallData, State)};
+                    {error, ErrorMsg} when is_binary(ErrorMsg) ->
+                        Fail(ErrorMsg)
+                end
         end
+    end.
+
+contract_call_input_funargs(CallInput) ->
+    case CallInput of
+        #{ <<"function">> := Fun, <<"arg">> := Arg } ->
+            {ok, Fun, Arg};
+        #{ <<"call">> := Code } ->
+            {ok, <<>>, Code};
+        _ ->
+            {error, <<"Either 'call' or 'function'/'arg' required">>}
     end.
 
 get_transaction(TxKey, TxStateKey) ->
