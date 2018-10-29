@@ -88,7 +88,7 @@ check_call(ContractString, Options) ->
     Ast = parse(ContractString, Options),
     ok = pp_sophia_code(Ast, Options),
     ok = pp_ast(Ast, Options),
-    TypedAst = aeso_ast_infer_types:infer(Ast),
+    TypedAst = aeso_ast_infer_types:infer(Ast, [permissive_address_literals]),
     {ok, {FunName, {fun_t, _, _, ArgTypes, RetType}}} = get_call_type(TypedAst),
     ok = pp_typed_ast(TypedAst, Options),
     Icode = to_icode(TypedAst, Options),
