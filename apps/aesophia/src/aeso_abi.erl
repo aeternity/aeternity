@@ -167,7 +167,7 @@ function_type_info(Name, Args, OutType) ->
 
 -spec function_type_hash(function_name(), typerep(), typerep()) ->
                             aec_hash:hash().
-function_type_hash(Name, ArgType, OutType) ->
+function_type_hash(Name, ArgType, OutType) when is_binary(Name) ->
     aec_hash:hash(sophia_type_hash,
                   iolist_to_binary([ Name
                                    , aeso_data:to_binary(ArgType)

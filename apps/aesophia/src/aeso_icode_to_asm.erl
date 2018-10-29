@@ -100,7 +100,7 @@ make_args(Args) ->
 
 fun_hash({FName, _, Args, _, TypeRep}) ->
     ArgType = {tuple, [T || {_, T} <- Args]},
-    <<Hash:256>> = aeso_abi:function_type_hash(FName, ArgType, TypeRep),
+    <<Hash:256>> = aeso_abi:function_type_hash(list_to_binary(FName), ArgType, TypeRep),
     {integer, Hash}.
 
 %% Expects two return addresses below N elements on the stack. Picks the top

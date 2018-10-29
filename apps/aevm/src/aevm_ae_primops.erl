@@ -8,7 +8,13 @@
 %%%-------------------------------------------------------------------
 
 -module(aevm_ae_primops).
--export([types/4, call/4, is_local_primop/1]).
+-export([ call/4
+        , check_type_hash/4
+        , is_local_primop/1
+        , is_local_primop_op/1
+        , op_needs_type_check/1
+        , types/4
+        ]).
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("aevm_ae_primops.hrl").
@@ -103,10 +109,10 @@ call_primop(PrimOp, Value, Data, State)
     aens_call(PrimOp, Value, Data, State).
 
 is_local_primop(Data) ->
-    case get_primop(Data) of
-        Op when ?PRIM_CALL_IN_MAP_RANGE(Op) -> true;
-        _ -> false
-    end.
+    is_local_primop_op(get_primop(Data)).
+
+is_local_primop_op(Op) when ?PRIM_CALL_IN_MAP_RANGE(Op) -> true;
+is_local_primop_op(Op) when is_integer(Op) -> false.
 
 %% ------------------------------------------------------------------
 %% Primop types
@@ -172,7 +178,7 @@ types(?PRIM_CALL_ORACLE_GET_QUESTION, HeapValue, Store, State) ->
 types(?PRIM_CALL_ORACLE_QUERY, HeapValue, Store, State) ->
     case oracle_query_type_from_chain(HeapValue, Store, State) of
         {ok, QType} ->
-            {[word, QType, ttl_t(), ttl_t(), word], word};
+            {[word, QType, ttl_t(), ttl_t()], word};
         {error, _} ->
             {[], tuple0_t()}
     end;
@@ -212,6 +218,32 @@ oracle_type_from_chain(HeapValue, Store, State, Which) ->
         query    -> API:oracle_query_format(<<OracleID:256>>, ChainState);
         response -> API:oracle_response_format(<<OracleID:256>>, ChainState)
     end.
+
+check_type_hash(Op, ArgTypes, OutType, TypeHash) ->
+    case op_needs_type_check(Op) of
+        false ->
+            ok;
+        true ->
+            PrimBin = binary:encode_unsigned(Op),
+            ArgType = {tuple, ArgTypes},
+            case aeso_abi:function_type_hash(PrimBin, ArgType, OutType) of
+                TypeHash -> ok;
+                _Other -> error
+            end
+    end.
+
+op_needs_type_check(Op) ->
+    (not is_local_primop_op(Op)) andalso op_has_dynamic_type(Op).
+
+op_has_dynamic_type(?PRIM_CALL_ORACLE_QUERY) -> true;
+op_has_dynamic_type(?PRIM_CALL_ORACLE_RESPOND) -> true;
+op_has_dynamic_type(?PRIM_CALL_ORACLE_GET_QUESTION) -> true;
+op_has_dynamic_type(?PRIM_CALL_ORACLE_GET_ANSWER) -> true;
+op_has_dynamic_type(?PRIM_CALL_MAP_GET) -> true;
+op_has_dynamic_type(?PRIM_CALL_MAP_PUT) -> true;
+op_has_dynamic_type(?PRIM_CALL_MAP_TOLIST) -> true;
+op_has_dynamic_type(?PRIM_CALL_AENS_RESOLVE) -> true;
+op_has_dynamic_type(_) -> false.
 
 %% ------------------------------------------------------------------
 %% Basic account operations.
