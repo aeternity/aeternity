@@ -11,7 +11,6 @@
 -include_lib("apps/aecore/include/blocks.hrl").
 
 -export([ compile/2
-        , create_call/3
         , decode_data/2
         , encode_call_data/3
         , simple_call/3
@@ -23,7 +22,6 @@
 compile(ContractAsBinString, OptionsAsBinString) ->
     ContractText = binary_to_list(ContractAsBinString),
     Options = parse_options(OptionsAsBinString),
-    %% TODO: Handle contract meta data.
     try {ok, aeso_compiler:from_string(ContractText, Options)}
     catch error:Error ->
             {error, list_to_binary(io_lib:format("~p", [Error]))}
@@ -56,34 +54,37 @@ on_chain_call(ContractKey, Function, Argument) ->
     Contract       = aect_state_tree:get_contract(ContractKey, ContractsTree),
     SerializedCode = aect_contracts:code(Contract),
     Store          = aect_contracts:state(Contract),
-    %% TODO: Check the type info before calling?
     #{ byte_code := Code} = aeso_compiler:deserialize(SerializedCode),
-    case create_call(Code, Function, Argument) of
+    case create_call(SerializedCode, Function, Argument) of
         {error, E} -> {error, E};
-        CallData ->
+        {ok, CallData, CallDataType, OutType} ->
             VMVersion   = ?AEVM_01_Sophia_01,
-            aect_evm:call_common(CallData, ContractKey, Code, Store,
+            aect_evm:call_common(CallData, CallDataType, OutType,
+                                 ContractKey, Code, Store,
                                  TxEnv, Trees, VMVersion)
     end.
 
 -spec simple_call(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
 simple_call(SerializedCode, Function, Argument) ->
-    %% TODO: Check the type info before calling?
     #{ byte_code := Code} = aeso_compiler:deserialize(SerializedCode),
-    case create_call(Code, Function, Argument) of
+    case create_call(SerializedCode, Function, Argument) of
         {error, E} -> {error, E};
-        CallData ->
-            aect_evm:simple_call_common(Code, CallData, ?AEVM_01_Sophia_01)
+        {ok, CallData, CallDataType, OutType} ->
+            aect_evm:simple_call_common(Code, CallData, CallDataType,
+                                        OutType, ?AEVM_01_Sophia_01)
     end.
 
 -spec encode_call_data(binary(), binary(), binary()) ->
                               {ok, binary()} | {error, binary()}.
-encode_call_data(Contract, Function, Argument) ->
-    try create_call(Contract, Function, Argument) of
-        Data when is_binary(Data) ->
-            {ok, Data};
-        Error -> Error
-    catch _:_ -> {error, <<"bad argument">>}
+encode_call_data(Code, Function, Argument) ->
+    try create_call(Code, Function, Argument) of
+        {error, _} = Err -> Err;
+        {ok, Data,_DataType,_OutType} when is_binary(Data) ->
+            {ok, Data}
+    catch _T:_E ->
+            io:format("Encode call data failed with: ~w:~w ~p\n",
+                      [_T, _E, erlang:get_stacktrace()]),
+            {error, <<"bad argument">>}
     end.
 
 
@@ -153,13 +154,11 @@ prepare_for_json(T, R) ->
     Error = << <<B>> || B <- "Invalid Sophia type: " ++ lists:flatten(String) >>,
     throw({error, Error}).
 
--spec create_call(binary(), binary(), binary()) -> binary() | {error, binary()}.
-create_call(Contract, Function, Argument) ->
-    Res = aeso_abi:create_calldata(Contract,
-                                   binary_to_list(Function),
-                                   binary_to_list(Argument)),
-    case Res of
+create_call(Code, Function, Argument) ->
+    case aeso_abi:create_calldata(Code,
+                                  binary_to_list(Function),
+                                  binary_to_list(Argument)) of
         {error, Error} ->
             {error, list_to_binary(io_lib:format("~p", [Error]))};
-        _ -> Res
+        {ok, _CallData,_CallDataType,_OutType} = Res -> Res
     end.

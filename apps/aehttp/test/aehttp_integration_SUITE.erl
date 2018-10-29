@@ -1471,12 +1471,12 @@ post_spend_tx(Config) ->
 post_contract_and_call_tx(_Config) ->
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
-    {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
-
+    {ok, 200, #{<<"bytecode">> := EncodedCode}} = get_contract_bytecode(SophiaCode),
+    {ok, Code} = aec_base58c:safe_decode(contract_bytearray, EncodedCode),
     {ok, EncodedInitCallData} = aehttp_logic:contract_encode_call_data(
                                   <<"sophia">>, Code, <<"init">>, <<"()">>),
     ValidEncoded = #{ owner_id   => MinerAddress,
-                      code       => Code,
+                      code       => EncodedCode,
                       vm_version => 1,
                       deposit    => 2,
                       amount     => 1,
@@ -1548,20 +1548,20 @@ get_contract(_Config) ->
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
-    {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
+    {ok, 200, #{<<"bytecode">> := EncodedCode}} = get_contract_bytecode(SophiaCode),
 
     % contract_create_tx positive test
     InitFunction = <<"init">>,
     InitArgument = <<"()">>,
     {ok, EncodedInitCallData} =
         aehttp_logic:contract_encode_call_data(<<"sophia">>,
-                                               Code,
+                                               contract_bytearray_decode(EncodedCode),
                                                InitFunction,
                                                InitArgument),
 
     ContractInitBalance = 1,
     ValidEncoded = #{ owner_id   => MinerAddress,
-                      code       => Code,
+                      code       => EncodedCode,
                       vm_version => 1,
                       deposit    => 2,
                       amount     => ContractInitBalance,
@@ -1572,7 +1572,7 @@ get_contract(_Config) ->
 
     ValidDecoded = maps:merge(ValidEncoded,
                               #{owner_id  => aec_id:create(account, MinerPubkey),
-                                code      => contract_bytearray_decode(Code),
+                                code      => contract_bytearray_decode(EncodedCode),
                                 call_data => contract_bytearray_decode(EncodedInitCallData)}),
 
     unsigned_tx_positive_test(ValidDecoded, ValidEncoded, fun get_contract_create/1,
@@ -1604,7 +1604,7 @@ get_contract(_Config) ->
                              <<"referrer_ids">> := [],
                              <<"log">>         := <<>>}},
                  get_contract_sut(EncodedContractPubKey)),
-    ?assertEqual({ok, 200, #{<<"bytecode">> => Code}}, get_contract_code_sut(EncodedContractPubKey)),
+    ?assertEqual({ok, 200, #{<<"bytecode">> => EncodedCode}}, get_contract_code_sut(EncodedContractPubKey)),
     ?assertMatch({ok, 200, #{<<"store">> := [
         #{<<"key">> := <<"0x00">>, <<"value">> := _InitState},
         #{<<"key">> := <<"0x01">>, <<"value">> := _StateType}    %% We store the state type in the Store
@@ -1890,20 +1890,20 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
-    {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
+    {ok, 200, #{<<"bytecode">> := EncodedCode}} = get_contract_bytecode(SophiaCode),
 
     % contract_create_tx positive test
     InitFunction = <<"init">>,
     InitArgument = <<"()">>,
     {ok, EncodedInitCallData} =
         aehttp_logic:contract_encode_call_data(<<"sophia">>,
-                                               Code,
+                                               contract_bytearray_decode(EncodedCode),
                                                InitFunction,
                                                InitArgument),
 
     ContractInitBalance = 1,
     ValidEncoded = #{ owner_id => MinerAddress,
-                      code => Code,
+                      code => EncodedCode,
                       vm_version => 1,
                       deposit => 2,
                       amount => ContractInitBalance,
@@ -1914,7 +1914,7 @@ contract_transactions(_Config) ->    % miner has an account
 
     ValidDecoded = maps:merge(ValidEncoded,
                               #{owner_id => aec_id:create(account, MinerPubkey),
-                                code => contract_bytearray_decode(Code),
+                                code => contract_bytearray_decode(EncodedCode),
                                 call_data => contract_bytearray_decode(EncodedInitCallData)}),
 
     unsigned_tx_positive_test(ValidDecoded, ValidEncoded, fun get_contract_create/1,
@@ -1974,7 +1974,7 @@ contract_transactions(_Config) ->    % miner has an account
     Argument = <<"42">>,
     {ok, EncodedCallData} =
         aehttp_logic:contract_encode_call_data(<<"sophia">>,
-                                               Code,
+                                               contract_bytearray_decode(EncodedCode),
                                                Function,
                                                Argument),
 
@@ -2048,9 +2048,6 @@ contract_transactions(_Config) ->    % miner has an account
                              fee => 1,
                              function => Function,
                              arguments => Argument},
-
-    {ok, EncodedCallData} = aehttp_logic:contract_encode_call_data(
-                              <<"sophia">>, Code, Function, Argument),
 
     ComputeCCallDecoded = maps:merge(ComputeCCallEncoded,
                               #{caller_id => aec_id:create(account, MinerPubkey),
@@ -2224,28 +2221,24 @@ contract_create_transaction_init_error(_Config) ->
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
 
     % contract_create_tx positive test
-    DummyByteCode = aect_test_utils:dummy_bytecode(),
-    Code = aec_base58c:encode(contract_bytearray, DummyByteCode),
-
-    InitFunction = <<"init">>,
-    InitArgument = <<"()">>,
-    {ok, EncodedInitCallData} =
-        aehttp_logic:contract_encode_call_data(<<"sophia">>,
-                                               Code,
-                                               InitFunction,
-                                               InitArgument),
+    EncodedCode = contract_byte_code("init_error"),
+    {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
+                              <<"sophia">>,
+                              contract_bytearray_decode(EncodedCode),
+                              <<"init">>, <<"(0x123, 0)">>),
+    EncodedInitCallData = aec_base58c:encode(contract_bytearray, aeso_data:to_binary({<<"init">>, {}})),
     ValidEncoded = #{ owner_id   => MinerAddress,
-                      code       => Code,
+                      code       => EncodedCode,
                       vm_version => 1,
                       deposit    => 2,
                       amount     => 1,
                       gas        => 30,
                       gas_price  => 1,
                       fee        => 1,
-                      call_data  => EncodedInitCallData},
+                      call_data  => EncodedInitData},
     ValidDecoded = maps:merge(ValidEncoded,
         #{owner => MinerPubkey,
-            code => contract_bytearray_decode(Code),
+            code => contract_bytearray_decode(EncodedCode),
             call_data => contract_bytearray_decode(EncodedInitCallData)}),
 
     %% prepare a contract_create_tx and post it
@@ -4165,16 +4158,18 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
             QueryId
         end,
 
-    Code = contract_byte_code("channel_on_chain_contract_oracle"),
+    EncodedCode = contract_byte_code("channel_on_chain_contract_oracle"),
     HexOracleId = aeu_hex:hexstring_encode(OraclePubkey),
     InitArgument = <<"(",HexOracleId/binary, ", \"", Question/binary, "\")">>,
     {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
-                              <<"sophia">>, Code, <<"init">>, InitArgument),
+                              <<"sophia">>,
+                              contract_bytearray_decode(EncodedCode),
+                              <<"init">>, InitArgument),
     {CreateVolley, OwnerConnPid, OwnerPubKey} = GetVolley(Owner),
     ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
                    #{vm_version => 1,
                      deposit    => 10,
-                     code       => Code,
+                     code       => EncodedCode,
                      call_data  => EncodedInitData}, Config),
 
     UnsignedStateTx = CreateVolley(),
@@ -4185,7 +4180,7 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
         fun(Who, Fun, Args, ReturnType, Result) ->
             {UpdateVolley, UpdaterConnPid, _UpdaterPubKey} = GetVolley(Who),
             Tx = call_a_contract(Fun, Args,
-                                 ContractPubKey, Code,
+                                 ContractPubKey, EncodedCode,
                                  UpdaterConnPid, UpdateVolley, Config),
             #{<<"value">> := R} =
                 ws_get_decoded_result(ConnPid1, ConnPid2,
@@ -4264,15 +4259,17 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     %% Oracle ask itself a question and answers it
     {NamePubkey, NamePrivkey} = initialize_account(100000),
 
-    Code = contract_byte_code("channel_on_chain_contract_name_resolution"),
+    EncodedCode = contract_byte_code("channel_on_chain_contract_name_resolution"),
     InitArgument = <<"()">>,
     {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
-                              <<"sophia">>, Code, <<"init">>, InitArgument),
+                              <<"sophia">>,
+                              contract_bytearray_decode(EncodedCode),
+                              <<"init">>, InitArgument),
     {CreateVolley, OwnerConnPid, OwnerPubkey} = GetVolley(Owner),
     ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
                    #{vm_version => 1,
                      deposit    => 10,
-                     code       => Code,
+                     code       => EncodedCode,
                      call_data  => EncodedInitData}, Config),
 
     UnsignedStateTx = CreateVolley(),
@@ -4288,7 +4285,7 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
             Args = <<"(", QName/binary, ",", QKey/binary,")">>,
             Tx = call_a_contract(<<"can_resolve">>,
                                  Args,
-                                 ContractPubKey, Code,
+                                 ContractPubKey, EncodedCode,
                                  UpdaterConnPid, UpdateVolley, Config),
              #{<<"value">> := RInt} =
                 ws_get_decoded_result(ConnPid1, ConnPid2,
@@ -4321,15 +4318,17 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
 
 sc_ws_enviroment_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                            OwnerPubkey, _OtherPubkey, _Opts, Config) ->
-    Code = contract_byte_code("channel_env"),
+    EncodedCode = contract_byte_code("channel_env"),
     InitArgument = <<"()">>,
     {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
-                              <<"sophia">>, Code, <<"init">>, InitArgument),
+                              <<"sophia">>,
+                              contract_bytearray_decode(EncodedCode),
+                              <<"init">>, InitArgument),
     {CreateVolley, OwnerConnPid, OwnerPubkey} = GetVolley(Owner),
     ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
                    #{vm_version => 1,
                      deposit    => 10,
-                     code       => Code,
+                     code       => EncodedCode,
                      call_data  => EncodedInitData}, Config),
 
     UnsignedStateTx = CreateVolley(),
@@ -4342,7 +4341,7 @@ sc_ws_enviroment_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
             Args = <<"()">>,
             Tx = call_a_contract(Fun,
                                  Args,
-                                 ContractPubKey, Code,
+                                 ContractPubKey, EncodedCode,
                                  UpdaterConnPid, UpdateVolley, Config),
              #{<<"value">> := R} =
                 ws_get_decoded_result(ConnPid1, ConnPid2,
@@ -4377,24 +4376,24 @@ sc_ws_remote_call_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     %% create identity contract off-chain
     CreateContract =
         fun(Name) ->
-            Code = contract_byte_code(Name),
+            EncodedCode = contract_byte_code(Name),
             InitArgument = <<"()">>,
             {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
                                       <<"sophia">>,
-                                      Code,
+                                      contract_bytearray_decode(EncodedCode),
                                       <<"init">>,
                                       InitArgument),
             {CreateVolley, OwnerConnPid, OwnerPubkey} = GetVolley(Owner),
             ws_send_tagged(OwnerConnPid, <<"update">>, <<"new_contract">>,
                            #{vm_version => 1,
                              deposit    => 10,
-                             code       => Code,
+                             code       => EncodedCode,
                              call_data  => EncodedInitData}, Config),
 
             UnsignedStateTx = CreateVolley(),
             ContractPubKey = contract_id_from_create_update(OwnerPubkey,
                                                             UnsignedStateTx),
-            {ContractPubKey, Code}
+            {ContractPubKey, EncodedCode}
           end,
     {IdentityCPubKey, IdentityCode} = CreateContract("identity"),
     {RemoteCallCPubKey, RemoteCallCode} = CreateContract("remote_call"),
@@ -4672,18 +4671,20 @@ contract_id_from_create_update(Owner, OffchainTx) ->
 
 
 create_contract_(TestName, SenderConnPid, UpdateVolley, Config) ->
-    Code = contract_byte_code(TestName),
+    EncodedCode = contract_byte_code(TestName),
     InitArgument = contract_create_init_arg(TestName),
     {ok, EncodedInitData} = aehttp_logic:contract_encode_call_data(
-                              <<"sophia">>, Code, <<"init">>, InitArgument),
+                              <<"sophia">>,
+                              contract_bytearray_decode(EncodedCode),
+                              <<"init">>, InitArgument),
 
     ws_send_tagged(SenderConnPid, <<"update">>, <<"new_contract">>,
                    #{vm_version => 1,
                      deposit    => 10,
-                     code       => Code,
+                     code       => EncodedCode,
                      call_data  => EncodedInitData}, Config),
     UnsignedStateTx = UpdateVolley(),
-    {UnsignedStateTx, Code}.
+    {UnsignedStateTx, EncodedCode}.
 
 contract_calls_("identity", ContractPubKey, Code, SenderConnPid, UpdateVolley,
                 AckConnPid, _ , _, Config) ->
@@ -4777,7 +4778,7 @@ call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid, UpdateV
 call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
                 UpdateVolley, Amount, Config) ->
     {ok, EncodedMainData} = aehttp_logic:contract_encode_call_data(<<"sophia">>,
-                                                                   Code,
+                                                                   contract_bytearray_decode(Code),
                                                                    Function,
                                                                    Argument),
     ws_send_tagged(SenderConnPid, <<"update">>, <<"call_contract">>,

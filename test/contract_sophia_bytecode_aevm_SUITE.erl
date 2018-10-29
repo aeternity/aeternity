@@ -31,6 +31,7 @@
           spend_tx/3,
           spend/2,
           get_balance/2,
+          get_contract_fun_types/4,
           call_contract/6,
           get_store/1,
           set_store/2,
@@ -82,16 +83,28 @@ compile_contract(Name) ->
 execute_call(Contract, CallData, ChainState, Options) ->
     #{Contract := SerializedCode} = ChainState,
     ChainState1 = ChainState#{ running => Contract },
-    Trace = false,
     %% TODO: Check the type info before calling?
-    #{ byte_code := Code} = aeso_compiler:deserialize(SerializedCode),
+    #{ byte_code := Code,
+       type_info := TypeInfo
+     } = aeso_compiler:deserialize(SerializedCode),
+    case aeso_abi:check_calldata(CallData, TypeInfo) of
+        {ok, CallDataType, OutType} ->
+            execute_call_1(Contract, CallData, CallDataType, OutType, Code, ChainState1, Options);
+        {error, _} = Err ->
+            Err
+    end.
+
+execute_call_1(Contract, CallData, CallDataType, OutType, Code, ChainState, Options) ->
+    Trace = false,
     Res = aect_evm:execute_call(
           maps:merge(
           #{ code              => Code,
-             store             => get_store(ChainState1),
+             store             => get_store(ChainState),
              address           => Contract,
              caller            => 0,
              data              => CallData,
+             call_data_type    => CallDataType,
+             out_type          => OutType,
              gas               => 1500000,
              gasPrice          => 1,
              origin            => 0,
@@ -101,7 +114,7 @@ execute_call(Contract, CallData, ChainState, Options) ->
              currentGasLimit   => 2000000,
              currentNumber     => 0,
              currentTimestamp  => 0,
-             chainState        => ChainState1,
+             chainState        => ChainState,
              chainAPI          => ?MODULE,
              vm_version        => ?AEVM_01_Sophia_01}, Options),
           Trace),
@@ -114,9 +127,9 @@ execute_call(Contract, CallData, ChainState, Options) ->
 
 make_call(Contract, Fun, Args, Env, Options) ->
     #{ Contract := Code } = Env,
-    CallData = aect_sophia:create_call(Code,
-                    list_to_binary(atom_to_list(Fun)),
-                    list_to_binary(Args)),
+    {ok, CallData} = aect_sophia:encode_call_data(Code,
+                                                  atom_to_binary(Fun, utf8),
+                                                  list_to_binary(Args)),
     execute_call(Contract, CallData, Env, Options).
 
 create_contract(Address, Code, Args, Env) ->
@@ -498,6 +511,17 @@ get_store(#{ running := Contract, store := Store }) ->
 
 set_store(Data, State = #{ running := Contract, store := Store }) ->
     State#{ store => Store#{ Contract => Data } }.
+
+get_contract_fun_types(<<Contract:256>>,_VMVersion, TypeHash, S) ->
+    case maps:get(Contract, S, undefine) of
+        undefined ->
+            io:format("   oops, no such contract!\n"),
+            {error, {no_such_contract, Contract}};
+        SerializedCode ->
+            #{type_info := TypeInfo} = aeso_compiler:deserialize(SerializedCode),
+            aeso_abi:typereps_from_type_hash(TypeHash, TypeInfo)
+    end.
+
 
 call_contract(<<Contract:256>>, _Gas, Value, CallData, _, S = #{running := Caller}) ->
     case maps:is_key(Contract, S) of

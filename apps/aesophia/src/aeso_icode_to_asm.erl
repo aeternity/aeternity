@@ -29,13 +29,12 @@ convert(#{ contract_name := _ContractName
     %% Create a function dispatcher
     DispatchFun = {"_main", [], [{"arg", "_"}],
                    {switch, {var_ref, "arg"},
-                    [{{tuple, [fun_hash(FName),
+                    [{{tuple, [fun_hash(Fun),
                                {tuple, make_args(Args)}]},
                       icode_seq([ hack_return_address(Fun, length(Args) + 1) ] ++
-                                [ {tuple, [aeso_ast_to_icode:type_value(TypeRep),
-                                           {funcall, {var_ref, FName}, make_args(Args)}]} ]
+                                [ {funcall, {var_ref, FName}, make_args(Args)}]
                                )}
-                     || Fun={FName, _, Args, _, TypeRep} <- Functions, is_public(Fun) ]},
+                     || Fun={FName, _, Args, _,_TypeRep} <- Functions, is_public(Fun) ]},
                    word},
     NewFunctions = Functions ++ [DispatchFun],
     %% Create a function environment
@@ -47,12 +46,7 @@ convert(#{ contract_name := _ContractName
     StatefulStopLabel = make_ref(),
     MainFunction = lookup_fun(Funs, "_main"),
 
-    %% Unpack a pair on the stack       %% Ptr
-    UnpackPair   = [dup(1),             %% Ptr Ptr
-                    push(32), i(?ADD),  %% Ptr+32 Ptr
-                    i(?MLOAD),          %% Snd Ptr
-                    swap(1),            %% Ptr Snd
-                    i(?MLOAD)],         %% Fst Snd
+    StateTypeValue = aeso_ast_to_icode:type_value(StateType),
 
     DispatchCode = [%% push two return addresses to stop, one for stateful
                     %% functions and one for non-stateful functions.
@@ -61,23 +55,15 @@ convert(#{ contract_name := _ContractName
                     %% The calldata is already on the stack when we start. Put
                     %% it on top (also reorders StatefulStop and Stop).
                     swap(2),
-                    %% At the moment (TODO) the calldata is a pair of a typerep
-                    %% and the actual calldata. Grab the second component.
-                    push(32),
-                    i(?ADD),
-                    i(?MLOAD),
 
                     jump(MainFunction),
                     jumpdest(StatefulStopLabel),
 
-                    %% The dispatcher leaves a pointer to pair of a typerep and
-                    %% return value on the stack. We need to unpack this.
-                    UnpackPair,
+                    %% We need to encode the state type and put it
+                    %% underneath the return value.
+                    assemble_expr(Funs, [], nontail, StateTypeValue), %% StateT Ret
+                    swap(1),                                          %% Ret StateT
 
-                    %% Now we need to encode the state type and put it
-                    %% underneath the return type and value.
-                    assemble_expr(Funs, [], nontail, aeso_ast_to_icode:type_value(StateType)),  %% StateT RetT Ret
-                    swap(2), swap(1),
                     %% We should also change the state value at address 0 to a
                     %% pointer to the state value (to allow 0 to represent an
                     %% unchanged state).
@@ -86,13 +72,16 @@ convert(#{ contract_name := _ContractName
                     i(?MSIZE), i(?MSTORE), %% Ptr   Mem[Ptr] := Val
                     push(0), i(?MSTORE),   %%       Mem[0]   := Ptr
 
+                    %% The pointer to the return value is on top of
+                    %% the stack, but the return instruction takes two
+                    %% stack arguments.
+                    push(0),
                     i(?RETURN),
                     jumpdest(StopLabel),
-                    %% Same as StatefulStopLabel above
-                    UnpackPair,
-
                     %% Set state pointer to 0 to indicate that we didn't change state
                     push(0), dup(1), i(?MSTORE),
+                    %% Same as StatefulStopLabel above
+                    push(0),
                     i(?RETURN)
                    ],
     %% Code is a deep list of instructions, containing labels and
@@ -109,8 +98,10 @@ convert(#{ contract_name := _ContractName
 make_args(Args) ->
     [{var_ref, [I-1 + $a]} || I <- lists:seq(1, length(Args))].
 
-fun_hash(Name) ->
-    {tuple, [{integer, X} || X <- [length(Name)|aeso_data:binary_to_words(list_to_binary(Name))]]}.
+fun_hash({FName, _, Args, _, TypeRep}) ->
+    ArgType = {tuple, [T || {_, T} <- Args]},
+    <<Hash:256>> = aeso_abi:function_type_hash(FName, ArgType, TypeRep),
+    {integer, Hash}.
 
 %% Expects two return addresses below N elements on the stack. Picks the top
 %% one for stateful functions and the bottom one for non-stateful.
@@ -290,7 +281,7 @@ assemble_expr(Funs, Stack, nontail, {funcall, Fun, Args}) ->
              jumpdest(Return)]
     end;
 assemble_expr(Funs, Stack, tail, {funcall, Fun, Args}) ->
-    IsTopLevel = is_top_level_fun(Funs, Stack, Fun),
+    IsTopLevel = is_top_level_fun(Stack, Fun),
     %% If the fun is not top-level, then it may refer to local
     %% variables and must be computed before stack shuffling.
     ArgsAndFun = Args++[Fun || not IsTopLevel],
@@ -369,13 +360,12 @@ assemble_expr(Funs, Stack, _Tail,
                                  , address  = To
                                  , value    = Value
                                  , arg      = Arg
-                                 , arg_type = ArgT
-                                 , out_type = OutT }) ->
-    Type = fun(T) -> aeso_ast_to_icode:type_value(T) end,
+                                 , type_hash= TypeHash
+                                 }) ->
     %% ?CALL takes (from the top)
-    %%   Gas, To, Value, Arg, ArgType, _OOffset, OutType
+    %%   Gas, To, Value, Arg, TypeHash, _OOffset,_OSize
     %% So assemble these in reverse order.
-    [ assemble_exprs(Funs, Stack, [ Type(OutT), {integer, 0}, Type(ArgT)
+    [ assemble_exprs(Funs, Stack, [ {integer, 0}, {integer, 0}, TypeHash
                                   , Arg, Value, To, Gas ])
     , i(?CALL)
     ].
@@ -572,7 +562,7 @@ assemble_infix('!')    -> [i(?ADD), i(?MLOAD)].
 %% code pointer onto the stack. In either case, we are ready to enter
 %% the function with JUMP.
 assemble_function(Funs, Stack, Fun) ->
-    case is_top_level_fun(Funs, Stack, Fun) of
+    case is_top_level_fun(Stack, Fun) of
         true ->
             {var_ref, Name} = Fun,
             {push_label, lookup_fun(Funs, Name)};
@@ -632,9 +622,9 @@ lookup_fun(Funs, Name) ->
         []    -> error({undefined_function, Name})
     end.
 
-is_top_level_fun(_Funs, Stack, {var_ref, Id}) ->
+is_top_level_fun(Stack, {var_ref, Id}) ->
     not lists:keymember(Id, 1, Stack);
-is_top_level_fun(_, _, _) ->
+is_top_level_fun(_, _) ->
     false.
 
 lookup_var(Id, Stack) ->

@@ -39,6 +39,16 @@ contract Oracles =
                        rttl : ttl) : query_id =
     Oracle.query(o, q, qfee, qttl, rttl)
 
+  // Do not use in production!
+  function unsafeCreateQueryThenErr(o    : oracle_id,
+                       q    : query_t,
+                       qfee : fee,
+                       qttl : ttl,
+                       rttl : ttl) : query_id =
+    let res = Oracle.query(o, q, qfee, qttl, rttl)
+    require(qfee >= 100000000000000000, "causing a late error")
+    res
+
   function extendOracle(o    : oracle_id,
                         ttl  : ttl) : () =
     Oracle.extend(o, ttl)

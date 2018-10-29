@@ -19,7 +19,7 @@
         , has_maps/1
         , from_binary/2
         , from_binary/3
-        , get_function_from_calldata/1
+        , get_function_hash_from_calldata/1
         , sophia_type_to_typerep/1
         ]).
 
@@ -382,6 +382,7 @@ to_binary1({some, Value}, Address)   -> to_binary1({variant, 1, [Value]}, Addres
 to_binary1(word, Address)            -> to_binary1({?TYPEREP_WORD_TAG}, Address);
 to_binary1(string, Address)          -> to_binary1({?TYPEREP_STRING_TAG}, Address);
 to_binary1(typerep, Address)         -> to_binary1({?TYPEREP_TYPEREP_TAG}, Address);
+to_binary1(function, Address)        -> to_binary1({?TYPEREP_FUN_TAG}, Address);
 to_binary1({list, T}, Address)       -> to_binary1({?TYPEREP_LIST_TAG, T}, Address);
 to_binary1({option, T}, Address)     -> to_binary1({variant, [[], [T]]}, Address);
 to_binary1({tuple, Ts}, Address)     -> to_binary1({?TYPEREP_TUPLE_TAG, Ts}, Address);
@@ -517,7 +518,8 @@ from_binary(Visited, typerep, Heap, V) ->
         ?TYPEREP_LIST_TAG    -> {list,    Arg(typerep)};
         ?TYPEREP_TUPLE_TAG   -> {tuple,   Arg({list, typerep})};
         ?TYPEREP_VARIANT_TAG -> {variant, Arg({list, {list, typerep}})};
-        ?TYPEREP_MAP_TAG     -> {map,     Arg(typerep), Arg1(typerep, 2)}
+        ?TYPEREP_MAP_TAG     -> {map,     Arg(typerep), Arg1(typerep, 2)};
+        ?TYPEREP_FUN_TAG     -> function
     end.
 
 map_binary_to_value(KeyType, ValType, N, Bin, Ptr) ->
@@ -589,12 +591,11 @@ get_chunk(Mem, Addr, Bytes) when is_map(Mem) ->
     Words = Bytes div 32,
     << <<(maps:get(Addr + 32 * I, Mem, 0)):256>> || I <- lists:seq(0, Words - 1) >>.
 
--spec get_function_from_calldata(Calldata::binary()) ->
-                                        {ok, term()} | {error, term()}.
-get_function_from_calldata(Calldata) ->
-    case from_binary({tuple, [word, {tuple, [string]}]}, Calldata) of
-        {ok, {_, {FunctionName}}} ->
-            {ok, FunctionName};
+-spec get_function_hash_from_calldata(Calldata::binary()) ->
+                                             {ok, binary()} | {error, term()}.
+get_function_hash_from_calldata(Calldata) ->
+    case from_binary({tuple, [word]}, Calldata) of
+        {ok, {HashInt}} -> {ok, <<HashInt:256>>};
         {error, _} = Error -> Error
     end.
 
