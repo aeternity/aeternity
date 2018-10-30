@@ -7,7 +7,8 @@
 
 -module(aeo_utils).
 
--export([check_ttl_fee/3,
+-export([check_format/3,
+         check_ttl_fee/3,
          check_vm_version/1,
          ttl_delta/2,
          ttl_expiry/2,
@@ -55,3 +56,20 @@ ttl_fee(_Size, NBlocks) when is_integer(NBlocks), NBlocks >= 0 ->
 check_vm_version(?AEVM_NO_VM) -> ok;
 check_vm_version(?AEVM_01_Sophia_01) -> ok;
 check_vm_version(_) -> {error, bad_vm_version}.
+
+check_format(?AEVM_NO_VM, _Format, _Content) ->
+    %% No interpretation of the format, nor content.
+    ok;
+check_format(?AEVM_01_Sophia_01, Format, Content) ->
+    %% Check that the content can be decoded as the type
+    %% and that if we encoded it again, it becomes the content.
+    {ok, TypeRep} = aeso_data:from_binary(typerep, Format),
+    try aeso_data:from_binary(TypeRep, Content) of
+        {ok, Res} ->
+            case aeso_data:to_binary(Res) of
+                Content -> ok;
+                _Other -> {error, bad_format}
+            end;
+        {error, _} -> {error, bad_format}
+    catch _:_ -> {error, bad_format}
+    end.

@@ -128,7 +128,7 @@ check(#oracle_response_tx{nonce = Nonce, query_id = QueryId,
             QueryFee         = aeo_query:fee(I),
             Checks =
                 [fun() -> check_response_ttl(ResponseTTL, QueryResponseTTL) end,
-                 fun() -> check_oracle(OraclePubKey, Trees) end,
+                 fun() -> check_oracle(OraclePubKey, Trees, Tx) end,
                  fun() -> check_query(OraclePubKey, I) end |
                  case aetx_env:context(Env) of
                      aetx_contract -> []; %% TODO: Handle fees from contracts right.
@@ -259,10 +259,16 @@ check_query(OraclePubKey, I) ->
         false -> {error, oracle_does_not_match_query_id}
     end.
 
-check_oracle(OraclePubKey, Trees) ->
+check_oracle(OraclePubKey, Trees, RTx) ->
     OraclesTree  = aec_trees:oracles(Trees),
     case aeo_state_tree:lookup_oracle(OraclePubKey, OraclesTree) of
-        {value, _Oracle} -> ok;
+        {value, Oracle} -> check_response_format(Oracle, RTx);
         none -> {error, oracle_does_not_exist}
     end.
+
+check_response_format(O, RTx) ->
+    VMVersion =  aeo_oracles:vm_version(O),
+    Format = aeo_oracles:response_format(O),
+    Content = response(RTx),
+    aeo_utils:check_format(VMVersion, Format, Content).
 
