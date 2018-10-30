@@ -177,7 +177,7 @@ identity_contract(Config) ->
 
     %% Initialise contract, owned by Carl.
     {EncCPub,_,_} =
-        create_compute_contract(Node, CPub, CPriv, Code, <<"()">>),
+        create_compute_contract(Node, CPub, CPriv, Code, call_code("init", [])),
 
     %% Call contract main function by Carl.
     call_func(CPub, CPriv, EncCPub,  <<"main">>, <<"(42)">>, {<<"int">>, 42}),
@@ -1059,8 +1059,8 @@ erc20_token_contract(Config) ->
 
     %% Request a bad transfer and check that abort restores the state.
     revert_call_compute_func(Node, APub, APriv, EncCPub,
-                             <<"transferFrom">>,
-                             args_to_binary([BPub,DPub,100000])),
+                             <<>>,
+                             call_code("transferFrom", [BPub,DPub,100000])),    %% new-style calldata creation
 
     call_func(APub, APriv, EncCPub, <<"balanceOf">>, args_to_binary([BPub]), {<<"int">>, 10000}),
     call_func(APub, APriv, EncCPub, <<"balanceOf">>, args_to_binary([CPub]), {<<"int">>, 10000}),
@@ -1297,6 +1297,14 @@ contract_create_compute_tx(Pubkey, Privkey, Code, InitArgument, CallerSet) ->
     {ok,200,#{<<"nonce">> := Nonce0}} = get_account_by_pubkey(Address),
     Nonce = Nonce0 + 1,
 
+    CallInput =
+        case InitArgument of
+            B when is_binary(B) ->
+                #{ arguments => InitArgument }; %% old calldata creation
+            {code, CallCode} ->
+                #{ call => CallCode }
+        end,
+
     %% The default init contract.
     ContractInitEncoded0 = #{ owner_id => Address,
                               code => Code,
@@ -1307,9 +1315,8 @@ contract_create_compute_tx(Pubkey, Privkey, Code, InitArgument, CallerSet) ->
                               gas_price => 1,
                               fee => 1,
                               nonce => Nonce,
-                              arguments => InitArgument,
                               payload => <<"create contract">>},
-    ContractInitEncoded = maps:merge(ContractInitEncoded0, CallerSet),
+    ContractInitEncoded = maps:merge(maps:merge(ContractInitEncoded0, CallInput), CallerSet),
     sign_and_post_create_compute_tx(Privkey, ContractInitEncoded).
 
 contract_call_compute_tx(Pubkey, Privkey, EncodedContractPubkey,
@@ -1324,6 +1331,16 @@ contract_call_compute_tx(Pubkey, Privkey, EncodedContractPubkey,
 contract_call_compute_tx(Pubkey, Privkey, Nonce, EncodedContractPubkey,
                          Function, Argument, CallerSet) ->
     Address = aec_base58c:encode(account_pubkey, Pubkey),
+
+    CallInput =
+        case Argument of
+            B when is_binary(B) ->
+                #{ function => Function
+                 , arguments => Argument }; %% old calldata creation
+            {code, CallCode} ->
+                #{ call => CallCode }
+        end,
+
     ContractCallEncoded0 = #{ caller_id => Address,
                               contract_id => EncodedContractPubkey,
                               vm_version => 1,  %?AEVM_01_Sophia_01
@@ -1332,10 +1349,8 @@ contract_call_compute_tx(Pubkey, Privkey, Nonce, EncodedContractPubkey,
                               gas_price => 1,
                               fee => 1,
                               nonce => Nonce,
-                              function => Function,
-                              arguments => Argument,
                               payload => <<"call compute function">> },
-    ContractCallEncoded = maps:merge(ContractCallEncoded0, CallerSet),
+    ContractCallEncoded = maps:merge(maps:merge(ContractCallEncoded0, CallInput), CallerSet),
     sign_and_post_call_compute_tx(Privkey, ContractCallEncoded).
 
 %% ============================================================
@@ -1580,6 +1595,30 @@ generate_key_pair() ->
     #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),
     {Pubkey, Privkey}.
 
+call_code(Fun, Args) ->
+    Type    = ["(", string:join([ type_of_arg(Arg) || Arg <- Args ], ", "), ")"],
+    BinArgs = args_to_list(Args),
+    {code, list_to_binary(
+        [ "contract Call =\n"
+        , "  function ", Fun, " : ", Type, " => _\n"
+        , "  function __call() = ", Fun, "(", BinArgs, ")\n" ])}.
+
+type_of_arg(N) when is_integer(N) -> "int";
+type_of_arg({string, _}) -> "string";
+type_of_arg([H | _]) -> ["list(", type_of_arg(H), ")"];
+type_of_arg([]) -> "list(int)"; %% Don't know the element type
+type_of_arg(B) when is_binary(B), byte_size(B) == 32 -> "address";
+type_of_arg(B) when is_binary(B), byte_size(B) == 64 -> "signature";
+type_of_arg(T) when is_tuple(T) ->
+    ["(", string:join([ type_of_arg(X) || X <- tuple_to_list(T) ], ","), ")"];
+type_of_arg(M) when is_map(M) ->
+    case maps:to_list(M) of
+        []  -> %% empty map: can't infer type, default to int/int
+            "map(int, int)";
+        [{K, V} | _] ->
+            ["map(", type_of_arg(K), ", ", type_of_arg(V), ")"]
+    end.
+
 %% args_to_binary(Args) -> binary_string().
 %%  Take a list of arguments in "erlang format" and generate an
 %%  argument binary string. Strings are handled naively now.
@@ -1598,8 +1637,11 @@ args_to_list([]) -> [].
 %%arg_to_list(<<N:256>>) -> integer_to_list(N);
 arg_to_list(N) when is_integer(N) -> integer_to_list(N);
 arg_to_list(B) when is_binary(B) ->             %A key
-    binary_to_list(aeu_hex:hexstring_encode(B));
+    <<"0x", Enc/binary>> = aeu_hex:hexstring_encode(B),
+    ["#", binary_to_list(Enc)];
 arg_to_list({string,S}) -> ["\"",S,"\""];
+arg_to_list(L) when is_list(L) ->
+    [$[,args_to_list(L),$]];
 arg_to_list(T) when is_tuple(T) ->
     [$(,args_to_list(tuple_to_list(T)),$)];
 arg_to_list(M) when is_map(M) ->
