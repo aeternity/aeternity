@@ -1091,11 +1091,17 @@ handle_new_txs(S, Msg) ->
     try
         #{ txs := EncSignedTxs } = Msg,
         SignedTxs = [ aetx_sign:deserialize_from_binary(Tx) || Tx <- EncSignedTxs ],
-        [ aec_tx_pool:push(SignedTx, tx_received) || SignedTx <- SignedTxs ]
+        %% Offload the handling to a temporary worker process - it might block
+        %% on the tx_pool_push queue.
+        spawn(fun() -> [ tx_push(SignedTx) || SignedTx <- SignedTxs ] end)
     catch _:_ ->
         ok
     end,
     S.
+
+tx_push(STx) ->
+    try aec_tx_pool:push(STx, tx_received)
+    catch _:_ -> rejected end.
 
 %% -- Send message -----------------------------------------------------------
 send_msg(#{ status := {disconnecting, _ESock} }, _Type, _Msg) -> ok;
