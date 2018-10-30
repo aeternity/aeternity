@@ -287,7 +287,7 @@ tx_pool_test_() ->
 
                %% Prepare 3 txs:
                %% 1st tx has the lowest gas
-               %% 2nd tx has greater gas than 1st and 3rd tx
+               %% Depends on aec_geovernance settings whether 2nd or 3rd is largest
                STx1 = a_signed_tx(me, PK1, 1, 100),
                STx2 = signed_ct_create_tx(PK2, 1, 100, 1000),
                STx3 = signed_ct_call_tx(PK3, 1, 100, 1000),
@@ -297,8 +297,12 @@ tx_pool_test_() ->
                GasTx3 = aetx:gas(aetx_sign:tx(STx3)),
 
                ?assert(GasTx2 > GasTx1),
-               ?assert(GasTx2 > GasTx3),
-               ?assert(GasTx1 < GasTx3),
+               ?assert(GasTx3 > GasTx1),
+               {MinGasTx, MaxGasTx} = 
+                   case GasTx2 > GasTx3 of
+                       true -> { {STx3, GasTx3}, {STx2, GasTx2} };
+                       false ->  { {STx2, GasTx2}, {STx3, GasTx3} }
+                     end,
 
                %% Push all txs to the pool.
                ?assertEqual(ok, aec_tx_pool:push(STx1)),
@@ -316,7 +320,8 @@ tx_pool_test_() ->
                aec_tx_pool:restore_mempool(),
 
                %% Get only 2 txs, the 1st + 2nd or 1st + 3rd.
-               {ok, STxs1} = aec_tx_pool:get_candidate(GasTx1 + GasTx2, aec_chain:top_block_hash()),
+               {_, Max} = MaxGasTx,
+               {ok, STxs1} = aec_tx_pool:get_candidate(GasTx1 + Max, aec_chain:top_block_hash()),
                ?assert(lists:member(STx1, STxs1) and (lists:member(STx2, STxs1) or lists:member(STx3, STxs1))),
 
                aec_tx_pool:restore_mempool(),
@@ -329,9 +334,10 @@ tx_pool_test_() ->
                aec_tx_pool:restore_mempool(),
 
                %% Get 1st and 3rd tx, skip 2nd tx.
-               {ok, STxs3} = aec_tx_pool:get_candidate(GasTx1 + GasTx3, aec_chain:top_block_hash()),
+               {MinSTx, Min} = MinGasTx,
+               {ok, STxs3} = aec_tx_pool:get_candidate(GasTx1 + Min, aec_chain:top_block_hash()),
                ?assert(lists:member(STx1, STxs3)),
-               ?assert(lists:member(STx3, STxs3)),
+               ?assert(lists:member(MinSTx, STxs3)),
 
                ok
        end},
