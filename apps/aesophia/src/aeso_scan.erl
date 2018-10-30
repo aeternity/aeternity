@@ -120,5 +120,8 @@ parse_hex("0x" ++ Chars) -> list_to_integer(Chars, 16).
 
 parse_hash("#" ++ Chars) ->
     N = list_to_integer(Chars, 16),
-    <<N:256>>.
+    case length(Chars) > 64 of  %% 64 hex digits = 32 bytes
+        true  -> <<N:64/unit:8>>;   %% signature
+        false -> <<N:32/unit:8>>    %% address
+    end.
 

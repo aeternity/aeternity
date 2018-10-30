@@ -2950,11 +2950,12 @@ definitions:
         type: string
       arg:
        type: string
+      call:
+       type: string
+       description: Source code for a contract with a function __call() = f(args), if calling a function f
     required:
       - abi
       - code
-      - function
-      - arg
   CallResult:
     type: object
     properties:
@@ -3103,7 +3104,10 @@ definitions:
         type: integer
         minimum: 0
       arguments:
-        description: Contract call data init function arguments
+        description: Contract call data init function arguments (deprecated, use call)
+        type: string
+      call:
+        description: Source code for a contract with a function __call() = init(args)
         type: string
     required:
       - owner_id
@@ -3114,7 +3118,6 @@ definitions:
       - gas
       - gas_price
       - fee
-      - arguments
   ContractCallTx:
     type: object
     properties:
@@ -3202,11 +3205,14 @@ definitions:
         type: integer
         minimum: 0
       function:
-        description: Contract call data function
+        description: Contract call data function (deprecated, use call)
         type: string
       arguments:
-        description: Contract call data function arguments
+        description: Contract call data function arguments (deprecated, use call)
         type: string
+      call:
+        type: string
+        description: Source code for a contract with a function __call() = f(args), if calling a function f
     required:
       - caller_id
       - contract_id
@@ -3215,8 +3221,6 @@ definitions:
       - amount
       - gas
       - gas_price
-      - function
-      - arguments
   UnsignedTx:
     type: object
     properties:

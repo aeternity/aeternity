@@ -14,6 +14,7 @@
         , file/1
         , file/2
         , from_string/2
+        , check_call/2
         , version/0
         ]).
 
@@ -23,6 +24,9 @@
         ]).
 
 -endif.
+
+-include_lib("aebytecode/include/aeb_opcodes.hrl").
+-include("aeso_icode.hrl").
 
 
 -type option() :: pp_sophia_code | pp_ast | pp_icode | pp_assembler |
@@ -70,6 +74,89 @@ from_string(ContractString, Options) ->
     ByteCode = << << B:8 >> || B <- ByteCodeList >>,
     ok = pp_bytecode(ByteCode, Options),
     serialize(ByteCode, TypeInfo, ContractString).
+
+-define(CALL_NAME, "__call").
+
+%% Takes a string containing a contract with a declaration/prototype of a
+%% function (foo, say) and a function __call() = foo(args) calling this
+%% function. Returns the name of the called functions, typereps and Erlang
+%% terms for the arguments.
+-spec check_call(string(), options()) -> {ok, string(), {[Type], Type | any}, [term()]} | {error, term()}
+    when Type :: term().
+check_call(ContractString, Options) ->
+    io:format("Contract call code:\n~s\n", [ContractString]),
+    Ast = parse(ContractString, Options),
+    ok = pp_sophia_code(Ast, Options),
+    ok = pp_ast(Ast, Options),
+    TypedAst = aeso_ast_infer_types:infer(Ast, [permissive_address_literals]),
+    {ok, {FunName, {fun_t, _, _, ArgTypes, RetType}}} = get_call_type(TypedAst),
+    ok = pp_typed_ast(TypedAst, Options),
+    Icode = to_icode(TypedAst, Options),
+    ArgVMTypes = [ aeso_ast_to_icode:ast_typerep(T, Icode) || T <- ArgTypes ],
+    RetVMType  = case RetType of
+                    {id, _, "_"} -> any;
+                    _            -> aeso_ast_to_icode:ast_typerep(RetType, Icode)
+                end,
+    ok = pp_icode(Icode, Options),
+    #{ functions := Funs } = Icode,
+    ArgIcode = get_arg_icode(Funs),
+    try [ icode_to_term(T, Arg) || {T, Arg} <- lists:zip(ArgVMTypes, ArgIcode) ] of
+        ArgTerms ->
+            {ok, FunName, {ArgVMTypes, RetVMType}, ArgTerms}
+    catch throw:Err ->
+        {error, Err}
+    end.
+
+get_arg_icode(Funs) ->
+    [Args] = [ Args || {?CALL_NAME, _, _, {funcall, _, Args}, _} <- Funs ],
+    Args.
+
+get_call_type([{contract, _, _, Defs}]) ->
+    case [ {FunName, FunType}
+          || {letfun, _, {id, _, ?CALL_NAME}, [], _Ret,
+                {typed, _,
+                    {app, _,
+                        {typed, _, {id, _, FunName}, FunType}, _}, _}} <- Defs ] of
+        [Call] -> {ok, Call};
+        []     -> {error, missing_call_function}
+    end;
+get_call_type([_ | Contracts]) ->
+    %% The __call should be in the final contract
+    get_call_type(Contracts).
+
+%% Translate an icode value (error if not value) to an Erlang term that can be
+%% consumed by aeso_data:to_binary().
+icode_to_term(word, {integer, N}) -> N;
+icode_to_term(string, {tuple, [{integer, Len} | Words]}) ->
+    <<Str:Len/binary, _/binary>> = << <<W:256>> || {integer, W} <- Words >>,
+    Str;
+icode_to_term({list, T}, {list, Vs}) ->
+    [ icode_to_term(T, V) || V <- Vs ];
+icode_to_term({tuple, Ts}, {tuple, Vs}) ->
+    list_to_tuple(icodes_to_terms(Ts, Vs));
+icode_to_term({variant, Cs}, {tuple, [{integer, Tag} | Args]}) ->
+    Ts = lists:nth(Tag + 1, Cs),
+    {variant, Tag, icodes_to_terms(Ts, Args)};
+icode_to_term(T = {map, KT, VT}, M) ->
+    %% Maps are compiled to builtin and primop calls, so this gets a little hairy
+    case M of
+        {funcall, {var_ref, {builtin, map_put}}, [M1, K, V]} ->
+            Map = icode_to_term(T, M1),
+            Key = icode_to_term(KT, K),
+            Val = icode_to_term(VT, V),
+            Map#{ Key => Val };
+        #prim_call_contract{ address = {integer, 0},
+                             arg = {tuple, [{integer, ?PRIM_CALL_MAP_EMPTY}, _, _]} } ->
+            #{};
+        _ -> throw({todo, M})
+    end;
+icode_to_term(typerep, _) ->
+    throw({todo, typerep});
+icode_to_term(T, V) ->
+    throw({not_a_value, T, V}).
+
+icodes_to_terms(Ts, Vs) ->
+    [ icode_to_term(T, V) || {T, V} <- lists:zip(Ts, Vs) ].
 
 parse(C,_Options) ->
     parse_string(C).

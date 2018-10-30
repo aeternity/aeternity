@@ -12,6 +12,7 @@
                         , get_contract_code/2
                         , compute_contract_create_data/0
                         , compute_contract_call_data/0
+                        , contract_call_input_funargs/1
                         , verify_name/1
                         , nameservice_pointers_decode/1
                         , ttl_decode/1
@@ -93,9 +94,9 @@ handle_request_('PostContractCreate', #{'ContractCreateTx' := Req}, _Context) ->
 handle_request_('PostContractCreateCompute', #{'ContractCreateCompute' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([owner_id, code, vm_version, deposit,
-                                       amount, gas, gas_price, fee,
-                                       arguments]),
-                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                                       amount, gas, gas_price, fee
+                                       ]),
+                 read_optional_params([{X, X, '$no_value'} || X <- [ttl, arguments, call]]),
                  base58_decode([{owner_id, owner_id, {id_hash, [account_pubkey]}}]),
                  get_nonce_from_account_id(owner_id),
                  contract_bytearray_params_decode([code]),
@@ -131,9 +132,8 @@ handle_request_('PostContractCall', #{'ContractCallTx' := Req}, _Context) ->
 handle_request_('PostContractCallCompute', #{'ContractCallCompute' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([caller_id, contract_id, vm_version,
-                                       amount, gas, gas_price, fee,
-                                       function, arguments]),
-                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                                       amount, gas, gas_price, fee]),
+                 read_optional_params([{X, X, '$no_value'} || X <- [ttl, function, arguments, call]]),
                  base58_decode([{caller_id, caller_id, {id_hash, [account_pubkey]}},
                                 {contract_id, contract_id, {id_hash, [contract_pubkey]}}]),
                  get_nonce_from_account_id(caller_id),
@@ -162,14 +162,17 @@ handle_request_('CallContract', Req, _Context) ->
     case Req of
         #{'ContractCallInput' :=
               #{ <<"abi">> := ABI
-               , <<"code">> := Code
-               , <<"function">> := Function
-               , <<"arg">> := Argument }}  ->
-            case aehttp_logic:contract_call(ABI, Code, Function, Argument) of
-                {ok, Result} ->
-                    {200, [], #{ out => Result}};
-                {error, ErrorMsg} ->
-                    {403, [], #{reason => ErrorMsg}}
+               , <<"code">> := Code } = Input} ->
+            case contract_call_input_funargs(Input) of
+                {ok, Function, Argument} ->
+                    case aehttp_logic:contract_call(ABI, Code, Function, Argument) of
+                        {ok, Result} ->
+                            {200, [], #{ out => Result}};
+                        {error, ErrorMsg} ->
+                            {403, [], #{reason => ErrorMsg}}
+                    end;
+                {error, Reason} ->
+                    {403, [], #{reason => <<"Bad request: ", Reason/binary>>}}
             end;
         _ -> {403, [], #{reason => <<"Bad request">>}}
     end;
@@ -193,18 +196,21 @@ handle_request_('EncodeCalldata', Req, _Context) ->
         #{'ContractCallInput' :=
               #{ <<"abi">>  := ABI
                , <<"code">> := EncodedCode
-               , <<"function">> := Function
-               , <<"arg">> := Argument }} ->
-            %% TODO: Handle other languages
-            case aec_base58c:safe_decode(contract_bytearray, EncodedCode) of
-                {ok, Code} ->
-                    case aehttp_logic:contract_encode_call_data(ABI, Code, Function, Argument) of
-                        {ok, Result} ->
-                            {200, [], #{ calldata => Result}};
-                        {error, ErrorMsg} ->
-                            {403, [], #{reason => ErrorMsg}}
+               } = Input} ->
+            case contract_call_input_funargs(Input) of
+                {ok, Function, Argument} ->
+                    %% TODO: Handle other languages
+                    case aec_base58c:safe_decode(contract_bytearray, EncodedCode) of
+                        {ok, Code} ->
+                            case aehttp_logic:contract_encode_call_data(ABI, Code, Function, Argument) of
+                                {ok, Result} ->
+                                    {200, [], #{ calldata => Result}};
+                                {error, ErrorMsg} ->
+                                    {403, [], #{reason => ErrorMsg}}
+                            end;
+                        {error, _} -> {403, [], #{reason => <<"Bad request">>}}
                     end;
-                {error, _} -> {403, [], #{reason => <<"Bad request">>}}
+                {error, Reason} -> {403, [], #{reason => <<"Bad request: ", Reason/binary>>}}
             end;
         _ -> {403, [], #{reason => <<"Bad request">>}}
     end;

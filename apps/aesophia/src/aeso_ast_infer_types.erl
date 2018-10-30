@@ -6,7 +6,7 @@
 %%%-------------------------------------------------------------------
 -module(aeso_ast_infer_types).
 
--export([infer/1, infer_constant/1]).
+-export([infer/1, infer/2, infer_constant/1]).
 
 -type utype() :: {fun_t, aeso_syntax:ann(), named_args_t(), [utype()], utype()}
                | {app_t, aeso_syntax:ann(), utype(), [utype()]}
@@ -145,14 +145,36 @@ map_t(As, K, V) -> {app_t, As, {id, As, "map"}, [K, V]}.
 
 -spec infer(aeso_syntax:ast()) -> aeso_syntax:ast().
 infer(Contracts) ->
-    infer(global_type_env(), Contracts).
+    infer(Contracts, []).
 
-infer(TypeEnv, [Contract = {contract, Attribs, ConName, Code}|Rest]) ->
+-type option() :: permissive_address_literals.
+
+-spec infer(aeso_syntax:ast(), list(option())) -> aeso_syntax:ast().
+infer(Contracts, Options) ->
+    TypeEnv =
+        case proplists:get_value(permissive_address_literals, Options, false) of
+            false -> global_type_env();
+            true ->
+                %% Treat oracle and query ids as address to allow address literals for these
+                Tag   = fun(Tag, Vals) -> list_to_tuple([Tag, [{origin, system}] | Vals]) end,
+                Alias = fun(Name, Arity) ->
+                            Tag(type_def, [Tag(id, [Name]),
+                                         lists:duplicate(Arity, Tag(tvar, "_")),
+                                         {alias_t, Tag(id, ["address"])}])
+                        end,
+                [Alias("oracle", 2), Alias("oracle_query", 2)]
+        end,
+    create_options(Options),
+    Res = infer1(TypeEnv, Contracts),
+    destroy_options(),
+    Res.
+
+infer1(TypeEnv, [Contract = {contract, Attribs, ConName, Code}|Rest]) ->
     %% do type inference on each contract independently.
     Contract1 = {contract, Attribs, ConName, infer_contract_top(TypeEnv, Code)},
     TypeEnv1  = [Contract | TypeEnv],
-    [Contract1 | infer(TypeEnv1, Rest)];
-infer(_, []) ->
+    [Contract1 | infer1(TypeEnv1, Rest)];
+infer1(_, []) ->
     [].
 
 infer_contract_top(TypeEnv, Defs0) ->
@@ -190,7 +212,7 @@ infer_contract(Env, Defs) ->
     check_reserved_entrypoints(FunMap),
     DepGraph  = maps:map(fun(_, Def) -> aeso_syntax_utils:used_ids(Def) end, FunMap),
     SCCs      = aeso_utils:scc(DepGraph),
-    io:format("Dependency sorted functions:\n  ~p\n", [SCCs]),
+    %% io:format("Dependency sorted functions:\n  ~p\n", [SCCs]),
     TypeDefs ++ check_sccs(Env2, FunMap, SCCs, []).
 
 check_typedefs(Env, Defs) ->
@@ -199,7 +221,7 @@ check_typedefs(Env, Defs) ->
     TypeMap  = maps:from_list([ {GetName(Def), Def} || Def <- Defs ]),
     DepGraph = maps:map(fun(_, Def) -> aeso_syntax_utils:used_types(Def) end, TypeMap),
     SCCs     = aeso_utils:scc(DepGraph),
-    io:format("Dependency sorted types:\n  ~p\n", [SCCs]),
+    %% io:format("Dependency sorted types:\n  ~p\n", [SCCs]),
     Env1     = check_typedef_sccs(Env, TypeMap, SCCs),
     destroy_and_report_type_errors(),
     SCCNames = fun({cyclic, Xs}) -> Xs; ({acyclic, X}) -> [X] end,
@@ -371,8 +393,11 @@ infer_expr(_Env, Body={int, As, _}) ->
     {typed, As, Body, {id, As, "int"}};
 infer_expr(_Env, Body={string, As, _}) ->
     {typed, As, Body, {id, As, "string"}};
-infer_expr(_Env, Body={hash, As, _}) ->
-    {typed, As, Body, {id, As, "address"}};
+infer_expr(_Env, Body={hash, As, Hash}) ->
+    case byte_size(Hash) of
+        32 -> {typed, As, Body, {id, As, "address"}};
+        64 -> {typed, As, Body, {id, As, "signature"}}
+    end;
 infer_expr(_Env, Body={id, As, "_"}) ->
     {typed, As, Body, fresh_uvar(As)};
 infer_expr(Env, Body={id, As, Name}) ->
@@ -625,6 +650,23 @@ free_vars({typed, _, A, _}) ->
 free_vars(L) when is_list(L) ->
     [V || Elem <- L,
           V <- free_vars(Elem)].
+
+%% Options
+
+create_options(Options) ->
+    ets:new(options, [public, named_table, set]),
+    Tup = fun(Opt) when is_atom(Opt) -> {Opt, true};
+             (Opt) when is_tuple(Opt) -> Opt end,
+    ets:insert(options, lists:map(Tup, Options)).
+
+get_option(Key, Default) ->
+    case ets:lookup(options, Key) of
+        [{Key, Val}] -> Val;
+        _            -> Default
+    end.
+
+destroy_options() ->
+    ets:delete(options).
 
 %% Record types
 
@@ -1066,8 +1108,19 @@ unify1({app_t, _, T, []}, B, When) ->
 unify1(A, {app_t, _, T, []}, When) ->
     unify(A, T, When);
 unify1(A, B, When) ->
-    cannot_unify(A, B, When),
-    false.
+    Ok =
+        case get_option(permissive_address_literals, false) of
+            true ->
+                Kind = fun({qcon, _, _})       -> con;
+                          ({con, _, _})        -> con;
+                          ({id, _, "address"}) -> addr;
+                          (_)                  -> other end,
+                %% If permissive_address_literals we allow unifying contract types and address
+                [addr, con] == lists:usort([Kind(A), Kind(B)]);
+            false -> false
+        end,
+    [ cannot_unify(A, B, When) || not Ok ],
+    Ok.
 
 dereference(T = {uvar, _, R}) ->
     case ets:lookup(type_vars, R) of

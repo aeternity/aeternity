@@ -20,10 +20,6 @@
         , function_name_from_type_hash/2
         ]).
 
--ifdef(TEST).
--export([ ast_to_erlang/1]).
--endif.
-
 -type function_name() :: binary(). %% String
 -type typerep() :: aeso_sophia:type().
 -type function_type_info() :: { FunctionHash :: aec_hash:hash()
@@ -54,43 +50,77 @@
 %%% Handle calldata
 
 -spec create_calldata(binary(), string(), string()) ->
-                             {ok, aeso_sophia:heap(), aeso_sophia:type()}
+                             {ok, aeso_sophia:heap(), aeso_sophia:type(), aeso_sophia:type()}
                                  | {error, argument_syntax_error}.
-
-create_calldata(ContractCode, Function, Argument) ->
-    case aeso_constants:string(Argument) of
-        {ok, {tuple, _, _} = Tuple} ->
-            encode_call(ContractCode, Function, Tuple);
-        {ok, {unit, _} = Tuple} ->
-            encode_call(ContractCode, Function, Tuple);
-        {ok, ParsedArgument} ->
-            %% The Sophia compiler does not parse a singleton tuple (42) as a tuple,
-            %% Wrap it in a tuple.
-            encode_call(ContractCode, Function, {tuple, [], [ParsedArgument]});
-        {error, _} ->
-            {error, argument_syntax_error}
-    end.
-
-%% Call takes one arument.
-%% Use a tuple to pass multiple arguments.
-encode_call(ContractCode, Function, ArgumentAst) ->
-    Argument = ast_to_erlang(ArgumentAst),
-    try aeso_compiler:deserialize(ContractCode) of
-        #{type_info := TypeInfo} ->
-            FunBin = list_to_binary(Function),
-            case type_hash_from_function_name(FunBin, TypeInfo) of
-                {ok, <<TypeHashInt:256>>} ->
-                    Data = aeso_data:to_binary({TypeHashInt, Argument}),
+create_calldata(ContractCode, "", CallCode) ->
+    case aeso_compiler:check_call(CallCode, []) of
+        {ok, FunName, {ArgTypes, RetType}, Args} ->
+            case get_type_info_and_hash(ContractCode, FunName) of
+                {ok, TypeInfo, TypeHashInt} ->
+                    Data = aeso_data:to_binary({TypeHashInt, list_to_tuple(Args)}),
                     case check_calldata(Data, TypeInfo) of
                         {ok, CallDataType, OutType} ->
-                            {ok, Data, CallDataType, OutType};
-                        {error,_What} = Err ->
-                            Err
+                            case check_given_type(FunName, ArgTypes, RetType, CallDataType, OutType) of
+                                ok ->
+                                    {ok, Data, CallDataType, OutType};
+                                {error, _} = Err ->
+                                    Err
+                            end;
+                        {error,_What} = Err -> Err
                     end;
-                {error, _} = Err ->
-                    Err
+                {error, _} = Err -> Err
+            end;
+        {error, _} = Err -> Err
+    end;
+create_calldata(Contract, Function, Argument) ->
+    %% Slightly hacky shortcut to let you get away without writing the full
+    %% call contract code.
+    %% Function should be "foo : type", and
+    %% Argument should be "Arg1, Arg2, .., ArgN" (no parens)
+    case string:lexemes(Function, ": ") of
+                     %% If function is a single word fallback to old calldata generation
+        [FunName] -> old_create_calldata(Contract, FunName, Argument);
+        [FunName | _] ->
+            Args    = lists:map(fun($\n) -> 32; (X) -> X end, Argument),    %% newline to space
+            CallContract = lists:flatten(
+                [ "contract Call =\n"
+                , "  function ", Function, "\n"
+                , "  function __call() = ", FunName, "(", Args, ")"
+                ]),
+            create_calldata(Contract, "", CallContract)
+    end.
+
+get_type_info_and_hash(ContractCode, FunName) ->
+    try aeso_compiler:deserialize(ContractCode) of
+        #{type_info := TypeInfo} ->
+            FunBin = list_to_binary(FunName),
+            case type_hash_from_function_name(FunBin, TypeInfo) of
+                {ok, <<TypeHashInt:256>>} -> {ok, TypeInfo, TypeHashInt};
+                {ok, _}                   -> {error, bad_type_hash};
+                {error, _} = Err          -> Err
             end
-    catch _:_ -> {error, bad_contract_code}
+    catch _:_ ->
+        {error, bad_contract_code}
+    end.
+
+%% Check that the given type matches the type from the metadata.
+check_given_type(FunName, GivenArgs, GivenRet, CalldataType, ExpectRet) ->
+    {tuple, [word, {tuple, ExpectArgs}]} = CalldataType,
+    ReturnOk = if FunName == "init" -> true;
+                  GivenRet == any   -> true;
+                  true              -> GivenRet == ExpectRet
+               end,
+    ArgsOk   = ExpectArgs == GivenArgs,
+    case ReturnOk andalso ArgsOk of
+        true -> ok;
+        false when FunName == "init" ->
+            {error, {init_args_mismatch,
+                        {given,    GivenArgs},
+                        {expected, ExpectArgs}}};
+        false ->
+            {error, {call_type_mismatch,
+                        {given,    GivenArgs,  '=>', GivenRet},
+                        {expected, ExpectArgs, '=>', ExpectRet}}}
     end.
 
 -spec check_calldata(aeso_sophia:heap(), type_info()) ->
@@ -194,21 +224,52 @@ type_hash_from_function_name(Name, TypeInfo) ->
             {error, unknown_function}
     end.
 
-%%%===================================================================
-%%% Test API
-%%%===================================================================
+%% -- Old calldata creation. Kept for backwards compatibility. ---------------
 
-ast_to_erlang({int, _, N}) -> N;
-ast_to_erlang({bool, _, true}) -> 1;
-ast_to_erlang({bool, _, false}) -> 0;
-ast_to_erlang({string, _, Bin}) -> Bin;
-ast_to_erlang({unit, _}) -> {};
-ast_to_erlang({con, _, "None"}) -> none;
-ast_to_erlang({app, _, {con, _, "Some"}, [A]}) -> {some, ast_to_erlang(A)};
-ast_to_erlang({tuple, _, Elems}) ->
-    list_to_tuple(lists:map(fun ast_to_erlang/1, Elems));
-ast_to_erlang({list, _, Elems}) ->
-    lists:map(fun ast_to_erlang/1, Elems);
-ast_to_erlang({map, _, Elems}) ->
-    maps:from_list([ {ast_to_erlang(element(1, Elem)), ast_to_erlang(element(2, Elem))}
+old_create_calldata(ContractCode, Function, Argument) ->
+    case aeso_constants:string(Argument) of
+        {ok, {tuple, _, _} = Tuple} ->
+            old_encode_call(ContractCode, Function, Tuple);
+        {ok, {unit, _} = Tuple} ->
+            old_encode_call(ContractCode, Function, Tuple);
+        {ok, ParsedArgument} ->
+            %% The Sophia compiler does not parse a singleton tuple (42) as a tuple,
+            %% Wrap it in a tuple.
+            old_encode_call(ContractCode, Function, {tuple, [], [ParsedArgument]});
+        {error, _} ->
+            {error, argument_syntax_error}
+    end.
+
+%% Call takes one arument.
+%% Use a tuple to pass multiple arguments.
+old_encode_call(ContractCode, Function, ArgumentAst) ->
+    Argument = old_ast_to_erlang(ArgumentAst),
+    case get_type_info_and_hash(ContractCode, Function) of
+        {ok, TypeInfo, TypeHashInt} ->
+            Data = aeso_data:to_binary({TypeHashInt, Argument}),
+            case check_calldata(Data, TypeInfo) of
+                {ok, CallDataType, OutType} ->
+                    {ok, Data, CallDataType, OutType};
+                {error, _} = Err ->
+                    Err
+            end;
+        {error, _} = Err -> Err
+    end.
+
+old_ast_to_erlang({int, _, N}) -> N;
+old_ast_to_erlang({hash, _, <<N:256>>}) -> N;
+old_ast_to_erlang({hash, _, <<Hi:256, Lo:256>>}) -> {Hi, Lo};    %% signature
+old_ast_to_erlang({bool, _, true}) -> 1;
+old_ast_to_erlang({bool, _, false}) -> 0;
+old_ast_to_erlang({string, _, Bin}) -> Bin;
+old_ast_to_erlang({unit, _}) -> {};
+old_ast_to_erlang({con, _, "None"}) -> none;
+old_ast_to_erlang({app, _, {con, _, "Some"}, [A]}) -> {some, old_ast_to_erlang(A)};
+old_ast_to_erlang({tuple, _, Elems}) ->
+    list_to_tuple(lists:map(fun old_ast_to_erlang/1, Elems));
+old_ast_to_erlang({list, _, Elems}) ->
+    lists:map(fun old_ast_to_erlang/1, Elems);
+old_ast_to_erlang({map, _, Elems}) ->
+    maps:from_list([ {old_ast_to_erlang(element(1, Elem)), old_ast_to_erlang(element(2, Elem))}
                         || Elem <- Elems ]).
+

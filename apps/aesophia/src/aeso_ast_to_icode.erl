@@ -9,7 +9,7 @@
 %%%-------------------------------------------------------------------
 -module(aeso_ast_to_icode).
 
--export([ast_typerep/1, type_value/1,
+-export([ast_typerep/1, ast_typerep/2, type_value/1,
          convert_typed/2]).
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
@@ -319,8 +319,13 @@ ast_body({bool, _, Bool}, _Icode) ->        %BOOL as ints
 ast_body({int, _, Value}, _Icode) ->
     #integer{value = Value};
 ast_body({hash, _, Hash}, _Icode) ->
-    <<Value:32/unit:8>> = Hash,
-    #integer{value = Value};
+    case Hash of
+        <<Value:32/unit:8>> ->              %% address
+            #integer{value = Value};
+        <<Hi:32/unit:8, Lo:32/unit:8>> ->   %% signature
+            #tuple{cpts = [#integer{value = Hi},
+                           #integer{value = Lo}]}
+    end;
 ast_body({string,_,Bin}, _Icode) ->
     Cpts = [size(Bin)|aeso_data:binary_to_words(Bin)],
     #tuple{cpts = [#integer{value=X} || X <- Cpts]};

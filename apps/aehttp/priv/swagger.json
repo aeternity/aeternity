@@ -3864,7 +3864,7 @@
     },
     "ContractCallInput" : {
       "type" : "object",
-      "required" : [ "abi", "arg", "code", "function" ],
+      "required" : [ "abi", "code" ],
       "properties" : {
         "abi" : {
           "type" : "string"
@@ -3877,9 +3877,14 @@
         },
         "arg" : {
           "type" : "string"
+        },
+        "call" : {
+          "type" : "string",
+          "description" : "Source code for a contract with a function __call() = f(args), if calling a function f"
         }
       },
       "example" : {
+        "call" : "call",
         "code" : "code",
         "function" : "function",
         "arg" : "arg",
@@ -4043,7 +4048,7 @@
     },
     "ContractCreateCompute" : {
       "type" : "object",
-      "required" : [ "amount", "arguments", "code", "deposit", "fee", "gas", "gas_price", "owner_id", "vm_version" ],
+      "required" : [ "amount", "code", "deposit", "fee", "gas", "gas_price", "owner_id", "vm_version" ],
       "properties" : {
         "owner_id" : {
           "type" : "string",
@@ -4095,11 +4100,16 @@
         },
         "arguments" : {
           "type" : "string",
-          "description" : "Contract call data init function arguments"
+          "description" : "Contract call data init function arguments (deprecated, use call)"
+        },
+        "call" : {
+          "type" : "string",
+          "description" : "Source code for a contract with a function __call() = init(args)"
         }
       },
       "example" : {
         "gas_price" : 0,
+        "call" : "call",
         "vm_version" : 153,
         "amount" : 0,
         "code" : "code",
@@ -4179,7 +4189,7 @@
     },
     "ContractCallCompute" : {
       "type" : "object",
-      "required" : [ "amount", "arguments", "caller_id", "contract_id", "fee", "function", "gas", "gas_price", "vm_version" ],
+      "required" : [ "amount", "caller_id", "contract_id", "fee", "gas", "gas_price", "vm_version" ],
       "properties" : {
         "caller_id" : {
           "description" : "Contract caller pub_key",
@@ -4226,15 +4236,20 @@
         },
         "function" : {
           "type" : "string",
-          "description" : "Contract call data function"
+          "description" : "Contract call data function (deprecated, use call)"
         },
         "arguments" : {
           "type" : "string",
-          "description" : "Contract call data function arguments"
+          "description" : "Contract call data function arguments (deprecated, use call)"
+        },
+        "call" : {
+          "type" : "string",
+          "description" : "Source code for a contract with a function __call() = f(args), if calling a function f"
         }
       },
       "example" : {
         "gas_price" : 0,
+        "call" : "call",
         "vm_version" : 153,
         "amount" : 0,
         "caller_id" : { },

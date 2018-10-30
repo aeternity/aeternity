@@ -33,7 +33,7 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
     OutType = word,
 
     %% Create the call data
-    {ok, CallData} = aect_sophia:encode_call_data(SerializedCode, <<"main">>, <<"(42)">>),
+    {ok, CallData} = aect_sophia:encode_call_data(SerializedCode, <<"main : int => _">>, <<"42">>),
     {ok, Res} =
         aevm_eeevm:eval(
           aevm_eeevm_state:init(

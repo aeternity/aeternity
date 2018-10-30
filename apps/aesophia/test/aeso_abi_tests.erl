@@ -1,10 +1,7 @@
 -module(aeso_abi_tests).
 
 -include_lib("eunit/include/eunit.hrl").
-
-encode_call_with_integer_test() ->
-    Words = fun aeso_test_utils:dump_words/1,
-    Expected = Words(aeso_data:to_binary({{tuple, [string, {tuple, [word]}]}, {<<"main">>, {42}}})).
+-compile(export_all).
 
 -define(SANDBOX(Code), sandbox(fun() -> Code end)).
 
@@ -57,25 +54,27 @@ encode_decode_test() ->
     ok.
 
 encode_decode_sophia_test() ->
-    42 = encode_decode_sophia_string("42"),
-    1 = encode_decode_sophia_string("true"),
-    0 = encode_decode_sophia_string("false"),
-    <<"Hello">> = encode_decode_sophia_string("\"Hello\""),
+    {42} = encode_decode_sophia_string("int", "42"),
+    {1} = encode_decode_sophia_string("bool", "true"),
+    {0} = encode_decode_sophia_string("bool", "false"),
+    {<<"Hello">>} = encode_decode_sophia_string("string", "\"Hello\""),
     {<<"Hello">>, [1,2,3], {variant, 1, [1]}} =
         encode_decode_sophia_string(
-          "(\"Hello\", [1,2,3], Some(true))"),
+          "(string, list(int), option(bool))",
+          "\"Hello\", [1,2,3], Some(true)"),
     ok.
 
-encode_decode_sophia_string(String) ->
+encode_decode_sophia_string(SophiaType, String) ->
     io:format("String ~p~n", [String]),
-    {ok, AstType} = aeso_constants:get_type(String),
-    io:format("AstType ~p~n", [AstType]),
-    {ok, Type} = aeso_data:sophia_type_to_typerep(AstType),
+    Code = [ "contract Call =\n"
+           , "  function foo : ", SophiaType, " => _\n"
+           , "  function __call() = foo(", String, ")\n" ],
+    {ok, _, {Types, _}, Args} = aeso_compiler:check_call(lists:flatten(Code), []),
+    Arg  = list_to_tuple(Args),
+    Type = {tuple, Types},
     io:format("Type ~p~n", [Type]),
-    {ok, Ast} = aeso_constants:string(String),
-    ErlangString = aeso_abi:ast_to_erlang(Ast),
-    io:format("ErlangString ~p~n", [ErlangString]),
-    decode(Type, encode(ErlangString)).
+    Data = encode(Arg),
+    decode(Type, Data).
 
 encode_decode(T, D) ->
     ?assertEqual(D, decode(T, encode(D))),
