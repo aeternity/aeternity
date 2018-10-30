@@ -778,7 +778,7 @@ call_contract(Caller, ContractKey, Fun, Type, Args, Options, S) ->
                  , call_data  => Calldata
                  , fee        => 1
                  , amount     => 0
-                 , gas        => 50000
+                 , gas        => 140000
                  }, maps:without([height, return_gas_used], Options)), S),
     Height   = maps:get(height, Options, 1),
     PrivKey  = aect_test_utils:priv_key(Caller, S),
