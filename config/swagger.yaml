@@ -1565,6 +1565,23 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /debug/accounts/beneficiary:
+    get:
+      tags:
+        - internal
+        - node_info
+        - debug
+      operationId: GetNodeBeneficiary
+      description: 'Get node''s beneficiary public key'
+      produces:
+        - application/json
+      parameters:
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/PubKey'
+      security:
   /debug/accounts/node:
     get:
       tags:

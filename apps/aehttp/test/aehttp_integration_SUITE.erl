@@ -135,6 +135,7 @@
    [
     broken_spend_tx/1,
     node_pubkey/1,
+    node_beneficiary/1,
 
     %% requested Endpoints
     naming_system_manage_name/1,
@@ -448,6 +449,7 @@ groups() ->
         broken_spend_tx,
         naming_system_broken_txs,
         node_pubkey,
+        node_beneficiary,
 
         % requested Endpoints
         peers
@@ -3095,6 +3097,22 @@ node_pubkey(_Config) ->
     {account_pubkey, MinerPubKey} = aec_base58c:decode(EncodedPubKey),
     ok.
 
+node_beneficiary(_Config) ->
+    {ok, 200, #{<<"pub_key">> := SignPubKey0}} = get_node_pubkey(),
+    {ok, 200, #{<<"pub_key">> := BeneficiaryPubKey0}} = get_node_beneficiary(),
+
+    ?assertMatch({account_pubkey, _}, aec_base58c:decode(BeneficiaryPubKey0)),
+
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 3),
+
+    {ok, 200, #{<<"pub_key">> := SignPubKey1}} = get_node_pubkey(),
+    {ok, 200, #{<<"pub_key">> := BeneficiaryPubKey1}} = get_node_beneficiary(),
+
+    ?assertNotEqual(SignPubKey0, SignPubKey1),
+    ?assertNotEqual(SignPubKey1, BeneficiaryPubKey1),
+    ?assertEqual(BeneficiaryPubKey0, BeneficiaryPubKey1),
+    ok.
+
 peer_pub_key(_Config) ->
     {ok, PeerPubKey} = rpc(aec_keys, peer_pubkey, []),
     {ok, 200, #{<<"pubkey">> := EncodedPubKey}} = get_peer_pub_key(),
@@ -5043,6 +5061,10 @@ get_pubkey() ->
 get_node_pubkey() ->
     Host = internal_address(),
     http_request(Host, get, "debug/accounts/node", []).
+
+get_node_beneficiary() ->
+    Host = internal_address(),
+    http_request(Host, get, "debug/accounts/beneficiary", []).
 
 get_peer_pub_key() ->
     Host = external_address(),
