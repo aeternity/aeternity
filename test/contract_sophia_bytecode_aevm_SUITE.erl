@@ -513,7 +513,7 @@ set_store(Data, State = #{ running := Contract, store := Store }) ->
     State#{ store => Store#{ Contract => Data } }.
 
 get_contract_fun_types(<<Contract:256>>,_VMVersion, TypeHash, S) ->
-    case maps:get(Contract, S, undefine) of
+    case maps:get(Contract, S, undefined) of
         undefined ->
             io:format("   oops, no such contract!\n"),
             {error, {no_such_contract, Contract}};
