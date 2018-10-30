@@ -274,7 +274,7 @@ sync:
 
 keys:
     dir: "{}"
-    password: "top secret"
+    peer_password: "top secret"
 
 mining:
     autostart: {}
@@ -300,7 +300,7 @@ sync:
 
 keys:
     dir: \"""" + key_dir + """\"
-    password: "top secret"
+    peer_password: "top secret"
 
 chain:
     hard_forks:
@@ -330,7 +330,7 @@ sync:
 
 keys:
     dir: \"""" + key_dir + """\"
-    password: "top secret"
+    peer_password: "top secret"
 
 chain:
     hard_forks:

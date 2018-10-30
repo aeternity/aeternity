@@ -58,7 +58,7 @@ def node_online(ext_api, int_api):
     return is_ext_online() and is_int_online()
 
 def setup_node(node):
-    # prepare a dir to hold the configs and the keys
+    # prepare a dir to hold the configs
     root_dir = tempfile.mkdtemp()
 
     # setup the dir with non-mining node
@@ -70,13 +70,11 @@ def setup_node(node):
     return (root_dir, node, ext_api, int_api)
 
 def setup_node_with_tokens(node, beneficiary, blocks_to_mine):
-    # prepare a dir to hold the configs and the keys
+    # prepare a dir to hold the configs
     root_dir = tempfile.mkdtemp()
 
-    key_dir = _copy_sign_keys(root_dir, node)
-
     # setup the dir with mining node
-    user_config = make_mining_user_config(root_dir, key_dir, beneficiary, "epoch.yaml")
+    user_config = make_mining_user_config(root_dir, beneficiary, "epoch.yaml")
     start_node(node, user_config)
     ext_api = external_api(node)
     int_api = internal_api(node)
@@ -94,15 +92,6 @@ def setup_node_with_tokens(node, beneficiary, blocks_to_mine):
     assert_equals(bal1 > bal0, True)
 
     return (root_dir, ext_api, int_api, top)
-
-def _copy_sign_keys(root_dir, keys):
-    # Copy the right keys
-    curr_dir = os.getcwd()
-    key_dir  = os.path.join(root_dir, keys)
-    os.makedirs(key_dir)
-    shutil.copy(os.path.join(curr_dir, "sign_keys", keys, "sign_key"), key_dir)
-    shutil.copy(os.path.join(curr_dir, "sign_keys", keys, "sign_key.pub"), key_dir)
-    return key_dir
 
 def install_user_config(root_dir, file_name, conf):
     user_config = os.path.join(root_dir, file_name)
@@ -132,19 +121,16 @@ mining:
 """
     return install_user_config(root_dir, file_name, conf)
 
-def make_mining_user_config(root_dir, key_dir, beneficiary, file_name):
+def make_mining_user_config(root_dir, beneficiary, file_name):
     conf = """\
 ---
 chain:
     hard_forks:
         "27": 0
-keys:
-    dir: "{}"
 
 mining:
     autostart: true
     expected_mine_rate: 100
-    # Beneficiary matches pubkey from sign_keys/dev1/sign_key.pub
     beneficiary: "{}"
     beneficiary_reward_delay: 2
     cuckoo:
@@ -152,7 +138,7 @@ mining:
             executable: mean16s-generic
             extra_args: "-t 5"
             node_bits: 16
-""".format(key_dir, beneficiary['enc_pubk'])
+""".format(beneficiary['enc_pubk'])
     return install_user_config(root_dir, file_name, conf)
 
 def start_node(name, config_filename):

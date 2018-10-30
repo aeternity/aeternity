@@ -532,6 +532,9 @@ preempt_if_new_top(#state{ top_block_hash = OldHash,
                                 end,
                     State5 = State4#state{ top_key_block_hash = NewTopKey,
                                            key_block_candidate = undefined },
+
+                    [ aec_keys:promote_candidate(aec_blocks:miner(NewBlock)) || KeyOrNewForkMicro == key ],
+
                     {changed, NewBlock, create_key_block_candidate(State5)}
             end
     end.

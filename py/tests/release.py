@@ -29,7 +29,7 @@ SETUP = {
 ---
 keys:
     dir: "keys"
-    password: "top secret"
+    peer_password: "top secret"
 
 sync:
     port: 9815
@@ -76,7 +76,7 @@ chain:
 ---
 keys:
     dir: "keys"
-    password: "top secret"
+    peer_password: "top secret"
 
 sync:
     port: 9825
@@ -122,7 +122,7 @@ chain:
 ---
 keys:
     dir: "keys"
-    password: "top secret"
+    peer_password: "top secret"
 
 sync:
     port: 9835

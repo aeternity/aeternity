@@ -27,6 +27,7 @@
          wait_for_height/2,
          spend/4,         %% (Node, FromPub, ToPub, Amount) -> ok
          spend/5,         %% (Node, FromPub, ToPub, Amount, Fee) -> ok
+         sign_on_node/2,
          forks/0,
          latest_fork_height/0]).
 
@@ -50,7 +51,8 @@
         ]).
 
 -export([patron/0,
-         sign_keys/0]).
+         sign_keys/0,
+         sign_keys/1]).
 
 -include_lib("kernel/include/file.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -76,6 +78,10 @@ sign_keys() ->
      {dev3, {<<238,230,20,172,221,171,100,208,126,164,204,120,180,48,69,184,235,69,115,91,190,182,78,22,50,182,78,251,154,80,216,250,207,253,207,144,121,
                89,70,193,75,247,195,248,104,132,11,199,133,103,156,209,167,244,82,126,86,51,156,36,165,214,45,50>>,
              <<207,253,207,144,121,89,70,193,75,247,195,248,104,132,11,199,133,103,156,209,167,244,82,126,86,51,156,36,165,214,45,50>>}}].
+
+sign_keys(Node) ->
+    {_, {Priv, Pub}} = lists:keyfind(Node, 1, sign_keys()),
+    {Priv, Pub}.
 
 patron() ->
     #{ pubkey  => <<206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,
@@ -345,11 +351,17 @@ spend(Node, FromPub, ToPub, Amount, Fee) ->
                fee          => Fee,
                nonce        => Nonce,
                payload      => <<"foo">>},
+
     {ok, Tx} = rpc:call(Node, aec_spend_tx, new, [Params]),
-    {ok, SignedTx} = rpc:call(Node, aec_keys, sign_tx, [Tx]),
+    {ok, SignedTx} = sign_on_node({dev1, Node}, Tx),
     ok = rpc:call(Node, aec_tx_pool, push, [SignedTx]),
     {ok, SignedTx}.
 
+sign_on_node({Id, _Node}, Tx) ->
+    {_, {SignPrivKey, _}} = lists:keyfind(Id, 1, sign_keys()),
+    {ok, aec_test_utils:sign_tx(Tx, SignPrivKey)};
+sign_on_node(Id, Tx) ->
+    sign_on_node(node_tuple(Id), Tx).
 
 forks() ->
     Vs = aec_governance:sorted_protocol_versions(),
@@ -633,15 +645,12 @@ config_apply_options(Node, Cfg, [{add_peers, true}| T]) ->
     config_apply_options(Node, Cfg1, T).
 
 write_keys(Node, Config) ->
-    #{ <<"keys">> := #{ <<"dir">> := Path, <<"password">> := Pwd } } = Config,
+    #{ <<"keys">> := #{ <<"dir">> := Path, <<"peer_password">> := Pwd } } = Config,
     ok = filelib:ensure_dir(filename:join(Path, "foo")),
-    ct:log("Writing peer and sign keys to ~p (~p)", [Path, filelib:is_dir(Path)]),
+    ct:log("Writing peer keys to ~p (~p)", [Path, filelib:is_dir(Path)]),
     {Node, {PeerPrivKey, PeerPubKey}} = lists:keyfind(Node, 1, peer_keys()),
     ok = file:write_file(filename:join(Path, "peer_key.pub"), aec_keys:encrypt_key(Pwd, PeerPubKey)),
     ok = file:write_file(filename:join(Path, "peer_key"), aec_keys:encrypt_key(Pwd, PeerPrivKey)),
-    {Node, {SignPrivKey, SignPubKey}} = lists:keyfind(Node, 1, sign_keys()),
-    ok = file:write_file(filename:join(Path, "sign_key.pub"), aec_keys:encrypt_key(Pwd, SignPubKey)),
-    ok = file:write_file(filename:join(Path, "sign_key"), aec_keys:encrypt_key(Pwd, SignPrivKey)),
     ok.
 
 write_config(F, Config) ->
@@ -661,7 +670,7 @@ default_config(N, Config) ->
     {N, {_PrivKey, PubKey}} = lists:keyfind(N, 1, sign_keys()),
     #{<<"keys">> =>
           #{<<"dir">> => iolist_to_binary(keys_dir(N, Config)),
-            <<"password">> => iolist_to_binary(io_lib:format("~w.~w.~w", [A,B,C]))},
+            <<"peer_password">> => iolist_to_binary(io_lib:format("~w.~w.~w", [A,B,C]))},
       <<"logging">> =>
           #{<<"hwm">> => 500},
       <<"mining">> =>

@@ -92,7 +92,6 @@ websocket:
 
 keys:
     dir: keys
-    password: "secret"
     peer_password: "secret"
 
 chain:

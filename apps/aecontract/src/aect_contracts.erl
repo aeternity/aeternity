@@ -199,8 +199,7 @@ serialization_template(?CONTRACT_VSN) ->
     , {deposit, int}
     ].
 
--spec compute_contract_pubkey(aec_keys:pubkey(), non_neg_integer()) ->
-    aec_keys:pubkey().
+-spec compute_contract_pubkey(aec_keys:pubkey(), non_neg_integer()) -> aec_keys:pubkey().
 compute_contract_pubkey(<<_:?PUB_SIZE/binary>> = Owner, Nonce) when Nonce >= 0  ->
     NonceBin = binary:encode_unsigned(Nonce),
     aec_hash:hash(pubkey, <<Owner/binary, NonceBin/binary>>).

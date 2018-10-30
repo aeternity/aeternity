@@ -22,21 +22,24 @@ all_test_() ->
              aec_test_utils:aec_keys_cleanup(TmpKeysDir)
      end,
      [fun(_) ->
-              [{"Sign spend transaction",
+              [ {"Promote signing keys candidate (positive case)",
                 fun() ->
-                        {ok, PubKey} = aec_keys:pubkey(),
-                        #{ public := RecipientPubkey } = enacl:sign_keypair(),
-                        Sender = aec_id:create(account, PubKey),
-                        Receiver = aec_id:create(account, RecipientPubkey),
-                        {ok, Tx} =
-                            aec_spend_tx:new(#{sender_id => Sender,
-                                               recipient_id => Receiver,
-                                               amount => 10,
-                                               fee => 2,
-                                               nonce => 3,
-                                               payload => <<"">>}),
-                        {ok, SignedTx} = aec_keys:sign_tx(Tx),
-                        ?assertEqual(Tx, aetx_sign:tx(SignedTx))
+                        {ok, SPub0} = aec_keys:pubkey(),
+                        {ok, CPub0} = aec_keys:candidate_pubkey(),
+                        ok = aec_keys:promote_candidate(CPub0),
+                        {ok, SPub1} = aec_keys:pubkey(),
+                        {ok, CPub1} = aec_keys:candidate_pubkey(),
+                        ?assertEqual(CPub0, SPub1),
+                        ?assertNotEqual(SPub0, SPub1),
+                        ?assertNotEqual(CPub0, CPub1)
+                end},
+                {"Promote signing keys candidate (negative case)",
+                fun() ->
+                        {ok, SPub0} = aec_keys:pubkey(),
+                        {ok, CPub0} = aec_keys:candidate_pubkey(),
+                        ?assertEqual({error, key_not_found}, aec_keys:promote_candidate(SPub0)),
+                        ?assertEqual({ok, SPub0}, aec_keys:pubkey()),
+                        ?assertEqual({ok, CPub0}, aec_keys:candidate_pubkey())
                 end},
                {"Keys validation (positive case)",
                 fun() ->

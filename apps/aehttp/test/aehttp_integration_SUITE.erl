@@ -630,13 +630,13 @@ init_per_group(on_key_block = Group, Config) ->
      {pending_key_block, PendingKeyBlock} | Config1];
 init_per_group(on_micro_block = Group, Config) ->
     Config1 = start_node(Group, Config),
-    Node = ?config(node, Config1),
+    [ {NodeId, Node} | _ ] = ?config(nodes, Config1),
     %% Mine at least 2 key blocks (fork height may be 0).
     ToMine = max(2, aecore_suite_utils:latest_fork_height()),
     aecore_suite_utils:mine_key_blocks(Node, ToMine),
     {ok, [_KeyBlock0]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     %% Send spend tx so it gets included into micro block.
-    {ok, Pub} = rpc(aec_keys, pubkey, []),
+    {_, Pub} = aecore_suite_utils:sign_keys(NodeId),
     {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1),
     {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
     {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
@@ -658,13 +658,13 @@ init_per_group(block_info, Config) ->
 %% account_endpoints
 init_per_group(nonexistent_account = Group, Config) ->
     Config1 = start_node(Group, Config),
-    {ok, Pubkey} = rpc(aec_keys, pubkey, []),
+    {_, Pubkey} = aecore_suite_utils:sign_keys(?NODE),
     [{account_id, aec_base58c:encode(account_pubkey, Pubkey)},
      {account_exists, false} | Config1];
 init_per_group(account_with_balance = Group, Config) ->
     Config1 = start_node(Group, Config),
-    Node = ?config(node, Config1),
-    {ok, Pubkey} = rpc(aec_keys, pubkey, []),
+    [ {NodeId, Node} | _ ] = ?config(nodes, Config1),
+    {_, Pubkey} = aecore_suite_utils:sign_keys(NodeId),
     ToMine = max(2, aecore_suite_utils:latest_fork_height()),
     aecore_suite_utils:mine_key_blocks(Node, ToMine),
     {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
@@ -672,9 +672,9 @@ init_per_group(account_with_balance = Group, Config) ->
     [{account_id, aec_base58c:encode(account_pubkey, Pubkey)},
      {account_exists, true} | Config1];
 init_per_group(account_with_pending_tx, Config) ->
-    Node = ?config(node, Config),
-    {ok, Pubkey} = rpc(aec_keys, pubkey, []),
-    {ok, Tx} = aecore_suite_utils:spend(Node, Pubkey, Pubkey, 1),
+    [ {NodeId, Node} | _ ] = ?config(nodes, Config),
+    {_, Pub} = aecore_suite_utils:sign_keys(NodeId),
+    {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1),
     {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
     [{pending_txs, [{aec_base58c:encode(tx_hash, aetx_sign:hash(Tx)), Tx}]},
      {block_with_txs, undefined},
@@ -687,13 +687,13 @@ init_per_group(nonexistent_tx = Group, Config) ->
     start_node(Group, Config);
 init_per_group(tx_is_pending = Group, Config) ->
     Config1 = start_node(Group, Config),
-    Node = ?config(node, Config1),
-    {ok, Pubkey} = rpc(aec_keys, pubkey, []),
+    [ {NodeId, Node} | _ ] = ?config(nodes, Config1),
+    {_, Pub} = aecore_suite_utils:sign_keys(NodeId),
     ToMine = max(2, aecore_suite_utils:latest_fork_height()),
     aecore_suite_utils:mine_key_blocks(Node, ToMine),
     {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     true = aec_blocks:is_key_block(KeyBlock),
-    {ok, Tx} = aecore_suite_utils:spend(Node, Pubkey, Pubkey, 1),
+    {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1),
     {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
     [{pending_txs, [{aec_base58c:encode(tx_hash, aetx_sign:hash(Tx)), Tx}]},
      {block_with_txs, undefined},
@@ -713,13 +713,13 @@ init_per_group(tx_is_on_chain = Group, Config) ->
      {block_with_txs_height, aec_blocks:height(KeyBlock)} | Config1];
 init_per_group(post_tx_to_mempool = Group, Config) ->
     Config1 = start_node(Group, Config),
-    Node = ?config(node, Config1),
-    {ok, Pubkey} = rpc(aec_keys, pubkey, []),
+    [ {NodeId, Node} | _ ] = ?config(nodes, Config1),
+    {_, Pub} = aecore_suite_utils:sign_keys(NodeId),
     ToMine = max(2, aecore_suite_utils:latest_fork_height()),
     aecore_suite_utils:mine_key_blocks(Node, ToMine),
     {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     true = aec_blocks:is_key_block(KeyBlock),
-    [{sender_id, aec_base58c:encode(account_pubkey, Pubkey)},
+    [{sender_id, aec_base58c:encode(account_pubkey, Pub)},
      {recipient_id, aec_base58c:encode(account_pubkey, random_hash())},
      {amount, 1},
      {fee, 1},
@@ -790,7 +790,7 @@ end_per_group(Group, Config) ->
 
 init_per_testcase(post_oracle_register, Config) ->
     %% TODO: assert there is enought balance
-    {ok, Pubkey} = rpc(aec_keys, pubkey, []),
+    {_, Pubkey} = aecore_suite_utils:sign_keys(?NODE),
     [{account_id, aec_base58c:encode(account_pubkey, Pubkey)},
      {oracle_id, aec_base58c:encode(oracle_pubkey, Pubkey)},
      {query_format, <<"something">>},
@@ -1469,13 +1469,14 @@ post_spend_tx(Config) ->
     ok.
 
 post_contract_and_call_tx(_Config) ->
-    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
+    Pubkey = get_pubkey(),
+
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
     {ok, 200, #{<<"bytecode">> := EncodedCode}} = get_contract_bytecode(SophiaCode),
     {ok, Code} = aec_base58c:safe_decode(contract_bytearray, EncodedCode),
     {ok, EncodedInitCallData} = aehttp_logic:contract_encode_call_data(
                                   <<"sophia">>, Code, <<"init">>, <<"()">>),
-    ValidEncoded = #{ owner_id   => MinerAddress,
+    ValidEncoded = #{ owner_id   => Pubkey,
                       code       => EncodedCode,
                       vm_version => 1,
                       deposit    => 2,
@@ -1504,7 +1505,7 @@ post_contract_and_call_tx(_Config) ->
 
     {ok, EncodedCallData} = aehttp_logic:contract_encode_call_data(
                               <<"sophia">>, Code, <<"main">>, <<"42">>),
-    ContractCallEncoded = #{ caller_id   => MinerAddress,
+    ContractCallEncoded = #{ caller_id   => Pubkey,
                              contract_id => EncodedContractPubKey,
                              vm_version  => 1,
                              amount      => 1,
@@ -1545,7 +1546,7 @@ get_contract(_Config) ->
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 3),
 
     {ok, 200, _} = get_balance_at_top(),
-    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
+    MinerAddress = get_pubkey(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
     {ok, 200, #{<<"bytecode">> := EncodedCode}} = get_contract_bytecode(SophiaCode),
@@ -1823,7 +1824,10 @@ prepare_tx(TxType, Args) ->
     {ok, 200, #{<<"tx">> := EncodedSerializedUnsignedTx}} = http_request(Host, post, Path, Args),
     {ok, SerializedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedSerializedUnsignedTx),
     UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
-    {ok, SignedTx} = rpc(aec_keys, sign_tx, [UnsignedTx]),
+
+    NodeT = aecore_suite_utils:node_tuple(?NODE),
+    {ok, SignedTx} = aecore_suite_utils:sign_on_node(NodeT, UnsignedTx),
+
     TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
     EncodedSerializedSignedTx = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)),
     {TxHash, EncodedSerializedSignedTx}.
@@ -1887,7 +1891,7 @@ save_config([], _Config, Acc) ->
 contract_transactions(_Config) ->    % miner has an account
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 3),
     {ok, 200, _} = get_balance_at_top(),
-    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
+    MinerAddress = get_pubkey(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
     {ok, 200, #{<<"bytecode">> := EncodedCode}} = get_contract_bytecode(SophiaCode),
@@ -2155,7 +2159,7 @@ contract_transactions(_Config) ->    % miner has an account
 contract_create_compute_transaction(_Config) ->
 
     {ok, 200, _} = get_balance_at_top(),
-    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
+    MinerAddress = get_pubkey(),
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
     {ok, 200, #{<<"bytecode">> := Code}} = get_contract_bytecode(SophiaCode),
 
@@ -2217,7 +2221,7 @@ contract_create_compute_transaction(_Config) ->
 contract_create_transaction_init_error(_Config) ->
     % miner has an account
     {ok, 200, _} = get_balance_at_top(),
-    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
+    MinerAddress = get_pubkey(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
 
     % contract_create_tx positive test
@@ -2277,7 +2281,7 @@ contract_create_transaction_init_error(_Config) ->
 
 oracle_transactions(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
-    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
+    MinerAddress = get_pubkey(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
     OracleAddress = aec_base58c:encode(oracle_pubkey, MinerPubkey),
 
@@ -2444,7 +2448,7 @@ oracle_transactions(_Config) ->
 %% GET revoke_tx unsigned transaction
 nameservice_transactions(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
-    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
+    MinerAddress = get_pubkey(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
     nameservice_transaction_preclaim(MinerAddress, MinerPubkey),
     nameservice_transaction_claim(MinerAddress, MinerPubkey),
@@ -2622,7 +2626,7 @@ nameservice_transaction_revoke(MinerAddress, MinerPubkey) ->
 %% GET channel_settle_tx unsigned transaction
 state_channels_onchain_transactions(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
-    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
+    MinerAddress = get_pubkey(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
     ParticipantPubkey = random_hash(),
     ok = give_tokens(ParticipantPubkey, 100),
@@ -2817,7 +2821,7 @@ state_channels_settle(ChannelId, MinerPubkey) ->
 %% GET spend_tx unsigned transaction
 spend_transaction(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
-    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
+    MinerAddress = get_pubkey(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
     RandAddress = random_hash(),
     Encoded = #{sender_id => MinerAddress,
@@ -2844,7 +2848,7 @@ spend_transaction(_Config) ->
 %% GET spend_tx unsigned transaction with an non-present key in request
 unknown_atom_in_spend_tx(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
-    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_node_pubkey(),
+    MinerAddress = get_pubkey(),
     RandAddress = random_hash(),
     Encoded = #{sender_id => MinerAddress,
                 recipient_id => aec_base58c:encode(account_pubkey, RandAddress),
@@ -2888,7 +2892,7 @@ unsigned_tx_positive_test(Data, Params0, HTTPCallFun, NewFun, Pubkey,
     {ok, Tx}.
 
 get_transaction(_Config) ->
-    {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_node_pubkey(),
+    EncodedPubKey = get_pubkey(),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
     TxHashes = add_spend_txs(),
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 2),
@@ -2910,7 +2914,7 @@ get_transaction(_Config) ->
     {ok, 200, #{<<"tx">> := EncodedSpendTx}} = get_spend(Encoded),
     {ok, SpendTxBin} = aec_base58c:safe_decode(transaction, EncodedSpendTx),
     SpendTx = aetx:deserialize_from_binary(SpendTxBin),
-    {ok, SignedSpendTx} = rpc(aec_keys, sign_tx, [SpendTx]),
+    {ok, SignedSpendTx} = aecore_suite_utils:sign_on_node(?NODE, SpendTx),
     TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedSpendTx)),
 
     SerializedSpendTx = aetx_sign:serialize_to_binary(SignedSpendTx),
@@ -2955,7 +2959,6 @@ pending_transactions(_Config) ->
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % still empty
     {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
 
-    %{ok, SenderPubKey} = rpc:call(?NODE, aec_keys, pubkey, [], 5000),
     ReceiverPubKey = random_hash(),
     {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
                   get_accounts_by_pubkey_sut(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
@@ -3002,7 +3005,7 @@ post_correct_tx(_Config) ->
             fee => Fee,
             nonce => Nonce,
             payload => <<"foo">>}),
-    {ok, SignedTx} = rpc(aec_keys, sign_tx, [SpendTx]),
+    {ok, SignedTx} = aecore_suite_utils:sign_on_node(?NODE, SpendTx),
     ExpectedHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
     {ok, 200, #{<<"tx_hash">> := ExpectedHash}} =
         post_transactions_sut(aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx))),
@@ -3021,7 +3024,7 @@ post_broken_tx(_Config) ->
             fee => Fee,
             nonce => Nonce,
             payload => <<"foo">>}),
-    {ok, SignedTx} = rpc(aec_keys, sign_tx, [SpendTx]),
+    {ok, SignedTx} = aecore_suite_utils:sign_on_node(?NODE, SpendTx),
     SignedTxBin = aetx_sign:serialize_to_binary(SignedTx),
 
     {ok, SpendTTLTx} =
@@ -3033,7 +3036,7 @@ post_broken_tx(_Config) ->
             nonce => Nonce,
             ttl => 2,
             payload => <<"too low ttl">>}),
-    {ok, SignedTTLTx} = rpc(aec_keys, sign_tx, [SpendTTLTx]),
+    {ok, SignedTTLTx} = aecore_suite_utils:sign_on_node(?NODE, SpendTTLTx),
     SignedTTLTxBin = aetx_sign:serialize_to_binary(SignedTTLTx),
 
     BrokenTxBin = case SignedTxBin of
@@ -3063,7 +3066,7 @@ post_broken_base58_tx(_Config) ->
                     fee => Fee,
                     nonce => Nonce,
                     payload => <<"foo">>}),
-            {ok, SignedTx} = rpc(aec_keys, sign_tx, [SpendTx]),
+            {ok, SignedTx} = aecore_suite_utils:sign_on_node(?NODE, SpendTx),
             <<_, BrokenHash/binary>> =
                 aec_base58c:encode(transaction,
                                    aetx_sign:serialize_to_binary(SignedTx)),
@@ -3101,7 +3104,7 @@ peer_pub_key(_Config) ->
     ok.
 
 naming_system_manage_name(_Config) ->
-    {ok, PubKey} = rpc(aec_keys, pubkey, []),
+    {_, PubKey} = aecore_suite_utils:sign_keys(?NODE),
     PubKeyEnc   = aec_base58c:encode(account_pubkey, PubKey),
     %% TODO: find out how to craete HTTP path with unicode chars
     %%Name        = <<"詹姆斯詹姆斯.test"/utf8>>,
@@ -5012,7 +5015,7 @@ get_tx_nonce(TxHash) ->
     maps:get(<<"nonce">>, maps:get(<<"tx">>, Tx)).
 
 post_spend_tx(RecipientId, Amount, Fee) ->
-    {ok, Sender} = rpc(aec_keys, pubkey, []),
+    {_, Sender} = aecore_suite_utils:sign_keys(?NODE),
     SenderId = aec_base58c:encode(account_pubkey, Sender),
     post_spend_tx(SenderId, RecipientId, Amount, Fee, <<"foo">>).
 
@@ -5030,8 +5033,12 @@ get_commitment_id(Name, Salt) ->
     http_request(Host, get, "debug/names/commitment-id", [{name, Name}, {salt, Salt}]).
 
 get_balance_at_top() ->
-    {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_node_pubkey(),
+    EncodedPubKey = get_pubkey(),
     get_accounts_by_pubkey_sut(EncodedPubKey).
+
+get_pubkey() ->
+    {_, Pubkey} = aecore_suite_utils:sign_keys(?NODE),
+    aec_base58c:encode(account_pubkey, Pubkey).
 
 get_node_pubkey() ->
     Host = internal_address(),
@@ -5389,7 +5396,7 @@ prepare_for_spending(BlocksToMine) ->
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), BlocksToMine + 1),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
     {ok, 200, _} = get_balance_at_top(), % account present
-    {ok, PubKey} = rpc(aec_keys, pubkey, []),
+    {_, PubKey} = aecore_suite_utils:sign_keys(?NODE),
     {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [PubKey]),
     {PubKey, Nonce}.
 
@@ -5477,7 +5484,7 @@ intersperse([H|T], Delim) ->
 sign_and_post_tx(EncodedUnsignedTx) ->
     {ok, SerializedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedUnsignedTx),
     UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
-    {ok, SignedTx} = rpc(aec_keys, sign_tx, [UnsignedTx]),
+    {ok, SignedTx} = aecore_suite_utils:sign_on_node(?NODE, UnsignedTx),
     SerializedTx = aetx_sign:serialize_to_binary(SignedTx),
     %% Check that we get the correct hash
     TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
