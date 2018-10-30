@@ -514,13 +514,12 @@ enqueue(Kind, Data, PeerIds) ->
     spawn(fun() ->
     case Kind of
         block ->
+            %% Getting blocks to spread is a priority, bypass the gossip queue
             SerBlock = aec_peer_connection:gossip_serialize_block(Data),
-            [ aec_jobs_queues:run(sync_gossip, fun() -> do_forward_block(SerBlock, PId) end)
-              || PId <- PeerIds ];
+            [ do_forward_block(SerBlock, PId) || PId <- PeerIds ];
         tx ->
             SerTx = aec_peer_connection:gossip_serialize_tx(Data),
-            [ aec_jobs_queues:run(sync_gossip, fun() -> do_forward_tx(SerTx, PId) end)
-              || PId <- PeerIds ]
+            aec_jobs_queues:run(sync_gossip, fun() -> [ do_forward_tx(SerTx, PId) || PId <- PeerIds ] end)
     end end).
 
 ping_peer(PeerId) ->

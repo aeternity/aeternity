@@ -579,7 +579,7 @@
                     "properties" : {
                         "counter" : {
                             "type" : "integer",
-                            "default" : 10
+                            "default" : 5
                         },
                         "rate" : {
                             "type" : "integer",
@@ -602,11 +602,11 @@
                     "properties" : {
                         "counter" : {
                             "type" : "integer",
-                            "default" : 0
+                            "default" : 5
                         },
                         "rate" : {
                             "type" : "integer",
-                            "default" : 100
+                            "default" : 0
                         },
                         "max_size" : {
                             "type" : "integer",
@@ -685,11 +685,11 @@
                         },
                         "rate" : {
                             "type" : "integer",
-                            "default" : 150
+                            "default" : 0
                         },
                         "max_size" : {
                             "type" : "integer",
-                            "default" : 100
+                            "default" : 50
                         },
                         "max_time" : {
                             "type" : "integer",
@@ -704,11 +704,11 @@
                     "properties" : {
                         "counter" : {
                             "type" : "integer",
-                            "default" : 10
+                            "default" : 5
                         },
                         "rate" : {
                             "type" : "integer",
-                            "default" : 200
+                            "default" : 0
                         },
                         "max_size" : {
                             "type" : "integer",
