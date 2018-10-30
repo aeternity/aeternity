@@ -13,6 +13,7 @@
         , serialization_type/0
         , serialization_template/1
         , ttl/1
+        , vm_version/1
         , id/1
         , pubkey/1
         , new/2
@@ -26,6 +27,7 @@
         , set_query_fee/2
         , set_query_format/2
         , set_response_format/2
+        , set_vm_version/2
         ]).
 
 %%%===================================================================
@@ -38,16 +40,17 @@
 -type fixed_ttl()    :: {block, aec_blocks:height()}.
 -type ttl()          :: relative_ttl() | fixed_ttl().
 
--type type_format()  :: term().  %% TODO: Fix format types.
+-type type_format()  :: binary().
 
--type query()    :: binary().             %% Don't use native types for queries
--type response() :: term().      %% TODO: Fix response type.
+-type query()    :: binary().
+-type response() :: binary().
 
 -record(oracle, { id              :: aec_id:id()
                 , query_format    :: type_format()
                 , response_format :: type_format()
                 , query_fee       :: amount()
                 , ttl             :: aec_blocks:height()
+                , vm_version      :: non_neg_integer()
                 }).
 
 
@@ -89,6 +92,7 @@ new(RTx, BlockHeight) ->
                , response_format = aeo_register_tx:response_format(RTx)
                , query_fee       = aeo_register_tx:query_fee(RTx)
                , ttl             = TTL
+               , vm_version      = aeo_register_tx:vm_version(RTx)
                },
     assert_fields(O).
 
@@ -102,6 +106,7 @@ serialize(#oracle{} = O) ->
       , {response_format, response_format(O)}
       , {query_fee, query_fee(O)}
       , {ttl, ttl(O)}
+      , {vm_version, vm_version(O)}
       ]).
 
 -spec deserialize(aec_keys:pubkey(), binary()) -> oracle().
@@ -118,12 +123,15 @@ deserialize_from_fields(?ORACLE_VSN, Pubkey,
       [ {query_format, QueryFormat}
       , {response_format, ResponseFormat}
       , {query_fee, QueryFee}
-      , {ttl, TTL}]) ->
+      , {ttl, TTL}
+      , {vm_version, VMVersion}
+      ]) ->
     #oracle{ id              = aec_id:create(oracle, Pubkey)
            , query_format    = QueryFormat
            , response_format = ResponseFormat
            , query_fee       = QueryFee
            , ttl             = TTL
+           , vm_version      = VMVersion
            }.
 
 serialization_template(?ORACLE_VSN) ->
@@ -131,6 +139,7 @@ serialization_template(?ORACLE_VSN) ->
     , {response_format, binary}
     , {query_fee, int}
     , {ttl, int}
+    , {vm_version, int}
     ].
 
 serialization_type() -> ?ORACLE_TYPE.
@@ -140,12 +149,16 @@ serialize_for_client(#oracle{id              = Id,
                              query_format    = QueryFormat,
                              response_format = ResponseFormat,
                              query_fee       = QueryFee,
-                             ttl             = TTL}) ->
+                             ttl             = TTL,
+                             vm_version      = VMVersion
+                            }) ->
     #{ <<"id">>              => aec_base58c:encode(id_hash, Id)
      , <<"query_format">>    => QueryFormat
      , <<"response_format">> => ResponseFormat
      , <<"query_fee">>       => QueryFee
-     , <<"ttl">>             => TTL}.
+     , <<"ttl">>             => TTL
+     , <<"vm_version">>      => VMVersion
+     }.
 
 %%%===================================================================
 %%% Getters
@@ -174,6 +187,10 @@ query_fee(#oracle{query_fee = QueryFee}) ->
 ttl(#oracle{ttl = TTL}) ->
     TTL.
 
+-spec vm_version(oracle()) -> non_neg_integer().
+vm_version(#oracle{vm_version = VMVersion}) ->
+    VMVersion.
+
 %%%===================================================================
 %%% Setters
 
@@ -197,6 +214,10 @@ set_query_fee(X, O) ->
 set_ttl(X, O) ->
     O#oracle{ttl = assert_field(ttl, X)}.
 
+-spec set_vm_version(non_neg_integer(), oracle()) -> oracle().
+set_vm_version(X, O) ->
+    O#oracle{vm_version = assert_field(vm_version, X)}.
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -207,6 +228,7 @@ assert_fields(O) ->
            , {response_format, O#oracle.response_format}
            , {query_fee      , O#oracle.query_fee}
            , {ttl            , O#oracle.ttl}
+           , {vm_version     , O#oracle.vm_version}
            ],
     List1 = [try assert_field(X, Y), [] catch _:X -> X end
              || {X, Y} <- List],
@@ -220,4 +242,5 @@ assert_field(query_format   , X) when is_binary(X) -> X;
 assert_field(response_format, X) when is_binary(X) -> X;
 assert_field(query_fee      , X) when is_integer(X), X >= 0 -> X;
 assert_field(ttl            , X) when is_integer(X), X >= 0 -> X;
+assert_field(vm_version     , X) when is_integer(X), X >= 0 -> X;
 assert_field(Field          , X) -> error({illegal, Field, X}).

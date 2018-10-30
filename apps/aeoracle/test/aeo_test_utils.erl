@@ -83,6 +83,7 @@ register_tx_default_spec(PubKey, State) ->
      , query_format    => <<"string()">>
      , response_format => <<"boolean() | integer()">>
      , ttl             => 0
+     , vm_version      => 0
      }.
 
 %%%===================================================================

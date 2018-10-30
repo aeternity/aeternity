@@ -8,9 +8,12 @@
 -module(aeo_utils).
 
 -export([check_ttl_fee/3,
+         check_vm_version/1,
          ttl_delta/2,
          ttl_expiry/2,
          ttl_fee/2]).
+
+-include_lib("apps/aecontract/src/aecontract.hrl").
 
 -define(ORACLE_TTL_FEE, {1, 1000}). %% One part over a thousand.
 
@@ -48,3 +51,7 @@ ttl_fee(_Size, NBlocks) when is_integer(NBlocks), NBlocks >= 0 ->
                                   0                           -> 0;
                                   X when is_integer(X), X > 0 -> 1
                               end).
+
+check_vm_version(?AEVM_NO_VM) -> ok;
+check_vm_version(?AEVM_01_Sophia_01) -> ok;
+check_vm_version(_) -> {error, bad_vm_version}.

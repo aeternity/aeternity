@@ -2279,7 +2279,7 @@
     },
     "RegisteredOracle" : {
       "type" : "object",
-      "required" : [ "id", "query_fee", "query_format", "response_format", "ttl" ],
+      "required" : [ "id", "query_fee", "query_format", "response_format", "ttl", "vm_version" ],
       "properties" : {
         "id" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -2296,9 +2296,15 @@
         "ttl" : {
           "type" : "integer",
           "format" : "int64"
+        },
+        "vm_version" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
         }
       },
       "example" : {
+        "vm_version" : 0,
         "response_format" : "response_format",
         "id" : { },
         "query_fee" : 0,
@@ -2470,9 +2476,15 @@
         "ttl" : {
           "type" : "integer",
           "format" : "int64"
+        },
+        "vm_version" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
         }
       },
       "example" : {
+        "vm_version" : 0,
         "response_format" : "response_format",
         "account_id" : { },
         "fee" : 1,

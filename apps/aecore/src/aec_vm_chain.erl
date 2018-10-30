@@ -28,7 +28,7 @@
           oracle_query_fee/2,
           oracle_query_format/2,
           oracle_query_response_ttl/3,
-          oracle_register_tx/6,
+          oracle_register_tx/7,
           oracle_register/3,
           oracle_respond_tx/5,
           oracle_respond/3,
@@ -48,6 +48,7 @@
         ]).
 
 -include_lib("apps/aecore/include/blocks.hrl").
+-include_lib("apps/aecontract/src/aecontract.hrl").
 
 -define(NO_INNER_TREES, no_inner_trees).
 
@@ -189,12 +190,17 @@ spend(Tx, State) ->
 
 %%    Oracle
 -spec oracle_register_tx(aec_keys:pubkey(), non_neg_integer(), aeo_oracles:ttl(),
-                         aeso_sophia:type(), aeso_sophia:type(), chain_state()) ->
+                         aeso_sophia:type(), aeso_sophia:type(), pos_integer(),
+                         chain_state()) ->
     {ok, aetx:tx()} | {error, term()}.
-oracle_register_tx(AccountKey, QueryFee, TTL, QFormat, RFormat, State) ->
-    on_chain_only(State, fun() -> oracle_register_tx_(AccountKey, QueryFee, TTL, QFormat, RFormat, State) end).
+oracle_register_tx(AccountKey, QueryFee, TTL, QFormat, RFormat, VMVersion, State) ->
+    on_chain_only(State, fun() -> oracle_register_tx_(AccountKey, QueryFee, TTL,
+                                                      QFormat, RFormat,
+                                                      VMVersion, State)
+                         end).
 
-oracle_register_tx_(AccountKey, QueryFee, TTL, QFormat, RFormat, State) ->
+oracle_register_tx_(AccountKey, QueryFee, TTL, QFormat,
+                    RFormat, VMVersion, State) ->
     Nonce = next_nonce(AccountKey, State),
     %% Note: The nonce of the account is incremented.
     %% This means that if you register an oracle for an account other than
@@ -209,6 +215,7 @@ oracle_register_tx_(AccountKey, QueryFee, TTL, QFormat, RFormat, State) ->
           response_format => BinaryResponseFormat,
           query_fee       => QueryFee,
           oracle_ttl      => TTL,
+          vm_version      => VMVersion,
           ttl             => 0, %% Not used.
           fee             => 0},
     aeo_register_tx:new(Spec).
@@ -337,9 +344,18 @@ oracle_get_answer(OracleId, QueryId, #state{trees = ChainTrees}) ->
                     {value, Oracle} = aeo_state_tree:lookup_oracle(OracleId,
                                                                   aec_trees:oracles(Trees)),
                     ResponseFormat = aeo_oracles:response_format(Oracle),
-                    {ok, Type} = aeso_data:from_binary(typerep,  ResponseFormat),
-                    {ok, Result} = aeso_data:from_binary(Type, Answer),
-                    {ok, {some, Result}}
+                    VMVersion = aeo_oracles:vm_version(Oracle),
+                    case oracle_typerep(VMVersion, ResponseFormat) of
+                        {ok, Type} ->
+                            try aeso_data:from_binary(Type, Answer) of
+                                {ok, Result} -> {ok, {some, Result}};
+                                {error, _} -> {error, bad_answer}
+                            catch _:_ ->
+                                    {error, bad_answer}
+                            end;
+                        {error, bad_typerep} ->
+                            {error, bad_typerep}
+                    end
             end;
         none ->
             {ok, none}
@@ -350,10 +366,21 @@ oracle_get_question(OracleId, QueryId, #state{trees = ChainTrees}) ->
     OraclesTree = aec_trees:oracles(Trees),
     case aeo_state_tree:lookup_query(OracleId, QueryId, OraclesTree) of
         {value, Query} ->
-            {ok, QueryType} = get_query_type(OracleId, OraclesTree),
-            aeso_data:from_binary(QueryType, aeo_query:query(Query));
+            case get_query_type(OracleId, OraclesTree) of
+                {ok, QueryType} ->
+                    try aeso_data:from_binary(QueryType, aeo_query:query(Query)) of
+                        {ok, Question} ->
+                            {ok, Question};
+                        {error, _} ->
+                            {error, bad_question}
+                    catch _:_ ->
+                            {error, bad_question}
+                    end;
+                {error, bad_typerep} ->
+                    {error, bad_typerep}
+            end;
         none ->
-            {ok, none}
+            {error, no_such_question}
     end.
 
 oracle_query_fee(Oracle, #state{trees = ChainTrees}) ->
@@ -371,12 +398,8 @@ oracle_query_format(Oracle, #state{trees = ChainTrees}) ->
     case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
         {value, O} ->
             BinaryFormat = aeo_oracles:query_format(O),
-            try aeso_data:from_binary(typerep, BinaryFormat) of
-                {ok, Format} -> {ok, Format};
-                {error, _} = Error -> Error
-            catch
-                _:_ -> {error, bad_typerep}
-            end;
+            VMVersion = aeo_oracles:vm_version(O),
+            oracle_typerep(VMVersion, BinaryFormat);
         none ->
             {error, no_such_oracle}
     end.
@@ -395,21 +418,29 @@ oracle_response_format(Oracle, #state{trees = ChainTrees}) ->
     Trees = get_on_chain_trees(ChainTrees),
     case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
         {value, O} ->
-            BinaryFormat = aeo_oracles:response_format(O),
-            try aeso_data:from_binary(typerep, BinaryFormat) of
-                {ok, Format} -> {ok, Format};
-                {error, _} = Error -> Error
-            catch
-                _:_ -> {error, bad_typerep}
-            end;
+            oracle_typerep(aeo_oracles:vm_version(O),
+                           aeo_oracles:response_format(O));
         none ->
             {error, no_such_oracle}
     end.
 
+oracle_typerep(?AEVM_NO_VM,_BinaryFormat) ->
+    %% Treat this as a string
+    {ok, string};
+oracle_typerep(?AEVM_01_Sophia_01, BinaryFormat) ->
+    try aeso_data:from_binary(typerep, BinaryFormat) of
+        {ok, Format} -> {ok, Format};
+        {error, _} -> {error, bad_typerep}
+    catch
+        _:_ -> {error, bad_typerep}
+    end.
+
+
 get_query_type(OracleId, OraclesTree) ->
     {value, Oracle} = aeo_state_tree:lookup_oracle(OracleId, OraclesTree),
     QueryFormat     = aeo_oracles:query_format(Oracle),
-    aeso_data:from_binary(typerep, QueryFormat).
+    VMVersion       = aeo_oracles:vm_version(Oracle),
+    oracle_typerep(VMVersion, QueryFormat).
 
 check_account_signature(AKey, CKey, Signature) ->
     check_signature(AKey, CKey, <<AKey/binary, CKey/binary>>, Signature).

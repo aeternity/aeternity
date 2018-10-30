@@ -17,6 +17,7 @@
         ]).
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
+-include_lib("aecontract/src/aecontract.hrl").
 -include("aevm_ae_primops.hrl").
 
 -record(chain, {api, state}).
@@ -321,7 +322,8 @@ oracle_call_register(_Value, Data, #chain{api = API, state = State} = Chain) ->
     case chain_ttl_delta(TTL, Chain) of
         {error, _} = Err -> Err;
         {ok, DeltaTTL = {delta, _}} ->
-            case API:oracle_register_tx(<<Acct:256>>, QFee, TTL, QFormat, RFormat, State) of
+            case API:oracle_register_tx(<<Acct:256>>, QFee, TTL, QFormat,
+                                        RFormat, ?AEVM_01_Sophia_01, State) of
                 {error, _} = Err -> Err;
                 {ok, Tx} ->
                     Callback =
