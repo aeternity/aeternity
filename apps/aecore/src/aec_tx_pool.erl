@@ -647,7 +647,7 @@ pool_db_raw_put(#dbs{db = Db, nonce_db = NDb, gc_db = GCDb},
                 GCHeight, Key, Tx, TxHash) ->
     ets:insert(Db, {Key, Tx}),
     insert_nonce(NDb, Key),
-    enter_tx_gc(GCDb, TxHash, Key, GCHeight + tx_ttl()).
+    enter_tx_gc(GCDb, TxHash, Key, min(GCHeight + tx_ttl(), aetx:ttl(aetx_sign:tx(Tx)))).
 
 insert_nonce(NDb, ?KEY(_, _, Account, Nonce, TxHash)) ->
     ets:insert(NDb, {{Account, Nonce, TxHash}}).
