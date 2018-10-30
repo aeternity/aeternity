@@ -257,6 +257,8 @@ old_encode_call(ContractCode, Function, ArgumentAst) ->
     end.
 
 old_ast_to_erlang({int, _, N}) -> N;
+old_ast_to_erlang({hash, _, <<N:256>>}) -> N;
+old_ast_to_erlang({hash, _, <<Hi:256, Lo:256>>}) -> {Hi, Lo};    %% signature
 old_ast_to_erlang({bool, _, true}) -> 1;
 old_ast_to_erlang({bool, _, false}) -> 0;
 old_ast_to_erlang({string, _, Bin}) -> Bin;
