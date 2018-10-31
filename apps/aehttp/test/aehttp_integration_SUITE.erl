@@ -7,6 +7,7 @@
 %%
 
 -include_lib("stdlib/include/assert.hrl").
+-include_lib("apps/aecontract/src/aecontract.hrl").
 %% common_test exports
 -export(
    [
@@ -4164,7 +4165,8 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                     #{query_format    => SophiaStringType,
                       response_format => SophiaStringType,
                       query_fee       => QueryFee,
-                      query_ttl       => QueryTTL
+                      query_ttl       => QueryTTL,
+                      vm_version      => ?AEVM_01_Sophia_01
                      }),
     OracleQuerySequence =
         fun(Q0, R0) ->

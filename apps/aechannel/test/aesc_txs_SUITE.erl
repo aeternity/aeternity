@@ -4854,7 +4854,9 @@ register_new_oracle(QFormat, RFormat, QueryFee) ->
                 RegTx = aeo_test_utils:register_tx(Oracle,
                                                    #{query_format => QFormat,
                                                      query_fee => QueryFee,
-                                                     response_format => RFormat},
+                                                     response_format => RFormat,
+                                                     vm_version => ?AEVM_01_Sophia_01
+                                                    },
                                                    S),
                 PrivKey = aesc_test_utils:priv_key(Oracle, S),
                 SignedTx = aec_test_utils:sign_tx(RegTx, [PrivKey]),

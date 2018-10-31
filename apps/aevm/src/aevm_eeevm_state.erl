@@ -355,8 +355,13 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
                     {ok, {Prim}} = aeso_data:from_binary({tuple, [word]}, Bin),
                     {ArgTypes, OutType} = aevm_ae_primops:types(Prim, HeapValue, Store, State),
                     DataType = {tuple, [word|ArgTypes]},
-                    {ok, Arg} = aeso_data:heap_to_binary(DataType, Store, HeapValue),
-                    {Arg, OutType, State};
+                    case aevm_ae_primops:check_type_hash(Prim, ArgTypes, OutType, TypeHash) of
+                        ok ->
+                            {ok, Arg} = aeso_data:heap_to_binary(DataType, Store, HeapValue),
+                            {Arg, OutType, State};
+                        error ->
+                            input_error_return(Store, HeapValue, State)
+                    end;
                 false ->
                     case ChainAPI:get_contract_fun_types(TargetKey, ?AEVM_01_Sophia_01,
                                                          TypeHash, ChainState) of
@@ -365,13 +370,16 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
                             {ok, Arg} = aeso_data:heap_to_binary(DataType, Store, HeapValue),
                             {Arg, OutType, State};
                         {error, _Err} ->
-                            %% This will fail later anyway.
-                            DataType = {tuple, [word]},
-                            {ok, Arg} = aeso_data:heap_to_binary(DataType, Store, HeapValue),
-                            {Arg, word, set_gas(0, State)}
+                            input_error_return(Store, HeapValue, State)
                     end
             end
     end.
+
+input_error_return(Store, HeapValue, State) ->
+    %% This will fail later anyway.
+    DataType = {tuple, [word]},
+    {ok, Arg} = aeso_data:heap_to_binary(DataType, Store, HeapValue),
+    {Arg, word, set_gas(0, State)}.
 
 -spec write_heap_value(aeso_data:heap_value(), state()) -> {non_neg_integer(), state()}.
 write_heap_value(HeapValue, State) ->

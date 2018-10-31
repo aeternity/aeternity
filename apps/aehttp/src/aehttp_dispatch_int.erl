@@ -387,7 +387,7 @@ handle_request_('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
                  read_required_params([account_id, {query_format, query_format},
                                        {response_format, response_format},
                                        query_fee, oracle_ttl, fee]),
-                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 read_optional_params([{ttl, ttl, '$no_value'}, {vm_version, vm_version, 0}]),
                  base58_decode([{account_id, account_id, {id_hash, [account_pubkey]}}]),
                  get_nonce_from_account_id(account_id),
                  ttl_decode(oracle_ttl),

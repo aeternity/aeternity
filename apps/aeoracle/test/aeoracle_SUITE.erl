@@ -22,9 +22,11 @@
         , query_oracle/1
         , query_oracle_negative/1
         , query_oracle_negative_dynamic_fee/1
+        , query_oracle_type_check/1
         , query_response/1
         , query_response_negative/1
         , query_response_negative_dynamic_fee/1
+        , query_response_type_check/1
         , register_oracle/1
         , register_oracle_negative/1
         , register_oracle_negative_dynamic_fee/1
@@ -35,6 +37,7 @@
 
 -include_lib("apps/aecore/include/blocks.hrl").
 -include_lib("apps/aeoracle/include/oracle_txs.hrl").
+-include_lib("apps/aecontract/src/aecontract.hrl").
 
 %%%===================================================================
 %%% Common test framework
@@ -57,9 +60,11 @@ groups() ->
                                  , query_oracle
                                  , query_oracle_negative
                                  , query_oracle_negative_dynamic_fee
+                                 , query_oracle_type_check
                                  , query_response
                                  , query_response_negative
                                  , query_response_negative_dynamic_fee
+                                 , query_response_type_check
                                  ]}
     , {state_tree, [ prune_oracle
                    , prune_oracle_extend
@@ -102,6 +107,13 @@ register_oracle_negative(_Cfg) ->
     %% Test too low TTL
     RTx5 = aeo_test_utils:register_tx(PubKey, #{ttl => 1}, S1),
     {error, ttl_expired} = aetx:check(RTx5, Trees, aetx_env:set_height(Env, 2)),
+
+    %% Test wrong VM version
+    RTx6 = aeo_test_utils:register_tx(PubKey, #{vm_version => 42}, S1),
+    RTx7 = aeo_test_utils:register_tx(PubKey, #{vm_version => ?AEVM_01_Solidity_01}, S1),
+    {error, bad_vm_version} = aetx:check(RTx6, Trees, aetx_env:set_height(Env, 2)),
+    {error, bad_vm_version} = aetx:check(RTx7, Trees, aetx_env:set_height(Env, 2)),
+
     ok.
 
 register_oracle_negative_dynamic_fee(_Cfg) ->
@@ -317,6 +329,38 @@ query_oracle_negative_dynamic_fee(Cfg) ->
     ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 1001}, fee => 3 + MinFee})),
     ok.
 
+query_oracle_type_check(_Cfg) ->
+    RFmt = aeso_data:to_binary(word),
+    F = fun(QFmt, Query, VMVersion) ->
+                {OracleKey, S}  = register_oracle([], #{vm_version => VMVersion,
+                                                        query_format => QFmt,
+                                                        response_format => RFmt
+                                                       }),
+                OracleId        = aec_id:create(oracle, OracleKey),
+                {SenderKey, S2} = aeo_test_utils:setup_new_account(S),
+                Trees           = aeo_test_utils:trees(S2),
+                CurrHeight      = ?ORACLE_QUERY_HEIGHT,
+                Env             = aetx_env:tx_env(CurrHeight),
+                Tx = aeo_test_utils:query_tx(SenderKey, OracleId, #{query => Query}, S2),
+                aetx:check(Tx, Trees, Env)
+        end,
+    Int = aeso_data:to_binary(1),
+    IntFmt = aeso_data:to_binary(word),
+    String = aeso_data:to_binary(<<"foo">>),
+    StringFmt = aeso_data:to_binary(string),
+    ?assertEqual({error, bad_format}, F(StringFmt, Int, ?AEVM_01_Sophia_01)),
+    ?assertEqual({error, bad_format}, F(StringFmt, <<123>>, ?AEVM_01_Sophia_01)),
+    ?assertEqual({error, bad_format}, F(IntFmt, <<>>, ?AEVM_01_Sophia_01)),
+    ?assertEqual({error, bad_format}, F(IntFmt, String, ?AEVM_01_Sophia_01)),
+    ?assertMatch({ok, _},             F(IntFmt, Int, ?AEVM_01_Sophia_01)),
+    ?assertMatch({ok, _},             F(StringFmt, String, ?AEVM_01_Sophia_01)),
+    %% For ?AEVM_NO_VM the format is always ok
+    ?assertMatch({ok, _},             F(StringFmt, String, ?AEVM_NO_VM)),
+    ?assertMatch({ok, _},             F(IntFmt, String, ?AEVM_NO_VM)),
+    ?assertMatch({ok, _},             F(StringFmt, Int, ?AEVM_NO_VM)),
+    ?assertMatch({ok, _},             F(IntFmt, String, ?AEVM_NO_VM)),
+    ok.
+
 query_oracle(Cfg) ->
     query_oracle(Cfg, #{}, #{}).
 
@@ -340,7 +384,7 @@ query_oracle(Cfg, RegTxOpts, QueryTxOpts) ->
     {OracleKey, ID, S3}.
 
 %%%===================================================================
-%%% Query resoponse
+%%% Query response
 %%%===================================================================
 -define(ORACLE_RSP_HEIGHT, 5).
 query_response_negative(Cfg) ->
@@ -422,6 +466,38 @@ query_response(Cfg, QueryOpts) ->
     true = aeo_query:is_closed(OIO),
 
     {OracleKey, ID, S2}.
+
+query_response_type_check(_Cfg) ->
+    QFmt  = aeso_data:to_binary(string),
+    Query = aeso_data:to_binary(<<"who?">>),
+    F = fun(RFmt, Resp, VMVersion) ->
+                RegisterOpts = #{vm_version => VMVersion,
+                                 query_format => QFmt,
+                                 response_format => RFmt},
+                QueryOpts = #{query => Query},
+                {OracleKey, ID, S} = query_oracle([], RegisterOpts, QueryOpts),
+                Trees           = aeo_test_utils:trees(S),
+                CurrHeight      = ?ORACLE_RSP_HEIGHT,
+                Env             = aetx_env:tx_env(CurrHeight),
+                Tx = aeo_test_utils:response_tx(OracleKey, ID, Resp, S),
+                aetx:check(Tx, Trees, Env)
+        end,
+    Int = aeso_data:to_binary(1),
+    IntFmt = aeso_data:to_binary(word),
+    String = aeso_data:to_binary(<<"foo">>),
+    StringFmt = aeso_data:to_binary(string),
+    ?assertEqual({error, bad_format}, F(StringFmt, Int, ?AEVM_01_Sophia_01)),
+    ?assertEqual({error, bad_format}, F(StringFmt, <<123>>, ?AEVM_01_Sophia_01)),
+    ?assertEqual({error, bad_format}, F(IntFmt, <<>>, ?AEVM_01_Sophia_01)),
+    ?assertEqual({error, bad_format}, F(IntFmt, String, ?AEVM_01_Sophia_01)),
+    ?assertMatch({ok, _},             F(IntFmt, Int, ?AEVM_01_Sophia_01)),
+    ?assertMatch({ok, _},             F(StringFmt, String, ?AEVM_01_Sophia_01)),
+    %% For ?AEVM_NO_VM the format is always ok
+    ?assertMatch({ok, _},             F(StringFmt, String, ?AEVM_NO_VM)),
+    ?assertMatch({ok, _},             F(IntFmt, String, ?AEVM_NO_VM)),
+    ?assertMatch({ok, _},             F(StringFmt, Int, ?AEVM_NO_VM)),
+    ?assertMatch({ok, _},             F(IntFmt, String, ?AEVM_NO_VM)),
+    ok.
 
 %%%===================================================================
 %%% Pruning tests

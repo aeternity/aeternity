@@ -57,6 +57,7 @@
                             TTL :: aeo_oracles:ttl(),
                             DecodedQType :: aeso_sophia:type(),
                             DecodedRType :: aeso_sophia:type(),
+                            VMVersion :: pos_integer(),
                             ChainState :: chain_state()) ->
     {ok, aetx:tx()} | {error, term()}.
 

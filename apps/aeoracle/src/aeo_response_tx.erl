@@ -128,7 +128,7 @@ check(#oracle_response_tx{nonce = Nonce, query_id = QueryId,
             QueryFee         = aeo_query:fee(I),
             Checks =
                 [fun() -> check_response_ttl(ResponseTTL, QueryResponseTTL) end,
-                 fun() -> check_oracle(OraclePubKey, Trees) end,
+                 fun() -> check_oracle(OraclePubKey, Trees, Tx) end,
                  fun() -> check_query(OraclePubKey, I) end |
                  case aetx_env:context(Env) of
                      aetx_contract -> []; %% TODO: Handle fees from contracts right.
@@ -184,7 +184,7 @@ serialize(#oracle_response_tx{oracle_id    = OracleId,
     [ {oracle_id, OracleId}
     , {nonce, Nonce}
     , {query_id, QueryId}
-    , {response, response_to_binary(Response)}
+    , {response, Response}
     , {response_ttl_type, ?ttl_delta_int}
     , {response_ttl_value, ResponseTTLValue}
     , {fee, Fee}
@@ -259,17 +259,16 @@ check_query(OraclePubKey, I) ->
         false -> {error, oracle_does_not_match_query_id}
     end.
 
-check_oracle(OraclePubKey, Trees) ->
+check_oracle(OraclePubKey, Trees, RTx) ->
     OraclesTree  = aec_trees:oracles(Trees),
     case aeo_state_tree:lookup_oracle(OraclePubKey, OraclesTree) of
-        {value, _Oracle} -> ok;
+        {value, Oracle} -> check_response_format(Oracle, RTx);
         none -> {error, oracle_does_not_exist}
     end.
 
-response_to_binary(Response) when is_atom(Response) ->
-    atom_to_binary(Response, utf8);
-response_to_binary(Response) when is_integer(Response) ->
-    list_to_binary(integer_to_list(Response));
-response_to_binary(Response) ->
-    Response.
+check_response_format(O, RTx) ->
+    VMVersion =  aeo_oracles:vm_version(O),
+    Format = aeo_oracles:response_format(O),
+    Content = response(RTx),
+    aeo_utils:check_format(VMVersion, Format, Content).
 

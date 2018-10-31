@@ -1,3 +1,4 @@
+-define(AEVM_NO_VM,           16#00).
 -define(AEVM_01_Sophia_01,    16#01).
 -define(AEVM_01_Solidity_01,  16#02).
 -define(FTWVM_01_Sophia_02,   16#03).

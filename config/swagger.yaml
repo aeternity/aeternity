@@ -1893,12 +1893,17 @@ definitions:
       ttl:
         type: integer
         format: int64
+      vm_version:
+        type: integer
+        format: int64
+        minimum: 0
     required:
       - id
       - query_format
       - response_format
       - query_fee
       - ttl
+      - vm_version
   OracleQuery:
     type: object
     properties:
@@ -1994,6 +1999,10 @@ definitions:
       ttl:
         type: integer
         format: int64
+      vm_version:
+        type: integer
+        format: int64
+        minimum: 0
     required:
       - query_format
       - response_format
