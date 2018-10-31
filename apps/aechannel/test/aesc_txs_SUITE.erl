@@ -137,7 +137,7 @@
          fp_use_onchain_name_resolution/1,
          fp_use_onchain_enviroment/1,
          fp_use_remote_call/1,
-         fp_use_call_change_onchain/1
+         fp_use_onchain_contract/1
         ]).
 
 % negative force progress
@@ -315,8 +315,7 @@ groups() ->
        fp_use_onchain_oracle,
        fp_use_onchain_name_resolution,
        fp_use_onchain_enviroment,
-       fp_use_remote_call,
-       fp_use_call_change_onchain
+       fp_use_remote_call
       ]},
      {force_progress_negative, [sequence],
       [fp_closed_channel,
@@ -338,6 +337,7 @@ groups() ->
 
        fp_insufficent_tokens,
 
+       fp_use_onchain_contract,
        % FP resets locked_until timer
        fp_settle_too_soon,
 
@@ -2580,7 +2580,7 @@ fp_use_remote_call(Cfg) ->
     ok.
 
 
-fp_use_call_change_onchain(Cfg) ->
+fp_use_onchain_contract(Cfg) ->
     FPRound = 20,
     LockPeriod = 10,
     FPHeight0 = 20,
