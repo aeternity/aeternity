@@ -337,18 +337,17 @@ int_get_candidate(MaxGas, BlockHash, #dbs{db = Db} = DBs) ->
     {ok, Trees} = aec_chain:get_block_state(BlockHash),
     {ok, Header} = aec_chain:get_header(BlockHash),
     lager:debug("size(Db) = ~p", [ets:info(Db, size)]),
-    case int_get_candidate(Db, MaxGas, Trees, Header, DBs) of
-        {ok, []} ->
-            int_get_candidate(DBs#dbs.visited_db, MaxGas, Trees, Header, DBs);
-        Other ->
-            Other
-    end.
+    {ok, RemGas, Acc} = int_get_candidate(Db, MaxGas, Trees, Header, DBs,
+                                          gb_trees:empty()),
+    {ok, _, Acc1} = int_get_candidate(
+                      DBs#dbs.visited_db, RemGas, Trees, Header, DBs, Acc),
+    {ok, gb_trees:values(Acc1)}.
 
-int_get_candidate(Db, MaxGas, Trees, Header, DBs) ->
+int_get_candidate(Db, MaxGas, Trees, Header, DBs, Acc) ->
     Pat = [{ '_', [], ['$_'] }],
     int_get_candidate_fold(MaxGas, Db, DBs, ets:select(Db, Pat, 20),
                            {account_trees, aec_trees:accounts(Trees)},
-                           aec_headers:height(Header), gb_trees:empty()).
+                           aec_headers:height(Header), Acc).
 
 int_get_candidate_fold(Gas, Db, Dbs = #dbs{}, {Txs, Cont},
                        AccountsTree, Height, Acc) ->
@@ -360,9 +359,9 @@ int_get_candidate_fold(Gas, Db, Dbs = #dbs{}, {Txs, Cont},
           end, {Gas, Acc}, Txs),
     int_get_candidate_fold(RemGas, Db, Dbs, ets:select(Cont), AccountsTree,
                            Height, NewAcc);
-int_get_candidate_fold(_Gas, _Db, _Dbs, '$end_of_table', _AccountsTree,
+int_get_candidate_fold(RemGas, _Db, _Dbs, '$end_of_table', _AccountsTree,
                        _Height, Acc) ->
-    {ok, gb_trees:values(Acc)}.
+    {ok, RemGas, Acc}.
 
 int_get_candidate_({?KEY(_, _, Account, Nonce, _) = Key, Tx},
                    Gas, Db, Dbs, AccountsTree, Height, Acc) ->
