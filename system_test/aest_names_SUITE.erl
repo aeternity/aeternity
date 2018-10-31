@@ -114,10 +114,10 @@ test_name_registration(Cfg) ->
     wait_for_startup([node1], 4, Cfg),
 
     %% Generate tokens for Mike
-    wait_for_value({balance, MPubKey, 1000}, [node1], 10000, Cfg),
+    wait_for_value({balance, MPubKey, 1000000}, [node1], 10000, Cfg),
 
     %% Give some tokens to the registrar account
-    post_spend_tx(node1, ?MIKE, ?RICHARD, 1, #{ amount => 200 }),
+    post_spend_tx(node1, ?MIKE, ?RICHARD, 1, #{ amount => 600000 }),
     wait_for_value({balance, RPubKey, 200}, [node1], 10000, Cfg),
 
     {ok, 404, #{ reason := <<"Name not found">> }} =
@@ -127,7 +127,7 @@ test_name_registration(Cfg) ->
     CommitmentHash = aens_hash:commitment_hash(Name, NameSalt),
     #{ tx_hash := PreClaimTxHash } = post_name_preclaim_tx(node1, ?RICHARD, CommitmentHash, #{
         nonce => 1,
-        fee   => 10
+        fee   => 20000
     }),
     aest_nodes:wait_for_value({txs_on_chain, [PreClaimTxHash]}, [node1], 10000, []),
 
@@ -139,7 +139,7 @@ test_name_registration(Cfg) ->
         nonce     => 2,
         name      => Name,
         name_salt => NameSalt,
-        fee       => 10
+        fee       => 20000
     }),
     aest_nodes:wait_for_value({txs_on_chain, [ClaimTxHash]}, [node1], 10000, []),
 
@@ -158,7 +158,7 @@ test_name_registration(Cfg) ->
         name_ttl   => 100,
         pointers   => Pointers,
         client_ttl => 100,
-        fee        => 10
+        fee        => 20000
     }),
     aest_nodes:wait_for_value({txs_on_chain, [UpdateTxHash]}, [node1], 10000, []),
 
@@ -176,7 +176,7 @@ test_name_registration(Cfg) ->
     %% Revoke the name
     #{ tx_hash := RevokeTxHash } = post_name_revoke_tx(node1, ?RICHARD, Name, #{
         nonce => 4,
-        fee   => 10
+        fee   => 20000
     }),
     aest_nodes:wait_for_value({txs_on_chain, [RevokeTxHash]}, [node1], 10000, []),
 
@@ -201,11 +201,11 @@ test_name_transfer(Cfg) ->
     wait_for_startup([node1], 4, Cfg),
 
     %% Generate tokens for Mike
-    wait_for_value({balance, MPubKey, 1000}, [node1], 10000, Cfg),
+    wait_for_value({balance, MPubKey, 2000000}, [node1], 10000, Cfg),
 
     %% Give some tokens to the registrar accounts
-    post_spend_tx(node1, ?MIKE, ?RICHARD, 1, #{ amount => 200 }),
-    post_spend_tx(node1, ?MIKE, ?ROBERT, 2, #{ amount => 200 }),
+    post_spend_tx(node1, ?MIKE, ?RICHARD, 1, #{ amount => 600000 }),
+    post_spend_tx(node1, ?MIKE, ?ROBERT, 2, #{ amount => 600000 }),
     wait_for_value({balance, RPubKey1, 200}, [node1], 10000, Cfg),
     wait_for_value({balance, RPubKey2, 200}, [node1], 10000, Cfg),
 
@@ -213,7 +213,7 @@ test_name_transfer(Cfg) ->
     CommitmentHash = aens_hash:commitment_hash(Name, NameSalt),
     #{ tx_hash := PreClaimTxHash } = post_name_preclaim_tx(node1, ?RICHARD, CommitmentHash, #{
         nonce => 1,
-        fee   => 10
+        fee   => 20000
     }),
     aest_nodes:wait_for_value({txs_on_chain, [PreClaimTxHash]}, [node1], 10000, []),
 
@@ -222,14 +222,14 @@ test_name_transfer(Cfg) ->
         nonce     => 2,
         name      => Name,
         name_salt => NameSalt,
-        fee       => 10
+        fee       => 20000
     }),
     aest_nodes:wait_for_value({txs_on_chain, [ClaimTxHash]}, [node1], 10000, []),
 
     %% Transfer the name to robert
     #{ tx_hash := TransferTxHash } = post_name_transfer_tx(node1, ?RICHARD, ?ROBERT, Name, #{
         nonce => 3,
-        fee   => 10
+        fee   => 20000
     }),
     aest_nodes:wait_for_value({txs_on_chain, [TransferTxHash]}, [node1], 10000, []),
 
@@ -239,14 +239,14 @@ test_name_transfer(Cfg) ->
         name_ttl   => 100,
         pointers   => [],
         client_ttl => 100,
-        fee        => 10
+        fee        => 20000
     }),
     aest_nodes:wait_for_value({txs_on_chain, [UpdateTxHash]}, [node1], 10000, []),
 
     %% And revoke it
     #{ tx_hash := RevokeTxHash } = post_name_revoke_tx(node1, ?ROBERT, Name, #{
         nonce => 2,
-        fee   => 10
+        fee   => 20000
     }),
     aest_nodes:wait_for_value({txs_on_chain, [RevokeTxHash]}, [node1], 10000, []),
 

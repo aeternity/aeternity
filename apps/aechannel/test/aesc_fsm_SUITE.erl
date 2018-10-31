@@ -128,8 +128,8 @@ init_per_group(_Group, Config) ->
             Responder = prep_responder(Initiator, dev1),
             [{initiator, Initiator},
              {responder, Responder},
-             {initiator_amount, 50},
-             {responder_amount, 50}
+             {initiator_amount, 1000000},
+             {responder_amount, 1000000}
              | Config]
         end
     catch
@@ -569,7 +569,7 @@ close_solo_tx(#{ fsm        := Fsm
               , payload    => Payload
               , poi        => PoI
               , ttl        => TTL
-              , fee        => 3
+              , fee        => 30000
               , nonce      => Nonce },
     {ok, _Tx} = aesc_close_solo_tx:new(TxSpec).
 
@@ -831,7 +831,7 @@ create_channel_on_port(Port) ->
     I = prep_initiator(Node),
     R = prep_responder(I, Node),
     Cfg = [{port, Port}, {initiator, I}, {responder, R},
-           {initiator_amount, 50}, {responder_amount, 50}, ?SLOGAN],
+           {initiator_amount, 500000}, {responder_amount, 500000}, ?SLOGAN],
     create_channel_(Cfg, get_debug(Cfg)).
 
 create_channel_(Cfg) ->
@@ -843,7 +843,7 @@ create_channel_(Cfg, Debug) ->
     create_channel_from_spec(I, R, Spec, Port, Debug).
 
 channel_spec(Cfg) ->
-    channel_spec(Cfg, 3, 2).
+    channel_spec(Cfg, 300000, 200000).
 
 channel_spec(Cfg, ChannelReserve, PushAmount) ->
     I = ?config(initiator, Cfg),
@@ -1147,7 +1147,7 @@ prep_responder(#{pub := IPub, balance := IBal} = _Initiator, Node) ->
     NodeName = aecore_suite_utils:node_name(Node),
     #{ public := Pub, secret := Priv } = enacl:sign_keypair(),
     Amount = IBal div 10,
-    {ok, SignedTx} = aecore_suite_utils:spend(NodeName, IPub, Pub, Amount),
+    {ok, SignedTx} = aecore_suite_utils:spend(NodeName, IPub, Pub, Amount, 20000),
     ok = wait_for_signed_transaction_in_block(Node, SignedTx),
     {ok, Amount} = rpc(Node, aehttp_logic, get_account_balance, [Pub]),
     #{role => responder,

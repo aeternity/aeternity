@@ -66,7 +66,7 @@ insert_key_pair(Pub, Priv, S) ->
 -define(PRIV_SIZE, 32).
 
 setup_new_account(State) ->
-    setup_new_account(1000, State).
+    setup_new_account(1000000, State).
 
 set_account_balance(PubKey, NewBalance, State) ->
     A        = get_account(PubKey, State),
@@ -121,7 +121,7 @@ preclaim_tx_spec(PubKey, Commitment, Spec0, State) ->
 
 preclaim_tx_default_spec(PubKey, State) ->
     #{nonce => try next_nonce(PubKey, State) catch _:_ -> 0 end,
-      fee   => 3}.
+      fee   => 50000}.
 
 %%%===================================================================
 %%% Claim tx
@@ -141,7 +141,7 @@ claim_tx_spec(PubKey, Name, NameSalt, Spec0, State) ->
 
 claim_tx_default_spec(PubKey, State) ->
     #{nonce => try next_nonce(PubKey, State) catch _:_ -> 0 end,
-      fee   => 3}.
+      fee   => 50000}.
 
 %%%===================================================================
 %%% Update tx
@@ -166,7 +166,7 @@ update_tx_default_spec(PubKey, State) ->
       name_ttl   => 20000,
       pointers   => [aens_pointer:new(<<"key">>, aec_id:create(account, <<123:256>>))],
       client_ttl => 60000,
-      fee        => 3}.
+      fee        => 50000}.
 
 %%%===================================================================
 %%% Transfer tx
@@ -186,7 +186,7 @@ transfer_tx_spec(PubKey, NameHash, RecipientAccount, Spec0, State) ->
 
 transfer_tx_default_spec(PubKey, State) ->
     #{nonce => try next_nonce(PubKey, State) catch _:_ -> 0 end,
-      fee   => 3}.
+      fee   => 50000}.
 
 %%%===================================================================
 %%% Revoke tx
@@ -205,5 +205,5 @@ revoke_tx_spec(PubKey, NameHash, Spec0, State) ->
 
 revoke_tx_default_spec(PubKey, State) ->
     #{nonce => try next_nonce(PubKey, State) catch _:_ -> 0 end,
-      fee   => 3}.
+      fee   => 50000}.
 

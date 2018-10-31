@@ -89,8 +89,8 @@ siblings_on_key_block(Config) ->
     Account2 = #{ pubkey := PK2 } = new_keypair(),
 
     ct:pal("Setting up accounts"),
-    {ok, Tx0a} = add_spend_tx(N1, 100000, 1, 1, 10, patron(), PK1),
-    {ok, Tx0b} = add_spend_tx(N1, 100000, 1, 2, 10, patron(), PK2),
+    {ok, Tx0a} = add_spend_tx(N1, 1000000, 20000, 1, 10, patron(), PK1),
+    {ok, Tx0b} = add_spend_tx(N1, 1000000, 20000, 2, 10, patron(), PK2),
 
     {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [Tx0a, Tx0b], 5),
 
@@ -118,9 +118,9 @@ siblings_on_micro_block(Config) ->
     Account3 = #{ pubkey := PK3 } = new_keypair(),
 
     ct:pal("Setting up accounts"),
-    {ok, Tx0a} = add_spend_tx(N1, 100000, 1, 1, 10, patron(), PK1),
-    {ok, Tx0b} = add_spend_tx(N1, 100000, 1, 2, 10, patron(), PK2),
-    {ok, Tx0c} = add_spend_tx(N1, 100000, 1, 3, 10, patron(), PK3),
+    {ok, Tx0a} = add_spend_tx(N1, 100000, 20000, 1, 10, patron(), PK1),
+    {ok, Tx0b} = add_spend_tx(N1, 100000, 20000, 2, 10, patron(), PK2),
+    {ok, Tx0c} = add_spend_tx(N1, 100000, 20000, 3, 10, patron(), PK3),
 
     Txs = [Tx0a, Tx0b, Tx0c],
     {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, Txs, 5),
@@ -136,7 +136,7 @@ ensure_top_is_a_micro(_Node,_Account, Nonce) when Nonce > 5 ->
     error(could_not_ensure_micro_top);
 ensure_top_is_a_micro(Node, Account, Nonce) ->
     %% We want to make a top that is a micro block
-    {ok, _Tx1} = add_spend_tx(Node, 1000, 1,  1,  10, Account, new_pubkey()),
+    {ok, _Tx1} = add_spend_tx(Node, 1000, 20000,  1,  10, Account, new_pubkey()),
     {ok, _} = aecore_suite_utils:mine_micro_blocks(Node, 1),
     Top = rpc:call(Node, aec_chain, top_block, []),
     case aec_blocks:type(Top) of
@@ -157,12 +157,12 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
 
     ct:pal("Starting to test fraud"),
     %% Add a transaction and create the first micro block
-    {ok, _Tx1} = add_spend_tx(N1, 1000, 1,  1,  10, Account1, new_pubkey()),
+    {ok, _Tx1} = add_spend_tx(N1, 1000, 17000,  1,  10, Account1, new_pubkey()),
     {ok, Micro1, _} =  rpc:call(N1, aec_block_micro_candidate, create, [TopBlock]),
     {ok, Micro1S} = rpc:call(N1, aec_keys, sign_micro_block, [Micro1]),
 
     %% Add another transaction and create the second micro block
-    {ok, _Tx2} = add_spend_tx(N1, 1000, 1,  2,  10, Account1, new_pubkey()),
+    {ok, _Tx2} = add_spend_tx(N1, 1000, 17000,  2,  10, Account1, new_pubkey()),
     {ok, Micro2, _} =  rpc:call(N1, aec_block_micro_candidate, create, [TopBlock]),
     {ok, Micro2S} = rpc:call(N1, aec_keys, sign_micro_block, [Micro2]),
 
@@ -174,7 +174,7 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
     {ok, [Key2]} = aecore_suite_utils:mine_key_blocks(N2, 1),
 
     %% Now we need a micro block to report the fraud in.
-    {ok, _} = add_spend_tx(N2, 1000, 1,  1,  10, Account2, new_pubkey()),
+    {ok, _} = add_spend_tx(N2, 1000, 17000,  1,  10, Account2, new_pubkey()),
     {ok, MicroFraud, _} = rpc:call(N2, aec_block_micro_candidate, create, [Key2]),
     {ok, MicroFraudS} = rpc:call(N2, aec_keys, sign_micro_block, [MicroFraud]),
 
@@ -191,7 +191,7 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
     end,
 
     %% Manually add the report and check that the fraud would not be reported again.
-    {ok, _} = add_spend_tx(N2, 1000, 1,  2,  10, Account2, new_pubkey()),
+    {ok, _} = add_spend_tx(N2, 1000, 17000,  2,  10, Account2, new_pubkey()),
     ok = rpc:call(N2, aec_conductor, post_block, [MicroFraudS]),
     {ok, MicroNoFraud, _} = rpc:call(N2, aec_block_micro_candidate, create, [MicroFraudS]),
     ?assertEqual(no_fraud, aec_blocks:pof(MicroNoFraud)),
@@ -218,11 +218,11 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
     %%                                                                               + 1 fraud reward.
     MR = aec_governance:block_mine_reward(),
     FR = aec_governance:fraud_report_reward(),
-    case Bal1 >= (N1KeyBlocksCount - 1) * MR andalso Bal1 < (N1KeyBlocksCount - 1) * MR + 10 of %% should get some fees
+    case Bal1 >= (N1KeyBlocksCount - 1) * MR andalso Bal1 < (N1KeyBlocksCount - 1) * MR + 100000 of %% should get some fees
         true -> ok;
         false -> error({bad_balance1, Bal1})
     end,
-    case Bal2 >= (N2KeyBlocksCount - 2) * MR + FR andalso Bal2 < (N2KeyBlocksCount - 2) * MR + FR + 10 of
+    case Bal2 >= (N2KeyBlocksCount - 2) * MR + FR andalso Bal2 < (N2KeyBlocksCount - 2) * MR + FR + 100000 of
         true -> ok;
         false -> error({bad_balance2, Bal2})
     end,

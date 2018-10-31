@@ -42,7 +42,7 @@
 
 %=== COMMON TEST FUNCTIONS =====================================================
 
-suite() -> 
+suite() ->
     [{timetrap, {minutes, 30}}].
 
 %% Hard to switch mining on and off. Therefore a test that starts with first filling the mempool
@@ -98,10 +98,10 @@ many_spend_txs(Cfg) ->
                     config  => #{persist => true},
                     mining  => #{autostart => false}
                   }], Cfg),
-    
+
     %% Load many transactions to node3 and then sync transactions to a mining node.
     %% Transactions sync is faster that transactions posting and limit on http clients no issue
-    
+
     %% This means we always create micro blocks in first generation (after genesis block)
     %% That is a sligtly unrealistic situation, but if we first mine a few key blocks,
     %% then this test takes ages.
@@ -124,9 +124,9 @@ many_spend_txs(Cfg) ->
     LastTxHash = lists:last(TxHashes),
 
     %% Check that the valid transactions made it to the chain.
-    #{node1 := [{_Hash, Height}]} = 
+    #{node1 := [{_Hash, Height}]} =
         wait_for_value({txs_on_chain, [LastTxHash]},
-                   [node1], 10 * ?MINING_TIMEOUT, [{key_blocks, 0} | Cfg]),  
+                   [node1], 10 * ?MINING_TIMEOUT, [{key_blocks, 0} | Cfg]),
                                                   %% don't wait for extra key blocks
     ct:log("On chain at height = ~p", [Height]),
 
@@ -146,7 +146,7 @@ many_spend_txs(Cfg) ->
     FoundNode2 = find_txs(node2, TxHashes, #{}, erlang:system_time(seconds) + 200),  %% around 10 micro blocks
     case FoundNode2 == FoundNode3 of
         true -> ok;
-        false ->  
+        false ->
             %% may be different if we had a fork!
             {skip, unlikely_but_we_have_mined_a_fork}
     end.
@@ -160,16 +160,16 @@ find_txs(Node, [TxHash | TxHashes], Found, Deadline) ->
     case Deadline - erlang:system_time(seconds) > 0 of
         true ->
              case aest_nodes:request(Node, 'GetTransactionByHash', #{hash => TxHash}) of
-                 {ok, 200, #{ block_hash := MBHash}} -> 
+                 {ok, 200, #{ block_hash := MBHash}} ->
                      Prev = maps:get(MBHash, Found, 0),
-                     find_txs(Node, TxHashes, maps:put(MBHash, Prev + 1, Found), Deadline); 
-                 _ -> 
+                     find_txs(Node, TxHashes, maps:put(MBHash, Prev + 1, Found), Deadline);
+                 _ ->
                      find_txs(Node, TxHashes ++ [TxHash], Found, Deadline)
              end;
         false ->
             error({timeout, Found})
     end.
-            
+
 
 
 add_spend_txs(Node, SenderAcct, N, NonceStart) ->
@@ -191,6 +191,6 @@ add_many_spend_tx(Node, SenderAcct, [Nonce|Nonces], Acc) ->
 add_spend_tx(Node, Sender, Nonce) ->
     %% create new receiver
     #{ public := RecvPubKey, secret := _RecvSecKey } =  enacl:sign_keypair(),
-    #{ tx_hash := TxHash} = post_spend_tx(Node, Sender, #{pubkey => RecvPubKey}, Nonce, #{amount => 1, fee => 1}),
+    #{ tx_hash := TxHash} = post_spend_tx(Node, Sender, #{pubkey => RecvPubKey}, Nonce, #{amount => 1, fee => 20000}),
     {Nonce, TxHash}.
 

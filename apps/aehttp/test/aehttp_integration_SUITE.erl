@@ -640,7 +640,7 @@ init_per_group(on_micro_block = Group, Config) ->
     {ok, [_KeyBlock0]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     %% Send spend tx so it gets included into micro block.
     {_, Pub} = aecore_suite_utils:sign_keys(NodeId),
-    {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1),
+    {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1, 20000),
     {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
     {ok, [KeyBlock, MicroBlock]} = aecore_suite_utils:mine_micro_blocks(Node, 1),
     {ok, []} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
@@ -677,7 +677,7 @@ init_per_group(account_with_balance = Group, Config) ->
 init_per_group(account_with_pending_tx, Config) ->
     [ {NodeId, Node} | _ ] = ?config(nodes, Config),
     {_, Pub} = aecore_suite_utils:sign_keys(NodeId),
-    {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1),
+    {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1, 20000),
     {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
     [{pending_txs, [{aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(Tx)), Tx}]},
      {block_with_txs, undefined},
@@ -696,7 +696,7 @@ init_per_group(tx_is_pending = Group, Config) ->
     aecore_suite_utils:mine_key_blocks(Node, ToMine),
     {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     true = aec_blocks:is_key_block(KeyBlock),
-    {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1),
+    {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1, 20000),
     {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
     [{pending_txs, [{aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(Tx)), Tx}]},
      {block_with_txs, undefined},
@@ -725,7 +725,7 @@ init_per_group(post_tx_to_mempool = Group, Config) ->
     [{sender_id, aehttp_api_encoder:encode(account_pubkey, Pub)},
      {recipient_id, aehttp_api_encoder:encode(account_pubkey, random_hash())},
      {amount, 1},
-     {fee, 1},
+     {fee, 20000},
      {payload, <<"foo">>} | Config1];
 init_per_group(tx_info, Config) ->
     Config;
@@ -750,8 +750,8 @@ init_per_group(name_txs, _Config) ->
 init_per_group(channel_websocket = Group, Config) ->
     Config1 = start_node(Group, Config),
     {ok, 404, _} = get_balance_at_top(),
-    IStartAmt = 10000,
-    RStartAmt = 10000,
+    IStartAmt = 5000000,
+    RStartAmt = 5000000,
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 2),
     {IPubkey, IPrivkey} = initialize_account(IStartAmt),
     {RPubkey, RPrivkey} = initialize_account(RStartAmt),
@@ -799,7 +799,7 @@ init_per_testcase(post_oracle_register, Config) ->
      {query_format, <<"something">>},
      {response_format, <<"something else">>},
      {query_fee, 1},
-     {fee, 10},
+     {fee, 100000},
      {oracle_ttl_type, <<"block">>},
      {oracle_ttl_value, 2000} | init_per_testcase_all(Config)];
 init_per_testcase(post_oracle_extend, Config) ->
@@ -807,7 +807,7 @@ init_per_testcase(post_oracle_extend, Config) ->
     OracleTtlDelta = 500,
     [{account_id, ?config(account_id, SavedConfig)},
      {oracle_id, ?config(oracle_id, SavedConfig)},
-     {fee, 10},
+     {fee, 100000},
      {oracle_ttl_value_final, ?config(oracle_ttl_value, SavedConfig) + OracleTtlDelta},
      {oracle_ttl_type, <<"delta">>},
      {oracle_ttl_value, OracleTtlDelta} | init_per_testcase_all(Config)];
@@ -817,7 +817,7 @@ init_per_testcase(post_oracle_query, Config) ->
      {oracle_id, ?config(oracle_id, SavedConfig)},
      {query, <<"Hejsan Svejsan">>},
      {query_fee, 2},
-     {fee, 30},
+     {fee, 100000},
      {query_ttl_type, <<"block">>},
      {query_ttl_value, 20},
      {response_ttl_type, <<"delta">>},
@@ -828,7 +828,7 @@ init_per_testcase(post_oracle_response, Config) ->
      {oracle_id, ?config(oracle_id, SavedConfig)},
      {query, ?config(query, SavedConfig)},
      {query_id, ?config(query_id, SavedConfig)},
-     {fee, 10},
+     {fee, 100000},
      {response_ttl_type, <<"delta">>},
      {response_ttl_value, 20},
      {response, <<"Hejsan">>} | init_per_testcase_all(Config)];
@@ -1486,7 +1486,7 @@ post_contract_and_call_tx(_Config) ->
                       amount     => 1,
                       gas        => 600,
                       gas_price  => 1,
-                      fee        => 1,
+                      fee        => 400000,
                       call_data  => EncodedInitCallData},
 
     %% prepare a contract_create_tx and post it
@@ -1514,7 +1514,7 @@ post_contract_and_call_tx(_Config) ->
                              amount      => 1,
                              gas         => 1000,
                              gas_price   => 1,
-                             fee         => 1,
+                             fee         => 500000,
                              call_data   => EncodedCallData},
     {ok, 200, #{<<"tx">> := EncodedUnsignedContractCallTx}} = get_contract_call(ContractCallEncoded),
     ContractCallTxHash = sign_and_post_tx(EncodedUnsignedContractCallTx),
@@ -1571,7 +1571,7 @@ get_contract(_Config) ->
                       amount     => ContractInitBalance,
                       gas        => 600,
                       gas_price  => 1,
-                      fee        => 1,
+                      fee        => 200000,
                       call_data  => EncodedInitCallData},
 
     ValidDecoded = maps:merge(ValidEncoded,
@@ -1916,7 +1916,7 @@ contract_transactions(_Config) ->    % miner has an account
                       amount => ContractInitBalance,
                       gas => 600,
                       gas_price => 1,
-                      fee => 1,
+                      fee => 200000,
                       call_data => EncodedInitCallData},
 
     ValidDecoded = maps:merge(ValidEncoded,
@@ -1992,7 +1992,7 @@ contract_transactions(_Config) ->    % miner has an account
                              amount => 1,
                              gas => 1000,
                              gas_price => 1,
-                             fee => 1,
+                             fee => 600000,
                              call_data => EncodedCallData},
 
     ContractCallDecoded = maps:merge(ContractCallEncoded,
@@ -2052,7 +2052,7 @@ contract_transactions(_Config) ->    % miner has an account
                              amount => 1,
                              gas => 1000,
                              gas_price => 1,
-                             fee => 1,
+                             fee => 500000,
                              function => Function,
                              arguments => Argument},
 
@@ -2147,7 +2147,7 @@ contract_transactions(_Config) ->    % miner has an account
                                            ComputeCCallEncoded)),
 
     %% Call objects
-    {ok, 200, #{<<"tx">> := SpendTx}} = post_spend_tx(MinerAddress, 1, 1),
+    {ok, 200, #{<<"tx">> := SpendTx}} = post_spend_tx(MinerAddress, 1, 20000),
     SpendTxHash = sign_and_post_tx(SpendTx),
     ok = wait_for_tx_hash_on_chain(SpendTxHash),
     {ok, 400, #{<<"reason">> := <<"Tx is not a create or call">>}} =
@@ -2174,7 +2174,7 @@ contract_create_compute_transaction(_Config) ->
                       amount => ContractInitBalance,
                       gas => 600,
                       gas_price => 1,
-                      fee => 1,
+                      fee => 200000,
                       arguments => <<"()">> },
 
     %% prepare a contract_create_tx and post it
@@ -2196,7 +2196,7 @@ contract_create_compute_transaction(_Config) ->
                              amount => 1,
                              gas => 1000,
                              gas_price => 1,
-                             fee => 1,
+                             fee => 500000,
                              function => Function,
                              arguments => Argument},
 
@@ -2241,7 +2241,7 @@ contract_create_transaction_init_error(_Config) ->
                       amount     => 1,
                       gas        => 30,
                       gas_price  => 1,
-                      fee        => 1,
+                      fee        => 200000,
                       call_data  => EncodedInitData},
     ValidDecoded = maps:merge(ValidEncoded,
         #{owner => MinerPubkey,
@@ -2293,7 +2293,7 @@ oracle_transactions(_Config) ->
                    query_format => <<"something">>,
                    response_format => <<"something else">>,
                    query_fee => 1,
-                   fee => 6,
+                   fee => 100000,
                    oracle_ttl => #{type => <<"block">>, value => 2000}},
     RegDecoded = maps:merge(RegEncoded,
                             #{account_id => aec_id:create(account, MinerPubkey),
@@ -2332,7 +2332,7 @@ oracle_transactions(_Config) ->
                      oracle_id => aehttp_api_encoder:encode(oracle_pubkey, MinerPubkey),
                      query => <<"Hejsan Svejsan">>,
                      query_fee => 2,
-                     fee => 30,
+                     fee => 100000,
                      query_ttl => #{type => <<"block">>, value => 30},
                      response_ttl => #{type => <<"delta">>, value => 20}},
     QueryDecoded = maps:merge(QueryEncoded,
@@ -2363,7 +2363,7 @@ oracle_transactions(_Config) ->
                                                        QueryId),
                         response => <<"Hejsan">>,
                         response_ttl => #{type => <<"delta">>, value => 20},
-                        fee => 3},
+                        fee => 100000},
     ResponseDecoded = maps:merge(ResponseEncoded,
                               #{oracle_id => aec_id:create(oracle, MinerPubkey),
                                 response_ttl => {delta, 20},
@@ -2520,7 +2520,7 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
 
     %% Submit name preclaim tx and check it is in mempool
     PreclaimData = #{commitment_id => EncodedCHash,
-                     fee           => 1,
+                     fee           => 100000,
                      account_id    => MinerAddress},
     {ok, 200, #{<<"tx">> := PreclaimTxEnc}} = get_name_preclaim(PreclaimData),
     PreclaimTxHash = sign_and_post_tx(PreclaimTxEnc),
@@ -2535,7 +2535,7 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
     Encoded = #{account_id => MinerAddress,
                 name => aehttp_api_encoder:encode(name, Name),
                 name_salt => Salt,
-                fee => 1},
+                fee => 100000},
     Decoded = maps:merge(Encoded,
                         #{account_id => aec_id:create(account, MinerPubkey),
                           name => Name}),
@@ -2563,7 +2563,7 @@ nameservice_transaction_update(MinerAddress, MinerPubkey) ->
                 name_ttl => 3,
                 client_ttl => 2,
                 pointers => Pointers,
-                fee => 1},
+                fee => 100000},
     Decoded = maps:merge(Encoded,
                         #{account_id => aec_id:create(account, MinerPubkey),
                           pointers => Pointers,
@@ -2589,7 +2589,7 @@ nameservice_transaction_transfer(MinerAddress, MinerPubkey) ->
     Encoded = #{account_id => MinerAddress,
                 name_id => aehttp_api_encoder:encode(name, NameHash),
                 recipient_id => aehttp_api_encoder:encode(account_pubkey, RandAddress),
-                fee => 1},
+                fee => 100000},
     Decoded = maps:merge(Encoded,
                         #{account_id => aec_id:create(account, MinerPubkey),
                           recipient_id => aec_id:create(account, RandAddress),
@@ -2607,7 +2607,7 @@ nameservice_transaction_revoke(MinerAddress, MinerPubkey) ->
     NameHash = random_hash(),
     Encoded = #{account_id => MinerAddress,
                 name_id => aehttp_api_encoder:encode(name, NameHash),
-                fee => 1},
+                fee => 10000},
     Decoded = maps:merge(Encoded,
                         #{account_id => aec_id:create(account, MinerPubkey),
                           name_id => aec_id:create(name, NameHash)}),
@@ -2659,7 +2659,7 @@ state_channels_create(MinerPubkey, ResponderPubkey) ->
                 push_amount => 5, channel_reserve => 5,
                 lock_period => 20,
                 state_hash => aehttp_api_encoder:encode(state, ?BOGUS_STATE_HASH),
-                fee => 1},
+                fee => 100000},
     Decoded = maps:merge(Encoded,
                         #{initiator_id => aec_id:create(account, MinerPubkey),
                           responder_id => aec_id:create(account, ResponderPubkey),
@@ -2679,7 +2679,7 @@ state_channels_deposit(ChannelId, MinerPubkey) ->
                 amount => 2,
                 state_hash => aehttp_api_encoder:encode(state, ?BOGUS_STATE_HASH),
                 round => 42,
-                fee => 1},
+                fee => 100000},
     Decoded = maps:merge(Encoded,
                         #{channel_id => aec_id:create(channel, ChannelId),
                           from_id => aec_id:create(account, MinerPubkey),
@@ -2701,7 +2701,7 @@ state_channels_withdrawal(ChannelId, MinerPubkey) ->
                 amount => 2,
                 state_hash => aehttp_api_encoder:encode(state, ?BOGUS_STATE_HASH),
                 round => 42,
-                fee => 1},
+                fee => 100000},
     Decoded = maps:merge(Encoded,
                         #{channel_id => aec_id:create(channel, ChannelId),
                           to_id => aec_id:create(account, MinerPubkey),
@@ -2721,7 +2721,7 @@ state_channels_snapshot_solo(ChannelId, MinerPubkey) ->
     Encoded = #{channel_id => aehttp_api_encoder:encode(channel, ChannelId),
                 from_id => aehttp_api_encoder:encode(account_pubkey, MinerPubkey),
                 payload => <<"hejsan svejsan">>, %%TODO proper payload
-                fee => 1},
+                fee => 100000},
     Decoded = maps:merge(Encoded,
                         #{from_id => aec_id:create(account, MinerPubkey),
                           channel_id => aec_id:create(channel, ChannelId)}),
@@ -2736,7 +2736,7 @@ state_channels_close_mutual(ChannelId, InitiatorPubkey) ->
                 from_id => aehttp_api_encoder:encode(account_pubkey, InitiatorPubkey),
                 initiator_amount_final => 4,
                 responder_amount_final => 3,
-                fee => 1},
+                fee => 100000},
     Decoded = maps:merge(Encoded,
                          #{channel_id => aec_id:create(channel, ChannelId),
                            from_id    => aec_id:create(account, InitiatorPubkey)}),
@@ -2756,7 +2756,7 @@ state_channels_close_solo(ChannelId, MinerPubkey) ->
                 from_id => aehttp_api_encoder:encode(account_pubkey, MinerPubkey),
                 payload => <<"hejsan svejsan">>, %%TODO proper payload
                 poi => aehttp_api_encoder:encode(poi, aec_trees:serialize_poi(PoI)),
-                fee => 1},
+                fee => 100000},
     Decoded = maps:merge(Encoded,
                         #{from_id => aec_id:create(account, MinerPubkey),
                           channel_id => aec_id:create(channel, ChannelId),
@@ -2781,7 +2781,7 @@ state_channels_slash(ChannelId, MinerPubkey) ->
                 from_id => aehttp_api_encoder:encode(account_pubkey, MinerPubkey),
                 payload => <<"hejsan svejsan">>, %%TODO proper payload
                 poi => aehttp_api_encoder:encode(poi, aec_trees:serialize_poi(PoI)),
-                fee => 1},
+                fee => 100000},
     Decoded = maps:merge(Encoded,
                         #{from_id => aec_id:create(account, MinerPubkey),
                           channel_id => aec_id:create(channel, ChannelId),
@@ -2806,7 +2806,7 @@ state_channels_settle(ChannelId, MinerPubkey) ->
                 from_id => aehttp_api_encoder:encode(account_pubkey, MinerPubkey),
                 initiator_amount_final => 4,
                 responder_amount_final => 3,
-                fee => 1},
+                fee => 100000},
     Decoded = maps:merge(Encoded,
                         #{from_id => aec_id:create(account, MinerPubkey),
                           channel_id => aec_id:create(channel, ChannelId)}),
@@ -2830,7 +2830,7 @@ spend_transaction(_Config) ->
     Encoded = #{sender_id => MinerAddress,
                 recipient_id => aehttp_api_encoder:encode(account_pubkey, RandAddress),
                 amount => 2,
-                fee => 1,
+                fee => 100000,
                 ttl => 43,
                 payload => <<"hejsan svejsan">>},
     Decoded = maps:merge(Encoded,
@@ -2856,7 +2856,7 @@ unknown_atom_in_spend_tx(_Config) ->
     Encoded = #{sender_id => MinerAddress,
                 recipient_id => aehttp_api_encoder:encode(account_pubkey, RandAddress),
                 amount => 2,
-                fee => 1,
+                fee => 20000,
                 %% this tests relies on this being an atom unknown to the VM
                 %% if someone adds this atom in particular, please modify the
                 %% binary below accordingly
@@ -2912,7 +2912,7 @@ get_transaction(_Config) ->
     Encoded = #{sender_id => EncodedPubKey,
                 recipient_id => aehttp_api_encoder:encode(account_pubkey, RandAddress),
                 amount => 2,
-                fee => 1,
+                fee => 20000,
                 payload => <<"foo">>},
     {ok, 200, #{<<"tx">> := EncodedSpendTx}} = get_spend(Encoded),
     {ok, SpendTxBin} = aehttp_api_encoder:safe_decode(transaction, EncodedSpendTx),
@@ -2967,7 +2967,7 @@ pending_transactions(_Config) ->
                   get_accounts_by_pubkey_sut(aehttp_api_encoder:encode(account_pubkey, ReceiverPubKey)),
 
     {ok, 200, #{<<"tx">> := SpendTx}} =
-        post_spend_tx(aehttp_api_encoder:encode(account_pubkey, ReceiverPubKey), AmountToSpent, Fee),
+        post_spend_tx(aehttp_api_encoder:encode(account_pubkey, ReceiverPubKey), AmountToSpent, 20000),
     sign_and_post_tx(SpendTx),
     {ok, NodeTxs} = rpc(aec_tx_pool, peek, [infinity]),
     true = length(NodeTxs) =:= 1, % not empty anymore
@@ -2998,14 +2998,14 @@ pending_transactions(_Config) ->
 %% a valid account nonce; that's why we mine a while
 post_correct_tx(_Config) ->
     Amount = 1,
-    {BlocksToMine, Fee} = minimal_fee_and_blocks_to_mine(Amount, 1),
+    {BlocksToMine, _Fee} = minimal_fee_and_blocks_to_mine(Amount, 1),
     {PubKey, Nonce} = prepare_for_spending(BlocksToMine),
     {ok, SpendTx} =
         aec_spend_tx:new(
           #{sender_id => aec_id:create(account, PubKey),
             recipient_id => aec_id:create(account, random_hash()),
             amount => Amount,
-            fee => Fee,
+            fee => 20000,
             nonce => Nonce,
             payload => <<"foo">>}),
     {ok, SignedTx} = aecore_suite_utils:sign_on_node(?NODE, SpendTx),
@@ -3017,14 +3017,14 @@ post_correct_tx(_Config) ->
 
 post_broken_tx(_Config) ->
     Amount = 1,
-    {BlocksToMine, Fee} = minimal_fee_and_blocks_to_mine(Amount, 1),
+    {BlocksToMine, _Fee} = minimal_fee_and_blocks_to_mine(Amount, 1),
     {PubKey, Nonce} = prepare_for_spending(max(BlocksToMine, 3)),  %% we need at least 3 blocks
     {ok, SpendTx} =
         aec_spend_tx:new(
           #{sender_id => aec_id:create(account, PubKey),
             recipient_id => aec_id:create(account, random_hash()),
             amount => Amount,
-            fee => Fee,
+            fee => 20000,
             nonce => Nonce,
             payload => <<"foo">>}),
     {ok, SignedTx} = aecore_suite_utils:sign_on_node(?NODE, SpendTx),
@@ -3035,7 +3035,7 @@ post_broken_tx(_Config) ->
           #{sender_id => aec_id:create(account, PubKey),
             recipient_id => aec_id:create(account, random_hash()),
             amount => Amount,
-            fee => Fee,
+            fee => 20000,
             nonce => Nonce,
             ttl => 2,
             payload => <<"too low ttl">>}),
@@ -3057,7 +3057,7 @@ post_broken_tx(_Config) ->
 post_broken_api_encoded_tx(_Config) ->
     Amount = 1,
     NumberOfChecks = ?DEFAULT_TESTS_COUNT,
-    {BlocksToMine, Fee} = minimal_fee_and_blocks_to_mine(Amount, NumberOfChecks),
+    {BlocksToMine, _Fee} = minimal_fee_and_blocks_to_mine(Amount, NumberOfChecks),
     {PubKey, Nonce} = prepare_for_spending(BlocksToMine),
     lists:foreach(
         fun(_) ->
@@ -3066,7 +3066,7 @@ post_broken_api_encoded_tx(_Config) ->
                   #{sender_id => aec_id:create(account, PubKey),
                     recipient_id => aec_id:create(account, random_hash()),
                     amount => Amount,
-                    fee => Fee,
+                    fee => 20000,
                     nonce => Nonce,
                     payload => <<"foo">>}),
             {ok, SignedTx} = aecore_suite_utils:sign_on_node(?NODE, SpendTx),
@@ -3133,7 +3133,7 @@ naming_system_manage_name(_Config) ->
     Pointers    = [#{<<"key">> => <<"account_pubkey">>, <<"id">> => PubKeyEnc}],
     TTL         = 10,
     {ok, NHash} = aens:get_name_hash(Name),
-    Fee         = 2,
+    Fee         = 100000,
     MineReward  = rpc(aec_governance, block_mine_reward, []),
     Delay       = rpc(aec_governance, beneficiary_reward_delay, []),
     Node        = aecore_suite_utils:node_name(?NODE),
@@ -3365,8 +3365,8 @@ sc_ws_open(Config) ->
                  get_accounts_by_pubkey_sut(aehttp_api_encoder:encode(account_pubkey, IPubkey)),
     {ok, 200, #{<<"balance">> := RStartAmt}} =
                  get_accounts_by_pubkey_sut(aehttp_api_encoder:encode(account_pubkey, RPubkey)),
-    IAmt = 700,
-    RAmt = 400,
+    IAmt = 70000,
+    RAmt = 40000,
 
     {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
 
@@ -3506,7 +3506,7 @@ sc_ws_update_fails_and_close(Config) ->
             {ok, #{<<"reason">> := <<"insufficient_balance">>,
                   <<"request">> := _Request0}} = channel_update_fail(
                                                    Conns, Sender,
-                                                   Participants, 10000, Config),
+                                                   Participants, 10000000, Config),
             ?WS:log(LogPid, info, "Failing update, negative amount"),
             {ok, #{<<"reason">> := <<"negative_amount">>,
                   <<"request">> := _Request1}} = channel_update_fail(
@@ -3935,7 +3935,7 @@ sc_ws_deposit_and_close(Config, Origin) when Origin =:= initiator
     ok = wait_for_signed_transaction_in_block(SignedDepositTx),
     % assert acknowledger balance have not changed
     {SStartB1, AStartB} = channel_participants_balances(SenderPubkey, AckPubkey),
-    {SStartB1, _} = {SStartB - 2 - 1, SStartB},
+    {SStartB1, _} = {SStartB - 2 - 20000, SStartB},
 
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 5),
     {ok, #{<<"event">> := <<"own_deposit_locked">>}} = wait_for_channel_event(SenderConnPid, info, Config),
@@ -3987,7 +3987,7 @@ sc_ws_withdraw_and_close(Config, Origin) when Origin =:= initiator
     ok = wait_for_signed_transaction_in_block(SignedWTx),
     % assert acknowledger balance have not changed
     {SStartB1, AStartB} = channel_participants_balances(SenderPubkey, AckPubkey),
-    {SStartB1, _} = {SStartB + 2 - 1, SStartB},
+    {SStartB1, _} = {SStartB + 2 - 20000, SStartB},
 
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 5),
     {ok, #{<<"event">> := <<"own_withdraw_locked">>}} = wait_for_channel_event(SenderConnPid, info, Config),
@@ -4155,7 +4155,7 @@ sc_ws_oracle_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
                        OwnerPubkey, OtherPubkey, _Opts, Config) ->
     %% Register an oracle. It will be used in an off-chain contract
     %% Oracle ask itself a question and answers it
-    {OraclePubkey, OraclePrivkey} = initialize_account(100000),
+    {OraclePubkey, OraclePrivkey} = initialize_account(2000000),
     SophiaStringType = aeso_data:to_binary(string, 0),
     QueryFee = 3,
     QueryTTL = 30,
@@ -4280,7 +4280,7 @@ sc_ws_nameservice_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
     Name = random_unused_name(),
     %% Register an oracle. It will be used in an off-chain contract
     %% Oracle ask itself a question and answers it
-    {NamePubkey, NamePrivkey} = initialize_account(100000),
+    {NamePubkey, NamePrivkey} = initialize_account(2000000),
 
     EncodedCode = contract_byte_code("channel_on_chain_contract_name_resolution"),
     InitArgument = <<"()">>,
@@ -4543,7 +4543,7 @@ update_pointers(Owner, OwnerPrivKey, Name, Pointers0) ->
 
 initialize_account(Amount) ->
     {Pubkey, Privkey} = generate_key_pair(),
-    Fee = 1,
+    Fee = 20000,
     BlocksToMine = 3,
 
     Node = aecore_suite_utils:node_name(?NODE),
@@ -5426,12 +5426,12 @@ prepare_for_spending(BlocksToMine) ->
 
 add_spend_txs() ->
     MineReward = rpc(aec_governance, block_mine_reward, []),
-    MinFee = rpc(aec_governance, minimum_tx_fee, []),
+    Fee = 20000,
     %% For now. Mining is severly slowed down by having too many Tx:s in
     %% the tx pool
     MaxSpendTxsInBlock = 20,
     MinimalAmount = 1,
-    MaxTxs = min(MineReward div (MinimalAmount + MinFee), % enough tokens
+    MaxTxs = min(MineReward div (MinimalAmount + Fee), % enough tokens
                  MaxSpendTxsInBlock), % so it can fit in one block
     true = MaxTxs > 0,
     TxsCnt =
@@ -5445,7 +5445,7 @@ add_spend_txs() ->
             fun(_) ->
                 #{recipient_id => aehttp_api_encoder:encode(account_pubkey, random_hash()),
                   amount => MinimalAmount,
-                  fee => MinFee}
+                  fee => Fee}
             end,
             lists:seq(0, TxsCnt -1)),
     populate_block(#{spend_txs => Txs}).
@@ -5460,13 +5460,13 @@ populate_block(Txs) ->
 
 give_tokens(RecipientPubkey, Amount) ->
     MineReward = rpc(aec_governance, block_mine_reward, []),
-    MinFee = rpc(aec_governance, minimum_tx_fee, []),
-    NeededBlocks = ((Amount + MinFee)  div MineReward) + 1,
+    Fee = 20000,
+    NeededBlocks = ((Amount + Fee)  div MineReward) + 1,
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    NeededBlocks),
     SpendData = #{recipient_id => aehttp_api_encoder:encode(account_pubkey, RecipientPubkey),
                   amount => Amount,
-                  fee => MinFee},
+                  fee => Fee},
     populate_block(#{spend_txs => [SpendData]}),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
     ok.

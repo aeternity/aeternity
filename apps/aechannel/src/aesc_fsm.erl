@@ -1616,8 +1616,7 @@ create_tx_for_signing(#data{opts = #{initiator := Initiator,
 
 create_tx_defaults(Initiator) ->
     {ok, Nonce} = aec_next_nonce:pick_for_account(Initiator),
-    Fee = aec_governance:minimum_tx_fee(),
-    #{ fee   => Fee
+    #{ fee   => 20000
      , nonce => Nonce }.
 
 deposit_tx_defaults(ChanId, Acct, TTL) ->
@@ -1677,8 +1676,7 @@ pay_close_mutual_fee(Fee, IAmt, RAmt) ->
     end.
 
 close_mutual_defaults(_Account, _D) ->
-    Fee = aec_governance:minimum_tx_fee(),
-    #{ fee   => Fee }.
+    #{ fee   => 20000}.
 
 my_account(#data{role = initiator, opts = #{initiator := I}}) -> I;
 my_account(#data{role = responder, opts = #{responder := R}}) -> R.

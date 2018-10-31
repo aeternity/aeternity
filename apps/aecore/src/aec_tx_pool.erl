@@ -742,8 +742,9 @@ get_account(AccountKey, {account_trees, AccountsTrees}) ->
 get_account(AccountKey, {block_hash, BlockHash}) ->
     aec_chain:get_account_at_hash(AccountKey, BlockHash).
 
-check_minimum_fee(Tx,_Hash) ->
-    case aetx:fee(aetx_sign:tx(Tx)) >= aec_governance:minimum_tx_fee() of
+check_minimum_fee(Tx0, _Hash) ->
+    Tx = aetx_sign:tx(Tx0),
+    case aetx:fee(Tx) >= (aetx:min_gas(Tx) * aec_governance:minimum_gas_price()) of
         true  -> ok;
         false -> {error, too_low_fee}
     end.

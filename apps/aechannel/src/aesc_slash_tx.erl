@@ -81,7 +81,7 @@ fee(#channel_slash_tx{fee = Fee}) ->
 
 -spec gas(tx()) -> non_neg_integer().
 gas(#channel_slash_tx{}) ->
-    aec_governance:tx_base_gas(channel_slash_tx).
+    0.
 
 -spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#channel_slash_tx{ttl = TTL}) ->

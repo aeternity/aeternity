@@ -57,7 +57,7 @@ Bob computes - off-chain, using the epoch API - the unsigned contract create tra
 ...   amount=0,
 ...   gas=20000,
 ...   gas_price=1,
-...   fee=1,
+...   fee=200000,
 ...   call_data=encoded_init_call_data))
 >>> contract_id = raw_unsigned_contract_create_tx.contract_id
 >>> print(contract_id) # doctest: +ELLIPSIS
@@ -117,7 +117,7 @@ Alice computes - off-chain, using the epoch API - the unsigned contract call tra
 ...   nonce=1,
 ...   contract_id=contract_id,
 ...   vm_version=1,
-...   fee=1,
+...   fee=500000,
 ...   amount=0,
 ...   gas=20000,
 ...   gas_price=1,

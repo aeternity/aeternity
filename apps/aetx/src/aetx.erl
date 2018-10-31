@@ -13,6 +13,7 @@
         , deserialize_from_binary/1
         , fee/1
         , gas/1
+        , min_gas/1
         , gas_price/1
         , ttl/1
         , size/1
@@ -169,7 +170,7 @@ fee(#aetx{ cb = CB, tx = Tx }) ->
 
 -spec gas(Tx :: tx()) -> Gas :: non_neg_integer().
 gas(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }) when Type =/= channel_offchain_tx ->
-    CB:gas(Tx) + Size * aec_governance:byte_gas();
+    aec_governance:tx_base_gas(Type) + Size * aec_governance:byte_gas() + CB:gas(Tx);
 gas(#aetx{ type = channel_offchain_tx }) ->
     0.
 
@@ -179,6 +180,13 @@ gas_price(#aetx{ type = Type, cb = CB, tx = Tx }) when
     CB:gas_price(Tx);
 gas_price(#aetx{}) ->
     undefined.
+
+-spec min_gas(Tx :: tx()) -> Gas :: non_neg_integer().
+min_gas(#aetx{ type = Type, size = Size }) when
+      Type =:= contract_call_tx; Type =:= contract_create_tx ->
+    aec_governance:tx_base_gas(Type) + Size * aec_governance:byte_gas();
+min_gas(#aetx{} = Tx) ->
+    gas(Tx).
 
 -spec nonce(Tx :: tx()) -> Nonce :: non_neg_integer().
 nonce(#aetx{ cb = CB, tx = Tx }) ->

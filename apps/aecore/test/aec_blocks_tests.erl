@@ -112,7 +112,7 @@ validate_test_pass_validation() ->
         aec_test_utils:signed_spend_tx(
           #{recipient_id => aec_id:create(account, <<1:32/unit:8>>),
             amount => 1,
-            fee => 1,
+            fee => 20000,
             nonce => 1,
             payload => <<>>}),
     Txs = [SignedSpend],

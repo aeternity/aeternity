@@ -81,7 +81,7 @@ fee(#ns_claim_tx{fee = Fee}) ->
 
 -spec gas(tx()) -> non_neg_integer().
 gas(#ns_claim_tx{}) ->
-    aec_governance:tx_base_gas(ns_claim_tx).
+    0.
 
 -spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#ns_claim_tx{ttl = TTL}) ->

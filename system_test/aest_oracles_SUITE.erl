@@ -151,15 +151,15 @@ simple_query_test(Opts, Cfg) ->
     wait_for_startup([node1, node2], 4, Cfg),
 
     %% Generate tokens for Mike
-    wait_for_value({balance, MPubKey, 1000}, [node1], 10000, Cfg),
+    wait_for_value({balance, MPubKey, 2000000}, [node1], 10000, Cfg),
 
     %% Give some tokens to the oracle account
-    post_spend_tx(node1, ?MIKE, OAccount, 1, #{ amount => 200 }),
-    wait_for_value({balance, OPubKey, 200}, NodeNames, 10000, Cfg),
+    post_spend_tx(node1, ?MIKE, OAccount, 1, #{ amount => 600000 }),
+    wait_for_value({balance, OPubKey, 600000}, NodeNames, 10000, Cfg),
 
     %% Give some tokens to the querier account
-    post_spend_tx(node1, ?MIKE, QAccount, 2, #{ amount => 200 }),
-    wait_for_value({balance, QPubKey, 200}, NodeNames, 10000, Cfg),
+    post_spend_tx(node1, ?MIKE, QAccount, 2, #{ amount => 600000 }),
+    wait_for_value({balance, QPubKey, 600000}, NodeNames, 10000, Cfg),
 
     %% Register oracle
     #{ tx_hash := RegTxHash } = post_oracle_register_tx(ONode, OAccount, #{
@@ -167,7 +167,7 @@ simple_query_test(Opts, Cfg) ->
         query_format    => <<"qspec">>,
         response_format => <<"rspec">>,
         query_fee       => 1,
-        fee             => 6,
+        fee             => 50000,
         oracle_ttl      => {block, 2000}
     }),
     aest_nodes:wait_for_value({txs_on_chain, [RegTxHash]}, NodeNames, 10000, []),
@@ -181,7 +181,7 @@ simple_query_test(Opts, Cfg) ->
         nonce        => 1,
         query        => <<"Hidely-Ho">>,
         query_fee    => 2,
-        fee          => 30,
+        fee          => 50000,
         query_ttl    => {delta, 100},
         response_ttl => {delta, 100}
     }),
@@ -206,7 +206,7 @@ simple_query_test(Opts, Cfg) ->
         query_id     => QueryId,
         response     => <<"D'oh!">>,
         response_ttl => {delta, 100},
-        fee          => 10
+        fee          => 50000
     }),
     aest_nodes:wait_for_value({txs_on_chain, [RespTxHash]}, NodeNames, 10000, []),
 
@@ -233,10 +233,10 @@ test_oracle_ttl_extension(Cfg) ->
     wait_for_startup([node1], 4, Cfg),
 
     %% Generate tokens for Mike
-    wait_for_value({balance, MPubKey, 1000}, [node1], 10000, Cfg),
+    wait_for_value({balance, MPubKey, 400000}, [node1], 10000, Cfg),
 
     %% Give some tokens to the oracle account
-    post_spend_tx(node1, ?MIKE, ?OLIVIA, 1, #{ amount => 200 }),
+    post_spend_tx(node1, ?MIKE, ?OLIVIA, 1, #{ amount => 200000 }),
     wait_for_value({balance, OPubKey, 200}, [node1], 10000, Cfg),
 
     %% Register oracle
@@ -245,7 +245,7 @@ test_oracle_ttl_extension(Cfg) ->
         query_format    => <<"qspec">>,
         response_format => <<"rspec">>,
         query_fee       => 1,
-        fee             => 6,
+        fee             => 50000,
         oracle_ttl      => {block, 200}
     }),
     aest_nodes:wait_for_value({txs_on_chain, [RegTxHash]}, [node1], 10000, []),
@@ -257,7 +257,7 @@ test_oracle_ttl_extension(Cfg) ->
     %% Extend oracle's TTL
     #{ tx_hash := ExtTxHash } = post_oracle_extend_tx(node1, ?OLIVIA, #{
         nonce      => 2,
-        fee        => 10,
+        fee        => 50000,
         oracle_ttl => {delta, 100}
     }),
     aest_nodes:wait_for_value({txs_on_chain, [ExtTxHash]}, [node1], 10000, []),
@@ -310,9 +310,9 @@ pipelined_query_test(Opts, Cfg) ->
     wait_for_startup([node1, node2], 4, Cfg),
 
     %% Give some tokens to the oracle account
-    post_spend_tx(node1, ?MIKE, OAccount, 1, #{ amount => 200 }),
+    post_spend_tx(node1, ?MIKE, OAccount, 1, #{ amount => 600000 }),
     %% Give some tokens to the querier account
-    post_spend_tx(node1, ?MIKE, QAccount, 2, #{ amount => 200 }),
+    post_spend_tx(node1, ?MIKE, QAccount, 2, #{ amount => 600000 }),
 
     %% Register oracle
     #{ tx_hash := _ } = post_oracle_register_tx(ONode, OAccount, #{
@@ -320,7 +320,7 @@ pipelined_query_test(Opts, Cfg) ->
         query_format    => <<"qspec">>,
         response_format => <<"rspec">>,
         query_fee       => 1,
-        fee             => 6,
+        fee             => 50000,
         oracle_ttl      => {block, 2000}
     }),
 
@@ -329,7 +329,7 @@ pipelined_query_test(Opts, Cfg) ->
         nonce        => 1,
         query        => <<"Hidely-Ho">>,
         query_fee    => 2,
-        fee          => 30,
+        fee          => 50000,
         query_ttl    => {delta, 100},
         response_ttl => {delta, 100}
     }),
@@ -342,7 +342,7 @@ pipelined_query_test(Opts, Cfg) ->
         query_id     => QueryId,
         response     => <<"D'oh!">>,
         response_ttl => {delta, 100},
-        fee          => 10
+        fee          => 50000
     }),
 
     %% Wait for the response transaction to get in the chain
