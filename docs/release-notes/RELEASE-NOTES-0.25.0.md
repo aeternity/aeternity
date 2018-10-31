@@ -2,9 +2,33 @@
 
 [This release][this-release] is focused on TODOFILLMEIN.
 It:
-* Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
-
-TODO: When preparing the release, concatenate all `/docs/release-notes/next/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
+* Add response TTL to Oracle query response TX - a required parameter. This affects consensus.
+* Added JSON-RPC support in the state channel WebSocket API. The previous API remains supported for now. Support for JSON-RPC request batches implemented but not yet tested.
+* Forbids certain prim-ops to be run in off-chain contracts
+* Introduces minimum gas prace validation and sets minimum gas price to 1.
+* Changed default state channel websocket listen address to `127.0.0.1` (previously `0.0.0.0`)
+* Change the keyblock target to be 4 bytes in serialization (was 8 bytes). This affects consensus.
+* Moves all charges in contract create transaction and contract call transaction to before the execution of the contract. The changed items are: gas in both create and call transactions (unused gas is refunded); fee in call transaction; deposit in create transaction. This affects consensus.
+* Remove internal websocket API (`/websocket` endpoint)
+* Avoid replay attacks by naming networks (forks) with network_id and including them in transaction signature
+* Optimizes the force progress transaction by turning the `poi` to a proper
+  set of off-chain trees and removing the auxiliary `addresses`
+* Disallows reentrant calls (i.e. contract calls into a currently executing contract) in Sophia.
+* Improves the stability of the HTTP user API.
+* Charge gas also for calldata size/initial heap size when doing Sophia contract calls. This affects consensus.
+* Implement the Sophia abort primitive using the REVERT instruction in the aevm.
+* Refactors State Channel's approach to disputes. The block height timer
+  between subsequent force progress transactions is removed. This greatly
+  improves the speed of forcing of progress. A co-signed state still 
+  overwrites on-chain produced states. This impacts consesus.
+* Sets the return value of initial call in create contract transaction to the empty byte array "<<>>" in the call state tree. This affects consensus (state tree root has changes).
+* Increases the gas of the VM primitive operations that create or extend objects on the state trees, approximating that to a component proportional to the serialized equivalent transaction. This affects consensus.
+* Fixes gas available to VM primops contract to be the same as for other contracts. This affects consensus.
+* Charge gas for maps handling in return value. This affects consensus.
+* Restricts registrars in Naming Service, to allow only `.test` registrar
+* Introduce throw away keys for block mining and signing
+* Changes the API for constructing contract create and call transactions, allowing calls with user-defined types.
+* Change calling convention in sophia and add type checking of remote calls. This makes the byte code smaller, the memory usage smaller, the contract calls more type safe. This affects consensus.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.25.0
 

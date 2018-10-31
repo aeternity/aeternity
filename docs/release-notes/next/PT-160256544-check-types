@@ -1,2 +1,0 @@
-* Change calling convention in sophia and add type checking of remote calls. This makes the byte code smaller, the memory usage smaller, the contract calls more type safe. This affects consensus.
-
