@@ -610,7 +610,7 @@
                         },
                         "max_size" : {
                             "type" : "integer",
-                            "default" : 0
+                            "default" : 5000
                         },
                         "max_time" : {
                             "type" : "integer",
