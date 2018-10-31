@@ -37,6 +37,7 @@
         , sophia_typed_calls/1
         , sophia_no_reentrant/1
         , sophia_oracles/1
+        , sophia_oracles_interact_with_no_vm_oracle/1
         , sophia_oracles_ttl__extend_after_expiry/1
         , sophia_oracles_ttl__fixed_rttl/1
         , sophia_oracles_ttl__qttl_too_long/1
@@ -182,6 +183,7 @@ groups() ->
     , {sophia_oracles_type_error, [],
        [ sophia_oracles_type_error_arg
        , sophia_oracles_type_error_out
+       , sophia_oracles_interact_with_no_vm_oracle
        ]}
     , {sophia_oracles_query_fee_happy_path, [],
        [ %% Test query fee handling from txs calling contract that calls oracle builtins.
@@ -979,6 +981,68 @@ sophia_oracles_type_error_out(_Cfg) ->
                               {Ct, Question, QueryFee, RelativeTTL(5), RelativeTTL(5)}, #{amount => QueryFee}),
     {error, _}        = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {CtId, QId, 4001}),
     ok.
+
+sophia_oracles_interact_with_no_vm_oracle(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
+    Acc = <<AId:256>> = ?call(new_account, 1000000),
+    Ct                = ?call(create_contract, Acc, oracles_no_vm, {}, #{amount => 100000}),
+    ok                = ?call(register_no_vm_oracle, Acc),
+    Question          = <<"Manchester United vs Brommapojkarna">>,
+    QueryFee          = 100,
+    QId               = ?call(call_contract, Acc, Ct, createQuery, word,
+                              {Acc, Question, QueryFee, RelativeTTL(5),
+                               RelativeTTL(5)}, #{amount => QueryFee}),
+    %% Check that the plain question and the contract question is the same
+    %% (e.g., not ABI encoded)
+    {value, Question} = ?call(get_plain_oracle_question, Acc, QId),
+    Question          = ?call(call_contract, Acc, Ct, getQuestion, string, {AId, QId}),
+    %% Respond through the contract
+    Response          = <<"Brommapojkarna">>,
+    RespSign          = sign(<<QId:256, Ct/binary>>, Acc),
+    {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []},
+                              {Acc, QId, RespSign, Response}),
+    %% Check that the plain response and the contract response is the same
+    %% (e.g., not ABI encoded)
+    {some, Response}  = ?call(call_contract, Acc, Ct, getAnswer, {option, string}, {AId, QId}),
+    {value, Response} = ?call(get_plain_oracle_response, Acc, QId),
+    ok.
+
+register_no_vm_oracle(PubKey, S) ->
+    Nonce = aect_test_utils:next_nonce(PubKey, S),
+    {ok, Tx}  = aeo_register_tx:new(#{ account_id      => aec_id:create(account, PubKey)
+                                     , oracle_ttl      => {delta, 20}
+                                     , fee             => 1000
+                                     , nonce           => Nonce
+                                     , query_fee       => 5
+                                     , query_format    => <<"Say someting">>
+                                     , response_format => <<"not a string anyway">>
+                                     , ttl             => 0
+                                     , vm_version      => ?AEVM_NO_VM
+                                     }),
+    PrivKey = aect_test_utils:priv_key(PubKey, S),
+    {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S),
+    ?assertMatch({value, _},
+                 aeo_state_tree:lookup_oracle(PubKey, aec_trees:oracles(aect_test_utils:trees(S1)))),
+    {ok, S1}.
+
+get_plain_oracle_question(PubKey, QId, S) ->
+    Trees = aect_test_utils:trees(S),
+    case aeo_state_tree:lookup_query(PubKey, <<QId:256>>, aec_trees:oracles(Trees)) of
+        {value, Query} ->
+            {{value, aeo_query:query(Query)}, S};
+        none ->
+            {none, S}
+    end.
+
+get_plain_oracle_response(PubKey, QId, S) ->
+    Trees = aect_test_utils:trees(S),
+    case aeo_state_tree:lookup_query(PubKey, <<QId:256>>, aec_trees:oracles(Trees)) of
+        {value, Query} ->
+            {{value, aeo_query:response(Query)}, S};
+        none ->
+            {none, S}
+    end.
 
 %% Oracle TTL tests
 
