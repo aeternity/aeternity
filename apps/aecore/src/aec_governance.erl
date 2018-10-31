@@ -46,7 +46,9 @@
 -define(BLOCK_MINE_REWARD, 10000000000000000000).
 %% Ethereum's gas limit is 8 000 000 and block time ~15s.
 %% For 3s block time it's 1 600 000 (5x less).
--define(BLOCK_GAS_LIMIT, (4*1600000)).
+%% But we can improve and use 6 million (this allows reasonable
+%% size contracts to fit in a microblock at all)
+-define(BLOCK_GAS_LIMIT, 6000000).
 -define(TX_BASE_GAS, 15000).
 %% Gas for 1 byte of a serialized tx.
 -define(BYTE_GAS, 20).
@@ -95,8 +97,8 @@ block_mine_reward() ->
 block_gas_limit() ->
     application:get_env(aecore, block_gas_limit, ?BLOCK_GAS_LIMIT).
 
-tx_base_gas(contract_call_tx) -> 5 * ?TX_BASE_GAS;
-tx_base_gas(contract_create_tx) -> 4 * ?TX_BASE_GAS;
+tx_base_gas(contract_call_tx) ->  30 * ?TX_BASE_GAS;
+tx_base_gas(contract_create_tx) -> 5 * ?TX_BASE_GAS;
 tx_base_gas(spend_tx) -> ?TX_BASE_GAS;
 tx_base_gas(channel_deposit_tx) -> ?TX_BASE_GAS;
 tx_base_gas(channel_close_mutual_tx) -> ?TX_BASE_GAS;
@@ -163,20 +165,20 @@ state_gas_per_block(oracle_response)     -> state_gas_per_block(oracle_registrat
 %% calling contract create transaction or contract call transaction)
 %% at least the gas of the call instruction (e.g. `CALL`) used
 %% for calling the primop.
-primop_base_gas(?PRIM_CALL_SPEND              ) -> 0;
-primop_base_gas(?PRIM_CALL_ORACLE_REGISTER    ) -> 0;
-primop_base_gas(?PRIM_CALL_ORACLE_QUERY       ) -> 0;
-primop_base_gas(?PRIM_CALL_ORACLE_RESPOND     ) -> 0;
-primop_base_gas(?PRIM_CALL_ORACLE_EXTEND      ) -> 0;
-primop_base_gas(?PRIM_CALL_ORACLE_GET_ANSWER  ) -> 0;
-primop_base_gas(?PRIM_CALL_ORACLE_GET_QUESTION) -> 0;
-primop_base_gas(?PRIM_CALL_ORACLE_QUERY_FEE   ) -> 0;
-primop_base_gas(?PRIM_CALL_AENS_RESOLVE       ) -> 0;
-primop_base_gas(?PRIM_CALL_AENS_PRECLAIM      ) -> 0;
-primop_base_gas(?PRIM_CALL_AENS_CLAIM         ) -> 0;
-primop_base_gas(?PRIM_CALL_AENS_UPDATE        ) -> 0;
-primop_base_gas(?PRIM_CALL_AENS_TRANSFER      ) -> 0;
-primop_base_gas(?PRIM_CALL_AENS_REVOKE        ) -> 0;
+primop_base_gas(?PRIM_CALL_SPEND              ) -> 12000;
+primop_base_gas(?PRIM_CALL_ORACLE_REGISTER    ) -> 12000;
+primop_base_gas(?PRIM_CALL_ORACLE_QUERY       ) -> 12000;
+primop_base_gas(?PRIM_CALL_ORACLE_RESPOND     ) -> 12000;
+primop_base_gas(?PRIM_CALL_ORACLE_EXTEND      ) -> 12000;
+primop_base_gas(?PRIM_CALL_ORACLE_GET_ANSWER  ) -> 12000;
+primop_base_gas(?PRIM_CALL_ORACLE_GET_QUESTION) -> 12000;
+primop_base_gas(?PRIM_CALL_ORACLE_QUERY_FEE   ) -> 12000;
+primop_base_gas(?PRIM_CALL_AENS_RESOLVE       ) -> 12000;
+primop_base_gas(?PRIM_CALL_AENS_PRECLAIM      ) -> 12000;
+primop_base_gas(?PRIM_CALL_AENS_CLAIM         ) -> 12000;
+primop_base_gas(?PRIM_CALL_AENS_UPDATE        ) -> 12000;
+primop_base_gas(?PRIM_CALL_AENS_TRANSFER      ) -> 12000;
+primop_base_gas(?PRIM_CALL_AENS_REVOKE        ) -> 12000;
 primop_base_gas(?PRIM_CALL_MAP_EMPTY          ) -> 0;
 primop_base_gas(?PRIM_CALL_MAP_GET            ) -> 0;
 primop_base_gas(?PRIM_CALL_MAP_PUT            ) -> 0;
