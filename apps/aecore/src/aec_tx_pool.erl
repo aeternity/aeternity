@@ -337,31 +337,49 @@ int_get_candidate(MaxGas, BlockHash, #dbs{db = Db} = DBs) ->
     {ok, Trees} = aec_chain:get_block_state(BlockHash),
     {ok, Header} = aec_chain:get_header(BlockHash),
     lager:debug("size(Db) = ~p", [ets:info(Db, size)]),
-    {ok, RemGas, Acc} = int_get_candidate(Db, MaxGas, Trees, Header, DBs,
-                                          gb_trees:empty()),
+    GasLimit = aec_governance:tx_base_gas(spend_tx),
+    {ok, RemGas, Acc} = int_get_candidate(Db, MaxGas, GasLimit, Trees,
+                                          Header, DBs, gb_trees:empty()),
     {ok, _, Acc1} = int_get_candidate(
-                      DBs#dbs.visited_db, RemGas, Trees, Header, DBs, Acc),
+                      DBs#dbs.visited_db, RemGas, GasLimit, Trees, Header,
+                      DBs, Acc),
     {ok, gb_trees:values(Acc1)}.
 
-int_get_candidate(Db, MaxGas, Trees, Header, DBs, Acc) ->
+int_get_candidate(Db, Gas, GasLimit, Trees, Header, DBs, Acc)
+  when Gas > GasLimit ->
     Pat = [{ '_', [], ['$_'] }],
-    int_get_candidate_fold(MaxGas, Db, DBs, ets:select(Db, Pat, 20),
+    int_get_candidate_fold(Gas, GasLimit, Db, DBs, ets:select(Db, Pat, 20),
                            {account_trees, aec_trees:accounts(Trees)},
-                           aec_headers:height(Header), Acc).
+                           aec_headers:height(Header), Acc);
+int_get_candidate(Gas, _, _, _, _, _, Acc) ->
+    {ok, Gas, Acc}.
 
-int_get_candidate_fold(Gas, Db, Dbs = #dbs{}, {Txs, Cont},
-                       AccountsTree, Height, Acc) ->
-    {RemGas, NewAcc} =
+int_get_candidate_fold(Gas, GasLimit, Db, Dbs = #dbs{}, {Txs, Cont},
+                       AccountsTree, Height, Acc) when Gas > GasLimit ->
+    {RemGas, NewAcc} = fold_txs(Txs, Gas, GasLimit, Db, Dbs,
+                                AccountsTree, Height, Acc),
         lists:foldl(
           fun(T, {Gas1, Acc1}) ->
                   int_get_candidate_(T, Gas1, Db, Dbs, AccountsTree,
                                      Height, Acc1)
           end, {Gas, Acc}, Txs),
-    int_get_candidate_fold(RemGas, Db, Dbs, ets:select(Cont), AccountsTree,
-                           Height, NewAcc);
-int_get_candidate_fold(RemGas, _Db, _Dbs, '$end_of_table', _AccountsTree,
+    int_get_candidate_fold(RemGas, GasLimit, Db, Dbs, ets:select(Cont),
+                           AccountsTree, Height, NewAcc);
+int_get_candidate_fold(RemGas, _GL, _Db, _Dbs, '$end_of_table', _AccountsTree,
                        _Height, Acc) ->
     {ok, RemGas, Acc}.
+
+fold_txs([Tx|Txs], Gas, GasLimit, Db, Dbs, AccountsTree, Height, Acc) ->
+    if Gas > GasLimit ->
+            {Gas1, Acc1} =
+                int_get_candidate_(
+                  Tx, Gas, Db, Dbs, AccountsTree, Height, Acc),
+            fold_txs(Txs, Gas1, GasLimit, Db, Dbs, AccountsTree, Height, Acc1);
+       true ->
+            {Gas, Acc}
+    end;
+fold_txs([], Gas, _, _, _, _, _, Acc) ->
+    {Gas, Acc}.
 
 int_get_candidate_({?KEY(_, _, Account, Nonce, _) = Key, Tx},
                    Gas, Db, Dbs, AccountsTree, Height, Acc) ->
@@ -370,7 +388,8 @@ int_get_candidate_({?KEY(_, _, Account, Nonce, _) = Key, Tx},
             %% The earlier must have had higher fee. Skip this tx.
             {Gas, Acc};
         false ->
-            check_candidate(Db, Dbs, Key, Tx, AccountsTree, Height, Gas, Acc)
+            check_candidate(
+              Db, Dbs, Key, Tx, AccountsTree, Height, Gas, Acc)
     end.
 
 
