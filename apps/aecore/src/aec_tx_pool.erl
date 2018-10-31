@@ -540,13 +540,14 @@ sel_return(L) when is_list(L) -> L;
 sel_return('$end_of_table' ) -> [];
 sel_return({Matches, _Cont}) -> Matches.
 
-do_top_change(Type, OldHash, NewHash, State) ->
+do_top_change(Type, OldHash, NewHash, State0) ->
     %% Add back transactions to the pool from discarded part of the chain
     %% Mind that we don't need to add those which are incoming in the fork
 
     %% NG: does this work for common ancestor for micro blocks?
     {ok, Ancestor} = aec_chain:find_common_ancestor(OldHash, NewHash),
-    Info = {State#state.dbs, State#state.gc_height},
+    {GCHeight, State} = get_gc_height(State0),
+    Info = {State#state.dbs, GCHeight},
 
     Handled = ets:new(foo, [private, set]),
     update_pool_from_blocks(Ancestor, OldHash, Info, Handled),
