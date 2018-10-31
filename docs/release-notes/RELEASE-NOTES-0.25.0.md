@@ -1,6 +1,6 @@
 # About this release
 
-[This release][this-release] is focused on TODOFILLMEIN.
+[This release][this-release] is the first release candidate.
 It:
 * Add response TTL to Oracle query response TX - a required parameter. This affects consensus.
 * Added JSON-RPC support in the state channel WebSocket API. The previous API remains supported for now. Support for JSON-RPC request batches implemented but not yet tested.
