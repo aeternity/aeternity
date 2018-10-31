@@ -244,7 +244,7 @@ oracle_query_tx(Oracle, Q, Value, QTTL, RTTL, State) ->
 oracle_query_tx_(Oracle, Q, Value, QTTL, RTTL,
                 State = #state{account = ContractKey}) ->
     Nonce = next_nonce(State),
-    QueryData = aeso_data:to_binary(Q),
+    QueryData = maybe_convert_oracle_arg(Oracle, Q, State),
     Spec =
         #{sender_id     => aec_id:create(account, ContractKey),
           nonce         => Nonce,
@@ -276,18 +276,37 @@ oracle_query_(Tx, State) ->
 oracle_respond_tx(Oracle, QueryId, Response, ResponseTTL, State) ->
     on_chain_only(State, fun() -> oracle_respond_tx_(Oracle, QueryId, Response, ResponseTTL, State) end).
 
-oracle_respond_tx_(Oracle, QueryId, Response, ResponseTTL, State) ->
+oracle_respond_tx_(Oracle, QueryId, Response0, ResponseTTL, State) ->
     Nonce = next_nonce(Oracle, State),
+    Response = maybe_convert_oracle_arg(Oracle, Response0, State),
     Spec =
         #{oracle_id    => aec_id:create(oracle, Oracle),
           nonce        => Nonce,
           query_id     => QueryId,
-          response     => aeso_data:to_binary(Response),
+          response     => Response,
           response_ttl => ResponseTTL,
           fee          => 0,
           ttl          => 0 %% Not used
          },
     aeo_response_tx:new(Spec).
+
+%% ABI encode data if the oracle has the sophia vm version.
+%% For no vm version, keep the string as is.
+maybe_convert_oracle_arg(OracleId, Arg, State) ->
+    Trees = get_top_trees(State),
+    case aeo_state_tree:lookup_oracle(OracleId, aec_trees:oracles(Trees)) of
+        {value, Oracle} ->
+            case aeo_oracles:vm_version(Oracle) of
+                ?AEVM_NO_VM ->
+                    Arg;
+                ?AEVM_01_Sophia_01 ->
+                    aeso_data:to_binary(Arg)
+            end;
+        none ->
+            %% Will fail later
+            Arg
+    end.
+
 
 -spec oracle_respond(aetx:tx(), binary(), chain_state()) ->
     prim_op_result().
@@ -346,13 +365,16 @@ oracle_get_answer(OracleId, QueryId, #state{trees = ChainTrees}) ->
                     ResponseFormat = aeo_oracles:response_format(Oracle),
                     VMVersion = aeo_oracles:vm_version(Oracle),
                     case oracle_typerep(VMVersion, ResponseFormat) of
-                        {ok, Type} ->
+                        {ok, Type} when VMVersion =:= ?AEVM_01_Sophia_01 ->
                             try aeso_data:from_binary(Type, Answer) of
                                 {ok, Result} -> {ok, {some, Result}};
                                 {error, _} -> {error, bad_answer}
                             catch _:_ ->
                                     {error, bad_answer}
                             end;
+                        {ok, string} when VMVersion =:= ?AEVM_NO_VM ->
+                            %% We treat the anwer as a non-sophia string
+                            {ok, {some, Answer}};
                         {error, bad_typerep} ->
                             {error, bad_typerep}
                     end
@@ -366,7 +388,13 @@ oracle_get_question(OracleId, QueryId, #state{trees = ChainTrees}) ->
     OraclesTree = aec_trees:oracles(Trees),
     case aeo_state_tree:lookup_query(OracleId, QueryId, OraclesTree) of
         {value, Query} ->
-            case get_query_type(OracleId, OraclesTree) of
+            {value, Oracle} = aeo_state_tree:lookup_oracle(OracleId, OraclesTree),
+            QueryFormat     = aeo_oracles:query_format(Oracle),
+            VMVersion       = aeo_oracles:vm_version(Oracle),
+            case oracle_typerep(VMVersion, QueryFormat) of
+                {ok, string} when VMVersion =:= ?AEVM_NO_VM ->
+                    %% We treat the question as a non-sophia string
+                    {ok, aeo_query:query(Query)};
                 {ok, QueryType} ->
                     try aeso_data:from_binary(QueryType, aeo_query:query(Query)) of
                         {ok, Question} ->
@@ -434,13 +462,6 @@ oracle_typerep(?AEVM_01_Sophia_01, BinaryFormat) ->
     catch
         _:_ -> {error, bad_typerep}
     end.
-
-
-get_query_type(OracleId, OraclesTree) ->
-    {value, Oracle} = aeo_state_tree:lookup_oracle(OracleId, OraclesTree),
-    QueryFormat     = aeo_oracles:query_format(Oracle),
-    VMVersion       = aeo_oracles:vm_version(Oracle),
-    oracle_typerep(VMVersion, QueryFormat).
 
 check_account_signature(AKey, CKey, Signature) ->
     check_signature(AKey, CKey, <<AKey/binary, CKey/binary>>, Signature).
