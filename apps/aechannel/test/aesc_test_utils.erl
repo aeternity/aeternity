@@ -15,6 +15,7 @@
          get_account/2,
          set_account_balance/3,
          set_account_nonce/3,
+         next_nonce/2,
          setup_new_account/1]).
 
 -export([close_solo/1,

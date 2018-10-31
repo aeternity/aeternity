@@ -132,10 +132,12 @@
          fp_after_solo_close/1,
          fp_after_slash/1,
          fp_chain_is_replaced_by_slash/1,
+         % fp various on-chain actions
          fp_use_onchain_oracle/1,
          fp_use_onchain_name_resolution/1,
          fp_use_onchain_enviroment/1,
-         fp_use_remote_call/1
+         fp_use_remote_call/1,
+         fp_use_onchain_contract/1
         ]).
 
 % negative force progress
@@ -335,6 +337,7 @@ groups() ->
 
        fp_insufficent_tokens,
 
+       fp_use_onchain_contract,
        % FP resets locked_until timer
        fp_settle_too_soon,
 
@@ -2577,6 +2580,107 @@ fp_use_remote_call(Cfg) ->
     ok.
 
 
+fp_use_onchain_contract(Cfg) ->
+    FPRound = 20,
+    LockPeriod = 10,
+    FPHeight0 = 20,
+    RemoteCall =
+        fun(Forcer, ContractHandle) ->
+            fun(Props) ->
+                RemoteContract = maps:get(ContractHandle, Props),
+                Address = aeu_hex:hexstring_encode(RemoteContract),
+                Args = <<"(", Address/binary, ")">>,
+                run(Props,
+                    [ force_call_contract(Forcer, <<"increment">>, Args),
+                      force_call_contract(Forcer, <<"get">>, Args)
+                    ])
+            end
+        end,
+    PushContractId =
+        fun(Key) ->
+            rename_prop(contract_id, Key, keep_old)
+        end,
+    PopContractId =
+        fun(Key) ->
+            rename_prop(Key, contract_id, keep_old)
+        end,
+
+    CallOnChain =
+        fun(Owner, Forcer) ->
+            IAmt0 = 30,
+            RAmt0 = 30,
+            ContractCreateRound = 10,
+            run(#{cfg => Cfg, initiator_amount => IAmt0,
+                              responder_amount => RAmt0,
+                  lock_period => LockPeriod,
+                  channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                set_prop(height, FPHeight0),
+
+                % create off-chain contract that is going to be used in the
+                % remote call later
+                create_trees_if_not_present(),
+                set_from(Owner, owner, owner_privkey),
+                create_contract_in_trees(_Round    = ContractCreateRound,
+                                         _Contract = "counter",
+                                         _InitArgs = <<"(42)">>,
+                                         _Deposit  = 2),
+                PushContractId(remote_contract),
+                fun(#{contract_id := RemoteContract} = Props) ->
+                    Props#{remote_contract => RemoteContract}
+                end,
+                % create the second contract
+                create_contract_in_trees(_Round1    = ContractCreateRound + 10,
+                                         _Contract2 = "remote_call",
+                                         _InitArgs2 = <<"()">>,
+                                         _Deposit2  = 2),
+                PushContractId(second_contract),
+                create_contract_in_onchain_trees(_OnchainContract = "counter",
+                                                 _OnchainCInitArgs = <<"(42)">>,
+                                                 _OnchainDeposit  = 2),
+                PushContractId(onchain_contract),
+                PopContractId(remote_contract),
+                force_call_contract_first(Forcer, <<"tick">>, <<"()">>,
+                                          FPRound),
+                force_call_contract(Forcer, <<"get">>, <<"()">>),
+                assert_last_channel_result(43, word),% it works
+
+                PopContractId(second_contract),
+                set_prop(call_deposit, 2),
+                RemoteCall(Forcer, remote_contract),
+                assert_last_channel_result(44, word), % it works remote
+                fun(Props) ->
+                    RemoteContract = maps:get(onchain_contract, Props),
+                    Address = aeu_hex:hexstring_encode(RemoteContract),
+                    Args = <<"(", Address/binary, ")">>,
+                    run(Props#{check_not_all_gas_used => false},
+                        %% force progress succededs but all gas is consumed
+                        %% because on-chain contract is not reachable
+                        [ force_call_contract(Forcer, <<"increment">>, Args)])
+                end,
+                fun(#{state := S,
+                      signed_force_progress := SignedForceProgressTx,
+                      solo_payload := #{update := Update,
+                                        round  := Round}} = Props) ->
+                    {_ContractId, Caller} = aesc_offchain_update:extract_call(Update),
+                    TxHashContractPubkey = aesc_utils:tx_hash_to_contract_pubkey(
+                                          aetx_sign:hash(SignedForceProgressTx)),
+                    CallId = aect_call:id(Caller,
+                                          Round,
+                                          TxHashContractPubkey),
+                    Call = aect_test_utils:get_call(TxHashContractPubkey, CallId,
+                                                    S),
+                    GasUsed = aect_call:gas_used(Call),
+                    GasLimit = maps:get(gas_limit, Props, 1234567890),
+                    ?assertEqual(GasUsed, GasLimit), % assert all gas
+                    Props
+                end])
+        end,
+    [CallOnChain(Owner, Forcer) || Owner  <- ?ROLES,
+                                   Forcer <- ?ROLES],
+    ok.
+
+
 % no one can post a force progress to a closed channel
 fp_closed_channel(Cfg) ->
     Round = 10,
@@ -3946,7 +4050,10 @@ force_progress_sequence(Round, Forcer) ->
                                                 S),
                 GasUsed = aect_call:gas_used(Call),
                 GasLimit = maps:get(gas_limit, Props, 1234567890),
-                ?assert(GasUsed < GasLimit),
+                case maps:get(check_not_all_gas_used, Props, true) of
+                    true -> ?assert(GasUsed < GasLimit);
+                    false -> pass
+                end,
                 GasPrice = aect_call:gas_price(Call),
                 ConsumedGas = GasUsed * GasPrice,
                 DeductedAmt = ConsumedGas + Fee,
@@ -4168,6 +4275,34 @@ create_contract_in_trees(CreationRound, ContractName, InitArg, Deposit) ->
         end,
         Props#{trees => Trees, contract_id => ContractId,
                contract_ids => [ContractId | ContractIds]}
+    end.
+
+create_contract_in_onchain_trees(ContractName, InitArg, Deposit) ->
+    fun(#{state := State0,
+          owner := Owner} = Props) ->
+        Trees0 = aesc_test_utils:trees(State0),
+        ContractString = aeso_test_utils:read_contract(ContractName),
+        BinCode = aeso_compiler:from_string(ContractString, []),
+        {ok, CallData} = aect_sophia:encode_call_data(BinCode, <<"init">>, InitArg),
+        Nonce = aesc_test_utils:next_nonce(Owner, State0),
+        {ok, AetxCreateTx} =
+            aect_create_tx:new(#{owner_id   => aec_id:create(account, Owner),
+                                 nonce      => Nonce,
+                                 code       => BinCode,
+                                 vm_version => ?VM_VERSION,
+                                 deposit    => Deposit,
+                                 amount     => 0,
+                                 gas        => 123467,
+                                 gas_price  => 1,
+                                 call_data  => CallData,
+                                 fee        => 10}), 
+        {contract_create_tx, CreateTx} = aetx:specialize_type(AetxCreateTx),
+        Env = tx_env(Props),
+        {ok, _} = aect_create_tx:check(CreateTx, Trees0, Env),
+        {ok, Trees} = aect_create_tx:process(CreateTx, Trees0, Env),
+        ContractId = aect_contracts:compute_contract_pubkey(Owner, Nonce),
+        State = aesc_test_utils:set_trees(Trees, State0),
+        Props#{state => State, contract_id => ContractId}
     end.
 
 run(Cfg, Funs) ->
