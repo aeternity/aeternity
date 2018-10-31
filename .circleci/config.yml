@@ -175,6 +175,8 @@ references:
         command: |
           export PACKAGE=${PACKAGE_TARBALL:?}
           export DEPLOY_DB_VERSION=$(cat deployment/DB_VERSION)
+          export AWS_CREDS_ROLE=epoch-inventory
+          source /infrastructure/import-secrets.sh
           cd /infrastructure && make deploy
 
   upload_github_release_asset: &upload_github_release_asset
