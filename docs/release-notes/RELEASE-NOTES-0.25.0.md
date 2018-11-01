@@ -29,6 +29,9 @@ It:
 * Introduces throw away keys for block mining and signing
 * Changes the API for constructing contract create and call transactions, allowing calls with user-defined types.
 * Changes calling convention in sophia and add type checking of remote calls. This makes the byte code smaller, the memory usage smaller, the contract calls more type safe. This affects consensus.
+* Introduces the vm_version field in oracles. This affects consensus.
+* Validates query and response formats in oracles. The nature of the check depends on the new vm version field.
+* Makes it possible for a contract to interact with oracles with plain string queries/responses.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.25.0
 
