@@ -6,6 +6,8 @@ import tempfile
 import os
 import shutil
 import logging
+import base64
+import nacl.encoding
 
 from swagger_client.rest import ApiException
 from swagger_client.api.external_api import ExternalApi
@@ -19,6 +21,8 @@ from swagger_client.configuration import Configuration
 from nose.tools import assert_equals
 from testconfig import config
 from waiting import wait
+
+from nacl.hash import sha256
 
 import base58
 import rlp
@@ -214,7 +218,7 @@ def send_tokens_to_unchanging_user(sender, address, tokens, fee, external_api, i
         ttl=100,
         payload="sending tokens")
     spend_tx = internal_api.post_spend(spend_tx_obj).tx
-    unsigned_tx = base58_decode(spend_tx)
+    unsigned_tx = api_decode(spend_tx)
     signed_tx = integration.keys.sign_encode_tx(unsigned_tx, sender['privk'])
     external_api.post_transaction(Tx(tx=signed_tx))
 
@@ -234,21 +238,50 @@ def _balance_from_get_account(get_account_fun, pub_key):
         assert_equals(e.status, 404) # no account yet
     return account.balance
 
-def base58_decode(encoded):
+def api_decode(encoded):
     if encoded[2] != '_':
         raise ValueError('Invalid hash')
+    prefix = encoded[0:2]
+    if api_encode_type(prefix) == 64:
+        return base64decode_check(encoded[3:])
     return base58.b58decode_check(encoded[3:])
+
+def api_encode(prefix, decoded):
+    if api_encode_type(prefix) == 64:
+        return prefix + '_' + base64encode_check(decoded)
+    return prefix + '_' + base58.b58encode_check(decoded)
+
+def api_encode_type(prefix):
+    if len(prefix) != 2:
+        raise ValueError('Invalid prefix: ' + prefix)
+    base64Prefixes = {'cb', 'tx', 'ov', 'or', 'st', 'pi', 'ss'}
+    if prefix in base64Prefixes:
+        return 64
+    return 58
+
+def base64decode_check(encoded):
+    decoded = base64.b64decode(encoded)
+    check = decoded[-4:]
+    body = decoded[:-4]
+    shaHash = sha256(sha256(body, encoder=nacl.encoding.RawEncoder), encoder=nacl.encoding.RawEncoder)
+    if shaHash[0:4] != check:
+        raise ValueError('Invalid hash')
+    return body
+
+def base64encode_check(decoded):
+    shaHash = sha256(sha256(decoded, encoder=nacl.encoding.RawEncoder), encoder=nacl.encoding.RawEncoder)
+    return base64.b64encode(decoded + shaHash[0:4])
 
 def hexstring_to_contract_bytearray(hexstring):
     if (hexstring.startswith("0x")):
         hexstring = hexstring[2:]
-    return "cb_" + base58.b58encode_check(hexstring.decode("hex"))
+    return "cb_" + base64encode_check(hexstring.decode("hex"))
 
 def encode_signed_tx(encoded_tx, signatures):
     tag = bytearray([11])
     vsn = bytearray([1])
     payload = rlp.encode([tag, vsn, signatures, encoded_tx])
-    return "tx_" + base58.b58encode_check(payload)
+    return api_encode("tx", payload)
 
 def decode_unsigned_tx(encoded_tx):
     decoded = rlp.decode(encoded_tx)
@@ -279,16 +312,13 @@ def bytes_to_int(x):
     return int(x.encode('hex'), 16)
 
 def encode_pubkey(pubkey):
-    str = base58.b58encode_check(pubkey)
-    return "ak_" + str
+    return api_encode("ak", pubkey)
 
 def encode_name(name):
-    str = base58.b58encode_check(name)
-    return "nm_" + str
+    return api_encode("nm", name)
 
 def encode_tx_hash(txhash):
-    str = base58.b58encode_check(txhash)
-    return "th_" + str
+    return api_encode("th", txhash)
 
 def setup_beneficiary():
     ben_priv = integration.keys.new_private()

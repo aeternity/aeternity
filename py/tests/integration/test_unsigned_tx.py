@@ -51,13 +51,13 @@ def test_contract_create():
 
     print("Unsigned encoded transaction: " + encoded_tx)
     print("Contract id: " + contract_id)
-    unsigned_tx = common.base58_decode(encoded_tx)
+    unsigned_tx = common.api_decode(encoded_tx)
     tx = common.decode_unsigned_tx(unsigned_tx)
     print("Unsigned decoded transaction: " + str(tx))
 
     # make sure same tx
     assert_equals(tx['type'], 'contract_create_tx')
-    assert_equals(tx['owner_id'], common.base58_decode(test_settings["alice"]["pubkey"]))
+    assert_equals(tx['owner_id'], common.api_decode(test_settings["alice"]["pubkey"]))
     assert_equals(tx['vm_version'], test_settings["create_contract"]["vm_version"])
     assert_equals(tx['deposit'], test_settings["create_contract"]["deposit"])
     assert_equals(tx['amount'], test_settings["create_contract"]["amount"])
@@ -100,7 +100,7 @@ def test_contract_call():
 
     ## create contract
     encoded_tx, encoded_contract_id = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api, internal_api)
-    unsigned_tx = common.base58_decode(encoded_tx)
+    unsigned_tx = common.api_decode(encoded_tx)
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
 
     alice_balance0 = common.get_account_balance(external_api, alice_address)
@@ -137,7 +137,7 @@ def test_contract_call():
     encoded_call_tx = call_tx_obj.tx
 
     print("Unsigned encoded transaction: " + encoded_call_tx)
-    unsigned_call_tx = common.base58_decode(encoded_call_tx)
+    unsigned_call_tx = common.api_decode(encoded_call_tx)
 
     signed_call = keys.sign_verify_encode_tx(unsigned_call_tx, private_key, public_key)
 
@@ -173,7 +173,7 @@ def test_contract_on_chain_call_off_chain():
 
     ## create contract
     encoded_tx, encoded_contract_id = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api, internal_api)
-    unsigned_tx = common.base58_decode(encoded_tx)
+    unsigned_tx = common.api_decode(encoded_tx)
 
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
     common.ensure_transaction_posted(external_api, signed)
@@ -231,7 +231,7 @@ def test_spend():
             payload="foo")
     unsigned_spend_obj = internal_api.post_spend(spend_data_obj)
     unsigned_spend_enc = unsigned_spend_obj.tx
-    unsigned_tx = common.base58_decode(unsigned_spend_enc)
+    unsigned_tx = common.api_decode(unsigned_spend_enc)
 
     # Alice signs spend tx
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)

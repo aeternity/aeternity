@@ -64,8 +64,8 @@ Bob computes - off-chain, using the epoch API - the unsigned contract create tra
 ct_...
 >>> print(raw_unsigned_contract_create_tx.tx) # doctest: +ELLIPSIS
 tx_...
->>> import base58
->>> unsigned_contract_create_tx = base58.b58decode_check(raw_unsigned_contract_create_tx.tx[3:])
+>>> import common
+>>> unsigned_contract_create_tx = common.api_decode(raw_unsigned_contract_create_tx.tx)
 
 Bob signs - locally - the contract create transaction.
 
@@ -112,7 +112,7 @@ Alice computes - off-chain, using the epoch API - the unsigned contract call tra
 
 >>> contract_call_data = {'f': "get", 'arg': "()"}
 >>> from swagger_client.models.contract_call_compute import ContractCallCompute
->>> unsigned_contract_call_tx = base58.b58decode_check(epoch_node['internal_api'].post_contract_call_compute(ContractCallCompute(
+>>> unsigned_contract_call_tx = common.api_decode(epoch_node['internal_api'].post_contract_call_compute(ContractCallCompute(
 ...   caller_id=users['a']['encoded_pub_key'],
 ...   nonce=1,
 ...   contract_id=contract_id,
@@ -122,7 +122,7 @@ Alice computes - off-chain, using the epoch API - the unsigned contract call tra
 ...   gas=20000,
 ...   gas_price=1,
 ...   function=contract_call_data['f'],
-...   arguments=contract_call_data['arg'])).tx[3:])
+...   arguments=contract_call_data['arg'])).tx)
 
 Alice signs - locally - the contract call transaction.
 

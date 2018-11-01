@@ -35,13 +35,19 @@
 -type payload() :: binary().
 -type encoded() :: binary().
 
+-define(BASE58, 1).
+-define(BASE64, 2).
+
 -spec encode(known_type(), payload() | aec_id:id()) -> encoded().
 encode(id_hash, Payload) ->
     {IdType, Val} = aec_id:specialize(Payload),
     encode(id2type(IdType), Val);
 encode(Type, Payload) ->
     Pfx = type2pfx(Type),
-    Enc = base58_check(Payload),
+    Enc = case type2enc(Type) of
+              ?BASE58 -> base58_check(Payload);
+              ?BASE64 -> base64_check(Payload)
+          end,
     <<Pfx/binary, "_", Enc/binary>>.
 
 -spec decode(binary()) -> {known_type(), payload()}.
@@ -49,7 +55,7 @@ decode(Bin0) ->
     case split(Bin0) of
         [Pfx, Payload] ->
             Type = pfx2type(Pfx),
-            Bin = decode_check(Payload),
+            Bin = decode_check(Type, Payload),
             case type_size_check(Type, Bin) of
                 ok -> {Type, Bin};
                 {error, Reason} -> erlang:error(Reason)
@@ -110,13 +116,21 @@ safe_decode(Type, Enc) ->
             {error, invalid_encoding}
     end.
 
-decode_check(Bin) ->
-    Dec = base58_to_binary(Bin),
+decode_check(Type, Bin) ->
+    Dec =
+        case type2enc(Type) of
+            ?BASE58 -> base58_to_binary(Bin);
+            ?BASE64 -> base64_to_binary(Bin)
+        end,
     Sz = byte_size(Dec),
     BSz = Sz - 4,
     <<Body:BSz/binary, C:4/binary>> = Dec,
     C = check_str(Body),
     Body.
+
+base64_check(Bin) ->
+    C = check_str(Bin),
+    binary_to_base64(iolist_to_binary([Bin, C])).
 
 %% modified from github.com/mbrix/lib_hd
 base58_check(Bin) ->
@@ -144,6 +158,29 @@ type2id(commitment)      -> commitment;
 type2id(contract_pubkey) -> contract;
 type2id(name)            -> name;
 type2id(oracle_pubkey)   -> oracle.
+
+type2enc(key_block_hash)   -> ?BASE58;
+type2enc(micro_block_hash) -> ?BASE58;
+type2enc(block_pof_hash)   -> ?BASE58;
+type2enc(block_tx_hash)    -> ?BASE58;
+type2enc(block_state_hash) -> ?BASE58;
+type2enc(channel)          -> ?BASE58;
+type2enc(contract_pubkey)  -> ?BASE58;
+type2enc(contract_bytearray)-> ?BASE64;
+type2enc(transaction)      -> ?BASE64;
+type2enc(tx_hash)          -> ?BASE58;
+type2enc(oracle_pubkey)    -> ?BASE58;
+type2enc(oracle_query)     -> ?BASE64;
+type2enc(oracle_query_id)  -> ?BASE58;
+type2enc(oracle_response)  -> ?BASE64;
+type2enc(account_pubkey)   -> ?BASE58;
+type2enc(signature)        -> ?BASE58;
+type2enc(commitment)       -> ?BASE58;
+type2enc(peer_pubkey)      -> ?BASE58;
+type2enc(name)             -> ?BASE58;
+type2enc(state)            -> ?BASE64;
+type2enc(poi)              -> ?BASE64;
+type2enc(state_trees)      -> ?BASE64.
 
 
 type2pfx(key_block_hash)   -> <<"kh">>;
@@ -225,3 +262,9 @@ binary_to_base58(Bin) ->
 
 base58_to_binary(Bin) when is_binary(Bin) ->
     base58:base58_to_binary(binary_to_list(Bin)).
+
+binary_to_base64(Bin) ->
+    base64:encode(Bin).
+
+base64_to_binary(Bin) when is_binary(Bin) ->
+    base64:decode(Bin).

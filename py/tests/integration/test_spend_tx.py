@@ -150,7 +150,7 @@ def register_name(name, address, external_api, internal_api, private_key):
     commitment_id = internal_api.get_commitment_id(name, salt).commitment_id
 
     # preclaim
-    unsigned_preclaim = common.base58_decode(\
+    unsigned_preclaim = common.api_decode(\
         internal_api.post_name_preclaim(\
             NamePreclaimTx(commitment_id=commitment_id, fee=1, ttl=100, account_id=address)).tx)
     signed_preclaim = keys.sign_encode_tx(unsigned_preclaim, private_key)
@@ -158,7 +158,7 @@ def register_name(name, address, external_api, internal_api, private_key):
 
     # claim
     encoded_name = common.encode_name(name)
-    unsigned_claim = common.base58_decode(\
+    unsigned_claim = common.api_decode(\
         internal_api.post_name_claim(\
             NameClaimTx(name=encoded_name, name_salt=salt, fee=1, ttl=100, account_id=address)).tx)
     signed_claim = keys.sign_encode_tx(unsigned_claim, private_key)
@@ -167,7 +167,7 @@ def register_name(name, address, external_api, internal_api, private_key):
 
     # set pointers
     pointers = [ NamePointer(key='account_pubkey', id=address) ]
-    unsigned_update = common.base58_decode(\
+    unsigned_update = common.api_decode(\
         internal_api.post_name_update(\
             NameUpdateTx(name_id=name_entry0.id, name_ttl=6000, client_ttl=50,\
                 pointers=pointers, fee=1, ttl=100, account_id=address)).tx)

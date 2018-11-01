@@ -29,7 +29,7 @@ def sign_verify_encode_tx(packed_tx, private_key, public_key):
     return signed_encoded
 
 def tx_hash_from_signed_encoded(signed_encoded):
-    signed = common.base58_decode(signed_encoded);
+    signed = common.api_decode(signed_encoded);
     return common.encode_tx_hash(blake2b(data=signed, digest_size=32, encoder=nacl.encoding.RawEncoder))
 
 def verify(signature, message, public_key):
