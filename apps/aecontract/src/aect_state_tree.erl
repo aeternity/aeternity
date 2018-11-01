@@ -12,9 +12,11 @@
         , empty/0
         , empty_with_backend/0
         , get_contract/2
+        , get_contract/3
         , insert_contract/2
         , enter_contract/2
         , lookup_contract/2
+        , lookup_contract/3
         , new_with_backend/1
         , root_hash/1]).
 
@@ -118,9 +120,16 @@ enter_store_nodes(Prefix, MergedStore, Store, OldStore, CtTree) ->
      maps:fold(Insert, CtTree, MergedStore).
 
 -spec get_contract(aect_contracts:pubkey(), tree()) -> aect_contracts:contract().
-get_contract(Pubkey, #contract_tree{ contracts = CtTree }) ->
+get_contract(PubKey, Tree) ->
+    get_contract(PubKey, Tree, []).
+
+-spec get_contract(aect_contracts:pubkey(), tree(), [no_store]) -> aect_contracts:contract().
+get_contract(Pubkey, #contract_tree{ contracts = CtTree }, Options) ->
     Contract = aect_contracts:deserialize(Pubkey, aeu_mtrees:get(Pubkey, CtTree)),
-    add_store(Contract, CtTree).
+    case proplists:get_value(no_store, Options, false) of
+        false -> add_store(Contract, CtTree);
+        true  -> Contract
+    end.
 
 add_store(Contract, CtTree) ->
     Id = aect_contracts:store_id(Contract),
@@ -141,9 +150,19 @@ find_store_keys(Id, {PrefixedKey, Val, Iter}, PrefixSize, Store) ->
 
 -spec lookup_contract(aect_contracts:pubkey(), tree()) -> {value, aect_contracts:contract()} | none.
 lookup_contract(Pubkey, Tree) ->
+    lookup_contract(Pubkey, Tree, []).
+
+-spec lookup_contract(aect_contracts:pubkey(), tree(), [no_store]) ->
+        {value, aect_contracts:contract()} | none.
+lookup_contract(Pubkey, Tree, Options) ->
     CtTree = Tree#contract_tree.contracts,
     case aeu_mtrees:lookup(Pubkey, CtTree) of
-        {value, Val} -> {value, add_store(aect_contracts:deserialize(Pubkey, Val), CtTree)};
+        {value, Val} ->
+            Contract = aect_contracts:deserialize(Pubkey, Val),
+            case proplists:get_value(no_store, Options, false) of
+                false -> {value, add_store(Contract, CtTree)};
+                true  -> {value, Contract}
+            end;
         none         -> none
     end.
 

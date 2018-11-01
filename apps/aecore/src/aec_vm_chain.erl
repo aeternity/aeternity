@@ -618,7 +618,7 @@ aens_revoke_(Tx, Signature, #state{ account = ContractKey } = State) ->
 get_contract_fun_types(Target, VMVersion, TypeHash, State) ->
     Trees = get_top_trees(State),
     CT = aec_trees:contracts(Trees),
-    case aect_state_tree:lookup_contract(Target, CT) of
+    case aect_state_tree:lookup_contract(Target, CT, [no_store]) of  %% no store
         {value, Contract} ->
             case aect_contracts:vm_version(Contract) of
                 VMVersion ->
@@ -641,7 +641,7 @@ call_contract(Target, Gas, Value, CallData, CallStack,
               State = #state{account = ContractKey}) ->
     Trees = get_top_trees(State),
     CT = aec_trees:contracts(Trees),
-    case aect_state_tree:lookup_contract(Target, CT) of
+    case aect_state_tree:lookup_contract(Target, CT, [no_store]) of  %% skip store, we look it up later
         {value, Contract} ->
             AT = aec_trees:accounts(Trees),
             {value, ContractAccount} = aec_accounts_trees:lookup(ContractKey, AT),
@@ -702,7 +702,7 @@ do_get_store(PubKey, Trees) ->
 do_set_store(Store, PubKey, Trees) ->
     ContractsTree = aec_trees:contracts(Trees),
     NewContract =
-        case aect_state_tree:lookup_contract(PubKey, ContractsTree) of
+        case aect_state_tree:lookup_contract(PubKey, ContractsTree, [no_store]) of
             {value, Contract} -> aect_contracts:set_state(Store, Contract)
         end,
     aect_state_tree:enter_contract(NewContract, ContractsTree).

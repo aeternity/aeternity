@@ -390,7 +390,7 @@ check_call(#contract_call_tx{ vm_version = VmVersion,
     %% check and this is the least convoluted way of writing it that Dialyzer's
     %% static analysis cannot see through.
     NegativeAmount = -Value > 0,
-    case aect_state_tree:lookup_contract(ContractPubKey, ContractsTree) of
+    case aect_state_tree:lookup_contract(ContractPubKey, ContractsTree, [no_store]) of
         _ when NegativeAmount -> {error, negative_amount};
         {value, C} ->
             case aect_contracts:vm_version(C) == VmVersion of
