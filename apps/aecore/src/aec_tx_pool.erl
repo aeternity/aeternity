@@ -263,8 +263,8 @@ handle_call_({push, Tx, Hash, Event}, _From, State) ->
     {Res, State1} = do_pool_db_put(pool_db_key(Tx), Tx, Hash, Event, State),
     {reply, Res, State1};
 handle_call_({top_change, Type, OldHash, NewHash}, _From, State) ->
-    do_top_change(Type, OldHash, NewHash, State),
-    {reply, ok, State};
+    {_, State1} = do_top_change(Type, OldHash, NewHash, State),
+    {reply, ok, State1};
 handle_call_({peek, MaxNumberOfTxs, Account}, _From, #state{dbs = Dbs} = State)
   when is_integer(MaxNumberOfTxs), MaxNumberOfTxs >= 0;
        MaxNumberOfTxs =:= infinity ->
@@ -553,10 +553,11 @@ do_top_change(Type, OldHash, NewHash, State0) ->
     update_pool_from_blocks(Ancestor, OldHash, Info, Handled),
     update_pool_from_blocks(Ancestor, NewHash, Info, Handled),
     ets:delete(Handled),
-    case Type of
+    Ret = case Type of
         key -> revisit(State#state.dbs);
         micro -> ok
-    end.
+    end,
+    {Ret, State}.
 
 update_pool_from_blocks(Hash, Hash,_Info,_Handled) -> ok;
 update_pool_from_blocks(Ancestor, Current, Info, Handled) ->
