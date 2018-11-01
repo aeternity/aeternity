@@ -382,8 +382,14 @@ jobs:
             - _build/default/rebar3_20.2.3_plt
       - run: make dialyzer
       - run: make python-env && make swagger-check
-      - run: make rebar-lock-check
       - run: ./rebar3 xref || true
+      - *fail_notification
+
+  rebar_lock_check:
+    <<: *container_config
+    steps:
+      - checkout
+      - run: make rebar-lock-check
       - *fail_notification
 
   linux_package:
@@ -666,6 +672,7 @@ workflows:
       - deploy_api_docs:
           requires:
             - static_analysis
+            - rebar_lock_check
             - hodl_green
           filters:
             branches:
@@ -735,6 +742,17 @@ workflows:
             tags:
               only: /^v.*$/
 
+      - rebar_lock_check:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+            tags:
+              only: /^v.*$/
+
       - linux_package:
           filters:
             tags:
@@ -754,6 +772,7 @@ workflows:
             - aevm_tests
             - uat_tests
             - static_analysis
+            - rebar_lock_check
             - linux_package
           filters:
             branches:
@@ -766,6 +785,7 @@ workflows:
             - aevm_tests
             - uat_tests
             - static_analysis
+            - rebar_lock_check
           filters:
             branches:
               only: master
@@ -804,6 +824,7 @@ workflows:
           requires:
             - eunit
             - static_analysis
+            - rebar_lock_check
             - linux_package
             - hodl_blue
           filters:
@@ -826,6 +847,7 @@ workflows:
           requires:
             - eunit
             - static_analysis
+            - rebar_lock_check
             - linux_package
             - hodl_blue
           filters:
@@ -838,6 +860,7 @@ workflows:
           requires:
             - eunit
             - static_analysis
+            - rebar_lock_check
             - osx_package
             - hodl_blue
           filters:
@@ -850,6 +873,7 @@ workflows:
           requires:
             - eunit
             - static_analysis
+            - rebar_lock_check
             - hodl_blue
           filters:
             branches:
