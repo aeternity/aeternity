@@ -128,26 +128,37 @@ push(Tx) ->
     push(Tx, tx_created).
 
 -spec push(aetx_sign:signed_tx(), event()) -> ok | {error, atom()}.
-push(Tx, Event) when ?PUSH_EVENT(Event) ->
-    %% Verify that this is a signed transaction.
-    aec_jobs_queues:run(tx_pool_push, fun() -> push_(Tx, Event) end).
+push(Tx, Event = tx_received) ->
+    TxHash = safe_tx_hash(Tx),
+    case aec_tx_gossip_cache:in_cache(TxHash) of
+        true -> ok;
+        false ->
+            aec_jobs_queues:run(tx_pool_push, fun() -> push_(Tx, TxHash, Event) end)
+    end;
+push(Tx, Event = tx_created) ->
+    push_(Tx, Event).
 
-push_(Tx, Event) ->
-    try aetx_sign:tx(Tx)
+safe_tx_hash(Tx) ->
+    try aetx_sign:hash(Tx)
     catch _:_ ->
             incr([push, illegal]),
             error({illegal_transaction, Tx})
-    end,
-    case check_pool_db_put(Tx) of
+    end.
+
+push_(Tx, Event) ->
+    push_(Tx, safe_tx_hash(Tx), Event).
+
+push_(Tx, TxHash, Event) ->
+    case check_pool_db_put(Tx, TxHash) of
         ignore ->
             incr([push, ignore]),
             ok;
         {error,_} = E ->
             incr([push, error]),
             E;
-        {ok, Hash} ->
+        ok ->
             incr([push]),
-            gen_server:call(?SERVER, {push, Tx, Hash, Event})
+            gen_server:call(?SERVER, {push, Tx, TxHash, Event})
     end.
 
 incr(Metric) ->
@@ -592,21 +603,20 @@ update_pool_on_tx_hash(TxHash, {#dbs{gc_db = GCDb} = Dbs, GCHeight}, Handled) ->
             end
     end.
 
--spec check_pool_db_put(aetx_sign:signed_tx()) ->
+-spec check_pool_db_put(aetx_sign:signed_tx(), tx_hash()) ->
                                ignore
                              | {'ok', tx_hash()}
                              | {'error', atom()}.
-check_pool_db_put(Tx) ->
-    Hash = aetx_sign:hash(Tx),
-    case aec_chain:find_tx_location(Hash) of
+check_pool_db_put(Tx, TxHash) ->
+    case aec_chain:find_tx_location(TxHash) of
         BlockHash when is_binary(BlockHash) ->
-            lager:debug("Already have tx: ~p in ~p", [Hash, BlockHash]),
+            lager:debug("Already have tx: ~p in ~p", [TxHash, BlockHash]),
             {error, already_accepted};
         mempool ->
-            %% lager:debug("Already have tx: ~p in ~p", [Hash, mempool]),
+            %% lager:debug("Already have tx: ~p in ~p", [TxHash, mempool]),
             ignore;
         none ->
-            lager:debug("Already have GC:ed tx: ~p", [Hash]),
+            lager:debug("Already have GC:ed tx: ~p", [TxHash]),
             ignore;
         not_found ->
             Checks = [ fun check_signature/2
@@ -615,12 +625,12 @@ check_pool_db_put(Tx) ->
                      , fun check_minimum_gas_price/2
                      , fun check_tx_ttl/2
                      ],
-            case aeu_validation:run(Checks, [Tx, Hash]) of
+            case aeu_validation:run(Checks, [Tx, TxHash]) of
                 {error, _} = E ->
-                    lager:debug("Validation error for tx ~p: ~p", [Hash, E]),
+                    lager:debug("Validation error for tx ~p: ~p", [TxHash, E]),
                     E;
                 ok ->
-                    {ok, Hash}
+                    ok
             end
     end.
 
@@ -649,7 +659,7 @@ pool_db_raw_put(#dbs{db = Db, nonce_db = NDb, gc_db = GCDb},
                 GCHeight, Key, Tx, TxHash) ->
     ets:insert(Db, {Key, Tx}),
     insert_nonce(NDb, Key),
-    enter_tx_gc(GCDb, TxHash, Key, GCHeight + tx_ttl()).
+    enter_tx_gc(GCDb, TxHash, Key, min(GCHeight + tx_ttl(), aetx:ttl(aetx_sign:tx(Tx)))).
 
 insert_nonce(NDb, ?KEY(_, _, Account, Nonce, TxHash)) ->
     ets:insert(NDb, {{Account, Nonce, TxHash}}).

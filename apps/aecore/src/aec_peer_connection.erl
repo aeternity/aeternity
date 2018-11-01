@@ -38,6 +38,10 @@
         , tx_pool_sync_unfold/2
         ]).
 
+%% API for gossip serialization
+-export([gossip_serialize_block/1,
+         gossip_serialize_tx/1]).
+
 -include("aec_peer_messages.hrl").
 
 -behaviour(gen_server).
@@ -106,11 +110,11 @@ tx_pool_sync_get(PeerId, TxHashes) ->
 tx_pool_sync_finish(PeerId, Done) ->
     call(PeerId, {tx_pool, [sync_finish, Done]}).
 
-send_tx(PeerId, Tx) ->
-    cast(PeerId, {send_tx, Tx}).
+send_tx(PeerId, SerTx) ->
+    cast(PeerId, {send_tx, SerTx}).
 
-send_block(PeerId, Tx) ->
-    cast(PeerId, {send_block, Tx}).
+send_block(PeerId, SerBlock) ->
+    cast(PeerId, {send_block, SerBlock}).
 
 stop(PeerCon) ->
     gen_server:cast(PeerCon, stop).
@@ -220,11 +224,11 @@ init([Opts]) ->
 handle_call(Request, From, State) ->
     handle_request(State, Request, From).
 
-handle_cast({send_tx, Hash}, State) ->
-    send_send_tx(State, Hash),
+handle_cast({send_tx, SerTx}, State) ->
+    send_send_tx(State, SerTx),
     {noreply, State};
-handle_cast({send_block, Hash}, State) ->
-    send_send_block(State, Hash),
+handle_cast({send_block, SerBlock}, State) ->
+    send_send_block(State, SerBlock),
     {noreply, State};
 handle_cast({expand_micro_block, MicroBlockFragment}, State) ->
     {noreply, expand_micro_block(State, MicroBlockFragment)};
@@ -921,16 +925,15 @@ handle_tx_pool_sync_rsp(S, Action, {tx_pool, From, _TRef}, MsgObj) ->
 
 %% -- Send Block --------------------------------------------------------------
 
-send_send_block(#{ status := error }, _Block) ->
+send_send_block(#{ status := error }, _SerBlock) ->
     ok;
-send_send_block(#{ status := {disconnecting, _ESock} }, _Block) ->
+send_send_block(#{ status := {disconnecting, _ESock} }, _SerBlock) ->
     ok;
-send_send_block(S = #{ status := {connected, _ESock} }, Block) ->
+send_send_block(S = #{ status := {connected, _ESock} }, {Type, SerBlock}) ->
     {MsgType, Msg} =
-        case aec_blocks:type(Block) of
-            key   -> {key_block, #{ key_block => serialize_key_block(Block) }};
-            micro -> {micro_block, #{ micro_block => serialize_light_micro_block(Block),
-                                      light => true }}
+        case Type of
+            key_block         -> {key_block, #{ key_block => SerBlock }};
+            light_micro_block -> {micro_block, #{ micro_block => SerBlock, light => true }}
         end,
     send_msg(S, MsgType, aec_peer_messages:serialize(MsgType, Msg)).
 
@@ -1076,24 +1079,29 @@ fill_txs([_TH | _TATHs], [], _Acc) ->
 
 %% -- Send TX --------------------------------------------------------------
 
-send_send_tx(#{ status := error }, _Tx) ->
+send_send_tx(#{ status := error }, _SerTx) ->
     ok;
-send_send_tx(#{ status := {disconnecting, _ESock} }, _Tx) ->
+send_send_tx(#{ status := {disconnecting, _ESock} }, _SerTx) ->
     ok;
-send_send_tx(S = #{ status := {connected, _ESock} }, Tx) ->
-    TxSerialized = aetx_sign:serialize_to_binary(Tx),
-    Msg = aec_peer_messages:serialize(txs, #{ txs => [TxSerialized] }),
+send_send_tx(S = #{ status := {connected, _ESock} }, SerTx) ->
+    Msg = aec_peer_messages:serialize(txs, #{ txs => [SerTx] }),
     send_msg(S, txs, Msg).
 
 handle_new_txs(S, Msg) ->
     try
         #{ txs := EncSignedTxs } = Msg,
         SignedTxs = [ aetx_sign:deserialize_from_binary(Tx) || Tx <- EncSignedTxs ],
-        [ aec_tx_pool:push(SignedTx, tx_received) || SignedTx <- SignedTxs ]
+        %% Offload the handling to a temporary worker process - it might block
+        %% on the tx_pool_push queue.
+        spawn(fun() -> [ tx_push(SignedTx) || SignedTx <- SignedTxs ] end)
     catch _:_ ->
         ok
     end,
     S.
+
+tx_push(STx) ->
+    try aec_tx_pool:push(STx, tx_received)
+    catch _:_ -> rejected end.
 
 %% -- Send message -----------------------------------------------------------
 send_msg(#{ status := {disconnecting, _ESock} }, _Type, _Msg) -> ok;
@@ -1172,6 +1180,15 @@ close_timeout() ->
                                aecore, sync_close_timeout,
                                ?DEFAULT_CLOSE_TIMEOUT).
 %% -- Helper functions -------------------------------------------------------
+
+gossip_serialize_block(Block) ->
+    case aec_blocks:type(Block) of
+        key   -> {key_block, serialize_key_block(Block)};
+        micro -> {light_micro_block, serialize_light_micro_block(Block)}
+    end.
+
+gossip_serialize_tx(Tx) ->
+    aetx_sign:serialize_to_binary(Tx).
 
 serialize_key_block(KeyBlock) ->
     key = aec_blocks:type(KeyBlock),

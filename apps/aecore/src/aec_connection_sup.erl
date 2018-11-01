@@ -43,6 +43,7 @@ init([]) ->
                 , period => 10},
     ChildSpecs = [ aec_peer_connection_sup_spec() % outgoing connections
                  , worker(aec_tx_pool_sync)
+                 , worker(aec_tx_gossip_cache)
                  , worker(aec_peers)
                  , worker(aec_sync)
                  , peer_listener_spec()           % incoming connections

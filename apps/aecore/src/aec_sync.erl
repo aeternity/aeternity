@@ -514,11 +514,12 @@ enqueue(Kind, Data, PeerIds) ->
     spawn(fun() ->
     case Kind of
         block ->
-            [ aec_jobs_queues:run(sync_gossip, fun() -> do_forward_block(Data, PId) end)
-              || PId <- PeerIds ];
+            %% Getting blocks to spread is a priority, bypass the gossip queue
+            SerBlock = aec_peer_connection:gossip_serialize_block(Data),
+            [ do_forward_block(SerBlock, PId) || PId <- PeerIds ];
         tx ->
-            [ aec_jobs_queues:run(sync_gossip, fun() -> do_forward_tx(Data, PId) end)
-              || PId <- PeerIds ]
+            SerTx = aec_peer_connection:gossip_serialize_tx(Data),
+            aec_jobs_queues:run(sync_gossip, fun() -> [ do_forward_tx(SerTx, PId) || PId <- PeerIds ] end)
     end end).
 
 ping_peer(PeerId) ->
@@ -531,12 +532,12 @@ ping_peer(PeerId) ->
             aec_peers:log_ping(PeerId, error)
     end.
 
-do_forward_block(Block, PeerId) ->
-    Res = aec_peer_connection:send_block(PeerId, Block),
+do_forward_block(SerBlock, PeerId) ->
+    Res = aec_peer_connection:send_block(PeerId, SerBlock),
     epoch_sync:debug("send_block to (~p): ~p", [ppp(PeerId), Res]).
 
-do_forward_tx(Tx, PeerId) ->
-    Res = aec_peer_connection:send_tx(PeerId, Tx),
+do_forward_tx(SerTx, PeerId) ->
+    Res = aec_peer_connection:send_tx(PeerId, SerTx),
     epoch_sync:debug("send_tx to (~p): ~p", [ppp(PeerId), Res]).
 
 do_start_sync(PeerId, RemoteHash) ->

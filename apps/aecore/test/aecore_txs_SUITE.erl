@@ -93,7 +93,7 @@ txs_gc(Config) ->
 
     {ok, TxH5} = add_spend_tx(N1, 1000, 1,  5,  10), %% Non consecutive nonce
     {ok, _}    = add_spend_tx(N1, 1000, 1,  7,  10), %% Non consecutive nonce
-    {ok, _}    = add_spend_tx(N1, 1000, 1,  8,  5),  %% Short TTL - expires at 5 + 2 = 7
+    {ok, _}    = add_spend_tx(N1, 1000, 1,  8,  7),  %% Short TTL - expires at 7
 
     %% Now there should be 7 transactions in mempool
     {ok, Txs1} = pool_peek(N1),
