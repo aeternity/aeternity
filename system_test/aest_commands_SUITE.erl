@@ -55,7 +55,7 @@ epoch_commands(Cfg) ->
     wait_for_value({height, 0}, [node1], ?STARTUP_TIMEOUT, Cfg),
     {0, Output1} = aest_nodes:run_cmd_in_node_dir(node1, ["bin/epoch", "versions"], Cfg),
     ?assertMatch({match, _}, re:run(Output1,
-        "Installed versions:[\r\n]*\\*[ \t]*[0-9.]*[ \t]*permanent[\r\n]*")),
+        "Installed versions:[\r\n]*\\*[ \t]*[0-9\\.\\-rc]*[ \t]*permanent[\r\n]*")),
 
     {0, Output2} = aest_nodes:run_cmd_in_node_dir(node1, ["bin/epoch", "peer_key"], Cfg),
     {ok, PeerKey} = aec_base58c:safe_decode(peer_pubkey, list_to_binary(Output2)),
