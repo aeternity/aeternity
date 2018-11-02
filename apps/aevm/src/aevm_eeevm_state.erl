@@ -195,10 +195,10 @@ is_reentrant_call(State) ->
 
 %% TODO: Currently the Store is saved both in the chain state and the VM state.
 %%       Refactor?
-get_store(#{chain_api := ChainAPI, chain_state := ChainState}) ->
-    ChainAPI:get_store(ChainState).
+get_store(#{storage := Store}) -> Store.
 
-import_state_from_store(Store, State) ->
+import_state_from_store(Store, State0) ->
+    State = State0#{ storage := Store },
     case aevm_eeevm_store:get_sophia_state_type(Store) of
         false ->
             %% No state yet (init function). Write 0 to the state pointer.
