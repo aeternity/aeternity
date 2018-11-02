@@ -365,6 +365,9 @@ int_get_candidate(Db, Gas, GasLimit, Trees, Header, DBs, Acc)
 int_get_candidate(Gas, _, _, _, _, _, Acc) ->
     {ok, Gas, Acc}.
 
+int_get_candidate_fold(Gas, GasLimit, _Db, _Dbs, _Txs,
+                       _ATrees, _Height, Acc) when Gas =< GasLimit ->
+    {ok, Gas, Acc};
 int_get_candidate_fold(Gas, GasLimit, Db, Dbs = #dbs{}, {Txs, Cont},
                        AccountsTree, Height, Acc) when Gas > GasLimit ->
     {RemGas, NewAcc} = fold_txs(Txs, Gas, GasLimit, Db, Dbs,
