@@ -83,7 +83,7 @@
 -spec init(map(), map()) -> state().
 init(#{ env  := Env
       , exec := Exec
-      , pre  := Pre} = Spec, Opts) ->
+      , pre  := Pre} = _Spec, Opts) ->
     Address = maps:get(address, Exec),
     BlockHashFun = get_blockhash_fun(Opts, Env),
     NoRecursion = maps:get(no_recursion, Opts, false),
@@ -126,10 +126,6 @@ init(#{ env  := Env
          , chain_api   => ChainAPI
 
          , out_type => OutType
-
-         , environment =>
-               #{ spec => Spec
-                , options => Opts }
          },
 
     init_vm(State,
