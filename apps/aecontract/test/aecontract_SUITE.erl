@@ -2550,6 +2550,12 @@ sophia_maps(_Cfg) ->
          || {Fn, FnS, Map, Err} <- [{get_i, get_state_i, MapI, 4},
                                     {get_s, get_state_s, MapS, <<"four">>}],
             K <- maps:keys(Map) ++ [Err] ] ++
+        %% get_def
+        [ [{Fn,  Pt, {K, Def, Map}, maps:get(K, Map, Def)},
+           {FnS, Pt, {K, Def},      maps:get(K, Map, Def)}]
+         || {Fn, FnS, Map, Err, Def} <- [{get_def_i, get_def_state_i, MapI, 4, {88, 99}},
+                                         {get_def_s, get_def_state_s, MapS, <<"four">>, {88, 99}}],
+            K <- maps:keys(Map) ++ [Err] ] ++
         %% lookup
         [ [{Fn,  {option, Pt}, {K, Map}, MkOption(maps:get(K, Map, undefined))},
            {FnS, {option, Pt}, K,        MkOption(maps:get(K, Map, undefined))}]
@@ -2581,6 +2587,11 @@ sophia_maps(_Cfg) ->
         [ [{Fn, Type, {K, V, Map}, case Map of #{K := {X, Y}} -> Map#{K => {X + V, Y}}; _ -> OogErr end}]
          || {Fn, Type, Map, New, V} <- [{addx_i, IntMap, MapI, 4, 7},
                                         {addx_s, StrMap, MapS, <<"four">>, 7}],
+            K <- maps:keys(Map) ++ [New] ] ++
+        %% addx_def
+        [ [{Fn, Type, {K, Def, V, Map}, begin {X, Y} = maps:get(K, Map, Def), Map#{K => {X + V, Y}} end}]
+         || {Fn, Type, Map, New, V, Def} <- [{addx_def_i, IntMap, MapI, 4, 7, {100, 100}},
+                                             {addx_def_s, StrMap, MapS, <<"four">>, 7, {100, 100}}],
             K <- maps:keys(Map) ++ [New] ] ++
         %% delete (not delete_state)
         [ [{Fn, Type, {K, Map}, maps:remove(K, Map)}]

@@ -51,6 +51,7 @@ used_ids({record, _, E, Fs}) -> used_ids([E, Fs]);
 used_ids({map, _, E, Fs})    -> used_ids([E, Fs]);
 used_ids({map, _, KVs})      -> used_ids([ [K, V] || {K, V} <- KVs ]);
 used_ids({map_get, _, M, K}) -> used_ids([M, K]);
+used_ids({map_get, _, M, K, V}) -> used_ids([M, K, V]);
 used_ids({block, _, Ss})     -> used_ids_s(Ss);
 used_ids({Op, _}) when is_atom(Op) -> none();
 used_ids({id, _, X})   -> [X];

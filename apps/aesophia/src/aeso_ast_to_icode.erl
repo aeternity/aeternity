@@ -249,6 +249,11 @@ ast_body({map_get, _, Map, Key}, Icode) ->
     {_, ValType} = check_monomorphic_map(Map, Icode),
     Fun = {map_get, ast_typerep(ValType, Icode)},
     builtin_call(Fun, [ast_body(Map, Icode), ast_body(Key, Icode)]);
+%% -- map lookup_default  m[k = v]
+ast_body({map_get, _, Map, Key, Val}, Icode) ->
+    {_, ValType} = check_monomorphic_map(Map, Icode),
+    Fun = {map_lookup_default, ast_typerep(ValType, Icode)},
+    builtin_call(Fun, [ast_body(Map, Icode), ast_body(Key, Icode), ast_body(Val, Icode)]);
 
 %% -- lookup functions
 ast_body(?qid_app(["Map", "lookup"], [Key, Map], _, _), Icode) ->
@@ -286,14 +291,16 @@ ast_body({typed, Ann, {map, _, KVs}, MapType}, Icode) ->
                     builtin_call(map_put, [Map, ast_body(K, Icode), ast_body(V, Icode)])
                 end, map_empty(KeyType, ValType, Icode), KVs);
 
-%% -- map update       m { [k] = v } or m { [k] @ x = f(x) }
+%% -- map update       m { [k] = v } or m { [k] @ x = f(x) } or m { [k = v] @ x = f(x) }
 ast_body({map, _, Map, []}, Icode) -> ast_body(Map, Icode);
 ast_body({map, _, Map, [Upd]}, Icode) ->
     case Upd of
         {field, _, [{map_get, _, Key}], Val} ->
             map_put(Key, Val, Map, Icode);
         {field_upd, _, [{map_get, _, Key}], ValFun} ->
-            map_upd(Key, ValFun, Map, Icode)
+            map_upd(Key, ValFun, Map, Icode);
+        {field_upd, _, [{map_get, _, Key, Val}], ValFun} ->
+            map_upd(Key, Val, ValFun, Map, Icode)
     end;
 ast_body({map, Ann, Map, [Upd | Upds]}, Icode) ->
     ast_body({map, Ann, {map, Ann, Map, [Upd]}, Upds}, Icode);
@@ -520,6 +527,12 @@ map_upd(Key, ValFun, Map = {typed, Ann, _, MapType}, Icode) ->
     Args    = [ast_body(Map, Icode), ast_body(Key, Icode), ast_body(ValFun, Icode)],
     builtin_call(FunName, Args).
 
+map_upd(Key, Default, ValFun, Map = {typed, Ann, _, MapType}, Icode) ->
+    {_, ValType} = check_monomorphic_map(Ann, MapType, Icode),
+    FunName = {map_upd_default, ast_type(ValType, Icode)},
+    Args    = [ast_body(Map, Icode), ast_body(Key, Icode), ast_body(Default, Icode), ast_body(ValFun, Icode)],
+    builtin_call(FunName, Args).
+
 is_monomorphic({tvar, _, _}) -> false;
 is_monomorphic([H|T]) ->
   is_monomorphic(H) andalso is_monomorphic(T);
@@ -656,7 +669,8 @@ builtin_deps(Builtin) ->
 builtin_deps1({map_lookup_default, Type}) -> [{map_lookup, Type}];
 builtin_deps1({map_get, Type})            -> [{map_lookup, Type}];
 builtin_deps1(map_member)                 -> [{map_lookup, word}];
-builtin_deps1({map_upd, Type})            -> [{map_lookup, Type}, map_put];
+builtin_deps1({map_upd, Type})            -> [{map_get, Type}, map_put];
+builtin_deps1({map_upd_default, Type})    -> [{map_lookup_default, Type}, map_put];
 builtin_deps1(map_from_list)              -> [map_put];
 builtin_deps1(str_equal)                  -> [str_equal_p];
 builtin_deps1(string_concat)              -> [string_concat_inner1, string_concat_inner2];
@@ -774,6 +788,17 @@ builtin_function(Builtin = {map_upd, Type}) ->
         [v(map), v(key),
          #funcall{ function = v(valfun),
                    args     = [builtin_call({map_get, Type}, [v(map), v(key)])] }]),
+     word};
+
+builtin_function(Builtin = {map_upd_default, Type}) ->
+    %% function map_upd(map, key, val, fun) =
+    %%   map_put(map, key, fun(map_lookup_default(map, key, val)))
+    {{builtin, Builtin}, [private],
+     [{"map", word}, {"key", word}, {"val", word}, {"valfun", word}],
+     builtin_call(map_put,
+        [v(map), v(key),
+         #funcall{ function = v(valfun),
+                   args     = [builtin_call({map_lookup_default, Type}, [v(map), v(key), v(val)])] }]),
      word};
 
 builtin_function(Builtin = map_from_list) ->

@@ -205,14 +205,24 @@ elim() ->
     [ {proj, keyword('.'), id()}
     , ?RULE(paren_list(arg_expr()), {app, [], _1})
     , ?RULE(keyword('{'), comma_sep(field_assignment()), tok('}'), {rec_upd, _1, _2})
-    , ?RULE(keyword('['), expr(), keyword(']'), {map_get, _1, _2})
+    , ?RULE(keyword('['), map_key(), keyword(']'), map_get(_1, _2))
     ])).
 
-elim(E, [])                          -> E;
-elim(E, [{proj, Ann, P} | Es])       -> elim({proj, Ann, E, P}, Es);
-elim(E, [{app, Ann, Args} | Es])     -> elim({app, Ann, E, Args}, Es);
-elim(E, [{rec_upd, Ann, Flds} | Es]) -> elim(record_update(Ann, E, Flds), Es);
-elim(E, [{map_get, Ann, Key} | Es])  -> elim({map_get, Ann, E, Key}, Es).
+map_get(Ann, {map_key, Key})      -> {map_get, Ann, Key};
+map_get(Ann, {map_key, Key, Val}) -> {map_get, Ann, Key, Val}.
+
+map_key() ->
+    ?RULE(expr(), optional({tok('='), expr()}), map_key(_1, _2)).
+
+map_key(Key, none)           -> {map_key, Key};
+map_key(Key, {ok, {_, Val}}) -> {map_key, Key, Val}.
+
+elim(E, [])                              -> E;
+elim(E, [{proj, Ann, P} | Es])           -> elim({proj, Ann, E, P}, Es);
+elim(E, [{app, Ann, Args} | Es])         -> elim({app, Ann, E, Args}, Es);
+elim(E, [{rec_upd, Ann, Flds} | Es])     -> elim(record_update(Ann, E, Flds), Es);
+elim(E, [{map_get, Ann, Key} | Es])      -> elim({map_get, Ann, E, Key}, Es);
+elim(E, [{map_get, Ann, Key, Val} | Es]) -> elim({map_get, Ann, E, Key, Val}, Es).
 
 record_update(Ann, E, Flds) ->
     {record_or_map(Flds), Ann, E, Flds}.
@@ -233,8 +243,9 @@ record(Fs) ->
 
 record_or_map(Fields) ->
     Kind = fun(Fld) -> case element(3, Fld) of
-                [{proj, _, _}    | _] -> proj;
-                [{map_get, _, _} | _] -> map_get
+                [{proj, _, _}       | _] -> proj;
+                [{map_get, _, _}    | _] -> map_get;
+                [{map_get, _, _, _} | _] -> map_get
            end end,
     case lists:usort(lists:map(Kind, Fields)) of
         [proj]    -> record;
@@ -253,14 +264,21 @@ field_assignment(Ann, LV, {ok, {_, Id}}, E) ->
     {field, Ann, LV, Id, E}.
 
 lvalue() ->
-    ?LET_P(E, expr900(), lvalue(E)).
+    ?RULE(lvalueAtom(), many(elim()), lvalue(elim(_1, _2))).
+
+lvalueAtom() ->
+    ?LAZY_P(choice([ id()
+                   , ?RULE(keyword('['), map_key(), keyword(']'), _2)
+                   ])).
 
 lvalue(E) -> lvalue(E, []).
 
 lvalue(X = {id, Ann, _}, LV)     -> [{proj, Ann, X} | LV];
-lvalue({list, Ann, [K]}, LV)     -> [{map_get, Ann, K} | LV];
+lvalue({map_key, K}, LV)         -> [{map_get, get_ann(K), K} | LV];
+lvalue({map_key, K, V}, LV)      -> [{map_get, get_ann(K), K, V} | LV];
 lvalue({proj, Ann, E, P}, LV)    -> lvalue(E, [{proj, Ann, P} | LV]);
 lvalue({map_get, Ann, E, K}, LV) -> lvalue(E, [{map_get, Ann, K} | LV]);
+lvalue({map_get, Ann, E, K, V}, LV) -> lvalue(E, [{map_get, Ann, K, V} | LV]);
 lvalue(E, _)                     -> bad_expr_err("Not a valid lvalue", E).
 
 infix(E, Op) ->

@@ -94,6 +94,7 @@
      | {map, ann(), expr(), [field(expr())]}    %% map update
      | {map, ann(), [{expr(), expr()}]}
      | {map_get, ann(), expr(), expr()}
+     | {map_get, ann(), expr(), expr(), expr()}
      | {block, ann(), [stmt()]}
      | {op(), ann()}
      | id() | qid() | con() | qcon()
@@ -117,7 +118,8 @@
 -type lvalue() :: nonempty_list(elim()).
 
 -type elim() :: {proj, ann(), id()}
-              | {map_get, ann(), expr()}.
+              | {map_get, ann(), expr()}
+              | {map_get, ann(), expr(), expr()}.
 
 -type pat() :: {app, ann(), con() | op(), [pat()]}
              | {tuple, ann(), [pat()]}
