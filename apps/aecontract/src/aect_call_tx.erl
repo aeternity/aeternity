@@ -182,19 +182,32 @@ process(#contract_call_tx{caller_id   = CallerId,
     %% the call object.
     {Call, Trees3} = run_contract(CallTx, Call0, Env, Trees2),
 
-    %% Refund unused gas.
+    %% Roll back state changes if call failed
     Trees4 =
+        case aect_call:return_type(Call) of
+            ok -> Trees3;
+            E  ->
+                lager:debug("Contract call error ~w ~w~n",[E, Call]),
+                %% We still need to charge gas and fee
+                case Charges of
+                    0 -> Trees1;
+                    _ -> spend(CallerPubkey, ContractPubkey, 0, Charges, Nonce, Trees1, Env)
+                end
+        end,
+
+    %% Refund unused gas.
+    Trees5 =
         case aetx_env:context(Env) of
             aetx_transaction ->
-                aect_utils:refund_unused_gas(CallerPubkey, GasPrice, Gas, Call, Trees3);
+                aect_utils:refund_unused_gas(CallerPubkey, GasPrice, Gas, Call, Trees4);
             aetx_contract ->
-                Trees3
+                Trees4
         end,
 
     %% Insert the call into the state tree. This is mainly to remember what the
     %% return value was so that the caller can access it easily.
     %% Each block starts with an empty calls tree.
-    {ok, aect_utils:insert_call_in_trees(Call, Trees4)}.
+    {ok, aect_utils:insert_call_in_trees(Call, Trees5)}.
 
 spend(CallerPubkey, ContractPubkey, Value, Fee, Nonce, Trees, Env) ->
     {ok, SpendTx} =
