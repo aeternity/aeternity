@@ -60,7 +60,7 @@ testcase_generate(Path, Tests, Opts) ->
 
 testcase({Path, Name, Opts}, #{ pre := Pre, exec := Exec} = Spec) ->
     { Path ++ "/" ++ atom_to_list(Name)
-    , fun() ->
+    , {timeout, 10, fun() ->
               %% Set up the store for the contract.
               #{ address := Address } = Exec,
               Store = get_store(Address, Pre),
@@ -92,7 +92,7 @@ testcase({Path, Name, Opts}, #{ pre := Pre, exec := Exec} = Spec) ->
                       {error, State}
               end
       end
-    }.
+    }}.
 
 get_store(Address, State) ->
     case State of
