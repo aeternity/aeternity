@@ -2,7 +2,7 @@
 
 [This release][this-release] is focused on TODOFILLMEIN.
 It:
-* Change to package versioning to scheme to follow the [https://semver.org](semver.org)
+* Changes package versioning scheme to follow the [https://semver.org](semver.org)
 * Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
 
 TODO: When preparing the release, concatenate all `/docs/release-notes/next/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
@@ -11,7 +11,7 @@ TODO: When preparing the release, concatenate all `/docs/release-notes/next/*` M
 
 This release introduces backward incompatible changes in the chain format:
 * After upgrading your node, you will not have your previous balance (even if you keep your key pair);
-* Please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.24.x".
+* Please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.25.x".
 
 Please join the testnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/epoch/wiki/Troubleshooting).
