@@ -1352,7 +1352,7 @@ spend_op_gas(Op, State) ->
     spend_gas_common({op, Op}, aevm_gas:op_gas(Op, State), State).
 
 spend_mem_gas(StateWithOpGas, StateOut) ->
-    spend_gas_common({mem}, aevm_gas:mem_gas(StateWithOpGas, StateOut), StateOut).
+    spend_gas_common({mem}, aevm_gas:mem_expansion_gas(StateWithOpGas, StateOut), StateOut).
 
 spend_gas_common(_Resource, Gas, State) ->
     GasLimit  = aevm_eeevm_state:gas(State),

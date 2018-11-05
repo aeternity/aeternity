@@ -10,7 +10,7 @@
 
 -export([ op_gas/2
         , mem_gas/1
-        , mem_gas/2
+        , mem_expansion_gas/2
         ]).
 
 -export([ call_cap/2
@@ -31,7 +31,7 @@ op_gas(Op, State) ->
     end.
 
 %% NOTE: This is just purely the mem gas, not including op gas
-mem_gas(State1, State2) ->
+mem_expansion_gas(State1, State2) ->
     Size1 = aevm_eeevm_memory:size_in_words(State1),
     case aevm_eeevm_memory:size_in_words(State2) of
         Size1 -> 0;
