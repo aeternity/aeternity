@@ -2,7 +2,7 @@
 
 [This release][this-release] is focused on TODOFILLMEIN.
 It:
-* Change to package versioning to scheme to follow the [https://semver.org](semver.org)
+* Changes package versioning scheme to follow the [https://semver.org](semver.org)
 * Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
 
 TODO: When preparing the release, concatenate all `/docs/release-notes/next/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
