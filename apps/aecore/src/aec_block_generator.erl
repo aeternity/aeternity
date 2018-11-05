@@ -13,6 +13,8 @@
 
 -export([start_generation/0, stop_generation/0]).
 
+-export([prep_stop/0]).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
@@ -47,6 +49,9 @@ start_generation() ->
 stop_generation() ->
     gen_server:cast(?MODULE, stop_generation).
 
+prep_stop() ->
+    gen_server:call(?MODULE, prep_stop).
+
 %% -- gen_server callbacks ---------------------------------------------------
 
 init([]) ->
@@ -59,6 +64,8 @@ handle_call(get_candidate, _From, State = #state{ candidate = undefined }) ->
     {reply, {error, no_candidate}, State};
 handle_call(get_candidate, _From, State = #state{ candidate = Candidate }) ->
     {reply, {ok, Candidate}, State};
+handle_call(prep_stop, _From, State) ->
+    {reply, ok, do_stop_generation(State)};
 handle_call(Req, _From, State) ->
     lager:info("Unexpected call: ~p", [Req]),
     {reply, ok, State}.
