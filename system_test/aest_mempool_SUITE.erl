@@ -100,7 +100,7 @@ end_per_suite(_Config) -> ok.
 test_mempool_ttl_cleanup(Cfg) ->
     %% Setup nodes
     MikePubKey = maps:get(pubkey, ?MIKE),
-    EncMikePubkey = aec_base58c:encode(account_pubkey, MikePubKey),
+    EncMikePubkey = aehttp_api_encoder:encode(account_pubkey, MikePubKey),
     NodeConfig = #{ beneficiary => EncMikePubkey },
     NodeNames = [node1, node2],
     setup([?NODE1, ?NODE2], NodeConfig, Cfg),
@@ -145,7 +145,7 @@ test_mempool_ttl_cleanup(Cfg) ->
 test_mempool_bad_nonce_cleanup(Cfg) ->
     %% Setup nodes
     MikePubKey = maps:get(pubkey, ?MIKE),
-    EncMikePubkey = aec_base58c:encode(account_pubkey, MikePubKey),
+    EncMikePubkey = aehttp_api_encoder:encode(account_pubkey, MikePubKey),
     NodeConfig = #{ beneficiary => EncMikePubkey },
     NodeNames = [node1, node2],
     setup([?NODE1, ?NODE2], NodeConfig, Cfg),

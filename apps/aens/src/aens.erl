@@ -35,7 +35,7 @@ resolve(Key, Name, NSTree) when is_binary(Key), is_binary(Name) ->
             end;
         false ->
             AllowedTypes = [account_pubkey, oracle_pubkey, contract_pubkey, channel],
-            aec_base58c:safe_decode({id_hash, AllowedTypes}, Name)
+            aehttp_api_encoder:safe_decode({id_hash, AllowedTypes}, Name)
     end.
 
 

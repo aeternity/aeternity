@@ -312,7 +312,7 @@ code_change(_OldVsn, State, _Extra) ->
 get_beneficiary() ->
     case aeu_env:user_config_or_env([<<"mining">>, <<"beneficiary">>], aecore, beneficiary) of
         {ok, EncodedBeneficiary} ->
-            case aec_base58c:safe_decode(account_pubkey, EncodedBeneficiary) of
+            case aehttp_api_encoder:safe_decode(account_pubkey, EncodedBeneficiary) of
                 {ok, _Beneficiary} = Result ->
                     Result;
                 {error, Reason} ->

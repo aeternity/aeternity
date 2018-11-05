@@ -2127,7 +2127,7 @@
         },
         "pof_hash" : {
           "type" : "string",
-          "description" : "\"no_fraud\" | base58c encoded Proof of Fraud hash"
+          "description" : "\"no_fraud\" | api encoded Proof of Fraud hash"
         },
         "prev_hash" : {
           "$ref" : "#/definitions/EncodedHash"

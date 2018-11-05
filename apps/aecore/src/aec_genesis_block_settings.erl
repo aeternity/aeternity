@@ -27,7 +27,7 @@ preset_accounts() ->
             Accounts =
                 lists:map(
                     fun({EncodedPubKey, Amt}) ->
-                        {ok, PubKey} = aec_base58c:safe_decode(account_pubkey, EncodedPubKey),
+                        {ok, PubKey} = aehttp_api_encoder:safe_decode(account_pubkey, EncodedPubKey),
                         {PubKey, Amt}
                     end,
                     DecodedData),

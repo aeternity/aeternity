@@ -279,7 +279,7 @@ txs_not_in_microblock(MB, TxHashes) ->
 
 tx_in_microblock(MB, TxHash) ->
     lists:any(fun(STx) ->
-                aec_base58c:encode(tx_hash, aetx_sign:hash(STx)) == TxHash
+                aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(STx)) == TxHash
               end, aec_blocks:txs(MB)).
 
 mine_blocks_loop(Cnt, Type) ->
@@ -675,7 +675,7 @@ default_config(N, Config) ->
           #{<<"hwm">> => 500},
       <<"mining">> =>
           #{<<"autostart">> => false,
-            <<"beneficiary">> => aec_base58c:encode(account_pubkey, PubKey),
+            <<"beneficiary">> => aehttp_api_encoder:encode(account_pubkey, PubKey),
             <<"beneficiary_reward_delay">> => 2},
       <<"chain">> =>
           #{<<"persist">> => true}
@@ -717,7 +717,7 @@ delete_file(F) ->
 %% Use localhost here, because some systems have both 127.0.0.1 and 127.0.1.1
 %% defined, resulting in a conflict during testing
 peer_info(N) ->
-    list_to_binary(["aenode://", aec_base58c:encode(peer_pubkey, pubkey(N)),
+    list_to_binary(["aenode://", aehttp_api_encoder:encode(peer_pubkey, pubkey(N)),
                   "@localhost:", integer_to_list(port_number(N))]).
 
 port_number(dev1) -> 3015;

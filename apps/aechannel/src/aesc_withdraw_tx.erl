@@ -233,12 +233,12 @@ for_client(#channel_withdraw_tx{channel_id   = ChannelId,
                                 state_hash   = StateHash,
                                 round        = Round,
                                 nonce        = Nonce}) ->
-    #{<<"channel_id">>  => aec_base58c:encode(id_hash, ChannelId),
-      <<"to_id">>       => aec_base58c:encode(id_hash, ToId),
+    #{<<"channel_id">>  => aehttp_api_encoder:encode(id_hash, ChannelId),
+      <<"to_id">>       => aehttp_api_encoder:encode(id_hash, ToId),
       <<"amount">>      => Amount,
       <<"ttl">>         => TTL,
       <<"fee">>         => Fee,
-      <<"state_hash">>  => aec_base58c:encode(state, StateHash),
+      <<"state_hash">>  => aehttp_api_encoder:encode(state, StateHash),
       <<"round">>       => Round,
       <<"nonce">>       => Nonce}.
 

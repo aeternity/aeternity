@@ -727,7 +727,7 @@ close_mutual_wrong_nonce(Cfg) ->
 
 
 close_mutual_missing_channel(Cfg) ->
-    ChannelHashSize = aec_base58c:byte_size_for_type(channel),
+    ChannelHashSize = aehttp_api_encoder:byte_size_for_type(channel),
     FakeChannelPubKey = <<42:ChannelHashSize/unit:8>>,
     run(#{cfg => Cfg},
         [positive(fun create_channel_/2),
@@ -981,7 +981,7 @@ slash_payload_not_co_signed(Cfg) ->
     ok.
 
 slash_invalid_state_hash(Cfg) ->
-    StateHashSize = aec_base58c:byte_size_for_type(state),
+    StateHashSize = aehttp_api_encoder:byte_size_for_type(state),
     FakeStateHash = <<42:StateHashSize/unit:8>>,
     Test =
         fun(Closer, Slasher) ->
@@ -1290,7 +1290,7 @@ settle_wrong_amounts(Cfg) ->
     ok.
 
 settle_missing_channel(Cfg) ->
-    ChannelHashSize = aec_base58c:byte_size_for_type(channel),
+    ChannelHashSize = aehttp_api_encoder:byte_size_for_type(channel),
     FakeChannelPubKey = <<42:ChannelHashSize/unit:8>>,
     Test =
         fun(Closer, Settler) ->
@@ -1441,7 +1441,7 @@ settle_delegate_not_allowed(Cfg) ->
 snapshot_solo(Cfg) ->
     Round = 43,
     OldRound = Round - 5,
-    StateHashSize = aec_base58c:byte_size_for_type(state),
+    StateHashSize = aehttp_api_encoder:byte_size_for_type(state),
     OldStateHash = <<40:StateHashSize/unit:8>>,
     StateHash = <<43:StateHashSize/unit:8>>,
     Test =
@@ -2732,7 +2732,7 @@ fp_not_participant(Cfg) ->
     ok.
 
 fp_missing_channel(Cfg) ->
-    ChannelHashSize = aec_base58c:byte_size_for_type(channel),
+    ChannelHashSize = aehttp_api_encoder:byte_size_for_type(channel),
     FakeChannelId = <<42:ChannelHashSize/unit:8>>,
     Round = 10,
     Test =
@@ -2804,7 +2804,7 @@ fp_payload_not_co_signed(Cfg) ->
     ok.
 
 fp_payload_older_payload(Cfg) ->
-    StateHashSize = aec_base58c:byte_size_for_type(state),
+    StateHashSize = aehttp_api_encoder:byte_size_for_type(state),
     BogusStateHash = <<42:StateHashSize/unit:8>>,
     Round = 10,
     Test =
@@ -2825,7 +2825,7 @@ fp_payload_older_payload(Cfg) ->
     ok.
 
 fp_payload_invalid_state_hash(Cfg) ->
-    StateHashSize = aec_base58c:byte_size_for_type(state),
+    StateHashSize = aehttp_api_encoder:byte_size_for_type(state),
     FakeStateHash = <<42:StateHashSize/unit:8>>,
     Round = 10,
     Test =
@@ -2870,7 +2870,7 @@ fp_solo_payload_wrong_round(Cfg) ->
     ok.
 
 fp_solo_payload_invalid_state_hash(Cfg) ->
-    StateHashSize = aec_base58c:byte_size_for_type(state),
+    StateHashSize = aehttp_api_encoder:byte_size_for_type(state),
     FakeStateHash = <<42:StateHashSize/unit:8>>,
     SnapshotRound = 13,
     SnapshotStateHash = <<1234:StateHashSize/unit:8>>,
@@ -2964,7 +2964,7 @@ fp_solo_payload_closing_overflowing_balances(Cfg) ->
                             Forcer <- ?ROLES].
 
 fp_solo_payload_overflowing_balances(Cfg) ->
-    StateHashSize = aec_base58c:byte_size_for_type(state),
+    StateHashSize = aehttp_api_encoder:byte_size_for_type(state),
     SnapshotRound = 13,
     SnapshotStateHash = <<1234:StateHashSize/unit:8>>,
     Round = 43,
@@ -3034,7 +3034,7 @@ different_state_hash_produced(OldRound, OldStateHash) ->
     end.
 
 fp_solo_payload_not_call_update(Cfg) ->
-    AccountHashSize = aec_base58c:byte_size_for_type(account_pubkey),
+    AccountHashSize = aehttp_api_encoder:byte_size_for_type(account_pubkey),
     Fake1Id = aec_id:create(account, <<42:AccountHashSize/unit:8>>),
     Fake2Id = aec_id:create(account, <<43:AccountHashSize/unit:8>>),
 
@@ -3057,7 +3057,7 @@ fp_solo_payload_not_call_update(Cfg) ->
 fp_solo_payload_broken_update_(Cfg, Update, Error) ->
     Round = 43,
     ContractRound = 10,
-    StateHashSize = aec_base58c:byte_size_for_type(state),
+    StateHashSize = aehttp_api_encoder:byte_size_for_type(state),
     FakeStateHash = <<42:StateHashSize/unit:8>>,
     Test =
         fun(Owner, Forcer) ->
@@ -3085,7 +3085,7 @@ fp_solo_payload_broken_update_(Cfg, Update, Error) ->
 fp_solo_payload_broken_call(Cfg) ->
     Round = 43,
     ContractRound = 10,
-    StateHashSize = aec_base58c:byte_size_for_type(state),
+    StateHashSize = aehttp_api_encoder:byte_size_for_type(state),
     FakeStateHash = <<42:StateHashSize/unit:8>>,
     Test =
         fun(Owner, Forcer, CallData, Error) ->
@@ -3189,7 +3189,7 @@ fp_register_name(Cfg) ->
                         aens_hash:commitment_hash(NameAscii, Salt)),
     ?TEST_LOG("Commitment hash ~p", [aens_hash:commitment_hash(NameAscii,
                                                                Salt)]),
-    StateHashSize = aec_base58c:byte_size_for_type(state),
+    StateHashSize = aehttp_api_encoder:byte_size_for_type(state),
     StateHash = <<42:StateHashSize/unit:8>>,
     Round = 42,
     FPRound = Round + 10,
@@ -3534,7 +3534,7 @@ fp_oracle_extend(Cfg) ->
     fp_oracle_action(Cfg, ProduceCallData).
 
 fp_oracle_action(Cfg, ProduceCallData) ->
-    StateHashSize = aec_base58c:byte_size_for_type(state),
+    StateHashSize = aehttp_api_encoder:byte_size_for_type(state),
     StateHash = <<42:StateHashSize/unit:8>>,
     Round = 42,
     FPRound = Round + 10,
@@ -3735,7 +3735,7 @@ get_oracle_fun_hash_int(Function) ->
     IntFunHash.
 
 fp_register_oracle(Cfg) ->
-    StateHashSize = aec_base58c:byte_size_for_type(state),
+    StateHashSize = aehttp_api_encoder:byte_size_for_type(state),
     StateHash = <<42:StateHashSize/unit:8>>,
     Round = 42,
     FPRound = Round + 10,
@@ -4539,7 +4539,7 @@ snapshot_solo_(#{ channel_pubkey    := ChannelPubKey,
                   initiator_privkey := IPrivkey,
                   responder_privkey := RPrivkey} = Props, Expected) ->
     Round = maps:get(round, Props, 42),
-    StateHashSize = aec_base58c:byte_size_for_type(state),
+    StateHashSize = aehttp_api_encoder:byte_size_for_type(state),
     StateHash = maps:get(state_hash, Props, <<42:StateHashSize/unit:8>>),
     PayloadSpec = #{initiator_amount => IAmt,
                     responder_amount => RAmt,
@@ -4757,7 +4757,7 @@ test_both_missing_channel(Cfg, Fun) ->
     test_both_missing_channel(Cfg, Fun, #{}).
 
 test_both_missing_channel(Cfg, Fun, InitProps) ->
-    ChannelHashSize = aec_base58c:byte_size_for_type(channel),
+    ChannelHashSize = aehttp_api_encoder:byte_size_for_type(channel),
     FakeChannelPubKey = <<42:ChannelHashSize/unit:8>>,
     Test =
         fun(Poster) ->
@@ -4794,7 +4794,7 @@ test_both_invalid_poi_hash(Cfg, Fun) ->
     test_both_invalid_poi_hash(Cfg, Fun, #{}).
 
 test_both_invalid_poi_hash(Cfg, Fun, InitProps) ->
-    StateHashSize = aec_base58c:byte_size_for_type(state),
+    StateHashSize = aehttp_api_encoder:byte_size_for_type(state),
     FakeStateHash = <<42:StateHashSize/unit:8>>,
     Test =
         fun(Poster) ->

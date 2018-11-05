@@ -152,12 +152,12 @@ serialize_for_client(#contract{id           = Id,
                                active       = Active,
                                referrer_ids = ReferrerIds,
                                deposit      = Deposit}) ->
-    #{ <<"id">>           => aec_base58c:encode(id_hash, Id)
-     , <<"owner_id">>     => aec_base58c:encode(id_hash, OwnerId)
+    #{ <<"id">>           => aehttp_api_encoder:encode(id_hash, Id)
+     , <<"owner_id">>     => aehttp_api_encoder:encode(id_hash, OwnerId)
      , <<"vm_version">>   => VmVersion
      , <<"log">>          => Log
      , <<"active">>       => Active
-     , <<"referrer_ids">> => [aec_base58c:encode(id_hash, RId) || RId <- ReferrerIds]
+     , <<"referrer_ids">> => [aehttp_api_encoder:encode(id_hash, RId) || RId <- ReferrerIds]
      , <<"deposit">>      => Deposit
      }.
 

@@ -175,27 +175,27 @@ contract_call(ABI, EncodedCode, Function, Argument) ->
     Call =
         fun(CodeOrAddress, Arg) ->
           case aect_dispatch:call(ABI, CodeOrAddress, Function, Arg) of
-              {ok, Result} -> {ok, aec_base58c:encode(contract_bytearray, Result)};
+              {ok, Result} -> {ok, aehttp_api_encoder:encode(contract_bytearray, Result)};
               {error, _ErrorMsg} = Err -> Err
           end
         end,
     case ABI of
         <<"sophia-address">> ->
-            case aec_base58c:safe_decode(contract_pubkey, EncodedCode) of
+            case aehttp_api_encoder:safe_decode(contract_pubkey, EncodedCode) of
                 {ok, ContractAddress} ->
                     Call(ContractAddress, Argument);
                 _ ->
                     {error, <<"Invalid hash for contract address">>}
             end;
         <<"sophia">> ->
-            case aec_base58c:safe_decode(contract_bytearray, EncodedCode) of
+            case aehttp_api_encoder:safe_decode(contract_bytearray, EncodedCode) of
                 {ok, Code} -> Call(Code, Argument);
                 {error, _} -> {error, <<"Illegal code">>}
             end;
         <<"evm">> ->
-            case aec_base58c:safe_decode(contract_bytearray, EncodedCode) of
+            case aehttp_api_encoder:safe_decode(contract_bytearray, EncodedCode) of
                 {ok, Code} ->
-                    case aec_base58c:safe_decode(contract_bytearray, Argument) of
+                    case aehttp_api_encoder:safe_decode(contract_bytearray, Argument) of
                         {ok, CallData} -> Call(Code, CallData);
                         {error, _} -> {error, <<"Illegal call data">>}
                     end;
@@ -207,7 +207,7 @@ contract_call(ABI, EncodedCode, Function, Argument) ->
     end.
 
 contract_decode_data(Type, Data) ->
-    case aec_base58c:safe_decode(contract_bytearray, Data) of
+    case aehttp_api_encoder:safe_decode(contract_bytearray, Data) of
         {error, _} ->
             {error, <<"Data must be hex encoded">>};
         {ok, CallData} ->
@@ -226,7 +226,7 @@ contract_decode_data(Type, Data) ->
 
 contract_encode_call_data(ABI, Code, Function, Argument) ->
     case aect_dispatch:encode_call_data(ABI, Code, Function, Argument) of
-        {ok, ByteCode} -> {ok, aec_base58c:encode(contract_bytearray, ByteCode)};
+        {ok, ByteCode} -> {ok, aehttp_api_encoder:encode(contract_bytearray, ByteCode)};
         {error, _ErrorMsg} = Err -> Err
     end.
 

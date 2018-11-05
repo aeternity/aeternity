@@ -152,7 +152,7 @@ serialize_for_client(#oracle{id              = Id,
                              ttl             = TTL,
                              vm_version      = VMVersion
                             }) ->
-    #{ <<"id">>              => aec_base58c:encode(id_hash, Id)
+    #{ <<"id">>              => aehttp_api_encoder:encode(id_hash, Id)
      , <<"query_format">>    => QueryFormat
      , <<"response_format">> => ResponseFormat
      , <<"query_fee">>       => QueryFee

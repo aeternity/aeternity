@@ -27,7 +27,7 @@ setup_minimal() ->
     aec_test_utils:mock_genesis(),
     TmpKeysDir = aec_test_utils:aec_keys_setup(),
     {ok, PubKey} = aec_keys:pubkey(),
-    ok = application:set_env(aecore, beneficiary, aec_base58c:encode(account_pubkey, PubKey)),
+    ok = application:set_env(aecore, beneficiary, aehttp_api_encoder:encode(account_pubkey, PubKey)),
     aec_test_utils:mock_time(),
     {ok, _} = aec_tx_pool:start_link(),
     TmpKeysDir.

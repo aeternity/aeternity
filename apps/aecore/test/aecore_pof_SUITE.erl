@@ -249,7 +249,7 @@ add_spend_tx(Node, Amount, Fee, Nonce, TTL, Sender, Recipient) ->
     {ok, Tx} = aec_spend_tx:new(Params),
     STx = aec_test_utils:sign_tx(Tx, maps:get(privkey, Sender)),
     Res = rpc:call(Node, aec_tx_pool, push, [STx]),
-    {Res, aec_base58c:encode(tx_hash, aetx_sign:hash(STx))}.
+    {Res, aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(STx))}.
 
 new_keypair() ->
     #{ public := PK, secret := SK } = enacl:sign_keypair(),

@@ -38,7 +38,7 @@ id(#pointer{id = Id}) ->
 -spec serialize_for_client(pointer()) -> map().
 serialize_for_client(#pointer{key = Key, id = Id}) ->
     #{<<"key">> => Key,
-      <<"id">>  => aec_base58c:encode(id_hash, Id)}.
+      <<"id">>  => aehttp_api_encoder:encode(id_hash, Id)}.
 
 %% TODO: check max lenght of key?
 assert_key(Key) when is_binary(Key) -> ok.

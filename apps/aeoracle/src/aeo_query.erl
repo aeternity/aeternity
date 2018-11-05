@@ -188,12 +188,12 @@ serialize_for_client(#query{sender_id    = SenderId,
             R when R =/= undefined -> R;
             undefined -> <<>>
         end,
-    #{ <<"id">>           => aec_base58c:encode(oracle_query_id, id(I))
-     , <<"sender_id">>    => aec_base58c:encode(id_hash, SenderId)
+    #{ <<"id">>           => aehttp_api_encoder:encode(oracle_query_id, id(I))
+     , <<"sender_id">>    => aehttp_api_encoder:encode(id_hash, SenderId)
      , <<"sender_nonce">> => SenderNonce
-     , <<"oracle_id">>    => aec_base58c:encode(id_hash, OracleId)
-     , <<"query">>        => aec_base58c:encode(oracle_query, Query)
-     , <<"response">>     => aec_base58c:encode(oracle_response, Response)
+     , <<"oracle_id">>    => aehttp_api_encoder:encode(id_hash, OracleId)
+     , <<"query">>        => aehttp_api_encoder:encode(oracle_query, Query)
+     , <<"response">>     => aehttp_api_encoder:encode(oracle_response, Response)
      , <<"ttl">>          => TTL
      , <<"response_ttl">> => #{ <<"type">>  => <<"delta">>
                               , <<"value">> => ResponseTtlValue

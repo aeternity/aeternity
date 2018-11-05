@@ -4,7 +4,7 @@
         , parse_map_to_atom_keys/0
         , read_required_params/1
         , read_optional_params/1
-        , base58_decode/1
+        , api_decode/1
         , contract_bytearray_params_decode/1
         , ttl_decode/1
         , poi_decode/1
@@ -80,21 +80,21 @@ read_optional_params(Params) ->
         end,
         "Not found").
 
-base58_decode(Params) ->
-    params_read_fun(Params, fun base58_decode_read_fun/3, "Invalid hash").
+api_decode(Params) ->
+    params_read_fun(Params, fun api_decode_read_fun/3, "Invalid hash").
 
-base58_decode_read_fun({Name, Types}, _, Data) when is_list(Types) ->
+api_decode_read_fun({Name, Types}, _, Data) when is_list(Types) ->
     Encoded = maps:get(Name, Data),
     FoldFun = fun(Type, Acc) ->
-                      case aec_base58c:safe_decode(Type, Encoded) of
+                      case aehttp_api_encoder:safe_decode(Type, Encoded) of
                           {error, _} -> Acc;
                           {ok, Hash} -> {ok, Hash}
                       end
               end,
     lists:foldl(FoldFun, error, Types);
-base58_decode_read_fun({Name, Type}, _, Data) ->
+api_decode_read_fun({Name, Type}, _, Data) ->
     Encoded = maps:get(Name, Data),
-    case aec_base58c:safe_decode(Type, Encoded) of
+    case aehttp_api_encoder:safe_decode(Type, Encoded) of
         {error, _} -> error;
         {ok, _} = Res -> Res
     end.
@@ -103,7 +103,7 @@ contract_bytearray_params_decode(ParamNames) ->
     params_read_fun(ParamNames,
         fun(Name, _, State) ->
             ByteArray = maps:get(Name, State),
-            case aec_base58c:safe_decode(contract_bytearray, ByteArray) of
+            case aehttp_api_encoder:safe_decode(contract_bytearray, ByteArray) of
                 {ok, _} = Ok -> Ok;
                 {error, _} -> error
             end
@@ -323,7 +323,7 @@ decode_pointers([], Acc) ->
 
 decode_pointer_id(IdEnc) ->
     AllowedTypes = [account_pubkey, channel, contract_pubkey, oracle_pubkey],
-    aec_base58c:safe_decode({id_hash, AllowedTypes}, IdEnc).
+    aehttp_api_encoder:safe_decode({id_hash, AllowedTypes}, IdEnc).
 
 parse_map_to_atom_keys() ->
     fun(Req, State) ->
@@ -416,7 +416,7 @@ unsigned_tx_response(NewTxFun) when is_function(NewTxFun, 1) ->
     RespFun =
         fun(State) ->
             {ok, Tx} = NewTxFun(State),
-            #{tx => aec_base58c:encode(transaction,
+            #{tx => aehttp_api_encoder:encode(transaction,
                                        aetx:serialize_to_binary(Tx))
             }
         end,
@@ -612,7 +612,7 @@ get_block_hash_optionally_by_hash_or_height(PutKey) ->
                 {undefined, undefined} ->
                     {ok, _} = aehttp_logic:get_top_hash();
                 {undefined, EncodedHash} ->
-                    case aec_base58c:safe_decode(block_hash, EncodedHash) of
+                    case aehttp_api_encoder:safe_decode(block_hash, EncodedHash) of
                         {error, _} ->
                             {error, invalid_hash};
                         {ok, Hash} ->
@@ -630,7 +630,7 @@ get_block_hash_optionally_by_hash_or_height(PutKey) ->
                         {error, _} = Err ->
                             Err;
                         {ok, Hash} -> % ensure it is the same hash
-                            case aec_base58c:safe_decode(block_hash, EncodedHash) of
+                            case aehttp_api_encoder:safe_decode(block_hash, EncodedHash) of
                                 {error, _} ->
                                     {error, invalid_hash};
                                 {ok, Hash} -> % same hash

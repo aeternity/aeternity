@@ -123,7 +123,7 @@
     pending_transactions/1,
     post_correct_tx/1,
     post_broken_tx/1,
-    post_broken_base58_tx/1,
+    post_broken_api_encoded_tx/1,
 
     % infos
     peer_pub_key/1
@@ -440,7 +440,7 @@ groups() ->
         pending_transactions,
         post_correct_tx,
         post_broken_tx,
-        post_broken_base58_tx,
+        post_broken_api_encoded_tx,
 
         % infos
         peer_pub_key
@@ -662,7 +662,7 @@ init_per_group(block_info, Config) ->
 init_per_group(nonexistent_account = Group, Config) ->
     Config1 = start_node(Group, Config),
     {_, Pubkey} = aecore_suite_utils:sign_keys(?NODE),
-    [{account_id, aec_base58c:encode(account_pubkey, Pubkey)},
+    [{account_id, aehttp_api_encoder:encode(account_pubkey, Pubkey)},
      {account_exists, false} | Config1];
 init_per_group(account_with_balance = Group, Config) ->
     Config1 = start_node(Group, Config),
@@ -672,14 +672,14 @@ init_per_group(account_with_balance = Group, Config) ->
     aecore_suite_utils:mine_key_blocks(Node, ToMine),
     {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     true = aec_blocks:is_key_block(KeyBlock),
-    [{account_id, aec_base58c:encode(account_pubkey, Pubkey)},
+    [{account_id, aehttp_api_encoder:encode(account_pubkey, Pubkey)},
      {account_exists, true} | Config1];
 init_per_group(account_with_pending_tx, Config) ->
     [ {NodeId, Node} | _ ] = ?config(nodes, Config),
     {_, Pub} = aecore_suite_utils:sign_keys(NodeId),
     {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1),
     {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
-    [{pending_txs, [{aec_base58c:encode(tx_hash, aetx_sign:hash(Tx)), Tx}]},
+    [{pending_txs, [{aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(Tx)), Tx}]},
      {block_with_txs, undefined},
      {block_with_txs_hash, <<"none">>},
      {block_with_txs_height, -1} | Config];
@@ -698,7 +698,7 @@ init_per_group(tx_is_pending = Group, Config) ->
     true = aec_blocks:is_key_block(KeyBlock),
     {ok, Tx} = aecore_suite_utils:spend(Node, Pub, Pub, 1),
     {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
-    [{pending_txs, [{aec_base58c:encode(tx_hash, aetx_sign:hash(Tx)), Tx}]},
+    [{pending_txs, [{aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(Tx)), Tx}]},
      {block_with_txs, undefined},
      {block_with_txs_hash, <<"none">>},
      {block_with_txs_height, -1} | Config];
@@ -710,7 +710,7 @@ init_per_group(tx_is_on_chain = Group, Config) ->
     true = aec_blocks:is_key_block(KeyBlock),
     false = aec_blocks:is_key_block(MicroBlock),
     [Tx] = aec_blocks:txs(MicroBlock),
-    [{on_chain_txs, [{aec_base58c:encode(tx_hash, aetx_sign:hash(Tx)), Tx}]},
+    [{on_chain_txs, [{aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(Tx)), Tx}]},
      {block_with_txs, MicroBlock},
      {block_with_txs_hash, hash(micro, MicroBlock)},
      {block_with_txs_height, aec_blocks:height(KeyBlock)} | Config1];
@@ -722,8 +722,8 @@ init_per_group(post_tx_to_mempool = Group, Config) ->
     aecore_suite_utils:mine_key_blocks(Node, ToMine),
     {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     true = aec_blocks:is_key_block(KeyBlock),
-    [{sender_id, aec_base58c:encode(account_pubkey, Pub)},
-     {recipient_id, aec_base58c:encode(account_pubkey, random_hash())},
+    [{sender_id, aehttp_api_encoder:encode(account_pubkey, Pub)},
+     {recipient_id, aehttp_api_encoder:encode(account_pubkey, random_hash())},
      {amount, 1},
      {fee, 1},
      {payload, <<"foo">>} | Config1];
@@ -794,8 +794,8 @@ end_per_group(Group, Config) ->
 init_per_testcase(post_oracle_register, Config) ->
     %% TODO: assert there is enought balance
     {_, Pubkey} = aecore_suite_utils:sign_keys(?NODE),
-    [{account_id, aec_base58c:encode(account_pubkey, Pubkey)},
-     {oracle_id, aec_base58c:encode(oracle_pubkey, Pubkey)},
+    [{account_id, aehttp_api_encoder:encode(account_pubkey, Pubkey)},
+     {oracle_id, aehttp_api_encoder:encode(oracle_pubkey, Pubkey)},
      {query_format, <<"something">>},
      {response_format, <<"something else">>},
      {query_fee, 1},
@@ -993,10 +993,10 @@ broken_decode_sophia_data(_Config) ->
 
 %% Used in contract-decode endpoint tests.
 to_contract_bytearray(Term) ->
-    aec_base58c:encode(contract_bytearray, aeso_data:to_binary(Term)).
+    aehttp_api_encoder:encode(contract_bytearray, aeso_data:to_binary(Term)).
 
 contract_bytearray_decode(X) ->
-    case aec_base58c:safe_decode(contract_bytearray, X) of
+    case aehttp_api_encoder:safe_decode(contract_bytearray, X) of
         {ok, Y} -> Y;
         {error, _} = E -> error(E)
     end.
@@ -1444,7 +1444,7 @@ get_transaction_by_hash(Config) ->
     end.
 
 get_transaction_by_hash([], _Config) ->
-    RandomTxHash = aec_base58c:encode(tx_hash, random_hash()),
+    RandomTxHash = aehttp_api_encoder:encode(tx_hash, random_hash()),
     {ok, 404, Error} = get_transactions_by_hash_sut(RandomTxHash),
     ?assertEqual(<<"Transaction not found">>, maps:get(<<"reason">>, Error)),
     ok;
@@ -1476,7 +1476,7 @@ post_contract_and_call_tx(_Config) ->
 
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
     {ok, 200, #{<<"bytecode">> := EncodedCode}} = get_contract_bytecode(SophiaCode),
-    {ok, Code} = aec_base58c:safe_decode(contract_bytearray, EncodedCode),
+    {ok, Code} = aehttp_api_encoder:safe_decode(contract_bytearray, EncodedCode),
     {ok, EncodedInitCallData} = aehttp_logic:contract_encode_call_data(
                                   <<"sophia">>, Code, <<"init">>, <<"()">>),
     ValidEncoded = #{ owner_id   => Pubkey,
@@ -1493,7 +1493,7 @@ post_contract_and_call_tx(_Config) ->
     {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
                 <<"contract_id">> := EncodedContractPubKey}} =
         get_contract_create(ValidEncoded),
-    %%%% {ok, ContractPubKey} = aec_base58c:safe_decode(contract_pubkey, EncodedContractPubKey),
+    %%%% {ok, ContractPubKey} = aehttp_api_encoder:safe_decode(contract_pubkey, EncodedContractPubKey),
     ContractCreateTxHash = sign_and_post_tx(EncodedUnsignedContractCreateTx),
 
     ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCreateTxHash)),
@@ -1550,7 +1550,7 @@ get_contract(_Config) ->
 
     {ok, 200, _} = get_balance_at_top(),
     MinerAddress = get_pubkey(),
-    {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+    {ok, MinerPubkey} = aehttp_api_encoder:safe_decode(account_pubkey, MinerAddress),
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
     {ok, 200, #{<<"bytecode">> := EncodedCode}} = get_contract_bytecode(SophiaCode),
 
@@ -1630,7 +1630,7 @@ get_contract_store_sut(PubKey) ->
 %% /oracles/*
 
 get_oracle_by_pubkey(_Config) ->
-    RandomOraclePubkey = aec_base58c:encode(oracle_pubkey, random_hash()),
+    RandomOraclePubkey = aehttp_api_encoder:encode(oracle_pubkey, random_hash()),
     {ok, 404, Error} = get_oracles_by_pubkey_sut(RandomOraclePubkey),
     ?assertEqual(<<"Oracle not found">>, maps:get(<<"reason">>, Error)),
     ok.
@@ -1716,8 +1716,8 @@ post_oracle_response(Config) ->
     {ok, 200, Resp1} = get_oracles_query_by_pubkey_and_query_id(OracleId, QueryId),
     ?assertEqual(QueryId, maps:get(<<"id">>, Resp1)),
     ?assertEqual(OracleId, maps:get(<<"oracle_id">>, Resp1)),
-    ?assertEqual({ok, Query}, aec_base58c:safe_decode(oracle_query, maps:get(<<"query">>, Resp1))),
-    ?assertEqual({ok, Response}, aec_base58c:safe_decode(oracle_response, maps:get(<<"response">>, Resp1))),
+    ?assertEqual({ok, Query}, aehttp_api_encoder:safe_decode(oracle_query, maps:get(<<"query">>, Resp1))),
+    ?assertEqual({ok, Response}, aehttp_api_encoder:safe_decode(oracle_response, maps:get(<<"response">>, Resp1))),
     ok.
 
 get_oracles_by_pubkey_sut(Pubkey) ->
@@ -1758,7 +1758,7 @@ get_channel_by_pubkey(_Config) ->
     #{i := #{channel_id := ChannelId0, pub := IPub},
       r := #{pub := RPub}
      } = aesc_fsm_SUITE:create_channel_on_port(9311),
-    ChannelId = aec_base58c:encode(channel, ChannelId0),
+    ChannelId = aehttp_api_encoder:encode(channel, ChannelId0),
 
     {ok, 200, #{
         <<"id">> := ChannelId,
@@ -1768,9 +1768,9 @@ get_channel_by_pubkey(_Config) ->
         <<"state_hash">> := StateHash
       }} = get_channel_by_pubkey_sut(ChannelId),
 
-    ?assertEqual({ok, IPub}, aec_base58c:safe_decode(account_pubkey, InitiatorId)),
-    ?assertEqual({ok, RPub}, aec_base58c:safe_decode(account_pubkey, ResponderId)),
-    ?assertMatch({ok, _}, aec_base58c:safe_decode(state, StateHash)),
+    ?assertEqual({ok, IPub}, aehttp_api_encoder:safe_decode(account_pubkey, InitiatorId)),
+    ?assertEqual({ok, RPub}, aehttp_api_encoder:safe_decode(account_pubkey, ResponderId)),
+    ?assertMatch({ok, _}, aehttp_api_encoder:safe_decode(state, StateHash)),
     ok.
 
 get_channel_by_pubkey_sut(PubKey) ->
@@ -1803,7 +1803,7 @@ get_status(_Config) ->
        <<"peer_count">>                 := PeerCount,
        <<"pending_transactions_count">> := PendingTxCount
       }} = get_status_sut(),
-    ?assertMatch({ok, _}, aec_base58c:safe_decode(key_block_hash, GenesisKeyBlocHash)),
+    ?assertMatch({ok, _}, aehttp_api_encoder:safe_decode(key_block_hash, GenesisKeyBlocHash)),
     ?assertMatch(X when is_integer(X) andalso X >= 0, Solutions),
     ?assertMatch(X when is_integer(X), Difficulty),
     ?assertMatch(X when is_boolean(X), Syncing),
@@ -1825,14 +1825,14 @@ prepare_tx(TxType, Args) ->
     %assert_required_tx_fields(TxType, Args),
     {Host, Path} = tx_object_http_path(TxType),
     {ok, 200, #{<<"tx">> := EncodedSerializedUnsignedTx}} = http_request(Host, post, Path, Args),
-    {ok, SerializedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedSerializedUnsignedTx),
+    {ok, SerializedUnsignedTx} = aehttp_api_encoder:safe_decode(transaction, EncodedSerializedUnsignedTx),
     UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
 
     NodeT = aecore_suite_utils:node_tuple(?NODE),
     {ok, SignedTx} = aecore_suite_utils:sign_on_node(NodeT, UnsignedTx),
 
-    TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
-    EncodedSerializedSignedTx = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)),
+    TxHash = aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
+    EncodedSerializedSignedTx = aehttp_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)),
     {TxHash, EncodedSerializedSignedTx}.
 
 post_tx(TxHash, Tx) ->
@@ -1859,10 +1859,10 @@ tx_object_http_path(oracle_response_tx) -> {internal_address(), "debug/oracles/r
 
 hash(key, Block) ->
     {ok, Hash0} = aec_blocks:hash_internal_representation(Block),
-    aec_base58c:encode(key_block_hash, Hash0);
+    aehttp_api_encoder:encode(key_block_hash, Hash0);
 hash(micro, Block) ->
     {ok, Hash0} = aec_blocks:hash_internal_representation(Block),
-    aec_base58c:encode(micro_block_hash, Hash0).
+    aehttp_api_encoder:encode(micro_block_hash, Hash0).
 
 wait_for_key_block_candidate() -> wait_for_key_block_candidate(10).
 
@@ -1895,7 +1895,7 @@ contract_transactions(_Config) ->    % miner has an account
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 3),
     {ok, 200, _} = get_balance_at_top(),
     MinerAddress = get_pubkey(),
-    {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+    {ok, MinerPubkey} = aehttp_api_encoder:safe_decode(account_pubkey, MinerAddress),
     SophiaCode = <<"contract Identity = function main (x:int) = x">>,
     {ok, 200, #{<<"bytecode">> := EncodedCode}} = get_contract_bytecode(SophiaCode),
 
@@ -1931,7 +1931,7 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
                 <<"contract_id">> := EncodedContractPubKey}} =
         get_contract_create(ValidEncoded),
-    {ok, ContractPubKey} = aec_base58c:safe_decode(contract_pubkey, EncodedContractPubKey),
+    {ok, ContractPubKey} = aehttp_api_encoder:safe_decode(contract_pubkey, EncodedContractPubKey),
     ContractCreateTxHash = sign_and_post_tx(EncodedUnsignedContractCreateTx),
 
     %% Try to get the contract init call object while in mempool
@@ -1950,7 +1950,7 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, 200, InitCallObject} = get_contract_call_object(ContractCreateTxHash),
     ?assertEqual(MinerAddress, maps:get(<<"caller_id">>, InitCallObject)),
     ?assertEqual(get_tx_nonce(ContractCreateTxHash), maps:get(<<"caller_nonce">>, InitCallObject)),
-    ?assertEqual(aec_base58c:encode(contract_pubkey, ContractPubKey),
+    ?assertEqual(aehttp_api_encoder:encode(contract_pubkey, ContractPubKey),
         maps:get(<<"contract_id">>, InitCallObject)),
     ?assertEqual(maps:get(gas_price, ValidDecoded), maps:get(<<"gas_price">>, InitCallObject)),
     ?assertMatch({Used, Limit} when
@@ -1964,7 +1964,7 @@ contract_transactions(_Config) ->    % miner has an account
     _ = maps:get(<<"return_value">>, InitCallObject),
 
     {ok, 200, #{<<"poi">> := EncPoI}} = get_contract_poi(EncodedContractPubKey),
-    {ok, PoIBin} = aec_base58c:safe_decode(poi, EncPoI),
+    {ok, PoIBin} = aehttp_api_encoder:safe_decode(poi, EncPoI),
     PoI = aec_trees:deserialize_poi(PoIBin),
     {ok, ContractInPoI} = aec_trees:lookup_poi(contracts, ContractPubKey, PoI),
     {ok, Trees} = rpc(aec_chain, get_top_state, []),
@@ -2019,7 +2019,7 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, 200, CallObject} = get_contract_call_object(ContractCallTxHash),
     ?assertEqual(MinerAddress, maps:get(<<"caller_id">>, CallObject, <<>>)),
     ?assertEqual(get_tx_nonce(ContractCallTxHash), maps:get(<<"caller_nonce">>, CallObject)),
-    ?assertEqual(aec_base58c:encode(contract_pubkey, ContractPubKey),
+    ?assertEqual(aehttp_api_encoder:encode(contract_pubkey, ContractPubKey),
                  maps:get(<<"contract_id">>, CallObject, <<>>)),
     ?assertEqual(maps:get(gas_price, ContractCallDecoded), maps:get(<<"gas_price">>, CallObject)),
     ?assertMatch({Used, Limit} when
@@ -2077,7 +2077,7 @@ contract_transactions(_Config) ->    % miner has an account
     %% Get the call object
     {ok, 200, CallObject1} = get_contract_call_object(ContractCallComputeTxHash),
     ?assertEqual(MinerAddress, maps:get(<<"caller_id">>, CallObject1, <<>>)),
-    ?assertEqual(aec_base58c:encode(contract_pubkey, ContractPubKey),
+    ?assertEqual(aehttp_api_encoder:encode(contract_pubkey, ContractPubKey),
                  maps:get(<<"contract_id">>, CallObject1, <<>>)),
 
     {ok, 200, #{<<"data">> := DecodedCallReturnValue}} =
@@ -2101,8 +2101,8 @@ contract_transactions(_Config) ->    % miner has an account
         get_contract_call_compute(maps:put(caller_id, InvalidHash,
                                            ComputeCCallEncoded)),
     %% account not found
-    RandAddress = aec_base58c:encode(account_pubkey, random_hash()),
-    RandContractAddress =aec_base58c:encode(contract_pubkey, random_hash()),
+    RandAddress = aehttp_api_encoder:encode(account_pubkey, random_hash()),
+    RandContractAddress =aehttp_api_encoder:encode(contract_pubkey, random_hash()),
     %% owner not found
     {ok, 404, #{<<"reason">> := <<"Account of owner_id not found">>}} =
         get_contract_create(maps:put(owner_id, RandAddress, ValidEncoded)),
@@ -2225,7 +2225,7 @@ contract_create_transaction_init_error(_Config) ->
     % miner has an account
     {ok, 200, _} = get_balance_at_top(),
     MinerAddress = get_pubkey(),
-    {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+    {ok, MinerPubkey} = aehttp_api_encoder:safe_decode(account_pubkey, MinerAddress),
 
     % contract_create_tx positive test
     EncodedCode = contract_byte_code("init_error"),
@@ -2233,7 +2233,7 @@ contract_create_transaction_init_error(_Config) ->
                               <<"sophia">>,
                               contract_bytearray_decode(EncodedCode),
                               <<"init">>, <<"(0x123, 0)">>),
-    EncodedInitCallData = aec_base58c:encode(contract_bytearray, aeso_data:to_binary({<<"init">>, {}})),
+    EncodedInitCallData = aehttp_api_encoder:encode(contract_bytearray, aeso_data:to_binary({<<"init">>, {}})),
     ValidEncoded = #{ owner_id   => MinerAddress,
                       code       => EncodedCode,
                       vm_version => 1,
@@ -2252,7 +2252,7 @@ contract_create_transaction_init_error(_Config) ->
     {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
         <<"contract_id">> := EncodedContractPubKey}} =
         get_contract_create(ValidEncoded),
-    {ok, ContractPubKey} = aec_base58c:safe_decode(contract_pubkey, EncodedContractPubKey),
+    {ok, ContractPubKey} = aehttp_api_encoder:safe_decode(contract_pubkey, EncodedContractPubKey),
     ContractCreateTxHash = sign_and_post_tx(EncodedUnsignedContractCreateTx),
 
     %% Try to get the contract init call object while in mempool
@@ -2267,7 +2267,7 @@ contract_create_transaction_init_error(_Config) ->
     {ok, 200, InitCallObject} = get_contract_call_object(ContractCreateTxHash),
     ?assertEqual(MinerAddress, maps:get(<<"caller_id">>, InitCallObject)),
     ?assertEqual(get_tx_nonce(ContractCreateTxHash), maps:get(<<"caller_nonce">>, InitCallObject)),
-    ?assertEqual(aec_base58c:encode(contract_pubkey, ContractPubKey),
+    ?assertEqual(aehttp_api_encoder:encode(contract_pubkey, ContractPubKey),
         maps:get(<<"contract_id">>, InitCallObject)),
     ?assertEqual(maps:get(gas_price, ValidDecoded), maps:get(<<"gas_price">>, InitCallObject)),
     ?assertMatch({Used, Limit} when
@@ -2285,8 +2285,8 @@ contract_create_transaction_init_error(_Config) ->
 oracle_transactions(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
     MinerAddress = get_pubkey(),
-    {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
-    OracleAddress = aec_base58c:encode(oracle_pubkey, MinerPubkey),
+    {ok, MinerPubkey} = aehttp_api_encoder:safe_decode(account_pubkey, MinerAddress),
+    OracleAddress = aehttp_api_encoder:encode(oracle_pubkey, MinerPubkey),
 
     % oracle_register_tx positive test
     RegEncoded = #{account_id => MinerAddress,
@@ -2317,7 +2317,7 @@ oracle_transactions(_Config) ->
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
 
     % oracle_extend_tx positive test
-    ExtEncoded = #{oracle_id => aec_base58c:encode(oracle_pubkey, MinerPubkey),
+    ExtEncoded = #{oracle_id => aehttp_api_encoder:encode(oracle_pubkey, MinerPubkey),
                    fee => 2,
                    oracle_ttl => #{type => <<"delta">>, value => 500}},
     ExtDecoded = maps:merge(ExtEncoded,
@@ -2329,7 +2329,7 @@ oracle_transactions(_Config) ->
 
     % oracle_query_tx positive test
     QueryEncoded = #{sender_id => MinerAddress,
-                     oracle_id => aec_base58c:encode(oracle_pubkey, MinerPubkey),
+                     oracle_id => aehttp_api_encoder:encode(oracle_pubkey, MinerPubkey),
                      query => <<"Hejsan Svejsan">>,
                      query_fee => 2,
                      fee => 30,
@@ -2359,7 +2359,7 @@ oracle_transactions(_Config) ->
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
 
     ResponseEncoded = #{oracle_id => OracleAddress,
-                        query_id => aec_base58c:encode(oracle_query_id,
+                        query_id => aehttp_api_encoder:encode(oracle_query_id,
                                                        QueryId),
                         response => <<"Hejsan">>,
                         response_ttl => #{type => <<"delta">>, value => 20},
@@ -2392,9 +2392,9 @@ oracle_transactions(_Config) ->
         get_oracle_response(maps:put(oracle_id, InvalidHash, ResponseEncoded)),
 
     %% account not found
-    RandAddress = aec_base58c:encode(account_pubkey, random_hash()),
-    RandOracleAddress = aec_base58c:encode(oracle_pubkey, random_hash()),
-    RandQueryID = aec_base58c:encode(oracle_query_id, random_hash()),
+    RandAddress = aehttp_api_encoder:encode(account_pubkey, random_hash()),
+    RandOracleAddress = aehttp_api_encoder:encode(oracle_pubkey, random_hash()),
+    RandQueryID = aehttp_api_encoder:encode(oracle_query_id, random_hash()),
     {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
         get_oracle_register(maps:put(account_id, RandAddress, RegEncoded)),
 
@@ -2452,7 +2452,7 @@ oracle_transactions(_Config) ->
 nameservice_transactions(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
     MinerAddress = get_pubkey(),
-    {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+    {ok, MinerPubkey} = aehttp_api_encoder:safe_decode(account_pubkey, MinerAddress),
     nameservice_transaction_preclaim(MinerAddress, MinerPubkey),
     nameservice_transaction_claim(MinerAddress, MinerPubkey),
     nameservice_transaction_update(MinerAddress, MinerPubkey),
@@ -2463,7 +2463,7 @@ nameservice_transactions(_Config) ->
 nameservice_transaction_preclaim(MinerAddress, MinerPubkey) ->
     Commitment = random_hash(),
     Encoded = #{account_id => MinerAddress,
-                commitment_id => aec_base58c:encode(commitment, Commitment),
+                commitment_id => aehttp_api_encoder:encode(commitment, Commitment),
                 fee => 1},
     Decoded = maps:merge(Encoded,
                         #{account_id => aec_id:create(account, MinerPubkey),
@@ -2482,7 +2482,7 @@ test_invalid_hash({PubKeyType, PubKey}, MapKey0, Encoded, APIFun) when is_atom(P
             {_, _} = Pair -> Pair;
             K -> {K, K}
         end,
-    CorrectAddress = aec_base58c:encode(PubKeyType, PubKey),
+    CorrectAddress = aehttp_api_encoder:encode(PubKeyType, PubKey),
     Msg = list_to_binary("Invalid hash: " ++ atom_to_list(Name)),
     <<_, HashWithBrokenPrefix/binary>> = CorrectAddress,
     {ok, 400, #{<<"reason">> := Msg}} = APIFun(maps:put(MapKey, HashWithBrokenPrefix, Encoded)),
@@ -2490,7 +2490,7 @@ test_invalid_hash({PubKeyType, PubKey}, MapKey0, Encoded, APIFun) when is_atom(P
     <<_Prefix:3/binary, HashWithNoPrefix/binary>> = CorrectAddress,
     {ok, 400, #{<<"reason">> := Msg}} = APIFun(maps:put(MapKey, HashWithNoPrefix, Encoded)),
 
-    case aec_base58c:byte_size_for_type(PubKeyType) of
+    case aehttp_api_encoder:byte_size_for_type(PubKeyType) of
         not_applicable -> pass;
         _ ->
             <<ShortHash:10/binary, _Rest/binary>> = CorrectAddress,
@@ -2499,14 +2499,14 @@ test_invalid_hash({PubKeyType, PubKey}, MapKey0, Encoded, APIFun) when is_atom(P
             BS = byte_size(PubKey),
             HalfSize = BS div 2,
             <<FirstHalfKey:HalfSize/binary, _SecondHalfKey/binary>> = PubKey,
-            HalfHash = aec_base58c:encode(PubKeyType, FirstHalfKey),
+            HalfHash = aehttp_api_encoder:encode(PubKeyType, FirstHalfKey),
             {ok, 400, #{<<"reason">> := Msg}} = APIFun(maps:put(MapKey, HalfHash, Encoded))
     end,
     ok.
 
 test_missing_address(Key, Encoded, APIFun) ->
     Msg = list_to_binary("Account of " ++ atom_to_list(Key) ++ " not found"),
-    RandAddress = aec_base58c:encode(account_pubkey, random_hash()),
+    RandAddress = aehttp_api_encoder:encode(account_pubkey, random_hash()),
     {ok, 404, #{<<"reason">> := Msg}} =
         APIFun(maps:put(Key, RandAddress, Encoded)),
     ok.
@@ -2516,7 +2516,7 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
     Salt = 1234,
 
     {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = get_commitment_id(Name, Salt),
-    {ok, _CHash} = aec_base58c:safe_decode(commitment, EncodedCHash),
+    {ok, _CHash} = aehttp_api_encoder:safe_decode(commitment, EncodedCHash),
 
     %% Submit name preclaim tx and check it is in mempool
     PreclaimData = #{commitment_id => EncodedCHash,
@@ -2533,7 +2533,7 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     Encoded = #{account_id => MinerAddress,
-                name => aec_base58c:encode(name, Name),
+                name => aehttp_api_encoder:encode(name, Name),
                 name_salt => Salt,
                 fee => 1},
     Decoded = maps:merge(Encoded,
@@ -2547,10 +2547,10 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
     test_missing_address(account_id, Encoded, fun get_name_claim/1),
 
     %% missing registar
-    Missing = aec_base58c:encode(name, <<"missing">>),
+    Missing = aehttp_api_encoder:encode(name, <<"missing">>),
     {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: no_registrar">>}} =
         get_name_claim(maps:put(name, Missing, Encoded)),
-    MissingReg = aec_base58c:encode(name, <<"missing.reg">>),
+    MissingReg = aehttp_api_encoder:encode(name, <<"missing.reg">>),
     {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: registrar_unknown">>}} =
         get_name_claim(maps:put(name, MissingReg, Encoded)),
     ok.
@@ -2559,7 +2559,7 @@ nameservice_transaction_update(MinerAddress, MinerPubkey) ->
     NameHash = random_hash(),
     Pointers = [],
     Encoded = #{account_id => MinerAddress,
-                name_id => aec_base58c:encode(name, NameHash),
+                name_id => aehttp_api_encoder:encode(name, NameHash),
                 name_ttl => 3,
                 client_ttl => 2,
                 pointers => Pointers,
@@ -2587,8 +2587,8 @@ nameservice_transaction_transfer(MinerAddress, MinerPubkey) ->
     RandAddress = random_hash(),
     NameHash = random_hash(),
     Encoded = #{account_id => MinerAddress,
-                name_id => aec_base58c:encode(name, NameHash),
-                recipient_id => aec_base58c:encode(account_pubkey, RandAddress),
+                name_id => aehttp_api_encoder:encode(name, NameHash),
+                recipient_id => aehttp_api_encoder:encode(account_pubkey, RandAddress),
                 fee => 1},
     Decoded = maps:merge(Encoded,
                         #{account_id => aec_id:create(account, MinerPubkey),
@@ -2606,7 +2606,7 @@ nameservice_transaction_transfer(MinerAddress, MinerPubkey) ->
 nameservice_transaction_revoke(MinerAddress, MinerPubkey) ->
     NameHash = random_hash(),
     Encoded = #{account_id => MinerAddress,
-                name_id => aec_base58c:encode(name, NameHash),
+                name_id => aehttp_api_encoder:encode(name, NameHash),
                 fee => 1},
     Decoded = maps:merge(Encoded,
                         #{account_id => aec_id:create(account, MinerPubkey),
@@ -2630,7 +2630,7 @@ nameservice_transaction_revoke(MinerAddress, MinerPubkey) ->
 state_channels_onchain_transactions(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
     MinerAddress = get_pubkey(),
-    {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+    {ok, MinerPubkey} = aehttp_api_encoder:safe_decode(account_pubkey, MinerAddress),
     ParticipantPubkey = random_hash(),
     ok = give_tokens(ParticipantPubkey, 100),
     {ok, AeTx} = state_channels_create(MinerPubkey, ParticipantPubkey),
@@ -2652,13 +2652,13 @@ state_channel_pubkey(Tx) ->
     aesc_channels:pubkey(Initiator, Nonce, Responder).
 
 state_channels_create(MinerPubkey, ResponderPubkey) ->
-    Encoded = #{initiator_id => aec_base58c:encode(account_pubkey, MinerPubkey),
+    Encoded = #{initiator_id => aehttp_api_encoder:encode(account_pubkey, MinerPubkey),
                 initiator_amount => 2,
-                responder_id => aec_base58c:encode(account_pubkey, ResponderPubkey),
+                responder_id => aehttp_api_encoder:encode(account_pubkey, ResponderPubkey),
                 responder_amount => 3,
                 push_amount => 5, channel_reserve => 5,
                 lock_period => 20,
-                state_hash => aec_base58c:encode(state, ?BOGUS_STATE_HASH),
+                state_hash => aehttp_api_encoder:encode(state, ?BOGUS_STATE_HASH),
                 fee => 1},
     Decoded = maps:merge(Encoded,
                         #{initiator_id => aec_id:create(account, MinerPubkey),
@@ -2673,11 +2673,11 @@ state_channels_create(MinerPubkey, ResponderPubkey) ->
     {ok, Tx}.
 
 state_channels_deposit(ChannelId, MinerPubkey) ->
-    MinerAddress = aec_base58c:encode(account_pubkey, MinerPubkey),
-    Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
+    MinerAddress = aehttp_api_encoder:encode(account_pubkey, MinerPubkey),
+    Encoded = #{channel_id => aehttp_api_encoder:encode(channel, ChannelId),
                 from_id => MinerAddress,
                 amount => 2,
-                state_hash => aec_base58c:encode(state, ?BOGUS_STATE_HASH),
+                state_hash => aehttp_api_encoder:encode(state, ?BOGUS_STATE_HASH),
                 round => 42,
                 fee => 1},
     Decoded = maps:merge(Encoded,
@@ -2695,11 +2695,11 @@ state_channels_deposit(ChannelId, MinerPubkey) ->
     ok.
 
 state_channels_withdrawal(ChannelId, MinerPubkey) ->
-    MinerAddress = aec_base58c:encode(account_pubkey, MinerPubkey),
-    Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
+    MinerAddress = aehttp_api_encoder:encode(account_pubkey, MinerPubkey),
+    Encoded = #{channel_id => aehttp_api_encoder:encode(channel, ChannelId),
                 to_id => MinerAddress,
                 amount => 2,
-                state_hash => aec_base58c:encode(state, ?BOGUS_STATE_HASH),
+                state_hash => aehttp_api_encoder:encode(state, ?BOGUS_STATE_HASH),
                 round => 42,
                 fee => 1},
     Decoded = maps:merge(Encoded,
@@ -2718,8 +2718,8 @@ state_channels_withdrawal(ChannelId, MinerPubkey) ->
 
 state_channels_snapshot_solo(ChannelId, MinerPubkey) ->
     _PoI = aec_trees:new_poi(aec_trees:new_without_backend()),
-    Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                from_id => aec_base58c:encode(account_pubkey, MinerPubkey),
+    Encoded = #{channel_id => aehttp_api_encoder:encode(channel, ChannelId),
+                from_id => aehttp_api_encoder:encode(account_pubkey, MinerPubkey),
                 payload => <<"hejsan svejsan">>, %%TODO proper payload
                 fee => 1},
     Decoded = maps:merge(Encoded,
@@ -2732,8 +2732,8 @@ state_channels_snapshot_solo(ChannelId, MinerPubkey) ->
     ok.
 
 state_channels_close_mutual(ChannelId, InitiatorPubkey) ->
-    Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                from_id => aec_base58c:encode(account_pubkey, InitiatorPubkey),
+    Encoded = #{channel_id => aehttp_api_encoder:encode(channel, ChannelId),
+                from_id => aehttp_api_encoder:encode(account_pubkey, InitiatorPubkey),
                 initiator_amount_final => 4,
                 responder_amount_final => 3,
                 fee => 1},
@@ -2752,10 +2752,10 @@ state_channels_close_mutual(ChannelId, InitiatorPubkey) ->
 
 state_channels_close_solo(ChannelId, MinerPubkey) ->
     PoI = aec_trees:new_poi(aec_trees:new_without_backend()),
-    Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                from_id => aec_base58c:encode(account_pubkey, MinerPubkey),
+    Encoded = #{channel_id => aehttp_api_encoder:encode(channel, ChannelId),
+                from_id => aehttp_api_encoder:encode(account_pubkey, MinerPubkey),
                 payload => <<"hejsan svejsan">>, %%TODO proper payload
-                poi => aec_base58c:encode(poi, aec_trees:serialize_poi(PoI)),
+                poi => aehttp_api_encoder:encode(poi, aec_trees:serialize_poi(PoI)),
                 fee => 1},
     Decoded = maps:merge(Encoded,
                         #{from_id => aec_id:create(account, MinerPubkey),
@@ -2768,7 +2768,7 @@ state_channels_close_solo(ChannelId, MinerPubkey) ->
     BrokenPoIs = [<<>>, <<"hejsan svejsan">>],
     lists:foreach(
         fun(BrokenPoI) ->
-            EncBrokenPoI =  aec_base58c:encode(poi, BrokenPoI),
+            EncBrokenPoI =  aehttp_api_encoder:encode(poi, BrokenPoI),
             {ok, 400, #{<<"reason">> := <<"Invalid proof of inclusion">>}}
                 = get_channel_close_solo(maps:put(poi, EncBrokenPoI, Encoded))
         end,
@@ -2777,10 +2777,10 @@ state_channels_close_solo(ChannelId, MinerPubkey) ->
 
 state_channels_slash(ChannelId, MinerPubkey) ->
     PoI = aec_trees:new_poi(aec_trees:new_without_backend()),
-    Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                from_id => aec_base58c:encode(account_pubkey, MinerPubkey),
+    Encoded = #{channel_id => aehttp_api_encoder:encode(channel, ChannelId),
+                from_id => aehttp_api_encoder:encode(account_pubkey, MinerPubkey),
                 payload => <<"hejsan svejsan">>, %%TODO proper payload
-                poi => aec_base58c:encode(poi, aec_trees:serialize_poi(PoI)),
+                poi => aehttp_api_encoder:encode(poi, aec_trees:serialize_poi(PoI)),
                 fee => 1},
     Decoded = maps:merge(Encoded,
                         #{from_id => aec_id:create(account, MinerPubkey),
@@ -2794,7 +2794,7 @@ state_channels_slash(ChannelId, MinerPubkey) ->
     BrokenPoIs = [<<>>, <<"hejsan svejsan">>],
     lists:foreach(
         fun(BrokenPoI) ->
-            EncBrokenPoI =  aec_base58c:encode(poi, BrokenPoI),
+            EncBrokenPoI =  aehttp_api_encoder:encode(poi, BrokenPoI),
             {ok, 400, #{<<"reason">> := <<"Invalid proof of inclusion">>}}
                 = get_channel_slash(maps:put(poi, EncBrokenPoI, Encoded))
         end,
@@ -2802,8 +2802,8 @@ state_channels_slash(ChannelId, MinerPubkey) ->
     ok.
 
 state_channels_settle(ChannelId, MinerPubkey) ->
-    Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                from_id => aec_base58c:encode(account_pubkey, MinerPubkey),
+    Encoded = #{channel_id => aehttp_api_encoder:encode(channel, ChannelId),
+                from_id => aehttp_api_encoder:encode(account_pubkey, MinerPubkey),
                 initiator_amount_final => 4,
                 responder_amount_final => 3,
                 fee => 1},
@@ -2825,10 +2825,10 @@ state_channels_settle(ChannelId, MinerPubkey) ->
 spend_transaction(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
     MinerAddress = get_pubkey(),
-    {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+    {ok, MinerPubkey} = aehttp_api_encoder:safe_decode(account_pubkey, MinerAddress),
     RandAddress = random_hash(),
     Encoded = #{sender_id => MinerAddress,
-                recipient_id => aec_base58c:encode(account_pubkey, RandAddress),
+                recipient_id => aehttp_api_encoder:encode(account_pubkey, RandAddress),
                 amount => 2,
                 fee => 1,
                 ttl => 43,
@@ -2854,7 +2854,7 @@ unknown_atom_in_spend_tx(_Config) ->
     MinerAddress = get_pubkey(),
     RandAddress = random_hash(),
     Encoded = #{sender_id => MinerAddress,
-                recipient_id => aec_base58c:encode(account_pubkey, RandAddress),
+                recipient_id => aehttp_api_encoder:encode(account_pubkey, RandAddress),
                 amount => 2,
                 fee => 1,
                 %% this tests relies on this being an atom unknown to the VM
@@ -2878,7 +2878,7 @@ unsigned_tx_positive_test(Data, Params0, HTTPCallFun, NewFun, Pubkey,
             ct:log("PARAMS ~p", [P]),
             {ok, ExpectedTx} = NewFun(maps:put(nonce, Nonce, Data)),
             {ok, 200, #{<<"tx">> := ActualTx}} = HTTPCallFun(P),
-            {ok, SerializedTx} = aec_base58c:safe_decode(transaction, ActualTx),
+            {ok, SerializedTx} = aehttp_api_encoder:safe_decode(transaction, ActualTx),
             Tx = aetx:deserialize_from_binary(SerializedTx),
             ct:log("Expected ~p~nActual ~p", [ExpectedTx, Tx]),
             ExpectedTx = Tx,
@@ -2910,18 +2910,18 @@ get_transaction(_Config) ->
     %% test in mempool
     RandAddress = random_hash(),
     Encoded = #{sender_id => EncodedPubKey,
-                recipient_id => aec_base58c:encode(account_pubkey, RandAddress),
+                recipient_id => aehttp_api_encoder:encode(account_pubkey, RandAddress),
                 amount => 2,
                 fee => 1,
                 payload => <<"foo">>},
     {ok, 200, #{<<"tx">> := EncodedSpendTx}} = get_spend(Encoded),
-    {ok, SpendTxBin} = aec_base58c:safe_decode(transaction, EncodedSpendTx),
+    {ok, SpendTxBin} = aehttp_api_encoder:safe_decode(transaction, EncodedSpendTx),
     SpendTx = aetx:deserialize_from_binary(SpendTxBin),
     {ok, SignedSpendTx} = aecore_suite_utils:sign_on_node(?NODE, SpendTx),
-    TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedSpendTx)),
+    TxHash = aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(SignedSpendTx)),
 
     SerializedSpendTx = aetx_sign:serialize_to_binary(SignedSpendTx),
-    {ok, 200, _} = post_transactions_sut(aec_base58c:encode(transaction, SerializedSpendTx)),
+    {ok, 200, _} = post_transactions_sut(aehttp_api_encoder:encode(transaction, SerializedSpendTx)),
     {ok, 200, PendingTx} = get_transactions_by_hash_sut(TxHash),
     Expected = aetx_sign:serialize_for_client_pending(SignedSpendTx),
     Expected = PendingTx,
@@ -2964,10 +2964,10 @@ pending_transactions(_Config) ->
 
     ReceiverPubKey = random_hash(),
     {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
-                  get_accounts_by_pubkey_sut(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
+                  get_accounts_by_pubkey_sut(aehttp_api_encoder:encode(account_pubkey, ReceiverPubKey)),
 
     {ok, 200, #{<<"tx">> := SpendTx}} =
-        post_spend_tx(aec_base58c:encode(account_pubkey, ReceiverPubKey), AmountToSpent, Fee),
+        post_spend_tx(aehttp_api_encoder:encode(account_pubkey, ReceiverPubKey), AmountToSpent, Fee),
     sign_and_post_tx(SpendTx),
     {ok, NodeTxs} = rpc(aec_tx_pool, peek, [infinity]),
     true = length(NodeTxs) =:= 1, % not empty anymore
@@ -2978,7 +2978,7 @@ pending_transactions(_Config) ->
 
     {ok, 200, #{<<"balance">> := Bal0}} = get_balance_at_top(),
     {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
-                  get_accounts_by_pubkey_sut(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
+                  get_accounts_by_pubkey_sut(aehttp_api_encoder:encode(account_pubkey, ReceiverPubKey)),
 
 
     ToMine = 2 + Delay,
@@ -2991,7 +2991,7 @@ pending_transactions(_Config) ->
            [Bal1, Bal0, ToMine * MineReward, Fee, AmountToSpent]),
     {Bal1, _} = {Bal0 + ToMine * MineReward + Fee - Fee - AmountToSpent, Bal1},
     {ok, 200, #{<<"balance">> := AmountToSpent}} =
-                 get_accounts_by_pubkey_sut(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
+                 get_accounts_by_pubkey_sut(aehttp_api_encoder:encode(account_pubkey, ReceiverPubKey)),
     ok.
 
 %% Even though a tx with a unknown sender pubkey would be accepted, we need
@@ -3009,9 +3009,9 @@ post_correct_tx(_Config) ->
             nonce => Nonce,
             payload => <<"foo">>}),
     {ok, SignedTx} = aecore_suite_utils:sign_on_node(?NODE, SpendTx),
-    ExpectedHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
+    ExpectedHash = aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
     {ok, 200, #{<<"tx_hash">> := ExpectedHash}} =
-        post_transactions_sut(aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx))),
+        post_transactions_sut(aehttp_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedTx))),
     {ok, [SignedTx]} = rpc(aec_tx_pool, peek, [infinity]), % same tx
     ok.
 
@@ -3046,15 +3046,15 @@ post_broken_tx(_Config) ->
                     <<1:1, Rest/bits>> -> <<0:1, Rest/bits>>;
                     <<0:1, Rest/bits>> -> <<1:1, Rest/bits>>
                   end,
-    EncodedBrokenTx = aec_base58c:encode(transaction, BrokenTxBin),
-    EncodedBrokenTTLTx = aec_base58c:encode(transaction, SignedTTLTxBin),
-    EncodedSignedTx = aec_base58c:encode(transaction, SignedTxBin),
+    EncodedBrokenTx = aehttp_api_encoder:encode(transaction, BrokenTxBin),
+    EncodedBrokenTTLTx = aehttp_api_encoder:encode(transaction, SignedTTLTxBin),
+    EncodedSignedTx = aehttp_api_encoder:encode(transaction, SignedTxBin),
     {ok, 400, #{<<"reason">> := <<"Invalid tx">>}} = post_transactions_sut(EncodedBrokenTx),
     {ok, 400, #{<<"reason">> := <<"Invalid tx">>}} = post_transactions_sut(EncodedBrokenTTLTx),
     {ok, 200, _} = post_transactions_sut(EncodedSignedTx),
     ok.
 
-post_broken_base58_tx(_Config) ->
+post_broken_api_encoded_tx(_Config) ->
     Amount = 1,
     NumberOfChecks = ?DEFAULT_TESTS_COUNT,
     {BlocksToMine, Fee} = minimal_fee_and_blocks_to_mine(Amount, NumberOfChecks),
@@ -3071,9 +3071,9 @@ post_broken_base58_tx(_Config) ->
                     payload => <<"foo">>}),
             {ok, SignedTx} = aecore_suite_utils:sign_on_node(?NODE, SpendTx),
             <<_, BrokenHash/binary>> =
-                aec_base58c:encode(transaction,
+                aehttp_api_encoder:encode(transaction,
                                    aetx_sign:serialize_to_binary(SignedTx)),
-            {ok, 400, #{<<"reason">> := <<"Invalid base58Check encoding">>}} = post_transactions_sut(BrokenHash)
+            {ok, 400, #{<<"reason">> := <<"Invalid api encoding">>}} = post_transactions_sut(BrokenHash)
         end,
         lists:seq(1, NumberOfChecks)), % number
     ok.
@@ -3083,7 +3083,7 @@ broken_spend_tx(_Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     {ok, 404, #{<<"reason">> := <<"Account not found">>}} = get_balance_at_top(),
     ReceiverPubKey = random_hash(),
-    {ok, 404, _} = post_spend_tx(aec_base58c:encode(account_pubkey, ReceiverPubKey), 42, 2),
+    {ok, 404, _} = post_spend_tx(aehttp_api_encoder:encode(account_pubkey, ReceiverPubKey), 42, 2),
 
     ForkHeight = aecore_suite_utils:latest_fork_height(),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
@@ -3095,14 +3095,14 @@ node_pubkey(_Config) ->
     {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_node_pubkey(),
     ct:log("MinerPubkey = ~p~nEncodedPubKey = ~p", [MinerPubKey,
                                                     EncodedPubKey]),
-    {account_pubkey, MinerPubKey} = aec_base58c:decode(EncodedPubKey),
+    {account_pubkey, MinerPubKey} = aehttp_api_encoder:decode(EncodedPubKey),
     ok.
 
 node_beneficiary(_Config) ->
     {ok, 200, #{<<"pub_key">> := SignPubKey0}} = get_node_pubkey(),
     {ok, 200, #{<<"pub_key">> := BeneficiaryPubKey0}} = get_node_beneficiary(),
 
-    ?assertMatch({account_pubkey, _}, aec_base58c:decode(BeneficiaryPubKey0)),
+    ?assertMatch({account_pubkey, _}, aehttp_api_encoder:decode(BeneficiaryPubKey0)),
 
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 3),
 
@@ -3119,12 +3119,12 @@ peer_pub_key(_Config) ->
     {ok, 200, #{<<"pubkey">> := EncodedPubKey}} = get_peer_pub_key(),
     ct:log("PeerPubkey = ~p~nEncodedPubKey = ~p", [PeerPubKey,
                                                     EncodedPubKey]),
-    {ok, PeerPubKey} = aec_base58c:safe_decode(peer_pubkey, EncodedPubKey),
+    {ok, PeerPubKey} = aehttp_api_encoder:safe_decode(peer_pubkey, EncodedPubKey),
     ok.
 
 naming_system_manage_name(_Config) ->
     {_, PubKey} = aecore_suite_utils:sign_keys(?NODE),
-    PubKeyEnc   = aec_base58c:encode(account_pubkey, PubKey),
+    PubKeyEnc   = aehttp_api_encoder:encode(account_pubkey, PubKey),
     %% TODO: find out how to craete HTTP path with unicode chars
     %%Name        = <<"詹姆斯詹姆斯.test"/utf8>>,
     Name        = <<"without-unicode.test">>,
@@ -3148,7 +3148,7 @@ naming_system_manage_name(_Config) ->
 
     %% Get commitment hash to preclaim a name
     {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = get_commitment_id(Name, NameSalt),
-    {ok, _CHash} = aec_base58c:safe_decode(commitment, EncodedCHash),
+    {ok, _CHash} = aehttp_api_encoder:safe_decode(commitment, EncodedCHash),
 
     %% Submit name preclaim tx and check it is in mempool
     PreclaimData = #{commitment_id => EncodedCHash,
@@ -3175,7 +3175,7 @@ naming_system_manage_name(_Config) ->
 
     %% Submit name claim tx and check it is in mempool
     ClaimData = #{account_id => PubKeyEnc,
-                  name       => aec_base58c:encode(name, Name),
+                  name       => aehttp_api_encoder:encode(name, Name),
                   name_salt  => NameSalt,
                   fee        => Fee},
     {ok, 200, #{<<"tx">> := ClaimTxEnc}} = get_name_claim(ClaimData),
@@ -3193,7 +3193,7 @@ naming_system_manage_name(_Config) ->
     ?assertEqual(Balance3, Balance2 - Fee + (Height3 - Height2) * MineReward - ClaimBurnedFee),
 
     %% Check that name entry is present
-    EncodedNHash = aec_base58c:encode(name, NHash),
+    EncodedNHash = aehttp_api_encoder:encode(name, NHash),
     ExpectedTTL1 = (Height3 - 1) + aec_governance:name_claim_max_expiration(),
     {ok, 200, #{<<"id">>       := EncodedNHash,
                 <<"ttl">>      := ExpectedTTL1,
@@ -3201,7 +3201,7 @@ naming_system_manage_name(_Config) ->
 
     %% Submit name updated tx and check it is in mempool
     NameUpdateData = #{account_id => PubKeyEnc,
-                       name_id    => aec_base58c:encode(name, NHash),
+                       name_id    => aehttp_api_encoder:encode(name, NHash),
                        client_ttl => TTL,
                        pointers   => Pointers,
                        name_ttl   => NameTTL,
@@ -3246,7 +3246,7 @@ naming_system_manage_name(_Config) ->
     %% Submit name transfer tx and check it is in mempool
     TransferData = #{account_id   => PubKeyEnc,
                      recipient_id => PubKeyEnc,
-                     name_id      => aec_base58c:encode(name, NHash),
+                     name_id      => aehttp_api_encoder:encode(name, NHash),
                      fee          => Fee},
     {ok, 200, #{<<"tx">> := TransferEnc}} = get_name_transfer(TransferData),
     TransferTxHash = sign_and_post_tx(TransferEnc),
@@ -3267,7 +3267,7 @@ naming_system_manage_name(_Config) ->
 
     %% Submit name revoke tx and check it is in mempool
     RevokeData = #{account_id => PubKeyEnc,
-                   name_id => aec_base58c:encode(name, NHash),
+                   name_id => aehttp_api_encoder:encode(name, NHash),
                    fee => Fee},
     {ok, 200, #{<<"tx">> := RevokeEnc}} = get_name_revoke(RevokeData),
     RevokeTxHash = sign_and_post_tx(RevokeEnc),
@@ -3304,29 +3304,29 @@ naming_system_broken_txs(_Config) ->
     {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: registrar_unknown">>}} =
         get_names_entry_by_name_sut(<<"abcd.badregistrar">>),
     {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
-        get_name_preclaim(#{commitment_id => aec_base58c:encode(commitment, CHash),
+        get_name_preclaim(#{commitment_id => aehttp_api_encoder:encode(commitment, CHash),
                             fee => Fee,
-                            account_id => aec_base58c:encode(account_pubkey, random_hash())}),
+                            account_id => aehttp_api_encoder:encode(account_pubkey, random_hash())}),
     {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
-        get_name_claim(#{name => aec_base58c:encode(name, Name),
+        get_name_claim(#{name => aehttp_api_encoder:encode(name, Name),
                          name_salt => NameSalt,
-                         account_id => aec_base58c:encode(account_pubkey, random_hash()),
+                         account_id => aehttp_api_encoder:encode(account_pubkey, random_hash()),
                          fee => Fee}),
     {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
-        get_name_update(#{account_id => aec_base58c:encode(account_pubkey, random_hash()),
-                          name_id => aec_base58c:encode(name, NHash),
+        get_name_update(#{account_id => aehttp_api_encoder:encode(account_pubkey, random_hash()),
+                          name_id => aehttp_api_encoder:encode(name, NHash),
                           name_ttl => 5,
                           pointers => [],
                           client_ttl => 5,
                           fee => Fee}),
     {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
-        get_name_transfer(#{account_id => aec_base58c:encode(account_pubkey, random_hash()),
-                            recipient_id => aec_base58c:encode(account_pubkey, random_hash()),
-                            name_id => aec_base58c:encode(name, NHash),
+        get_name_transfer(#{account_id => aehttp_api_encoder:encode(account_pubkey, random_hash()),
+                            recipient_id => aehttp_api_encoder:encode(account_pubkey, random_hash()),
+                            name_id => aehttp_api_encoder:encode(name, NHash),
                             fee => Fee}),
     {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
-        get_name_revoke(#{account_id => aec_base58c:encode(account_pubkey, random_hash()),
-                          name_id => aec_base58c:encode(name, NHash),
+        get_name_revoke(#{account_id => aehttp_api_encoder:encode(account_pubkey, random_hash()),
+                          name_id => aehttp_api_encoder:encode(name, NHash),
                           fee => Fee}),
     %% Check mempool still empty
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
@@ -3343,16 +3343,16 @@ naming_system_broken_txs(_Config) ->
 %% Channels
 %%
 assert_balance(Pubkey, ExpectedBalance) ->
-    Address = aec_base58c:encode(account_pubkey, Pubkey),
+    Address = aehttp_api_encoder:encode(account_pubkey, Pubkey),
     {ok, 200, #{<<"balance">> := ExpectedBalance}} =
         get_accounts_by_pubkey_sut(Address).
 
 channel_sign_tx(ConnPid, Privkey, Tag, Config) ->
     {ok, Tag, #{<<"tx">> := EncCreateTx}} = wait_for_channel_event(ConnPid, sign, Config),
-    {ok, CreateBinTx} = aec_base58c:safe_decode(transaction, EncCreateTx),
+    {ok, CreateBinTx} = aehttp_api_encoder:safe_decode(transaction, EncCreateTx),
     Tx = aetx:deserialize_from_binary(CreateBinTx),
     SignedCreateTx = aec_test_utils:sign_tx(Tx, Privkey),
-    EncSignedCreateTx = aec_base58c:encode(transaction,
+    EncSignedCreateTx = aehttp_api_encoder:encode(transaction,
                                   aetx_sign:serialize_to_binary(SignedCreateTx)),
     ws_send(ConnPid, Tag,  #{tx => EncSignedCreateTx}, Config),
     Tx.
@@ -3362,9 +3362,9 @@ sc_ws_open(Config) ->
       responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
 
     {ok, 200, #{<<"balance">> := IStartAmt}} =
-                 get_accounts_by_pubkey_sut(aec_base58c:encode(account_pubkey, IPubkey)),
+                 get_accounts_by_pubkey_sut(aehttp_api_encoder:encode(account_pubkey, IPubkey)),
     {ok, 200, #{<<"balance">> := RStartAmt}} =
-                 get_accounts_by_pubkey_sut(aec_base58c:encode(account_pubkey, RPubkey)),
+                 get_accounts_by_pubkey_sut(aehttp_api_encoder:encode(account_pubkey, RPubkey)),
     IAmt = 700,
     RAmt = 400,
 
@@ -3431,9 +3431,9 @@ channel_send_chan_open_infos(RConnPid, IConnPid, Config) ->
 
 channel_participants_balances(IPubkey, RPubkey) ->
     {ok, 200, #{<<"balance">> := BalI}} =
-        get_accounts_by_pubkey_sut(aec_base58c:encode(account_pubkey, IPubkey)),
+        get_accounts_by_pubkey_sut(aehttp_api_encoder:encode(account_pubkey, IPubkey)),
     {ok, 200, #{<<"balance">> := BalR}} =
-        get_accounts_by_pubkey_sut(aec_base58c:encode(account_pubkey, RPubkey)),
+        get_accounts_by_pubkey_sut(aehttp_api_encoder:encode(account_pubkey, RPubkey)),
     {BalI, BalR}.
 
 channel_create(Config, IConnPid, RConnPid) ->
@@ -3454,7 +3454,7 @@ channel_create(Config, IConnPid, RConnPid) ->
     {ok, #{<<"tx">> := EncodedSignedCrTx}} = wait_for_channel_event(IConnPid, on_chain_tx, Config),
     {ok, #{<<"tx">> := EncodedSignedCrTx}} = wait_for_channel_event(RConnPid, on_chain_tx, Config),
 
-    {ok, SSignedCrTx} = aec_base58c:safe_decode(transaction, EncodedSignedCrTx),
+    {ok, SSignedCrTx} = aehttp_api_encoder:safe_decode(transaction, EncodedSignedCrTx),
     SignedCrTx = aetx_sign:deserialize_from_binary(SSignedCrTx),
     %% same transaction
     CrTx = aetx_sign:tx(SignedCrTx),
@@ -3542,8 +3542,8 @@ sc_ws_send_messages_and_close(Config) ->
                     responder ->
                         {RPubkey, IPubkey, RConnPid, IConnPid}
                 end,
-                SenderEncodedK = aec_base58c:encode(account_pubkey, SenderPubkey),
-                ReceiverEncodedK = aec_base58c:encode(account_pubkey, ReceiverPubkey),
+                SenderEncodedK = aehttp_api_encoder:encode(account_pubkey, SenderPubkey),
+                ReceiverEncodedK = aehttp_api_encoder:encode(account_pubkey, ReceiverPubkey),
                 ok = ?WS:register_test_for_channel_event(ReceiverPid, message),
 
                 ws_send(SenderPid, <<"message">>,
@@ -3609,26 +3609,26 @@ channel_conflict(#{initiator := IConnPid, responder :=RConnPid},
                 {ok, <<"update_ack">>, _} -> %% this is not the message we are looking for
                     TrySignUpdate(ConnPid, Privkey);
                 {ok, <<"update">>, #{<<"tx">> := EncCreateTx}} ->
-                    {ok, CreateBinTx} = aec_base58c:safe_decode(transaction, EncCreateTx),
+                    {ok, CreateBinTx} = aehttp_api_encoder:safe_decode(transaction, EncCreateTx),
                     Tx = aetx:deserialize_from_binary(CreateBinTx),
                     SignedCreateTx = aec_test_utils:sign_tx(Tx, Privkey),
-                    EncSignedCreateTx = aec_base58c:encode(transaction,
+                    EncSignedCreateTx = aehttp_api_encoder:encode(transaction,
                                                   aetx_sign:serialize_to_binary(SignedCreateTx)),
                     ws_send(ConnPid, <<"update">>, #{tx => EncSignedCreateTx}, Config)
             end
         end,
     %% sender initiates an update
     ws_send_tagged(StarterPid, <<"update">>, <<"new">>,
-                   #{from => aec_base58c:encode(account_pubkey, StarterPubkey),
-                     to => aec_base58c:encode(account_pubkey, AcknowledgerPubkey),
+                   #{from => aehttp_api_encoder:encode(account_pubkey, StarterPubkey),
+                     to => aehttp_api_encoder:encode(account_pubkey, AcknowledgerPubkey),
                      amount => Amount1}, Config),
 
     %% starter signs the new state
 
     %% acknowledger initiates an update too
     ws_send_tagged(AcknowledgerPid, <<"update">>, <<"new">>,
-                   #{from => aec_base58c:encode(account_pubkey, StarterPubkey),
-                     to => aec_base58c:encode(account_pubkey, AcknowledgerPubkey),
+                   #{from => aehttp_api_encoder:encode(account_pubkey, StarterPubkey),
+                     to => aehttp_api_encoder:encode(account_pubkey, AcknowledgerPubkey),
                      amount => Amount2}, Config),
 
     SignUpdate(StarterPid, StarterPrivkey),
@@ -3672,8 +3672,8 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
     {ok, {Ba0, Bb0} = Bal0} = GetBothBalances(IConnPid),
     ct:log("Balances before: ~p", [Bal0]),
     ws_send_tagged(StarterPid, <<"update">>, <<"new">>,
-        #{from => aec_base58c:encode(account_pubkey, StarterPubkey),
-          to => aec_base58c:encode(account_pubkey, AcknowledgerPubkey),
+        #{from => aehttp_api_encoder:encode(account_pubkey, StarterPubkey),
+          to => aehttp_api_encoder:encode(account_pubkey, AcknowledgerPubkey),
           amount => Amount}, Config),
 
     %% starter signs the new state
@@ -3693,7 +3693,7 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
 
     {ok, #{<<"state">> := NewState}} = wait_for_channel_event(IConnPid, update, Config),
     {ok, #{<<"state">> := NewState}} = wait_for_channel_event(RConnPid, update, Config),
-    {ok, SignedStateTxBin} = aec_base58c:safe_decode(transaction, NewState),
+    {ok, SignedStateTxBin} = aehttp_api_encoder:safe_decode(transaction, NewState),
     SignedStateTx = aetx_sign:deserialize_from_binary(SignedStateTxBin),
 
     %% validate it is co-signed
@@ -3729,8 +3729,8 @@ channel_update_fail(#{initiator := IConnPid, responder :=RConnPid},
 
     %% sender initiates an update
     ws_send_tagged(StarterPid, <<"update">>, <<"new">>,
-                   #{from => aec_base58c:encode(account_pubkey, StarterPubkey),
-                     to => aec_base58c:encode(account_pubkey, AcknowledgerPubkey),
+                   #{from => aehttp_api_encoder:encode(account_pubkey, StarterPubkey),
+                     to => aehttp_api_encoder:encode(account_pubkey, AcknowledgerPubkey),
                      amount => Amount}, Config),
 
     {ok, _Payload}= Res = wait_for_channel_event(StarterPid, error, Config),
@@ -3751,14 +3751,14 @@ sc_ws_close(Config) ->
     ok.
 
 sc_ws_get_balance(ConnPid, PubKey, Config) ->
-    Account = aec_base58c:encode(account_pubkey, PubKey),
+    Account = aehttp_api_encoder:encode(account_pubkey, PubKey),
     {ok, Res} = query_balances(ConnPid, [Account], Config),
     [#{<<"account">> := Account, <<"balance">> := B}] = Res,
     {ok, B}.
 
 sc_ws_get_both_balances(ConnPid, PubKeyI, PubKeyR, Config) ->
-    AccountI = aec_base58c:encode(account_pubkey, PubKeyI),
-    AccountR = aec_base58c:encode(account_pubkey, PubKeyR),
+    AccountI = aehttp_api_encoder:encode(account_pubkey, PubKeyI),
+    AccountR = aehttp_api_encoder:encode(account_pubkey, PubKeyR),
     {ok, Res} = query_balances(ConnPid, [AccountI, AccountR], Config),
     [#{<<"account">> := AccountI, <<"balance">> := BI},
      #{<<"account">> := AccountR, <<"balance">> := BR}] = Res,
@@ -3816,7 +3816,7 @@ sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
     {ok, #{<<"tx">> := EncodedSignedMutualTx}} = wait_for_channel_event(IConnPid, on_chain_tx, Config),
     {ok, #{<<"tx">> := EncodedSignedMutualTx}} = wait_for_channel_event(RConnPid, on_chain_tx, Config),
 
-    {ok, SSignedMutualTx} = aec_base58c:safe_decode(transaction, EncodedSignedMutualTx),
+    {ok, SSignedMutualTx} = aehttp_api_encoder:safe_decode(transaction, EncodedSignedMutualTx),
     SignedMutualTx = aetx_sign:deserialize_from_binary(SSignedMutualTx),
     %% same transaction
     ShutdownTx = aetx_sign:tx(SignedMutualTx),
@@ -3929,7 +3929,7 @@ sc_ws_deposit_and_close(Config, Origin) when Origin =:= initiator
     {ok, #{<<"tx">> := EncodedSignedDepositTx}} = wait_for_channel_event(SenderConnPid, on_chain_tx, Config),
     {ok, #{<<"tx">> := EncodedSignedDepositTx}} = wait_for_channel_event(AckConnPid, on_chain_tx, Config),
 
-    {ok, SSignedDepositTx} = aec_base58c:safe_decode(transaction,
+    {ok, SSignedDepositTx} = aehttp_api_encoder:safe_decode(transaction,
                                                      EncodedSignedDepositTx),
     SignedDepositTx = aetx_sign:deserialize_from_binary(SSignedDepositTx),
     ok = wait_for_signed_transaction_in_block(SignedDepositTx),
@@ -3982,7 +3982,7 @@ sc_ws_withdraw_and_close(Config, Origin) when Origin =:= initiator
     {ok, #{<<"tx">> := EncodedSignedWTx}} = wait_for_channel_event(SenderConnPid, on_chain_tx, Config),
     {ok, #{<<"tx">> := EncodedSignedWTx}} = wait_for_channel_event(AckConnPid, on_chain_tx, Config),
 
-    {ok, SSignedWTx} = aec_base58c:safe_decode(transaction, EncodedSignedWTx),
+    {ok, SSignedWTx} = aehttp_api_encoder:safe_decode(transaction, EncodedSignedWTx),
     SignedWTx = aetx_sign:deserialize_from_binary(SSignedWTx),
     ok = wait_for_signed_transaction_in_block(SignedWTx),
     % assert acknowledger balance have not changed
@@ -4386,7 +4386,7 @@ sc_ws_enviroment_contract_(Owner, GetVolley, ConnPid1, ConnPid2,
       <<"beneficiary">> := EncBeneficiary,
       <<"time">> := Time
      } = Block,
-    {ok, Beneficiary} = aec_base58c:safe_decode(account_pubkey,
+    {ok, Beneficiary} = aehttp_api_encoder:safe_decode(account_pubkey,
                                                 EncBeneficiary),
     Test(<<"block_height">>, <<"int">>, BlockHeight),
     Test(<<"coinbase">>, <<"int">>, fun(I) -> <<I:32/unit:8>> =:= Beneficiary end),
@@ -4468,7 +4468,7 @@ register_oracle(OraclePubkey, OraclePrivkey, Opts) ->
     {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [OraclePubkey]),
     Tx = aeo_test_utils:register_tx(OraclePubkey, Opts#{nonce => Nonce}, #{}),
     sign_post_mine(Tx, OraclePrivkey),
-    OracleId = aec_base58c:encode(oracle_pubkey, OraclePubkey),
+    OracleId = aehttp_api_encoder:encode(oracle_pubkey, OraclePubkey),
     {ok, 200, _Resp} = get_oracles_by_pubkey_sut(OracleId),
     ok.
 
@@ -4489,9 +4489,9 @@ respond_oracle(OraclePubkey, OraclePrivkey, QueryId, Response, Opts) ->
 
 sign_post_mine(Tx, Privkey) ->
     SignedTx = aec_test_utils:sign_tx(Tx, Privkey),
-    TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
+    TxHash = aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
     EncodedSerializedSignedTx =
-        aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)),
+        aehttp_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)),
     ok = post_tx(TxHash, EncodedSerializedSignedTx),
     ok = wait_for_tx_hash_on_chain(TxHash).
 
@@ -4551,7 +4551,7 @@ initialize_account(Amount) ->
     aecore_suite_utils:mine_key_blocks(Node, BlocksToMine),
 
     {ok, 200, #{<<"tx">> := SpendTx}} =
-        post_spend_tx(aec_base58c:encode(account_pubkey, Pubkey), Amount, Fee),
+        post_spend_tx(aehttp_api_encoder:encode(account_pubkey, Pubkey), Amount, Fee),
     sign_and_post_tx(SpendTx),
     {ok, [_KeyBlock, MicroBlock]} = aecore_suite_utils:mine_blocks(Node, 2),
     [_Spend1] = aec_blocks:txs(MicroBlock),
@@ -4637,9 +4637,9 @@ sc_ws_contract_(Config, TestName, Owner) ->
     GetPoI =
         fun(ConnPid) ->
             ws_send_tagged(ConnPid, <<"get">>, <<"poi">>,
-                           #{contracts   => [aec_base58c:encode(contract_pubkey, ContractPubKey)],
-                             accounts    => [aec_base58c:encode(account_pubkey, SenderPubkey),
-                                             aec_base58c:encode(account_pubkey, AckPubkey)]
+                           #{contracts   => [aehttp_api_encoder:encode(contract_pubkey, ContractPubKey)],
+                             accounts    => [aehttp_api_encoder:encode(account_pubkey, SenderPubkey),
+                                             aehttp_api_encoder:encode(account_pubkey, AckPubkey)]
                             }, Config),
 
                     {ok, <<"poi">>, #{<<"poi">> := P}} = wait_for_channel_event(ConnPid, get, Config),
@@ -4649,8 +4649,8 @@ sc_ws_contract_(Config, TestName, Owner) ->
     GetMissingPoI =
         fun(ConnPid, Accs, Cts) ->
             ws_send_tagged(ConnPid, <<"get">>, <<"poi">>,
-                            #{contracts   => [aec_base58c:encode(contract_pubkey, C) || C <- Cts],
-                              accounts    => [aec_base58c:encode(account_pubkey, Acc) || Acc <- Accs]
+                            #{contracts   => [aehttp_api_encoder:encode(contract_pubkey, C) || C <- Cts],
+                              accounts    => [aehttp_api_encoder:encode(account_pubkey, Acc) || Acc <- Accs]
                             }, Config),
 
                     {ok, #{<<"reason">> := R}} = wait_for_channel_event(ConnPid, error, Config),
@@ -4665,10 +4665,10 @@ sc_ws_contract_(Config, TestName, Owner) ->
             <<"broken_encoding: accounts">> = GetMissingPoI(ConnPid, [<<123456789>>], []),
             <<"broken_encoding: contracts">> = GetMissingPoI(ConnPid, [], [<<123456789>>]),
             <<"broken_encoding: accounts, contracts">> = GetMissingPoI(ConnPid, [<<123456789>>], [<<123456789>>]),
-            AccountByteSize = aec_base58c:byte_size_for_type(account_pubkey),
+            AccountByteSize = aehttp_api_encoder:byte_size_for_type(account_pubkey),
             FakeAccountId = <<42:AccountByteSize/unit:8>>,
             <<"not_found">> = GetMissingPoI(ConnPid, [FakeAccountId], []),
-            ContractByteSize = aec_base58c:byte_size_for_type(contract_pubkey),
+            ContractByteSize = aehttp_api_encoder:byte_size_for_type(contract_pubkey),
             FakeContractId = <<42:ContractByteSize/unit:8>>,
             <<"not_found">> = GetMissingPoI(ConnPid, [], [FakeContractId])
         end,
@@ -4676,7 +4676,7 @@ sc_ws_contract_(Config, TestName, Owner) ->
     NegativePoiTests(SenderConnPid),
     NegativePoiTests(AckConnPid),
 
-    {ok, PoIBin} = aec_base58c:safe_decode(poi, EncodedPoI),
+    {ok, PoIBin} = aehttp_api_encoder:safe_decode(poi, EncodedPoI),
     PoI = aec_trees:deserialize_poi(PoIBin),
     {ok, _SenderAcc} = aec_trees:lookup_poi(accounts, SenderPubkey, PoI),
     {ok, _AckAcc} = aec_trees:lookup_poi(accounts, AckPubkey, PoI),
@@ -4805,7 +4805,7 @@ call_a_contract(Function, Argument, ContractPubKey, Code, SenderConnPid,
                                                                    Function,
                                                                    Argument),
     ws_send_tagged(SenderConnPid, <<"update">>, <<"call_contract">>,
-                   #{contract   => aec_base58c:encode(contract_pubkey, ContractPubKey),
+                   #{contract   => aehttp_api_encoder:encode(contract_pubkey, ContractPubKey),
                      vm_version => 1,
                      amount     => Amount,
                      call_data  => EncodedMainData}, Config),
@@ -4816,7 +4816,7 @@ contract_byte_code(TestName) ->
     %% Compile contract TesName ++ ".aes"
     ContractString = aeso_test_utils:read_contract(TestName),
     BinCode = aeso_compiler:from_string(ContractString, []),
-    HexCode = aec_base58c:encode(contract_bytearray, BinCode),
+    HexCode = aehttp_api_encoder:encode(contract_bytearray, BinCode),
     HexCode.
 
 
@@ -4835,7 +4835,7 @@ contract_result_parse(_TestName, Data) ->
   DecodedCallResult.
 
 wait_for_signed_transaction_in_pool(SignedTx) ->
-    TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
+    TxHash = aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
     WaitForTx =
         fun Try(0) -> no_transaction;
             Try(Attempts) ->
@@ -4849,7 +4849,7 @@ wait_for_signed_transaction_in_pool(SignedTx) ->
     ok = WaitForTx(30). % 30 attempts * 10ms
 
 wait_for_signed_transaction_in_block(SignedTx) ->
-    TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
+    TxHash = aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
     wait_for_tx_hash_on_chain(TxHash).
 
 wait_for_tx_hash_on_chain(TxHash) ->
@@ -4878,8 +4878,8 @@ sc_ws_timeout_open(Config) ->
 
 channel_options(IPubkey, RPubkey, IAmt, RAmt, Other, Config) ->
     maps:merge(#{ port => 12340,
-                  initiator_id => aec_base58c:encode(account_pubkey, IPubkey),
-                  responder_id => aec_base58c:encode(account_pubkey, RPubkey),
+                  initiator_id => aehttp_api_encoder:encode(account_pubkey, IPubkey),
+                  responder_id => aehttp_api_encoder:encode(account_pubkey, RPubkey),
                   lock_period => 10,
                   push_amount => 1,
                   initiator_amount => IAmt,
@@ -5036,7 +5036,7 @@ get_tx_nonce(TxHash) ->
 
 post_spend_tx(RecipientId, Amount, Fee) ->
     {_, Sender} = aecore_suite_utils:sign_keys(?NODE),
-    SenderId = aec_base58c:encode(account_pubkey, Sender),
+    SenderId = aehttp_api_encoder:encode(account_pubkey, Sender),
     post_spend_tx(SenderId, RecipientId, Amount, Fee, <<"foo">>).
 
 post_spend_tx(SenderId, RecipientId, Amount, Fee, Payload) ->
@@ -5058,7 +5058,7 @@ get_balance_at_top() ->
 
 get_pubkey() ->
     {_, Pubkey} = aecore_suite_utils:sign_keys(?NODE),
-    aec_base58c:encode(account_pubkey, Pubkey).
+    aehttp_api_encoder:encode(account_pubkey, Pubkey).
 
 get_node_pubkey() ->
     Host = internal_address(),
@@ -5443,7 +5443,7 @@ add_spend_txs() ->
     Txs =
         lists:map(
             fun(_) ->
-                #{recipient_id => aec_base58c:encode(account_pubkey, random_hash()),
+                #{recipient_id => aehttp_api_encoder:encode(account_pubkey, random_hash()),
                   amount => MinimalAmount,
                   fee => MinFee}
             end,
@@ -5464,7 +5464,7 @@ give_tokens(RecipientPubkey, Amount) ->
     NeededBlocks = ((Amount + MinFee)  div MineReward) + 1,
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    NeededBlocks),
-    SpendData = #{recipient_id => aec_base58c:encode(account_pubkey, RecipientPubkey),
+    SpendData = #{recipient_id => aehttp_api_encoder:encode(account_pubkey, RecipientPubkey),
                   amount => Amount,
                   fee => MinFee},
     populate_block(#{spend_txs => [SpendData]}),
@@ -5506,13 +5506,13 @@ intersperse([H|T], Delim) ->
 
 
 sign_and_post_tx(EncodedUnsignedTx) ->
-    {ok, SerializedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedUnsignedTx),
+    {ok, SerializedUnsignedTx} = aehttp_api_encoder:safe_decode(transaction, EncodedUnsignedTx),
     UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
     {ok, SignedTx} = aecore_suite_utils:sign_on_node(?NODE, UnsignedTx),
     SerializedTx = aetx_sign:serialize_to_binary(SignedTx),
     %% Check that we get the correct hash
-    TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
-    {ok, 200, #{<<"tx_hash">> := TxHash}} = post_transactions_sut(aec_base58c:encode(transaction, SerializedTx)),
+    TxHash = aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
+    {ok, 200, #{<<"tx_hash">> := TxHash}} = post_transactions_sut(aehttp_api_encoder:encode(transaction, SerializedTx)),
     %% Check tx is in mempool.
     Fun = fun() ->
                   tx_in_mempool(TxHash)
@@ -5571,8 +5571,8 @@ ws_get_call_params(UnsignedTx) ->
     [U] = CB1:updates(Tx1),
     CallerPubKey = aesc_offchain_update:extract_caller(U),
     ContractPubKey = aesc_offchain_update:extract_contract_pubkey(U),
-    CallerId = aec_base58c:encode(account_pubkey, CallerPubKey),
-    ContractId = aec_base58c:encode(contract_pubkey, ContractPubKey),
+    CallerId = aehttp_api_encoder:encode(account_pubkey, CallerPubKey),
+    ContractId = aehttp_api_encoder:encode(contract_pubkey, ContractPubKey),
     #{contract   => ContractId,
       caller     => CallerId,
       round      => CallRound}.

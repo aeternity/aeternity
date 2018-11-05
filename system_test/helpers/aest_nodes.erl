@@ -382,7 +382,7 @@ get_mempool(NodeName) ->
     end.
 
 get_account(NodeName, PubKey) ->
-    Params = #{pubkey => aec_base58c:encode(account_pubkey, PubKey)},
+    Params = #{pubkey => aehttp_api_encoder:encode(account_pubkey, PubKey)},
     verify(200, request(NodeName, 'GetAccountByPubkey', Params)).
 
 post_spend_tx(Node, From, To, Nonce, Map) ->
@@ -400,7 +400,7 @@ post_spend_tx(Node, From, To, Nonce, Map) ->
     SignedTx = aec_test_utils:sign_tx(Tx, SendSecKey),
     SerSignTx = aetx_sign:serialize_to_binary(SignedTx),
     verify(200, request(Node, 'PostTransaction', #{
-        tx => aec_base58c:encode(transaction, SerSignTx)
+        tx => aehttp_api_encoder:encode(transaction, SerSignTx)
     })).
 
 post_create_state_channel_tx(Node, Initiator, Responder, #{nonce := Nonce} = Map) ->
@@ -419,7 +419,7 @@ post_create_state_channel_tx(Node, Initiator, Responder, #{nonce := Nonce} = Map
                                             fee => 1,
                                             channel_reserve => 40}, Map)),
     BothSigned = aec_test_utils:sign_tx(CreateTx, [InSecKey, RespSecKey]),
-    Transaction = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
+    Transaction = aehttp_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
     Response = verify(200, request(Node, 'PostTransaction', #{tx => Transaction})),
     Response#{channel_id => aec_id:create(channel, aesc_channels:pubkey(InPubKey, Nonce, RespPubKey))}.
 
@@ -435,7 +435,7 @@ post_close_mutual_state_channel_tx(Node, Initiator, Responder, ChannelId, #{nonc
                                               ttl => 100000},
                                             Map)),
     BothSigned = aec_test_utils:sign_tx(CloseTx, [InSecKey, RespSecKey]),
-    Transaction = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
+    Transaction = aehttp_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
     verify(200, request(Node, 'PostTransaction', #{tx => Transaction})).
 
 post_deposit_state_channel_tx(Node, PayingParty, OtherParty, ChannelId, #{nonce := _} = Map) ->
@@ -451,7 +451,7 @@ post_deposit_state_channel_tx(Node, PayingParty, OtherParty, ChannelId, #{nonce 
                                          ttl => 100000},
                                        Map)),
     BothSigned = aec_test_utils:sign_tx(DepositTx, [InSecKey, RespSecKey]),
-    Transaction = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
+    Transaction = aehttp_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
     verify(200, request(Node, 'PostTransaction', #{tx => Transaction})).
 
 post_withdraw_state_channel_tx(Node, RecParty, OtherParty, ChannelId, #{nonce := _} = Map) ->
@@ -467,7 +467,7 @@ post_withdraw_state_channel_tx(Node, RecParty, OtherParty, ChannelId, #{nonce :=
                                          ttl => 100000},
                                        Map)),
     BothSigned = aec_test_utils:sign_tx(WithdrawTx, [InSecKey, RespSecKey]),
-    Transaction = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
+    Transaction = aehttp_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
     verify(200, request(Node, 'PostTransaction', #{tx => Transaction})).
 
 post_oracle_register_tx(Node, OAccount, Opts) ->
@@ -535,15 +535,15 @@ post_transaction(Node, TxMod, PrivKey, ExtraTxArgs, TxArgs) ->
     {ok, RespTx} = TxMod:new(maps:merge(TxArgs, ExtraTxArgs)),
     Signed = aec_test_utils:sign_tx(RespTx, [PrivKey]),
     SignedEnc = aetx_sign:serialize_to_binary(Signed),
-    Transaction = aec_base58c:encode(transaction, SignedEnc),
+    Transaction = aehttp_api_encoder:encode(transaction, SignedEnc),
     verify(200, request(Node, 'PostTransaction', #{tx => Transaction})).
 
-%% Use values that are not yet base58c encoded in test cases
+%% Use values that are not yet api encoded in test cases
 wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, Ctx) ->
     FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
     CheckF =
         fun(Node) ->
-                 case request(Node, 'GetAccountByPubkey', maps:merge(#{pubkey => aec_base58c:encode(account_pubkey, PubKey)}, FaultInject)) of
+                 case request(Node, 'GetAccountByPubkey', maps:merge(#{pubkey => aehttp_api_encoder:encode(account_pubkey, PubKey)}, FaultInject)) of
                      {ok, 200, #{balance := Balance}} when Balance >= MinBalance -> {done, #{PubKey => Balance}};
                      _ -> wait
                 end

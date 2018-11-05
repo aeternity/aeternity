@@ -620,8 +620,8 @@ new_tx(#{node1 := {PK1, {_,N1} = T1}, node2 := {PK2, _}, amount := Am, fee := Fe
     IntPort = rpc:call(N1, aeu_env, user_config_or_env,
                        [ [<<"http">>, <<"internal">>, <<"port">>],
                          aehttp, [internal, port], 8143], 5000),
-    Params = #{sender_id => aec_base58c:encode(account_pubkey, PK1),
-               recipient_id => aec_base58c:encode(account_pubkey, PK2),
+    Params = #{sender_id => aehttp_api_encoder:encode(account_pubkey, PK1),
+               recipient_id => aehttp_api_encoder:encode(account_pubkey, PK2),
                amount => Am,
                fee => Fee,
                payload => <<"foo">>},
@@ -658,10 +658,10 @@ node_db_cfg(Node) ->
     {ok, DbCfg}.
 
 sign_tx(T, Tx) ->
-    {ok, TxDec} = aec_base58c:safe_decode(transaction, Tx),
+    {ok, TxDec} = aehttp_api_encoder:safe_decode(transaction, Tx),
     UnsignedTx = aetx:deserialize_from_binary(TxDec),
     {ok, SignedTx} = aecore_suite_utils:sign_on_node(T, UnsignedTx),
-    aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)).
+    aehttp_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)).
 
 add_spend_tx(Node, Amount, Fee, Nonce, TTL, Payload) ->
     add_spend_tx(Node, Amount, Fee, Nonce, TTL, Payload, patron(), new_pubkey()).
@@ -679,7 +679,7 @@ add_spend_tx(Node, Amount, Fee, Nonce, TTL, Payload, Sender, Recipient) ->
     {ok, Tx} = aec_spend_tx:new(Params),
     STx = aec_test_utils:sign_tx(Tx, maps:get(privkey, Sender)),
     Res = rpc:call(Node, aec_tx_pool, push, [STx]),
-    {Res, aec_base58c:encode(tx_hash, aetx_sign:hash(STx))}.
+    {Res, aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(STx))}.
 
 new_pubkey() ->
     #{ public := PubKey } = enacl:sign_keypair(),

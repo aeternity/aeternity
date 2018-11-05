@@ -1,4 +1,4 @@
--module(aec_base58c).
+-module(aehttp_api_encoder).
 
 -export([encode/2,
          decode/1,
