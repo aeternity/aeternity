@@ -56,6 +56,8 @@
          post_name_update_tx/4,
          post_name_transfer_tx/5,
          post_name_revoke_tx/4]).
+-export([post_contract_create_tx/3,
+         post_contract_call_tx/3]).
 -export([wait_for_value/4]).
 -export([wait_for_time/3]).
 -export([wait_for_time/4]).
@@ -540,6 +542,12 @@ post_name_revoke_tx(Node, OwnerAcc, Name, Opts) ->
         name_id => aec_id:create(name, aens_hash:name_hash(Name))
     }).
 
+post_contract_create_tx(Node, PrivKey, Opts) ->
+    post_transaction(Node, aect_create_tx, PrivKey, #{}, Opts).
+
+post_contract_call_tx(Node, PrivKey, Opts) ->
+    post_transaction(Node, aect_call_tx, PrivKey, #{}, Opts).
+
 post_transaction(Node, TxMod, PrivKey, ExtraTxArgs, TxArgs) ->
     {ok, RespTx} = TxMod:new(maps:merge(TxArgs, ExtraTxArgs)),
     Signed = aec_test_utils:sign_tx(RespTx, [PrivKey]),
@@ -570,6 +578,16 @@ wait_for_value({height, MinHeight}, NodeNames, Timeout, Ctx) ->
                 end
         end,
     loop_for_values(CheckF, NodeNames, [], Delay, Timeout, {"Height ~p on nodes ~p", [MinHeight, NodeNames]});
+wait_for_value({contract_id, CId}, NodeNames, Timeout, Ctx) ->
+    Delay = proplists:get_value(delay, Ctx, 1000),
+    CheckF =
+        fun(Node) ->
+          case request(Node, 'GetContract', #{ pubkey => CId }) of
+            {ok, 200, _} -> {done, ok};
+            _ -> wait
+          end
+        end,
+    loop_for_values(CheckF, NodeNames, [], Delay, Timeout, {"", []});
 wait_for_value({txs_on_chain, Txs}, NodeNames, Timeout, Ctx) ->
     %% Not very optimal, since found Txs' are searched for in next round.
     FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
