@@ -289,7 +289,7 @@ expr_p(P, {proj, _, E, X}) ->
 expr_p(P, {map_get, _, E, Key}) ->
     paren(P > 900, beside([expr_p(900, E), list([expr(Key)])]));
 expr_p(P, {map_get, Ann, E, Key, Val}) ->
-    paren(P > 900, beside([expr_p(900, E), list([expr({'=', Ann, Key, Val})])]));
+    paren(P > 900, beside([expr_p(900, E), list([expr(equals(Ann, Key, Val))])]));
 expr_p(P, {typed, _, E, T}) ->
     paren(P > 0, typed(expr(E), T));
 expr_p(P, {assign, _, LV, E}) ->
@@ -297,8 +297,6 @@ expr_p(P, {assign, _, LV, E}) ->
 %% -- Operators
 expr_p(_, {app, _, {'..', _}, [A, B]}) ->
     list([infix(0, '..', A, B)]);
-expr_p(P, {'=', _, K, V}) ->  %% map defaults
-    infix(P, '=', K, V);
 expr_p(P, E = {app, _, F = {Op, _}, Args}) when is_atom(Op) ->
     case {aeso_syntax:get_ann(format, E), Args} of
         {infix, [A, B]} -> infix(P, Op, A, B);
@@ -375,6 +373,9 @@ un_prec('-')    -> {650, 650};
 un_prec('!')    -> {800, 800};
 un_prec('bnot') -> {800, 800}.
 
+equals(Ann, A, B) ->
+    {app, [{format, infix} | Ann], {'=', Ann}, [A, B]}.
+
 -spec infix(integer(), aeso_syntax:bin_op(), aeso_syntax:expr(), aeso_syntax:expr()) -> doc().
 infix(P, Op, A, B) ->
     {Top, L, R} = bin_prec(Op),
@@ -403,7 +404,7 @@ lvalue([E | Es]) ->
 
 elim({proj, _, X})         -> name(X);
 elim({map_get, Ann, K})    -> expr_p(0, {list, Ann, [K]});
-elim({map_get, Ann, K, V}) -> expr_p(0, {list, Ann, [{'=', Ann, K, V}]}).
+elim({map_get, Ann, K, V}) -> expr_p(0, {list, Ann, [equals(Ann, K, V)]}).
 
 elim1(Proj={proj, _, _})      -> beside(text("."), elim(Proj));
 elim1(Get={map_get, _, _})    -> elim(Get);
