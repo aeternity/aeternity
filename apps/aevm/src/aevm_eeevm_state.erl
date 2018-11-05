@@ -36,6 +36,7 @@
         , gas/1
         , gaslimit/1
         , gasprice/1
+        , gastable/1
         , get_contract_call_input/4
         , heap_to_binary/3
         , heap_to_heap/3
@@ -87,6 +88,7 @@ init(#{ env  := Env
     Address = maps:get(address, Exec),
     BlockHashFun = get_blockhash_fun(Opts, Env),
     NoRecursion = maps:get(no_recursion, Opts, false),
+    GasTable = get_gas_table(Opts),
 
     ChainState = maps:get(chainState, Env),
     ChainAPI =  maps:get(chainAPI, Env),
@@ -126,6 +128,8 @@ init(#{ env  := Env
          , chain_api   => ChainAPI
 
          , out_type => OutType
+
+         , gas_table => GasTable
          },
 
     init_vm(State,
@@ -217,7 +221,7 @@ do_return(Us0, Us1, State) ->
                 Heap       = mem(State),
                 Type       = out_type(State),
                 {ok, Out, Stats}  = aeso_data:heap_to_binary_w_stats(Type, get_store(State), aeso_data:heap_value(maps(State), Us1, Heap)),
-                {set_out(Out, State), aevm_gas:mem_gas(maps:get(total_map_size, Stats) div 32)}
+                {set_out(Out, State), aevm_gas:mem_gas(maps:get(total_map_size, Stats) div 32, State)}
             catch _:_ ->
                 io:format("** Error reading return value\n~s", [format_mem(mem(State))]),
                 {set_gas(0, State), 0}  %% Consume all gas on failure
@@ -465,6 +469,13 @@ get_blockhash_fun(Opts, Env) ->
             end
     end.
 
+get_gas_table(Opts) ->
+    case maps:get(gas_table, Opts, default) of
+        default ->
+            aec_governance:vm_gas_table();
+        GasTable when is_map(GasTable) ->
+            GasTable
+    end.
 
 
 init_trace_fun(Opts) ->
@@ -511,6 +522,7 @@ return_data(State) -> maps:get(return_data, State).
 gas(State)         -> maps:get(gas, State).
 gaslimit(State)    -> maps:get(gas_limit, State).
 gasprice(State)    -> maps:get(gas_price, State).
+gastable(State)    -> maps:get(gas_table, State).
 logs(State)        -> maps:get(logs, State).
 storage(State)     -> maps:get(storage, State).
 value(State)       -> maps:get(value, State).
@@ -562,12 +574,12 @@ trace_format(String, Argument, State) ->
         true ->
             F = trace_fun(State),
             F("[~4.16.0B] ~8.16.0B : ~w",
-              [Account, CP, aevm_opcodes:op_name(OP)]),
+              [Account, CP, aevm_opcodes:op_name(OP, State)]),
             F(" ~s", [format_stack(stack(State))]),
             F(" ~s", [format_mem(mem(State))]),
             F(" ~p", [gas(State)]),
             F(String, Argument),
-            add_trace([{CP, OP, aevm_opcodes:op_name(OP)}], State);
+            add_trace([{CP, OP, aevm_opcodes:op_name(OP, State)}], State);
         false ->
             State
     end.
