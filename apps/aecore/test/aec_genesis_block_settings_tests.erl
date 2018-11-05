@@ -36,7 +36,7 @@ preset_accounts_test_() ->
             expect_accounts(<<"{">>),
             ?assertError(invalid_accounts_json, ?TEST_MODULE:preset_accounts()),
             %% broken json
-            expect_accounts(<<"{\"", Address1/binary, "\":1,\"", Address2/binary, "\":2">>),
+            expect_accounts(<<"{\"", Address1/binary, "\":\"1\",\"", Address2/binary, "\":\"2\"">>),
             ?assertError(invalid_accounts_json, ?TEST_MODULE:preset_accounts()),
             %% not json at all
             expect_accounts(<<"Hejsan svejsan">>),
@@ -85,7 +85,7 @@ expect_accounts(L0) when is_list(L0) ->
     L =
         lists:map(
             fun({PK, Amt}) ->
-                {aec_base58c:encode(account_pubkey, PK), Amt}
+                {aec_base58c:encode(account_pubkey, PK), integer_to_binary(Amt)}
             end,
             L0),
     expect_accounts(jsx:encode(L)).

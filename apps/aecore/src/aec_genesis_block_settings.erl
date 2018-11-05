@@ -26,8 +26,9 @@ preset_accounts() ->
                 end,
             Accounts =
                 lists:map(
-                    fun({EncodedPubKey, Amt}) ->
+                    fun({EncodedPubKey, BinAmt}) ->
                         {ok, PubKey} = aec_base58c:safe_decode(account_pubkey, EncodedPubKey),
+                        Amt = binary_to_integer(BinAmt),
                         {PubKey, Amt}
                     end,
                     DecodedData),
