@@ -78,6 +78,24 @@ tx_pool_test_() ->
                {ok, PoolTxs} = aec_tx_pool:peek(infinity),
                ?assertEqual(lists:sort([STx1, STx2]), lists:sort(PoolTxs))
        end},
+      {"fill micro block with transactions",
+       fun() ->
+               %% No txs to serve to peers.
+               ?assertEqual({ok, []}, aec_tx_pool:peek(1)),
+
+               %% Tx received from a peer.
+               PubKey = new_pubkey(),
+               STxs = [ a_signed_tx(PubKey, me, Nonce, 1, 10) || Nonce <- lists:seq(1,400) ],
+               [ aec_tx_pool:push(STx, tx_created) || STx <- STxs ],
+
+               {ok, Hash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
+               {ok, STxs2} = aec_tx_pool:get_candidate(aec_governance:block_gas_limit(), Hash),
+               TotalGas = lists:sum([ aetx:gas(aetx_sign:tx(T)) || T <- STxs2 ]),
+               MinGas = aetx:gas(aetx_sign:tx(hd(STxs))),
+
+               %% No single tx would have fitted on top of this
+               ?assert(MinGas > aec_governance:block_gas_limit() - TotalGas)
+       end},
       {"Mempool follows chain insertions and forks",
        fun() ->
                aec_test_utils:stop_chain_db(),
