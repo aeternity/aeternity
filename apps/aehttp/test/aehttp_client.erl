@@ -15,7 +15,7 @@ request(OpId, Params, Cfg) ->
     Path = endpoints:path(Method, OpId, Params),
     Query = endpoints:query(Method, OpId, Params),
     {ok, _} = application:ensure_all_started(inets),
-    request(Method, BaseUrl, Path, Query, Params, [], [{timeout, 15000}], [], default, Cfg).
+    request(Method, BaseUrl, Path, Query, Params, [], [{timeout, 15000}], [{socket_opts, [{reuseaddr, true}]}], default, Cfg).
 
 request(get, BaseUrl, Path, Query, _Params, Headers, HttpOpts, Opts, Profile, Cfg) ->
     Url = binary_to_list(iolist_to_binary([BaseUrl, Path, Query])),
