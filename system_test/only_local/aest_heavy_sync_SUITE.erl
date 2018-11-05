@@ -106,8 +106,18 @@ many_spend_txs(Cfg) ->
     %% That is a sligtly unrealistic situation, but if we first mine a few key blocks,
     %% then this test takes ages.
 
-    TxsPerMB = aec_governance:block_gas_limit() div (aec_governance:tx_base_gas(spend_tx) + 1720),
-    ct:log("We can put ~p Txs in a micro block\n", [TxsPerMB]),
+    %% Compute gas for a simple spend
+    {ok, FakeTx} = aec_spend_tx:new(#{ sender_id => aec_id:create(account, maps:get(pubkey, patron()))
+                                     , recipient_id => aec_id:create(account, maps:get(pubkey, patron()))
+                                     , amount => 1
+                                     , fee => 1
+                                     , ttl => 10000000
+                                     , nonce => 1000
+                                     , payload => <<"node3">>}),
+    Gas = aetx:gas(FakeTx),
+
+    TxsPerMB = aec_governance:block_gas_limit() div Gas,
+    ct:log("We can put ~p Txs in a micro block (gas per spend ~p, ~p)\n", [TxsPerMB, Gas, FakeTx]),
 
     start_node(node3, Cfg),
     wait_for_startup([node3], 0, Cfg),
@@ -138,7 +148,7 @@ many_spend_txs(Cfg) ->
     ct:log("MicroBlock distribution ~p", [FoundNode3]),
 
     %% It's to be expected that at least one micro block contains max nr of transactions
-    ?assertEqual(lists:max(maps:values(FoundNode3)), TxsPerMB),
+    ?assertEqual(TxsPerMB, lists:max(maps:values(FoundNode3))),
 
     %% If we have synced one more key block, all transactions are present!
     wait_for_startup([node2], Height, Cfg),

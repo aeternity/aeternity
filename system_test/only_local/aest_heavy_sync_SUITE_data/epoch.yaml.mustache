@@ -18,7 +18,7 @@ http:
         port: {{services.int_http.port}}
 
 keys:
-    password: {{key_password}}
+    peer_password: {{key_password}}
     dir: ./keys
 
 chain:
@@ -28,6 +28,7 @@ mining:
     beneficiary: "ak_2VoAhMd7tVJrDYM5vPJwFRjueZyirDJumVJNeBWL9j1eNTHsRx"
     micro_block_cycle: 3000
     expected_mine_rate: 180000
+    autostart: {{mining.autostart}}
     cuckoo:
         miner:
             executable: mean28s-generic
