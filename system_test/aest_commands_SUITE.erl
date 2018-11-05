@@ -58,7 +58,7 @@ epoch_commands(Cfg) ->
         "Installed versions:[\r\n]*\\*[ \t]*[0-9\\.\\-rc]*[ \t]*permanent[\r\n]*")),
 
     {0, Output2} = aest_nodes:run_cmd_in_node_dir(node1, ["bin/epoch", "peer_key"], Cfg),
-    {ok, PeerKey} = aec_base58c:safe_decode(peer_pubkey, list_to_binary(Output2)),
+    {ok, PeerKey} = aehttp_api_encoder:safe_decode(peer_pubkey, list_to_binary(Output2)),
     ExpPeerKey = aest_nodes:get_node_pubkey(node1, Cfg),
     ?assertEqual(ExpPeerKey, PeerKey),
 
@@ -78,7 +78,7 @@ epoch_commands(Cfg) ->
     {0, Output7} = aest_nodes:run_cmd_in_node_dir(node1, ["bin/epoch", "keys_gen", "secret password"], Cfg),
     ?assertMatch({match, _}, re:run(Output7, "Generated keypair with encoded pubkey:[\r\n]*")),
     {match, [EncodedPubKey]} = re:run(Output7, "ak\\_[A-Za-z0-9]*", [{capture, first, binary}]),
-    ?assertMatch({ok, _}, aec_base58c:safe_decode(account_pubkey, EncodedPubKey)),
+    ?assertMatch({ok, _}, aehttp_api_encoder:safe_decode(account_pubkey, EncodedPubKey)),
 
     {HostPath, GuestPath} = aest_nodes:shared_temp_file(node1, "chain.dlog"),
     {0, _Output8} = aest_nodes:run_cmd_in_node_dir(node1, ["bin/epoch", "export", GuestPath], Cfg),

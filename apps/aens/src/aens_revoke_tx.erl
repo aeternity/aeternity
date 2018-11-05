@@ -185,9 +185,9 @@ for_client(#ns_revoke_tx{account_id = AccountId,
                          name_id    = NameId,
                          fee        = Fee,
                          ttl        = TTL}) ->
-    #{<<"account_id">> => aec_base58c:encode(id_hash, AccountId),
+    #{<<"account_id">> => aehttp_api_encoder:encode(id_hash, AccountId),
       <<"nonce">>      => Nonce,
-      <<"name_id">>    => aec_base58c:encode(id_hash, NameId),
+      <<"name_id">>    => aehttp_api_encoder:encode(id_hash, NameId),
       <<"fee">>        => Fee,
       <<"ttl">>        => TTL}.
 

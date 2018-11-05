@@ -27,8 +27,8 @@ preset_accounts_test_() ->
      end,
      [ {"Preset accounts parsing: broken file",
         fun() ->
-            Address1 = aec_base58c:encode(account_pubkey, <<42:32/unit:8>>),
-            Address2 = aec_base58c:encode(account_pubkey, <<43:32/unit:8>>),
+            Address1 = aehttp_api_encoder:encode(account_pubkey, <<42:32/unit:8>>),
+            Address2 = aehttp_api_encoder:encode(account_pubkey, <<43:32/unit:8>>),
             %% empty file
             expect_accounts(<<"">>),
             ?assertError(invalid_accounts_json, ?TEST_MODULE:preset_accounts()),
@@ -85,7 +85,7 @@ expect_accounts(L0) when is_list(L0) ->
     L =
         lists:map(
             fun({PK, Amt}) ->
-                {aec_base58c:encode(account_pubkey, PK), Amt}
+                {aehttp_api_encoder:encode(account_pubkey, PK), Amt}
             end,
             L0),
     expect_accounts(jsx:encode(L)).

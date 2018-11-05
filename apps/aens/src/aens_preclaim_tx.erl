@@ -178,9 +178,9 @@ for_client(#ns_preclaim_tx{account_id    = AccountId,
                            commitment_id = CommitmentId,
                            fee           = Fee,
                            ttl           = TTL}) ->
-    #{<<"account_id">>    => aec_base58c:encode(id_hash, AccountId),
+    #{<<"account_id">>    => aehttp_api_encoder:encode(id_hash, AccountId),
       <<"nonce">>         => Nonce,
-      <<"commitment_id">> => aec_base58c:encode(id_hash, CommitmentId),
+      <<"commitment_id">> => aehttp_api_encoder:encode(id_hash, CommitmentId),
       <<"fee">>           => Fee,
       <<"ttl">>           => TTL}.
 

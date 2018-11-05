@@ -128,7 +128,7 @@ check_are_funds_in_channel(ChannelPubKey, Amount, Trees) ->
 
 -spec check_state_hash_size(binary()) -> boolean().
 check_state_hash_size(Hash) ->
-    byte_size(Hash) =:= aec_base58c:byte_size_for_type(state).
+    byte_size(Hash) =:= aehttp_api_encoder:byte_size_for_type(state).
 
 -spec deserialize_payload(binary()) -> {ok, aetx_sign:signed_tx(), aesc_offchain_tx:tx()}
                                          | {ok, last_onchain}
@@ -622,7 +622,7 @@ set_channel(Channel, Trees) ->
     aec_trees:set_channels(Trees, ChannelsTree1).
 
 tx_hash_to_contract_pubkey(TxHash) ->
-    ByteSize = aec_base58c:byte_size_for_type(contract_pubkey),
+    ByteSize = aehttp_api_encoder:byte_size_for_type(contract_pubkey),
     case TxHash of
         <<_:ByteSize/binary>> -> TxHash;
         <<H:ByteSize/binary,_>> -> H;

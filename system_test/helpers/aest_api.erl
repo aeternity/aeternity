@@ -56,8 +56,8 @@ sc_open(Params, Cfg) ->
     Opts = #{
         host => Host,
         port => maps:get(responder_port, Params, 9000),
-        initiator_id => aec_base58c:encode(account_pubkey, IPubKey),
-        responder_id => aec_base58c:encode(account_pubkey, RPubKey),
+        initiator_id => aehttp_api_encoder:encode(account_pubkey, IPubKey),
+        responder_id => aehttp_api_encoder:encode(account_pubkey, RPubKey),
         lock_period => maps:get(lock_period, Params, 10),
         push_amount => maps:get(push_amount, Params, 10),
         initiator_amount => IAmt,
@@ -82,7 +82,7 @@ sc_open(Params, Cfg) ->
     {ok, #{ <<"tx">> := EncSignedCrTx} } = ?WS:wait_for_channel_event(IConn, on_chain_tx),
     {ok, #{ <<"tx">> := EncSignedCrTx} } = ?WS:wait_for_channel_event(RConn, on_chain_tx),
 
-    {ok, BinSignedCrTx} = aec_base58c:safe_decode(transaction, EncSignedCrTx),
+    {ok, BinSignedCrTx} = aehttp_api_encoder:safe_decode(transaction, EncSignedCrTx),
     SignedCrTx = aetx_sign:deserialize_from_binary(BinSignedCrTx),
     %% same transaction
     CrTx = aetx_sign:tx(SignedCrTx),
@@ -99,7 +99,7 @@ sc_open(Params, Cfg) ->
 
     Channel = #{ initiator => {IAccount, IConn}, responder => {RAccount, RConn} },
 
-    TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedCrTx)),
+    TxHash = aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(SignedCrTx)),
 
     {ok, Channel, TxHash, Fee}.
 
@@ -132,7 +132,7 @@ sc_close_mutual(Channel, Closer)
     {ok, #{ <<"tx">> := EncSignedMutualTx} } = ?WS:wait_for_channel_event(IConn, on_chain_tx),
     {ok, #{ <<"tx">> := EncSignedMutualTx} } = ?WS:wait_for_channel_event(RConn, on_chain_tx),
 
-    {ok, BinSignedMutualTx} = aec_base58c:safe_decode(transaction, EncSignedMutualTx),
+    {ok, BinSignedMutualTx} = aehttp_api_encoder:safe_decode(transaction, EncSignedMutualTx),
     SignedMutualTx = aetx_sign:deserialize_from_binary(BinSignedMutualTx),
     %% same transaction
     ShutdownTx = aetx_sign:tx(SignedMutualTx),
@@ -142,7 +142,7 @@ sc_close_mutual(Channel, Closer)
     IChange = aesc_close_mutual_tx:initiator_amount_final(MutualTx),
     RChange = aesc_close_mutual_tx:responder_amount_final(MutualTx),
 
-    TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedMutualTx)),
+    TxHash = aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(SignedMutualTx)),
 
     {ok, TxHash, IChange, RChange}.
 
@@ -177,14 +177,14 @@ sc_withdraw(SenderConn, SenderPrivKey, Amount, AckConn, AckPrivKey) ->
     {ok, #{ <<"tx">> := EncodedSignedWTx }} = ?WS:wait_for_channel_event(SenderConn, on_chain_tx),
     {ok, #{ <<"tx">> := EncodedSignedWTx }} = ?WS:wait_for_channel_event(AckConn, on_chain_tx),
 
-    {ok, BinSignedWTx} = aec_base58c:safe_decode(transaction, EncodedSignedWTx),
+    {ok, BinSignedWTx} = aehttp_api_encoder:safe_decode(transaction, EncodedSignedWTx),
     SignedWTx = aetx_sign:deserialize_from_binary(BinSignedWTx),
     WTx = aetx_sign:tx(SignedWTx),
     Fee = aetx:fee(WTx),
 
     ok = sc_wait_withdraw_locked(SenderConn, AckConn),
 
-    TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedWTx)),
+    TxHash = aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(SignedWTx)),
 
     {ok, TxHash, Fee}.
 
@@ -195,11 +195,11 @@ sc_wait_channel_open(IConn, RConn) ->
 
 sc_wait_and_sign(Conn, Privkey, Tag) ->
     {ok, Tag, #{ <<"tx">> := EncTx }} = ?WS:wait_for_channel_event(Conn, sign),
-    {ok, BinTx} = aec_base58c:safe_decode(transaction, EncTx),
+    {ok, BinTx} = aehttp_api_encoder:safe_decode(transaction, EncTx),
     Tx = aetx:deserialize_from_binary(BinTx),
     SignedTx = aec_test_utils:sign_tx(Tx, Privkey),
     BinSignedTx = aetx_sign:serialize_to_binary(SignedTx),
-    EncSignedTx = aec_base58c:encode(transaction, BinSignedTx),
+    EncSignedTx = aehttp_api_encoder:encode(transaction, BinSignedTx),
     ?WS:send(Conn, Tag, #{tx => EncSignedTx}),
     Tx.
 

@@ -100,12 +100,12 @@ end_per_suite(_Config) -> ok.
 test_name_registration(Cfg) ->
     MPubKey = maps:get(pubkey, ?MIKE),
     RPubKey = maps:get(pubkey, ?RICHARD),
-    EncMPubKey = aec_base58c:encode(account_pubkey, MPubKey),
-    EncRPubKey = aec_base58c:encode(account_pubkey, RPubKey),
+    EncMPubKey = aehttp_api_encoder:encode(account_pubkey, MPubKey),
+    EncRPubKey = aehttp_api_encoder:encode(account_pubkey, RPubKey),
 
     Name = <<"richard.test">>,
     NameSalt = 36346245,
-    EncNameId = aec_base58c:encode(name, aens_hash:name_hash(Name)),
+    EncNameId = aehttp_api_encoder:encode(name, aens_hash:name_hash(Name)),
 
     %% Setup nodes
     NodeConfig = #{ beneficiary => EncMPubKey },
@@ -189,7 +189,7 @@ test_name_transfer(Cfg) ->
     MPubKey = maps:get(pubkey, ?MIKE),
     RPubKey1 = maps:get(pubkey, ?RICHARD),
     RPubKey2 = maps:get(pubkey, ?ROBERT),
-    EncMPubKey = aec_base58c:encode(account_pubkey, MPubKey),
+    EncMPubKey = aehttp_api_encoder:encode(account_pubkey, MPubKey),
 
     Name = <<"richard.test">>,
     NameSalt = 36346245,

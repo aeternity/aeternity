@@ -152,10 +152,10 @@ for_client(#channel_offchain_tx{
               state_hash         = StateHash,
               channel_id         = ChannelId,
               round              = Round}) ->
-    #{<<"channel_id">>         => aec_base58c:encode(id_hash, ChannelId),
+    #{<<"channel_id">>         => aehttp_api_encoder:encode(id_hash, ChannelId),
       <<"round">>              => Round,
       <<"updates">>            => [aesc_offchain_update:for_client(D) || D <- Updates],
-      <<"state_hash">>         => aec_base58c:encode(state, StateHash)}.
+      <<"state_hash">>         => aehttp_api_encoder:encode(state, StateHash)}.
 
 serialization_template(?CHANNEL_OFFCHAIN_TX_VSN) ->
     [ {channel_id        , id}

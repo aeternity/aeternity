@@ -186,13 +186,13 @@ serialize_for_client(#call{caller_id    = CallerId,
                            return_type  = ReturnType,
                            log          = Log
                           }) ->
-    #{ <<"caller_id">>    => aec_base58c:encode(id_hash, CallerId)
+    #{ <<"caller_id">>    => aehttp_api_encoder:encode(id_hash, CallerId)
      , <<"caller_nonce">> => CallerNonce
      , <<"height">>       => Height
-     , <<"contract_id">>  => aec_base58c:encode(id_hash, ContractId)
+     , <<"contract_id">>  => aehttp_api_encoder:encode(id_hash, ContractId)
      , <<"gas_price">>    => GasPrice
      , <<"gas_used">>     => GasUsed
-     , <<"return_value">> => aec_base58c:encode(contract_bytearray, ReturnValue)
+     , <<"return_value">> => aehttp_api_encoder:encode(contract_bytearray, ReturnValue)
      , <<"return_type">>  => atom_to_binary(ReturnType, utf8)
      , <<"log">>          => [serialize_log_entry_for_client(E) || E <- Log]
      }.

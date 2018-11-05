@@ -318,16 +318,16 @@ for_client(#contract_call_tx{caller_id   = CallerId,
                              gas         = Gas,
                              gas_price   = GasPrice,
                              call_data   = CallData}) ->
-    #{<<"caller_id">>   => aec_base58c:encode(id_hash, CallerId),
+    #{<<"caller_id">>   => aehttp_api_encoder:encode(id_hash, CallerId),
       <<"nonce">>       => Nonce,
-      <<"contract_id">> => aec_base58c:encode(id_hash, ContractId),
+      <<"contract_id">> => aehttp_api_encoder:encode(id_hash, ContractId),
       <<"vm_version">>  => aeu_hex:hexstring_encode(<<VmVersion:8>>),
       <<"fee">>         => Fee,
       <<"ttl">>         => TTL,
       <<"amount">>      => Amount,
       <<"gas">>         => Gas,
       <<"gas_price">>   => GasPrice,
-      <<"call_data">>   => aec_base58c:encode(contract_bytearray, CallData)}.
+      <<"call_data">>   => aehttp_api_encoder:encode(contract_bytearray, CallData)}.
 
 %% -- Getters ----------------------------------------------------------------
 

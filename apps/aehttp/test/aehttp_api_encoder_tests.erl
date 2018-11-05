@@ -2,11 +2,11 @@
 %%% @copyright (C) 2018, Aeternity Anstalt
 %%%-------------------------------------------------------------------
 
--module(aec_base58c_tests).
+-module(aehttp_api_encoder_tests).
 
 -include_lib("eunit/include/eunit.hrl").
 
--define(TEST_MODULE, aec_base58c).
+-define(TEST_MODULE, aehttp_api_encoder).
 -define(TYPES, [ {key_block_hash    , 32}
                , {micro_block_hash  , 32}
                , {block_tx_hash     , 32}

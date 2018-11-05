@@ -105,7 +105,7 @@ serialization_template(?ACCOUNT_VSN) ->
 serialize_for_client(#account{id      = Id,
                               balance = Balance,
                               nonce   = Nonce}) ->
-    #{<<"id">>      => aec_base58c:encode(id_hash, Id),
+    #{<<"id">>      => aehttp_api_encoder:encode(id_hash, Id),
       <<"balance">> => Balance,
       <<"nonce">>   => Nonce}.
 

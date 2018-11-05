@@ -15,7 +15,7 @@ main([Password]) ->
             #{public := PubKey, secret := PrivKey} = enacl:sign_keypair(),
             true = check_keys(PubKey, PrivKey),
             ok   = save_keys(Password, PubFile, PubKey, PrivFile, PrivKey),
-            EncodedPubKey = aec_base58c:encode(account_pubkey, PubKey),
+            EncodedPubKey = aehttp_api_encoder:encode(account_pubkey, PubKey),
             io:fwrite("Generated keypair with encoded pubkey: ~s~n", [binary_to_list(EncodedPubKey)]);
         {error, key_already_present} ->
             io:fwrite("Keys generation directory ~s already contains keys~n", [?KEYS_DIR]),

@@ -190,7 +190,7 @@ for_client(#oracle_extend_tx{oracle_id = OracleId,
                              fee       = Fee,
                              ttl       = TTL} = Tx) ->
     {delta = TTLType, TTLValue} = oracle_ttl(Tx),
-    #{<<"oracle_id">>   => aec_base58c:encode(id_hash, OracleId),
+    #{<<"oracle_id">>   => aehttp_api_encoder:encode(id_hash, OracleId),
       <<"nonce">>       => Nonce,
       <<"oracle_ttl">>  => #{<<"type">>  => TTLType,
                              <<"value">> => TTLValue},

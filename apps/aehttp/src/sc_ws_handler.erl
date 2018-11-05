@@ -17,7 +17,7 @@
 -record(handler, {fsm_pid            :: pid() | undefined,
                   fsm_mref           :: reference() | undefined,
                   channel_id         :: aesc_channels:id() | undefined,
-                  enc_channel_id     :: aec_base58c:encoded() | undefined,
+                  enc_channel_id     :: aehttp_api_encoder:encoded() | undefined,
                   job_id             :: term(),
                   protocol = legacy  :: legacy | jsonrpc,
                   orig_request       :: map() | undefined,
@@ -143,7 +143,7 @@ set_channel_id(Msg, H) ->
 set_channel_id_(#{channel_id := Id},
                #handler{channel_id = undefined} = H) when Id =/= undefined ->
     H#handler{channel_id = Id,
-              enc_channel_id = aec_base58c:encode(channel, Id)};
+              enc_channel_id = aehttp_api_encoder:encode(channel, Id)};
 set_channel_id_(#{channel_id := A}, #handler{channel_id = B})
   when A =/= undefined, A =/= B ->
     erlang:error({channel_id_mismatch, [A, B]});
@@ -280,13 +280,13 @@ parse_by_type(atom, V, _) when is_binary(V) ->
 parse_by_type(integer, V, _) when is_binary(V) ->
     {ok, list_to_integer(binary_to_list(V))};
 parse_by_type({hash, Type}, V, RecordField) when is_binary(V) ->
-    case aec_base58c:safe_decode(Type, V) of
+    case aehttp_api_encoder:safe_decode(Type, V) of
         {error, _} ->
             {error, {RecordField, broken_encoding}};
         {ok, _} = OK -> OK
     end;
 parse_by_type(serialized_tx, V, RecordField) when is_binary(V) ->
-    case aec_base58c:safe_decode(transaction, V) of
+    case aehttp_api_encoder:safe_decode(transaction, V) of
         {ok, TxBin} ->
             try {ok, aetx_sign:deserialize_from_binary(TxBin)}
             catch
@@ -324,8 +324,8 @@ process_incoming_(#{<<"method">> := <<"channels.update.new">>,
                    <<"params">> := #{<<"from">>    := FromB,
                                      <<"to">>      := ToB,
                                      <<"amount">>  := Amount}}, H) ->
-    case {aec_base58c:safe_decode(account_pubkey, FromB),
-          aec_base58c:safe_decode(account_pubkey, ToB)} of
+    case {aehttp_api_encoder:safe_decode(account_pubkey, FromB),
+          aehttp_api_encoder:safe_decode(account_pubkey, ToB)} of
         {{ok, From}, {ok, To}} ->
             case aesc_fsm:upd_transfer(fsm_pid(H), From, To, Amount) of
                 ok -> reply(ok, H, no_reply);
@@ -357,7 +357,7 @@ process_incoming_(#{<<"method">> := <<"channels.update.call_contract">>,
                                       <<"vm_version">> := VmVersion,
                                       <<"amount">>     := Amount,
                                       <<"call_data">>  := CallDataE}}, H) ->
-    case {aec_base58c:safe_decode(contract_pubkey, ContractE),
+    case {aehttp_api_encoder:safe_decode(contract_pubkey, ContractE),
           bytearray_decode(CallDataE)} of
         {{ok, Contract}, {ok, CallData}} ->
             case aesc_fsm:upd_call_contract(fsm_pid(H),
@@ -376,8 +376,8 @@ process_incoming_(#{<<"method">> := <<"channels.get.contract_call">>,
                                       <<"caller">>     := CallerE,
                                       <<"round">>      := Round}}, H) ->
     lager:debug("get.contract_call(), H = ~p", [H]),
-    case {aec_base58c:safe_decode(contract_pubkey, ContractE),
-          aec_base58c:safe_decode(account_pubkey, CallerE)} of
+    case {aehttp_api_encoder:safe_decode(contract_pubkey, ContractE),
+          aehttp_api_encoder:safe_decode(account_pubkey, CallerE)} of
         {{ok, Contract}, {ok, Caller}} ->
             case aesc_fsm:get_contract_call(fsm_pid(H),
                                             Contract, Caller, Round) of
@@ -424,7 +424,7 @@ process_incoming_(#{<<"method">> := <<"channels.get.poi">>,
         fun(T, Keys) ->
             try {ok, lists:foldr(
                       fun(K, Acc) ->
-                              {ok, Res} = aec_base58c:safe_decode(T, K),
+                              {ok, Res} = aehttp_api_encoder:safe_decode(T, K),
                               [Res | Acc]
                       end, [], Keys)}
             catch
@@ -447,7 +447,7 @@ process_incoming_(#{<<"method">> := <<"channels.get.poi">>,
                       tag         => <<"poi">>,
                       {int,type}  => reply,
                       payload     => #{
-                        <<"poi">> => aec_base58c:encode(
+                        <<"poi">> => aehttp_api_encoder:encode(
                                        poi, aec_trees:serialize_poi(PoI))
                        }
                      },
@@ -462,7 +462,7 @@ process_incoming_(#{<<"method">> := <<"channels.get.poi">>,
 process_incoming_(#{<<"method">> := <<"channels.message">>,
                     <<"params">> := #{<<"to">>    := ToB,
                                       <<"info">>  := Msg}}, H) ->
-    case aec_base58c:safe_decode(account_pubkey, ToB) of
+    case aehttp_api_encoder:safe_decode(account_pubkey, ToB) of
         {ok, To} ->
             case aesc_fsm:inband_msg(fsm_pid(H), To, Msg) of
                 ok -> reply(ok, H, no_reply);
@@ -489,7 +489,7 @@ process_incoming_(#{<<"method">> := Method,
                     <<"params">> := #{<<"tx">> := EncodedTx}}, H)
     when ?METHOD_SIGNED(Method) ->
     Tag = ?METHOD_TAG(Method),
-    case aec_base58c:safe_decode(transaction, EncodedTx) of
+    case aehttp_api_encoder:safe_decode(transaction, EncodedTx) of
         {error, _} ->
             lager:warning("Channel WS: broken ~p tx ~p", [Method, EncodedTx]),
             error_response(invalid_tx, H);
@@ -526,7 +526,7 @@ process_fsm(#{type := sign,
                             orelse Tag =:= funding_created
                             orelse Tag =:= update
                             orelse Tag =:= update_ack ->
-    EncTx = aec_base58c:encode(transaction, aetx:serialize_to_binary(Tx)),
+    EncTx = aehttp_api_encoder:encode(transaction, aetx:serialize_to_binary(Tx)),
     Tag1 =
         case Tag of
             create_tx -> <<"initiator_sign">>;
@@ -555,24 +555,24 @@ process_fsm(#{type := report,
             {info, {died, _}} -> #{event => <<"died">>};
             {info, _} when is_atom(Event) -> #{event => atom_to_binary(Event, utf8)};
             {on_chain_tx, Tx} ->
-                EncodedTx = aec_base58c:encode(transaction,
+                EncodedTx = aehttp_api_encoder:encode(transaction,
                                                aetx_sign:serialize_to_binary(Tx)),
                 #{tx => EncodedTx};
             {_, NewState} when Tag == update; Tag == leave ->
-                Bin = aec_base58c:encode(transaction,
+                Bin = aehttp_api_encoder:encode(transaction,
                                          aetx_sign:serialize_to_binary(NewState)),
                 #{state => Bin};
             {conflict, #{channel_id := ChId,
                          round      := Round}} ->
-                         #{channel_id => aec_base58c:encode(channel, ChId),
+                         #{channel_id => aehttp_api_encoder:encode(channel, ChId),
                            round => Round};
             {message, #{channel_id  := ChId,
                         from        := From,
                         to          := To,
                         info        := Info}} ->
-                #{message => #{channel_id => aec_base58c:encode(channel, ChId),
-                               from => aec_base58c:encode(account_pubkey, From),
-                               to => aec_base58c:encode(account_pubkey, To),
+                #{message => #{channel_id => aehttp_api_encoder:encode(channel, ChId),
+                               from => aehttp_api_encoder:encode(account_pubkey, From),
+                               to => aehttp_api_encoder:encode(account_pubkey, To),
                                info => Info}};
             {error, Msg} -> #{message => Msg};
             {debug, Msg} -> #{message => Msg}
@@ -801,12 +801,12 @@ ok_response(Action) ->
      , {int,type} => reply }.
 
 bytearray_decode(Bytearray) ->
-    aec_base58c:safe_decode(contract_bytearray, Bytearray).
+    aehttp_api_encoder:safe_decode(contract_bytearray, Bytearray).
 
 safe_decode_account_keys(Keys) ->
     try {ok, lists:foldr(
                fun(K, Acc) ->
-                       {ok, Res} = aec_base58c:safe_decode(account_pubkey, K),
+                       {ok, Res} = aehttp_api_encoder:safe_decode(account_pubkey, K),
                        [{K, Res}|Acc]
                end, [], Keys)}
     catch

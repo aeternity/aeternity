@@ -213,8 +213,8 @@ check_coinbase_validation(Config) ->
     ?assertNotEqual(Ben1, Ben2), %% Sanity check on the test nodes.
 
     %% Check that the second node syncs the mined tx with the initial node.
-    {ok, Tx1Hash} = aec_base58c:safe_decode(tx_hash, TxH1),
-    {ok, Tx2Hash} = aec_base58c:safe_decode(tx_hash, TxH2),
+    {ok, Tx1Hash} = aehttp_api_encoder:safe_decode(tx_hash, TxH1),
+    {ok, Tx2Hash} = aehttp_api_encoder:safe_decode(tx_hash, TxH2),
     wait_till_hash_in_block_on_node(N2, Tx2Hash, 3000),
     {BlockHash1, _} = rpc:call(N1, aec_chain, find_tx_with_location, [Tx1Hash]),
     {BlockHash2, _} = rpc:call(N1, aec_chain, find_tx_with_location, [Tx2Hash]),
@@ -280,7 +280,7 @@ add_spend_tx(Node, Amount, Fee, Nonce, TTL, Sender, Recipient) ->
     {ok, Tx} = aec_spend_tx:new(Params),
     STx = aec_test_utils:sign_tx(Tx, maps:get(privkey, Sender)),
     Res = rpc:call(Node, aec_tx_pool, push, [STx]),
-    {Res, aec_base58c:encode(tx_hash, aetx_sign:hash(STx))}.
+    {Res, aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(STx))}.
 
 
 create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
@@ -303,7 +303,7 @@ create_contract_tx(Node, Name, Args, Fee, Nonce, TTL) ->
     CTx = aec_test_utils:sign_tx(CreateTx, maps:get(privkey, patron())),
     Res = rpc:call(Node, aec_tx_pool, push, [CTx]),
     ContractKey = aect_contracts:compute_contract_pubkey(OwnerKey, Nonce),
-    {Res, aec_base58c:encode(tx_hash, aetx_sign:hash(CTx)), ContractKey, Code}.
+    {Res, aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(CTx)), ContractKey, Code}.
 
 compile_contract(File) ->
     CodeDir = code:lib_dir(aesophia, test),
@@ -329,7 +329,7 @@ call_contract_tx(Node, Contract, Code, Function, Args, Fee, Nonce, TTL) ->
                                      }),
     CTx = aec_test_utils:sign_tx(CallTx, maps:get(privkey, patron())),
     Res = rpc:call(Node, aec_tx_pool, push, [CTx]),
-    {Res, aec_base58c:encode(tx_hash, aetx_sign:hash(CTx))}.
+    {Res, aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(CTx))}.
 
 
 %% We assume that equence is time ordered and only check Micro Block Cycle time

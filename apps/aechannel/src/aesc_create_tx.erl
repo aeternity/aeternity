@@ -252,16 +252,16 @@ for_client(#channel_create_tx{initiator_id       = InitiatorId,
                               delegate_ids       = DelegateIds,
                               state_hash         = StateHash,
                               fee                = Fee}) ->
-    #{<<"initiator_id">>       => aec_base58c:encode(id_hash, InitiatorId),
+    #{<<"initiator_id">>       => aehttp_api_encoder:encode(id_hash, InitiatorId),
       <<"initiator_amount">>   => InitiatorAmount,
-      <<"responder_id">>       => aec_base58c:encode(id_hash, ResponderId),
+      <<"responder_id">>       => aehttp_api_encoder:encode(id_hash, ResponderId),
       <<"responder_amount">>   => ResponderAmount,
       <<"channel_reserve">>    => ChannelReserve,
       <<"lock_period">>        => LockPeriod,
       <<"nonce">>              => Nonce,
       <<"ttl">>                => TTL,
-      <<"delegate_ids">>       => [aec_base58c:encode(id_hash, D) || D <- DelegateIds],
-      <<"state_hash">>         => aec_base58c:encode(state, StateHash),
+      <<"delegate_ids">>       => [aehttp_api_encoder:encode(id_hash, D) || D <- DelegateIds],
+      <<"state_hash">>         => aehttp_api_encoder:encode(state, StateHash),
       <<"fee">>                => Fee}.
 
 serialization_template(?CHANNEL_CREATE_TX_VSN) ->

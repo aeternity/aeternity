@@ -163,13 +163,13 @@ serialize_for_client_pending(#signed_tx{}=S) ->
 serialize_for_client(#signed_tx{tx = Tx, signatures = Sigs}, BlockHeight, BlockHash0, TxHash) ->
     BlockHash = case BlockHash0 of
                     <<>> -> <<"none">>;
-                    _ -> aec_base58c:encode(micro_block_hash, BlockHash0)
+                    _ -> aehttp_api_encoder:encode(micro_block_hash, BlockHash0)
                 end,
     #{<<"tx">>           => aetx:serialize_for_client(Tx),
       <<"block_height">> => BlockHeight,
       <<"block_hash">>   => BlockHash,
-      <<"hash">>         => aec_base58c:encode(tx_hash, TxHash),
-      <<"signatures">>   => [aec_base58c:encode(signature, S) || S <- Sigs]}.
+      <<"hash">>         => aehttp_api_encoder:encode(tx_hash, TxHash),
+      <<"signatures">>   => [aehttp_api_encoder:encode(signature, S) || S <- Sigs]}.
 
 meta_data_from_client_serialized(Serialized) ->
     #{<<"tx">>           := _EncodedTx,
@@ -177,14 +177,14 @@ meta_data_from_client_serialized(Serialized) ->
       <<"block_hash">>   := BlockHashEncoded,
       <<"hash">>         := TxHashEncoded,
       <<"signatures">>   := _Sigs} = Serialized,
-    {block_hash, BlockHash} = aec_base58c:decode(BlockHashEncoded),
-    {tx_hash, TxHash}       = aec_base58c:decode(TxHashEncoded),
+    {block_hash, BlockHash} = aehttp_api_encoder:decode(BlockHashEncoded),
+    {tx_hash, TxHash}       = aehttp_api_encoder:decode(TxHashEncoded),
     #{block_height => BlockHeight,
       block_hash   => BlockHash,
       hash         => TxHash}.
 
 assert_sigs_size(Sigs) ->
-    AllowedByteSize = aec_base58c:byte_size_for_type(signature),
+    AllowedByteSize = aehttp_api_encoder:byte_size_for_type(signature),
     lists:foreach(
         fun(Sig) -> {AllowedByteSize, _} = {byte_size(Sig), Sig} end,
         Sigs).

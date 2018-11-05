@@ -204,10 +204,10 @@ for_client(#ns_transfer_tx{account_id   = AccountId,
                            recipient_id = RecipientId,
                            fee          = Fee,
                            ttl          = TTL}) ->
-    #{<<"account_id">>   => aec_base58c:encode(id_hash, AccountId),
+    #{<<"account_id">>   => aehttp_api_encoder:encode(id_hash, AccountId),
       <<"nonce">>        => Nonce,
-      <<"name_id">>      => aec_base58c:encode(id_hash, NameId),
-      <<"recipient_id">> => aec_base58c:encode(id_hash, RecipientId),
+      <<"name_id">>      => aehttp_api_encoder:encode(id_hash, NameId),
+      <<"recipient_id">> => aehttp_api_encoder:encode(id_hash, RecipientId),
       <<"fee">>          => Fee,
       <<"ttl">>          => TTL}.
 

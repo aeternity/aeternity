@@ -351,9 +351,9 @@ serialize_for_client(#key_header{} = Header, PrevBlockType) ->
           <<"height">>        => Header#key_header.height,
           <<"prev_hash">>     => encode_block_hash(PrevBlockType, Header#key_header.prev_hash),
           <<"prev_key_hash">> => encode_block_hash(key, Header#key_header.prev_key),
-          <<"state_hash">>    => aec_base58c:encode(block_state_hash, Header#key_header.root_hash),
-          <<"miner">>         => aec_base58c:encode(account_pubkey, Header#key_header.miner),
-          <<"beneficiary">>   => aec_base58c:encode(account_pubkey, Header#key_header.beneficiary),
+          <<"state_hash">>    => aehttp_api_encoder:encode(block_state_hash, Header#key_header.root_hash),
+          <<"miner">>         => aehttp_api_encoder:encode(account_pubkey, Header#key_header.miner),
+          <<"beneficiary">>   => aehttp_api_encoder:encode(account_pubkey, Header#key_header.beneficiary),
           <<"target">>        => Header#key_header.target,
           <<"time">>          => Header#key_header.time,
           <<"version">>       => Header#key_header.version},
@@ -371,22 +371,22 @@ serialize_for_client(#mic_header{} = Header, PrevBlockType) ->
       <<"pof_hash">>   => encode_pof_hash(pof_hash(Header)),
       <<"prev_hash">>  => encode_block_hash(PrevBlockType, Header#mic_header.prev_hash),
       <<"prev_key_hash">> => encode_block_hash(key, Header#mic_header.prev_key),
-      <<"signature">>  => aec_base58c:encode(signature, Header#mic_header.signature),
-      <<"state_hash">> => aec_base58c:encode(block_state_hash, Header#mic_header.root_hash),
+      <<"signature">>  => aehttp_api_encoder:encode(signature, Header#mic_header.signature),
+      <<"state_hash">> => aehttp_api_encoder:encode(block_state_hash, Header#mic_header.root_hash),
       <<"time">>       => Header#mic_header.time,
-      <<"txs_hash">>   => aec_base58c:encode(block_tx_hash, Header#mic_header.txs_hash),
+      <<"txs_hash">>   => aehttp_api_encoder:encode(block_tx_hash, Header#mic_header.txs_hash),
       <<"version">>    => Header#mic_header.version
      }.
 
 encode_block_hash(key, Hash) ->
-    aec_base58c:encode(key_block_hash, Hash);
+    aehttp_api_encoder:encode(key_block_hash, Hash);
 encode_block_hash(micro, Hash) ->
-    aec_base58c:encode(micro_block_hash, Hash).
+    aehttp_api_encoder:encode(micro_block_hash, Hash).
 
 encode_pof_hash(<<>>) ->
     <<"no_fraud">>;
 encode_pof_hash(PofHash) ->
-    aec_base58c:encode(pof_hash, PofHash).
+    aehttp_api_encoder:encode(pof_hash, PofHash).
 
 -spec deserialize_from_client(key, map()) -> {ok, header()} | {error, term()}.
 deserialize_from_client(key, KeyBlock) ->
@@ -724,5 +724,5 @@ validate_max_time({Header, _}) ->
     end.
 
 decode(Type, Enc) ->
-    {ok, Val} = aec_base58c:safe_decode(Type, Enc),
+    {ok, Val} = aehttp_api_encoder:safe_decode(Type, Enc),
     Val.

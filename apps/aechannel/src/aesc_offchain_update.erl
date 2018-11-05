@@ -122,34 +122,34 @@ apply_on_trees(Update, Trees0, OnChainTrees, OnChainEnv, Round, Reserve) ->
 -spec for_client(update()) -> map().
 for_client({?OP_TRANSFER, From, To, Amount}) ->
     #{<<"op">> => <<"OffChainTransfer">>, % swagger name
-      <<"from">> => aec_base58c:encode(id_hash, From),
-      <<"to">> => aec_base58c:encode(id_hash, To),
+      <<"from">> => aehttp_api_encoder:encode(id_hash, From),
+      <<"to">> => aehttp_api_encoder:encode(id_hash, To),
       <<"am">>   => Amount};
 for_client({?OP_WITHDRAW, To, Amount}) ->
     #{<<"op">> => <<"OffChainWithdrawal">>, % swagger name
-      <<"to">> => aec_base58c:encode(id_hash, To),
+      <<"to">> => aehttp_api_encoder:encode(id_hash, To),
       <<"am">>   => Amount};
 for_client({?OP_DEPOSIT, From, Amount}) ->
     #{<<"op">> => <<"OffChainDeposit">>, % swagger name
-      <<"from">> => aec_base58c:encode(id_hash, From),
+      <<"from">> => aehttp_api_encoder:encode(id_hash, From),
       <<"am">>   => Amount};
 for_client({?OP_CREATE_CONTRACT, OwnerId, VmVersion, Code, Deposit, CallData}) ->
     #{<<"op">>          => <<"OffChainNewContract">>, % swagger name
-      <<"owner">>       => aec_base58c:encode(id_hash, OwnerId),
+      <<"owner">>       => aehttp_api_encoder:encode(id_hash, OwnerId),
       <<"vm_version">>  => VmVersion,
       <<"code">>        => Code,
       <<"deposit">>     => Deposit,
-      <<"call_data">>   => aec_base58c:encode(contract_bytearray, CallData)};
+      <<"call_data">>   => aehttp_api_encoder:encode(contract_bytearray, CallData)};
 for_client({?OP_CALL_CONTRACT, CallerId, ContractId, VmVersion, Amount,
             CallData, CallStack, GasPrice, Gas}) ->
     #{<<"op">>          => <<"OffChainCallContract">>, % swagger name
-      <<"caller">>      => aec_base58c:encode(id_hash, CallerId),
-      <<"contract">>    => aec_base58c:encode(id_hash, ContractId),
+      <<"caller">>      => aehttp_api_encoder:encode(id_hash, CallerId),
+      <<"contract">>    => aehttp_api_encoder:encode(id_hash, ContractId),
       <<"vm_version">>  => VmVersion,
       <<"amount">>      => Amount,
       <<"gas">>         => Gas,
       <<"gas_price">>   => GasPrice,
-      <<"call_data">>   => aec_base58c:encode(contract_bytearray, CallData),
+      <<"call_data">>   => aehttp_api_encoder:encode(contract_bytearray, CallData),
       <<"call_stack">>  => CallStack}.
 
 -spec serialize(update()) -> binary().
