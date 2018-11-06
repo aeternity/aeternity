@@ -392,7 +392,7 @@ post_spend_tx(Node, From, To, Nonce, Map) ->
     Params = maps:merge(#{ sender_id => aec_id:create(account, SendPubKey)
                          , recipient_id => aec_id:create(account, RecvPubKey)
                          , amount => 10000
-                         , fee => 100
+                         , fee => 20000
                          , ttl => 10000000
                          , nonce => Nonce
                          , payload => PayLoad }, Map),
@@ -411,12 +411,12 @@ post_create_state_channel_tx(Node, Initiator, Responder, #{nonce := Nonce} = Map
                                           #{initiator_id => aec_id:create(account, InPubKey),
                                             responder_id => aec_id:create(account, RespPubKey),
                                             state_hash => <<Round:256>>,
-                                            initiator_amount => 80,
-                                            responder_amount => 80,
+                                            initiator_amount => 200000,
+                                            responder_amount => 200000,
                                             push_amount => 0,
                                             lock_period => 0,
                                             ttl => 100000,
-                                            fee => 1,
+                                            fee => 50000,
                                             channel_reserve => 40}, Map)),
     BothSigned = aec_test_utils:sign_tx(CreateTx, [InSecKey, RespSecKey]),
     Transaction = aehttp_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
@@ -429,9 +429,9 @@ post_close_mutual_state_channel_tx(Node, Initiator, Responder, ChannelId, #{nonc
     {ok, CloseTx} =
         aesc_close_mutual_tx:new(maps:merge(#{channel_id => ChannelId,
                                               from_id => aec_id:create(account, InPubKey),
-                                              initiator_amount_final => 80,
-                                              responder_amount_final => 80,
-                                              fee => 1,
+                                              initiator_amount_final => 100000,
+                                              responder_amount_final => 100000,
+                                              fee => 50000,
                                               ttl => 100000},
                                             Map)),
     BothSigned = aec_test_utils:sign_tx(CloseTx, [InSecKey, RespSecKey]),
@@ -447,7 +447,7 @@ post_deposit_state_channel_tx(Node, PayingParty, OtherParty, ChannelId, #{nonce 
                                          state_hash => <<0:256>>,
                                          amount => 20,
                                          round => 1,
-                                         fee => 1,
+                                         fee => 50000,
                                          ttl => 100000},
                                        Map)),
     BothSigned = aec_test_utils:sign_tx(DepositTx, [InSecKey, RespSecKey]),
@@ -463,7 +463,7 @@ post_withdraw_state_channel_tx(Node, RecParty, OtherParty, ChannelId, #{nonce :=
                                          state_hash => <<0:256>>,
                                          amount => 20,
                                          round => 1,
-                                         fee => 1,
+                                         fee => 50000,
                                          ttl => 100000},
                                        Map)),
     BothSigned = aec_test_utils:sign_tx(WithdrawTx, [InSecKey, RespSecKey]),

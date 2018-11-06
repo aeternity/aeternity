@@ -77,7 +77,7 @@ register_tx(PubKey, Spec0, State) ->
 register_tx_default_spec(PubKey, State) ->
     #{ account_id      => aec_id:create(account, PubKey)
      , oracle_ttl      => {delta, maps:get(oracle, ttl_defaults())}
-     , fee             => 2
+     , fee             => 50000
      , nonce           => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , query_fee       => 5
      , query_format    => <<"string()">>
@@ -101,7 +101,7 @@ extend_tx(PubKey, Spec0, State) ->
 extend_tx_default_spec(PubKey, State) ->
     #{ oracle_id  => aec_id:create(oracle, PubKey)
      , oracle_ttl => {delta, maps:get(extend, ttl_defaults())}
-     , fee        => 5
+     , fee        => 50000
      , nonce      => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , ttl        => 0
      }.
@@ -125,7 +125,7 @@ query_tx_default_spec(PubKey, OracleKey, State) ->
      , query_fee    => 5
      , query_ttl    => {delta, maps:get(query, ttl_defaults())}
      , response_ttl => {delta, maps:get(response, ttl_defaults())}
-     , fee          => 4
+     , fee          => 50000
      , nonce        => try next_nonce(PubKey, State) catch _:_ -> 0 end
      }.
 
@@ -147,7 +147,7 @@ response_tx_default_spec(PubKey, ID, Response, State) ->
      , query_id     => ID
      , response     => Response
      , response_ttl => {delta, maps:get(response, ttl_defaults())}
-     , fee          => 2
+     , fee          => 50000
      , ttl          => 0
      }.
 
@@ -157,7 +157,7 @@ response_tx_default_spec(PubKey, ID, Response, State) ->
 %%%===================================================================
 
 setup_new_account(State) ->
-    setup_new_account(1000, State).
+    setup_new_account(1000000, State).
 
 setup_new_account(Balance, State) ->
     {PubKey, PrivKey} = new_key_pair(),

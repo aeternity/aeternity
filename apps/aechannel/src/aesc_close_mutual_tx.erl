@@ -83,7 +83,7 @@ fee(#channel_close_mutual_tx{fee = Fee}) ->
 
 -spec gas(tx()) -> non_neg_integer().
 gas(#channel_close_mutual_tx{}) ->
-    aec_governance:tx_base_gas(channel_close_mutual_tx).
+    0.
 
 -spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#channel_close_mutual_tx{ttl = Ttl}) ->

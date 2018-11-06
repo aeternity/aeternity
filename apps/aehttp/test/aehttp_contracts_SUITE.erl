@@ -167,8 +167,8 @@ identity_contract(Config) ->
                  priv_key := DPriv}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
-    ensure_balance(CPub, 50000),
-    ensure_balance(DPub, 50000),
+    ensure_balance(CPub, 5000000),
+    ensure_balance(DPub, 5000000),
 
     %% Compile test contract "identity.aes"
     Code = compile_test_contract("identity"),
@@ -199,7 +199,7 @@ abort_test_contract(Config) ->
                  priv_key := APriv}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 50000),
+    _ABal0 = ensure_balance(APub, 10000000),
     {ok,[_]} = aecore_suite_utils:mine_key_blocks(Node, 1),
 
     %% Compile contracts "abort_test.aes" and "abort_test_int.aes".
@@ -266,8 +266,8 @@ simple_storage_contract(Config) ->
                  priv_key := BPriv}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 200000),
-    _BBal0 = ensure_balance(BPub, 200000),
+    _ABal0 = ensure_balance(APub, 5000000),
+    _BBal0 = ensure_balance(BPub, 5000000),
     {ok,[_]} = aecore_suite_utils:mine_key_blocks(Node, 1),
 
     %% Compile test contract "simple_storage.aes"
@@ -325,8 +325,8 @@ counter_contract(Config) ->
                  priv_key := BPriv}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 50000),
-    _BBal0 = ensure_balance(BPub, 50000),
+    _ABal0 = ensure_balance(APub, 10000000),
+    _BBal0 = ensure_balance(BPub, 10000000),
 
     %% Compile test contract "counter.aes"
     Code = compile_test_contract("counter"),
@@ -374,8 +374,8 @@ stack_contract(Config) ->
                  priv_key := BPriv}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 50000),
-    _BBal0 = ensure_balance(BPub, 500000),
+    _ABal0 = ensure_balance(APub, 10000000),
+    _BBal0 = ensure_balance(BPub, 10000000),
 
     %% Compile test contract "stack.aes"
     Code = compile_test_contract("stack"),
@@ -425,7 +425,7 @@ polymorphism_test_contract(Config) ->
                  priv_key := APriv}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 500000),
+    _ABal0 = ensure_balance(APub, 2000000),
     {ok,[_]} = aecore_suite_utils:mine_key_blocks(Node, 1),
 
     %% Compile test contract "polymorphism_test.aes".
@@ -457,7 +457,7 @@ factorial_contract(Config) ->
                  priv_key := APriv}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 500000),
+    _ABal0 = ensure_balance(APub, 20000000),
     {ok,[_]} = aecore_suite_utils:mine_key_blocks(Node, 1),
 
     %% Compile test contract "factorial.aes".
@@ -498,8 +498,8 @@ maps_contract(Config) ->
         = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 500000),
-    _BBal0 = ensure_balance(BPub, 500000),
+    _ABal0 = ensure_balance(APub, 50000000),
+    _BBal0 = ensure_balance(BPub, 50000000),
 
     %% ContractString = aeso_test_utils:read_contract("maps"),
     %% aeso_compiler:from_string(ContractString, []),
@@ -664,8 +664,8 @@ environment_contract(Config) ->
                  priv_key := BPriv}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 500000),
-    BBal0 = ensure_balance(BPub, 500000),
+    _ABal0 = ensure_balance(APub, 20000000),
+    BBal0 = ensure_balance(BPub, 20000000),
 
     %% Compile test contract "environment.aes"
     Code = compile_test_contract("environment"),
@@ -793,8 +793,8 @@ spend_test_contract(Config) ->
                  priv_key := _BPriv}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 200000),
-    BBal0 = ensure_balance(BPub, 50000),
+    _ABal0 = ensure_balance(APub, 5000000),
+    BBal0 = ensure_balance(BPub, 3000000),
 
     %% Compile test contract "spend_test.aes"
     Code = compile_test_contract("spend_test"),
@@ -858,9 +858,9 @@ dutch_auction_contract(Config) ->
                  priv_key := DPriv}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 500000),
-    _BBal0 = ensure_balance(BPub, 500000),
-    _CBal0 = ensure_balance(CPub, 500000),
+    _ABal0 = ensure_balance(APub, 30000000),
+    _BBal0 = ensure_balance(BPub, 30000000),
+    _CBal0 = ensure_balance(CPub, 30000000),
 
     %% Compile test contract "dutch_auction.aes"
     Code = compile_test_contract("dutch_auction"),
@@ -868,7 +868,7 @@ dutch_auction_contract(Config) ->
     %% Set auction start amount and decrease per mine and fee.
     StartAmt = 50000,
     Decrease = 1000,
-    Fee      = 100,
+    Fee      = 800000,
 
     %% Initialise contract owned by Alice with Carl as benficiary.
     InitArgument = args_to_binary([CPub,StartAmt,Decrease]),
@@ -905,7 +905,6 @@ dutch_auction_contract(Config) ->
     revert_call_compute_func(Node, DPub, DPriv, EncCPub,
                              <<"bid">>, <<"()">>,
                              #{amount => 100000,fee => Fee}),
-
     ok.
 
 %% fundme_contract(Config)
@@ -926,10 +925,10 @@ fundme_contract(Config) ->
                  priv_key := DPriv}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 500000),
-    _BBal0 = ensure_balance(BPub, 500000),
-    _CBal0 = ensure_balance(CPub, 500000),
-    _DBal0 = ensure_balance(DPub, 500000),
+    _ABal0 = ensure_balance(APub, 1000000),
+    _BBal0 = ensure_balance(BPub, 1000000),
+    _CBal0 = ensure_balance(CPub, 1000000),
+    _DBal0 = ensure_balance(DPub, 1000000),
 
     %% Compile test contract "fundme.aes"
     Code = compile_test_contract("fundme"),
@@ -989,10 +988,10 @@ erc20_token_contract(Config) ->
                  priv_key := _DPriv}} = proplists:get_value(accounts, Config),
 
     %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 200000),
-    _BBal0 = ensure_balance(BPub, 50000),
-    _CBal0 = ensure_balance(CPub, 50000),
-    _DBal0 = ensure_balance(DPub, 50000),
+    _ABal0 = ensure_balance(APub, 10000000),
+    _BBal0 = ensure_balance(BPub, 5000000),
+    _CBal0 = ensure_balance(CPub, 5000000),
+    _DBal0 = ensure_balance(DPub, 5000000),
 
     %% ContractString = aeso_test_utils:read_contract("erc20_token"),
     %% aeso_compiler:from_string(ContractString, []),
@@ -1095,7 +1094,7 @@ ensure_balance(Pubkey, NewBalance) ->
             Balance;
        true ->
             %% Get more tokens from the miner.
-            Fee = 1,
+            Fee = 20000,
             Incr = NewBalance - Balance + Fee,  %Include the fee
             {ok,200,#{<<"tx">> := SpendTx}} =
                 create_spend_tx(aehttp_api_encoder:encode(account_pubkey, Pubkey), Incr, Fee),
@@ -1313,7 +1312,7 @@ contract_create_compute_tx(Pubkey, Privkey, Code, InitArgument, CallerSet) ->
                               amount => 0,      %Initial balance
                               gas => 100000,     %May need a lot of gas
                               gas_price => 1,
-                              fee => 1,
+                              fee => 1400000,
                               nonce => Nonce,
                               payload => <<"create contract">>},
     ContractInitEncoded = maps:merge(maps:merge(ContractInitEncoded0, CallInput), CallerSet),
@@ -1347,7 +1346,7 @@ contract_call_compute_tx(Pubkey, Privkey, Nonce, EncodedContractPubkey,
                               amount => 0,
                               gas => 100000,     %May need a lot of gas
                               gas_price => 1,
-                              fee => 1,
+                              fee => 800000,
                               nonce => Nonce,
                               payload => <<"call compute function">> },
     ContractCallEncoded = maps:merge(maps:merge(ContractCallEncoded0, CallInput), CallerSet),
@@ -1531,7 +1530,7 @@ process_http_return(R) ->
 
 new_account(Balance) ->
     {Pubkey,Privkey} = generate_key_pair(),
-    Fee = 1,
+    Fee = 20000,
     {ok, 200, #{<<"tx">> := SpendTx}} =
         create_spend_tx(aehttp_api_encoder:encode(account_pubkey, Pubkey), Balance, Fee),
     SignedSpendTx = sign_tx(SpendTx),

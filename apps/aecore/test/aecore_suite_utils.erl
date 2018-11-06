@@ -25,7 +25,6 @@
          mine_key_blocks/2,
          mine_micro_blocks/2,
          wait_for_height/2,
-         spend/4,         %% (Node, FromPub, ToPub, Amount) -> ok
          spend/5,         %% (Node, FromPub, ToPub, Amount, Fee) -> ok
          sign_on_node/2,
          forks/0,
@@ -339,9 +338,6 @@ wait_for_height_(Node, Height) ->
             _ = wait_for_new_block(),
             wait_for_height_(Node, Height)
     end.
-
-spend(Node, FromPub, ToPub, Amount) ->
-    spend(Node, FromPub, ToPub, Amount, aec_governance:minimum_tx_fee()).
 
 spend(Node, FromPub, ToPub, Amount, Fee) ->
     {ok, Nonce} = rpc:call(Node, aec_next_nonce, pick_for_account, [FromPub]),

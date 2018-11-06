@@ -90,7 +90,7 @@ fee(#ns_transfer_tx{fee = Fee}) ->
 
 -spec gas(tx()) -> non_neg_integer().
 gas(#ns_transfer_tx{}) ->
-    aec_governance:tx_base_gas(ns_transfer_tx).
+    0.
 
 -spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#ns_transfer_tx{ttl = TTL}) ->

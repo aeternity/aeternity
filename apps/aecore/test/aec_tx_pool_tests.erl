@@ -60,7 +60,7 @@ tx_pool_test_() ->
                ?assertEqual({ok, []}, aec_tx_pool:peek(1)),
 
                %% Tx received from a peer.
-               STx1 = a_signed_tx(new_pubkey(), me, 1, 1),
+               STx1 = a_signed_tx(new_pubkey(), me, 1, 20000),
                ?assertEqual(ok, aec_tx_pool:push(STx1, tx_received)),
 
                %% One tx to serve to peers.
@@ -71,7 +71,7 @@ tx_pool_test_() ->
                ?assertEqual({ok, [STx1]}, aec_tx_pool:peek(1)),
 
                %% Other tx received from a peer.
-               STx2 = a_signed_tx(new_pubkey(), me, 1, 2),
+               STx2 = a_signed_tx(new_pubkey(), me, 1, 20000),
                ?assertEqual(ok, aec_tx_pool:push(STx2, tx_received)),
 
                %% Two tx2 to serve to peers.
@@ -85,7 +85,7 @@ tx_pool_test_() ->
                PubKey1 = new_pubkey(),
                PubKey2 = new_pubkey(),
                meck:expect(aec_genesis_block_settings, preset_accounts, 0,
-                  [{PubKey1, 100}, {PubKey2, 100}]),
+                  [{PubKey1, 100000}, {PubKey2, 100000}]),
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
                ok = aec_chain_state:insert_block(GenesisBlock),
@@ -101,8 +101,8 @@ tx_pool_test_() ->
                TopBlockHash = aec_chain:top_block_hash(),
 
                %% Prepare a few txs.
-               STx1 = a_signed_tx(PubKey1, new_pubkey(), 1, 1),
-               STx2 = a_signed_tx(PubKey1, new_pubkey(), 2, 1),
+               STx1 = a_signed_tx(PubKey1, new_pubkey(), 1, 20000),
+               STx2 = a_signed_tx(PubKey1, new_pubkey(), 2, 20000),
                ?assertEqual(ok, aec_tx_pool:push(STx1)),
                ?assertEqual(ok, aec_tx_pool:push(STx2)),
                {ok, PoolTxs} = aec_tx_pool:peek(infinity),
@@ -131,7 +131,7 @@ tx_pool_test_() ->
                %% on top of each of them
                %% Ensure micro_block_cycle time
                meck:expect(aeu_time, now_in_msecs, fun() -> meck:passthrough([]) + 3000 end),
-               STx3 = a_signed_tx(PubKey2, new_pubkey(), 1, 1),
+               STx3 = a_signed_tx(PubKey2, new_pubkey(), 1, 20000),
                ?assertEqual(ok, aec_tx_pool:push(STx3)),
                {ok, USCandidate3, _} = aec_block_micro_candidate:create(aec_chain:top_block()),
                {ok, Candidate3} = aec_keys:sign_micro_block(USCandidate3),
@@ -142,7 +142,7 @@ tx_pool_test_() ->
                {ok, CHashFork1} = aec_blocks:hash_internal_representation(KeyBlock2),
 
                meck:expect(aeu_time, now_in_msecs, fun() -> meck:passthrough([]) + 6000 end),
-               STx4 = a_signed_tx(PubKey2, new_pubkey(), 2, 1),
+               STx4 = a_signed_tx(PubKey2, new_pubkey(), 2, 40000),
                ?assertEqual(ok, aec_tx_pool:push(STx4)),
                {ok, USCandidate4, _} = aec_block_micro_candidate:create(aec_chain:top_block()),
                {ok, Candidate4} = aec_keys:sign_micro_block(USCandidate4),
@@ -187,14 +187,14 @@ tx_pool_test_() ->
                  PK3 = new_pubkey(),
                  PK4 = new_pubkey(),
                  STxs =
-                   [ a_signed_tx        (_Sender=PK1, me,_Nonce=1,_Fee=1)
-                   , a_signed_tx        (        PK1, me,       2,     2)
-                   , a_signed_tx        (        PK1, me,       3,     3)
-                   , a_signed_tx        (        PK2, me,       2,     5)
-                   , a_signed_tx        (        PK2, me,       1,     6)
-                   , signed_ct_create_tx(        PK4,           1,     1,_GasPrice=1100000000)
-                   , signed_ct_call_tx  (        PK4,           2,     4,          9000000000)
-                   , signed_ct_call_tx  (        PK4,           3,     7,          1)
+                   [ a_signed_tx        (_Sender=PK1, me,_Nonce=1,_Fee=300000)
+                   , a_signed_tx        (        PK1, me,       2,     400000)
+                   , a_signed_tx        (        PK1, me,       3,     500000)
+                   , a_signed_tx        (        PK2, me,       2,     700000)
+                   , a_signed_tx        (        PK2, me,       1,     800000)
+                   , signed_ct_create_tx(        PK4,           1,     300000,_GasPrice=1100000000)
+                   , signed_ct_call_tx  (        PK4,           2,     600000,          9000000000)
+                   , signed_ct_call_tx  (        PK4,           3,     900000,          1)
                    ],
 
                  [?assertEqual(ok, aec_tx_pool:push(Tx)) || Tx <- STxs],
@@ -220,7 +220,7 @@ tx_pool_test_() ->
                PK = new_pubkey(),
                MaxGas = aec_governance:block_gas_limit(),
                TopBlockHash = aec_chain:top_block_hash(),
-               STx1 = a_signed_tx(PK, me, Nonce1=1, _Fee1=1),
+               STx1 = a_signed_tx(PK, me, Nonce1=1, _Fee1=20000),
                ?assertEqual(ok, aec_tx_pool:push(STx1)),
                ?assertEqual([], aec_tx_pool:peek_visited()),
                [{PK, Nonce1, _}] = aec_tx_pool:peek_nonces(),
@@ -242,38 +242,38 @@ tx_pool_test_() ->
                MaxGas = aec_governance:block_gas_limit(),
 
                %% Only one tx in pool
-               STx1 = a_signed_tx(PK, me, Nonce1=1,_Fee1=1),
+               STx1 = a_signed_tx(PK, me, Nonce1=1,_Fee1=20000),
                ?assertEqual(ok, aec_tx_pool:push(STx1)),
                ?assertEqual({ok, [STx1]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
 
                aec_tx_pool:restore_mempool(),
                %% Order by nonce even if fee is higher
-               STx2 = a_signed_tx(PK, me, Nonce2=2, Fee2=5),
+               STx2 = a_signed_tx(PK, me, Nonce2=2, Fee2=200000),
                ?assertEqual(ok, aec_tx_pool:push(STx2)),
 
                ?assertEqual({ok, [STx1, STx2]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
 
                aec_tx_pool:restore_mempool(),
                %% Replace same nonce with the higher fee
-               STx3 = a_signed_tx(PK, me, Nonce1=1, 2),
+               STx3 = a_signed_tx(PK, me, Nonce1=1, 20000),
                ?assertEqual(ok, aec_tx_pool:push(STx3)),
                ?assertEqual({ok, [STx3, STx2]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
 
                aec_tx_pool:restore_mempool(),
                %% Replace same nonce with same fee but positive gas price (gas price of transaction without gas price is considered zero)
-               STx4 = signed_ct_create_tx(PK, Nonce2=2, Fee2=5,_GasPrice4=1100000000),
+               STx4 = signed_ct_create_tx(PK, Nonce2=2, Fee2=200000,_GasPrice4=1100000000),
                ?assertEqual(ok, aec_tx_pool:push(STx4)),
                ?assertEqual({ok, [STx3, STx4]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
 
                aec_tx_pool:restore_mempool(),
                %% Replace same nonce with same fee but higher gas price
-               STx5 = signed_ct_create_tx(PK, Nonce2=2, Fee2=5, 2000000000),
+               STx5 = signed_ct_create_tx(PK, Nonce2=2, Fee2=200000, 2000000000),
                ?assertEqual(ok, aec_tx_pool:push(STx5)),
                ?assertEqual({ok, [STx3, STx5]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
 
                aec_tx_pool:restore_mempool(),
                %% Order by nonce even if fee and gas price are higher
-               STx6 = signed_ct_call_tx(PK, _Nonce6=3,_Fee6=9,_GasPrice6=9000000000),
+               STx6 = signed_ct_call_tx(PK, _Nonce6=3,_Fee6=1000000,_GasPrice6=9000000000),
                ?assertEqual(ok, aec_tx_pool:push(STx6)),
                ?assertEqual({ok, [STx3, STx5, STx6]}, aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash())),
 
@@ -288,9 +288,9 @@ tx_pool_test_() ->
                %% Prepare 3 txs:
                %% 1st tx has the lowest gas
                %% Depends on aec_geovernance settings whether 2nd or 3rd is largest
-               STx1 = a_signed_tx(me, PK1, 1, 100),
-               STx2 = signed_ct_create_tx(PK2, 1, 100, 1000),
-               STx3 = signed_ct_call_tx(PK3, 1, 100, 1000),
+               STx1 = a_signed_tx(        me,   PK1,      1, 20000),
+               STx2 = signed_ct_create_tx(PK2,    1, 800000,  1000),
+               STx3 = signed_ct_call_tx(  PK3,    1, 800000,  1000),
 
                GasTx1 = aetx:gas(aetx_sign:tx(STx1)),
                GasTx2 = aetx:gas(aetx_sign:tx(STx2)),
@@ -298,7 +298,7 @@ tx_pool_test_() ->
 
                ?assert(GasTx2 > GasTx1),
                ?assert(GasTx3 > GasTx1),
-               {MinGasTx, MaxGasTx} = 
+               {MinGasTx, MaxGasTx} =
                    case GasTx2 > GasTx3 of
                        true -> { {STx3, GasTx3}, {STx2, GasTx2} };
                        false ->  { {STx2, GasTx2}, {STx3, GasTx3} }
@@ -344,8 +344,8 @@ tx_pool_test_() ->
       {"Ensure persistence",
        fun() ->
                %% Prepare a few txs.
-               STx1 = a_signed_tx(me, new_pubkey(), 1, 1),
-               STx2 = a_signed_tx(me, new_pubkey(), 2, 1),
+               STx1 = a_signed_tx(me, new_pubkey(), 1, 20000),
+               STx2 = a_signed_tx(me, new_pubkey(), 2, 20000),
                ?assertEqual(ok, aec_tx_pool:push(STx1)),
                ?assertEqual(ok, aec_tx_pool:push(STx2)),
                {ok, PoolTxs} = aec_tx_pool:peek(infinity),
@@ -366,7 +366,7 @@ tx_pool_test_() ->
                PubKey1 = new_pubkey(),
                PubKey2 = new_pubkey(),
                meck:expect(aec_genesis_block_settings, preset_accounts, 0,
-                  [{PubKey1, 100}, {PubKey2, 100}]),
+                  [{PubKey1, 100000}, {PubKey2, 100000}]),
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
                ok = aec_chain_state:insert_block(GenesisBlock),
@@ -381,7 +381,7 @@ tx_pool_test_() ->
                TopBlock = aec_chain:top_block(),
 
                %% Add a transaction to the chain
-               STx1 = a_signed_tx(PubKey1, new_pubkey(), 1, 1),
+               STx1 = a_signed_tx(PubKey1, new_pubkey(), 1, 20000),
                ?assertEqual(ok, aec_tx_pool:push(STx1)),
                {ok, USCandidate1, _} = aec_block_micro_candidate:create(TopBlock),
                {ok, Candidate1} = aec_keys:sign_micro_block(USCandidate1),
@@ -395,12 +395,12 @@ tx_pool_test_() ->
                             aec_tx_pool:push(STx1)),
 
                %% A transaction with too low nonce should be rejected
-               STx2 = a_signed_tx(PubKey1, new_pubkey(), 1, 1),
+               STx2 = a_signed_tx(PubKey1, new_pubkey(), 1, 20000),
                ?assertEqual({error, account_nonce_too_high},
                             aec_tx_pool:push(STx2)),
 
                %% A transaction with too high nonce should _NOT_ be rejected
-               STx3 = a_signed_tx(PubKey1, new_pubkey(), 5, 1),
+               STx3 = a_signed_tx(PubKey1, new_pubkey(), 5, 20000),
                ?assertEqual(ok, aec_tx_pool:push(STx3)),
 
                %% A transaction with too low fee should be rejected
@@ -410,19 +410,19 @@ tx_pool_test_() ->
 
                %% A transaction with too low gas price should be rejected
                meck:expect(aec_governance, minimum_gas_price, 0, 1),
-               ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 10, 100, 1))),
-               ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 20, 100, 1))),
-               ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 11, 100, 2))),
-               ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 21, 100, 2))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 10, 1000000, 1))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 20, 1000000, 1))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 11, 2000000, 2))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 21, 2000000, 2))),
                meck:expect(aec_governance, minimum_gas_price, 0, 2),
-               ?assertEqual({error, too_low_gas_price}, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 12, 100, 0))),
-               ?assertEqual({error, too_low_gas_price}, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 22, 100, 0))),
-               ?assertEqual({error, too_low_gas_price}, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 13, 100, 1))),
-               ?assertEqual({error, too_low_gas_price}, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 23, 100, 1))),
-               ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 14, 100, 2))),
-               ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 24, 100, 2))),
-               ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 15, 100, 3))),
-               ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 25, 100, 3))),
+               ?assertEqual({error, too_low_gas_price}, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 12, 2000000, 0))),
+               ?assertEqual({error, too_low_gas_price}, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 22, 2000000, 0))),
+               ?assertEqual({error, too_low_gas_price}, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 13, 2000000, 1))),
+               ?assertEqual({error, too_low_gas_price}, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 23, 2000000, 1))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 14, 2000000, 2))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 24, 2000000, 2))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_create_tx(PubKey1, 15, 4000000, 3))),
+               ?assertEqual(ok, aec_tx_pool:push(signed_ct_call_tx  (PubKey1, 25, 4000000, 3))),
 
                %% A transaction with too low ttl should be rejected
                %% First add another block to make the chain high enough to
@@ -432,7 +432,7 @@ tx_pool_test_() ->
                ok = aec_chain_state:insert_block(Candidate2),
                ?assertEqual(Top2, aec_chain:top_block_hash()),
 
-               STx5 = a_signed_tx(PubKey1, new_pubkey(), 6, 1, 1),
+               STx5 = a_signed_tx(PubKey1, new_pubkey(), 6, 40000, 1),
                ?assertEqual({error, ttl_expired}, aec_tx_pool:push(STx5)),
 
                ok
@@ -445,9 +445,9 @@ tx_pool_test_() ->
 
             %% Prepare three transactions
             PubKey = new_pubkey(),
-            STx1 = a_signed_tx(PubKey, PubKey, 1, 1),
-            STx2 = a_signed_tx(PubKey, PubKey, 2, 1),
-            STx3 = a_signed_tx(PubKey, PubKey, 3, 1),
+            STx1 = a_signed_tx(PubKey, PubKey, 1, 20000),
+            STx2 = a_signed_tx(PubKey, PubKey, 2, 20000),
+            STx3 = a_signed_tx(PubKey, PubKey, 3, 20000),
 
             %% Post them
             ?assertEqual(ok, aec_tx_pool:push(STx1)),

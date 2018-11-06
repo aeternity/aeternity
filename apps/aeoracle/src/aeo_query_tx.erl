@@ -127,7 +127,7 @@ fee(#oracle_query_tx{fee = F}) ->
 
 -spec gas(tx()) -> non_neg_integer().
 gas(#oracle_query_tx{}) ->
-    aec_governance:tx_base_gas(oracle_query_tx).
+    0.
 
 -spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#oracle_query_tx{ttl = TTL}) ->

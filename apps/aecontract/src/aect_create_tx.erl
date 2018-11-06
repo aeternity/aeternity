@@ -102,8 +102,8 @@ amount(#contract_create_tx{amount = X}) ->
     X.
 
 -spec gas(tx()) -> amount().
-gas(#contract_create_tx{gas = Gas}) ->
-    aec_governance:tx_base_gas(contract_create_tx) + Gas.
+gas(#contract_create_tx{} = Tx) ->
+    gas_limit(Tx).
 
 -spec gas_limit(tx()) -> amount().
 gas_limit(#contract_create_tx{gas = X}) ->

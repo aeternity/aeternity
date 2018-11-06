@@ -74,11 +74,11 @@ tests: # test specific settings
       blocks_to_mine: 3
       send_tokens:
         alice: 1
-        bob: 100
+        bob: 100000
       spend_tx:
         small_amount: 1 # Added to tx fee, less than tokens that Bob has.
         large_amount: 1000000000000000000000 # More than tokens that Bob has.
-        fee: 20
+        fee: 20000
     test_send_by_name:
     # Bob registers a name 'bob.test'
     # Alice should be able to send tokens to Bob using that name
@@ -86,8 +86,8 @@ tests: # test specific settings
         miner: dev1
       blocks_to_mine: 3
       send_tokens:
-        alice: 10
-        bob: 10
+        alice: 1000000
+        bob: 1000000
       name_register:
         name: "bob.test"
       spend_tx:
@@ -109,7 +109,7 @@ tests: # test specific settings
       blocks_to_mine: 5
       alice:
         amount: 1000000
-        fee: 1
+        fee: 200000
       create_contract:
         vm_version: 1
         deposit: 2
@@ -117,7 +117,7 @@ tests: # test specific settings
         gas: 75000
         gas_used: 178
         gas_price: 1
-        fee: 11
+        fee: 200000
         function: "init"
         argument: "()"
     test_contract_call:
@@ -126,10 +126,10 @@ tests: # test specific settings
       blocks_to_mine: 7
       alice:
         amount: 1000000
-        fee: 1
+        fee: 200000
       contract_call:
         vm_version: 1
-        fee: 1
+        fee: 500000
         amount: 10
         gas: 5500
         gas_price: 1
@@ -141,18 +141,18 @@ tests: # test specific settings
         node: dev1
       blocks_to_mine: 7
       alice:
-        amount: 50
-        fee: 1
+        amount: 50000
+        fee: 20000
       spend_tx:
         amount: 13
-        fee: 1
+        fee: 20000
         recipient: ak_kMPkyaK7Wqcwz2VFXaSzUREpNTnypUBXYz8mDL1BRGUFjYoZa
   test_api_usage_contracts_counter:
     miner_node: dev1
     blocks_to_mine: 7
     users:
       a:
-        balance: 50000
+        balance: 1000000
       b:
-        balance: 50000
-    min_spend_tx_fee: 1
+        balance: 1000000
+    min_spend_tx_fee: 20000

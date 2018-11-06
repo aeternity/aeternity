@@ -898,7 +898,7 @@ slash_not_participant(Cfg) ->
                  positive(fun close_solo_/2),
                  fun(#{state := S0} = Props) ->
                     {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-                    S1 = aesc_test_utils:set_account_balance(NewAcc, 1000, S),
+                    S1 = aesc_test_utils:set_account_balance(NewAcc, 500000, S),
                     PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
                     Props#{state => S1, from_pubkey => NewAcc, from_privkey => PrivKey}
                  end,
@@ -2305,8 +2305,8 @@ fp_use_onchain_oracle(Cfg) ->
     QueryFee = 2,
     CallOnChain =
         fun(Owner, Forcer) ->
-            IAmt0 = 30,
-            RAmt0 = 30,
+            IAmt0 = 5000000,
+            RAmt0 = 5000000,
             ContractCreateRound = 10,
             run(#{cfg => Cfg, initiator_amount => IAmt0,
                               responder_amount => RAmt0,
@@ -2412,8 +2412,8 @@ fp_use_onchain_name_resolution(Cfg) ->
 
     CallOnChain =
         fun(Owner, Forcer) ->
-            IAmt0 = 30,
-            RAmt0 = 30,
+            IAmt0 = 5000000,
+            RAmt0 = 5000000,
             ContractCreateRound = 10,
             run(#{cfg => Cfg, initiator_amount => IAmt0,
                               responder_amount => RAmt0,
@@ -4295,7 +4295,7 @@ create_contract_in_onchain_trees(ContractName, InitArg, Deposit) ->
                                  gas        => 123467,
                                  gas_price  => 1,
                                  call_data  => CallData,
-                                 fee        => 10}), 
+                                 fee        => 10}),
         {contract_create_tx, CreateTx} = aetx:specialize_type(AetxCreateTx),
         Env = tx_env(Props),
         {ok, _} = aect_create_tx:check(CreateTx, Trees0, Env),
@@ -4835,7 +4835,7 @@ test_not_participant(Cfg, Fun, InitProps) ->
         [positive(fun create_channel_/2),
          fun(#{state := S0} = Props) ->
             {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-            S1 = aesc_test_utils:set_account_balance(NewAcc, 1000, S),
+            S1 = aesc_test_utils:set_account_balance(NewAcc, 500000, S),
             PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
             Props#{state => S1, from_pubkey => NewAcc, from_privkey => PrivKey}
          end,
@@ -4847,7 +4847,7 @@ register_new_oracle(QFormat, RFormat, QueryFee) ->
         run(Props0,
            [fun(#{state := S0} = Props) ->
                 {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-                S1 = aesc_test_utils:set_account_balance(NewAcc, 1000, S),
+                S1 = aesc_test_utils:set_account_balance(NewAcc, 500000, S),
                 Props#{state => S1, oracle => NewAcc}
             end,
             fun(#{state := S, oracle := Oracle} = Props) ->
@@ -4904,7 +4904,7 @@ register_name(Name, Pointers0) ->
            [% create dummy account to hold the name
             fun(#{state := S0} = Props) ->
                 {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-                S1 = aesc_test_utils:set_account_balance(NewAcc, 1000, S),
+                S1 = aesc_test_utils:set_account_balance(NewAcc, 1000000, S),
                 Props#{state => S1, name_owner => NewAcc}
             end,
             % preclaim

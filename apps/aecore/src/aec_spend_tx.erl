@@ -95,7 +95,7 @@ fee(#spend_tx{fee = F}) ->
 
 -spec gas(tx()) -> non_neg_integer().
 gas(#spend_tx{}) ->
-    aec_governance:tx_base_gas(spend_tx).
+    0.
 
 -spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#spend_tx{ttl = TTL}) ->

@@ -113,10 +113,10 @@ test_simple_same_node_channel(Cfg) ->
     ChannelOpts = #{
         initiator_node => node1,
         initiator_id => ?BOB,
-        initiator_amount => 80,
+        initiator_amount => 50000,
         responder_node => node1,
         responder_id => ?ALICE,
-        responder_amount => 80,
+        responder_amount => 50000,
         push_amount => 2
     },
     simple_channel_test(ChannelOpts, Cfg).
@@ -125,10 +125,10 @@ test_simple_different_nodes_channel(Cfg) ->
     ChannelOpts = #{
         initiator_node => node1,
         initiator_id   => ?BOB,
-        initiator_amount => 80,
+        initiator_amount => 50000,
         responder_node => node2,
         responder_id => ?ALICE,
-        responder_amount => 80,
+        responder_amount => 50000,
         push_amount => 2
     },
     simple_channel_test(ChannelOpts, Cfg).
@@ -149,37 +149,38 @@ simple_channel_test(ChannelOpts, Cfg) ->
     start_node(node1, Cfg),
     start_node(node2, Cfg),
     wait_for_startup([node1, node2], 4, Cfg),  %% make sure there is some money in accounts
-    wait_for_value({balance, maps:get(pubkey, ?MIKE), 1000}, [node1], 10000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, ?MIKE), 1000000}, [node1], 10000, Cfg),
 
-    post_spend_tx(node1, ?MIKE, IAccount, 1, #{amount => 200}),
-    wait_for_value({balance, maps:get(pubkey, IAccount), 200}, NodeNames, 10000, Cfg),
+    post_spend_tx(node1, ?MIKE, IAccount, 1, #{amount => 200000}),
+    wait_for_value({balance, maps:get(pubkey, IAccount), 200000}, NodeNames, 10000, Cfg),
 
-    post_spend_tx(node1, ?MIKE, RAccount, 2, #{amount => 200}),
-    wait_for_value({balance, maps:get(pubkey, RAccount), 200}, NodeNames, 10000, Cfg),
+    post_spend_tx(node1, ?MIKE, RAccount, 2, #{amount => 200000}),
+    wait_for_value({balance, maps:get(pubkey, RAccount), 200000}, NodeNames, 10000, Cfg),
 
     {ok, Chan, TxHash, OpenFee} = sc_open(ChannelOpts, Cfg),
     wait_for_value({txs_on_chain, [TxHash]}, NodeNames, 5000, Cfg),
-    wait_for_value({balance, maps:get(pubkey, IAccount), 200 - IAmt - OpenFee}, NodeNames, 10000, Cfg),
-    wait_for_value({balance, maps:get(pubkey, RAccount), 200 - RAmt}, NodeNames, 10000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, IAccount), 200000 - IAmt - OpenFee}, NodeNames, 10000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, RAccount), 200000 - RAmt}, NodeNames, 10000, Cfg),
 
     {ok, TxHash1, WFee1} = sc_withdraw(Chan, initiator, 20),
     wait_for_value({txs_on_chain, [TxHash1]}, NodeNames, 5000, Cfg),
-    wait_for_value({balance, maps:get(pubkey, IAccount), 200 - IAmt - OpenFee + 20 - WFee1}, NodeNames, 10000, Cfg),
-    wait_for_value({balance, maps:get(pubkey, RAccount), 200 - RAmt}, NodeNames, 10000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, IAccount), 200000 - IAmt - OpenFee + 20 - WFee1}, NodeNames, 10000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, RAccount), 200000 - RAmt}, NodeNames, 10000, Cfg),
 
     {ok, TxHash2, WFee2} = sc_withdraw(Chan, responder, 50),
     wait_for_value({txs_on_chain, [TxHash2]}, NodeNames, 5000, Cfg),
-    wait_for_value({balance, maps:get(pubkey, IAccount), 200 - IAmt - OpenFee + 20 - WFee1}, NodeNames, 10000, Cfg),
-    wait_for_value({balance, maps:get(pubkey, RAccount), 200 - RAmt + 50 - WFee2}, NodeNames, 10000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, IAccount), 200000 - IAmt - OpenFee + 20 - WFee1}, NodeNames, 10000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, RAccount), 200000 - RAmt + 50 - WFee2}, NodeNames, 10000, Cfg),
 
     {ok, CloseTxHash, IChange, RChange} = sc_close_mutual(Chan, initiator),
 
-    ?assertEqual(IAmt - 20 - OpenFee - PushAmount, IChange),
-    ?assertEqual(RAmt - 50 + PushAmount, RChange),
-    
+    SplitOpenFee = 10000,
+    ?assertEqual(IAmt - 20 - SplitOpenFee - PushAmount, IChange),
+    ?assertEqual(RAmt - 50 - SplitOpenFee + PushAmount, RChange),
+
     wait_for_value({txs_on_chain, [CloseTxHash]}, NodeNames, 5000, Cfg),
-    wait_for_value({balance, maps:get(pubkey, IAccount), 200 - IAmt - OpenFee + 20 - WFee1 + IChange}, NodeNames, 10000, Cfg),
-    wait_for_value({balance, maps:get(pubkey, RAccount), 200 - RAmt + 50 - WFee2 + RChange}, NodeNames, 10000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, IAccount), 200000 - IAmt - OpenFee + 20 - WFee1 + IChange}, NodeNames, 10000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, RAccount), 200000 - RAmt + 50 - WFee2 + RChange}, NodeNames, 10000, Cfg),
 
 
     ok.
@@ -196,28 +197,28 @@ on_chain_channel(Cfg) ->
     NodeNames = [node1],
     start_node(node1, Cfg),
     wait_for_startup([node1], 4, Cfg),  %% make sure ?MIKE has some money
-    #{tx_hash := Hash1} = aest_nodes:post_spend_tx(node1, ?MIKE, ?BOB, 1, #{amount => 1000}),
-    #{tx_hash := Hash2} = aest_nodes:post_spend_tx(node1, ?MIKE, ?ALICE, 2, #{amount => 1000}),
+    #{tx_hash := Hash1} = aest_nodes:post_spend_tx(node1, ?MIKE, ?BOB, 1, #{amount => 400000}),
+    #{tx_hash := Hash2} = aest_nodes:post_spend_tx(node1, ?MIKE, ?ALICE, 2, #{amount => 400000}),
     aest_nodes:wait_for_value({txs_on_chain, [Hash1, Hash2]}, NodeNames, 10000, []),
     wait_for_value({balance, maps:get(pubkey, ?BOB), 100}, NodeNames, 5000, []),
     wait_for_value({balance, maps:get(pubkey, ?ALICE), 100}, NodeNames, 5000, []),
 
-    #{tx_hash := CreateHash, channel_id := ChannelId} = 
+    #{tx_hash := CreateHash, channel_id := ChannelId} =
         aest_nodes:post_create_state_channel_tx(node1, ?BOB, ?ALICE, #{ nonce => 1 }),
     aest_nodes:wait_for_value({txs_on_chain, [CreateHash]}, NodeNames, 10000, []),
 
-    #{tx_hash := DepositHash} = 
+    #{tx_hash := DepositHash} =
         aest_nodes:post_deposit_state_channel_tx(node1, ?BOB, ?ALICE, ChannelId, #{ nonce => 2, amount => 20, round => 1 }),
     aest_nodes:wait_for_value({txs_on_chain, [DepositHash]}, NodeNames, 10000, []),
 
-    #{tx_hash := WithdrawHash} = 
+    #{tx_hash := WithdrawHash} =
         aest_nodes:post_withdraw_state_channel_tx(node1, ?ALICE, ?BOB, ChannelId, #{ nonce => 1, amount => 20, round => 2 }),
     aest_nodes:wait_for_value({txs_on_chain, [WithdrawHash]}, NodeNames, 10000, []),
 
 
-    #{tx_hash := CloseHash} = 
-        aest_nodes:post_close_mutual_state_channel_tx(node1, ?BOB, ?ALICE, ChannelId, 
-                                                      #{ nonce => 3, fee => 1, 
+    #{tx_hash := CloseHash} =
+        aest_nodes:post_close_mutual_state_channel_tx(node1, ?BOB, ?ALICE, ChannelId,
+                                                      #{ nonce => 3, fee => 20000,
                                                          initiator_amount_final => 59,
                                                          responder_amount_final => 100 }),
     aest_nodes:wait_for_value({txs_on_chain, [CloseHash]}, NodeNames, 10000, []),
