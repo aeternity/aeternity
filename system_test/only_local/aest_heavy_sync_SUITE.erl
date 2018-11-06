@@ -117,7 +117,7 @@ many_spend_txs(Cfg) ->
     Gas = aetx:gas(FakeTx),
 
     TxsPerMB = aec_governance:block_gas_limit() div Gas,
-    ct:log("We can put ~p Txs in a micro block (gas per spend ~p, ~p)\n", [TxsPerMB, Gas, FakeTx]),
+    ct:log("We can put approx ~p Txs in a micro block (gas per spend ~p, ~p)\n", [TxsPerMB, Gas, FakeTx]),
 
     start_node(node3, Cfg),
     wait_for_startup([node3], 0, Cfg),
@@ -147,8 +147,8 @@ many_spend_txs(Cfg) ->
     FoundNode3 = find_txs(node3, TxHashes, #{}, erlang:system_time(seconds) + 120),
     ct:log("MicroBlock distribution ~p", [FoundNode3]),
 
-    %% It's to be expected that at least one micro block contains max nr of transactions
-    ?assertEqual(TxsPerMB, lists:max(maps:values(FoundNode3))),
+    %% It's to be expected that at least one micro block contains almost max nr of transactions
+    ?assert(abs(TxsPerMB - lists:max(maps:values(FoundNode3))) =< 2),
 
     %% If we have synced one more key block, all transactions are present!
     wait_for_startup([node2], Height, Cfg),
