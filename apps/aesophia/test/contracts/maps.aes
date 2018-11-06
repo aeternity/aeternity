@@ -26,6 +26,12 @@ contract Maps =
   function get_state_i(k) = get_i(k, state.map_i)
   function get_state_s(k) = get_s(k, state.map_s)
 
+  // m[k = v]
+  function get_def_i(k, v, m : map(int,    pt)) = m[k = v]
+  function get_def_s(k, v, m : map(string, pt)) = m[k = v]
+  function get_def_state_i(k, v) = get_def_i(k, v, state.map_i)
+  function get_def_state_s(k, v) = get_def_s(k, v, state.map_s)
+
   // m{[k] = v}
   function set_i(k, p, m : map(int,    pt)) = m{ [k] = p }
   function set_s(k, p, m : map(string, pt)) = m{ [k] = p }
@@ -43,6 +49,10 @@ contract Maps =
   function addx_s(k, d, m : map(string, pt)) = m{ [k].x @ x = x + d }
   function addx_state_i(k, d) = put(state{ map_i[k].x @ x = x + d })
   function addx_state_s(k, d) = put(state{ map_s[k].x @ x = x + d })
+
+  // m{[k = def] @ x = v }
+  function addx_def_i(k, v, d, m : map(int,    pt)) = m{ [k = v].x @ x = x + d }
+  function addx_def_s(k, v, d, m : map(string, pt)) = m{ [k = v].x @ x = x + d }
 
   // Map.member
   function member_i(k, m : map(int,    pt)) = Map.member(k, m)

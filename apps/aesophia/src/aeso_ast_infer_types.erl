@@ -491,6 +491,14 @@ infer_expr(Env, {map_get, Attrs, Map, Key}) ->  %% map lookup
     Map1 = check_expr(Env, Map, MapType),
     Key1 = check_expr(Env, Key, KeyType),
     {typed, Attrs, {map_get, Attrs, Map1, Key1}, ValType};
+infer_expr(Env, {map_get, Attrs, Map, Key, Val}) ->  %% map lookup with default
+    KeyType = fresh_uvar(Attrs),
+    ValType = fresh_uvar(Attrs),
+    MapType = map_t(Attrs, KeyType, ValType),
+    Map1 = check_expr(Env, Map, MapType),
+    Key1 = check_expr(Env, Key, KeyType),
+    Val1 = check_expr(Env, Val, ValType),
+    {typed, Attrs, {map_get, Attrs, Map1, Key1, Val1}, ValType};
 infer_expr(Env, {map, Attrs, KVs}) ->   %% map construction
     KeyType = fresh_uvar(Attrs),
     ValType = fresh_uvar(Attrs),
@@ -530,11 +538,19 @@ check_map_update(Env, {field, Ann, [{map_get, Ann1, Key}], Val}, KeyType, ValTyp
     Key1 = check_expr(Env, Key, KeyType),
     Val1 = check_expr(Env, Val, ValType),
     {field, Ann, [{map_get, Ann1, Key1}], Val1};
+check_map_update(_Env, Upd={field, _Ann, [{map_get, _Ann1, _Key, _Def}], _Val}, _KeyType, _ValType) ->
+    type_error({unnamed_map_update_with_default, Upd});
 check_map_update(Env, {field, Ann, [{map_get, Ann1, Key}], Id, Val}, KeyType, ValType) ->
     FunType = {fun_t, Ann, [], [ValType], ValType},
     Key1    = check_expr(Env, Key, KeyType),
     Fun     = check_expr(Env, {lam, Ann1, [{arg, Ann1, Id, ValType}], Val}, FunType),
     {field_upd, Ann, [{map_get, Ann1, Key1}], Fun};
+check_map_update(Env, {field, Ann, [{map_get, Ann1, Key, Def}], Id, Val}, KeyType, ValType) ->
+    FunType = {fun_t, Ann, [], [ValType], ValType},
+    Key1    = check_expr(Env, Key, KeyType),
+    Def1    = check_expr(Env, Def, ValType),
+    Fun     = check_expr(Env, {lam, Ann1, [{arg, Ann1, Id, ValType}], Val}, FunType),
+    {field_upd, Ann, [{map_get, Ann1, Key1, Def1}], Fun};
 check_map_update(_, {field, Ann, Flds, _}, _, _) ->
     error({nested_map_updates_not_implemented, Ann, Flds}).
 
@@ -1487,6 +1503,14 @@ update_key({field, Ann, [K = {map_get, _, _} | Rest], Value}) ->
     {map_key, fun(Flds) -> {field, Ann, [K], {id, [], "__x"},
                             desugar(map_or_record(Ann, {id, [], "__x"}, Flds))}
               end, [{field, Ann, Rest, Value}]};
+update_key({field, Ann, [K = {map_get, _, _, _} | Rest], Value}) ->
+    {map_key, fun(Flds) -> {field, Ann, [K], {id, [], "__x"},
+                            desugar(map_or_record(Ann, {id, [], "__x"}, Flds))}
+              end, [{field, Ann, Rest, Value}]};
+update_key({field, Ann, [K = {map_get, _, _, _} | Rest], Id, Value}) ->
+    {map_key, fun(Flds) -> {field, Ann, [K], {id, [], "__x"},
+                            desugar(map_or_record(Ann, {id, [], "__x"}, Flds))}
+              end, [{field, Ann, Rest, Id, Value}]};
 update_key({field, Ann, [K = {map_get, _, _} | Rest], Id, Value}) ->
     {map_key, fun(Flds) -> {field, Ann, [K], {id, [], "__x"},
                             desugar(map_or_record(Ann, {id, [], "__x"}, Flds))}
@@ -1494,13 +1518,15 @@ update_key({field, Ann, [K = {map_get, _, _} | Rest], Id, Value}) ->
 
 map_or_record(Ann, Val, Flds = [Fld | _]) ->
     Kind = case element(3, Fld) of
-             [{proj, _, _}    | _] -> record;
-             [{map_get, _, _} | _] -> map
+             [{proj, _, _}       | _] -> record;
+             [{map_get, _, _}    | _] -> map;
+             [{map_get, _, _, _} | _] -> map
            end,
     {Kind, Ann, Val, Flds}.
 
 elim_key({proj, _, {id, _, Name}}) -> Name;
-elim_key({map_get, _, _})          -> map_key.  %% no grouping on map keys (yet)
+elim_key({map_get, _, _, _})       -> map_key;  %% no grouping on map keys (yet)
+elim_key({map_get, _, _})          -> map_key.
 
 updates_key(map_key, Updates) -> {[], Updates};
 updates_key(Name, Updates) ->
