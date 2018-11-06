@@ -97,8 +97,13 @@ fee(#channel_force_progress_tx{fee = Fee}) ->
     Fee.
 
 -spec gas(tx()) -> non_neg_integer().
-gas(#channel_force_progress_tx{}) ->
-    0.
+gas(#channel_force_progress_tx{update = Update}) ->
+    case aesc_offchain_update:extract_amounts(Update) of
+        {_Amount, _GasPrice, Gas} ->
+            Gas;
+        not_call ->
+            0
+    end.
 
 -spec ttl(tx()) -> aetx:tx_ttl().
 ttl(#channel_force_progress_tx{ttl = TTL}) ->

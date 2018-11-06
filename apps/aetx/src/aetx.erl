@@ -183,7 +183,9 @@ gas_price(#aetx{}) ->
 
 -spec min_gas(Tx :: tx()) -> Gas :: non_neg_integer().
 min_gas(#aetx{ type = Type, size = Size }) when
-      Type =:= contract_call_tx; Type =:= contract_create_tx ->
+      Type =:= contract_create_tx;
+      Type =:= contract_call_tx;
+      Type =:= channel_force_progress_tx ->
     aec_governance:tx_base_gas(Type) + Size * aec_governance:byte_gas();
 min_gas(#aetx{} = Tx) ->
     gas(Tx).
