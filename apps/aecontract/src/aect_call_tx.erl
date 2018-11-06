@@ -188,10 +188,10 @@ process(#contract_call_tx{caller_id   = CallerId,
             ok -> Trees3;
             E  ->
                 lager:debug("Contract call error ~w ~w~n",[E, Call]),
-                %% We still need to charge gas and fee
-                case Charges of
-                    0 -> Trees1;
-                    _ -> spend(CallerPubkey, ContractPubkey, 0, Charges, Nonce, Trees1, Env)
+                %% We still need to charge gas and fee for the top-level call
+                case aetx_env:context(Env) of
+                    aetx_transaction -> spend(CallerPubkey, ContractPubkey, 0, Charges, Nonce, Trees1, Env);
+                    aetx_contract    -> Trees1
                 end
         end,
 
