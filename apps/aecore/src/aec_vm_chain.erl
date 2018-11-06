@@ -658,12 +658,8 @@ call_contract(Target, Gas, Value, CallData, CallStack,
                                     gas_price   => 0,
                                     call_data   => CallData,
                                     call_stack  => CallStack }),
-            case apply_transaction(CallTx, State) of
-                {ok, State1} ->
-                    Trees1 = get_top_trees(State1),
-                    CallId  = aect_call:id(ContractKey, Nonce, Target),
-                    Call    = aect_call_state_tree:get_call(Target, CallId,
-                                                            aec_trees:calls(Trees1)),
+            case apply_call_transaction(CallTx, State) of
+                {ok, Call, State1} ->
                     GasUsed = aect_call:gas_used(Call),
                     Result  =
                         case aect_call:return_type(Call) of
@@ -709,6 +705,16 @@ do_set_store(Store, PubKey, Trees) ->
             {value, Contract} -> aect_contracts:set_state(Store, Contract)
         end,
     aect_state_tree:enter_contract(NewContract, ContractsTree).
+
+apply_call_transaction(Tx, #state{tx_env = Env} = State) ->
+    Trees = get_top_trees(State),
+    case aetx:check(Tx, Trees, Env) of
+        {ok, Trees1} ->
+            {ok, Call, Trees2} = aetx:custom_apply(process_call, Tx, Trees1, Env),
+            State1 = set_top_trees(State, Trees2),
+            {ok, Call, State1};
+        {error, _} = E -> E
+    end.
 
 apply_transaction(Tx, #state{tx_env = Env } = State) ->
     Trees = get_top_trees(State),
