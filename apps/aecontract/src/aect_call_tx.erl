@@ -357,8 +357,8 @@ amount(#contract_call_tx{amount = Amount}) ->
     Amount.
 
 -spec gas(tx()) -> aect_contracts:amount().
-gas(#contract_call_tx{gas = Gas}) ->
-    Gas.
+gas(#contract_call_tx{} = Tx) ->
+    gas_limit(Tx).
 
 -spec gas_limit(tx()) -> aect_contracts:amount().
 gas_limit(#contract_call_tx{gas = Gas}) ->
