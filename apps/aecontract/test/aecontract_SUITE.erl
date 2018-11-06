@@ -626,16 +626,16 @@ call_contract_error_value(_Cfg) ->
     ?assertEqual(Bal(Acc1, S1) - (F + GasUsed2 + 14), Bal(Acc1, S2)),
     ?assertEqual(Bal(RemC, S1) + (14 - 10), Bal(RemC, S2)),
     ?assertEqual(Bal(IdC, S1) + 10, Bal(IdC, S2)),
-    %% Check tranfer of value in calls that err.
+    %% Check no transfer of value in calls that err.
     {{{error, <<"out_of_gas">>}, GasUsed3}, S3} = call_contract(Acc1, IdC, err, word, {}, DefaultOpts#{amount := 5, return_gas_used => true}, S2),
     ?assertEqual(G, GasUsed3),
-    ?assertEqual(Bal(Acc1, S2) - (F + G + 5), Bal(Acc1, S3)),
+    ?assertEqual(Bal(Acc1, S2) - (F + G), Bal(Acc1, S3)),
     ?assertEqual(Bal(RemC, S2), Bal(RemC, S3)),
-    ?assertEqual(Bal(IdC, S2) + 5, Bal(IdC, S3)),
+    ?assertEqual(Bal(IdC, S2), Bal(IdC, S3)),
     {{{error, <<"out_of_gas">>}, GasUsed4}, S4} = call_contract(Acc1, RemC, callErr, word, {IdC, 7}, DefaultOpts#{amount := 13, return_gas_used => true}, S3),
     ?assertEqual(G, GasUsed4),
-    ?assertEqual(Bal(Acc1, S3) - (F + G + 13), Bal(Acc1, S4)),
-    ?assertEqual(Bal(RemC, S3) + 13, Bal(RemC, S4)),
+    ?assertEqual(Bal(Acc1, S3) - (F + G), Bal(Acc1, S4)),
+    ?assertEqual(Bal(RemC, S3), Bal(RemC, S4)),
     ?assertEqual(Bal(IdC, S3), Bal(IdC, S4)),
     ok.
 
@@ -1752,10 +1752,10 @@ sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs(_Cfg) ->
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + GasPrice * gu_query(GasUsed)),
                  Bal(UserAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue, Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(OperatorAcc, S1)             , Bal(OperatorAcc, S2)).
+    ?assertEqual(Bal(OracleAcc, S1),   Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(OperatorAcc, S1), Bal(OperatorAcc, S2)).
 %%
 sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__remote(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
@@ -1777,11 +1777,11 @@ sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__remote(_Cfg) ->
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + GasPrice * gu_query(GasUsed)),
                  Bal(UserAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1)               , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(CallingCt, S1) + QueryTxValue, Bal(CallingCt, S2)),
-    ?assertEqual(Bal(OperatorAcc, S1)             , Bal(OperatorAcc, S2)).
+    ?assertEqual(Bal(OracleAcc, S1),   Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(CallingCt, S1),   Bal(CallingCt, S2)),
+    ?assertEqual(Bal(OperatorAcc, S1), Bal(OperatorAcc, S2)).
 
 %% Attempt to create query with call tx value smaller than query fee
 %% uses oracle contract balance: oracle contract should implement
@@ -1844,9 +1844,9 @@ sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_poor_oracle(_C
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue        , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+    ?assertEqual(Bal(OperatorAcc, S1) , Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1),  Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + GasPrice * gu_query(GasUsed)),
                  Bal(UserAcc, S2)).
 %%
 sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_rich_oracle_thanks_to_contract_check(_Cfg) ->
@@ -1869,9 +1869,9 @@ sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_rich_oracle_th
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue        , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+    ?assertEqual(Bal(OperatorAcc, S1), Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1),   Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + GasPrice * gu_query(GasUsed)),
                  Bal(UserAcc, S2)).
 %%
 sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__remote(_Cfg) ->
@@ -1924,10 +1924,10 @@ sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_poor_oracle__r
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(OperatorAcc, S1)             , Bal(OperatorAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1)               , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(CallingCt, S1) + QueryTxValue, Bal(CallingCt, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+    ?assertEqual(Bal(OperatorAcc, S1), Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1),   Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(CallingCt, S1),   Bal(CallingCt, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + GasPrice * gu_query(GasUsed)),
                  Bal(UserAcc, S2)).
 %%
 sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_rich_oracle_thanks_to_contract_check__remote(_Cfg) ->
@@ -1950,10 +1950,10 @@ sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_rich_oracle_th
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(OperatorAcc, S1)             , Bal(OperatorAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1)               , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(CallingCt, S1) + QueryTxValue, Bal(CallingCt, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+    ?assertEqual(Bal(OperatorAcc, S1), Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1),   Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(CallingCt, S1),   Bal(CallingCt, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + GasPrice * gu_query(GasUsed)),
                  Bal(UserAcc, S2)).
 %%
 sophia_oracles_qfee__remote_contract_query_value_below_qfee_takes_from_rich_oracle__remote(_Cfg) ->
@@ -2010,10 +2010,10 @@ sophia_oracles_qfee__remote_contract_query_value_below_qfee_does_not_take_from_p
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(OperatorAcc, S1)             , Bal(OperatorAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1)               , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(CallingCt, S1) + QueryTxValue, Bal(CallingCt, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+    ?assertEqual(Bal(OperatorAcc, S1), Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1),   Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(CallingCt, S1),   Bal(CallingCt, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + GasPrice * gu_query(GasUsed)),
                  Bal(UserAcc, S2)).
 %%
 sophia_oracles_qfee__remote_contract_query_value_below_qfee_does_not_take_from_rich_oracle_thanks_to_contract_check__remote(_Cfg) ->
@@ -2038,10 +2038,10 @@ sophia_oracles_qfee__remote_contract_query_value_below_qfee_does_not_take_from_r
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(OperatorAcc, S1)             , Bal(OperatorAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1)               , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(CallingCt, S1) + QueryTxValue, Bal(CallingCt, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+    ?assertEqual(Bal(OperatorAcc, S1), Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1),   Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(CallingCt, S1),   Bal(CallingCt, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + GasPrice * gu_query(GasUsed)),
                  Bal(UserAcc, S2)).
 
 %% Attempt to create query with query fee larger than the one
@@ -2106,9 +2106,9 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_does_not_take_from_poor_
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(OperatorAcc, S1)                     , Bal(OperatorAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue        , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+    ?assertEqual(Bal(OperatorAcc, S1), Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1),   Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + GasPrice * gu_query(GasUsed)),
                  Bal(UserAcc, S2)).
 %%
 sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_does_not_take_from_rich_oracle_thanks_to_contract_check(_Cfg) ->
@@ -2131,9 +2131,9 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_does_not_take_from_rich_
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(OperatorAcc, S1)             , Bal(OperatorAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue, Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+    ?assertEqual(Bal(OperatorAcc, S1), Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(OracleAcc, S1),   Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + GasPrice * gu_query(GasUsed)),
                  Bal(UserAcc, S2)).
 
 %% Failure after query creation primop succeeds.
@@ -2167,10 +2167,10 @@ sophia_oracles_qfee__error_after_primop(_Cfg) ->
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + GasPrice * gu_query(GasUsed)),
                  Bal(UserAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1) + QueryTxValue, Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(OperatorAcc, S1)             , Bal(OperatorAcc, S2)).
+    ?assertEqual(Bal(OracleAcc, S1),   Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(OperatorAcc, S1), Bal(OperatorAcc, S2)).
 %%
 sophia_oracles_qfee__inner_error_after_primop__remote(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
@@ -2207,12 +2207,12 @@ sophia_oracles_qfee__inner_error_after_primop__remote(_Cfg) ->
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + GasPrice * gu_query(GasUsed)),
                  Bal(UserAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1)               , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(CallingCt, S1) + QueryTxValue, Bal(CallingCt, S2)),
-    ?assertEqual(Bal(OperatorAcc, S1)             , Bal(OperatorAcc, S2)),
-    ?assertEqual(Bal(TmpAcc, S1)                  , Bal(TmpAcc, S2)).
+    ?assertEqual(Bal(OracleAcc, S1),   Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(CallingCt, S1),   Bal(CallingCt, S2)),
+    ?assertEqual(Bal(OperatorAcc, S1), Bal(OperatorAcc, S2)),
+    ?assertEqual(Bal(TmpAcc, S1),      Bal(TmpAcc, S2)).
 %%
 sophia_oracles_qfee__outer_error_after_primop__remote(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
@@ -2244,11 +2244,11 @@ sophia_oracles_qfee__outer_error_after_primop__remote(_Cfg) ->
 
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
 
-    ?assertEqual(Bal(UserAcc, S1) - (TxFee + QueryTxValue + GasPrice * gu_query(GasUsed)),
+    ?assertEqual(Bal(UserAcc, S1) - (TxFee + GasPrice * gu_query(GasUsed)),
                  Bal(UserAcc, S2)),
-    ?assertEqual(Bal(OracleAcc, S1)               , Bal(OracleAcc, S2)),
-    ?assertEqual(Bal(CallingCt, S1) + QueryTxValue, Bal(CallingCt, S2)),
-    ?assertEqual(Bal(OperatorAcc, S1)             , Bal(OperatorAcc, S2)).
+    ?assertEqual(Bal(OracleAcc, S1),   Bal(OracleAcc, S2)),
+    ?assertEqual(Bal(CallingCt, S1),   Bal(CallingCt, S2)),
+    ?assertEqual(Bal(OperatorAcc, S1), Bal(OperatorAcc, S2)).
 
 %% Oracle gas TTL tests
 

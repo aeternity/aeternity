@@ -150,8 +150,7 @@ def test_contract_call():
     # assert contract called:
     assert_equals(alice_balance0, alice_balance
                   + test_settings["contract_call"]["fee"]
-                  + test_settings["contract_call"]["gas"]
-                  + test_settings["contract_call"]["amount"])
+                  + test_settings["contract_call"]["gas"])
     print("Fee and gas was consumed, transaction is part of the chain")
 
     cleanup(node, root_dir)
