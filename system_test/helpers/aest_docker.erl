@@ -247,7 +247,16 @@ setup_node(Spec, BackendState) ->
         false -> [{nofile, 1024, 1024} | OptsUlimits];
         _ -> OptsUlimits
     end,
-    Genesis = maps:get(genesis, Spec, undefined),
+    Genesis =
+        case maps:get(genesis_accounts, Spec, false) of
+            false ->
+                maps:get(genesis, Spec, undefined);
+            GenesisAccounts ->
+                AccountsFile = filename:join([TempDir, "accounts.json"]),
+                ok = file:write_file(AccountsFile, jsx:encode(GenesisAccounts)),
+                log(NodeState, "Genesis file ~p", [AccountsFile]),
+                AccountsFile
+        end,
     DockerConfig = #{
         hostname => Hostname,
         network => Network,
