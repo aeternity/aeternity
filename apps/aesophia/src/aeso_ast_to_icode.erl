@@ -365,7 +365,9 @@ ast_body({app, _, {typed, _, {proj, _, {typed, _, Addr, {con, _, Contract}}, {id
         gas      = Gas,
         value    = Value,
         arg      = #tuple{cpts = [Fun, #tuple{ cpts = ArgsI }]},
-        type_hash= #integer{value = TypeHash}
+       %% The type check is implicitly done by using the type hash as the
+       %% entrypoint on the callee side.
+        type_hash= #integer{value = 0}
       };
 ast_body({proj, _, {typed, _, _, {con, _, Contract}}, {id, _, FunName}}, _Icode) ->
     error({underapplied_contract_call, string:join([Contract, FunName], ".")});

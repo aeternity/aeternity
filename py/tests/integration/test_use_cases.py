@@ -304,7 +304,7 @@ keys:
 
 chain:
     hard_forks:
-        "29": 0
+        "30": 0
 
 mining:
     autostart: true
@@ -334,7 +334,7 @@ keys:
 
 chain:
     hard_forks:
-        "29": 0
+        "30": 0
 
 mining:
     autostart: false

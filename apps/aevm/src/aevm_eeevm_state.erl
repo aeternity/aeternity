@@ -338,10 +338,10 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
             {Arg, undefined, State1};
         ?AEVM_01_Sophia_01 ->
             %% In Sophia:
-            %%   ISize is the (integer) type hash of the remote entrypoint
+            %%   ISize is the (integer) type hash for primops that needs to be
+            %%         type checked (otherwise 0).
             %%   IOffset is a pointer into the heap to the arguments
             ArgPtr     = IOffset,
-            TypeHash   = <<ISize:256>>,
             Heap       = mem(State),
             TargetKey  = <<Target:256>>,
             ChainAPI   = chain_api(State),
@@ -351,10 +351,11 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
             case Target == ?PRIM_CALLS_CONTRACT of
                 true ->
                     %% The first argument is the primop id
-                    {ok, Bin} = aeso_data:heap_to_binary({tuple, [word]}, get_store(State), HeapValue),
+                    {ok, Bin} = aeso_data:heap_to_binary({tuple, [word]}, Store, HeapValue),
                     {ok, {Prim}} = aeso_data:from_binary({tuple, [word]}, Bin),
                     {ArgTypes, OutType} = aevm_ae_primops:types(Prim, HeapValue, Store, State),
                     DataType = {tuple, [word|ArgTypes]},
+                    TypeHash   = <<ISize:256>>,
                     case aevm_ae_primops:check_type_hash(Prim, ArgTypes, OutType, TypeHash) of
                         ok ->
                             {ok, Arg} = aeso_data:heap_to_binary(DataType, Store, HeapValue),
@@ -363,6 +364,10 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
                             input_error_return(Store, HeapValue, State)
                     end;
                 false ->
+                    %% The first element in the arg tuple is the function hash
+                    {ok, Bin} = aeso_data:heap_to_binary({tuple, [word]}, Store, HeapValue),
+                    {ok, {TypeHashInt}} = aeso_data:from_binary({tuple, [word]}, Bin),
+                    TypeHash = <<TypeHashInt:256>>,
                     case ChainAPI:get_contract_fun_types(TargetKey, ?AEVM_01_Sophia_01,
                                                          TypeHash, ChainState) of
                         {ok, ArgType, OutType} ->
