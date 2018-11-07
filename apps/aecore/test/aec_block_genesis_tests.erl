@@ -82,6 +82,26 @@ preset_trees_test_() ->
                 PresetAccounts),
             ok
         end},
+       {"Trees do not contain unexpected accounts",
+        fun() ->
+            PresetAccounts = generate_accounts(10),
+
+            meck_preset_accounts(PresetAccounts),
+            Trees = ?TEST_MODULE:populated_trees(),
+            Accounts = aec_trees:accounts(Trees),
+            AllAccounts = aec_accounts_trees:get_all_accounts_balances(Accounts),
+            UnknownAccounts =
+                lists:filter(
+                    fun({Pubkey, _Balance}) ->
+                        case proplists:get_value(Pubkey, PresetAccounts, not_found) of
+                            not_found -> true;
+                            _ -> false
+                        end
+                    end,
+                    AllAccounts),
+            ?assertEqual(UnknownAccounts, []),
+            ok
+        end},
        {"Genesis block has expected trees hash",
         fun() ->
             PresetAccounts = generate_accounts(10),
