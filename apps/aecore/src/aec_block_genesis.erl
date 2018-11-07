@@ -50,7 +50,7 @@ genesis_header() ->
     aec_blocks:to_header(B).
 
 prev_hash() ->
-    <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>.
+    aec_governance:contributors_messages_hash().
 
 prev_key_hash() ->
     <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>.

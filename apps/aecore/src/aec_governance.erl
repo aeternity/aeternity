@@ -25,7 +25,8 @@
          state_gas_per_block/1,
          primop_base_gas/1,
          add_network_id/1,
-         get_network_id/0]).
+         get_network_id/0,
+         contributors_messages_hash/0]).
 
 -export_type([protocols/0]).
 
@@ -219,3 +220,10 @@ add_network_id(SerializedTransaction) ->
 get_network_id() ->
     aeu_env:user_config_or_env([<<"fork_management">>, <<"network_id">>],
                                 aecore, network_id, ?NETWORK_ID).
+
+-spec contributors_messages_hash() -> binary().
+contributors_messages_hash() ->
+    %% This is generated using messages_hash tool:
+    %%  > cd /tmp/node
+    %%  > bin/epoch messages_hash
+    <<104,78,40,169,217,133,126,163,45,143,180,127,97,10,150,252,190,28,13,188,59,135,7,154,52,86,197,135,46,225,130,136>>.

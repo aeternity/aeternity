@@ -1,0 +1,27 @@
+-mode(compile).
+
+-define(MESSAGES_FILE  , "data/aecore/.genesis/messages.json").
+-define(HASH_BYTES     , 32).
+-define(READ_CHUNK_SIZE, (1000 * 1024)).
+
+main(_) ->
+    case file:open(?MESSAGES_FILE, [read, binary]) of
+        {ok, Fd} ->
+            HashState = enacl:generichash_init(?HASH_BYTES, <<>>),
+            Hash = compute_messages_hash(Fd, HashState),
+            file:close(Fd),
+            io:fwrite("Messages hash:~n~p~n", [Hash]);
+        {error, _Reason} = Error ->
+            io:fwrite("Reading messages file from ~s failed with ~p~n", [?MESSAGES_FILE, Error]),
+            halt(1)
+    end.
+
+compute_messages_hash(Fd, HashState) ->
+    case file:read(Fd, ?READ_CHUNK_SIZE) of
+        eof ->
+            {ok, Hash} = enacl:generichash_final(HashState),
+            Hash;
+        {ok, Data} ->
+            HashState1 = enacl:generichash_update(HashState, Data),
+            compute_messages_hash(Fd, HashState1)
+    end.
