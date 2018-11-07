@@ -89,7 +89,7 @@ pow_test_() ->
        end},
       {"Attempt to verify nonce that is too big shall fail gracefully",
        fun() ->
-               % this is a premined working solution for size 28 
+               % this is a premined working solution for size 27
                Hash = <<83,237,15,231,60,2,35,26,173,64,55,84,59,100,88,146,91,
                         124,171,211,193,86,167,83,17,153,168,99,84,72,33,186>>,
                Pow = [2253069,4506519,4850569,8551070,9391218,15176443,22052028,
@@ -148,7 +148,7 @@ kill_ospid_miner_test_() ->
             timer:sleep(1000),                       %% give it some time to kill the miner OS pid
             ?assertEqual([], exec:which_children()), %% at least erlexec believes it died
 
-            Res = os:cmd("ps | grep mean30s-generic | grep -v grep"),
+            Res = os:cmd("ps | grep mean29-generic | grep -v grep"),
             ?assertMatch([], Res)
         end}
      ]

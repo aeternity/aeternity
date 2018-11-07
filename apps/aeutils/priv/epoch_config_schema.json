@@ -391,21 +391,21 @@
                             "required" : [
                                 "executable",
                                 "extra_args",
-                                "node_bits"
+                                "edge_bits"
                             ],
                             "properties" : {
                                 "executable" : {
-                                    "description" : "Executable binary of the miner. Options are: \"mean30s-generic\" (memory-intensive), \"mean30s-avx2\" (memory-intensive, benefits from faster CPU supporting AVX2 instructions), \"lean30\" (CPU-intensive, useful if memory-constrained).",
+                                    "description" : "Executable binary of the miner. Options are: \"mean29-generic\" (memory-intensive), \"mean29-sse2\" (memory-intensive, benefits from faster CPU supporting SSE2 instructions), \"mean29-avx2\" (memory-intensive, benefits from faster CPU supporting AVX2 instructions), \"lean29\" (CPU-intensive, useful if memory-constrained).",
                                     "type" : "string",
-                                    "default": "mean30s-generic"
+                                    "default": "mean29-generic"
                                 },
                                 "extra_args" : {
                                     "description" : "Extra arguments to pass to the miner executable binary. The safest choice is specifying no arguments i.e. empty string.",
                                     "type" : "string",
                                     "default": "-t 5"
                                 },
-                                "node_bits" : {
-                                    "description" : "Number of bits used for representing a node in the Cuckoo Cycle problem. It affects both PoW generation (mining) and verification. WARNING: Changing this makes the node incompatible with the chain of other nodes in the network, do not change from the default unless you know what you are doing.",
+                                "edge_bits" : {
+                                    "description" : "Number of bits used for representing an edge in the Cuckoo Cycle problem. It affects both PoW generation (mining) and verification. WARNING: Changing this makes the node incompatible with the chain of other nodes in the network, do not change from the default unless you know what you are doing.",
                                     "type": "integer",
                                     "default": 30
                                 },

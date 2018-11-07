@@ -1,4 +1,4 @@
-# Small local network of three nodes using the fastest mean16
+# Small local network of three nodes using the fastest mean15
 version: '3'
 services:
   node1:
@@ -11,7 +11,7 @@ services:
       -aecore expected_mine_rate ${EPOCH_MINE_RATE:-15000}
       -aehttp enable_debug_endpoints true
     volumes:
-      - ${PWD}/docker/epoch_node1_mean16.yaml:/home/epoch/epoch.yaml
+      - ${PWD}/docker/epoch_node1_mean15.yaml:/home/epoch/epoch.yaml
       - ${PWD}/docker/keys/node1:/home/epoch/node/keys
       - node1_db:/home/epoch/node/data/mnesia
 
@@ -24,7 +24,7 @@ services:
       -aecore expected_mine_rate ${EPOCH_MINE_RATE:-15000}
       -aehttp enable_debug_endpoints true
     volumes:
-      - ${PWD}/docker/epoch_node2_mean16.yaml:/home/epoch/epoch.yaml
+      - ${PWD}/docker/epoch_node2_mean15.yaml:/home/epoch/epoch.yaml
       - ${PWD}/docker/keys/node2:/home/epoch/node/keys
       - node2_db:/home/epoch/node/data/mnesia
 
@@ -37,7 +37,7 @@ services:
       -aecore expected_mine_rate ${EPOCH_MINE_RATE:-15000}
       -aehttp enable_debug_endpoints true
     volumes:
-      - ${PWD}/docker/epoch_node3_mean16.yaml:/home/epoch/epoch.yaml
+      - ${PWD}/docker/epoch_node3_mean15.yaml:/home/epoch/epoch.yaml
       - ${PWD}/docker/keys/node3:/home/epoch/node/keys
       - node3_db:/home/epoch/node/data/mnesia
 

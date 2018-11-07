@@ -21,25 +21,25 @@
 
 all() ->
     [
-     {group, smoke_tests_16}
+     {group, smoke_tests_15}
     ].
 
 groups() ->
     [
-     {smoke_tests_16, [{group, mean16},
-                       {group, lean16}]},
-     {mean16, [smoke_test]},
-     {lean16, [smoke_test]}
+     {smoke_tests_15, [{group, mean15},
+                       {group, lean15}]},
+     {mean15, [smoke_test]},
+     {lean15, [smoke_test]}
     ].
 
-init_per_group(smoke_tests_16, Config) ->
+init_per_group(smoke_tests_15, Config) ->
     [{nonce, 86},
-     {cyclehash, "c6bf28762af60c78600203ea018de966ebee3f37d84ea21f07b114553fe1692f"},
-     {verifier, verify16} | Config];
-init_per_group(mean16, Config) ->
-    [{miner, 'mean16s-generic'} | Config];
-init_per_group(lean16, Config) ->
-    [{miner, 'lean16'} | Config].
+     {cyclehash, "c6bf28762af60c78600203ea018de966ebee3f37d84ea21f07b114553fe1692f"}
+     | Config];
+init_per_group(mean15, Config) ->
+    [{miner, 'mean15-generic'} | Config];
+init_per_group(lean15, Config) ->
+    [{miner, 'lean15'} | Config].
 
 end_per_group(_Group, _Config) ->
     ok.
@@ -47,33 +47,20 @@ end_per_group(_Group, _Config) ->
 smoke_test(Config) ->
     Nonce = ?config(nonce, Config),
     ExpectedVerifierCycleHash = ?config(cyclehash, Config),
-    Verifier = ?config(verifier, Config),
     Miner = ?config(miner, Config),
 
     LibDir = ?TEST_MODULE:lib_dir(),
     MinBin = ?TEST_MODULE:bin(atom_to_list(Miner)),
-    VerBin = ?TEST_MODULE:bin(atom_to_list(Verifier)),
-    LdLibPathVarName = ld_lib_path_var_name(),
-    Cmd = io_lib:format("env ~s='~s' '~s' -n ~B "
-                        "| grep '^Solution '"
-                        "| env ~s='~s' '~s' -n ~B "
-                        "| grep '^Verified '",
-                        [LdLibPathVarName, LibDir,
-                         MinBin, Nonce,
-                         LdLibPathVarName, LibDir,
-                         VerBin, Nonce]),
+    Cmd = io_lib:format("'~s' -n ~B | grep '^Solution '", [MinBin, Nonce]),
     ct:log("Command: ~s~n", [Cmd]),
     CmdRes = lib:nonl(os:cmd(Cmd)),
-    ExpCmdRes = "Verified with cyclehash " ++ ExpectedVerifierCycleHash,
     ct:log("Command result: ~s~n", [CmdRes]),
-    ct:log("Expected command result: ~s~n", [ExpCmdRes]),
-    ExpCmdRes = CmdRes,
+
+    Solution = lists:map(fun(X) -> list_to_integer(X, 16) end, tl(string:tokens(CmdRes, " "))),
+    HeaderEquivalent = <<0:((80-4)*8), Nonce:32/little-unsigned-integer>>,
+
+    42 = length(Solution),
+    true = aec_pow_cuckoo:verify_proof_(HeaderEquivalent, Solution, 15),
+
     ok.
 
-ld_lib_path_var_name() ->
-    ld_lib_path_var_name(os:type()).
-
-ld_lib_path_var_name({unix, darwin}) ->
-    "DYLD_LIBRARY_PATH";
-ld_lib_path_var_name({unix, _}) ->
-    "LD_LIBRARY_PATH".

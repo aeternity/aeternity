@@ -1,6 +1,6 @@
 ---
 peers:
-    - aenode://pp_HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@node1:3015
+    - aenode://pp_28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@node2:3015
     - aenode://pp_Dxq41rJN33j26MLqryvh7AnhuZywefWKEPBiiYu2Da2vDWLBq@node3:3015
 
 http:
@@ -22,6 +22,6 @@ mining:
     autostart: true
     cuckoo:
         miner:
-            executable: mean16s-generic
+            executable: mean15-generic
             extra_args: ""
-            node_bits: 16
+            edge_bits: 15

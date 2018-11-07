@@ -131,7 +131,7 @@ docker run -d -p 3013:3013 \
 ## Localnet
 
 Small local network (*not* connected to testnet) can be created with `docker-compose`.
-It runs three nodes using the `mean16s-generic` miner (fastest generic miner) and a proxy server to allow CORS.
+It runs three nodes using the `mean15-generic` miner (fastest generic miner) and a proxy server to allow CORS.
 
 All local network nodes have `ak_25eTK8PaiLpREqBkP3yDNWJAwXjWSR8tbn3zu8SXaNx824A1AJ` set as node beneficiary (for more details on beneficiary see [configuration documentation](configuration.md#beneficiary-account)).
 Public-private keypair of `ak_25eTK8PaiLpREqBkP3yDNWJAwXjWSR8tbn3zu8SXaNx824A1AJ` beneficiary can be found [here](/docker/keys/beneficiary): as the private key is publicly available, this setup must *not* be connected on the live network.

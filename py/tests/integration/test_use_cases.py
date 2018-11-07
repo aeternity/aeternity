@@ -81,9 +81,9 @@ mining:
     beneficiary: "ak_2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
     cuckoo:
         miner:
-            executable: mean16s-generic
-            extra_args: "-t 5"
-            node_bits: 16
+            executable: mean15-generic
+            extra_args: ""
+            edge_bits: 15
 """
     p_conf = """\
 ---
@@ -282,9 +282,9 @@ mining:
     beneficiary: "ak_2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
     cuckoo:
         miner:
-            executable: mean16s-generic
-            extra_args: "-t 5"
-            node_bits: 16
+            executable: mean15-generic
+            extra_args: ""
+            edge_bits: 15
 """.format(sync_port, key_dir, mining)
     return common.install_user_config(root_dir, file_name, conf)
 
@@ -312,9 +312,9 @@ mining:
     beneficiary: "ak_2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
     cuckoo:
         miner:
-            executable: mean16s-generic
-            extra_args: "-t 5"
-            node_bits: 16
+            executable: mean15-generic
+            extra_args: ""
+            edge_bits: 15
 """
     return common.install_user_config(root_dir, file_name, conf)
 
@@ -342,9 +342,9 @@ mining:
     beneficiary: "ak_2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
     cuckoo:
         miner:
-            executable: mean16s-generic
-            extra_args: "-t 5"
-            node_bits: 16
+            executable: mean15-generic
+            extra_args: ""
+            edge_bits: 15
 """
     return common.install_user_config(root_dir, file_name, conf)
 

@@ -8,11 +8,11 @@
 %%%
 %%%    We use erlexec to start an OS process that runs this C code.
 %%%    The reasons for using erlexec over os:cmd are:
-%%%    -  os:cmd is insufficient because cuckoo miner program streams solutions on stdout as it finds them, 
-%%%       while the program returns only when whole possibilities are explored. 
+%%%    -  os:cmd is insufficient because cuckoo miner program streams solutions on stdout as it finds them,
+%%%       while the program returns only when whole possibilities are explored.
 %%%       So integration with cuckoo needs to stream stdout.
-%%%    - Erlang port is closed implicitly by erlang VM closing stdin of spawned process, on the assumption 
-%%%      that spawned program will eventual read from stdin and hence terminate. 
+%%%    - Erlang port is closed implicitly by erlang VM closing stdin of spawned process, on the assumption
+%%%      that spawned program will eventual read from stdin and hence terminate.
 %%%      The cuckoo program does not read from stdin
 %%%
 %%% @end
@@ -32,7 +32,7 @@
 -endif.
 -include("pow.hrl").
 
--define(DEFAULT_CUCKOO_ENV, {"mean30s-generic", "-t 5", 30, false}).
+-define(DEFAULT_CUCKOO_ENV, {"mean29-generic", "-t 5", 29, false}).
 
 -define(debug(F, A), epoch_pow_cuckoo:debug(F, A)).
 -define(info(F, A),  epoch_pow_cuckoo:info(F, A)).
@@ -120,13 +120,13 @@ get_miner_options() ->
             {Bin, ExtraArgs}
     end.
 
-get_node_bits() ->
-    case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"node_bits">>]) of
-        {ok, NodeBits} ->
-            NodeBits;
+get_edge_bits() ->
+    case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"edge_bits">>]) of
+        {ok, EdgeBits} ->
+            EdgeBits;
         undefined ->
-            {_, _, NodeBits, _} = get_options(),
-            NodeBits
+            {_, _, EdgeBits, _} = get_options(),
+            EdgeBits
     end.
 
 get_hex_encoded_header() ->
@@ -231,16 +231,19 @@ hex_string(S) ->
 -spec verify_proof(Hash :: binary(), Nonce :: aec_pow:nonce(),
                    Solution :: aec_pow:pow_evidence()) -> boolean().
 verify_proof(Hash, Nonce, Solution) ->
-    verify_proof(Hash, Nonce, Solution, get_node_bits()).
+    verify_proof(Hash, Nonce, Solution, get_edge_bits()).
 
-verify_proof(Hash, Nonce, Solution, NodeBits) ->
+verify_proof(Hash, Nonce, Solution, EdgeBits) ->
     %% Cuckoo has an 80 byte header, we have to use that as well
     %% packed Hash + Nonce = 56 bytes, add 24 bytes of 0:s
     Header0 = pack_header_and_nonce(Hash, Nonce),
     Header = <<(list_to_binary(Header0))/binary, 0:(8*24)>>,
+    verify_proof_(Header, Solution, EdgeBits).
+
+verify_proof_(Header, Solution, EdgeBits) ->
     {K0, K1, K2, K3} = aeu_siphash24:create_keys(Header),
 
-    EdgeMask = (1 bsl (NodeBits - 1)) - 1,
+    EdgeMask = (1 bsl EdgeBits) - 1,
     try
         %% Generate Uv pairs representing endpoints by hashing the proof
         %% XOR points together: for a closed cycle they must match somewhere
@@ -483,14 +486,14 @@ stop_execution(OsPid) ->
 %%------------------------------------------------------------------------------
 -spec get_node_size() -> non_neg_integer().
 get_node_size() ->
-    node_size(get_node_bits()).
+    node_size(get_edge_bits()).
 
 %% Refs:
 %% * https://github.com/tromp/cuckoo/blob/488c03f5dbbfdac6d2d3a7e1d0746c9a7dafc48f/src/Makefile#L214-L215
 %% * https://github.com/tromp/cuckoo/blob/488c03f5dbbfdac6d2d3a7e1d0746c9a7dafc48f/src/cuckoo.h#L26-L30
 -spec node_size(non_neg_integer()) -> non_neg_integer().
-node_size(NodeBits) when is_integer(NodeBits), NodeBits > 32 -> 8;
-node_size(NodeBits) when is_integer(NodeBits), NodeBits >  0 -> 4.
+node_size(EdgeBits) when is_integer(EdgeBits), EdgeBits > 31 -> 8;
+node_size(EdgeBits) when is_integer(EdgeBits), EdgeBits >  0 -> 4.
 
 %%------------------------------------------------------------------------------
 %% White paper, section 9: rather than adjusting the nodes/edges ratio, a
