@@ -85,7 +85,7 @@ tx_pool_test_() ->
 
                %% Tx received from a peer.
                PubKey = new_pubkey(),
-               STxs = [ a_signed_tx(PubKey, me, Nonce, 1, 10) || Nonce <- lists:seq(1,400) ],
+               STxs = [ a_signed_tx(PubKey, me, Nonce, 20000, 10) || Nonce <- lists:seq(1,400) ],
                [ aec_tx_pool:push(STx, tx_created) || STx <- STxs ],
 
                {ok, Hash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
