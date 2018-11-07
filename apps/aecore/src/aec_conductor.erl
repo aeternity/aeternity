@@ -947,7 +947,8 @@ setup_loop(State = #state{ consensus = Cons }, RestartMining, IsLeader, Origin) 
     State1 = State#state{ consensus = Cons#consensus{ leader = IsLeader } },
     State2 =
         case Origin of
-            block_created when IsLeader ->
+            Origin when IsLeader, Origin =:= block_created
+                           orelse Origin =:= block_received ->
                 aec_block_generator:start_generation(),
                 start_micro_signing(State1);
             block_received when not IsLeader ->
