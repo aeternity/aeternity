@@ -79,7 +79,8 @@ miner_test_() ->
              teardown_common(TmpKeysDir)
      end,
      [{"Stop and restart miner", fun test_stop_restart/0},
-      {"Test consecutive start/stop ", fun test_stop_restart_seq/0}
+      {"Test consecutive start/stop ", fun test_stop_restart_seq/0},
+      {"Test block generator state after stop", fun test_block_generator_state_after_stop/0}
      ]}.
 
 test_stop_restart() ->
@@ -104,6 +105,22 @@ test_stop_restart_seq() ->
     wait_for_running(),
     ?assertEqual(ok, ?TEST_MODULE:stop_mining()),
     wait_for_stopped(),
+    ok.
+
+test_block_generator_state_after_stop() ->
+    ?assertEqual(running, ?TEST_MODULE:get_mining_state()),
+    ?assertEqual(stopped, aec_block_generator:get_generation_state()),
+
+    aec_events:subscribe(block_created),
+    ?assertEqual(ok, ?TEST_MODULE:start_mining()),
+    wait_for_block_created(),
+    ?assertEqual(running, ?TEST_MODULE:get_mining_state()),
+    ?assertEqual(running, aec_block_generator:get_generation_state()),
+
+    ?assertEqual(ok, ?TEST_MODULE:stop_mining()),
+    wait_for_stopped(),
+    ?assertEqual(stopped, ?TEST_MODULE:get_mining_state()),
+    ?assertEqual(stopped, aec_block_generator:get_generation_state()),
     ok.
 
 miner_timeout_test_() ->

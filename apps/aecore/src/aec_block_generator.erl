@@ -11,7 +11,10 @@
 
 -export([get_candidate/0]).
 
--export([start_generation/0, stop_generation/0]).
+-export([ get_generation_state/0
+        , start_generation/0
+        , stop_generation/0
+        ]).
 
 -export([prep_stop/0]).
 
@@ -49,6 +52,10 @@ start_generation() ->
 stop_generation() ->
     gen_server:cast(?MODULE, stop_generation).
 
+-spec get_generation_state() -> 'running' | 'stopped'.
+get_generation_state() ->
+    gen_server:call(?MODULE, get_generation_state).
+
 prep_stop() ->
     gen_server:call(?MODULE, prep_stop).
 
@@ -64,6 +71,12 @@ handle_call(get_candidate, _From, State = #state{ candidate = undefined }) ->
     {reply, {error, no_candidate}, State};
 handle_call(get_candidate, _From, State = #state{ candidate = Candidate }) ->
     {reply, {ok, Candidate}, State};
+handle_call(get_generation_state, _From, State = #state{ generating = IsGenerating }) ->
+   Reply = case IsGenerating of
+        true -> running;
+        false -> stopped
+    end,
+    {reply, Reply, State};
 handle_call(prep_stop, _From, State) ->
     {reply, ok, do_stop_generation(State)};
 handle_call(Req, _From, State) ->
