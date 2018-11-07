@@ -207,7 +207,7 @@ abort_test_contract(Config) ->
     ICode = compile_test_contract("abort_test_int"),
 
     %% Create chain of int contracts to test contract.
-    {_EncodedTestPub,DecodedTestPub,_} =
+    {EncodedTestPub,DecodedTestPub,_} =
         create_compute_contract(Node, APub, APriv, TCode, <<"(42)">>),
     {_EncodedInt1Pub,DecodedInt1Pub,_} =
         create_compute_contract(Node, APub, APriv, ICode,
@@ -232,19 +232,30 @@ abort_test_contract(Config) ->
     %% Do abort where we have put values 42, 142, 242, 342,
     %% then check value in abort_test contract, should still be 3017!
     %% Check that we get the abort string back.
-
+    %% First check when we call the full contract call stack.
     AbortString = <<"yogi bear">>,
     GivenGas = 100000,
-    {RevertValue, Return} =
+    {RevertValue1, Return1} =
         revert_call_compute_func(Node, APub, APriv, EncodedInt3Pub,
                                  <<"do_abort">>,
                                  args_to_binary([42,{string,AbortString}]),
                                  #{gas => GivenGas}
                                 ),
-    #{<<"value">> := AbortString} = decode_data(<<"string">>, RevertValue),
-    #{<<"gas_used">> := GasUsed} = Return,
-    %% Make sure we actually saved some gas by doing the revert
-    ?assert(GasUsed < GivenGas),
+    #{<<"value">> := AbortString} = decode_data(<<"string">>, RevertValue1),
+    #{<<"gas_used">> := GasUsed1} = Return1,
+    ?assert(GasUsed1 < GivenGas), %% Make sure we actually saved some gas
+
+    %% Also check that we get the same behaviour when calling directly to the
+    %% leaf contract.
+    {RevertValue2, Return2} =
+        revert_call_compute_func(Node, APub, APriv, EncodedTestPub,
+                                 <<"do_abort">>,
+                                 args_to_binary([42,{string,AbortString}]),
+                                 #{gas => GivenGas}
+                                ),
+    #{<<"value">> := AbortString} = decode_data(<<"string">>, RevertValue2),
+    #{<<"gas_used">> := GasUsed2} = Return2,
+    ?assert(GasUsed2 < GivenGas), %% Make sure we actually saved some gas
 
     ABal1 = get_balance(APub),
 
