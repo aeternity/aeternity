@@ -178,7 +178,7 @@ generate_int(Header, Target) ->
 
 generate_int(Header, Target, MinerBin, MinerExtraArgs) ->
     BinDir = aecuckoo:bin_dir(),
-    Cmd = lists:concat([ld_lib_env(), " ",  "./", MinerBin,
+    Cmd = lists:concat(["./", MinerBin,
                         " -h ", Header, " ", MinerExtraArgs]),
     ?info("Executing cmd: ~p", [Cmd]),
     Old = process_flag(trap_exit, true),
@@ -355,19 +355,6 @@ pack_header_and_nonce(Hash, Nonce) when byte_size(Hash) == 32 ->
     %% we need only return the two base64 encoded strings concatenated.
     %% 44 + 12 = 56 bytes
     HashStr ++ NonceStr.
-
-%%------------------------------------------------------------------------------
-%% @doc
-%%   Prefix setting load path to command so that blake2b.so is found in priv/lib
-%% @end
-%%------------------------------------------------------------------------------
--spec ld_lib_env() -> string().
-ld_lib_env() ->
-    LdPathVar = case os:type() of
-                 {unix, darwin} -> "DYLD_LIBRARY_PATH";
-                 {unix, _}      -> "LD_LIBRARY_PATH"
-                end,
-    "env " ++ LdPathVar ++ "=../lib:$" ++ LdPathVar.
 
 %%------------------------------------------------------------------------------
 %% @doc
