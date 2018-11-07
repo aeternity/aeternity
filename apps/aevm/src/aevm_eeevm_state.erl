@@ -237,10 +237,11 @@ do_revert(Us0, Us1, State0) ->
     case vm_version(State0) of
         ?AEVM_01_Sophia_01 ->
             try
-		%% Get the string then convert it to output binary format.
-                {String, State1} = aevm_eeevm_memory:get_area(Us0, Us1, State0),
-		Out = aeso_data:to_binary(String, 0),
-                set_out(Out, State1)
+                %% In Sophia Us1 is a pointer to the actual value.
+                %% The type of the value is always string.
+                HeapValue = aeso_data:heap_value(maps(State0), Us1, mem(State0)),
+                {ok, Out} = aeso_data:heap_to_binary(string, get_store(State0), HeapValue),
+                set_out(Out, State0)
             catch _:_ ->
                 io:format("** Error reading revert value\n~s",
                           [format_mem(mem(State0))]),

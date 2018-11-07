@@ -703,11 +703,8 @@ builtin_function(abort) ->
     A = fun(X) -> aeb_opcodes:mnemonic(X) end,
     {{builtin, abort}, [private],
      [{"s", string}],
-     %% length, address, REVERT
-     {inline_asm, [A(?DUP1),
-                   A(?MLOAD),A(?SWAP1),         %Load size and swap
-                   A(?PUSH1),32,A(?ADD),        %Load address of string binary
-                   A(?REVERT)]},
+     {inline_asm, [A(?PUSH1),0,  %% Push a dummy 0 for the first arg
+                   A(?REVERT)]}, %% Stack: 0,Ptr
      {tuple,[]}};
 
 %% Map primitives
