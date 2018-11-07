@@ -49,7 +49,7 @@
         , get_mining_workers/0
         , start_mining/0
         , stop_mining/0
-        , handoff_leader/0
+        , is_leader/0
         , get_beneficiary/0
         ]).
 
@@ -122,9 +122,9 @@ get_mining_state() ->
 get_mining_workers() ->
     gen_server:call(?SERVER, get_mining_workers).
 
--spec handoff_leader() -> 'ok'.
-handoff_leader() ->
-    gen_server:call(?SERVER, handoff_leader).
+-spec is_leader() -> boolean().
+is_leader() ->
+    gen_server:call(?SERVER, is_leader).
 
 %%%===================================================================
 %%% Chain API
@@ -244,6 +244,8 @@ handle_call(get_mining_state,_From, State) ->
     {reply, State#state.mining_state, State};
 handle_call(get_mining_workers, _From, State) ->
     {reply, worker_pids_by_tag(mining, State), State};
+handle_call(is_leader, _From, State = #state{ consensus = Cons }) ->
+    {reply, Cons#consensus.leader, State};
 handle_call(reinit_chain, _From, State1 = #state{ consensus = Cons }) ->
     %% NOTE: ONLY FOR TEST
     ok = reinit_chain_state(),
