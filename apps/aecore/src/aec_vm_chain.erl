@@ -671,6 +671,9 @@ call_contract(Target, Gas, Value, CallData, CallStack,
                             %%       sensible return value on exceptions
                             error ->
                                 aevm_chain_api:call_exception(out_of_gas, GasUsed);
+                            revert ->
+                                Bin = aect_call:return_value(Call),
+                                aevm_chain_api:call_exception({revert, Bin}, GasUsed);
                             ok ->
                                 Bin = aect_call:return_value(Call),
                                 aevm_chain_api:call_result(Bin, GasUsed)

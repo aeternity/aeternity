@@ -1520,6 +1520,9 @@ recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend,
             case R of
                 {ok, Message} ->
                     aevm_eeevm_state:return_contract_call_result(Dest, I, OOffset, OSize, Message, OutType, ReturnState2);
+                {error, {revert, RevertMsg}} ->
+                    ReturnState3 = aevm_eeevm_state:set_out(RevertMsg, ReturnState2),
+                    throw(?REVERT_SIGNAL(ReturnState3));
                 {error, _} ->
                     {0, aevm_eeevm_state:set_gas(0, ReturnState2)}
                     %% Consume all gas on failed contract call.

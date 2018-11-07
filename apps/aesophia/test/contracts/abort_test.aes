@@ -27,4 +27,5 @@ contract AbortTest =
     abort(s)
 
   // This is still legal but will be stripped out.
-  private function abort(s : string) = 42
+  // TODO: This function confuses the type inference, so it cannot be present.
+  //private function abort(s : string) = 42

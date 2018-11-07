@@ -19,7 +19,7 @@
 
 -type store() :: #{binary() => binary()}.
 
--type exception() :: out_of_gas.
+-type exception() :: out_of_gas | {revert, binary()}.
 
 -record(call_result, { result    :: binary() | exception()
                      , gas_spent :: non_neg_integer() }).
