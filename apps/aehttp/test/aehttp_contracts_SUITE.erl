@@ -207,7 +207,7 @@ abort_test_contract(Config) ->
     ICode = compile_test_contract("abort_test_int"),
 
     %% Create chain of int contracts to test contract.
-    {EncodedTestPub,DecodedTestPub,_} =
+    {_EncodedTestPub,DecodedTestPub,_} =
         create_compute_contract(Node, APub, APriv, TCode, <<"(42)">>),
     {_EncodedInt1Pub,DecodedInt1Pub,_} =
         create_compute_contract(Node, APub, APriv, ICode,
@@ -234,11 +234,17 @@ abort_test_contract(Config) ->
     %% Check that we get the abort string back.
 
     AbortString = <<"yogi bear">>,
-    {RevertValue,_} =
-        revert_call_compute_func(Node, APub, APriv, EncodedTestPub,
+    GivenGas = 100000,
+    {RevertValue, Return} =
+        revert_call_compute_func(Node, APub, APriv, EncodedInt3Pub,
                                  <<"do_abort">>,
-                                 args_to_binary([42,{string,AbortString}])),
+                                 args_to_binary([42,{string,AbortString}]),
+                                 #{gas => GivenGas}
+                                ),
     #{<<"value">> := AbortString} = decode_data(<<"string">>, RevertValue),
+    #{<<"gas_used">> := GasUsed} = Return,
+    %% Make sure we actually saved some gas by doing the revert
+    ?assert(GasUsed < GivenGas),
 
     ABal1 = get_balance(APub),
 
