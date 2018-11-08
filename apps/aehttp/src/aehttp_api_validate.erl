@@ -29,7 +29,7 @@ validator(Json) ->
     Validator :: jesse_state:state()
     ) -> ok | no_return().
 
-response(OperationId, Method0, Code, Response, Validator) when Code >= 500 andalso Code < 600 ->
+response(_OperationId, _Method0, Code, _Response, _Validator) when Code >= 500 andalso Code < 600 ->
     ok;
 response(OperationId, Method0, Code, Response, Validator) ->
     Method = to_method(Method0),
