@@ -14,7 +14,7 @@ contract Test =
   function bar() = { y = "foo", z = 0 }
   function baz() = { y = "foo", w = 0 }
 
-  function foo() = zz
+  function foo1() = zz
 
   function test1() : string = { y = 0 }
   function test2(x : string) = x { y = 0 }
@@ -31,7 +31,7 @@ contract Test =
       [] => 0
       x :: xs => "x"
 
-  function foo(m : map(string, int)) = m{ [1] = "bla" }
+  function foo2(m : map(string, int)) = m{ [1] = "bla" }
 
   function bad_if(x, y : int, w : int, z : string) =
     if(x) y
