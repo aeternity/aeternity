@@ -34,7 +34,7 @@ allowed_methods(Req, State = #state{ allowed_method = Method }) ->
     {[Method], Req, State}.
 
 content_types_accepted(Req, State) ->
-    {[{<<"application/json">>, handle_request_json}], Req, State}.
+    {[{{<<"application">>, <<"json">>, '*'}, handle_request_json}], Req, State}.
 
 content_types_provided(Req, State) ->
     {[{<<"application/json">>, handle_request_json}], Req, State}.

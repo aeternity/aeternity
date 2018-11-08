@@ -165,6 +165,11 @@
     cors_returned_on_preflight_request/1,
     cors_returned_on_get_request/1]).
 
+%% test case exports
+%% for Cowboy handler tests
+-export([
+    charset_param_in_content_type/1]).
+
 %%
 %% test case exports
 %% wrong http method for all endpoints
@@ -466,6 +471,10 @@ groups() ->
       [cors_not_returned_when_origin_not_sent,
        cors_returned_on_preflight_request,
        cors_returned_on_get_request]},
+
+     {cowboy_handler, [],
+      [charset_param_in_content_type]},
+
      {wrong_http_method_endpoints, [], [
         wrong_http_method_top,
         wrong_http_method_contract_create,
@@ -5209,6 +5218,20 @@ cors_returned_on_get_request(_Config) ->
         httpc_request(get, {Host ++ "/v2/blocks/top", [{"origin", "example.com"}]}, [], []),
 
     "example.com" = proplists:get_value("access-control-allow-origin", Headers),
+    ok.
+
+%% ============================================================
+%% Test Cowboy API handler
+%% ============================================================
+
+charset_param_in_content_type(_Config) ->
+    Host = external_address(),
+    BorkedPayload = <<"anything">>,
+
+    {ok, {{_, 400, "Bad Request"}, _, _}} =
+        httpc_request(post, {Host ++ "/v2/transactions", [], "application/json", BorkedPayload}, [], []),
+    {ok, {{_, 400, "Bad Request"}, _, _}} =
+        httpc_request(post, {Host ++ "/v2/transactions", [], "application/json;charset=UTF-8", BorkedPayload}, [], []),
     ok.
 
 %% ============================================================
