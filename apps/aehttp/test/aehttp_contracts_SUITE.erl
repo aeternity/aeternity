@@ -36,6 +36,7 @@
          simple_storage_contract/1,
          spend_test_contract/1,
          stack_contract/1,
+         type_error_contract/1,
          null/1
         ]).
 
@@ -64,6 +65,7 @@ groups() ->
        dutch_auction_contract,
        fundme_contract,
        erc20_token_contract,
+       type_error_contract,
        null                                     %This allows to end with ,
       ]}
     ].
@@ -1089,6 +1091,20 @@ erc20_token_contract(Config) ->
 
     force_fun_calls(Node),
 
+    ok.
+
+type_error_contract(_Cfg) ->
+    {ok, 403, #{<<"reason">> := Error}} =
+        get_contract_bytecode(<<"contract Fail = function fail(x : string) = x + 1">>),
+    Error =
+        <<"** Type errors\n\n"
+          "Cannot unify string\n"
+          "         and int\n"
+          "when checking the application at line 1, column 47 of\n"
+          "  (+) : (int, int) => int\n"
+          "to arguments\n"
+          "  x : string\n"
+          "  1 : int\n">>,
     ok.
 
 %% Data structure functions.

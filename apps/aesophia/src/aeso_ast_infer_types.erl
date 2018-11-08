@@ -70,13 +70,13 @@ global_env() ->
     Option  = fun(T) -> {app_t, Ann, {id, Ann, "option"}, [T]} end,
     Map     = fun(A, B) -> {app_t, Ann, {id, Ann, "map"}, [A, B]} end,
     Pair    = fun(A, B) -> {tuple_t, Ann, [A, B]} end,
-    Fun     = fun(Ts, T) -> {type_sig, [], Ts, T} end,
+    Fun     = fun(Ts, T) -> {type_sig, Ann, [], Ts, T} end,
     Fun1    = fun(S, T) -> Fun([S], T) end,
     TVar    = fun(X) -> {tvar, Ann, "'" ++ X} end,
     SignId    = {id, Ann, "signature"},
     SignDef   = {tuple, Ann, [{int, Ann, 0}, {int, Ann, 0}]},
     Signature = {named_arg_t, Ann, SignId, SignId, {typed, Ann, SignDef, SignId}},
-    SignFun   = fun(Ts, T) -> {type_sig, [Signature], Ts, T} end,
+    SignFun   = fun(Ts, T) -> {type_sig, Ann, [Signature], Ts, T} end,
     TTL       = {qid, Ann, ["Chain", "ttl"]},
     Fee       = Int,
     [A, Q, R, K, V] = lists:map(TVar, ["a", "q", "r", "k", "v"]),
@@ -151,23 +151,26 @@ infer(Contracts) ->
 
 -spec infer(aeso_syntax:ast(), list(option())) -> aeso_syntax:ast().
 infer(Contracts, Options) ->
-    TypeEnv =
-        case proplists:get_value(permissive_address_literals, Options, false) of
-            false -> global_type_env();
-            true ->
-                %% Treat oracle and query ids as address to allow address literals for these
-                Tag   = fun(Tag, Vals) -> list_to_tuple([Tag, [{origin, system}] | Vals]) end,
-                Alias = fun(Name, Arity) ->
-                            Tag(type_def, [Tag(id, [Name]),
-                                         lists:duplicate(Arity, Tag(tvar, "_")),
-                                         {alias_t, Tag(id, ["address"])}])
-                        end,
-                [Alias("oracle", 2), Alias("oracle_query", 2)]
-        end,
-    create_options(Options),
-    Res = infer1(TypeEnv, Contracts),
-    destroy_options(),
-    Res.
+    try
+        TypeEnv =
+            case proplists:get_value(permissive_address_literals, Options, false) of
+                false -> global_type_env();
+                true ->
+                    %% Treat oracle and query ids as address to allow address literals for these
+                    Tag   = fun(Tag, Vals) -> list_to_tuple([Tag, [{origin, system}] | Vals]) end,
+                    Alias = fun(Name, Arity) ->
+                                Tag(type_def, [Tag(id, [Name]),
+                                             lists:duplicate(Arity, Tag(tvar, "_")),
+                                             {alias_t, Tag(id, ["address"])}])
+                            end,
+                    [Alias("oracle", 2), Alias("oracle_query", 2)]
+            end,
+        create_options(Options),
+        ets:new(type_vars, [set, named_table, public]),
+        infer1(TypeEnv, Contracts)
+    after
+        clean_up_ets()
+    end.
 
 infer1(TypeEnv, [Contract = {contract, Attribs, ConName, Code}|Rest]) ->
     %% do type inference on each contract independently.
@@ -186,13 +189,9 @@ infer_contract_top(TypeEnv, Defs0) ->
 
 infer_constant({letval, Attrs,_Pattern, Type, E}) ->
     create_type_defs([]),
-    ets:new(type_vars, [set, named_table, public]),
-    create_type_errors(),
     {typed, _, _, PatType} =
         infer_expr(global_env(), {typed, Attrs, E, arg_type(Type)}),
     T = instantiate(PatType),
-    destroy_and_report_type_errors(),
-    ets:delete(type_vars),
     destroy_type_defs(),
     T.
 
@@ -208,12 +207,31 @@ infer_contract(Env, Defs) ->
     ProtoSigs = [ check_fundecl(Env1, Decl) || Decl <- Get(prototype) ],
     Env2      = ProtoSigs ++ Env1,
     Functions = Get(function),
+    check_name_clashes(Env2, Functions),
     FunMap    = maps:from_list([ {Fun, Def} || Def = {letfun, _, {id, _, Fun}, _, _, _} <- Functions ]),
     check_reserved_entrypoints(FunMap),
     DepGraph  = maps:map(fun(_, Def) -> aeso_syntax_utils:used_ids(Def) end, FunMap),
     SCCs      = aeso_utils:scc(DepGraph),
     %% io:format("Dependency sorted functions:\n  ~p\n", [SCCs]),
-    TypeDefs ++ check_sccs(Env2, FunMap, SCCs, []).
+    create_type_errors(),
+    FinalEnv = TypeDefs ++ check_sccs(Env2, FunMap, SCCs, []),
+    destroy_and_report_type_errors(),
+    FinalEnv.
+
+check_name_clashes(Env, Funs) ->
+    create_type_errors(),
+    Name = fun({fun_decl, Ann, {id, _, X}, _})     -> [{X, Ann}];
+              ({letfun, Ann, {id, _, X}, _, _, _}) -> [{X, Ann}];
+              ({type_def, _, _, _, _})             -> [];
+              ({X, Type})                          -> [{X, aeso_syntax:get_ann(Type)}]
+           end,
+    All        = lists:flatmap(Name, Env ++ Funs),
+    Names      = [ X || {X, _} <- All ],
+    Duplicates = lists:usort(Names -- lists:usort(Names)),
+    [ type_error({duplicate_definition, X, [ Ann || {Y, Ann} <- All, X == Y ]})
+        || X <- Duplicates ],
+    destroy_and_report_type_errors(),
+    ok.
 
 check_typedefs(Env, Defs) ->
     create_type_errors(),
@@ -238,7 +256,7 @@ check_typedef_sccs(Env, TypeMap, [{acyclic, Name} | SCCs]) ->
                 {record_t, _} -> check_typedef_sccs(Env, TypeMap, SCCs); %%       and these
                 {variant_t, Cons} ->
                     Target   = {app_t, Ann, D, Xs},
-                    ConType  = fun([]) -> Target; (Args) -> {type_sig, [], Args, Target} end,
+                    ConType  = fun([]) -> Target; (Args) -> {type_sig, Ann, [], Args, Target} end,
                     ConTypes = [ begin
                                     {constr_t, _, {con, _, Con}, Args} = ConDef,
                                     {Con, ConType(Args)}
@@ -257,7 +275,7 @@ check_constructor_overlap(Env, Con = {con, _, Name}, NewType) ->
     case proplists:get_value(Name, Env) of
         undefined -> ok;
         Type ->
-            OldType = case Type of {type_sig, _, _, T} -> T;
+            OldType = case Type of {type_sig, _, _, _, T} -> T;
                                    _ -> Type end,
             OldCon  = {con, aeso_syntax:get_ann(OldType), Name},    %% TODO: we don't have the location of the old constructor here
             type_error({repeated_constructor, [{OldCon, OldType}, {Con, NewType}]})
@@ -295,29 +313,23 @@ check_reserved_entrypoints(Funs) ->
         || {Name, Def} <- maps:to_list(Funs), lists:member(Name, Reserved) ],
     destroy_and_report_type_errors().
 
-check_fundecl(_Env, {fun_decl, _Attrib, {id, _NameAttrib, Name}, {fun_t, _, Named, Args, Ret}}) ->
-    {Name, {type_sig, Named, Args, Ret}};  %% TODO: actually check that the type makes sense!
+check_fundecl(_Env, {fun_decl, Attrib, {id, _NameAttrib, Name}, {fun_t, _, Named, Args, Ret}}) ->
+    {Name, {type_sig, Attrib, Named, Args, Ret}};  %% TODO: actually check that the type makes sense!
 check_fundecl(_, {fun_decl, _Attrib, {id, _, Name}, Type}) ->
     error({fundecl_must_have_funtype, Name, Type}).
 
 infer_nonrec(Env, LetFun) ->
-    ets:new(type_vars, [set, named_table, public]),
-    create_type_errors(),
     create_constraints(),
     NewLetFun = infer_letfun(Env, LetFun),
     solve_constraints(),
     destroy_and_report_unsolved_constraints(),
     Result = {TypeSig, _} = instantiate(NewLetFun),
-    destroy_and_report_type_errors(),
-    ets:delete(type_vars),
     print_typesig(TypeSig),
     Result.
 
-typesig_to_fun_t({type_sig, Named, Args, Res}) -> {fun_t, [], Named, Args, Res}.
+typesig_to_fun_t({type_sig, Ann, Named, Args, Res}) -> {fun_t, Ann, Named, Args, Res}.
 
 infer_letrec(Env, {letrec, Attrs, Defs}) ->
-    ets:new(type_vars, [set, named_table, public]),
-    create_type_errors(),
     create_constraints(),
     Env1 = [{Name, fresh_uvar(A)}
                  || {letfun, _, {id, A, Name}, _, _, _} <- Defs],
@@ -333,11 +345,9 @@ infer_letrec(Env, {letrec, Attrs, Defs}) ->
             Res
           end || LF <- Defs ],
     destroy_and_report_unsolved_constraints(),
-    destroy_and_report_type_errors(),
     TypeSigs = instantiate([Sig || {Sig, _} <- Inferred]),
     NewDefs  = instantiate([D || {_, D} <- Inferred]),
     [print_typesig(S) || S <- TypeSigs],
-    ets:delete(type_vars),
     {TypeSigs, {letrec, Attrs, NewDefs}}.
 
 infer_letfun(Env, {letfun, Attrib, {id, NameAttrib, Name}, Args, What, Body}) ->
@@ -347,7 +357,7 @@ infer_letfun(Env, {letfun, Attrib, {id, NameAttrib, Name}, Args, What, Body}) ->
     NewArgs = [{arg, A1, {id, A2, ArgName}, T}
                || {{ArgName, T}, {arg, A1, {id, A2, ArgName}, _}} <- lists:zip(ArgTypes, Args)],
     NamedArgs = [],
-    TypeSig = {type_sig, NamedArgs, [T || {arg, _, _, T} <- NewArgs], ResultType},
+    TypeSig = {type_sig, Attrib, NamedArgs, [T || {arg, _, _, T} <- NewArgs], ResultType},
     {{Name, TypeSig},
      {letfun, Attrib, {id, NameAttrib, Name}, NewArgs, ResultType, NewBody}}.
 
@@ -373,7 +383,7 @@ lookup_name(Env, As, Name, Options) ->
                  end,
             type_error({unbound_variable, Id}),
             fresh_uvar(As);
-        {type_sig, _, _, _} = Type ->
+        {type_sig, _, _, _, _} = Type ->
             freshen_type(typesig_to_fun_t(Type));
         Type ->
             case proplists:get_value(freshen, Options, false) of
@@ -667,6 +677,16 @@ free_vars(L) when is_list(L) ->
     [V || Elem <- L,
           V <- free_vars(Elem)].
 
+%% Clean up all the ets tables (in case of an exception)
+
+ets_tables() ->
+    [options, type_vars, type_defs, record_fields, named_argument_constraints,
+     field_constraints, freshen_tvars, type_errors].
+
+clean_up_ets() ->
+    [ catch ets:delete(Tab) || Tab <- ets_tables() ],
+    ok.
+
 %% Options
 
 create_options(Options) ->
@@ -680,9 +700,6 @@ get_option(Key, Default) ->
         [{Key, Val}] -> Val;
         _            -> Default
     end.
-
-destroy_options() ->
-    ets:delete(options).
 
 %% Record types
 
@@ -1007,8 +1024,9 @@ unfold_types({typed, Attr, E, Type}, Options) ->
     {typed, Attr, unfold_types(E, Options), unfold_types_in_type(Type, Options)};
 unfold_types({arg, Attr, Id, Type}, Options) ->
     {arg, Attr, Id, unfold_types_in_type(Type, Options)};
-unfold_types({type_sig, NamedArgs, Args, Ret}, Options) ->
-    {type_sig, unfold_types_in_type(NamedArgs, Options),
+unfold_types({type_sig, Ann, NamedArgs, Args, Ret}, Options) ->
+    {type_sig, Ann,
+               unfold_types_in_type(NamedArgs, Options),
                unfold_types_in_type(Args, Options),
                unfold_types_in_type(Ret, Options)};
 unfold_types({type_def, Ann, Name, Args, Def}, Options) ->
@@ -1247,10 +1265,12 @@ create_type_errors() ->
     ets:new(type_errors, [bag, named_table, public]).
 
 destroy_and_report_type_errors() ->
-    Errors = ets:tab2list(type_errors),
-    [ io:format("~s", [pp_error(Err)]) || Err <- Errors ],
+    Errors   = ets:tab2list(type_errors),
+    PPErrors = [ pp_error(Err) || Err <- Errors ],
+    [ io:format("~s", [Err]) || Err <- PPErrors ],
     ets:delete(type_errors),
-    [ error(type_errors) || Errors /= [] ].
+    [ error({type_errors, [lists:flatten(Err) || Err <- PPErrors]})
+      || Errors /= [] ].
 
 pp_error({cannot_unify, A, B, When}) ->
     io_lib:format("Cannot unify ~s\n"
@@ -1266,19 +1286,19 @@ pp_error({non_linear_pattern, Pattern, Nonlinear}) ->
     Plural = [ $s || length(Nonlinear) > 1 ],
     io_lib:format("Repeated name~s ~s in pattern\n~s (at ~s)\n",
                   [Plural, string:join(Nonlinear, ", "), pp_expr("  ", Pattern), pp_loc(Pattern)]);
-pp_error({ambiguous_record, Fields, Candidates}) ->
+pp_error({ambiguous_record, Fields = [{_, First} | _], Candidates}) ->
     S = [ "s" || length(Fields) > 1 ],
-    io_lib:format("Ambiguous record type with field~s ~s (at ~s) could be one of\n  ~s\n",
-                  [S, string:join([ pp(F) || F <- Fields ], ", "),
-                   pp_loc(hd(Fields)),
-                   string:join([ C || C <- Candidates ], ", ")]);
+    io_lib:format("Ambiguous record type with field~s ~s (at ~s) could be one of\n~s",
+                  [S, string:join([ pp(F) || {_, F} <- Fields ], ", "),
+                   pp_loc(First),
+                   [ ["  - ", pp(C), " (at ", pp_loc(C), ")\n"] || C <- Candidates ]]);
 pp_error({missing_field, Field, Rec}) ->
     io_lib:format("Record type ~s does not have field ~s (at ~s)\n", [pp(Rec), pp(Field), pp_loc(Field)]);
-pp_error({no_records_with_all_fields, Fields}) ->
+pp_error({no_records_with_all_fields, Fields = [{_, First} | _]}) ->
     S = [ "s" || length(Fields) > 1 ],
     io_lib:format("No record type with field~s ~s (at ~s)\n",
-                  [S, string:join([ pp(F) || F <- Fields ], ", "),
-                   pp_loc(hd(Fields))]);
+                  [S, string:join([ pp(F) || {_, F} <- Fields ], ", "),
+                   pp_loc(First)]);
 pp_error({recursive_types_not_implemented, Types}) ->
     S = if length(Types) > 1 -> "s are mutually";
            true              -> " is" end,
@@ -1301,6 +1321,9 @@ pp_error({unsolved_named_argument_constraint, #named_argument_constraint{name = 
 pp_error({reserved_entrypoint, Name, Def}) ->
     io_lib:format("The name '~s' is reserved and cannot be used for a\ntop-level contract function (at ~s).\n",
                   [Name, pp_loc(Def)]);
+pp_error({duplicate_definition, Name, Locs}) ->
+    io_lib:format("Duplicate definitions of ~s at\n~s",
+                  [Name, [ ["  - ", pp_loc(L), "\n"] || L <- Locs ]]);
 pp_error(Err) ->
     io_lib:format("Unknown error: ~p\n", [Err]).
 
@@ -1368,8 +1391,8 @@ pp_when({if_branches, Then, ThenType0, Else, ElseType0}) ->
     {ThenType, ElseType} = instantiate({ThenType0, ElseType0}),
     Branches = [ {Then, ThenType} | [ {B, ElseType} || B <- if_branches(Else) ] ],
     io_lib:format("when comparing the types of the if-branches\n"
-                  "~s\n", [ [ io_lib:format("~s (at ~s)\n", [pp_typed("  - ", B, BType), pp_loc(B)])
-                                || {B, BType} <- Branches ] ]);
+                  "~s", [ [ io_lib:format("~s (at ~s)\n", [pp_typed("  - ", B, BType), pp_loc(B)])
+                          || {B, BType} <- Branches ] ]);
 pp_when({case_pat, Pat, PatType0, ExprType0}) ->
     {PatType, ExprType} = instantiate({PatType0, ExprType0}),
     io_lib:format("when checking the type of the pattern at ~s\n~s\n"
@@ -1406,7 +1429,7 @@ if_branches(If = {'if', Ann, _, Then, Else}) ->
     end;
 if_branches(E) -> [E].
 
-pp_typed(Label, E, T = {type_sig, _, _, _}) -> pp_typed(Label, E, typesig_to_fun_t(T));
+pp_typed(Label, E, T = {type_sig, _, _, _, _}) -> pp_typed(Label, E, typesig_to_fun_t(T));
 pp_typed(Label, {typed, _, Expr, _}, Type) ->
     pp_typed(Label, Expr, Type);
 pp_typed(Label, Expr, Type) ->
@@ -1426,9 +1449,12 @@ loc(T) ->
 
 pp_loc(T) ->
     {Line, Col} = loc(T),
-    io_lib:format("line ~p, column ~p", [Line, Col]).
+    case {Line, Col} of
+        {0, 0} -> "(builtin location)";
+        _      -> io_lib:format("line ~p, column ~p", [Line, Col])
+    end.
 
-pp(T = {type_sig, _, _, _}) ->
+pp(T = {type_sig, _, _, _, _}) ->
     pp(typesig_to_fun_t(T));
 pp([]) ->
     "";

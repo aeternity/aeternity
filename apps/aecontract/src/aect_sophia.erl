@@ -23,7 +23,10 @@ compile(ContractAsBinString, OptionsAsBinString) ->
     ContractText = binary_to_list(ContractAsBinString),
     Options = parse_options(OptionsAsBinString),
     try {ok, aeso_compiler:from_string(ContractText, Options)}
-    catch error:Error ->
+    catch
+        error:{type_errors, Errors} ->
+            {error, list_to_binary(string:join(["** Type errors\n" | Errors], "\n"))};
+        error:Error ->
             {error, list_to_binary(io_lib:format("~p", [Error]))}
     end.
 
