@@ -574,12 +574,12 @@ trace_format(String, Argument, State) ->
         true ->
             F = trace_fun(State),
             F("[~4.16.0B] ~8.16.0B : ~w",
-              [Account, CP, aevm_opcodes:op_name(OP, State)]),
+              [Account, CP, aevm_opcodes:op_name(OP)]),
             F(" ~s", [format_stack(stack(State))]),
             F(" ~s", [format_mem(mem(State))]),
             F(" ~p", [gas(State)]),
             F(String, Argument),
-            add_trace([{CP, OP, aevm_opcodes:op_name(OP, State)}], State);
+            add_trace([{CP, OP, aevm_opcodes:op_name(OP)}], State);
         false ->
             State
     end.
