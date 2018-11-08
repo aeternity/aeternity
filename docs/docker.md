@@ -43,7 +43,7 @@ mining:
 
 ```
 
-Note that if want to use the default miner, remove the `mining.cuckoo` section and increase the docker container memory at least 4GB. 
+Note that if you want to use the default miner, remove the `mining.cuckoo` section and increase the docker container memory at least 4GB. 
 
 #### Generating beneficiary account for the first time
 
