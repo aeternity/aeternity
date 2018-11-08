@@ -48,7 +48,8 @@ hash(K0, K1, K2, K3, Nonce) ->
     V3 = K3 bxor Nonce,
     {V01, V11, V21, V31} =
         sip_round(sip_round(sip_round(sip_round(sip_change(Nonce, sip_round(sip_round({V0, V1, V2, V3}))))))),
-    ((V01 bxor V11) bxor (V21 bxor V31)) band 16#ffffffffffffffff.
+    rotl64(((V01 bxor V11) bxor (V21 bxor V31)), 17) band 16#ffffffffffffffff.
+
 
 %%%=============================================================================
 %%% Internal functions

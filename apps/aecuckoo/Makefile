@@ -26,7 +26,7 @@ BLAKE_2B_SRC ?= ../crypto/blake2b-ref.c
 # end Flags from upstream
 
 REPO = https://github.com/aeternity/cuckoo.git
-COMMIT = 51351332d23a11bc30e2457bd98f1c2ba358eb1e
+COMMIT = a66b88ab8514b7232b1e148a4760f9258d5457f0
 
 .PHONY: all
 all: $(EXECUTABLES)

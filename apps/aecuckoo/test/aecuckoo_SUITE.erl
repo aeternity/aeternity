@@ -33,7 +33,7 @@ groups() ->
     ].
 
 init_per_group(smoke_tests_15, Config) ->
-    [{nonce, 86} | Config];
+    [{nonce, 28} | Config];
 init_per_group(mean15, Config) ->
     [{miner, 'mean15-generic'} | Config];
 init_per_group(lean15, Config) ->
