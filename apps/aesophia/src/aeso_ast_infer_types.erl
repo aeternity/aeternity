@@ -151,23 +151,26 @@ infer(Contracts) ->
 
 -spec infer(aeso_syntax:ast(), list(option())) -> aeso_syntax:ast().
 infer(Contracts, Options) ->
-    TypeEnv =
-        case proplists:get_value(permissive_address_literals, Options, false) of
-            false -> global_type_env();
-            true ->
-                %% Treat oracle and query ids as address to allow address literals for these
-                Tag   = fun(Tag, Vals) -> list_to_tuple([Tag, [{origin, system}] | Vals]) end,
-                Alias = fun(Name, Arity) ->
-                            Tag(type_def, [Tag(id, [Name]),
-                                         lists:duplicate(Arity, Tag(tvar, "_")),
-                                         {alias_t, Tag(id, ["address"])}])
-                        end,
-                [Alias("oracle", 2), Alias("oracle_query", 2)]
-        end,
-    create_options(Options),
-    Res = infer1(TypeEnv, Contracts),
-    destroy_options(),
-    Res.
+    try
+        TypeEnv =
+            case proplists:get_value(permissive_address_literals, Options, false) of
+                false -> global_type_env();
+                true ->
+                    %% Treat oracle and query ids as address to allow address literals for these
+                    Tag   = fun(Tag, Vals) -> list_to_tuple([Tag, [{origin, system}] | Vals]) end,
+                    Alias = fun(Name, Arity) ->
+                                Tag(type_def, [Tag(id, [Name]),
+                                             lists:duplicate(Arity, Tag(tvar, "_")),
+                                             {alias_t, Tag(id, ["address"])}])
+                            end,
+                    [Alias("oracle", 2), Alias("oracle_query", 2)]
+            end,
+        create_options(Options),
+        ets:new(type_vars, [set, named_table, public]),
+        infer1(TypeEnv, Contracts)
+    after
+        clean_up_ets()
+    end.
 
 infer1(TypeEnv, [Contract = {contract, Attribs, ConName, Code}|Rest]) ->
     %% do type inference on each contract independently.
@@ -683,6 +686,16 @@ free_vars(L) when is_list(L) ->
     [V || Elem <- L,
           V <- free_vars(Elem)].
 
+%% Clean up all the ets tables (in case of an exception)
+
+ets_tables() ->
+    [options, type_vars, type_defs, record_fields, named_argument_constraints,
+     field_constraints, freshen_tvars, type_errors].
+
+clean_up_ets() ->
+    [ catch ets:delete(Tab) || Tab <- ets_tables() ],
+    ok.
+
 %% Options
 
 create_options(Options) ->
@@ -696,9 +709,6 @@ get_option(Key, Default) ->
         [{Key, Val}] -> Val;
         _            -> Default
     end.
-
-destroy_options() ->
-    ets:delete(options).
 
 %% Record types
 
