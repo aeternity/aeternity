@@ -35,7 +35,15 @@ chain:
 mining:
     autostart: true
     beneficiary: "encoded_beneficiary_pubkey_to_be_replaced"
+    cuckoo:
+        miner:
+            executable: lean30
+            extra_args: ""
+            node_bits: 30
+
 ```
+
+Note that if want to use the default miner, remove the `mining.cuckoo` section and increase the docker container memory at least 4GB. 
 
 #### Generating beneficiary account for the first time
 
