@@ -407,7 +407,7 @@ check_candidate(Db, #dbs{gc_db = GCDb} = Dbs,
                 AccountsTree, Height, Gas, Acc) ->
     Tx1 = aetx_sign:tx(Tx),
     TxTTL = aetx:ttl(Tx1),
-    TxGas = aetx:gas(Tx1),
+    TxGas = aetx:gas(Tx1, Height),
     case Height < TxTTL andalso ok =:= int_check_nonce(Tx, AccountsTree) of
         true ->
             case Gas - TxGas of
@@ -739,7 +739,8 @@ get_account(AccountKey, {block_hash, BlockHash}) ->
 
 check_minimum_fee(Tx0, _Hash) ->
     Tx = aetx_sign:tx(Tx0),
-    case aetx:fee(Tx) >= aetx:min_fee(Tx) of
+    Height = top_height(),
+    case aetx:fee(Tx) >= aetx:min_fee(Tx, Height) of
         true  -> ok;
         false -> {error, too_low_fee}
     end.

@@ -114,7 +114,7 @@ many_spend_txs(Cfg) ->
                                      , ttl => 10000000
                                      , nonce => 1000
                                      , payload => <<"node3">>}),
-    Gas = aetx:gas(FakeTx),
+    Gas = aetx:gas(FakeTx, 0),
 
     TxsPerMB = aec_governance:block_gas_limit() div Gas,
     ct:log("We can put approx ~p Txs in a micro block (gas per spend ~p, ~p)\n", [TxsPerMB, Gas, FakeTx]),

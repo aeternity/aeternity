@@ -133,15 +133,17 @@ register_oracle_negative_dynamic_fee(_Cfg) ->
 
     %% Test minimum fee for increasing TTL.
     ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 0}, fee => 0})),
-    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 0}, fee => 20000})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 0}, fee => 17000})),
     ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 1}, fee => 1})),
-    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1}, fee => 20000})),
-    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 999}, fee => 20000})),
-    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1000}, fee => 20000})),
-    ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 1001}, fee => 1})),
-    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1001}, fee => 40000})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1}, fee => 17000})),
+    ?assertMatch({error, too_low_fee}, F(#{oracle_ttl => {delta, 1000}, fee => 16500})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1000}, fee => 17000})),
+    ?assertMatch({error, too_low_fee}, F(#{oracle_ttl => {delta, 4000}, fee => 17000})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 4000}, fee => 17500})),
+    ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 9000}, fee => 17500})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 9000}, fee => 19000})),
     %% Test more than minimum fee considering TTL.
-    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1001}, fee => 45000})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 9000}, fee => 40000})),
     ok.
 
 register_oracle(Cfg) ->
@@ -218,15 +220,17 @@ extend_oracle_negative_dynamic_fee(Cfg) ->
         end,
     %% Test minimum fee for increasing TTL.
     ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 0}, fee => 0})),
-    ?assertEqual({error, zero_relative_oracle_extension_ttl}, F(#{oracle_ttl => {delta, 0}, fee => 20000})),
+    ?assertEqual({error, zero_relative_oracle_extension_ttl}, F(#{oracle_ttl => {delta, 0}, fee => 16000})),
     ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 1}, fee => 1})),
-    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1}, fee => 20000})),
-    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 999}, fee => 20000})),
-    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1000}, fee => 20000})),
-    ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 1001}, fee => 1})),
-    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1001}, fee => 20000})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1}, fee => 16000})),
+    ?assertMatch({error, too_low_fee}, F(#{oracle_ttl => {delta, 1000}, fee => 16000})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1000}, fee => 16500})),
+    ?assertMatch({error, too_low_fee}, F(#{oracle_ttl => {delta, 4000}, fee => 16500})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 4000}, fee => 17000})),
+    ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 9000}, fee => 17000})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 9000}, fee => 20000})),
     %% Test more than minimum fee considering TTL.
-    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1001}, fee => 20000})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 9000}, fee => 40000})),
     ok.
 
 extend_oracle(Cfg) ->
@@ -323,15 +327,15 @@ query_oracle_negative_dynamic_fee(Cfg) ->
 
     %% Test minimum fee for increasing TTL.
     ?assertEqual({error, too_low_fee}, F(#{query_ttl => {delta, 0}, fee => 0})),
-    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 0}, fee => 20000})),
+    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 0}, fee => 17000})),
     ?assertEqual({error, too_low_fee}, F(#{query_ttl => {delta, 1}, fee => 1})),
-    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 1}, fee => 20000})),
-    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 999}, fee => 20000})),
-    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 1000}, fee => 20000})),
-    ?assertEqual({error, too_low_fee}, F(#{query_ttl => {delta, 1001}, fee => 1})),
-    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 1001}, fee => 20000})),
+    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 1}, fee => 17000})),
+    ?assertMatch({error, too_low_fee}, F(#{query_ttl => {delta, 1000}, fee => 17000})),
+    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 1000}, fee => 17150})),
+    ?assertEqual({error, too_low_fee}, F(#{query_ttl => {delta, 1500}, fee => 17150})),
+    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 1500}, fee => 17200})),
     %% Test more than minimum fee considering TTL.
-    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 1001}, fee => 20000})),
+    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 1500}, fee => 40000})),
     ok.
 
 query_oracle_type_check(_Cfg) ->
@@ -444,15 +448,14 @@ query_response_negative_dynamic_fee(Cfg) ->
 
     %% Test minimum fee for increasing TTL.
     ?assertException(error, {illegal,response_ttl,{delta,0}}, F({delta, 0}, 0)),
-    ?assertException(error, {illegal,response_ttl,{delta,0}}, F({delta, 0}, 20000)),
+    ?assertException(error, {illegal,response_ttl,{delta,0}}, F({delta, 0}, 16850)),
     ?assertEqual({error, too_low_fee}, F({delta, 1},    1)),
-    ?assertMatch({ok, _}             , F({delta, 1},    20000)),
-    ?assertMatch({ok, _}             , F({delta, 999},  20000)),
-    ?assertMatch({ok, _}             , F({delta, 1000}, 20000)),
-    ?assertEqual({error, too_low_fee}, F({delta, 1001}, 1)),
-    ?assertMatch({ok, _}             , F({delta, 1001}, 20000)),
+    ?assertMatch({ok, _}             , F({delta, 1},    16850)),
+    ?assertMatch({ok, _}             , F({delta, 1000}, 16850)),
+    ?assertEqual({error, too_low_fee}, F({delta, 1500}, 16850)),
+    ?assertMatch({ok, _}             , F({delta, 1500}, 17000)),
     %% Test more than minimum fee considering TTL.
-    ?assertMatch({ok, _}             , F({delta, 1001}, 20000)),
+    ?assertMatch({ok, _}             , F({delta, 1500}, 40000)),
     ok.
 
 query_response(Cfg) ->

@@ -88,10 +88,11 @@ tx_pool_test_() ->
                STxs = [ a_signed_tx(PubKey, me, Nonce, 20000, 10) || Nonce <- lists:seq(1,400) ],
                [ aec_tx_pool:push(STx, tx_created) || STx <- STxs ],
 
+               GenesisHeight = aec_block_genesis:height(),
                {ok, Hash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
                {ok, STxs2} = aec_tx_pool:get_candidate(aec_governance:block_gas_limit(), Hash),
-               TotalGas = lists:sum([ aetx:gas(aetx_sign:tx(T)) || T <- STxs2 ]),
-               MinGas = aetx:gas(aetx_sign:tx(hd(STxs))),
+               TotalGas = lists:sum([ aetx:gas(aetx_sign:tx(T), GenesisHeight) || T <- STxs2 ]),
+               MinGas = aetx:gas(aetx_sign:tx(hd(STxs)), GenesisHeight),
 
                %% No single tx would have fitted on top of this
                ?assert(MinGas > aec_governance:block_gas_limit() - TotalGas)
@@ -310,9 +311,9 @@ tx_pool_test_() ->
                STx2 = signed_ct_create_tx(PK2,    1, 800000,  1000),
                STx3 = signed_ct_call_tx(  PK3,    1, 800000,  1000),
 
-               GasTx1 = aetx:gas(aetx_sign:tx(STx1)),
-               GasTx2 = aetx:gas(aetx_sign:tx(STx2)),
-               GasTx3 = aetx:gas(aetx_sign:tx(STx3)),
+               GasTx1 = aetx:gas(aetx_sign:tx(STx1), 0),
+               GasTx2 = aetx:gas(aetx_sign:tx(STx2), 0),
+               GasTx3 = aetx:gas(aetx_sign:tx(STx3), 0),
 
                ?assert(GasTx2 > GasTx1),
                ?assert(GasTx3 > GasTx1),
