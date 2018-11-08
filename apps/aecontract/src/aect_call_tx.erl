@@ -28,6 +28,8 @@
          for_client/1
         ]).
 
+-export([process_call/3]).
+
 %% Additional getters
 -export([call_id/1,
          caller_id/1,
@@ -153,13 +155,26 @@ signers(Tx, _) ->
     {ok, [caller_pubkey(Tx)]}.
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()}.
-process(#contract_call_tx{caller_id   = CallerId,
-                          nonce       = Nonce,
-                          contract_id = ContractId,
-                          fee         = Fee,
-                          gas         = Gas,
-                          gas_price   = GasPrice,
-                          amount      = Value} = CallTx,
+process(Tx, Trees, Env) ->
+    {ok, Call, Trees1} = process_call(Tx, Trees, Env),
+
+    %% Insert the call into the state tree. This is mainly to remember what the
+    %% return value was so that the caller can access it easily.
+    %% Each block starts with an empty calls tree. Only for the top-level transaction.
+    case aetx_env:context(Env) of
+        aetx_transaction -> {ok, aect_utils:insert_call_in_trees(Call, Trees1)};
+        aetx_contract    -> {ok, Trees1}
+    end.
+
+%% Process a call transaction and return the call object, without writing it to the state trees.
+-spec process_call(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aect_call:call(), aec_trees:trees()}.
+process_call(#contract_call_tx{caller_id   = CallerId,
+                               nonce       = Nonce,
+                               contract_id = ContractId,
+                               fee         = Fee,
+                               gas         = Gas,
+                               gas_price   = GasPrice,
+                               amount      = Value} = CallTx,
         Trees1, Env) ->
     Height = aetx_env:height(Env),
 
@@ -204,10 +219,7 @@ process(#contract_call_tx{caller_id   = CallerId,
                 Trees4
         end,
 
-    %% Insert the call into the state tree. This is mainly to remember what the
-    %% return value was so that the caller can access it easily.
-    %% Each block starts with an empty calls tree.
-    {ok, aect_utils:insert_call_in_trees(Call, Trees5)}.
+    {ok, Call, Trees5}.
 
 spend(CallerPubkey, ContractPubkey, Value, Fee, Nonce, Trees, Env) ->
     {ok, SpendTx} =

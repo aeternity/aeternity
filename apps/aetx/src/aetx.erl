@@ -21,6 +21,7 @@
         , nonce/1
         , origin/1
         , process/3
+        , custom_apply/4
         , serialize_for_client/1
         , serialize_to_binary/1
         , signers/2
@@ -279,6 +280,10 @@ check_ttl(AeTx, Env) ->
 process(#aetx{ cb = CB, tx = Tx }, Trees, Env) ->
     CB:process(Tx, Trees, Env).
 
+%% Call a custom callback function in the transaction module.
+-spec custom_apply(atom(), tx(), aec_trees:trees(), aetx_env:env()) -> any().
+custom_apply(Fun, #aetx{ cb = CB, tx = Tx}, Trees, Env) ->
+    CB:Fun(Tx, Trees, Env).
 
 %%%===================================================================
 %%% Serialize/deserialize

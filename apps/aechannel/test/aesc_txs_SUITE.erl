@@ -4232,8 +4232,10 @@ tx_env(#{height := Height} = Props) ->
     KeyBlockHash = <<42:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
     Beneficiary = maps:get(beneficiary, Props,
                           <<24:?BENEFICIARY_PUB_BYTES/unit:8>>),
-    aetx_env:contract_env(Height, ConsensusVersion, Time, Beneficiary,
-                          123456, KeyBlockHash).
+    Env = aetx_env:contract_env(Height, ConsensusVersion, Time, Beneficiary,
+                                123456, KeyBlockHash),
+    %% Run as transaction!
+    aetx_env:set_context(Env, aetx_transaction).
 
 create_trees_if_not_present() ->
     fun(#{trees := _} = Props) -> Props; % trees are already present

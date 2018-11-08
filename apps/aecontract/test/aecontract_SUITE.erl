@@ -88,6 +88,7 @@
         , sophia_aens/1
         , sophia_state_handling/1
         , sophia_state_gas/1
+        , sophia_no_callobject_for_remote_calls/1
         , create_store/1
         , update_store/1
         , read_store/1
@@ -170,7 +171,8 @@ groups() ->
                                  sophia_fundme,
                                  sophia_aens,
                                  sophia_state_handling,
-                                 sophia_state_gas]}
+                                 sophia_state_gas,
+                                 sophia_no_callobject_for_remote_calls]}
     , {sophia_oracles_ttl, [],
           %% Test Oracle TTL handling
         [ sophia_oracles_ttl__extend_after_expiry
@@ -2978,7 +2980,31 @@ sophia_savecoinbase(_Cfg) ->
     Beneficiary = LastBf2,
     ok.
 
+sophia_no_callobject_for_remote_calls(_Cfg) ->
+    CountCalls = fun() ->
+                    CallTree = aect_test_utils:calls(state()),
+                    length(aect_call_state_tree:to_list(CallTree))
+                 end,
 
+    state(aect_test_utils:new_state()),
+    Acc   = ?call(new_account, 1000000),
+    IdC   = ?call(create_contract, Acc, identity, {}),
+    RemC  = ?call(create_contract, Acc, remote_call, {}, #{amount => 100}),
+    RemC2 = ?call(create_contract, Acc, remote_call, {}, #{amount => 100}),
+
+    %% Each contract creation gets one call object
+    ?assertEqual(3, CountCalls()),
+
+    %% A contract call results in only one call object. No call objects are
+    %% created for inner calls (of which there are two in this example).
+    77 = ?call(call_contract, Acc, RemC2, staged_call, word, {IdC, RemC, 77}),
+    ?assertEqual(4, CountCalls()),
+
+    %% Let's do one more for good measure
+    88 = ?call(call_contract, Acc, RemC2, staged_call, word, {IdC, RemC, 88}),
+    ?assertEqual(5, CountCalls()),
+
+    ok.
 
 %% The crowd funding example.
 
