@@ -7,7 +7,7 @@ The release packages do not ship with a CUDA miner, but you can build it yoursel
 - Epoch node configuration
 
 The documentation below is tested on:
-- Epoch version 0.19.0
+- Epoch version 1.0.0-rc2
 - CUDA toolkit version 9.2
 - AWS p2.xlarge instance with 16GB EBS
 - Ubuntu 16.04.4
@@ -41,7 +41,7 @@ Epoch source code can be downloaded by cloning the git repository:
 ```bash
 cd ~
 git clone https://github.com/aeternity/epoch.git epoch && cd epoch
-git checkout tags/v0.19.0
+git checkout tags/v1.0.0-rc2
 ```
 
 The documentation below assumes that the `epoch` source code resides in `~/epoch` directory.
@@ -55,8 +55,7 @@ export PATH=/usr/local/cuda-9.2/bin${PATH:+:${PATH}}
 Compilation of CUDA miner is done by invoking:
 
 ```bash
-cd apps/aecuckoo && make c_src/.git
-cd c_src/src && make cuda29
+cd apps/aecuckoo && make cuda29
 ```
 
 Finally the actual installation of the miner binary is copying it to the node corresponding path, the documentation assumes the `epoch` node is installed in `~/node` directory.

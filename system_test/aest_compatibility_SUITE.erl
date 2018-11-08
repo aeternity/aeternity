@@ -76,7 +76,7 @@ test_mining_algorithms_compatibility(Cfg) ->
 
     %% Setup nodes
     setup([?NODE1], #{ beneficiary => Beneficiary1, algorithm => <<"mean15-generic">> }, Cfg),
-    setup([?NODE2], #{ beneficiary => Beneficiary2, algorithm => <<"lean15">> }, Cfg),
+    setup([?NODE2], #{ beneficiary => Beneficiary2, algorithm => <<"lean15-generic">> }, Cfg),
     start_node(node1, Cfg),
     start_node(node2, Cfg),
     wait_for_startup([node1, node2], 0, Cfg),

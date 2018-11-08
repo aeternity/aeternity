@@ -33,13 +33,11 @@ groups() ->
     ].
 
 init_per_group(smoke_tests_15, Config) ->
-    [{nonce, 86},
-     {cyclehash, "c6bf28762af60c78600203ea018de966ebee3f37d84ea21f07b114553fe1692f"}
-     | Config];
+    [{nonce, 86} | Config];
 init_per_group(mean15, Config) ->
     [{miner, 'mean15-generic'} | Config];
 init_per_group(lean15, Config) ->
-    [{miner, 'lean15'} | Config].
+    [{miner, 'lean15-generic'} | Config].
 
 end_per_group(_Group, _Config) ->
     ok.
