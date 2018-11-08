@@ -1264,10 +1264,12 @@ create_type_errors() ->
     ets:new(type_errors, [bag, named_table, public]).
 
 destroy_and_report_type_errors() ->
-    Errors = ets:tab2list(type_errors),
-    [ io:format("~s", [pp_error(Err)]) || Err <- Errors ],
+    Errors   = ets:tab2list(type_errors),
+    PPErrors = [ pp_error(Err) || Err <- Errors ],
+    [ io:format("~s", [Err]) || Err <- PPErrors ],
     ets:delete(type_errors),
-    [ error(type_errors) || Errors /= [] ].
+    [ error({type_errors, [lists:flatten(Err) || Err <- PPErrors]})
+      || Errors /= [] ].
 
 pp_error({cannot_unify, A, B, When}) ->
     io_lib:format("Cannot unify ~s\n"
