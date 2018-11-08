@@ -2935,9 +2935,24 @@ get_transaction(_Config) ->
 %% POST internalAPI/debug/transactions/spend
 %% GET externalAPI/account/balance
 pending_transactions(_Config) ->
+    Node = aecore_suite_utils:node_name(?NODE),
+
+    % For this test we need a clean mempool and all mining rewards for fees
+    % to be given to the miner. The test relies on the miner receiving only
+    % block rewards (and no transaction fees)
+
+    % mine all pending transactions, if any
+    {ok, PendingTxs} = rpc(aec_tx_pool, peek, [infinity]), % empty
+    PendingTxHashes =
+        [aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx))
+            || SignedTx <- PendingTxs],
+    ct:log("Pending txs: ~p", [PendingTxs]),
+    ct:log("Pending tx hashes: ~p", [PendingTxHashes]),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, PendingTxHashes, 10),
+
     %% Mine for the reward delay to avoid worrying about start of the chain effects
     Delay = rpc(aec_governance, beneficiary_reward_delay, []),
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), Delay),
+    aecore_suite_utils:mine_key_blocks(Node, Delay),
 
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
     {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
@@ -2950,7 +2965,7 @@ pending_transactions(_Config) ->
     AmountToSpent = 3,
     {BlocksToMine, Fee} = minimal_fee_and_blocks_to_mine(AmountToSpent, 1),
     MineReward = rpc(aec_governance, block_mine_reward, []),
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), BlocksToMine),
+    aecore_suite_utils:mine_key_blocks(Node, BlocksToMine),
     {ok, 200, #{<<"balance">> := Bal0}} = get_balance_at_top(),
 
     ct:log("Bal0: ~p, Initial Balance: ~p, Blocks to mine: ~p, Mine reward: ~p",
@@ -2982,7 +2997,7 @@ pending_transactions(_Config) ->
 
 
     ToMine = 2 + Delay,
-    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), ToMine),
+    aecore_suite_utils:mine_key_blocks(Node, ToMine),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty again
     {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
 
