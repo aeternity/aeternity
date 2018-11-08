@@ -70,13 +70,13 @@ global_env() ->
     Option  = fun(T) -> {app_t, Ann, {id, Ann, "option"}, [T]} end,
     Map     = fun(A, B) -> {app_t, Ann, {id, Ann, "map"}, [A, B]} end,
     Pair    = fun(A, B) -> {tuple_t, Ann, [A, B]} end,
-    Fun     = fun(Ts, T) -> {type_sig, [], Ts, T} end,
+    Fun     = fun(Ts, T) -> {type_sig, Ann, [], Ts, T} end,
     Fun1    = fun(S, T) -> Fun([S], T) end,
     TVar    = fun(X) -> {tvar, Ann, "'" ++ X} end,
     SignId    = {id, Ann, "signature"},
     SignDef   = {tuple, Ann, [{int, Ann, 0}, {int, Ann, 0}]},
     Signature = {named_arg_t, Ann, SignId, SignId, {typed, Ann, SignDef, SignId}},
-    SignFun   = fun(Ts, T) -> {type_sig, [Signature], Ts, T} end,
+    SignFun   = fun(Ts, T) -> {type_sig, Ann, [Signature], Ts, T} end,
     TTL       = {qid, Ann, ["Chain", "ttl"]},
     Fee       = Int,
     [A, Q, R, K, V] = lists:map(TVar, ["a", "q", "r", "k", "v"]),
@@ -238,7 +238,7 @@ check_typedef_sccs(Env, TypeMap, [{acyclic, Name} | SCCs]) ->
                 {record_t, _} -> check_typedef_sccs(Env, TypeMap, SCCs); %%       and these
                 {variant_t, Cons} ->
                     Target   = {app_t, Ann, D, Xs},
-                    ConType  = fun([]) -> Target; (Args) -> {type_sig, [], Args, Target} end,
+                    ConType  = fun([]) -> Target; (Args) -> {type_sig, Ann, [], Args, Target} end,
                     ConTypes = [ begin
                                     {constr_t, _, {con, _, Con}, Args} = ConDef,
                                     {Con, ConType(Args)}
@@ -257,7 +257,7 @@ check_constructor_overlap(Env, Con = {con, _, Name}, NewType) ->
     case proplists:get_value(Name, Env) of
         undefined -> ok;
         Type ->
-            OldType = case Type of {type_sig, _, _, T} -> T;
+            OldType = case Type of {type_sig, _, _, _, T} -> T;
                                    _ -> Type end,
             OldCon  = {con, aeso_syntax:get_ann(OldType), Name},    %% TODO: we don't have the location of the old constructor here
             type_error({repeated_constructor, [{OldCon, OldType}, {Con, NewType}]})
@@ -295,8 +295,8 @@ check_reserved_entrypoints(Funs) ->
         || {Name, Def} <- maps:to_list(Funs), lists:member(Name, Reserved) ],
     destroy_and_report_type_errors().
 
-check_fundecl(_Env, {fun_decl, _Attrib, {id, _NameAttrib, Name}, {fun_t, _, Named, Args, Ret}}) ->
-    {Name, {type_sig, Named, Args, Ret}};  %% TODO: actually check that the type makes sense!
+check_fundecl(_Env, {fun_decl, Attrib, {id, _NameAttrib, Name}, {fun_t, _, Named, Args, Ret}}) ->
+    {Name, {type_sig, Attrib, Named, Args, Ret}};  %% TODO: actually check that the type makes sense!
 check_fundecl(_, {fun_decl, _Attrib, {id, _, Name}, Type}) ->
     error({fundecl_must_have_funtype, Name, Type}).
 
@@ -313,7 +313,7 @@ infer_nonrec(Env, LetFun) ->
     print_typesig(TypeSig),
     Result.
 
-typesig_to_fun_t({type_sig, Named, Args, Res}) -> {fun_t, [], Named, Args, Res}.
+typesig_to_fun_t({type_sig, Ann, Named, Args, Res}) -> {fun_t, Ann, Named, Args, Res}.
 
 infer_letrec(Env, {letrec, Attrs, Defs}) ->
     ets:new(type_vars, [set, named_table, public]),
@@ -347,7 +347,7 @@ infer_letfun(Env, {letfun, Attrib, {id, NameAttrib, Name}, Args, What, Body}) ->
     NewArgs = [{arg, A1, {id, A2, ArgName}, T}
                || {{ArgName, T}, {arg, A1, {id, A2, ArgName}, _}} <- lists:zip(ArgTypes, Args)],
     NamedArgs = [],
-    TypeSig = {type_sig, NamedArgs, [T || {arg, _, _, T} <- NewArgs], ResultType},
+    TypeSig = {type_sig, Attrib, NamedArgs, [T || {arg, _, _, T} <- NewArgs], ResultType},
     {{Name, TypeSig},
      {letfun, Attrib, {id, NameAttrib, Name}, NewArgs, ResultType, NewBody}}.
 
@@ -373,7 +373,7 @@ lookup_name(Env, As, Name, Options) ->
                  end,
             type_error({unbound_variable, Id}),
             fresh_uvar(As);
-        {type_sig, _, _, _} = Type ->
+        {type_sig, _, _, _, _} = Type ->
             freshen_type(typesig_to_fun_t(Type));
         Type ->
             case proplists:get_value(freshen, Options, false) of
@@ -1007,8 +1007,9 @@ unfold_types({typed, Attr, E, Type}, Options) ->
     {typed, Attr, unfold_types(E, Options), unfold_types_in_type(Type, Options)};
 unfold_types({arg, Attr, Id, Type}, Options) ->
     {arg, Attr, Id, unfold_types_in_type(Type, Options)};
-unfold_types({type_sig, NamedArgs, Args, Ret}, Options) ->
-    {type_sig, unfold_types_in_type(NamedArgs, Options),
+unfold_types({type_sig, Ann, NamedArgs, Args, Ret}, Options) ->
+    {type_sig, Ann,
+               unfold_types_in_type(NamedArgs, Options),
                unfold_types_in_type(Args, Options),
                unfold_types_in_type(Ret, Options)};
 unfold_types({type_def, Ann, Name, Args, Def}, Options) ->
@@ -1406,7 +1407,7 @@ if_branches(If = {'if', Ann, _, Then, Else}) ->
     end;
 if_branches(E) -> [E].
 
-pp_typed(Label, E, T = {type_sig, _, _, _}) -> pp_typed(Label, E, typesig_to_fun_t(T));
+pp_typed(Label, E, T = {type_sig, _, _, _, _}) -> pp_typed(Label, E, typesig_to_fun_t(T));
 pp_typed(Label, {typed, _, Expr, _}, Type) ->
     pp_typed(Label, Expr, Type);
 pp_typed(Label, Expr, Type) ->
@@ -1428,7 +1429,7 @@ pp_loc(T) ->
     {Line, Col} = loc(T),
     io_lib:format("line ~p, column ~p", [Line, Col]).
 
-pp(T = {type_sig, _, _, _}) ->
+pp(T = {type_sig, _, _, _, _}) ->
     pp(typesig_to_fun_t(T));
 pp([]) ->
     "";
