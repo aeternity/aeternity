@@ -8,7 +8,7 @@ contract AbortTest =
     { value = v }
 
   // Aborting
-  public function do_abort(v : int, s : string) =
+  public function do_abort(v : int, s : string) : () =
     put_value(v)
     revert_abort(s)
 
