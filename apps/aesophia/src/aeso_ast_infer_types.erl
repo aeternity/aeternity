@@ -189,13 +189,9 @@ infer_contract_top(TypeEnv, Defs0) ->
 
 infer_constant({letval, Attrs,_Pattern, Type, E}) ->
     create_type_defs([]),
-    ets:new(type_vars, [set, named_table, public]),
-    create_type_errors(),
     {typed, _, _, PatType} =
         infer_expr(global_env(), {typed, Attrs, E, arg_type(Type)}),
     T = instantiate(PatType),
-    destroy_and_report_type_errors(),
-    ets:delete(type_vars),
     destroy_type_defs(),
     T.
 
@@ -217,7 +213,10 @@ infer_contract(Env, Defs) ->
     DepGraph  = maps:map(fun(_, Def) -> aeso_syntax_utils:used_ids(Def) end, FunMap),
     SCCs      = aeso_utils:scc(DepGraph),
     %% io:format("Dependency sorted functions:\n  ~p\n", [SCCs]),
-    TypeDefs ++ check_sccs(Env2, FunMap, SCCs, []).
+    create_type_errors(),
+    FinalEnv = TypeDefs ++ check_sccs(Env2, FunMap, SCCs, []),
+    destroy_and_report_type_errors(),
+    FinalEnv.
 
 check_name_clashes(Env, Funs) ->
     create_type_errors(),
@@ -320,23 +319,17 @@ check_fundecl(_, {fun_decl, _Attrib, {id, _, Name}, Type}) ->
     error({fundecl_must_have_funtype, Name, Type}).
 
 infer_nonrec(Env, LetFun) ->
-    ets:new(type_vars, [set, named_table, public]),
-    create_type_errors(),
     create_constraints(),
     NewLetFun = infer_letfun(Env, LetFun),
     solve_constraints(),
     destroy_and_report_unsolved_constraints(),
     Result = {TypeSig, _} = instantiate(NewLetFun),
-    destroy_and_report_type_errors(),
-    ets:delete(type_vars),
     print_typesig(TypeSig),
     Result.
 
 typesig_to_fun_t({type_sig, Ann, Named, Args, Res}) -> {fun_t, Ann, Named, Args, Res}.
 
 infer_letrec(Env, {letrec, Attrs, Defs}) ->
-    ets:new(type_vars, [set, named_table, public]),
-    create_type_errors(),
     create_constraints(),
     Env1 = [{Name, fresh_uvar(A)}
                  || {letfun, _, {id, A, Name}, _, _, _} <- Defs],
@@ -352,11 +345,9 @@ infer_letrec(Env, {letrec, Attrs, Defs}) ->
             Res
           end || LF <- Defs ],
     destroy_and_report_unsolved_constraints(),
-    destroy_and_report_type_errors(),
     TypeSigs = instantiate([Sig || {Sig, _} <- Inferred]),
     NewDefs  = instantiate([D || {_, D} <- Inferred]),
     [print_typesig(S) || S <- TypeSigs],
-    ets:delete(type_vars),
     {TypeSigs, {letrec, Attrs, NewDefs}}.
 
 infer_letfun(Env, {letfun, Attrib, {id, NameAttrib, Name}, Args, What, Body}) ->
