@@ -1286,19 +1286,19 @@ pp_error({non_linear_pattern, Pattern, Nonlinear}) ->
     Plural = [ $s || length(Nonlinear) > 1 ],
     io_lib:format("Repeated name~s ~s in pattern\n~s (at ~s)\n",
                   [Plural, string:join(Nonlinear, ", "), pp_expr("  ", Pattern), pp_loc(Pattern)]);
-pp_error({ambiguous_record, Fields, Candidates}) ->
+pp_error({ambiguous_record, Fields = [{_, First} | _], Candidates}) ->
     S = [ "s" || length(Fields) > 1 ],
-    io_lib:format("Ambiguous record type with field~s ~s (at ~s) could be one of\n  ~s\n",
-                  [S, string:join([ pp(F) || F <- Fields ], ", "),
-                   pp_loc(hd(Fields)),
-                   string:join([ C || C <- Candidates ], ", ")]);
+    io_lib:format("Ambiguous record type with field~s ~s (at ~s) could be one of\n~s",
+                  [S, string:join([ pp(F) || {_, F} <- Fields ], ", "),
+                   pp_loc(First),
+                   [ ["  - ", pp(C), " (at ", pp_loc(C), ")\n"] || C <- Candidates ]]);
 pp_error({missing_field, Field, Rec}) ->
     io_lib:format("Record type ~s does not have field ~s (at ~s)\n", [pp(Rec), pp(Field), pp_loc(Field)]);
-pp_error({no_records_with_all_fields, Fields}) ->
+pp_error({no_records_with_all_fields, Fields = [{_, First} | _]}) ->
     S = [ "s" || length(Fields) > 1 ],
     io_lib:format("No record type with field~s ~s (at ~s)\n",
-                  [S, string:join([ pp(F) || F <- Fields ], ", "),
-                   pp_loc(hd(Fields))]);
+                  [S, string:join([ pp(F) || {_, F} <- Fields ], ", "),
+                   pp_loc(First)]);
 pp_error({recursive_types_not_implemented, Types}) ->
     S = if length(Types) > 1 -> "s are mutually";
            true              -> " is" end,
@@ -1391,8 +1391,8 @@ pp_when({if_branches, Then, ThenType0, Else, ElseType0}) ->
     {ThenType, ElseType} = instantiate({ThenType0, ElseType0}),
     Branches = [ {Then, ThenType} | [ {B, ElseType} || B <- if_branches(Else) ] ],
     io_lib:format("when comparing the types of the if-branches\n"
-                  "~s\n", [ [ io_lib:format("~s (at ~s)\n", [pp_typed("  - ", B, BType), pp_loc(B)])
-                                || {B, BType} <- Branches ] ]);
+                  "~s", [ [ io_lib:format("~s (at ~s)\n", [pp_typed("  - ", B, BType), pp_loc(B)])
+                          || {B, BType} <- Branches ] ]);
 pp_when({case_pat, Pat, PatType0, ExprType0}) ->
     {PatType, ExprType} = instantiate({PatType0, ExprType0}),
     io_lib:format("when checking the type of the pattern at ~s\n~s\n"
