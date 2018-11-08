@@ -208,12 +208,28 @@ infer_contract(Env, Defs) ->
     ProtoSigs = [ check_fundecl(Env1, Decl) || Decl <- Get(prototype) ],
     Env2      = ProtoSigs ++ Env1,
     Functions = Get(function),
+    check_name_clashes(Env2, Functions),
     FunMap    = maps:from_list([ {Fun, Def} || Def = {letfun, _, {id, _, Fun}, _, _, _} <- Functions ]),
     check_reserved_entrypoints(FunMap),
     DepGraph  = maps:map(fun(_, Def) -> aeso_syntax_utils:used_ids(Def) end, FunMap),
     SCCs      = aeso_utils:scc(DepGraph),
     %% io:format("Dependency sorted functions:\n  ~p\n", [SCCs]),
     TypeDefs ++ check_sccs(Env2, FunMap, SCCs, []).
+
+check_name_clashes(Env, Funs) ->
+    create_type_errors(),
+    Name = fun({fun_decl, Ann, {id, _, X}, _})     -> [{X, Ann}];
+              ({letfun, Ann, {id, _, X}, _, _, _}) -> [{X, Ann}];
+              ({type_def, _, _, _, _})             -> [];
+              ({X, Type})                          -> [{X, aeso_syntax:get_ann(Type)}]
+           end,
+    All        = lists:flatmap(Name, Env ++ Funs),
+    Names      = [ X || {X, _} <- All ],
+    Duplicates = lists:usort(Names -- lists:usort(Names)),
+    [ type_error({duplicate_definition, X, [ Ann || {Y, Ann} <- All, X == Y ]})
+        || X <- Duplicates ],
+    destroy_and_report_type_errors(),
+    ok.
 
 check_typedefs(Env, Defs) ->
     create_type_errors(),
@@ -1302,6 +1318,9 @@ pp_error({unsolved_named_argument_constraint, #named_argument_constraint{name = 
 pp_error({reserved_entrypoint, Name, Def}) ->
     io_lib:format("The name '~s' is reserved and cannot be used for a\ntop-level contract function (at ~s).\n",
                   [Name, pp_loc(Def)]);
+pp_error({duplicate_definition, Name, Locs}) ->
+    io_lib:format("Duplicate definitions of ~s at\n~s",
+                  [Name, [ ["  - ", pp_loc(L), "\n"] || L <- Locs ]]);
 pp_error(Err) ->
     io_lib:format("Unknown error: ~p\n", [Err]).
 
@@ -1427,7 +1446,10 @@ loc(T) ->
 
 pp_loc(T) ->
     {Line, Col} = loc(T),
-    io_lib:format("line ~p, column ~p", [Line, Col]).
+    case {Line, Col} of
+        {0, 0} -> "(builtin location)";
+        _      -> io_lib:format("line ~p, column ~p", [Line, Col])
+    end.
 
 pp(T = {type_sig, _, _, _, _}) ->
     pp(typesig_to_fun_t(T));
