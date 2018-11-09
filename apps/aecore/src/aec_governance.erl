@@ -26,7 +26,8 @@
          primop_base_gas/1,
          add_network_id/1,
          get_network_id/0,
-         contributors_messages_hash/0]).
+         contributors_messages_hash/0,
+         vm_gas_table/0]).
 
 -export_type([protocols/0]).
 
@@ -59,7 +60,7 @@
 
 -define(ACCEPTED_FUTURE_BLOCK_TIME_SHIFT, (?EXPECTED_BLOCK_MINE_RATE_MINUTES * 3 * 60 * 1000)). %% 9 min
 
--define(ORACLE_STATE_GAS_PER_YEAR, 32000). %% 32000 as `?GCREATE` in `aevm_gas.hrl` i.e. an oracle-related state object costs per year as much as it costs to indefinitely create an account.
+-define(ORACLE_STATE_GAS_PER_YEAR, 32000). %% 32000 as `GCREATE` i.e. an oracle-related state object costs per year as much as it costs to indefinitely create an account.
 
 %% Maps consensus protocol version to minimum height at which such
 %% version is effective.  The height must be strictly increasing with
@@ -227,3 +228,239 @@ contributors_messages_hash() ->
     %%  > cd /tmp/node
     %%  > bin/epoch messages_hash
     <<104,78,40,169,217,133,126,163,45,143,180,127,97,10,150,252,190,28,13,188,59,135,7,154,52,86,197,135,46,225,130,136>>.
+
+vm_gas_table() ->
+    #{ %% Nothing paid for operations of the set Wzero.
+       'GZERO' => 0
+
+       %% Amount of gas to pay for operations of the set Wbase.
+     , 'GBASE' => 2
+
+       %% Amount of gas to pay for operations of the set Wverylow.
+     , 'GVERYLOW' => 3
+
+       %% Amount of gas to pay for operations of the set Wlow.
+     , 'GLOW' => 5
+
+       %% Amount of gas to pay for operations of the set Wmid.
+     , 'GMID' => 8
+
+       %% Amount of gas to pay for operations of the set Whigh.
+     , 'GHIGH' => 10
+
+       %% Amount of gas to pay for a EXTCODESIZE operation.
+       %% (Amended name and description compared to yellow paper.)
+     , 'GEXTCODESIZE' => 700
+
+       %% Base amount of gas to pay for a EXTCODECOPY operation.
+       %% (Amended name and description compared to yellow paper.)
+     , 'GEXTCODECOPY' => 700
+
+       %% Amount of gas to pay for a BALANCE operation.
+     , 'GBALANCE' => 400
+
+       %% Paid for a SLOAD operation.
+     , 'GSLOAD' => 200
+
+       %% Paid for a JUMPDEST operation.
+     , 'GJUMPDEST' => 1
+
+       %% Paid for an SSTORE operation when the storage value is set to
+       %% non-zero from zero.
+     , 'GSSET' => 20000
+
+       %% Paid for an SSTORE operation when the storage value’s zeroness
+       %% remains unchanged or is set to zero.
+     , 'GSRESET' => 5000
+
+       %% Refund given (added into refund counter) when the storage value is
+       %% set to zero from non-zero.
+     , 'RSCLEAR' => 15000
+
+       %% Refund given (added into refund counter) for self-destructing an
+       %% account.
+     , 'RSELFDESTRUCT' => 24000
+
+       %% Amount of gas to pay for a SELFDESTRUCT operation.
+     , 'GSELFDESTRUCT' => 5000
+
+       %% Paid for a CREATE operation.
+     , 'GCREATE' => 32000
+
+       %% Paid per byte for a CREATE operation to succeed in placing code
+       %% into state.
+     , 'GCODEDEPOSIT' => 200
+
+       %% Paid for a CALL operation.
+     , 'GCALL' => 700
+
+       %% Paid for a non-zero value transfer as part of the CALL operation.
+     , 'GCALLVALUE' => 9000
+
+       %% A stipend for the called contract subtracted from Gcallvalue for a
+       %% non-zero value transfer.
+     , 'GCALLSTIPEND' => 2300
+
+       %% Paid for a CALL or SELFDESTRUCT operation which creates an account.
+     , 'GNEWACCOUNT' => 25000
+
+       %% Partial payment for an EXP operation.
+     , 'GEXP' => 10
+
+       %% Partial payment when multiplied by dlog256(exponent)e for the EXP
+       %% operation.
+     , 'GEXPBYTE' => 50
+
+       %% Paid for every additional word when expanding memory.
+     , 'GMEMORY' => 3
+
+       %% Paid by all contract-creating transactions after the Homestead
+       %% transition.
+       %% , 'GTXCREATE' => 32000
+
+       %% Unused. Defined in the yellow paper.
+       %% Paid for every zero byte of data or code for a transaction.
+       %% , 'GTXDATAZERO' => 4
+
+       %% Unused. Defined in the yellow paper.
+       %% Paid for every non-zero byte of data or code for a transaction.
+       %% , 'GTXDATANONZERO' => 68
+
+       %% Unused. Defined in the yellow paper.
+       %% Paid for every transaction.
+       %% , 'GTRANSACTION' => 21000
+
+       %% Partial payment for a LOG operation.
+     , 'GLOG' => 375
+
+       %% Paid for each byte in a LOG operation’s data.
+     , 'GLOGDATA' => 8
+
+       %% Paid for each topic of a LOG operation.
+     , 'GLOGTOPIC' => 375
+
+       %% Paid for each SHA3 operation.
+     , 'GSHA3' => 30
+
+       %% Paid for each word (rounded up) for input data to a SHA3 operation.
+     , 'GSHA3WORD' => 6
+
+       %% Partial payment for *COPY operations, multiplied by words copied,
+       %% rounded up.
+     , 'GCOPY' => 3
+
+       %% Payment for BLOCKHASH operation.
+     , 'GBLOCKHASH' => 20 %% Called GasExtStep in go implementation.
+
+       %% Unused. Defined in the yellow paper.
+       %% The quadratic coefficient of the input sizes of the exponentiation-over-modulo precompiled contract.
+       %% , 'GQUADDIVISOR' => 100
+
+       %% --------
+       %% From:
+       %%
+       %% * The [yellow paper](https://github.com/ethereum/yellowpaper/blob/74f7c7e29eead861e724159fa985555b7af0f126/Paper.tex#L1778-L1816) section "Fee Schedule".
+       %%
+       %% * The go implementation constants applicable to Byzantium phase:
+       %%   * https://github.com/ethereum/go-ethereum/blob/8bbe72075e4e16442c4e28d999edee12e294329e/core/vm/gas.go#L27-L36
+       %%   * https://github.com/ethereum/go-ethereum/blob/8bbe72075e4e16442c4e28d999edee12e294329e/params/protocol_params.go#L27-L87
+       %%   * https://github.com/ethereum/go-ethereum/blob/8bbe72075e4e16442c4e28d999edee12e294329e/params/gas_table.go#L69-L77
+       %%
+       %%   ```
+       %%   GasQuickStep   uint64 = 2
+       %%   GasFastestStep uint64 = 3
+       %%   GasFastStep    uint64 = 5
+       %%   GasMidStep     uint64 = 8
+       %%   GasSlowStep    uint64 = 10
+       %%   GasExtStep     uint64 = 20
+       %%
+       %%   GasReturn       uint64 = 0
+       %%   GasStop         uint64 = 0
+       %%   GasContractByte uint64 = 200
+       %%   ```
+       %%
+       %%   ```
+       %%   ExpByteGas            uint64 = 10    // Times ceil(log256(exponent)) for the EXP instruction.
+       %%   SloadGas              uint64 = 50    // Multiplied by the number of 32-byte words that are copied (round up) for any *COPY operation and added.
+       %%   CallValueTransferGas  uint64 = 9000  // Paid for CALL when the value transfer is non-zero.
+       %%   CallNewAccountGas     uint64 = 25000 // Paid for CALL when the destination address didn't exist prior.
+       %%   TxGas                 uint64 = 21000 // Per transaction not creating a contract. NOTE: Not payable on data of calls between transactions.
+       %%   TxGasContractCreation uint64 = 53000 // Per transaction that creates a contract. NOTE: Not payable on data of calls between transactions.
+       %%   TxDataZeroGas         uint64 = 4     // Per byte of data attached to a transaction that equals zero. NOTE: Not payable on data of calls between transactions.
+       %%   QuadCoeffDiv          uint64 = 512   // Divisor for the quadratic particle of the memory cost equation.
+       %%   LogDataGas            uint64 = 8     // Per byte in a LOG* operation's data.
+       %%   CallStipend           uint64 = 2300  // Free gas given at beginning of call.
+       %%
+       %%   Sha3Gas     uint64 = 30 // Once per SHA3 operation.
+       %%   Sha3WordGas uint64 = 6  // Once per word of the SHA3 operation's data.
+       %%
+       %%   SstoreSetGas    uint64 = 20000 // Once per SLOAD operation.
+       %%   SstoreResetGas  uint64 = 5000  // Once per SSTORE operation if the zeroness changes from zero.
+       %%   SstoreClearGas  uint64 = 5000  // Once per SSTORE operation if the zeroness doesn't change.
+       %%   SstoreRefundGas uint64 = 15000 // Once per SSTORE operation if the zeroness changes to zero.
+       %%
+       %%   NetSstoreNoopGas  uint64 = 200   // Once per SSTORE operation if the value doesn't change.
+       %%   NetSstoreInitGas  uint64 = 20000 // Once per SSTORE operation from clean zero.
+       %%   NetSstoreCleanGas uint64 = 5000  // Once per SSTORE operation from clean non-zero.
+       %%   NetSstoreDirtyGas uint64 = 200   // Once per SSTORE operation from dirty.
+       %%
+       %%   NetSstoreClearRefund      uint64 = 15000 // Once per SSTORE operation for clearing an originally existing storage slot
+       %%   NetSstoreResetRefund      uint64 = 4800  // Once per SSTORE operation for resetting to the original non-zero value
+       %%   NetSstoreResetClearRefund uint64 = 19800 // Once per SSTORE operation for resetting to the original zero value
+       %%
+       %%   JumpdestGas      uint64 = 1     // Refunded gas, once per SSTORE operation if the zeroness changes to zero.
+       %%   ...
+       %%   CallGas          uint64 = 40    // Once per CALL operation & message call transaction.
+       %%   CreateDataGas    uint64 = 200   //
+       %%   ...
+       %%   ExpGas           uint64 = 10    // Once per EXP instruction
+       %%   LogGas           uint64 = 375   // Per LOG* operation.
+       %%   CopyGas          uint64 = 3     //
+       %%   ...
+       %%   TierStepGas      uint64 = 0     // Once per operation, for a selection of them.
+       %%   LogTopicGas      uint64 = 375   // Multiplied by the * of the LOG*, per LOG transaction. e.g. LOG0 incurs 0 * c_txLogTopicGas, LOG4 incurs 4 * c_txLogTopicGas.
+       %%   CreateGas        uint64 = 32000 // Once per CREATE operation & contract-creation transaction.
+       %%   Create2Gas       uint64 = 32000 // Once per CREATE2 operation
+       %%   SuicideRefundGas uint64 = 24000 // Refunded following a suicide operation.
+       %%   MemoryGas        uint64 = 3     // Times the address of the (highest referenced byte in memory + 1). NOTE: referencing happens on read, write and in instructions such as RETURN and CALL.
+       %%   TxDataNonZeroGas uint64 = 68    // Per byte of data attached to a transaction that is not equal to zero. NOTE: Not payable on data of calls between transactions.
+       %%
+       %%   ...
+       %%
+       %%   // Precompiled contract gas prices
+       %%
+       %%   EcrecoverGas            uint64 = 3000   // Elliptic curve sender recovery gas price
+       %%   Sha256BaseGas           uint64 = 60     // Base price for a SHA256 operation
+       %%   Sha256PerWordGas        uint64 = 12     // Per-word price for a SHA256 operation
+       %%   Ripemd160BaseGas        uint64 = 600    // Base price for a RIPEMD160 operation
+       %%   Ripemd160PerWordGas     uint64 = 120    // Per-word price for a RIPEMD160 operation
+       %%   IdentityBaseGas         uint64 = 15     // Base price for a data copy operation
+       %%   IdentityPerWordGas      uint64 = 3      // Per-work price for a data copy operation
+       %%   ModExpQuadCoeffDiv      uint64 = 20     // Divisor for the quadratic particle of the big int modular exponentiation
+       %%   Bn256AddGas             uint64 = 500    // Gas needed for an elliptic curve addition
+       %%   Bn256ScalarMulGas       uint64 = 40000  // Gas needed for an elliptic curve scalar multiplication
+       %%   Bn256PairingBaseGas     uint64 = 100000 // Base price for an elliptic curve pairing check
+       %%   Bn256PairingPerPointGas uint64 = 80000  // Per-point price for an elliptic curve pairing check
+       %%   ```
+       %%
+       %%   ```
+       %%   // CreateBySuicide occurs when the
+       %%   // refunded account is one that does
+       %%   // not exist. This logic is similar
+       %%   // to call. ...
+       %%
+       %%   ...
+       %%
+       %%   GasTableEIP158 = GasTable{
+       %%    ExtcodeSize: 700,
+       %%    ExtcodeCopy: 700,
+       %%    Balance:     400,
+       %%    SLoad:       200,
+       %%    Calls:       700,
+       %%    Suicide:     5000,
+       %%    ExpByte:     50,
+       %%
+       %%    CreateBySuicide: 25000,
+       %%   }
+       %%   ```
+     }.

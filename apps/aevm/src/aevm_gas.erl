@@ -9,8 +9,8 @@
 -module(aevm_gas).
 
 -export([ op_gas/2
-        , mem_gas/1
         , mem_gas/2
+        , mem_expansion_gas/2
         ]).
 
 -export([ call_cap/2
@@ -18,7 +18,8 @@
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("aevm_eeevm.hrl").
--include("aevm_gas.hrl").
+
+-import(aevm_eeevm_state, [gastable/1]).
 
 %%====================================================================
 %% API
@@ -26,20 +27,20 @@
 
 %% NOTE: This is just purely the op gas, not including memory gas
 op_gas(Op, State) ->
-    try aevm_opcodes:op_base_gas(Op) + op_dynamic_gas(Op, State)
+    try aevm_opcodes:op_base_gas(Op, State) + op_dynamic_gas(Op, State)
     catch error:{badarg, _, _} -> State %% TODO: This is not right
     end.
 
 %% NOTE: This is just purely the mem gas, not including op gas
-mem_gas(State1, State2) ->
+mem_expansion_gas(State1, State2) ->
     Size1 = aevm_eeevm_memory:size_in_words(State1),
     case aevm_eeevm_memory:size_in_words(State2) of
         Size1 -> 0;
-        Size2 -> mem_gas(Size2) - mem_gas(Size1)
+        Size2 -> mem_gas(Size2, State1) - mem_gas(Size1, State1)
     end.
 
-mem_gas(Size) ->
-    Size * ?GMEMORY + round(math:floor((Size * Size) / 512)).
+mem_gas(Size, State) ->
+    Size * maps:get('GMEMORY', gastable(State)) + round(math:floor((Size * Size) / 512)).
 
 call_cap(?CALL, State) ->
     {CGascap, _} = call_dynamic_gas_components(State),
@@ -58,31 +59,31 @@ op_dynamic_gas(?DELEGATECALL, State) ->
 op_dynamic_gas(?CALLCODE, State) ->
     call_dynamic_gas(State);
 op_dynamic_gas(?CALLDATACOPY, State) ->
-    ?GCOPY * round(ceil(peek(2, State)/32));
+    maps:get('GCOPY', gastable(State)) * round(ceil(peek(2, State)/32));
 op_dynamic_gas(?CODECOPY, State) ->
-    ?GCOPY * round(ceil(peek(2, State)/32));
+    maps:get('GCOPY', gastable(State)) * round(ceil(peek(2, State)/32));
 op_dynamic_gas(?EXTCODECOPY, State) ->
-    ?GCOPY * round(ceil(peek(3, State)/32));
-op_dynamic_gas(?LOG0, State) -> ?GLOGDATA * peek(1, State);
-op_dynamic_gas(?LOG1, State) -> ?GLOGDATA * peek(1, State);
-op_dynamic_gas(?LOG2, State) -> ?GLOGDATA * peek(1, State);
-op_dynamic_gas(?LOG3, State) -> ?GLOGDATA * peek(1, State);
-op_dynamic_gas(?LOG4, State) -> ?GLOGDATA * peek(1, State);
+    maps:get('GCOPY', gastable(State)) * round(ceil(peek(3, State)/32));
+op_dynamic_gas(?LOG0, State) -> maps:get('GLOGDATA', gastable(State)) * peek(1, State);
+op_dynamic_gas(?LOG1, State) -> maps:get('GLOGDATA', gastable(State)) * peek(1, State);
+op_dynamic_gas(?LOG2, State) -> maps:get('GLOGDATA', gastable(State)) * peek(1, State);
+op_dynamic_gas(?LOG3, State) -> maps:get('GLOGDATA', gastable(State)) * peek(1, State);
+op_dynamic_gas(?LOG4, State) -> maps:get('GLOGDATA', gastable(State)) * peek(1, State);
 op_dynamic_gas(?SHA3, State) ->
     Us1 = peek(1, State),
-    ?GSHA3WORD * round(ceil(Us1/32));
+    maps:get('GSHA3WORD', gastable(State)) * round(ceil(Us1/32));
 op_dynamic_gas(?SSTORE, State) ->
     Us0 = peek(0, State),
     Us1 = peek(1, State),
     Old = aevm_eeevm_store:load(Us0, State),
     case (Us1 =/= 0) andalso (Old =:= 0) of
-        true  -> ?GSSET;   %% Additional storage is needed
-        false -> ?GSRESET  %% Resetting a new value in the store.
+        true  -> maps:get('GSSET', gastable(State));   %% Additional storage is needed
+        false -> maps:get('GSRESET', gastable(State))  %% Resetting a new value in the store.
     end;
 op_dynamic_gas(?EXP, State) ->
     case peek(1, State) of
         0 -> 0;
-        Us1 -> ?GEXPBYTE * (1 + floor_log_256(Us1))
+        Us1 -> maps:get('GEXPBYTE', gastable(State)) * (1 + floor_log_256(Us1))
     end;
 op_dynamic_gas(_Op,_State) ->
     0.
@@ -103,9 +104,9 @@ call_dynamic_gas_components(State) ->
     CNew = 0, %% TODO: Is this a new account?
     CXfer = case Us2 =:= 0 of
                 true  -> 0;
-                false -> ?GCALLVALUE
+                false -> maps:get('GCALLVALUE', gastable(State))
             end,
-    CExtra = CNew + CXfer + ?GCALL,
+    CExtra = CNew + CXfer + maps:get('GCALL', gastable(State)),
     CGascap = case Gas >= CExtra of
                   true  -> min(all_but_one_64th(Gas - CExtra), Us0);
                   false -> Us0 %% TODO Can this case ever happen without causing out-of-gas when subtracting CExtra?

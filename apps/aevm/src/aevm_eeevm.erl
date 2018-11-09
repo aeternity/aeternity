@@ -25,7 +25,6 @@
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include_lib("aecontract/src/aecontract.hrl").
 -include("aevm_eeevm.hrl").
--include("aevm_gas.hrl").
 -include("aevm_ae_primops.hrl").
 
 -define(AEVM_SIGNAL(___SIGNAL___, ___STATE___),
@@ -1352,7 +1351,7 @@ spend_op_gas(Op, State) ->
     spend_gas_common({op, Op}, aevm_gas:op_gas(Op, State), State).
 
 spend_mem_gas(StateWithOpGas, StateOut) ->
-    spend_gas_common({mem}, aevm_gas:mem_gas(StateWithOpGas, StateOut), StateOut).
+    spend_gas_common({mem}, aevm_gas:mem_expansion_gas(StateWithOpGas, StateOut), StateOut).
 
 spend_gas_common(_Resource, Gas, State) ->
     GasLimit  = aevm_eeevm_state:gas(State),
@@ -1417,7 +1416,7 @@ get_call_input(StateIn, IOffsetIx, ISizeIx) ->
         ?AEVM_01_Solidity_01 ->
             {I, OutT, State};
         ?AEVM_01_Sophia_01 ->
-            {I, OutT, spend_gas_common({call_data}, aevm_gas:mem_gas(byte_size(I) div 32), State)}
+            {I, OutT, spend_gas_common({call_data}, aevm_gas:mem_gas(byte_size(I) div 32, State), State)}
     end.
 
 recursive_call1(StateIn, Op) ->
@@ -1473,7 +1472,7 @@ recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend,
     %% log that it received funds."
     %%  -- https://github.com/ethereum/wiki/wiki/Subtleties
     Stipend = case Value =/= 0 of
-                  true -> ?GCALLSTIPEND;
+                  true -> maps:get('GCALLSTIPEND', maps:get(gas_table, State8));
                   false -> 0
               end,
     CallGas = Stipend + Gascap,

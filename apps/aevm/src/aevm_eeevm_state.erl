@@ -36,6 +36,7 @@
         , gas/1
         , gaslimit/1
         , gasprice/1
+        , gastable/1
         , get_contract_call_input/4
         , heap_to_binary/3
         , heap_to_heap/3
@@ -83,10 +84,11 @@
 -spec init(map(), map()) -> state().
 init(#{ env  := Env
       , exec := Exec
-      , pre  := Pre} = Spec, Opts) ->
+      , pre  := Pre} = _Spec, Opts) ->
     Address = maps:get(address, Exec),
     BlockHashFun = get_blockhash_fun(Opts, Env),
     NoRecursion = maps:get(no_recursion, Opts, false),
+    GasTable = get_gas_table(Opts),
 
     ChainState = maps:get(chainState, Env),
     ChainAPI =  maps:get(chainAPI, Env),
@@ -127,9 +129,7 @@ init(#{ env  := Env
 
          , out_type => OutType
 
-         , environment =>
-               #{ spec => Spec
-                , options => Opts }
+         , gas_table => GasTable
          },
 
     init_vm(State,
@@ -221,7 +221,7 @@ do_return(Us0, Us1, State) ->
                 Heap       = mem(State),
                 Type       = out_type(State),
                 {ok, Out, Stats}  = aeso_data:heap_to_binary_w_stats(Type, get_store(State), aeso_data:heap_value(maps(State), Us1, Heap)),
-                {set_out(Out, State), aevm_gas:mem_gas(maps:get(total_map_size, Stats) div 32)}
+                {set_out(Out, State), aevm_gas:mem_gas(maps:get(total_map_size, Stats) div 32, State)}
             catch _:_ ->
                 io:format("** Error reading return value\n~s", [format_mem(mem(State))]),
                 {set_gas(0, State), 0}  %% Consume all gas on failure
@@ -469,6 +469,13 @@ get_blockhash_fun(Opts, Env) ->
             end
     end.
 
+get_gas_table(Opts) ->
+    case maps:get(gas_table, Opts, default) of
+        default ->
+            aec_governance:vm_gas_table();
+        GasTable when is_map(GasTable) ->
+            GasTable
+    end.
 
 
 init_trace_fun(Opts) ->
@@ -515,6 +522,7 @@ return_data(State) -> maps:get(return_data, State).
 gas(State)         -> maps:get(gas, State).
 gaslimit(State)    -> maps:get(gas_limit, State).
 gasprice(State)    -> maps:get(gas_price, State).
+gastable(State)    -> maps:get(gas_table, State).
 logs(State)        -> maps:get(logs, State).
 storage(State)     -> maps:get(storage, State).
 value(State)       -> maps:get(value, State).

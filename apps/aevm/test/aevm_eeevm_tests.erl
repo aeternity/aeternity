@@ -24,7 +24,20 @@ extra_opts(Name) ->
 default_opts() ->
     #{ blockhash => sha3
      , no_recursion => true
+     , gas_table => vm_gas_table_homestead()
      }.
+
+vm_gas_table_homestead() ->
+    CustomKVs =
+        [ {'GEXTCODESIZE', 20}
+        , {'GEXTCODECOPY', 20}
+        , {'GBALANCE', 20}
+        , {'GSLOAD', 50}
+        , {'GCALL', 40}
+        , {'GEXPBYTE', 10}
+        ],
+    F = fun({K, V}, GasTable) -> maps:update(K, V, GasTable) end,
+    lists:foldl(F, aec_governance:vm_gas_table(), CustomKVs).
 
 %% To turn on tracing for a test case return a map with trace => true
 %% e.g. extra_opts_tc(mulmod4) -> #{trace => true};
