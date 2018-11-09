@@ -41,6 +41,7 @@
 -export([get_top/1]).
 -export([get_mempool/1]).
 -export([get_account/2]).
+-export([get_channel/2]).
 -export([post_spend_tx/5]).
 -export([post_create_state_channel_tx/4,
          post_close_mutual_state_channel_tx/5,
@@ -385,6 +386,10 @@ get_account(NodeName, PubKey) ->
     Params = #{pubkey => aehttp_api_encoder:encode(account_pubkey, PubKey)},
     verify(200, request(NodeName, 'GetAccountByPubkey', Params)).
 
+get_channel(NodeName, PubKey) ->
+    Params = #{pubkey => aehttp_api_encoder:encode(channel, PubKey)},
+    verify(200, request(NodeName, 'GetChannelByPubkey', Params)).
+
 post_spend_tx(Node, From, To, Nonce, Map) ->
     #{ pubkey := SendPubKey, privkey := SendSecKey } = From,
     #{ pubkey := RecvPubKey} = To,
@@ -421,7 +426,11 @@ post_create_state_channel_tx(Node, Initiator, Responder, #{nonce := Nonce} = Map
     BothSigned = aec_test_utils:sign_tx(CreateTx, [InSecKey, RespSecKey]),
     Transaction = aehttp_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
     Response = verify(200, request(Node, 'PostTransaction', #{tx => Transaction})),
-    Response#{channel_id => aec_id:create(channel, aesc_channels:pubkey(InPubKey, Nonce, RespPubKey))}.
+    ChPubKey = aesc_channels:pubkey(InPubKey, Nonce, RespPubKey),
+    Response#{
+        channel_pubkey => ChPubKey,
+        channel_id => aec_id:create(channel, ChPubKey)
+    }.
 
 post_close_mutual_state_channel_tx(Node, Initiator, Responder, ChannelId, #{nonce := _} = Map) ->
     #{ pubkey := InPubKey, privkey := InSecKey } = Initiator,
