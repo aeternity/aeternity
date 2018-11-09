@@ -38,6 +38,11 @@ CT_TEST_FLAGS += --verbose
 unexport VERBOSE
 endif
 
+ifdef REPEAT
+CT_TEST_FLAGS += --repeat=$(REPEAT)
+unexport REPEAT
+endif
+
 PYTHON_DIR = py
 PYTHON_TESTS = $(PYTHON_DIR)/tests
 

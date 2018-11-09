@@ -50,7 +50,7 @@ start_generation() ->
     gen_server:cast(?MODULE, start_generation).
 
 stop_generation() ->
-    gen_server:cast(?MODULE, stop_generation).
+    gen_server:call(?MODULE, stop_generation).
 
 -spec get_generation_state() -> 'running' | 'stopped'.
 get_generation_state() ->
@@ -79,6 +79,9 @@ handle_call(get_generation_state, _From, State = #state{ generating = IsGenerati
     {reply, Reply, State};
 handle_call(prep_stop, _From, State) ->
     {reply, ok, do_stop_generation(State)};
+handle_call(stop_generation, _From, State) ->
+    lager:debug("stop_generation"),
+    {reply, ok, do_stop_generation(State)};
 handle_call(Req, _From, State) ->
     lager:info("Unexpected call: ~p", [Req]),
     {reply, ok, State}.
@@ -86,9 +89,6 @@ handle_call(Req, _From, State) ->
 handle_cast(start_generation, State) ->
     lager:debug("start_generation"),
     {noreply, do_start_generation(State)};
-handle_cast(stop_generation, State) ->
-    lager:debug("stop_generation"),
-    {noreply, do_stop_generation(State)};
 handle_cast({worker_done, Pid, {candidate, Candidate, CandidateState}},
             State = #state{ worker = {Pid, _} }) ->
     %% Only publish non-empty micro-blocks
