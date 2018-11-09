@@ -550,6 +550,7 @@ post_transaction(Node, TxMod, PrivKey, ExtraTxArgs, TxArgs) ->
 %% Use values that are not yet api encoded in test cases
 wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, Ctx) ->
     FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
+    Delay = proplists:get_value(delay, Ctx, 500),
     CheckF =
         fun(Node) ->
                  case request(Node, 'GetAccountByPubkey', maps:merge(#{pubkey => aehttp_api_encoder:encode(account_pubkey, PubKey)}, FaultInject)) of
@@ -557,9 +558,10 @@ wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, Ctx) ->
                      _ -> wait
                 end
         end,
-    loop_for_values(CheckF, NodeNames, [], 500, Timeout);
+    loop_for_values(CheckF, NodeNames, [], Delay, Timeout);
 wait_for_value({height, MinHeight}, NodeNames, Timeout, Ctx) ->
     FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
+    Delay = proplists:get_value(delay, Ctx, 500),
     CheckF =
         fun(Node) ->
                 case request(Node, 'GetKeyBlockByHeight', maps:merge(#{height => MinHeight}, FaultInject)) of
@@ -567,11 +569,12 @@ wait_for_value({height, MinHeight}, NodeNames, Timeout, Ctx) ->
                     _ -> wait
                 end
         end,
-    loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Height ~p on nodes ~p", [MinHeight, NodeNames]});
+    loop_for_values(CheckF, NodeNames, [], Delay, Timeout, {"Height ~p on nodes ~p", [MinHeight, NodeNames]});
 wait_for_value({txs_on_chain, Txs}, NodeNames, Timeout, Ctx) ->
     %% Not very optimal, since found Txs' are searched for in next round.
     FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
     KeyBlocksWaiting = proplists:get_value(key_blocks, Ctx, 2),
+    Delay = proplists:get_value(delay, Ctx, 500),
     CheckF =
         fun(Node) ->
                 Found =
@@ -591,10 +594,11 @@ wait_for_value({txs_on_chain, Txs}, NodeNames, Timeout, Ctx) ->
                     true -> wait
                 end
         end,
-    loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Txs found ~p", [Txs]});
+    loop_for_values(CheckF, NodeNames, [], Delay, Timeout, {"Txs found ~p", [Txs]});
 wait_for_value({txs_on_node, Txs}, NodeNames, Timeout, Ctx) ->
     %% Reached the mempool at least, probably even in a block.
     FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
+    Delay = proplists:get_value(delay, Ctx, 500),
     CheckF =
         fun(Node) ->
                 Found = [ case request(Node, 'GetTransactionByHash', maps:merge(#{hash => Tx}, FaultInject)) of
@@ -606,9 +610,10 @@ wait_for_value({txs_on_node, Txs}, NodeNames, Timeout, Ctx) ->
                     true -> wait
                 end
         end,
-    loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Txs found ~p", [Txs]});
+    loop_for_values(CheckF, NodeNames, [], Delay, Timeout, {"Txs found ~p", [Txs]});
 wait_for_value({txs_all_dropped, Txs}, NodeNames, Timeout, Ctx) ->
     FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
+    Delay = proplists:get_value(delay, Ctx, 500),
     CheckF =
         fun(Node) ->
             Exists = lists:foldl(fun(Tx, Acc) ->
@@ -623,9 +628,10 @@ wait_for_value({txs_all_dropped, Txs}, NodeNames, Timeout, Ctx) ->
                 false -> {done, undefined}
             end
         end,
-    loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Txs found ~p", [Txs]});
+    loop_for_values(CheckF, NodeNames, [], Delay, Timeout, {"Txs found ~p", [Txs]});
 wait_for_value({txs_any_dropped, Txs}, NodeNames, Timeout, Ctx) ->
     FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
+    Delay = proplists:get_value(delay, Ctx, 500),
     CheckF =
         fun(Node) ->
             Exists = lists:foldl(fun(Tx, Acc) ->
@@ -640,7 +646,7 @@ wait_for_value({txs_any_dropped, Txs}, NodeNames, Timeout, Ctx) ->
                 true -> {done, Exists}
             end
         end,
-    loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Txs found ~p", [Txs]}).
+    loop_for_values(CheckF, NodeNames, [], Delay, Timeout, {"Txs found ~p", [Txs]}).
 
 
 wait_for_time(height, NodeNames, Time) ->
