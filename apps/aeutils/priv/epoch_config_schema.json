@@ -309,7 +309,7 @@
                 },
                 "peer_password" : {
                     "description" :
-                    "Password used to encrypt the peer key-pair files - if left blank `password` will be used",
+                    "Password used to encrypt the peer key-pair files",
                     "type" : "string"
                 }
             }
