@@ -7,7 +7,7 @@ The release packages do not ship with a CUDA miner, but you can build it yoursel
 - Epoch node configuration
 
 The documentation below is tested on:
-- Epoch version 0.19.0
+- Epoch version 1.0.0-rc2
 - CUDA toolkit version 9.2
 - AWS p2.xlarge instance with 16GB EBS
 - Ubuntu 16.04.4
@@ -41,7 +41,7 @@ Epoch source code can be downloaded by cloning the git repository:
 ```bash
 cd ~
 git clone https://github.com/aeternity/epoch.git epoch && cd epoch
-git checkout tags/v0.19.0
+git checkout tags/v1.0.0-rc2
 ```
 
 The documentation below assumes that the `epoch` source code resides in `~/epoch` directory.
@@ -55,14 +55,13 @@ export PATH=/usr/local/cuda-9.2/bin${PATH:+:${PATH}}
 Compilation of CUDA miner is done by invoking:
 
 ```bash
-cd apps/aecuckoo && make c_src/.git
-cd c_src/src && make libblake2b.so cuda30
+cd apps/aecuckoo && make cuda29
 ```
 
 Finally the actual installation of the miner binary is copying it to the node corresponding path, the documentation assumes the `epoch` node is installed in `~/node` directory.
 
 ```bash
-cp cuda30 ~/node/lib/aecuckoo-0.1.0/priv/bin
+cp priv/bin/cuda29 ~/node/lib/aecuckoo-0.1.0/priv/bin
 ```
 
 ## Configuration
@@ -73,9 +72,9 @@ Once the CUDA miner is in place, one should change the node configuration to sta
 mining:
     cuckoo:
         miner:
-            executable: cuda30
+            executable: cuda29
             extra_args: ""
-            node_bits: 30
+            edge_bits: 29
             hex_encoded_header: true
 ```
 
@@ -93,9 +92,9 @@ The address of a GPU device used by the miner can be set with `-d` argument, for
 mining:
     cuckoo:
         miner:
-            executable: cuda30
+            executable: cuda29
             extra_args: "-d 0"
-            node_bits: 30
+            edge_bits: 29
             hex_encoded_header: true
 ```
 

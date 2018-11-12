@@ -22,6 +22,6 @@ mining:
     autostart: true
     cuckoo:
         miner:
-            executable: mean16s-generic
+            executable: mean15-generic
             extra_args: ""
-            node_bits: 16
+            edge_bits: 15

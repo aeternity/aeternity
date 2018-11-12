@@ -116,11 +116,11 @@ mining:
     cuckoo:
         miner:
             # Executable binary of the miner.
-            executable: mean30
+            executable: mean29-generic
             # Extra arguments to pass to the miner executable binary.
             extra_args: "-t 5"
-            # Number of bits used for representing a node in the Cuckoo Cycle problem.
-            node_bits: 30
+            # Number of bits used for representing an edge in the Cuckoo Cycle problem.
+            edge_bits: 29
             # Hexadecimal encode the header argument that is send to the miner executable. CUDA executables expect hex encoded header.
             hex_encoded_header: false
             # Miner process priority (niceness) in a UNIX fashion. Higher `nice` means lower priority. Keep it unset to inherit parent process priority.

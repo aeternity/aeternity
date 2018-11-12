@@ -202,7 +202,7 @@ setup_node(Spec, BackendState) ->
                       %% This may be improved upon.
                       [#{executable => maps:get(ex, CuckooMiner),
                          extra_args => maps:get(args, CuckooMiner),
-                         node_bits => maps:get(bits, CuckooMiner)
+                         edge_bits => maps:get(bits, CuckooMiner)
                         }]}
         end,
     HardForkVars =
