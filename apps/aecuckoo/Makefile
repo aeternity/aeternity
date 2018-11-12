@@ -85,10 +85,10 @@ $(CUCKOO)/mean29-avx2: $(HDRS) $(CUCKOO)/mean.hpp $(CUCKOO)/mean.cpp
 	(cd $(CUCKOO); $(GPP) -o $(@F) -DSAVEEDGES -mavx2 -DNSIPHASH=8 -DEDGEBITS=29 mean.cpp $(BLAKE_2B_SRC))
 
 $(CUCKOO)/lcuda29:	$(CUCKOO)/../crypto/siphash.cuh $(CUCKOO)/lean.cu
-	(cd $(CUCKOO); nvcc -o $@ -DEDGEBITS=29 -arch sm_35 lean.cu $(BLAKE_2B_SRC))
+	(cd $(CUCKOO); nvcc -o $(@F) -DEDGEBITS=29 -arch sm_35 lean.cu $(BLAKE_2B_SRC))
 
 $(CUCKOO)/cuda29:		$(CUCKOO)/../crypto/siphash.cuh $(CUCKOO)/mean.cu
-	(cd $(CUCKOO); nvcc -o $@ -DEDGEBITS=29 -arch sm_35 mean.cu $(BLAKE_2B_SRC))
+	(cd $(CUCKOO); nvcc -o $(@F) -DEDGEBITS=29 -arch sm_35 mean.cu $(BLAKE_2B_SRC))
 
 # Create the private dir
 $(PRIV):

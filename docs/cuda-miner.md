@@ -61,7 +61,7 @@ cd apps/aecuckoo && make cuda29
 Finally the actual installation of the miner binary is copying it to the node corresponding path, the documentation assumes the `epoch` node is installed in `~/node` directory.
 
 ```bash
-cp cuda29 ~/node/lib/aecuckoo-0.1.0/priv/bin
+cp priv/bin/cuda29 ~/node/lib/aecuckoo-0.1.0/priv/bin
 ```
 
 ## Configuration
