@@ -421,12 +421,13 @@ test_mined_block_signing() ->
     KeyBlock = wait_for_block_created(),
     assert_leader(true),
     assert_generation_state(running),
+    wait_for_top_block_hash(block_hash(KeyBlock)),
 
     ok = aec_tx_pool:push(tx(Keys)),
-
     MicroBlock = wait_for_micro_block_created(),
-    {ok, KeyHash} = aec_blocks:hash_internal_representation(KeyBlock),
-    ?assertEqual(KeyHash, aec_blocks:prev_key_hash(MicroBlock)),
+    wait_for_top_block_hash(block_hash(MicroBlock)),
+
+    ok = prev_on_chain(MicroBlock, KeyBlock),
     ok.
 
 test_two_mined_block_signing() ->
@@ -440,17 +441,18 @@ test_two_mined_block_signing() ->
     KeyBlock1 = wait_for_block_created(),
     assert_leader(true),
     assert_generation_state(running),
+    wait_for_top_block_hash(block_hash(KeyBlock1)),
     KeyBlock2 = wait_for_block_created(),
     assert_leader(true),
     assert_generation_state(running),
+    wait_for_top_block_hash(block_hash(KeyBlock2)),
 
     ok = aec_tx_pool:push(tx(Keys)),
-
     MicroBlock = wait_for_micro_block_created(),
-    {ok, KeyHash1} = aec_blocks:hash_internal_representation(KeyBlock1),
-    {ok, KeyHash2} = aec_blocks:hash_internal_representation(KeyBlock2),
-    ?assertEqual(KeyHash1, aec_blocks:prev_key_hash(KeyBlock2)),
-    ?assertEqual(KeyHash2, aec_blocks:prev_key_hash(MicroBlock)),
+    wait_for_top_block_hash(block_hash(MicroBlock)),
+
+    ok = prev_on_chain(MicroBlock, KeyBlock2),
+    ok = prev_on_chain(KeyBlock2, KeyBlock1),
     ok.
 
 test_received_block_signing() ->
@@ -467,18 +469,19 @@ test_received_block_signing() ->
     ?assertEqual(ok, ?TEST_MODULE:post_block(KB1)),
 
     KB1 = wait_for_block_to_publish(),
-    ?assertEqual(true, aec_blocks:is_key_block(KB1)),
     assert_leader(true),
     assert_generation_state(running),
+    wait_for_top_block_hash(block_hash(KB1)),
+    ?assertEqual(true, aec_blocks:is_key_block(KB1)),
 
     %% Single tx should trigger micro block
     ok = aec_tx_pool:push(tx(Keys)),
 
-
     NewBlock = wait_for_block_to_publish(),
+    wait_for_top_block_hash(block_hash(NewBlock)),
     ?assertEqual(false, aec_blocks:is_key_block(NewBlock)),
-    {ok, KB1Hash} = aec_blocks:hash_internal_representation(KB1),
-    ?assertEqual(KB1Hash, aec_blocks:prev_key_hash(NewBlock)),
+
+    ok = prev_on_chain(NewBlock, KB1),
     ok.
 
 %%%===================================================================
@@ -503,6 +506,18 @@ tx({Pub, Priv}) ->
                                   ttl => 0,
                                   payload => <<"">>}),
     aec_test_utils:sign_tx(Tx, Priv).
+
+prev_on_chain(Block, Target) ->
+    prev_on_chain(Block, block_hash(Block), block_hash(Target)).
+
+prev_on_chain(_, Hash, Hash) -> ok;
+prev_on_chain(Block, _, Target) ->
+    NewHash = aec_blocks:prev_hash(Block),
+    case aec_chain:get_block(NewHash) of
+        error -> {error, not_found};
+        {ok, NewBlock} -> prev_on_chain(NewBlock, block_hash(Block), Target)
+    end.
+
 
 assert_stopped() ->
     ?assertEqual(stopped, ?TEST_MODULE:get_mining_state()).
