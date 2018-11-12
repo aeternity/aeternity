@@ -390,6 +390,7 @@ generation_test_() ->
              {ok, _} = ?TEST_MODULE:start_link([{autostart, false}]),
              meck:new(aec_headers, [passthrough]),
              meck:new(aec_blocks, [passthrough]),
+             meck:new(aec_mining, [passthrough]),
              meck:expect(aec_headers, validate_key_block_header, fun(_) -> ok end),
              meck:expect(aec_headers, validate_micro_block_header, fun(_) -> ok end),
              meck:expect(aec_blocks, validate_key_block, fun(_) -> ok end),
@@ -398,8 +399,9 @@ generation_test_() ->
      end,
      fun(TmpKeysDir) ->
              teardown_common(TmpKeysDir),
-             meck:unload(aec_headers),
+             meck:unload(aec_mining),
              meck:unload(aec_blocks),
+             meck:unload(aec_headers),
              ok
      end,
      [
@@ -453,7 +455,6 @@ test_two_mined_block_signing() ->
 
 test_received_block_signing() ->
     Keys = beneficiary_keys(),
-    meck:new(aec_mining, [passthrough]),
     meck:expect(aec_mining, mine,
                 fun(_, _, _) -> timer:sleep(1000), {error, no_solution} end),
     true = aec_events:subscribe(block_to_publish),
@@ -473,7 +474,6 @@ test_received_block_signing() ->
     %% Single tx should trigger micro block
     ok = aec_tx_pool:push(tx(Keys)),
 
-    meck:unload(aec_mining),
 
     NewBlock = wait_for_block_to_publish(),
     ?assertEqual(false, aec_blocks:is_key_block(NewBlock)),
