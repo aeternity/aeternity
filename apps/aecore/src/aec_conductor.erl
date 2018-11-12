@@ -49,7 +49,7 @@
         , get_mining_workers/0
         , start_mining/0
         , stop_mining/0
-        , handoff_leader/0
+        , is_leader/0
         , get_beneficiary/0
         ]).
 
@@ -122,9 +122,9 @@ get_mining_state() ->
 get_mining_workers() ->
     gen_server:call(?SERVER, get_mining_workers).
 
--spec handoff_leader() -> 'ok'.
-handoff_leader() ->
-    gen_server:call(?SERVER, handoff_leader).
+-spec is_leader() -> boolean().
+is_leader() ->
+    gen_server:call(?SERVER, is_leader).
 
 %%%===================================================================
 %%% Chain API
@@ -228,6 +228,7 @@ handle_call({post_block, Block},_From, State) ->
 handle_call(stop_mining,_From, State = #state{ consensus = Cons }) ->
     epoch_mining:info("Mining stopped"),
     [ aec_tx_pool:garbage_collect() || is_record(Cons, consensus) andalso Cons#consensus.leader ],
+    aec_block_generator:stop_generation(),
     State1 = kill_all_workers(State),
     State2 = State1#state{mining_state = 'stopped',
                           key_block_candidate = undefined},
@@ -243,6 +244,8 @@ handle_call(get_mining_state,_From, State) ->
     {reply, State#state.mining_state, State};
 handle_call(get_mining_workers, _From, State) ->
     {reply, worker_pids_by_tag(mining, State), State};
+handle_call(is_leader, _From, State = #state{ consensus = Cons }) ->
+    {reply, Cons#consensus.leader, State};
 handle_call(reinit_chain, _From, State1 = #state{ consensus = Cons }) ->
     %% NOTE: ONLY FOR TEST
     ok = reinit_chain_state(),
@@ -944,7 +947,8 @@ setup_loop(State = #state{ consensus = Cons }, RestartMining, IsLeader, Origin) 
     State1 = State#state{ consensus = Cons#consensus{ leader = IsLeader } },
     State2 =
         case Origin of
-            block_created when IsLeader ->
+            Origin when IsLeader, Origin =:= block_created
+                           orelse Origin =:= block_received ->
                 aec_block_generator:start_generation(),
                 start_micro_signing(State1);
             block_received when not IsLeader ->

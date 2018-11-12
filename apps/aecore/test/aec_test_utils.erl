@@ -33,6 +33,7 @@
         , aec_keys_bare_cleanup/1
         , gen_block_chain_with_state/1
         , gen_blocks_only_chain/1
+        , gen_blocks_only_chain/2
         , gen_block_chain_with_state/2
         , blocks_only_chain/1
         , genesis_block/0
@@ -254,6 +255,9 @@ gen_block_chain_with_state(Length) ->
 
 gen_blocks_only_chain(Length) ->
     blocks_only_chain(gen_block_chain_with_state(Length)).
+
+gen_blocks_only_chain(Length,  PresetAccounts) ->
+    blocks_only_chain(gen_block_chain_with_state(Length, PresetAccounts)).
 
 gen_block_chain_with_state(Length, PresetAccounts) when Length > 0 ->
     {ok, MinerAccount, _} = wait_for_pubkey(),

@@ -24,17 +24,19 @@ setup_minimal() ->
                 fun() ->
                         meck:passthrough([]) div 2560
                 end),
-    aec_test_utils:mock_genesis(),
     TmpKeysDir = aec_test_utils:aec_keys_setup(),
     {ok, PubKey} = aec_keys:pubkey(),
     ok = application:set_env(aecore, beneficiary, aehttp_api_encoder:encode(account_pubkey, PubKey)),
+    aec_test_utils:mock_genesis(preset_accounts(PubKey)),
     aec_test_utils:mock_time(),
+    {ok, _} = aec_tx_pool_gc:start_link(),
     {ok, _} = aec_tx_pool:start_link(),
     TmpKeysDir.
 
 teardown_minimal(TmpKeysDir) ->
     ok = application:unset_env(aecore, beneficiary),
     ok = aec_tx_pool:stop(),
+    ok = aec_tx_pool_gc:stop(),
     aec_block_generator:stop(),
     ok = application:stop(gproc),
     _  = flush_gproc(),
@@ -79,7 +81,8 @@ miner_test_() ->
              teardown_common(TmpKeysDir)
      end,
      [{"Stop and restart miner", fun test_stop_restart/0},
-      {"Test consecutive start/stop ", fun test_stop_restart_seq/0}
+      {"Test consecutive start/stop ", fun test_stop_restart_seq/0},
+      {"Test block generator state after stop", fun test_block_generator_state_after_stop/0}
      ]}.
 
 test_stop_restart() ->
@@ -104,6 +107,22 @@ test_stop_restart_seq() ->
     wait_for_running(),
     ?assertEqual(ok, ?TEST_MODULE:stop_mining()),
     wait_for_stopped(),
+    ok.
+
+test_block_generator_state_after_stop() ->
+    ?assertEqual(running, ?TEST_MODULE:get_mining_state()),
+    ?assertEqual(stopped, aec_block_generator:get_generation_state()),
+
+    aec_events:subscribe(block_created),
+    ?assertEqual(ok, ?TEST_MODULE:start_mining()),
+    wait_for_block_created(),
+    ?assertEqual(running, ?TEST_MODULE:get_mining_state()),
+    ?assertEqual(running, aec_block_generator:get_generation_state()),
+
+    ?assertEqual(ok, ?TEST_MODULE:stop_mining()),
+    wait_for_stopped(),
+    ?assertEqual(stopped, ?TEST_MODULE:get_mining_state()),
+    ?assertEqual(stopped, aec_block_generator:get_generation_state()),
     ok.
 
 miner_timeout_test_() ->
@@ -195,11 +214,12 @@ chain_test_() ->
      ]}.
 
 test_start_mining_add_block() ->
+    Keys = beneficiary_keys(),
     %% Assert preconditions
     assert_stopped_and_genesis_at_top(),
 
     ?TEST_MODULE:start_mining(),
-    [_GB, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
+    [_GB, B1, B2] = aec_test_utils:gen_blocks_only_chain(3, preset_accounts(Keys)),
     BH2 = aec_blocks:to_header(B2),
     ?assertEqual(ok, ?TEST_MODULE:post_block(B1)),
     ?assertEqual(ok, ?TEST_MODULE:post_block(B2)),
@@ -208,11 +228,12 @@ test_start_mining_add_block() ->
       BH2).
 
 test_preemption_pushed() ->
+    Keys = beneficiary_keys(),
     %% Assert preconditions
     assert_stopped_and_genesis_at_top(),
 
     %% Generate a chain
-    Chain = aec_test_utils:gen_blocks_only_chain(7),
+    Chain = aec_test_utils:gen_blocks_only_chain(7, preset_accounts(Keys)),
     {Chain1, Chain2} = lists:split(3, Chain),
     Top1 = lists:last(Chain1),
     Top2 = lists:last(Chain2),
@@ -242,11 +263,12 @@ test_preemption_pushed() ->
     ok.
 
 test_preemption_pulled() ->
+    Keys = beneficiary_keys(),
     %% Assert preconditions
     assert_stopped_and_genesis_at_top(),
 
     %% Generate a chain
-    Chain = aec_test_utils:gen_blocks_only_chain(7),
+    Chain = aec_test_utils:gen_blocks_only_chain(7, preset_accounts(Keys)),
     {Chain1, Chain2} = lists:split(3, Chain),
     Top1 = lists:last(Chain1),
     Top2 = lists:last(Chain2),
@@ -277,10 +299,11 @@ test_preemption_pulled() ->
 -define(error_atom, {error, A} when is_atom(A)).
 
 test_chain_genesis_state() ->
+    Keys = beneficiary_keys(),
     %% Assert preconditions
     assert_stopped_and_genesis_at_top(),
 
-    {GB, GBS} = aec_test_utils:genesis_block_with_state(),
+    {GB, GBS} = aec_test_utils:genesis_block_with_state(preset_accounts(Keys)),
     GH = aec_blocks:to_header(GB),
     GHH = header_hash(GH),
 
@@ -296,8 +319,7 @@ test_chain_genesis_state() ->
     ?assertEqual(GHH, aec_chain:top_block_hash()),
 
     %% Check chain state functions
-    GenesisAccountsBalances = aec_test_utils:genesis_accounts_balances(
-                                aec_test_utils:preset_accounts()),
+    GenesisAccountsBalances = aec_test_utils:genesis_accounts_balances(preset_accounts(Keys)),
     ?assertEqual({ok, GenesisAccountsBalances},
                  aec_chain:all_accounts_balances_at_hash(GHH)),
     [{PK, Balance} | _] = GenesisAccountsBalances,
@@ -308,11 +330,12 @@ test_chain_genesis_state() ->
     ok.
 
 test_block_publishing() ->
+    Keys = beneficiary_keys(),
     %% Assert preconditions
     assert_stopped_and_genesis_at_top(),
 
     %% Generate a chain
-    [_B0, B1, B2, B3, B4, B5] = Chain = aec_test_utils:gen_blocks_only_chain(6),
+    [_B0, B1, B2, B3, B4, B5] = Chain = aec_test_utils:gen_blocks_only_chain(6, preset_accounts(Keys)),
     [_H0, H1, H2, H3, H4, H5] = [block_hash(B) || B <- Chain],
 
     aec_events:subscribe(block_to_publish),
@@ -357,16 +380,146 @@ test_block_publishing() ->
     ok.
 
 %%%===================================================================
+%%% Micro block signing tests
+%%%===================================================================
+
+generation_test_() ->
+    {foreach,
+     fun() ->
+             TmpKeysDir = setup_common(),
+             {ok, _} = ?TEST_MODULE:start_link([{autostart, false}]),
+             meck:new(aec_headers, [passthrough]),
+             meck:new(aec_blocks, [passthrough]),
+             meck:expect(aec_headers, validate_key_block_header, fun(_) -> ok end),
+             meck:expect(aec_headers, validate_micro_block_header, fun(_) -> ok end),
+             meck:expect(aec_blocks, validate_key_block, fun(_) -> ok end),
+             meck:expect(aec_blocks, validate_micro_block, fun(_) -> ok end),
+             TmpKeysDir
+     end,
+     fun(TmpKeysDir) ->
+             teardown_common(TmpKeysDir),
+             meck:unload(aec_headers),
+             meck:unload(aec_blocks),
+             ok
+     end,
+     [
+        {"Start signing after mined block", fun test_mined_block_signing/0},
+        {"Start signing after two mined block", fun test_two_mined_block_signing/0},
+        {"Start signing after received block", fun test_received_block_signing/0}
+     ]}.
+
+test_mined_block_signing() ->
+    Keys = beneficiary_keys(),
+    true = aec_events:subscribe(block_created),
+    true = aec_events:subscribe(micro_block_created),
+
+    ?TEST_MODULE:start_mining(),
+    assert_leader(false),
+    assert_generation_state(stopped),
+    KeyBlock = wait_for_block_created(),
+    assert_leader(true),
+    assert_generation_state(running),
+
+    ok = aec_tx_pool:push(tx(Keys)),
+
+    MicroBlock = wait_for_micro_block_created(),
+    {ok, KeyHash} = aec_blocks:hash_internal_representation(KeyBlock),
+    ?assertEqual(KeyHash, aec_blocks:prev_key_hash(MicroBlock)),
+    ok.
+
+test_two_mined_block_signing() ->
+    Keys = beneficiary_keys(),
+    true = aec_events:subscribe(block_created),
+    true = aec_events:subscribe(micro_block_created),
+
+    ?TEST_MODULE:start_mining(),
+    assert_leader(false),
+    assert_generation_state(stopped),
+    KeyBlock1 = wait_for_block_created(),
+    assert_leader(true),
+    assert_generation_state(running),
+    KeyBlock2 = wait_for_block_created(),
+    assert_leader(true),
+    assert_generation_state(running),
+
+    ok = aec_tx_pool:push(tx(Keys)),
+
+    MicroBlock = wait_for_micro_block_created(),
+    {ok, KeyHash1} = aec_blocks:hash_internal_representation(KeyBlock1),
+    {ok, KeyHash2} = aec_blocks:hash_internal_representation(KeyBlock2),
+    ?assertEqual(KeyHash1, aec_blocks:prev_key_hash(KeyBlock2)),
+    ?assertEqual(KeyHash2, aec_blocks:prev_key_hash(MicroBlock)),
+    ok.
+
+test_received_block_signing() ->
+    Keys = beneficiary_keys(),
+    meck:new(aec_mining, [passthrough]),
+    meck:expect(aec_mining, mine,
+                fun(_, _, _) -> timer:sleep(1000), {error, no_solution} end),
+    true = aec_events:subscribe(block_to_publish),
+
+    ?TEST_MODULE:start_mining(),
+    assert_leader(false),
+    assert_generation_state(stopped),
+
+    [_GB, KB1] = aec_test_utils:gen_blocks_only_chain(2, preset_accounts(Keys)),
+    ?assertEqual(ok, ?TEST_MODULE:post_block(KB1)),
+
+    KB1 = wait_for_block_to_publish(),
+    ?assertEqual(true, aec_blocks:is_key_block(KB1)),
+    assert_leader(true),
+    assert_generation_state(running),
+
+    %% Single tx should trigger micro block
+    ok = aec_tx_pool:push(tx(Keys)),
+
+    meck:unload(aec_mining),
+
+    NewBlock = wait_for_block_to_publish(),
+    ?assertEqual(false, aec_blocks:is_key_block(NewBlock)),
+    {ok, KB1Hash} = aec_blocks:hash_internal_representation(KB1),
+    ?assertEqual(KB1Hash, aec_blocks:prev_key_hash(NewBlock)),
+    ok.
+
+%%%===================================================================
 %%% Helpers
 %%%===================================================================
+
+beneficiary_keys() ->
+    {ok, Pub} = aec_keys:pubkey(),
+    {ok, Priv} = aec_keys:sign_privkey(),
+    {Pub, Priv}.
+
+preset_accounts({Pub, _}) -> preset_accounts(Pub);
+preset_accounts(Pub) -> [{Pub, 50000}].
+
+tx({Pub, Priv}) ->
+    #{ public := RPub } = enacl:sign_keypair(),
+    {ok, Tx} = aec_spend_tx:new(#{sender_id => aec_id:create(account, Pub),
+                                  recipient_id => aec_id:create(account, RPub),
+                                  amount => 1,
+                                  nonce => 1,
+                                  fee => 20000,
+                                  ttl => 0,
+                                  payload => <<"">>}),
+    aec_test_utils:sign_tx(Tx, Priv).
 
 assert_stopped() ->
     ?assertEqual(stopped, ?TEST_MODULE:get_mining_state()).
 
 assert_stopped_and_genesis_at_top() ->
     assert_stopped(),
+    Keys = beneficiary_keys(),
+    Preset = preset_accounts(Keys),
+    {Genesis, _} = aec_test_utils:genesis_block_with_state(Preset),
     ?assertEqual(aec_chain:top_block_hash(),
-                 header_hash(aec_blocks:to_header(aec_test_utils:genesis_block()))).
+                 header_hash( aec_blocks:to_header( Genesis ))).
+
+assert_leader(Value) ->
+    ?assertEqual(Value, ?TEST_MODULE:is_leader()).
+
+assert_generation_state(Value) ->
+    ?assertEqual(Value, aec_block_generator:get_generation_state()).
 
 block_hash(Block) ->
     {ok, Hash} = aec_blocks:hash_internal_representation(Block),
@@ -429,11 +582,20 @@ wait_for_top_block_hash(Hash) ->
       fun () -> aec_chain:top_block_hash() end,
       Hash).
 
+wait_for_block_to_publish() ->
+    wait_for_gproc(block_to_publish, 30000).
+
 wait_for_block_created() ->
     wait_for_gproc(block_created, 30000).
 
+wait_for_micro_block_created() ->
+    wait_for_gproc(micro_block_created, 30000).
+
+wait_for_start_mining() ->
+    wait_for_gproc(start_mining, 1000).
+
 wait_for_start_mining(Hash) ->
-    Info = wait_for_gproc(start_mining, 1000),
+    Info = wait_for_start_mining(),
     case proplists:get_value(top_block_hash, Info) of
         Hash -> ok;
         _Other -> wait_for_start_mining(Hash)
