@@ -28,7 +28,7 @@ check_test_() ->
      {"Sender account does not exist in state trees",
       fun() ->
               BogusSender = aec_id:create(account, <<42:256>>),
-              {ok, SpendTx} = spend_tx(#{fee => 10, sender_id => BogusSender,
+              {ok, SpendTx} = spend_tx(#{fee => 20000, sender_id => BogusSender,
                                          payload => <<"">>}),
               StateTree = aec_test_utils:create_state_tree(),
               Env = aetx_env:tx_env(10),
@@ -37,7 +37,7 @@ check_test_() ->
      {"Sender account has insufficient funds to cover tx fee + amount",
       fun() ->
               {ok, SpendTx} = spend_tx(#{sender_id => ?SENDER_ID,
-                                         fee => 10,
+                                         fee => 20000,
                                          amount => 50,
                                          nonce => 12,
                                          payload => <<"">>}),
@@ -45,7 +45,7 @@ check_test_() ->
               %% Dispatcher sanity check:
               ?assertEqual(?SENDER_PUBKEY, aetx:origin(SpendTx)),
               ?assertEqual(12, aetx:nonce(SpendTx)),
-              ?assertEqual(10, aetx:fee(SpendTx)),
+              ?assertEqual(20000, aetx:fee(SpendTx)),
 
               SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 55, nonce => 5}),
               StateTree = aec_test_utils:create_state_tree_with_account(SenderAccount),
@@ -55,12 +55,12 @@ check_test_() ->
      {"Sender account has nonce higher than tx nonce",
       fun() ->
               {ok, SpendTx} = spend_tx(#{sender_id => ?SENDER_ID,
-                                         fee => 10,
+                                         fee => 20000,
                                          amount => 50,
                                          nonce => 12,
                                          payload => <<"">>}),
               AccountNonce = 15,
-              SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 100, nonce => AccountNonce}),
+              SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 1000000, nonce => AccountNonce}),
               StateTree = aec_test_utils:create_state_tree_with_account(SenderAccount),
               Env = aetx_env:tx_env(20),
               ?assertEqual({error, account_nonce_too_high},
@@ -69,13 +69,13 @@ check_test_() ->
       {"TX TTL is too small",
       fun() ->
               {ok, SpendTx} = spend_tx(#{sender_id => ?SENDER_ID,
-                                         fee => 10,
+                                         fee => 20000,
                                          amount => 50,
                                          ttl => 10,
                                          nonce => 11,
                                          payload => <<"">>}),
               AccountNonce = 10,
-              SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 100, nonce => AccountNonce}),
+              SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 1000000, nonce => AccountNonce}),
               StateTree = aec_test_utils:create_state_tree_with_account(SenderAccount),
               Env = aetx_env:tx_env(20),
               ?assertEqual({error, ttl_expired}, aetx:check(SpendTx, StateTree, Env))
@@ -84,14 +84,14 @@ check_test_() ->
 process_test_() ->
     [{"Check and process valid spend tx",
       fun() ->
-              SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 100, nonce => 10}),
+              SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 1000000, nonce => 10}),
               RecipientAccount = new_account(#{pubkey => ?RECIPIENT_PUBKEY, balance => 80, nonce => 12}),
               StateTree0 = aec_test_utils:create_state_tree_with_accounts([SenderAccount, RecipientAccount]),
 
               {ok, SpendTx} = ?TEST_MODULE:new(#{sender_id => ?SENDER_ID,
                                                  recipient_id => ?RECIPIENT_ID,
                                                  amount => 50,
-                                                 fee => 10,
+                                                 fee => 20000,
                                                  nonce => 11,
                                                  payload => <<"foo">>}),
               <<"foo">> = aec_spend_tx:payload(aetx:tx(SpendTx)),
@@ -103,20 +103,20 @@ process_test_() ->
               {value, ResultSenderAccount} = aec_accounts_trees:lookup(?SENDER_PUBKEY, ResultAccountsTree),
               {value, ResultRecipientAccount} = aec_accounts_trees:lookup(?RECIPIENT_PUBKEY, ResultAccountsTree),
 
-              ?assertEqual(100 - 50 - 10, aec_accounts:balance(ResultSenderAccount)),
+              ?assertEqual(1000000 - 50 - 20000, aec_accounts:balance(ResultSenderAccount)),
               ?assertEqual(11, aec_accounts:nonce(ResultSenderAccount)),
               ?assertEqual(80 + 50, aec_accounts:balance(ResultRecipientAccount)),
               ?assertEqual(12, aec_accounts:nonce(ResultRecipientAccount))
       end},
       {"Check spend to oneself",
        fun() ->
-              SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 100, nonce => 10}),
+              SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 1000000, nonce => 10}),
               StateTree0 = aec_test_utils:create_state_tree_with_accounts([SenderAccount]),
 
               {ok, SpendTx} = ?TEST_MODULE:new(#{sender_id => ?SENDER_ID,
                                                  recipient_id => ?SENDER_ID,
                                                  amount => 50,
-                                                 fee => 10,
+                                                 fee => 20000,
                                                  nonce => 11,
                                                  payload => <<"foo">>}),
               Env = aetx_env:tx_env(20),
@@ -126,25 +126,25 @@ process_test_() ->
               ResultAccountsTree = aec_trees:accounts(StateTree),
               {value, ResultAccount} = aec_accounts_trees:lookup(?SENDER_PUBKEY, ResultAccountsTree),
 
-              ?assertEqual(100 - 50 - 10 + 50, aec_accounts:balance(ResultAccount)),
+              ?assertEqual(1000000 - 50 - 20000 + 50, aec_accounts:balance(ResultAccount)),
               ?assertEqual(11, aec_accounts:nonce(ResultAccount))
       end},
       {"Check gas is higher with bigger payload",
        fun() ->
-              _SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 100, nonce => 10}),
+              _SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 1000000, nonce => 10}),
               _RecipientAccount = new_account(#{pubkey => ?RECIPIENT_PUBKEY, balance => 80, nonce => 12}),
 
               {ok, SpendTx1} = ?TEST_MODULE:new(#{sender_id => ?SENDER_ID,
                                                   recipient_id => ?RECIPIENT_ID,
                                                   amount => 50,
-                                                  fee => 10,
+                                                  fee => 20000,
                                                   nonce => 11,
                                                   payload => <<"foo">>}),
 
               {ok, SpendTx2} = ?TEST_MODULE:new(#{sender_id => ?SENDER_ID,
                                                   recipient_id => ?RECIPIENT_ID,
                                                   amount => 50,
-                                                  fee => 10,
+                                                  fee => 20000,
                                                   nonce => 11,
                                                   payload => <<"foo bar">>}),
 

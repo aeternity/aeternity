@@ -40,10 +40,10 @@ block_extension_test_() ->
       [{"Generate a block in one step, compared with two steps, with a spend tx",
         fun() ->
           {ok, Tx} = aec_spend_tx:new(#{ sender_id => ?TEST_ID, recipient_id => ?TEST_ID
-                                       , amount => 10, fee => 1, ttl => 100, nonce => 1, payload => <<>> }),
+                                       , amount => 10, fee => 20000, ttl => 100, nonce => 1, payload => <<>> }),
           STx = aec_test_utils:sign_tx(Tx, ?TEST_PRIV),
 
-          AccMap = #{ preset_accounts => [{?TEST_PUB, 1000}] },
+          AccMap = #{ preset_accounts => [{?TEST_PUB, 100000}] },
           {Block0, Trees0} = aec_block_genesis:genesis_block_with_state(AccMap),
 
           meck:expect(aeu_time, now_in_msecs, 0, 1234567890),
@@ -75,10 +75,10 @@ block_extension_test_() ->
                      GasPrice)),
 
           {ok, Tx} = aec_spend_tx:new(#{ sender_id => ?TEST_ID, recipient_id => ?TEST_ID
-                                       , amount => 10, fee => 1, ttl => 100, nonce => 1, payload => <<>> }),
+                                       , amount => 10, fee => 20000, ttl => 100, nonce => 1, payload => <<>> }),
           STx = aec_test_utils:sign_tx(Tx, ?TEST_PRIV),
 
-          AccMap = #{ preset_accounts => [{?TEST_PUB, 1000}] },
+          AccMap = #{ preset_accounts => [{?TEST_PUB, 100000}] },
           {Block0, Trees0} = aec_block_genesis:genesis_block_with_state(AccMap),
 
           meck:expect(aeu_time, now_in_msecs, 0, 1234567890),

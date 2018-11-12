@@ -145,7 +145,7 @@ out_of_order_test_block_chain() ->
                 (_) ->
                      []
              end,
-    PresetAccounts = [{PubKey, 1000}],
+    PresetAccounts = [{PubKey, 1000000}],
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
     Chain0 = gen_block_chain_with_state_by_target(
                PresetAccounts,
@@ -286,7 +286,7 @@ broken_chain_wrong_state_hash() ->
 broken_chain_wrong_prev_key_hash() ->
     #{ public := SenderPubKey, secret := SenderPrivKey } = enacl:sign_keypair(),
     RecipientPubKey = <<42:32/unit:8>>,
-    PresetAccounts = [{SenderPubKey, 100}],
+    PresetAccounts = [{SenderPubKey, 1000000}],
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
     Spend1 = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
     Spend2 = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 2, RecipientPubKey), SenderPrivKey),
@@ -318,7 +318,7 @@ broken_chain_wrong_prev_key_hash() ->
 broken_chain_invalid_transaction() ->
     #{ public := SenderPubKey, secret := SenderPrivKey } = enacl:sign_keypair(),
     RecipientPubKey = <<42:32/unit:8>>,
-    PresetAccounts = [{SenderPubKey, 100}],
+    PresetAccounts = [{SenderPubKey, 1000000}],
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
     Spend = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
 
@@ -353,7 +353,7 @@ broken_chain_invalid_micro_block_signature() ->
     #{ secret := BogusPrivKey } = enacl:sign_keypair(),
 
     RecipientPubKey = <<42:32/unit:8>>,
-    PresetAccounts = [{SenderPubKey, 100}],
+    PresetAccounts = [{SenderPubKey, 1000000}],
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
     Spend = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
 
@@ -744,7 +744,7 @@ fork_is_in_main_chain() ->
 fork_get_transaction() ->
     #{ public := SenderPubKey, secret := SenderPrivKey } = enacl:sign_keypair(),
     RecipientPubKey = <<42:32/unit:8>>,
-    PresetAccounts = [{SenderPubKey, 100}],
+    PresetAccounts = [{SenderPubKey, 100000}],
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
     Spend1 = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
     Spend2 = aec_test_utils:sign_tx(make_spend_tx(SenderPubKey, 2, RecipientPubKey), SenderPrivKey),
@@ -795,7 +795,7 @@ fork_get_transaction() ->
 
 fork_on_micro_block() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
-    PresetAccounts = [{PubKey, 1000}],
+    PresetAccounts = [{PubKey, 1000000}],
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
 
     %% Create main chain with both key and micro blocks
@@ -839,7 +839,7 @@ fork_on_micro_block() ->
 
 fork_on_old_fork_point() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
-    PresetAccounts = [{PubKey, 1000}],
+    PresetAccounts = [{PubKey, 1000000}],
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
 
     CommonChain = gen_block_chain_with_state_by_target(
@@ -985,7 +985,7 @@ fees_three_beneficiaries() ->
     #{ public := PubKey1, secret := PrivKey1 } = enacl:sign_keypair(),
     #{ public := PubKey2, secret :=_PrivKey2 } = enacl:sign_keypair(),
 
-    PresetAccounts = [{PubKey1, 1000}],
+    PresetAccounts = [{PubKey1, 1000000}],
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
 
     %% Three accounts to act as miners
@@ -999,9 +999,9 @@ fees_three_beneficiaries() ->
     #{ public := PubKey8, secret := _PrivKey8 } = enacl:sign_keypair(),
 
     %% Add transactions in different micro blocks to collect fees from
-    Fee1 = 10,
-    Fee2 = 30,
-    Fee3 = 100,
+    Fee1 = 20000,
+    Fee2 = 25000,
+    Fee3 = 30000,
     TxsFun = fun(1) ->
                      Tx1 = aec_test_utils:sign_tx(make_spend_tx(PubKey1, 1, PubKey2, Fee1) ,PrivKey1),
                      Tx2 = aec_test_utils:sign_tx(make_spend_tx(PubKey1, 2, PubKey2, Fee2), PrivKey1),
@@ -1040,19 +1040,19 @@ fees_three_beneficiaries() ->
     %% Before the last generation is closed, only the two first beneficiaries
     %% should have collected rewards
     MiningReward = aec_governance:block_mine_reward(),
-    ?assertEqual(MiningReward + round((Fee1 + Fee2) * 0.4),
+    ?assertEqual(MiningReward + reward_40(Fee1 + Fee2),
                  orddict:fetch(PubKey6, DictBal1)),
-    ?assertEqual(MiningReward + round((Fee1 + Fee2) * 0.6),
+    ?assertEqual(MiningReward + reward_60(Fee1 + Fee2),
                  orddict:fetch(PubKey7, DictBal1)),
     ?assertEqual(false, orddict:is_key(PubKey5, DictBal1)),
 
     %% When the last generation is closed, the last transaction fee should
     %% also have been collected.
-    ?assertEqual(MiningReward + round((Fee1 + Fee2) * 0.4),
+    ?assertEqual(MiningReward + reward_40(Fee1 + Fee2),
                  orddict:fetch(PubKey6, DictBal2)),
-    ?assertEqual(MiningReward + round((Fee1 + Fee2) * 0.6) + round(Fee3 * 0.4),
+    ?assertEqual(MiningReward + reward_60(Fee1 + Fee2) + reward_40(Fee3),
                  orddict:fetch(PubKey7, DictBal2)),
-    ?assertEqual(MiningReward + round(Fee3 * 0.6),
+    ?assertEqual(MiningReward + reward_60(Fee3),
                  orddict:fetch(PubKey8, DictBal2)),
 
     %% Miners' balances did not change, since beneficiaries took the rewards.
@@ -1069,16 +1069,16 @@ fees_delayed_reward() ->
     #{ public := PubKey1, secret := PrivKey1 } = enacl:sign_keypair(),
     #{ public := PubKey2, secret :=_PrivKey2 } = enacl:sign_keypair(),
 
-    PresetAccounts = [{PubKey1, 1000}],
+    PresetAccounts = [{PubKey1, 1000000}],
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
 
     %% An account to act as a beneficiary
     #{ public := PubKey3, secret := _PrivKey3 } = enacl:sign_keypair(),
 
     %% Add transactions in different micro blocks to collect fees from
-    Fee1 = 10,
-    Fee2 = 20,
-    Fee3 = 40,
+    Fee1 = 20000,
+    Fee2 = 30000,
+    Fee3 = 40000,
     TxsFun = fun(1) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey1, 1, PubKey2, Fee1) ,PrivKey1)];
                 (2) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey1, 2, PubKey2, Fee2), PrivKey1)];
                 (3) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey1, 3, PubKey2, Fee3), PrivKey1)];
@@ -1147,11 +1147,11 @@ pof_test_() ->
 
 pof_fork_on_key_block() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
-    PresetAccounts = [{PubKey, 1000}],
+    PresetAccounts = [{PubKey, 1000000}],
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
 
     %% Create main chain
-    TxsFun = fun(1) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 1, 2), PrivKey)];
+    TxsFun = fun(1) -> [aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 20000, 2), PrivKey)];
                 (_) -> []
              end,
     [B0, B1, _B2] = Chain0 = gen_block_chain_with_state_by_target(
@@ -1160,7 +1160,7 @@ pof_fork_on_key_block() ->
 
     %% Create fork, which starts on a key-block
     CommonChain = [B0, B1],
-    Txs = [aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 1, 3), PrivKey)],
+    Txs = [aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 20000, 3), PrivKey)],
     Fork = aec_test_utils:extend_block_chain_with_micro_blocks(CommonChain, Txs),
     [_, _, MB2] = blocks_only_chain(Fork),
 
@@ -1179,13 +1179,13 @@ pof_fork_on_key_block() ->
 
 pof_fork_on_micro_block() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
-    PresetAccounts = [{PubKey, 1000}],
+    PresetAccounts = [{PubKey, 1000000}],
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
 
     %% Create main chain
     TxsFun = fun(1) ->
-                     Tx1 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 1, 2), PrivKey),
-                     Tx2 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 2, PubKey, 1, 2), PrivKey),
+                     Tx1 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 20000, 2), PrivKey),
+                     Tx2 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 2, PubKey, 20000, 2), PrivKey),
                      [Tx1, Tx2];
                 (_) ->
                      []
@@ -1196,7 +1196,7 @@ pof_fork_on_micro_block() ->
 
     %% Create fork, which starts on a micro-block
     CommonChain = [B0, B1, B2],
-    Txs = [aec_test_utils:sign_tx(make_spend_tx(PubKey, 2, PubKey, 1, 3), PrivKey)],
+    Txs = [aec_test_utils:sign_tx(make_spend_tx(PubKey, 2, PubKey, 20000, 3), PrivKey)],
     Fork = aec_test_utils:extend_block_chain_with_micro_blocks(CommonChain, Txs, 1),
     [_, _, _, MB3] = blocks_only_chain(Fork),
 
@@ -1215,18 +1215,18 @@ pof_fork_on_micro_block() ->
 
 pof_reported_late() ->
     #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
-    PresetAccounts = [{PubKey, 1000}],
+    PresetAccounts = [{PubKey, 1000000}],
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
 
     %% Create main chain
     TxsFun = fun(1) ->
-                     Tx1 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 1, 2), PrivKey),
-                     Tx2 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 2, PubKey, 1, 2), PrivKey),
+                     Tx1 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey, 20000, 1), PrivKey),
+                     Tx2 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 2, PubKey, 20000, 1), PrivKey),
                      [Tx1, Tx2];
                 (2) ->
-                     Tx1 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 3, PubKey, 1, 2), PrivKey),
-                     Tx2 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 4, PubKey, 1, 2), PrivKey),
-                     Tx3 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 5, PubKey, 1, 2), PrivKey),
+                     Tx1 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 3, PubKey, 20000, 1), PrivKey),
+                     Tx2 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 4, PubKey, 20000, 1), PrivKey),
+                     Tx3 = aec_test_utils:sign_tx(make_spend_tx(PubKey, 5, PubKey, 20000, 1), PrivKey),
                      [Tx1, Tx2, Tx3]
              end,
     [B0, B1, B2|_] = Chain0 =
@@ -1238,7 +1238,7 @@ pof_reported_late() ->
 
     %% Create fork, which starts on a micro-block
     CommonChain = [B0, B1, B2],
-    Txs = [aec_test_utils:sign_tx(make_spend_tx(PubKey, 2, PubKey, 1, 3), PrivKey)],
+    Txs = [aec_test_utils:sign_tx(make_spend_tx(PubKey, 2, PubKey, 20000, 3), PrivKey)],
     Fork = aec_test_utils:extend_block_chain_with_micro_blocks(CommonChain, Txs, 1),
     [_, _, _, FraudMB] = blocks_only_chain(Fork),
 
@@ -1335,7 +1335,7 @@ block_hash(Block) ->
     H.
 
 make_spend_tx(Sender, SenderNonce, Recipient) ->
-    make_spend_tx(Sender, SenderNonce, Recipient, 1).
+    make_spend_tx(Sender, SenderNonce, Recipient, 20000).
 
 make_spend_tx(Sender, SenderNonce, Recipient, Fee) ->
     make_spend_tx(Sender, SenderNonce, Recipient, Fee, 1).
@@ -1350,3 +1350,8 @@ make_spend_tx(Sender, SenderNonce, Recipient, Fee, Amount) ->
                                        nonce => SenderNonce,
                                        payload => <<>>}),
     SpendTx.
+
+reward_40(Fee) -> Fee * 4 div 10.
+
+reward_60(Fee) -> Fee - reward_40(Fee).
+

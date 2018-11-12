@@ -52,12 +52,12 @@ signatures_check_test_() ->
                     aec_test_utils:signed_spend_tx(
                       #{recipient_id => aec_id:create(account, <<1:32/unit:8>>),
                         amount => 1,
-                        fee => 1,
+                        fee => 20000,
                         nonce => 1,
                         payload => <<>>}),
             SignedTxs = [SignedSpend],
             {ok, SenderPubkey, _} = aec_test_utils:wait_for_pubkey(),
-            Account = aec_accounts:new(SenderPubkey, 1000),
+            Account = aec_accounts:new(SenderPubkey, 1000000),
             TreesIn = aec_test_utils:create_state_tree_with_account(Account),
             Env = aetx_env:tx_env(1),
             {ok, ValidTxs, _InvalidTxs, _Trees} =
@@ -81,7 +81,7 @@ make_spend_tx(Sender, Recipient) ->
     {ok, SpendTx} = aec_spend_tx:new(#{sender_id => aec_id:create(account, Sender),
                                        recipient_id => aec_id:create(account, Recipient),
                                        amount => 1,
-                                       fee => 1,
+                                       fee => 20000,
                                        nonce => 1,
                                        payload => <<>>}),
     SpendTx.
@@ -659,7 +659,7 @@ make_contract(Owner, VmVersion) ->
 
 ct_create_tx(Sender, VmVersion) ->
     Spec =
-        #{ fee        => 5
+        #{ fee        => 750000
          , owner_id   => aec_id:create(account, Sender)
          , nonce      => 0
          , code       => <<"NOT PROPER BYTE CODE">>

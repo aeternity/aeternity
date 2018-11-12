@@ -114,7 +114,7 @@ create_tx(PubKey, Spec0, State) ->
     Tx.
 
 create_tx_default_spec(PubKey, State) ->
-    #{ fee        => 5
+    #{ fee        => 1000000
      , owner_id   => aec_id:create(account, PubKey)
      , nonce      => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , code       => dummy_bytecode()
@@ -145,7 +145,7 @@ call_tx(PubKey, ContractKey, Spec0, State) ->
     Tx.
 
 call_tx_default_spec(PubKey, ContractKey, State) ->
-    #{ fee         => 5
+    #{ fee         => 600000
      , contract_id => aec_id:create(contract, ContractKey)
      , caller_id   => aec_id:create(account, PubKey)
      , nonce       => try next_nonce(PubKey, State) catch _:_ -> 0 end
@@ -162,7 +162,7 @@ call_tx_default_spec(PubKey, ContractKey, State) ->
 %%%===================================================================
 
 setup_new_account(State) ->
-    setup_new_account(1000000, State).
+    setup_new_account(10000000, State).
 
 setup_new_account(Balance, State) ->
     {PubKey, PrivKey} = new_key_pair(),

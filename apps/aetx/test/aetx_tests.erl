@@ -30,8 +30,8 @@ apply_signed_txs_test_() ->
                {ok, MinerPubkey} = aec_keys:pubkey(),
                {ok, MinerPrivkey} = aec_keys:sign_privkey(),
 
-               MinerAccount = aec_accounts:set_nonce(aec_accounts:new(MinerPubkey, 100), 10),
-               AnotherAccount = aec_accounts:set_nonce(aec_accounts:new(?RECIPIENT_PUBKEY, 80), 12),
+               MinerAccount = aec_accounts:set_nonce(aec_accounts:new(MinerPubkey, 100000), 10),
+               AnotherAccount = aec_accounts:set_nonce(aec_accounts:new(?RECIPIENT_PUBKEY, 80000), 12),
                StateTree0 = aec_test_utils:create_state_tree_with_accounts([MinerAccount, AnotherAccount]),
 
                BlockHeight = 30,
@@ -40,7 +40,7 @@ apply_signed_txs_test_() ->
                                  #{sender_id => aec_id:create(account, MinerPubkey),
                                    recipient_id => aec_id:create(account, ?RECIPIENT_PUBKEY),
                                    amount => 40,
-                                   fee => 9,
+                                   fee => 20000,
                                    ttl => 100,
                                    nonce => 11,
                                    payload => <<"">>}),
@@ -48,7 +48,7 @@ apply_signed_txs_test_() ->
                                        #{sender_id => aec_id:create(account, MinerPubkey),
                                          recipient_id => aec_id:create(account, ?RECIPIENT_PUBKEY),
                                          amount => 30000,
-                                         fee => 10,
+                                         fee => 20000,
                                          ttl => 100,
                                          nonce => 13,
                                          payload => <<"">>}),
@@ -67,7 +67,7 @@ apply_signed_txs_test_() ->
                {value, ResultRecipientAccount} = aec_accounts_trees:lookup(?RECIPIENT_PUBKEY, ResultAccountsTree),
 
                %% Initial balance - spend_tx amount - spend_tx fee
-               ?assertEqual(100 - 40 - 9, aec_accounts:balance(ResultMinerAccount)),
-               ?assertEqual(80 + 40, aec_accounts:balance(ResultRecipientAccount))
+               ?assertEqual(100000 - 40 - 20000, aec_accounts:balance(ResultMinerAccount)),
+               ?assertEqual(80000 + 40, aec_accounts:balance(ResultRecipientAccount))
        end
       }]}.
