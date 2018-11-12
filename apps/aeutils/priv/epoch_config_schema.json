@@ -45,7 +45,7 @@
                     "description" : "Maximum nonce offset accepted",
                     "type" : "integer"
                 },
-                "nonce_offset_no_account" : {
+                "nonce_baseline" : {
                     "description" : "Maximum nonce accepted when pubkey is not present in state",
                     "type" : "integer"
                 }

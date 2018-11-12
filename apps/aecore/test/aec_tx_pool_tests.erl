@@ -35,7 +35,7 @@ tx_pool_test_() ->
      end,
      fun(TmpKeysDir) ->
              ok = application:unset_env(aecore, mempool_nonce_offset),
-             ok = application:unset_env(aecore, mempool_nonce_offset_no_account),
+             ok = application:unset_env(aecore, mempool_nonce_baseline),
              ok = application:unset_env(aecore, beneficiary),
              ok = aec_test_utils:aec_keys_cleanup(TmpKeysDir),
              ok = application:stop(gproc),
@@ -142,7 +142,7 @@ tx_pool_test_() ->
        {timeout, 10, fun() ->
                MaxNonce = 400,
                %% setup nonce offset for pubkey without account present
-               ok = application:set_env(aecore, mempool_nonce_offset_no_account, MaxNonce),
+               ok = application:set_env(aecore, mempool_nonce_baseline, MaxNonce),
 
                %% No txs to serve to peers.
                ?assertEqual({ok, []}, aec_tx_pool:peek(1)),

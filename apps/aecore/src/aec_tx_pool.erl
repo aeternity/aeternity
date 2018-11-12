@@ -108,8 +108,8 @@
 -define(DEFAULT_INVALID_TX_TTL, 2).
 -endif.
 
+-define(DEFAULT_NONCE_BASELINE, 1).
 -define(DEFAULT_NONCE_OFFSET, 5).
--define(DEFAULT_NONCE_OFFSET_NO_ACCOUNT, 1).
 
 %%%===================================================================
 %%% API
@@ -718,8 +718,8 @@ int_check_nonce(Tx, Source) ->
                     {error, illegal_nonce};
                 true ->
                     case get_account(Pubkey, Source) of
-                        {error, no_state_trees} -> no_account_nonce_check(TxNonce);
-                        none -> no_account_nonce_check(TxNonce);
+                        {error, no_state_trees} -> nonce_baseline_check(TxNonce);
+                        none -> nonce_baseline_check(TxNonce);
                         {value, Account} ->
                             Offset =  nonce_offset(),
                             AccountNonce = aec_accounts:nonce(Account),
@@ -732,8 +732,8 @@ int_check_nonce(Tx, Source) ->
             end
     end.
 
-no_account_nonce_check(TxNonce) ->
-    case TxNonce =< nonce_offset_no_account() of
+nonce_baseline_check(TxNonce) ->
+    case TxNonce =< nonce_baseline() of
         true -> ok;
         false -> {error, nonce_too_high}
     end.
@@ -779,10 +779,10 @@ invalid_tx_ttl() ->
     aeu_env:user_config_or_env([<<"mempool">>, <<"invalid_tx_ttl">>],
                                aecore, mempool_invalid_tx_ttl, ?DEFAULT_INVALID_TX_TTL).
 
+nonce_baseline() ->
+    aeu_env:user_config_or_env([<<"mempool">>, <<"nonce_baseline">>],
+                               aecore, mempool_nonce_baseline, ?DEFAULT_NONCE_BASELINE).
+
 nonce_offset() ->
     aeu_env:user_config_or_env([<<"mempool">>, <<"nonce_offset">>],
                                aecore, mempool_nonce_offset, ?DEFAULT_NONCE_OFFSET).
-
-nonce_offset_no_account() ->
-    aeu_env:user_config_or_env([<<"mempool">>, <<"nonce_offset_no_account">>],
-                               aecore, mempool_nonce_offset_no_account, ?DEFAULT_NONCE_OFFSET_NO_ACCOUNT).
