@@ -12,7 +12,9 @@
          shortcut_dir/1]).
 
 -export([cmd/1,
-         cmd_res/1]).
+         cmd_res/1,
+         set_env/4,
+         unset_env/3]).
 
 -export([start_node/2,
          stop_node/2,
@@ -29,6 +31,9 @@
          sign_on_node/2,
          forks/0,
          latest_fork_height/0]).
+
+-export([mock_mempool_nonce_offset/2,
+         unmock_mempool_nonce_offset/1]).
 
 -export([node_tuple/1,
          node_name/1,
@@ -369,6 +374,13 @@ forks() ->
 latest_fork_height() ->
     lists:max(maps:values(forks())).
 
+mock_mempool_nonce_offset(Node, Offset) ->
+    ok = aecore_suite_utils:set_env(Node, aecore, mempool_nonce_offset, Offset).
+
+unmock_mempool_nonce_offset(Node) ->
+    ok = aecore_suite_utils:unset_env(Node, aecore, mempool_nonce_offset).
+
+
 top_dir(DataDir) ->
     %% Split the DataDir path at "_build"
     [Top, _] = re:split(DataDir, "_build", [{return, list}]),
@@ -635,6 +647,11 @@ take(K, L, Def) ->
             {V, Rest}
     end.
 
+set_env(Node, App, Key, Value) ->
+    ok = rpc:call(Node, application, set_env, [App, Key, Value], 5000).
+
+unset_env(Node, App, Key) ->
+    ok = rpc:call(Node, application, unset_env, [App, Key], 5000).
 
 config_apply_options(_Node, Cfg, []) ->
     Cfg;

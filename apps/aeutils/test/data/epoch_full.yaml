@@ -54,6 +54,8 @@ mempool:
     invalid_tx_ttl: 5
     # Mempool (re-)synchronization interval (in ms)
     sync_interval: 1800000
+    # Maximum nonce offset accepted
+    nonce_offset: 1
     # Maximum nonce accepted when pubkey is not present in state
     nonce_offset_no_account: 1
 
