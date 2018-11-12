@@ -80,14 +80,12 @@ txs_gc(Config) ->
     N1 = aecore_suite_utils:node_name(dev1),
     aecore_suite_utils:connect(N1),
 
-    %% Mine a block to get some funds. Height=1
-    aecore_suite_utils:mine_key_blocks(N1, 1),
-    Height0 = 1,
+    Height0 = 0,
 
     %% Add a bunch of transactions...
     {ok, TxH1} = add_spend_tx(N1, 1000, 20000,  1,  10), %% Ok
-    {ok, _}    = add_spend_tx(N1, 1000, 20000,  2,  10), %% Should expire ?EXPIRE_TX_TTL after
-                                                     %% next TX is on chain = 2 + 2 = 4
+    {ok, _GC1} = add_spend_tx(N1, 1000, 20000,  2,  10), %% Should expire ?EXPIRE_TX_TTL after
+                                                         %% TxH2 is on chain = ~1 + 2 = ~3
     {ok, TxH2} = add_spend_tx(N1, 1000, 20001,  2,  10), %% Duplicate should be preferred
     {ok, TxH3} = add_spend_tx(N1, 1000, 20000,  3,  10), %% Ok
 
@@ -96,31 +94,24 @@ txs_gc(Config) ->
     {ok, _}    = add_spend_tx(N1, 1000, 20000,  8,  7),  %% Short TTL - expires at 7
 
     %% Now there should be 7 transactions in mempool
-    {ok, Txs1} = pool_peek(N1),
-    {7, _} = {length(Txs1), Txs1},
+    pool_check(N1, 7),
 
     %% Mine to get TxH1-3 onto chain
     {ok, Blocks1} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH1, TxH2, TxH3], 10),
-    Height1 = Height0 + length(Blocks1), %% Very unlikely to be > 4...
+    Height1 = Height0 + length(Blocks1), %% Very unlikely to be > 6...
 
-    %% Now there should be 3 or 4 transactions in mempool
-    {ok, Txs2} = pool_peek(N1),
+    %% At Height1 there should be 4 transactions in mempool
     case Height1 of
-        3                -> {4, _} = {length(Txs2), Txs2};
-        HH1 when HH1 > 3 -> ct:log("Skipping assert; micro fork advanced height to far...")
+        2                -> pool_check(N1, 4);
+        HH1 when HH1 > 2 -> ct:log("Skipping assert; micro fork advanced height to far...")
     end,
 
-    %% Mine 1 more key block if Height is 3 ensure one TX should be GC:ed.
-    [ aecore_suite_utils:mine_key_blocks(N1, 1) || Height1 == 3 ],
+    %% Mine 1 more key block to ensure one TX is GC:ed.
+    aecore_suite_utils:mine_key_blocks(N1, 1),
+    Height2 = Height1 + 1,
 
-    Height2 = max(Height1, 4),
-
-    %% Now unless Height2 > 4, there should be 3 transactions in mempool
-    {ok, Txs3} = pool_peek(N1),
-    case Height2 of
-        4                -> {3, _} = {length(Txs3), Txs3};
-        HH2 when HH2 > 4 -> ct:log("Skipping assert; micro fork advanced height to far...")
-    end,
+    %% Now at Height2 there should be 3 transactions in mempool - _GC1 is GC:ed
+    pool_check(N1, 3),
 
     %% Add the missing tx
     {ok, TxH4} = add_spend_tx(N1, 1000, 20000,  4,  10), %% consecutive nonce
@@ -129,33 +120,49 @@ txs_gc(Config) ->
     {ok, Blocks2} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxH4, TxH5], 10),
     Height3 = Height2 + length(Blocks2),
 
-    %% Now at height 6 there should be 2 transactions in mempool
-    {ok, Txs4} = pool_peek(N1),
+    %% Now if at height 5 or 6 there should be 2 transactions in mempool
     case Height3 of
-        6                -> {2, _} = {length(Txs4), Txs4};
+        HH3 when HH3 =<6 -> pool_check(N1, 2);
         HH3 when HH3 > 6 -> ct:log("Skipping assert; micro fork advanced height to far...")
     end,
 
-    %% Mine 1 more key block if Height is 6 ensure one TX should be GC:ed.
-    [ aecore_suite_utils:mine_key_blocks(N1, 1) || Height3 == 6 ],
+    %% Mine 1 more key block if Height is 5 ensure one TX should be GC:ed.
+    [ aecore_suite_utils:mine_key_blocks(N1, 7 - Height3) || Height3 < 7 ],
 
     Height4 = max(Height3, 7),
 
     %% Now there should be 1 transaction in mempool
-    {ok, Txs5} = pool_peek(N1),
     case Height4 of
-        7                -> {1, _} = {length(Txs5), Txs5};
+        7                -> pool_check(N1, 1);
         HH4 when HH4 > 7 -> ct:log("Skipping assert; micro fork advanced height to far...")
     end,
 
-    %% Mine 2 more blocks then all TXs should be GC:ed. Height>=9
-    aecore_suite_utils:mine_key_blocks(N1, 2),
+    %% Mine 2 more blocks then all TXs should be GC:ed. Height>=10
+    aecore_suite_utils:mine_key_blocks(N1, 3),
 
     %% Now there should be no transactions in mempool
-    {ok, Txs6} = pool_peek(N1),
-    {0, _} = {length(Txs6), Txs6},
+    pool_check(N1, 0),
 
     ok = aecore_suite_utils:check_for_logs([dev1], Config).
+
+pool_check(Node, ExpectedNTxs) ->
+    pool_check(Node, ExpectedNTxs, 5).
+
+pool_check(Node, ExpectedNTxs, Retries) ->
+    {ok, Txs} = pool_peek(Node),
+    ct:log("pool_check: pool has ~p TXs, expected ~p\n", [length(Txs), ExpectedNTxs]),
+    case ExpectedNTxs == length(Txs) of
+        true ->
+            ok;
+        false when Retries == 0 ->
+            ct:log("TXS: ~p", [Txs]),
+            GC = rpc:call(Node, ets, tab2list, [mempool_gc]),
+            ct:log("GCTAB: ~p", [GC]),
+            ct:fail({pool_check_failed, {expected, ExpectedNTxs, got, length(Txs)}});
+        _ ->
+            timer:sleep(500),
+            pool_check(Node, ExpectedNTxs, Retries - 1)
+    end.
 
 pool_peek(Node) ->
     rpc:call(Node, sys, get_status, [aec_tx_pool_gc]),

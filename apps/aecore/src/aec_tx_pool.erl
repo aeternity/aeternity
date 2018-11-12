@@ -372,11 +372,6 @@ int_get_candidate_fold(Gas, GasLimit, Db, Dbs = #dbs{}, {Txs, Cont},
                        AccountsTree, Height, Acc) when Gas > GasLimit ->
     {RemGas, NewAcc} = fold_txs(Txs, Gas, GasLimit, Db, Dbs,
                                 AccountsTree, Height, Acc),
-        lists:foldl(
-          fun(T, {Gas1, Acc1}) ->
-                  int_get_candidate_(T, Gas1, Db, Dbs, AccountsTree,
-                                     Height, Acc1)
-          end, {Gas, Acc}, Txs),
     int_get_candidate_fold(RemGas, GasLimit, Db, Dbs, ets:select(Cont),
                            AccountsTree, Height, NewAcc);
 int_get_candidate_fold(RemGas, _GL, _Db, _Dbs, '$end_of_table', _AccountsTree,

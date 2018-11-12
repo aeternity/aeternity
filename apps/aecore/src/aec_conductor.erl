@@ -227,8 +227,8 @@ handle_call({post_block, Block},_From, State) ->
     {reply, Reply, State1};
 handle_call(stop_mining,_From, State = #state{ consensus = Cons }) ->
     epoch_mining:info("Mining stopped"),
-    [ aec_tx_pool:garbage_collect() || is_record(Cons, consensus) andalso Cons#consensus.leader ],
     aec_block_generator:stop_generation(),
+    [ aec_tx_pool:garbage_collect() || is_record(Cons, consensus) andalso Cons#consensus.leader ],
     State1 = kill_all_workers(State),
     State2 = State1#state{mining_state = 'stopped',
                           key_block_candidate = undefined},
