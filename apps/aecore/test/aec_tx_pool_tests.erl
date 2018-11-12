@@ -78,15 +78,37 @@ tx_pool_test_() ->
                {ok, PoolTxs} = aec_tx_pool:peek(infinity),
                ?assertEqual(lists:sort([STx1, STx2]), lists:sort(PoolTxs))
        end},
+      {"ensure nonce limit for sender without account in state",
+       fun() ->
+            PK0 = new_pubkey(),
+            ?assertEqual(none, aec_chain:get_account(PK0)),
+            ?assertEqual(ok,                     aec_tx_pool:push( a_signed_tx(PK0, me, 1, 20000) )),
+            ?assertEqual({error,nonce_too_high}, aec_tx_pool:push( a_signed_tx(PK0, me, 2, 20000) )),
+
+            aec_test_utils:stop_chain_db(),
+            PK1 = new_pubkey(),
+            meck:expect(aec_genesis_block_settings, preset_accounts, 0, [{PK1, 100000}]),
+            {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+            aec_test_utils:start_chain_db(),
+            ok = aec_chain_state:insert_block(GenesisBlock),
+            ?assertMatch({value, _}, aec_chain:get_account(PK1)),
+            ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK1, me, 1, 20000) )),
+            ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK1, me, 2, 20000) )),
+            ok
+       end},
       {"fill micro block with transactions",
        {timeout, 10, fun() ->
+               MaxNonce = 400,
+               %% setup nonce offset for pubkey without account present
+               ok = application:set_env(aecore, mempool_nonce_offset_no_account, MaxNonce),
+
                %% No txs to serve to peers.
                ?assertEqual({ok, []}, aec_tx_pool:peek(1)),
 
                %% Tx received from a peer.
                PubKey = new_pubkey(),
-               STxs = [ a_signed_tx(PubKey, me, Nonce, 20000, 10) || Nonce <- lists:seq(1,400) ],
-               [ aec_tx_pool:push(STx, tx_created) || STx <- STxs ],
+               STxs = [ a_signed_tx(PubKey, me, Nonce, 20000, 10) || Nonce <- lists:seq(1,MaxNonce) ],
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- STxs ],
 
                GenesisHeight = aec_block_genesis:height(),
                {ok, Hash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
@@ -285,11 +307,19 @@ tx_pool_test_() ->
        end},
       {"Ensure ordering",
        fun() ->
+                 aec_test_utils:stop_chain_db(),
                  %% We should sort by fee, but preserve the order of nonces for each sender
                  PK1 = new_pubkey(),
                  PK2 = new_pubkey(),
                  PK3 = new_pubkey(),
                  PK4 = new_pubkey(),
+
+                 meck:expect(aec_genesis_block_settings, preset_accounts, 0,
+                             [{PK1, 100000}, {PK2, 100000}, {PK3, 100000}, {PK4, 100000}]),
+                 {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+                 aec_test_utils:start_chain_db(),
+                 ok = aec_chain_state:insert_block(GenesisBlock),
+
                  STxs =
                    [ a_signed_tx        (_Sender=PK1, me,_Nonce=1,_Fee=300000)
                    , a_signed_tx        (        PK1, me,       2,     400000)
@@ -342,7 +372,14 @@ tx_pool_test_() ->
        end},
       {"Ensure candidate ordering",
        fun() ->
+               aec_test_utils:stop_chain_db(),
                PK = new_pubkey(),
+               meck:expect(aec_genesis_block_settings, preset_accounts, 0,
+                           [{PK, 100000}]),
+               {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+               aec_test_utils:start_chain_db(),
+               ok = aec_chain_state:insert_block(GenesisBlock),
+
                MaxGas = aec_governance:block_gas_limit(),
 
                %% Only one tx in pool
@@ -447,9 +484,17 @@ tx_pool_test_() ->
        end},
       {"Ensure persistence",
        fun() ->
+               aec_test_utils:stop_chain_db(),
+               PK = new_pubkey(),
+               meck:expect(aec_genesis_block_settings, preset_accounts, 0,
+                           [{PK, 100000}]),
+               {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+               aec_test_utils:start_chain_db(),
+
+               ok = aec_chain_state:insert_block(GenesisBlock),
                %% Prepare a few txs.
-               STx1 = a_signed_tx(me, new_pubkey(), 1, 20000),
-               STx2 = a_signed_tx(me, new_pubkey(), 2, 20000),
+               STx1 = a_signed_tx(PK, new_pubkey(), 1, 20000),
+               STx2 = a_signed_tx(PK, new_pubkey(), 2, 20000),
                ?assertEqual(ok, aec_tx_pool:push(STx1)),
                ?assertEqual(ok, aec_tx_pool:push(STx2)),
                {ok, PoolTxs} = aec_tx_pool:peek(infinity),
@@ -543,11 +588,16 @@ tx_pool_test_() ->
        {"Test GC",
         fun() ->
             %% initialize chain
+            aec_test_utils:stop_chain_db(),
+
+            PubKey = new_pubkey(),
+            meck:expect(aec_genesis_block_settings, preset_accounts, 0,
+                        [{PubKey, 100000}]),
             {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+            aec_test_utils:start_chain_db(),
             ok = aec_chain_state:insert_block(GenesisBlock),
 
             %% Prepare three transactions
-            PubKey = new_pubkey(),
             STx1 = a_signed_tx(PubKey, PubKey, 1, 20000),
             STx2 = a_signed_tx(PubKey, PubKey, 2, 20000),
             STx3 = a_signed_tx(PubKey, PubKey, 3, 20000),
