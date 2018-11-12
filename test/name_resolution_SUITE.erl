@@ -11,9 +11,11 @@
 
 %% test case exports
 -export([ spend_to_name/1
+        , spend_to_name_when_multiple_pointer_entries/1
         %% , query_oracle/1
         %% , query_named_oracle/1
         , transfer_name_to_named_account/1
+        , transfer_name_to_named_account_when_multiple_pointer_entries/1
         ]).
 
 -import(aec_block_micro_candidate, [apply_block_txs_strict/3
@@ -29,7 +31,9 @@
 
 all() ->
     [ spend_to_name
+    , spend_to_name_when_multiple_pointer_entries
     , transfer_name_to_named_account
+    , transfer_name_to_named_account_when_multiple_pointer_entries
     ].
 
 
@@ -84,6 +88,10 @@ account_id(Pubkey) ->
 name_id(NameHash) ->
     aec_id:create(name, NameHash).
 
+name_from_id(NameID) ->
+    {name, NameHash} = aec_id:specialize(NameID),
+    NameHash.
+
 commitment_id(CommitmentHash) ->
     aec_id:create(commitment, CommitmentHash).
 
@@ -121,9 +129,22 @@ register_name(Pubkey, Name, S) ->
     {ok, Claim} = aens_claim_tx:new(ClaimSpec),
     {apply_txs([Claim], apply_txs([Preclaim], S)), name_id(Hash)}.
 
-update_pointers(Tag, ToPubkey, Pubkey, NameID, Nonce, S) ->
-    IdType      = type2id(Tag),
-    Pointers    = [aens_pointer:new(atom_to_binary(Tag, utf8), aec_id:create(IdType, ToPubkey))],
+pointers(Tag, ToPubkey) ->
+    IdType = type2id(Tag),
+    [aens_pointer:new(atom_to_binary(Tag, utf8), aec_id:create(IdType, ToPubkey))].
+
+pointers_with_duplicated_key_at_end(Tag, ToPubkey) ->
+    [P] = pointers(Tag, ToPubkey),
+    %% Extract pointer value i.e. identifier, create distinct identifier.
+    PId = aens_pointer:id(P),
+    {PTag, PVal} = aec_id:specialize(PId),
+    <<PValInt:32/unit:8>> = PVal,
+    ShadowedId = aec_id:create(PTag, <<(1+PValInt):32/unit:8>>),
+    ?assertNotEqual(PId, ShadowedId), %% Hardcoded expectation on generated identifier being distinct.
+    ShadowedP = aens_pointer:new(aens_pointer:key(P), ShadowedId),
+    [P, ShadowedP].
+
+update_pointers(Pointers, Pubkey, NameID, Nonce, S) ->
     UpdateSpec  = #{ account_id => account_id(Pubkey)
                    , nonce => Nonce
                    , name_id => NameID
@@ -134,6 +155,14 @@ update_pointers(Tag, ToPubkey, Pubkey, NameID, Nonce, S) ->
                    },
     {ok, Update} = aens_update_tx:new(UpdateSpec),
     apply_txs([Update], S).
+
+update_and_check_pointers(Pointers, Pubkey, NameID, Nonce, S0) ->
+    S1 = update_pointers(Pointers, Pubkey, NameID, Nonce, S0),
+    N = name_from_id(NameID),
+    #{trees := T1} = S1,
+    P1 = aens_names:pointers(aens_state_tree:get_name(N, aec_trees:ns(T1))),
+    ?assertEqual(Pointers, P1),
+    S1.
 
 %% TODO: it'd be nice not to have different atoms for ids and encoding.
 type2id(account_pubkey)  -> account;
@@ -148,11 +177,17 @@ type2id(oracle_pubkey)   -> oracle.
 %%%===================================================================
 
 spend_to_name(_Cfg) ->
+    spend_to_name_(fun pointers/2).
+
+spend_to_name_when_multiple_pointer_entries(_Cfg) ->
+    spend_to_name_(fun pointers_with_duplicated_key_at_end/2).
+
+spend_to_name_(PointersFun) ->
     {[Pubkey1, Pubkey2], S1} = init_state(2),
     Amount = 100,
     Fee    = 1,
     {S2, NameId} = register_name(Pubkey2, S1),
-    S3 = update_pointers(account_pubkey, Pubkey2, Pubkey2, NameId, 3, S2),
+    S3 = update_and_check_pointers(PointersFun(account_pubkey, Pubkey2), Pubkey2, NameId, 3, S2),
     {ok, Spend} = aec_spend_tx:new(#{ sender_id    => account_id(Pubkey1)
                                     , recipient_id => NameId
                                     , amount       => Amount
@@ -167,16 +202,23 @@ spend_to_name(_Cfg) ->
                  balance(Pubkey1, S4)),
     ok.
 
+
 %%%===================================================================
 %%% Name tests
 %%%===================================================================
 
 transfer_name_to_named_account(_Cfg) ->
+    transfer_name_to_named_account_(fun pointers/2).
+
+transfer_name_to_named_account_when_multiple_pointer_entries(_Cfg) ->
+    transfer_name_to_named_account_(fun pointers_with_duplicated_key_at_end/2).
+
+transfer_name_to_named_account_(PointersFun) ->
     {[Pubkey1, Pubkey2, Pubkey3], S1} = init_state(3),
 
     %% Pubkey1 holds the reference to the recipient account (Pubkey3)
     {S2, NameId1} = register_name(Pubkey1, <<"foo.test"/utf8>>, S1),
-    S3 = update_pointers(account_pubkey, Pubkey3, Pubkey1, NameId1, 3, S2),
+    S3 = update_and_check_pointers(PointersFun(account_pubkey, Pubkey3), Pubkey1, NameId1, 3, S2),
 
     %% Pubkey2 is the owner of the name
     {S4, NameId2} = register_name(Pubkey2, <<"bar.test"/utf8>>, S3),
