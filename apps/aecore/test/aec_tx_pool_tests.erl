@@ -138,6 +138,54 @@ tx_pool_test_() ->
             ?assertEqual({error, nonce_too_high}, aec_tx_pool:push( a_signed_tx(PK, me, 8, 20000) )),
             ok
        end},
+      {"ensure nonce is not checked when syncing",
+       fun() ->
+            PK0 = new_pubkey(),
+            ?assertEqual(none, aec_chain:get_account(PK0)),
+            ?assertEqual(ok,                     aec_tx_pool:push_sync( a_signed_tx(PK0, me, 1, 20000) )),
+            ?assertEqual({error,nonce_too_high}, aec_tx_pool:push( a_signed_tx(PK0, me, 2, 20000) )),
+            ?assertEqual(ok,                     aec_tx_pool:push_sync( a_signed_tx(PK0, me, 2, 20000) )),
+
+            aec_test_utils:stop_chain_db(),
+            PK1 = new_pubkey(),
+            meck:expect(aec_genesis_block_settings, preset_accounts, 0, [{PK1, 100000}]),
+            {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+            aec_test_utils:start_chain_db(),
+            ok = aec_chain_state:insert_block(GenesisBlock),
+            ?assertMatch({value, _}, aec_chain:get_account(PK1)),
+            ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK1, me, 1, 20000) )),
+            ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK1, me, 2, 20000) )),
+            ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK1, me, 5, 20000) )),
+            ?assertEqual({error, nonce_too_high}, aec_tx_pool:push( a_signed_tx(PK1, me, 6, 20000) )),
+            ?assertEqual(ok, aec_tx_pool:push_sync( a_signed_tx(PK1, me, 6, 20000) )),
+
+            ?assertMatch({ok, [_, _, _, _, _, _]}, aec_tx_pool:peek(infinity)),
+
+            %% The first block needs to be a key-block
+            {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block(), PK1),
+            {ok, KeyHash1} = aec_blocks:hash_internal_representation(KeyBlock1),
+            ok = aec_chain_state:insert_block(KeyBlock1),
+            ?assertEqual(KeyHash1, aec_chain:top_block_hash()),
+            ok = aec_keys:promote_candidate(aec_blocks:miner(KeyBlock1)),
+
+            TopBlock = aec_chain:top_block(),
+            TopBlockHash = aec_chain:top_block_hash(),
+
+            {ok, USCandidate1, _} = aec_block_micro_candidate:create(TopBlock),
+            {ok, Candidate1} = aec_keys:sign_micro_block(USCandidate1),
+            {ok, CHash1} = aec_blocks:hash_internal_representation(Candidate1),
+            ok = aec_chain_state:insert_block(Candidate1),
+            aec_tx_pool:top_change(micro, TopBlockHash, CHash1),
+
+            ?assertMatch({ok, [_, _, _, _]}, aec_tx_pool:peek(infinity)),
+
+            ?assertEqual({error, nonce_too_low}, aec_tx_pool:push( a_signed_tx(PK1, me, 1, 20000) )),
+            ?assertEqual({error, nonce_too_low}, aec_tx_pool:push_sync( a_signed_tx(PK1, me, 1, 20000) )),
+            ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK1, me, 7, 20000) )),
+            ?assertEqual({error,nonce_too_high}, aec_tx_pool:push( a_signed_tx(PK1, me, 8, 20000) )),
+            ?assertEqual(ok, aec_tx_pool:push_sync( a_signed_tx(PK1, me, 8, 20000) )),
+            ok
+       end},
       {"fill micro block with transactions",
        {timeout, 10, fun() ->
                MaxNonce = 400,
