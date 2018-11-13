@@ -239,9 +239,8 @@ do_revert(Us0, Us1, State0) ->
             try
                 %% In Sophia Us1 is a pointer to the actual value.
                 %% The type of the value is always string.
-                HeapValue = aeso_data:heap_value(maps(State0), Us1, mem(State0)),
-                {ok, Out} = aeso_data:heap_to_binary(string, get_store(State0), HeapValue),
-                set_out(Out, State0)
+                {ok, Out, GasUsed} = heap_to_binary(string, Us1, State0),
+                set_out(Out, spend_gas(GasUsed, State0))
             catch _:_ ->
                 io:format("** Error reading revert value\n~s",
                           [format_mem(mem(State0))]),
@@ -257,7 +256,16 @@ heap_to_binary(Type, Ptr, State) ->
     Heap  = mem(State),
     Maps  = maps(State),
     Value = aeso_data:heap_value(Maps, Ptr, Heap),
-    aeso_data:heap_to_binary(Type, Store, Value).
+    case aeso_data:heap_to_binary(Type, Store, Value) of
+        {ok, Bin}        ->
+            GasUsed = 0,
+            {ok, Bin, GasUsed};
+        {error, _} = Err -> Err
+    end.
+
+spend_gas(Gas, State) ->
+    TotalGas = gas(State),
+    set_gas(max(0, TotalGas - Gas), State).
 
 heap_to_heap(Type, Ptr, State) ->
     Heap  = mem(State),
@@ -359,8 +367,8 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
                     TypeHash   = <<ISize:256>>,
                     case aevm_ae_primops:check_type_hash(Prim, ArgTypes, OutType, TypeHash) of
                         ok ->
-                            {ok, Arg} = aeso_data:heap_to_binary(DataType, Store, HeapValue),
-                            {Arg, OutType, State};
+                            {ok, Arg, GasUsed} = heap_to_binary(DataType, ArgPtr, State),
+                            {Arg, OutType, spend_gas(GasUsed, State)};
                         error ->
                             input_error_return(Store, HeapValue, State)
                     end;
@@ -373,8 +381,8 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
                                                          TypeHash, ChainState) of
                         {ok, ArgType, OutType} ->
                             DataType = {tuple, [word, ArgType]},
-                            {ok, Arg} = aeso_data:heap_to_binary(DataType, Store, HeapValue),
-                            {Arg, OutType, State};
+                            {ok, Arg, GasUsed} = heap_to_binary(DataType, ArgPtr, State),
+                            {Arg, OutType, spend_gas(GasUsed, State)};
                         {error, _Err} ->
                             input_error_return(Store, HeapValue, State)
                     end
