@@ -7,7 +7,6 @@
         , binary_to_heap/4
         , heap_to_heap/3
         , heap_to_binary/3
-        , heap_to_binary_w_stats/3
         , binary_to_binary/2
         , heap_value/3
         , heap_value/4
@@ -140,30 +139,6 @@ heap_to_binary(Type, Store, {Ptr, Heap}) ->
         {error, Err}
     end.
 
-heap_to_binary_w_stats(Type, Store, Heap) ->
-    init_instr(),
-    case heap_to_binary(Type, Store, Heap) of
-        {ok, Binary} ->
-            Stats = end_instr(),
-            {ok, Binary, Stats};
-        Err = {error, _} ->
-            end_instr(),
-            Err
-    end.
-
-init_instr() ->
-    put(map_size, 0).
-
-end_instr() ->
-    #{ total_map_size => erase(map_size) }.
-
-instr_map_size(Size) ->
-    case get(map_size) of
-        undefined -> ok;
-        OldSize   -> put(map_size, OldSize + Size)
-    end,
-    Size.
-
 %% -- Binary to binary -------------------------------------------------------
 
 -spec binary_to_binary(Type :: ?Type(), Bin :: binary_value()) ->
@@ -229,7 +204,7 @@ convert(Input, binary, Store, _Visited, {map, KeyT, ValT}, MapId, Heap, BaseAddr
                     end, {[], BaseAddr + 32}, KVs),
     Mem  = lists:reverse(RMem),
     %% Target is binary so no maps required
-    {BaseAddr, {no_maps(Heap), instr_map_size(FinalBase - BaseAddr), [<<Size:256>>, Mem]}};
+    {BaseAddr, {no_maps(Heap), FinalBase - BaseAddr, [<<Size:256>>, Mem]}};
 convert(Input, heap, Store, _Visited, {map, KeyT, ValT}, Ptr, Heap, _BaseAddr) ->
     {InnerMaps, PMap} = convert_map(Input, heap, Store, KeyT, ValT, Ptr, Heap),
     case PMap#pmap.data of
