@@ -11,7 +11,6 @@
          tx_base_gas/1,
          byte_gas/0,
          beneficiary_reward_delay/0,
-         minimum_tx_fee/0,
          minimum_gas_price/0,
          name_preclaim_expiration/0,
          name_claim_burned_fee/0,
@@ -126,9 +125,6 @@ tx_base_gas(_) ->
 
 byte_gas() ->
     ?BYTE_GAS.
-
-minimum_tx_fee() ->
-    1.
 
 minimum_gas_price() ->
     1.

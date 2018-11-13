@@ -135,8 +135,7 @@ check(#oracle_response_tx{nonce = Nonce, query_id = QueryId,
                      aetx_transaction ->
                          [fun() -> aetx_utils:check_account(OraclePubKey, Trees,
                                                             Nonce, Fee - QueryFee) end,
-                          fun() -> aeo_utils:check_ttl_fee(Height, ResponseTTL,
-                                                           Fee - aec_governance:minimum_tx_fee()) end]
+                          fun() -> aeo_utils:check_ttl_fee(Height, ResponseTTL, Fee) end]
                  end],
             case aeu_validation:run(Checks) of
                 ok              -> {ok, Trees};

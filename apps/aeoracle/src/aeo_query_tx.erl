@@ -158,7 +158,7 @@ check(#oracle_query_tx{nonce = Nonce, query_fee = QFee, query_ttl = QTTL,
          | case aetx_env:context(Env) of
                aetx_contract -> [];
                aetx_transaction ->
-                   [fun() -> aeo_utils:check_ttl_fee(Height, QTTL, Fee - aec_governance:minimum_tx_fee()) end]
+                   [fun() -> aeo_utils:check_ttl_fee(Height, QTTL, Fee) end]
            end
         ],
 

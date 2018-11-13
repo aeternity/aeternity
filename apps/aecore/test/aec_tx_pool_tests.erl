@@ -422,8 +422,7 @@ tx_pool_test_() ->
                ?assertEqual(ok, aec_tx_pool:push(STx3)),
 
                %% A transaction with too low fee should be rejected
-               STx4 = a_signed_tx(PubKey1, new_pubkey(), 6,
-                                  aec_governance:minimum_tx_fee() - 1),
+               STx4 = a_signed_tx(PubKey1, new_pubkey(), 6, 0),
                ?assertEqual({error, too_low_fee}, aec_tx_pool:push(STx4)),
 
                %% A transaction with too low gas price should be rejected
