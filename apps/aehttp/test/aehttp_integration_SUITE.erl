@@ -2972,7 +2972,7 @@ pending_transactions(_Config) ->
         end,
 
     AmountToSpent = 3,
-    {BlocksToMine, Fee} = minimal_fee_and_blocks_to_mine(AmountToSpent, 1),
+    BlocksToMine = blocks_to_mine(AmountToSpent, 1),
     MineReward = rpc(aec_governance, block_mine_reward, []),
     aecore_suite_utils:mine_key_blocks(Node, BlocksToMine),
     {ok, 200, #{<<"balance">> := Bal0}} = get_balance_at_top(),
@@ -2981,7 +2981,7 @@ pending_transactions(_Config) ->
            [Bal0, InitialBalance, BlocksToMine, MineReward]),
     {Bal0, _, _} = {InitialBalance + BlocksToMine * MineReward, Bal0,
                     {InitialBalance, BlocksToMine, MineReward}},
-    true = (is_integer(Bal0) andalso Bal0 > AmountToSpent + Fee),
+    true = (is_integer(Bal0) andalso Bal0 >= AmountToSpent),
 
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % still empty
     {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
@@ -3011,9 +3011,9 @@ pending_transactions(_Config) ->
     {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
 
     {ok, 200, #{<<"balance">> := Bal1}} = get_balance_at_top(),
-    ct:log("Bal1: ~p, Bal0: ~p, Mine reward: ~p, Fee: ~p, Amount to spend: ~p",
-           [Bal1, Bal0, ToMine * MineReward, Fee, AmountToSpent]),
-    {Bal1, _} = {Bal0 + ToMine * MineReward + Fee - Fee - AmountToSpent, Bal1},
+    ct:log("Bal1: ~p, Bal0: ~p, Mine reward: ~p, Amount to spend: ~p",
+           [Bal1, Bal0, ToMine * MineReward, AmountToSpent]),
+    {Bal1, _} = {Bal0 + ToMine * MineReward - AmountToSpent, Bal1},
     {ok, 200, #{<<"balance">> := AmountToSpent}} =
                  get_accounts_by_pubkey_sut(aehttp_api_encoder:encode(account_pubkey, ReceiverPubKey)),
     ok.
@@ -3022,7 +3022,7 @@ pending_transactions(_Config) ->
 %% a valid account nonce; that's why we mine a while
 post_correct_tx(_Config) ->
     Amount = 1,
-    {BlocksToMine, _Fee} = minimal_fee_and_blocks_to_mine(Amount, 1),
+    BlocksToMine = blocks_to_mine(Amount, 1),
     {PubKey, Nonce} = prepare_for_spending(BlocksToMine),
     {ok, SpendTx} =
         aec_spend_tx:new(
@@ -3041,7 +3041,7 @@ post_correct_tx(_Config) ->
 
 post_broken_tx(_Config) ->
     Amount = 1,
-    {BlocksToMine, _Fee} = minimal_fee_and_blocks_to_mine(Amount, 1),
+    BlocksToMine = blocks_to_mine(Amount, 1),
     {PubKey, Nonce} = prepare_for_spending(max(BlocksToMine, 3)),  %% we need at least 3 blocks
     {ok, SpendTx} =
         aec_spend_tx:new(
@@ -3081,7 +3081,7 @@ post_broken_tx(_Config) ->
 post_broken_api_encoded_tx(_Config) ->
     Amount = 1,
     NumberOfChecks = ?DEFAULT_TESTS_COUNT,
-    {BlocksToMine, _Fee} = minimal_fee_and_blocks_to_mine(Amount, NumberOfChecks),
+    BlocksToMine = blocks_to_mine(Amount, NumberOfChecks),
     {PubKey, Nonce} = prepare_for_spending(BlocksToMine),
     lists:foreach(
         fun(_) ->
@@ -5509,13 +5509,12 @@ give_tokens(RecipientPubkey, Amount) ->
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
     ok.
 
-minimal_fee_and_blocks_to_mine(Amount, ChecksCnt) ->
-    Fee = rpc(aec_governance, minimum_tx_fee, []),
+blocks_to_mine(Amount, ChecksCnt) ->
     MineReward = rpc(aec_governance, block_mine_reward, []),
-    TokensRequired = (Amount + Fee) * ChecksCnt,
+    TokensRequired = Amount * ChecksCnt,
     Delay = rpc(aec_governance, beneficiary_reward_delay, []),
     BlocksToMine = trunc(math:ceil(TokensRequired / MineReward)) + Delay,
-    {BlocksToMine, Fee}.
+    BlocksToMine.
 
 channel_ws_start(Role, Opts, Config) ->
     Opts1 = set_log_option(Opts, Config),

@@ -382,7 +382,7 @@ create_insufficient_funds(_Cfg) ->
     TxSpecI = aesc_test_utils:create_tx_spec(
                 NotLoaded, Loaded,
                 #{initiator_amount => 1,
-                  fee => 2}, S),
+                  fee => 50000}, S),
     {ok, TxI} = aesc_create_tx:new(TxSpecI),
     {error, insufficient_funds} = aetx:check(TxI, Trees, Env),
 
@@ -390,7 +390,7 @@ create_insufficient_funds(_Cfg) ->
     TxSpecR = aesc_test_utils:create_tx_spec(
                 Loaded, NotLoaded,
                 #{initiator_amount => 1,
-                  fee => 2}, S),
+                  fee => 50000}, S),
     {ok, TxR} = aesc_create_tx:new(TxSpecR),
     {error, insufficient_funds} = aetx:check(TxR, Trees, Env),
 
@@ -398,7 +398,7 @@ create_insufficient_funds(_Cfg) ->
 
 
 create_insufficient_funds_reserve(_Cfg) ->
-    {Loaded, NotLoaded, S} = create_loaded_accounts(100, 10),
+    {Loaded, NotLoaded, S} = create_loaded_accounts(100000, 100000),
     Trees = aesc_test_utils:trees(S),
     Height = 1,
     Env = aetx_env:tx_env(Height),
@@ -408,7 +408,7 @@ create_insufficient_funds_reserve(_Cfg) ->
                 NotLoaded, Loaded,
                 #{initiator_amount => 1,
                   channel_reserve => 2,
-                  fee => 1}, S),
+                  fee => 50000}, S),
     {ok, TxI} = aesc_create_tx:new(TxSpecI),
     {error, insufficient_initiator_amount} = aetx:check(TxI, Trees, Env),
 
@@ -417,7 +417,7 @@ create_insufficient_funds_reserve(_Cfg) ->
                 Loaded, NotLoaded,
                 #{responder_amount => 1,
                   channel_reserve => 2,
-                  fee => 1}, S),
+                  fee => 50000}, S),
     {ok, TxR} = aesc_create_tx:new(TxSpecR),
     {error, insufficient_responder_amount} = aetx:check(TxR, Trees, Env),
 
@@ -433,7 +433,7 @@ create_loaded_accounts(FAmt, SAmt) ->
     {First, Second, S3}.
 
 create_wrong_nonce(_Cfg) ->
-    {Initiator, Responder, S0} = create_loaded_accounts(100, 100),
+    {Initiator, Responder, S0} = create_loaded_accounts(100000, 100000),
     Nonce = 42,
     S = aesc_test_utils:set_account_nonce(Initiator, Nonce, S0),
     Trees = aesc_test_utils:trees(S),
@@ -648,8 +648,8 @@ close_solo_delegate_not_allowed(Cfg) ->
 %%%===================================================================
 
 close_mutual(Cfg) ->
-    StartIAmt = 50,
-    StartRAmt = 50,
+    StartIAmt = 100000,
+    StartRAmt = 100000,
     ChannelAmount = StartIAmt + StartRAmt,
 
     Test =
@@ -668,26 +668,26 @@ close_mutual(Cfg) ->
                     {I1 - I0, R1 - R0}
                 end])
         end,
-    Fee = 10,
+    Fee = 50000,
 
     %% normal cases
     {45, 45} = Test(45, 45, Fee),
-    {15, 75} = Test(15, ChannelAmount - 15 - Fee, Fee),
+    {15, 149985} = Test(15, ChannelAmount - 15 - Fee, Fee),
 
     %% fee edge cases
     %% amount - HalfFee = 0
-    {0, 90} = Test(0, ChannelAmount - Fee, Fee),
-    {90, 0} = Test(ChannelAmount - Fee, 0, Fee),
+    {0, 150000} = Test(0, ChannelAmount - Fee, Fee),
+    {150000, 0} = Test(ChannelAmount - Fee, 0, Fee),
 
     %% amount - HalfFee < 0
-    {1, 89} = Test(1 , ChannelAmount - Fee - 1, Fee),
-    {89, 1} = Test(ChannelAmount - Fee - 1, 1, Fee),
+    {1, 149999} = Test(1 , ChannelAmount - Fee - 1, Fee),
+    {149999, 1} = Test(ChannelAmount - Fee - 1, 1, Fee),
 
     ok.
 
 close_mutual_wrong_amounts(Cfg) ->
-    StartIAmt = 50,
-    StartRAmt = 50,
+    StartIAmt = 100000,
+    StartRAmt = 100000,
 
     Test =
         fun(IAmt, RAmt, Fee, Err) ->
@@ -700,16 +700,19 @@ close_mutual_wrong_amounts(Cfg) ->
         end,
 
     % sum too big
-    Test(50, 50, 10, wrong_amounts),
+    Test(100000, 100000, 50000, wrong_amounts),
     % nonce too small
     Test(50, 50, 0, too_low_fee),
     ok.
 
 close_mutual_wrong_nonce(Cfg) ->
+    StartIAmt = 100000,
+    StartRAmt = 100000,
     InitiatorNonce = 42,
+
     Test =
         fun(TestNonce, Error) ->
-            run(#{cfg => Cfg},
+            run(#{cfg => Cfg, initiator_amount => StartIAmt, responder_amount => StartRAmt},
                 [positive(fun create_channel_/2),
                  fun(#{state := S0, initiator_pubkey := I} = Props) ->
                     S = aesc_test_utils:set_account_nonce(I, InitiatorNonce, S0),
@@ -727,9 +730,12 @@ close_mutual_wrong_nonce(Cfg) ->
 
 
 close_mutual_missing_channel(Cfg) ->
+    StartIAmt = 100000,
+    StartRAmt = 100000,
     ChannelHashSize = aehttp_api_encoder:byte_size_for_type(channel),
     FakeChannelPubKey = <<42:ChannelHashSize/unit:8>>,
-    run(#{cfg => Cfg},
+
+    run(#{cfg => Cfg, initiator_amount => StartIAmt, responder_amount => StartRAmt},
         [positive(fun create_channel_/2),
          %% prepare balances and a fee..
          prepare_balances_for_mutual_close(),
@@ -738,9 +744,12 @@ close_mutual_missing_channel(Cfg) ->
     ok.
 
 close_mutual_already_closing(Cfg) ->
+    StartIAmt = 100000,
+    StartRAmt = 100000,
+
     Test =
         fun(Closer) ->
-            run(#{cfg => Cfg},
+            run(#{cfg => Cfg, initiator_amount => StartIAmt, responder_amount => StartRAmt},
                [positive(fun create_channel_/2),
                 set_from(Closer),
                 positive(fun close_solo_/2),
@@ -796,7 +805,7 @@ slash_by_delegate(Cfg) ->
         fun(Closer, Round0, Round1) ->
             run(#{cfg => Cfg},
                [fun(Props) ->
-                    {Delegate1, Delegate2, S} = create_loaded_accounts(100, 100),
+                    {Delegate1, Delegate2, S} = create_loaded_accounts(100000, 100000),
                     Props#{cfg => [{state, S} | Cfg],
                            delegate_ids => [aec_id:create(account, Delegate1),
                                             aec_id:create(account, Delegate2)]}
@@ -1031,7 +1040,7 @@ slash_missing_channel(Cfg) ->
 
 deposit(Cfg) ->
     Amount = 10,
-    Fee = 1,
+    Fee = 50000,
     Test =
         fun(Depositor, RoleKey) ->
             run(#{cfg => Cfg},
@@ -1086,37 +1095,37 @@ deposit_insufficent_funds(Cfg) ->
         end,
     lists:foreach(
         fun(Depositor) ->
-            Test(Depositor, 12, 1, insufficient_funds),
-            Test(Depositor, 10, 1, insufficient_funds),
+            Test(Depositor, 12, 50000, insufficient_funds),
+            Test(Depositor, 10, 50000, insufficient_funds),
             Test(Depositor, 10, 0, too_low_fee)
         end,
         ?ROLES),
     ok.
 
 deposit_wrong_nonce(Cfg) ->
-    test_both_wrong_nonce(Cfg, fun deposit_/2, #{amount => 1, fee => 1}).
+    test_both_wrong_nonce(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}).
 
 deposit_missing_channel(Cfg) ->
-    test_both_missing_channel(Cfg, fun deposit_/2, #{amount => 1, fee => 1}).
+    test_both_missing_channel(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}).
 
 deposit_closing(Cfg) ->
-    test_both_missing_channel(Cfg, fun deposit_/2, #{amount => 1, fee => 1}).
+    test_both_missing_channel(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}).
 
 deposit_older_round(Cfg) ->
-    test_both_old_round(Cfg, fun deposit_/2, #{amount => 1, fee => 1}).
+    test_both_old_round(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}).
 
 deposit_not_participant(Cfg) ->
-    test_not_participant(Cfg, fun deposit_/2, #{amount => 1, fee => 1}).
+    test_not_participant(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}).
 
 deposit_delegate_not_allowed(Cfg) ->
-    test_delegate_not_allowed(Cfg, fun deposit_/2, #{amount => 1, fee => 1}).
+    test_delegate_not_allowed(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}).
 
 %%%===================================================================
 %%% Withdraw
 %%%===================================================================
 withdraw(Cfg) ->
     Amount = 10,
-    Fee = 1,
+    Fee = 50000,
     Test =
         fun(Depositor, RoleKey) ->
             run(#{cfg => Cfg},
@@ -1169,30 +1178,30 @@ withdraw_insufficent_funds(Cfg) ->
         end,
     lists:foreach(
         fun(Withdrawer) ->
-            Test(Withdrawer, 11, 1, not_enough_channel_funds),
+            Test(Withdrawer, 11, 50000, not_enough_channel_funds),
             % keep at least 2*channel_reserve in the channel
-            Test(Withdrawer, 9, 1, not_enough_channel_funds)
+            Test(Withdrawer, 9, 50000, not_enough_channel_funds)
         end,
         ?ROLES),
     ok.
 
 withdraw_wrong_nonce(Cfg) ->
-    test_both_wrong_nonce(Cfg, fun withdraw_/2, #{amount => 1, fee => 1}).
+    test_both_wrong_nonce(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}).
 
 withdraw_missing_channel(Cfg) ->
-    test_both_missing_channel(Cfg, fun withdraw_/2, #{amount => 1, fee => 1}).
+    test_both_missing_channel(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}).
 
 withdraw_closing(Cfg) ->
-    test_both_missing_channel(Cfg, fun withdraw_/2, #{amount => 1, fee => 1}).
+    test_both_missing_channel(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}).
 
 withdraw_older_round(Cfg) ->
-    test_both_old_round(Cfg, fun withdraw_/2, #{amount => 1, fee => 1}).
+    test_both_old_round(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}).
 
 withdraw_not_participant(Cfg) ->
-    test_not_participant(Cfg, fun withdraw_/2, #{amount => 1, fee => 1}).
+    test_not_participant(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}).
 
 withdraw_delegate_not_allowed(Cfg) ->
-    test_delegate_not_allowed(Cfg, fun withdraw_/2, #{amount => 1, fee => 1}).
+    test_delegate_not_allowed(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}).
 
 get_balances(K1, K2, S) ->
     {get_balance(K1, S), get_balance(K2, S)}.
@@ -1276,11 +1285,11 @@ settle_wrong_amounts(Cfg) ->
     ActualTest =
         fun(Closer, Setler) ->
             % someone has more
-            Test(Closer, Setler, CloseAmtI + 1, CloseAmtR, 1, insufficient_channel_funds),
-            Test(Closer, Setler, CloseAmtI, CloseAmtR + 1, 1, insufficient_channel_funds),
+            Test(Closer, Setler, CloseAmtI + 1, CloseAmtR, 50000, insufficient_channel_funds),
+            Test(Closer, Setler, CloseAmtI, CloseAmtR + 1, 50000, insufficient_channel_funds),
             % someone has less
-            Test(Closer, Setler, CloseAmtI - 1, CloseAmtR, 1, wrong_amt),
-            Test(Closer, Setler, CloseAmtI, CloseAmtR - 1, 1, wrong_amt),
+            Test(Closer, Setler, CloseAmtI - 1, CloseAmtR, 50000, wrong_amt),
+            Test(Closer, Setler, CloseAmtI, CloseAmtR - 1, 50000, wrong_amt),
 
             % fee
             Test(Closer, Setler, CloseAmtI, CloseAmtR, 0, too_low_fee)
@@ -1400,7 +1409,7 @@ settle_not_participant(Cfg) ->
                 set_prop(height, 21),
                 fun(#{state := S0} = Props) ->
                     {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-                    S1 = aesc_test_utils:set_account_balance(NewAcc, 1000, S),
+                    S1 = aesc_test_utils:set_account_balance(NewAcc, 100000, S),
                     PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
                     Props#{state => S1, from_pubkey => NewAcc, from_privkey => PrivKey}
                 end,
@@ -1414,7 +1423,7 @@ settle_delegate_not_allowed(Cfg) ->
         fun(Closer) ->
             run(#{cfg => Cfg},
               [fun(Props) ->
-                    {Delegate1, Delegate2, S} = create_loaded_accounts(100, 100),
+                    {Delegate1, Delegate2, S} = create_loaded_accounts(100000, 100000),
                     Props#{cfg => [{state, S} | Cfg],
                             delegate_ids => [aec_id:create(account, Delegate1),
                                              aec_id:create(account, Delegate2)]}
@@ -1470,7 +1479,7 @@ snapshot_solo(Cfg) ->
                 set_from(PreActor),
                 set_prop(round, OldRound),
                 set_prop(amount, 1),
-                set_prop(fee, 1),
+                set_prop(fee, 50000),
                 set_prop(state_hash, OldStateHash),
                 positive(Action),
                 set_from(Snapshoter),
@@ -1498,12 +1507,15 @@ snapshot_solo(Cfg) ->
 
 % no one can post a snapshot_tx to a closed channel
 snapshot_closed_channel(Cfg) ->
+    IAmt = 100000,
+    RAmt = 100000,
+
     Test =
         fun(Snapshoter) ->
-            run(#{cfg => Cfg},
+            run(#{cfg => Cfg, initiator_amount => IAmt, responder_amount => RAmt},
                [positive(fun create_channel_/2),
                 set_from(initiator),
-                set_prop(fee, 1),
+                set_prop(fee, 50000),
                 prepare_balances_for_mutual_close(),
                 positive(fun close_mutual_/2),
                 fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
@@ -1560,8 +1572,8 @@ fp_after_create(Cfg) ->
     ContractRound = 10,
     AfterCreate =
         fun(Owner, Forcer, GasPrice, GasLimit) ->
-            run(#{cfg => Cfg, initiator_amount => 30,
-                              responder_amount => 30,
+            run(#{cfg => Cfg, initiator_amount => 10000000,
+                              responder_amount => 10000000,
                  channel_reserve => 1},
                [positive(fun create_channel_/2),
                 set_prop(gas_price, GasPrice),
@@ -2302,11 +2314,11 @@ fp_use_onchain_oracle(Cfg) ->
     OQuestion = aeso_data:to_binary(Question, 0),
     Answer = <<"oh, yes">>,
     OResponse = aeso_data:to_binary(Answer, 0),
-    QueryFee = 2,
+    QueryFee = 50000,
     CallOnChain =
         fun(Owner, Forcer) ->
-            IAmt0 = 5000000,
-            RAmt0 = 5000000,
+            IAmt0 = 10000000,
+            RAmt0 = 10000000,
             ContractCreateRound = 10,
             run(#{cfg => Cfg, initiator_amount => IAmt0,
                               responder_amount => RAmt0,
@@ -2671,7 +2683,7 @@ fp_use_onchain_contract(Cfg) ->
                     Call = aect_test_utils:get_call(TxHashContractPubkey, CallId,
                                                     S),
                     GasUsed = aect_call:gas_used(Call),
-                    GasLimit = maps:get(gas_limit, Props, 1234567890),
+                    GasLimit = maps:get(gas_limit, Props, 10000000),
                     ?assertEqual(GasUsed, GasLimit), % assert all gas
                     Props
                 end])
@@ -2684,12 +2696,14 @@ fp_use_onchain_contract(Cfg) ->
 % no one can post a force progress to a closed channel
 fp_closed_channel(Cfg) ->
     Round = 10,
+    IStartAmt = 200000,
+    RStartAmt = 200000,
+
     Test =
         fun(Owner, Forcer) ->
-            run(#{cfg => Cfg},
+            run(#{cfg => Cfg, initiator_amount => IStartAmt, responder_amount => RStartAmt},
                [positive(fun create_channel_/2),
                 set_from(initiator),
-                set_prop(fee, 1),
                 prepare_balances_for_mutual_close(),
                 positive(fun close_mutual_/2),
                 fun(#{channel_pubkey := ChannelPubKey, state := S} = Props) ->
@@ -2718,10 +2732,10 @@ fp_not_participant(Cfg) ->
                     (create_contract_call_payload(ContractId, <<"main">>,
                                                   <<"42">>, 1))(Props)
                 end,
-                set_prop(fee, 1),
+                set_prop(fee, 100000),
                 fun(#{state := S0} = Props) ->
                     {NewAcc, S} = aesc_test_utils:setup_new_account(S0),
-                    S1 = aesc_test_utils:set_account_balance(NewAcc, 1000, S),
+                    S1 = aesc_test_utils:set_account_balance(NewAcc, 1000000, S),
                     PrivKey = aesc_test_utils:priv_key(NewAcc, S1),
                     Props#{state => S1, from_pubkey => NewAcc, from_privkey => PrivKey}
                 end,
@@ -2896,7 +2910,7 @@ fp_solo_payload_invalid_state_hash(Cfg) ->
                     (create_contract_call_payload(ContractId, <<"main">>,
                                                   <<"42">>, 1))(Props)
                 end,
-                set_prop(fee, 1),
+                set_prop(fee, 100000),
                 different_state_hash_produced(SnapshotRound,
                                               SnapshotStateHash)])
         end,
@@ -2950,7 +2964,7 @@ fp_solo_payload_closing_overflowing_balances(Cfg) ->
                     (create_contract_call_payload(ContractId, <<"main">>,
                                                   <<"42">>, 1))(Props)
                 end,
-                set_prop(fee, 1),
+                set_prop(fee, 100000),
                 fun(#{channel_pubkey := ChannelPubKey,
                       state := S} = Props) ->
                     Channel = aesc_test_utils:get_channel(ChannelPubKey, S),
@@ -3076,7 +3090,7 @@ fp_solo_payload_broken_update_(Cfg, Update, Error) ->
                     (create_contract_call_payload(ContractId, <<"main">>,
                                                   <<"42">>, 1))(Props)
                 end,
-                set_prop(fee, 1),
+                set_prop(fee, 100000),
                 negative(fun force_progress_/2, {error, Error})])
         end,
     [Test(Owner, Forcer) || Owner  <- ?ROLES,
@@ -3107,7 +3121,7 @@ fp_solo_payload_broken_call(Cfg) ->
                                 CallData,
                                 [],
                                 _GasPrice = 1,
-                                _GasLimit = 1234567890),
+                                _GasLimit = 10000000),
                     Props#{solo_payload_update => Update}
                 end,
                 set_prop(fake_solo_state_hash, FakeStateHash),
@@ -3115,7 +3129,7 @@ fp_solo_payload_broken_call(Cfg) ->
                     (create_contract_call_payload(ContractId, <<"main">>,
                                                   <<"42">>, 1))(Props)
                 end,
-                set_prop(fee, 1),
+                set_prop(fee, 100000),
                 positive(fun force_progress_/2),
                 fun(#{state := S,
                       signed_force_progress := SignedForceProgressTx,
@@ -3239,7 +3253,7 @@ fp_register_name(Cfg) ->
                       gas         => 123456,
                       gas_price   => 1,
                       call_data   => CallData,
-                      fee         => 1}),
+                      fee         => 1000000}),
             ?TEST_LOG("Contract create tx ~p", [ContractCreateTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 3}),
@@ -3284,7 +3298,7 @@ fp_register_name(Cfg) ->
                       gas         => 123456,
                       gas_price   => 1,
                       call_data   => CallData,
-                      fee         => 1}),
+                      fee         => 500000}),
             ?TEST_LOG("Contract call tx ~p", [CallTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 4}),
@@ -3575,7 +3589,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                       gas         => 123456,
                       gas_price   => 1,
                       call_data   => CallData,
-                      fee         => 1}),
+                      fee         => 1000000}),
             ?TEST_LOG("Contract create tx ~p", [ContractCreateTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 3}),
@@ -3620,7 +3634,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
                       gas         => 123456,
                       gas_price   => 1,
                       call_data   => CallData,
-                      fee         => 1}),
+                      fee         => 500000}),
             ?TEST_LOG("Contract call tx ~p", [CallTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 4}),
@@ -3792,7 +3806,7 @@ fp_register_oracle(Cfg) ->
                       gas         => 123456,
                       gas_price   => 1,
                       call_data   => CallData,
-                      fee         => 1}),
+                      fee         => 1000000}),
             ?TEST_LOG("Contract create tx ~p", [ContractCreateTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 3}),
@@ -3829,7 +3843,7 @@ fp_register_oracle(Cfg) ->
                       gas         => 123456,
                       gas_price   => 1,
                       call_data   => CallData,
-                      fee         => 1}),
+                      fee         => 600000}),
             ?TEST_LOG("Contract call tx ~p", [CallTx]),
             OnChainTrees = aesc_test_utils:trees(S0),
             TxEnv = tx_env(#{height => 4}),
@@ -3987,7 +4001,7 @@ set_balances_in_trees(IBal, RBal) ->
     end.
 
 negative_force_progress_sequence(Round, Forcer, ErrMsg) ->
-    Fee = 1,
+    Fee = 300000,
     fun(Props0) ->
         DepositAmt = maps:get(call_deposit, Props0, 1),
         run(Props0,
@@ -4003,7 +4017,7 @@ negative_force_progress_sequence(Round, Forcer, ErrMsg) ->
       end.
 
 force_progress_sequence(Round, Forcer) ->
-    Fee = 1,
+    Fee = 300000,
     fun(Props0) ->
         DepositAmt = maps:get(call_deposit, Props0, 1),
         {FunName, FunParams} = maps:get(contract_function_call, Props0,
@@ -4049,7 +4063,7 @@ force_progress_sequence(Round, Forcer) ->
                 Call = aect_test_utils:get_call(TxHashContractPubkey, CallId,
                                                 S),
                 GasUsed = aect_call:gas_used(Call),
-                GasLimit = maps:get(gas_limit, Props, 1234567890),
+                GasLimit = maps:get(gas_limit, Props, 10000000),
                 case maps:get(check_not_all_gas_used, Props, true) of
                     true -> ?assert(GasUsed < GasLimit);
                     false -> pass
@@ -4121,7 +4135,7 @@ rename_prop(Key1, Key2, KeepOld) ->
 
 prepare_balances_for_mutual_close() ->
     fun(#{initiator_amount := IAmt, responder_amount := RAmt} = Props) ->
-        Fee = maps:get(fee, Props, 1),
+        Fee = maps:get(fee, Props, 50000),
         Props#{initiator_amount_final => IAmt - Fee, responder_amount_final => RAmt, fee => Fee}
     end.
 
@@ -4192,7 +4206,7 @@ create_contract_call_payload_with_calldata(Key, ContractId, CallData, Amount) ->
                     ?VM_VERSION, Amount, CallData,
                     [],
                     _GasPrice = maps:get(gas_price, Props, 1),
-                    _GasLimit = maps:get(gas_limit, Props, 1234567890))),
+                    _GasLimit = maps:get(gas_limit, Props, 10000000))),
         {UpdatedTrees, StateHash} =
             case maps:get(fake_solo_state_hash, Props, none) of
                 none ->
@@ -4414,7 +4428,7 @@ create_channel_(#{cfg := Cfg} = Props, _) ->
 
     IAmt = maps:get(initiator_amount, Props, 30),
     RAmt = maps:get(responder_amount, Props, 70),
-    Fee = maps:get(fee, Props, 2),
+    Fee = maps:get(fee, Props, 50000),
 
     Props#{ channel_pubkey    => ChannelPubKey,
             initiator_amount  => IAmt,
@@ -4438,7 +4452,7 @@ close_solo_(#{channel_pubkey    := ChannelPubKey,
               initiator_privkey := IPrivkey,
               responder_privkey := RPrivkey} = Props, Expected) ->
 
-    Fee = maps:get(fee, Props, 1),
+    Fee = maps:get(fee, Props, 50000),
     %% Create close_solo tx and apply it on state trees
     Round = maps:get(round, Props, 10),
     PayloadSpec0 = #{initiator_amount => IAmt,
@@ -4700,7 +4714,7 @@ test_both_old_round(Cfg, Fun, Props) ->
                 set_prop(round, R1),
                 set_from(First),
                 set_prop(amount, 1),
-                set_prop(fee, 1),
+                set_prop(fee, 50000),
                 positive(fun deposit_/2),
                 set_prop(round, R2),
                 set_from(Second),
@@ -4815,7 +4829,7 @@ test_delegate_not_allowed(Cfg, Fun) ->
 test_delegate_not_allowed(Cfg, Fun, InitProps) ->
     run(InitProps#{cfg => Cfg},
       [fun(Props) ->
-            {Delegate1, Delegate2, S} = create_loaded_accounts(100, 100),
+            {Delegate1, Delegate2, S} = create_loaded_accounts(100000, 100000),
             Props#{cfg => [{state, S} | Cfg],
                     delegate_ids => [aec_id:create(account, Delegate1),
                                      aec_id:create(account, Delegate2)]}
@@ -4874,6 +4888,7 @@ oracle_query(Question, ResponseTTL) ->
                 QueryTx = aeo_test_utils:query_tx(Oracle,
                                                   aec_id:create(oracle, Oracle),% oracle is asking
                                                   #{query => Question,
+                                                    query_fee => 50000,
                                                     response_ttl => {delta, ResponseTTL}},
                                                   S),
                 {_, Tx} = aetx:specialize_type(QueryTx),
@@ -4962,7 +4977,7 @@ force_call_contract_first(Forcer, Fun, Args, Round) ->
                 (create_contract_call_payload(ContractId, Fun,
                                               Args, 1))(Props)
             end,
-            set_prop(fee, 1),
+            set_prop(fee, 1000000),
             positive(fun force_progress_/2)
             ])
     end.
@@ -4980,7 +4995,7 @@ force_call_contract_first_with_calldata(Forcer, CallData, Round) ->
                    solo_payload,
                    ContractId, CallData, 1))(Props)
             end,
-            set_prop(fee, 1),
+            set_prop(fee, 600000),
             positive(fun force_progress_/2)
             ])
     end.
@@ -4999,6 +5014,7 @@ force_call_contract(Forcer, Fun, Args, Round) ->
         run(Props0,
             [set_prop(contract_function_call, {Fun, Args}),
             create_fp_trees(),
+            set_prop(fee, 500000),
             set_prop(payload, <<>>),
             force_progress_sequence(Round, Forcer)])
     end.

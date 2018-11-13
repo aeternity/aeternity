@@ -249,7 +249,7 @@ check_tx(#aetx{ cb = CB, tx = Tx } = AeTx, Trees, Env) ->
     end.
 
 check_minimum_fee(AeTx) ->
-    case fee(AeTx) >= aec_governance:minimum_tx_fee() of
+    case fee(AeTx) >= (min_gas(AeTx) * aec_governance:minimum_gas_price()) of
         true  -> ok;
         false -> {error, too_low_fee}
     end.

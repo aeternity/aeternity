@@ -145,7 +145,7 @@ check(#oracle_register_tx{nonce = Nonce, oracle_ttl = OTTL, fee = Fee,
                %% Contract is paying tx fee as gas.
                aetx_contract -> [];
                aetx_transaction ->
-                   [fun() -> aeo_utils:check_ttl_fee(Height, OTTL, Fee - aec_governance:minimum_tx_fee()) end
+                   [fun() -> aeo_utils:check_ttl_fee(Height, OTTL, Fee) end
                    ]
            end],
 

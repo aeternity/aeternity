@@ -111,7 +111,7 @@ check(#oracle_extend_tx{nonce = Nonce, oracle_ttl = OTTL, fee = Fee} = Tx,
          | case aetx_env:context(Env) of
                aetx_contract -> []; %% TODO Cater for TTL fee from contract.
                aetx_transaction ->
-                   [fun() -> aeo_utils:check_ttl_fee(Height, OTTL, Fee - aec_governance:minimum_tx_fee()) end]
+                   [fun() -> aeo_utils:check_ttl_fee(Height, OTTL, Fee) end]
            end],
 
     case aeu_validation:run(Checks) of

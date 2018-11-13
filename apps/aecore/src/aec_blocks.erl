@@ -420,7 +420,6 @@ validate_key_block(#key_block{} = Block) ->
 validate_micro_block(#mic_block{} = Block) ->
     Validators = [fun validate_txs_hash/1,
                   fun validate_gas_limit/1,
-                  fun validate_txs_fee/1,
                   fun validate_pof/1
                  ],
     case aec_headers:validate_micro_block_header(to_micro_header(Block)) of
@@ -448,16 +447,6 @@ validate_gas_limit(#mic_block{} = Block) ->
     case gas(Block) =< aec_governance:block_gas_limit() of
         true  -> ok;
         false -> {error, gas_limit_exceeded}
-    end.
-
--spec validate_txs_fee(block()) -> ok | {error, invalid_minimal_tx_fee}.
-validate_txs_fee(#mic_block{txs = STxs}) ->
-    case lists:all(fun(STx) ->
-                           Tx = aetx_sign:tx(STx),
-                           aetx:fee(Tx) >= (aetx:min_gas(Tx) * aec_governance:minimum_gas_price())
-                   end, STxs) of
-        true -> ok;
-        false -> {error, invalid_minimal_tx_fee}
     end.
 
 validate_pof(#mic_block{pof = no_fraud}) -> ok;

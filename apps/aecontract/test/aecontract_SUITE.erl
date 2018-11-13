@@ -395,16 +395,16 @@ create_contract_(ContractCreateTxGasPrice) ->
 
 create_contract_upfront_fee(_Cfg) ->
     F = fun(X) -> sender_balance_in_create(#{fee => X}) end,
-    V1 = 10,
-    V2 = 20,
+    V1 = 1000000,
+    V2 = 2000000,
     ?assertEqual(F(V1) + V1 - V2, F(V2)),
     ok.
 
 create_contract_upfront_gas(_Cfg) ->
-    F = fun(P, G) -> sender_balance_in_create(#{gas_price => P, gas => G}) end,
+    F = fun(P, G) -> sender_balance_in_create(#{gas_price => P, gas => G, fee => 1000000}) end,
     P1 = 1,
-    G1 = 20000,
-    G2 = 30000,
+    G1 = 200000,
+    G2 = 300000,
     V1 = P1 * G1,
     V2 = P1 * G2, %% Same gas price, different gas limit.
     Bal1 = F(P1, G1),
@@ -415,14 +415,14 @@ create_contract_upfront_gas(_Cfg) ->
     ok.
 
 create_contract_upfront_amount(_Cfg) ->
-    F = fun(X) -> sender_balance_in_create(#{amount => X}) end,
+    F = fun(X) -> sender_balance_in_create(#{amount => X, fee => 1000000}) end,
     V1 = 10,
     V2 = 20,
     ?assertEqual(F(V1) + V1 - V2, F(V2)),
     ok.
 
 create_contract_upfront_deposit(_Cfg) ->
-    F = fun(X) -> sender_balance_in_create(#{deposit => X}) end,
+    F = fun(X) -> sender_balance_in_create(#{deposit => X, fee => 1000000}) end,
     V1 = 10,
     V2 = 20,
     ?assertEqual(F(V1) + V1 - V2, F(V2)),
@@ -430,9 +430,10 @@ create_contract_upfront_deposit(_Cfg) ->
 
 sender_balance_in_create(CreateTxOpts) ->
     state(aect_test_utils:new_state()),
-    Sender = call(fun new_account/2, [1000000]),
+    Sender = call(fun new_account/2, [10000000]),
     Ct = call(fun create_contract/5, [Sender, upfront_charges, {}, CreateTxOpts]),
-    _SenderBalInCt = call(fun call_contract/6, [Sender, Ct, initialSenderBalance, word, {}]).
+    SenderBalInCt = call(fun call_contract/6, [Sender, Ct, initialSenderBalance, word, {}]),
+    SenderBalInCt.
 
 sign_and_apply_transaction(Tx, PrivKey, S1) ->
     sign_and_apply_transaction(Tx, PrivKey, S1, 1).
@@ -470,12 +471,12 @@ sign_and_apply_transaction_strict(Tx, PrivKey, S1, Height) ->
 
 call_contract_negative_insufficient_funds(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1 = call(fun new_account/2, [1000000]),
+    Acc1 = call(fun new_account/2, [2000000]),
     IdC = call(fun create_contract/4, [Acc1, identity, {}]),
 
-    Fee = 1,
+    Fee = 600000,
     Value = 10,
-    Bal = 9 = Fee + Value - 2,
+    Bal = 600008 = Fee + Value - 2,
     S = aect_test_utils:set_account_balance(Acc1, Bal, state()),
     CallData = make_calldata_from_id(IdC, main, 42, S),
     CallTx = aect_test_utils:call_tx(Acc1, IdC,
@@ -490,7 +491,7 @@ call_contract_negative_insufficient_funds(_Cfg) ->
 
 call_contract_negative_gas_price_zero(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1 = call(fun new_account/2, [1000000]),
+    Acc1 = call(fun new_account/2, [2000000]),
     IdC  = call(fun create_contract/4, [Acc1, identity, {}]),
     S    = state(),
 
@@ -534,7 +535,7 @@ call_contract_(ContractCallTxGasPrice) ->
     ContractKey = aect_contracts:compute_contract_pubkey(Owner, aetx:nonce(CreateTx)),
 
     %% Now check that we can call it.
-    Fee           = 107,
+    Fee           = 600000,
     Value         = 52,
     CallData = make_calldata_from_code(IdContract, main, 42),
     CallTx = aect_test_utils:call_tx(Caller, ContractKey,
@@ -572,13 +573,13 @@ call_contract_(ContractCallTxGasPrice) ->
 
 call_contract_upfront_fee(_Cfg) ->
     F = fun(X) -> sender_balance_in_call(#{fee => X}) end,
-    V1 = 10,
-    V2 = 20,
+    V1 = 1000000,
+    V2 = 2000000,
     ?assertEqual(F(V1) + V1 - V2, F(V2)),
     ok.
 
 call_contract_upfront_gas(_Cfg) ->
-    F = fun(P, G) -> sender_balance_in_call(#{gas_price => P, gas => G}) end,
+    F = fun(P, G) -> sender_balance_in_call(#{gas_price => P, gas => G, fee => 750000}) end,
     P1 = 1,
     G1 = 20000,
     G2 = 30000,
@@ -592,7 +593,7 @@ call_contract_upfront_gas(_Cfg) ->
     ok.
 
 call_contract_upfront_amount(_Cfg) ->
-    F = fun(X) -> sender_balance_in_call(#{amount => X}) end,
+    F = fun(X) -> sender_balance_in_call(#{amount => X, fee => 750000}) end,
     V1 = 10,
     V2 = 20,
     ?assertEqual(F(V1) + V1 - V2, F(V2)),
@@ -600,19 +601,19 @@ call_contract_upfront_amount(_Cfg) ->
 
 sender_balance_in_call(CallTxOpts) ->
     state(aect_test_utils:new_state()),
-    Sender = call(fun new_account/2, [1000000]),
+    Sender = call(fun new_account/2, [10000000]),
     Ct = call(fun create_contract/4, [Sender, upfront_charges, {}]),
     _SenderBalInCt = call(fun call_contract/7, [Sender, Ct, senderBalance, word, {}, CallTxOpts]).
 
 %% Check behaviour of contract call error - especially re value / amount.
 call_contract_error_value(_Cfg) ->
-    F = 1,
+    F = 600000,
     G = 60000,
     DefaultOpts = #{fee => F, gas_price => 1, gas => G, amount => 0},
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
     %% Initialization.
     state(aect_test_utils:new_state()),
-    Acc1 = call(fun new_account/2, [1000000]),
+    Acc1 = call(fun new_account/2, [10000000]),
     IdC = call(fun create_contract/5, [Acc1, value_on_err, {}, DefaultOpts#{deposit => 0}]),
     RemC = call(fun create_contract/5, [Acc1, remote_value_on_err, {}, DefaultOpts#{deposit => 0}]),
     0 = call(fun account_balance/2, [IdC]),
@@ -760,7 +761,7 @@ create_contract(Owner, Name, Args, Options, S) ->
                      , vm_version => ?AEVM_01_Sophia_01
                      , code       => Code
                      , call_data  => CallData
-                     , fee        => 1
+                     , fee        => 1000000
                      , deposit    => 0
                      , amount     => 0
                      , gas        => 10000 }, maps:without([height, return_gas_used], Options)), S),
@@ -787,7 +788,7 @@ call_contract(Caller, ContractKey, Fun, Type, Args, Options, S) ->
                 #{ nonce      => Nonce
                  , vm_version => ?AEVM_01_Sophia_01
                  , call_data  => Calldata
-                 , fee        => 1
+                 , fee        => 1000000
                  , amount     => 0
                  , gas        => 140000
                  }, maps:without([height, return_gas_used], Options)), S),
@@ -841,7 +842,7 @@ translate_pubkeys(X) -> X.
 
 sophia_identity(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1 = ?call(new_account, 1000000),
+    Acc1 = ?call(new_account, 10000000),
     %% Remote calling the identity contract
     IdC   = ?call(create_contract, Acc1, identity, {}),
     RemC  = ?call(create_contract, Acc1, remote_call, {}, #{amount => 100}),
@@ -853,7 +854,7 @@ sophia_identity(_Cfg) ->
 
 sophia_no_reentrant(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc   = ?call(new_account, 1000000),
+    Acc   = ?call(new_account, 10000000),
     IdC   = ?call(create_contract, Acc, identity, {}),
     RemC  = ?call(create_contract, Acc, remote_call, {}, #{amount => 100}),
     Err   = {error, <<"out_of_gas">>},
@@ -863,7 +864,7 @@ sophia_no_reentrant(_Cfg) ->
 
 sophia_state(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1         = ?call(new_account, 1000000),
+    Acc1         = ?call(new_account, 10000000),
     InitStack    = [<<"top">>, <<"middle">>, <<"bottom">>],
     Stack        = ?call(create_contract, Acc1, stack, InitStack),
     3            = ?call(call_contract,   Acc1, Stack, size, word, {}),
@@ -879,7 +880,7 @@ sophia_state(_Cfg) ->
 %% There was a bug matching on _::_.
 sophia_match_bug(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1      = ?call(new_account, 1000000),
+    Acc1      = ?call(new_account, 10000000),
     Poly      = ?call(create_contract, Acc1, polymorphism_test, {}),
     [5, 7, 9] = ?call(call_contract, Acc1, Poly, foo, {list, word}, {}),
     [1, 0, 3] = ?call(call_contract, Acc1, Poly, bar, {list, word}, {}),
@@ -888,8 +889,8 @@ sophia_match_bug(_Cfg) ->
 
 sophia_spend(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1         = ?call(new_account, 1000000),
-    Acc2         = ?call(new_account, 2000000),
+    Acc1         = ?call(new_account, 20000000),
+    Acc2         = ?call(new_account, 20000000),
     Ct1          = ?call(create_contract, Acc1, spend_test, {}, #{amount => 10000}),
     Ct2          = ?call(create_contract, Acc1, spend_test, {}, #{amount => 20000}),
     10000        = ?call(call_contract, Acc1, Ct1, get_balance, word, {}),
@@ -898,17 +899,17 @@ sophia_spend(_Cfg) ->
     5000         = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Ct2),
     10000        = ?call(call_contract, Acc1, Ct1, get_balance, word, {}),
     5000         = ?call(call_contract, Acc1, Ct2, get_balance, word, {}),
-    2015000      = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Acc2),
+    20015000     = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Acc2),
     %% Spend in nested call
-    2021000      = ?call(call_contract, Acc1, Ct2, spend_from, word, {Ct1, Acc2, 6000}),
-    2021000      = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Acc2),
+    20021000     = ?call(call_contract, Acc1, Ct2, spend_from, word, {Ct1, Acc2, 6000}),
+    20021000     = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Acc2),
     4000         = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Ct1),
     5000         = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Ct2),
     ok.
 
 sophia_typed_calls(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc    = ?call(new_account, 1000000),
+    Acc    = ?call(new_account, 20000000),
     Server = ?call(create_contract, Acc, multiplication_server, {}),
     Client = ?call(create_contract, Acc, contract_types, Server, #{amount => 1000}),
     2      = ?call(call_contract, Acc, Client, get_n, word, {}),
@@ -931,7 +932,7 @@ sophia_oracles(_Cfg) ->
     state(aect_test_utils:new_state()),
     RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
     FixedTTL          = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
-    Acc               = ?call(new_account, 1000000),
+    Acc               = ?call(new_account, 20000000),
     Ct = <<CtId:256>> = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
     QueryFee          = 100,
     TTL               = 15,
@@ -947,7 +948,7 @@ sophia_oracles(_Cfg) ->
     {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Ct, RelativeTTL(10)}),
 
     %% Test complex answers
-    Ct1 = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
+    Ct1 = ?call(create_contract, Acc, oracles, {}, #{amount => 1000000}),
     QuestionType = {variant_t, [{why, [word]}, {how, [string]}]},
     AnswerType   = {variant_t, [{noAnswer, []}, {yesAnswer, [QuestionType, string, word]}]},
     Question1    = {variant, 1, [<<"birds fly?">>]},
@@ -959,7 +960,7 @@ sophia_oracles_type_error_arg(_Cfg) ->
     state(aect_test_utils:new_state()),
     RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
     FixedTTL          = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
-    Acc               = ?call(new_account, 1000000),
+    Acc               = ?call(new_account, 10000000),
     Ct = <<CtId:256>> = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
     QueryFee          = 100,
     TTL               = 15,
@@ -973,7 +974,7 @@ sophia_oracles_type_error_out(_Cfg) ->
     state(aect_test_utils:new_state()),
     RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
     FixedTTL          = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
-    Acc               = ?call(new_account, 1000000),
+    Acc               = ?call(new_account, 10000000),
     Ct = <<CtId:256>> = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
     QueryFee          = 100,
     TTL               = 15,
@@ -987,7 +988,7 @@ sophia_oracles_type_error_out(_Cfg) ->
 sophia_oracles_interact_with_no_vm_oracle(_Cfg) ->
     state(aect_test_utils:new_state()),
     RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
-    Acc = <<AId:256>> = ?call(new_account, 1000000),
+    Acc = <<AId:256>> = ?call(new_account, 10000000),
     Ct                = ?call(create_contract, Acc, oracles_no_vm, {}, #{amount => 100000}),
     ok                = ?call(register_no_vm_oracle, Acc),
     Question          = <<"Manchester United vs Brommapojkarna">>,
@@ -1014,7 +1015,7 @@ register_no_vm_oracle(PubKey, S) ->
     Nonce = aect_test_utils:next_nonce(PubKey, S),
     {ok, Tx}  = aeo_register_tx:new(#{ account_id      => aec_id:create(account, PubKey)
                                      , oracle_ttl      => {delta, 20}
-                                     , fee             => 1000
+                                     , fee             => 100000
                                      , nonce           => Nonce
                                      , query_fee       => 5
                                      , query_format    => <<"Say someting">>
@@ -1400,8 +1401,8 @@ sophia_oracles_qfee__flow_up_to_respond_(Cbs,
     RespondTxOpts  = #{fee => TxFee, gas_price => GasPrice, amount => 0},
 
     state(aect_test_utils:new_state()),
-    OperatorAcc = call(fun new_account/2, [1000000]),
-    UserAcc = call(fun new_account/2, [1000000]),
+    OperatorAcc = call(fun new_account/2, [10000000]),
+    UserAcc = call(fun new_account/2, [10000000]),
     CCbs = closed_oracle_cbs(Cbs,
                              OperatorAcc, UserAcc,
                              InitialOracleCtBalance,
@@ -1445,8 +1446,8 @@ sophia_oracles_qfee__flow_up_to_query_(InitialState,
     QueryTxOpts    = #{fee => TxFee, gas_price => GasPrice, amount => QueryTxValue},
 
     state(InitialState),
-    OperatorAcc = call(fun new_account/2, [1000000]),
-    UserAcc = call(fun new_account/2, [1000000]),
+    OperatorAcc = call(fun new_account/2, [10000000]),
+    UserAcc = call(fun new_account/2, [10000000]),
     CCbs = closed_oracle_cbs(Cbs,
                              OperatorAcc, UserAcc,
                              InitialOracleCtBalance,
@@ -1480,7 +1481,7 @@ sophia_oracles_qfee__basic(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__basic__data_(),
 
-    TxFee = 2,
+    TxFee = 600000,
     GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
@@ -1522,7 +1523,7 @@ sophia_oracles_qfee__basic__remote(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__basic__data_(),
 
-    TxFee = 2,
+    TxFee = 600000,
     GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
@@ -1577,7 +1578,7 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle(_Cf
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__data_(),
 
-    TxFee = 2,
+    TxFee = 600000,
     GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
@@ -1611,7 +1612,7 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__re
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_is_awarded_to_oracle__data_(),
 
-    TxFee = 2,
+    TxFee = 600000,
     GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
@@ -1656,7 +1657,7 @@ sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__data_(),
 
-    TxFee = 2,
+    TxFee = 600000,
     GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
@@ -1690,7 +1691,7 @@ sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__remote(_
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__tx_value_above_qfee_in_query_is_awarded_to_oracle__data_(),
 
-    TxFee = 2,
+    TxFee = 600000,
     GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
@@ -1738,7 +1739,7 @@ sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__data_(),
 
-    TxFee = 2,
+    TxFee = 600000,
     GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
@@ -1763,7 +1764,7 @@ sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__remote(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__qfee_in_query_below_qfee_in_oracle_errs__data_(),
 
-    TxFee = 2,
+    TxFee = 600000,
     GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
@@ -1800,7 +1801,7 @@ sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
 
-    TxFee = 2,
+    TxFee = 600000,
     GasPrice = 1,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
@@ -1830,7 +1831,7 @@ sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_poor_oracle(_C
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
     InitialOracleCtBalance = 0,
 
-    TxFee = 2,
+    TxFee = 600000,
     GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
@@ -1855,7 +1856,7 @@ sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_rich_oracle_th
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
 
-    TxFee = 2,
+    TxFee = 600000,
     GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
@@ -1880,7 +1881,7 @@ sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__remote(_C
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
 
-    TxFee = 2,
+    TxFee = 600000,
     GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
@@ -1910,7 +1911,7 @@ sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_poor_oracle__r
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
     InitialOracleCtBalance = 0,
 
-    TxFee = 2,
+    TxFee = 600000,
     GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
@@ -1936,7 +1937,7 @@ sophia_oracles_qfee__query_tx_value_below_qfee_does_not_take_from_rich_oracle_th
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__query_tx_value_below_qfee_takes_from_rich_oracle__data_(),
 
-    TxFee = 2,
+    TxFee = 600000,
     GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
@@ -1964,7 +1965,7 @@ sophia_oracles_qfee__remote_contract_query_value_below_qfee_takes_from_rich_orac
     QueryTxValue = RegisterTxQFee,
     QueryRemoteCtValue = QueryTxValue0,
 
-    TxFee = 2,
+    TxFee = 600000,
     GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee, remote_value => QueryRemoteCtValue},
@@ -1996,7 +1997,7 @@ sophia_oracles_qfee__remote_contract_query_value_below_qfee_does_not_take_from_p
     QueryTxValue = RegisterTxQFee,
     QueryRemoteCtValue = QueryTxValue0,
 
-    TxFee = 2,
+    TxFee = 600000,
     GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee, remote_value => QueryRemoteCtValue},
@@ -2024,7 +2025,7 @@ sophia_oracles_qfee__remote_contract_query_value_below_qfee_does_not_take_from_r
     QueryTxValue = RegisterTxQFee,
     QueryRemoteCtValue = QueryTxValue0,
 
-    TxFee = 2,
+    TxFee = 600000,
     GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee, remote_value => QueryRemoteCtValue},
@@ -2063,7 +2064,7 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_takes_from_rich_oracle(_
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_takes_from_rich_oracle__data_(),
 
-    TxFee = 2,
+    TxFee = 600000,
     GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
@@ -2092,7 +2093,7 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_does_not_take_from_poor_
         sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_takes_from_rich_oracle__data_(),
     InitialOracleCtBalance = 0,
 
-    TxFee = 2,
+    TxFee = 600000,
     GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
@@ -2117,7 +2118,7 @@ sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_does_not_take_from_rich_
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__qfee_in_query_above_qfee_in_oracle_takes_from_rich_oracle__data_(),
 
-    TxFee = 2,
+    TxFee = 600000,
     GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
@@ -2150,7 +2151,7 @@ sophia_oracles_qfee__error_after_primop(_Cfg) ->
                        oracle_query_from_contract_(unsafeCreateQueryThenErr, UserAcc, OCt, OCt, Opts, TxOpts, S)
                end},
 
-    TxFee = 2,
+    TxFee = 600000,
     GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
@@ -2179,7 +2180,7 @@ sophia_oracles_qfee__inner_error_after_primop__remote(_Cfg) ->
         sophia_oracles_qfee__basic__data_(),
 
     InitialState0 = aect_test_utils:new_state(),
-    {TmpAcc, InitialState1} = new_account(1000000, InitialState0),
+    {TmpAcc, InitialState1} = new_account(10000000, InitialState0),
     {OracleErrCt, InitialState} = create_contract(TmpAcc, oracles_err, {}, #{amount => 0}, InitialState1),
 
     Cbs =
@@ -2189,7 +2190,7 @@ sophia_oracles_qfee__inner_error_after_primop__remote(_Cfg) ->
                        oracle_query_from_remote_contract_(callUnsafeCreateQueryThenErr, UserAcc, RCt, OracleErrCt, OCt, Opts, TxOpts, S)
                end},
 
-    TxFee = 2,
+    TxFee = 600000,
     GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
@@ -2227,7 +2228,7 @@ sophia_oracles_qfee__outer_error_after_primop__remote(_Cfg) ->
                        oracle_query_from_remote_contract_(callUnsafeCreateQueryAndThenErr, UserAcc, RCt, OCt, Opts, TxOpts, S)
                end},
 
-    TxFee = 2,
+    TxFee = 600000,
     GasPrice = 2,
     RegisterOpts = #{qfee => RegisterTxQFee},
     QueryOpts = #{qfee => QueryTxQFee},
@@ -2463,7 +2464,7 @@ sophia_signatures_oracles(_Cfg) ->
 
 sophia_signatures_aens(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc      = ?call(new_account, 1000000),
+    Acc      = ?call(new_account, 20000000),
     Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
     Name     = <<"foo.test">>,
     APubkey  = 1,
@@ -2483,7 +2484,7 @@ sophia_signatures_aens(_Cfg) ->
     none            = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"name">>}),
 
     %% AENS transactions from contract - using 3rd party account
-    NameAcc         = ?call(new_account, 10000000),
+    NameAcc         = ?call(new_account, 20000000),
     Name1           = <<"bla.test">>,
     Salt1           = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
@@ -2518,7 +2519,7 @@ sign(Material, KeyHolder) ->
 sophia_maps(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc = ?call(new_account, 1000000000),
-    Ct  = ?call(create_contract, Acc, maps, {}),
+    Ct  = ?call(create_contract, Acc, maps, {}, #{fee => 2000000}),
 
     Call = fun(Fn, Type, Args) -> ?call(call_contract, Acc, Ct, Fn, Type, Args) end,
 
@@ -2939,8 +2940,8 @@ sophia_map_of_maps(_Cfg) ->
 
 sophia_variant_types(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc = <<AccId:256>> = ?call(new_account, 1000000),
-    Ct  = ?call(create_contract, Acc, variant_types, {}),
+    Acc = <<AccId:256>> = ?call(new_account, 10000000),
+    Ct  = ?call(create_contract, Acc, variant_types, {}, #{fee => 2000000}),
     Call = fun(Fn, Type, Args) -> ?call(call_contract, Acc, Ct, Fn, Type, Args) end,
     Color  = {variant_t, [{red, []}, {green, []}, {blue, []}, {grey, [word]}]},
     StateR = {tuple, [word, word, Color]},
@@ -2956,7 +2957,7 @@ sophia_variant_types(_Cfg) ->
 
 sophia_chain(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc         = ?call(new_account, 1000000),
+    Acc         = ?call(new_account, 10000000),
     <<Beneficiary:?BENEFICIARY_PUB_BYTES/unit:8>> = ?BENEFICIARY_PUBKEY,
     Ct1         = ?call(create_contract, Acc, chain, {}, #{amount => 10000}),
     Beneficiary = ?call(call_contract, Acc, Ct1, miner, word, {}),
@@ -2964,7 +2965,7 @@ sophia_chain(_Cfg) ->
 
 sophia_savecoinbase(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc = ?call(new_account, 1000000),
+    Acc = ?call(new_account, 10000000),
     <<Beneficiary:?BENEFICIARY_PUB_BYTES/unit:8>> = ?BENEFICIARY_PUBKEY,
 
     %% Create chain contract and check that address is stored.
@@ -2987,7 +2988,7 @@ sophia_no_callobject_for_remote_calls(_Cfg) ->
                  end,
 
     state(aect_test_utils:new_state()),
-    Acc   = ?call(new_account, 1000000),
+    Acc   = ?call(new_account, 10000000),
     IdC   = ?call(create_contract, Acc, identity, {}),
     RemC  = ?call(create_contract, Acc, remote_call, {}, #{amount => 100}),
     RemC2 = ?call(create_contract, Acc, remote_call, {}, #{amount => 100}),
@@ -3064,7 +3065,7 @@ run_scenario(#fundme_scenario
             false -> Contributed(Name)
         end end, Investors),
 
-    GasDelta = 100000,
+    GasDelta = 5000000,
     Is = fun(_, Expect, Actual) when Expect - GasDelta =< Actual, Actual =< Expect -> true;
             (Tag, Expect, Actual) -> {Scenario, Tag, Actual, is_not, Expect, minus_gas} end,
 
@@ -3139,7 +3140,7 @@ aens_preclaim(PubKey, Name, Options, S) ->
     Salt   = rand:uniform(10000),
     Nonce  = aect_test_utils:next_nonce(PubKey, S),
     Height = maps:get(height, Options, 1),
-    Fee    = maps:get(fee, Options, 1),
+    Fee    = maps:get(fee, Options, 50000),
     TTL    = maps:get(ttl, Options, 1000),
     {ok, NameAscii} = aens_utils:to_ascii(Name),
     CHash = aens_hash:commitment_hash(NameAscii, Salt),
@@ -3158,7 +3159,7 @@ aens_claim(PubKey, Name, Salt, S) ->
 aens_claim(PubKey, Name, Salt, Options, S) ->
     Nonce  = aect_test_utils:next_nonce(PubKey, S),
     Height = maps:get(height, Options, 2),
-    Fee    = maps:get(fee, Options, 1),
+    Fee    = maps:get(fee, Options, 50000),
     TTL    = maps:get(ttl, Options, 1000),
     {ok, NameAscii} = aens_utils:to_ascii(Name),
     NameHash = aens_hash:name_hash(NameAscii),
@@ -3178,7 +3179,7 @@ aens_revoke(PubKey, Hash, S) ->
 aens_revoke(PubKey, Hash, Options, S) ->
     Nonce  = aect_test_utils:next_nonce(PubKey, S),
     Height = maps:get(height, Options, 3),
-    Fee    = maps:get(fee, Options, 1),
+    Fee    = maps:get(fee, Options, 50000),
     TTL    = maps:get(ttl, Options, 1000),
     {ok, Tx} = aens_revoke_tx:new(#{ account_id => aec_id:create(account, PubKey),
                                      nonce      => Nonce,
@@ -3195,7 +3196,7 @@ aens_update(PubKey, NameHash, Pointers, S) ->
 aens_update(PubKey, NameHash, Pointers, Options, S) ->
     Nonce     = aect_test_utils:next_nonce(PubKey, S),
     Height    = maps:get(height, Options, 2),
-    Fee       = maps:get(fee, Options, 1),
+    Fee       = maps:get(fee, Options, 50000),
     TTL       = maps:get(ttl, Options, 1000),
     ClientTTL = maps:get(client_ttl, Options, 1000),
     NameTTL   = maps:get(name_ttl, Options, 1000),
@@ -3213,7 +3214,7 @@ aens_update(PubKey, NameHash, Pointers, Options, S) ->
 
 sophia_aens(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc      = ?call(new_account, 1000000),
+    Acc      = ?call(new_account, 20000000),
     Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
     Name     = <<"foo.test">>,
     APubkey  = 1,
@@ -3249,7 +3250,7 @@ sophia_aens(_Cfg) ->
 
 sophia_state_handling(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc      = ?call(new_account, 1000000),
+    Acc      = ?call(new_account, 50000000),
     Ct0      = ?call(create_contract, Acc, remote_state, {}, #{ amount => 100000 }),
     %% Test an init function that calls a remote contract to compute the state
     Ct1      = ?call(create_contract, Acc, state_handling, {Ct0, 1}, #{ amount => 100000 }),
@@ -3318,7 +3319,7 @@ sophia_state_handling(_Cfg) ->
 
 sophia_state_gas(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc      = ?call(new_account, 1000000),
+    Acc      = ?call(new_account, 20000000),
     Ct0      = ?call(create_contract, Acc, remote_state, {}, #{ amount => 100000 }),
     Ct1      = ?call(create_contract, Acc, state_handling, {Ct0, 1}, #{ amount => 100000 }),
     %% MapT     = {map, word, word},
@@ -3469,7 +3470,7 @@ enter_contract(Contract, S) ->
 
 call_missing(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1      = ?call(new_account, 1000000),
+    Acc1      = ?call(new_account, 10000000),
     Contract1 = ?call(create_contract, Acc1, remote_type_check, {}),
     Contract2 = ?call(create_contract, Acc1, remote_type_check, {}),
     42        = ?call(call_contract, Acc1, Contract1, remote_id, word, {Contract2, 42}),
@@ -3479,7 +3480,7 @@ call_missing(_Cfg) ->
 
 call_wrong_type(_Cfg) ->
     state(aect_test_utils:new_state()),
-    Acc1     = ?call(new_account, 1000000),
+    Acc1     = ?call(new_account, 10000000),
     Contract1 = ?call(create_contract, Acc1, remote_type_check, {}),
     Contract2 = ?call(create_contract, Acc1, remote_type_check, {}),
     42        = ?call(call_contract, Acc1, Contract1, remote_id, word, {Contract2, 42}),
