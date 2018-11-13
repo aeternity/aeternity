@@ -41,6 +41,7 @@
 -export([get_top/1]).
 -export([get_mempool/1]).
 -export([get_account/2]).
+-export([get_channel/2]).
 -export([post_spend_tx/5]).
 -export([post_create_state_channel_tx/4,
          post_close_mutual_state_channel_tx/5,
@@ -385,6 +386,10 @@ get_account(NodeName, PubKey) ->
     Params = #{pubkey => aehttp_api_encoder:encode(account_pubkey, PubKey)},
     verify(200, request(NodeName, 'GetAccountByPubkey', Params)).
 
+get_channel(NodeName, PubKey) ->
+    Params = #{pubkey => aehttp_api_encoder:encode(channel, PubKey)},
+    verify(200, request(NodeName, 'GetChannelByPubkey', Params)).
+
 post_spend_tx(Node, From, To, Nonce, Map) ->
     #{ pubkey := SendPubKey, privkey := SendSecKey } = From,
     #{ pubkey := RecvPubKey} = To,
@@ -421,7 +426,11 @@ post_create_state_channel_tx(Node, Initiator, Responder, #{nonce := Nonce} = Map
     BothSigned = aec_test_utils:sign_tx(CreateTx, [InSecKey, RespSecKey]),
     Transaction = aehttp_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(BothSigned)),
     Response = verify(200, request(Node, 'PostTransaction', #{tx => Transaction})),
-    Response#{channel_id => aec_id:create(channel, aesc_channels:pubkey(InPubKey, Nonce, RespPubKey))}.
+    ChPubKey = aesc_channels:pubkey(InPubKey, Nonce, RespPubKey),
+    Response#{
+        channel_pubkey => ChPubKey,
+        channel_id => aec_id:create(channel, ChPubKey)
+    }.
 
 post_close_mutual_state_channel_tx(Node, Initiator, Responder, ChannelId, #{nonce := _} = Map) ->
     #{ pubkey := InPubKey, privkey := InSecKey } = Initiator,
@@ -541,6 +550,7 @@ post_transaction(Node, TxMod, PrivKey, ExtraTxArgs, TxArgs) ->
 %% Use values that are not yet api encoded in test cases
 wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, Ctx) ->
     FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
+    Delay = proplists:get_value(delay, Ctx, 500),
     CheckF =
         fun(Node) ->
                  case request(Node, 'GetAccountByPubkey', maps:merge(#{pubkey => aehttp_api_encoder:encode(account_pubkey, PubKey)}, FaultInject)) of
@@ -548,9 +558,10 @@ wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, Ctx) ->
                      _ -> wait
                 end
         end,
-    loop_for_values(CheckF, NodeNames, [], 500, Timeout);
+    loop_for_values(CheckF, NodeNames, [], Delay, Timeout);
 wait_for_value({height, MinHeight}, NodeNames, Timeout, Ctx) ->
     FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
+    Delay = proplists:get_value(delay, Ctx, 500),
     CheckF =
         fun(Node) ->
                 case request(Node, 'GetKeyBlockByHeight', maps:merge(#{height => MinHeight}, FaultInject)) of
@@ -558,11 +569,12 @@ wait_for_value({height, MinHeight}, NodeNames, Timeout, Ctx) ->
                     _ -> wait
                 end
         end,
-    loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Height ~p on nodes ~p", [MinHeight, NodeNames]});
+    loop_for_values(CheckF, NodeNames, [], Delay, Timeout, {"Height ~p on nodes ~p", [MinHeight, NodeNames]});
 wait_for_value({txs_on_chain, Txs}, NodeNames, Timeout, Ctx) ->
     %% Not very optimal, since found Txs' are searched for in next round.
     FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
     KeyBlocksWaiting = proplists:get_value(key_blocks, Ctx, 2),
+    Delay = proplists:get_value(delay, Ctx, 500),
     CheckF =
         fun(Node) ->
                 Found =
@@ -582,10 +594,11 @@ wait_for_value({txs_on_chain, Txs}, NodeNames, Timeout, Ctx) ->
                     true -> wait
                 end
         end,
-    loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Txs found ~p", [Txs]});
+    loop_for_values(CheckF, NodeNames, [], Delay, Timeout, {"Txs found ~p", [Txs]});
 wait_for_value({txs_on_node, Txs}, NodeNames, Timeout, Ctx) ->
     %% Reached the mempool at least, probably even in a block.
     FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
+    Delay = proplists:get_value(delay, Ctx, 500),
     CheckF =
         fun(Node) ->
                 Found = [ case request(Node, 'GetTransactionByHash', maps:merge(#{hash => Tx}, FaultInject)) of
@@ -597,9 +610,10 @@ wait_for_value({txs_on_node, Txs}, NodeNames, Timeout, Ctx) ->
                     true -> wait
                 end
         end,
-    loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Txs found ~p", [Txs]});
+    loop_for_values(CheckF, NodeNames, [], Delay, Timeout, {"Txs found ~p", [Txs]});
 wait_for_value({txs_all_dropped, Txs}, NodeNames, Timeout, Ctx) ->
     FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
+    Delay = proplists:get_value(delay, Ctx, 500),
     CheckF =
         fun(Node) ->
             Exists = lists:foldl(fun(Tx, Acc) ->
@@ -614,9 +628,10 @@ wait_for_value({txs_all_dropped, Txs}, NodeNames, Timeout, Ctx) ->
                 false -> {done, undefined}
             end
         end,
-    loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Txs found ~p", [Txs]});
+    loop_for_values(CheckF, NodeNames, [], Delay, Timeout, {"Txs found ~p", [Txs]});
 wait_for_value({txs_any_dropped, Txs}, NodeNames, Timeout, Ctx) ->
     FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
+    Delay = proplists:get_value(delay, Ctx, 500),
     CheckF =
         fun(Node) ->
             Exists = lists:foldl(fun(Tx, Acc) ->
@@ -631,7 +646,7 @@ wait_for_value({txs_any_dropped, Txs}, NodeNames, Timeout, Ctx) ->
                 true -> {done, Exists}
             end
         end,
-    loop_for_values(CheckF, NodeNames, [], 500, Timeout, {"Txs found ~p", [Txs]}).
+    loop_for_values(CheckF, NodeNames, [], Delay, Timeout, {"Txs found ~p", [Txs]}).
 
 
 wait_for_time(height, NodeNames, Time) ->
