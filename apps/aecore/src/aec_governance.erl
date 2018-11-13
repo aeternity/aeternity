@@ -227,7 +227,7 @@ contributors_messages_hash() ->
     %% This is generated using messages_hash tool:
     %%  > cd /tmp/node
     %%  > bin/epoch messages_hash
-    <<104,78,40,169,217,133,126,163,45,143,180,127,97,10,150,252,190,28,13,188,59,135,7,154,52,86,197,135,46,225,130,136>>.
+    <<25,96,225,235,153,121,113,51,168,192,77,171,0,167,187,172,149,30,210,180,219,135,67,74,47,112,42,3,20,50,229,164>>.
 
 vm_gas_table() ->
     #{ %% Nothing paid for operations of the set Wzero.
