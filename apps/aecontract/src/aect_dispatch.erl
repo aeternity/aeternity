@@ -138,10 +138,15 @@ run_common(#{  amount      := Value
                     GasUsed = Gas - GasLeft,
                     Out = aevm_eeevm_state:out(ResultState),
                     {create_call(GasUsed, revert, Out, [], Call), Trees};
+                {error, out_of_gas, ErrorState} ->
+                    %% If we ran out of gas in a recursive call there
+                    %% might still be gas held back by the caller.
+                    GasLeft = aevm_eeevm_state:gas(ErrorState),
+                    GasUsed = Gas - GasLeft,
+                    {create_call(GasUsed, error, out_of_gas, [], Call), Trees};
                 {error, Error, _} ->
                     %% Execution resulting in VM exception.
-                    %% Gas used, but other state not affected.
-                    %% TODO: Use up the right amount of gas depending on error
+                    %% All gas used, but other state not affected.
                     GasUsed = Gas,
                     %% TODO: Store error code in state tree
                     {create_call(GasUsed, error, Error, [], Call), Trees}
