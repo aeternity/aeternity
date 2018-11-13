@@ -218,18 +218,17 @@ do_return(Us0, Us1, State) ->
             try
                 %% In Sophia Us1 is a pointer to the actual value.
                 %% The type of the value is in the state (from meta data)
-                Heap       = mem(State),
-                Type       = out_type(State),
-                {ok, Out, Stats}  = aeso_data:heap_to_binary_w_stats(Type, get_store(State), aeso_data:heap_value(maps(State), Us1, Heap)),
-                {set_out(Out, State), aevm_gas:mem_gas(maps:get(total_map_size, Stats) div 32, State)}
+                Type = out_type(State),
+                {ok, Out, GasUsed} = heap_to_binary(Type, Us1, State),
+                spend_gas(GasUsed, set_out(Out, State))
             catch _:_ ->
                 io:format("** Error reading return value\n~s", [format_mem(mem(State))]),
-                {set_gas(0, State), 0}  %% Consume all gas on failure
+                set_gas(0, State)  %% Consume all gas on failure
             end;
         ?AEVM_01_Solidity_01 ->
             %% Us0 is pointer to a return data binary and Us1 is the size.
             {Out, State1} = aevm_eeevm_memory:get_area(Us0, Us1, State),
-            {set_out(Out, State1), 0}
+            set_out(Out, State1)
     end.
 
 do_revert(Us0, Us1, State0) ->
@@ -257,8 +256,8 @@ heap_to_binary(Type, Ptr, State) ->
     Maps  = maps(State),
     Value = aeso_data:heap_value(Maps, Ptr, Heap),
     case aeso_data:heap_to_binary(Type, Store, Value) of
-        {ok, Bin}        ->
-            GasUsed = 0,
+        {ok, Bin} ->
+            GasUsed = aevm_gas:mem_gas(byte_size(Bin) div 32, State),
             {ok, Bin, GasUsed};
         {error, _} = Err -> Err
     end.

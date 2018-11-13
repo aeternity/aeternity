@@ -1111,8 +1111,7 @@ loop(CP, StateIn) ->
                     %% µ'i ≡ M(µi, µs[0], µs[1]) TODO: This
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
-                    {State3, MapsMemCost} = aevm_eeevm_state:do_return(Us0, Us1, State2),
-                    spend_gas_common({mem}, MapsMemCost, spend_mem_gas(State, State3));
+                    aevm_eeevm_state:do_return(Us0, Us1, State2);
                 ?DELEGATECALL ->
                     %% 0xf4 DELEGATECALL  δ=6 α=1
                     %% Message-call into this account with an
