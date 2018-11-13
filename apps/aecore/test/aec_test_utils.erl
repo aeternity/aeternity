@@ -272,9 +272,10 @@ gen_block_chain_with_state(N, MinerAccount, PresetAccounts, Acc) ->
     {B, S} = create_keyblock_with_state(Acc, MinerAccount),
     gen_block_chain_with_state(N - 1, MinerAccount, PresetAccounts, [{B, S} | Acc]).
 
-grant_fees(FromHeight, BlockReward, Chain, TreesIn, BeneficiaryAccount) ->
+grant_fees(FromHeight, Chain, TreesIn, BeneficiaryAccount) ->
     {Fees, Beneficiary1, Beneficiary2} = fees_at_height(FromHeight, Chain, 0, BeneficiaryAccount),
     Beneficiary1Reward = round(0.4 * Fees),
+    BlockReward = aec_governance:block_mine_reward(FromHeight + 1),
     Beneficiary2Reward = Fees - Beneficiary1Reward + BlockReward,
     Trees1 = aec_trees:grant_fee(Beneficiary2, TreesIn, Beneficiary2Reward),
     case FromHeight =:= 0 of
@@ -329,8 +330,7 @@ create_keyblock_with_state([{PrevBlock, TreesIn} | _] = Chain, MinerAccount, Ben
                                 MinerAccount, BeneficiaryAccount),
     Trees2 = case Height > Delay of
                  true ->
-                     Reward = aec_governance:block_mine_reward(),
-                     grant_fees(Height - Delay - 1, Reward, [{Block0, TreesIn}|Chain],
+                     grant_fees(Height - Delay - 1, [{Block0, TreesIn}|Chain],
                                 Trees1, BeneficiaryAccount);
                  false ->
                      Trees1

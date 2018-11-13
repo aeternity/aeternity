@@ -169,6 +169,7 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
     %% Post both blocks to mock that N1 is fraudulent
     ok = rpc:call(N2, aec_conductor, post_block, [Micro1S]),
     ok = rpc:call(N2, aec_conductor, post_block, [Micro2S]),
+    FraudHeight = aec_blocks:height(Micro1),
 
     %% Make N2 mine a key block to start the next generation.
     {ok, [Key2]} = aecore_suite_utils:mine_key_blocks(N2, 1),
@@ -197,32 +198,34 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
     ?assertEqual(no_fraud, aec_blocks:pof(MicroNoFraud)),
 
     %% Mine some key blocks now to check the rewards
-    {ok, _} = aecore_suite_utils:mine_key_blocks(N2, 2),
+    Delay = rpc:call(N2, aec_governance, beneficiary_reward_delay, []),
+    {ok, _} = aecore_suite_utils:mine_key_blocks(N2, Delay),
 
-    N2Height = aec_blocks:height(rpc:call(N2, aec_chain, top_block, [])),
-
-    N2KeyBlocksCount = N2Height - N1KeyBlocksCount,
-
-    B1 = <<217,202,108,173,192,99,13,10,129,124,71,86,232,121,148,177,243,254,160,88,174,204,22,114,15,42,51,71,75,19,135,16>>,
-    B2 = <<40,25,191,50,209,111,19,239,98,126,125,211,15,133,93,12,13,125,167,137,94,138,27,55,23,50,106,33,28,222,180,102>>,
+    {ok, N1MinedBlock} = rpc:call(N2, aec_chain, get_key_block_by_height, [1]),
+    Beneficiary1 = aec_blocks:beneficiary(N1MinedBlock),
+    {ok, TopKeyBlock} = rpc:call(N2, aec_chain, top_key_block, []),
+    N2Height = aec_blocks:height(TopKeyBlock),
+    Beneficiary2 = aec_blocks:beneficiary(TopKeyBlock),
 
     %% Check the rewards
-    {value, Acc1} = rpc:call(N2, aec_chain, get_account, [B1]),
-    {value, Acc2} = rpc:call(N2, aec_chain, get_account, [B2]),
-    ct:log("Balances: ~p and ~p", [Acc1, Acc2]),
+    {value, Acc1} = rpc:call(N2, aec_chain, get_account, [Beneficiary1]),
+    {value, Acc2} = rpc:call(N2, aec_chain, get_account, [Beneficiary2]),
+
     Bal1 = aec_accounts:balance(Acc1),
     Bal2 = aec_accounts:balance(Acc2),
 
-    %% Node1 has mined N1KeyBlocksCount blocks, but should only get N1KeyBlocksCount - 1 rewards (fraud)
-    %% Node2 has mined N2KeyBlocksCount blocks, but should only get N2KeyBlocksCount - 2 rewards (delay)
-    %%                                                                               + 1 fraud reward.
-    MR = aec_governance:block_mine_reward(),
-    FR = aec_governance:fraud_report_reward(),
-    case Bal1 >= (N1KeyBlocksCount - 1) * MR andalso Bal1 < (N1KeyBlocksCount - 1) * MR + 100000 of %% should get some fees
+    Reward1 = lists:sum([aec_governance:block_mine_reward(X)
+                         || X <- lists:seq(1, N1KeyBlocksCount),
+                            X =/= FraudHeight]),
+    Reward2 = lists:sum([aec_governance:block_mine_reward(X)
+                         || X <- lists:seq(N1KeyBlocksCount + 1, N2Height - Delay),
+                            X =/= FraudHeight]) + aec_governance:fraud_report_reward(),
+
+    case Bal1 >= Reward1 andalso Bal1 < Reward1 + 100000 of %% should get some fees
         true -> ok;
         false -> error({bad_balance1, Bal1})
     end,
-    case Bal2 >= (N2KeyBlocksCount - 2) * MR + FR andalso Bal2 < (N2KeyBlocksCount - 2) * MR + FR + 100000 of
+    case Bal2 >= Reward2 andalso Bal2 < Reward2 + 100000 of
         true -> ok;
         false -> error({bad_balance2, Bal2})
     end,

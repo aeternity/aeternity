@@ -6,7 +6,7 @@
          key_blocks_to_check_difficulty_count/0,
          median_timestamp_key_blocks/0,
          expected_block_mine_rate/0,
-         block_mine_reward/0,
+         block_mine_reward/1,
          block_gas_limit/0,
          tx_base_gas/1,
          byte_gas/0,
@@ -90,11 +90,14 @@ expected_block_mine_rate() ->
     aeu_env:user_config_or_env([<<"mining">>, <<"expected_mine_rate">>],
                                aecore, expected_mine_rate, ?EXPECTED_BLOCK_MINE_RATE).
 
+block_mine_reward(0) ->
+    %% No mining reward for the genesis block
+    0;
+block_mine_reward(Height) when is_integer(Height), Height > 0 ->
+    aec_coinbase:coinbase_at_height(Height).
+
 %% In Ethereum, block gas limit is changed in every block. The new block gas
 %% limit is decided by algorithm and vote by miners.
-block_mine_reward() ->
-    ?BLOCK_MINE_REWARD.
-
 block_gas_limit() ->
     application:get_env(aecore, block_gas_limit, ?BLOCK_GAS_LIMIT).
 

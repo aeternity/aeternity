@@ -878,10 +878,10 @@ grant_fees(Node, Trees, Delay, FraudStatus, State) ->
     KeyFees  = db_get_fees(hash(KeyNode2)),
     Beneficiary1 = node_beneficiary(KeyNode1),
     Beneficiary2 = node_beneficiary(KeyNode2),
-    Reward = aec_governance:block_mine_reward(),
+    MineReward = aec_governance:block_mine_reward(node_height(KeyNode2)),
     FraudReward = aec_governance:fraud_report_reward(),
     BeneficiaryReward1 = KeyFees * 4 div 10,
-    BeneficiaryReward2 = KeyFees - BeneficiaryReward1 + Reward,
+    BeneficiaryReward2 = KeyFees - BeneficiaryReward1 + MineReward,
     case {FraudStatus1, FraudStatus2} of
         {true, true} ->
             %% The miner of KeyNode1 was reported by the miner of KeyNode2
