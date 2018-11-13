@@ -193,8 +193,6 @@ init_vm(State, Code, Mem, Store, CallDataType, OutType) ->
 is_reentrant_call(State) ->
     lists:member(address(State), call_stack(State)).
 
-%% TODO: Currently the Store is saved both in the chain state and the VM state.
-%%       Refactor?
 get_store(#{storage := Store}) -> Store.
 
 import_state_from_store(Store, State0) ->
@@ -215,15 +213,14 @@ import_state_from_store(Store, State0) ->
 do_return(Us0, Us1, State) ->
     case vm_version(State) of
         ?AEVM_01_Sophia_01 ->
-            try
-                %% In Sophia Us1 is a pointer to the actual value.
-                %% The type of the value is in the state (from meta data)
-                Type = out_type(State),
-                {ok, Out, GasUsed} = heap_to_binary(Type, Us1, State),
-                spend_gas(GasUsed, set_out(Out, State))
-            catch _:_ ->
-                io:format("** Error reading return value\n~s", [format_mem(mem(State))]),
-                set_gas(0, State)  %% Consume all gas on failure
+            %% In Sophia Us1 is a pointer to the actual value.
+            %% The type of the value is in the state (from meta data)
+            Type = out_type(State),
+            case heap_to_binary(Type, Us1, State) of
+                {ok, Out, GasUsed} ->
+                    {set_out(Out, State), GasUsed};
+                {error, _} ->
+                    {State, gas(State) + 1}
             end;
         ?AEVM_01_Solidity_01 ->
             %% Us0 is pointer to a return data binary and Us1 is the size.
@@ -255,11 +252,13 @@ heap_to_binary(Type, Ptr, State) ->
     Heap  = mem(State),
     Maps  = maps(State),
     Value = aeso_data:heap_value(Maps, Ptr, Heap),
-    case aeso_data:heap_to_binary(Type, Store, Value) of
+    MaxWords = aevm_gas:mem_limit_for_gas(gas(State), State),
+    case aeso_data:heap_to_binary(Type, Store, Value, MaxWords * 32) of
         {ok, Bin} ->
             GasUsed = aevm_gas:mem_gas(byte_size(Bin) div 32, State),
             {ok, Bin, GasUsed};
-        {error, _} = Err -> Err
+        {error, _} = Err ->
+            Err
     end.
 
 spend_gas(Gas, State) ->
