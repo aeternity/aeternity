@@ -37,7 +37,7 @@ mining:
     beneficiary: "encoded_beneficiary_pubkey_to_be_replaced"
     cuckoo:
         miner:
-            executable: lean30
+            executable: lean29-generic
             extra_args: ""
             node_bits: 30
 
