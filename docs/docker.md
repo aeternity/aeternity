@@ -39,7 +39,7 @@ mining:
         miner:
             executable: lean29-generic
             extra_args: ""
-            node_bits: 30
+            edge_bits: 29
 
 ```
 
