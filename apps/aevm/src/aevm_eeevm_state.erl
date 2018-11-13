@@ -165,7 +165,7 @@ init_vm(State, Code, Mem, Store, CallDataType, OutType) ->
         ?AEVM_01_Sophia_01 ->
             case is_reentrant_call(State) of
                 true -> %% Sophia doesn't allow reentrant calls
-                    io:format("** Attempted reentrant call\n"),
+                    lager:debug("** Attempted reentrant call\n"),
                     set_gas(0, State);
                 false ->
                     %% We need to import the state first, since the map ids in the store are fixed.
@@ -184,7 +184,7 @@ init_vm(State, Code, Mem, Store, CallDataType, OutType) ->
                             {Ptr, State3} = write_heap_value(CalldataHeap, State2),
                             aevm_eeevm_stack:push(Ptr, State3);
                         {error, Err} ->
-                            io:format("** Error invalid calldata: ~p\n", [Err]),
+                            lager:debug("Invalid calldata: ~p\n", [Err]),
                             set_gas(0, State2)
                     end
             end
@@ -232,15 +232,15 @@ do_revert(Us0, Us1, State0) ->
     %% Us0 is a pointer to the revert string binary and Us1 is its size.
     case vm_version(State0) of
         ?AEVM_01_Sophia_01 ->
-            try
-                %% In Sophia Us1 is a pointer to the actual value.
-                %% The type of the value is always string.
-                {ok, Out, GasUsed} = heap_to_binary(string, Us1, State0),
-                set_out(Out, spend_gas(GasUsed, State0))
-            catch _:_ ->
-                io:format("** Error reading revert value\n~s",
-                          [format_mem(mem(State0))]),
-                set_gas(0, State0)   %% Consume all gas on failure
+            %% In Sophia Us1 is a pointer to the actual value.
+            %% The type of the value is always string.
+            case heap_to_binary(string, Us1, State0) of
+                {ok, Out, GasUsed} ->
+                    set_out(Out, spend_gas(GasUsed, State0));
+                {error, _} = Err ->
+                    lager:error("Error reading revert value: ~p\n~s",
+                                 [Err, format_mem(mem(State0))]),
+                    set_gas(0, State0)   %% Consume all gas on failure
             end;
         ?AEVM_01_Solidity_01 ->
             {Out, State1} = aevm_eeevm_memory:get_area(Us0, Us1, State0),
@@ -283,26 +283,32 @@ return_contract_call_result(To, Input, Addr,_Size, ReturnData, Type, State) ->
         ?AEVM_01_Solidity_01 ->
             {1, aevm_eeevm_memory:write_area(Addr, ReturnData, State)};
         ?AEVM_01_Sophia_01 ->
-            try
-                %% For Sophia, ignore the Addr and put the result on the
-                %% top of the heap
-                HeapSize = aevm_eeevm_memory:size_in_words(State) * 32,
-                OutValue =
-                    case is_local_primop(To, Input) of
-                        true ->
-                            %% Local primops (like map primops) return heap values
-                            <<Ptr:256, Bin/binary>> = ReturnData,
-                            HeapVal = aeso_data:heap_value(maps(State), Ptr, Bin, 32),
-                            {ok, Out} = aeso_data:heap_to_heap(Type, HeapVal, HeapSize),
-                            Out;
-                        false ->
-                            {ok, Out} = aeso_data:binary_to_heap(Type, ReturnData, aevm_eeevm_maps:next_id(maps(State)), HeapSize),
-                            Out
-                    end,
-                write_heap_value(OutValue, State)
-            catch _:Err ->
-                io:format("** Failed to decode contract return value\n~P\n~p\n", [erlang:get_stacktrace(), 20, Err]),
-                {0, set_gas(0, State)}
+            %% For Sophia, ignore the Addr and put the result on the
+            %% top of the heap
+            HeapSize = aevm_eeevm_memory:size_in_words(State) * 32,
+            case is_local_primop(To, Input) of
+                true ->
+                    %% Local primops (like map primops) return heap values
+                    <<Ptr:256, Bin/binary>> = ReturnData,
+                    HeapVal = aeso_data:heap_value(maps(State), Ptr, Bin, 32),
+                    case aeso_data:heap_to_heap(Type, HeapVal, HeapSize) of
+                        {ok, Out} ->
+                            write_heap_value(Out, State);
+                        {error, _} = Err ->
+                            lager:error("Failed to decode primot return value\n"
+                                        "~p\n", [Err]),
+                            {0, set_gas(0, State)}
+                    end;
+                false ->
+                    NextId = aevm_eeevm_maps:next_id(maps(State)),
+                    case aeso_data:binary_to_heap(Type, ReturnData, NextId, HeapSize) of
+                        {ok, Out} ->
+                            write_heap_value(Out, State);
+                        {error, _} = Err ->
+                            lager:error("Failed to decode contract return value\n"
+                                        "~p\n", [Err]),
+                            {0, set_gas(0, State)}
+                    end
             end
     end.
 
@@ -321,24 +327,19 @@ save_store(#{ chain_state := ChainState
         ?AEVM_01_Sophia_01 ->
             %% A typerep for the state type is on top of the stack, and the state
             %% pointer is at address 0.
-            try
-                {Addr, _} = aevm_eeevm_memory:load(0, State),
-                case Addr of            %% A contract can write 0 to the state pointer
-                    0 -> {ok, State};   %% to indicate that the state didn't change.
-                    _ ->
-                        Type     = aevm_eeevm_store:get_sophia_state_type(get_store(State)),
-                        {Ptr, _} = aevm_eeevm_memory:load(Addr, State),
-                        case heap_to_heap(Type, Ptr, State) of
-                            {ok, StateValue1, GasUsed} ->
-                                Store = aevm_eeevm_store:set_sophia_state(StateValue1, get_store(State)),
-                                {ok, spend_gas(GasUsed, State#{ chain_state => ChainAPI:set_store(Store, ChainState) })};
-                            {error, _} ->
-                                {error, out_of_gas}
-                        end
-                end
-            catch _:_ ->
-                io:format("** Error reading updated state\n~s\n~p\n", [format_mem(mem(State)), erlang:get_stacktrace()]),
-                {error, error_saving_state}
+            {Addr, _} = aevm_eeevm_memory:load(0, State),
+            case Addr of            %% A contract can write 0 to the state pointer
+                0 -> {ok, State};   %% to indicate that the state didn't change.
+                _ ->
+                    Type     = aevm_eeevm_store:get_sophia_state_type(get_store(State)),
+                    {Ptr, _} = aevm_eeevm_memory:load(Addr, State),
+                    case heap_to_heap(Type, Ptr, State) of
+                        {ok, StateValue1, GasUsed} ->
+                            Store = aevm_eeevm_store:set_sophia_state(StateValue1, get_store(State)),
+                            {ok, spend_gas(GasUsed, State#{ chain_state => ChainAPI:set_store(Store, ChainState) })};
+                        {error, _} ->
+                            {error, out_of_gas}
+                    end
             end
     end.
 
@@ -417,17 +418,13 @@ call_contract(Caller, Target, CallGas, Value, Data, State) ->
             TargetKey  = <<Target:256>>,
             ChainAPI   = chain_api(State),
             ChainState = chain_state(State),
-            try ChainAPI:call_contract(TargetKey, CallGas, Value, Data, CallStack, ChainState) of
+            case ChainAPI:call_contract(TargetKey, CallGas, Value, Data, CallStack, ChainState) of
                 {ok, Res, ChainState1} ->
                     GasSpent = aevm_chain_api:gas_spent(Res),
                     Return   = aevm_chain_api:return_value(Res),
                     {ok, Return, GasSpent, set_chain_state(ChainState1, State)};
                 {error, Err} ->
                     {error, Err}
-            catch K:Err ->
-                lager:error("~w:call_contract(~w, ~w, ~w, ~w, ~w, _) crashed with ~w:~w",
-                            [ChainAPI, TargetKey, CallGas, Value, Data, CallStack, K, Err]),
-                {error, Err}
             end
     end.
 

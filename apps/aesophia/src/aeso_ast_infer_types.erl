@@ -341,7 +341,7 @@ infer_letrec(Env, {letrec, Attrs, Defs}) ->
             Expect = typesig_to_fun_t(TypeSig),
             unify(Got, Expect, {check_typesig, Name, Got, Expect}),
             solve_field_constraints(),
-            io:format("Checked ~s : ~s\n", [Name, pp(dereference_deep(Got))]),
+            %% io:format("Checked ~s : ~s\n", [Name, pp(dereference_deep(Got))]),
             Res
           end || LF <- Defs ],
     destroy_and_report_unsolved_constraints(),
@@ -1267,7 +1267,7 @@ create_type_errors() ->
 destroy_and_report_type_errors() ->
     Errors   = ets:tab2list(type_errors),
     PPErrors = [ pp_error(Err) || Err <- Errors ],
-    [ io:format("~s", [Err]) || Err <- PPErrors ],
+    %%[ io:format("~s", [Err]) || Err <- PPErrors ],
     ets:delete(type_errors),
     [ error({type_errors, [lists:flatten(Err) || Err <- PPErrors]})
       || Errors /= [] ].

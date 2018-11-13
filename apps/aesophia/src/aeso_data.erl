@@ -122,7 +122,7 @@ binary_to_heap(Type, <<Ptr:32/unit:8, Heap/binary>>, NextId, Offs) ->
                                          heap_fragment(no_maps(NextId), 32, Heap), Offs),
         {ok, heap_value(Maps, Addr, list_to_binary(Mem), Offs)}
     catch _:Err ->
-        io:format("** Error: binary_to_heap failed with ~p\n  ~p\n", [Err, erlang:get_stacktrace()]),
+        %%io:format("** Error: binary_to_heap failed with ~p\n  ~p\n", [Err, erlang:get_stacktrace()]),
         {error, Err}
     end;
 binary_to_heap(_Type, <<>>, _NextId, _Offs) ->
@@ -145,7 +145,7 @@ heap_to_binary(Type, Store, {Ptr, Heap}, MaxSize) ->
         throw:max_size_exceeded ->
             {error, out_of_gas};
         _:Err ->
-            io:format("** Error: heap_to_binary failed with ~p\n  ~p\n", [Err, erlang:get_stacktrace()]),
+            %%io:format("** Error: heap_to_binary failed with ~p\n  ~p\n", [Err, erlang:get_stacktrace()]),
             {error, Err}
     end.
 
@@ -159,7 +159,7 @@ binary_to_binary(Type, <<Ptr:32/unit:8, Heap/binary>>) ->
                                          heap_fragment(no_maps(0), 32, Heap), 32),
         {ok, <<Addr:256, (list_to_binary(Memory))/binary>>}
     catch _:Err ->
-        io:format("** Error: binary_to_binary failed with ~p\n  ~p\n", [Err, erlang:get_stacktrace()]),
+        %%io:format("** Error: binary_to_binary failed with ~p\n  ~p\n", [Err, erlang:get_stacktrace()]),
         {error, Err}
     end.
 
@@ -178,7 +178,7 @@ heap_to_heap(Type, {Ptr, Heap}, Offs, MaxSize) ->
         {Addr, {Maps, _, Mem}} = convert(heap, heap, MaxSize, no_store(), #{}, Type, Ptr, Heap, Offs),
         {ok, heap_value(Maps, Addr, list_to_binary(Mem), Offs)}
     catch _:Err ->
-        io:format("** Error: heap_to_heap failed with ~p\n  ~p\n", [Err, erlang:get_stacktrace()]),
+        %%io:format("** Error: heap_to_heap failed with ~p\n  ~p\n", [Err, erlang:get_stacktrace()]),
         {error, Err}
     end.
 
@@ -435,7 +435,7 @@ binary_to_words(Bin) ->
 from_heap(Type, Heap, Ptr) ->
     try {ok, from_binary(#{}, Type, Heap, Ptr)}
     catch _:Err ->
-        io:format("** Error: from_heap failed with ~p\n  ~p\n", [Err, erlang:get_stacktrace()]),
+        %% io:format("** Error: from_heap failed with ~p\n  ~p\n", [Err, erlang:get_stacktrace()]),
         {error, Err}
     end.
 

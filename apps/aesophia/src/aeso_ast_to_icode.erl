@@ -88,7 +88,7 @@ contract_to_icode([{letrec,_,Defs}|Rest], Icode) ->
     contract_to_icode(Defs++Rest, Icode);
 contract_to_icode([], Icode) -> Icode;
 contract_to_icode(Code, Icode) ->
-    io:format("Unhandled code ~p~n",[Code]),
+    lager:debug("Unhandled code ~p~n",[Code]),
     Icode.
 
 ast_id({id, _, Id}) -> Id.
@@ -422,7 +422,7 @@ ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}, Icode) ->
     #tuple{cpts =
                [case proplists:get_value(Name,NamedFields) of
                     undefined ->
-                        io:format("~p not in ~p\n", [Name, NamedFields]),
+                        lager:debug("~p not in ~p\n", [Name, NamedFields]),
                         Line = aeso_syntax:get_ann(line, Attrs),
                         #missing_field{format = "Missing field in record: ~s (on line ~p)\n",
                         args = [Name,Line]};
