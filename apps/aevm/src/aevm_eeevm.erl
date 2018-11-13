@@ -40,10 +40,11 @@
             %% Enable setting up node with "test" rebar profile.
             error:undef -> ok
         end).
+-define(DEBUG_LOG(Format, Data), begin lager:debug(Format, Data), ?TEST_LOG(Format, Data) end).
 -else.
 -define(TEST_LOG(Format, Data), ok).
+-define(DEBUG_LOG(Format, Data), lager:debug(Format, Data)).
 -endif.
-
 
 %% Main eval loop.
 %%
@@ -1601,9 +1602,12 @@ recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend,
     %% ensures that a call recipient will always have enough gas to
     %% log that it received funds."
     %%  -- https://github.com/ethereum/wiki/wiki/Subtleties
-    Stipend = case Value =/= 0 of
-                  true -> maps:get('GCALLSTIPEND', maps:get(gas_table, State8));
-                  false -> 0
+    %% Only used for tests in Solidity VM
+    VmVersion = aevm_eeevm_state:vm_version(State8),
+    Stipend = case {VmVersion, Value =/= 0} of
+                  {?AEVM_01_Solidity_01, true} ->
+                      maps:get('GCALLSTIPEND', maps:get(gas_table, State8));
+                  _ -> 0
               end,
     CallGas = Stipend + Gascap,
     Caller = case Op of
@@ -1630,6 +1634,13 @@ recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend,
              %%                                       }, State8),
             {OutGas, ReturnState, R} =
                 case aevm_eeevm_state:call_contract(Caller, Dest, CallGas, Value, I, State8) of
+                    {ok, {error, out_of_gas}, GasSpent,_OutState1} ->
+                        GasAfterFailedCall = case VmVersion of
+                                                 ?AEVM_01_Solidity_01 -> 0;
+                                                 _ -> max(0, GasAfterSpend - GasSpent)
+                                             end,
+                        FailState = aevm_eeevm_state:set_gas(GasAfterFailedCall, State8),
+                        eval_error(out_of_gas, FailState);
                     {ok, Res, GasSpent, OutState1} when 0 =< GasSpent, GasSpent =< CallGas ->
                         {CallGas - GasSpent, OutState1, Res};
                     {error, ?AEVM_PRIMOP_ERR_REASON_OOG(_OogResource, _OogGas, State9)} ->

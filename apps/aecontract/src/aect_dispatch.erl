@@ -171,6 +171,7 @@ create_call(GasUsed, Type, Log, Call) ->
     Call1 = aect_call:set_log(Log, Call),
     aect_call:set_gas_used(GasUsed, aect_call:set_return_type(Type, Call1)).
 
+%% c.f. aec_vm_chain:binary_to_error/1
 error_to_binary(out_of_gas) -> <<"out_of_gas">>;
 error_to_binary(out_of_stack) -> <<"out_of_stack">>;
 error_to_binary(not_allowed_off_chain) -> <<"not_allowed_off_chain">>;

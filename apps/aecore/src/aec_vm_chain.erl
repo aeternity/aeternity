@@ -663,10 +663,10 @@ call_contract(Target, Gas, Value, CallData, CallStack,
                     GasUsed = aect_call:gas_used(Call),
                     Result  =
                         case aect_call:return_type(Call) of
-                            %% TODO: currently we don't set any
-                            %%       sensible return value on exceptions
                             error ->
-                                aevm_chain_api:call_exception(out_of_gas, GasUsed);
+                                Bin = aect_call:return_value(Call),
+                                ReturnAtom = binary_to_error(Bin),
+                                aevm_chain_api:call_exception(ReturnAtom, GasUsed);
                             revert ->
                                 Bin = aect_call:return_value(Call),
                                 aevm_chain_api:call_exception({revert, Bin}, GasUsed);
@@ -796,3 +796,13 @@ on_chain_only(State, Fun) ->
             {error, not_allowed_off_chain};
         false -> Fun()
     end.
+
+%% c.f. aect_dispatch:error_to_binary/1
+binary_to_error(<<"out_of_gas">>) -> out_of_gas;
+binary_to_error(<<"out_of_stack">>) -> out_of_stack;
+binary_to_error(<<"not_allowed_off_chain">>) -> not_allowed_off_chain;
+binary_to_error(<<"bad_call_data">>) -> bad_call_data;
+binary_to_error(<<"unknown_function">>) -> unknown_function;
+binary_to_error(E) ->
+    ?DEBUG_LOG("Unknown error: ~p\n", [E]),
+    unknown_error.

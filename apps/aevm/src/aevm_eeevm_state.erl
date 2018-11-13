@@ -81,6 +81,19 @@
 
 -export_type([state/0]).
 
+-ifdef(COMMON_TEST).
+-define(TEST_LOG(Format, Data),
+        try ct:log(Format, Data)
+        catch
+            %% Enable setting up node with "test" rebar profile.
+            error:undef -> ok
+        end).
+-define(DEBUG_LOG(Format, Data), begin lager:debug(Format, Data), ?TEST_LOG(Format, Data) end).
+-else.
+-define(TEST_LOG(Format, Data), ok).
+-define(DEBUG_LOG(Format, Data), lager:debug(Format, Data)).
+-endif.
+
 -spec init(map(), map()) -> state().
 init(#{ env  := Env
       , exec := Exec
