@@ -36,6 +36,7 @@
         , sophia_spend/1
         , sophia_typed_calls/1
         , sophia_no_reentrant/1
+        , sophia_exploits/1
         , sophia_oracles/1
         , sophia_oracles_interact_with_no_vm_oracle/1
         , sophia_oracles_ttl__extend_after_expiry/1
@@ -153,6 +154,7 @@ groups() ->
                                  sophia_match_bug,
                                  sophia_spend,
                                  sophia_typed_calls,
+                                 sophia_exploits,
                                  sophia_oracles,
                                  {group, sophia_oracles_ttl},
                                  {group, sophia_oracles_type_error},
@@ -748,12 +750,18 @@ state_tree(_Cfg) ->
 %%% More elaborate Sophia contracts
 %%%===================================================================
 
+compile_contract(Name) ->
+    aect_test_utils:compile_contract(lists:concat(["contracts/", Name, ".aes"])).
+
 create_contract(Owner, Name, Args, S) ->
     create_contract(Owner, Name, Args, #{}, S).
 
 create_contract(Owner, Name, Args, Options, S) ->
+    Code = compile_contract(Name),
+    create_contract_with_code(Owner, Code, Args, Options, S).
+
+create_contract_with_code(Owner, Code, Args, Options, S) ->
     Nonce       = aect_test_utils:next_nonce(Owner, S),
-    Code        = aect_test_utils:compile_contract(lists:concat(["contracts/", Name, ".aes"])),
     CallData    = make_calldata_from_code(Code, init, Args),
     CreateTx    = aect_test_utils:create_tx(Owner,
                     maps:merge(
@@ -781,8 +789,11 @@ call_contract(Caller, ContractKey, Fun, Type, Args, S) ->
     call_contract(Caller, ContractKey, Fun, Type, Args, #{}, S).
 
 call_contract(Caller, ContractKey, Fun, Type, Args, Options, S) ->
-    Nonce    = aect_test_utils:next_nonce(Caller, S),
     Calldata = make_calldata_from_id(ContractKey, Fun, Args, S),
+    call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S).
+
+call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S) ->
+    Nonce    = aect_test_utils:next_nonce(Caller, S),
     CallTx   = aect_test_utils:call_tx(Caller, ContractKey,
                 maps:merge(
                 #{ nonce      => Nonce
@@ -851,6 +862,40 @@ sophia_identity(_Cfg) ->
     RemC2 = ?call(create_contract, Acc1, remote_call, {}, #{amount => 100}),
     77    = ?call(call_contract,   Acc1, RemC2, staged_call, word, {IdC, RemC, 77}),
     ok.
+
+sophia_exploits(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc  = ?call(new_account, 10000000),
+    Code = compile_contract(exploits),
+    StringType = aeso_data:to_binary(string),
+    HackedCode = hack_type(<<"pair">>, {return, StringType}, Code),
+    C = ?call(create_contract_with_code, Acc, HackedCode, {}, #{}),
+    Err = {error, <<"out_of_gas">>},
+    %% Should not create a 1GB string
+    Err = ?call(call_contract, Acc, C, pair, string, 1000000000),
+    ok.
+
+hack_type(HackFun, NewType, Code) ->
+    #{ source_hash := Hash,
+       type_info := TypeInfo,
+       byte_code := ByteCode } = aeso_compiler:deserialize(Code),
+    Version     = 1,
+    Hack = fun(Info = {_, Fun, _, _}) when Fun == HackFun ->
+                case NewType of
+                    {return, T} -> setelement(4, Info, T);
+                    {arg, T} -> setelement(3, Info, T)
+                end;
+              (Info) -> Info end,
+    HackedTypeInfo = lists:map(Hack, TypeInfo),
+    Fields = [ {source_hash, Hash}
+             , {type_info, HackedTypeInfo}
+             , {byte_code, ByteCode}
+             ],
+    Template =
+        [ {source_hash, binary}
+        , {type_info, [{binary, binary, binary, binary}]}
+        , {byte_code, binary}],
+    aec_object_serialization:serialize(compiler_sophia, Version, Template, Fields).
 
 sophia_no_reentrant(_Cfg) ->
     state(aect_test_utils:new_state()),
