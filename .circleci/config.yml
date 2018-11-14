@@ -9,7 +9,6 @@ references:
     environment:
       # CircleCI supported versions: https://circleci.com/docs/2.0/building-docker-images/#docker-version
       # Official docker versions: https://download.docker.com/linux/static/stable/x86_64/
-      DOCKER_CLIENT_VERSION: "17.09.0-ce"
       DOCKERHUB_REPO: aeternity/epoch
       S3_BUILDS_BUCKET: aeternity-epoch-builds
       S3_RELEASES_BUCKET: aeternity-epoch-releases
@@ -37,15 +36,6 @@ references:
       command: |
         sudo usermod -aG docker ubuntu
         sudo chown -R ubuntu:ubuntu ~/epoch
-
-  install_docker_client: &install_docker_client
-    run:
-      name: Install Docker CLI tools
-      command: |
-        curl -L -o /tmp/docker-${DOCKER_CLIENT_VERSION:?}.tgz \
-          https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_CLIENT_VERSION:?}.tgz
-        tar -xz -C /tmp -f /tmp/docker-${DOCKER_CLIENT_VERSION:?}.tgz
-        mkdir ~/bin && mv /tmp/docker/docker ~/bin
 
   install_os_deps: &install_os_deps
     run:
@@ -504,18 +494,17 @@ jobs:
       - *fail_notification
 
   docker_push_tag:
-    <<: *container_config
+    <<: *infrastructure_config
     steps:
       - checkout
       - *setup_remote_docker
-      - *install_docker_client
       - run:
           name: Build and push Docker image to DockerHub
           command: |
-            ~/bin/docker login -u $DOCKER_USER -p $DOCKER_PASS
-            ~/bin/docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} -t ${DOCKERHUB_REPO:?}:latest .
-            ~/bin/docker push ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}
-            ~/bin/docker push ${DOCKERHUB_REPO:?}:latest
+            docker login -u $DOCKER_USER -p $DOCKER_PASS
+            docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} -t ${DOCKERHUB_REPO:?}:latest .
+            docker push ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}
+            docker push ${DOCKERHUB_REPO:?}:latest
 
   uat_chain_snapshot:
     <<: *infrastructure_config
