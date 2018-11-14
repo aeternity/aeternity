@@ -27,6 +27,8 @@
          for_client/1
         ]).
 
+-export([gas_price/1]).
+
 % aesc_signable_transaction callbacks
 -export([channel_id/1,
          channel_pubkey/1,
@@ -103,6 +105,15 @@ gas(#channel_force_progress_tx{update = Update}) ->
             Gas;
         not_call ->
             0
+    end.
+
+-spec gas_price(tx()) -> aect_contracts:amount() | undefined.
+gas_price(#channel_force_progress_tx{update = Update}) ->
+    case aesc_offchain_update:extract_amounts(Update) of
+        {_Amount, GasPrice, _Gas} ->
+            GasPrice;
+        not_call ->
+            undefined
     end.
 
 -spec ttl(tx()) -> aetx:tx_ttl().
