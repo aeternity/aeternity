@@ -529,7 +529,7 @@ process_force_progress(Tx, OffChainTrees, TxHash, Height, Trees, Env) ->
 
 
     % consume gas from sender
-    Trees1 = consume_gas_and_fee(Update, Call, Fee, FromPubKey, Nonce, Trees),
+    Trees1 = consume_gas_and_fee(Call, Fee, FromPubKey, Nonce, Trees),
 
     % add a receipt call in the calls state tree
     Trees2 = add_call(Call, TxHash, Trees1),
@@ -605,15 +605,13 @@ spend(From, Amount, Nonce, Trees) ->
     AccountsTree1 = aec_accounts_trees:enter(CallerAcc, AccountsTree0),
     aec_trees:set_accounts(Trees, AccountsTree1).
 
--spec consume_gas_and_fee(aesc_offchain_update:update(),
-                          aect_call:call(),
+-spec consume_gas_and_fee(aect_call:call(),
                           integer(),
                           aec_keys:pubkey(),
                           non_neg_integer(),
                           aec_trees:trees()) -> aec_trees:trees().
-consume_gas_and_fee(Update, Call, Fee, From, Nonce, Trees) ->
-    {_Amount, GasPrice, _GasLimit} = aesc_offchain_update:extract_amounts(Update),
-    UsedAmount = aect_call:gas_used(Call) * GasPrice,
+consume_gas_and_fee(Call, Fee, From, Nonce, Trees) ->
+    UsedAmount = aect_call:gas_used(Call) * aect_call:gas_price(Call),
     spend(From, UsedAmount + Fee, Nonce, Trees).
 
 set_channel(Channel, Trees) ->
