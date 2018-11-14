@@ -33,6 +33,8 @@
 -export([tx/1]).
 -endif.
 
+-define(IS_CONTRACT_TX(T), ((T =:= contract_create_tx) or (T =:= contract_call_tx) or (T =:= channel_force_progress_tx))).
+
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -183,10 +185,7 @@ gas_price(#aetx{}) ->
     undefined.
 
 -spec min_gas(Tx :: tx()) -> Gas :: non_neg_integer().
-min_gas(#aetx{ type = Type, size = Size }) when
-      Type =:= contract_create_tx;
-      Type =:= contract_call_tx;
-      Type =:= channel_force_progress_tx ->
+min_gas(#aetx{ type = Type, size = Size }) when ?IS_CONTRACT_TX(Type) ->
     aec_governance:tx_base_gas(Type) + Size * aec_governance:byte_gas();
 min_gas(#aetx{} = Tx) ->
     gas(Tx).
