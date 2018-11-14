@@ -50,9 +50,14 @@
 %%
 eval(State) ->
     case eval_code(State) of
-        {Res, State1} ->
+        {ok, State1} ->
             %% Turn storage map into binary and save in state tree.
-            {Res, aevm_eeevm_state:save_store(State1)};
+            case aevm_eeevm_state:save_store(State1) of
+                {ok, State2}  -> {ok, State2};
+                {error, What} -> {error, What, State1}
+            end;
+        {revert, State1} ->
+            {revert, State1};
         {error, What, State1} ->
             %% Don't save state on error.
             {error, What, State1}

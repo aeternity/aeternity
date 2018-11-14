@@ -6,6 +6,7 @@
         , from_heap/3
         , binary_to_heap/4
         , heap_to_heap/3
+        , heap_to_heap/4
         , heap_to_binary/3
         , heap_to_binary/4
         , binary_to_binary/2
@@ -167,9 +168,14 @@ binary_to_binary(Type, <<Ptr:32/unit:8, Heap/binary>>) ->
 %% Used for the state
 -spec heap_to_heap(Type :: ?Type(), Heap :: heap_value(), Offs :: offset()) ->
         {ok, heap_value()} | {error, term()}.
-heap_to_heap(Type, {Ptr, Heap}, Offs) ->
+heap_to_heap(Type, HeapVal, Offs) ->
+    heap_to_heap(Type, HeapVal, Offs, infinity).
+
+-spec heap_to_heap(Type :: ?Type(), Heap :: heap_value(), Offs :: offset(), MaxSize :: non_neg_integer() | infinity) ->
+        {ok, heap_value()} | {error, term()}.
+heap_to_heap(Type, {Ptr, Heap}, Offs, MaxSize) ->
     try
-        {Addr, {Maps, _, Mem}} = convert(heap, heap, infinity, no_store(), #{}, Type, Ptr, Heap, Offs),
+        {Addr, {Maps, _, Mem}} = convert(heap, heap, MaxSize, no_store(), #{}, Type, Ptr, Heap, Offs),
         {ok, heap_value(Maps, Addr, list_to_binary(Mem), Offs)}
     catch _:Err ->
         io:format("** Error: heap_to_heap failed with ~p\n  ~p\n", [Err, erlang:get_stacktrace()]),
@@ -181,7 +187,7 @@ heap_to_heap(Type, {Ptr, Heap}, Offs) ->
 -type visited() :: #{pointer() => true}.
 -type format() :: heap | binary.
 
--spec convert(Input :: format(), Output :: format(), MaxSize :: non_neg_integer(),
+-spec convert(Input :: format(), Output :: format(), MaxSize :: non_neg_integer() | infinity,
               Store :: store(), visited(), ?Type(), pointer(),
               heap_fragment(), offset()) -> {pointer(), {#maps{}, offset(), [iodata()]}}.
 convert(_, _, _, _, _, word, Val, Heap, _) ->
@@ -310,6 +316,7 @@ convert_map_value(_Input, _Output, _Store, _ValT, tombstone, Heap) ->
 convert_map_value(Input, Output, Store, ValT, <<ValPtr:256, ValBin/binary>>, Heap) ->
     ValHeap = heap_fragment(Heap#heap.maps, 32, ValBin),
     Visited = #{},  %% Map values are self contained so start with fresh circularity check
+    %% Converting from a binary heap so we don't have to limit the size
     {ValPtr1, {Maps, _Size, ValBin1}} = convert(Input, Output, infinity, Store, Visited, ValT, ValPtr, ValHeap, 32),
     {Maps, <<ValPtr1:256, (list_to_binary(ValBin1))/binary>>}.
 

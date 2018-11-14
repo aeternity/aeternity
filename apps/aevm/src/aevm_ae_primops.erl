@@ -556,9 +556,15 @@ map_call_put(Data, State) ->
     [_, KeyPtr, ValPtr] = get_args([word, word, word], Data),
     case aevm_eeevm_state:heap_to_binary(KeyType, KeyPtr, State) of
         {ok, KeyBin, GasUsed} ->
-            {ok, ValBin}        = aevm_eeevm_state:heap_to_heap(ValType, ValPtr, State),
-            {NewMapId, State1}  = aevm_eeevm_maps:put(MapId, KeyBin, ValBin, State),
-            {ok, {ok, <<NewMapId:256>>}, GasUsed, State1};
+            case aevm_eeevm_state:heap_to_heap(ValType, ValPtr, State) of
+                {ok, HeapVal, GasUsed1} ->
+                    ValBin = <<(aeso_data:heap_value_pointer(HeapVal)):256,
+                               (aeso_data:heap_value_heap(HeapVal))/binary>>,
+                    {NewMapId, State1}  = aevm_eeevm_maps:put(MapId, KeyBin, ValBin, State),
+                    {ok, {ok, <<NewMapId:256>>}, GasUsed + GasUsed1, State1};
+                {error, _} = Err ->
+                    {ok, Err, aevm_eeevm_state:gas(State), State}
+            end;
         {error, _} = Err ->
             {ok, Err, aevm_eeevm_state:gas(State), State}
     end.
