@@ -180,7 +180,10 @@ deserialize(?NAME_TRANSFER_TX_VSN,
             , {ttl, TTL}]) ->
     account = aec_id:specialize_type(AccountId),
     name    = aec_id:specialize_type(NameId),
-    account = aec_id:specialize_type(RecipientId),
+    case aec_id:specialize_type(RecipientId) of
+        account -> ok;
+        name -> ok
+    end,
     #ns_transfer_tx{account_id   = AccountId,
                     nonce        = Nonce,
                     name_id      = NameId,
