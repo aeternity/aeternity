@@ -12,13 +12,15 @@
 
 %% test case exports
 -export(
-   [ application_test/1 ]).
+   [ application_test/1
+   , jobs_server_test/1 ]).
 
 
 -include_lib("common_test/include/ct.hrl").
 
 all() ->
-    [ application_test ].
+    [ application_test
+    , jobs_server_test ].
 
 init_per_suite(Config) ->
     ok = application:ensure_started(erlexec),
@@ -70,3 +72,35 @@ application_test(Config) ->
 
     ok.
 
+jobs_server_test(Config) ->
+    aecore_suite_utils:start_node(dev1, Config),
+    N1 = aecore_suite_utils:node_name(dev1),
+    aecore_suite_utils:connect(N1),
+    Info0 = rpc:call(N1, jobs, info, [all]),
+    aecore_suite_utils:restart_jobs_server(N1),
+    Info1 = rpc:call(N1, jobs, info, [all]),
+    true = compare_jobs_info(Info0, Info1),
+    ok.
+
+compare_jobs_info(I1, I2) ->
+    Ip1 = prune_info(I1),
+    Ip2 = prune_info(I2),
+    {Ip1, Ip2} = {Ip2, Ip1},
+    true.
+
+%% Copied from jobs/test/jobs_server_tests.erl
+%%
+prune_info(Info) ->
+    lists:map(fun prune_info_/1, Info).
+
+prune_info_({queues, Qs}) ->
+    {queues, [{Q, prune_q_info(Iq)} || {Q, Iq} <- Qs]};
+prune_info_(I) ->
+    I.
+
+prune_q_info(I) ->
+    [X || {K,_} = X <- I,
+          not lists:member(K, [check_interval,
+                               latest_dispatch, approved, queued,
+                               oldest_job, timer, empty, depleted,
+                               waiters, stateful, st])].
