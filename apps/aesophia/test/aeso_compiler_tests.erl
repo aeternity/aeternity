@@ -57,7 +57,8 @@ compilable_contracts() ->
      "spend_test",
      "stack",
      "test",
-     "builtin_bug"
+     "builtin_bug",
+     "builtin_map_get_bug"
     ].
 
 %% Contracts that should produce type errors
