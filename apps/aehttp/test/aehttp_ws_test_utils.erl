@@ -404,7 +404,7 @@ websocket_handle_enc(#{ <<"jsonrpc">> := <<"2.0">>
         false ->
             erlang:error({json_rpc_call_mismatch, Msg})
     end;
-websocket_handle_enc(Msg, #state{regs=Register}=State) ->
+websocket_handle_enc(Msg, #state{regs=Register}=State) when is_map(Msg) ->
     Origin = to_atom(maps:get(<<"origin">>, Msg, to_binary(?CHANNEL))),
     {Action, Tag} = get_action_tag(Msg),
     ct:log("Origin = ~p, Action = ~p, Tag = ~p", [Origin, Action, Tag]),
