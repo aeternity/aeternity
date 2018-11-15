@@ -64,7 +64,7 @@ call_(Gas, Value, Data, StateIn) ->
                 {error, ?AEVM_PRIMOP_ERR_REASON_OOG({base, PrimOp}, BaseGas, StateIn)};
             true when ?PRIM_CALL_IN_MAP_RANGE(PrimOp) ->
                 %% Map primops need the full state
-                map_call(PrimOp, Value, Data, StateIn);
+                map_call(Gas, PrimOp, Value, Data, StateIn);
             true ->
                 ChainIn = #chain{api = aevm_eeevm_state:chain_api(StateIn),
                                  state = aevm_eeevm_state:chain_state(StateIn)},
@@ -507,32 +507,32 @@ aens_call_revoke(Data, #chain{api = API, state = State} = Chain) ->
 %% Map operations.
 %% ------------------------------------------------------------------
 
-map_call(?PRIM_CALL_MAP_EMPTY, _Value, Data, State) ->
-    map_call_empty(Data, State);
-map_call(?PRIM_CALL_MAP_GET, _Value, Data, State) ->
-    map_call_get(Data, State);
-map_call(?PRIM_CALL_MAP_PUT, _Value, Data, State) ->
-    map_call_put(Data, State);
-map_call(?PRIM_CALL_MAP_DELETE, _Value, Data, State) ->
-    map_call_delete(Data, State);
-map_call(?PRIM_CALL_MAP_SIZE, _Value, Data, State) ->
-    map_call_size(Data, State);
-map_call(?PRIM_CALL_MAP_TOLIST, _Value, Data, State) ->
-    map_call_tolist(Data, State);
-map_call(_, _, _, _) ->
+map_call(Gas, ?PRIM_CALL_MAP_EMPTY, _Value, Data, State) ->
+    map_call_empty(Gas, Data, State);
+map_call(Gas, ?PRIM_CALL_MAP_GET, _Value, Data, State) ->
+    map_call_get(Gas, Data, State);
+map_call(Gas, ?PRIM_CALL_MAP_PUT, _Value, Data, State) ->
+    map_call_put(Gas, Data, State);
+map_call(Gas, ?PRIM_CALL_MAP_DELETE, _Value, Data, State) ->
+    map_call_delete(Gas, Data, State);
+map_call(Gas, ?PRIM_CALL_MAP_SIZE, _Value, Data, State) ->
+    map_call_size(Gas, Data, State);
+map_call(Gas, ?PRIM_CALL_MAP_TOLIST, _Value, Data, State) ->
+    map_call_tolist(Gas, Data, State);
+map_call(_, _, _, _, _) ->
     {error, out_of_gas}.
 
-map_call_empty(Data, State) ->
+map_call_empty(_Gas, Data, State) ->
     [KeyType, ValType] = get_args([typerep, typerep], Data),
     {MapId, State1} = aevm_eeevm_maps:empty(KeyType, ValType, State),
     {ok, {ok, <<MapId:32/unit:8>>}, 0, State1}.
 
-map_call_size(Data, State) ->
+map_call_size(_Gas, Data, State) ->
     [MapId] = get_args([word], Data),
     Size = aevm_eeevm_maps:size(MapId, State),
     {ok, {ok, <<Size:256>>}, 0, State}.
 
-map_call_get(Data, State) ->
+map_call_get(Gas, Data, State) ->
     [MapId]   = get_args([word], Data),
     {KeyType, _ValType} = aevm_eeevm_maps:map_type(MapId, State),
     [_, KeyPtr]  = get_args([word, word], Data),
@@ -547,10 +547,10 @@ map_call_get(Data, State) ->
                   end,
             {ok, {ok, Res}, GasUsed, State};
         {error, _} = Err ->
-            {ok, Err, aevm_eeevm_state:gas(State), State}
+            {ok, Err, Gas, State}
     end.
 
-map_call_put(Data, State) ->
+map_call_put(Gas, Data, State) ->
     [MapId]             = get_args([word], Data),
     {KeyType, ValType}  = aevm_eeevm_maps:map_type(MapId, State),
     [_, KeyPtr, ValPtr] = get_args([word, word, word], Data),
@@ -563,13 +563,13 @@ map_call_put(Data, State) ->
                     {NewMapId, State1}  = aevm_eeevm_maps:put(MapId, KeyBin, ValBin, State),
                     {ok, {ok, <<NewMapId:256>>}, GasUsed + GasUsed1, State1};
                 {error, _} = Err ->
-                    {ok, Err, aevm_eeevm_state:gas(State), State}
+                    {ok, Err, Gas, State}
             end;
         {error, _} = Err ->
-            {ok, Err, aevm_eeevm_state:gas(State), State}
+            {ok, Err, Gas, State}
     end.
 
-map_call_delete(Data, State) ->
+map_call_delete(Gas, Data, State) ->
     [MapId]      = get_args([word], Data),
     {KeyType, _} = aevm_eeevm_maps:map_type(MapId, State),
     [_, KeyPtr]  = get_args([word, word], Data),
@@ -578,10 +578,10 @@ map_call_delete(Data, State) ->
             {NewMapId, State1} = aevm_eeevm_maps:delete(MapId, KeyBin, State),
             {ok, {ok, <<NewMapId:256>>}, GasUsed, State1};
         {error, _} = Err ->
-            {ok, Err, aevm_eeevm_state:gas(State), State}
+            {ok, Err, Gas, State}
     end.
 
-map_call_tolist(Data, State) ->
+map_call_tolist(_Gas, Data, State) ->
     [MapId] = get_args([word], Data),
     {KeyType, ValType} = aevm_eeevm_maps:map_type(MapId, State),
     {ok, Map} = aevm_eeevm_maps:get_flat_map(MapId, State),
