@@ -7,17 +7,19 @@
 
 -module(aeo_utils).
 
--include_lib("apps/aecore/include/common.hrl").
-
--export([check_ttl_fee/3,
+-export([check_format/3,
+         check_ttl_fee/3,
+         check_vm_version/1,
          ttl_delta/2,
          ttl_expiry/2,
          ttl_fee/2]).
 
--define(ORACLE_TTL_FEE, 0.001).
+-include_lib("apps/aecontract/src/aecontract.hrl").
+
+-define(ORACLE_TTL_FEE, {1, 1000}). %% One part over a thousand.
 
 %% TODO: This should also include size of the thing that has a TTL
--spec check_ttl_fee(height(), aeo_oracles:ttl(), non_neg_integer()) ->
+-spec check_ttl_fee(aec_blocks:height(), aeo_oracles:ttl(), non_neg_integer()) ->
                         ok | {error, too_low_fee} | {error, too_low_height}.
 check_ttl_fee(Height, TTL, Fee) ->
     try
@@ -30,7 +32,7 @@ check_ttl_fee(Height, TTL, Fee) ->
         {error, too_low_height}
     end.
 
--spec ttl_delta(height(), aeo_oracles:ttl()) -> non_neg_integer().
+-spec ttl_delta(aec_blocks:height(), aeo_oracles:ttl()) -> non_neg_integer().
 ttl_delta(CurrHeight, TTL) ->
     case TTL of
         {delta, D} -> D;
@@ -38,11 +40,36 @@ ttl_delta(CurrHeight, TTL) ->
         {block, H} -> error({too_low_height, H, CurrHeight})
     end.
 
--spec ttl_expiry(height(), aeo_oracles:ttl()) -> height().
+-spec ttl_expiry(aec_blocks:height(), aeo_oracles:ttl()) -> aec_blocks:height().
 ttl_expiry(CurrentHeight, TTL) ->
     CurrentHeight + ttl_delta(CurrentHeight, TTL).
 
 -spec ttl_fee(non_neg_integer(), non_neg_integer()) -> non_neg_integer().
-ttl_fee(_Size, NBlocks) ->
-    ceil(NBlocks * ?ORACLE_TTL_FEE).
+ttl_fee(_Size, NBlocks) when is_integer(NBlocks), NBlocks >= 0 ->
+    {Part, Whole} = ?ORACLE_TTL_FEE,
+    TmpNBlocks = Part * NBlocks,
+    (TmpNBlocks div Whole) + (case (TmpNBlocks rem Whole) of
+                                  0                           -> 0;
+                                  X when is_integer(X), X > 0 -> 1
+                              end).
 
+check_vm_version(?AEVM_NO_VM) -> ok;
+check_vm_version(?AEVM_01_Sophia_01) -> ok;
+check_vm_version(_) -> {error, bad_vm_version}.
+
+check_format(?AEVM_NO_VM, _Format, _Content) ->
+    %% No interpretation of the format, nor content.
+    ok;
+check_format(?AEVM_01_Sophia_01, Format, Content) ->
+    %% Check that the content can be decoded as the type
+    %% and that if we encoded it again, it becomes the content.
+    {ok, TypeRep} = aeso_data:from_binary(typerep, Format),
+    try aeso_data:from_binary(TypeRep, Content) of
+        {ok, Res} ->
+            case aeso_data:to_binary(Res) of
+                Content -> ok;
+                _Other -> {error, bad_format}
+            end;
+        {error, _} -> {error, bad_format}
+    catch _:_ -> {error, bad_format}
+    end.

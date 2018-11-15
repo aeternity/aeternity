@@ -1,3 +1,5 @@
+-define(aevm_eval_error(___What___, ___State___),
+        {aevm_eval_error, ___What___, ___State___}).
 
 -define(WORDSIZE, 256).
 -define(MASK256, ((1 bsl 256) -1)).

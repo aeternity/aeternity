@@ -12,6 +12,7 @@
 
 -define(EUNIT_NOAUTO, true).
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("apps/aecontract/src/aecontract.hrl").
 
 -define(opt_format(___Opts__, ___Fmt___, ___Args___),
         case maps:get(trace, ___Opts__, false) of
@@ -57,35 +58,84 @@ testcase_generate(Path, Tests, Opts) ->
 %%--------------------------------------------------------------------
 %% Running the actual test case
 
-testcase({Path, Name, Opts}, Spec) ->
+testcase({Path, Name, Opts}, #{ pre := Pre, exec := Exec} = Spec) ->
     { Path ++ "/" ++ atom_to_list(Name)
-    , fun() ->
+    , {timeout, 10, fun() ->
+              %% Set up the store for the contract.
+              #{ address := Address } = Exec,
+              Store = get_store(Address, Pre),
+              Spec1 = Spec#{ exec => Exec#{ store => Store}},
+
               ?opt_format(Opts, "Setting up state: ~w~n", [Name]),
-              InitState = init_state(Spec, Opts),
+              InitState = init_state(Spec1, Opts),
               ?opt_format(Opts, "Init state: ~p~n", [InitState]),
               ?opt_format(Opts, "Running: ~w~n", [Name]),
-              State = ?wrap_run(run_eeevm(InitState)),
-              ?opt_format(Opts, "Checking: ~w~n", [Name]),
-              ?opt_format(Opts, "State of ~w: ~p~n", [Name, State]),
-              validate_storage(State, Spec),
-              validate_out(State, Spec),
-              validate_gas(State, Spec, Opts),
-              validate_callcreates(State, Spec)
+              case ?wrap_run(run_eeevm(InitState)) of
+                  {ok, State} ->
+                      %% Executed to completion'
+                      ?opt_format(Opts, "Checking: ~w~n", [Name]),
+                      ?opt_format(Opts, "State of ~w: ~p~n", [Name, State]),
+                      validate_storage(State, Spec1),
+                      validate_out(State, Spec1),
+                      validate_gas(State, Spec1, Opts),
+                      validate_callcreates(State, Spec1),
+                      validate_log(State, Spec1),
+                      {ok, State};
+                  {error, What, State} ->
+                      %% Handle execution exceptions gracefully here.
+                      %% Some testcases are not supposed to work.
+                      %% This is implicitly flagged in the config
+                      %% by leaving out some fields.
+                      %% TODO: Check the config
+                      io:format("Error ~p~n", [What]),
+                      validate_no_post(Spec1),
+                      {error, State}
+              end
       end
-    }.
+    }}.
 
-validate_storage(State, #{exec := #{address := Addr}} = Spec) ->
-    case Spec of
-	#{ post := Post} ->
-	    PostStorage =
-		case maps:get(Addr, Post, undefined) of
-		    undefined -> #{};
-		    #{storage := S} -> S
-		end,
-	    Storage = aevm_eeevm_state:storage(State),
-	    ?assertEqual(PostStorage, Storage);
-	_ -> true
+get_store(Address, State) ->
+    case State of
+        #{ Address := #{ storage := Store }} ->
+            aevm_eeevm_store:to_binary(#{ storage => Store});
+        _ -> #{}
     end.
+
+
+validate_no_post(#{post := _} = Spec) ->
+    error({should_have_succeeded, Spec});
+validate_no_post(#{}) ->
+    ok.
+
+validate_storage(State, #{exec := #{ address := Addr}} = Spec) ->
+    case Spec of
+        #{ post := Post} ->
+            PostStorage =
+            case maps:get(Addr, Post, undefined) of
+                undefined -> #{};
+                #{storage := S}  -> S
+            end,
+            Storage = aevm_eeevm_state:storage(State),
+            ?assertEqual(PostStorage, Storage);
+        _ -> true
+    end.
+
+validate_log(State, #{logs := Logs} =_Spec) ->
+    GeneratedLogs = aevm_eeevm_state:logs(State),
+    RLPLogs = evm_encode_log(GeneratedLogs, []),
+    ?assertEqual(Logs, logs_to_string( aec_hash:hash(evm,RLPLogs)));
+validate_log(_,_) -> true.
+
+evm_encode_log([], Acc) ->  aeu_rlp:encode(lists:reverse(Acc));
+evm_encode_log([{<<Address:256>>, Topics, Data}|Rest], Acc) ->
+    %% The EVM tests expects 160 bit addresses and
+    %% RLP expects tuples as lists.
+    evm_encode_log(Rest, [[<<Address:160>>, Topics, Data] | Acc]).
+
+
+logs_to_string(Logs) ->
+    aeu_hex:hexstring_encode(Logs).
+
 
 validate_out(State, #{out := SpecOut} =_Spec) ->
     Out  = aevm_eeevm_state:out(State),
@@ -103,10 +153,12 @@ validate_gas(_State, #{} =_Spec,_Opts) ->
     ok.
 
 validate_callcreates(State, #{callcreates := []} =_Spec) ->
-    Callcreates = aevm_eeevm_state:call(State),
-    ?assertEqual(0, maps:size(Callcreates));
-validate_callcreates(_State, #{callcreates := [_|_] =_CallcreatesSpec} =_Spec) ->
-    error(callcreates_nyi).
+    Callcreates = aevm_eeevm_state:callcreates(State),
+    ?assertEqual([], Callcreates);
+validate_callcreates(State, #{callcreates := CallcreatesSpec} =_Spec) ->
+    Callcreates = aevm_eeevm_state:callcreates(State),
+    ?assertEqual(CallcreatesSpec, Callcreates).
+
 
 %%--------------------------------------------------------------------
 %% Interfacing to aevm_eevm
@@ -115,16 +167,7 @@ init_state(Spec, Opts) ->
     aevm_eeevm_state:init(Spec, Opts).
 
 run_eeevm(State) ->
-    try aevm_eeevm:eval(State) of
-	NewState ->
-	    %% Executed to completion'
-	    NewState
-	    %% TODO: Possibly flag callouts here
-    catch throw:{Error, ErrorState} ->
-	    %% Handle execution exceptions gracefully here.
-	    io:format("Error ~p~n", [Error]),
-	    ErrorState
-    end.
+    aevm_eeevm:eval(State).
 
 %%--------------------------------------------------------------------
 %% Expanding the opts that is sent to the aevm_eeevm:run/1
@@ -159,7 +202,13 @@ get_config({DirPath, TestName,_Opts}) ->
     Bin    = get_config_file(DirPath, TestName),
     Json   = jsx:decode(Bin, [return_maps, {labels, attempt_atom}]),
     Config = build_config(Json),
-    maps:get(TestName, Config).
+    TestConfig = maps:get(TestName, Config),
+    DefaultEnv = #{ chainState => aevm_ethereum_test_chain:new_state(TestConfig)
+                  , chainAPI => aevm_ethereum_test_chain
+                  , vm_version => ?AEVM_01_Solidity_01
+                  },
+    maps:update_with(env, fun(Env) -> maps:merge(DefaultEnv, Env) end,
+                     TestConfig).
 
 get_config_file(DirPath, TestName) ->
     FileName = config_filename(DirPath, TestName),
@@ -270,7 +319,7 @@ config_structure() ->
                          }
            , callcreates => [#{ data => data_array
                               , destination => bin_int
-                              , gaslimit => bin_int
+                              , gasLimit => bin_int
                               , value => bin_int
                               }
                             ]

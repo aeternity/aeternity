@@ -1,0 +1,20 @@
+{application, aens,
+ [{description, "AE Naming System"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {applications,
+   [kernel,
+    stdlib,
+    lager,
+    crypto,
+    unicode_util_compat, %% to be removed, not needed in OTP 20
+    idna,
+    aetx,
+    sext
+   ]},
+  {env,[]},
+  {modules, []},
+  {maintainers, []},
+  {licenses, []},
+  {links, []}
+ ]}.

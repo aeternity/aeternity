@@ -1,0 +1,27 @@
+---
+peers:
+    - aenode://pp_HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@node1:3015
+    - aenode://pp_28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@node2:3015
+
+http:
+    external:
+        port: 3013
+    internal:
+        listen_address: 0.0.0.0
+
+keys:
+    peer_password: "top secret"
+    dir: ./keys
+
+chain:
+    persist: true
+
+mining:
+    beneficiary: "ak_25eTK8PaiLpREqBkP3yDNWJAwXjWSR8tbn3zu8SXaNx824A1AJ"
+    beneficiary_reward_delay: 2
+    autostart: true
+    cuckoo:
+        miner:
+            executable: mean15-generic
+            extra_args: ""
+            edge_bits: 15

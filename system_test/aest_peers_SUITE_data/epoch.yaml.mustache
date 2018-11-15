@@ -1,0 +1,38 @@
+{{#epoch_config}}
+---
+peers: {{^peers}}[]{{/peers}}
+{{#peers}}
+    - {{peer}}
+{{/peers}}
+
+sync:
+    port: {{services.sync.port}}
+    single_outbound_per_group: false
+    max_inbound: {{config.max_inbound}}
+    ping_interval: 5000
+
+http:
+    external:
+        port: {{services.ext_http.port}}
+    internal:
+        listen_address: 0.0.0.0
+        port: {{services.int_http.port}}
+    debug: true
+
+keys:
+    peer_password: {{key_password}}
+    dir: ./keys
+
+chain:
+    persist: true
+
+mining:
+    autostart: true
+    beneficiary: "ak_2VoAhMd7tVJrDYM5vPJwFRjueZyirDJumVJNeBWL9j1eNTHsRx"
+    micro_block_cycle: 100
+    cuckoo:
+        miner:
+            executable: mean15-generic
+            extra_args: ""
+            edge_bits: 15
+{{/epoch_config}}

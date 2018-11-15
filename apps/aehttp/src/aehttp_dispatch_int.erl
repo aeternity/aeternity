@@ -3,295 +3,487 @@
 -export([handle_request/3]).
 
 -import(aeu_debug, [pp/1]).
+-import(aehttp_helpers, [ get_block_from_chain/1
+                        , parse_map_to_atom_keys/0
+                        , read_required_params/1
+                        , read_optional_params/1
+                        , api_decode/1
+                        , get_nonce_from_account_id/1
+                        , get_contract_code/2
+                        , compute_contract_create_data/0
+                        , compute_contract_call_data/0
+                        , contract_call_input_funargs/1
+                        , verify_name/1
+                        , nameservice_pointers_decode/1
+                        , ttl_decode/1
+                        , relative_ttl_decode/1
+                        , verify_oracle_existence/1
+                        , verify_oracle_query_existence/2
+                        , poi_decode/1
+                        , contract_bytearray_params_decode/1
+                        , unsigned_tx_response/1
+                        , ok_response/1
+                        , process_request/2
+                        ]).
 
 -spec handle_request(
-        OperationID :: swagger_api:operation_id(),
-        Req :: cowboy_req:req(),
+        OperationID :: atom(),
+        Req :: map(),
         Context :: #{}
-                   ) -> {Status :: cowboy:http_status(), Headers :: cowboy:http_headers(), Body :: #{}}.
-
-handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
-    case get_local_pubkey_with_next_nonce() of
-        {ok, SenderPubkey, Nonce} ->
-            #{<<"recipient_pubkey">> := EncodedRecipientPubkey,
-              <<"amount">>           := Amount,
-              <<"fee">>              := Fee} = SpendTxObj,
-            {ok, SpendTx} =
-                aec_spend_tx:new(
-                  #{sender    => SenderPubkey,
-                    recipient => base64:decode(EncodedRecipientPubkey),
-                    amount    => Amount,
-                    fee       => Fee,
-                    nonce     => Nonce}),
-            sign_and_push_to_mempool(SpendTx),
-            {200, [], #{}};
-        {error, account_not_found} ->
-            {404, [], #{reason => <<"No funds in an account">>}};
-        {error, key_not_found} ->
-            {404, [], #{reason => <<"Keys not configured">>}}
-    end;
-
-handle_request('PostOracleRegisterTx', #{'OracleRegisterTx' := OracleRegisterTxObj}, _Context) ->
-    case get_local_pubkey_with_next_nonce() of
-        {ok, Pubkey, Nonce} ->
-            #{<<"query_format">>    := QueryFormat,
-              <<"response_format">> := ResponseFormat,
-              <<"query_fee">>       := QueryFee,
-              <<"fee">>             := Fee,
-              <<"ttl">>             := TTL} = OracleRegisterTxObj,
-            TTLType = binary_to_existing_atom(maps:get(<<"type">>, TTL), utf8),
-            TTLValue = maps:get(<<"value">>, TTL),
-            {ok, OracleRegisterTx} =
-                aeo_register_tx:new(
-                  #{account       => Pubkey,
-                    nonce         => Nonce,
-                    query_spec    => QueryFormat,
-                    response_spec => ResponseFormat,
-                    query_fee     => QueryFee,
-                    ttl           => {TTLType, TTLValue},
-                    fee           => Fee}),
-            sign_and_push_to_mempool(OracleRegisterTx),
-            {200, [], #{}};
-        {error, account_not_found} ->
-            {404, [], #{reason => <<"No funds in an account">>}};
-        {error, key_not_found} ->
-            {404, [], #{reason => <<"Keys not configured">>}}
-    end;
-
-handle_request('PostOracleQueryTx', #{'OracleQueryTx' := OracleQueryTxObj}, _Context) ->
-    case get_local_pubkey_with_next_nonce() of
-        {ok, Pubkey, Nonce} ->
-            #{<<"oracle_pubkey">> := EncodedOraclePubkey,
-              <<"query">>         := Query,
-              <<"query_fee">>     := QueryFee,
-              <<"query_ttl">>     := QueryTTL,
-              <<"response_ttl">>  :=
-                  #{<<"type">>    := <<"delta">>,
-                    <<"value">>   := ResponseTTLValue},
-              <<"fee">>           := Fee} = OracleQueryTxObj,
-            QueryTTLType = binary_to_existing_atom(maps:get(<<"type">>, QueryTTL), utf8),
-            QueryTTLValue= maps:get(<<"value">>, QueryTTL),
-            {ok, OracleQueryTx} =
-                aeo_query_tx:new(
-                  #{sender       => Pubkey,
-                    nonce        => Nonce,
-                    oracle       => base64:decode(EncodedOraclePubkey),
-                    query        => Query,
-                    query_fee    => QueryFee,
-                    query_ttl    => {QueryTTLType, QueryTTLValue},
-                    response_ttl => {delta, ResponseTTLValue},
-                    fee          => Fee}),
-            sign_and_push_to_mempool(OracleQueryTx),
-            {200, [], #{}};
-        {error, account_not_found} ->
-            {404, [], #{reason => <<"No funds in an account">>}};
-        {error, key_not_found} ->
-            {404, [], #{reason => <<"Keys not configured">>}}
-    end;
-
-handle_request('PostOracleResponseTx', #{'OracleResponseTx' := OracleResponseTxObj}, _Context) ->
-    case get_local_pubkey_with_next_nonce() of
-        {ok, Pubkey, Nonce} ->
-            #{<<"interaction_id">> := InteractionId,
-              <<"response">>       := Response,
-              <<"fee">>            := Fee} = OracleResponseTxObj,
-            {ok, OracleResponseTx} =
-                aeo_response_tx:new(
-                  #{oracle         => Pubkey,
-                    nonce          => Nonce,
-                    interaction_id => InteractionId,
-                    response       => Response,
-                    fee            => Fee}),
-            sign_and_push_to_mempool(OracleResponseTx),
-            {200, [], #{}};
-        {error, account_not_found} ->
-            {404, [], #{reason => <<"No funds in an account">>}};
-        {error, key_not_found} ->
-            {404, [], #{reason => <<"Keys not configured">>}}
-    end;
-
-handle_request('GetActiveRegisteredOracles', _Req, _Context) ->
-    %% TODO: Implement me
-    {501, [], #{}};
-
-handle_request('GetOracleQuestions', _Req, _Context) ->
-    %% TODO: Implement me
-    {501, [], #{}};
-
-handle_request('PostOracleSubscribe', _Req, _Context) ->
-    %% TODO: Implement me
-    {501, [], #{}};
-
-handle_request('PostOracleUnsubscribe', _Req, _Context) ->
-    %% TODO: Implement me
-    {501, [], #{}};
-
-handle_request('GetPubKey', _, _Context) ->
-    case aec_keys:pubkey() of
-        {ok, Pubkey} ->
-            {200, [], #{pub_key => base64:encode(Pubkey)}};
-        {error, key_not_found} ->
-            {404, [], #{reason => <<"Keys not configured">>}}
-    end;
-
-handle_request('GetBlockNumber', _Req, _Context) ->
-    TopHeader = aec_conductor:top_header(),
-    Height = aec_headers:height(TopHeader),
-    {200, [], #{height => Height}};
-
-handle_request('GetBlockByHeightInternal', Req, _Context) ->
-    Height = maps:get('height', Req),
-    get_block(fun() -> aec_conductor:get_block_by_height(Height) end, Req);
-
-handle_request('GetBlockByHashInternal', Req, _Context) ->
-    Hash =
-        try base64:decode(maps:get('hash', Req))
-              catch _:_ -> not_base64_encoded
-              end,
-    case Hash of
-        not_base64_encoded ->
-            {400, [], #{reason => <<"Invalid hash">>}};
-        _ ->
-            get_block(fun() -> aec_conductor:get_block_by_hash(Hash) end, Req)
-    end;
-
-handle_request('GetBlockGenesis', Req, _Context) ->
-    get_block(fun aec_conductor:genesis_block/0, Req);
-
-handle_request('GetBlockLatest', Req, _Context) ->
-    get_block(
-        fun() ->
-            TopBlock = aec_conductor:top(),
-            {ok, TopBlock}
-        end, Req);
-
-handle_request('GetBlockPending', Req, _Context) ->
-    get_block(fun aec_conductor:get_block_candidate/0, Req);
-
-handle_request('GetBlockTxsCountByHash', Req, _Context) ->
-    Hash =
-        try base64:decode(maps:get('hash', Req))
-              catch _:_ -> not_base64_encoded
-              end,
-    case Hash of
-        not_base64_encoded ->
-            {400, [], #{reason => <<"Invalid hash">>}};
-        _ ->
-            get_block_txs_count(fun() -> aec_conductor:get_block_by_hash(Hash) end)
-    end;
-
-handle_request('GetBlockTxsCountByHeight', Req, _Context) ->
-    Height = maps:get('height', Req),
-    get_block_txs_count(fun() -> aec_conductor:get_block_by_height(Height) end);
-
-handle_request('GetGenesisBlockTxsCount', _Req, _Context) ->
-    get_block_txs_count(fun aec_conductor:genesis_block/0);
-
-handle_request('GetLatestBlockTxsCount', _Req, _Context) ->
-    get_block_txs_count(
-        fun() ->
-            TopBlock = aec_conductor:top(),
-            {ok, TopBlock}
-        end);
-
-handle_request('GetPendingBlockTxsCount', _Req, _Context) ->
-    get_block_txs_count(fun aec_conductor:get_block_candidate/0);
-
+                   ) -> {Status :: cowboy:http_status(), Headers :: list(), Body :: map()}.
 
 handle_request(OperationID, Req, Context) ->
+    try aec_jobs_queues:run(http_update,
+                            fun() -> handle_request_(OperationID, Req, Context) end)
+    catch
+        error:{rejected, _} ->
+            {503, [], #{reason => <<"Temporary overload">>}}
+    end.
+
+handle_request_('PostKeyBlock', #{'KeyBlock' := Data}, _Context) ->
+    case aec_headers:deserialize_from_client(key, Data) of
+        {ok, Header} ->
+            KeyBlock = aec_blocks:new_key_from_header(Header),
+            case aec_conductor:post_block(KeyBlock) of
+                ok ->
+                    {200, [], #{}};
+                {error, _Rsn} ->
+                    {400, [], #{reason => <<"Block rejected">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid block">>}}
+    end;
+
+handle_request_('PostSpend', #{'SpendTx' := Req}, _Context) ->
+    AllowedRecipients = [account_pubkey, name, oracle_pubkey, contract_pubkey],
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([sender_id,
+                                       {recipient_id, recipient_id},
+                                        amount, fee, payload]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 api_decode([{sender_id, sender_id, {id_hash, [account_pubkey]}},
+                                {recipient_id, recipient_id,
+                                 {id_hash, AllowedRecipients}}]),
+                 get_nonce_from_account_id(sender_id),
+                 unsigned_tx_response(fun aec_spend_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('PostContractCreate', #{'ContractCreateTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([owner_id, code, vm_version, deposit,
+                                       amount, gas, gas_price, fee, call_data]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 api_decode([{owner_id, owner_id, {id_hash, [account_pubkey]}}]),
+                 get_nonce_from_account_id(owner_id),
+                 contract_bytearray_params_decode([code, call_data]),
+                 ok_response(
+                    fun(Data) ->
+                        {ok, Tx} = aect_create_tx:new(Data),
+                        {CB, CTx} = aetx:specialize_callback(Tx),
+                        ContractPubKey = CB:contract_pubkey(CTx),
+                        #{tx => aehttp_api_encoder:encode(transaction,
+                                                  aetx:serialize_to_binary(Tx)),
+                          contract_id =>
+                              aehttp_api_encoder:encode(contract_pubkey, ContractPubKey)
+                         }
+                    end)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('PostContractCreateCompute', #{'ContractCreateCompute' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([owner_id, code, vm_version, deposit,
+                                       amount, gas, gas_price, fee
+                                       ]),
+                 read_optional_params([{X, X, '$no_value'} || X <- [ttl, arguments, call]]),
+                 api_decode([{owner_id, owner_id, {id_hash, [account_pubkey]}}]),
+                 get_nonce_from_account_id(owner_id),
+                 contract_bytearray_params_decode([code]),
+                 compute_contract_create_data(),
+                 ok_response(
+                    fun(Data) ->
+                        {ok, Tx} = aect_create_tx:new(Data),
+                        {CB, CTx} = aetx:specialize_callback(Tx),
+                        ContractPubKey = CB:contract_pubkey(CTx),
+                        #{tx => aehttp_api_encoder:encode(transaction,
+                                                  aetx:serialize_to_binary(Tx)),
+                          contract_id =>
+                              aehttp_api_encoder:encode(contract_pubkey, ContractPubKey)
+                         }
+                    end)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('PostContractCall', #{'ContractCallTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([caller_id, contract_id, vm_version,
+                                       amount, gas, gas_price, fee, call_data]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 api_decode([{caller_id, caller_id, {id_hash, [account_pubkey]}},
+                                {contract_id, contract_id, {id_hash, [contract_pubkey]}}]),
+                 get_nonce_from_account_id(caller_id),
+                 get_contract_code(contract_id, contract_code),
+                 contract_bytearray_params_decode([call_data]),
+                 unsigned_tx_response(fun aect_call_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('PostContractCallCompute', #{'ContractCallCompute' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([caller_id, contract_id, vm_version,
+                                       amount, gas, gas_price, fee]),
+                 read_optional_params([{X, X, '$no_value'} || X <- [ttl, function, arguments, call]]),
+                 api_decode([{caller_id, caller_id, {id_hash, [account_pubkey]}},
+                                {contract_id, contract_id, {id_hash, [contract_pubkey]}}]),
+                 get_nonce_from_account_id(caller_id),
+                 get_contract_code(contract_id, contract_code),
+                 compute_contract_call_data(),
+                 unsigned_tx_response(fun aect_call_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('CompileContract', Req, _Context) ->
+    case Req of
+        #{'Contract' :=
+              #{ <<"code">> := Code
+               , <<"options">> := Options }} ->
+            %% TODO: Handle other languages
+            case aehttp_logic:contract_compile(Code, Options) of
+                 {ok, ByteCode} ->
+                     {200, [], #{bytecode => aehttp_api_encoder:encode(contract_bytearray, ByteCode)}};
+                 {error, ErrorMsg} ->
+                     {403, [], #{reason => ErrorMsg}}
+             end;
+        _ -> {403, [], #{reason => <<"Bad request">>}}
+    end;
+
+handle_request_('CallContract', Req, _Context) ->
+    case Req of
+        #{'ContractCallInput' :=
+              #{ <<"abi">> := ABI
+               , <<"code">> := Code } = Input} ->
+            case contract_call_input_funargs(Input) of
+                {ok, Function, Argument} ->
+                    case aehttp_logic:contract_call(ABI, Code, Function, Argument) of
+                        {ok, Result} ->
+                            {200, [], #{ out => Result}};
+                        {error, ErrorMsg} ->
+                            {403, [], #{reason => ErrorMsg}}
+                    end;
+                {error, Reason} ->
+                    {403, [], #{reason => <<"Bad request: ", Reason/binary>>}}
+            end;
+        _ -> {403, [], #{reason => <<"Bad request">>}}
+    end;
+
+handle_request_('DecodeData', Req, _Context) ->
+    case Req of
+        #{'SophiaBinaryData' :=
+              #{ <<"sophia-type">>  := Type
+               , <<"data">>  := Data
+               }} ->
+            case aehttp_logic:contract_decode_data(Type, Data) of
+                {ok, Result} ->
+                    {200, [], #{ data => Result}};
+                {error, ErrorMsg} ->
+                    {400, [], #{reason => ErrorMsg}}
+            end
+    end;
+
+handle_request_('EncodeCalldata', Req, _Context) ->
+    case Req of
+        #{'ContractCallInput' :=
+              #{ <<"abi">>  := ABI
+               , <<"code">> := EncodedCode
+               } = Input} ->
+            case contract_call_input_funargs(Input) of
+                {ok, Function, Argument} ->
+                    %% TODO: Handle other languages
+                    case aehttp_api_encoder:safe_decode(contract_bytearray, EncodedCode) of
+                        {ok, Code} ->
+                            case aehttp_logic:contract_encode_call_data(ABI, Code, Function, Argument) of
+                                {ok, Result} ->
+                                    {200, [], #{ calldata => Result}};
+                                {error, ErrorMsg} ->
+                                    {403, [], #{reason => ErrorMsg}}
+                            end;
+                        {error, _} -> {403, [], #{reason => <<"Bad request">>}}
+                    end;
+                {error, Reason} -> {403, [], #{reason => <<"Bad request: ", Reason/binary>>}}
+            end;
+        _ -> {403, [], #{reason => <<"Bad request">>}}
+    end;
+
+handle_request_('PostNamePreclaim', #{'NamePreclaimTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([account_id, commitment_id, fee]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 api_decode([{account_id, account_id, {id_hash, [account_pubkey]}},
+                                {commitment_id, commitment_id, {id_hash, [commitment]}}]),
+                 get_nonce_from_account_id(account_id),
+                 unsigned_tx_response(fun aens_preclaim_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('PostNameUpdate', #{'NameUpdateTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([account_id, name_id, name_ttl,
+                                       pointers, client_ttl, fee]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 api_decode([{account_id, account_id, {id_hash, [account_pubkey]}},
+                                {name_id, name_id, {id_hash, [name]}}]),
+                 nameservice_pointers_decode(pointers),
+                 get_nonce_from_account_id(account_id),
+                 unsigned_tx_response(fun aens_update_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('PostNameClaim', #{'NameClaimTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([account_id, name, name_salt, fee]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 api_decode([{account_id, account_id, {id_hash, [account_pubkey]}},
+                                {name, name, name}]),
+                 get_nonce_from_account_id(account_id),
+                 verify_name(name),
+                 unsigned_tx_response(fun aens_claim_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('PostNameTransfer', #{'NameTransferTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([account_id, name_id, recipient_id, fee]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 api_decode([{account_id, account_id, {id_hash, [account_pubkey]}},
+                                {recipient_id, recipient_id,
+                                 {id_hash, [account_pubkey, name]}},
+                                {name_id, name_id, {id_hash, [name]}}]),
+                 get_nonce_from_account_id(account_id),
+                 unsigned_tx_response(fun aens_transfer_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('PostNameRevoke', #{'NameRevokeTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([account_id, name_id, fee]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 api_decode([{account_id, account_id, {id_hash, [account_pubkey]}},
+                                {name_id, name_id, {id_hash, [name]}}]),
+                 get_nonce_from_account_id(account_id),
+                 unsigned_tx_response(fun aens_revoke_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('PostChannelCreate', #{'ChannelCreateTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([initiator_id, initiator_amount,
+                                       state_hash,
+                                       responder_id, responder_amount,
+                                       push_amount, channel_reserve,
+                                       lock_period, fee]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 api_decode([{initiator_id, initiator_id, {id_hash, [account_pubkey]}},
+                                {responder_id, responder_id, {id_hash, [account_pubkey]}},
+                                {state_hash, state_hash, state}
+                               ]),
+                 get_nonce_from_account_id(initiator_id),
+                 unsigned_tx_response(fun aesc_create_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('PostChannelDeposit', #{'ChannelDepositTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([channel_id, from_id,
+                                       amount, fee, state_hash, round, nonce]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 api_decode([{channel_id, channel_id, {id_hash, [channel]}},
+                                {from_id, from_id, {id_hash, [account_pubkey]}},
+                                {state_hash, state_hash, state}]),
+                 unsigned_tx_response(fun aesc_deposit_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('PostChannelWithdraw', #{'ChannelWithdrawTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([channel_id, to_id,
+                                       amount, fee, state_hash, round, nonce]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 api_decode([{channel_id, channel_id, {id_hash, [channel]}},
+                                {to_id, to_id, {id_hash, [account_pubkey]}},
+                                {state_hash, state_hash, state}]),
+                 unsigned_tx_response(fun aesc_withdraw_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('PostChannelSnapshotSolo', #{'ChannelSnapshotSoloTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([channel_id, from_id,
+                                       payload, fee]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 api_decode([{channel_id, channel_id, {id_hash, [channel]}},
+                                {from_id, from_id, {id_hash, [account_pubkey]}}]),
+                 get_nonce_from_account_id(from_id),
+                 unsigned_tx_response(fun aesc_snapshot_solo_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('PostChannelCloseMutual', #{'ChannelCloseMutualTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([channel_id, from_id,
+                                       initiator_amount_final,
+                                       responder_amount_final,
+                                       fee, nonce]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 api_decode([{channel_id, channel_id, {id_hash, [channel]}},
+                                {from_id, from_id, {id_hash, [account_pubkey]}}]),
+                 unsigned_tx_response(fun aesc_close_mutual_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('PostChannelCloseSolo', #{'ChannelCloseSoloTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([channel_id, from_id,
+                                       payload, poi, fee]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 api_decode([{channel_id, channel_id, {id_hash, [channel]}},
+                                {from_id, from_id, {id_hash, [account_pubkey]}},
+                                {poi, poi, poi}]),
+                 get_nonce_from_account_id(from_id),
+                 poi_decode(poi),
+                 unsigned_tx_response(fun aesc_close_solo_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('PostChannelSlash', #{'ChannelSlashTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([channel_id, from_id,
+                                       payload, poi, fee]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 api_decode([{channel_id, channel_id, {id_hash, [channel]}},
+                                {from_id, from_id, {id_hash, [account_pubkey]}},
+                                {poi, poi, poi}]),
+                 get_nonce_from_account_id(from_id),
+                 poi_decode(poi),
+                 unsigned_tx_response(fun aesc_slash_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('PostChannelSettle', #{'ChannelSettleTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([channel_id, from_id,
+                                       initiator_amount_final,
+                                       responder_amount_final,
+                                       fee, nonce]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 api_decode([{channel_id, channel_id, {id_hash, [channel]}},
+                                {from_id, from_id, {id_hash, [account_pubkey]}}]),
+                 unsigned_tx_response(fun aesc_settle_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([account_id, {query_format, query_format},
+                                       {response_format, response_format},
+                                       query_fee, oracle_ttl, fee]),
+                 read_optional_params([{ttl, ttl, '$no_value'}, {vm_version, vm_version, 0}]),
+                 api_decode([{account_id, account_id, {id_hash, [account_pubkey]}}]),
+                 get_nonce_from_account_id(account_id),
+                 ttl_decode(oracle_ttl),
+                 unsigned_tx_response(fun aeo_register_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('PostOracleExtend', #{'OracleExtendTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([oracle_id, oracle_ttl, fee]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 api_decode([{oracle_id, oracle_id, {id_hash, [oracle_pubkey]}}]),
+                 get_nonce_from_account_id(oracle_id),
+                 relative_ttl_decode(oracle_ttl),
+                 unsigned_tx_response(fun aeo_extend_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([sender_id, oracle_id, query,
+                                       query_fee, fee, query_ttl, response_ttl]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 api_decode([{sender_id, sender_id, {id_hash, [account_pubkey]}},
+                                {oracle_id, oracle_id, {id_hash, [oracle_pubkey]}}]),
+                 get_nonce_from_account_id(sender_id),
+                 ttl_decode(query_ttl),
+                 relative_ttl_decode(response_ttl),
+                 verify_oracle_existence(oracle_id),
+                 unsigned_tx_response(fun aeo_query_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('PostOracleRespond', #{'OracleRespondTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([oracle_id, query_id, response, response_ttl, fee]),
+                 read_optional_params([{ttl, ttl, '$no_value'}]),
+                 api_decode([{oracle_id, oracle_id, {id_hash, [oracle_pubkey]}},
+                                {query_id, query_id, oracle_query_id}]),
+                 get_nonce_from_account_id(oracle_id),
+                 relative_ttl_decode(response_ttl),
+                 verify_oracle_query_existence(oracle_id, query_id),
+                 unsigned_tx_response(fun aeo_response_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request_('GetNodeBeneficiary', _, _Context) ->
+    {ok, Pubkey} = aec_conductor:get_beneficiary(),
+    {200, [], #{pub_key => aehttp_api_encoder:encode(account_pubkey, Pubkey)}};
+
+handle_request_('GetNodePubkey', _, _Context) ->
+    case aec_keys:pubkey() of
+        {ok, Pubkey} ->
+            %% TODO: rename pub_key to pubkey
+            {200, [], #{pub_key => aehttp_api_encoder:encode(account_pubkey, Pubkey)}};
+        {error, key_not_found} ->
+            {404, [], #{reason => <<"Public key not found">>}}
+    end;
+
+handle_request_('GetCommitmentId', Req, _Context) ->
+    Name         = maps:get('name', Req),
+    Salt         = maps:get('salt', Req),
+    case aens:get_commitment_hash(Name, Salt) of
+        {ok, CHash} ->
+            EncodedCHash = aehttp_api_encoder:encode(commitment, CHash),
+            {200, [], #{commitment_id => EncodedCHash}};
+        {error, Reason} ->
+            ReasonBin = atom_to_binary(Reason, utf8),
+            {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>}}
+    end;
+
+handle_request_('GetPendingTransactions', _Req, _Context) ->
+    {ok, Txs} = aec_tx_pool:peek(infinity),
+    {200, [], #{transactions => [aetx_sign:serialize_for_client_pending(T) || T <- Txs]}};
+
+handle_request_('GetPeers', _Req, _Context) ->
+    case aeu_env:user_config_or_env([<<"http">>, <<"debug">>],
+                                    aehttp, enable_debug_endpoints, false) of
+        true ->
+            Peers = aehttp_logic:connected_peers(all),
+            InboundPeers = aehttp_logic:connected_peers(inbound),
+            OutboundPeers = aehttp_logic:connected_peers(outbound),
+            Blocked = aehttp_logic:blocked_peers(),
+
+            {200, [], #{peers => lists:map(fun aec_peers:encode_peer_address/1, Peers),
+                        inbound => lists:map(fun aec_peers:encode_peer_address/1, InboundPeers),
+                        outbound => lists:map(fun aec_peers:encode_peer_address/1, OutboundPeers),
+                        blocked => lists:map(fun aec_peers:encode_peer_address/1, Blocked)}};
+        false ->
+            {403, [], #{reason => <<"Call not enabled">>}}
+    end;
+
+handle_request_(OperationID, Req, Context) ->
     error_logger:error_msg(
       ">>> Got not implemented request to process: ~p~n",
       [{OperationID, Req, Context}]
      ),
     {501, [], #{}}.
 
-%% Internals
-
-get_local_pubkey_with_next_nonce() ->
-    case aec_keys:pubkey() of
-        {ok, Pubkey} ->
-            lager:debug("SenderPubKey matches ours"),
-            case aec_next_nonce:pick_for_account(Pubkey) of
-                {ok, Nonce} ->
-                    lager:debug("Nonce = ~p", [Nonce]),
-                    {ok, Pubkey, Nonce};
-                {error, account_not_found} = Error ->
-                    lager:debug("Account not found"),
-                    %% Account was not found in state trees
-                    %% so effectively there have been no funds
-                    %% ever granted to it.
-                    Error
-            end;
-        {error, key_not_found} = Error ->
-            Error
-    end.
-
-sign_and_push_to_mempool(Tx) ->
-    lager:debug("Tx = ~p", [pp(Tx)]),
-    {ok, SignedTx} = aec_keys:sign(Tx),
-    ok = aec_tx_pool:push(SignedTx),
-    lager:debug("pushed; peek() -> ~p",
-                [pp(aec_tx_pool:peek(10))]).
-
-get_block(Fun, Req) when is_function(Fun, 0) ->
-    case get_block_from_chain(Fun) of
-        {ok, Block} ->
-            TxObjects = read_optional_bool_param('tx_objects', Req, false),
-            %% swagger generated code expects the Resp to be proplist or map
-            %% and always runs jsx:encode/1 on it - even if it is already
-            %% encoded to a binary; that's why we use
-            %% aec_blocks:serialize_to_map/1 instead of
-            %% aec_blocks:serialize_for_network/1
-            {SerializeFun, DataSchema} =
-                case TxObjects of
-                    true ->
-                        {fun aec_blocks:serialize_client_readable/1, <<"BlockWithTxs">>};
-                    false ->
-                        {fun aec_blocks:serialize_to_map/1, <<"BlockWithTxsHashes">>}
-                end,
-            Resp0 = aehttp_dispatch_ext:cleanup_genesis(SerializeFun(Block)),
-            % we add swagger's definition name to the object so the
-            % result could be validated against the schema
-            Resp = Resp0#{data_schema => DataSchema},
-            lager:debug("Resp = ~p", [pp(Resp)]),
-            {200, [], Resp};
-        {_Code, _, _Reason} = Err ->
-            Err
-    end.
-
-get_block_txs_count(Fun) when is_function(Fun, 0) ->
-    case get_block_from_chain(Fun) of
-        {ok, Block} ->
-            {200, [], #{count => length(aec_blocks:txs(Block))}};
-        {_Code, _, _Reason} = Err ->
-            Err
-    end.
-
-get_block_from_chain(Fun) when is_function(Fun, 0) ->
-    case Fun() of
-        {ok, _Block} = OK->
-            OK;
-        {error, no_top_header} ->
-            {404, [], #{reason => <<"No top header">>}};
-        {error, block_not_found} ->
-            {404, [], #{reason => <<"Block not found">>}};
-        {error, chain_too_short} ->
-            {404, [], #{reason => <<"Chain too short">>}};
-        {error, miner_starting} ->
-            {404, [], #{reason => <<"Starting mining, pending block not available yet">>}};
-        {error, not_mining} ->
-            {404, [], #{reason => <<"Not mining, no pending block">>}}
-    end.
-
-
--spec read_optional_bool_param(atom(), map(), boolean()) -> boolean().
-read_optional_bool_param(Key, Req, Default) when Default =:= true
-                                          orelse Default =:= false ->
-    %% swagger does not take into consideration the 'default'
-    %% if a query param is missing, swagger adds it to Req with a value of
-    %% 'undefined' 
-    case maps:get(Key, Req) of 
-        undefined -> Default;
-        Bool when is_boolean(Bool) -> Bool
-    end.
-        

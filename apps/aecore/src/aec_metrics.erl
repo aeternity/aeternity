@@ -25,6 +25,7 @@
 %% start phase API
 -export([create_metrics_probes/0]).
 -export([start_reporters/0]).
+-export([prep_stop/1]).
 
 -include_lib("kernel/include/inet.hrl").
 -define(DEFAULT_PORT, 8125).  % default (dog-)statsd port
@@ -101,6 +102,15 @@ start_reporters() ->
         [{module, ?MODULE},
          {intervals, [{default, 10000}]},
          {report_bulk, true}])).
+
+prep_stop(State) ->
+    %% Use disable_reporter/1 instead of remove_reporter/1 since it's
+    %% synchronous. We want to avoid spurious errors due to termination
+    %% order.
+    expect(
+      ok, {?LINE, disable_reporter},
+      exometer_report:disable_reporter(aec_metrics_main)),
+    State.
 
 %%===================================================================
 %% exometer_report_logger callbacks
@@ -263,7 +273,7 @@ expect(Expected, Info, Other) ->
 
 init_statsd() ->
     %% copied from exometer_report_statsd
-    DefaultHost = default_host(),
+    DefaultHost = binary_to_list(default_host()),
     {{ok, Host},_} = {inet:gethostbyname(DefaultHost), DefaultHost},
     [IP|_]     = Host#hostent.h_addr_list,
     AddrType   = Host#hostent.h_addrtype,
@@ -330,7 +340,7 @@ default_host() ->
 
 gethostname() ->
     {ok, H} = inet:gethostname(),
-    H.
+    list_to_binary(H).
 
 default_port() ->
     aeu_env:user_config_or_env(

@@ -8,130 +8,122 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--include("common.hrl").
 -include("blocks.hrl").
--include("core_txs.hrl").
+
+-import(aec_blocks, [raw_key_block/0,
+                     raw_micro_block/0
+                    ]).
 
 -define(TEST_MODULE, aec_blocks).
-
-new_block_test_() ->
-    {setup,
-     fun() ->
-             meck:new(aec_txs_trees, [passthrough]),
-             meck:new(aec_trees, [passthrough]),
-             meck:expect(aec_txs_trees, from_txs, 1, fake_txs_tree),
-             meck:expect(
-               aec_txs_trees, root_hash,
-               fun(fake_txs_tree) ->
-                       {ok, <<"fake_txs_tree_hash">>}
-               end),
-             meck:expect(aec_trees, hash, 1, <<>>)
-     end,
-     fun(_) ->
-             ?assert(meck:validate(aec_txs_trees)),
-             ?assert(meck:validate(aec_trees)),
-             meck:unload(aec_txs_trees),
-             meck:unload(aec_trees)
-     end,
-     {"Generate new block with given txs and 0 nonce",
-      fun() ->
-              PrevBlock = #block{height = 11, target = 17},
-              BlockHeader = ?TEST_MODULE:to_header(PrevBlock),
-
-              NewBlock = ?TEST_MODULE:new(PrevBlock, [], aec_trees:new()),
-
-              ?assertEqual(12, ?TEST_MODULE:height(NewBlock)),
-              SerializedBlockHeader =
-                  aec_headers:serialize_for_hash(BlockHeader),
-              ?assertEqual(aec_sha256:hash(SerializedBlockHeader),
-                           ?TEST_MODULE:prev_hash(NewBlock)),
-              ?assertEqual(<<"fake_txs_tree_hash">>, NewBlock#block.txs_hash),
-              ?assertEqual([], NewBlock#block.txs),
-              ?assertEqual(17, NewBlock#block.target),
-              ?assertEqual(?PROTOCOL_VERSION, NewBlock#block.version)
-      end}}.
+-define(FAKE_TXS_TREE_HASH, <<42:?TXS_HASH_BYTES/unit:8>>).
 
 network_serialization_test_() ->
-    [{"Serialize/deserialize block",
+    [{"Serialize/deserialize block with min nonce",
       fun() ->
-             Block = #block{},
-             {ok, SerializedBlock} = ?TEST_MODULE:serialize_for_network(Block),
-             {ok, DeserializedBlock} =
-                 ?TEST_MODULE:deserialize_from_network(SerializedBlock),
-             ?assertEqual(Block, DeserializedBlock)
-     end},
-     {"Serialize/deserialize block with min nonce",
-      fun() ->
-              B = #block{nonce = 0},
-              {ok, SB} = ?TEST_MODULE:serialize_for_network(B),
-              ?assertEqual({ok, B}, ?TEST_MODULE:deserialize_from_network(SB))
+              B = aec_blocks:set_nonce(raw_key_block(), 0),
+              SB = #{} = ?TEST_MODULE:serialize_to_map(B),
+              ?assertEqual({ok, B}, ?TEST_MODULE:deserialize_from_map(SB))
       end
      },
      {"Serialize/deserialize block with max nonce",
       fun() ->
-              B = #block{nonce = ?MAX_NONCE},
-              {ok, SB} = ?TEST_MODULE:serialize_for_network(B),
-              ?assertEqual({ok, B}, ?TEST_MODULE:deserialize_from_network(SB))
+              B = aec_blocks:set_nonce(raw_key_block(), ?MAX_NONCE),
+              SB = #{} = ?TEST_MODULE:serialize_to_map(B),
+              ?assertEqual({ok, B}, ?TEST_MODULE:deserialize_from_map(SB))
       end
      },
      {"try to deserialize a blocks with out-of-range nonce",
       fun() ->
-             Block1 = #block{nonce = ?MAX_NONCE + 1},
-             {ok, SerializedBlock1} = ?TEST_MODULE:serialize_for_network(Block1),
-             ?assertEqual({error,bad_nonce},
-                          ?TEST_MODULE:deserialize_from_network(SerializedBlock1)),
+              Block1 = aec_blocks:set_nonce(raw_key_block(), ?MAX_NONCE + 1),
+              SerializedBlock1 = #{} = ?TEST_MODULE:serialize_to_map(Block1),
+              ?assertEqual({error,bad_nonce},
+                           ?TEST_MODULE:deserialize_from_map(SerializedBlock1)),
 
-             Block2 = #block{nonce = -1},
-             {ok, SerializedBlock2} = ?TEST_MODULE:serialize_for_network(Block2),
-             ?assertEqual({error,bad_nonce},
-                          ?TEST_MODULE:deserialize_from_network(SerializedBlock2))
+              Block2 = aec_blocks:set_nonce(raw_key_block(), -1),
+              SerializedBlock2 = #{} = ?TEST_MODULE:serialize_to_map(Block2),
+              ?assertEqual({error,bad_nonce},
+                           ?TEST_MODULE:deserialize_from_map(SerializedBlock2))
      end}].
 
 validate_test_() ->
     {setup,
-     fun aec_test_utils:aec_keys_setup/0,
-     fun aec_test_utils:aec_keys_cleanup/1,
-     [ {"Multiple coinbase txs in the block",
-        fun validate_test_multiple_coinbase/0}
-     , {"Malformed txs merkle tree hash",
+     fun() ->
+             TmpKeysDir = aec_test_utils:aec_keys_setup(),
+             meck:new(enacl, [passthrough]),
+             meck:expect(enacl, sign_verify_detached, 3, {ok, <<>>}),
+             meck:new(aec_chain, [passthrough]),
+             meck:expect(aec_chain, get_header, 1, error),
+             TmpKeysDir
+     end,
+     fun(TmpKeysDir) ->
+             ok = aec_test_utils:aec_keys_cleanup(TmpKeysDir),
+             meck:unload(aec_chain),
+             meck:unload(enacl)
+     end,
+     [ {"Malformed txs merkle tree hash",
         fun validate_test_malformed_txs_root_hash/0}
-     , {"Malformed tx signature",
-        fun validate_test_malformed_tx_signature/0}
-     , {"Pass validation",
+     , {"Pass validation - case no txs",
+        fun validate_test_pass_validation_no_txs/0}
+     , {"Pass validation - case some txs",
         fun validate_test_pass_validation/0}
      ]}.
 
-validate_test_multiple_coinbase() ->
-    SignedCoinbase = aec_test_utils:signed_coinbase_tx(),
-    Block = #block{txs = [SignedCoinbase, SignedCoinbase]},
-
-    ?assertEqual({error, multiple_coinbase_txs}, ?TEST_MODULE:validate(Block)).
-
 validate_test_malformed_txs_root_hash() ->
-    SignedCoinbase = aec_test_utils:signed_coinbase_tx(),
-    MalformedTxs = [SignedCoinbase, aec_tx_sign:sign(#coinbase_tx{account = <<"malformed_account">>}, <<"pubkey">>)],
+    SignedSpend =
+        aec_test_utils:signed_spend_tx(
+          #{recipient_id => aec_id:create(account, <<1:32/unit:8>>),
+            amount => 1,
+            fee => 1,
+            nonce => 1,
+            payload => <<>>}),
+
+    {ok, Spend} = aec_spend_tx:new(#{sender_id => aec_id:create(account, <<42:32/unit:8>>),
+                                     recipient_id => aec_id:create(account, <<4242:32/unit:8>>),
+                                     amount => 1,
+                                     fee => 1,
+                                     nonce => 1,
+                                     payload => <<>>}),
+    BadSignedSpend = aec_test_utils:sign_tx(Spend, <<0:64/unit:8>>),
+
+    MalformedTxs = [SignedSpend, BadSignedSpend],
     MalformedTree = aec_txs_trees:from_txs(MalformedTxs),
-    {ok, MalformedRootHash} = aec_txs_trees:root_hash(MalformedTree),
-    Block = #block{txs = [SignedCoinbase], txs_hash = MalformedRootHash},
+    {ok, MalformedTxsRootHash} = aec_txs_trees:root_hash(MalformedTree),
+    RawBlock = raw_micro_block(),
+    Block = aec_blocks:update_micro_candidate(
+              RawBlock, MalformedTxsRootHash,
+              aec_blocks:root_hash(RawBlock),
+              [SignedSpend]),
+    ?assertEqual({error, {block, malformed_txs_hash}},
+                 ?TEST_MODULE:validate_micro_block(Block)).
 
-    ?assertEqual({error, malformed_txs_hash}, ?TEST_MODULE:validate(Block)).
-
-validate_test_malformed_tx_signature() ->
-    SignedCoinbase = aec_test_utils:signed_coinbase_tx(),
-    Txs = [{signed_tx, aec_tx_sign:data(SignedCoinbase), []}],
+validate_test_pass_validation_no_txs() ->
+    Txs = [],
     Tree = aec_txs_trees:from_txs(Txs),
-    {ok, RootHash} = aec_txs_trees:root_hash(Tree),
-    Block = #block{txs = Txs, txs_hash = RootHash},
-
-    ?assertEqual({error, invalid_transaction_signature}, ?TEST_MODULE:validate(Block)).
+    TxsRootHash = aec_txs_trees:pad_empty(aec_txs_trees:root_hash(Tree)),
+    RawBlock = raw_micro_block(),
+    Block = aec_blocks:update_micro_candidate(
+              RawBlock, TxsRootHash,
+              aec_blocks:root_hash(RawBlock),
+              []),
+    ?assertEqual(ok, ?TEST_MODULE:validate_micro_block(Block)).
 
 validate_test_pass_validation() ->
-    SignedCoinbase = aec_test_utils:signed_coinbase_tx(),
-    Txs = [SignedCoinbase],
+    SignedSpend =
+        aec_test_utils:signed_spend_tx(
+          #{recipient_id => aec_id:create(account, <<1:32/unit:8>>),
+            amount => 1,
+            fee => 20000,
+            nonce => 1,
+            payload => <<>>}),
+    Txs = [SignedSpend],
     Tree = aec_txs_trees:from_txs(Txs),
-    {ok, RootHash} = aec_txs_trees:root_hash(Tree),
-    Block = #block{txs = Txs, txs_hash = RootHash},
+    {ok, TxsRootHash} = aec_txs_trees:root_hash(Tree),
+    RawBlock = raw_micro_block(),
+    Block = aec_blocks:update_micro_candidate(
+              RawBlock, TxsRootHash,
+              aec_blocks:root_hash(RawBlock),
+              Txs),
 
-    ?assertEqual(ok, ?TEST_MODULE:validate(Block)).
+    ?assertEqual(ok, ?TEST_MODULE:validate_micro_block(Block)).
 
 -endif.

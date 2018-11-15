@@ -13,11 +13,10 @@
         , size_in_words/1
         , store/3
         , store8/3
-	, write_area/3
+        , write_area/3
         ]).
 
 -include("aevm_eeevm.hrl").
--include("aevm_gas.hrl").
 
 %%====================================================================
 %% API
@@ -100,7 +99,7 @@ write_unaligned(Address, Value256, Mem) ->
     <<Pre:BitOffsetLow, _/bits>> = <<OldLow:256>>,
     <<_:BitOffsetLow, Post:BitOffsetHigh>> = <<OldHigh:256>>,
     <<NewLow:256, NewHigh:256>> =
-	<<Pre:BitOffsetLow, Value256:256, Post:BitOffsetHigh>>,
+        <<Pre:BitOffsetLow, Value256:256, Post:BitOffsetHigh>>,
     Mem1 = write(HighAligned, NewHigh, Mem),
     write(LowAligned, NewLow, Mem1).
 
@@ -117,16 +116,16 @@ read(Address, 1, Mem) ->
 read(Address, 32, Mem) ->
     AlignedAddress = (Address bor ?ALIGN256) - ?ALIGN256,
     case AlignedAddress =:= Address of
-	true -> %% Aligned.
-	    {maps:get(AlignedAddress , Mem, 0), extend(AlignedAddress, Mem)};
-	false -> %%
-	    Lo = maps:get(AlignedAddress , Mem, 0),
-	    Hi = maps:get(AlignedAddress+32 , Mem, 0),
-	    Offset = (Address - AlignedAddress)*8,
-	    HiBitsSize = ?WORDSIZE-Offset,
-	    <<_:Offset, HiBits:HiBitsSize>> = <<Lo:?WORDSIZE>>,
-	    LoBitsSize = Offset,
-	    <<LoBits:LoBitsSize, _:HiBitsSize>> = <<Hi:?WORDSIZE>>,
-	    <<Word:256>> = <<HiBits:HiBitsSize,LoBits:LoBitsSize>>,
-	    {Word, extend(AlignedAddress+32, Mem)}
+        true -> %% Aligned.
+            {maps:get(AlignedAddress , Mem, 0), extend(AlignedAddress, Mem)};
+        false -> %%
+            Lo = maps:get(AlignedAddress , Mem, 0),
+            Hi = maps:get(AlignedAddress+32 , Mem, 0),
+            Offset = (Address - AlignedAddress)*8,
+            HiBitsSize = ?WORDSIZE-Offset,
+            <<_:Offset, HiBits:HiBitsSize>> = <<Lo:?WORDSIZE>>,
+            LoBitsSize = Offset,
+            <<LoBits:LoBitsSize, _:HiBitsSize>> = <<Hi:?WORDSIZE>>,
+            <<Word:256>> = <<HiBits:HiBitsSize,LoBits:LoBitsSize>>,
+            {Word, extend(AlignedAddress+32, Mem)}
     end.

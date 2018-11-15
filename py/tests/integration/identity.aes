@@ -1,0 +1,4 @@
+
+contract Identity =
+  type state = ()
+  function main(x : int) = x

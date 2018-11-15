@@ -7,55 +7,101 @@
 
 %% API - similar to OTP `gb_trees` module
 -export([empty/0,
+         empty_with_backend/0,
          get/2,
          lookup/2,
+         new_with_backend/1,
          enter/2]).
 
 %% API - Merkle tree
 -export([root_hash/1,
-         lookup_with_proof/2,
-         verify_proof/3]).
+         commit_to_db/1
+        ]).
+
+-export([ from_binary_without_backend/1
+        , to_binary_without_backend/1
+        ]).
+
+%% API - Proof of inclusion
+-export([ add_poi/3
+        , verify_poi/3
+        , lookup_poi/2
+        ]).
+
+-ifdef(TEST).
+-export([delete/2]).
+-endif.
+
 
 %% API - misc
 -export([get_all_accounts_balances/1]).
 
 -export_type([tree/0]).
 
--include("common.hrl").
--include("trees.hrl").
-
--type key() :: pubkey().
+-type key() :: aec_keys:pubkey().
 -type value() :: aec_accounts:deterministic_account_binary_with_pubkey().
 -opaque tree() :: aeu_mtrees:mtree(key(), value()).
 
+-define(VSN, 1).
 %%%===================================================================
 %%% API - similar to OTP `gb_trees` module
 %%%===================================================================
-
 -spec empty() -> tree().
 empty() ->
     aeu_mtrees:empty().
 
--spec get(pubkey(), tree()) -> account().
-get(Pubkey, Tree) ->
-    #account{pubkey = Pubkey} = %% Hardcoded expectation.
-        aec_accounts:deserialize(aeu_mtrees:get(Pubkey, Tree)).
+-spec empty_with_backend() -> tree().
+empty_with_backend() ->
+    aeu_mtrees:empty_with_backend(aec_db_backends:accounts_backend()).
 
--spec lookup(pubkey(), tree()) -> none | {value, account()}.
+-spec new_with_backend(aeu_mtrees:root_hash() | 'empty') -> tree().
+new_with_backend(Hash) ->
+    aeu_mtrees:new_with_backend(Hash, aec_db_backends:accounts_backend()).
+
+-spec get(aec_keys:pubkey(), tree()) -> aec_accounts:account().
+get(Pubkey, Tree) ->
+    Account = aec_accounts:deserialize(Pubkey, aeu_mtrees:get(Pubkey, Tree)),
+    Pubkey  = aec_accounts:pubkey(Account), %% Hardcoded expectation.
+    Account.
+
+-spec lookup(aec_keys:pubkey(), tree()) -> none | {value, aec_accounts:account()}.
 lookup(Pubkey, Tree) ->
     case aeu_mtrees:lookup(Pubkey, Tree) of
         none ->
             none;
         {value, SerializedAccount} ->
-            Account =
-                #account{pubkey = Pubkey} = %% Hardcoded expectation.
-                aec_accounts:deserialize(SerializedAccount),
+            Account = aec_accounts:deserialize(Pubkey, SerializedAccount),
+            Pubkey  = aec_accounts:pubkey(Account), %% Hardcoded expectation.
             {value, Account}
     end.
 
--spec enter(account(), tree()) -> tree().
+-spec enter(aec_accounts:account(), tree()) -> tree().
 enter(Account, Tree) ->
     aeu_mtrees:enter(key(Account), value(Account), Tree).
+
+-dialyzer({nowarn_function, delete/2}).
+-spec delete(aec_keys:pubkey(), tree()) -> tree().
+delete(Pubkey, Tree) ->
+    aeu_mtrees:delete(Pubkey, Tree).
+
+-spec to_binary_without_backend(tree()) -> binary().
+to_binary_without_backend(Tree) ->
+    Bin = aeu_mtrees:serialize(Tree),
+    aec_object_serialization:serialize(
+        accounts_mtree,
+        ?VSN,
+        serialization_template(?VSN),
+        [{accounts, Bin}]).
+
+-spec from_binary_without_backend(binary()) -> tree().
+from_binary_without_backend(Bin) ->
+    [{accounts, AccountsBin}] =
+        aec_object_serialization:deserialize(accounts_mtree, ?VSN,
+                                             serialization_template(?VSN), Bin),
+    aeu_mtrees:deserialize(AccountsBin).
+
+serialization_template(?VSN) ->
+    [{accounts, binary}].
 
 %%%===================================================================
 %%% API - Merkle tree
@@ -65,35 +111,44 @@ enter(Account, Tree) ->
 root_hash(Tree) ->
     aeu_mtrees:root_hash(Tree).
 
--spec lookup_with_proof(pubkey(), tree()) ->
-                               none |
-                               {value_and_proof, account(), aeu_mtrees:proof()}.
-lookup_with_proof(Pubkey, Tree) ->
-    case aeu_mtrees:lookup_with_proof(Pubkey, Tree) of
-        none ->
-            none;
-        {value_and_proof, SerializedAccount, Proof} ->
-            Account =
-                #account{pubkey = Pubkey} = %% Hardcoded expectation.
-                aec_accounts:deserialize(SerializedAccount),
-            {value_and_proof, Account, Proof}
+-spec add_poi(aec_keys:pubkey(), tree(), aec_poi:poi()) ->
+                     {'ok', aec_poi:poi()}
+                         | {'error', 'not_present' | 'wrong_root_hash'}.
+add_poi(Pubkey, Tree, Poi) ->
+    aec_poi:add_poi(Pubkey, Tree, Poi).
+
+-spec verify_poi(aec_keys:pubkey(), aec_accounts:account(), aec_poi:poi()) ->
+                        'ok' | {'error', term()}.
+verify_poi(AccountKey, Account, Poi) ->
+    %% Hardcode expectation on specified account object key being
+    %% equal to key in internal representation of account.  The key is
+    %% not part of the account serialization so this shall never
+    %% happen.
+    AccountKey = aec_accounts:pubkey(Account),
+    aec_poi:verify(AccountKey, aec_accounts:serialize(Account), Poi).
+
+-spec lookup_poi(aec_keys:pubkey(), aec_poi:poi()) ->
+                        {'ok', aec_accounts:account()} | {'error', not_found}.
+lookup_poi(AccountKey, Poi) ->
+    case aec_poi:lookup(AccountKey, Poi) of
+        {ok, SerializedAccount} -> {ok, aec_accounts:deserialize(AccountKey, SerializedAccount)};
+        Err -> Err
     end.
 
--spec verify_proof(account(), aeu_mtrees:root_hash(), aeu_mtrees:proof()) ->
-                          {ok, verified} | {error, term()}.
-verify_proof(Account, RootHash, Proof) ->
-    aeu_mtrees:verify_proof(key(Account), value(Account), RootHash, Proof).
+-spec commit_to_db(tree()) -> tree().
+commit_to_db(Tree) ->
+    aeu_mtrees:commit_to_db(Tree).
 
 %%%===================================================================
 %%% API - misc
 %%%===================================================================
 
--spec get_all_accounts_balances(tree()) -> [{pubkey(), non_neg_integer()}].
+-spec get_all_accounts_balances(tree()) -> [{aec_keys:pubkey(), non_neg_integer()}].
 get_all_accounts_balances(AccountsTree) ->
     AccountsDump = aeu_mtrees:to_list(AccountsTree),
     lists:foldl(
       fun({Pubkey, SerializedAccount}, Acc) ->
-              Account = aec_accounts:deserialize(SerializedAccount),
+              Account = aec_accounts:deserialize(Pubkey, SerializedAccount),
               [{Pubkey, aec_accounts:balance(Account)} | Acc]
       end, [], AccountsDump).
 

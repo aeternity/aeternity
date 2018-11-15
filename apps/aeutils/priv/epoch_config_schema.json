@@ -5,12 +5,13 @@
     "properties" : {
         "peers" : {
             "description" :
-            "Pre-configured addresses of epoch nodes to contact",
+            "Pre-configured addresses of epoch nodes to contact. If not set TestNet seed peers will be used.",
             "type"  : "array",
             "items" : {
-                "type"    : "string",
-                "pattern": "^http://[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/$",
-                "example" : "http://somehost.somedomain:123/"
+                "type" : "string",
+                "description" : "Aeternity Node address",
+                "example" : "aenode://pp_ySU7cHqsymnuBP9iSe4rMnH1Rz2FStx5rnoewYMJcuPhdaqPk@192.168.1.1:3015",
+                "pattern": "^aenode://pp_[a-zA-Z0-9]+@[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/*$"
             }
         },
         "blocked_peers" : {
@@ -18,28 +19,118 @@
             "Pre-configured addresses of epoch nodes NOT to contact",
             "type"  : "array",
             "items" : {
-                "type"    : "string",
-                "pattern": "^http://[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/$",
-                "example" : "http://somehost.somedomain:123/"
+                "type" : "string",
+                "description" : "Aeternity Node address",
+                "example" : "aenode://pp_ySU7cHqsymnuBP9iSe4rMnH1Rz2FStx5rnoewYMJcuPhdaqPk@192.168.1.1:3015",
+                "pattern": "^aenode://pp_[a-zA-Z0-9]+@[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/*$"
+            }
+        },
+        "mempool" : {
+            "type" : "object",
+            "additionalProperties" : false,
+            "properties" : {
+                "tx_ttl" : {
+                    "description" : "Number of blocks before inactive TXs are garbage collected",
+                    "type" : "integer"
+                },
+                "invalid_tx_ttl" : {
+                    "description" : "Number of blocks before invalid (TTL or low nonce) TXs are garbage collected",
+                    "type" : "integer"
+                },
+                "sync_interval" : {
+                    "description" : "Interval between mempool (re-)synchronization (in ms)",
+                    "type" : "integer"
+                }
             }
         },
         "sync" : {
             "type" : "object",
             "additionalProperties" : false,
             "properties" : {
-                "ping_interval" : {
-                    "type" : "object",
-                    "additionalProperties" : false,
-                    "properties" : {
-                        "min" : {
-                            "description" : "Minimum ping interval (ms)",
-                            "type" : "integer"
+                "listen_address": {
+                          "description": "Listen address for external interface. This should be publicly accessible",
+                          "type": "string",
+                          "example": "0.0.0.0"
                         },
-                        "max" : {
-                            "description" : "Maximum ping interval (ms)",
-                            "type" : "integer"
-                        }
-                    }
+                "port" : {
+                    "description" : "Port used for (incoming) sync connections, must be reachable from the public facing IP",
+                    "type" : "integer"
+                },
+
+                "ping_interval" : {
+                    "description" : "Interval between pings (in ms)",
+                    "type" : "integer"
+                },
+                "external_port" : {
+                    "description" :
+                    "Listen port for external sync connections.",
+                    "type" : "integer"
+                },
+                "acceptors" : {
+                    "description" : "Number of acceptors in listening pool",
+                    "type" : "integer",
+                    "default": 10
+                },
+                "connect_timeout" : {
+                    "description" : "Connection timeout in miliseconds",
+                    "type" : "integer",
+                    "default": 1000
+                },
+                "first_ping_timeout" : {
+                    "description" : "Maximum time for receiving a ping in miliseconds",
+                    "type" : "integer",
+                    "default": 30000
+                },
+                "noise_hs_timeout" : {
+                    "description" : "Maximum time for noise handshake in miliseconds",
+                    "type" : "integer",
+                    "default": 5000
+                },
+                "close_timeout" : {
+                    "description" : "Maximum time for the peer to close a connection cleanly",
+                    "type" : "integer",
+                    "default": 3000
+                },
+                "max_inbound" : {
+                    "description" : "Maximum number of inbound connections after which inbound connections are temporary (only used for a single ping)",
+                    "type" : "integer",
+                    "default": 100
+                },
+                "max_inbound_hard" : {
+                    "description" : "Maximum number of inbound connections",
+                    "type" : "integer",
+                    "default": 1000
+                },
+                "max_outbound" : {
+                    "description" : "Maximum number of outbound connections",
+                    "type" : "integer",
+                    "default": 10
+                },
+                "single_outbound_per_group" : {
+                    "description" : "If the extra outbound connections should be to nodes from different address groups (IP netmask /16)",
+                    "type" : "boolean",
+                    "default": true
+                },
+                "resolver_max_retries": {
+                    "description" : "Maximum number of retries at resolving the host name of untrusted peers.",
+                    "type" : "integer",
+                    "minimum" : 0,
+                    "default" : 7
+                },
+                "resolver_backoff_times" : {
+                    "description" : "Waiting time intervals (milliseconds) before each retry at resolving the host name of peers (both trusted and untrusted). Retries further to the length of the array reuse the last item of the array.",
+                    "type" : "array",
+                    "minItems" : 1,
+                    "items" : {
+                        "type" : "integer",
+                        "minimum" : 1,
+                        "example" : 5000
+                    },
+                    "default" : [5000, 15000, 30000, 60000, 120000, 300000, 600000]
+                },
+                "gossip_allowed_height_from_top" : {
+                    "description": "Allowed height difference from current top for incoming blocks (via gossip)",
+                    "type" : "integer"
                 }
             }
         },
@@ -47,16 +138,56 @@
             "type" : "object",
             "additionalProperties" : false,
             "properties" : {
+                "cors" : {
+                    "type": "object",
+                    "description" : "Section for CORS headers configuration.",
+                    "additionalProperties": false,
+                    "properties": {
+                        "allow_domains": {
+                            "description": "List of domains that can access resources. Use '*' to allow all domains.",
+                            "type" : "array",
+                            "minItems" : 1,
+                            "items" : {
+                                "type" : "string",
+                                "example" : "https://example.com"
+                            },
+                            "default" : ["*"]
+                        },
+                        "allow_headers": {
+                            "description": "List of allowed headers to be used with requests (to be set in access-control-request-headers header in the response). Use '*' or do not set at all to allow all headers.",
+                            "type" : "array",
+                            "minItems" : 1,
+                            "items" : {
+                                "type" : "string",
+                                "example" : "Content-Type"
+                            },
+                            "default" : ["*"]
+                        },
+                        "allow_methods": {
+                            "description": "List of allowed methods allowed to be used when accessing resources (to be set in access-control-allow-methods header in the response).",
+                            "type" : "array",
+                            "minItems" : 1,
+                            "items" : {
+                                "type" : "string",
+                                "example" : "GET"
+                            },
+                            "default": ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+                        },
+                        "max_age": {
+                            "description" : "Indicates for how many seconds the results of a preflight request can be cached (to be set in access-control-max-age header in the response).",
+                            "type" : "integer",
+                            "default" : 1800
+                        }
+                    }
+                },
                 "external" : {
                     "type" : "object",
                     "additionalProperties" : false,
                     "properties" : {
-                        "peer_address" : {
-                            "description" :
-                            "The peer address that the node will present itself with. It must include scheme, host/ip and a port followed by a trailing slash",
-                            "type" : "string",
-                            "pattern": "^http://[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/$",
-                            "example" : "http://somehost.somedomain:123/"
+                        "listen_address": {
+                          "description": "Listen address for external interface. This should be publicly accessible",
+                          "type": "string",
+                          "example": "0.0.0.0"
                         },
                         "port" : {
                             "description" :
@@ -70,6 +201,11 @@
                         "connect_timeout" : {
                             "description" : "HTTP Request connect timeout.",
                             "type" : "integer"
+                        },
+                        "acceptors" : {
+                            "description" : "Number of acceptors in external pool",
+                            "type" : "integer",
+                            "default" : 10
                         }
                     }
                 },
@@ -77,12 +213,60 @@
                     "type" : "object",
                     "additionalProperties" : false,
                     "properties" : {
+                        "listen_address": {
+                          "description": "Listen address for internal interface. This should not be publicly accessible",
+                          "type": "string",
+                          "example": "127.0.0.1"
+                        },
                         "port" : {
                             "description" :
                             "Listen port for internal HTTP interface.",
                             "type" : "integer"
+                        },
+                        "acceptors" : {
+                            "description" : "Number of acceptors in internal pool",
+                            "type" : "integer",
+                            "default" : 10
                         }
                     }
+                },
+                "endpoints" : {
+                    "gossip" : {
+                        "description" : "Gossip protocol API",
+                        "type" : "boolean"
+                    },
+                    "name_service" : {
+                        "description" : "Name resolution API",
+                        "type" : "boolean"
+                    },
+                    "chain" : {
+                        "description" : "Chain state inspection endpoints",
+                        "type" : "boolean"
+                    },
+                    "transactions" : {
+                        "description" : "Transactions insection endpoints",
+                        "type" : "boolean"
+                    },
+                    "node_operator" : {
+                        "description" : "Node operator endpoints",
+                        "type" : "boolean"
+                    },
+                    "dev" : {
+                        "description" : "Development only API - for validation of client implementations. Should not be used in real life scenrios",
+                        "type" : "boolean"
+                    },
+                    "debug" : {
+                        "description" : "Debug endpoints",
+                        "type" : "boolean"
+                    },
+                    "obsolete" : {
+                        "description" : "Old endpoints that will be removed",
+                        "type" : "boolean"
+                    }
+                },
+                "debug" : {
+                    "description" : "Whether to enable the debug endpoints",
+                    "type" : "boolean"
                 }
             }
         },
@@ -90,18 +274,25 @@
             "type" : "object",
             "additionalProperties" : false,
             "properties" : {
-                "internal" : {
+                "channel" : {
                     "type" : "object",
                     "additionalProperties" : false,
                     "properties" : {
                         "port" : {
                             "description" :
-                            "Listen port for websocket interface.",
+                            "Listen port for channels websocket interface.",
                             "type" : "integer"
+                        },
+                        "listen_address": {
+                          "description": "Listen address for channels websocket interface.",
+                          "type": "string",
+                          "default": "127.0.0.1",
+                          "example": "0.0.0.0"
                         },
                         "acceptors" : {
                             "description" : "Number of acceptors in pool",
-                            "type" : "integer"
+                            "type" : "integer",
+                            "default" : 10
                         }
                     }
                 }
@@ -113,12 +304,12 @@
             "properties" : {
                 "dir"      : {
                     "description" :
-                    "Location (directory) of the public/private key pair",
+                    "Location (directory) of the public/private key pair(s)",
                     "type" : "string"
                 },
-                "password" : {
+                "peer_password" : {
                     "description" :
-                    "Password used to encrypt the key-pair files",
+                    "Password used to encrypt the peer key-pair files",
                     "type" : "string"
                 }
             }
@@ -135,12 +326,25 @@
                     "description" :
                     "The directory where the chain is persisted to disk.",
                     "type" : "string"
+                },
+                "hard_forks" : {
+                    "description" : "The consensus protocol versions with respective effective heights",
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "patternProperties" : {
+                        "^[1-9][0-9]*$": {
+                            "description" : "Minimum height at which protocol is effective",
+                            "type" : "integer",
+                            "minimum" : 0
+                        }
+                    }
                 }
             }
         },
         "mining" : {
             "type" : "object",
             "additionalProperties" : false,
+            "required" : ["beneficiary"],
             "properties" : {
                 "autostart" : {
                     "description" :
@@ -152,6 +356,31 @@
                     "Maximum time (milliseconds) for each attempt to mine a block with a specific nonce.",
                     "type" : "integer"
                 },
+                "beneficiary" : {
+                    "description" :
+                    "Public key of beneficiary account that will receive fees from mining on a node.",
+                    "type" : "string",
+                    "example" : "ak_DummyPubKeyDoNotEverUse999999999999999999999999999",
+                    "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*$"
+                },
+                "expected_mine_rate" : {
+                    "description" : "Expected mine rate (milliseconds) between blocks. Used in governance.",
+                    "type" : "integer",
+                    "default": 300000,
+                    "minimum" : 1
+                },
+                "micro_block_cycle" : {
+                    "description" : "Expected rate (milliseconds) between micro-blocks. Used in governance.",
+                    "type" : "integer",
+                    "default": 3000,
+                    "minimum" : 1
+                },
+                "beneficiary_reward_delay" : {
+                    "description" : "Delay (in key blocks / generations) for getting mining rewards. Used in governance.",
+                    "type" : "integer",
+                    "default": 180,
+                    "minimum" : 2
+                },
                 "cuckoo" : {
                     "type" : "object",
                     "additionalProperties" : false,
@@ -162,23 +391,32 @@
                             "required" : [
                                 "executable",
                                 "extra_args",
-                                "node_bits"
+                                "edge_bits"
                             ],
                             "properties" : {
                                 "executable" : {
-                                    "description" : "Executable binary of the miner. Options are: \"mean28s-generic\" (memory-intensive), \"mean28s-avx2\" (memory-intensive, benefits from faster CPU supporting AVX2 instructions), \"lean28\" (CPU-intensive, useful if memory-constrained).",
+                                    "description" : "Executable binary of the miner. Options are: \"mean29-generic\" (memory-intensive), \"mean29-avx2\" (memory-intensive, benefits from faster CPU supporting AVX2 instructions), \"lean29-generic\" (CPU-intensive, useful if memory-constrained), \"lean29-avx2\" (CPU-intensive, useful if memory-constrained, benefits from faster CPU supporting AVX2 instructions).",
                                     "type" : "string",
-                                    "default": "mean28s-generic"
+                                    "default": "mean29-generic"
                                 },
                                 "extra_args" : {
                                     "description" : "Extra arguments to pass to the miner executable binary. The safest choice is specifying no arguments i.e. empty string.",
                                     "type" : "string",
                                     "default": "-t 5"
                                 },
-                                "node_bits" : {
-                                    "description" : "Number of bits used for representing a node in the Cuckoo Cycle problem. It affects both PoW generation (mining) and verification. WARNING: Changing this makes the node incompatible with the chain of other nodes in the network, do not change from the default unless you know what you are doing.",
+                                "edge_bits" : {
+                                    "description" : "Number of bits used for representing an edge in the Cuckoo Cycle problem. It affects both PoW generation (mining) and verification. WARNING: Changing this makes the node incompatible with the chain of other nodes in the network, do not change from the default unless you know what you are doing.",
                                     "type": "integer",
-                                    "default": 28
+                                    "default": 30
+                                },
+                                "hex_encoded_header" : {
+                                    "description" : "Hexadecimal encode the header argument that is send to the miner executable. CUDA executables expect hex encoded header.",
+                                    "type": "boolean",
+                                    "default": false
+                                },
+                                "nice" : {
+                                    "description" : "Miner process priority (niceness) in a UNIX fashion. Higher `nice` means lower priority. Keep it unset to inherit parent process priority.",
+                                    "type": "integer"
                                 }
                             }
                         }
@@ -194,7 +432,14 @@
                     "description" :
                     "Controls the overload protection in the logs. Default=50.",
                     "type" : "integer",
-                    "minimum" : 50 }
+                    "minimum" : 50 },
+                "level"   : {
+                    "description" :
+                    "Sets the level of logging in the epoch, mining and cuckoo logs.",
+                    "type": "string",
+                    "enum" : [ "debug", "info", "warning", "error", "none" ],
+                    "default": "debug"
+                }
             }
         },
         "metrics" : {
@@ -255,6 +500,242 @@
                     }
                 }
             }
+        },
+        "load_levels" : {
+            "description" :
+            "Overload sampler configurations. These monitor potential pain points in the system for indications of overload.",
+            "type" : "object",
+            "additionalProperties" : false,
+            "properties" : {
+                "mempool" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "size" : {
+                            "description" :
+                            "Number of transactions in the mempool",
+                            "type" : "string",
+                            "$ref" : "#/definitions/key_value_pattern",
+                            "default" : "1000:1,2000:2,3000:3,4000:4"
+                        }
+                    }
+                }
+            }
+        },
+        "regulators" : {
+            "description" :
+            "Queues regulating the load in an epoch node. Each queue may have a combination of 'rate', 'counter', 'max_size' and 'max_time' parameters. Set a parameter to 0 if you want it to have no effect.",
+            "type" : "object",
+            "additionalProperties" : false,
+            "properties" : {
+                "sync_ping" : {
+                    "description" : "sync node pinger worker pool.",
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "counter" : {
+                            "type" : "integer",
+                            "default" : 3
+                        },
+                        "rate" : {
+                            "type" : "integer",
+                            "default" : 0
+                        },
+                        "max_size" : {
+                            "type" : "integer",
+                            "default" : 0
+                        },
+                        "max_time" : {
+                            "type" : "integer",
+                            "default" : 0
+                        }
+                    }
+                },
+                "sync_tasks" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "counter" : {
+                            "type" : "integer",
+                            "default" : 10
+                        },
+                        "rate" : {
+                            "type" : "integer",
+                            "default" : 0
+                        },
+                        "max_size" : {
+                            "type" : "integer",
+                            "default" : 0
+                        },
+                        "max_time" : {
+                            "type" : "integer",
+                            "default" : 0
+                        }
+                    }
+                },
+                "sync_gossip" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "counter" : {
+                            "type" : "integer",
+                            "default" : 5
+                        },
+                        "rate" : {
+                            "type" : "integer",
+                            "default" : 0
+                        },
+                        "max_size" : {
+                            "type" : "integer",
+                            "default" : 0
+                        },
+                        "max_time" : {
+                            "type" : "integer",
+                            "default" : 0
+                        }
+                    }
+                },
+                "tx_pool_push" : {
+                    "description" : "mempool updates.",
+                    "type" : "object",
+                    "additionalProperties": false,
+                    "properties" : {
+                        "counter" : {
+                            "type" : "integer",
+                            "default" : 5
+                        },
+                        "rate" : {
+                            "type" : "integer",
+                            "default" : 0
+                        },
+                        "max_size" : {
+                            "type" : "integer",
+                            "default" : 5000
+                        },
+                        "max_time" : {
+                            "type" : "integer",
+                            "default" : 0
+                        },
+                        "rate_modifiers" : {
+                            "type" : "string",
+                            "default" : "mempool.size: 10",
+                            "$ref" : "#/definitions/key_value_pattern"
+                        },
+                        "counter_modifiers" : {
+                            "type" : "string",
+                            "default" : "mempool.size: 15",
+                            "$ref" : "#/definitions/key_value_pattern"
+                        }
+                    }
+                },
+                "ws_handlers" : {
+                    "description" : "websocket handlers.",
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "counter" : {
+                            "type" : "integer",
+                            "default" : 10
+                        },
+                        "rate" : {
+                            "type" : "integer",
+                            "default" : 0
+                        },
+                        "max_size" : {
+                            "type" : "integer",
+                            "default" : 5
+                        },
+                        "max_time" : {
+                            "type" : "integer",
+                            "default" : 0
+                        }
+                    }
+                },
+                "sc_ws_handlers" : {
+                    "description" : "State channel websocket handlers.",
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "counter" : {
+                            "type" : "integer",
+                            "default" : 10
+                        },
+                        "rate" : {
+                            "type" : "integer",
+                            "default" : 0
+                        },
+                        "max_size" : {
+                            "type" : "integer",
+                            "default" : 5
+                        },
+                        "max_time" : {
+                            "type" : "integer",
+                            "default" : 0
+                        }
+                    }
+                },
+                "http_update" : {
+                    "description" : "HTTP update requests.",
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "counter" : {
+                            "type" : "integer",
+                            "default" : 5
+                        },
+                        "rate" : {
+                            "type" : "integer",
+                            "default" : 0
+                        },
+                        "max_size" : {
+                            "type" : "integer",
+                            "default" : 50
+                        },
+                        "max_time" : {
+                            "type" : "integer",
+                            "default" : 0
+                        }
+                    }
+                },
+                "http_read" : {
+                    "description" : "HTTP read requests.",
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "counter" : {
+                            "type" : "integer",
+                            "default" : 5
+                        },
+                        "rate" : {
+                            "type" : "integer",
+                            "default" : 0
+                        },
+                        "max_size" : {
+                            "type" : "integer",
+                            "default" : 100
+                        },
+                        "max_time" : {
+                            "type" : "integer",
+                            "default" : 0
+                        }
+                    }
+                }
+            }
+        },
+        "fork_management" : {
+            "type"    : "object",
+            "additionalProperties" : false,
+            "properties" : {
+                "network_id" : {
+                    "description" :
+                    "Identification of the network in case of hard forks.",
+                    "type" : "string"}
+            }
+        }
+    },
+    "definitions" : {
+        "key_value_pattern": {
+            "pattern" : "^[a-zA-Z0-9\\-_\\.]+\\h*:\\h*[0-9]+(\\h*,\\h*[a-zA-Z_]+\\h*:\\h*[0-9]+)*"
         }
     }
 }

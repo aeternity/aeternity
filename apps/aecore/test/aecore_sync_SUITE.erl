@@ -12,11 +12,11 @@
 %% test case exports
 -export(
    [
-    test_subscription/1,
     start_first_node/1,
     start_second_node/1,
     start_third_node/1,
     start_blocked_second/1,
+    mine_on_first_up_to_latest_consensus_protocol/1,
     mine_on_first/1,
     mine_on_second/1,
     mine_on_third/1,
@@ -25,11 +25,18 @@
     restart_second/1,
     restart_third/1,
     tx_first_pays_second/1,
+    tx_first_pays_second_more_it_can_afford/1,
     ensure_tx_pools_empty/1,
-    no_system_metrics_logged/1
+    ensure_tx_pools_one_tx/1,
+    report_metrics/1,
+    check_metrics_logged/1,
+    crash_syncing_worker/1,
+    large_msgs/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
+
+-import(aecore_suite_utils, [patron/0]).
 
 all() ->
     [ {group, all_nodes} ].
@@ -38,10 +45,13 @@ groups() ->
     [
      {all_nodes, [sequence], [{group, two_nodes},
                               {group, three_nodes},
-                              {group, one_blocked}]},
+                              {group, semantically_invalid_tx},
+                              {group, one_blocked},
+                              {group, large_msgs}
+                             ]},
      {two_nodes, [sequence],
       [start_first_node,
-       test_subscription,
+       mine_on_first_up_to_latest_consensus_protocol,
        mine_on_first,
        start_second_node,
        tx_first_pays_second,
@@ -51,10 +61,11 @@ groups() ->
        tx_first_pays_second,
        restart_second,
        restart_first,
-       no_system_metrics_logged]},
+       report_metrics,
+       check_metrics_logged,
+       crash_syncing_worker]},
      {three_nodes, [sequence],
       [start_first_node,
-       test_subscription,
        mine_on_first,
        start_second_node,
        start_third_node,
@@ -62,11 +73,25 @@ groups() ->
        mine_on_second,
        mine_on_third,
        restart_third,
-       no_system_metrics_logged]},
-      {one_blocked, [sequence],
-       [start_first_node,
-        mine_on_first,
-        start_blocked_second]}
+       report_metrics,
+       check_metrics_logged]},
+     {semantically_invalid_tx, [sequence],
+      [start_first_node,
+       mine_on_first_up_to_latest_consensus_protocol,
+       mine_on_first,
+       start_second_node,
+       mine_on_second, %% We need to make sure first
+       mine_on_second, %% doesn't get a delayed reward
+       ensure_tx_pools_empty,
+       tx_first_pays_second_more_it_can_afford,
+       mine_on_second,
+       ensure_tx_pools_one_tx]},
+     {one_blocked, [sequence],
+      [start_first_node,
+       mine_on_first,
+       start_blocked_second]},
+     {large_msgs, [sequence],
+      [large_msgs]}
     ].
 
 suite() ->
@@ -83,36 +108,80 @@ init_per_suite(Config) ->
     ct:log("Environment = ~p", [[{args, init:get_arguments()},
                                  {node, node()},
                                  {cookie, erlang:get_cookie()}]]),
-    %% sync suite should not log any system metrics
-    %% (not automatically verified yet)
-    DefCfg = #{<<"metrics">> =>
-                   #{<<"rules">> =>
-                         [#{<<"name">> => <<"ae.epoch.system.**">>,
-                            <<"actions">> => <<"none">>}]}},
-    aecore_suite_utils:create_configs(Config1, DefCfg, [{add_peers, true}]),
-    aecore_suite_utils:make_multi(Config1),
-    Config1.
+    Forks = aecore_suite_utils:forks(),
+    DefCfg = #{
+        <<"metrics">> => #{
+            <<"rules">> => [
+                #{<<"name">> => <<"ae.epoch.system.**">>,
+                  <<"actions">> => <<"log">>},
+                #{<<"name">> => <<"ae.epoch.aecore.**">>,
+                  <<"actions">> => <<"log,send">>}
+            ]
+        },
+        <<"chain">> => #{
+            <<"persist">> => true,
+            <<"hard_forks">> => Forks
+        },
+        <<"sync">> => #{
+            <<"single_outbound_per_group">> => false
+        },
+        <<"mempool">> => #{
+            <<"tx_ttl">> => 100
+        },
+        <<"mining">> => #{
+            <<"micro_block_cycle">> => 100
+        }
+    },
+    Config2 = aec_metrics_test_utils:make_port_map([dev1, dev2, dev3], Config1),
+    aecore_suite_utils:create_configs(Config2, DefCfg, [{add_peers, true}]),
+    aecore_suite_utils:make_multi(Config2),
+    Config2.
 
 end_per_suite(Config) ->
     stop_devs(Config).
 
-init_per_group(two_nodes, Config) ->
+init_per_group(TwoNodes, Config) when TwoNodes == two_nodes;
+        TwoNodes == semantically_invalid_tx; TwoNodes == large_msgs ->
     config({devs, [dev1, dev2]}, Config);
 init_per_group(three_nodes, Config) ->
     config({devs, [dev1, dev2, dev3]}, Config);
 init_per_group(one_blocked, Config) ->
     Config1 = config({devs, [dev1, dev2]}, Config),
-    preblock_second(Config1),
+    [Dev1, Dev2 | _] = proplists:get_value(devs, Config1),
+    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
+    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
+                                            [{block_peers, [ Dev2 ]},
+                                             {add_peers, true}
+                                            ]),
     Config1;
 init_per_group(_Group, Config) ->
     Config.
 
+end_per_group(one_blocked, Config) ->
+    ct:log("Metrics: ~p", [aec_metrics_test_utils:fetch_data()]),
+    aec_metrics_test_utils:stop_statsd_loggers(Config),
+    stop_devs(Config),
+    %% reset dev1 config to no longer block any peers.
+    Config1 = config({devs, [dev1]}, Config),
+    [Dev1 | _] = proplists:get_value(devs, Config1),
+    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
+    aecore_suite_utils:create_config(Dev1, Config,
+                                     maps:without([<<"blocked_peers">>], EpochCfg),
+                                     [{add_peers, true}]);
 end_per_group(_, Config) ->
+    ct:log("Metrics: ~p", [aec_metrics_test_utils:fetch_data()]),
+    aec_metrics_test_utils:stop_statsd_loggers(Config),
     stop_devs(Config).
 
 stop_devs(Config) ->
     Devs = proplists:get_value(devs, Config, []),
-    [ aecore_suite_utils:stop_node(Node, Config) || Node <- Devs ],
+    lists:foreach(
+        fun(Node) ->
+            {ok, DbCfg} = node_db_cfg(Node),
+            aecore_suite_utils:stop_node(Node, Config),
+            aecore_suite_utils:delete_node_db_if_persisted(DbCfg)
+        end,
+        Devs),
     ok.
 
 init_per_testcase(_Case, Config) ->
@@ -133,6 +202,7 @@ start_first_node(Config) ->
     [ Dev1 | _ ] = proplists:get_value(devs, Config),
     aecore_suite_utils:start_node(Dev1, Config),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(Dev1)),
+    ok = aecore_suite_utils:check_for_logs([dev1], Config),
     ok.
 
 start_second_node(Config) ->
@@ -142,8 +212,10 @@ start_second_node(Config) ->
     aecore_suite_utils:start_node(Dev2, Config),
     aecore_suite_utils:connect(N2),
     aecore_suite_utils:await_aehttp(N2),
-    ct:log("Peers on dev2: ~p", [rpc:call(N2, aec_peers, all, [], 5000)]),
-    B1 = rpc:call(N1, aec_conductor, top, [], 5000),
+    ct:log("Connected peers on dev2: ~p",
+           [rpc:call(N2, aec_peers, connected_peers, [], 5000)]),
+    B1 = rpc:call(N1, aec_chain, top_block, [], 5000),
+    ok = aecore_suite_utils:check_for_logs([dev2], Config),
     true = expect_block(N2, B1).
 
 start_third_node(Config) ->
@@ -153,99 +225,193 @@ start_third_node(Config) ->
     aecore_suite_utils:start_node(Dev3, Config),
     aecore_suite_utils:connect(N3),
     aecore_suite_utils:await_aehttp(N3),
-    ct:log("Peers on dev3: ~p", [rpc:call(N3, aec_peers, all, [], 5000)]),
+    ct:log("Connected peers on dev3: ~p",
+           [rpc:call(N3, aec_peers, connected_peers, [], 5000)]),
+    ok = aecore_suite_utils:check_for_logs([dev3], Config),
     true = expect_same(T0, Config).
 
-test_subscription(Config) ->
+mine_on_first_up_to_latest_consensus_protocol(Config) ->
     [ Dev1 | _ ] = proplists:get_value(devs, Config),
     N = aecore_suite_utils:node_name(Dev1),
-    aecore_suite_utils:subscribe(N, app_started),
-    Debug0 = aecore_suite_utils:call_proxy(N, debug),
-    ct:log("After subscription (~p, app_started): ~p", [self(), Debug0]),
-    true = rpc:call(N, setup, patch_app, [sasl], 5000),
-    {ok, _} = rpc:call(N, setup, reload_app, [sasl], 5000),
-    ok = rpc:call(N, application, start, [sasl], 5000),
-    receive
-        {app_started, #{info := sasl}} ->
-            ct:log("got app_started: sasl", []),
-            ok
-    after 1000 ->
-            Debug = aecore_suite_utils:call_proxy(N, debug),
-            Since = aecore_suite_utils:events_since(N, app_started, 0),
-            ct:log("Debug = ~p~n"
-                   "Since = ~p", [Debug, Since]),
-            ok
-    end.
+    aecore_suite_utils:mine_key_blocks(N, aecore_suite_utils:latest_fork_height()),
+    ok.
 
 mine_on_first(Config) ->
     [ Dev1 | _ ] = proplists:get_value(devs, Config),
     N = aecore_suite_utils:node_name(Dev1),
-    aecore_suite_utils:mine_blocks(N, 1),
+    aecore_suite_utils:mine_key_blocks(N, 3),
     ok.
 
 start_blocked_second(Config) ->
     [ Dev1, Dev2 | _ ] = proplists:get_value(devs, Config),
     N1 = aecore_suite_utils:node_name(Dev1),
     N2 = aecore_suite_utils:node_name(Dev2),
-    T0 = os:timestamp(),
     aecore_suite_utils:start_node(Dev2, Config),
     aecore_suite_utils:connect(N2),
     timer:sleep(2000),
-    ct:log("Peers on dev1: ~p", [rpc:call(N1, aec_peers, all, [], 5000)]),
-    ct:log("Unblocked peers on dev1: ~p",
-           [rpc:call(N1, aec_peers, get_random, [10], 5000)]),
-    await_sync_abort(T0, [N1, N2]).
+
+    %% Check that there is only one non-blocked peer (dev3) and no connected peers
+    NonBlocked = rpc:call(N1, aec_peers, get_random, [all], 5000),
+    Connected  = rpc:call(N1, aec_peers, connected_peers, [], 5000),
+    ct:log("Non-blocked peers on dev1: ~p", [NonBlocked]),
+    ct:log("Connected peers on dev1: ~p", [Connected]),
+    [] = Connected,
+    [_] = NonBlocked,
+
+    %% Also check that they have different top blocks
+    B1 = rpc:call(N1, aec_chain, top_block, [], 5000),
+    B2 = rpc:call(N2, aec_chain, top_block, [], 5000),
+    true = (B1 /= B2),
+
+    %% Unblock dev2 at dev1 and check that peers sync
+    rpc:call(N1, aec_peers, unblock_all, [], 5000),
+    expect_same_top([N1, N2], 5).
 
 tx_first_pays_second(Config) ->
+    tx_first_pays_second_(Config, fun(_) -> 1 end).
+
+tx_first_pays_second_more_it_can_afford(Config) ->
+    tx_first_pays_second_(Config, fun(Bal1) -> Bal1 + 1 end).
+
+tx_first_pays_second_(Config, AmountFun) ->
     [ Dev1, Dev2 | _ ] = proplists:get_value(devs, Config),
-    N1 = aecore_suite_utils:node_name(Dev1),
-    N2 = aecore_suite_utils:node_name(Dev2),
-    {ok, PK1} = get_pubkey(N1),
-    ct:log("PK1 = ~p", [PK1]),
-    {ok, PK2} = get_pubkey(N2),
-    {ok, Bal1} = get_balance(N1),
-    ct:log("Balance on dev1: ~p", [Bal1]),
+    NodeT1 = aecore_suite_utils:node_tuple(Dev1),
+    NodeT2 = aecore_suite_utils:node_tuple(Dev2),
+
+    PK1 = get_pubkey(NodeT1),
+    PK2 = get_pubkey(NodeT1),
+
+    Bal1 = get_balance_(NodeT1, PK1),
     true = (is_integer(Bal1) andalso Bal1 > 0),
-    {ok, Pool11} = get_pool(N1),
-    {ok, Pool21} = get_pool(N2),
+
+    {ok, Pool11} = get_pool(NodeT1),
+    {ok, Pool21} = get_pool(NodeT2),
     Pool11 = Pool21,                % tx pools are ordered
-    ok = new_tx(#{node1  => N1,
-                  node2  => N2,
-                  amount => 1,
-                  sender    => PK1,
-                  recipient => PK2,
-                  fee    => 1}),
-    {ok, Pool12} = get_pool(N1),
+
+    ok = new_tx(#{node1  => {PK1, NodeT1},
+                  node2  => {PK2, NodeT2},
+                  amount => AmountFun(Bal1),
+                  fee    => 20000}),
+
+    {ok, Pool12} = get_pool(NodeT1),
     [NewTx] = Pool12 -- Pool11,
-    true = ensure_new_tx(N2, NewTx).
+    true = ensure_new_tx(NodeT1, NewTx).
 
 ensure_tx_pools_empty(Config) ->
-    Ns = [N || {_,N} <- ?config(nodes, Config)],
+    ensure_tx_pools_n_txs_(Config, 0).
+
+ensure_tx_pools_one_tx(Config) ->
+    ensure_tx_pools_n_txs_(Config, 1).
+
+ensure_tx_pools_n_txs_(Config, TxsCount) ->
+    Nodes = ?config(nodes, Config),
     retry(
       fun() ->
-              Results = lists:map(
-                          fun(N) ->
-                                  {ok, Pool} = get_pool(N),
-                                  ct:log("Pool (~p) = ~p", [N, Pool]),
-                                  Pool
-                          end, Ns),
-              lists:all(fun([]) -> true;
-                           (_)  -> false
-                        end, Results)
-      end, {?LINE, ensure_tx_pools_empty, Ns}).
+              [APool | RestPools] =
+                  lists:map(
+                    fun(Node) ->
+                            case get_pool(Node) of
+                                {ok, Pool} when is_list(Pool) ->
+                                    ct:log("Pool (~p) = ~p", [Node, Pool]),
+                                    Pool
+                            end
+                    end, Nodes),
+              if
+                  length(APool) =:= TxsCount ->
+                      lists:all(fun(P) when P =:= APool -> true;
+                                   (_) -> false
+                                end, RestPools);
+                  true ->
+                      false
+              end
+      end, {?LINE, ensure_tx_pools_n_txs_, TxsCount, Nodes}).
 
-no_system_metrics_logged(Config) ->
+report_metrics(Config) ->
+    Ns = [N || {_, N} <- ?config(nodes, Config)],
+    [rpc:call(N, exometer_report, trigger_interval,
+              [aec_metrics_main, default]) || N <- Ns],
+    timer:sleep(1000).
+
+check_metrics_logged(Config) ->
+    %% No system metrics should have been sent to the 'statsd' ports.
+    check_no_system_metrics_sent(),
     %% a user config filter is applied in init_per_suite, which turns off
     %% metrics logging for "ae.epoch.system.**".
     Dir = aecore_suite_utils:shortcut_dir(Config),
     Cmd1 = ["grep peers ", Dir, "/dev?/log/epoch_metrics.log"],
-    Cmd2 = ["grep system ", Dir, "/dev?/log/epoch_metrics.log"],
+    Cmd2 = ["grep aecore ", Dir, "/dev?/log/epoch_metrics.log"],
     Res1 = aecore_suite_utils:cmd_res(aecore_suite_utils:cmd(Cmd1)),
     Res2 = aecore_suite_utils:cmd_res(aecore_suite_utils:cmd(Cmd2)),
     {[_|_], [], _} = Res1,
-    {[]   , [], _} = Res2,
+    {[_|_]   , [], _} = Res2,
     ok.
 
+check_no_system_metrics_sent() ->
+    lists:foreach(
+      fun({_Id, Data}) ->
+              [] = [Line || {_,L} = Line <- Data,
+                            nomatch =/= re:run(L, "^ae\\.epoch\\.system", [])]
+      end, aec_metrics_test_utils:fetch_data()).
+
+%% It takes about 300 ms to fetch the blocks from the other chain.
+%% In that interval we need to have the sync process crash
+%% We agressively look whether sync has started and kill a.s.a.p.
+crash_syncing_worker(Config) ->
+    [ Dev1, Dev2 | _ ] = proplists:get_value(devs, Config),
+    N1 = aecore_suite_utils:node_name(Dev1),
+    N2 = aecore_suite_utils:node_name(Dev2),
+    {ok, DbCfg} = node_db_cfg(Dev2),
+    aecore_suite_utils:delete_node_db_if_persisted(DbCfg),
+    aecore_suite_utils:stop_node(Dev2, Config),
+
+    %% Hotfix - make sure mempool is empty
+    aecore_suite_utils:mine_key_blocks(N1, 4),
+    {ok, []} = rpc:call(N1, aec_tx_pool, peek, [infinity], 5000),
+
+    Top1 = rpc:call(N1, aec_chain, top_block, [], 5000),
+    ct:log("top at Dev1 = ~p", [Top1]),
+    ExtraBlocks = 5,  %% Might need more if CPU is really fast!
+    aecore_suite_utils:mine_key_blocks(N1, ExtraBlocks),
+    H1 = aec_blocks:height(Top1) + ExtraBlocks,
+
+    %% Ensure compatible notation of uri:
+    {ok, PeerInfo} = aec_peers:parse_peer_address(aecore_suite_utils:peer_info(Dev1)),
+    PeerId = aec_peers:peer_id(PeerInfo),
+    ct:log("PeerId of Dev1 ~p", [PeerId]),
+
+    spawn_link(fun() -> kill_sync_worker(N2, PeerId) end),
+
+    aecore_suite_utils:start_node(Dev2, Config),
+    aecore_suite_utils:connect(N2),
+    ct:log("node connected ~p", [N2]),
+
+    %% Set the same mining_rate to validate target
+    %% Only needed when chain more than 10 blocks
+    ok = rpc:call(N2, application, set_env, [aecore, expected_mine_rate, 10], 5000),
+
+    %% Takes re-ping + fetching blocks to get in sync with Dev1
+    %% Configuration changed to have re-ping after 700ms.
+    timer:sleep(2000),
+    Top2 = rpc:call(N2, aec_chain, top_block, [], 5000),
+    ct:log("top at Dev2 = ~p", [Top2]),
+    {ok, B2} = rpc:call(N2, aec_chain, get_key_block_by_height, [H1], 5000),
+    ct:log("Block @ ~p on Dev2 = ~p", [ H1, B2]),
+
+    {ok, B2} = rpc:call(N1, aec_chain, get_key_block_by_height, [H1], 5000),
+    ok.
+
+kill_sync_worker(N, PeerId) ->
+    case rpc:call(N, aec_sync, worker_for_peer, [PeerId], 5000) of
+        false ->
+            timer:sleep(10),
+            kill_sync_worker(N, PeerId);
+        {badrpc, _} ->
+            timer:sleep(20),
+            kill_sync_worker(N, PeerId);
+        {ok, Pid} ->
+            exit(Pid, kill),
+            ct:log("killed worker ~p", [Pid])
+    end.
 
 mine_again_on_first(Config) ->
     mine_and_compare(aecore_suite_utils:node_name(dev1), Config).
@@ -264,7 +430,9 @@ restart_third(Config) ->
 
 restart_node(Nr, Config) ->
     Dev = lists:nth(Nr, proplists:get_value(devs, Config)),
+    {ok, DbCfg} = node_db_cfg(Dev),
     aecore_suite_utils:stop_node(Dev, Config),
+    aecore_suite_utils:delete_node_db_if_persisted(DbCfg),
     T0 = os:timestamp(),
     aecore_suite_utils:start_node(Dev, Config),
     N = aecore_suite_utils:node_name(Dev),
@@ -277,9 +445,16 @@ mine_on_third(Config) ->
 
 mine_and_compare(N1, Config) ->
     AllNodes = [N || {_, N} <- ?config(nodes, Config)],
-    PrevTop = rpc:call(N1, aec_conductor, top, [], 5000),
-    aecore_suite_utils:mine_blocks(N1, 1),
-    NewTop = rpc:call(N1, aec_conductor, top, [], 5000),
+    PrevTop = rpc:call(N1, aec_chain, top_block, [], 5000),
+    %% If there are txs in the mempool, there will be an additional micro block.
+    %% Micro blocks may result in micro forks, so we need to mine sufficiently many
+    %% blocks.
+    %% Better to use: aecore_suite_utils:mine_blocks_until_txs_on_chain/3, but
+    %% then we need to pass on the TxHashes... which this test structure does
+    %% make difficult.
+    {ok, [KeyBlock | _Blocks]} = aecore_suite_utils:mine_key_blocks(N1, 4),
+    true = aec_blocks:is_key_block(KeyBlock),
+    NewTop = rpc:call(N1, aec_chain, top_block, [], 5000),
     true = (NewTop =/= PrevTop),
     Bal1 = get_balance(N1),
     ct:log("Balance on dev1: ~p", [Bal1]),
@@ -290,76 +465,14 @@ mine_and_compare(N1, Config) ->
 
 expect_same(T0, Config) ->
     Nodes = [N || {_, N} <- ?config(nodes, Config)],
-    [aecore_suite_utils:subscribe(N, chain_sync) || N <- Nodes],
-    AllEvents = lists:flatten(
-                  [aecore_suite_utils:events_since(N, chain_sync, T0) || N <- Nodes]),
-    ct:log("AllEvents = ~p", [AllEvents]),
-    Nodes1 =
-        lists:foldl(
-          fun(Msg, Acc) ->
-                  check_sync_event(Msg, Acc)
-          end, Nodes, AllEvents),
-    ct:log("Nodes1 = ~p", [Nodes1]),
-    collect_sync_events(Nodes1),
+    aecore_suite_utils:await_sync_complete(T0, Nodes),
     expect_same_top(Nodes, 5),
     expect_same_tx(Nodes).
-
-collect_sync_events([]) ->
-    done;
-collect_sync_events(Nodes) ->
-    receive
-        {gproc_ps_event, chain_sync, Msg} ->
-            collect_sync_events(check_sync_event(Msg, Nodes))
-    after 20000 ->
-            ct:log("Timeout in collect_sync_events: ~p~n"
-                   "~p", [Nodes, process_info(self(), messages)]),
-            error(timeout)
-    end.
-
-check_sync_event(#{sender := From, info := Info}, Nodes) ->
-    case Info of
-        {E, _} when E =:= server_done; E =:= client_done ->
-            lists:delete(node(From), Nodes);
-        _ ->
-            Nodes
-    end.
-
-await_sync_abort(T0, Nodes) ->
-    [aecore_suite_utils:subscribe(N, chain_sync) || N <- Nodes],
-    AllEvents = lists:flatten(
-                  [aecore_suite_utils:events_since(N, chain_sync, T0) || N <- Nodes]),
-    Nodes1 =
-        lists:foldl(
-          fun(Msg, Acc) ->
-                  check_sync_abort_event(Msg, Acc)
-          end, Nodes, AllEvents),
-    ct:log("Nodes1 = ~p", [Nodes1]),
-    await_sync_abort_(Nodes1).
-
-await_sync_abort_([]) ->
-    ok;
-await_sync_abort_(Nodes) ->
-    receive
-        {gproc_ps_event, chain_sync, Msg} ->
-            await_sync_abort_(check_sync_abort_event(Msg, Nodes))
-    after 20000 ->
-            ct:log("Timeout in await_sync_abort: ~p~n"
-                   "~p", [Nodes, process_info(self(), messages)]),
-            error(timeout)
-    end.
-
-check_sync_abort_event(#{sender := From, info := Info}, Nodes) ->
-    case Info of
-        {sync_aborted, _} ->
-            lists:delete(node(From), Nodes);
-        _ ->
-            Nodes
-    end.
 
 expect_same_top(Nodes, Tries) when Tries > 0 ->
     Blocks = lists:map(
                fun(N) ->
-                       B = rpc:call(N, aec_conductor, top, [], 5000),
+                       B = rpc:call(N, aec_chain, top_block, [], 5000),
                        {N, B}
                end, Nodes),
     case lists:ukeysort(2, Blocks) of
@@ -396,6 +509,47 @@ expect_same_tx_(Nodes) ->
         _ -> false
     end.
 
+large_msgs(Config) ->
+    [ Dev1, Dev2 | _ ] = proplists:get_value(devs, Config),
+    N1 = aecore_suite_utils:node_name(Dev1),
+    N2 = aecore_suite_utils:node_name(Dev2),
+
+    aecore_suite_utils:start_node(Dev1, Config),
+    aecore_suite_utils:connect(aecore_suite_utils:node_name(Dev1)),
+
+    ok = rpc:call(N1, application, set_env, [aecore, block_gas_limit, 100000000]),
+
+    %% Insert enough transactions to make a large generation
+    Blob = fun(Size) -> << <<171:8>> || _ <- lists:seq(1, Size) >> end,
+    {ok, Tx1} = add_spend_tx(N1, 10, 1500000, 1, 100, Blob(16#ffff)),
+    aecore_suite_utils:mine_blocks_until_tx_on_chain(N1, Tx1, 10),
+
+    {ok, Tx2} = add_spend_tx(N1, 10, 3000000, 2, 100, Blob(16#1ffff)),
+    aecore_suite_utils:mine_blocks_until_tx_on_chain(N1, Tx2, 10),
+
+    {ok, Tx3} = add_spend_tx(N1, 10, 4000000, 3, 100, Blob(16#2ffff)),
+    aecore_suite_utils:mine_blocks_until_tx_on_chain(N1, Tx3, 10),
+
+    {ok, Tx4} = add_spend_tx(N1, 10, 8000000, 4, 100, Blob(16#5ffff)),
+    aecore_suite_utils:mine_blocks_until_tx_on_chain(N1, Tx4, 10),
+
+    {ok, Tx5} = add_spend_tx(N1, 10, 1500000, 5, 100, Blob(16#fce3)), %% Should exactly fit in one message
+    aecore_suite_utils:mine_blocks_until_tx_on_chain(N1, Tx5, 10),
+
+    {ok, Tx6} = add_spend_tx(N1, 10, 1500000, 6, 100, Blob(16#fce4)), %% Wee bit too large
+    aecore_suite_utils:mine_blocks_until_tx_on_chain(N1, Tx6, 10),
+
+    {ok, Tx7} = add_spend_tx(N1, 10, 3000000, 7, 100, Blob(16#1fcb8)), %% Even multiple of fragment size
+    aecore_suite_utils:mine_blocks_until_tx_on_chain(N1, Tx7, 10),
+
+    T0 = os:timestamp(),
+    aecore_suite_utils:start_node(Dev2, Config),
+    aecore_suite_utils:connect(N2),
+
+    ok = rpc:call(N2, application, set_env, [aecore, block_gas_limit, 10000000]),
+
+    true = expect_same(T0, Config).
+
 %% ==================================================
 %% Private functions
 %% ==================================================
@@ -405,7 +559,7 @@ expect_block(N, B) ->
           {?LINE, expect_block, N, B}).
 
 expect_block_(N, B) ->
-    Bn = rpc:call(N, aec_conductor, top, [], 5000),
+    Bn = rpc:call(N, aec_chain, top_block, [], 5000),
     case B =:= Bn of
         true ->
             Bal = get_balance(N),
@@ -443,55 +597,91 @@ retry_(_, S) ->
 %% Transaction support functions
 %% ============================================================
 
-get_pubkey(N) ->
-    rpc:call(N, aec_keys, pubkey, [], 5000).
+get_pubkey({NodeId, _}) ->
+    {_Priv, Pub} = aecore_suite_utils:sign_keys(NodeId),
+    Pub.
+
+get_balance_({_, NodeName}, Pubkey) ->
+    {_, Account} = rpc:call(NodeName, aec_chain, get_account, [Pubkey]),
+    aec_accounts:balance(Account).
+
+%%
 
 get_balance(N) ->
     rpc:call(N, aec_mining, get_miner_account_balance, [], 5000).
 
-get_pool(N) ->
-    rpc:call(N, aec_tx_pool, peek, [infinity], 5000).
+get_pool({_, Name}) ->
+    rpc:call(Name, aec_tx_pool, peek, [infinity], 5000).
 
-new_tx(#{node1 := N1, node2 := N2, amount := Am, fee := Fee} = M) ->
-    PK1 = maps_get(pk1, M, fun() -> ok(get_pubkey(N1)) end),
-    PK2 = maps_get(pk2, M, fun() -> ok(get_pubkey(N2)) end),
-    Port = rpc:call(N1, aeu_env, user_config_or_env, 
-                    [ [<<"http">>, <<"internal">>, <<"port">>], 
-                      aehttp, [internal, swagger_port], 8143], 5000),
-    Uri = aeu_requests:pp_uri({http, "127.0.0.1", Port}),
-    {ok, ok} = aeu_requests:new_spend_tx(
-                 Uri, #{sender_pubkey => PK1,
-                        recipient_pubkey => PK2,
-                        amount => Am,
-                        fee => Fee}),
+new_tx(#{node1 := {PK1, {_,N1} = T1}, node2 := {PK2, _}, amount := Am, fee := Fee} = _M) ->
+    ExtPort = rpc:call(N1, aeu_env, user_config_or_env,
+                       [ [<<"http">>, <<"external">>, <<"port">>],
+                         aehttp, [external, port], 8043], 5000),
+    IntPort = rpc:call(N1, aeu_env, user_config_or_env,
+                       [ [<<"http">>, <<"internal">>, <<"port">>],
+                         aehttp, [internal, port], 8143], 5000),
+    Params = #{sender_id => aehttp_api_encoder:encode(account_pubkey, PK1),
+               recipient_id => aehttp_api_encoder:encode(account_pubkey, PK2),
+               amount => Am,
+               fee => Fee,
+               payload => <<"foo">>},
+    %% It's internal API so ext_addr is not included here.
+    Cfg = [{ext_http, "http://127.0.0.1:" ++ integer_to_list(ExtPort)},
+           {int_http, "http://127.0.0.1:" ++ integer_to_list(IntPort)}],
+    ct:log(">>> PARAMS: ~p", [Params]),
+
+    {ok, 200, #{tx := SpendTx}} = aehttp_client:request('PostSpend', Params, Cfg),
+    SignedSpendTx = sign_tx(T1, SpendTx),
+    {ok, 200, _} = aehttp_client:request('PostTransaction', #{tx => SignedSpendTx}, Cfg),
     ok.
 
-ensure_new_tx(N, Tx) ->
-    retry(fun() -> ensure_new_tx_(N, Tx) end,
-          {?LINE, ensure_new_tx, N, Tx}).
+ensure_new_tx(T, Tx) ->
+    retry(fun() -> ensure_new_tx_(T, Tx) end,
+          {?LINE, ensure_new_tx, T, Tx}).
 
-ensure_new_tx_(N, Tx) ->
-    {ok, Txs} = get_pool(N),
+ensure_new_tx_(T, Tx) ->
+    {ok, Txs} = get_pool(T),
     lists:member(Tx, Txs).
 
-ok({ok, V}) ->
-    V.
-
-maps_get(K, #{} = M, Def) when is_function(Def, 0) ->
-    case maps:find(K, M) of
-        {ok, V} -> V;
-        error ->
-             Def()
-    end.
-
-preblock_second(Config) ->
-    [Dev1, Dev2 | _] = proplists:get_value(devs, Config),
-    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
-    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
-                                            [{block_peers, [ Dev2 ]},
-                                             {add_peers, true}
-                                            ]).
-
 config({devs, Devs}, Config) ->
-    [{devs, Devs}, {nodes, [aecore_suite_utils:node_tuple(Dev) || Dev <- Devs]} 
-     | Config].
+    aec_metrics_test_utils:start_statsd_loggers(
+      [{devs, Devs}, {nodes, [aecore_suite_utils:node_tuple(Dev)
+                              || Dev <- Devs]}
+       | Config]).
+
+node_db_cfg(Node) ->
+    {ok, DbCfg} = aecore_suite_utils:get_node_db_config(
+                    fun(M, F, A)->
+                        rpc:call(aecore_suite_utils:node_name(Node),
+                                  M, F, A, 5000)
+                    end),
+    {ok, DbCfg}.
+
+sign_tx(T, Tx) ->
+    {ok, TxDec} = aehttp_api_encoder:safe_decode(transaction, Tx),
+    UnsignedTx = aetx:deserialize_from_binary(TxDec),
+    {ok, SignedTx} = aecore_suite_utils:sign_on_node(T, UnsignedTx),
+    aehttp_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)).
+
+add_spend_tx(Node, Amount, Fee, Nonce, TTL, Payload) ->
+    add_spend_tx(Node, Amount, Fee, Nonce, TTL, Payload, patron(), new_pubkey()).
+
+add_spend_tx(Node, Amount, Fee, Nonce, TTL, Payload, Sender, Recipient) ->
+    SenderId = aec_id:create(account, maps:get(pubkey, Sender)),
+    RecipientId = aec_id:create(account, Recipient),
+    Params = #{ sender_id    => SenderId,
+                recipient_id => RecipientId,
+                amount       => Amount,
+                nonce        => Nonce,
+                ttl          => TTL,
+                payload      => Payload,
+                fee          => Fee },
+    {ok, Tx} = aec_spend_tx:new(Params),
+    STx = aec_test_utils:sign_tx(Tx, maps:get(privkey, Sender)),
+    Res = rpc:call(Node, aec_tx_pool, push, [STx]),
+    {Res, aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(STx))}.
+
+new_pubkey() ->
+    #{ public := PubKey } = enacl:sign_keypair(),
+    PubKey.
+

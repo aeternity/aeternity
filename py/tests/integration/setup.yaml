@@ -6,29 +6,25 @@ nodes:
     ports:
       external_api: 3013
       internal_api: 3113
-      internal_ws: 3114
   dev1:
     start: True
     host: localhost
     ports:
       external_api: 3013
       internal_api: 3113
-      internal_ws: 3114
   dev2:
     start: True
     host: localhost
     ports:
       external_api: 3023
       internal_api: 3123
-      internal_ws: 3124
   dev3:
     start: True
     host: localhost
     ports:
       external_api: 3033
       internal_api: 3133
-      internal_ws: 3134
-coinbase_reward: 10
+coinbase_reward: 10000000000000000000
 tests: # test specific settings
   test_use_cases:
     test_syncing:
@@ -45,7 +41,7 @@ tests: # test specific settings
       nodes:
         bob: dev1
       blocks_to_mine: 7
-    test_node_discovery:
+    test_node_discovery_transitively:
       # Assuming Carol's node only knows about Bob upon startup and that Bob's
       # node knows Alice, Carol's node should be able to discover Alice and
       # sync with her node.
@@ -53,25 +49,17 @@ tests: # test specific settings
         alice: dev1
         bob: dev2
         carol: dev3
-      blocks_to_mine: 7
-  test_spend_tx:
-    test_successful:
-      # Alice should be able to create a spend transaction to send tokens to
-      # Bob. In a controlled environment, Alice should see her transaction
-      # appear in the next block or two that are added to the blockchain. 
-      #
-      # Once that happens, Alice should see her account debited and Bob's
-      # account credited with the same number of tokens.
-      #
-      # The debit/credit should not happen until the transaction is confirmed,
-      # e.g. included in at least one block in the chain.
+      blocks_to_mine: 11
+    test_node_discovery_from_common_friend:
+      # Assuming Carol's node only knows about Bob upon startup and that Alice's
+      # node knows Bob, Carol's node should be able to discover Alice and
+      # sync with her node.
       nodes:
         alice: dev1
-      blocks_to_mine: 7
-      spend_tx:
-        bob_pubkey: Ym9iX2FkZHJlc3M= 
-        amount: 42
-        fee: 2
+        bob: dev2
+        carol: dev3
+      blocks_to_mine: 11
+  test_spend_tx:
     test_not_enough_tokens:
     # Bob should not be able to send more tokens than he has
     #
@@ -82,9 +70,89 @@ tests: # test specific settings
     # should not be able to use the incoming tokens until the spend transaction
     # they are in is confirmed.
       nodes:
-        bob: dev1
+        miner: dev1
       blocks_to_mine: 3
+      send_tokens:
+        alice: 1
+        bob: 100000
       spend_tx:
-        alice_pubkey: YWxpY2VfYWRkcmVzcw==
-        amount: 1000
-        fee: 20
+        small_amount: 1 # Added to tx fee, less than tokens that Bob has.
+        large_amount: 1000000000000000000000 # More than tokens that Bob has.
+        fee: 20000
+    test_send_by_name:
+    # Bob registers a name 'bob.test'
+    # Alice should be able to send tokens to Bob using that name
+      nodes:
+        miner: dev1
+      blocks_to_mine: 3
+      send_tokens:
+        alice: 1000000
+        bob: 1000000
+      name_register:
+        name: "bob.test"
+      spend_tx:
+        amount: 7
+  test_contracts:
+    test_compile_and_call_id:
+      nodes:
+        alice: dev1
+    test_encode_id_call:
+      nodes:
+        alice: dev1
+    test_id_call:
+      nodes:
+        alice: dev1
+  test_unsigned_tx:
+    test_contract_create:
+      nodes:
+        node: dev1
+      blocks_to_mine: 5
+      alice:
+        amount: 1000000
+        fee: 200000
+      create_contract:
+        vm_version: 1
+        deposit: 2
+        amount: 1
+        gas: 75000
+        gas_used: 193
+        gas_price: 1
+        fee: 200000
+        function: "init"
+        argument: "()"
+    test_contract_call:
+      nodes:
+        node: dev1
+      blocks_to_mine: 7
+      alice:
+        amount: 1000000
+        fee: 200000
+      contract_call:
+        vm_version: 1
+        fee: 500000
+        amount: 10
+        gas: 5500
+        gas_price: 1
+        data:
+          function: main
+          argument: "42"
+    test_spend:
+      nodes:
+        node: dev1
+      blocks_to_mine: 7
+      alice:
+        amount: 50000
+        fee: 20000
+      spend_tx:
+        amount: 13
+        fee: 20000
+        recipient: ak_kMPkyaK7Wqcwz2VFXaSzUREpNTnypUBXYz8mDL1BRGUFjYoZa
+  test_api_usage_contracts_counter:
+    miner_node: dev1
+    blocks_to_mine: 7
+    users:
+      a:
+        balance: 1000000
+      b:
+        balance: 1000000
+    min_spend_tx_fee: 20000

@@ -1,0 +1,939 @@
+version: 2
+
+references:
+  container_config: &container_config
+    docker:
+      - image: aeternity/builder
+        user: builder
+    working_directory: ~/epoch
+    environment:
+      # CircleCI supported versions: https://circleci.com/docs/2.0/building-docker-images/#docker-version
+      # Official docker versions: https://download.docker.com/linux/static/stable/x86_64/
+      DOCKERHUB_REPO: aeternity/epoch
+
+  infrastructure_config: &infrastructure_config
+    docker:
+      - image: aeternity/infrastructure
+    working_directory: ~/epoch
+    environment:
+      S3_BUILDS_BUCKET: aeternity-epoch-builds
+      S3_RELEASES_BUCKET: aeternity-epoch-releases
+
+  machine_config: &machine_config
+    machine:
+      docker_layer_caching: true
+    working_directory: ~/epoch
+    environment:
+      DOCKERHUB_REPO: aeternity/epoch
+
+  setup_remote_docker: &setup_remote_docker
+    setup_remote_docker:
+      docker_layer_caching: true
+      version: "17.09.0-ce"
+
+  prepare_ubuntu_user: &prepare_ubuntu_user
+    run:
+      name: Prepare ubuntu user (1000:1000) to run docker commands
+      command: |
+        sudo usermod -aG docker ubuntu
+        sudo chown -R ubuntu:ubuntu ~/epoch
+
+  install_os_deps: &install_os_deps
+    run:
+      name: Install OS dependancies
+      command: |
+        sudo apt-get -qq -y install git curl \
+          autoconf build-essential ncurses-dev libssl-dev
+
+  install_otp: &install_otp
+    run:
+      name: Install OTP
+      environment:
+        # See minimum_otp_vsn in rebar.config
+        OTP_VERSION: "20.1"
+      command: |
+        # Install OTP package deps
+        sudo apt-get update && sudo apt-get install libwxbase3.0-dev libwxgtk3.0-dev
+        # Install OTP binary package
+        PACKAGE_NAME=esl-erlang_${OTP_VERSION}-1~ubuntu~trusty_amd64.deb
+        OTP_DOWNLOAD_URL=https://packages.erlang-solutions.com/erlang/esl-erlang/FLAVOUR_1_general/${PACKAGE_NAME}
+        curl -fsSL -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"
+        sudo dpkg -i ${PACKAGE_NAME}
+
+  install_libsodium: &install_libsodium
+    run:
+      name: Install libsodium
+      environment:
+        LIBSODIUM_VERSION: "1.0.16"
+      # source: https://github.com/aeternity/docker-builder/blob/master/Dockerfile#L23
+      command: |
+        LIBSODIUM_DOWNLOAD_URL="https://github.com/jedisct1/libsodium/releases/download/${LIBSODIUM_VERSION}/libsodium-${LIBSODIUM_VERSION}.tar.gz" \
+          && curl -fsSL -o libsodium-src.tar.gz "$LIBSODIUM_DOWNLOAD_URL" \
+          && mkdir libsodium-src \
+          && tar -zxf libsodium-src.tar.gz -C libsodium-src --strip-components=1 \
+          && cd libsodium-src \
+          && ./configure && make -j$(nproc) && sudo make install && sudo ldconfig
+
+  rebar_cache_key: &rebar_cache_key rebar-cache-{{ checksum "rebar.lock" }}-{{ checksum "rebar.config" }}
+  restore_rebar_cache: &restore_rebar_cache
+    restore_cache:
+      key: *rebar_cache_key
+
+  build_cache_key: &build_cache_key build-cache-v1-{{ .Revision }}
+  restore_build_cache: &restore_build_cache
+    restore_cache:
+      key: *build_cache_key
+
+  machine_build_cache_key: &machine_build_cache_key machine-build-cache-v2-{{ .Branch }}-{{ .Revision }}
+  restore_machine_build_cache: &restore_machine_build_cache
+    restore_cache:
+      keys:
+        - *machine_build_cache_key
+        - machine-build-cache-v2-{{ .Branch }}-
+        - machine-build-cache-v2-master-
+        - machine-build-cache-v2-
+
+  save_machine_build_cache: &save_machine_build_cache
+    save_cache:
+      key: *machine_build_cache_key
+      paths:
+        - "_build"
+        - "apps/aecuckoo/c_src"
+        - "apps/aecuckoo/priv/bin"
+        - "apps/aecuckoo/priv/lib"
+
+  packages_workspace: &packages_workspace /tmp/packages
+  set_package_path: &set_package_path
+    run:
+      name: Set package path
+      environment:
+        PACKAGES_DIR: *packages_workspace
+      # construct and export PACKAGE_TARBALL environment variable available to all jobs
+      command: .circleci/set_package_path.sh
+
+  build_package: &build_package
+    run:
+      name: Build Package Tarball
+      environment:
+        PACKAGES_DIR: *packages_workspace
+      command: |
+        make prod-package
+        mkdir ${PACKAGES_DIR:?}
+        mv _build/prod/rel/epoch/epoch-$(cat VERSION).tar.gz ${PACKAGE_TARBALL:?}
+
+  package_tests_workspace: &package_tests_workspace /tmp/package_tests
+  test_package: &test_package
+    run:
+      name: Test Package Tarball
+      environment:
+        PACKAGES_DIR: *packages_workspace
+        PACKAGE_TESTS_DIR: *package_tests_workspace
+      command: |
+        epmd -daemon
+        make python-env
+        mkdir ${PACKAGE_TESTS_DIR:?}
+        make python-release-test WORKDIR=${PACKAGE_TESTS_DIR:?} TARBALL=${PACKAGE_TARBALL:?}
+
+  store_package_artifacts: &store_package_artifacts
+    store_artifacts:
+      path: *packages_workspace
+      destination: /
+
+  upload_release_artifacts: &upload_release_artifacts
+    run:
+      name: Upload release artifacts to central repository (AWS)
+      command: |
+        aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/
+        aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/epoch-latest-${PKG_SUFFIX:?}.tar.gz
+
+  setup_secrets: &setup_secrets
+    run:
+      name: Setup Secrets
+      command: echo "source /infrastructure/import-secrets.sh" >> $BASH_ENV
+
+  deploy_steps: &deploy_steps
+    - checkout
+    - *set_package_path
+    - attach_workspace:
+        at: *packages_workspace
+    - *setup_secrets
+    - run:
+        name: Deploy
+        environment:
+          PACKAGES_DIR: *packages_workspace
+        command: |
+          export PACKAGE=${PACKAGE_TARBALL:?}
+          export DEPLOY_DB_VERSION=$(cat deployment/DB_VERSION)
+          cd /infrastructure && make deploy
+
+  upload_github_release_asset: &upload_github_release_asset
+    run:
+      name: Upload GitHub Release Asset
+      environment:
+        PACKAGES_DIR: *packages_workspace
+      command: |
+        ./deployment/upload-github-release-assets.sh github_api_token=${GITHUB_API_TOKEN:?} \
+          owner=${CIRCLE_PROJECT_USERNAME} repo=${CIRCLE_PROJECT_REPONAME} \
+          tag=${CIRCLE_TAG} ASSETS=${PACKAGES_DIR:?}/*
+
+  fail_notification: &fail_notification
+    run:
+      name: Send failure notification
+      environment:
+        NOTIFY_BRANCH: master
+        HOOK_TEMPLATE: |
+          {
+            "text": "CircleCI job **%s** failed on branch **%s** by @%s",
+            "attachments": [
+              {
+                "title": "Build Link",
+                "title_link": "%s",
+                "color": "#FAD6D6"
+              }
+            ]
+          }
+      command: |
+        if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "${NOTIFY_BRANCH:?}" ]; then
+          HOOK_DATA=$(printf "$HOOK_TEMPLATE" "${CIRCLE_JOB:?}" "${CIRCLE_BRANCH:?}" "${CIRCLE_USERNAME:-unknown}" "${CIRCLE_BUILD_URL:?}")
+          curl -X POST -H 'Content-Type: application/json' ${ROCKET_HOOK_URL:?} --data "${HOOK_DATA:?}"
+        fi
+      when: on_fail
+
+  fail_notification_system_test: &fail_notification_system_test
+    run:
+      name: Send failure notification on system test
+      environment:
+        NOTIFY_BRANCH: master
+        HOOK_TEMPLATE: |
+          {
+            "text": "CircleCI job **%s** failed on branch **%s** by @%s",
+            "attachments": [
+              {
+                "title": "Build Link",
+                "title_link": "%s",
+                "color": "#FAD6D6"
+              }
+            ]
+          }
+      command: |
+        if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "${NOTIFY_BRANCH:?}" ]; then
+          HOOK_DATA=$(printf "$HOOK_TEMPLATE" "${CIRCLE_JOB:?}" "${CIRCLE_BRANCH:?}" "${CIRCLE_USERNAME:-unknown}" "${CIRCLE_BUILD_URL:?}")
+          curl -X POST -H 'Content-Type: application/json' ${ROCKET_HOOK_URL_SYSTEM_TEST:?} --data "${HOOK_DATA:?}"
+        fi
+      when: on_fail
+
+  docker_compose_build: &docker_compose_build
+    run:
+      name: Build latest docker image
+      command: |
+        IMAGE_TAG=${CIRCLE_BRANCH:?} docker-compose build node1
+
+  docker_compose_start: &docker_compose_start
+    run:
+      name: Create localnet with docker-compose
+      command: |
+        sudo -u ubuntu -E -H IMAGE_TAG=${CIRCLE_BRANCH:?} docker-compose up -d
+
+  docker_compose_healthcheck: &docker_compose_healthcheck
+    run:
+      name: Healthcheck
+      command: |
+        sleep 30 # give it some time to boot the tcp listeners
+        EXTERNAL_ADDRESS=localhost:3001 INTERNAL_ADDRESS=localhost:3001/internal ./docker/healthcheck.sh
+        EXTERNAL_ADDRESS=localhost:3002 INTERNAL_ADDRESS=localhost:3002/internal ./docker/healthcheck.sh
+        EXTERNAL_ADDRESS=localhost:3003 INTERNAL_ADDRESS=localhost:3003/internal ./docker/healthcheck.sh
+
+  docker_compose_logs: &docker_compose_logs
+    run:
+      name: Dump docker-compose logs
+      command: |
+        docker-compose logs
+      when: always
+
+  install_system_test_deps: &install_system_test_deps
+    run:
+      name: Build local docker image
+      command: |
+        docker build -t ${DOCKERHUB_REPO:?}:local .
+
+  system_test_logs: &system_test_logs system_test/logs
+
+  print_system_test_host_info: &print_system_test_host_info
+    run:
+      name: Print system test host information
+      command: |
+        uname -a
+        free -t -m
+
+  system_test_host_logs: &system_test_host_logs /tmp/system_test_host
+  collect_system_test_host_logs: &collect_system_test_host_logs
+    run:
+      name: Collect system test host logs
+      environment:
+        SYSTEM_TEST_HOST_LOGS_DIR: *system_test_host_logs
+      command: |
+        mkdir ${SYSTEM_TEST_HOST_LOGS_DIR:?}
+        dmesg > ${SYSTEM_TEST_HOST_LOGS_DIR:?}/dmesg.log
+      when: always
+
+jobs:
+  build:
+    <<: *container_config
+    steps:
+      - checkout
+      - *restore_rebar_cache
+      - run:
+          name: Build
+          command: ./rebar3 as test do release
+      - save_cache:
+          key: *build_cache_key
+          paths:
+            - "_build"
+            - "apps/aecuckoo/c_src"
+            - "apps/aecuckoo/priv/bin"
+            - "apps/aecuckoo/priv/lib"
+      - save_cache:
+          key: *rebar_cache_key
+          paths:
+            - .cache/rebar3
+      - *fail_notification
+
+  test:
+    <<: *container_config
+    parallelism: 2
+    steps:
+      - checkout
+      - *restore_rebar_cache
+      - *restore_build_cache
+      - run:
+          name: Test
+          command: |
+            epmd -daemon
+            make test CT_TEST_FLAGS="--suite=$(.circleci/split_suites.sh)"
+      # Isolates the junit.xml report because additional files in _build/test/logs
+      # are somehow causing issue with xunit report upload, parsing and merging
+      - run:
+          name: move test report
+          command: |
+            mkdir _build/test/reports
+            mv _build/test/logs/junit.xml _build/test/reports/
+      - store_test_results:
+          path: _build/test/reports
+      - store_artifacts:
+          path: _build/test/logs
+      - *fail_notification
+
+  eunit:
+    <<: *container_config
+    steps:
+      - checkout
+      - *restore_rebar_cache
+      - *restore_build_cache
+      - run:
+          name: Test
+          command: |
+            epmd -daemon
+            make eunit
+      - *fail_notification
+
+  aevm_tests:
+    <<: *container_config
+    steps:
+      - checkout
+      - *restore_rebar_cache
+      - *restore_build_cache
+      - run:
+          name: AEVM Tests
+          command: |
+            make aevm-test
+      - *fail_notification
+
+  static_analysis:
+    <<: *container_config
+    steps:
+      - checkout
+      - *restore_rebar_cache
+      - *restore_build_cache
+      - run: ./rebar3 edoc
+      - restore_cache:
+          keys:
+            - dialyzer-cache-v2-{{ .Branch }}-{{ .Revision }}
+            - dialyzer-cache-v2-{{ .Branch }}-
+            - dialyzer-cache-v2-
+      - run:
+          name: Update dialyzer PLT
+          command: make dialyzer-install
+      - save_cache:
+          key: dialyzer-cache-v2-{{ .Branch }}-{{ .Revision }}
+          paths:
+            - _build/default/rebar3_20.2.3_plt
+      - run: make dialyzer
+      - run: make python-env && make swagger-check
+      - run: ./rebar3 xref || true
+      - *fail_notification
+
+  rebar_lock_check:
+    <<: *container_config
+    steps:
+      - checkout
+      - run: make rebar-lock-check
+      - *fail_notification
+
+  linux_package:
+    <<: *container_config
+    steps:
+      - checkout
+      - *set_package_path
+      - *build_package
+      - *test_package
+      - store_artifacts:
+          path: /tmp/package_tests/node1/log
+      - store_artifacts:
+          path: /tmp/package_tests/node2/log
+      - store_artifacts:
+          path: /tmp/package_tests/node3/log
+      - *store_package_artifacts
+      - persist_to_workspace:
+          root: *packages_workspace
+          paths:
+            - "*.tar.gz"
+      - *fail_notification
+
+  upload_build_artifacts:
+    <<: *infrastructure_config
+    steps:
+      - checkout
+      - *set_package_path
+      - *setup_secrets
+      - attach_workspace:
+          at: *packages_workspace
+      - run:
+          name: Upload build artifacts to central repository (AWS)
+          command: |
+            aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/
+            if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "master" ]; then
+              aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/epoch-latest-${PKG_SUFFIX:?}.tar.gz
+            fi
+      - *fail_notification
+
+  deploy_api_docs:
+    <<: *container_config
+    steps:
+      - checkout
+      - run:
+          name: Deploy API docs
+          command: ./deployment/deploy_api_docs.sh
+
+  osx_package:
+    macos:
+      xcode: "9.0"
+    working_directory: ~/epoch
+    steps:
+      - checkout
+      - run:
+          name: Install required tools
+          command: |
+            brew update
+            brew install libsodium
+            brew install file://`pwd`/deployment/homebrew/erlang.rb
+      - *set_package_path
+      - *build_package
+      - *test_package
+      - store_artifacts:
+          path: /tmp/package_tests/node1/log
+      - store_artifacts:
+          path: /tmp/package_tests/node2/log
+      - store_artifacts:
+          path: /tmp/package_tests/node3/log
+      - *store_package_artifacts
+      - persist_to_workspace:
+          root: *packages_workspace
+          paths:
+            - "*.tar.gz"
+      - *fail_notification
+
+  uat_tests:
+    <<: *container_config
+    steps:
+      - checkout
+      - *restore_rebar_cache
+      - *restore_build_cache
+      - run:
+          name: UAT Tests
+          command: |
+            epmd -daemon
+            make python-env && make multi-build
+            make python-uats
+      - run:
+          name: Prepare JUnit Report
+          command: mv py/tests/nosetests.xml py/tests/junit.xml
+      - store_test_results:
+          path: py/tests
+      - store_artifacts:
+          path: _build/dev1/rel/epoch/log
+          destination: node1/
+      - store_artifacts:
+          path: _build/dev2/rel/epoch/log
+          destination: node2/
+      - store_artifacts:
+          path: _build/dev3/rel/epoch/log
+          destination: node3/
+      - *fail_notification
+
+  docker_smoke_tests:
+    <<: *machine_config
+    steps:
+      - checkout
+      - *prepare_ubuntu_user
+      - *docker_compose_build
+      - *docker_compose_start
+      - *docker_compose_healthcheck
+      - *docker_compose_logs
+
+  docker_test_push_master:
+    <<: *machine_config
+    steps:
+      - checkout
+      - *prepare_ubuntu_user
+      - *docker_compose_build
+      - *docker_compose_start
+      - *docker_compose_healthcheck
+      - *docker_compose_logs
+      - run:
+          name: Push Docker image to DockerHub
+          command: |
+            docker login -u $DOCKER_USER -p $DOCKER_PASS
+            docker push ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH:?}
+      - *fail_notification
+
+  docker_push_tag:
+    <<: *infrastructure_config
+    steps:
+      - checkout
+      - *setup_remote_docker
+      - run:
+          name: Build and push Docker image to DockerHub
+          command: |
+            docker login -u $DOCKER_USER -p $DOCKER_PASS
+            docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} -t ${DOCKERHUB_REPO:?}:latest .
+            docker push ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}
+            docker push ${DOCKERHUB_REPO:?}:latest
+
+  uat_chain_snapshot:
+    <<: *infrastructure_config
+    steps:
+      - *setup_secrets
+      - run:
+          name: Snapshot of UAT blockchain
+          environment:
+            - BACKUP_ENV: uat
+            - BACKUP_DIR: /tmp/chain_snapshots
+          command: |
+            export BACKUP_SUFFIX=uat_db_backup_$(date +%s)
+            cd /infrastructure && make mnesia_backup
+      - store_artifacts:
+          path: /tmp/chain_snapshots
+
+  docker_system_tests:
+    <<: *machine_config
+    steps:
+      - *print_system_test_host_info
+      - checkout
+      - *install_os_deps
+      - *install_otp
+      - *install_libsodium
+      - *restore_machine_build_cache
+      # keep user preparation step after cache restore because of perms
+      - *prepare_ubuntu_user
+      - *install_system_test_deps
+      - run:
+          name: System Tests
+          no_output_timeout: 2h
+          command: |
+            sudo -u ubuntu -E -H make system-test
+      - *collect_system_test_host_logs
+      - *fail_notification_system_test
+      - *save_machine_build_cache
+      - store_test_results:
+          path: *system_test_logs
+      - store_artifacts:
+          path: *system_test_logs
+      - store_artifacts:
+          path: *system_test_host_logs
+
+  docker_system_smoke_tests:
+    <<: *machine_config
+    steps:
+      - *print_system_test_host_info
+      - checkout
+      - *install_os_deps
+      - *install_otp
+      - *install_libsodium
+      - *restore_machine_build_cache
+      # keep user preparation step after cache restore because of perms
+      - *prepare_ubuntu_user
+      - *install_system_test_deps
+      - run:
+          name: System Smoke Tests
+          no_output_timeout: 1h
+          command: |
+            sudo -u ubuntu -E -H make smoke-test-run
+      - *collect_system_test_host_logs
+      - *fail_notification_system_test
+      - *save_machine_build_cache
+      - store_test_results:
+          path: *system_test_logs
+      - store_artifacts:
+          path: *system_test_logs
+      - store_artifacts:
+          path: *system_test_host_logs
+
+  deploy_integration:
+    <<: *infrastructure_config
+    environment:
+      - DEPLOY_ENV: integration
+      - DEPLOY_DOWNTIME: 900 #15M
+    steps: *deploy_steps
+
+  deploy_dev1:
+    <<: *infrastructure_config
+    environment:
+      - DEPLOY_ENV: dev1
+    steps: *deploy_steps
+
+  deploy_dev2:
+    <<: *infrastructure_config
+    environment:
+      - DEPLOY_ENV: dev2
+    steps: *deploy_steps
+
+  deploy_uat_blue:
+    <<: *infrastructure_config
+    environment:
+      - DEPLOY_ENV: uat
+      - DEPLOY_COLOR: blue
+      - DEPLOY_DOWNTIME: 1800 #30M
+    steps: *deploy_steps
+
+  deploy_uat_green:
+    <<: *infrastructure_config
+    environment:
+      - DEPLOY_ENV: uat
+      - DEPLOY_COLOR: green
+      - DEPLOY_DOWNTIME: 1800 #30M
+    steps: *deploy_steps
+
+  deploy_fast_integration:
+    <<: *infrastructure_config
+    environment:
+      - DEPLOY_ENV: fast_integration
+      - DEPLOY_DOWNTIME: 900 #15M
+    steps: *deploy_steps
+
+  upload_packages_osx:
+    <<: *infrastructure_config
+    steps:
+      - checkout
+      - attach_workspace:
+          at: *packages_workspace
+      - *setup_secrets
+      - *upload_github_release_asset
+
+  upload_packages_linux:
+    <<: *infrastructure_config
+    steps:
+      - checkout
+      - *set_package_path
+      - attach_workspace:
+          at: *packages_workspace
+      - *setup_secrets
+      - *upload_github_release_asset
+      - *upload_release_artifacts
+
+# CircleCI skips a job for a tag by default.
+# A job must have a filters tags section to run as a part of a tag push
+# and all its transitively dependent jobs must also have a filters tags section.
+workflows:
+  version: 2
+  build_test_deploy:
+    jobs:
+      - build:
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+            tags:
+              only: /^v.*$/
+
+      - docker_smoke_tests:
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - master
+
+      - deploy_api_docs:
+          requires:
+            - static_analysis
+            - rebar_lock_check
+            - hodl_green
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*$/
+
+      - docker_system_smoke_tests:
+          requires:
+            - docker_smoke_tests
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+
+      - test:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+
+      - eunit:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+            tags:
+              only: /^v.*$/
+
+      - aevm_tests:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+            tags:
+              only: /^v.*$/
+
+      - uat_tests:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+            tags:
+              only: /^v.*$/
+
+      - static_analysis:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+            tags:
+              only: /^v.*$/
+
+      - rebar_lock_check:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+            tags:
+              only: /^v.*$/
+
+      - linux_package:
+          filters:
+            tags:
+              only: /^v.*$/
+
+      - upload_build_artifacts:
+          requires:
+            - linux_package
+          filters:
+            tags:
+              only: /^v.*$/
+
+      - osx_package:
+          filters:
+            branches:
+              only: master
+            tags:
+              only: /^v.*$/
+
+      - deploy_integration:
+          requires:
+            - test
+            - eunit
+            - aevm_tests
+            - uat_tests
+            - static_analysis
+            - rebar_lock_check
+            - linux_package
+          filters:
+            branches:
+              only: master
+
+      - docker_test_push_master:
+          requires:
+            - test
+            - eunit
+            - aevm_tests
+            - uat_tests
+            - static_analysis
+            - rebar_lock_check
+          filters:
+            branches:
+              only: master
+
+      - deploy_dev1:
+          requires:
+            - linux_package
+          filters:
+            branches:
+              only: env/dev1
+
+      - deploy_dev2:
+          requires:
+            - linux_package
+          filters:
+            branches:
+              only: env/dev2
+
+      - hodl_blue:
+          type: approval
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*$/
+
+      - hodl_green:
+          type: approval
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*$/
+
+      - deploy_uat_blue:
+          requires:
+            - eunit
+            - static_analysis
+            - rebar_lock_check
+            - linux_package
+            - hodl_blue
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*$/
+
+      - deploy_uat_green:
+          requires:
+            - deploy_uat_blue
+            - hodl_green
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*$/
+
+      - upload_packages_linux:
+          requires:
+            - eunit
+            - static_analysis
+            - rebar_lock_check
+            - linux_package
+            - hodl_blue
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*$/
+
+      - upload_packages_osx:
+          requires:
+            - eunit
+            - static_analysis
+            - rebar_lock_check
+            - osx_package
+            - hodl_blue
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*$/
+
+      - docker_push_tag:
+          requires:
+            - eunit
+            - static_analysis
+            - rebar_lock_check
+            - hodl_blue
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*$/
+
+  chain_snapshots:
+    triggers:
+      - schedule:
+          # run At minute 0 past hour 0. UTC
+          cron: "0 0 * * *"
+          filters:
+            branches:
+              only:
+                - master
+    jobs:
+      - uat_chain_snapshot
+
+  nightly_fast_integration_deploy:
+    triggers:
+      - schedule:
+          cron: "0 23 * * *"
+          filters:
+            branches:
+              only:
+                - master
+    jobs:
+      - linux_package:
+          filters:
+            branches:
+              only: master
+
+      - deploy_fast_integration:
+          requires:
+            - linux_package
+          filters:
+            branches:
+              only: master
+
+  system_tests:
+    triggers:
+      - schedule:
+          # run at midnight and noon UTC
+          cron: "0 0,12 * * *"
+          filters:
+            branches:
+              only:
+                - master
+    jobs:
+      - docker_system_tests

@@ -5,6 +5,16 @@
 %%%    Using (as an independent OS process) the C/C++ Cuckoo Cycle implementation of
 %%%    John Tromp:  https://github.com/tromp/cuckoo
 %%%    White paper: https://github.com/tromp/cuckoo/blob/master/doc/cuckoo.pdf?raw=true
+%%%
+%%%    We use erlexec to start an OS process that runs this C code.
+%%%    The reasons for using erlexec over os:cmd are:
+%%%    -  os:cmd is insufficient because cuckoo miner program streams solutions on stdout as it finds them,
+%%%       while the program returns only when whole possibilities are explored.
+%%%       So integration with cuckoo needs to stream stdout.
+%%%    - Erlang port is closed implicitly by erlang VM closing stdin of spawned process, on the assumption
+%%%      that spawned program will eventual read from stdin and hence terminate.
+%%%      The cuckoo program does not read from stdin
+%%%
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aec_pow_cuckoo).
@@ -22,7 +32,7 @@
 -endif.
 -include("pow.hrl").
 
--define(DEFAULT_CUCKOO_ENV, {"mean28s-generic", "-t 5", 28}).
+-define(DEFAULT_CUCKOO_ENV, {"mean29-generic", "-t 5", 29, false}).
 
 -define(debug(F, A), epoch_pow_cuckoo:debug(F, A)).
 -define(info(F, A),  epoch_pow_cuckoo:info(F, A)).
@@ -58,23 +68,26 @@
 %%
 %%  Very slow below 3 threads, not improving significantly above 5, let us take 5.
 %%------------------------------------------------------------------------------
--spec generate(Data :: aec_sha256:hashable(), Target :: aec_pow:sci_int(),
+-spec generate(Data :: aec_hash:hashable(), Target :: aec_pow:sci_int(),
                Nonce :: aec_pow:nonce()) -> aec_pow:pow_result().
 generate(Data, Target, Nonce) when Nonce >= 0,
                                    Nonce =< ?MAX_NONCE ->
     %% Hash Data and convert the resulting binary to a base64 string for Cuckoo
-    Hash = aec_sha256:hash(Data),
+    %% Since this hash is purely internal, we don't use api encoding
+    Hash = aec_hash:hash(pow, Data),
+    ?debug("Generating solution for data hash ~p and nonce ~p with target ~p.",
+           [Hash, Nonce, Target]),
     generate_int(Hash, Nonce, Target).
 
 %%------------------------------------------------------------------------------
 %% Proof of Work verification (with difficulty check)
 %%------------------------------------------------------------------------------
--spec verify(Data :: aec_sha256:hashable(), Nonce :: aec_pow:nonce(),
+-spec verify(Data :: aec_hash:hashable(), Nonce :: aec_pow:nonce(),
              Evd :: aec_pow:pow_evidence(), Target :: aec_pow:sci_int()) ->
                     boolean().
 verify(Data, Nonce, Evd, Target) when is_list(Evd),
                                       Nonce >= 0, Nonce =< ?MAX_NONCE ->
-    Hash = aec_sha256:hash(Data),
+    Hash = aec_hash:hash(pow, Data),
     case test_target(Evd, Target) of
         true ->
             verify_proof(Hash, Nonce, Evd);
@@ -92,7 +105,7 @@ verify(Data, Nonce, Evd, Target) when is_list(Evd),
 %%------------------------------------------------------------------------------
 
 get_options() ->
-    {_, _, _} = aeu_env:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV).
+    {_, _, _, _} = aeu_env:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV).
 
 get_miner_options() ->
     case
@@ -103,17 +116,26 @@ get_miner_options() ->
         {{ok, BinB}, {ok, ExtraArgsB}} ->
             {binary_to_list(BinB), binary_to_list(ExtraArgsB)};
         {undefined, undefined} -> %% Both or neither - enforced by user config schema.
-            {Bin, ExtraArgs, _} = get_options(),
+            {Bin, ExtraArgs, _, _} = get_options(),
             {Bin, ExtraArgs}
     end.
 
-get_node_bits() ->
-    case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"node_bits">>]) of
-        {ok, NodeBits} ->
-            NodeBits;
+get_edge_bits() ->
+    case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"edge_bits">>]) of
+        {ok, EdgeBits} ->
+            EdgeBits;
         undefined ->
-            {_, _, NodeBits} = get_options(),
-            NodeBits
+            {_, _, EdgeBits, _} = get_options(),
+            EdgeBits
+    end.
+
+get_hex_encoded_header() ->
+    case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"hex_encoded_header">>]) of
+        {ok, HexEncodedHeader} ->
+            HexEncodedHeader;
+        undefined ->
+            {_, _, _, HexEncodedHeader} = get_options(),
+            HexEncodedHeader
     end.
 
 %%------------------------------------------------------------------------------
@@ -147,20 +169,30 @@ generate_int(Hash, Nonce, Target) ->
                           {'error', term()}.
 generate_int(Header, Target) ->
     {MinerBin, MinerExtraArgs} = get_miner_options(),
-    generate_int(Header, Target, MinerBin, MinerExtraArgs).
+    EncodedHeader =
+        case get_hex_encoded_header() of
+            true -> hex_string(Header);
+            false -> Header
+        end,
+    generate_int(EncodedHeader, Target, MinerBin, MinerExtraArgs).
 
 generate_int(Header, Target, MinerBin, MinerExtraArgs) ->
     BinDir = aecuckoo:bin_dir(),
-    Cmd = lists:concat([ld_lib_env(), " ",  "./", MinerBin,
+    Cmd = lists:concat(["./", MinerBin,
                         " -h ", Header, " ", MinerExtraArgs]),
     ?info("Executing cmd: ~p", [Cmd]),
     Old = process_flag(trap_exit, true),
-    try exec:run(Cmd,
-                 [{stdout, self()},
-                  {stderr, self()},
-                  {cd, BinDir},
-                  {env, [{"SHELL", "/bin/sh"}]},
-                  monitor]) of
+    DefaultOptions = [{stdout, self()},
+                      {stderr, self()},
+                      {cd, BinDir},
+                      {env, [{"SHELL", "/bin/sh"}]},
+                      monitor],
+    Options =
+      case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"nice">>]) of
+          {ok, Niceness} -> DefaultOptions ++ [{nice, Niceness}];
+          undefined -> DefaultOptions
+      end,
+    try exec:run(Cmd, Options) of
         {ok, _ErlPid, OsPid} ->
             wait_for_result(#state{os_pid = OsPid,
                                    buffer = [],
@@ -177,9 +209,14 @@ generate_int(Header, Target, MinerBin, MinerExtraArgs) ->
         end
     end.
 
+-spec hex_string(string()) -> string().
+hex_string(S) ->
+    Bin = list_to_binary(S),
+    lists:flatten([io_lib:format("~2.16.0B", [B]) || <<B:8>> <= Bin]).
+
 -define(POW_OK, ok).
--define(POW_TOO_BIG, {error, nonce_too_big}).
--define(POW_TOO_SMALL, {error, nonces_not_ascending}).
+-define(POW_TOO_BIG(Nonce), {error, {nonce_too_big, Nonce}}).
+-define(POW_TOO_SMALL(Nonce, PrevNonce), {error, {nonces_not_ascending, Nonce, PrevNonce}}).
 -define(POW_NON_MATCHING, {error, endpoints_do_not_match_up}).
 -define(POW_BRANCH, {error, branch_in_cycle}).
 -define(POW_DEAD_END, {error, cycle_dead_ends}).
@@ -194,16 +231,19 @@ generate_int(Header, Target, MinerBin, MinerExtraArgs) ->
 -spec verify_proof(Hash :: binary(), Nonce :: aec_pow:nonce(),
                    Solution :: aec_pow:pow_evidence()) -> boolean().
 verify_proof(Hash, Nonce, Solution) ->
-    verify_proof(Hash, Nonce, Solution, get_node_bits()).
+    verify_proof(Hash, Nonce, Solution, get_edge_bits()).
 
-verify_proof(Hash, Nonce, Solution, NodeBits) ->
+verify_proof(Hash, Nonce, Solution, EdgeBits) ->
     %% Cuckoo has an 80 byte header, we have to use that as well
     %% packed Hash + Nonce = 56 bytes, add 24 bytes of 0:s
     Header0 = pack_header_and_nonce(Hash, Nonce),
     Header = <<(list_to_binary(Header0))/binary, 0:(8*24)>>,
+    verify_proof_(Header, Solution, EdgeBits).
+
+verify_proof_(Header, Solution, EdgeBits) ->
     {K0, K1, K2, K3} = aeu_siphash24:create_keys(Header),
 
-    EdgeMask = (1 bsl (NodeBits - 1)) - 1,
+    EdgeMask = (1 bsl EdgeBits) - 1,
     try
         %% Generate Uv pairs representing endpoints by hashing the proof
         %% XOR points together: for a closed cycle they must match somewhere
@@ -211,9 +251,9 @@ verify_proof(Hash, Nonce, Solution, NodeBits) ->
         {Xor0, Xor1, _, Uvs} =
             lists:foldl(
               fun(N, _) when N > EdgeMask ->
-                      throw({?POW_TOO_BIG, N});
+                      throw(?POW_TOO_BIG(N));
                  (N, {_Xor0, _Xor1, PrevN, _Uvs}) when N =< PrevN ->
-                      throw({?POW_TOO_SMALL, N, PrevN});
+                      throw(?POW_TOO_SMALL(N, PrevN));
                  (N, {Xor0C, Xor1C, _PrevN, UvsC}) ->
                       Uv0 = sipnode(K0, K1, K2, K3, N, 0, EdgeMask),
                       Uv1 = sipnode(K0, K1, K2, K3, N, 1, EdgeMask),
@@ -287,6 +327,7 @@ find_node(X, [N1, N2 | Nodes], Acc) ->
 %% @doc
 %%   Creates the Cuckoo buffer (hex encoded) from a base64-encoded hash and a
 %%   uint64 nonce.
+%%   Since this hash is purely internal, we don't use api encoding.
 %% @end
 %%------------------------------------------------------------------------------
 -spec pack_header_and_nonce(binary(), aec_pow:nonce()) -> string().
@@ -314,19 +355,6 @@ pack_header_and_nonce(Hash, Nonce) when byte_size(Hash) == 32 ->
     %% we need only return the two base64 encoded strings concatenated.
     %% 44 + 12 = 56 bytes
     HashStr ++ NonceStr.
-
-%%------------------------------------------------------------------------------
-%% @doc
-%%   Prefix setting load path to command so that blake2b.so is found in priv/lib
-%% @end
-%%------------------------------------------------------------------------------
--spec ld_lib_env() -> string().
-ld_lib_env() ->
-    LdPathVar = case os:type() of
-                 {unix, darwin} -> "DYLD_LIBRARY_PATH";
-                 {unix, _}      -> "LD_LIBRARY_PATH"
-                end,
-    "env " ++ LdPathVar ++ "=../lib:$" ++ LdPathVar.
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -413,7 +441,7 @@ parse_generation_result(["Solution" ++ ValuesStr | Rest], #state{os_pid = OsPid,
             {ok, Soln};
         false ->
             %% failed to meet target: go on, we may find another solution
-            ?debug("Failed to meet target", []),
+            ?debug("Failed to meet target (~p)", [Target]),
             parse_generation_result(Rest, State)
     end;
 parse_generation_result([Msg | T], State) ->
@@ -445,14 +473,14 @@ stop_execution(OsPid) ->
 %%------------------------------------------------------------------------------
 -spec get_node_size() -> non_neg_integer().
 get_node_size() ->
-    node_size(get_node_bits()).
+    node_size(get_edge_bits()).
 
 %% Refs:
 %% * https://github.com/tromp/cuckoo/blob/488c03f5dbbfdac6d2d3a7e1d0746c9a7dafc48f/src/Makefile#L214-L215
 %% * https://github.com/tromp/cuckoo/blob/488c03f5dbbfdac6d2d3a7e1d0746c9a7dafc48f/src/cuckoo.h#L26-L30
 -spec node_size(non_neg_integer()) -> non_neg_integer().
-node_size(NodeBits) when is_integer(NodeBits), NodeBits > 32 -> 8;
-node_size(NodeBits) when is_integer(NodeBits), NodeBits >  0 -> 4.
+node_size(EdgeBits) when is_integer(EdgeBits), EdgeBits > 31 -> 8;
+node_size(EdgeBits) when is_integer(EdgeBits), EdgeBits >  0 -> 4.
 
 %%------------------------------------------------------------------------------
 %% White paper, section 9: rather than adjusting the nodes/edges ratio, a
@@ -466,7 +494,7 @@ test_target(Soln, Target) ->
 
 test_target(Soln, Target, NodeSize) ->
     Bin = solution_to_binary(lists:sort(Soln), NodeSize * 8, <<>>),
-    Hash = aec_sha256:hash(Bin),
+    Hash = aec_hash:hash(pow, Bin),
     aec_pow:test_target(Hash, Target).
 
 %%------------------------------------------------------------------------------

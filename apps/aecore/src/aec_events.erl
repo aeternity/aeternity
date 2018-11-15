@@ -14,18 +14,23 @@
 
 -export_type([event/0]).
 
--include("common.hrl").
 -include("blocks.hrl").
 
--type event() :: block_created
-               | start_mining
+-type event() :: start_mining
+               | block_created
+               | micro_block_created
+               | start_micro_mining
+               | start_micro_sleep
                | top_changed
+               | block_to_publish
                | tx_created
                | tx_received
+               | candidate_block
                | peers
                | metric
                | chain_sync
-               | mempool_sync.
+               | oracle_query_tx_created
+               | oracle_response_tx_created.
 
 -spec publish(event(), any()) -> ok.
 publish(Event, Info) ->

@@ -1,0 +1,21 @@
+diff --git a/lib/mnesia/src/mnesia_index.erl b/lib/mnesia/src/mnesia_index.erl
+index d121bd0..0efb0c9 100644
+--- a/lib/mnesia/src/mnesia_index.erl
++++ b/lib/mnesia/src/mnesia_index.erl
+@@ -45,6 +45,7 @@
+ 	 del_transient/3,
+ 	 del_index_table/3,
+ 
++         index_vals_f/3,
+          index_info/2,
+ 	 ext_index_instances/1]).
+ 
+@@ -233,7 +234,7 @@ dirty_read2(Tab, IxKey, Pos) ->
+ 		  end, Acc, mnesia_lib:db_get(Storage, Tab, K))
+ 	end, [], Keys)).
+ 
+-pick_index([{{{Pfx,_},IxType}, Ixt}|_], _Tab, {_} = Pfx) ->
++pick_index([{{{Pfx,_,_},IxType}, Ixt}|_], _Tab, {_} = Pfx) ->
+     {IxType, Ixt};
+ pick_index([{{Pos,IxType}, Ixt}|_], _Tab, Pos) ->
+     {IxType, Ixt};

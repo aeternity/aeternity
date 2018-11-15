@@ -33,7 +33,7 @@
            aeu_siphash24:siphash_key(),
            aeu_siphash24:siphash_key()}.
 create_keys(Header) ->
-    AuxHash = <<_:32/binary>> = aeu_blake2b:blake2b(Header, <<>>, 32),
+    AuxHash = <<_:32/binary>> = aec_hash:blake2b_256_hash(Header),
     <<K0:64/little-unsigned,
       K1:64/little-unsigned,
       K2:64/little-unsigned,
@@ -48,7 +48,8 @@ hash(K0, K1, K2, K3, Nonce) ->
     V3 = K3 bxor Nonce,
     {V01, V11, V21, V31} =
         sip_round(sip_round(sip_round(sip_round(sip_change(Nonce, sip_round(sip_round({V0, V1, V2, V3}))))))),
-    ((V01 bxor V11) bxor (V21 bxor V31)) band 16#ffffffffffffffff.
+    rotl64(((V01 bxor V11) bxor (V21 bxor V31)), 17) band 16#ffffffffffffffff.
+
 
 %%%=============================================================================
 %%% Internal functions

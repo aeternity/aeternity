@@ -14,23 +14,18 @@
          scientific_to_integer/1,
          integer_to_scientific/1]).
 
-%% For testing only
--export([pow_module/0]).
-
-
 -ifdef(TEST).
 -compile([export_all, nowarn_export_all]).
 -endif.
 
 -include("pow.hrl").
--include("sha256.hrl").
-
 
 %% 10^24, approx. 2^80
 -define(NONCE_RANGE, 1000000000000000000000000).
 -define(POW_MODULE, aec_pow_cuckoo).
 
--type nonce() :: 0..?MAX_NONCE.
+%% 0..?MAX_NONCE
+-type nonce() :: 0..16#ffffffffffffffff.
 -export_type([nonce/0]).
 
 %%------------------------------------------------------------------------------
@@ -77,7 +72,7 @@
                       {error, no_solution | {runtime, term()}}.
 %% Difficulty: max threshold (0x00000000FFFF0000000000000000000000000000000000000000000000000000)
 %% over the actual one. Always positive.
--type difficulty() :: float().
+-type difficulty() :: integer().
 
 -export_type([sci_int/0,
               difficulty/0,
@@ -88,11 +83,11 @@
 %%% Behaviour
 %%%=============================================================================
 
--callback generate(Data :: aec_sha256:hashable(), Difficulty :: aec_pow:sci_int(),
+-callback generate(Data :: aec_hash:hashable(), Difficulty :: aec_pow:sci_int(),
                    Nonce :: aec_pow:nonce()) ->
     aec_pow:pow_result().
 
--callback verify(Data :: aec_sha256:hashable(), Nonce :: aec_pow:nonce(),
+-callback verify(Data :: aec_hash:hashable(), Nonce :: aec_pow:nonce(),
                  Evd :: aec_pow:pow_evidence(), Difficulty :: aec_pow:sci_int()) ->
     boolean().
 
@@ -124,10 +119,12 @@ integer_to_scientific(I) ->
             ((-Exp) bsl 24) + 16#800000 + Significand
     end.
 
--spec target_to_difficulty(sci_int()) -> float().
-target_to_difficulty(Th) ->
-    %% Max threshold over the current one
-    ?HIGHEST_TARGET_INT/scientific_to_integer(Th).
+%% We want difficulty to be an integer, to still have enough precision using
+%% integer division we multiply by K (1 bsl 24).
+-spec target_to_difficulty(sci_int()) -> integer().
+target_to_difficulty(SciTgt) ->
+    (?DIFFICULTY_INTEGER_FACTOR * ?HIGHEST_TARGET_INT)
+        div scientific_to_integer(SciTgt).
 
 -spec pick_nonce() -> aec_pow:nonce().
 pick_nonce() ->
@@ -142,53 +139,9 @@ next_nonce(N) ->
 %%------------------------------------------------------------------------------
 -spec test_target(binary(), sci_int()) -> boolean().
 test_target(Bin, Target) ->
-    {Exp, Significand} = break_up_scientific(Target),
-    L = size(Bin),
-    %% We expect L - Exp zero bytes and Exp nonzero bytes
-    Zeros = 8*max(0, L - Exp),
-    case Exp of
-        _E when _E >=0,
-                _E < 3 ->
-            %% Less than 3 bytes behind zeros
-            compare_bin_to_significand(Bin, Significand bsr (8*(3 - Exp)), Zeros, 8*Exp);
-        _ when Exp > L,
-               Exp < L + 3 ->
-            %% Exponent larger than length of Bin
-            Skip = 8*(Exp - L),
-            Compare = 24 - Skip,
-            case Significand bsr Compare of
-                0 ->
-                    %% Ok, we do not lose significant bits
-                    compare_bin_to_significand(Bin, Significand bsl Skip, 0, 24);
-                _ ->
-                    %% Not supposed to happen
-                    {error, {incorrect_target_exponent, Exp}}
-            end;
-        _E when _E >= 0 ->
-            %% At least 3 bytes after zeros
-            compare_bin_to_significand(Bin, Significand, Zeros, 24);
-        _E when _E < 0 ->
-            %% All bits must be zero
-            Bits = 8*L,
-            Bin == <<0:Bits>>
-    end.
-
-compare_bin_to_significand(Bin, Significand, Zeros, NumBits) ->
-    case Bin of
-        <<0:Zeros, I:NumBits, _T/bitstring>> ->
-            %% Compare with significand
-            I < Significand;
-        <<0:Zeros, _T/bitstring>> ->
-            {error, {fewer_bits_than_required, NumBits, 8*size(Bin) - Zeros}};
-        _ ->
-            %% Fewer zeros than expected
-            false
-    end.
-
--spec pow_module() -> 'aec_pow_cuckoo' | 'aec_pow_sha256'.
-pow_module() ->
-    ?POW_MODULE.
-
+    Threshold = scientific_to_integer(Target),
+    <<Val:32/big-unsigned-integer-unit:8>> = Bin,
+    Val < Threshold.
 
 %%%=============================================================================
 %%% Internal functions
@@ -196,7 +149,7 @@ pow_module() ->
 
 integer_to_scientific(I, Exp) when I > 16#7fffff ->
     integer_to_scientific(I bsr 8, Exp + 1);
-integer_to_scientific(I, Exp) when I < 16#008000 ->
+integer_to_scientific(I, Exp) when I < 16#008000, I > 16#000000 ->
     integer_to_scientific(I bsl 8, Exp - 1);
 integer_to_scientific(I, Exp) ->
     %% Add the number of bytes in the significand

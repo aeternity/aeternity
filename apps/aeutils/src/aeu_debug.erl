@@ -6,7 +6,23 @@ pp(X) ->
     try pp_(X)
     catch error:Err -> {'PP_ERROR', Err, X} end.
 
-pp_(B) when is_tuple(B), element(1, B) == block ->
+pp_(X) ->
+    case aec_blocks:is_block(X) of
+        true  -> pp_block(X);
+        false -> ppp_(X)
+    end.
+
+ppp_(B) when is_binary(B) ->
+    pp_bin2str(B);
+ppp_(T) when is_tuple(T) ->
+    list_to_tuple([pp_(E) || E <- tuple_to_list(T)]);
+ppp_(L) when is_list(L) ->
+    [pp_(E) || E <- L];
+ppp_(M) when is_map(M) -> pp_map(M);
+ppp_(X) ->
+    X.
+
+pp_block(B) ->
     try
         H  = aec_blocks:height(B),
         RH = aec_blocks:root_hash(B),
@@ -17,16 +33,7 @@ pp_(B) when is_tuple(B), element(1, B) == block ->
     catch error:E ->
             io:fwrite("oops: ~p", [E]),
             B
-    end;
-pp_(B) when is_binary(B) ->
-    pp_bin2str(B);
-pp_(T) when is_tuple(T) ->
-    list_to_tuple([pp_(E) || E <- tuple_to_list(T)]);
-pp_(L) when is_list(L) ->
-    [pp_(E) || E <- L];
-pp_(M) when is_map(M) -> pp_map(M);
-pp_(X) ->
-    X.
+    end.
 
 pp_map(#{} = M) ->
     maps:fold(fun(K,V,Acc) -> Acc#{K => pp(V)} end, #{}, M).

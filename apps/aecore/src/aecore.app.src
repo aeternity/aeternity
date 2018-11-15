@@ -12,6 +12,11 @@
    [kernel,
     stdlib,
     crypto,
+    setup,
+    sext,
+    rocksdb,
+    mnesia_rocksdb,
+    parse_trans,
     eper,
     syntax_tools,
     compiler,
@@ -19,20 +24,29 @@
     gproc,
     jobs,
     hut,
-    setup,
     bear,
     folsom,
     exometer_core,
     yamerl,
     lager,
-    gb_merkle_trees,
     aeutils,
-    msgpack,
+    base58,
+    sha3,
+    enacl,
+    enoise,
     erlexec,
+    jsx,
+    unicode_util_compat, %% to be removed, not needed in OTP 20
+    idna,
     aecuckoo,
     aetx,
-    aeoracle
-   ]},
+    aevm,
+    aeoracle,
+    aechannel,
+    aecontract,
+    aens,
+    ranch
+  ]},
   {env, [
          {exometer_predefined,
           {script, "$PRIV_DIR/exometer_predefined.script"}},
@@ -53,12 +67,16 @@
           ]},
          {metrics_probes,
           [{[ae,epoch,aecore,chain], aec_chain_metrics_probe},
+           {[ae,epoch,aecore,tx_pool], aec_tx_pool_metrics_probe},
            {[ae,epoch,aecore,eper] , aec_eper_metrics_probe}]},
          {'$setup_hooks',
           [
            {normal, [
                      {110, {aec_peers, check_env, []}},
-                     {110, {aecore_app, check_env, []}}
+                     {110, {aecore_app, check_env, []}},
+                     {110, {aehttp_app, check_env, []}},
+                     {110, {aec_hard_forks, check_env, []}},
+                     {200, {aec_db, check_db, []}}
                     ]}
           ]}
         ]},

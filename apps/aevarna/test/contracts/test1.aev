@@ -1,0 +1,32 @@
+# This is a simple test contract to show some properties of Varna.
+
+contract Test1
+
+state
+    a = 5,
+    b : integer = 6                     # No terminating ','
+    c : tokenaddress = null,            # but one after the last field
+end
+
+private stateful function Bert(A : integer) : integer sune(42+a) end
+
+# Multiple statements on one line with ';' separator.
+stateful function Sture(a : address) : void
+    var x : tokenaddress = Andra.dom(a) ;
+    var y : integer = 42 ;
+    Andra.oss = 42 ; state.a = Andra.med
+end
+
+# Multiple statements on one line without ';' separators
+# as they are unnecessary.
+stateful function Carl(a : address) : void
+    var x : tokenaddress = Andra.dom(a) var y : integer = 42 Andra.oss = 42 state.a = Andra.med end
+
+public function Sune() : void if 7 > 5 then foo(6) else bar(5,true) end end
+
+public function Stina() : integer var x : integer = 42 return 1 + x * x end
+
+# Empty body
+public function Karin () : void end
+
+end

@@ -12,8 +12,10 @@
 
 -define(TEST_MODULE, aec_pow).
 
--include("common.hrl").
 -include("blocks.hrl").
+
+-define(MINER_PUBKEY, <<42:?MINER_PUB_BYTES/unit:8>>).
+-define(FAKE_TXS_TREE_HASH, <<0:?TXS_HASH_BYTES/unit:8>>).
 
 conversion_test_() ->
     {setup,
@@ -105,17 +107,17 @@ conversion_test_() ->
                ?assertEqual(true, ?TEST_MODULE:test_target(
                                      <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
                                        0,0,0,0,0,16#04,16#03>>,
-                                     16#020404cb)),
+                                     16#02040400)),
                %% 0404 < 0404 fails
                ?assertEqual(false, ?TEST_MODULE:test_target(
                                      <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
                                        0,0,0,0,0,16#04,16#04>>,
-                                      16#020404cb)),
-               %% 0405 < 0405 fails
+                                      16#02040400)),
+               %% 0405 < 0404 fails
                ?assertEqual(false, ?TEST_MODULE:test_target(
                                      <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
                                        0,0,0,0,0,16#04,16#05>>,
-                                      16#020404cb)),
+                                      16#02040400)),
                %% hide a 1 among zeros
                ?assertEqual(false, ?TEST_MODULE:test_target(
                                      <<0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -125,12 +127,12 @@ conversion_test_() ->
                ?assertEqual(true, ?TEST_MODULE:test_target(
                                      <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
                                        0,0,0,0,0,0,16#03>>,
-                                      16#010404cb)),
+                                      16#01040000)),
                %% 04 < 04 fails
                ?assertEqual(false, ?TEST_MODULE:test_target(
                                      <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
                                        0,0,0,0,0,0,16#04>>,
-                                      16#010404cb)),
+                                      16#01040000)),
 
                %%----------------------------------------------------------------------
                %% Exp > size of binary
@@ -138,34 +140,21 @@ conversion_test_() ->
 
                %% fffe < ffff
                ?assertEqual(true, ?TEST_MODULE:test_target(
-                                     <<255,254,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                     <<16#ff,16#fe,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
                                        0,0,0,0,0,0,0>>,
                                       16#2100ffff)),
                %% fffffe < ffff00 fails
                ?assertEqual(false, ?TEST_MODULE:test_target(
-                                     <<255,255,254,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                     <<16#ff,16#ff,16#fe,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
                                        0,0,0,0,0,0,0>>,
-                                      16#2100ffff)),
+                                      16#2100ffff))
 
-               %%----------------------------------------------------------------------
-               %% Negative exp marked in the sign og significand
-               %%----------------------------------------------------------------------
-
-               ?assertEqual(true, ?TEST_MODULE:test_target(
-                                     <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-                                       0,0,0,0,0,0,0>>,
-                                     16#028404cb)),
-               ?assertEqual(false, ?TEST_MODULE:test_target(
-                                     <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-                                       0,0,0,0,0,16#04,16#03>>,
-                                     16#028404cb))
        end},
       {"Threshold to difficulty",
        fun() ->
                %% More than 3 nonzero bytes
                Diff = ?TEST_MODULE:target_to_difficulty(16#1b0404cb),
-               ?assert(Diff > 70039839613066.1),
-               ?assert(Diff < 70039839613066.2)
+               ?assert(Diff == 1175073517793766964014)
        end}
      ]
     }.
@@ -176,20 +165,23 @@ target_adj_test_() ->
      fun teardown_target/1,
      [{"With constant PoW capacity the target will stabilize (seed = " ++ integer_to_list(S) ++ ")",
       fun() ->
-          Seed = {1, 1, S},
+          Seed = {1, S, S},
           rand:seed(exs1024s, Seed),
           PoWCapacity = 100,
-          TargetSpeed = 1 / 5, %% 1 block per 5 minutes
+          TargetSpeed = 1 / 3, %% 1 block per 3 minutes
           ExpectedDifficulty = PoWCapacity / TargetSpeed,
           InitBlocks = [aec_test_utils:genesis_block_with_state()],
-          Chain = [Top | _] = mine_blocks_only_chain(InitBlocks, 100, PoWCapacity),
-          Difficulties = [ aec_blocks:difficulty(B) || B <- Chain ],
+          Chain = [Top | _] = mine_blocks_only_chain(InitBlocks, 500, PoWCapacity),
+          Difficulties = [ hr_difficulty(B) || B <- Chain ],
           %% ?debugFmt("Difficulties: ~p", [Difficulties]),
-          Window = 20,
+          Window = 25,
           AvgDiffWindow = lists:sum(lists:sublist(Difficulties, Window)) / Window,
-          RateWindow = 50,
-          AvgRate = 60 * 1000 * RateWindow / (Top#block.time - (lists:nth(RateWindow + 1, Chain))#block.time),
+          RateWindow = 60,
+          Time1 = aec_blocks:time_in_msecs(Top),
+          Time2 = aec_blocks:time_in_msecs(lists:nth(RateWindow + 1, Chain)),
+          AvgRate = 60 * 1000 * RateWindow / (Time1 - Time2),
 
+          %% ?debugFmt("Diff: ~.2f Rate: ~.2f", [AvgDiffWindow/ExpectedDifficulty, AvgRate/TargetSpeed]),
           ?assertMatch(N when 0.5 < N andalso N < 2.0, AvgDiffWindow/ExpectedDifficulty),
           ?assertMatch(N when 0.75 < N andalso N < 1.25, AvgRate/TargetSpeed)
 
@@ -201,7 +193,7 @@ setup_target() ->
     meck:new(aec_txs_trees, [passthrough]),
     meck:new(aec_conductor, [passthrough]),
     meck:expect(aec_txs_trees, from_txs, fun([]) -> fake_txs_tree end),
-    meck:expect(aec_txs_trees, root_hash, fun(fake_txs_tree) -> {ok, <<>>} end).
+    meck:expect(aec_txs_trees, root_hash, fun(fake_txs_tree) -> {ok, ?FAKE_TXS_TREE_HASH} end).
 
 teardown_target(X) ->
     meck:unload(aec_txs_trees),
@@ -217,18 +209,19 @@ mine_chain_with_state(Chain, N, PC) ->
     mine_chain_with_state([{B, S} | Chain], N - 1, PC).
 
 %% PoWCapacity = number of solutions per minute
-mining_step(Chain = [{Top, TopState} | _], PoWCapacity) ->
-    {Block, BlockState} = aec_blocks:new_with_state(Top, [], TopState),
+mining_step(Chain = [{Top, _} | _], PoWCapacity) ->
+    {Block, BlockState} = aec_test_utils:create_keyblock_with_state(Chain, ?MINER_PUBKEY),
     MiningTime = mining_time(Chain, PoWCapacity),
+    TopTime    = aec_blocks:time_in_msecs(Top),
     {ok, NewBlock} =
-        aec_mining:adjust_target(
-          Block#block{ time = Top#block.time + MiningTime },
-          [ aec_blocks:to_header(B) || B <- lists:sublist(aec_test_utils:blocks_only_chain(Chain), 10) ]),
+        aec_block_key_candidate:adjust_target(
+          aec_blocks:set_time_in_msecs(Block, TopTime + MiningTime),
+          [ aec_blocks:to_header(B) || B <- lists:sublist(aec_test_utils:blocks_only_chain(Chain), 18) ]),
     {NewBlock, BlockState}.
 
 mining_time([_], _) -> 1000000000;
 mining_time([{Top, _} | _], PC) ->
-    Attempts = mine(aec_blocks:difficulty(Top)),
+    Attempts = mine(hr_difficulty(Top)),
     round(Attempts / PC * 60 * 1000).
 
 mine(Difficulty) ->
@@ -239,6 +232,10 @@ mine(Difficulty, N) ->
       true  -> N;
       false -> mine(Difficulty, N + 1)
     end.
+
+%% Human readable difficulty
+hr_difficulty(Block) ->
+    aec_blocks:difficulty(Block) / ?DIFFICULTY_INTEGER_FACTOR.
 
 setup() ->
     application:start(crypto).

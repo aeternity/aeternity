@@ -13,23 +13,62 @@
 %%====================================================================
 
 %% For VMTests
-%%  "Because the data of the blockchain is not given, the opcode BLOCKHASH could not 
-%%   return the hashes of the corresponding blocks. Therefore we define the hash of 
+%%  "Because the data of the blockchain is not given,
+%%   the opcode BLOCKHASH could not return the hashes
+%%   of the corresponding blocks. Therefore we define the hash of
 %%   block number n to be SHA3-256("n")."
 %% Indicated by the option blockhash->sha3
-extra_opts(Name) -> maps:put(blockhash, sha3, extra_opts_tc(Name)).
+extra_opts(Name) ->
+    maps:merge(default_opts(), extra_opts_tc(Name)).
+
+default_opts() ->
+    #{ blockhash => sha3
+     , no_recursion => true
+     , gas_table => vm_gas_table_homestead()
+     }.
+
+vm_gas_table_homestead() ->
+    CustomKVs =
+        [ {'GEXTCODESIZE', 20}
+        , {'GEXTCODECOPY', 20}
+        , {'GBALANCE', 20}
+        , {'GSLOAD', 50}
+        , {'GCALL', 40}
+        , {'GEXPBYTE', 10}
+        ],
+    F = fun({K, V}, GasTable) -> maps:update(K, V, GasTable) end,
+    lists:foldl(F, aec_governance:vm_gas_table(), CustomKVs).
+
 %% To turn on tracing for a test case return a map with trace => true
 %% e.g. extra_opts_tc(mulmod4) -> #{trace => true};
+
 extra_opts_tc(Name) ->
-    case gas_exception(Name) of
-        true  -> #{validate_gas => false};
-        false -> #{}
-    end.
+    GasOpts =
+        case gas_exception(Name) of
+            true  -> #{validate_gas => false};
+            false -> #{}
+        end,
+    CallOpts =
+        case call_exception(Name) of
+            true  -> GasOpts#{no_recursion => false};
+            false -> GasOpts
+        end,
+    CallOpts.
 
 gas_exception(Name) ->
     lists:member(Name,
                  [ suicide
                  , push32AndSuicide
+                 ]).
+
+call_exception(Name) ->
+    lists:member(Name,
+                 [ arith
+                 , boolean
+                 , mktx
+                 , 'ABAcalls1'
+                 , 'ABAcalls2'
+                 , 'ABAcalls3'
                  ]).
 
 %%====================================================================
@@ -172,7 +211,7 @@ arithmetic_tests() ->
     , mul5
     , mul6
     , mul7
-      %% , mulUnderFlow %% Missing callcreates
+    , mulUnderFlow
     , mulmod0
     , mulmod1
     , mulmod1_overflow
@@ -202,7 +241,7 @@ arithmetic_tests() ->
     , sdivByZero0
     , sdivByZero1
     , sdivByZero2
-      %% , sdiv_dejavu %% Missing callcreates && post. Illegal pop
+    , sdiv_dejavu
     , sdiv_i256min
     , sdiv_i256min2
     , sdiv_i256min3
@@ -319,10 +358,10 @@ vm_test_() ->
     aevm_test_utils:testcase_generate(Path, Tests, fun extra_opts/1).
 
 vm_tests() ->
-    [ %% arith    %% Missing post in all of these
-      %% boolean 
-      %% mktx
-      suicide
+    [ arith    %% Missing post in all of these
+    , boolean
+    , mktx
+    , suicide
     ].
 
 %%====================================================================
@@ -335,7 +374,7 @@ vm_push_dup_swap_test_() ->
 vm_push_dup_swap_tests() ->
     [ dup1
     , dup2
-      %% , dup2error %% Throws pop on empty. TC-Spec has no post block.
+    , dup2error
     , dup3
     , dup4
     , dup5
@@ -388,7 +427,7 @@ vm_push_dup_swap_tests() ->
     , push32Undefined
     , push32Undefined2
     , push32Undefined3
-      %% , push33 %% No post in TC-spec
+    , push33
     , swap1
     , swap2
     , swap3
@@ -405,8 +444,8 @@ vm_push_dup_swap_tests() ->
     , swap14
     , swap15
     , swap16
-      %% , swap2error %% No post in TC-spec
-      %% , swapjump1  %% No post in TC-spec
+    , swap2error
+    , swapjump1
     ].
 
 %%====================================================================
@@ -422,13 +461,13 @@ vm_sha3_tests() ->
     [ sha3_0
     , sha3_1
     , sha3_2
-    , sha3_3 %% no post
-    , sha3_4 %% no post
-      %% , sha3_5 %% timeout
-      %% , sha3_6 %% timeout
-    , sha3_bigOffset %% no post
+    , sha3_3
+    , sha3_4
+    , sha3_5
+    , sha3_6
+    , sha3_bigOffset
     , sha3_bigOffset2
-      %% , sha3_bigSize %% timeout
+    , sha3_bigSize
     , sha3_memSizeNoQuadraticCost31
     , sha3_memSizeQuadraticCost32
     , sha3_memSizeQuadraticCost32_zeroSize
@@ -506,7 +545,7 @@ vm_io_and_flow_operations_tests() ->
     , 'extcodecopyMemExp'
     , for_loop1
     , for_loop2
-      %%    , gas0
+    , gas0
     , gas1
     , gasOverFlow
     , 'indirect_jump1'
@@ -678,16 +717,14 @@ vm_block_info_tests() ->
     , blockhash258Block
     , blockhashInRange
     , blockhashMyBlock
-    %%, blockhashNotExistingBlock
-    %% , blockhashOutOfRange
+    , blockhashNotExistingBlock
+    , blockhashOutOfRange
     , blockhashUnderFlow
     , coinbase
     , difficulty
     , gaslimit
     , number
     , timestamp
-
-      %% TODD: Add remaining testcases.
     ].
 
 
@@ -702,12 +739,53 @@ vm_log_test_() ->
 
 vm_log_tests() ->
     [ log0_nonEmptyMem
+    , log0_logMemsizeTooHigh
+    , log0_logMemsizeZero
+    , log0_logMemStartTooHigh
+    , log0_nonEmptyMem
+    , log0_nonEmptyMem_logMemSize1
+    , log0_nonEmptyMem_logMemSize1_logMemStart31
+    , log1_Caller
+    , log1_emptyMem
+    , log1_logMemsizeTooHigh
+    , log1_logMemsizeZero
+    , log1_logMemStartTooHigh
+    , log1_MaxTopic
+    , log1_nonEmptyMem
+    , log1_nonEmptyMem_logMemSize1
     , log1_nonEmptyMem_logMemSize1_logMemStart31
+    , log2_Caller
+    , log2_emptyMem
+    , log2_logMemsizeTooHigh
+    , log2_logMemsizeZero
+    , log2_logMemStartTooHigh
+    , log_2logs
+    , log2_MaxTopic
+    , log2_nonEmptyMem
     , log2_nonEmptyMem_logMemSize1
+    , log2_nonEmptyMem_logMemSize1_logMemStart31
+    , log3_Caller
+    , log3_emptyMem
+    , log3_logMemsizeTooHigh
+    , log3_logMemsizeZero
+    , log3_logMemStartTooHigh
+    , log3_MaxTopic
+    , log3_nonEmptyMem
+    , log3_nonEmptyMem_logMemSize1
+    , log3_nonEmptyMem_logMemSize1_logMemStart31
     , log3_PC
+    , log4_Caller
+    , log4_emptyMem
+    , log4_logMemsizeTooHigh
+    , log4_logMemsizeZero
+    , log4_logMemStartTooHigh
+    , log4_MaxTopic
+    , log4_nonEmptyMem
+    , log4_nonEmptyMem_logMemSize1
+    , log4_nonEmptyMem_logMemSize1_logMemStart31
     , log4_PC
       %% TODO: Actually test log results
-      %% TODO add the rest of the tests
+
     ].
 
 %%====================================================================
@@ -720,9 +798,56 @@ vm_system_operations_test_() ->
     aevm_test_utils:testcase_generate(Path, Tests, fun extra_opts/1).
 
 vm_system_operations_tests() ->
-    [ %% createNameRegistrator %% TODO: Tobias: Env setup badmatch 
-
+    [ %% createNameRegistrator %% TODO: Tobias: Env setup badmatch
+      'ABAcalls0'
+    , 'ABAcalls1'
+    , 'ABAcalls2'
+    , 'ABAcalls3'
+    %%, 'ABAcallsSuicide0'
+    , 'ABAcallsSuicide1'
+    , 'CallRecursiveBomb0'
+    %% , 'CallRecursiveBomb1'
+    %% , 'CallRecursiveBomb2'
+    %% , 'CallRecursiveBomb3'
+    , callstatelessToNameRegistrator0
+    , callstatelessToReturn1
+    , 'CallToNameRegistrator0'
+    , 'CallToNameRegistratorNotMuchMemory0'
+    , 'CallToNameRegistratorNotMuchMemory1'
+    , 'CallToNameRegistratorOutOfGas'
+    , 'CallToNameRegistratorTooMuchMemory0'
+    , 'CallToNameRegistratorTooMuchMemory1'
+    , 'CallToNameRegistratorTooMuchMemory2'
+    %%, 'CallToPrecompiledContract'
+    , 'CallToReturn1'
+    , 'PostToNameRegistrator0'
+    , 'PostToReturn1'
+    %%, suicideNotExistingAccount
+    , callcodeToNameRegistrator0
+    , callcodeToReturn1
+    , callstatelessToReturn1
+    , 'CallToReturn1'
+    , 'PostToReturn1'
     ].
+
+%%====================================================================
+%% VM Performance Tests
+%%====================================================================
+
+vm_performance_test_() ->
+    Tests = vm_performance_tests(),
+    Path  = "VMTests/vmPerformance",
+    aevm_test_utils:testcase_generate(Path, Tests, fun extra_opts/1).
+
+vm_performance_tests() ->
+    [ fibonacci10
+    , fibonacci16
+    , ackermann31
+    , ackermann32
+    , manyFunctions100
+    ].
+
+
 
 %%====================================================================
 %% Internal functions

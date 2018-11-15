@@ -5,22 +5,26 @@
          init_per_group/2, end_per_group/2,
          init_per_testcase/2, end_per_testcase/2
         ]).
--export([application_test/1,
-         aec_sync_test/1]).
+-export([application_test/1]).
 
 -include_lib("common_test/include/ct.hrl").
 -compile({parse_transform, ct_eunit_xform}).
 
--define(STARTED_APPS_WHITELIST, [{erlexec,"OS Process Manager","1.7.1"}]).
+-define(STARTED_APPS_WHITELIST, [erlexec, runtime_tools]).
+-define(TO_BE_STOPPED_APPS_BLACKLIST, [erlexec]).
 -define(REGISTERED_PROCS_WHITELIST,
         [cover_server, timer_server, %% by test framework
          exec_app, exec, %% by erlexec
          inet_gethost_native_sup, inet_gethost_native, %% by inet
-         prfTarg  %% by eper
+         prfTarg, runtime_tools_sup, %% by eper
+         dets_sup, dets  %% by mnesia
         ]).
 
-all() ->
-    [{group, eunit}, application_test, aec_sync_test].
+-ifdef(EUNIT_INCLUDED).
+all() -> [ {group, eunit}, application_test ]. %%, aec_sync_test ].
+-else.
+all() -> [ application_test ]. %%, aec_sync_test ].
+-endif.
 
 groups() ->
     [].
@@ -51,7 +55,8 @@ init_per_testcase(_TC, Config) ->
 end_per_testcase(_TC, Config) ->
     Apps0 = ?config(running_apps, Config),
     Names0 = ?config(regnames, Config),
-    Apps = application:which_applications() -- ?STARTED_APPS_WHITELIST,
+    Apps = [ A || A = {ATag, _, _} <- application:which_applications(),
+                  not lists:member(ATag, ?STARTED_APPS_WHITELIST) ],
     Names = registered() -- ?REGISTERED_PROCS_WHITELIST,
     case {(Apps -- Apps0), Names -- Names0, lager_common_test_backend:get_logs()} of
         {[], [], []} ->
@@ -90,63 +95,76 @@ iolist_to_s(L) ->
 %% depends upon are started.
 application_test(Config) ->
     {ok, StartedApps, TempDir} = prepare_app_start(aecore, Config),
-    
+
     meck:new(aec_genesis_block_settings, []),
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, []),
-    ok = application:start(aecore),
+    {ok,_} = application:ensure_all_started(aecore),
     timer:sleep(100),
     ok = application:stop(aecore),
     meck:unload(aec_genesis_block_settings),
 
-    app_stop(StartedApps, TempDir).
+    app_stop(StartedApps -- ?TO_BE_STOPPED_APPS_BLACKLIST, TempDir).
 
-aec_sync_test(Config) ->
-    application:set_env(jobs, queues,
-                        [{sync_jobs, [passive]},
-                         {sync_workers, [{regulators, [{counter, [{limit, 4}]}]},
-                                         {producer, {aec_sync, sync_worker, []}}
-                                        ]}]),
-    {ok, StartedApps, TempDir} = prepare_app_start(aecore, Config),
-    ct:log("jobs running with env: ~p", [application:get_env(jobs, queues)]),
-    aec_test_utils:fake_start_aehttp(),
+%% aec_sync_test(Config) ->
+%%     application:set_env(jobs, queues,
+%%                         [{sync_jobs, [passive]},
+%%                          {sync_workers, [{regulators, [{counter, [{limit, 4}]}]},
+%%                                          {producer, {aec_sync, sync_worker, []}}
+%%                                         ]}]),
+%%     {ok, StartedApps, TempDir} = prepare_app_start(aecore, Config),
+%%     ct:log("jobs running with env: ~p", [application:get_env(jobs, queues)]),
+%%     aec_test_utils:fake_start_aehttp(),
 
-    ok = application:start(aecore),
-    SyncPid = whereis(aec_sync),
-    ct:log("Running aec_sync ~p", [SyncPid]),
+%%     ok = application:start(aecore),
+%%     SyncPid = whereis(aec_sync),
+%%     ct:log("Running aec_sync ~p", [SyncPid]),
 
-    ok = aec_sync:connect_peer("http://my.evil_machine:3012/"),
-    ct:log("trying to connect --> job scheduled"),
-    %% give it some time to execute the scheduled job
-    timer:sleep(50),   
-    false = aec_peers:is_blocked("http://my.evil_machine:3012/"),
-    ct:log("as expected not blocked"),
+%%     ok = aec_sync:connect_peer("http://my.evil_machine:3012/"),
+%%     ct:log("trying to connect --> job scheduled"),
+%%     %% give it some time to execute the scheduled job
+%%     timer:sleep(50),
+%%     false = aec_peers:is_blocked("http://my.evil_machine:3012/"),
+%%     ct:log("as expected not blocked"),
 
-    ok = aec_sync:connect_peer("http://my.evil_machine:3012/"),
-    ct:log("trying to connect again --> job scheduled"),
-    timer:sleep(50),
-    SyncPid = whereis(aec_sync), %% Sync has not been restarted!
-    Peers = aec_peers:all(),
-    ct:log("tried twice and although it failed, it is a peer: ~p", [Peers]),
-    1 = length(Peers),
+%%     ok = aec_sync:connect_peer("http://my.evil_machine:3012/"),
+%%     ct:log("trying to connect again --> job scheduled"),
+%%     timer:sleep(50),
+%%     SyncPid = whereis(aec_sync), %% Sync has not been restarted!
+%%     Peers = aec_peers:connected_peers(),
+%%     ct:log("tried twice and although it failed, it is a peer: ~p", [Peers]),
+%%     1 = length(Peers),
 
-    ok = application:stop(aecore),
-    app_stop(StartedApps, TempDir).
+%%     ok = application:stop(aecore),
+%%     app_stop(StartedApps -- ?TO_BE_STOPPED_APPS_BLACKLIST, TempDir).
 
 
-prepare_app_start(App, Config) -> 
+prepare_app_start(App, Config) ->
+    try prepare_app_start_(App, Config)
+    catch
+        error:Reason ->
+            error({Reason, erlang:get_stacktrace()})
+    end.
+
+prepare_app_start_(App, Config) ->
     application:load(App),
     TempDir = aec_test_utils:create_temp_key_dir(),
     application:set_env(aecore, keys_dir, TempDir),
-    application:set_env(aecore, password, <<"secret">>),
+    application:set_env(aecore, peer_password, <<"secret">>),
+    application:set_env(aecore, beneficiary, aehttp_api_encoder:encode(account_pubkey, <<"_________my_public_key__________">>)),
 
-    {ok, Deps} = application:get_key(App, applications), 
+    {ok, Deps0} = application:get_key(App, applications),
+    Deps = maybe_add_mnesia(App, Deps0), % mnesia is started manually in aecore_app
     AlreadyRunning = [ Name || {Name, _,_} <- proplists:get_value(running_apps, Config) ],
-    [ ok = application:ensure_started(Dep) || Dep <- Deps ],
+    [ application:ensure_started(Dep) || Dep <- Deps ],
     {ok, lists:reverse(Deps -- AlreadyRunning), TempDir}.
 
 app_stop(Apps, TempDir) ->
     aec_test_utils:remove_temp_key_dir(TempDir),
-    [ ok = application:stop(App) || App <- Apps ],
-    timer:sleep(200),
+    [ application:stop(App) || App <- Apps ],
     ok.
 
+maybe_add_mnesia(App, Deps) ->
+    case lists:member(aecore, [App|Deps]) of
+        true  -> Deps ++ [mnesia];
+        false -> Deps
+    end.

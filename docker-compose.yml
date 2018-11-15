@@ -1,0 +1,62 @@
+# Small local network of three nodes using the fastest mean15
+version: '3'
+services:
+  node1:
+    build: .
+    image: aeternity/epoch:${IMAGE_TAG-latest}
+    hostname: node1
+    environment:
+      EPOCH_CONFIG: /home/epoch/epoch.yaml
+    command: >
+      -aecore expected_mine_rate ${EPOCH_MINE_RATE:-15000}
+      -aehttp enable_debug_endpoints true
+    volumes:
+      - ${PWD}/docker/epoch_node1_mean15.yaml:/home/epoch/epoch.yaml
+      - ${PWD}/docker/keys/node1:/home/epoch/node/keys
+      - node1_db:/home/epoch/node/data/mnesia
+
+  node2:
+    image: aeternity/epoch:${IMAGE_TAG-latest}
+    hostname: node2
+    environment:
+      EPOCH_CONFIG: /home/epoch/epoch.yaml
+    command: >
+      -aecore expected_mine_rate ${EPOCH_MINE_RATE:-15000}
+      -aehttp enable_debug_endpoints true
+    volumes:
+      - ${PWD}/docker/epoch_node2_mean15.yaml:/home/epoch/epoch.yaml
+      - ${PWD}/docker/keys/node2:/home/epoch/node/keys
+      - node2_db:/home/epoch/node/data/mnesia
+
+  node3:
+    image: aeternity/epoch:${IMAGE_TAG-latest}
+    hostname: node3
+    environment:
+      EPOCH_CONFIG: /home/epoch/epoch.yaml
+    command: >
+      -aecore expected_mine_rate ${EPOCH_MINE_RATE:-15000}
+      -aehttp enable_debug_endpoints true
+    volumes:
+      - ${PWD}/docker/epoch_node3_mean15.yaml:/home/epoch/epoch.yaml
+      - ${PWD}/docker/keys/node3:/home/epoch/node/keys
+      - node3_db:/home/epoch/node/data/mnesia
+
+  proxy:
+    image: nginx:1.13.8
+    hostname: proxy
+    ports:
+     - "3001:3001"
+     - "3002:3002"
+     - "3003:3003"
+    volumes:
+      - ${PWD}/docker/nginx-default.conf:/etc/nginx/conf.d/default.conf
+      - ${PWD}/docker/nginx-cors.conf:/etc/nginx/cors.conf
+      - ${PWD}/docker/nginx-ws.conf:/etc/nginx/ws.conf
+
+volumes:
+  node1_db:
+  node1_keys:
+  node2_db:
+  node2_keys:
+  node3_db:
+  node3_keys:

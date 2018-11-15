@@ -3,12 +3,10 @@
 import tempfile
 import os
 import shutil
-import time
-from nose.tools import assert_equals, assert_not_equals, with_setup
+from nose.tools import assert_equals, assert_not_equals, assert_true, with_setup
 import common
 from waiting import wait
-from py.tests.swagger_client.models.ping import Ping 
-from py.tests.swagger_client.models.spend_tx import SpendTx
+from swagger_client.models.peers import Peers
 
 settings = common.test_settings(__name__.split(".")[-1])
 
@@ -21,19 +19,19 @@ def test_syncing():
     test_settings = settings["test_syncing"]
 
     root_dir = tempfile.mkdtemp()
-    mining_sys_config = make_fast_mining_config(root_dir, "mining_sys.config")
-    no_mining_sys_config = make_no_mining_config(root_dir, "no_mining_sys.config")
+    mining_user_config = make_fast_mining_user_config(root_dir, "mining_epoch.yaml")
+    no_mining_user_config = make_no_mining_user_config(root_dir, "no_mining_epoch.yaml")
 
     # start Bob's node
     bob_node = test_settings["nodes"]["bob"]
-    common.start_node(bob_node, mining_sys_config)
+    common.start_node(bob_node, mining_user_config)
     bob_api = common.external_api(bob_node)
 
     # Insert some blocks in Bob's chain
     blocks_to_mine = test_settings["blocks_to_mine"]
     print("Bob is mining")
     common.wait_until_height(bob_api, blocks_to_mine)
-    bob_top = bob_api.get_top()
+    bob_top = bob_api.get_current_key_block()
     assert_equals(bob_top.height >= blocks_to_mine, True)
     # Now Bob has at least blocks_to_mine blocks
     print("Bob has mined " + str(bob_top.height) + " blocks")
@@ -41,14 +39,14 @@ def test_syncing():
     # start Alice's node and let it connect with Bob's
     # note: Alice doesn't mine blocks
     alice_node = test_settings["nodes"]["alice"]
-    common.start_node(alice_node, no_mining_sys_config)
+    common.start_node(alice_node, no_mining_user_config)
     print("Alice is not mining")
     alice_api = common.external_api(alice_node)
     common.wait_until_height(alice_api, blocks_to_mine)
-    alice_top = alice_api.get_top()
+    alice_top = alice_api.get_current_key_block()
     assert_equals(alice_top.height >= blocks_to_mine, True)
     if alice_top.height > bob_top.height: # bob had mined more blocks
-        bob_block = bob_api.get_block_by_hash(alice_top.hash) # this block is presnet
+        bob_block = bob_api.get_key_block_by_hash(alice_top.hash) # this block is presnet
         assert_equals(bob_block.height, alice_top.height)
     else:
         assert_equals(alice_top.height, bob_top.height)
@@ -69,47 +67,54 @@ def test_persistence():
     """
     test_settings = settings["test_persistence"]
 
-    # prepare a dir to hold the config and DB files 
+    # prepare a dir to hold the config and DB files
     root_dir = tempfile.mkdtemp()
-    persistance_mining_sys_config = os.path.join(root_dir, "p_m_sys.config")
-    only_persistance_sys_config = os.path.join(root_dir, "p_sys.config")
-    f = open(persistance_mining_sys_config, "w")
+    p_m_conf = """\
+---
+chain:
+    persist: true
+    db_path: \"""" + root_dir + """\"
 
-    # this should be moved to an YAML once we have YAML node configuration
-    f.write('[{aecore, [{db_path, "' + root_dir + '"},' + \
-                      ' {persist, true},' + \
-                      ' {autostart, true},' + \
-                      ' {expected_mine_rate, 100},' + \
-                      ' {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}}' + \
-                      ']}].')
-    f.close()
+mining:
+    autostart: true
+    expected_mine_rate: 100
+    beneficiary: "ak_2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
+    cuckoo:
+        miner:
+            executable: mean15-generic
+            extra_args: ""
+            edge_bits: 15
+"""
+    p_conf = """\
+---
+chain:
+    persist: true
+    db_path: \"""" + root_dir + """\"
 
-    f = open(only_persistance_sys_config, "w")
-
-    # this should be moved to an YAML once we have YAML node configuration
-    f.write('[{aecore, [{db_path, "' + root_dir + '"},' + \
-                      ' {persist, true}' + \
-                      ']}].')
-    f.close()
+mining:
+    beneficiary: "ak_2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
+"""
+    persistence_mining_user_config = common.install_user_config(root_dir, "p_m_epoch.yaml", p_m_conf)
+    minimal_user_config_with_persistence = common.install_user_config(root_dir, "p_epoch.yaml", p_conf)
 
     bob_node = test_settings["nodes"]["bob"]
-    common.start_node(bob_node, persistance_mining_sys_config)
+    common.start_node(bob_node, persistence_mining_user_config)
     bob_api = common.external_api(bob_node)
 
     # Insert some blocks in Bob's chain
     blocks_to_mine = test_settings["blocks_to_mine"]
     common.wait_until_height(bob_api, blocks_to_mine)
-    bob_top = bob_api.get_top()
+    bob_top = bob_api.get_current_key_block()
     assert_equals(bob_top.height >= blocks_to_mine, True)
     # Now Bob has at least blocks_to_mine blocks
 
     common.stop_node(bob_node)
 
-    common.start_node(bob_node, only_persistance_sys_config)
-    bob_new_top = bob_api.get_top()
+    common.start_node(bob_node, minimal_user_config_with_persistence)
+    bob_new_top = bob_api.get_current_key_block()
     if(bob_new_top.height > bob_top.height):
         # Bob's node had mined another block(s) before being stopped
-        bob_block = bob_api.get_block_by_hash(bob_top.hash) # this block is presnet
+        bob_block = bob_api.get_key_block_by_hash(bob_top.hash) # this block is presnet
         assert_equals(bob_block.height, bob_top.height)
     else:
         assert_equals(bob_new_top.height, bob_top.height)
@@ -118,77 +123,63 @@ def test_persistence():
     common.stop_node(bob_node)
     shutil.rmtree(root_dir)
 
-def test_node_discovery():
+def test_node_discovery_transitively():
     """
-    Test node discovery
+    Test node discovery (transitively)
     Assuming Carol's node only knows about Bob upon startup and that Bob's
     node knows Alice, Carol's node should be able to discover Alice and
     sync with her node.
     """
-    test_settings = settings["test_node_discovery"]
+    test_settings = settings["test_node_discovery_transitively"]
     alice_node = test_settings["nodes"]["alice"]
     bob_node = test_settings["nodes"]["bob"]
     carol_node = test_settings["nodes"]["carol"]
 
-    alice_peer_url = node_peer_url(alice_node)
-    bob_peer_url = node_peer_url(bob_node)
-    carol_peer_url = node_peer_url(carol_node)
-
     # prepare a dir to hold the configs
     root_dir = tempfile.mkdtemp()
 
-    # Alice's config: no peers 
-    alice_sys_config = make_peers_config(root_dir, "alice.config",
-                            alice_peer_url, [], mining=True)
-    print("\nAlice has address " + alice_peer_url + " and no peers")
+    # Alice's config: no peers
+    alice_peers = "peers: []"
+    alice_user_config = make_peers_user_config(root_dir, "alice_epoch.yaml",
+                            "node1", "3015", alice_peers, "true")
     # Bob's config: only peer is Alice
-    bob_sys_config = make_peers_config(root_dir, "bob.config",
-                            bob_peer_url, [alice_peer_url], mining=False)
-    print("Bob has address " + bob_peer_url + " and peers [" + alice_peer_url + "]")
+    bob_peers = """\
+peers:
+    - "aenode://pp_HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@localhost:3015"
+"""
+    bob_user_config = make_peers_user_config(root_dir, "bob_epoch.yaml",
+                            "node2", "3025", bob_peers, "false")
     # Carol's config: only peer is Bob
-    carol_sys_config = make_peers_config(root_dir, "carol.config",
-                            carol_peer_url, [bob_peer_url], mining=False)
-    print("Carol has address " + carol_peer_url + " and peers [" + bob_peer_url + "]")
+    carol_peers = """\
+peers:
+    - "aenode://pp_28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025"
+"""
+    carol_user_config = make_peers_user_config(root_dir, "carol_epoch.yaml",
+                            "node3", "3035", carol_peers, "false")
 
     # start Alice's node
-    common.start_node(alice_node, alice_sys_config)
+    common.start_node(alice_node, alice_user_config)
     alice_api = common.external_api(alice_node)
 
     # Insert some blocks in Alice's chain
     blocks_to_mine = test_settings["blocks_to_mine"]
     common.wait_until_height(alice_api, blocks_to_mine)
-    alice_top = alice_api.get_top()
-    assert_equals(alice_top.height >= blocks_to_mine, True)
+    alice_top = alice_api.get_current_key_block()
+    assert_true(alice_top.height >= blocks_to_mine)
     # Now Alice has at least blocks_to_mine blocks
 
     # start the other nodes
-    common.start_node(bob_node, bob_sys_config)
-    common.start_node(carol_node, carol_sys_config)
+    common.start_node(bob_node, bob_user_config)
+    common.start_node(carol_node, carol_user_config)
 
-    time.sleep(1) # give some time for the data to propagate
-
+    # Check that Carol syncs with Alice's chain
     carol_api = common.external_api(carol_node)
-    carol_top = carol_api.get_top()
-    gen_hash = common.genesis_hash(carol_api)
-    ping_obj = Ping(source="localhost",
-                    genesis_hash=gen_hash,
-                    best_hash=carol_top.hash,
-                    difficulty=1,
-                    share=32,
-                    peers=[])
-    ping = carol_api.ping(ping_obj)
+    common.wait_until_height(carol_api, alice_top.height)
+    assert_equals(carol_api.get_key_block_by_hash(alice_top.hash).height, alice_top.height)
 
-    carol_peers = ping.peers
-    synced = len(list(filter(lambda peer: peer == alice_peer_url, carol_peers))) == 1
-
-    print("Carol now has peers " + str(carol_peers))
-    assert_equals(synced, True) # for larger peer lists this might be too fragile
-    assert_equals(carol_top.height >= blocks_to_mine, True)
-    if carol_top.height > alice_top.height: # Alice had mined some more blocks
-        alice_block = alice_api.get_block_by_hash(carol_top.hash) # this block is presnet
-        assert_equals(alice_block.height, carol_top.height)
-    else:
-        assert_equals(alice_top.height, carol_top.height)
+    # Check that Carol discovers Alice as a peer
+    carol_int_api = common.internal_api(carol_node)
+    wait(lambda: 'aenode://pp_HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@localhost:3015' in get_peers(carol_int_api), timeout_seconds=20, sleep_seconds=1)
 
     # cleanup
     common.stop_node(alice_node)
@@ -197,47 +188,167 @@ def test_node_discovery():
 
     shutil.rmtree(root_dir)
 
-def make_peers_config(root_dir, file_name, node_url, peers0, mining=False):
-    sys_config = os.path.join(root_dir, file_name)
-    mining_str = ""
-    if mining:
-        mining_str = ' {autostart, true},' + \
-                     ' {expected_mine_rate, 100},' + \
-                     ' {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}}'
-    else: 
-        mining_str = ' {autostart, false}'
-    f = open(sys_config, "w")
-    peers = map(lambda url: '"' + url + '"', peers0)
-    conf ='[{aecore, [{peers, [' + (", ").join(peers) + ']},' +\
-                        mining_str + ']},' +\
-          '{aehttp, [{local_peer_address, "' + node_url + '"}]}].'
-    f.write(conf)
-    f.close()
-    return sys_config
+def test_node_discovery_from_common_friend():
+    """
+    Test node discovery (from common friend peer)
+    Assuming Carol's node only knows about Bob upon startup and that Alice's
+    node knows Bob, Carol's node should be able to discover Alice and
+    sync with her node.
+    """
+    test_settings = settings["test_node_discovery_from_common_friend"]
+    alice_node = test_settings["nodes"]["alice"]
+    bob_node = test_settings["nodes"]["bob"]
+    carol_node = test_settings["nodes"]["carol"]
 
-def node_peer_url(node_name):
-    host = common.node_config(node_name)["host"]
-    port = common.node_config(node_name)["ports"]["external_api"]
-    return "http://" + host + ":" + str(port) + "/"
+    # prepare a dir to hold the configs
+    root_dir = tempfile.mkdtemp()
 
-def make_fast_mining_config(root_dir, file_name):
-    sys_config = os.path.join(root_dir, file_name)
-    f = open(sys_config, "w")
-    # if autostart is not true - there will be no miner
-    conf ='[{aecore, [{autostart, true},' + \
-                    ' {expected_mine_rate, 100},' + \
-                    ' {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}}]}].'
-    f.write(conf)
-    f.close()
-    return sys_config
+    # Alice's config: only peer is Bob
+    alice_peers = """\
+peers:
+    - "aenode://pp_28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025"
+"""
+    alice_user_config = make_peers_user_config(root_dir, "alice_epoch.yaml",
+                            "node1", "3015", alice_peers, "true")
+    # Bob's config: no peers
+    bob_peers = "peers: []"
+    bob_user_config = make_peers_user_config(root_dir, "bob_epoch.yaml",
+                            "node2", "3025", bob_peers, "false")
+    # Carol's config: only peer is Bob
+    carol_peers = """\
+peers:
+    - "aenode://pp_28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025"
+"""
+    carol_user_config = make_peers_user_config(root_dir, "carol_epoch.yaml",
+                            "node3", "3035", carol_peers, "false")
 
-def make_no_mining_config(root_dir, file_name):
-    sys_config = os.path.join(root_dir, file_name)
-    f = open(sys_config, "w")
-    # if autostart is not true - there will be no miner
-    conf ='[{aecore, [{autostart, false},' + \
-                    ' {expected_mine_rate, 100},' + \
-                    ' {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}}]}].'
-    f.write(conf)
-    f.close()
-    return sys_config
+    # start Alice's node
+    common.start_node(alice_node, alice_user_config)
+    alice_api = common.external_api(alice_node)
+
+    # Insert some blocks in Alice's chain
+    blocks_to_mine = test_settings["blocks_to_mine"]
+    common.wait_until_height(alice_api, blocks_to_mine)
+    alice_top = alice_api.get_current_key_block()
+    assert_true(alice_top.height >= blocks_to_mine)
+    # Now Alice has at least blocks_to_mine blocks
+
+    # start the other nodes
+    common.start_node(bob_node, bob_user_config)
+    common.start_node(carol_node, carol_user_config)
+
+    # Check that Carol syncs with Alice's chain
+    carol_api = common.external_api(carol_node)
+    common.wait_until_height(carol_api, alice_top.height)
+    assert_equals(carol_api.get_key_block_by_hash(alice_top.hash).height, alice_top.height)
+
+    # Check that Carol discovers Alice as a peer
+    carol_int_api = common.internal_api(carol_node)
+    wait(lambda: 'aenode://pp_HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@127.0.0.1:3015' in get_peers(carol_int_api), timeout_seconds=20, sleep_seconds=1)
+
+    # cleanup
+    common.stop_node(alice_node)
+    common.stop_node(bob_node)
+    common.stop_node(carol_node)
+
+    shutil.rmtree(root_dir)
+
+def copy_peer_keys(root_dir, keys):
+    # Copy the right keys
+    curr_dir = os.getcwd()
+    key_dir  = os.path.join(root_dir, keys)
+    os.makedirs(key_dir)
+    shutil.copy(os.path.join(curr_dir, "peer_keys", keys, "peer_key"), key_dir)
+    shutil.copy(os.path.join(curr_dir, "peer_keys", keys, "peer_key.pub"), key_dir)
+    return key_dir
+
+def make_peers_user_config(root_dir, file_name, keys, sync_port, peers, mining):
+    key_dir = copy_peer_keys(root_dir, keys)
+    conf = """\
+---
+""" + peers + """
+
+sync:
+    port: {}
+    single_outbound_per_group: false
+
+keys:
+    dir: "{}"
+    peer_password: "top secret"
+
+mining:
+    autostart: {}
+    expected_mine_rate: 100
+    beneficiary: "ak_2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
+    cuckoo:
+        miner:
+            executable: mean15-generic
+            extra_args: ""
+            edge_bits: 15
+""".format(sync_port, key_dir, mining)
+    return common.install_user_config(root_dir, file_name, conf)
+
+def make_fast_mining_user_config(root_dir, file_name):
+    key_dir = copy_peer_keys(root_dir, "node1")
+    conf = """\
+---
+peers:
+    - "aenode://pp_28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025"
+
+sync:
+    port: 3015
+
+keys:
+    dir: \"""" + key_dir + """\"
+    peer_password: "top secret"
+
+chain:
+    hard_forks:
+        "30": 0
+
+mining:
+    autostart: true
+    expected_mine_rate: 100
+    beneficiary: "ak_2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
+    cuckoo:
+        miner:
+            executable: mean15-generic
+            extra_args: ""
+            edge_bits: 15
+"""
+    return common.install_user_config(root_dir, file_name, conf)
+
+def make_no_mining_user_config(root_dir, file_name):
+    key_dir = copy_peer_keys(root_dir, "node2")
+    conf = """\
+---
+peers:
+    - "aenode://pp_HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@localhost:3015"
+
+sync:
+    port: 3025
+
+keys:
+    dir: \"""" + key_dir + """\"
+    peer_password: "top secret"
+
+chain:
+    hard_forks:
+        "30": 0
+
+mining:
+    autostart: false
+    expected_mine_rate: 100
+    beneficiary: "ak_2QLChDdERfod9QajLkCTsJnYP3RNqZJmAFWQWQZWr99fSrC55h"
+    cuckoo:
+        miner:
+            executable: mean15-generic
+            extra_args: ""
+            edge_bits: 15
+"""
+    return common.install_user_config(root_dir, file_name, conf)
+
+def get_peers(int_api):
+    peers = int_api.get_peers().peers
+    print("Peers: " + str(peers))
+    return peers

@@ -5,22 +5,39 @@
 %% Application callbacks
 -export([start/2,
          start_phase/3,
+         prep_stop/1,
          stop/1]).
 -export([check_env/0]).
-
+-export([set_level/1]).
 %%====================================================================
 %% API
 %%====================================================================
 
 start(_StartType, _StartArgs) ->
     ok = lager:info("Starting aecore node"),
-    aecore_sup:start_link().
+    ok = aec_jobs_queues:start(),
+    ok = application:ensure_started(mnesia),
+    aec_db:load_database(),
+    case aec_db:persisted_valid_genesis_block() of
+        true ->
+            aecore_sup:start_link();
+        false ->
+            lager:error("Persisted chain has a different genesis block than "
+                        ++ "the one being expected. Aborting", []),
+            {error, inconsistent_database}
+    end.
 
 start_phase(create_metrics_probes, _StartType, _PhaseArgs) ->
+    lager:debug("start_phase(create_metrics_probes, _, _)", []),
     aec_metrics:create_metrics_probes();
 start_phase(start_reporters, _StartType, _PhaseArgs) ->
+    lager:debug("start_phase(start_reporters, _, _)", []),
     aec_metrics_rpt_dest:check_config(),
     aec_metrics:start_reporters().
+
+prep_stop(State) ->
+    aec_block_generator:prep_stop(),
+    aec_metrics:prep_stop(State).
 
 stop(_State) ->
     ok.
@@ -33,10 +50,11 @@ stop(_State) ->
 %% to relx.
 check_env() ->
     check_env([{[<<"logging">>, <<"hwm">>]     , fun set_hwm/1},
+               {[<<"logging">>, <<"level">>]   , fun set_level/1},
                {[<<"mining">>, <<"autostart">>], {set_env, autostart}},
                {[<<"mining">>, <<"attempt_timeout">>], {set_env, mining_attempt_timeout}},
                {[<<"chain">>, <<"persist">>]   , {set_env, persist}},
-               {[<<"chain">>, <<"db_path">>]   , {set_env, db_path}}]).
+               {[<<"chain">>, <<"db_path">>]   , fun set_db_path/1}]).
 
 check_env(Spec) ->
     lists:foreach(
@@ -53,17 +71,94 @@ set_env({set_env, K}, V) when is_atom(K) ->
 set_env(F, V) when is_function(F, 1) ->
     F(V).
 
+set_db_path(Path) ->
+    %% TODO: possibly support a new config variable for the mnesia directory,
+    %% if we actually want to support keeping the two separate.
+    MnesiaDir = filename:join(binary_to_list(Path), "mnesia"),
+    ok = filelib:ensure_dir(MnesiaDir),
+    application:set_env(mnesia, dir, MnesiaDir),
+    application:set_env(aecore, db_path, Path).
+
 set_hwm(HWM) when is_integer(HWM) ->
     application:set_env(lager, error_logger_hwm, HWM),
     if_running(lager, fun() -> live_set_hwm(HWM) end).
 
 live_set_hwm(Hwm) ->
-    lists:map(
-      fun(Sink) ->
-              [lager:set_loghwm(Sink, lager_console_backend, Hwm)
-               || {lager_console_backend,_}
-                      <- gen_event:which_handlers(Sink)]
-      end, lager:list_all_sinks()).
+    error_logger_lager_h:set_high_water(Hwm),
+    [lager:set_loghwm(lager_event, H, Hwm)
+     || H <- gen_event:which_handlers(lager_event),
+        element(1, H) =:= lager_file_backend].
+
+set_level(L) when is_binary(L) ->
+    Level = binary_to_existing_atom(L, latin1),
+    case lists:member(Level, levels()) of
+        true ->
+            lager_set_level_env(Level),
+            adjust_sinks(Level),
+            if_running(lager, fun() -> live_set_level(Level) end);
+        false ->
+            lager:error("Unknown log level: ~p", [Level]),
+            ignore
+    end.
+
+lager_set_level_env(L) ->
+    Hs = application:get_env(lager, handlers, []),
+    case lists:keyfind(lager_file_backend, 1, Hs) of
+        {_, Opts} ->
+            Opts1 = lists:keystore(level, 1, Opts, {level, L}),
+            application:set_env(
+              lager, handlers,
+              lists:keyreplace(lager_file_backend, 1, Hs,
+                               {lager_file_backend, Opts1}));
+        false ->
+            lager:warning("Cannot find 'epoch.log' file backend", []),
+            ignore
+    end.
+
+adjust_sinks(L) ->
+    Sinks = application:get_env(lager, extra_sinks, []),
+    Sinks1 =
+        lists:map(
+          fun({epoch_mining_lager_event = K, Opts}) ->
+                  {K, set_sink_level(L, Opts)};
+             ({epoch_pow_cuckoo_lager_event = K, Opts}) ->
+                  {K, set_sink_level(L, Opts)};
+             ({epoch_sync_lager_event = K, Opts}) ->
+                  {K, set_sink_level(L, Opts)};
+             (X) ->
+                  X
+          end, Sinks),
+    application:set_env(lager, extra_sinks, Sinks1).
+
+set_sink_level(L, Opts) ->
+    {handlers, Hs} = lists:keyfind(handlers, 1, Opts),
+    NewHs =
+        case lists:keyfind(lager_file_backend, 1, Hs) of
+            {_, Opts1} ->
+                lists:keyreplace(
+                  lager_file_backend, 1, Hs,
+                  {lager_file_backend,
+                   lists:keystore(level, 1, Opts1, {level, L})});
+            false ->
+                Hs
+        end,
+    lists:keyreplace(handlers, 1, Opts, {handlers, NewHs}).
+
+live_set_level(L) ->
+    lager:set_loglevel({lager_file_backend, "log/epoch.log"}, L),
+    lager:set_loglevel(epoch_mining_lager_event,
+                       {lager_file_backend, "log/epoch_mining.log"},
+                       undefined, L),
+    lager:set_loglevel(epoch_pow_cuckoo_lager_event,
+                       {lager_file_backend, "log/epoch_pow_cuckoo.log"},
+                       undefined, L),
+    lager:set_loglevel(epoch_sync_lager_event,
+                       {lager_file_backend, "log/epoch_sync.log"},
+                       undefined, L).
+
+levels() ->
+    %% copied from lager.hrl
+    [debug, info, notice, warning, error, critical, alert, emergency, none].
 
 if_running(App, F) ->
     case lists:keymember(App, 1, application:which_applications()) of

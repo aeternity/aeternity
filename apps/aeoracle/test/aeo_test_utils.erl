@@ -5,7 +5,9 @@
 %%%-------------------------------------------------------------------
 -module(aeo_test_utils).
 
--export([ new_state/0
+-export([ extend_tx/2
+        , extend_tx/3
+        , new_state/0
         , oracles/1
         , priv_key/2
         , query_tx/3
@@ -17,11 +19,12 @@
         , set_account_balance/3
         , set_trees/2
         , setup_new_account/1
-        , setup_new_account/3
+        , setup_new_account/2
         , trees/1
+        , ttl_defaults/0
         ]).
 
--include_lib("apps/aeoracle/include/oracle_txs.hrl").
+-include_lib("apps/aecore/include/blocks.hrl").
 
 %%%===================================================================
 %%% Test state
@@ -49,6 +52,9 @@ next_nonce(PubKey, S) ->
 priv_key(PubKey, State) ->
     maps:get(PubKey, key_pairs(State)).
 
+ttl_defaults() ->
+    #{ oracle => 250, query => 50, response => 75, extend => 125 }.
+
 %%%===================================================================
 %%% Info API
 %%%===================================================================
@@ -65,18 +71,39 @@ register_tx(PubKey, State) ->
 
 register_tx(PubKey, Spec0, State) ->
     Spec = maps:merge(register_tx_default_spec(PubKey, State), Spec0),
-    #oracle_register_tx{ account   = PubKey
-                       , nonce     = maps:get(nonce, Spec)
-                       , ttl       = maps:get(ttl, Spec)
-                       , fee       = maps:get(fee, Spec)
-                       , query_fee = maps:get(query_fee, Spec)
-                       }.
+    {ok, Tx} = aeo_register_tx:new(Spec),
+    Tx.
 
 register_tx_default_spec(PubKey, State) ->
-    #{ ttl       => {delta, 10}
-     , fee       => 5
-     , nonce     => try next_nonce(PubKey, State) catch _:_ -> 0 end
-     , query_fee => 5
+    #{ account_id      => aec_id:create(account, PubKey)
+     , oracle_ttl      => {delta, maps:get(oracle, ttl_defaults())}
+     , fee             => 50000
+     , nonce           => try next_nonce(PubKey, State) catch _:_ -> 0 end
+     , query_fee       => 5
+     , query_format    => <<"string()">>
+     , response_format => <<"boolean() | integer()">>
+     , ttl             => 0
+     , vm_version      => 0
+     }.
+
+%%%===================================================================
+%%% Extend tx
+%%%===================================================================
+
+extend_tx(PubKey, State) ->
+    extend_tx(PubKey, #{}, State).
+
+extend_tx(PubKey, Spec0, State) ->
+    Spec = maps:merge(extend_tx_default_spec(PubKey, State), Spec0),
+    {ok, Tx} = aeo_extend_tx:new(Spec),
+    Tx.
+
+extend_tx_default_spec(PubKey, State) ->
+    #{ oracle_id  => aec_id:create(oracle, PubKey)
+     , oracle_ttl => {delta, maps:get(extend, ttl_defaults())}
+     , fee        => 50000
+     , nonce      => try next_nonce(PubKey, State) catch _:_ -> 0 end
+     , ttl        => 0
      }.
 
 %%%===================================================================
@@ -87,23 +114,18 @@ query_tx(PubKey, OracleKey, State) ->
     query_tx(PubKey, OracleKey, #{}, State).
 
 query_tx(PubKey, OracleKey, Spec0, State) ->
-    Spec = maps:merge(query_tx_default_spec(PubKey, State), Spec0),
-    #oracle_query_tx{ sender = PubKey
-                    , nonce  = maps:get(nonce, Spec)
-                    , oracle = OracleKey
-                    , query  = maps:get(query, Spec)
-                    , query_fee = maps:get(query_fee, Spec)
-                    , query_ttl = maps:get(query_ttl, Spec)
-                    , response_ttl = maps:get(response_ttl, Spec)
-                    , fee = maps:get(fee, Spec)
-                    }.
+    Spec = maps:merge(query_tx_default_spec(PubKey, OracleKey, State), Spec0),
+    {ok, Tx} = aeo_query_tx:new(Spec),
+    Tx.
 
-query_tx_default_spec(PubKey, State) ->
-    #{ query        => <<"Hello world">>
+query_tx_default_spec(PubKey, OracleKey, State) ->
+    #{ sender_id    => aec_id:create(account, PubKey)
+     , oracle_id    => OracleKey
+     , query        => <<"Hello world">>
      , query_fee    => 5
-     , query_ttl    => {delta, 50}
-     , response_ttl => {delta, 25}
-     , fee          => 5
+     , query_ttl    => {delta, maps:get(query, ttl_defaults())}
+     , response_ttl => {delta, maps:get(response, ttl_defaults())}
+     , fee          => 50000
      , nonce        => try next_nonce(PubKey, State) catch _:_ -> 0 end
      }.
 
@@ -115,17 +137,18 @@ response_tx(PubKey, ID, Response, State) ->
     response_tx(PubKey, ID, Response, #{}, State).
 
 response_tx(PubKey, ID, Response, Spec0, State) ->
-    Spec = maps:merge(response_tx_default_spec(PubKey, State), Spec0),
-    #oracle_response_tx{ oracle         = PubKey
-                       , nonce          = maps:get(nonce, Spec)
-                       , interaction_id = ID
-                       , response       = Response
-                       , fee            = maps:get(fee, Spec)
-                       }.
+    Spec = maps:merge(response_tx_default_spec(PubKey, ID, Response, State), Spec0),
+    {ok, Tx} = aeo_response_tx:new(Spec),
+    Tx.
 
-response_tx_default_spec(PubKey, State) ->
-    #{ nonce    => try next_nonce(PubKey, State) catch _:_ -> 0 end
-     , fee      => 3
+response_tx_default_spec(PubKey, ID, Response, State) ->
+    #{ nonce        => try next_nonce(PubKey, State) catch _:_ -> 0 end
+     , oracle_id    => aec_id:create(oracle, PubKey)
+     , query_id     => ID
+     , response     => Response
+     , response_ttl => {delta, maps:get(response, ttl_defaults())}
+     , fee          => 50000
+     , ttl          => 0
      }.
 
 
@@ -134,21 +157,20 @@ response_tx_default_spec(PubKey, State) ->
 %%%===================================================================
 
 setup_new_account(State) ->
-    setup_new_account(1000, 1, State).
+    setup_new_account(1000000, State).
 
-setup_new_account(Balance, Height, State) ->
+setup_new_account(Balance, State) ->
     {PubKey, PrivKey} = new_key_pair(),
     State1            = insert_key_pair(PubKey, PrivKey, State),
-    State2            = set_account(aec_accounts:new(PubKey, Balance, Height), State1),
+    State2            = set_account(aec_accounts:new(PubKey, Balance), State1),
     {PubKey, State2}.
 
 set_account_balance(PubKey, NewBalance, State) ->
     A        = get_account(PubKey, State),
     Balance  = aec_accounts:balance(A),
-    Height   = aec_accounts:height(A),
     Nonce    = aec_accounts:nonce(A),
-    {ok, A1} = aec_accounts:spend(A, Balance, Nonce, Height),
-    {ok, A2} = aec_accounts:earn(A1, NewBalance, Height),
+    {ok, A1} = aec_accounts:spend(A, Balance, Nonce),
+    {ok, A2} = aec_accounts:earn(A1, NewBalance),
     set_account(A2, State).
 
 get_account(PubKey, State) ->
@@ -159,20 +181,7 @@ set_account(Account, State) ->
     AccTree = aec_accounts_trees:enter(Account, aec_trees:accounts(Trees)),
     set_trees(aec_trees:set_accounts(Trees, AccTree), State).
 
-%%%===================================================================
-%%% Keys TODO: Should move
-%%%===================================================================
-
--define(PUB_SIZE, 65).
--define(PRIV_SIZE, 32).
-
 new_key_pair() ->
-    {Pubkey, PrivKey} = crypto:generate_key(ecdh, crypto:ec_curve(secp256k1)),
-    {Pubkey, pad_privkey(PrivKey)}.
+    #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
+    {PubKey, PrivKey}.
 
-%% crypto:generate_keys/2 gives you a binary with as many bytes as are needed to fit the
-%% private key. It does not pad with zeros.
-
-pad_privkey(Bin) ->
-    Pad = ?PRIV_SIZE - size(Bin),
-    <<0:(Pad*8), Bin/binary>>.

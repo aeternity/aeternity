@@ -15,19 +15,26 @@
 -type workers() :: orddict:orddict(pid(), worker_info()).
 -type mining_state() :: 'running' | 'stopped'.
 
--record(candidate, {block     :: block(),
-                    nonce     :: aec_pow:nonce(),
-                    max_nonce :: aec_pow:nonce(),
+-record(candidate, {block     :: aec_blocks:block(),
+                    bin       :: binary(), %% Serialized for hash
+                    nonce     :: aec_pow:nonce() | 'undefined',
+                    max_nonce :: aec_pow:nonce() | 'undefined',
                     top_hash  :: binary()
                    }).
 
+-record(consensus, {leader             = false    :: boolean(),
+                    micro_block_cycle             :: integer()
+                    }).
 
--record(state, {block_candidate                   :: #candidate{} | 'undefined',
-                blocked_tags            = []      :: ordsets:ordsets(atom()),
-                chain_state                       :: aec_chain_state:state(),
-                fetch_new_txs_from_pool = true    :: boolean(),
-                keys_ready              = false   :: boolean(),
-                mining_state            = running :: mining_state(),
-                seen_top_block_hash               :: binary() | 'undefined',
-                workers                 = []      :: workers()
+-record(state, {key_block_candidate                       :: #candidate{} | 'undefined',
+                micro_block_candidate                     :: #candidate{} | 'undefined',
+                blocked_tags            = []              :: ordsets:ordset(atom()),
+                keys_ready              = false           :: boolean(),
+                mining_state            = running         :: mining_state(),
+                top_block_hash                            :: binary() | 'undefined',
+                top_key_block_hash                        :: binary() | 'undefined',
+                workers                 = []              :: workers(),
+                consensus                                 :: #consensus{},
+                beneficiary                               :: <<_:(32*8)>>,  % Maybe move beneficiary out of conductor's state
+                fraud_list              = []              :: list({binary(), aec_pof:pof()})
                }).

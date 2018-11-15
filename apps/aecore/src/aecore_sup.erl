@@ -1,3 +1,37 @@
+%%% -*- erlang-indent-level:4; indent-tabs-mode: nil -*-
+%%%=============================================================================
+%%% @copyright 2018, Aeternity Anstalt
+%%% @doc
+%%%    Supervisor for the core application
+%%%
+%%%  Full supervision tree is
+%%%```
+%%%       aecore_sup
+%%%     (one_for_one)
+%%%           |
+%%%           -----------------------------------------
+%%%           |         |         |           |       |
+%%%           |   aec_metrics  aec_keys  aec_tx_pool  |
+%%%           |                                       |
+%%%   aec_connection_sup                      aec_conductor_sup
+%%%     (one_for_all)                          (rest_for_one)
+%%%           |                                       |
+%%%           |                                       ---------------------
+%%%           |                                       |                   |
+%%%           |                                 aec_block_generator  aec_conductor
+%%%           |
+%%%           -------------------------------------------------------------------
+%%%           |                    |         |            |                     |
+%%%   aec_peer_connection_sup  aec_peers  aec_sync  aec_tx_pool_sync  aec_connection_listener
+%%%     (simple_one_for_one)
+%%%           |
+%%%           --------------------
+%%%           |             |
+%%%   aec_peer_connection  ...
+%%%'''
+%%%
+%%% @end
+%%%=============================================================================
 -module(aecore_sup).
 
 -behaviour(supervisor).
@@ -8,7 +42,6 @@
 %% Supervisor callbacks
 -export([init/1]).
 
--include("common.hrl").
 -include("blocks.hrl").
 
 -define(SERVER, ?MODULE).
@@ -31,11 +64,10 @@ init([]) ->
     {ok, {{one_for_one, 5, 10}, [watchdog_childspec(),
                                  ?CHILD(aec_metrics_rpt_dest, 5000, worker),
                                  ?CHILD(aec_keys, 5000, worker),
-                                 ?CHILD(aec_peers, 5000, worker),
-                                 ?CHILD(aec_persistence, 5000, worker),
+                                 ?CHILD(aec_tx_pool_gc, 5000, worker),
                                  ?CHILD(aec_tx_pool, 5000, worker),
-                                 ?CHILD(aec_sync, 5000, worker),
-                                 ?CHILD(aec_conductor, 5000, worker)
+                                 ?CHILD(aec_conductor_sup, 5000, supervisor),
+                                 ?CHILD(aec_connection_sup, 5000, supervisor)
                                 ]
          }}.
 

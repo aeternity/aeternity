@@ -1,0 +1,55 @@
+// AENS tests
+contract AENSTest =
+
+  // Name resolution
+
+  function resolve_word(name : string, key : string) : option(address) =
+    AENS.resolve(name, key)
+
+  function resolve_string(name : string, key : string) : option(string) =
+    AENS.resolve(name, key)
+
+  // Transactions
+
+  function preclaim(addr  : address,          // Claim on behalf of this account (can be Contract.address)
+                    chash : hash) : () =      // Commitment hash
+    AENS.preclaim(addr, chash)
+
+  function signedPreclaim(addr  : address,          // Claim on behalf of this account (can be Contract.address)
+                          chash : hash,             // Commitment hash
+                          sign  : signature) : () = // Signed by addr (if not Contract.address)
+    AENS.preclaim(addr, chash, signature = sign)
+
+  function claim(addr : address,
+                 name : string,
+                 salt : int) : () =
+    AENS.claim(addr, name, salt)
+
+  function signedClaim(addr : address,
+                       name : string,
+                       salt : int,
+                       sign : signature) : () =
+    AENS.claim(addr, name, salt, signature = sign)
+
+  // TODO: update() -- how to handle pointers?
+
+  function transfer(owner     : address,
+                    new_owner : address,
+                    name_hash : hash) : () =
+    AENS.transfer(owner, new_owner, name_hash)
+
+  function signedTransfer(owner     : address,
+                          new_owner : address,
+                          name_hash : hash,
+                          sign      : signature) : () =
+    AENS.transfer(owner, new_owner, name_hash, signature = sign)
+
+  function revoke(owner     : address,
+                  name_hash : hash) : () =
+    AENS.revoke(owner, name_hash)
+
+  function signedRevoke(owner     : address,
+                        name_hash : hash,
+                        sign      : signature) : () =
+    AENS.revoke(owner, name_hash, signature = sign)
+

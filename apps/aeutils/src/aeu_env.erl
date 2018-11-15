@@ -11,10 +11,15 @@
 
 -export([get_env/2, get_env/3]).
 
--export([user_config/0, user_config/1]).
+-export([user_config/0, user_config/1, user_config/2]).
 -export([user_map/0, user_map/1]).
--export([user_config_or_env/4]).
+-export([schema/0, schema/1]).
+-export([user_config_or_env/3, user_config_or_env/4]).
+-export([user_map_or_env/4]).
+-export([find_config/2]).
+-export([nested_map_get/2]).
 -export([read_config/0]).
+-export([parse_key_value_string/1]).
 -export([data_dir/1]).
 -export([check_config/1, check_config/2]).
 
@@ -73,6 +78,22 @@ user_config(Key) when is_list(Key) ->
 user_config(Key) when is_binary(Key) ->
     get_env(aeutils, ['$user_config',Key]).
 
+-spec user_config(list() | binary(), any()) -> any().
+user_config(Key, Default) ->
+    case user_config(Key) of
+        undefined   -> Default;
+        {ok, Value} -> Value
+    end.
+
+-spec user_config_or_env(config_key(), atom(), env_key()) -> {ok, any()} | undefined.
+user_config_or_env(CfgKey, App, EnvKey) ->
+    case user_config(CfgKey) of
+        undefined ->
+            get_env(App, EnvKey);
+        {ok, _Value} = Result ->
+            Result
+    end.
+
 -spec user_config_or_env(config_key(), atom(), env_key(), any()) -> any().
 user_config_or_env(CfgKey, App, EnvKey, Default) ->
     case user_config(CfgKey) of
@@ -81,6 +102,36 @@ user_config_or_env(CfgKey, App, EnvKey, Default) ->
         {ok, Value} ->
             Value
     end.
+
+-spec user_map_or_env(config_key(), atom(), env_key(), any()) -> any().
+user_map_or_env(CfgKey, App, EnvKey, Default) ->
+    case user_map(CfgKey) of
+        undefined ->
+            get_env(App, EnvKey, Default);
+        {ok, Value} ->
+            Value
+    end.
+
+config_value(CfgKey, App, Env, Default) ->
+    {ok, Value} =find_config(CfgKey, [ user_config
+                                     , {env, App, Env}
+                                     , schema_default
+                                     , {value, Default} ]),
+    Value.
+
+find_config(CfgKey, [H|T]) ->
+    case find_config_(CfgKey, H) of
+        undefined -> find_config(CfgKey, T);
+        {ok,_} = Ok -> Ok
+    end;
+find_config(_, []) ->
+    undefined.
+
+find_config_(K, user_config       ) -> user_map(K);
+find_config_(_, {env, App, EnvKey}) -> get_env(App, EnvKey);
+find_config_(K, schema_default    ) -> default(K);
+find_config_(_, {value, V}        ) -> {ok, V}.
+
 
 %% The user_map() functions are equivalent to user_config(), but
 %% operate on a tree of maps rather than a tree of {K,V} tuples.
@@ -97,7 +148,7 @@ user_map(Key) when is_list(Key) ->
         {ok, _} = Ok ->
             Ok;
         error ->
-            user_map_l(Key, M)
+            nested_map_get(Key, M)
     end;
 user_map(Key) ->
     case maps:find(Key, user_map()) of
@@ -105,19 +156,19 @@ user_map(Key) ->
         error        -> undefined
     end.
 
-user_map_l([], V) ->
+nested_map_get([], V) ->
     {ok, V};
-user_map_l([H|T], M) when is_map(M) ->
+nested_map_get([H|T], M) when is_map(M) ->
     case maps:find(H, M) of
         {ok, M1} ->
-            user_map_l(T, M1);
+            nested_map_get(T, M1);
         error ->
             undefined
     end;
-user_map_l([H|T], L) when is_list(L) ->
+nested_map_get([H|T], L) when is_list(L) ->
     case lists_map_key_find(H, L) of
         {ok, V} ->
-            user_map_l(T, V);
+            nested_map_get(T, V);
         error ->
             undefined
     end.
@@ -134,6 +185,72 @@ lists_map_key_find(K, [{K, V}|_]) ->
 lists_map_key_find(_, []) ->
     error.
 
+schema() ->
+    case setup:get_env(aeutils, '$schema', undefined) of
+        undefined ->
+            load_schema(),
+            {ok, S} = setup:get_env(aeutils, '$schema'),
+            S;
+        S ->
+            S
+    end.
+
+schema([H|T]) ->
+    case schema() of
+        #{<<"$schema">> := _, <<"properties">> := #{H := Tree}} ->
+            schema_find(T, Tree);
+        #{H := Tree} ->
+            schema_find(T, Tree);
+        _ ->
+            undefined
+    end;
+schema([]) ->
+    {ok, schema()};
+schema(Key) ->
+    case maps:find(Key, schema()) of
+        {ok, _} = Ok -> Ok;
+        error        -> undefined
+    end.
+
+schema_find([H|T], S) ->
+    case S of
+        #{<<"properties">> := #{H := Tree}} ->
+            schema_find(T, Tree);
+        #{H := Tree} ->
+            schema_find(T, Tree);
+        _ ->
+            undefined
+    end;
+schema_find([], S) ->
+    {ok, S}.
+
+default(Key) when is_list(Key) ->
+    schema(Key ++ [<<"default">>]).
+
+parse_key_value_string(Bin) when is_binary(Bin) ->
+    %% Parse: expect (binary) string of type "S1:L1 [, ...] Sn:Ln", where
+    %% Sx is a string or non-negative integer, and Lx is a non-neg integer;
+    %% allow for whitespace."
+    Ls = [{opt_bin_to_integer(A), opt_bin_to_integer(B)}
+          || [A, B] <-
+                 [re:split(B, <<"\\h*:\\h*">>, [{return,binary}])
+                  || B <- re:split(Bin, <<"\\h*,\\h*">>, [{return, binary}])]],
+    true = lists:all(fun valid_kv_pair/1, Ls),
+    Ls.
+
+opt_bin_to_integer(B) ->
+    try binary_to_integer(B)
+    catch
+        error:_ ->
+            B
+    end.
+
+valid_kv_pair({A,B}) when is_integer(A), A >= 0;
+                             is_binary(A) ->
+    is_integer(B) andalso B >= 0;
+valid_kv_pair(_) ->
+    false.
+
 
 read_config() ->
     read_config(report).
@@ -147,11 +264,11 @@ read_config(Mode) when Mode =:= silent; Mode =:= report ->
             ok;
         F ->
             info_msg(Mode, "Reading config file ~s~n", [F]),
-            do_read_config(F, schema(), store, Mode)
+            do_read_config(F, schema_filename(), store, Mode)
     end.
 
 check_config(F) ->
-    do_read_config(F, schema(), check, silent).
+    do_read_config(F, schema_filename(), check, silent).
 
 check_config(F, Schema) ->
     do_read_config(F, Schema, check, silent).
@@ -208,11 +325,13 @@ store([Vars0]) ->
     set_env(aeutils, '$user_config', Vars),
     set_env(aeutils, '$user_map', Vars0).
 
+check_config_({yamerl_exception, _StackTrace} = Error) ->
+    {error, Error};
 check_config_({'EXIT', Reason}) ->
     ShortError = pp_error(Reason),
     {error, ShortError};
 check_config_([Vars]) ->
-    {ok, to_tree_(expand_maps(Vars))}.
+    {ok, {Vars, to_tree(Vars)}}.
 
 pp_error({{validation_failed, Errors}, _}) ->
     [pp_error_(E) || E <- Errors],
@@ -220,6 +339,8 @@ pp_error({{validation_failed, Errors}, _}) ->
 pp_error(Other) ->
     Other.
 
+pp_error_({error, {schema_file_not_found, Schema}}) ->
+    io:fwrite("Schema not found : ~s~n", [Schema]);
 pp_error_({error, [{data_invalid, Schema, Type, Value, Pos}]}) ->
     SchemaStr = jsx:prettify(jsx:encode(Schema)),
     PosStr = pp_pos(Pos),
@@ -313,27 +434,13 @@ interpret_json({K, V}, _) ->
 
 read_yaml(F, Schema, Mode) ->
     validate(
-        normalize_yaml(
-          try_decode(
-            F,
-            fun(F1) ->
-                    yamerl:decode_file(F1, [{str_node_as_binary, true}])
-            end, "YAML", Mode), F),
+      try_decode(
+        F,
+        fun(F1) ->
+                yamerl:decode_file(F1, [{str_node_as_binary, true},
+                                        {map_node_format, map}])
+        end, "YAML", Mode),
       F, Schema, Mode).
-
-normalize_yaml([L|_] = Y, F) when is_list(L) ->
-    %% array
-    [normalize_yaml(Elem, F) || Elem <- Y];
-normalize_yaml(Y, F) when is_list(Y) ->
-    Res = [normalize_yaml(Elem, F) || Elem <- Y],
-    try maps:from_list(Res)
-    catch
-        error:_ -> Res
-    end;
-normalize_yaml({K, V}, F) when is_list(V) ->
-    {K, normalize_yaml(V, F)};
-normalize_yaml(E, _) ->
-    E.
 
 try_decode(F, DecF, Fmt, Mode) ->
     try DecF(F)
@@ -346,7 +453,7 @@ try_decode(F, DecF, Fmt, Mode) ->
 validate(JSON, F) ->
     validate(JSON, F, report).
 validate(JSON, F, Mode) ->
-    validate(JSON, F, schema(), Mode).
+    validate(JSON, F, schema_filename(), Mode).
 
 validate(JSON, F, Schema, Mode) when is_list(JSON) ->
     check_validation([validate_(Schema, J) || J <- JSON], JSON, F, Mode);
@@ -385,42 +492,21 @@ check_validation(Res, _JSON, F, Mode) ->
     end.
 
 validate_(Schema, JSON) ->
-    jesse:validate_with_schema(load_schema(Schema), JSON, []).
+    case filelib:is_regular(Schema) of
+        true ->
+            jesse:validate_with_schema(load_schema(Schema), JSON, []);
+        false ->
+            {error, {schema_file_not_found, Schema}}
+    end.
 
-schema() ->
+schema_filename() ->
     filename:join(code:priv_dir(aeutils),
                   "epoch_config_schema.json").
 
+load_schema() ->
+    load_schema(schema_filename()).
+
 load_schema(F) ->
     [Schema] = jsx:consult(F, [return_maps]),
+    application:set_env(aeutils, '$schema', Schema),
     Schema.
-
-%%% getting local peer from environment
-
--define(DEFAULT_SWAGGER_EXTERNAL_PORT, 8043).
-
--spec local_peer() -> {http_uri:scheme(), http_uri:host(), http_uri:port()}.
-local_peer() ->
-    ExternalPort = 
-        user_config_or_env([<<"http">>, <<"external">>, <<"port">>],
-                                   aehttp, swagger_port_external, ?DEFAULT_SWAGGER_EXTERNAL_PORT),
-    ExternalAddr = 
-        user_config_or_env([<<"http">>, <<"external">>, <<"peer_address">>], 
-                           aehttp, local_peer_address, undefined),
-    case ExternalAddr of
-        undefined ->
-            {ok, Host} = inet:gethostname(),
-            {http, Host, ExternalPort};
-        Uri ->
-          case http_uri:parse(Uri) of
-              {ok, {Scheme, _UserInfo, Host, Port, _Path, _Query, _Fragment}} ->
-                  {Scheme, Host, Port};
-              {ok, {Scheme, _UserInfo, Host, Port, _Path, _Query}} ->
-                  {Scheme, Host, Port};
-              {error, _Reason} ->
-                  lager:debug("cannot parse Uri (~p): ~p", [Uri, _Reason]),
-                  erlang:error({cannot_parse, [{local_peer_address, Uri}]})
-          end
-    end.
-    
-

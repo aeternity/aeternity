@@ -21,6 +21,7 @@
 
 
 -include_lib("common_test/include/ct.hrl").
+-include_lib("stdlib/include/assert.hrl").
 
 all() ->
     [
@@ -86,83 +87,54 @@ create_dev1_chain(Config) ->
     aecore_suite_utils:start_node(dev1, Config),
     N1 = aecore_suite_utils:node_name(dev1),
     aecore_suite_utils:connect(N1),
-    {ok, Blocks} = aecore_suite_utils:mine_blocks(N1, 8), 
-    true = (length(lists:usort(Blocks)) >= 4),
+    {ok, Blocks} = aecore_suite_utils:mine_key_blocks(N1, 8),
+    true = (length(lists:usort(Blocks)) >= 8),
+    N1Top = rpc:call(N1, aec_chain, top_block, [], 5000),
+    ct:log("top of chain dev1: ~p (mined ~p)", [N1Top, lists:last(Blocks)]),
     N1Top = lists:last(Blocks),
-    ct:log("top of chain dev1: ~p", [ N1Top ]),
     aecore_suite_utils:stop_node(dev1, Config),   %% make sure we do not sync with dev2.
+    ok = aecore_suite_utils:check_for_logs([dev1], Config),
     ok.
 
 create_dev2_chain(Config) ->
     aecore_suite_utils:start_node(dev2, Config),
     N2 = aecore_suite_utils:node_name(dev2),
     aecore_suite_utils:connect(N2),
-    aecore_suite_utils:mine_blocks(N2, 1),
-    ForkTop = rpc:call(N2, aec_conductor, top, [], 5000),
+    aecore_suite_utils:mine_key_blocks(N2, 1),
+    ForkTop = rpc:call(N2, aec_chain, top_block, [], 5000),
     ct:log("top of fork dev2: ~p", [ ForkTop ]),
     aecore_suite_utils:stop_node(dev2, Config),
+    ok = aecore_suite_utils:check_for_logs([dev2], Config),
     ok.
 
 sync_fork_in_wrong_order(Config) ->
     aecore_suite_utils:start_node(dev1, Config),
     N1 = aecore_suite_utils:node_name(dev1),
     aecore_suite_utils:connect(N1),
-    N1Top = rpc:call(N1, aec_conductor, top, [], 5000),
+    N1Top = rpc:call(N1, aec_chain, top_block, [], 5000),
     ct:log("top of chain dev1: ~p", [ N1Top ]),
     aecore_suite_utils:stop_node(dev1, Config),
-   
+
     aecore_suite_utils:start_node(dev2, Config),
     N2 = aecore_suite_utils:node_name(dev2),
     aecore_suite_utils:connect(N2),
-    ForkTop = rpc:call(N2, aec_conductor, top, [], 5000),
+    ForkTop = rpc:call(N2, aec_chain, top_block, [], 5000),
     ct:log("top of chain dev2: ~p", [ ForkTop ]),
-    
+
     false = (ForkTop == N1Top),
     timer:sleep(100),
     %% unexepctedly last block of dev1 arrives before rest of the chain
-    rpc:call(N2, aec_conductor, post_block, [N1Top], 5000), 
+    %% This is no longer allowed, so it should fail.
+    ?assertMatch({error, {illegal_orphan, _}},
+                  rpc:call(N2, aec_conductor, post_block, [N1Top], 5000)),
 
     T0 = os:timestamp(),
     aecore_suite_utils:start_node(dev1, Config),
     aecore_suite_utils:connect(N1),
-    await_sync_complete(T0, [N1, N2]),
-
-    N2Top = rpc:call(N2, aec_conductor, top, [], 5000),
-    ct:log("top of chain dev2: ~p", [ N2Top ]),
-    {N1Top, N2Top} = {N2Top, N1Top},
+    aecore_suite_utils:await_sync_complete(T0, [N2]),
+    aec_test_utils:wait_for_it(
+      fun() -> rpc:call(N2, aec_chain, top_block, [], 5000) end,
+      N1Top),
     ok.
 
-await_sync_complete(T0, Nodes) ->
-    [aecore_suite_utils:subscribe(N, chain_sync) || N <- Nodes],
-    AllEvents = lists:flatten(
-                  [aecore_suite_utils:events_since(N, chain_sync, T0) || N <- Nodes]),
-    ct:log("AllEvents = ~p", [AllEvents]),
-    Nodes1 =
-        lists:foldl(
-          fun(Msg, Acc) ->
-                  check_sync_event(Msg, Acc)
-          end, Nodes, AllEvents),
-    ct:log("Nodes1 = ~p", [Nodes1]),
-    collect_sync_events(Nodes1).
-
-collect_sync_events([]) ->
-    done;
-collect_sync_events(Nodes) ->
-    receive
-        {gproc_ps_event, chain_sync, Msg} ->
-            collect_sync_events(check_sync_event(Msg, Nodes))
-    after 20000 ->
-            ct:log("Timeout in collect_sync_events: ~p~n"
-                   "~p", [Nodes, process_info(self(), messages)]),
-            error(timeout)
-    end.
-
-check_sync_event(#{sender := From, info := Info} = Msg, Nodes) ->
-    case Info of
-        {E, _} when E =:= server_done; E =:= client_done ->
-            ct:log("got sync_event ~p", [Msg]),
-            lists:delete(node(From), Nodes);
-        _ ->
-            Nodes
-    end.
 

@@ -1,0 +1,147 @@
+---
+# Pre-configured addresses of epoch nodes to contact. If not set TestNet seed peers will be used.
+peers:
+    # TestNet seed peers
+    - "aenode://pp_QU9CvhAQH56a2kA15tCnWPRJ2srMJW8ZmfbbFTAy7eG4o16Bf@52.10.46.160:3015" # us-west-2
+    - "aenode://pp_2vhFb3HtHd1S7ynbpbFnEdph1tnDXFSfu4NGtq46S2eM5HCdbC@18.195.109.60:3015" # eu-central-1
+    - "aenode://pp_27xmgQ4N1E3QwHyoutLtZsHW5DSW4zneQJ3CxT5JbUejxtFuAu@13.250.162.250:3015" # ap-southeast-1
+    - "aenode://pp_2i8N6XsjCGe1wkdMhDRs7t7xzijrjJDN4xA22RoNGCgt6ay9QB@31.13.249.70:3015" # eu-east
+
+# Pre-configured addresses of epoch nodes NOT to contact
+blocked_peers:
+    - aenode://pp_2M9oPohzsWgJrBBCFeYi3PVT4YF7F2botBtq6J1EGcVkiutx3R@some-really-bad-peer-address:3015
+
+sync:
+    # Internal port used for P2P communication
+    port: 3015
+    # Port used for P2P communication
+    # Make sure this port is reachable from you public facing IP.
+    # It will be the same as the `port` option if not specified.
+    external_port: 3015
+    # The listen address should be publicly accessible
+    listen_address: 0.0.0.0
+    # Ping retry configuration in milliseconds
+    ping_interval: 30000
+    # Number of acceptors in listening pool
+    acceptors: 10
+    # Connection timeout in miliseconds
+    connect_timeout: 1000
+    # Maximum time for receiving a ping in miliseconds
+    first_ping_timeout: 30000
+    # Maximum time for noise handshake in miliseconds
+    noise_hs_timeout: 5000
+    # Maximum time for the peer to close a connection cleanly
+    close_timeout: 3000
+    # "Maximum number of inbound connections after which inbound connection are temporary (only used for a single ping)
+    max_inbound: 100
+    # The maximum number of incoming connections
+    max_inbound_hard: 1000
+    # Maximum number of outbound connections
+    max_outbound: 10
+    # If the extra outbound connections should be to nodes from different address groups (IP netmask /16)
+    single_outbound_per_group: true
+    # Maximum number of retries at resolving the host name of untrusted peers.
+    resolver_max_retries: 7
+    # Waiting time intervals (milliseconds) before each retry at resolving the host name of peers (both trusted and untrusted).
+    resolver_backoff_times: [5000, 15000, 30000, 60000, 120000, 300000, 600000]
+    # Allowed height difference from current top for incoming blocks (via gossip)
+    gossip_allowed_height_from_top: 5
+
+mempool:
+    # Number of blocks before inactive TXs are garbage collected
+    tx_ttl: 256
+    # Number of blocks before invalid (TTL or low nonce) TXs are garbage collected
+    invalid_tx_ttl: 5
+    # Mempool (re-)synchronization interval (in ms)
+    sync_interval: 1800000
+
+http:
+    cors:
+        # List of domains allowed to access resources
+        allow_domains: ["*"]
+        # List of headers allowed to be used with requests
+        allow_headers: ["*"]
+        # List of methods allowed to be used when accessing resources
+        allow_methods: ["DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT"]
+        # Indicates for how many seconds the results of a preflight request can be cached
+        max_age: 1800
+    external:
+        # Port used for external HTTP API
+        port: 3013
+        # The external listen address should be publicly accessible
+        listen_address: 0.0.0.0
+        # Timeouts in milliseconds
+        request_timeout: 1000
+        # Less than request_timeout
+        connect_timeout: 100
+        # Number of acceptors in server pool
+        acceptors: 10
+    internal:
+        # The internal listen address should be not publicly accessible
+        listen_address: 127.0.0.1
+        port: 3113
+        # Number of acceptors in server pool
+        acceptors: 10
+
+websocket:
+    channel:
+        listen_address: 0.0.0.0
+        port: 3014
+        # Number of acceptors in channels WebSocket HTTP server pool
+        acceptors: 10
+
+keys:
+    dir: keys
+    peer_password: "secret"
+
+chain:
+    # Write chain data to disk.
+    persist: true
+    # Chain persistence directory relative to application root
+    db_path: .
+    # Hard forks
+    hard_forks:
+      "30": 0
+
+mining:
+    # Start mining automatically.
+    autostart: true
+    # Maximum time (milliseconds) for each attempt to mine a block with a specific nonce.
+    attempt_timeout: 3600000
+    # Expected mine rate (milliseconds) between blocks. Used in governance.
+    expected_mine_rate: 300000
+    micro_block_cycle: 3000
+    # Public key of beneficiary account that will receive fees from mining on a node.
+    beneficiary: "ak_DummyPubKeyDoNotEverUse999999999999999999999999999"
+    cuckoo:
+        miner:
+            # Executable binary of the miner.
+            executable: mean29-generic
+            # Extra arguments to pass to the miner executable binary.
+            extra_args: "-t 5"
+            # Number of bits used for representing an edge in the Cuckoo Cycle problem.
+            edge_bits: 29
+            # Hexadecimal encode the header argument that is send to the miner executable. CUDA executables expect hex encoded header.
+            hex_encoded_header: false
+            # Miner process priority (niceness) in a UNIX fashion. Higher `nice` means lower priority. Keep it unset to inherit parent process priority.
+            nice: 0
+
+logging:
+    # Controls the overload protection in the logs.
+    hwm: 50
+    # Sets the level of logging.
+    level: debug
+
+metrics:
+    # StatsD server and port
+    host: 127.0.0.1
+    port: 8125
+    reconnect_interval: 10000
+    rules:
+        - name: "ae.epoch.system.**"
+          actions: log
+        - name: "ae.epoch.aecore.**"
+          actions: log,send
+
+fork_management:
+    network_id: "ae_mainnet"
