@@ -33,6 +33,8 @@
 -export([tx/1]).
 -endif.
 
+-define(IS_CONTRACT_TX(T), ((T =:= contract_create_tx) or (T =:= contract_call_tx) or (T =:= channel_force_progress_tx))).
+
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -118,7 +120,7 @@
     Gas :: non_neg_integer().
 
 -callback gas_price(Tx :: tx_instance()) ->
-    GasPrice :: aect_contracts:amount().
+    GasPrice :: aect_contracts:amount() | undefined.
 
 -callback ttl(Tx :: tx_instance()) ->
     TTL :: aec_blocks:height().
@@ -176,17 +178,13 @@ gas(#aetx{ type = channel_offchain_tx }) ->
     0.
 
 -spec gas_price(Tx :: tx()) -> GasPrice :: non_neg_integer() | undefined.
-gas_price(#aetx{ type = Type, cb = CB, tx = Tx }) when
-      Type =:= contract_create_tx; Type =:= contract_call_tx ->
+gas_price(#aetx{ type = Type, cb = CB, tx = Tx }) when ?IS_CONTRACT_TX(Type) ->
     CB:gas_price(Tx);
 gas_price(#aetx{}) ->
     undefined.
 
 -spec min_gas(Tx :: tx()) -> Gas :: non_neg_integer().
-min_gas(#aetx{ type = Type, size = Size }) when
-      Type =:= contract_create_tx;
-      Type =:= contract_call_tx;
-      Type =:= channel_force_progress_tx ->
+min_gas(#aetx{ type = Type, size = Size }) when ?IS_CONTRACT_TX(Type) ->
     aec_governance:tx_base_gas(Type) + Size * aec_governance:byte_gas();
 min_gas(#aetx{} = Tx) ->
     gas(Tx).

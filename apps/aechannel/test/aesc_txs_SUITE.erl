@@ -159,6 +159,7 @@
          % poi tests
 
          fp_insufficent_tokens/1,
+         fp_insufficent_gas_price/1,
 
          % off-chain name registration not allowed
          fp_register_name/1,
@@ -336,6 +337,7 @@ groups() ->
        % poi tests
 
        fp_insufficent_tokens,
+       fp_insufficent_gas_price,
 
        fp_use_onchain_contract,
        % FP resets locked_until timer
@@ -3193,6 +3195,31 @@ fp_insufficent_tokens(Cfg) ->
         end,
     Test(1, 1001, 1000),
     Test(2, 500,  999),
+    ok.
+
+fp_insufficent_gas_price(Cfg) ->
+    Round = 43,
+    ContractRound = 10,
+    T =
+        fun(Owner, Forcer, GasPrice, GasLimit) ->
+            run(#{cfg => Cfg, initiator_amount => 30,
+                              responder_amount => 30,
+                 channel_reserve => 1},
+               [positive(fun create_channel_/2),
+                set_prop(gas_price, GasPrice),
+                set_prop(gas_limit, GasLimit),
+                create_contract_poi_and_payload(Round - 1, ContractRound, Owner),
+                negative_force_progress_sequence(Round, Forcer,
+                                                 too_low_gas_price)])
+        end,
+    Test =
+        fun(GasPrice, GasLimit) ->
+            [T(Owner, Forcer, GasPrice, GasLimit)
+                || Owner  <- ?ROLES,
+                   Forcer <- ?ROLES]
+        end,
+    TooLowGasPrice = 0 = aec_governance:minimum_gas_price() - 1,
+    Test(TooLowGasPrice, 1001),
     ok.
 
 fp_register_name(Cfg) ->
