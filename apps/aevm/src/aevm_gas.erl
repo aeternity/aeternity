@@ -10,6 +10,7 @@
 
 -export([ op_gas/2
         , mem_gas/2
+        , mem_limit_for_gas/2
         , mem_expansion_gas/2
         ]).
 
@@ -41,6 +42,27 @@ mem_expansion_gas(State1, State2) ->
 
 mem_gas(Size, State) ->
     Size * maps:get('GMEMORY', gastable(State)) + round(math:floor((Size * Size) / 512)).
+
+%% Gives an upper bound on the number of words we can afford with the given
+%% gas. Used to terminate Sophia serialization early if we can't pay for the
+%% resulting binary.
+%% Satisfies
+%%   mem_limit_for_gas(mem_gas(Size, State), State) > Size
+%%   mem_gas(mem_limit_for_gas(Gas, State), State) > Gas
+%% but doesn't guarantee that the bound is tight.
+mem_limit_for_gas(0, _) -> 0;
+mem_limit_for_gas(Gas, State) ->
+    GMem  = maps:get('GMEMORY', gastable(State)),
+    %% Ignoring the quadratic factor gives us an upper bound
+    Limit = Gas div GMem + 1,
+    %% We can shrink it by repeatedly halving it until it's too low. This gives
+    %% a bound that's always within a factor two of the least upper bound.
+    Shrink = fun Shrink(L) ->
+                    case mem_gas(L div 2, State) =< Gas of
+                        true -> L;
+                        false -> Shrink(L div 2)
+                    end end,
+    Shrink(Limit).
 
 call_cap(?CALL, State) ->
     {CGascap, _} = call_dynamic_gas_components(State),

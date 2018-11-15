@@ -200,14 +200,17 @@ reverting_call(Contract, Fun, Type, Args, Env, Options) ->
 
 execute_identity_fun_from_sophia_file(_Cfg) ->
     Code = compile_contract(identity),
-    Env  = initial_state(#{101 => Code}),
+    Env0 = initial_state(#{}),
+    Env  = create_contract(101, Code, "()", "", Env0),
     42   = successful_call_(101, word, main, "int", "42", Env),
     ok.
 
 sophia_remote_call(_Cfg) ->
     IdCode     = compile_contract(identity),
     CallerCode = compile_contract(remote_call),
-    Env        = initial_state(#{ 16#1234 => IdCode, 1 => CallerCode }, #{1 => 20000}),
+    Env        = create_contract(16#1234, IdCode, "()", "",
+                 create_contract(1, CallerCode, "()", "",
+                    initial_state(#{}, #{1 => 20000}))),
     42         = successful_call_(1, word, call, "(address, int)", "#1234, 42", Env),
     ok.
 
@@ -215,7 +218,9 @@ sophia_remote_call_negative(_Cfg) ->
     IdCode     = compile_contract(identity),
     CallerCode = compile_contract(remote_call),
     %% The call fails for insufficient balance for the value specified in the remote call.
-    Env        = initial_state(#{ 16#1234 => IdCode, 1 => CallerCode }),
+    Env        = create_contract(16#1234, IdCode, "()", "",
+                 create_contract(1, CallerCode, "()", "",
+                    initial_state(#{}))),
     out_of_gas = failing_call(1, call, "(address, int)", "#1234, 42", Env),
     ok.
 
@@ -229,21 +234,25 @@ sophia_factorial(_Cfg) ->
 
 simple_multi_argument_call(_Cfg) ->
     RemoteCode = compile_contract(remote_call),
-    Env        = initial_state(#{ 103 => RemoteCode }),
+    Env        = create_contract(103, RemoteCode, "()", "", initial_state(#{})),
     19911      = successful_call_(103, word, plus, "(int, int)", "9900,10011", Env),
     ok.
 
 remote_multi_argument_call(_Cfg) ->
     IdCode     = compile_contract(identity),
     RemoteCode = compile_contract(remote_call),
-    Env        = initial_state(#{ 16#101 => IdCode, 16#102 => RemoteCode, 16#103 => RemoteCode }, #{16#102 => 20000}),
+    Env        = create_contract(16#101, IdCode, "()", "",
+                 create_contract(16#102, RemoteCode, "()", "",
+                 create_contract(16#103, RemoteCode, "()", "",
+                 initial_state(#{}, #{16#102 => 20000})))),
     42         = successful_call_(16#102, word, staged_call, "(address, address, int)", "#101,#102,42", Env),
     ok.
 
 spend_tests(_Cfg) ->
     Code = compile_contract(spend_test),
-    Env  = initial_state(#{ 101 => Code, 102 => Code },
-                         #{ 101 => 1000, 102 => 2000, 1 => 10000 }),
+    Env  = create_contract(101, Code, "()", "",
+           create_contract(102, Code, "()", "",
+           initial_state(#{}, #{ 101 => 1000, 102 => 2000, 1 => 10000 }))),
     {900, Env1}  = successful_call(101, word, withdraw, "int", "100", Env, #{caller => 102}),
     {900, Env2}  = successful_call(101, word, get_balance, "()", "", Env1),
     {2100, Env3} = successful_call(102, word, get_balance, "()", "", Env2),

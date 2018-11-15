@@ -536,32 +536,50 @@ map_call_get(Data, State) ->
     [MapId]   = get_args([word], Data),
     {KeyType, _ValType} = aevm_eeevm_maps:map_type(MapId, State),
     [_, KeyPtr]  = get_args([word, word], Data),
-    {ok, KeyBin} = aevm_eeevm_state:heap_to_binary(KeyType, KeyPtr, State),
-    Res = case aevm_eeevm_maps:get(MapId, KeyBin, State) of
-            false -> aeso_data:to_binary(none);
-            <<ValPtr:256, ValBin/binary>> ->
-                %% Some hacky juggling to build an option value.
-                NewPtr = 32 + byte_size(ValBin),
-                <<NewPtr:256, ValBin/binary, 1:256, ValPtr:256>>
-          end,
-    {ok, {ok, Res}, 0, State}.
+    case aevm_eeevm_state:heap_to_binary(KeyType, KeyPtr, State) of
+        {ok, KeyBin, GasUsed} ->
+            Res = case aevm_eeevm_maps:get(MapId, KeyBin, State) of
+                    false -> aeso_data:to_binary(none);
+                    <<ValPtr:256, ValBin/binary>> ->
+                        %% Some hacky juggling to build an option value.
+                        NewPtr = 32 + byte_size(ValBin),
+                        <<NewPtr:256, ValBin/binary, 1:256, ValPtr:256>>
+                  end,
+            {ok, {ok, Res}, GasUsed, State};
+        {error, _} = Err ->
+            {ok, Err, aevm_eeevm_state:gas(State), State}
+    end.
 
 map_call_put(Data, State) ->
     [MapId]             = get_args([word], Data),
     {KeyType, ValType}  = aevm_eeevm_maps:map_type(MapId, State),
     [_, KeyPtr, ValPtr] = get_args([word, word, word], Data),
-    {ok, KeyBin}        = aevm_eeevm_state:heap_to_binary(KeyType, KeyPtr, State),
-    {ok, ValBin}        = aevm_eeevm_state:heap_to_heap(ValType, ValPtr, State),
-    {NewMapId, State1}  = aevm_eeevm_maps:put(MapId, KeyBin, ValBin, State),
-    {ok, {ok, <<NewMapId:256>>}, 0, State1}.
+    case aevm_eeevm_state:heap_to_binary(KeyType, KeyPtr, State) of
+        {ok, KeyBin, GasUsed} ->
+            case aevm_eeevm_state:heap_to_heap(ValType, ValPtr, State) of
+                {ok, HeapVal, GasUsed1} ->
+                    ValBin = <<(aeso_data:heap_value_pointer(HeapVal)):256,
+                               (aeso_data:heap_value_heap(HeapVal))/binary>>,
+                    {NewMapId, State1}  = aevm_eeevm_maps:put(MapId, KeyBin, ValBin, State),
+                    {ok, {ok, <<NewMapId:256>>}, GasUsed + GasUsed1, State1};
+                {error, _} = Err ->
+                    {ok, Err, aevm_eeevm_state:gas(State), State}
+            end;
+        {error, _} = Err ->
+            {ok, Err, aevm_eeevm_state:gas(State), State}
+    end.
 
 map_call_delete(Data, State) ->
     [MapId]      = get_args([word], Data),
     {KeyType, _} = aevm_eeevm_maps:map_type(MapId, State),
     [_, KeyPtr]  = get_args([word, word], Data),
-    {ok, KeyBin} = aevm_eeevm_state:heap_to_binary(KeyType, KeyPtr, State),
-    {NewMapId, State1} = aevm_eeevm_maps:delete(MapId, KeyBin, State),
-    {ok, {ok, <<NewMapId:256>>}, 0, State1}.
+    case aevm_eeevm_state:heap_to_binary(KeyType, KeyPtr, State) of
+        {ok, KeyBin, GasUsed} ->
+            {NewMapId, State1} = aevm_eeevm_maps:delete(MapId, KeyBin, State),
+            {ok, {ok, <<NewMapId:256>>}, GasUsed, State1};
+        {error, _} = Err ->
+            {ok, Err, aevm_eeevm_state:gas(State), State}
+    end.
 
 map_call_tolist(Data, State) ->
     [MapId] = get_args([word], Data),

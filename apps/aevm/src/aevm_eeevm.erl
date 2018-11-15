@@ -50,9 +50,14 @@
 %%
 eval(State) ->
     case eval_code(State) of
-        {Res, State1} ->
+        {ok, State1} ->
             %% Turn storage map into binary and save in state tree.
-            {Res, aevm_eeevm_state:save_store(State1)};
+            case aevm_eeevm_state:save_store(State1) of
+                {ok, State2}  -> {ok, State2};
+                {error, What} -> {error, What, State1}
+            end;
+        {revert, State1} ->
+            {revert, State1};
         {error, What, State1} ->
             %% Don't save state on error.
             {error, What, State1}
@@ -1111,8 +1116,8 @@ loop(CP, StateIn) ->
                     %% µ'i ≡ M(µi, µs[0], µs[1]) TODO: This
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
-                    {State3, MapsMemCost} = aevm_eeevm_state:do_return(Us0, Us1, State2),
-                    spend_gas_common({mem}, MapsMemCost, spend_mem_gas(State, State3));
+                    {State3, GasUsed} = aevm_eeevm_state:do_return(Us0, Us1, State2),
+                    spend_gas_common({mem}, GasUsed, State3);
                 ?DELEGATECALL ->
                     %% 0xf4 DELEGATECALL  δ=6 α=1
                     %% Message-call into this account with an

@@ -117,7 +117,7 @@ def test_contract_call():
                   + create_settings["create_contract"]["amount"])
 
     bytecode = read_id_contract(internal_api)
-    call_input = ContractCallInput("sophia", bytecode,
+    call_input = ContractCallInput("sophia-address", encoded_contract_id,
                                              call_contract["data"]["function"],
                                              call_contract["data"]["argument"])
     result = internal_api.call_contract(call_input)
