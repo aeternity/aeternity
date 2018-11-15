@@ -13,6 +13,8 @@ Written in Erlang.
 
 Please see the latest [release notes][release-notes] if you want to run the software or just [follow the progress of the project in Pivotal Tracker](https://www.pivotaltracker.com/n/projects/2124891).
 
+If you are interested in participating in a security bounty, check our [HackerOne Aeternity Bounty Program](https://hackerone.com/aeternity/).
+
 [release-notes]: https://github.com/aeternity/epoch/tree/master/docs/release-notes
 
 What's on board?
