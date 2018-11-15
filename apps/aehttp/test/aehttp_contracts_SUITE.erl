@@ -104,16 +104,16 @@ init_per_group(contracts, Config) ->
     ct:pal("ToMine ~p\n", [ToMine]),
     [ aecore_suite_utils:mine_key_blocks(NodeName, ToMine) || ToMine > 0 ],
 
-    %% Prepare accounts, Alice, Bert, Carl and Diana.
+    %% Prepare accounts, Alice, Bert, Carl and Diana with balance of 10T.
 
-    StartAmt = 250000,
+    StartAmt = 10*1000*1000000,                 %That is a lot of tokens!
     {APubkey, APrivkey, STx1} = new_account(StartAmt),
     {BPubkey, BPrivkey, STx2} = new_account(StartAmt),
     {CPubkey, CPrivkey, STx3} = new_account(StartAmt),
     {DPubkey, DPrivkey, STx4} = new_account(StartAmt),
 
     {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(
-                                    NodeName, [STx1, STx2, STx3, STx4], 5),
+                                    NodeName, [STx1, STx2, STx3, STx4], 10),
 
     %% Save account information.
     Accounts = #{acc_a => #{pub_key => APubkey,
@@ -151,9 +151,20 @@ end_per_testcase(_Case, Config) ->
 %% ============================================================
 
 %% null(Config)
-%%  Does nothing and always succeeds.
+%%  Does nothing, prints the balances and always succeeds.
 
-null(_Config) ->
+null(Config) ->
+    %% Get account information.
+    #{acc_a := #{pub_key := APub},
+      acc_b := #{pub_key := BPub},
+      acc_c := #{pub_key := CPub},
+      acc_d := #{pub_key := DPub}} = proplists:get_value(accounts, Config),
+    ABal = get_balance(APub),
+    BBal = get_balance(BPub),
+    CBal = get_balance(CPub),
+    DBal = get_balance(DPub),
+    ct:pal("ABal ~p, BBal ~p, CBal ~p, DBal ~p\n", [ABal,BBal,CBal,DBal]),
+
     ok.
 
 %% identity_contract(Config)
@@ -167,10 +178,6 @@ identity_contract(Config) ->
                  priv_key := CPriv},
       acc_d := #{pub_key := DPub,
                  priv_key := DPriv}} = proplists:get_value(accounts, Config),
-
-    %% Make sure accounts have enough tokens.
-    ensure_balance(CPub, 5000000),
-    ensure_balance(DPub, 5000000),
 
     %% Compile test contract "identity.aes"
     Code = compile_test_contract("identity"),
@@ -199,10 +206,6 @@ abort_test_contract(Config) ->
     %% Get account information.
     #{acc_a := #{pub_key := APub,
                  priv_key := APriv}} = proplists:get_value(accounts, Config),
-
-    %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 10000000),
-    {ok,[_]} = aecore_suite_utils:mine_key_blocks(Node, 1),
 
     %% Compile contracts "abort_test.aes" and "abort_test_int.aes".
     TCode = compile_test_contract("abort_test"),
@@ -284,11 +287,6 @@ simple_storage_contract(Config) ->
       acc_b := #{pub_key := BPub,
                  priv_key := BPriv}} = proplists:get_value(accounts, Config),
 
-    %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 5000000),
-    _BBal0 = ensure_balance(BPub, 5000000),
-    {ok,[_]} = aecore_suite_utils:mine_key_blocks(Node, 1),
-
     %% Compile test contract "simple_storage.aes"
     Code = compile_test_contract("simple_storage"),
 
@@ -343,10 +341,6 @@ counter_contract(Config) ->
       acc_b := #{pub_key := BPub,
                  priv_key := BPriv}} = proplists:get_value(accounts, Config),
 
-    %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 10000000),
-    _BBal0 = ensure_balance(BPub, 10000000),
-
     %% Compile test contract "counter.aes"
     Code = compile_test_contract("counter"),
 
@@ -391,10 +385,6 @@ stack_contract(Config) ->
                  priv_key := APriv},
       acc_b := #{pub_key := BPub,
                  priv_key := BPriv}} = proplists:get_value(accounts, Config),
-
-    %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 10000000),
-    _BBal0 = ensure_balance(BPub, 10000000),
 
     %% Compile test contract "stack.aes"
     Code = compile_test_contract("stack"),
@@ -443,10 +433,6 @@ polymorphism_test_contract(Config) ->
     #{acc_a := #{pub_key := APub,
                  priv_key := APriv}} = proplists:get_value(accounts, Config),
 
-    %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 2000000),
-    {ok,[_]} = aecore_suite_utils:mine_key_blocks(Node, 1),
-
     %% Compile test contract "polymorphism_test.aes".
     Code = compile_test_contract("polymorphism_test"),
 
@@ -474,10 +460,6 @@ factorial_contract(Config) ->
     %% Get account information.
     #{acc_a := #{pub_key := APub,
                  priv_key := APriv}} = proplists:get_value(accounts, Config),
-
-    %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 20000000),
-    {ok,[_]} = aecore_suite_utils:mine_key_blocks(Node, 1),
 
     %% Compile test contract "factorial.aes".
     Code = compile_test_contract("factorial"),
@@ -515,10 +497,6 @@ maps_contract(Config) ->
     #{acc_a := #{pub_key := APub, priv_key := APriv},
       acc_b := #{pub_key := BPub, priv_key := BPriv}}
         = proplists:get_value(accounts, Config),
-
-    %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 50000000),
-    _BBal0 = ensure_balance(BPub, 50000000),
 
     %% ContractString = aeso_test_utils:read_contract("maps"),
     %% aeso_compiler:from_string(ContractString, []),
@@ -682,9 +660,7 @@ environment_contract(Config) ->
       acc_b := #{pub_key := BPub,
                  priv_key := BPriv}} = proplists:get_value(accounts, Config),
 
-    %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 20000000),
-    BBal0 = ensure_balance(BPub, 20000000),
+    BBal0 = get_balance(BPub),
 
     %% Compile test contract "environment.aes"
     Code = compile_test_contract("environment"),
@@ -811,9 +787,7 @@ spend_test_contract(Config) ->
       acc_b := #{pub_key := BPub,
                  priv_key := _BPriv}} = proplists:get_value(accounts, Config),
 
-    %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 5000000),
-    BBal0 = ensure_balance(BPub, 3000000),
+    BBal0 = get_balance(BPub),
 
     %% Compile test contract "spend_test.aes"
     Code = compile_test_contract("spend_test"),
@@ -875,11 +849,6 @@ dutch_auction_contract(Config) ->
       acc_c := #{pub_key := CPub},
       acc_d := #{pub_key := DPub,
                  priv_key := DPriv}} = proplists:get_value(accounts, Config),
-
-    %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 30000000),
-    _BBal0 = ensure_balance(BPub, 30000000),
-    _CBal0 = ensure_balance(CPub, 30000000),
 
     %% Compile test contract "dutch_auction.aes"
     Code = compile_test_contract("dutch_auction"),
@@ -943,12 +912,6 @@ fundme_contract(Config) ->
       acc_d := #{pub_key := DPub,
                  priv_key := DPriv}} = proplists:get_value(accounts, Config),
 
-    %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 1000000),
-    _BBal0 = ensure_balance(BPub, 1000000),
-    _CBal0 = ensure_balance(CPub, 1000000),
-    _DBal0 = ensure_balance(DPub, 1000000),
-
     %% Compile test contract "fundme.aes"
     Code = compile_test_contract("fundme"),
 
@@ -1005,12 +968,6 @@ erc20_token_contract(Config) ->
                  priv_key := CPriv},
       acc_d := #{pub_key := DPub,
                  priv_key := _DPriv}} = proplists:get_value(accounts, Config),
-
-    %% Make sure accounts have enough tokens.
-    _ABal0 = ensure_balance(APub, 10000000),
-    _BBal0 = ensure_balance(BPub, 5000000),
-    _CBal0 = ensure_balance(CPub, 5000000),
-    _DBal0 = ensure_balance(DPub, 5000000),
 
     %% ContractString = aeso_test_utils:read_contract("erc20_token"),
     %% aeso_compiler:from_string(ContractString, []),
@@ -1142,11 +1099,21 @@ decode_data(Type, EncodedData) ->
                                     data => EncodedData}),
     DecodedData.
 
+%% call_func_decode(NodeName, Pubkey, Privkey, EncodedContractPubkey,
+%%                  Function, Arguments, ReturnType)
+%% call_func_decode(NodeName, Pubkey, Privkey, EncodedContractPubkey,
+%%                  Function, Arguments, CallerSet, ReturnType)
+
 call_func_decode(NodeName, Pubkey, Privkey, EncodedContractPubkey,
                  Function, Arg, Type) ->
+    call_func_decode(NodeName, Pubkey, Privkey, EncodedContractPubkey,
+                     Function, Arg, #{}, Type).
+
+call_func_decode(NodeName, Pubkey, Privkey, EncodedContractPubkey,
+                 Function, Arg, CallerSet, Type) ->
     {Return,_} = call_compute_func(NodeName, Pubkey, Privkey,
                                    EncodedContractPubkey,
-                                   Function, Arg),
+                                   Function, Arg, CallerSet),
     #{<<"value">> := Value} = decode_data(Type, Return),
     Value.
 
@@ -1194,7 +1161,7 @@ force_fun_calls(Node) ->
     Calls = put(fun_calls, []),
     put(nonces, []),
     Txs = [ TxHash || {TxHash, _} <- Calls ],
-    aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, Txs, 10),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, Txs, 20),
     check_calls(Calls).
 
 check_calls(Calls) ->
@@ -1462,7 +1429,7 @@ get_account_by_pubkey(Id) ->
     Host = external_address(),
     http_request(Host, get, "accounts/" ++ http_uri:encode(Id), []).
 
- post_tx(TxSerialized) ->
+post_tx(TxSerialized) ->
     Host = external_address(),
     http_request(Host, post, "transactions", #{tx => TxSerialized}).
 
@@ -1607,7 +1574,7 @@ wait_for_tx_hash_on_chain(Node, TxHash) ->
     case tx_in_chain(TxHash) of
         true -> ok;
         false ->
-            case aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, TxHash, 10) of
+            case aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, TxHash, 20) of
                 {ok, _Blocks} -> ok;
                 {error, _Reason} -> did_not_mine
             end
