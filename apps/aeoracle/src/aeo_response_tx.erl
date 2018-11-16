@@ -125,7 +125,6 @@ check(#oracle_response_tx{nonce = Nonce, query_id = QueryId,
     case fetch_query(OraclePubKey, QueryId, Trees) of
         {value, I} ->
             QueryResponseTTL = aeo_query:response_ttl(I),
-            QueryFee         = aeo_query:fee(I),
             Checks =
                 [fun() -> check_response_ttl(ResponseTTL, QueryResponseTTL) end,
                  fun() -> check_oracle(OraclePubKey, Trees, Tx) end,
