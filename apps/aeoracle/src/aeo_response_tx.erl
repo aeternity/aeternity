@@ -133,8 +133,7 @@ check(#oracle_response_tx{nonce = Nonce, query_id = QueryId,
                  case aetx_env:context(Env) of
                      aetx_contract -> []; %% TODO: Handle fees from contracts right.
                      aetx_transaction ->
-                         [fun() -> aetx_utils:check_account(OraclePubKey, Trees,
-                                                            Nonce, Fee - QueryFee) end,
+                         [fun() -> aetx_utils:check_account(OraclePubKey, Trees, Nonce, Fee) end, %% Sender must be able to pay transaction fee before receiving query fee.
                           fun() -> aeo_utils:check_ttl_fee(Height, ResponseTTL, Fee) end]
                  end],
             case aeu_validation:run(Checks) of
