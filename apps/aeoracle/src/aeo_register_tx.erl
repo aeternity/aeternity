@@ -145,8 +145,7 @@ check(#oracle_register_tx{nonce = Nonce, oracle_ttl = OTTL, fee = Fee,
                %% Contract is paying tx fee as gas.
                aetx_contract -> [];
                aetx_transaction ->
-                   [fun() -> aeo_utils:check_ttl_fee(Height, OTTL, Fee) end
-                   ]
+                   [fun() -> aeo_utils:check_ttl_fee(Height, OTTL, Fee) end] %% TODO Deduct portion of fee already accounted for by `aetx:check` before checking state TTL portion of fee.
            end],
 
     case aeu_validation:run(Checks) of
