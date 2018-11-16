@@ -413,6 +413,12 @@ query_response_negative(Cfg) ->
     BadId = aeo_query:id(aeo_query:set_sender_nonce(42, OIO)),
     RTx5 = aeo_test_utils:response_tx(OracleKey, BadId, <<"42">>, S1),
     {error, no_matching_oracle_query} = aetx:check(RTx5, Trees, Env),
+
+    %% Insufficient funds
+    S2     = aeo_test_utils:set_account_balance(OracleKey, 1, S1),
+    Trees2 = aeo_test_utils:trees(S2),
+    RTx6 = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, S1),
+    {error, insufficient_funds} = aetx:check(RTx6, Trees2, Env),
     ok.
 
 query_response_negative_dynamic_fee(Cfg) ->
