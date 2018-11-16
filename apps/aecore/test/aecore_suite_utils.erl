@@ -49,6 +49,8 @@
          await_sync_complete/2
         ]).
 
+-export([restart_jobs_server/1]).
+
 -export([patron/0,
          sign_keys/0,
          sign_keys/1]).
@@ -476,6 +478,10 @@ check_event(#{sender := From, info := Info}, Nodes) ->
             Nodes
     end.
 
+restart_jobs_server(N) ->
+    JobsP = rpc:call(N, erlang, whereis, [jobs_server]),
+    true = rpc:call(N, erlang, exit, [JobsP, kill]),
+    await_new_jobs_pid(N, JobsP).
 
 %%%=============================================================================
 %%% Internal functions
@@ -874,3 +880,23 @@ ensure_markers(Es, Subs) ->
               end
       end, Subs, Es).
 
+await_new_jobs_pid(N, OldP) ->
+    TRef = erlang:start_timer(5000, self(), await_jobs_pid),
+    await_new_jobs_pid(N, OldP, TRef).
+
+await_new_jobs_pid(N, OldP, TRef) ->
+    case rpc:call(N, erlang, whereis, [jobs_server]) of
+        OldP      -> await_new_jobs_pid_recurse(N, OldP, TRef);
+        undefined -> await_new_jobs_pid_recurse(N, OldP, TRef);
+        NewP when is_pid(NewP) ->
+            erlang:cancel_timer(TRef),
+            NewP
+    end.
+
+await_new_jobs_pid_recurse(N, OldP, TRef) ->
+    receive
+        {timeout, TRef, _} ->
+            erlang:error(timeout)
+    after 100 ->
+            await_new_jobs_pid(N, OldP, TRef)
+    end.
