@@ -37,7 +37,7 @@ the WebSocket endpoint is not exposed.
 
 ### Beneficiary account
 
-In order to configure who receives fees from mining on a node, you must configure beneficiary public key.
+In order to configure who receives fees from mining on a node, you must configure a beneficiary public key.
 
 If you don't have your public key yet, you can use provided `keys_gen` tool, that will generate a public-private key pair for you.
 The key pair will be encrypted with a password that you shall pass to `keys_gen` tool (below assumes the node is deployed in directory `/tmp/node`):
@@ -83,6 +83,7 @@ Create the file `/tmp/node/epoch.yaml` with the below content.
 Make sure you amend:
 * the `mining` > `beneficiary` parameter, i.e. replace `encoded_beneficiary_pubkey_to_be_replaced` with your public key;
 * the `sync` > `port` parameter with your actual value:
+* set `autostart: false` if you have not yet synced with the blockchain to improve sync performance. Change this value to `autostart: true` and [configure your miner](#Miner-Configuration) when you are in sync, then restart the node.
 
 ```yaml
 ---
@@ -127,3 +128,26 @@ You shall read output like the following:
 OK
 ```
 If the file is valid YAML but does not contain a valid configuration, it prints a helpful output.
+
+## Miner Configuration
+
+If you want to use your node to mine, you can use the default mining by setting
+```yaml
+mining:
+    beneficiary: "beneficiary_pubkey_to_be_replaced"
+    autostart: true
+```
+in the yaml.epoch configuration file.
+
+Your mining setup needs to meet your hardware capacity. Therefore, you need to make a choice in how you want to configure your miner. You can read the documentation on setting up CUDA mining, or you can use all but one of the cores on your computer to mine (keep one core available for transaction gossiping, synchronising, etc).
+If you have 16 cores, you could (loosely spoken) assign 14 of them to mining using the following configuration:
+```yaml
+mining:
+    beneficiary: "beneficiary_pubkey_to_be_replaced"
+    cuckoo:
+        miner:
+            edge_bits: 29
+            executable: mean29-avx2
+            extra_args: -t 14
+```
+Read the [beneficiary account section](#beneficiary-account) on how to put your key in this file.
