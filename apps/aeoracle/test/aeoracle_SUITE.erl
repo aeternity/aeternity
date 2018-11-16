@@ -257,7 +257,8 @@ extend_oracle(Cfg) ->
 %%%===================================================================
 -define(ORACLE_QUERY_HEIGHT, 3).
 query_oracle_negative(Cfg) ->
-    {OracleKey, S}  = register_oracle(Cfg),
+    RegisterQueryFee = 5,
+    {OracleKey, S}  = register_oracle(Cfg, #{query_fee => RegisterQueryFee}),
     {SenderKey, S2} = aeo_test_utils:setup_new_account(S),
     Trees           = aeo_test_utils:trees(S2),
     CurrHeight      = ?ORACLE_QUERY_HEIGHT,
@@ -279,7 +280,7 @@ query_oracle_negative(Cfg) ->
     Q3 = aeo_test_utils:query_tx(SenderKey, OracleId, #{nonce => 0}, S2),
     {error, account_nonce_too_high} = aetx:check(Q3, Trees, Env),
 
-    %% Test too low query fee
+    %% Test too low fee
     Q4 = aeo_test_utils:query_tx(SenderKey, OracleId, #{fee => 0}, S2),
     {error, too_low_fee} = aetx:check(Q4, Trees, Env),
 
@@ -299,6 +300,10 @@ query_oracle_negative(Cfg) ->
     %% Test too short TTL
     Q8 = aeo_test_utils:query_tx(SenderKey, OracleId, #{ ttl => CurrHeight - 1 }, S2),
     {error, ttl_expired} = aetx:check(Q8, Trees, Env),
+
+    %% Test too low query fee
+    Q9 = aeo_test_utils:query_tx(SenderKey, OracleId, #{query_fee => RegisterQueryFee - 1}, S2),
+    {error, query_fee_too_low} = aetx:check(Q9, Trees, Env),
     ok.
 
 query_oracle_negative_dynamic_fee(Cfg) ->
