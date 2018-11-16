@@ -168,7 +168,7 @@ verify_poi(Type,_PubKey,_Account, #poi{} =_Poi) ->
 -spec commit_to_db(trees()) -> trees().
 commit_to_db(Trees) ->
     %% Make this in a transaction to get atomicity.
-    aec_db:transaction(fun() -> internal_commit_to_db(Trees) end).
+    aec_db:ensure_transaction(fun() -> internal_commit_to_db(Trees) end).
 
 hash(Trees) ->
     internal_hash(Trees).
