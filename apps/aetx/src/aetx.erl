@@ -13,10 +13,10 @@
         , deserialize_from_binary/1
         , fee/1
         , gas/1
-        , min_gas/1
         , gas_price/1
         , ttl/1
         , size/1
+        , min_fee/1
         , new/2
         , nonce/1
         , origin/1
@@ -183,6 +183,10 @@ gas_price(#aetx{ type = Type, cb = CB, tx = Tx }) when ?IS_CONTRACT_TX(Type) ->
 gas_price(#aetx{}) ->
     undefined.
 
+-spec min_fee(Tx :: tx()) -> Fee :: non_neg_integer().
+min_fee(#aetx{} = AeTx) ->
+    min_gas(AeTx) * aec_governance:minimum_gas_price().
+
 -spec min_gas(Tx :: tx()) -> Gas :: non_neg_integer().
 min_gas(#aetx{ type = Type, size = Size }) when ?IS_CONTRACT_TX(Type) ->
     aec_governance:tx_base_gas(Type) + Size * aec_governance:byte_gas();
@@ -247,7 +251,7 @@ check_tx(#aetx{ cb = CB, tx = Tx } = AeTx, Trees, Env) ->
     end.
 
 check_minimum_fee(AeTx) ->
-    case fee(AeTx) >= (min_gas(AeTx) * aec_governance:minimum_gas_price()) of
+    case fee(AeTx) >= min_fee(AeTx) of
         true  -> ok;
         false -> {error, too_low_fee}
     end.

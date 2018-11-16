@@ -739,7 +739,7 @@ get_account(AccountKey, {block_hash, BlockHash}) ->
 
 check_minimum_fee(Tx0, _Hash) ->
     Tx = aetx_sign:tx(Tx0),
-    case aetx:fee(Tx) >= (aetx:min_gas(Tx) * aec_governance:minimum_gas_price()) of
+    case aetx:fee(Tx) >= aetx:min_fee(Tx) of
         true  -> ok;
         false -> {error, too_low_fee}
     end.
