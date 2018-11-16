@@ -1505,7 +1505,8 @@ recursive_call2(Op, Gascap, To, Value, OSize, OOffset, I, State8, GasAfterSpend,
              %%                                       }, State8),
             {OutGas, ReturnState, R} =
                 case aevm_eeevm_state:call_contract(Caller, Dest, CallGas, Value, I, State8) of
-                    {ok, Res, GasSpent, OutState1} -> {CallGas - GasSpent, OutState1, Res};
+                    {ok, Res, GasSpent, OutState1} when 0 =< GasSpent, GasSpent =< CallGas ->
+                        {CallGas - GasSpent, OutState1, Res};
                     {error, ?AEVM_PRIMOP_ERR_REASON_OOG(_OogResource, _OogGas, State9)} ->
                         ?TEST_LOG("Out of gas spending ~p gas for ~p", [_OogGas, _OogResource]),
                         eval_error(out_of_gas, State9);
