@@ -4,6 +4,12 @@
 %%%     Type checker for Sophia.
 %%% @end
 %%%-------------------------------------------------------------------
+
+%%% All state is kept in a set of ETS tables. These are NOT named
+%%% tables and the table ids are kept in process dictionary in a map
+%%% under the key 'aeso_ast_infer_types'. This allows multiple
+%%% instances of the compiler to be run in parallel.
+
 -module(aeso_ast_infer_types).
 
 -export([infer/1, infer/2, infer_constant/1]).
@@ -52,6 +58,9 @@
     , kind     :: contract | record }).
 
 -type field_info() :: #field_info{}.
+
+-define(PRINT_TYPES(Fmt, Args),
+	when_option(pp_types, fun () -> io:format(Fmt, Args) end)).
 
 %% Environment containing language primitives
 -spec global_env() -> [{string(), aeso_syntax:type()}].
@@ -151,6 +160,7 @@ infer(Contracts) ->
 
 -spec infer(aeso_syntax:ast(), list(option())) -> aeso_syntax:ast().
 infer(Contracts, Options) ->
+    ets_init(),                                 %Init the ETS table state
     try
         TypeEnv =
             case proplists:get_value(permissive_address_literals, Options, false) of
@@ -166,7 +176,7 @@ infer(Contracts, Options) ->
                     [Alias("oracle", 2), Alias("oracle_query", 2)]
             end,
         create_options(Options),
-        ets:new(type_vars, [set, named_table, public]),
+        ets_new(type_vars, [set]),
         infer1(TypeEnv, Contracts)
     after
         clean_up_ets()
@@ -188,6 +198,7 @@ infer_contract_top(TypeEnv, Defs0) ->
     C.
 
 infer_constant({letval, Attrs,_Pattern, Type, E}) ->
+    ets_init(),                                 %Init the ETS table state
     create_type_defs([]),
     {typed, _, _, PatType} =
         infer_expr(global_env(), {typed, Attrs, E, arg_type(Type)}),
@@ -341,7 +352,8 @@ infer_letrec(Env, {letrec, Attrs, Defs}) ->
             Expect = typesig_to_fun_t(TypeSig),
             unify(Got, Expect, {check_typesig, Name, Got, Expect}),
             solve_field_constraints(),
-            %% io:format("Checked ~s : ~s\n", [Name, pp(dereference_deep(Got))]),
+	    ?PRINT_TYPES("Checked ~s : ~s\n",
+			 [Name, pp(dereference_deep(Got))]),
             Res
           end || LF <- Defs ],
     destroy_and_report_unsolved_constraints(),
@@ -362,7 +374,7 @@ infer_letfun(Env, {letfun, Attrib, {id, NameAttrib, Name}, Args, What, Body}) ->
      {letfun, Attrib, {id, NameAttrib, Name}, NewArgs, ResultType, NewBody}}.
 
 print_typesig({Name, TypeSig}) ->
-    io:format("Inferred ~s : ~s\n", [Name, pp(TypeSig)]).
+    ?PRINT_TYPES("Inferred ~s : ~s\n", [Name, pp(TypeSig)]).
 
 arg_type({id, Attrs, "_"}) ->
     fresh_uvar(Attrs);
@@ -684,30 +696,68 @@ ets_tables() ->
      field_constraints, freshen_tvars, type_errors].
 
 clean_up_ets() ->
-    [ catch ets:delete(Tab) || Tab <- ets_tables() ],
+    [ catch ets_delete(Tab) || Tab <- ets_tables() ],
     ok.
+
+%% Named interface to ETS tables implemented without names.
+%% The interface functions behave as the standard ETS interface.
+
+ets_init() ->
+    put(aeso_ast_infer_types, #{}).
+    
+ets_tabid(Name) ->
+    #{Name := TabId} = get(aeso_ast_infer_types),
+    TabId.
+
+ets_new(Name, Opts) ->
+    %% Ensure the table is NOT named!
+    TabId = ets:new(Name, Opts -- [named_table]),
+    Tabs = get(aeso_ast_infer_types),
+    put(aeso_ast_infer_types, Tabs#{Name => TabId}),
+    Name.
+
+ets_delete(Name) ->
+    Tabs = get(aeso_ast_infer_types),
+    #{Name := TabId} = Tabs,
+    put(aeso_ast_infer_types, maps:remove(Name, Tabs)),
+    ets:delete(TabId).
+
+ets_insert(Name, Object) ->
+    TabId = ets_tabid(Name),
+    ets:insert(TabId, Object).
+
+ets_lookup(Name, Key) ->
+    TabId = ets_tabid(Name),
+    ets:lookup(TabId, Key).
+
+ets_tab2list(Name) ->
+    TabId = ets_tabid(Name),
+    ets:tab2list(TabId).
 
 %% Options
 
 create_options(Options) ->
-    ets:new(options, [public, named_table, set]),
+    ets_new(options, [set]),
     Tup = fun(Opt) when is_atom(Opt) -> {Opt, true};
              (Opt) when is_tuple(Opt) -> Opt end,
-    ets:insert(options, lists:map(Tup, Options)).
+    ets_insert(options, lists:map(Tup, Options)).
 
 get_option(Key, Default) ->
-    case ets:lookup(options, Key) of
+    case ets_lookup(options, Key) of
         [{Key, Val}] -> Val;
         _            -> Default
     end.
+
+when_option(Opt, Do) ->
+    get_option(Opt, false) andalso Do().
 
 %% Record types
 
 create_type_defs(Defs) ->
     %% A map from type names to definitions
-    ets:new(type_defs, [public, named_table, set]),
+    ets_new(type_defs, [set]),
     %% A relation from field names to types
-    ets:new(record_fields, [public, named_table, bag]),
+    ets_new(record_fields, [bag]),
     [ case Def of
         {type_def, _Attrs, Id, Args, Typedef} ->
             insert_typedef(Id, Args, Typedef);
@@ -718,8 +768,8 @@ create_type_defs(Defs) ->
     ok.
 
 destroy_type_defs() ->
-    ets:delete(type_defs),
-    ets:delete(record_fields).
+    ets_delete(type_defs),
+    ets_delete(record_fields).
 
 %% Key used in type_defs ets table.
 -spec type_key(type_id()) -> [string()].
@@ -744,7 +794,7 @@ insert_contract(Id, Contents) ->
                 || {fun_decl, Ann, Entrypoint, Type} <- Contents ] ++
               %% Predefined fields
              [ {field_t, Sys, {id, Sys, "address"}, {id, Sys, "address"}} ],
-    ets:insert(type_defs, {Key, [], {contract_t, Fields}}),
+    ets_insert(type_defs, {Key, [], {contract_t, Fields}}),
     %% TODO: types defined in other contracts
     [insert_record_field(Entrypoint, #field_info{ kind     = contract,
                                                   field_t  = Type,
@@ -755,7 +805,7 @@ insert_contract(Id, Contents) ->
 insert_typedef(Id, Args, Typedef) ->
     Attrs = aeso_syntax:get_ann(Id),
     Key   = type_key(Id),
-    ets:insert(type_defs, {Key, Args, Typedef}),
+    ets_insert(type_defs, {Key, Args, Typedef}),
     case Typedef of
         {record_t, Fields} ->
             [insert_record_field(FieldName, #field_info{ kind     = record,
@@ -769,18 +819,18 @@ insert_typedef(Id, Args, Typedef) ->
 
 -spec lookup_type(type_id()) -> false | {[aeso_syntax:tvar()], aeso_syntax:typedef()}.
 lookup_type(Id) ->
-    case ets:lookup(type_defs, type_key(Id)) of
+    case ets_lookup(type_defs, type_key(Id)) of
         []                        -> false;
         [{_Key, Params, Typedef}] -> {Params, unfold_types_in_type(Typedef)}
     end.
 
 -spec insert_record_field(string(), field_info()) -> true.
 insert_record_field(FieldName, FieldInfo) ->
-    ets:insert(record_fields, {FieldName, FieldInfo}).
+    ets_insert(record_fields, {FieldName, FieldInfo}).
 
 -spec lookup_record_field(string()) -> [{string(), field_info()}].
 lookup_record_field(FieldName) ->
-    ets:lookup(record_fields, FieldName).
+    ets_lookup(record_fields, FieldName).
 
 %% For 'create' or 'update' constraints we don't consider contract types.
 lookup_record_field(FieldName, Kind) ->
@@ -804,17 +854,17 @@ destroy_and_report_unsolved_constraints() ->
 %% -- Named argument constraints --
 
 create_named_argument_constraints() ->
-    ets:new(named_argument_constraints, [public, named_table, bag]).
+    ets_new(named_argument_constraints, [bag]).
 
 destroy_named_argument_constraints() ->
-    ets:delete(named_argument_constraints).
+    ets_delete(named_argument_constraints).
 
 get_named_argument_constraints() ->
-    ets:tab2list(named_argument_constraints).
+    ets_tab2list(named_argument_constraints).
 
 -spec add_named_argument_constraint(named_argument_constraint()) -> ok.
 add_named_argument_constraint(Constraint) ->
-    ets:insert(named_argument_constraints, Constraint),
+    ets_insert(named_argument_constraints, Constraint),
     ok.
 
 solve_named_argument_constraints() ->
@@ -851,18 +901,18 @@ destroy_and_report_unsolved_named_argument_constraints() ->
 
 create_field_constraints() ->
     %% A relation from uvars to constraints
-    ets:new(field_constraints, [public, named_table, bag]).
+    ets_new(field_constraints, [bag]).
 
 destroy_field_constraints() ->
-    ets:delete(field_constraints).
+    ets_delete(field_constraints).
 
 -spec constrain([field_constraint()]) -> true.
 constrain(FieldConstraints) ->
-    ets:insert(field_constraints, FieldConstraints).
+    ets_insert(field_constraints, FieldConstraints).
 
 -spec get_field_constraints() -> [field_constraint()].
 get_field_constraints() ->
-    ets:tab2list(field_constraints).
+    ets_tab2list(field_constraints).
 
 solve_field_constraints() ->
     solve_field_constraints(get_field_constraints()).
@@ -1107,7 +1157,7 @@ unify1({uvar, A, R}, T, When) ->
             cannot_unify({uvar, A, R}, T, When),
             false;
         false ->
-            ets:insert(type_vars, {R, T}),
+            ets_insert(type_vars, {R, T}),
             true
     end;
 unify1(T, {uvar, A, R}, When) ->
@@ -1157,7 +1207,7 @@ unify1(A, B, When) ->
     Ok.
 
 dereference(T = {uvar, _, R}) ->
-    case ets:lookup(type_vars, R) of
+    case ets_lookup(type_vars, R) of
         [] ->
             T;
         [{R, Type}] ->
@@ -1199,10 +1249,10 @@ fresh_uvar(Attrs) ->
     {uvar, Attrs, make_ref()}.
 
 create_freshen_tvars() ->
-    ets:new(freshen_tvars, [set, public, named_table]).
+    ets_new(freshen_tvars, [set]).
 
 destroy_freshen_tvars() ->
-    ets:delete(freshen_tvars).
+    ets_delete(freshen_tvars).
 
 freshen_type(Type) ->
     create_freshen_tvars(),
@@ -1211,13 +1261,13 @@ freshen_type(Type) ->
     Type1.
 
 freshen({tvar, As, Name}) ->
-    NewT = case ets:lookup(freshen_tvars, Name) of
+    NewT = case ets_lookup(freshen_tvars, Name) of
                [] ->
                    fresh_uvar(As);
                [{Name, T}] ->
                    T
            end,
-    ets:insert(freshen_tvars, {Name, NewT}),
+    ets_insert(freshen_tvars, {Name, NewT}),
     NewT;
 freshen(T) when is_tuple(T) ->
     list_to_tuple(freshen(tuple_to_list(T)));
@@ -1232,16 +1282,16 @@ instantiate(E) ->
     instantiate1(dereference(E)).
 
 instantiate1({uvar, Attr, R}) ->
-    Next = proplists:get_value(next, ets:lookup(type_vars, next), 1),
+    Next = proplists:get_value(next, ets_lookup(type_vars, next), 1),
     TVar = {tvar, Attr, "'" ++ integer_to_list(Next)},
-    ets:insert(type_vars, [{next, Next + 1}, {R, TVar}]),
+    ets_insert(type_vars, [{next, Next + 1}, {R, TVar}]),
     TVar;
 instantiate1({fun_t, Ann, Named, Args, Ret}) ->
     case dereference(Named) of
         {uvar, _, R} ->
             %% Uninstantiated named args map to the empty list
             NoNames = [],
-            ets:insert(type_vars, [{R, NoNames}]),
+            ets_insert(type_vars, [{R, NoNames}]),
             {fun_t, Ann, NoNames, instantiate(Args), instantiate(Ret)};
         Named1 ->
             {fun_t, Ann, instantiate1(Named1), instantiate(Args), instantiate(Ret)}
@@ -1259,16 +1309,15 @@ cannot_unify(A, B, When) ->
     type_error({cannot_unify, A, B, When}).
 
 type_error(Err) ->
-    ets:insert(type_errors, Err).
+    ets_insert(type_errors, Err).
 
 create_type_errors() ->
-    ets:new(type_errors, [bag, named_table, public]).
+    ets_new(type_errors, [bag]).
 
 destroy_and_report_type_errors() ->
-    Errors   = ets:tab2list(type_errors),
+    Errors   = ets_tab2list(type_errors),
     PPErrors = [ pp_error(Err) || Err <- Errors ],
-    %%[ io:format("~s", [Err]) || Err <- PPErrors ],
-    ets:delete(type_errors),
+    ets_delete(type_errors),
     [ error({type_errors, [lists:flatten(Err) || Err <- PPErrors]})
       || Errors /= [] ].
 
