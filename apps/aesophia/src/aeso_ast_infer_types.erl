@@ -59,9 +59,6 @@
 
 -type field_info() :: #field_info{}.
 
--define(PRINT_TYPES(Fmt, Args),
-	when_option(pp_types, fun () -> io:format(Fmt, Args) end)).
-
 %% Environment containing language primitives
 -spec global_env() -> [{string(), aeso_syntax:type()}].
 global_env() ->
@@ -176,7 +173,7 @@ infer(Contracts, Options) ->
                     [Alias("oracle", 2), Alias("oracle_query", 2)]
             end,
         create_options(Options),
-        ets_new(type_vars, [set]),
+        ets_new(type_vars, [set, named_table, public]),
         infer1(TypeEnv, Contracts)
     after
         clean_up_ets()
@@ -352,8 +349,10 @@ infer_letrec(Env, {letrec, Attrs, Defs}) ->
             Expect = typesig_to_fun_t(TypeSig),
             unify(Got, Expect, {check_typesig, Name, Got, Expect}),
             solve_field_constraints(),
-	    ?PRINT_TYPES("Checked ~s : ~s\n",
-			 [Name, pp(dereference_deep(Got))]),
+            PP = fun () -> io:format("Checked ~s : ~s\n",
+                                     [Name, pp(dereference_deep(Got))])
+                 end,
+            when_option(pp_types, PP),
             Res
           end || LF <- Defs ],
     destroy_and_report_unsolved_constraints(),
@@ -374,7 +373,8 @@ infer_letfun(Env, {letfun, Attrib, {id, NameAttrib, Name}, Args, What, Body}) ->
      {letfun, Attrib, {id, NameAttrib, Name}, NewArgs, ResultType, NewBody}}.
 
 print_typesig({Name, TypeSig}) ->
-    ?PRINT_TYPES("Inferred ~s : ~s\n", [Name, pp(TypeSig)]).
+    PP = fun () -> io:format("Inferred ~s : ~s\n", [Name, pp(TypeSig)]) end,
+    when_option(pp_types, PP).
 
 arg_type({id, Attrs, "_"}) ->
     fresh_uvar(Attrs);
@@ -737,7 +737,7 @@ ets_tab2list(Name) ->
 %% Options
 
 create_options(Options) ->
-    ets_new(options, [set]),
+    ets_new(options, [public, named_table, set]),
     Tup = fun(Opt) when is_atom(Opt) -> {Opt, true};
              (Opt) when is_tuple(Opt) -> Opt end,
     ets_insert(options, lists:map(Tup, Options)).
@@ -755,9 +755,9 @@ when_option(Opt, Do) ->
 
 create_type_defs(Defs) ->
     %% A map from type names to definitions
-    ets_new(type_defs, [set]),
+    ets_new(type_defs, [public, named_table, set]),
     %% A relation from field names to types
-    ets_new(record_fields, [bag]),
+    ets_new(record_fields, [public, named_table, bag]),
     [ case Def of
         {type_def, _Attrs, Id, Args, Typedef} ->
             insert_typedef(Id, Args, Typedef);
@@ -854,7 +854,7 @@ destroy_and_report_unsolved_constraints() ->
 %% -- Named argument constraints --
 
 create_named_argument_constraints() ->
-    ets_new(named_argument_constraints, [bag]).
+    ets_new(named_argument_constraints, [public, named_table, bag]).
 
 destroy_named_argument_constraints() ->
     ets_delete(named_argument_constraints).
@@ -901,7 +901,7 @@ destroy_and_report_unsolved_named_argument_constraints() ->
 
 create_field_constraints() ->
     %% A relation from uvars to constraints
-    ets_new(field_constraints, [bag]).
+    ets_new(field_constraints, [public, named_table, bag]).
 
 destroy_field_constraints() ->
     ets_delete(field_constraints).
@@ -1249,7 +1249,7 @@ fresh_uvar(Attrs) ->
     {uvar, Attrs, make_ref()}.
 
 create_freshen_tvars() ->
-    ets_new(freshen_tvars, [set]).
+    ets_new(freshen_tvars, [set, public, named_table]).
 
 destroy_freshen_tvars() ->
     ets_delete(freshen_tvars).
@@ -1312,11 +1312,12 @@ type_error(Err) ->
     ets_insert(type_errors, Err).
 
 create_type_errors() ->
-    ets_new(type_errors, [bag]).
+    ets_new(type_errors, [bag, named_table, public]).
 
 destroy_and_report_type_errors() ->
     Errors   = ets_tab2list(type_errors),
     PPErrors = [ pp_error(Err) || Err <- Errors ],
+    [ io:format("~s", [Err]) || Err <- PPErrors ],
     ets_delete(type_errors),
     [ error({type_errors, [lists:flatten(Err) || Err <- PPErrors]})
       || Errors /= [] ].
