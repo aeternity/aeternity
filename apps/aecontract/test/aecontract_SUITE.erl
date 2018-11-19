@@ -79,6 +79,7 @@
         , sophia_signatures_aens/1
         , sophia_maps/1
         , sophia_map_benchmark/1
+        , sophia_big_map_benchmark/1
         , sophia_pmaps/1
         , sophia_map_of_maps/1
         , sophia_chess/1
@@ -167,6 +168,7 @@ groups() ->
                                  sophia_signatures_aens,
                                  sophia_maps,
                                  sophia_map_benchmark,
+                                 sophia_big_map_benchmark,
                                  sophia_variant_types,
                                  sophia_chain,
                                  sophia_savecoinbase,
@@ -2911,6 +2913,25 @@ sophia_map_benchmark(Cfg) ->
     %%    N    init  set_updater  benchmark (remote)
     %%    _      64           41         84 (75)    -- all data stored in maps off the heap
 
+    ok.
+
+sophia_big_map_benchmark(Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 100000000000000),
+    N     = proplists:get_value(n, Cfg, 1000),
+    Batch = proplists:get_value(batch, Cfg, N),
+    Key   = proplists:get_value(key, Cfg, 0),
+    Val   = integer_to_binary(Key div Batch),
+    Ct  = ?call(create_contract, Acc, maps_benchmark, {777, #{}}),
+    _   = [ begin
+                ?call(call_contract, Acc, Ct, update, {tuple, []}, {I, I + Batch - 1, integer_to_binary(I)}, #{ gas => 1000000000 }),
+                io:format(".")
+            end || I <- lists:seq(0, N - 1, Batch) ],
+    io:format("\n"),
+    io:format("-- Timed call --\n"),
+    {Time, Val} = timer:tc(fun() -> ?call(call_contract, Acc, Ct, get, string, Key) end),
+    {Time1, {}} = timer:tc(fun() -> ?call(call_contract, Acc, Ct, noop, {tuple, []}, {}) end),
+    io:format("Get: ~.2fms\nNop: ~.2fms\n", [Time / 1000, Time1 / 1000]),
     ok.
 
 sophia_pmaps(_Cfg) ->
