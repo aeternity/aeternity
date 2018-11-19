@@ -133,7 +133,7 @@ check(#oracle_response_tx{nonce = Nonce, query_id = QueryId,
                      %% Contract is paying tx fee as gas.
                      aetx_contract -> [];
                      aetx_transaction ->
-                         [fun() -> aetx_utils:check_account(OraclePubKey, Trees, Nonce, Fee) end, %% Sender must be able to pay transaction fee before receiving query fee.
+                         [fun() -> aetx_utils:check_account(OraclePubKey, Trees, Nonce, Fee) end] %% Sender must be able to pay transaction fee before receiving query fee.
                  end],
 
             case aeu_validation:run(Checks) of
@@ -160,7 +160,7 @@ process(#oracle_response_tx{nonce = Nonce, query_id = QueryId,
     Query1 = aeo_query:add_response(Height, Response, Query0),
     OraclesTree1 = aeo_state_tree:enter_query(Query1, OraclesTree0),
 
-    OracleAccountd = aec_accounts_trees:get(OraclePubKey, AccountsTree0),
+    OracleAccount0 = aec_accounts_trees:get(OraclePubKey, AccountsTree0),
     {ok, OracleAccount1} = aec_accounts:spend(OracleAccount0, Fee, Nonce),
     QueryFee = aeo_query:fee(Query0),
     {ok, OracleAccount2} = aec_accounts:earn(OracleAccount1, QueryFee),

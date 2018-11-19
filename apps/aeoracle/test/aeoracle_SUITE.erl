@@ -32,6 +32,7 @@
         , register_oracle/1
         , register_oracle_negative/1
         , register_oracle_negative_dynamic_fee/1
+        , register_oracle_negative_absolute_ttl/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -56,6 +57,7 @@ groups() ->
     , {transactions, [sequence], [ register_oracle
                                  , register_oracle_negative
                                  , register_oracle_negative_dynamic_fee
+                                 , register_oracle_negative_absolute_ttl
                                  , extend_oracle
                                  , extend_oracle_negative
                                  , extend_oracle_negative_dynamic_fee
@@ -144,6 +146,22 @@ register_oracle_negative_dynamic_fee(_Cfg) ->
     ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 9000}, fee => 19000})),
     %% Test more than minimum fee considering TTL.
     ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 9000}, fee => 40000})),
+    ok.
+
+register_oracle_negative_absolute_ttl(_Cfg) ->
+    {PubKey, S1} = aeo_test_utils:setup_new_account(aeo_test_utils:new_state()),
+    Trees        = aeo_test_utils:trees(S1),
+    CurrHeight   = ?ORACLE_REG_HEIGHT,
+    Env          = aetx_env:tx_env(CurrHeight),
+
+    F = fun(RegTxOpts) ->
+            Tx = aeo_test_utils:register_tx(PubKey, RegTxOpts, S1),
+            aetx:check(Tx, Trees, Env)
+        end,
+
+    ?assertEqual({error, too_low_abs_ttl}, F(#{oracle_ttl => {block, 0}, fee => 20000})),
+    ?assertEqual({error, too_low_abs_ttl}, F(#{oracle_ttl => {block, 1}, fee => 20000})),
+    ?assertMatch({ok, _}                 , F(#{oracle_ttl => {block, 100}, fee => 20000})),
     ok.
 
 register_oracle(Cfg) ->

@@ -277,9 +277,17 @@ check_tx(#aetx{ cb = CB, tx = Tx } = AeTx, Trees, Env) ->
 
 check_minimum_fee(AeTx, Env) ->
     Height = aetx_env:height(Env),
-    case fee(AeTx) >= min_fee(AeTx, Height) of
-        true  -> ok;
-        false -> {error, too_low_fee}
+    case min_fee(AeTx, Height) of
+        MinFee when MinFee > 0 ->
+            case fee(AeTx) >= MinFee of
+                true  -> ok;
+                false -> {error, too_low_fee}
+            end;
+        0 ->
+            %% Oracle txs can return (minimal) gas of 0 when
+            %% the absolute TTL is lower than the current chain
+            %% height.
+            {error, too_low_abs_ttl}
     end.
 
 check_minimum_gas_price(AeTx) ->
