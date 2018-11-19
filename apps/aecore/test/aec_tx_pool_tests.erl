@@ -97,6 +97,83 @@ tx_pool_test_() ->
                %% No single tx would have fitted on top of this
                ?assert(MinGas > aec_governance:block_gas_limit() - TotalGas)
        end},
+      {"fill micro block with and without previously rejected tx",
+       fun() ->
+               aec_test_utils:stop_chain_db(),
+               {ok, MinerPubKey} = aec_keys:pubkey(),
+               PubKey1 = new_pubkey(),
+               PubKey2 = new_pubkey(),
+               meck:expect(aec_genesis_block_settings, preset_accounts, 0,
+                           [{PubKey1, 20001}, {PubKey2, 20000000}]),
+               {Block0, _} = aec_block_genesis:genesis_block_with_state(),
+               aec_test_utils:start_chain_db(),
+               ok = aec_chain_state:insert_block(Block0),
+
+               %% The first block needs to be a key-block
+               {ok, KeyBlock} = aec_block_key_candidate:create(aec_chain:top_block(), MinerPubKey),
+               ok = aec_chain_state:insert_block(KeyBlock),
+               ok = aec_keys:promote_candidate(aec_blocks:miner(KeyBlock)),
+               {ok, KeyHash} = aec_blocks:hash_internal_representation(KeyBlock),
+               ?assertEqual(KeyHash, aec_chain:top_block_hash()),
+
+               Txs1 = [Tx1_1, Tx1_2]  = [ a_signed_tx(PubKey1, me, Nonce, 20000, 10) || Nonce <- lists:seq(1, 2) ],
+               Txs2 = [Tx2_1, Tx2_2]  = [ a_signed_tx(PubKey2, me, Nonce, 20000, 10) || Nonce <- lists:seq(1, 2) ],
+               [ ok = aec_tx_pool:push(Tx, tx_created) || Tx <- Txs1++Txs2 ],
+               ?assertMatch([_,_,_,_], aec_tx_pool:peek_db()),
+               ?assertEqual([], aec_tx_pool:peek_visited()),
+
+               %% Micro block candidate contains all txs
+               {ok, CTxs1} = aec_tx_pool:get_candidate(aec_governance:block_gas_limit(), KeyHash),
+               ?assertEqual(lists:sort(Txs1++Txs2), lists:sort(CTxs1)),
+               ?assertEqual([], aec_tx_pool:peek_db()),
+               ?assertMatch([_,_,_,_], aec_tx_pool:peek_visited()),
+
+               {ok, MicroCandidate, _} = aec_block_micro_candidate:create(KeyBlock),
+               {ok, Micro} = aec_keys:sign_micro_block(MicroCandidate),
+               ok = aec_chain_state:insert_block(Micro),
+               {ok, MicroHash} = aec_blocks:hash_internal_representation(Micro),
+               ?assertEqual(MicroHash, aec_chain:top_block_hash()),
+
+               %% Micro block contains only valid transacions (Tx1_2 excluded)
+               ?assert(lists:member(Tx1_1, aec_blocks:txs(Micro))),
+               ?assert(not lists:member(Tx1_2, aec_blocks:txs(Micro))),
+               ?assert(lists:member(Tx2_1, aec_blocks:txs(Micro))),
+               ?assert(lists:member(Tx2_2, aec_blocks:txs(Micro))),
+
+               ?assertEqual([], aec_tx_pool:peek_db()),
+               ?assertMatch([_,_,_,_], aec_tx_pool:peek_visited()),
+
+               aec_tx_pool:top_change(micro, KeyHash, MicroHash),
+
+               %% Invalid Txs1_2 tx is still in the pool
+               ?assertEqual([], aec_tx_pool:peek_db()),
+               ?assertMatch([Tx1_2], aec_tx_pool:peek_visited()),
+
+               %% No new transaction: retry previously invalid tx
+               ?assertEqual([], aec_tx_pool:peek_db()),
+               {ok, CTxs2} = aec_tx_pool:get_candidate(aec_governance:block_gas_limit(), MicroHash),
+               ?assertEqual([Tx1_2], CTxs2),
+
+               %% Some new transacions (new tx gas < gas limit - invalid tx gas): use new + retry previously invalid tx
+               ?assertEqual([], aec_tx_pool:peek_db()),
+               Txs3 = [ a_signed_tx(PubKey2, me, Nonce, 20000, 10) || Nonce <- lists:seq(3, 103) ],
+               [ ok = aec_tx_pool:push(Tx) || Tx <- Txs3 ],
+               TotalGas3 = lists:sum([ aetx:gas(aetx_sign:tx(T)) || T <- [ Tx1_2 | Txs3 ] ]),
+               ?assert(TotalGas3 =< aec_governance:block_gas_limit()),
+               {ok, CTxs3} = aec_tx_pool:get_candidate(aec_governance:block_gas_limit(), MicroHash),
+               ?assertEqual(lists:sort([ Tx1_2 | Txs3]), lists:sort(CTxs3)),
+
+               %% New transacions only (new tx gas > gas limit): do not use invalid tx
+               ?assertEqual([], aec_tx_pool:peek_db()),
+               Txs4 = [ a_signed_tx(PubKey2, me, Nonce, 20000, 10) || Nonce <- lists:seq(104, 504) ],
+               [ ok = aec_tx_pool:push(Tx) || Tx <- Txs4 ],
+               TotalGas4 = lists:sum([ aetx:gas(aetx_sign:tx(T)) || T <- Txs4 ]),
+               ?assert(TotalGas4 > aec_governance:block_gas_limit()),
+               {ok, CTxs4} = aec_tx_pool:get_candidate(aec_governance:block_gas_limit(), MicroHash),
+               ?assert(not lists:member(Tx1_2, CTxs4)),
+
+               ok
+       end},
       {"Mempool follows chain insertions and forks",
        fun() ->
                aec_test_utils:stop_chain_db(),
