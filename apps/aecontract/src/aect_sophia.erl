@@ -85,8 +85,6 @@ encode_call_data(Code, Function, Argument) ->
         {ok, Data,_DataType,_OutType} when is_binary(Data) ->
             {ok, Data}
     catch _T:_E ->
-            io:format("Encode call data failed with: ~w:~w ~p\n",
-                      [_T, _E, erlang:get_stacktrace()]),
             {error, <<"bad argument">>}
     end.
 

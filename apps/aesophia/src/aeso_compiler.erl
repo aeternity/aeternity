@@ -84,7 +84,6 @@ from_string(ContractString, Options) ->
 -spec check_call(string(), options()) -> {ok, string(), {[Type], Type | any}, [term()]} | {error, term()}
     when Type :: term().
 check_call(ContractString, Options) ->
-    io:format("Contract call code:\n~s\n", [ContractString]),
     Ast = parse(ContractString, Options),
     ok = pp_sophia_code(Ast, Options),
     ok = pp_ast(Ast, Options),
@@ -242,11 +241,9 @@ pp(Code, Options, Option, PPFun) ->
 parse_string(Text) ->
     case aeso_parser:string(Text) of
         {ok, Contract} -> Contract;
-        Err = {error, {Line, aeso_scan, Reason}} ->
-            io:format("Lexical error at line ~p:\n  ~s\n", [Line, Reason]),
+        Err = {error, {_Line, aeso_scan,_Reason}} ->
             error(Err);
-        Err = {error, {Line, aeso_parser, Reason}} ->
-            io:format("Parse error at line ~p:\n  ~s\n", [Line, Reason]),
+        Err = {error, {_Line, aeso_parser,_Reason}} ->
             error(Err)
     end.
 
