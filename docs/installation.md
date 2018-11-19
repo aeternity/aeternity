@@ -12,8 +12,8 @@ In order to install an epoch node using a release binary, you need to:
 The release binaries are published on [GitHub](https://github.com/aeternity/epoch/releases) and are tested on the following platforms:
 * Ubuntu 16.04.3 LTS (x86-64);
 * Ubuntu 18.04 LTS (x86-64);
-* macOS Sierra (x86-64);
-* macOS High Sierra (x86-64).
+* macOS High Sierra 10.13 (x86-64).
+* macOS Mojave 10.14 (x86-64);
 
 ## Install dependencies
 
