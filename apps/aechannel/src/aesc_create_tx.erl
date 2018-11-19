@@ -329,6 +329,7 @@ state_hash(#channel_create_tx{state_hash = StateHash}) -> StateHash.
 updates(#channel_create_tx{}) ->
     [].
 
+-spec round(tx()) -> non_neg_integer().
 round(#channel_create_tx{}) ->
     1.
 
