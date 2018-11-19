@@ -172,18 +172,32 @@ new(Callback, Tx) ->
 fee(#aetx{ cb = CB, tx = Tx }) ->
     CB:fee(Tx).
 
+%% In case 0 is returned, the tx will not be included in the micro block
+%% candidate by the mempool.
 -spec gas(Tx :: tx(), Height :: aec_blocks:height()) -> Gas :: non_neg_integer().
 gas(#aetx{type = Type, cb = CB, size = Size, tx = Tx }, Height) when
       Type =:= oracle_register_tx;
       Type =:= oracle_extend_tx ->
-    TTL = ttl_delta(Height, CB:oracle_ttl(Tx)),
-    base_gas(Type) + size_gas(Size) + state_gas(Type, TTL);
+    case ttl_delta(Height, CB:oracle_ttl(Tx)) of
+        {delta, _D} = TTL ->
+            base_gas(Type) + size_gas(Size) + state_gas(Type, TTL);
+        {error, _Rsn} ->
+            0
+    end;
 gas(#aetx{type = oracle_query_tx, size = Size, tx = Tx }, Height) ->
-    TTL = ttl_delta(Height, aeo_query_tx:query_ttl(Tx)),
-    base_gas(oracle_query_tx) + size_gas(Size) + state_gas(oracle_query_tx, TTL);
+    case ttl_delta(Height, aeo_query_tx:query_ttl(Tx)) of
+        {delta, _D} = TTL ->
+            base_gas(oracle_query_tx) + size_gas(Size) + state_gas(oracle_query_tx, TTL);
+        {error, _Rsn} ->
+            0
+    end;
 gas(#aetx{type = oracle_response_tx, size = Size, tx = Tx }, Height) ->
-    TTL = ttl_delta(Height, aeo_response_tx:response_ttl(Tx)),
-    base_gas(oracle_response_tx) + size_gas(Size) + state_gas(oracle_response_tx, TTL);
+    case ttl_delta(Height, aeo_response_tx:response_ttl(Tx)) of
+        {delta, _D} = TTL ->
+            base_gas(oracle_response_tx) + size_gas(Size) + state_gas(oracle_response_tx, TTL);
+        {error, _Rsn} ->
+            0
+    end;
 gas(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }, _Height) when Type =/= channel_offchain_tx ->
     base_gas(Type) + size_gas(Size) + CB:gas(Tx);
 gas(#aetx{ type = channel_offchain_tx }, _Height) ->
@@ -402,7 +416,12 @@ state_gas(Tag, {delta, TTL}) ->
 ttl_delta(_Height, {delta, _D} = TTL) ->
     {delta, aeo_utils:ttl_delta(0, TTL)};
 ttl_delta(Height, {block, _H} = TTL) ->
-    {delta, aeo_utils:ttl_delta(Height, TTL)}.
+    case aeo_utils:ttl_delta(Height, TTL) of
+        TTLDelta when is_integer(TTLDelta) ->
+            {delta, TTLDelta};
+        {error, _Rsn} = Err ->
+            Err
+    end.
 
 -ifdef(TEST).
 tx(Tx) ->
