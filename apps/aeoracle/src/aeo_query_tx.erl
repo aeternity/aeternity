@@ -156,9 +156,10 @@ check(#oracle_query_tx{nonce = Nonce, query_fee = QFee, query_ttl = QTTL,
          fun() -> check_oracle(OraclePubKey, Trees, Height, QTx) end,
          fun() -> check_query_not_present(QTx, Trees, Height) end
          | case aetx_env:context(Env) of
+               %% Contract is paying tx fee as gas.
                aetx_contract -> [];
                aetx_transaction ->
-                   [fun() -> aeo_utils:check_ttl_fee(Height, QTTL, Fee) end]
+                   [fun() -> aeo_utils:check_ttl_fee(Height, QTTL, Fee) end] %% TODO Deduct portion of fee already accounted for by `aetx:check` before checking state TTL portion of fee.
            end
         ],
 

@@ -1,0 +1,1 @@
+* Requires the sender of the oracle response transaction to have enough balance for paying for the transaction fee without considering the to-be-awarded oracle query fee. This aligns the balance required for the oracle response transaction to the other transactions. This affects consensus.

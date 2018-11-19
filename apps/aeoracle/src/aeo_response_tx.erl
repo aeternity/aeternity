@@ -125,17 +125,16 @@ check(#oracle_response_tx{nonce = Nonce, query_id = QueryId,
     case fetch_query(OraclePubKey, QueryId, Trees) of
         {value, I} ->
             QueryResponseTTL = aeo_query:response_ttl(I),
-            QueryFee         = aeo_query:fee(I),
             Checks =
                 [fun() -> check_response_ttl(ResponseTTL, QueryResponseTTL) end,
                  fun() -> check_oracle(OraclePubKey, Trees, Tx) end,
                  fun() -> check_query(OraclePubKey, I) end |
                  case aetx_env:context(Env) of
-                     aetx_contract -> []; %% TODO: Handle fees from contracts right.
+                     %% Contract is paying tx fee as gas.
+                     aetx_contract -> [];
                      aetx_transaction ->
-                         [fun() -> aetx_utils:check_account(OraclePubKey, Trees,
-                                                            Nonce, Fee - QueryFee) end,
-                          fun() -> aeo_utils:check_ttl_fee(Height, ResponseTTL, Fee) end]
+                         [fun() -> aetx_utils:check_account(OraclePubKey, Trees, Nonce, Fee) end, %% Sender must be able to pay transaction fee before receiving query fee.
+                          fun() -> aeo_utils:check_ttl_fee(Height, ResponseTTL, Fee) end] %% TODO Deduct portion of fee already accounted for by `aetx:check` before checking state TTL portion of fee.
                  end],
             case aeu_validation:run(Checks) of
                 ok              -> {ok, Trees};

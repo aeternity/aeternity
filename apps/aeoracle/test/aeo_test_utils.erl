@@ -5,7 +5,8 @@
 %%%-------------------------------------------------------------------
 -module(aeo_test_utils).
 
--export([ extend_tx/2
+-export([ account_balance/2
+        , extend_tx/2
         , extend_tx/3
         , new_state/0
         , oracles/1
@@ -164,6 +165,9 @@ setup_new_account(Balance, State) ->
     State1            = insert_key_pair(PubKey, PrivKey, State),
     State2            = set_account(aec_accounts:new(PubKey, Balance), State1),
     {PubKey, State2}.
+
+account_balance(PubKey, State) ->
+    aec_accounts:balance(get_account(PubKey, State)).
 
 set_account_balance(PubKey, NewBalance, State) ->
     A        = get_account(PubKey, State),

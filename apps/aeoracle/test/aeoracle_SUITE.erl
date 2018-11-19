@@ -19,6 +19,7 @@
         , prune_query/1
         , prune_response_short/1
         , prune_response_long/1
+        , query_fee/1
         , query_oracle/1
         , query_oracle_negative/1
         , query_oracle_negative_dynamic_fee/1
@@ -67,6 +68,7 @@ groups() ->
                                  , query_response_negative
                                  , query_response_negative_dynamic_fee
                                  , query_response_type_check
+                                 , query_fee
                                  ]}
     , {state_tree, [ prune_oracle
                    , prune_oracle_extend
@@ -257,7 +259,8 @@ extend_oracle(Cfg) ->
 %%%===================================================================
 -define(ORACLE_QUERY_HEIGHT, 3).
 query_oracle_negative(Cfg) ->
-    {OracleKey, S}  = register_oracle(Cfg),
+    RegisterQueryFee = 5,
+    {OracleKey, S}  = register_oracle(Cfg, #{query_fee => RegisterQueryFee}),
     {SenderKey, S2} = aeo_test_utils:setup_new_account(S),
     Trees           = aeo_test_utils:trees(S2),
     CurrHeight      = ?ORACLE_QUERY_HEIGHT,
@@ -279,7 +282,7 @@ query_oracle_negative(Cfg) ->
     Q3 = aeo_test_utils:query_tx(SenderKey, OracleId, #{nonce => 0}, S2),
     {error, account_nonce_too_high} = aetx:check(Q3, Trees, Env),
 
-    %% Test too low query fee
+    %% Test too low fee
     Q4 = aeo_test_utils:query_tx(SenderKey, OracleId, #{fee => 0}, S2),
     {error, too_low_fee} = aetx:check(Q4, Trees, Env),
 
@@ -299,6 +302,10 @@ query_oracle_negative(Cfg) ->
     %% Test too short TTL
     Q8 = aeo_test_utils:query_tx(SenderKey, OracleId, #{ ttl => CurrHeight - 1 }, S2),
     {error, ttl_expired} = aetx:check(Q8, Trees, Env),
+
+    %% Test too low query fee
+    Q9 = aeo_test_utils:query_tx(SenderKey, OracleId, #{query_fee => RegisterQueryFee - 1}, S2),
+    {error, query_fee_too_low} = aetx:check(Q9, Trees, Env),
     ok.
 
 query_oracle_negative_dynamic_fee(Cfg) ->
@@ -363,7 +370,9 @@ query_oracle(Cfg) ->
     query_oracle(Cfg, #{}, #{}).
 
 query_oracle(Cfg, RegTxOpts, QueryTxOpts) ->
-    {OracleKey, S1} = register_oracle(Cfg, RegTxOpts),
+    query_oracle_(Cfg, RegTxOpts, QueryTxOpts, register_oracle(Cfg, RegTxOpts)).
+
+query_oracle_(_Cfg, _RegTxOpts, QueryTxOpts, {OracleKey, S1}) ->
     {SenderKey, S2} = aeo_test_utils:setup_new_account(S1),
     Trees           = aeo_test_utils:trees(S2),
     CurrHeight      = ?ORACLE_QUERY_HEIGHT,
@@ -413,6 +422,12 @@ query_response_negative(Cfg) ->
     BadId = aeo_query:id(aeo_query:set_sender_nonce(42, OIO)),
     RTx5 = aeo_test_utils:response_tx(OracleKey, BadId, <<"42">>, S1),
     {error, no_matching_oracle_query} = aetx:check(RTx5, Trees, Env),
+
+    %% Insufficient funds
+    S2     = aeo_test_utils:set_account_balance(OracleKey, 1, S1),
+    Trees2 = aeo_test_utils:trees(S2),
+    RTx6 = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, S1),
+    {error, insufficient_funds} = aetx:check(RTx6, Trees2, Env),
     ok.
 
 query_response_negative_dynamic_fee(Cfg) ->
@@ -444,7 +459,9 @@ query_response(Cfg) ->
     query_response(Cfg, #{}).
 
 query_response(Cfg, QueryOpts) ->
-    {OracleKey, ID, S1} = query_oracle(Cfg, #{}, QueryOpts),
+    query_response_(Cfg, QueryOpts, query_oracle(Cfg, #{}, QueryOpts)).
+
+query_response_(_Cfg, QueryOpts, {OracleKey, ID, S1}) ->
     Trees               = aeo_test_utils:trees(S1),
     CurrHeight          = ?ORACLE_RSP_HEIGHT,
 
@@ -461,6 +478,9 @@ query_response(Cfg, QueryOpts) ->
     %% Test that the query is now closed.
     OIO = aeo_state_tree:get_query(OracleKey, ID, aec_trees:oracles(Trees2)),
     true = aeo_query:is_closed(OIO),
+
+    %% Test that the oracle operator has at least the query fee.
+    ?assertMatch({QF, Bal} when (Bal >= QF) andalso is_integer(QF) andalso (QF >= 0), {aeo_query:fee(OIO), aeo_test_utils:account_balance(OracleKey, S1)}),
 
     {OracleKey, ID, S2}.
 
@@ -525,6 +545,40 @@ query_response_type_check(_Cfg) ->
     ?assertMatch({ok, _},             F(IntFmt, String, ?AEVM_NO_VM)),
     ?assertMatch({ok, _},             F(StringFmt, Int, ?AEVM_NO_VM)),
     ?assertMatch({ok, _},             F(IntFmt, String, ?AEVM_NO_VM)),
+    ok.
+
+%%%===================================================================
+%%% Query fee - across query and response transactions
+%%%===================================================================
+query_fee(Cfg) ->
+    QuerySender = fun(O, I, S) -> aeo_query:sender_pubkey(aeo_state_tree:get_query(O, I, aec_trees:oracles(aeo_test_utils:trees(S)))) end,
+    Run =
+        fun(QFee) when QFee >= 1 ->
+            RegOpts = #{query_fee => 1},
+            QueryOpts = #{query_fee => QFee},
+            {OracleKey, SReg} = RReg = register_oracle(Cfg, RegOpts),
+            {OracleKey, ID, SQ} = RQ = query_oracle_(Cfg, RegOpts, QueryOpts, RReg),
+            QuerySenderKey = QuerySender(OracleKey, ID, SQ),
+            {OracleKey, ID, SResp} = query_response_(Cfg, QueryOpts, RQ),
+            QuerySenderKey = QuerySender(OracleKey, ID, SResp),
+            {{OracleKey, QuerySenderKey}, {SReg, SQ, SResp}}
+        end,
+    Bal = fun(K, S) -> aeo_test_utils:account_balance(K, S) end,
+    DeltaQFee = 1,
+    BaseQFee = 11,
+    {{OracleKeyA, QuerySenderKeyA}, {SRegisterA, SQueryA, SResponseA}} = Run(BaseQFee),
+    {{OracleKeyB, QuerySenderKeyB}, {SRegisterB, SQueryB, SResponseB}} = Run(BaseQFee + DeltaQFee),
+    %% Sanity check: register transaction does not debit or credit query fee. (There is no query sender yet so no need to check that.)
+    ?assertEqual(Bal(OracleKeyA, SRegisterA), Bal(OracleKeyB, SRegisterB)),
+    %% Check that query transaction debits query fee ...
+    ?assertEqual(Bal(QuerySenderKeyA, SQueryA), DeltaQFee + Bal(QuerySenderKeyB, SQueryB)),
+    %% ... but does not credit it yet.
+    ?assertEqual(Bal(OracleKeyA, SQueryA), Bal(OracleKeyB     , SQueryB)),
+    %% Check that response transaction credits query fee ...
+    ?assertEqual(Bal(OracleKeyA, SResponseA) + DeltaQFee, Bal(OracleKeyB, SResponseB)),
+    %% .. and does not re-debit it.
+    ?assertEqual(Bal(QuerySenderKeyA, SQueryA), Bal(QuerySenderKeyA, SResponseA)),
+    ?assertEqual(Bal(QuerySenderKeyA, SResponseA), DeltaQFee + Bal(QuerySenderKeyB, SResponseB)),
     ok.
 
 %%%===================================================================
