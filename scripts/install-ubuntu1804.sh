@@ -19,7 +19,6 @@ RELEASE_FILE="https://github.com/aeternity/epoch/releases/download/v${RELEASE_VE
 TEMP_RELEASE_FILE=${TEMP_RELEASE_FILE:=/tmp/epoch.tgz}
 TARGET_DIR=${TARGET_DIR:=$HOME/epoch}
 EPOCH_CONFIG=${EPOCH_CONFIG:=$TARGET_DIR/epoch.yaml}
-NPROC=$(nproc)
 
 echo -e "\nATTENTION: This script will delete the directory ${TARGET_DIR} if it exists. You should back up any contents before continuing.\n"
 
@@ -82,9 +81,9 @@ mining:
     autostart: true
     cuckoo:
         miner:
-            executable: mean30s-generic
-            extra_args: "-t ${NPROC}"
-            node_bits: 30
+            executable: mean29-avx2
+            extra_args: "-t 1"
+            node_bits: 29
 chain:
     persist: true
     db_path: ./my_db
