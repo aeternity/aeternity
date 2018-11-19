@@ -1974,6 +1974,38 @@
         }
       }
     },
+    "/debug/transactions/dry-run" : {
+      "post" : {
+        "tags" : [ "internal", "debug" ],
+        "description" : "Dry-run transactions on top of a given block. Supports SpendTx, ContractCreateTx and ContractCallTx",
+        "operationId" : "DryRunTxs",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "transactions",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/DryRunInput"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Dry-run result",
+            "schema" : {
+              "$ref" : "#/definitions/DryRunResults"
+            }
+          },
+          "403" : {
+            "description" : "Invalid input",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/debug/contracts/code/decode-data" : {
       "post" : {
         "tags" : [ "internal", "contract", "debug" ],
@@ -3913,6 +3945,103 @@
       },
       "example" : {
         "out" : "out"
+      }
+    },
+    "DryRunInput" : {
+      "type" : "object",
+      "required" : [ "txs" ],
+      "properties" : {
+        "top" : {
+          "type" : "string"
+        },
+        "txs" : {
+          "type" : "array",
+          "description" : "Txs",
+          "items" : {
+            "$ref" : "#/definitions/EncodedHash"
+          }
+        }
+      },
+      "example" : {
+        "top" : "top",
+        "txs" : [ { }, { } ]
+      }
+    },
+    "DryRunResults" : {
+      "type" : "object",
+      "required" : [ "results" ],
+      "properties" : {
+        "results" : {
+          "type" : "array",
+          "description" : "results",
+          "items" : {
+            "$ref" : "#/definitions/DryRunResult"
+          }
+        }
+      },
+      "example" : {
+        "results" : [ {
+          "result" : "result",
+          "reason" : "reason",
+          "type" : "type",
+          "call_obj" : {
+            "gas_price" : 1,
+            "return_type" : "return_type",
+            "return_value" : { },
+            "caller_id" : { },
+            "contract_id" : null,
+            "gas_used" : 5,
+            "caller_nonce" : 0,
+            "height" : 6
+          }
+        }, {
+          "result" : "result",
+          "reason" : "reason",
+          "type" : "type",
+          "call_obj" : {
+            "gas_price" : 1,
+            "return_type" : "return_type",
+            "return_value" : { },
+            "caller_id" : { },
+            "contract_id" : null,
+            "gas_used" : 5,
+            "caller_nonce" : 0,
+            "height" : 6
+          }
+        } ]
+      }
+    },
+    "DryRunResult" : {
+      "type" : "object",
+      "required" : [ "result", "type" ],
+      "properties" : {
+        "type" : {
+          "type" : "string"
+        },
+        "result" : {
+          "type" : "string"
+        },
+        "reason" : {
+          "type" : "string"
+        },
+        "call_obj" : {
+          "$ref" : "#/definitions/ContractCallObject"
+        }
+      },
+      "example" : {
+        "result" : "result",
+        "reason" : "reason",
+        "type" : "type",
+        "call_obj" : {
+          "gas_price" : 1,
+          "return_type" : "return_type",
+          "return_value" : { },
+          "caller_id" : { },
+          "contract_id" : null,
+          "gas_used" : 5,
+          "caller_nonce" : 0,
+          "height" : 6
+        }
       }
     },
     "Calldata" : {

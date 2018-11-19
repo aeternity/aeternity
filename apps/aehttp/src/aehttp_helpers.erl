@@ -26,6 +26,9 @@
         , get_block_from_chain/1
         , get_block_hash_optionally_by_hash_or_height/1
         , safe_get_txs/1
+        , dry_run_top/1
+        , dry_run_txs/1
+        , dry_run_results/1
         ]).
 
 -export([ get_transaction/2
@@ -490,6 +493,59 @@ contract_call_input_funargs(CallInput) ->
         _ ->
             {error, <<"Either 'call' or 'function'/'arg' required">>}
     end.
+
+dry_run_top(Input) ->
+    case Input of
+        #{ <<"top">> := TopHash } ->
+            case aehttp_api_encoder:decode(TopHash) of
+                {micro_block_hash, MBHash} -> {ok, MBHash};
+                {key_block_hash, KBHash}   -> {ok, KBHash};
+                _                          -> {error, <<"top should be micro block hash or key block hash">>}
+            end;
+        _ ->
+            case aec_chain:top_block_hash() of
+                undefined -> {error, <<"No top block hash">>};
+                TopHash   -> {ok, TopHash}
+            end
+    end.
+
+dry_run_txs(Txs) ->
+    dry_run_txs(Txs, []).
+
+dry_run_txs([], Txs) ->
+    {ok, lists:reverse(Txs)};
+dry_run_txs([ETx | Txs], Acc) ->
+    case aehttp_api_encoder:safe_decode(transaction, ETx) of
+        {ok, DTx} ->
+            Tx = aetx:deserialize_from_binary(DTx),
+            {Type, _} = aetx:specialize_type(Tx),
+            case lists:member(Type, [spend_tx, contract_crete_tx, contract_call_tx]) of
+                true  -> dry_run_txs(Txs, [Tx | Acc]);
+                false -> {error, list_to_binary(lists:concat(["Unsupported transaction type ", Type]))}
+            end;
+        Err = {error, _Reason} ->
+            Err
+    end.
+
+dry_run_results(Rs) ->
+    [dry_run_result(R) || R <- Rs].
+
+dry_run_result({Type, Res}) ->
+    dry_run_result(Type, Res, #{ type => type(Type), result => ok_err(Res)}).
+
+dry_run_result(_Type, {error, Reason}, Res) ->
+    Res#{ reason => list_to_binary(lists:concat(["Error: ", Reason])) };
+dry_run_result(contract_call_tx, {ok, CallObj}, Res) ->
+    Res#{ call_obj => aect_call:serialize_for_client(CallObj) };
+dry_run_result(_Type, ok, Res) ->
+    Res.
+
+ok_err({error, _}) -> <<"error">>;
+ok_err(_)          -> <<"ok">>.
+
+type(spend_tx)           -> <<"spend">>;
+type(contract_create_tx) -> <<"contract_create">>;
+type(contract_call_tx)   -> <<"contract_call">>.
 
 get_transaction(TxKey, TxStateKey) ->
     fun(_Req, State) ->

@@ -10,6 +10,7 @@
 
 %% Constructors
 -export([ tx_env_from_key_header/4
+        , tx_env_and_trees_from_hash/2
         , tx_env_and_trees_from_top/1
         ]).
 
@@ -90,20 +91,26 @@ tx_env_from_key_header(KeyHeader, KeyHash, Time,_PrevHash) ->
 
 tx_env_and_trees_from_top(Type) when Type == aetx_contract;
                                      Type == aetx_transaction ->
-    {TopHeader, TopHash, Trees} = aec_chain:top_header_hash_and_state(),
+    tx_env_and_trees_from_hash(Type, aec_chain:top_block_hash()).
+
+tx_env_and_trees_from_hash(Type, Hash) when Type == aetx_contract;
+                                            Type == aetx_transaction ->
+    {ok, Header} = aec_chain:get_header(Hash),
+    {ok, Trees}  = aec_chain:get_block_state(Hash),
     {KeyHeader, KeyHash, Time} =
-        case aec_headers:type(TopHeader) of
+        case aec_headers:type(Header) of
             micro ->
-                KHash = aec_headers:prev_key_hash(TopHeader),
+                KHash = aec_headers:prev_key_hash(Header),
                 {ok, KH} = aec_chain:get_header(KHash),
-                {KH, KHash, aec_headers:time_in_msecs(TopHeader)};
+                {KH, KHash, aec_headers:time_in_msecs(Header)};
             key ->
-                {TopHeader, TopHash,
-                 aec_headers:time_in_msecs(TopHeader) +
+                {Header, Hash,
+                 aec_headers:time_in_msecs(Header) +
                     aec_block_micro_candidate:min_t_after_keyblock()}
         end,
-    Env = tx_env_from_key_header(KeyHeader, KeyHash, Time, TopHash),
+    Env = tx_env_from_key_header(KeyHeader, KeyHash, Time, Hash),
     {set_context(Env, Type), Trees}.
+
 
 %%%===================================================================
 %%% Test API

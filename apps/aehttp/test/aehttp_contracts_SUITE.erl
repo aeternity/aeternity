@@ -1136,15 +1136,15 @@ create_compute_contract(NodeName, Pubkey, Privkey, Code, InitArgument) ->
     create_compute_contract(NodeName, Pubkey, Privkey, Code, InitArgument, #{}).
 
 create_compute_contract(NodeName, Pubkey, Privkey, Code, InitArgument, CallerSet) ->
-    {ContractCreateTxHash,EncodedContractPubkey,DecodedContractPubkey} =
+    {#{tx_hash := TxHash},EncodedContractPubkey,DecodedContractPubkey} =
         contract_create_compute_tx(Pubkey, Privkey, Code, InitArgument, CallerSet),
 
     %% Mine blocks and check that it is in the chain.
-    ok = wait_for_tx_hash_on_chain(NodeName, ContractCreateTxHash),
-    ?assert(tx_in_chain(ContractCreateTxHash)),
+    ok = wait_for_tx_hash_on_chain(NodeName, TxHash),
+    ?assert(tx_in_chain(TxHash)),
 
     %% Get value of last call.
-    {ok,200,InitReturn} = get_contract_call_object(ContractCreateTxHash),
+    {ok,200,InitReturn} = get_contract_call_object(TxHash),
     ct:pal("Init return ~p\n", [InitReturn]),
 
     {EncodedContractPubkey,DecodedContractPubkey,InitReturn}.
@@ -1160,28 +1160,52 @@ init_fun_calls() ->
 force_fun_calls(Node) ->
     Calls = put(fun_calls, []),
     put(nonces, []),
-    Txs = [ TxHash || {TxHash, _} <- Calls ],
-    aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, Txs, 20),
+
+    %% First try them with dry run...
+    dry_run_txs(Calls),
+
+    %% Then really put them on the chain
+    TxHashes = [ TxHash || {#{tx_hash := TxHash}, _} <- Calls ],
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, TxHashes, 20),
     check_calls(Calls).
+
+dry_run_txs(Calls) ->
+    Txs = [ Tx || {#{tx_encoded := Tx}, _} <- Calls ],
+    {ok, 200, #{ <<"results">> := Results }} = dry_run(Txs),
+    check_dry_calls(Calls, Results).
+
+check_dry_calls(Calls, Results) ->
+    [ check_dry_call(Check, Result) || {{_, Check}, Result} <- lists:zip(Calls, Results) ].
+
+check_dry_call(Check, Result) ->
+    #{ <<"call_obj">> := CallReturn } = Result,
+    check_call_(Check, CallReturn, undefined).
 
 check_calls(Calls) ->
     [ check_call(Call) || Call <- Calls ].
 
-check_call({TxHash, Check}) ->
+check_call({#{tx_hash := TxHash}, Check}) ->
     ct:log("Checking: ~p", [TxHash]),
     {ok, 200, CallReturn} = get_contract_call_object(TxHash),
     ct:pal("Call return ~p\n", [CallReturn]),
+    check_call_(Check, CallReturn, TxHash).
 
-    #{<<"return_type">> := RetType, <<"return_value">> := Value} = CallReturn,
+check_call_(Check, CallObject, TxHash) ->
+    #{<<"return_type">> := RetType, <<"return_value">> := Value} = CallObject,
 
     %% Get the block where the tx was included
     case Check of
         none -> ?assertEqual(<<"ok">>, RetType);
         {Type, Fun} when is_function(Fun) ->
             ?assertEqual(<<"ok">>, RetType),
-            {ok, 200, #{<<"block_hash">> := BlockHash}} = get_tx(TxHash),
-            {ok, 200, BlockHeader} = get_micro_block_header(BlockHash),
-            check_value(Value, {Type, Fun(BlockHeader)});
+            case TxHash of
+                undefined ->
+                    ok;
+                _ ->
+                    {ok, 200, #{<<"block_hash">> := BlockHash}} = get_tx(TxHash),
+                    {ok, 200, BlockHeader} = get_micro_block_header(BlockHash),
+                    check_value(Value, {Type, Fun(BlockHeader)})
+            end;
         {_, _} ->
             ?assertEqual(<<"ok">>, RetType),
             check_value(Value, Check);
@@ -1205,11 +1229,11 @@ call_func(Pub, Priv, EncCPub, Fun, Args, Check) ->
 
 call_func(Pub, Priv, EncCPub, Fun, Args, CallerSet, Check) ->
     Nonce = get_nonce(Pub),
-    CallTxHash =
+    Tx =
         contract_call_compute_tx(Pub, Priv, Nonce, EncCPub, Fun, Args, CallerSet),
 
     Calls = get(fun_calls),
-    put(fun_calls, Calls ++ [{CallTxHash, Check}]).
+    put(fun_calls, Calls ++ [{Tx, Check}]).
 
 get_nonce(Pub) ->
     Address = aehttp_api_encoder:encode(account_pubkey, Pub),
@@ -1273,7 +1297,7 @@ revert_call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
 
 basic_call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
                         Function, Argument, CallerSet) ->
-    ContractCallTxHash =
+    #{tx_hash := ContractCallTxHash} =
         contract_call_compute_tx(Pubkey, Privkey, EncodedContractPubkey,
                                  Function, Argument, CallerSet),
 
@@ -1286,9 +1310,6 @@ basic_call_compute_func(NodeName, Pubkey, Privkey, EncodedContractPubkey,
     ct:pal("Call return ~p\n", [CallReturn]),
 
     {CallReturn,ContractCallTxHash}.
-
-%% contract_create_compute_tx(Pubkey, Privkey, Code, EncodedInitData) ->
-%%     contract_create_compute_tx(Pubkey, Privkey, Code, EncodedInitData, #{}).
 
 contract_create_compute_tx(Pubkey, Privkey, Code, InitArgument, CallerSet) ->
     Address = aehttp_api_encoder:encode(account_pubkey, Pubkey),
@@ -1363,6 +1384,11 @@ get_micro_block_header(Hash) ->
                  "micro-blocks/hash/"
                  ++ binary_to_list(Hash)
                  ++ "/header", []).
+
+dry_run(Txs) ->
+    Host = internal_address(),
+    http_request(Host, post, "debug/transactions/dry-run", #{txs => Txs}).
+
 
 get_key_block(Hash) ->
     Host = external_address(),
@@ -1543,8 +1569,8 @@ sign_and_post_create_compute_tx(Privkey, CreateEncoded) ->
         get_contract_create_compute(CreateEncoded),
     {ok,DecodedPubkey} = aehttp_api_encoder:safe_decode(contract_pubkey,
                                                  EncodedPubkey),
-    TxHash = sign_and_post_tx(Privkey, EncodedUnsignedTx),
-    {TxHash,EncodedPubkey,DecodedPubkey}.
+    Tx = sign_and_post_tx(Privkey, EncodedUnsignedTx),
+    {Tx,EncodedPubkey,DecodedPubkey}.
 
 sign_and_post_call_compute_tx(Privkey, CallEncoded) ->
     {ok,200,#{<<"tx">> := EncodedUnsignedTx}} =
@@ -1559,7 +1585,7 @@ sign_and_post_tx(PrivKey, EncodedUnsignedTx) ->
     SerializedTx = aetx_sign:serialize_to_binary(SignedTx),
     SendTx = aehttp_api_encoder:encode(transaction, SerializedTx),
     {ok,200,#{<<"tx_hash">> := TxHash}} = post_tx(SendTx),
-    TxHash.
+    #{tx_hash => TxHash, tx_encoded => EncodedUnsignedTx}.
 
 tx_in_chain(TxHash) ->
     case get_tx(TxHash) of

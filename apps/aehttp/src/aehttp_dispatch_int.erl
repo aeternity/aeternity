@@ -24,6 +24,9 @@
                         , unsigned_tx_response/1
                         , ok_response/1
                         , process_request/2
+                        , dry_run_top/1
+                        , dry_run_txs/1
+                        , dry_run_results/1
                         ]).
 
 -spec handle_request(
@@ -173,6 +176,27 @@ handle_request_('CallContract', Req, _Context) ->
                     end;
                 {error, Reason} ->
                     {403, [], #{reason => <<"Bad request: ", Reason/binary>>}}
+            end;
+        _ -> {403, [], #{reason => <<"Bad request">>}}
+    end;
+
+handle_request_('DryRunTxs', Req, _Context) ->
+    case Req of
+        #{'DryRunInput' :=
+            #{ <<"txs">> := Txs0 } = Input} ->
+            case {dry_run_top(Input), dry_run_txs(Txs0)} of
+                {{ok, BlockHash}, {ok, Txs}} ->
+                    case aec_dry_run:dry_run(BlockHash, Txs) of
+                        {ok, Res0} ->
+                            Res = dry_run_results(Res0),
+                            {200, [], #{ results => Res }};
+                        {error, Reason} ->
+                            {403, [], #{ reason => <<"Bad request: ", Reason/binary>>}}
+                    end;
+                {{error, Reason}, _} ->
+                    {403, [], #{ reason => <<"Bad request: ", Reason/binary>>}};
+                {_, {error, Reason}} ->
+                    {403, [], #{ reason => <<"Bad request: ", Reason/binary>>}}
             end;
         _ -> {403, [], #{reason => <<"Bad request">>}}
     end;

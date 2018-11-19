@@ -1680,6 +1680,33 @@ paths:
           description: Invalid contract
           schema:
             $ref: '#/definitions/Error'
+  /debug/transactions/dry-run:
+    post:
+      tags:
+        - internal
+        - debug
+      operationId: 'DryRunTxs'
+      description: 'Dry-run transactions on top of a given block. Supports SpendTx, ContractCreateTx and ContractCallTx'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: transactions
+          required: true
+          schema:
+            $ref: '#/definitions/DryRunInput'
+      responses:
+        '200':
+          description: Dry-run result
+          schema:
+            $ref: '#/definitions/DryRunResults'
+        '403':
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/Error'
   /debug/contracts/code/decode-data:
     post:
       tags:
@@ -2972,6 +2999,42 @@ definitions:
         type: string
     required:
       - out
+  DryRunInput:
+    type: object
+    properties:
+      top:
+        type: string
+      txs:
+        type: array
+        description: Txs
+        items:
+          $ref: '#/definitions/EncodedHash'
+    required:
+      - txs
+  DryRunResults:
+    type: object
+    properties:
+      results:
+        type: array
+        description: results
+        items:
+          $ref: '#/definitions/DryRunResult'
+    required:
+      - results
+  DryRunResult:
+    type: object
+    properties:
+      type:
+        type: string
+      result:
+        type: string
+      reason:
+        type: string
+      call_obj:
+        $ref: '#/definitions/ContractCallObject'
+    required:
+      - type
+      - result
   Calldata:
     type: object
     properties:
