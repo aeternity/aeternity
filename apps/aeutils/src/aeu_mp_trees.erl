@@ -24,6 +24,7 @@
         , pp/1
         , put/3
         , root_hash/1
+        , read_only_subtree/2
         , unfold/3
         , verify_proof/4
         ]).
@@ -112,6 +113,21 @@ new(RootHash, DB) ->
     #mpt{ hash = RootHash
         , db   = DB
         }.
+
+-spec read_only_subtree(key(), tree()) -> {ok, tree()} | {error, no_such_subtree}.
+%% @doc Returns the subtree of a given key. Note that the key needs to be
+%%      stored in the tree, i.e., this will fail even if there are other
+%%      keys that have the given key as prefix if there isn't a node
+%%      for the given key.
+%%      Only use this for lookups, not for storing values.
+read_only_subtree(Key, #mpt{hash = Hash, db = DB} = MPT) ->
+    case int_get_subtree(Key, decode_node(Hash, DB), DB) of
+        {ok, {Node, DB1}} ->
+            {NewHash, DB2} = force_encoded_node_to_hash(Node, DB1),
+            {ok, MPT#mpt{hash = NewHash, db = DB2}};
+        {error, no_such_subtree} = Err ->
+            Err
+    end.
 
 -spec get(bitstring(), tree()) -> value() | <<>>.
 get(Key, #mpt{hash = Hash, db = DB}) ->
@@ -281,6 +297,30 @@ int_get(Path, {Type, NodePath, NodeVal}, DB) when Type =:= ext; Type =:= leaf ->
         _ ->
             <<>>
     end.
+
+int_get_subtree(<<>>, <<>>, DB) ->
+    {ok, {<<>>, DB}};
+int_get_subtree(_Path, <<>>,_DB) ->
+    {error, no_such_subtree};
+int_get_subtree(<<>>, {branch, Branch}, DB) when tuple_size(Branch) =:= 17 ->
+    {ok, branch(Branch, DB)};
+int_get_subtree(Path, {branch, Branch}, DB) when tuple_size(Branch) =:= 17 ->
+    <<Next:4, Rest/bits>> = Path,
+    NextNode = decode_node(branch_next(Next, Branch), DB),
+    int_get_subtree(Rest, NextNode, DB);
+int_get_subtree(Path, {Type, NodePath, NodeVal}, DB) when Type =:= ext; Type =:= leaf ->
+    S = bit_size(NodePath),
+    case Path of
+        NodePath when Type =:= leaf ->
+            {ok, leaf(<<>>, NodeVal, DB)};
+        <<NodePath:S/bits, _/bits>> when Type =:= leaf ->
+            {error, no_such_subtree};
+        <<NodePath:S/bits, Rest/bits>> when Type =:= ext ->
+            int_get_subtree(Rest, decode_node(NodeVal, DB), DB);
+        _ ->
+            {error, no_such_subtree}
+    end.
+
 
 %%%===================================================================
 %%% Put

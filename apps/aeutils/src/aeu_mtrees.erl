@@ -24,6 +24,7 @@
          iterator_next/1,
          lookup/2,
          enter/3,
+         read_only_subtree/2,
          to_list/1]).
 
 %% API - utils outside OTP `gb_trees` module
@@ -126,6 +127,11 @@ insert(Key, Value, Tree) when ?IS_KEY(Key), ?IS_VALUE(Value) ->
         none -> aeu_mp_trees:put(Key, Value, Tree);
         {value, _} -> error({already_present, Key})
     end.
+
+%% NOTE: The key needs to have a value in the tree for this to succeed.
+-spec read_only_subtree(key(), mtree()) -> {ok, mtree()} | {error, no_such_subtree}.
+read_only_subtree(Key, Tree) when ?IS_KEY(Key) ->
+    aeu_mp_trees:read_only_subtree(Key, Tree).
 
 -spec iterator(mtree()) -> iterator().
 iterator(Tree) ->

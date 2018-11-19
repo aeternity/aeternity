@@ -132,11 +132,13 @@ get_contract(Pubkey, #contract_tree{ contracts = CtTree }, Options) ->
     end.
 
 add_store(Contract, CtTree) ->
-    Id = aect_contracts:store_id(Contract),
-    Iterator = aeu_mtrees:iterator_from(Id, CtTree, [{with_prefix, Id}]),
+    Id = aect_contracts:pubkey(Contract),
+    PSize = byte_size(Id),
+    <<Id:PSize/binary, StorePrefix/binary>> = aect_contracts:store_id(Contract),
+    {ok, Subtree} = aeu_mtrees:read_only_subtree(Id, CtTree),
+    Iterator = aeu_mtrees:iterator_from(StorePrefix, Subtree, [{with_prefix, StorePrefix}]),
     Next = aeu_mtrees:iterator_next(Iterator),
-    Size = byte_size(Id),
-    Store = find_store_keys(Id, Next, Size, #{}),
+    Store = find_store_keys(StorePrefix, Next, byte_size(StorePrefix), #{}),
     aect_contracts:set_state(Store, Contract).
 
 find_store_keys(_, '$end_of_table', _, Store) ->
