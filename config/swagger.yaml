@@ -3004,6 +3004,11 @@ definitions:
     properties:
       top:
         type: string
+      accounts:
+        type: array
+        description: Accounts
+        items:
+          $ref: '#/definitions/DryRunAccount'
       txs:
         type: array
         description: Txs
@@ -3011,6 +3016,16 @@ definitions:
           $ref: '#/definitions/EncodedHash'
     required:
       - txs
+  DryRunAccount:
+    type: object
+    properties:
+      pub_key:
+        $ref: '#/definitions/EncodedHash'
+      amount:
+        type: integer
+    required:
+      - pub_key
+      - amount
   DryRunResults:
     type: object
     properties:

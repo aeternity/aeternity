@@ -18,7 +18,7 @@
         ]).
 
 %% Endpoint calls
--export([]).
+-export([http_request/4, internal_address/0, external_address/0, new_account/1, rpc/4]).
 
 %% test case exports
 %% external endpoints
@@ -1078,21 +1078,6 @@ get_balance(Pubkey) ->
     {ok,200,#{<<"balance">> := Balance}} = get_account_by_pubkey(Addr),
     Balance.
 
-ensure_balance(Pubkey, NewBalance) ->
-    Balance = get_balance(Pubkey),              %Get current balance
-    if Balance >= NewBalance ->                 %Enough already, do nothing
-            Balance;
-       true ->
-            %% Get more tokens from the miner.
-            Fee = 20000,
-            Incr = NewBalance - Balance + Fee,  %Include the fee
-            {ok,200,#{<<"tx">> := SpendTx}} =
-                create_spend_tx(aehttp_api_encoder:encode(account_pubkey, Pubkey), Incr, Fee),
-            SignedSpendTx = sign_tx(SpendTx),
-            {ok, 200, _} = post_tx(SignedSpendTx),
-            NewBalance
-    end.
-
 decode_data(Type, EncodedData) ->
     {ok,200,#{<<"data">> := DecodedData}} =
          get_contract_decode_data(#{'sophia-type' => Type,
@@ -1388,7 +1373,6 @@ get_micro_block_header(Hash) ->
 dry_run(Txs) ->
     Host = internal_address(),
     http_request(Host, post, "debug/transactions/dry-run", #{txs => Txs}).
-
 
 get_key_block(Hash) ->
     Host = external_address(),

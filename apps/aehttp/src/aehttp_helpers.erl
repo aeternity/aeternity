@@ -26,8 +26,7 @@
         , get_block_from_chain/1
         , get_block_hash_optionally_by_hash_or_height/1
         , safe_get_txs/1
-        , dry_run_top/1
-        , dry_run_txs/1
+        , do_dry_run/0
         , dry_run_results/1
         ]).
 
@@ -494,34 +493,76 @@ contract_call_input_funargs(CallInput) ->
             {error, <<"Either 'call' or 'function'/'arg' required">>}
     end.
 
-dry_run_top(Input) ->
-    case Input of
-        #{ <<"top">> := TopHash } ->
-            case aehttp_api_encoder:decode(TopHash) of
-                {micro_block_hash, MBHash} -> {ok, MBHash};
-                {key_block_hash, KBHash}   -> {ok, KBHash};
-                _                          -> {error, <<"top should be micro block hash or key block hash">>}
-            end;
-        _ ->
-            case aec_chain:top_block_hash() of
-                undefined -> {error, <<"No top block hash">>};
-                TopHash   -> {ok, TopHash}
-            end
+
+prepare_dry_run_params([], State) -> {ok, State};
+prepare_dry_run_params([Param | Params], State) ->
+    case prepare_dry_run_param(Param, State) of
+        {ok, Value}      -> prepare_dry_run_params(Params, State#{ Param => Value });
+        Err = {error, _} -> Err
     end.
 
-dry_run_txs(Txs) ->
-    dry_run_txs(Txs, []).
+do_dry_run() ->
+    fun(_Req, State) ->
+        case prepare_dry_run_params([top, txs, accounts], State) of
+            {ok, #{top := Top, accounts := As, txs := Txs}} ->
+                case aec_dry_run:dry_run(Top, As, Txs) of
+                    {ok, Res}       -> {ok, {200, [], #{ results => dry_run_results(Res) }}};
+                    {error, Reason} -> dry_run_err(Reason)
+                end;
+            {error, Reason} ->
+                dry_run_err(Reason)
+        end
+    end.
 
-dry_run_txs([], Txs) ->
+dry_run_err(Err) when is_list(Err) ->
+    dry_run_err(list_to_binary(Err));
+dry_run_err(Err) ->
+    {ok, {403, [], #{ reason => <<"Bad request: ", Err/binary>>}}}.
+
+prepare_dry_run_param(top, #{ top := top }) ->
+    case aec_chain:top_block_hash() of
+        undefined -> {error, "No top block hash"};
+        TopHash   -> {ok, TopHash}
+    end;
+prepare_dry_run_param(top, #{ top := TopHash }) when is_binary(TopHash) ->
+    case aehttp_api_encoder:decode(TopHash) of
+        {micro_block_hash, MBHash} -> {ok, MBHash};
+        {key_block_hash, KBHash}   -> {ok, KBHash};
+        _                          -> {error, "top should be micro block hash or key block hash"}
+    end;
+prepare_dry_run_param(accounts, #{ accounts := Accounts }) ->
+    dry_run_accounts_(Accounts, []);
+prepare_dry_run_param(txs, #{ txs := Txs }) ->
+    dry_run_txs_(Txs, []);
+prepare_dry_run_param(Param, _State) ->
+    {error, lists:concat(["Bad parameter ", Param])}.
+
+dry_run_accounts_([], Accounts) ->
+    {ok, lists:reverse(Accounts)};
+dry_run_accounts_([Account | Accounts], Acc) ->
+    case Account of
+        #{ <<"pub_key">> := EPK, <<"amount">> := Amount } ->
+            case aehttp_api_encoder:safe_decode(account_pubkey, EPK) of
+                {ok, PK} ->
+                    dry_run_accounts_(Accounts, [#{ pub_key => PK, amount => Amount } | Acc]);
+                Err = {error, _Reason} ->
+                    Err
+            end;
+        _ ->
+            lager:debug("ACC: ~p", [Account]),
+            {error, "Bad account"}
+    end.
+
+dry_run_txs_([], Txs) ->
     {ok, lists:reverse(Txs)};
-dry_run_txs([ETx | Txs], Acc) ->
+dry_run_txs_([ETx | Txs], Acc) ->
     case aehttp_api_encoder:safe_decode(transaction, ETx) of
         {ok, DTx} ->
             Tx = aetx:deserialize_from_binary(DTx),
             {Type, _} = aetx:specialize_type(Tx),
-            case lists:member(Type, [spend_tx, contract_crete_tx, contract_call_tx]) of
-                true  -> dry_run_txs(Txs, [Tx | Acc]);
-                false -> {error, list_to_binary(lists:concat(["Unsupported transaction type ", Type]))}
+            case lists:member(Type, [spend_tx, contract_create_tx, contract_call_tx]) of
+                true  -> dry_run_txs_(Txs, [Tx | Acc]);
+                false -> {error, lists:concat(["Unsupported transaction type ", Type])}
             end;
         Err = {error, _Reason} ->
             Err

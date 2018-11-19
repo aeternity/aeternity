@@ -3954,6 +3954,13 @@
         "top" : {
           "type" : "string"
         },
+        "accounts" : {
+          "type" : "array",
+          "description" : "Accounts",
+          "items" : {
+            "$ref" : "#/definitions/DryRunAccount"
+          }
+        },
         "txs" : {
           "type" : "array",
           "description" : "Txs",
@@ -3964,7 +3971,30 @@
       },
       "example" : {
         "top" : "top",
-        "txs" : [ { }, { } ]
+        "accounts" : [ {
+          "amount" : 0,
+          "pub_key" : { }
+        }, {
+          "amount" : 0,
+          "pub_key" : { }
+        } ],
+        "txs" : [ null, null ]
+      }
+    },
+    "DryRunAccount" : {
+      "type" : "object",
+      "required" : [ "amount", "pub_key" ],
+      "properties" : {
+        "pub_key" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "amount" : {
+          "type" : "integer"
+        }
+      },
+      "example" : {
+        "amount" : 0,
+        "pub_key" : { }
       }
     },
     "DryRunResults" : {
