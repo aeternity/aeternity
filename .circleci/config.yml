@@ -426,7 +426,7 @@ jobs:
 
   osx_package:
     macos:
-      xcode: "9.0"
+      xcode: "10.0.0"
     working_directory: ~/epoch
     steps:
       - checkout
@@ -773,7 +773,7 @@ workflows:
       - osx_package:
           filters:
             branches:
-              only: master
+              only: osx_package
             tags:
               only: /^v.*$/
 
