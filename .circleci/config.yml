@@ -426,7 +426,7 @@ jobs:
 
   osx_package:
     macos:
-      xcode: "9.0"
+      xcode: "10.0.0"
     working_directory: ~/epoch
     steps:
       - checkout
