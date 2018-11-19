@@ -225,6 +225,7 @@ new(ChCTx) ->
     ResponderAmount = aesc_create_tx:responder_amount(ChCTx),
     DelegatePubkeys = aesc_create_tx:delegate_pubkeys(ChCTx),
     StateHash = aesc_create_tx:state_hash(ChCTx),
+    Round = aesc_create_tx:round(ChCTx),
     #channel{id                   = aec_id:create(channel, PubKey),
              initiator_id         = aesc_create_tx:initiator_id(ChCTx),
              responder_id         = aesc_create_tx:responder_id(ChCTx),
@@ -234,7 +235,7 @@ new(ChCTx) ->
              channel_reserve      = aesc_create_tx:channel_reserve(ChCTx),
              delegate_ids         = [aec_id:create(account, D) || D <- DelegatePubkeys],
              state_hash           = StateHash,
-             round                = 0,
+             round                = Round,
              solo_round           = 0,
              locked_until         = 0,
              lock_period          = aesc_create_tx:lock_period(ChCTx)}.
