@@ -32,6 +32,7 @@
         , register_oracle/1
         , register_oracle_negative/1
         , register_oracle_negative_dynamic_fee/1
+        , register_oracle_negative_absolute_ttl/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -56,6 +57,7 @@ groups() ->
     , {transactions, [sequence], [ register_oracle
                                  , register_oracle_negative
                                  , register_oracle_negative_dynamic_fee
+                                 , register_oracle_negative_absolute_ttl
                                  , extend_oracle
                                  , extend_oracle_negative
                                  , extend_oracle_negative_dynamic_fee
@@ -133,15 +135,33 @@ register_oracle_negative_dynamic_fee(_Cfg) ->
 
     %% Test minimum fee for increasing TTL.
     ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 0}, fee => 0})),
-    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 0}, fee => 20000})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 0}, fee => 17000})),
     ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 1}, fee => 1})),
-    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1}, fee => 20000})),
-    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 999}, fee => 20000})),
-    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1000}, fee => 20000})),
-    ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 1001}, fee => 1})),
-    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1001}, fee => 40000})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1}, fee => 17000})),
+    ?assertMatch({error, too_low_fee}, F(#{oracle_ttl => {delta, 1000}, fee => 16500})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1000}, fee => 17000})),
+    ?assertMatch({error, too_low_fee}, F(#{oracle_ttl => {delta, 4000}, fee => 17000})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 4000}, fee => 17500})),
+    ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 9000}, fee => 17500})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 9000}, fee => 19000})),
     %% Test more than minimum fee considering TTL.
-    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1001}, fee => 45000})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 9000}, fee => 40000})),
+    ok.
+
+register_oracle_negative_absolute_ttl(_Cfg) ->
+    {PubKey, S1} = aeo_test_utils:setup_new_account(aeo_test_utils:new_state()),
+    Trees        = aeo_test_utils:trees(S1),
+    CurrHeight   = ?ORACLE_REG_HEIGHT,
+    Env          = aetx_env:tx_env(CurrHeight),
+
+    F = fun(RegTxOpts) ->
+            Tx = aeo_test_utils:register_tx(PubKey, RegTxOpts, S1),
+            aetx:check(Tx, Trees, Env)
+        end,
+
+    ?assertEqual({error, too_low_abs_ttl}, F(#{oracle_ttl => {block, 0}, fee => 20000})),
+    ?assertEqual({error, too_low_abs_ttl}, F(#{oracle_ttl => {block, 1}, fee => 20000})),
+    ?assertMatch({ok, _}                 , F(#{oracle_ttl => {block, 100}, fee => 20000})),
     ok.
 
 register_oracle(Cfg) ->
@@ -218,15 +238,17 @@ extend_oracle_negative_dynamic_fee(Cfg) ->
         end,
     %% Test minimum fee for increasing TTL.
     ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 0}, fee => 0})),
-    ?assertEqual({error, zero_relative_oracle_extension_ttl}, F(#{oracle_ttl => {delta, 0}, fee => 20000})),
+    ?assertEqual({error, zero_relative_oracle_extension_ttl}, F(#{oracle_ttl => {delta, 0}, fee => 16000})),
     ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 1}, fee => 1})),
-    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1}, fee => 20000})),
-    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 999}, fee => 20000})),
-    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1000}, fee => 20000})),
-    ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 1001}, fee => 1})),
-    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1001}, fee => 20000})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1}, fee => 16000})),
+    ?assertMatch({error, too_low_fee}, F(#{oracle_ttl => {delta, 1000}, fee => 16000})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1000}, fee => 16500})),
+    ?assertMatch({error, too_low_fee}, F(#{oracle_ttl => {delta, 4000}, fee => 16500})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 4000}, fee => 17000})),
+    ?assertEqual({error, too_low_fee}, F(#{oracle_ttl => {delta, 9000}, fee => 17000})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 9000}, fee => 20000})),
     %% Test more than minimum fee considering TTL.
-    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 1001}, fee => 20000})),
+    ?assertMatch({ok, _}             , F(#{oracle_ttl => {delta, 9000}, fee => 40000})),
     ok.
 
 extend_oracle(Cfg) ->
@@ -323,15 +345,15 @@ query_oracle_negative_dynamic_fee(Cfg) ->
 
     %% Test minimum fee for increasing TTL.
     ?assertEqual({error, too_low_fee}, F(#{query_ttl => {delta, 0}, fee => 0})),
-    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 0}, fee => 20000})),
+    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 0}, fee => 17000})),
     ?assertEqual({error, too_low_fee}, F(#{query_ttl => {delta, 1}, fee => 1})),
-    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 1}, fee => 20000})),
-    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 999}, fee => 20000})),
-    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 1000}, fee => 20000})),
-    ?assertEqual({error, too_low_fee}, F(#{query_ttl => {delta, 1001}, fee => 1})),
-    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 1001}, fee => 20000})),
+    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 1}, fee => 17000})),
+    ?assertMatch({error, too_low_fee}, F(#{query_ttl => {delta, 1000}, fee => 17000})),
+    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 1000}, fee => 17150})),
+    ?assertEqual({error, too_low_fee}, F(#{query_ttl => {delta, 1500}, fee => 17150})),
+    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 1500}, fee => 17200})),
     %% Test more than minimum fee considering TTL.
-    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 1001}, fee => 20000})),
+    ?assertMatch({ok, _}             , F(#{query_ttl => {delta, 1500}, fee => 40000})),
     ok.
 
 query_oracle_type_check(_Cfg) ->
@@ -444,15 +466,14 @@ query_response_negative_dynamic_fee(Cfg) ->
 
     %% Test minimum fee for increasing TTL.
     ?assertException(error, {illegal,response_ttl,{delta,0}}, F({delta, 0}, 0)),
-    ?assertException(error, {illegal,response_ttl,{delta,0}}, F({delta, 0}, 20000)),
+    ?assertException(error, {illegal,response_ttl,{delta,0}}, F({delta, 0}, 16850)),
     ?assertEqual({error, too_low_fee}, F({delta, 1},    1)),
-    ?assertMatch({ok, _}             , F({delta, 1},    20000)),
-    ?assertMatch({ok, _}             , F({delta, 999},  20000)),
-    ?assertMatch({ok, _}             , F({delta, 1000}, 20000)),
-    ?assertEqual({error, too_low_fee}, F({delta, 1001}, 1)),
-    ?assertMatch({ok, _}             , F({delta, 1001}, 20000)),
+    ?assertMatch({ok, _}             , F({delta, 1},    16850)),
+    ?assertMatch({ok, _}             , F({delta, 1000}, 16850)),
+    ?assertEqual({error, too_low_fee}, F({delta, 1500}, 16850)),
+    ?assertMatch({ok, _}             , F({delta, 1500}, 17000)),
     %% Test more than minimum fee considering TTL.
-    ?assertMatch({ok, _}             , F({delta, 1001}, 20000)),
+    ?assertMatch({ok, _}             , F({delta, 1500}, 40000)),
     ok.
 
 query_response(Cfg) ->
@@ -495,7 +516,7 @@ query_response_fee_depends_on_response_size(Cfg) ->
 
     %% Deduce minimal fee for response tx with SmallResponse
     RTx0        = aeo_test_utils:response_tx(OracleKey, ID, SmallResponse, #{}, S1),
-    MinimalFee  = aetx:min_fee(RTx0),
+    MinimalFee  = aetx:min_fee(RTx0, ?ORACLE_RSP_HEIGHT),
 
     %% Test oracle response tx with SmallResponse is accepted with MinimalFee
     RTx1        = aeo_test_utils:response_tx(OracleKey, ID, SmallResponse, #{fee => MinimalFee}, S1),
@@ -504,13 +525,13 @@ query_response_fee_depends_on_response_size(Cfg) ->
 
     %% Test oracle response tx with BiggerResponse is not accepted with MinimalFee
     RTx2        = aeo_test_utils:response_tx(OracleKey, ID, BiggerResponse, #{fee => MinimalFee}, S1),
-    MinimalFee2 = aetx:min_fee(RTx2),
+    MinimalFee2 = aetx:min_fee(RTx2, ?ORACLE_RSP_HEIGHT),
     true        = MinimalFee2 > MinimalFee1,
     {error, too_low_fee} = aetx:check(RTx2, Trees, Env),
 
     %% Test oracle response tx with BiggerResponse is accepted with MinimalFee2
     RTx3        = aeo_test_utils:response_tx(OracleKey, ID, BiggerResponse, #{fee => MinimalFee2}, S1),
-    MinimalFee3 = aetx:min_fee(RTx3),
+    MinimalFee3 = aetx:min_fee(RTx3, ?ORACLE_RSP_HEIGHT),
     MinimalFee3 = MinimalFee2,
     {ok, Trees} = aetx:check(RTx3, Trees, Env),
     ok.

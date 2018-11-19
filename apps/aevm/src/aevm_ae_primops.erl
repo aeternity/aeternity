@@ -334,7 +334,7 @@ oracle_call_register(_Value, Data, #chain{api = API, state = State} = Chain) ->
                             end
                         end,
                     SizeGas = size_gas(Tx),
-                    StateGas = state_gas(oracle_registration, DeltaTTL),
+                    StateGas = state_gas(oracle_register_tx, DeltaTTL),
                     DynGas = SizeGas + StateGas,
                     ?TEST_LOG("~s computed gas ~p - size gas: ~p, state gas: ~p (relative TTL: ~p)",
                                 [?FUNCTION_NAME, DynGas, SizeGas, StateGas, DeltaTTL]),
@@ -362,7 +362,7 @@ oracle_call_query(Value, Data, #chain{api = API, state = State} = Chain) ->
                                     end
                                 end,
                             SizeGas = size_gas(Tx),
-                            StateGas = state_gas(oracle_query, DeltaQTTL),
+                            StateGas = state_gas(oracle_query_tx, DeltaQTTL),
                             DynGas = SizeGas + StateGas,
                             ?TEST_LOG("~s computed gas ~p - size gas: ~p, state gas: ~p (relative TTL: ~p)",
                                         [?FUNCTION_NAME, DynGas, SizeGas, StateGas, DeltaQTTL]),
@@ -391,7 +391,7 @@ oracle_call_respond(_Value, Data, #chain{api = API, state = State} = Chain) ->
                                 {error, _} = Err -> Err;
                                 {ok, Tx} ->
                                     SizeGas = size_gas(Tx),
-                                    StateGas = state_gas(oracle_response, DeltaRTTL),
+                                    StateGas = state_gas(oracle_response_tx, DeltaRTTL),
                                     DynGas = SizeGas + StateGas,
                                     ?TEST_LOG("~s computed gas ~p - size gas: ~p, state gas: ~p (relative TTL: ~p)",
                                             [?FUNCTION_NAME, DynGas, SizeGas, StateGas, DeltaRTTL]),
@@ -415,7 +415,7 @@ oracle_call_extend(_Value, Data, #chain{api = API, state = State} = Chain) ->
                     Callback = fun(ChainAPI, ChainState) ->
                                     ChainAPI:oracle_extend(Tx, to_sign(Sign0), ChainState)
                             end,
-                    StateGas = state_gas(oracle_extension, DeltaTTL),
+                    StateGas = state_gas(oracle_extend_tx, DeltaTTL),
                     ?TEST_LOG("~s computed gas ~p - state gas: ~p (relative TTL: ~p)",
                                 [?FUNCTION_NAME, StateGas, StateGas, DeltaTTL]),
                     {ok, StateGas, fun() -> cast_chain(Callback, Chain) end}

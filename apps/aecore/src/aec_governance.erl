@@ -153,10 +153,10 @@ accepted_future_block_time_shift() ->
 %% Expressed as a fraction because otherwise it would become too large
 %% when multiplied by the number of key blocks.
 -spec state_gas_per_block(atom()) -> {Part::pos_integer(), Whole::pos_integer()}.
-state_gas_per_block(oracle_registration) -> {?ORACLE_STATE_GAS_PER_YEAR, ?EXPECTED_BLOCKS_IN_A_YEAR_FLOOR};
-state_gas_per_block(oracle_extension)    -> state_gas_per_block(oracle_registration);
-state_gas_per_block(oracle_query)        -> state_gas_per_block(oracle_registration);
-state_gas_per_block(oracle_response)     -> state_gas_per_block(oracle_registration).
+state_gas_per_block(oracle_register_tx) -> {?ORACLE_STATE_GAS_PER_YEAR, ?EXPECTED_BLOCKS_IN_A_YEAR_FLOOR};
+state_gas_per_block(oracle_extend_tx)   -> state_gas_per_block(oracle_register_tx);
+state_gas_per_block(oracle_query_tx)    -> state_gas_per_block(oracle_register_tx);
+state_gas_per_block(oracle_response_tx) -> state_gas_per_block(oracle_register_tx).
 
 %% As primops are not meant to be called from contract call
 %% transactions, calling a primop costs (apart from the fees for the

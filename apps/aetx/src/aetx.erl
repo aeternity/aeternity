@@ -12,11 +12,12 @@
         , check/3
         , deserialize_from_binary/1
         , fee/1
-        , gas/1
+        , gas/2
+        , min_gas/2
         , gas_price/1
         , ttl/1
         , size/1
-        , min_fee/1
+        , min_fee/2
         , new/2
         , nonce/1
         , origin/1
@@ -171,10 +172,35 @@ new(Callback, Tx) ->
 fee(#aetx{ cb = CB, tx = Tx }) ->
     CB:fee(Tx).
 
--spec gas(Tx :: tx()) -> Gas :: non_neg_integer().
-gas(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }) when Type =/= channel_offchain_tx ->
-    aec_governance:tx_base_gas(Type) + Size * aec_governance:byte_gas() + CB:gas(Tx);
-gas(#aetx{ type = channel_offchain_tx }) ->
+%% In case 0 is returned, the tx will not be included in the micro block
+%% candidate by the mempool.
+-spec gas(Tx :: tx(), Height :: aec_blocks:height()) -> Gas :: non_neg_integer().
+gas(#aetx{type = Type, cb = CB, size = Size, tx = Tx }, Height) when
+      Type =:= oracle_register_tx;
+      Type =:= oracle_extend_tx ->
+    case ttl_delta(Height, CB:oracle_ttl(Tx)) of
+        {delta, _D} = TTL ->
+            base_gas(Type) + size_gas(Size) + state_gas(Type, TTL);
+        {error, _Rsn} ->
+            0
+    end;
+gas(#aetx{type = oracle_query_tx, size = Size, tx = Tx }, Height) ->
+    case ttl_delta(Height, aeo_query_tx:query_ttl(Tx)) of
+        {delta, _D} = TTL ->
+            base_gas(oracle_query_tx) + size_gas(Size) + state_gas(oracle_query_tx, TTL);
+        {error, _Rsn} ->
+            0
+    end;
+gas(#aetx{type = oracle_response_tx, size = Size, tx = Tx }, Height) ->
+    case ttl_delta(Height, aeo_response_tx:response_ttl(Tx)) of
+        {delta, _D} = TTL ->
+            base_gas(oracle_response_tx) + size_gas(Size) + state_gas(oracle_response_tx, TTL);
+        {error, _Rsn} ->
+            0
+    end;
+gas(#aetx{ type = Type, cb = CB, size = Size, tx = Tx }, _Height) when Type =/= channel_offchain_tx ->
+    base_gas(Type) + size_gas(Size) + CB:gas(Tx);
+gas(#aetx{ type = channel_offchain_tx }, _Height) ->
     0.
 
 -spec gas_price(Tx :: tx()) -> GasPrice :: non_neg_integer() | undefined.
@@ -183,15 +209,14 @@ gas_price(#aetx{ type = Type, cb = CB, tx = Tx }) when ?IS_CONTRACT_TX(Type) ->
 gas_price(#aetx{}) ->
     undefined.
 
--spec min_fee(Tx :: tx()) -> Fee :: non_neg_integer().
-min_fee(#aetx{} = AeTx) ->
-    min_gas(AeTx) * aec_governance:minimum_gas_price().
+-spec min_fee(Tx :: tx(), Height :: aec_blocks:height()) -> Fee :: non_neg_integer().
+min_fee(#aetx{} = AeTx, Height) ->
+    min_gas(AeTx, Height) * aec_governance:minimum_gas_price().
 
--spec min_gas(Tx :: tx()) -> Gas :: non_neg_integer().
-min_gas(#aetx{ type = Type, size = Size }) when ?IS_CONTRACT_TX(Type) ->
-    aec_governance:tx_base_gas(Type) + Size * aec_governance:byte_gas();
-min_gas(#aetx{} = Tx) ->
-    gas(Tx).
+min_gas(#aetx{ type = Type, size = Size }, _Height) when ?IS_CONTRACT_TX(Type) ->
+    base_gas(Type) + size_gas(Size);
+min_gas(#aetx{} = Tx, Height) ->
+    gas(Tx, Height).
 
 -spec nonce(Tx :: tx()) -> Nonce :: non_neg_integer().
 nonce(#aetx{ cb = CB, tx = Tx }) ->
@@ -242,7 +267,7 @@ check_contract(#aetx{ cb = CB, tx = Tx }, Trees, Env) ->
 
 check_tx(#aetx{ cb = CB, tx = Tx } = AeTx, Trees, Env) ->
     Checks =
-        [fun() -> check_minimum_fee(AeTx) end,
+        [fun() -> check_minimum_fee(AeTx, Env) end,
          fun() -> check_minimum_gas_price(AeTx) end,
          fun() -> check_ttl(AeTx, Env) end],
     case aeu_validation:run(Checks) of
@@ -250,10 +275,19 @@ check_tx(#aetx{ cb = CB, tx = Tx } = AeTx, Trees, Env) ->
         {error, _} = E -> E
     end.
 
-check_minimum_fee(AeTx) ->
-    case fee(AeTx) >= min_fee(AeTx) of
-        true  -> ok;
-        false -> {error, too_low_fee}
+check_minimum_fee(AeTx, Env) ->
+    Height = aetx_env:height(Env),
+    case min_fee(AeTx, Height) of
+        MinFee when MinFee > 0 ->
+            case fee(AeTx) >= MinFee of
+                true  -> ok;
+                false -> {error, too_low_fee}
+            end;
+        0 ->
+            %% Oracle txs can return (minimal) gas of 0 when
+            %% the absolute TTL is lower than the current chain
+            %% height.
+            {error, too_low_abs_ttl}
     end.
 
 check_minimum_gas_price(AeTx) ->
@@ -375,6 +409,27 @@ specialize_callback(#aetx{ cb = CB, tx = Tx }) -> {CB, Tx}.
 -spec update_tx(tx(), tx_instance()) -> tx().
 update_tx(#aetx{} = Tx, NewTxI) ->
     Tx#aetx{tx = NewTxI}.
+
+base_gas(Type) ->
+    aec_governance:tx_base_gas(Type).
+
+size_gas(Size) ->
+    Size * aec_governance:byte_gas().
+
+state_gas(Tag, {delta, TTL}) ->
+    aec_governance_utils:state_gas(
+      aec_governance:state_gas_per_block(Tag),
+      TTL).
+
+ttl_delta(_Height, {delta, _D} = TTL) ->
+    {delta, aeo_utils:ttl_delta(0, TTL)};
+ttl_delta(Height, {block, _H} = TTL) ->
+    case aeo_utils:ttl_delta(Height, TTL) of
+        TTLDelta when is_integer(TTLDelta) ->
+            {delta, TTLDelta};
+        {error, _Rsn} = Err ->
+            Err
+    end.
 
 -ifdef(TEST).
 tx(Tx) ->

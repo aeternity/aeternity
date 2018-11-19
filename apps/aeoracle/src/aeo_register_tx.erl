@@ -140,13 +140,7 @@ check(#oracle_register_tx{nonce = Nonce, oracle_ttl = OTTL, fee = Fee,
     Checks =
         [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee) end,
          fun() -> ensure_not_oracle(AccountPubKey, Trees) end,
-         fun() -> aeo_utils:check_vm_version(VMVersion) end
-         | case aetx_env:context(Env) of
-               %% Contract is paying tx fee as gas.
-               aetx_contract -> [];
-               aetx_transaction ->
-                   [fun() -> aeo_utils:check_ttl_fee(Height, OTTL, Fee) end] %% TODO Deduct portion of fee already accounted for by `aetx:check` before checking state TTL portion of fee.
-           end],
+         fun() -> aeo_utils:check_vm_version(VMVersion) end],
 
     case aeu_validation:run(Checks) of
         ok              -> {ok, Trees};
