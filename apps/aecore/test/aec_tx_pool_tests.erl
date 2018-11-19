@@ -116,13 +116,16 @@ tx_pool_test_() ->
                {ok, KeyHash} = aec_blocks:hash_internal_representation(KeyBlock),
                ?assertEqual(KeyHash, aec_chain:top_block_hash()),
 
+               %% PubKey1 creates two transaction but has enough fund only for one
+               %% PubKey2 has enough fund for all it's transactions
                Txs1 = [Tx1_1, Tx1_2]  = [ a_signed_tx(PubKey1, me, Nonce, 20000, 10) || Nonce <- lists:seq(1, 2) ],
                Txs2 = [Tx2_1, Tx2_2]  = [ a_signed_tx(PubKey2, me, Nonce, 20000, 10) || Nonce <- lists:seq(1, 2) ],
                [ ok = aec_tx_pool:push(Tx, tx_created) || Tx <- Txs1++Txs2 ],
                ?assertMatch([_,_,_,_], aec_tx_pool:peek_db()),
                ?assertEqual([], aec_tx_pool:peek_visited()),
 
-               %% Micro block candidate contains all txs
+               %% Micro block candidate contains all txs because
+               %% total gas for them is smaller then aec_governance:block_gas_limit()
                {ok, CTxs1} = aec_tx_pool:get_candidate(aec_governance:block_gas_limit(), KeyHash),
                ?assertEqual(lists:sort(Txs1++Txs2), lists:sort(CTxs1)),
                ?assertEqual([], aec_tx_pool:peek_db()),
@@ -134,7 +137,8 @@ tx_pool_test_() ->
                {ok, MicroHash} = aec_blocks:hash_internal_representation(Micro),
                ?assertEqual(MicroHash, aec_chain:top_block_hash()),
 
-               %% Micro block contains only valid transacions (Tx1_2 excluded)
+               %% Micro block contains only valid transacions
+               %% Tx1_2 is excluded because PubKey1 account has not enough funds
                ?assert(lists:member(Tx1_1, aec_blocks:txs(Micro))),
                ?assert(not lists:member(Tx1_2, aec_blocks:txs(Micro))),
                ?assert(lists:member(Tx2_1, aec_blocks:txs(Micro))),
