@@ -24,6 +24,7 @@
         , query_oracle_negative_dynamic_fee/1
         , query_oracle_type_check/1
         , query_response/1
+        , query_response_fee_depends_on_response_size/1
         , query_response_negative/1
         , query_response_negative_dynamic_fee/1
         , query_response_type_check/1
@@ -62,6 +63,7 @@ groups() ->
                                  , query_oracle_negative_dynamic_fee
                                  , query_oracle_type_check
                                  , query_response
+                                 , query_response_fee_depends_on_response_size
                                  , query_response_negative
                                  , query_response_negative_dynamic_fee
                                  , query_response_type_check
@@ -461,6 +463,37 @@ query_response(Cfg, QueryOpts) ->
     true = aeo_query:is_closed(OIO),
 
     {OracleKey, ID, S2}.
+
+query_response_fee_depends_on_response_size(Cfg) ->
+    {OracleKey, ID, S1} = query_oracle(Cfg, #{}, #{}),
+    Trees               = aeo_test_utils:trees(S1),
+    Env                 = aetx_env:tx_env(?ORACLE_RSP_HEIGHT),
+
+    SmallResponse  = <<"small_response">>,
+    BiggerResponse = <<"bigger_oracle_response">>,
+    true = size(SmallResponse) < size(BiggerResponse),
+
+    %% Deduce minimal fee for response tx with SmallResponse
+    RTx0        = aeo_test_utils:response_tx(OracleKey, ID, SmallResponse, #{}, S1),
+    MinimalFee  = aetx:min_fee(RTx0),
+
+    %% Test oracle response tx with SmallResponse is accepted with MinimalFee
+    RTx1        = aeo_test_utils:response_tx(OracleKey, ID, SmallResponse, #{fee => MinimalFee}, S1),
+    MinimalFee1 = MinimalFee,
+    {ok, Trees} = aetx:check(RTx1, Trees, Env),
+
+    %% Test oracle response tx with BiggerResponse is not accepted with MinimalFee
+    RTx2        = aeo_test_utils:response_tx(OracleKey, ID, BiggerResponse, #{fee => MinimalFee}, S1),
+    MinimalFee2 = aetx:min_fee(RTx2),
+    true        = MinimalFee2 > MinimalFee1,
+    {error, too_low_fee} = aetx:check(RTx2, Trees, Env),
+
+    %% Test oracle response tx with BiggerResponse is accepted with MinimalFee2
+    RTx3        = aeo_test_utils:response_tx(OracleKey, ID, BiggerResponse, #{fee => MinimalFee2}, S1),
+    MinimalFee3 = aetx:min_fee(RTx3),
+    MinimalFee3 = MinimalFee2,
+    {ok, Trees} = aetx:check(RTx3, Trees, Env),
+    ok.
 
 query_response_type_check(_Cfg) ->
     QFmt  = aeso_data:to_binary(string),
