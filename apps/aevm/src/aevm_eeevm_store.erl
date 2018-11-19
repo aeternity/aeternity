@@ -152,8 +152,7 @@ get_map_data(MapId, Store) ->
 
 -spec map_lookup(aevm_eeevm_maps:map_id(), binary(), aevm_eeevm_state:state()) -> binary() | false.
 map_lookup(Id, Key, State) ->
-    #{ chain_api := ChainAPI, chain_state := ChainState } = State,
-    Store = ChainAPI:get_store(ChainState),
+    Store = aevm_eeevm_state:storage(State),
     get_value(Id, Key, Store).
 
 -spec next_map_id(aect_contracts:store()) -> aevm_eeevm_maps:map_id().
