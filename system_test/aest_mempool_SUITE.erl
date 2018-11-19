@@ -121,16 +121,16 @@ test_mempool_ttl_cleanup(Cfg) ->
     %% Send multiple deposit transaction with the same round
     #{tx_hash := DepositHash1} =
         aest_nodes:post_deposit_state_channel_tx(node1, ?BOB, ?ALICE, ChannelId,
-            #{ nonce => 2, amount => 10, round => 1, ttl => 20 }),
+            #{ nonce => 2, amount => 10, round => 2, ttl => 20 }),
     #{tx_hash := DepositHash2} =
         aest_nodes:post_deposit_state_channel_tx(node1, ?BOB, ?ALICE, ChannelId,
-            #{ nonce => 3, amount => 11, round => 1, ttl => 20 }),
+            #{ nonce => 3, amount => 11, round => 2, ttl => 20 }),
     #{tx_hash := DepositHash3} =
         aest_nodes:post_deposit_state_channel_tx(node1, ?BOB, ?ALICE, ChannelId,
-            #{ nonce => 4, amount => 12, round => 1, ttl => 20 }),
+            #{ nonce => 4, amount => 12, round => 2, ttl => 20 }),
     #{tx_hash := DepositHash4} =
         aest_nodes:post_deposit_state_channel_tx(node1, ?BOB, ?ALICE, ChannelId,
-            #{ nonce => 5, amount => 13, round => 1, ttl => 20 }),
+            #{ nonce => 5, amount => 13, round => 2, ttl => 20 }),
 
     %% Check the first one got on the chain
     aest_nodes:wait_for_value({txs_on_chain, [DepositHash1]},
@@ -166,18 +166,18 @@ test_mempool_bad_nonce_cleanup(Cfg) ->
     %% Post deposit transactions on node1 (mining node)
     #{tx_hash := DepositHash1} =
         aest_nodes:post_deposit_state_channel_tx(node1, ?BOB, ?ALICE, ChannelId,
-            #{ nonce => 2, amount => 10, round => 1, ttl => 200 }),
+            #{ nonce => 2, amount => 10, round => 2, ttl => 200 }),
     #{tx_hash := DepositHash2} =
         aest_nodes:post_deposit_state_channel_tx(node1, ?BOB, ?ALICE, ChannelId,
-            #{ nonce => 3, amount => 11, round => 2, ttl => 200 }),
+            #{ nonce => 3, amount => 11, round => 3, ttl => 200 }),
 
     %% Post deposit transactions on node2 with already used nounce
     #{tx_hash := DepositHash3} =
         aest_nodes:post_deposit_state_channel_tx(node2, ?BOB, ?ALICE, ChannelId,
-            #{ nonce => 3, amount => 13, round => 3, ttl => 200 }),
+            #{ nonce => 3, amount => 13, round => 4, ttl => 200 }),
     #{tx_hash := DepositHash4} =
         aest_nodes:post_deposit_state_channel_tx(node2, ?BOB, ?ALICE, ChannelId,
-            #{ nonce => 4, amount => 14, round => 4, ttl => 200 }),
+            #{ nonce => 4, amount => 14, round => 5, ttl => 200 }),
 
     %% check the deposit with correct nonce got on chain
     aest_nodes:wait_for_value({txs_on_chain, [DepositHash1, DepositHash4]},

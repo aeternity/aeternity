@@ -38,6 +38,7 @@
          close_solo_payload_from_another_channel/1,
          close_solo_payload_not_co_signed/1,
          close_solo_invalid_state_hash/1,
+         close_solo_can_not_replace_create/1,
          close_solo_older_payload/1,
          close_solo_missing_channel/1,
          close_solo_already_closing/1,
@@ -85,6 +86,7 @@
          deposit_missing_channel/1,
          deposit_closing/1,
          deposit_older_round/1,
+         deposit_can_not_replace_create/1,
          deposit_not_participant/1,
          deposit_delegate_not_allowed/1
         ]).
@@ -96,6 +98,7 @@
          withdraw_missing_channel/1,
          withdraw_closing/1,
          withdraw_older_round/1,
+         withdraw_can_not_replace_create/1,
          withdraw_not_participant/1,
          withdraw_delegate_not_allowed/1
         ]).
@@ -108,6 +111,7 @@
          snapshot_payload_from_another_channel/1,
          snapshot_payload_not_co_signed/1,
          snapshot_old_payload/1,
+         snapshot_can_not_replace_create/1,
          snapshot_not_participant/1,
          snapshot_delegate_not_allowed/1
         ]).
@@ -149,6 +153,7 @@
          fp_payload_not_co_signed/1,
          fp_payload_invalid_state_hash/1,
          fp_payload_older_payload/1,
+         fp_can_not_replace_create/1,
          % solo signed payload tests
          fp_solo_payload_invalid_state_hash/1,
          fp_solo_payload_wrong_round/1,
@@ -231,6 +236,7 @@ groups() ->
        close_solo_payload_not_co_signed,
        close_solo_invalid_state_hash,
        close_solo_older_payload,
+       close_solo_can_not_replace_create,
        close_solo_missing_channel,
        close_solo_already_closing,
        close_solo_delegate_not_allowed
@@ -269,6 +275,7 @@ groups() ->
        deposit_missing_channel,
        deposit_closing,
        deposit_older_round,
+       deposit_can_not_replace_create,
        deposit_not_participant,
        deposit_delegate_not_allowed
       ]},
@@ -279,6 +286,7 @@ groups() ->
        withdraw_missing_channel,
        withdraw_closing,
        withdraw_older_round,
+       withdraw_can_not_replace_create,
        withdraw_not_participant,
        withdraw_delegate_not_allowed
       ]},
@@ -289,6 +297,7 @@ groups() ->
        snapshot_payload_from_another_channel,
        snapshot_payload_not_co_signed,
        snapshot_old_payload,
+       snapshot_can_not_replace_create,
        snapshot_not_participant,
        snapshot_delegate_not_allowed
       ]},
@@ -327,6 +336,7 @@ groups() ->
        fp_payload_not_co_signed,
        fp_payload_invalid_state_hash,
        fp_payload_older_payload,
+       fp_can_not_replace_create,
        % solo signed payload tests
        fp_solo_payload_invalid_state_hash,
        fp_solo_payload_wrong_round,
@@ -636,6 +646,9 @@ close_solo_invalid_state_hash(Cfg) ->
 close_solo_older_payload(Cfg) ->
     test_both_old_round(Cfg, fun close_solo_/2).
 
+close_solo_can_not_replace_create(Cfg) ->
+    test_both_can_not_replace_create(Cfg, fun close_solo_/2).
+
 close_solo_missing_channel(Cfg) ->
     test_both_missing_channel(Cfg, fun close_solo_/2).
 
@@ -793,8 +806,8 @@ slash(Cfg) ->
         fun(Closer) ->
             lists:foreach(
                 fun(Slasher) ->
-                    Test(Closer, Slasher, 1, 2),
-                    Test(Closer, Slasher, 1, 5),
+                    Test(Closer, Slasher, 2, 3),
+                    Test(Closer, Slasher, 2, 5),
                     Test(Closer, Slasher, 5, 6)
                 end,
                 ?ROLES)
@@ -832,8 +845,8 @@ slash_by_delegate(Cfg) ->
         end,
     lists:foreach(
         fun(Closer) ->
-            Test(Closer, 1, 2),
-            Test(Closer, 1, 5),
+            Test(Closer, 2, 3),
+            Test(Closer, 3, 5),
             Test(Closer, 5, 6)
         end,
         ?ROLES),
@@ -1116,6 +1129,9 @@ deposit_closing(Cfg) ->
 deposit_older_round(Cfg) ->
     test_both_old_round(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}).
 
+deposit_can_not_replace_create(Cfg) ->
+    test_both_can_not_replace_create(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}).
+
 deposit_not_participant(Cfg) ->
     test_not_participant(Cfg, fun deposit_/2, #{amount => 1, fee => 50000}).
 
@@ -1198,6 +1214,9 @@ withdraw_closing(Cfg) ->
 
 withdraw_older_round(Cfg) ->
     test_both_old_round(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}).
+
+withdraw_can_not_replace_create(Cfg) ->
+    test_both_can_not_replace_create(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}).
 
 withdraw_not_participant(Cfg) ->
     test_not_participant(Cfg, fun withdraw_/2, #{amount => 1, fee => 50000}).
@@ -1558,6 +1577,9 @@ snapshot_payload_not_co_signed(Cfg) ->
 % snapshot_tx calls with a payload from another channel are rejected
 snapshot_old_payload(Cfg) ->
     test_both_old_round(Cfg, fun snapshot_solo_/2).
+
+snapshot_can_not_replace_create(Cfg) ->
+    test_both_can_not_replace_create(Cfg, fun snapshot_solo_/2).
 
 snapshot_not_participant(Cfg) ->
     test_not_participant(Cfg, fun snapshot_solo_/2).
@@ -2838,6 +2860,20 @@ fp_payload_older_payload(Cfg) ->
     [Test(Snapshotter, Owner, Forcer) ||  Owner       <- ?ROLES,
                                           Snapshotter <- ?ROLES,
                                           Forcer      <- ?ROLES],
+    ok.
+
+fp_can_not_replace_create(Cfg) ->
+    Round = 10,
+    Test =
+        fun(Owner, Forcer) ->
+            run(#{cfg => Cfg},
+               [positive(fun create_channel_/2),
+                create_contract_poi_and_payload(_Round = 1, 5, Owner),
+                negative_force_progress_sequence(Round, Forcer,
+                                                 old_round)])
+        end,
+    [Test(Owner, Forcer) ||  Owner       <- ?ROLES,
+                             Forcer      <- ?ROLES],
     ok.
 
 fp_payload_invalid_state_hash(Cfg) ->
@@ -4414,7 +4450,7 @@ create_from_state(S, DefaultSpec) ->
     {value, Ch} = aesc_state_tree:lookup(ChannelPubKey, aec_trees:channels(Trees2)),
     PubKey1 = aesc_channels:initiator_pubkey(Ch),
     PubKey2 = aesc_channels:responder_pubkey(Ch),
-    0       = aesc_channels:round(Ch),
+    1       = aesc_channels:round(Ch),
     true    = aesc_channels:is_active(Ch),
 
     %% Check that the nonce was bumped for the initiator, but not for
@@ -4754,6 +4790,23 @@ test_both_old_round(Cfg, Fun, Props) ->
         end,
     [Test(First, Second) || First <- ?ROLES,
                             Second <- ?ROLES],
+    ok.
+
+test_both_can_not_replace_create(Cfg, Fun) ->
+    test_both_can_not_replace_create(Cfg, Fun, #{}).
+
+test_both_can_not_replace_create(Cfg, Fun, Props) ->
+    Test =
+        fun(Poster) ->
+            run(Props#{cfg => Cfg},
+               [positive(fun create_channel_/2),
+                set_prop(round, 1),
+                set_from(Poster),
+                set_prop(amount, 1),
+                set_prop(fee, 50000),
+                negative(Fun, {error, old_round})])
+        end,
+    [Test(Poster) || Poster <- ?ROLES],
     ok.
 
 test_payload_not_both_signed(Cfg, SpecFun, CreateTxFun) ->

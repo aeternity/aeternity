@@ -208,11 +208,11 @@ on_chain_channel(Cfg) ->
     aest_nodes:wait_for_value({txs_on_chain, [CreateHash]}, NodeNames, 10000, []),
 
     #{tx_hash := DepositHash} =
-        aest_nodes:post_deposit_state_channel_tx(node1, ?BOB, ?ALICE, ChannelId, #{ nonce => 2, amount => 20, round => 1 }),
+        aest_nodes:post_deposit_state_channel_tx(node1, ?BOB, ?ALICE, ChannelId, #{ nonce => 2, amount => 20, round => 2 }),
     aest_nodes:wait_for_value({txs_on_chain, [DepositHash]}, NodeNames, 10000, []),
 
     #{tx_hash := WithdrawHash} =
-        aest_nodes:post_withdraw_state_channel_tx(node1, ?ALICE, ?BOB, ChannelId, #{ nonce => 1, amount => 20, round => 2 }),
+        aest_nodes:post_withdraw_state_channel_tx(node1, ?ALICE, ?BOB, ChannelId, #{ nonce => 1, amount => 20, round => 3 }),
     aest_nodes:wait_for_value({txs_on_chain, [WithdrawHash]}, NodeNames, 10000, []),
 
 
