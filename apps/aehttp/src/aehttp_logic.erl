@@ -187,11 +187,6 @@ contract_call(ABI, EncodedCode, Function, Argument) ->
                 _ ->
                     {error, <<"Invalid hash for contract address">>}
             end;
-        <<"sophia">> ->
-            case aehttp_api_encoder:safe_decode(contract_bytearray, EncodedCode) of
-                {ok, Code} -> Call(Code, Argument);
-                {error, _} -> {error, <<"Illegal code">>}
-            end;
         <<"evm">> ->
             case aehttp_api_encoder:safe_decode(contract_bytearray, EncodedCode) of
                 {ok, Code} ->
@@ -203,7 +198,7 @@ contract_call(ABI, EncodedCode, Function, Argument) ->
                     {error, <<"Illegal code">>}
             end;
         _Other ->
-            {error, "Unknown ABI"}
+            {error, "Unknown/Unsupported ABI"}
     end.
 
 contract_decode_data(Type, Data) ->
