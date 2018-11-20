@@ -38,6 +38,7 @@
 -export([ensure_account/2]).
 
 -export([apply_txs_on_state_trees/3,
+         apply_txs_on_state_trees/4,
          apply_txs_on_state_trees_strict/3,
          grant_fee/3,
          perform_pre_transformations/2
@@ -404,15 +405,20 @@ internal_commit_to_db(Trees) ->
                }.
 
 apply_txs_on_state_trees(SignedTxs, Trees, Env) ->
-    apply_txs_on_state_trees(SignedTxs, [], [], Trees, Env, _Strict = false).
+    apply_txs_on_state_trees(SignedTxs, [], [], Trees, Env, []).
 
 apply_txs_on_state_trees_strict(SignedTxs, Trees, Env) ->
-    apply_txs_on_state_trees(SignedTxs, [], [], Trees, Env, _Strict = true).
+    apply_txs_on_state_trees(SignedTxs, [], [], Trees, Env, [strict]).
 
-apply_txs_on_state_trees([], ValidTxs, InvalidTxs, Trees,_Env,_Strict) ->
+apply_txs_on_state_trees(SignedTxs, Trees, Env, Opts) ->
+    apply_txs_on_state_trees(SignedTxs, [], [], Trees, Env, Opts).
+
+apply_txs_on_state_trees([], ValidTxs, InvalidTxs, Trees,_Env,_Opts) ->
     {ok, lists:reverse(ValidTxs), lists:reverse(InvalidTxs), Trees};
-apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Strict) ->
-    case aetx_sign:verify(SignedTx, Trees) of
+apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Opts) ->
+    Strict     = proplists:get_value(strict, Opts, false),
+    DontVerify = proplists:get_value(dont_verify_signature, Opts, false),
+    case verify(SignedTx, Trees, DontVerify) of
         ok ->
             Tx = aetx_sign:tx(SignedTx),
             case aetx:check(Tx, Trees, Env) of
@@ -420,14 +426,14 @@ apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, St
                     Env1 = aetx_env:set_signed_tx(Env, {value, SignedTx}),
                     {ok, Trees2} = aetx:process(Tx, Trees1, Env1),
                     Valid1 = [SignedTx | ValidTxs],
-                    apply_txs_on_state_trees(Rest, Valid1, InvalidTxs, Trees2, Env, Strict);
+                    apply_txs_on_state_trees(Rest, Valid1, InvalidTxs, Trees2, Env, Opts);
                 {error, Reason} when Strict ->
                     lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
                     {error, Reason};
                 {error, Reason} when not Strict ->
                     lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
                     Invalid1 = [SignedTx | InvalidTxs],
-                    apply_txs_on_state_trees(Rest, ValidTxs, Invalid1, Trees, Env, Strict)
+                    apply_txs_on_state_trees(Rest, ValidTxs, Invalid1, Trees, Env, Opts)
             end;
         {error, signature_check_failed} = E when Strict ->
             lager:debug("Signed tx ~p is not correctly signed.", [SignedTx]),
@@ -435,8 +441,11 @@ apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, St
         {error, signature_check_failed} when not Strict ->
             lager:debug("Signed tx ~p is not correctly signed.", [SignedTx]),
             Invalid1 = [SignedTx | InvalidTxs],
-            apply_txs_on_state_trees(Rest, ValidTxs, Invalid1, Trees, Env, Strict)
+            apply_txs_on_state_trees(Rest, ValidTxs, Invalid1, Trees, Env, Opts)
     end.
+
+verify(_, _, true)             -> ok;
+verify(SignedTx, Trees, false) -> aetx_sign:verify(SignedTx, Trees).
 
 -spec grant_fee(aec_keys:pubkey(), trees(), non_neg_integer()) -> trees().
 grant_fee(BeneficiaryPubKey, Trees0, Fee) ->

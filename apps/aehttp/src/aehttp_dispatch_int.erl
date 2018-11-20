@@ -24,6 +24,8 @@
                         , unsigned_tx_response/1
                         , ok_response/1
                         , process_request/2
+                        , do_dry_run/0
+                        , dry_run_results/1
                         ]).
 
 -spec handle_request(
@@ -141,6 +143,13 @@ handle_request_('PostContractCallCompute', #{'ContractCallCompute' := Req}, _Con
                  compute_contract_call_data(),
                  unsigned_tx_response(fun aect_call_tx:new/1)
                 ],
+    process_request(ParseFuns, Req);
+
+handle_request_('DryRunTxs', #{ 'DryRunInput' := Req }, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([txs]),
+                 read_optional_params([{top, top, top}, {accounts, accounts, []}]),
+                 do_dry_run()],
     process_request(ParseFuns, Req);
 
 handle_request_('CompileContract', Req, _Context) ->
