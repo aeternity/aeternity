@@ -11,7 +11,6 @@
          accounts_in_poi/2,
          check_is_active/1,
          check_is_peer/2,
-         check_are_funds_in_channel/3,
          check_round_greater_than_last/3,
          check_state_hash_size/1,
          deserialize_payload/1,
@@ -116,16 +115,6 @@ check_is_peer(PubKey, Peers) ->
     case lists:member(PubKey, Peers) of
         true  -> ok;
         false -> {error, account_not_peer}
-    end.
-
--spec check_are_funds_in_channel(aesc_channels:pubkey(), non_neg_integer(), aec_trees:trees()) ->
-                                        ok | {error, insufficient_channel_funds}.
-check_are_funds_in_channel(ChannelPubKey, Amount, Trees) ->
-    ChannelsTree = aec_trees:channels(Trees),
-    Channel      = aesc_state_tree:get(ChannelPubKey, ChannelsTree),
-    case aesc_channels:channel_amount(Channel) >= Amount of
-        true  -> ok;
-        false -> {error, insufficient_channel_funds}
     end.
 
 -spec check_state_hash_size(binary()) -> boolean().
@@ -641,3 +630,4 @@ add_call(Call0, TxHash, Trees) ->
     ContractPubkey = tx_hash_to_contract_pubkey(TxHash),
     Call = aect_call:set_contract(ContractPubkey, Call0),
     aect_utils:insert_call_in_trees(Call, Trees).
+

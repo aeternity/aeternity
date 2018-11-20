@@ -185,7 +185,7 @@
 -include_lib("apps/aecontract/src/aecontract.hrl").
 
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
--define(BOGUS_CHANNEL, <<0:?MINER_PUB_BYTES/unit:8>>).
+-define(BOGUS_CHANNEL, <<1:?MINER_PUB_BYTES/unit:8>>).
 -define(ROLES, [initiator, responder]).
 -define(VM_VERSION, ?AEVM_01_Sophia_01).
 -define(TEST_LOG(Format, Data), ct:log(Format, Data)).
@@ -668,35 +668,45 @@ close_mutual(Cfg) ->
     ChannelAmount = StartIAmt + StartRAmt,
 
     Test =
-        fun(IAmt, RAmt, Fee) ->
+        fun(IAmt, RAmt, Fee, ExpectedLockedAmt) ->
             run(#{cfg => Cfg, initiator_amount => StartIAmt, responder_amount => StartRAmt},
                [positive(fun create_channel_/2),
+                assert_locked_amount(0), % start clean
                 get_onchain_balances(before_close),
                 set_prop(initiator_amount_final, IAmt),
                 set_prop(responder_amount_final, RAmt),
                 set_prop(fee, Fee),
                 positive(fun close_mutual_/2),
                 get_onchain_balances(after_close),
-                % this function returns the closing amount deltas
+                assert_locked_amount(ExpectedLockedAmt),
+                % this function asserts the closing amount deltas
                 fun(#{before_close := #{initiator := I0, responder := R0},
                       after_close  := #{initiator := I1, responder := R1}}) ->
-                    {I1 - I0, R1 - R0}
+                    ?assertEqual(IAmt, I1 - I0), % assert initator delta
+                    ?assertEqual(RAmt, R1 - R0)  % assert responder delta
                 end])
         end,
     Fee = 50000,
 
+    CorrectAmt = fun(IAmt) -> ChannelAmount - Fee - IAmt end,
     %% normal cases
-    {45, 45} = Test(45, 45, Fee),
-    {15, 149985} = Test(15, ChannelAmount - 15 - Fee, Fee),
+    Test(45, CorrectAmt(45), Fee, 0),
+    Test(15, CorrectAmt(15), Fee, 0),
 
     %% fee edge cases
     %% amount - HalfFee = 0
-    {0, 150000} = Test(0, ChannelAmount - Fee, Fee),
-    {150000, 0} = Test(ChannelAmount - Fee, 0, Fee),
+    Test(0, ChannelAmount - Fee, Fee, 0),
+    Test(ChannelAmount - Fee, 0, Fee, 0),
 
     %% amount - HalfFee < 0
-    {1, 149999} = Test(1 , ChannelAmount - Fee - 1, Fee),
-    {149999, 1} = Test(ChannelAmount - Fee - 1, 1, Fee),
+    Test(1 , CorrectAmt(1), Fee, 0),
+    Test(CorrectAmt(1), 1, Fee, 0),
+
+
+    %% test locked amount
+    LockedAmount = 10,
+    Test(45, CorrectAmt(45) - LockedAmount, Fee, LockedAmount),
+    Test(15, CorrectAmt(15) - LockedAmount, Fee, LockedAmount),
 
     ok.
 
@@ -1241,41 +1251,67 @@ get_channel_obj_balances(Channel) ->
 %%% Settle
 %%%===================================================================
 settle(Cfg) ->
+    IAmt = 20,
+    RAmt = 30,
     Test =
-        fun(Closer, Settler) ->
-            run(#{cfg => Cfg, lock_period => 10},
+        fun(Closer, Settler, IAmt1, RAmt1, LockedAmt) ->
+            run(#{cfg => Cfg, lock_period => 10,
+                  initiator_amount => IAmt, responder_amount => RAmt},
                [positive(fun create_channel_/2),
+                assert_locked_amount(0), % start clean
                 set_from(Closer),
                 set_prop(height, 10),
+                set_prop(initiator_amount, IAmt1),
+                set_prop(responder_amount, RAmt1),
                 positive(fun close_solo_/2),
+                assert_locked_amount(0), % no tokens locked in solo close
                 set_from(Settler),
                 set_prop(height, 21),
-                positive(fun settle_/2)
+                positive(fun settle_/2),
+                assert_locked_amount(LockedAmt)
                 ])
         end,
-    [Test(Closer, Setler) || Closer <- ?ROLES,
-                             Setler <- ?ROLES],
-
     TestWithSlash =
-        fun(Closer, Slasher, Settler) ->
-            run(#{cfg => Cfg, lock_period => 10},
+        fun(Closer, Slasher, Settler, IAmt1, RAmt1, LockedAmt) ->
+            run(#{cfg => Cfg, lock_period => 10,
+                  initiator_amount => IAmt, responder_amount => RAmt},
                [positive(fun create_channel_/2),
+                assert_locked_amount(0), % start clean
                 set_from(Closer),
                 set_prop(height, 10),
                 set_prop(round, 20),
                 positive(fun close_solo_/2),
+                assert_locked_amount(0), % no tokens locked in solo close
                 set_from(Slasher),
                 set_prop(height, 15),
                 set_prop(round, 42),
+                set_prop(initiator_amount, IAmt1),
+                set_prop(responder_amount, RAmt1),
                 positive(fun slash_/2),
+                assert_locked_amount(0), % no tokens locked in slash
                 set_from(Settler),
                 set_prop(height, 26),
-                positive(fun settle_/2)
+                positive(fun settle_/2),
+                assert_locked_amount(LockedAmt)
                 ])
         end,
-    [TestWithSlash(Closer, Slasher, Setler) ||  Closer <- ?ROLES,
-                                                Slasher <- ?ROLES,
-                                                Setler <- ?ROLES],
+    lists:foreach(
+        fun({InitCloseAmt, RespCloseAmt, ExpectedLockedAmt}) ->
+            ?TEST_LOG("Initiator close amount ~p, responder close amount ~p, expected locked amount ~p",
+                      [InitCloseAmt, RespCloseAmt, ExpectedLockedAmt]),
+            [Test(Closer, Setler, InitCloseAmt,
+                           RespCloseAmt, ExpectedLockedAmt)
+                || Closer <- ?ROLES,
+                   Setler <- ?ROLES],
+            [TestWithSlash(Closer, Slasher, Setler, InitCloseAmt,
+                           RespCloseAmt, ExpectedLockedAmt)
+                || Closer <- ?ROLES,
+                   Slasher <- ?ROLES,
+                   Setler <- ?ROLES]
+        end,
+        [{10, IAmt + RAmt - 10, 0},
+         {20, IAmt + RAmt - 20, 0},
+         {10, IAmt + RAmt - 11, 1}]), % 1 coin locked
     ok.
 
 settle_wrong_amounts(Cfg) ->
@@ -1785,7 +1821,7 @@ fp_after_fp_missing_rounds(Cfg) ->
     ok.
 
 fp_is_replaced_by_same_round_deposit(Cfg) ->
-    BogusStateHash = <<0:32/unit:8>>,
+    BogusStateHash = <<1:32/unit:8>>,
     CoSignedDepositWins =
         fun(FPRound, Depositor, Owner, Forcer) ->
             IAmt0 = 30,
@@ -1836,7 +1872,7 @@ fp_is_replaced_by_same_round_deposit(Cfg) ->
     ok.
 
 fp_is_replaced_by_same_round_withdrawal(Cfg) ->
-    BogusStateHash = <<0:32/unit:8>>,
+    BogusStateHash = <<1:32/unit:8>>,
     CoSignedWithdrawWins =
         fun(FPRound, Withdrawer, Owner, Forcer) ->
             IAmt0 = 30,
@@ -1934,7 +1970,7 @@ fp_after_snapshot(Cfg) ->
     ok.
 
 fp_is_replaced_by_same_round_snapshot(Cfg) ->
-    BogusStateHash = <<0:32/unit:8>>,
+    BogusStateHash = <<1:32/unit:8>>,
     CoSignedSnapshotWins =
         fun(FPRound, Snapshoter, Owner, Forcer) ->
             IAmt0 = 30,
@@ -2007,7 +2043,7 @@ fp_chain_is_replaced_by_withdrawal(Cfg) ->
     fp_chain_is_replaced_by_cosigned_tx(Cfg, CoSignedFun).
 
 fp_chain_is_replaced_by_cosigned_tx(Cfg, PostCoSignedFun) ->
-    BogusStateHash = <<0:32/unit:8>>,
+    BogusStateHash = <<1:32/unit:8>>,
     ForceProgressFromOnChain =
         fun(Round, Forcer) ->
             fun(Props) ->
@@ -4423,6 +4459,23 @@ get_state(Cfg) ->
         undefined -> aesc_test_utils:new_state();
         State0    -> State0
     end.
+
+assert_locked_amount(ExpectedLockedAmt) ->
+    fun(#{state := S} = Props) ->
+        HolderPubKey = aec_governance:locked_coins_holder_account(),
+        LockedTotal =
+            case aesc_test_utils:lookup_account(HolderPubKey, S) of
+                none -> 0;
+                {value, Account} -> aec_accounts:balance(Account)
+            end,
+        case LockedTotal =:= ExpectedLockedAmt of
+            true -> pass;
+            false -> throw({different_locked_amount, {actual, LockedTotal},
+                                                     {expected, ExpectedLockedAmt}})
+        end,
+        Props
+    end.
+
 
 create_(Cfg, Spec0) ->
     create_from_state(get_state(Cfg), Spec0).

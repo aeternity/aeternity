@@ -156,9 +156,16 @@ process(#channel_settle_tx{initiator_amount_final = InitiatorAmount,
     AccountsTree1 = aec_accounts_trees:enter(InitiatorAccount3, AccountsTree0),
     AccountsTree2 = aec_accounts_trees:enter(ResponderAccount3, AccountsTree1),
 
+    % all coins that are not in the final balance are locked
+    % they're sent to the special account that holds locked coins
+    DistributedAmounts = InitiatorAmount + ResponderAmount,
+    MissingCoins = aesc_channels:channel_amount(Channel0) - DistributedAmounts,
+    AccountsTree3 = aec_accounts_trees:lock_coins(MissingCoins,
+                                                  AccountsTree2),
+
     ChannelsTree1 = aesc_state_tree:delete(aesc_channels:pubkey(Channel0), ChannelsTree0),
 
-    Trees1 = aec_trees:set_accounts(Trees, AccountsTree2),
+    Trees1 = aec_trees:set_accounts(Trees, AccountsTree3),
     Trees2 = aec_trees:set_channels(Trees1, ChannelsTree1),
     {ok, Trees2}.
 
@@ -244,7 +251,7 @@ check_channel(ChannelPubKey, FromPubKey, InitiatorAmount, ResponderAmount, Heigh
                 [fun() -> aesc_utils:check_is_peer(FromPubKey, aesc_channels:peers(Channel)) end,
                  fun() -> check_solo_closed(Channel, Height) end,
                  %% check total amount
-                 fun() -> aesc_utils:check_are_funds_in_channel(ChannelPubKey,
+                 fun() -> check_are_funds_in_channel(ChannelPubKey,
                                 InitiatorAmount + ResponderAmount, Trees) end,
                  %% check individual amounts are what is expected
                  fun() -> check_peer_amount(InitiatorAmount,
@@ -271,3 +278,14 @@ check_solo_closed(Channel, Height) ->
 -spec version() -> non_neg_integer().
 version() ->
     ?CHANNEL_SETTLE_TX_VSN.
+
+-spec check_are_funds_in_channel(aesc_channels:pubkey(), non_neg_integer(), aec_trees:trees()) ->
+                                        ok | {error, insufficient_channel_funds}.
+check_are_funds_in_channel(ChannelPubKey, Amount, Trees) ->
+    ChannelsTree = aec_trees:channels(Trees),
+    Channel      = aesc_state_tree:get(ChannelPubKey, ChannelsTree),
+    case aesc_channels:channel_amount(Channel) >= Amount of
+        true  -> ok;
+        false -> {error, insufficient_channel_funds}
+    end.
+

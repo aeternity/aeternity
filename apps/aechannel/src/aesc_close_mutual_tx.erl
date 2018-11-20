@@ -147,7 +147,7 @@ check(#channel_close_mutual_tx{from_id = FromId,
 process(#channel_close_mutual_tx{initiator_amount_final = InitiatorAmount,
                                  responder_amount_final = ResponderAmount,
                                  ttl                    = _TTL,
-                                 fee                    = _Fee,
+                                 fee                    = Fee,
                                  nonce                  = Nonce} = Tx,
         Trees,_Env) ->
     ChannelPubKey = channel_pubkey(Tx),
@@ -173,9 +173,17 @@ process(#channel_close_mutual_tx{initiator_amount_final = InitiatorAmount,
     AccountsTree1 = aec_accounts_trees:enter(InitiatorAccount, AccountsTree0),
     AccountsTree2 = aec_accounts_trees:enter(ResponderAccount, AccountsTree1),
 
+    % all coins that are not in the final balance are locked
+    % they're sent to the special account that holds locked coins
+    % fee is being payed by the channel's balance
+    DistributedAmounts = InitiatorAmount + ResponderAmount + Fee,
+    MissingCoins = aesc_channels:channel_amount(Channel) - DistributedAmounts,
+    AccountsTree3 = aec_accounts_trees:lock_coins(MissingCoins,
+                                                  AccountsTree2),
+
     ChannelsTree = aesc_state_tree:delete(aesc_channels:pubkey(Channel), ChannelsTree0),
 
-    Trees1 = aec_trees:set_accounts(Trees, AccountsTree2),
+    Trees1 = aec_trees:set_accounts(Trees, AccountsTree3),
     Trees2 = aec_trees:set_channels(Trees1, ChannelsTree),
     {ok, Trees2}.
 

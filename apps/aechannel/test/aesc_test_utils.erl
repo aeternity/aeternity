@@ -13,6 +13,7 @@
          set_trees/2,
          priv_key/2,
          get_account/2,
+         lookup_account/2,
          set_account_balance/3,
          set_account_nonce/3,
          next_nonce/2,
@@ -109,6 +110,9 @@ set_account_nonce(PubKey, Nonce, State) ->
 
 get_account(PubKey, State) ->
     aec_accounts_trees:get(PubKey, aec_trees:accounts(trees(State))).
+
+lookup_account(PubKey, State) ->
+    aec_accounts_trees:lookup(PubKey, aec_trees:accounts(trees(State))).
 
 setup_new_account(Balance, State) ->
     {PubKey, PrivKey} = new_key_pair(),
