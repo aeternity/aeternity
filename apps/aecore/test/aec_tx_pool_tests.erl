@@ -142,9 +142,9 @@ tx_pool_test_() ->
        fun() ->
             PK0 = new_pubkey(),
             ?assertEqual(none, aec_chain:get_account(PK0)),
-            ?assertEqual(ok,                     aec_tx_pool:push_sync( a_signed_tx(PK0, me, 1, 20000) )),
+            ?assertEqual(ok,                     aec_tx_pool:push( a_signed_tx(PK0, me, 1, 20000), tx_received )),
             ?assertEqual({error,nonce_too_high}, aec_tx_pool:push( a_signed_tx(PK0, me, 2, 20000) )),
-            ?assertEqual(ok,                     aec_tx_pool:push_sync( a_signed_tx(PK0, me, 2, 20000) )),
+            ?assertEqual(ok,                     aec_tx_pool:push( a_signed_tx(PK0, me, 2, 20000), tx_received )),
 
             aec_test_utils:stop_chain_db(),
             PK1 = new_pubkey(),
@@ -157,7 +157,7 @@ tx_pool_test_() ->
             ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK1, me, 2, 20000) )),
             ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK1, me, 5, 20000) )),
             ?assertEqual({error, nonce_too_high}, aec_tx_pool:push( a_signed_tx(PK1, me, 6, 20000) )),
-            ?assertEqual(ok, aec_tx_pool:push_sync( a_signed_tx(PK1, me, 6, 20000) )),
+            ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK1, me, 6, 20000), tx_received )),
 
             ?assertMatch({ok, [_, _, _, _, _, _]}, aec_tx_pool:peek(infinity)),
 
@@ -180,10 +180,10 @@ tx_pool_test_() ->
             ?assertMatch({ok, [_, _, _, _]}, aec_tx_pool:peek(infinity)),
 
             ?assertEqual({error, nonce_too_low}, aec_tx_pool:push( a_signed_tx(PK1, me, 1, 20000) )),
-            ?assertEqual({error, nonce_too_low}, aec_tx_pool:push_sync( a_signed_tx(PK1, me, 1, 20000) )),
+            ?assertEqual({error, nonce_too_low}, aec_tx_pool:push( a_signed_tx(PK1, me, 1, 20000), tx_received )),
             ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK1, me, 7, 20000) )),
             ?assertEqual({error,nonce_too_high}, aec_tx_pool:push( a_signed_tx(PK1, me, 8, 20000) )),
-            ?assertEqual(ok, aec_tx_pool:push_sync( a_signed_tx(PK1, me, 8, 20000) )),
+            ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK1, me, 8, 20000), tx_received )),
             ok
        end},
       {"fill micro block with transactions",
@@ -214,6 +214,7 @@ tx_pool_test_() ->
        end}},
       {"fill micro block with and without previously rejected tx",
        {timeout, 10, fun() ->
+               ok = application:set_env(aecore, mempool_nonce_offset, 600),
                aec_test_utils:stop_chain_db(),
                {ok, MinerPubKey} = aec_keys:pubkey(),
                PubKey1 = new_pubkey(),

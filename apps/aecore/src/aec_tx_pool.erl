@@ -38,7 +38,6 @@
         , peek/2
         , push/1
         , push/2
-        , push_sync/1
         , size/0
         , top_change/3
         , dbs/0
@@ -101,9 +100,6 @@
 
 -type event() :: tx_created | tx_received.
 
--type push_cfg() :: list(push_cfg_option()).
--type push_cfg_option() :: no_nonce_check.
-
 -ifndef(TEST).
 -define(DEFAULT_TX_TTL, 256).
 -define(DEFAULT_INVALID_TX_TTL, 5).
@@ -134,11 +130,6 @@ stop() ->
 push(Tx) ->
     push(Tx, tx_created).
 
--spec push_sync(aetx_sign:signed_tx()) -> ok | {error, atom()}.
-push_sync(Tx) ->
-    Cfg = [ no_nonce_check ],
-    push_(Tx, safe_tx_hash(Tx), tx_created, Cfg).
-
 -spec push(aetx_sign:signed_tx(), event()) -> ok | {error, atom()}.
 push(Tx, Event = tx_received) ->
     TxHash = safe_tx_hash(Tx),
@@ -158,10 +149,7 @@ safe_tx_hash(Tx) ->
     end.
 
 push_(Tx, TxHash, Event) ->
-    push_(Tx, TxHash, Event, []).
-
-push_(Tx, TxHash, Event, Cfg) ->
-    case check_pool_db_put(Tx, TxHash, Cfg) of
+    case check_pool_db_put(Tx, TxHash, Event) of
         ignore ->
             incr([push, ignore]),
             ok;
@@ -420,7 +408,7 @@ check_candidate(Db, #dbs{gc_db = GCDb} = Dbs,
     Tx1 = aetx_sign:tx(Tx),
     TxTTL = aetx:ttl(Tx1),
     TxGas = aetx:gas(Tx1, Height),
-    case Height < TxTTL andalso TxGas > 0 andalso ok =:= int_check_nonce(Tx, AccountsTree, [no_nonce_check]) of
+    case Height < TxTTL andalso TxGas > 0 andalso ok =:= int_check_nonce(Tx, AccountsTree, check_candidate) of
         true ->
             case Gas - TxGas of
                 RemGas when RemGas >= 0 ->
@@ -631,11 +619,11 @@ update_pool_on_tx_hash(TxHash, {#dbs{gc_db = GCDb} = Dbs, GCHeight}, Handled) ->
             end
     end.
 
--spec check_pool_db_put(aetx_sign:signed_tx(), tx_hash(), push_cfg()) ->
+-spec check_pool_db_put(aetx_sign:signed_tx(), tx_hash(), event()) ->
                                ignore
                              | {'ok', tx_hash()}
                              | {'error', atom()}.
-check_pool_db_put(Tx, TxHash, Cfg) ->
+check_pool_db_put(Tx, TxHash, Event) ->
     case aec_chain:find_tx_location(TxHash) of
         BlockHash when is_binary(BlockHash) ->
             lager:debug("Already have tx: ~p in ~p", [TxHash, BlockHash]),
@@ -653,7 +641,7 @@ check_pool_db_put(Tx, TxHash, Cfg) ->
                      , fun check_minimum_gas_price/3
                      , fun check_tx_ttl/3
                      ],
-            case aeu_validation:run(Checks, [Tx, TxHash, Cfg]) of
+            case aeu_validation:run(Checks, [Tx, TxHash, Event]) of
                 {error, _} = E ->
                     lager:debug("Validation error for tx ~p: ~p", [TxHash, E]),
                     E;
@@ -695,14 +683,14 @@ insert_nonce(NDb, ?KEY(_, _, Account, Nonce, TxHash)) ->
 delete_nonce(NDb, ?KEY(_, _, Account, Nonce, TxHash)) ->
     ets:delete(NDb, {Account, Nonce, TxHash}).
 
-check_tx_ttl(STx, _Hash, _Cfg) ->
+check_tx_ttl(STx, _Hash, _Event) ->
     Tx = aetx_sign:tx(STx),
     case top_height() > aetx:ttl(Tx) of
         true  -> {error, ttl_expired};
         false -> ok
     end.
 
-check_signature(Tx, Hash, _Cfg) ->
+check_signature(Tx, Hash, _Event) ->
     {ok, Trees} = aec_chain:get_top_state(),
     case aetx_sign:verify(Tx, Trees) of
         {error, _} = E ->
@@ -712,12 +700,12 @@ check_signature(Tx, Hash, _Cfg) ->
             ok
     end.
 
-check_nonce(Tx,_Hash, Cfg) ->
-  int_check_nonce(Tx, {block_hash, aec_chain:top_block_hash()}, Cfg).
+check_nonce(Tx, _Hash, Event) ->
+  int_check_nonce(Tx, {block_hash, aec_chain:top_block_hash()}, Event).
 
 
-int_check_nonce(Tx, Source, Cfg) ->
-    DontCheck = lists:member(no_nonce_check, Cfg),
+int_check_nonce(Tx, Source, Event) ->
+    CheckNonce = nonce_check_by_event(Event),
 
     %% Check is conservative and only rejects certain cases
     Unsigned = aetx_sign:tx(Tx),
@@ -730,22 +718,27 @@ int_check_nonce(Tx, Source, Cfg) ->
                     {error, illegal_nonce};
                 true ->
                     case get_account(Pubkey, Source) of
-                        {error, no_state_trees} -> nonce_baseline_check(TxNonce, DontCheck);
-                        none -> nonce_baseline_check(TxNonce, DontCheck);
+                        {error, no_state_trees} -> nonce_baseline_check(TxNonce, CheckNonce);
+                        none -> nonce_baseline_check(TxNonce, CheckNonce);
                         {value, Account} ->
                             Offset =  nonce_offset(),
                             AccountNonce = aec_accounts:nonce(Account),
                             if
                                 TxNonce =< AccountNonce -> {error, nonce_too_low};
                                 TxNonce =< (AccountNonce + Offset) -> ok;
-                                TxNonce >  (AccountNonce + Offset) andalso DontCheck -> ok;
+                                TxNonce >  (AccountNonce + Offset) andalso not CheckNonce -> ok;
                                 TxNonce >  (AccountNonce + Offset) -> {error, nonce_too_high}
                             end
                     end
             end
     end.
 
-nonce_baseline_check(_, true) -> ok;
+nonce_check_by_event(tx_created) -> true;
+nonce_check_by_event(tx_received) -> false;
+nonce_check_by_event(check_candidate) ->
+    false.
+
+nonce_baseline_check(_, false) -> ok;
 nonce_baseline_check(TxNonce, _) ->
     case TxNonce =< nonce_baseline() of
         true -> ok;
@@ -757,7 +750,7 @@ get_account(AccountKey, {account_trees, AccountsTrees}) ->
 get_account(AccountKey, {block_hash, BlockHash}) ->
     aec_chain:get_account_at_hash(AccountKey, BlockHash).
 
-check_minimum_fee(Tx0, _Hash, _Cfg) ->
+check_minimum_fee(Tx0, _Hash, _Event) ->
     Tx = aetx_sign:tx(Tx0),
     Height = top_height(),
     case aetx:fee(Tx) >= aetx:min_fee(Tx, Height) of
@@ -765,7 +758,7 @@ check_minimum_fee(Tx0, _Hash, _Cfg) ->
         false -> {error, too_low_fee}
     end.
 
-check_minimum_gas_price(Tx, _Hash, _Cfg) ->
+check_minimum_gas_price(Tx, _Hash, _Event) ->
     case aetx:gas_price(aetx_sign:tx(Tx)) of
         undefined ->
             ok;
