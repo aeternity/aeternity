@@ -79,7 +79,7 @@ tx_pool_test_() ->
                ?assertEqual(lists:sort([STx1, STx2]), lists:sort(PoolTxs))
        end},
       {"fill micro block with transactions",
-       fun() ->
+       {timeout, 10, fun() ->
                %% No txs to serve to peers.
                ?assertEqual({ok, []}, aec_tx_pool:peek(1)),
 
@@ -96,9 +96,9 @@ tx_pool_test_() ->
 
                %% No single tx would have fitted on top of this
                ?assert(MinGas > aec_governance:block_gas_limit() - TotalGas)
-       end},
+       end}},
       {"fill micro block with and without previously rejected tx",
-       fun() ->
+       {timeout, 10, fun() ->
                aec_test_utils:stop_chain_db(),
                {ok, MinerPubKey} = aec_keys:pubkey(),
                PubKey1 = new_pubkey(),
@@ -178,7 +178,7 @@ tx_pool_test_() ->
                ?assert(not lists:member(Tx1_2, CTxs4)),
 
                ok
-       end},
+       end}},
       {"Mempool follows chain insertions and forks",
        fun() ->
                aec_test_utils:stop_chain_db(),
