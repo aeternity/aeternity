@@ -29,6 +29,8 @@
 -export([tx_hash_to_contract_pubkey/1]).
 -endif.
 
+-include_lib("aecontract/src/aecontract.hrl").
+
 -ifdef(COMMON_TEST).
 -define(TEST_LOG(Format, Data),
         try ct:log(Format, Data)
@@ -267,6 +269,12 @@ check_force_progress_(PayloadHash, PayloadRound,
               case PayloadRound =:= NextRound - 1 of
                   true -> ok;
                   false -> {error, wrong_round}
+              end
+          end,
+          fun() ->
+              case aesc_offchain_update:extract_vm_version(Update) of
+                  ?AEVM_01_Sophia_01 -> ok;
+                  _ -> {error, unknown_vm_version}
               end
           end,
           fun() -> check_root_hash_of_trees(PayloadHash, OffChainTrees) end,
