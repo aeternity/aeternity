@@ -17,6 +17,7 @@
          prune_claim/1,
          preclaim_negative/1,
          claim/1,
+         claim_locked_coins_holder_gets_locked_fee/1,
          claim_negative/1,
          claim_race_negative/1,
          update/1,
@@ -47,6 +48,7 @@ groups() ->
        preclaim,
        preclaim_negative,
        claim,
+       claim_locked_coins_holder_gets_locked_fee,
        claim_negative,
        claim_race_negative,
        update,
@@ -168,6 +170,42 @@ claim(Cfg) ->
     PubKey  = aens_names:owner_pubkey(N),
     claimed = aens_names:status(N),
     {PubKey, NHash, S2}.
+
+claim_locked_coins_holder_gets_locked_fee(Cfg) ->
+    {PubKey, Name, NameSalt, S1} = preclaim(Cfg),
+    Trees = aens_test_utils:trees(S1),
+    Height = ?PRE_CLAIM_HEIGHT + 1,
+    PrivKey = aens_test_utils:priv_key(PubKey, S1),
+
+    %% Create Claim tx and apply it on trees
+    TxSpec = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, S1),
+    {ok, Tx} = aens_claim_tx:new(TxSpec),
+    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
+    Env      = aetx_env:tx_env(Height),
+
+    LockedCoinsHolderPubKey = aec_governance:locked_coins_holder_account(),
+    LockedCoinsFee          = aec_governance:name_claim_locked_fee(),
+
+    %% Locked coins holder is not present in state tree
+    none = aec_accounts_trees:lookup(LockedCoinsHolderPubKey, aec_trees:accounts(Trees)),
+
+    %% Apply claim tx, and verify locked coins holder got locked coins
+    {ok, [SignedTx], Trees1} =
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
+    {value, Account1} = aec_accounts_trees:lookup(LockedCoinsHolderPubKey, aec_trees:accounts(Trees1)),
+    LockedCoinsFee    = aec_accounts:balance(Account1),
+
+    %% Locked coins holder has some funds
+    S2 = aens_test_utils:set_account_balance(LockedCoinsHolderPubKey, 500, S1),
+    Trees2 = aens_test_utils:trees(S2),
+    {value, Account2} = aec_accounts_trees:lookup(LockedCoinsHolderPubKey, aec_trees:accounts(Trees2)),
+
+    %% Apply claim tx, and verify locked coins holder got locked coins
+    {ok, [SignedTx], Trees3} =
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees2, Env),
+    {value, Account3} = aec_accounts_trees:lookup(LockedCoinsHolderPubKey, aec_trees:accounts(Trees3)),
+    LockedCoinsFee = aec_accounts:balance(Account3) - aec_accounts:balance(Account2),
+    ok.
 
 claim_negative(Cfg) ->
     {PubKey, Name, NameSalt, S1} = preclaim(Cfg),
