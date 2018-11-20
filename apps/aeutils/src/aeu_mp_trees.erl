@@ -52,7 +52,7 @@
 -record(iter, { key  = <<>>          :: <<>> | key()
               , root = <<>>          :: <<>> | hash()
               , max_length           :: pos_integer() | 'undefined'
-              , with_prefix = <<>>   :: <<>> | key() 
+              , with_prefix = <<>>   :: <<>> | key()
               , db   = new_dict_db() :: aeu_mp_trees_db:db()
               }).
 
@@ -122,6 +122,8 @@ new(RootHash, DB) ->
 %%      Only use this for lookups, not for storing values.
 read_only_subtree(Key, #mpt{hash = Hash, db = DB} = MPT) ->
     case int_get_subtree(Key, decode_node(Hash, DB), DB) of
+        {ok, {<<>>, _}} ->
+            {ok, new()};
         {ok, {Node, DB1}} ->
             {NewHash, DB2} = force_encoded_node_to_hash(Node, DB1),
             {ok, MPT#mpt{hash = NewHash, db = DB2}};
@@ -303,7 +305,7 @@ int_get_subtree(<<>>, <<>>, DB) ->
 int_get_subtree(_Path, <<>>,_DB) ->
     {error, no_such_subtree};
 int_get_subtree(<<>>, {branch, Branch}, DB) when tuple_size(Branch) =:= 17 ->
-    {ok, branch(Branch, DB)};
+    {ok, branch(set_branch_value(Branch, <<>>), DB)};
 int_get_subtree(Path, {branch, Branch}, DB) when tuple_size(Branch) =:= 17 ->
     <<Next:4, Rest/bits>> = Path,
     NextNode = decode_node(branch_next(Next, Branch), DB),
@@ -312,7 +314,7 @@ int_get_subtree(Path, {Type, NodePath, NodeVal}, DB) when Type =:= ext; Type =:=
     S = bit_size(NodePath),
     case Path of
         NodePath when Type =:= leaf ->
-            {ok, leaf(<<>>, NodeVal, DB)};
+            {ok, {<<>>, DB}};
         <<NodePath:S/bits, _/bits>> when Type =:= leaf ->
             {error, no_such_subtree};
         <<NodePath:S/bits, Rest/bits>> when Type =:= ext ->
