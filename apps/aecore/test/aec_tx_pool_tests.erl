@@ -90,12 +90,15 @@ tx_pool_test_() ->
 
                GenesisHeight = aec_block_genesis:height(),
                {ok, Hash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
-               {ok, STxs2} = aec_tx_pool:get_candidate(aec_governance:block_gas_limit(), Hash),
+               MaxGas = aec_governance:block_gas_limit(),
+               {ok, STxs2} = aec_tx_pool:get_candidate(MaxGas, Hash),
                TotalGas = lists:sum([ aetx:gas(aetx_sign:tx(T), GenesisHeight) || T <- STxs2 ]),
                MinGas = aetx:gas(aetx_sign:tx(hd(STxs)), GenesisHeight),
 
                %% No single tx would have fitted on top of this
-               ?assert(MinGas > aec_governance:block_gas_limit() - TotalGas)
+               ?assert(MinGas > MaxGas - TotalGas),
+               %% No txs further to the microblock limit were included
+               ?assertMatch(X when X =< MaxGas, TotalGas)
        end}},
       {"fill micro block with and without previously rejected tx",
        {timeout, 10, fun() ->
