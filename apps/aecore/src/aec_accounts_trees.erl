@@ -34,7 +34,8 @@
 
 
 %% API - misc
--export([get_all_accounts_balances/1]).
+-export([ get_all_accounts_balances/1
+        , lock_coins/2]).
 
 -export_type([tree/0]).
 
@@ -151,6 +152,17 @@ get_all_accounts_balances(AccountsTree) ->
               Account = aec_accounts:deserialize(Pubkey, SerializedAccount),
               [{Pubkey, aec_accounts:balance(Account)} | Acc]
       end, [], AccountsDump).
+
+-spec lock_coins(non_neg_integer(), tree()) -> tree().
+lock_coins(0     , AccountsTree) -> AccountsTree;
+lock_coins(Amount, AccountsTree) when Amount > 0 ->
+    HolderPubKey = aec_governance:locked_coins_holder_account(),
+    HolderAccount0 = case lookup(HolderPubKey, AccountsTree) of
+                        none             -> aec_accounts:new(HolderPubKey, 0);
+                        {value, Account} -> Account
+                    end,
+    {ok, HolderAccount} = aec_accounts:earn(HolderAccount0, Amount),
+    enter(HolderAccount, AccountsTree).
 
 %%%===================================================================
 %%% Internal functions

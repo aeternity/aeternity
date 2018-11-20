@@ -13,7 +13,7 @@
          beneficiary_reward_delay/0,
          minimum_gas_price/0,
          name_preclaim_expiration/0,
-         name_claim_burned_fee/0,
+         name_claim_locked_fee/0,
          name_claim_max_expiration/0,
          name_protection_period/0,
          name_claim_preclaim_delta/0,
@@ -62,7 +62,7 @@
 
 -define(ORACLE_STATE_GAS_PER_YEAR, 32000). %% 32000 as `GCREATE` i.e. an oracle-related state object costs per year as much as it costs to indefinitely create an account.
 
-%% account where burnt coins are sent to
+%% Account where burnt coins are sent to.
 -define(LOCKED_COINS_ACCOUNT, <<0:32/unit:8>>).
 
 %% Maps consensus protocol version to minimum height at which such
@@ -197,7 +197,7 @@ primop_base_gas(?PRIM_CALL_MAP_TOLIST         ) -> 0.
 name_preclaim_expiration() ->
     300.
 
-name_claim_burned_fee() ->
+name_claim_locked_fee() ->
     3.
 
 name_claim_max_expiration() ->
