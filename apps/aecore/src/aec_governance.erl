@@ -11,6 +11,7 @@
          tx_base_gas/1,
          byte_gas/0,
          beneficiary_reward_delay/0,
+         locked_coins_holder_account/0,
          minimum_gas_price/0,
          name_preclaim_expiration/0,
          name_claim_locked_fee/0,
@@ -26,7 +27,6 @@
          add_network_id/1,
          get_network_id/0,
          contributors_messages_hash/0,
-         locked_coins_holder_account/0,
          vm_gas_table/0]).
 
 -export_type([protocols/0]).
