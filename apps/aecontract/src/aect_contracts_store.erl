@@ -19,6 +19,7 @@
           new/0,
           new/1,
           put/3,
+          put_map/2,
           remove/2,
           subtree/2,
           write_cache/1 ]).
@@ -54,6 +55,10 @@ remove(Key, Store) ->
 -spec put(key(), val(), store()) -> store().
 put(Key, Val, Store = #store{ cache = Cache }) ->
     Store#store{ cache = Cache#{ Key => Val } }.
+
+-spec put_map(#{key() => val()}, store()) -> store().
+put_map(Map, Store = #store{ cache = Cache }) ->
+    Store#store{ cache = maps:merge(Cache, Map) }.
 
 %% Returns a map of all the key/value pairs with the given key as a strict
 %% prefix.

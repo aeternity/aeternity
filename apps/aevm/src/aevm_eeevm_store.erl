@@ -35,10 +35,14 @@
 %%====================================================================
 
 -spec init(aect_contracts:store(), aevm_eeevm_state:state()) -> aevm_eeevm_state:state().
-init(Store, State) -> State#{ storage => binary_to_integer_map(Store) }.
+init(Store, State) ->
+    Map = aect_contracts_store:subtree(<<>>, Store),
+    State#{ storage => binary_to_integer_map(Map) }.
 
 -spec to_binary(aevm_eeevm_state:state()) -> aect_contracts:store().
-to_binary(#{ storage := Storage }) -> integer_to_binary_map(Storage).
+to_binary(#{ storage := Storage }) ->
+    aect_contracts_store:put_map(integer_to_binary_map(Storage),
+                                 aect_contracts_store:new()).
 
 -spec load(integer(), aevm_eeevm_state:state()) -> integer().
 load(Address, State) ->
