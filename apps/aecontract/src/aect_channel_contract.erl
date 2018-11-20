@@ -68,7 +68,8 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
           non_neg_integer(), non_neg_integer(), non_neg_integer(),
           aec_trees:trees(), aetx_env:env()) -> aec_trees:trees().
 run(ContractPubKey, VmVersion, Call, CallData, CallStack, Trees0,
-    Amount, GasPrice, Gas, OnChainTrees, OnChainEnv) ->
+    Amount, GasPrice, Gas, OnChainTrees, OnChainEnv)
+    when VmVersion =:= ?AEVM_01_Sophia_01 ->
     ContractsTree  = aec_trees:contracts(Trees0),
     Contract = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
     OwnerPubKey = aect_contracts:owner_pubkey(Contract),
