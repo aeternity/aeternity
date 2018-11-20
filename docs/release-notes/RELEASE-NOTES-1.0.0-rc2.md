@@ -29,7 +29,7 @@ You can run a node by either:
 * [Building a release binary from source][build].
 
 [docker]: https://github.com/aeternity/epoch/blob/v1.0.0-rc2/docs/docker.md
-[build]: https://github.com/aeternity/epoch/blob/v1.0.0-rc2/docs/build.md
+[build]: https://github.com/aeternity/epoch/blob/v1.0.0-rc2#build-and-install-epoch-node-from-source
 
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration).
 For specifying configuration using the Docker image, please refer to [its documentation][docker].
@@ -48,7 +48,7 @@ The node user API is documented:
 
 ## Install node
 
-The instructions for installing a node using a release binary are in [the dedicated separate document](../../docs/installation.md).
+The instructions for [installing a node using a release binary](https://github.com/aeternity/epoch/blob/v1.0.0-rc2#installation).
 
 For installation of a node using the Docker image, please refer to [its documentation online][docker].
 
@@ -71,6 +71,6 @@ Information, e.g. height, of the top block of the longest chain as seen by these
 ### Setup your node
 
 Setting up your node consists of:
-* Configuring your node - see instructions in [the dedicated separate document](../../docs/configuration.md);
-* Starting your node and verifying it works as expected - see instructions in [the dedicated separate document](../../docs/operation.md).
+* Configuring your node - see [instructions](https://github.com/aeternity/epoch/blob/v1.0.0-rc2#configuration);
+* Starting your node and verifying it works as expected - see [instructions](https://github.com/aeternity/epoch/blob/v1.0.0-rc2#operation).
 
