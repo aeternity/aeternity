@@ -144,7 +144,7 @@ get_sophia_state_type(Store) ->
 -spec get_map_data(aevm_eeevm_maps:map_id(), aect_contracts:store()) -> #{binary() => binary()}.
 get_map_data(MapId, Store) ->
     RealMapId = real_id(MapId, Store),
-    maps:from_list(store_to_list(RealMapId, Store)).
+    store_subtree(RealMapId, Store).
 
 -spec map_lookup(aevm_eeevm_maps:map_id(), binary(), aevm_eeevm_state:state()) -> binary() | false.
 map_lookup(Id, Key, State) ->
@@ -194,7 +194,7 @@ perform_update({new_inplace, NewId, OldId}, Store) ->
     OldEntry = store_get(OldKey, Store),
     %% Subtle: Don't remove the old entry because the mp trees requires there
     %% to be a value at any node that we want to get a subtree for. We need
-    %% this for store_to_list.
+    %% this for store_subtree.
     %% Store1   = store_remove(OldKey, Store),
     store_put(NewKey, OldEntry, Store);
 perform_update({insert, Id, Key, Val}, Store) ->
@@ -374,21 +374,22 @@ is_valid_key(?AEVM_01_Solidity_01, K) -> is_binary_map_key(K).
 %%   To make it possible to change the representation of the store
 
 store_empty() ->
-    #{}.
+    aect_contracts_store:new().
 
 store_get(Key, Store) ->
-    maps:get(Key, Store, <<>>).
+    aect_contracts_store:get(Key, Store).
 
 store_remove(Key, Store) ->
-    maps:remove(Key, Store).
+    aect_contracts_store:remove(Key, Store).
 
 store_put(Key, Val, Store) ->
-    Store#{ Key => Val }.
+    aect_contracts_store:put(Key, Val, Store).
 
 store_to_list(Id, Store) ->
-    %% Inefficient!
-    [ {Key, Val} || {<<Id1:256, Key/binary>>, Val} <- maps:to_list(Store),
-                    Id == Id1, Key /= <<>> ].
+    maps:to_list(store_subtree(Id, Store)).
+
+store_subtree(Id, Store) ->
+    aect_contracts_store:subtree(<<Id:256>>, Store).
 
 %%====================================================================
 %% Internal functions

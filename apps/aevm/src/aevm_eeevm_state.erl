@@ -150,7 +150,6 @@ init_vm(State, Code, Mem, Store, CallDataType, OutType) ->
               , cp        => 0
               , logs      => []
               , memory    => Mem
-              , storage   => #{}
               , return_data => <<>>
               , stack     => []
               },
@@ -194,7 +193,7 @@ is_reentrant_call(State) ->
     lists:member(address(State), call_stack(State)).
 
 import_state_from_store(Store, State0) ->
-    State = State0#{ storage := Store },
+    State = State0#{ storage => Store },
     case aevm_eeevm_store:get_sophia_state_type(Store) of
         false ->
             %% No state yet (init function). Write 0 to the state pointer.

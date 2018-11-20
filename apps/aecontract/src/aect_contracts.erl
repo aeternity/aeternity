@@ -52,7 +52,7 @@
 %%%===================================================================
 
 -type amount() :: non_neg_integer().
--type store() :: #{binary() => binary()}.
+-type store() :: aect_contracts_store:store().
 
 -record(contract, {
         %% Normal account fields
@@ -114,7 +114,7 @@ new(Owner, Nonce, VmVersion, Code, Deposit) ->
                    owner_id     = aec_id:create(account, Owner),
                    vm_version   = VmVersion,
                    code         = Code,
-                   store        = #{},
+                   store        = aect_contracts_store:new(),
                    log          = <<>>,
                    active       = true,
                    referrer_ids = [],
@@ -362,17 +362,7 @@ assert_field(referrer, <<_:?PUB_SIZE/binary>> = X)       -> X;
 assert_field(deposit, X)    when is_integer(X), X >= 0   -> X;
 assert_field(Field, X) -> error({illegal, Field, X}).
 
-assert_field_store(store = Field, X, VmVersion) when is_map(X) ->
-    try
-        F = fun(K, V, unused) ->
-                    assert_field_store(store_k, K, VmVersion),
-                    assert_field_store(store_v, V, VmVersion),
-                    unused
-            end,
-        %% map iterator would limit memory usage though it is available from OTP 21.
-        maps:fold(F, unused, X),
-        X
-    catch _:_ -> error({illegal, Field, X}) end;
+assert_field_store(store, X, _VmVersion) -> X;  %% Always initialized locally by new()
 assert_field_store(store_k = Field, X, VmVersion) when is_binary(X),
                                                byte_size(X) > 0 ->
     try true = aevm_eeevm_store:is_valid_key(VmVersion, X)

@@ -77,47 +77,39 @@ insert_contract(Contract, Tree = #contract_tree{ contracts = CtTree }) ->
 insert_store(Contract, CtTree) ->
     Id = aect_contracts:store_id(Contract),
     Store = aect_contracts:state(Contract),
-    insert_store_nodes(Id, Store, CtTree).
+    %% Write a value at the store id to make it possible to get it as a
+    %% subtree.
+    CtTree1 = aeu_mtrees:insert(Id, <<0>>, CtTree),
+    insert_store_nodes(Id, aect_contracts_store:write_cache(Store), CtTree1).
 
-insert_store_nodes(Prefix, Store, CtTree) ->
+insert_store_nodes(Prefix, Writes, CtTree) ->
     Insert = fun (Key, Value, Tree) ->
                      Id = <<Prefix/binary, Key/binary>>,
                      aeu_mtrees:insert(Id, Value, Tree)
              end,
-     maps:fold(Insert, CtTree, Store).
+    maps:fold(Insert, CtTree, Writes).
 
 
 %% @doc Update an existing contract.
 -spec enter_contract(aect_contracts:contract(), tree()) -> tree().
 enter_contract(Contract, Tree = #contract_tree{ contracts = CtTree }) ->
-    Pubkey      = aect_contracts:pubkey(Contract),
-    Serialized  = aect_contracts:serialize(Contract),
-    CtTree1     = aeu_mtrees:enter(Pubkey, Serialized, CtTree),
-    OldContract = get_contract(Pubkey, Tree),
-    OldStore    = aect_contracts:state(OldContract),
-    CtTree2     = enter_store(Contract, OldStore, CtTree1),
+    Pubkey     = aect_contracts:pubkey(Contract),
+    Serialized = aect_contracts:serialize(Contract),
+    CtTree1    = aeu_mtrees:enter(Pubkey, Serialized, CtTree),
+    CtTree2    = enter_store(Contract, CtTree1),
     Tree#contract_tree{ contracts = CtTree2 }.
 
-enter_store(Contract, OldStore, CtTree) ->
+enter_store(Contract, CtTree) ->
     Id = aect_contracts:store_id(Contract),
     Store = aect_contracts:state(Contract),
-    MergedStore = maps:merge(Store, OldStore),
-    %% Merged store contains all keys, and old Values.
-    enter_store_nodes(Id, MergedStore, Store, OldStore, CtTree).
+    enter_store_nodes(Id, aect_contracts_store:write_cache(Store), CtTree).
 
-enter_store_nodes(Prefix, MergedStore, Store, OldStore, CtTree) ->
-    %% Iterate over all (merged) keys.
-    Insert = fun (Key,_MergedVal, Tree) ->
+enter_store_nodes(Prefix, Writes, CtTree) ->
+    Insert = fun (Key, Value, Tree) ->
                      Id = <<Prefix/binary, Key/binary>>,
-                     %% Check if key exist in new store
-                     %% If not overwrite with empty tree.
-                     case {maps:get(Key,    Store, <<>>),
-                           maps:get(Key, OldStore, <<>>)} of
-                         {Same, Same} -> Tree;
-                         {Value,   _}    -> aeu_mtrees:enter(Id, Value, Tree)
-                     end
+                     aeu_mtrees:enter(Id, Value, Tree)
              end,
-     maps:fold(Insert, CtTree, MergedStore).
+    maps:fold(Insert, CtTree, Writes).
 
 -spec get_contract(aect_contracts:pubkey(), tree()) -> aect_contracts:contract().
 get_contract(PubKey, Tree) ->
@@ -132,22 +124,10 @@ get_contract(Pubkey, #contract_tree{ contracts = CtTree }, Options) ->
     end.
 
 add_store(Contract, CtTree) ->
-    Id = aect_contracts:pubkey(Contract),
-    PSize = byte_size(Id),
-    <<Id:PSize/binary, StorePrefix/binary>> = aect_contracts:store_id(Contract),
-    {ok, Subtree} = aeu_mtrees:read_only_subtree(Id, CtTree),
-    Iterator = aeu_mtrees:iterator_from(StorePrefix, Subtree, [{with_prefix, StorePrefix}]),
-    Next = aeu_mtrees:iterator_next(Iterator),
-    Store = find_store_keys(StorePrefix, Next, byte_size(StorePrefix), #{}),
+    StoreId = aect_contracts:store_id(Contract),
+    {ok, Subtree} = aeu_mtrees:read_only_subtree(StoreId, CtTree),
+    Store = aect_contracts_store:new(Subtree),
     aect_contracts:set_state(Store, Contract).
-
-find_store_keys(_, '$end_of_table', _, Store) ->
-    Store;
-find_store_keys(Id, {PrefixedKey, Val, Iter}, PrefixSize, Store) ->
-    <<Id:PrefixSize/binary, Key/binary>> = PrefixedKey,
-    Store1 = Store#{ Key => Val},
-    Next = aeu_mtrees:iterator_next(Iter),
-    find_store_keys(Id, Next, PrefixSize, Store1).
 
 
 -spec lookup_contract(aect_contracts:pubkey(), tree()) -> {value, aect_contracts:contract()} | none.
