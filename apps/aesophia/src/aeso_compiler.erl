@@ -63,7 +63,8 @@ from_string(ContractString, Options) ->
     Ast = parse(ContractString, Options),
     ok = pp_sophia_code(Ast, Options),
     ok = pp_ast(Ast, Options),
-    TypedAst = aeso_ast_infer_types:infer(Ast),
+    TypedAst = aeso_ast_infer_types:infer(Ast, Options),
+    %% pp_types is handled inside aeso_ast_infer_types.
     ok = pp_typed_ast(TypedAst, Options),
     ICode = to_icode(TypedAst, Options),
     TypeInfo = extract_type_info(ICode),
@@ -221,7 +222,7 @@ pp_sophia_code(C, Opts)->  pp(C, Opts, pp_sophia_code, fun(Code) ->
                                 io:format("~s\n", [prettypr:format(aeso_pretty:decls(Code))])
                             end).
 pp_ast(C, Opts)      ->  pp(C, Opts, pp_ast, fun aeso_ast:pp/1).
-pp_typed_ast(C, Opts)->  pp(C, Opts, pp_typed, fun aeso_ast:pp_typed/1).
+pp_typed_ast(C, Opts)->  pp(C, Opts, pp_typed_ast, fun aeso_ast:pp_typed/1).
 pp_icode(C, Opts)    ->  pp(C, Opts, pp_icode, fun aeso_icode:pp/1).
 pp_assembler(C, Opts)->  pp(C, Opts, pp_assembler, fun aeb_asm:pp/1).
 pp_bytecode(C, Opts) ->  pp(C, Opts, pp_bytecode, fun aeb_disassemble:pp/1).
