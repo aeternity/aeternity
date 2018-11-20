@@ -117,6 +117,59 @@ block_extension_test_() ->
                 aec_block_micro_candidate:update(Block1C0, [STx], BInfo),
 
           ?assertEqual(Block1B, Block1C)
+        end},
+       {"Updating a block does not exceed microblock gas limit",
+        fun() ->
+            SpendTx = fun(Data) -> aec_test_utils:sign_tx(spend_tx(Data), ?TEST_PRIV) end,
+            Gas = fun(Txs) -> lists:sum(lists:map(fun(T) -> aetx:gas(aetx_sign:tx(T), unused_height) end, Txs)) end,
+
+            %% Reduce number of spend txs necessary for filling up block
+            %% (hence reduce time necessary for running test)
+            %% by computing spend tx payload roughly as expensive as 10 spend txs.
+            SmallSpendTx = SpendTx(#{nonce => 0, payload => <<>>}),
+            PayloadSize = 10 * trunc(Gas([SmallSpendTx]) / aec_governance:byte_gas()),
+            Payload = << <<0>> || _ <- lists:seq(1, PayloadSize) >>,
+
+            Tx = fun(N) -> SpendTx(#{nonce => N, payload => Payload, fee => 20 * aetx:min_fee(aetx_sign:tx(SmallSpendTx), unused_height)}) end,
+
+            %% Compute txs for filling up block.
+            MaxGas = aec_governance:block_gas_limit(),
+            {ExceedingTx, FillingTxs = [_|_]} =
+                (fun F(Nonce, TxsAccIn) ->
+                    {true, _} = {Gas(TxsAccIn) =< MaxGas, {TxsAccIn, MaxGas}}, %% Hardcoded expectation - for readability.
+                    ThisTx = Tx(Nonce),
+                    NextNonce = 1 + Nonce,
+                    TxsAccOutTmp = TxsAccIn ++ [ThisTx],
+                    case Gas(TxsAccOutTmp) =< MaxGas of
+                        false ->
+                            {ThisTx, TxsAccIn};
+                        true ->
+                            F(NextNonce, TxsAccOutTmp)
+                    end
+                 end)(1, []),
+            ?assertMatch(X when X =< MaxGas, Gas(FillingTxs)), %% Hardcoded expectation - for readability.
+            ?assertMatch(X when X  > MaxGas, Gas(FillingTxs ++ [ExceedingTx])), %% Hardcoded expectation - for readability.
+
+            AccMap = #{ preset_accounts => [{?TEST_PUB, 100000000000000000000000000000000}] },
+            {Block0, Trees0} = aec_block_genesis:genesis_block_with_state(AccMap),
+            meck:expect(aec_chain, get_block_state, 1, {ok, Trees0}),
+            meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
+            meck:expect(aec_db, find_discovered_pof, 1, none),
+
+            %% Create full block, then check that attempting to add one tx fails.
+            meck:expect(aec_tx_pool, get_candidate, 2, {ok, FillingTxs}),
+            {ok, FullBlock, FullBlockInfo} = aec_block_micro_candidate:create(Block0),
+            ?assertEqual(FillingTxs, aec_blocks:txs(FullBlock)), %% Hardcoded expectation - in case any txs discarded for e.g. insufficient funds.
+            ?assertEqual(
+                %% The total gas of the filling txs is deterministic.
+                %% If it equals block gas limit,
+                %% this assertion will fail with other error.
+                %% If it happens, tune test
+                %% in order to misalign total gas of txs with block gas limit
+                %% e.g. put additional payload to all spend txs.
+                {error, no_update_to_block_candidate},
+                aec_block_micro_candidate:update(FullBlock, [ExceedingTx], FullBlockInfo)),
+            ok
         end}
       ]}.
 
