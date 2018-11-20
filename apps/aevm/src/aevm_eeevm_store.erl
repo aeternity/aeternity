@@ -192,8 +192,11 @@ perform_update({new_inplace, NewId, OldId}, Store) ->
     OldKey   = <<OldId:256>>,
     NewKey   = <<NewId:256>>,
     OldEntry = store_get(OldKey, Store),
-    Store1   = store_remove(OldKey, Store),
-    store_put(NewKey, OldEntry, Store1);
+    %% Subtle: Don't remove the old entry because the mp trees requires there
+    %% to be a value at any node that we want to get a subtree for. We need
+    %% this for store_to_list.
+    %% Store1   = store_remove(OldKey, Store),
+    store_put(NewKey, OldEntry, Store);
 perform_update({insert, Id, Key, Val}, Store) ->
     RealId = real_id(Id, Store),
     store_put(<<RealId:256, Key/binary>>, Val, Store);
@@ -210,11 +213,11 @@ perform_update({new, Id, Map0}, Store) ->
     lists:foldl(fun({K, V}, S) -> store_put(K, V, S) end, Store, Info ++ Data);
 perform_update({gc, Id}, Store) ->
     RealId = real_id(Id, Store),
-    %% Remove map info entry
-    Store1 = store_remove(<<Id:256>>, Store),
-    %% Remove all the data
-    Keys = [ <<RealId:256, Key/binary>> || {Key, _} <- store_to_list(RealId, Store1) ],
-    lists:foldl(fun store_remove/2, Store1, Keys).
+    %% Remove map info entry. Also remove RealId which we kept around for mp
+    %% tree reasons (see note at `new_inplace` case above), and all the data.
+    ToRemove = [ <<Id:256>>, <<RealId:256>> |
+               [ <<RealId:256, Key/binary>> || {Key, _} <- store_to_list(RealId, Store) ]],
+    lists:foldl(fun store_remove/2, Store, ToRemove).
 
 update_ref_counts(OldMapKeys, NewMapKeys, Maps, RefCounts, Store) ->
     RefCounts1       = update_ref_counts1(Maps, RefCounts, Store),
