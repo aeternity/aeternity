@@ -5630,6 +5630,7 @@ wait_for_channel_event_(ConnPid, Action, <<"legacy">>) ->
 wait_for_channel_event_(ConnPid, error, <<"json-rpc">>) ->
     case ?WS:wait_for_channel_msg(ConnPid, error) of   % whole msg
         {ok, #{ <<"jsonrpc">> := <<"2.0">>
+              , <<"channel_id">> := _
               , <<"id">>      := null
               , <<"error">>   := E } } ->
             {ok, lift_reason(E)}
@@ -5640,7 +5641,7 @@ wait_for_channel_event_(ConnPid, Action, <<"json-rpc">>) ->
     case {?WS:wait_for_channel_msg(ConnPid, Action), Method} of   % whole msg
         {{ok, #{ <<"jsonrpc">> := <<"2.0">>
                , <<"method">>  := <<Method:Sz/binary, _/binary>>
-               , <<"params">>  := Params }}, _} ->
+               , <<"params">>  := #{<<"channel_id">> := _} = Params }}, _} ->
             Data = maps:get(<<"data">>, Params, no_data),
             {ok, Data};
         {{ok, Tag, #{ <<"jsonrpc">> := <<"2.0">>
@@ -5681,7 +5682,7 @@ wait_for_json_rpc_action(ConnPid, Action) ->
     Sz = byte_size(Method0),
     {ok, #{ <<"jsonrpc">> := <<"2.0">>
           , <<"method">>  := <<Method0:Sz/binary, _/binary>>
-          , <<"params">>  := Params }} =
+          , <<"params">>  := #{<<"channel_id">> := _} = Params }} =
         ?WS:wait_for_channel_msg(ConnPid, Action),
     {ok, Params}.
 
@@ -5701,10 +5702,10 @@ data_code_to_reason([1004])      -> <<"call_not_found">>;
 data_code_to_reason([1005])      -> <<"broken_encoding: accounts">>;
 data_code_to_reason([1006])      -> <<"broken_encoding: contracts">>;
 data_code_to_reason([1005,1006]) -> <<"broken_encoding: accounts, contracts">>;
-data_code_to_reason([Code])      -> sc_ws_handler:error_data_msg(Code).
+data_code_to_reason([Code])      -> sc_ws_api_jsonrpc:error_data_msg(Code).
 
 code_to_reason(Code) ->
-    sc_ws_handler:error_msg(Code).
+    sc_ws_api_jsonrpc:error_msg(Code).
 
 method_pfx(Action) ->
     <<"channels.", (bin(Action))/binary>>.
