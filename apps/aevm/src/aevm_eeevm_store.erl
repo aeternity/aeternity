@@ -122,7 +122,7 @@ set_sophia_state(Value, Store) ->
 
 -spec get_sophia_state(aect_contracts:store()) -> aeso_data:heap_value().
 get_sophia_state(Store) ->
-    <<Ptr:256, Heap/binary>> = store_get(?SOPHIA_STATE_KEY, Store, <<>>),
+    <<Ptr:256, Heap/binary>> = store_get(?SOPHIA_STATE_KEY, Store),
     MapKeys = all_map_ids(Store),
     Maps = maps:from_list(
         [ begin
@@ -134,9 +134,9 @@ get_sophia_state(Store) ->
 
 -spec get_sophia_state_type(aect_contracts:store()) -> false | aeso_sophia:type().
 get_sophia_state_type(Store) ->
-    case store_get(?SOPHIA_STATE_TYPE_KEY, Store, false) of
-        false -> false;
-        Bin   ->
+    case store_get(?SOPHIA_STATE_TYPE_KEY, Store) of
+        <<>> -> false;
+        Bin  ->
             {ok, Type} = aeso_data:from_binary(typerep, Bin),
             Type
     end.
@@ -326,7 +326,7 @@ compute_map_updates(Garbage, Maps0) ->
 %% -- Access functions for maps --
 
 all_map_ids(Store) ->
-    [ Id || <<Id:256>> <= store_get(?SOPHIA_STATE_MAPS_KEY, Store, <<>>) ].
+    [ Id || <<Id:256>> <= store_get(?SOPHIA_STATE_MAPS_KEY, Store) ].
 
 map_types(Id, Store) ->
     ?MapInfo(_, _, _, Bin) = store_get(<<Id:256>>, Store),
@@ -359,7 +359,10 @@ get_ref_counts(Store) ->
 
 get_value(Id, Key, Store) ->
     RealId = real_id(Id, Store),
-    store_get(<<RealId:256, Key/binary>>, Store, false).
+    case store_get(<<RealId:256, Key/binary>>, Store) of
+        <<>> -> false;
+        Val  -> Val
+    end.
 
 is_valid_key(?AEVM_01_Sophia_01, ?SOPHIA_STATE_KEY)      -> true;
 is_valid_key(?AEVM_01_Sophia_01, ?SOPHIA_STATE_TYPE_KEY) -> true;
@@ -374,10 +377,7 @@ store_empty() ->
     #{}.
 
 store_get(Key, Store) ->
-    maps:get(Key, Store).
-
-store_get(Key, Store, Default) ->
-    maps:get(Key, Store, Default).
+    maps:get(Key, Store, <<>>).
 
 store_remove(Key, Store) ->
     maps:remove(Key, Store).
