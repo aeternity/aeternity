@@ -33,6 +33,11 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
     CallStack = [], %% TODO: should we have a call stack for create_tx also
                     %% when creating a contract in a contract.
     VmVersion = aect_contracts:vm_version(Contract),
+    %% Assert VmVersion before running!
+    case VmVersion of
+        ?AEVM_01_Sophia_01 -> ok
+    end,
+
     CallDef = make_call_def(OwnerPubKey, ContractPubKey,
                             _Gas = 1000000, _GasPrice = 1,
                             _Amount = 0, %TODO: make this configurable
@@ -48,11 +53,7 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
                         InitState  = aect_call:return_value(CallRes),
                         %% TODO: move to/from_sophia_state to make nicer dependencies?
                         aect_contracts:set_state(
-                          aevm_eeevm_store:from_sophia_state(InitState), Contract);
-                    ?AEVM_01_Solidity_01 ->
-                        %% Solidity inital call returns the code to store in the contract.
-                        NewCode = aect_call:return_value(CallRes),
-                        aect_contracts:set_code(NewCode, Contract)
+                          aevm_eeevm_store:from_sophia_state(InitState), Contract)
                 end,
             ContractsTree0 = aec_trees:contracts(Trees1),
             ContractsTree1 = aect_state_tree:enter_contract(Contract1, ContractsTree0),
