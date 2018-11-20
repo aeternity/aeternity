@@ -93,6 +93,10 @@ do_gc_([{TxHash, Key} | TxHashes], Dbs, S = #st{ gc_db = GCDb }) ->
             aec_tx_pool:raw_delete(Dbs, Key),
             ets:delete(GCDb, TxHash),
             lager:debug("Garbage collected ~p", [pp(TxHash)]);
+        {error, tx_not_found} ->
+            lager:info("TX garbage collect failed ~p not found",
+                       [pp(TxHash)]),
+            ok;
         {error, BlockHash} ->
             lager:info("TX garbage collect failed ~p is present in ~p",
                        [pp(BlockHash), pp(TxHash)]),
