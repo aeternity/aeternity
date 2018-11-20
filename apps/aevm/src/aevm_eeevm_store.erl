@@ -213,8 +213,8 @@ perform_update({gc, Id}, Store) ->
     %% Remove map info entry
     Store1 = store_remove(<<Id:256>>, Store),
     %% Remove all the data
-    store_filter(fun(<<Id1:256, Key/binary>>, _) when Key /= <<>> -> Id1 /= RealId;
-                    (_, _) -> true end, Store1).
+    Keys = [ <<RealId:256, Key/binary>> || {Key, _} <- store_to_list(RealId, Store1) ],
+    lists:foldl(fun store_remove/2, Store1, Keys).
 
 update_ref_counts(OldMapKeys, NewMapKeys, Maps, RefCounts, Store) ->
     RefCounts1       = update_ref_counts1(Maps, RefCounts, Store),
@@ -343,9 +343,8 @@ ref_count(Id, Store) ->
     RefCount.
 
 set_ref_count(Id, RefCount, Store) ->
-    store_update_with(<<Id:256>>,
-        fun(?MapInfo(RealId, _, Size, Bin)) -> ?MapInfo(RealId, RefCount, Size, Bin) end,
-        Store).
+    ?MapInfo(RealId, _, Size, Bin) = store_get(<<Id:256>>, Store),
+    store_put(<<Id:256>>, ?MapInfo(RealId, RefCount, Size, Bin), Store).
 
 set_ref_counts(RefCounts, Store) ->
     lists:foldl(fun({Id, RefCount}, St) ->
@@ -387,12 +386,6 @@ store_to_list(Id, Store) ->
     %% Inefficient!
     [ {Key, Val} || {<<Id1:256, Key/binary>>, Val} <- maps:to_list(Store),
                     Id == Id1, Key /= <<>> ].
-
-store_filter(Pred, Store) ->
-    maps:filter(Pred, Store).
-
-store_update_with(Key, Fun, Store) ->
-    maps:update_with(Key, Fun, Store).
 
 %%====================================================================
 %% Internal functions
