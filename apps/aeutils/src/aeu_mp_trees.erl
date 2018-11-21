@@ -114,7 +114,7 @@ new(RootHash, DB) ->
         , db   = DB
         }.
 
--spec read_only_subtree(key(), tree()) -> {ok, tree()} | {error, no_such_subtree}.
+-spec read_only_subtree(key() | <<>>, tree()) -> {ok, tree()} | {error, no_such_subtree}.
 %% @doc Returns the subtree of a given key. Note that the key needs to be
 %%      stored in the tree, i.e., this will fail even if there are other
 %%      keys that have the given key as prefix if there isn't a node
