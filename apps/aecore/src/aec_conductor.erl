@@ -867,7 +867,7 @@ handle_add_block(Header, Block, State, Origin) ->
             %% Block validation is performed in the caller's context for
             %% external (gossip/sync) blocks and we trust the ones we
             %% produce ourselves.
-            case aec_chain_state:insert_block(Block) of
+            case aec_chain_state:insert_block(Block, Origin) of
                 ok ->
                     handle_successfully_added_block(Block, State, Origin);
                 {pof,_PoF} ->
