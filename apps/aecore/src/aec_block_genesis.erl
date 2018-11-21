@@ -33,8 +33,6 @@
          height/0,
          pow/0,
          target/0,
-         txs_hash/0,
-         transactions/0,
          beneficiary/0,
          miner/0]).
 
@@ -55,19 +53,8 @@ prev_hash() ->
 prev_key_hash() ->
     <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>.
 
-txs_hash() ->
-    txs_hash(transactions()).
-
-txs_hash(Txs) ->
-    <<0:?TXS_HASH_BYTES/unit:8>> =
-        aec_txs_trees:pad_empty(aec_txs_trees:root_hash(aec_txs_trees:from_txs(
-            Txs))).
-
 pow() ->
     no_value.
-
-transactions() ->
-    [].
 
 height() -> ?GENESIS_HEIGHT.
 
@@ -88,7 +75,6 @@ genesis_block_with_state() ->
     genesis_block_with_state(#{preset_accounts => aec_genesis_block_settings:preset_accounts()}).
 
 genesis_block_with_state(Map) ->
-    [] = transactions(),
     Trees = populated_trees(Map),
 
     Block = aec_blocks:new_key(height(), prev_hash(), prev_key_hash(), aec_trees:hash(Trees),
