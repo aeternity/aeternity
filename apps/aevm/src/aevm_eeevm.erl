@@ -1167,7 +1167,7 @@ loop(CP, StateIn) ->
                 ?INVALID ->
                     %% 0xfe INVALID δ=∅ α=∅
                     %% Designated invalid instruction.
-                    eval_error({the_invalid_instruction, OP}, State0);
+                    eval_error({illegal_instruction, OP}, State0);
                 ?SUICIDE ->
                     %% 0xff SELFDESTRUCT 1 0
                     %% Halt execution and register account for
