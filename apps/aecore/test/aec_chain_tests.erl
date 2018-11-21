@@ -19,6 +19,7 @@
 
 -import(aec_chain_state,
         [ insert_block/1
+        , insert_block/2
         ]).
 
 -import(aec_chain,
@@ -862,12 +863,9 @@ fork_on_old_fork_point() ->
     %% If we try to add the fork block trough gossip, it should be refused.
     ?assertMatch({error, {too_far_below_top, _, _}}, insert_block(ForkBlock)),
 
-    %% But if we add it through sync, it is allowed
-    ?assertEqual(ok, insert_block(#{key_block => ForkBlock,
-                                    micro_blocks => MicroBlocks,
-                                    dir => forward,
-                                    add_keyblock => true
-                                   })),
+    %% But if we add the blocks through sync, it is allowed
+    Res = [ insert_block(B, block_synced) || B <- [ForkBlock | MicroBlocks] ],
+    ?assertEqual([ok], lists:usort(Res)),
     ok.
 
 fork_gen_key_candidate() ->
