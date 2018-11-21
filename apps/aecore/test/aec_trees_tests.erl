@@ -172,9 +172,8 @@ poi_test_() ->
       {"Broken serialized PoI fails verification",
        fun() ->
                OwnerPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
-               Contract = aect_contracts:set_state(#{<<1>> => <<"v1">>,
-                                                     <<2>> => <<"v2">>},
-                                                   make_contract(OwnerPubkey)),
+               Store    = make_store(#{<<1>> => <<"v1">>, <<2>> => <<"v2">>}),
+               Contract = aect_contracts:set_state(Store, make_contract(OwnerPubkey)),
                ContractPubkey = aect_contracts:pubkey(Contract),
 
                Trees0 = aec_test_utils:create_state_tree(),
@@ -238,6 +237,7 @@ poi_test_() ->
                  accounts,
                  AccountKeyF, ChangeAccountF,
                  InsertAccountF,
+                 fun(A) -> A end,
                  Account)
        end},
       {"POI for more than one account"
@@ -375,7 +375,7 @@ poi_test_() ->
        fun() ->
                OwnerPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
                Contract = make_contract(OwnerPubkey),
-               ?assertEqual(#{}, aect_contracts:state(Contract)), %% Hardcoded expectation on test data.
+               ?assertEqual(make_store(#{}), aect_contracts:state(Contract)), %% Hardcoded expectation on test data.
 
                check_poi_for_one_contract(
                  Contract,
@@ -389,7 +389,7 @@ poi_test_() ->
        fun() ->
                OwnerPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
                Contract0 = make_contract(OwnerPubkey),
-               Contract1 = aect_contracts:set_state(#{<<2>> => <<"v">>},
+               Contract1 = aect_contracts:set_state(make_store(#{<<2>> => <<"v">>}),
                                                     Contract0),
 
                check_poi_for_one_contract(
@@ -407,9 +407,9 @@ poi_test_() ->
                check_poi_for_one_contract(
                  make_contract(OwnerPubkey),
                  fun(C) -> %% Change contract function.
-                         ?assertEqual(#{}, %% Assumption for simplicity.
+                         ?assertEqual(make_store(#{}), %% Assumption for simplicity.
                                       aect_contracts:state(C)),
-                         aect_contracts:set_state(#{<<1>> => <<"v">>}, C)
+                         aect_contracts:set_state(make_store(#{<<1>> => <<"v">>}), C)
                  end)
        end},
       {"PoI for one contract with store that becomes without store",
@@ -417,19 +417,19 @@ poi_test_() ->
                OwnerPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
 
                check_poi_for_one_contract(
-                 aect_contracts:set_state(#{<<1>> => <<"v">>},
+                 aect_contracts:set_state(make_store(#{<<1>> => <<"v">>}),
                                           make_contract(OwnerPubkey)),
                  fun(C) -> %% Change contract function.
                          ?assertEqual(#{<<1>> => <<"v">>}, %% Assumption for simplicity.
-                                      aect_contracts:state(C)),
-                         aect_contracts:set_state(#{}, C)
+                                      from_store(aect_contracts:state(C))),
+                         aect_contracts:set_state(make_store(#{}), C)
                  end)
        end},
       {"PoI for one contract with store in state trees containing multiple contracts with store",
        fun() ->
                Contracts =
                    [aect_contracts:set_state(
-                      #{<<1, X>> => <<"v", X>>}, %% Distinct key per contract.
+                      make_store(#{<<1, X>> => <<"v", X>>}), %% Distinct key per contract.
                       make_contract(<<X:?MINER_PUB_BYTES/unit:8>>))
                     || X <- [1, 2, 3]],
                [check_poi_for_a_contract_among_others(
@@ -440,7 +440,9 @@ poi_test_() ->
       {"Serialized contract PoI with empty contract store key fails verification",
        fun() ->
                [check_poi_for_contract_with_invalid_store_with_binary_keys(
-                  V, #{<<>> => <<"v">>}) || V <- vm_versions()]
+                     %% Add a valid key otherwise the invalid poi is the same as the poi
+                     %% for an empty store since the empty key will be dropped.
+                  V, #{<<>> => <<"v">>, <<1>> => <<"w">>}) || V <- vm_versions()]
        end},
       {"Serialized Solidity contract PoI with invalid contract store key fails verification",
        fun() ->
@@ -483,6 +485,7 @@ check_poi_for_one_contract(Contract, ChangeContractFun) ->
       contracts,
       ContractKeyF, ChangeContractFun,
       InsertContractF,
+      fun translate_store/1,
       Contract).
 
 check_poi_for_a_contract_among_others(Contract, OtherContracts) ->
@@ -498,11 +501,13 @@ check_poi_for_a_contract_among_others(Contract, OtherContracts) ->
       contracts,
       ContractKeyF,
       InsertContractF,
+      fun translate_store/1,
       Contract, OtherContracts).
 
 check_poi_for_one_object(SubTree,
                          ObjKeyFun, ChangeObjFun,
                          InsertObjFun,
+                         EqMeasure,
                          Obj) ->
     Trees0 = aec_test_utils:create_state_tree(),
 
@@ -517,9 +522,11 @@ check_poi_for_one_object(SubTree,
     ?assertEqual(?TEST_MODULE:hash(Trees1),
                  ?TEST_MODULE:poi_hash(Poi11)),
 
+    EqMeasureOk = fun({ok, O}) -> {ok, EqMeasure(O)}; (E) -> E end,
+
     %% Check that the stored object in the POI is the correct one.
-    ?assertEqual({ok, Obj},
-                 aec_trees:lookup_poi(SubTree, ObjKey, Poi11)),
+    ?assertEqual({ok, EqMeasure(Obj)},
+                 EqMeasureOk(aec_trees:lookup_poi(SubTree, ObjKey, Poi11))),
 
     %% Ensure that we can verify the presence of the object in the
     %% POI.
@@ -537,6 +544,7 @@ check_poi_for_one_object(SubTree,
 check_poi_for_an_object_among_others(SubTree,
                                      ObjKeyFun,
                                      InsertObjFun,
+                                     EqMeasure, %% Apply before comparing for equality (used for contracts store)
                                      Obj, OtherObjs = [_|_]) ->
     ?assertNot(lists:member(Obj, OtherObjs)), %% Hardcoded expectation on test data.
 
@@ -559,9 +567,11 @@ check_poi_for_an_object_among_others(SubTree,
     ?assertEqual(?TEST_MODULE:hash(Trees2),
                  ?TEST_MODULE:poi_hash(Poi21)),
 
+    EqMeasureOk = fun({ok, O}) -> {ok, EqMeasure(O)}; (E) -> E end,
+
     %% Check that the stored object in the POI is the correct one.
-    ?assertEqual({ok, Obj},
-                 aec_trees:lookup_poi(SubTree, ObjKey, Poi21)),
+    ?assertEqual({ok, EqMeasure(Obj)},
+                 EqMeasureOk(aec_trees:lookup_poi(SubTree, ObjKey, Poi21))),
 
     %% Ensure that we can verify the presence of the object in the POI.
     ?assertEqual(ok,
@@ -580,8 +590,8 @@ check_poi_for_an_object_among_others(SubTree,
                  ?TEST_MODULE:poi_hash(Poi22)),
 
     %% Check that the stored object in the POI is still the correct one.
-    ?assertEqual({ok, Obj},
-                 aec_trees:lookup_poi(SubTree, ObjKey, Poi22)),
+    ?assertEqual({ok, EqMeasure(Obj)},
+                 EqMeasureOk(aec_trees:lookup_poi(SubTree, ObjKey, Poi22))),
 
     %% Ensure that we can still verify the presence of the object in the POI.
     ?assertEqual(ok,
@@ -590,8 +600,10 @@ check_poi_for_an_object_among_others(SubTree,
     ok.
 
 check_poi_for_contract_with_invalid_store_with_binary_keys(
-  VmVersion, InvalidStore) ->
+  VmVersion, InvalidStoreMap) ->
     OwnerPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
+
+    InvalidStore = make_store(InvalidStoreMap),
 
     %% Generate contract invalid because of an invalid contract store key.
     ValidContract = make_contract(OwnerPubkey, VmVersion),
@@ -656,6 +668,16 @@ make_contract(Owner) ->
 make_contract(Owner, VmVersion) ->
     {contract_create_tx, CTx} = aetx:specialize_type(ct_create_tx(Owner, VmVersion)),
     aect_contracts:new(CTx).
+
+make_store(Map) ->
+    aect_contracts_store:put_map(Map, aect_contracts_store:new()).
+
+from_store(Store) ->
+    aect_contracts_store:subtree(<<>>, Store).
+
+translate_store(C) ->
+    Store = aect_contracts:state(C),
+    aect_contracts:internal_set_state(from_store(Store), C).
 
 ct_create_tx(Sender, VmVersion) ->
     Spec =

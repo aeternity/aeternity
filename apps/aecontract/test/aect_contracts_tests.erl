@@ -15,10 +15,8 @@
                         , pubkey/1
                         , owner_id/1
                         , owner_pubkey/1
-                        , state/1
                         , serialize/1
                         , set_owner/2
-                        , set_state/2
                         ]).
 
 basic_test_() ->
@@ -63,6 +61,12 @@ state_setter() ->
     ?assertError({illegal, _, _}, set_state(#{<<1>> => <<1:4>>}, C)),
     ok.
 
+set_state(Map, C) ->
+    Store = aect_contracts_store:put_map(Map, aect_contracts_store:new()),
+    aect_contracts:set_state(Store, C).
+
+state(C) ->
+    aect_contracts_store:subtree(<<>>, aect_contracts:state(C)).
 
 create_tx() ->
     create_tx(#{}).

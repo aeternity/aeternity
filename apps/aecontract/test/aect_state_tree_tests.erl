@@ -12,9 +12,10 @@ trunc_test() ->
     Owner1 = aec_id:create(account, <<"_______________k1_______________">>),
     Owner2 = aec_id:create(account, <<"_______________k2_______________">>),
 
-    StEmpty = #{},
-    St1 = #{<<"1">> => <<"a">>},
-    St2 = #{<<"2">> => <<"b">>},
+    MakeStore = fun(Map) -> aect_contracts_store:put_map(Map, aect_contracts_store:new()) end,
+    St1 = MakeStore(#{<<"1">> => <<"a">>}),
+    St2 = MakeStore(#{<<"2">> => <<"b">>, <<"1">> => <<>>}),
+    StNot1 = MakeStore(#{<<"1">> => <<>>}), %% Empty value to delete
 
     C0 = new_contract(),
     C1 = new_contract(#{owner_id => Owner1}),
@@ -26,7 +27,7 @@ trunc_test() ->
 
     % state changes do not leave artifacts: empty state
     T31 = ?TESTED_MODULE:enter_contract(aect_contracts:set_state(St1, C1), T30),
-    T300 = ?TESTED_MODULE:enter_contract(aect_contracts:set_state(StEmpty, C1), T31),
+    T300 = ?TESTED_MODULE:enter_contract(aect_contracts:set_state(StNot1, C1), T31),
     assert_root_hashes(T30, T300),
 
     % state changes do not leave artifacts: non empty state
