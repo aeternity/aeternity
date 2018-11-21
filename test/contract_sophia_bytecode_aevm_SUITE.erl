@@ -518,7 +518,7 @@ get_balance(<<Account:256>>, #{ accounts := Accounts }) ->
 get_store(#{ running := Contract, store := Store }) ->
     Data = maps:get(Contract, Store, undefined),
     case Data of
-        undefined -> #{};
+        undefined -> aect_contracts_store:new();
         _         -> Data
     end.
 
