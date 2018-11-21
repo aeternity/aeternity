@@ -171,7 +171,7 @@ setup_new_account(Balance, State) ->
     {PubKey, State2}.
 
 setup_miner_account(PubKey, State) ->
-    A = aec_accounts:new(PubKey, aec_governance:block_mine_reward()),
+    A = aec_accounts:new(PubKey, aec_governance:block_mine_reward(0)),
     set_account(A, State).
 
 set_account_balance(PubKey, NewBalance, State) ->

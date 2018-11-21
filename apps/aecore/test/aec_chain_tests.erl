@@ -1039,20 +1039,19 @@ fees_three_beneficiaries() ->
 
     %% Before the last generation is closed, only the two first beneficiaries
     %% should have collected rewards
-    MiningReward = aec_governance:block_mine_reward(),
-    ?assertEqual(MiningReward + reward_40(Fee1 + Fee2),
+    ?assertEqual(aec_governance:block_mine_reward(1) + reward_40(Fee1 + Fee2),
                  orddict:fetch(PubKey6, DictBal1)),
-    ?assertEqual(MiningReward + reward_60(Fee1 + Fee2),
+    ?assertEqual(aec_governance:block_mine_reward(2) + reward_60(Fee1 + Fee2),
                  orddict:fetch(PubKey7, DictBal1)),
     ?assertEqual(false, orddict:is_key(PubKey5, DictBal1)),
 
     %% When the last generation is closed, the last transaction fee should
     %% also have been collected.
-    ?assertEqual(MiningReward + reward_40(Fee1 + Fee2),
+    ?assertEqual(aec_governance:block_mine_reward(1) + reward_40(Fee1 + Fee2),
                  orddict:fetch(PubKey6, DictBal2)),
-    ?assertEqual(MiningReward + reward_60(Fee1 + Fee2) + reward_40(Fee3),
+    ?assertEqual(aec_governance:block_mine_reward(2) + reward_60(Fee1 + Fee2) + reward_40(Fee3),
                  orddict:fetch(PubKey7, DictBal2)),
-    ?assertEqual(MiningReward + reward_60(Fee3),
+    ?assertEqual(aec_governance:block_mine_reward(3) + reward_60(Fee3),
                  orddict:fetch(PubKey8, DictBal2)),
 
     %% Miners' balances did not change, since beneficiaries took the rewards.
@@ -1091,7 +1090,9 @@ fees_delayed_reward() ->
     Chain0 = gen_block_chain_with_state_by_actors(PresetAccounts, Miners, Beneficiaries, TxsFun),
     [KB0, KB1, MB1, KB2, MB2, KB3, MB3, KB4, MB4, KB5] = blocks_only_chain(Chain0),
 
-    MiningReward = aec_governance:block_mine_reward(),
+    MiningReward1 = aec_governance:block_mine_reward(1),
+    MiningReward2 = aec_governance:block_mine_reward(2),
+    MiningReward3 = aec_governance:block_mine_reward(3),
 
     %% Write first part of the chain
     ok = write_blocks_to_chain([KB0, KB1, MB1, KB2, MB2, KB3, MB3]),
@@ -1100,7 +1101,7 @@ fees_delayed_reward() ->
     DictBal1 = orddict:from_list(Balances1),
 
     %% Check only beneficiary of K1 gets rewards, without any rewards / fees of the next generations
-    ?assertEqual({ok, MiningReward}, orddict:find(PubKey3, DictBal1)),
+    ?assertEqual({ok, MiningReward1}, orddict:find(PubKey3, DictBal1)),
 
     %% Insert KB4
     ok = write_blocks_to_chain([KB4]),
@@ -1109,7 +1110,7 @@ fees_delayed_reward() ->
     DictBal2 = orddict:from_list(Balances2),
 
     %% Check rewards are granted for the first two key blocks, with fees of first generation
-    ?assertEqual({ok, 2 * MiningReward + Fee1},
+    ?assertEqual({ok, MiningReward1 + MiningReward2 + Fee1},
                  orddict:find(PubKey3, DictBal2)),
 
     %% Insert the rest of the chain
@@ -1119,7 +1120,7 @@ fees_delayed_reward() ->
     DictBal3 = orddict:from_list(Balances3),
 
     %% Check rewards are granted for the first three key blocks, with fees of first two generations
-    ?assertEqual({ok, 3 * MiningReward + Fee1 + Fee2},
+    ?assertEqual({ok, MiningReward1 + MiningReward2 + MiningReward3 + Fee1 + Fee2},
                  orddict:find(PubKey3, DictBal3)),
     ok.
 

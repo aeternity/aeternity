@@ -2973,14 +2973,18 @@ pending_transactions(_Config) ->
 
     AmountToSpent = 3,
     BlocksToMine = blocks_to_mine(AmountToSpent, 1),
-    MineReward = rpc(aec_governance, block_mine_reward, []),
-    aecore_suite_utils:mine_key_blocks(Node, BlocksToMine),
+    {ok, MinedBlocks1} = aecore_suite_utils:mine_key_blocks(Node, BlocksToMine),
     {ok, 200, #{<<"balance">> := Bal0}} = get_balance_at_top(),
 
-    ct:log("Bal0: ~p, Initial Balance: ~p, Blocks to mine: ~p, Mine reward: ~p",
-           [Bal0, InitialBalance, BlocksToMine, MineReward]),
-    {Bal0, _, _} = {InitialBalance + BlocksToMine * MineReward, Bal0,
-                    {InitialBalance, BlocksToMine, MineReward}},
+    ExpectedReward = lists:sum([rpc(aec_governance, block_mine_reward,
+                                    [aec_blocks:height(X) - Delay])
+                                || X <- MinedBlocks1,
+                                   aec_blocks:type(X) =:= key
+                               ]),
+
+    ct:log("Bal0: ~p, Initial Balance: ~p, Blocks to mine: ~p, Expected reward: ~p",
+           [Bal0, InitialBalance, BlocksToMine, ExpectedReward]),
+    ?assertEqual(Bal0, InitialBalance + ExpectedReward),
     true = (is_integer(Bal0) andalso Bal0 >= AmountToSpent),
 
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % still empty
@@ -3006,14 +3010,19 @@ pending_transactions(_Config) ->
 
 
     ToMine = 2 + Delay,
-    aecore_suite_utils:mine_key_blocks(Node, ToMine),
+    {ok, MinedBlocks2} = aecore_suite_utils:mine_key_blocks(Node, ToMine),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty again
     {ok, 200, #{<<"transactions">> := []}} = get_pending_transactions(),
 
+    ExpectedReward1 = lists:sum([rpc(aec_governance, block_mine_reward,
+                                     [aec_blocks:height(X) - Delay])
+                                 || X <- MinedBlocks2,
+                                    aec_blocks:type(X) =:= key
+                                ]),
     {ok, 200, #{<<"balance">> := Bal1}} = get_balance_at_top(),
-    ct:log("Bal1: ~p, Bal0: ~p, Mine reward: ~p, Amount to spend: ~p",
-           [Bal1, Bal0, ToMine * MineReward, AmountToSpent]),
-    {Bal1, _} = {Bal0 + ToMine * MineReward - AmountToSpent, Bal1},
+    ct:log("Bal1: ~p, Bal0: ~p, Expected reward: ~p, Amount to spend: ~p",
+           [Bal1, Bal0, ExpectedReward1, AmountToSpent]),
+    ?assertEqual(Bal1, Bal0 + ExpectedReward1 - AmountToSpent),
     {ok, 200, #{<<"balance">> := AmountToSpent}} =
                  get_accounts_by_pubkey_sut(aehttp_api_encoder:encode(account_pubkey, ReceiverPubKey)),
     ok.
@@ -3147,7 +3156,7 @@ peer_pub_key(_Config) ->
     ok.
 
 naming_system_manage_name(_Config) ->
-    {_, PubKey} = aecore_suite_utils:sign_keys(?NODE),
+    {PubKey, PrivKey} = initialize_account(1000000000),
     PubKeyEnc   = aehttp_api_encoder:encode(account_pubkey, PubKey),
     %% TODO: find out how to craete HTTP path with unicode chars
     %%Name        = <<"詹姆斯詹姆斯.test"/utf8>>,
@@ -3158,17 +3167,11 @@ naming_system_manage_name(_Config) ->
     TTL         = 10,
     {ok, NHash} = aens:get_name_hash(Name),
     Fee         = 100000,
-    MineReward  = rpc(aec_governance, block_mine_reward, []),
-    Delay       = rpc(aec_governance, beneficiary_reward_delay, []),
     Node        = aecore_suite_utils:node_name(?NODE),
-
-    %% Mine blocks to get some funds
-    aecore_suite_utils:mine_key_blocks(Node, Delay + 1),
-    {ok, 200, #{<<"balance">> := Balance}} = get_balance_at_top(),
-    {ok, 200, #{<<"height">> := Height0}} = get_key_blocks_current_sut(),
 
     %% Check mempool empty
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+    {ok, 200, #{<<"balance">> := Balance}} = get_accounts_by_pubkey_sut(PubKeyEnc),
 
     %% Get commitment hash to preclaim a name
     {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = get_commitment_id(Name, NameSalt),
@@ -3179,23 +3182,17 @@ naming_system_manage_name(_Config) ->
                      fee           => Fee,
                      account_id    => PubKeyEnc},
     {ok, 200, #{<<"tx">> := PreclaimTxEnc}} = get_name_preclaim(PreclaimData),
-    PreclaimTxHash = sign_and_post_tx(PreclaimTxEnc),
+    PreclaimTxHash = sign_and_post_tx(PreclaimTxEnc, PrivKey),
     {ok, 200, #{<<"tx">> := PreclaimTx}} = get_transactions_by_hash_sut(PreclaimTxHash),
     ?assertEqual(EncodedCHash, maps:get(<<"commitment_id">>, PreclaimTx)),
 
     %% Mine a block and check mempool empty again
     {ok,_BS1} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, PreclaimTxHash, 10),
-    {ok, 200, #{<<"height">> := Height1}} = get_key_blocks_current_sut(),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
-    %% Check fee taken from account, then mine reward added to account
-    {ok, 200, #{<<"balance">> := Balance1}} = get_balance_at_top(),
-    ?assertEqual(Balance1, Balance - Fee + (Height1 - Height0) * MineReward),
-
-    %% Mine for the reward delay to not have old fees interfere.
-    aecore_suite_utils:mine_key_blocks(Node, Delay + 1),
-    {ok, 200, #{<<"balance">> := Balance2}} = get_balance_at_top(),
-    {ok, 200, #{<<"height">> := Height2}} = get_key_blocks_current_sut(),
+    %% Check fee taken from account
+    {ok, 200, #{<<"balance">> := Balance1}} = get_accounts_by_pubkey_sut(PubKeyEnc),
+    ?assertEqual(Balance1, Balance - Fee),
 
     %% Submit name claim tx and check it is in mempool
     ClaimData = #{account_id => PubKeyEnc,
@@ -3203,7 +3200,7 @@ naming_system_manage_name(_Config) ->
                   name_salt  => NameSalt,
                   fee        => Fee},
     {ok, 200, #{<<"tx">> := ClaimTxEnc}} = get_name_claim(ClaimData),
-    ClaimTxHash = sign_and_post_tx(ClaimTxEnc),
+    ClaimTxHash = sign_and_post_tx(ClaimTxEnc, PrivKey),
 
     %% Mine a block and check mempool empty again
     {ok,_BS2} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, ClaimTxHash, 10),
@@ -3212,9 +3209,9 @@ naming_system_manage_name(_Config) ->
     %% Check tx fee taken from account, claim fee burned,
     %% then mine reward and fee added to account
     ClaimBurnedFee = rpc(aec_governance, name_claim_burned_fee, []),
-    {ok, 200, #{<<"balance">> := Balance3}} = get_balance_at_top(),
+    {ok, 200, #{<<"balance">> := Balance2}} = get_accounts_by_pubkey_sut(PubKeyEnc),
     {ok, 200, #{<<"height">> := Height3}} = get_key_blocks_current_sut(),
-    ?assertEqual(Balance3, Balance2 - Fee + (Height3 - Height2) * MineReward - ClaimBurnedFee),
+    ?assertEqual(Balance2, Balance1 - Fee - ClaimBurnedFee),
 
     %% Check that name entry is present
     EncodedNHash = aehttp_api_encoder:encode(name, NHash),
@@ -3231,11 +3228,14 @@ naming_system_manage_name(_Config) ->
                        name_ttl   => NameTTL,
                        fee        => Fee},
     {ok, 200, #{<<"tx">> := UpdateEnc}} = get_name_update(NameUpdateData),
-    UpdateTxHash = sign_and_post_tx(UpdateEnc),
+    UpdateTxHash = sign_and_post_tx(UpdateEnc, PrivKey),
 
     %% Mine a block and check mempool empty again
     {ok,_BS3} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, UpdateTxHash, 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    {ok, 200, #{<<"balance">> := Balance3}} = get_accounts_by_pubkey_sut(PubKeyEnc),
+    ?assertEqual(Balance3, Balance2 - Fee),
 
     %% Check that TTL and pointers got updated in name entry
     {ok, 200, #{<<"height">> := Height31}} = get_key_blocks_current_sut(),
@@ -3243,29 +3243,18 @@ naming_system_manage_name(_Config) ->
     {ok, 200, #{<<"ttl">>      := ExpectedTTL2,
                 <<"pointers">> := Pointers}} = get_names_entry_by_name_sut(Name),
 
-    %% Mine for the reward delay to not have old fees interfere.
-    aecore_suite_utils:mine_key_blocks(Node, Delay),
-    {ok, 200, #{<<"balance">> := Balance4}} = get_balance_at_top(),
-    {ok, 200, #{<<"height">> := Height4}} = get_key_blocks_current_sut(),
-
     {ok, 200, #{<<"tx">> := EncodedSpendTx}} =
         get_spend(#{recipient_id => EncodedNHash, amount => 77, fee => Fee,
                     payload => <<"foo">>, sender_id => PubKeyEnc}),
-    SpendTxHash = sign_and_post_tx(EncodedSpendTx),
+    SpendTxHash = sign_and_post_tx(EncodedSpendTx, PrivKey),
 
     {ok,_BS4} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, SpendTxHash, 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Only fee is lost as recipient = sender
     %% This tests 'resolve_name' because recipient is expressed by name label
-    {ok, 200, #{<<"balance">> := Balance5}} = get_balance_at_top(),
-    {ok, 200, #{<<"height">> := Height5}} = get_key_blocks_current_sut(),
-    ?assertEqual(Balance5, Balance4 - Fee + (Height5 - Height4) * MineReward),
-
-    %% Mine for the reward delay to not have old fees interfere.
-    aecore_suite_utils:mine_key_blocks(Node, Delay),
-    {ok, 200, #{<<"balance">> := Balance6}} = get_balance_at_top(),
-    {ok, 200, #{<<"height">> := Height6}} = get_key_blocks_current_sut(),
+    {ok, 200, #{<<"balance">> := Balance4}} = get_accounts_by_pubkey_sut(PubKeyEnc),
+    ?assertEqual(Balance4, Balance3 - Fee),
 
     %% Submit name transfer tx and check it is in mempool
     TransferData = #{account_id   => PubKeyEnc,
@@ -3273,37 +3262,30 @@ naming_system_manage_name(_Config) ->
                      name_id      => aehttp_api_encoder:encode(name, NHash),
                      fee          => Fee},
     {ok, 200, #{<<"tx">> := TransferEnc}} = get_name_transfer(TransferData),
-    TransferTxHash = sign_and_post_tx(TransferEnc),
+    TransferTxHash = sign_and_post_tx(TransferEnc, PrivKey),
 
     %% Mine a block and check mempool empty again
     {ok,_BS5} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, TransferTxHash, 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Check balance
-    {ok, 200, #{<<"balance">> := Balance7}} = get_balance_at_top(),
-    {ok, 200, #{<<"height">> := Height7}} = get_key_blocks_current_sut(),
-    ?assertEqual(Balance7, Balance6 - Fee + (Height7 - Height6) * MineReward),
-
-    %% Mine for the reward delay to not have old fees interfere.
-    aecore_suite_utils:mine_key_blocks(Node, Delay),
-    {ok, 200, #{<<"balance">> := Balance8}} = get_balance_at_top(),
-    {ok, 200, #{<<"height">> := Height8}} = get_key_blocks_current_sut(),
+    {ok, 200, #{<<"balance">> := Balance5}} = get_accounts_by_pubkey_sut(PubKeyEnc),
+    ?assertEqual(Balance5, Balance4 - Fee),
 
     %% Submit name revoke tx and check it is in mempool
     RevokeData = #{account_id => PubKeyEnc,
                    name_id => aehttp_api_encoder:encode(name, NHash),
                    fee => Fee},
     {ok, 200, #{<<"tx">> := RevokeEnc}} = get_name_revoke(RevokeData),
-    RevokeTxHash = sign_and_post_tx(RevokeEnc),
+    RevokeTxHash = sign_and_post_tx(RevokeEnc, PrivKey),
 
     %% Mine a block and check mempool empty again
     {ok,_BS6} = aecore_suite_utils:mine_blocks_until_tx_on_chain(Node, RevokeTxHash, 10),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Check balance
-    {ok, 200, #{<<"balance">> := Balance9}} = get_balance_at_top(),
-    {ok, 200, #{<<"height">> := Height9}} = get_key_blocks_current_sut(),
-    ?assertEqual(Balance9, Balance8 - Fee + (Height9 - Height8) * MineReward),
+    {ok, 200, #{<<"balance">> := Balance6}} = get_accounts_by_pubkey_sut(PubKeyEnc),
+    ?assertEqual(Balance6, Balance5 - Fee),
 
     %% Check the name got expired
     {ok, 404, #{<<"reason">> := <<"Name revoked">>}} = get_names_entry_by_name_sut(Name),
@@ -5463,7 +5445,7 @@ prepare_for_spending(BlocksToMine) ->
     {PubKey, Nonce}.
 
 add_spend_txs() ->
-    MineReward = rpc(aec_governance, block_mine_reward, []),
+    MineReward = rpc(aec_governance, block_mine_reward, [1]),
     Fee = 20000,
     %% For now. Mining is severly slowed down by having too many Tx:s in
     %% the tx pool
@@ -5497,11 +5479,10 @@ populate_block(Txs) ->
         maps:get(spend_txs, Txs, [])).
 
 give_tokens(RecipientPubkey, Amount) ->
-    MineReward = rpc(aec_governance, block_mine_reward, []),
     Fee = 20000,
-    NeededBlocks = ((Amount + Fee)  div MineReward) + 1,
+    BlocksToMine = blocks_to_mine(Amount + Fee, 1),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   NeededBlocks),
+                                   BlocksToMine),
     SpendData = #{recipient_id => aehttp_api_encoder:encode(account_pubkey, RecipientPubkey),
                   amount => Amount,
                   fee => Fee},
@@ -5510,11 +5491,23 @@ give_tokens(RecipientPubkey, Amount) ->
     ok.
 
 blocks_to_mine(Amount, ChecksCnt) ->
-    MineReward = rpc(aec_governance, block_mine_reward, []),
-    TokensRequired = Amount * ChecksCnt,
+    Height = case rpc(aec_chain, top_header, []) of
+                 undefined -> 1;
+                 Header -> aec_headers:height(Header) + 1
+             end,
     Delay = rpc(aec_governance, beneficiary_reward_delay, []),
-    BlocksToMine = trunc(math:ceil(TokensRequired / MineReward)) + Delay,
-    BlocksToMine.
+    blocks_to_mine_1(Height, Delay, Amount * ChecksCnt, 0, 0).
+
+blocks_to_mine_1(_Height,_Delay, Goal, N, Acc) when Acc >= Goal ->
+    N;
+blocks_to_mine_1(Height, Delay, Goal, N, Acc) ->
+    case Height - Delay < 1 of
+        true ->
+            blocks_to_mine_1(Height + 1, Delay, Goal, N + 1, Acc);
+        false ->
+            Reward = rpc(aec_governance, block_mine_reward, [Height - Delay]),
+            blocks_to_mine_1(Height + 1, Delay, Goal, N + 1, Acc + Reward)
+    end.
 
 channel_ws_start(Role, Opts, Config) ->
     Opts1 = set_log_option(Opts, Config),
@@ -5543,9 +5536,16 @@ intersperse([H|T], Delim) ->
 
 
 sign_and_post_tx(EncodedUnsignedTx) ->
+    sign_and_post_tx(EncodedUnsignedTx, on_node).
+
+sign_and_post_tx(EncodedUnsignedTx, PrivKey) ->
     {ok, SerializedUnsignedTx} = aehttp_api_encoder:safe_decode(transaction, EncodedUnsignedTx),
     UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
-    {ok, SignedTx} = aecore_suite_utils:sign_on_node(?NODE, UnsignedTx),
+    {ok, SignedTx} =
+        case PrivKey =:= on_node of
+            true  -> aecore_suite_utils:sign_on_node(?NODE, UnsignedTx);
+            false -> {ok, aec_test_utils:sign_tx(UnsignedTx, PrivKey)}
+        end,
     SerializedTx = aetx_sign:serialize_to_binary(SignedTx),
     %% Check that we get the correct hash
     TxHash = aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),

@@ -6,7 +6,7 @@
          key_blocks_to_check_difficulty_count/0,
          median_timestamp_key_blocks/0,
          expected_block_mine_rate/0,
-         block_mine_reward/0,
+         block_mine_reward/1,
          block_gas_limit/0,
          tx_base_gas/1,
          byte_gas/0,
@@ -20,7 +20,7 @@
          name_registrars/0,
          micro_block_cycle/0,
          accepted_future_block_time_shift/0,
-         fraud_report_reward/0,
+         fraud_report_reward/1,
          state_gas_per_block/1,
          primop_base_gas/1,
          add_network_id/1,
@@ -53,7 +53,7 @@
 -define(TX_BASE_GAS, 15000).
 %% Gas for 1 byte of a serialized tx.
 -define(BYTE_GAS, 20).
--define(POF_REWARD       , 500000000000000000). %% (?BLOCK_MINE_REWARD / 100) * 5
+-define(POF_REWARD_DIVIDER, 20). %% 5% of the coinbase reward
 -define(BENEFICIARY_REWARD_DELAY, 180). %% in key blocks / generations
 -define(MICRO_BLOCK_CYCLE, 3000). %% in msecs
 
@@ -90,11 +90,14 @@ expected_block_mine_rate() ->
     aeu_env:user_config_or_env([<<"mining">>, <<"expected_mine_rate">>],
                                aecore, expected_mine_rate, ?EXPECTED_BLOCK_MINE_RATE).
 
+block_mine_reward(0) ->
+    %% No mining reward for the genesis block
+    0;
+block_mine_reward(Height) when is_integer(Height), Height > 0 ->
+    aec_coinbase:coinbase_at_height(Height).
+
 %% In Ethereum, block gas limit is changed in every block. The new block gas
 %% limit is decided by algorithm and vote by miners.
-block_mine_reward() ->
-    ?BLOCK_MINE_REWARD.
-
 block_gas_limit() ->
     application:get_env(aecore, block_gas_limit, ?BLOCK_GAS_LIMIT).
 
@@ -206,8 +209,11 @@ name_claim_preclaim_delta() ->
 name_registrars() ->
     [<<"test">>].
 
-fraud_report_reward() ->
-    ?POF_REWARD.
+fraud_report_reward(Height) ->
+    Coinbase = block_mine_reward(Height),
+    %% Assert that the coinbase is always even dividable.
+    0 = (Coinbase rem ?POF_REWARD_DIVIDER),
+    Coinbase div ?POF_REWARD_DIVIDER.
 
 -spec add_network_id(binary()) -> binary().
 add_network_id(SerializedTransaction) ->
