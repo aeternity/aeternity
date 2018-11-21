@@ -26,11 +26,16 @@ code([{contract, _Attribs, {con, _, Name}, Code}|Rest], Icode) ->
 code([], Icode) ->
     add_default_init_function(add_builtins(Icode)).
 
+%% Generate error on correct format.
+
+gen_error(Error) ->
+    error({code_errors, [Error]}).
+
 %% Create default init function (only if state is unit).
 add_default_init_function(Icode = #{functions := Funs, state_type := State}) ->
     case lists:keymember("init", 1, Funs) of
         true -> Icode;
-        false when State /= {tuple, []} -> error(missing_init_function);
+        false when State /= {tuple, []} -> gen_error(missing_init_function);
         false ->
             Type  = {tuple, [typerep, {tuple, []}]},
             Value = #tuple{ cpts = [type_value({tuple, []}), {tuple, []}] },
@@ -55,7 +60,7 @@ contract_to_icode([{type_def, _Attrib, {id, _, Name}, Args, Def} | Rest],
                      constructors := maps:merge(Constructors, NewConstructors) },
     Icode2 = case Name of
                 "state" when Args == [] -> Icode1#{ state_type => ast_typerep(Def, Icode) };
-                "state"                 -> error(state_type_cannot_be_parameterized);
+                "state"                 -> gen_error(state_type_cannot_be_parameterized);
                 _                       -> Icode1
              end,
     contract_to_icode(Rest, Icode2);
@@ -134,18 +139,18 @@ ast_body({qid, _, ["Chain",    "difficulty"]}, _Icode)   -> prim_difficulty;
 ast_body({qid, _, ["Chain",    "gas_limit"]}, _Icode)    -> prim_gas_limit;
 %% TODO: eta expand!
 ast_body({qid, _, ["Chain", "balance"]}, _Icode) ->
-    error({underapplied_primitive, 'Chain.balance'});
+    gen_error({underapplied_primitive, 'Chain.balance'});
 ast_body({qid, _, ["Chain", "block_hash"]}, _Icode) ->
-    error({underapplied_primitive, 'Chain.block_hash'});
+    gen_error({underapplied_primitive, 'Chain.block_hash'});
 ast_body({qid, _, ["Chain", "spend"]}, _Icode) ->
-    error({underapplied_primitive, 'Chain.spend'});
+    gen_error({underapplied_primitive, 'Chain.spend'});
 
 %% State
 ast_body({id, _, "state"}, _Icode) -> prim_state;
 ast_body(?id_app("put", [NewState], _, _), Icode) ->
     #prim_put{ state = ast_body(NewState, Icode) };
 ast_body({id, _, "put"}, _Icode) ->
-    error({underapplied_primitive, put});   %% TODO: eta
+    gen_error({underapplied_primitive, put});   %% TODO: eta
 
 %% Abort
 ast_body(?id_app("abort", [String], _, _), Icode) ->
@@ -189,13 +194,13 @@ ast_body(?qid_app(["Oracle", "get_answer"], [Oracle, Q], [_, ?query_t(_, RType)]
     prim_call(?PRIM_CALL_ORACLE_GET_ANSWER, #integer{value = 0},
               [ast_body(Oracle, Icode), ast_body(Q, Icode)], [word, word], aeso_icode:option_typerep(ast_type(RType, Icode)));
 
-ast_body({qid, _, ["Oracle", "register"]}, _Icode)     -> error({underapplied_primitive, 'Oracle.register'});
-ast_body({qid, _, ["Oracle", "query"]}, _Icode)        -> error({underapplied_primitive, 'Oracle.query'});
-ast_body({qid, _, ["Oracle", "extend"]}, _Icode)       -> error({underapplied_primitive, 'Oracle.extend'});
-ast_body({qid, _, ["Oracle", "respond"]}, _Icode)      -> error({underapplied_primitive, 'Oracle.respond'});
-ast_body({qid, _, ["Oracle", "query_fee"]}, _Icode)    -> error({underapplied_primitive, 'Oracle.query_fee'});
-ast_body({qid, _, ["Oracle", "get_answer"]}, _Icode)   -> error({underapplied_primitive, 'Oracle.get_answer'});
-ast_body({qid, _, ["Oracle", "get_question"]}, _Icode) -> error({underapplied_primitive, 'Oracle.get_question'});
+ast_body({qid, _, ["Oracle", "register"]}, _Icode)     -> gen_error({underapplied_primitive, 'Oracle.register'});
+ast_body({qid, _, ["Oracle", "query"]}, _Icode)        -> gen_error({underapplied_primitive, 'Oracle.query'});
+ast_body({qid, _, ["Oracle", "extend"]}, _Icode)       -> gen_error({underapplied_primitive, 'Oracle.extend'});
+ast_body({qid, _, ["Oracle", "respond"]}, _Icode)      -> gen_error({underapplied_primitive, 'Oracle.respond'});
+ast_body({qid, _, ["Oracle", "query_fee"]}, _Icode)    -> gen_error({underapplied_primitive, 'Oracle.query_fee'});
+ast_body({qid, _, ["Oracle", "get_answer"]}, _Icode)   -> gen_error({underapplied_primitive, 'Oracle.get_answer'});
+ast_body({qid, _, ["Oracle", "get_question"]}, _Icode) -> gen_error({underapplied_primitive, 'Oracle.get_question'});
 
 %% Name service
 ast_body(?qid_app(["AENS", "resolve"], [Name, Key], _, ?option_t(Type)), Icode) ->
@@ -203,13 +208,13 @@ ast_body(?qid_app(["AENS", "resolve"], [Name, Key], _, ?option_t(Type)), Icode) 
         true ->
             case ast_type(Type, Icode) of
                 T when T == word; T == string -> ok;
-                _ -> error({invalid_result_type, 'AENS.resolve', Type})
+                _ -> gen_error({invalid_result_type, 'AENS.resolve', Type})
             end,
             prim_call(?PRIM_CALL_AENS_RESOLVE, #integer{value = 0},
                       [ast_body(Name, Icode), ast_body(Key, Icode), ast_type_value(Type, Icode)],
                       [string, string, typerep], aeso_icode:option_typerep(ast_type(Type, Icode)));
         false ->
-            error({unresolved_result_type, 'AENS.resolve', Type})
+            gen_error({unresolved_result_type, 'AENS.resolve', Type})
     end;
 
 ast_body(?qid_app(["AENS", "preclaim"], Args, _, _), Icode) ->
@@ -236,11 +241,11 @@ ast_body(?qid_app(["AENS", "revoke"], Args, _, _), Icode) ->
               [ast_body(Addr, Icode), ast_body(NameHash, Icode), ast_body(Sign, Icode)],
               [word, word, sign_t()], {tuple, []});
 
-ast_body({qid, _, ["AENS", "resolve"]}, _Icode)  -> error({underapplied_primitive, 'AENS.resolve'});
-ast_body({qid, _, ["AENS", "preclaim"]}, _Icode) -> error({underapplied_primitive, 'AENS.preclaim'});
-ast_body({qid, _, ["AENS", "claim"]}, _Icode)    -> error({underapplied_primitive, 'AENS.claim'});
-ast_body({qid, _, ["AENS", "transfer"]}, _Icode) -> error({underapplied_primitive, 'AENS.transfer'});
-ast_body({qid, _, ["AENS", "revoke"]}, _Icode)   -> error({underapplied_primitive, 'AENS.revoke'});
+ast_body({qid, _, ["AENS", "resolve"]}, _Icode)  -> gen_error({underapplied_primitive, 'AENS.resolve'});
+ast_body({qid, _, ["AENS", "preclaim"]}, _Icode) -> gen_error({underapplied_primitive, 'AENS.preclaim'});
+ast_body({qid, _, ["AENS", "claim"]}, _Icode)    -> gen_error({underapplied_primitive, 'AENS.claim'});
+ast_body({qid, _, ["AENS", "transfer"]}, _Icode) -> gen_error({underapplied_primitive, 'AENS.transfer'});
+ast_body({qid, _, ["AENS", "revoke"]}, _Icode)   -> gen_error({underapplied_primitive, 'AENS.revoke'});
 
 %% Maps
 
@@ -278,11 +283,11 @@ ast_body(App = ?qid_app(["Map", "from_list"], [List], _, MapType), Icode) ->
 ast_body(?qid_app(["Map", "to_list"], [Map], _, _), Icode) ->
     map_tolist(Map, Icode);
 
-ast_body({qid, _, ["Map", "from_list"]}, _Icode) -> error({underapplied_primitive, 'Map.from_list'});
-%% ast_body({qid, _, ["Map", "to_list"]}, _Icode)   -> error({underapplied_primitive, 'Map.to_list'});
-ast_body({qid, _, ["Map", "lookup"]}, _Icode)    -> error({underapplied_primitive, 'Map.lookup'});
-ast_body({qid, _, ["Map", "lookup_default"]}, _Icode)    -> error({underapplied_primitive, 'Map.lookup_default'});
-ast_body({qid, _, ["Map", "member"]}, _Icode)    -> error({underapplied_primitive, 'Map.member'});
+ast_body({qid, _, ["Map", "from_list"]}, _Icode) -> gen_error({underapplied_primitive, 'Map.from_list'});
+%% ast_body({qid, _, ["Map", "to_list"]}, _Icode)   -> gen_error({underapplied_primitive, 'Map.to_list'});
+ast_body({qid, _, ["Map", "lookup"]}, _Icode)    -> gen_error({underapplied_primitive, 'Map.lookup'});
+ast_body({qid, _, ["Map", "lookup_default"]}, _Icode)    -> gen_error({underapplied_primitive, 'Map.lookup_default'});
+ast_body({qid, _, ["Map", "member"]}, _Icode)    -> gen_error({underapplied_primitive, 'Map.member'});
 
 %% -- map construction { k1 = v1, k2 = v2 }
 ast_body({typed, Ann, {map, _, KVs}, MapType}, Icode) ->
@@ -350,8 +355,9 @@ ast_body({app, _, {typed, _, {proj, _, {typed, _, Addr, {con, _, Contract}}, {id
     ArgOpts   = [ {Name, ast_body(Value, Icode)}   || {named_arg,   _, {id, _, Name}, Value} <- NamedArgs ],
     Defaults  = [ {Name, ast_body(Default, Icode)} || {named_arg_t, _, {id, _, Name}, _, Default} <- NamedT ],
     %% TODO: eta expand
-    [ error({underapplied_contract_call, string:join([Contract, FunName], ".")})
-        || length(Args) /= length(ArgsT) ],
+    length(Args) /= length(ArgsT) andalso
+        gen_error({underapplied_contract_call,
+                   string:join([Contract, FunName], ".")}),
     ArgsI = [ ast_body(Arg, Icode) || Arg <- Args ],
     ArgType = ast_typerep({tuple_t, [], ArgsT}),
     Gas    = proplists:get_value("gas",   ArgOpts ++ Defaults),
@@ -370,7 +376,8 @@ ast_body({app, _, {typed, _, {proj, _, {typed, _, Addr, {con, _, Contract}}, {id
         type_hash= #integer{value = 0}
       };
 ast_body({proj, _, {typed, _, _, {con, _, Contract}}, {id, _, FunName}}, _Icode) ->
-    error({underapplied_contract_call, string:join([Contract, FunName], ".")});
+    gen_error({underapplied_contract_call,
+               string:join([Contract, FunName], ".")});
 
 ast_body({con, _, Name}, Icode) ->
     Tag = aeso_icode:get_constructor_tag(Name, Icode),
@@ -431,7 +438,7 @@ ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}, Icode) ->
                 end
                 || {field_t,_,{id,_,Name},_} <- DefFields]};
 ast_body({typed,_,{record,Attrs,_Fields},T}, _Icode) ->
-    error({record_has_bad_type,Attrs,T});
+    gen_error({record_has_bad_type,Attrs,T});
 ast_body({proj,_,{typed,_,Record,{record_t,Fields}},{id,_,FieldName}}, Icode) ->
     [Index] = [I
               || {I,{field_t,_,{id,_,Name},_}} <-
@@ -471,17 +478,17 @@ ast_binop(Op, Ann, {typed, _, A, Type}, B, Icode)
     Monomorphic = is_monomorphic(Type),
     case ast_typerep(Type, Icode) of
         _ when not Monomorphic ->
-            error({cant_compare_polymorphic_type, Ann, Op, Type});
+            gen_error({cant_compare_polymorphic_type, Ann, Op, Type});
         word   -> #binop{op = Op, left = ast_body(A, Icode), right = ast_body(B, Icode)};
         string ->
             Neg = case Op of
                     '==' -> fun(X) -> X end;
                     '!=' -> fun(X) -> #unop{ op = '!', rand = X } end;
-                    _    -> error({cant_compare, Ann, Op, Type})
+                    _    -> gen_error({cant_compare, Ann, Op, Type})
                   end,
             Neg(#funcall{ function = #var_ref{name = {builtin, str_equal}},
                           args     = [ast_body(A, Icode), ast_body(B, Icode)] });
-        _ -> error({cant_compare, Ann, Op, Type})
+        _ -> gen_error({cant_compare, Ann, Op, Type})
     end;
 ast_binop(Op, _, A, B, Icode) ->
     #binop{op = Op, left = ast_body(A, Icode), right = ast_body(B, Icode)}.
@@ -494,9 +501,9 @@ check_monomorphic_map(Ann, Type = ?map_t(KeyType, ValType), Icode) ->
         true  ->
             case aeso_data:has_maps(ast_type(KeyType, Icode)) of
                 false -> {KeyType, ValType};
-                true  -> error({cant_use_map_as_map_keys, Ann, Type})
+                true  -> gen_error({cant_use_map_as_map_keys, Ann, Type})
             end;
-        false -> error({cant_compile_map_with_polymorphic_keys, Ann, Type})
+        false -> gen_error({cant_compile_map_with_polymorphic_keys, Ann, Type})
     end.
 
 map_empty(KeyType, ValType, Icode) ->
@@ -621,7 +628,7 @@ get_signature_arg(Args0) ->
 
 lookup_type_id(Name, Args, #{ types := Types }) ->
     case maps:get(Name, Types, undefined) of
-        undefined -> error({undefined_type, Name});
+        undefined -> gen_error({undefined_type, Name});
         TDef      -> TDef(Args)
     end.
 

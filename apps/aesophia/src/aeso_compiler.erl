@@ -240,13 +240,26 @@ pp(Code, Options, Option, PPFun) ->
 %% TODO: Tempoary parser hook below...
 
 parse_string(Text) ->
+    %% Try and return something sensible here!
     case aeso_parser:string(Text) of
+        %% Yay, it worked!
         {ok, Contract} -> Contract;
-        Err = {error, {_Line, aeso_scan,_Reason}} ->
-            error(Err);
-        Err = {error, {_Line, aeso_parser,_Reason}} ->
-            error(Err)
+        %% Parse errors.
+        {error, {Pos, parse_error, Error}} ->
+            parse_error(Pos, Error);
+        {error, {Pos, ambiguous_parse, As}} ->
+            ErrorString = io_lib:format("Ambiguous ~p", [As]),
+            parse_error(Pos, ErrorString);
+        %% Scan errors.
+        {error, {scan_error, Pos, Line}} ->
+            parse_error({Line,Pos}, "scan error");
+        {error, {scan_error_no_state, Pos, Line}} ->
+            parse_error({Line,Pos}, "scan error")
     end.
+
+parse_error({Line,Pos}, ErrorString) ->
+    Error = io_lib:format("line ~p, column ~p: ~s", [Line,Pos,ErrorString]),
+    error({parse_errors,[Error]}).
 
 read_contract(Name) ->
     {ok, Bin} = file:read_file(filename:join(contract_path(), lists:concat([Name, ".aes"]))),
