@@ -83,9 +83,10 @@ insert_store(Contract, CtTree) ->
     insert_store_nodes(Id, aect_contracts_store:write_cache(Store), CtTree1).
 
 insert_store_nodes(Prefix, Writes, CtTree) ->
-    Insert = fun (Key, Value, Tree) ->
-                     Id = <<Prefix/binary, Key/binary>>,
-                     aeu_mtrees:insert(Id, Value, Tree)
+    Insert = fun(<<>>, _, Tree) -> Tree;    %% Ignore the empty key
+                (Key, Value, Tree) ->
+                    Id = <<Prefix/binary, Key/binary>>,
+                    aeu_mtrees:insert(Id, Value, Tree)
              end,
     maps:fold(Insert, CtTree, Writes).
 
@@ -105,7 +106,8 @@ enter_store(Contract, CtTree) ->
     enter_store_nodes(Id, aect_contracts_store:write_cache(Store), CtTree).
 
 enter_store_nodes(Prefix, Writes, CtTree) ->
-    Insert = fun (Key, Value, Tree) ->
+    Insert = fun(<<>>, _, Tree) -> Tree; %% Ignore the empty key
+                (Key, Value, Tree) ->
                      Id = <<Prefix/binary, Key/binary>>,
                      aeu_mtrees:enter(Id, Value, Tree)
              end,
