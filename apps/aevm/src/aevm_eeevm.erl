@@ -133,7 +133,7 @@ loop(CP, StateIn) ->
             State  = trace(CP, StateIn),
             State0 = spend_op_gas(OP, State),
             case OP of
-                %% =s: Stop and Arithmetic Operations
+                %% 0s: Stop and Arithmetic Operations
                 ?STOP ->
                     %% 0x00 STOP
                     %% Halts execution.
