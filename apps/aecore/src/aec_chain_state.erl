@@ -878,8 +878,11 @@ grant_fees(Node, Trees, Delay, FraudStatus, State) ->
     KeyFees  = db_get_fees(hash(KeyNode2)),
     Beneficiary1 = node_beneficiary(KeyNode1),
     Beneficiary2 = node_beneficiary(KeyNode2),
+    %% We give the mining reward for the closing block of the generation.
     MineReward = aec_governance:block_mine_reward(node_height(KeyNode2)),
-    FraudReward = aec_governance:fraud_report_reward(),
+    %% Fraud rewards is given for the opening block of the generation
+    %% since this is the reward that was withheld.
+    FraudReward = aec_governance:fraud_report_reward(node_height(KeyNode1)),
     BeneficiaryReward1 = KeyFees * 4 div 10,
     BeneficiaryReward2 = KeyFees - BeneficiaryReward1 + MineReward,
     case {FraudStatus1, FraudStatus2} of

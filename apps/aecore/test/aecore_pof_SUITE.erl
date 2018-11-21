@@ -217,9 +217,10 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
     Reward1 = lists:sum([aec_governance:block_mine_reward(X)
                          || X <- lists:seq(1, N1KeyBlocksCount),
                             X =/= FraudHeight]),
+    FraudReward = aec_governance:fraud_report_reward(FraudHeight),
     Reward2 = lists:sum([aec_governance:block_mine_reward(X)
                          || X <- lists:seq(N1KeyBlocksCount + 1, N2Height - Delay),
-                            X =/= FraudHeight]) + aec_governance:fraud_report_reward(),
+                            X =/= FraudHeight]) + FraudReward,
 
     case Bal1 >= Reward1 andalso Bal1 < Reward1 + 100000 of %% should get some fees
         true -> ok;

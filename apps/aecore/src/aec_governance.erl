@@ -20,7 +20,7 @@
          name_registrars/0,
          micro_block_cycle/0,
          accepted_future_block_time_shift/0,
-         fraud_report_reward/0,
+         fraud_report_reward/1,
          state_gas_per_block/1,
          primop_base_gas/1,
          add_network_id/1,
@@ -53,7 +53,7 @@
 -define(TX_BASE_GAS, 15000).
 %% Gas for 1 byte of a serialized tx.
 -define(BYTE_GAS, 20).
--define(POF_REWARD       , 500000000000000000). %% (?BLOCK_MINE_REWARD / 100) * 5
+-define(POF_REWARD_DIVIDER, 20). %% 5% of the coinbase reward
 -define(BENEFICIARY_REWARD_DELAY, 180). %% in key blocks / generations
 -define(MICRO_BLOCK_CYCLE, 3000). %% in msecs
 
@@ -209,8 +209,11 @@ name_claim_preclaim_delta() ->
 name_registrars() ->
     [<<"test">>].
 
-fraud_report_reward() ->
-    ?POF_REWARD.
+fraud_report_reward(Height) ->
+    Coinbase = block_mine_reward(Height),
+    %% Assert that the coinbase is always even dividable.
+    0 = (Coinbase rem ?POF_REWARD_DIVIDER),
+    Coinbase div ?POF_REWARD_DIVIDER.
 
 -spec add_network_id(binary()) -> binary().
 add_network_id(SerializedTransaction) ->
