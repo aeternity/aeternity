@@ -1183,11 +1183,7 @@ loop(CP, StateIn) ->
                     %%                       + 0 otherwise
                     {Us0, State1} = pop(State0),
                     State2 = aevm_eeevm_state:set_selfdestruct(Us0, State1),
-                    spend_mem_gas(State, State2);
-                _ ->
-                    error({opcode_not_implemented,
-                      lists:flatten(
-                        io_lib:format("~2.16.0B",[OP]))})
+                    spend_mem_gas(State, State2)
                 end;
             true -> aevm_eeevm_state:set_cp(CP, StateIn)
     end.
