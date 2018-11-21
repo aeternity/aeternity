@@ -1147,7 +1147,7 @@ loop(CP, StateIn) ->
                 16#f7 -> eval_error({illegal_instruction, OP}, State0);
                 16#f8 -> eval_error({illegal_instruction, OP}, State0);
                 16#f9 -> eval_error({illegal_instruction, OP}, State0);
-                16#fa -> eval_error({illegal_instruction, OP}, State0);
+                ?STATICCALL -> eval_error({illegal_instruction, OP}, State0);
                 16#fb -> eval_error({illegal_instruction, OP}, State0);
                 16#fc -> eval_error({illegal_instruction, OP}, State0);
                 ?REVERT ->
