@@ -341,13 +341,13 @@ create_contract_init_error(_Cfg) ->
     ok.
 
 create_contract_init_error_the_invalid_instruction(_Cfg) ->
-    create_contract_init_error_illegal_instruction_(16#fe, <<"">>).
+    create_contract_init_error_illegal_instruction_(16#fe, <<"illegal_instruction_FE">>).
 
 create_contract_init_error_illegal_instruction_one_hex_digit(_Cfg) ->
-    create_contract_init_error_illegal_instruction_(16#0c, <<"">>).
+    create_contract_init_error_illegal_instruction_(16#0c, <<"illegal_instruction_0C">>).
 
 create_contract_init_error_illegal_instruction_two_hex_digits(_Cfg) ->
-    create_contract_init_error_illegal_instruction_(16#fc, <<"">>).
+    create_contract_init_error_illegal_instruction_(16#fc, <<"illegal_instruction_FC">>).
 
 create_contract_init_error_illegal_instruction_(OP, ErrReason) when is_binary(ErrReason) ->
     state(aect_test_utils:new_state()),

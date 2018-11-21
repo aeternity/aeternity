@@ -131,17 +131,18 @@ loop(CP, StateIn) ->
         false ->
             OP     = code_get_op(CP, Code),
             State  = trace(CP, StateIn),
-            State0 = spend_op_gas(OP, State),
             case OP of
                 %% 0s: Stop and Arithmetic Operations
                 ?STOP ->
                     %% 0x00 STOP
                     %% Halts execution.
+                    State0 = spend_op_gas(OP, State),
                     aevm_eeevm_state:set_cp(CP, State0);
                 ?ADD ->
                     %% 0x01 ADD δ=2 α=1
                     %% Addition operation.
                     %% µs'[0] ≡ µs[0] + µs[1]
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     Val = add(Us0, Us1),
@@ -151,6 +152,7 @@ loop(CP, StateIn) ->
                     %% 0x02 MUL δ=2 α=1
                     %% Multiplication operation.
                     %% µs'[0] ≡ µs[0] * µs[1]
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     Val = mul(Us0, Us1),
@@ -160,6 +162,7 @@ loop(CP, StateIn) ->
                     %% 0x03 SUB δ=2 α=1
                     %% Subtraction operation.
                     %% µ's[0] ≡ µs[0] − µs[1]
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     Val = sub(Us0, Us1),
@@ -170,6 +173,7 @@ loop(CP, StateIn) ->
                     %% Integer division operation.
                     %% µ's[0] ≡ 0 if µs[1] = 0
                     %%          µs[0] / µs[1] otherwise
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     Val = idiv(Us0, Us1),
@@ -184,6 +188,7 @@ loop(CP, StateIn) ->
                     %% Where all values are treated as two’s complement
                     %% signed 256-bit integers.
                     %% Note the overflow semantic when −2^255 is negated.
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     Val = sdiv(Us0, Us1),
@@ -194,6 +199,7 @@ loop(CP, StateIn) ->
                     %% Modulo remainder operation.
                     %% µ's[0] ≡  0 if µs[1] = 0
                     %%           µs[0] mod µs[1] otherwise
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     Val = mod(Us0, Us1),
@@ -206,6 +212,7 @@ loop(CP, StateIn) ->
                     %%           sgn(µs[0])(|µs[0]| mod |µs[1]|) otherwise
                     %% Where all values are treated as
                     %% two’s complement signed 256-bit integers.
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     Val = smod(Us0, Us1),
@@ -218,6 +225,7 @@ loop(CP, StateIn) ->
                     %%          (µs[0] + µs[1]) mod µs[2] otherwise
                     %% All intermediate calculations of this operation
                     %% are not subject to the 2^256 modulo.
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     {Us2, State3} = pop(State2),
@@ -231,6 +239,7 @@ loop(CP, StateIn) ->
                     %%          µs[0] × µs[1]) mod µs[2] otherwise
                     %% All intermediate calculations of this operation are
                     %% not subject to the 2^256 modulo
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     {Us2, State3} = pop(State2),
@@ -241,6 +250,7 @@ loop(CP, StateIn) ->
                     %% 0x0a EXP δ=2 α=1
                     %% Exponential operation.
                     %% µ's[0] ≡ µs[0] ^ µs[1]
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     Val = exp(Us0, Us1),
@@ -253,6 +263,7 @@ loop(CP, StateIn) ->
                     %%                           where t = 256 − 8*(µs[0] + 1)
                     %%                           µs[1]i otherwise
                     %% µs[x]i gives the ith bit (counting from zero) of µs[x]
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     Val = signextend(Us0, Us1),
@@ -269,6 +280,7 @@ loop(CP, StateIn) ->
                     %% Less-than comparison.
                     %% µ's[0] ≡ 1 if µs[0] < µs[1]
                     %%          0 otherwise
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     Val = if (Us0 < Us1) -> 1;
@@ -281,6 +293,7 @@ loop(CP, StateIn) ->
                     %% Greater-than comparison.
                     %% µ's[0] ≡ 1 if µs[0] > µs[1]
                     %%          0 otherwise
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     Val = if (Us0 > Us1) -> 1;
@@ -295,6 +308,7 @@ loop(CP, StateIn) ->
                     %%          0 otherwise
                     %% Where all values are treated as
                     %% two’s complement signed 256-bit integers.
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     SUs0 = signed(Us0),
@@ -311,6 +325,7 @@ loop(CP, StateIn) ->
                     %%          0 otherwise
                     %% Where all values are treated as
                     %% two’s complement signed 256-bit integers.
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     SUs0 = signed(Us0),
@@ -325,6 +340,7 @@ loop(CP, StateIn) ->
                     %% Equality comparison.
                     %% µ's[0] ≡ 1 if µs[0] = µs[1]
                     %%          0 otherwise
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     Val = if (Us0 == Us1) -> 1;
@@ -337,6 +353,7 @@ loop(CP, StateIn) ->
                     %% Simple not operator.
                     %% µ's[0] ≡ 1 if µs[0] = 0
                     %%          0 otherwise
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     Val = if Us0 =:= 0 -> 1; true -> 0 end,
                     State2 = push(Val, State1),
@@ -345,6 +362,7 @@ loop(CP, StateIn) ->
                     %% 0x16 AND δ=2 α=1
                     %% Bitwise AND operation.
                     %% ∀i ∈ [0..255] : µ's[0]i ≡ µs[0]i ∧ µs[1]i
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     Val = Us0 band Us1,
@@ -354,6 +372,7 @@ loop(CP, StateIn) ->
                     %% 0x17 OR δ=2 α=1
                     %% Bitwise OR operation.
                     %% ∀i ∈ [0..255] : µ's[0]i ≡ µs[0]i ∨ µs[1]i
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     Val = Us0 bor Us1,
@@ -363,6 +382,7 @@ loop(CP, StateIn) ->
                     %% 0x18 XOR δ=2 α=1
                     %% Bitwise XOR operation.
                     %% ∀i ∈ [0..255] : µ's[0]i ≡ µs[0]i ∨ µs[1]i
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     Val = Us0 bxor Us1,
@@ -373,6 +393,7 @@ loop(CP, StateIn) ->
                     %% Bitwise NOT operation.
                     %% ∀i ∈ [0..255] : µ's[0]i ≡ 1 if µs[0]i = 0
                     %%                           0 otherwise
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     Val = (bnot Us0) band ?MASK256,
                     State2 = push(Val, State1),
@@ -386,6 +407,7 @@ loop(CP, StateIn) ->
                     %% For Nth byte, we count from the left
                     %% (i.e. N=0 would be the most significant
                     %% in big endian)
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     Val = byte(Us0, Us1),
@@ -402,6 +424,7 @@ loop(CP, StateIn) ->
                     %% 0x20 SHA3  δ=2 α=1 Compute Keccak-256 hash.
                     %% µ's[0] ≡ Keccak(µm[µs[0] . . .(µs[0] + µs[1] − 1)])
                     %% µi ≡ M(µi, µs[0], µs[1])
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     {Arg, State3} = aevm_eeevm_memory:get_area(Us0, Us1, State2),
@@ -430,6 +453,7 @@ loop(CP, StateIn) ->
                     %% 0x30 Address δ=0 α=1
                     %% Get address of currently executing account.
                     %% µ's[0] ≡ Ia
+                    State0 = spend_op_gas(OP, State),
                     Arg = aevm_eeevm_state:address(State0),
                     State1 = push(Arg, State0),
                     next_instruction(CP, State, State1);
@@ -438,6 +462,7 @@ loop(CP, StateIn) ->
                     %%  Get balance of the given account.
                     %% µ's[0] ≡ σ[µs[0]]b if σ[µs[0] mod 2^160] =/= ∅
                     %%          0  otherwise
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     Arg = aevm_eeevm_state:accountbalance(Us0, State1),
                     State2 = push(Arg, State1),
@@ -449,6 +474,7 @@ loop(CP, StateIn) ->
                     %% This is the sender of original transaction;
                     %% it is never an account with non-empty
                     %% associated code.
+                    State0 = spend_op_gas(OP, State),
                     Arg = aevm_eeevm_state:origin(State0),
                     State1 = push(Arg, State0),
                     next_instruction(CP, State, State1);
@@ -458,6 +484,7 @@ loop(CP, StateIn) ->
                     %% µ's[0] ≡ Is
                     %% This is the address of the account
                     %% that is directly responsible for this execution.
+                    State0 = spend_op_gas(OP, State),
                     Arg = aevm_eeevm_state:caller(State0),
                     State1 = push(Arg, State0),
                     next_instruction(CP, State, State1);
@@ -466,6 +493,7 @@ loop(CP, StateIn) ->
                     %% Get deposited value by the instruction/transaction
                     %% responsible for this execution.
                     %% µ's[0] ≡ Iv
+                    State0 = spend_op_gas(OP, State),
                     Val = aevm_eeevm_state:value(State0),
                     State1 = push(Val, State0),
                     next_instruction(CP, State, State1);
@@ -475,6 +503,7 @@ loop(CP, StateIn) ->
                     %% µ's[0] ≡ Id[µs[0] . . .(µs[0] + 31)] with Id[x] = 0 if x >= |Id|
                     %% This pertains to the input data passed with the message
                     %% call instruction or transaction.
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     Arg = data_get_val(Us0, State1),
                     State2 = push(Arg, State1),
@@ -485,6 +514,7 @@ loop(CP, StateIn) ->
                     %% µ's[0] ≡ |Id|
                     %% This pertains to the input data passed with the
                     %% message call instruction or transaction.
+                    State0 = spend_op_gas(OP, State),
                     Val = byte_size(aevm_eeevm_state:data(State0)),
                     State1 = push(Val, State0),
                     next_instruction(CP, State, State1);
@@ -499,6 +529,7 @@ loop(CP, StateIn) ->
                     %% µ'i ≡ M(µi, µs[0], µs[2])
                     %% This pertains to the input data passed with
                     %% the message call instruction or transaction.
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     {Us2, State3} = pop(State2),
@@ -509,6 +540,7 @@ loop(CP, StateIn) ->
                     %% 0x38 CODESIZE  δ=0 α=1
                     %% Get size of code running in current environment.
                     %% µ's[0] ≡ |Ib|
+                    State0 = spend_op_gas(OP, State),
                     State1 = push(byte_size(Code), State0),
                     next_instruction(CP, State, State1);
                 ?CODECOPY ->
@@ -520,6 +552,7 @@ loop(CP, StateIn) ->
                     %% µ'i ≡ M(µi, µs[0], µs[2])
                     %% The additions in µs[1] + i are not subject to
                     %% the 2^256 modulo.
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     {Us2, State3} = pop(State2),
@@ -532,6 +565,7 @@ loop(CP, StateIn) ->
                     %% µ's[0] ≡ Ip
                     %%  This is gas price specified by the
                     %% originating transaction.
+                    State0 = spend_op_gas(OP, State),
                     Arg = aevm_eeevm_state:gasprice(State0),
                     State1 = push(Arg, State0),
                     next_instruction(CP, State, State1);
@@ -539,6 +573,7 @@ loop(CP, StateIn) ->
                     %% 0x3b EXTCODESIZE δ=1 α=1
                     %% Get size of an account’s code.
                     %% µ's[0] ≡ |σ[µs[0] mod 2^160] c|
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     Val = aevm_eeevm_state:extcodesize(Us0, State1),
                     State2 = push(Val, State1),
@@ -553,6 +588,7 @@ loop(CP, StateIn) ->
                     %% µ'i ≡ M(µi, µs[1], µs[3])
                     %% The additions in µs[2] + i are not
                     %% subject to the 2^256 modulo.
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     {Us2, State3} = pop(State2),
@@ -565,6 +601,7 @@ loop(CP, StateIn) ->
                     %% Get size of output data from the previous call from the current
                     %% environment.
                     %% µ's[0] ≡ |µo|
+                    State0 = spend_op_gas(OP, State),
                     Val = byte_size(aevm_eeevm_state:return_data(State0)),
                     State1 = push(Val, State0),
                     next_instruction(CP, State, State1);
@@ -575,6 +612,7 @@ loop(CP, StateIn) ->
                     %%                                   0                otherwise
                     %% The additions in µs[1] + i are not subject to the 2^256 modulo.
                     %% µ'i ≡ M(µi, µs[0], µs[2])
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0), %% memOffset
                     {Us1, State2} = pop(State1), %% dataOffset
                     {Us2, State3} = pop(State2), %% length
@@ -582,7 +620,7 @@ loop(CP, StateIn) ->
                     State4 = aevm_eeevm_memory:write_area(Us0, ReturnData, State3),
                     next_instruction(CP, State, State4);
                 %% No opcode 0x3f
-                16#3f -> eval_error({illegal_instruction, OP}, State0); %% EXTCODEHASH
+                16#3f -> eval_error({illegal_instruction, OP}, State); %% EXTCODEHASH
                 %% 40s Block Information
                 ?BLOCKHASH ->
                     %% 0x40 BLOCKHASH δ=1 α=1
@@ -600,6 +638,7 @@ loop(CP, StateIn) ->
                     %% and we assert the header H can be determined as
                     %% its hash is the parent hash
                     %% in the block following it.
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     Hash = aevm_eeevm_state:blockhash(Us0, State1),
                     State2 = push(Hash, State1),
@@ -608,6 +647,7 @@ loop(CP, StateIn) ->
                     %% 0x41 COINBASE δ=0 α=1
                     %% Get the block’s beneficiary address.
                     %% µ's[0] ≡ IHc
+                    State0 = spend_op_gas(OP, State),
                     Arg = aevm_eeevm_state:coinbase(State0),
                     State1 = push(Arg, State0),
                     next_instruction(CP, State, State1);
@@ -615,6 +655,7 @@ loop(CP, StateIn) ->
                     %% 0x42 TIMESTAMP δ=0 α=1
                     %% Get the block’s timestamp.
                     %% µ's[0] ≡ IHs
+                    State0 = spend_op_gas(OP, State),
                     Arg = aevm_eeevm_state:timestamp(State0),
                     State1 = push(Arg, State0),
                     next_instruction(CP, State, State1);
@@ -622,6 +663,7 @@ loop(CP, StateIn) ->
                     %% 0x43 NUMBER  δ=0 α=1
                     %% Get the block’s number.
                     %% µ's[0] ≡ IHi
+                    State0 = spend_op_gas(OP, State),
                     Arg = aevm_eeevm_state:number(State0),
                     State1 = push(Arg, State0),
                     next_instruction(CP, State, State1);
@@ -629,6 +671,7 @@ loop(CP, StateIn) ->
                     %% 0x44 DIFFICULTY δ=0 α=1
                     %% Get the block’s difficulty.
                     %% µ's[0] ≡ IHd
+                    State0 = spend_op_gas(OP, State),
                     Arg = aevm_eeevm_state:difficulty(State0),
                     State1 = push(Arg, State0),
                     next_instruction(CP, State, State1);
@@ -636,24 +679,26 @@ loop(CP, StateIn) ->
                     %% 0x45 GASLIMIT  δ=0 α=1
                     %% Get the block’s number.
                     %% µ's[0] ≡ IHl
+                    State0 = spend_op_gas(OP, State),
                     Arg = aevm_eeevm_state:gaslimit(State0),
                     State1 = push(Arg, State0),
                     next_instruction(CP, State, State1);
                 %% No opcode 0x46-0x4f
-                16#46 -> eval_error({illegal_instruction, OP}, State0);
-                16#47 -> eval_error({illegal_instruction, OP}, State0);
-                16#48 -> eval_error({illegal_instruction, OP}, State0);
-                16#49 -> eval_error({illegal_instruction, OP}, State0);
-                16#4a -> eval_error({illegal_instruction, OP}, State0);
-                16#4b -> eval_error({illegal_instruction, OP}, State0);
-                16#4c -> eval_error({illegal_instruction, OP}, State0);
-                16#4d -> eval_error({illegal_instruction, OP}, State0);
-                16#4e -> eval_error({illegal_instruction, OP}, State0);
-                16#4f -> eval_error({illegal_instruction, OP}, State0);
+                16#46 -> eval_error({illegal_instruction, OP}, State);
+                16#47 -> eval_error({illegal_instruction, OP}, State);
+                16#48 -> eval_error({illegal_instruction, OP}, State);
+                16#49 -> eval_error({illegal_instruction, OP}, State);
+                16#4a -> eval_error({illegal_instruction, OP}, State);
+                16#4b -> eval_error({illegal_instruction, OP}, State);
+                16#4c -> eval_error({illegal_instruction, OP}, State);
+                16#4d -> eval_error({illegal_instruction, OP}, State);
+                16#4e -> eval_error({illegal_instruction, OP}, State);
+                16#4f -> eval_error({illegal_instruction, OP}, State);
                 %% 50s: Stack, Memory, Storage and Flow Operations
                 ?POP ->
                     %% 0x50 POP δ=1 α=0
                     %% Remove item from stack.
+                    State0 = spend_op_gas(OP, State),
                     {_, State1} = pop(State0),
                     next_instruction(CP, State, State1);
                 ?MLOAD ->
@@ -663,6 +708,7 @@ loop(CP, StateIn) ->
                     %% µ'i ≡ max(µi, [(µs[0] + 32) ÷ 32])
                     %% The addition in the calculation of µ'i
                     %% is not subject to the 2^256 modulo.
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Val, State2} = aevm_eeevm_memory:load(Us0, State1),
                     State3 = push(Val, State2),
@@ -674,6 +720,7 @@ loop(CP, StateIn) ->
                     %% µ'i ≡ max(µi, [(µs[0] + 32) ÷ 32])
                     %% The addition in the calculation of µ'i
                     %% is not subject to the 2^256 modulo.
+                    State0 = spend_op_gas(OP, State),
                     {Address, State1} = pop(State0),
                     {Value, State2} = pop(State1),
                     State3 = aevm_eeevm_memory:store(Address, Value, State2),
@@ -685,6 +732,7 @@ loop(CP, StateIn) ->
                     %% µ'i ≡ max(µi, [(µs[0] + 32) ÷ 32])
                     %% The addition in the calculation of µ'i
                     %% is not subject to the 2^256 modulo.
+                    State0 = spend_op_gas(OP, State),
                     {Address, State1} = pop(State0),
                     {Value, State2} = pop(State1),
                     State3 = aevm_eeevm_memory:store8(Address, Value, State2),
@@ -693,6 +741,7 @@ loop(CP, StateIn) ->
                     %% 0x54 SLOAD δ=1 α=1
                     %% Load word from storage.
                     %% µ's[0] ≡ σ[Ia]s[µs[0]]
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     Val = aevm_eeevm_store:load(Us0, State1),
                     State2 = push(Val, State1),
@@ -707,6 +756,7 @@ loop(CP, StateIn) ->
                     %% A'r ≡ Ar + Rsclear if µs[1] = 0
                     %%                      ∧ σ[Ia]s[µs[0]] =/= 0
                     %%       0 otherwise
+                    State0 = spend_op_gas(OP, State),
                     {Address, State1} = pop(State0),
                     {Value, State2} = pop(State1),
                     State3 = aevm_eeevm_store:store(Address, Value, State2),
@@ -716,6 +766,7 @@ loop(CP, StateIn) ->
                     %% Alter the program counter.
                     %% JJUMP(µ) ≡ µs[0]
                     %% This has the effect of writing said value to µpc.
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     JumpDests =  aevm_eeevm_state:jumpdests(State1),
                     case maps:get(Us0, JumpDests, false) of
@@ -728,6 +779,7 @@ loop(CP, StateIn) ->
                     %% JJUMPI(µ) ≡ µs[0] if µs[1] =/= 0
                     %%             µpc + 1 otherwise
                     %% This has the effect of writing said value to µpc.
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     if Us1 =/= 0 ->
@@ -746,12 +798,14 @@ loop(CP, StateIn) ->
                     %% Get the value of the program counter prior to
                     %% the increment corresponding to this instruction.
                     %% µ's[0] ≡ µpc
+                    State0 = spend_op_gas(OP, State),
                     State1 = push(CP, State0),
                     next_instruction(CP, State, State1);
                 ?MSIZE ->
                     %% 0x59 PC δ=0 α=1
                     %% Get the size of active memory in bytes.
                     %% µ's[0] ≡ 32*µi
+                    State0 = spend_op_gas(OP, State),
                     Val =  32 * aevm_eeevm_memory:size_in_words(State),
                     State1 = push(Val, State0),
                     next_instruction(CP, State, State1);
@@ -761,6 +815,7 @@ loop(CP, StateIn) ->
                     %% including the corresponding reduction
                     %% for the cost of this instruction.
                     %% µ's[0] ≡ µg
+                    State0 = spend_op_gas(OP, State),
                     Val = aevm_eeevm_state:gas(State0),
                     State1 = push(Val, State0),
                     next_instruction(CP, State, State1);
@@ -769,11 +824,12 @@ loop(CP, StateIn) ->
                     %% Mark a valid destination for jumps.
                     %% This operation has no effect on machine
                     %% state during execution.
+                    State0 = spend_op_gas(OP, State),
                     next_instruction(CP, State, State0);
-                16#5c -> eval_error({illegal_instruction, OP}, State0);
-                16#5d -> eval_error({illegal_instruction, OP}, State0);
-                16#5e -> eval_error({illegal_instruction, OP}, State0);
-                16#5f -> eval_error({illegal_instruction, OP}, State0);
+                16#5c -> eval_error({illegal_instruction, OP}, State);
+                16#5d -> eval_error({illegal_instruction, OP}, State);
+                16#5e -> eval_error({illegal_instruction, OP}, State);
+                16#5f -> eval_error({illegal_instruction, OP}, State);
                 %% 60s & 70s Push Operations
                 ?PUSH1 ->
                     %% 0x60 PUSH1 δ=0 α=1
@@ -787,168 +843,232 @@ loop(CP, StateIn) ->
                     %% default to zero if they extend past the limits.
                     %% The byte is right-aligned (takes the lowest
                     %% significant place in big endian).
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, 1, State, State0);
                 ?PUSH2 ->
                     %% 0x61 PUSH1 δ=0 α=1
                     %% Place 2 byte item on stack.
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, 2, State, State0);
                 ?PUSH3 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, 3, State, State0);
                 ?PUSH4 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, 4, State, State0);
                 ?PUSH5 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH6 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH7 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH8 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH9 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH10 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH11 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH12 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH13 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH14 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH15 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH16 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH17 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH18 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH19 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH20 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH21 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH22 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH23 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH24 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH25 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH26 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH27 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH28 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH29 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH30 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH31 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?PUSH32 ->
+                    State0 = spend_op_gas(OP, State),
                     push_n_bytes_from_cp(CP, OP-?PUSH1+1, State, State0);
                 ?DUP1 ->
                     %% 0x80 DUP1  δ=1 α=2
                     %% Duplicate 1nd stack item.
                     %% µ's[0] ≡ µs[0]
+                    State0 = spend_op_gas(OP, State),
                     State1 = dup(OP -?DUP1+1,State0),
                     next_instruction(CP, State, State1);
                 ?DUP2 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = dup(OP -?DUP1+1,State0),
                     next_instruction(CP, State, State1);
                 ?DUP3 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = dup(OP -?DUP1+1,State0),
                     next_instruction(CP, State, State1);
                 ?DUP4 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = dup(OP -?DUP1+1,State0),
                     next_instruction(CP, State, State1);
                 ?DUP5 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = dup(OP -?DUP1+1,State0),
                     next_instruction(CP, State, State1);
                 ?DUP6 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = dup(OP -?DUP1+1,State0),
                     next_instruction(CP, State, State1);
                 ?DUP7 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = dup(OP -?DUP1+1,State0),
                     next_instruction(CP, State, State1);
                 ?DUP8 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = dup(OP -?DUP1+1,State0),
                     next_instruction(CP, State, State1);
                 ?DUP9 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = dup(OP -?DUP1+1,State0),
                     next_instruction(CP, State, State1);
                 ?DUP10 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = dup(OP -?DUP1+1,State0),
                     next_instruction(CP, State, State1);
                 ?DUP11 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = dup(OP -?DUP1+1,State0),
                     next_instruction(CP, State, State1);
                 ?DUP12 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = dup(OP -?DUP1+1,State0),
                     next_instruction(CP, State, State1);
                 ?DUP13 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = dup(OP -?DUP1+1,State0),
                     next_instruction(CP, State, State1);
                 ?DUP14 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = dup(OP -?DUP1+1,State0),
                     next_instruction(CP, State, State1);
                 ?DUP15 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = dup(OP -?DUP1+1,State0),
                     next_instruction(CP, State, State1);
                 ?DUP16 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = dup(OP -?DUP1+1,State0),
                     next_instruction(CP, State, State1);
                 ?SWAP1 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = swap(OP-?SWAP1+1, State0),
                     next_instruction(CP, State, State1);
                 ?SWAP2 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = swap(OP-?SWAP1+1, State0),
                     next_instruction(CP, State, State1);
                 ?SWAP3 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = swap(OP-?SWAP1+1, State0),
                     next_instruction(CP, State, State1);
                 ?SWAP4 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = swap(OP-?SWAP1+1, State0),
                     next_instruction(CP, State, State1);
                 ?SWAP5 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = swap(OP-?SWAP1+1, State0),
                     next_instruction(CP, State, State1);
                 ?SWAP6 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = swap(OP-?SWAP1+1, State0),
                     next_instruction(CP, State, State1);
                 ?SWAP7 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = swap(OP-?SWAP1+1, State0),
                     next_instruction(CP, State, State1);
                 ?SWAP8 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = swap(OP-?SWAP1+1, State0),
                     next_instruction(CP, State, State1);
                 ?SWAP9 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = swap(OP-?SWAP1+1, State0),
                     next_instruction(CP, State, State1);
                 ?SWAP10 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = swap(OP-?SWAP1+1, State0),
                     next_instruction(CP, State, State1);
                 ?SWAP11 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = swap(OP-?SWAP1+1, State0),
                     next_instruction(CP, State, State1);
                 ?SWAP12 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = swap(OP-?SWAP1+1, State0),
                     next_instruction(CP, State, State1);
                 ?SWAP13 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = swap(OP-?SWAP1+1, State0),
                     next_instruction(CP, State, State1);
                 ?SWAP14 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = swap(OP-?SWAP1+1, State0),
                     next_instruction(CP, State, State1);
                 ?SWAP15 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = swap(OP-?SWAP1+1, State0),
                     next_instruction(CP, State, State1);
                 ?SWAP16 ->
+                    State0 = spend_op_gas(OP, State),
                     State1 = swap(OP-?SWAP1+1, State0),
                     next_instruction(CP, State, State1);
                 %% For all logging operations,
@@ -962,6 +1082,7 @@ loop(CP, StateIn) ->
                     %% 0xa0 LOG0 δ=2 α=0
                     %% Append log record with no topics.
                     %% t ≡ ()
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     State3 = log({}, Us0, Us1, State2),
@@ -970,6 +1091,7 @@ loop(CP, StateIn) ->
                     %% 0xa1 LOG1 δ=3 α=0
                     %% Append log record with one topic.
                     %% t ≡ (µs[2])
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     {Us2, State3} = pop(State2),
@@ -979,6 +1101,7 @@ loop(CP, StateIn) ->
                     %% 0xa2 LOG2 δ=4 α=0
                     %% Append log record with one topic.
                     %% t ≡ (µs[2],(µs[3])
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     {Us2, State3} = pop(State2),
@@ -989,6 +1112,7 @@ loop(CP, StateIn) ->
                     %% 0xa3 LOG3 δ=4 α=0
                     %% Append log record with one topic.
                     %% t ≡ (µs[2], µs[3], µs[4])
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     {Us2, State3} = pop(State2),
@@ -1000,6 +1124,7 @@ loop(CP, StateIn) ->
                     %% 0xa4 LOG4 δ=6 α=0
                     %% Append log record with one topic.
                     %% t ≡ (µs[2], µs[3], µs[4], µs[5])
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     {Us2, State3} = pop(State2),
@@ -1010,7 +1135,7 @@ loop(CP, StateIn) ->
                     next_instruction(CP, State, State7);
                 OP when OP >= 16#a5,
                     OP =< 16#ef  ->
-                    eval_error({illegal_instruction, OP}, State0);
+                    eval_error({illegal_instruction, OP}, State);
                 %% F0s: System operations
                 ?CREATE->
                     %% 0xf0 CREATE δ=3 α=1
@@ -1035,6 +1160,7 @@ loop(CP, StateIn) ->
                     %%             otherwise.
                     %% µ'i ≡ M(µi, µs[1], µs[2])
                     %% Thus the operand order is: value, input offset, input size.
+                    State0 = spend_op_gas(OP, State),
                     {Value, State1} = pop(State0),
                     {From, State2} = pop(State1),
                     {Size, State3} = pop(State2),
@@ -1087,6 +1213,7 @@ loop(CP, StateIn) ->
                     %% CNEW(σ, µ) ≡ Gnewaccount if σ[µs[1] mod 2^160] = ∅
                     %%              0 otherwise
                     %%
+                    State0 = spend_op_gas(OP, State),
                     {Res, State1} = recursive_call(State0, OP),
                     State2 = push(Res, State1),
                     next_instruction(CP, State, State2);
@@ -1104,6 +1231,7 @@ loop(CP, StateIn) ->
                     %% present address Ia. This means that the recipient is
                     %% in fact the same account as at present, simply that
                     %% the code is overwritten.
+                    State0 = spend_op_gas(OP, State),
                     {Res, State1} = recursive_call(State0, OP),
                     State2 = push(Res, State1),
                     next_instruction(CP, State, State2);
@@ -1114,6 +1242,7 @@ loop(CP, StateIn) ->
                     %% This has the effect of halting the execution
                     %% at this point with output defined.
                     %% µ'i ≡ M(µi, µs[0], µs[1]) TODO: This
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     {State3, GasUsed} = aevm_eeevm_state:do_return(Us0, Us1, State2),
@@ -1139,17 +1268,18 @@ loop(CP, StateIn) ->
                     %% This means that the recipient is in fact the same account as at
                     %% present, simply that the code is overwritten and the context is
                     %% almost entirely identical.
+                    State0 = spend_op_gas(OP, State),
                     {Res, State1} = recursive_call(State0, OP),
                     State2 = push(Res, State1),
                     next_instruction(CP, State, State2);
-                16#f5 -> eval_error({illegal_instruction, OP}, State0); %% CREATE2
-                16#f6 -> eval_error({illegal_instruction, OP}, State0);
-                16#f7 -> eval_error({illegal_instruction, OP}, State0);
-                16#f8 -> eval_error({illegal_instruction, OP}, State0);
-                16#f9 -> eval_error({illegal_instruction, OP}, State0);
-                ?STATICCALL -> eval_error({illegal_instruction, OP}, State0);
-                16#fb -> eval_error({illegal_instruction, OP}, State0);
-                16#fc -> eval_error({illegal_instruction, OP}, State0);
+                16#f5 -> eval_error({illegal_instruction, OP}, State); %% CREATE2
+                16#f6 -> eval_error({illegal_instruction, OP}, State);
+                16#f7 -> eval_error({illegal_instruction, OP}, State);
+                16#f8 -> eval_error({illegal_instruction, OP}, State);
+                16#f9 -> eval_error({illegal_instruction, OP}, State);
+                ?STATICCALL -> eval_error({illegal_instruction, OP}, State);
+                16#fb -> eval_error({illegal_instruction, OP}, State);
+                16#fc -> eval_error({illegal_instruction, OP}, State);
                 ?REVERT ->
                     %% 0xfd REVERT δ=2 α=∅
                     %% Halt execution reverting state changes but returning data and remaining gas.
@@ -1159,6 +1289,7 @@ loop(CP, StateIn) ->
                     %%  Where
                     %%   o ≡ H(µ, I)
                     %%   µ' ≡ µ except: µ'g ≡ µg − C(σ, µ, I)
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
                     State3 = aevm_eeevm_state:do_revert(Us0, Us1, State2),
@@ -1167,7 +1298,7 @@ loop(CP, StateIn) ->
                 ?INVALID ->
                     %% 0xfe INVALID δ=∅ α=∅
                     %% Designated invalid instruction.
-                    eval_error({illegal_instruction, OP}, State0);
+                    eval_error({illegal_instruction, OP}, State);
                 ?SUICIDE ->
                     %% 0xff SELFDESTRUCT 1 0
                     %% Halt execution and register account for
@@ -1181,6 +1312,7 @@ loop(CP, StateIn) ->
                     %%                       + Gnewaccount
                     %%                           if σ[µs[0] mod 2^160] = ∅
                     %%                       + 0 otherwise
+                    State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     State2 = aevm_eeevm_state:set_selfdestruct(Us0, State1),
                     spend_mem_gas(State, State2)

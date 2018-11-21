@@ -171,6 +171,9 @@ error_to_binary(out_of_stack) -> <<"out_of_stack">>;
 error_to_binary(not_allowed_off_chain) -> <<"not_allowed_off_chain">>;
 error_to_binary(bad_call_data) -> <<"bad_call_data">>;
 error_to_binary(unknown_function) -> <<"unknown_function">>;
+error_to_binary({illegal_instruction, OP}) when is_integer(OP), 0 =< OP, OP =< 255 ->
+    X = <<_:2/bytes>> = list_to_binary(io_lib:format("~2.16.0B",[OP])),
+    <<"illegal_instruction_", X:2/bytes>>;
 error_to_binary(E) ->
     ?DEBUG_LOG("Unknown error: ~p\n", [E]),
     <<"unknown_error">>.
