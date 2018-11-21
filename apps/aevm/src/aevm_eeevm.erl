@@ -392,9 +392,9 @@ loop(CP, StateIn) ->
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
                 %% No opcodes 0x1b-0x1f
-                16#1b -> eval_error({illegal_instruction, OP}, State);
-                16#1c -> eval_error({illegal_instruction, OP}, State);
-                16#1d -> eval_error({illegal_instruction, OP}, State);
+                16#1b -> eval_error({illegal_instruction, OP}, State); %% SHL
+                16#1c -> eval_error({illegal_instruction, OP}, State); %% SHR
+                16#1d -> eval_error({illegal_instruction, OP}, State); %% SAR
                 16#1e -> eval_error({illegal_instruction, OP}, State);
                 16#1f -> eval_error({illegal_instruction, OP}, State);
                 %% 20s: SHA3
@@ -582,7 +582,7 @@ loop(CP, StateIn) ->
                     State4 = aevm_eeevm_memory:write_area(Us0, ReturnData, State3),
                     next_instruction(CP, State, State4);
                 %% No opcode 0x3f
-                16#3f -> eval_error({illegal_instruction, OP}, State0);
+                16#3f -> eval_error({illegal_instruction, OP}, State0); %% EXTCODEHASH
                 %% 40s Block Information
                 ?BLOCKHASH ->
                     %% 0x40 BLOCKHASH δ=1 α=1
@@ -1142,7 +1142,7 @@ loop(CP, StateIn) ->
                     {Res, State1} = recursive_call(State0, OP),
                     State2 = push(Res, State1),
                     next_instruction(CP, State, State2);
-                16#f5 -> eval_error({illegal_instruction, OP}, State0);
+                16#f5 -> eval_error({illegal_instruction, OP}, State0); %% CREATE2
                 16#f6 -> eval_error({illegal_instruction, OP}, State0);
                 16#f7 -> eval_error({illegal_instruction, OP}, State0);
                 16#f8 -> eval_error({illegal_instruction, OP}, State0);
