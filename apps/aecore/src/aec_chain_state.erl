@@ -859,43 +859,57 @@ grant_fees(Node, Trees, Delay, FraudStatus, State) ->
     Beneficiary1 = node_beneficiary(KeyNode1),
     Beneficiary2 = node_beneficiary(KeyNode2),
     %% We give the mining reward for the closing block of the generation.
-    MineReward = aec_governance:block_mine_reward(node_height(KeyNode2)),
+    MineReward1 = aec_governance:block_mine_reward(node_height(KeyNode1)),
+    MineReward2 = aec_governance:block_mine_reward(node_height(KeyNode2)),
     %% Fraud rewards is given for the opening block of the generation
     %% since this is the reward that was withheld.
     FraudReward = aec_governance:fraud_report_reward(node_height(KeyNode1)),
     BeneficiaryReward1 = KeyFees * 4 div 10,
-    BeneficiaryReward2 = KeyFees - BeneficiaryReward1 + MineReward,
-    case {FraudStatus1, FraudStatus2} of
-        {true, true} ->
-            %% The miner of KeyNode1 was reported by the miner of KeyNode2
-            %% but that miner was reported by the miner of KeyNode3.
-            %% No rewards at all.
-            Trees;
-        {true, false} ->
-            %% The miner of KeyNode1 was reported by the miner of KeyNode2
-            %% and that miner was a well behaved miner.
-            FinalReward = BeneficiaryReward2 + FraudReward,
-            aec_trees:grant_fee(Beneficiary2, Trees, FinalReward);
-        {false, true} ->
-            %% The miner of KeyNode2 was reported by the miner of KeyNode3
-            %% but that reward will come later.
-            case node_is_genesis(KeyNode1, State) of
-                true ->
-                    Trees;
-                false ->
-                    aec_trees:grant_fee(Beneficiary1, Trees, BeneficiaryReward1)
-            end;
-        {false, false} ->
-            %% No fraud in sight. Well done!
-            Trees1 =
+    KeyFeesBen2 = KeyFees - BeneficiaryReward1,
+    BeneficiaryReward2 = KeyFeesBen2 + MineReward2,
+    {Trees2, LockAmount} =
+        case {FraudStatus1, FraudStatus2} of
+            {true, true} ->
+                %% The miner of KeyNode1 was reported by the miner of KeyNode2
+                %% but that miner was reported by the miner of KeyNode3.
+                %% No rewards at all. Lock them both
+                {Trees, BeneficiaryReward1 + BeneficiaryReward2};
+            {true, false} ->
+                %% The miner of KeyNode1 was reported by the miner of KeyNode2
+                %% and that miner was a well behaved miner.
+                FinalReward = BeneficiaryReward2 + FraudReward,
+                %% lock the excess coins remaning after miner fees for the
+                %% fraudulent miner1 but also the mining reward for block1
+                Locked = MineReward1 + BeneficiaryReward1 - FraudReward,
+                {aec_trees:grant_fee(Beneficiary2, Trees, FinalReward), Locked};
+            {false, true} ->
+                %% The miner of KeyNode2 was reported by the miner of KeyNode3
+                %% but that reward will come later.
+                %% Lock the fees for the fraudulent miner2 but not the miner
+                %% reward, it will be locked on the next iteration
                 case node_is_genesis(KeyNode1, State) of
                     true ->
-                        Trees;
+                        {Trees, KeyFeesBen2};
                     false ->
-                        aec_trees:grant_fee(Beneficiary1, Trees, BeneficiaryReward1)
-                end,
-            aec_trees:grant_fee(Beneficiary2, Trees1, BeneficiaryReward2)
-    end.
+                        {aec_trees:grant_fee(Beneficiary1, Trees,
+                                            BeneficiaryReward1), KeyFeesBen2}
+                end;
+            {false, false} ->
+                %% No fraud in sight. Well done!
+                Trees1 =
+                    case node_is_genesis(KeyNode1, State) of
+                        true ->
+                            Trees;
+                        false ->
+                            aec_trees:grant_fee(Beneficiary1, Trees, BeneficiaryReward1)
+                    end,
+                % no fraud, no locking
+                {aec_trees:grant_fee(Beneficiary2, Trees1, BeneficiaryReward2), 0}
+        end,
+    Accounts0 = aec_trees:accounts(Trees2),
+    Accounts = aec_accounts_trees:lock_coins(LockAmount, Accounts0),
+    aec_trees:set_accounts(Trees2, Accounts).
+
 
 calculate_gas_fee(Calls) ->
     F = fun(_, SerCall, GasFeeIn) ->
