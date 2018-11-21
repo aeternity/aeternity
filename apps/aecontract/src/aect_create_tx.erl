@@ -200,7 +200,8 @@ check(#contract_create_tx{nonce      = Nonce,
                            end
                    end
                  ];
-            ?AEVM_01_Solidity_01 -> []
+            ?AEVM_01_Solidity_01 ->
+                [?AEVM_01_Solidity_01_enabled]
          end
         ],
     case aeu_validation:run(Checks) of

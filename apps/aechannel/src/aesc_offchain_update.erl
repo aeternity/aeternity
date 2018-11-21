@@ -36,7 +36,8 @@
          extract_call/1,
          extract_caller/1,
          extract_contract_pubkey/1,
-         extract_amounts/1]).
+         extract_amounts/1,
+         extract_vm_version/1]).
 
 -spec op_transfer(aec_id:id(), aec_id:id(), non_neg_integer()) -> update().
 op_transfer(From, To, Amount) ->
@@ -343,6 +344,10 @@ extract_amounts(Update) ->
             {Amount, GasPrice, Gas};
         _ -> not_call
     end.
+
+-spec extract_vm_version(update()) -> aect_contracts:vm_version().
+extract_vm_version({?OP_CALL_CONTRACT, _, _, VmVersion, _, _, _, _, _}) ->
+    VmVersion.
 
 update_error(Err) ->
     error({off_chain_update_error, Err}).
