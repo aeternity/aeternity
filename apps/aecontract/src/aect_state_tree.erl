@@ -239,25 +239,9 @@ lookup_poi(Pubkey, Poi) ->
     end.
 
 lookup_store_poi(Id, Poi) ->
-    case aec_poi:iterator_from(Id, Poi, [{with_prefix, Id}]) of
-        {ok, Iterator} ->
-            Next = aec_poi:iterator_next(Iterator),
-            Size = byte_size(Id),
-            lookup_store_from_poi(Id, Next, Size, #{}, Poi);
-        {error, _} = E -> E
-    end.
-
-lookup_store_from_poi(_, {error, bad_proof} = E, _, _, _) ->
-    E;
-lookup_store_from_poi(_, '$end_of_table', _, Store,_Poi) ->
-    {ok, Store};
-lookup_store_from_poi(Id, {PrefixedKey, Val, Iter}, PrefixSize, Store, Poi) ->
-    <<Id:PrefixSize/binary, Key/binary>> = PrefixedKey,
-    Store1 = Store#{ Key => Val},
-    case aec_poi:iterator_next(Iter) of
-        {error, _} = E -> E;
-        Next ->
-            lookup_store_from_poi(Id, Next, PrefixSize, Store1, Poi)
+    case aec_poi:read_only_subtree(Id, Poi) of
+        {ok, Subtree} -> {ok, aect_contracts_store:new(Subtree)};
+        {error, _} = Err -> Err
     end.
 
 %% -- Commit to db --

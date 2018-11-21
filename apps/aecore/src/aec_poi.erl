@@ -14,6 +14,7 @@
         , lookup/2
         , iterator_from/3
         , iterator_next/1
+        , read_only_subtree/2
         ]).
 
 -export([ from_serialization_format/1
@@ -88,6 +89,15 @@ lookup(Key, #aec_poi{root_hash = RootHash} = Poi) ->
     case aeu_mtrees:lookup_proof(Key, RootHash, Poi#aec_poi.proof) of
         {ok, Val} -> {ok, Val};
         {error, not_found} = E -> E
+    end.
+
+-spec read_only_subtree(key(), poi()) -> {ok, aeu_mtrees:mtree()} | {error, bad_proof}.
+read_only_subtree(Key, #aec_poi{proof = ProofDb,
+                                root_hash = RootHash} = _Poi) ->
+    Tree = aeu_mtrees:new_with_backend(RootHash, ProofDb),
+    case aeu_mtrees:read_only_subtree(Key, Tree) of
+        {ok, _} = Res -> Res;
+        {error, _}    -> {error, bad_proof}
     end.
 
 -spec iterator_from(key(), poi(), aeu_mtrees:iterator_opts()) ->
