@@ -112,5 +112,27 @@ encode_decode_test_() ->
               end,
               ?TYPES)
       end
-     }
+     },
+     {"Encode/decode binary with only zeros",
+      fun() ->
+          Bins = [<<0:Size/unit:8>> || Size <- lists:seq(1,64)],
+          lists:foreach(
+            fun(Bin) ->
+                lists:foreach(
+                  fun({Type, S}) ->
+                      case S =:= byte_size(Bin) orelse S =:= not_applicable of
+                        true ->
+                          Encoded = ?TEST_MODULE:encode(Type, Bin),
+                          {ok, Decoded} = ?TEST_MODULE:safe_decode(Type, Encoded),
+                          ?assertEqual(Decoded, Bin);
+                        false ->
+                          ok
+                      end,
+                      Encoded1 = base58:binary_to_base58(Bin),
+                      Decoded1 = base58:base58_to_binary(Encoded1),
+                      ?assertEqual(Bin, Decoded1)
+                  end, ?TYPES)
+            end,
+            Bins)
+      end}
      ].
