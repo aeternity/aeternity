@@ -1977,8 +1977,14 @@ contract_transactions(_Config) ->    % miner has an account
     PoI = aec_trees:deserialize_poi(PoIBin),
     {ok, ContractInPoI} = aec_trees:lookup_poi(contracts, ContractPubKey, PoI),
     {ok, Trees} = rpc(aec_chain, get_top_state, []),
-    ContractInPoI = rpc(aect_state_tree, get_contract, [ContractPubKey,
+    ContractInPoI1 = rpc(aect_state_tree, get_contract, [ContractPubKey,
                                                          aec_trees:contracts(Trees)]),
+    %% Don't require the store mp trees to be identical, but check that the
+    %% contents is the same.
+    Store  = aect_contracts_store:subtree(<<>>, aect_contracts:state(ContractInPoI)),
+    Store1 = rpc(aect_contracts_store, subtree, [<<>>, aect_contracts:state(ContractInPoI1)]),
+    Ct = aect_contracts:internal_set_state(Store, ContractInPoI),
+    Ct = aect_contracts:internal_set_state(Store1, ContractInPoI1),
     {ok, ContractAccInPoI} = aec_trees:lookup_poi(accounts, ContractPubKey, PoI),
     ContractAccInPoI = rpc(aec_accounts_trees, get, [ContractPubKey,
                                                      aec_trees:accounts(Trees)]),
