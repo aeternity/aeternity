@@ -343,6 +343,11 @@ assert_fields(C) ->
         Other -> error({missing, Other})
     end.
 
+assert_field(store = FieldKey, FieldValue, C) ->
+    %% We can't afford to validate the mptree part of the store
+    assert_field_store(FieldKey, aect_contracts_store:write_cache(FieldValue),
+                       C#contract.vm_version),
+    FieldValue;
 assert_field(FieldKey, FieldValue, _) ->
     assert_field(FieldKey, FieldValue).
 
@@ -358,5 +363,21 @@ assert_field(referrers = Field, X) ->
     catch _:_ -> error({illegal, Field, X}) end;
 assert_field(referrer, <<_:?PUB_SIZE/binary>> = X)       -> X;
 assert_field(deposit, X)    when is_integer(X), X >= 0   -> X;
-assert_field(store, X) -> X;  %% Always initialized locally by new()
 assert_field(Field, X) -> error({illegal, Field, X}).
+
+assert_field_store(store = Field, X, VmVersion) when is_map(X) ->
+    try
+        F = fun(K, V, unused) ->
+                    assert_field_store(store_k, K, VmVersion),
+                    assert_field_store(store_v, V, VmVersion),
+                    unused
+            end,
+        %% map iterator would limit memory usage though it is available from OTP 21.
+        maps:fold(F, unused, X),
+        X
+    catch _:_ -> error({illegal, Field, X}) end;
+assert_field_store(store_k = Field, X, VmVersion) when is_binary(X),
+                                               byte_size(X) > 0 ->
+    try true = aevm_eeevm_store:is_valid_key(VmVersion, X)
+    catch _:_ -> error({illegal, Field, X}) end;
+assert_field_store(store_v, X,_VmVersion) when is_binary(X) -> X.
