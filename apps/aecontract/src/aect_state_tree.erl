@@ -208,21 +208,18 @@ verify_poi(Pubkey, Contract, Poi) ->
     end.
 
 verify_store_poi(Id, Store, IsLegalStoreFun, Poi) ->
-    %% Check separately absence of (invalid) empty key because Merkle
-    %% tree iterator-from-key, used in PoI lookup, does not return
-    %% initial key if present.
-    case aec_poi:lookup(Id, Poi) of
-        {ok, _StoreValWithEmptyKey} -> {error, bad_proof};
-        {error, not_found} ->
-            case lookup_store_poi(Id, Poi) of
-                {ok, Store} ->
-                    case IsLegalStoreFun(Store) of
-                        true -> ok;
-                        false -> {error, bad_proof}
-                    end;
-                {ok, _} -> {error, bad_proof};
-                {error, _} = E -> E
-            end
+    StoreMap = aect_contracts_store:subtree(<<>>, Store),
+    try lookup_store_poi(Id, Poi) of
+        {ok, Store1} ->
+            StoreMap1 = aect_contracts_store:subtree(<<>>, Store1),
+            case StoreMap =:= StoreMap1 andalso IsLegalStoreFun(Store) of
+                true -> ok;
+                false -> {error, bad_proof}
+            end;
+        {error, _} = E -> E
+    catch _:_ ->
+        %% Poi can be malicious(?) so catch errors
+        {error, bad_proof}
     end.
 
 -spec lookup_poi(aect_contracts:pubkey(), aec_poi:poi()) ->
