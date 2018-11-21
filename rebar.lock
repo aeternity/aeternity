@@ -1,7 +1,7 @@
 {"1.1.0",
 [{<<"base58">>,
   {git,"https://github.com/aeternity/erl-base58.git",
-       {ref,"7ea179ada7933a555c84f2ec007a92b80b654564"}},
+       {ref,"60a335668a60328a29f9731b67c4a0e9e3d50ab6"}},
   0},
  {<<"bear">>,
   {git,"git://github.com/boundary/bear.git",
