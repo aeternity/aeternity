@@ -131,6 +131,10 @@ loop(CP, StateIn) ->
         false ->
             OP     = code_get_op(CP, Code),
             State  = trace(CP, StateIn),
+            case is_valid_instruction(OP) of
+                true -> ok;
+                false -> eval_error({illegal_instruction, OP}, State)
+            end,
             State0 = spend_op_gas(OP, State),
             case OP of
                 %% 0s: Stop and Arithmetic Operations
@@ -258,11 +262,6 @@ loop(CP, StateIn) ->
                     Val = signextend(Us0, Us1),
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
-                %% No opcodes 0x0c-0x0f
-                16#0c -> eval_error({illegal_instruction, OP}, State);
-                16#0d -> eval_error({illegal_instruction, OP}, State);
-                16#0e -> eval_error({illegal_instruction, OP}, State);
-                16#0f -> eval_error({illegal_instruction, OP}, State);
                 %% 10s: Comparison & Bitwise Logic Operations
                 ?LT ->
                     %% 0x10 LT δ=2 α=1
@@ -391,12 +390,6 @@ loop(CP, StateIn) ->
                     Val = byte(Us0, Us1),
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
-                %% No opcodes 0x1b-0x1f
-                16#1b -> eval_error({illegal_instruction, OP}, State); %% SHL
-                16#1c -> eval_error({illegal_instruction, OP}, State); %% SHR
-                16#1d -> eval_error({illegal_instruction, OP}, State); %% SAR
-                16#1e -> eval_error({illegal_instruction, OP}, State);
-                16#1f -> eval_error({illegal_instruction, OP}, State);
                 %% 20s: SHA3
                 ?SHA3 ->
                     %% 0x20 SHA3  δ=2 α=1 Compute Keccak-256 hash.
@@ -409,22 +402,6 @@ loop(CP, StateIn) ->
                     <<Val:256/integer-unsigned>> = Hash,
                     State4 = push(Val, State3),
                     next_instruction(CP, State, State4);
-                %% No opcodes 0x21-0x2f
-                16#21 -> eval_error({illegal_instruction, OP}, State);
-                16#22 -> eval_error({illegal_instruction, OP}, State);
-                16#23 -> eval_error({illegal_instruction, OP}, State);
-                16#24 -> eval_error({illegal_instruction, OP}, State);
-                16#25 -> eval_error({illegal_instruction, OP}, State);
-                16#26 -> eval_error({illegal_instruction, OP}, State);
-                16#27 -> eval_error({illegal_instruction, OP}, State);
-                16#28 -> eval_error({illegal_instruction, OP}, State);
-                16#29 -> eval_error({illegal_instruction, OP}, State);
-                16#2a -> eval_error({illegal_instruction, OP}, State);
-                16#2b -> eval_error({illegal_instruction, OP}, State);
-                16#2c -> eval_error({illegal_instruction, OP}, State);
-                16#2d -> eval_error({illegal_instruction, OP}, State);
-                16#2e -> eval_error({illegal_instruction, OP}, State);
-                16#2f -> eval_error({illegal_instruction, OP}, State);
                 %% 30s: Environmental Information
                 ?ADDRESS ->
                     %% 0x30 Address δ=0 α=1
@@ -581,8 +558,6 @@ loop(CP, StateIn) ->
                     ReturnData = return_data_get_bytes(Us1, Us2, State3),
                     State4 = aevm_eeevm_memory:write_area(Us0, ReturnData, State3),
                     next_instruction(CP, State, State4);
-                %% No opcode 0x3f
-                16#3f -> eval_error({illegal_instruction, OP}, State0); %% EXTCODEHASH
                 %% 40s Block Information
                 ?BLOCKHASH ->
                     %% 0x40 BLOCKHASH δ=1 α=1
@@ -639,17 +614,6 @@ loop(CP, StateIn) ->
                     Arg = aevm_eeevm_state:gaslimit(State0),
                     State1 = push(Arg, State0),
                     next_instruction(CP, State, State1);
-                %% No opcode 0x46-0x4f
-                16#46 -> eval_error({illegal_instruction, OP}, State0);
-                16#47 -> eval_error({illegal_instruction, OP}, State0);
-                16#48 -> eval_error({illegal_instruction, OP}, State0);
-                16#49 -> eval_error({illegal_instruction, OP}, State0);
-                16#4a -> eval_error({illegal_instruction, OP}, State0);
-                16#4b -> eval_error({illegal_instruction, OP}, State0);
-                16#4c -> eval_error({illegal_instruction, OP}, State0);
-                16#4d -> eval_error({illegal_instruction, OP}, State0);
-                16#4e -> eval_error({illegal_instruction, OP}, State0);
-                16#4f -> eval_error({illegal_instruction, OP}, State0);
                 %% 50s: Stack, Memory, Storage and Flow Operations
                 ?POP ->
                     %% 0x50 POP δ=1 α=0
@@ -770,10 +734,6 @@ loop(CP, StateIn) ->
                     %% This operation has no effect on machine
                     %% state during execution.
                     next_instruction(CP, State, State0);
-                16#5c -> eval_error({illegal_instruction, OP}, State0);
-                16#5d -> eval_error({illegal_instruction, OP}, State0);
-                16#5e -> eval_error({illegal_instruction, OP}, State0);
-                16#5f -> eval_error({illegal_instruction, OP}, State0);
                 %% 60s & 70s Push Operations
                 ?PUSH1 ->
                     %% 0x60 PUSH1 δ=0 α=1
@@ -1008,9 +968,6 @@ loop(CP, StateIn) ->
                     {Us5, State6} = pop(State5),
                     State7 = log({Us2, Us3, Us4, Us5}, Us0, Us1, State6),
                     next_instruction(CP, State, State7);
-                OP when OP >= 16#a5,
-                    OP =< 16#ef  ->
-                    eval_error({illegal_instruction, OP}, State0);
                 %% F0s: System operations
                 ?CREATE->
                     %% 0xf0 CREATE δ=3 α=1
@@ -1142,14 +1099,6 @@ loop(CP, StateIn) ->
                     {Res, State1} = recursive_call(State0, OP),
                     State2 = push(Res, State1),
                     next_instruction(CP, State, State2);
-                16#f5 -> eval_error({illegal_instruction, OP}, State0); %% CREATE2
-                16#f6 -> eval_error({illegal_instruction, OP}, State0);
-                16#f7 -> eval_error({illegal_instruction, OP}, State0);
-                16#f8 -> eval_error({illegal_instruction, OP}, State0);
-                16#f9 -> eval_error({illegal_instruction, OP}, State0);
-                ?STATICCALL -> eval_error({illegal_instruction, OP}, State0);
-                16#fb -> eval_error({illegal_instruction, OP}, State0);
-                16#fc -> eval_error({illegal_instruction, OP}, State0);
                 ?REVERT ->
                     %% 0xfd REVERT δ=2 α=∅
                     %% Halt execution reverting state changes but returning data and remaining gas.
@@ -1164,10 +1113,6 @@ loop(CP, StateIn) ->
                     State3 = aevm_eeevm_state:do_revert(Us0, Us1, State2),
                     State4 = spend_mem_gas(State, State3),
                     throw(?REVERT_SIGNAL(State4));
-                ?INVALID ->
-                    %% 0xfe INVALID δ=∅ α=∅
-                    %% Designated invalid instruction.
-                    eval_error({illegal_instruction, OP}, State0);
                 ?SUICIDE ->
                     %% 0xff SELFDESTRUCT 1 0
                     %% Halt execution and register account for
@@ -1187,6 +1132,190 @@ loop(CP, StateIn) ->
                 end;
             true -> aevm_eeevm_state:set_cp(CP, StateIn)
     end.
+
+%% Argument is in range 0-255.
+is_valid_instruction(?STOP          ) -> true;
+is_valid_instruction(?ADD           ) -> true;
+is_valid_instruction(?MUL           ) -> true;
+is_valid_instruction(?SUB           ) -> true;
+is_valid_instruction(?DIV           ) -> true;
+is_valid_instruction(?SDIV          ) -> true;
+is_valid_instruction(?MOD           ) -> true;
+is_valid_instruction(?SMOD          ) -> true;
+is_valid_instruction(?ADDMOD        ) -> true;
+is_valid_instruction(?MULMOD        ) -> true;
+is_valid_instruction(?EXP           ) -> true;
+is_valid_instruction(?SIGNEXTEND    ) -> true;
+is_valid_instruction(16#0c          ) -> false;
+is_valid_instruction(16#0d          ) -> false;
+is_valid_instruction(16#0e          ) -> false;
+is_valid_instruction(16#0f          ) -> false;
+is_valid_instruction(?LT            ) -> true;
+is_valid_instruction(?GT            ) -> true;
+is_valid_instruction(?SLT           ) -> true;
+is_valid_instruction(?SGT           ) -> true;
+is_valid_instruction(?EQ            ) -> true;
+is_valid_instruction(?ISZERO        ) -> true;
+is_valid_instruction(?AND           ) -> true;
+is_valid_instruction(?OR            ) -> true;
+is_valid_instruction(?XOR           ) -> true;
+is_valid_instruction(?NOT           ) -> true;
+is_valid_instruction(?BYTE          ) -> true;
+is_valid_instruction(16#1b          ) -> false; %% SHL
+is_valid_instruction(16#1c          ) -> false; %% SHR
+is_valid_instruction(16#1d          ) -> false; %% SAR
+is_valid_instruction(16#1e          ) -> false;
+is_valid_instruction(16#1f          ) -> false;
+is_valid_instruction(?SHA3          ) -> true;
+is_valid_instruction(16#21          ) -> false;
+is_valid_instruction(16#22          ) -> false;
+is_valid_instruction(16#23          ) -> false;
+is_valid_instruction(16#24          ) -> false;
+is_valid_instruction(16#25          ) -> false;
+is_valid_instruction(16#26          ) -> false;
+is_valid_instruction(16#27          ) -> false;
+is_valid_instruction(16#28          ) -> false;
+is_valid_instruction(16#29          ) -> false;
+is_valid_instruction(16#2a          ) -> false;
+is_valid_instruction(16#2b          ) -> false;
+is_valid_instruction(16#2c          ) -> false;
+is_valid_instruction(16#2d          ) -> false;
+is_valid_instruction(16#2e          ) -> false;
+is_valid_instruction(16#2f          ) -> false;
+is_valid_instruction(?ADDRESS       ) -> true;
+is_valid_instruction(?BALANCE       ) -> true;
+is_valid_instruction(?ORIGIN        ) -> true;
+is_valid_instruction(?CALLER        ) -> true;
+is_valid_instruction(?CALLVALUE     ) -> true;
+is_valid_instruction(?CALLDATALOAD  ) -> true;
+is_valid_instruction(?CALLDATASIZE  ) -> true;
+is_valid_instruction(?CALLDATACOPY  ) -> true;
+is_valid_instruction(?CODESIZE      ) -> true;
+is_valid_instruction(?CODECOPY      ) -> true;
+is_valid_instruction(?GASPRICE      ) -> true;
+is_valid_instruction(?EXTCODESIZE   ) -> true;
+is_valid_instruction(?EXTCODECOPY   ) -> true;
+is_valid_instruction(?RETURNDATASIZE) -> true;
+is_valid_instruction(?RETURNDATACOPY) -> true;
+is_valid_instruction(16#3f          ) -> false; %% EXTCODEHASH
+is_valid_instruction(?BLOCKHASH     ) -> true;
+is_valid_instruction(?COINBASE      ) -> true;
+is_valid_instruction(?TIMESTAMP     ) -> true;
+is_valid_instruction(?NUMBER        ) -> true;
+is_valid_instruction(?DIFFICULTY    ) -> true;
+is_valid_instruction(?GASLIMIT      ) -> true;
+is_valid_instruction(16#46          ) -> false;
+is_valid_instruction(16#47          ) -> false;
+is_valid_instruction(16#48          ) -> false;
+is_valid_instruction(16#49          ) -> false;
+is_valid_instruction(16#4a          ) -> false;
+is_valid_instruction(16#4b          ) -> false;
+is_valid_instruction(16#4c          ) -> false;
+is_valid_instruction(16#4d          ) -> false;
+is_valid_instruction(16#4e          ) -> false;
+is_valid_instruction(16#4f          ) -> false;
+is_valid_instruction(?POP           ) -> true;
+is_valid_instruction(?MLOAD         ) -> true;
+is_valid_instruction(?MSTORE        ) -> true;
+is_valid_instruction(?MSTORE8       ) -> true;
+is_valid_instruction(?SLOAD         ) -> true;
+is_valid_instruction(?SSTORE        ) -> true;
+is_valid_instruction(?JUMP          ) -> true;
+is_valid_instruction(?JUMPI         ) -> true;
+is_valid_instruction(?PC            ) -> true;
+is_valid_instruction(?MSIZE         ) -> true;
+is_valid_instruction(?GAS           ) -> true;
+is_valid_instruction(?JUMPDEST      ) -> true;
+is_valid_instruction(16#5c          ) -> false;
+is_valid_instruction(16#5d          ) -> false;
+is_valid_instruction(16#5e          ) -> false;
+is_valid_instruction(16#5f          ) -> false;
+is_valid_instruction(?PUSH1         ) -> true;
+is_valid_instruction(?PUSH2         ) -> true;
+is_valid_instruction(?PUSH3         ) -> true;
+is_valid_instruction(?PUSH4         ) -> true;
+is_valid_instruction(?PUSH5         ) -> true;
+is_valid_instruction(?PUSH6         ) -> true;
+is_valid_instruction(?PUSH7         ) -> true;
+is_valid_instruction(?PUSH8         ) -> true;
+is_valid_instruction(?PUSH9         ) -> true;
+is_valid_instruction(?PUSH10        ) -> true;
+is_valid_instruction(?PUSH11        ) -> true;
+is_valid_instruction(?PUSH12        ) -> true;
+is_valid_instruction(?PUSH13        ) -> true;
+is_valid_instruction(?PUSH14        ) -> true;
+is_valid_instruction(?PUSH15        ) -> true;
+is_valid_instruction(?PUSH16        ) -> true;
+is_valid_instruction(?PUSH17        ) -> true;
+is_valid_instruction(?PUSH18        ) -> true;
+is_valid_instruction(?PUSH19        ) -> true;
+is_valid_instruction(?PUSH20        ) -> true;
+is_valid_instruction(?PUSH21        ) -> true;
+is_valid_instruction(?PUSH22        ) -> true;
+is_valid_instruction(?PUSH23        ) -> true;
+is_valid_instruction(?PUSH24        ) -> true;
+is_valid_instruction(?PUSH25        ) -> true;
+is_valid_instruction(?PUSH26        ) -> true;
+is_valid_instruction(?PUSH27        ) -> true;
+is_valid_instruction(?PUSH28        ) -> true;
+is_valid_instruction(?PUSH29        ) -> true;
+is_valid_instruction(?PUSH30        ) -> true;
+is_valid_instruction(?PUSH31        ) -> true;
+is_valid_instruction(?PUSH32        ) -> true;
+is_valid_instruction(?DUP1          ) -> true;
+is_valid_instruction(?DUP2          ) -> true;
+is_valid_instruction(?DUP3          ) -> true;
+is_valid_instruction(?DUP4          ) -> true;
+is_valid_instruction(?DUP5          ) -> true;
+is_valid_instruction(?DUP6          ) -> true;
+is_valid_instruction(?DUP7          ) -> true;
+is_valid_instruction(?DUP8          ) -> true;
+is_valid_instruction(?DUP9          ) -> true;
+is_valid_instruction(?DUP10         ) -> true;
+is_valid_instruction(?DUP11         ) -> true;
+is_valid_instruction(?DUP12         ) -> true;
+is_valid_instruction(?DUP13         ) -> true;
+is_valid_instruction(?DUP14         ) -> true;
+is_valid_instruction(?DUP15         ) -> true;
+is_valid_instruction(?DUP16         ) -> true;
+is_valid_instruction(?SWAP1         ) -> true;
+is_valid_instruction(?SWAP2         ) -> true;
+is_valid_instruction(?SWAP3         ) -> true;
+is_valid_instruction(?SWAP4         ) -> true;
+is_valid_instruction(?SWAP5         ) -> true;
+is_valid_instruction(?SWAP6         ) -> true;
+is_valid_instruction(?SWAP7         ) -> true;
+is_valid_instruction(?SWAP8         ) -> true;
+is_valid_instruction(?SWAP9         ) -> true;
+is_valid_instruction(?SWAP10        ) -> true;
+is_valid_instruction(?SWAP11        ) -> true;
+is_valid_instruction(?SWAP12        ) -> true;
+is_valid_instruction(?SWAP13        ) -> true;
+is_valid_instruction(?SWAP14        ) -> true;
+is_valid_instruction(?SWAP15        ) -> true;
+is_valid_instruction(?SWAP16        ) -> true;
+is_valid_instruction(?LOG0          ) -> true;
+is_valid_instruction(?LOG1          ) -> true;
+is_valid_instruction(?LOG2          ) -> true;
+is_valid_instruction(?LOG3          ) -> true;
+is_valid_instruction(?LOG4          ) -> true;
+is_valid_instruction(OP             ) when 16#a5 =< OP, OP =< 16#ef -> false; %% 75 instructions.
+is_valid_instruction(?CREATE        ) -> true;
+is_valid_instruction(?CALL          ) -> true;
+is_valid_instruction(?CALLCODE      ) -> true;
+is_valid_instruction(?RETURN        ) -> true;
+is_valid_instruction(?DELEGATECALL  ) -> true;
+is_valid_instruction(16#f5          ) -> false; %% CREATE2
+is_valid_instruction(16#f6          ) -> false;
+is_valid_instruction(16#f7          ) -> false;
+is_valid_instruction(16#f8          ) -> false;
+is_valid_instruction(16#f9          ) -> false;
+is_valid_instruction(?STATICCALL    ) -> false;
+is_valid_instruction(16#fb          ) -> false;
+is_valid_instruction(16#fc          ) -> false;
+is_valid_instruction(?REVERT        ) -> true;
+is_valid_instruction(?INVALID       ) -> false; %% Designated invalid instruction.
+is_valid_instruction(?SUICIDE       ) -> true.
 
 %% ------------------------------------------------------------------------
 %% ARITHMETIC
