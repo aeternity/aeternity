@@ -138,7 +138,6 @@
 -define(       'CALLCODE', 16#f2).
 -define(         'RETURN', 16#f3).
 -define(   'DELEGATECALL', 16#f4).
--define(   'CALLBLACKBOX', 16#f5).
 
 -define(     'STATICCALL', 16#fa).
 

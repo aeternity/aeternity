@@ -155,7 +155,6 @@ opcode(?CALL)           -> ?CALL;
 opcode(?CALLCODE)       -> ?CALLCODE;
 opcode(?RETURN)         -> ?RETURN;
 opcode(?DELEGATECALL)   -> ?DELEGATECALL;
-opcode(?CALLBLACKBOX)   -> ?CALLBLACKBOX; %% TODO
 opcode(?STATICCALL)     -> ?STATICCALL; %% TODO
 opcode(?REVERT)         -> ?REVERT;
 opcode({comment,X})     -> ?COMMENT(X);
@@ -293,7 +292,6 @@ mnemonic(?CALL)           -> 'CALL'           ;
 mnemonic(?CALLCODE)       -> 'CALLCODE'       ;
 mnemonic(?RETURN)         -> 'RETURN'         ;
 mnemonic(?DELEGATECALL)   -> 'DELEGATECALL'   ;
-mnemonic(?CALLBLACKBOX)   -> 'CALLBLACKBOX'   ;
 mnemonic(?STATICCALL)     -> 'STATICCALL'     ;
 mnemonic(?REVERT)         -> 'REVERT'         ;
 mnemonic({comment,_})     -> 'COMMENT'        ;
@@ -432,7 +430,6 @@ m_to_op('CALL')           -> ?CALL           ;
 m_to_op('CALLCODE')       -> ?CALLCODE       ;
 m_to_op('RETURN')         -> ?RETURN         ;
 m_to_op('DELEGATECALL')   -> ?DELEGATECALL   ;
-m_to_op('CALLBLACKBOX')   -> ?CALLBLACKBOX   ;
 m_to_op('STATICCALL')     -> ?STATICCALL     ;
 m_to_op('REVERT')         -> ?REVERT         ;
 m_to_op('COMMENT')        -> ?COMMENT("")    ;
