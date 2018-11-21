@@ -503,6 +503,12 @@ loop(CP, StateIn) ->
                     %% µ's[0] ≡ Id[µs[0] . . .(µs[0] + 31)] with Id[x] = 0 if x >= |Id|
                     %% This pertains to the input data passed with the message
                     %% call instruction or transaction.
+                    case aevm_eeevm_state:vm_version(State) of
+                        ?AEVM_01_Sophia_01 ->
+                            eval_error({illegal_instruction, OP}, State);
+                        _ ->
+                            ok
+                    end,
                     State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     Arg = data_get_val(Us0, State1),
@@ -514,6 +520,12 @@ loop(CP, StateIn) ->
                     %% µ's[0] ≡ |Id|
                     %% This pertains to the input data passed with the
                     %% message call instruction or transaction.
+                    case aevm_eeevm_state:vm_version(State) of
+                        ?AEVM_01_Sophia_01 ->
+                            eval_error({illegal_instruction, OP}, State);
+                        _ ->
+                            ok
+                    end,
                     State0 = spend_op_gas(OP, State),
                     Val = byte_size(aevm_eeevm_state:data(State0)),
                     State1 = push(Val, State0),
@@ -529,6 +541,12 @@ loop(CP, StateIn) ->
                     %% µ'i ≡ M(µi, µs[0], µs[2])
                     %% This pertains to the input data passed with
                     %% the message call instruction or transaction.
+                    case aevm_eeevm_state:vm_version(State) of
+                        ?AEVM_01_Sophia_01 ->
+                            eval_error({illegal_instruction, OP}, State);
+                        _ ->
+                            ok
+                    end,
                     State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     {Us1, State2} = pop(State1),
@@ -601,6 +619,12 @@ loop(CP, StateIn) ->
                     %% Get size of output data from the previous call from the current
                     %% environment.
                     %% µ's[0] ≡ |µo|
+                    case aevm_eeevm_state:vm_version(State) of
+                        ?AEVM_01_Sophia_01 ->
+                            eval_error({illegal_instruction, OP}, State);
+                        _ ->
+                            ok
+                    end,
                     State0 = spend_op_gas(OP, State),
                     Val = byte_size(aevm_eeevm_state:return_data(State0)),
                     State1 = push(Val, State0),
@@ -612,6 +636,12 @@ loop(CP, StateIn) ->
                     %%                                   0                otherwise
                     %% The additions in µs[1] + i are not subject to the 2^256 modulo.
                     %% µ'i ≡ M(µi, µs[0], µs[2])
+                    case aevm_eeevm_state:vm_version(State) of
+                        ?AEVM_01_Sophia_01 ->
+                            eval_error({illegal_instruction, OP}, State);
+                        _ ->
+                            ok
+                    end,
                     State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0), %% memOffset
                     {Us1, State2} = pop(State1), %% dataOffset
@@ -741,6 +771,12 @@ loop(CP, StateIn) ->
                     %% 0x54 SLOAD δ=1 α=1
                     %% Load word from storage.
                     %% µ's[0] ≡ σ[Ia]s[µs[0]]
+                    case aevm_eeevm_state:vm_version(State) of
+                        ?AEVM_01_Sophia_01 ->
+                            eval_error({illegal_instruction, OP}, State);
+                        _ ->
+                            ok
+                    end,
                     State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     Val = aevm_eeevm_store:load(Us0, State1),
@@ -756,6 +792,12 @@ loop(CP, StateIn) ->
                     %% A'r ≡ Ar + Rsclear if µs[1] = 0
                     %%                      ∧ σ[Ia]s[µs[0]] =/= 0
                     %%       0 otherwise
+                    case aevm_eeevm_state:vm_version(State) of
+                        ?AEVM_01_Sophia_01 ->
+                            eval_error({illegal_instruction, OP}, State);
+                        _ ->
+                            ok
+                    end,
                     State0 = spend_op_gas(OP, State),
                     {Address, State1} = pop(State0),
                     {Value, State2} = pop(State1),
@@ -1160,6 +1202,12 @@ loop(CP, StateIn) ->
                     %%             otherwise.
                     %% µ'i ≡ M(µi, µs[1], µs[2])
                     %% Thus the operand order is: value, input offset, input size.
+                    case aevm_eeevm_state:vm_version(State) of
+                        ?AEVM_01_Sophia_01 ->
+                            eval_error({illegal_instruction, OP}, State);
+                        _ ->
+                            ok
+                    end,
                     State0 = spend_op_gas(OP, State),
                     {Value, State1} = pop(State0),
                     {From, State2} = pop(State1),
@@ -1231,6 +1279,12 @@ loop(CP, StateIn) ->
                     %% present address Ia. This means that the recipient is
                     %% in fact the same account as at present, simply that
                     %% the code is overwritten.
+                    case aevm_eeevm_state:vm_version(State) of
+                        ?AEVM_01_Sophia_01 ->
+                            eval_error({illegal_instruction, OP}, State);
+                        _ ->
+                            ok
+                    end,
                     State0 = spend_op_gas(OP, State),
                     {Res, State1} = recursive_call(State0, OP),
                     State2 = push(Res, State1),
@@ -1268,6 +1322,12 @@ loop(CP, StateIn) ->
                     %% This means that the recipient is in fact the same account as at
                     %% present, simply that the code is overwritten and the context is
                     %% almost entirely identical.
+                    case aevm_eeevm_state:vm_version(State) of
+                        ?AEVM_01_Sophia_01 ->
+                            eval_error({illegal_instruction, OP}, State);
+                        _ ->
+                            ok
+                    end,
                     State0 = spend_op_gas(OP, State),
                     {Res, State1} = recursive_call(State0, OP),
                     State2 = push(Res, State1),
@@ -1312,6 +1372,12 @@ loop(CP, StateIn) ->
                     %%                       + Gnewaccount
                     %%                           if σ[µs[0] mod 2^160] = ∅
                     %%                       + 0 otherwise
+                    case aevm_eeevm_state:vm_version(State) of
+                        ?AEVM_01_Sophia_01 ->
+                            eval_error({illegal_instruction, OP}, State);
+                        _ ->
+                            ok
+                    end,
                     State0 = spend_op_gas(OP, State),
                     {Us0, State1} = pop(State0),
                     State2 = aevm_eeevm_state:set_selfdestruct(Us0, State1),

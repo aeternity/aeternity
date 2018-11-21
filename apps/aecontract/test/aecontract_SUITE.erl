@@ -368,7 +368,7 @@ hack_bytecode(Code, OP) when is_integer(OP), 0 =< OP, OP =< 255 ->
        type_info := TypeInfo,
        byte_code := ByteCode } = aeso_compiler:deserialize(Code),
     Version = 1,
-    HackedByteCode = <<OP:1/integer-unsigned-unit:8, Code/binary>>,
+    HackedByteCode = <<OP:1/integer-unsigned-unit:8, ByteCode/binary>>,
     Fields = [ {source_hash, Hash}
              , {type_info, TypeInfo}
              , {byte_code, HackedByteCode}
