@@ -182,7 +182,7 @@ deserialize(Pubkey, Bin) ->
              , owner_id     = OwnerId
              , vm_version   = VmVersion
              , code         = Code
-             , store        = #{}
+             , store        = aect_contracts_store:new()
              , log          = Log
              , active       = Active
              , referrer_ids = ReferrerIds
@@ -343,8 +343,6 @@ assert_fields(C) ->
         Other -> error({missing, Other})
     end.
 
-assert_field(store = FieldKey, FieldValue, C) ->
-    assert_field_store(FieldKey, FieldValue, C#contract.vm_version);
 assert_field(FieldKey, FieldValue, _) ->
     assert_field(FieldKey, FieldValue).
 
@@ -360,11 +358,5 @@ assert_field(referrers = Field, X) ->
     catch _:_ -> error({illegal, Field, X}) end;
 assert_field(referrer, <<_:?PUB_SIZE/binary>> = X)       -> X;
 assert_field(deposit, X)    when is_integer(X), X >= 0   -> X;
+assert_field(store, X) -> X;  %% Always initialized locally by new()
 assert_field(Field, X) -> error({illegal, Field, X}).
-
-assert_field_store(store, X, _VmVersion) -> X;  %% Always initialized locally by new()
-assert_field_store(store_k = Field, X, VmVersion) when is_binary(X),
-                                               byte_size(X) > 0 ->
-    try true = aevm_eeevm_store:is_valid_key(VmVersion, X)
-    catch _:_ -> error({illegal, Field, X}) end;
-assert_field_store(store_v, X,_VmVersion) when is_binary(X) -> X.
