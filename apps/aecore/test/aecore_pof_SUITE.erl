@@ -250,8 +250,8 @@ siblings_common(TopBlock, N1, N2, Account1, Account2, Fraud) ->
     Locked = get_lock_holder_balance(N1),
     {Locked, Locked} = {Locked, get_lock_holder_balance(N2)},
     MR = aec_governance:block_mine_reward(FraudHeight),
-    true = Locked >= MR - FraudReward, % some fees
-    true = Locked =< MR.
+    {true, _, _} = {Locked >= MR - FraudReward, Locked, {MR, FraudReward}},% some fees
+    {true, _, _} = {Locked =< MR, Locked, MR}.
 
 
 %% ============================================================

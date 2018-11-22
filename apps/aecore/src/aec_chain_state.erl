@@ -93,6 +93,9 @@
         , calculate_gas_fee/1
         ]).
 
+-ifdef(TEST). 
+-export([calc_rewards/7]).
+-endif.
 
 -include("blocks.hrl").
 
@@ -863,52 +866,23 @@ grant_fees(Node, Trees, Delay, FraudStatus, State) ->
     MineReward2 = aec_governance:block_mine_reward(node_height(KeyNode2)),
     %% Fraud rewards is given for the opening block of the generation
     %% since this is the reward that was withheld.
-    FraudReward = aec_governance:fraud_report_reward(node_height(KeyNode1)),
-    BeneficiaryReward1 = KeyFees * 4 div 10,
-    KeyFeesBen2 = KeyFees - BeneficiaryReward1,
-    BeneficiaryReward2 = KeyFeesBen2 + MineReward2,
-    {Trees2, LockAmount} =
-        case {FraudStatus1, FraudStatus2} of
-            {true, true} ->
-                %% The miner of KeyNode1 was reported by the miner of KeyNode2
-                %% but that miner was reported by the miner of KeyNode3.
-                %% No rewards at all. Lock them both
-                {Trees, BeneficiaryReward1 + BeneficiaryReward2};
-            {true, false} ->
-                %% The miner of KeyNode1 was reported by the miner of KeyNode2
-                %% and that miner was a well behaved miner.
-                FinalReward = BeneficiaryReward2 + FraudReward,
-                %% lock the excess coins remaning after miner fees for the
-                %% fraudulent miner1 but also the mining reward for block1
-                Locked = MineReward1 + BeneficiaryReward1 - FraudReward,
-                {aec_trees:grant_fee(Beneficiary2, Trees, FinalReward), Locked};
-            {false, true} ->
-                %% The miner of KeyNode2 was reported by the miner of KeyNode3
-                %% but that reward will come later.
-                %% Lock the fees for the fraudulent miner2 but not the miner
-                %% reward, it will be locked on the next iteration
-                case node_is_genesis(KeyNode1, State) of
-                    true ->
-                        {Trees, KeyFeesBen2};
-                    false ->
-                        {aec_trees:grant_fee(Beneficiary1, Trees,
-                                            BeneficiaryReward1), KeyFeesBen2}
-                end;
-            {false, false} ->
-                %% No fraud in sight. Well done!
-                Trees1 =
-                    case node_is_genesis(KeyNode1, State) of
-                        true ->
-                            Trees;
-                        false ->
-                            aec_trees:grant_fee(Beneficiary1, Trees, BeneficiaryReward1)
-                    end,
-                % no fraud, no locking
-                {aec_trees:grant_fee(Beneficiary2, Trees1, BeneficiaryReward2), 0}
-        end,
-    Accounts0 = aec_trees:accounts(Trees2),
+    FraudReward1 = aec_governance:fraud_report_reward(node_height(KeyNode1)),
+    {BeneficiaryReward1, BeneficiaryReward2, LockAmount} =
+        calc_rewards(FraudStatus1, FraudStatus2, KeyFees,
+                     MineReward1, MineReward2,
+                     FraudReward1, node_is_genesis(KeyNode1, State)),
+    Trees1 =
+        lists:foldl(
+            fun({K, Amt}, TreesAccum) when Amt > 0 ->
+                    aec_trees:grant_fee(K, TreesAccum, Amt);
+                (_, TreesAccum) -> TreesAccum
+            end,
+            Trees,
+            [{Beneficiary1, BeneficiaryReward1},
+             {Beneficiary2, BeneficiaryReward2}]),
+    Accounts0 = aec_trees:accounts(Trees1),
     Accounts = aec_accounts_trees:lock_coins(LockAmount, Accounts0),
-    aec_trees:set_accounts(Trees2, Accounts).
+    aec_trees:set_accounts(Trees1, Accounts).
 
 
 calculate_gas_fee(Calls) ->
@@ -1123,3 +1097,48 @@ maybe_pof(Node, MicroSibHeaders) ->
             [Header| _] = MicroSibHeaders,
             aec_pof:new(export_header(Node), Header, Miner)
     end.
+
+% if a miner is fraudulent - one does not receive a reward and it is locked
+% instead.
+% if a miner reports a fraudulent previous miner - the reporter receives a
+% as a bonus a fraction of the previous miner's reward, the rest is locked.
+% Mining reward is awared with the previous generation (K2 mining reward is
+% awared with GenerationK1's fees) and thus when a miner is fraudulent we
+% don't award her with mining reward but we lock the excess of coins on the
+% next granting of fees. This way we can compute properly the locked amount.
+calc_rewards(FraudStatus1, FraudStatus2, GenerationFees, K1MineReward,
+             K2MineReward, K1FraudReward, IsKey1Genesis) ->
+    B1FeesPart = GenerationFees * 4 div 10,
+    B2FeesPart = GenerationFees - B1FeesPart,
+    B2FullReward = B2FeesPart + K2MineReward,
+    {_B1Amt, _B2Amt, _LockedAmount} =
+        case {FraudStatus1, FraudStatus2} of
+            {true, true} ->
+                %% The miner of KeyNode1 was reported by the miner of KeyNode2
+                %% but that miner was reported by the miner of KeyNode3.
+                %% No rewards at all. Lock just the fees
+                {0, 0, GenerationFees};
+            {true, false} ->
+                %% The miner of KeyNode1 was reported by the miner of KeyNode2
+                %% and that miner was a well behaved miner.
+                %% Use previous block's mining reward to compute the correct
+                %% locking amount
+                FinalReward = B2FullReward + K1FraudReward,
+                Locked = GenerationFees + K1MineReward + K2MineReward - FinalReward,
+                {0, FinalReward, Locked};
+            {false, true} ->
+                %% The miner of KeyNode2 was reported by the miner of KeyNode3
+                %% but that reward will come later.
+                %% Lock just the fees
+                case IsKey1Genesis of
+                    true  -> {0,          0, GenerationFees};
+                    false -> {B1FeesPart, 0, B2FeesPart}
+                end;
+            {false, false} ->
+                %% No fraud in sight. Well done!
+                case IsKey1Genesis of
+                    true  -> {0,          B2FullReward, B1FeesPart};
+                    false -> {B1FeesPart, B2FullReward, 0}
+                end
+        end.
+
