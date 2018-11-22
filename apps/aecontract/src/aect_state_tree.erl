@@ -210,12 +210,14 @@ verify_poi(Pubkey, Contract, Poi) ->
     end.
 
 verify_store_poi(Id, Store, IsLegalStoreFun, Poi) ->
-    StoreMap = aect_contracts_store:contents(Store),
     try lookup_store_poi(Id, Poi) of
         {ok, Store1} ->
+            StoreMap  = aect_contracts_store:contents(Store),
             StoreMap1 = aect_contracts_store:contents(Store1),
-            case StoreMap =:= StoreMap1 andalso IsLegalStoreFun(Store) of
-                true -> ok;
+            %% Put the StoreMap in the write cache to make IsLegal check it
+            Store2 = aect_contracts_store:put_map(StoreMap, aect_contracts_store:new()),
+            case StoreMap =:= StoreMap1 andalso IsLegalStoreFun(Store2) of
+                true  -> ok;
                 false -> {error, bad_proof}
             end;
         {error, _} = E -> E
