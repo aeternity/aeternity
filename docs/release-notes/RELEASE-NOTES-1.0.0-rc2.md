@@ -3,9 +3,41 @@
 [This release][this-release] is focused on TODOFILLMEIN.
 It:
 * Changes package versioning scheme to follow the [https://semver.org](semver.org)
-* Does all the things mentioned temporarily in files [/docs/release-notes/next/PT-*.md](/docs/release-notes/next/).
-
-TODO: When preparing the release, concatenate all `/docs/release-notes/next/*` Markdown files and place them in this file. (Hint: you can use auxiliary script `scripts/cat-files-in-directory-sorted-by-committer-date` and command `git log -p -w --color-moved`.)
+* Changes encoding from base58 to base64 for all binary data in the api that is not identifiers (e.g., accounts, contracts, etc). The base64 encoded string uses the same check as the checked base58c (i.e., the first 4 bytes of the twice sha256 hashed byte array is appended last before base64 encoding the data).
+* Adds Sophia syntax for map lookup and update with default values.
+* Refunds value transfers on failed contract calls. This affects consensus.
+* Adds a minimal transaction fee check to mempool and micro block validation. The minimal fee is computed from transaction gas and minimal gas price. This affects consensus.
+* Fix micro blocks signing when key block is posted by /key-blocks HTTP API
+* Aligns the gas cost of the AEVM instructions to the ones in recent Byzantium EVM for preventing known potential denial-of-service attack vectors. This affects consensus.
+* No longer stores call objects for calls from another contract. This affects consensus.
+* Stores contributors messages file in repo and puts its hash in the genesis block (in `prev_hash` field). This affects consensus.
+* Changes naming scheme for miner executables. Used to be `lean/mean/cuda<node-bits>`, this is changed to
+  `lean/mean/cuda<edge-bits>` to align with upstream cuckoo. An upstream sync is also performed. *NOTE:*
+  changes in `epoch.yaml` are necessary (i.e. `mean30-generic -> mean29-generic`, etc.). Does not affect consensus.
+* It fixes the deserialization of name transfer transactions with name as recipient.  This deserialization is exercised when such a transaction is exchanged among network peers or is posted by the user from the user API.
+* Fixes validation of minimum gas price in state channel force progress transaction, preventing sender of force progress (on-chain) transaction from not paying the gas of the call.  This affects consensus.
+* Charges gas for serialization of Sophia values in the VM. This affects consensus.
+* Requires the sender of the oracle response transaction to have enough balance for paying for the transaction fee without considering the to-be-awarded oracle query fee. This aligns the balance required for the oracle response transaction to the other transactions. This affects consensus.
+* Fixes a bug in channels on-chain mechanics. This impacts consensus.
+* Increases the gas of oracle transactions by adding a TTL state gas. Therefore, the fees for oracle transactions are higher. This affects consensus.
+* Introduces a dry-run API where a list of SpendTx, ContractCreateTx and ContractCallTx can be sent for off-chain evaluation. At
+  the same time disable the broken off-chain (<<"sophia">> ABI) call through `debug/contracts/code/call`.
+* Disable the Solidity EVM. It was very useful while developing, but it is not tested enough to be part of consensus, so it is disabled. This affects
+  consensus.
+* Change mining rewards by height to match inflation curve. This affects consensus.
+* Add a slow start of mining rewards to stabilize before the full rewards are given.
+* Fixes a performance problem with contract state containing large maps. This affects consensus.
+* Details the error reason in the contract call object in case of illegal instruction. This affects consensus.
+* Disables unsupported instructions from Sophia VM. These include: CREATE, SELFDESTRUCT, CALLCODE, DELEGATECALL, calldata-related opcodes, returndata-related opcodes, store-related opcodes. This affects consensus.
+* Changes behaviour of Name Claim, State Channels Close Mutual and State
+  Channels Settle transactions so that they do not burn tokens, and send tokens
+  to a special account without private key access instead. This affects
+  consensus.
+* Changes behaviour in miner reward distribution: when a proof of fraud is
+  received - the fraudelent does not receive any reward and the poster of the
+  proof of fraud gets a fraction of it. In order for this not to skew the
+  inflation, excess tokens are sent to a special account without private key
+  access instead. This affects consensus.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v1.0.0-rc2
 
@@ -73,4 +105,3 @@ Information, e.g. height, of the top block of the longest chain as seen by these
 Setting up your node consists of:
 * Configuring your node - see instructions in [the dedicated separate document](../../docs/configuration.md);
 * Starting your node and verifying it works as expected - see instructions in [the dedicated separate document](../../docs/operation.md).
-

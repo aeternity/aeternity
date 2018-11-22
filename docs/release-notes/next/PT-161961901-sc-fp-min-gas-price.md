@@ -1,1 +1,0 @@
-* Fixes validation of minimum gas price in state channel force progress transaction, preventing sender of force progress (on-chain) transaction from not paying the gas of the call.  This affects consensus.

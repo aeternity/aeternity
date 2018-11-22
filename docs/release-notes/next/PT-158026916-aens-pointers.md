@@ -1,1 +1,0 @@
-* It fixes the deserialization of name transfer transactions with name as recipient.  This deserialization is exercised when such a transaction is exchanged among network peers or is posted by the user from the user API.
