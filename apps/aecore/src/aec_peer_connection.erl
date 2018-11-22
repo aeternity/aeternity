@@ -54,7 +54,6 @@
 -define(DEFAULT_FIRST_PING_TIMEOUT, 30000).
 -define(DEFAULT_NOISE_HS_TIMEOUT, 5000).
 -define(DEFAULT_CLOSE_TIMEOUT, 3000).
--define(REQUEST_TIMEOUT, 5000).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,

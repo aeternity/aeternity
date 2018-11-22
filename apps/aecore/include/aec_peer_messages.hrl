@@ -1,3 +1,5 @@
+-define(REQUEST_TIMEOUT, 30000).
+
 -define(MSG_FRAGMENT, 0).
 -define(MSG_P2P_RESPONSE, 100).
 -define(MSG_PING, 1).
