@@ -79,10 +79,11 @@ lookup(Pubkey, Tree) ->
 enter(Account, Tree) ->
     aeu_mtrees:enter(key(Account), value(Account), Tree).
 
--dialyzer({nowarn_function, delete/2}).
+-ifdef(TEST).
 -spec delete(aec_keys:pubkey(), tree()) -> tree().
 delete(Pubkey, Tree) ->
     aeu_mtrees:delete(Pubkey, Tree).
+-endif.
 
 -spec to_binary_without_backend(tree()) -> binary().
 to_binary_without_backend(Tree) ->

@@ -101,8 +101,7 @@ origin(#oracle_extend_tx{} = Tx) ->
 %% Oracle should exist.
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_extend_tx{nonce = Nonce, oracle_ttl = OTTL, fee = Fee} = Tx,
-      Trees, Env) ->
-    Height = aetx_env:height(Env),
+      Trees,_Env) ->
     OraclePK = oracle_pubkey(Tx),
     Checks =
         [fun() -> check_oracle_extension_ttl(OTTL) end,

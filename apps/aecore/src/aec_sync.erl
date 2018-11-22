@@ -203,7 +203,7 @@ handle_cast(_, State) ->
 handle_info({gproc_ps_event, Event, #{info := Info}},
             State = #state{ gossip_txs = GossipTxs }) ->
     %% FUTURE: Forward blocks only to outbound connections.
-    %% Take a random subset (possibly empty) of peers that agree with us 
+    %% Take a random subset (possibly empty) of peers that agree with us
     %% on chain height to forward blocks and transactions to.
     PeerIds = [ aec_peers:peer_id(P) || P <- aec_peers:get_random(10) ],
     NonSyncingPeerIds = [ P || P <- PeerIds, not peer_in_sync(State, P) ],
@@ -514,7 +514,7 @@ run_job(Queue, Fun) ->
     proc_lib:spawn(jobs, run, [Queue, Fun]).
 
 %% Gossip Tx or Block - spawn a process and call jobs from there.
-enqueue(Kind, Data, []) ->
+enqueue(_Kind, _Data, []) ->
     ok;
 enqueue(Kind, Data, PeerIds) ->
     spawn(fun() ->
