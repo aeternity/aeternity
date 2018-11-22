@@ -153,15 +153,23 @@ get_all_accounts_balances(AccountsTree) ->
               [{Pubkey, aec_accounts:balance(Account)} | Acc]
       end, [], AccountsDump).
 
--spec lock_coins(non_neg_integer(), tree()) -> tree().
+-spec lock_coins(integer(), tree()) -> tree().
 lock_coins(0     , AccountsTree) -> AccountsTree;
-lock_coins(Amount, AccountsTree) when Amount > 0 ->
+lock_coins(Amount, AccountsTree) ->
     HolderPubKey = aec_governance:locked_coins_holder_account(),
     HolderAccount0 = case lookup(HolderPubKey, AccountsTree) of
                         none             -> aec_accounts:new(HolderPubKey, 0);
                         {value, Account} -> Account
                     end,
-    {ok, HolderAccount} = aec_accounts:earn(HolderAccount0, Amount),
+    {ok, HolderAccount} =
+        case Amount > 0 of
+            true -> aec_accounts:earn(HolderAccount0, Amount);
+            false ->
+                AbsAmount = abs(Amount),
+                true = 0 =< aec_accounts:balance(HolderAccount0) - AbsAmount,
+                Nonce = aec_accounts:nonce(HolderAccount0),
+                aec_accounts:spend(HolderAccount0, AbsAmount, Nonce)
+        end,
     enter(HolderAccount, AccountsTree).
 
 %%%===================================================================

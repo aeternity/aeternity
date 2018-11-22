@@ -94,7 +94,7 @@
         ]).
 
 -ifdef(TEST). 
--export([calc_rewards/7]).
+-export([calc_rewards/6]).
 -endif.
 
 -include("blocks.hrl").
@@ -862,14 +862,12 @@ grant_fees(Node, Trees, Delay, FraudStatus, State) ->
     Beneficiary1 = node_beneficiary(KeyNode1),
     Beneficiary2 = node_beneficiary(KeyNode2),
     %% We give the mining reward for the closing block of the generation.
-    MineReward1 = aec_governance:block_mine_reward(node_height(KeyNode1)),
     MineReward2 = aec_governance:block_mine_reward(node_height(KeyNode2)),
     %% Fraud rewards is given for the opening block of the generation
     %% since this is the reward that was withheld.
     FraudReward1 = aec_governance:fraud_report_reward(node_height(KeyNode1)),
     {BeneficiaryReward1, BeneficiaryReward2, LockAmount} =
-        calc_rewards(FraudStatus1, FraudStatus2, KeyFees,
-                     MineReward1, MineReward2,
+        calc_rewards(FraudStatus1, FraudStatus2, KeyFees, MineReward2,
                      FraudReward1, node_is_genesis(KeyNode1, State)),
     Trees1 =
         lists:foldl(
@@ -1106,39 +1104,39 @@ maybe_pof(Node, MicroSibHeaders) ->
 % awared with GenerationK1's fees) and thus when a miner is fraudulent we
 % don't award her with mining reward but we lock the excess of coins on the
 % next granting of fees. This way we can compute properly the locked amount.
-calc_rewards(FraudStatus1, FraudStatus2, GenerationFees, K1MineReward,
+calc_rewards(FraudStatus1, FraudStatus2, GenerationFees,
              K2MineReward, K1FraudReward, IsKey1Genesis) ->
     B1FeesPart = GenerationFees * 4 div 10,
     B2FeesPart = GenerationFees - B1FeesPart,
     B2FullReward = B2FeesPart + K2MineReward,
-    {_B1Amt, _B2Amt, _LockedAmount} =
+    TotalBlockAmount = GenerationFees + K2MineReward,
+    {B1Amt, B2Amt} =
         case {FraudStatus1, FraudStatus2} of
             {true, true} ->
                 %% The miner of KeyNode1 was reported by the miner of KeyNode2
                 %% but that miner was reported by the miner of KeyNode3.
-                %% No rewards at all. Lock just the fees
-                {0, 0, GenerationFees};
+                %% No rewards at all.
+                {0, 0};
             {true, false} ->
                 %% The miner of KeyNode1 was reported by the miner of KeyNode2
                 %% and that miner was a well behaved miner.
-                %% Use previous block's mining reward to compute the correct
-                %% locking amount
                 FinalReward = B2FullReward + K1FraudReward,
-                Locked = GenerationFees + K1MineReward + K2MineReward - FinalReward,
-                {0, FinalReward, Locked};
+                {0, FinalReward};
             {false, true} ->
                 %% The miner of KeyNode2 was reported by the miner of KeyNode3
                 %% but that reward will come later.
                 %% Lock just the fees
                 case IsKey1Genesis of
-                    true  -> {0,          0, GenerationFees};
-                    false -> {B1FeesPart, 0, B2FeesPart}
+                    true  -> {0,          0};
+                    false -> {B1FeesPart, 0}
                 end;
             {false, false} ->
                 %% No fraud in sight. Well done!
                 case IsKey1Genesis of
-                    true  -> {0,          B2FullReward, B1FeesPart};
-                    false -> {B1FeesPart, B2FullReward, 0}
+                    true  -> {0,          B2FullReward};
+                    false -> {B1FeesPart, B2FullReward}
                 end
-        end.
+        end,
+    LockedAmount = TotalBlockAmount - B1Amt - B2Amt,
+    {B1Amt, B2Amt, LockedAmount}.
 
