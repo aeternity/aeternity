@@ -332,7 +332,7 @@ do_local_action(Sync = #sync{ peer_id = PeerId }, {get, TxHashes}) ->
     Fun = fun() ->
               case aec_peer_connection:tx_pool_sync_get(PeerId, TxHashes) of
                   {ok, Txs} ->
-                      [ aec_tx_pool:push(Tx) || Tx <- Txs ],
+                      [ aec_tx_pool:push(Tx, tx_received) || Tx <- Txs ],
                       {ok, length(Txs)};
                   Err = {error, _} ->
                       Err
