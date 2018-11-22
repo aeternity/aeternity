@@ -54,8 +54,7 @@
         ]).
 
 %% Chain API
--export([ add_synced_generation/1
-        , add_synced_generation_batched/2
+-export([ add_synced_block/1
         , get_key_block_candidate/0
         , post_block/1
         ]).
@@ -142,16 +141,11 @@ post_block(Block) ->
             {error, Reason}
     end.
 
--spec add_synced_generation(map()) -> 'ok' | {'error', any()}.
-add_synced_generation(#{} = Generation) ->
-    add_synced_generation_batched(Generation, true).
-
--spec add_synced_generation_batched(map(), boolean()) -> 'ok' | {'error', any()}.
-add_synced_generation_batched(#{} = Generation, AddKeyBlock) when is_boolean(AddKeyBlock)->
-    Generation1 = Generation#{add_keyblock => AddKeyBlock},
-    case aec_validation:validate_block(Generation1) of
+-spec add_synced_block(aec_blocks:block()) -> 'ok' | {'error', any()}.
+add_synced_block(Block) ->
+    case aec_validation:validate_block(Block) of
         ok ->
-            gen_server:call(?SERVER, {add_synced_generation, Generation1}, 30000);
+            gen_server:call(?SERVER, {add_synced_block, Block}, 30000);
         {error, {header, Reason}} ->
             epoch_mining:info("Header failed validation: ~p", [Reason]),
             {error, Reason};
@@ -212,8 +206,8 @@ reinit_chain_state() ->
     exit(whereis(aec_tx_pool), kill),
     ok.
 
-handle_call({add_synced_generation, Block},_From, State) ->
-    {Reply, State1} = handle_synced_generation(Block, State),
+handle_call({add_synced_block, Block},_From, State) ->
+    {Reply, State1} = handle_synced_block(Block, State),
     {reply, Reply, State1};
 handle_call(get_key_block_candidate,_From, State) ->
     Res =
@@ -830,8 +824,8 @@ handle_key_block_candidate_reply({{error, Reason}, _}, State) ->
 %%%===================================================================
 %%% In server context: A block was given to us from the outside world
 
-handle_synced_generation(Block, State) ->
-    epoch_mining:info("synced_generation: ~p", [Block]),
+handle_synced_block(Block, State) ->
+    epoch_mining:info("synced_block: ~p", [Block]),
     handle_add_block(Block, State, block_synced).
 
 handle_post_block(Block, State) ->
@@ -859,24 +853,13 @@ handle_signed_block(Block, State) ->
 as_hex(S) ->
     [io_lib:format("~2.16.0b", [X]) || <<X:8>> <= S].
 
-handle_add_block(#{ key_block := KeyBlock, dir := Dir } = Block, #state{} = State, Origin) ->
-    %% Network layer (peer_connection, sync) sanitized KeyBlock to be key block.
-    Header = aec_blocks:to_header(KeyBlock),
-    %% Always try to insert forward generation - it may contain new unseen information
-    %% For backward generation, it is enough to check if we have the key block
-    %% since we only accept connected blocks.
-    CheckFun = case Dir of
-                   backward -> fun aec_chain:has_block/1;
-                   forward  -> fun(_) -> false end
-               end,
-    handle_add_block(Header, CheckFun, Block, State, Origin);
 handle_add_block(Block, #state{} = State, Origin) ->
     Header = aec_blocks:to_header(Block),
-    handle_add_block(Header, fun aec_chain:has_block/1, Block, State, Origin).
+    handle_add_block(Header, Block, State, Origin).
 
-handle_add_block(Header, CheckFun, Block, State, Origin) ->
+handle_add_block(Header, Block, State, Origin) ->
     {ok, Hash} = aec_headers:hash_header(Header),
-    case CheckFun(Hash) of
+    case aec_chain:has_block(Hash) of
         true ->
             epoch_mining:debug("Block already in chain", []),
             {ok, State};
@@ -884,7 +867,7 @@ handle_add_block(Header, CheckFun, Block, State, Origin) ->
             %% Block validation is performed in the caller's context for
             %% external (gossip/sync) blocks and we trust the ones we
             %% produce ourselves.
-            case aec_chain_state:insert_block(Block) of
+            case aec_chain_state:insert_block(Block, Origin) of
                 ok ->
                     handle_successfully_added_block(Block, State, Origin);
                 {pof,_PoF} ->

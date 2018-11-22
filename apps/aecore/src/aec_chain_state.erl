@@ -82,6 +82,7 @@
         , hash_is_connected_to_genesis/1
         , hash_is_in_main_chain/1
         , insert_block/1
+        , insert_block/2
         , gossip_allowed_height_from_top/0
         , proof_of_fraud_report_delay/0
         ]).
@@ -111,42 +112,21 @@ get_n_key_headers_backward_from(Header, N) ->
     Node = wrap_header(Header),
     get_n_key_headers_from(Node, N).
 
--spec insert_block(aec_blocks:block() | map()) -> 'ok' | {'pof', aec_pof:pof()} | {'error', any()}.
-insert_block(#{ dir := forward} = Generation) ->
-    case add_key_block_in_generation(Generation) of
-        ok ->
-            add_micro_blocks_in_generation(Generation);
-        {pof, _} ->
-            add_micro_blocks_in_generation(Generation);
-        {error, _} = Err ->
-            Err
-    end;
-insert_block(#{ dir := backward} = Generation) ->
-    case add_micro_blocks_in_generation(Generation) of
-        ok ->
-            add_key_block_in_generation(Generation);
-        {pof, _} ->
-            add_key_block_in_generation(Generation);
-        {error, _} = Err ->
-            Err
-    end;
+-spec insert_block(aec_blocks:block()) -> 'ok' | {'pof', aec_pof:pof()} | {'error', any()}.
 insert_block(Block) ->
-    aec_blocks:assert_block(Block),
     do_insert_block(Block, undefined).
 
-add_micro_blocks_in_generation(#{ micro_blocks := MicroBlocks}) ->
-    FoldFun = fun(MB, ok) -> do_insert_block(MB, sync);
-                 (MB, {pof, _}) -> do_insert_block(MB, sync);
-                 (_MB, Err = {error, _}) -> Err
-              end,
-    lists:foldl(FoldFun, ok, MicroBlocks).
-
-add_key_block_in_generation(#{ add_keyblock := false}) ->
-    ok;
-add_key_block_in_generation(#{ add_keyblock := true, key_block := KeyBlock}) ->
-    do_insert_block(KeyBlock, sync).
+%% We should not check the height distance to top for synced block, so
+%% we have to keep track of the origin here.
+-spec insert_block(aec_blocks:block(), atom()) ->
+        'ok' | {'pof', aec_pof:pof()} | {'error', any()}.
+insert_block(Block, block_synced) ->
+    do_insert_block(Block, sync);
+insert_block(Block, _Origin) ->
+    do_insert_block(Block, undefined).
 
 do_insert_block(Block, Origin) ->
+    aec_blocks:assert_block(Block),
     Node = wrap_block(Block),
     try internal_insert(Node, Block, Origin)
     catch throw:?internal_error(What) -> {error, What}

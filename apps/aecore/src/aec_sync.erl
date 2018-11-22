@@ -694,15 +694,20 @@ post_blocks(From, To, [{Height, _Hash, {PeerId, Block}} | Blocks]) ->
 %% blocks we limit the total amount of work the conductor has to perform in
 %% each synchronous call.
 %% Map contains key dir, saying in which direction we sync
-add_generation(#{micro_blocks := MBlocks} = Generation) ->
-    add_micro_blocks_in_generation(Generation#{micro_blocks => []}, MBlocks).
+add_generation(#{dir := forward, key_block := KB, micro_blocks := MBs}) ->
+    add_blocks([KB | MBs]);
+add_generation(#{dir := backward, key_block := KB, micro_blocks := MBs}) ->
+    add_blocks(MBs ++ [KB]).
 
-add_micro_blocks_in_generation(Gen, []) ->
-    aec_conductor:add_synced_generation_batched(Gen, true);
-add_micro_blocks_in_generation(Gen, [MBlock | MBlocks]) ->
-    case aec_conductor:add_synced_generation_batched(Gen#{micro_blocks => [MBlock]}, false) of
-        ok -> add_micro_blocks_in_generation(Gen, MBlocks);
-        Error -> Error
+add_blocks([]) ->
+    ok;
+add_blocks([B | Bs]) ->
+    try aec_conductor:add_synced_block(B) of
+        ok -> add_blocks(Bs);
+        Err -> Err
+    catch _:_ ->
+        lager:warning("Timeout adding_synced block: ~p", [B]),
+        {error, timeout}
     end.
 
 %% Ping logic makes sure they always agree on genesis header (height 0)
