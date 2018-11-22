@@ -35,7 +35,7 @@ store_test() ->
     Store  = aect_contracts_store:new(),
     State0 = aevm_eeevm_store:init(Store, #{}),
     State1 = aevm_eeevm_store:store(32, 17, State0),
-    #{ <<32>> := <<17>> } = aect_contracts_store:subtree(<<>>, aevm_eeevm_store:to_binary(State1)).
+    #{ <<32>> := <<17>> } = aect_contracts_store:contents(aevm_eeevm_store:to_binary(State1)).
 
 load_test() ->
     Store  = aect_contracts_store:put(<<32>>, <<17>>, aect_contracts_store:new()),

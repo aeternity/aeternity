@@ -36,7 +36,7 @@
 
 -spec init(aect_contracts:store(), aevm_eeevm_state:state()) -> aevm_eeevm_state:state().
 init(Store, State) ->
-    Map = aect_contracts_store:subtree(<<>>, Store),
+    Map = aect_contracts_store:contents(Store),
     State#{ storage => binary_to_integer_map(Map) }.
 
 -spec to_binary(aevm_eeevm_state:state()) -> aect_contracts:store().

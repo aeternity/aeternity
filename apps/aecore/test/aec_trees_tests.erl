@@ -673,7 +673,7 @@ make_store(Map) ->
     aect_contracts_store:put_map(Map, aect_contracts_store:new()).
 
 from_store(Store) ->
-    aect_contracts_store:subtree(<<>>, Store).
+    aect_contracts_store:contents(Store).
 
 translate_store(C) ->
     Store = aect_contracts:state(C),

@@ -3434,7 +3434,7 @@ set_ct_store(Map, Ct) ->
     aect_contracts:set_state(store_from_map(Map), Ct).
 
 get_ct_store(Ct) ->
-    aect_contracts_store:subtree(<<>>, aect_contracts:state(Ct)).
+    aect_contracts_store:contents(aect_contracts:state(Ct)).
 
 create_store(_Cfg) ->
     state(aect_test_utils:new_state()),

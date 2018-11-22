@@ -1981,7 +1981,7 @@ contract_transactions(_Config) ->    % miner has an account
                                                          aec_trees:contracts(Trees)]),
     %% Don't require the store mp trees to be identical, but check that the
     %% contents is the same.
-    Store  = aect_contracts_store:subtree(<<>>, aect_contracts:state(ContractInPoI)),
+    Store  = aect_contracts_store:contents(aect_contracts:state(ContractInPoI)),
     Store1 = rpc(aect_contracts_store, subtree, [<<>>, aect_contracts:state(ContractInPoI1)]),
     Ct = aect_contracts:internal_set_state(Store, ContractInPoI),
     Ct = aect_contracts:internal_set_state(Store1, ContractInPoI1),

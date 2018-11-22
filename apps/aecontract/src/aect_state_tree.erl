@@ -210,10 +210,10 @@ verify_poi(Pubkey, Contract, Poi) ->
     end.
 
 verify_store_poi(Id, Store, IsLegalStoreFun, Poi) ->
-    StoreMap = aect_contracts_store:subtree(<<>>, Store),
+    StoreMap = aect_contracts_store:contents(Store),
     try lookup_store_poi(Id, Poi) of
         {ok, Store1} ->
-            StoreMap1 = aect_contracts_store:subtree(<<>>, Store1),
+            StoreMap1 = aect_contracts_store:contents(Store1),
             case StoreMap =:= StoreMap1 andalso IsLegalStoreFun(Store) of
                 true -> ok;
                 false -> {error, bad_proof}

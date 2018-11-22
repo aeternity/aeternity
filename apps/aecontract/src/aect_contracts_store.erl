@@ -14,7 +14,8 @@
 -type key() :: binary().
 -type val() :: binary().
 
--export([ get/2,
+-export([ contents/1,
+          get/2,
           mtree/1,
           new/0,
           new/1,
@@ -59,6 +60,10 @@ put(Key, Val, Store = #store{ cache = Cache }) ->
 -spec put_map(#{key() => val()}, store()) -> store().
 put_map(Map, Store = #store{ cache = Cache }) ->
     Store#store{ cache = maps:merge(Cache, Map) }.
+
+-spec contents(store()) -> #{key() := val()}.
+contents(Store) ->
+    subtree(<<>>, Store).
 
 %% Returns a map of all the key/value pairs with the given key as a strict
 %% prefix.

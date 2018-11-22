@@ -66,7 +66,7 @@ set_state(Map, C) ->
     aect_contracts:set_state(Store, C).
 
 state(C) ->
-    aect_contracts_store:subtree(<<>>, aect_contracts:state(C)).
+    aect_contracts_store:contents(aect_contracts:state(C)).
 
 create_tx() ->
     create_tx(#{}).
