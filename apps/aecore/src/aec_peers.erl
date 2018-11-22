@@ -448,7 +448,7 @@ handle_cast({resolved_hostname, Host, {ok, Addr}}, #state{hostnames = HostMap} =
         {ok, {_, _, PeerMap}} ->
             HostMap2 = maps:remove(Host, HostMap),
             State2 = State#state{ hostnames = HostMap2 },
-            NewState = 
+            NewState =
                 maps:fold(fun
                               (_, {undefined, PeerInfo, IsTrusted}, S) ->
                                   Peer = peer(Addr, PeerInfo, IsTrusted),
@@ -587,8 +587,8 @@ update_ping_metrics(Outcome) ->
 %--- API CALLS HELPER FUNCTIONS ------------------------------------------------
 
 %% Adds or update a peer; called in the caller's process.
-%% We should not block the caller, so we just spawn to make this happen in 
-%% the background. If the process silently fails in the background, we 
+%% We should not block the caller, so we just spawn to make this happen in
+%% the background. If the process silently fails in the background, we
 %% will be able to detect that in the logs since we won't be able to
 %% connect.
 -spec async_add_peer(inet:ip_address() | undefined, peer_info(), boolean()) -> ok.
@@ -601,17 +601,13 @@ async_add_peer(SourceAddr0, #{ host := Host} = PeerInfo, IsTrusted) ->
                      gen_server:cast(?MODULE, {resolve_peer, SourceAddr0,
                                                PeerInfo, IsTrusted});
                  {ok, Addr} when SourceAddr0 == undefined ->
-                     epoch_sync:debug("PEER undefined address ~p ~p -> ~p", [Host, SourceAddr0, Addr]),
                      Peer = peer(Addr, PeerInfo, IsTrusted),
                      gen_server:cast(?MODULE, {add_peer, Addr, Peer});
                  {ok, Addr} when SourceAddr0 =/= undefined ->
-                     %% IP address has changed
-                     [ epoch_sync:debug("New IP address for host ~p ~p -> ~p", [Host, SourceAddr0, Addr]) 
-                       || Addr =/= SourceAddr0 ],
                      Peer = peer(Addr, PeerInfo, IsTrusted),
                      gen_server:cast(?MODULE, {add_peer, SourceAddr0, Peer})
              end
-          end), 
+          end),
     ok.
 
 async_resolve_host(Host) ->
