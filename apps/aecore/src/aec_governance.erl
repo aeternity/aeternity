@@ -11,9 +11,10 @@
          tx_base_gas/1,
          byte_gas/0,
          beneficiary_reward_delay/0,
+         locked_coins_holder_account/0,
          minimum_gas_price/0,
          name_preclaim_expiration/0,
-         name_claim_burned_fee/0,
+         name_claim_locked_fee/0,
          name_claim_max_expiration/0,
          name_protection_period/0,
          name_claim_preclaim_delta/0,
@@ -60,6 +61,9 @@
 -define(ACCEPTED_FUTURE_BLOCK_TIME_SHIFT, (?EXPECTED_BLOCK_MINE_RATE_MINUTES * 3 * 60 * 1000)). %% 9 min
 
 -define(ORACLE_STATE_GAS_PER_YEAR, 32000). %% 32000 as `GCREATE` i.e. an oracle-related state object costs per year as much as it costs to indefinitely create an account.
+
+%% Account where locked / burnt coins are sent to.
+-define(LOCKED_COINS_ACCOUNT, <<0:32/unit:8>>).
 
 %% Maps consensus protocol version to minimum height at which such
 %% version is effective.  The height must be strictly increasing with
@@ -193,7 +197,7 @@ primop_base_gas(?PRIM_CALL_MAP_TOLIST         ) -> 0.
 name_preclaim_expiration() ->
     300.
 
-name_claim_burned_fee() ->
+name_claim_locked_fee() ->
     3.
 
 name_claim_max_expiration() ->
@@ -230,6 +234,9 @@ contributors_messages_hash() ->
     %%  > cd /tmp/node
     %%  > bin/epoch messages_hash
     <<25,96,225,235,153,121,113,51,168,192,77,171,0,167,187,172,149,30,210,180,219,135,67,74,47,112,42,3,20,50,229,164>>.
+
+-spec locked_coins_holder_account() -> aec_keys:pubkey().
+locked_coins_holder_account() -> ?LOCKED_COINS_ACCOUNT.
 
 vm_gas_table() ->
     #{ %% Nothing paid for operations of the set Wzero.

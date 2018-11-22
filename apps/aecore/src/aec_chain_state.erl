@@ -93,6 +93,9 @@
         , calculate_gas_fee/1
         ]).
 
+-ifdef(TEST). 
+-export([calc_rewards/6]).
+-endif.
 
 -include("blocks.hrl").
 
@@ -859,43 +862,26 @@ grant_fees(Node, Trees, Delay, FraudStatus, State) ->
     Beneficiary1 = node_beneficiary(KeyNode1),
     Beneficiary2 = node_beneficiary(KeyNode2),
     %% We give the mining reward for the closing block of the generation.
-    MineReward = aec_governance:block_mine_reward(node_height(KeyNode2)),
+    MineReward2 = aec_governance:block_mine_reward(node_height(KeyNode2)),
     %% Fraud rewards is given for the opening block of the generation
     %% since this is the reward that was withheld.
-    FraudReward = aec_governance:fraud_report_reward(node_height(KeyNode1)),
-    BeneficiaryReward1 = KeyFees * 4 div 10,
-    BeneficiaryReward2 = KeyFees - BeneficiaryReward1 + MineReward,
-    case {FraudStatus1, FraudStatus2} of
-        {true, true} ->
-            %% The miner of KeyNode1 was reported by the miner of KeyNode2
-            %% but that miner was reported by the miner of KeyNode3.
-            %% No rewards at all.
-            Trees;
-        {true, false} ->
-            %% The miner of KeyNode1 was reported by the miner of KeyNode2
-            %% and that miner was a well behaved miner.
-            FinalReward = BeneficiaryReward2 + FraudReward,
-            aec_trees:grant_fee(Beneficiary2, Trees, FinalReward);
-        {false, true} ->
-            %% The miner of KeyNode2 was reported by the miner of KeyNode3
-            %% but that reward will come later.
-            case node_is_genesis(KeyNode1, State) of
-                true ->
-                    Trees;
-                false ->
-                    aec_trees:grant_fee(Beneficiary1, Trees, BeneficiaryReward1)
-            end;
-        {false, false} ->
-            %% No fraud in sight. Well done!
-            Trees1 =
-                case node_is_genesis(KeyNode1, State) of
-                    true ->
-                        Trees;
-                    false ->
-                        aec_trees:grant_fee(Beneficiary1, Trees, BeneficiaryReward1)
-                end,
-            aec_trees:grant_fee(Beneficiary2, Trees1, BeneficiaryReward2)
-    end.
+    FraudReward1 = aec_governance:fraud_report_reward(node_height(KeyNode1)),
+    {BeneficiaryReward1, BeneficiaryReward2, LockAmount} =
+        calc_rewards(FraudStatus1, FraudStatus2, KeyFees, MineReward2,
+                     FraudReward1, node_is_genesis(KeyNode1, State)),
+    Trees1 =
+        lists:foldl(
+            fun({K, Amt}, TreesAccum) when Amt > 0 ->
+                    aec_trees:grant_fee(K, TreesAccum, Amt);
+                (_, TreesAccum) -> TreesAccum
+            end,
+            Trees,
+            [{Beneficiary1, BeneficiaryReward1},
+             {Beneficiary2, BeneficiaryReward2}]),
+    Accounts0 = aec_trees:accounts(Trees1),
+    Accounts = aec_accounts_trees:lock_coins(LockAmount, Accounts0),
+    aec_trees:set_accounts(Trees1, Accounts).
+
 
 calculate_gas_fee(Calls) ->
     F = fun(_, SerCall, GasFeeIn) ->
@@ -1109,3 +1095,48 @@ maybe_pof(Node, MicroSibHeaders) ->
             [Header| _] = MicroSibHeaders,
             aec_pof:new(export_header(Node), Header, Miner)
     end.
+
+% if a miner is fraudulent - one does not receive a reward and it is locked
+% instead.
+% if a miner reports a fraudulent previous miner - the reporter receives a
+% as a bonus a fraction of the previous miner's reward, the rest is locked.
+% Mining reward is awared with the previous generation (K2 mining reward is
+% awared with GenerationK1's fees) and thus when a miner is fraudulent we
+% don't award her with mining reward but we lock the excess of coins on the
+% next granting of fees. This way we can compute properly the locked amount.
+calc_rewards(FraudStatus1, FraudStatus2, GenerationFees,
+             K2MineReward, K1FraudReward, IsKey1Genesis) ->
+    B1FeesPart = GenerationFees * 4 div 10,
+    B2FeesPart = GenerationFees - B1FeesPart,
+    B2FullReward = B2FeesPart + K2MineReward,
+    TotalBlockAmount = GenerationFees + K2MineReward,
+    {B1Amt, B2Amt} =
+        case {FraudStatus1, FraudStatus2} of
+            {true, true} ->
+                %% The miner of KeyNode1 was reported by the miner of KeyNode2
+                %% but that miner was reported by the miner of KeyNode3.
+                %% No rewards at all.
+                {0, 0};
+            {true, false} ->
+                %% The miner of KeyNode1 was reported by the miner of KeyNode2
+                %% and that miner was a well behaved miner.
+                FinalReward = B2FullReward + K1FraudReward,
+                {0, FinalReward};
+            {false, true} ->
+                %% The miner of KeyNode2 was reported by the miner of KeyNode3
+                %% but that reward will come later.
+                %% Lock just the fees
+                case IsKey1Genesis of
+                    true  -> {0,          0};
+                    false -> {B1FeesPart, 0}
+                end;
+            {false, false} ->
+                %% No fraud in sight. Well done!
+                case IsKey1Genesis of
+                    true  -> {0,          B2FullReward};
+                    false -> {B1FeesPart, B2FullReward}
+                end
+        end,
+    LockedAmount = TotalBlockAmount - B1Amt - B2Amt,
+    {B1Amt, B2Amt, LockedAmount}.
+

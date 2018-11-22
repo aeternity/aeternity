@@ -60,6 +60,39 @@ get_all_accounts_balances_test() ->
     Actual   = aec_accounts_trees:get_all_accounts_balances(T2),
     ?assertEqual(lists:sort(Actual), lists:sort(Expected)).
 
+account_for_locking_test() ->
+    HolderPubKey = aec_governance:locked_coins_holder_account(),
+    T0 = aec_accounts_trees:empty(),
+
+    %% not present in empty tree
+    ?assertException(_, _, aec_accounts_trees:get(HolderPubKey, T0)),
+
+    GetHolderBalance =
+        fun(Tree) ->
+            Acc = aec_accounts_trees:get(HolderPubKey, Tree),
+            _Bal = aec_accounts:balance(Acc)
+        end,
+
+    Amt1 = 1,
+    Amt2 = 2,
+    Amt3 = 3,
+
+    %% adding coins for the first time creates the account
+    T1 = aec_accounts_trees:lock_coins(Amt1, T0),
+    Bal1 = GetHolderBalance(T1),
+    ?assertEqual(Bal1, Amt1),
+
+    %% adding more tokens increments locked coins' amount
+    T2 = aec_accounts_trees:lock_coins(Amt2, T1),
+    Bal2 = GetHolderBalance(T2),
+    ?assertEqual(Bal2, Amt1 + Amt2),
+
+    %% adding more tokens increments locked coins' amount even more
+    T3 = aec_accounts_trees:lock_coins(Amt3, T2),
+    Bal3 = GetHolderBalance(T3),
+    ?assertEqual(Bal3, Amt1 + Amt2 + Amt3),
+    ok.
+    
 % channels' rely on accounts with a dict backend being reproducable with
 % only the latest state
 trunc_test() ->

@@ -77,7 +77,11 @@ set_account_balance(PubKey, NewBalance, State) ->
     set_account(A2, State).
 
 get_account(PubKey, State) ->
-    aec_accounts_trees:get(PubKey, aec_trees:accounts(trees(State))).
+    AccountsTree = aec_trees:accounts(trees(State)),
+    case aec_accounts_trees:lookup(PubKey, AccountsTree) of
+        none             -> aec_accounts:new(PubKey, 0);
+        {value, Account} -> Account
+    end.
 
 setup_new_account(Balance, State) ->
     {PubKey, PrivKey} = new_key_pair(),

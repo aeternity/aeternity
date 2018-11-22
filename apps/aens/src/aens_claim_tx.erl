@@ -105,13 +105,9 @@ check(#ns_claim_tx{nonce     = Nonce,
     AccountPubKey = account_pubkey(Tx),
     case aens_utils:to_ascii(Name) of
         {ok, NameAscii} ->
-            %% TODO: Maybe include burned fee in tx fee. To do so, mechanism determining
-            %% which part of fee goes to miner and what gets burned is needed.
-            %% One option is to change tx:fee/1 callback to tx:fee_for_miner/1.
-            BurnedFee = aec_governance:name_claim_burned_fee(),
-
+            LockedFee = aec_governance:name_claim_locked_fee(),
             Checks =
-                [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee + BurnedFee) end,
+                [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee + LockedFee) end,
                  fun() -> check_commitment(NameAscii, NameSalt, AccountPubKey, Trees, Height) end,
                  fun() -> check_name(NameAscii, Trees) end],
 
@@ -134,10 +130,11 @@ process(#ns_claim_tx{nonce     = Nonce,
     AccountsTree0 = aec_trees:accounts(Trees0),
     NSTree0 = aec_trees:ns(Trees0),
 
-    TotalFee = Fee + aec_governance:name_claim_burned_fee(),
+    LockedFee = aec_governance:name_claim_locked_fee(),
     Account0 = aec_accounts_trees:get(AccountPubKey, AccountsTree0),
-    {ok, Account1} = aec_accounts:spend(Account0, TotalFee, Nonce),
+    {ok, Account1} = aec_accounts:spend(Account0, Fee + LockedFee, Nonce),
     AccountsTree1 = aec_accounts_trees:enter(Account1, AccountsTree0),
+    AccountsTree2 = aec_accounts_trees:lock_coins(LockedFee, AccountsTree1),
 
     {ok, PlainNameAscii} = aens_utils:to_ascii(PlainName),
     CommitmentHash = aens_hash:commitment_hash(PlainNameAscii, NameSalt),
@@ -147,7 +144,7 @@ process(#ns_claim_tx{nonce     = Nonce,
     Name = aens_names:new(ClaimTx, TTL, Height),
     NSTree2 = aens_state_tree:enter_name(Name, NSTree1),
 
-    Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
+    Trees1 = aec_trees:set_accounts(Trees0, AccountsTree2),
     Trees2 = aec_trees:set_ns(Trees1, NSTree2),
 
     {ok, Trees2}.
