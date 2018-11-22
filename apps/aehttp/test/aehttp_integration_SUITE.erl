@@ -1979,12 +1979,18 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, Trees} = rpc(aec_chain, get_top_state, []),
     ContractInPoI1 = rpc(aect_state_tree, get_contract, [ContractPubKey,
                                                          aec_trees:contracts(Trees)]),
-    %% Don't require the store mp trees to be identical, but check that the
-    %% contents is the same.
-    Store  = aect_contracts_store:contents(aect_contracts:state(ContractInPoI)),
-    Store1 = rpc(aect_contracts_store, subtree, [<<>>, aect_contracts:state(ContractInPoI1)]),
-    Ct = aect_contracts:internal_set_state(Store, ContractInPoI),
-    Ct = aect_contracts:internal_set_state(Store1, ContractInPoI1),
+    %% Don't require the store mp trees to be identical as Erlang terms, but
+    %% check that the contents is the same and that the root hashes of the MP
+    %% trees are the same
+    Store    = aect_contracts:state(ContractInPoI),
+    Store1   = aect_contracts:state(ContractInPoI1),
+    Contents = aect_contracts_store:contents(Store),
+    Contents = rpc(aect_contracts_store, contents, [Store1]),
+    RootHash = aeu_mtrees:root_hash(aect_contracts_store:mtree(Store)),
+    RootHash = aeu_mtrees:root_hash(aect_contracts_store:mtree(Store1)),
+    %% Check the non-store parts of the contract
+    Ct = aect_contracts:internal_set_state(dummy, ContractInPoI),
+    Ct = aect_contracts:internal_set_state(dummy, ContractInPoI1),
     {ok, ContractAccInPoI} = aec_trees:lookup_poi(accounts, ContractPubKey, PoI),
     ContractAccInPoI = rpc(aec_accounts_trees, get, [ContractPubKey,
                                                      aec_trees:accounts(Trees)]),
