@@ -1,6 +1,6 @@
 # About this release
 
-[This release][this-release] is focused on TODOFILLMEIN.
+[This release][this-release] is the second release candidate.
 It:
 * Changes package versioning scheme to follow the [https://semver.org](semver.org)
 * Changes encoding from base58 to base64 for all binary data in the api that is not identifiers (e.g., accounts, contracts, etc). The base64 encoded string uses the same check as the checked base58c (i.e., the first 4 bytes of the twice sha256 hashed byte array is appended last before base64 encoding the data).
