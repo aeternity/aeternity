@@ -155,7 +155,6 @@ opcode(GasTable, ?CALL)           -> { 7,  1, 0};
 opcode(GasTable, ?CALLCODE)       -> { 7,  1, 0};
 opcode(GasTable, ?RETURN)         -> { 2,  0, maps:get('GZERO', GasTable)};
 opcode(GasTable, ?DELEGATECALL)   -> { 6,  1, 0};
-opcode(GasTable, ?CALLBLACKBOX)   -> { 7,  1, 40}; %% TODO
 opcode(GasTable, ?STATICCALL)     -> { 6,  1, 40}; %% TODO
 opcode(GasTable, ?REVERT)         -> { 2,  0, 0};
 opcode(GasTable, ?SUICIDE)        -> { 1,  0, maps:get('GSELFDESTRUCT', GasTable)}. %% TODO

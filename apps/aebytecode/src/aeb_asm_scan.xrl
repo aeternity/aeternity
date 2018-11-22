@@ -153,7 +153,6 @@ CALL           : {token, {mnemonic, TokenLine, 'CALL'}}.
 CALLCODE       : {token, {mnemonic, TokenLine, 'CALLCODE'}}.
 RETURN         : {token, {mnemonic, TokenLine, 'RETURN'}}.
 DELEGATECALL   : {token, {mnemonic, TokenLine, 'DELEGATECALL'}}.
-CALLBLACKBOX   : {token, {mnemonic, TokenLine, 'CALLBLACKBOX'}}.
 STATICCALL     : {token, {mnemonic, TokenLine, 'STATICCALL'}}.
 REVERT         : {token, {mnemonic, TokenLine, 'REVERT'}}.
 INVALID        : {token, {mnemonic, TokenLine, 'INVALID'}}.

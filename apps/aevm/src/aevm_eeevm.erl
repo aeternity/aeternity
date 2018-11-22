@@ -133,7 +133,7 @@ loop(CP, StateIn) ->
             State  = trace(CP, StateIn),
             State0 = spend_op_gas(OP, State),
             case OP of
-                %% =s: Stop and Arithmetic Operations
+                %% 0s: Stop and Arithmetic Operations
                 ?STOP ->
                     %% 0x00 STOP
                     %% Halts execution.
@@ -392,9 +392,9 @@ loop(CP, StateIn) ->
                     State3 = push(Val, State2),
                     next_instruction(CP, State, State3);
                 %% No opcodes 0x1b-0x1f
-                16#1b -> eval_error({illegal_instruction, OP}, State);
-                16#1c -> eval_error({illegal_instruction, OP}, State);
-                16#1d -> eval_error({illegal_instruction, OP}, State);
+                16#1b -> eval_error({illegal_instruction, OP}, State); %% SHL
+                16#1c -> eval_error({illegal_instruction, OP}, State); %% SHR
+                16#1d -> eval_error({illegal_instruction, OP}, State); %% SAR
                 16#1e -> eval_error({illegal_instruction, OP}, State);
                 16#1f -> eval_error({illegal_instruction, OP}, State);
                 %% 20s: SHA3
@@ -582,7 +582,7 @@ loop(CP, StateIn) ->
                     State4 = aevm_eeevm_memory:write_area(Us0, ReturnData, State3),
                     next_instruction(CP, State, State4);
                 %% No opcode 0x3f
-                16#3f -> eval_error({illegal_instruction, OP}, State0);
+                16#3f -> eval_error({illegal_instruction, OP}, State0); %% EXTCODEHASH
                 %% 40s Block Information
                 ?BLOCKHASH ->
                     %% 0x40 BLOCKHASH δ=1 α=1
@@ -1142,12 +1142,12 @@ loop(CP, StateIn) ->
                     {Res, State1} = recursive_call(State0, OP),
                     State2 = push(Res, State1),
                     next_instruction(CP, State, State2);
-                16#f5 -> eval_error({illegal_instruction, OP}, State0);
+                16#f5 -> eval_error({illegal_instruction, OP}, State0); %% CREATE2
                 16#f6 -> eval_error({illegal_instruction, OP}, State0);
                 16#f7 -> eval_error({illegal_instruction, OP}, State0);
                 16#f8 -> eval_error({illegal_instruction, OP}, State0);
                 16#f9 -> eval_error({illegal_instruction, OP}, State0);
-                16#fa -> eval_error({illegal_instruction, OP}, State0);
+                ?STATICCALL -> eval_error({illegal_instruction, OP}, State0);
                 16#fb -> eval_error({illegal_instruction, OP}, State0);
                 16#fc -> eval_error({illegal_instruction, OP}, State0);
                 ?REVERT ->
@@ -1167,7 +1167,7 @@ loop(CP, StateIn) ->
                 ?INVALID ->
                     %% 0xfe INVALID δ=∅ α=∅
                     %% Designated invalid instruction.
-                    eval_error({the_invalid_instruction, OP}, State0);
+                    eval_error({illegal_instruction, OP}, State0);
                 ?SUICIDE ->
                     %% 0xff SELFDESTRUCT 1 0
                     %% Halt execution and register account for
@@ -1183,11 +1183,7 @@ loop(CP, StateIn) ->
                     %%                       + 0 otherwise
                     {Us0, State1} = pop(State0),
                     State2 = aevm_eeevm_state:set_selfdestruct(Us0, State1),
-                    spend_mem_gas(State, State2);
-                _ ->
-                    error({opcode_not_implemented,
-                      lists:flatten(
-                        io_lib:format("~2.16.0B",[OP]))})
+                    spend_mem_gas(State, State2)
                 end;
             true -> aevm_eeevm_state:set_cp(CP, StateIn)
     end.

@@ -23,6 +23,9 @@
         , call_wrong_type/1
         , create_contract/1
         , create_contract_init_error/1
+        , create_contract_init_error_the_invalid_instruction/1
+        , create_contract_init_error_illegal_instruction_one_hex_digit/1
+        , create_contract_init_error_illegal_instruction_two_hex_digits/1
         , create_contract_negative_gas_price_zero/1
         , create_contract_negative/1
         , create_contract_upfront_fee/1
@@ -127,6 +130,9 @@ groups() ->
                               ]}
     , {transactions, [], [ create_contract
                          , create_contract_init_error
+                         , create_contract_init_error_the_invalid_instruction
+                         , create_contract_init_error_illegal_instruction_one_hex_digit
+                         , create_contract_init_error_illegal_instruction_two_hex_digits
                          , create_contract_negative_gas_price_zero
                          , create_contract_negative
                          , {group, create_contract_upfront_charges}
@@ -333,6 +339,45 @@ create_contract_init_error(_Cfg) ->
                  - aect_create_tx:gas_price(aetx:tx(Tx)) * aect_call:gas_used(InitCall),
                  aec_accounts:balance(aect_test_utils:get_account(PubKey, S2))),
     ok.
+
+create_contract_init_error_the_invalid_instruction(_Cfg) ->
+    create_contract_init_error_illegal_instruction_(16#fe, <<"">>).
+
+create_contract_init_error_illegal_instruction_one_hex_digit(_Cfg) ->
+    create_contract_init_error_illegal_instruction_(16#0c, <<"">>).
+
+create_contract_init_error_illegal_instruction_two_hex_digits(_Cfg) ->
+    create_contract_init_error_illegal_instruction_(16#fc, <<"">>).
+
+create_contract_init_error_illegal_instruction_(OP, ErrReason) when is_binary(ErrReason) ->
+    state(aect_test_utils:new_state()),
+    Acc = call(fun new_account/2, [10000000]),
+    Code = compile_contract(minimal_init),
+    HackedCode = hack_bytecode(Code, OP),
+    Gas = 9000,
+    CreateTxOpts = #{gas => Gas},
+    Opts = CreateTxOpts#{return_return_value => true, return_gas_used => true},
+    {{_, {ReturnType, ReturnValue}}, GasUsed} = call(fun create_contract_with_code/5, [Acc, HackedCode, {}, Opts]),
+    ?assertEqual(error, ReturnType),
+    ?assertEqual(ErrReason, ReturnValue),
+    ?assertEqual(Gas, GasUsed),
+    ok.
+
+hack_bytecode(Code, OP) when is_integer(OP), 0 =< OP, OP =< 255 ->
+    #{ source_hash := Hash,
+       type_info := TypeInfo,
+       byte_code := ByteCode } = aeso_compiler:deserialize(Code),
+    Version = 1,
+    HackedByteCode = <<OP:1/integer-unsigned-unit:8, Code/binary>>,
+    Fields = [ {source_hash, Hash}
+             , {type_info, TypeInfo}
+             , {byte_code, HackedByteCode}
+             ],
+    Template =
+        [ {source_hash, binary}
+        , {type_info, [{binary, binary, binary, binary}]}
+        , {byte_code, binary}],
+    aec_object_serialization:serialize(compiler_sophia, Version, Template, Fields).
 
 create_contract(_Cfg) -> create_contract_(1).
 
@@ -772,7 +817,7 @@ create_contract_with_code(Owner, Code, Args, Options, S) ->
                      , fee        => 1000000
                      , deposit    => 0
                      , amount     => 0
-                     , gas        => 10000 }, maps:without([height, return_gas_used], Options)), S),
+                     , gas        => 10000 }, maps:without([height, return_return_value, return_gas_used], Options)), S),
     Height   = maps:get(height, Options, 1),
     PrivKey  = aect_test_utils:priv_key(Owner, S),
     {ok, S1} = sign_and_apply_transaction(CreateTx, PrivKey, S, Height),
@@ -780,9 +825,15 @@ create_contract_with_code(Owner, Code, Args, Options, S) ->
     CallKey     = aect_call:id(Owner, Nonce, ContractKey),
     CallTree    = aect_test_utils:calls(S1),
     Call        = aect_call_state_tree:get_call(ContractKey, CallKey, CallTree),
+    Result0     = ContractKey,
+    Result1     =
+        case maps:get(return_return_value, Options, false) of
+            false -> Result0;
+            true  -> {Result0, {aect_call:return_type(Call), aect_call:return_value(Call)}}
+        end,
     case maps:get(return_gas_used, Options, false) of
-        false -> {ContractKey, S1};
-        true  -> {{ContractKey, aect_call:gas_used(Call)}, S1}
+        false -> {Result1, S1};
+        true  -> {{Result1, aect_call:gas_used(Call)}, S1}
     end.
 
 call_contract(Caller, ContractKey, Fun, Type, Args, S) ->
