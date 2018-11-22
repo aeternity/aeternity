@@ -244,17 +244,17 @@ parse_string(Text) ->
     case aeso_parser:string(Text) of
         %% Yay, it worked!
         {ok, Contract} -> Contract;
+        %% Scan errors.
+        {error, {Pos, scan_error}} ->
+            parse_error(Pos, "scan error");
+        {error, {Pos, scan_error_no_state}} ->
+            parse_error(Pos, "scan error");
         %% Parse errors.
         {error, {Pos, parse_error, Error}} ->
             parse_error(Pos, Error);
         {error, {Pos, ambiguous_parse, As}} ->
             ErrorString = io_lib:format("Ambiguous ~p", [As]),
-            parse_error(Pos, ErrorString);
-        %% Scan errors.
-        {error, {scan_error, Pos, Line}} ->
-            parse_error({Line,Pos}, "scan error");
-        {error, {scan_error_no_state, Pos, Line}} ->
-            parse_error({Line,Pos}, "scan error")
+            parse_error(Pos, ErrorString)
     end.
 
 parse_error({Line,Pos}, ErrorString) ->
