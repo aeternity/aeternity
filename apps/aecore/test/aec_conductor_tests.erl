@@ -405,9 +405,9 @@ generation_test_() ->
              ok
      end,
      [
-        {"Start signing after mined block", fun test_mined_block_signing/0},
-        {"Start signing after two mined block", fun test_two_mined_block_signing/0},
-        {"Start signing after received block", fun test_received_block_signing/0}
+        {timeout, 10, {"Start signing after mined block", fun test_mined_block_signing/0}},
+        {timeout, 10, {"Start signing after two mined block", fun test_two_mined_block_signing/0}},
+        {timeout, 10, {"Start signing after received block", fun test_received_block_signing/0}}
      ]}.
 
 test_mined_block_signing() ->

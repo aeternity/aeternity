@@ -1490,7 +1490,12 @@ nonce_limit(Config) ->
     [{_, Node} | _] = ?config(nodes, Config),
     aecore_suite_utils:mock_mempool_nonce_offset(Node, 5),
 
-    aecore_suite_utils:mine_blocks(Node, 3),
+    case rpc(aec_tx_pool, peek, [infinity]) of
+        {ok, []}   -> ok;
+        {ok, Txs0} ->
+            Txs0Hs = [ aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(T)) || T <- Txs0 ],
+            aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, Txs0Hs, 5)
+    end,
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     Txs = lists:map(
