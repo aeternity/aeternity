@@ -150,7 +150,6 @@ init_vm(State, Code, Mem, Store, CallDataType, OutType) ->
               , cp        => 0
               , logs      => []
               , memory    => Mem
-              , storage   => #{}
               , return_data => <<>>
               , stack     => []
               },
@@ -193,10 +192,8 @@ init_vm(State, Code, Mem, Store, CallDataType, OutType) ->
 is_reentrant_call(State) ->
     lists:member(address(State), call_stack(State)).
 
-get_store(#{storage := Store}) -> Store.
-
 import_state_from_store(Store, State0) ->
-    State = State0#{ storage := Store },
+    State = State0#{ storage => Store },
     case aevm_eeevm_store:get_sophia_state_type(Store) of
         false ->
             %% No state yet (init function). Write 0 to the state pointer.
@@ -248,7 +245,7 @@ do_revert(Us0, Us1, State0) ->
     end.
 
 heap_to_binary(Type, Ptr, State) ->
-    Store = get_store(State),
+    Store = storage(State),
     Heap  = mem(State),
     Maps  = maps(State),
     Value = aeso_data:heap_value(Maps, Ptr, Heap),
@@ -331,11 +328,11 @@ save_store(#{ chain_state := ChainState
             case Addr of            %% A contract can write 0 to the state pointer
                 0 -> {ok, State};   %% to indicate that the state didn't change.
                 _ ->
-                    Type     = aevm_eeevm_store:get_sophia_state_type(get_store(State)),
+                    Type     = aevm_eeevm_store:get_sophia_state_type(storage(State)),
                     {Ptr, _} = aevm_eeevm_memory:load(Addr, State),
                     case heap_to_heap(Type, Ptr, State) of
                         {ok, StateValue1, GasUsed} ->
-                            Store = aevm_eeevm_store:set_sophia_state(StateValue1, get_store(State)),
+                            Store = aevm_eeevm_store:set_sophia_state(StateValue1, storage(State)),
                             {ok, spend_gas(GasUsed, State#{ chain_state => ChainAPI:set_store(Store, ChainState) })};
                         {error, _} ->
                             {error, out_of_gas}
@@ -358,7 +355,7 @@ get_contract_call_input(Target, IOffset, ISize, State) ->
             TargetKey  = <<Target:256>>,
             ChainAPI   = chain_api(State),
             ChainState = chain_state(State),
-            Store      = get_store(State),
+            Store      = storage(State),
             HeapValue = aeso_data:heap_value(maps(State), ArgPtr, Heap),
             case Target == ?PRIM_CALLS_CONTRACT of
                 true ->

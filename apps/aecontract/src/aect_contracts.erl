@@ -52,7 +52,7 @@
 %%%===================================================================
 
 -type amount() :: non_neg_integer().
--type store() :: #{binary() => binary()}.
+-type store() :: aect_contracts_store:store().
 
 -record(contract, {
         %% Normal account fields
@@ -114,7 +114,7 @@ new(Owner, Nonce, VmVersion, Code, Deposit) ->
                    owner_id     = aec_id:create(account, Owner),
                    vm_version   = VmVersion,
                    code         = Code,
-                   store        = #{},
+                   store        = aect_contracts_store:new(),
                    log          = <<>>,
                    active       = true,
                    referrer_ids = [],
@@ -182,7 +182,7 @@ deserialize(Pubkey, Bin) ->
              , owner_id     = OwnerId
              , vm_version   = VmVersion
              , code         = Code
-             , store        = #{}
+             , store        = aect_contracts_store:new()
              , log          = Log
              , active       = Active
              , referrer_ids = ReferrerIds
@@ -344,7 +344,10 @@ assert_fields(C) ->
     end.
 
 assert_field(store = FieldKey, FieldValue, C) ->
-    assert_field_store(FieldKey, FieldValue, C#contract.vm_version);
+    %% We can't afford to validate the mptree part of the store
+    assert_field_store(FieldKey, aect_contracts_store:write_cache(FieldValue),
+                       C#contract.vm_version),
+    FieldValue;
 assert_field(FieldKey, FieldValue, _) ->
     assert_field(FieldKey, FieldValue).
 

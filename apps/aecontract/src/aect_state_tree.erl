@@ -77,47 +77,41 @@ insert_contract(Contract, Tree = #contract_tree{ contracts = CtTree }) ->
 insert_store(Contract, CtTree) ->
     Id = aect_contracts:store_id(Contract),
     Store = aect_contracts:state(Contract),
-    insert_store_nodes(Id, Store, CtTree).
+    %% Write a value at the store id to make it possible to get it as a
+    %% subtree.
+    CtTree1 = aeu_mtrees:insert(Id, <<0>>, CtTree),
+    insert_store_nodes(Id, aect_contracts_store:write_cache(Store), CtTree1).
 
-insert_store_nodes(Prefix, Store, CtTree) ->
-    Insert = fun (Key, Value, Tree) ->
-                     Id = <<Prefix/binary, Key/binary>>,
-                     aeu_mtrees:insert(Id, Value, Tree)
+insert_store_nodes(Prefix, Writes, CtTree) ->
+    Insert = fun(<<>>, _, Tree) -> Tree;    %% Ignore the empty key
+                (Key, Value, Tree) ->
+                    Id = <<Prefix/binary, Key/binary>>,
+                    aeu_mtrees:insert(Id, Value, Tree)
              end,
-     maps:fold(Insert, CtTree, Store).
+    maps:fold(Insert, CtTree, Writes).
 
 
 %% @doc Update an existing contract.
 -spec enter_contract(aect_contracts:contract(), tree()) -> tree().
 enter_contract(Contract, Tree = #contract_tree{ contracts = CtTree }) ->
-    Pubkey      = aect_contracts:pubkey(Contract),
-    Serialized  = aect_contracts:serialize(Contract),
-    CtTree1     = aeu_mtrees:enter(Pubkey, Serialized, CtTree),
-    OldContract = get_contract(Pubkey, Tree),
-    OldStore    = aect_contracts:state(OldContract),
-    CtTree2     = enter_store(Contract, OldStore, CtTree1),
+    Pubkey     = aect_contracts:pubkey(Contract),
+    Serialized = aect_contracts:serialize(Contract),
+    CtTree1    = aeu_mtrees:enter(Pubkey, Serialized, CtTree),
+    CtTree2    = enter_store(Contract, CtTree1),
     Tree#contract_tree{ contracts = CtTree2 }.
 
-enter_store(Contract, OldStore, CtTree) ->
+enter_store(Contract, CtTree) ->
     Id = aect_contracts:store_id(Contract),
     Store = aect_contracts:state(Contract),
-    MergedStore = maps:merge(Store, OldStore),
-    %% Merged store contains all keys, and old Values.
-    enter_store_nodes(Id, MergedStore, Store, OldStore, CtTree).
+    enter_store_nodes(Id, aect_contracts_store:write_cache(Store), CtTree).
 
-enter_store_nodes(Prefix, MergedStore, Store, OldStore, CtTree) ->
-    %% Iterate over all (merged) keys.
-    Insert = fun (Key,_MergedVal, Tree) ->
+enter_store_nodes(Prefix, Writes, CtTree) ->
+    Insert = fun(<<>>, _, Tree) -> Tree; %% Ignore the empty key
+                (Key, Value, Tree) ->
                      Id = <<Prefix/binary, Key/binary>>,
-                     %% Check if key exist in new store
-                     %% If not overwrite with empty tree.
-                     case {maps:get(Key,    Store, <<>>),
-                           maps:get(Key, OldStore, <<>>)} of
-                         {Same, Same} -> Tree;
-                         {Value,   _}    -> aeu_mtrees:enter(Id, Value, Tree)
-                     end
+                     aeu_mtrees:enter(Id, Value, Tree)
              end,
-     maps:fold(Insert, CtTree, MergedStore).
+    maps:fold(Insert, CtTree, Writes).
 
 -spec get_contract(aect_contracts:pubkey(), tree()) -> aect_contracts:contract().
 get_contract(PubKey, Tree) ->
@@ -132,20 +126,10 @@ get_contract(Pubkey, #contract_tree{ contracts = CtTree }, Options) ->
     end.
 
 add_store(Contract, CtTree) ->
-    Id = aect_contracts:store_id(Contract),
-    Iterator = aeu_mtrees:iterator_from(Id, CtTree, [{with_prefix, Id}]),
-    Next = aeu_mtrees:iterator_next(Iterator),
-    Size = byte_size(Id),
-    Store = find_store_keys(Id, Next, Size, #{}),
+    StoreId = aect_contracts:store_id(Contract),
+    {ok, Subtree} = aeu_mtrees:read_only_subtree(StoreId, CtTree),
+    Store = aect_contracts_store:new(Subtree),
     aect_contracts:set_state(Store, Contract).
-
-find_store_keys(_, '$end_of_table', _, Store) ->
-    Store;
-find_store_keys(Id, {PrefixedKey, Val, Iter}, PrefixSize, Store) ->
-    <<Id:PrefixSize/binary, Key/binary>> = PrefixedKey,
-    Store1 = Store#{ Key => Val},
-    Next = aeu_mtrees:iterator_next(Iter),
-    find_store_keys(Id, Next, PrefixSize, Store1).
 
 
 -spec lookup_contract(aect_contracts:pubkey(), tree()) -> {value, aect_contracts:contract()} | none.
@@ -226,21 +210,20 @@ verify_poi(Pubkey, Contract, Poi) ->
     end.
 
 verify_store_poi(Id, Store, IsLegalStoreFun, Poi) ->
-    %% Check separately absence of (invalid) empty key because Merkle
-    %% tree iterator-from-key, used in PoI lookup, does not return
-    %% initial key if present.
-    case aec_poi:lookup(Id, Poi) of
-        {ok, _StoreValWithEmptyKey} -> {error, bad_proof};
-        {error, not_found} ->
-            case lookup_store_poi(Id, Poi) of
-                {ok, Store} ->
-                    case IsLegalStoreFun(Store) of
-                        true -> ok;
-                        false -> {error, bad_proof}
-                    end;
-                {ok, _} -> {error, bad_proof};
-                {error, _} = E -> E
-            end
+    try lookup_store_poi(Id, Poi) of
+        {ok, Store1} ->
+            StoreMap  = aect_contracts_store:contents(Store),
+            StoreMap1 = aect_contracts_store:contents(Store1),
+            %% Put the StoreMap in the write cache to make IsLegal check it
+            Store2 = aect_contracts_store:put_map(StoreMap, aect_contracts_store:new()),
+            case StoreMap =:= StoreMap1 andalso IsLegalStoreFun(Store2) of
+                true  -> ok;
+                false -> {error, bad_proof}
+            end;
+        {error, _} = E -> E
+    catch _:_ ->
+        %% Poi can be malicious(?) so catch errors
+        {error, bad_proof}
     end.
 
 -spec lookup_poi(aect_contracts:pubkey(), aec_poi:poi()) ->
@@ -257,25 +240,9 @@ lookup_poi(Pubkey, Poi) ->
     end.
 
 lookup_store_poi(Id, Poi) ->
-    case aec_poi:iterator_from(Id, Poi, [{with_prefix, Id}]) of
-        {ok, Iterator} ->
-            Next = aec_poi:iterator_next(Iterator),
-            Size = byte_size(Id),
-            lookup_store_from_poi(Id, Next, Size, #{}, Poi);
-        {error, _} = E -> E
-    end.
-
-lookup_store_from_poi(_, {error, bad_proof} = E, _, _, _) ->
-    E;
-lookup_store_from_poi(_, '$end_of_table', _, Store,_Poi) ->
-    {ok, Store};
-lookup_store_from_poi(Id, {PrefixedKey, Val, Iter}, PrefixSize, Store, Poi) ->
-    <<Id:PrefixSize/binary, Key/binary>> = PrefixedKey,
-    Store1 = Store#{ Key => Val},
-    case aec_poi:iterator_next(Iter) of
-        {error, _} = E -> E;
-        Next ->
-            lookup_store_from_poi(Id, Next, PrefixSize, Store1, Poi)
+    case aec_poi:read_only_subtree(Id, Poi) of
+        {ok, Subtree} -> {ok, aect_contracts_store:new(Subtree)};
+        {error, _} = Err -> Err
     end.
 
 %% -- Commit to db --

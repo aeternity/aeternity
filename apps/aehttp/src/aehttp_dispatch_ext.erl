@@ -426,7 +426,7 @@ handle_request_('GetContractStore', Req, _Context) ->
                 {ok, Contract} ->
                     Response = [ #{<<"key">> => aeu_hex:hexstring_encode(K),
                                    <<"value">> => aehttp_api_encoder:encode(contract_bytearray, V)}
-                               || {K, V} <- maps:to_list(aect_contracts:state(Contract)) ],
+                               || {K, V} <- maps:to_list(aect_contracts_store:contents(aect_contracts:state(Contract))) ],
                     {200, [], #{ <<"store">> => Response }}
             end
     end;

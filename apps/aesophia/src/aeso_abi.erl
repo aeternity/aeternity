@@ -131,10 +131,8 @@ check_calldata(CallData, TypeInfo) ->
         {ok, Hash} ->
             case typereps_from_type_hash(Hash, TypeInfo) of
                 {ok, ArgType, OutType} ->
-                    ?TEST_LOG("Found ~p for ~p", [ArgType, Hash]),
                     try aeso_data:from_binary({tuple, [word, ArgType]}, CallData) of
                         {ok, _Something} ->
-                            ?TEST_LOG("Whole call data: ~p\n", [_Something]),
                             {ok, {tuple, [word, ArgType]}, OutType};
                         {error, _} ->
                             {error, bad_call_data}

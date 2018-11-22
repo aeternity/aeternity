@@ -82,6 +82,7 @@
         , sophia_signatures_aens/1
         , sophia_maps/1
         , sophia_map_benchmark/1
+        , sophia_big_map_benchmark/1
         , sophia_pmaps/1
         , sophia_map_of_maps/1
         , sophia_chess/1
@@ -94,11 +95,9 @@
         , sophia_state_gas/1
         , sophia_no_callobject_for_remote_calls/1
         , create_store/1
-        , update_store/1
         , read_store/1
         , store_zero_value/1
         , merge_new_zero_value/1
-        , merge_missing_keys/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -173,6 +172,7 @@ groups() ->
                                  sophia_signatures_aens,
                                  sophia_maps,
                                  sophia_map_benchmark,
+                                 sophia_big_map_benchmark,
                                  sophia_variant_types,
                                  sophia_chain,
                                  sophia_savecoinbase,
@@ -237,11 +237,9 @@ groups() ->
        , sophia_oracles_gas_ttl__response
        ]}
     , {store, [sequence], [ create_store
-                          , update_store
                           , read_store
                           , store_zero_value
                           , merge_new_zero_value
-                          , merge_missing_keys
                           ]}
     ].
 
@@ -709,7 +707,7 @@ state(S) -> put(the_state, S).
 get_contract_state(Contract) ->
     S = state(),
     {{value, C}, _} = lookup_contract_by_id(Contract, S),
-    aect_contracts:state(C).
+    get_ct_store(C).
 
 call(Name, Fun, Xs) ->
     Fmt = string:join(lists:duplicate(length(Xs), "~p"), ", "),
@@ -2964,6 +2962,25 @@ sophia_map_benchmark(Cfg) ->
 
     ok.
 
+sophia_big_map_benchmark(Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 100000000000000),
+    N     = proplists:get_value(n, Cfg, 1000),
+    Batch = proplists:get_value(batch, Cfg, N),
+    Key   = proplists:get_value(key, Cfg, 0),
+    Val   = integer_to_binary(Key div Batch),
+    Ct  = ?call(create_contract, Acc, maps_benchmark, {777, #{}}),
+    _   = [ begin
+                ?call(call_contract, Acc, Ct, update, {tuple, []}, {I, I + Batch - 1, integer_to_binary(I)}, #{ gas => 1000000000 }),
+                io:format(".")
+            end || I <- lists:seq(0, N - 1, Batch) ],
+    io:format("\n"),
+    io:format("-- Timed call --\n"),
+    {Time, Val} = timer:tc(fun() -> ?call(call_contract, Acc, Ct, get, string, Key) end),
+    {Time1, {}} = timer:tc(fun() -> ?call(call_contract, Acc, Ct, noop, {tuple, []}, {}) end),
+    io:format("Get: ~.2fms\nNop: ~.2fms\n", [Time / 1000, Time1 / 1000]),
+    ok.
+
 sophia_pmaps(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc = ?call(new_account, 1000000000),
@@ -3460,23 +3477,23 @@ sophia_state_gas(_Cfg) ->
 %%% Store
 %%%===================================================================
 
+store_from_map(Map) ->
+    maps:fold(fun aect_contracts_store:put/3,
+              aect_contracts_store:new(), Map).
+
+set_ct_store(Map, Ct) ->
+    aect_contracts:set_state(store_from_map(Map), Ct).
+
+get_ct_store(Ct) ->
+    aect_contracts_store:contents(aect_contracts:state(Ct)).
+
 create_store(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc1  = ?call(new_account, 100),
     Ct1   = ?call(insert_contract, Acc1, <<"Code for C1">>),
     Ct1   = ?call(get_contract, Ct1),
-    #{}   = aect_contracts:state(Ct1),
-    ok.
-
-update_store(_Cfg) ->
-    state(aect_test_utils:new_state()),
-    Acc1   = ?call(new_account, 100),
-    Ct1    = ?call(insert_contract, Acc1, <<"Code for C1">>),
-    Ct1    = ?call(get_contract, Ct1),
-    Store1 = #{ <<0>> => <<42>> },
-    Ct2    = aect_contracts:set_state(Store1, Ct1),
-    Ct2    = ?call(enter_contract, Ct2),
-    Ct2    = ?call(get_contract, Ct2),
+    Empty = #{},
+    Empty = get_ct_store(Ct1),
     ok.
 
 read_store(_Cfg) ->
@@ -3485,10 +3502,10 @@ read_store(_Cfg) ->
     Ct1    = ?call(insert_contract, Acc1, <<"Code for C1">>),
     Ct1    = ?call(get_contract, Ct1),
     Store1 = #{ <<0>> => <<42>> },
-    Ct2    = aect_contracts:set_state(Store1, Ct1),
+    Ct2    = set_ct_store(Store1, Ct1),
     Ct2    = ?call(enter_contract, Ct2),
-    Ct2    = ?call(get_contract, Ct2),
-    Store1 = aect_contracts:state(Ct2),
+    Ct3    = ?call(get_contract, Ct2),
+    Store1 = get_ct_store(Ct3),
     ok.
 
 
@@ -3500,13 +3517,13 @@ store_zero_value(_Cfg) ->
     Store1 = #{ <<0>> => <<42>>
               , <<1>> => <<0>>
               , <<2>> => <<>> },
-    Ct2    = aect_contracts:set_state(Store1, Ct1),
+    Ct2    = set_ct_store(Store1, Ct1),
     Ct2    = ?call(enter_contract, Ct2),
     %% Empty values are removed in state tree.
     Ct3    = ?call(get_contract, Ct2),
     Store2 = #{ <<0>> => <<42>>
               , <<1>> => <<0>>},
-    Store2 = aect_contracts:state(Ct3),
+    Store2 = get_ct_store(Ct3),
     ok.
 
 merge_new_zero_value(_Cfg) ->
@@ -3517,42 +3534,19 @@ merge_new_zero_value(_Cfg) ->
     Store1 = #{ <<0>> => <<42>>
               , <<1>> => <<0>>
               , <<2>> => <<>> },
-    Ct2    = aect_contracts:set_state(Store1, Ct1),
+    Ct2    = set_ct_store(Store1, Ct1),
     Ct2    = ?call(enter_contract, Ct2),
     %% Empty values are removed in state tree.
     Ct3    = ?call(get_contract, Ct2),
     Store2 = #{ <<0>> => <<0>>
               , <<1>> => <<>>
               , <<2>> => <<42>> },
-    Ct4    = aect_contracts:set_state(Store2, Ct3),
+    Ct4    = set_ct_store(Store2, Ct3),
     Ct4    = ?call(enter_contract, Ct4),
     Ct5    = ?call(get_contract, Ct4),
     Store3 = #{ <<0>> => <<0>>
               , <<2>> => <<42>>},
-    Store3 = aect_contracts:state(Ct5),
-    ok.
-
-
-merge_missing_keys(_Cfg) ->
-    state(aect_test_utils:new_state()),
-    Acc1   = ?call(new_account, 100),
-    Ct1    = ?call(insert_contract, Acc1, <<"Code for C1">>),
-    Ct1    = ?call(get_contract, Ct1),
-    Store1 = #{ <<0>> => <<42>>
-              , <<1>> => <<17>>
-              , <<2>> => <<>> },
-    Ct2    = aect_contracts:set_state(Store1, Ct1),
-    Ct2    = ?call(enter_contract, Ct2),
-    %% Empty values are removed in state tree.
-    Ct3    = ?call(get_contract, Ct2),
-    Store2 = #{ <<3>> => <<1,2,3,4>>
-              , <<2>> => <<42>> },
-    Ct4    = aect_contracts:set_state(Store2, Ct3),
-    Ct4    = ?call(enter_contract, Ct4),
-    Ct5    = ?call(get_contract, Ct4),
-    Store3 = #{ <<2>> => <<42>>
-              , <<3>> => <<1,2,3,4>>},
-    Store3 = aect_contracts:state(Ct5),
+    Store3 = get_ct_store(Ct5),
     ok.
 
 

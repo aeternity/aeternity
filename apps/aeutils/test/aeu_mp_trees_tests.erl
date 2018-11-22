@@ -27,6 +27,7 @@ basic_test_() ->
     , {"Iterator depth test", fun test_iterator_depth/0}
     , {"Iterator from non-existing", fun test_iterator_non_existing/0}
     , {"Iterator of subtree", fun test_iterator_prefix/0}
+    , {"Create subtrees", fun test_subtrees/0}
     ].
 
 hash_test_() ->
@@ -385,6 +386,56 @@ alter_one_hash_value(DB) ->
     BogusDB = aeu_mp_trees_db:put(Hash, NewNode, DB),
     {Hash, BogusDB}.
 
+%%%=============================================================================
+%%% Subtree tests
+
+test_subtrees() ->
+    {Tree, Vals} = gen_mp_tree({1542,713829,704664}, 1000),
+    ValDict = dict:from_list(Vals),
+    ?assertEqual(length(Vals), dict:size(ValDict)),
+    %% Fenerate nodes for subtree roots
+    Roots = lists:usort([R || {<<R:16/binary, _/bits>>, _}  <- Vals]),
+    Tree1 = insert_vals([{R, <<1>>} || R <- Roots], Tree),
+
+    %% Check that we can create subtrees from all roots.
+    [?assertMatch({ok, _}, aeu_mp_trees:read_only_subtree(Root, Tree1))
+     || Root <- Roots],
+
+    %% Check that we cannot create subtrees from a node we know isn't present
+    [?assertMatch({error, no_such_subtree},
+                  aeu_mp_trees:read_only_subtree(<<1,2,3,Key/bits>>, Tree1))
+     || {Key, _} <- Vals],
+
+    %% Check that iterating through all unique subtrees also iterate
+    %% through all keys exactly once
+    iterate_subtrees(Roots, Tree1, ValDict),
+    ok.
+
+iterate_subtrees([Root|Left], Tree, ValDict) ->
+    {ok, Subtree} = aeu_mp_trees:read_only_subtree(Root, Tree),
+    Iterator = aeu_mp_trees:iterator(Subtree),
+    NewValDict = iterate_one_subtree(aeu_mp_trees:iterator_next(Iterator), Root, ValDict),
+    iterate_subtrees(Left, Tree, NewValDict);
+iterate_subtrees([],_Tree, ValDict) ->
+    case dict:size(ValDict) of
+        0 -> ok;
+        Other -> error({not_traversed, Other})
+    end.
+
+iterate_one_subtree('$end_of_table',_Root,ValDict) ->
+    ValDict;
+iterate_one_subtree({Key0, Val, Iterator}, Root, ValDict) ->
+    Key = <<Root/bits, Key0/bits>>,
+    case dict:find(Key, ValDict) of
+        {ok, Val} ->
+            NewValDict = dict:erase(Key, ValDict),
+            Next = aeu_mp_trees:iterator_next(Iterator),
+            iterate_one_subtree(Next, Root, NewValDict);
+        {ok, Other} ->
+            error({wrong_value, Key, Val, Other});
+        error ->
+            error({key_not_found, Key})
+    end.
 
 %%%=============================================================================
 %%% Test utils

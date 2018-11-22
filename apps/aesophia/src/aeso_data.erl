@@ -71,7 +71,7 @@
 
 %% -- Manipulating heap values -----------------------------------------------
 
-no_store() -> #{}.
+no_store() -> aect_contracts_store:new().
 
 no_maps(N) when is_integer(N) -> #maps{ next_id = N };
 no_maps(#heap{maps = #maps{next_id = N}}) -> no_maps(N).

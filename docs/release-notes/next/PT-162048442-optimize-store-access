@@ -1,0 +1,2 @@
+* Fixes a performance problem with contract state containing large maps. This affects consensus.
+

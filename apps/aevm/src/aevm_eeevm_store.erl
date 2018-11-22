@@ -35,10 +35,14 @@
 %%====================================================================
 
 -spec init(aect_contracts:store(), aevm_eeevm_state:state()) -> aevm_eeevm_state:state().
-init(Store, State) -> State#{ storage => binary_to_integer_map(Store) }.
+init(Store, State) ->
+    Map = aect_contracts_store:contents(Store),
+    State#{ storage => binary_to_integer_map(Map) }.
 
 -spec to_binary(aevm_eeevm_state:state()) -> aect_contracts:store().
-to_binary(#{ storage := Storage }) -> integer_to_binary_map(Storage).
+to_binary(#{ storage := Storage }) ->
+    aect_contracts_store:put_map(integer_to_binary_map(Storage),
+                                 aect_contracts_store:new()).
 
 -spec load(integer(), aevm_eeevm_state:state()) -> integer().
 load(Address, State) ->
@@ -92,7 +96,7 @@ store(Address, Value, State) when is_integer(Value) ->
 from_sophia_state(Data) ->
     %% TODO: less encoding/decoding
     {ok, {Type}}    = aeso_data:from_binary({tuple, [typerep]}, Data),
-    %% Strip the type from the binary (TODO: temporary)
+    %% Strip the type from the binary
     Data1 = second_component(Data),
     {ok, StateValue} = aeso_data:binary_to_heap(Type, Data1, 0, 32),
     TypeData  = aeso_data:to_binary(Type),
@@ -101,12 +105,13 @@ from_sophia_state(Data) ->
     StateData = <<Ptr:256, Mem/binary>>,
     Maps      = aeso_data:heap_value_maps(StateValue),
     Store     = store_maps(Maps,
-                           #{ ?SOPHIA_STATE_KEY      => StateData,
-                              ?SOPHIA_STATE_TYPE_KEY => TypeData }),
+                    store_put(?SOPHIA_STATE_KEY,      StateData,
+                    store_put(?SOPHIA_STATE_TYPE_KEY, TypeData,
+                    store_empty()))),
     %% io:format("Initial state:\n~s\n", [show_store(Store)]),
     Store.
 
-%% TODO: Temporary hack to drop the first component (the typerep) from the initial state.
+%% Drop the first component (the typerep) from the initial state.
 -spec second_component(aeso_data:binary_value()) -> aeso_data:binary_value().
 second_component(<<Ptr:256, Heap/binary>> = Data) ->
     <<_:Ptr/unit:8, _:256, Snd:256, _/binary>> = Data,
@@ -117,11 +122,11 @@ set_sophia_state(Value, Store) ->
     Ptr = aeso_data:heap_value_pointer(Value),
     Mem = aeso_data:heap_value_heap(Value),
     Maps = aeso_data:heap_value_maps(Value),
-    store_maps(Maps, Store#{?SOPHIA_STATE_KEY => <<Ptr:256, Mem/binary>>}).
+    store_maps(Maps, store_put(?SOPHIA_STATE_KEY, <<Ptr:256, Mem/binary>>, Store)).
 
 -spec get_sophia_state(aect_contracts:store()) -> aeso_data:heap_value().
 get_sophia_state(Store) ->
-    <<Ptr:256, Heap/binary>> = maps:get(?SOPHIA_STATE_KEY, Store, <<>>),
+    <<Ptr:256, Heap/binary>> = store_get(?SOPHIA_STATE_KEY, Store),
     MapKeys = all_map_ids(Store),
     Maps = maps:from_list(
         [ begin
@@ -133,27 +138,21 @@ get_sophia_state(Store) ->
 
 -spec get_sophia_state_type(aect_contracts:store()) -> false | aeso_sophia:type().
 get_sophia_state_type(Store) ->
-    case maps:get(?SOPHIA_STATE_TYPE_KEY, Store, false) of
-        false -> false;
-        Bin   ->
+    case store_get(?SOPHIA_STATE_TYPE_KEY, Store) of
+        <<>> -> false;
+        Bin  ->
             {ok, Type} = aeso_data:from_binary(typerep, Bin),
             Type
     end.
 
 -spec get_map_data(aevm_eeevm_maps:map_id(), aect_contracts:store()) -> #{binary() => binary()}.
 get_map_data(MapId, Store) ->
-    %% Inefficient!
     RealMapId = real_id(MapId, Store),
-    Res = maps:from_list(
-        [ {Key, Val}
-         || {<<MapId1:256, Key/binary>>, Val} <- maps:to_list(Store),
-            MapId1 == RealMapId, Key /= <<>> ]),
-    Res.
+    store_subtree(RealMapId, Store).
 
 -spec map_lookup(aevm_eeevm_maps:map_id(), binary(), aevm_eeevm_state:state()) -> binary() | false.
 map_lookup(Id, Key, State) ->
-    #{ chain_api := ChainAPI, chain_state := ChainState } = State,
-    Store = ChainAPI:get_store(ChainState),
+    Store = aevm_eeevm_state:storage(State),
     get_value(Id, Key, Store).
 
 -spec next_map_id(aect_contracts:store()) -> aevm_eeevm_maps:map_id().
@@ -187,7 +186,7 @@ store_maps(Maps0, Store) ->
 
     Updates = compute_map_updates(Garbage, Maps),
 
-    Store1 = Store#{ ?SOPHIA_STATE_MAPS_KEY => << <<Id:256>> || Id <- AllMapKeys >> },
+    Store1 = store_put(?SOPHIA_STATE_MAPS_KEY, << <<Id:256>> || Id <- AllMapKeys >>, Store),
     NewRefCounts1 = maps:filter(fun(Id, _) -> lists:member(Id, AllMapKeys) end, NewRefCounts),
     NewStore = set_ref_counts(NewRefCounts1, lists:foldl(fun perform_update/2, Store1, Updates)),
     %% io:format("NewStore:\n~s\n", [show_store(NewStore)]),
@@ -196,31 +195,36 @@ store_maps(Maps0, Store) ->
 perform_update({new_inplace, NewId, OldId}, Store) ->
     OldKey   = <<OldId:256>>,
     NewKey   = <<NewId:256>>,
-    OldEntry = maps:get(OldKey, Store),
-    Store1   = maps:remove(OldKey, Store),
-    Store1#{ NewKey => OldEntry };
+    OldEntry = store_get(OldKey, Store),
+    %% Subtle: Don't remove the RealId entry because the mp trees requires
+    %% there to be a value at any node that we want to get a subtree for. We
+    %% need this for store_subtree.
+    RealId   = real_id(OldId, Store),
+    Store1   = if RealId /= OldId -> store_remove(OldKey, Store);
+                  true            -> Store
+               end,
+    store_put(NewKey, OldEntry, Store1);
 perform_update({insert, Id, Key, Val}, Store) ->
     RealId = real_id(Id, Store),
-    Store#{ <<RealId:256, Key/binary>> => Val };
+    store_put(<<RealId:256, Key/binary>>, Val, Store);
 perform_update({delete, Id, Key}, Store) ->
     RealId = real_id(Id, Store),
-    maps:remove(<<RealId:256, Key/binary>>, Store);
+    store_remove(<<RealId:256, Key/binary>>, Store);
 perform_update({new, Id, Map0}, Store) ->
     Map = aevm_eeevm_maps:flatten_map(Store, Id, Map0),
     RefCount = 0,   %% Set later
     Size     = Map0#pmap.size,
     Bin      = aeso_data:to_binary({Map#pmap.key_t, Map#pmap.val_t}),
-    Info = #{ <<Id:256>> => ?MapInfo(Id, RefCount, Size, Bin) },
-    Data = maps:from_list(
-            [ {<<Id:256, Key/binary>>, Val} || {Key, Val} <- maps:to_list(Map#pmap.data) ]),
-    maps:merge(Store, maps:merge(Info, Data));
+    Info = [{<<Id:256>>, ?MapInfo(Id, RefCount, Size, Bin)}],
+    Data = [ {<<Id:256, Key/binary>>, Val} || {Key, Val} <- maps:to_list(Map#pmap.data) ],
+    lists:foldl(fun({K, V}, S) -> store_put(K, V, S) end, Store, Info ++ Data);
 perform_update({gc, Id}, Store) ->
     RealId = real_id(Id, Store),
-    %% Remove map info entry
-    Store1 = maps:remove(<<Id:256>>, Store),
-    %% Remove all the data
-    maps:filter(fun(<<Id1:256, Key/binary>>, _) when Key /= <<>> -> Id1 /= RealId;
-                   (_, _) -> true end, Store1).
+    %% Remove map info entry. Also remove RealId which we kept around for mp
+    %% tree reasons (see note at `new_inplace` case above), and all the data.
+    ToRemove = [ <<Id:256>>, <<RealId:256>> |
+               [ <<RealId:256, Key/binary>> || {Key, _} <- store_to_list(RealId, Store) ]],
+    lists:foldl(fun store_remove/2, Store, ToRemove).
 
 update_ref_counts(OldMapKeys, NewMapKeys, Maps, RefCounts, Store) ->
     RefCounts1       = update_ref_counts1(Maps, RefCounts, Store),
@@ -245,8 +249,7 @@ gc_ref_count(Id, RefCounts, Store) ->
         true  ->
             UsedMaps =
                 lists:append([ aeso_data:used_maps(ValType, Val)
-                                || {<<Id1:256, Key/binary>>, Val} <- maps:to_list(Store),
-                                   Id1 == Id, Key /= <<>> ]),
+                                || {_Key, Val} <- store_to_list(Id, Store) ]),
             lists:foldl(fun(Used, RfC) ->
                             maps:update_with(Used, fun(N) -> N - 1 end, RfC)
                         end, RefCounts, UsedMaps)
@@ -330,29 +333,28 @@ compute_map_updates(Garbage, Maps0) ->
 %% -- Access functions for maps --
 
 all_map_ids(Store) ->
-    [ Id || <<Id:256>> <= maps:get(?SOPHIA_STATE_MAPS_KEY, Store, <<>>) ].
+    [ Id || <<Id:256>> <= store_get(?SOPHIA_STATE_MAPS_KEY, Store) ].
 
 map_types(Id, Store) ->
-    ?MapInfo(_, _, _, Bin) = maps:get(<<Id:256>>, Store),
+    ?MapInfo(_, _, _, Bin) = store_get(<<Id:256>>, Store),
     {ok, Types} = aeso_data:from_binary({tuple, [typerep, typerep]}, Bin),
     Types.
 
 map_size(Id, Store) ->
-    ?MapInfo(_, _, Size, _) = maps:get(<<Id:256>>, Store),
+    ?MapInfo(_, _, Size, _) = store_get(<<Id:256>>, Store),
     Size.
 
 real_id(Id, Store) ->
-    ?MapInfo(RealId, _, _, _) = maps:get(<<Id:256>>, Store),
+    ?MapInfo(RealId, _, _, _) = store_get(<<Id:256>>, Store),
     RealId.
 
 ref_count(Id, Store) ->
-    ?MapInfo(_, RefCount, _, _) = maps:get(<<Id:256>>, Store),
+    ?MapInfo(_, RefCount, _, _) = store_get(<<Id:256>>, Store),
     RefCount.
 
 set_ref_count(Id, RefCount, Store) ->
-    maps:update_with(<<Id:256>>,
-        fun(?MapInfo(RealId, _, Size, Bin)) -> ?MapInfo(RealId, RefCount, Size, Bin) end,
-        Store).
+    ?MapInfo(RealId, _, Size, Bin) = store_get(<<Id:256>>, Store),
+    store_put(<<Id:256>>, ?MapInfo(RealId, RefCount, Size, Bin), Store).
 
 set_ref_counts(RefCounts, Store) ->
     lists:foldl(fun({Id, RefCount}, St) ->
@@ -364,13 +366,37 @@ get_ref_counts(Store) ->
 
 get_value(Id, Key, Store) ->
     RealId = real_id(Id, Store),
-    maps:get(<<RealId:256, Key/binary>>, Store, false).
+    case store_get(<<RealId:256, Key/binary>>, Store) of
+        <<>> -> false;
+        Val  -> Val
+    end.
 
 is_valid_key(?AEVM_01_Sophia_01, ?SOPHIA_STATE_KEY)      -> true;
 is_valid_key(?AEVM_01_Sophia_01, ?SOPHIA_STATE_TYPE_KEY) -> true;
 is_valid_key(?AEVM_01_Sophia_01, ?SOPHIA_STATE_MAPS_KEY) -> true;
 is_valid_key(?AEVM_01_Sophia_01, K) -> is_binary(K) andalso byte_size(K) >= 32;
 is_valid_key(?AEVM_01_Solidity_01, K) -> is_binary_map_key(K).
+
+%% -- Store API --
+%%   To make it possible to change the representation of the store
+
+store_empty() ->
+    aect_contracts_store:new().
+
+store_get(Key, Store) ->
+    aect_contracts_store:get(Key, Store).
+
+store_remove(Key, Store) ->
+    aect_contracts_store:remove(Key, Store).
+
+store_put(Key, Val, Store) ->
+    aect_contracts_store:put(Key, Val, Store).
+
+store_to_list(Id, Store) ->
+    maps:to_list(store_subtree(Id, Store)).
+
+store_subtree(Id, Store) ->
+    aect_contracts_store:subtree(<<Id:256>>, Store).
 
 %%====================================================================
 %% Internal functions

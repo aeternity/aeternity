@@ -17,7 +17,7 @@
 %% @doc The state of the chain. Specific to the API implementation.
 -type chain_state() :: any().
 
--type store() :: #{binary() => binary()}.
+-type store() :: aect_contracts:store().
 
 -type exception() :: out_of_gas | {revert, binary()}.
 
