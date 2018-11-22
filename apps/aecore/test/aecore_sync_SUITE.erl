@@ -28,6 +28,9 @@
     tx_first_pays_second_more_it_can_afford/1,
     ensure_tx_pools_empty/1,
     ensure_tx_pools_one_tx/1,
+    ensure_tx_pools_one_tx_first_node/1,
+    ensure_tx_pools_one_tx_second_node/1,
+    ensure_tx_pools_one_tx_third_node/1,
     report_metrics/1,
     check_metrics_logged/1,
     crash_syncing_worker/1,
@@ -46,6 +49,7 @@ groups() ->
      {all_nodes, [sequence], [{group, two_nodes},
                               {group, three_nodes},
                               {group, semantically_invalid_tx},
+                              {group, mempool_sync},
                               {group, one_blocked},
                               {group, large_msgs}
                              ]},
@@ -86,6 +90,21 @@ groups() ->
        tx_first_pays_second_more_it_can_afford,
        mine_on_second,
        ensure_tx_pools_one_tx]},
+     {mempool_sync, [sequence],
+      [start_first_node,
+       mine_on_first_up_to_latest_consensus_protocol,
+       mine_on_first,
+       start_second_node,
+       tx_first_pays_second,   %% Tx nonce = 1
+       ensure_tx_pools_one_tx, %% for dev1 & dev2
+       mine_again_on_first,
+       ensure_tx_pools_empty,  %% for dev1 & dev2
+       tx_first_pays_second,
+       ensure_tx_pools_one_tx, %% Tx nonce = 2,
+       start_third_node,
+       ensure_tx_pools_one_tx, %% for dev1 & dev2
+       ensure_tx_pools_one_tx_third_node %% check mempool on dev3
+      ]},
      {one_blocked, [sequence],
       [start_first_node,
        mine_on_first,
@@ -140,8 +159,9 @@ init_per_suite(Config) ->
 end_per_suite(Config) ->
     stop_devs(Config).
 
-init_per_group(TwoNodes, Config) when TwoNodes == two_nodes;
-        TwoNodes == semantically_invalid_tx; TwoNodes == large_msgs ->
+init_per_group(TwoNodes, Config) when
+        TwoNodes == two_nodes; TwoNodes == semantically_invalid_tx;
+        TwoNodes == large_msgs; TwoNodes == mempool_sync ->
     config({devs, [dev1, dev2]}, Config);
 init_per_group(three_nodes, Config) ->
     config({devs, [dev1, dev2, dev3]}, Config);
@@ -168,6 +188,11 @@ end_per_group(one_blocked, Config) ->
     aecore_suite_utils:create_config(Dev1, Config,
                                      maps:without([<<"blocked_peers">>], EpochCfg),
                                      [{add_peers, true}]);
+end_per_group(mempool_sync, Config) ->
+    ct:log("Metrics: ~p", [aec_metrics_test_utils:fetch_data()]),
+    aec_metrics_test_utils:stop_statsd_loggers(Config),
+    Devs = proplists:get_value(devs, Config, []),
+    stop_devs([dev3 | Devs], Config);
 end_per_group(_, Config) ->
     ct:log("Metrics: ~p", [aec_metrics_test_utils:fetch_data()]),
     aec_metrics_test_utils:stop_statsd_loggers(Config),
@@ -175,6 +200,9 @@ end_per_group(_, Config) ->
 
 stop_devs(Config) ->
     Devs = proplists:get_value(devs, Config, []),
+    stop_devs(Devs, Config).
+
+stop_devs(Devs, Config) ->
     lists:foreach(
         fun(Node) ->
             {ok, DbCfg} = node_db_cfg(Node),
@@ -199,14 +227,13 @@ end_per_testcase(_Case, Config) ->
 %% ============================================================
 
 start_first_node(Config) ->
-    [ Dev1 | _ ] = proplists:get_value(devs, Config),
-    aecore_suite_utils:start_node(Dev1, Config),
-    aecore_suite_utils:connect(aecore_suite_utils:node_name(Dev1)),
+    aecore_suite_utils:start_node(dev1, Config),
+    aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1)),
     ok = aecore_suite_utils:check_for_logs([dev1], Config),
     ok.
 
 start_second_node(Config) ->
-    [ Dev1, Dev2 | _ ] = proplists:get_value(devs, Config),
+    [Dev1, Dev2] = [dev1, dev2],
     N1 = aecore_suite_utils:node_name(Dev1),
     N2 = aecore_suite_utils:node_name(Dev2),
     aecore_suite_utils:start_node(Dev2, Config),
@@ -215,11 +242,11 @@ start_second_node(Config) ->
     ct:log("Connected peers on dev2: ~p",
            [rpc:call(N2, aec_peers, connected_peers, [], 5000)]),
     B1 = rpc:call(N1, aec_chain, top_block, [], 5000),
-    ok = aecore_suite_utils:check_for_logs([dev2], Config),
+    ok = aecore_suite_utils:check_for_logs([Dev2], Config),
     true = expect_block(N2, B1).
 
 start_third_node(Config) ->
-    [ _, _, Dev3 | _ ] = proplists:get_value(devs, Config),
+    Dev3 = dev3,
     N3 = aecore_suite_utils:node_name(Dev3),
     T0 = os:timestamp(),
     aecore_suite_utils:start_node(Dev3, Config),
@@ -227,7 +254,7 @@ start_third_node(Config) ->
     aecore_suite_utils:await_aehttp(N3),
     ct:log("Connected peers on dev3: ~p",
            [rpc:call(N3, aec_peers, connected_peers, [], 5000)]),
-    ok = aecore_suite_utils:check_for_logs([dev3], Config),
+    ok = aecore_suite_utils:check_for_logs([Dev3], Config),
     true = expect_same(T0, Config).
 
 mine_on_first_up_to_latest_consensus_protocol(Config) ->
@@ -303,8 +330,24 @@ ensure_tx_pools_empty(Config) ->
 ensure_tx_pools_one_tx(Config) ->
     ensure_tx_pools_n_txs_(Config, 1).
 
+ensure_tx_pools_one_tx_first_node(_Config) ->
+    ensure_tx_pools_on_dev(dev1, 1).
+
+ensure_tx_pools_one_tx_second_node(_Config) ->
+    ensure_tx_pools_on_dev(dev2, 1).
+
+ensure_tx_pools_one_tx_third_node(_Config) ->
+    ensure_tx_pools_on_dev(dev3, 1).
+
+ensure_tx_pools_on_dev(Dev, TxsCount) ->
+    Node = aecore_suite_utils:node_tuple(Dev),
+    ensure_tx_pools_n_txs_on_nodes([Node], TxsCount).
+
 ensure_tx_pools_n_txs_(Config, TxsCount) ->
     Nodes = ?config(nodes, Config),
+    ensure_tx_pools_n_txs_on_nodes(Nodes, TxsCount).
+
+ensure_tx_pools_n_txs_on_nodes(Nodes, TxsCount) ->
     retry(
       fun() ->
               [APool | RestPools] =

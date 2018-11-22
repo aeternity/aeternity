@@ -34,6 +34,8 @@ tx_pool_test_() ->
              TmpKeysDir
      end,
      fun(TmpKeysDir) ->
+             ok = application:unset_env(aecore, mempool_nonce_offset),
+             ok = application:unset_env(aecore, mempool_nonce_baseline),
              ok = application:unset_env(aecore, beneficiary),
              ok = aec_test_utils:aec_keys_cleanup(TmpKeysDir),
              ok = application:stop(gproc),
@@ -78,15 +80,125 @@ tx_pool_test_() ->
                {ok, PoolTxs} = aec_tx_pool:peek(infinity),
                ?assertEqual(lists:sort([STx1, STx2]), lists:sort(PoolTxs))
        end},
+      {"ensure nonce limit for sender without account in state",
+       fun() ->
+            PK0 = new_pubkey(),
+            ?assertEqual(none, aec_chain:get_account(PK0)),
+            ?assertEqual(ok,                     aec_tx_pool:push( a_signed_tx(PK0, me, 1, 20000) )),
+            ?assertEqual({error,nonce_too_high}, aec_tx_pool:push( a_signed_tx(PK0, me, 2, 20000) )),
+
+            aec_test_utils:stop_chain_db(),
+            PK1 = new_pubkey(),
+            meck:expect(aec_genesis_block_settings, preset_accounts, 0, [{PK1, 100000}]),
+            {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+            aec_test_utils:start_chain_db(),
+            ok = aec_chain_state:insert_block(GenesisBlock),
+            ?assertMatch({value, _}, aec_chain:get_account(PK1)),
+            ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK1, me, 1, 20000) )),
+            ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK1, me, 2, 20000) )),
+            ok
+       end},
+      {"ensure nonce limit",
+       fun() ->
+            aec_test_utils:stop_chain_db(),
+            PK = new_pubkey(),
+            meck:expect(aec_genesis_block_settings, preset_accounts, 0, [{PK, 100000}]),
+            {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+            aec_test_utils:start_chain_db(),
+            ok = aec_chain_state:insert_block(GenesisBlock),
+            ?assertMatch({value, _}, aec_chain:get_account(PK)),
+
+            ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK, me, 1, 20000) )),
+            ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK, me, 2, 20000) )),
+            ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK, me, 5, 20000) )),
+            ?assertEqual({error, nonce_too_high}, aec_tx_pool:push( a_signed_tx(PK, me, 6, 20000) )),
+            ?assertMatch({ok, [_, _, _]}, aec_tx_pool:peek(infinity)),
+
+            %% The first block needs to be a key-block
+            {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block(), PK),
+            {ok, KeyHash1} = aec_blocks:hash_internal_representation(KeyBlock1),
+            ok = aec_chain_state:insert_block(KeyBlock1),
+            ?assertEqual(KeyHash1, aec_chain:top_block_hash()),
+            ok = aec_keys:promote_candidate(aec_blocks:miner(KeyBlock1)),
+
+            TopBlock = aec_chain:top_block(),
+            TopBlockHash = aec_chain:top_block_hash(),
+
+            {ok, USCandidate1, _} = aec_block_micro_candidate:create(TopBlock),
+            {ok, Candidate1} = aec_keys:sign_micro_block(USCandidate1),
+            {ok, CHash1} = aec_blocks:hash_internal_representation(Candidate1),
+            ok = aec_chain_state:insert_block(Candidate1),
+            aec_tx_pool:top_change(micro, TopBlockHash, CHash1),
+
+            ?assertMatch({ok, [_]}, aec_tx_pool:peek(infinity)), %% nonoce=5 still in mempool
+
+            ?assertEqual({error, nonce_too_low}, aec_tx_pool:push( a_signed_tx(PK, me, 1, 20000) )),
+            ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK, me, 6, 20000) )),
+            ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK, me, 7, 20000) )),
+            ?assertEqual({error, nonce_too_high}, aec_tx_pool:push( a_signed_tx(PK, me, 8, 20000) )),
+            ok
+       end},
+      {"ensure nonce is not checked when syncing",
+       fun() ->
+            PK0 = new_pubkey(),
+            ?assertEqual(none, aec_chain:get_account(PK0)),
+            ?assertEqual(ok,                     aec_tx_pool:push( a_signed_tx(PK0, me, 1, 20000), tx_received )),
+            ?assertEqual({error,nonce_too_high}, aec_tx_pool:push( a_signed_tx(PK0, me, 2, 20000) )),
+            ?assertEqual(ok,                     aec_tx_pool:push( a_signed_tx(PK0, me, 2, 20000), tx_received )),
+
+            aec_test_utils:stop_chain_db(),
+            PK1 = new_pubkey(),
+            meck:expect(aec_genesis_block_settings, preset_accounts, 0, [{PK1, 100000}]),
+            {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+            aec_test_utils:start_chain_db(),
+            ok = aec_chain_state:insert_block(GenesisBlock),
+            ?assertMatch({value, _}, aec_chain:get_account(PK1)),
+            ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK1, me, 1, 20000) )),
+            ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK1, me, 2, 20000) )),
+            ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK1, me, 5, 20000) )),
+            ?assertEqual({error, nonce_too_high}, aec_tx_pool:push( a_signed_tx(PK1, me, 6, 20000) )),
+            ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK1, me, 6, 20000), tx_received )),
+
+            ?assertMatch({ok, [_, _, _, _, _, _]}, aec_tx_pool:peek(infinity)),
+
+            %% The first block needs to be a key-block
+            {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block(), PK1),
+            {ok, KeyHash1} = aec_blocks:hash_internal_representation(KeyBlock1),
+            ok = aec_chain_state:insert_block(KeyBlock1),
+            ?assertEqual(KeyHash1, aec_chain:top_block_hash()),
+            ok = aec_keys:promote_candidate(aec_blocks:miner(KeyBlock1)),
+
+            TopBlock = aec_chain:top_block(),
+            TopBlockHash = aec_chain:top_block_hash(),
+
+            {ok, USCandidate1, _} = aec_block_micro_candidate:create(TopBlock),
+            {ok, Candidate1} = aec_keys:sign_micro_block(USCandidate1),
+            {ok, CHash1} = aec_blocks:hash_internal_representation(Candidate1),
+            ok = aec_chain_state:insert_block(Candidate1),
+            aec_tx_pool:top_change(micro, TopBlockHash, CHash1),
+
+            ?assertMatch({ok, [_, _, _, _]}, aec_tx_pool:peek(infinity)),
+
+            ?assertEqual({error, nonce_too_low}, aec_tx_pool:push( a_signed_tx(PK1, me, 1, 20000) )),
+            ?assertEqual({error, nonce_too_low}, aec_tx_pool:push( a_signed_tx(PK1, me, 1, 20000), tx_received )),
+            ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK1, me, 7, 20000) )),
+            ?assertEqual({error,nonce_too_high}, aec_tx_pool:push( a_signed_tx(PK1, me, 8, 20000) )),
+            ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK1, me, 8, 20000), tx_received )),
+            ok
+       end},
       {"fill micro block with transactions",
        {timeout, 10, fun() ->
+               MaxNonce = 400,
+               %% setup nonce offset for pubkey without account present
+               ok = application:set_env(aecore, mempool_nonce_baseline, MaxNonce),
+
                %% No txs to serve to peers.
                ?assertEqual({ok, []}, aec_tx_pool:peek(1)),
 
                %% Tx received from a peer.
                PubKey = new_pubkey(),
-               STxs = [ a_signed_tx(PubKey, me, Nonce, 20000, 10) || Nonce <- lists:seq(1,400) ],
-               [ aec_tx_pool:push(STx, tx_created) || STx <- STxs ],
+               STxs = [ a_signed_tx(PubKey, me, Nonce, 20000, 10) || Nonce <- lists:seq(1,MaxNonce) ],
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- STxs ],
 
                GenesisHeight = aec_block_genesis:height(),
                {ok, Hash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
@@ -102,6 +214,7 @@ tx_pool_test_() ->
        end}},
       {"fill micro block with and without previously rejected tx",
        {timeout, 10, fun() ->
+               ok = application:set_env(aecore, mempool_nonce_offset, 600),
                aec_test_utils:stop_chain_db(),
                {ok, MinerPubKey} = aec_keys:pubkey(),
                PubKey1 = new_pubkey(),
@@ -285,11 +398,19 @@ tx_pool_test_() ->
        end},
       {"Ensure ordering",
        fun() ->
+                 aec_test_utils:stop_chain_db(),
                  %% We should sort by fee, but preserve the order of nonces for each sender
                  PK1 = new_pubkey(),
                  PK2 = new_pubkey(),
                  PK3 = new_pubkey(),
                  PK4 = new_pubkey(),
+
+                 meck:expect(aec_genesis_block_settings, preset_accounts, 0,
+                             [{PK1, 100000}, {PK2, 100000}, {PK3, 100000}, {PK4, 100000}]),
+                 {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+                 aec_test_utils:start_chain_db(),
+                 ok = aec_chain_state:insert_block(GenesisBlock),
+
                  STxs =
                    [ a_signed_tx        (_Sender=PK1, me,_Nonce=1,_Fee=300000)
                    , a_signed_tx        (        PK1, me,       2,     400000)
@@ -342,7 +463,14 @@ tx_pool_test_() ->
        end},
       {"Ensure candidate ordering",
        fun() ->
+               aec_test_utils:stop_chain_db(),
                PK = new_pubkey(),
+               meck:expect(aec_genesis_block_settings, preset_accounts, 0,
+                           [{PK, 100000}]),
+               {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+               aec_test_utils:start_chain_db(),
+               ok = aec_chain_state:insert_block(GenesisBlock),
+
                MaxGas = aec_governance:block_gas_limit(),
 
                %% Only one tx in pool
@@ -447,9 +575,17 @@ tx_pool_test_() ->
        end},
       {"Ensure persistence",
        fun() ->
+               aec_test_utils:stop_chain_db(),
+               PK = new_pubkey(),
+               meck:expect(aec_genesis_block_settings, preset_accounts, 0,
+                           [{PK, 100000}]),
+               {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+               aec_test_utils:start_chain_db(),
+
+               ok = aec_chain_state:insert_block(GenesisBlock),
                %% Prepare a few txs.
-               STx1 = a_signed_tx(me, new_pubkey(), 1, 20000),
-               STx2 = a_signed_tx(me, new_pubkey(), 2, 20000),
+               STx1 = a_signed_tx(PK, new_pubkey(), 1, 20000),
+               STx2 = a_signed_tx(PK, new_pubkey(), 2, 20000),
                ?assertEqual(ok, aec_tx_pool:push(STx1)),
                ?assertEqual(ok, aec_tx_pool:push(STx2)),
                {ok, PoolTxs} = aec_tx_pool:peek(infinity),
@@ -465,6 +601,9 @@ tx_pool_test_() ->
        end},
       {"Test rejection of transactions",
        fun() ->
+               %% setup nonce offset
+               ok = application:set_env(aecore, mempool_nonce_offset, 100),
+
                aec_test_utils:stop_chain_db(),
                %% Prepare a chain with specific genesis block with some funds
                PubKey1 = new_pubkey(),
@@ -500,7 +639,7 @@ tx_pool_test_() ->
 
                %% A transaction with too low nonce should be rejected
                STx2 = a_signed_tx(PubKey1, new_pubkey(), 1, 20000),
-               ?assertEqual({error, account_nonce_too_high},
+               ?assertEqual({error, nonce_too_low},
                             aec_tx_pool:push(STx2)),
 
                %% A transaction with too high nonce should _NOT_ be rejected
@@ -543,11 +682,16 @@ tx_pool_test_() ->
        {"Test GC",
         fun() ->
             %% initialize chain
+            aec_test_utils:stop_chain_db(),
+
+            PubKey = new_pubkey(),
+            meck:expect(aec_genesis_block_settings, preset_accounts, 0,
+                        [{PubKey, 100000}]),
             {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+            aec_test_utils:start_chain_db(),
             ok = aec_chain_state:insert_block(GenesisBlock),
 
             %% Prepare three transactions
-            PubKey = new_pubkey(),
             STx1 = a_signed_tx(PubKey, PubKey, 1, 20000),
             STx2 = a_signed_tx(PubKey, PubKey, 2, 20000),
             STx3 = a_signed_tx(PubKey, PubKey, 3, 20000),

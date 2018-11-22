@@ -138,9 +138,13 @@ end_per_group(_Group, Config) ->
     ok.
 
 init_per_testcase(_Case, Config) ->
+    [{_, Node} | _] = ?config(nodes, Config),
+    aecore_suite_utils:mock_mempool_nonce_offset(Node, 100),
     [{tc_start, os:timestamp()}|Config].
 
 end_per_testcase(_Case, Config) ->
+    [{_, Node} | _] = ?config(nodes, Config),
+    aecore_suite_utils:unmock_mempool_nonce_offset(Node),
     Ts0 = ?config(tc_start, Config),
     ct:log("Events during TC: ~p", [[{N, aecore_suite_utils:all_events_since(N, Ts0)}
                                      || {_,N} <- ?config(nodes, Config)]]),

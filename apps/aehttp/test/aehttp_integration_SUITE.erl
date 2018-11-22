@@ -59,7 +59,8 @@
     get_transaction_by_hash/1,
     get_transaction_info_by_hash/1,
     post_spend_tx/1,
-    post_contract_and_call_tx/1
+    post_contract_and_call_tx/1,
+    nonce_limit/1
    ]).
 
 -export(
@@ -354,7 +355,8 @@ groups() ->
       ]},
      {post_tx_to_mempool, [],
       [
-       post_spend_tx
+       post_spend_tx,
+       nonce_limit
       ]},
      {tx_info, [sequence],
       [
@@ -845,12 +847,16 @@ init_per_testcase(_Case, Config) ->
     init_per_testcase_all(Config).
 
 init_per_testcase_all(Config) ->
+    [{_, Node} | _] = ?config(nodes, Config),
+    aecore_suite_utils:mock_mempool_nonce_offset(Node, 100),
     [{tc_start, os:timestamp()} | Config].
 
 end_per_testcase(_Case, Config) ->
     end_per_testcase_all(Config).
 
 end_per_testcase_all(Config) ->
+    [{_, Node} | _] = ?config(nodes, Config),
+    aecore_suite_utils:unmock_mempool_nonce_offset(Node),
     Ts0 = ?config(tc_start, Config),
     ct:log("Events during TC: ~p",
            [[{N, aecore_suite_utils:all_events_since(N, Ts0)}
@@ -1478,6 +1484,27 @@ post_spend_tx(Config) ->
           payload      => ?config(payload, Config)},
     {TxHash, Tx} = prepare_tx(spend_tx, TxArgs),
     ok = post_tx(TxHash, Tx),
+    ok.
+
+nonce_limit(Config) ->
+    [{_, Node} | _] = ?config(nodes, Config),
+    aecore_suite_utils:mock_mempool_nonce_offset(Node, 5),
+
+    aecore_suite_utils:mine_blocks(Node, 3),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    Txs = lists:map(
+            fun(_N) ->
+                    {ok, 200, #{<<"tx">> := SpendTx}} =
+                    post_spend_tx(aehttp_api_encoder:encode(account_pubkey, random_hash()),
+                                  ?config(amount, Config),
+                                  ?config(fee, Config)),
+                    {_, Code, _} = sign_and_post_tx_(SpendTx),
+                    Code
+            end,
+            lists:seq(1, 6)),
+
+    ?assertEqual([200, 200, 200, 200, 200, 400], Txs),
     ok.
 
 post_contract_and_call_tx(_Config) ->
@@ -5546,11 +5573,23 @@ remove_leading_all(L      ) -> L.
 intersperse([H|T], Delim) ->
     lists:flatten([H | [[Delim, E] || E <- T]]).
 
-
 sign_and_post_tx(EncodedUnsignedTx) ->
     sign_and_post_tx(EncodedUnsignedTx, on_node).
 
 sign_and_post_tx(EncodedUnsignedTx, PrivKey) ->
+    %% Check that we get the correct hash
+    {ok, 200, #{<<"tx_hash">> := TxHash}} = sign_and_post_tx_(EncodedUnsignedTx, PrivKey),
+    %% Check tx is in mempool.
+    Fun = fun() ->
+                  tx_in_mempool(TxHash)
+          end,
+    {ok, true} = aec_test_utils:wait_for_it_or_timeout(Fun, true, 5000),
+    TxHash.
+
+sign_and_post_tx_(EncodedUnsignedTx) ->
+    sign_and_post_tx_(EncodedUnsignedTx, on_node).
+
+sign_and_post_tx_(EncodedUnsignedTx, PrivKey) ->
     {ok, SerializedUnsignedTx} = aehttp_api_encoder:safe_decode(transaction, EncodedUnsignedTx),
     UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
     {ok, SignedTx} =
@@ -5559,15 +5598,7 @@ sign_and_post_tx(EncodedUnsignedTx, PrivKey) ->
             false -> {ok, aec_test_utils:sign_tx(UnsignedTx, PrivKey)}
         end,
     SerializedTx = aetx_sign:serialize_to_binary(SignedTx),
-    %% Check that we get the correct hash
-    TxHash = aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
-    {ok, 200, #{<<"tx_hash">> := TxHash}} = post_transactions_sut(aehttp_api_encoder:encode(transaction, SerializedTx)),
-    %% Check tx is in mempool.
-    Fun = fun() ->
-                  tx_in_mempool(TxHash)
-          end,
-    {ok, true} = aec_test_utils:wait_for_it_or_timeout(Fun, true, 5000),
-    TxHash.
+    post_transactions_sut(aehttp_api_encoder:encode(transaction, SerializedTx)).
 
 tx_in_mempool(TxHash) ->
     case get_transactions_by_hash_sut(TxHash) of

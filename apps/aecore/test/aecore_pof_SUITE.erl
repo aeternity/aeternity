@@ -83,6 +83,9 @@ siblings_on_key_block(Config) ->
     aecore_suite_utils:connect(N1),
     aecore_suite_utils:connect(N2),
 
+    aecore_suite_utils:mock_mempool_nonce_offset(N1, 100),
+    aecore_suite_utils:mock_mempool_nonce_offset(N2, 100),
+
     {ok, _} = aecore_suite_utils:mine_key_blocks(N1, 1),
 
     Account1 = #{ pubkey := PK1 } = new_keypair(),
@@ -110,6 +113,9 @@ siblings_on_micro_block(Config) ->
 
     aecore_suite_utils:connect(N1),
     aecore_suite_utils:connect(N2),
+
+    aecore_suite_utils:mock_mempool_nonce_offset(N1, 100),
+    aecore_suite_utils:mock_mempool_nonce_offset(N2, 100),
 
     {ok, _} = aecore_suite_utils:mine_key_blocks(N1, 1),
 

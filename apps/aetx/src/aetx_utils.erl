@@ -9,7 +9,6 @@
 %% API
 -export([check_account/3,
          check_account/4,
-         check_nonce/2,
          check_ttl/2]).
 
 %%%===================================================================

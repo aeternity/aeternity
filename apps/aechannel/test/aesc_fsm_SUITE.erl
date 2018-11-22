@@ -148,6 +148,10 @@ init_per_testcase(leave_reestablish, Config) ->
 init_per_testcase(_, Config) ->
     Config.
 
+end_per_testcase(multiple_channels, _Config) ->
+    Node = aecore_suite_utils:node_name(dev1),
+    aecore_suite_utils:unmock_mempool_nonce_offset(Node),
+    ok;
 end_per_testcase(_Case, _Config) ->
     ok.
 
@@ -711,6 +715,8 @@ multiple_channels(Cfg) ->
     ct:log("Initiator: ~p", [Initiator]),
     Me = self(),
     NumCs = 10,
+    Node = aecore_suite_utils:node_name(dev1),
+    aecore_suite_utils:mock_mempool_nonce_offset(Node, NumCs),
     {ok, Nonce} = rpc(dev1, aec_next_nonce, pick_for_account, [Initiator]),
     Cs = [create_multi_channel([{port, 9360 + N},
                                 {ack_to, Me},

@@ -40,6 +40,14 @@
                 "sync_interval" : {
                     "description" : "Interval between mempool (re-)synchronization (in ms)",
                     "type" : "integer"
+                },
+                "nonce_offset" : {
+                    "description" : "Maximum nonce offset accepted",
+                    "type" : "integer"
+                },
+                "nonce_baseline" : {
+                    "description" : "Maximum nonce accepted when pubkey is not present in state",
+                    "type" : "integer"
                 }
             }
         },
