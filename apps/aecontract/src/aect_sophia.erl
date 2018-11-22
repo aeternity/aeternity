@@ -24,10 +24,19 @@ compile(ContractAsBinString, OptionsAsBinString) ->
     Options = parse_options(OptionsAsBinString),
     try {ok, aeso_compiler:from_string(ContractText, Options)}
     catch
+        %% The compiler errors.
         error:{type_errors, Errors} ->
             {error, list_to_binary(string:join(["** Type errors\n" | Errors], "\n"))};
+        error:{parse_errors, Errors} ->
+            {error, list_to_binary(string:join(["** Parse errors\n" | Errors], "\n"))};
+        error:{code_errors, Errors} ->
+            ErrorStrings = [ io_lib:format("~p", [E]) || E <- Errors ],
+            {error, list_to_binary(string:join(["** Code errors\n" | ErrorStrings], "\n"))};
+        %% General programming errors in the compiler.
         error:Error ->
-            {error, list_to_binary(io_lib:format("~p", [Error]))}
+            Where = hd(erlang:get_stacktrace()),
+            ErrorString = io_lib:format("Error: ~p in\n   ~p", [Error,Where]),
+            {error, list_to_binary(ErrorString)}
     end.
 
 parse_options(OptionsBinString) ->
