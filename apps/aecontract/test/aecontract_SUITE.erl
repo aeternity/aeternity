@@ -26,6 +26,7 @@
         , create_contract_init_error_the_invalid_instruction/1
         , create_contract_init_error_illegal_instruction_one_hex_digit/1
         , create_contract_init_error_illegal_instruction_two_hex_digits/1
+        , create_contract_init_error_illegal_instructions_in_sophia/1
         , create_contract_negative_gas_price_zero/1
         , create_contract_negative/1
         , create_contract_upfront_fee/1
@@ -132,6 +133,7 @@ groups() ->
                          , create_contract_init_error_the_invalid_instruction
                          , create_contract_init_error_illegal_instruction_one_hex_digit
                          , create_contract_init_error_illegal_instruction_two_hex_digits
+                         , create_contract_init_error_illegal_instructions_in_sophia
                          , create_contract_negative_gas_price_zero
                          , create_contract_negative
                          , {group, create_contract_upfront_charges}
@@ -339,13 +341,35 @@ create_contract_init_error(_Cfg) ->
     ok.
 
 create_contract_init_error_the_invalid_instruction(_Cfg) ->
-    create_contract_init_error_illegal_instruction_(16#fe, <<"">>).
+    OP = 16#fe, %% The INVALID instruction.
+    create_contract_init_error_illegal_instruction_(OP, <<"illegal_instruction_FE">>).
 
 create_contract_init_error_illegal_instruction_one_hex_digit(_Cfg) ->
-    create_contract_init_error_illegal_instruction_(16#0c, <<"">>).
+    OP = 16#0c, %% A missing opcode.
+    create_contract_init_error_illegal_instruction_(OP, <<"illegal_instruction_0C">>).
 
 create_contract_init_error_illegal_instruction_two_hex_digits(_Cfg) ->
-    create_contract_init_error_illegal_instruction_(16#fc, <<"">>).
+    OP = 16#fc, %% A missing opcode.
+    create_contract_init_error_illegal_instruction_(OP, <<"illegal_instruction_FC">>).
+
+create_contract_init_error_illegal_instructions_in_sophia(_Cfg) ->
+    Tests =
+        [ {16#35, <<"illegal_instruction_35">>} %% CALLDATALOAD
+        , {16#36, <<"illegal_instruction_36">>} %% CALLDATASIZE
+        , {16#37, <<"illegal_instruction_37">>} %% CALLDATACOPY
+        , {16#3d, <<"illegal_instruction_3D">>} %% RETURNDATASIZE
+        , {16#3e, <<"illegal_instruction_3E">>} %% RETURNDATACOPY
+        , {16#54, <<"illegal_instruction_54">>} %% SLOAD
+        , {16#55, <<"illegal_instruction_55">>} %% SSTORE
+        , {16#f0, <<"illegal_instruction_F0">>} %% CREATE
+        , {16#f2, <<"illegal_instruction_F2">>} %% CALLCODE
+        , {16#f4, <<"illegal_instruction_F4">>} %% DELEGATECALL
+        , {16#ff, <<"illegal_instruction_FF">>} %% SELFDESTRUCT
+        ],
+    F = fun({OP, Err}) ->
+                create_contract_init_error_illegal_instruction_(OP, Err)
+        end,
+    lists:foreach(F, Tests).
 
 create_contract_init_error_illegal_instruction_(OP, ErrReason) when is_binary(ErrReason) ->
     state(aect_test_utils:new_state()),
@@ -366,7 +390,7 @@ hack_bytecode(Code, OP) when is_integer(OP), 0 =< OP, OP =< 255 ->
        type_info := TypeInfo,
        byte_code := ByteCode } = aeso_compiler:deserialize(Code),
     Version = 1,
-    HackedByteCode = <<OP:1/integer-unsigned-unit:8, Code/binary>>,
+    HackedByteCode = <<OP:1/integer-unsigned-unit:8, ByteCode/binary>>,
     Fields = [ {source_hash, Hash}
              , {type_info, TypeInfo}
              , {byte_code, HackedByteCode}
