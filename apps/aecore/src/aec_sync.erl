@@ -694,8 +694,8 @@ post_blocks(From, To, [{Height, _Hash, {PeerId, Block}} | Blocks]) ->
 %% blocks we limit the total amount of work the conductor has to perform in
 %% each synchronous call.
 %% Map contains key dir, saying in which direction we sync
-add_generation(#{dir := forward, key_block := KB, micro_blocks := MBs}) ->
-    add_blocks([KB | MBs]);
+add_generation(#{dir := forward, key_block := _KB, micro_blocks := MBs}) ->
+    add_blocks(MBs);
 add_generation(#{dir := backward, key_block := KB, micro_blocks := MBs}) ->
     add_blocks(MBs ++ [KB]).
 
