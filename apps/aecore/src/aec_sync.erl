@@ -635,7 +635,7 @@ do_work_on_sync_task(PeerId, Task, LastResult) ->
     case next_work_item(Task, PeerId, LastResult) of
         take_a_break ->
             delayed_run_job(PeerId, Task, sync_tasks,
-                            fun() -> do_work_on_sync_task(PeerId, Task) end, 250);
+                            fun() -> do_work_on_sync_task(PeerId, Task) end, 5000);
         {agree_on_height, Chain} ->
             #{ chain := [#{ hash := TopHash, height := TopHeight } | _] } = Chain,
             LocalHeader = aec_chain:top_header(),
