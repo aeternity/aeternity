@@ -339,13 +339,16 @@ create_contract_init_error(_Cfg) ->
     ok.
 
 create_contract_init_error_the_invalid_instruction(_Cfg) ->
-    create_contract_init_error_illegal_instruction_(16#fe, <<"">>).
+    OP = 16#fe, %% The INVALID instruction.
+    create_contract_init_error_illegal_instruction_(OP, <<"">>).
 
 create_contract_init_error_illegal_instruction_one_hex_digit(_Cfg) ->
-    create_contract_init_error_illegal_instruction_(16#0c, <<"">>).
+    OP = 16#0c, %% A missing opcode.
+    create_contract_init_error_illegal_instruction_(OP, <<"">>).
 
 create_contract_init_error_illegal_instruction_two_hex_digits(_Cfg) ->
-    create_contract_init_error_illegal_instruction_(16#fc, <<"">>).
+    OP = 16#fc, %% A missing opcode.
+    create_contract_init_error_illegal_instruction_(OP, <<"">>).
 
 create_contract_init_error_illegal_instruction_(OP, ErrReason) when is_binary(ErrReason) ->
     state(aect_test_utils:new_state()),
