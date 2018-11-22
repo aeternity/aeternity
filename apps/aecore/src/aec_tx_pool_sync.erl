@@ -45,6 +45,8 @@
         , remote = []         :: [sync_object()]
         }).
 
+-include("aec_peer_messages.hrl").
+
 -define(SERVER, ?MODULE).
 -define(MAX_INCOMING_SYNC, 5).
 -define(TX_PLACEHOLDER, []). %% RLP encodable.
@@ -307,7 +309,7 @@ repair_sync(Sync = #sync{ peer_id = PeerId }) ->
             {error, no_connection}
     end.
 
--define(LOCAL_ACTION_TIMEOUT, 10 * 1000).
+-define(LOCAL_ACTION_TIMEOUT, (?REQUEST_TIMEOUT + 3000)).
 
 do_local_action(Sync, tree) ->
     do_local_action(Sync, tree, fun build_tx_mpt/0, ?LOCAL_ACTION_TIMEOUT);
