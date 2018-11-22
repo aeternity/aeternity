@@ -196,11 +196,14 @@ perform_update({new_inplace, NewId, OldId}, Store) ->
     OldKey   = <<OldId:256>>,
     NewKey   = <<NewId:256>>,
     OldEntry = store_get(OldKey, Store),
-    %% Subtle: Don't remove the old entry because the mp trees requires there
-    %% to be a value at any node that we want to get a subtree for. We need
-    %% this for store_subtree.
-    %% Store1   = store_remove(OldKey, Store),
-    store_put(NewKey, OldEntry, Store);
+    %% Subtle: Don't remove the RealId entry because the mp trees requires
+    %% there to be a value at any node that we want to get a subtree for. We
+    %% need this for store_subtree.
+    RealId   = real_id(OldId, Store),
+    Store1   = if RealId /= OldId -> store_remove(OldKey, Store);
+                  true            -> Store
+               end,
+    store_put(NewKey, OldEntry, Store1);
 perform_update({insert, Id, Key, Val}, Store) ->
     RealId = real_id(Id, Store),
     store_put(<<RealId:256, Key/binary>>, Val, Store);
