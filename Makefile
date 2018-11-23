@@ -197,7 +197,7 @@ docker-clean:
 smoke-test: docker smoke-test-run
 
 smoke-test-run:
-	@./rebar3 as system_test do ct $(ST_CT_DIR) $(ST_CT_FLAGS) --suite=aest_mempool_SUITE,aest_oracles_SUITE
+	@./rebar3 as system_test do ct $(ST_CT_DIR) $(ST_CT_FLAGS) --suite=aest_sync_SUITE,aest_commands_SUITE,aest_peers_SUITE
 
 local-system-test:
 	@./rebar3 as system_test do ct $(ST_CT_LOCALDIR) $(ST_CT_FLAGS) --dir system_test/only_local $(CT_TEST_FLAGS)
