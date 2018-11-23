@@ -18,7 +18,7 @@ The following example configuration assumes that:
 
 ### Channels
 
-`epoch` provides an infrastructure for using state channes. There are two
+`epoch` provides an infrastructure for using state channels. There are two
 distinct protocols involved:
 * WebSocket client one
 * Noise encoded one
@@ -55,7 +55,7 @@ Generated keypair with encoded pubkey: YOUR_PUBLIC_KEY
 Generated public-private key pair will be located in `/tmp/node/generated_keys`, and public key is to be put in epoch configuration file (`mining` > `beneficiary` parameter).
 
 Do make sure you back up `/tmp/node/generated_keys` (and remember the password): if you destroy the node, you can setup a new node and use the same account (public key) as a beneficiary.
-You shall not share the private key (or the password) with anyone.
+**You shall not share the private key (or the password) with anyone.**
 
 e.g.
 
@@ -139,7 +139,7 @@ mining:
 ```
 in the yaml.epoch configuration file.
 
-Your mining setup needs to meet your hardware capacity. Therefore, you need to make a choice in how you want to configure your miner. You can read the documentation on setting up CUDA mining, or you can use all but one of the cores on your computer to mine (keep one core available for transaction gossiping, synchronising, etc).
+Your mining setup needs to meet your hardware capacity. Therefore, you need to make a choice in how you want to configure your miner. You can read the documentation on setting up CUDA mining, or you can use all but one of the cores on your computer to mine (keep one core available for transaction gossiping, synchronising, etc). [more details: about epoch_config_schema](https://github.com/aeternity/epoch/blob/master/apps/aeutils/priv/epoch_config_schema.json)
 If you have 16 cores, you could (loosely spoken) assign 14 of them to mining using the following configuration:
 ```yaml
 mining:
@@ -150,4 +150,5 @@ mining:
             executable: mean29-avx2
             extra_args: -t 14
 ```
+
 Read the [beneficiary account section](#beneficiary-account) on how to put your key in this file.
