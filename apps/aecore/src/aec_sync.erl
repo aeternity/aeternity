@@ -203,7 +203,7 @@ handle_cast(_, State) ->
 handle_info({gproc_ps_event, Event, #{info := Info}},
             State = #state{ gossip_txs = GossipTxs }) ->
     %% FUTURE: Forward blocks only to outbound connections.
-    %% Take a random subset (possibly empty) of peers that agree with us 
+    %% Take a random subset (possibly empty) of peers that agree with us
     %% on chain height to forward blocks and transactions to.
     PeerIds = [ aec_peers:peer_id(P) || P <- aec_peers:get_random(10) ],
     NonSyncingPeerIds = [ P || P <- PeerIds, not peer_in_sync(State, P) ],
@@ -514,7 +514,7 @@ run_job(Queue, Fun) ->
     proc_lib:spawn(jobs, run, [Queue, Fun]).
 
 %% Gossip Tx or Block - spawn a process and call jobs from there.
-enqueue(Kind, Data, []) ->
+enqueue(_Kind, _Data, []) ->
     ok;
 enqueue(Kind, Data, PeerIds) ->
     spawn(fun() ->
@@ -635,7 +635,7 @@ do_work_on_sync_task(PeerId, Task, LastResult) ->
     case next_work_item(Task, PeerId, LastResult) of
         take_a_break ->
             delayed_run_job(PeerId, Task, sync_tasks,
-                            fun() -> do_work_on_sync_task(PeerId, Task) end, 250);
+                            fun() -> do_work_on_sync_task(PeerId, Task) end, 5000);
         {agree_on_height, Chain} ->
             #{ chain := [#{ hash := TopHash, height := TopHeight } | _] } = Chain,
             LocalHeader = aec_chain:top_header(),
@@ -694,8 +694,8 @@ post_blocks(From, To, [{Height, _Hash, {PeerId, Block}} | Blocks]) ->
 %% blocks we limit the total amount of work the conductor has to perform in
 %% each synchronous call.
 %% Map contains key dir, saying in which direction we sync
-add_generation(#{dir := forward, key_block := KB, micro_blocks := MBs}) ->
-    add_blocks([KB | MBs]);
+add_generation(#{dir := forward, key_block := _KB, micro_blocks := MBs}) ->
+    add_blocks(MBs);
 add_generation(#{dir := backward, key_block := KB, micro_blocks := MBs}) ->
     add_blocks(MBs ++ [KB]).
 

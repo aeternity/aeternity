@@ -132,10 +132,8 @@ origin(#oracle_register_tx{} = Tx) ->
 %% Account should exist, and have enough funds for the fee.
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) ->
         {ok, aec_trees:trees()} | {error, term()}.
-check(#oracle_register_tx{nonce = Nonce, oracle_ttl = OTTL, fee = Fee,
-                          vm_version = VMVersion} = Tx,
-      Trees, Env) ->
-    Height = aetx_env:height(Env),
+check(#oracle_register_tx{nonce = Nonce, fee = Fee, vm_version = VMVersion} = Tx,
+      Trees, _Env) ->
     AccountPubKey = account_pubkey(Tx),
     Checks =
         [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee) end,

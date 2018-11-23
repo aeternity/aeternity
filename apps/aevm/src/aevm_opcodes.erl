@@ -61,8 +61,8 @@ opcode(GasTable, ?CODECOPY)       -> { 3,  0, maps:get('GVERYLOW', GasTable)};
 opcode(GasTable, ?GASPRICE)       -> { 0,  1, maps:get('GBASE', GasTable)};
 opcode(GasTable, ?EXTCODESIZE)    -> { 1,  1, maps:get('GEXTCODESIZE', GasTable)};
 opcode(GasTable, ?EXTCODECOPY)    -> { 4,  0, maps:get('GEXTCODECOPY', GasTable)};
-opcode(GasTable, ?RETURNDATASIZE) -> { 0,  1, 2}; %% TODO
-opcode(GasTable, ?RETURNDATACOPY) -> { 3,  0, 3}; %% TODO
+opcode(_GasTable, ?RETURNDATASIZE) -> { 0,  1, 2}; %% TODO
+opcode(_GasTable, ?RETURNDATACOPY) -> { 3,  0, 3}; %% TODO
 opcode(GasTable, ?BLOCKHASH)      -> { 1,  1, maps:get('GBLOCKHASH', GasTable)};
 opcode(GasTable, ?COINBASE)       -> { 0,  1, maps:get('GBASE', GasTable)};
 opcode(GasTable, ?TIMESTAMP)      -> { 0,  1, maps:get('GBASE', GasTable)};
@@ -74,7 +74,7 @@ opcode(GasTable, ?MLOAD)          -> { 1,  1, maps:get('GVERYLOW', GasTable)};
 opcode(GasTable, ?MSTORE)         -> { 2,  0, maps:get('GVERYLOW', GasTable)};
 opcode(GasTable, ?MSTORE8)        -> { 2,  0, maps:get('GVERYLOW', GasTable)};
 opcode(GasTable, ?SLOAD)          -> { 1,  1, maps:get('GSLOAD', GasTable)};
-opcode(GasTable, ?SSTORE)         -> { 2,  0, 0};
+opcode(_GasTable, ?SSTORE)         -> { 2,  0, 0};
 opcode(GasTable, ?JUMP)           -> { 1,  0, maps:get('GMID', GasTable)};
 opcode(GasTable, ?JUMPI)          -> { 2,  0, maps:get('GHIGH', GasTable)};
 opcode(GasTable, ?PC)             -> { 0,  1, maps:get('GBASE', GasTable)};
@@ -151,10 +151,10 @@ opcode(GasTable, ?LOG2)           -> { 4,  0, maps:get('GLOG', GasTable) + 2*map
 opcode(GasTable, ?LOG3)           -> { 5,  0, maps:get('GLOG', GasTable) + 3*maps:get('GLOGTOPIC', GasTable)};
 opcode(GasTable, ?LOG4)           -> { 6,  0, maps:get('GLOG', GasTable) + 4*maps:get('GLOGTOPIC', GasTable)};
 opcode(GasTable, ?CREATE)         -> { 3,  1, maps:get('GCREATE', GasTable)};
-opcode(GasTable, ?CALL)           -> { 7,  1, 0};
-opcode(GasTable, ?CALLCODE)       -> { 7,  1, 0};
+opcode(_GasTable, ?CALL)           -> { 7,  1, 0};
+opcode(_GasTable, ?CALLCODE)       -> { 7,  1, 0};
 opcode(GasTable, ?RETURN)         -> { 2,  0, maps:get('GZERO', GasTable)};
-opcode(GasTable, ?DELEGATECALL)   -> { 6,  1, 0};
-opcode(GasTable, ?STATICCALL)     -> { 6,  1, 40}; %% TODO
-opcode(GasTable, ?REVERT)         -> { 2,  0, 0};
+opcode(_GasTable, ?DELEGATECALL)   -> { 6,  1, 0};
+opcode(_GasTable, ?STATICCALL)     -> { 6,  1, 40}; %% TODO
+opcode(_GasTable, ?REVERT)         -> { 2,  0, 0};
 opcode(GasTable, ?SUICIDE)        -> { 1,  0, maps:get('GSELFDESTRUCT', GasTable)}. %% TODO

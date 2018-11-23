@@ -145,8 +145,7 @@ origin(#oracle_query_tx{} = Tx) ->
 %% Oracle should exist, and query_fee should be enough
 %% Fee should cover TTL
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#oracle_query_tx{nonce = Nonce, query_fee = QFee, query_ttl = QTTL,
-                       fee = Fee} = QTx,
+check(#oracle_query_tx{nonce = Nonce, query_fee = QFee, fee = Fee} = QTx,
       Trees, Env) ->
     Height       = aetx_env:height(Env),
     SenderPubKey = sender_pubkey(QTx),

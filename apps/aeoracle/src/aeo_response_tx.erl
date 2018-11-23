@@ -120,7 +120,6 @@ origin(#oracle_response_tx{} = Tx) ->
         {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_response_tx{nonce = Nonce, query_id = QueryId,
                           fee = Fee, response_ttl = ResponseTTL} = Tx, Trees, Env) ->
-    Height = aetx_env:height(Env),
     OraclePubKey = oracle_pubkey(Tx),
     case fetch_query(OraclePubKey, QueryId, Trees) of
         {value, I} ->
