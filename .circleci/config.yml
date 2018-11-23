@@ -6,16 +6,13 @@ references:
       - image: aeternity/builder
         user: builder
     working_directory: ~/epoch
-    environment:
-      # CircleCI supported versions: https://circleci.com/docs/2.0/building-docker-images/#docker-version
-      # Official docker versions: https://download.docker.com/linux/static/stable/x86_64/
-      DOCKERHUB_REPO: aeternity/epoch
 
   infrastructure_config: &infrastructure_config
     docker:
       - image: aeternity/infrastructure
     working_directory: ~/epoch
     environment:
+      DOCKERHUB_REPO: aeternity/epoch
       S3_BUILDS_BUCKET: aeternity-epoch-builds
       S3_RELEASES_BUCKET: aeternity-epoch-releases
 
@@ -510,6 +507,7 @@ jobs:
     <<: *infrastructure_config
     steps:
       - checkout
+      - *setup_secrets
       - *setup_remote_docker
       - run:
           name: Build and push Docker image to DockerHub
