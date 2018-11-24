@@ -48,7 +48,7 @@
 
 -import(aeu_debug, [pp/1]).
 
--define(P2P_PROTOCOL_VSN, 4).
+-define(P2P_PROTOCOL_VSN, 5).
 
 -define(DEFAULT_CONNECT_TIMEOUT, 1000).
 -define(DEFAULT_FIRST_PING_TIMEOUT, 30000).
@@ -170,9 +170,11 @@ accept_init(Ref, TcpSock, ranch_tcp, Opts) ->
             %% ======  Entering critical section with Private keys in memory. ======
             PrevSensitive = process_flag(sensitive, true),
             {ok, SecKey} = aec_keys:peer_privkey(),
+            Prologue = aec_governance:add_network_id_last(<<Version/binary,
+                                                            Genesis/binary>>),
             NoiseOpts = [ {noise, <<"Noise_XK_25519_ChaChaPoly_BLAKE2b">>}
                         , {s, enoise_keypair:new(dh25519, SecKey, PubKey)}
-                        , {prologue, <<Version/binary, Genesis/binary>>}
+                        , {prologue, Prologue}
                         , {timeout, HSTimeout} ],
             %% Keep the socket passive until here to avoid premature message
             %% receiving...
@@ -286,9 +288,11 @@ handle_info({connected, Pid, {ok, TcpSock}}, S0 = #{ status := {connecting, Pid}
             %% ======  Entering critical section with Private keys in memory. ======
             PrevSensitive = process_flag(sensitive, true),
             {ok, SecKey} = aec_keys:peer_privkey(),
+            Prologue = aec_governance:add_network_id_last(<<Version/binary,
+                                                            Genesis/binary>>),
             NoiseOpts = [ {noise, <<"Noise_XK_25519_ChaChaPoly_BLAKE2b">>}
                         , {s, enoise_keypair:new(dh25519, SecKey, PubKey)}
-                        , {prologue, <<Version/binary, Genesis/binary>>}
+                        , {prologue, Prologue}
                         , {rs, enoise_keypair:new(dh25519, RemotePub)}
                         , {timeout, HSTimeout} ],
             %% Keep the socket passive until here to avoid premature message

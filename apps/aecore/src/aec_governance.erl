@@ -25,6 +25,7 @@
          state_gas_per_block/1,
          primop_base_gas/1,
          add_network_id/1,
+         add_network_id_last/1,
          get_network_id/0,
          contributors_messages_hash/0,
          vm_gas_table/0]).
@@ -223,6 +224,11 @@ fraud_report_reward(Height) ->
 add_network_id(SerializedTransaction) ->
     NetworkId = get_network_id(),
     <<NetworkId/binary, SerializedTransaction/binary>>.
+
+-spec add_network_id_last(binary()) -> binary().
+add_network_id_last(Payload) ->
+    NetworkId = get_network_id(),
+    <<Payload/binary, NetworkId/binary>>.
 
 get_network_id() ->
     aeu_env:user_config_or_env([<<"fork_management">>, <<"network_id">>],
