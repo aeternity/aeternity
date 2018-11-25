@@ -312,10 +312,14 @@ pipelined_query_test(Opts, Cfg) ->
     %% Give tokens away
     GiveAwayAmount = 600000,
     aest_nodes:wait_for_value({balance, MPubKey, 2*GiveAwayAmount}, [node1], 10000, []),
-    %% Give some tokens to the oracle account
+    %% Give some tokens to the oracle account/OAccount
     post_spend_tx(node1, ?MIKE, OAccount, 1, #{ amount => GiveAwayAmount }),
     %% Give some tokens to the querier account
     post_spend_tx(node1, ?MIKE, QAccount, 2, #{ amount => GiveAwayAmount }),
+
+    Fee = 50000,
+    aest_nodes:wait_for_value({balance, OPubKey, 2*Fee}, [ONode], 10000, []),
+    aest_nodes:wait_for_value({balance, QPubKey, Fee}, [QNode], 10000, []),
 
     %% Register oracle
     #{ tx_hash := _ } = post_oracle_register_tx(ONode, OAccount, #{
@@ -323,7 +327,7 @@ pipelined_query_test(Opts, Cfg) ->
         query_format    => <<"qspec">>,
         response_format => <<"rspec">>,
         query_fee       => 1,
-        fee             => 50000,
+        fee             => Fee,
         oracle_ttl      => {block, 2000}
     }),
 
@@ -332,7 +336,7 @@ pipelined_query_test(Opts, Cfg) ->
         nonce        => 1,
         query        => <<"Hidely-Ho">>,
         query_fee    => 2,
-        fee          => 50000,
+        fee          => Fee,
         query_ttl    => {delta, 100},
         response_ttl => {delta, 100}
     }),
@@ -345,7 +349,7 @@ pipelined_query_test(Opts, Cfg) ->
         query_id     => QueryId,
         response     => <<"D'oh!">>,
         response_ttl => {delta, 100},
-        fee          => 50000
+        fee          => Fee
     }),
 
     %% Wait for the response transaction to get in the chain
