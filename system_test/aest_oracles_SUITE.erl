@@ -309,10 +309,13 @@ pipelined_query_test(Opts, Cfg) ->
     start_node(node2, Cfg),
     wait_for_startup([node1, node2], 4, Cfg),
 
+    %% Give tokens away
+    GiveAwayAmount = 600000,
+    aest_nodes:wait_for_value({balance, MPubKey, 2*GiveAwayAmount}, [node1], 10000, []),
     %% Give some tokens to the oracle account
-    post_spend_tx(node1, ?MIKE, OAccount, 1, #{ amount => 600000 }),
+    post_spend_tx(node1, ?MIKE, OAccount, 1, #{ amount => GiveAwayAmount }),
     %% Give some tokens to the querier account
-    post_spend_tx(node1, ?MIKE, QAccount, 2, #{ amount => 600000 }),
+    post_spend_tx(node1, ?MIKE, QAccount, 2, #{ amount => GiveAwayAmount }),
 
     %% Register oracle
     #{ tx_hash := _ } = post_oracle_register_tx(ONode, OAccount, #{
