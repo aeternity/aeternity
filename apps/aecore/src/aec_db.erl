@@ -93,6 +93,9 @@
         , find_block_state_and_data/1
         ]).
 
+%% for testing
+-export([backend_mode/0]).
+
 -include("blocks.hrl").
 -include("aec_db.hrl").
 
@@ -120,6 +123,10 @@
 
 -define(TX_IN_MEMPOOL, []).
 
+tables() -> tables(ram).
+
+tables(Mode) when Mode==ram; Mode==disc ->
+    tables(expand_mode(Mode));
 tables(Mode) ->
     [?TAB(aec_blocks)
    , ?TAB(aec_headers, [{index, [height]}])
@@ -139,7 +146,8 @@ tables(Mode) ->
    , ?TAB(aec_discovered_pof)
     ].
 
-tab(Mode, Record, Attributes, Extra) ->
+tab(Mode0, Record, Attributes, Extra) ->
+    Mode = expand_mode(Mode0),
     [ tab_copies(Mode)
     , {type, tab_type(Record)}
     , {attributes, Attributes}
@@ -150,12 +158,12 @@ tab_vsn(_) -> 1.
 
 tab_type(_) -> set.
 
-tab_copies(disc) -> {rocksdb_copies, [node()]};
-tab_copies(disc_legacy) -> {disc_copies, [node()]};
-tab_copies(ram ) -> {ram_copies , [node()]}.
+tab_copies(Mode) when Mode == ram; Mode == disc ->
+    tab_copies(expand_mode(Mode));
+tab_copies(#{alias := Alias}) -> {Alias, [node()]}.
 
 clear_db() ->
-    ?t([clear_table(T) || {T, _} <- tables(ram)]).
+    ?t([clear_table(T) || {T, _} <- tables()]).
 
 clear_table(Tab) ->
     ?t(begin
@@ -182,6 +190,53 @@ persisted_valid_genesis_block() ->
                     false
             end
     end.
+
+backend_mode() ->
+    case application:get_env(aecore, persist, false) of
+        false -> expand_mode(ram);
+        true  -> expand_mode(disc)
+    end.
+
+disc_backend_mode() ->
+    {ok, BackendExpr} =
+        aeu_env:find_config([<<"chain">>, <<"db_backend">>], [user_config,
+                                                              schema_default,
+                                                              {value, <<"mnesia">>}]),
+    Backend = select_backend(BackendExpr),
+    backend_mode(Backend, #{persist => true}).
+
+%% The `db_backend` config option can have the format
+%% "<backend>" | "<platform>:<backend> | "<platform>:<backend> [ | <p1:b1> ]*"
+%% The alternatives are matched in order, and the first match is chosen.
+%% The <platform> pattern may be "*", which matches any platform.
+%%
+select_backend(Expr) ->
+    {Family, Name} = os:type(),
+    FamilyB = atom_to_binary(Family, utf8),
+    NameB = atom_to_binary(Name, utf8),
+    Alts0 = re:split(Expr, <<"\\h*\\|\\h*">>, [{return,binary}]),
+    Alts = [re:split(A, <<"\\h*:\\h*">>, [{return,binary}])
+            || A <- Alts0],
+    match_alts(Alts, FamilyB, NameB).
+
+%% Platform is determined by `os:type() -> {OSFamily, OSName}`
+%% We match on EITHER `OSFamily` or `OSName`, even though you're normally
+%% not supposed to match on the name. This is so that we can distinguish
+%% MacOS (`{unix,darwin}`) from e.g. linux (usually `{unix,linux}`).
+%%
+%% It's generally better to match on the OS family.
+match_alts([[X,B]|_]      , F, N) when X=:=F; X=:=N -> B;
+match_alts([[<<"*">>,B]|_], _, _) -> B;
+match_alts([[B]|_]        , _, _) -> B;
+match_alts([_|T]          , F, N) -> match_alts(T, F, N);
+match_alts([]             , _, _) -> erlang:error(no_matching_backend).
+
+backend_mode(_            , #{persist := false} = M) -> M#{module => mnesia,
+                                                           alias => ram_copies};
+backend_mode(<<"rocksdb">>, #{persist := true } = M) -> M#{module => mnesia_rocksdb,
+                                                           alias => rocksdb_copies};
+backend_mode(<<"mnesia">> , #{persist := true } = M) -> M#{module => mnesia,
+                                                           alias => disc_copies}.
 
 transaction(Fun) when is_function(Fun, 0) ->
     mnesia:activity(transaction, Fun).
@@ -612,11 +667,7 @@ wait_for_tables(Tabs, Sofar, _, _) ->
 
 check_db() ->
     try
-        Mode = case application:get_env(aecore, persist, false) of
-                   legacy -> disc_legacy;
-                   true  -> disc;
-                   false -> ram
-               end,
+        Mode = backend_mode(),
         Storage = ensure_schema_storage_mode(Mode),
         ok = application:ensure_started(mnesia),
         initialize_db(Mode, Storage)
@@ -629,7 +680,7 @@ check_db() ->
 
 %% Test interface
 initialize_db(ram) ->
-    initialize_db(ram, ok).
+    initialize_db(expand_mode(ram), ok).
 
 initialize_db(Mode, Storage) ->
     add_backend_plugins(Mode),
@@ -638,6 +689,11 @@ initialize_db(Mode, Storage) ->
     run_hooks('$aec_db_add_index_plugins', Mode),
     ensure_mnesia_tables(Mode, Storage),
     ok.
+
+expand_mode(ram)  -> backend_mode(<<"mnesia">>, #{persist => false});
+expand_mode(disc) -> disc_backend_mode();
+expand_mode(M) when is_map(M) -> M.
+
 
 run_hooks(Hook, Mode) ->
     [M:F(Mode) || {_App, {M,F}} <- setup:find_env_vars(Hook)].
@@ -648,8 +704,8 @@ fold_hooks(Hook, Acc0) ->
               M:F(Acc)
       end, Acc0, setup:find_env_vars(Hook)).
 
-add_backend_plugins(disc) ->
-    mnesia_rocksdb:register();
+add_backend_plugins(#{module := Mod, alias := Alias}) when Mod =/= mnesia ->
+    Mod:register(Alias);
 add_backend_plugins(_) ->
     ok.
 
@@ -693,7 +749,7 @@ check_table(Table, Spec, Acc) ->
     catch _:_ -> [{missing_table, Table}|Acc]
     end.
 
-ensure_schema_storage_mode(ram) ->
+ensure_schema_storage_mode(#{persist := false}) ->
     case disc_db_exists() of
         {true, Dir} ->
             lager:warning("Will not use existing Mnesia db (~s)", [Dir]),
@@ -701,15 +757,7 @@ ensure_schema_storage_mode(ram) ->
         false ->
             ok
     end;
-ensure_schema_storage_mode(disc_legacy) ->
-    case disc_db_exists() of
-        {true, Dir} ->
-            lager:warning("Will use existing Mnesia db (~s)", [Dir]),
-            existing_schema;
-        false ->
-            ok
-    end;
-ensure_schema_storage_mode(disc) ->
+ensure_schema_storage_mode(#{persist := true}) ->
     case mnesia:create_schema([node()]) of
         {error, {_, {already_exists, _}}} -> existing_schema;
         ok -> ok
