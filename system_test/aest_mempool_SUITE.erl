@@ -109,8 +109,10 @@ test_mempool_ttl_cleanup(Cfg) ->
     wait_for_startup(NodeNames, 1, Cfg),
 
     %% Give tokens away
-    #{ tx_hash := PostTxHash1 } = post_spend_tx(node1, ?MIKE, ?ALICE, 1, #{amount => 400000}),
-    #{ tx_hash := PostTxHash2 } = post_spend_tx(node1, ?MIKE, ?BOB, 2, #{amount => 400000}),
+    GiveAwayAmount = 400000,
+    aest_nodes:wait_for_value({balance, MikePubKey, 2*GiveAwayAmount}, [node1], 10000, []),
+    #{ tx_hash := PostTxHash1 } = post_spend_tx(node1, ?MIKE, ?ALICE, 1, #{amount => GiveAwayAmount}),
+    #{ tx_hash := PostTxHash2 } = post_spend_tx(node1, ?MIKE, ?BOB, 2, #{amount => GiveAwayAmount}),
     aest_nodes:wait_for_value({txs_on_chain, [PostTxHash1, PostTxHash2]}, NodeNames, 10000, []),
 
     %% Create a channel
@@ -154,8 +156,10 @@ test_mempool_bad_nonce_cleanup(Cfg) ->
     wait_for_startup(NodeNames, 1, Cfg),
 
     %% Give tokens away
-    #{ tx_hash := PostTxHash1 } = post_spend_tx(node1, ?MIKE, ?ALICE, 1, #{amount => 600000}),
-    #{ tx_hash := PostTxHash2 } = post_spend_tx(node1, ?MIKE, ?BOB, 2, #{amount => 600000}),
+    GiveAwayAmount = 600000,
+    aest_nodes:wait_for_value({balance, MikePubKey, 2*GiveAwayAmount}, [node1], 10000, []),
+    #{ tx_hash := PostTxHash1 } = post_spend_tx(node1, ?MIKE, ?ALICE, 1, #{amount => GiveAwayAmount}),
+    #{ tx_hash := PostTxHash2 } = post_spend_tx(node1, ?MIKE, ?BOB, 2, #{amount => GiveAwayAmount}),
     aest_nodes:wait_for_value({txs_on_chain, [PostTxHash1, PostTxHash2]}, NodeNames, 10000, []),
 
     %% Create a channel
